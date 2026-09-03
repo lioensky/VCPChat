@@ -59,11 +59,10 @@ const settingsManager = (() => {
     let promptManager = null; // PromptManager instance
     let openModelSelectBtn, modelSelectModal, modelList, modelSearchInput, refreshModelsBtn;
     let topicSummaryModelInput, openTopicSummaryModelSelectBtn; // New elements for topic summary model
-    let agentTtsVoicePrimarySelect, agentTtsRegexPrimaryInput, agentTtsVoiceSecondarySelect, agentTtsRegexSecondaryInput, refreshTtsModelsBtn, agentTtsSpeedSlider, ttsSpeedValueSpan;
+    let agentTtsVoicePrimarySelect, agentTtsRegexPrimaryInput, agentTtsVoiceSecondarySelect, agentTtsRegexSecondaryInput, refreshTtsModelsBtn, agentTtsSpeedSlider;
     let agentTtsDirectorPromptInput, addAgentTtsDirectorPromptBtn, fillAgentTtsDirectorTemplateBtn, agentTtsDirectorPromptsContainer;
     let currentAgentTtsDirectorPrompts = [];
-    let agentTtsPrimarySelectController = null;
-    let agentTtsSecondarySelectController = null;
+    const ttsDirectorDisposers = [];
     const TTS_DIRECTOR_TEMPLATE = `【角色】
 写清人物的身份、年龄、性格底色、外形气质与说话习惯。
 
@@ -102,15 +101,6 @@ const settingsManager = (() => {
         preset: '预置'
     };
 
-    function syncRangeProgress(rangeInput) {
-        if (!rangeInput) return;
-        const min = Number(rangeInput.min || 0);
-        const max = Number(rangeInput.max || 100);
-        const value = Number(rangeInput.value || min);
-        const progress = max > min ? ((value - min) / (max - min)) * 100 : 0;
-        rangeInput.style.setProperty('--vcp-ui-range-progress', `${Math.max(0, Math.min(100, progress))}%`);
-    }
-
     function reportSettingsSaveResult(form, success, error = '') {
         form?.dispatchEvent(new CustomEvent('vcp-settings-save-result', {
             detail: { success: Boolean(success), error }
@@ -121,6 +111,14 @@ const settingsManager = (() => {
         form?.dispatchEvent(new CustomEvent('vcp-settings-delete-result', {
             detail: { success: Boolean(success), cancelled: Boolean(cancelled), error }
         }));
+    }
+
+    function clearTtsDirectorListeners() {
+        while (ttsDirectorDisposers.length) {
+            try { ttsDirectorDisposers.pop()(); } catch (error) {
+                console.warn('[SettingsManager] Failed to dispose TTS director listener:', error);
+            }
+        }
     }
 
     /**
@@ -265,11 +263,22 @@ const settingsManager = (() => {
         agentAvatarInput.value = '';
         mainRendererFunctions.setCroppedFile('agent', null);
 
-        // Populate custom style settings
+        // Populate custom style settings.  Programmatic populate writes must
+        // signal the mounted presentation primitives (vcp-uiux-sync, matching
+        // the settings-bridge set() contract) so mirrored displays — the TTS
+        // speed readout and the avatar preview border — converge on the newly
+        // selected Agent instead of keeping the previous one's values.
+        const signalPresentationSync = (node) => {
+            if (!node) return;
+            const EventCtor = node.ownerDocument?.defaultView?.CustomEvent ?? CustomEvent;
+            node.dispatchEvent(new EventCtor('vcp-uiux-sync', { bubbles: true }));
+        };
         agentAvatarBorderColorInput.value = agentConfig.avatarBorderColor || '#3d5a80';
         agentAvatarBorderColorTextInput.value = agentConfig.avatarBorderColor || '#3d5a80';
         agentNameTextColorInput.value = agentConfig.nameTextColor || '#ffffff';
         agentNameTextColorTextInput.value = agentConfig.nameTextColor || '#ffffff';
+        signalPresentationSync(agentAvatarBorderColorInput);
+        signalPresentationSync(agentNameTextColorInput);
         agentCustomCssInput.value = agentConfig.customCss || '';
 
         // Load card CSS
@@ -302,8 +311,9 @@ const settingsManager = (() => {
         // Populate bilingual TTS settings
         await populateTtsModels(agentConfig.ttsVoicePrimary, agentConfig.ttsVoiceSecondary);
 
-        // 音色查询是异步边界。等待期间若用户切换到了其他 Agent，旧任务不能再把
-        // TTS 正则、导演提示词列表和其他共享状态写回当前表单。
+        // Voice lookup is asynchronous.  A newer Agent selection owns the
+        // shared form, so a stale lookup must not write prompts, regexes, or
+        // speed into the replacement Agent's canonical controls.
         if (populateToken !== agentSettingsPopulateToken) {
             console.debug(`[SettingsManager] Aborting stale TTS settings render for agent ${agentId}.`);
             return { stale: true };
@@ -317,8 +327,7 @@ const settingsManager = (() => {
         renderTtsDirectorPrompts();
 
         agentTtsSpeedSlider.value = agentConfig.ttsSpeed !== undefined ? agentConfig.ttsSpeed : 1.0;
-        ttsSpeedValueSpan.textContent = parseFloat(agentTtsSpeedSlider.value).toFixed(1);
-        syncRangeProgress(agentTtsSpeedSlider);
+        signalPresentationSync(agentTtsSpeedSlider);
 
         // Load and render regex rules
         currentAgentRegexes = JSON.parse(JSON.stringify(agentConfig.stripRegexes || [])); // Deep copy
@@ -653,20 +662,18 @@ const settingsManager = (() => {
         try {
             let optionList = [];
 
-            // 本地与网络模式统一由当前 TTS 引擎返回音色。网络模式直接返回
-            // MiMo 固定预置音色，不再读取旧供应商遗留的 webindexmodel.json。
+            // Both local and network modes use the upstream TTS capability.
+            // The retired WebIndexTTS2 catalog is no longer part of the runtime.
             const models = await electronAPI.sovitsGetModels();
             if (Array.isArray(models)) {
                 optionList = models;
-            } else {
-                optionList = models && typeof models === 'object'
-                    ? Object.keys(models).map(modelName => ({
-                        id: modelName,
-                        voice: modelName,
-                        displayName: modelName,
-                        type: isNetworkMode ? 'preset' : 'local'
-                    }))
-                    : [];
+            } else if (models && typeof models === 'object') {
+                optionList = Object.keys(models).map(modelName => ({
+                    id: modelName,
+                    voice: modelName,
+                    displayName: modelName,
+                    type: isNetworkMode ? 'preset' : 'local'
+                }));
             }
 
             const seenVoices = new Set();
@@ -710,7 +717,6 @@ const settingsManager = (() => {
                     });
                     return nodes;
                 }
-
                 const groupDefinitions = [
                     ['preset', 'MiMo 预置音色'],
                     ['voicedesign', 'MiMo 自然语言控制'],
@@ -723,11 +729,9 @@ const settingsManager = (() => {
                     group.label = label;
                     items.forEach(item => {
                         const optionValue = item.voice || item.id;
-                        group.appendChild(createOption(
-                            optionValue,
-                            item.displayName || optionValue,
-                            { selected: optionValue === selectedValue }
-                        ));
+                        group.appendChild(createOption(optionValue, item.displayName || optionValue, {
+                            selected: optionValue === selectedValue
+                        }));
                     });
                     nodes.push(group);
                 });
@@ -736,9 +740,7 @@ const settingsManager = (() => {
             const primaryOptions = createOptionGroups('不使用语音', currentPrimaryVoice);
             const secondaryOptions = createOptionGroups('不使用', currentSecondaryVoice);
             if (optionList.length === 0) {
-                const emptyLabel = isNetworkMode
-                    ? '未找到 MiMo 音色'
-                    : '未找到模型,请启动Sovits';
+                const emptyLabel = isNetworkMode ? '未找到 MiMo 音色' : '未找到模型,请启动Sovits';
                 primaryOptions.push(createOption('', emptyLabel, { disabled: true }));
                 secondaryOptions.push(createOption('', emptyLabel, { disabled: true }));
             }
@@ -776,50 +778,47 @@ const settingsManager = (() => {
     }
 
     function bindTtsDirectorEditor(editor, onInput) {
-        editor.addEventListener('focus', () => {
+        const onFocus = () => {
             editor.closest('.tts-director-item, .tts-director-composer')?.classList.add('is-editing');
             resizeTtsDirectorEditor(editor, true);
             scheduleStickyButtonsRefresh();
-        });
-        editor.addEventListener('input', () => {
+        };
+        const onInputEvent = () => {
             onInput?.(editor.value);
             resizeTtsDirectorEditor(editor, true);
             updateSectionSummary('tts');
             scheduleStickyButtonsRefresh();
-        });
-        editor.addEventListener('blur', () => {
+        };
+        const onBlur = () => {
             editor.closest('.tts-director-item, .tts-director-composer')?.classList.remove('is-editing');
             resizeTtsDirectorEditor(editor, false);
             scheduleStickyButtonsRefresh();
-        });
+        };
+        editor.addEventListener('focus', onFocus);
+        editor.addEventListener('input', onInputEvent);
+        editor.addEventListener('blur', onBlur);
     }
 
     function renderTtsDirectorPrompts() {
         if (!agentTtsDirectorPromptsContainer) return;
         agentTtsDirectorPromptsContainer.replaceChildren();
-
         currentAgentTtsDirectorPrompts.forEach((prompt, index) => {
             const row = document.createElement('div');
             row.className = 'tts-director-item';
-
             const editor = document.createElement('textarea');
             editor.className = 'tts-director-editor';
             editor.rows = 1;
             editor.value = prompt;
             editor.setAttribute('aria-label', `导演提示词 ${index + 1}`);
-            bindTtsDirectorEditor(editor, value => {
-                currentAgentTtsDirectorPrompts[index] = value;
-            });
+            bindTtsDirectorEditor(editor, value => { currentAgentTtsDirectorPrompts[index] = value; });
             editor.addEventListener('blur', () => {
                 const value = editor.value.trim();
-                if (value) {
-                    currentAgentTtsDirectorPrompts[index] = value;
-                } else {
+                if (value) currentAgentTtsDirectorPrompts[index] = value;
+                else {
                     currentAgentTtsDirectorPrompts.splice(index, 1);
                     renderTtsDirectorPrompts();
                 }
             });
-
             const removeButton = document.createElement('button');
             removeButton.type = 'button';
             removeButton.className = 'small-button tts-director-action-button';
@@ -831,7 +830,6 @@ const settingsManager = (() => {
                 currentAgentTtsDirectorPrompts.splice(index, 1);
                 renderTtsDirectorPrompts();
             });
-
             row.append(editor, removeButton);
             agentTtsDirectorPromptsContainer.appendChild(row);
         });
@@ -968,7 +966,6 @@ const settingsManager = (() => {
             agentTtsRegexSecondaryInput = document.getElementById('agentTtsRegexSecondary');
             refreshTtsModelsBtn = document.getElementById('refreshTtsModelsBtn');
             agentTtsSpeedSlider = options.elements.agentTtsSpeedSlider;
-            ttsSpeedValueSpan = options.elements.ttsSpeedValueSpan;
             agentTtsDirectorPromptInput = document.getElementById('agentTtsDirectorPromptInput');
             addAgentTtsDirectorPromptBtn = document.getElementById('addAgentTtsDirectorPromptBtn');
             fillAgentTtsDirectorTemplateBtn = document.getElementById('fillAgentTtsDirectorTemplateBtn');
@@ -1016,6 +1013,18 @@ const settingsManager = (() => {
                     }
                 }
             });
+
+            if (!globalThis.vcpTopicSummaryClickDelegated) {
+                globalThis.vcpTopicSummaryClickDelegated = true;
+                document.addEventListener('click', (ev) => {
+                    const btn = ev.target?.closest?.('#openTopicSummaryModelSelectBtn');
+                    if (!btn) return;
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    const input = document.getElementById('topicSummaryModel');
+                    handleOpenModelSelect(input);
+                });
+            }
 
             // Event Listeners for always-present elements
             if (agentSettingsForm) {
@@ -1119,49 +1128,16 @@ const settingsManager = (() => {
                         }
                     } catch (e) { /* ignore */ }
                     populateModelList(models, currentModelSelectCallback, hotModelIds, favoriteModelIds);
-                    const available = Array.isArray(models) && models.length > 0;
-                    uiHelper.showToastNotification(available ? '模型列表已刷新' : '模型服务暂不可用',
-                        available ? 'success' : 'error');
                 });
             }
 
             window.addEventListener('pagehide', () => {
                 modelsUpdatedDisposer?.();
                 modelsUpdatedDisposer = null;
+                clearTtsDirectorListeners();
                 promptManager?.destroy?.();
                 promptManager = null;
             }, { once: true });
-
-            if (agentTtsSpeedSlider && ttsSpeedValueSpan) {
-                agentTtsSpeedSlider.addEventListener('input', () => {
-                    ttsSpeedValueSpan.textContent = parseFloat(agentTtsSpeedSlider.value).toFixed(1);
-                    syncRangeProgress(agentTtsSpeedSlider);
-                });
-                syncRangeProgress(agentTtsSpeedSlider);
-            }
-
-            if (addAgentTtsDirectorPromptBtn) {
-                addAgentTtsDirectorPromptBtn.addEventListener('mousedown', event => event.preventDefault());
-                addAgentTtsDirectorPromptBtn.addEventListener('click', addTtsDirectorPrompt);
-            }
-            if (fillAgentTtsDirectorTemplateBtn) {
-                fillAgentTtsDirectorTemplateBtn.addEventListener('click', () => {
-                    const existing = agentTtsDirectorPromptInput.value.trim();
-                    agentTtsDirectorPromptInput.value = existing
-                        ? `${existing}\n\n${TTS_DIRECTOR_TEMPLATE}`
-                        : TTS_DIRECTOR_TEMPLATE;
-                    agentTtsDirectorPromptInput.focus();
-                    resizeTtsDirectorEditor(agentTtsDirectorPromptInput, true);
-                });
-            }
-            if (agentTtsDirectorPromptInput) {
-                bindTtsDirectorEditor(agentTtsDirectorPromptInput);
-                agentTtsDirectorPromptInput.addEventListener('keydown', event => {
-                    if (event.key !== 'Enter' || !(event.ctrlKey || event.metaKey)) return;
-                    event.preventDefault();
-                    addTtsDirectorPrompt();
-                });
-            }
 
             if (refreshTtsModelsBtn) {
                 refreshTtsModelsBtn.addEventListener('click', async () => {
@@ -1179,11 +1155,29 @@ const settingsManager = (() => {
                 });
             }
 
-            // 将 TTS 原生 Select 升级为主题化 WebAwesome 代理。
-            // VCPUI API 就绪不等于 wa-select 已完成注册；组件包加载完成后
-            // 必须再尝试一次，才能从 native controller 升级为 WA proxy。
-            ensureThemedTtsSelects();
-            window.addEventListener('vcp-webawesome-loaded', ensureThemedTtsSelects, { once: true });
+            clearTtsDirectorListeners();
+            const ownTtsDirectorListener = (target, type, handler, options) => {
+                if (!target) return;
+                target.addEventListener(type, handler, options);
+                ttsDirectorDisposers.push(() => target.removeEventListener(type, handler, options));
+            };
+            ownTtsDirectorListener(addAgentTtsDirectorPromptBtn, 'mousedown', event => event.preventDefault());
+            ownTtsDirectorListener(addAgentTtsDirectorPromptBtn, 'click', addTtsDirectorPrompt);
+            ownTtsDirectorListener(fillAgentTtsDirectorTemplateBtn, 'click', () => {
+                const existing = agentTtsDirectorPromptInput?.value?.trim() || '';
+                if (!agentTtsDirectorPromptInput) return;
+                agentTtsDirectorPromptInput.value = existing
+                    ? `${existing}\n\n${TTS_DIRECTOR_TEMPLATE}`
+                    : TTS_DIRECTOR_TEMPLATE;
+                agentTtsDirectorPromptInput.focus();
+                resizeTtsDirectorEditor(agentTtsDirectorPromptInput, true);
+            });
+            ownTtsDirectorListener(agentTtsDirectorPromptInput, 'keydown', event => {
+                if (event.key !== 'Enter' || !(event.ctrlKey || event.metaKey)) return;
+                event.preventDefault();
+                addTtsDirectorPrompt();
+            });
+
 
             // 创建正则设置UI
             createStripRegexUI();
@@ -1193,9 +1187,6 @@ const settingsManager = (() => {
 
             // 设置鼠标快捷键
             setupMouseShortcuts();
-
-            // Setup color picker synchronization
-            setupColorPickerSync();
 
             // Setup unified collapsible sections
             setupAgentSettingsSections();
@@ -1245,6 +1236,11 @@ const settingsManager = (() => {
         openModelSelectForInput: async (targetInputElement) => {
             await handleOpenModelSelect(targetInputElement);
         },
+        // Presentation owners must use this narrow command rather than
+        // reproducing the collapse-state projection themselves.  The manager
+        // remains the only place that knows how the current Agent, summaries
+        // and persisted uiCollapseStates fit together.
+        toggleAgentSettingsSection: (key) => toggleAgentSettingsSection(key),
         triggerAgentSave: async (overrideAgentId) => {
             // 触发Agent设置保存（不含头像）。override 只能用于验证当前上下文，
             // 不能把当前共享 DOM 的内容强行写入一个已切走的 Agent。
@@ -1988,68 +1984,6 @@ function createStripRegexUI() {
 
 
     /**
-     * 设置颜色选择器与文本输入框的同步
-     */
-    function setupColorPickerSync() {
-        // 头像边框颜色同步
-        if (agentAvatarBorderColorInput && agentAvatarBorderColorTextInput) {
-            agentAvatarBorderColorInput.addEventListener('input', (e) => {
-                agentAvatarBorderColorTextInput.value = e.target.value;
-                updateAvatarPreviewStyle();
-            });
-
-            agentAvatarBorderColorTextInput.addEventListener('input', (e) => {
-                const color = e.target.value.trim();
-                if (/^#[0-9A-F]{6}$/i.test(color)) {
-                    agentAvatarBorderColorInput.value = color;
-                    updateAvatarPreviewStyle();
-                }
-            });
-
-            agentAvatarBorderColorTextInput.addEventListener('blur', (e) => {
-                const color = e.target.value.trim();
-                if (!/^#[0-9A-F]{6}$/i.test(color)) {
-                    e.target.value = agentAvatarBorderColorInput.value;
-                    uiHelper.showToastNotification('颜色格式无效，请使用 #RRGGBB 格式', 'warning');
-                }
-            });
-        }
-
-        // 名称文字颜色同步
-        if (agentNameTextColorInput && agentNameTextColorTextInput) {
-            agentNameTextColorInput.addEventListener('input', (e) => {
-                agentNameTextColorTextInput.value = e.target.value;
-            });
-
-            agentNameTextColorTextInput.addEventListener('input', (e) => {
-                const color = e.target.value.trim();
-                if (/^#[0-9A-F]{6}$/i.test(color)) {
-                    agentNameTextColorInput.value = color;
-                }
-            });
-
-            agentNameTextColorTextInput.addEventListener('blur', (e) => {
-                const color = e.target.value.trim();
-                if (!/^#[0-9A-F]{6}$/i.test(color)) {
-                    e.target.value = agentNameTextColorInput.value;
-                    uiHelper.showToastNotification('颜色格式无效，请使用 #RRGGBB 格式', 'warning');
-                }
-            });
-        }
-
-        console.log('[SettingsManager] Color picker synchronization setup complete.');
-    }
-
-    /**
-     * 更新头像预览的样式
-     */
-    function updateAvatarPreviewStyle() {
-        if (agentAvatarPreview && agentAvatarBorderColorInput) {
-            agentAvatarPreview.style.borderColor = agentAvatarBorderColorInput.value;
-        }
-    }
-
-    /**
      * 设置参数容器的折叠功能
      */
 function setupParamsCollapsible() {
@@ -2108,19 +2042,22 @@ function setupParamsCollapsible() {
             }
         };
 
-        if (!header.dataset.collapsibleBound) {
-            header.addEventListener('click', (event) => {
-                event.preventDefault();
-                controller.setCollapsed(!controller.container.classList.contains('collapsed'));
-                updateSectionSummary(key);
-                persistCollapseStatesForCurrentSelection();
-                scheduleStickyButtonsRefresh();
-            });
-            header.dataset.collapsibleBound = 'true';
-        }
-
         sectionControllers.set(key, controller);
         return controller;
+    }
+
+    // Keep the Agent configuration's uiCollapseStates as the canonical durable
+    // state.  UI presentation owners only request this command; they neither
+    // write the config directly nor retain a duplicate collapsed-state store.
+    function toggleAgentSettingsSection(key) {
+        const controller = sectionControllers.get(key);
+        if (!controller) return false;
+
+        controller.setCollapsed(!controller.container.classList.contains('collapsed'));
+        void updateSectionSummary(key);
+        void persistCollapseStatesForCurrentSelection();
+        scheduleStickyButtonsRefresh();
+        return true;
     }
 
     function buildIdentitySummary() {
@@ -2202,15 +2139,15 @@ function setupParamsCollapsible() {
             || '不使用';
         const secondaryRegex = agentTtsRegexSecondaryInput?.value?.trim() || '无';
         const speed = agentTtsSpeedSlider?.value || '1.0';
-        const directorPromptCount = currentAgentTtsDirectorPrompts.filter(item => String(item || '').trim()).length;
+        const directorCount = currentAgentTtsDirectorPrompts.length;
 
         return [
             `主语言: ${primaryVoice}`,
             `主语言正则: ${primaryRegex}`,
             `副语言: ${secondaryVoice}`,
             `副语言正则: ${secondaryRegex}`,
-            `导演提示词: ${directorPromptCount} 条`,
-            `语速: ${speed}`
+            `语速: ${speed}`,
+            `导演提示词: ${directorCount ? `${directorCount} 条` : '无'}`
         ].join('\n');
     }
 

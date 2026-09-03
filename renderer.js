@@ -953,6 +953,7 @@ mainChatSettingsPresentationOwner.configureStartup({
             normalizeChatPresentationMode,
             applyChatPresentationMode,
             applyChatBubbleLayoutSettings,
+            syncSettingsToUI: mainChatSettingsPresentationOwner.syncSettingsToUI,
             getAppearance: () => window.VCPAppearance,
             listenerOwner: mainChatDomListenerOwner
         });

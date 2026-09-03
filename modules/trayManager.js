@@ -214,8 +214,21 @@ const trayManager = (function () {
             }
             drawer.classList.remove('is-closing');
             drawer.classList.add('active');
+            drawer.style.removeProperty('right');
             drawer.setAttribute('aria-hidden', 'false');
             drawer.inert = false;
+            // The notification rail can extend beyond the viewport when the
+            // window is narrow. Clamp the absolute drawer back inside the
+            // visible viewport after layout while preserving its rail anchor.
+            requestAnimationFrame(() => {
+                if (!drawer.classList.contains('active')) return;
+                const rect = drawer.getBoundingClientRect();
+                const overflow = rect.right - window.innerWidth;
+                if (overflow > 0) {
+                    const currentRight = parseFloat(getComputedStyle(drawer).right) || 0;
+                    drawer.style.right = `${currentRight + overflow + 16}px`;
+                }
+            });
             btn.classList.add('active');
             btn.setAttribute('aria-expanded', 'true');
 

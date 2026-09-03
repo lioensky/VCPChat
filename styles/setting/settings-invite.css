@@ -16,7 +16,7 @@
     -webkit-backdrop-filter: blur(12px);
 }
 
-body.light-theme .invite-agent-buttons-container {
+body[data-vcp-theme="light"] .invite-agent-buttons-container {
     background-color: var(--panel-bg-light);
 }
 
@@ -38,7 +38,7 @@ body.light-theme .invite-agent-buttons-container {
     text-align: left;
     overflow: hidden;
     /* 防止内容溢出 */
-    transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.1s ease;
+    transition: background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), transform var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard);
     min-width: 0;
     /* 允许按钮在grid中收缩 */
 }
@@ -72,14 +72,14 @@ body.light-theme .invite-agent-buttons-container {
 }
 
 /* 亮色主题下的特定调整 (如果需要) */
-body.light-theme .invite-agent-button {
+body[data-vcp-theme="light"] .invite-agent-button {
     border-color: var(--border-color-light);
     background-color: var(--button-bg);
     /* 使用主题按钮背景色 */
     color: #ffffff;
 }
 
-body.light-theme .invite-agent-button:hover {
+body[data-vcp-theme="light"] .invite-agent-button:hover {
     background-color: var(--accent-bg-light);
     border-color: var(--accent-bg-light);
 }

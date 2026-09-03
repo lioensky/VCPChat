@@ -276,6 +276,111 @@
         -webkit-backdrop-filter: none;
     }
 
+    html .vcp-ui-scope #groupSettingsContainer .sequential-speaker-order-list {
+        display: flex;
+        flex-direction: column;
+        gap: var(--vcp-ui-space-2);
+        max-height: 240px;
+        overflow-y: auto;
+        padding: var(--vcp-ui-space-1) 0;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .sequential-speaker-order-item {
+        display: flex;
+        align-items: center;
+        gap: var(--vcp-ui-space-2);
+        min-height: 40px;
+        padding: var(--vcp-ui-space-2) var(--vcp-ui-space-3);
+        box-sizing: border-box;
+        border: 1px solid var(--vcp-ui-control-border);
+        border-radius: var(--vcp-ui-radius-md);
+        color: var(--vcp-ui-text-0);
+        background: var(--vcp-ui-control-bg);
+        cursor: grab;
+        user-select: none;
+        transition: border-color var(--vcp-ui-transition-fast), background var(--vcp-ui-transition-fast);
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .sequential-speaker-order-item:hover {
+        border-color: var(--vcp-ui-control-focus);
+        background: var(--vcp-ui-fill-1);
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .sequential-speaker-drag-handle {
+        color: var(--vcp-ui-text-3);
+        font-size: var(--vcp-ui-font-body);
+        line-height: 1;
+        cursor: grab;
+        flex-shrink: 0;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .sequential-speaker-order-item .avatar-small {
+        width: 24px;
+        height: 24px;
+        border-radius: var(--vcp-ui-radius-full);
+        object-fit: cover;
+        flex-shrink: 0;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .sequential-speaker-name {
+        flex: 1;
+        min-width: 0;
+        font-size: var(--vcp-ui-font-body);
+        color: var(--vcp-ui-text-0);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .sequential-speaker-order-controls {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        flex-shrink: 0;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .sequential-order-move-btn {
+        width: 24px;
+        height: 24px;
+        min-width: 24px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--vcp-ui-control-border);
+        border-radius: var(--vcp-ui-radius-sm);
+        background: var(--vcp-ui-fill-0);
+        color: var(--vcp-ui-text-2);
+        cursor: pointer;
+        font-size: var(--vcp-ui-font-caption);
+        line-height: 1;
+        transition: border-color var(--vcp-ui-transition-fast), background var(--vcp-ui-transition-fast), color var(--vcp-ui-transition-fast);
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .sequential-order-move-btn:hover {
+        border-color: var(--vcp-ui-control-focus);
+        background: var(--vcp-ui-fill-2);
+        color: var(--vcp-ui-text-0);
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .group-settings-helper-text {
+        font-size: var(--vcp-ui-font-caption);
+        color: var(--vcp-ui-text-3);
+        line-height: var(--vcp-ui-line-body);
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .member-tag-input-item {
+        display: flex;
+        flex-direction: column;
+        gap: var(--vcp-ui-space-1);
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .member-tag-input-item label {
+        font-size: var(--vcp-ui-font-caption);
+        color: var(--vcp-ui-text-2);
+        font-weight: 500;
+    }
+
     html .vcp-ui-scope #groupSettingsContainer :is(.group-settings-toggle-btn, input, select, textarea, button):focus-visible {
         outline-color: var(--vcp-ui-focus-ring);
     }

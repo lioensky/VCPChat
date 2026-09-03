@@ -21,7 +21,7 @@ import { JSDOM } from 'jsdom';
 
 const root = process.cwd();
 
-const dom = new JSDOM('<!doctype html><html data-ui-mode="classic"><body><div id="modal-container"></div></body></html>', {
+const dom = new JSDOM('<!doctype html><html data-ui-mode="next"><body><div id="modal-container"></div></body></html>', {
     url: 'https://vcpchat.local/',
 });
 Object.assign(globalThis, {
@@ -163,8 +163,6 @@ const populateForm = (settings) => {
 
 const form = document.getElementById('globalSettingsForm');
 assert.ok(form, 'globalSettingsForm must be present in the cloned template');
-assert.ok(document.getElementById('appearanceSettingsWorkbenchCard').nextElementSibling.matches('.appearance-layout-selector'), 'layout selector follows workbench card');
-assert.equal(document.querySelectorAll('input[name="appearanceUiMode"]').length, 2, 'Classic and Next layout cards exist');
 assert.ok(document.getElementById('showHomeVisualBrand'), 'home visual toggle exists');
 assert.ok(document.getElementById('showHomeVisualTagline'), 'home tagline toggle exists');
 assert.ok(document.getElementById('homeVisualTagline'), 'home tagline text control exists');
@@ -173,15 +171,12 @@ assert.ok(document.getElementById('appearanceSidebarAvatarSize'), 'sidebar avata
 assert.ok(document.getElementById('appearanceSidebarRadius'), 'sidebar item radius control exists');
 assert.ok(document.getElementById('appearanceCustomRadius'), 'custom radius range exists');
 
-// ---- 0. Classic isolation and explicit Next SettingsShell build ----
-const originalClassicNavItems = [...document.querySelectorAll('#globalSettingsModal .settings-nav-item')];
-let restoredClassicNavClicks = 0;
-originalClassicNavItems[1].addEventListener('click', () => { restoredClassicNavClicks += 1; });
+// ---- 0. Unified SettingsShell contract ----
 window.VCPUISettingsBridge.refresh();
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.ok(document.getElementById('globalSettingsModal').classList.contains('vcp-ui-scope'), 'modal scope');
-assert.ok(!document.getElementById('globalSettingsModal').classList.contains('vcp-global-settings-next'), 'Classic does not use the Next modal marker');
-assert.equal(document.querySelector('#globalSettingsModal .vcp-ui-settings-shell'), null, 'Classic keeps the upstream settings layout');
+assert.ok(document.querySelector('#globalSettingsModal .vcp-uiux-settings-panel'), 'unified surface mounts SettingsShell');
+assert.equal(document.querySelectorAll('#globalSettingsModal .vcp-uiux-settings-nav-cell').length, 8, '8 categories in unified nav');
 
 const globalSettingsModal = document.getElementById('globalSettingsModal');
 globalSettingsModal.classList.add('active');
@@ -189,7 +184,7 @@ document.dispatchEvent(new CustomEvent('modal-visibility-changed', {
     detail: { modalId: 'globalSettingsModal', active: true },
 }));
 await new Promise(resolve => setTimeout(resolve, 0));
-assert.ok(!document.documentElement.classList.contains('vcp-global-settings-host'), 'Classic modal does not enable the Next settings host');
+assert.ok(document.documentElement.classList.contains('vcp-global-settings-host'), 'active unified modal enables the settings host');
 
 globalSettingsModal.classList.remove('active');
 document.dispatchEvent(new CustomEvent('modal-visibility-changed', {
@@ -198,46 +193,27 @@ document.dispatchEvent(new CustomEvent('modal-visibility-changed', {
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.ok(!document.documentElement.classList.contains('vcp-global-settings-host'), 'closing the modal disables the cross-mode settings host');
 
-document.documentElement.dataset.uiMode = 'next';
-window.dispatchEvent(new Event('ui-mode-changed'));
-await new Promise(resolve => setTimeout(resolve, 0));
-assert.ok(document.getElementById('globalSettingsModal').classList.contains('vcp-global-settings-next'), 'Next marks the enhanced global settings modal');
-assert.ok(document.querySelector('#globalSettingsModal .vcp-ui-settings-shell'), 'Next mounts the SettingsShell layout');
-assert.equal(document.querySelectorAll('#globalSettingsModal .vcp-ui-list-item').length, 8, '8 categories in VCPUI List nav');
-assert.equal(document.querySelector('#globalSettingsModal .vcp-ui-list')?.getAttribute('role'), 'tablist', 'settings categories expose tablist semantics');
-assert.equal(document.querySelector('#globalSettingsModal .vcp-ui-list-item')?.getAttribute('role'), 'tab', 'settings category is an actionable tab');
-assert.equal(document.querySelector('#globalSettingsModal .settings-section')?.getAttribute('role'), 'tabpanel', 'settings section exposes tabpanel semantics');
-assert.ok(document.querySelector('#globalSettingsModal .vcp-ui-settings-search input[type="search"]'), 'search field injected in the left rail');
-assert.ok(document.querySelector('#globalSettingsModal .vcp-ui-settings-search input').classList.contains('vcp-ui-native-input'), 'search input is VCPUI-enhanced');
+assert.equal(document.querySelector('#globalSettingsModal .vcp-uiux-settings-nav-list')?.getAttribute('aria-label'), '全局设置分类', 'settings navigation is named');
+assert.equal(document.querySelectorAll('#globalSettingsModal .vcp-uiux-settings-nav-cell').length, 8, 'unified navigation exposes all categories');
 
 globalSettingsModal.classList.add('active');
 document.dispatchEvent(new CustomEvent('modal-visibility-changed', {
     detail: { modalId: 'globalSettingsModal', active: true },
 }));
 await new Promise(resolve => setTimeout(resolve, 0));
-assert.ok(document.documentElement.classList.contains('vcp-global-settings-host'), 'active Next modal enables the settings host');
+assert.ok(document.documentElement.classList.contains('vcp-global-settings-host'), 'active unified modal enables the settings host');
 globalSettingsModal.classList.remove('active');
 document.dispatchEvent(new CustomEvent('modal-visibility-changed', {
     detail: { modalId: 'globalSettingsModal', active: false },
 }));
 await new Promise(resolve => setTimeout(resolve, 0));
 
-document.querySelectorAll('#globalSettingsModal .vcp-ui-list-item')[1].click();
+document.querySelectorAll('#globalSettingsModal .vcp-uiux-settings-nav-cell')[1].click();
 assert.equal(document.querySelector('#globalSettingsModal .settings-section.active')?.id, 'section-server-connection', 'Next category selection updates the shared section state');
 document.documentElement.dataset.uiMode = 'classic';
 window.dispatchEvent(new Event('ui-mode-changed'));
 await new Promise(resolve => setTimeout(resolve, 0));
-assert.equal(document.querySelector('#globalSettingsModal .vcp-ui-settings-shell'), null, 'switching back to Classic tears down SettingsShell');
-const restoredClassicNavItems = [...document.querySelectorAll('#globalSettingsModal .settings-nav-item')];
-assert.equal(restoredClassicNavItems[1], originalClassicNavItems[1], 'Classic restores the original navigation nodes');
-assert.ok(restoredClassicNavItems[1].classList.contains('active'), 'Classic navigation selection matches the active settings section');
-restoredClassicNavItems[1].click();
-assert.equal(restoredClassicNavClicks, 1, 'Classic navigation listeners survive a Next round-trip');
-
-document.documentElement.dataset.uiMode = 'next';
-window.dispatchEvent(new Event('ui-mode-changed'));
-await new Promise(resolve => setTimeout(resolve, 0));
-assert.ok(document.querySelector('#globalSettingsModal .vcp-ui-settings-shell'), 'Next can remount SettingsShell after Classic teardown');
+assert.ok(document.querySelector('#globalSettingsModal .vcp-uiux-settings-panel'), 'legacy mode events do not tear down unified SettingsShell');
 
 // ---- Shell interactions ----
 const setField = (id, value) => {
@@ -246,7 +222,7 @@ const setField = (id, value) => {
     el.dispatchEvent(new Event('input', { bubbles: true }));
 };
 const clickNav = (index) => {
-    document.querySelectorAll('#globalSettingsModal .vcp-ui-list-item')[index].click();
+    document.querySelectorAll('#globalSettingsModal .vcp-uiux-settings-nav-cell')[index].click();
 };
 const activeSectionId = () => document.querySelector('#globalSettingsModal .settings-section.active')?.id;
 
@@ -260,16 +236,16 @@ assert.equal(document.getElementById('userName').value, '未保存测试', 'unsa
 clickNav(1);
 
 // 搜索能定位命中分类
-const searchInput = document.querySelector('#globalSettingsModal .vcp-ui-settings-search input');
-searchInput.value = '语音';
+const visibleLabels = [...document.querySelectorAll('#globalSettingsModal .vcp-uiux-settings-nav-copy strong')].map(node => node.textContent);
+assert.equal(visibleLabels.length, 8, 'unified navigation retains all categories');
+const searchInput = document.querySelector('#globalSettingsModal .vcp-uiux-settings-search-input');
+const searchButton = document.querySelector('#globalSettingsModal .vcp-uiux-settings-search-button');
+searchButton.click();
+searchInput.value = '服务器';
 searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-await new Promise(resolve => setTimeout(resolve, 0));
-assert.equal(activeSectionId(), 'section-voice-settings', 'search activates the matching category');
-const visibleLabels = [...document.querySelectorAll('#globalSettingsModal .vcp-ui-list-copy strong')].map(node => node.textContent);
-assert.ok(visibleLabels.length <= 2, `search narrows the nav list: ${visibleLabels.join(',')}`);
-searchInput.value = '';
-searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-assert.equal(document.querySelectorAll('#globalSettingsModal .vcp-ui-list-item').length, 8, 'clearing search restores all categories');
+assert.equal(document.querySelector('#vcpSettingsTab-server-connection')?.hidden, false, 'settings search keeps matching category visible');
+assert.equal(document.querySelector('#vcpSettingsTab-user-identity')?.hidden, true, 'settings search hides non-matching category');
+assert.equal(activeSectionId(), 'section-server-connection', 'settings search activates first matching category');
 
 // ---- save helper ----
 async function submitForm() {
@@ -341,7 +317,7 @@ const categories = [
         },
         savedKey: 'voiceInputMode', expected: 'right_alt_hold',
         assertRestored: () => document.getElementById('voiceInputMode').value === 'right_alt_hold'
-            && document.getElementById('voiceInputShortcut').value === 'Control+Shift+Space',
+            && document.getElementById('voiceInputShortcut').value === 'CONTROL+SHIFT+SPACE',
     },
     {
         name: '高级功能', key: 'advanced-features',
@@ -410,8 +386,6 @@ for (const category of categories) {
 // Prominent appearance controls use their visible inputs as the persistence source.
 currentSettings = { uiMode: 'next', showHomeVisualBrand: false, showHomeVisualTagline: false, homeVisualTagline: '已保存的寄语', appearanceProfile: { sidebarRowHeight: 50, sidebarAvatarSize: 36, sidebarRadius: 'medium', customRadius: 11 } };
 populateForm(currentSettings);
-assert.equal(document.getElementById('appearanceUiModeNext').checked, true, 'Next layout card reflects persisted mode');
-assert.equal(document.getElementById('enableNextUi').checked, true, 'legacy mode checkbox stays synchronized');
 assert.equal(document.getElementById('showHomeVisualBrand').checked, false, 'home visual toggle reflects persisted false');
 assert.equal(document.getElementById('showHomeVisualTagline').checked, false, 'home tagline toggle reflects persisted false');
 assert.equal(document.getElementById('homeVisualTagline').value, '已保存的寄语', 'home tagline text reflects persisted content');
@@ -419,17 +393,14 @@ assert.equal(document.getElementById('appearanceSidebarRowHeight').value, '50', 
 assert.equal(document.getElementById('appearanceSidebarAvatarSize').value, '36', 'sidebar avatar size reflects persisted value');
 assert.equal(document.getElementById('appearanceSidebarRadius').value, 'medium', 'sidebar item radius reflects persisted value');
 assert.equal(document.getElementById('appearanceCustomRadius').value, '11', 'custom radius reflects persisted value');
-document.getElementById('appearanceUiModeClassic').checked = true;
 document.getElementById('showHomeVisualBrand').checked = true;
 document.getElementById('showHomeVisualTagline').checked = true;
 document.getElementById('homeVisualTagline').value = '自定义首页寄语';
 document.getElementById('appearanceSidebarRowHeight').value = '60';
 document.getElementById('appearanceSidebarAvatarSize').value = '44';
 document.getElementById('appearanceSidebarRadius').value = 'round';
-document.getElementById('appearanceSidebarRadiusChoice-round').checked = true;
 document.getElementById('appearanceCustomRadius').value = '18';
 await submitForm();
-assert.equal(savedSettings.last.uiMode, 'classic', 'visible Classic card is authoritative when saving');
 assert.equal(savedSettings.last.showHomeVisualBrand, true, 'home visual toggle persists');
 assert.equal(savedSettings.last.showHomeVisualTagline, true, 'home tagline toggle persists');
 assert.equal(savedSettings.last.homeVisualTagline, '自定义首页寄语', 'home tagline text persists');

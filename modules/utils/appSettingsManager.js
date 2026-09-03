@@ -1,6 +1,8 @@
 // modules/utils/settingsManager.js
 const fs = require('fs-extra');
+const nodeFs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { EventEmitter } = require('events');
 
 class SettingsValidator {
@@ -189,6 +191,9 @@ class SettingsManager extends EventEmitter {
         this.cache = null;
         this.cacheTimestamp = 0;
         this.lockFile = settingsPath + '.lock';
+        this.externalWatcher = null;
+        this.externalWatchTimer = null;
+        this.internalRevisions = new Set();
 
         // 默认设置模板
         this.defaultSettings = {
@@ -200,6 +205,9 @@ class SettingsManager extends EventEmitter {
             fileKey: '',
             vcpLogUrl: '',
             vcpLogKey: '',
+            // Keep the settings-page default aligned with both topic-summary
+            // request paths and the model picker placeholder.
+            topicSummaryModel: 'gemini-2.5-flash-preview-05-20',
             networkNotesPaths: [],
             filterEnabled: false,
             filterRules: [],
@@ -298,31 +306,59 @@ class SettingsManager extends EventEmitter {
 
     async acquireLock(timeout = 5000) {
         const startTime = Date.now();
-        while (await fs.pathExists(this.lockFile)) {
-            if (Date.now() - startTime > timeout) {
-                console.warn('Lock acquisition timeout, removing stale lock');
-                await fs.remove(this.lockFile).catch(() => {});
-                break;
+        const token = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        for (;;) {
+            try {
+                await fs.writeFile(this.lockFile, token, { flag: 'wx', encoding: 'utf8' });
+                return token;
+            } catch (error) {
+                if (error?.code !== 'EEXIST') throw error;
+                try {
+                    const current = await fs.readFile(this.lockFile, 'utf8');
+                    const [pidStr] = (current || '').split('-');
+                    const pidNum = parseInt(pidStr, 10);
+                    if (Number.isInteger(pidNum) && pidNum > 0) {
+                        let isDead = false;
+                        try {
+                            process.kill(pidNum, 0);
+                        } catch (err) {
+                            if (err.code === 'ESRCH') isDead = true;
+                        }
+                        if (isDead) {
+                            await fs.remove(this.lockFile).catch(() => {});
+                            continue;
+                        }
+                    }
+                } catch {}
+                if (Date.now() - startTime > timeout) {
+                    const busy = new Error('Settings lock acquisition timed out');
+                    busy.code = 'SETTINGS_LOCK_BUSY';
+                    throw busy;
+                }
+                await new Promise(resolve => setTimeout(resolve, 50));
             }
-            await new Promise(resolve => setTimeout(resolve, 100));
         }
-        await fs.writeFile(this.lockFile, `${process.pid}-${Date.now()}`);
     }
 
-    async releaseLock() {
-        await fs.remove(this.lockFile).catch(() => {});
+    async releaseLock(token) {
+        if (!token) return;
+        const current = await fs.readFile(this.lockFile, 'utf8').catch(() => null);
+        if (current === token) await fs.remove(this.lockFile).catch(() => {});
     }
 
-    async readSettings() {
+    async readSettings({ fresh = false } = {}) {
         try {
             // 使用缓存机制减少文件读取
             const stats = await fs.stat(this.settingsPath).catch(() => null);
-            if (stats && this.cache && stats.mtimeMs <= this.cacheTimestamp) {
+            if (!fresh && stats && this.cache && stats.mtimeMs <= this.cacheTimestamp) {
                 return { ...this.cache };
             }
 
             const content = await fs.readFile(this.settingsPath, 'utf8');
             const settings = JSON.parse(content);
+            if (settings.topicSummaryModel === undefined || settings.topicSummaryModel === null) {
+                settings.topicSummaryModel = this.defaultSettings.topicSummaryModel;
+            }
 
             // 更新缓存
             this.cache = settings;
@@ -367,7 +403,10 @@ class SettingsManager extends EventEmitter {
     }
 
     async writeSettings(settings) {
-        const tempFile = this.settingsPath + '.tmp';
+        // Use a unique exclusively-created sibling. A shared `.tmp` path lets
+        // overlapping callers delete one another's temporary file when a
+        // write or verification step fails.
+        const tempFile = `${this.settingsPath}.${crypto.randomBytes(8).toString('hex')}.tmp`;
         const backupFile = this.settingsPath + '.backup';
 
         try {
@@ -393,6 +432,9 @@ class SettingsManager extends EventEmitter {
             const newTimestamp = Date.now();
             this.cache = { ...validated };
             this.cacheTimestamp = newTimestamp;
+            const internalRevision = this.getRevision(validated);
+            this.internalRevisions.add(internalRevision);
+            if (this.internalRevisions.size > 32) this.internalRevisions.delete(this.internalRevisions.values().next().value);
 
             // 触发更新事件
             this.emit('settings-updated', validated);
@@ -408,9 +450,9 @@ class SettingsManager extends EventEmitter {
         }
     }
 
-    async updateSettings(updater) {
+    async updateSettings(updater, options = {}) {
         return new Promise((resolve, reject) => {
-            this.queue.push({ updater, resolve, reject });
+            this.queue.push({ updater, resolve, reject, options });
             this.processQueue();
         });
     }
@@ -421,27 +463,43 @@ class SettingsManager extends EventEmitter {
         }
 
         this.processing = true;
-        const { updater, resolve, reject } = this.queue.shift();
+        const { updater, resolve, reject, options = {} } = this.queue.shift();
+        let lockToken;
+        let currentSettings;
 
         try {
-            await this.acquireLock();
+            lockToken = await this.acquireLock();
 
-            const currentSettings = await this.readSettings();
+            // CAS must compare against the bytes currently protected by this
+            // lock, never a renderer/process cache that may be stale.
+            currentSettings = await this.readSettings({ fresh: true });
+            const currentRevision = this.getRevision(currentSettings);
+            if (options.expectedRevision !== undefined && options.expectedRevision !== currentRevision) {
+                const conflict = new Error(`Settings changed since it was read (expected ${options.expectedRevision}, current ${currentRevision})`);
+                conflict.code = 'SETTINGS_CONFLICT';
+                conflict.expectedRevision = options.expectedRevision;
+                conflict.currentRevision = currentRevision;
+                conflict.operationId = options.operationId;
+                throw conflict;
+            }
             let newSettings;
             if (typeof updater === 'function') {
                 newSettings = await updater(currentSettings);
+            } else if (updater && Array.isArray(updater.__vcpSettingsOps)) {
+                newSettings = this.applyPathOperations(currentSettings, updater.__vcpSettingsOps);
             } else {
-                // 确保在合并时，不会丢失 defaultSettings 中定义的字段
-                newSettings = { ...this.defaultSettings, ...currentSettings, ...updater };
+                newSettings = { ...this.defaultSettings, ...currentSettings, ...this.mergePatch(currentSettings, updater) };
             }
 
             await this.writeSettings(newSettings);
 
-            resolve({ success: true, settings: newSettings });
+            resolve({ success: true, status: 'success', operationId: options.operationId, currentRevision: this.getRevision(newSettings), settings: newSettings });
         } catch (error) {
-            reject(error);
+            if (error?.code === 'SETTINGS_CONFLICT') {
+                resolve({ success: false, status: 'conflict', code: error.code, operationId: error.operationId, expectedRevision: error.expectedRevision, currentRevision: error.currentRevision, settings: currentSettings, error: error.message });
+            } else reject(error);
         } finally {
-            await this.releaseLock();
+            await this.releaseLock(lockToken);
             this.processing = false;
 
             // 继续处理队列
@@ -451,24 +509,111 @@ class SettingsManager extends EventEmitter {
         }
     }
 
+    getRevision(settings) {
+        const stable = value => {
+            if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
+            if (value && typeof value === 'object') return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stable(value[key])}`).join(',')}}`;
+            return JSON.stringify(value);
+        };
+        return crypto.createHash('sha256').update(stable(settings || {})).digest('hex');
+    }
+
+    mergePatch(current, patch) {
+        if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return patch;
+        const merge = (base, next) => {
+            if (!next || typeof next !== 'object' || Array.isArray(next)) return next;
+            const output = { ...(base && typeof base === 'object' && !Array.isArray(base) ? base : {}) };
+            for (const [key, value] of Object.entries(next)) output[key] = value && typeof value === 'object' && !Array.isArray(value)
+                ? merge(output[key], value)
+                : value;
+            return output;
+        };
+        return merge(current, patch);
+    }
+
+    applyPathOperations(current, operations) {
+        const next = JSON.parse(JSON.stringify(current || {}));
+        for (const operation of operations || []) {
+            if (!operation || !Array.isArray(operation.path) || operation.path.some(part => typeof part !== 'string')) {
+                throw new TypeError('Invalid settings path operation');
+            }
+            let target = next;
+            const path = operation.path;
+            for (const part of path.slice(0, -1)) {
+                if (!target[part] || typeof target[part] !== 'object' || Array.isArray(target[part])) target[part] = {};
+                target = target[part];
+            }
+            const leaf = path[path.length - 1];
+            if (operation.op === 'unset') {
+                if (path.length) delete target[leaf];
+            } else if (operation.op === 'set') {
+                if (!path.length) throw new TypeError('Root settings path cannot be set');
+                target[leaf] = operation.value;
+            } else throw new TypeError(`Unknown settings path operation: ${operation.op}`);
+        }
+        return { ...this.defaultSettings, ...next };
+    }
+
     // 定期清理过期的锁文件
     startCleanupTimer() {
         setInterval(async () => {
             if (await fs.pathExists(this.lockFile)) {
                 try {
                     const lockContent = await fs.readFile(this.lockFile, 'utf8');
-                    const [pid, timestamp] = lockContent.split('-');
-
-                    // 如果锁文件超过10秒，认为是过期的
-                    if (Date.now() - parseInt(timestamp) > 10000) {
-                        console.log('Removing stale lock file');
-                        await fs.remove(this.lockFile);
+                    const [pidStr] = (lockContent || '').split('-');
+                    const pidNum = parseInt(pidStr, 10);
+                    if (Number.isInteger(pidNum) && pidNum > 0) {
+                        let isDead = false;
+                        try {
+                            process.kill(pidNum, 0);
+                        } catch (err) {
+                            if (err.code === 'ESRCH') isDead = true;
+                        }
+                        if (isDead) {
+                            await fs.remove(this.lockFile).catch(() => {});
+                        }
                     }
                 } catch (error) {
                     console.error('Error checking lock file:', error);
                 }
             }
-        }, 30000); // 每30秒检查一次
+        }, 5000);
+    }
+
+    startExternalWatcher() {
+        if (this.externalWatcher || !nodeFs.watch) return;
+        try {
+            this.externalWatcher = nodeFs.watch(path.dirname(this.settingsPath), (_event, filename) => {
+                if (filename && String(filename) !== path.basename(this.settingsPath)) return;
+                clearTimeout(this.externalWatchTimer);
+                this.externalWatchTimer = setTimeout(async () => {
+                    try {
+                        const settings = await this.readSettings({ fresh: true });
+                        const revision = this.getRevision(settings);
+                        // fs.watch reports the atomic rename performed by our
+                        // own write. Suppress that echo; otherwise a newer
+                        // local draft in flight can be misclassified as an
+                        // external conflict.
+                        if (this.internalRevisions.has(revision)) {
+                            this.internalRevisions.delete(revision);
+                            return;
+                        }
+                        this.emit('settings-external-updated', { settings, revision });
+                    } catch (error) {
+                        this.emit('settings-external-error', error);
+                    }
+                }, 80);
+            });
+        } catch (error) {
+            console.warn('Unable to watch settings file:', error?.message || error);
+        }
+    }
+
+    stopExternalWatcher() {
+        clearTimeout(this.externalWatchTimer);
+        this.externalWatchTimer = null;
+        this.externalWatcher?.close?.();
+        this.externalWatcher = null;
     }
 
     // 自动备份机制

@@ -79,7 +79,7 @@
     height: 26px;
     border-radius: 999px;
     background-color: transparent;
-    transition: background-color 0.18s ease, box-shadow 0.18s ease;
+    transition: background-color var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard), box-shadow var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard);
     z-index: -1;
     pointer-events: none;
 }
@@ -100,7 +100,7 @@
     font-weight: 500;
     line-height: 24px;
     z-index: 1;
-    transition: color 0.18s ease;
+    transition: color var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard);
 }
 
 #groupSettingsContainer .group-settings-section-summary {
@@ -169,13 +169,13 @@
     background-color: color-mix(in srgb, var(--highlight-text) 12%, transparent);
 }
 
-body.light-theme #groupSettingsContainer .group-settings-section-header:hover::before,
-body.light-theme #groupSettingsContainer .group-settings-collapsible-container:not(.collapsed) .group-settings-section-header::before {
+body[data-vcp-theme="light"] #groupSettingsContainer .group-settings-section-header:hover::before,
+body[data-vcp-theme="light"] #groupSettingsContainer .group-settings-collapsible-container:not(.collapsed) .group-settings-section-header::before {
     background-color: color-mix(in srgb, var(--highlight-text) 14%, rgba(255, 255, 255, 0.7));
 }
 
-body:not(.light-theme) #groupSettingsContainer .group-settings-section-header:hover::before,
-body:not(.light-theme) #groupSettingsContainer .group-settings-collapsible-container:not(.collapsed) .group-settings-section-header::before {
+body[data-vcp-theme="dark"] #groupSettingsContainer .group-settings-section-header:hover::before,
+body[data-vcp-theme="dark"] #groupSettingsContainer .group-settings-collapsible-container:not(.collapsed) .group-settings-section-header::before {
     background-color: color-mix(in srgb, var(--highlight-text) 18%, rgba(255, 255, 255, 0.04));
 }
 
@@ -196,7 +196,7 @@ body:not(.light-theme) #groupSettingsContainer .group-settings-collapsible-conta
     justify-content: center;
     z-index: 2;
     cursor: pointer;
-    transition: color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+    transition: color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), transform var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 #groupSettingsContainer .group-settings-toggle-btn::before {
@@ -205,7 +205,7 @@ body:not(.light-theme) #groupSettingsContainer .group-settings-collapsible-conta
     inset: 2px;
     border-radius: 999px;
     background-color: transparent;
-    transition: background-color 0.2s ease;
+    transition: background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 #groupSettingsContainer .group-settings-toggle-btn:hover {
@@ -214,16 +214,16 @@ body:not(.light-theme) #groupSettingsContainer .group-settings-collapsible-conta
     box-shadow: none;
 }
 
-body:not(.light-theme) #groupSettingsContainer .group-settings-toggle-btn:hover::before {
+body[data-vcp-theme="dark"] #groupSettingsContainer .group-settings-toggle-btn:hover::before {
     background-color: color-mix(in srgb, var(--highlight-text) 20%, rgba(255, 255, 255, 0.05));
 }
 
-body.light-theme #groupSettingsContainer .group-settings-toggle-btn:hover::before {
+body[data-vcp-theme="light"] #groupSettingsContainer .group-settings-toggle-btn:hover::before {
     background-color: color-mix(in srgb, var(--highlight-text) 16%, rgba(255, 255, 255, 0.74));
 }
 
 #groupSettingsContainer .group-settings-toggle-btn .toggle-icon {
-    transition: transform 0.24s ease;
+    transition: transform var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 #groupSettingsContainer .group-settings-collapsible-container.collapsed .group-settings-toggle-btn .toggle-icon {
@@ -235,7 +235,7 @@ body.light-theme #groupSettingsContainer .group-settings-toggle-btn:hover::befor
     opacity: 1;
     overflow: hidden;
     padding: 8px 0 2px !important;
-    transition: max-height 0.28s ease, opacity 0.22s ease, padding 0.22s ease;
+    transition: max-height var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), opacity var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), padding var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 
@@ -338,10 +338,10 @@ body.light-theme #groupSettingsContainer .group-settings-toggle-btn:hover::befor
     resize: vertical;
 }
 
-body.light-theme #groupSettingsForm input[type="text"],
-body.light-theme #groupSettingsForm textarea,
-body.light-theme #groupSettingsForm select,
-body.light-theme #groupSettingsContainer .group-member-item label {
+body[data-vcp-theme="light"] #groupSettingsForm input[type="text"],
+body[data-vcp-theme="light"] #groupSettingsForm textarea,
+body[data-vcp-theme="light"] #groupSettingsForm select,
+body[data-vcp-theme="light"] #groupSettingsContainer .group-member-item label {
     background: linear-gradient(
         180deg,
         rgba(255, 255, 255, 0.82),
@@ -356,10 +356,10 @@ body.light-theme #groupSettingsContainer .group-member-item label {
         inset 0 0 1px rgba(0, 0, 0, 0.08);
 }
 
-body:not(.light-theme) #groupSettingsForm input[type="text"],
-body:not(.light-theme) #groupSettingsForm textarea,
-body:not(.light-theme) #groupSettingsForm select,
-body:not(.light-theme) #groupSettingsContainer .group-member-item label {
+body[data-vcp-theme="dark"] #groupSettingsForm input[type="text"],
+body[data-vcp-theme="dark"] #groupSettingsForm textarea,
+body[data-vcp-theme="dark"] #groupSettingsForm select,
+body[data-vcp-theme="dark"] #groupSettingsContainer .group-member-item label {
     background: linear-gradient(
         180deg,
         rgba(255, 255, 255, 0.08),
@@ -374,24 +374,24 @@ body:not(.light-theme) #groupSettingsContainer .group-member-item label {
         inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
-body.light-theme #groupSettingsForm input[type="text"]:hover,
-body.light-theme #groupSettingsForm input[type="text"]:focus,
-body.light-theme #groupSettingsForm input[type="text"]:focus-visible,
-body.light-theme #groupSettingsForm textarea:hover,
-body.light-theme #groupSettingsForm textarea:focus,
-body.light-theme #groupSettingsForm textarea:focus-visible,
-body.light-theme #groupSettingsForm select:hover,
-body.light-theme #groupSettingsForm select:focus,
-body.light-theme #groupSettingsForm select:focus-visible,
-body:not(.light-theme) #groupSettingsForm input[type="text"]:hover,
-body:not(.light-theme) #groupSettingsForm input[type="text"]:focus,
-body:not(.light-theme) #groupSettingsForm input[type="text"]:focus-visible,
-body:not(.light-theme) #groupSettingsForm textarea:hover,
-body:not(.light-theme) #groupSettingsForm textarea:focus,
-body:not(.light-theme) #groupSettingsForm textarea:focus-visible,
-body:not(.light-theme) #groupSettingsForm select:hover,
-body:not(.light-theme) #groupSettingsForm select:focus,
-body:not(.light-theme) #groupSettingsForm select:focus-visible {
+body[data-vcp-theme="light"] #groupSettingsForm input[type="text"]:hover,
+body[data-vcp-theme="light"] #groupSettingsForm input[type="text"]:focus,
+body[data-vcp-theme="light"] #groupSettingsForm input[type="text"]:focus-visible,
+body[data-vcp-theme="light"] #groupSettingsForm textarea:hover,
+body[data-vcp-theme="light"] #groupSettingsForm textarea:focus,
+body[data-vcp-theme="light"] #groupSettingsForm textarea:focus-visible,
+body[data-vcp-theme="light"] #groupSettingsForm select:hover,
+body[data-vcp-theme="light"] #groupSettingsForm select:focus,
+body[data-vcp-theme="light"] #groupSettingsForm select:focus-visible,
+body[data-vcp-theme="dark"] #groupSettingsForm input[type="text"]:hover,
+body[data-vcp-theme="dark"] #groupSettingsForm input[type="text"]:focus,
+body[data-vcp-theme="dark"] #groupSettingsForm input[type="text"]:focus-visible,
+body[data-vcp-theme="dark"] #groupSettingsForm textarea:hover,
+body[data-vcp-theme="dark"] #groupSettingsForm textarea:focus,
+body[data-vcp-theme="dark"] #groupSettingsForm textarea:focus-visible,
+body[data-vcp-theme="dark"] #groupSettingsForm select:hover,
+body[data-vcp-theme="dark"] #groupSettingsForm select:focus,
+body[data-vcp-theme="dark"] #groupSettingsForm select:focus-visible {
     border-color: var(--highlight-text);
     outline: none;
 }
@@ -524,63 +524,6 @@ body:not(.light-theme) #groupSettingsForm select:focus-visible {
     flex-shrink: 0;
 }
 
-#groupSettingsContainer .sequential-speaker-name {
-    flex: 1 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-#groupSettingsContainer .sequential-speaker-order-controls {
-    display: inline-flex;
-    gap: 3px;
-    flex-shrink: 0;
-}
-
-#groupSettingsContainer .sequential-order-move-btn {
-    width: 26px;
-    height: 26px;
-    min-width: 26px;
-    padding: 0;
-    border: none;
-    border-radius: 50%;
-    background: transparent;
-    color: var(--secondary-text);
-    cursor: pointer;
-}
-
-#groupSettingsContainer .sequential-order-move-btn:hover,
-#groupSettingsContainer .sequential-order-move-btn:focus-visible {
-    color: var(--highlight-text);
-    background: color-mix(in srgb, var(--highlight-text) 14%, transparent);
-    outline: none;
-}
-
-#groupSettingsContainer .sequential-speaker-order-empty {
-    padding: 12px;
-    color: var(--secondary-text);
-    text-align: center;
-    font-size: 0.88em;
-}
-
-body.light-theme #groupSettingsContainer .sequential-speaker-order-item {
-    background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--user-bubble-bg) 18%, rgba(255, 255, 255, 0.52)),
-        color-mix(in srgb, var(--user-bubble-bg) 12%, rgba(255, 255, 255, 0.26))
-    );
-    border-color: rgba(51, 51, 51, 0.08);
-}
-
-body:not(.light-theme) #groupSettingsContainer .sequential-speaker-order-item {
-    background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--user-bubble-bg) 58%, rgba(255, 255, 255, 0.08)),
-        color-mix(in srgb, var(--user-bubble-bg) 44%, rgba(255, 255, 255, 0.04))
-    );
-}
-
 #groupSettingsContainer .member-tag-input-item {
     display: flex;
     flex-direction: column;
@@ -619,7 +562,7 @@ body:not(.light-theme) #groupSettingsContainer .sequential-speaker-order-item {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background-color 0.2s ease, transform 0.2s ease;
+    transition: background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), transform var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
     min-width: 24px;
     z-index: 2;
     color: var(--secondary-text);
@@ -686,11 +629,11 @@ body:not(.light-theme) #groupSettingsContainer .sequential-speaker-order-item {
     white-space: nowrap;
     box-sizing: border-box;
     transition:
-        background 0.2s ease,
-        border-color 0.2s ease,
-        box-shadow 0.2s ease,
-        color 0.2s ease,
-        transform 0.2s ease;
+        background var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+        border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+        box-shadow var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+        color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+        transform var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 #groupSettingsForm .form-actions button[type="submit"] {
@@ -719,7 +662,7 @@ body:not(.light-theme) #groupSettingsContainer .sequential-speaker-order-item {
     box-shadow: none;
 }
 
-body.light-theme #groupSettingsForm .form-actions button[type="submit"] {
+body[data-vcp-theme="light"] #groupSettingsForm .form-actions button[type="submit"] {
     background: linear-gradient(
         180deg,
         color-mix(in srgb, var(--user-bubble-bg) 82%, rgba(255, 255, 255, 0.4)),
@@ -734,7 +677,7 @@ body.light-theme #groupSettingsForm .form-actions button[type="submit"] {
         inset 0 0 1px rgba(0, 0, 0, 0.08);
 }
 
-body.light-theme #groupSettingsForm .form-actions .danger-button {
+body[data-vcp-theme="light"] #groupSettingsForm .form-actions .danger-button {
     background: linear-gradient(
         180deg,
         color-mix(in srgb, var(--danger-color) 16%, rgba(255, 255, 255, 0.78)),
@@ -750,7 +693,7 @@ body.light-theme #groupSettingsForm .form-actions .danger-button {
         inset 0 0 1px rgba(0, 0, 0, 0.08);
 }
 
-body:not(.light-theme) #groupSettingsForm .form-actions button[type="submit"] {
+body[data-vcp-theme="dark"] #groupSettingsForm .form-actions button[type="submit"] {
     border-color: rgba(255, 255, 255, 0.08);
     background: linear-gradient(
         180deg,
@@ -765,11 +708,11 @@ body:not(.light-theme) #groupSettingsForm .form-actions button[type="submit"] {
         inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
-body:not(.light-theme) #groupSettingsForm .form-actions button[type="submit"]:hover {
+body[data-vcp-theme="dark"] #groupSettingsForm .form-actions button[type="submit"]:hover {
     color: color-mix(in srgb, #000000 78%, var(--primary-text) 22%);
 }
 
-body:not(.light-theme) #groupSettingsForm .form-actions .danger-button {
+body[data-vcp-theme="dark"] #groupSettingsForm .form-actions .danger-button {
     border-color: rgba(255, 255, 255, 0.08);
     background: linear-gradient(
         180deg,
@@ -829,21 +772,37 @@ body:not(.light-theme) #groupSettingsForm .form-actions .danger-button {
     flex-direction: column;
     justify-content: flex-start;
     flex-shrink: 0;
-    gap: 4px;
+    gap: 6px;
     position: sticky;
     bottom: 0;
-    background-color: transparent;
-    padding: 12px 15px 14px;
-    border-radius: 8px;
-    box-shadow: none;
+    background-color: #FAF7F2;
+    padding: 8px 0 10px;
+    border-radius: 0;
+    border: none !important;
+    border-top: none !important;
+    box-shadow: none !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    margin-bottom: 0 !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
     z-index: 10;
-    margin-left: -15px;
-    margin-right: -15px;
-    margin-bottom: -15px;
+}
+
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions,
+body[data-vcp-theme="light"] #groupSettingsForm .form-actions {
+    background-color: #FAF7F2 !important;
+}
+
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions,
+body[data-vcp-theme="dark"] #groupSettingsForm .form-actions {
+    background-color: #1C1C1E !important;
 }
 
 #agentSettingsForm .form-actions .delete-button-container,
 #groupSettingsForm .form-actions .delete-button-container {
+    width: 100%;
+    align-self: stretch;
     max-height: 0;
     opacity: 0;
     overflow: hidden;
@@ -854,18 +813,15 @@ body:not(.light-theme) #groupSettingsForm .form-actions .danger-button {
                 margin-top 0.4s ease;
 }
 
-
-/* 只有当滚动到底部（添加了 scrolled-to-bottom 类）时才显示 */
 #agentSettingsForm .form-actions.scrolled-to-bottom .delete-button-container,
 #groupSettingsForm .form-actions.scrolled-to-bottom .delete-button-container {
     max-height: 50px;
     opacity: 1;
-    margin-top: 4px;
+    margin-top: 6px;
     overflow: visible;
 }
 
-
-#agentSettingsForm .form-actions button,
+#agentSettingsForm .form-actions button:not(.vcp-uiux-button),
 #groupSettingsForm .form-actions button {
     position: relative;
     isolation: isolate;
@@ -874,172 +830,133 @@ body:not(.light-theme) #groupSettingsForm .form-actions .danger-button {
     align-items: center;
     justify-content: center;
     align-self: stretch;
-    width: calc(100% + 2px);
-    margin-left: -2px;
+    width: 100%;
+    margin-left: 0;
     height: 37px;
     min-height: 37px;
     padding: 0 12px;
     font-size: 0.95em;
     font-weight: 500;
     line-height: 1;
-    border-radius: 14px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px !important;
+    border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12));
     cursor: pointer;
     white-space: nowrap;
     box-sizing: border-box;
     flex: 0 0 auto;
     appearance: none;
     -webkit-appearance: none;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
     transition:
-        background 0.2s ease,
-        border-color 0.2s ease,
-        box-shadow 0.2s ease,
-        color 0.2s ease,
-        transform 0.2s ease;
+        background var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+        border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+        color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
-#agentSettingsForm .form-actions button[type="submit"],
+#agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button),
 #groupSettingsForm .form-actions button[type="submit"] {
     color: var(--highlight-text);
 }
 
-#agentSettingsForm .form-actions button[type="submit"]:hover,
+#agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button):hover,
 #groupSettingsForm .form-actions button[type="submit"]:hover {
-    background: var(--highlight-text);
-    border-color: var(--highlight-text);
-    color: var(--text-on-accent);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    box-shadow: none;
+    background: var(--dsw-alias-interactive-bg-hover, #f3f4f6);
+    border-color: var(--dsw-alias-border-l1, rgba(0, 0, 0, 0.22));
+    color: var(--highlight-text);
+    box-shadow: none !important;
 }
 
-body.light-theme #agentSettingsForm .form-actions button[type="submit"],
-body.light-theme #groupSettingsForm .form-actions button[type="submit"] {
-    background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--user-bubble-bg) 82%, rgba(255, 255, 255, 0.4)),
-        color-mix(in srgb, var(--user-bubble-bg) 70%, rgba(255, 255, 255, 0.22))
-    );
-    border-color: rgba(51, 51, 51, 0.08);
-    backdrop-filter: blur(10px) saturate(130%);
-    -webkit-backdrop-filter: blur(10px) saturate(130%);
-    box-shadow:
-        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.72),
-        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.62),
-        inset 0 0 1px rgba(0, 0, 0, 0.08);
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button),
+body[data-vcp-theme="light"] #groupSettingsForm .form-actions button[type="submit"] {
+    background: #F3EBE7 !important;
+    border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12));
+    color: var(--highlight-text);
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    opacity: 1 !important;
 }
 
-body.light-theme #agentSettingsForm .form-actions button[type="submit"]:hover,
-body.light-theme #groupSettingsForm .form-actions button[type="submit"]:hover {
-    background: var(--highlight-text);
-    border-color: var(--highlight-text);
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button):hover,
+body[data-vcp-theme="light"] #groupSettingsForm .form-actions button[type="submit"]:hover {
+    background: #EAE0DB !important;
+    border-color: var(--dsw-alias-border-l1, rgba(0, 0, 0, 0.22));
+    color: var(--highlight-text);
+    box-shadow: none !important;
+}
+
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button),
+body[data-vcp-theme="dark"] #groupSettingsForm .form-actions button[type="submit"] {
+    background: #2C2C2E !important;
+    border: 1px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.12));
     color: #ffffff;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    opacity: 1 !important;
 }
 
-body:not(.light-theme) #agentSettingsForm .form-actions button[type="submit"],
-body:not(.light-theme) #groupSettingsForm .form-actions button[type="submit"] {
-    border-color: rgba(255, 255, 255, 0.08);
-    background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--user-bubble-bg) 52%, rgba(255, 255, 255, 0.06)),
-        color-mix(in srgb, var(--user-bubble-bg) 40%, rgba(255, 255, 255, 0.03))
-    );
-    backdrop-filter: blur(8px) saturate(118%);
-    -webkit-backdrop-filter: blur(8px) saturate(118%);
-    box-shadow:
-        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
-        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button):hover,
+body[data-vcp-theme="dark"] #groupSettingsForm .form-actions button[type="submit"]:hover {
+    background: #38383A !important;
+    border-color: var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.24));
+    color: #ffffff;
+    box-shadow: none !important;
 }
 
-body:not(.light-theme) #agentSettingsForm .form-actions button[type="submit"]:hover,
-body:not(.light-theme) #groupSettingsForm .form-actions button[type="submit"]:hover {
-    background: var(--highlight-text);
-    background-image: none;
-    color: color-mix(in srgb, #000000 78%, var(--primary-text) 22%);
-    border-color: var(--highlight-text);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    box-shadow: none;
-    filter: none;
-}
-
-#agentSettingsForm .form-actions .danger-button,
+#agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button),
 #groupSettingsForm .form-actions .danger-button,
-#agentSettingsForm .form-actions #deleteAgentBtn,
+#agentSettingsForm .form-actions #deleteAgentBtn:not(.vcp-uiux-button),
 #groupSettingsForm .form-actions #deleteGroupBtn {
-    color: color-mix(in srgb, var(--danger-color) 88%, #ffffff 12%);
+    color: var(--vcp-ui-danger, #ef4444);
 }
 
-#agentSettingsForm .form-actions .danger-button:hover,
-#groupSettingsForm .form-actions .danger-button:hover,
-#agentSettingsForm .form-actions #deleteAgentBtn:hover,
-#groupSettingsForm .form-actions #deleteGroupBtn:hover {
-    background: var(--danger-color);
-    border-color: var(--danger-color);
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button),
+body[data-vcp-theme="light"] #groupSettingsForm .form-actions .danger-button,
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions #deleteAgentBtn:not(.vcp-uiux-button),
+body[data-vcp-theme="light"] #groupSettingsForm .form-actions #deleteGroupBtn {
+    background: #FFFFFF !important;
+    border: 1px solid color-mix(in srgb, var(--vcp-ui-danger, #ef4444) 30%, #e5e7eb);
+    color: var(--vcp-ui-danger, #ef4444);
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    opacity: 1 !important;
+}
+
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button):hover,
+body[data-vcp-theme="light"] #groupSettingsForm .form-actions .danger-button:hover,
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions #deleteAgentBtn:not(.vcp-uiux-button):hover,
+body[data-vcp-theme="light"] #groupSettingsForm .form-actions #deleteGroupBtn:hover {
+    background: #FEF2F2 !important;
+    border-color: var(--vcp-ui-danger, #ef4444);
+    color: var(--vcp-ui-danger, #ef4444);
+    box-shadow: none !important;
+}
+
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button),
+body[data-vcp-theme="dark"] #groupSettingsForm .form-actions .danger-button,
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions #deleteAgentBtn:not(.vcp-uiux-button),
+body[data-vcp-theme="dark"] #groupSettingsForm .form-actions #deleteGroupBtn {
+    background: #251B1B !important;
+    border: 1px solid color-mix(in srgb, var(--vcp-ui-danger, #ef4444) 35%, #3f2020);
+    color: var(--vcp-ui-danger, #ef4444);
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    opacity: 1 !important;
+}
+
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button):hover,
+body[data-vcp-theme="dark"] #groupSettingsForm .form-actions .danger-button:hover,
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions #deleteAgentBtn:not(.vcp-uiux-button):hover,
+body[data-vcp-theme="dark"] #groupSettingsForm .form-actions #deleteGroupBtn:hover {
+    background: #331E1E !important;
+    border-color: var(--vcp-ui-danger, #ef4444);
     color: #ffffff;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    box-shadow: none;
-}
-
-body.light-theme #agentSettingsForm .form-actions .danger-button,
-body.light-theme #groupSettingsForm .form-actions .danger-button,
-body.light-theme #agentSettingsForm .form-actions #deleteAgentBtn,
-body.light-theme #groupSettingsForm .form-actions #deleteGroupBtn {
-    background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--danger-color) 16%, rgba(255, 255, 255, 0.78)),
-        color-mix(in srgb, var(--danger-color) 11%, rgba(255, 255, 255, 0.54))
-    );
-    border-color: rgba(51, 51, 51, 0.08);
-    color: color-mix(in srgb, var(--danger-color) 92%, #6d0f1f 8%);
-    backdrop-filter: blur(10px) saturate(130%);
-    -webkit-backdrop-filter: blur(10px) saturate(130%);
-    box-shadow:
-        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.74),
-        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.62),
-        inset 0 0 1px rgba(0, 0, 0, 0.08);
-}
-
-body.light-theme #agentSettingsForm .form-actions .danger-button:hover,
-body.light-theme #groupSettingsForm .form-actions .danger-button:hover,
-body.light-theme #agentSettingsForm .form-actions #deleteAgentBtn:hover,
-body.light-theme #groupSettingsForm .form-actions #deleteGroupBtn:hover {
-    background: var(--danger-color);
-    border-color: var(--danger-color);
-    color: #ffffff;
-}
-
-body:not(.light-theme) #agentSettingsForm .form-actions .danger-button,
-body:not(.light-theme) #groupSettingsForm .form-actions .danger-button,
-body:not(.light-theme) #agentSettingsForm .form-actions #deleteAgentBtn,
-body:not(.light-theme) #groupSettingsForm .form-actions #deleteGroupBtn {
-    border-color: rgba(255, 255, 255, 0.08);
-    background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--danger-color) 34%, rgba(255, 255, 255, 0.08)),
-        color-mix(in srgb, var(--danger-color) 24%, rgba(255, 255, 255, 0.04))
-    );
-    color: color-mix(in srgb, var(--danger-color) 78%, #ffdce2 22%);
-    backdrop-filter: blur(8px) saturate(118%);
-    -webkit-backdrop-filter: blur(8px) saturate(118%);
-    box-shadow:
-        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
-        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
-}
-
-body:not(.light-theme) #agentSettingsForm .form-actions .danger-button:hover,
-body:not(.light-theme) #groupSettingsForm .form-actions .danger-button:hover,
-body:not(.light-theme) #agentSettingsForm .form-actions #deleteAgentBtn:hover,
-body:not(.light-theme) #groupSettingsForm .form-actions #deleteGroupBtn:hover {
-    background: var(--danger-color);
-    border-color: var(--danger-color);
-    color: #ffffff;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    box-shadow: none;
+    box-shadow: none !important;
 }
 
 #groupSettingsContainer input[type="text"],
@@ -1059,10 +976,10 @@ body:not(.light-theme) #groupSettingsForm .form-actions #deleteGroupBtn:hover {
     line-height: 1;
     box-sizing: border-box;
     transition:
-        background 0.2s ease,
-        border-color 0.2s ease,
-        box-shadow 0.2s ease,
-        color 0.2s ease;
+        background var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+        border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+        box-shadow var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+        color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 #groupSettingsContainer textarea {
@@ -1079,10 +996,10 @@ body:not(.light-theme) #groupSettingsForm .form-actions #deleteGroupBtn:hover {
     line-height: 1.45;
     resize: vertical;
     transition:
-        background 0.2s ease,
-        border-color 0.2s ease,
-        box-shadow 0.2s ease,
-        color 0.2s ease;
+        background var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+        border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+        box-shadow var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+        color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 #groupSettingsContainer select {
@@ -1109,26 +1026,26 @@ body:not(.light-theme) #groupSettingsForm .form-actions #deleteGroupBtn:hover {
     background-color: #46526b;
 }
 
-body.light-theme #groupSettingsContainer select {
+body:is(.light-theme, [data-vcp-theme="light"]) #groupSettingsContainer select {
     color-scheme: light;
 }
 
-body.light-theme #groupSettingsContainer select option,
-body.light-theme #groupSettingsContainer select optgroup {
+body:is(.light-theme, [data-vcp-theme="light"]) #groupSettingsContainer select option,
+body:is(.light-theme, [data-vcp-theme="light"]) #groupSettingsContainer select optgroup {
     color: #25262b;
     background-color: #f7f8fb;
 }
 
-body.light-theme #groupSettingsContainer select option:checked {
+body:is(.light-theme, [data-vcp-theme="light"]) #groupSettingsContainer select option:checked {
     color: #172033;
     background-color: #dbe6fb;
 }
 
-body.light-theme #groupSettingsContainer input[type="text"],
-body.light-theme #groupSettingsContainer textarea,
-body.light-theme #groupSettingsContainer select,
-body.light-theme #groupSettingsContainer .group-member-item label,
-body.light-theme #groupSettingsContainer .group-settings-section-summary.summary-with-avatar {
+body[data-vcp-theme="light"] #groupSettingsContainer input[type="text"],
+body[data-vcp-theme="light"] #groupSettingsContainer textarea,
+body[data-vcp-theme="light"] #groupSettingsContainer select,
+body[data-vcp-theme="light"] #groupSettingsContainer .group-member-item label,
+body[data-vcp-theme="light"] #groupSettingsContainer .group-settings-section-summary.summary-with-avatar {
     background: linear-gradient(
         180deg,
         color-mix(in srgb, var(--user-bubble-bg) 18%, rgba(255, 255, 255, 0.52)),
@@ -1146,11 +1063,11 @@ body.light-theme #groupSettingsContainer .group-settings-section-summary.summary
         inset 0 0 1px rgba(0, 0, 0, 0.06);
 }
 
-body:not(.light-theme) #groupSettingsContainer input[type="text"],
-body:not(.light-theme) #groupSettingsContainer textarea,
-body:not(.light-theme) #groupSettingsContainer select,
-body:not(.light-theme) #groupSettingsContainer .group-member-item label,
-body:not(.light-theme) #groupSettingsContainer .group-settings-section-summary.summary-with-avatar {
+body[data-vcp-theme="dark"] #groupSettingsContainer input[type="text"],
+body[data-vcp-theme="dark"] #groupSettingsContainer textarea,
+body[data-vcp-theme="dark"] #groupSettingsContainer select,
+body[data-vcp-theme="dark"] #groupSettingsContainer .group-member-item label,
+body[data-vcp-theme="dark"] #groupSettingsContainer .group-settings-section-summary.summary-with-avatar {
     background: linear-gradient(
         180deg,
         color-mix(in srgb, var(--user-bubble-bg) 58%, rgba(255, 255, 255, 0.08)),
@@ -1166,16 +1083,16 @@ body:not(.light-theme) #groupSettingsContainer .group-settings-section-summary.s
         inset 0 0 1px rgba(255, 255, 255, 0.03);
 }
 
-body.light-theme #groupSettingsContainer input[type="text"]:hover,
-body.light-theme #groupSettingsContainer input[type="text"]:focus,
-body.light-theme #groupSettingsContainer input[type="text"]:focus-visible,
-body.light-theme #groupSettingsContainer textarea:hover,
-body.light-theme #groupSettingsContainer textarea:focus,
-body.light-theme #groupSettingsContainer textarea:focus-visible,
-body.light-theme #groupSettingsContainer select:hover,
-body.light-theme #groupSettingsContainer select:focus,
-body.light-theme #groupSettingsContainer select:focus-visible,
-body.light-theme #groupSettingsContainer .group-member-item label:hover {
+body[data-vcp-theme="light"] #groupSettingsContainer input[type="text"]:hover,
+body[data-vcp-theme="light"] #groupSettingsContainer input[type="text"]:focus,
+body[data-vcp-theme="light"] #groupSettingsContainer input[type="text"]:focus-visible,
+body[data-vcp-theme="light"] #groupSettingsContainer textarea:hover,
+body[data-vcp-theme="light"] #groupSettingsContainer textarea:focus,
+body[data-vcp-theme="light"] #groupSettingsContainer textarea:focus-visible,
+body[data-vcp-theme="light"] #groupSettingsContainer select:hover,
+body[data-vcp-theme="light"] #groupSettingsContainer select:focus,
+body[data-vcp-theme="light"] #groupSettingsContainer select:focus-visible,
+body[data-vcp-theme="light"] #groupSettingsContainer .group-member-item label:hover {
     outline: none;
     border-color: color-mix(in srgb, var(--highlight-text) 72%, rgba(51, 51, 51, 0.12));
     box-shadow:
@@ -1185,12 +1102,12 @@ body.light-theme #groupSettingsContainer .group-member-item label:hover {
         0 0 0 1px color-mix(in srgb, var(--highlight-text) 24%, transparent);
 }
 
-body.light-theme #groupSettingsContainer input[type="text"]:focus,
-body.light-theme #groupSettingsContainer input[type="text"]:focus-visible,
-body.light-theme #groupSettingsContainer textarea:focus,
-body.light-theme #groupSettingsContainer textarea:focus-visible,
-body.light-theme #groupSettingsContainer select:focus,
-body.light-theme #groupSettingsContainer select:focus-visible {
+body[data-vcp-theme="light"] #groupSettingsContainer input[type="text"]:focus,
+body[data-vcp-theme="light"] #groupSettingsContainer input[type="text"]:focus-visible,
+body[data-vcp-theme="light"] #groupSettingsContainer textarea:focus,
+body[data-vcp-theme="light"] #groupSettingsContainer textarea:focus-visible,
+body[data-vcp-theme="light"] #groupSettingsContainer select:focus,
+body[data-vcp-theme="light"] #groupSettingsContainer select:focus-visible {
     border-color: var(--highlight-text);
     box-shadow:
         inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
@@ -1199,16 +1116,16 @@ body.light-theme #groupSettingsContainer select:focus-visible {
         0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
 }
 
-body:not(.light-theme) #groupSettingsContainer input[type="text"]:hover,
-body:not(.light-theme) #groupSettingsContainer input[type="text"]:focus,
-body:not(.light-theme) #groupSettingsContainer input[type="text"]:focus-visible,
-body:not(.light-theme) #groupSettingsContainer textarea:hover,
-body:not(.light-theme) #groupSettingsContainer textarea:focus,
-body:not(.light-theme) #groupSettingsContainer textarea:focus-visible,
-body:not(.light-theme) #groupSettingsContainer select:hover,
-body:not(.light-theme) #groupSettingsContainer select:focus,
-body:not(.light-theme) #groupSettingsContainer select:focus-visible,
-body:not(.light-theme) #groupSettingsContainer .group-member-item label:hover {
+body[data-vcp-theme="dark"] #groupSettingsContainer input[type="text"]:hover,
+body[data-vcp-theme="dark"] #groupSettingsContainer input[type="text"]:focus,
+body[data-vcp-theme="dark"] #groupSettingsContainer input[type="text"]:focus-visible,
+body[data-vcp-theme="dark"] #groupSettingsContainer textarea:hover,
+body[data-vcp-theme="dark"] #groupSettingsContainer textarea:focus,
+body[data-vcp-theme="dark"] #groupSettingsContainer textarea:focus-visible,
+body[data-vcp-theme="dark"] #groupSettingsContainer select:hover,
+body[data-vcp-theme="dark"] #groupSettingsContainer select:focus,
+body[data-vcp-theme="dark"] #groupSettingsContainer select:focus-visible,
+body[data-vcp-theme="dark"] #groupSettingsContainer .group-member-item label:hover {
     outline: none;
     border-color: color-mix(in srgb, var(--highlight-text) 68%, rgba(255, 255, 255, 0.12));
     box-shadow:
@@ -1218,12 +1135,12 @@ body:not(.light-theme) #groupSettingsContainer .group-member-item label:hover {
         0 0 0 1px color-mix(in srgb, var(--highlight-text) 26%, transparent);
 }
 
-body:not(.light-theme) #groupSettingsContainer input[type="text"]:focus,
-body:not(.light-theme) #groupSettingsContainer input[type="text"]:focus-visible,
-body:not(.light-theme) #groupSettingsContainer textarea:focus,
-body:not(.light-theme) #groupSettingsContainer textarea:focus-visible,
-body:not(.light-theme) #groupSettingsContainer select:focus,
-body:not(.light-theme) #groupSettingsContainer select:focus-visible {
+body[data-vcp-theme="dark"] #groupSettingsContainer input[type="text"]:focus,
+body[data-vcp-theme="dark"] #groupSettingsContainer input[type="text"]:focus-visible,
+body[data-vcp-theme="dark"] #groupSettingsContainer textarea:focus,
+body[data-vcp-theme="dark"] #groupSettingsContainer textarea:focus-visible,
+body[data-vcp-theme="dark"] #groupSettingsContainer select:focus,
+body[data-vcp-theme="dark"] #groupSettingsContainer select:focus-visible {
     border-color: var(--highlight-text);
     box-shadow:
         inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
@@ -1273,10 +1190,53 @@ body:not(.light-theme) #groupSettingsContainer select:focus-visible {
     color: var(--highlight-text);
 }
 
-body.light-theme #groupSettingsContainer .group-settings-model-shell .model-input-container #openGroupModelSelectBtn:hover {
+body[data-vcp-theme="light"] #groupSettingsContainer .group-settings-model-shell .model-input-container #openGroupModelSelectBtn:hover {
     background-color: color-mix(in srgb, var(--highlight-text) 12%, rgba(255, 255, 255, 0.78));
 }
 
-body:not(.light-theme) #groupSettingsContainer .group-settings-model-shell .model-input-container #openGroupModelSelectBtn:hover {
+body[data-vcp-theme="dark"] #groupSettingsContainer .group-settings-model-shell .model-input-container #openGroupModelSelectBtn:hover {
     background-color: color-mix(in srgb, var(--highlight-text) 18%, rgba(255, 255, 255, 0.05));
+}
+
+#tabContentSettings #groupSettingsContainer,
+#tabContentSettings #groupSettingsForm {
+    display: flex;
+    flex-direction: column;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    align-content: start;
+}
+
+#tabContentSettings #groupSettingsForm > .group-settings-section {
+    overflow: visible !important;
+    flex-shrink: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+}
+
+#groupSettingsContainer .sequential-order-move-btn {
+    width: 24px;
+    height: 24px;
+    min-width: 24px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background-color: var(--secondary-bg);
+    color: var(--secondary-text);
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+    transition: all 0.16s ease;
+}
+
+#groupSettingsContainer .sequential-order-move-btn:hover {
+    background-color: var(--accent-bg);
+    color: var(--highlight-text);
+    border-color: var(--highlight-text);
 }

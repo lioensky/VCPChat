@@ -57,7 +57,10 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
             });
             if (event.type === 'failed') capabilities.renderError?.({ event, finalized, context });
             projection?.settle?.({ event, finalized, context, messageId, streamOperationId: operationId });
-            capabilities.onSettled?.({ event, finalized, context, messageId });
+            const settledEvent = event.type === 'end'
+                ? { ...event, type: event.finish_reason === 'cancelled' ? 'cancelled' : 'completed' }
+                : event;
+            capabilities.onSettled?.({ event: settledEvent, finalized, context, messageId });
         },
         async persist(value) {
             if (projection?.suppressed) return null;

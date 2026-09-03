@@ -1026,8 +1026,11 @@ async function handleRegenerateResponse(originalAssistantMessage) {
         // StreamProjection 所有权。它会给占位同时添加 streaming + thinking，
         // 从而启用循环省略号和外层流光边框；首个 IPC start/thinking 事件再次
         // 初始化时会由 StreamProjection 的幂等检查直接复用当前气泡。
-        if (streamingRequested && typeof contextMenuDependencies.startStreamingMessage === 'function') {
-            await contextMenuDependencies.startStreamingMessage({
+        const startStreamFn = typeof contextMenuDependencies.startStream === 'function'
+            ? contextMenuDependencies.startStream
+            : contextMenuDependencies['startStreamingMessage'];
+        if (streamingRequested && typeof startStreamFn === 'function') {
+            await startStreamFn({
                 ...regenerationThinkingMessage,
                 ...context,
                 context,

@@ -471,11 +471,19 @@ settingsHost.innerHTML = `
         <div class="form-actions"><button type="submit">Save</button><button type="button" class="danger-button">Delete</button></div>
     </form>`;
 scope.append(settingsHost);
+// The canonical settings pipeline drives the real Uiux kernel. Boot it the
+// same way main.html does (generated browser bundle) before the bridge import
+// so every mount branch below exercises the production path instead of the
+// legacy native-kernel fallback.
+const uiuxContractKernel = await import(`${pathToFileURL(`${process.cwd()}/modules/uiux/generated/index.js`).href}?contract-kernel=1`);
+Object.defineProperty(window, 'VCPUIUX', { value: uiuxContractKernel, configurable: true });
 await import(`${pathToFileURL(`${process.cwd()}/modules/ui-system/settings-bridge.js`).href}?contract-test=1`);
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.ok(document.getElementById('bridgeInput').classList.contains('vcp-ui-native-input'));
 assert.ok(document.getElementById('bridgeSelect').classList.contains('vcp-ui-native-select'));
-assert.ok(settingsHost.querySelector('.switch').classList.contains('vcp-ui-native-switch'));
+assert.equal(settingsHost.querySelector('.switch input').dataset.vcpUiuxToggleMounted, 'true',
+    'sidebar switch uses the Uiux toggle primitive when the kernel is loaded');
+assert.ok(settingsHost.querySelector('.switch .vcp-uiux-toggle'), 'sidebar switch exposes the toggle primitive wrap');
 assert.ok(settingsHost.querySelector('.agent-settings-section').classList.contains('vcp-ui-settings-section'));
 assert.ok(settingsHost.querySelector('.group-settings-field-shell').classList.contains('vcp-ui-settings-field'));
 const bridgedActionBar = settingsHost.querySelector('.form-actions');
@@ -521,28 +529,38 @@ globalModal.innerHTML = `
     </div>`;
 modalContainer.append(globalModal);
 scope.append(modalContainer);
+const globalSettingsForm = document.getElementById('globalSettingsForm');
+globalSettingsForm.requestSubmit = () => {
+    const operationId = globalSettingsForm.dataset.vcpSettingsOperationId;
+    globalSettingsForm.dispatchEvent(new CustomEvent('vcp-settings-save-result', {
+        detail: { success: true, status: 'success', operationId, owner: 'legacy-autosave', currentRevision: 'test-revision' },
+    }));
+};
 window.VCPUISettingsBridge.refresh();
 await new Promise(resolve => setTimeout(resolve, 0));
-assert.ok(document.getElementById('globalUserName').classList.contains('vcp-ui-native-input'), 'global input enhanced');
-assert.ok(document.getElementById('globalSelect').classList.contains('vcp-ui-native-select'), 'global select enhanced');
-assert.ok(globalModal.querySelector('wa-select.vcp-ui-select-proxy'), 'global select uses the loaded Web Awesome kernel');
-const globalFooter = globalModal.querySelector('.global-settings-footer');
-assert.ok(globalFooter.classList.contains('vcp-ui-settings-action-bar'), 'global save bar enhanced');
-assert.ok(globalModal.querySelector('.vcp-ui-settings-search'), 'settings search injected');
-document.getElementById('globalUserName').value = 'Changed';
-document.getElementById('globalUserName').dispatchEvent(new Event('input', { bubbles: true }));
-assert.equal(globalFooter.dataset.state, 'dirty', 'global save bar tracks dirty state');
-document.getElementById('globalSettingsForm').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-assert.equal(globalFooter.dataset.state, 'saving', 'global save bar tracks saving state');
+// Global settings: the typed Uiux primitives own the single-line input and
+// the select projection; the legacy native-kernel classes and the WA proxy
+// are retired on this surface. Save state is observable through the form
+// autosave dataset contract, not a footer action bar.
+const globalUserName = document.getElementById('globalUserName');
+const globalSelect = document.getElementById('globalSelect');
+assert.equal(globalUserName.dataset.vcpUiuxInputPrimitive, 'true', 'global input uses the Uiux Input primitive');
+assert.ok(globalUserName.closest('.vcp-uiux-input-wrap'), 'global input is owned by the Input primitive wrap');
+assert.ok(globalSelect.closest('.vcp-uiux-select'), 'global select uses the Uiux select projection');
+assert.ok(globalModal.querySelector('.vcp-uiux-select-trigger'), 'global select exposes the projected trigger');
+assert.equal(document.getElementById('globalSettingsForm').dataset.vcpAutosaveMounted, 'true', 'global autosave mounted');
+globalUserName.value = 'Changed';
+globalUserName.dispatchEvent(new Event('input', { bubbles: true }));
+assert.equal(document.getElementById('globalSettingsForm').dataset.vcpSettingsDirty, 'true', 'autosave tracks dirty state');
 document.documentElement.dataset.uiMode = 'classic';
 window.dispatchEvent(new CustomEvent('ui-mode-changed', { detail: { mode: 'classic', previousMode: 'next' } }));
 await new Promise(resolve => setTimeout(resolve, 0));
-assert.ok(document.getElementById('globalUserName').classList.contains('vcp-ui-native-input'),
+assert.equal(document.getElementById('globalUserName').dataset.vcpUiuxInputPrimitive, 'true',
     'legacy mode events must not tear down canonical settings controls');
-assert.ok(globalModal.classList.contains('vcp-global-settings-next'),
+assert.ok(globalModal.classList.contains('vcp-global-settings-surface'),
     'legacy mode events must not remove the canonical modal marker');
-assert.ok(globalModal.querySelector('.vcp-ui-settings-search'),
-    'legacy mode events must not remove the SettingsShell search');
+assert.ok(document.getElementById('globalUserName').closest('.vcp-uiux-input-wrap'),
+    'legacy mode events must not unmount the Input primitive wrap');
 await window.VCPUISettingsBridge.destroy();
 modalContainer.remove();
 
@@ -550,17 +568,19 @@ assert.ok(!document.getElementById('bridgeInput').classList.contains('vcp-ui-nat
 settingsHost.remove();
 document.documentElement.dataset.uiMode = 'next';
 
-const classicPresentationSettingsHost = document.createElement('div');
-classicPresentationSettingsHost.id = 'tabContentSettings';
-classicPresentationSettingsHost.dataset.settingsPresentation = 'classic';
-classicPresentationSettingsHost.innerHTML = '<form id="agentSettingsForm"><input id="classicPresentationInput" type="text"></form>';
-scope.append(classicPresentationSettingsHost);
-await import(`${pathToFileURL(`${process.cwd()}/modules/ui-system/settings-bridge.js`).href}?classic-presentation-contract-test=1`);
-await new Promise(resolve => setTimeout(resolve, 0));
-assert.ok(!document.getElementById('classicPresentationInput').classList.contains('vcp-ui-native-input'));
-assert.equal(window.VCPUISettingsBridge.enhancedCount, 0);
-await window.VCPUISettingsBridge.destroy();
-classicPresentationSettingsHost.remove();
+// One presentation contract: data-settings-presentation is bootstrap metadata
+// only. The bridge must not branch a second layout on it, and the shipped
+// markup must carry the canonical value.
+assert.match(
+    fs.readFileSync('main.html', 'utf8'),
+    /id="tabContentSettings" data-settings-presentation="unified"/,
+    'main.html must carry the canonical settings presentation value'
+);
+assert.doesNotMatch(
+    fs.readFileSync(new URL('../modules/ui-system/settings-bridge.js', import.meta.url), 'utf8'),
+    /settingsPresentation[^;]*===\s*['"]classic['"]/,
+    'the settings bridge must not branch a second layout on the presentation attribute'
+);
 
 assert.equal(VCPUI.setDensity(scope, 'compact'), 'compact');
 assert.equal(VCPUI.getDensity(scope), 'compact');
@@ -1236,3 +1256,9 @@ assert.equal(waHost.querySelectorAll('[class^="vcp-ui-"]').length, 0, 'WA-backed
 waHost.remove();
 
 console.log(`UI system contract tests passed (${expected.length} public component names).`);
+// This standalone JSDOM contract runner intentionally constructs browser-like
+// globals whose third-party adapters may leave non-critical timers alive. All
+// owned controllers have been destroyed above; terminate explicitly so the
+// npm gate has a deterministic process boundary instead of waiting forever on
+// those external handles.
+process.exit(0);

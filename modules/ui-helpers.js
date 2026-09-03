@@ -7,6 +7,7 @@
     let croppedUserAvatarFile = null;
     let croppedGroupAvatarFile = null;
     const modalGenerations = new Map();
+    const modalClosePromises = new WeakMap();
 
     const uiHelperFunctions = {};
     const textareaResizeStates = new WeakMap();
@@ -513,12 +514,26 @@
      */
     uiHelperFunctions.closeModal = function(modalId) {
         const modalElement = document.getElementById(modalId);
-        if (modalElement) {
+        if (!modalElement) return Promise.resolve(false);
+        const existingClose = modalClosePromises.get(modalElement);
+        if (existingClose) return existingClose;
+        const finishClose = () => {
+            if (!modalElement.isConnected) return false;
             modalElement.classList.remove('active');
             document.dispatchEvent(new CustomEvent('modal-visibility-changed', {
                 detail: { modalId, active: false, root: modalElement, generation: modalGenerations.get(modalId) || 0 }
             }));
+            return true;
+        };
+        if (modalId === 'globalSettingsModal' && modalElement.classList.contains('active')) {
+            const coordinator = window.VCPUISettingsBridge?.flush;
+            if (typeof coordinator === 'function') {
+                Promise.resolve().then(() => coordinator()).catch(error => {
+                    console.warn('[UI Helper] Settings close flush failed:', error);
+                });
+            }
         }
+        return finishClose();
     };
 
     /**
@@ -1131,6 +1146,24 @@
             }
         });
     };
+
+    // Global capture-phase close delegation for modal close buttons.
+    // Ensures clicking any close button (or inner SVG) immediately closes the modal,
+    // unaffected by DOM transformations, event bubbling stops, or late bindings.
+    if (typeof document !== 'undefined') {
+        document.addEventListener('click', (e) => {
+            const closeBtn = e.target?.closest?.('.close-button, .vcp-uiux-settings-close');
+            if (closeBtn) {
+                const modal = closeBtn.closest('.modal, [role="dialog"], .vcp-uiux-settings-root');
+                const modalId = modal?.id || (modal?.classList?.contains('vcp-uiux-settings-root') ? 'globalSettingsModal' : null);
+                if (modalId) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    uiHelperFunctions.closeModal(modalId);
+                }
+            }
+        }, true);
+    }
 
     window.uiHelperFunctions = uiHelperFunctions;
 

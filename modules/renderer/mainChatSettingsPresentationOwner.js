@@ -1,4 +1,5 @@
 import { applyUserMessageLayoutState } from './domBuilder.js';
+import { syncDependentRows } from '../ui-system/settings/dependent-rows.js';
 
 /** Owns global-settings DOM projection, chat layout controls and presentation bindings. */
 export function createMainChatSettingsPresentationOwner({
@@ -28,6 +29,7 @@ export function createMainChatSettingsPresentationOwner({
     let disposed = false;
     let generation = 0;
     const tasks = new Set();
+    let globalSettingsReadyListenerBound = false;
     const isCurrent = token => !disposed && token === generation;
     const track = value => {
         const task = Promise.resolve(value);
@@ -107,18 +109,16 @@ export function createMainChatSettingsPresentationOwner({
             elements.toggleSidebarMode.classList.toggle('active', avatarOnly);
             elements.toggleSidebarMode.setAttribute('aria-pressed', String(avatarOnly));
         }
-        listenerOwner.add(document, 'modal-ready', event => {
-            if (event.detail?.modalId === 'globalSettingsModal' && !disposed) track(syncGlobalSettingsToUI());
-        });
+        if (!globalSettingsReadyListenerBound) {
+            listenerOwner.add(document, 'modal-ready', event => {
+                if (event.detail?.modalId === 'globalSettingsModal' && !disposed) track(syncGlobalSettingsToUI());
+            });
+            globalSettingsReadyListenerBound = true;
+        }
         messageRenderer?.setUserAvatar?.(globalSettings.userAvatarUrl);
         messageRenderer?.setUserAvatarColor?.(globalSettings.userAvatarCalculatedColor);
         return true;
     }
-
-    const CHAT_PRESENTATION_MODES = Object.freeze(['bubble', 'panel', 'immersive']);
-    const CHAT_PRESENTATION_MODE_CLASSES = CHAT_PRESENTATION_MODES.map(
-        mode => `chat-presentation-${mode}`
-    );
 
     function normalizeChatPresentationMode(mode) { return themeOwner.normalizePresentation(mode); }
 
@@ -207,15 +207,10 @@ export function createMainChatSettingsPresentationOwner({
             option.tabIndex = isActive ? 0 : -1;
         });
 
-        const bubbleOnlySettings = document.getElementById('userChatBubbleSettings');
-        if (bubbleOnlySettings) {
-            bubbleOnlySettings.hidden = normalizedMode !== 'bubble';
-        }
-
-        const bubbleWidthSettings = document.getElementById('chatBubbleWidthSettings');
-        if (bubbleWidthSettings) {
-            bubbleWidthSettings.hidden = normalizedMode !== 'bubble';
-        }
+        // 阶段 3 扁平化：气泡相关条件行挂在 appearance 分区下并自带
+        // data-visible-when；这里只负责重估行可见性。
+        const form = document.getElementById('globalSettingsForm');
+        if (form) syncDependentRows(form);
     }
 
     function setupChatPresentationQuickSwitcher() {
@@ -394,7 +389,11 @@ transform-origin: center bottom;`;
     function syncStreamAnimationControls() {
         const preset = normalizeStreamAnimationPreset(document.getElementById('streamAnimationPreset')?.value);
         const duration = normalizeStreamAnimationDuration(document.getElementById('streamAnimationDurationMs')?.value);
-        const customPanel = document.getElementById('streamAnimationCustomPanel');
+        // The flattening renamed the custom-CSS container from upstream's
+        // `streamAnimationCustomPanel` to `streamAnimationCustomRow`; accept
+        // both so this owner stays correct if either markup generation ships.
+        const customPanel = document.getElementById('streamAnimationCustomPanel')
+            || document.getElementById('streamAnimationCustomRow');
         const durationOutput = document.getElementById('streamAnimationDurationValue');
         if (customPanel) customPanel.hidden = preset !== 'custom';
         if (durationOutput) durationOutput.value = `${duration}ms`;
@@ -627,17 +626,13 @@ transform-origin: center bottom;`;
     }
 
     function syncWideChatLayoutControls() {
-        const wideModeRadio = document.getElementById('chatLayoutModeWide');
-        const widthSettings = document.getElementById('chatBubbleWidthSettings');
-        if (!wideModeRadio || !widthSettings) return;
-        widthSettings.style.display = wideModeRadio.checked ? 'block' : 'none';
+        const form = document.getElementById('globalSettingsForm');
+        if (form) syncDependentRows(form);
     }
 
     function syncUserChatBubbleControls() {
-        const bubbleUiToggle = document.getElementById('enableUserChatBubbleUi');
-        const metaSettings = document.getElementById('userChatBubbleMetaSettings');
-        if (!bubbleUiToggle || !metaSettings) return;
-        metaSettings.style.display = bubbleUiToggle.checked ? 'flex' : 'none';
+        const form = document.getElementById('globalSettingsForm');
+        if (form) syncDependentRows(form);
     }
 
     function applyUserChatBubbleUiState(settings = globalSettings) {
@@ -709,6 +704,13 @@ transform-origin: center bottom;`;
             const el = document.getElementById(id);
             if (el) el.checked = !!checked;
         };
+        const avatarPreview = document.getElementById('userAvatarPreview');
+        if (avatarPreview) {
+            const avatarUrl = String(globalSettings.userAvatarUrl || '');
+            avatarPreview.src = avatarUrl || 'assets/default_user_avatar.png';
+            avatarPreview.style.display = 'block';
+            avatarPreview.closest('.agent-avatar-wrapper')?.classList.toggle('no-avatar', !avatarUrl);
+        }
         const syncRustDebugPanelVisibility = () => {
             const rustDebugModeEl = document.getElementById('rustDebugMode');
             const rustDebugPanelEl = document.getElementById('rustDebugPanel');
@@ -728,106 +730,9 @@ transform-origin: center bottom;`;
             }
         };
 
-        safeSet('userName', globalSettings.userName || '用户');
 
-        const borderColor = globalSettings.userAvatarBorderColor || '#3d5a80';
-        safeSet('userAvatarBorderColor', borderColor);
-        safeSet('userAvatarBorderColorText', borderColor);
 
-        const nameColor = globalSettings.userNameTextColor || '#ffffff';
-        safeSet('userNameTextColor', nameColor);
-        safeSet('userNameTextColorText', nameColor);
 
-        safeCheck('userUseThemeColorsInChat', globalSettings.userUseThemeColorsInChat);
-
-        const completedUrl = getSettingsManager().completeVcpUrl(globalSettings.vcpServerUrl || '');
-        safeSet('vcpServerUrl', completedUrl);
-        safeSet('vcpApiKey', globalSettings.vcpApiKey || '');
-        safeSet('fileKey', globalSettings.fileKey || '');
-        safeSet('vcpLogUrl', globalSettings.vcpLogUrl || '');
-        safeSet('vcpLogKey', globalSettings.vcpLogKey || '');
-        safeSet('topicSummaryModel', globalSettings.topicSummaryModel || '');
-        safeSet('continueWritingPrompt', globalSettings.continueWritingPrompt || '请继续');
-        safeSet('flowlockContinueDelay', globalSettings.flowlockContinueDelay ?? 5);
-        safeCheck('voiceModeLocal', (globalSettings.voiceMode || 'local') !== 'network');
-        safeCheck('voiceModeNetwork', (globalSettings.voiceMode || 'local') === 'network');
-        safeSet(
-            'voiceInputMode',
-            ['windows_voice_typing', 'right_alt_hold'].includes(globalSettings.voiceInputMode)
-                ? globalSettings.voiceInputMode
-                : 'windows_voice_typing'
-        );
-        safeSet('voiceInputShortcut', globalSettings.voiceInputShortcut || 'F7');
-        safeSet('voiceLocalSovitsUrl', globalSettings.voiceLocalSettings?.sovitsUrl || '');
-        safeSet('voiceLocalSovitsKey', globalSettings.voiceLocalSettings?.sovitsKey || '');
-        safeSet('voiceNetworkProviderUrl', globalSettings.voiceNetworkSettings?.providerUrl || '');
-        safeSet('voiceNetworkProviderKey', globalSettings.voiceNetworkSettings?.providerKey || '');
-
-        // Network Notes Paths
-        const networkNotesPathsContainer = document.getElementById('networkNotesPathsContainer');
-        if (networkNotesPathsContainer) {
-            networkNotesPathsContainer.innerHTML = '';
-            const paths = Array.isArray(globalSettings.networkNotesPaths) ? globalSettings.networkNotesPaths : (globalSettings.networkNotesPath ? [globalSettings.networkNotesPath] : []);
-            if (paths.length === 0) {
-                uiHelperFunctions.addNetworkPathInput('');
-            } else {
-                paths.forEach(path => uiHelperFunctions.addNetworkPathInput(path));
-            }
-        }
-
-        safeCheck('enableSmoothStreaming', globalSettings.enableSmoothStreaming === true);
-        safeCheck('showHomeVisualBrand', globalSettings.showHomeVisualBrand !== false);
-        safeCheck('showHomeVisualTagline', globalSettings.showHomeVisualTagline !== false);
-        safeSet('homeVisualTagline', globalSettings.homeVisualTagline || '语义级打穿 AI、UI/UX、APP 与人类想象力的边界');
-        const appearance = getAppearance()?.normalize(globalSettings.appearanceProfile, 'next');
-        safeSet('appearanceDensity', appearance?.density || 'comfortable');
-        safeSet('appearanceRadius', appearance?.radius || 'small');
-        safeSet('appearanceTypography', appearance?.typography || 'system');
-        safeSet('appearanceFontScale', appearance?.fontScale || 'normal');
-        safeSet('appearanceContentWidth', appearance?.contentWidth || 'full');
-        safeSet('appearanceSidebarRowHeight', appearance?.sidebarRowHeight ?? 46);
-        safeSet('appearanceSidebarRowHeightValue', `${appearance?.sidebarRowHeight ?? 46}px`);
-        safeSet('appearanceSidebarAvatarSize', appearance?.sidebarAvatarSize ?? 32);
-        safeSet('appearanceSidebarAvatarSizeValue', `${appearance?.sidebarAvatarSize ?? 32}px`);
-        safeSet('appearanceSidebarRadius', appearance?.sidebarRadius || 'tuned');
-        safeCheck(`appearanceSidebarRadiusChoice-${appearance?.sidebarRadius || 'tuned'}`, true);
-        safeSet('appearanceCustomRadius', appearance?.customRadius ?? 10);
-        safeSet('appearanceCustomRadiusValue', `${appearance?.customRadius ?? 10}px`);
-        document.getElementById('appearanceSidebarAvatarSize')?.dispatchEvent(new Event('input', { bubbles: true }));
-        safeSet('appearanceSurface', appearance?.surface || 'translucent');
-        safeSet('chatFontPreset', globalSettings.chatFontPreset || 'system');
-        safeSet('chatFontCustom', globalSettings.chatFontCustom || '');
-        safeSet('chatCodeFontPreset', globalSettings.chatCodeFontPreset || 'consolas');
-        safeSet('chatCodeFontCustom', globalSettings.chatCodeFontCustom || '');
-        safeSet('chatDiaryFontPreset', globalSettings.chatDiaryFontPreset || 'serif');
-        safeSet('chatDiaryFontCustom', globalSettings.chatDiaryFontCustom || '');
-        safeSet('chatToolFontPreset', globalSettings.chatToolFontPreset || 'system');
-        safeSet('chatToolFontCustom', globalSettings.chatToolFontCustom || '');
-        const presentationMode = normalizeChatPresentationMode(globalSettings.chatPresentationMode);
-        safeCheck(`chatPresentationMode${presentationMode[0].toUpperCase()}${presentationMode.slice(1)}`, true);
-        safeCheck('chatLayoutModeWide', globalSettings.enableWideChatLayout === true);
-        safeCheck('chatLayoutModeNormal', globalSettings.enableWideChatLayout !== true);
-        safeCheck('enableUserChatBubbleUi', globalSettings.enableUserChatBubbleUi !== false);
-        safeCheck('showUserMetaInChatBubbleUi', globalSettings.showUserMetaInChatBubbleUi !== false);
-        safeSet('chatBubbleMaxWidthWideDefault', clampChatBubbleWidthPercent(globalSettings.chatBubbleMaxWidthWideDefault, 92));
-        safeSet('chatBubbleMaxWidthWideNotifications', clampChatBubbleWidthPercent(globalSettings.chatBubbleMaxWidthWideNotifications, 96));
-        safeSet(
-            'chatBubbleMaxWidthWideNarrow',
-            clampChatBubbleWidthPercent(
-                globalSettings.chatBubbleMaxWidthWideNarrow,
-                clampChatBubbleWidthPercent(globalSettings.chatBubbleMaxWidthWideDefault, 92)
-            )
-        );
-        safeSet('minChunkBufferSize', globalSettings.minChunkBufferSize ?? 16);
-        safeSet('smoothStreamIntervalMs', globalSettings.smoothStreamIntervalMs ?? 100);
-        safeSet('streamAnimationPreset', normalizeStreamAnimationPreset(globalSettings.streamAnimationPreset));
-        safeSet('streamAnimationDurationMs', normalizeStreamAnimationDuration(globalSettings.streamAnimationDurationMs));
-        safeSet('streamAnimationCustomCss', globalSettings.streamAnimationCustomCss || '');
-        syncChatFontControls();
-        bindStreamAnimationControls();
-        syncWideChatLayoutControls();
-        syncUserChatBubbleControls();
-        syncChatPresentationModeControls(presentationMode);
 
         const chatFontPresetSelect = document.getElementById('chatFontPreset');
         const chatFontCustomInput = document.getElementById('chatFontCustom');
@@ -898,62 +803,30 @@ transform-origin: center bottom;`;
             });
             radio.dataset.boundPresentationModeToggle = 'true';
         });
+        // Stream-animation preview + custom-CSS example controls. Upstream
+        // called this from its settings-hydration block; the three-way merge
+        // kept the definition but dropped the call, leaving the preview inert.
+        bindStreamAnimationControls();
 
-        // User Avatar Preview
-        const userAvatarPreview = document.getElementById('userAvatarPreview');
-        const userAvatarWrapper = userAvatarPreview?.closest('.agent-avatar-wrapper');
-        if (userAvatarPreview) {
-            if (globalSettings.userAvatarUrl) {
-                userAvatarPreview.src = globalSettings.userAvatarUrl;
-                userAvatarPreview.style.display = 'block';
-                userAvatarWrapper?.classList.remove('no-avatar');
-            } else {
-                userAvatarPreview.src = '#';
-                userAvatarPreview.style.display = 'none';
-                userAvatarWrapper?.classList.add('no-avatar');
-            }
-        }
 
-        // 加载论坛配置并填充管理员账号/密码
-        try {
-            const forumConfig = await chatAPI.loadForumConfig();
-            if (!isCurrent(token)) return false;
-            if (forumConfig && !forumConfig.error) {
-                safeSet('adminUsername', forumConfig.username || '');
-                safeSet('adminPassword', forumConfig.password || '');
-            }
-        } catch (err) {
-            console.warn('[Renderer] Failed to load forum config for global settings:', err);
-        }
+        // Forum adminUsername/adminPassword are projected by the typed
+        // ForumConfigUiService consumer in settings-bridge; this owner no
+        // longer mirrors them through loadForumConfig.
+
 
         // Assistant Select
         const assistantAgentSelect = document.getElementById('assistantAgent');
         if (assistantAgentSelect) {
-            await getSettingsManager().populateAssistantAgentSelect();
+            const settingsManager = getSettingsManager?.();
+            if (typeof settingsManager?.populateAssistantAgentSelect === 'function') {
+                await settingsManager.populateAssistantAgentSelect();
+            }
             if (!isCurrent(token)) return false;
-            assistantAgentSelect.value = globalSettings.assistantAgent || '';
         }
 
-        safeCheck('enableDistributedServer', globalSettings.enableDistributedServer === true);
-        safeCheck('agentMusicControl', globalSettings.agentMusicControl === true);
-        safeCheck('enableVcpToolInjection', globalSettings.enableVcpToolInjection === true);
-        safeCheck('enableThoughtChainInjection', globalSettings.enableThoughtChainInjection === true);
-        safeCheck('enableContextSanitizer', globalSettings.enableContextSanitizer === true);
-        safeSet('contextSanitizerDepth', globalSettings.contextSanitizerDepth ?? 2);
 
-        const contextSanitizerDepthContainer = document.getElementById('contextSanitizerDepthContainer');
-        if (contextSanitizerDepthContainer) {
-            contextSanitizerDepthContainer.style.display = globalSettings.enableContextSanitizer === true ? 'block' : 'none';
-        }
-
-        safeCheck('enableAiMessageButtons', globalSettings.enableAiMessageButtons !== false);
-        safeCheck('enableMiddleClickQuickAction', globalSettings.enableMiddleClickQuickAction === true);
-        safeSet('middleClickQuickAction', globalSettings.middleClickQuickAction || '');
-        safeCheck('enableMiddleClickAdvanced', globalSettings.enableMiddleClickAdvanced === true);
-        safeSet('middleClickAdvancedDelay', Math.max(1000, globalSettings.middleClickAdvancedDelay ?? 1000));
-        safeCheck('enableRegenerateConfirmation', globalSettings.enableRegenerateConfirmation !== false);
-
-        if (chatAPI?.getRustAssistantConfig) {
+        const typedRustAssistantService = windowRef?.VCPUISettingsBridge?.getRustAssistantService?.() || null;
+        if (!typedRustAssistantService && chatAPI?.getRustAssistantConfig) {
             try {
                 const rustConfig = await chatAPI.getRustAssistantConfig();
                 if (!isCurrent(token)) return false;
@@ -1027,13 +900,6 @@ transform-origin: center bottom;`;
             }
         }
 
-        // Visibility toggles
-        const middleClickContainer = document.getElementById('middleClickQuickActionContainer');
-        if (middleClickContainer) middleClickContainer.style.display = globalSettings.enableMiddleClickQuickAction ? 'block' : 'none';
-        const middleClickAdvancedContainer = document.getElementById('middleClickAdvancedContainer');
-        if (middleClickAdvancedContainer) middleClickAdvancedContainer.style.display = globalSettings.enableMiddleClickQuickAction ? 'block' : 'none';
-        const middleClickAdvancedSettings = document.getElementById('middleClickAdvancedSettings');
-        if (middleClickAdvancedSettings) middleClickAdvancedSettings.style.display = globalSettings.enableMiddleClickAdvanced ? 'block' : 'none';
         return true;
     }
 

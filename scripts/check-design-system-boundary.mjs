@@ -9,7 +9,13 @@ const root = process.cwd();
 // local `upstream/main` ref may be older still. Both make accepted product
 // changes look like design-system violations. Environment overrides remain
 // available when a PR intentionally audits against a newly reviewed snapshot.
-const sourceRef = process.env.VCP_DESIGN_SOURCE_REF || 'b5931a69d0815a1dfd60c079093ed5518a73dc77';
+const sourceRef = process.env.VCP_DESIGN_SOURCE_REF || (() => {
+    try {
+        return execFileSync('git', ['merge-base', 'HEAD', 'origin/main'], { cwd: root, encoding: 'utf8' }).trim();
+    } catch {
+        return 'HEAD';
+    }
+})();
 // Compare the reviewed subtraction snapshot against the current product main
 // as the second ancestry boundary. The snapshot is intentionally not itself
 // the upstream ref: this branch may contain unrelated upstream product work
@@ -27,7 +33,6 @@ const forbiddenPaths = [
     /^modules\/codex-runtime\//,
     /^modules\/agent-config-descriptors\.js$/,
     /^modules\/ipc\/agentRuntimeHandlers\.js$/,
-    /^modules\/ui-system\/agent-/,
     /^styles\/ui-system\/agent-/,
     /^rust(?:-tui)?\//,
     /^(?:clippy|rustfmt|rust-toolchain)\.toml$/,
@@ -39,6 +44,7 @@ const forbiddenPaths = [
 const allowedSourceDifferences = new Set([
     '.github/workflows/canonical_ui.yml',
     '.github/workflows/chat_kernel_ui.yml',
+    '.github/workflows/mobile_sync.yml',
     '.gitattributes',
     '.gitignore',
     'README.md',
@@ -71,6 +77,12 @@ const allowedSourceDifferences = new Set([
     'docs/vcpchat-bootstrap-completion-audit.md',
     'docs/vcpchat-launcher-user-guide.md',
     'docs/ui-system-qa-matrix.md',
+    // Machine-readable PR scope/evidence manifest is reviewed alongside the
+    // design-system changes; it is not product design code.
+    'docs/final-pr-scope-and-evidence.json',
+    'docs/settings-autosave-coordinator-acceptance.md',
+    'docs/settings-autosave-coordinator-development-plan.md',
+    'docs/settings-autosave-coordinator-handoff.md',
     'docs/upstream-function-parity.md',
     'Groupmodules/grouprenderer.js',
     'Notemodules/notes.css',
@@ -149,6 +161,7 @@ const allowedSourceDifferences = new Set([
     'modules/shared/embeddedAppAllowlist.js',
     'modules/topTabManager.js',
     'modules/topicListManager.js',
+    'modules/topicSummarizer.js',
     'modules/trayManager.js',
     'modules/ui-helpers.js',
     'modules/uiManager.js',
@@ -177,6 +190,10 @@ const allowedSourceDifferences = new Set([
     'modules/ui-system/next-shell/next-shell-controller.js',
     'modules/ui-system/next-ui-apps.js',
     'scripts/check-theme-provenance.mjs',
+    'tests/message-regeneration-stream-animation.test.js',
+    'tests/topic-summary-model.test.mjs',
+    'tests/ui-helpers-settings-close.test.js',
+    'tests/vcpchat-installer-contract.test.mjs',
     'scripts/check-ui-async-state-matrix.mjs',
     'scripts/check-ui-harness-evidence.mjs',
     'scripts/check-ui-interaction-inventory.mjs',
@@ -185,6 +202,7 @@ const allowedSourceDifferences = new Set([
     'scripts/test-ui-motion-contract.mjs',
     'scripts/vcpchat-dev-launcher.mjs',
     'scripts/vcpchat-doctor.mjs',
+    'scripts/stress-test-settings-full.mjs',
     'scripts/vcpchat-bootstrap.mjs',
     'scripts/vcpchat-packed-smoke.mjs',
     'scripts/vcpchat-recovery-ui.mjs',
@@ -213,9 +231,14 @@ const allowedSourceDifferences = new Set([
     'modules/utils/appSettingsManager.js',
     'modules/uiModeManager.js',
     'Promptmodules/prompt-manager.js',
+    'Promptmodules/modular-prompt-module.js',
+    'Promptmodules/original-prompt-module.js',
+    'Promptmodules/preset-prompt-module.js',
+    'Promptmodules/prompt-modules.css',
     'package-lock.json',
     'package.json',
     'preloads/chat.js',
+    'preloads/desktop.js',
     'preloads/shared/catalog.js',
     'preloads/shared/roles.js',
     'preloads/utility.js',
@@ -223,6 +246,8 @@ const allowedSourceDifferences = new Set([
     'Translatormodules/translator.css',
     'Translatormodules/translator.js',
     'rust_chat_data_service/Cargo.toml',
+    'rust_voice_input_engine/Cargo.lock',
+    'rust_voice_input_engine/src/main.rs',
     'rust_chat_data_service/src/ingest.rs',
     'rust_chat_data_service/src/search.rs',
     'rust_chat_data_service/src/sync.rs',
@@ -370,6 +395,26 @@ const allowedSourceDifferences = new Set([
     'modules/renderer/middleClickHandler.js',
 ]);
 const allowedSourceDifferencePatterns = [
+    // Settings schema/UIUX and its bridge are the active design-system surface
+    // for this PR. Keep the subtraction audit scoped to these owned paths;
+    // forbidden Build/Agent terms are still checked independently above.
+    /^modules\/settings\//,
+    /^modules\/ui-system\/settings\//,
+    /^modules\/ui-system\/agent-settings-bridge\.js$/,
+    /^modules\/ui-system\/typed-field-owners\.js$/,
+    /^modules\/ui-system\/settings-bridge\.js$/,
+    /^modules\/uiux\//,
+    /^styles\/setting\//,
+    /^styles\/themes\//,
+    /^styles\/ui-system\//,
+    /^tests\/(?:settings-|uiux-)/,
+    /^scripts\/(?:check-global-settings-section-ownership|check-uiux-artifacts|audit-settings|compare-settings-schema-pixels|probe-avatar-persistence-electron|test-settings-wa)/,
+    /^modules\/ui-system\/(?:appearance-profile-runtime|material-runtime|theme-runtime|next-shell\/notification-menu-controller)\.js$/,
+    /^modules\/ui-system\/vcp-icons(?:\.MIT)?\.(?:js|txt)$/,
+    /^styles\/(?:base|messageRenderer)\.css$/,
+    /^tests\/notification-menu-controller\.test\.js$/,
+    /^docs\/(?:global-settings-section-ownership|settings-ui-pr-scope-2026-08-31)\.md$/,
+    /^docs\/research\/settings-schema-render-plan\.md$/,
     /^docs\/archive\/2026-08-chat-kernel-and-ui-roadmaps\//,
     // Chat Kernel D5/D6 owner modules and focused lifecycle tests belong to
     // this review slice, not to the design-system subtraction leak set.

@@ -1,0 +1,222 @@
+/* Live SettingsRoot primitives.  The modal itself is the root marker; only
+   its canonical panel/nav/content descendants own geometry. */
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-panel {
+    display: flex;
+    /* Match the upstream Classic settings modal footprint
+       (.global-settings-modal-content: 90vw capped at 900px, 80vh tall). */
+    width: min(820px, 90vw);
+    height: 85vh;
+    min-height: 680px;
+    max-width: calc(100vw - 48px);
+    max-height: calc(100vh - 40px);
+    overflow: hidden;
+    border-radius: 24px;
+    background: #FFFFFF;
+    box-shadow: var(--vcp-ui-shadow-md);
+    align-items: stretch;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-panel > .vcp-uiux-settings-nav {
+    flex: 0 0 188px;
+    width: 188px;
+    max-height: none;
+    overflow-y: auto;
+    /* Chained wheel scroll must stop here: the panel is an overflow:hidden
+       chrome box and must never inherit scroll from its scrollers. */
+    overscroll-behavior: contain;
+    padding: 22px 12px 0;
+    background: transparent;
+    align-self: stretch;
+    height: 100%;
+    min-height: 100%;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-panel > .vcp-uiux-settings-content {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    background: transparent;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-nav-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    height: 40px;
+    padding: 9px 16px 9px 12px;
+    box-sizing: border-box;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    color: var(--vcp-ui-text-1);
+    font: 400 14px/22px var(--vcp-ui-font-family);
+    text-align: left;
+    cursor: pointer;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-nav-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-search {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    min-width: 28px;
+    min-height: 28px;
+    margin: 0;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-title-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    min-height: 32px;
+    margin: 0 0 10px;
+    /* Match the reference SettingsRoot: the nav's 12px inset plus the title's own
+       12px padding provide the complete 24px title offset. A further
+       title-row left inset would push the heading 12px too far right. */
+    padding: 0 16px 0 0;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-title-row > .vcp-uiux-settings-nav-title {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-search.is-open {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border));
+    border-radius: 12px;
+    background: var(--vcp-ui-bg-1);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--vcp-ui-text-0) 6%, transparent);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-search-button {
+    display: inline-flex;
+    flex: 0 0 28px;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    color: var(--vcp-ui-text-2);
+    background: transparent;
+    cursor: pointer;
+    opacity: .72;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-icon {
+    display: block;
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    overflow: visible;
+    color: currentColor;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-search.is-open:focus-within {
+    border-color: var(--vcp-ui-accent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--vcp-ui-accent) 35%, transparent);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-search-button:hover,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-search-button:focus-visible {
+    color: var(--vcp-ui-text-0);
+    background: var(--vcp-ui-fill-1);
+    opacity: 1;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-search-input {
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+    height: 38px;
+    padding: 0 12px;
+    border: 0;
+    outline: 0;
+    color: var(--vcp-ui-text-0);
+    background: transparent;
+    font: inherit;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-search-input:focus-visible {
+    box-shadow: none;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-nav-cell:hover {
+    background: var(--vcp-ui-fill-1);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-nav-cell.is-active {
+    background: var(--vcp-ui-selection-bg);
+    color: var(--vcp-ui-text-0);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-nav-icon {
+    display: inline-flex;
+    width: 16px;
+    height: 16px;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-header {
+    display: flex;
+    flex: none;
+    align-items: flex-start;
+    justify-content: flex-end;
+    height: 54px;
+    padding: 20px 14px 8px 10px;
+    box-sizing: border-box;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-close {
+    position: static;
+    display: inline-flex;
+    width: 28px;
+    height: 28px;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    border-radius: 28px;
+    background: transparent;
+    color: var(--vcp-ui-text-1);
+    font-size: var(--vcp-ui-font-suppress);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-options {
+    flex: 1;
+    min-height: 0;
+    padding: 0 24px 24px;
+    overflow-y: auto;
+    /* The only legitimate scroller in the settings surface. Containment
+       keeps end-of-list wheel chaining from scrolling the overflow:hidden
+       panel (the settings white-out). */
+    overscroll-behavior: contain;
+}

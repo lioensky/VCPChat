@@ -7,7 +7,7 @@
     border-radius: 12px;
     background-color: var(--input-bg);
     overflow: hidden;
-    transition: background-color 0.2s ease;
+    transition: background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 .agent-params-collapsible-container:has(#paramsToggleHeader) {
@@ -27,9 +27,9 @@
         inset 0 0 2px rgba(0, 0, 0, 0.38),
         0 6px 14px rgba(0, 0, 0, 0.14);
     transition:
-        border-color 0.22s ease,
-        box-shadow 0.22s ease,
-        background 0.22s ease;
+        border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+        box-shadow var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+        background var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 .agent-params-collapsible-container:has(#paramsToggleHeader)::before {
@@ -60,7 +60,7 @@
     padding: 12px 15px;
     cursor: pointer;
     background-color: var(--input-bg);
-    transition: background-color 0.2s ease;
+    transition: background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
     user-select: none;
 }
 
@@ -98,52 +98,34 @@
     background-color: transparent;
 }
 
-body.light-theme .agent-params-collapsible-container:has(#paramsToggleHeader) {
-    background: rgba(255, 255, 255, 0.06);
-    border-color: rgba(51, 51, 51, 0.08);
-    backdrop-filter: blur(3px) saturate(104%);
-    -webkit-backdrop-filter: blur(3px) saturate(104%);
-    box-shadow:
-        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.9),
-        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.9),
-        inset 6px -6px 1px -6px rgba(255, 255, 255, 0.55),
-        inset -6px 6px 1px -6px rgba(255, 255, 255, 0.55),
-        inset 0 0 2px rgba(0, 0, 0, 0.18),
-        0 4px 8px rgba(0, 0, 0, 0.12);
+body[data-vcp-theme="light"] .agent-params-collapsible-container:has(#paramsToggleHeader) {
+    background: var(--dsw-alias-bg-layer-1, var(--input-bg, #ffffff));
+    border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.1));
+    border-radius: var(--vcp-ui-radius-md, 12px);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
 }
 
-body.light-theme .agent-params-collapsible-container:has(#paramsToggleHeader):hover {
-    background: rgba(255, 255, 255, 0.08);
-    box-shadow:
-        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.94),
-        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.94),
-        inset 6px -6px 1px -6px rgba(255, 255, 255, 0.62),
-        inset -6px 6px 1px -6px rgba(255, 255, 255, 0.62),
-        inset 0 0 2px rgba(0, 0, 0, 0.2),
-        0 6px 10px rgba(0, 0, 0, 0.14);
+body[data-vcp-theme="light"] .agent-params-collapsible-container:has(#paramsToggleHeader):hover {
+    background: var(--dsw-alias-bg-layer-1, var(--input-bg, #ffffff));
+    border-color: var(--dsw-alias-border-l1, rgba(0, 0, 0, 0.18));
+    box-shadow: none;
 }
 
-body:not(.light-theme) .agent-params-collapsible-container:has(#paramsToggleHeader) {
-    background: color-mix(in srgb, var(--input-bg) 88%, rgba(255, 255, 255, 0.03));
-    border-color: rgba(255, 255, 255, 0.07);
-    backdrop-filter: blur(2px) saturate(104%);
-    -webkit-backdrop-filter: blur(2px) saturate(104%);
-    box-shadow:
-        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.14),
-        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.1),
-        inset 0 0 1px rgba(0, 0, 0, 0.42),
-        0 3px 8px rgba(0, 0, 0, 0.14);
+body[data-vcp-theme="dark"] .agent-params-collapsible-container:has(#paramsToggleHeader) {
+    background: var(--dsw-alias-bg-layer-1, #232324);
+    border: 1px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.12));
+    border-radius: var(--vcp-ui-radius-md, 12px);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
 }
 
-body:not(.light-theme) .agent-params-collapsible-container:has(#paramsToggleHeader):hover {
-    background: color-mix(in srgb, var(--input-bg) 84%, rgba(255, 255, 255, 0.05));
-    border-color: color-mix(in srgb, var(--highlight-text) 58%, rgba(255, 255, 255, 0.1));
-    box-shadow:
-        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
-        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
-        inset 0 0 1px rgba(0, 0, 0, 0.46),
-        0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent),
-        0 4px 10px rgba(0, 0, 0, 0.16);
+body[data-vcp-theme="dark"] .agent-params-collapsible-container:has(#paramsToggleHeader):hover {
+    background: var(--dsw-alias-bg-layer-1, #232324);
+    border-color: var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.22));
+    box-shadow: none;
 }
 
 .params-title {
@@ -151,6 +133,10 @@ body:not(.light-theme) .agent-params-collapsible-container:has(#paramsToggleHead
     color: var(--highlight-text);
     font-size: 1em;
     min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: block;
 }
 
 .params-summary {
@@ -174,7 +160,7 @@ body:not(.light-theme) .agent-params-collapsible-container:has(#paramsToggleHead
     align-items: center;
     justify-content: center;
     color: var(--secondary-text);
-    transition: transform 0.3s ease, color 0.2s ease;
+    transition: transform var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard), color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
     margin-left: 0;
 }
 
@@ -183,7 +169,7 @@ body:not(.light-theme) .agent-params-collapsible-container:has(#paramsToggleHead
 }
 
 .params-toggle-btn .toggle-icon {
-    transition: transform 0.3s ease;
+    transition: transform var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard);
 }
 
 .agent-params-collapsible-container.collapsed .params-toggle-btn .toggle-icon {
@@ -193,7 +179,7 @@ body:not(.light-theme) .agent-params-collapsible-container:has(#paramsToggleHead
 .params-content {
     max-height: 1000px;
     overflow: hidden;
-    transition: max-height 0.3s ease, opacity 0.3s ease;
+    transition: max-height var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard), opacity var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard);
     opacity: 1;
     padding: 0 15px 9px 15px;
     margin-top: -11px;
@@ -222,7 +208,10 @@ body:not(.light-theme) .agent-params-collapsible-container:has(#paramsToggleHead
     color: var(--secondary-text);
 }
 
-.params-content input[type="number"] {
+/* Generated Input owns the typed numeric fields while it is mounted.  Keep
+   this historical material only as the runtime-unavailable/dispose fallback,
+   rather than relying on the primitive's inline geometry to override it. */
+.params-content input[type="number"]:not(.input) {
     --params-pill-radius: 13px;
     width: 100%;
     height: 34px;
@@ -246,10 +235,10 @@ body:not(.light-theme) .agent-params-collapsible-container:has(#paramsToggleHead
     -webkit-appearance: none;
     -moz-appearance: textfield;
     transition:
-        background 0.2s ease,
-        border-color 0.2s ease,
-        box-shadow 0.2s ease,
-        background-image 0.2s ease;
+        background var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+        border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+        box-shadow var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+        background-image var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 .params-content > div {
@@ -257,20 +246,20 @@ body:not(.light-theme) .agent-params-collapsible-container:has(#paramsToggleHead
     margin-bottom: 8px;
 }
 
-.params-content input[type="number"]::-webkit-inner-spin-button,
-.params-content input[type="number"]::-webkit-outer-spin-button {
+.params-content input[type="number"]:not(.input)::-webkit-inner-spin-button,
+.params-content input[type="number"]:not(.input)::-webkit-outer-spin-button {
     -webkit-appearance: none;
     margin: 0;
 }
 
-.params-content input[type="number"]:focus {
+.params-content input[type="number"]:not(.input):focus {
     outline: none;
     border-color: var(--highlight-text);
     border-radius: var(--params-pill-radius) !important;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='rgb(255, 140, 148)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='7 15 12 20 17 15'%3E%3C/polyline%3E%3Cpolyline points='7 9 12 4 17 9'%3E%3C/polyline%3E%3C/svg%3E");
 }
 
-body.light-theme .params-content input[type="number"] {
+body[data-vcp-theme="light"] .params-content input[type="number"]:not(.input) {
     background: linear-gradient(
         180deg,
         color-mix(in srgb, var(--user-bubble-bg) 18%, rgba(255, 255, 255, 0.52)),
@@ -288,7 +277,7 @@ body.light-theme .params-content input[type="number"] {
         inset 0 0 1px rgba(0, 0, 0, 0.06);
 }
 
-body.light-theme .params-content input[type="number"]:hover {
+body[data-vcp-theme="light"] .params-content input[type="number"]:not(.input):hover {
     background: linear-gradient(
         180deg,
         color-mix(in srgb, var(--user-bubble-bg) 90%, rgba(255, 255, 255, 0.54)),
@@ -302,8 +291,8 @@ body.light-theme .params-content input[type="number"]:hover {
         0 0 0 1px color-mix(in srgb, var(--highlight-text) 24%, transparent);
 }
 
-body.light-theme .params-content input[type="number"]:focus,
-body.light-theme .params-content input[type="number"]:focus-visible {
+body[data-vcp-theme="light"] .params-content input[type="number"]:not(.input):focus,
+body[data-vcp-theme="light"] .params-content input[type="number"]:not(.input):focus-visible {
     border-color: var(--highlight-text);
     box-shadow:
         inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
@@ -312,7 +301,7 @@ body.light-theme .params-content input[type="number"]:focus-visible {
         0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
 }
 
-body:not(.light-theme) .params-content input[type="number"] {
+body[data-vcp-theme="dark"] .params-content input[type="number"]:not(.input) {
     background: linear-gradient(
         180deg,
         color-mix(in srgb, var(--user-bubble-bg) 58%, rgba(255, 255, 255, 0.08)),
@@ -328,7 +317,7 @@ body:not(.light-theme) .params-content input[type="number"] {
         inset 0 0 1px rgba(255, 255, 255, 0.03);
 }
 
-body:not(.light-theme) .params-content input[type="number"]:hover {
+body[data-vcp-theme="dark"] .params-content input[type="number"]:not(.input):hover {
     background: linear-gradient(
         180deg,
         color-mix(in srgb, var(--user-bubble-bg) 66%, rgba(255, 255, 255, 0.1)),
@@ -342,8 +331,8 @@ body:not(.light-theme) .params-content input[type="number"]:hover {
         0 0 0 1px color-mix(in srgb, var(--highlight-text) 26%, transparent);
 }
 
-body:not(.light-theme) .params-content input[type="number"]:focus,
-body:not(.light-theme) .params-content input[type="number"]:focus-visible {
+body[data-vcp-theme="dark"] .params-content input[type="number"]:not(.input):focus,
+body[data-vcp-theme="dark"] .params-content input[type="number"]:not(.input):focus-visible {
     background: linear-gradient(
         180deg,
         color-mix(in srgb, var(--highlight-text) 82%, rgba(255, 255, 255, 0.12)),

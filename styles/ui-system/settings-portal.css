@@ -1,0 +1,35 @@
+/* The settings override layer deliberately out-ranks runtime-injected
+   primitive styles (which enter <head> last), so !important and repeated
+   selectors are the layering mechanism here, not accidents. */
+/* stylelint-disable declaration-no-important, no-duplicate-selectors */
+
+/* Body-level portal menus must stack above the settings overlay.  The
+   generated select primitive appends its open menu (.vcp-uiux-primitive-menu)
+   to document.body with a hard-coded z-index (1100), while the unified
+   settings overlay sits at var(--vcp-ui-z-overlay) (1400) — with the modal
+   open every menu rendered invisibly behind it ("selects cannot be opened").
+   Lift body-level menus above the overlay only while the settings host is
+   active; in-modal portals already inherit the overlay's stacking context
+   and need no lift.  No var() fallback is needed any more: the vcp-ui tokens
+   are declared on :root (tokens.css), so body-level elements resolve them. */
+:is(html, html.vcp-global-settings-host) > body .vcp-uiux-primitive-menu {
+    z-index: calc(var(--vcp-ui-z-overlay) + 10);
+}
+
+/* LanguageRow portals are appended to body and must paint above the Settings
+   overlay, otherwise a click opens a menu that is visually trapped behind it. */
+:is(html, html.vcp-global-settings-host) > body .vcp-uiux-menu-portal {
+    z-index: calc(var(--vcp-ui-z-overlay) + 20) !important;
+}
+
+/* DeepSeek Harness menu width standard: compact max-content width (180px-280px)
+   instead of expanding to 360px with wide empty space. */
+:is(html, html.vcp-global-settings-host) > body :is(.vcp-uiux-menu-portal, .vcp-uiux-primitive-menu) {
+    width: max-content !important;
+    min-width: 180px !important;
+    max-width: 280px !important;
+}
+
+:is(html, html.vcp-global-settings-host) > body :is(.vcp-uiux-menu-portal, .vcp-uiux-primitive-menu) .vcp-uiux-menu-item-label {
+    max-width: none !important;
+}

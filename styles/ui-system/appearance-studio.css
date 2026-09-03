@@ -121,8 +121,8 @@
         display: grid;
         gap: var(--vcp-ui-space-2);
     }
-    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-preset-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-density-grid, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-font-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-preset-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-density-grid, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-font-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
     :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-radius-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-tile, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-option, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-mode-grid button {
         min-width: 0;
@@ -1025,10 +1025,35 @@
         grid-template-columns: 104px minmax(0, 1fr) auto;
         align-items: center;
         gap: var(--vcp-ui-space-3);
-        border: 1px solid color-mix(in srgb, var(--vcp-ui-accent) 24%, var(--vcp-ui-border));
-        border-radius: var(--vcp-ui-radius-card);
-        background: color-mix(in srgb, var(--vcp-ui-accent) 5%, var(--vcp-ui-fill-0));
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 12px;
+        background: #FFFFFF;
     }
+
+    /* stylelint-disable declaration-no-important */
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope .appearance-workbench-card {
+        background: #1E1F22 !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    }
+
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope .appearance-workbench-card strong {
+        color: #FFFFFF !important;
+    }
+
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope .appearance-workbench-card p {
+        color: rgba(255, 255, 255, 0.6) !important;
+    }
+
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope .appearance-workbench-chips span {
+        background: rgba(255, 255, 255, 0.08) !important;
+        color: rgba(255, 255, 255, 0.8) !important;
+    }
+
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope .appearance-workbench-preview {
+        background: #141517 !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    }
+    /* stylelint-enable declaration-no-important */
     :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-preview {
         height: 68px;
         min-width: 0;
@@ -1124,94 +1149,21 @@
     }
     :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-open:hover { background: var(--vcp-ui-accent-hover); }
 
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-selector {
-        min-width: 0;
-        margin: var(--vcp-ui-space-4) 0;
-        padding: var(--vcp-ui-space-4);
-        border: 1px solid var(--vcp-ui-border);
-        border-radius: var(--vcp-ui-radius-md);
-        background: var(--vcp-ui-fill-0);
-    }
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-selector legend {
-        padding: 0 var(--vcp-ui-space-2);
-        color: var(--vcp-ui-text-0);
-        font-size: var(--vcp-ui-font-body);
-        font-weight: 650;
-    }
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-options {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: var(--vcp-ui-space-3);
-    }
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-option {
-        position: relative;
-        display: grid;
-        grid-template-columns: 72px minmax(0, 1fr) 20px;
-        align-items: center;
-        gap: var(--vcp-ui-space-3);
-        min-width: 0;
-        padding: var(--vcp-ui-space-3);
-        border: 1px solid var(--vcp-ui-border);
-        border-radius: var(--vcp-ui-radius-md);
-        background: var(--vcp-ui-bg-1);
-        cursor: pointer;
-        transition: border-color var(--vcp-ui-transition-fast), background-color var(--vcp-ui-transition-fast), box-shadow var(--vcp-ui-transition-fast);
-    }
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-option:hover {
-        border-color: var(--vcp-ui-border-strong);
-        background: var(--vcp-ui-fill-1);
-    }
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-option:has(input:checked) {
-        border-color: var(--vcp-ui-accent);
-        background: var(--vcp-ui-selection-bg);
-        box-shadow: 0 0 0 1px var(--vcp-ui-accent);
-    }
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-option:has(input:focus-visible) {
-        outline: 2px solid var(--vcp-ui-focus-ring);
-        outline-offset: 2px;
-    }
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-option > input {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        opacity: 0;
-    }
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-preview {
-        display: grid;
-        grid-template-columns: 18px 1fr 14px;
-        grid-template-rows: 12px 40px;
-        width: 72px;
-        height: 52px;
-        overflow: hidden;
-        border: 1px solid var(--vcp-ui-border-strong);
-        border-radius: 7px;
-        background: var(--vcp-ui-bg-0);
-    }
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-preview i { display: block; }
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-preview i:nth-child(1) { grid-column: 1 / -1; background: var(--vcp-ui-fill-2); }
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-preview i:nth-child(2) { background: color-mix(in srgb, var(--vcp-ui-accent) 45%, var(--vcp-ui-fill-1)); }
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-preview i:nth-child(3) { margin: 5px 4px; border-radius: 4px; background: var(--vcp-ui-fill-1); }
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-preview i:nth-child(4) { background: var(--vcp-ui-fill-1); }
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-preview.classic { border-radius: 3px; }
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-preview.next i:nth-child(3) { margin: 3px; border-radius: 7px; }
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope :is(.appearance-layout-copy, .appearance-home-visual-copy) {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-home-visual-copy {
         display: grid;
         min-width: 0;
         gap: 3px;
     }
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope :is(.appearance-layout-copy, .appearance-home-visual-copy) strong {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-home-visual-copy strong {
         color: var(--vcp-ui-text-0);
         font-size: var(--vcp-ui-font-body);
     }
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope :is(.appearance-layout-copy, .appearance-home-visual-copy) small, :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-helper {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-home-visual-copy small {
         color: var(--vcp-ui-text-3);
         font-size: var(--vcp-ui-font-caption);
         line-height: var(--vcp-ui-line-body);
     }
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-check { width: var(--vcp-ui-icon-sm); height: var(--vcp-ui-icon-sm); color: transparent; }
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-open-icon { width: var(--vcp-ui-icon-sm); height: var(--vcp-ui-icon-sm); flex: 0 0 auto; }
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-option:has(input:checked) .appearance-layout-check { color: var(--vcp-ui-accent); }
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-helper { margin: var(--vcp-ui-space-3) 0 0; }
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-home-visual-setting {
         display: flex;
         align-items: center;
@@ -1238,7 +1190,7 @@
         border: 0;
         background: transparent;
     }
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-home-tagline-setting .settings-form-group { margin: 0; }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-home-tagline-setting .vcp-settings-row { margin: 0; }
 
     :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-tagline-editor {
         margin-top: var(--vcp-ui-space-4);
@@ -1317,9 +1269,45 @@
         :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-detail-row { grid-template-columns: minmax(0, 1fr) 116px; }
         :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-card { grid-template-columns: 82px minmax(0, 1fr); }
         :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-open { grid-column: 1 / -1; width: 100%; }
-        :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-options { grid-template-columns: 1fr; }
     }
     @media (prefers-reduced-motion: reduce) {
         :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope.vcp-appearance-studio-overlay, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-tile, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-option { transition: none; }
     }
+}
+
+/* Restore the pre-sync single-row geometry for Global Settings appearance
+   controls while leaving the standalone Appearance Studio layout intact. */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-settings-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-settings-grid > [id$="Row"] {
+    width: 100%;
+}
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-sidebar-geometry-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-geometry-control {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    width: 100%;
+    margin: 0;
+    padding: 16px 0;
+    border-bottom: 0;
+}
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-geometry-control .appearance-range-heading {
+    flex: 1;
+    min-width: 0;
+    padding-right: 48px;
+}
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-geometry-control input[type="range"] {
+    flex: 0 1 240px;
+    width: 240px;
+    min-width: 0;
+    padding: 0;
+    border: 0;
 }

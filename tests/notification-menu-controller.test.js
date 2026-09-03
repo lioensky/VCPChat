@@ -9,7 +9,10 @@ function fixture() {
       <div id="nextUiNotificationMenu" role="menu" hidden>
         <button id="nextUiNotificationForum" role="menuitem"></button>
         <button id="nextUiNotificationMemo" role="menuitem"></button>
+        <button id="nextUiNotificationLog" role="menuitem"></button>
+        <button id="nextUiNotificationObserver" role="menuitem"></button>
         <button id="nextUiNotificationFilterToggle" role="menuitemcheckbox" aria-checked="false"><span id="nextUiNotificationFilterState"></span></button>
+        <button id="nextUiNotificationSettings" role="menuitem"></button>
         <button id="nextUiNotificationClear" role="menuitem"></button>
       </div>
     </body>`, { pretendToBeVisual: true, url: 'file:///notification.html' });
@@ -29,6 +32,8 @@ test('notification menu owns keyboard focus, commands and Escape cleanup', async
         commands: () => ({
             openForum: () => calls.push('forum'),
             openMemo: () => calls.push('memo'),
+            openLog: () => calls.push('log'),
+            openRagObserver: () => calls.push('observer'),
             toggleNotificationFilter: () => { calls.push('toggle'); enabled = !enabled; },
             openNotificationFilterSettings: () => calls.push('filter-settings'),
             clearNotifications: () => calls.push('clear'),

@@ -394,14 +394,21 @@ assert.match(read('modules/ui-system/component-showcase.js'), /id: 'ui-component
 assert.match(read('modules/ui-system/next-shell/launchpad-controller.js'), /getInternalApps\(\)\.filter\(app => app\.discoverable !== false\)\.forEach/,
     'Launchpad must expose discoverable internal applications while hiding internal test surfaces');
 
-const eventSource = read('modules/event-listeners.js');
-for (const id of [
-    'enableMiddleClickQuickAction', 'middleClickQuickAction',
-    'enableMiddleClickAdvanced', 'middleClickAdvancedDelay',
-]) {
-    assert.match(eventSource, new RegExp(`getElementById\\('${id}'\\)`),
-        `upstream settings behavior for #${id} must remain wired without a retired toolbar button`);
+const quickActionsSchema = read('modules/settings/schema/quick-actions.js');
+const typedSettingsOwners = read('modules/ui-system/typed-field-owners.js');
+const middleClickHandler = read('modules/renderer/middleClickHandler.js');
+for (const id of ['enableMiddleClickQuickAction', 'middleClickQuickAction', 'enableMiddleClickAdvanced', 'middleClickAdvancedDelay']) {
+    assert.match(quickActionsSchema, new RegExp(`['"]${id}['"]`),
+        `settings schema must declare #${id}`);
+    assert.match(typedSettingsOwners, new RegExp(id),
+        `typed settings owner must retain behavior for #${id}`);
 }
+assert.match(read('modules/messageRenderer.js'), /enableMiddleClickQuickAction|enableMiddleClickAdvanced/,
+    'message renderer must consume middle-click enable settings');
+assert.match(middleClickHandler, /middleClickQuickAction|middleClickAdvancedDelay/,
+    'middle-click business handler must consume action/delay settings');
+assert.doesNotMatch(read('modules/event-listeners.js'), /getElementById\(['"](?:enableMiddleClickQuickAction|middleClickQuickAction|enableMiddleClickAdvanced|middleClickAdvancedDelay)['"]\)/,
+    'middle-click settings must not regress to a second event-listener owner');
 
 const sharedBaseline = JSON.parse(read('scripts/next-delta-shared-baseline.json'));
 for (const [file, entry] of Object.entries(sharedBaseline)) {

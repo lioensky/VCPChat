@@ -15,7 +15,7 @@
     /* Allow select to take up available space */
 }
 
-#agentSettingsForm .model-input-container button,
+#agentSettingsForm .model-input-container button:not(.vcp-uiux-agent-model-picker-trigger),
 #globalSettingsForm .model-input-container button,
 #groupSettingsForm .model-input-container button {
     /* 新增群组设置按钮样式 */
@@ -28,19 +28,18 @@
     background-color: var(--button-bg);
     border: 1px solid var(--button-bg);
     color: var(--text-on-accent);
-    border-radius: 6px;
+    border-radius: var(--vcp-ui-radius-sm, 8px);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background-color 0.2s ease, border-color 0.2s ease;
+    transition: background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
     box-sizing: border-box;
-    height: 38px;
-    /* Match the typical height of inputs */
-    width: 38px;
+    height: 32px;
+    width: 32px;
 }
 
-#agentSettingsForm .model-input-container button:hover,
+#agentSettingsForm .model-input-container button:not(.vcp-uiux-agent-model-picker-trigger):hover,
 #globalSettingsForm .model-input-container button:hover,
 #groupSettingsForm .model-input-container button:hover {
     /* 新增群组设置按钮悬停样式 */
@@ -48,15 +47,15 @@
     border-color: var(--button-hover-bg);
 }
 
-#agentSettingsForm .model-input-container button svg,
+#agentSettingsForm .model-input-container button:not(.vcp-uiux-agent-model-picker-trigger) svg,
 #globalSettingsForm .model-input-container button svg,
 #groupSettingsForm .model-input-container button svg {
     /* 新增群组设置按钮SVG样式 */
     stroke: currentColor;
-    transition: transform 0.5s ease;
+    transition: transform var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard);
 }
 
-#agentSettingsForm .model-input-container button:active svg,
+#agentSettingsForm .model-input-container button:not(.vcp-uiux-agent-model-picker-trigger):active svg,
 #globalSettingsForm .model-input-container button:active svg,
 #groupSettingsForm .model-input-container button:active svg {
     /* 新增群组设置按钮激活样式 */
@@ -79,7 +78,7 @@
 #globalSettingsForm .model-input-container #openTopicSummaryModelSelectBtn,
 #groupSettingsForm .model-input-container #openGroupModelSelectBtn {
     position: absolute;
-    right: 5px;
+    right: 4px;
     top: 50%;
     transform: translateY(-50%);
     width: 24px;
@@ -88,11 +87,11 @@
     border: none;
     background-color: transparent;
     cursor: pointer;
-    border-radius: 50%;
+    border-radius: 4px;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background-color 0.2s ease, transform 0.2s ease;
+    transition: background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), transform var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
     flex-shrink: 0;
     min-width: 24px;
     z-index: 2;
@@ -143,7 +142,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background-color 0.2s ease, border-color 0.2s ease;
+    transition: background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
     box-sizing: border-box;
     height: 36px;
     width: 36px;
@@ -158,7 +157,7 @@
 
 #refreshModelsBtn svg {
     stroke: currentColor;
-    transition: transform 0.5s ease;
+    transition: transform var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard);
 }
 
 #refreshModelsBtn:active svg {
@@ -179,7 +178,7 @@
     padding: 10px 15px;
     cursor: pointer;
     border-bottom: 1px solid var(--border-color);
-    transition: background-color 0.2s ease;
+    transition: background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
     display: flex;
     align-items: center;
     gap: 6px;
@@ -223,7 +222,7 @@
 .hot-model-badge {
     font-size: 0.85em;
     flex-shrink: 0;
-    animation: flame-pulse 1.5s ease-in-out infinite;
+    animation: flame-pulse 1.5s var(--vcp-motion-ease-standard) infinite;
 }
 
 .model-name-text {
@@ -258,7 +257,9 @@
     color: var(--secondary-text);
     cursor: pointer;
     border-radius: 4px;
-    transition: all 0.2s ease;
+    transition: opacity var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+                color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+                background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
     opacity: 0.6;
 }
 
@@ -277,4 +278,3 @@
     color: #ffc107;
     background-color: rgba(255, 193, 7, 0.1);
 }
-

@@ -195,7 +195,7 @@
     height: 26px;
     border-radius: 999px;
     background-color: transparent;
-    transition: background-color 0.18s ease, box-shadow 0.18s ease;
+    transition: background-color var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard), box-shadow var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard);
     z-index: -1;
     pointer-events: none;
 }
@@ -216,7 +216,7 @@
     font-weight: 500;
     line-height: 24px;
     z-index: 1;
-    transition: color 0.18s ease;
+    transition: color var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard);
 }
 
 #agentSettingsContainer .agent-settings-section-summary {
@@ -286,7 +286,7 @@
     line-height: 1.2;
 }
 
-body.light-theme #agentSettingsContainer #identitySummary.summary-with-avatar {
+body[data-vcp-theme="light"] #agentSettingsContainer #identitySummary.summary-with-avatar {
     background: linear-gradient(
         180deg,
         color-mix(in srgb, var(--user-bubble-bg) 18%, rgba(255, 255, 255, 0.52)),
@@ -304,7 +304,7 @@ body.light-theme #agentSettingsContainer #identitySummary.summary-with-avatar {
         inset 0 0 1px rgba(0, 0, 0, 0.06);
 }
 
-body:not(.light-theme) #agentSettingsContainer #identitySummary.summary-with-avatar {
+body[data-vcp-theme="dark"] #agentSettingsContainer #identitySummary.summary-with-avatar {
     background: linear-gradient(
         180deg,
         color-mix(in srgb, var(--user-bubble-bg) 58%, rgba(255, 255, 255, 0.08)),
@@ -344,19 +344,19 @@ body:not(.light-theme) #agentSettingsContainer #identitySummary.summary-with-ava
     background-color: color-mix(in srgb, var(--highlight-text) 12%, transparent);
 }
 
-body.light-theme #agentSettingsContainer .agent-settings-section-header:hover::before {
+body[data-vcp-theme="light"] #agentSettingsContainer .agent-settings-section-header:hover::before {
     background-color: color-mix(in srgb, var(--highlight-text) 14%, rgba(255, 255, 255, 0.7));
 }
 
-body.light-theme #agentSettingsContainer .agent-settings-collapsible-container:not(.collapsed) .agent-settings-section-header::before {
+body[data-vcp-theme="light"] #agentSettingsContainer .agent-settings-collapsible-container:not(.collapsed) .agent-settings-section-header::before {
     background-color: color-mix(in srgb, var(--highlight-text) 14%, rgba(255, 255, 255, 0.7));
 }
 
-body:not(.light-theme) #agentSettingsContainer .agent-settings-section-header:hover::before {
+body[data-vcp-theme="dark"] #agentSettingsContainer .agent-settings-section-header:hover::before {
     background-color: color-mix(in srgb, var(--highlight-text) 18%, rgba(255, 255, 255, 0.04));
 }
 
-body:not(.light-theme) #agentSettingsContainer .agent-settings-collapsible-container:not(.collapsed) .agent-settings-section-header::before {
+body[data-vcp-theme="dark"] #agentSettingsContainer .agent-settings-collapsible-container:not(.collapsed) .agent-settings-section-header::before {
     background-color: color-mix(in srgb, var(--highlight-text) 18%, rgba(255, 255, 255, 0.04));
 }
 
@@ -377,7 +377,7 @@ body:not(.light-theme) #agentSettingsContainer .agent-settings-collapsible-conta
     justify-content: center;
     z-index: 2;
     cursor: pointer;
-    transition: color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+    transition: color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), transform var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 #agentSettingsContainer .agent-settings-toggle-btn::before {
@@ -386,7 +386,7 @@ body:not(.light-theme) #agentSettingsContainer .agent-settings-collapsible-conta
     inset: 2px;
     border-radius: 999px;
     background-color: transparent;
-    transition: background-color 0.2s ease;
+    transition: background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 #agentSettingsContainer .agent-settings-toggle-btn:hover {
@@ -395,16 +395,16 @@ body:not(.light-theme) #agentSettingsContainer .agent-settings-collapsible-conta
     box-shadow: none;
 }
 
-body:not(.light-theme) #agentSettingsContainer .agent-settings-toggle-btn:hover::before {
+body[data-vcp-theme="dark"] #agentSettingsContainer .agent-settings-toggle-btn:hover::before {
     background-color: color-mix(in srgb, var(--highlight-text) 20%, rgba(255, 255, 255, 0.05));
 }
 
-body.light-theme #agentSettingsContainer .agent-settings-toggle-btn:hover::before {
+body[data-vcp-theme="light"] #agentSettingsContainer .agent-settings-toggle-btn:hover::before {
     background-color: color-mix(in srgb, var(--highlight-text) 16%, rgba(255, 255, 255, 0.74));
 }
 
 #agentSettingsContainer .agent-settings-toggle-btn .toggle-icon {
-    transition: transform 0.24s ease;
+    transition: transform var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 #agentSettingsContainer .agent-settings-collapsible-container.collapsed .agent-settings-toggle-btn .toggle-icon {
@@ -416,7 +416,7 @@ body.light-theme #agentSettingsContainer .agent-settings-toggle-btn:hover::befor
     opacity: 1;
     overflow: hidden;
     padding: 0 0 2px !important;
-    transition: max-height 0.28s ease, opacity 0.22s ease, padding 0.22s ease;
+    transition: max-height var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), opacity var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), padding var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 #agentSettingsContainer .agent-settings-collapsible-container:not(.collapsed) .agent-settings-section-content {
@@ -492,7 +492,6 @@ body.light-theme #agentSettingsContainer .agent-settings-toggle-btn:hover::befor
 #agentSettingsContainer .strip-regex-container .strip-regex-list-container {
     margin-bottom: 8px;
 }
-
 
 /* ========================================
    MiMo Director Prompt Editor
@@ -713,4 +712,160 @@ body:not(.light-theme) #agentSettingsContainer .tts-director-editor {
 #agentSettingsContainer wa-select.vcp-ui-select-proxy wa-option[selected] {
     color: var(--vcp-ui-on-accent, white);
     background: var(--vcp-ui-accent, var(--highlight-text));
+
+
+/* Narrow-sidebar fixes and flat Uiux-style controls. */
+#tabContentSettings.active,
+#agentSettingsContainer,
+#agentSettingsForm {
+    min-height: 0;
+}
+
+#agentSettingsContainer .agent-settings-section-header {
+    min-height: 0 !important;
+    overflow: visible !important;
+}
+
+#agentSettingsContainer .agent-settings-section-title {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 20px;
+}
+
+#agentSettingsContainer .agent-settings-section-summary {
+    min-width: 0;
+    overflow: visible;
+    line-height: 20px;
+}
+
+#agentSettingsContainer .agent-settings-section-summary {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    max-height: none;
+}
+
+#agentSettingsContainer #identitySummary.summary-with-avatar {
+    min-height: 46px;
+    box-sizing: border-box;
+    background: var(--vcp-ui-bg-1, var(--input-bg)) !important;
+    border: 1px solid var(--vcp-ui-border, var(--border-color));
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+#agentSettingsContainer .agent-settings-card-shell,
+#agentSettingsContainer .agent-identity-container,
+#agentSettingsContainer .agent-params-collapsible-container,
+#agentSettingsContainer .strip-regex-container {
+    background: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+#agentSettingsContainer .strip-regex-container :is(button, .small-button),
+#agentSettingsContainer #refreshTtsModelsBtn,
+#agentSettingsContainer #resetAvatarColorsBtn {
+    background: var(--vcp-ui-fill-0, var(--input-bg)) !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+#agentSettingsForm > .form-actions {
+    border-top: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding-top: 8px !important;
+}
+
+/* Restore the compact-tab guards from the pre-sync workspace. */
+#tabContentSettings .settings-header-bar,
+#tabContentSettings #globalSettingsBtn {
+    display: none !important;
+}
+
+#agentSettingsContainer .agent-settings-section-header {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    align-content: start;
+}
+
+#tabContentSettings #agentSettingsForm > .agent-settings-section {
+    overflow: visible !important;
+}
+
+#agentSettingsContainer .agent-settings-collapsible-container.collapsed .agent-settings-section-header {
+    min-height: 42px !important;
+    padding-top: 3px !important;
+    padding-bottom: 5px !important;
+}
+
+#agentSettingsContainer .agent-settings-collapsible-container.collapsed .agent-settings-section-summary {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 20px !important;
+    max-height: none !important;
+    overflow: visible !important;
+    clip: auto !important;
+    clip-path: none !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+}
+
+#agentSettingsContainer #identitySummary.summary-with-avatar {
+    display: flex !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 46px !important;
+    margin-top: 6px !important;
+    box-sizing: border-box !important;
+    background: var(--vcp-ui-bg-1, var(--input-bg)) !important;
+    background-image: none !important;
+    border: 1px solid var(--vcp-ui-border, var(--border-color)) !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+#agentSettingsContainer .slider-container > .vcp-uiux-range,
+#agentSettingsContainer .slider-container {
+    min-width: 0 !important;
+}
+
+#agentSettingsContainer .slider-container > #agentTtsSpeed,
+#agentSettingsContainer .slider-container > input[type="range"] {
+    flex: 1 1 auto;
+    min-width: 0;
+    appearance: none;
+    height: 20px;
+    margin: 0;
+    accent-color: var(--vcp-ui-accent, var(--highlight-text));
+}
+
+#agentSettingsContainer .slider-container > #agentTtsSpeed::-webkit-slider-runnable-track,
+#agentSettingsContainer .slider-container > input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 999px;
+    background: var(--vcp-ui-fill-2, var(--border-color));
+}
+
+#agentSettingsContainer .slider-container > #agentTtsSpeed::-webkit-slider-thumb,
+#agentSettingsContainer .slider-container > input[type="range"]::-webkit-slider-thumb {
+    width: 16px;
+    height: 16px;
+    margin-top: -6px;
+    appearance: none;
+    border: 2px solid var(--vcp-ui-accent, var(--highlight-text));
+    border-radius: 50%;
+    background: var(--vcp-ui-bg-1, var(--input-bg));
 }

@@ -34,8 +34,8 @@
         padding: 24px 28px 0;
     }
 
-    /* 全局设置模态框使用上游经典宽度（styles/setting/settings-global-modal.css），
-       不受通用 .modal .modal-content 的窄宽（--vcp-ui-modal-width: 520px）限制。 */
+    /* 全局设置模态框保持上游经典设置页足迹，不受通用 .modal .modal-content
+       的窄宽（--vcp-ui-modal-width: 520px）限制。 */
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .global-settings-modal-content {
         width: 90vw;
         max-width: 900px;
@@ -83,38 +83,6 @@
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .settings-nav-icon {
         flex: 0 0 auto;
         color: currentColor;
-    }
-
-    /* 设置搜索条：输入框、图标与定位提示使用新版表单控件观感。 */
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-ui-settings-search {
-        width: 100%;
-        min-width: 0;
-        box-sizing: border-box;
-        margin: 0 0 var(--vcp-ui-space-3);
-        padding: 0 var(--vcp-ui-space-3);
-        display: flex;
-        align-items: center;
-        gap: var(--vcp-ui-space-2);
-        border: 1px solid var(--vcp-ui-control-border);
-        border-radius: var(--vcp-ui-radius-md);
-        background: var(--vcp-ui-control-bg);
-    }
-
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-ui-settings-search .vcp-ui-icon {
-        flex: 0 0 auto;
-        color: var(--vcp-ui-text-2);
-        font-size: var(--vcp-ui-icon-md);
-    }
-
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-ui-settings-search input {
-        min-width: 0;
-        flex: 1 1 auto;
-        padding: var(--vcp-ui-space-2) 0;
-        border: 0;
-        outline: none;
-        color: var(--vcp-ui-text-0);
-        background: transparent;
-        font: inherit;
     }
 
     /* 保存栏：固定于内容区底部，配合 SettingsActionBar 的脏/保存/错误状态。 */

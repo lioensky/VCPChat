@@ -1,0 +1,466 @@
+/* ========================================
+   Agent Settings - System Prompt Editor
+   ======================================== */
+/* Container and layout */
+[id="agentSettingsContainer"] .agent-settings-prompt-shell {
+  padding-bottom: 0;
+  gap: 6px;
+}
+
+[id="agentSettingsContainer"] .agent-settings-prompt-shell .system-prompt-container {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+/* Mode selector buttons */
+[id="agentSettingsContainer"] .system-prompt-container .prompt-mode-selector {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px 0;
+  border-bottom: none;
+  background: transparent;
+  flex-wrap: wrap;
+}
+
+[id="agentSettingsContainer"] .system-prompt-container .prompt-mode-button:not(.vcp-uiux-button) {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--agent-settings-pill-radius);
+  background: transparent;
+  color: var(--secondary-text);
+  font-size: 0.9em;
+  font-weight: 500;
+  line-height: 1;
+}
+
+[id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-mode-button:not(.vcp-uiux-button):last-child {
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+[id="agentSettingsContainer"] .system-prompt-container .prompt-mode-button-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Content container */
+[id="agentSettingsContainer"] .system-prompt-container .prompt-content-container {
+  padding: 10px 12px 12px;
+  background: transparent;
+}
+
+[id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-content-container.original-mode {
+  padding-bottom: 0;
+}
+
+/* Textarea and inputs */
+[id="agentSettingsContainer"] .system-prompt-container .prompt-textarea,
+[id="agentSettingsContainer"] .system-prompt-container .preset-path-input,
+[id="agentSettingsContainer"] .system-prompt-container .preset-select,
+[id="agentSettingsContainer"] .system-prompt-container .block-name-input {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+  color: var(--highlight-text);
+  transition: background var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), box-shadow var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
+}
+
+[id="agentSettingsContainer"] .system-prompt-container .prompt-textarea,
+[id="agentSettingsContainer"] .system-prompt-container .block-content-input,
+[id="agentSettingsContainer"] .system-prompt-container .variant-content-input {
+  border-radius: 14px;
+}
+
+[id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-content-container
+  > .prompt-textarea {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+[id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-content-container.original-mode
+  > .prompt-textarea {
+  max-height: min(320px, 40vh);
+  overflow-y: auto;
+}
+
+[id="agentSettingsContainer"] .system-prompt-container .prompt-textarea {
+  min-height: 76px;
+  padding: 10px 12px;
+}
+
+/* Modular and preset containers */
+[id="agentSettingsContainer"] .system-prompt-container .modular-prompt-container,
+[id="agentSettingsContainer"] .system-prompt-container .preset-prompt-container {
+  gap: 2px;
+  padding: 0;
+}
+
+[id="agentSettingsContainer"] .system-prompt-container .modular-toolbar {
+  padding: 0;
+  border-bottom: none;
+  gap: 8px;
+}
+
+[id="agentSettingsContainer"] .system-prompt-container .toolbar-controls-group,
+[id="agentSettingsContainer"] .system-prompt-container .path-input-container {
+  gap: 8px;
+}
+
+/* Toolbar buttons */
+[id="agentSettingsContainer"] .system-prompt-container .toolbar-btn,
+[id="agentSettingsContainer"] .system-prompt-container .preset-browse-btn,
+[id="agentSettingsContainer"] .system-prompt-container .preset-refresh-btn,
+[id="agentSettingsContainer"] .system-prompt-container .add-variant-btn {
+  min-height: 28px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+  color: var(--highlight-text);
+  font-size: 0.84em;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+[id="agentSettingsContainer"] .system-prompt-container .preset-refresh-btn {
+  width: 28px;
+  min-width: 28px;
+  padding: 0;
+}
+
+/* Blocks, warehouse, and preview containers */
+[id="agentSettingsContainer"] .system-prompt-container .blocks-container,
+[id="agentSettingsContainer"] .system-prompt-container .warehouse-container,
+[id="agentSettingsContainer"] .system-prompt-container .preview-text {
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+}
+
+[id="agentSettingsContainer"] .system-prompt-container .blocks-container,
+[id="agentSettingsContainer"] .system-prompt-container .warehouse-container {
+  min-height: 82px;
+  padding: 10px;
+}
+
+[id="agentSettingsContainer"] .system-prompt-container .preview-text {
+  padding: 12px 13px;
+}
+
+/* Prompt blocks */
+[id="agentSettingsContainer"] .system-prompt-container .prompt-block.text-block {
+  border-radius: 14px;
+  border-width: 1px;
+}
+
+[id="agentSettingsContainer"] .system-prompt-container .prompt-block.newline-block {
+  border-radius: 999px;
+}
+
+/* Light theme styles */
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-mode-button:not(.vcp-uiux-button),
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-textarea,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-path-input,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-select,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .block-name-input,
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] .system-prompt-container .toolbar-btn,
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] .system-prompt-container .blocks-container,
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] .system-prompt-container .warehouse-container,
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] .system-prompt-container .preview-text,
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] .system-prompt-container .preview-container {
+  background: var(--dsw-alias-bg-layer-2, rgba(0, 0, 0, 0.02));
+  border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.1));
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] .system-prompt-container .prompt-textarea,
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] .system-prompt-container .preset-path-input,
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] .system-prompt-container .preset-select,
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] .system-prompt-container .block-name-input {
+  background: var(--dsw-alias-bg-layer-1, #ffffff);
+  border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12));
+  color: var(--primary-text);
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] .system-prompt-container .toolbar-btn,
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] .system-prompt-container .preset-browse-btn,
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] .system-prompt-container .preset-refresh-btn,
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] .system-prompt-container .add-variant-btn,
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] .system-prompt-container .add-warehouse-btn,
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] .system-prompt-container .warehouse-btn,
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] .system-prompt-container .toolbar-toggle,
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] .system-prompt-container .prompt-block.text-block,
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] .system-prompt-container .hidden-block {
+  background: var(--dsw-alias-bg-layer-1, #ffffff);
+  border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12));
+  color: var(--primary-text);
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] .system-prompt-container .prompt-block.text-block {
+  border-left: 3px solid var(--user-bubble-bg, #3d5a80);
+}
+
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] .system-prompt-container .prompt-block.newline-block {
+  background: var(--dsw-alias-bg-layer-2, rgba(0, 0, 0, 0.05));
+  border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.1));
+  color: var(--secondary-text);
+  box-shadow: none !important;
+}
+
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] .system-prompt-container .toolbar-btn:hover,
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] .system-prompt-container .preset-browse-btn:hover,
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] .system-prompt-container .preset-refresh-btn:hover,
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] .system-prompt-container .add-variant-btn:hover,
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] .system-prompt-container .add-warehouse-btn:hover,
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] .system-prompt-container .warehouse-btn:hover {
+  background: var(--dsw-alias-interactive-bg-hover, #f3f4f6);
+  border-color: var(--dsw-alias-border-l1, rgba(0, 0, 0, 0.22));
+  color: var(--highlight-text);
+  box-shadow: none !important;
+}
+
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] .system-prompt-container .warehouse-item.active .warehouse-btn {
+  background: var(--dsw-alias-bg-layer-1, #ffffff) !important;
+  border-color: var(--dsw-alias-border-l1, rgba(0, 0, 0, 0.25)) !important;
+  color: var(--primary-text, #111111) !important;
+  font-weight: 600 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08) !important;
+}
+
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-mode-button:not(.vcp-uiux-button).active {
+  background: var(--dsw-alias-bg-layer-1, #ffffff) !important;
+  border-color: transparent !important;
+  color: var(--dsw-alias-label-primary, #111111) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06) !important;
+}
+
+/* Dark theme styles */
+body[data-vcp-theme="dark"] [id="agentSettingsContainer"] .system-prompt-container .blocks-container,
+body[data-vcp-theme="dark"] [id="agentSettingsContainer"] .system-prompt-container .warehouse-container,
+body[data-vcp-theme="dark"] [id="agentSettingsContainer"] .system-prompt-container .preview-text,
+body[data-vcp-theme="dark"] [id="agentSettingsContainer"] .system-prompt-container .preview-container {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body[data-vcp-theme="dark"] [id="agentSettingsContainer"] .system-prompt-container .prompt-textarea,
+body[data-vcp-theme="dark"] [id="agentSettingsContainer"] .system-prompt-container .preset-path-input,
+body[data-vcp-theme="dark"] [id="agentSettingsContainer"] .system-prompt-container .preset-select,
+body[data-vcp-theme="dark"] [id="agentSettingsContainer"] .system-prompt-container .block-name-input {
+  background: var(--dsw-alias-bg-layer-2, #262628);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--primary-text);
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body[data-vcp-theme="dark"] [id="agentSettingsContainer"] .system-prompt-container .toolbar-btn,
+body[data-vcp-theme="dark"] [id="agentSettingsContainer"] .system-prompt-container .preset-browse-btn,
+body[data-vcp-theme="dark"] [id="agentSettingsContainer"] .system-prompt-container .preset-refresh-btn,
+body[data-vcp-theme="dark"] [id="agentSettingsContainer"] .system-prompt-container .add-variant-btn,
+body[data-vcp-theme="dark"] [id="agentSettingsContainer"] .system-prompt-container .add-warehouse-btn,
+body[data-vcp-theme="dark"] [id="agentSettingsContainer"] .system-prompt-container .warehouse-btn,
+body[data-vcp-theme="dark"] [id="agentSettingsContainer"] .system-prompt-container .toolbar-toggle,
+body[data-vcp-theme="dark"] [id="agentSettingsContainer"] .system-prompt-container .prompt-block.text-block,
+body[data-vcp-theme="dark"] [id="agentSettingsContainer"] .system-prompt-container .hidden-block {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--primary-text);
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body[data-vcp-theme="dark"] [id="agentSettingsContainer"] .system-prompt-container .prompt-block.text-block {
+  border-left: 3px solid var(--user-bubble-bg, #3d5a80);
+}
+
+body[data-vcp-theme="dark"] [id="agentSettingsContainer"] .system-prompt-container .prompt-block.newline-block {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--secondary-text);
+  box-shadow: none !important;
+}
+
+body[data-vcp-theme="dark"] [id="agentSettingsContainer"] .system-prompt-container .toolbar-btn:hover,
+body[data-vcp-theme="dark"] [id="agentSettingsContainer"] .system-prompt-container .preset-browse-btn:hover,
+body[data-vcp-theme="dark"] [id="agentSettingsContainer"] .system-prompt-container .preset-refresh-btn:hover,
+body[data-vcp-theme="dark"] [id="agentSettingsContainer"] .system-prompt-container .add-variant-btn:hover,
+body[data-vcp-theme="dark"] [id="agentSettingsContainer"] .system-prompt-container .add-warehouse-btn:hover,
+body[data-vcp-theme="dark"] [id="agentSettingsContainer"] .system-prompt-container .warehouse-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.24);
+  color: #ffffff;
+  box-shadow: none !important;
+}
+
+body[data-vcp-theme="dark"] [id="agentSettingsContainer"] .system-prompt-container .warehouse-item.active .warehouse-btn {
+  background: #ffffff !important;
+  border-color: #ffffff !important;
+  color: #111111 !important;
+}
+
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-mode-button:not(.vcp-uiux-button).active {
+  background: var(--dsw-alias-bg-layer-2, #2c2c2e) !important;
+  border-color: transparent !important;
+  color: #ffffff !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* Focus states - Light theme */
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-textarea:focus,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-textarea:focus-visible,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-path-input:focus,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-path-input:focus-visible,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-select:focus,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-select:focus-visible,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .block-name-input:focus,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .block-name-input:focus-visible {
+  outline: none;
+  border-color: var(--highlight-text);
+  box-shadow: inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+    inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+    0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
+}
+
+/* Focus states - Dark theme */
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-textarea:focus,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-textarea:focus-visible,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-path-input:focus,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-path-input:focus-visible,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-select:focus,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-select:focus-visible,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .block-name-input:focus,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .block-name-input:focus-visible {
+  outline: none;
+  border-color: var(--highlight-text);
+  box-shadow: inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
+    inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
+}
+
+/* VCP Uiux overrides for transparent mode */
+[id="agentSettingsContainer"] .system-prompt-container .blocks-container,
+[id="agentSettingsContainer"] .system-prompt-container .warehouse-container,
+[id="agentSettingsContainer"] .system-prompt-container .preview-text {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+[id="agentSettingsContainer"] .system-prompt-container .prompt-block.text-block {
+  box-shadow: none;
+}
+
+[id="agentSettingsContainer"] .system-prompt-container .modular-toolbar,
+[id="agentSettingsContainer"] .system-prompt-container .preset-path-section,
+[id="agentSettingsContainer"] .system-prompt-container .preset-selector-section,
+[id="agentSettingsContainer"] .system-prompt-container .preset-editor-section {
+  background: transparent;
+  box-shadow: none;
+}

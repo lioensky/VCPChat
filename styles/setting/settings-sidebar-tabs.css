@@ -26,7 +26,7 @@
     border-radius: 8px;
     appearance: none;
     -webkit-appearance: none;
-    transition: color 0.2s ease, font-weight 0.2s ease;
+    transition: color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), font-weight var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 .sidebar-tab-button::after {
@@ -39,7 +39,7 @@
     height: 3px;
     border-radius: 999px;
     background-color: color-mix(in srgb, var(--highlight-text) 55%, transparent);
-    transition: width 0.2s ease, background-color 0.2s ease;
+    transition: width var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 .sidebar-tab-button:hover {
@@ -90,11 +90,11 @@
     overflow: hidden;
     transform: translateY(10px);
     pointer-events: none;
-    transition: opacity 0.25s ease-out,
-        transform 0.25s ease-out,
-        max-height 0.35s cubic-bezier(0.25, 0.1, 0.25, 1),
-        padding-top 0.35s cubic-bezier(0.25, 0.1, 0.25, 1),
-        padding-bottom 0.35s cubic-bezier(0.25, 0.1, 0.25, 1);
+    transition: opacity var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+        transform var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+        max-height var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard),
+        padding-top var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard),
+        padding-bottom var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard);
 }
 
 .sidebar-tab-content:not(.active) {
@@ -106,7 +106,7 @@
 
 #tabContentSettings.sidebar-tab-content {
     transform: none;
-    transition: opacity 0.2s ease-out;
+    transition: opacity var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 .sidebar-tab-content.active {
@@ -147,7 +147,7 @@
     /* 固定宽度，避免布局变化 */
     background: transparent;
     /* 默认透明 */
-    transition: background-color 0.5s ease-in-out;
+    transition: background-color var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard);
     /* 动画时间延长 */
 }
 
@@ -157,7 +157,7 @@
     border-radius: 6px;
     border: 2px solid transparent;
     /* 默认透明 */
-    transition: background-color 0.5s ease-in-out, border-color 0.5s ease-in-out;
+    transition: background-color var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard), border-color var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard);
     /* 动画时间延长 */
 }
 
@@ -165,7 +165,7 @@
     background: transparent;
     /* 默认透明 */
     border-radius: 6px;
-    transition: background-color 0.5s ease-in-out;
+    transition: background-color var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard);
     /* 动画时间延长 */
 }
 
@@ -250,18 +250,20 @@
     margin-top: auto;
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    padding: 12px 15px 14px;
+    gap: 6px;
+    padding: 8px 0 12px;
     z-index: 10;
-    margin-left: -15px;
-    margin-right: -15px;
-    margin-bottom: -15px;
+    margin-left: 0;
+    margin-right: 0;
+    margin-bottom: 0;
+    background: transparent;
+    box-sizing: border-box;
 }
 
 
 
 /* 确保两个按钮宽度一致 */
-#agentSettingsForm .form-actions button {
+#agentSettingsForm .form-actions button:not(.vcp-uiux-button) {
     width: 100%;
     /* 两个按钮都占满容器宽度 */
     box-sizing: border-box;

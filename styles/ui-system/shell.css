@@ -68,6 +68,15 @@
         color: var(--next-muted);
     }
 
+    html .vcp-ui-scope .vcp-settings-icon {
+        width: 16px;
+        height: 16px;
+        display: block;
+        flex: 0 0 16px;
+        color: currentColor;
+        overflow: visible;
+    }
+
     html .vcp-ui-scope .next-ui-icon-button:hover,
     html .vcp-ui-scope .next-ui-icon-button.active,
     html .vcp-ui-scope .next-ui-icon-button.is-active {

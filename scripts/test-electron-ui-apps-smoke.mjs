@@ -3,7 +3,7 @@
 //
 //   - boot: Web Awesome is NOT registered nor fetched at app boot,
 //   - the UI 组件库 internal app lazy-registers wa-* elements,
-//   - global settings modal (next): enhanced controls, save bar dirty state,
+//   - global settings modal (next): enhanced controls, autosave dirty state,
 //     injected search, focus/Escape keyboard flow; classic teardown,
 //   - every child business application opens through the generic host but
 //     stays on
@@ -528,23 +528,46 @@ try {
     assert.equal(brandAssets.fontLoaded, true, `VCPChat Orbitron wordmark font failed to load: ${JSON.stringify(brandAssets)}`);
     assert.match(brandAssets.computedFamily, /VCP Orbitron/, `VCPChat wordmark resolved to the wrong family: ${JSON.stringify(brandAssets)}`);
     assert.ok(brandAssets.novaWidth > 0 && brandAssets.novaHeight > 0, `Nova launch asset failed to decode: ${JSON.stringify(brandAssets)}`);
-    // Renderer readiness does not imply that the asynchronous frontend-plugin
-    // IPC scan has completed. Audit the plugin after its own readiness
-    // contract instead of racing it under a busy CI/Electron host.
-    await page.waitForFunction(
-        () => Boolean(window.VCPFrontendPlugins?.get?.('vchat-dynamic-wallpaper')),
-        { timeout: timeoutMs }
-    );
+    // The plugin manager is the source of truth for this optional surface.
+    // A .block manifest is intentionally absent from the enabled list, so a
+    // disabled plugin must be audited as disabled rather than treated as a
+    // renderer boot failure.
+    const wallpaperAvailability = await page.evaluate(async () => {
+        const response = await window.chatAPI?.listEnabledFrontendPlugins?.();
+        const plugins = response?.success && Array.isArray(response.plugins) ? response.plugins : [];
+        const enabled = plugins.some((plugin) => String(plugin.id || '').toLowerCase() === 'vchatdynamicwallpaper'
+            || String(plugin.id || '').toLowerCase() === 'vchat-dynamic-wallpaper');
+        return { enabled, available: response?.success === true, pluginCount: plugins.length };
+    });
+    assert.equal(wallpaperAvailability.available, true,
+        `frontend plugin availability query failed: ${JSON.stringify(wallpaperAvailability)}`);
+    if (wallpaperAvailability.enabled) {
+        await page.waitForFunction(
+            () => Boolean(window.VCPFrontendPlugins?.get?.('vchat-dynamic-wallpaper')),
+            { timeout: timeoutMs }
+        );
+    }
     const nextWallpaperIntegration = await page.evaluate(() => ({
+        pluginLoaded: Boolean(window.VCPFrontendPlugins?.get?.('vchat-dynamic-wallpaper')),
         titlePanelPresent: Boolean(document.querySelector('.chat-header #vchat-dynamic-wallpaper-panel')),
         titleGroupPresent: Boolean(document.querySelector('.chat-header #vchat-wallpaper-title-group')),
         nextMenuPresent: Boolean(document.getElementById('vchatDynamicWallpaperMenuButton')),
         studioActionPresent: Boolean(document.querySelector('[data-studio-action="wallpaper"]')),
     }));
-    assert.equal(nextWallpaperIntegration.titlePanelPresent, true, `Next must use the upstream Classic wallpaper title control: ${JSON.stringify(nextWallpaperIntegration)}`);
-    assert.equal(nextWallpaperIntegration.titleGroupPresent, true, `Wallpaper title group is missing from the shared chat header: ${JSON.stringify(nextWallpaperIntegration)}`);
-    assert.equal(nextWallpaperIntegration.nextMenuPresent, false, `Next-only wallpaper account entry must not be injected: ${JSON.stringify(nextWallpaperIntegration)}`);
-    assert.equal(nextWallpaperIntegration.studioActionPresent, false, `Appearance Studio must not expose a plugin-specific wallpaper action: ${JSON.stringify(nextWallpaperIntegration)}`);
+    if (wallpaperAvailability.enabled) {
+        assert.equal(nextWallpaperIntegration.pluginLoaded, true, `enabled wallpaper plugin did not register: ${JSON.stringify(nextWallpaperIntegration)}`);
+        assert.equal(nextWallpaperIntegration.titlePanelPresent, true, `Next must use the upstream Classic wallpaper title control: ${JSON.stringify(nextWallpaperIntegration)}`);
+        assert.equal(nextWallpaperIntegration.titleGroupPresent, true, `Wallpaper title group is missing from the shared chat header: ${JSON.stringify(nextWallpaperIntegration)}`);
+        assert.equal(nextWallpaperIntegration.nextMenuPresent, false, `Next-only wallpaper account entry must not be injected: ${JSON.stringify(nextWallpaperIntegration)}`);
+        assert.equal(nextWallpaperIntegration.studioActionPresent, false, `Appearance Studio must not expose a plugin-specific wallpaper action: ${JSON.stringify(nextWallpaperIntegration)}`);
+        summary.push({ surface: '动态壁纸插件边界', mode: 'next', pass: true, lucide: 0, note: '插件已启用，验证注册、标题栏复用和 Next 边界' });
+    } else {
+        assert.equal(nextWallpaperIntegration.pluginLoaded, false, `disabled wallpaper plugin was loaded: ${JSON.stringify(nextWallpaperIntegration)}`);
+        assert.equal(nextWallpaperIntegration.titlePanelPresent, false, `disabled wallpaper plugin injected a title panel: ${JSON.stringify(nextWallpaperIntegration)}`);
+        assert.equal(nextWallpaperIntegration.titleGroupPresent, false, `disabled wallpaper plugin injected a title group: ${JSON.stringify(nextWallpaperIntegration)}`);
+        console.log('[test-electron-ui-apps] optional vchat-dynamic-wallpaper is disabled; plugin integration assertions skipped');
+        summary.push({ surface: '动态壁纸插件边界', mode: 'next', pass: true, lucide: 0, note: 'plugin-manifest.json.block；明确跳过启用态集成断言并验证无注入' });
+    }
     const messageSemantics = await page.evaluate(() => {
         const originalMode = document.documentElement.dataset.uiMode || 'next';
         const host = document.createElement('div');
@@ -915,11 +938,18 @@ try {
     assert.deepEqual(narrowDock.tooltipLabels, narrowDock.accessibleNames, `narrow notification dock hints do not match their accessible names: ${JSON.stringify(narrowDock)}`);
     assert.equal(narrowDock.iconsVisible, true, `narrow notification dock icons are clipped: ${JSON.stringify(narrowDock)}`);
     assert.equal(narrowDock.buttonOverflow, false, `narrow notification dock buttons overflow: ${JSON.stringify(narrowDock)}`);
-    await page.$eval('#appTrayPinnedApps > .capsule-button', button => button.focus());
+    const tooltipButtonSelector = '#appTrayPinnedApps > .capsule-button:not(.active)';
+    await page.waitForSelector(tooltipButtonSelector, { timeout: timeoutMs });
+    await page.$eval(tooltipButtonSelector, button => button.focus());
+    await page.hover(tooltipButtonSelector);
     await new Promise(resolve => setTimeout(resolve, 220));
-    const dockTooltip = await page.$eval('#appTrayPinnedApps > .capsule-button', button => ({
+    const dockTooltip = await page.$eval(tooltipButtonSelector, button => ({
         label: button.getAttribute('aria-label'),
-        focused: button.matches(':focus-visible'),
+        className: button.className,
+        hovered: button.matches(':hover'),
+        focusVisible: button.matches(':focus-visible'),
+        scope: Boolean(button.closest('.vcp-ui-scope')),
+        focused: document.activeElement === button,
         content: getComputedStyle(button, '::before').content,
         opacity: getComputedStyle(button, '::before').opacity,
         visibility: getComputedStyle(button, '::before').visibility,
@@ -1125,6 +1155,12 @@ try {
     assert.equal(createEntryState.dialogTag, 'wa-dialog',
         `creation entry did not select the Web Awesome dialog kernel: ${JSON.stringify(createEntryState)}`);
     await page.waitForFunction(() => Boolean(document.querySelector('.next-ui-create-dialog-host wa-dialog')), { timeout: timeoutMs });
+    await page.waitForFunction(() => document.querySelector('.next-ui-create-dialog-host wa-dialog')?.open === true, { timeout: timeoutMs });
+    await page.waitForFunction(() => {
+        const dialog = document.querySelector('.next-ui-create-dialog-host wa-dialog');
+        const input = dialog?.querySelector('wa-input');
+        return document.activeElement === input || input?.shadowRoot?.activeElement?.matches?.('input') === true;
+    }, { timeout: timeoutMs });
     const creationVisualContract = await page.evaluate(() => {
         const modal = document.querySelector('.next-ui-create-dialog-host wa-dialog');
         const dialog = modal?.shadowRoot?.querySelector('[part~="dialog"]');
@@ -1159,6 +1195,7 @@ try {
             inputInternalLabelDisplay: inputInternalLabel ? getComputedStyle(inputInternalLabel).display : '',
             inputAutofocus: input?.hasAttribute('autofocus') === true,
             activeTag: document.activeElement?.localName || '',
+            activeInsideInput: input?.shadowRoot?.activeElement?.matches?.('input') === true,
         };
     });
     assert.equal(creationVisualContract.size, 'sm', `creation size contract was lost: ${JSON.stringify(creationVisualContract)}`);
@@ -1179,7 +1216,7 @@ try {
         `Field-owned WA Input exposed a duplicate required marker: ${JSON.stringify(creationVisualContract)}`);
     assert.equal(creationVisualContract.inputAutofocus, true,
         `creation input does not own initial focus: ${JSON.stringify(creationVisualContract)}`);
-    assert.equal(creationVisualContract.activeTag, 'wa-input',
+    assert.ok(creationVisualContract.activeTag === 'wa-input' || creationVisualContract.activeInsideInput,
         `creation focus moved after opening: ${JSON.stringify(creationVisualContract)}`);
     await page.evaluate(() => window.uiManager?.applyTheme?.('dark'));
     await page.waitForFunction(() => document.querySelector('.next-ui-create-dialog-host')?.classList.contains('wa-dark'), { timeout: timeoutMs });
@@ -1397,52 +1434,57 @@ try {
     await page.waitForFunction(() => document.documentElement.dataset.uiMode === 'next', { timeout: timeoutMs });
     await page.evaluate(() => window.uiHelperFunctions.openModal('globalSettingsModal'));
     await page.waitForFunction(() => document.getElementById('globalSettingsForm'), { timeout: timeoutMs });
-    await page.waitForFunction(() => {
-        const footer = document.getElementById('globalSettingsModal')?.querySelector('.global-settings-footer');
-        return footer?.classList.contains('vcp-ui-settings-action-bar');
-    }, { timeout: timeoutMs });
+    await page.waitForFunction(() => Boolean(document.querySelector('#globalSettingsModal .vcp-uiux-settings-panel')), { timeout: timeoutMs });
     await page.waitForFunction(
-        () => document.querySelectorAll('#globalSettingsModal wa-select.vcp-ui-select-proxy').length > 0,
+        () => document.querySelectorAll('#globalSettingsModal select').length > 0,
         { timeout: timeoutMs }
     );
     const settingsState = await page.evaluate(() => {
         const form = document.getElementById('globalSettingsForm');
-        const footer = form.closest('#globalSettingsModal')?.querySelector('.global-settings-footer');
         const userName = document.getElementById('userName');
-        const state = { inputClass: userName?.className || '', footerClass: footer?.className || '', hasSearch: Boolean(document.querySelector('.vcp-ui-settings-search')) };
+        const state = {
+            inputClass: userName?.className || '',
+            inputMounted: Boolean(userName?.closest('.vcp-uiux-input-wrap, .vcp-ui-native-input')),
+            panel: Boolean(form.closest('#globalSettingsModal')?.querySelector('.vcp-uiux-settings-panel')),
+            hasSearch: Boolean(form.closest('#globalSettingsModal')?.querySelector('.vcp-uiux-settings-search')),
+        };
         userName?.dispatchEvent(new Event('input', { bubbles: true }));
         return new Promise(resolve => {
-            setTimeout(() => resolve({ ...state, footerState: footer?.dataset.state || '' }), 50);
+            setTimeout(() => resolve({ ...state, autosaveState: form?.dataset.vcpAutosaveState || '' }), 50);
         });
     });
-    assert.ok(settingsState.inputClass.includes('vcp-ui-native-input'), `global settings input not enhanced: ${settingsState.inputClass}`);
-    assert.ok(settingsState.footerClass.includes('vcp-ui-settings-action-bar'), `save bar not enhanced: ${settingsState.footerClass}`);
+    assert.ok(settingsState.inputClass.includes('vcp-ui-native-input') || settingsState.inputMounted,
+        `global settings input not enhanced: ${JSON.stringify(settingsState)}`);
+    assert.equal(settingsState.panel, true, 'global settings shell is mounted');
     assert.ok(settingsState.hasSearch, 'settings search not injected');
-    assert.equal(settingsState.footerState, 'dirty', `save bar should be dirty after input: ${settingsState.footerState}`);
+    assert.equal(settingsState.autosaveState, 'dirty', `autosave state should be dirty after input: ${settingsState.autosaveState}`);
     const settingsSelectState = await page.evaluate(() => {
         const modal = document.getElementById('globalSettingsModal');
+        const nativeSelects = [...(modal?.querySelectorAll('select') || [])];
         return {
-            native: modal?.querySelectorAll('select.vcp-ui-select-source').length || 0,
+            native: nativeSelects.length,
             proxies: modal?.querySelectorAll('wa-select.vcp-ui-select-proxy').length || 0,
-            visibleNative: [...(modal?.querySelectorAll('select.vcp-ui-select-source') || [])]
+            direct: modal?.querySelectorAll('select[data-vcp-appearance-draft-control], select[data-vcp-typed-primitive-mounted="true"]')?.length || 0,
+            visibleNative: nativeSelects
                 .filter(select => !select.hidden && getComputedStyle(select).display !== 'none').length,
         };
     });
     assert.ok(settingsSelectState.native > 0, `global settings Select sources missing: ${JSON.stringify(settingsSelectState)}`);
-    assert.equal(settingsSelectState.proxies, settingsSelectState.native, `global settings Select proxies mismatch: ${JSON.stringify(settingsSelectState)}`);
+    assert.ok(settingsSelectState.proxies === settingsSelectState.native || settingsSelectState.direct > 0,
+        `global settings Select controls are neither projected nor schema-emitted: ${JSON.stringify(settingsSelectState)}`);
     assert.equal(settingsSelectState.visibleNative, 0, `global settings native Select is still visible: ${JSON.stringify(settingsSelectState)}`);
     await capture(page, 'main-settings-next.png');
     // Focus lands on the first field inside the open modal.
     const settingsFocus = await page.evaluate(() => {
         const modal = document.getElementById('globalSettingsModal');
-        const input = modal?.querySelector('input:not([type="hidden"])');
+        const input = modal?.querySelector('input:not([type="hidden"]):not([hidden]):not([disabled])');
         if (!input) return { focused: false };
         input.focus();
         return { focused: document.activeElement === input, active: document.activeElement?.id || '' };
     });
     assert.ok(settingsFocus.focused, `global settings did not take focus: ${JSON.stringify(settingsFocus)}`);
     await page.evaluate(() => window.uiHelperFunctions.closeModal('globalSettingsModal'));
-    summary.push({ surface: '全局设置', mode: 'next', pass: true, lucide: 0, note: '增强输入/保存栏 dirty 态/搜索注入/焦点' });
+    summary.push({ surface: '全局设置', mode: 'next', pass: true, lucide: 0, note: '增强输入/autosave dirty 态/搜索注入/焦点' });
 
     // Agent settings are a renderer-owned surface and must not create child
     // WebContents or accumulate VCPUI adapters when repeatedly revisited.
@@ -1567,7 +1609,7 @@ try {
         materialOpticsPresent: Boolean(document.getElementById('vcpMaterialOptics')),
         classicTitlebarPresent: Boolean(document.querySelector('.title-bar')),
         nextTopbarHidden: getComputedStyle(document.getElementById('nextUiTopbar')).display === 'none',
-        nextSettingsShellPresent: Boolean(document.querySelector('#globalSettingsModal .vcp-ui-settings-shell')),
+        nextSettingsShellPresent: Boolean(document.querySelector('#globalSettingsModal .vcp-uiux-settings-panel')),
         webAwesomeElementCount: document.querySelectorAll('wa-button, wa-input, wa-textarea, wa-select, wa-switch, wa-checkbox').length,
         composerButtons: ['quickNewTopicBtn', 'attachFileBtn', 'emoticonTriggerBtn', 'sendMessageBtn'].map(id => {
             const button = document.getElementById(id);
@@ -1607,57 +1649,64 @@ try {
     classicMainStyle.classicNotificationControls.forEach(control => {
         assert.equal(control.present, false, `retired notification proxy remains hidden in the DOM: ${JSON.stringify(control)}`);
     });
-    assert.equal(classicMainStyle.wallpaperControlPresent, true, `Classic video wallpaper control is missing: ${JSON.stringify(classicMainStyle)}`);
-    assert.equal(classicMainStyle.wallpaperControlHasSvg, true, `Classic video wallpaper control lost its SVG icon: ${JSON.stringify(classicMainStyle)}`);
-    assert.deepEqual(classicMainStyle.wallpaperControlLeakedText, [], `Classic video wallpaper control exposed icon text: ${JSON.stringify(classicMainStyle)}`);
+    if (wallpaperAvailability.enabled) {
+        assert.equal(classicMainStyle.wallpaperControlPresent, true, `Classic video wallpaper control is missing: ${JSON.stringify(classicMainStyle)}`);
+        assert.equal(classicMainStyle.wallpaperControlHasSvg, true, `Classic video wallpaper control lost its SVG icon: ${JSON.stringify(classicMainStyle)}`);
+        assert.deepEqual(classicMainStyle.wallpaperControlLeakedText, [], `Classic video wallpaper control exposed icon text: ${JSON.stringify(classicMainStyle)}`);
+    } else {
+        assert.equal(classicMainStyle.wallpaperControlPresent, false, `disabled wallpaper plugin injected a Classic control: ${JSON.stringify(classicMainStyle)}`);
+    }
 
     await page.evaluate(() => window.uiHelperFunctions.openModal('globalSettingsModal'));
     await page.waitForFunction(() => document.getElementById('globalSettingsModal')?.classList.contains('active'), { timeout: timeoutMs });
-    const classicSettingsNavigation = await page.evaluate(async () => {
+    const unifiedSettingsNavigation = await page.evaluate(async () => {
         const modal = document.getElementById('globalSettingsModal');
-        const navItems = [...modal.querySelectorAll('.vcp-ui-list-item')];
+        const navItems = [...modal.querySelectorAll('.vcp-uiux-settings-nav-cell')];
         const target = navItems[1];
         target?.click();
         await new Promise(resolve => setTimeout(resolve, 220));
         return {
             navCount: navItems.length,
             activeSection: modal.querySelector('.settings-section.active')?.id || '',
-            nextShell: Boolean(modal.querySelector('.vcp-ui-settings-shell')),
+            nextShell: Boolean(modal.querySelector('.vcp-uiux-settings-panel')),
         };
     });
-    assert.equal(classicSettingsNavigation.navCount, 8, `Classic settings category count changed: ${JSON.stringify(classicSettingsNavigation)}`);
-    assert.equal(classicSettingsNavigation.activeSection, 'section-server-connection', `Classic settings content did not follow navigation: ${JSON.stringify(classicSettingsNavigation)}`);
-    assert.equal(classicSettingsNavigation.nextShell, true, `canonical SettingsShell was not retained: ${JSON.stringify(classicSettingsNavigation)}`);
-    const classicAppearanceSettings = await page.evaluate(async () => {
+    assert.equal(unifiedSettingsNavigation.navCount, 8, `Settings category count changed: ${JSON.stringify(unifiedSettingsNavigation)}`);
+    assert.equal(unifiedSettingsNavigation.activeSection, 'section-server-connection', `Settings content did not follow navigation: ${JSON.stringify(unifiedSettingsNavigation)}`);
+    assert.equal(unifiedSettingsNavigation.nextShell, true, `canonical SettingsShell was not retained: ${JSON.stringify(unifiedSettingsNavigation)}`);
+    const unifiedAppearanceSettings = await page.evaluate(async () => {
         const modal = document.getElementById('globalSettingsModal');
-        const appearanceNav = [...modal.querySelectorAll('.vcp-ui-list-item')][2];
+        const appearanceNav = [...modal.querySelectorAll('.vcp-uiux-settings-nav-cell')][2];
         appearanceNav?.click();
         await new Promise(resolve => setTimeout(resolve, 220));
         const workbench = modal.querySelector('.appearance-workbench-card');
-        const layoutSelector = modal.querySelector('.appearance-layout-selector');
-        const layoutOption = modal.querySelector('.appearance-layout-option');
         const homeVisual = modal.querySelector('.appearance-home-visual-setting');
         return {
             activeSection: modal.querySelector('.settings-section.active')?.id || '',
             workbenchDisplay: workbench ? getComputedStyle(workbench).display : '',
             workbenchColumns: workbench ? getComputedStyle(workbench).gridTemplateColumns : '',
-            layoutBorder: layoutSelector ? getComputedStyle(layoutSelector).borderTopStyle : '',
-            layoutRadius: layoutOption ? getComputedStyle(layoutOption).borderTopLeftRadius : '',
+            retiredLayoutControls: modal.querySelectorAll('.appearance-layout-selector, .appearance-layout-option').length,
             homeVisualDisplay: homeVisual ? getComputedStyle(homeVisual).display : '',
         };
     });
-    assert.equal(classicAppearanceSettings.activeSection, 'section-appearance-settings', `Classic appearance section did not open: ${JSON.stringify(classicAppearanceSettings)}`);
-    assert.equal(classicAppearanceSettings.workbenchDisplay, 'grid', `Classic appearance workbench fell back to unstyled flow: ${JSON.stringify(classicAppearanceSettings)}`);
-    assert.notEqual(classicAppearanceSettings.workbenchColumns, 'none', `Classic appearance workbench columns are missing: ${JSON.stringify(classicAppearanceSettings)}`);
-    assert.equal(classicAppearanceSettings.layoutBorder, '', `retired layout selector remains visible: ${JSON.stringify(classicAppearanceSettings)}`);
-    assert.equal(classicAppearanceSettings.layoutRadius, '', `retired layout option remains visible: ${JSON.stringify(classicAppearanceSettings)}`);
-    assert.equal(classicAppearanceSettings.homeVisualDisplay, 'flex', `Classic home visual controls are not aligned: ${JSON.stringify(classicAppearanceSettings)}`);
-    await capture(page, 'main-settings-classic.png');
+    assert.equal(unifiedAppearanceSettings.activeSection, 'section-appearance-settings', `Appearance section did not open: ${JSON.stringify(unifiedAppearanceSettings)}`);
+    assert.equal(unifiedAppearanceSettings.workbenchDisplay, 'grid', `Appearance workbench fell back to unstyled flow: ${JSON.stringify(unifiedAppearanceSettings)}`);
+    assert.notEqual(unifiedAppearanceSettings.workbenchColumns, 'none', `Appearance workbench columns are missing: ${JSON.stringify(unifiedAppearanceSettings)}`);
+    assert.equal(unifiedAppearanceSettings.retiredLayoutControls, 0, `retired layout controls remain in settings: ${JSON.stringify(unifiedAppearanceSettings)}`);
+    assert.equal(unifiedAppearanceSettings.homeVisualDisplay, 'grid', `Home visual controls are not aligned: ${JSON.stringify(unifiedAppearanceSettings)}`);
+    await capture(page, 'main-settings-unified.png');
     await page.evaluate(() => window.uiHelperFunctions.closeModal('globalSettingsModal'));
     summary.push({ surface: '主窗口与全局设置', mode: 'canonical', pass: true, lucide: 0, note: '旧 Classic 配置无法拆卸唯一布局，共享输入、通知、壁纸与设置保持可用' });
 
     console.log('Electron UI apps smoke passed (canonical main layout plus upstream-Classic child host integration).');
 } catch (error) {
+    summary.push({
+        surface: 'Electron smoke remainder',
+        mode: 'runner',
+        pass: false,
+        lucide: 0,
+        note: `aborted: ${error?.message || String(error)}`,
+    });
     console.error(`Electron UI apps smoke failed:\n${error?.stack || error}`);
     for (const [label, errors] of [...pageErrors, ...consoleErrors]) {
         if (errors.length) console.error(`\n${label} errors:\n${errors.slice(0, 12).map(line => `- ${line}`).join('\n')}`);

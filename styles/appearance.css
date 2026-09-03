@@ -352,16 +352,16 @@
 
     .appearance-settings-grid {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
         gap: 14px 16px;
     }
 
-    .appearance-settings-grid .settings-form-group {
+    .appearance-settings-grid .vcp-settings-row {
         min-width: 0;
         margin: 0;
     }
 
-    .appearance-settings-grid .settings-form-group > span {
+    .appearance-settings-grid .vcp-settings-row > span {
         display: block;
         margin-bottom: 7px;
         color: var(--vcp-ui-text-1, var(--primary-text));

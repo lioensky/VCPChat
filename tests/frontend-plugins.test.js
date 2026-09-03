@@ -492,3 +492,30 @@ test('统一加载桥只加载现有插件管理器返回的已启用前端插�
     assert.equal(window.document.querySelector('[data-vcp-plugin="VChatAutoTTS"]'), null);
     dom.window.close();
 });
+
+test('统一加载桥尊重禁用插件清单，不把 .block 插件当成必选依赖', async () => {
+    const dom = new JSDOM('<!doctype html><head></head><body></body>', {
+        url: 'https://vcpchat.local/main.html',
+        runScripts: 'outside-only'
+    });
+    const { window } = dom;
+    window.chatAPI = {
+        listEnabledFrontendPlugins: async () => ({ success: true, plugins: [] })
+    };
+    const appendedScripts = [];
+    const originalAppendChild = window.document.body.appendChild.bind(window.document.body);
+    window.document.body.appendChild = (node) => {
+        const result = originalAppendChild(node);
+        if (node.tagName === 'SCRIPT') appendedScripts.push(node.getAttribute('src'));
+        return result;
+    };
+
+    window.eval(readPlugin('VCPDistributedServer/frontend-plugin-loader.js'));
+    window.document.dispatchEvent(new window.Event('DOMContentLoaded'));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.deepEqual(appendedScripts, []);
+    assert.equal(window.VCPFrontendPlugins.get('vchat-dynamic-wallpaper'), undefined);
+    assert.equal(window.document.querySelector('#vchat-dynamic-wallpaper-panel'), null);
+    dom.window.close();
+});

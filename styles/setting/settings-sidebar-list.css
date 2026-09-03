@@ -24,6 +24,11 @@
     border-bottom: none;
 }
 
+.settings-header-bar,
+.settings-header-bar::after {
+    display: none !important;
+}
+
 .settings-header-bar::after {
     content: "";
     position: absolute;
@@ -51,7 +56,7 @@
     color: var(--secondary-text);
 }
 
-.settings-header-bar .global-settings-btn {
+.settings-header-bar .global-settings-btn:not(.vcp-uiux-button) {
     position: relative;
     isolation: isolate;
     flex: 0 0 auto;
@@ -77,32 +82,32 @@
     box-shadow: none;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
-    transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s, color 0.2s;
+    transition: background-color var(--vcp-motion-duration-normal), border-color var(--vcp-motion-duration-normal), box-shadow var(--vcp-motion-duration-normal), color var(--vcp-motion-duration-normal);
 }
 
-.settings-header-bar .global-settings-btn:hover {
+.settings-header-bar .global-settings-btn:not(.vcp-uiux-button):hover {
     background-color: var(--button-hover-bg);
     border-color: var(--button-hover-bg);
     color: var(--primary-text);
 }
 
-body.light-theme .settings-header-bar .global-settings-btn {
+body[data-vcp-theme="light"] .settings-header-bar .global-settings-btn:not(.vcp-uiux-button) {
     background: transparent;
     border-color: rgba(51, 51, 51, 0.08);
     color: var(--button-bg);
 }
 
-body:not(.light-theme) .settings-header-bar .global-settings-btn {
+body[data-vcp-theme="dark"] .settings-header-bar .global-settings-btn:not(.vcp-uiux-button) {
     color: var(--highlight-text);
 }
 
-body:not(.light-theme) .settings-header-bar .global-settings-btn:hover {
+body[data-vcp-theme="dark"] .settings-header-bar .global-settings-btn:not(.vcp-uiux-button):hover {
     background: var(--highlight-text);
     border-color: var(--highlight-text);
     color: var(--text-on-accent);
 }
 
-body.light-theme .settings-header-bar .global-settings-btn:hover {
+body[data-vcp-theme="light"] .settings-header-bar .global-settings-btn:not(.vcp-uiux-button):hover {
     background:
         linear-gradient(
             180deg,
@@ -141,14 +146,14 @@ body.light-theme .settings-header-bar .global-settings-btn:hover {
         justify-content: center;
     }
 
-    .settings-header-bar .global-settings-btn {
+    .settings-header-bar .global-settings-btn:not(.vcp-uiux-button) {
         max-width: 28px;
         padding: 0;
         font-size: 0;
         color: transparent;
     }
 
-    .settings-header-bar .global-settings-btn::before {
+    .settings-header-bar .global-settings-btn:not(.vcp-uiux-button)::before {
         content: "全";
         font-size: 13px;
         font-weight: 600;
@@ -158,26 +163,26 @@ body.light-theme .settings-header-bar .global-settings-btn:hover {
 }
 
 @container sidebar (max-width: 205px) {
-    body:not(.light-theme) .settings-header-bar .global-settings-btn::before {
+    body[data-vcp-theme="dark"] .settings-header-bar .global-settings-btn:not(.vcp-uiux-button)::before {
         color: var(--highlight-text);
     }
 }
 
 @container sidebar (max-width: 205px) {
-    .settings-header-bar .global-settings-btn::before {
+    .settings-header-bar .global-settings-btn:not(.vcp-uiux-button)::before {
         content: "\5168";
     }
 }
 
 @container sidebar (max-width: 205px) {
-    .settings-header-bar .global-settings-btn {
+    .settings-header-bar .global-settings-btn:not(.vcp-uiux-button) {
         max-width: none;
         padding: 0 12px;
         font-size: 0.9em;
         color: inherit;
     }
 
-    .settings-header-bar .global-settings-btn::before {
+    .settings-header-bar .global-settings-btn:not(.vcp-uiux-button)::before {
         content: none;
     }
 }
@@ -224,7 +229,7 @@ body.light-theme .settings-header-bar .global-settings-btn:hover {
     display: flex;
     align-items: center;
     box-sizing: border-box;
-    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+    transition: background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), box-shadow var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 .sidebar .agent-list li:hover,
@@ -346,7 +351,7 @@ body.light-theme .settings-header-bar .global-settings-btn:hover {
     white-space: nowrap;
 }
 
-body:not(.light-theme) .sidebar .topic-list .topic-unread-indicator {
+body[data-vcp-theme="dark"] .sidebar .topic-list .topic-unread-indicator {
     border-color: color-mix(in srgb, #ff7b7b 52%, transparent);
     background: color-mix(in srgb, #ff6b6b 18%, transparent);
     color: #ff9a9a;
@@ -425,7 +430,7 @@ body:not(.light-theme) .sidebar .topic-list .topic-unread-indicator {
 
 .sidebar .agent-list li.has-agent-emotion .agent-name {
     position: relative;
-    transition: color 0.22s ease, text-shadow 0.22s ease;
+    transition: color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), text-shadow var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 .sidebar .agent-list li.has-agent-emotion .agent-name::after {
@@ -444,7 +449,7 @@ body:not(.light-theme) .sidebar .topic-list .topic-unread-indicator {
     text-overflow: ellipsis;
     opacity: 0;
     pointer-events: none;
-    transition: opacity 0.22s ease, transform 0.22s ease;
+    transition: opacity var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), transform var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 .sidebar .agent-list li.has-agent-emotion:hover .agent-name {
@@ -472,7 +477,7 @@ body:not(.light-theme) .sidebar .topic-list .topic-unread-indicator {
     box-shadow:
         0 9px 24px color-mix(in srgb, var(--agent-emotion-color) 14%, transparent),
         inset 0 0 0 1px color-mix(in srgb, var(--agent-emotion-color) 24%, rgba(255, 255, 255, 0.08));
-    transition: opacity 0.18s ease, transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+    transition: opacity var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard), transform var(--vcp-motion-duration-fast) var(--vcp-motion-ease-emphasized);
 }
 
 .agent-emotion-card::before {
@@ -483,7 +488,7 @@ body:not(.light-theme) .sidebar .topic-list .topic-unread-indicator {
         linear-gradient(90deg, transparent, color-mix(in srgb, var(--agent-emotion-color) 28%, transparent), transparent);
     opacity: 0.58;
     transform: translateX(-42%) rotate(12deg);
-    animation: agentEmotionSweep 2.6s ease-in-out infinite;
+    animation: agentEmotionSweep 2.6s var(--vcp-motion-ease-standard) infinite;
     animation-play-state: paused;
 }
 
@@ -543,7 +548,7 @@ body:not(.light-theme) .sidebar .topic-list .topic-unread-indicator {
     animation-play-state: running;
 }
 
-body:not(.light-theme) .sidebar .agent-list .agent-emotion-card {
+body[data-vcp-theme="dark"] .sidebar .agent-list .agent-emotion-card {
     background:
         radial-gradient(circle at 16% 50%, color-mix(in srgb, var(--agent-emotion-color) 20%, transparent), transparent 38%),
         linear-gradient(120deg, color-mix(in srgb, var(--agent-emotion-color) 16%, transparent), rgba(18, 20, 28, 0.18));
@@ -626,7 +631,7 @@ body:not(.light-theme) .sidebar .agent-list .agent-emotion-card {
     pointer-events: none;
 }
 
-body:not(.light-theme) .sidebar .topic-list .topic-item .message-count {
+body[data-vcp-theme="dark"] .sidebar .topic-list .topic-item .message-count {
     border: 1px solid rgba(255, 255, 255, 0.08);
     background: linear-gradient(
         180deg,
@@ -641,11 +646,11 @@ body:not(.light-theme) .sidebar .topic-list .topic-item .message-count {
         inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
-body:not(.light-theme) .sidebar .topic-list .topic-item .message-count::after {
+body[data-vcp-theme="dark"] .sidebar .topic-list .topic-item .message-count::after {
     display: none;
 }
 
-body:not(.light-theme) .sidebar .agent-list li.active {
+body[data-vcp-theme="dark"] .sidebar .agent-list li.active {
     background: linear-gradient(
         180deg,
         color-mix(in srgb, var(--user-bubble-bg) 52%, rgba(255, 255, 255, 0.06)),
@@ -660,7 +665,7 @@ body:not(.light-theme) .sidebar .agent-list li.active {
         inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
-body:not(.light-theme) .agents-header .sidebar-subtab-item-active {
+body[data-vcp-theme="dark"] .agents-header .sidebar-subtab-item-active {
     background: transparent;
     border: none;
     backdrop-filter: none;
@@ -668,16 +673,16 @@ body:not(.light-theme) .agents-header .sidebar-subtab-item-active {
     box-shadow: none;
 }
 
-body:not(.light-theme) .sidebar .agent-list li.active::after {
+body[data-vcp-theme="dark"] .sidebar .agent-list li.active::after {
     display: none;
 }
 
-body:not(.light-theme) .agents-header .sidebar-subtab-item-active::after {
+body[data-vcp-theme="dark"] .agents-header .sidebar-subtab-item-active::after {
     display: none;
 }
 
-body:not(.light-theme) .sidebar .agent-list li:hover,
-body:not(.light-theme) .sidebar .topic-list .topic-item:hover {
+body[data-vcp-theme="dark"] .sidebar .agent-list li:hover,
+body[data-vcp-theme="dark"] .sidebar .topic-list .topic-item:hover {
     border: 1px solid rgba(255, 255, 255, 0.08);
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.045));
     backdrop-filter: blur(7px) saturate(115%);
@@ -688,8 +693,8 @@ body:not(.light-theme) .sidebar .topic-list .topic-item:hover {
         inset 0 0 0 1px rgba(255, 255, 255, 0.03);
 }
 
-body:not(.light-theme) .sidebar .agent-list li:hover::after,
-body:not(.light-theme) .sidebar .topic-list .topic-item:hover::after {
+body[data-vcp-theme="dark"] .sidebar .agent-list li:hover::after,
+body[data-vcp-theme="dark"] .sidebar .topic-list .topic-item:hover::after {
     display: none;
 }
 

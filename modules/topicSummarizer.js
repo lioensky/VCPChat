@@ -49,7 +49,7 @@ async function summarizeTopicFromMessages(messages, agentName) {
             },
             body: JSON.stringify({
                 messages: [{ role: 'user', content: summaryPrompt }],
-                model: settings.topicSummaryModel || 'gemini-2.5-flash', // Use configured model or fallback
+                model: settings.topicSummaryModel || 'gemini-2.5-flash-preview-05-20', // Use configured model or the settings-page default
                 temperature: 0.3,
                 max_tokens: 30000
             })

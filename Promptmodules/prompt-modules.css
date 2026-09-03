@@ -45,9 +45,9 @@
 }
 
 .prompt-mode-button.active {
-    background-color: var(--user-bubble-bg);
-    color: white;
-    font-weight: 500;
+    background-color: var(--dsw-alias-bg-layer-1, #ffffff) !important;
+    color: var(--dsw-alias-label-primary, #111111) !important;
+    font-weight: 600;
 }
 
 .prompt-mode-button-icon {
@@ -126,64 +126,80 @@
 /* 工具栏 */
 .modular-toolbar {
     display: flex;
-    gap: 10px;
-    padding: 0 0 10px 0;
+    gap: 8px;
+    padding: 0;
     background-color: transparent;
-    border-radius: 0;
-    border-bottom: 1px solid var(--border-color);
-    flex-wrap: wrap;
+    border: none;
     align-items: center;
+    justify-content: space-between;
 }
 
-/* 工具栏右侧控制组 */
-.toolbar-controls-group {
+.toolbar-btn-group {
     display: flex;
-    gap: 10px;
-    align-items: center;
-    margin-left: auto;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
 }
 
 .toolbar-btn {
-    padding: 8px 12px;
-    background-color: var(--button-bg);
-    border: 1px solid var(--button-bg);
-    color: var(--text-on-accent);
-    border-radius: 6px;
+    height: 32px;
+    padding: 0 10px;
+    background-color: var(--secondary-bg);
+    border: 1px solid var(--border-color);
+    color: var(--primary-text);
+    border-radius: 8px;
     cursor: pointer;
-    font-size: 0.9em;
-    display: flex;
+    font-size: 0.85em;
+    font-weight: 500;
+    display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 5px;
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
     transition: all 0.2s ease;
 }
 
-.toolbar-btn svg {
-    stroke: currentColor;
-}
-
 .toolbar-btn:hover {
-    background-color: var(--button-hover-bg);
-    border-color: var(--button-hover-bg);
+    background-color: var(--accent-bg);
+    border-color: var(--border-color);
+    color: var(--highlight-text);
 }
 
 .toolbar-btn svg {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
+    stroke: currentColor;
+    flex-shrink: 0;
 }
 
 .toolbar-toggle {
-    display: flex;
+    height: 32px;
+    padding: 0 10px;
+    display: inline-flex;
     align-items: center;
     gap: 6px;
-    font-size: 0.9em;
+    font-size: 0.85em;
     color: var(--secondary-text);
+    background-color: var(--secondary-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
     cursor: pointer;
     user-select: none;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+}
+
+.toolbar-toggle:hover {
+    color: var(--highlight-text);
+    background-color: var(--accent-bg);
 }
 
 .toolbar-toggle input[type="checkbox"] {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
+    margin: 0;
     cursor: pointer;
     accent-color: var(--user-bubble-bg);
 }
@@ -534,47 +550,55 @@
 
 /* 小仓 */
 .warehouse-container {
-    padding: 15px;
+    padding: 10px 12px;
     background-color: var(--secondary-bg);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: 10px;
 }
 
 .warehouse-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 10px;
+    gap: 8px;
+    margin-bottom: 8px;
 }
 
-.warehouse-header h4 {
+.warehouse-title {
     margin: 0;
-    color: var(--highlight-text);
-    font-size: 1em;
+    color: var(--secondary-text);
+    font-size: 0.85em;
+    font-weight: 600;
+    white-space: nowrap;
 }
 
 .add-warehouse-btn {
-    padding: 6px 10px;
-    background-color: var(--button-bg);
-    border: 1px solid var(--button-bg);
+    height: 26px;
+    padding: 0 8px;
+    background-color: var(--input-bg);
+    border: 1px solid var(--border-color);
     color: var(--primary-text);
     border-radius: 6px;
     cursor: pointer;
-    font-size: 0.9em;
-    display: flex;
+    font-size: 0.8em;
+    font-weight: 500;
+    display: inline-flex;
     align-items: center;
+    gap: 4px;
+    white-space: nowrap;
     transition: all 0.2s ease;
 }
 
 .add-warehouse-btn:hover {
-    background-color: var(--button-hover-bg);
-    border-color: var(--button-hover-bg);
+    background-color: var(--accent-bg);
+    border-color: var(--border-color);
+    color: var(--highlight-text);
 }
 
 .warehouse-selector {
     display: flex;
-    gap: 8px;
-    margin-bottom: 10px;
+    gap: 6px;
+    margin-bottom: 8px;
     flex-wrap: wrap;
 }
 
@@ -585,28 +609,35 @@
     transition: all 0.2s ease;
 }
 
-.warehouse-item.active .warehouse-btn {
-    background-color: var(--user-bubble-bg);
-    color: white;
-}
-
-.warehouse-item.dragging {
-    opacity: 0.5;
-}
-
 .warehouse-btn {
-    padding: 6px 12px;
-    background-color: var(--button-bg);
-    border: 1px solid var(--button-bg);
-    color: var(--primary-text);
-    border-radius: 6px;
+    height: 26px;
+    padding: 0 10px;
+    background-color: var(--input-bg);
+    border: 1px solid var(--border-color);
+    color: var(--secondary-text);
+    border-radius: 9999px;
     cursor: pointer;
-    font-size: 0.85em;
+    font-size: 0.8em;
+    font-weight: 500;
+    white-space: nowrap;
     transition: all 0.2s ease;
 }
 
 .warehouse-btn:hover {
-    background-color: var(--button-hover-bg);
+    background-color: var(--accent-bg);
+    color: var(--highlight-text);
+}
+
+.warehouse-item.active .warehouse-btn {
+    background-color: var(--dsw-alias-bg-layer-1, #ffffff) !important;
+    border-color: var(--dsw-alias-border-l1, rgba(0, 0, 0, 0.25)) !important;
+    color: var(--primary-text, #111111) !important;
+    font-weight: 600 !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08) !important;
+}
+
+.warehouse-item.dragging {
+    opacity: 0.5;
 }
 
 .hidden-blocks-list {
@@ -742,11 +773,13 @@
 }
 
 /* ===== 临时与预制系统提示词模块样式 ===== */
-.preset-prompt-container {
+.preset-prompt-container,
+.modular-prompt-container,
+.original-prompt-container {
     display: flex;
     flex-direction: column;
     gap: 10px;
-    padding: 12px;
+    padding: 8px 6px 8px;
 }
 
 .preset-path-section,
@@ -754,74 +787,111 @@
 .preset-editor-section {
     display: flex;
     flex-direction: column;
+    gap: 6px;
+}
+
+.preset-path-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     gap: 8px;
+}
+
+.preset-section-label,
+.preset-path-section label,
+.preset-selector-section label,
+.preset-editor-section label {
+    font-size: 0.85em;
+    font-weight: 600;
+    color: var(--secondary-text);
+    margin: 0;
+}
+
+.preset-path-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
 .path-input-container {
     display: flex;
-    gap: 8px;
-    align-items: center;
+    width: 100%;
 }
 
 .preset-path-input {
-    flex: 1;
-    padding: 9px 10px;
+    width: 100%;
+    height: 34px;
+    padding: 0 10px;
     border-radius: 8px;
     border: 1px solid var(--border-color);
     background-color: var(--input-bg);
     color: var(--primary-text);
-    font-size: 0.95em;
+    font-size: 0.88em;
+    box-sizing: border-box;
 }
 
 .preset-browse-btn,
 .preset-refresh-btn {
-    padding: 9px 15px;
-    background-color: var(--button-bg);
-    border: 1px solid var(--button-bg);
-    color: var(--text-on-accent);
-    border-radius: 8px;
+    height: 26px;
+    padding: 0 8px;
+    background-color: var(--secondary-bg);
+    border: 1px solid var(--border-color);
+    color: var(--primary-text);
+    border-radius: 6px;
     cursor: pointer;
-    font-size: 0.95em;
+    font-size: 0.8em;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
     transition: all 0.2s ease;
     white-space: nowrap;
 }
 
 .preset-refresh-btn {
-    padding: 9px 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    width: 26px;
+    padding: 0;
 }
 
-.preset-refresh-btn svg {
-    stroke: currentColor;
+.preset-refresh-btn svg,
+.preset-browse-btn svg {
+    flex-shrink: 0;
 }
 
 .preset-browse-btn:hover,
 .preset-refresh-btn:hover {
-    background-color: var(--button-hover-bg);
-    border-color: var(--button-hover-bg);
+    background-color: var(--accent-bg);
+    border-color: var(--border-color);
+    color: var(--highlight-text);
+}
+
+.preset-select-wrapper {
+    position: relative;
+    width: 100%;
 }
 
 .preset-select {
     width: 100%;
-    padding: 9px 10px;
+    height: 34px;
+    padding: 0 10px;
     border-radius: 8px;
     border: 1px solid var(--border-color);
     background-color: var(--input-bg);
     color: var(--primary-text);
-    font-size: 0.95em;
+    font-size: 0.88em;
     cursor: pointer;
+    box-sizing: border-box;
 }
 
 .preset-select:focus {
     outline: none;
-    border-color: var(--user-bubble-bg);
-    box-shadow: 0 0 0 2px rgba(61, 90, 128, 0.3);
+    border-color: var(--highlight-text);
 }
 
 .preset-prompt-textarea {
-    min-height: 60px;
+    min-height: 80px;
+    border-radius: 10px;
 }
 
 /* 响应式设计 */
@@ -890,8 +960,8 @@
 
 /* 亮色主题适配 */
 body.light-theme .prompt-mode-button.active {
-    background-color: var(--user-bubble-bg);
-    color: white;
+    background-color: var(--dsw-alias-bg-layer-1, #ffffff) !important;
+    color: var(--dsw-alias-label-primary, #111111) !important;
 }
 
 body.light-theme .block-context-menu {

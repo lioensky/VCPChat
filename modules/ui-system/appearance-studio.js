@@ -251,6 +251,11 @@
 
     const clone = value => JSON.parse(JSON.stringify(value));
     const api = () => window.chatAPI || window.electronAPI;
+    const toOps = (value, prefix = []) => Object.entries(value || {}).flatMap(([key, next]) => {
+        const path = [...prefix, key];
+        return next && typeof next === 'object' && !Array.isArray(next) ? toOps(next, path) : [{ op: 'set', path, value: next }];
+    });
+    const saveSettingsPatch = patch => api()?.saveSettings?.({ __vcpSettingsOps: toOps(patch) });
     function normalizeHomeTaglineText(value, fallback = DEFAULT_HOME_TAGLINE) {
         const normalized = typeof value === 'string' ? value.trim().slice(0, 120) : '';
         return normalized || fallback;
@@ -492,9 +497,9 @@
         const trigger = document.getElementById('openAppearanceStudioFromSettings');
         if (!card || !form || !trigger) return;
         if (!card.dataset.appearanceSummaryBound) {
-            const bindSummary = (target, type, handler) => moduleScope
-                ? moduleScope.listen(target, type, handler, undefined, `appearance-settings-summary:${type}`)
-                : target.addEventListener(type, handler);
+            const bindSummary = (target, type, handler, options) => moduleScope
+                ? moduleScope.listen(target, type, handler, options, `appearance-settings-summary:${type}`)
+                : target.addEventListener(type, handler, options);
             bindSummary(form, 'change', event => {
                 if (event.target.matches('input[name="appearanceSidebarRadiusChoice"]')) {
                     const compatibilityControl = document.getElementById('appearanceSidebarRadius');
@@ -504,7 +509,16 @@
                     syncSettingsSummary();
                 }
             });
-            bindSummary(form, 'input', event => {
+            // 回填快照（applySettings）写值只派发不冒泡的 vcp-uiux-sync；
+            // 若快照回填落在开模态的 rAF 绑定同步之后，摘要会滞留 base
+            // 默认文案且再无事件兜底。捕获监听能在祖先上收到不冒泡事件，
+            // 使回填写值后的摘要无条件重同步（消除开模态竞态）。
+            bindSummary(form, 'vcp-uiux-sync', event => {
+                if (event.target.matches?.('[id^="appearance"], #showHomeVisualBrand, #showHomeVisualTagline, #homeVisualTagline, input[name="chatPresentationMode"]')) {
+                    syncSettingsSummary();
+                }
+            }, true);
+        bindSummary(form, 'input', event => {
                 if (event.target.id === 'appearanceCustomRadius') {
                     const output = document.getElementById('appearanceCustomRadiusValue');
                     if (output) output.value = `${event.target.value}px`;
@@ -1118,7 +1132,7 @@
         } : null;
         let settingsPersisted = false;
         try {
-            const result = await api()?.saveSettings?.({
+            const result = await saveSettingsPatch({
                 appearanceProfile: nextState.profile,
                 chatPresentationMode: nextState.presentation,
                 enableWideChatLayout: nextState.messageWidth === 'wide',
@@ -1174,7 +1188,7 @@
         } catch (error) {
             if (settingsPersisted && persistedSnapshot) {
                 try {
-                    const rollbackResult = await api()?.saveSettings?.(persistedSnapshot);
+                    const rollbackResult = await saveSettingsPatch(persistedSnapshot);
                     if (!rollbackResult?.success) throw new Error(rollbackResult?.error || '设置回写失败');
                 } catch (rollbackError) {
                     console.error('[AppearanceStudio] Failed to restore persisted settings:', rollbackError);
@@ -1362,7 +1376,7 @@
             MATERIAL_FIELDS.forEach(field => {
                 draft.profile[field] = MATERIAL_DEFAULTS[field];
             });
-            await preview({ appearanceOnly: true });
+            try { await preview({ appearanceOnly: true }); } catch (error) { console.error('[AppearanceStudio] Preview failed while editing sidebar height:', error); }
             return;
         }
         const materialEffect = target.dataset.materialEffect;
@@ -1370,7 +1384,7 @@
             draft.profile.surface = 'custom';
             draft.profile.surfaceEffect = materialEffect;
             Object.assign(draft.profile, MATERIAL_EFFECTS[materialEffect].values);
-            await preview({ appearanceOnly: true });
+            try { await preview({ appearanceOnly: true }); } catch (error) { console.error('[AppearanceStudio] Preview failed while editing avatar size:', error); }
             return;
         }
         if (target.matches('[data-reset-all]')) {
@@ -1435,7 +1449,7 @@
             syncControls();
             return;
         }
-        const control = event.target.closest('input[type="range"][data-appearance-key]');
+        const control = event.target.closest('input[data-appearance-key]');
         if (!control || saving || !draft) return;
         const key = control.dataset.appearanceKey;
         if (key === 'sidebarRowHeight') {
@@ -1448,7 +1462,7 @@
                 draft.profile.sidebarAvatarSize = nextAutoAvatar;
             }
             draft.profile.sidebarAvatarSize = Math.min(draft.profile.sidebarAvatarSize, nextRowHeight - 4);
-            await preview({ appearanceOnly: true });
+            try { await preview({ appearanceOnly: true }); } catch (error) { console.error('[AppearanceStudio] Preview failed while editing radius:', error); }
             return;
         }
         if (key === 'sidebarAvatarSize') {
@@ -1470,7 +1484,7 @@
         const value = Math.min(config.max, Math.max(config.min, Number(control.value)));
         draft.profile[key] = value;
         draft.profile.surface = 'custom';
-        await preview({ appearanceOnly: true });
+        try { await preview({ appearanceOnly: true }); } catch (error) { console.error('[AppearanceStudio] Preview failed while editing appearance value:', error); }
     }
 
     function handleKeydown(event) {

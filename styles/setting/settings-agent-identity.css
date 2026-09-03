@@ -37,7 +37,7 @@
     object-fit: cover;
     object-position: center;
     border: 3px solid var(--button-bg);
-    transition: border-color 0.3s ease, transform 0.2s ease;
+    transition: border-color var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard), transform var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
     cursor: pointer;
     /* 高质量图片渲染 */
     image-rendering: -webkit-optimize-contrast;
@@ -63,7 +63,7 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    /*     transition: background-color 0.3s ease, opacity 0.3s ease; */
+    /*     transition: background-color var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard), opacity var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard); */
     opacity: 0;
 }
 
@@ -133,7 +133,9 @@
     /* 与上方名片接壤，无间隙 */
     border-top: 1px solid var(--border-color);
     background-color: var(--input-bg);
-    transition: all 0.3s ease;
+    transition: background-color var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard),
+                border-color var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard),
+                opacity var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard);
 }
 
 .style-collapse-header {
@@ -142,7 +144,7 @@
     padding: 12px 15px;
     cursor: pointer;
     background-color: var(--input-bg);
-    transition: background-color 0.2s ease;
+    transition: background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
     user-select: none;
 }
 
@@ -154,7 +156,7 @@
     margin-right: 8px;
     font-size: 0.8em;
     color: var(--secondary-text);
-    transition: transform 0.3s ease;
+    transition: transform var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard);
 }
 
 .agent-style-collapsible-container:not(.collapsed) .style-collapse-icon {
@@ -178,7 +180,7 @@
     /* 改为auto，允许滚动 */
     overflow-x: hidden;
     opacity: 1;
-    transition: max-height 0.3s ease, opacity 0.3s ease, padding 0.3s ease;
+    transition: max-height var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard), opacity var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard), padding var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard);
 }
 
 /* 样式控制区域的滚动条样式 */
@@ -235,7 +237,10 @@
     align-items: center;
 }
 
-.color-input-group input[type="color"] {
+/* Legacy color controls are direct children. Once the typed ColorPair owns a
+   pair it wraps both inputs, so these historic 37px/pill rules must no longer
+   leak through and override the primitive's 32px/8px contract. */
+.color-input-group > input[type="color"] {
     width: 37px;
     height: 37px;
     min-width: 37px;
@@ -247,38 +252,38 @@
     box-sizing: border-box;
     overflow: hidden;
     transition:
-        border-color 0.2s ease,
-        box-shadow 0.2s ease,
-        transform 0.2s ease;
+        border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+        box-shadow var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+        transform var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
-.color-input-group input[type="color"]::-webkit-color-swatch-wrapper {
+.color-input-group > input[type="color"]::-webkit-color-swatch-wrapper {
     padding: 0;
     border-radius: 999px;
 }
 
-.color-input-group input[type="color"]::-webkit-color-swatch {
+.color-input-group > input[type="color"]::-webkit-color-swatch {
     border: none;
     border-radius: 999px;
 }
 
-.color-input-group input[type="color"]::-moz-color-swatch {
+.color-input-group > input[type="color"]::-moz-color-swatch {
     border: none;
     border-radius: 999px;
 }
 
-.color-input-group input[type="color"]:hover {
+.color-input-group > input[type="color"]:hover {
     border-color: var(--highlight-text);
 }
 
-.color-input-group input[type="color"]:focus,
-.color-input-group input[type="color"]:focus-visible {
+.color-input-group > input[type="color"]:focus,
+.color-input-group > input[type="color"]:focus-visible {
     outline: none;
     border-color: var(--highlight-text);
     box-shadow: none;
 }
 
-.color-input-group input[type="text"] {
+.color-input-group > input[type="text"] {
     flex-grow: 1;
     height: 37px;
     padding: 0 12px;
@@ -291,48 +296,32 @@
     box-sizing: border-box;
 }
 
-body.light-theme .color-input-group input[type="color"],
-body.light-theme .color-input-group input[type="text"] {
-    background: linear-gradient(
-        180deg,
-        rgba(255, 255, 255, 0.82),
-        rgba(255, 255, 255, 0.58)
-    );
-    border-color: rgba(51, 51, 51, 0.08);
-    backdrop-filter: blur(10px) saturate(130%);
-    -webkit-backdrop-filter: blur(10px) saturate(130%);
-    box-shadow:
-        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.74),
-        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.62),
-        inset 0 0 1px rgba(0, 0, 0, 0.08);
+body[data-vcp-theme="light"] .color-input-group > input[type="color"],
+body[data-vcp-theme="light"] .color-input-group > input[type="text"] {
+    background: var(--vcp-ui-bg-1, #ffffff);
+    border: 1px solid var(--vcp-ui-control-border, #d1d5db);
+    border-radius: 8px;
+    box-shadow: none;
 }
 
-body.light-theme .color-input-group input[type="text"]:hover,
-body.light-theme .color-input-group input[type="text"]:focus,
-body.light-theme .color-input-group input[type="text"]:focus-visible {
-    border-color: var(--highlight-text);
+body[data-vcp-theme="light"] .color-input-group > input[type="text"]:hover,
+body[data-vcp-theme="light"] .color-input-group > input[type="text"]:focus,
+body[data-vcp-theme="light"] .color-input-group > input[type="text"]:focus-visible {
+    border-color: var(--vcp-ui-control-focus, #3b82f6);
 }
 
-body:not(.light-theme) .color-input-group input[type="color"],
-body:not(.light-theme) .color-input-group input[type="text"] {
-    background: linear-gradient(
-        180deg,
-        rgba(255, 255, 255, 0.08),
-        rgba(255, 255, 255, 0.04)
-    );
-    border-color: rgba(255, 255, 255, 0.08);
-    backdrop-filter: blur(8px) saturate(118%);
-    -webkit-backdrop-filter: blur(8px) saturate(118%);
-    box-shadow:
-        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
-        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+body[data-vcp-theme="dark"] .color-input-group > input[type="color"],
+body[data-vcp-theme="dark"] .color-input-group > input[type="text"] {
+    background: var(--vcp-ui-bg-1, #1e1e20);
+    border: 1px solid var(--vcp-ui-control-border, rgba(255, 255, 255, 0.14));
+    border-radius: 8px;
+    box-shadow: none;
 }
 
-body:not(.light-theme) .color-input-group input[type="text"]:hover,
-body:not(.light-theme) .color-input-group input[type="text"]:focus,
-body:not(.light-theme) .color-input-group input[type="text"]:focus-visible {
-    border-color: var(--highlight-text);
+body[data-vcp-theme="dark"] .color-input-group > input[type="text"]:hover,
+body[data-vcp-theme="dark"] .color-input-group > input[type="text"]:focus,
+body[data-vcp-theme="dark"] .color-input-group > input[type="text"]:focus-visible {
+    border-color: var(--vcp-ui-control-focus, #60a5fa);
 }
 
 /* 自定义CSS文本框 */
@@ -355,7 +344,7 @@ body:not(.light-theme) .color-input-group input[type="text"]:focus-visible {
 }
 
 /* 重置颜色按钮 */
-.reset-colors-btn {
+.reset-colors-btn:not(.vcp-uiux-button) {
     position: relative;
     isolation: isolate;
     overflow: hidden;
@@ -376,14 +365,14 @@ body:not(.light-theme) .color-input-group input[type="text"]:focus-visible {
     gap: 8px;
     box-sizing: border-box;
     transition:
-        background 0.2s ease,
-        border-color 0.2s ease,
-        box-shadow 0.2s ease,
-        color 0.2s ease,
-        transform 0.2s ease;
+        background var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+        border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+        box-shadow var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+        color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+        transform var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
-.reset-colors-btn:hover {
+.reset-colors-btn:not(.vcp-uiux-button):hover {
     background: var(--highlight-text);
     border-color: var(--highlight-text);
     backdrop-filter: none;
@@ -391,12 +380,12 @@ body:not(.light-theme) .color-input-group input[type="text"]:focus-visible {
     box-shadow: none;
 }
 
-.reset-colors-btn svg {
+.reset-colors-btn:not(.vcp-uiux-button) svg {
     flex-shrink: 0;
     stroke: currentColor;
 }
 
-body.light-theme .reset-colors-btn {
+body[data-vcp-theme="light"] .reset-colors-btn:not(.vcp-uiux-button) {
     background: linear-gradient(
         180deg,
         color-mix(in srgb, var(--highlight-text) 10%, rgba(255, 255, 255, 0.82)),
@@ -412,13 +401,13 @@ body.light-theme .reset-colors-btn {
         inset 0 0 1px rgba(0, 0, 0, 0.08);
 }
 
-body.light-theme .reset-colors-btn:hover {
+body[data-vcp-theme="light"] .reset-colors-btn:not(.vcp-uiux-button):hover {
     background: var(--highlight-text);
     border-color: var(--highlight-text);
     color: #ffffff;
 }
 
-body:not(.light-theme) .reset-colors-btn {
+body[data-vcp-theme="dark"] .reset-colors-btn:not(.vcp-uiux-button) {
     background: linear-gradient(
         180deg,
         rgba(255, 255, 255, 0.08),
@@ -434,7 +423,7 @@ body:not(.light-theme) .reset-colors-btn {
         inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
-body:not(.light-theme) .reset-colors-btn:hover {
+body[data-vcp-theme="dark"] .reset-colors-btn:not(.vcp-uiux-button):hover {
     background: var(--highlight-text);
     border-color: var(--highlight-text);
     color: #000000;
@@ -489,12 +478,15 @@ body:not(.light-theme) .reset-colors-btn:hover {
     margin-bottom: 10px;
 }
 
-#agentSettingsForm .form-actions button.error-feedback {
+/* Error feedback is a live SettingsActionBar state, not a legacy baseline.
+   Keep it explicit on the typed Button so a failed save still has a visible
+   terminal state after the generic action rules retire. */
+#agentSettingsForm .form-actions button.vcp-uiux-button.error-feedback {
     background-color: var(--danger-color) !important;
     color: white !important;
 }
 
-#agentSettingsForm .form-actions button.error-feedback:hover {
+#agentSettingsForm .form-actions button.vcp-uiux-button.error-feedback:hover {
     background-color: var(--danger-hover-bg) !important;
 }
 
@@ -527,7 +519,7 @@ input[type="file"]::file-selector-button {
     border-radius: 8px;
     cursor: pointer;
     font-size: 0.95em;
-    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+    transition: background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
     font-family: inherit;
 }
 
@@ -537,12 +529,12 @@ input[type="file"]::file-selector-button:hover {
     border-color: var(--button-hover-bg);
 }
 
-body.light-theme input[type="file"]::-webkit-file-upload-button,
-body.light-theme input[type="file"]::file-selector-button {
+body[data-vcp-theme="light"] input[type="file"]::-webkit-file-upload-button,
+body[data-vcp-theme="light"] input[type="file"]::file-selector-button {
     color: #ffffff;
 }
 
-body.light-theme input[type="file"]::-webkit-file-upload-button:hover,
-body.light-theme input[type="file"]::file-selector-button:hover {
+body[data-vcp-theme="light"] input[type="file"]::-webkit-file-upload-button:hover,
+body[data-vcp-theme="light"] input[type="file"]::file-selector-button:hover {
     color: #ffffff;
 }

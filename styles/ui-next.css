@@ -42,11 +42,11 @@ html body {
     background-image: none !important;
 }
 
-html body.light-theme {
+html body[data-vcp-theme="light"] {
     --next-wallpaper: var(--chat-wallpaper-light, var(--chat-wallpaper-dark, none));
 }
 
-html body.dark-theme {
+html body[data-vcp-theme="dark"] {
     --next-shell-bg: var(--next-theme-shell-bg-dark, color-mix(in srgb, var(--secondary-bg, #17191d) 38%, transparent));
     --next-surface: var(--next-theme-surface-dark, color-mix(in srgb, var(--secondary-bg, #22252b) 32%, transparent));
     --next-chat-surface: var(--next-theme-chat-surface-dark, color-mix(in srgb, var(--next-surface) 72%, transparent));
@@ -178,7 +178,7 @@ html .next-ui-window-button {
     color: var(--next-muted);
     font-size: 15px;
     white-space: nowrap;
-    transition: color 120ms ease, background-color 120ms ease, font-weight 120ms ease;
+    transition: color var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard), background-color var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard), font-weight var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard);
 }
 
 html #nextUiHomeTab {
@@ -234,7 +234,7 @@ html #nextUiHomeTab > span:last-child {
     border-radius: 9999px;
     background: color-mix(in srgb, var(--next-text) 16%, transparent);
     opacity: 1;
-    transition: opacity 120ms ease;
+    transition: opacity var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard);
 }
 
 /* No divider before the home brand chip itself; every dynamic tab (including
@@ -369,7 +369,7 @@ html .next-ui-embedded-app-status {
 }
 
 html .next-ui-embedded-app-status .vcp-ui-icon {
-    animation: next-ui-embedded-spin 0.9s linear infinite;
+    animation: next-ui-embedded-spin var(--vcp-motion-duration-spinner) var(--vcp-motion-ease-linear) infinite;
 }
 
 html .next-ui-embedded-app-status.is-error {
@@ -412,7 +412,7 @@ html .next-ui-window-button {
     place-items: center;
     border-radius: 0;
     flex: 0 0 46px;
-    transition: background-color 150ms ease, color 150ms ease;
+    transition: background-color var(--vcp-motion-duration-standard) var(--vcp-motion-ease-standard), color var(--vcp-motion-duration-standard) var(--vcp-motion-ease-standard);
 }
 
 html .next-ui-topbar-actions {
@@ -618,8 +618,8 @@ html .next-ui-sidebar-control-icon {
     inset: 50% auto auto 50%;
     transform: translate(-50%, -50%);
     transition:
-        opacity 140ms ease,
-        transform 180ms ease;
+        opacity var(--vcp-motion-duration-standard) var(--vcp-motion-ease-standard),
+        transform var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard);
 }
 
 html .next-ui-sidebar-brand {
@@ -751,7 +751,7 @@ html .main-content.next-ui-empty-state-active[data-chat-empty="true"][data-chat-
 .next-ui-empty-brand {
     width: 100%;
     filter: drop-shadow(0 18px 34px rgba(0, 0, 0, 0.12));
-    animation: next-ui-empty-brand-breathe 5.5s ease-in-out infinite;
+    animation: next-ui-empty-brand-breathe var(--vcp-motion-duration-ambient) var(--vcp-motion-ease-standard) infinite;
 }
 
 .next-ui-empty-brand-svg {
@@ -784,7 +784,7 @@ html .main-content.next-ui-empty-state-active[data-chat-empty="true"][data-chat-
     stroke-linecap: round;
     stroke-linejoin: round;
     stroke-dasharray: 150 400;
-    animation: next-ui-empty-brand-flow 6.5s linear infinite;
+    animation: next-ui-empty-brand-flow var(--vcp-motion-duration-flow) var(--vcp-motion-ease-linear) infinite;
 }
 
 .next-ui-empty-brand-cyan {
@@ -816,21 +816,21 @@ html[data-vcp-home-tagline="hidden"] .next-ui-empty-tagline {
     display: none;
 }
 
-html body.light-theme .next-ui-empty-brand-base {
+html body[data-vcp-theme="light"] .next-ui-empty-brand-base {
     fill: color-mix(in srgb, #ffffff 78%, var(--primary-bg));
     stroke: color-mix(in srgb, #94a3b8 50%, var(--next-border));
     filter: drop-shadow(0 2px 8px rgba(71, 85, 105, 0.1));
 }
 
-html body.light-theme .next-ui-empty-brand-flow {
+html body[data-vcp-theme="light"] .next-ui-empty-brand-flow {
     stroke-width: 3px;
 }
 
-html body.light-theme .next-ui-empty-brand-cyan {
+html body[data-vcp-theme="light"] .next-ui-empty-brand-cyan {
     filter: drop-shadow(0 0 6px var(--next-empty-flow-glow-strong));
 }
 
-html body.light-theme .next-ui-empty-brand-pink {
+html body[data-vcp-theme="light"] .next-ui-empty-brand-pink {
     filter: drop-shadow(0 0 6px var(--next-empty-flow-glow-soft));
 }
 
@@ -921,7 +921,7 @@ html .next-ui-launchpad {
     background-attachment: scroll;
 }
 
-body.light-theme .next-ui-launchpad {
+body[data-vcp-theme="light"] .next-ui-launchpad {
     background-image:
         linear-gradient(color-mix(in srgb, var(--vcp-ui-bg-0, var(--next-surface)) 55%, transparent), color-mix(in srgb, var(--vcp-ui-bg-0, var(--next-surface)) 55%, transparent)),
         var(--next-wallpaper);
@@ -988,10 +988,10 @@ html body.next-ui-launchpad-open .next-ui-launchpad {
     transform: translateX(-34%) scale(0.98);
     mask-image: linear-gradient(90deg, transparent 0%, transparent 18%, rgba(0, 0, 0, 0.08) 32%, rgba(0, 0, 0, 0.3) 50%, rgba(0, 0, 0, 0.7) 70%, #000 90%);
     -webkit-mask-image: linear-gradient(90deg, transparent 0%, transparent 18%, rgba(0, 0, 0, 0.08) 32%, rgba(0, 0, 0, 0.3) 50%, rgba(0, 0, 0, 0.7) 70%, #000 90%);
-    animation: next-ui-nova-reveal 1.35s 0.25s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    animation: next-ui-nova-reveal var(--vcp-motion-duration-reveal) var(--vcp-motion-delay-reveal) var(--vcp-motion-ease-emphasized) forwards;
 }
 
-body.light-theme .next-ui-nova-panel::before {
+body[data-vcp-theme="light"] .next-ui-nova-panel::before {
     background-image:
         radial-gradient(circle at 74% 50%, color-mix(in srgb, var(--next-empty-flow-primary) 24%, transparent), transparent 56%),
         url("../assets/nova_button_light.png");
@@ -1073,7 +1073,7 @@ body.light-theme .next-ui-nova-panel::before {
     line-height: 1;
     text-decoration: none;
     cursor: pointer;
-    transition: transform 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+    transition: transform var(--vcp-motion-duration-standard) var(--vcp-motion-ease-standard), background-color var(--vcp-motion-duration-standard) var(--vcp-motion-ease-standard), box-shadow var(--vcp-motion-duration-standard) var(--vcp-motion-ease-standard);
 }
 
 .next-ui-nova-link:hover {
@@ -1148,7 +1148,7 @@ body.light-theme .next-ui-nova-panel::before {
     color: #ffffff;
     background: #4f5cf0;
     box-shadow: var(--next-shadow);
-    transition: transform 160ms ease, box-shadow 160ms ease;
+    transition: transform var(--vcp-motion-duration-standard) var(--vcp-motion-ease-standard), box-shadow var(--vcp-motion-duration-standard) var(--vcp-motion-ease-standard);
 }
 
 .next-ui-app-icon svg {
@@ -1301,7 +1301,7 @@ body.light-theme .next-ui-nova-panel::before {
             drop-shadow(0 0 6px var(--next-empty-flow-glow-soft));
     }
 
-    html body.light-theme .next-ui-empty-brand-base {
+    html body[data-vcp-theme="light"] .next-ui-empty-brand-base {
         filter:
             drop-shadow(0 0 4px var(--next-empty-flow-glow-strong))
             drop-shadow(0 0 4px var(--next-empty-flow-glow-soft));
