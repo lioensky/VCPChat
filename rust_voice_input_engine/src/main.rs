@@ -902,10 +902,10 @@ mod platform {
         )
     }
 
-    use super::{Arc, AtomicBool};
+    use super::{Arc, SharedState};
     use std::sync::mpsc::Sender;
 
-    pub fn run_hotkey_hook(running: Arc<AtomicBool>, _sender: Sender<bool>) {
+    pub fn run_hotkey_hook(running: Arc<SharedState>, _sender: Sender<bool>) {
         while running.running.load(std::sync::atomic::Ordering::SeqCst) {
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
