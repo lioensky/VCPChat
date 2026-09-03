@@ -134,6 +134,38 @@ document.addEventListener('DOMContentLoaded', () => {
             const preview = document.createElement('div');
             preview.className = 'card-preview';
 
+            // Edit action: open this theme stylesheet in Canvas.
+            const editButton = document.createElement('button');
+            editButton.type = 'button';
+            editButton.className = 'theme-card-edit';
+            editButton.title = `在 Canvas 中编辑 ${theme.name || theme.fileName}`;
+            editButton.setAttribute('aria-label', editButton.title);
+            editButton.innerHTML = `
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 20h9"></path>
+                    <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+                </svg>
+            `;
+            editButton.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (!theme.filePath || !api?.openCanvasWindow) return;
+                api.openCanvasWindow({
+                    filePath: theme.filePath,
+                    rootDir: theme.filePath.replace(/[\\/][^\\/]+$/, ''),
+                    context: 'theme',
+                    metadata: {
+                        themeFileName: theme.fileName,
+                        themeName: theme.name,
+                    },
+                }).catch(error => {
+                    console.error('Failed to open theme stylesheet in Canvas:', error);
+                });
+            });
+            preview.appendChild(editButton);
+
             // Active Badge & Selection Checkmark
             const badgeContainer = document.createElement('div');
             badgeContainer.className = 'card-badges';

@@ -241,10 +241,48 @@ body.light-theme {
     height: 100%;
 }
 
-.card-badges {
+.theme-card-edit {
     position: absolute;
     top: 6px;
     right: 6px;
+    z-index: 8;
+    display: grid;
+    width: 27px;
+    height: 27px;
+    padding: 0;
+    place-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.24);
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.78);
+    color: #ffffff;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    cursor: pointer;
+    opacity: 0;
+    transform: translateY(-3px) scale(0.92);
+    transition: opacity var(--transition-snappy), transform var(--transition-snappy),
+        background-color var(--transition-snappy), border-color var(--transition-snappy);
+}
+
+.theme-card:hover .theme-card-edit,
+.theme-card:focus-within .theme-card-edit,
+.theme-card-edit:focus-visible {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+.theme-card-edit:hover,
+.theme-card-edit:focus-visible {
+    border-color: rgba(255, 255, 255, 0.55);
+    background: var(--button-bg, #007bff);
+    outline: none;
+}
+
+.card-badges {
+    position: absolute;
+    top: 6px;
+    right: 39px;
     left: 6px;
     display: flex;
     justify-content: space-between;
@@ -284,6 +322,13 @@ body.light-theme {
 .theme-card.selected .card-select-indicator {
     opacity: 1;
     transform: scale(1);
+}
+
+@media (hover: none) {
+    .theme-card-edit {
+        opacity: 1;
+        transform: none;
+    }
 }
 
 /* Card Info */
