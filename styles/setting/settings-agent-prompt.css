@@ -138,6 +138,20 @@ body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .pr
     min-height: 76px;
     padding: 10px 12px;
     border-radius: 16px !important;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    overflow-x: hidden;
+}
+
+#agentSettingsContainer .system-prompt-container .preset-prompt-textarea {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    white-space: pre-wrap !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+    overflow-x: hidden !important;
 }
 
 #agentSettingsContainer .system-prompt-container .preset-path-section label,
