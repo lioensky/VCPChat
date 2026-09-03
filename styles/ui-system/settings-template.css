@@ -512,7 +512,7 @@
         border-right: 0;
     }
 
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .agent-style-collapsible-container[data-setting-primitive="disclosure"] > .style-collapse-header {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .agent-style-collapsible-container[data-setting-primitive="disclosure"]:not(.vcp-uiux-user-profile-card *):not(.vcp-uiux-user-profile-card) > .style-collapse-header {
         width: 100%;
         box-sizing: border-box;
         padding-top: 8px;
@@ -1084,18 +1084,18 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 4px;
+    gap: 6px;
     width: auto;
     max-width: none;
-    min-height: 30px;
-    height: 30px;
+    min-height: 32px;
+    height: 32px;
     box-sizing: border-box;
-    padding: 4px 12px;
+    padding: 0 14px !important;
     border: 1px solid rgba(0, 0, 0, 0.12);
-    border-radius: 8px;
+    border-radius: 9999px !important;
     white-space: nowrap;
     font-size: 13px;
-    line-height: 18px;
+    line-height: 32px;
     color: var(--vcp-ui-text-1);
     background: #FFFFFF !important;
     pointer-events: auto;
@@ -1395,11 +1395,44 @@
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .agent-style-collapsible-container .style-collapse-title {
     order: 1;
     flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     text-align: center;
     color: var(--vcp-ui-text-1);
     font-size: 13px;
     font-weight: 400;
-    line-height: 18px;
+    line-height: 1;
+    height: 13px;
+    margin: 0;
+    padding: 0;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .style-collapse-icon {
+    order: 2 !important;
+    flex: 0 0 12px !important;
+    width: 12px !important;
+    height: 12px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .style-collapse-icon::before {
+    width: 6px !important;
+    height: 6px !important;
+    border-right: 1.5px solid currentColor !important;
+    border-bottom: 1.5px solid currentColor !important;
+    content: '' !important;
+    transform: rotate(-45deg) !important;
+    margin: 0 !important;
+    display: block !important;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-style-collapsible-container:not(.collapsed) .style-collapse-icon::before {
+    transform: rotate(45deg) !important;
 }
 
 /* Content-width radios remain a frozen chat-surface presentation concern.
