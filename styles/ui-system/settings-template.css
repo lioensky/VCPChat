@@ -460,10 +460,11 @@
        (upstream Classic settings modal footprint). This selector wins the
        cascade over it (extra .vcp-global-settings-surface class), so the two
        must agree. */
-    width: min(900px, 90vw);
-    height: 80vh;
+    width: min(820px, 90vw);
+    height: 85vh;
     max-width: calc(100vw - 48px);
-    min-height: 600px;
+    max-height: calc(100vh - 40px);
+    min-height: 680px;
     padding: 0;
     overflow: hidden;
     border: 0;
@@ -754,7 +755,7 @@
     margin-top: 0 !important;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .settings-section > .vcp-uiux-general-row:first-of-type {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .settings-section > .vcp-uiux-general-row:first-of-type:not(.vcp-uiux-user-profile-card):not(.vcp-settings-card) {
     padding-top: 4px !important;
 }
 
@@ -938,15 +939,16 @@
    right-hand action instead of occupying a separate full-width row. */
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card {
     display: grid;
-    grid-template-columns: 52px minmax(0, 1fr) max-content;
+    grid-template-columns: 44px minmax(0, 1fr) max-content;
     align-items: center;
     gap: 0 8px;
     margin: 0 0 18px;
-    padding: 10px 14px 14px;
+    padding: 8px 16px !important;
     border: 1px solid rgba(0, 0, 0, 0.08);
     border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
     border-radius: 14px;
     background: #FFFFFF !important;
+    box-sizing: border-box;
 }
 
 :is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card {
@@ -955,22 +957,42 @@
     border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card > .agent-identity-main { display: grid; grid-column: 1 / 3; grid-row: 1; grid-template-columns: 52px minmax(0, 1fr); align-items: center; align-self: center; height: 56px; min-height: 56px; gap: 8px; min-width: 0; }
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-avatar-wrapper { grid-column: 1; grid-row: 1; }
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-avatar-display { width: 48px; height: 48px; }
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card > .agent-identity-main {
+    display: grid;
+    grid-column: 1 / 3;
+    grid-row: 1;
+    grid-template-columns: 44px minmax(0, 1fr);
+    align-items: center;
+    align-self: center;
+    height: 40px;
+    min-height: 40px;
+    gap: 8px;
+    min-width: 0;
+}
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-avatar-wrapper {
+    grid-column: 1;
+    grid-row: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-avatar-display {
+    width: 40px;
+    height: 40px;
+}
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper {
     grid-column: 2;
     grid-row: 1;
     display: grid;
-    grid-template-columns: max-content 26px 26px;
-    grid-template-rows: 28px;
+    grid-template-columns: max-content 24px 24px;
+    grid-template-rows: 24px;
     align-items: center;
     align-self: center;
     column-gap: 4px;
     width: fit-content;
     max-width: 100%;
     min-width: 0;
-    min-height: 28px;
+    min-height: 24px;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper label { margin: 0 0 4px; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper > label { display: none; }
@@ -1024,12 +1046,12 @@
     grid-column: 1 / -1;
     grid-row: 1 / span 2;
     display: grid;
-    grid-template-columns: 52px minmax(0, 1fr) 180px;
-    grid-template-rows: minmax(56px, auto) auto;
+    grid-template-columns: 44px minmax(0, 1fr) 180px;
+    grid-template-rows: 40px auto;
     margin: 0;
     border: 0;
     background: transparent;
-    align-self: stretch;
+    align-self: center;
     justify-self: stretch;
     pointer-events: none;
 }
@@ -1037,6 +1059,8 @@
 /* The capsule itself stays compact; the parent remains full-width so the
    controls do not reflow into the action column during collapse. */
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card > .agent-style-collapsible-container.collapsed {
+    height: 40px;
+    min-height: 40px;
     width: auto;
     max-width: none;
 }
@@ -1055,14 +1079,16 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    width: 180px;
-    min-height: 36px;
+    width: 172px;
+    min-height: 32px;
+    height: 32px;
     box-sizing: border-box;
-    padding: 8px 12px 8px 14px;
+    padding: 4px 12px 4px 14px;
     border: 1px solid rgba(0, 0, 0, 0.1);
     border-radius: 999px;
     white-space: nowrap;
     max-width: 180px;
+    font-size: 13px;
     color: var(--vcp-ui-text-1);
     background: #FFFFFF !important;
     pointer-events: auto;

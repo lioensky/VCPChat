@@ -5,10 +5,11 @@
     display: flex;
     /* Match the upstream Classic settings modal footprint
        (.global-settings-modal-content: 90vw capped at 900px, 80vh tall). */
-    width: min(900px, 90vw);
-    height: 80vh;
-    min-height: 600px;
+    width: min(820px, 90vw);
+    height: 85vh;
+    min-height: 680px;
     max-width: calc(100vw - 48px);
+    max-height: calc(100vh - 40px);
     overflow: hidden;
     border-radius: 24px;
     background: #FFFFFF;
