@@ -521,6 +521,36 @@ test('a failed durable save preserves the draft and retracts the optimistic mess
     fixture.dom.window.close();
 });
 
+test('a programmatic quick-action string sends its own content without consuming the composer draft', async () => {
+    const fixture = createFixture();
+    const selected = fixture.chatManager.selectItem('agent-a', 'agent', 'Agent A', null, fixture.configs['agent-a']);
+    await new Promise(resolve => setImmediate(resolve));
+    fixture.topicRequests.get('agent-a').resolve(fixture.configs['agent-a'].topics);
+    await selected;
+
+    const pendingAttachment = {
+        file: { name: 'draft.txt', type: 'text/plain', size: 5 },
+        originalName: 'draft.txt',
+        localPath: '/tmp/draft.txt',
+    };
+    fixture.attachmentRef.append(pendingAttachment);
+    const input = fixture.window.document.getElementById('messageInput');
+    input.value = '保留在输入框中的草稿';
+
+    await fixture.chatManager.handleSendMessage('[[点击按钮:继续]]');
+
+    const durableUsers = fixture.persistedHistory('agent-a', 'topic-a')
+        .filter(message => message.role === 'user');
+    assert.equal(durableUsers.length, 1);
+    assert.equal(durableUsers[0].content, '[[点击按钮:继续]]');
+    assert.deepEqual(durableUsers[0].attachments, []);
+    assert.equal(input.value, '保留在输入框中的草稿');
+    assert.deepEqual(fixture.state().attachedFiles, [pendingAttachment]);
+    assert.equal(fixture.sentRequests.length, 1);
+    assert.equal(fixture.sentRequests[0][2].at(-1).content, '[[点击按钮:继续]]');
+    fixture.dom.window.close();
+});
+
 test('an attachment added while the outgoing message is persisting remains in the draft', async () => {
     const fixture = createFixture();
     const selected = fixture.chatManager.selectItem('agent-a', 'agent', 'Agent A', null, fixture.configs['agent-a']);

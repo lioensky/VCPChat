@@ -1300,6 +1300,17 @@ export const chatManager = (() => {
     }
 
     async function handleSendMessage(request = null) {
+        // 兼容渲染 Surface 的文本发送能力。AI 消息快捷按钮等调用方只提交
+        // 一段独立文本；将其规范化为请求对象，避免错误回退到主输入框草稿，
+        // 同时禁止把输入框中尚未发送的附件混入快捷消息。
+        if (typeof request === 'string') {
+            request = {
+                content: request,
+                attachments: [],
+                propagateError: true,
+            };
+        }
+
         const { messageInput } = elements;
         const renderTarget = request?.domRenderer || messageRenderer;
         const input = request?.input || messageInput;
