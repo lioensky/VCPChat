@@ -351,11 +351,26 @@
 }
 
 /* Switch rows wrap their title + helper in a bare <div> beside the switch. */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row > div:not([class]) {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 4px;
+}
+
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row > div:not([class]) > :is(label, span, strong):first-child {
     color: var(--dsw-alias-label-primary, var(--vcp-ui-text-0)) !important;
     font-size: var(--vcp-ui-font-body) !important;
     font-weight: 400 !important;
     line-height: 22px !important;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-language-row-text {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 4px;
+    padding-right: 48px;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row :is(small, [class*='-description'], [class*='-hint']) {
@@ -771,7 +786,7 @@
     margin-top: 0 !important;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .settings-section > .vcp-uiux-general-row:first-of-type:not(.vcp-uiux-user-profile-card):not(.vcp-settings-card) {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .settings-section > .settings-section-title + .vcp-uiux-general-row:not(.vcp-uiux-user-profile-card):not(.vcp-settings-card) {
     padding-top: 4px !important;
 }
 
