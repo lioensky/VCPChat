@@ -1154,7 +1154,7 @@
 }
 
 /* Single Color Pill Control (Image 5 style) */
-.vcp-color-single-pill {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-color-single-pill {
     position: relative;
     display: flex;
     align-items: center;
@@ -1174,17 +1174,17 @@
     user-select: none;
 }
 
-.vcp-color-single-pill:hover {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-color-single-pill:hover {
     transform: translateY(-1px);
     box-shadow: 0 3px 8px rgba(0, 0, 0, 0.16);
 }
 
-.vcp-color-single-pill.is-light {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-color-single-pill.is-light {
     border-color: rgba(0, 0, 0, 0.18);
     color: #111111;
 }
 
-.vcp-color-single-pill .vcp-color-radio-ring {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-color-single-pill .vcp-color-radio-ring {
     flex: 0 0 16px;
     width: 16px;
     height: 16px;
@@ -1197,12 +1197,12 @@
                 opacity var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard);
 }
 
-.vcp-color-single-pill .vcp-color-radio-ring:hover {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-color-single-pill .vcp-color-radio-ring:hover {
     transform: scale(1.18);
     opacity: 1;
 }
 
-.vcp-color-single-pill .vcp-uiux-input-wrap {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-color-single-pill .vcp-uiux-input-wrap {
     flex: 1 1 auto;
     background: transparent !important;
     border: none !important;
@@ -1211,8 +1211,8 @@
     height: 100% !important;
 }
 
-.vcp-color-single-pill .vcp-uiux-input-wrap > .input,
-.vcp-color-single-pill .vcp-color-pill-input {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-color-single-pill .vcp-uiux-input-wrap > .input,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-color-single-pill .vcp-color-pill-input {
     flex: 1 1 auto;
     min-width: 0;
     height: 100% !important;
@@ -1229,11 +1229,11 @@
     cursor: pointer;
 }
 
-.vcp-color-single-pill .vcp-color-pill-input:focus {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-color-single-pill .vcp-color-pill-input:focus {
     cursor: text;
 }
 
-.vcp-color-single-pill .vcp-color-native-input {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-color-single-pill .vcp-color-native-input {
     position: absolute;
     opacity: 0;
     width: 0;

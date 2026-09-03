@@ -1030,6 +1030,7 @@
         background: #FFFFFF;
     }
 
+    /* stylelint-disable declaration-no-important */
     :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope .appearance-workbench-card {
         background: #1E1F22 !important;
         border: 1px solid rgba(255, 255, 255, 0.08) !important;
@@ -1052,6 +1053,7 @@
         background: #141517 !important;
         border: 1px solid rgba(255, 255, 255, 0.08) !important;
     }
+    /* stylelint-enable declaration-no-important */
     :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-preview {
         height: 68px;
         min-width: 0;

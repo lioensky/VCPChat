@@ -1,10 +1,10 @@
 {
   "modules/chatManager.js": {
-    "sha256": "885b6e4154bbf1502ca7e62e9ea844ee20316ad56809aff1b7c23362a6209277",
+    "sha256": "b2525a25fb0996fa9ff74483dc117e1058a588fb2656ea075d38d6bbdcb9418e",
     "reason": "upstream chat core plus exact Surface stream routing, independent conversation capability, initiating-Surface cleanup, injected send-state capability, durable history authority, and no direct IPC fallback; deletion and topic-summary completion replace immutable selection snapshots through their authority; outgoing attachment draft identity changes on append so a file added during durable persistence is preserved; selection intent persists before watcher/history work and restore waits for topic projection before reporting completion; named ChatManager lifecycle retracts canvas subscriptions, observer, forward timers and selection authority before draining persistence queues; file-history sync now captures selection/topic generations and revalidates the active conversation after its read, protects stream ids captured before the read from terminal/delete races, reconciles active StreamProjection snapshots after history/DOM replacement without taking over durable persistence, and routes last-open settings updates through operation-aware path patches to avoid complete-snapshot overwrite"
   },
   "modules/messageRenderer.js": {
-    "sha256": "33b0fcc8b1e3c54899df3e01842bacde7d36568c39d21a6aca4a463081ee980b",
+    "sha256": "9172101e6ac05bd9c4dfec5186cfeb7ba2c65d724dbfc65ace79188d21e00700",
     "reason": "upstream message semantics plus explicit Surface-owned renderer factory, root-aware renderer operations, per-Surface style namespace and owned style cleanup, Surface-scoped dynamic style/audio isolation, injected realm/services/capabilities, per-Surface StreamProjection attachment API, coordinator-owned stream-start/context-menu callbacks, owner-scoped middle-click callbacks, copy-before-mutate history projection, and avatar-color completion guarded by live selection identity before authority replacement"
   },
   "modules/renderer/streamManager.js": {
@@ -24,7 +24,7 @@
     "reason": "upstream group business surface with retired toolbar binding removed"
   },
   "modules/settingsManager.js": {
-    "sha256": "e3ab28468cb71f52a7825321248d23e0d0b4c55bbcfa4256399268ac348df3ea",
+    "sha256": "f0606966a853b7ffd762197b90cbf4671b17836c47be00050b418b611dd7f819",
     "reason": "reviewed Agent settings behavior after replacing ambient globalSettings reads with the composition-injected settings authority; saved Agent projection and collapse-state updates replace immutable selection snapshots through the injected selection authority"
   },
   "modules/filterManager.js": {

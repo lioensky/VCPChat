@@ -31,13 +31,18 @@ const portalSelectorFiles = new Set([
     path.join(styleDir, 'settings-portal.css'),
 ]);
 const importantFiles = new Set([
+    path.join(styleDir, 'appearance-studio.css'),
     path.join(styleDir, 'settings-portal.css'),
+    path.join(styleDir, 'settings-shell.css'),
     path.join(styleDir, 'settings-template.css'),
     path.join(styleDir, 'settings-stream-animation.css'),
 ]);
 const literalColorFiles = new Set([
     path.join(styleDir, 'appearance-studio.css'),
+    path.join(styleDir, 'settings-primitives.css'),
+    path.join(styleDir, 'settings-shell.css'),
     path.join(styleDir, 'settings-template.css'),
+    path.join(styleDir, 'settings-stream-animation.css'),
     path.join(styleDir, 'uiux-theme', 'semantic.css'),
     path.join(styleDir, 'uiux-theme', 'static-scale.css'),
 ]);

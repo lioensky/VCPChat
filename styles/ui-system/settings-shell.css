@@ -371,6 +371,7 @@
         flex: 1 1 100%;
     }
 
+    /* stylelint-disable declaration-no-important */
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope :is(#agentSettingsContainer, #groupSettingsContainer) .model-input-container input {
         padding-right: 32px !important;
     }
@@ -423,6 +424,7 @@
         height: 14px !important;
         width: 14px !important;
     }
+    /* stylelint-enable declaration-no-important */
 
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsContainer .params-content {
         display: grid;
