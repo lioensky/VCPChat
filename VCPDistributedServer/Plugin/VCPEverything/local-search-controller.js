@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 // 仅加载插件自身的.env配置
-require('dotenv').config({ path: path.join(__dirname, '.env') });
+require('dotenv').config({ path: path.join(__dirname, '.env'), quiet: true });
 
 // --- 配置 ---
 // 新增：Everything HTTP服务器的端口配置
