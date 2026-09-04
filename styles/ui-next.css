@@ -1049,6 +1049,18 @@ html .notifications-sidebar.active {
     box-sizing: border-box;
 }
 
+/* Notification cards are a Next UI material consumer. The appearance engine
+   maps Theme/Solid and Vibrancy/Mica/Acrylic/Liquid Glass onto these same
+   shell outputs; the legacy notification theme remains untouched. */
+html .notifications-list .notification-item {
+    background-color: var(--next-shell-bg);
+    background-image: var(--next-material-sheen);
+    background-size: auto;
+    background-blend-mode: normal;
+    backdrop-filter: var(--next-backdrop-filter);
+    -webkit-backdrop-filter: var(--next-backdrop-filter);
+}
+
 html body.next-ui-launchpad-open .container {
     display: none;
 }
