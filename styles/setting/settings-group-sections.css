@@ -765,6 +765,16 @@ body[data-vcp-theme="dark"] #groupSettingsForm .form-actions .danger-button {
     gap: 12px;
 }
 
+#agentSettingsContainer .vcp-uiux-select,
+#agentSettingsContainer .vcp-uiux-select-trigger,
+#groupSettingsContainer .vcp-uiux-select,
+#groupSettingsContainer .vcp-uiux-select-trigger {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+}
+
 #agentSettingsForm > .form-actions,
 #groupSettingsForm > .form-actions {
     margin-top: auto;
@@ -777,7 +787,7 @@ body[data-vcp-theme="dark"] #groupSettingsForm .form-actions .danger-button {
     flex-direction: column;
     justify-content: flex-start;
     flex-shrink: 0;
-    gap: 6px;
+    gap: 6px !important;
     position: sticky;
     bottom: 0;
     background-color: transparent;
@@ -819,7 +829,7 @@ body[data-vcp-theme="dark"] #groupSettingsForm .form-actions {
 #groupSettingsForm .form-actions.scrolled-to-bottom .delete-button-container {
     max-height: 50px;
     opacity: 1;
-    margin-top: 6px;
+    margin-top: 0;
     overflow: visible;
 }
 
@@ -831,10 +841,10 @@ body[data-vcp-theme="dark"] #groupSettingsForm .form-actions {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    align-self: flex-start;
-    width: calc(100% - 8px);
+    align-self: stretch;
+    width: 100%;
     margin-right: 0;
-    margin-left: 8px;
+    margin-left: 0;
     height: 37px;
     min-height: 37px;
     padding: 0 12px;
@@ -889,10 +899,10 @@ body[data-vcp-theme="dark"] #groupSettingsForm .form-actions {
 #agentSettingsForm > .form-actions > .delete-button-container > #deleteAgentBtn,
 #groupSettingsForm > .form-actions > button[type="submit"],
 #groupSettingsForm > .form-actions > .delete-button-container > #deleteGroupBtn {
-    width: calc(100% - 12px) !important;
+    width: 100% !important;
     margin-right: 0 !important;
-    margin-left: 12px !important;
-    align-self: flex-start !important;
+    margin-left: 0 !important;
+    align-self: stretch !important;
 }
 
 #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button):hover,
@@ -1223,12 +1233,10 @@ body[data-vcp-theme="dark"] #groupSettingsContainer select:focus-visible {
 }
 
 #groupSettingsContainer .group-settings-section-summary.summary-with-avatar {
-    /* This grid item used to be enlarged and pulled 6px outside the settings
-       viewport. The viewport clips overflow-x, which removed its left radius.
-       Use an inward inset and subtract it from the available width instead. */
-    width: calc(100% - 6px);
-    max-width: calc(100% - 6px);
-    margin-left: 6px;
+    width: 100%;
+    max-width: 100%;
+    margin-left: 0;
+    margin-right: 0;
     box-sizing: border-box;
     padding: 8px 12px 8px 16px;
     border-radius: 18px;

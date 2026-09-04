@@ -265,10 +265,10 @@
     gap: 14px;
     align-items: center;
     margin-top: 8px;
-    margin-right: 6px;
-    margin-left: 6px;
-    width: auto;
-    max-width: none;
+    margin-right: 0;
+    margin-left: 0;
+    width: 100%;
+    max-width: 100%;
     justify-self: stretch;
     box-sizing: border-box;
     padding: 8px 12px 8px 16px;
@@ -933,12 +933,12 @@ body:not(.light-theme) #agentSettingsContainer .tts-director-editor {
 
 #agentSettingsContainer #identitySummary.summary-with-avatar {
     display: flex !important;
-    width: auto !important;
-    max-width: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
     min-height: 46px !important;
     margin-top: 6px !important;
-    margin-right: 6px !important;
-    margin-left: 6px !important;
+    margin-right: 0 !important;
+    margin-left: 0 !important;
     justify-self: stretch !important;
     box-sizing: border-box !important;
     background: var(--vcp-ui-bg-1, var(--input-bg)) !important;
