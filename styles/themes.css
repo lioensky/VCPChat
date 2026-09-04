@@ -1,7 +1,7 @@
 /*
- * styles/themes/themes赤与白昼·原版.css
- * Theme Name: 赤与白昼·原版
- * VCP Theme: 赤与白昼 (Red Cross & Azure Daylight)
+ * styles/themes/themes第一适格者.css
+ * Theme Name: 第一适格者
+ * VCP Theme: 第一适格者 (The First Children - Rei Ayanami)
  * Designed by Coco for Professor Ryan
  *
  * Dark  : Sacred Cross / 赤十字与终焉 (Graphite, Sacred Crimson, Moonlight Blue)
@@ -17,7 +17,7 @@
 
     /* --- Wallpaper Interface --- */
     --vcp-theme-wallpaper-scope: panel;
-    --chat-wallpaper-dark: url('../assets/wallpaper/ayanami_dark_orig.png');
+    --chat-wallpaper-dark: url('../assets/wallpaper/ayanami_first_children_dark.png');
 
     /* --- Design Tokens & Contrast --- */
     --vcp-ui-theme-on-accent: #FFFFFF;
@@ -89,7 +89,7 @@ body.light-theme {
     color-scheme: light;
 
     /* --- Wallpaper Interface --- */
-    --chat-wallpaper-light: url('../assets/wallpaper/ayanami_light.jpg');
+    --chat-wallpaper-light: url('../assets/wallpaper/ayanami_first_children_light.jpg');
     background-image: var(--chat-wallpaper-light);
     background-size: cover;
     background-position: center;

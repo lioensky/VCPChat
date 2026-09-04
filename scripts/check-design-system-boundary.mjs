@@ -404,6 +404,7 @@ const allowedSourceDifferencePatterns = [
     /^modules\/ui-system\/typed-field-owners\.js$/,
     /^modules\/ui-system\/settings-bridge\.js$/,
     /^modules\/uiux\//,
+    /^assets\/wallpaper\//,
     /^styles\/setting\//,
     /^styles\/themes\//,
     /^styles\/ui-system\//,
