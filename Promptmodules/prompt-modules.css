@@ -110,6 +110,17 @@
     border-top: none;
 }
 
+/*
+ * Agent 设置页会在 .prompt-content-container 内动态挂载标准文本 Prompt。
+ * 该容器原本继承上方的 --input-bg，四周又有内边距，因此会在圆角
+ * textarea 后方露出一块矩形底板。这里只清除容器底色，输入框自身背景保留。
+ */
+#agentSettingsContainer .system-prompt-container .prompt-content-container,
+#agentSettingsContainer .system-prompt-container .original-prompt-container {
+    background-color: transparent;
+    background-image: none;
+}
+
 /* ===== 原始富文本模块样式 ===== */
 .original-prompt-textarea {
     min-height: 60px;
@@ -780,6 +791,12 @@
     flex-direction: column;
     gap: 10px;
     padding: 8px 6px 8px;
+}
+
+/* 标准文本 Prompt 与上方模式选择器使用同一左右边界。 */
+#agentSettingsContainer .system-prompt-container .original-prompt-container {
+    padding-right: 0;
+    padding-left: 0;
 }
 
 .preset-path-section,
