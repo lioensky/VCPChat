@@ -1223,12 +1223,10 @@ body[data-vcp-theme="dark"] #groupSettingsContainer select:focus-visible {
 }
 
 #groupSettingsContainer .group-settings-section-summary.summary-with-avatar {
-    /* This grid item used to be enlarged and pulled 6px outside the settings
-       viewport. The viewport clips overflow-x, which removed its left radius.
-       Use an inward inset and subtract it from the available width instead. */
-    width: calc(100% - 6px);
-    max-width: calc(100% - 6px);
-    margin-left: 6px;
+    width: 100%;
+    max-width: 100%;
+    margin-left: 0;
+    margin-right: 0;
     box-sizing: border-box;
     padding: 8px 12px 8px 16px;
     border-radius: 18px;
