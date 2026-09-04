@@ -1,0 +1,356 @@
+/*
+ * styles/themes/themes赤与白昼.css
+ * VCP Theme: 赤与白昼 (Red Cross & Azure Daylight)
+ * Designed by Coco for Professor Ryan
+ *
+ * Dark  : Sacred Cross / 赤十字与终焉 (Graphite, Sacred Crimson, Moonlight Blue)
+ * Light : LCL Horizon / 冰蓝发丝与白昼 (Pure White, Azure Crystal, Vermilion Accent)
+ */
+
+/* =========================================================
+   Dark Theme (Default) · Sacred Cross
+   墨黑玄武 / 赤十字深红 / 冷月发丝蓝 / 骨白
+   ========================================================= */
+:root {
+    color-scheme: dark;
+
+    /* --- Wallpaper Interface --- */
+    --vcp-theme-wallpaper-scope: panel;
+    --chat-wallpaper-dark: url('../assets/wallpaper/ayanami_dark.png');
+
+    /* --- Design Tokens & Contrast --- */
+    --vcp-ui-theme-on-accent: #FFFFFF;
+    --vcp-ui-on-accent: #FFFFFF;
+
+    /* --- Base Colors --- */
+    --primary-bg: #101316;
+    --secondary-bg: #171B20;
+    --tertiary-bg: #101316;
+    --accent-bg: #222930;
+    --border-color: #2F3942;
+    --input-bg: rgba(23, 27, 32, 0.92);
+    --panel-bg-dark: rgba(18, 22, 26, 0.86);
+
+    /* --- Text Colors --- */
+    --primary-text: #F1F5F9;
+    --secondary-text: #94A3B8;
+    --highlight-text: #EF5350;
+    --text-on-accent: #FFFFFF;
+    --placeholder-text: #64748B;
+    --quoted-text: #90CAF9;
+    --user-text: #F8FAFC;
+    --agent-text: #F1F5F9;
+
+    /* --- Chat Bubbles --- */
+    --user-bubble-bg: rgba(229, 57, 53, 0.12);
+    --assistant-bubble-bg: rgba(22, 27, 32, 0.82);
+
+    /* --- Controls & Semantic Colors --- */
+    --button-bg: #E53935;
+    --button-hover-bg: #EF5350;
+    --danger-color: #E53935;
+    --danger-hover-bg: #D32F2F;
+    --success-color: #4CAF50;
+
+    /* --- Notifications & Tools --- */
+    --notification-bg: rgba(23, 27, 32, 0.94);
+    --notification-header-bg: rgba(30, 36, 43, 0.94);
+    --notification-border: #2F3942;
+    --tool-bubble-bg: rgba(20, 26, 33, 0.65);
+    --tool-bubble-border: rgba(144, 202, 249, 0.65);
+
+    /* --- Scrollbar --- */
+    --scrollbar-track: rgba(16, 19, 22, 0.60);
+    --scrollbar-thumb: rgba(229, 57, 53, 0.55);
+    --scrollbar-thumb-hover: rgba(229, 57, 53, 0.85);
+
+    /* --- Streaming Shimmer --- */
+    --shimmer-color-transparent: rgba(229, 57, 53, 0.08);
+    --shimmer-color-highlight: rgba(229, 57, 53, 0.45);
+
+    /* --- Frosted Panel Readability --- */
+    --panel-text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+    --panel-bg: var(--panel-bg-dark);
+}
+
+body {
+    background-image: var(--chat-wallpaper-dark);
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+}
+
+/* =========================================================
+   Light Theme · LCL Horizon
+   冷白陶瓷 / 冰蓝发丝 / 朱砂红点睛 / 炭墨
+   ========================================================= */
+body.light-theme {
+    color-scheme: light;
+
+    /* --- Wallpaper Interface --- */
+    --chat-wallpaper-light: url('../assets/wallpaper/ayanami_light.jpg');
+    background-image: var(--chat-wallpaper-light);
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+
+    /* --- Design Tokens & Contrast --- */
+    --vcp-ui-theme-on-accent: #FFFFFF;
+    --vcp-ui-on-accent: #FFFFFF;
+
+    /* --- Base Colors --- */
+    --primary-bg: #F8FAFC;
+    --secondary-bg: #FFFFFF;
+    --tertiary-bg: #F1F5F9;
+    --accent-bg: #E2E8F0;
+    --border-color: #CBD5E1;
+    --input-bg: rgba(255, 255, 255, 0.94);
+    --panel-bg-light: rgba(255, 255, 255, 0.88);
+
+    /* --- Text Colors --- */
+    --primary-text: #0F172A;
+    --secondary-text: #475569;
+    --highlight-text: #2563EB;
+    --text-on-accent: #FFFFFF;
+    --placeholder-text: #94A3B8;
+    --quoted-text: #0284C7;
+    --user-text: #0F172A;
+    --agent-text: #0F172A;
+
+    /* --- Chat Bubbles --- */
+    --user-bubble-bg: rgba(37, 99, 235, 0.08);
+    --assistant-bubble-bg: rgba(255, 255, 255, 0.88);
+
+    /* --- Controls & Semantic Colors --- */
+    --button-bg: #2563EB;
+    --button-hover-bg: #1D4ED8;
+    --danger-color: #DC2626;
+    --danger-hover-bg: #B91C1C;
+    --success-color: #059669;
+
+    /* --- Notifications & Tools --- */
+    --notification-bg: rgba(255, 255, 255, 0.94);
+    --notification-header-bg: rgba(241, 245, 249, 0.95);
+    --notification-border: #CBD5E1;
+    --tool-bubble-bg: rgba(238, 242, 255, 0.75);
+    --tool-bubble-border: rgba(37, 99, 235, 0.55);
+
+    /* --- Scrollbar --- */
+    --scrollbar-track: rgba(226, 232, 240, 0.50);
+    --scrollbar-thumb: rgba(37, 99, 235, 0.45);
+    --scrollbar-thumb-hover: rgba(37, 99, 235, 0.75);
+
+    /* --- Streaming Shimmer --- */
+    --shimmer-color-transparent: rgba(37, 99, 235, 0.06);
+    --shimmer-color-highlight: rgba(37, 99, 235, 0.35);
+
+    /* --- Frosted Panel Readability --- */
+    --panel-text-shadow: 0 1px 0 rgba(255, 255, 255, 0.65);
+    --panel-bg: var(--panel-bg-light);
+}
+
+/* =========================================================
+   Shared Material & Bubble System
+   ========================================================= */
+
+/* Frosted glass blur */
+.tool-bubble {
+    backdrop-filter: blur(14px) saturate(115%) !important;
+    -webkit-backdrop-filter: blur(14px) saturate(115%) !important;
+}
+
+/* Panel edge separation */
+.sidebar {
+    box-shadow: 10px 0 32px rgba(0, 0, 0, 0.18);
+}
+
+.notifications-sidebar {
+    box-shadow: -10px 0 32px rgba(0, 0, 0, 0.18);
+}
+
+/* Dark Mode: User Bubble with Sacred Red Spine */
+.message-item.user .md-content {
+    box-sizing: border-box;
+    border: 1px solid rgba(229, 57, 53, 0.28) !important;
+    border-right: 3px solid #E53935 !important;
+    border-radius: 14px 4px 14px 14px !important;
+    box-shadow:
+        0 6px 20px rgba(0, 0, 0, 0.25),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Dark Mode: AI Bubble with Moonlight Blue Edge */
+.message-item.agent .md-content,
+.message-item.assistant .md-content {
+    box-sizing: border-box;
+    border: 1px solid rgba(47, 57, 66, 0.75) !important;
+    border-left: 3px solid rgba(144, 202, 249, 0.72) !important;
+    border-radius: 4px 14px 14px 14px !important;
+    box-shadow:
+        0 8px 26px rgba(0, 0, 0, 0.32),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Dark Mode: Tool Bubble */
+.tool-bubble {
+    border-left: 3px solid var(--tool-bubble-border) !important;
+    border-radius: 4px 10px 10px 10px !important;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.20);
+}
+
+/* Header & Title Bar Controls */
+.header-button,
+.title-bar-button {
+    color: #CBD5E1 !important;
+    transition:
+        color 0.18s ease,
+        background-color 0.18s ease,
+        transform 0.18s ease,
+        box-shadow 0.18s ease;
+}
+
+.header-button:hover,
+.title-bar-button:hover {
+    color: #EF5350 !important;
+    background-color: rgba(229, 57, 53, 0.12) !important;
+    box-shadow: inset 0 -2px 0 #E53935;
+    transform: translateY(-1px);
+}
+
+/* =========================================================
+   Light Material Translation
+   ========================================================= */
+body.light-theme .sidebar {
+    box-shadow: 10px 0 28px rgba(15, 23, 42, 0.05);
+}
+
+body.light-theme .notifications-sidebar {
+    box-shadow: -10px 0 28px rgba(15, 23, 42, 0.05);
+}
+
+/* Light Mode: User Bubble with Crimson Vermilion Accent */
+body.light-theme .message-item.user .md-content {
+    background: linear-gradient(
+        145deg,
+        rgba(255, 255, 255, 0.92),
+        rgba(37, 99, 235, 0.09)
+    ) !important;
+    border: 1px solid rgba(37, 99, 235, 0.24) !important;
+    border-right: 3px solid #DC2626 !important;
+    box-shadow:
+        0 6px 20px rgba(15, 23, 42, 0.06),
+        inset 0 1px 0 rgba(255, 255, 255, 0.85) !important;
+}
+
+/* Light Mode: AI Bubble with Azure Hair Highlight */
+body.light-theme .message-item.agent .md-content,
+body.light-theme .message-item.assistant .md-content {
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.92) 0%,
+        rgba(248, 250, 252, 0.88) 100%
+    ) !important;
+    border: 1px solid rgba(203, 213, 225, 0.85) !important;
+    border-left: 3px solid #2563EB !important;
+    box-shadow:
+        0 8px 24px rgba(15, 23, 42, 0.07),
+        inset 0 1px 0 rgba(255, 255, 255, 0.88) !important;
+}
+
+body.light-theme .tool-bubble {
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05);
+}
+
+body.light-theme .header-button,
+body.light-theme .title-bar-button {
+    color: #475569 !important;
+}
+
+body.light-theme .header-button:hover,
+body.light-theme .title-bar-button:hover {
+    color: #2563EB !important;
+    background-color: rgba(37, 99, 235, 0.08) !important;
+    box-shadow: inset 0 -2px 0 #2563EB;
+}
+
+/* =========================================================
+   Brand Motion · Eva Pulse Feedback
+   ========================================================= */
+@keyframes sacredCrossPulse {
+    0%, 100% {
+        border-left-color: rgba(144, 202, 249, 0.65);
+        box-shadow:
+            0 8px 26px rgba(0, 0, 0, 0.32),
+            inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+    50% {
+        border-left-color: rgba(229, 57, 53, 0.90);
+        box-shadow:
+            0 8px 28px rgba(0, 0, 0, 0.35),
+            -3px 0 14px rgba(229, 57, 53, 0.25),
+            inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    }
+}
+
+.message-item.streaming.agent .md-content,
+.message-item.streaming.assistant .md-content {
+    animation: sacredCrossPulse 2.6s ease-in-out infinite;
+}
+
+@keyframes ayanamiHairPulse {
+    0%, 100% {
+        border-left-color: rgba(37, 99, 235, 0.65);
+    }
+    50% {
+        border-left-color: rgba(56, 189, 248, 0.95);
+        box-shadow:
+            0 8px 24px rgba(15, 23, 42, 0.07),
+            -3px 0 14px rgba(56, 189, 248, 0.20),
+            inset 0 1px 0 rgba(255, 255, 255, 0.88);
+    }
+}
+
+body.light-theme .message-item.streaming.agent .md-content,
+body.light-theme .message-item.streaming.assistant .md-content {
+    animation: ayanamiHairPulse 2.8s ease-in-out infinite;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 6px !important;
+    height: 6px !important;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--scrollbar-track) !important;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb) !important;
+    border-radius: 8px !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover) !important;
+}
+
+/* Keyboard accessibility */
+:focus-visible:not(#messageInput):not(.chat-message-input):not(.vcp-ui-scope *) {
+    outline: 2px solid var(--highlight-text);
+    outline-offset: 2px;
+}
+
+/* Prefers-reduced-motion fallback */
+@media (prefers-reduced-motion: reduce) {
+    .message-item.streaming.agent .md-content,
+    .message-item.streaming.assistant .md-content,
+    body.light-theme .message-item.streaming.agent .md-content,
+    body.light-theme .message-item.streaming.assistant .md-content {
+        animation: none !important;
+    }
+
+    .header-button,
+    .title-bar-button {
+        transition: none !important;
+    }
+}
