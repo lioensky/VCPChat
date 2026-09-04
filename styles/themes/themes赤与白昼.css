@@ -28,8 +28,8 @@
     --tertiary-bg: #101316;
     --accent-bg: #222930;
     --border-color: #2F3942;
-    --input-bg: rgba(23, 27, 32, 0.92);
-    --panel-bg-dark: rgba(18, 22, 26, 0.86);
+    --input-bg: rgba(23, 27, 32, 0.85);
+    --panel-bg-dark: rgba(18, 22, 26, 0.78);
 
     /* --- Text Colors --- */
     --primary-text: #F1F5F9;
@@ -41,9 +41,9 @@
     --user-text: #F8FAFC;
     --agent-text: #F1F5F9;
 
-    /* --- Chat Bubbles --- */
-    --user-bubble-bg: rgba(229, 57, 53, 0.12);
-    --assistant-bubble-bg: rgba(22, 27, 32, 0.82);
+    /* --- Chat Bubbles (Increased Translucency) --- */
+    --user-bubble-bg: rgba(229, 57, 53, 0.15);
+    --assistant-bubble-bg: rgba(20, 25, 30, 0.68);
 
     /* --- Controls & Semantic Colors --- */
     --button-bg: #E53935;
@@ -53,14 +53,14 @@
     --success-color: #4CAF50;
 
     /* --- Notifications & Tools --- */
-    --notification-bg: rgba(23, 27, 32, 0.94);
-    --notification-header-bg: rgba(30, 36, 43, 0.94);
+    --notification-bg: rgba(23, 27, 32, 0.90);
+    --notification-header-bg: rgba(30, 36, 43, 0.92);
     --notification-border: #2F3942;
-    --tool-bubble-bg: rgba(20, 26, 33, 0.65);
+    --tool-bubble-bg: rgba(20, 26, 33, 0.60);
     --tool-bubble-border: rgba(144, 202, 249, 0.65);
 
     /* --- Scrollbar --- */
-    --scrollbar-track: rgba(16, 19, 22, 0.60);
+    --scrollbar-track: rgba(16, 19, 22, 0.50);
     --scrollbar-thumb: rgba(229, 57, 53, 0.55);
     --scrollbar-thumb-hover: rgba(229, 57, 53, 0.85);
 
@@ -104,8 +104,8 @@ body.light-theme {
     --tertiary-bg: #F1F5F9;
     --accent-bg: #E2E8F0;
     --border-color: #CBD5E1;
-    --input-bg: rgba(255, 255, 255, 0.94);
-    --panel-bg-light: rgba(255, 255, 255, 0.88);
+    --input-bg: rgba(255, 255, 255, 0.88);
+    --panel-bg-light: rgba(255, 255, 255, 0.80);
 
     /* --- Text Colors --- */
     --primary-text: #0F172A;
@@ -117,9 +117,9 @@ body.light-theme {
     --user-text: #0F172A;
     --agent-text: #0F172A;
 
-    /* --- Chat Bubbles --- */
+    /* --- Chat Bubbles (Increased Translucency) --- */
     --user-bubble-bg: rgba(37, 99, 235, 0.08);
-    --assistant-bubble-bg: rgba(255, 255, 255, 0.88);
+    --assistant-bubble-bg: rgba(255, 255, 255, 0.74);
 
     /* --- Controls & Semantic Colors --- */
     --button-bg: #2563EB;
@@ -129,14 +129,14 @@ body.light-theme {
     --success-color: #059669;
 
     /* --- Notifications & Tools --- */
-    --notification-bg: rgba(255, 255, 255, 0.94);
-    --notification-header-bg: rgba(241, 245, 249, 0.95);
+    --notification-bg: rgba(255, 255, 255, 0.90);
+    --notification-header-bg: rgba(241, 245, 249, 0.92);
     --notification-border: #CBD5E1;
-    --tool-bubble-bg: rgba(238, 242, 255, 0.75);
+    --tool-bubble-bg: rgba(238, 242, 255, 0.65);
     --tool-bubble-border: rgba(37, 99, 235, 0.55);
 
     /* --- Scrollbar --- */
-    --scrollbar-track: rgba(226, 232, 240, 0.50);
+    --scrollbar-track: rgba(226, 232, 240, 0.45);
     --scrollbar-thumb: rgba(37, 99, 235, 0.45);
     --scrollbar-thumb-hover: rgba(37, 99, 235, 0.75);
 
@@ -153,7 +153,12 @@ body.light-theme {
    Shared Material & Bubble System
    ========================================================= */
 
-/* Frosted glass blur */
+/* Frosted glass blur applied to message bubbles for optimal translucency */
+.message-item .md-content {
+    backdrop-filter: blur(12px) saturate(110%) !important;
+    -webkit-backdrop-filter: blur(12px) saturate(110%) !important;
+}
+
 .tool-bubble {
     backdrop-filter: blur(14px) saturate(115%) !important;
     -webkit-backdrop-filter: blur(14px) saturate(115%) !important;
@@ -168,26 +173,32 @@ body.light-theme {
     box-shadow: -10px 0 32px rgba(0, 0, 0, 0.18);
 }
 
-/* Dark Mode: User Bubble with Sacred Red Spine */
+/* Dark Mode: User Bubble with Sacred Red Spine & Translucent Glow */
 .message-item.user .md-content {
     box-sizing: border-box;
-    border: 1px solid rgba(229, 57, 53, 0.28) !important;
+    background: linear-gradient(
+        145deg,
+        rgba(229, 57, 53, 0.18),
+        rgba(20, 25, 30, 0.60)
+    ) !important;
+    border: 1px solid rgba(229, 57, 53, 0.32) !important;
     border-right: 3px solid #E53935 !important;
     border-radius: 14px 4px 14px 14px !important;
     box-shadow:
-        0 6px 20px rgba(0, 0, 0, 0.25),
-        inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+        0 6px 20px rgba(0, 0, 0, 0.22),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
 }
 
-/* Dark Mode: AI Bubble with Moonlight Blue Edge */
+/* Dark Mode: AI Bubble with Moonlight Blue Edge & Subtle Translucency */
 .message-item.agent .md-content,
 .message-item.assistant .md-content {
     box-sizing: border-box;
-    border: 1px solid rgba(47, 57, 66, 0.75) !important;
+    background: rgba(20, 25, 30, 0.68) !important;
+    border: 1px solid rgba(47, 57, 66, 0.65) !important;
     border-left: 3px solid rgba(144, 202, 249, 0.72) !important;
     border-radius: 4px 14px 14px 14px !important;
     box-shadow:
-        0 8px 26px rgba(0, 0, 0, 0.32),
+        0 8px 24px rgba(0, 0, 0, 0.25),
         inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
 }
 
@@ -218,7 +229,7 @@ body.light-theme {
 }
 
 /* =========================================================
-   Light Material Translation
+   Light Material Translation · Airy Translucent Cards
    ========================================================= */
 body.light-theme .sidebar {
     box-shadow: 10px 0 28px rgba(15, 23, 42, 0.05);
@@ -228,32 +239,32 @@ body.light-theme .notifications-sidebar {
     box-shadow: -10px 0 28px rgba(15, 23, 42, 0.05);
 }
 
-/* Light Mode: User Bubble with Crimson Vermilion Accent */
+/* Light Mode: User Bubble with Airy Translucent Gradient & Vermilion Edge */
 body.light-theme .message-item.user .md-content {
     background: linear-gradient(
         145deg,
-        rgba(255, 255, 255, 0.92),
-        rgba(37, 99, 235, 0.09)
+        rgba(255, 255, 255, 0.80),
+        rgba(37, 99, 235, 0.08)
     ) !important;
-    border: 1px solid rgba(37, 99, 235, 0.24) !important;
+    border: 1px solid rgba(37, 99, 235, 0.22) !important;
     border-right: 3px solid #DC2626 !important;
     box-shadow:
-        0 6px 20px rgba(15, 23, 42, 0.06),
+        0 6px 20px rgba(15, 23, 42, 0.05),
         inset 0 1px 0 rgba(255, 255, 255, 0.85) !important;
 }
 
-/* Light Mode: AI Bubble with Azure Hair Highlight */
+/* Light Mode: AI Bubble with Translucent Azure Frost */
 body.light-theme .message-item.agent .md-content,
 body.light-theme .message-item.assistant .md-content {
     background: linear-gradient(
         180deg,
-        rgba(255, 255, 255, 0.92) 0%,
-        rgba(248, 250, 252, 0.88) 100%
+        rgba(255, 255, 255, 0.78) 0%,
+        rgba(248, 250, 252, 0.70) 100%
     ) !important;
-    border: 1px solid rgba(203, 213, 225, 0.85) !important;
+    border: 1px solid rgba(203, 213, 225, 0.75) !important;
     border-left: 3px solid #2563EB !important;
     box-shadow:
-        0 8px 24px rgba(15, 23, 42, 0.07),
+        0 8px 24px rgba(15, 23, 42, 0.06),
         inset 0 1px 0 rgba(255, 255, 255, 0.88) !important;
 }
 
@@ -280,14 +291,14 @@ body.light-theme .title-bar-button:hover {
     0%, 100% {
         border-left-color: rgba(144, 202, 249, 0.65);
         box-shadow:
-            0 8px 26px rgba(0, 0, 0, 0.32),
+            0 8px 24px rgba(0, 0, 0, 0.25),
             inset 0 1px 0 rgba(255, 255, 255, 0.04);
     }
     50% {
         border-left-color: rgba(229, 57, 53, 0.90);
         box-shadow:
-            0 8px 28px rgba(0, 0, 0, 0.35),
-            -3px 0 14px rgba(229, 57, 53, 0.25),
+            0 8px 28px rgba(0, 0, 0, 0.32),
+            -3px 0 14px rgba(229, 57, 53, 0.22),
             inset 0 1px 0 rgba(255, 255, 255, 0.06);
     }
 }
@@ -304,7 +315,7 @@ body.light-theme .title-bar-button:hover {
     50% {
         border-left-color: rgba(56, 189, 248, 0.95);
         box-shadow:
-            0 8px 24px rgba(15, 23, 42, 0.07),
+            0 8px 24px rgba(15, 23, 42, 0.06),
             -3px 0 14px rgba(56, 189, 248, 0.20),
             inset 0 1px 0 rgba(255, 255, 255, 0.88);
     }
