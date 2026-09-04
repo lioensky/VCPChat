@@ -32,6 +32,7 @@
     --border-color: #3B4449;
     --input-bg: rgba(32, 37, 42, 0.92);
     --panel-bg-dark: rgba(32, 37, 42, 0.86);
+    --panel-backdrop-filter: blur(12px);
 
     /* --- Text Colors --- */
     --primary-text: #F2F0E9;
@@ -104,6 +105,7 @@ body.light-theme {
     --border-color: #D2CBC0;
     --input-bg: rgba(252, 250, 244, 0.94);
     --panel-bg-light: rgba(252, 250, 244, 0.88);
+    --panel-backdrop-filter: blur(12px);
 
     /* --- Text Colors --- */
     --primary-text: #1B211F;

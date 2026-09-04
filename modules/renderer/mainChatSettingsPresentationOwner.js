@@ -221,9 +221,26 @@ export function createMainChatSettingsPresentationOwner({
             const trigger = document.querySelector(`[aria-controls="${switcher.id}"]`);
             const usesExplicitState = switcher.classList.contains('next-ui-chat-presentation-switcher');
 
+            let hoverCloseTimer = null;
+            const cancelHoverClose = () => {
+                if (hoverCloseTimer === null) return;
+                windowRef?.clearTimeout?.(hoverCloseTimer);
+                hoverCloseTimer = null;
+            };
             const setOpen = (open) => {
+                if (open) cancelHoverClose();
                 switcher.classList.toggle('is-open', open);
                 trigger?.setAttribute('aria-expanded', String(open));
+            };
+            const scheduleHoverClose = () => {
+                cancelHoverClose();
+                hoverCloseTimer = windowRef?.setTimeout?.(() => {
+                    hoverCloseTimer = null;
+                    if (!switcher.matches(':hover') && !trigger.matches(':hover')
+                        && !switcher.contains(document.activeElement)) {
+                        setOpen(false);
+                    }
+                }, 180) ?? null;
             };
 
             const selectMode = async (option) => {
@@ -238,13 +255,19 @@ export function createMainChatSettingsPresentationOwner({
             };
 
             if (usesExplicitState && trigger) {
+                const hoverRegion = trigger.closest('.next-ui-presentation-switcher') || trigger.parentElement;
+                listenerOwner.add(hoverRegion, 'pointerenter', () => setOpen(true));
+                listenerOwner.add(hoverRegion, 'pointerleave', scheduleHoverClose);
+                listenerOwner.add(switcher, 'pointerenter', () => setOpen(true));
+                listenerOwner.add(switcher, 'pointerleave', scheduleHoverClose);
+                listenerOwner.add(trigger, 'focus', () => setOpen(true));
+                listenerOwner.add(hoverRegion, 'focusout', (event) => {
+                    if (!hoverRegion.contains(event.relatedTarget)) setOpen(false);
+                });
                 listenerOwner.add(trigger, 'click', (event) => {
                     event.stopPropagation();
-                    const open = !switcher.classList.contains('is-open');
-                    setOpen(open);
-                    if (open) {
-                        options.find(option => option.getAttribute('aria-checked') === 'true')?.focus();
-                    }
+                    setOpen(false);
+                    windowRef?.VCPAppearanceStudio?.open?.({ trigger });
                 });
                 listenerOwner.add(document, 'pointerdown', (event) => {
                     if (!switcher.classList.contains('is-open')) return;

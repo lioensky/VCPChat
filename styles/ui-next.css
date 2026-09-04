@@ -154,10 +154,20 @@ html[data-vcp-wallpaper-scope="global"] .next-ui-topbar {
 
 html .next-ui-chat-presentation-switcher {
     top: calc(100% + 6px);
-    right: 0;
+    right: -28px;
     left: auto;
     transform: translateY(-5px) scale(0.97);
     transform-origin: right top;
+}
+
+/* 覆盖按钮与整颗胶囊之间的移动路径，避免穿过 6px 间隙时收起。 */
+html .next-ui-chat-presentation-switcher::before {
+    right: 0;
+    bottom: 100%;
+    left: auto;
+    width: 100%;
+    height: 8px;
+    transform: none;
 }
 
 html .next-ui-chat-presentation-switcher.is-open {

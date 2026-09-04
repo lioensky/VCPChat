@@ -534,7 +534,12 @@ body[data-vcp-theme="light"] .app-tray-drawer {
 
 .notification-item {
     position: relative;
-    background-color: var(--notification-bg);
+    /* 右栏外壳保持透明；通知卡片复用左侧栏的主题面板色，
+       滤镜沿用可由主题/外观系统覆盖的统一材质定义。 */
+    background-color: var(--panel-bg);
+    background-image: none;
+    backdrop-filter: var(--next-backdrop-filter, blur(12px));
+    -webkit-backdrop-filter: var(--next-backdrop-filter, blur(12px));
     color: var(--primary-text);
     padding: 10px 15px;
     padding-right: 40px;
@@ -551,18 +556,6 @@ body[data-vcp-theme="light"] .app-tray-drawer {
     cursor: pointer;
     overflow: hidden;
     max-width: 100%;
-
-    background-image: linear-gradient(
-        110deg,
-        var(--notification-bg) 0%,
-        var(--notification-bg) 40%,
-        var(--accent-bg) 50%,
-        var(--notification-bg) 60%,
-        var(--notification-bg) 100%
-    );
-    background-size: 250% 100%;
-    /* 移除通知项的持续流光动画，减少空闲时的重绘 */
-    /* animation: vcp-shimmer-bg 7s linear infinite; */
 }
 
 .notification-item.visible {
