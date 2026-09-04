@@ -58,13 +58,14 @@ appearance.commit({ density: 'relaxed' }, { uiMode: 'next', source: 'test-commit
 assert.equal(appearance.getRevision(), 1, 'persisted commits advance the appearance revision');
 assert.equal(appearance.readCache('next').density, 'relaxed');
 
+document.documentElement.style.setProperty('--vcp-theme-wallpaper-scope', 'global');
 const resolved = appearance.apply({
     density: 'compact', radius: 'square', typography: 'serif',
-    fontScale: 'large', contentWidth: 'centered', surface: 'solid'
+    fontScale: 'large', contentWidth: 'centered', wallpaperScope: 'theme', surface: 'solid'
 }, { uiMode: 'next', cache: true, source: 'test' });
 assert.equal(JSON.stringify(resolved), JSON.stringify({
     density: 'compact', radius: 'square', typography: 'serif',
-    fontScale: 'large', contentWidth: 'centered', surface: 'solid',
+    fontScale: 'large', contentWidth: 'centered', wallpaperScope: 'theme', surface: 'solid',
     surfaceEffect: 'vibrancy',
     shellRadius: 'tuned', composerRadius: 'tuned', sidebarRadius: 'tuned', cardRadius: 'tuned',
     surfaceOpacity: 68, surfaceBlur: 24, surfaceSaturation: 145, surfaceBrightness: 103,
@@ -77,6 +78,8 @@ assert.equal(document.documentElement.dataset.vcpComposerRadius, 'tuned');
 assert.match(document.getElementById('vcpAppearanceLayoutVariables').textContent, /--vcp-appearance-sidebar-row-height:46px/);
 assert.match(document.getElementById('vcpAppearanceLayoutVariables').textContent, /--vcp-appearance-sidebar-avatar-size:32px/);
 assert.match(document.getElementById('vcpAppearanceLayoutVariables').textContent, /--vcp-appearance-custom-radius:10px/);
+assert.equal(document.documentElement.dataset.vcpWallpaperScopePreference, 'theme');
+assert.equal(document.documentElement.dataset.vcpWallpaperScope, 'global', 'theme preference consumes the theme recommendation');
 assert.equal(document.querySelector('.vcp-ui-scope').dataset.density, 'compact');
 assert.equal(appearance.readCache('next').contentWidth, 'centered');
 assert.equal(document.getElementById('vcpAppearanceMaterialVariables').textContent.includes('--vcp-material-blur:24px'), true);
@@ -101,6 +104,15 @@ assert.equal(document.documentElement.dataset.vcpSurface, 'custom');
 assert.equal(document.documentElement.dataset.vcpSurfaceEffect, 'liquid');
 assert.match(document.getElementById('vcpAppearanceMaterialVariables').textContent, /--vcp-material-sheen:81%/);
 assert.equal(appearance.normalize({ surfaceEffect: 'unknown' }, 'next').surfaceEffect, 'vibrancy');
+assert.equal(appearance.normalize({ wallpaperScope: 'unknown' }, 'next').wallpaperScope, 'theme');
+appearance.apply({ ...resolved, wallpaperScope: 'panel' }, { uiMode: 'next', source: 'test-panel-override' });
+assert.equal(document.documentElement.dataset.vcpWallpaperScopePreference, 'panel');
+assert.equal(document.documentElement.dataset.vcpWallpaperScope, 'panel', 'explicit user scope overrides the theme recommendation');
+appearance.apply({ ...resolved, wallpaperScope: 'global' }, { uiMode: 'next', source: 'test-global-override' });
+assert.equal(document.documentElement.dataset.vcpWallpaperScope, 'global');
+document.documentElement.style.setProperty('--vcp-theme-wallpaper-scope', 'invalid');
+appearance.apply({ ...resolved, wallpaperScope: 'theme' }, { uiMode: 'next', source: 'test-theme-fallback' });
+assert.equal(document.documentElement.dataset.vcpWallpaperScope, 'panel', 'invalid theme recommendations fall back to panel');
 assert.equal(appearance.normalize({ sidebarRowHeight: 80 }, 'next').sidebarRowHeight, 64);
 assert.equal(appearance.normalize({ sidebarRowHeight: 20 }, 'next').sidebarRowHeight, 38);
 assert.equal(appearance.normalize({ sidebarRowHeight: 38, sidebarAvatarSize: 50 }, 'next').sidebarAvatarSize, 34);
@@ -134,6 +146,21 @@ assert.match(appearanceCss, /data-vcp-shell-radius="tuned"/);
 assert.match(appearanceCss, /--vcp-ui-sidebar-item-radius:\s*10px/);
 assert.match(appearanceCss, /data-vcp-surface-effect="liquid"\] \.next-ui-navigation-material/);
 assert.doesNotMatch(appearanceCss, /data-vcp-surface="custom"\] \.main-content/);
+const nextCss = fs.readFileSync('styles/ui-next.css', 'utf8');
+assert.match(nextCss, /data-vcp-wallpaper-scope="panel"\] body\s*\{[^}]*background-image:\s*none\s*!important/s);
+assert.match(nextCss, /data-vcp-wallpaper-scope="global"\] body\s*\{[^}]*background-image:\s*var\(--next-wallpaper\)\s*!important/s);
+assert.match(nextCss, /data-vcp-wallpaper-scope="global"\] \.next-ui-main-panel\s*\{[^}]*linear-gradient/s);
+assert.match(nextCss, /data-vcp-wallpaper-scope="global"\] \.next-ui-navigation-material\s*\{[^}]*display:\s*none/s,
+    'global wallpaper disables the viewport-sized material filter');
+assert.match(nextCss, /data-vcp-wallpaper-scope="global"\] \.next-ui-topbar\s*\{[^}]*backdrop-filter:\s*var\(--next-backdrop-filter\)/s,
+    'global wallpaper applies glass locally to the topbar');
+assert.match(nextCss, /data-vcp-wallpaper-scope="global"\] \.sidebar\s*\{[^}]*backdrop-filter:\s*var\(--next-backdrop-filter\)/s,
+    'global wallpaper applies glass locally to the sidebar');
+assert.match(nextCss, /data-vcp-wallpaper-scope="global"\] \.next-ui-main-panel\s*\{[^}]*backdrop-filter:\s*none\s*!important/s,
+    'global wallpaper keeps the main chat wallpaper sharp');
+assert.match(nextCss, /#vcp-we-wallpaper-web/, 'dynamic and web wallpaper planes share the resolved geometry contract');
+assert.match(nextCss, /#vcp-we-wallpaper-web[\s\S]*z-index:\s*0\s*!important/s,
+    'plugin wallpaper planes stay above the body canvas in the Next shell');
 assert.match(appearanceCss, /data-vcp-sidebar-radius="custom"[^}]*--vcp-ui-sidebar-item-radius:\s*var\(--vcp-appearance-custom-radius\)/s);
 assert.match(fontsCss, /--vcp-ui-font-family:\s*var\(--vcp-appearance-font-family/);
 assert.match(tokensCss, /--vcp-ui-sidebar-avatar-size:\s*var\(--vcp-appearance-sidebar-avatar-size/);

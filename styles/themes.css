@@ -18,7 +18,10 @@
 :root {
     color-scheme: dark;
 
-    /* --- Wallpaper Interface --- */
+    /* --- Wallpaper Interface ---
+       AI/theme authors may recommend `panel` or `global`; the user's
+       appearance preference can explicitly override this recommendation. */
+    --vcp-theme-wallpaper-scope: panel;
     --chat-wallpaper-dark: url('../assets/wallpaper/vcp_industrial_core_dark.jpg');
 
     /* --- Base Colors --- */

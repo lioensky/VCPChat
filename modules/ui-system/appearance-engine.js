@@ -6,6 +6,7 @@
         typography: new Set(['system', 'humanist', 'serif']),
         fontScale: new Set(['small', 'normal', 'large']),
         contentWidth: new Set(['full', 'centered']),
+        wallpaperScope: new Set(['theme', 'panel', 'global']),
         surface: new Set(['solid', 'translucent', 'custom']),
         surfaceEffect: new Set(['vibrancy', 'mica', 'acrylic', 'liquid']),
         shellRadius: new Set(['tuned', 'follow', 'square', 'small', 'medium', 'round', 'custom']),
@@ -37,7 +38,7 @@
     const PRESETS = Object.freeze({
         classic: Object.freeze({
             density: 'comfortable', radius: 'small', typography: 'system',
-            fontScale: 'normal', contentWidth: 'full', surface: 'translucent',
+            fontScale: 'normal', contentWidth: 'full', wallpaperScope: 'theme', surface: 'translucent',
             sidebarRowHeight: 46,
             sidebarAvatarSize: 32,
             customRadius: 10,
@@ -47,7 +48,7 @@
         }),
         next: Object.freeze({
             density: 'comfortable', radius: 'medium', typography: 'humanist',
-            fontScale: 'normal', contentWidth: 'full', surface: 'translucent',
+            fontScale: 'normal', contentWidth: 'full', wallpaperScope: 'theme', surface: 'translucent',
             sidebarRowHeight: 46,
             sidebarAvatarSize: 32,
             customRadius: 10,
@@ -189,6 +190,41 @@
         document.getElementById('vcpMaterialOptics')?.remove();
     }
 
+    function readThemeWallpaperScope() {
+        if (typeof getComputedStyle !== 'function') return 'panel';
+        const declared = getComputedStyle(document.documentElement)
+            .getPropertyValue('--vcp-theme-wallpaper-scope')
+            .trim()
+            .replace(/^(['"])(.*)\1$/, '$2')
+            .toLowerCase();
+        return declared === 'global' || declared === 'panel' ? declared : 'panel';
+    }
+
+    function resolveWallpaperScope(preference) {
+        return preference === 'global' || preference === 'panel'
+            ? preference
+            : readThemeWallpaperScope();
+    }
+
+    function publishWallpaperScope(resolved, source = 'runtime') {
+        const root = document.documentElement;
+        const preference = resolved?.wallpaperScope === 'global' || resolved?.wallpaperScope === 'panel'
+            ? resolved.wallpaperScope
+            : 'theme';
+        const effective = resolveWallpaperScope(preference);
+        root.dataset.vcpWallpaperScopePreference = preference;
+        root.dataset.vcpWallpaperScope = effective;
+        window.dispatchEvent(new CustomEvent('vcp-wallpaper-scope-changed', {
+            detail: { preference, effective, source }
+        }));
+        return effective;
+    }
+
+    function refreshWallpaperScope(options = {}) {
+        const resolved = currentProfile || normalize(null, document.documentElement.dataset.uiMode || 'classic');
+        return publishWallpaperScope(resolved, options.source || 'theme-refresh');
+    }
+
     function apply(profile, options = {}) {
         const uiMode = options.uiMode || document.documentElement.dataset.uiMode || 'classic';
         const resolved = normalize(profile, uiMode);
@@ -198,6 +234,7 @@
         root.dataset.vcpTypography = resolved.typography;
         root.dataset.vcpFontScale = resolved.fontScale;
         root.dataset.vcpContentWidth = resolved.contentWidth;
+        publishWallpaperScope(resolved, options.source || 'runtime');
         root.dataset.vcpSurface = resolved.surface;
         root.dataset.vcpSurfaceEffect = resolved.surfaceEffect;
         syncMaterialOptics(uiMode);
@@ -249,6 +286,7 @@
     });
     window.VCPAppearance = Object.freeze({
         PRESETS, MATERIAL_RANGES, LAYOUT_RANGES, normalize, apply, commit, getRevision, readCache,
+        resolveWallpaperScope, refreshWallpaperScope,
         getCurrent: () => currentProfile,
         subscribe: (listener, options) => stateChannel?.subscribe(listener, options) || (() => false),
     });

@@ -16,6 +16,7 @@ const dom = new JSDOM(`<!doctype html><html data-ui-mode="next"><body class="dar
         <select id="appearanceTypography"><option value="system">系统</option><option value="humanist">人文</option><option value="serif">衬线</option></select>
         <select id="appearanceFontScale"><option value="small">小</option><option value="normal">标准</option><option value="large">大</option></select>
         <select id="appearanceContentWidth"><option value="full">铺满</option><option value="centered">居中</option></select>
+        <select id="appearanceWallpaperScope"><option value="theme">主题</option><option value="panel">内容区</option><option value="global">全局</option></select>
         <input type="range" id="appearanceSidebarRowHeight" min="38" max="64" value="46">
         <output id="appearanceSidebarRowHeightValue">46px</output>
         <input type="range" id="appearanceSidebarAvatarSize" min="20" max="52" value="32">
@@ -64,7 +65,7 @@ window.globalSettings = {
     currentThemeMode: 'dark',
     appearanceProfile: {
         density: 'comfortable', radius: 'medium', typography: 'humanist',
-        fontScale: 'normal', contentWidth: 'full', surface: 'translucent',
+        fontScale: 'normal', contentWidth: 'full', wallpaperScope: 'theme', surface: 'translucent',
         sidebarRowHeight: 46, sidebarAvatarSize: 32, customRadius: 10
     },
     chatPresentationMode: 'bubble',
@@ -190,6 +191,8 @@ assert.deepEqual(
     'appearance settings remain one continuous panel with a predictable reading order'
 );
 assert.match(drawer.textContent, /阅读区布局/);
+assert.match(drawer.textContent, /壁纸范围/);
+assert.equal(drawer.querySelectorAll('[data-appearance-key="wallpaperScope"]').length, 3);
 assert.match(drawer.textContent, /消息宽度/);
 assert.match(drawer.textContent, /主页视觉文字/);
 assert.match(drawer.textContent, /侧栏列表尺寸/);
@@ -243,6 +246,10 @@ assert.equal(document.documentElement.dataset.vcpRadius, 'custom');
 assert.equal(document.documentElement.dataset.vcpSidebarRadius, 'custom');
 assert.match(document.getElementById('vcpAppearanceLayoutVariables').textContent, /--vcp-appearance-custom-radius:17px/);
 assert.doesNotMatch(drawer.textContent, /内容宽度/);
+drawer.querySelector('[data-appearance-key="wallpaperScope"][data-appearance-value="global"]').click();
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(document.documentElement.dataset.vcpWallpaperScopePreference, 'global');
+assert.equal(document.documentElement.dataset.vcpWallpaperScope, 'global');
 drawer.querySelector('[data-appearance-key="messageWidth"][data-appearance-value="wide"]').click();
 await new Promise(resolve => setImmediate(resolve));
 assert.equal(document.body.classList.contains('chat-wide-layout'), true);
@@ -311,11 +318,14 @@ assert.equal(document.body.classList.contains('light-theme'), true);
 drawer.querySelector('[data-appearance-preset="focus"]').click();
 await new Promise(resolve => setImmediate(resolve));
 assert.equal(document.body.classList.contains('light-theme'), true, 'presets must preserve the active theme mode');
+assert.equal(document.documentElement.dataset.vcpWallpaperScope, 'global', 'presets must preserve the wallpaper scope');
 
 await studio.close({ rollback: true });
 assert.equal(studio.isOpen(), false);
 assert.equal(document.documentElement.dataset.vcpDensity, 'comfortable');
 assert.equal(document.documentElement.dataset.vcpSidebarRadius, 'tuned');
+assert.equal(document.documentElement.dataset.vcpWallpaperScopePreference, 'theme');
+assert.equal(document.documentElement.dataset.vcpWallpaperScope, 'panel');
 assert.equal(document.body.classList.contains('dark-theme'), true);
 assert.equal(document.body.classList.contains('chat-presentation-bubble'), true);
 assert.equal(document.body.classList.contains('chat-wide-layout'), false);
@@ -366,6 +376,7 @@ assert.equal(document.body.classList.contains('chat-presentation-bubble'), true)
 drawer.querySelector('[data-appearance-preset="reading"]').click();
 await new Promise(resolve => setImmediate(resolve));
 drawer.querySelector('[data-appearance-key="messageWidth"][data-appearance-value="wide"]').click();
+drawer.querySelector('[data-appearance-key="wallpaperScope"][data-appearance-value="global"]').click();
 sidebarRowHeight.value = '54';
 sidebarRowHeight.dispatchEvent(new Event('input', { bubbles: true }));
 sidebarAvatarSize.value = '40';
@@ -389,6 +400,7 @@ assert.equal(window.chatAPI.saved[0].showHomeVisualTagline, false);
 assert.equal(window.chatAPI.saved[0].homeVisualTagline, '为想象力打开新的边界');
 assert.equal(window.chatAPI.saved[0].appearanceProfile.sidebarRowHeight, 54);
 assert.equal(window.chatAPI.saved[0].appearanceProfile.sidebarAvatarSize, 40);
+assert.equal(window.chatAPI.saved[0].appearanceProfile.wallpaperScope, 'global');
 assert.equal(window.globalSettings.enableWideChatLayout, true);
 assert.equal(window.globalSettings.showHomeVisualBrand, false);
 assert.equal(window.globalSettings.showHomeVisualTagline, false);
@@ -396,6 +408,7 @@ assert.equal(window.globalSettings.homeVisualTagline, '为想象力打开新的�
 assert.equal(document.getElementById('showHomeVisualBrand').checked, false);
 assert.equal(document.getElementById('appearanceSidebarRowHeightValue').value, '54px');
 assert.equal(document.getElementById('appearanceSidebarAvatarSizeValue').value, '40px');
+assert.equal(document.getElementById('appearanceWallpaperScope').value, 'global');
 assert.equal(document.getElementById('appearanceSidebarRadius').value, 'tuned');
 assert.equal(document.getElementById('appearanceCustomRadiusValue').value, '14px');
 assert.equal(document.getElementById('chatLayoutModeWide').checked, true);

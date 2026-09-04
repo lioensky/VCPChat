@@ -65,6 +65,15 @@ const APPEARANCE_PROFILE_SELECTS = [
         ],
     },
     {
+        key: 'appearanceWallpaperScope', profileKey: 'appearanceProfile.wallpaperScope',
+        languageRow: { title: '壁纸显示范围', description: '由主题建议，或强制壁纸仅显示在内容区/覆盖整个窗口' },
+        options: [
+            { value: 'theme', label: '跟随主题建议' },
+            { value: 'panel', label: '仅内容区' },
+            { value: 'global', label: '全局窗口' },
+        ],
+    },
+    {
         key: 'appearanceSurface', profileKey: 'appearanceProfile.surface',
         languageRow: { title: '导航材质', description: '选择侧栏与页面的表面材质' },
         options: [
@@ -266,6 +275,7 @@ export const appearanceSettingsSection = section('appearance-settings', '界面�
                 typography: byId('appearanceTypography'),
                 fontScale: byId('appearanceFontScale'),
                 contentWidth: byId('appearanceContentWidth'),
+                wallpaperScope: byId('appearanceWallpaperScope') || profile.wallpaperScope || 'theme',
                 sidebarRowHeight: Number(byId('appearanceSidebarRowHeight')) || profile.sidebarRowHeight || 46,
                 sidebarAvatarSize: Number(byId('appearanceSidebarAvatarSize')) || profile.sidebarAvatarSize || 32,
                 customRadius: Number(byId('appearanceCustomRadius') ?? 10),

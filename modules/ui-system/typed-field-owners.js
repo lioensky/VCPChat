@@ -661,6 +661,7 @@ const TYPED_FIELD_DEFINITIONS = Object.freeze({
     appearanceTypography: { path: 'appearanceProfile.typography', kind: 'string' },
     appearanceFontScale: { path: 'appearanceProfile.fontScale', kind: 'string' },
     appearanceContentWidth: { path: 'appearanceProfile.contentWidth', kind: 'string' },
+    appearanceWallpaperScope: { path: 'appearanceProfile.wallpaperScope', kind: 'string' },
     appearanceSurface: { path: 'appearanceProfile.surface', kind: 'string' },
     appearanceSidebarRadius: { path: 'appearanceProfile.sidebarRadius', kind: 'string' },
     appearanceSidebarRowHeight: { path: 'appearanceProfile.sidebarRowHeight', kind: 'number' },
@@ -733,6 +734,7 @@ function mountTypedFieldOwner(root, form) {
         set('appearanceTypography', appearance.typography || 'system');
         set('appearanceFontScale', appearance.fontScale || 'normal');
         set('appearanceContentWidth', appearance.contentWidth || 'full');
+        set('appearanceWallpaperScope', appearance.wallpaperScope || 'theme');
         set('appearanceSurface', appearance.surface || 'translucent');
         set('appearanceSidebarRowHeight', appearance.sidebarRowHeight ?? 46);
         set('appearanceSidebarRowHeightValue', `${appearance.sidebarRowHeight ?? 46}px`);

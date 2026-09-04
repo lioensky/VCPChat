@@ -35,11 +35,21 @@ html body {
     --next-backdrop-filter: var(--next-theme-backdrop-filter, blur(18px) saturate(1.28) brightness(1.03));
     --next-surface-backdrop-filter: var(--next-theme-surface-backdrop-filter, none);
     background-color: var(--primary-bg, var(--next-shell-bg));
-    /* 新版 UI 下壁纸只铺在右侧主面板/通知栏/启动台，关掉 body 的全屏铺底，
-       让顶栏与侧栏显示干净的 shell-bg + material sheen，不再对壁纸做无效覆盖。
-       !important 是因为 styles/themes.css 的 body 壁纸规则是 unlayered，
-       跨层压制需要显式提权。 */
+}
+
+/* Wallpaper scope is an appearance decision, not a theme-content decision.
+   Themes continue to own --chat-wallpaper-* and may recommend a scope through
+   --vcp-theme-wallpaper-scope; AppearanceEngine publishes the resolved mode. */
+html[data-vcp-wallpaper-scope="panel"] body {
     background-image: none !important;
+}
+
+html[data-vcp-wallpaper-scope="global"] body {
+    background-image: var(--next-wallpaper) !important;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: cover;
+    background-attachment: fixed;
 }
 
 html body[data-vcp-theme="light"] {
@@ -82,6 +92,16 @@ html .next-ui-navigation-material {
     -webkit-backdrop-filter: var(--next-backdrop-filter);
 }
 
+/* A theme is allowed to publish an opaque shell color for panel mode. Global
+   wallpaper mode must still expose the body wallpaper beneath the navigation
+   material, otherwise switching scope appears to remove the wallpaper. */
+html[data-vcp-wallpaper-scope="global"] .next-ui-navigation-material {
+    /* Global wallpaper needs local glass, not a viewport-sized filter. A
+       full-screen backdrop-filter would blur the wallpaper behind the chat
+       canvas as well as behind navigation. */
+    display: none;
+}
+
 html body.next-ui-internal-app-open:has(
     #nextUiInternalAppHost[data-active-app-id="vchat-app-notes"],
     #nextUiInternalAppHost[data-active-app-id="vchat-app-translator"],
@@ -105,6 +125,16 @@ html .next-ui-topbar {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     -webkit-app-region: drag;
+}
+
+html[data-vcp-wallpaper-scope="global"] .next-ui-topbar {
+    background-color: var(
+        --panel-bg,
+        color-mix(in srgb, var(--next-shell-bg) var(--vcp-material-opacity, 68%), transparent)
+    );
+    background-image: var(--next-material-sheen);
+    backdrop-filter: var(--next-backdrop-filter);
+    -webkit-backdrop-filter: var(--next-backdrop-filter);
 }
 
 .next-ui-tab-strip,
@@ -492,10 +522,27 @@ html .next-ui-main-panel {
     -webkit-backdrop-filter: var(--next-surface-backdrop-filter);
 }
 
-/* Frontend plugins keep their upstream Classic DOM and behavior. The Next
-   shell only provides the geometry needed for the shared wallpaper video to
-   remain visible behind the main panel. */
-html #vchat-dynamic-wallpaper-video {
+html[data-vcp-wallpaper-scope="global"] .next-ui-main-panel {
+    /* Global mode keeps the chat wallpaper sharp. Readability comes from a
+       lightweight color veil, never from a panel-wide backdrop blur. */
+    background-color: transparent !important;
+    background-image: linear-gradient(
+        color-mix(in srgb, var(--primary-bg) 24%, transparent),
+        color-mix(in srgb, var(--primary-bg) 24%, transparent)
+    ) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* Frontend wallpaper plugins retain their upstream DOM and behavior. The
+   resolved wallpaper scope supplies one shared geometry contract for video,
+   image and isolated web wallpaper planes. */
+html[data-vcp-wallpaper-scope="panel"] :is(
+    #vchat-dynamic-wallpaper-video,
+    #vcp-we-wallpaper-video,
+    #vcp-we-wallpaper-image,
+    #vcp-we-wallpaper-web
+) {
     top: var(--next-topbar-height, 44px);
     right: 0;
     bottom: 0;
@@ -505,7 +552,36 @@ html #vchat-dynamic-wallpaper-video {
     border-radius: var(--vcp-ui-shell-radius) 0 0 0;
 }
 
-html body.vchat-dynamic-wallpaper-visible .next-ui-main-panel {
+html[data-vcp-wallpaper-scope="global"] :is(
+    #vchat-dynamic-wallpaper-video,
+    #vcp-we-wallpaper-video,
+    #vcp-we-wallpaper-image,
+    #vcp-we-wallpaper-web
+) {
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+}
+
+/* Wallpaper plugins historically use z-index:-1 because Classic paints its
+   surfaces directly over the body. In the Next shell that places a global
+   wallpaper behind the body's own canvas. Lift only the non-interactive
+   wallpaper planes into the shell's bottom stacking level; navigation and
+   workspace content are painted later/above them. */
+html :is(
+    #vchat-dynamic-wallpaper-video,
+    #vcp-we-wallpaper-video,
+    #vcp-we-wallpaper-image,
+    #vcp-we-wallpaper-web
+) {
+    z-index: 0 !important;
+}
+
+html body:is(
+    .vchat-dynamic-wallpaper-visible,
+    .vcp-we-wallpaper-visible
+) .next-ui-main-panel {
     background-color: transparent;
     background-image: linear-gradient(
         color-mix(in srgb, var(--next-surface) 34%, transparent),
@@ -526,6 +602,75 @@ html .sidebar {
     box-shadow: none !important;
 }
 
+html[data-vcp-wallpaper-scope="global"] .sidebar {
+    position: relative;
+    z-index: 1;
+    /* The continuous container material below already paints both the sidebar
+       and rounded-corner reveal. Theme styles are intentionally unlayered, so
+       this structural no-double-paint rule must explicitly outrank them.
+       Theme appearance still flows into the shared plane through --panel-bg,
+       --next-material-sheen and --next-backdrop-filter. */
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* Paint the sidebar and the main panel's rounded-corner cutout as one
+   continuous material surface. Because this is a single compositing plane,
+   the revealed corner and sidebar cannot diverge in color or blur sampling. */
+html[data-vcp-wallpaper-scope="global"] .container::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    z-index: 0;
+    width: calc(var(--next-sidebar-width, 260px) + var(--vcp-ui-shell-radius));
+    pointer-events: none;
+    background-color: var(
+        --panel-bg,
+        color-mix(in srgb, var(--next-shell-bg) var(--vcp-material-opacity, 68%), transparent)
+    );
+    background-image: var(--next-material-sheen);
+    backdrop-filter: var(--next-backdrop-filter);
+    -webkit-backdrop-filter: var(--next-backdrop-filter);
+
+    /* One compositing surface, two visible regions:
+       1. the full sidebar rectangle;
+       2. only the exterior crescent of the main panel's top-left radius.
+       The unused extension below the corner stays transparent, preventing the
+       previous full-height material stripe. */
+    -webkit-mask-image:
+        linear-gradient(#000 0 0),
+        radial-gradient(
+            circle var(--vcp-ui-shell-radius) at 100% 100%,
+            transparent calc(100% - 0.75px),
+            #000 100%
+        );
+    -webkit-mask-size:
+        var(--next-sidebar-width, 260px) 100%,
+        var(--vcp-ui-shell-radius) var(--vcp-ui-shell-radius);
+    -webkit-mask-position:
+        left top,
+        right top;
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-composite: source-over;
+
+    mask-image:
+        linear-gradient(#000 0 0),
+        radial-gradient(
+            circle var(--vcp-ui-shell-radius) at 100% 100%,
+            transparent calc(100% - 0.75px),
+            #000 100%
+        );
+    mask-size:
+        var(--next-sidebar-width, 260px) 100%,
+        var(--vcp-ui-shell-radius) var(--vcp-ui-shell-radius);
+    mask-position:
+        left top,
+        right top;
+    mask-repeat: no-repeat;
+    mask-composite: add;
+}
+
 html .sidebar:not(.avatar-only) {
     padding-left: 0;
 }
@@ -538,6 +683,7 @@ html .sidebar.avatar-only {
 
 html #resizerLeft,
 html #resizerRight {
+    position: relative;
     width: 4px;
     margin: 0 -2px;
     background: transparent;
@@ -545,6 +691,7 @@ html #resizerRight {
     -webkit-backdrop-filter: none;
     z-index: 5;
 }
+
 
 html .main-content {
     position: relative;
@@ -928,10 +1075,25 @@ html .next-ui-launchpad {
     background-attachment: scroll;
 }
 
+html[data-vcp-wallpaper-scope="global"] .next-ui-launchpad {
+    background-color: transparent !important;
+    background-image: linear-gradient(
+        color-mix(in srgb, var(--primary-bg) 28%, transparent),
+        color-mix(in srgb, var(--primary-bg) 28%, transparent)
+    ) !important;
+}
+
 body[data-vcp-theme="light"] .next-ui-launchpad {
     background-image:
         linear-gradient(color-mix(in srgb, var(--vcp-ui-bg-0, var(--next-surface)) 55%, transparent), color-mix(in srgb, var(--vcp-ui-bg-0, var(--next-surface)) 55%, transparent)),
         var(--next-wallpaper);
+}
+
+html[data-vcp-wallpaper-scope="global"] body[data-vcp-theme="light"] .next-ui-launchpad {
+    background-image: linear-gradient(
+        color-mix(in srgb, var(--primary-bg) 34%, transparent),
+        color-mix(in srgb, var(--primary-bg) 34%, transparent)
+    ) !important;
 }
 
 html body.next-ui-launchpad-open .next-ui-launchpad {

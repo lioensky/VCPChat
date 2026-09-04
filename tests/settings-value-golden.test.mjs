@@ -81,6 +81,9 @@ function legacyCollect({ doc, currentSettings, settingsManager, getAppearance, n
             typography: getElementById('appearanceTypography')?.value,
             fontScale: getElementById('appearanceFontScale')?.value,
             contentWidth: getElementById('appearanceContentWidth')?.value,
+            wallpaperScope: getElementById('appearanceWallpaperScope')?.value
+                || currentSettings.appearanceProfile?.wallpaperScope
+                || 'theme',
             sidebarRowHeight: Number(getElementById('appearanceSidebarRowHeight')?.value)
                 || currentSettings.appearanceProfile?.sidebarRowHeight
                 || 46,

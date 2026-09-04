@@ -308,7 +308,7 @@ test('appearance-settings：裸 select 行、几何滑杆与主页视觉开关',
     const { form } = renderIntoForm(appearanceSettingsSection);
     // 裸 select 行：容器 id + data-vcp-settings-row + hidden select（语言行 passes 的宿主锚点）
     for (const key of ['appearanceDensity', 'appearanceRadius', 'appearanceTypography',
-        'appearanceFontScale', 'appearanceContentWidth', 'appearanceSurface']) {
+        'appearanceFontScale', 'appearanceContentWidth', 'appearanceWallpaperScope', 'appearanceSurface']) {
         const row = form.querySelector(`#${key}Row`);
         assert.ok(row, `missing #${key}Row`);
         assert.equal(row.getAttribute('data-vcp-settings-row'), '');
@@ -316,6 +316,9 @@ test('appearance-settings：裸 select 行、几何滑杆与主页视觉开关',
         assert.ok(selectNode?.hidden, `#${key} 应为 hidden select`);
         assert.ok(selectNode.options.length >= 2, `#${key} 应保留全部选项`);
     }
+    const wallpaperScope = form.querySelector('#appearanceWallpaperScope');
+    assert.deepEqual([...wallpaperScope.options].map(option => option.value), ['theme', 'panel', 'global']);
+    assert.equal(wallpaperScope.value, 'theme');
     const radiusRow = form.querySelector('#appearanceSidebarRadiusLanguageRow');
     assert.equal(radiusRow.className,
         'vcp-uiux-general-item vcp-uiux-general-row appearance-radius-language-host vcp-uiux-appearance-row',
