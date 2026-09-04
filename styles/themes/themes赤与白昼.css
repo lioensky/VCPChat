@@ -88,7 +88,7 @@ body.light-theme {
     color-scheme: light;
 
     /* --- Wallpaper Interface --- */
-    --chat-wallpaper-light: url('../assets/wallpaper/ayanami_light.jpg');
+    --chat-wallpaper-light: url('../assets/wallpaper/ayanami_light.png');
     background-image: var(--chat-wallpaper-light);
     background-size: cover;
     background-position: center;
