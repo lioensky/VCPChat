@@ -1,0 +1,434 @@
+/*
+ * styles/themes/themes酸性玄武.css
+ * Avant-Garde Dual-Tone Theme: Acid & Basalt / Sterile Lab
+ * Designed by Coco for Professor Ryan
+ *
+ * Dark  : Acid & Basalt / 酸性玄武 (玄武岩黑、酸绿高能信标、电光青脉冲)
+ * Light : Sterile Lab / 无菌实验 (纯冷白素体、炭黑高精排印、荧光便签标)
+ */
+
+/* =========================================================
+   Dark Theme (Default) · Acid & Basalt
+   玄武岩石墨 / 骨白 / 荧光酸绿 / 电光青
+   ========================================================= */
+:root {
+    color-scheme: dark;
+
+    /* --- Wallpaper Interface --- */
+    --chat-wallpaper-dark: url('../assets/wallpaper/vcp_acid_basalt_dark.jpg');
+
+    /* --- Base Colors --- */
+    --primary-bg: #0D1013;
+    --secondary-bg: #15191F;
+    --tertiary-bg: #0D1013;
+    --accent-bg: #1F252E;
+    --border-color: #2B3441;
+    --input-bg: rgba(21, 25, 31, 0.92);
+    --panel-bg-dark: rgba(21, 25, 31, 0.86);
+
+    /* --- Text Colors --- */
+    --primary-text: #F0F4F8;
+    --secondary-text: #8C96A5;
+    --highlight-text: #D4FF00;
+    --text-on-accent: #0D1013;
+    --placeholder-text: #606B7B;
+    --quoted-text: #00E5FF;
+    --user-text: #F0F4F8;
+    --agent-text: #F0F4F8;
+
+    /* --- Chat Bubbles --- */
+    --user-bubble-bg: rgba(212, 255, 0, 0.09);
+    --assistant-bubble-bg: rgba(21, 25, 31, 0.84);
+
+    /* --- Controls & Semantic Colors --- */
+    --button-bg: #D4FF00;
+    --button-hover-bg: #E2FF4D;
+    --danger-color: #FF4D4D;
+    --danger-hover-bg: #FF6666;
+    --success-color: #00E5FF;
+
+    /* --- VCP UI System Design Tokens Override (High Contrast for Acid Green) --- */
+    --vcp-ui-theme-accent: #D4FF00;
+    --vcp-ui-theme-accent-hover: #E2FF4D;
+    --vcp-ui-theme-on-accent: #0D1013;
+    --vcp-ui-on-accent: #0D1013;
+
+    /* --- Notifications & Tools --- */
+    --notification-bg: rgba(21, 25, 31, 0.94);
+    --notification-header-bg: rgba(31, 37, 46, 0.94);
+    --notification-border: #2B3441;
+    --tool-bubble-bg: rgba(0, 229, 255, 0.08);
+    --tool-bubble-border: rgba(0, 229, 255, 0.55);
+
+    /* --- Scrollbar --- */
+    --scrollbar-track: rgba(13, 16, 19, 0.55);
+    --scrollbar-thumb: rgba(212, 255, 0, 0.52);
+    --scrollbar-thumb-hover: rgba(212, 255, 0, 0.82);
+
+    /* --- Streaming Shimmer --- */
+    --shimmer-color-transparent: rgba(212, 255, 0, 0.06);
+    --shimmer-color-highlight: rgba(212, 255, 0, 0.42);
+
+    /* --- Frosted Panel Readability --- */
+    --panel-text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75);
+    --panel-bg: var(--panel-bg-dark);
+}
+
+body {
+    background-image: var(--chat-wallpaper-dark);
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+}
+
+/* =========================================================
+   Light Theme · Sterile Lab & Neon Tag
+   纯冷白素体 / 炭黑排印 / 荧光酸绿便签 / 深电青
+   ========================================================= */
+body.light-theme {
+    color-scheme: light;
+
+    /* --- Wallpaper Interface --- */
+    --chat-wallpaper-light: url('../assets/wallpaper/vcp_sterile_lab_light.jpg');
+    background-image: var(--chat-wallpaper-light);
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+
+    /* --- Base Colors --- */
+    --primary-bg: #F4F6F9;
+    --secondary-bg: #FFFFFF;
+    --tertiary-bg: #EAEFF5;
+    --accent-bg: #E1E7EF;
+    --border-color: #CBD5E1;
+    --input-bg: rgba(255, 255, 255, 0.94);
+    --panel-bg-light: rgba(255, 255, 255, 0.88);
+
+    /* --- Text Colors --- */
+    --primary-text: #0F172A;
+    --secondary-text: #475569;
+    --highlight-text: #709600;
+    --text-on-accent: #0F172A;
+    --placeholder-text: #94A3B8;
+    --quoted-text: #00838F;
+    --user-text: #0F172A;
+    --agent-text: #0F172A;
+
+    /* --- Chat Bubbles --- */
+    --user-bubble-bg: rgba(204, 255, 0, 0.12);
+    --assistant-bubble-bg: rgba(255, 255, 255, 0.90);
+
+    /* --- Controls & Semantic Colors --- */
+    --button-bg: #CCFF00;
+    --button-hover-bg: #B8E600;
+    --danger-color: #EF4444;
+    --danger-hover-bg: #DC2626;
+    --success-color: #00838F;
+
+    /* --- VCP UI System Design Tokens Override (High Contrast for Light Mode) --- */
+    --vcp-ui-theme-accent: #CCFF00;
+    --vcp-ui-theme-accent-hover: #B8E600;
+    --vcp-ui-theme-on-accent: #0F172A;
+    --vcp-ui-on-accent: #0F172A;
+
+    /* --- Notifications & Tools --- */
+    --notification-bg: rgba(255, 255, 255, 0.95);
+    --notification-header-bg: rgba(241, 245, 249, 0.95);
+    --notification-border: #CBD5E1;
+    --tool-bubble-bg: rgba(0, 131, 143, 0.08);
+    --tool-bubble-border: rgba(0, 131, 143, 0.45);
+
+    /* --- Scrollbar --- */
+    --scrollbar-track: rgba(203, 213, 225, 0.48);
+    --scrollbar-thumb: rgba(112, 150, 0, 0.48);
+    --scrollbar-thumb-hover: rgba(112, 150, 0, 0.78);
+
+    /* --- Streaming Shimmer --- */
+    --shimmer-color-transparent: rgba(112, 150, 0, 0.05);
+    --shimmer-color-highlight: rgba(112, 150, 0, 0.32);
+
+    /* --- Frosted Panel Readability --- */
+    --panel-text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+    --panel-bg: var(--panel-bg-light);
+}
+
+/* =========================================================
+   High Contrast Button & Icon Text Calibration
+   针对高明度酸绿底色，强制让箭头图标和高亮文字显黑
+   ========================================================= */
+
+/* 1. 主输入框发送按钮及其内部 SVG 箭头 / 图标 */
+html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button) {
+    color: #0D1013 !important;
+}
+html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button) svg,
+html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button) .vcp-ui-icon {
+    color: #0D1013 !important;
+    fill: currentColor !important;
+    stroke: currentColor !important;
+}
+
+/* 2. 音乐播放器模块高亮组件文字反黑 */
+#add-folder-btn,
+.sidebar-action-btns #add-folder-btn,
+.sidebar-tab.active,
+.sidebar-playlist li.active,
+.playlist li.active,
+.playlist-items li.active {
+    color: #0D1013 !important;
+    font-weight: 700 !important;
+}
+#add-folder-btn svg,
+.sidebar-action-btns #add-folder-btn svg {
+    fill: #0D1013 !important;
+    color: #0D1013 !important;
+}
+
+/* 浅色模式下的按钮字符增强 */
+body.light-theme html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button) {
+    color: #0F172A !important;
+}
+body.light-theme html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button) svg,
+body.light-theme html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button) .vcp-ui-icon {
+    color: #0F172A !important;
+    fill: currentColor !important;
+    stroke: currentColor !important;
+}
+body.light-theme #add-folder-btn,
+body.light-theme .sidebar-action-btns #add-folder-btn,
+body.light-theme .sidebar-tab.active,
+body.light-theme .sidebar-playlist li.active,
+body.light-theme .playlist li.active,
+body.light-theme .playlist-items li.active {
+    color: #0F172A !important;
+    font-weight: 700 !important;
+}
+
+/* =========================================================
+   Shared Material System · Kinetic Tech
+   ========================================================= */
+
+.tool-bubble {
+    backdrop-filter: blur(14px) saturate(115%) !important;
+    -webkit-backdrop-filter: blur(14px) saturate(115%) !important;
+}
+
+.sidebar {
+    box-shadow: 10px 0 32px rgba(0, 0, 0, 0.16);
+}
+
+.notifications-sidebar {
+    box-shadow: -10px 0 32px rgba(0, 0, 0, 0.16);
+}
+
+/* Dark User Bubble: Acid Green Tag Anchor */
+.message-item.user .md-content {
+    box-sizing: border-box;
+    border: 1px solid rgba(212, 255, 0, 0.28) !important;
+    border-right: 3px solid #D4FF00 !important;
+    border-radius: 14px 4px 14px 14px !important;
+    box-shadow:
+        0 7px 24px rgba(0, 0, 0, 0.25),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Dark Assistant Bubble: Dense Basalt Plate with Cyan Beam */
+.message-item.agent .md-content,
+.message-item.assistant .md-content {
+    box-sizing: border-box;
+    border: 1px solid #2B3441 !important;
+    border-left: 3px solid #00E5FF !important;
+    border-radius: 4px 14px 14px 14px !important;
+    box-shadow:
+        0 8px 28px rgba(0, 0, 0, 0.32),
+        inset 0 1px 0 rgba(255, 255, 255, 0.03) !important;
+}
+
+/* Tool output behaves like a laboratory readout tag */
+.tool-bubble {
+    border-left: 3px solid var(--tool-bubble-border) !important;
+    border-radius: 4px 10px 10px 10px !important;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.16);
+}
+
+/* Top Action Controls */
+.header-button,
+.title-bar-button {
+    color: #C2CBD6 !important;
+    transition:
+        color 0.18s ease,
+        background-color 0.18s ease,
+        transform 0.18s ease,
+        box-shadow 0.18s ease;
+}
+
+.header-button:hover,
+.title-bar-button:hover {
+    color: #D4FF00 !important;
+    background-color: rgba(212, 255, 0, 0.12) !important;
+    box-shadow: inset 0 -2px 0 #D4FF00;
+    transform: translateY(-1px);
+}
+
+/* =========================================================
+   Light Material Translation · Laboratory Vellum
+   ========================================================= */
+body.light-theme .sidebar {
+    box-shadow: 10px 0 28px rgba(15, 23, 42, 0.06);
+}
+
+body.light-theme .notifications-sidebar {
+    box-shadow: -10px 0 28px rgba(15, 23, 42, 0.06);
+}
+
+/* Light User Bubble: Neon Memo Tape Edge */
+body.light-theme .message-item.user .md-content {
+    background: linear-gradient(
+        145deg,
+        rgba(255, 255, 255, 0.95),
+        rgba(204, 255, 0, 0.14)
+    ) !important;
+    border: 1px solid rgba(168, 217, 0, 0.45) !important;
+    border-right: 4px solid #A8D900 !important;
+    box-shadow:
+        0 6px 20px rgba(15, 23, 42, 0.05),
+        inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+}
+
+/* Light Assistant Bubble: High-density Lab Plate */
+body.light-theme .message-item.agent .md-content,
+body.light-theme .message-item.assistant .md-content {
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.94) 0%,
+        rgba(244, 247, 250, 0.90) 100%
+    ) !important;
+    border: 1px solid #CBD5E1 !important;
+    border-left: 4px solid #00838F !important;
+    box-shadow:
+        0 7px 22px rgba(15, 23, 42, 0.06),
+        inset 0 1px 0 rgba(255, 255, 255, 0.95) !important;
+}
+
+body.light-theme .tool-bubble {
+    box-shadow: 0 5px 16px rgba(15, 23, 42, 0.04);
+}
+
+body.light-theme .header-button,
+body.light-theme .title-bar-button {
+    color: #475569 !important;
+}
+
+body.light-theme .header-button:hover,
+body.light-theme .title-bar-button:hover {
+    color: #709600 !important;
+    background-color: rgba(204, 255, 0, 0.18) !important;
+    box-shadow: inset 0 -2px 0 #709600;
+}
+
+/* =========================================================
+   Streaming Pulse Motion
+   ========================================================= */
+@keyframes acidCyberPulse {
+    0%, 100% {
+        border-left-color: rgba(0, 229, 255, 0.55);
+        box-shadow:
+            0 8px 28px rgba(0, 0, 0, 0.32),
+            inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    }
+    50% {
+        border-left-color: #D4FF00;
+        box-shadow:
+            0 8px 32px rgba(0, 0, 0, 0.38),
+            -3px 0 16px rgba(212, 255, 0, 0.22),
+            inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+}
+
+.message-item.streaming.agent .md-content,
+.message-item.streaming.assistant .md-content {
+    animation: acidCyberPulse 2.4s ease-in-out infinite;
+}
+
+@keyframes labCyanPulse {
+    0%, 100% {
+        border-left-color: rgba(0, 131, 143, 0.65);
+    }
+    50% {
+        border-left-color: #A8D900;
+        box-shadow:
+            0 7px 24px rgba(15, 23, 42, 0.08),
+            -3px 0 14px rgba(168, 217, 0, 0.25);
+    }
+}
+
+body.light-theme .message-item.streaming.agent .md-content,
+body.light-theme .message-item.streaming.assistant .md-content {
+    animation: labCyanPulse 2.8s ease-in-out infinite;
+}
+
+/* Scrollbar Architecture */
+::-webkit-scrollbar {
+    width: 6px !important;
+    height: 6px !important;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--scrollbar-track) !important;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb) !important;
+    border-radius: 8px !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover) !important;
+}
+
+:focus-visible:not(#messageInput):not(.chat-message-input):not(.vcp-ui-scope *) {
+    outline: 2px solid var(--highlight-text);
+    outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .message-item.streaming.agent .md-content,
+    .message-item.streaming.assistant .md-content,
+    body.light-theme .message-item.streaming.agent .md-content,
+    body.light-theme .message-item.streaming.assistant .md-content {
+        animation: none !important;
+    }
+
+    .header-button,
+    .title-bar-button {
+        transition: none !important;
+    }
+}/* =========================================================
+   Maid Diary Icon Unicode Encoding Fix
+   修复因外部 CSS 未声明 UTF-8 导致 ✒️ 变 âœ’ï¸ 乱码的问题
+   ========================================================= */
+.diary-title::before {
+    content: "\2712\FE0F" !important;
+    font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif !important;
+}
+
+.valet-diary-bubble .diary-title::before {
+    content: "\1F58B\FE0F" !important;
+    font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif !important;
+}
+
+.diary-update-title::before {
+    content: "\270F\FE0F" !important;
+    font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif !important;
+}/* =========================================================
+   Tool Bubble Gear Icon & Chart Unicode Fix
+   ========================================================= */
+.vcp-tool-use-bubble::before {
+    content: "\2699\FE0F" !important;
+    font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif !important;
+}
+
+.rendered-markdown table.vcp-chart::before {
+    content: "\1F4CA" !important;
+    font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif !important;
+}
