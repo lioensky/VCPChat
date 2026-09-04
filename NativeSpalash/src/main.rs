@@ -179,7 +179,11 @@ fn main() {
     };
 
     let window = Arc::new({
-        let icon_image = image::load_from_memory_with_format(include_bytes!("../../assets/icon.png"), ImageFormat::Png).unwrap();
+        let icon_image = image::load_from_memory_with_format(
+            include_bytes!("../../assets/iconset/VChatOfficial/vchat_main.png"),
+            ImageFormat::Png,
+        )
+        .unwrap();
         let (width, height) = icon_image.dimensions();
         let icon = Icon::from_rgba(icon_image.into_rgba8().into_raw(), width, height).unwrap();
 
@@ -202,7 +206,8 @@ fn main() {
     };
 
     // --- 2. Load and prepare the splash image ---
-    let splash_image_bytes = include_bytes!("../../assets/icon.png");
+    let splash_image_bytes =
+        include_bytes!("../../assets/iconset/VChatOfficial/vchat_main.png");
     let img = image::load_from_memory(splash_image_bytes).expect("Failed to load splash image");
     let resized_img = img.resize_exact(ICON_SIZE, ICON_SIZE, FilterType::Lanczos3);
     let mut img_rgba = resized_img.to_rgba8();
