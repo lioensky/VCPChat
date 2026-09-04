@@ -765,6 +765,16 @@ body[data-vcp-theme="dark"] #groupSettingsForm .form-actions .danger-button {
     gap: 12px;
 }
 
+#agentSettingsContainer .vcp-uiux-select,
+#agentSettingsContainer .vcp-uiux-select-trigger,
+#groupSettingsContainer .vcp-uiux-select,
+#groupSettingsContainer .vcp-uiux-select-trigger {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+}
+
 #agentSettingsForm > .form-actions,
 #groupSettingsForm > .form-actions {
     margin-top: auto;
