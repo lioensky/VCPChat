@@ -17,7 +17,10 @@ function getCssVariable(variable) {
 const term = new Terminal({
     cursorBlink: true,
     fontSize: 14,
-    fontFamily: 'Consolas, "Courier New", monospace',
+    // Nerd Font first: oh-my-posh and similar prompt themes emit glyphs from
+    // Nerd Font blocks (e.g. U+E0B0 powerline separators). Fall back through
+    // Cascadia Code / Consolas / monospace when no NF font is installed.
+    fontFamily: '"Maple Mono Normal NF CN", "Cascadia Code", Consolas, "Courier New", monospace',
     theme: {},
     allowTransparency: true,
     windowsMode: true,
