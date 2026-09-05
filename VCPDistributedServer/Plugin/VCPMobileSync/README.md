@@ -1,107 +1,156 @@
-# VCPMobileSync (VCP 移动端双向增量同步服务插件)
+# VCPMobileSync — VCP 移动端双向增量同步服务插件
 
 [![Version](https://img.shields.io/badge/Version-2.0.0-blue.svg?style=flat-square)](./plugin-manifest.json)
 [![Platform](https://img.shields.io/badge/Platform-Node.js%20%7C%20Electron-brightgreen.svg?style=flat-square)](https://nodejs.org)
-[![Sync Protocol](https://img.shields.io/badge/Wire%20Protocol-1.4-orange.svg?style=flat-square)](#协议-14-硬切与兼容边界)
+[![Sync Protocol](https://img.shields.io/badge/Wire%20Protocol-1.5-orange.svg?style=flat-square)](#同步协议)
 
-**让 VCPChat 桌面端和 VCPMobile 手机端的数据进行可诊断、失败即停的双向增量同步。**
-
-VCPMobileSync 是 VCPChat 桌面端的专属分布式服务插件，采用 Legacy/CDS 双模式的三阶段增量同步架构。实体配置、消息正文、墓碑、头像字节以及消息内附件元数据按各自合同传输；附件二进制始终保留在两端本机 CAS，不属于同步数据面。
-
-> [!IMPORTANT]
-> 本版本只修改 MobileSync 插件与 VCP-CDS 同步接口，不修改模型调用、提示词、消息渲染或普通聊天保存逻辑。中央模式的 Mobile→Desktop 消息同步会投影并写入 `history.json`；Wire 1.5 使用完整复合身份、强类型状态和统一 `ok/error` 外壳。
+VCPMobileSync 是 VCPChat 桌面端的专属分布式服务插件，为桌面端与 VCPMobile 手机端之间提供**可诊断、失败即停**的双向增量同步。插件采用 CDS / Legacy 双模式的三阶段增量同步架构：实体配置、消息正文、墓碑、头像字节以及消息内附件元数据按各自契约传输；附件二进制始终保留在两端本机 CAS，不属于同步数据面。
 
 ---
 
-## 📖 目录
-1. [这个插件能同步什么？](#-这个插件能同步什么)
-2. [🚀 快速开始与部署](#-快速开始与部署)
-   - [安装依赖](#安装依赖)
-   - [配置插件](#配置插件)
-   - [手机端配置](#手机端配置)
-   - [日常使用规范](#日常使用规范)
-3. [🛡️ 三阶段增量同步协议 V2 深度揭秘](#-三阶段增量同步协议-v2-深度揭秘)
-   - [Phase 1: 轻量级索引扫描 (Reconcile)](#phase-1-轻量级索引扫描-reconcile)
-   - [Phase 2: 双哈希差分比对 (Double-Hash Merkle Diff)](#phase-2-双哈希差分比对-double-hash-merkle-diff)
-   - [Phase 3: 极速 NDJSON 流式吞吐 (Stream Ingestion)](#phase-3-极速-ndjson-流式吞吐-stream-ingestion)
-4. [📐 硬核数据模型与表结构](#-硬核数据模型与表结构)
-5. [🔒 数据完整性与安全防线](#-数据完整性与安全防线)
-   - [防哈希分裂技术 (stableStringify)](#防哈希分裂技术-stablestringify)
-   - [墓碑拦截机制与防数据回流](#墓碑拦截机制与防数据回流)
-   - [并发读写锁与原子写入防线](#并发读写锁与原子写入防线)
-   - [最新 Session-Phase-Operation 日志轮转系统](#最新-session-phase-operation-日志轮转系统)
-6. [💡 故障排查与常见 Q&A](#-故障排查与常见-qa)
+## 目录
+
+1. [同步范围](#同步范围)
+2. [安装与部署](#安装与部署)
+3. [架构概览](#架构概览)
+4. [同步协议](#同步协议)
+5. [HTTP API 参考](#http-api-参考)
+6. [WebSocket 控制面参考](#websocket-控制面参考)
+7. [数据模型](#数据模型)
+8. [数据完整性与安全机制](#数据完整性与安全机制)
+9. [日志与可观测性](#日志与可观测性)
+10. [故障排查](#故障排查)
+11. [版本信息](#版本信息)
 
 ---
 
-## 📂 这个插件能同步什么？
+## 同步范围
 
-| 数据类型 | 说明 | 物理同步范围 |
+| 数据类型 | 说明 | 桌面端物理位置 |
 | :--- | :--- | :--- |
-| 👤 **智能体 (Agent)** | 名称、系统提示词、温度、采样参数、当前关联的模型配置 | `Agents/{id}/config.json` |
-| 👥 **群组 (Group)** | 群成员列表、群发言策略、群系统提示词、活跃配置等 | `AgentGroups/{id}/config.json` |
-| 💬 **话题 (Topic)** | 挂载于智能体或群组之下的独立子话题元数据 | Owner `config.json.topics[]`；物理存活由 `UserData/{ownerId}/topics/{topicId}/` 决定 |
-| ✉️ **消息历史 (Message)** | 包含思维链 (Thinking) 节点、Markdown 文本及元数据的完整聊天链路 | `UserData/{parentId}/topics/{topicId}/history.json` |
-| 📎 **附件 (Attachment)** | 双向只同步消息内附件元数据与内容 Hash；二进制文件保留在各端本机 CAS | `UserData/attachments/{hash}.{ext}` |
-| 🖼️ **自定义头像 (Avatar)** | 智能体、群组及用户本身的个性化头像二进制数据 | `Agents|AgentGroups/{id}/avatar.{png,jpg,jpeg,gif,webp}` 及 `UserData/user_avatar.png` |
+| 智能体（Agent） | 名称、系统提示词、温度、采样参数、当前关联的模型配置 | `AppData/Agents/{id}/config.json` |
+| 群组（Group） | 群成员列表、群发言策略、群系统提示词、活跃配置等 | `AppData/AgentGroups/{id}/config.json` |
+| 话题（Topic） | 挂载于智能体或群组之下的独立子话题元数据 | Owner `config.json.topics[]`；物理存活由 `UserData/{ownerId}/topics/{topicId}/` 决定 |
+| 消息历史（Message） | 包含思维链节点、Markdown 文本及元数据的完整聊天链路 | `UserData/{ownerId}/topics/{topicId}/history.json`（桌面聊天的兼容真源） |
+| 附件（Attachment） | 只同步消息内附件的元数据与内容 SHA-256；二进制不跨端 | `UserData/attachments/{hash}.{ext}`（各端本机 CAS） |
+| 自定义头像（Avatar） | 智能体、群组及用户的个性化头像二进制数据 | `Agents|AgentGroups/{id}/avatar.{png,jpg,jpeg,gif,webp}`、`UserData/user_avatar.png` |
 
-> [!NOTE]
-> **冲突策略**：自身 Hash 不同时以 `updatedAt` 较新的一端为准；消息时间相同再按 `messageHash` 字典序裁决。墓碑使用独立删除状态，不从 live 列表缺失推断删除。
+**冲突策略**：自身 Hash 不同时以 `updatedAt` 较新的一端为准（LWW）；消息时间相同再按 `messageHash` 字典序裁决。删除使用显式墓碑，不从 live 列表缺失推断。
 
 ---
 
-## 🚀 快速开始与部署
+## 安装与部署
 
 ### 安装依赖
-插件依赖于 SQLite 数据库的原生 C++ 驱动 `better-sqlite3`。在 VCPChat **桌面端根目录**下执行以下命令进行依赖安装与本地 ABI 重新编译：
+
+插件依赖 SQLite 原生 C++ 驱动 `better-sqlite3`，依赖由宿主 VCPChat 提供（插件自身无独立 `package.json`）。在 VCPChat **桌面端根目录**下执行：
+
 ```bash
 # 1. 安装底层 SQLite 原生依赖
 pnpm install better-sqlite3
 
-# 2. 针对 Electron 的 ABI 版本重新编译原生扩展（发布前必须步骤，否则插件启动会因 ABI 错误报错）
+# 2. 针对 Electron 的 ABI 版本重新编译原生扩展（发布前必须步骤，
+#    否则插件启动会因 ABI 不匹配报错）
 pnpm exec electron-rebuild --only better-sqlite3
 ```
 
 ### 配置插件
-1. 在插件目录 `VCPMobileSync/` 下，复制配置模板：
+
+1. 在插件目录 `VCPMobileSync/` 下复制配置模板：
+
    ```bash
    cp config.env.example config.env
    ```
-2. 编辑 `config.env`，填写同步身份校验令牌和端口：
+
+2. 编辑 `config.env`：
+
    ```env
-   # 【必填】同步安全令牌。手机端建立连接时的握手密码，建议设置复杂字符串
+   # 【必填】同步安全令牌。手机端建立连接时的握手凭证，建议设置复杂字符串。
+   # 为空时插件启动直接失败。
    MobileSyncToken=your_super_secret_token_here
-   
-   # 【必填】同步服务绑定的 WebSocket/HTTP 端口，默认 5975
+
+   # 【可选】插件 WebSocket 控制面监听端口，默认 5975
    MobileSyncPort=5975
+
+   # 【可选】是否使用 CDS 中央索引，默认 true（CDS 模式）；
+   # 设为 false 后，重启后的新同步会话切换为 Legacy 模式
+   MobileSyncUseCentralIndex=true
    ```
 
 ### 手机端配置
-打开手机端 VCPMobile $\rightarrow$ **设置** $\rightarrow$ **同步设置**，填写以下核心连接参数：
 
-| 手机端显示的名称 | 示例值 | 说明 |
+打开 VCPMobile → **设置** → **同步设置**，填写：
+
+| 手机端配置项 | 示例值 | 说明 |
 | :--- | :--- | :--- |
-| **HTTP 服务 URL** | `http://192.168.1.100:5974` | 桌面端分布式服务器的 HTTP 端口（通常为 5974） |
-| **WebSocket 服务 URL** | `ws://192.168.1.100:5975` | 本插件同步总线绑定的 WebSocket 端口（通常为 5975） |
-| **Mobile Sync Token** | `your_super_secret_token_here` | 必须与上方桌面端 `config.env` 中配置的令牌 100% 一致 |
+| HTTP 服务 URL | `http://192.168.1.100:5974` | 桌面端**分布式服务器**的 HTTP 端口（`DIST_SERVER_PORT`，默认 5974）。同步数据面挂载在该端口下，插件不开独立 HTTP 端口 |
+| WebSocket 服务 URL | `ws://192.168.1.100:5975` | 本插件同步控制面端口（`MobileSyncPort`，默认 5975） |
+| Mobile Sync Token | `your_super_secret_token_here` | 必须与桌面端 `config.env` 中的令牌完全一致 |
 
 > [!WARNING]
-> **局域网限制**：电脑和手机必须处在同一局域网（例如连接同一个物理 WiFi 或是通过内网穿透 VPN 组网）下才能建立通信。
+> **网络边界**：电脑与手机必须处于同一局域网（同一 WiFi 或经内网穿透 VPN 组网）。WebSocket 服务监听 `0.0.0.0`，Token 是唯一认证手段，**请勿将同步端口暴露到公网**。
 
-### 日常使用规范
-1. **启动服务**：
-   打开 VCPChat 桌面端 $\rightarrow$ **全局设置** $\rightarrow$ **高级功能** $\rightarrow$ 开启「VCP分布式服务器」 $\rightarrow$ **重启客户端**。
-2. **首次同步**：
-   * 中央索引默认开启，由 VCP-CDS 扫描 Owner、`history.json` 与 Avatar，并维护 `AppData/databases/chat_data.sqlite3`。显式设置 `MobileSyncUseCentralIndex=false` 后，只有重启后的新同步 session 才切换到插件 `sync_state_v2.db` 路径。
-   * 等待 VCP-CDS 与 MobileSync 服务就绪后，在手机端点击「立即同步」即可开始全量传输。
-3. **日常静默**：
-   * 只要桌面端服务器开启，手机端会利用高稳定性通道在后台保持实时或手动的增量数据对齐，仅同步变化内容（每次通常仅需几十 KB 流量）。
+### 日常使用
+
+1. **启动服务**：打开 VCPChat 桌面端 → 全局设置 → 高级功能 → 开启「VCP 分布式服务器」→ 重启客户端。
+2. **首次同步**：中央索引默认开启，由 VCP-CDS 扫描 Owner、`history.json` 与 Avatar，并维护 `AppData/databases/chat_data.sqlite3`。待 CDS 与 MobileSync 服务就绪后，在手机端点击「立即同步」开始全量传输。
+3. **日常增量**：桌面端服务开启期间，手机端在后台保持实时或手动的增量对齐，仅传输变化内容。
 
 ---
 
-## 协议 1.5 硬切与兼容边界
+## 架构概览
 
-公开握手固定为：
+### 双模式后端
+
+| | CDS 中央模式（默认） | Legacy 模式 |
+| :--- | :--- | :--- |
+| 权威状态 | VCP-CDS（Rust 独立进程）维护 `AppData/databases/chat_data.sqlite3` | 插件本地 `sync_state_v2.db`（better-sqlite3） |
+| 变更感知 | CDS reconcile | 启动全量扫描 + chokidar 文件监听 |
+| 插件内索引 | `:memory:` 兼容视图（仅配置定位/附件索引） | 持久六表索引 |
+| 切换方式 | `MobileSyncUseCentralIndex=true`（默认） | `=false`，重启后新会话生效；旧 `sync_state_v2.db` 不自动删除 |
+
+两种模式下，配置文件与头像字节的物理读写、附件路径解析始终由插件负责；`history.json` 始终是桌面聊天的兼容真源。
+
+### VCP-CDS 对接
+
+CDS（`rust_chat_data_service`，二进制 `vcp_chat_data_service`）由 Electron 主进程 spawn，仅绑定回环地址。启动后通过 stdout 输出一次性握手信息（internal protocol 3 / schema 3 / 随机端口 / instanceId / authToken），之后日志走 stderr。Node 侧禁止直接打开 CDS 数据库文件。
+
+插件通过 HTTP 调用 CDS `/v3/sync/*` 接口（manifest / topic-diff / message-diff / entities / owners/reconcile / avatars / messages 共 11 条）。CDS 逐项错误固定为 `{code, message, retryable}`，插件中央适配器在公共边界补齐完整错误字段；`SERVICE_BUSY`（429）由适配器做有界退避，`PROTOCOL_MISMATCH` 重命名为 `CDS_PROTOCOL_MISMATCH` 以区别于 Mobile wire 版本不兼容。
+
+CDS 启动失败时，插件仍开放带 Token 的 WebSocket 控制面，在 wire 版本校验通过后返回结构化 `CDS_*` 错误；HTTP 数据面保持关闭，且**不会自动降级到 Legacy**。
+
+### 端口拓扑
+
+- **HTTP 数据面**：挂在 VCPDistributedServer 的 Express 应用上，前缀 `/api/mobile-sync/*`，即分布式服务器端口（默认 5974）。
+- **WebSocket 控制面**：插件独立监听 `MobileSyncPort`（默认 5975）。
+
+---
+
+## 同步协议
+
+### 三阶段增量同步（Sync V2）
+
+```mermaid
+graph TD
+    A[Phase 1: Reconcile 索引重建] -->|扫描完成, 开放端口| B[Phase 2: Double-Hash 差分比对]
+    B -->|Merkle 根一致| C[Fast-Path: 直接跳过该 Topic]
+    B -->|Merkle 根不一致| D[Detailed-Path: 单消息指纹比对]
+    D -->|差异集| E[Phase 3: NDJSON 流式吞吐]
+    E -->|物理原子写入| F[双向同步与指纹自底向上冒泡]
+```
+
+- **Phase 1 — Reconcile**：CDS 模式由 CDS 维护 Owner/Topic/Message/Avatar 状态；Legacy 模式扫描 `Agents`、`AgentGroups` 与 `UserData` 建立 `sync_state_v2.db`。先发送 `manifestType=owner` 清单，再发送独立的 `manifestType=avatar` 清单；两者都携带完整复合身份，但 Hash、墓碑与传输语义互不混合。
+- **Phase 2 — 双哈希差分比对**：
+  - `configHash`：实体自身元数据属性哈希。
+  - `contentHash`：Topic 下所有历史消息指纹排序级联求得的 Merkle 聚合根。
+  - **Fast-Path**：两端 `configHash` 与 `contentHash` 都一致时直接跳过。
+  - **Detailed-Path**：仅 `contentHash` 不一致时，Mobile 发送 `SYNC_MESSAGE_DIFF_REQUEST` 携带显式 live/墓碑状态，Desktop 返回 `pullMessageIds / pushTopic / deleteMessages`。
+  - **快照漂移**：Phase 2 完成后 Topic 配置再变化，或请求中的 live Topic 已消失/成为墓碑，Desktop 返回 `SYNC_SNAPSHOT_STALE`，Mobile 复用完整 attempt 重试。
+- **Phase 3 — NDJSON 流式吞吐**：消息拉取/推送使用 `application/x-ndjson` 逐 Topic 传输，避免全量缓冲导致 OOM。单 NDJSON 帧上限 32 MiB；单次同步 attempt 的总量预算（256 MiB / 10,000 Topic / 100,000 Message）由协议约定、移动端强制执行。
+
+### 版本协商（Wire 1.5）
+
+连接建立后首帧必须是版本协商：
 
 ```text
 VERSION_CHECK { versions: [{component:"mobile_app",version:<App>},
@@ -111,7 +160,14 @@ VERSION_ACK   { versions: [{component:"desktop_plugin",version:"2.0.0"},
                 backendMode: "legacy" | "cds" }
 ```
 
-`versions` 数组顺序无关但组件必须唯一：CHECK 固定 `mobile_app+wire`，ACK 固定 `desktop_plugin+wire`。兼容性只由 `wire` 精确判断；包版本是诊断信息。旧顶层版本字段不保留别名或双栈。Phase 3 每个 Topic 的 decision 必须是以下判别联合之一：
+- `versions` 数组顺序无关但组件必须唯一：CHECK 固定 `mobile_app + wire`，ACK 固定 `desktop_plugin + wire`。
+- 兼容性只由 `wire` 字段精确判断（精确匹配，不兼容旧版）；包版本是诊断信息。
+- 首帧不是 `VERSION_CHECK` 返回 `VERSION_CHECK_REQUIRED`；重复协商返回 `VERSION_CHECK_DUPLICATE`。
+- `backendMode` 只声明当前桌面同步后端，不允许 Mobile 据此改变同步算法。
+
+### Phase 3 逐项结果契约
+
+每个 Topic 的 decision 必须是以下判别联合之一：
 
 ```text
 { ownerType, ownerId, topicId, ok: true,
@@ -119,9 +175,11 @@ VERSION_ACK   { versions: [{component:"desktop_plugin",version:"2.0.0"},
 { ownerType, ownerId, topicId, ok: false, error: WireSyncError }
 ```
 
-缺字段、错类型、重复身份、`ok:false` 或未知帧都会终止当前 attempt，不能进入完成态。
+缺字段、错类型、重复身份、`ok:false` 或未知帧都会终止当前 attempt，不能进入完成态。`PHASE_COMPLETED` 的 `PHASE_ACK` 原样回显 `phase`、`sessionId`、`attemptId` 与 `nonce`，避免迟到或重放的 ACK 完成错误会话。
 
-错误在 WebSocket、HTTP、NDJSON 和逐 Topic 结果中复用同一个对象：
+### 统一错误契约
+
+错误在 WebSocket、HTTP、NDJSON 和逐 Topic 结果中复用同一个七字段对象：
 
 ```json
 {
@@ -135,141 +193,136 @@ VERSION_ACK   { versions: [{component:"desktop_plugin",version:"2.0.0"},
 }
 ```
 
-固定外壳分别是 `SYNC_ERROR.error`、HTTP `{error}`、逐项 `ok:false,error`，以及 NDJSON `{kind:"streamError",error}`。对象必须包含全部七个字段，未知字段与字符串错误均拒绝。`message` 保留完整诊断原文，Mobile 按 code 提供分类、重试语义与补充 guidance，但不得覆盖根因文本。
+- 固定外壳：WS `SYNC_ERROR.error`、HTTP `{error}`、逐项 `{ok:false,error}`、NDJSON `{kind:"streamError",error}`。
+- 七个字段必须齐全，未知字段与字符串错误一律拒绝。`message` 保留完整诊断原文，Mobile 按 `code` 提供分类与重试语义，但不覆盖根因文本。
+- `origin` ∈ `mobile_ui / mobile_native / mobile_sync / desktop_plugin / desktop_cds`；`retry` ∈ `automatic / after_user_action / manual / never`。
+- 全部 60 个错误码在 `error-contract.js` 的 `ERROR_DEFINITIONS` 注册表中钉死 `kind/retry`，不匹配即 `PROTOCOL_INVALID`。
+- `SERVICE_BUSY` 先在插件内部做有界退避；耗尽后跨端上报时 `retry=manual`。
 
-VCP-CDS internal protocol 3 的逐项错误固定为 `{code,message,retryable}`；Central Adapter 只在公共边界补齐 `origin/stage/kind/retry/failedTopicIds`，不按错误文案猜类型。
+### 身份与 Canonical 化
 
-中央适配器校验 CDS Manifest、Topic Diff、Message Diff 与数据流的响应形状及请求集合覆盖。畸形“成功”响应在桌面边界直接转换为 `SYNC_PROTOCOL_INVALID / desktop_cds`。
-
-CDS internal protocol 返回的 `PROTOCOL_MISMATCH` 会在适配边界重命名为 `CDS_PROTOCOL_MISMATCH`，避免与 Mobile wire 版本不兼容混为同一用户故障。
-
-`SERVICE_BUSY` 会先在插件内部做有界退避；若最终仍需跨端上报，`retry=manual`，因为此时内部自动重试已经耗尽。
-
-Legacy 物理历史在 canonicalizer 边界转换为 wire DTO：附件 hash 只接受顶层或 `_fileManagerData.hash` 中一致的 64 位十六进制值，并转为小写；缺失、非法或冲突附件只产生有界 warning，消息本身保留。CDS Pull 已输出完整 wire DTO，Central Adapter 直接转发其 `contentHash + updatedAt`，不再次 canonicalize 或重算。`contentHash` 在 Pull/Push 中都是必填的小写 SHA-256：接收端直接用于消息索引；Desktop Push 会在写物理 `history.json` 前剥离该派生字段，避免普通编辑路径留下陈旧缓存。
-
-Owner、Topic、Message 与 Avatar 的外层协议都携带完整复合身份。协议 1.5 不通过 `LIKE`、目录前缀、拼接 Avatar ID 或同名 Topic 猜身份。
-
-`backendMode` 只声明当前桌面同步后端，不允许 Mobile 据此改变同步算法。CDS 启动失败时插件仍开放带 Token 的 WebSocket 控制面，在 Wire 校验通过后返回 `CDS_BINARY_NOT_FOUND`、`CDS_PROTOCOL_MISMATCH`、`CDS_SCHEMA_MISMATCH`、`CDS_STARTUP_FAILED` 或 `CDS_UNAVAILABLE`；HTTP/NDJSON 数据面保持关闭，且不会自动降级到 Legacy。
-
-## 🛡️ 三阶段增量同步协议
-
-VCP 采用极其先进的 **三阶段增量同步协议 V2 (Three-Stage Incremental Sync V2)**，整个同步生命周期由三个环环相扣的物理阶段组成：
-
-```mermaid
-graph TD
-    A[Phase 1: Reconcile 索引重建] -->|扫描完成, 开放端口| B[Phase 2: Double-Hash 差分比对]
-    B -->|Merkle 根比对成功| C[Fast-Path: 直接跳过该 Topic 降噪]
-    B -->|Merkle 根不一致| D[Detailed-Path: 精细化单消息指纹比对]
-    D -->|计算出差异集| E[Phase 3: NDJSON 流式吞吐 Ingestion]
-    E -->|物理原子写入| F[双向同步与指纹自底向上冒泡]
-```
-
-### Phase 1: 轻量级索引扫描 (Reconcile)
-中央模式由 VCP-CDS reconcile 维护 `chat_data.sqlite3` 中的 Owner、Topic、Message 与 Avatar 状态；Legacy 模式扫描 `Agents`、`AgentGroups` 与 `UserData`，按白名单 DTO 建立 `sync_state_v2.db`。每次 `owner_metadata PHASE_START` 都会在同连接 `messageChain` 放行后续 Manifest handler 前刷新所选模式的提交视图；普通阶段 marker 不返回 ACK。中央模式下 Owner/Topic 的物理写入也会在对应 HTTP 请求返回前提交到 CDS，因此空的 `PHASE_COMPLETED` 不再重复全量扫描。Phase 1 先发送 `manifestType=owner`，再发送独立的 `manifestType=avatar`；两者都携带完整身份，但 Hash、墓碑和传输语义互不混合。
-
-### Phase 2: 双哈希差分比对 (Double-Hash Merkle Diff)
-在比对阶段，插件放弃了传统的全量拉取策略，采用 **双哈希（`configHash` 与 `contentHash`）比对机制**：
-* **`configHash` (配置指纹)**：对应智能体、群组或话题的自身元数据属性哈希（如名称、系统提示词、采样参数等）。
-* **`contentHash` (内容指纹 - Merkle Root)**：子话题下所有历史消息指纹进行排序后级联拼接求得的聚合哈希值。
-* **双通道差分**：
-  * **快速路径 (Fast-Path)**：如果两端 Topic 的 `configHash` 与 `contentHash` 都一致，**直接跳过**，不产生消息明细 I/O 与日志噪音。
-  * **详细路径 (Detailed-Path)**：只有 `configHash` 一致而 `contentHash` 不一致时，Mobile 才通过 `SYNC_MESSAGE_DIFF_REQUEST` 发送显式 live/墓碑状态，Desktop 返回 `pullMessageIds/pushTopic/deleteMessages`。
-  * **快照漂移**：Phase 2 已完成后若 Topic 配置再次变化，或请求中的 live Topic 已消失/成为墓碑，Desktop 返回 `SYNC_SNAPSHOT_STALE`；Mobile 复用完整 attempt 重试，而不是把配置分歧误送入只处理消息的 Phase 3。
-
-Topic Entity DTO 双向携带必填 `configHash + updatedAt`，接收端在原始 Topic 索引提交中直接使用；物理 `config.json` 不保存这两个派生/版本字段。Topic Manifest 只仲裁 `configHash`，消息聚合根由后续 TopicDiff/MessageDiff 处理。
-
-### Phase 3: 极速 NDJSON 流式吞吐 (Stream Ingestion)
-对于数以万计的历史聊天记录比对和拉取，由于传统 JSON 会一次性将全量数据缓冲加载到物理内存中，在移动端和 Electron 插件进程中极易诱发 OOM（内存溢出崩溃）。
-
-为此，VCP V2 引入了 **NDJSON 流式吞吐系统 (Newline-Delimited JSON)**：
-* **流式 Pull**：`POST /api/mobile-sync/messages/pull` 使用 `application/x-ndjson` 逐 Topic 输出，Mobile 边下载边解析。
-* **流式 Push**：`POST /api/mobile-sync/messages/push` 逐行消费 `{kind:"topic",messages,deletedMessages}`，逐 Topic 提交并返回结果。
-* **固定预算**：单 NDJSON 帧最多 32 MiB；单次传输最多 256 MiB、10,000 Topic、100,000 Message。响应写入等待 `drain`，避免绕过 Node 背压。
+Owner、Topic、Message 与 Avatar 的外层协议都携带完整复合身份 `(ownerType, ownerId[, topicId[, msgId]])`，协议不通过 `LIKE`、目录前缀或名称拼接猜测身份。Legacy 物理历史在 canonicalizer 边界转换为 wire DTO：附件 hash 只接受顶层或 `_fileManagerData.hash` 中一致的 64 位十六进制值并转为小写；缺失、非法或冲突附件只产生有界 warning，消息本身保留。`contentHash` 在 Pull/Push 中都是必填的小写 SHA-256；Desktop Push 会在写物理 `history.json` 前剥离该派生字段，避免普通编辑路径留下陈旧缓存。
 
 ---
 
-## 📐 硬核数据模型与表结构
+## HTTP API 参考
 
-默认中央模式的 Owner、Topic、Message、Avatar、Tombstone 与 history source 状态由 VCP-CDS `chat_data.sqlite3` 管理。插件仍负责配置文件和 Avatar bytes 的物理读写，以及本机 Attachment 路径解析；中央模式不会持久化 `sync_state_v2.db`。
+所有路由挂载于 `/api/mobile-sync`，使用 `Authorization: Bearer <MobileSyncToken>` 认证。
 
-显式关闭中央索引时，`sync_state_v2.db` 使用完整复合身份：
+| Endpoint | 方法 | 用途 | 限制 |
+| :--- | :--- | :--- | :--- |
+| `/entities/pull` | POST | 批量拉取 Owner/Topic DTO | body ≤ 10 MiB，精确键校验 |
+| `/entities/push` | POST | 批量推送 Owner/Topic DTO；支持 `X-Idempotency-Key`（TTL 5 分钟）；CDS 模式下成功项在响应前落库 | body ≤ 10 MiB |
+| `/messages/pull` | POST | 消息 NDJSON 流式拉取 | 请求 body ≤ 34 MiB；NDJSON 单帧 ≤ 32 MiB |
+| `/messages/push` | POST | 消息+墓碑 NDJSON 流式推送（直接消费请求流） | NDJSON 单帧 ≤ 32 MiB |
+| `/avatars/pull` | GET | 头像二进制下载（query 精确 `ownerType/ownerId`） | — |
+| `/avatars/push` | POST | 头像二进制上传 | raw body ≤ 20 MiB |
 
-| 表 | 主键/职责 |
+兜底行为：未知路径 → 404 `SYNC_REQUEST_INVALID`；body 超限 → 413 `SYNC_BUDGET_EXCEEDED`；JSON 解析失败 → 400。
+
+---
+
+## WebSocket 控制面参考
+
+服务监听 `MobileSyncPort`（默认 5975，`0.0.0.0`），仅接受路径 `/` 与 `/ws-sync`，通过 `?token=` 认证。`maxPayload` 32 MiB；所有消息经 `messageChain` 串行处理；JSON 解析拒绝重复键。
+
+| 帧类型 | 方向 | 用途 |
+| :--- | :--- | :--- |
+| `VERSION_CHECK` / `VERSION_ACK` | M→D / D→M | 版本协商（必须是首帧），ACK 携带 `backendMode` |
+| `PHASE_START` / `PHASE_COMPLETED` / `PHASE_ACK` | 双向 | 阶段控制；messages 完成帧必须携带 `sessionId/attemptId/nonce` |
+| `SYNC_MANIFEST_REQUEST` | M→D | 清单请求，`manifestType` ∈ `owner / topic / avatar`（topic 可带 `targetedOwners`） |
+| `SYNC_TOPIC_DIFF_REQUEST` | M→D | Topic 级哈希差分 |
+| `SYNC_MESSAGE_DIFF_REQUEST` | M→D | 消息级详细差分（Detailed-Path） |
+| `SYNC_ENTITY_DELETE` | M→D | 实体删除，`targetType` ∈ `owner / topic / avatar / message` |
+| `SYNC_ERROR` | 双向 | 统一七字段错误外壳 |
+| `SYNC_LOG_EVENT` / `DESKTOP_PHASE_START` / `DESKTOP_PHASE_COMPLETE` | D→M | 日志与阶段事件广播 |
+
+关闭码：`4001` Token 错误；`4002` 路径不支持；`1002` 协议失败。响应超过 32 MiB 时返回 `SYNC_BUDGET_EXCEEDED`。
+
+---
+
+## 数据模型
+
+### CDS 模式
+
+Owner、Topic、Message、Avatar、Tombstone 与 history source 状态由 VCP-CDS 的 `chat_data.sqlite3` 管理（同目录另有 Tantivy 搜索索引与进程锁文件）。CDS 数据库文件只能由 CDS 进程访问。
+
+### Legacy 模式（`sync_state_v2.db`）
+
+| 表 | 主键 / 职责 |
 | :--- | :--- |
 | `owners` | `(owner_type, owner_id)`；Owner DTO Hash、持久化 Topic 聚合根、配置路径、时间与墓碑 |
 | `topics` | `(owner_type, owner_id, topic_id)`；Topic DTO Hash、消息内容根、时间与墓碑 |
 | `messages` | `(owner_type, owner_id, topic_id, msg_id)`；消息指纹、LWW 时间与墓碑 |
-| `attachment_index` | `hash`；只保存本机已有 Attachment 的物理路径 |
-| `avatar_index` | `(owner_id, owner_type)`；Avatar 字节 Hash、路径、`mtime_ms`/size 快路证据、同步时间与墓碑 |
+| `attachment_index` | `hash`；只保存本机已有附件的物理路径 |
+| `avatar_index` | `(owner_id, owner_type)`；头像字节 Hash、路径、`mtime_ms`/size 快路证据、同步时间与墓碑 |
 | `history_source_state` | `(owner_type, owner_id, topic_id)`；mtime、size、原始文件 SHA-256、路径与索引版本快路径 |
 
-CDS 与 Legacy 都直接从规范消息保存附件元数据，不再维护同步专用附件关系表；附件二进制不跨端同步。
+两种模式都从规范消息保存附件元数据，不维护同步专用附件关系表。
 
 ---
 
-## 🔒 数据完整性与安全防线
+## 数据完整性与安全机制
 
-### 防哈希分裂技术 (stableStringify)
-由于桌面端（JavaScript）与手机端（Rust）处于两个完全不同的语言生态中，不同的 JSON 序列化库对于对象的 Key 排序规则、空字段展示策略、以及浮点数输出规范有着物理差异。一旦直接求哈希，会导致在两端生成完全相异的哈希指纹，即 **“哈希分裂 (Hash Splitting)”** 灾难。
+### 防哈希分裂（stableStringify）
 
-VCP 引入了特殊的 `stableStringify` 数据规整库解决该隐患：
-* **稳定 Key 排序**：强行将对象的所有 Key 按照 ASCII 排序进行级联序列化。
-* **空值剔除**：自动识别并剔除 `undefined` 与 `null` 值，完美契合 Rust `serde(skip_serializing_if = "Option::is_none")` 行为。
-* **浮点数规整**：
-  * 对 `temperature` 字段强行进行浮点数四舍五入并保留两位小数（消除 f32/f64 的精度截断差异）。
-  * 若为整数，强制格式化为 `toFixed(1)`（如 `1` 强转为 `"1.0"`），与 Rust serde 输出强行对齐。
+桌面端（JavaScript）与手机端（Rust）的 JSON 序列化行为存在物理差异，直接哈希会产生"哈希分裂"。`stableStringify` 通过以下规则对齐两端：
 
-### 墓碑拦截机制与防数据回流
-在双向数据同步的生命周期中，一端删除的数据极易在同步时被另一端误判为“本端缺失的新数据”而重新同步回来，产生所谓的“幽灵数据回流”现象。
+- 所有 Key 按 UTF-8 字节序排序后级联序列化；
+- 自动剔除 `undefined` 与 `null`，对齐 Rust `serde(skip_serializing_if)` 行为；
+- `temperature` 字段四舍五入保留两位小数，整数强制格式化为 `toFixed(1)`（如 `1` → `"1.0"`），与 Rust serde 输出对齐。
 
-VCP 设计了精密的 **“墓碑拦截 (Tombstone Interceptor)”** 防线：
-1. 删除消息携带明确的 `topicId`、`msgId` 与非负安全整数 `deletedAt`，不能靠“上传列表里缺少该消息”猜测删除。
-2. 中央路径先从桌面原生历史中移除消息并严格摄取，再在同一复合 Owner/Topic 身份下写入显式 CDS Tombstone；本机从未见过的消息也会留下墓碑。
-3. 重试不会改写墓碑时间，重复通知保留最早的已提交 `deletedAt`；缺失或错误的逐项结果会让相关 Topic 失败。
-4. Legacy 路径使用自身复合索引墓碑，但同样会原子裁剪 `history.json` 并严格重建索引。
+### 哈希体系
 
-### 并发读写锁与原子写入防线
-由于文件监听器（`chokidar`）、HTTP 路由及 WebSocket 消息收发在 Node.js 中全部是异步并发处理的，在进行大批量写入 `history.json` 时，多个线程同时写入极易导致文件读写冲突或物理文件损坏破损。
-* **同步内排他锁**：同一插件进程内对相同 `history.json` 的同步操作使用路径锁串行化。
-* **来源校验与原子替换**：严格读取历史快照并记录来源 SHA-256；提交前再次校验，写入唯一临时文件、同步落盘后原子替换。文件不存在可视为空，空文件、JSON 错误、根结构错误与普通 I/O 错误均失败。
-* **写意图拦截 (Write Intent Lock)**：在大批量拉取写入时，系统将相关话题 ID 录入 `writeIntentLock` 集合。文件系统监听器（Watcher）在捕获到文件变更事件后，若发现其处于意图锁锁定状态，则主动拦截跳过，**消除了“写入时 Watcher 触发 reconcile 导致无限死循环”的并发竞态问题**。
+消息指纹覆盖 id/role/content/timestamp/name/agentId 与附件 hash；leaf hash 之上，Topic 与 Owner 的聚合根按排序级联 SHA-256（Merkle）计算，Phase 2 的比对与 Phase 3 完成后的指纹自底向上冒泡都基于该体系。
 
-> [!WARNING]
-> 普通 Chat 保存逻辑不使用 MobileSync 的进程内锁。来源 hash 校验能检测大多数并发修改并让同步失败重试，但“最终校验到原子替换”仍有极窄竞态窗口；本轮没有扩张到 Chat 核心去引入全局单写者协议。
+### 墓碑机制
 
-### 最新 Session-Phase-Operation 日志轮转系统
-插件内置了高清晰度的 **3-Tier（三层）日志诊断链路**：
-* **Session**：标记每一次完整的连接同步声明周期起始。
-* **Phase**：记录每个核心物理阶段（如 `reconcile` 扫描、`topic_metadata` 比对、`messages` 流传输）。
-* **Operation**：记录单条数据在数据库、文件层面的操作轨迹与结果。
+删除消息携带明确的 `topicId`、`msgId` 与非负安全整数 `deletedAt`，不靠"上传列表里缺少该消息"猜测删除；墓碑 hash 固定为 64 个 `"0"`。重试不改写墓碑时间，重复通知保留最早的已提交 `deletedAt`。CDS 模式先从桌面原生历史中移除消息并严格摄取，再在同一复合身份下写入显式墓碑；本机从未见过的消息也会留下墓碑。
 
-> [!IMPORTANT]
-> **过期日志自动轮转清理系统 (Log Rotation)**：
-> 针对每次启动都会在 `logs/sync/` 目录下产生带有时间戳的 `.log` 日志文件的隐患，我们在 1.0.0 正式版中追加了日志轮转清理逻辑。
-> * **轮转策略**：插件每次初始化实例化 `SyncLogger` 时，会自动检索 `logs/sync/` 目录。
-> * **删除规则**：系统**最多保留 30 个** 历史日志文件。一旦文件总数超出 30 个，系统会自动按照**文件最后修改时间 (mtimeMs) 从旧到新排序**，并将超出的多余老旧日志文件物理 unlink 销毁，确保插件在长期运行和频繁同步下，**磁盘空间占用恒定受控**。
+### 并发与原子写入
+
+- **路径级互斥锁**：同一插件进程内对相同 `history.json` 的同步操作串行化。
+- **原子替换**：严格读取历史快照并记录来源 SHA-256；提交前再次校验，写入唯一临时文件、fsync 落盘后原子替换。文件不存在视为空；空文件、JSON 错误、根结构错误与普通 I/O 错误均失败。
+- **写意图锁（Write Intent Lock）**：大批量拉取写入时将相关话题 ID 录入意图锁集合，文件监听器捕获到处于锁定状态的变更事件时主动跳过，消除"同步写入触发 watcher 再次 reconcile"的并发回环。
+
+> [!NOTE]
+> 普通聊天保存逻辑不使用同步的进程内锁。来源 hash 校验能检测并发修改并让同步失败重试，但「最终校验到原子替换」之间仍存在极窄的竞态窗口。
 
 ---
 
-## 💡 故障排查与常见 Q&A
+## 日志与可观测性
 
-### ⚙️ 故障排查速查表
+插件内置 Session → Phase → Operation 三层日志链路：
+
+- **Session**：一次完整连接同步生命周期的起始；
+- **Phase**：核心物理阶段（`reconcile` 扫描、`topic_metadata` 比对、`messages` 流传输）；
+- **Operation**：单条数据在数据库、文件层面的操作轨迹与结果。
+
+WebSocket 连接会广播 `SYNC_LOG_EVENT` / `DESKTOP_PHASE_START` / `DESKTOP_PHASE_COMPLETE`，供手机端实时展示同步进度。
+
+**日志位置与轮转**：默认写入插件目录 `logs/sync/`；若宿主设置了隔离数据根 `VCPCHAT_APP_DATA_DIR`，则写入 `<数据根>/PluginLogs/VCPMobileSync/sync/`。每次初始化 `SyncLogger` 时自动清理：最多保留 30 个 `.log` 文件，超出部分按修改时间从旧到新物理删除，长期运行磁盘占用恒定受控。
+
+---
+
+## 故障排查
 
 | 现象 | 可能原因 | 解决办法 |
 | :--- | :--- | :--- |
-| **手机端提示完全无法连上桌面端** | 1. 桌面端「分布式服务器」高级功能未开启<br>2. 局域网防火墙拦截 | 1. 开启高级功能后，必须**重启桌面端客户端**以拉起后台服务<br>2. 在防火墙设置中，放行 `5975` (WebSocket) 端口的入站连接 |
-| **握手失败并提示「Unauthorized」** | 双方安全令牌 (Sync Token) 不一致 | 检查桌面端 `config.env` 里的 `MobileSyncToken` 是否与手机端填写的 Token 字符串完全一致（注意区分大小写） |
-| **初次同步耗时较长** | 历史聊天数据规模较大 | 首次同步需要传输实体 DTO 与消息；附件二进制不跨端。后续同步仅在 Hash 不一致时进入详细路径 |
-| **数据库或依赖报错** | 编译的 `better-sqlite3` ABI 发生冲突 | 务必在桌面端根目录下执行 `pnpm exec electron-rebuild --only better-sqlite3` 重新编译底层 C++ 驱动以对齐 Electron |
+| 手机端完全无法连接桌面端 | 分布式服务器未开启；局域网防火墙拦截 | 开启高级功能后**重启桌面客户端**；放行 5974（HTTP）与 5975（WebSocket）入站 |
+| 握手失败「Unauthorized」/ 关闭码 4001 | 两端 Token 不一致 | 核对桌面端 `config.env` 的 `MobileSyncToken` 与手机端填写值完全一致（区分大小写） |
+| 关闭码 4002 | WebSocket 路径不支持 | 仅接受 `/` 与 `/ws-sync`，检查手机端 WS URL 是否带有多余路径 |
+| 握手后收到 `CDS_*` 错误（`CDS_UNAVAILABLE` / `CDS_BINARY_NOT_FOUND` / `CDS_PROTOCOL_MISMATCH` / `CDS_SCHEMA_MISMATCH` / `CDS_STARTUP_FAILED`） | CDS 二进制缺失、协议或 schema 版本不匹配 | 成对升级桌面端各组件；CDS 未就绪时 HTTP 数据面保持关闭，不会自动降级 Legacy |
+| 初次同步耗时较长 | 历史数据规模较大 | 属正常现象；后续同步仅在 Hash 不一致时进入详细路径，流量通常仅几十 KB |
+| 数据库或依赖报错 | `better-sqlite3` ABI 与 Electron 不匹配 | 在桌面端根目录执行 `pnpm exec electron-rebuild --only better-sqlite3` |
 
 ---
 
-## 🚀 版本信息
+## 版本信息
 
-* **适配标准**：VCPChat 桌面插件 2.0.0 / wire protocol 1.5 / VCP-CDS internal protocol 3 / 配对 VCPMobile 1.1.6
-* **当前版本**：`2.0.0`
-* **最终确认**：`PHASE_COMPLETED` 的 `PHASE_ACK` 原样回显 `phase`、`sessionId`、`attemptId` 与 `nonce`，避免迟到或重放 ACK 完成错误会话
-* **升级要求**：协议版本采用精确匹配，不支持跨版本混跑；桌面和 Mobile 必须成对升级、成对回滚
-* **CDS 版本纪律**：每次部署型 Rust 更新都递增 internal protocol，并同步 Electron lifecycle 的期望值；只有数据库结构变化才递增 schema
-* **架构师 / 作者**：Nova
-* **开源许可**：VCP 闭环生态核心插件
+- **当前版本**：`2.0.0`
+- **适配标准**：wire protocol 1.5 / VCP-CDS internal protocol 3 / CDS schema 3 / 配对 VCPMobile 1.1.6
+- **升级要求**：wire 协议采用精确匹配，不支持跨版本混跑；桌面端与 Mobile 必须成对升级、成对回滚
+- **CDS 版本纪律**：每次部署型 Rust 更新递增 internal protocol，并同步 Electron 生命周期的期望值；只有数据库结构变化才递增 schema
+- **架构师 / 作者**：Nova
+- **开源许可**：VCP 闭环生态核心插件
