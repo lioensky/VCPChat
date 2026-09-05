@@ -11,7 +11,7 @@
   "versionAck": {
     "type": "VERSION_ACK",
     "versions": [
-      { "component": "desktop_plugin", "version": "1.5.0" },
+      { "component": "desktop_plugin", "version": "2.0.0" },
       { "component": "wire", "version": "1.5" }
     ],
     "backendMode": "cds"

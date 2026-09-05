@@ -1,6 +1,6 @@
 # VCPMobileSync (VCP 移动端双向增量同步服务插件)
 
-[![Version](https://img.shields.io/badge/Version-1.5.0-blue.svg?style=flat-square)](./plugin-manifest.json)
+[![Version](https://img.shields.io/badge/Version-2.0.0-blue.svg?style=flat-square)](./plugin-manifest.json)
 [![Platform](https://img.shields.io/badge/Platform-Node.js%20%7C%20Electron-brightgreen.svg?style=flat-square)](https://nodejs.org)
 [![Sync Protocol](https://img.shields.io/badge/Wire%20Protocol-1.4-orange.svg?style=flat-square)](#协议-14-硬切与兼容边界)
 
@@ -106,7 +106,7 @@ pnpm exec electron-rebuild --only better-sqlite3
 ```text
 VERSION_CHECK { versions: [{component:"mobile_app",version:<App>},
                            {component:"wire",version:"1.5"}] }
-VERSION_ACK   { versions: [{component:"desktop_plugin",version:"1.5.0"},
+VERSION_ACK   { versions: [{component:"desktop_plugin",version:"2.0.0"},
                            {component:"wire",version:"1.5"}],
                 backendMode: "legacy" | "cds" }
 ```
@@ -266,8 +266,8 @@ VCP 设计了精密的 **“墓碑拦截 (Tombstone Interceptor)”** 防线：
 
 ## 🚀 版本信息
 
-* **适配标准**：VCPChat 桌面插件 1.5.0 / wire protocol 1.5 / VCP-CDS internal protocol 3 / 配对 VCPMobile 1.1.6
-* **当前版本**：`1.5.0`
+* **适配标准**：VCPChat 桌面插件 2.0.0 / wire protocol 1.5 / VCP-CDS internal protocol 3 / 配对 VCPMobile 1.1.6
+* **当前版本**：`2.0.0`
 * **最终确认**：`PHASE_COMPLETED` 的 `PHASE_ACK` 原样回显 `phase`、`sessionId`、`attemptId` 与 `nonce`，避免迟到或重放 ACK 完成错误会话
 * **升级要求**：协议版本采用精确匹配，不支持跨版本混跑；桌面和 Mobile 必须成对升级、成对回滚
 * **CDS 版本纪律**：每次部署型 Rust 更新都递增 internal protocol，并同步 Electron lifecycle 的期望值；只有数据库结构变化才递增 schema
