@@ -724,6 +724,29 @@ async function handleRegenerateResponse(originalAssistantMessage) {
     currentChatHistoryArray.push(regenerationThinkingMessage);
     mainRefs.currentChatHistoryRef.set([...currentChatHistoryArray]);
 
+    if (regenerationThinkingItem) {
+        // renderMessage 已为本次重新回复排过第一次滚动。这里不能紧接着再次走
+        // 通用 scrollToBottom：同一帧的请求会被其 frameId 合并，无法在思考
+        // 占位完成布局后使用新的 scrollHeight。与普通发送保持一致，下一布局帧
+        // 直接提交占位后的真实底部，同时防止切换会话后误滚新的 Surface。
+        const scrollContainer = regenerationThinkingItem.closest('.chat-messages-container');
+        ownerWindow?.requestAnimationFrame?.(() => {
+            const activeItem = mainRefs.currentSelectedItemRef?.get?.();
+            if (
+                regenerationThinkingItem.isConnected
+                && scrollContainer?.isConnected
+                && activeItem?.id === currentSelectedItemVal.id
+                && activeItem?.type === currentSelectedItemVal.type
+                && mainRefs.currentTopicIdRef?.get?.() === currentTopicIdVal
+            ) {
+                scrollContainer.scrollTop = Math.max(
+                    0,
+                    scrollContainer.scrollHeight - scrollContainer.clientHeight
+                );
+            }
+        });
+    }
+
     // 重新回复的思考占位已经同时进入 DOM 与 history，此时即可投影中止按钮。
     // 旧路径调用 window.updateSendButtonState，但发送状态现由 MainChatSendOwner
     // 通过显式 messageCommands 能力持有，不再暴露同名窗口全局函数。
