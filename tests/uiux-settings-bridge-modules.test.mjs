@@ -1001,3 +1001,15 @@ test('统一 surface 投影失败必须关闭 CSS 门并恢复 legacy 类钩子'
         }
     }
 });
+
+
+test('话题总结模型复用 Agent 下拉并将 body portal 提升到全局设置遮罩之上', () => {
+    const owner = read(agentBridge);
+    const picker = read(path.join(root, 'modules', 'uiux', 'generated', 'primitives', 'agent-model-picker.js'));
+
+    assert.match(owner, /inputId:\s*'topicSummaryModel'/);
+    assert.match(owner, /triggerId:\s*'openTopicSummaryModelSelectBtn'/);
+    assert.match(owner, /portalZIndex:\s*'calc\(var\(--vcp-ui-z-overlay,\s*1400\)\s*\+\s*1\)'/);
+    assert.match(picker, /if\s*\(props\.portalZIndex\s*!==\s*undefined\s*&&\s*props\.portalZIndex\s*!==\s*null\)/);
+    assert.match(picker, /view\.card\.style\.zIndex\s*=\s*String\(props\.portalZIndex\)/);
+});

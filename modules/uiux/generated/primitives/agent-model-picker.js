@@ -239,6 +239,11 @@ export function mountAgentModelPicker(host, props, scope) {
     }, pickerScope);
     const menuId = `vcp-uiux-agent-model-picker-menu-${++pickerSequence}`;
     view.card.id = menuId;
+    // External-trigger pickers portal this card to document.body. Consumers
+    // hosted inside an overlay may opt into a higher portal layer without
+    // changing the ordinary Agent/Group picker stacking contract.
+    if (props.portalZIndex !== undefined && props.portalZIndex !== null)
+        view.card.style.zIndex = String(props.portalZIndex);
     trigger.setAttribute('aria-controls', menuId);
     paneCell = document.createElement('button');
     paneCell.type = 'button';

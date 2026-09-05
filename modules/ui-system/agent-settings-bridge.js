@@ -176,6 +176,7 @@ function mountTypedModelPicker(form, {
     marker = 'vcpTypedAgentModelPicker',
     scopeLabel = 'agent-model-picker-production',
     eventKind = 'agent',
+    portalZIndex,
 } = {}) {
     const api = window.VCPUIUX;
     const scope = ensurePresentationScope();
@@ -214,6 +215,7 @@ function mountTypedModelPicker(form, {
             options: modelDirectory.options,
             directory: modelDirectory,
             grouped: true,
+            portalZIndex,
             onSelect: option => {
                 if (input.disabled) return;
                 input.value = option.id;
@@ -316,6 +318,10 @@ function mountTypedTopicSummaryModelPicker(form) {
         marker: 'vcpTypedTopicSummaryModelPicker',
         scopeLabel: 'topic-summary-model-picker-production',
         eventKind: 'topic-summary',
+        // The picker menu is portalled to document.body. Global Settings is
+        // itself an overlay, so its menu must sit above that overlay rather
+        // than inheriting the primitive's ordinary in-surface dropdown layer.
+        portalZIndex: 'calc(var(--vcp-ui-z-overlay, 1400) + 1)',
     });
 }
 
