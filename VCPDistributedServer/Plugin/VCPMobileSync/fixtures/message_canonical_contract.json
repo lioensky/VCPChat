@@ -96,11 +96,7 @@
             "content": "你好 <section data-raw=\"yes\">raw html</section>",
             "timestamp": 1700000000,
             "updatedAt": 1700000100,
-            "isThinking": null,
-            "agentId": null,
-            "groupId": null,
             "topicId": "topic-golden",
-            "isGroupMessage": null,
             "attachments": [
               {
                 "type": "text/plain",
@@ -121,7 +117,8 @@
                 "size": 3,
                 "hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
               }
-            ]
+            ],
+            "contentHash": "4c020f54137f92cd790eeacd0f07acbb8e02baa7ccf0328fe48f70d1ce62c526"
           },
           {
             "id": "message-empty",
@@ -130,17 +127,15 @@
             "content": "",
             "timestamp": 1700000001,
             "updatedAt": 1700000101,
-            "isThinking": null,
             "agentId": "agent-nova",
-            "groupId": null,
-            "topicId": null,
-            "isGroupMessage": null
+            "contentHash": "c7809741b18b9f3800949599b7dac8dd3c588147f6c2a3e064857f9b7484cf7d"
           }
         ],
         "contentHashes": [
           "4c020f54137f92cd790eeacd0f07acbb8e02baa7ccf0328fe48f70d1ce62c526",
           "c7809741b18b9f3800949599b7dac8dd3c588147f6c2a3e064857f9b7484cf7d"
-        ]
+        ],
+        "canonicalMessagesSha256": "be104514e597dcf3219adea4a785d6488b02cded554fffaf347130095a7c8536"
       }
     },
     {
@@ -170,16 +165,14 @@
             "content": "owner conflict",
             "timestamp": 1700000002,
             "updatedAt": 1700000102,
-            "isThinking": null,
-            "agentId": null,
-            "groupId": null,
             "topicId": "topic-owner-a",
-            "isGroupMessage": null
+            "contentHash": "93e09bacfaebdf9bb21f776f1046e06951df5c4e06741331e42eca1b016d5851"
           }
         ],
         "contentHashes": [
           "93e09bacfaebdf9bb21f776f1046e06951df5c4e06741331e42eca1b016d5851"
-        ]
+        ],
+        "canonicalMessagesSha256": "665e51aadc275af0dd2f7f9a2af7acb56c50bd396fdefeed965b0ae32a7cb874"
       }
     }
   ],

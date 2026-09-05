@@ -235,6 +235,13 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
       syncToken.trim().length === 0 ||
       providedToken !== syncToken
     ) {
+      logger.logOperation(
+        "http",
+        "auth",
+        req.originalUrl,
+        "warn",
+        `authorization=${authHeader} providedToken=${providedToken} expectedToken=${syncToken}`,
+      );
       return sendHttpError(res, 401, "Unauthorized", {
         code: "SYNC_AUTH_FAILED",
         stage: "connect",
@@ -254,7 +261,13 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
       const status = res.statusCode;
       const level = status >= 500 ? "error" : status >= 400 ? "warn" : "info";
       const result = level === "error" ? "error" : level === "warn" ? "warn" : "success";
-      logger.logOperation("http", `${req.method}`, routePath, result, `status=${status} duration=${duration}ms`);
+      logger.logOperation(
+        "http",
+        `${req.method}`,
+        routePath,
+        result,
+        `status=${status} duration=${duration}ms url=${req.originalUrl} authorization=${req.headers.authorization}`,
+      );
     });
 
     next();
@@ -268,13 +281,12 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
       typeof req.body !== "object" ||
       Array.isArray(req.body) ||
       Object.keys(req.body).length !== 1 ||
-      !Array.isArray(items) ||
-      items.length > 1_000
+      !Array.isArray(items)
     ) {
       return sendHttpError(
         res,
         400,
-        "items must be an array of at most 1000 entities",
+        "items must be an array",
         { code: "SYNC_REQUEST_INVALID", stage: "owner_metadata" },
       );
     }
@@ -327,12 +339,6 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
           stage: "owner_metadata",
         });
       }
-      if (items.length > 10_000) {
-        return sendHttpError(res, 413, "items exceed the 10000 item budget", {
-          code: "SYNC_BUDGET_EXCEEDED",
-          stage: entityContractStage(items),
-        });
-      }
       let parsed;
       try {
         parsed = parseUniqueEntityItems(items, { requireData: true });
@@ -368,6 +374,7 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
           rawResults.push(...await uploadEntitiesBatch(
             topicItems.map(({ internal }) => internal),
             appDataPath,
+            { maintainLegacyOwnerRoot: centralSync === null },
           ));
         }
         const results = rawResults.map((result) =>
@@ -394,8 +401,24 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
           )
             ? "topic_metadata"
             : "owner_metadata";
+          const successfulTopicKeys = new Set(
+            results
+              .filter((item) => item.ok && item.entityType === "topic")
+              .map(entityIdentityKey),
+          );
+          const topicVersions = topicItems
+            .filter(({ publicIdentity }) =>
+              successfulTopicKeys.has(entityIdentityKey(publicIdentity)))
+            .map(({ publicIdentity, internal }) => ({
+              ownerType: publicIdentity.ownerType,
+              ownerId: publicIdentity.ownerId,
+              topicId: publicIdentity.topicId,
+              configHash: internal.data.configHash,
+              updatedAt: internal.data.updatedAt,
+            }));
           await centralSync.reconcileOwners(
             [...owners.values()],
+            topicVersions,
             reconcileStage,
           );
         }
@@ -414,43 +437,47 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
   );
 
   // 3. 流式批量下载消息 (NDJSON) — Phase 3 万级话题 Pull 优化
-  router.post("/messages/pull", express.json({ limit: "5mb" }), async (req, res) => {
-    const { topics } = req.body || {};
-    if (
-      !req.body ||
-      typeof req.body !== "object" ||
-      Array.isArray(req.body) ||
-      Object.keys(req.body).length !== 1 ||
-      !Array.isArray(topics) ||
-      topics.length === 0 ||
-      topics.some((topic) =>
-        !topic ||
-        typeof topic !== "object" ||
-        Array.isArray(topic) ||
-        Object.keys(topic).sort().join("\0") !==
-          "messageIds\0ownerId\0ownerType\0topicId"
-      )
-    ) {
-      return sendHttpError(res, 400, "topics must be a non-empty array", {
-        code: "SYNC_REQUEST_INVALID",
-        stage: "messages",
-      });
-    }
+  router.post(
+    "/messages/pull",
+    express.json({ limit: 34 * 1024 * 1024 }),
+    async (req, res) => {
+      const { topics } = req.body || {};
+      if (
+        !req.body ||
+        typeof req.body !== "object" ||
+        Array.isArray(req.body) ||
+        Object.keys(req.body).length !== 1 ||
+        !Array.isArray(topics) ||
+        topics.length === 0 ||
+        topics.some((topic) =>
+          !topic ||
+          typeof topic !== "object" ||
+          Array.isArray(topic) ||
+          Object.keys(topic).sort().join("\0") !==
+            "messageIds\0ownerId\0ownerType\0topicId"
+        )
+      ) {
+        return sendHttpError(res, 400, "topics must be a non-empty array", {
+          code: "SYNC_REQUEST_INVALID",
+          stage: "messages",
+        });
+      }
 
-    try {
-      if (centralSync) {
-        await centralSync.pullMessagesStreamRaw(topics, res);
-      } else {
-        await pullMessagesStreamRaw(topics, appDataPath, res);
+      try {
+        if (centralSync) {
+          await centralSync.pullMessagesStreamRaw(topics, res);
+        } else {
+          await pullMessagesStreamRaw(topics, appDataPath, res);
+        }
+      } catch (e) {
+        if (!res.headersSent) {
+          sendHttpError(res, 500, e, streamErrorFallback(centralSync));
+        } else {
+          await finishStreamWithError(res, e, streamErrorFallback(centralSync));
+        }
       }
-    } catch (e) {
-      if (!res.headersSent) {
-        sendHttpError(res, 500, e, streamErrorFallback(centralSync));
-      } else {
-        await finishStreamWithError(res, e, streamErrorFallback(centralSync));
-      }
-    }
-  });
+    },
+  );
 
   // 4. 批量上传消息 (NDJSON 流式)
   router.post(

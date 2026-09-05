@@ -41,8 +41,6 @@ const PLATFORM_ERROR_CODES = new Set([
   "EROFS",
   "ETIMEDOUT",
 ]);
-const MAX_ERROR_MESSAGE_LENGTH = 1024;
-const MAX_FAILED_TOPIC_IDS = 8;
 const ERROR_FIELDS = new Set([
   "code",
   "origin",
@@ -103,7 +101,10 @@ const ERROR_DEFINITIONS = Object.freeze({
   BATTERY_TOO_LOW: definition("preflight", "device", "after_user_action", "mobile_native"),
   SYNC_ATTEMPT_FAILED: definition("startup", "internal", "manual"),
   CDS_ERROR: definition("startup", "internal", "manual", "desktop_cds"),
+  CDS_BINARY_NOT_FOUND: definition("startup", "configuration", "after_user_action", "desktop_cds"),
   CDS_PROTOCOL_MISMATCH: definition("startup", "compatibility", "after_user_action", "desktop_cds"),
+  CDS_SCHEMA_MISMATCH: definition("startup", "compatibility", "after_user_action", "desktop_cds"),
+  CDS_STARTUP_FAILED: definition("startup", "internal", "manual", "desktop_cds"),
   INVALID_CONFIGURATION: definition("startup", "configuration", "after_user_action", "desktop_cds"),
   INVALID_RESPONSE: definition("startup", "protocol", "after_user_action", "desktop_cds"),
   RESPONSE_TOO_LARGE: definition("messages", "data", "after_user_action", "desktop_cds"),
@@ -121,13 +122,11 @@ const ERROR_DEFINITIONS = Object.freeze({
   VERSION_CHECK_DUPLICATE: definition("handshake", "protocol", "after_user_action"),
   VERSION_CHECK_INVALID: definition("handshake", "protocol", "after_user_action"),
   VERSION_ACK_INVALID: definition("handshake", "protocol", "after_user_action", "mobile_sync"),
-  SYNC_VERSION_INCOMPATIBLE: definition("handshake", "compatibility", "after_user_action"),
   VERSION_CHECK_TIMEOUT: definition("handshake", "connection", "manual", "mobile_sync"),
   MANIFEST_RESPONSE_TIMEOUT: definition("owner_metadata", "connection", "manual", "mobile_sync"),
   TOPIC_HASH_RESPONSE_TIMEOUT: definition("topic_validation", "connection", "manual", "mobile_sync"),
   FINAL_ACK_TIMEOUT: definition("finalize", "connection", "manual", "mobile_sync"),
-  PROTOCOL_MISMATCH: definition("handshake", "compatibility", "after_user_action"),
-  PLUGIN_VERSION_MISMATCH: definition("handshake", "compatibility", "after_user_action"),
+  WIRE_VERSION_MISMATCH: definition("handshake", "compatibility", "after_user_action"),
   MOBILE_SYNC_ERROR: definition("shutdown", "internal", "manual", "mobile_sync"),
   SYNC_PROTOCOL_INVALID: definition("owner_metadata", "protocol", "after_user_action"),
   SYNC_BUDGET_EXCEEDED: definition("messages", "data", "after_user_action"),
@@ -146,7 +145,7 @@ const ERROR_DEFINITIONS = Object.freeze({
   TOPIC_NOT_FOUND: definition("messages", "data", "manual"),
   ATTACHMENT_PATH_INVALID: definition("messages", "storage", "after_user_action"),
   MOBILE_ATTACHMENT_INVALID: definition("messages", "data", "after_user_action"),
-  CDS_UNAVAILABLE: definition("startup", "internal", "manual", "desktop_cds"),
+  CDS_UNAVAILABLE: definition("startup", "configuration", "after_user_action", "desktop_cds"),
   INVALID_REQUEST: definition("startup", "protocol", "after_user_action", "desktop_cds"),
   UNAUTHORIZED: definition("connect", "configuration", "after_user_action", "desktop_cds"),
   NOT_FOUND: definition("startup", "data", "manual", "desktop_cds"),
@@ -168,28 +167,15 @@ const ERROR_DEFINITIONS = Object.freeze({
 });
 
 function cleanMessage(value, fallback = "Desktop sync failed") {
-  const safeFallback = typeof fallback === "string" && fallback.trim().length > 0
+  const completeFallback = typeof fallback === "string" && fallback.trim().length > 0
     ? fallback
     : "Desktop sync failed";
   const source = typeof value === "string" && value.trim().length > 0
     ? value
-    : safeFallback;
-  const redacted = source
-    .replace(/\b(Bearer\s+)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;]+)/gi, "$1[redacted]")
-    .replace(
-      /(\b(?:token|x[_-]?sync[_-]?token|sync[_-]?token|access[_-]?token|api[_-]?key|vcp[_-]?key|secret|password)\b\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;&#]+)/gi,
-      "$1[redacted]",
-    )
-    .replace(
-      /([?&](?:token|sync(?:[_-]|%5f)?token|access(?:[_-]|%5f)?token|api(?:[_-]|%5f)?key|vcp(?:[_-]|%5f)?key|secret|password)=)[^&#\s]*/gi,
-      "$1[redacted]",
-    )
-    .replace(/[A-Za-z]:[\\/][^\s"'<>|]+/g, "[path]");
-  return Array.from(redacted
+    : completeFallback;
+  return source
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, " ")
-    .trim())
-    .slice(0, MAX_ERROR_MESSAGE_LENGTH)
-    .join("");
+    .trim();
 }
 
 function codePointLength(value) {
@@ -208,7 +194,7 @@ function validWireCode(value) {
     !NON_WIRE_ERROR_CODE_PREFIXES.some((prefix) => value.startsWith(prefix));
 }
 
-function boundedTopicIds(value) {
+function normalizeTopicIds(value) {
   if (!Array.isArray(value)) return [];
   const result = [];
   const seen = new Set();
@@ -223,7 +209,6 @@ function boundedTopicIds(value) {
     }
     seen.add(id);
     result.push(id);
-    if (result.length === MAX_FAILED_TOPIC_IDS) break;
   }
   return result;
 }
@@ -262,7 +247,7 @@ function normalizeSyncError(error, fallback = {}) {
       validEnum(fallback.retry, ERROR_RETRIES) ||
       "manual",
     message: cleanMessage(sourceMessage, fallback.message),
-    failedTopicIds: boundedTopicIds([
+    failedTopicIds: normalizeTopicIds([
       ...(Array.isArray(source.failedTopicIds) ? source.failedTopicIds : []),
       ...(Array.isArray(fallback.failedTopicIds) ? fallback.failedTopicIds : []),
     ]),
@@ -307,8 +292,7 @@ function parseSyncError(value) {
   }
   if (
     typeof value.message !== "string" ||
-    value.message.trim().length === 0 ||
-    codePointLength(value.message) > MAX_ERROR_MESSAGE_LENGTH
+    value.message.trim().length === 0
   ) {
     throw createSyncError("PROTOCOL_INVALID", "error.message is invalid", {
       stage: "handshake",
@@ -316,7 +300,6 @@ function parseSyncError(value) {
   }
   if (
     !Array.isArray(value.failedTopicIds) ||
-      value.failedTopicIds.length > MAX_FAILED_TOPIC_IDS ||
       value.failedTopicIds.some(
         (id) =>
           typeof id !== "string" ||

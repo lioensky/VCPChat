@@ -54,9 +54,20 @@ const MOBILE_MESSAGE_PATCH_FIELDS = [
   "isGroupMessage",
   "finishReason",
 ];
+const CONTENT_HASH_PATTERN = /^[a-f0-9]{64}$/;
 
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function requireMobileContentHash(message, messageId) {
+  const contentHash = message?.contentHash;
+  if (typeof contentHash !== "string" || !CONTENT_HASH_PATTERN.test(contentHash)) {
+    throw new SyncProtocolError(
+      `Mobile message ${messageId} contentHash must be a lowercase 64-character SHA-256`,
+    );
+  }
+  return contentHash;
 }
 
 function desktopAttachmentHash(attachment) {
@@ -196,7 +207,6 @@ async function projectMobileMessage({
   };
   if (canonical.name !== undefined) desktop.name = canonical.name;
   for (const key of [
-    "isThinking",
     "agentId",
     "groupId",
     "topicId",
@@ -272,10 +282,8 @@ async function projectMobileTopic({
       `Mobile push for ${topicId} requires messages array`,
     );
   }
-  if (messages.length > 10_000) {
-    throw new SyncProtocolError(`Mobile push for ${topicId} exceeds 10000 messages`);
-  }
   const projected = [];
+  const messageHashes = new Map();
   const seen = new Set();
   const avatarPaths = new Map();
   const cachedAvatarPathResolver = resolveAgentAvatarPath
@@ -302,10 +310,12 @@ async function projectMobileTopic({
       );
     }
     seen.add(message.id);
+    messageHashes.set(message.id, requireMobileContentHash(rawMessage, message.id));
     projected.push(message);
   }
   return {
     messages: projected,
+    messageHashes,
   };
 }
 

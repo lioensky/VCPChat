@@ -1,0 +1,31 @@
+{
+  "schema": "vcp-sync-topic-canonical-contract",
+  "cases": [
+    {
+      "ownerType": "agent",
+      "dto": {
+        "id": "topic-unicode",
+        "name": "计划 😀",
+        "createdAt": 1700000200,
+        "locked": false,
+        "unread": true,
+        "ownerId": "agent-a",
+        "configHash": "00c8189697fa1206718fdb4cd613c6d737a0ce757a609d6a599433b14374e409",
+        "updatedAt": 1700000300
+      },
+      "dtoSha256": "31f5ff8f2c6bb51e5af927d59ece3037d4dde122f0da911e03b1ea50e6db5614"
+    },
+    {
+      "ownerType": "group",
+      "dto": {
+        "id": "topic-group",
+        "name": "Group Topic",
+        "createdAt": 1700000201,
+        "ownerId": "group-a",
+        "configHash": "21b359c7b285b7159afadb5796fc093a61ec5b617de87db3e58b373624b7fa88",
+        "updatedAt": 1700000301
+      },
+      "dtoSha256": "ca229a3dacd76e245fbbc29166b7b8926949296f93ab182fdc798b02d842982f"
+    }
+  ]
+}

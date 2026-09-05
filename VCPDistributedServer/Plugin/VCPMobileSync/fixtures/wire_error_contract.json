@@ -2,14 +2,14 @@
   "schema": "vcp-sync-wire-error-contract",
   "validErrors": [
     {
-      "name": "handshake_plugin_version_mismatch",
+      "name": "handshake_wire_version_mismatch",
       "error": {
-        "code": "PLUGIN_VERSION_MISMATCH",
+        "code": "WIRE_VERSION_MISMATCH",
         "origin": "desktop_plugin",
         "stage": "handshake",
         "kind": "compatibility",
         "retry": "after_user_action",
-        "message": "plugin package mismatch",
+        "message": "wire protocol mismatch",
         "failedTopicIds": []
       }
     },

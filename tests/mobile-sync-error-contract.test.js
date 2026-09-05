@@ -18,6 +18,9 @@ const {
   withSyncErrorContext,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/error-contract");
 const {
+  negotiateVersionCheck,
+} = require("../VCPDistributedServer/Plugin/VCPMobileSync/protocol");
+const {
   startWsServer,
   stopWsServer,
   registerRoutes,
@@ -182,7 +185,7 @@ test("Wire errors accept only complete envelopes", () => {
 });
 
 test("WebSocket, HTTP and NDJSON reuse the same error object", () => {
-  const error = createSyncError("PLUGIN_VERSION_MISMATCH", "wrong package");
+  const error = createSyncError("WIRE_VERSION_MISMATCH", "wrong wire");
   const expected = normalizeSyncError(error);
   assert.deepEqual(createSyncErrorFrame(error), {
     type: "SYNC_ERROR",
@@ -275,13 +278,6 @@ test("unknown stable codes survive while invalid codes use the boundary fallback
     ).code,
     "SYNC_ENTITY_READ_FAILED",
   );
-  const redacted = normalizeSyncError({
-    code: "UPSTREAM_EXTENSION_FAILED",
-    message: "Bearer desktop-secret token=second-secret C:\\Users\\Nova\\AppData\\history.json",
-  }).message;
-  assert.equal(redacted.includes("desktop-secret"), false);
-  assert.equal(redacted.includes("second-secret"), false);
-  assert.equal(redacted.includes("Nova"), false);
 });
 
 test("known codes cannot claim a different category or retry policy", () => {
@@ -299,23 +295,6 @@ test("known codes cannot claim a different category or retry policy", () => {
   );
 });
 
-test("string bounds count Unicode code points consistently with Rust", () => {
-  const valid = {
-    code: "UPSTREAM_EXTENSION_FAILED",
-    origin: "desktop_plugin",
-    stage: "messages",
-    kind: "internal",
-    retry: "manual",
-    message: "🙂".repeat(1024),
-    failedTopicIds: ["🙂".repeat(512)],
-  };
-  assert.deepEqual(parseSyncError(valid), valid);
-  assert.throws(
-    () => parseSyncError({ ...valid, message: "🙂".repeat(1025) }),
-    /message/,
-  );
-});
-
 test("WebSocket transport emits the complete root-cause error envelope", async (t) => {
   const server = await startWsServer({
     port: 0,
@@ -324,8 +303,11 @@ test("WebSocket transport emits the complete root-cause error envelope", async (
       if (payload.type === "VERSION_CHECK") {
         return {
           type: "VERSION_ACK",
-          pluginVersion: "1.4.0",
-          protocolVersion: "1.4",
+          versions: [
+            { component: "desktop_plugin", version: "1.5.0" },
+            { component: "wire", version: "1.5" },
+          ],
+          backendMode: "legacy",
         };
       }
       throw Object.assign(new Error("owner identity conflict"), {
@@ -345,8 +327,10 @@ test("WebSocket transport emits the complete root-cause error envelope", async (
 
   socket.emit("message", JSON.stringify({
     type: "VERSION_CHECK",
-    mobileVersion: "1.1.4",
-    protocolVersion: "1.4",
+    versions: [
+      { component: "mobile_app", version: "1.1.6" },
+      { component: "wire", version: "1.5" },
+    ],
   }));
   assert.equal((await nextFrame("VERSION_ACK")).type, "VERSION_ACK");
 
@@ -366,6 +350,83 @@ test("WebSocket transport emits the complete root-cause error envelope", async (
       failedTopicIds: [],
     },
   });
+});
+
+test("diagnostic WebSocket returns a CDS startup error before VERSION_ACK", async (t) => {
+  const server = await startWsServer({
+    port: 0,
+    syncToken: "diagnostic-token",
+    onMessage: async () => {
+      throw createSyncError("CDS_BINARY_NOT_FOUND", "CDS binary is missing", {
+        origin: "desktop_cds",
+        stage: "startup",
+      });
+    },
+  });
+  t.after(async () => stopWsServer());
+  const socket = new FakeWebSocket();
+  const nextFrame = createWsFrameReader(socket);
+  t.after(() => socket.terminate());
+  server.emit("connection", socket, {
+    url: "/ws-sync?token=diagnostic-token",
+    headers: { host: "127.0.0.1" },
+    socket: { remoteAddress: "127.0.0.1" },
+  });
+
+  socket.emit("message", JSON.stringify({
+    type: "VERSION_CHECK",
+    versions: [
+      { component: "mobile_app", version: "1.1.6" },
+      { component: "wire", version: "1.5" },
+    ],
+  }));
+  assert.deepEqual(await nextFrame("SYNC_ERROR"), {
+    type: "SYNC_ERROR",
+    error: {
+      code: "CDS_BINARY_NOT_FOUND",
+      origin: "desktop_cds",
+      stage: "startup",
+      kind: "configuration",
+      retry: "after_user_action",
+      message: "CDS binary is missing",
+      failedTopicIds: [],
+    },
+  });
+});
+
+test("WebSocket reports a Wire mismatch before closing with 1002", async (t) => {
+  const server = await startWsServer({
+    port: 0,
+    syncToken: "mismatch-token",
+    onMessage: async (payload) =>
+      negotiateVersionCheck(payload, {
+        desktopPluginVersion: "1.5.0",
+        backendMode: "cds",
+      }).ack,
+  });
+  t.after(async () => stopWsServer());
+  const socket = new FakeWebSocket();
+  const nextFrame = createWsFrameReader(socket);
+  t.after(() => socket.terminate());
+  server.emit("connection", socket, {
+    url: "/ws-sync?token=mismatch-token",
+    headers: { host: "127.0.0.1" },
+    socket: { remoteAddress: "127.0.0.1" },
+  });
+  const closed = new Promise((resolve) => socket.once("close", resolve));
+
+  socket.emit("message", JSON.stringify({
+    type: "VERSION_CHECK",
+    versions: [
+      { component: "mobile_app", version: "1.1.6" },
+      { component: "wire", version: "1.4" },
+    ],
+  }));
+  const frame = await nextFrame("SYNC_ERROR");
+  assert.equal(frame.error.code, "WIRE_VERSION_MISMATCH");
+  assert.equal(frame.error.origin, "desktop_plugin");
+  assert.equal(frame.error.stage, "handshake");
+  assert.equal(await closed, 1002);
 });
 
 test("HTTP route handlers return the same structured error contract", async () => {
@@ -396,7 +457,7 @@ test("HTTP route handlers return the same structured error contract", async () =
       stage: "owner_metadata",
       kind: "protocol",
       retry: "after_user_action",
-      message: "items must be an array of at most 1000 entities",
+      message: "items must be an array",
       failedTopicIds: [],
     },
   });

@@ -42,20 +42,17 @@ function parseNdjsonLine(line, decoder, label) {
     }
 }
 
-async function* decodeNdjsonBody(body, { maxLineBytes, maxTotalBytes }) {
+async function* decodeNdjsonBody(body, { maxLineBytes }) {
     const decoder = new TextDecoder('utf-8', { fatal: true });
     let fragments = [];
     let lineBytes = 0;
-    let totalBytes = 0;
 
     for await (const rawChunk of body) {
-        const chunk = Buffer.from(rawChunk);
-        totalBytes += chunk.length;
-        if (totalBytes > maxTotalBytes) {
-            throw new ChatDataServiceError('VCP-CDS NDJSON response exceeds total budget.', {
-                code: 'RESPONSE_TOO_LARGE'
-            });
-        }
+        const chunk = Buffer.isBuffer(rawChunk)
+            ? rawChunk
+            : rawChunk instanceof Uint8Array
+                ? Buffer.from(rawChunk.buffer, rawChunk.byteOffset, rawChunk.byteLength)
+                : Buffer.from(rawChunk);
         let start = 0;
         while (start < chunk.length) {
             const newline = chunk.indexOf(0x0a, start);
@@ -118,12 +115,16 @@ class ChatDataServiceClient {
 
     async request(method, pathname, body, options = {}) {
         const controller = new AbortController();
-        const timeoutMs = options.timeoutMs ?? this.timeoutMs;
+        const timeoutMs = options.timeoutMs === null
+            ? null
+            : options.timeoutMs ?? this.timeoutMs;
         let didTimeout = false;
-        const timeout = setTimeout(() => {
-            didTimeout = true;
-            controller.abort();
-        }, timeoutMs);
+        const timeout = timeoutMs === null
+            ? null
+            : setTimeout(() => {
+                didTimeout = true;
+                controller.abort();
+            }, timeoutMs);
 
         const abortFromCaller = () => controller.abort();
         if (options.signal) {
@@ -203,18 +204,10 @@ class ChatDataServiceClient {
 
     async *requestNdjson(method, pathname, body, options = {}) {
         const controller = new AbortController();
-        const timeoutMs = options.timeoutMs ?? this.timeoutMs;
         const maxLineBytes = options.maxLineBytes ?? 32 * 1024 * 1024;
-        const maxTotalBytes = options.maxTotalBytes ?? 256 * 1024 * 1024;
-        let didTimeout = false;
-        const timeout = setTimeout(() => {
-            didTimeout = true;
-            controller.abort();
-        }, timeoutMs);
         const abortFromCaller = () => controller.abort();
         if (options.signal) {
             if (options.signal.aborted) {
-                clearTimeout(timeout);
                 throw new ChatDataServiceError('VCP-CDS request was cancelled.', {
                     code: 'CANCELLED',
                     retryable: false
@@ -256,22 +249,18 @@ class ChatDataServiceClient {
             }
 
             for await (const frame of decodeNdjsonBody(response.body, {
-                maxLineBytes,
-                maxTotalBytes
+                maxLineBytes
             })) {
                 yield frame;
             }
         } catch (error) {
             if (error instanceof ChatDataServiceError) throw error;
             if (error?.name === 'AbortError') {
-                throw new ChatDataServiceError(
-                    didTimeout ? 'VCP-CDS request timed out.' : 'VCP-CDS request was cancelled.',
-                    {
-                        code: didTimeout ? 'TIMEOUT' : 'CANCELLED',
-                        retryable: didTimeout,
-                        cause: error
-                    }
-                );
+                throw new ChatDataServiceError('VCP-CDS request was cancelled.', {
+                    code: 'CANCELLED',
+                    retryable: false,
+                    cause: error
+                });
             }
             throw new ChatDataServiceError('Unable to stream from VCP-CDS.', {
                 code: 'UNAVAILABLE',
@@ -280,7 +269,6 @@ class ChatDataServiceClient {
             });
         } finally {
             controller.abort();
-            clearTimeout(timeout);
             if (options.signal) {
                 options.signal.removeEventListener('abort', abortFromCaller);
             }
@@ -323,7 +311,7 @@ class ChatDataServiceClient {
 
     reconcile(options) {
         return this.request('POST', '/v1/reconcile', {}, {
-            timeoutMs: 270_000,
+            timeoutMs: null,
             ...options
         });
     }

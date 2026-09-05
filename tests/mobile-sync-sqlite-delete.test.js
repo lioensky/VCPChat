@@ -17,6 +17,14 @@ const DB_PATH = path.join(
   "core",
   "db.js",
 );
+const DIFF_PATH = path.join(
+  ROOT,
+  "VCPDistributedServer",
+  "Plugin",
+  "VCPMobileSync",
+  "sync",
+  "diff.js",
+);
 const ENTITY_PATH = path.join(
   ROOT,
   "VCPDistributedServer",
@@ -50,16 +58,12 @@ const MESSAGE_PATH = path.join(
 );
 
 const silentLogger = {
-  completePhase() {},
+  completePhase() { return null; },
   endSession() {},
   logInfo() {},
   logOperation() {},
   startPhase() {},
   startSession() {},
-};
-const fakeLoggerModule = {
-  getLogger: () => silentLogger,
-  resetLogger: () => silentLogger,
 };
 
 function TestDatabase(filename) {
@@ -78,9 +82,10 @@ function TestDatabase(filename) {
   return database;
 }
 
-function loadSqliteModules({ captureOnMessage = null } = {}) {
+function loadSqliteModules({ captureOnMessage = null, logger = silentLogger } = {}) {
   const modulePaths = [
     DB_PATH,
+    DIFF_PATH,
     ENTITY_PATH,
     INDEX_PATH,
     MANIFEST_PATH,
@@ -100,7 +105,10 @@ function loadSqliteModules({ captureOnMessage = null } = {}) {
       request === "./core/logger" ||
       request === "../core/logger"
     ) {
-      return fakeLoggerModule;
+      return {
+        getLogger: () => logger,
+        resetLogger: () => logger,
+      };
     }
     if (request === "./transport/websocket") {
       return {
@@ -122,7 +130,8 @@ function loadSqliteModules({ captureOnMessage = null } = {}) {
     const index = captureOnMessage ? require(INDEX_PATH) : null;
     const manifest = require(MANIFEST_PATH);
     const message = require(MESSAGE_PATH);
-    return { database, entity, index, manifest, message };
+    const diff = require(DIFF_PATH);
+    return { database, diff, entity, index, manifest, message };
   } finally {
     Module._load = originalLoad;
     for (const modulePath of modulePaths) {
@@ -178,6 +187,164 @@ function insertEntity(db, {
   }
 }
 
+test("Legacy Avatar 元数据迁移与快路共享同一持久状态", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-avatar-source-"));
+  const filename = path.join(directory, "sync_state_v2.db");
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const oldDatabase = new DatabaseSync(filename);
+  oldDatabase.exec(`
+    CREATE TABLE avatar_index (
+      owner_id TEXT NOT NULL,
+      owner_type TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      hash TEXT NOT NULL,
+      updated_at INTEGER NOT NULL,
+      deleted_at INTEGER DEFAULT NULL,
+      PRIMARY KEY (owner_id, owner_type)
+    );
+    INSERT INTO avatar_index VALUES(
+      'agent-a', 'agent', '/avatars/avatar.png', '${"a".repeat(64)}', 100, NULL
+    );
+  `);
+  oldDatabase.close();
+
+  const { database } = loadSqliteModules();
+  const db = database.initDb(filename);
+  t.after(() => db.close());
+  assert.deepEqual(
+    db.prepare("PRAGMA table_info(avatar_index)").all()
+      .filter((column) => ["mtime_ms", "file_size"].includes(column.name))
+      .map((column) => column.name),
+    ["mtime_ms", "file_size"],
+  );
+  assert.deepEqual(
+    { ...database.getAvatarIndex("agent-a", "agent") },
+    {
+      owner_id: "agent-a",
+      owner_type: "agent",
+      file_path: "/avatars/avatar.png",
+      hash: "a".repeat(64),
+      mtime_ms: 0,
+      file_size: 0,
+      updated_at: 100,
+      deleted_at: null,
+    },
+  );
+
+  database.upsertAvatarIndex(
+    "agent-a",
+    "agent",
+    "/avatars/avatar.png",
+    "a".repeat(64),
+    200,
+    1234.5,
+    42,
+  );
+  const current = database.getAvatarIndex("agent-a", "agent");
+  assert.equal(current.updated_at, 100, "source refresh must not advance sync time");
+  assert.equal(database.isAvatarSourceCurrent(current, {
+    filePath: "/avatars/avatar.png",
+    fileSize: 42,
+    mtimeMs: 1234.5,
+  }), true);
+  assert.equal(database.isAvatarSourceCurrent(current, {
+    filePath: "/avatars/avatar.jpg",
+    fileSize: 42,
+    mtimeMs: 1234.5,
+  }), false);
+
+  database.softDeleteAvatarIndex("agent-a", "agent", 300);
+  const deleted = database.getAvatarIndex("agent-a", "agent");
+  assert.equal(deleted.mtime_ms, 0);
+  assert.equal(deleted.file_size, 0);
+  assert.equal(database.isAvatarSourceCurrent(deleted, {
+    filePath: "/avatars/avatar.png",
+    fileSize: 42,
+    mtimeMs: 1234.5,
+  }), false);
+});
+
+test("legacy Topic manifest SQL 按完整 targeted Owner 身份取数", () => {
+  const { database, manifest } = loadSqliteModules();
+  const db = database.initDb(":memory:");
+  try {
+    insertEntity(db, { id: "shared", type: "agent" });
+    insertEntity(db, {
+      id: "topic-agent-live",
+      type: "agent_topic",
+      ownerType: "agent",
+      ownerId: "shared",
+    });
+    insertEntity(db, {
+      id: "topic-agent-deleted",
+      type: "agent_topic",
+      ownerType: "agent",
+      ownerId: "shared",
+    });
+    db.prepare(
+      `UPDATE topics SET deleted_at = 9
+       WHERE owner_type = 'agent' AND owner_id = 'shared'
+         AND topic_id = 'topic-agent-deleted'`,
+    ).run();
+
+    insertEntity(db, { id: "shared", type: "group" });
+    insertEntity(db, {
+      id: "topic-group",
+      type: "group_topic",
+      ownerType: "group",
+      ownerId: "shared",
+    });
+    insertEntity(db, {
+      id: "topic-other",
+      type: "agent_topic",
+      ownerType: "agent",
+      ownerId: "other",
+    });
+
+    const agentResult = manifest.handleSyncManifest({
+      manifestType: "topic",
+      targetedOwners: [{ ownerType: "agent", ownerId: "shared" }],
+      items: [],
+    }, db);
+    assert.deepEqual(agentResult.results, [
+      {
+        ownerType: "agent",
+        ownerId: "shared",
+        topicId: "topic-agent-deleted",
+        action: "PULL_DELETE",
+        deletedAt: 9,
+      },
+      {
+        ownerType: "agent",
+        ownerId: "shared",
+        topicId: "topic-agent-live",
+        action: "PULL",
+      },
+    ]);
+
+    const groupResult = manifest.handleSyncManifest({
+      manifestType: "topic",
+      targetedOwners: [{ ownerType: "group", ownerId: "shared" }],
+      items: [],
+    }, db);
+    assert.deepEqual(groupResult.results, [{
+      ownerType: "group",
+      ownerId: "shared",
+      topicId: "topic-group",
+      action: "PULL",
+    }]);
+
+    const emptyResult = manifest.handleSyncManifest({
+      manifestType: "topic",
+      targetedOwners: [],
+      items: [],
+    }, db);
+    assert.deepEqual(emptyResult.results, []);
+  } finally {
+    db.close();
+  }
+});
+
 function entityRow(db, id, type, ownerType = null, ownerId = null) {
   const isTopic = ["topic", "agent_topic", "group_topic"].includes(type);
   if (!isTopic) {
@@ -193,6 +360,144 @@ function entityRow(db, id, type, ownerType = null, ownerId = null) {
   }
   return db.prepare("SELECT * FROM topics WHERE topic_id = ?").get(id);
 }
+
+function topicDiffState(topicId, configHash, contentHash) {
+  return {
+    topicId,
+    ownerType: "agent",
+    ownerId: "owner-a",
+    configHash,
+    contentHash,
+  };
+}
+
+function assertTopicSnapshotStale(run, topicId) {
+  assert.throws(run, (error) => {
+    assert.equal(error.code, "SYNC_SNAPSHOT_STALE");
+    assert.equal(error.origin, "desktop_plugin");
+    assert.equal(error.stage, "topic_validation");
+    assert.equal(error.kind, "data");
+    assert.equal(error.retry, "manual");
+    assert.deepEqual(error.failedTopicIds, [topicId]);
+    return true;
+  });
+}
+
+test("Legacy TopicDiff 未初始化数据库时 fail closed", () => {
+  const { diff } = loadSqliteModules();
+  const hash = "a".repeat(64);
+
+  assert.throws(
+    () => diff.handleSyncTopicDiff({
+      topics: [topicDiffState("topic-uninitialized", hash, hash)],
+    }),
+    (error) => error.code === "SYNC_DB_UNAVAILABLE",
+  );
+});
+
+test("Legacy Phase 2.5 只将 content 漂移送入消息阶段", () => {
+  const { database, diff, message } = loadSqliteModules();
+  const db = database.initDb(":memory:");
+  const configA = "a".repeat(64);
+  const configB = "b".repeat(64);
+  const contentC = "c".repeat(64);
+  const contentD = "d".repeat(64);
+  const stableTopic = "topic-stable";
+  const contentTopic = "topic-content";
+  const staleTopic = "topic-stale";
+
+  try {
+    for (const topicId of [stableTopic, contentTopic, staleTopic]) {
+      insertEntity(db, { id: topicId, type: "topic" });
+    }
+    db.prepare(
+      "UPDATE topics SET content_hash = ? WHERE topic_id = ?",
+    ).run(contentC, stableTopic);
+    db.prepare(
+      "UPDATE topics SET content_hash = ? WHERE topic_id = ?",
+    ).run(contentD, contentTopic);
+    db.prepare(
+      "UPDATE topics SET content_hash = ? WHERE topic_id = ?",
+    ).run(contentC, staleTopic);
+
+    assert.deepEqual(
+      diff.handleSyncTopicDiff({
+        topics: [topicDiffState(stableTopic, configA, contentC)],
+      }),
+      { type: "SYNC_TOPIC_DIFF_RESULT", changedTopics: [] },
+    );
+    assert.deepEqual(
+      diff.handleSyncTopicDiff({
+        topics: [topicDiffState(contentTopic, configA, contentC)],
+      }),
+      {
+        type: "SYNC_TOPIC_DIFF_RESULT",
+        changedTopics: [{
+          topicId: contentTopic,
+          ownerType: "agent",
+          ownerId: "owner-a",
+        }],
+      },
+    );
+
+    db.prepare(
+      "UPDATE topics SET config_hash = ? WHERE topic_id = ?",
+    ).run(configB, staleTopic);
+    assertTopicSnapshotStale(
+      () => diff.handleSyncTopicDiff({
+        topics: [
+          topicDiffState(contentTopic, configA, contentC),
+          topicDiffState(staleTopic, configA, contentC),
+        ],
+      }),
+      staleTopic,
+    );
+
+    db.prepare(
+      "UPDATE topics SET content_hash = ? WHERE topic_id = ?",
+    ).run(contentD, staleTopic);
+    assertTopicSnapshotStale(
+      () => diff.handleSyncTopicDiff({
+        topics: [topicDiffState(staleTopic, configA, contentC)],
+      }),
+      staleTopic,
+    );
+
+    db.prepare(
+      "UPDATE topics SET config_hash = ?, content_hash = ?, deleted_at = ? WHERE topic_id = ?",
+    ).run(configA, contentC, 42, staleTopic);
+    assertTopicSnapshotStale(
+      () => diff.handleSyncTopicDiff({
+        topics: [topicDiffState(staleTopic, configA, contentC)],
+      }),
+      staleTopic,
+    );
+
+    db.prepare("DELETE FROM topics WHERE topic_id = ?").run(staleTopic);
+    assertTopicSnapshotStale(
+      () => diff.handleSyncTopicDiff({
+        topics: [topicDiffState(staleTopic, configA, contentC)],
+      }),
+      staleTopic,
+    );
+
+    const unhealthyIdentity = topicDiffState(stableTopic, configA, contentC);
+    message.markHistoryTopicUnhealthy(unhealthyIdentity, new Error("invalid JSON"));
+    try {
+      assert.throws(
+        () => diff.handleSyncTopicDiff({ topics: [unhealthyIdentity] }),
+        (error) =>
+          error.code === "HISTORY_SOURCE_INVALID" &&
+          error.stage === "topic_validation" &&
+          error.failedTopicIds[0] === stableTopic,
+      );
+    } finally {
+      message.clearHistoryTopicUnhealthy(unhealthyIdentity);
+    }
+  } finally {
+    db.close();
+  }
+});
 
 test("Legacy 普通 Owner/Topic upsert 不会清除墓碑", () => {
   const { database } = loadSqliteModules();
@@ -330,6 +635,27 @@ test("Legacy 摄取会从物理 history 清除已持久化的消息墓碑", asyn
          WHERE owner_type = ? AND owner_id = ? AND topic_id = ? AND msg_id = ?`,
       ).get("agent", ownerId, topicId, "message-deleted").deleted_at,
       42,
+    );
+    const wireHash = "f".repeat(64);
+    await message.ingestHistoryToDb(
+      historyPath,
+      { ownerType: "agent", ownerId, topicId },
+      "batch_push",
+      { messageHashes: new Map([["message-live", wireHash]]) },
+    );
+    assert.equal(
+      db.prepare(
+        `SELECT message_hash FROM messages
+         WHERE owner_type = ? AND owner_id = ? AND topic_id = ? AND msg_id = ?`,
+      ).get("agent", ownerId, topicId, "message-live").message_hash,
+      wireHash,
+    );
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(
+        JSON.parse(fs.readFileSync(historyPath, "utf8"))[0],
+        "contentHash",
+      ),
+      false,
     );
   } finally {
     db.close();
@@ -535,6 +861,8 @@ test("Topic 上传会补建缺失 history，且更新既有 Topic 不覆盖真�
         ownerType: "agent",
         name,
         createdAt: 1,
+        configHash: "a".repeat(64),
+        updatedAt: 2,
       },
       appDataPath: directory,
     });
@@ -1088,7 +1416,7 @@ test("legacy watcher 与全量扫描共用 DTO 默认值", async (t) => {
   );
 });
 
-test("中央 Owner Phase 在 ACK 前刷新 CDS 提交视图", async (t) => {
+test("中央 Owner Phase handler 完成前刷新 CDS 提交视图", async (t) => {
   let onMessage = null;
   let reconcileCalls = 0;
   let releasePhaseReconcile;
@@ -1133,7 +1461,7 @@ test("中央 Owner Phase 在 ACK 前刷新 CDS 提交视图", async (t) => {
   const db = database.getDb();
   t.after(() => db.close());
 
-  const phaseAckPromise = onMessage({
+  const phaseHandlerPromise = onMessage({
     type: "PHASE_START",
     phase: "owner_metadata",
   });
@@ -1141,31 +1469,110 @@ test("中央 Owner Phase 在 ACK 前刷新 CDS 提交视图", async (t) => {
   assert.equal(reconcileCalls, 1);
   assert.equal(
     await Promise.race([
-      phaseAckPromise.then(() => "settled"),
+      phaseHandlerPromise.then(() => "settled"),
       new Promise((resolve) => setImmediate(() => resolve("pending"))),
     ]),
     "pending",
-    "reconcile 完成前不得返回 Phase ACK",
+    "reconcile 完成前不得结束 Owner Phase handler",
   );
 
   releasePhaseReconcile();
-  assert.deepEqual(await phaseAckPromise, {
-    type: "PHASE_ACK",
-    phase: "owner_metadata",
-  });
-  assert.deepEqual(
-    await onMessage({ type: "PHASE_START", phase: "topic_metadata" }),
-    { type: "PHASE_ACK", phase: "topic_metadata" },
-  );
-  assert.deepEqual(
-    await onMessage({ type: "PHASE_COMPLETED", phase: "owner_metadata" }),
-    { type: "PHASE_ACK", phase: "owner_metadata" },
-  );
-  assert.deepEqual(
-    await onMessage({ type: "PHASE_COMPLETED", phase: "topic_metadata" }),
-    { type: "PHASE_ACK", phase: "topic_metadata" },
-  );
+  assert.equal(await phaseHandlerPromise, null);
+  await onMessage({ type: "PHASE_START", phase: "topic_metadata" });
+  await onMessage({ type: "PHASE_COMPLETED", phase: "owner_metadata" });
+  await onMessage({ type: "PHASE_COMPLETED", phase: "topic_metadata" });
   assert.equal(reconcileCalls, 1, "后续 Phase 不应重复 reconcile");
+});
+
+test("Desktop 仅为未启动的 Messages 阶段记录 skipped", async (t) => {
+  let onMessage = null;
+  let messagesStarted = false;
+  let messagesCompleted = 0;
+  const infoLogs = [];
+  const logger = {
+    ...silentLogger,
+    startPhase(phase) {
+      if (phase === "messages") messagesStarted = true;
+    },
+    completePhase(phase) {
+      if (phase !== "messages" || !messagesStarted) return null;
+      messagesStarted = false;
+      messagesCompleted += 1;
+      return { phase, duration: 0 };
+    },
+    logInfo(phase, message) {
+      infoLogs.push({ phase, message });
+    },
+  };
+  const { database, index } = loadSqliteModules({
+    logger,
+    captureOnMessage(handler) {
+      onMessage = handler;
+    },
+  });
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-sync-message-phase-"));
+  const projectBasePath = path.join(directory, "VCPDistributedServer");
+  fs.mkdirSync(projectBasePath, { recursive: true });
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+
+  await index.registerRoutes(
+    { use() {} },
+    {
+      MobileSyncToken: "message-phase-test-token",
+      MobileSyncPort: "15977",
+      MobileSyncUseCentralIndex: true,
+    },
+    projectBasePath,
+    {
+      chatDataService: {
+        client: {},
+        mobileSyncUseCentralIndex: true,
+      },
+    },
+  );
+
+  assert.equal(typeof onMessage, "function");
+  const db = database.getDb();
+  t.after(() => db.close());
+
+  assert.deepEqual(
+    await onMessage({
+      type: "PHASE_COMPLETED",
+      phase: "messages",
+      sessionId: 7,
+      attemptId: 1,
+      nonce: "skipped-message-phase",
+    }),
+    {
+      type: "PHASE_ACK",
+      phase: "messages",
+      sessionId: 7,
+      attemptId: 1,
+      nonce: "skipped-message-phase",
+    },
+  );
+  assert.deepEqual(
+    infoLogs.filter((entry) => entry.message === "Messages skipped: no changed topics"),
+    [{ phase: "messages", message: "Messages skipped: no changed topics" }],
+  );
+
+  infoLogs.length = 0;
+  assert.equal(
+    await onMessage({ type: "PHASE_START", phase: "messages" }),
+    null,
+  );
+  await onMessage({
+    type: "PHASE_COMPLETED",
+    phase: "messages",
+    sessionId: 7,
+    attemptId: 2,
+    nonce: "completed-message-phase",
+  });
+  assert.equal(messagesCompleted, 1);
+  assert.equal(
+    infoLogs.some((entry) => entry.message === "Messages skipped: no changed topics"),
+    false,
+  );
 });
 
 test("中央 Topic 删除错误保持 topic_metadata 阶段和失败 Topic", async (t) => {

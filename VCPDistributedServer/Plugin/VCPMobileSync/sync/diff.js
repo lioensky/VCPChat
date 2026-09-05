@@ -7,6 +7,7 @@ const { getDb } = require("../core/db");
 const { getLogger } = require("../core/logger");
 const { assertHistoryTopicHealthy } = require("./message");
 const {
+  createSyncError,
   normalizeSyncError,
   withSyncErrorContext,
 } = require("../error-contract");
@@ -26,11 +27,6 @@ function requireCompoundTopicStates(payload) {
     );
   }
   const topicStates = payload.topics;
-  if (topicStates.length > 10_000) {
-    throw Object.assign(new Error("Topic hash batch exceeds 10000 topics"), {
-      code: "SYNC_BUDGET_EXCEEDED",
-    });
-  }
   const states = new Map();
   for (const state of topicStates) {
     if (
@@ -68,9 +64,9 @@ function requireCompoundTopicStates(payload) {
  * 处理 SYNC_TOPIC_DIFF_REQUEST
  * @param {object} payload - { topics: [{topicId,ownerType,ownerId,configHash,contentHash}] }
  */
-function handleSyncTopicDiff(payload, database = getDb()) {
+function handleSyncTopicDiff(payload) {
   const topicStates = requireCompoundTopicStates(payload);
-  const db = database;
+  const db = getDb();
   const logger = getLogger();
   if (!db) {
     logger.logOperation("topic_metadata", "topic_diff", "global", "error", "database not initialized");
@@ -81,6 +77,7 @@ function handleSyncTopicDiff(payload, database = getDb()) {
 
   const changedTopics = [];
   let matchCount = 0;
+  let topicHashStatement = null;
 
   for (const state of topicStates) {
     const topicId = state.topicId;
@@ -90,29 +87,44 @@ function handleSyncTopicDiff(payload, database = getDb()) {
         ownerType: state.ownerType,
         ownerId: state.ownerId,
       });
-      const topicRow = db
-        .prepare(
-          `SELECT config_hash, content_hash FROM topics
-           WHERE owner_type = ? AND owner_id = ? AND topic_id = ?
-             AND deleted_at IS NULL`,
-        )
-        .get(state.ownerType, state.ownerId, topicId);
+      topicHashStatement ??= db.prepare(
+        `SELECT config_hash, content_hash FROM topics
+         WHERE owner_type = ? AND owner_id = ? AND topic_id = ?
+           AND deleted_at IS NULL`,
+      );
+      const topicRow = topicHashStatement.get(
+        state.ownerType,
+        state.ownerId,
+        topicId,
+      );
 
       if (!topicRow) {
-        changedTopics.push({
-          topicId,
-          ownerType: state.ownerType,
-          ownerId: state.ownerId,
-        });
-        continue;
+        throw createSyncError(
+          "SYNC_SNAPSHOT_STALE",
+          `Topic ${state.ownerType}/${state.ownerId}/${topicId} disappeared or became tombstoned after metadata synchronization`,
+          {
+            stage: "topic_validation",
+            failedTopicIds: [topicId],
+          },
+        );
       }
 
       const localConfig = topicRow.config_hash || "";
       const remoteConfig = state.configHash || "";
+      if (localConfig !== remoteConfig) {
+        throw createSyncError(
+          "SYNC_SNAPSHOT_STALE",
+          `Topic ${state.ownerType}/${state.ownerId}/${topicId} config changed after metadata synchronization`,
+          {
+            stage: "topic_validation",
+            failedTopicIds: [topicId],
+          },
+        );
+      }
+
       const localContent = topicRow.content_hash || "";
       const remoteContent = state.contentHash || "";
-
-      if (localConfig === remoteConfig && localContent === remoteContent) {
+      if (localContent === remoteContent) {
         matchCount++;
       } else {
         changedTopics.push({
@@ -170,13 +182,7 @@ function requireMessageDiffStates(payload) {
     });
   }
   const topics = payload.topics;
-  if (topics.length > 10_000) {
-    throw Object.assign(new Error("Message diff exceeds 10000 topics"), {
-      code: "SYNC_BUDGET_EXCEEDED",
-    });
-  }
   const seenTopics = new Set();
-  let messageCount = 0;
   for (const localState of topics) {
     const topicId = localState?.topicId;
     if (
@@ -206,14 +212,11 @@ function requireMessageDiffStates(payload) {
       });
     }
     seenTopics.add(identity);
-    const localEntries = Object.entries(localState.messages);
-    messageCount += localEntries.length;
-    if (localEntries.length > 10_000 || messageCount > 100_000) {
-      throw Object.assign(new Error("Message diff exceeds its message count budget"), {
-        code: "SYNC_BUDGET_EXCEEDED",
-      });
-    }
-    for (const [msgId, state] of localEntries) {
+    for (const msgId in localState.messages) {
+      if (!Object.prototype.hasOwnProperty.call(localState.messages, msgId)) {
+        continue;
+      }
+      const state = localState.messages[msgId];
       if (!msgId || !validateMessageState(state)) {
         throw Object.assign(
           new Error(`Invalid message diff entry ${topicId}/${msgId}`),
@@ -283,9 +286,16 @@ function handleSyncMessageDiff(payload, database = getDb()) {
         continue;
       }
 
-      const mobileHasTombstones = Object.values(localState.messages).some(
-        isMessageTombstone,
-      );
+      let mobileHasTombstones = false;
+      for (const msgId in localState.messages) {
+        if (
+          Object.prototype.hasOwnProperty.call(localState.messages, msgId) &&
+          isMessageTombstone(localState.messages[msgId])
+        ) {
+          mobileHasTombstones = true;
+          break;
+        }
+      }
       if (
         topicRow.content_hash !== null &&
         topicRow.content_hash === localState.contentHash &&
@@ -311,7 +321,10 @@ function handleSyncMessageDiff(payload, database = getDb()) {
         )
         .all(localState.ownerType, localState.ownerId, topicId);
 
-      const remoteMap = new Map(remoteRows.map((row) => [row.msg_id, row]));
+      const remoteMap = new Map();
+      for (const row of remoteRows) {
+        remoteMap.set(row.msg_id, row);
+      }
       const localMap = localState.messages;
 
       const pullMessageIds = [];

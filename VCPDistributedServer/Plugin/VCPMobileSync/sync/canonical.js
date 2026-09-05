@@ -235,17 +235,18 @@ function canonicalizeMessage(value, topicId, warnings = new BoundedWarnings(), r
   }
 
   for (const [key, type] of [
-    ["isThinking", "boolean"],
     ["agentId", "string"],
     ["groupId", "string"],
     ["topicId", "string"],
     ["isGroupMessage", "boolean"],
   ]) {
     const fieldValue = value[key];
-    if (fieldValue !== undefined && fieldValue !== null && typeof fieldValue !== type) {
-      throw new SyncProtocolError(`Message ${id} ${key} must be a ${type}`);
+    if (fieldValue !== undefined && fieldValue !== null) {
+      if (typeof fieldValue !== type) {
+        throw new SyncProtocolError(`Message ${id} ${key} must be a ${type}`);
+      }
+      message[key] = fieldValue;
     }
-    message[key] = fieldValue ?? null;
   }
 
   for (const key of ["finishReason"]) {
@@ -282,7 +283,7 @@ function messageContentHash(message) {
   return computeMessageFingerprint(message);
 }
 
-function canonicalizeTopicFrame(value, { includeContentHash = true } = {}) {
+function canonicalizeTopicFrame(value) {
   if (!isPlainObject(value)) {
     throw new SyncProtocolError("NDJSON frame must be an object");
   }
@@ -344,9 +345,7 @@ function canonicalizeTopicFrame(value, { includeContentHash = true } = {}) {
       );
     }
     seen.add(message.id);
-    if (includeContentHash) {
-      message.contentHash = messageContentHash(message);
-    }
+    message.contentHash = messageContentHash(message);
     return message;
   });
 
@@ -369,11 +368,11 @@ function canonicalizeTopicFrame(value, { includeContentHash = true } = {}) {
   };
 }
 
-function canonicalizeHistory(history, topicId, options) {
+function canonicalizeHistory(history, topicId) {
   if (!Array.isArray(history)) {
     throw new SyncProtocolError(`History root for ${topicId} must be an array`);
   }
-  return canonicalizeTopicFrame({ topicId, messages: history }, options);
+  return canonicalizeTopicFrame({ topicId, messages: history });
 }
 
 module.exports = {

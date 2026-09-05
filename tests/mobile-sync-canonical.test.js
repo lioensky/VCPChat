@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const { test } = require("node:test");
@@ -10,10 +11,18 @@ const {
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/canonical");
 const {
   computeAggregatedHash,
+  computeDtoHash,
   computeMessageLeafHash,
   computeMessageFingerprint,
   computeTopicLeafHash,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/core/hash");
+const {
+  projectMobileTopic,
+} = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/projection");
+const {
+  AGENT_TOPIC_SYNC_FIELDS,
+  GROUP_TOPIC_SYNC_FIELDS,
+} = require("../VCPDistributedServer/Plugin/VCPMobileSync/dto/topic.dto");
 
 const FIXTURE_PATH = path.join(
   __dirname,
@@ -24,17 +33,31 @@ const FIXTURE_PATH = path.join(
   "fixtures",
   "message_canonical_contract.json",
 );
+const TOPIC_FIXTURE_PATH = path.join(
+  __dirname,
+  "..",
+  "VCPDistributedServer",
+  "Plugin",
+  "VCPMobileSync",
+  "fixtures",
+  "topic_canonical_contract.json",
+);
 test("canonicalizer 符合共享消息投影与指纹合同", () => {
   const bundle = JSON.parse(fs.readFileSync(FIXTURE_PATH, "utf8"));
 
   for (const fixture of bundle.validFrames) {
-    const result = canonicalizeTopicFrame(fixture.input, {
-      includeContentHash: false,
-    });
+    const result = canonicalizeTopicFrame(fixture.input);
     assert.equal(result.frame.topicId, fixture.expected.topicId);
     assert.equal(result.frame.messages.length, fixture.expected.messageCount);
     assert.equal(result.warningCount, fixture.expected.warningCount);
     assert.deepEqual(result.frame.messages, fixture.expected.canonicalMessages);
+    assert.equal(
+      crypto
+        .createHash("sha256")
+        .update(JSON.stringify(result.frame.messages))
+        .digest("hex"),
+      fixture.expected.canonicalMessagesSha256,
+    );
     assert.deepEqual(
       result.frame.messages.map(computeMessageFingerprint),
       fixture.expected.contentHashes,
@@ -69,6 +92,43 @@ test("消息与 Owner 聚合绑定实体身份", () => {
     computeTopicLeafHash("topic-b", "config-b", "content-a"),
   ]);
   assert.notEqual(original, swapped);
+});
+
+test("Mobile Push 要求每条消息携带规范 contentHash", async () => {
+  const base = {
+    id: "message-a",
+    role: "user",
+    content: "body",
+    timestamp: 1,
+    updatedAt: 2,
+  };
+  for (const contentHash of [undefined, "A".repeat(64), "not-a-hash"]) {
+    await assert.rejects(
+      projectMobileTopic({
+        topicId: "topic-a",
+        ownerType: "agent",
+        ownerId: "agent-a",
+        messages: [{ ...base, contentHash }],
+        db: null,
+        appDataPath: "unused",
+      }),
+      /contentHash must be a lowercase 64-character SHA-256/,
+    );
+  }
+});
+
+test("Topic DTO 字节与 configHash 符合共享合同", () => {
+  const bundle = JSON.parse(fs.readFileSync(TOPIC_FIXTURE_PATH, "utf8"));
+  for (const fixture of bundle.cases) {
+    const fields = fixture.ownerType === "agent"
+      ? AGENT_TOPIC_SYNC_FIELDS
+      : GROUP_TOPIC_SYNC_FIELDS;
+    assert.equal(computeDtoHash(fixture.dto, fields), fixture.dto.configHash);
+    assert.equal(
+      crypto.createHash("sha256").update(JSON.stringify(fixture.dto)).digest("hex"),
+      fixture.dtoSha256,
+    );
+  }
 });
 
 test("canonicalizer 拒绝 Owner/Topic 冲突与墓碑复活", () => {

@@ -6,6 +6,9 @@ const { test } = require("node:test");
 const {
   createCentralSyncAdapter: createAdapter,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/central");
+const {
+  createSyncErrorFrame,
+} = require("../VCPDistributedServer/Plugin/VCPMobileSync/error-contract");
 function createClient(overrides = {}) {
   return {
     reconcile: async () => ({ stats: {} }),
@@ -74,7 +77,7 @@ test("中央适配器将 WebSocket Manifest 转发给 CDS", async () => {
     targetedOwners: [{ ownerType: "agent", ownerId: "agent_1" }],
   });
 
-  assert.deepEqual(captured, [
+  assert.deepEqual(captured.slice(0, 3), [
     "POST",
     "/v3/sync/manifest",
     {
@@ -99,7 +102,10 @@ test("中央实体 Pull 转发复合身份并映射 CDS 私有错误码", async 
       ownerId: "agent_1",
       topicId: "topic_1",
       ok: true,
-      data: { id: "topic_1", name: "Topic", createdAt: 1, locked: true, unread: false, ownerId: "agent_1" },
+      data: {
+        id: "topic_1", name: "Topic", createdAt: 1, locked: true, unread: false,
+        ownerId: "agent_1", configHash: "a".repeat(64), updatedAt: 2,
+      },
     },
     {
       entityType: "topic",
@@ -155,7 +161,11 @@ test("中央实体 Pull 转发复合身份并映射 CDS 私有错误码", async 
       failedTopicIds: ["topic_missing"],
     },
   });
-  assert.deepEqual(captured, ["POST", "/v3/sync/entities/pull", { items }]);
+  assert.deepEqual(captured.slice(0, 3), [
+    "POST",
+    "/v3/sync/entities/pull",
+    { items },
+  ]);
 });
 
 test("中央适配器拒绝缺失 ownerType 的 CDS Owner action", async () => {
@@ -204,17 +214,49 @@ test("中央 Topic hash 转发使用复合 Owner 状态而不重复同一 Topic"
     topics: [state],
   });
 
-  assert.deepEqual(captured, [
+  assert.deepEqual(captured.slice(0, 3), [
     "POST",
     "/v3/sync/topic-diff",
     { topics: [state] },
-    { timeoutMs: 270_000 },
   ]);
   assert.deepEqual(result.changedTopics, [{
     topicId: "topic_1",
     ownerType: "agent",
     ownerId: "agent_1",
   }]);
+});
+
+test("中央 TopicDiff 将 CDS stale 保真为公开重试错误", async () => {
+  const adapter = createCentralSyncAdapter({
+    client: createClient({
+      request: async () => {
+        throw Object.assign(new Error("topic snapshot changed"), {
+          code: "SYNC_SNAPSHOT_STALE",
+          status: 409,
+          retryable: true,
+        });
+      },
+    }),
+  });
+
+  await assert.rejects(
+    () => adapter.handleTopicDiff({ topics: [] }),
+    (error) => {
+      assert.deepEqual(createSyncErrorFrame(error), {
+        type: "SYNC_ERROR",
+        error: {
+          code: "SYNC_SNAPSHOT_STALE",
+          origin: "desktop_cds",
+          stage: "topic_validation",
+          kind: "data",
+          retry: "manual",
+          message: "topic snapshot changed",
+          failedTopicIds: [],
+        },
+      });
+      return true;
+    },
+  );
 });
 
 test("中央启动门禁可在 SERVICE_BUSY 时持续等待既有 reconcile", async () => {
@@ -471,7 +513,11 @@ test("中央适配器原样转发完整 Owner 与 Topic 墓碑", async () => {
       }),
     });
     assert.deepEqual(await adapter.deleteEntityTombstone(target), { ok: true });
-    assert.deepEqual(captured, ["POST", "/v3/sync/entities/delete", target]);
+    assert.deepEqual(captured.slice(0, 3), [
+      "POST",
+      "/v3/sync/entities/delete",
+      target,
+    ]);
   }
 });
 

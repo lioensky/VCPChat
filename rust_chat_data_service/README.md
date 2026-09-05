@@ -11,7 +11,7 @@ VCP-CDS 是 VCPChat 的中央聊天数据服务。第一阶段建立旁路镜像
 - DeepMemo 通过中央搜索接口工作。
 - `MobileSyncUseCentralIndex=True` 时，VCPMobileSync 的 Manifest、Topic/Message Diff、
   Message Pull/Push 与消息 Tombstone 由 VCP-CDS 提供。
-- 中央同步模式不打开或写入 `sync_state_v2.db`，也不启动 Legacy 历史扫描和 watcher；插件只保留进程内配置/附件兼容视图，Avatar 状态由 CDS 数据库持久化，头像字节仍由插件读写物理文件。
+- 中央同步模式不打开或写入 `sync_state_v2.db`，也不启动 Legacy 历史扫描和 watcher；插件只保留进程内配置/附件兼容视图，Avatar 状态由 CDS 数据库持久化，头像字节仍由插件读写物理文件。全量 reconcile 以持久化的路径、`mtime_ms` 与 size 跳过未变化头像，显式 commit 与 watcher 事件仍强制校验 SHA-256。
 - 关闭 `MobileSyncUseCentralIndex` 可恢复旧同步索引链路；旧数据库文件不会自动删除。
 - 普通桌面聊天保存仍先写 `history.json`，由直接通知或 `notify` 摄取。
 - VCP-CDS 的 Mobile Push 属于同步数据面：它会把 Mobile wire DTO 投影为 VCPChat 原生消息后写回 `history.json`，但不会参与模型调用、提示词、渲染或普通聊天保存。
@@ -230,7 +230,12 @@ SQLite 中的同步 Hash 使用与公开 Wire 相同的分层语义：`messages.
 Topic 叶聚合根。物理 `history.json` 的原始 bytes SHA-256 只保存在
 `history_sources.source_hash`；只有全文检索可见的消息集合、正文或发言者变化才推进
 `content_revision`，Tantivy 通过 `content_revision/indexed_revision` 追赶 SQLite。普通追加
-只补入新消息文档；存在编辑或删除时回退为整 Topic 重写。
+只补入新消息文档；存在编辑或删除时回退为整 Topic 重写。消息 Push 要求每条
+canonical DTO 携带小写 64 位 `contentHash`，该值直接写入 `messages.message_hash`；
+写入物理 `history.json` 前会剥离该派生字段。
+
+Topic 元数据 Push 的 targeted owner reconcile 会在原始 `topics` upsert 中使用 Wire
+`configHash + updatedAt`；普通 watcher/reconcile 仍从物理 `config.json` 计算配置指纹。
 
 ## 协议与失败语义
 

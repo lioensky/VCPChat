@@ -3,9 +3,6 @@
 const { TextDecoder } = require("util");
 
 const MAX_NDJSON_LINE_BYTES = 32 * 1024 * 1024;
-const MAX_NDJSON_TOTAL_BYTES = 256 * 1024 * 1024;
-const MAX_NDJSON_TOPICS = 10_000;
-const MAX_NDJSON_MESSAGES = 100_000;
 
 function protocolError(message, code = "SYNC_PROTOCOL_INVALID") {
   const error = new Error(message);
@@ -30,24 +27,13 @@ function decodeNdjsonLine(line) {
 
 async function* readNdjsonLines(
   input,
-  {
-    maxLineBytes = MAX_NDJSON_LINE_BYTES,
-    maxTotalBytes = MAX_NDJSON_TOTAL_BYTES,
-  } = {},
+  { maxLineBytes = MAX_NDJSON_LINE_BYTES } = {},
 ) {
   let fragments = [];
   let lineBytes = 0;
-  let totalBytes = 0;
 
   for await (const rawChunk of input) {
     const chunk = Buffer.isBuffer(rawChunk) ? rawChunk : Buffer.from(rawChunk);
-    totalBytes += chunk.length;
-    if (totalBytes > maxTotalBytes) {
-      throw protocolError(
-        "NDJSON request exceeds 256 MiB total budget",
-        "SYNC_BUDGET_EXCEEDED",
-      );
-    }
     let start = 0;
     while (start < chunk.length) {
       const newline = chunk.indexOf(0x0a, start);
@@ -91,17 +77,9 @@ async function* readNdjsonLines(
 }
 
 class NdjsonWriter {
-  constructor(
-    response,
-    {
-      maxLineBytes = MAX_NDJSON_LINE_BYTES,
-      maxTotalBytes = MAX_NDJSON_TOTAL_BYTES,
-    } = {},
-  ) {
+  constructor(response, { maxLineBytes = MAX_NDJSON_LINE_BYTES } = {}) {
     this.response = response;
     this.maxLineBytes = maxLineBytes;
-    this.maxTotalBytes = maxTotalBytes;
-    this.totalBytes = 0;
   }
 
   async write(frame) {
@@ -109,10 +87,6 @@ class NdjsonWriter {
     const bytes = Buffer.byteLength(line, "utf8");
     if (bytes > this.maxLineBytes) {
       throw new Error("NDJSON response frame exceeds 32 MiB budget");
-    }
-    this.totalBytes += bytes;
-    if (this.totalBytes > this.maxTotalBytes) {
-      throw new Error("NDJSON response exceeds 256 MiB total budget");
     }
     const isClosed = () =>
       this.response.destroyed === true ||
@@ -166,9 +140,6 @@ class NdjsonWriter {
 
 module.exports = {
   MAX_NDJSON_LINE_BYTES,
-  MAX_NDJSON_MESSAGES,
-  MAX_NDJSON_TOPICS,
-  MAX_NDJSON_TOTAL_BYTES,
   NdjsonWriter,
   decodeNdjsonLine,
   readNdjsonLines,

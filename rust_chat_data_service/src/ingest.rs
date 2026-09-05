@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fs::{self, OpenOptions},
-    io::{ErrorKind, Write},
+    io::{ErrorKind, Read, Write},
     path::{Path, PathBuf},
     sync::{Arc, LazyLock},
     time::{Duration, UNIX_EPOCH},
@@ -13,7 +13,10 @@ use crate::{
         AvatarKey, AvatarOwnerType, AvatarRecord, NormalizedMessage, OwnerKey, OwnerRecord,
         OwnerType, TopicDefinition, TopicKey, TopicSource,
     },
-    storage::{now_ms, Database, IngestCommit, OwnerHashMode, SearchUpdate},
+    storage::{
+        now_ms, AvatarSourceState, Database, IngestCommit, OwnerHashMode, SearchUpdate,
+        SyncTopicVersion,
+    },
     sync::{mobile_owner_config_hash_from_value, mobile_topic_config_hash},
     sync_wire::{canonicalize_message, message_fingerprint, WireWarnings},
 };
@@ -35,6 +38,8 @@ pub struct ReconcileStats {
     pub owners_deleted: usize,
     pub avatars_seen: usize,
     pub avatars_deleted: usize,
+    pub avatars_hashed: usize,
+    pub avatars_skipped: usize,
     pub topics_seen: usize,
     pub files_checked: usize,
     pub files_skipped: usize,
@@ -44,6 +49,32 @@ pub struct ReconcileStats {
     pub messages_ingested: usize,
     pub messages_deleted: usize,
     pub duration_ms: i64,
+}
+
+struct OwnerCandidate {
+    key: OwnerKey,
+    config_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct AvatarFileVersion {
+    mtime_ms: f64,
+    file_size: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AvatarReconcileOutcome {
+    Missing,
+    Hashed,
+    Skipped,
+}
+
+#[derive(Debug, Default)]
+struct AvatarReconcileStats {
+    seen: usize,
+    deleted: usize,
+    hashed: usize,
+    skipped: usize,
 }
 
 #[derive(Clone)]
@@ -67,14 +98,17 @@ impl Reconciler {
 
     pub async fn reconcile(&self) -> Result<ReconcileStats> {
         let started = now_ms();
-        let owners = self.scan_owner_registry()?;
+        let owner_candidates = self.scan_owner_candidates()?;
         let mut live_owner_keys = HashSet::new();
-        let mut stats = ReconcileStats {
-            owners_seen: owners.len(),
-            ..Default::default()
-        };
+        let mut active_owner_keys = HashSet::new();
+        let mut stats = ReconcileStats::default();
 
-        for configured_owner in owners.values() {
+        for candidate in owner_candidates {
+            let Some(configured_owner) = self.owner_from_candidate(candidate)? else {
+                continue;
+            };
+            stats.owners_seen += 1;
+            active_owner_keys.insert(configured_owner.key.clone());
             if let Some(key) = self
                 .reconcile_owner_record(configured_owner, &mut stats)
                 .await?
@@ -83,11 +117,12 @@ impl Reconciler {
             }
         }
 
-        let active_owner_keys = owners.keys().cloned().collect::<HashSet<_>>();
         stats.owners_deleted = self.database.reconcile_missing_owners(&active_owner_keys)?;
-        let (avatars_seen, avatars_deleted) = self.reconcile_avatars(&live_owner_keys)?;
-        stats.avatars_seen = avatars_seen;
-        stats.avatars_deleted = avatars_deleted;
+        let avatar_stats = self.reconcile_avatars(&live_owner_keys)?;
+        stats.avatars_seen = avatar_stats.seen;
+        stats.avatars_deleted = avatar_stats.deleted;
+        stats.avatars_hashed = avatar_stats.hashed;
+        stats.avatars_skipped = avatar_stats.skipped;
 
         self.database.set_last_reconcile_at(now_ms())?;
         stats.duration_ms = now_ms() - started;
@@ -96,14 +131,26 @@ impl Reconciler {
 
     async fn reconcile_owner_record(
         &self,
-        configured_owner: &OwnerRecord,
+        configured_owner: OwnerRecord,
         stats: &mut ReconcileStats,
     ) -> Result<Option<OwnerKey>> {
+        let no_topic_versions = HashMap::new();
+        self.reconcile_owner_record_with_topic_versions(configured_owner, stats, &no_topic_versions)
+            .await
+    }
+
+    async fn reconcile_owner_record_with_topic_versions(
+        &self,
+        configured_owner: OwnerRecord,
+        stats: &mut ReconcileStats,
+        topic_versions: &HashMap<String, SyncTopicVersion>,
+    ) -> Result<Option<OwnerKey>> {
         let owner = self.effective_owner(configured_owner)?;
-        if !self
-            .database
-            .upsert_owner(&owner, OwnerHashMode::Deferred)?
-        {
+        if !self.database.upsert_owner_with_topic_versions(
+            &owner,
+            OwnerHashMode::Deferred,
+            topic_versions,
+        )? {
             return Ok(None);
         }
         for topic in &owner.topics {
@@ -163,7 +210,28 @@ impl Reconciler {
         match self.configured_owner_for_key(key)? {
             Some(owner) => {
                 stats.owners_seen = 1;
-                self.reconcile_owner_record(&owner, &mut stats).await?;
+                self.reconcile_owner_record(owner, &mut stats).await?;
+            }
+            None => {
+                stats.owners_deleted = usize::from(self.database.reconcile_missing_owner(key)?);
+            }
+        }
+        stats.duration_ms = now_ms() - started;
+        Ok(stats)
+    }
+
+    pub(crate) async fn reconcile_owner_key_with_topic_versions(
+        &self,
+        key: &OwnerKey,
+        topic_versions: &HashMap<String, SyncTopicVersion>,
+    ) -> Result<ReconcileStats> {
+        let started = now_ms();
+        let mut stats = ReconcileStats::default();
+        match self.configured_owner_for_sync(key, topic_versions)? {
+            Some(owner) => {
+                stats.owners_seen = 1;
+                self.reconcile_owner_record_with_topic_versions(owner, &mut stats, topic_versions)
+                    .await?;
             }
             None => {
                 stats.owners_deleted = usize::from(self.database.reconcile_missing_owner(key)?);
@@ -208,11 +276,16 @@ impl Reconciler {
         let path = self
             .physical_avatar_path(key)
             .with_context(|| format!("avatar file is missing for {}", key.wire_id()))?;
-        let hash = sha256_hex(
-            &fs::read(&path).with_context(|| format!("failed to read {}", path.display()))?,
-        );
+        let (hash, version) = stable_avatar_hash(&path, None)?;
         anyhow::ensure!(
-            self.database.upsert_avatar(key, &path, &hash, now_ms())?,
+            self.database.upsert_avatar(
+                key,
+                &path,
+                &hash,
+                version.mtime_ms,
+                version.file_size,
+                now_ms(),
+            )?,
             "avatar is tombstoned"
         );
         self.database
@@ -220,18 +293,28 @@ impl Reconciler {
             .context("committed avatar state is missing")
     }
 
-    fn reconcile_avatars(&self, live_owners: &HashSet<OwnerKey>) -> Result<(usize, usize)> {
+    fn reconcile_avatars(&self, live_owners: &HashSet<OwnerKey>) -> Result<AvatarReconcileStats> {
         let detected_at = now_ms();
         let mut active = HashSet::new();
-        let mut seen = 0;
+        let sources = self.database.avatar_source_states()?;
+        let mut stats = AvatarReconcileStats::default();
 
         let user_key = AvatarKey {
             owner_type: AvatarOwnerType::User,
             owner_id: "user_avatar".to_string(),
         };
-        if self.commit_physical_avatar(&user_key, detected_at)? {
-            active.insert(user_key);
-            seen += 1;
+        match self.commit_physical_avatar(&user_key, sources.get(&user_key), detected_at)? {
+            AvatarReconcileOutcome::Missing => {}
+            AvatarReconcileOutcome::Hashed => {
+                active.insert(user_key);
+                stats.seen += 1;
+                stats.hashed += 1;
+            }
+            AvatarReconcileOutcome::Skipped => {
+                active.insert(user_key);
+                stats.seen += 1;
+                stats.skipped += 1;
+            }
         }
 
         for owner in live_owners {
@@ -242,28 +325,54 @@ impl Reconciler {
                 },
                 owner_id: owner.owner_id.clone(),
             };
-            if self.commit_physical_avatar(&key, detected_at)? {
-                active.insert(key);
-                seen += 1;
+            match self.commit_physical_avatar(&key, sources.get(&key), detected_at)? {
+                AvatarReconcileOutcome::Missing => {}
+                AvatarReconcileOutcome::Hashed => {
+                    active.insert(key);
+                    stats.seen += 1;
+                    stats.hashed += 1;
+                }
+                AvatarReconcileOutcome::Skipped => {
+                    active.insert(key);
+                    stats.seen += 1;
+                    stats.skipped += 1;
+                }
             }
         }
 
-        let deleted = self
+        stats.deleted = self
             .database
             .reconcile_missing_avatars(&active, detected_at)?;
-        Ok((seen, deleted))
+        Ok(stats)
     }
 
-    fn commit_physical_avatar(&self, key: &AvatarKey, detected_at: i64) -> Result<bool> {
+    fn commit_physical_avatar(
+        &self,
+        key: &AvatarKey,
+        previous: Option<&AvatarSourceState>,
+        detected_at: i64,
+    ) -> Result<AvatarReconcileOutcome> {
         let Some(path) = self.physical_avatar_path(key) else {
-            return Ok(false);
+            return Ok(AvatarReconcileOutcome::Missing);
         };
-        let bytes =
-            fs::read(&path).with_context(|| format!("failed to read avatar {}", path.display()))?;
-        let hash = sha256_hex(&bytes);
-        self.database
-            .upsert_avatar(key, &path, &hash, detected_at)?;
-        Ok(true)
+        if previous.is_some_and(|state| state.deleted_at.is_some()) {
+            return Ok(AvatarReconcileOutcome::Skipped);
+        }
+        let version = avatar_file_version(&path)
+            .with_context(|| format!("failed to stat avatar {}", path.display()))?;
+        if previous.is_some_and(|state| avatar_source_is_current(state, &path, version)) {
+            return Ok(AvatarReconcileOutcome::Skipped);
+        }
+        let (hash, version) = stable_avatar_hash(&path, Some(version))?;
+        self.database.upsert_avatar(
+            key,
+            &path,
+            &hash,
+            version.mtime_ms,
+            version.file_size,
+            detected_at,
+        )?;
+        Ok(AvatarReconcileOutcome::Hashed)
     }
 
     fn physical_avatar_path(&self, key: &AvatarKey) -> Option<std::path::PathBuf> {
@@ -321,7 +430,7 @@ impl Reconciler {
         }
 
         let configured_owner = self.configured_owner_by_id(&owner_id)?;
-        let owner = self.effective_owner(&configured_owner)?;
+        let owner = self.effective_owner(configured_owner)?;
 
         let topic = owner
             .topics
@@ -354,13 +463,13 @@ impl Reconciler {
         }
     }
 
-    fn effective_owner(&self, configured_owner: &OwnerRecord) -> Result<OwnerRecord> {
+    fn effective_owner(&self, mut configured_owner: OwnerRecord) -> Result<OwnerRecord> {
         let physical_topic_ids = self.physical_topic_ids(&configured_owner.key.owner_id)?;
         let physical_topic_set = physical_topic_ids.iter().cloned().collect::<HashSet<_>>();
         let mut recovered_topics = Vec::new();
         let mut configured_topics = Vec::new();
         let mut active_topic_ids = HashSet::new();
-        for topic in &configured_owner.topics {
+        for topic in std::mem::take(&mut configured_owner.topics) {
             if !physical_topic_set.contains(&topic.topic_id)
                 || !active_topic_ids.insert(topic.topic_id.clone())
             {
@@ -374,7 +483,7 @@ impl Reconciler {
             if self.database.topic_is_tombstoned(&key)? {
                 continue;
             }
-            let normalized = self.normalize_recovered_timestamp(&key, topic.clone())?;
+            let normalized = self.normalize_recovered_timestamp(&key, topic)?;
             if is_synthetic_recovered_topic(&normalized) {
                 recovered_topics.push(normalized);
             } else {
@@ -442,9 +551,8 @@ impl Reconciler {
         for (ordinal, topic) in recovered_topics.iter_mut().enumerate() {
             topic.ordinal = ordinal as i64;
         }
-        let mut effective = configured_owner.clone();
-        effective.topics = recovered_topics;
-        Ok(effective)
+        configured_owner.topics = recovered_topics;
+        Ok(configured_owner)
     }
 
     fn normalize_recovered_timestamp(
@@ -525,11 +633,19 @@ impl Reconciler {
         Ok(topic_ids)
     }
 
-    pub fn scan_owner_registry(&self) -> Result<HashMap<OwnerKey, OwnerRecord>> {
-        let mut owners = HashMap::new();
-        self.scan_owner_directory(OwnerType::Agent, &self.config.agents_dir, &mut owners)?;
-        self.scan_owner_directory(OwnerType::Group, &self.config.groups_dir, &mut owners)?;
-        Ok(owners)
+    fn scan_owner_candidates(&self) -> Result<Vec<OwnerCandidate>> {
+        let mut candidates = Vec::new();
+        self.scan_owner_directory_candidates(
+            OwnerType::Agent,
+            &self.config.agents_dir,
+            &mut candidates,
+        )?;
+        self.scan_owner_directory_candidates(
+            OwnerType::Group,
+            &self.config.groups_dir,
+            &mut candidates,
+        )?;
+        Ok(candidates)
     }
 
     fn configured_owner_by_id(&self, owner_id: &str) -> Result<OwnerRecord> {
@@ -578,11 +694,33 @@ impl Reconciler {
         self.recovery_owner(key.owner_type, key.owner_id.clone(), config_path)
     }
 
-    fn scan_owner_directory(
+    fn configured_owner_for_sync(
+        &self,
+        key: &OwnerKey,
+        topic_versions: &HashMap<String, SyncTopicVersion>,
+    ) -> Result<Option<OwnerRecord>> {
+        let directory = match key.owner_type {
+            OwnerType::Agent => &self.config.agents_dir,
+            OwnerType::Group => &self.config.groups_dir,
+        };
+        let config_path = directory.join(&key.owner_id).join("config.json");
+        if !config_path.is_file() {
+            return Ok(None);
+        }
+        parse_owner_config_with_topic_versions(
+            key.owner_type,
+            key.owner_id.clone(),
+            &config_path,
+            topic_versions,
+        )
+        .map(Some)
+    }
+
+    fn scan_owner_directory_candidates(
         &self,
         owner_type: OwnerType,
         directory: &Path,
-        owners: &mut HashMap<OwnerKey, OwnerRecord>,
+        candidates: &mut Vec<OwnerCandidate>,
     ) -> Result<()> {
         if !directory.exists() {
             return Ok(());
@@ -597,38 +735,42 @@ impl Reconciler {
             }
             let owner_id = entry.file_name().to_string_lossy().to_string();
             let config_path = entry.path().join("config.json");
-            if !config_path.is_file() {
-                tracing::warn!(
-                    owner_type = %owner_type,
+            candidates.push(OwnerCandidate {
+                key: OwnerKey {
+                    owner_type,
                     owner_id,
-                    config_path = %config_path.display(),
-                    "owner config is missing; checking physical topics for recovery"
-                );
-                if let Some(owner) = self.recovery_owner(owner_type, owner_id, config_path)? {
-                    owners.insert(owner.key.clone(), owner);
-                }
-                continue;
-            }
-
-            match parse_owner_config(owner_type, owner_id.clone(), &config_path) {
-                Ok(owner) => {
-                    owners.insert(owner.key.clone(), owner);
-                }
-                Err(error) => {
-                    tracing::warn!(
-                        owner_type = %owner_type,
-                        owner_id,
-                        config_path = %config_path.display(),
-                        error = ?error,
-                        "owner config is invalid; checking physical topics for recovery"
-                    );
-                    if let Some(owner) = self.recovery_owner(owner_type, owner_id, config_path)? {
-                        owners.insert(owner.key.clone(), owner);
-                    }
-                }
-            }
+                },
+                config_path,
+            });
         }
         Ok(())
+    }
+
+    fn owner_from_candidate(&self, candidate: OwnerCandidate) -> Result<Option<OwnerRecord>> {
+        let OwnerCandidate { key, config_path } = candidate;
+        if !config_path.is_file() {
+            tracing::warn!(
+                owner_type = %key.owner_type,
+                owner_id = %key.owner_id,
+                config_path = %config_path.display(),
+                "owner config is missing; checking physical topics for recovery"
+            );
+            return self.recovery_owner(key.owner_type, key.owner_id, config_path);
+        }
+
+        match parse_owner_config(key.owner_type, key.owner_id.clone(), &config_path) {
+            Ok(owner) => Ok(Some(owner)),
+            Err(error) => {
+                tracing::warn!(
+                    owner_type = %key.owner_type,
+                    owner_id = %key.owner_id,
+                    config_path = %config_path.display(),
+                    error = ?error,
+                    "owner config is invalid; checking physical topics for recovery"
+                );
+                self.recovery_owner(key.owner_type, key.owner_id, config_path)
+            }
+        }
     }
 
     fn recovery_owner(
@@ -747,6 +889,10 @@ impl Reconciler {
             });
             let removed = previous_len - history.len();
             if removed > 0 {
+                // The original source hash is already fixed above. Release the old file buffer
+                // before materializing the repaired JSON so the two full byte images never
+                // coexist for a large Topic.
+                drop(std::mem::take(&mut bytes));
                 let repaired = serde_json::to_vec_pretty(&history)?;
                 let committed =
                     write_history_atomic(&source.source_path, &repaired, Some(&source_hash))?
@@ -774,6 +920,7 @@ impl Reconciler {
             return Ok(Some(commit));
         }
         let messages = normalize_history(&bytes, source.key.owner_type, &source.key.topic_id)?;
+        drop(bytes);
 
         self.database
             .ingest_topic(
@@ -812,6 +959,15 @@ pub fn parse_owner_config(
     owner_id: String,
     config_path: &Path,
 ) -> Result<OwnerRecord> {
+    parse_owner_config_with_topic_versions(owner_type, owner_id, config_path, &HashMap::new())
+}
+
+fn parse_owner_config_with_topic_versions(
+    owner_type: OwnerType,
+    owner_id: String,
+    config_path: &Path,
+    topic_versions: &HashMap<String, SyncTopicVersion>,
+) -> Result<OwnerRecord> {
     let bytes = fs::read(config_path)
         .with_context(|| format!("failed to read {}", config_path.display()))?;
     let root: Value = serde_json::from_slice(&bytes)
@@ -825,33 +981,49 @@ pub fn parse_owner_config(
         .unwrap_or(&owner_id)
         .to_string();
 
-    let topics = object
+    let topic_values = object
         .get("topics")
-        .and_then(Value::as_array)
-        .map(|topics| {
-            topics
-                .iter()
-                .enumerate()
-                .filter_map(|(ordinal, value)| {
-                    let topic = value.as_object()?;
-                    let topic_id = string_value(topic.get("id"))?;
-                    let key = TopicKey {
-                        owner_type,
-                        owner_id: owner_id.clone(),
-                        topic_id: topic_id.clone(),
-                    };
-                    Some(TopicDefinition {
-                        topic_id,
-                        display_name: string_value(topic.get("name")),
-                        created_at: integer_value(topic.get("createdAt")),
-                        ordinal: ordinal as i64,
-                        config_hash: mobile_topic_config_hash(&key, value),
-                        metadata: value.clone(),
-                    })
-                })
-                .collect::<Vec<_>>()
+        .context("owner config requires topics")?
+        .as_array()
+        .context("owner config topics must be an array")?;
+    let mut seen_topic_ids = HashSet::with_capacity(topic_values.len());
+    let topics = topic_values
+        .iter()
+        .enumerate()
+        .map(|(ordinal, value)| -> Result<TopicDefinition> {
+            let topic = value.as_object().with_context(|| {
+                format!("owner config Topic at ordinal {ordinal} must be an object")
+            })?;
+            let topic_id = topic
+                .get("id")
+                .and_then(Value::as_str)
+                .filter(|topic_id| !topic_id.is_empty())
+                .map(str::to_string)
+                .with_context(|| {
+                    format!("owner config Topic at ordinal {ordinal} requires a string id")
+                })?;
+            anyhow::ensure!(
+                seen_topic_ids.insert(topic_id.clone()),
+                "owner config contains duplicate Topic {topic_id}"
+            );
+            let key = TopicKey {
+                owner_type,
+                owner_id: owner_id.clone(),
+                topic_id: topic_id.clone(),
+            };
+            Ok(TopicDefinition {
+                config_hash: topic_versions
+                    .get(&topic_id)
+                    .map(|version| version.config_hash.clone())
+                    .unwrap_or_else(|| mobile_topic_config_hash(&key, value)),
+                topic_id,
+                display_name: string_value(topic.get("name")),
+                created_at: integer_value(topic.get("createdAt")),
+                ordinal: ordinal as i64,
+                metadata: value.clone(),
+            })
         })
-        .unwrap_or_default();
+        .collect::<Result<Vec<_>>>()?;
 
     let source_config_hash = sha256_hex(&bytes);
     Ok(OwnerRecord {
@@ -1055,7 +1227,7 @@ async fn read_stable_file(path: &Path, initial: (i64, i64)) -> Result<(Vec<u8>, 
     }
 }
 
-fn source_file_version(path: &Path) -> std::io::Result<(i64, i64)> {
+pub(crate) fn source_file_version(path: &Path) -> std::io::Result<(i64, i64)> {
     let metadata = fs::metadata(path)?;
     if !metadata.is_file() {
         return Ok((0, 0));
@@ -1106,6 +1278,77 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
 
+fn sha256_file(path: &Path) -> std::io::Result<String> {
+    let mut file = fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(hex::encode(hasher.finalize()))
+}
+
+fn avatar_file_version(path: &Path) -> std::io::Result<AvatarFileVersion> {
+    let metadata = fs::metadata(path)?;
+    if !metadata.is_file() {
+        return Err(std::io::Error::new(
+            ErrorKind::InvalidInput,
+            "avatar source is not a regular file",
+        ));
+    }
+    let mtime_ms = metadata
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_secs_f64() * 1_000.0)
+        .unwrap_or(0.0);
+    let file_size = metadata.len().min(i64::MAX as u64) as i64;
+    Ok(AvatarFileVersion {
+        mtime_ms,
+        file_size,
+    })
+}
+
+fn avatar_source_is_current(
+    state: &AvatarSourceState,
+    path: &Path,
+    version: AvatarFileVersion,
+) -> bool {
+    state.deleted_at.is_none()
+        && state.file_path == path
+        && state.mtime_ms > 0.0
+        && state.mtime_ms == version.mtime_ms
+        && state.file_size == version.file_size
+        && is_internal_sha256(Some(&state.hash))
+}
+
+fn stable_avatar_hash(
+    path: &Path,
+    initial: Option<AvatarFileVersion>,
+) -> Result<(String, AvatarFileVersion)> {
+    let mut before = initial;
+    for _ in 0..3 {
+        let version = match before.take() {
+            Some(version) => version,
+            None => avatar_file_version(path)
+                .with_context(|| format!("failed to stat avatar {}", path.display()))?,
+        };
+        let hash = sha256_file(path)
+            .with_context(|| format!("failed to hash avatar {}", path.display()))?;
+        let after = avatar_file_version(path)
+            .with_context(|| format!("failed to restat avatar {}", path.display()))?;
+        if version == after {
+            return Ok((hash, after));
+        }
+        before = Some(after);
+    }
+    anyhow::bail!("avatar did not become stable: {}", path.display())
+}
+
 fn is_internal_sha256(value: Option<&str>) -> bool {
     value.is_some_and(|hash| {
         hash.len() == 64
@@ -1148,8 +1391,8 @@ pub(crate) fn write_history_atomic(
         }
     };
 
-    let current_hash = match fs::read(path) {
-        Ok(current) => Some(sha256_hex(&current)),
+    let current_hash = match sha256_file(path) {
+        Ok(current_hash) => Some(current_hash),
         Err(error) if error.kind() == ErrorKind::NotFound => None,
         Err(error) => {
             let _ = fs::remove_file(&temporary);
@@ -1248,11 +1491,12 @@ mod tests {
     use tempfile::TempDir;
 
     use super::{
-        normalize_history, parse_owner_config, sha256_hex, topic_timestamp_from_id, Reconciler,
+        avatar_file_version, normalize_history, parse_owner_config, sha256_hex,
+        topic_timestamp_from_id, write_history_atomic, Reconciler, SnapshotStale,
     };
     use crate::{
         config::{Cli, ServiceConfig},
-        domain::{OwnerType, TopicKey},
+        domain::{AvatarKey, AvatarOwnerType, OwnerType, TopicKey},
         error::ServiceError,
         identity::{IdentityResolver, OwnerResolution, OwnerSelector},
         search::{MessageSearchRequest, SearchIndex},
@@ -1283,6 +1527,37 @@ mod tests {
         let database = Database::open(&config.database_path).expect("open database");
         let reconciler = Reconciler::new(config.clone(), database.clone());
         (temp, config, database, reconciler)
+    }
+
+    #[test]
+    fn atomic_history_write_streams_hash_and_rejects_a_preexisting_stale_source() {
+        let temp = TempDir::new().expect("create temp directory");
+        let path = temp.path().join("history.json");
+        let original = vec![b'a'; 128 * 1024 + 17];
+        let replacement = vec![b'b'; 96 * 1024 + 11];
+        fs::write(&path, &original).expect("write original history");
+
+        let original_hash = sha256_hex(&original);
+        let committed = write_history_atomic(&path, &replacement, Some(&original_hash))
+            .expect("commit matching history snapshot")
+            .expect("replacement should change the source");
+        assert_eq!(committed.source_hash, sha256_hex(&replacement));
+        assert_eq!(
+            fs::read(&path).expect("read committed history"),
+            replacement
+        );
+
+        let concurrent = vec![b'c'; 80 * 1024 + 5];
+        fs::write(&path, &concurrent).expect("write concurrent history");
+        let error = match write_history_atomic(&path, b"next", Some(&committed.source_hash)) {
+            Ok(_) => panic!("stale source hash must reject replacement"),
+            Err(error) => error,
+        };
+        assert!(error.downcast_ref::<SnapshotStale>().is_some());
+        assert_eq!(
+            fs::read(&path).expect("read preserved concurrent history"),
+            concurrent
+        );
     }
 
     fn write_owner(
@@ -1338,6 +1613,90 @@ mod tests {
             serde_json::to_vec_pretty(&history).expect("serialize history"),
         )
         .expect("write history");
+    }
+
+    #[tokio::test]
+    async fn avatar_full_reconcile_uses_metadata_but_explicit_commit_rehashes() {
+        let (_temp, config, database, reconciler) = fixture();
+        write_owner(
+            &config,
+            OwnerType::Agent,
+            "agent-avatar",
+            "Avatar Agent",
+            &[],
+        );
+        let avatar_path = config.agents_dir.join("agent-avatar/avatar.png");
+        fs::write(&avatar_path, b"avatar-old").expect("write initial avatar");
+
+        let first = reconciler
+            .reconcile()
+            .await
+            .expect("first avatar reconcile");
+        assert_eq!(
+            (
+                first.avatars_seen,
+                first.avatars_hashed,
+                first.avatars_skipped
+            ),
+            (1, 1, 0)
+        );
+        let key = AvatarKey {
+            owner_type: AvatarOwnerType::Agent,
+            owner_id: "agent-avatar".to_string(),
+        };
+        let initial = database
+            .avatar_state(&key)
+            .expect("read initial avatar state")
+            .expect("initial avatar state");
+
+        let unchanged = reconciler
+            .reconcile()
+            .await
+            .expect("unchanged avatar reconcile");
+        assert_eq!(
+            (
+                unchanged.avatars_seen,
+                unchanged.avatars_hashed,
+                unchanged.avatars_skipped
+            ),
+            (1, 0, 1),
+        );
+
+        let moved_path = config.agents_dir.join("agent-avatar/avatar.jpg");
+        fs::rename(&avatar_path, &moved_path).expect("change avatar extension");
+        let moved = reconciler
+            .reconcile()
+            .await
+            .expect("moved avatar reconcile");
+        assert_eq!((moved.avatars_hashed, moved.avatars_skipped), (1, 0));
+        let moved_state = database
+            .avatar_state(&key)
+            .expect("read moved avatar state")
+            .expect("moved avatar state");
+        assert_eq!(moved_state.file_path, moved_path);
+        assert_eq!(moved_state.updated_at, initial.updated_at);
+
+        fs::write(&moved_path, b"avatar-new").expect("replace avatar bytes");
+        let version = avatar_file_version(&moved_path).expect("read replacement version");
+        {
+            let connection = database.connection.lock();
+            connection
+                .execute(
+                    "UPDATE avatars SET mtime_ms=?3, file_size=?4
+                     WHERE owner_type=?1 AND owner_id=?2",
+                    rusqlite::params![
+                        key.owner_type.as_str(),
+                        key.owner_id,
+                        version.mtime_ms,
+                        version.file_size,
+                    ],
+                )
+                .expect("poison cached source evidence");
+        }
+        let committed = reconciler
+            .commit_avatar(&key)
+            .expect("explicit commit must force hash");
+        assert_eq!(committed.hash, sha256_hex(b"avatar-new"));
     }
 
     #[test]

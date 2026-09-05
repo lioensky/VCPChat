@@ -1,8 +1,9 @@
 "use strict";
 
-const FINAL_ACK_IDENTITY_FIELDS = ["sessionId", "attemptId", "nonce"];
-const WIRE_PROTOCOL_VERSION = "1.4";
+const WIRE_PROTOCOL_VERSION = "1.5";
+const BACKEND_MODES = new Set(["legacy", "cds"]);
 const SYNC_PHASES = new Set(["owner_metadata", "topic_metadata", "messages"]);
+const VERSION_TOKEN_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/;
 
 function parseJsonWithoutDuplicateKeys(text) {
   if (typeof text !== "string") {
@@ -118,16 +119,7 @@ function parseJsonWithoutDuplicateKeys(text) {
   return JSON.parse(text);
 }
 
-function requireNonEmptyString(value, field) {
-  if (typeof value !== "string" || value.length === 0) {
-    const error = new Error(`${field} must be a non-empty string`);
-    error.code = "PROTOCOL_INVALID";
-    throw error;
-  }
-  return value;
-}
-
-function requireExactKeys(payload, fields, label) {
+function requireExactKeys(payload, fields, label, code = "PROTOCOL_INVALID") {
   const expected = new Set(fields);
   const actual = Object.keys(payload);
   if (
@@ -135,6 +127,14 @@ function requireExactKeys(payload, fields, label) {
     actual.some((field) => !expected.has(field))
   ) {
     const error = new Error(`${label} has unexpected or missing fields`);
+    error.code = code;
+    throw error;
+  }
+}
+
+function requireSyncPhase(phase) {
+  if (!SYNC_PHASES.has(phase)) {
+    const error = new Error("phase must be owner_metadata, topic_metadata or messages");
     error.code = "PROTOCOL_INVALID";
     throw error;
   }
@@ -142,15 +142,9 @@ function requireExactKeys(payload, fields, label) {
 
 function validateSyncRequestFrame(payload) {
   switch (payload.type) {
-    case "VERSION_CHECK":
-      requireExactKeys(
-        payload,
-        ["type", "mobileVersion", "protocolVersion"],
-        payload.type,
-      );
-      break;
     case "PHASE_START":
       requireExactKeys(payload, ["type", "phase"], payload.type);
+      requireSyncPhase(payload.phase);
       break;
     case "PHASE_COMPLETED":
       requireExactKeys(
@@ -160,6 +154,7 @@ function validateSyncRequestFrame(payload) {
           : ["type", "phase"],
         payload.type,
       );
+      requireSyncPhase(payload.phase);
       break;
     case "SYNC_MANIFEST_REQUEST":
       if (!["owner", "topic", "avatar"].includes(payload.manifestType)) {
@@ -218,79 +213,153 @@ function validateSyncRequestFrame(payload) {
   return payload;
 }
 
-function createVersionAck(payload, pluginVersion) {
-  if (!payload || payload.type !== "VERSION_CHECK") {
-    const error = new Error("expected VERSION_CHECK");
-    error.code = "VERSION_CHECK_INVALID";
-    throw error;
-  }
-  requireNonEmptyString(payload.mobileVersion, "VERSION_CHECK.mobileVersion");
-  const protocolVersion = requireNonEmptyString(
-    payload.protocolVersion,
-    "VERSION_CHECK.protocolVersion",
-  );
-  if (protocolVersion !== WIRE_PROTOCOL_VERSION) {
-    const error = new Error(
-      `wire protocol mismatch: expected ${WIRE_PROTOCOL_VERSION}, received ${protocolVersion}`,
+function versionContractError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+function requireVersionToken(value, field, code) {
+  if (typeof value !== "string" || !VERSION_TOKEN_PATTERN.test(value)) {
+    throw versionContractError(
+      code,
+      `${field} must be a 1-64 byte safe ASCII version token`,
     );
-    error.code = "PROTOCOL_MISMATCH";
-    throw error;
   }
-  requireNonEmptyString(pluginVersion, "pluginVersion");
+  return value;
+}
+
+function parseVersionClaims(payload, { label, components, code }) {
+  requireExactKeys(payload, ["type", "versions"], label, code);
+  if (
+    !Array.isArray(payload.versions) ||
+    payload.versions.length !== components.length
+  ) {
+    throw versionContractError(
+      code,
+      `${label}.versions must contain exactly ${components.length} entries`,
+    );
+  }
+  const expected = new Set(components);
+  const versions = new Map();
+  for (const [index, claim] of payload.versions.entries()) {
+    if (!claim || typeof claim !== "object" || Array.isArray(claim)) {
+      throw versionContractError(
+        code,
+        `${label}.versions[${index}] must be an object`,
+      );
+    }
+    requireExactKeys(
+      claim,
+      ["component", "version"],
+      `${label}.versions[${index}]`,
+      code,
+    );
+    if (typeof claim.component !== "string" || !expected.has(claim.component)) {
+      throw versionContractError(
+        code,
+        `${label}.versions[${index}] has an unexpected component`,
+      );
+    }
+    const version = requireVersionToken(
+      claim.version,
+      `${label}.versions[${index}].version`,
+      code,
+    );
+    if (versions.has(claim.component)) {
+      throw versionContractError(
+        code,
+        `${label}.versions contains duplicate component ${claim.component}`,
+      );
+    }
+    versions.set(claim.component, version);
+  }
+  if (components.some((component) => !versions.has(component))) {
+    throw versionContractError(
+      code,
+      `${label}.versions is missing a required component`,
+    );
+  }
+  return versions;
+}
+
+function negotiateVersionCheck(payload, { desktopPluginVersion, backendMode }) {
+  if (!payload || payload.type !== "VERSION_CHECK") {
+    throw versionContractError("VERSION_CHECK_INVALID", "expected VERSION_CHECK");
+  }
+  const versions = parseVersionClaims(payload, {
+    label: "VERSION_CHECK",
+    components: ["mobile_app", "wire"],
+    code: "VERSION_CHECK_INVALID",
+  });
+  const packageVersion = requireVersionToken(
+    desktopPluginVersion,
+    "desktop plugin version",
+    "PROTOCOL_INVALID",
+  );
+  if (!BACKEND_MODES.has(backendMode)) {
+    throw versionContractError(
+      "PROTOCOL_INVALID",
+      "backendMode must be legacy or cds",
+    );
+  }
+  const wireVersion = versions.get("wire");
+  if (wireVersion !== WIRE_PROTOCOL_VERSION) {
+    throw versionContractError(
+      "WIRE_VERSION_MISMATCH",
+      `wire protocol mismatch: expected ${WIRE_PROTOCOL_VERSION}, received ${wireVersion}`,
+    );
+  }
   return {
-    type: "VERSION_ACK",
-    pluginVersion,
-    protocolVersion: WIRE_PROTOCOL_VERSION,
+    ack: {
+      type: "VERSION_ACK",
+      versions: [
+        { component: "desktop_plugin", version: packageVersion },
+        { component: "wire", version: WIRE_PROTOCOL_VERSION },
+      ],
+      backendMode,
+    },
+    peer: {
+      mobileAppVersion: versions.get("mobile_app"),
+    },
   };
 }
 
 /**
- * 构造阶段确认帧。
+ * 构造最终阶段确认帧。
  *
  * 最终 messages 阶段必须原样回显移动端提供的会话身份；字段缺失时不伪造
  * 默认值，让移动端的精确 ACK 门禁保持 fail-closed。
  */
-function createPhaseAck(payload, { echoFinalIdentity = false } = {}) {
+function createFinalPhaseAck(payload) {
   const source = payload && typeof payload === "object" ? payload : {};
-  if (!SYNC_PHASES.has(source.phase)) {
-    const error = new Error("phase must be owner_metadata, topic_metadata or messages");
+  if (
+    source.phase !== "messages" ||
+    !Number.isSafeInteger(source.sessionId) ||
+    !Number.isSafeInteger(source.attemptId) ||
+    typeof source.nonce !== "string" ||
+    source.nonce.length === 0
+  ) {
+    const error = new Error(
+      "messages PHASE_COMPLETED requires sessionId, attemptId and nonce",
+    );
     error.code = "PROTOCOL_INVALID";
     throw error;
   }
-  const ack = {
+
+  return {
     type: "PHASE_ACK",
     phase: source.phase,
+    sessionId: source.sessionId,
+    attemptId: source.attemptId,
+    nonce: source.nonce,
   };
-
-  if (echoFinalIdentity) {
-    if (source.phase === "messages") {
-      if (
-        !Number.isSafeInteger(source.sessionId) ||
-        !Number.isSafeInteger(source.attemptId) ||
-        typeof source.nonce !== "string" ||
-        source.nonce.length === 0
-      ) {
-        const error = new Error(
-          "messages PHASE_COMPLETED requires sessionId, attemptId and nonce",
-        );
-        error.code = "PROTOCOL_INVALID";
-        throw error;
-      }
-    }
-    for (const field of FINAL_ACK_IDENTITY_FIELDS) {
-      if (Object.prototype.hasOwnProperty.call(source, field)) {
-        ack[field] = source[field];
-      }
-    }
-  }
-
-  return ack;
 }
 
 module.exports = {
   WIRE_PROTOCOL_VERSION,
-  createPhaseAck,
-  createVersionAck,
+  createFinalPhaseAck,
+  negotiateVersionCheck,
   parseJsonWithoutDuplicateKeys,
   validateSyncRequestFrame,
 };

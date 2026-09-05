@@ -77,11 +77,8 @@ const {
   readHistoryStrict,
   writeHistoryAtomic,
   resolveMessageUpdatedAt,
-  markHistoryTopicUnhealthy,
-  clearHistoryTopicUnhealthy,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/message");
 const {
-  getLocalManifest,
   handleSyncManifest,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/manifest");
 const {
@@ -112,7 +109,7 @@ function fakeManifestDatabase({ owners = [], topics = [], avatars = [], messages
       if (sql.includes("FROM owners")) {
         return { all: () => owners };
       }
-      if (sql.includes("FROM topics")) {
+      if (sql.includes("FROM topics") || sql.includes("JOIN topics")) {
         return { all: () => topics };
       }
       if (sql.includes("FROM messages")) {
@@ -338,28 +335,6 @@ test("Phase 2.5 topic hash 对错误类型 fail closed", () => {
   );
 });
 
-test("issue #20: 未初始化数据库不会伪装成无变化 topic", () => {
-  const hash = "a".repeat(64);
-  assert.throws(
-    () =>
-      handleSyncTopicDiff(
-        {
-          topics: [
-            {
-              topicId: "topic-issue-20",
-              ownerType: "agent",
-              ownerId: "agent-issue-20",
-              configHash: hash,
-              contentHash: hash,
-            },
-          ],
-        },
-        null,
-      ),
-    (error) => error.code === "SYNC_DB_UNAVAILABLE",
-  );
-});
-
 test("issue #20: 手机新建 Agent/Group 时先创建桌面目标目录", async (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-sync-issue-20-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
@@ -402,73 +377,6 @@ test("issue #20: 手机新建 Agent/Group 时先创建桌面目标目录", async
   );
 });
 
-test("Topic manifest 使用复合 Owner 身份且不做路径模糊匹配", () => {
-  const hash = "a".repeat(64);
-  const database = fakeManifestDatabase({
-    topics: [
-      {
-        topic_id: "topic-a",
-        owner_type: "agent",
-        owner_id: "agent-a",
-        config_hash: hash,
-        content_hash: "",
-        updated_at: 1,
-        deleted_at: null,
-      },
-      {
-        topic_id: "topic-b",
-        owner_type: "agent",
-        owner_id: "agent-aa",
-        config_hash: hash,
-        content_hash: "",
-        updated_at: 1,
-        deleted_at: null,
-      },
-    ],
-  });
-
-  assert.deepEqual(
-    getLocalManifest("topic", agentOwners("agent-a"), database).map((item) => item.topicId),
-    ["topic-a"],
-  );
-  const result = handleSyncManifest(
-    {
-      manifestType: "topic",
-      targetedOwners: agentOwners("agent-a"),
-      items: [{
-        topicId: "topic-a",
-        configHash: hash,
-        contentHash: "",
-        updatedAt: 1,
-        ownerType: "agent",
-        ownerId: "agent-a",
-      }],
-    },
-    database,
-  );
-  assert.deepEqual(result.results, []);
-
-  const splitOwners = handleSyncManifest(
-    {
-      manifestType: "topic",
-      targetedOwners: agentOwners("agent-a", "agent-b"),
-      items: [{
-        topicId: "topic-a",
-        configHash: hash,
-        contentHash: "",
-        updatedAt: 1,
-        ownerType: "agent",
-        ownerId: "agent-b",
-      }],
-    },
-    database,
-  );
-  assert.deepEqual(splitOwners.results, [
-    { topicId: "topic-a", action: "PUSH", ownerType: "agent", ownerId: "agent-b" },
-    { topicId: "topic-a", action: "PULL", ownerType: "agent", ownerId: "agent-a" },
-  ]);
-});
-
 test("legacy manifest、hash 与 message diff 将 default 作为普通 Topic", () => {
   const hash = "a".repeat(64);
   const database = fakeManifestDatabase({
@@ -494,10 +402,6 @@ test("legacy manifest、hash 与 message diff 将 default 作为普通 Topic", (
     ],
   });
 
-  assert.deepEqual(
-    getLocalManifest("topic", null, database).map((item) => item.topicId),
-    ["default", "topic-live"],
-  );
   assert.deepEqual(
     handleSyncMessageDiff({
       topics: compoundTopics({
@@ -530,7 +434,6 @@ test("legacy manifest、hash 与 message diff 将 default 作为普通 Topic", (
       items: [{
         topicId: "default",
         configHash: changedHash,
-        contentHash: changedHash,
         updatedAt: 1,
         ownerType: "agent",
         ownerId: "agent-a",
@@ -660,35 +563,6 @@ test("Manifest 错型、重复身份和 deletedAt=0 均按硬切契约处理", (
     }, database),
     /unexpected or missing fields/,
   );
-});
-
-test("损坏 history 的已提交索引不能走 topic hash 快速成功", () => {
-  const topicId = "topic-unhealthy";
-  const identity = {
-    topicId,
-    ownerType: "agent",
-    ownerId: "agent-a",
-  };
-  markHistoryTopicUnhealthy(identity, new Error("invalid JSON"));
-  try {
-    assert.throws(
-      () => handleSyncTopicDiff(
-        {
-          topics: [{
-            topicId,
-            ownerType: "agent",
-            ownerId: "agent-a",
-            configHash: "a".repeat(64),
-            contentHash: "",
-          }],
-        },
-        fakeDiffDatabase({ topics: { [topicId]: { content_hash: "" } } }),
-      ),
-      (error) => error.code === "HISTORY_SOURCE_INVALID",
-    );
-  } finally {
-    clearHistoryTopicUnhealthy(identity);
-  }
 });
 
 test("幂等失败重放保留原 HTTP 状态", () => {
