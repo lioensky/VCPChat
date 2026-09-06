@@ -39,15 +39,21 @@ const POPUP_CLOSED = {
     submitting: false, confirming: null, acknowledged: false, error: null,
 };
 /**
- * Filter option rows case-insensitively over label and detail (blank search keeps every row).
- * Replicates ui-commands/src/client/popup.ts filterOptions.
+ * Filter option rows case-insensitively over label and detail. Search terms
+ * separated by whitespace use AND semantics, so `deepseek think` matches only
+ * options whose searchable text contains both terms.
  */
 export function filterOptions(options, search) {
-    const query = search.trim().toLowerCase();
-    if (query === '')
+    const terms = String(search ?? '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (terms.length === 0)
         return options;
-    return options.filter(option => option.label.toLowerCase().includes(query)
-        || (option.detail?.toLowerCase().includes(query) ?? false));
+    return options.filter(option => {
+        const searchableText = [option.label, option.detail]
+            .filter(value => value !== undefined && value !== null)
+            .join(' ')
+            .toLowerCase();
+        return terms.every(term => searchableText.includes(term));
+    });
 }
 /**
  * Headless popupSelect controller replicating ui-commands PopupSelectController:

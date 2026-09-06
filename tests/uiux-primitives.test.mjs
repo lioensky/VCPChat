@@ -64,7 +64,7 @@ const { mountAgentPresetSeat } = await import('../modules/uiux/generated/primiti
 const { mountAgentPresetRow } = await import('../modules/uiux/generated/primitives/agent-preset-row.js');
 const { mountLanguageRow } = await import('../modules/uiux/generated/primitives/language-row.js');
 const { mountAgentModelPicker } = await import('../modules/uiux/generated/primitives/agent-model-picker.js');
-const { createPopupSelectController, mountPopupSelectView } = await import('../modules/uiux/generated/primitives/popup-select.js');
+const { createPopupSelectController, mountPopupSelectView, filterOptions } = await import('../modules/uiux/generated/primitives/popup-select.js');
 const { mountDirectoryBrowser } = await import('../modules/uiux/generated/primitives/directory-browser.js');
 const { mountSemanticIcon } = await import('../modules/uiux/generated/primitives/semantic-icon.js');
 const { mountChoice } = await import('../modules/uiux/generated/primitives/choice.js');
@@ -641,6 +641,34 @@ test('Uiux Pill preserves static and native interactive semantics and retracts c
 });
 
 const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+
+test('PopupSelect model search uses case-insensitive whitespace-separated AND terms', () => {
+    const options = [
+        { id: 'deepseek-think', label: 'DeepSeek-R1', detail: 'Thinking model' },
+        { id: 'deepseek-chat', label: 'DeepSeek-V3', detail: 'Chat model' },
+        { id: 'other-think', label: 'Nova-Think', detail: 'Reasoning model' },
+    ];
+
+    assert.deepEqual(
+        filterOptions(options, 'deepseek think').map(option => option.id),
+        ['deepseek-think'],
+    );
+    assert.deepEqual(
+        filterOptions(options, '  DEEPSEEK   THINK  ').map(option => option.id),
+        ['deepseek-think'],
+        'matching ignores case and collapses repeated whitespace into AND terms',
+    );
+    assert.deepEqual(
+        filterOptions(options, 'reasoning deepseek').map(option => option.id),
+        [],
+        'all terms must match the same option',
+    );
+    assert.deepEqual(
+        filterOptions(options, '   ').map(option => option.id),
+        options.map(option => option.id),
+        'blank search preserves every option',
+    );
+});
 
 test('Uiux PopupSelect Candidate keeps command wiring injected, owns focus and retracts its overlay', async () => {
     const dom = new JSDOM('<!doctype html><main><div id="host"></div><button id="return-focus">Composer stand-in</button></main>');

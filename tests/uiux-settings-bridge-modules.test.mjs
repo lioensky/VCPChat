@@ -792,7 +792,8 @@ test('settings 域的 dataset marker 全部登记在统一注册表中', async (
     const domainFiles = [bridgeEntry, agentBridge, typedOwners,
         ...fs.readdirSync(settingsDir).filter(name => name.endsWith('.js'))
             .map(name => path.join(settingsDir, name))];
-    const exempt = new Set(['style', 'state', 'selected', 'section', 'settingKey', 'sectionKey']);
+    // uiMode is a root-level business state attribute, not a lifecycle marker.
+    const exempt = new Set(['style', 'state', 'selected', 'section', 'settingKey', 'sectionKey', 'uiMode']);
     const unregistered = new Set();
     for (const file of domainFiles) {
         const source = read(file);

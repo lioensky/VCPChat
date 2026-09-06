@@ -1586,32 +1586,25 @@ const settingsManager = (() => {
     }
 
     /**
-     * Filters the model list based on the search input.
+     * Filters the legacy model list case-insensitively. Whitespace-separated
+     * terms use AND semantics, matching the shared typed model picker.
      */
     function filterModels() {
-        const filter = modelSearchInput.value.toLowerCase();
+        const terms = modelSearchInput.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+        const hasFilter = terms.length > 0;
         const items = modelList.getElementsByTagName('li');
+
         for (let i = 0; i < items.length; i++) {
             const item = items[i];
-            // 分区标题跟随其子项的可见性
+            // 搜索时隐藏分区标题以得到扁平化结果；无搜索时恢复分区标题。
             if (item.classList.contains('model-section-title')) {
-                // 先隐藏标题，后面根据子项可见性再决定
-                item.style.display = filter ? 'none' : '';
+                item.style.display = hasFilter ? 'none' : '';
                 continue;
             }
-            const txtValue = item.textContent || item.innerText;
-            if (txtValue.toLowerCase().indexOf(filter) > -1) {
-                item.style.display = '';
-            } else {
-                item.style.display = 'none';
-            }
-        }
-        // 搜索时隐藏所有分区标题以得到扁平化结果
-        // 无搜索时恢复分区标题
-        if (!filter) {
-            for (let i = 0; i < items.length; i++) {
-                items[i].style.display = '';
-            }
+            const searchableText = (item.textContent || item.innerText || '').toLowerCase();
+            item.style.display = !hasFilter || terms.every(term => searchableText.includes(term))
+                ? ''
+                : 'none';
         }
     }
 
