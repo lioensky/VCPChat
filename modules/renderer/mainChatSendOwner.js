@@ -72,7 +72,7 @@ export function createMainChatSendOwner({
         // the operation without relying on CSS classes or button labels.
         button.setAttribute('aria-busy', String(mode === 'interrupt'));
         button.innerHTML = mode === 'interrupt' ? INTERRUPT_BUTTON_HTML : defaultButtonHtml;
-        button.title = mode === 'interrupt' ? '中止回复' : '发送消息/右键高级回复';
+        button.title = mode === 'interrupt' ? '中止回复' : '发送消息/右键回复设置';
         button.setAttribute('aria-label', mode === 'interrupt' ? '中止回复' : '发送消息');
         return true;
     };
