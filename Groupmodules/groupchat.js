@@ -1872,6 +1872,51 @@ async function deleteGroupTopic(groupId, topicIdToDelete) {
     return { success: true, remainingTopics: result.agentGroup.topics };
 }
 
+async function regenerateGroupTopicTitle(groupId, topicId) {
+    if (!groupId || !topicId) {
+        return { success: false, error: '群组ID或话题ID不能为空。' };
+    }
+
+    try {
+        const groupConfig = await getAgentGroupConfig(groupId);
+        const topic = groupConfig?.topics?.find(candidate => candidate.id === topicId);
+        if (!topic) {
+            return { success: false, error: `未找到群组话题 ${topicId}。` };
+        }
+
+        const groupHistory = await getGroupChatHistory(groupId, topicId);
+        const effectiveMessageCount = Array.isArray(groupHistory)
+            ? groupHistory.filter(message => message && message.role !== 'system' && message.isThinking !== true).length
+            : 0;
+        if (effectiveMessageCount === 0) {
+            return { success: false, error: '该话题还没有可用于生成标题的对话。' };
+        }
+
+        const globalVcpSettings = await getVcpGlobalSettings();
+        if (!globalVcpSettings.vcpUrl) {
+            return { success: false, error: '请先在全局设置中配置 VCP 服务器 URL。' };
+        }
+
+        const newTitle = await topicTitleManager.generateTitleForHistory(groupHistory, globalVcpSettings);
+        if (!newTitle) {
+            return { success: false, error: 'AI 未能生成有效的话题标题。' };
+        }
+
+        const saveResult = await saveGroupTopicTitle(groupId, topicId, newTitle);
+        if (!saveResult.success) return saveResult;
+
+        return {
+            success: true,
+            newTitle,
+            topics: saveResult.topics,
+            sourceMessageCount: Math.min(effectiveMessageCount, topicTitleManager.MIN_MESSAGES_FOR_SUMMARY)
+        };
+    } catch (error) {
+        console.error(`[GroupChat] 重新生成群组话题 ${topicId} 标题失败:`, error);
+        return { success: false, error: error.message };
+    }
+}
+
 async function saveGroupTopicTitle(groupId, topicId, newTitle) {
     let groupConfig = await getAgentGroupConfig(groupId);
     if (!groupConfig || !Array.isArray(groupConfig.topics)) {
@@ -2036,5 +2081,6 @@ module.exports = {
     createNewTopicForGroup,
     deleteGroupTopic,
     saveGroupTopicTitle,
+    regenerateGroupTopicTitle,
     getGroupChatHistory,
 };

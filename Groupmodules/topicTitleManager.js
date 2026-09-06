@@ -36,7 +36,10 @@ function cleanSummarizedTitle(rawTitle) {
  * @returns {string} 格式化后的对话内容
  */
 function buildSummaryContent(groupHistory, globalVcpSettings) {
-    const recentMessagesContent = groupHistory.slice(-MIN_MESSAGES_FOR_SUMMARY).map(msg => {
+    const effectiveHistory = Array.isArray(groupHistory)
+        ? groupHistory.filter(msg => msg && msg.role !== 'system' && msg.isThinking !== true)
+        : [];
+    const recentMessagesContent = effectiveHistory.slice(-MIN_MESSAGES_FOR_SUMMARY).map(msg => {
         const speakerName = msg.name || (msg.role === 'user' ? (globalVcpSettings.userName || '用户') : 'AI成员');
         // 确保从消息内容中提取文本，即使它是对象 { text: '...' }
         let contentText = typeof msg.content === 'string' ? msg.content : (msg.content?.text || '');
@@ -130,6 +133,28 @@ async function generateTitleFromAI(summaryContent, globalVcpSettings) {
 }
 
 /**
+ * 基于最新最多两轮对话生成话题标题。
+ * 手动重新生成时不受原话题名称和消息数量阈值限制；没有有效消息时返回 null。
+ * @param {Array<object>} groupHistory - 聊天历史
+ * @param {object} globalVcpSettings - 全局 VCP 设置
+ * @returns {Promise<string|null>} 清理后的标题，或 null
+ */
+async function generateTitleForHistory(groupHistory, globalVcpSettings) {
+    const effectiveHistory = Array.isArray(groupHistory)
+        ? groupHistory.filter(msg => msg && msg.role !== 'system' && msg.isThinking !== true)
+        : [];
+
+    if (effectiveHistory.length === 0) return null;
+
+    const summaryContent = buildSummaryContent(effectiveHistory, globalVcpSettings);
+    const rawTitle = await generateTitleFromAI(summaryContent, globalVcpSettings);
+    if (!rawTitle) return null;
+
+    const newTitle = cleanSummarizedTitle(rawTitle);
+    return newTitle === 'AI总结话题' ? null : newTitle;
+}
+
+/**
  * 触发话题总结（如果需要）
  * @param {string} groupId - 群组 ID
  * @param {string} topicId - 话题 ID
@@ -198,6 +223,7 @@ module.exports = {
     cleanSummarizedTitle,
     buildSummaryContent,
     generateTitleFromAI,
+    generateTitleForHistory,
     triggerSummarizationIfNeeded,
     MIN_MESSAGES_FOR_SUMMARY,
     DEFAULT_TOPIC_NAMES

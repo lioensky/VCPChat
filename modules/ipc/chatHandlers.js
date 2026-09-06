@@ -9,6 +9,7 @@ const {
     resolveRememberedAttachmentDirectory,
     rememberAttachmentDirectory
 } = require('../services/attachmentDialogState');
+const topicTitleManager = require('../../Groupmodules/topicTitleManager');
 
 function stableStringify(value) {
     if (value === null || typeof value !== 'object') {
@@ -493,6 +494,89 @@ function initialize(mainWindow, context) {
         } catch (error) {
             console.error(`保存Agent ${agentId} 话题 ${topicId} 标题为 "${newTitle}" 失败:`, error);
             return { error: error.message };
+        }
+    });
+
+    ipcMain.handle('regenerate-agent-topic-title', async (event, agentId, topicId) => {
+        if (!agentId || !topicId) {
+            return { success: false, error: 'Agent ID 或话题 ID 不能为空。' };
+        }
+        try {
+            const agentConfig = agentConfigManager
+                ? await agentConfigManager.readAgentConfig(agentId)
+                : await fs.readJson(path.join(AGENT_DIR, agentId, 'config.json'));
+            const topic = agentConfig?.topics?.find(candidate => candidate.id === topicId);
+            if (!topic) {
+                return { success: false, error: `未找到 Agent 话题 ${topicId}。` };
+            }
+
+            const historyFile = path.join(USER_DATA_DIR, agentId, 'topics', topicId, 'history.json');
+            let history = [];
+            if (await fs.pathExists(historyFile)) {
+                history = await fs.readJson(historyFile);
+            }
+            const effectiveMessageCount = Array.isArray(history)
+                ? history.filter(message => message && message.role !== 'system' && message.isThinking !== true).length
+                : 0;
+            if (effectiveMessageCount === 0) {
+                return { success: false, error: '该话题还没有可用于生成标题的对话。' };
+            }
+
+            const settingsPath = path.join(APP_DATA_ROOT_IN_PROJECT, 'settings.json');
+            let settings = {};
+            if (await fs.pathExists(settingsPath)) {
+                settings = await fs.readJson(settingsPath);
+            }
+            const globalVcpSettings = {
+                vcpUrl: settings.vcpServerUrl,
+                vcpApiKey: settings.vcpApiKey,
+                userName: settings.userName || '用户',
+                topicSummaryModel: settings.topicSummaryModel
+            };
+            if (!globalVcpSettings.vcpUrl) {
+                return { success: false, error: '请先在全局设置中配置 VCP 服务器 URL。' };
+            }
+
+            const newTitle = await topicTitleManager.generateTitleForHistory(history, globalVcpSettings);
+            if (!newTitle) {
+                return { success: false, error: 'AI 未能生成有效的话题标题。' };
+            }
+
+            let savedTopics = null;
+            if (agentConfigManager) {
+                await agentConfigManager.updateAgentConfig(agentId, existingConfig => {
+                    if (!existingConfig.topics || !Array.isArray(existingConfig.topics)) {
+                        return existingConfig;
+                    }
+                    const updatedConfig = { ...existingConfig, topics: [...existingConfig.topics] };
+                    const topicIndex = updatedConfig.topics.findIndex(t => t.id === topicId);
+                    if (topicIndex !== -1) {
+                        updatedConfig.topics[topicIndex] = { ...updatedConfig.topics[topicIndex], name: newTitle };
+                    }
+                    return updatedConfig;
+                });
+                const updatedConfig = await agentConfigManager.readAgentConfig(agentId);
+                savedTopics = updatedConfig.topics;
+            } else {
+                const configPath = path.join(AGENT_DIR, agentId, 'config.json');
+                const config = await fs.readJson(configPath);
+                const topicIndex = (config.topics || []).findIndex(t => t.id === topicId);
+                if (topicIndex !== -1) {
+                    config.topics[topicIndex].name = newTitle;
+                    await fs.writeJson(configPath, config, { spaces: 2 });
+                    savedTopics = config.topics;
+                }
+            }
+
+            return {
+                success: true,
+                newTitle,
+                topics: savedTopics,
+                sourceMessageCount: Math.min(effectiveMessageCount, topicTitleManager.MIN_MESSAGES_FOR_SUMMARY)
+            };
+        } catch (error) {
+            console.error(`[ChatHandlers] 重新生成 Agent ${agentId} 话题 ${topicId} 标题失败:`, error);
+            return { success: false, error: error.message };
         }
     });
 

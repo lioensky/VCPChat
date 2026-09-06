@@ -946,6 +946,45 @@ window.topicListManager = (() => {
         menu.id = 'topicContextMenu';
         menu.classList.add('context-menu');
 
+        // "生成话题名" 菜单项：Agent 和 Group 话题均支持
+        const regenerateTitleOption = document.createElement('div');
+        regenerateTitleOption.classList.add('context-menu-item');
+        regenerateTitleOption.innerHTML = `<i class="fas fa-magic"></i> 生成话题名`;
+        regenerateTitleOption.onclick = async () => {
+            closeTopicContextMenu();
+            if (regenerateTitleOption.dataset.loading === 'true') return;
+
+            regenerateTitleOption.dataset.loading = 'true';
+            regenerateTitleOption.classList.add('disabled');
+            try {
+                // 根据话题类型调用对应的 IPC
+                const result = itemType === 'agent'
+                    ? await electronAPI.regenerateAgentTopicTitle(itemFullConfig.id, topic.id)
+                    : await electronAPI.regenerateGroupTopicTitle(itemFullConfig.id, topic.id);
+
+                if (result?.success && result.newTitle) {
+                    topic.name = result.newTitle;
+                    const topicInFullConfig = itemFullConfig.topics?.find(candidate => candidate.id === topic.id);
+                    if (topicInFullConfig) topicInFullConfig.name = result.newTitle;
+
+                    const titleDisplayElement = topicItemElement.querySelector('.topic-title-display, .topic-name');
+                    if (titleDisplayElement) titleDisplayElement.textContent = result.newTitle;
+                    uiHelper.showToastNotification(`话题名已更新为"${result.newTitle}"`, 'success');
+                } else {
+                    // 失败时不修改 topic、itemFullConfig 或 DOM，保留旧标题。
+                    uiHelper.showToastNotification(`生成话题名失败: ${result?.error || 'AI 未返回有效标题'}`, 'error');
+                }
+            } catch (error) {
+                // 请求异常时同样不触碰旧标题。
+                console.error('[TopicListManager] 生成话题名失败:', error);
+                uiHelper.showToastNotification(`生成话题名失败: ${error.message}`, 'error');
+            } finally {
+                regenerateTitleOption.dataset.loading = 'false';
+                regenerateTitleOption.classList.remove('disabled');
+            }
+        };
+        menu.appendChild(regenerateTitleOption);
+
         const editTitleOption = document.createElement('div');
         editTitleOption.classList.add('context-menu-item');
         editTitleOption.innerHTML = `<i class="fas fa-edit"></i> 编辑话题标题`;

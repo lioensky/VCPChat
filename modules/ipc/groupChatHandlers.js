@@ -102,6 +102,10 @@ function initialize(mainWindow, context) {
     ipcMain.handle('save-group-topic-title', async (event, groupId, topicId, newTitle) => {
         return await groupChat.saveGroupTopicTitle(groupId, topicId, newTitle);
     });
+
+    ipcMain.handle('regenerate-group-topic-title', async (event, groupId, topicId) => {
+        return await groupChat.regenerateGroupTopicTitle(groupId, topicId);
+    });
     
     ipcMain.handle('get-group-chat-history', async (event, groupId, topicId) => {
         return await groupChat.getGroupChatHistory(groupId, topicId);
