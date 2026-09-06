@@ -95,9 +95,9 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    color: var(--highlight-text);
-    font-size: 1.06em;
-    font-weight: 500;
+    color: var(--vcp-ui-text-0, var(--primary-text, #ffffff)) !important;
+    font-size: 13.5px !important;
+    font-weight: 600 !important;
     line-height: 24px;
     z-index: 1;
     transition: color var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard);
@@ -280,23 +280,92 @@ body[data-vcp-theme="light"] #groupSettingsContainer .group-settings-toggle-btn:
 #groupSettingsContainer .group-identity-main {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 12px;
 }
 
-#groupSettingsContainer .group-avatar-display {
-    width: 76px;
-    height: 76px;
-    border-width: 2px;
+#groupSettingsContainer .group-avatar-wrapper {
+    position: relative;
+    flex-shrink: 0;
+    width: 60px;
+    height: 60px;
+    border-radius: 16px;
+    overflow: hidden;
+}
+
+#groupSettingsContainer .group-avatar-display,
+#groupSettingsForm img#groupAvatarPreview {
+    width: 60px !important;
+    height: 60px !important;
+    min-width: 60px !important;
+    max-width: 60px !important;
+    min-height: 60px !important;
+    max-height: 60px !important;
+    border-radius: 16px !important;
+    border: 1px solid rgba(0, 0, 0, 0.08) !important;
+    object-fit: cover !important;
+    margin: 0 !important;
+}
+
+body[data-vcp-theme="dark"] #groupSettingsContainer .group-avatar-display,
+body[data-vcp-theme="dark"] #groupSettingsForm img#groupAvatarPreview {
+    border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+#groupSettingsContainer .avatar-upload-overlay {
+    border-radius: 16px !important;
+    background-color: rgba(0, 0, 0, 0.45);
+    transition: opacity 0.15s ease;
+}
+
+#groupSettingsContainer .group-avatar-wrapper:hover .avatar-upload-overlay {
+    opacity: 1;
+}
+
+#groupSettingsContainer .avatar-upload-overlay svg {
+    width: 22px;
+    height: 22px;
+}
+
+#groupSettingsContainer .group-name-wrapper {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
 }
 
 #groupSettingsContainer .group-name-wrapper label {
-    margin-left: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--secondary-text);
+    margin: 0;
 }
 
 #groupSettingsContainer .group-name-wrapper input[type="text"] {
-    width: calc(100% + 4px);
-    margin-left: -4px;
-    font-size: 1.08em;
+    width: 100% !important;
+    margin: 0 !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    padding: 0 12px !important;
+    border-radius: 10px !important;
+    border: 1px solid var(--vcp-ui-control-border, rgba(0, 0, 0, 0.1)) !important;
+    background: var(--vcp-ui-bg-1, rgba(255, 255, 255, 0.8)) !important;
+    color: var(--primary-text) !important;
+    font-size: 13.5px !important;
+    font-weight: 600 !important;
+    box-sizing: border-box !important;
+    outline: none !important;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+#groupSettingsContainer .group-name-wrapper input[type="text"]:focus {
+    border-color: var(--vcp-ui-control-focus, #3b82f6) !important;
+    box-shadow: 0 0 0 2px var(--vcp-ui-focus-ring, rgba(59, 130, 246, 0.18)) !important;
+}
+
+body[data-vcp-theme="dark"] #groupSettingsContainer .group-name-wrapper input[type="text"] {
+    border-color: rgba(255, 255, 255, 0.12) !important;
+    background: rgba(255, 255, 255, 0.04) !important;
 }
 
 #groupSettingsContainer .group-settings-field-shell {
@@ -313,34 +382,55 @@ body[data-vcp-theme="light"] #groupSettingsContainer .group-settings-toggle-btn:
     font-size: 0.9em;
 }
 
-#groupSettingsForm input[type="text"],
-#groupSettingsForm textarea,
-#groupSettingsForm select {
+#groupSettingsForm select,
+#groupSettingsForm .model-input-container input[type="text"],
+#groupSettingsContainer .member-tag-input-item input[type="text"] {
     width: 100%;
     box-sizing: border-box;
     color: var(--primary-text);
     font-size: 0.95em;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: transparent;
-}
-
-#groupSettingsForm input[type="text"],
-#groupSettingsForm select {
-    height: 37px;
-    padding: 0 12px;
-    border-radius: 999px;
+    border: 1px solid var(--dsw-alias-border-l2, var(--border-color));
+    background: var(--dsw-alias-bg-layer-1, var(--input-bg));
+    height: 32px;
+    min-height: 32px;
+    max-height: 32px;
+    padding: 0 10px;
+    border-radius: 8px;
 }
 
 #groupSettingsForm textarea {
     min-height: 96px;
-    padding: 12px 14px;
-    border-radius: 18px;
+    padding: 12px 14px !important;
+    border-radius: 12px !important;
+    border: 1px solid transparent !important;
+    background: rgba(0, 0, 0, 0.028) !important;
+    color: var(--highlight-text) !important;
+    font-size: 13.5px !important;
+    line-height: 1.6 !important;
     resize: vertical;
+    outline: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
 }
 
-body[data-vcp-theme="light"] #groupSettingsForm input[type="text"],
-body[data-vcp-theme="light"] #groupSettingsForm textarea,
-body[data-vcp-theme="light"] #groupSettingsForm select,
+#groupSettingsForm textarea:focus {
+    background: rgba(0, 0, 0, 0.045) !important;
+    border-color: var(--vcp-ui-border-focus, rgba(22, 119, 255, 0.35)) !important;
+    box-shadow: 0 0 0 2px var(--vcp-ui-focus-ring, rgba(22, 119, 255, 0.12)) !important;
+}
+
+body[data-vcp-theme="dark"] #groupSettingsForm textarea {
+    background: rgba(255, 255, 255, 0.04) !important;
+    border-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+body[data-vcp-theme="dark"] #groupSettingsForm textarea:focus {
+    background: rgba(255, 255, 255, 0.06) !important;
+    border-color: var(--vcp-ui-border-focus, rgba(59, 130, 246, 0.45)) !important;
+    box-shadow: 0 0 0 2px var(--vcp-ui-focus-ring, rgba(59, 130, 246, 0.18)) !important;
+}
+
 body[data-vcp-theme="light"] #groupSettingsContainer .group-member-item label {
     background: linear-gradient(
         180deg,
@@ -356,9 +446,6 @@ body[data-vcp-theme="light"] #groupSettingsContainer .group-member-item label {
         inset 0 0 1px rgba(0, 0, 0, 0.08);
 }
 
-body[data-vcp-theme="dark"] #groupSettingsForm input[type="text"],
-body[data-vcp-theme="dark"] #groupSettingsForm textarea,
-body[data-vcp-theme="dark"] #groupSettingsForm select,
 body[data-vcp-theme="dark"] #groupSettingsContainer .group-member-item label {
     background: linear-gradient(
         180deg,
@@ -372,28 +459,6 @@ body[data-vcp-theme="dark"] #groupSettingsContainer .group-member-item label {
         inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
         inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
         inset 0 0 0 1px rgba(255, 255, 255, 0.04);
-}
-
-body[data-vcp-theme="light"] #groupSettingsForm input[type="text"]:hover,
-body[data-vcp-theme="light"] #groupSettingsForm input[type="text"]:focus,
-body[data-vcp-theme="light"] #groupSettingsForm input[type="text"]:focus-visible,
-body[data-vcp-theme="light"] #groupSettingsForm textarea:hover,
-body[data-vcp-theme="light"] #groupSettingsForm textarea:focus,
-body[data-vcp-theme="light"] #groupSettingsForm textarea:focus-visible,
-body[data-vcp-theme="light"] #groupSettingsForm select:hover,
-body[data-vcp-theme="light"] #groupSettingsForm select:focus,
-body[data-vcp-theme="light"] #groupSettingsForm select:focus-visible,
-body[data-vcp-theme="dark"] #groupSettingsForm input[type="text"]:hover,
-body[data-vcp-theme="dark"] #groupSettingsForm input[type="text"]:focus,
-body[data-vcp-theme="dark"] #groupSettingsForm input[type="text"]:focus-visible,
-body[data-vcp-theme="dark"] #groupSettingsForm textarea:hover,
-body[data-vcp-theme="dark"] #groupSettingsForm textarea:focus,
-body[data-vcp-theme="dark"] #groupSettingsForm textarea:focus-visible,
-body[data-vcp-theme="dark"] #groupSettingsForm select:hover,
-body[data-vcp-theme="dark"] #groupSettingsForm select:focus,
-body[data-vcp-theme="dark"] #groupSettingsForm select:focus-visible {
-    border-color: var(--highlight-text);
-    outline: none;
 }
 
 #groupSettingsContainer .group-settings-helper-text {
@@ -445,24 +510,30 @@ body[data-vcp-theme="dark"] #groupSettingsForm select:focus-visible {
 #groupSettingsContainer .group-member-item label {
     flex: 1 1 auto;
     min-width: 0;
-    display: inline-flex;
-    align-items: center;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
     cursor: pointer;
     font-weight: 400;
     color: var(--primary-text);
     font-size: 0.95em;
-    padding: 9px 12px;
+    line-height: 1 !important;
+    margin: 0 !important;
+    padding: 6px 12px !important;
     border-radius: 16px;
     border: 1px solid rgba(255, 255, 255, 0.08);
+    box-sizing: border-box !important;
 }
 
 #groupSettingsContainer .group-member-item .avatar-small {
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    margin-right: 8px;
-    object-fit: cover;
-    flex-shrink: 0;
+    display: block !important;
+    width: 24px !important;
+    height: 24px !important;
+    min-width: 24px !important;
+    border-radius: 50% !important;
+    margin: 0 8px 0 0 !important;
+    object-fit: cover !important;
+    flex-shrink: 0 !important;
 }
 
 #groupSettingsContainer #memberTagsInputs {
@@ -733,7 +804,7 @@ body[data-vcp-theme="dark"] #groupSettingsForm .form-actions .danger-button {
    Unifies save button + bubble family with Agent settings.
    ======================================== */
 #groupSettingsContainer {
-    --agent-settings-pill-radius: 16px;
+    --agent-settings-pill-radius: 8px;
 }
 
 #agentSettingsContainer,
@@ -790,8 +861,7 @@ body[data-vcp-theme="dark"] #groupSettingsForm .form-actions .danger-button {
     gap: 6px !important;
     position: sticky;
     bottom: 0;
-    background-color: transparent;
-    padding: 8px 0 10px;
+    padding: 12px 0 16px !important;
     border-radius: 0;
     border: none !important;
     border-top: none !important;
@@ -802,13 +872,25 @@ body[data-vcp-theme="dark"] #groupSettingsForm .form-actions .danger-button {
     width: 100% !important;
     box-sizing: border-box !important;
     z-index: 10;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.92) 28%, rgba(255, 255, 255, 0.98) 100%) !important;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions,
+body[data-vcp-theme="dark"] #groupSettingsForm .form-actions {
+    background: linear-gradient(180deg, rgba(20, 24, 33, 0) 0%, rgba(20, 24, 33, 0.9) 28%, rgba(20, 24, 33, 0.98) 100%) !important;
 }
 
 body[data-vcp-theme="light"] #agentSettingsForm .form-actions,
-body[data-vcp-theme="light"] #groupSettingsForm .form-actions,
-body[data-vcp-theme="dark"] #agentSettingsForm .form-actions,
-body[data-vcp-theme="dark"] #groupSettingsForm .form-actions {
-    background-color: transparent !important;
+body[data-vcp-theme="light"] #groupSettingsForm .form-actions {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.92) 28%, rgba(255, 255, 255, 0.98) 100%) !important;
+}
+
+#tabContentSettings,
+#agentSettingsContainer,
+#groupSettingsContainer {
+    padding-bottom: 120px !important;
 }
 
 #agentSettingsForm .form-actions .delete-button-container,
@@ -833,6 +915,7 @@ body[data-vcp-theme="dark"] #groupSettingsForm .form-actions {
     overflow: visible;
 }
 
+#agentSettingsForm .form-actions button,
 #agentSettingsForm .form-actions button:not(.vcp-uiux-button),
 #groupSettingsForm .form-actions button {
     position: relative;
@@ -845,49 +928,31 @@ body[data-vcp-theme="dark"] #groupSettingsForm .form-actions {
     width: 100%;
     margin-right: 0;
     margin-left: 0;
-    height: 37px;
-    min-height: 37px;
+    height: 32px !important;
+    min-height: 32px !important;
     padding: 0 12px;
-    font-size: 0.95em;
+    font-size: 13px;
     font-weight: 500;
     line-height: 1;
-    border-radius: 14px !important;
-    border: 1px solid color-mix(
-        in srgb,
-        var(--vcp-ui-border-strong, var(--border-color)) var(--vcp-material-border, 36%),
-        transparent
-    );
+    border-radius: 8px !important;
+    border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12));
     cursor: pointer;
     white-space: nowrap;
     box-sizing: border-box;
     flex: 0 0 auto;
     appearance: none;
     -webkit-appearance: none;
-    box-shadow:
-        inset 0 1px 0 color-mix(
-            in srgb,
-            var(--primary-text) var(--vcp-material-sheen, 14%),
-            transparent
-        ),
-        0 2px 8px color-mix(
-            in srgb,
-            #000000 var(--vcp-material-shadow-color, 8%),
-            transparent
-        ) !important;
-    backdrop-filter:
-        blur(var(--vcp-material-blur, 10px))
-        saturate(var(--vcp-material-saturation, 125%))
-        brightness(var(--vcp-material-brightness, 100%)) !important;
-    -webkit-backdrop-filter:
-        blur(var(--vcp-material-blur, 10px))
-        saturate(var(--vcp-material-saturation, 125%))
-        brightness(var(--vcp-material-brightness, 100%)) !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background-image: none !important;
     transition:
         background var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
         border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
         color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
+#agentSettingsForm .form-actions button[type="submit"],
 #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button),
 #groupSettingsForm .form-actions button[type="submit"] {
     color: var(--highlight-text);
@@ -905,6 +970,7 @@ body[data-vcp-theme="dark"] #groupSettingsForm .form-actions {
     align-self: stretch !important;
 }
 
+#agentSettingsForm .form-actions button[type="submit"]:hover,
 #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button):hover,
 #groupSettingsForm .form-actions button[type="submit"]:hover {
     background: var(--dsw-alias-interactive-bg-hover, #f3f4f6);
@@ -913,130 +979,124 @@ body[data-vcp-theme="dark"] #groupSettingsForm .form-actions {
     box-shadow: none !important;
 }
 
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions button[type="submit"],
 body[data-vcp-theme="light"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button),
 body[data-vcp-theme="light"] #groupSettingsForm .form-actions button[type="submit"] {
-    background-color: color-mix(
-        in srgb,
-        var(--secondary-bg) var(--vcp-material-opacity, 68%),
-        transparent
-    ) !important;
-    background-image: var(--vcp-material-texture, linear-gradient(
-        180deg,
-        rgba(255, 255, 255, 0.32),
-        rgba(255, 255, 255, 0.08)
-    )) !important;
-    border-color: color-mix(in srgb, var(--highlight-text) 24%, var(--border-color));
-    color: var(--highlight-text);
+    background: color-mix(in srgb, var(--user-bubble-bg, #f3ede2) 85%, rgba(255, 255, 255, 0.7)) !important;
+    border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12)) !important;
+    color: var(--highlight-text) !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background-image: none !important;
     opacity: 1 !important;
 }
 
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions button[type="submit"]:hover,
 body[data-vcp-theme="light"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button):hover,
 body[data-vcp-theme="light"] #groupSettingsForm .form-actions button[type="submit"]:hover {
-    background: #EAE0DB !important;
+    background: color-mix(in srgb, var(--user-bubble-bg, #f3ede2) 95%, rgba(0, 0, 0, 0.08)) !important;
     border-color: var(--dsw-alias-border-l1, rgba(0, 0, 0, 0.22));
-    color: var(--highlight-text);
+    color: var(--highlight-text) !important;
     box-shadow: none !important;
 }
 
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions button[type="submit"],
 body[data-vcp-theme="dark"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button),
 body[data-vcp-theme="dark"] #groupSettingsForm .form-actions button[type="submit"] {
-    background-color: color-mix(
-        in srgb,
-        var(--secondary-bg) var(--vcp-material-opacity, 58%),
-        transparent
-    ) !important;
-    background-image: var(--vcp-material-texture, linear-gradient(
-        180deg,
-        rgba(255, 255, 255, 0.09),
-        rgba(255, 255, 255, 0.025)
-    )) !important;
-    border-color: color-mix(in srgb, var(--highlight-text) 24%, var(--border-color));
-    color: var(--primary-text);
+    background: var(--dsw-alias-bg-layer-2, #262628) !important;
+    border: 1px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.12)) !important;
+    color: var(--highlight-text) !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background-image: none !important;
     opacity: 1 !important;
 }
 
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions button[type="submit"]:hover,
 body[data-vcp-theme="dark"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button):hover,
 body[data-vcp-theme="dark"] #groupSettingsForm .form-actions button[type="submit"]:hover {
-    background: #38383A !important;
-    border-color: var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.24));
-    color: #ffffff;
+    background: var(--dsw-alias-interactive-bg-hover, #323235) !important;
+    border-color: var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.24)) !important;
+    color: #ffffff !important;
     box-shadow: none !important;
 }
 
+#agentSettingsForm .form-actions .danger-button,
 #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button),
 #groupSettingsForm .form-actions .danger-button,
+#agentSettingsForm .form-actions #deleteAgentBtn,
 #agentSettingsForm .form-actions #deleteAgentBtn:not(.vcp-uiux-button),
 #groupSettingsForm .form-actions #deleteGroupBtn {
     color: var(--vcp-ui-danger, #ef4444);
 }
 
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions .danger-button,
 body[data-vcp-theme="light"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button),
 body[data-vcp-theme="light"] #groupSettingsForm .form-actions .danger-button,
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions #deleteAgentBtn,
 body[data-vcp-theme="light"] #agentSettingsForm .form-actions #deleteAgentBtn:not(.vcp-uiux-button),
 body[data-vcp-theme="light"] #groupSettingsForm .form-actions #deleteGroupBtn {
-    background-color: color-mix(
-        in srgb,
-        var(--vcp-ui-danger, #ef4444) 9%,
-        color-mix(in srgb, var(--secondary-bg) var(--vcp-material-opacity, 64%), transparent)
-    ) !important;
-    background-image: var(--vcp-material-texture, linear-gradient(
-        180deg,
-        rgba(255, 255, 255, 0.3),
-        rgba(255, 255, 255, 0.06)
-    )) !important;
-    border-color: color-mix(in srgb, var(--vcp-ui-danger, #ef4444) 34%, var(--border-color));
-    color: var(--vcp-ui-danger, #ef4444);
+    background: var(--dsw-alias-bg-layer-1, #ffffff) !important;
+    border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12)) !important;
+    color: var(--vcp-ui-danger, #ef4444) !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background-image: none !important;
     opacity: 1 !important;
 }
 
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions .danger-button:hover,
 body[data-vcp-theme="light"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button):hover,
 body[data-vcp-theme="light"] #groupSettingsForm .form-actions .danger-button:hover,
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions #deleteAgentBtn:hover,
 body[data-vcp-theme="light"] #agentSettingsForm .form-actions #deleteAgentBtn:not(.vcp-uiux-button):hover,
 body[data-vcp-theme="light"] #groupSettingsForm .form-actions #deleteGroupBtn:hover {
     background: #FEF2F2 !important;
-    border-color: var(--vcp-ui-danger, #ef4444);
-    color: var(--vcp-ui-danger, #ef4444);
+    border-color: color-mix(in srgb, var(--vcp-ui-danger, #ef4444) 40%, var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12))) !important;
+    color: var(--vcp-ui-danger, #ef4444) !important;
     box-shadow: none !important;
 }
 
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions .danger-button,
 body[data-vcp-theme="dark"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button),
 body[data-vcp-theme="dark"] #groupSettingsForm .form-actions .danger-button,
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions #deleteAgentBtn,
 body[data-vcp-theme="dark"] #agentSettingsForm .form-actions #deleteAgentBtn:not(.vcp-uiux-button),
 body[data-vcp-theme="dark"] #groupSettingsForm .form-actions #deleteGroupBtn {
-    background-color: color-mix(
-        in srgb,
-        var(--vcp-ui-danger, #ef4444) 14%,
-        color-mix(in srgb, var(--secondary-bg) var(--vcp-material-opacity, 52%), transparent)
-    ) !important;
-    background-image: var(--vcp-material-texture, linear-gradient(
-        180deg,
-        rgba(255, 255, 255, 0.08),
-        rgba(255, 255, 255, 0.02)
-    )) !important;
-    border-color: color-mix(in srgb, var(--vcp-ui-danger, #ef4444) 38%, var(--border-color));
-    color: var(--vcp-ui-danger, #ef4444);
+    background: rgba(255, 255, 255, 0.05) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    color: var(--vcp-ui-danger, #ef4444) !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background-image: none !important;
     opacity: 1 !important;
 }
 
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions .danger-button:hover,
 body[data-vcp-theme="dark"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button):hover,
 body[data-vcp-theme="dark"] #groupSettingsForm .form-actions .danger-button:hover,
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions #deleteAgentBtn:hover,
 body[data-vcp-theme="dark"] #agentSettingsForm .form-actions #deleteAgentBtn:not(.vcp-uiux-button):hover,
 body[data-vcp-theme="dark"] #groupSettingsForm .form-actions #deleteGroupBtn:hover {
-    background: #331E1E !important;
-    border-color: var(--vcp-ui-danger, #ef4444);
-    color: #ffffff;
+    background: rgba(239, 68, 68, 0.12) !important;
+    border-color: rgba(239, 68, 68, 0.35) !important;
+    color: #ff6b6b !important;
     box-shadow: none !important;
 }
 
 #groupSettingsContainer input[type="text"],
 #groupSettingsContainer select {
     width: 100%;
-    height: 34px;
-    min-height: 34px;
-    max-height: 34px;
+    height: 32px;
+    min-height: 32px;
+    max-height: 32px;
     padding: 0 12px;
     margin-bottom: 0;
-    border-radius: var(--agent-settings-pill-radius) !important;
+    border-radius: 8px !important;
     border: 1px solid rgba(255, 255, 255, 0.08);
     background: transparent;
     background-clip: padding-box;
@@ -1219,12 +1279,18 @@ body[data-vcp-theme="dark"] #groupSettingsContainer select:focus-visible {
 }
 
 #groupSettingsContainer .group-member-item label {
-    min-height: 34px;
-    padding: 4px 12px 4px 9px;
+    min-height: 36px;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    padding: 6px 12px 6px 9px !important;
     border-radius: var(--agent-settings-pill-radius);
     color: var(--highlight-text);
     background: transparent;
     background-clip: padding-box;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    line-height: 1 !important;
 }
 
 #groupSettingsContainer .group-member-item input[type="checkbox"]:checked + label {
@@ -1310,4 +1376,85 @@ body[data-vcp-theme="dark"] #groupSettingsContainer .group-settings-model-shell 
     background-color: var(--accent-bg);
     color: var(--highlight-text);
     border-color: var(--highlight-text);
+}
+
+#groupSettingsContainer .group-settings-collapsible-container:not(.collapsed) .group-settings-section-summary,
+#groupSettingsContainer .group-settings-collapsible-container:not(.collapsed) #groupIdentitySummary {
+    display: none !important;
+}
+
+#groupSettingsContainer #groupPrompt,
+#groupSettingsContainer #invitePrompt {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    min-height: 100px !important;
+    max-height: min(340px, 45vh) !important;
+    padding: 6px 2px !important;
+    border-radius: 4px !important;
+    border: 1px solid transparent !important;
+    border-left: 2.5px solid transparent !important;
+    background: transparent !important;
+    color: var(--vcp-ui-text-0, var(--primary-text, #ffffff)) !important;
+    font-size: 13.5px !important;
+    line-height: 1.6 !important;
+    white-space: pre-wrap !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    resize: vertical;
+    outline: none !important;
+    box-shadow: none !important;
+    box-sizing: border-box !important;
+    cursor: text;
+    transition: padding-left var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard),
+                border-color var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard);
+}
+
+#groupSettingsContainer #groupPrompt:focus,
+#groupSettingsContainer #invitePrompt:focus {
+    background: transparent !important;
+    border-color: transparent !important;
+    border-left: 2.5px solid var(--vcp-ui-accent, var(--highlight-text, #3b82f6)) !important;
+    padding-left: 6px !important;
+    box-shadow: none !important;
+}
+
+body[data-vcp-theme="dark"] #groupSettingsContainer #groupPrompt,
+body[data-vcp-theme="dark"] #groupSettingsContainer #invitePrompt {
+    background: transparent !important;
+    border-color: transparent !important;
+    color: var(--vcp-ui-text-0, #ffffff) !important;
+}
+
+body[data-vcp-theme="dark"] #groupSettingsContainer #groupPrompt:focus,
+body[data-vcp-theme="dark"] #groupSettingsContainer #invitePrompt:focus {
+    background: transparent !important;
+    border-color: transparent !important;
+    border-left: 2.5px solid var(--vcp-ui-accent, var(--highlight-text, #3b82f6)) !important;
+    padding-left: 6px !important;
+    box-shadow: none !important;
+}
+
+body[data-vcp-theme="light"] #groupSettingsContainer #groupPrompt,
+body[data-vcp-theme="light"] #groupSettingsContainer #invitePrompt {
+    background: transparent !important;
+    border-color: transparent !important;
+    color: var(--vcp-ui-text-0, #111111) !important;
+}
+
+#groupSettingsContainer .group-settings-field-shell label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 13px !important;
+    font-weight: 550 !important;
+    color: var(--vcp-ui-text-1, var(--secondary-text)) !important;
+}
+
+#groupSettingsContainer .group-settings-helper-text {
+    margin-top: 6px;
+    font-size: 12px !important;
+    line-height: 1.4 !important;
+    color: var(--vcp-ui-text-2, var(--placeholder-text)) !important;
 }

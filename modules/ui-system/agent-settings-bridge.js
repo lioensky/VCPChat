@@ -23,6 +23,7 @@ function enhanceForm(form) {
     mountTypedAgentModelPicker(form);
     mountTypedGroupModelPicker(form);
     mountTypedAgentPromptModeButtons(form);
+    mountAgentSettingsTooltips(form);
     const typedAgentSectionOwners = mountAgentSectionDisclosures(form, window.VCPUIUX, ensurePresentationScope(), window.settingsManager, agentSectionDisclosureStates);
     selectProjection.mount(form);
     // A successfully adopted Agent section is directly owned by the generated
@@ -130,16 +131,16 @@ function mountTypedAgentButtons(form) {
         try {
             const size = key.includes('refresh') ? 'sm' : 'md';
             api.mountButton(button, { variant, size }, scope);
-            // The TTS Select proxy uses a 38px control contract. Its adjacent
+            // The TTS Select proxy uses a 32px control contract. Its adjacent
             // refresh action must share that geometry rather than retaining the
             // generic 32px small-button size.
-            const minHeight = key.includes('refresh') ? '38px' : (size === 'sm' ? '28px' : '36px');
+            const minHeight = key.includes('refresh') ? '32px' : (size === 'sm' ? '28px' : '36px');
             const originalMinHeight = [button.style.getPropertyValue('min-height'), button.style.getPropertyPriority('min-height')];
             button.style.setProperty('min-height', minHeight, 'important');
             if (key.includes('refresh')) {
-                button.style.setProperty('width', '38px', 'important');
-                button.style.setProperty('min-width', '38px', 'important');
-                button.style.setProperty('height', '38px', 'important');
+                button.style.setProperty('width', '32px', 'important');
+                button.style.setProperty('min-width', '32px', 'important');
+                button.style.setProperty('height', '32px', 'important');
                 button.style.setProperty('border-radius', '8px', 'important');
             }
             scope.own(() => {
@@ -451,6 +452,71 @@ function mountTypedAgentColorPairs(form) {
         });
         color.dataset.vcpTypedPrimitiveMounted = 'true';
         scope.own(() => { delete color.dataset.vcpTypedPrimitiveMounted; }, `typed-${key}-marker`, 'ui-primitive');
+    });
+}
+
+function mountAgentSettingsTooltips(form) {
+    const api = window.VCPUIUX;
+    const scope = ensurePresentationScope();
+    if (!api?.mountTooltip || !scope) return;
+
+    const items = [
+        {
+            select: () => form.querySelector('.agent-settings-section[data-section-key="prompt"] .agent-settings-section-title'),
+            text: '三个模块独立编辑后，注意保存以生效。支持文本、模块与预制三种模式切换。',
+            key: 'prompt-title',
+            side: 'top',
+        },
+        {
+            select: () => form.querySelector('label[for="agentTtsSpeed"]'),
+            text: '本地 SoVITS 使用该语速；网络模式按模型原生节奏合成，可用下方自然语言提示词描述语速。',
+            key: 'tts-speed',
+            side: 'top',
+        },
+        {
+            select: () => form.querySelector('.tts-director-heading label') || form.querySelector('label[for="agentTtsDirectorPromptInput"]'),
+            text: '适用于网络模式：预置音色模式使用“提示词 + voice”控制演绎；自然语言控制模式使用专用模型且不发送 voice；克隆模式使用参考音频作为 voice。Ctrl+Enter 添加，右侧 − 删除。',
+            key: 'tts-director',
+            side: 'top',
+        },
+        {
+            select: () => form.querySelector('label[for="agentCustomCss"]'),
+            text: '此CSS将应用于【助手】页面的Agent列表项容器。',
+            key: 'appearance-custom-css',
+            side: 'top',
+        },
+        {
+            select: () => form.querySelector('label[for="agentCardCss"]'),
+            text: '此CSS将应用于【设置】页面中Agent的名片区域（头像和名称）。',
+            key: 'appearance-card-css',
+            side: 'top',
+        },
+        {
+            select: () => form.querySelector('label[for="agentChatCss"]'),
+            text: '此CSS将应用于【聊天会话】中Agent的头像和名称。可使用 .message-avatar 控制头像，.sender-name 控制名称。',
+            key: 'appearance-chat-css',
+            side: 'top',
+        },
+    ];
+
+    items.forEach(({ select, text, key, side }) => {
+        const host = select();
+        if (!host || host.querySelector(':scope > .vcp-settings-info-badge')) return;
+        const badge = document.createElement('button');
+        badge.type = 'button';
+        badge.className = 'vcp-settings-info-badge';
+        badge.setAttribute('aria-label', '提示说明');
+        badge.textContent = '?';
+        badge.addEventListener('click', (event) => {
+            event.stopPropagation();
+            event.preventDefault();
+            badge.focus();
+        });
+        host.appendChild(badge);
+        api.mountTooltip(badge, { label: text, side: side || 'top', delayMs: 60, maxWidth: 280 }, scope);
+        scope.own(() => {
+            badge.remove();
+        }, `agent-tooltip-badge-${key}`, 'ui-presentation');
     });
 }
 

@@ -10,82 +10,89 @@
 }
 
 #agentSettingsContainer .agent-settings-prompt-shell > .prompt-section-note {
-    margin: -1px 0 0;
-    color: var(--secondary-text);
-    font-size: 0.82em;
-    line-height: 1.35;
-    font-weight: 400;
+    display: none !important;
 }
 
 #agentSettingsContainer .system-prompt-container .prompt-mode-selector {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     justify-content: flex-start;
-    gap: 3px;
-    margin: 0 0 10px;
-    padding: 3px;
-    border-radius: 9999px;
-    background: var(--dsw-alias-bg-module-platform, rgba(0, 0, 0, 0.05));
-    border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.08));
+    width: 100%;
+    gap: 4px;
+    margin: 0 0 8px;
+    padding: 0;
+    border-radius: 0;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
     box-sizing: border-box;
 }
 
 body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .prompt-mode-selector {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 255, 255, 0.12);
+    background: transparent !important;
+    border: none !important;
 }
 
+#agentSettingsContainer .system-prompt-container .prompt-mode-button,
 #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-uiux-button) {
     position: relative;
-    flex: 0 0 auto;
+    flex: 1 1 0;
     min-width: 0;
-    height: 28px;
-    min-height: 28px;
-    padding: 0 14px;
-    border: none !important;
-    border-radius: 9999px !important;
+    height: 28px !important;
+    min-height: 28px !important;
+    padding: 0 6px !important;
+    border: 1px solid transparent !important;
+    border-radius: 6px !important;
     background: transparent !important;
-    color: var(--dsw-alias-label-secondary, #666666);
-    font-size: 13px;
-    font-weight: 500;
-    line-height: 1;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    white-space: nowrap;
-    cursor: pointer;
+    color: var(--secondary-text, #888888) !important;
+    font-size: 12.5px !important;
+    font-weight: 500 !important;
+    line-height: 1 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 5px !important;
+    white-space: nowrap !important;
+    cursor: pointer !important;
     box-shadow: none !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
-    transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease !important;
 }
 
+#agentSettingsContainer .system-prompt-container .prompt-mode-button::after,
 #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-uiux-button)::after {
     display: none !important;
 }
 
+#agentSettingsContainer .system-prompt-container .prompt-mode-button:hover,
 #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-uiux-button):hover {
-    color: var(--dsw-alias-label-primary, #111111);
+    color: var(--highlight-text, #111111) !important;
     background: rgba(0, 0, 0, 0.04) !important;
 }
 
+body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:hover,
 body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-uiux-button):hover {
-    color: #ffffff;
-    background: rgba(255, 255, 255, 0.06) !important;
-}
-
-#agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-uiux-button).active {
-    background: var(--dsw-alias-bg-layer-1, #ffffff) !important;
-    color: var(--dsw-alias-label-primary, #111111) !important;
-    font-weight: 600 !important;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06) !important;
-}
-
-body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-uiux-button).active {
-    background: var(--dsw-alias-bg-layer-2, #2c2c2e) !important;
     color: #ffffff !important;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-mode-button.active,
+#agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-uiux-button).active {
+    background: rgba(0, 0, 0, 0.05) !important;
+    border-color: rgba(0, 0, 0, 0.06) !important;
+    color: var(--highlight-text, #111111) !important;
+    font-weight: 600 !important;
+    box-shadow: none !important;
+}
+
+body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .prompt-mode-button.active,
+body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-uiux-button).active {
+    background: rgba(255, 255, 255, 0.08) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    color: #ffffff !important;
+    font-weight: 600 !important;
+    box-shadow: none !important;
 }
 
 #agentSettingsContainer .system-prompt-container .prompt-mode-button-icon {
@@ -118,7 +125,7 @@ body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .pr
 #agentSettingsContainer .system-prompt-container .block-name-input {
     border-radius: var(--agent-settings-pill-radius) !important;
     font-size: 0.9em;
-    color: var(--highlight-text);
+    color: var(--vcp-ui-text-0, var(--primary-text, #ffffff));
 }
 
 #agentSettingsContainer .system-prompt-container .preset-path-input,
@@ -134,24 +141,70 @@ body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .pr
     padding-right: 34px;
 }
 
-#agentSettingsContainer .system-prompt-container .prompt-textarea {
-    min-height: 76px;
-    padding: 10px 12px;
-    border-radius: 16px !important;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-    overflow-x: hidden;
-}
-
+#agentSettingsContainer .system-prompt-container .prompt-textarea,
+#agentSettingsContainer .system-prompt-container .original-prompt-textarea,
 #agentSettingsContainer .system-prompt-container .preset-prompt-textarea {
-    width: 100%;
-    min-width: 0;
-    max-width: 100%;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    min-height: 100px !important;
+    max-height: min(340px, 45vh) !important;
+    padding: 6px 2px !important;
+    border-radius: 4px !important;
+    border: 1px solid transparent !important;
+    border-left: 2.5px solid transparent !important;
+    background: transparent !important;
+    color: var(--vcp-ui-text-0, var(--primary-text, #ffffff)) !important;
+    font-size: 13.5px !important;
+    line-height: 1.6 !important;
     white-space: pre-wrap !important;
     overflow-wrap: anywhere !important;
     word-break: break-word !important;
     overflow-x: hidden !important;
+    overflow-y: auto !important;
+    resize: vertical;
+    outline: none !important;
+    box-shadow: none !important;
+    box-sizing: border-box !important;
+    cursor: text;
+    transition: padding-left var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard),
+                border-color var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard);
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-textarea:focus,
+#agentSettingsContainer .system-prompt-container .original-prompt-textarea:focus,
+#agentSettingsContainer .system-prompt-container .preset-prompt-textarea:focus {
+    background: transparent !important;
+    border-color: transparent !important;
+    border-left: 2.5px solid var(--vcp-ui-accent, var(--highlight-text, #3b82f6)) !important;
+    padding-left: 6px !important;
+    box-shadow: none !important;
+}
+
+body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .prompt-textarea,
+body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .original-prompt-textarea,
+body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .preset-prompt-textarea {
+    background: transparent !important;
+    border-color: transparent !important;
+    color: var(--vcp-ui-text-0, #ffffff) !important;
+}
+
+body[data-vcp-theme="light"] #agentSettingsContainer .system-prompt-container .prompt-textarea,
+body[data-vcp-theme="light"] #agentSettingsContainer .system-prompt-container .original-prompt-textarea,
+body[data-vcp-theme="light"] #agentSettingsContainer .system-prompt-container .preset-prompt-textarea {
+    background: transparent !important;
+    border-color: transparent !important;
+    color: var(--vcp-ui-text-0, #111111) !important;
+}
+
+body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .prompt-textarea:focus,
+body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .original-prompt-textarea:focus,
+body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .preset-prompt-textarea:focus {
+    background: transparent !important;
+    border-color: transparent !important;
+    border-left: 2.5px solid var(--vcp-ui-accent, var(--highlight-text, #3b82f6)) !important;
+    padding-left: 6px !important;
+    box-shadow: none !important;
 }
 
 #agentSettingsContainer .system-prompt-container .preset-path-section label,
@@ -167,7 +220,7 @@ body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .pr
 #agentSettingsContainer .system-prompt-container .preset-prompt-container,
 #agentSettingsContainer .system-prompt-container .original-prompt-container {
     gap: 10px;
-    padding: 8px 6px 8px;
+    padding: 0 !important;
 }
 
 #agentSettingsContainer .system-prompt-container .modular-toolbar {

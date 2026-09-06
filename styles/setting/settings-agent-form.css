@@ -79,6 +79,7 @@
 /* 被上面合并的样式取代 */
 
 
+#agentSettingsForm .form-actions button,
 #agentSettingsForm .form-actions button:not(.vcp-uiux-button) {
     position: relative;
     isolation: isolate;
@@ -88,13 +89,13 @@
     justify-content: center;
     width: 100%;
     margin-left: 0;
-    height: 37px;
-    min-height: 37px;
+    height: 32px !important;
+    min-height: 32px !important;
     padding: 0 12px;
-    font-size: 0.95em;
+    font-size: 13px;
     font-weight: 500;
     line-height: 1;
-    border-radius: 14px !important;
+    border-radius: 8px !important;
     border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12));
     cursor: pointer;
     white-space: nowrap;
@@ -102,16 +103,19 @@
     box-shadow: none !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
+    background-image: none !important;
     transition:
         background var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
         border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
         color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
+#agentSettingsForm .form-actions button[type="submit"],
 #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button) {
     color: var(--highlight-text);
 }
 
+#agentSettingsForm .form-actions button[type="submit"]:hover,
 #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button):hover {
     background: var(--dsw-alias-interactive-bg-hover, #f3f4f6);
     border-color: var(--dsw-alias-border-l1, rgba(0, 0, 0, 0.22));
@@ -119,7 +123,10 @@
     box-shadow: none !important;
 }
 
-#agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button) {
+#agentSettingsForm .form-actions .danger-button,
+#agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button),
+#agentSettingsForm .form-actions #deleteAgentBtn,
+#agentSettingsForm .form-actions #deleteAgentBtn:not(.vcp-uiux-button) {
     color: var(--vcp-ui-danger, #ef4444);
 }
 
@@ -127,37 +134,47 @@ body[data-vcp-theme="light"] #agentSettingsForm .form-actions {
     background-color: transparent !important;
 }
 
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions button[type="submit"],
 body[data-vcp-theme="light"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button) {
-    background: #F3EBE7 !important;
-    border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12));
-    color: var(--highlight-text);
+    background: color-mix(in srgb, var(--user-bubble-bg, #f3ede2) 85%, rgba(255, 255, 255, 0.7)) !important;
+    border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12)) !important;
+    color: var(--highlight-text) !important;
     box-shadow: none !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
+    background-image: none !important;
     opacity: 1 !important;
 }
 
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions button[type="submit"]:hover,
 body[data-vcp-theme="light"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button):hover {
-    background: #EAE0DB !important;
-    border-color: var(--dsw-alias-border-l1, rgba(0, 0, 0, 0.22));
-    color: var(--highlight-text);
+    background: color-mix(in srgb, var(--user-bubble-bg, #f3ede2) 95%, rgba(0, 0, 0, 0.08)) !important;
+    border-color: var(--dsw-alias-border-l1, rgba(0, 0, 0, 0.22)) !important;
+    color: var(--highlight-text) !important;
     box-shadow: none !important;
 }
 
-body[data-vcp-theme="light"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button) {
-    background: #FFFFFF !important;
-    border: 1px solid color-mix(in srgb, var(--vcp-ui-danger, #ef4444) 30%, #e5e7eb);
-    color: var(--vcp-ui-danger, #ef4444);
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions .danger-button,
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button),
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions #deleteAgentBtn,
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions #deleteAgentBtn:not(.vcp-uiux-button) {
+    background: var(--dsw-alias-bg-layer-1, #ffffff) !important;
+    border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12)) !important;
+    color: var(--vcp-ui-danger, #ef4444) !important;
     box-shadow: none !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
+    background-image: none !important;
     opacity: 1 !important;
 }
 
-body[data-vcp-theme="light"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button):hover {
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions .danger-button:hover,
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button):hover,
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions #deleteAgentBtn:hover,
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions #deleteAgentBtn:not(.vcp-uiux-button):hover {
     background: #FEF2F2 !important;
-    border-color: var(--vcp-ui-danger, #ef4444);
-    color: var(--vcp-ui-danger, #ef4444);
+    border-color: color-mix(in srgb, var(--vcp-ui-danger, #ef4444) 40%, var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12))) !important;
+    color: var(--vcp-ui-danger, #ef4444) !important;
     box-shadow: none !important;
 }
 
@@ -165,37 +182,47 @@ body[data-vcp-theme="dark"] #agentSettingsForm .form-actions {
     background-color: transparent !important;
 }
 
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions button[type="submit"],
 body[data-vcp-theme="dark"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button) {
-    background: #2C2C2E !important;
-    border: 1px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.12));
-    color: #ffffff;
+    background: var(--dsw-alias-bg-layer-2, #262628) !important;
+    border: 1px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.12)) !important;
+    color: var(--highlight-text) !important;
     box-shadow: none !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
+    background-image: none !important;
     opacity: 1 !important;
 }
 
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions button[type="submit"]:hover,
 body[data-vcp-theme="dark"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button):hover {
-    background: #38383A !important;
-    border-color: var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.24));
-    color: #ffffff;
+    background: var(--dsw-alias-interactive-bg-hover, #323235) !important;
+    border-color: var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.24)) !important;
+    color: #ffffff !important;
     box-shadow: none !important;
 }
 
-body[data-vcp-theme="dark"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button) {
-    background: #251B1B !important;
-    border: 1px solid color-mix(in srgb, var(--vcp-ui-danger, #ef4444) 35%, #3f2020);
-    color: var(--vcp-ui-danger, #ef4444);
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions .danger-button,
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button),
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions #deleteAgentBtn,
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions #deleteAgentBtn:not(.vcp-uiux-button) {
+    background: rgba(255, 255, 255, 0.05) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    color: var(--vcp-ui-danger, #ef4444) !important;
     box-shadow: none !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
+    background-image: none !important;
     opacity: 1 !important;
 }
 
-body[data-vcp-theme="dark"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button):hover {
-    background: #331E1E !important;
-    border-color: var(--vcp-ui-danger, #ef4444);
-    color: #ffffff;
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions .danger-button:hover,
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button):hover,
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions #deleteAgentBtn:hover,
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions #deleteAgentBtn:not(.vcp-uiux-button):hover {
+    background: rgba(239, 68, 68, 0.12) !important;
+    border-color: rgba(239, 68, 68, 0.35) !important;
+    color: #ff6b6b !important;
     box-shadow: none !important;
 }
 

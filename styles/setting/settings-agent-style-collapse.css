@@ -52,9 +52,9 @@ body[data-vcp-theme="dark"] .style-collapse-header:hover::before {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    color: var(--highlight-text);
-    font-size: 0.98em;
-    font-weight: 500;
+    color: var(--vcp-ui-text-0, var(--primary-text, #ffffff)) !important;
+    font-size: 13px !important;
+    font-weight: 550 !important;
     line-height: 24px;
 }
 

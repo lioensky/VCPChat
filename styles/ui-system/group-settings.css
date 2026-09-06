@@ -230,6 +230,11 @@
 
     html .vcp-ui-scope #groupSettingsContainer .group-member-item label {
         min-width: 0;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
+        min-height: 36px;
+        margin: 0 !important;
         padding: var(--vcp-ui-space-2) var(--vcp-ui-space-3);
         border: 1px solid var(--vcp-ui-control-border);
         border-radius: var(--vcp-ui-radius-md);
@@ -238,6 +243,8 @@
         box-shadow: none;
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
+        box-sizing: border-box !important;
+        line-height: 1 !important;
     }
 
     html .vcp-ui-scope #groupSettingsContainer .group-member-item label:hover {

@@ -195,12 +195,15 @@ body[data-vcp-theme="light"] #groupSettingsForm .form-actions #deleteGroupBtn:ho
 }
 
 #groupSettingsForm img#groupAvatarPreview {
-    border: 2px solid var(--button-bg) !important;
-    border-radius: 8px;
-    max-width: 100px;
-    max-height: 100px;
-    object-fit: cover;
+    width: 60px !important;
+    height: 60px !important;
+    min-width: 60px !important;
+    max-width: 60px !important;
+    min-height: 60px !important;
+    max-height: 60px !important;
+    border-radius: 16px !important;
+    border: 1px solid rgba(0, 0, 0, 0.08) !important;
+    object-fit: cover !important;
     display: block;
-    margin-top: 10px;
-    margin-bottom: 6px;
+    margin: 0 !important;
 }

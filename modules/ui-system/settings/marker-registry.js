@@ -22,6 +22,7 @@ const MARKERS = Object.freeze({
     visibleWhen: { owner: 'settings/dependent-rows.js + main.html', cleanup: 'persistent' },
     // schema-surface.js — schema 渲染面的分区级幂等标记（exp/settings-schema）
     vcpSchemaRendered: { owner: 'settings/schema-surface.js', cleanup: 'persistent' },
+    uiMode: { owner: 'surface-controller.js + typed-field-owners.js', cleanup: 'persistent' },
 
     // uiux primitives — one re-entrancy marker per projection family
     // （vcpUiuxToggleMounted 自 M5-c pass1 起只剩 agent 设置面挂载方使用：
