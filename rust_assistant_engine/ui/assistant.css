@@ -182,11 +182,16 @@ html, body {
     fill: currentColor !important;
 }
 
-#attachFileBtn svg,
-#attachFileBtn svg * {
+#attachFileBtn svg {
     width: 20px;
     height: 20px;
-    fill: currentColor !important;
+    fill: none;
+    stroke: currentColor;
+}
+
+#attachFileBtn svg * {
+    fill: none !important;
+    stroke: currentColor;
 }
 
 #sendMessageBtn:hover,
