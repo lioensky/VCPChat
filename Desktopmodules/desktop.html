@@ -16,6 +16,7 @@
     <!-- 导入主题CSS，获得壁纸和主题变色能力 -->
     <link rel="stylesheet" href="../styles/themes.css">
     <link rel="stylesheet" href="desktop.css">
+    <link rel="stylesheet" href="css/living-icons.css">
     <!-- 渲染依赖 -->
     <script src="../vendor/marked.min.js"></script>
     <script src="../vendor/highlight.min.js"></script>
@@ -395,6 +396,10 @@
     <script src="ui/saveModal.js"></script>
     <!-- 9. UI层：侧栏（依赖 state, domRefs） -->
     <script src="ui/sidebar.js"></script>
+    <!-- Shared living artwork: reuse the main launchpad renderer, not a fork. -->
+    <script src="../modules/ui-system/next-shell/launchpad-icon-art.js"></script>
+    <script src="../modules/ui-system/next-shell/launchpad-icons.js"></script>
+    <script src="ui/livingIcons.js"></script>
     <!-- 9.5. UI层：Dock 栏（依赖 state, domRefs, CONSTANTS） -->
     <script src="ui/dock.js"></script>
     <!-- 9.6. UI层：图标选择器（依赖 state） -->

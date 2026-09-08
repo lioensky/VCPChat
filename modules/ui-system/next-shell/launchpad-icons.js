@@ -78,6 +78,8 @@
                 state.dirty = true;
                 this.wake();
             };
+            const cleanupStart = this.cleanups.length;
+            state.host = host;
             this.listen(button, 'pointerenter', () => change('hovered', true));
             this.listen(button, 'pointerleave', () => {
                 state.x = state.y = 0;
@@ -95,9 +97,20 @@
             });
             this.listen(button, 'pointerdown', () => change('kick', 1));
             this.listen(button, 'pointercancel', () => change('kick', 0));
+            state.cleanups = this.cleanups.splice(cleanupStart);
             this.resizeObserver?.observe(canvas);
             this.intersection?.observe(canvas);
             return true;
+        }
+
+        detach(host) {
+            const index = this.items.findIndex(item => item.host === host);
+            if (index < 0) return;
+            const [item] = this.items.splice(index, 1);
+            item.cleanups.forEach(cleanup => cleanup());
+            this.resizeObserver?.unobserve(item.canvas);
+            this.intersection?.unobserve(item.canvas);
+            if (!this.items.length) this.stop();
         }
 
         resize() {
@@ -172,6 +185,7 @@
             this.stop();
             this.resizeObserver?.disconnect();
             this.intersection?.disconnect();
+            this.items.forEach(item => item.cleanups.forEach(cleanup => cleanup()));
             this.cleanups.splice(0).forEach(cleanup => cleanup());
             this.items.length = 0;
         }

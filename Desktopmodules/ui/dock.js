@@ -239,6 +239,8 @@
             iconWrapper.appendChild(img);
         }
 
+        window.VCPDesktop.livingIcons?.attach(iconWrapper, item, 'dock', 'desktop-dock-icon-svg');
+
         // 名称标签
         const label = document.createElement('span');
         label.className = 'desktop-dock-icon-label';
@@ -557,6 +559,8 @@
                     img.src = staticSrc;
                 });
             }
+
+            window.VCPDesktop.livingIcons?.attach(card, item, 'drawer', 'desktop-dock-drawer-item-svg');
 
             // 名称
             const name = document.createElement('span');
@@ -1044,6 +1048,8 @@
             img.draggable = false;
             iconEl.appendChild(img);
         }
+
+        window.VCPDesktop.livingIcons?.attach(iconEl, item, 'desktop', 'desktop-shortcut-icon-svg');
 
         // 标签
         const label = document.createElement('span');
@@ -1552,6 +1558,9 @@
                         } else if (defaultSvgIcon) {
                             replaceDesktopIconElement(el, 'html', defaultSvgIcon);
                         }
+                        window.VCPDesktop.livingIcons?.attach(el, {
+                            ...item, icon: defaultIcon, htmlIcon: defaultHtmlIcon
+                        }, 'desktop', 'desktop-shortcut-icon-svg');
                     }
                 });
             }
@@ -1676,6 +1685,7 @@
      * @param {string} content - dataUrl (image) 或 htmlContent (html)
      */
     function replaceDesktopIconElement(iconEl, type, content) {
+        window.VCPDesktop.livingIcons?.release(iconEl);
         // 移除旧的图标元素（img / span.desktop-shortcut-icon-svg / span.desktop-shortcut-icon-emoji）
         const oldImg = iconEl.querySelector('.desktop-shortcut-icon-img');
         const oldSvg = iconEl.querySelector('.desktop-shortcut-icon-svg');
