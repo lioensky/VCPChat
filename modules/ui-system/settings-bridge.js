@@ -28,6 +28,13 @@ import { applySchemaSurface } from '../settings/schema-surface.js';
 import { renderAgentSettingsSurface } from '../settings/schema/sidebar-surfaces.js';
 import { ensureSettingsSidebarSurface } from './settings/settings-sidebar-surface.js';
 import { mountSettingsSidebarForm } from './settings/settings-sidebar-runtime.js';
+import {
+    mountTypedAgentModelPicker,
+    mountTypedGroupModelPicker,
+    mountTypedTopicSummaryModelPicker,
+    cleanupDisconnectedAgentModelPickers,
+    releaseAllAgentModelPickers,
+} from './settings/agent-model-picker.js';
 import { addTypedNetworkPathInput, ensureTypedSettingsService, ensureRustAssistantUiService, ensureForumConfigUiService, ensureAssistantRuntimeUiService, mountTypedSettingsConsumer, mountTypedForumFieldOwner, mountTypedFieldOwner, flushTypedOwners, flushTypedForumFields, teardownTypedOwners, disposeTypedSettings } from './typed-field-owners.js';
 
 // Per-modal shell state is keyed by modal root so teardown can restore the
@@ -307,6 +314,7 @@ function enhanceGlobalSettings(root, form) {
                 mountForumCredentialInputs(form, api(), scope());
                 // M5-c pass2：步进器行结构已由渲染器直出，这里只激活行为。
                 mountGlobalSteppers(form, api(), scope());
+                mountTypedTopicSummaryModelPicker(form);
             },
         },
         { name: 'forum-field-owner', run: () => mountTypedForumFieldOwner(root, form) },
@@ -818,11 +826,16 @@ function refresh() {
     if (isPresentationDestroyed()) return;
     ensurePresentationScope();
     cleanupDisconnectedControllers();
+    cleanupDisconnectedAgentModelPickers();
     mountGlobalSettingsEntryButton();
     const globalSettingsModal = syncGlobalSettingsHost();
     mountGlobalSettingsPathAction(globalSettingsModal);
     if (shouldEnhanceSidebarSettings()) {
         document.querySelectorAll('#agentSettingsForm, #groupSettingsForm').forEach(mountSettingsSidebarForm);
+        const agentForm = document.getElementById('agentSettingsForm');
+        if (agentForm) mountTypedAgentModelPicker(agentForm);
+        const groupForm = document.getElementById('groupSettingsForm');
+        if (groupForm) mountTypedGroupModelPicker(groupForm);
     }
     if (hasGlobalSettingsSurface()) {
         const form = globalSettingsModal?.querySelector('#globalSettingsForm');
@@ -856,6 +869,7 @@ async function teardown() {
     // Retract enhanced controller identity only after durable settings work
     // has quiesced; a failed close must leave the surface retryable.
     await releaseAllControllers();
+    releaseAllAgentModelPickers();
     if (scope) {
         try { await scope.dispose('settings-presentation-teardown'); }
         catch (error) { console.error('[VCPUI SettingsBridge] Failed to dispose presentation:', error); }
