@@ -238,9 +238,20 @@ body.music-playing .ambient-wave-layer-3 {
     display: flex;
     flex-direction: column;
     gap: 20px;
-    overflow: hidden;
+    /*
+     * 不在玻璃卡片的共同父级创建矩形裁剪层。
+     * Chromium 会把 overflow:hidden 与子级 backdrop-filter 合成为一整块浅色表面。
+     */
+    overflow: visible;
     min-width: 400px;
     /* Prevent it from becoming too small */
+
+    background: transparent !important;
+    background-image: none !important;
+    border: 0;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 .right-sidebar {
