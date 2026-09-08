@@ -930,7 +930,7 @@
 
     /* ---- avatar ---- */
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope #globalSettingsModal .agent-avatar-display {
-        border-radius: var(--vcp-ui-radius-md);
+        border-radius: 50%;
     }
 
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .settings-section-title {
