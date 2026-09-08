@@ -400,7 +400,8 @@ const allowedSourceDifferencePatterns = [
     // forbidden Build/Agent terms are still checked independently above.
     /^modules\/settings\//,
     /^modules\/ui-system\/settings\//,
-    /^modules\/ui-system\/agent-settings-bridge\.js$/,
+    /^Groupmodules\/groupSettingsMarkup\.js$/,
+    /^modules\/ui-system\/settings\/settings-sidebar-runtime\.js$/,
     /^modules\/ui-system\/typed-field-owners\.js$/,
     /^modules\/ui-system\/settings-bridge\.js$/,
     /^modules\/uiux\//,

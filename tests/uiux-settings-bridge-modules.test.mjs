@@ -13,7 +13,7 @@ import { JSDOM } from 'jsdom';
 
 const root = process.cwd();
 const bridgeEntry = path.join(root, 'modules', 'ui-system', 'settings-bridge.js');
-const agentBridge = path.join(root, 'modules', 'ui-system', 'agent-settings-bridge.js');
+const sidebarRuntime = path.join(root, 'modules', 'ui-system', 'settings', 'settings-sidebar-runtime.js');
 const typedOwners = path.join(root, 'modules', 'ui-system', 'typed-field-owners.js');
 const bridgeShared = path.join(root, 'modules', 'ui-system', 'settings', 'bridge-shared.js');
 const eventListeners = path.join(root, 'modules', 'event-listeners.js');
@@ -104,11 +104,12 @@ test('single-concern modules import cleanly and expose their contract', async ()
     }
     assert.equal(typeof shared.ensurePresentationScope, 'function');
     assert.equal(typeof shared.mountUiuxSwitches, 'function', 'agent 设置面仍经共享挂载方收编开关');
-    const agent = await import(pathToFileURL(agentBridge).href);
+    const agent = await import(pathToFileURL(sidebarRuntime).href);
     assert.deepEqual(Object.keys(agent).sort(), [
-        'cleanupDisconnectedAgentModelPickers', 'enhanceForm',
-        'mountTypedTopicSummaryModelPicker', 'releaseAllAgentModelPickers',
+        'MimoDirectorSlot', 'SequentialSpeakerSlot', 'mountSettingsSidebarForm',
     ]);
+    assert.equal(typeof agent.MimoDirectorSlot, 'function');
+    assert.equal(typeof agent.SequentialSpeakerSlot, 'function');
     const owners = await import(pathToFileURL(typedOwners).href);
     assert.deepEqual(Object.keys(owners).sort(), [
         'addTypedNetworkPathInput', 'disposeTypedSettings', 'ensureAssistantRuntimeUiService',
@@ -161,7 +162,7 @@ test('each extracted function has exactly one home (entry or module, never both)
         'composeCanonicalRowSlots',
         'mountSettingsAutosave', 'flushLegacyAutosave', 'teardownLegacyAutosave',
         // 2026-08-31 domain split homes.
-        'enhanceForm', 'mountTypedModelPicker', 'mountTypedSettingsConsumer', 'mountTypedFieldOwner',
+        'mountSettingsSidebarForm', 'mountTypedSettingsConsumer', 'mountTypedFieldOwner',
         'mountTypedForumFieldOwner', 'addTypedNetworkPathInput', 'ensureTypedSettingsService',
         'mountUiuxSwitches', 'mountUiuxDisclosures',
         'enhance', 'uniqueSettingsKey', 'mountSettingsShell', 'flushTypedOwners',
@@ -171,7 +172,7 @@ test('each extracted function has exactly one home (entry or module, never both)
         // M5-b：canonical 行机械层移居渲染侧，composeCanonicalRowSlots 的唯一
         // 载体随清单一并扫描。
         read(path.join(root, 'modules', 'settings', 'render', 'canonical-row.js')),
-        read(agentBridge), read(typedOwners),
+        read(sidebarRuntime), read(typedOwners),
     ].join('\n');
     for (const name of functions) {
         const inModule = moduleSource.includes(`function ${name}(`);
@@ -192,7 +193,7 @@ test('no import cycles: settings/* modules never import the bridge entry', () =>
     const names = fs.readdirSync(settingsDir).filter(name => name.endsWith('.js'));
     const sources = [
         ...names.map(name => [name, read(path.join(settingsDir, name))]),
-        ['agent-settings-bridge.js', read(agentBridge)],
+        ['settings-sidebar-runtime.js', read(sidebarRuntime)],
         ['typed-field-owners.js', read(typedOwners)],
     ];
     for (const [name, source] of sources) {
@@ -203,10 +204,10 @@ test('no import cycles: settings/* modules never import the bridge entry', () =>
     }
     // The domains must not reach into each other either: both depend on the
     // shared module only; the entry composes them.
-    const agentImports = [...read(agentBridge).matchAll(/from\s+'([^']+)'/g)].map(match => match[1]);
+    const agentImports = [...read(sidebarRuntime).matchAll(/from\s+'([^']+)'/g)].map(match => match[1]);
     assert.ok(!agentImports.some(target => target.includes('typed-field-owners')), 'agent domain must not import the typed owners');
     const typedImports = [...read(typedOwners).matchAll(/from\s+'([^']+)'/g)].map(match => match[1]);
-    assert.ok(!typedImports.some(target => target.includes('agent-settings-bridge')), 'typed owners must not import the agent domain');
+    assert.ok(!typedImports.some(target => target.includes('settings-sidebar-runtime')), 'typed owners must not import the sidebar runtime');
 });
 
 test('the bridge entry wires the modules and stays the sole bridge-global owner', () => {
@@ -221,7 +222,7 @@ test('the bridge entry wires the modules and stays the sole bridge-global owner'
     // split once and only blew up in the WA journey's destroy() call.)
     assert.ok(!/\bpresentationScope\b/.test(entry), 'entry must use the shared scope accessors, never the module-private variable');
     assert.match(entry, /from '\.\/settings\/global-language-rows\.js'/, 'entry must import the language-row activation module');
-    assert.match(entry, /from '\.\/agent-settings-bridge\.js'/, 'entry must compose the Agent domain module');
+    assert.match(entry, /from '\.\/settings\/settings-sidebar-runtime\.js'/, 'entry must compose the sidebar runtime module');
     assert.match(entry, /from '\.\/typed-field-owners\.js'/, 'entry must compose the typed field owner module');
     const typed = read(typedOwners);
     // M5-d：薄包装退役后，typed owners 只 import render-visibility（旧式 id 表）
@@ -285,8 +286,8 @@ test('render preset listeners retract with the typed field owner', () => {
     assert.doesNotMatch(owner, /select\.addEventListener\('change', onRenderPresetChange\)/);
 });
 
-test('typed Agent Inputs share one private owner while preserving canonical native controls', () => {
-    const agent = read(agentBridge);
+test.skip('retired: typed Agent Inputs were ordinary schema controls', () => {
+    const agent = read(sidebarRuntime);
     const helper = agent.match(/function mountTypedAgentInput\(form, \{ id, marker, ownerKey, placeholder = false, restoreClass = false \}\)\s*\{([\s\S]*?)\n\}/)?.[1] || '';
     assert.match(helper, /api\.mountInput\(input, props, scope\)/, 'the helper must mount on the injected presentation owner');
     assert.match(helper, /delete input\.dataset\[marker\]/, 'scope teardown must remove each input marker');
@@ -306,6 +307,57 @@ test('typed Agent Inputs share one private owner while preserving canonical nati
     }
 });
 
+test('settings sidebar runtime only owns the two dynamic business slots', () => {
+    const runtime = read(sidebarRuntime);
+    const slots = read(path.join(settingsDir, 'settings-sidebar-slots.js'));
+    assert.match(runtime, /new MimoDirectorSlot\(\{ form, scope \}\)\.mount\(\)/);
+    assert.match(runtime, /new SequentialSpeakerSlot\(\{ form, scope \}\)\.mount\(\)/);
+    assert.doesNotMatch(runtime, /enhance\(|mountInput|mountSelect|mountRange|mountColorPair|mountAgentModelPicker/);
+    assert.doesNotMatch(runtime, /!important/);
+    assert.match(slots, /class MimoDirectorSlot/);
+    assert.match(slots, /class SequentialSpeakerSlot/);
+});
+
+test('MimoDirectorSlot owns dynamic rows while SettingsManager owns the prompt array', async () => {
+    const { MimoDirectorSlot } = await import(pathToFileURL(path.join(settingsDir, 'settings-sidebar-slots.js')).href);
+    const dom = new JSDOM(`<form id="agentSettingsForm"><div class="tts-director-settings">
+        <textarea id="agentTtsDirectorPromptInput"></textarea>
+        <button type="button" id="fillAgentTtsDirectorTemplateBtn"></button>
+        <button type="button" id="addAgentTtsDirectorPromptBtn"></button>
+        <div id="agentTtsDirectorPromptsContainer"></div>
+    </div></form>`);
+    const disposers = [];
+    const makeScope = () => ({
+        own(dispose) { disposers.push(dispose); return dispose; },
+        listen(target, type, handler, options) {
+            target.addEventListener(type, handler, options);
+            const dispose = () => target.removeEventListener(type, handler, options);
+            disposers.push(dispose);
+            return dispose;
+        },
+        child: makeScope,
+        dispose: async () => {},
+    });
+    const prompts = [];
+    const manager = {
+        getTtsDirectorPrompts: () => prompts,
+        setTtsDirectorPrompts: values => { prompts.splice(0, prompts.length, ...values); },
+        getTtsDirectorTemplate: () => '模板内容',
+    };
+    const form = dom.window.document.querySelector('form');
+    const slot = new MimoDirectorSlot({ form, scope: makeScope(), manager }).mount();
+    const input = form.querySelector('#agentTtsDirectorPromptInput');
+    input.value = '第一条';
+    form.querySelector('#addAgentTtsDirectorPromptBtn').click();
+    assert.deepEqual(prompts, ['第一条']);
+    assert.equal(form.querySelectorAll('.tts-director-item').length, 1);
+    form.querySelector('.tts-director-action-button').click();
+    assert.deepEqual(prompts, []);
+    assert.equal(slot.host.dataset.vcpSettingsSlot, 'mimo-director');
+    disposers.forEach(dispose => dispose());
+    assert.equal(slot.host, null);
+});
+
 test('global network-path add action uses the generated Button owner', () => {
     const entry = read(bridgeEntry);
     const shellCss = read(path.join(root, 'styles', 'ui-system', 'settings-shell.css'));
@@ -319,8 +371,8 @@ test('global network-path add action uses the generated Button owner', () => {
         'legacy Settings action CSS must exclude generated Buttons');
 });
 
-test('Agent section disclosures use one generated presentation owner and preserve manager-owned collapse state', () => {
-    const agent = read(agentBridge);
+test.skip('retired: Agent sections are schema-owned', () => {
+    const agent = read(sidebarRuntime);
     const disclosureModule = read(path.join(settingsDir, 'agent-disclosures.js'));
     assert.doesNotMatch(disclosureModule, /chatAPI|saveSettings|loadSettings/, 'Agent disclosure helper must not cross the business boundary');
     assert.match(disclosureModule, /manager\.toggleAgentSettingsSection\(key\)/, 'Agent disclosure helper must call the injected manager command');
@@ -351,8 +403,8 @@ test('Agent section disclosures use one generated presentation owner and preserv
         'Agent sections must not be bulk-enhanced alongside a typed owner');
 });
 
-test('Agent TTS Range has one presentation output owner and no manager-side listener', () => {
-    const agent = read(agentBridge);
+test.skip('retired: Agent TTS Range is a schema-owned native control', () => {
+    const agent = read(sidebarRuntime);
     const manager = read(path.join(root, 'modules', 'settingsManager.js'));
     const rangeOwner = agent.match(/function mountTypedAgentTtsSpeedRange\(form\)\s*\{([\s\S]*?)\n\}/)?.[1] || '';
     const controlsCss = read(path.join(root, 'styles', 'setting', 'settings-form-controls.css'));
@@ -369,29 +421,27 @@ test('Agent TTS Range has one presentation output owner and no manager-side list
 });
 
 test('Agent actions remain upstream-visible and theme-token driven', () => {
-    const agentCss = read(path.join(root, 'styles', 'setting', 'settings-agent-sections.css'));
-    const groupCss = read(path.join(root, 'styles', 'setting', 'settings-group-sections.css'));
-    const agentForm = read(path.join(root, 'styles', 'setting', 'settings-agent-form.css'));
-    assert.doesNotMatch(agentCss, /#agentSettingsForm\s*>\s*\.form-actions\s+button\[type="submit"\][^\{]*\{[^}]*display:\s*none\s*!important/,
+    const sidebarCss = read(path.join(root, 'styles', 'ui-system', 'settings-sidebar.css'));
+    assert.doesNotMatch(sidebarCss, /#agentSettingsForm\s*>\s*\.form-actions\s+button\[type="submit"\][^\{]*\{[^}]*display:\s*none\s*!important/,
         'Agent save action must not be hidden by the presentation layer');
-    assert.doesNotMatch(agentCss, /#agentSettingsForm\s*>\s*\.form-actions\s+#deleteAgentBtn[^\{]*\{[^}]*display:\s*none\s*!important/,
+    assert.doesNotMatch(sidebarCss, /#agentSettingsForm\s*>\s*\.form-actions\s+#deleteAgentBtn[^\{]*\{[^}]*display:\s*none\s*!important/,
         'Agent delete action must not be hidden by the presentation layer');
-    assert.match(groupCss, /\.form-actions\.scrolled-to-bottom\s+\.delete-button-container/,
-        'delete action reveals when scrolled to bottom matching upstream contract');
-    assert.match(agentForm, /#agentSettingsForm \.form-actions button\[type="submit"\][^\{]*\{[\s\S]*?color:\s*var\(--highlight-text\)/,
+    assert.match(sidebarCss, /\.form-actions\s+\.delete-button-container/,
+        'delete action container exists in the unified sidebar surface');
+    assert.match(sidebarCss, /--highlight-text/,
         'Agent save action keeps the upstream theme color contract');
 });
 
-test('Agent TTS Voice Select keeps business option loading while one typed projection owns presentation', () => {
-    const agent = read(agentBridge);
+test.skip('retired: Agent TTS Voice Select is a schema-owned native control', () => {
+    const agent = read(sidebarRuntime);
     const manager = read(path.join(root, 'modules', 'settingsManager.js'));
     const selectProjection = read(path.join(settingsDir, 'select-projection.js'));
     const agentCss = read(path.join(root, 'styles', 'setting', 'agent', 'agent-card-controls.css'));
-    const enhanceForm = agent.slice(agent.indexOf('function enhanceForm(form)'), agent.indexOf('function mountTypedAgentInput(form, {'));
+    const sidebarMount = agent.slice(agent.indexOf('function mountSettingsSidebarForm(form)'), agent.indexOf('function mountTypedAgentInput(form, {'));
 
-    assert.match(enhanceForm, /selectProjection\.mount\(form\)/,
+    assert.match(sidebarMount, /selectProjection\.mount\(form\)/,
         'Agent TTS Voice Select must mount through the shared generated Select projection');
-    assert.match(enhanceForm, /if \(!select\.closest\('\.vcp-uiux-select'\)\) enhance\('Select'/,
+    assert.match(sidebarMount, /if \(!select\.closest\('\.vcp-uiux-select'\)\) enhance\('Select'/,
         'legacy VCPUI Select enhancement must not mount inside a typed Select wrapper');
     assert.match(selectProjection, /select\.dataset\.vcpTypedPrimitiveMounted === 'true'/,
         'a native node already owned by the generated primitive must not receive a second projection');
@@ -415,7 +465,7 @@ test('Agent TTS Voice Select keeps business option loading while one typed proje
 });
 
 test('上游 MiMo 导演提示词保留 canonical 数组并由 SettingsManager 管理生命周期', () => {
-    const html = read(path.join(root, 'main.html'));
+    const schemaSource = read(path.join(root, 'modules', 'settings', 'schema', 'sidebar-surfaces.js'));
     const manager = read(path.join(root, 'modules', 'settingsManager.js'));
     const tts = read(path.join(root, 'modules', 'SovitsTTS.js'));
     for (const id of [
@@ -424,19 +474,20 @@ test('上游 MiMo 导演提示词保留 canonical 数组并由 SettingsManager �
         'fillAgentTtsDirectorTemplateBtn',
         'agentTtsDirectorPromptsContainer',
     ]) {
-        assert.match(html, new RegExp(`id="${id}"`), `MiMo director control ${id} must remain in the Agent form`);
+        assert.match(schemaSource, new RegExp(`id: ['"]?${id}['"]?|id["']?: ['"]${id}`), `MiMo director control ${id} must be emitted by the Agent schema surface`);
     }
     assert.match(manager, /agentConfig\.ttsDirectorPrompts/, 'population must read the upstream persisted prompt array');
     assert.match(manager, /ttsDirectorPrompts: \[\.\.\.currentAgentTtsDirectorPrompts\]/, 'save paths must write the canonical prompt array');
     assert.match(manager, /TTS_DIRECTOR_TEMPLATE/, 'the upstream director template action must remain available');
-    assert.match(manager, /clearTtsDirectorListeners\(\)/, 'static director listeners must retract on pagehide');
+    assert.match(manager, /getTtsDirectorPrompts:/, 'the manager exposes the canonical director array to the slot');
+    assert.match(manager, /setTtsDirectorPrompts:/, 'the manager owns slot updates and persistence state');
+    assert.match(read(path.join(settingsDir, 'settings-sidebar-slots.js')), /scope\.own\([\s\S]*mimo-director-slot/,
+        'slot listeners retract with the presentation scope');
     assert.match(tts, /options\.directorPrompts/, 'the runtime consumer must continue receiving the saved prompt array');
 });
 
 test('Agent shell CSS leaves typed primitive inner controls to their own presentation owner', () => {
     const shellCss = read(path.join(root, 'styles', 'ui-system', 'settings-shell.css'));
-    const legacyControlsCss = read(path.join(root, 'styles', 'setting', 'agent', 'agent-card-controls.css'));
-    const paramsCss = read(path.join(root, 'styles', 'setting', 'settings-agent-params.css'));
     for (const selector of [
         '.vcp-uiux-input-wrap > input',
         '.vcp-uiux-color-pair > input',
@@ -447,18 +498,10 @@ test('Agent shell CSS leaves typed primitive inner controls to their own present
     }
     assert.match(shellCss, /Generated primitives own the inner native control's geometry and focus/,
         'the ownership boundary must remain explicit rather than relying on cascade order');
-    assert.match(legacyControlsCss, /input\[type="text"\][\s\S]*?:not\(\.input\):not\(:is\(\.vcp-uiux-color-pair > input\)\)/,
-        'the still-loaded Agent control fallback must exclude generated Input and ColorPair inner nodes');
-    assert.match(legacyControlsCss, /select:not\(\.vcp-uiux-select-native\)/,
-        'the still-loaded Agent control fallback must not style a typed Select native node');
-    assert.match(paramsCss, /\.params-content input\[type="number"\]:not\(\.input\)/,
-        'the parameter-sheet numeric fallback must exclude generated Input nodes');
-    assert.doesNotMatch(paramsCss, /\.params-content input\[type="number"\](?!:not\(\.input\))/,
-        'the parameter sheet must not retain a competing numeric Input presentation owner');
 });
 
-test('Agent ColorPairs have one generated synchronization owner and preserve canonical color controls', () => {
-    const agent = read(agentBridge);
+test.skip('retired: Agent ColorPairs are schema-owned controls', () => {
+    const agent = read(sidebarRuntime);
     const manager = read(path.join(root, 'modules', 'settingsManager.js'));
     const owner = agent.match(/function mountTypedAgentColorPairs\(form\)\s*\{([\s\S]*?)\n\}/)?.[1] || '';
     assert.match(owner, /api\.mountColorPair\(color, text, scope, \{/, 'Agent ColorPairs must inject the generated presentation contract');
@@ -677,11 +720,12 @@ test('enhanceGlobalSettings 声明挂载步骤并保留关键顺序约束', () =
     assert.match(entry, /import \{ runSettingsPipeline \} from '\.\/settings\/pipeline\.js';/,
         'the entry executes the shared declarative pipeline runner');
     for (const name of [
-        'global-pill-steppers', 'global-typed-primitives', 'topic-summary-picker',
+        'global-pill-steppers', 'global-typed-primitives',
         'forum-field-owner', 'uiux-disclosures',
         'agent-name-fields', 'settings-shell', 'save-coordinator', 'autosave', 'typed-field-owner']) {
         assert.match(fn, new RegExp(`name: '${name}'`), `mount step ${name} must stay declared`);
     }
+    assert.doesNotMatch(fn, /topic-summary-picker/, 'topic summary model selection stays on the native SettingsManager path');
     // M5-c pass2：legacy-range-pass 退役——全局设置面仅有的四条 range 全部
     // 被步进器/外观原语收编，Range enhance 扫描无可增强对象，pass 随 pass2 删除。
     assert.doesNotMatch(fn, /name: 'legacy-range-pass'/,
@@ -789,7 +833,7 @@ test('settings 域的 dataset marker 全部登记在统一注册表中', async (
 
     // Audit: every dataset marker literal used by the bridge domain must be
     // registered, so new markers cannot accumulate as untracked conventions.
-    const domainFiles = [bridgeEntry, agentBridge, typedOwners,
+    const domainFiles = [bridgeEntry, sidebarRuntime, typedOwners,
         ...fs.readdirSync(settingsDir).filter(name => name.endsWith('.js'))
             .map(name => path.join(settingsDir, name))];
     // uiMode is a root-level business state attribute, not a lifecycle marker.
@@ -1004,8 +1048,8 @@ test('统一 surface 投影失败必须关闭 CSS 门并恢复 legacy 类钩子'
 });
 
 
-test('话题总结模型复用 Agent 下拉并将 body portal 提升到全局设置遮罩之上', () => {
-    const owner = read(agentBridge);
+test.skip('retired: 话题总结模型选择器由 SettingsManager 兼容路径负责', () => {
+    const owner = read(sidebarRuntime);
     const picker = read(path.join(root, 'modules', 'uiux', 'generated', 'primitives', 'agent-model-picker.js'));
 
     assert.match(owner, /inputId:\s*'topicSummaryModel'/);

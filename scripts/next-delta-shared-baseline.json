@@ -20,12 +20,12 @@
     "reason": "shared Agent/group catalog authority with stale-load commit protection"
   },
   "Groupmodules/grouprenderer.js": {
-    "sha256": "b1e6353e21b0625e89d9f711e2aea3303b4bbcb77e7bacc57e6a05649fa6c58e",
-    "reason": "upstream group business surface with retired toolbar binding removed"
+    "sha256": "ba0e9f142922738e9a9b9991f9576cded825dc2ec69309788378e65ddbb3cb3a",
+    "reason": "upstream group business surface now delegates settings attachment to the schema sidebar Surface while preserving group persistence and chat behavior"
   },
   "modules/settingsManager.js": {
-    "sha256": "f0606966a853b7ffd762197b90cbf4671b17836c47be00050b418b611dd7f819",
-    "reason": "reviewed Agent settings behavior after replacing ambient globalSettings reads with the composition-injected settings authority; saved Agent projection and collapse-state updates replace immutable selection snapshots through the injected selection authority"
+    "sha256": "7b6f8531f5bebd6a8ef5281c34c92e305101c6cf6ac36514a7249e730975cf9c",
+    "reason": "reviewed Agent settings behavior after moving Agent form rendering to schema and Surface lifecycle ownership; saved projection, collapse state, prompt context and stale reload protection remain manager-owned"
   },
   "modules/filterManager.js": {
     "sha256": "2390116ff961f18cdf2d3defd02d5559de9381f891be7e5eb33ef99f98337225",
