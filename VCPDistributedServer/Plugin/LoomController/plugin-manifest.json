@@ -1,8 +1,8 @@
 {
   "name": "LoomController",
   "displayName": "VCP Loom Agent 控制器",
-  "version": "1.4.0",
-  "description": "供 Agent 创建、感知、打开、关闭、查询、编辑并通过 Loom ID + 动作 ID 安全操作 VCP LoomAPP 的直接业务适配器。",
+  "version": "1.5.0",
+  "description": "供 Agent 创建、感知、打开、关闭、查询、编辑并通过 appId + 自然页面命令安全操作 VCP LoomAPP 的直接业务适配器。常用交互使用 click、type、send_keys、scroll 等一级命令与平铺参数。",
   "pluginType": "hybridservice",
   "communication": {
     "protocol": "direct",
@@ -63,6 +63,51 @@
         "command": "GetPageImage",
         "description": "获取指定运行中 LoomAPP 的 Grounded Markdown 中标注的单张正文图片或视频画面。先通过 GetPageInfo 从所选 appId 的页面信息中选择 IMG1 等短 ID 或 vcp-img-* 严格 ID，再调用本命令。Loom 会在对应应用内定位页面元素、滚动到可视区域、截取其实际渲染内容，并返回标准 OpenAI 多模态 content：文字摘要加 image_url.url=data:image/...;base64,...，格式与截图命令一致。图片 ID 仅对所属 LoomAPP 页面文档代次有效。\n参数:\n- command (字符串, 必需): 固定为 GetPageImage。\n- appId (字符串, 必需): 图片所属且已打开的 LoomAPP ID，用于选择 Loom 运行实例。\n- imageId (字符串, 必需): 该应用 Grounded Markdown 中的 IMG* 或严格图片 ID。\n- format / imageFormat (字符串, 可选): jpeg（默认）或 png。\n- quality (数字, 可选): JPEG 质量 1-100，默认 85。\n- maxWidth (数字, 可选): 输出最大宽度，默认 1600，范围 64-4096。\n- snapshotId / documentGeneration / runtimeInstanceId (可选): GetPageInfo 返回的上下文校验字段。\n- strict (布尔值, 可选): 启用严格快照校验。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」GetPageImage「末」,\nappId:「始」example-app「末」,\nimageId:「始」IMG1「末」,\nformat:「始」jpeg「末」,\nquality:「始」85「末」\n<<<[END_TOOL_REQUEST]>>>",
         "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」GetPageImage「末」,\nappId:「始」example-app「末」,\nimageId:「始」IMG1「末」,\nformat:「始」jpeg「末」,\nquality:「始」85「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "click",
+        "description": "点击指定运行中 LoomAPP 的页面控件。参数直接平铺，无需填写 actionId 或 params JSON。参数：appId 必需；target 必需；snapshotId、documentGeneration、runtimeInstanceId、strict、verification、actionBackend、allowFallback 可选。动作后应调用 GetPageInfo 获取新页面状态。\n调用示例:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」click「末」,\nappId:「始」example-app「末」,\ntarget:「始」登录「末」,\nstrict:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」click「末」,\nappId:「始」example-app「末」,\ntarget:「始」vcp-button-1「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "type",
+        "description": "在指定运行中 LoomAPP 的输入控件中输入文本。参数直接平铺，无需填写 actionId 或 params JSON。参数：appId、target、text 必需；snapshotId、documentGeneration、runtimeInstanceId、strict、verification 可选。\n调用示例:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」type「末」,\nappId:「始」example-app「末」,\ntarget:「始」搜索框「末」,\ntext:「始」VCP Agent「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」type「末」,\nappId:「始」example-app「末」,\ntarget:「始」vcp-searchbox-1「末」,\ntext:「始」VCP Agent「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "send_keys",
+        "description": "向指定运行中 LoomAPP 的目标元素或当前焦点发送键盘动作，适合按 Enter、Tab、Escape、方向键及组合键。参数直接平铺，无需填写 actionId 或 params JSON。参数：appId 必需；target 可选；keys 必需，可传 Enter、Ctrl+A 等；兼容单数 key；snapshotId、documentGeneration、runtimeInstanceId、strict、verification、actionBackend、allowFallback 可选。兼容命令别名 press 与历史误用 page_press，三者均路由到标准 page_send_keys。\n调用示例:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」send_keys「末」,\nappId:「始」example-app「末」,\ntarget:「始」搜索框「末」,\nkeys:「始」Enter「末」,\nstrict:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」send_keys「末」,\nappId:「始」example-app「末」,\nkeys:「始」Ctrl+A「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "scroll",
+        "description": "滚动指定运行中 LoomAPP 的页面或可滚动元素。参数直接平铺。参数：appId、direction 必需；amount、target、x、y、behavior 及严格快照字段可选。direction 支持 down、up、left、right、bottom、top、to、page_down、page_up。\n调用示例:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」scroll「末」,\nappId:「始」example-app「末」,\ndirection:「始」down「末」,\namount:「始」900「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」scroll「末」,\nappId:「始」example-app「末」,\ndirection:「始」bottom「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "set_value",
+        "description": "原子设置指定 LoomAPP 输入控件的值并验证。参数直接平铺。参数：appId、target、value 必需；严格快照和验证字段可选。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」set_value「末」,\nappId:「始」example-app「末」,\ntarget:「始」#volume「末」,\nvalue:「始」50「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "select_option",
+        "description": "选择指定 LoomAPP 的原生 select 选项。参数直接平铺。参数：appId、target 必需；value、text、index 至少提供一项；exact 和严格快照字段可选。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」select_option「末」,\nappId:「始」example-app「末」,\ntarget:「始」#city「末」,\ntext:「始」上海「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "hover",
+        "description": "在指定 LoomAPP 页面目标上悬停。参数直接平铺。参数：appId、target 必需；严格快照字段可选。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」hover「末」,\nappId:「始」example-app「末」,\ntarget:「始」vcp-button-2「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "check",
+        "description": "将指定 LoomAPP 的 checkbox、radio 或 ARIA switch 幂等设置到目标状态。参数直接平铺。参数：appId、target 必需；checked 可选，默认 true；严格快照字段可选。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」check「末」,\nappId:「始」example-app「末」,\ntarget:「始」vcp-checkbox-1「末」,\nchecked:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "wait_for",
+        "description": "等待指定 LoomAPP 页面条件满足，替代固定延时。参数直接平铺。参数：appId、condition 必需；target、text、url、value、timeoutMs、pollMs、stableMs 可选。condition 支持 element、visible、hidden、text、url、value、dom_stable。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」wait_for「末」,\nappId:「始」example-app「末」,\ncondition:「始」dom_stable「末」,\nstableMs:「始」800「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
         "command": "ExecuteAction",

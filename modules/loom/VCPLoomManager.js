@@ -652,6 +652,18 @@ class VCPLoomManager {
         if (!isPlainObject(params)) throw new Error('Loom Web Agent 动作 params 必须是对象。');
         if (!isPlainObject(options)) throw new Error('Loom Web Agent 动作 options 必须是对象。');
 
+        // 兼容自然语言工具常用的单数 key，以及历史上误生成的
+        // page_press/press 动作别名；页面运行时统一消费 keys。
+        const normalizedParams = { ...params };
+        if (
+            action === 'page_send_keys'
+            && normalizedParams.keys === undefined
+            && normalizedParams.key !== undefined
+        ) {
+            normalizedParams.keys = normalizedParams.key;
+            delete normalizedParams.key;
+        }
+
         if (!instance.webAgentRuntime) {
             throw new Error('Loom Web Agent 后端运行时尚未初始化。');
         }
@@ -661,9 +673,9 @@ class VCPLoomManager {
                 adapter: 'electron-loom',
                 targetId: instance.view.webContents.id,
                 appId: instance.appId,
-                ...(isPlainObject(params.targetContext) ? params.targetContext : {}),
+                ...(isPlainObject(normalizedParams.targetContext) ? normalizedParams.targetContext : {}),
             },
-            params,
+            params: normalizedParams,
             options,
             metadata: {
                 source: 'LoomController',

@@ -1,5 +1,29 @@
 'use strict';
 
+const DIRECT_ACTION_COMMANDS = Object.freeze(new Set([
+    'click',
+    'type',
+    'set_value',
+    'send_keys',
+    'press',
+    'page_press',
+    'select_option',
+    'check',
+    'hover',
+    'scroll',
+    'wait_for',
+    'query_html',
+    'query_js',
+    'page_code_search',
+    'execute_script',
+    'capture_screenshot',
+]));
+
+const ACTION_ID_ALIASES = Object.freeze({
+    press: 'send_keys',
+    page_press: 'send_keys',
+});
+
 let runtime = {
     loomManager: null,
     logger: console,
@@ -122,12 +146,15 @@ function extractSerialStepArgs(rawArgs, index) {
 
 function buildSerialActionArgs(command, stepArgs) {
     const explicit = command.toLowerCase() === 'executeaction';
-    const actionId = explicit
+    const requestedActionId = explicit
         ? requireActionId(stepArgs)
         : command;
+    const normalizedRequestedActionId = requestedActionId.toLowerCase();
+    const actionId = ACTION_ID_ALIASES[normalizedRequestedActionId] || requestedActionId;
     const params = parseObject(stepArgs.params ?? stepArgs.actionParams, 'params');
     const options = parseObject(stepArgs.options ?? stepArgs.actionOptions, 'options');
     const reserved = new Set([
+        'command', 'action', 'commandIdentifier', 'tool_name', 'maid',
         'appId', 'app_id', 'id',
         'actionId', 'action_id', 'webAction',
         'params', 'actionParams', 'options', 'actionOptions',
@@ -147,6 +174,15 @@ function buildSerialActionArgs(command, stepArgs) {
         } else {
             params[key] = value;
         }
+    }
+
+    if (
+        actionId.toLowerCase() === 'send_keys'
+        && params.keys === undefined
+        && params.key !== undefined
+    ) {
+        params.keys = params.key;
+        delete params.key;
     }
 
     return {
@@ -519,9 +555,18 @@ async function getPageImage(args) {
 
 async function executeAction(args) {
     const appId = requireAppId(args);
-    const actionId = requireActionId(args);
+    const requestedActionId = requireActionId(args);
+    const actionId = ACTION_ID_ALIASES[requestedActionId.toLowerCase()] || requestedActionId;
     const params = parseObject(args.params ?? args.actionParams, 'params');
     const options = parseObject(args.options ?? args.actionOptions, 'options');
+    if (
+        actionId.toLowerCase() === 'send_keys'
+        && params.keys === undefined
+        && params.key !== undefined
+    ) {
+        params.keys = params.key;
+        delete params.key;
+    }
     const execution = await requireManager().executeWebAgentAction(
         appId,
         actionId,
@@ -626,8 +671,11 @@ async function processToolCall(rawArgs = {}) {
         case 'editappsources':
             return editAppSources(rawArgs);
         default:
+            if (DIRECT_ACTION_COMMANDS.has(command)) {
+                return executeAction(buildSerialActionArgs(command, rawArgs));
+            }
             throw new Error(
-                '[LoomController] 不支持的 command。可用值：ListApps、ListOpenApps、CreateApp、OpenApp、CloseApp、GetAppSources、GetRuntimeSource、GetRenderedText、GetPageInfo、GetPageImage、ExecuteAction、EditAppSources。'
+                '[LoomController] 不支持的 command。可用值：ListApps、ListOpenApps、CreateApp、OpenApp、CloseApp、GetAppSources、GetRuntimeSource、GetRenderedText、GetPageInfo、GetPageImage、click、type、send_keys、press、scroll、wait_for 等页面命令、ExecuteAction、EditAppSources。'
             );
     }
 }
@@ -643,6 +691,8 @@ module.exports = {
     initialize,
     processToolCall,
     _test: {
+        DIRECT_ACTION_COMMANDS,
+        ACTION_ID_ALIASES,
         normalizeCommand,
         requireActionId,
         requireImageId,

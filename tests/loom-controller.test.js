@@ -2,6 +2,8 @@
 
 const assert = require('assert');
 const loomController = require('../VCPDistributedServer/Plugin/LoomController/LoomControllerService');
+const loomManifest = require('../VCPDistributedServer/Plugin/LoomController/plugin-manifest.json');
+const webAgentProtocol = require('../modules/loom/webcore/web-agent-protocol');
 
 function createFakeManager() {
     const calls = [];
@@ -141,6 +143,33 @@ function assertContentResult(result) {
 }
 
 async function run() {
+    const registeredCommands = loomManifest.capabilities.invocationCommands
+        .map((definition) => definition.command);
+    for (const command of [
+        'click',
+        'type',
+        'send_keys',
+        'scroll',
+        'set_value',
+        'select_option',
+        'hover',
+        'check',
+        'wait_for',
+    ]) {
+        assert(
+            registeredCommands.includes(command),
+            `LoomController 清单应注册一级命令 ${command}`
+        );
+    }
+    assert.strictEqual(
+        webAgentProtocol.resolveCommand('page_press').canonical,
+        'page_send_keys'
+    );
+    assert.strictEqual(
+        webAgentProtocol.resolveCommand('press').canonical,
+        'page_send_keys'
+    );
+
     loomController._test.resetForTests();
     const manager = createFakeManager();
     loomController.initialize({
@@ -266,6 +295,72 @@ async function run() {
     assert.strictEqual(actionCall[2], 'type');
     assert.strictEqual(actionCall[3].target, 'vcp-searchbox-1');
     assert.deepStrictEqual(actionCall[4], { strict: true });
+
+    const legacyPress = await loomController.processToolCall({
+        command: 'ExecuteAction',
+        appId: 'test-app',
+        actionId: 'page_press',
+        params: {
+            target: 'vcp-h-1-3-9-7o6foz',
+            key: 'Enter',
+            documentGeneration: 1,
+            snapshotId: 3,
+        },
+        options: {
+            strict: true,
+            verification: true,
+        },
+    });
+    assertContentResult(legacyPress);
+    const legacyPressCall = manager.calls.filter((call) =>
+        call[0] === 'executeWebAgentAction'
+    ).at(-1);
+    assert.strictEqual(legacyPressCall[2], 'send_keys');
+    assert.strictEqual(legacyPressCall[3].keys, 'Enter');
+    assert.strictEqual(legacyPressCall[3].key, undefined);
+    assert.strictEqual(legacyPressCall[3].target, 'vcp-h-1-3-9-7o6foz');
+    assert.deepStrictEqual(legacyPressCall[4], {
+        strict: true,
+        verification: true,
+    });
+
+    const directKeys = await loomController.processToolCall({
+        command: 'send_keys',
+        appId: 'test-app',
+        target: 'vcp-searchbox-1',
+        keys: 'Enter',
+        snapshotId: '3',
+        strict: 'true',
+        verification: 'auto',
+    });
+    assertContentResult(directKeys);
+    const directKeysCall = manager.calls.filter((call) =>
+        call[0] === 'executeWebAgentAction'
+    ).at(-1);
+    assert.strictEqual(directKeysCall[2], 'send_keys');
+    assert.deepStrictEqual(directKeysCall[3], {
+        target: 'vcp-searchbox-1',
+        keys: 'Enter',
+        snapshotId: '3',
+    });
+    assert.deepStrictEqual(directKeysCall[4], {
+        strict: true,
+        verification: 'auto',
+    });
+
+    const directClick = await loomController.processToolCall({
+        command: 'click',
+        appId: 'test-app',
+        target: '登录',
+        allowFallback: 'false',
+    });
+    assertContentResult(directClick);
+    const directClickCall = manager.calls.filter((call) =>
+        call[0] === 'executeWebAgentAction'
+    ).at(-1);
+    assert.strictEqual(directClickCall[2], 'click');
+    assert.deepStrictEqual(directClickCall[3], { target: '登录' });
+    assert.deepStrictEqual(directClickCall[4], { allowFallback: false });
 
     const serialStartedAt = Date.now();
     const serial = await loomController.processToolCall({
