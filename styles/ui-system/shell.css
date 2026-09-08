@@ -254,6 +254,31 @@
     html .vcp-ui-scope .next-ui-app-icon[data-tone="purple"] { background: var(--vcp-ui-info); }
     html .vcp-ui-scope .next-ui-app-icon[data-tone="charcoal"] { color: var(--vcp-ui-text-0); background: var(--vcp-ui-fill-2); }
 
+    /* Living artwork owns its silhouette and shadow; no legacy colored tile. */
+    html .vcp-ui-scope .next-ui-app-icon.next-ui-app-icon-living {
+        width: 112px;
+        height: 112px;
+        max-width: 100%;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+        transform: none;
+        transition: none;
+    }
+
+    html .vcp-ui-scope .next-ui-living-icon {
+        display: block;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+    }
+
+    html .vcp-ui-scope[data-density="compact"] .next-ui-app-icon.next-ui-app-icon-living {
+        width: 96px;
+        height: 96px;
+    }
+
     html .vcp-ui-scope .next-ui-app-item:focus-visible {
         outline: 2px solid var(--vcp-ui-focus-ring);
         outline-offset: 2px;

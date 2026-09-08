@@ -20,6 +20,12 @@
             this.openEmbedded = options.openEmbedded || (() => {});
             this.openInternal = options.openInternal || (() => {});
             this.tones = options.tones || DEFAULT_TONES;
+            this.createIcons = options.createIcons || (() => {
+                const Icons = this.document.defaultView?.VCPNextShell?.LaunchpadIcons;
+                return Icons ? new Icons({ document: this.document }) : null;
+            });
+            this.icons = null;
+            this.active = false;
             this.scope = null;
             this.renderScope = null;
             this.abortController = null;
@@ -38,6 +44,8 @@
             if (!this.mounted) return;
             const grid = this.document.getElementById('nextUiAppGrid');
             if (!grid) return;
+            this.icons?.dispose();
+            this.icons = this.createIcons();
             if (this.renderScope) {
                 const previous = this.renderScope;
                 this.renderScope = null;
@@ -80,7 +88,15 @@
                 button.className = 'next-ui-app-item';
                 button.dataset.openMode = app.embed ? 'embedded' : 'window';
                 button.title = app.embed ? `${app.name}（在标签页中打开）` : `${app.name}（在独立窗口中打开）`;
-                button.innerHTML = `<span class="next-ui-app-icon" data-tone="${this.tones[index % this.tones.length]}">${this.getIcon(app.icon)}</span><span>${app.name}</span>`;
+                const icon = this.document.createElement('span');
+                icon.className = 'next-ui-app-icon';
+                icon.dataset.tone = this.tones[index % this.tones.length];
+                icon.setAttribute('aria-hidden', 'true');
+                icon.innerHTML = this.getIcon(app.icon);
+                const label = this.document.createElement('span');
+                label.textContent = app.name;
+                button.append(icon, label);
+                this.icons?.attach(button, icon, app.icon);
                 listen(button, () => app.embed ? this.openEmbedded(app) : this.openExternal(app));
                 grid.append(button);
             });
@@ -97,14 +113,24 @@
                 const label = this.document.createElement('span');
                 label.textContent = app.title;
                 button.append(icon, label);
+                this.icons?.attach(button, icon, app.id === 'ui-component-library' ? 'widgets' : app.launchpadIcon);
                 listen(button, () => this.openInternal(app.id));
                 grid.append(button);
             });
+            this.icons?.setActive(this.active);
+        }
+
+        setActive(active) {
+            this.active = Boolean(active);
+            this.icons?.setActive(this.active);
         }
 
         dispose() {
             if (!this.mounted) return;
             this.mounted = false;
+            this.active = false;
+            this.icons?.dispose();
+            this.icons = null;
             const current = this.renderScope;
             this.renderScope = null;
             if (current) void current.dispose('launchpad-dispose');

@@ -319,7 +319,7 @@
         color: var(--vcp-ui-text-2);
     }
 
-    html .vcp-ui-scope.vcp-ui-internal-app-icon {
+    html .vcp-ui-scope.vcp-ui-internal-app-icon:not(.next-ui-app-icon-living) {
         color: var(--vcp-ui-on-accent);
         background: var(--vcp-ui-accent);
     }
