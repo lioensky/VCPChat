@@ -49,9 +49,15 @@ function normalizeCanvasOpenRequest(eventOrFilePath, maybeFilePath) {
 }
 
 function setCanvasSession(request) {
-    activeRootDir = request.rootDir || CANVAS_CACHE_DIR;
+    const nextRootDir = path.resolve(request.rootDir || CANVAS_CACHE_DIR);
+    const rootChanged = path.resolve(activeRootDir) !== nextRootDir;
+    activeRootDir = nextRootDir;
     activeCanvasContext = request.context || 'canvas';
     activeCanvasMetadata = request.metadata || {};
+    if (rootChanged) {
+        initialFilePath = null;
+        activeCanvasPath = null;
+    }
     if (request.filePath) {
         initialFilePath = request.filePath;
         activeCanvasPath = request.filePath;
@@ -223,6 +229,28 @@ function initialize(config) {
     ipcHandlersRegistered = true;
 }
 
+async function refreshCanvasSession(sender, preferredFilePath = null) {
+    const history = await getCanvasHistory();
+    let current = null;
+    const candidate = preferredFilePath && await fs.pathExists(preferredFilePath)
+        ? preferredFilePath
+        : (history[0]?.path || null);
+    if (candidate) {
+        current = await getCanvasFileContent(candidate);
+        history.forEach(item => {
+            item.isActive = item.path === candidate;
+        });
+        activeCanvasPath = candidate;
+    } else {
+        activeCanvasPath = null;
+    }
+    sender.send('canvas-load-data', {
+        history,
+        current,
+        session: getSessionPayload(),
+    });
+}
+
 async function createCanvasWindow(eventOrFilePath = null, maybeFilePath = null) {
     const request = normalizeCanvasOpenRequest(eventOrFilePath, maybeFilePath);
     const filePath = request.filePath;
@@ -233,9 +261,7 @@ async function createCanvasWindow(eventOrFilePath = null, maybeFilePath = null) 
             canvasWindow.show();
         }
         canvasWindow.focus();
-        if (filePath) {
-            handleLoadCanvasFile({ sender: canvasWindow.webContents }, filePath);
-        }
+        await refreshCanvasSession(canvasWindow.webContents, filePath);
         return;
     }
 
@@ -319,20 +345,9 @@ async function createCanvasWindow(eventOrFilePath = null, maybeFilePath = null) 
 async function handleCanvasReady(event) {
     const sender = event.sender;
     try {
-        const history = await getCanvasHistory();
-        let current = null;
-        if (initialFilePath && (await fs.pathExists(initialFilePath))) {
-            current = await getCanvasFileContent(initialFilePath);
-            history.forEach(h => h.isActive = (h.path === initialFilePath));
-            activeCanvasPath = initialFilePath;
-            initialFilePath = null; // Consume it
-        } else if (history.length > 0) {
-            // Default behavior: load the first file
-            current = await getCanvasFileContent(history[0].path);
-            history[0].isActive = true;
-            activeCanvasPath = history[0].path;
-        }
-        sender.send('canvas-load-data', { history, current, session: getSessionPayload() });
+        const preferredFilePath = initialFilePath;
+        initialFilePath = null;
+        await refreshCanvasSession(sender, preferredFilePath);
     } catch (error) {
         console.error('Failed to load canvas data:', error);
     }
@@ -588,4 +603,9 @@ module.exports = {
     getCanvasWindow,    // Export for direct access
     requestCanvasEdit,
     handleGetLatestCanvasContent,
+    _test: {
+        normalizeCanvasOpenRequest,
+        setCanvasSession,
+        getSessionPayload,
+    },
 };

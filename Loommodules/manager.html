@@ -66,9 +66,16 @@
         }
         .window-controls button:hover { background: var(--loom-hover); }
         .window-controls .close:hover { background: var(--danger); color: var(--text-on-accent, white); }
-        .layout { height: calc(100% - 44px); display: grid; grid-template-columns: 300px minmax(0, 1fr); }
+        .layout {
+            height: calc(100% - 44px);
+            min-height: 0;
+            overflow: hidden;
+            display: grid;
+            grid-template-columns: 300px minmax(0, 1fr);
+        }
         .sidebar {
-            min-width: 0; border-right: 1px solid var(--line); background: var(--loom-sidebar);
+            min-width: 0; min-height: 0; overflow: hidden;
+            border-right: 1px solid var(--line); background: var(--loom-sidebar);
             display: flex; flex-direction: column; backdrop-filter: blur(14px) saturate(112%);
             -webkit-backdrop-filter: blur(14px) saturate(112%);
         }
@@ -89,7 +96,27 @@
         }
         input::placeholder, textarea::placeholder { color: var(--placeholder-text, var(--muted)); }
         input:focus, textarea:focus, select:focus { border-color: color-mix(in srgb, var(--accent) 75%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
-        .app-list { overflow: auto; padding: 6px 9px 14px; }
+        .app-list {
+            min-height: 0;
+            flex: 1;
+            overflow-x: hidden;
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            padding: 6px 9px 14px;
+        }
+        .skill-manager-footer {
+            flex: none;
+            padding: 10px 14px 14px;
+            border-top: 1px solid var(--line);
+            background: color-mix(in srgb, var(--loom-sidebar) 88%, transparent);
+        }
+        .skill-manager-footer .btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            width: 100%;
+        }
         .app-card {
             width: 100%; border: 1px solid transparent; border-radius: 11px; background: transparent; padding: 10px;
             display: grid; grid-template-columns: 38px 1fr auto; gap: 10px; align-items: center; text-align: left; cursor: pointer;
@@ -102,7 +129,13 @@
         .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); opacity: .55; }
         .status-dot.running { background: var(--accent-2); box-shadow: 0 0 10px color-mix(in srgb, var(--accent-2) 70%, transparent); opacity: 1; }
         .empty { color: var(--muted); text-align: center; padding: 40px 20px; }
-        .editor { min-width: 0; display: flex; flex-direction: column; }
+        .editor {
+            min-width: 0;
+            min-height: 0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
         .editor-head {
             height: 59px; padding: 10px 17px; border-bottom: 1px solid var(--line);
             display: flex; align-items: center; gap: 8px; background: var(--loom-bar);
@@ -111,7 +144,38 @@
         .editor-title { min-width: 0; margin-right: auto; }
         .editor-title strong { display: block; font-size: 15px; }
         .editor-title span { color: var(--muted); font-size: 11px; }
-        .editor-body { min-height: 0; flex: 1; overflow: auto; padding: 17px; }
+        .editor-body {
+            min-width: 0;
+            min-height: 0;
+            flex: 1 1 0;
+            overflow-x: hidden;
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            scrollbar-gutter: stable;
+            padding: 17px;
+        }
+        .app-list::-webkit-scrollbar,
+        .editor-body::-webkit-scrollbar {
+            width: 9px;
+            height: 9px;
+        }
+        .app-list::-webkit-scrollbar-track,
+        .editor-body::-webkit-scrollbar-track {
+            background: color-mix(in srgb, var(--loom-sidebar) 74%, transparent);
+        }
+        .app-list::-webkit-scrollbar-thumb,
+        .editor-body::-webkit-scrollbar-thumb {
+            min-height: 36px;
+            border: 2px solid transparent;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--muted) 58%, transparent);
+            background-clip: padding-box;
+        }
+        .app-list::-webkit-scrollbar-thumb:hover,
+        .editor-body::-webkit-scrollbar-thumb:hover {
+            background: color-mix(in srgb, var(--accent) 72%, transparent);
+            background-clip: padding-box;
+        }
         .placeholder {
             height: 100%; display: grid; place-items: center; color: var(--muted); text-align: center;
         }
@@ -169,6 +233,12 @@
             </div>
             <input id="search" class="search" type="search" placeholder="搜索 LoomAPP…">
             <div class="app-list" id="appList"></div>
+            <div class="skill-manager-footer">
+                <button class="btn" id="manageSkills" type="button" title="在 Canvas 中打开 LoomSkills 工作区">
+                    <span aria-hidden="true">⌘</span>
+                    <span>管理 LoomSkill</span>
+                </button>
+            </div>
         </aside>
 
         <section class="editor">
@@ -536,6 +606,15 @@
         $('openFolder').addEventListener('click', async () => {
             try { unwrap(await api.openAppFolder(originalId)); }
             catch (error) { showToast(error.message, true); }
+        });
+
+        $('manageSkills').addEventListener('click', async () => {
+            try {
+                unwrap(await api.openSkillManager());
+                showToast('已在 Canvas 中打开 LoomSkills 工作区。');
+            } catch (error) {
+                showToast(error.message, true);
+            }
         });
 
         $('refreshApps').addEventListener('click', async () => {

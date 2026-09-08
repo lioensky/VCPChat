@@ -31,6 +31,7 @@ const loomAPI = Object.freeze({
     clearSession: (appId) => invoke('loom:clear-session', appId),
     reloadRegistry: () => invoke('loom:reload-registry'),
     openManager: () => invoke('loom:open-manager'),
+    openSkillManager: () => invoke('loom:open-skill-manager'),
     exportApp: (appId) => invoke('loom:export-app', appId),
     importApp: () => invoke('loom:import-app'),
     openAppFolder: (appId) => invoke('loom:open-app-folder', appId),

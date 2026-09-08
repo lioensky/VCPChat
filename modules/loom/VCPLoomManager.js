@@ -1737,6 +1737,26 @@ class VCPLoomManager {
         return null;
     }
 
+    async openSkillManagerInCanvas(instance = null) {
+        const skillsRoot = path.join(this.appDataRoot, 'LoomSkills');
+        await fs.ensureDir(skillsRoot);
+        const canvasHandlers = require('../ipc/canvasHandlers');
+        await canvasHandlers.createCanvasWindow({
+            rootDir: skillsRoot,
+            context: 'loom-skill',
+            metadata: {
+                appId: instance?.appId || null,
+                title: 'Loom Skill',
+            },
+        });
+        return {
+            success: true,
+            appId: instance?.appId || null,
+            rootDir: skillsRoot,
+            context: 'loom-skill',
+        };
+    }
+
     async navigate(instance, action) {
         const contents = instance.view.webContents;
         if (contents.isDestroyed()) return;
@@ -2050,6 +2070,7 @@ class VCPLoomManager {
         handle('loom:open-manager', () => this.openManager());
         handle('loom:export-app', (_event, appId) => this.exportApp(appId));
         handle('loom:import-app', () => this.importApp());
+        handle('loom:open-skill-manager', () => this.openSkillManagerInCanvas());
         handle('loom:open-app-folder', async (_event, appId) => {
             const error = await shell.openPath(this.appDir(appId));
             if (error) throw new Error(error);
@@ -2083,6 +2104,8 @@ class VCPLoomManager {
                 return this.selectDeviceFromShell(instance, payload);
             } else if (action === 'open-external') {
                 await shell.openExternal(instance.view.webContents.getURL());
+            } else if (action === 'open-skill-manager') {
+                return this.openSkillManagerInCanvas(instance);
             } else {
                 throw new Error(`不支持的壳操作：${action}`);
             }
