@@ -1,5 +1,68 @@
 # LoomController
 
+## 1.7.0：编号串语法 Skill 闭环（以下旧版章节作为历史参考）
+
+当前版本提供三个独立维护入口：
+
+- [`CreateSkill`](plugin-manifest.json:18)：提交标题、描述、占位符声明，以及已经测试成功的完整编号串语法；不经过录制器。
+- [`ManageSkill`](plugin-manifest.json:23)：列出、读取或删除 Skill，并返回保存时的目标验证状态。
+- [`EditSkill`](plugin-manifest.json:28)：修改元数据，或用完整编号串语法替换操作链并重新验证。
+
+执行入口 [`ExecuteSkill`](plugin-manifest.json:33) 提供同步和异步模式，查询入口为 [`GetSkillTask`](plugin-manifest.json:38)。同步等待结果；异步创建后只返回任务 ID。异步任务创建成功不代表执行成功。
+
+### 直接固化现有串语法，而非录制
+
+Agent 将刚刚跑通的 [`commandN`](LoomControllerService.js:130)、[`targetN`](LoomControllerService.js:143)、[`textN`](LoomControllerService.js:143) 等编号参数原样提交给创建入口。例如：
+
+```text
+command: CreateSkill
+skillId: deepseek-question
+appId: deepseek-mobile
+title: 提问并读取回答
+placeholders: {"question":{"description":"本次问题","required":true,"example":"验证问题"}}
+validationMode: current
+command1: type
+target1: vcp-h-1-3-9-7o6foz
+text1: {{question}}
+command2: wait
+waitMs2: 1000
+command3: send_keys
+target3: vcp-h-1-3-9-7o6foz
+keys3: Enter
+command4: wait
+waitMs4: 180000
+command5: getrenderedtext
+```
+
+创建路由会先识别顶层命令，因此其编号步骤只会被编译，不会被普通串行执行器抢先执行。
+
+### DOM 固化与验证模式
+
+[`createPersistentTarget()`](../../../modules/loom/webcore/web-agent-page-runtime-core.js:1002) 将当前 VCP 句柄解析为真实 DOM 元素，并保存页面来源、唯一选择器和关键元素特征；输入框当前值不会进入定位特征。
+
+- `current`：默认。只读验证当前 DOM，不点击或输入。固化失败时允许保留原始目标，但返回 `validated=false` 和 `fallback=raw-vcp-id`；该兜底跨刷新、导航或重启不可靠。
+- `trial`：使用占位符的 `example` 或 `default` 顺序真实执行一次操作链。任何目标固化或动作失败都不创建文件。
+- `none`：不访问 DOM，原样保存目标并明确标记未验证。
+
+执行时持久目标必须唯一匹配；来源改变、找不到或歧义都会停止该步骤。原始 VCP ID 过期时同样明确失败，不模糊匹配、不自动重放。
+
+### 输入占位符
+
+操作字段可引用 `{{变量名}}`，并必须在 `placeholders` 中声明。执行时通过 `inputs` 提供本次值。所有变量在任务创建和任何页面动作之前完成检查；缺少必填值会零副作用失败。
+
+替换发生在已经编译好的结构化字段中，因此输入内容即使包含换行、逗号或类似工具调用的文本，也只会作为该字段的值，不会生成新步骤。目标字段不允许使用输入占位符。
+
+### 生命周期与边界
+
+- 插件同步调用超时为两分钟；同步 Skill 和创建时的 `trial` 应在此期限内完成。
+- 异步 Skill 没有两分钟总执行期限，可包含长等待；单步等待不再限制为 30 秒，仅受 JavaScript 定时器安全范围约束。
+- 异步结果在任务完成后开始保留 30 分钟；查询不续期，进程重启后任务记录丢失。
+- 最多保留 100 个任务，每条 Skill 最多 100 步、文件最多 256 KB，每任务回执预算 4 MB。
+- 任一步失败停止后续步骤并保留此前回执；同一应用的 Skill 不能并发。
+- 本版本不支持录制、递归 Skill、任意主进程代码或自动变量推理。
+
+测试见 [`loom-skill.test.js`](../../../tests/loom-skill.test.js)、[`loom-persistent-target.test.js`](../../../tests/loom-persistent-target.test.js) 与 [`loom-controller.test.js`](../../../tests/loom-controller.test.js)。
+
 VCP Loom Agent 控制器，为 Agent 提供 LoomAPP 的创建、查询、打开、关闭、源码读取和配置编辑能力。
 
 > 当前版本：1.0.0  

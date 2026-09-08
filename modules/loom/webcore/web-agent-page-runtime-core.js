@@ -999,7 +999,72 @@
             };
         }
 
+        function createPersistentTarget(target, options = {}) {
+            assertContext(options, options.strict === true);
+            const resolved = resolveTarget(target, { sideEffecting: true });
+            const element = resolved.element;
+            if (element.getRootNode() !== documentObject) {
+                throw structuredError('SKILL_TARGET_UNSUPPORTED', '暂不支持固化 Shadow DOM 或 iframe 内目标');
+            }
+            const selectors = [...new Set(pageCore.createLocatorHints(element)
+                .map(hint => hint.selector))].filter(selector => {
+                try {
+                    const matches = documentObject.querySelectorAll(selector);
+                    return matches.length === 1 && matches[0] === element;
+                } catch { return false; }
+            });
+            if (!selectors.length) {
+                throw structuredError('TARGET_AMBIGUOUS', '目标没有可唯一定位的持久化选择器');
+            }
+            const signature = {};
+            for (const attribute of ['type', 'role', 'name', 'aria-label', 'placeholder', 'title', 'href']) {
+                const value = element.getAttribute(attribute);
+                if (value) signature[attribute] = value;
+            }
+            return {
+                kind: 'loom-persistent-target',
+                version: 1,
+                origin: new URL(documentObject.URL).origin,
+                tagName: element.tagName.toLowerCase(),
+                selectors,
+                attributes: signature,
+                text: pageCore.isInputLikeElement(element)
+                    ? null : pageCore.normalizeAttribute(element.textContent).slice(0, 160),
+            };
+        }
+
+        function resolvePersistentTarget(target) {
+            if (target.version !== 1 || target.origin !== new URL(documentObject.URL).origin) {
+                throw structuredError('SKILL_TARGET_CONTEXT_MISMATCH', 'Skill 目标页面来源或定位版本不匹配');
+            }
+            if (!Array.isArray(target.selectors) || !target.selectors.length || target.selectors.length > 16) {
+                throw structuredError('INVALID_REQUEST', 'Skill 定位信息无效');
+            }
+            const candidates = new Set();
+            for (const selector of target.selectors) {
+                let matches;
+                try { matches = documentObject.querySelectorAll(selector); }
+                catch { throw structuredError('INVALID_REQUEST', 'Skill 选择器无效'); }
+                for (const element of matches) {
+                    if (element.tagName.toLowerCase() !== target.tagName) continue;
+                    if (!Object.entries(target.attributes || {}).every(([key, value]) =>
+                        element.getAttribute(key) === value)) continue;
+                    if (target.text !== null && pageCore.normalizeAttribute(element.textContent).slice(0, 160) !== target.text) continue;
+                    candidates.add(element);
+                }
+            }
+            if (candidates.size !== 1) {
+                throw structuredError(candidates.size ? 'TARGET_AMBIGUOUS' : 'TARGET_NOT_FOUND',
+                    'Skill 持久化目标必须唯一匹配', { candidateCount: candidates.size });
+            }
+            return {
+                element: [...candidates][0], source: 'skill-persistent',
+                confidence: 1, candidateCount: 1, signatureValid: true,
+            };
+        }
+
         function resolveTarget(target, options = {}) {
+            if (target?.kind === 'loom-persistent-target') return resolvePersistentTarget(target);
             if (!target) throw structuredError('TARGET_NOT_FOUND', '缺少目标元素 target');
             const normalized = String(target).trim();
             const strictMatch = normalized.match(STRICT_HANDLE_PATTERN);
@@ -1790,6 +1855,7 @@
             snapshot,
             execute,
             resolveTarget,
+            createPersistentTarget,
             scoreContentImage,
             checkOcclusion,
             waitFor,

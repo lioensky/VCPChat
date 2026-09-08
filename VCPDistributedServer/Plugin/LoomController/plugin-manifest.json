@@ -1,12 +1,12 @@
 {
   "name": "LoomController",
   "displayName": "VCP Loom Agent 控制器",
-  "version": "1.5.0",
+  "version": "1.7.0",
   "description": "供 Agent 创建、感知、打开、关闭、查询、编辑并通过 appId + 自然页面命令安全操作 VCP LoomAPP 的直接业务适配器。常用交互使用 click、type、send_keys、scroll 等一级命令与平铺参数。",
   "pluginType": "hybridservice",
   "communication": {
     "protocol": "direct",
-    "timeout": 60000
+    "timeout": 120000
   },
   "entryPoint": {
     "type": "nodejs",
@@ -14,6 +14,31 @@
   },
   "capabilities": {
     "invocationCommands": [
+      {
+        "command": "CreateSkill",
+        "description": "把 Agent 已经测试过的完整编号串语法直接编译为持久化 Skill，不使用录制器。顶层必填 skillId、appId、title；description 可选。后续沿用普通串语法：command1/target1/text1、command2/waitMs2、command3/keys3 等。输入内容可写 {{变量名}}，并须在 placeholders JSON 中声明；执行时由 inputs 提供，缺失会在任何页面动作前失败。validationMode 可选：current（默认）只读取当前 DOM，不实际操作；能解析的 vcp ID 会固化成来源、唯一选择器和元素签名，不能解析时仍保留原始目标并返回 validated=false、fallback=raw-vcp-id；trial 会使用占位符 example/default 顺序实际执行整链并验证，任何目标或动作失败则不创建；none 完全跳过 DOM 验证。返回 skillId、占位符配置结果、逐目标验证/兜底结果及是否实际试跑。重名拒绝覆盖。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」CreateSkill「末」,\nskillId:「始」deepseek-question「末」,\nappId:「始」deepseek-mobile「末」,\ntitle:「始」提问并读取回答「末」,\ndescription:「始」向 DeepSeek 输入任意问题并读取结果「末」,\nplaceholders:「始」{\"question\":{\"description\":\"本次问题\",\"required\":true,\"example\":\"什么是量子纠缠\"}}「末」,\nvalidationMode:「始」current「末」,\ncommand1:「始」type「末」,\ntarget1:「始」vcp-h-1-3-9-7o6foz「末」,\ntext1:「始」{{question}}「末」,\ncommand2:「始」wait「末」,\nwaitMs2:「始」1000「末」,\ncommand3:「始」send_keys「末」,\ntarget3:「始」vcp-h-1-3-9-7o6foz「末」,\nkeys3:「始」Enter「末」,\ncommand4:「始」wait「末」,\nwaitMs4:「始」20000「末」,\ncommand5:「始」getrenderedtext「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "ManageSkill",
+        "description": "管理持久化 Skill。operation 默认 list：列出标题、描述、应用、更新时间、步数、占位符和最近保存的验证状态；get：必须提供 skillId，返回完整结构化编号步骤、占位符定义及逐目标验证/兜底结果；delete：必须提供 skillId，删除技能文件但不取消已启动任务。无录制流程。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」ManageSkill「末」,\noperation:「始」get「末」,\nskillId:「始」deepseek-question「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "EditSkill",
+        "description": "编辑已有 Skill。skillId 必填；可单独修改 title、description、appId 或 placeholders。需要替换操作链时，继续提交完整 command1/target1/text1... 编号串语法，并可设置 validationMode=current/trial/none 重新验证和固化目标。未提交字段保持原值；编辑不影响已经启动任务所读取的版本。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」EditSkill「末」,\nskillId:「始」deepseek-question「末」,\ntitle:「始」DeepSeek 通用提问「末」,\ndescription:「始」输入本次 question 并读取回答「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "ExecuteSkill",
+        "description": "执行已保存 Skill。skillId 必填；inputs 为本次占位符值 JSON，必须与创建时 placeholders 声明一致。替换发生在结构化字段层，输入中的换行、逗号或工具语法不会变成新步骤。mode=sync（默认）等待完成并返回回执，受插件两分钟同步调用期限约束；mode=async 创建成功后立即只返回 taskId，由 GetSkillTask 查询，不设 Skill 总执行期限，适合包含长等待的操作链。单步 wait 不再限制为30秒，仅受 JavaScript 定时器安全范围约束。创建成功不等于执行成功。持久化目标会按来源、唯一选择器和签名重新验证；raw-vcp-id 兜底跨刷新/导航/重启可能过期，过期就在该步骤失败，不模糊匹配或重放。异步任务完成后才开始计算30分钟内存结果保留期。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」ExecuteSkill「末」,\nskillId:「始」deepseek-question「末」,\nmode:「始」async「末」,\ninputs:「始」{\"question\":\"请解释相对论\"}「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "GetSkillTask",
+        "description": "查询异步或同步 Skill 任务，taskId 必填。返回运行状态、当前步骤、完成步数、失败原因、完成前回执及过期时间；查询不会延长保留期。任务不存在、已过期或服务重启后返回明确错误，不自动重跑。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」GetSkillTask「末」,\ntaskId:「始」上次执行返回的任务ID「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
       {
         "command": "ListApps",
         "description": "列出当前设备中已注册的全部 LoomAPP，包括应用 ID、名称、启动 URL、启用状态和运行状态。\n参数:\n- command (字符串, 必需): 固定为 ListApps。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」ListApps「末」\n<<<[END_TOOL_REQUEST]>>>",

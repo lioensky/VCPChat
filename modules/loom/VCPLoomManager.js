@@ -611,6 +611,27 @@ class VCPLoomManager {
         };
     }
 
+    async createPersistentWebAgentTarget(appId, target, context = {}) {
+        const instance = await this.ensureWebAgentRuntime(this.getRunningInstance(appId));
+        const serializedTarget = JSON.stringify(target);
+        const serializedContext = JSON.stringify(context);
+        return instance.view.webContents.executeJavaScriptInIsolatedWorld(
+            WEB_AGENT_WORLD_ID,
+            [{
+                code: `(() => {
+                    const runtime = globalThis.__vcpLoomWebAgentRuntime;
+                    if (!runtime) throw new Error('Loom Web Agent Runtime 尚未初始化');
+                    return runtime.createPersistentTarget(
+                        ${serializedTarget},
+                        ${serializedContext}
+                    );
+                })()`,
+                url: 'vcp-loom-webcore://skill/persist-target.js',
+            }],
+            true
+        );
+    }
+
     normalizeLoomActionId(actionId) {
         const input = String(actionId || '').trim();
         const resolved = webAgentCore.protocol.resolveCommand(input);
@@ -2013,6 +2034,8 @@ class VCPLoomManager {
         handle('loom:get-runtime-source', (_event, appId) => this.readRuntimeSource(appId));
         handle('loom:get-rendered-text', (_event, appId, options) => this.readRenderedText(appId, options));
         handle('loom:get-web-agent-page-info', (_event, appId) => this.getWebAgentPageInfo(appId));
+        handle('loom:create-persistent-web-agent-target', (_event, appId, target, context) =>
+            this.createPersistentWebAgentTarget(appId, target, context));
         handle('loom:execute-web-agent-action', (_event, appId, actionId, params, options) =>
             this.executeWebAgentAction(appId, actionId, params, options));
         handle('loom:create-app', (_event, payload) => this.createApp(payload));

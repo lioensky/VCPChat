@@ -393,15 +393,15 @@ async function run() {
     manager.executeWebAgentAction = async () => {
         throw new Error('模拟动作失败');
     };
-    await assert.rejects(
-        () => loomController.processToolCall({
-            appId: 'test-app',
-            command1: 'click',
-            target1: 'vcp-button-1',
-            command2: 'get_page_info',
-        }),
-        /串行步骤 1 \(click\) 失败，后续步骤已停止/
-    );
+    const serialFailure = await loomController.processToolCall({
+        appId: 'test-app',
+        command1: 'click',
+        target1: 'vcp-button-1',
+        command2: 'get_page_info',
+    });
+    assert.strictEqual(serialFailure.details.status, 'partial_failure');
+    assert.strictEqual(serialFailure.details.failedStep.index, 1);
+    assert.strictEqual(serialFailure.details.stopped, true);
     manager.executeWebAgentAction = originalExecuteAction;
     assert.strictEqual(
         manager.calls.slice(callsBeforeFailure).some((call) =>
@@ -460,14 +460,13 @@ async function run() {
         }),
         /params 不是有效的 JSON 对象/
     );
-    await assert.rejects(
-        () => loomController.processToolCall({
-            appId: 'test-app',
-            command1: 'wait',
-            waitMs1: '-1',
-        }),
-        /wait 时长必须是非负数/
-    );
+    const invalidWait = await loomController.processToolCall({
+        appId: 'test-app',
+        command1: 'wait',
+        waitMs1: '-1',
+    });
+    assert.strictEqual(invalidWait.details.status, 'partial_failure');
+    assert.match(invalidWait.details.failedStep.error, /wait 时长必须是非负数/);
     await assert.rejects(
         () => loomController.processToolCall({
             command: 'EditAppSources',
