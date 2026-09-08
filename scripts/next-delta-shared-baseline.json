@@ -12,20 +12,20 @@
     "reason": "per-Surface stream projection factory with an explicit StreamProjectionRuntime provider, owning document/window capabilities, attachStreamProjection lifecycle API, injected view authority, transient message models delegated to StreamTransientHistory, owned animation-frame scheduling and pending operation disposal, no repository or durable commit authority, no exported singleton or hidden root side channel, ContentRuntime render models, and owned Desktop push subscription/timer consumer; producer streamOperationId carried into projection and terminal validation; operation-scoped runtime map adapter, retry retirement, display-id projection index, and renderer-local conversation snapshot/reconcile so an active stream can be reprojected after topic history/DOM replacement without becoming durable authority"
   },
   "modules/topicListManager.js": {
-    "sha256": "0c613e24341ce273ad5807609b089138edbf098259801df7972d8a0733803607",
-    "reason": "shared topic authority with canonical presentation projection, mandatory repository access without a direct IPC fallback, explicit injected topic-selection readiness, lifecycle listener owner, ui manager and item-list service capabilities, render-scoped listener cleanup, and disposal of observers, sortable state, context menus, and dynamic topic resources"
+    "sha256": "3097222a98c6eff07acce3eb51c3c330e212125ae74daced615647347b3cfd04",
+    "reason": "shared topic authority with canonical presentation projection, mandatory repository access without a direct IPC fallback, explicit injected topic-selection readiness, lifecycle listener owner, ui manager and item-list service capabilities, render-scoped listener cleanup, and disposal of observers, sortable state, context menus, dynamic topic resources, and topic regeneration support"
   },
   "modules/itemListManager.js": {
     "sha256": "1a227093cc438de479c1ca8dc9c1abf7acd4dace1bd773c4d4256f10be1bd162",
     "reason": "shared Agent/group catalog authority with stale-load commit protection"
   },
   "Groupmodules/grouprenderer.js": {
-    "sha256": "ba0e9f142922738e9a9b9991f9576cded825dc2ec69309788378e65ddbb3cb3a",
+    "sha256": "951b4574f8da1f8599421cf60b6cde8c6e99bc3c67c38752ec1107e0d55d390c",
     "reason": "upstream group business surface now delegates settings attachment to the schema sidebar Surface while preserving group persistence and chat behavior"
   },
   "modules/settingsManager.js": {
-    "sha256": "7b6f8531f5bebd6a8ef5281c34c92e305101c6cf6ac36514a7249e730975cf9c",
-    "reason": "reviewed Agent settings behavior after moving Agent form rendering to schema and Surface lifecycle ownership; saved projection, collapse state, prompt context and stale reload protection remain manager-owned"
+    "sha256": "337328d1e693708dae73ba3c246385340a4c1f5dea307068986e0080617b2afe",
+    "reason": "reviewed Agent settings behavior after moving Agent form rendering to schema and Surface lifecycle ownership; dirty edits are flushed before prompt context switch; saved projection, collapse state, prompt context and stale reload protection remain manager-owned"
   },
   "modules/filterManager.js": {
     "sha256": "2390116ff961f18cdf2d3defd02d5559de9381f891be7e5eb33ef99f98337225",

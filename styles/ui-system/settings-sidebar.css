@@ -2324,6 +2324,34 @@ html .vcp-ui-scope .vcp-settings-schema-surface .form-actions {
     box-sizing: border-box;
 }
 
+html .vcp-ui-scope .vcp-settings-schema-surface .form-save-state-indicator {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 2px 0;
+    font-size: 11px;
+    line-height: 1.2;
+    color: var(--vcp-ui-text-2, #888);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .form-save-state-indicator:is([data-state="warning"], [data-state="ongoing"]) {
+    display: flex;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .form-save-state-indicator[data-state="warning"] {
+    color: var(--vcp-ui-warning, #e6a23c);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .form-save-state-indicator[data-state="ongoing"] {
+    color: var(--vcp-ui-accent, #409eff);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .form-state-dot-host {
+    display: inline-flex;
+    align-items: center;
+}
+
 html .vcp-ui-scope .vcp-settings-schema-surface .form-actions > button,
 html .vcp-ui-scope .vcp-settings-schema-surface .form-actions > .delete-button-container,
 html .vcp-ui-scope .vcp-settings-schema-surface .form-actions > .delete-button-container > button {
