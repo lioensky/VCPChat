@@ -24,10 +24,6 @@
     border-bottom: none;
 }
 
-.settings-header-bar,
-.settings-header-bar::after {
-    display: none !important;
-}
 
 .settings-header-bar::after {
     content: "";

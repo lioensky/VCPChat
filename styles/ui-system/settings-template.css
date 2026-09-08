@@ -1808,31 +1808,6 @@
     box-shadow: none !important;
 }
 
-/* Compact Agent Settings uses a two-row disclosure header.  The older shell
-   grid placed the summary in the same narrow column as the title, which made
-   long summaries overlap and appear vertically clipped. */
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope #tabContentSettings #agentSettingsContainer .agent-settings-section-header {
-    display: grid !important;
-    grid-template-columns: minmax(0, 1fr) auto !important;
-    grid-template-areas: "title toggle" "summary summary" !important;
-    align-items: start !important;
-    align-content: start !important;
-    row-gap: 4px !important;
-    min-height: max-content !important;
-    height: auto !important;
-    padding: 4px 0 6px !important;
-}
-
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope #tabContentSettings #agentSettingsContainer .agent-settings-section-title {
-    align-self: start !important;
-}
-
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope #tabContentSettings #agentSettingsContainer .agent-settings-section-summary {
-    grid-column: 1 / -1 !important;
-    align-self: start !important;
-    margin-top: 0 !important;
-}
-
 /* The sidebar-radius setting reuses the existing Uiux LanguageRow
    primitive. Keep its presentation local to Global Settings. */
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .appearance-radius-choice-control {
