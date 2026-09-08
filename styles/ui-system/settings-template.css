@@ -1099,6 +1099,7 @@
     min-height: 36px;
     width: auto;
     max-width: none;
+    overflow: hidden;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper:not(.is-editing) #userName {
@@ -1153,8 +1154,14 @@
     pointer-events: auto;
 }
 
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .agent-style-collapsible-container.collapsed .agent-style-controls,
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-style-collapsible-container.collapsed .agent-style-controls {
-    padding: 0 14px;
+    display: none !important;
+    max-height: 0 !important;
+    opacity: 0 !important;
+    overflow: hidden !important;
+    padding: 0 14px !important;
+    pointer-events: none !important;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-style-controls .style-control-item {
