@@ -28,8 +28,8 @@ function ensurePresentationScope() {
     return presentationScope;
 }
 
-// The single Select projection over the generated primitive; the bridge
-// injects the presentation scope so the module never reaches back up here.
+// The single Select projection over the generated primitive; settings surface
+// owners inject the presentation scope so this module never reaches upward.
 const selectProjection = createSelectProjection({ ensurePresentationScope });
 
 function isPresentationDestroyed() {
@@ -71,8 +71,8 @@ function enhance(name, element, options = {}) {
 // visual toggles keep their own mounts, and the legacy VCPUI native-kernel
 // switch stays as the degraded presentation when the primitive runtime or
 // the presentation scope is unavailable.
-// M5-c pass1 起，全局设置 schema 面的开关行 holder 由 field-renderer 直出，
-// 本挂载方只剩 agent 设置面（agent-settings-bridge）一个消费方。
+// M5-c pass1 起，全局设置 schema 面的开关行 holder 由 field-renderer 直出；
+// 该共享 helper 只服务于 schema-rendered sidebar fields。
 function mountUiuxSwitches(form) {
     if (!form) return;
     const api = window.VCPUIUX;

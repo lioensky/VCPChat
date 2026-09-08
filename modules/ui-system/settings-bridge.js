@@ -4,8 +4,9 @@
 // the public window.VCPUISettingsBridge contract and the refresh/teardown
 // lifecycle.  The domains live in their own modules —
 // settings/bridge-shared.js (presentation scope/controller/Select
-// projection/shared passes), agent-settings-bridge.js (Agent/Group sidebar
-// forms) and typed-field-owners.js (typed settings seam) — and compose here.
+// projection/shared passes), settings/settings-sidebar-runtime.js (schema
+// rendered Agent/Group sidebar behavior) and typed-field-owners.js (typed
+// settings seam) — and compose here.
 //
 // Global settings: the modal is rebuilt into one Uiux SettingsRoot-style
 // layout — native nav cells in the left rail, a header/options content column,
@@ -24,7 +25,9 @@ import { mountGlobalLanguageRows } from './settings/global-language-rows.js';
 import { mountGlobalChoices, mountGlobalSteppers, mountVoiceShortcutInput, mountGlobalTextInputs } from './settings/global-input-upgrades.js';
 import { mountForumCredentialInputs } from './settings/forum-controls.js';
 import { applySchemaSurface } from '../settings/schema-surface.js';
-import { enhanceForm, mountTypedTopicSummaryModelPicker, cleanupDisconnectedAgentModelPickers, releaseAllAgentModelPickers } from './agent-settings-bridge.js';
+import { renderAgentSettingsSurface } from '../settings/schema/sidebar-surfaces.js';
+import { ensureSettingsSidebarSurface } from './settings/settings-sidebar-surface.js';
+import { mountSettingsSidebarForm } from './settings/settings-sidebar-runtime.js';
 import { addTypedNetworkPathInput, ensureTypedSettingsService, ensureRustAssistantUiService, ensureForumConfigUiService, ensureAssistantRuntimeUiService, mountTypedSettingsConsumer, mountTypedForumFieldOwner, mountTypedFieldOwner, flushTypedOwners, flushTypedForumFields, teardownTypedOwners, disposeTypedSettings } from './typed-field-owners.js';
 
 // Per-modal shell state is keyed by modal root so teardown can restore the
@@ -36,6 +39,18 @@ const disclosureStates = new Set();
 let refreshQueued = false;
 const settingsHost = document.getElementById('tabContentSettings');
 let destroyPromise = null;
+
+// The sidebar form is a schema surface. It is rendered once before renderer.js
+// initializes the business managers, then physically detached when the Settings
+// tab is inactive. The old ids remain the public compatibility contract.
+const settingsSidebarSurface = settingsHost
+    ? ensureSettingsSidebarSurface({ document, root: settingsHost })
+    : null;
+const agentSettingsHost = document.getElementById('agentSettingsContainer');
+if (settingsSidebarSurface && agentSettingsHost) {
+    renderAgentSettingsSurface(agentSettingsHost, document);
+    settingsSidebarSurface.register('agent', agentSettingsHost);
+}
 
 function shouldEnhanceSidebarSettings() {
     // Global settings has one presentation contract.  The data attribute is
@@ -293,14 +308,6 @@ function enhanceGlobalSettings(root, form) {
                 // M5-c pass2：步进器行结构已由渲染器直出，这里只激活行为。
                 mountGlobalSteppers(form, api(), scope());
             },
-        },
-        {
-            name: 'topic-summary-picker',
-            // Reuse the production AgentModelPicker contract for the
-            // topic-summary field.  The native input remains canonical; the
-            // legacy modal template stays available until its shared business
-            // callers are fully retired.
-            run: () => mountTypedTopicSummaryModelPicker(form),
         },
         { name: 'forum-field-owner', run: () => mountTypedForumFieldOwner(root, form) },
         // M5-c pass6：折叠区的静态标记（settingPrimitive + disclosure-row
@@ -804,7 +811,6 @@ function reconcileSettingsShell(root) {
 
 function cleanupDisconnectedControllers() {
     releaseDisconnectedControllers();
-    cleanupDisconnectedAgentModelPickers();
 }
 
 function refresh() {
@@ -816,7 +822,7 @@ function refresh() {
     const globalSettingsModal = syncGlobalSettingsHost();
     mountGlobalSettingsPathAction(globalSettingsModal);
     if (shouldEnhanceSidebarSettings()) {
-        document.querySelectorAll('#agentSettingsForm, #groupSettingsForm').forEach(enhanceForm);
+        document.querySelectorAll('#agentSettingsForm, #groupSettingsForm').forEach(mountSettingsSidebarForm);
     }
     if (hasGlobalSettingsSurface()) {
         const form = globalSettingsModal?.querySelector('#globalSettingsForm');
@@ -854,7 +860,6 @@ async function teardown() {
         try { await scope.dispose('settings-presentation-teardown'); }
         catch (error) { console.error('[VCPUI SettingsBridge] Failed to dispose presentation:', error); }
     }
-    releaseAllAgentModelPickers();
     teardownUiuxDisclosures();
     selectProjection.teardown();
     [...shellRoots].forEach(root => {
@@ -884,6 +889,7 @@ const handleModalVisibility = event => {
     }
 };
 const handleSurfaceUpdated = () => scheduleRefresh();
+const handleSidebarViewChanged = () => scheduleRefresh();
 if (bridgeScope) bridgeScope.listen(document, 'modal-visibility-changed', handleModalVisibility, undefined, 'settings-modal-visibility');
 else document.addEventListener('modal-visibility-changed', handleModalVisibility);
 
@@ -907,9 +913,11 @@ if (!globalThis.vcpSettingsCardToggleBound) {
 if (bridgeScope) {
     bridgeScope.listen(document, 'modal-ready', handleModalVisibility, undefined, 'settings-modal-ready');
     bridgeScope.listen(document, 'vcp-settings-surface-updated', handleSurfaceUpdated, undefined, 'settings-surface-updated');
+    bridgeScope.listen(document, 'vcp-settings-view-changed', handleSidebarViewChanged, undefined, 'settings-view-changed');
 } else {
     document.addEventListener('modal-ready', handleModalVisibility);
     document.addEventListener('vcp-settings-surface-updated', handleSurfaceUpdated);
+    document.addEventListener('vcp-settings-view-changed', handleSidebarViewChanged);
 }
 scheduleRefresh();
 
@@ -966,6 +974,7 @@ window.VCPUISettingsBridge = Object.freeze({
                 document.removeEventListener('modal-visibility-changed', handleModalVisibility);
                 document.removeEventListener('modal-ready', handleModalVisibility);
                 document.removeEventListener('vcp-settings-surface-updated', handleSurfaceUpdated);
+                document.removeEventListener('vcp-settings-view-changed', handleSidebarViewChanged);
             }
             return bridgeScope?.dispose('settings-bridge-destroyed') || result;
         });

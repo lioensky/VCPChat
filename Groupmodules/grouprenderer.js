@@ -78,35 +78,21 @@ window.GroupRenderer = (() => {
             console.error('[GroupRenderer INIT] dependencies.mainRendererElements (and thus mainRendererElements) is undefined or null!');
         }
 
-        // Get references to group settings form elements (assuming they are added to DOM by renderer.js or main.html)
-        // These elements are defined in the innerHTML for groupSettingsContainer in renderer.js
-        // We need to ensure they are accessible after renderer.js appends groupSettingsContainer
-        // This might be better done after the DOM is fully ready and elements are appended.
-        // For now, we'll assume renderer.js makes them available or we query them here.
+        // Resolve the schema-owned controls after the host is mounted.
         ensureGroupSettingsDOM(); // Ensure DOM for group settings is ready
         console.log('[GroupRenderer] Initialized with dependencies.');
         console.log('[GroupRenderer INIT] inviteAgentButtonsContainerRef received:', inviteAgentButtonsContainerRef ? 'Exists' : 'MISSING');
     }
 
     function ensureGroupSettingsDOM() {
-        let settingsTab = document.getElementById('tabContentSettings');
-        if (!settingsTab) {
+        const settingsTab = document.getElementById('tabContentSettings');
+        if (!settingsTab || !window.VCPGroupSettingsSlots) {
             console.error("[GroupRenderer] Could not find tabContentSettings to append group settings DOM.");
             return false;
         }
-
-        groupSettingsContainer = document.getElementById('groupSettingsContainer');
-        if (!groupSettingsContainer) {
-            groupSettingsContainer = document.createElement('div');
-            groupSettingsContainer.id = 'groupSettingsContainer';
-            groupSettingsContainer.style.display = 'none'; // Initially hidden
-            settingsTab.appendChild(groupSettingsContainer);
-            console.log("[GroupRenderer] groupSettingsContainer created.");
-        }
-
-        // 使用模块化的 HTML 模板
-        groupSettingsContainer.innerHTML = window.GroupSettingsMarkup.renderGroupSettingsMarkup();
-        console.log("[GroupRenderer] groupSettingsContainer innerHTML set.");
+        groupSettingsContainer = window.VCPGroupSettingsSlots.ensureSettingsSurface({ document, settingsTab });
+        if (!groupSettingsContainer) return false;
+        console.log("[GroupRenderer] schema-driven group settings surface ready.");
         // Now that DOM is ensured and populated, get element references
         return getGroupSettingsElements(); // Return true if elements are successfully retrieved
     }
@@ -141,8 +127,6 @@ window.GroupRenderer = (() => {
         return true;
     }
 
-    // renderGroupSettingsMarkup 已模块化至 Groupmodules/groupSettingsMarkup.js
-
     function getGroupSectionContainer(key) {
         return groupSettingsForm?.querySelector(`.group-settings-section[data-section-key="${key}"]`) || null;
     }
@@ -167,14 +151,6 @@ window.GroupRenderer = (() => {
                 this.container.classList.toggle('collapsed', !!collapsed);
             }
         };
-
-        if (!header.dataset.collapsibleBound) {
-            header.addEventListener('click', (event) => {
-                event.preventDefault();
-                controller.setCollapsed(!controller.container.classList.contains('collapsed'));
-            });
-            header.dataset.collapsibleBound = 'true';
-        }
 
         groupSectionControllers.set(key, controller);
         return controller;
@@ -257,36 +233,11 @@ window.GroupRenderer = (() => {
 
         const summaryValue = controller.buildSummary();
         if (summaryValue && typeof summaryValue === 'object' && summaryValue.kind === 'identity') {
-            controller.summary.classList.add('summary-with-avatar');
-            controller.summary.innerHTML = '';
-
-            const avatar = document.createElement('img');
-            avatar.className = 'group-settings-summary-avatar';
-            avatar.src = summaryValue.avatarSrc || 'assets/default_group_avatar.png';
-            avatar.alt = '';
-            avatar.width = 30;
-            avatar.height = 30;
-
-            const copy = document.createElement('div');
-            copy.className = 'group-settings-summary-copy';
-
-            const title = document.createElement('span');
-            title.className = 'group-settings-summary-label';
-            title.textContent = summaryValue.text || '未命名群组';
-
-            const meta = document.createElement('span');
-            meta.className = 'group-settings-summary-meta';
-            meta.textContent = summaryValue.meta || '';
-
-            copy.appendChild(title);
-            copy.appendChild(meta);
-            controller.summary.appendChild(avatar);
-            controller.summary.appendChild(copy);
+            window.VCPGroupSettingsSlots.renderSummary(controller.summary, summaryValue);
             return;
         }
 
-        controller.summary.classList.remove('summary-with-avatar');
-        controller.summary.textContent = typeof summaryValue === 'string' ? summaryValue : '';
+        window.VCPGroupSettingsSlots.renderSummary(controller.summary, summaryValue);
     }
 
     function updateAllGroupSectionSummaries() {
@@ -427,6 +378,9 @@ window.GroupRenderer = (() => {
     async function displayGroupSettingsPage(groupId) {
         console.log('[GroupRenderer] displayGroupSettingsPage called for groupId:', groupId);
 
+        const settingsSurface = window.VCPSettingsSidebar;
+        const viewToken = settingsSurface?.show?.('group', { id: groupId });
+
         // Use the module-level specific references that were set during init
         // const localSelectPrompt = selectAgentPromptForSettingsElementFromRenderer; // No longer needed if mainRendererElements is used directly
         // const localAgentSettingsContainer = agentSettingsContainerFromRenderer; // No longer needed
@@ -441,46 +395,21 @@ window.GroupRenderer = (() => {
         }
 
         const groupConfig = await electronAPI.getAgentGroupConfig(groupId);
+        if (settingsSurface && !settingsSurface.isCurrent(viewToken)) return;
         if (!groupConfig || groupConfig.error) {
             alert(`加载群组配置失败: ${groupConfig?.error || '未知错误'}`);
-            if (groupSettingsContainer) groupSettingsContainer.style.display = 'none';
+            settingsSurface?.show?.('prompt', { message: `加载群组 ${groupId} 配置失败。` });
             if (selectAgentPromptForSettingsElementFromRenderer) { // Use direct module-level ref
                 selectAgentPromptForSettingsElementFromRenderer.textContent = `加载群组 ${groupId} 配置失败。`;
-                selectAgentPromptForSettingsElementFromRenderer.style.display = 'block';
             } else {
                 console.error('[GroupRenderer] selectAgentPromptForSettingsElementFromRenderer is undefined when trying to show error for groupConfig load failure.');
             }
             return;
         }
 
-        // Hide agent-specific settings container (using the specific ref from renderer)
-        if (agentSettingsContainerFromRenderer && typeof agentSettingsContainerFromRenderer.style !== 'undefined') {
-            agentSettingsContainerFromRenderer.style.display = 'none';
-        } else {
-            // Fallback if the reference from renderer.js wasn't correctly passed or is not a DOM element
-            const fallbackAgentSettings = document.getElementById('agentSettingsContainer');
-            if (fallbackAgentSettings) fallbackAgentSettings.style.display = 'none';
-            else console.warn('[GroupRenderer] agentSettingsContainerFromRenderer (and fallback) is undefined, cannot hide agent settings.');
-        }
-
-        // Show group-specific settings container (this is managed within GroupRenderer)
-        if (groupSettingsContainer && typeof groupSettingsContainer.style !== 'undefined') {
-            groupSettingsContainer.style.display = '';
-        }
-
-        // Hide the "select item" prompt (using the specific ref from renderer)
-        if (selectAgentPromptForSettingsElementFromRenderer) { // Use direct module-level ref
-            selectAgentPromptForSettingsElementFromRenderer.style.display = 'none';
-        } else {
-            console.error('[GroupRenderer] selectAgentPromptForSettingsElementFromRenderer is undefined when trying to hide it.');
-            const fallbackPrompt = document.getElementById('selectAgentPromptForSettings'); // Fallback
-            if (fallbackPrompt) {
-                console.warn('[GroupRenderer] Fallback: Hiding selectAgentPromptForSettings using direct getElementById.');
-                fallbackPrompt.style.display = 'none';
-            } else {
-                console.error('[GroupRenderer] CRITICAL: selectAgentPromptForSettings element not found even with direct getElementById.');
-            }
-        }
+        // The surface owns view attachment/detachment. Keep the historical
+        // references only for text compatibility with upstream callers.
+        settingsSurface?.show?.('group', { id: groupId });
 
         // Use the specific module-level reference for selectedItemNameForSettingsElementFromRenderer
         if (selectedItemNameForSettingsElementFromRenderer) {
@@ -498,7 +427,7 @@ window.GroupRenderer = (() => {
         document.getElementById('editingGroupId').value = groupId;
 
         groupNameInput.value = groupConfig.name || '';
-        groupAvatarPreview.style.display = 'block';
+        groupAvatarPreview.hidden = false;
         groupAvatarPreview.src = groupConfig.avatarUrl
             ? `${groupConfig.avatarUrl}?t=${Date.now()}`
             : 'assets/default_group_avatar.png';
@@ -518,19 +447,27 @@ window.GroupRenderer = (() => {
         // 新增：处理统一模型UI
         groupUseUnifiedModel.checked = groupConfig.useUnifiedModel === true;
         groupUnifiedModelInput.value = groupConfig.unifiedModel || '';
-        groupUnifiedModelContainer.style.display = groupUseUnifiedModel.checked ? 'block' : 'none';
+        groupUnifiedModelContainer.hidden = !groupUseUnifiedModel.checked;
 
         setupGroupSettingsSections();
 
         groupUseUnifiedModel.onchange = () => {
-            groupUnifiedModelContainer.style.display = groupUseUnifiedModel.checked ? 'block' : 'none';
+            groupUnifiedModelContainer.hidden = !groupUseUnifiedModel.checked;
             updateGroupSectionSummary('model');
         };
 
-        // The settings bridge owns the Group model trigger and mounts the same
-        // AgentModelPicker primitive used by Agent and topic-summary fields.
-        // groupUnifiedModelInput remains the canonical persisted value; its
-        // existing input/change summary bindings observe primitive selections.
+        if (openGroupModelSelectBtn) {
+            if (openGroupModelSelectBtn._modelSelectListenerAttached) {
+                openGroupModelSelectBtn.removeEventListener('click', openGroupModelSelectBtn._modelSelectListenerAttached);
+            }
+            const openGroupModelSelect = event => {
+                event.preventDefault();
+                event.stopPropagation();
+                window.settingsManager?.openModelSelectForInput?.(groupUnifiedModelInput);
+            };
+            openGroupModelSelectBtn.addEventListener('click', openGroupModelSelect);
+            openGroupModelSelectBtn._modelSelectListenerAttached = openGroupModelSelect;
+        }
 
         groupChatModeSelect.onchange = () => {
             toggleModeSettingsVisibility(groupChatModeSelect.value);
@@ -569,7 +506,7 @@ window.GroupRenderer = (() => {
                 mainRendererFunctions.setCroppedFile('group', croppedFile); // Use renderer's central cropped file store
                 if (groupAvatarPreview) {
                     groupAvatarPreview.src = URL.createObjectURL(croppedFile);
-                    groupAvatarPreview.style.display = 'block';
+                    groupAvatarPreview.hidden = false;
                 }
                 updateGroupSectionSummary('identity');
             });
@@ -582,231 +519,68 @@ window.GroupRenderer = (() => {
             console.error("groupMembersListDiv not found for populating members.");
             return;
         }
-        groupMembersListDiv.innerHTML = '加载Agent列表中...';
-        memberTagsInputsDiv.innerHTML = ''; // Clear old tag inputs
+        window.VCPGroupSettingsSlots.message(groupMembersListDiv, '加载Agent列表中...');
+        window.VCPGroupSettingsSlots.message(memberTagsInputsDiv, '');
 
         try {
             const agents = await electronAPI.getAgents();
             if (agents.error) {
-                groupMembersListDiv.innerHTML = `加载Agent列表失败: ${agents.error}`;
+                window.VCPGroupSettingsSlots.message(groupMembersListDiv, `加载Agent列表失败: ${agents.error}`);
                 return;
             }
             availableAgentsForGroup = agents; // Store for later use
-            groupMembersListDiv.innerHTML = ''; // Clear loading
-
-            agents.forEach(agent => {
-                const memberDiv = document.createElement('div');
-                memberDiv.className = 'group-member-item';
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.id = `member_agent_${agent.id}`;
-                checkbox.value = agent.id;
-                checkbox.checked = groupConfig.members && groupConfig.members.includes(agent.id);
-                checkbox.onchange = () => {
+            window.VCPGroupSettingsSlots.renderMemberList({
+                container: groupMembersListDiv,
+                tagsContainer: memberTagsInputsDiv,
+                agents,
+                groupConfig,
+                onChange: () => {
                     updateMemberTagsInputs(groupConfig);
                     updateSequentialSpeakerOrder(groupConfig);
                     updateGroupSectionSummary('identity');
                     updateGroupSectionSummary('mode');
-                };
-
-
-                const label = document.createElement('label');
-                label.htmlFor = `member_agent_${agent.id}`;
-                label.textContent = agent.name;
-
-                const avatar = document.createElement('img');
-                avatar.src = agent.avatarUrl || 'assets/default_avatar.png';
-                avatar.alt = agent.name;
-                avatar.className = 'avatar-small';
-
-                label.prepend(avatar);
-                memberDiv.appendChild(checkbox);
-                memberDiv.appendChild(label);
-                groupMembersListDiv.appendChild(memberDiv);
+                }
             });
             updateMemberTagsInputs(groupConfig); // Initial population of tag inputs
             updateSequentialSpeakerOrder(groupConfig);
             updateGroupSectionSummary('identity');
             updateGroupSectionSummary('mode');
         } catch (error) {
-            groupMembersListDiv.innerHTML = `加载Agent列表时出错: ${error.message}`;
+            window.VCPGroupSettingsSlots.message(groupMembersListDiv, `加载Agent列表时出错: ${error.message}`);
             console.error("Error populating group members settings:", error);
         }
     }
 
     function getSelectedMemberIds() {
-        if (!groupMembersListDiv) return [];
-        return Array.from(groupMembersListDiv.querySelectorAll('input[type="checkbox"]:checked'))
-            .map(checkbox => checkbox.value);
+        return window.VCPGroupSettingsSlots.readSelectedMemberIds(groupMembersListDiv);
     }
 
     function getSequentialSpeakerOrder() {
-        if (!sequentialSpeakerOrderList) return [];
-        return Array.from(sequentialSpeakerOrderList.querySelectorAll('.sequential-speaker-order-item'))
-            .map(item => item.dataset.agentId)
-            .filter(Boolean);
-    }
-
-    function moveSequentialSpeakerItem(item, direction) {
-        if (!item || !sequentialSpeakerOrderList) return;
-        const sibling = direction < 0 ? item.previousElementSibling : item.nextElementSibling;
-        if (!sibling) return;
-        if (direction < 0) {
-            sequentialSpeakerOrderList.insertBefore(item, sibling);
-        } else {
-            sequentialSpeakerOrderList.insertBefore(sibling, item);
-        }
-        item.focus();
-        updateGroupSectionSummary('mode');
-    }
-
-    function createSequentialSpeakerOrderItem(agent) {
-        const item = document.createElement('div');
-        item.className = 'sequential-speaker-order-item';
-        item.dataset.agentId = agent.id;
-        item.draggable = true;
-        item.tabIndex = 0;
-        item.setAttribute('role', 'listitem');
-        item.setAttribute('aria-label', `${agent.name}，可拖拽调整发言顺序`);
-
-        const handle = document.createElement('span');
-        handle.className = 'sequential-speaker-drag-handle';
-        handle.textContent = '⋮⋮';
-        handle.title = '拖拽调整顺序';
-        handle.setAttribute('aria-hidden', 'true');
-
-        const avatar = document.createElement('img');
-        avatar.className = 'avatar-small';
-        avatar.src = agent.avatarUrl || 'assets/default_avatar.png';
-        avatar.alt = '';
-
-        const name = document.createElement('span');
-        name.className = 'sequential-speaker-name';
-        name.textContent = agent.name || agent.id;
-
-        const controls = document.createElement('span');
-        controls.className = 'sequential-speaker-order-controls';
-        const upButton = document.createElement('button');
-        upButton.type = 'button';
-        upButton.className = 'sequential-order-move-btn';
-        upButton.textContent = '↑';
-        upButton.title = '上移';
-        upButton.setAttribute('aria-label', `上移 ${agent.name || agent.id}`);
-        upButton.addEventListener('click', () => moveSequentialSpeakerItem(item, -1));
-        const downButton = document.createElement('button');
-        downButton.type = 'button';
-        downButton.className = 'sequential-order-move-btn';
-        downButton.textContent = '↓';
-        downButton.title = '下移';
-        downButton.setAttribute('aria-label', `下移 ${agent.name || agent.id}`);
-        downButton.addEventListener('click', () => moveSequentialSpeakerItem(item, 1));
-        controls.append(upButton, downButton);
-
-        item.append(handle, avatar, name, controls);
-        item.addEventListener('dragstart', event => {
-            item.classList.add('dragging');
-            event.dataTransfer.effectAllowed = 'move';
-            event.dataTransfer.setData('text/plain', agent.id);
-        });
-        item.addEventListener('dragend', () => {
-            item.classList.remove('dragging');
-            sequentialSpeakerOrderList.querySelectorAll('.drag-over').forEach(element => element.classList.remove('drag-over'));
-            updateGroupSectionSummary('mode');
-        });
-        item.addEventListener('dragover', event => {
-            event.preventDefault();
-            if (!item.classList.contains('dragging')) item.classList.add('drag-over');
-            event.dataTransfer.dropEffect = 'move';
-        });
-        item.addEventListener('dragleave', () => item.classList.remove('drag-over'));
-        item.addEventListener('drop', event => {
-            event.preventDefault();
-            item.classList.remove('drag-over');
-            const draggedId = event.dataTransfer.getData('text/plain');
-            const draggedItem = sequentialSpeakerOrderList.querySelector(`.sequential-speaker-order-item[data-agent-id="${CSS.escape(draggedId)}"]`);
-            if (!draggedItem || draggedItem === item) return;
-            const bounds = item.getBoundingClientRect();
-            const insertAfter = event.clientY > bounds.top + bounds.height / 2;
-            sequentialSpeakerOrderList.insertBefore(draggedItem, insertAfter ? item.nextElementSibling : item);
-            updateGroupSectionSummary('mode');
-        });
-        item.addEventListener('keydown', event => {
-            if (!event.altKey || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return;
-            event.preventDefault();
-            moveSequentialSpeakerItem(item, event.key === 'ArrowUp' ? -1 : 1);
-        });
-        return item;
+        return window.VCPGroupSettingsSlots.readSequentialSpeakerOrder(sequentialSpeakerOrderList);
     }
 
     function updateSequentialSpeakerOrder(groupConfig = {}) {
-        if (!sequentialSpeakerOrderList) return;
-        const selectedIds = getSelectedMemberIds();
-        const selectedSet = new Set(selectedIds);
-        const draftOrder = getSequentialSpeakerOrder();
-        const savedOrder = groupConfig.modeSettings?.sequential?.speakerOrder
-            || groupConfig.sequentialSpeakerOrder
-            || [];
-        const preferredOrder = draftOrder.length > 0 ? draftOrder : savedOrder;
-        const normalizedOrder = [
-            ...preferredOrder.filter((id, index) => selectedSet.has(id) && preferredOrder.indexOf(id) === index),
-            ...selectedIds.filter(id => !preferredOrder.includes(id))
-        ];
-
-        sequentialSpeakerOrderList.innerHTML = '';
-        if (normalizedOrder.length === 0) {
-            const empty = document.createElement('div');
-            empty.className = 'sequential-speaker-order-empty';
-            empty.textContent = '请先勾选群组成员';
-            sequentialSpeakerOrderList.appendChild(empty);
-            return;
-        }
-        normalizedOrder.forEach(agentId => {
-            const agent = availableAgentsForGroup.find(candidate => candidate.id === agentId);
-            if (agent) sequentialSpeakerOrderList.appendChild(createSequentialSpeakerOrderItem(agent));
+        window.VCPGroupSettingsSlots.renderSequentialSpeakerOrder({
+            list: sequentialSpeakerOrderList,
+            agents: availableAgentsForGroup,
+            groupConfig,
+            onChanged: () => updateGroupSectionSummary('mode')
         });
     }
 
     function updateMemberTagsInputs(groupConfig) {
-        if (!memberTagsInputsDiv || !groupMembersListDiv) return;
-        const draftTags = {};
-        memberTagsInputsDiv.querySelectorAll('input[type="text"]').forEach((input) => {
-            draftTags[input.dataset.agentId] = input.value;
-        });
-        memberTagsInputsDiv.innerHTML = ''; // Clear existing
-        const selectedMemberIds = Array.from(groupMembersListDiv.querySelectorAll('input[type="checkbox"]:checked'))
-            .map(cb => cb.value);
-
-        selectedMemberIds.forEach(agentId => {
-            const agent = availableAgentsForGroup.find(a => a.id === agentId);
-            if (agent) {
-                const tagInputDiv = document.createElement('div');
-                tagInputDiv.className = 'member-tag-input-item';
-                const label = document.createElement('label');
-                label.htmlFor = `tags_for_${agentId}`;
-                label.textContent = `${agent.name} Tags:`;
-                const input = document.createElement('input');
-                input.type = 'text';
-                input.id = `tags_for_${agentId}`;
-                input.dataset.agentId = agentId;
-                input.placeholder = "例如: 猫娘,小克,科学";
-                const persistedTags = groupConfig.modeSettings?.naturerandom?.memberTags || groupConfig.memberTags || {};
-                input.value = draftTags[agentId] ?? (persistedTags[agentId] || '');
-                input.addEventListener('input', () => updateGroupSectionSummary('mode'));
-                tagInputDiv.appendChild(label);
-                tagInputDiv.appendChild(input);
-                memberTagsInputsDiv.appendChild(tagInputDiv);
-            }
+        window.VCPGroupSettingsSlots.renderMemberTags({
+            container: memberTagsInputsDiv,
+            membersContainer: groupMembersListDiv,
+            agents: availableAgentsForGroup,
+            groupConfig,
+            onChanged: () => updateGroupSectionSummary('mode')
         });
     }
 
 
     function toggleModeSettingsVisibility(mode) {
-        if (sequentialOrderContainer) {
-            sequentialOrderContainer.style.display = mode === 'sequential' ? 'flex' : 'none';
-        }
-        if (memberTagsContainer) {
-            memberTagsContainer.style.display = mode === 'naturerandom' ? 'flex' : 'none';
-        }
+        window.VCPGroupSettingsSlots.setModeVisibility({ sequentialContainer: sequentialOrderContainer, tagsContainer: memberTagsContainer, mode });
         updateGroupSectionSummary('mode');
     }
 
@@ -850,11 +624,7 @@ window.GroupRenderer = (() => {
 
         // 用当前 DOM 中的值覆盖（当前勾选成员的最新编辑）
         const memberTags = { ...existingMemberTags };
-        if (memberTagsInputsDiv) {
-            memberTagsInputsDiv.querySelectorAll('input[type="text"]').forEach(input => {
-                memberTags[input.dataset.agentId] = input.value.trim();
-            });
-        }
+        Object.assign(memberTags, window.VCPGroupSettingsSlots.readMemberTags(memberTagsInputsDiv));
 
         const sequentialSpeakerOrder = getSequentialSpeakerOrder()
             .filter(agentId => selectedMemberIds.includes(agentId));
@@ -1041,19 +811,12 @@ window.GroupRenderer = (() => {
                         }
                         clearInviteAgentButtons(); // Clear invite buttons on delete
 
-                        // 显式重置设置区域的UI状态
-                        if (groupSettingsContainer) { // 这是本模块管理的群组设置容器
-                            groupSettingsContainer.style.display = 'none';
-                        }
-                        // 确保Agent设置容器也隐藏 (如果之前是显示的)
-                        // agentSettingsContainerFromRenderer 是从 renderer.js 传入的 Agent 设置容器
-                        if (agentSettingsContainerFromRenderer && agentSettingsContainerFromRenderer.style) {
-                            agentSettingsContainerFromRenderer.style.display = 'none';
-                        }
+                        // Reset the owned settings surface. It physically
+                        // detaches the active form and releases its hit area.
+                        window.VCPSettingsSidebar?.show?.('prompt', { message: '请选择一个Agent或群组进行设置。' });
                         // selectAgentPromptForSettingsElementFromRenderer 是从 renderer.js 传入的提示元素
-                        if (selectAgentPromptForSettingsElementFromRenderer && selectAgentPromptForSettingsElementFromRenderer.style) {
+                        if (selectAgentPromptForSettingsElementFromRenderer) {
                             selectAgentPromptForSettingsElementFromRenderer.textContent = '请选择一个Agent或群组进行设置。';
-                            selectAgentPromptForSettingsElementFromRenderer.style.display = 'block';
                         }
                         // selectedItemNameForSettingsElementFromRenderer 是从 renderer.js 传入的显示名称的元素
                         if (selectedItemNameForSettingsElementFromRenderer) {
@@ -1087,7 +850,7 @@ window.GroupRenderer = (() => {
             console.error("Topic list UL not found for group topics.");
             return;
         }
-        topicListUl.innerHTML = `<li><p>正在加载群组 ${groupId} 的话题...</p></li>`;
+        window.VCPGroupSettingsSlots.message(topicListUl, `正在加载群组 ${groupId} 的话题...`, 'li');
         try {
             let topics = await electronAPI.getGroupTopics(groupId);
             if (topics && !topics.error && searchTerm) {
@@ -1098,52 +861,29 @@ window.GroupRenderer = (() => {
             renderGroupTopicList(topics, topicListUl, groupId);
         } catch (error) {
             console.error(`加载群组 ${groupId} 话题失败:`, error);
-            topicListUl.innerHTML = `<li><p>加载话题失败: ${error.message}</p></li>`;
+            window.VCPGroupSettingsSlots.message(topicListUl, `加载话题失败: ${error.message}`, 'li');
         }
     }
 
     function renderGroupTopicList(topics, container, groupId) {
-        container.innerHTML = '';
-        if (topics.error) {
-            container.innerHTML = `<li>加载话题失败: ${topics.error}</li>`;
-            return;
-        }
-        if (!topics || topics.length === 0) {
-            container.innerHTML = '<li>此群组还没有话题。</li>';
-            return;
-        }
-
-        topics.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-
-        topics.forEach(topic => {
-            const li = document.createElement('li');
-            li.className = 'topic-item';
-            li.dataset.itemId = groupId; // Store group ID
-            li.dataset.itemType = 'group';
-            li.dataset.topicId = topic.id;
-            if (topic.id === currentTopicIdRef.get()) {
-                li.classList.add('active', 'active-topic-glowing');
-            }
-
-            const avatarImg = document.createElement('img');
-            avatarImg.className = 'avatar';
-            const groupConfig = currentSelectedItemRef.get().config;
-            avatarImg.src = groupConfig?.avatarUrl || 'assets/default_avatar.png'; // Use group avatar
-            avatarImg.alt = '群组头像';
-
-            const topicNameSpan = document.createElement('span');
-            topicNameSpan.className = 'topic-name';
-            topicNameSpan.textContent = topic.name;
-
-            li.appendChild(avatarImg);
-            li.appendChild(topicNameSpan);
-            li.addEventListener('click', () => handleGroupTopicSelection(groupId, topic.id));
-            // Add context menu for rename/delete group topic
-            li.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
-                uiHelper.showTopicContextMenu(e, groupId, 'group', topic.id, topic.name, handleRenameGroupTopic, handleDeleteGroupTopic, handleExportGroupTopic);
-            });
-            container.appendChild(li);
+        const groupConfig = currentSelectedItemRef.get()?.config;
+        window.VCPGroupSettingsSlots.renderTopicList({
+            topics,
+            container,
+            groupId,
+            currentTopicId: currentTopicIdRef.get(),
+            avatarSrc: groupConfig?.avatarUrl,
+            onSelect: topicId => handleGroupTopicSelection(groupId, topicId),
+            onContextMenu: (event, topic) => uiHelper.showTopicContextMenu(
+                event,
+                groupId,
+                'group',
+                topic.id,
+                topic.name,
+                handleRenameGroupTopic,
+                handleDeleteGroupTopic,
+                handleExportGroupTopic
+            )
         });
         mainRendererFunctions.initializeTopicSortable(groupId, 'group');
     }
@@ -1460,10 +1200,7 @@ window.GroupRenderer = (() => {
 
     function clearInviteAgentButtons() {
         const container = inviteAgentButtonsContainerRef ? inviteAgentButtonsContainerRef.get() : null;
-        if (container) {
-            container.innerHTML = '';
-            container.style.display = 'none';
-        }
+        window.VCPGroupSettingsSlots.clearInviteButtons(container);
     }
 
     async function displayInviteAgentButtons(groupId, topicId, membersConfigs, groupConfig) {
@@ -1472,44 +1209,14 @@ window.GroupRenderer = (() => {
             console.error("[GroupRenderer] Invite agent buttons container not found.");
             return;
         }
-        container.innerHTML = ''; // Clear previous buttons
-
-        if (!membersConfigs || membersConfigs.length === 0 || !groupConfig || groupConfig.mode !== 'invite_only') {
-            container.style.display = 'none';
-            return;
-        }
-
-        container.style.display = 'grid'; // Using grid for layout as suggested
-        // Example: container.style.gridTemplateColumns = 'repeat(3, 1fr)'; // Set by CSS later
-
-        for (const memberConfig of membersConfigs) {
-            if (!memberConfig || memberConfig.error) continue; // Skip invalid members
-
-            const button = document.createElement('button');
-            button.className = 'invite-agent-button';
-            button.title = `邀请 ${memberConfig.name} 发言`;
-
-            const avatarImg = document.createElement('img');
-            avatarImg.src = memberConfig.avatarUrl || 'assets/default_avatar.png';
-            avatarImg.alt = memberConfig.name;
-            // Styles for avatar in button (can be moved to CSS)
-            avatarImg.style.width = '24px';
-            avatarImg.style.height = '24px';
-            avatarImg.style.borderRadius = '50%';
-            avatarImg.style.marginRight = '8px';
-            avatarImg.style.objectFit = 'cover';
-
-            const nameSpan = document.createElement('span');
-            nameSpan.textContent = memberConfig.name;
-
-            button.appendChild(avatarImg);
-            button.appendChild(nameSpan);
-
-            button.addEventListener('click', () => {
-                handleInviteAgentButtonClick(groupId, topicId, memberConfig.id, memberConfig.name);
-            });
-            container.appendChild(button);
-        }
+        window.VCPGroupSettingsSlots.renderInviteButtons({
+            container,
+            membersConfigs,
+            groupConfig,
+            groupId,
+            topicId,
+            onInvite: handleInviteAgentButtonClick
+        });
     }
 
     async function handleInviteAgentButtonClick(groupId, _topicId, agentId, agentName) { // _topicId is ignored
