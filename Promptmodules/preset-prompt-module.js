@@ -246,6 +246,9 @@ class PresetPromptModule {
 
         this.textarea = document.createElement('textarea');
         this.textarea.className = 'prompt-textarea preset-prompt-textarea';
+        this.textarea.spellcheck = false;
+        this.textarea.autocorrect = 'off';
+        this.textarea.autocapitalize = 'off';
         this.textarea.placeholder = '请输入系统提示词或选择预设...';
         this.textarea.value = this.cachedContent;
         this.textarea.rows = 3;

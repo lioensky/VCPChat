@@ -212,9 +212,9 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    color: var(--highlight-text);
-    font-size: 1.06em;
-    font-weight: 500;
+    color: var(--vcp-ui-text-0, var(--primary-text, #ffffff)) !important;
+    font-size: 13.5px !important;
+    font-weight: 600 !important;
     line-height: 24px;
     z-index: 1;
     transition: color var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard);
@@ -337,7 +337,7 @@ body[data-vcp-theme="dark"] #agentSettingsContainer #identitySummary.summary-wit
 }
 
 #agentSettingsContainer .agent-settings-section-header:hover .agent-settings-section-title {
-    color: var(--highlight-text);
+    color: var(--vcp-ui-text-0, #ffffff) !important;
 }
 
 #agentSettingsContainer .agent-settings-section-header:hover::before {
@@ -443,8 +443,8 @@ body[data-vcp-theme="light"] #agentSettingsContainer .agent-settings-toggle-btn:
 #agentSettingsContainer .params-content > div > input[type="number"],
 #agentSettingsContainer .params-content > div > input[type="text"],
 #agentSettingsContainer .params-content > div > .model-input-container {
-    width: calc(100% + 2px);
-    margin-left: -2px;
+    width: 100%;
+    margin-left: 0;
 }
 
 #agentSettingsContainer .agent-settings-section-content > .agent-identity-container,
@@ -543,9 +543,8 @@ body[data-vcp-theme="light"] #agentSettingsContainer .agent-settings-toggle-btn:
 }
 #agentSettingsContainer .tts-director-composer,
 #agentSettingsContainer .tts-director-item {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 28px;
-    align-items: center;
+    position: relative;
+    display: block;
     gap: 6px;
     min-width: 0;
 }
@@ -563,15 +562,13 @@ body[data-vcp-theme="light"] #agentSettingsContainer .agent-settings-toggle-btn:
     width: 100%;
     min-width: 0;
     max-width: 100%;
-    height: 38px;
-    min-height: 38px;
-    max-height: 38px;
-    padding: 8px 11px;
-    overflow: hidden;
-    resize: none;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    background: color-mix(in srgb, var(--input-bg, var(--secondary-bg)) 94%, transparent);
+    min-height: 100px;
+    padding: 5px 10px;
+    overflow-y: auto;
+    resize: vertical !important;
+    border: none;
+    border-radius: 0;
+    background: transparent;
     color: var(--primary-text);
     font: inherit;
     line-height: 20px;
@@ -579,29 +576,42 @@ body[data-vcp-theme="light"] #agentSettingsContainer .agent-settings-toggle-btn:
     overflow-wrap: anywhere;
     word-break: break-word;
     text-overflow: clip;
-    transition:
-        min-height 0.2s ease,
-        max-height 0.2s ease,
-        height 0.2s ease,
-        border-color 0.18s ease,
-        box-shadow 0.18s ease,
-        background-color 0.18s ease;
+    transition: color 0.18s ease;
 }
 
 #agentSettingsContainer .tts-director-editor:hover {
-    border-color: color-mix(in srgb, var(--highlight-text) 36%, var(--border-color));
+    border-color: transparent;
 }
 
 #agentSettingsContainer .tts-director-editor:focus {
-    min-height: 132px;
-    max-height: 360px;
     overflow: auto;
     white-space: pre-wrap;
     text-overflow: clip;
-    border-color: var(--highlight-text);
-    background: var(--input-bg, var(--secondary-bg));
+    border-color: transparent;
+    background: transparent;
     outline: none;
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--highlight-text) 14%, transparent);
+    box-shadow: none;
+}
+
+#agentSettingsContainer .tts-director-composer {
+    min-height: 0;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    transition: none;
+}
+
+#agentSettingsContainer .tts-director-composer:focus-within {
+    background: transparent;
+}
+
+#agentSettingsContainer .tts-director-editor {
+    padding: 6px 2px !important;
+}
+
+#agentSettingsContainer .tts-director-editor:focus {
+    padding-left: 2px !important;
 }
 
 #agentSettingsContainer .tts-director-composer.is-editing,
@@ -609,14 +619,17 @@ body[data-vcp-theme="light"] #agentSettingsContainer .agent-settings-toggle-btn:
     margin-bottom: 3px;
 }
 #agentSettingsContainer .tts-director-action-button {
-    position: static !important;
-    align-self: center;
-    width: 28px !important;
-    height: 28px !important;
-    min-width: 28px !important;
-    min-height: 28px !important;
-    max-width: 28px;
-    max-height: 28px;
+    position: absolute !important;
+    right: 8px !important;
+    bottom: 6px !important;
+    z-index: 2;
+    align-self: auto;
+    width: 32px !important;
+    height: 32px !important;
+    min-width: 32px !important;
+    min-height: 32px !important;
+    max-width: 32px;
+    max-height: 32px;
     padding: 0 !important;
     border: 1px solid color-mix(in srgb, var(--secondary-text) 24%, transparent) !important;
     border-radius: 50% !important;
@@ -627,7 +640,8 @@ body[data-vcp-theme="light"] #agentSettingsContainer .agent-settings-toggle-btn:
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
     font: 500 17px/1 system-ui, sans-serif;
-    opacity: 0.76;
+    opacity: 0;
+    pointer-events: none;
     transform: none;
     transition:
         color var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard),
@@ -636,13 +650,51 @@ body[data-vcp-theme="light"] #agentSettingsContainer .agent-settings-toggle-btn:
         opacity var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard);
 }
 
+#agentSettingsContainer .tts-director-template-button {
+    position: absolute !important;
+    right: 48px !important;
+    bottom: 6px !important;
+    min-height: 32px;
+    padding: 0 10px;
+    border: 1px solid color-mix(in srgb, var(--secondary-text) 24%, transparent);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--secondary-text);
+    font-size: 12px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+#agentSettingsContainer .tts-director-composer:hover .tts-director-template-button,
+#agentSettingsContainer .tts-director-composer:focus-within .tts-director-template-button,
+#agentSettingsContainer .tts-director-template-button:focus-visible {
+    opacity: 0.82;
+    pointer-events: auto;
+}
+
+#agentSettingsContainer .tts-director-template-button:hover,
+#agentSettingsContainer .tts-director-template-button:focus-visible {
+    color: var(--highlight-text);
+    background: color-mix(in srgb, var(--highlight-text) 10%, transparent);
+    outline: none;
+}
+
 #agentSettingsContainer .tts-director-action-button:hover,
 #agentSettingsContainer .tts-director-action-button:focus-visible {
     opacity: 1;
+    pointer-events: auto;
     color: var(--highlight-text) !important;
     border-color: color-mix(in srgb, var(--highlight-text) 48%, transparent) !important;
     background: color-mix(in srgb, var(--highlight-text) 9%, transparent) !important;
     outline: none;
+}
+
+#agentSettingsContainer .tts-director-composer:hover .tts-director-action-button,
+#agentSettingsContainer .tts-director-composer:focus-within .tts-director-action-button,
+#agentSettingsContainer .tts-director-item:hover .tts-director-action-button,
+#agentSettingsContainer .tts-director-item:focus-within .tts-director-action-button {
+    opacity: 0.76;
+    pointer-events: auto;
 }
 
 #agentSettingsContainer .tts-director-item .tts-director-action-button {
@@ -673,32 +725,148 @@ body:not(.light-theme) #agentSettingsContainer .tts-director-editor {
     background: color-mix(in srgb, var(--secondary-bg) 86%, black);
 }
 
-
-/* Theme-aware WebAwesome proxy for Agent TTS voice Selects. */
-#agentSettingsContainer #ttsContent .model-input-container {
-    align-items: center;
+#agentSettingsContainer .tts-director-editor,
+#agentSettingsContainer .tts-director-editor:hover,
+#agentSettingsContainer .tts-director-editor:focus,
+body.light-theme #agentSettingsContainer .tts-director-editor,
+body:not(.light-theme) #agentSettingsContainer .tts-director-editor {
+    min-height: 100px;
+    max-height: none !important;
+    resize: vertical !important;
+    overflow-y: auto !important;
+    border: 1px solid transparent !important;
+    border-left: 2.5px solid transparent !important;
+    border-radius: 4px !important;
+    background: transparent !important;
+    box-shadow: none !important;
 }
 
-#agentSettingsContainer #ttsContent .model-input-container > select {
-    height: 38px !important;
-    min-height: 38px !important;
-    max-height: 38px !important;
+#agentSettingsContainer .tts-director-editor:focus {
+    min-height: 140px;
+    border-color: transparent !important;
+    border-left-color: transparent !important;
+    padding-left: 2px !important;
+}
+
+
+/* Theme-aware WebAwesome & VCPUI proxy for Agent TTS voice Selects & Regex Inputs */
+#agentSettingsContainer #ttsContent .model-input-container {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    margin-left: 0 !important;
+}
+
+#agentSettingsContainer #ttsContent .vcp-uiux-select {
+    width: 100% !important;
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+    margin: 0 !important;
+}
+
+#agentSettingsContainer #ttsContent .model-input-container > select,
+#agentSettingsContainer #ttsContent .vcp-uiux-select-trigger {
+    height: 32px !important;
+    min-height: 32px !important;
+    max-height: 32px !important;
+    border-radius: 8px !important;
+    padding: 0 10px !important;
+    font-size: 13px !important;
+    line-height: 30px !important;
+    box-sizing: border-box !important;
+    background: var(--vcp-ui-bg-1, var(--input-bg)) !important;
+    border: 1px solid var(--vcp-ui-border, var(--border-color)) !important;
+    color: var(--vcp-ui-text-0, var(--primary-text)) !important;
 }
 
 #agentSettingsContainer #ttsContent #refreshTtsModelsBtn {
-    width: 38px !important;
-    height: 38px !important;
-    min-width: 38px;
-    min-height: 38px;
+    width: 32px !important;
+    height: 32px !important;
+    min-width: 32px !important;
+    min-height: 32px !important;
+    max-height: 32px !important;
+    border-radius: 8px !important;
     padding: 0 !important;
-    align-self: center;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+    box-sizing: border-box !important;
+    background: var(--vcp-ui-bg-1, var(--input-bg)) !important;
+    border: 1px solid var(--vcp-ui-border, var(--border-color)) !important;
+    color: var(--vcp-ui-text-0, var(--primary-text)) !important;
+}
+
+#agentSettingsContainer #ttsContent .vcp-uiux-input-wrap,
+#agentSettingsContainer #ttsContent input[type="text"] {
+    height: 32px !important;
+    min-height: 32px !important;
+    max-height: 32px !important;
+    border-radius: 8px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    margin-left: 0 !important;
+    box-sizing: border-box !important;
+    background: var(--vcp-ui-bg-1, var(--input-bg)) !important;
+    border: 1px solid var(--vcp-ui-border, var(--border-color)) !important;
+}
+
+#agentSettingsContainer #ttsContent .vcp-uiux-input-wrap > .input {
+    height: 100% !important;
+    line-height: 30px !important;
+    font-size: 13px !important;
+    padding: 0 10px !important;
+    color: var(--vcp-ui-text-0, var(--primary-text)) !important;
+}
+
+body[data-vcp-theme="light"] #agentSettingsContainer #ttsContent .model-input-container > select,
+body[data-vcp-theme="light"] #agentSettingsContainer #ttsContent .vcp-uiux-select-trigger,
+body[data-vcp-theme="light"] #agentSettingsContainer #ttsContent #refreshTtsModelsBtn,
+body[data-vcp-theme="light"] #agentSettingsContainer #ttsContent .vcp-uiux-input-wrap,
+body[data-vcp-theme="light"] #agentSettingsContainer #ttsContent input[type="text"] {
+    background: #ffffff !important;
+    color: #0f1115 !important;
+    border: 1px solid rgba(0, 0, 0, 0.12) !important;
+}
+
+body[data-vcp-theme="dark"] #agentSettingsContainer #ttsContent .model-input-container > select,
+body[data-vcp-theme="dark"] #agentSettingsContainer #ttsContent .vcp-uiux-select-trigger,
+body[data-vcp-theme="dark"] #agentSettingsContainer #ttsContent #refreshTtsModelsBtn,
+body[data-vcp-theme="dark"] #agentSettingsContainer #ttsContent .vcp-uiux-input-wrap,
+body[data-vcp-theme="dark"] #agentSettingsContainer #ttsContent input[type="text"] {
+    background: #171b20 !important;
+    color: #f1f5f9 !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+}
+
+
+#agentSettingsContainer .model-input-container:has(.vcp-uiux-select) > wa-select.vcp-ui-select-proxy,
+#agentSettingsContainer .model-input-container > .vcp-uiux-select ~ wa-select.vcp-ui-select-proxy {
+    display: none !important;
+}
+
+#agentSettingsContainer .vcp-uiux-select-trigger::after {
+    content: "";
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(45deg) translateY(-2px);
+    margin-left: auto;
+    flex-shrink: 0;
+    opacity: 0.6;
 }
 
 #agentSettingsContainer .model-input-container > wa-select.vcp-ui-select-proxy {
     width: 100%;
     min-width: 0;
     flex: 1 1 auto;
-    height: 38px;
+    height: 32px;
     color: var(--vcp-ui-text-0, var(--primary-text));
     font-family: var(--vcp-ui-font-family, inherit);
     font-size: var(--vcp-ui-font-helper, 0.92em);
@@ -712,8 +880,8 @@ body:not(.light-theme) #agentSettingsContainer .tts-director-editor {
 }
 
 #agentSettingsContainer wa-select.vcp-ui-select-proxy::part(combobox) {
-    height: 38px;
-    min-height: 38px;
+    height: 32px;
+    min-height: 32px;
     padding: 0 10px;
     border: 1px solid var(--vcp-ui-control-border, var(--border-color));
     border-radius: var(--vcp-ui-radius-control, 8px);
@@ -931,7 +1099,7 @@ body:not(.light-theme) #agentSettingsContainer .tts-director-editor {
     overflow-wrap: anywhere !important;
 }
 
-#agentSettingsContainer #identitySummary.summary-with-avatar {
+#agentSettingsContainer .agent-settings-collapsible-container.collapsed #identitySummary.summary-with-avatar {
     display: flex !important;
     width: 100% !important;
     max-width: 100% !important;
@@ -949,35 +1117,186 @@ body:not(.light-theme) #agentSettingsContainer .tts-director-editor {
     -webkit-backdrop-filter: none !important;
 }
 
-#agentSettingsContainer .slider-container > .vcp-uiux-range,
+#agentSettingsContainer .agent-settings-collapsible-container:not(.collapsed) #identitySummary,
+#agentSettingsContainer .agent-settings-collapsible-container:not(.collapsed) .agent-settings-section-summary {
+    display: none !important;
+}
+
 #agentSettingsContainer .slider-container {
+    display: flex !important;
+    align-items: center !important;
+    width: 100% !important;
     min-width: 0 !important;
+    margin-top: 6px !important;
+    margin-bottom: 4px !important;
+    box-sizing: border-box !important;
 }
 
-#agentSettingsContainer .slider-container > #agentTtsSpeed,
-#agentSettingsContainer .slider-container > input[type="range"] {
-    flex: 1 1 auto;
-    min-width: 0;
-    appearance: none;
-    height: 20px;
-    margin: 0;
-    accent-color: var(--vcp-ui-accent, var(--highlight-text));
+#agentSettingsContainer .slider-container .vcp-uiux-range {
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
 }
 
-#agentSettingsContainer .slider-container > #agentTtsSpeed::-webkit-slider-runnable-track,
-#agentSettingsContainer .slider-container > input[type="range"]::-webkit-slider-runnable-track {
-    height: 4px;
-    border-radius: 999px;
-    background: var(--vcp-ui-fill-2, var(--border-color));
+#agentSettingsContainer .slider-container input[type="range"] {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    width: 100% !important;
+    height: 20px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    cursor: pointer !important;
+    outline: none !important;
 }
 
-#agentSettingsContainer .slider-container > #agentTtsSpeed::-webkit-slider-thumb,
-#agentSettingsContainer .slider-container > input[type="range"]::-webkit-slider-thumb {
-    width: 16px;
-    height: 16px;
-    margin-top: -6px;
-    appearance: none;
-    border: 2px solid var(--vcp-ui-accent, var(--highlight-text));
-    border-radius: 50%;
-    background: var(--vcp-ui-bg-1, var(--input-bg));
+#agentSettingsContainer .slider-container input[type="range"]::-webkit-slider-runnable-track {
+    width: 100% !important;
+    height: 5px !important;
+    border: none !important;
+    border-radius: 999px !important;
+    background: var(--vcp-ui-fill-2, rgba(255, 255, 255, 0.14)) !important;
+}
+
+#agentSettingsContainer .slider-container input[type="range"]::-moz-range-track {
+    width: 100% !important;
+    height: 5px !important;
+    border: none !important;
+    border-radius: 999px !important;
+    background: var(--vcp-ui-fill-2, rgba(255, 255, 255, 0.14)) !important;
+}
+
+#agentSettingsContainer .slider-container input[type="range"]::-webkit-slider-thumb {
+    width: 16px !important;
+    height: 16px !important;
+    margin-top: -5.5px !important;
+    border: 2px solid var(--vcp-ui-accent, var(--highlight-text, #3b82f6)) !important;
+    border-radius: 50% !important;
+    background: var(--vcp-ui-bg-1, var(--input-bg, #1e2024)) !important;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35) !important;
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+    cursor: pointer !important;
+}
+
+#agentSettingsContainer .slider-container input[type="range"]::-moz-range-thumb {
+    width: 14px !important;
+    height: 14px !important;
+    border: 2px solid var(--vcp-ui-accent, var(--highlight-text, #3b82f6)) !important;
+    border-radius: 50% !important;
+    background: var(--vcp-ui-bg-1, var(--input-bg, #1e2024)) !important;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35) !important;
+    cursor: pointer !important;
+}
+
+#agentSettingsContainer .slider-container input[type="range"]:hover::-webkit-slider-thumb {
+    transform: scale(1.15) !important;
+    box-shadow: 0 0 0 4px var(--vcp-ui-focus-ring, rgba(59, 130, 246, 0.25)) !important;
+}
+
+#agentSettingsContainer .slider-container input[type="range"]:active::-webkit-slider-thumb {
+    transform: scale(1.22) !important;
+    box-shadow: 0 0 0 6px var(--vcp-ui-focus-ring, rgba(59, 130, 246, 0.35)) !important;
+}
+
+#agentSettingsContainer .slider-container output,
+#agentSettingsContainer .slider-container #ttsSpeedValue {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    min-width: 40px !important;
+    height: 24px !important;
+    padding: 0 8px !important;
+    border-radius: 6px !important;
+    background: var(--vcp-ui-fill-1, rgba(255, 255, 255, 0.08)) !important;
+    border: 1px solid var(--vcp-ui-border, rgba(255, 255, 255, 0.1)) !important;
+    color: var(--vcp-ui-text-0, var(--primary-text, #ffffff)) !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    font-variant-numeric: tabular-nums !important;
+    text-align: center !important;
+    box-sizing: border-box !important;
+    flex-shrink: 0 !important;
+}
+
+body[data-vcp-theme="light"] #agentSettingsContainer .slider-container input[type="range"]::-webkit-slider-thumb {
+    background: #ffffff !important;
+}
+
+body[data-vcp-theme="light"] #agentSettingsContainer .slider-container input[type="range"]::-moz-range-thumb {
+    background: #ffffff !important;
+}
+
+body[data-vcp-theme="light"] #agentSettingsContainer .slider-container output,
+body[data-vcp-theme="light"] #agentSettingsContainer .slider-container #ttsSpeedValue {
+    background: rgba(0, 0, 0, 0.05) !important;
+    border: 1px solid rgba(0, 0, 0, 0.1) !important;
+    color: #0f1115 !important;
+}
+
+body[data-vcp-theme="dark"] #agentSettingsContainer .slider-container input[type="range"]::-webkit-slider-thumb {
+    background: #171b20 !important;
+}
+
+body[data-vcp-theme="dark"] #agentSettingsContainer .slider-container input[type="range"]::-moz-range-thumb {
+    background: #171b20 !important;
+}
+
+body[data-vcp-theme="dark"] #agentSettingsContainer .slider-container output,
+body[data-vcp-theme="dark"] #agentSettingsContainer .slider-container #ttsSpeedValue {
+    background: rgba(255, 255, 255, 0.08) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    color: #ffffff !important;
+}
+
+/* ========================================
+   Tooltip Info Badges & Subtraction of Bulky Explanatory Texts
+   ======================================== */
+.vcp-settings-info-badge {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 15px !important;
+    height: 15px !important;
+    margin-left: 6px !important;
+    border-radius: 50% !important;
+    border: 1px solid currentColor !important;
+    opacity: 0.55 !important;
+    background: transparent !important;
+    color: inherit !important;
+    font-family: inherit !important;
+    font-size: 10px !important;
+    font-weight: 600 !important;
+    line-height: 1 !important;
+    padding: 0 !important;
+    cursor: pointer !important;
+    vertical-align: middle !important;
+    transition: opacity 120ms ease, background-color 120ms ease !important;
+    outline: none !important;
+    flex-shrink: 0 !important;
+    box-sizing: border-box !important;
+}
+
+.vcp-settings-info-badge:hover,
+.vcp-settings-info-badge:focus-visible {
+    opacity: 1 !important;
+    background-color: var(--dsw-alias-fill-hover, rgba(128, 128, 128, 0.15)) !important;
+}
+
+#agentSettingsContainer .tts-director-help,
+#agentSettingsContainer .agent-settings-section[data-section-key="tts"] .slider-container + small,
+#agentSettingsContainer .agent-settings-section[data-section-key="tts"] small[data-vcp-style="4"],
+#agentSettingsContainer .agent-settings-section[data-section-key="appearance"] .style-control-item.full-width > small {
+    display: none !important;
+}
+
+.vcp-uiux-tooltip-bubble {
+    z-index: 10000 !important;
 }

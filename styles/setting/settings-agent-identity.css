@@ -15,7 +15,7 @@
 #agentSettingsContainer .agent-identity-main {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 12px;
 }
 
 /* 头像包装器 */
@@ -24,10 +24,26 @@
     flex-shrink: 0;
 }
 
+#agentSettingsContainer .agent-avatar-wrapper {
+    position: relative;
+    flex-shrink: 0;
+    width: 60px;
+    height: 60px;
+    border-radius: 16px;
+    overflow: hidden;
+}
+
 #agentSettingsContainer .agent-avatar-display {
-    width: 76px;
-    height: 76px;
-    border-width: 2px;
+    width: 60px !important;
+    height: 60px !important;
+    min-width: 60px !important;
+    max-width: 60px !important;
+    min-height: 60px !important;
+    max-height: 60px !important;
+    border-radius: 16px !important;
+    border: 1px solid rgba(0, 0, 0, 0.08) !important;
+    object-fit: cover !important;
+    margin: 0 !important;
 }
 
 .agent-avatar-display {
@@ -68,8 +84,13 @@
 }
 
 /* Agent设置：悬浮时才显示相机图标 */
+#agentSettingsContainer .avatar-upload-overlay {
+    border-radius: 16px !important;
+    background-color: rgba(0, 0, 0, 0.45);
+    transition: opacity 0.15s ease;
+}
+
 #agentSettingsContainer .agent-avatar-wrapper:hover .avatar-upload-overlay {
-    /*     background-color: rgba(0, 0, 0, 0.5);*/
     opacity: 1;
 }
 
@@ -123,6 +144,48 @@
     font-size: 1.08em;
     line-height: 1.3;
     box-sizing: border-box;
+}
+
+#agentSettingsContainer .agent-name-wrapper {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+#agentSettingsContainer .agent-name-wrapper label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--secondary-text);
+    margin: 0;
+}
+
+#agentSettingsContainer .agent-name-wrapper input[type="text"] {
+    width: 100% !important;
+    margin: 0 !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    padding: 0 12px !important;
+    border-radius: 10px !important;
+    border: 1px solid var(--vcp-ui-control-border, rgba(0, 0, 0, 0.1)) !important;
+    background: var(--vcp-ui-bg-1, rgba(255, 255, 255, 0.8)) !important;
+    color: var(--primary-text) !important;
+    font-size: 13.5px !important;
+    font-weight: 600 !important;
+    box-sizing: border-box !important;
+    outline: none !important;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+#agentSettingsContainer .agent-name-wrapper input[type="text"]:focus {
+    border-color: var(--vcp-ui-control-focus, #3b82f6) !important;
+    box-shadow: 0 0 0 2px var(--vcp-ui-focus-ring, rgba(59, 130, 246, 0.18)) !important;
+}
+
+body[data-vcp-theme="dark"] #agentSettingsContainer .agent-name-wrapper input[type="text"] {
+    border-color: rgba(255, 255, 255, 0.12) !important;
+    background: rgba(255, 255, 255, 0.04) !important;
 }
 
 /* ========================================
@@ -324,18 +387,143 @@ body[data-vcp-theme="dark"] .color-input-group > input[type="text"]:focus-visibl
     border-color: var(--vcp-ui-control-focus, #60a5fa);
 }
 
+/* Modern VCPUI ColorPair in Agent Settings */
+#agentSettingsContainer .color-input-group > .vcp-uiux-color-pair {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    min-width: 0;
+    height: 32px;
+    box-sizing: border-box;
+    padding: 0 5px 0 4px;
+    border: 1px solid var(--vcp-ui-control-border, rgba(0, 0, 0, 0.12));
+    border-radius: 8px;
+    background: var(--vcp-ui-bg-1, rgba(255, 255, 255, 0.85));
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+body[data-vcp-theme="dark"] #agentSettingsContainer .color-input-group > .vcp-uiux-color-pair {
+    border-color: rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+#agentSettingsContainer .color-input-group > .vcp-uiux-color-pair:focus-within {
+    border-color: var(--vcp-ui-control-focus, #3b82f6) !important;
+    box-shadow: 0 0 0 2px var(--vcp-ui-focus-ring, rgba(59, 130, 246, 0.18)) !important;
+}
+
+#agentSettingsContainer .color-input-group > .vcp-uiux-color-pair > input[type="color"] {
+    flex: 0 0 22px !important;
+    width: 22px !important;
+    height: 22px !important;
+    min-width: 22px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 5px !important;
+    cursor: pointer;
+    background: transparent !important;
+}
+
+#agentSettingsContainer .color-input-group > .vcp-uiux-color-pair > input[type="color"]::-webkit-color-swatch-wrapper {
+    padding: 0 !important;
+    border-radius: 5px !important;
+}
+
+#agentSettingsContainer .color-input-group > .vcp-uiux-color-pair > input[type="color"]::-webkit-color-swatch {
+    border: none !important;
+    border-radius: 5px !important;
+}
+
+#agentSettingsContainer .color-input-group > .vcp-uiux-color-pair > input[type="text"] {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100% !important;
+    height: 24px !important;
+    padding: 0 2px !important;
+    border: 0 !important;
+    background: transparent !important;
+    color: var(--primary-text) !important;
+    font-family: 'SF Mono', 'Consolas', monospace;
+    font-size: 11.5px !important;
+    line-height: 24px;
+    outline: none !important;
+    box-shadow: none !important;
+    letter-spacing: -0.02em;
+}
+
+/* Switch rows clean layout */
+#agentSettingsContainer .style-control-item .form-group-inline {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    margin-bottom: 6px !important;
+}
+
+#agentSettingsContainer .style-control-item .form-group-inline > label:first-child {
+    font-size: 12.5px !important;
+    line-height: 1.35 !important;
+    color: var(--vcp-ui-text-0, var(--primary-text, #ffffff)) !important;
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0 !important;
+}
+
+#agentSettingsContainer .style-control-item .form-group-inline .switch {
+    flex-shrink: 0;
+    margin: 0 !important;
+}
+
+/* Reset colors button compact styling */
+#agentSettingsContainer #resetAvatarColorsBtn {
+    width: 100% !important;
+    justify-content: center !important;
+    height: 32px !important;
+    min-height: 32px !important;
+    border-radius: 8px !important;
+    font-size: 12.5px !important;
+    font-weight: 500 !important;
+    margin-top: 2px;
+}
+
 /* 自定义CSS文本框 */
 .style-control-item textarea {
     width: 100%;
-    padding: 10px;
-    border-radius: 8px;
-    border: 1px solid var(--border-color);
-    background-color: var(--secondary-bg);
+    min-height: 80px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    background: rgba(0, 0, 0, 0.028);
     color: var(--primary-text);
-    font-size: 0.9em;
-    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 12.5px;
+    line-height: 1.5;
+    font-family: 'Consolas', 'Monaco', 'SF Mono', monospace;
     resize: vertical;
     box-sizing: border-box;
+    outline: none;
+    box-shadow: none;
+    transition: background var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+                border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+                box-shadow var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
+}
+
+.style-control-item textarea:focus {
+    background: rgba(0, 0, 0, 0.045);
+    border-color: var(--vcp-ui-border-focus, rgba(22, 119, 255, 0.35));
+    box-shadow: 0 0 0 2px var(--vcp-ui-focus-ring, rgba(22, 119, 255, 0.12));
+}
+
+body[data-vcp-theme="dark"] .style-control-item textarea {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.06);
+}
+
+body[data-vcp-theme="dark"] .style-control-item textarea:focus {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: var(--vcp-ui-border-focus, rgba(59, 130, 246, 0.45));
+    box-shadow: 0 0 0 2px var(--vcp-ui-focus-ring, rgba(59, 130, 246, 0.18));
 }
 
 .style-control-item textarea::placeholder {
@@ -456,26 +644,29 @@ body[data-vcp-theme="dark"] .reset-colors-btn:not(.vcp-uiux-button):hover {
 #agentSettingsForm div>img[src*="blob:"],
 #agentSettingsForm div>img[data-preview-for],
 #agentSettingsForm img[id*="AvatarPreview"],
-#agentSettingsForm img[class*="AvatarPreview"] {
-    border: 2px solid var(--button-bg) !important;
-    border-radius: 8px;
-    max-width: 100px;
-    max-height: 100px;
-    object-fit: cover;
-    display: block;
-    margin-top: 10px;
-    margin-bottom: 10px;
+#agentSettingsForm img[class*="AvatarPreview"],
+#agentSettingsForm>div>img:only-child {
+    border: 1px solid rgba(0, 0, 0, 0.08) !important;
+    border-radius: 16px !important;
+    width: 60px !important;
+    height: 60px !important;
+    min-width: 60px !important;
+    max-width: 60px !important;
+    min-height: 60px !important;
+    max-height: 60px !important;
+    object-fit: cover !important;
+    display: block !important;
+    margin: 0 !important;
 }
 
-#agentSettingsForm>div>img:only-child {
-    border: 2px solid var(--button-bg) !important;
-    border-radius: 8px;
-    max-width: 100px;
-    max-height: 100px;
-    object-fit: cover;
-    display: block;
-    margin-top: 10px;
-    margin-bottom: 10px;
+body[data-vcp-theme="dark"] #agentSettingsForm img.avatar-preview,
+body[data-vcp-theme="dark"] #agentSettingsContainer img[alt="Avatar Preview"],
+body[data-vcp-theme="dark"] #agentSettingsForm div>img[src*="blob:"],
+body[data-vcp-theme="dark"] #agentSettingsForm div>img[data-preview-for],
+body[data-vcp-theme="dark"] #agentSettingsForm img[id*="AvatarPreview"],
+body[data-vcp-theme="dark"] #agentSettingsForm img[class*="AvatarPreview"],
+body[data-vcp-theme="dark"] #agentSettingsForm>div>img:only-child {
+    border-color: rgba(255, 255, 255, 0.12) !important;
 }
 
 /* Error feedback is a live SettingsActionBar state, not a legacy baseline.

@@ -140,11 +140,11 @@ window.GroupSettingsMarkup = (() => {
                         <div class="group-settings-card-shell group-settings-prompt-shell">
                             <div class="group-settings-field-shell">
                                 <label for="groupPrompt">GroupPrompt</label>
-                                <textarea id="groupPrompt" rows="4" placeholder="例如：这里是用户家的聊天空间，成员应保持协作与角色分工。"></textarea>
+                                <textarea id="groupPrompt" rows="4" spellcheck="false" autocorrect="off" autocapitalize="off" placeholder="例如：这里是用户家的聊天空间，成员应保持协作与角色分工。"></textarea>
                             </div>
                             <div class="group-settings-field-shell">
                                 <label for="invitePrompt">InvitePrompt</label>
-                                <textarea id="invitePrompt" rows="4" placeholder="例如：现在轮到 {{VCPChatAgentName}} 发言了。"></textarea>
+                                <textarea id="invitePrompt" rows="4" spellcheck="false" autocorrect="off" autocapitalize="off" placeholder="例如：现在轮到 {{VCPChatAgentName}} 发言了。"></textarea>
                                 <div class="group-settings-helper-text">可使用 {{VCPChatAgentName}} 作为被邀请发言的 Agent 名称占位符。</div>
                             </div>
                         </div>
