@@ -1563,8 +1563,8 @@ body.light-theme option {
 
 /* 调整主容器，为标题栏留出空间 */
 .music-player-container {
-    padding-top: 60px;
-    /* 20px 原有 padding + 40px 标题栏高度 */
+    padding-top: 40px;
+    /* 10px 顶部间距 + 40px 标题栏高度 */
 }
 
 /* ===== 左侧边栏 - 整合播放列表 ===== */
