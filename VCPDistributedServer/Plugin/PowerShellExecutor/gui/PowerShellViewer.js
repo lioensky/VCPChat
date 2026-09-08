@@ -289,10 +289,9 @@ if (window.electronAPI) {
             return false;
         }
 
-        if (arg.ctrlKey && arg.shiftKey && arg.code === 'KeyV') {
-            pasteFromClipboard();
-            return false;
-        }
+        // Ctrl+V / Ctrl+Shift+V 不在这里手动读取剪贴板。
+        // xterm 会通过隐藏 textarea 的原生 paste 事件接收内容，并由 term.onData
+        // 转发给 PTY；若这里再调用 pasteFromClipboard，会把同一内容发送两遍。
 
         if (arg.ctrlKey && arg.code === 'KeyC') {
             if (term.hasSelection()) {
@@ -301,11 +300,6 @@ if (window.electronAPI) {
             }
 
             return true; // 无选区时保留终端原生 Ctrl+C 中断行为
-        }
-
-        if (arg.ctrlKey && arg.code === 'KeyV') {
-            pasteFromClipboard();
-            return false;
         }
 
         if (arg.ctrlKey && arg.code === 'KeyL') {
