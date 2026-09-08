@@ -193,6 +193,19 @@ const settingsManager = (() => {
                 return;
             }
 
+            // Check for uncommitted dirty edits on the previous agent before switching context
+            if (isAgentSettingsDirty && editingAgentIdInput?.value && editingAgentIdInput.value !== agentId) {
+                const prevId = editingAgentIdInput.value;
+                clearTimeout(agentSettingsAutosaveTimer);
+                try {
+                    console.log(`[SettingsManager] Flushing uncommitted dirty changes for previous agent ${prevId} before loading ${agentId}`);
+                    await saveCurrentAgentSettings();
+                } catch (e) {
+                    console.warn(`[SettingsManager] Failed to flush dirty edits for ${prevId}:`, e);
+                }
+                isAgentSettingsDirty = false;
+            }
+
             // Initialize PromptManager (Singleton Pattern)
             const systemPromptContainer = document.getElementById('systemPromptContainer');
             if (systemPromptContainer && window.PromptManager) {
@@ -222,19 +235,6 @@ const settingsManager = (() => {
 
             if (viewToken && !window.VCPSettingsSidebar?.isCurrent?.(viewToken)) {
                 return { stale: true };
-            }
-
-            // Check for uncommitted dirty edits on the previous agent before populating new one
-            if (isAgentSettingsDirty && editingAgentIdInput?.value && editingAgentIdInput.value !== agentId) {
-                const prevId = editingAgentIdInput.value;
-                clearTimeout(agentSettingsAutosaveTimer);
-                try {
-                    console.log(`[SettingsManager] Flushing uncommitted dirty changes for previous agent ${prevId} before loading ${agentId}`);
-                    await saveCurrentAgentSettings();
-                } catch (e) {
-                    console.warn(`[SettingsManager] Failed to flush dirty edits for ${prevId}:`, e);
-                }
-                isAgentSettingsDirty = false;
             }
 
             // 只有提示词上下文已成功切到目标 Agent 后，才发布表单所代表的 Agent ID。
