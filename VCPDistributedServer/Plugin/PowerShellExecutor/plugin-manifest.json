@@ -1,9 +1,9 @@
 {
   "manifestVersion": "1.0.0",
   "name": "PowerShellExecutor",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "displayName": "PowerShell命令执行器",
-  "description": "在持久化 PowerShell PTY 会话中执行命令，并提供真实 xterm + node-pty 双向交互终端 GUI。支持同步执行、交互式程序、可见文本查询和异步 Ctrl+C 中止。",
+  "description": "在持久化 PowerShell PTY 会话中执行命令，并提供真实 xterm + node-pty 双向交互终端 GUI。支持同步执行、交互式程序、键盘与粘贴串行自动化、可见文本查询和异步 Ctrl+C 中止。",
   "author": "Your Name",
   "pluginType": "hybridservice",
   "entryPoint": {
@@ -23,6 +23,18 @@
       {
         "command": "StartInteractive",
         "description": "功能: 启动 snow、codex、claude、vim、fzf 等交互式 CLI，立即返回，由用户在 xterm GUI 中接管。\n参数:\n- powershell (字符串, 必需): 要启动的单条交互式命令。\n- newSession (布尔值, 可选, 默认 false): 启动前重建 PTY 会话。\n\n重要提示:\n- 不等待交互式程序结束，不返回 TUI 屏幕内容，也不使用同步命令边界。\n- 启动后 PTY 会被标记为 interactiveMode，ExecutePowerShell 将被拒绝。\n- 插件不会自动判断交互式程序是否已退出。程序退出并回到 shell 后，应调用 EndInteractive 清除标志。\n- 可使用 QueryVisible 获取当前终端显示文本；可使用 InterruptPowerShell 向前台程序发送 Ctrl+C，但该操作不会自动清除 interactiveMode。\n\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」PowerShellExecutor「末」,\ncommand:「始」StartInteractive「末」,\npowershell:「始」snow「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "SendInteractiveKey",
+        "description": "功能: 向当前交互终端发送一个按键或按键连击，无需构造编号序列。适合单独按 Enter、方向键、Esc 或连续 Ctrl+C。\n参数:\n- key (字符串, 必需): enter/return、up/down/left/right、esc/escape、tab、shift+tab/backtab、backspace、delete、home/end、pageup/pagedown、space、ctrl+c、ctrl+d、ctrl+z、ctrl+l、ctrl+a、ctrl+e、ctrl+u、ctrl+k、ctrl+w。可用 ctrl+c*2 表示连续发送两次，最多重复 10 次。\n- newSession (布尔值, 可选, 默认 false): 发送前重建 PTY；控制已有 TUI 时不要设置。\n\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」PowerShellExecutor「末」,\ncommand:「始」SendInteractiveKey「末」,\nkey:「始」enter「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "PasteInteractiveText",
+        "description": "功能: 向当前交互终端粘贴一段文本，无需构造编号序列。文本通过 xterm bracketed-paste 语义送入 TUI，不覆盖用户系统剪贴板。\n参数:\n- text (字符串, 必需): 要粘贴的文本，最多 100000 字符。\n- submit (布尔值, 可选, 默认 false): 粘贴后是否立即发送 Enter。若需等待后再提交，请保持 false，随后调用 SendInteractiveKey。\n- newSession (布尔值, 可选, 默认 false): 粘贴前重建 PTY；控制已有 TUI 时不要设置。\n\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」PowerShellExecutor「末」,\ncommand:「始」PasteInteractiveText「末」,\ntext:「始」请分析当前项目「末」,\nsubmit:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "RunInteractiveSequence",
+        "description": "功能: 按全局步骤编号串行操纵 snow、codex、claude、vim 等交互式 CLI。可启动程序、等待界面、发送真实终端按键、通过 xterm bracketed-paste 输入文本，并在任意步骤查询当前可见内容。单次按键或粘贴优先使用 SendInteractiveKey / PasteInteractiveText。\n\n步骤参数（至少一个非 wait 步骤，N 必须是唯一正整数）:\n- commandN (字符串): 像用户输入一行命令后按 Enter；不等待命令结束。适合第一步输入 snow、codex、claude 等来进入 TUI。\n- waitN (字符串或数字): 等待时长，支持 50ms、1s 或毫秒数字。单步最多 60000ms，累计最多 300000ms。\n- keyN (字符串): 发送终端按键。支持 enter/return、up/down/left/right、esc/escape、tab、shift+tab/backtab、backspace、delete、home/end、pageup/pagedown、space、ctrl+c、ctrl+d、ctrl+z、ctrl+l、ctrl+a、ctrl+e、ctrl+u、ctrl+k、ctrl+w。可用 ctrl+c*2 连续发送，最多重复 10 次。\n- pasteN (字符串): 通过 xterm 粘贴语义输入文本，自动兼容 TUI 的 bracketed-paste；不会覆盖用户系统剪贴板，也不会自动按 Enter。\n- queryVisibleN (正整数): 返回执行到该步骤时最新多少行可见文本，最多 2000 行。\n- newSession (布尔值, 可选): 执行前重建 PTY 会话。\n\n排序规则:\n- 所有步骤类型共享同一套全局编号，并严格按 N 从小到大执行。\n- wait 只用于操作之间留出界面响应时间；仅包含 wait 的序列会被拒绝。\n- 编号可以不连续，但不能重复。例如 command1、wait2、key3、paste4、wait5、key6、wait7、queryVisible8。\n- paste 只输入文本，通常要在后续单独安排 keyN: enter 提交。\n- commandN 会执行 forbiddenCommands/authRequiredCommands 安全检查；pasteN 是交互式程序内文本，不按 PowerShell 命令解析。\n- 执行后保持 interactiveMode；确认程序退出并回到 PowerShell 后调用 EndInteractive。\n\nSnow/Codex 示例:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」PowerShellExecutor「末」,\ncommand:「始」RunInteractiveSequence「末」,\ncommand1:「始」snow「末」,\nwait2:「始」1500ms「末」,\nkey3:「始」enter「末」,\nwait4:「始」500ms「末」,\npaste5:「始」请分析当前项目并告诉我主要模块「末」,\nwait6:「始」100ms「末」,\nkey7:「始」enter「末」,\nwait8:「始」5s「末」,\nqueryVisible9:「始」300「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
         "command": "QueryVisible",

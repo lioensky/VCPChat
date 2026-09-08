@@ -88,7 +88,8 @@ async function pasteFromClipboard() {
     try {
         const text = await window.electronAPI.invoke('read-from-clipboard');
         if (text) {
-            window.electronAPI.send('powershell-input', text);
+            // 统一经过 xterm 的 paste 状态机，以支持 TUI 开启的 bracketed-paste 模式。
+            term.paste(text);
             term.focus();
         }
     } catch (error) {
@@ -194,9 +195,24 @@ function handleContextMenuAction(action) {
 
 if (window.electronAPI) {
     // --- 查询可见文本 ---
-    window.electronAPI.on('query-visible-text', ({ maxLines }) => {
+    window.electronAPI.on('query-visible-text', (payload = {}) => {
+        const { requestId = null, maxLines = null } = payload;
         const text = extractVisibleText(maxLines);
-        window.electronAPI.send('visible-text-response', text);
+        window.electronAPI.send('visible-text-response', { requestId, text });
+    });
+
+    // --- AI 串行交互请求的 xterm 原生粘贴 ---
+    window.electronAPI.on('terminal-paste-request', (payload = {}) => {
+        const { requestId, text } = payload;
+        if (!requestId || typeof text !== 'string') {
+            return;
+        }
+
+        // Terminal.paste 会依据当前 DECSET 2004 状态自动包裹 bracketed-paste
+        // 控制序列，并从 term.onData 走与真人粘贴完全相同的 PTY 输入链路。
+        term.paste(text);
+        term.focus();
+        window.electronAPI.send('terminal-paste-complete', { requestId });
     });
 
     // --- 数据、清屏与主题 ---

@@ -219,19 +219,44 @@ ipcMain.on('powershell-input', (event, data) => {
     }
 });
 
-// --- 查询终端可见文本 ---
-ipcMain.on('query-visible-text-request', (event) => {
-    if (guiWindow && !guiWindow.isDestroyed()) {
-        guiWindow.webContents.send('query-visible-text');
+// --- 查询终端可见文本与 xterm 粘贴响应 ---
+const visibleTextResolvers = new Map();
+const terminalPasteResolvers = new Map();
+
+ipcMain.on('visible-text-response', (event, payload, legacyText) => {
+    if (!isPowerShellGuiSender(event)) {
+        return;
+    }
+
+    // 兼容旧渲染端直接返回字符串的格式。
+    if (typeof payload === 'string') {
+        const firstEntry = visibleTextResolvers.entries().next().value;
+        if (firstEntry) {
+            const [requestId, resolve] = firstEntry;
+            visibleTextResolvers.delete(requestId);
+            resolve(payload);
+        }
+        return;
+    }
+
+    const requestId = payload && payload.requestId;
+    const resolver = requestId ? visibleTextResolvers.get(requestId) : null;
+    if (resolver) {
+        visibleTextResolvers.delete(requestId);
+        resolver(typeof payload.text === 'string' ? payload.text : (legacyText || ''));
     }
 });
 
-let visibleTextResolver = null;
+ipcMain.on('terminal-paste-complete', (event, payload) => {
+    if (!isPowerShellGuiSender(event)) {
+        return;
+    }
 
-ipcMain.on('visible-text-response', (event, text) => {
-    if (visibleTextResolver) {
-        visibleTextResolver(text);
-        visibleTextResolver = null;
+    const requestId = payload && payload.requestId;
+    const resolver = requestId ? terminalPasteResolvers.get(requestId) : null;
+    if (resolver) {
+        terminalPasteResolvers.delete(requestId);
+        resolver();
     }
 });
 
@@ -1200,10 +1225,328 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
 }
 
 
+const INTERACTIVE_SEQUENCE_LIMITS = Object.freeze({
+    maxSteps: 100,
+    maxWaitMs: 60000,
+    maxTotalWaitMs: 300000,
+    maxTextLength: 100000,
+    maxQueryLines: 2000,
+    responseTimeoutMs: 5000
+});
+
+const TERMINAL_KEY_SEQUENCES = Object.freeze({
+    enter: '\r',
+    return: '\r',
+    up: '\x1b[A',
+    arrowup: '\x1b[A',
+    down: '\x1b[B',
+    arrowdown: '\x1b[B',
+    right: '\x1b[C',
+    arrowright: '\x1b[C',
+    left: '\x1b[D',
+    arrowleft: '\x1b[D',
+    esc: '\x1b',
+    escape: '\x1b',
+    tab: '\t',
+    backtab: '\x1b[Z',
+    'shift+tab': '\x1b[Z',
+    backspace: '\x7f',
+    delete: '\x1b[3~',
+    home: '\x1b[H',
+    end: '\x1b[F',
+    pageup: '\x1b[5~',
+    pagedown: '\x1b[6~',
+    space: ' ',
+    'ctrl+c': '\x03',
+    'ctrl+d': '\x04',
+    'ctrl+z': '\x1a',
+    'ctrl+l': '\x0c',
+    'ctrl+a': '\x01',
+    'ctrl+e': '\x05',
+    'ctrl+u': '\x15',
+    'ctrl+k': '\x0b',
+    'ctrl+w': '\x17'
+});
+
+function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function parseWaitDuration(value) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return Math.round(value);
+    }
+
+    const match = String(value).trim().toLowerCase().match(/^(\d+(?:\.\d+)?)\s*(ms|s)?$/);
+    if (!match) {
+        throw new Error(`无效 wait 时长 "${value}"；请使用 50ms、1s 或毫秒数字。`);
+    }
+
+    const milliseconds = Number(match[1]) * (match[2] === 's' ? 1000 : 1);
+    return Math.round(milliseconds);
+}
+
+function parseTerminalKey(value) {
+    const raw = String(value).trim().toLowerCase();
+    const match = raw.match(/^(.+?)(?:\s*\*\s*(\d+))?$/);
+    const keyName = match ? match[1].trim() : raw;
+    const repeat = match && match[2] ? Number.parseInt(match[2], 10) : 1;
+    const sequence = TERMINAL_KEY_SEQUENCES[keyName];
+
+    if (!sequence) {
+        throw new Error(`不支持的终端按键 "${value}"。`);
+    }
+    if (!Number.isInteger(repeat) || repeat < 1 || repeat > 10) {
+        throw new Error(`按键重复次数必须在 1 到 10 之间："${value}"。`);
+    }
+
+    return { keyName, repeat, data: sequence.repeat(repeat) };
+}
+
+function parseInteractiveSequence(args) {
+    const steps = [];
+
+    for (const [key, value] of Object.entries(args)) {
+        const match = key.match(/^(command|wait|key|paste|queryVisible)(\d+)$/i);
+        if (!match) {
+            continue;
+        }
+
+        const typeLookup = {
+            command: 'command',
+            wait: 'wait',
+            key: 'key',
+            paste: 'paste',
+            queryvisible: 'queryVisible'
+        };
+        steps.push({
+            key,
+            type: typeLookup[match[1].toLowerCase()],
+            index: Number.parseInt(match[2], 10),
+            value
+        });
+    }
+
+    if (steps.length === 0) {
+        throw new Error('RunInteractiveSequence 至少需要一个带全局序号的步骤，例如 command1、wait2、key3、paste4、queryVisible5。');
+    }
+    if (steps.length > INTERACTIVE_SEQUENCE_LIMITS.maxSteps) {
+        throw new Error(`交互序列最多允许 ${INTERACTIVE_SEQUENCE_LIMITS.maxSteps} 个步骤。`);
+    }
+
+    steps.sort((a, b) => a.index - b.index);
+    const usedIndexes = new Set();
+    let totalWaitMs = 0;
+
+    for (const step of steps) {
+        if (!Number.isInteger(step.index) || step.index < 1) {
+            throw new Error(`步骤编号必须是从 1 开始的正整数：${step.key}。`);
+        }
+        if (usedIndexes.has(step.index)) {
+            throw new Error(`步骤编号 ${step.index} 重复；不同类型步骤必须共用唯一的全局序号。`);
+        }
+        usedIndexes.add(step.index);
+
+        if (step.type === 'wait') {
+            step.durationMs = parseWaitDuration(step.value);
+            if (step.durationMs < 0 || step.durationMs > INTERACTIVE_SEQUENCE_LIMITS.maxWaitMs) {
+                throw new Error(`单个 wait 步骤必须在 0 到 ${INTERACTIVE_SEQUENCE_LIMITS.maxWaitMs}ms 之间。`);
+            }
+            totalWaitMs += step.durationMs;
+        } else if (step.type === 'key') {
+            step.keySpec = parseTerminalKey(step.value);
+        } else if (step.type === 'queryVisible') {
+            const parsedLines = Number.parseInt(step.value, 10);
+            step.maxLines = Number.isInteger(parsedLines) && parsedLines > 0
+                ? Math.min(parsedLines, INTERACTIVE_SEQUENCE_LIMITS.maxQueryLines)
+                : null;
+        } else {
+            if (typeof step.value !== 'string' || !step.value.length) {
+                throw new Error(`${step.key} 必须是非空字符串。`);
+            }
+            if (step.value.length > INTERACTIVE_SEQUENCE_LIMITS.maxTextLength) {
+                throw new Error(`${step.key} 超过 ${INTERACTIVE_SEQUENCE_LIMITS.maxTextLength} 字符限制。`);
+            }
+        }
+    }
+
+    if (totalWaitMs > INTERACTIVE_SEQUENCE_LIMITS.maxTotalWaitMs) {
+        throw new Error(`序列累计等待不能超过 ${INTERACTIVE_SEQUENCE_LIMITS.maxTotalWaitMs}ms。`);
+    }
+    if (steps.every(step => step.type === 'wait')) {
+        throw new Error('交互序列不能只包含 wait；请至少加入 command、key、paste 或 queryVisible 步骤。');
+    }
+
+    return steps;
+}
+
+function requestVisibleText(maxLines = null) {
+    return new Promise((resolve, reject) => {
+        if (!guiWindow || guiWindow.isDestroyed() || !guiReady) {
+            reject(new Error('PowerShell GUI 尚未就绪，无法查询可见文本。'));
+            return;
+        }
+
+        const requestId = crypto.randomUUID();
+        const timeout = setTimeout(() => {
+            visibleTextResolvers.delete(requestId);
+            reject(new Error('查询终端文本超时'));
+        }, INTERACTIVE_SEQUENCE_LIMITS.responseTimeoutMs);
+
+        visibleTextResolvers.set(requestId, (text) => {
+            clearTimeout(timeout);
+            resolve(text);
+        });
+        guiWindow.webContents.send('query-visible-text', { requestId, maxLines });
+    });
+}
+
+function requestTerminalPaste(text) {
+    return new Promise((resolve, reject) => {
+        if (!guiWindow || guiWindow.isDestroyed() || !guiReady) {
+            reject(new Error('PowerShell GUI 尚未就绪，无法执行 xterm 粘贴。'));
+            return;
+        }
+
+        const requestId = crypto.randomUUID();
+        const timeout = setTimeout(() => {
+            terminalPasteResolvers.delete(requestId);
+            reject(new Error('xterm 粘贴请求超时'));
+        }, INTERACTIVE_SEQUENCE_LIMITS.responseTimeoutMs);
+
+        terminalPasteResolvers.set(requestId, () => {
+            clearTimeout(timeout);
+            resolve();
+        });
+        guiWindow.webContents.send('terminal-paste-request', { requestId, text });
+    });
+}
+
+async function ensureInteractiveTerminal(newSession = false) {
+    ensureGuiWindow();
+    if (newSession === true || !ptyProcess) {
+        createNewPtySession();
+    }
+    await waitForTerminalReady();
+    interactiveMode = true;
+    return ptyProcess;
+}
+
+async function sendSingleInteractiveKey(args) {
+    if (typeof args.key !== 'string' || !args.key.trim()) {
+        throw new Error('SendInteractiveKey 需要 key 参数，例如 enter、up、esc 或 ctrl+c*2。');
+    }
+
+    const keySpec = parseTerminalKey(args.key);
+    const targetPtyProcess = await ensureInteractiveTerminal(args.newSession === true);
+    targetPtyProcess.write(keySpec.data);
+
+    return {
+        content: [{
+            type: 'text',
+            text: `Interactive key sent: ${keySpec.keyName}${keySpec.repeat > 1 ? ` x${keySpec.repeat}` : ''}.`
+        }]
+    };
+}
+
+async function pasteSingleInteractiveText(args) {
+    if (typeof args.text !== 'string' || !args.text.length) {
+        throw new Error('PasteInteractiveText 需要非空 text 参数。');
+    }
+    if (args.text.length > INTERACTIVE_SEQUENCE_LIMITS.maxTextLength) {
+        throw new Error(`text 超过 ${INTERACTIVE_SEQUENCE_LIMITS.maxTextLength} 字符限制。`);
+    }
+
+    await ensureInteractiveTerminal(args.newSession === true);
+    await requestTerminalPaste(args.text);
+
+    if (args.submit === true) {
+        if (!ptyProcess) {
+            throw new Error('粘贴完成后 PTY 会话已退出，无法发送 Enter。');
+        }
+        ptyProcess.write('\r');
+    }
+
+    return {
+        content: [{
+            type: 'text',
+            text: `Interactive text pasted (${args.text.length} characters)${args.submit === true ? ' and Enter was sent' : ''}.`
+        }]
+    };
+}
+
+async function runInteractiveSequence(args) {
+    const steps = parseInteractiveSequence(args);
+
+    for (const step of steps.filter(item => item.type === 'command')) {
+        const securityResult = intelligentSecurityCheck(
+            step.value,
+            defaultConfig.forbiddenCommands,
+            defaultConfig.authRequiredCommands
+        );
+        if (securityResult.isForbidden) {
+            throw new Error(`步骤 ${step.index} 执行被阻止：${securityResult.reason}`);
+        }
+        if (securityResult.needsAuth) {
+            throw new Error(`步骤 ${step.index} 需要授权，RunInteractiveSequence 不支持在 TUI 序列中弹出授权确认：${securityResult.reason}`);
+        }
+    }
+
+    const targetPtyProcess = await ensureInteractiveTerminal(args.newSession === true);
+    const queryResults = [];
+
+    for (const step of steps) {
+        if (!ptyProcess || ptyProcess !== targetPtyProcess) {
+            throw new Error(`执行到步骤 ${step.index} 时 PTY 会话已退出或被替换。`);
+        }
+
+        switch (step.type) {
+            case 'command':
+                targetPtyProcess.write(`${step.value}\r`);
+                break;
+            case 'wait':
+                await delay(step.durationMs);
+                break;
+            case 'key':
+                targetPtyProcess.write(step.keySpec.data);
+                break;
+            case 'paste':
+                await requestTerminalPaste(step.value);
+                break;
+            case 'queryVisible': {
+                const text = await requestVisibleText(step.maxLines);
+                queryResults.push({ index: step.index, maxLines: step.maxLines, text });
+                break;
+            }
+            default:
+                throw new Error(`未知交互步骤类型：${step.type}`);
+        }
+    }
+
+    if (queryResults.length === 0) {
+        return {
+            content: [{
+                type: 'text',
+                text: `Interactive sequence completed (${steps.length} steps). No queryVisible step was requested.`
+            }]
+        };
+    }
+
+    const output = queryResults.map(result => {
+        const lineLabel = result.maxLines ? `, max ${result.maxLines} lines` : '';
+        return `---[queryVisible step ${result.index}${lineLabel}]---\n${result.text}`;
+    }).join('\n\n');
+
+    return { content: [{ type: 'text', text: `\`\`\`\n${output}\n\`\`\`` }] };
+}
+
 async function processToolCall(args) {
     const declaredCommands = new Set([
         'ExecutePowerShell',
         'StartInteractive',
+        'SendInteractiveKey',
+        'PasteInteractiveText',
+        'RunInteractiveSequence',
         'QueryVisible',
         'InterruptPowerShell',
         'EndInteractive'
@@ -1217,6 +1560,9 @@ async function processToolCall(args) {
     const actionByDeclaredCommand = {
         ExecutePowerShell: 'execute',
         StartInteractive: 'startInteractive',
+        SendInteractiveKey: 'interactiveKey',
+        PasteInteractiveText: 'interactivePaste',
+        RunInteractiveSequence: 'interactiveSequence',
         QueryVisible: 'queryVisible',
         InterruptPowerShell: 'interrupt',
         EndInteractive: 'endInteractive'
@@ -1224,6 +1570,18 @@ async function processToolCall(args) {
     const action = declaredCommand
         ? actionByDeclaredCommand[declaredCommand]
         : (typeof args.action === 'string' ? args.action.trim() : 'execute');
+
+    if (action === 'interactiveKey') {
+        return sendSingleInteractiveKey(args);
+    }
+
+    if (action === 'interactivePaste') {
+        return pasteSingleInteractiveText(args);
+    }
+
+    if (action === 'interactiveSequence') {
+        return runInteractiveSequence(args);
+    }
 
     if (action.startsWith('queryVisible')) {
         ensureGuiWindow();
@@ -1234,21 +1592,11 @@ async function processToolCall(args) {
         const parsedMaxLines = requestedMaxLines === undefined || requestedMaxLines === null || requestedMaxLines === ''
             ? null
             : Number.parseInt(requestedMaxLines, 10);
-        const maxLines = Number.isInteger(parsedMaxLines) && parsedMaxLines > 0 ? parsedMaxLines : null;
-        
-        return new Promise((resolve, reject) => {
-            const timeout = setTimeout(() => {
-                visibleTextResolver = null;
-                reject(new Error('查询终端文本超时'));
-            }, 5000);
-
-            visibleTextResolver = (text) => {
-                clearTimeout(timeout);
-                resolve({ content: [{ type: 'text', text: `\`\`\`\n${text}\n\`\`\`` }] });
-            };
-
-            guiWindow.webContents.send('query-visible-text', { maxLines });
-        });
+        const maxLines = Number.isInteger(parsedMaxLines) && parsedMaxLines > 0
+            ? Math.min(parsedMaxLines, INTERACTIVE_SEQUENCE_LIMITS.maxQueryLines)
+            : null;
+        const text = await requestVisibleText(maxLines);
+        return { content: [{ type: 'text', text: `\`\`\`\n${text}\n\`\`\`` }] };
     }
 
     if (action === 'endInteractive') {
@@ -1453,6 +1801,8 @@ function cleanup() {
         resolveGuiReady = null;
     }
     guiReadyPromise = Promise.resolve();
+    visibleTextResolvers.clear();
+    terminalPasteResolvers.clear();
 
     // 2. 终止所有跟踪的子进程
     if (childProcesses.size > 0) {
@@ -1489,9 +1839,12 @@ function cleanup() {
     activeCommandAbort = null;
 }
 
-// 导出 processToolCall 函数、GUI 打开函数和 cleanup 函数
+// 导出主入口、GUI/清理函数，以及无 Electron 副作用的序列解析器供单元测试使用。
 module.exports = {
     processToolCall,
     openGuiTerminal,
-    cleanup
+    cleanup,
+    parseInteractiveSequence,
+    parseWaitDuration,
+    parseTerminalKey
 };
