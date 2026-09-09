@@ -1,425 +1,108 @@
-/* 正则设置样式 */
-.strip-regex-container {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    margin-top: 8px;
-}
-
-.strip-regex-container .form-section-title {
-    margin-top: 0;
-    margin-bottom: 2px;
-}
-
-.strip-regex-list-container {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.strip-regex-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    /* 让标题和按钮分布在两端 */
-    gap: 8px;
-    padding: 8px 12px;
-    border-radius: 8px;
-    background-color: var(--input-bg);
-    border: 1px solid var(--border-color);
-}
-
-.strip-regex-input {
-    flex-grow: 1;
-    padding: 9px 10px;
-    border-radius: 8px;
-    border: 1px solid var(--border-color);
-    background-color: var(--input-bg);
-    color: var(--primary-text);
-    font-size: 0.95em;
-    font-family: monospace;
-    /* 使用等宽字体显示正则表达式 */
-}
-
-.strip-regex-input::placeholder {
-    color: var(--placeholder-text);
-    opacity: 0.7;
-    font-family: monospace;
-}
-
-/* 自定义下拉框 */
-.custom-select-container {
-    position: relative;
-    flex-shrink: 0;
-}
-
-.custom-select-button {
-    padding: 0;
-    background-color: var(--button-bg);
-    border: 1px solid var(--button-bg);
-    color: var(--text-on-accent);
-    border-radius: 6px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
-    box-sizing: border-box;
-    height: 38px;
-    width: 38px;
-    position: relative;
-}
-
-.custom-select-button:hover {
-    background-color: var(--button-hover-bg);
-    border-color: var(--button-hover-bg);
-}
-
-.custom-select-button.has-selection {
-    background-color: var(--button-bg);
-    border-color: var(--button-bg);
-}
-
-.custom-select-button.has-selection:hover {
-    background-color: var(--button-hover-bg);
-    border-color: var(--button-hover-bg);
-}
-
-.custom-select-button svg {
-    stroke: currentColor;
-    transition: transform var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
-}
-
-.custom-select-button.has-selection::after {
-    content: '';
-    position: absolute;
-    width: 6px;
-    height: 6px;
-    background-color: var(--user-bubble-bg);
-    border-radius: 50%;
-    top: 4px;
-    right: 4px;
-}
-
-.custom-dropdown {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    margin-top: 4px;
-    background-color: var(--panel-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    z-index: 10000;
-    /* 提高z-index确保下拉框在最上层 */
-    overflow: visible;
-    /* 改为visible确保内容完整显示 */
-    min-width: 120px;
-    /* 设置最小宽度 */
-}
-
-.dropdown-option {
-    padding: 8px 12px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-    transition: background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
-}
-
-.dropdown-option:hover {
-    background-color: var(--accent-bg);
-}
-
-.dropdown-option input[type="checkbox"] {
-    margin: 0;
-    width: 16px;
-    height: 16px;
-    accent-color: var(--user-bubble-bg);
-    cursor: pointer;
-}
-
-.dropdown-option label {
-    margin: 0;
-    cursor: pointer;
-    font-size: 0.9em;
-    flex-grow: 1;
-    user-select: none;
-}
-
-/* 按钮样式 - 与刷新模型按钮保持一致 */
-.btn-add-regex {
-    position: relative;
-    isolation: isolate;
-    overflow: hidden;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 32px;
-    min-height: 32px;
-    padding: 0 12px;
-    font-size: 13px;
-    font-weight: 500;
-    line-height: 1;
-    border-radius: 8px;
-    border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12));
-    cursor: pointer;
-    background: var(--dsw-alias-bg-layer-1, #ffffff);
-    color: var(--highlight-text);
-    box-sizing: border-box;
-    box-shadow: none !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    transition:
-        background var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
-        border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
-        color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
-}
-
-.btn-add-regex:hover {
-    background: var(--dsw-alias-interactive-bg-hover, #f3f4f6);
-    border-color: var(--dsw-alias-border-l1, rgba(0, 0, 0, 0.22));
-    color: var(--highlight-text);
-    box-shadow: none !important;
-}
-
-.btn-add-regex + .btn-add-regex {
-    margin-top: 6px;
-}
-
-.btn-add-regex.btn-add-regex-secondary {
-    color: color-mix(in srgb, var(--primary-text) 75%, var(--secondary-text) 25%);
-}
-
-.btn-add-regex.btn-add-regex-secondary:hover {
-    color: var(--primary-text);
-}
-
-.btn-delete-regex {
-    height: 38px;
-    width: 38px;
-    padding: 0;
-    background-color: var(--danger-color);
-    border: 1px solid var(--danger-color);
-    color: white;
-    border-radius: 6px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), transform var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard);
-    flex-shrink: 0;
-}
-
-.btn-delete-regex:hover {
-    background-color: var(--danger-hover-bg);
-    border-color: var(--danger-hover-bg);
-    transform: scale(1.05);
-}
-
-.btn-delete-regex svg {
-    stroke: white;
-    width: 16px;
-    height: 16px;
-}
-
-body[data-vcp-theme="light"] .btn-add-regex {
-    background: color-mix(in srgb, var(--user-bubble-bg, #f3ede2) 85%, rgba(255, 255, 255, 0.7));
-    border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12));
-    color: var(--highlight-text);
-    box-shadow: none !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-}
-
-body[data-vcp-theme="light"] .btn-add-regex:hover {
-    background: color-mix(in srgb, var(--user-bubble-bg, #f3ede2) 95%, rgba(0, 0, 0, 0.08));
-    border-color: var(--dsw-alias-border-l1, rgba(0, 0, 0, 0.22));
-    color: var(--highlight-text);
-    box-shadow: none !important;
-}
-
-body[data-vcp-theme="light"] .btn-add-regex.btn-add-regex-secondary {
-    background: var(--dsw-alias-bg-layer-1, #ffffff);
-    border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12));
-    color: color-mix(in srgb, var(--primary-text) 75%, var(--secondary-text) 25%);
-}
-
-body[data-vcp-theme="light"] .btn-add-regex.btn-add-regex-secondary:hover {
-    background: var(--dsw-alias-interactive-bg-hover, #f3f4f6);
-    border-color: var(--dsw-alias-border-l1, rgba(0, 0, 0, 0.22));
-    color: var(--primary-text);
-    box-shadow: none !important;
-}
-
-body[data-vcp-theme="dark"] .btn-add-regex {
-    background: var(--dsw-alias-bg-layer-2, #262628);
-    border: 1px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.12));
-    color: var(--highlight-text);
-    box-shadow: none !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-}
-
-body[data-vcp-theme="dark"] .btn-add-regex:hover {
-    background: var(--dsw-alias-interactive-bg-hover, #323235);
-    border-color: var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.24));
-    color: #ffffff;
-    box-shadow: none !important;
-}
-
-body[data-vcp-theme="dark"] .btn-add-regex.btn-add-regex-secondary {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: color-mix(in srgb, #ffffff 75%, var(--secondary-text) 25%);
-}
-
-body[data-vcp-theme="dark"] .btn-add-regex.btn-add-regex-secondary:hover {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.22);
-    color: #ffffff;
-    box-shadow: none !important;
-}
-
-/* 亮色主题调整 */
-body[data-vcp-theme="light"] .custom-dropdown {
-    background-color: var(--secondary-bg);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-/* 响应式调整 */
-@media (max-width: 600px) {
-    .strip-regex-row {
-        flex-wrap: nowrap;
-        /* 保持单行布局 */
-    }
-
-    .strip-regex-input {
-        flex: 1;
-        min-width: 0;
-    }
-}
-
-/* --- New Regex Editor Styles --- */
-
-.strip-regex-title {
-    font-weight: 500;
-    color: var(--primary-text);
-    font-size: 0.95em;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    flex-grow: 1;
-}
-
-.btn-edit-regex {
-    height: 32px;
-    width: 32px;
-    padding: 0;
-    background-color: var(--button-bg);
-    border: 1px solid var(--button-bg);
-    color: var(--text-on-accent);
-    border-radius: 6px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
-    flex-shrink: 0;
-}
-
-.btn-edit-regex:hover {
-    background-color: var(--button-hover-bg);
-    border-color: var(--button-hover-bg);
-}
-
-/* Modal Styles */
+/* Modal Styles - Scoped to #regexRuleModal */
 #regexRuleModal .modal-content {
     max-width: 500px;
 }
 
-#regexRuleForm {
+#regexRuleModal #regexRuleForm {
     display: flex;
     flex-direction: column;
-    gap: 15px;
+    gap: var(--vcp-ui-space-3, 14px);
 }
 
-#regexRuleForm label {
+#regexRuleModal #regexRuleForm label {
     font-weight: 500;
-    color: var(--secondary-text);
-    font-size: 0.9em;
+    color: var(--vcp-ui-text-1, var(--secondary-text));
+    font-size: var(--vcp-ui-font-helper, 12px);
     margin-bottom: 4px;
     display: block;
 }
 
-#regexRuleForm input[type="text"],
-#regexRuleForm input[type="number"],
-#regexRuleForm textarea {
+#regexRuleModal #regexRuleForm :is(input[type="text"], input[type="number"], textarea) {
     width: 100%;
     box-sizing: border-box;
-    padding: 9px 10px;
-    border-radius: 8px;
-    border: 1px solid var(--border-color);
-    background-color: var(--input-bg);
-    color: var(--primary-text);
-    font-size: 0.95em;
+    padding: 8px 10px;
+    border-radius: var(--vcp-ui-radius-sm, 6px);
+    border: 1px solid var(--vcp-ui-control-border, var(--border-color));
+    background-color: var(--vcp-ui-control-bg, var(--input-bg));
+    color: var(--vcp-ui-text-0, var(--primary-text));
+    font-size: var(--vcp-ui-font-body, 13px);
+    font-family: inherit;
+    transition: border-color var(--vcp-ui-transition-fast, 0.15s ease), box-shadow var(--vcp-ui-transition-fast, 0.15s ease);
 }
 
-#regexRuleForm textarea {
+#regexRuleModal #regexRuleForm :is(input[type="text"], input[type="number"], textarea):focus-visible {
+    border-color: var(--vcp-ui-control-focus, var(--highlight-text));
+    box-shadow: 0 0 0 var(--vcp-ui-space-1, 2px) var(--vcp-ui-focus-ring, rgba(59, 130, 246, 0.25));
+    outline: none;
+}
+
+#regexRuleModal #regexRuleForm textarea {
     resize: vertical;
     min-height: 60px;
 }
 
-.form-fieldset {
-    padding: 12px;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    margin-top: 5px;
+#regexRuleModal #regexRuleForm textarea:active {
+    transition: none;
 }
 
-.form-fieldset>label {
+#regexRuleModal .form-fieldset {
+    padding: var(--vcp-ui-space-3, 12px);
+    border: 1px solid var(--vcp-ui-border, var(--border-color));
+    border-radius: var(--vcp-ui-radius-card, 8px);
+    background: var(--vcp-ui-fill-0, transparent);
+    margin-top: 4px;
+}
+
+#regexRuleModal .form-fieldset > label {
     margin-bottom: 8px;
-    font-weight: bold;
-    color: var(--highlight-text);
+    font-weight: 600;
+    color: var(--vcp-ui-text-0, var(--highlight-text));
 }
 
-.checkbox-group,
-.depth-control-group {
+#regexRuleModal :is(.checkbox-group, .depth-control-group) {
     display: flex;
-    gap: 20px;
+    gap: 16px;
     align-items: center;
 }
 
-.checkbox-group label {
+#regexRuleModal .checkbox-group label {
     display: flex;
     align-items: center;
     gap: 6px;
     font-weight: normal;
-    color: var(--primary-text);
+    color: var(--vcp-ui-text-1, var(--primary-text));
+    cursor: pointer;
+    margin-bottom: 0;
+}
+
+#regexRuleModal .checkbox-group input[type="checkbox"] {
+    width: 15px;
+    height: 15px;
+    accent-color: var(--vcp-ui-accent, var(--highlight-text));
     cursor: pointer;
 }
 
-.checkbox-group input[type="checkbox"] {
-    width: 16px;
-    height: 16px;
-    accent-color: var(--user-bubble-bg);
-}
-
-.depth-control-group>div {
+#regexRuleModal .depth-control-group > div {
     flex: 1;
 }
 
-.depth-control-group label {
+#regexRuleModal .depth-control-group label {
     font-weight: normal;
-    color: var(--primary-text);
-    font-size: 0.85em;
+    color: var(--vcp-ui-text-2, var(--secondary-text));
+    font-size: var(--vcp-ui-font-helper, 12px);
 }
 
-#regexRuleForm .form-actions {
-    margin-top: 10px;
+#regexRuleModal .regex-modal-hint {
+    display: block;
+    margin-top: 6px;
+    color: var(--vcp-ui-text-2, var(--text-secondary));
+    font-size: var(--vcp-ui-font-helper, 11.5px);
+    line-height: 1.4;
+}
+
+#regexRuleModal #regexRuleForm .form-actions {
+    margin-top: var(--vcp-ui-space-3, 12px);
     display: flex;
     justify-content: flex-end;
-    gap: 10px;
+    gap: var(--vcp-ui-space-2, 8px);
 }
