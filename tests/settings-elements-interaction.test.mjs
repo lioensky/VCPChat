@@ -980,5 +980,447 @@ test('Agent 分区折叠展开程序化控制：调用 setCollapsed 时 header �
     assert.equal(toggleBtn.getAttribute('aria-expanded'), 'false', 'toggleBtn aria-expanded 必须同步为 false');
 });
 
+test('P0 对抗性防线: 侧边栏 Unmount 脱水态保存与 Autosave 保护测试（绝不发生 TypeError 崩溃，绝不静默抹除 cardCss/chatCss）', async () => {
+    const { dom, document } = createDocument();
+    const prevWin = globalThis.window;
+    const prevDoc = globalThis.document;
+    const prevRaf = globalThis.requestAnimationFrame;
+    const prevMO = globalThis.MutationObserver;
+    const prevCE = globalThis.CustomEvent;
+    const origSetInterval = globalThis.setInterval;
+    const activeIntervals = [];
+
+    globalThis.window = dom.window;
+    globalThis.document = document;
+    globalThis.requestAnimationFrame = cb => setTimeout(cb, 0);
+    globalThis.MutationObserver = class {
+        observe() {}
+        disconnect() {}
+        takeRecords() { return []; }
+    };
+    globalThis.CustomEvent = dom.window.CustomEvent;
+    globalThis.setInterval = (...args) => {
+        const id = origSetInterval(...args);
+        id.unref?.();
+        activeIntervals.push(id);
+        return id;
+    };
+
+    try {
+        const root = document.getElementById('tabContentSettings');
+        const surface = surfaceModule.createSettingsSidebarSurface({ document, root });
+        dom.window.VCPSettingsSidebar = surface;
+
+        const host = document.getElementById('agentSettingsContainer');
+        const form = schema.renderAgentSettingsSurface(host, document);
+        surface.register('agent', host);
+
+        dom.window.eval(fs.readFileSync(path.join(repoRoot, 'modules/settingsManager.js'), 'utf8'));
+        const sm = dom.window.settingsManager;
+
+        let savedData = null;
+        const fakeElectronAPI = {
+            saveAgentConfig: async (id, config) => {
+                savedData = { id, config };
+                return { success: true };
+            },
+            getAgentConfig: async () => ({ name: '脱水测试助手' })
+        };
+
+        const toasts = [];
+        const uiHelper = {
+            showToastNotification: (msg, type) => toasts.push({ msg, type }),
+            showSaveFeedback: () => {}
+        };
+
+        sm.init({
+            electronAPI: fakeElectronAPI,
+            uiHelper,
+            refs: {
+                currentSelectedItemRef: {
+                    get: () => ({ id: 'agent-detached-test', type: 'agent' }),
+                    set: () => {}
+                }
+            },
+            mainRendererFunctions: {
+                getCroppedFile: () => null,
+                resetCroppedFile: () => {}
+            },
+            elements: {
+                agentSettingsContainer: host,
+                groupSettingsContainer: null,
+                selectItemPromptForSettings: document.getElementById('selectAgentPromptForSettings'),
+                itemSettingsContainerTitle: null,
+                selectedItemNameForSettingsSpan: null,
+                deleteItemBtn: document.getElementById('deleteAgentBtn'),
+                agentSettingsForm: form,
+                editingAgentIdInput: form.querySelector('#editingAgentId'),
+                agentNameInput: form.querySelector('#agentNameInput'),
+                agentAvatarInput: form.querySelector('#agentAvatarInput'),
+                agentAvatarPreview: form.querySelector('#agentAvatarPreview'),
+                agentModelInput: form.querySelector('#agentModel'),
+                agentTemperatureInput: form.querySelector('#agentTemperature'),
+                agentContextTokenLimitInput: form.querySelector('#agentContextTokenLimit'),
+                agentMaxOutputTokensInput: form.querySelector('#agentMaxOutputTokens'),
+                openModelSelectBtn: form.querySelector('#openModelSelectBtn'),
+                topicSummaryModelInput: null,
+                openTopicSummaryModelSelectBtn: null,
+                agentTtsSpeedSlider: form.querySelector('#agentTtsSpeed')
+            }
+        });
+
+        // 填充敏感字段
+        form.querySelector('#editingAgentId').value = 'agent-detached-test';
+        form.querySelector('#agentNameInput').value = '脱水测试助手';
+        form.querySelector('#agentCardCss').value = '.detached-card { background: purple; }';
+        form.querySelector('#agentChatCss').value = '.detached-chat { font-size: 16px; }';
+        form.querySelector('#agentStreamOutputTrue').checked = true;
+        form.querySelector('#disableCustomColors').checked = true;
+
+        // 模拟用户切换 Tab：物理卸载 Settings 表面（Unmount 脱水）
+        surface.setPanelActive(false);
+        assert.equal(document.getElementById('agentCardCss'), null, '脱水状态下 document.getElementById 必定返回 null');
+        assert.equal(document.getElementById('agentStreamOutputTrue'), null, '脱水状态下 agentStreamOutputTrue 无法通过 document.getElementById 获取');
+
+        // 执行保存：绝对不能因 agentStreamOutputTrue.checked 抛出 TypeError
+        // 且 cardCss / chatCss 绝对不能被静默抹除为空字符串！
+        const triggerResult = await sm.triggerAgentSave('agent-detached-test');
+        assert.equal(triggerResult.success, true, '脱水态下 triggerAgentSave 必须成功');
+        assert.equal(savedData?.config?.cardCss, '.detached-card { background: purple; }', '脱水态下 cardCss 绝不能被抹除');
+        assert.equal(savedData?.config?.chatCss, '.detached-chat { font-size: 16px; }', '脱水态下 chatCss 绝不能被抹除');
+        assert.equal(savedData?.config?.streamOutput, true, '脱水态下 streamOutput 必须准确获取');
+        assert.equal(savedData?.config?.disableCustomColors, true, '脱水态下 disableCustomColors 必须准确获取');
+    } finally {
+        activeIntervals.forEach(clearInterval);
+        globalThis.window = prevWin;
+        globalThis.document = prevDoc;
+        globalThis.requestAnimationFrame = prevRaf;
+        globalThis.MutationObserver = prevMO;
+        globalThis.CustomEvent = prevCE;
+        globalThis.setInterval = origSetInterval;
+        delete dom.window.settingsManager;
+        delete dom.window.VCPSettingsSidebar;
+        dom.window.close();
+    }
+});
+
+test('P1 对抗性防线: 侧边栏 Unmount 脱水态切换与加载 Agent 测试（表单控件可靠回填）', async () => {
+    const { dom, document } = createDocument();
+    const prevWin = globalThis.window;
+    const prevDoc = globalThis.document;
+    const prevRaf = globalThis.requestAnimationFrame;
+    const prevMO = globalThis.MutationObserver;
+    const prevCE = globalThis.CustomEvent;
+    const origSetInterval = globalThis.setInterval;
+    const activeIntervals = [];
+
+    globalThis.window = dom.window;
+    globalThis.document = document;
+    globalThis.requestAnimationFrame = cb => setTimeout(cb, 0);
+    dom.window.requestAnimationFrame = cb => setTimeout(cb, 0);
+    globalThis.MutationObserver = class {
+        observe() {}
+        disconnect() {}
+        takeRecords() { return []; }
+    };
+    globalThis.CustomEvent = dom.window.CustomEvent;
+    globalThis.setInterval = (...args) => {
+        const id = origSetInterval(...args);
+        id.unref?.();
+        activeIntervals.push(id);
+        return id;
+    };
+
+    try {
+        const root = document.getElementById('tabContentSettings');
+        const surface = surfaceModule.createSettingsSidebarSurface({ document, root });
+        dom.window.VCPSettingsSidebar = surface;
+
+        const host = document.getElementById('agentSettingsContainer');
+        const form = schema.renderAgentSettingsSurface(host, document);
+        surface.register('agent', host);
+
+        dom.window.eval(fs.readFileSync(path.join(repoRoot, 'modules/settingsManager.js'), 'utf8'));
+        const sm = dom.window.settingsManager;
+
+        sm.init({
+            electronAPI: {
+                saveAgentConfig: async () => ({ success: true }),
+                getAgentConfig: async () => ({ name: 'Agent 2' }),
+                sovitsGetModels: async () => ({ models: [] })
+            },
+            uiHelper: { showToastNotification: () => {}, showSaveFeedback: () => {} },
+            refs: {
+                currentSelectedItemRef: {
+                    get: () => ({ id: 'agent-2', type: 'agent' }),
+                    set: () => {}
+                }
+            },
+            mainRendererFunctions: { getCroppedFile: () => null, resetCroppedFile: () => {} },
+            elements: {
+                agentSettingsContainer: host,
+                groupSettingsContainer: null,
+                selectItemPromptForSettings: document.getElementById('selectAgentPromptForSettings'),
+                itemSettingsContainerTitle: null,
+                selectedItemNameForSettingsSpan: null,
+                deleteItemBtn: document.getElementById('deleteAgentBtn'),
+                agentSettingsForm: form,
+                editingAgentIdInput: form.querySelector('#editingAgentId'),
+                agentNameInput: form.querySelector('#agentNameInput'),
+                agentAvatarInput: form.querySelector('#agentAvatarInput'),
+                agentAvatarPreview: form.querySelector('#agentAvatarPreview'),
+                agentModelInput: form.querySelector('#agentModel'),
+                agentTemperatureInput: form.querySelector('#agentTemperature'),
+                agentContextTokenLimitInput: form.querySelector('#agentContextTokenLimit'),
+                agentMaxOutputTokensInput: form.querySelector('#agentMaxOutputTokens'),
+                openModelSelectBtn: form.querySelector('#openModelSelectBtn'),
+                topicSummaryModelInput: null,
+                openTopicSummaryModelSelectBtn: null,
+                agentTtsSpeedSlider: form.querySelector('#agentTtsSpeed')
+            }
+        });
+
+        // 模拟离开设置 Tab（脱水）
+        surface.setPanelActive(false);
+
+        // 在脱水状态下切换 Agent 2 并执行加载
+        await sm.displaySettingsForItem({
+            id: 'agent-2',
+            type: 'agent',
+            config: {
+                name: '测试助手2号',
+                cardCss: '.agent-2-card { border: 2px solid gold; }',
+                chatCss: '.agent-2-chat { color: cyan; }',
+                streamOutput: false,
+                disableCustomColors: true,
+                useThemeColorsInChat: true
+            }
+        });
+
+        // 验证表单 DOM 中已正确灌入 Agent 2 的配置
+        assert.equal(form.querySelector('#agentCardCss').value, '.agent-2-card { border: 2px solid gold; }', '脱水态下 cardCss 必须正确加载到 DOM 控件');
+        assert.equal(form.querySelector('#agentChatCss').value, '.agent-2-chat { color: cyan; }', '脱水态下 chatCss 必须正确加载到 DOM 控件');
+        assert.equal(form.querySelector('#agentStreamOutputFalse').checked, true, '脱水态下 streamOutput 必须正确加载到 DOM 控件');
+        assert.equal(form.querySelector('#disableCustomColors').checked, true, '脱水态下 disableCustomColors 必须正确加载到 DOM 控件');
+    } finally {
+        activeIntervals.forEach(clearInterval);
+        globalThis.window = prevWin;
+        globalThis.document = prevDoc;
+        globalThis.requestAnimationFrame = prevRaf;
+        globalThis.MutationObserver = prevMO;
+        globalThis.CustomEvent = prevCE;
+        globalThis.setInterval = origSetInterval;
+        delete dom.window.settingsManager;
+        delete dom.window.VCPSettingsSidebar;
+        dom.window.close();
+    }
+});
+
+test('P1 对抗性防线: triggerAgentSave 准确拦截 IPC { success: false, message: ... } 格式错误并返回 failure', async () => {
+    const { dom, document } = createDocument();
+    const prevWin = globalThis.window;
+    const prevDoc = globalThis.document;
+    const prevRaf = globalThis.requestAnimationFrame;
+    const prevMO = globalThis.MutationObserver;
+    const prevCE = globalThis.CustomEvent;
+    const origSetInterval = globalThis.setInterval;
+    const activeIntervals = [];
+
+    globalThis.window = dom.window;
+    globalThis.document = document;
+    globalThis.requestAnimationFrame = cb => setTimeout(cb, 0);
+    dom.window.requestAnimationFrame = cb => setTimeout(cb, 0);
+    globalThis.MutationObserver = class {
+        observe() {}
+        disconnect() {}
+        takeRecords() { return []; }
+    };
+    globalThis.CustomEvent = dom.window.CustomEvent;
+    globalThis.setInterval = (...args) => {
+        const id = origSetInterval(...args);
+        id.unref?.();
+        activeIntervals.push(id);
+        return id;
+    };
+
+    try {
+        const host = document.getElementById('agentSettingsContainer');
+        const form = schema.renderAgentSettingsSurface(host, document);
+
+        dom.window.eval(fs.readFileSync(path.join(repoRoot, 'modules/settingsManager.js'), 'utf8'));
+        const sm = dom.window.settingsManager;
+
+        // 模拟 IPC 返回没有 error 字段，但明确包含 { success: false, message: "Storage backend write failed" }
+        const fakeElectronAPI = {
+            saveAgentConfig: async () => ({ success: false, message: 'Storage backend write failed' }),
+            getAgentConfig: async () => ({})
+        };
+
+        const toasts = [];
+        const uiHelper = {
+            showToastNotification: (msg, type) => toasts.push({ msg, type }),
+            showSaveFeedback: () => {}
+        };
+
+        sm.init({
+            electronAPI: fakeElectronAPI,
+            uiHelper,
+            refs: {
+                currentSelectedItemRef: {
+                    get: () => ({ id: 'agent-ipc-fail', type: 'agent' }),
+                    set: () => {}
+                }
+            },
+            mainRendererFunctions: { getCroppedFile: () => null, resetCroppedFile: () => {} },
+            elements: {
+                agentSettingsContainer: host,
+                groupSettingsContainer: null,
+                selectItemPromptForSettings: document.getElementById('selectAgentPromptForSettings'),
+                itemSettingsContainerTitle: null,
+                selectedItemNameForSettingsSpan: null,
+                deleteItemBtn: document.getElementById('deleteAgentBtn'),
+                agentSettingsForm: form,
+                editingAgentIdInput: form.querySelector('#editingAgentId'),
+                agentNameInput: form.querySelector('#agentNameInput'),
+                agentAvatarInput: form.querySelector('#agentAvatarInput'),
+                agentAvatarPreview: form.querySelector('#agentAvatarPreview'),
+                agentModelInput: form.querySelector('#agentModel'),
+                agentTemperatureInput: form.querySelector('#agentTemperature'),
+                agentContextTokenLimitInput: form.querySelector('#agentContextTokenLimit'),
+                agentMaxOutputTokensInput: form.querySelector('#agentMaxOutputTokens'),
+                openModelSelectBtn: form.querySelector('#openModelSelectBtn'),
+                topicSummaryModelInput: null,
+                openTopicSummaryModelSelectBtn: null,
+                agentTtsSpeedSlider: form.querySelector('#agentTtsSpeed')
+            }
+        });
+
+        form.querySelector('#editingAgentId').value = 'agent-ipc-fail';
+        form.querySelector('#agentNameInput').value = 'IPC失败测试助手';
+
+        const saveResult = await sm.triggerAgentSave('agent-ipc-fail');
+
+        // 必须识别为失败，不能误判为 success: true
+        assert.equal(saveResult.success, false, 'triggerAgentSave 必须识别 success: false 为保存失败');
+        assert.match(saveResult.error, /Storage backend write failed/, '错误信息必须从 message 提取');
+    } finally {
+        activeIntervals.forEach(clearInterval);
+        globalThis.window = prevWin;
+        globalThis.document = prevDoc;
+        globalThis.requestAnimationFrame = prevRaf;
+        globalThis.MutationObserver = prevMO;
+        globalThis.CustomEvent = prevCE;
+        globalThis.setInterval = origSetInterval;
+        delete dom.window.settingsManager;
+        dom.window.close();
+    }
+});
+
+test('P1 对抗性防线: 群组设置在脱水态下的 DOM 解析与安全删除测试', async () => {
+    const { dom, document } = createDocument();
+    const prevWin = globalThis.window;
+    const prevDoc = globalThis.document;
+    const prevRaf = globalThis.requestAnimationFrame;
+    const prevMO = globalThis.MutationObserver;
+    const prevCE = globalThis.CustomEvent;
+    const origSetInterval = globalThis.setInterval;
+    const activeIntervals = [];
+
+    globalThis.window = dom.window;
+    globalThis.document = document;
+    globalThis.requestAnimationFrame = cb => setTimeout(cb, 0);
+    dom.window.requestAnimationFrame = cb => setTimeout(cb, 0);
+    globalThis.MutationObserver = class {
+        observe() {}
+        disconnect() {}
+        takeRecords() { return []; }
+    };
+    globalThis.CustomEvent = dom.window.CustomEvent;
+    globalThis.setInterval = (...args) => {
+        const id = origSetInterval(...args);
+        id.unref?.();
+        activeIntervals.push(id);
+        return id;
+    };
+
+    try {
+        const root = document.getElementById('tabContentSettings');
+        const surface = surfaceModule.createSettingsSidebarSurface({ document, root });
+        dom.window.VCPSettingsSidebar = surface;
+        dom.window.VCPSettingsSchema = schema;
+
+        // 引入 group-slots
+        dom.window.eval(fs.readFileSync(path.join(repoRoot, 'modules/ui-system/settings/group-slots.js'), 'utf8'));
+
+        // 渲染群组表面并注册
+        const groupHost = dom.window.VCPGroupSettingsSlots.ensureSettingsSurface({ document, settingsTab: root });
+        assert.ok(groupHost, '群组表面 host 必须成功生成');
+
+        // 引入 grouprenderer
+        dom.window.eval(fs.readFileSync(path.join(repoRoot, 'Groupmodules/grouprenderer.js'), 'utf8'));
+        const gr = dom.window.GroupRenderer;
+        assert.ok(gr, 'GroupRenderer 必须成功加载');
+
+        let deletedGroupId = null;
+        const fakeElectronAPI = {
+            deleteAgentGroup: async id => {
+                deletedGroupId = id;
+                return { success: true };
+            },
+            getAgentGroupConfig: async () => ({ name: '脱水测试群组', members: [] })
+        };
+
+        gr.init({
+            electronAPI: fakeElectronAPI,
+            globalSettings: {},
+            currentSelectedItemRef: {
+                get: () => ({ id: 'group-detached-999', type: 'group', name: '脱水测试群组' }),
+                set: () => {}
+            },
+            currentTopicIdRef: { get: () => null, set: () => {} },
+            messageRenderer: null,
+            uiHelper: {
+                showToastNotification: () => {},
+                showConfirmDialog: async () => true
+            },
+            mainRendererElements: {},
+            selectAgentPromptForSettingsElement: document.getElementById('selectAgentPromptForSettings'),
+            agentSettingsContainer: null,
+            selectedItemNameForSettingsElement: null,
+            mainRendererFunctions: {}
+        });
+
+        // 模拟 Tab 切换导致物理脱水卸载
+        surface.setPanelActive(false);
+        assert.equal(document.getElementById('groupSettingsContainer'), null, '脱水状态下 groupSettingsContainer 脱离主 document');
+
+        // 在脱水状态下渲染并打开群组设置（验证脱水加载）
+        await gr.displayGroupSettingsPage('group-detached-999', { name: '脱水测试群组', members: [] });
+
+        // 触发群组删除：绝不能因 document.getElementById('editingGroupId').value 抛出 TypeError
+        // 且通过 resolveGroupForm() / fallback 必须能够正确获取 groupId
+        const deleteBtn = groupHost.querySelector('#deleteGroupBtn');
+        assert.ok(deleteBtn, '脱水 host 中必须存在 deleteGroupBtn');
+
+        deleteBtn.click();
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        assert.equal(deletedGroupId, 'group-detached-999', '脱水态下 handleDeleteCurrentGroup 必须成功读取群组 ID 并执行删除');
+    } finally {
+        activeIntervals.forEach(clearInterval);
+        globalThis.window = prevWin;
+        globalThis.document = prevDoc;
+        globalThis.requestAnimationFrame = prevRaf;
+        globalThis.MutationObserver = prevMO;
+        globalThis.CustomEvent = prevCE;
+        globalThis.setInterval = origSetInterval;
+        delete dom.window.GroupRenderer;
+        delete dom.window.VCPGroupSettingsSlots;
+        delete dom.window.VCPSettingsSidebar;
+        delete dom.window.VCPSettingsSchema;
+        dom.window.close();
+    }
+});
+
 
 

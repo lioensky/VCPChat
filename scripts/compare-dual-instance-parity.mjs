@@ -66,7 +66,9 @@ async function launchInstance({ name, rootDir, port, appDataDir }) {
         currentThemeMode: 'dark',
     }), 'utf8');
 
-    const electronBin = path.join(rootDir, 'node_modules', 'electron', 'dist', 'Electron.app', 'Contents', 'MacOS', 'Electron');
+    const electronBin = process.platform === 'darwin'
+        ? path.join(rootDir, 'node_modules', 'electron', 'dist', 'Electron.app', 'Contents', 'MacOS', 'Electron')
+        : path.join(rootDir, 'node_modules', 'electron', 'dist', process.platform === 'win32' ? 'electron.exe' : 'electron');
     const child = spawn(electronBin, [
         '.',
         '--allow-multiple-instances',
@@ -186,6 +188,11 @@ function extractSurfaceGeometry(selector, props) {
 
 async function runParity() {
     console.log('=== Milestone 1: Running Automated Dual-Instance Electron CDP Comparison Suite ===');
+    if (!existsSync(UPSTREAM_ROOT)) {
+        console.warn(`[COMPARE] UPSTREAM_ROOT not found at: ${UPSTREAM_ROOT}. Set UPSTREAM_ROOT env var to run dual instance parity.`);
+        return;
+    }
+
     const portA = await getFreePort();
     const portB = await getFreePort();
     const tempDirA = await mkdtemp(path.join(os.tmpdir(), 'vcpchat-upstream-parity-'));

@@ -20,12 +20,12 @@
     "reason": "shared Agent/group catalog authority with stale-load commit protection"
   },
   "Groupmodules/grouprenderer.js": {
-    "sha256": "951b4574f8da1f8599421cf60b6cde8c6e99bc3c67c38752ec1107e0d55d390c",
-    "reason": "upstream group business surface now delegates settings attachment to the schema sidebar Surface while preserving group persistence and chat behavior"
+    "sha256": "b8594c2b1cc7f8ee51e1b4f0c6b2a65a10688e439186d1c6c487b813019c06ec",
+    "reason": "upstream group business surface delegates settings attachment to schema sidebar Surface while resolving controls safely during detachment, protecting group deletion fallback identity, and preserving persistence and chat behavior"
   },
   "modules/settingsManager.js": {
-    "sha256": "d68823841acdd682ea11b6228c0612dee010f853c28dfa8bc57e356c2880a0a1",
-    "reason": "reviewed Agent settings behavior after moving Agent form rendering to schema and Surface lifecycle ownership; delete action implements active risk confirmation gate with managed scope; save pipeline coordinates full custom style, color, and collapse state fields with async submit and robust error handling; dirty edits are flushed before prompt context switch with dirty retention and warning on failure; autosave deduplicates error toasts; programmatic collapse controller synchronizes aria-expanded attributes; saved projection, collapse state, prompt context and stale reload protection remain manager-owned"
+    "sha256": "e1152c7b5da546527d438ccb83fe63952276ac152c25f322dbc4da9edaeb71e5",
+    "reason": "reviewed Agent settings behavior after moving Agent form rendering to schema and Surface lifecycle ownership; delete action implements active risk confirmation gate with managed scope; save pipeline coordinates full custom style, color, and collapse state fields with async submit and robust error handling; dirty edits are flushed before prompt context switch with dirty retention and warning on failure; autosave deduplicates error toasts; programmatic collapse controller synchronizes aria-expanded attributes; saved projection, collapse state, prompt context and stale reload protection remain manager-owned; scoped form control lookup protects against detachment data loss and intercepts IPC failure results"
   },
   "modules/filterManager.js": {
     "sha256": "2390116ff961f18cdf2d3defd02d5559de9381f891be7e5eb33ef99f98337225",

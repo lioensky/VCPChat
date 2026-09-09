@@ -18,7 +18,7 @@
 
     function ensureSettingsSurface({ document, settingsTab }) {
         if (!settingsTab) return null;
-        let host = document.getElementById('groupSettingsContainer');
+        let host = global.VCPSettingsSidebar?.getView?.('group') || document.getElementById('groupSettingsContainer');
         if (!host) {
             host = document.createElement('div');
             host.id = 'groupSettingsContainer';

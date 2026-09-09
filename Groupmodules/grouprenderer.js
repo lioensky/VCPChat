@@ -97,38 +97,65 @@ window.GroupRenderer = (() => {
         return getGroupSettingsElements(); // Return true if elements are successfully retrieved
     }
 
+    function resolveGroupContainer() {
+        if (groupSettingsContainer && (groupSettingsContainer.isConnected || !document.contains(groupSettingsContainer))) {
+            const surfaceHost = window.VCPSettingsSidebar?.getView?.('group');
+            if (surfaceHost && (surfaceHost === groupSettingsContainer || surfaceHost.contains(groupSettingsContainer))) {
+                return groupSettingsContainer;
+            }
+        }
+        const surfaceHost = window.VCPSettingsSidebar?.getView?.('group') || document.getElementById('groupSettingsContainer');
+        if (surfaceHost) groupSettingsContainer = surfaceHost;
+        return groupSettingsContainer;
+    }
+
+    function resolveGroupForm() {
+        if (groupSettingsForm && (groupSettingsForm.isConnected || !document.contains(groupSettingsForm))) {
+            return groupSettingsForm;
+        }
+        const container = resolveGroupContainer();
+        const form = container?.querySelector?.('#groupSettingsForm') || document.getElementById('groupSettingsForm');
+        if (form) groupSettingsForm = form;
+        return groupSettingsForm;
+    }
+
+    function getGroupControl(id) {
+        if (!id) return null;
+        const form = resolveGroupForm();
+        return form?.querySelector?.(`#${id}`) || document.getElementById(id) || null;
+    }
 
     function getGroupSettingsElements() {
-        groupSettingsContainer = document.getElementById('groupSettingsContainer');
+        groupSettingsContainer = resolveGroupContainer();
         if (!groupSettingsContainer) {
             console.error('[GroupRenderer] groupSettingsContainer not found in DOM!');
             return false;
         }
-        groupSettingsForm = document.getElementById('groupSettingsForm');
-        groupNameInput = document.getElementById('groupNameInput');
-        groupAvatarInput = document.getElementById('groupAvatarInput');
-        groupAvatarPreview = document.getElementById('groupAvatarPreview');
-        groupMembersListDiv = document.getElementById('groupMembersList');
-        groupChatModeSelect = document.getElementById('groupChatMode');
-        sequentialOrderContainer = document.getElementById('sequentialOrderContainer');
-        sequentialSpeakerOrderList = document.getElementById('sequentialSpeakerOrderList');
+        groupSettingsForm = resolveGroupForm();
+        groupNameInput = getGroupControl('groupNameInput');
+        groupAvatarInput = getGroupControl('groupAvatarInput');
+        groupAvatarPreview = getGroupControl('groupAvatarPreview');
+        groupMembersListDiv = getGroupControl('groupMembersList');
+        groupChatModeSelect = getGroupControl('groupChatMode');
+        sequentialOrderContainer = getGroupControl('sequentialOrderContainer');
+        sequentialSpeakerOrderList = getGroupControl('sequentialSpeakerOrderList');
         // 新增：获取统一模型UI元素的引用
-        groupUseUnifiedModel = document.getElementById('groupUseUnifiedModel');
-        groupUnifiedModelContainer = document.getElementById('groupUnifiedModelContainer');
-        groupUnifiedModelInput = document.getElementById('groupUnifiedModelInput');
-        openGroupModelSelectBtn = document.getElementById('openGroupModelSelectBtn');
+        groupUseUnifiedModel = getGroupControl('groupUseUnifiedModel');
+        groupUnifiedModelContainer = getGroupControl('groupUnifiedModelContainer');
+        groupUnifiedModelInput = getGroupControl('groupUnifiedModelInput');
+        openGroupModelSelectBtn = getGroupControl('openGroupModelSelectBtn');
 
-        memberTagsContainer = document.getElementById('memberTagsContainer');
-        memberTagsInputsDiv = document.getElementById('memberTagsInputs');
-        tagMatchModeSelect = document.getElementById('tagMatchMode');
-        groupPromptTextarea = document.getElementById('groupPrompt');
-        invitePromptTextarea = document.getElementById('invitePrompt');
-        deleteGroupBtn = document.getElementById('deleteGroupBtn'); // This is the button inside the group settings form
+        memberTagsContainer = getGroupControl('memberTagsContainer');
+        memberTagsInputsDiv = getGroupControl('memberTagsInputs');
+        tagMatchModeSelect = getGroupControl('tagMatchMode');
+        groupPromptTextarea = getGroupControl('groupPrompt');
+        invitePromptTextarea = getGroupControl('invitePrompt');
+        deleteGroupBtn = getGroupControl('deleteGroupBtn'); // This is the button inside the group settings form
         return true;
     }
 
     function getGroupSectionContainer(key) {
-        return groupSettingsForm?.querySelector(`.group-settings-section[data-section-key="${key}"]`) || null;
+        return resolveGroupForm()?.querySelector(`.group-settings-section[data-section-key="${key}"]`) || null;
     }
 
     function createGroupSectionController(key, buildSummary) {
@@ -424,7 +451,8 @@ window.GroupRenderer = (() => {
                 console.error('[GroupRenderer] CRITICAL: selectedAgentNameForSettings element not found even with direct getElementById.');
             }
         }
-        document.getElementById('editingGroupId').value = groupId;
+        const editingGroupIdInput = getGroupControl('editingGroupId');
+        if (editingGroupIdInput) editingGroupIdInput.value = groupId;
 
         groupNameInput.value = groupConfig.name || '';
         groupAvatarPreview.hidden = false;
@@ -604,7 +632,12 @@ window.GroupRenderer = (() => {
             return;
         }
 
-        const groupId = document.getElementById('editingGroupId').value;
+        const groupId = getGroupControl('editingGroupId')?.value || currentSelectedItemRef?.get?.()?.id;
+        if (!groupId) {
+            alert("无法保存群组设置，群组 ID 未找到。");
+            reportSettingsSaveResult(false, 'missing-group-id');
+            return;
+        }
         const selectedMemberIds = getSelectedMemberIds();
 
         // 保留每种模式已有的独立设置，切换模式并保存时不会覆盖其他模式。
@@ -770,14 +803,17 @@ window.GroupRenderer = (() => {
             }
         }
     }
-
-    async function handleDeleteCurrentGroup() {
+    async function handleDeleteCurrentGroup() {
         if (!getGroupSettingsElements()) {
             reportSettingsDeleteResult(false, { error: 'missing-form-elements' });
             return;
         }
-        const groupId = document.getElementById('editingGroupId').value;
-        const groupName = groupNameInput.value || '当前选中的群组';
+        const groupId = getGroupControl('editingGroupId')?.value || currentSelectedItemRef?.get?.()?.id;
+        if (!groupId) {
+            reportSettingsDeleteResult(false, { error: 'missing-group-id' });
+            return;
+        }
+        const groupName = groupNameInput?.value || '当前选中的群组';
 
         const confirmed = await uiHelper.showConfirmDialog(`您确定要删除群组 "${groupName}" 吗？其所有聊天记录和设置都将被删除，此操作不可撤销！`, '删除确认', '删除', '取消', true);
         if (!confirmed) {

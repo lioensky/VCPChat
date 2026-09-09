@@ -467,6 +467,11 @@ const uiManager = (() => {
         // Settings is an owned surface. Leaving the tab physically detaches
         // its form from the sidebar, so sticky actions and focusable controls
         // cannot overlap or intercept the Agent list.
+        if (targetTab !== 'settings' && window.settingsManager?.flushPendingSave) {
+            window.settingsManager.flushPendingSave().catch(e => {
+                console.warn('[UIManager] Error flushing settings before tab switch:', e);
+            });
+        }
         window.VCPSettingsSidebar?.setPanelActive?.(targetTab === 'settings');
 
         if (sidebarTabButtons) {

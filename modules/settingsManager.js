@@ -101,6 +101,24 @@ const settingsManager = (() => {
         preset: '预置'
     };
 
+    function resolveAgentForm() {
+        if (agentSettingsForm && (agentSettingsForm.isConnected || !document.contains(agentSettingsForm))) {
+            const surfaceHost = window.VCPSettingsSidebar?.getView?.('agent');
+            if (surfaceHost && (surfaceHost === agentSettingsForm || surfaceHost.contains(agentSettingsForm))) {
+                return agentSettingsForm;
+            }
+        }
+        const surfaceHost = window.VCPSettingsSidebar?.getView?.('agent') || document.getElementById('agentSettingsContainer');
+        const form = surfaceHost?.querySelector?.('#agentSettingsForm') || document.getElementById('agentSettingsForm');
+        if (form) agentSettingsForm = form;
+        return agentSettingsForm;
+    }
+
+    function getAgentControl(id) {
+        if (!id) return null;
+        return resolveAgentForm()?.querySelector?.(`#${id}`) || document.getElementById(id) || null;
+    }
+
     function reportSettingsSaveResult(form, success, error = '') {
         form?.dispatchEvent(new CustomEvent('vcp-settings-save-result', {
             detail: { success: Boolean(success), error }
@@ -119,9 +137,9 @@ const settingsManager = (() => {
      * Displays the appropriate settings view (agent, group, or default prompt)
      * based on the currently selected item.
      */
-    async function displaySettingsForItem() {
+    async function displaySettingsForItem(item = null) {
         const displayToken = ++settingsDisplayToken;
-        const currentSelectedItem = refs.currentSelectedItemRef.get();
+        const currentSelectedItem = item || refs.currentSelectedItemRef?.get?.() || {};
 
         const settingsSurface = window.VCPSettingsSidebar;
 
@@ -225,7 +243,7 @@ const settingsManager = (() => {
             }
 
             // Initialize PromptManager (Singleton Pattern)
-            const systemPromptContainer = document.getElementById('systemPromptContainer');
+            const systemPromptContainer = getAgentControl('systemPromptContainer');
             if (systemPromptContainer && window.PromptManager) {
                 if (!promptManager) {
                     promptManager = new window.PromptManager();
@@ -266,8 +284,8 @@ const settingsManager = (() => {
         if (agentTopKInput) agentTopKInput.value = agentConfig.top_k === null ? '' : (agentConfig.top_k !== undefined ? agentConfig.top_k : '');
 
         const streamOutput = agentConfig.streamOutput !== undefined ? agentConfig.streamOutput : true;
-        const streamOutputTrue = document.getElementById('agentStreamOutputTrue');
-        const streamOutputFalse = document.getElementById('agentStreamOutputFalse');
+        const streamOutputTrue = getAgentControl('agentStreamOutputTrue');
+        const streamOutputFalse = getAgentControl('agentStreamOutputFalse');
         if (streamOutputTrue) streamOutputTrue.checked = streamOutput === true || String(streamOutput) === 'true';
         if (streamOutputFalse) streamOutputFalse.checked = streamOutput === false || String(streamOutput) === 'false';
 
@@ -314,13 +332,13 @@ const settingsManager = (() => {
         agentCustomCssInput.value = agentConfig.customCss || '';
 
         // Load card CSS
-        const agentCardCssInput = document.getElementById('agentCardCss');
+        const agentCardCssInput = getAgentControl('agentCardCss');
         if (agentCardCssInput) {
             agentCardCssInput.value = agentConfig.cardCss || '';
         }
 
         // Load chat CSS
-        const agentChatCssInput = document.getElementById('agentChatCss');
+        const agentChatCssInput = getAgentControl('agentChatCss');
         if (agentChatCssInput) {
             agentChatCssInput.value = agentConfig.chatCss || '';
         }
@@ -329,13 +347,13 @@ const settingsManager = (() => {
         applyCardCssToIdentityContainer(agentConfig.cardCss || '');
 
         // Load disableCustomColors setting
-        const disableCustomColorsCheckbox = document.getElementById('disableCustomColors');
+        const disableCustomColorsCheckbox = getAgentControl('disableCustomColors');
         if (disableCustomColorsCheckbox) {
             disableCustomColorsCheckbox.checked = agentConfig.disableCustomColors || false;
         }
 
         // Load useThemeColorsInChat setting
-        const useThemeColorsInChatCheckbox = document.getElementById('useThemeColorsInChat');
+        const useThemeColorsInChatCheckbox = getAgentControl('useThemeColorsInChat');
         if (useThemeColorsInChatCheckbox) {
             useThemeColorsInChatCheckbox.checked = agentConfig.useThemeColorsInChat || false;
         }
@@ -360,7 +378,7 @@ const settingsManager = (() => {
 
         agentTtsSpeedSlider.value = agentConfig.ttsSpeed !== undefined ? agentConfig.ttsSpeed : 1.0;
         signalPresentationSync(agentTtsSpeedSlider);
-        const speedValueDisplay = document.getElementById('ttsSpeedValue');
+        const speedValueDisplay = getAgentControl('ttsSpeedValue');
         if (speedValueDisplay) {
             speedValueDisplay.textContent = Number(agentTtsSpeedSlider.value).toFixed(1);
         }
@@ -443,29 +461,29 @@ const settingsManager = (() => {
         }
 
         const newConfig = {
-            name: agentNameInput.value.trim(),
+            name: agentNameInput?.value?.trim?.() || (currentConfig ? currentConfig.name : agentId),
             ...systemPromptData,
-            model: agentModelInput.value.trim() || 'gemini-pro',
+            model: agentModelInput?.value?.trim?.() || 'gemini-pro',
             temperature: parseOptionalNumberInput(agentTemperatureInput, Number.parseFloat),
             contextTokenLimit: parseOptionalNumberInput(agentContextTokenLimitInput, value => Number.parseInt(value, 10)),
             maxOutputTokens: parseOptionalNumberInput(agentMaxOutputTokensInput, value => Number.parseInt(value, 10)),
             top_p: parseOptionalNumberInput(agentTopPInput, Number.parseFloat),
             top_k: parseOptionalNumberInput(agentTopKInput, value => Number.parseInt(value, 10)),
-            streamOutput: document.getElementById('agentStreamOutputTrue').checked,
-            ttsVoicePrimary: agentTtsVoicePrimarySelect.value,
-            ttsRegexPrimary: agentTtsRegexPrimaryInput.value.trim(),
-            ttsVoiceSecondary: agentTtsVoiceSecondarySelect.value,
-            ttsRegexSecondary: agentTtsRegexSecondaryInput.value.trim(),
+            streamOutput: getAgentControl('agentStreamOutputTrue')?.checked ?? true,
+            ttsVoicePrimary: agentTtsVoicePrimarySelect?.value || '',
+            ttsRegexPrimary: agentTtsRegexPrimaryInput?.value?.trim?.() || '',
+            ttsVoiceSecondary: agentTtsVoiceSecondarySelect?.value || '',
+            ttsRegexSecondary: agentTtsRegexSecondaryInput?.value?.trim?.() || '',
             ttsDirectorPrompts: [...currentAgentTtsDirectorPrompts],
-            ttsSpeed: parseFloat(agentTtsSpeedSlider.value),
+            ttsSpeed: parseFloat(agentTtsSpeedSlider?.value || 1),
             stripRegexes: currentAgentRegexes,
-            avatarBorderColor: agentAvatarBorderColorInput.value,
-            nameTextColor: agentNameTextColorInput.value,
-            customCss: agentCustomCssInput.value.trim(),
-            cardCss: document.getElementById('agentCardCss')?.value.trim() || '',
-            chatCss: document.getElementById('agentChatCss')?.value.trim() || '',
-            disableCustomColors: document.getElementById('disableCustomColors')?.checked || false,
-            useThemeColorsInChat: document.getElementById('useThemeColorsInChat')?.checked || false,
+            avatarBorderColor: agentAvatarBorderColorInput?.value || '',
+            nameTextColor: agentNameTextColorInput?.value || '',
+            customCss: agentCustomCssInput?.value?.trim?.() || '',
+            cardCss: getAgentControl('agentCardCss')?.value?.trim?.() || '',
+            chatCss: getAgentControl('agentChatCss')?.value?.trim?.() || '',
+            disableCustomColors: getAgentControl('disableCustomColors')?.checked || false,
+            useThemeColorsInChat: getAgentControl('useThemeColorsInChat')?.checked || false,
             uiCollapseStates: getCurrentCollapseStates()
         };
 
@@ -955,34 +973,34 @@ const settingsManager = (() => {
             itemSettingsContainerTitle = options.elements.itemSettingsContainerTitle;
             selectedItemNameForSettingsSpan = options.elements.selectedItemNameForSettingsSpan;
             deleteItemBtn = options.elements.deleteItemBtn;
-            agentSettingsForm = options.elements.agentSettingsForm;
-            editingAgentIdInput = options.elements.editingAgentIdInput;
-            agentNameInput = options.elements.agentNameInput;
-            agentAvatarInput = options.elements.agentAvatarInput;
-            agentAvatarPreview = options.elements.agentAvatarPreview;
-            agentModelInput = options.elements.agentModelInput;
-            agentTemperatureInput = options.elements.agentTemperatureInput;
-            agentContextTokenLimitInput = options.elements.agentContextTokenLimitInput;
-            agentMaxOutputTokensInput = options.elements.agentMaxOutputTokensInput;
-            agentTopPInput = document.getElementById('agentTopP');
-            agentTopKInput = document.getElementById('agentTopK');
+            agentSettingsForm = options.elements.agentSettingsForm || resolveAgentForm();
+            editingAgentIdInput = options.elements.editingAgentIdInput || getAgentControl('editingAgentId');
+            agentNameInput = options.elements.agentNameInput || getAgentControl('agentNameInput');
+            agentAvatarInput = options.elements.agentAvatarInput || getAgentControl('agentAvatarInput');
+            agentAvatarPreview = options.elements.agentAvatarPreview || getAgentControl('agentAvatarPreview');
+            agentModelInput = options.elements.agentModelInput || getAgentControl('agentModelInput');
+            agentTemperatureInput = options.elements.agentTemperatureInput || getAgentControl('agentTemperature');
+            agentContextTokenLimitInput = options.elements.agentContextTokenLimitInput || getAgentControl('agentContextTokenLimit');
+            agentMaxOutputTokensInput = options.elements.agentMaxOutputTokensInput || getAgentControl('agentMaxOutputTokens');
+            agentTopPInput = getAgentControl('agentTopP');
+            agentTopKInput = getAgentControl('agentTopK');
 
-            agentAvatarBorderColorInput = document.getElementById('agentAvatarBorderColor');
-            agentAvatarBorderColorTextInput = document.getElementById('agentAvatarBorderColorText');
-            agentNameTextColorInput = document.getElementById('agentNameTextColor');
-            agentNameTextColorTextInput = document.getElementById('agentNameTextColorText');
-            agentCustomCssInput = document.getElementById('agentCustomCss');
-            resetAvatarColorsBtn = document.getElementById('resetAvatarColorsBtn');
-            openModelSelectBtn = options.elements.openModelSelectBtn;
+            agentAvatarBorderColorInput = getAgentControl('agentAvatarBorderColor');
+            agentAvatarBorderColorTextInput = getAgentControl('agentAvatarBorderColorText');
+            agentNameTextColorInput = getAgentControl('agentNameTextColor');
+            agentNameTextColorTextInput = getAgentControl('agentNameTextColorText');
+            agentCustomCssInput = getAgentControl('agentCustomCss');
+            resetAvatarColorsBtn = getAgentControl('resetAvatarColorsBtn');
+            openModelSelectBtn = options.elements.openModelSelectBtn || getAgentControl('openModelSelectBtn');
             topicSummaryModelInput = options.elements.topicSummaryModelInput;
             openTopicSummaryModelSelectBtn = options.elements.openTopicSummaryModelSelectBtn;
 
-            agentTtsVoicePrimarySelect = document.getElementById('agentTtsVoicePrimary');
-            agentTtsRegexPrimaryInput = document.getElementById('agentTtsRegexPrimary');
-            agentTtsVoiceSecondarySelect = document.getElementById('agentTtsVoiceSecondary');
-            agentTtsRegexSecondaryInput = document.getElementById('agentTtsRegexSecondary');
-            refreshTtsModelsBtn = document.getElementById('refreshTtsModelsBtn');
-            agentTtsSpeedSlider = options.elements.agentTtsSpeedSlider;
+            agentTtsVoicePrimarySelect = getAgentControl('agentTtsVoicePrimary');
+            agentTtsRegexPrimaryInput = getAgentControl('agentTtsRegexPrimary');
+            agentTtsVoiceSecondarySelect = getAgentControl('agentTtsVoiceSecondary');
+            agentTtsRegexSecondaryInput = getAgentControl('agentTtsRegexSecondary');
+            refreshTtsModelsBtn = getAgentControl('refreshTtsModelsBtn');
+            agentTtsSpeedSlider = options.elements.agentTtsSpeedSlider || getAgentControl('agentTtsSpeed');
             // 🟢 监听模态框就绪事件，动态绑定延迟加载的元素
             document.addEventListener('modal-ready', (e) => {
                 const { modalId } = e.detail;
@@ -1041,9 +1059,9 @@ const settingsManager = (() => {
             // Event Listeners for always-present elements
             if (agentSettingsForm) {
                 const updateStateDotIndicator = (state = 'done') => {
-                    const indicator = document.getElementById('formSaveStateIndicator');
-                    const dotHost = document.getElementById('formStateDotHost');
-                    const label = document.getElementById('formStateDotLabel');
+                    const indicator = getAgentControl('formSaveStateIndicator');
+                    const dotHost = getAgentControl('formStateDotHost');
+                    const label = getAgentControl('formStateDotLabel');
                     if (!indicator || !dotHost || !label) return;
                     indicator.dataset.state = state;
                     label.textContent = state === 'warning' ? '未保存更改' : (state === 'ongoing' ? '保存中...' : '已保存');
@@ -1094,12 +1112,13 @@ const settingsManager = (() => {
                                 updateStateDotIndicator(isAgentSettingsDirty ? 'warning' : 'idle');
                                 return;
                             }
-                            if (saveResult && saveResult.error) {
-                                console.error(`[SettingsManager] Autosave for ${targetAgentId} failed:`, saveResult.error);
+                            if (!saveResult || saveResult.error || saveResult.success === false) {
+                                const err = saveResult?.error || 'Save failed';
+                                console.error(`[SettingsManager] Autosave for ${targetAgentId} failed:`, err);
                                 updateStateDotIndicator('warning');
-                                if (lastAutosaveError !== saveResult.error) {
-                                    lastAutosaveError = saveResult.error;
-                                    uiHelper.showToastNotification(`自动保存失败: ${saveResult.error}`, 'warning');
+                                if (lastAutosaveError !== err) {
+                                    lastAutosaveError = err;
+                                    uiHelper.showToastNotification(`自动保存失败: ${err}`, 'warning');
                                 }
                                 return;
                             }
@@ -1290,14 +1309,14 @@ const settingsManager = (() => {
             });
 
             syncColorPair(agentNameTextColorInput, agentNameTextColorTextInput, (hex) => {
-                const nameInput = document.getElementById('agentNameInput');
+                const nameInput = getAgentControl('agentNameInput');
                 if (nameInput) {
                     nameInput.style.color = hex;
                 }
             });
 
             // Setup card CSS input real-time preview
-            const agentCardCssInput = document.getElementById('agentCardCss');
+            const agentCardCssInput = getAgentControl('agentCardCss');
             if (agentCardCssInput) {
                 agentCardCssInput.addEventListener('input', (e) => {
                     applyCardCssToIdentityContainer(e.target.value);
@@ -1401,7 +1420,7 @@ const settingsManager = (() => {
                 maxOutputTokens: parseOptionalNumberInput(agentMaxOutputTokensInput, value => Number.parseInt(value, 10)),
                 top_p: parseOptionalNumberInput(agentTopPInput, Number.parseFloat),
                 top_k: parseOptionalNumberInput(agentTopKInput, value => Number.parseInt(value, 10)),
-                streamOutput: document.getElementById('agentStreamOutputTrue')?.checked ?? true,
+                streamOutput: getAgentControl('agentStreamOutputTrue')?.checked ?? true,
                 ttsVoicePrimary: agentTtsVoicePrimarySelect?.value || '',
                 ttsRegexPrimary: agentTtsRegexPrimaryInput?.value?.trim?.() || '',
                 ttsVoiceSecondary: agentTtsVoiceSecondarySelect?.value || '',
@@ -1412,10 +1431,10 @@ const settingsManager = (() => {
                 avatarBorderColor: agentAvatarBorderColorInput?.value || '',
                 nameTextColor: agentNameTextColorInput?.value || '',
                 customCss: agentCustomCssInput?.value?.trim?.() || '',
-                cardCss: document.getElementById('agentCardCss')?.value?.trim?.() || '',
-                chatCss: document.getElementById('agentChatCss')?.value?.trim?.() || '',
-                disableCustomColors: document.getElementById('disableCustomColors')?.checked || false,
-                useThemeColorsInChat: document.getElementById('useThemeColorsInChat')?.checked || false,
+                cardCss: getAgentControl('agentCardCss')?.value?.trim?.() || '',
+                chatCss: getAgentControl('agentChatCss')?.value?.trim?.() || '',
+                disableCustomColors: getAgentControl('disableCustomColors')?.checked || false,
+                useThemeColorsInChat: getAgentControl('useThemeColorsInChat')?.checked || false,
                 uiCollapseStates: getCurrentCollapseStates()
             };
 
@@ -1425,11 +1444,31 @@ const settingsManager = (() => {
             } catch (err) {
                 result = { error: err?.message || String(err) };
             }
-            if (result && result.error) {
-                console.error(`[SettingsManager] triggerAgentSave failed for ${agentId}:`, result.error);
-                return { success: false, error: result.error };
+            if (!result || result.error || result.success === false) {
+                const errorMsg = result?.error || result?.message || 'Save failed';
+                console.error(`[SettingsManager] triggerAgentSave failed for ${agentId}:`, errorMsg);
+                return { success: false, error: errorMsg };
             }
             return { success: true, result };
+        },
+
+        /**
+         * 强制将未保存的设置立即写入磁盘（用于切 Tab 或关闭前）
+         */
+        flushPendingSave: async () => {
+            if (!isAgentSettingsDirty || !editingAgentIdInput?.value) return { skipped: true };
+            if (agentSettingsAutosaveTimer) {
+                clearTimeout(agentSettingsAutosaveTimer);
+                agentSettingsAutosaveTimer = null;
+            }
+            const targetAgentId = editingAgentIdInput.value;
+            try {
+                const saveResult = await saveCurrentAgentSettings();
+                return saveResult;
+            } catch (err) {
+                console.warn(`[SettingsManager] Failed to flush pending save for ${targetAgentId}:`, err);
+                return { success: false, error: err?.message || String(err) };
+            }
         },
 
         /**
@@ -2495,7 +2534,8 @@ function resolveRegexSlots() {
      * 应用名片CSS到设置页面的Agent身份容器
      */
     function applyCardCssToIdentityContainer(cardCss) {
-        const identityContainer = document.querySelector('#agentSettingsContainer .agent-identity-container');
+        const agentHost = window.VCPSettingsSidebar?.getView?.('agent') || document.getElementById('agentSettingsContainer');
+        const identityContainer = agentHost?.querySelector?.('.agent-identity-container') || document.querySelector('#agentSettingsContainer .agent-identity-container');
         if (!identityContainer) return;
 
         if (cardCss && cardCss.trim()) {

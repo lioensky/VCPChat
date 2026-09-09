@@ -62,7 +62,7 @@ export function createSettingsSidebarSurface({ document = globalThis.document, r
             }
         } else {
             const node = views.get(kind);
-            if (node) attach(node);
+            if (panelActive && node) attach(node);
         }
         root.dataset.settingsActiveView = kind;
         root.dataset.settingsActiveId = id || '';
@@ -121,6 +121,7 @@ export function createSettingsSidebarSurface({ document = globalThis.document, r
         root,
         schema: { renderAgentSettingsSurface },
         register,
+        getView: kind => views.get(kind) || null,
         show,
         begin: show,
         isCurrent: tokenIsCurrent,
