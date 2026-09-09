@@ -39,6 +39,7 @@ audio_engine/bin/**
 
 # Reports and logs
 **/reports/
+test-results/
 
 # 临时忽略的文件（本地修改，不提交）
 .npmrc
