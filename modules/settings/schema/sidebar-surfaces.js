@@ -389,8 +389,8 @@ export function renderAgentSettingsSurface(host, doc = host?.ownerDocument || do
     const form = el(doc, 'form', { id: 'agentSettingsForm', novalidate: true });
     form.append(el(doc, 'input', { type: 'hidden', id: 'editingAgentId', name: 'agentId' }));
     form.append(renderSection(doc, { kind: 'agent', key: 'identity', title: '基础信息', summaryId: 'identitySummary', content: renderAgentIdentity }));
-    form.append(renderSection(doc, { kind: 'agent', key: 'prompt', title: '系统提示词', tooltip: '三个模块独立编辑后，注意保存以生效', summaryId: 'promptSummary', content: d => el(d, 'div', { class: 'agent-settings-card-shell agent-settings-prompt-shell' }, el(d, 'div', { id: 'systemPromptContainer', class: 'system-prompt-container' })) }));
-    form.append(renderSection(doc, { kind: 'agent', key: 'model', title: '模型设置', summaryId: 'modelSummary', content: d => el(d, 'div', { class: 'agent-settings-card-shell agent-settings-model-shell' }, el(d, 'div', { class: 'model-input-container' }, renderControl(d, agentFields[1]), el(d, 'button', { type: 'button', id: 'openModelSelectBtn', class: 'small-button model-picker-toggle-btn', title: '选择模型', 'aria-label': '选择模型' }, el(d, 'span', { class: 'vcp-ui-icon', 'aria-hidden': 'true' }, 'expand_more')))) }));
+    form.append(renderSection(doc, { kind: 'agent', key: 'prompt', title: '系统提示词', tooltip: '三个模块独立编辑后，注意保存以生效', summaryId: 'promptSummary', content: d => el(d, 'div', { class: 'agent-settings-card-shell' }, el(d, 'div', { id: 'systemPromptContainer', class: 'system-prompt-container' })) }));
+    form.append(renderSection(doc, { kind: 'agent', key: 'model', title: '模型设置', summaryId: 'modelSummary', content: d => el(d, 'div', { class: 'agent-settings-card-shell' }, el(d, 'div', { class: 'model-input-container' }, renderControl(d, agentFields[1]), el(d, 'button', { type: 'button', id: 'openModelSelectBtn', class: 'small-button model-picker-toggle-btn', title: '选择模型', 'aria-label': '选择模型' }, el(d, 'span', { class: 'vcp-ui-icon', 'aria-hidden': 'true' }, 'expand_more')))) }));
     form.append(renderSection(doc, { kind: 'agent', key: 'params', title: '模型参数配置', summaryId: 'paramsSummary', content: renderAgentParams }));
     form.append(renderSection(doc, { kind: 'agent', key: 'tts', title: '语音设置', summaryId: 'ttsSummary', content: renderAgentTts }));
     form.append(renderRegexSection(doc));
@@ -421,13 +421,13 @@ function renderGroupSectionContent(doc, key) {
         return el(doc, 'div', { class: 'group-settings-card-shell' }, mode, el(doc, 'div', { id: 'sequentialOrderContainer', class: 'group-settings-field-shell', hidden: true }, seqLabel, el(doc, 'div', { id: 'sequentialSpeakerOrderList', class: 'sequential-speaker-order-list', role: 'list', 'aria-label': '顺序发言次序' })), el(doc, 'div', { id: 'memberTagsContainer', class: 'group-settings-field-shell', hidden: true }, tags));
     }
     if (key === 'model') {
-        return el(doc, 'div', { class: 'group-settings-card-shell group-settings-model-shell' }, el(doc, 'div', { class: 'group-settings-switch-row' }, el(doc, 'label', { for: 'groupUseUnifiedModel' }, '启用群组统一模型'), el(doc, 'label', { class: 'switch', for: 'groupUseUnifiedModel', 'aria-label': '启用群组统一模型' }, el(doc, 'input', { id: 'groupUseUnifiedModel', type: 'checkbox' }), el(doc, 'span', { class: 'slider round' }))), el(doc, 'div', { id: 'groupUnifiedModelContainer', class: 'group-settings-field-shell', hidden: true, 'data-schema-field': groupFields[3].id }, el(doc, 'div', { class: 'model-input-container' }, renderControl(doc, groupFields[3]), el(doc, 'button', { type: 'button', id: 'openGroupModelSelectBtn', class: 'small-button model-picker-toggle-btn', title: '选择模型', 'aria-label': '打开模型选择器' }, el(doc, 'span', { class: 'vcp-ui-icon', 'aria-hidden': 'true' }, 'expand_more')))));
+        return el(doc, 'div', { class: 'group-settings-card-shell' }, el(doc, 'div', { class: 'group-settings-switch-row' }, el(doc, 'label', { for: 'groupUseUnifiedModel' }, '启用群组统一模型'), el(doc, 'label', { class: 'switch', for: 'groupUseUnifiedModel', 'aria-label': '启用群组统一模型' }, el(doc, 'input', { id: 'groupUseUnifiedModel', type: 'checkbox' }), el(doc, 'span', { class: 'slider round' }))), el(doc, 'div', { id: 'groupUnifiedModelContainer', class: 'group-settings-field-shell', hidden: true, 'data-schema-field': groupFields[3].id }, el(doc, 'div', { class: 'model-input-container' }, renderControl(doc, groupFields[3]), el(doc, 'button', { type: 'button', id: 'openGroupModelSelectBtn', class: 'small-button model-picker-toggle-btn', title: '选择模型', 'aria-label': '打开模型选择器' }, el(doc, 'span', { class: 'vcp-ui-icon', 'aria-hidden': 'true' }, 'expand_more')))));
     }
     const groupPrompt = renderField(doc, groupFields[4]);
     groupPrompt.querySelector('textarea')?.setAttribute('placeholder', '例如：这里是用户家的聊天空间，成员应保持协作与角色分工。');
     const invitePrompt = renderField(doc, groupFields[5]);
     invitePrompt.querySelector('textarea')?.setAttribute('placeholder', '例如：现在轮到 {{VCPChatAgentName}} 发言了。');
-    return el(doc, 'div', { class: 'group-settings-card-shell group-settings-prompt-shell' }, groupPrompt, invitePrompt);
+    return el(doc, 'div', { class: 'group-settings-card-shell' }, groupPrompt, invitePrompt);
 }
 
 export function renderGroupSettingsSurface(host, doc = host?.ownerDocument || document) {

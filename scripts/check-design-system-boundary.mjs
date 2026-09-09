@@ -85,7 +85,9 @@ const allowedSourceDifferences = new Set([
     'docs/settings-autosave-coordinator-handoff.md',
     'docs/settings-sidebar-refactor-handover.md',
     'docs/upstream-function-parity.md',
-    'stylelint.ui-system.config.cjs',
+    // Retired/consolidated files deleted in this PR:
+    'Groupmodules/groupSettingsMarkup.js',
+    'modules/ui-system/agent-settings-bridge.js',
     'Groupmodules/grouprenderer.js',
     'Notemodules/notes.css',
     'main.html',
@@ -402,9 +404,6 @@ const allowedSourceDifferencePatterns = [
     // forbidden Build/Agent terms are still checked independently above.
     /^modules\/settings\//,
     /^modules\/ui-system\/settings\//,
-    /^Groupmodules\/groupSettingsMarkup\.js$/,
-    /^modules\/ui-system\/agent-settings-bridge\.js$/,
-    /^modules\/ui-system\/settings\/settings-sidebar-runtime\.js$/,
     /^modules\/ui-system\/typed-field-owners\.js$/,
     /^modules\/ui-system\/settings-bridge\.js$/,
     /^modules\/uiux\//,

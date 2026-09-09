@@ -407,7 +407,6 @@ test.skip('retired: Agent TTS Range is a schema-owned native control', () => {
     const agent = read(sidebarRuntime);
     const manager = read(path.join(root, 'modules', 'settingsManager.js'));
     const rangeOwner = agent.match(/function mountTypedAgentTtsSpeedRange\(form\)\s*\{([\s\S]*?)\n\}/)?.[1] || '';
-    const controlsCss = read(path.join(root, 'styles', 'setting', 'settings-form-controls.css'));
     assert.match(rangeOwner, /api\.mountRange\(input, \{ output, format: value => Number\.parseFloat\(value\)\.toFixed\(1\) \}, scope\)/,
         'generated Range must preserve the existing one-decimal TTS speed presentation');
     assert.doesNotMatch(manager, /function syncRangeProgress\(/,
@@ -416,8 +415,6 @@ test.skip('retired: Agent TTS Range is a schema-owned native control', () => {
         'SettingsManager must not retain a second TTS output listener beside the generated Range');
     assert.doesNotMatch(manager, /ttsSpeedValueSpan/,
         'SettingsManager must not retain a display-node reference after the generated Range owns output projection');
-    assert.doesNotMatch(controlsCss, /#agentTtsSpeed\s*\{/,
-        'the typed Range wrapper, not an Agent-id selector, must own flexible row geometry');
 });
 
 test('Agent actions remain upstream-visible and theme-token driven', () => {
@@ -436,7 +433,6 @@ test.skip('retired: Agent TTS Voice Select is a schema-owned native control', ()
     const agent = read(sidebarRuntime);
     const manager = read(path.join(root, 'modules', 'settingsManager.js'));
     const selectProjection = read(path.join(settingsDir, 'select-projection.js'));
-    const agentCss = read(path.join(root, 'styles', 'setting', 'agent', 'agent-card-controls.css'));
     const sidebarMount = agent.slice(agent.indexOf('function mountSettingsSidebarForm(form)'), agent.indexOf('function mountTypedAgentInput(form, {'));
 
     assert.match(sidebarMount, /selectProjection\.mount\(form\)/,

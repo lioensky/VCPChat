@@ -119,7 +119,7 @@ try {
     console.log('[PASS] Agent collapsed identity box verified');
 
     console.log('[INFO] Expanding Agent identity section by clicking toggle');
-    await page.click('#identityToggleBtn');
+    await page.click(':is(#identityToggleBtn, #agentSettingsForm [data-section-key="identity"] .agent-settings-toggle-btn, #identityToggleHeader)');
     await sleep(350);
 
     const agentGeometry = await page.evaluate(() => {
@@ -284,7 +284,7 @@ try {
     assert.equal(regexCollapsedInitial.summaryVisible, true, 'Regex summary must be visible when collapsed');
 
     console.log('[INFO] Expanding Regex section');
-    await page.click('#regexToggleBtn');
+    await page.click(':is(#regexToggleBtn, #agentSettingsForm [data-section-key="regex"] .agent-settings-toggle-btn, #regexToggleHeader)');
     await sleep(350);
 
     const regexExpandedMetrics = await page.evaluate(() => {
@@ -396,7 +396,7 @@ try {
     console.log('[PASS] Group collapsed identity box verified');
 
     console.log('[INFO] Expanding Group identity section by clicking toggle');
-    await page.click('#groupIdentityToggleBtn');
+    await page.click(':is(#groupIdentityToggleBtn, #groupSettingsForm [data-section-key="identity"] .group-settings-toggle-btn, #groupIdentityToggleHeader)');
     await sleep(350);
 
     const groupGeometry = await page.evaluate(() => {
@@ -427,7 +427,7 @@ try {
     console.log('[PASS] Group identity geometry and sequential drag affordance');
 
     console.log('[INFO] Re-collapsing Group identity section by clicking toggle');
-    await page.click('#groupIdentityToggleBtn');
+    await page.click(':is(#groupIdentityToggleBtn, #groupSettingsForm [data-section-key="identity"] .group-settings-toggle-btn, #groupIdentityToggleHeader)');
     await sleep(350);
     const groupReCollapsed = await page.evaluate(() => {
         const summary = document.getElementById('groupIdentitySummary');

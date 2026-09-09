@@ -3,7 +3,8 @@
    business ids remain stable for SettingsManager and GroupRenderer, while all
    geometry and control styling is expressed through semantic descendants. */
 
-html .vcp-ui-scope #tabContentSettings {
+html .vcp-ui-scope #tabContentSettings,
+html .vcp-ui-scope :is(.vcp-settings-schema-surface, .settings-header-bar, .invite-agent-buttons-container) {
     --vcp-settings-control-height: 30px;
     --vcp-settings-control-height-compact: 26px;
     --vcp-settings-radius: 8px;
@@ -17,6 +18,17 @@ html .vcp-ui-scope #tabContentSettings {
     --vcp-settings-muted: var(--vcp-ui-text-2, var(--secondary-text, var(--vcp-ui-text-2)));
     --vcp-settings-accent: var(--vcp-ui-accent, var(--highlight-text, var(--vcp-ui-accent)));
     --vcp-settings-danger: var(--vcp-ui-danger, var(--danger-color, var(--vcp-ui-danger)));
+
+    --vcp-settings-font-micro: var(--vcp-ui-font-micro, 10px);
+    --vcp-settings-font-badge: 9px;
+    --vcp-settings-font-meta: 10.5px;
+    --vcp-settings-font-xs: var(--vcp-ui-font-size-xs, 11px);
+    --vcp-settings-font-sub: 11.5px;
+    --vcp-settings-font-caption: var(--vcp-ui-font-caption, 12px);
+    --vcp-settings-font-compact-title: 12.5px;
+    --vcp-settings-font-helper: var(--vcp-ui-font-helper, 13px);
+    --vcp-settings-font-lg: 13.5px;
+    --vcp-settings-font-header: 1.2em;
 }
 
 html:is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope #tabContentSettings {
@@ -94,7 +106,7 @@ html .vcp-ui-scope .settings-header-bar h2 {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    font-size: 1.2em;
+    font-size: var(--vcp-settings-font-header);
     line-height: 1.2;
     font-weight: 600;
     color: var(--secondary-text);
@@ -110,10 +122,10 @@ html .vcp-ui-scope .settings-header-bar .global-settings-btn {
     padding: 0 12px;
     margin-left: 0;
     border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid var(--vcp-settings-border);
     background: transparent;
     color: var(--secondary-text);
-    font-size: 0.9em;
+    font-size: var(--vcp-settings-font-caption);
     font-weight: 500;
     line-height: 1;
     display: inline-flex;
@@ -137,7 +149,7 @@ html .vcp-ui-scope .settings-header-bar .global-settings-btn:hover {
 
 html:is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .settings-header-bar .global-settings-btn {
     background: transparent;
-    border-color: rgba(51, 51, 51, 0.08);
+    border-color: var(--vcp-settings-border);
     color: var(--button-bg);
 }
 
@@ -145,11 +157,11 @@ html:is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .settings-header-b
     background:
         linear-gradient(
             180deg,
-            color-mix(in srgb, var(--button-hover-bg) 76%, rgba(255, 255, 255, 0.32)),
-            color-mix(in srgb, var(--button-hover-bg) 92%, rgba(255, 255, 255, 0.12))
+            color-mix(in srgb, var(--button-hover-bg) 76%, color-mix(in srgb, var(--vcp-ui-on-accent) 32%, transparent)),
+            color-mix(in srgb, var(--button-hover-bg) 92%, color-mix(in srgb, var(--vcp-ui-on-accent) 12%, transparent))
         );
     border-color: var(--button-hover-bg);
-    color: #ffffff;
+    color: var(--vcp-ui-on-accent);
 }
 
 html:is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .settings-header-bar .global-settings-btn {
@@ -207,7 +219,7 @@ html .vcp-ui-scope .preset-section-label {
     flex-wrap: wrap;
     min-width: 0;
     color: var(--vcp-settings-muted);
-    font-size: 11px;
+    font-size: var(--vcp-settings-font-xs);
     font-weight: 500;
     line-height: 1.3;
     margin-bottom: 2px;
@@ -225,7 +237,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface textarea {
     color: var(--vcp-settings-text);
     background: var(--vcp-settings-input);
     font-family: inherit;
-    font-size: 12px;
+    font-size: var(--vcp-settings-font-caption);
     transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
@@ -261,7 +273,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface textarea:active {
 
 html .vcp-ui-scope .vcp-settings-schema-surface input::placeholder,
 html .vcp-ui-scope .vcp-settings-schema-surface textarea::placeholder {
-    font-size: 11.5px;
+    font-size: var(--vcp-settings-font-sub);
     color: var(--vcp-settings-muted);
     opacity: 0.8;
 }
@@ -287,7 +299,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .settings-schema-hint,
 html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-helper-text,
 html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-help {
     color: var(--vcp-settings-muted);
-    font-size: 10.5px;
+    font-size: var(--vcp-settings-font-meta);
     line-height: 1.4;
 }
 
@@ -341,11 +353,11 @@ html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-section-header::
 }
 
 html:is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section-header:hover::before {
-    background-color: color-mix(in srgb, var(--highlight-text) 12%, rgba(255, 255, 255, 0.6));
+    background-color: color-mix(in srgb, var(--highlight-text) 12%, color-mix(in srgb, var(--vcp-ui-on-accent) 60%, transparent));
 }
 
 html:is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section-header:hover::before {
-    background-color: color-mix(in srgb, var(--highlight-text) 15%, rgba(255, 255, 255, 0.04));
+    background-color: color-mix(in srgb, var(--highlight-text) 15%, color-mix(in srgb, var(--vcp-ui-on-accent) 4%, transparent));
 }
 
 html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section-title-row,
@@ -367,7 +379,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-section-title {
     min-width: 0;
     flex: 0 1 auto;
     color: var(--highlight-text);
-    font-size: 13px;
+    font-size: var(--vcp-settings-font-helper);
     font-weight: 500;
     letter-spacing: 0.1px;
     line-height: 24px;
@@ -408,7 +420,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-section-summary 
     grid-area: summary;
     min-width: 0;
     color: var(--secondary-text);
-    font-size: 11px;
+    font-size: var(--vcp-settings-font-xs);
     line-height: 17px;
     letter-spacing: 0.1px;
     overflow-wrap: anywhere;
@@ -424,7 +436,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-section-summary:
     background: color-mix(in srgb, var(--vcp-settings-surface) 60%, transparent);
     border: 0.5px solid color-mix(in srgb, var(--vcp-settings-border) 45%, transparent);
     border-radius: var(--vcp-settings-radius, 8px);
-    font-size: 11px;
+    font-size: var(--vcp-settings-font-xs);
     line-height: 16px;
     font-weight: 500;
     box-sizing: border-box;
@@ -450,7 +462,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .summary-pills-row .vcp-uiux-pil
     height: 24px;
     padding: 0 8px;
     border-radius: 12px;
-    font-size: 12px;
+    font-size: var(--vcp-settings-font-caption);
     font-weight: 500;
     line-height: 18px;
     color: var(--secondary-text);
@@ -474,7 +486,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .agent-stream-mode-group {
 }
 
 html .vcp-ui-scope .vcp-settings-schema-surface .agent-stream-mode-title {
-    font-size: 11.5px;
+    font-size: var(--vcp-settings-font-sub);
     font-weight: 500;
     color: var(--secondary-text);
 }
@@ -497,7 +509,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .agent-stream-mode-option {
     height: 24px;
     padding: 0 12px;
     border-radius: 999px;
-    font-size: 11.5px;
+    font-size: var(--vcp-settings-font-sub);
     font-weight: 500;
     cursor: pointer;
     color: var(--secondary-text);
@@ -519,8 +531,8 @@ html .vcp-ui-scope .vcp-settings-schema-surface .agent-stream-mode-option:hover 
 
 html .vcp-ui-scope .vcp-settings-schema-surface .agent-stream-mode-option:has(input[type="radio"]:checked) {
     background: var(--highlight-text);
-    color: #ffffff;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+    color: var(--vcp-ui-on-accent);
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--vcp-ui-bg-primary) 15%, transparent);
 }
 
 html .vcp-ui-scope .vcp-settings-schema-surface :is(#identitySummary, #groupIdentitySummary) {
@@ -578,7 +590,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section[data-sec
 }
 
 html:is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface :is(#identitySummary, #groupIdentitySummary).summary-with-avatar {
-    background: var(--vcp-settings-surface, #ffffff);
+    background: var(--vcp-settings-surface, var(--vcp-ui-bg-primary));
     border-color: var(--vcp-settings-border);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
@@ -586,7 +598,7 @@ html:is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-sche
 }
 
 html:is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface :is(#identitySummary, #groupIdentitySummary).summary-with-avatar {
-    background: var(--vcp-settings-surface, #1e1e1e);
+    background: var(--vcp-settings-surface, var(--vcp-ui-bg-primary));
     border-color: var(--vcp-settings-border);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
@@ -619,7 +631,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-settings-summary-labe
     padding: 0 2px 0 10px;
     border: 0.5px solid transparent;
     box-sizing: border-box;
-    font-size: 13.5px;
+    font-size: var(--vcp-settings-font-lg);
     font-weight: 600;
     line-height: 28px;
     color: var(--vcp-settings-text, var(--primary-text));
@@ -634,7 +646,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-settings-summary-meta
     align-items: center;
     padding: 2px 7px;
     border-radius: 999px;
-    font-size: 10.5px;
+    font-size: var(--vcp-settings-font-meta);
     font-weight: 500;
     line-height: 1.2;
     color: var(--vcp-settings-muted, var(--secondary-text));
@@ -689,12 +701,12 @@ html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-toggle-btn:hover
 
 html:is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-toggle-btn:hover::before,
 html:is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .group-settings-toggle-btn:hover::before {
-    background-color: color-mix(in srgb, var(--highlight-text) 16%, rgba(255, 255, 255, 0.74));
+    background-color: color-mix(in srgb, var(--highlight-text) 16%, color-mix(in srgb, var(--vcp-ui-on-accent) 74%, transparent));
 }
 
 html:is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-toggle-btn:hover::before,
 html:is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .group-settings-toggle-btn:hover::before {
-    background-color: color-mix(in srgb, var(--highlight-text) 20%, rgba(255, 255, 255, 0.05));
+    background-color: color-mix(in srgb, var(--highlight-text) 20%, color-mix(in srgb, var(--vcp-ui-on-accent) 5%, transparent));
 }
 
 html .vcp-ui-scope .vcp-settings-schema-surface .toggle-icon {
@@ -901,7 +913,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-avatar-wrapper, .grou
     width: 100%;
     height: 100%;
     border-radius: 50%;
-    background-color: rgba(0, 0, 0, 0.45);
+    background-color: var(--vcp-ui-backdrop);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -917,8 +929,8 @@ html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-avatar-wrapper, .grou
 html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-avatar-wrapper, .group-avatar-wrapper) .avatar-upload-overlay svg {
     width: 14px;
     height: 14px;
-    color: #ffffff;
-    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+    color: var(--vcp-ui-on-accent);
+    filter: drop-shadow(0 2px 4px color-mix(in srgb, var(--vcp-ui-bg-primary) 30%, transparent));
 }
 
 html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-identity-main, .group-identity-main) :is(.agent-name-wrapper, .group-name-wrapper) {
@@ -947,7 +959,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-identity-main, .group
     border: 0.5px solid var(--vcp-settings-border);
     background: color-mix(in srgb, var(--vcp-settings-surface) 85%, var(--vcp-settings-input));
     color: var(--vcp-settings-text, var(--primary-text));
-    font-size: 13.5px;
+    font-size: var(--vcp-settings-font-lg);
     font-weight: 600;
     line-height: 28px;
     box-sizing: border-box;
@@ -1017,7 +1029,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .style-collapse-header,
     cursor: pointer;
     user-select: none;
     color: var(--vcp-settings-muted);
-    font-size: 11.5px;
+    font-size: var(--vcp-settings-font-sub);
     line-height: 24px;
     transition: color 100ms ease;
 }
@@ -1072,7 +1084,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .style-collapse-title,
     flex: none;
     margin: 0;
     padding: 0;
-    font-size: 11.5px;
+    font-size: var(--vcp-settings-font-sub);
     font-weight: 500;
     line-height: 24px;
     color: var(--vcp-settings-muted);
@@ -1150,7 +1162,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .style-toggle-row {
 }
 
 html .vcp-ui-scope .vcp-settings-schema-surface .style-toggle-row label {
-    font-size: 11.5px;
+    font-size: var(--vcp-settings-font-sub);
     font-weight: 500;
     color: var(--secondary-text);
     margin: 0;
@@ -1188,10 +1200,10 @@ html .vcp-ui-scope .vcp-settings-schema-surface .style-toggle-row .slider.round:
     width: 16px;
     left: 2px;
     bottom: 2px;
-    background-color: #ffffff;
+    background-color: var(--vcp-ui-on-accent);
     transition: transform 120ms ease;
     border-radius: 50%;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--vcp-ui-bg-primary) 20%, transparent);
 }
 
 html .vcp-ui-scope .vcp-settings-schema-surface .style-toggle-row input:checked + .slider.round {
@@ -1214,12 +1226,12 @@ html .vcp-ui-scope .vcp-settings-schema-surface .color-input-group input[type="c
     appearance: none;
     width: 24px;
     height: 24px;
-    border: 2px solid rgba(255, 255, 255, 0.2);
+    border: 2px solid color-mix(in srgb, var(--vcp-ui-on-accent) 20%, transparent);
     border-radius: 50%;
     padding: 0;
     cursor: pointer;
     background: transparent;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--vcp-ui-bg-primary) 20%, transparent);
     overflow: hidden;
     flex-shrink: 0;
 }
@@ -1239,7 +1251,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .color-input-group input[type="t
     height: 26px;
     line-height: 26px;
     font-family: var(--vcp-ui-font-family-mono, monospace);
-    font-size: 11.5px;
+    font-size: var(--vcp-settings-font-sub);
     text-transform: uppercase;
     padding: 0 8px;
     border-radius: 6px;
@@ -1250,7 +1262,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .agent-style-controls .reset-col
     height: 26px;
     min-height: 26px;
     border-radius: 13px;
-    font-size: 11.5px;
+    font-size: var(--vcp-settings-font-sub);
     line-height: 18px;
     font-weight: 500;
     color: var(--secondary-text);
@@ -1273,7 +1285,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .agent-style-controls .reset-col
 
 html .vcp-ui-scope .vcp-settings-schema-surface .agent-style-controls textarea {
     font-family: var(--vcp-ui-font-family-mono, 'SF Mono', Consolas, Monaco, monospace);
-    font-size: 11.5px;
+    font-size: var(--vcp-settings-font-sub);
     line-height: 17px;
     min-height: 52px;
     padding: 5px 8px;
@@ -1316,7 +1328,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .system-prompt-container .origin
     box-shadow: none;
     outline: none;
     padding: 4px 6px 6px;
-    font-size: 11.5px;
+    font-size: var(--vcp-settings-font-sub);
     line-height: 18px;
     min-height: 56px;
 }
@@ -1337,7 +1349,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .system-prompt-container .preset
     border: 0.5px solid var(--vcp-settings-border);
     background: var(--vcp-settings-input);
     color: var(--primary-text);
-    font-size: 12px;
+    font-size: var(--vcp-settings-font-caption);
 }
 
 html .vcp-ui-scope .vcp-settings-schema-surface .system-prompt-container .preset-browse-btn,
@@ -1348,7 +1360,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .system-prompt-container .preset
     border: 0.5px solid var(--vcp-settings-border);
     background: color-mix(in srgb, var(--vcp-settings-surface) 80%, transparent);
     color: var(--secondary-text);
-    font-size: 11px;
+    font-size: var(--vcp-settings-font-xs);
 }
 
 html .vcp-ui-scope .vcp-settings-schema-surface .system-prompt-container .preset-refresh-btn {
@@ -1362,7 +1374,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .system-prompt-container .preset
     border: 0.5px solid var(--vcp-settings-border);
     background: var(--vcp-settings-input);
     color: var(--primary-text);
-    font-size: 11.5px;
+    font-size: var(--vcp-settings-font-sub);
     line-height: 18px;
     min-height: 56px;
     padding: 5px 8px;
@@ -1407,7 +1419,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .model-input-container > :is(sel
     border-radius: var(--vcp-settings-radius, 8px);
     background: var(--vcp-settings-input);
     color: var(--vcp-settings-text);
-    font-size: 12px;
+    font-size: var(--vcp-settings-font-caption);
     box-sizing: border-box;
 }
 
@@ -1482,7 +1494,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .vcp-uiux-select-trigger {
     background: var(--vcp-settings-input);
     color: var(--vcp-settings-text);
     font-family: inherit;
-    font-size: 12px;
+    font-size: var(--vcp-settings-font-caption);
     line-height: 30px;
     cursor: pointer;
     box-sizing: border-box;
@@ -1510,15 +1522,15 @@ html .vcp-ui-scope .vcp-settings-schema-surface .vcp-uiux-menu-list,
 html .vcp-ui-scope .vcp-uiux-primitive-menu {
     border-radius: 8px;
     border: 0.5px solid var(--vcp-settings-border);
-    background: var(--secondary-bg, #1c2024);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+    background: var(--secondary-bg, var(--vcp-ui-bg-secondary));
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--vcp-ui-bg-primary) 28%, transparent);
 }
 
 html .vcp-ui-scope .vcp-settings-schema-surface .vcp-uiux-menu-item {
     min-height: 28px;
     height: 28px;
     padding: 0 8px;
-    font-size: 11.5px;
+    font-size: var(--vcp-settings-font-sub);
     border-radius: 6px;
     color: var(--vcp-settings-text);
 }
@@ -1590,7 +1602,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-composer > textare
     box-sizing: border-box;
     padding: 8px 76px 8px 10px;
     line-height: 18px;
-    font-size: 11.5px;
+    font-size: var(--vcp-settings-font-sub);
     border: 0.5px solid var(--vcp-settings-border);
     border-radius: 8px;
     background-color: var(--vcp-settings-input);
@@ -1631,7 +1643,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-floating-actions b
     height: 22px;
     min-height: 22px;
     padding: 0 7px;
-    font-size: 11px;
+    font-size: var(--vcp-settings-font-xs);
     border-radius: 6px;
     background: color-mix(in srgb, var(--vcp-settings-surface) 85%, transparent);
     border: 0.5px solid var(--vcp-settings-border);
@@ -1738,8 +1750,8 @@ html .vcp-ui-scope .vcp-settings-schema-surface .slider-container input[type="ra
     margin-top: -6px;
     border: 2px solid var(--highlight-text);
     border-radius: 50%;
-    background: var(--vcp-settings-input, #fff);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+    background: var(--vcp-settings-input, var(--vcp-ui-bg-input));
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--vcp-ui-bg-primary) 15%, transparent);
     appearance: none;
     -webkit-appearance: none;
     transition: transform 0.15s ease;
@@ -1760,14 +1772,14 @@ html .vcp-ui-scope .vcp-settings-schema-surface .slider-container input[type="ra
     height: 14px;
     border: 2px solid var(--highlight-text);
     border-radius: 50%;
-    background: var(--vcp-settings-input, #fff);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+    background: var(--vcp-settings-input, var(--vcp-ui-bg-input));
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--vcp-ui-bg-primary) 15%, transparent);
 }
 
 html .vcp-ui-scope .vcp-settings-schema-surface .slider-container #ttsSpeedValue {
     min-width: 2.5em;
     color: var(--secondary-text);
-    font-size: 11.5px;
+    font-size: var(--vcp-settings-font-sub);
     font-weight: 500;
     line-height: 18px;
     text-align: right;
@@ -1789,7 +1801,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-heading label {
 html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-editor {
     min-height: 96px;
     padding: 8px 36px 8px 10px;
-    font-size: 11.5px;
+    font-size: var(--vcp-settings-font-sub);
     line-height: 18px;
     border: 0.5px solid var(--vcp-settings-border);
     border-radius: 8px;
@@ -1817,7 +1829,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-item .tts-director
     min-height: 96px;
     height: 96px;
     padding: 8px 40px 8px 10px;
-    font-size: 11.5px;
+    font-size: var(--vcp-settings-font-sub);
     line-height: 18px;
     border-radius: 8px;
     border: 0.5px solid var(--vcp-settings-border);
@@ -2028,7 +2040,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .group-member-label {
     margin: 0;
     padding: 0;
     color: var(--vcp-settings-text);
-    font-size: 12px;
+    font-size: var(--vcp-settings-font-caption);
     cursor: pointer;
     line-height: 1;
 }
@@ -2053,7 +2065,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .group-member-name {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 12px;
+    font-size: var(--vcp-settings-font-caption);
     font-weight: 500;
     line-height: 1.2;
     color: var(--vcp-settings-text);
@@ -2071,7 +2083,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .sequential-speaker-order-item {
     color: var(--vcp-settings-text);
     background: color-mix(in srgb, var(--vcp-settings-surface) 82%, transparent);
     box-sizing: border-box;
-    font-size: 12px;
+    font-size: var(--vcp-settings-font-caption);
     cursor: grab;
     user-select: none;
     transition: background-color 0.15s ease, border-color 0.15s ease;
@@ -2104,7 +2116,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .sequential-speaker-name {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 12px;
+    font-size: var(--vcp-settings-font-caption);
     font-weight: 500;
     line-height: 1.2;
     color: var(--vcp-settings-text);
@@ -2146,7 +2158,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .member-tag-input-item label {
     overflow: hidden;
     text-overflow: ellipsis;
     color: var(--vcp-settings-text);
-    font-size: 11.5px;
+    font-size: var(--vcp-settings-font-sub);
     font-weight: 500;
     line-height: 1;
     user-select: none;
@@ -2166,7 +2178,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .member-tag-input-item input:not
     background: transparent;
     color: var(--vcp-settings-text);
     padding: 0;
-    font-size: 11.5px;
+    font-size: var(--vcp-settings-font-sub);
     box-sizing: border-box;
     box-shadow: none;
 }
@@ -2207,7 +2219,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .sequential-speaker-drag-handle 
     align-items: center;
     justify-content: center;
     margin-right: 3px;
-    font-size: 13px;
+    font-size: var(--vcp-settings-font-helper);
     line-height: 1;
     transition: color var(--vcp-motion-duration-fast, 0.15s) ease;
 }
@@ -2267,7 +2279,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .sequential-speaker-order-empty 
     border-radius: 8px;
     text-align: center;
     color: var(--vcp-settings-muted);
-    font-size: 11.5px;
+    font-size: var(--vcp-settings-font-sub);
     line-height: 18px;
     background: transparent;
 }
@@ -2292,7 +2304,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .vcp-settings-info-badge {
     color: var(--vcp-settings-muted);
     background: transparent;
     cursor: help;
-    font-size: 9px;
+    font-size: var(--vcp-settings-font-badge);
     font-weight: 600;
     line-height: 1;
     box-sizing: border-box;
@@ -2341,9 +2353,9 @@ html .vcp-ui-scope .vcp-settings-schema-surface .form-save-state-indicator {
     justify-content: center;
     gap: 6px;
     padding: 2px 0;
-    font-size: 11px;
+    font-size: var(--vcp-settings-font-xs);
     line-height: 1.2;
-    color: var(--vcp-ui-text-2, #888);
+    color: var(--vcp-ui-text-2);
 }
 
 html .vcp-ui-scope .vcp-settings-schema-surface .form-save-state-indicator:is([data-state="warning"], [data-state="ongoing"]) {
@@ -2351,11 +2363,11 @@ html .vcp-ui-scope .vcp-settings-schema-surface .form-save-state-indicator:is([d
 }
 
 html .vcp-ui-scope .vcp-settings-schema-surface .form-save-state-indicator[data-state="warning"] {
-    color: var(--vcp-ui-warning, #e6a23c);
+    color: var(--vcp-ui-warning);
 }
 
 html .vcp-ui-scope .vcp-settings-schema-surface .form-save-state-indicator[data-state="ongoing"] {
-    color: var(--vcp-ui-accent, #409eff);
+    color: var(--vcp-ui-accent);
 }
 
 html .vcp-ui-scope .vcp-settings-schema-surface .form-state-dot-host {
@@ -2401,7 +2413,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .form-actions button {
     height: 32px;
     min-height: 32px;
     padding: 0 12px;
-    font-size: 12px;
+    font-size: var(--vcp-settings-font-caption);
     font-weight: 500;
     line-height: 1;
     border-radius: 16px;
@@ -2423,7 +2435,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .form-actions button {
 html .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"] {
     border: none;
     background: var(--vcp-settings-accent, var(--highlight-text));
-    color: var(--vcp-ui-on-accent, #ffffff);
+    color: var(--vcp-ui-on-accent);
     font-weight: 600;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
@@ -2431,9 +2443,9 @@ html .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submi
 }
 
 html .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"]:hover {
-    background: color-mix(in srgb, var(--vcp-settings-accent, var(--highlight-text)) 88%, #ffffff 12%);
+    background: color-mix(in srgb, var(--vcp-settings-accent, var(--highlight-text)) 88%, var(--vcp-ui-on-accent) 12%);
     background-image: none;
-    color: var(--vcp-ui-on-accent, #ffffff);
+    color: var(--vcp-ui-on-accent);
     border: none;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
@@ -2443,9 +2455,9 @@ html .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submi
 }
 
 html .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"]:active {
-    background: color-mix(in srgb, var(--vcp-settings-accent, var(--highlight-text)) 88%, #000000 12%);
+    background: color-mix(in srgb, var(--vcp-settings-accent, var(--highlight-text)) 88%, var(--vcp-ui-bg-primary) 12%);
     border: none;
-    color: var(--vcp-ui-on-accent, #ffffff);
+    color: var(--vcp-ui-on-accent);
     box-shadow: none;
     transform: translateY(0) scale(0.985);
 }
@@ -2453,16 +2465,16 @@ html .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submi
 :is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"] {
     border: none;
     background: var(--vcp-settings-accent, var(--highlight-text));
-    color: var(--vcp-ui-on-accent, #ffffff);
+    color: var(--vcp-ui-on-accent);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     box-shadow: none;
 }
 
 :is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"]:hover {
-    background: color-mix(in srgb, var(--vcp-settings-accent, var(--highlight-text)) 88%, #000000 12%);
+    background: color-mix(in srgb, var(--vcp-settings-accent, var(--highlight-text)) 88%, var(--vcp-ui-bg-primary) 12%);
     border: none;
-    color: var(--vcp-ui-on-accent, #ffffff);
+    color: var(--vcp-ui-on-accent);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     box-shadow: none;
@@ -2470,9 +2482,9 @@ html .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submi
 }
 
 :is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"]:active {
-    background: color-mix(in srgb, var(--vcp-settings-accent, var(--highlight-text)) 78%, #000000 22%);
+    background: color-mix(in srgb, var(--vcp-settings-accent, var(--highlight-text)) 78%, var(--vcp-ui-bg-primary) 22%);
     border: none;
-    color: var(--vcp-ui-on-accent, #ffffff);
+    color: var(--vcp-ui-on-accent);
     box-shadow: none;
     transform: translateY(0) scale(0.985);
 }
@@ -2480,7 +2492,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submi
 :is(html, body, html body):is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"] {
     border: none;
     background: var(--vcp-settings-accent, var(--highlight-text));
-    color: var(--vcp-ui-on-accent, #ffffff);
+    color: var(--vcp-ui-on-accent);
     font-weight: 600;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
@@ -2488,9 +2500,9 @@ html .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submi
 }
 
 :is(html, body, html body):is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"]:hover {
-    background: color-mix(in srgb, var(--vcp-settings-accent, var(--highlight-text)) 88%, #ffffff 12%);
+    background: color-mix(in srgb, var(--vcp-settings-accent, var(--highlight-text)) 88%, var(--vcp-ui-on-accent) 12%);
     background-image: none;
-    color: var(--vcp-ui-on-accent, #ffffff);
+    color: var(--vcp-ui-on-accent);
     border: none;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
@@ -2500,9 +2512,9 @@ html .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submi
 }
 
 :is(html, body, html body):is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"]:active {
-    background: color-mix(in srgb, var(--vcp-settings-accent, var(--highlight-text)) 88%, #000000 12%);
+    background: color-mix(in srgb, var(--vcp-settings-accent, var(--highlight-text)) 88%, var(--vcp-ui-bg-primary) 12%);
     border: none;
-    color: var(--vcp-ui-on-accent, #ffffff);
+    color: var(--vcp-ui-on-accent);
     box-shadow: none;
     transform: translateY(0) scale(0.985);
 }
@@ -2510,9 +2522,9 @@ html .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submi
 html .vcp-ui-scope .vcp-settings-schema-surface .form-actions .danger-button,
 html .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteAgentBtn,
 html .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteGroupBtn {
-    border: 0.5px solid color-mix(in srgb, var(--danger-color, #ef4444) 40%, transparent);
+    border: 0.5px solid color-mix(in srgb, var(--danger-color, var(--vcp-ui-danger)) 40%, transparent);
     background: transparent;
-    color: var(--danger-color, #ef4444);
+    color: var(--danger-color, var(--vcp-ui-danger));
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     box-shadow: none;
@@ -2521,9 +2533,9 @@ html .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteGroupBtn {
 :is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions .danger-button,
 :is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteAgentBtn,
 :is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteGroupBtn {
-    border: 0.5px solid color-mix(in srgb, var(--danger-color, #dc2626) 38%, transparent);
+    border: 0.5px solid color-mix(in srgb, var(--danger-color, var(--vcp-ui-danger)) 38%, transparent);
     background: transparent;
-    color: var(--danger-color, #dc2626);
+    color: var(--danger-color, var(--vcp-ui-danger));
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     box-shadow: none;
@@ -2532,9 +2544,9 @@ html .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteGroupBtn {
 :is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions .danger-button:hover,
 :is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteAgentBtn:hover,
 :is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteGroupBtn:hover {
-    background: color-mix(in srgb, var(--danger-color, #dc2626) 10%, transparent);
-    border-color: var(--danger-color, #dc2626);
-    color: var(--danger-color, #dc2626);
+    background: color-mix(in srgb, var(--danger-color, var(--vcp-ui-danger)) 10%, transparent);
+    border-color: var(--danger-color, var(--vcp-ui-danger));
+    color: var(--danger-color, var(--vcp-ui-danger));
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     box-shadow: none;
@@ -2543,17 +2555,17 @@ html .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteGroupBtn {
 :is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions .danger-button:active,
 :is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteAgentBtn:active,
 :is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteGroupBtn:active {
-    background: color-mix(in srgb, var(--danger-color, #dc2626) 18%, transparent);
-    border-color: var(--danger-color, #dc2626);
+    background: color-mix(in srgb, var(--danger-color, var(--vcp-ui-danger)) 18%, transparent);
+    border-color: var(--danger-color, var(--vcp-ui-danger));
     transform: translateY(0) scale(0.985);
 }
 
 :is(html, body, html body):is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions .danger-button,
 :is(html, body, html body):is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteAgentBtn,
 :is(html, body, html body):is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteGroupBtn {
-    border: 0.5px solid color-mix(in srgb, var(--danger-color, #ef4444) 45%, transparent);
+    border: 0.5px solid color-mix(in srgb, var(--danger-color, var(--vcp-ui-danger)) 45%, transparent);
     background: transparent;
-    color: var(--danger-color, #ef4444);
+    color: var(--danger-color, var(--vcp-ui-danger));
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     box-shadow: none;
@@ -2562,9 +2574,9 @@ html .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteGroupBtn {
 :is(html, body, html body):is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions .danger-button:hover,
 :is(html, body, html body):is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteAgentBtn:hover,
 :is(html, body, html body):is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteGroupBtn:hover {
-    background: color-mix(in srgb, var(--danger-color, #ef4444) 14%, transparent);
-    border-color: var(--danger-color, #ef4444);
-    color: var(--danger-color, #ef4444);
+    background: color-mix(in srgb, var(--danger-color, var(--vcp-ui-danger)) 14%, transparent);
+    border-color: var(--danger-color, var(--vcp-ui-danger));
+    color: var(--danger-color, var(--vcp-ui-danger));
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     box-shadow: none;
@@ -2573,8 +2585,8 @@ html .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteGroupBtn {
 :is(html, body, html body):is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions .danger-button:active,
 :is(html, body, html body):is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteAgentBtn:active,
 :is(html, body, html body):is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteGroupBtn:active {
-    background: color-mix(in srgb, var(--danger-color, #ef4444) 22%, transparent);
-    border-color: var(--danger-color, #ef4444);
+    background: color-mix(in srgb, var(--danger-color, var(--vcp-ui-danger)) 22%, transparent);
+    border-color: var(--danger-color, var(--vcp-ui-danger));
     transform: translateY(0) scale(0.985);
 }
 
@@ -2606,14 +2618,14 @@ html .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteGroupBtn {
 
     html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section-title,
     html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-section-title {
-        font-size: 12.5px;
+        font-size: var(--vcp-settings-font-compact-title);
     }
 
     html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section-summary:not(.summary-with-avatar),
     html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-section-summary:not(.summary-with-avatar) {
         margin: 2px 6px 6px 6px;
         padding: 3px 6px;
-        font-size: 10.5px;
+        font-size: var(--vcp-settings-font-meta);
     }
 
     html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section-content,
@@ -2670,7 +2682,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .strip-regex-empty {
     border: 1px dashed var(--vcp-settings-border);
     border-radius: var(--vcp-settings-radius, 8px);
     color: var(--vcp-settings-muted);
-    font-size: 11.5px;
+    font-size: var(--vcp-settings-font-sub);
     line-height: 16px;
     text-align: center;
     user-select: none;
@@ -2704,7 +2716,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .strip-regex-input {
     border: 0.5px solid var(--vcp-settings-border);
     background-color: var(--vcp-settings-input);
     color: var(--vcp-settings-text);
-    font-size: 11.5px;
+    font-size: var(--vcp-settings-font-sub);
     font-family: monospace;
 }
 
@@ -2717,7 +2729,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .strip-regex-input::placeholder 
 html .vcp-ui-scope .vcp-settings-schema-surface .strip-regex-title {
     font-weight: 500;
     color: var(--vcp-settings-text);
-    font-size: 12px;
+    font-size: var(--vcp-settings-font-caption);
     line-height: 20px;
     white-space: nowrap;
     overflow: hidden;
@@ -2855,7 +2867,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .dropdown-option input[type="che
 html .vcp-ui-scope .vcp-settings-schema-surface .dropdown-option label {
     margin: 0;
     cursor: pointer;
-    font-size: 11px;
+    font-size: var(--vcp-settings-font-xs);
     flex-grow: 1;
     user-select: none;
 }
@@ -2881,7 +2893,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .btn-add-regex {
     height: 32px;
     min-height: 32px;
     padding: 0 10px;
-    font-size: 12px;
+    font-size: var(--vcp-settings-font-caption);
     font-weight: 500;
     line-height: 1;
     border-radius: var(--vcp-settings-radius, 8px);
@@ -2920,16 +2932,6 @@ html .vcp-ui-scope .vcp-settings-schema-surface .btn-add-regex.btn-add-regex-sec
     color: var(--vcp-settings-text);
 }
 
-/* Continuous superellipse corner curvature */
-@supports (corner-shape: superellipse(1.5)) {
-    html .vcp-ui-scope #tabContentSettings :is(input, select, textarea, button, .vcp-uiux-select-trigger, .custom-select-button, .card, .group-settings-card-shell, .agent-settings-card-shell) {
-        corner-shape: superellipse(1.5);
-    }
-
-    html .vcp-ui-scope #tabContentSettings :is(.round, .slider.round, .avatar-upload-overlay, img.avatar, .agent-avatar-display, .group-avatar-display, .vcp-settings-info-badge, .badge, [style*="border-radius: 50%"], [style*="border-radius: 999px"]) {
-        corner-shape: round;
-    }
-}
 
 /* Invite Agent Buttons Container (Group chat invite_only mode) */
 html .vcp-ui-scope .invite-agent-buttons-container {
@@ -2937,7 +2939,7 @@ html .vcp-ui-scope .invite-agent-buttons-container {
     grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
     gap: 8px;
     padding: 10px 15px;
-    background-color: var(--panel-bg-dark, rgba(30, 30, 30, 0.6));
+    background-color: var(--panel-bg-dark, color-mix(in srgb, var(--vcp-ui-bg-primary) 60%, transparent));
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
 }
@@ -2947,7 +2949,7 @@ html .vcp-ui-scope .invite-agent-buttons-container[hidden] {
 }
 
 html:is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .invite-agent-buttons-container {
-    background-color: var(--panel-bg-light, rgba(255, 255, 255, 0.7));
+    background-color: var(--panel-bg-light, color-mix(in srgb, var(--vcp-ui-on-accent) 70%, transparent));
 }
 
 html .vcp-ui-scope .invite-agent-button {
@@ -2959,7 +2961,7 @@ html .vcp-ui-scope .invite-agent-button {
     color: var(--accent-bg, var(--highlight-text));
     border-radius: 6px;
     cursor: pointer;
-    font-size: 0.85em;
+    font-size: var(--vcp-settings-font-sub);
     text-align: left;
     overflow: hidden;
     transition: background-color var(--vcp-motion-duration-normal, 0.2s) var(--vcp-motion-ease-standard, ease),
@@ -2991,9 +2993,9 @@ html .vcp-ui-scope .invite-agent-button span {
 }
 
 html:is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .invite-agent-button {
-    border-color: var(--border-color-light, rgba(0, 0, 0, 0.12));
+    border-color: var(--border-color-light, color-mix(in srgb, var(--vcp-ui-bg-primary) 12%, transparent));
     background-color: var(--button-bg);
-    color: #ffffff;
+    color: var(--vcp-ui-on-accent);
 }
 
 html:is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .invite-agent-button:hover {

@@ -6,10 +6,10 @@ module.exports = {
         'declaration-block-no-duplicate-properties': true,
         'declaration-no-important': true,
         'font-family-no-duplicate-names': true,
-        'function-no-unknown': [true, { ignoreFunctions: ['color-mix', 'superellipse'] }],
+        'function-no-unknown': [true, { ignoreFunctions: ['color-mix'] }],
         'keyframe-block-no-duplicate-selectors': true,
         'no-duplicate-selectors': true,
-        'property-no-unknown': [true, { ignoreProperties: ['corner-shape'] }],
+        'property-no-unknown': true,
         'selector-pseudo-element-no-unknown': true,
         'unit-no-unknown': true
     }

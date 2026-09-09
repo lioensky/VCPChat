@@ -379,11 +379,6 @@ test('侧边栏助手与群聊表单控件圆角与 8px 规范及连续曲率对
     // 4. 正则输入与选择按钮对齐 8px 圆角
     assert.match(sidebarCss, /\.strip-regex-input[\s\S]*?border-radius:\s*var\(--vcp-settings-radius,\s*8px\);/, '正则输入框必须对齐 8px 规范圆角');
     assert.match(sidebarCss, /\.custom-select-button[\s\S]*?border-radius:\s*var\(--vcp-settings-radius,\s*8px\);/, '自定义选择按钮必须对齐 8px 规范圆角');
-
-    // 5. 连续平滑超椭圆曲率支持
-    assert.match(sidebarCss, /@supports\s*\(corner-shape:\s*superellipse\(1\.5\)\)/, '必须包含连续超椭圆 corner-shape 优雅降级支持');
-    assert.match(sidebarCss, /corner-shape:\s*superellipse\(1\.5\);/, '控件必须配置 superellipse(1.5) 曲率');
-    assert.match(sidebarCss, /corner-shape:\s*round;/, '正圆指示器与头像必须豁免超椭圆形变');
 });
 
 test('正则规则列表与操作按钮规范对齐测试：幽灵态操作按钮、展开隐藏摘要框与并排等宽动作行', () => {
