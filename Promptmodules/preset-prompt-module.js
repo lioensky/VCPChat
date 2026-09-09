@@ -241,17 +241,7 @@ class PresetPromptModule {
         section.className = 'preset-editor-section';
 
         const label = document.createElement('label');
-        label.className = 'preset-section-label';
-        label.textContent = '系统提示词:';
-        const badge = document.createElement('button');
-        badge.type = 'button';
-        badge.className = 'vcp-settings-info-badge';
-        badge.title = '可使用 {{AgentName}} 占位符，将在对话中自动替换为当前助手名称';
-        badge.setAttribute('data-tooltip', '可使用 {{AgentName}} 占位符，将在对话中自动替换为当前助手名称');
-        badge.setAttribute('aria-label', '占位符说明');
-        badge.textContent = '?';
-        badge.onclick = (e) => { e.preventDefault(); e.stopPropagation(); };
-        label.appendChild(badge);
+        label.textContent = '系统提示词 (可使用 {{AgentName}} 占位符):';
         section.appendChild(label);
 
         this.textarea = document.createElement('textarea');

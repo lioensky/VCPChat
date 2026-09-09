@@ -2,65 +2,52 @@
 /* 提示词模块样式 */
 
 .system-prompt-container {
-    border: 0.5px solid var(--vcp-settings-border, var(--border-color));
-    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
     overflow: hidden;
-    background-color: color-mix(in srgb, var(--vcp-settings-surface) 60%, transparent);
-    backdrop-filter: blur(3px);
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    background-color: var(--input-bg);
 }
 
-.system-prompt-container:focus-within {
-    border-color: var(--highlight-text);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--highlight-text) 25%, transparent);
-}
-
-/* 模式选择器 - 现代分段胶囊控制条 */
+/* 模式选择器 */
 .prompt-mode-selector {
     display: flex;
-    gap: 2px;
-    padding: 2px;
-    margin: 4px 6px 6px;
-    border-radius: 8px;
-    background: color-mix(in srgb, var(--vcp-settings-input) 85%, transparent);
-    border: 0.5px solid color-mix(in srgb, var(--vcp-settings-border) 60%, transparent);
-    box-sizing: border-box;
+    gap: 0;
+    margin-bottom: 0;
+    overflow: hidden;
+    border: none;
+    border-bottom: 1px solid var(--border-color);
+    background-color: var(--secondary-bg);
 }
 
 .prompt-mode-button {
     flex: 1;
-    height: 24px;
-    min-height: 24px;
-    padding: 0 6px;
+    padding: 10px 8px;
+    background-color: var(--secondary-bg);
     border: none;
-    border-radius: 6px;
-    background: transparent;
     color: var(--secondary-text);
-    font-size: 11px;
-    font-weight: 500;
     cursor: pointer;
+    font-size: 0.95em;
+    transition: all 0.2s ease;
+    border-right: 1px solid var(--border-color);
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 4px;
-    transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
-    user-select: none;
 }
 
 .prompt-mode-button:last-child {
     border-right: none;
 }
 
-.prompt-mode-button:hover:not(.active) {
-    background-color: color-mix(in srgb, var(--vcp-settings-surface) 65%, transparent);
-    color: var(--primary-text);
+.prompt-mode-button:hover {
+    background-color: var(--accent-bg);
+    color: var(--highlight-text);
 }
 
 .prompt-mode-button.active {
-    background-color: var(--highlight-text) !important;
-    color: #ffffff !important;
+    background-color: var(--dsw-alias-bg-layer-1, #ffffff) !important;
+    color: var(--dsw-alias-label-primary, #111111) !important;
     font-weight: 600;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
 }
 
 .prompt-mode-button-icon {
@@ -71,8 +58,8 @@
 }
 
 .prompt-mode-button-icon svg {
-    width: 14px;
-    height: 14px;
+    width: 15px;
+    height: 15px;
     display: block;
     stroke: currentColor;
 }
@@ -84,13 +71,8 @@
 /* 内容容器 */
 .prompt-content-container {
     min-height: 0;
-    padding: 0 8px 8px;
-    background-color: transparent;
-}
-
-.prompt-content-container.original-mode,
-.prompt-content-container.original-prompt-container {
-    padding: 0 6px 6px;
+    padding: 0;
+    background-color: var(--input-bg);
 }
 
 /* 通用标签样式 */
@@ -98,39 +80,34 @@
     display: block;
     font-weight: 500;
     color: var(--secondary-text);
-    font-size: 11.5px;
-    margin-bottom: 6px;
+    font-size: 0.9em;
+    margin-bottom: 8px;
 }
 
-/* 通用文本域样式 - 终端代码编辑器质感 */
+/* 通用文本域样式 */
 .prompt-textarea {
     width: 100%;
     box-sizing: border-box;
-    padding: 5px 8px;
-    border-radius: 8px;
-    border: 0.5px solid var(--vcp-settings-border, var(--border-color));
-    background-color: var(--vcp-settings-input);
+    padding: 10px 12px;
+    border-radius: 0 0 8px 8px;
+    border: 1px solid var(--border-color);
+    background-color: var(--input-bg);
     color: var(--primary-text);
-    font-size: 11.5px;
-    font-family: var(--vcp-ui-font-family-mono, 'SF Mono', Consolas, Monaco, monospace);
+    font-size: 0.95em;
+    font-family: inherit;
     resize: vertical;
-    min-height: 56px;
-    line-height: 18px;
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.prompt-textarea:active {
-    transition: none;
+    min-height: 60px;
+    line-height: 1.5;
 }
 
 .prompt-textarea:focus {
     outline: none;
-    border-color: var(--highlight-text);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--highlight-text) 22%, transparent);
+    border-color: var(--user-bubble-bg);
+    box-shadow: 0 0 0 2px rgba(61, 90, 128, 0.3);
 }
 
-.prompt-content-container > .prompt-textarea:not(.original-prompt-textarea) {
-    border-top: 0.5px solid var(--vcp-settings-border, var(--border-color));
+.prompt-content-container > .prompt-textarea {
+    border-top: none;
 }
 
 /*
@@ -144,114 +121,111 @@
     background-image: none;
 }
 
-/* ===== 原始富文本模块样式（无内层边框，与外层卡片融为一体） ===== */
-.original-prompt-textarea,
-.prompt-content-container > .original-prompt-textarea,
-.original-prompt-container > .original-prompt-textarea,
-#agentSettingsContainer .system-prompt-container .original-prompt-textarea {
-    min-height: 56px;
-    border: none;
-    border-radius: 0;
-    background-color: transparent;
-    box-shadow: none;
-    padding: 4px 6px 6px;
-}
-
-.original-prompt-textarea:focus,
-.original-prompt-textarea:focus-visible,
-.prompt-content-container > .original-prompt-textarea:focus,
-.original-prompt-container > .original-prompt-textarea:focus,
-#agentSettingsContainer .system-prompt-container .original-prompt-textarea:focus {
-    outline: none;
-    border: none;
-    box-shadow: none;
+/* ===== 原始富文本模块样式 ===== */
+.original-prompt-textarea {
+    min-height: 60px;
 }
 
 /* ===== 模块化系统提示词模块样式 ===== */
 .modular-prompt-container {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    padding: 6px 6px 8px;
+    gap: 12px;
+    padding: 12px;
 }
 
-/* 工具栏 - 三列对称胶囊按钮组 */
+/* 工具栏 */
 .modular-toolbar {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 4px;
+    display: flex;
+    gap: 8px;
     padding: 0;
-    width: 100%;
-    box-sizing: border-box;
+    background-color: transparent;
+    border: none;
+    align-items: center;
+    justify-content: space-between;
 }
 
 .toolbar-btn-group {
-    display: contents;
+    display: flex;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
 }
 
-.toolbar-btn,
-.toolbar-toggle {
-    height: 26px;
-    min-height: 26px;
-    padding: 0 8px;
-    background-color: color-mix(in srgb, var(--vcp-settings-surface) 60%, transparent);
-    border: 0.5px solid var(--vcp-settings-border);
-    color: var(--secondary-text);
-    border-radius: 13px;
+.toolbar-btn {
+    height: 32px;
+    padding: 0 10px;
+    background-color: var(--secondary-bg);
+    border: 1px solid var(--border-color);
+    color: var(--primary-text);
+    border-radius: 8px;
     cursor: pointer;
-    font-size: 11px;
-    line-height: 18px;
+    font-size: 0.85em;
     font-weight: 500;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 4px;
-    width: 100%;
+    gap: 5px;
+    flex: 1;
+    min-width: 0;
     white-space: nowrap;
-    user-select: none;
-    box-sizing: border-box;
-    transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+    transition: all 0.2s ease;
 }
 
-.toolbar-btn:hover,
-.toolbar-toggle:hover {
-    background-color: color-mix(in srgb, var(--highlight-text) 8%, transparent);
-    border-color: var(--highlight-text);
+.toolbar-btn:hover {
+    background-color: var(--accent-bg);
+    border-color: var(--border-color);
     color: var(--highlight-text);
 }
 
-.toolbar-btn svg,
-.toolbar-toggle svg {
-    width: 12px;
-    height: 12px;
+.toolbar-btn svg {
+    width: 14px;
+    height: 14px;
     stroke: currentColor;
     flex-shrink: 0;
 }
 
-.toolbar-toggle input[type="checkbox"] {
-    display: none;
+.toolbar-toggle {
+    height: 32px;
+    padding: 0 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85em;
+    color: var(--secondary-text);
+    background-color: var(--secondary-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    transition: all 0.2s ease;
 }
 
-.toolbar-toggle.active,
-.toolbar-toggle:has(input:checked) {
-    background-color: color-mix(in srgb, var(--highlight-text) 14%, var(--vcp-settings-surface));
-    border-color: var(--highlight-text);
+.toolbar-toggle:hover {
     color: var(--highlight-text);
-    font-weight: 600;
+    background-color: var(--accent-bg);
+}
+
+.toolbar-toggle input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--user-bubble-bg);
 }
 
 /* 积木块容器 */
 .blocks-container {
-    min-height: 48px;
-    padding: 6px;
-    background-color: transparent;
-    border: 1px dashed var(--vcp-settings-border);
+    min-height: 80px;
+    padding: 10px;
+    background-color: var(--input-bg);
+    border: 1px solid var(--border-color);
     border-radius: 8px;
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
+    gap: 8px;
     align-content: flex-start;
-    box-sizing: border-box;
 }
 
 .blocks-container.no-tile-mode {
@@ -262,110 +236,75 @@
 .blocks-hint {
     width: 100%;
     text-align: center;
-    color: var(--vcp-settings-muted);
-    padding: 6px 4px;
-    font-size: 11px;
+    color: var(--secondary-text);
+    padding: 18px 14px;
+    font-size: 0.95em;
 }
 
-/* 积木块 - Tag / Pill 胶囊规范 */
+/* 积木块 */
 .prompt-block {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    height: 24px;
-    padding: 0 8px;
-    border-radius: 12px;
-    cursor: grab;
-    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: move;
+    transition: all 0.2s ease;
     position: relative;
-    user-select: none;
-    font-size: 11px;
-    line-height: 16px;
-    font-weight: 500;
-    border: 0.5px solid var(--vcp-settings-border);
-    background: color-mix(in srgb, var(--vcp-settings-surface) 80%, transparent);
-    color: var(--primary-text);
-    box-sizing: border-box;
-}
-
-.prompt-block:active {
-    cursor: grabbing;
 }
 
 .prompt-block.text-block {
-    background: color-mix(in srgb, var(--highlight-text) 10%, var(--vcp-settings-surface));
-    border: 0.5px solid color-mix(in srgb, var(--highlight-text) 35%, transparent);
-    color: var(--highlight-text);
+    background-color: var(--button-bg);
+    border: 2px solid var(--button-bg);
     max-width: 100%;
 }
 
-.prompt-block.newline-block {
-    background: color-mix(in srgb, var(--vcp-settings-surface) 90%, transparent);
-    border: 0.5px solid var(--vcp-settings-border);
-    color: var(--secondary-text);
-}
-
-/* 有自定义名称的积木块 - 现代高亮标识 */
+/* 有自定义名称的积木块 - 格子背景（更明显的样式） */
 .prompt-block.has-custom-name {
-    background-image: none;
-    border-left: 2.5px solid var(--highlight-text);
+    background-image:
+        linear-gradient(45deg, rgba(0, 0, 0, 0.12) 25%, transparent 25%),
+        linear-gradient(-45deg, rgba(0, 0, 0, 0.12) 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, rgba(0, 0, 0, 0.12) 75%),
+        linear-gradient(-45deg, transparent 75%, rgba(0, 0, 0, 0.12) 75%);
+    background-size: 12px 12px;
+    background-position: 0 0, 0 6px, 6px -6px, -6px 0px;
 }
 
+/* 禁用状态下的格子背景也要显示 */
 .prompt-block.has-custom-name.disabled {
-    background-image: none;
-    border-left: 2.5px solid var(--vcp-settings-muted);
+    background-image:
+        linear-gradient(45deg, rgba(0, 0, 0, 0.08) 25%, transparent 25%),
+        linear-gradient(-45deg, rgba(0, 0, 0, 0.08) 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, rgba(0, 0, 0, 0.08) 75%),
+        linear-gradient(-45deg, transparent 75%, rgba(0, 0, 0, 0.08) 75%);
+    background-size: 12px 12px;
+    background-position: 0 0, 0 6px, 6px -6px, -6px 0px;
 }
 
 .prompt-block.text-block:hover {
-    border-color: var(--highlight-text);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
-}
-
-.prompt-block:active {
-    cursor: grabbing;
-}
-
-.prompt-block.text-block {
-    background: color-mix(in srgb, var(--highlight-text) 12%, var(--vcp-settings-surface));
-    border: 0.5px solid color-mix(in srgb, var(--highlight-text) 38%, transparent);
-    color: var(--highlight-text);
-    max-width: 100%;
-}
-
-/* 有自定义名称的积木块 - 现代高亮标识 */
-.prompt-block.has-custom-name {
-    background-image: none;
-    border-left: 3px solid var(--highlight-text);
-}
-
-.prompt-block.has-custom-name.disabled {
-    background-image: none;
-    border-left: 3px solid var(--vcp-settings-muted);
-}
-
-.prompt-block.text-block:hover {
-    border-color: var(--highlight-text);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.14);
+    border-color: var(--user-bubble-bg);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .prompt-block.text-block.disabled {
-    opacity: 0.45;
-    background-color: var(--vcp-settings-surface);
-    border-color: var(--vcp-settings-border);
+    opacity: 0.4;
+    background-color: var(--secondary-bg);
+    border-color: var(--border-color);
 }
 
 .prompt-block.newline-block {
-    background-color: color-mix(in srgb, var(--vcp-settings-surface) 90%, transparent);
-    border: 0.5px solid var(--vcp-settings-border);
-    opacity: 0.75;
-    border-radius: 999px;
-    padding: 2px 8px;
+    background-color: var(--accent-bg);
+    border: 2px solid var(--accent-bg);
+    opacity: 0.6;
+    border-radius: 50%;
+    padding: 8px 12px;
     flex-shrink: 0;
     display: inline-flex !important;
-    height: 18px;
-    min-height: 18px;
+    height: 20px; /* 固定高度 */
+    min-height: 20px;
+    max-height: 20px;
     align-items: center;
     justify-content: center;
+    box-sizing: content-box;
 }
 
 /* 换行标记：强制换行 */
@@ -383,19 +322,17 @@
 .prompt-block.dragging {
     opacity: 0.5;
     transform: scale(0.95);
-    transition: none;
 }
 
 /* 拖拽目标指示 */
 .prompt-block.drop-target {
-    border-color: var(--highlight-text);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--highlight-text) 25%, transparent);
-    background-color: var(--vcp-settings-surface);
-    transition: none;
+    border-color: var(--user-bubble-bg);
+    box-shadow: 0 0 0 3px rgba(61, 90, 128, 0.3);
+    background-color: var(--accent-bg);
 }
 
 .prompt-block.drop-target.text-block {
-    transition: none;
+    transform: scale(1.05);
 }
 
 /* 拖拽插入指示器 */
@@ -624,94 +561,90 @@
 
 /* 小仓 */
 .warehouse-container {
-    padding: 6px 8px 8px;
-    background-color: color-mix(in srgb, var(--vcp-settings-surface) 40%, transparent);
-    border: 0.5px solid var(--vcp-settings-border);
-    border-radius: 8px;
+    padding: 10px 12px;
+    background-color: var(--secondary-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+}
+
+.warehouse-header {
     display: flex;
-    flex-direction: column;
-    gap: 6px;
-    box-sizing: border-box;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.warehouse-title {
+    margin: 0;
+    color: var(--secondary-text);
+    font-size: 0.85em;
+    font-weight: 600;
+    white-space: nowrap;
 }
 
 .add-warehouse-btn {
-    width: 22px;
-    height: 22px;
-    padding: 0;
-    background-color: transparent;
-    border: 1px dashed var(--vcp-settings-border);
-    color: var(--secondary-text);
-    border-radius: 50%;
+    height: 26px;
+    padding: 0 8px;
+    background-color: var(--input-bg);
+    border: 1px solid var(--border-color);
+    color: var(--primary-text);
+    border-radius: 6px;
     cursor: pointer;
+    font-size: 0.8em;
+    font-weight: 500;
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    box-sizing: border-box;
-    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+    gap: 4px;
+    white-space: nowrap;
+    transition: all 0.2s ease;
 }
 
 .add-warehouse-btn:hover {
-    background-color: color-mix(in srgb, var(--vcp-settings-accent) 12%, transparent);
-    border-color: var(--vcp-settings-accent);
-    color: var(--vcp-settings-accent);
-}
-
-.add-warehouse-btn:active {
-    transform: scale(0.92);
-}
-
-.add-warehouse-btn svg {
-    width: 12px;
-    height: 12px;
-    display: block;
+    background-color: var(--accent-bg);
+    border-color: var(--border-color);
+    color: var(--highlight-text);
 }
 
 .warehouse-selector {
     display: flex;
-    gap: 4px;
-    margin-bottom: 0;
+    gap: 6px;
+    margin-bottom: 8px;
     flex-wrap: wrap;
-    align-items: center;
 }
 
 .warehouse-item {
     display: inline-flex;
     align-items: center;
     position: relative;
-    transition: all 0.15s ease;
+    transition: all 0.2s ease;
 }
 
 .warehouse-btn {
-    height: 22px;
-    padding: 0 8px;
-    background-color: color-mix(in srgb, var(--vcp-settings-surface) 70%, transparent);
-    border: 0.5px solid var(--vcp-settings-border);
+    height: 26px;
+    padding: 0 10px;
+    background-color: var(--input-bg);
+    border: 1px solid var(--border-color);
     color: var(--secondary-text);
-    border-radius: 11px;
+    border-radius: 9999px;
     cursor: pointer;
-    font-size: 11px;
-    line-height: 16px;
+    font-size: 0.8em;
     font-weight: 500;
     white-space: nowrap;
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    transition: all 0.15s ease;
+    transition: all 0.2s ease;
 }
 
 .warehouse-btn:hover {
-    background-color: color-mix(in srgb, var(--vcp-settings-surface) 90%, transparent);
-    color: var(--primary-text);
-    border-color: color-mix(in srgb, var(--highlight-text) 40%, var(--vcp-settings-border));
+    background-color: var(--accent-bg);
+    color: var(--highlight-text);
 }
 
 .warehouse-item.active .warehouse-btn {
-    background-color: var(--highlight-text) !important;
-    border-color: var(--highlight-text) !important;
-    color: #ffffff !important;
+    background-color: var(--dsw-alias-bg-layer-1, #ffffff) !important;
+    border-color: var(--dsw-alias-border-l1, rgba(0, 0, 0, 0.25)) !important;
+    color: var(--primary-text, #111111) !important;
     font-weight: 600 !important;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15) !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08) !important;
 }
 
 .warehouse-item.dragging {
@@ -721,58 +654,58 @@
 .hidden-blocks-list {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
-    min-height: 38px;
-    padding: 4px 6px;
+    gap: 8px;
+    min-height: 60px;
+    padding: 10px;
     border-radius: 6px;
-    border: 1px dashed color-mix(in srgb, var(--vcp-settings-border) 60%, transparent);
-    background: transparent;
-    box-sizing: border-box;
-    align-items: center;
-    transition: all 0.15s ease;
+    transition: all 0.2s ease;
 }
 
 .warehouse-empty {
     width: 100%;
     text-align: center;
-    color: var(--vcp-settings-muted);
-    padding: 4px;
-    font-size: 11px;
-    line-height: 15px;
+    color: var(--secondary-text);
+    padding: 20px;
+    font-size: 0.9em;
+    line-height: 1.6;
 }
 
 .hidden-block {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    height: 22px;
-    padding: 0 8px;
-    background-color: color-mix(in srgb, var(--vcp-settings-surface) 80%, transparent);
-    border: 0.5px solid var(--vcp-settings-border);
-    border-radius: 11px;
+    padding: 6px 10px;
+    background-color: var(--input-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
     cursor: move;
-    font-size: 11px;
-    font-weight: 500;
+    font-size: 0.85em;
     color: var(--primary-text);
-    max-width: 160px;
-    white-space: nowrap;
+    max-width: 200px;
+    transition: all 0.2s ease;
+    height: auto;
+    align-self: flex-start;
+    white-space: pre-wrap;
+    word-wrap: break-word;
     overflow: hidden;
-    text-overflow: ellipsis;
-    transition: all 0.15s ease;
-    user-select: none;
-    box-sizing: border-box;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    position: relative;
 }
 
-/* 小仓中有自定义名称的积木块 */
+/* 小仓中有自定义名称的积木块 - 格子背景（更明显的样式） */
 .hidden-block.has-custom-name {
-    background-image: none;
-    border-left: 2.5px solid var(--highlight-text);
+    background-image:
+        linear-gradient(45deg, rgba(0, 0, 0, 0.15) 25%, transparent 25%),
+        linear-gradient(-45deg, rgba(0, 0, 0, 0.15) 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, rgba(0, 0, 0, 0.15) 75%),
+        linear-gradient(-45deg, transparent 75%, rgba(0, 0, 0, 0.15) 75%);
+    background-size: 10px 10px;
+    background-position: 0 0, 0 5px, 5px -5px, -5px 0px;
+    background-color: var(--input-bg);
 }
 
 .hidden-block:hover {
-    border-color: var(--highlight-text);
-    background-color: color-mix(in srgb, var(--highlight-text) 8%, var(--vcp-settings-surface));
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+    border-color: var(--user-bubble-bg);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
 }
 
 .hidden-block.dragging {
@@ -823,56 +756,47 @@
 
 /* 预览模式 */
 .preview-container {
-    width: 100%;
-    padding: 2px;
-    background-color: transparent;
-    border: none;
-    box-sizing: border-box;
+    padding: 15px;
+    background-color: var(--input-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
 }
 
 .preview-label {
     font-weight: 500;
     color: var(--secondary-text);
-    margin-bottom: 4px;
-    font-size: 11px;
+    margin-bottom: 10px;
+    font-size: 0.9em;
 }
 
 .preview-text {
-    background-color: var(--vcp-settings-input);
-    border: 0.5px solid var(--vcp-settings-border);
-    padding: 6px 8px;
+    background-color: var(--secondary-bg);
+    padding: 12px;
     border-radius: 6px;
     color: var(--primary-text);
-    font-family: var(--vcp-ui-font-family-mono, monospace);
-    font-size: 11.5px;
-    line-height: 1.5;
+    font-family: monospace;
+    font-size: 0.9em;
+    line-height: 1.6;
     white-space: pre-wrap;
     word-break: break-word;
-    max-height: 300px;
+    max-height: 400px;
     overflow-y: auto;
-    margin: 0;
-    box-sizing: border-box;
 }
 
 /* ===== 临时与预制系统提示词模块样式 ===== */
-.preset-prompt-container {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 6px 8px 8px;
-    box-sizing: border-box;
-}
-
+.preset-prompt-container,
+.modular-prompt-container,
 .original-prompt-container {
     display: flex;
     flex-direction: column;
-    gap: 0;
-    padding: 0 6px 6px;
+    gap: 10px;
+    padding: 8px 6px 8px;
 }
 
-/* 标准文本 Prompt 与上方模式选择器对齐，无独立内框 */
+/* 标准文本 Prompt 与上方模式选择器使用同一左右边界。 */
 #agentSettingsContainer .system-prompt-container .original-prompt-container {
-    padding: 0 6px 6px;
+    padding-right: 0;
+    padding-left: 0;
 }
 
 .preset-path-section,
@@ -880,33 +804,30 @@
 .preset-editor-section {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 6px;
 }
 
 .preset-path-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 6px;
+    gap: 8px;
 }
 
 .preset-section-label,
 .preset-path-section label,
 .preset-selector-section label,
 .preset-editor-section label {
-    font-size: 11px;
-    font-weight: 500;
-    line-height: 1.3;
+    font-size: 0.85em;
+    font-weight: 600;
     color: var(--secondary-text);
-    margin: 0 0 2px;
-    display: inline-flex;
-    align-items: center;
+    margin: 0;
 }
 
 .preset-path-actions {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
 }
 
 .path-input-container {
@@ -916,53 +837,49 @@
 
 .preset-path-input {
     width: 100%;
-    height: 30px;
-    line-height: 30px;
-    padding: 0 8px;
+    height: 34px;
+    padding: 0 10px;
     border-radius: 8px;
-    border: 0.5px solid var(--vcp-settings-border);
-    background-color: var(--vcp-settings-input);
+    border: 1px solid var(--border-color);
+    background-color: var(--input-bg);
     color: var(--primary-text);
-    font-size: 12px;
+    font-size: 0.88em;
     box-sizing: border-box;
 }
 
 .preset-browse-btn,
 .preset-refresh-btn {
-    height: 24px;
+    height: 26px;
     padding: 0 8px;
-    background-color: color-mix(in srgb, var(--vcp-settings-surface) 80%, transparent);
-    border: 0.5px solid var(--vcp-settings-border);
-    color: var(--secondary-text);
+    background-color: var(--secondary-bg);
+    border: 1px solid var(--border-color);
+    color: var(--primary-text);
     border-radius: 6px;
     cursor: pointer;
-    font-size: 11px;
+    font-size: 0.8em;
     font-weight: 500;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 4px;
-    transition: all 0.15s ease;
+    transition: all 0.2s ease;
     white-space: nowrap;
 }
 
 .preset-refresh-btn {
-    width: 24px;
-    min-width: 24px;
+    width: 26px;
     padding: 0;
 }
 
 .preset-refresh-btn svg,
 .preset-browse-btn svg {
     flex-shrink: 0;
-    width: 12px;
-    height: 12px;
 }
 
 .preset-browse-btn:hover,
 .preset-refresh-btn:hover {
-    background-color: color-mix(in srgb, var(--highlight-text) 8%, transparent);
-    border-color: var(--highlight-text);
+    background-color: var(--accent-bg);
+    border-color: var(--border-color);
     color: var(--highlight-text);
 }
 
@@ -973,14 +890,13 @@
 
 .preset-select {
     width: 100%;
-    height: 30px;
-    line-height: 30px;
-    padding: 0 8px;
+    height: 34px;
+    padding: 0 10px;
     border-radius: 8px;
-    border: 0.5px solid var(--vcp-settings-border);
-    background-color: var(--vcp-settings-input);
+    border: 1px solid var(--border-color);
+    background-color: var(--input-bg);
     color: var(--primary-text);
-    font-size: 12px;
+    font-size: 0.88em;
     cursor: pointer;
     box-sizing: border-box;
 }
@@ -991,16 +907,8 @@
 }
 
 .preset-prompt-textarea {
-    min-height: 56px;
-    padding: 5px 8px;
-    border-radius: 8px;
-    font-size: 11.5px;
-    line-height: 18px;
-    font-family: var(--vcp-ui-font-family-mono, monospace);
-    border: 0.5px solid var(--vcp-settings-border);
-    background-color: var(--vcp-settings-input);
-    color: var(--primary-text);
-    box-sizing: border-box;
+    min-height: 80px;
+    border-radius: 10px;
 }
 
 /* 响应式设计 */
