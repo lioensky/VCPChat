@@ -203,6 +203,7 @@ export function mountAgentModelPicker(host, props, scope) {
     let paneCell = null;
     let cancelDeferredPlacement = () => { };
     pickerScope.own(() => cancelDeferredPlacement(), 'agent-model-picker-deferred-placement', 'animation-frame');
+    let favoriteQueue = Promise.resolve();
     const view = mountPopupSelectView(root, {
         popup,
         anchor: trigger,
@@ -226,14 +227,17 @@ export function mountAgentModelPicker(host, props, scope) {
             return true;
         },
         onFavoriteToggle: props.directory?.toggleFavorite ? option => {
-            if (directoryBusy)
-                return;
             const selected = lastOptions.find(candidate => candidate.id === option.id);
             if (!selected)
                 return;
-            void runDirectoryAction('favorite', signal => props.directory.toggleFavorite(selected.id, signal)).then(applied => {
-                if (applied && popup.getSnapshot().open)
+            favoriteQueue = favoriteQueue.then(async () => {
+                if (!pickerScope.active) return;
+                const applied = await runDirectoryAction('favorite', signal => props.directory.toggleFavorite(selected.id, signal));
+                if (applied && popup.getSnapshot().open) {
                     popup.openWhenReady('agent-model', {}, { via: 'menu', span: { source: 'agent-model-picker-favorite' } });
+                }
+            }).catch(err => {
+                console.warn('[AgentModelPicker] Favorite toggle queue caught error:', err);
             });
         } : undefined,
     }, pickerScope);

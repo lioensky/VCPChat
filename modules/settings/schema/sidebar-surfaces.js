@@ -207,7 +207,10 @@ function renderSection(doc, { kind, key, title, tooltip, summaryId, content, con
     }
     const titleRow = el(doc, 'div', { class: `${prefix}-settings-section-title-row` }, titleChildren);
     header.append(titleRow, summary, toggle);
-    const contentNode = el(doc, 'div', { class: `${prefix}-settings-section-content`, id: contentId || `${kind === 'agent' ? '' : 'group'}${key[0].toUpperCase()}${key.slice(1)}Content` });
+    const contentNode = el(doc, 'div', {
+        class: `${prefix}-settings-section-content`,
+        id: contentId || (kind === 'agent' ? `${key}Content` : `group${key[0].toUpperCase()}${key.slice(1)}Content`)
+    });
     contentNode.append(content(doc));
     section.append(header, contentNode);
 
@@ -229,9 +232,13 @@ function renderSection(doc, { kind, key, title, tooltip, summaryId, content, con
         header.setAttribute('aria-expanded', String(expanded));
         toggle.setAttribute('aria-expanded', String(expanded));
     };
-    header.addEventListener('click', toggleSection);
+    header.addEventListener('click', (e) => {
+        if (e.target.closest('button') && e.target !== header) return;
+        toggleSection(e);
+    });
     header.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
+            if (e.target.closest('button') && e.target !== header) return;
             e.preventDefault();
             toggleSection(e);
         }

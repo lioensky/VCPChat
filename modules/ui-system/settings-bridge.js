@@ -55,8 +55,12 @@ const settingsSidebarSurface = settingsHost
     : null;
 const agentSettingsHost = document.getElementById('agentSettingsContainer');
 if (settingsSidebarSurface && agentSettingsHost) {
-    renderAgentSettingsSurface(agentSettingsHost, document);
-    settingsSidebarSurface.register('agent', agentSettingsHost);
+    try {
+        renderAgentSettingsSurface(agentSettingsHost, document);
+        settingsSidebarSurface.register('agent', agentSettingsHost);
+    } catch (bootstrapError) {
+        console.error('[SettingsBridge] Failed to bootstrap agent settings schema surface:', bootstrapError);
+    }
 }
 
 function shouldEnhanceSidebarSettings() {

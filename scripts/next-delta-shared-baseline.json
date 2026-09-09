@@ -24,8 +24,8 @@
     "reason": "upstream group business surface now delegates settings attachment to the schema sidebar Surface while preserving group persistence and chat behavior"
   },
   "modules/settingsManager.js": {
-    "sha256": "337328d1e693708dae73ba3c246385340a4c1f5dea307068986e0080617b2afe",
-    "reason": "reviewed Agent settings behavior after moving Agent form rendering to schema and Surface lifecycle ownership; dirty edits are flushed before prompt context switch; saved projection, collapse state, prompt context and stale reload protection remain manager-owned"
+    "sha256": "9c2ad4e6cefac9985b9e4524e52b90d346d1aa3e1c0858f91bc663dd3ef2b91e",
+    "reason": "reviewed Agent settings behavior after moving Agent form rendering to schema and Surface lifecycle ownership; delete action implements active risk confirmation gate with managed scope; save pipeline coordinates full custom style, color, and collapse state fields with async submit and robust error handling; dirty edits are flushed before prompt context switch; saved projection, collapse state, prompt context and stale reload protection remain manager-owned"
   },
   "modules/filterManager.js": {
     "sha256": "2390116ff961f18cdf2d3defd02d5559de9381f891be7e5eb33ef99f98337225",

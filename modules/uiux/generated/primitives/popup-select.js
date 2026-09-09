@@ -342,7 +342,9 @@ export function mountPopupSelectView(host, props, scope) {
                 // select/submit contract remains owned here.
                 const target = event.target;
                 if (target?.tagName === 'BUTTON'
-                    && target.getAttribute('role') === 'menuitem'
+                    && (target.getAttribute('role') === 'menuitem'
+                        || target.dataset?.optionAction === 'favorite'
+                        || target.classList?.contains('vcp-uiux-popup-select-favorite'))
                     && !target.disabled)
                     return;
                 event.preventDefault();

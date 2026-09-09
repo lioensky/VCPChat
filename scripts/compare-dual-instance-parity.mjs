@@ -10,10 +10,11 @@ import http from 'node:http';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
 
-const UPSTREAM_ROOT = '/Users/asahi/Documents/Codex/VCPChat-upstream';
-const SCHEMA_ROOT = '/Users/asahi/Documents/Codex/vcpchat-exp-schema';
+const SCHEMA_ROOT = fileURLToPath(new URL('..', import.meta.url));
+const UPSTREAM_ROOT = process.env.UPSTREAM_ROOT || path.resolve(SCHEMA_ROOT, '../VCPChat-upstream');
 
 const OBSERVED_PROPERTIES = [
     'display', 'position', 'visibility', 'opacity', 'pointerEvents',

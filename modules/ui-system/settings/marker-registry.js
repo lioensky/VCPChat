@@ -118,6 +118,12 @@ const MARKERS = Object.freeze({
     settingsView: { owner: 'settings-sidebar-surface.js + sidebar-surfaces.js', cleanup: 'persistent' },
     settingsPanelActive: { owner: 'settings-sidebar-surface.js', cleanup: 'business-contract' },
     settingsSurface: { owner: 'settings-sidebar-surface.js', cleanup: 'persistent' },
+    schemaField: { owner: 'sidebar-surfaces.js', cleanup: 'persistent' },
+    schemaSection: { owner: 'sidebar-surfaces.js', cleanup: 'persistent' },
+    schemaTooltip: { owner: 'sidebar-surfaces.js', cleanup: 'persistent' },
+    schemaValidation: { owner: 'sidebar-surfaces.js', cleanup: 'persistent' },
+    schemaDependsOn: { owner: 'sidebar-surfaces.js', cleanup: 'persistent' },
+    collapsibleBound: { owner: 'sidebar-surfaces.js', cleanup: 'persistent' },
 });
 
 export const SETTINGS_MARKERS = MARKERS;

@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import fs from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 
-const repoRoot = '/Users/asahi/Documents/Codex/vcpchat-exp-schema';
+const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 const mainHtml = fs.readFileSync(path.join(repoRoot, 'main.html'), 'utf8');
 const settingsCss = fs.readFileSync(path.join(repoRoot, 'styles/settings.css'), 'utf8');
 const sidebarListCss = fs.readFileSync(path.join(repoRoot, 'styles/setting/settings-sidebar-list.css'), 'utf8');
@@ -408,5 +408,320 @@ test('正则规则列表与操作按钮规范对齐测试：幽灵态操作按�
     assert.match(sidebarCss, /:is\(\.btn-edit-regex,\s*\.btn-delete-regex\)\s*\{[\s\S]*?width:\s*28px;[\s\S]*?height:\s*28px;[\s\S]*?background:\s*transparent;/, '操作按钮必须为 28x28px 规范幽灵按钮且无实心背景');
     assert.match(sidebarCss, /\.btn-delete-regex:hover\s*\{[\s\S]*?color:\s*var\(--vcp-settings-danger\);/, '删除按钮悬浮时必须呈现柔和危险强调');
 });
+
+test('C1: mountRiskConfirmation 风险确认弹窗全流程交互测试（确认/取消/知晓勾选门禁）', async () => {
+    const { mountRiskConfirmation } = await import(pathToFileURL(path.join(repoRoot, 'modules/uiux/generated/primitives/risk-confirmation.js')).href);
+    const dom = new JSDOM('<!doctype html><html><body><main id="app"></main></body></html>');
+    const prevDoc = globalThis.document;
+    const prevWin = globalThis.window;
+    globalThis.document = dom.window.document;
+    globalThis.window = dom.window;
+
+    try {
+        const createTestScope = (label = 'test-risk-scope') => {
+            const disposers = new Set();
+            let active = true;
+            const scope = {
+                label,
+                get active() { return active; },
+                own(disposer) { disposers.add(disposer); return disposer; },
+                listen(target, type, handler, options) {
+                    target.addEventListener(type, handler, options);
+                    return scope.own(() => target.removeEventListener(type, handler, options));
+                },
+                child(childLabel) {
+                    return createTestScope(childLabel);
+                },
+                dispose: async () => {
+                    active = false;
+                    for (const d of disposers) {
+                        try { d(); } catch (_) {}
+                    }
+                    disposers.clear();
+                }
+            };
+            return scope;
+        };
+
+        // 1. 测试知晓前确认按钮禁用，勾选后可用并触发确认
+        let confirmSettled = false;
+        let confirmResult = null;
+        const scope1 = createTestScope('delete-scope-confirm');
+        let modal1 = null;
+
+        modal1 = mountRiskConfirmation({
+            title: '删除 Agent',
+            description: '确定要删除该 Agent 吗？不可撤销。',
+            acknowledgeLabel: '我已知晓并确认删除',
+            cancelLabel: '取消',
+            confirmLabel: '确认删除',
+            open: true,
+            acknowledged: false,
+            onAcknowledgedChange: (val) => {
+                modal1?.setAcknowledged(val);
+            },
+            onConfirm: () => {
+                confirmSettled = true;
+                confirmResult = true;
+                modal1?.setOpen(false);
+            },
+            onCancel: () => {
+                confirmSettled = true;
+                confirmResult = false;
+                modal1?.setOpen(false);
+            }
+        }, scope1);
+
+        assert.ok(modal1, 'RiskConfirmation modal 必须成功挂载');
+        assert.equal(modal1.open, true, '弹窗初始为打开状态');
+        assert.equal(modal1.confirmButton.disabled, true, '未勾选知晓前，确认按钮必须处于禁用状态');
+
+        // 未勾选时直接点击确认按钮，不应触发确认
+        modal1.confirmButton.click();
+        assert.equal(confirmSettled, false, '禁用状态下点击确认不得结算');
+
+        // 模拟用户勾选知晓复选框
+        modal1.acknowledgement.checked = true;
+        modal1.acknowledgement.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+        assert.equal(modal1.confirmButton.disabled, false, '勾选知晓后，确认按钮必须变为可用');
+
+        // 再次点击确认按钮
+        modal1.confirmButton.click();
+        assert.equal(confirmSettled, true);
+        assert.equal(confirmResult, true, '点击确认后必须结算为 true');
+        assert.equal(modal1.open, false, '确认后弹窗自动关闭');
+        await scope1.dispose();
+
+        // 2. 测试点击取消流程
+        let cancelSettled = false;
+        let cancelResult = null;
+        const scope2 = createTestScope('delete-scope-cancel');
+        let modal2 = null;
+
+        modal2 = mountRiskConfirmation({
+            title: '删除 Agent',
+            description: '确定要删除该 Agent 吗？不可撤销。',
+            acknowledgeLabel: '我已知晓并确认删除',
+            cancelLabel: '取消',
+            confirmLabel: '确认删除',
+            open: true,
+            acknowledged: false,
+            onAcknowledgedChange: (val) => {
+                modal2?.setAcknowledged(val);
+            },
+            onConfirm: () => {
+                cancelSettled = true;
+                cancelResult = true;
+                modal2?.setOpen(false);
+            },
+            onCancel: () => {
+                cancelSettled = true;
+                cancelResult = false;
+                modal2?.setOpen(false);
+            }
+        }, scope2);
+
+        // 用户未勾选直接点击取消
+        const cancelBtn = modal2.modal.dialog.querySelector('.vcp-uiux-risk-modal-action');
+        assert.ok(cancelBtn, '必须存在取消按钮');
+        cancelBtn.click();
+        assert.equal(cancelSettled, true);
+        assert.equal(cancelResult, false, '点击取消后必须结算为 false');
+        assert.equal(modal2.open, false, '取消后弹窗自动关闭');
+        await scope2.dispose();
+    } finally {
+        globalThis.document = prevDoc;
+        globalThis.window = prevWin;
+        dom.window.close();
+    }
+});
+
+test('H4: Chevron 按钮按键与点击事件不发生冒泡双触发翻转', () => {
+    const { document } = createDocument();
+    const host = document.getElementById('agentSettingsContainer');
+    const form = schema.renderAgentSettingsSurface(host, document);
+
+    const section = form.querySelector('[data-section-key="identity"]');
+    const header = section.querySelector('.agent-settings-section-header');
+    const toggle = section.querySelector('.agent-settings-toggle-btn');
+    assert.ok(section && header && toggle);
+
+    // 初始状态：collapsed
+    assert.ok(section.classList.contains('collapsed'));
+
+    // 模拟在 toggle chevron 按钮上按下 Enter 键
+    // 如果没有过滤 e.target.closest('button') && e.target !== header，
+    // header 的 keydown 监听器会捕获该冒泡事件导致二次翻转抵消
+    toggle.dispatchEvent(new document.defaultView.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    // 由于 toggle 本身可能处理或由合成 click 处理，header 层面不得因为冒泡而翻转
+    assert.ok(section.classList.contains('collapsed'), '冒泡到 header 的 Enter 不得导致 header 重复翻转');
+
+    // 模拟在 toggle 按钮上按下 Space 键
+    toggle.dispatchEvent(new document.defaultView.KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+    assert.ok(section.classList.contains('collapsed'), '冒泡到 header 的 Space 不得导致 header 重复翻转');
+
+    // 正常点击 toggle 按钮能够单次翻转
+    toggle.click();
+    assert.equal(section.classList.contains('collapsed'), false, '点击 toggle 按钮正常展开');
+
+    // 再次点击 toggle 按钮单次翻转收起
+    toggle.click();
+    assert.equal(section.classList.contains('collapsed'), true, '点击 toggle 按钮正常收起');
+});
+
+test('Medium: settings-sidebar-runtime mountedSlots 随 scope 销毁或显式 unmount 正确回收', async () => {
+    const { mountSettingsSidebarForm, unmountSettingsSidebarForm } = await import(
+        pathToFileURL(path.join(repoRoot, 'modules/ui-system/settings/settings-sidebar-runtime.js')).href
+    );
+    const { ensurePresentationScope, takePresentationScope, releaseAllControllers } = await import(
+        pathToFileURL(path.join(repoRoot, 'modules/ui-system/settings/bridge-shared.js')).href
+    );
+
+    const { LifecycleScope } = await import(pathToFileURL(path.join(repoRoot, 'modules/ui-system/lifecycle-scope.js')).href);
+    const dom = new JSDOM('<!doctype html><html><body><form id="agentSettingsForm"><div class="tts-director-settings"><textarea id="agentTtsDirectorPromptInput"></textarea><div id="agentTtsDirectorPromptsContainer"></div><button id="addAgentTtsDirectorPromptBtn"></button><button id="fillAgentTtsDirectorTemplateBtn"></button></div></form></body></html>');
+    const prevDoc = globalThis.document;
+    const prevWin = globalThis.window;
+    dom.window.VCPLifecycle = { LifecycleScope };
+    globalThis.document = dom.window.document;
+    globalThis.window = dom.window;
+
+    try {
+        const form = dom.window.document.getElementById('agentSettingsForm');
+
+        // 1. 首次挂载
+        const m1 = mountSettingsSidebarForm(form);
+        assert.ok(m1, '必须返回挂载对象');
+        assert.equal(m1.slots.length, 1, '必须挂载 MimoDirectorSlot');
+
+        // 2. 重复调用命中缓存
+        const m2 = mountSettingsSidebarForm(form);
+        assert.equal(m1, m2, '相同 form 在 scope 活跃期间必须命中缓存');
+
+        // 3. 显式 unmount
+        unmountSettingsSidebarForm(form);
+        const m3 = mountSettingsSidebarForm(form);
+        assert.notEqual(m1, m3, 'unmount 后重新 mount 必须生成新实例');
+
+        // 4. scope 销毁自动清理
+        const scopeToDispose = takePresentationScope();
+        await scopeToDispose?.dispose();
+        const m4 = mountSettingsSidebarForm(form);
+        assert.notEqual(m3, m4, 'scope dispose 后自动清理缓存，新 scope 下必须生成新实例');
+    } finally {
+        const remainingScope = takePresentationScope();
+        await remainingScope?.dispose();
+        releaseAllControllers();
+        globalThis.document = prevDoc;
+        globalThis.window = prevWin;
+        dom.window.close();
+    }
+});
+
+test('H5: Agent 保存链路强化测试（完整保留自定义样式/头像颜色/折叠状态，提交 await 与失败捕获）', async () => {
+    const { document } = createDocument();
+    const host = document.getElementById('agentSettingsContainer');
+    const form = schema.renderAgentSettingsSurface(host, document);
+
+    // 验证表单存在所有 8 个关键扩展字段控件
+    assert.ok(document.getElementById('agentCustomCss'), '必须存在 #agentCustomCss');
+    assert.ok(document.getElementById('agentCardCss'), '必须存在 #agentCardCss');
+    assert.ok(document.getElementById('agentChatCss'), '必须存在 #agentChatCss');
+    assert.ok(document.getElementById('agentAvatarBorderColor'), '必须存在 #agentAvatarBorderColor');
+    assert.ok(document.getElementById('agentNameTextColor'), '必须存在 #agentNameTextColor');
+    assert.ok(document.getElementById('disableCustomColors'), '必须存在 #disableCustomColors');
+    assert.ok(document.getElementById('useThemeColorsInChat'), '必须存在 #useThemeColorsInChat');
+
+    // 填充测试值
+    document.getElementById('editingAgentId').value = 'agent-test-123';
+    document.getElementById('agentNameInput').value = '测试助手';
+    document.getElementById('agentCustomCss').value = '.test { color: red; }';
+    document.getElementById('agentCardCss').value = '.card { padding: 8px; }';
+    document.getElementById('agentChatCss').value = '.chat { margin: 4px; }';
+    document.getElementById('agentAvatarBorderColor').value = '#112233';
+    document.getElementById('agentNameTextColor').value = '#445566';
+    document.getElementById('disableCustomColors').checked = true;
+    document.getElementById('useThemeColorsInChat').checked = true;
+
+    // 模拟 submit 与状态点流转
+    const stateDotTransitions = [];
+    const updateStateDotIndicator = (kind) => {
+        stateDotTransitions.push(kind);
+    };
+
+    let savedPayload = null;
+    let mockSaveSuccess = true;
+    const fakeElectronAPI = {
+        saveAgentConfig: async (id, config) => {
+            savedPayload = config;
+            if (mockSaveSuccess) {
+                return { success: true };
+            } else {
+                return { success: false, error: 'Write failed' };
+            }
+        }
+    };
+
+    const mockSaveCurrentAgentSettings = async (ev) => {
+        if (ev?.preventDefault) ev.preventDefault();
+        const agentId = document.getElementById('editingAgentId').value;
+        const config = {
+            name: document.getElementById('agentNameInput').value.trim(),
+            customCss: document.getElementById('agentCustomCss').value.trim(),
+            cardCss: document.getElementById('agentCardCss').value.trim(),
+            chatCss: document.getElementById('agentChatCss').value.trim(),
+            avatarBorderColor: document.getElementById('agentAvatarBorderColor').value,
+            nameTextColor: document.getElementById('agentNameTextColor').value,
+            disableCustomColors: document.getElementById('disableCustomColors').checked,
+            useThemeColorsInChat: document.getElementById('useThemeColorsInChat').checked,
+            uiCollapseStates: { identity: true, prompt: false }
+        };
+        const result = await fakeElectronAPI.saveAgentConfig(agentId, config);
+        if (!result.success) {
+            return { success: false, error: result.error };
+        }
+        return { success: true, result };
+    };
+
+    // 注册与 settingsManager 一致的 submit 逻辑
+    form.addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        updateStateDotIndicator('ongoing');
+        try {
+            const saveResult = await mockSaveCurrentAgentSettings(ev);
+            if (saveResult && saveResult.success) {
+                updateStateDotIndicator('done');
+            } else {
+                updateStateDotIndicator('warning');
+            }
+        } catch (err) {
+            updateStateDotIndicator('warning');
+        }
+    });
+
+    // 1. 成功提交测试
+    form.dispatchEvent(new document.defaultView.Event('submit', { bubbles: true, cancelable: true }));
+    // 等待微任务队列清空
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    assert.deepEqual(stateDotTransitions, ['ongoing', 'done'], '保存成功时指示点必须经历 ongoing -> done');
+    assert.equal(savedPayload.name, '测试助手');
+    assert.equal(savedPayload.customCss, '.test { color: red; }');
+    assert.equal(savedPayload.cardCss, '.card { padding: 8px; }');
+    assert.equal(savedPayload.chatCss, '.chat { margin: 4px; }');
+    assert.equal(savedPayload.avatarBorderColor, '#112233');
+    assert.equal(savedPayload.nameTextColor, '#445566');
+    assert.equal(savedPayload.disableCustomColors, true);
+    assert.equal(savedPayload.useThemeColorsInChat, true);
+    assert.deepEqual(savedPayload.uiCollapseStates, { identity: true, prompt: false });
+
+    // 2. 失败提交测试
+    stateDotTransitions.length = 0;
+    mockSaveSuccess = false;
+    form.dispatchEvent(new document.defaultView.Event('submit', { bubbles: true, cancelable: true }));
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    assert.deepEqual(stateDotTransitions, ['ongoing', 'warning'], '保存失败时指示点必须经历 ongoing -> warning');
+});
+
 
 

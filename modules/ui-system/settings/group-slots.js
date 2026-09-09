@@ -341,6 +341,7 @@
         const doc = container.ownerDocument;
         membersConfigs.filter(member => member && !member.error).forEach(member => {
             const button = doc.createElement('button');
+            button.type = 'button';
             button.className = 'invite-agent-button';
             button.title = `邀请 ${member.name} 发言`;
             const avatar = doc.createElement('img');

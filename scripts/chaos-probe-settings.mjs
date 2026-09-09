@@ -12,9 +12,10 @@ import http from 'node:http';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
 
-const root = '/Users/asahi/Documents/Codex/vcpchat-exp-schema';
+const root = fileURLToPath(new URL('..', import.meta.url));
 const electron = path.join(root, 'node_modules', 'electron', 'dist', 'Electron.app', 'Contents', 'MacOS', 'Electron');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 

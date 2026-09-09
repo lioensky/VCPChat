@@ -178,14 +178,25 @@ html .vcp-ui-scope .vcp-settings-schema-surface > form {
     box-sizing: border-box;
 }
 
-html .vcp-ui-scope .vcp-settings-schema-surface [data-schema-field],
-html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-field-shell,
-html .vcp-ui-scope .vcp-settings-schema-surface .settings-form-group {
+html .vcp-ui-scope .vcp-settings-schema-surface [data-schema-field]:not([hidden]),
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-field-shell:not([hidden]),
+html .vcp-ui-scope .vcp-settings-schema-surface .settings-form-group:not([hidden]) {
     display: flex;
     flex-direction: column;
     gap: var(--vcp-settings-field-gap, 3px);
     margin-bottom: 6px;
     min-width: 0;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface [hidden],
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-field-shell[hidden],
+html .vcp-ui-scope .vcp-settings-schema-surface [data-schema-field][hidden],
+html .vcp-ui-scope .vcp-settings-schema-surface .settings-form-group[hidden],
+html .vcp-ui-scope .vcp-settings-schema-surface .hidden,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-field-shell.hidden,
+html .vcp-ui-scope .vcp-settings-schema-surface [data-schema-field].hidden,
+html .vcp-ui-scope .vcp-settings-schema-surface .settings-form-group.hidden {
+    display: none;
 }
 
 html .vcp-ui-scope .vcp-settings-schema-surface label:not(.switch):not(.agent-stream-mode-option):not(.avatar-upload-overlay):not(.group-member-label),
@@ -2918,5 +2929,75 @@ html .vcp-ui-scope .vcp-settings-schema-surface .btn-add-regex.btn-add-regex-sec
     html .vcp-ui-scope #tabContentSettings :is(.round, .slider.round, .avatar-upload-overlay, img.avatar, .agent-avatar-display, .group-avatar-display, .vcp-settings-info-badge, .badge, [style*="border-radius: 50%"], [style*="border-radius: 999px"]) {
         corner-shape: round;
     }
+}
+
+/* Invite Agent Buttons Container (Group chat invite_only mode) */
+html .vcp-ui-scope .invite-agent-buttons-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 8px;
+    padding: 10px 15px;
+    background-color: var(--panel-bg-dark, rgba(30, 30, 30, 0.6));
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+html .vcp-ui-scope .invite-agent-buttons-container[hidden] {
+    display: none;
+}
+
+html:is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .invite-agent-buttons-container {
+    background-color: var(--panel-bg-light, rgba(255, 255, 255, 0.7));
+}
+
+html .vcp-ui-scope .invite-agent-button {
+    display: flex;
+    align-items: center;
+    padding: 6px 10px;
+    border: 1px solid var(--button-border-color, var(--border-color));
+    background-color: var(--button-bg);
+    color: var(--accent-bg, var(--highlight-text));
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85em;
+    text-align: left;
+    overflow: hidden;
+    transition: background-color var(--vcp-motion-duration-normal, 0.2s) var(--vcp-motion-ease-standard, ease),
+                border-color var(--vcp-motion-duration-normal, 0.2s) var(--vcp-motion-ease-standard, ease),
+                transform var(--vcp-motion-duration-fast, 0.15s) var(--vcp-motion-ease-standard, ease);
+    min-width: 0;
+}
+
+html .vcp-ui-scope .invite-agent-button:hover {
+    background-color: var(--button-hover-bg);
+    border-color: var(--button-hover-bg);
+    transform: translateY(-1px);
+}
+
+html .vcp-ui-scope .invite-agent-button img {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    margin-right: 7px;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+html .vcp-ui-scope .invite-agent-button span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-grow: 1;
+}
+
+html:is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .invite-agent-button {
+    border-color: var(--border-color-light, rgba(0, 0, 0, 0.12));
+    background-color: var(--button-bg);
+    color: #ffffff;
+}
+
+html:is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .invite-agent-button:hover {
+    background-color: var(--accent-bg-light, var(--highlight-text));
+    border-color: var(--accent-bg-light, var(--highlight-text));
 }
 

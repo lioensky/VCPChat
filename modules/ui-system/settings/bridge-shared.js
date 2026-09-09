@@ -7,8 +7,8 @@ import { fieldProjection } from './field-registry.js';
 
 // globalThis.window?. keeps this module import-safe in bare node (tests);
 // in the renderer window is always defined and this resolves identically.
-const LifecycleScope = globalThis.window?.VCPLifecycle?.LifecycleScope;
-const bridgeScope = LifecycleScope ? new LifecycleScope('settings-bridge-controller') : null;
+const LifecycleScope = globalThis.window?.VCPLifecycle?.LifecycleScope || globalThis.VCPLifecycle?.LifecycleScope;
+let bridgeScope = LifecycleScope ? new LifecycleScope('settings-bridge-controller') : null;
 let presentationScope = null;
 let destroyed = false;
 const controllers = new Set();
@@ -22,7 +22,13 @@ function uniqueSettingsKey() {
 
 function ensurePresentationScope() {
     if (destroyed) return null;
-    if (!presentationScope) {
+    if (!bridgeScope || !bridgeScope.active) {
+        const LiveScope = globalThis.window?.VCPLifecycle?.LifecycleScope || globalThis.VCPLifecycle?.LifecycleScope || LifecycleScope;
+        if (LiveScope) {
+            bridgeScope = new LiveScope('settings-bridge-controller');
+        }
+    }
+    if (!presentationScope || !presentationScope.active) {
         presentationScope = bridgeScope?.child('settings-presentation') || null;
     }
     return presentationScope;

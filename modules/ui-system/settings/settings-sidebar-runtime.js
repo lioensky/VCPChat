@@ -31,8 +31,18 @@ function mountSettingsSidebarForm(form) {
     }
     const mounted = { slots };
     mountedSlots.set(form, mounted);
+    scope.own(() => {
+        if (mountedSlots.get(form) === mounted) {
+            mountedSlots.delete(form);
+        }
+    }, `mounted-slots-cleanup-${form.id || 'form'}`, 'ui-slot');
     return mounted;
 }
 
-export { MimoDirectorSlot, SequentialSpeakerSlot, mountSettingsSidebarForm };
+function unmountSettingsSidebarForm(form) {
+    if (!form) return;
+    mountedSlots.delete(form);
+}
+
+export { MimoDirectorSlot, SequentialSpeakerSlot, mountSettingsSidebarForm, unmountSettingsSidebarForm };
 

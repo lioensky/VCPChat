@@ -237,20 +237,21 @@ const settingsManager = (() => {
                 return { stale: true };
             }
 
-            // 只有提示词上下文已成功切到目标 Agent 后，才发布表单所代表的 Agent ID。
-            editingAgentIdInput.value = agentId;
-            agentNameInput.value = agentConfig.name || agentId;
+        if (editingAgentIdInput) editingAgentIdInput.value = agentId;
+        if (agentNameInput) agentNameInput.value = agentConfig.name || agentId;
 
-            agentModelInput.value = agentConfig.model || '';
-        agentTemperatureInput.value = agentConfig.temperature === null ? '' : (agentConfig.temperature !== undefined ? agentConfig.temperature : 0.7);
-        agentContextTokenLimitInput.value = agentConfig.contextTokenLimit === null ? '' : (agentConfig.contextTokenLimit !== undefined ? agentConfig.contextTokenLimit : 4000);
-        agentMaxOutputTokensInput.value = agentConfig.maxOutputTokens === null ? '' : (agentConfig.maxOutputTokens !== undefined ? agentConfig.maxOutputTokens : 1000);
-        agentTopPInput.value = agentConfig.top_p === null ? '' : (agentConfig.top_p !== undefined ? agentConfig.top_p : '');
-        agentTopKInput.value = agentConfig.top_k === null ? '' : (agentConfig.top_k !== undefined ? agentConfig.top_k : '');
+        if (agentModelInput) agentModelInput.value = agentConfig.model || '';
+        if (agentTemperatureInput) agentTemperatureInput.value = agentConfig.temperature === null ? '' : (agentConfig.temperature !== undefined ? agentConfig.temperature : 0.7);
+        if (agentContextTokenLimitInput) agentContextTokenLimitInput.value = agentConfig.contextTokenLimit === null ? '' : (agentConfig.contextTokenLimit !== undefined ? agentConfig.contextTokenLimit : 4000);
+        if (agentMaxOutputTokensInput) agentMaxOutputTokensInput.value = agentConfig.maxOutputTokens === null ? '' : (agentConfig.maxOutputTokens !== undefined ? agentConfig.maxOutputTokens : 1000);
+        if (agentTopPInput) agentTopPInput.value = agentConfig.top_p === null ? '' : (agentConfig.top_p !== undefined ? agentConfig.top_p : '');
+        if (agentTopKInput) agentTopKInput.value = agentConfig.top_k === null ? '' : (agentConfig.top_k !== undefined ? agentConfig.top_k : '');
 
         const streamOutput = agentConfig.streamOutput !== undefined ? agentConfig.streamOutput : true;
-        document.getElementById('agentStreamOutputTrue').checked = streamOutput === true || String(streamOutput) === 'true';
-        document.getElementById('agentStreamOutputFalse').checked = streamOutput === false || String(streamOutput) === 'false';
+        const streamOutputTrue = document.getElementById('agentStreamOutputTrue');
+        const streamOutputFalse = document.getElementById('agentStreamOutputFalse');
+        if (streamOutputTrue) streamOutputTrue.checked = streamOutput === true || String(streamOutput) === 'true';
+        if (streamOutputFalse) streamOutputFalse.checked = streamOutput === false || String(streamOutput) === 'false';
 
         // 获取头像包装器元素
         const avatarWrapper = agentAvatarPreview?.closest('.agent-avatar-wrapper');
@@ -507,54 +508,55 @@ const settingsManager = (() => {
             reportSettingsSaveResult(agentSettingsForm, false, error.message);
             return;
         }
-        const saveButton = agentSettingsForm.querySelector('button[type="submit"]');
-
-        if (result.success) {
-            if (saveButton) uiHelper.showSaveFeedback(saveButton, true, '已保存!', '保存 Agent 设置');
-            try {
-                await window.itemListManager.loadItems();
-
-                const currentSelectedItem = refs.currentSelectedItemRef.get();
-                if (currentSelectedItem.id === agentId && currentSelectedItem.type === 'agent') {
-                    const updatedAgentConfig = await electronAPI.getAgentConfig(agentId);
-
-                    // ⚠️ 检查是否返回错误对象
-                    if (updatedAgentConfig && updatedAgentConfig.error) {
-                        console.error(`[SettingsManager] Failed to get updated agent config:`, updatedAgentConfig.error);
-                        uiHelper.showToastNotification(`无法刷新Agent配置: ${updatedAgentConfig.error}`, 'warning');
-                        // 仍然更新名称，但不更新其他可能缺失的属性
-                        refs.currentSelectedItemRef.set({ ...currentSelectedItem, name: newConfig.name });
-                        selectedItemNameForSettingsSpan.textContent = newConfig.name;
-                        if (mainRendererFunctions.updateChatHeader) {
-                            mainRendererFunctions.updateChatHeader(`与 ${newConfig.name} 聊天中`);
-                        }
-                    } else if (updatedAgentConfig) {
-                        const nextSelectedItem = currentSelectedItem.config
-                            ? { ...currentSelectedItem, name: newConfig.name, config: updatedAgentConfig }
-                            : { ...currentSelectedItem, ...updatedAgentConfig, name: newConfig.name };
-                        refs.currentSelectedItemRef.set(nextSelectedItem);
-
-                        // Update other UI parts via callbacks or direct calls if modules are passed in
-                        if (mainRendererFunctions.updateChatHeader) {
-                            mainRendererFunctions.updateChatHeader(`与 ${newConfig.name} 聊天中`);
-                        }
-                        if (messageRenderer) {
-                            messageRenderer.setCurrentItemAvatar(updatedAgentConfig.avatarUrl);
-                            messageRenderer.setCurrentItemAvatarColor(updatedAgentConfig.avatarCalculatedColor || null);
-                        }
-                        selectedItemNameForSettingsSpan.textContent = newConfig.name;
-                    }
-                }
-            } catch (projectionError) {
-                console.error('[SettingsManager] Agent settings saved, but UI projection failed:', projectionError);
-                uiHelper.showToastNotification(`Agent设置已保存，但界面刷新失败: ${projectionError.message || projectionError}`, 'warning');
-            }
-            reportSettingsSaveResult(agentSettingsForm, true);
-        } else {
-            reportSettingsSaveResult(agentSettingsForm, false, result.error || 'save-failed');
+        if (!result.success) {
+            reportSettingsSaveResult(agentSettingsForm, false, result?.error || 'save-failed');
             if (saveButton) uiHelper.showSaveFeedback(saveButton, false, '保存失败', '保存 Agent 设置');
-            uiHelper.showToastNotification(`保存Agent设置失败: ${result.error}`, 'error');
+            uiHelper.showToastNotification(`保存Agent设置失败: ${result?.error || '未知错误'}`, 'error');
+            return { success: false, error: result?.error || 'save-failed' };
         }
+
+        isAgentSettingsDirty = false;
+        if (saveButton) uiHelper.showSaveFeedback(saveButton, true, '已保存!', '保存 Agent 设置');
+        try {
+            await window.itemListManager.loadItems();
+
+            const currentSelectedItem = refs.currentSelectedItemRef.get();
+            if (currentSelectedItem.id === agentId && currentSelectedItem.type === 'agent') {
+                const updatedAgentConfig = await electronAPI.getAgentConfig(agentId);
+
+                // ⚠️ 检查是否返回错误对象
+                if (updatedAgentConfig && updatedAgentConfig.error) {
+                    console.error(`[SettingsManager] Failed to get updated agent config:`, updatedAgentConfig.error);
+                    uiHelper.showToastNotification(`无法刷新Agent配置: ${updatedAgentConfig.error}`, 'warning');
+                    // 仍然更新名称，但不更新其他可能缺失的属性
+                    refs.currentSelectedItemRef.set({ ...currentSelectedItem, name: newConfig.name });
+                    selectedItemNameForSettingsSpan.textContent = newConfig.name;
+                    if (mainRendererFunctions.updateChatHeader) {
+                        mainRendererFunctions.updateChatHeader(`与 ${newConfig.name} 聊天中`);
+                    }
+                } else if (updatedAgentConfig) {
+                    const nextSelectedItem = currentSelectedItem.config
+                        ? { ...currentSelectedItem, name: newConfig.name, config: updatedAgentConfig }
+                        : { ...currentSelectedItem, ...updatedAgentConfig, name: newConfig.name };
+                    refs.currentSelectedItemRef.set(nextSelectedItem);
+
+                    // Update other UI parts via callbacks or direct calls if modules are passed in
+                    if (mainRendererFunctions.updateChatHeader) {
+                        mainRendererFunctions.updateChatHeader(`与 ${newConfig.name} 聊天中`);
+                    }
+                    if (messageRenderer) {
+                        messageRenderer.setCurrentItemAvatar(updatedAgentConfig.avatarUrl);
+                        messageRenderer.setCurrentItemAvatarColor(updatedAgentConfig.avatarCalculatedColor || null);
+                    }
+                    selectedItemNameForSettingsSpan.textContent = newConfig.name;
+                }
+            }
+        } catch (projectionError) {
+            console.error('[SettingsManager] Agent settings saved, but UI projection failed:', projectionError);
+            uiHelper.showToastNotification(`Agent设置已保存，但界面刷新失败: ${projectionError.message || projectionError}`, 'warning');
+        }
+        reportSettingsSaveResult(agentSettingsForm, true);
+        return { success: true, result };
     }
 
     /**
@@ -574,30 +576,63 @@ const settingsManager = (() => {
         let confirmed = false;
         if (window.VCPUIUX?.mountRiskConfirmation) {
             confirmed = await new Promise(resolve => {
-                const scope = {
-                    child: () => ({ own: () => {}, listen: () => {}, dispose: () => {} }),
-                    own: () => {},
-                    listen: () => {},
-                    dispose: () => {}
+                const createRiskScope = () => {
+                    if (window.VCPLifecycle?.LifecycleScope) {
+                        return new window.VCPLifecycle.LifecycleScope('agent-delete-risk');
+                    }
+                    const disposers = new Set();
+                    let active = true;
+                    const scope = {
+                        label: 'agent-delete-risk',
+                        get active() { return active; },
+                        own(disposer) { disposers.add(disposer); return disposer; },
+                        listen(target, type, handler, options) {
+                            target.addEventListener(type, handler, options);
+                            return scope.own(() => target.removeEventListener(type, handler, options));
+                        },
+                        child(childLabel) {
+                            return createRiskScope();
+                        },
+                        dispose: async () => {
+                            active = false;
+                            for (const d of disposers) {
+                                try { d(); } catch (_) {}
+                            }
+                            disposers.clear();
+                        }
+                    };
+                    return scope;
                 };
+                const scope = createRiskScope();
                 let settled = false;
-                const modal = window.VCPUIUX.mountRiskConfirmation({
+                let modal = null;
+                const finish = async (result) => {
+                    if (settled) return;
+                    settled = true;
+                    if (modal) modal.setOpen(false);
+                    try {
+                        await scope.dispose();
+                    } catch (_) {}
+                    resolve(result);
+                };
+                modal = window.VCPUIUX.mountRiskConfirmation({
                     title: `删除 ${itemTypeDisplay}`,
                     description: `确定要删除 ${itemTypeDisplay} "${itemName}" 吗？该操作将永久清除其所有聊天记录与设置，不可撤销。`,
                     acknowledgeLabel: `我已知晓并确认删除该 ${itemTypeDisplay}`,
                     cancelLabel: '取消',
-                    confirmLabel: `确认删除`,
+                    confirmLabel: '确认删除',
                     open: true,
+                    acknowledged: false,
+                    onAcknowledgedChange: (val) => {
+                        modal?.setAcknowledged(val);
+                    },
+                    onConfirm: () => {
+                        void finish(true);
+                    },
                     onCancel: () => {
-                        if (!settled) { settled = true; resolve(false); }
+                        void finish(false);
                     }
                 }, scope);
-                const confirmBtn = document.querySelector('.vcp-uiux-risk-confirm-action');
-                if (confirmBtn) {
-                    confirmBtn.addEventListener('click', () => {
-                        if (!settled) { settled = true; modal.setOpen(false); resolve(true); }
-                    }, { once: true });
-                }
             });
         } else {
             confirmed = await uiHelper.showConfirmDialog(`您确定要删除 ${itemTypeDisplay} "${itemName}" 吗？其所有聊天记录和设置都将被删除，此操作不可撤销！`, '删除确认', '删除', '取消', true);
@@ -997,12 +1032,21 @@ const settingsManager = (() => {
                 };
                 globalThis.vcpUpdateFormStateDot = updateStateDotIndicator;
 
-                agentSettingsForm.addEventListener('submit', (ev) => {
+                agentSettingsForm.addEventListener('submit', async (ev) => {
+                    ev.preventDefault();
                     clearTimeout(agentSettingsAutosaveTimer);
-                    isAgentSettingsDirty = false;
                     updateStateDotIndicator('ongoing');
-                    saveCurrentAgentSettings(ev);
-                    setTimeout(() => updateStateDotIndicator('done'), 200);
+                    try {
+                        const saveResult = await saveCurrentAgentSettings(ev);
+                        if (saveResult && saveResult.success) {
+                            updateStateDotIndicator('done');
+                        } else {
+                            updateStateDotIndicator('warning');
+                        }
+                    } catch (err) {
+                        console.error('[SettingsManager] Save submit error:', err);
+                        updateStateDotIndicator('warning');
+                    }
                 });
                 const markDirtyAndDebounceAutosave = () => {
                     isAgentSettingsDirty = true;
@@ -1010,14 +1054,28 @@ const settingsManager = (() => {
                     clearTimeout(agentSettingsAutosaveTimer);
                     agentSettingsAutosaveTimer = setTimeout(async () => {
                         if (!isAgentSettingsDirty || !editingAgentIdInput?.value) return;
+                        const targetAgentId = editingAgentIdInput.value;
                         try {
-                            console.log('[SettingsManager] Autosaving dirty agent settings for:', editingAgentIdInput.value);
+                            console.log('[SettingsManager] Autosaving dirty agent settings for:', targetAgentId);
                             updateStateDotIndicator('ongoing');
-                            await window.settingsManager?.triggerAgentSave(editingAgentIdInput.value);
-                            isAgentSettingsDirty = false;
-                            updateStateDotIndicator('done');
+                            const saveResult = await window.settingsManager?.triggerAgentSave(targetAgentId);
+                            if (saveResult?.stale) {
+                                console.debug(`[SettingsManager] Autosave for ${targetAgentId} cancelled due to context switch.`);
+                                return;
+                            }
+                            if (saveResult && saveResult.error) {
+                                console.error(`[SettingsManager] Autosave for ${targetAgentId} failed:`, saveResult.error);
+                                updateStateDotIndicator('warning');
+                                uiHelper.showToastNotification(`自动保存失败: ${saveResult.error}`, 'warning');
+                                return;
+                            }
+                            if (editingAgentIdInput?.value === targetAgentId) {
+                                isAgentSettingsDirty = false;
+                                updateStateDotIndicator('done');
+                            }
                         } catch (err) {
-                            console.debug('[SettingsManager] Autosave deferred:', err);
+                            console.debug('[SettingsManager] Autosave deferred/error:', err);
+                            updateStateDotIndicator('warning');
                         }
                     }, 500);
                 };
@@ -1294,25 +1352,43 @@ const settingsManager = (() => {
             }
 
             const newConfig = {
-                name: agentNameInput.value.trim(),
+                name: agentNameInput?.value?.trim() || agentId,
                 ...systemPromptData,
-                model: agentModelInput.value.trim() || 'gemini-pro',
+                model: agentModelInput?.value?.trim() || 'gemini-pro',
                 temperature: parseOptionalNumberInput(agentTemperatureInput, Number.parseFloat),
                 contextTokenLimit: parseOptionalNumberInput(agentContextTokenLimitInput, value => Number.parseInt(value, 10)),
                 maxOutputTokens: parseOptionalNumberInput(agentMaxOutputTokensInput, value => Number.parseInt(value, 10)),
                 top_p: parseOptionalNumberInput(agentTopPInput, Number.parseFloat),
                 top_k: parseOptionalNumberInput(agentTopKInput, value => Number.parseInt(value, 10)),
-                streamOutput: document.getElementById('agentStreamOutputTrue').checked,
-                ttsVoicePrimary: agentTtsVoicePrimarySelect.value,
-                ttsRegexPrimary: agentTtsRegexPrimaryInput.value.trim(),
-                ttsVoiceSecondary: agentTtsVoiceSecondarySelect.value,
-                ttsRegexSecondary: agentTtsRegexSecondaryInput.value.trim(),
+                streamOutput: document.getElementById('agentStreamOutputTrue')?.checked ?? true,
+                ttsVoicePrimary: agentTtsVoicePrimarySelect?.value || '',
+                ttsRegexPrimary: agentTtsRegexPrimaryInput?.value?.trim?.() || '',
+                ttsVoiceSecondary: agentTtsVoiceSecondarySelect?.value || '',
+                ttsRegexSecondary: agentTtsRegexSecondaryInput?.value?.trim?.() || '',
                 ttsDirectorPrompts: [...currentAgentTtsDirectorPrompts],
-                ttsSpeed: parseFloat(agentTtsSpeedSlider.value),
-                stripRegexes: currentAgentRegexes
+                ttsSpeed: parseFloat(agentTtsSpeedSlider?.value || 1),
+                stripRegexes: currentAgentRegexes,
+                avatarBorderColor: agentAvatarBorderColorInput?.value || '',
+                nameTextColor: agentNameTextColorInput?.value || '',
+                customCss: agentCustomCssInput?.value?.trim?.() || '',
+                cardCss: document.getElementById('agentCardCss')?.value?.trim?.() || '',
+                chatCss: document.getElementById('agentChatCss')?.value?.trim?.() || '',
+                disableCustomColors: document.getElementById('disableCustomColors')?.checked || false,
+                useThemeColorsInChat: document.getElementById('useThemeColorsInChat')?.checked || false,
+                uiCollapseStates: getCurrentCollapseStates()
             };
 
-            await electronAPI.saveAgentConfig(agentId, newConfig);
+            let result;
+            try {
+                result = await electronAPI.saveAgentConfig(agentId, newConfig);
+            } catch (err) {
+                result = { error: err?.message || String(err) };
+            }
+            if (result && result.error) {
+                console.error(`[SettingsManager] triggerAgentSave failed for ${agentId}:`, result.error);
+                return { success: false, error: result.error };
+            }
+            return { success: true, result };
         },
 
         /**

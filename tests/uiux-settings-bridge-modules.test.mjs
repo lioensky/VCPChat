@@ -106,7 +106,7 @@ test('single-concern modules import cleanly and expose their contract', async ()
     assert.equal(typeof shared.mountUiuxSwitches, 'function', 'agent 设置面仍经共享挂载方收编开关');
     const agent = await import(pathToFileURL(sidebarRuntime).href);
     assert.deepEqual(Object.keys(agent).sort(), [
-        'MimoDirectorSlot', 'SequentialSpeakerSlot', 'mountSettingsSidebarForm',
+        'MimoDirectorSlot', 'SequentialSpeakerSlot', 'mountSettingsSidebarForm', 'unmountSettingsSidebarForm',
     ]);
     assert.equal(typeof agent.MimoDirectorSlot, 'function');
     assert.equal(typeof agent.SequentialSpeakerSlot, 'function');
