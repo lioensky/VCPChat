@@ -1068,15 +1068,21 @@ test('话题总结模型复用 Agent 下拉并将 body portal 提升到全局设
     assert.match(picker, /view\.card\.style\.zIndex\s*=\s*String\(props\.portalZIndex\)/);
 });
 
-test('Agent 主语言与副语言音色增强：挂载现代 Trigger 并保持原生 select 为权威业务节点', async () => {
-    const bridgeSharedPath = pathToFileURL(path.join(settingsDir, 'bridge-shared.js')).href;
-    const voicePickerPath = pathToFileURL(path.join(settingsDir, 'agent-voice-picker.js')).href;
+test('Agent 主语言与副语言音色选择由 selectProjection 挂载并保持与上游规范 100% 对齐', async () => {
+    const projectionModule = await import(pathToFileURL(path.join(settingsDir, 'select-projection.js')).href);
+    const selectPrimitiveModule = await import(pathToFileURL(path.join(root, 'modules', 'uiux', 'generated', 'primitives', 'select.js')).href);
     const lifecycleModule = await import(pathToFileURL(path.join(root, 'modules', 'ui-system', 'lifecycle-scope.js')).href);
     const LifecycleScope = lifecycleModule.default?.LifecycleScope || lifecycleModule.LifecycleScope || globalThis.VCPLifecycle?.LifecycleScope;
 
     const previousGlobals = {
         window: globalThis.window,
         document: globalThis.document,
+        Element: globalThis.Element,
+        Node: globalThis.Node,
+        Event: globalThis.Event,
+        MutationObserver: globalThis.MutationObserver,
+        Option: globalThis.Option,
+        HTMLElement: globalThis.HTMLElement,
         VCPLifecycle: globalThis.VCPLifecycle,
         VCPUIUX: globalThis.VCPUIUX,
     };
@@ -1088,10 +1094,6 @@ test('Agent 主语言与副语言音色增强：挂载现代 Trigger 并保持�
                 <div class="model-input-container">
                     <select id="agentTtsVoicePrimary" name="ttsVoicePrimary">
                         <option value="">不使用语音</option>
-                        <optgroup label="Edge TTS">
-                            <option value="zh-CN-XiaoxiaoNeural">晓晓 (女)</option>
-                            <option value="zh-CN-YunxiNeural">云希 (男)</option>
-                        </optgroup>
                     </select>
                     <button type="button" id="refreshTtsModelsBtn" class="small-button">刷新</button>
                 </div>
@@ -1101,55 +1103,62 @@ test('Agent 主语言与副语言音色增强：挂载现代 Trigger 并保持�
                 <div class="model-input-container">
                     <select id="agentTtsVoiceSecondary" name="ttsVoiceSecondary">
                         <option value="">不使用</option>
-                        <option value="en-US-JennyNeural">Jenny (English)</option>
                     </select>
                 </div>
             </div>
         </form>
     </body></html>`);
 
-    globalThis.window = dom.window;
-    globalThis.document = dom.window.document;
-    globalThis.VCPLifecycle = { LifecycleScope };
+    Object.assign(globalThis, {
+        window: dom.window,
+        document: dom.window.document,
+        Element: dom.window.Element,
+        Node: dom.window.Node,
+        Event: dom.window.Event,
+        MutationObserver: dom.window.MutationObserver,
+        Option: dom.window.Option,
+        HTMLElement: dom.window.HTMLElement,
+        VCPLifecycle: { LifecycleScope },
+        VCPUIUX: { mountSelect: selectPrimitiveModule.mountSelect },
+    });
+    dom.window.VCPUIUX = globalThis.VCPUIUX;
 
     try {
-        const testScope = new LifecycleScope('test-voice-picker');
-        const {
-            mountTypedAgentVoicePicker,
-            releaseAllAgentVoicePickers,
-        } = await import(`${voicePickerPath}?voice-test=1`);
+        const testScope = new LifecycleScope('test-agent-select-projection');
+        const projection = projectionModule.createSelectProjection({ ensurePresentationScope: () => testScope });
 
         const form = dom.window.document.getElementById('agentSettingsForm');
-        mountTypedAgentVoicePicker(form, { scope: testScope });
-
         const primarySelect = form.querySelector('#agentTtsVoicePrimary');
         const secondarySelect = form.querySelector('#agentTtsVoiceSecondary');
-        const primaryTrigger = form.querySelector('#agentTtsVoicePrimaryTrigger');
-        const secondaryTrigger = form.querySelector('#agentTtsVoiceSecondaryTrigger');
 
-        assert.ok(primarySelect, '原生 #agentTtsVoicePrimary select 节点必须保留在 DOM 中');
-        assert.equal(primarySelect.tagName.toLowerCase(), 'select', '原生主音色必须是 select 元素');
-        assert.ok(secondarySelect, '原生 #agentTtsVoiceSecondary select 节点必须保留在 DOM 中');
-        assert.equal(secondarySelect.tagName.toLowerCase(), 'select', '原生副音色必须是 select 元素');
+        // 初始仅有 1 个空选项时，与上游保持一致：标记 bare-select
+        projection.mount(form);
+        assert.ok(primarySelect.classList.contains('vcp-settings-bare-select'), '初始单选项时保持原生裸样式标记');
+        assert.equal(form.querySelector('.vcp-uiux-select'), null, '初始单选项时不挂载复合浮层');
 
-        assert.ok(primaryTrigger, '主音色现代 Trigger 按钮必须成功挂载');
-        assert.ok(secondaryTrigger, '副音色现代 Trigger 按钮必须成功挂载');
+        // 业务层动态加载音色列表（options > 1）
+        const option1 = dom.window.document.createElement('option');
+        option1.value = 'zh-CN-XiaoxiaoNeural';
+        option1.textContent = '晓晓 (女)';
+        primarySelect.appendChild(option1);
 
-        assert.ok(primarySelect.classList.contains('vcp-tts-voice-native-select'), '原生主音色已添加无障碍隐藏样式类');
-        assert.ok(secondarySelect.classList.contains('vcp-tts-voice-native-select'), '原生副音色已添加无障碍隐藏样式类');
+        // 等待 MutationObserver 自动触发投影转换且重构锁释放
+        for (let attempt = 0; attempt < 50 && (!primarySelect.dataset.vcpTypedPrimitiveMounted || form.dataset.vcpSelectRebuilding); attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 10));
+        }
 
-        const primaryLabel = primaryTrigger.querySelector('.vcp-tts-voice-trigger-label');
-        assert.equal(primaryLabel.textContent, '不使用语音', '初次渲染 Trigger 标签应同步为当前默认选中项');
+        assert.equal(primarySelect.dataset.vcpTypedPrimitiveMounted, 'true', '添加选项后自动通过 mountSelect 挂载 UIUX 原语');
+        assert.equal(primarySelect.classList.contains('vcp-settings-bare-select'), false, '投影完成后移除 bare-select 标记');
+        const uiuxWrap = primarySelect.closest('.vcp-uiux-select');
+        assert.ok(uiuxWrap, 'select 外部包裹为标准 .vcp-uiux-select 结构');
+        const trigger = uiuxWrap.querySelector('.vcp-uiux-select-trigger');
+        assert.ok(trigger, '必须生成标准 .vcp-uiux-select-trigger 按钮');
 
-        // 模拟外部业务层更新 select.value 并派发 change 事件
-        primarySelect.value = 'zh-CN-XiaoxiaoNeural';
-        primarySelect.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
-        assert.equal(primaryLabel.textContent, '晓晓 (女)', 'select 变动后 Trigger 文本必须自动更新为最新选中的 option 文本');
-
-        // 测试释放与清理
-        await releaseAllAgentVoicePickers();
-        assert.equal(form.querySelector('#agentTtsVoicePrimaryTrigger'), null, 'release 后 Trigger 按钮必须被移除');
-        assert.equal(primarySelect.classList.contains('vcp-tts-voice-native-select'), false, 'release 后原生样式类必须被移除');
+        // 验证 teardown 释放与 DOM 恢复
+        projection.teardown();
+        await new Promise(resolve => setTimeout(resolve, 20));
+        assert.equal(form.querySelector('.vcp-uiux-select'), null, 'teardown 后 UIUX 包装层彻底卸载');
+        assert.ok(form.contains(primarySelect), '原生 select 完整恢复且保留在 DOM 中');
     } finally {
         for (const [key, val] of Object.entries(previousGlobals)) {
             if (val === undefined) delete globalThis[key];
