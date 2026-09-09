@@ -241,18 +241,71 @@ function removeSpeakerTags(text) {
 }
 
 /**
-* Ensures there is a separator between an <img> tag and a subsequent code block fence (```).
-* This prevents the markdown parser from failing to recognize the code block.
-* It inserts a double newline and an HTML comment. The comment acts as a "hard" separator
-* for the markdown parser, forcing it to reset its state after the raw HTML img tag.
-* @param {string} text The input string.
-* @returns {string} The processed string.
-*/
+ * Ensures a standalone raw HTML <img> line has a blank-line boundary before
+ * subsequent Markdown. CommonMark keeps a type-6 raw HTML block open until a
+ * blank line; without this boundary, following backticks, lists and emphasis
+ * are treated as raw HTML text instead of Markdown.
+ *
+ * Fenced code domains are left byte-for-byte unchanged. Existing blank lines
+ * are preserved without adding another one.
+ * @param {string} text The input string.
+ * @returns {string} The processed string.
+ */
+function ensureBlankLineAfterStandaloneImageTag(text) {
+    if (typeof text !== 'string' || !/<img\b/i.test(text)) return text;
+
+    const lines = text.split('\n');
+    const result = [];
+    let activeFence = null;
+
+    for (let index = 0; index < lines.length; index++) {
+        const line = lines[index];
+        const fenceMatch = line.match(/^[ \t]{0,3}(`{3,}|~{3,})(.*)$/);
+
+        if (fenceMatch) {
+            const marker = fenceMatch[1];
+            const trailingText = fenceMatch[2] || '';
+            if (!activeFence) {
+                activeFence = { char: marker[0], length: marker.length };
+            } else if (
+                marker[0] === activeFence.char
+                && marker.length >= activeFence.length
+                && trailingText.trim() === ''
+            ) {
+                activeFence = null;
+            }
+            result.push(line);
+            continue;
+        }
+
+        result.push(line);
+
+        if (
+            !activeFence
+            && /^[ \t]*<img\b(?:[^>"']|"[^"]*"|'[^']*')*\/?>[ \t]*\r?$/i.test(line)
+            && index + 1 < lines.length
+            && lines[index + 1].trim() !== ''
+        ) {
+            result.push('');
+        }
+    }
+
+    return result.join('\n');
+}
+
+/**
+ * Preserves the legacy hard separator before a code fence, while also closing
+ * standalone image raw-HTML blocks before ordinary Markdown.
+ * @param {string} text The input string.
+ * @returns {string} The processed string.
+ */
 function ensureSeparatorBetweenImgAndCode(text) {
     if (typeof text !== 'string') return text;
-    // Looks for an <img> tag, optional whitespace, and then a ```.
-    // Inserts a double newline and an HTML comment.
-    return text.replace(/(<img[^>]+>)\s*(```)/g, '$1\n\n<!-- VCP-Renderer-Separator -->\n\n$2');
+    const normalizedText = ensureBlankLineAfterStandaloneImageTag(text);
+    return normalizedText.replace(
+        /(<img[^>]+>)\s*(```)/g,
+        '$1\n\n<!-- VCP-Renderer-Separator -->\n\n$2'
+    );
 }
 
 
@@ -1283,6 +1336,10 @@ function applyContentProcessors(text) {
 
     // Use the proper function for code block markers (preserves content formatting)
     processedText = removeIndentationFromCodeBlockMarkers(processedText);
+
+    // A standalone raw <img> line must be terminated before following Markdown.
+    // Do this after fence-marker normalization so fenced examples remain protected.
+    processedText = ensureBlankLineAfterStandaloneImageTag(processedText);
 
     // Then apply simple regex replacements
     return processedText
