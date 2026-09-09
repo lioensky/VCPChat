@@ -20,12 +20,12 @@
     "reason": "shared Agent/group catalog authority with stale-load commit protection"
   },
   "Groupmodules/grouprenderer.js": {
-    "sha256": "472f6d91689166c0c35efd6c7173229d631a5a4c7fff7abe3540bfc830bcdbff",
-    "reason": "upstream group business surface delegates settings attachment to schema sidebar Surface while resolving controls safely during detachment, protecting group deletion fallback identity, and preserving persistence and chat behavior"
+    "sha256": "22f41ebba1266aaaec778bc79c58fdf3389ab31e4278dcbad600d4df40ae3e11",
+    "reason": "upstream group business surface delegates settings attachment to schema sidebar Surface while resolving controls safely during detachment, protecting group deletion fallback identity, aligning group deletion confirmation with risk modal, and preserving persistence and chat behavior"
   },
   "modules/settingsManager.js": {
-    "sha256": "63ec0481cb58a4f877d16eedb6ac64c65092cf3b0bca37d118e83d65430defde",
-    "reason": "reviewed Agent settings behavior after moving Agent form rendering to schema and Surface lifecycle ownership; delete action implements active risk confirmation gate with managed scope; save pipeline coordinates full custom style, color, and collapse state fields with async submit and robust error handling; dirty edits are flushed before prompt context switch with dirty retention and warning on failure; autosave deduplicates error toasts; programmatic collapse controller synchronizes aria-expanded attributes; saved projection, collapse state, prompt context and stale reload protection remain manager-owned; scoped form control lookup protects against detachment data loss and intercepts IPC failure results"
+    "sha256": "6c430349ae8965aebfd534d469e35d8d14360e8af34cf23156dfb1c3c213cf9f",
+    "reason": "reviewed Agent settings behavior after moving Agent form rendering to schema and Surface lifecycle ownership; delete action implements active risk confirmation gate with managed scope; save pipeline coordinates full custom style, color, and collapse state fields with async submit and robust error handling; dirty edits are flushed before prompt context switch with dirty retention and warning on failure; autosave deduplicates error toasts and sequences revision tokens against in-flight writes; programmatic collapse controller synchronizes aria-expanded attributes; saved projection, collapse state, prompt context and stale reload protection remain manager-owned; scoped form control lookup protects against detachment data loss and intercepts IPC failure results; model input resolution is safely guarded against fallback tampering"
   },
   "modules/filterManager.js": {
     "sha256": "2390116ff961f18cdf2d3defd02d5559de9381f891be7e5eb33ef99f98337225",

@@ -93,6 +93,7 @@ const settingsManager = (() => {
     let agentSettingsPopulateToken = 0;
     let agentSettingsPopulateQueue = Promise.resolve();
     let isAgentSettingsDirty = false;
+    let agentSettingsRevision = 0;
     let agentSettingsAutosaveTimer = null;
     const initializedCollapseStateAgents = new Set();
     const promptModeFallbackLabels = {
@@ -116,7 +117,49 @@ const settingsManager = (() => {
 
     function getAgentControl(id) {
         if (!id) return null;
-        return resolveAgentForm()?.querySelector?.(`#${id}`) || document.getElementById(id) || null;
+        const form = resolveAgentForm();
+        let el = form?.querySelector?.(`#${id}`) || document.getElementById(id);
+        if (!el) {
+            if (id === 'agentModelInput') el = form?.querySelector?.('#agentModel') || document.getElementById('agentModel');
+            else if (id === 'agentModel') el = form?.querySelector?.('#agentModelInput') || document.getElementById('agentModelInput');
+            else if (id.endsWith('Input')) {
+                const altId = id.slice(0, -5);
+                el = form?.querySelector?.(`#${altId}`) || document.getElementById(altId);
+            } else {
+                const altId = `${id}Input`;
+                el = form?.querySelector?.(`#${altId}`) || document.getElementById(altId);
+            }
+        }
+        return el || null;
+    }
+
+    function refreshAgentControls() {
+        agentSettingsForm = resolveAgentForm();
+        editingAgentIdInput = getAgentControl('editingAgentId') || editingAgentIdInput;
+        agentNameInput = getAgentControl('agentNameInput') || getAgentControl('agentName') || agentNameInput;
+        agentAvatarInput = getAgentControl('agentAvatarInput') || getAgentControl('agentAvatar') || agentAvatarInput;
+        agentAvatarPreview = getAgentControl('agentAvatarPreview') || agentAvatarPreview;
+        agentModelInput = getAgentControl('agentModel') || getAgentControl('agentModelInput') || agentModelInput;
+        agentTemperatureInput = getAgentControl('agentTemperature') || agentTemperatureInput;
+        agentContextTokenLimitInput = getAgentControl('agentContextTokenLimit') || agentContextTokenLimitInput;
+        agentMaxOutputTokensInput = getAgentControl('agentMaxOutputTokens') || agentMaxOutputTokensInput;
+        agentTopPInput = getAgentControl('agentTopP') || agentTopPInput;
+        agentTopKInput = getAgentControl('agentTopK') || agentTopKInput;
+
+        agentAvatarBorderColorInput = getAgentControl('agentAvatarBorderColor') || agentAvatarBorderColorInput;
+        agentAvatarBorderColorTextInput = getAgentControl('agentAvatarBorderColorText') || agentAvatarBorderColorTextInput;
+        agentNameTextColorInput = getAgentControl('agentNameTextColor') || agentNameTextColorInput;
+        agentNameTextColorTextInput = getAgentControl('agentNameTextColorText') || agentNameTextColorTextInput;
+        agentCustomCssInput = getAgentControl('agentCustomCss') || agentCustomCssInput;
+        resetAvatarColorsBtn = getAgentControl('resetAvatarColorsBtn') || resetAvatarColorsBtn;
+        openModelSelectBtn = getAgentControl('openModelSelectBtn') || openModelSelectBtn;
+
+        agentTtsVoicePrimarySelect = getAgentControl('agentTtsVoicePrimary') || agentTtsVoicePrimarySelect;
+        agentTtsRegexPrimaryInput = getAgentControl('agentTtsRegexPrimary') || agentTtsRegexPrimaryInput;
+        agentTtsVoiceSecondarySelect = getAgentControl('agentTtsVoiceSecondary') || agentTtsVoiceSecondarySelect;
+        agentTtsRegexSecondaryInput = getAgentControl('agentTtsRegexSecondary') || agentTtsRegexSecondaryInput;
+        refreshTtsModelsBtn = getAgentControl('refreshTtsModelsBtn') || refreshTtsModelsBtn;
+        agentTtsSpeedSlider = getAgentControl('agentTtsSpeed') || agentTtsSpeedSlider;
     }
 
     function reportSettingsSaveResult(form, success, error = '') {
@@ -137,9 +180,21 @@ const settingsManager = (() => {
      * Displays the appropriate settings view (agent, group, or default prompt)
      * based on the currently selected item.
      */
-    async function displaySettingsForItem(item = null) {
+    async function displaySettingsForItem(item = null, type = 'agent') {
         const displayToken = ++settingsDisplayToken;
-        const currentSelectedItem = item || refs.currentSelectedItemRef?.get?.() || {};
+        let currentSelectedItem;
+        if (typeof item === 'string') {
+            const refItem = refs.currentSelectedItemRef?.get?.();
+            if (refItem && refItem.id === item) {
+                currentSelectedItem = refItem;
+            } else {
+                currentSelectedItem = { id: item, type: type || 'agent' };
+            }
+        } else if (item && typeof item === 'object') {
+            currentSelectedItem = item;
+        } else {
+            currentSelectedItem = refs.currentSelectedItemRef?.get?.() || {};
+        }
 
         const settingsSurface = window.VCPSettingsSidebar;
 
@@ -147,11 +202,21 @@ const settingsManager = (() => {
         const groupSettingsExists = groupSettingsContainer && typeof groupSettingsContainer.style !== 'undefined';
 
         if (currentSelectedItem.id) {
+            if (!currentSelectedItem.type) {
+                currentSelectedItem.type = type || 'agent';
+            }
             if (selectedItemNameForSettingsSpan) {
                 selectedItemNameForSettingsSpan.textContent = currentSelectedItem.name || currentSelectedItem.id;
             }
 
             if (currentSelectedItem.type === 'agent') {
+                if (!currentSelectedItem.config && electronAPI?.getAgentConfig) {
+                    try {
+                        currentSelectedItem.config = await electronAPI.getAgentConfig(currentSelectedItem.id);
+                    } catch (err) {
+                        console.warn(`[SettingsManager] Failed to fetch agent config for ${currentSelectedItem.id}:`, err);
+                    }
+                }
                 const viewToken = settingsSurface?.show?.('agent', { id: currentSelectedItem.id });
                 if (itemSettingsContainerTitle) itemSettingsContainerTitle.textContent = 'Agent 设置: ';
                 if (deleteItemBtn) deleteItemBtn.textContent = '删除此 Agent';
@@ -226,6 +291,7 @@ const settingsManager = (() => {
                     clearTimeout(agentSettingsAutosaveTimer);
                     agentSettingsAutosaveTimer = null;
                 }
+                const saveRevision = agentSettingsRevision;
                 let flushResult = null;
                 try {
                     console.log(`[SettingsManager] Flushing uncommitted dirty changes for previous agent ${prevId} before loading ${agentId}`);
@@ -235,7 +301,9 @@ const settingsManager = (() => {
                     flushResult = { success: false, error: e?.message || String(e) };
                 }
                 if (flushResult?.success) {
-                    isAgentSettingsDirty = false;
+                    if (agentSettingsRevision === saveRevision) {
+                        isAgentSettingsDirty = false;
+                    }
                 } else {
                     console.warn(`[SettingsManager] Failed to flush dirty edits for ${prevId}:`, flushResult?.error);
                     uiHelper.showToastNotification(`切换前自动保存「${prevId}」失败: ${flushResult?.error || '未知错误'}，未保存的修改未能成功保存`, 'warning');
@@ -273,6 +341,8 @@ const settingsManager = (() => {
                 return { stale: true };
             }
 
+        refreshAgentControls();
+
         if (editingAgentIdInput) editingAgentIdInput.value = agentId;
         if (agentNameInput) agentNameInput.value = agentConfig.name || agentId;
 
@@ -292,23 +362,25 @@ const settingsManager = (() => {
         // 获取头像包装器元素
         const avatarWrapper = agentAvatarPreview?.closest('.agent-avatar-wrapper');
 
-        if (agentConfig.avatarUrl) {
-            agentAvatarPreview.src = `${agentConfig.avatarUrl}${agentConfig.avatarUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
-            agentAvatarPreview.hidden = false;
-            // 有头像时移除 no-avatar 类
-            if (avatarWrapper) {
-                avatarWrapper.classList.remove('no-avatar');
-            }
-        } else {
-            // 头像为空时显示默认头像，不进行颜色提取
-            agentAvatarPreview.src = 'assets/default_avatar.png';
-            agentAvatarPreview.hidden = false;
-            // 无头像时添加 no-avatar 类，确保相机图标始终显示
-            if (avatarWrapper) {
-                avatarWrapper.classList.add('no-avatar');
+        if (agentAvatarPreview) {
+            if (agentConfig.avatarUrl) {
+                agentAvatarPreview.src = `${agentConfig.avatarUrl}${agentConfig.avatarUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
+                agentAvatarPreview.hidden = false;
+                // 有头像时移除 no-avatar 类
+                if (avatarWrapper) {
+                    avatarWrapper.classList.remove('no-avatar');
+                }
+            } else {
+                // 头像为空时显示默认头像，不进行颜色提取
+                agentAvatarPreview.src = 'assets/default_avatar.png';
+                agentAvatarPreview.hidden = false;
+                // 无头像时添加 no-avatar 类，确保相机图标始终显示
+                if (avatarWrapper) {
+                    avatarWrapper.classList.add('no-avatar');
+                }
             }
         }
-        agentAvatarInput.value = '';
+        if (agentAvatarInput) agentAvatarInput.value = '';
         if (mainRendererFunctions.setCroppedFile) {
             mainRendererFunctions.setCroppedFile('agent', null);
         }
@@ -323,13 +395,23 @@ const settingsManager = (() => {
             const EventCtor = node.ownerDocument?.defaultView?.CustomEvent ?? CustomEvent;
             node.dispatchEvent(new EventCtor('vcp-uiux-sync', { bubbles: true }));
         };
-        agentAvatarBorderColorInput.value = agentConfig.avatarBorderColor || '#3d5a80';
-        agentAvatarBorderColorTextInput.value = agentConfig.avatarBorderColor || '#3d5a80';
-        agentNameTextColorInput.value = agentConfig.nameTextColor || '#ffffff';
-        agentNameTextColorTextInput.value = agentConfig.nameTextColor || '#ffffff';
-        signalPresentationSync(agentAvatarBorderColorInput);
-        signalPresentationSync(agentNameTextColorInput);
-        agentCustomCssInput.value = agentConfig.customCss || '';
+        if (agentAvatarBorderColorInput) {
+            agentAvatarBorderColorInput.value = agentConfig.avatarBorderColor || '#3d5a80';
+            signalPresentationSync(agentAvatarBorderColorInput);
+        }
+        if (agentAvatarBorderColorTextInput) {
+            agentAvatarBorderColorTextInput.value = agentConfig.avatarBorderColor || '#3d5a80';
+        }
+        if (agentNameTextColorInput) {
+            agentNameTextColorInput.value = agentConfig.nameTextColor || '#ffffff';
+            signalPresentationSync(agentNameTextColorInput);
+        }
+        if (agentNameTextColorTextInput) {
+            agentNameTextColorTextInput.value = agentConfig.nameTextColor || '#ffffff';
+        }
+        if (agentCustomCssInput) {
+            agentCustomCssInput.value = agentConfig.customCss || '';
+        }
 
         // Load card CSS
         const agentCardCssInput = getAgentControl('agentCardCss');
@@ -369,18 +451,24 @@ const settingsManager = (() => {
             return { stale: true };
         }
 
-        agentTtsRegexPrimaryInput.value = agentConfig.ttsRegexPrimary || '';
-        agentTtsRegexSecondaryInput.value = agentConfig.ttsRegexSecondary || '';
+        if (agentTtsRegexPrimaryInput) {
+            agentTtsRegexPrimaryInput.value = agentConfig.ttsRegexPrimary || '';
+        }
+        if (agentTtsRegexSecondaryInput) {
+            agentTtsRegexSecondaryInput.value = agentConfig.ttsRegexSecondary || '';
+        }
         currentAgentTtsDirectorPrompts = Array.isArray(agentConfig.ttsDirectorPrompts)
             ? agentConfig.ttsDirectorPrompts.map(item => String(item || '').trim()).filter(Boolean)
             : [];
         window.VCPSettingsSlots?.mimoDirector?.setPrompts?.(currentAgentTtsDirectorPrompts);
 
-        agentTtsSpeedSlider.value = agentConfig.ttsSpeed !== undefined ? agentConfig.ttsSpeed : 1.0;
-        signalPresentationSync(agentTtsSpeedSlider);
-        const speedValueDisplay = getAgentControl('ttsSpeedValue');
-        if (speedValueDisplay) {
-            speedValueDisplay.textContent = Number(agentTtsSpeedSlider.value).toFixed(1);
+        if (agentTtsSpeedSlider) {
+            agentTtsSpeedSlider.value = agentConfig.ttsSpeed !== undefined ? agentConfig.ttsSpeed : 1.0;
+            signalPresentationSync(agentTtsSpeedSlider);
+            const speedValueDisplay = getAgentControl('ttsSpeedValue');
+            if (speedValueDisplay) {
+                speedValueDisplay.textContent = Number(agentTtsSpeedSlider.value).toFixed(1);
+            }
         }
 
         // Load and render regex rules
@@ -392,6 +480,7 @@ const settingsManager = (() => {
             updateAllSectionSummaries();
             scheduleStickyButtonsRefresh();
             isAgentSettingsDirty = false;
+            agentSettingsRevision = 0;
             if (typeof globalThis.vcpUpdateFormStateDot === 'function') {
                 globalThis.vcpUpdateFormStateDot('done');
             }
@@ -426,8 +515,9 @@ const settingsManager = (() => {
         if (event?.preventDefault) {
             event.preventDefault();
         }
+        refreshAgentControls();
         const saveButton = agentSettingsForm?.querySelector?.('button[type="submit"]') || null;
-        const agentId = editingAgentIdInput.value;
+        const agentId = editingAgentIdInput?.value;
         if (!agentId) {
             console.error("[SettingsManager] Cannot save agent settings: agentId is missing.");
             uiHelper.showToastNotification("保存失败：未指定 Agent ID", 'error');
@@ -445,14 +535,14 @@ const settingsManager = (() => {
         let systemPromptData = {};
         if (promptManager) {
             await promptManager.saveCurrentModeData();
-            if (editingAgentIdInput.value !== agentId || promptManager.getAgentId?.() !== agentId) {
+            if (editingAgentIdInput?.value !== agentId || promptManager.getAgentId?.() !== agentId) {
                 console.debug(`[SettingsManager] Aborting stale save after prompt persistence for ${agentId}.`);
                 reportSettingsSaveResult(agentSettingsForm, false, 'stale-agent');
                 return { success: false, error: 'stale-agent' };
             }
 
             const currentPrompt = await promptManager.getCurrentSystemPrompt();
-            if (editingAgentIdInput.value !== agentId || promptManager.getAgentId?.() !== agentId) {
+            if (editingAgentIdInput?.value !== agentId || promptManager.getAgentId?.() !== agentId) {
                 console.debug(`[SettingsManager] Aborting stale save after prompt read for ${agentId}.`);
                 reportSettingsSaveResult(agentSettingsForm, false, 'stale-agent');
                 return { success: false, error: 'stale-agent' };
@@ -460,10 +550,15 @@ const settingsManager = (() => {
             systemPromptData.systemPrompt = currentPrompt; // Keep for compatibility
         }
 
+        const currentConfig = refs.currentSelectedItemRef?.get?.()?.config;
+        const resolvedModelInput = getAgentControl('agentModel') || agentModelInput;
+        const resolvedModel = resolvedModelInput ? resolvedModelInput.value.trim() : (currentConfig?.model || 'gemini-pro');
+        const saveRevision = agentSettingsRevision;
+
         const newConfig = {
             name: agentNameInput?.value?.trim?.() || (currentConfig ? currentConfig.name : agentId),
             ...systemPromptData,
-            model: agentModelInput?.value?.trim?.() || 'gemini-pro',
+            model: resolvedModel || 'gemini-pro',
             temperature: parseOptionalNumberInput(agentTemperatureInput, Number.parseFloat),
             contextTokenLimit: parseOptionalNumberInput(agentContextTokenLimitInput, value => Number.parseInt(value, 10)),
             maxOutputTokens: parseOptionalNumberInput(agentMaxOutputTokensInput, value => Number.parseInt(value, 10)),
@@ -527,9 +622,9 @@ const settingsManager = (() => {
                             }
                         });
                     }
-                    agentAvatarPreview.src = avatarResult.avatarUrl;
+                    if (agentAvatarPreview) agentAvatarPreview.src = avatarResult.avatarUrl;
                     mainRendererFunctions.setCroppedFile('agent', null);
-                    agentAvatarInput.value = '';
+                    if (agentAvatarInput) agentAvatarInput.value = '';
                 }
             } catch (readError) {
                 console.error("读取Agent头像文件失败:", readError);
@@ -555,7 +650,9 @@ const settingsManager = (() => {
             return { success: false, error: result?.error || 'save-failed' };
         }
 
-        isAgentSettingsDirty = false;
+        if (agentSettingsRevision === saveRevision) {
+            isAgentSettingsDirty = false;
+        }
         if (saveButton) uiHelper.showSaveFeedback(saveButton, true, '已保存!', '保存 Agent 设置');
         try {
             if (window.itemListManager?.loadItems) {
@@ -973,34 +1070,9 @@ const settingsManager = (() => {
             itemSettingsContainerTitle = options.elements.itemSettingsContainerTitle;
             selectedItemNameForSettingsSpan = options.elements.selectedItemNameForSettingsSpan;
             deleteItemBtn = options.elements.deleteItemBtn;
-            agentSettingsForm = options.elements.agentSettingsForm || resolveAgentForm();
-            editingAgentIdInput = options.elements.editingAgentIdInput || getAgentControl('editingAgentId');
-            agentNameInput = options.elements.agentNameInput || getAgentControl('agentNameInput');
-            agentAvatarInput = options.elements.agentAvatarInput || getAgentControl('agentAvatarInput');
-            agentAvatarPreview = options.elements.agentAvatarPreview || getAgentControl('agentAvatarPreview');
-            agentModelInput = options.elements.agentModelInput || getAgentControl('agentModelInput');
-            agentTemperatureInput = options.elements.agentTemperatureInput || getAgentControl('agentTemperature');
-            agentContextTokenLimitInput = options.elements.agentContextTokenLimitInput || getAgentControl('agentContextTokenLimit');
-            agentMaxOutputTokensInput = options.elements.agentMaxOutputTokensInput || getAgentControl('agentMaxOutputTokens');
-            agentTopPInput = getAgentControl('agentTopP');
-            agentTopKInput = getAgentControl('agentTopK');
-
-            agentAvatarBorderColorInput = getAgentControl('agentAvatarBorderColor');
-            agentAvatarBorderColorTextInput = getAgentControl('agentAvatarBorderColorText');
-            agentNameTextColorInput = getAgentControl('agentNameTextColor');
-            agentNameTextColorTextInput = getAgentControl('agentNameTextColorText');
-            agentCustomCssInput = getAgentControl('agentCustomCss');
-            resetAvatarColorsBtn = getAgentControl('resetAvatarColorsBtn');
-            openModelSelectBtn = options.elements.openModelSelectBtn || getAgentControl('openModelSelectBtn');
+            refreshAgentControls();
             topicSummaryModelInput = options.elements.topicSummaryModelInput;
             openTopicSummaryModelSelectBtn = options.elements.openTopicSummaryModelSelectBtn;
-
-            agentTtsVoicePrimarySelect = getAgentControl('agentTtsVoicePrimary');
-            agentTtsRegexPrimaryInput = getAgentControl('agentTtsRegexPrimary');
-            agentTtsVoiceSecondarySelect = getAgentControl('agentTtsVoiceSecondary');
-            agentTtsRegexSecondaryInput = getAgentControl('agentTtsRegexSecondary');
-            refreshTtsModelsBtn = getAgentControl('refreshTtsModelsBtn');
-            agentTtsSpeedSlider = options.elements.agentTtsSpeedSlider || getAgentControl('agentTtsSpeed');
             // 🟢 监听模态框就绪事件，动态绑定延迟加载的元素
             document.addEventListener('modal-ready', (e) => {
                 const { modalId } = e.detail;
@@ -1098,11 +1170,13 @@ const settingsManager = (() => {
                 let lastAutosaveError = null;
                 const markDirtyAndDebounceAutosave = () => {
                     isAgentSettingsDirty = true;
+                    const currentRev = ++agentSettingsRevision;
                     updateStateDotIndicator('warning');
                     clearTimeout(agentSettingsAutosaveTimer);
                     agentSettingsAutosaveTimer = setTimeout(async () => {
                         if (!isAgentSettingsDirty || !editingAgentIdInput?.value) return;
                         const targetAgentId = editingAgentIdInput.value;
+                        const saveRevision = agentSettingsRevision;
                         try {
                             console.log('[SettingsManager] Autosaving dirty agent settings for:', targetAgentId);
                             updateStateDotIndicator('ongoing');
@@ -1123,9 +1197,16 @@ const settingsManager = (() => {
                                 return;
                             }
                             if (editingAgentIdInput?.value === targetAgentId) {
-                                isAgentSettingsDirty = false;
                                 lastAutosaveError = null;
-                                updateStateDotIndicator('done');
+                                if (agentSettingsRevision === saveRevision) {
+                                    isAgentSettingsDirty = false;
+                                    updateStateDotIndicator('done');
+                                } else {
+                                    console.log(`[SettingsManager] Autosave finished for rev ${saveRevision}, but dirty state advanced to ${agentSettingsRevision}. Keeping dirty.`);
+                                    updateStateDotIndicator('warning');
+                                    clearTimeout(agentSettingsAutosaveTimer);
+                                    agentSettingsAutosaveTimer = setTimeout(markDirtyAndDebounceAutosave, 500);
+                                }
                             }
                         } catch (err) {
                             console.debug('[SettingsManager] Autosave deferred/error:', err);
@@ -1218,7 +1299,7 @@ const settingsManager = (() => {
             }
 
             if (openModelSelectBtn) {
-                openModelSelectBtn.addEventListener('click', () => handleOpenModelSelect(agentModelInput));
+                openModelSelectBtn.addEventListener('click', () => handleOpenModelSelect(getAgentControl('agentModel') || agentModelInput));
             }
             if (modelSearchInput) {
                 modelSearchInput.addEventListener('input', filterModels);
@@ -1385,9 +1466,8 @@ const settingsManager = (() => {
         },
         handleImportRegex: () => handleImportRegex(),
         triggerAgentSave: async (overrideAgentId) => {
-            // 触发Agent设置保存（不含头像）。override 只能用于验证当前上下文，
-            // 不能把当前共享 DOM 的内容强行写入一个已切走的 Agent。
-            const formAgentId = editingAgentIdInput.value;
+            refreshAgentControls();
+            const formAgentId = editingAgentIdInput?.value;
             const agentId = overrideAgentId || formAgentId;
             if (!agentId) return;
             if (agentId !== formAgentId || (promptManager?.getAgentId?.() && promptManager.getAgentId() !== agentId)) {
@@ -1398,23 +1478,27 @@ const settingsManager = (() => {
             let systemPromptData = {};
             if (promptManager) {
                 await promptManager.saveCurrentModeData();
-                if (editingAgentIdInput.value !== agentId || promptManager.getAgentId?.() !== agentId) {
+                if (editingAgentIdInput?.value !== agentId || promptManager.getAgentId?.() !== agentId) {
                     console.debug(`[SettingsManager] Aborting stale triggerAgentSave after prompt persistence for ${agentId}.`);
                     return { success: false, stale: true };
                 }
 
                 const currentPrompt = await promptManager.getCurrentSystemPrompt();
-                if (editingAgentIdInput.value !== agentId || promptManager.getAgentId?.() !== agentId) {
+                if (editingAgentIdInput?.value !== agentId || promptManager.getAgentId?.() !== agentId) {
                     console.debug(`[SettingsManager] Aborting stale triggerAgentSave after prompt read for ${agentId}.`);
                     return { success: false, stale: true };
                 }
                 systemPromptData.systemPrompt = currentPrompt;
             }
 
+            const currentConfig = refs.currentSelectedItemRef?.get?.()?.config;
+            const resolvedModelInput = getAgentControl('agentModel') || agentModelInput;
+            const resolvedModel = resolvedModelInput ? resolvedModelInput.value.trim() : (currentConfig?.model || 'gemini-pro');
+
             const newConfig = {
-                name: agentNameInput?.value?.trim() || agentId,
+                name: agentNameInput?.value?.trim() || (currentConfig ? currentConfig.name : agentId),
                 ...systemPromptData,
-                model: agentModelInput?.value?.trim() || 'gemini-pro',
+                model: resolvedModel || 'gemini-pro',
                 temperature: parseOptionalNumberInput(agentTemperatureInput, Number.parseFloat),
                 contextTokenLimit: parseOptionalNumberInput(agentContextTokenLimitInput, value => Number.parseInt(value, 10)),
                 maxOutputTokens: parseOptionalNumberInput(agentMaxOutputTokensInput, value => Number.parseInt(value, 10)),
@@ -2194,7 +2278,8 @@ function resolveRegexSlots() {
     }
 
     function buildModelSummary() {
-        return agentModelInput?.value?.trim() || '未选择模型';
+        const resolvedModelInput = getAgentControl('agentModel') || agentModelInput;
+        return resolvedModelInput?.value?.trim() || '未选择模型';
     }
 
     function buildParamsSummary() {
@@ -2253,6 +2338,7 @@ function resolveRegexSlots() {
     }
 
     function setupAgentSettingsSections() {
+        refreshAgentControls();
         sectionControllers.clear();
 
         createSectionController('identity', buildIdentitySummary);
@@ -2281,12 +2367,12 @@ function resolveRegexSlots() {
                 agentTtsRegexPrimaryInput,
                 agentTtsRegexSecondaryInput,
                 agentTtsSpeedSlider,
-                agentModelInput,
+                agentModelInput || getAgentControl('agentModel'),
                 getAgentControl('agentStreamOutputTrue'),
                 getAgentControl('agentStreamOutputFalse'),
                 agentTtsVoicePrimarySelect,
                 agentTtsVoiceSecondarySelect
-            ].forEach(element => bindSummaryRefresh(element, ['input', 'change']));
+            ].filter(Boolean).forEach(element => bindSummaryRefresh(element, ['input', 'change']));
 
             const systemPromptContainer = getAgentControl('systemPromptContainer');
             if (systemPromptContainer && !systemPromptContainer.dataset.summaryRefreshBound) {

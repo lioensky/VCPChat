@@ -52,7 +52,7 @@ window.GroupRenderer = (() => {
         mainRendererElements = dependencies.mainRendererElements; // Restore assignment
         console.log('[GroupRenderer INIT] mainRendererElements assigned in init. Value:', mainRendererElements);
         if (mainRendererElements) {
-            console.log('[GroupRenderer INIT] mainRendererElements.currentChatAgentNameH3 is:', mainRendererElements.currentChatAgentNameH3);
+            console.log('[GroupRenderer INIT] mainRendererElements.currentChatNameH3 is:', mainRendererElements.currentChatNameH3 || mainRendererElements.currentChatAgentNameH3);
             console.log('[GroupRenderer INIT] mainRendererElements.currentAgentSettingsBtn is:', mainRendererElements.currentItemActionBtn); // Note: renderer.js uses currentItemActionBtn for this
         }
         mainRendererFunctions = dependencies.mainRendererFunctions;
@@ -424,7 +424,7 @@ window.GroupRenderer = (() => {
         const groupConfig = await electronAPI.getAgentGroupConfig(groupId);
         if (settingsSurface && !settingsSurface.isCurrent(viewToken)) return;
         if (!groupConfig || groupConfig.error) {
-            alert(`加载群组配置失败: ${groupConfig?.error || '未知错误'}`);
+            uiHelper?.showToastNotification ? uiHelper.showToastNotification(`加载群组配置失败: ${groupConfig?.error || '未知错误'}`, 'error') : console.error(`加载群组配置失败: ${groupConfig?.error || '未知错误'}`);
             settingsSurface?.show?.('prompt', { message: `加载群组 ${groupId} 配置失败。` });
             if (selectAgentPromptForSettingsElementFromRenderer) { // Use direct module-level ref
                 selectAgentPromptForSettingsElementFromRenderer.textContent = `加载群组 ${groupId} 配置失败。`;
@@ -618,14 +618,14 @@ window.GroupRenderer = (() => {
     async function handleSaveGroupSettings(event) {
         event.preventDefault();
         if (!getGroupSettingsElements()) {
-            alert("无法保存群组设置，表单元素未找到。");
+            uiHelper?.showToastNotification ? uiHelper.showToastNotification("无法保存群组设置，表单元素未找到。", 'error') : console.error("无法保存群组设置，表单元素未找到。");
             reportSettingsSaveResult(false, 'missing-form-elements');
             return;
         }
 
         const groupId = getGroupControl('editingGroupId')?.value || currentSelectedItemRef?.get?.()?.id;
         if (!groupId) {
-            alert("无法保存群组设置，群组 ID 未找到。");
+            uiHelper?.showToastNotification ? uiHelper.showToastNotification("无法保存群组设置，群组 ID 未找到。", 'error') : console.error("无法保存群组设置，群组 ID 未找到。");
             reportSettingsSaveResult(false, 'missing-group-id');
             return;
         }
@@ -688,7 +688,7 @@ window.GroupRenderer = (() => {
         };
 
         if (!newConfig.name) {
-            alert("群组名称不能为空！");
+            uiHelper?.showToastNotification ? uiHelper.showToastNotification("群组名称不能为空！", 'warning') : console.warn("群组名称不能为空！");
             reportSettingsSaveResult(false, 'missing-name');
             return;
         }
@@ -698,7 +698,7 @@ window.GroupRenderer = (() => {
             if (uiHelper && typeof uiHelper.showToastNotification === 'function') {
                 uiHelper.showToastNotification(errorMessage, 'error');
             } else {
-                alert(errorMessage);
+                uiHelper?.showToastNotification ? uiHelper.showToastNotification(errorMessage, 'warning') : console.warn(errorMessage);
             }
             if (groupUnifiedModelInput) {
                 groupUnifiedModelInput.focus();
@@ -723,10 +723,10 @@ window.GroupRenderer = (() => {
                     groupAvatarInput.value = '';
                     // Potentially update avatar color if groups also have calculated colors
                 } else {
-                    alert(`保存群组头像失败: ${avatarResult.error}`);
+                    uiHelper?.showToastNotification ? uiHelper.showToastNotification(`保存群组头像失败: ${avatarResult.error}`, 'error') : console.error(`保存群组头像失败: ${avatarResult.error}`);
                 }
             } catch (readError) {
-                alert(`读取群组头像文件失败: ${readError.message}`);
+                uiHelper?.showToastNotification ? uiHelper.showToastNotification(`读取群组头像文件失败: ${readError.message}`, 'error') : console.error(`读取群组头像文件失败: ${readError.message}`);
             }
         }
 
@@ -742,10 +742,9 @@ window.GroupRenderer = (() => {
                 const currentSelected = currentSelectedItemRef.get();
                 if (currentSelected.id === groupId && currentSelected.type === 'group') {
                     currentSelectedItemRef.set({ ...currentSelected, ...result.agentGroup });
-                    if (mainRendererElements && mainRendererElements.currentChatAgentNameH3) {
-                        mainRendererElements.currentChatAgentNameH3.textContent = `与群组 ${result.agentGroup.name} 聊天中`;
-                    } else {
-                        console.warn('[GroupRenderer] mainRendererElements or mainRendererElements.currentChatAgentNameH3 is not available in handleSaveGroupSettings when trying to update chat name.');
+                    const chatHeaderEl = mainRendererElements?.currentChatNameH3 || mainRendererElements?.currentChatAgentNameH3;
+                    if (chatHeaderEl) {
+                        chatHeaderEl.textContent = `与群组 ${result.agentGroup.name} 聊天中`;
                     }
                     messageRenderer.setCurrentItemAvatar(result.agentGroup.avatarUrl);
                     messageRenderer.setCurrentItemAvatarColor(result.agentGroup.avatarCalculatedColor); // Update avatar color
@@ -758,7 +757,7 @@ window.GroupRenderer = (() => {
             } else {
                 reportSettingsSaveResult(false, result.error || 'save-failed');
                 if (saveButton) uiHelper.showSaveFeedback(saveButton, false, "保存失败", "保存群组设置");
-                alert(`保存群组设置失败: ${result.error}`);
+                uiHelper?.showToastNotification ? uiHelper.showToastNotification(`保存群组设置失败: ${result.error}`, 'error') : console.error(`保存群组设置失败: ${result.error}`);
             }
 
             // Update invite buttons based on new mode after saving
@@ -812,10 +811,9 @@ window.GroupRenderer = (() => {
                     if (currentSelected.id === groupId && currentSelected.type === 'group') {
                         currentSelectedItemRef.set({ id: null, type: null, name: null, avatarUrl: null, config: null });
                         currentTopicIdRef.set(null);
-                        if (mainRendererElements && mainRendererElements.currentChatAgentNameH3) {
-                            mainRendererElements.currentChatAgentNameH3.textContent = '选择一个Agent或群组开始聊天';
-                        } else {
-                            console.warn('[GroupRenderer handleDeleteCurrentGroup] mainRendererElements.currentChatAgentNameH3 is not available.');
+                        const chatHeaderEl = mainRendererElements?.currentChatNameH3 || mainRendererElements?.currentChatAgentNameH3;
+                        if (chatHeaderEl) {
+                            chatHeaderEl.textContent = '选择一个Agent或群组开始聊天';
                         }
                         if (messageRenderer) messageRenderer.clearChat();
                         if (mainRendererElements && mainRendererElements.currentAgentSettingsBtn) mainRendererElements.currentAgentSettingsBtn.style.display = 'none';
@@ -852,12 +850,12 @@ window.GroupRenderer = (() => {
                     }
                 } else {
                     reportSettingsDeleteResult(false, { error: result.error || 'unknown-error' });
-                    alert(`删除群组失败: ${result.error}`);
+                    uiHelper?.showToastNotification ? uiHelper.showToastNotification(`删除群组失败: ${result.error}`, 'error') : console.error(`删除群组失败: ${result.error}`);
                 }
         } catch (error) {
             console.error("Error deleting group:", error);
             reportSettingsDeleteResult(false, { error: error.message });
-            alert(`删除群组时出错: ${error.message}`);
+            uiHelper?.showToastNotification ? uiHelper.showToastNotification(`删除群组时出错: ${error.message}`, 'error') : console.error(`删除群组时出错: ${error.message}`);
         }
     }
 
@@ -941,7 +939,7 @@ window.GroupRenderer = (() => {
             if (result.success) {
                 await mainRendererFunctions.loadTopicList(); // Reload topics for current item
             } else {
-                alert(`重命名群组话题失败: ${result.error}`);
+                uiHelper?.showToastNotification ? uiHelper.showToastNotification(`重命名群组话题失败: ${result.error}`, 'error') : console.error(`重命名群组话题失败: ${result.error}`);
             }
         }
     }
@@ -963,7 +961,7 @@ window.GroupRenderer = (() => {
                 }
                 await mainRendererFunctions.loadTopicList();
             } else {
-                alert(`删除群组话题失败: ${result.error}`);
+                uiHelper?.showToastNotification ? uiHelper.showToastNotification(`删除群组话题失败: ${result.error}`, 'error') : console.error(`删除群组话题失败: ${result.error}`);
             }
         }
     }
@@ -1061,7 +1059,7 @@ window.GroupRenderer = (() => {
 
         if (!currentSelected.id || currentSelected.type !== 'group' || !currentTopic) {
             // alert('请先选择一个群组和话题！'); // 使用 uiHelper
-            if (uiHelper && uiHelper.showToastNotification) uiHelper.showToastNotification('请先选择一个群组和话题！', 'error'); else alert('请先选择一个群组和话题！');
+            if (uiHelper && uiHelper.showToastNotification) uiHelper.showToastNotification('请先选择一个群组和话题！', 'error'); else console.warn('请先选择一个群组和话题！');
             return;
         }
 
@@ -1073,7 +1071,7 @@ window.GroupRenderer = (() => {
         const currentGlobalSettings = globalSettings.get(); // 获取实际的设置对象
         if (!currentGlobalSettings.vcpServerUrl) {
             // alert('请先在全局设置中配置VCP服务器URL！'); // 使用 uiHelper
-            if (uiHelper && uiHelper.showToastNotification) uiHelper.showToastNotification('请先在全局设置中配置VCP服务器URL！', 'error'); else alert('请先在全局设置中配置VCP服务器URL！');
+            if (uiHelper && uiHelper.showToastNotification) uiHelper.showToastNotification('请先在全局设置中配置VCP服务器URL！', 'error'); else console.warn('请先在全局设置中配置VCP服务器URL！');
             if (uiHelper && uiHelper.openModal) uiHelper.openModal('globalSettingsModal');
             return;
         }
@@ -1247,7 +1245,7 @@ window.GroupRenderer = (() => {
         try {
             const currentGlobalSettings = globalSettings.get();
             if (!currentGlobalSettings.vcpServerUrl) {
-                if (uiHelper && uiHelper.showToastNotification) uiHelper.showToastNotification('请先在全局设置中配置VCP服务器URL！', 'error'); else alert('请先在全局设置中配置VCP服务器URL！');
+                if (uiHelper && uiHelper.showToastNotification) uiHelper.showToastNotification('请先在全局设置中配置VCP服务器URL！', 'error'); else console.warn('请先在全局设置中配置VCP服务器URL！');
                 if (uiHelper && uiHelper.openModal) uiHelper.openModal('globalSettingsModal');
                 return;
             }
@@ -1263,7 +1261,7 @@ window.GroupRenderer = (() => {
             if (uiHelper && uiHelper.showToastNotification) {
                 uiHelper.showToastNotification(`邀请 ${agentName} 发言失败: ${error.message}`, 'error');
             } else {
-                alert(`邀请 ${agentName} 发言失败: ${error.message}`);
+                uiHelper?.showToastNotification ? uiHelper.showToastNotification(`邀请 ${agentName} 发言失败: ${error.message}`, 'error') : console.error(`邀请 ${agentName} 发言失败: ${error.message}`);
             }
         }
     }
