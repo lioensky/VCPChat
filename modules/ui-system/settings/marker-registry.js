@@ -94,6 +94,7 @@ const MARKERS = Object.freeze({
     vcpTypedAgentModelPicker: { owner: 'settings/agent-model-picker.js', cleanup: 'scope-owned' },
     vcpTypedGroupModelPicker: { owner: 'settings/agent-model-picker.js', cleanup: 'scope-owned' },
     vcpTypedTopicSummaryModelPicker: { owner: 'settings/agent-model-picker.js', cleanup: 'scope-owned' },
+    vcpTypedVoicePicker: { owner: 'settings/agent-voice-picker.js', cleanup: 'scope-owned' },
     vcpSettingsSlot: { owner: 'settings-sidebar-slots.js', cleanup: 'scope-owned' },
     schemaRendered: { owner: 'settings/group-slots.js', cleanup: 'persistent' },
     agentId: { owner: 'settings/group-slots.js', cleanup: 'persistent' },

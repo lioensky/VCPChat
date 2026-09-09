@@ -195,10 +195,19 @@ const settingsManager = (() => {
                 return;
             }
 
+            // Quiescent Unmount discipline: commit active input value before switching agent context
+            const activeEl = document.activeElement;
+            if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA') && activeEl.closest('#agentSettingsForm')) {
+                try { activeEl.blur(); } catch (_) {}
+            }
+
             // Check for uncommitted dirty edits on the previous agent before switching context
             if (isAgentSettingsDirty && editingAgentIdInput?.value && editingAgentIdInput.value !== agentId) {
                 const prevId = editingAgentIdInput.value;
-                clearTimeout(agentSettingsAutosaveTimer);
+                if (agentSettingsAutosaveTimer) {
+                    clearTimeout(agentSettingsAutosaveTimer);
+                    agentSettingsAutosaveTimer = null;
+                }
                 let flushResult = null;
                 try {
                     console.log(`[SettingsManager] Flushing uncommitted dirty changes for previous agent ${prevId} before loading ${agentId}`);
@@ -1349,6 +1358,12 @@ const settingsManager = (() => {
         // narrow commands so no presentation owner needs to reach into the
         // regex DOM or duplicate the modal/import flow.
         openRegexModal: (ruleData = null) => openRegexModal(ruleData),
+        cancelAutosave: () => {
+            if (agentSettingsAutosaveTimer) {
+                clearTimeout(agentSettingsAutosaveTimer);
+                agentSettingsAutosaveTimer = null;
+            }
+        },
         handleImportRegex: () => handleImportRegex(),
         triggerAgentSave: async (overrideAgentId) => {
             // 触发Agent设置保存（不含头像）。override 只能用于验证当前上下文，
@@ -2063,7 +2078,11 @@ function resolveRegexSlots() {
             toggleBtn,
             buildSummary,
             setCollapsed(collapsed) {
-                this.container.classList.toggle('collapsed', !!collapsed);
+                const isCollapsed = !!collapsed;
+                this.container.classList.toggle('collapsed', isCollapsed);
+                const isExpanded = !isCollapsed;
+                this.header?.setAttribute('aria-expanded', String(isExpanded));
+                this.toggleBtn?.setAttribute('aria-expanded', String(isExpanded));
             }
         };
 

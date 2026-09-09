@@ -3,6 +3,7 @@
 // Launches both VCPChat-upstream (Reference Machine A) and vcpchat-exp-schema (Candidate Machine B)
 // in independent sandboxes, extracts full computed style diffs, DOM bounding boxes, and asserts visual parity.
 
+import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp, writeFile } from 'node:fs/promises';
@@ -218,12 +219,50 @@ async function runParity() {
         console.log(`[COMPARE] Upstream node count: ${geoA.count}, Candidate node count: ${geoB.count}`);
         console.log(`[COMPARE] Full snapshots written to ${outDir}`);
 
+        // Milestone 1 assertions: verify surface element presence and core controls parity
+        assert.ok(geoA.count > 0, 'Upstream instance must render surface elements');
+        assert.ok(geoB.count > 0, 'Candidate schema instance must render surface elements');
+
+        const criticalIds = [
+            'agentNameInput',
+            'agentModel',
+            'agentTemperature',
+            'agentContextTokenLimit',
+            'agentMaxOutputTokens',
+            'agentTtsSpeed',
+            'ttsSpeedValue',
+            'agentAvatarBorderColor',
+            'agentNameTextColor',
+            'deleteAgentBtn',
+        ];
+        const idsA = new Set(geoA.elements.map(e => e.id).filter(Boolean));
+        const idsB = new Set(geoB.elements.map(e => e.id).filter(Boolean));
+        for (const id of criticalIds) {
+            assert.ok(idsA.has(id), `Upstream must contain critical element #${id}`);
+            assert.ok(idsB.has(id), `Candidate schema must preserve critical element #${id}`);
+        }
+
         return { success: true, countA: geoA.count, countB: geoB.count, outDir };
     } finally {
-        if (upstream?.browser) await upstream.browser.close().catch(() => {});
-        if (candidate?.browser) await candidate.browser.close().catch(() => {});
-        if (upstream?.child) upstream.child.kill('SIGKILL');
-        if (candidate?.child) candidate.child.kill('SIGKILL');
+        const closeBrowser = async (b) => {
+            if (!b) return;
+            try {
+                await Promise.race([
+                    b.close(),
+                    new Promise(resolve => setTimeout(resolve, 3000)),
+                ]);
+            } catch (_) {}
+        };
+        await Promise.allSettled([
+            closeBrowser(upstream?.browser),
+            closeBrowser(candidate?.browser),
+        ]);
+        if (upstream?.child) {
+            try { upstream.child.kill('SIGKILL'); } catch (_) {}
+        }
+        if (candidate?.child) {
+            try { candidate.child.kill('SIGKILL'); } catch (_) {}
+        }
     }
 }
 

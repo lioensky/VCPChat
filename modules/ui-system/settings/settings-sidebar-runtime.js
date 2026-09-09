@@ -41,6 +41,9 @@ function mountSettingsSidebarForm(form) {
 
 function unmountSettingsSidebarForm(form) {
     if (!form) return;
+    try {
+        globalThis.window?.settingsManager?.cancelAutosave?.();
+    } catch (_) {}
     const mounted = mountedSlots.get(form);
     if (mounted?.slots) {
         mounted.slots.forEach(slot => {

@@ -35,6 +35,11 @@ import {
     cleanupDisconnectedAgentModelPickers,
     releaseAllAgentModelPickers,
 } from './settings/agent-model-picker.js';
+import {
+    mountTypedAgentVoicePicker,
+    cleanupDisconnectedAgentVoicePickers,
+    releaseAllAgentVoicePickers,
+} from './settings/agent-voice-picker.js';
 import { addTypedNetworkPathInput, ensureTypedSettingsService, ensureRustAssistantUiService, ensureForumConfigUiService, ensureAssistantRuntimeUiService, mountTypedSettingsConsumer, mountTypedForumFieldOwner, mountTypedFieldOwner, flushTypedOwners, flushTypedForumFields, teardownTypedOwners, disposeTypedSettings } from './typed-field-owners.js';
 
 // Per-modal shell state is keyed by modal root so teardown can restore the
@@ -831,13 +836,17 @@ function refresh() {
     ensurePresentationScope();
     cleanupDisconnectedControllers();
     cleanupDisconnectedAgentModelPickers();
+    cleanupDisconnectedAgentVoicePickers();
     mountGlobalSettingsEntryButton();
     const globalSettingsModal = syncGlobalSettingsHost();
     mountGlobalSettingsPathAction(globalSettingsModal);
     if (shouldEnhanceSidebarSettings()) {
         document.querySelectorAll('#agentSettingsForm, #groupSettingsForm').forEach(mountSettingsSidebarForm);
         const agentForm = document.getElementById('agentSettingsForm');
-        if (agentForm) mountTypedAgentModelPicker(agentForm);
+        if (agentForm) {
+            mountTypedAgentModelPicker(agentForm);
+            mountTypedAgentVoicePicker(agentForm);
+        }
         const groupForm = document.getElementById('groupSettingsForm');
         if (groupForm) mountTypedGroupModelPicker(groupForm);
     }
@@ -874,6 +883,7 @@ async function teardown() {
     // has quiesced; a failed close must leave the surface retryable.
     await releaseAllControllers();
     releaseAllAgentModelPickers();
+    await releaseAllAgentVoicePickers();
     if (scope) {
         try { await scope.dispose('settings-presentation-teardown'); }
         catch (error) { console.error('[VCPUI SettingsBridge] Failed to dispose presentation:', error); }

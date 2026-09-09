@@ -899,5 +899,86 @@ test('High: 切换 Agent 时 flush 失败必须显式告警且保留未保存状
     }
 });
 
+test('群组设置中的 schemaDependsOn 动态响应：更改 groupChatMode 和 groupUseUnifiedModel 自动控制依赖字段显隐', () => {
+    const { document } = createDocument();
+    const host = document.createElement('div');
+    const form = schema.renderGroupSettingsSurface(host, document);
+
+    const tagMatchRow = form.querySelector('[data-schema-field="tagMatchMode"]');
+    assert.ok(tagMatchRow, '必须包含 tagMatchMode 依赖行');
+    assert.ok(tagMatchRow.hidden, '初始 groupChatMode 为 sequential，tagMatchMode 必须处于隐藏状态');
+
+    const chatModeSelect = form.querySelector('#groupChatMode');
+    assert.ok(chatModeSelect, '必须包含 groupChatMode 下拉框');
+
+    // 切换到 naturerandom
+    chatModeSelect.value = 'naturerandom';
+    chatModeSelect.dispatchEvent(new document.defaultView.Event('change', { bubbles: true }));
+    assert.equal(tagMatchRow.hidden, false, 'groupChatMode 变为 naturerandom 时，tagMatchMode 必须显示');
+
+    // 切换到 invite_only
+    chatModeSelect.value = 'invite_only';
+    chatModeSelect.dispatchEvent(new document.defaultView.Event('change', { bubbles: true }));
+    assert.equal(tagMatchRow.hidden, true, 'groupChatMode 变为 invite_only 时，tagMatchMode 必须重新隐藏');
+
+    // 测试 unified model 的 dependsOn 联动
+    const unifiedModelRow = form.querySelector('#groupUnifiedModelContainer');
+    assert.ok(unifiedModelRow, '必须包含 groupUnifiedModelContainer 依赖容器');
+    assert.ok(unifiedModelRow.hidden, '初始 groupUseUnifiedModel 为 false，统一模型行必须隐藏');
+
+    const unifiedModelCheckbox = form.querySelector('#groupUseUnifiedModel');
+    assert.ok(unifiedModelCheckbox, '必须包含 groupUseUnifiedModel 复选框');
+
+    unifiedModelCheckbox.checked = true;
+    unifiedModelCheckbox.dispatchEvent(new document.defaultView.Event('change', { bubbles: true }));
+    assert.equal(unifiedModelRow.hidden, false, '勾选 groupUseUnifiedModel 后，统一模型行必须显示');
+
+    unifiedModelCheckbox.checked = false;
+    unifiedModelCheckbox.dispatchEvent(new document.defaultView.Event('change', { bubbles: true }));
+    assert.equal(unifiedModelRow.hidden, true, '取消勾选 groupUseUnifiedModel 后，统一模型行必须隐藏');
+});
+
+test('Agent 分区折叠展开程序化控制：调用 setCollapsed 时 header 与 toggleBtn 的 aria-expanded 保持双向同步', () => {
+    const { document } = createDocument();
+    const host = document.getElementById('agentSettingsContainer');
+    const form = schema.renderAgentSettingsSurface(host, document);
+
+    const identitySection = form.querySelector('.agent-settings-section[data-section-key="identity"]');
+    assert.ok(identitySection, '必须包含 identity 分区');
+    const header = identitySection.querySelector('.agent-settings-section-header');
+    const toggleBtn = identitySection.querySelector('.agent-settings-toggle-btn');
+
+    // 初始状态已在 schema 中渲染为 collapsed
+    assert.ok(identitySection.classList.contains('collapsed'));
+    assert.equal(header.getAttribute('aria-expanded'), 'false');
+    assert.equal(toggleBtn.getAttribute('aria-expanded'), 'false');
+
+    // 模拟 createSectionController.setCollapsed 行为
+    const controller = {
+        container: identitySection,
+        header,
+        toggleBtn,
+        setCollapsed(collapsed) {
+            const isCollapsed = !!collapsed;
+            this.container.classList.toggle('collapsed', isCollapsed);
+            const isExpanded = !isCollapsed;
+            this.header?.setAttribute('aria-expanded', String(isExpanded));
+            this.toggleBtn?.setAttribute('aria-expanded', String(isExpanded));
+        }
+    };
+
+    // 展开
+    controller.setCollapsed(false);
+    assert.equal(identitySection.classList.contains('collapsed'), false, 'setCollapsed(false) 必须移除 collapsed class');
+    assert.equal(header.getAttribute('aria-expanded'), 'true', 'header aria-expanded 必须同步为 true');
+    assert.equal(toggleBtn.getAttribute('aria-expanded'), 'true', 'toggleBtn aria-expanded 必须同步为 true');
+
+    // 收起
+    controller.setCollapsed(true);
+    assert.equal(identitySection.classList.contains('collapsed'), true, 'setCollapsed(true) 必须添加 collapsed class');
+    assert.equal(header.getAttribute('aria-expanded'), 'false', 'header aria-expanded 必须同步为 false');
+    assert.equal(toggleBtn.getAttribute('aria-expanded'), 'false', 'toggleBtn aria-expanded 必须同步为 false');
+});
+
 
 

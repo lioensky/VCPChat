@@ -18,6 +18,9 @@ html .vcp-ui-scope :is(.vcp-settings-schema-surface, .settings-header-bar, .invi
     --vcp-settings-muted: var(--vcp-ui-text-2, var(--secondary-text, var(--vcp-ui-text-2)));
     --vcp-settings-accent: var(--vcp-ui-accent, var(--highlight-text, var(--vcp-ui-accent)));
     --vcp-settings-danger: var(--vcp-ui-danger, var(--danger-color, var(--vcp-ui-danger)));
+    --vcp-surface-tertiary: var(--vcp-ui-bg-2, var(--vcp-ui-bg-tertiary, var(--tertiary-bg, var(--vcp-ui-fill-1))));
+    --vcp-border-subtle: var(--vcp-settings-border, var(--vcp-ui-border));
+    --vcp-text-secondary: var(--vcp-settings-muted, var(--vcp-ui-text-secondary, var(--secondary-text)));
 
     --vcp-settings-font-micro: var(--vcp-ui-font-micro, 10px);
     --vcp-settings-font-badge: 9px;
@@ -39,6 +42,9 @@ html:is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope #tabContentSetting
     --vcp-settings-muted: var(--secondary-text, var(--vcp-ui-text-2));
     --vcp-settings-accent: var(--highlight-text, var(--vcp-ui-accent));
     --vcp-settings-danger: var(--danger-color, var(--vcp-ui-danger));
+    --vcp-surface-tertiary: var(--secondary-bg, var(--vcp-ui-fill-1));
+    --vcp-border-subtle: var(--border-color, var(--vcp-ui-border));
+    --vcp-text-secondary: var(--secondary-text, var(--vcp-ui-text-2));
 }
 
 /* Sidebar shell geometry has one owner. The scroll container supplies the
@@ -73,6 +79,19 @@ html .vcp-ui-scope #tabContentSettings > .vcp-settings-schema-surface {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
+}
+
+html .vcp-ui-scope #tabContentSettings #selectAgentPromptForSettings {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 32px 16px;
+    margin: auto 0;
+    color: var(--vcp-settings-muted, var(--vcp-ui-text-2, var(--secondary-text)));
+    font-size: var(--vcp-settings-font-helper, 13px);
+    line-height: 1.5;
+    user-select: none;
 }
 
 html .vcp-ui-scope .vcp-settings-schema-surface[hidden],
@@ -1445,6 +1464,121 @@ html .vcp-ui-scope .vcp-settings-schema-surface .model-input-container:has(#refr
     padding-right: 28px;
 }
 
+html .vcp-ui-scope .vcp-settings-schema-surface select.vcp-tts-voice-native-select {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    clip: rect(0, 0, 0, 0);
+    overflow: hidden;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .vcp-tts-voice-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+    height: 30px;
+    min-height: 30px;
+    line-height: 28px;
+    padding: 0 10px;
+    border: 0.5px solid var(--vcp-settings-border);
+    border-radius: var(--vcp-settings-radius, 8px);
+    background: var(--vcp-settings-input);
+    color: var(--vcp-settings-text);
+    font-family: inherit;
+    font-size: var(--vcp-settings-font-caption);
+    box-sizing: border-box;
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .vcp-tts-voice-trigger:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--vcp-settings-text) 5%, var(--vcp-settings-input));
+    border-color: color-mix(in srgb, var(--highlight-text) 40%, var(--vcp-settings-border));
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .vcp-tts-voice-trigger:focus-visible {
+    outline: none;
+    border-color: var(--highlight-text);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--highlight-text) 25%, transparent);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .vcp-tts-voice-trigger:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .vcp-tts-voice-trigger-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .vcp-tts-voice-trigger-icon {
+    flex: 0 0 14px;
+    width: 14px;
+    height: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--vcp-settings-dim);
+    transition: transform 0.18s ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .vcp-tts-voice-trigger[aria-expanded="true"] .vcp-tts-voice-trigger-icon {
+    transform: rotate(180deg);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .model-input-container:has(#refreshTtsModelsBtn) > .vcp-tts-voice-trigger {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: auto;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section:has(.vcp-tts-voice-trigger[aria-expanded="true"]) {
+    z-index: 20;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section:not(.collapsed):has(.vcp-tts-voice-trigger[aria-expanded="true"]) .agent-settings-section-content,
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section:not(.collapsed):has(.vcp-tts-voice-trigger[aria-expanded="true"]) .agent-settings-section-content > * {
+    overflow: visible;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .model-input-container:has(.vcp-tts-voice-trigger[aria-expanded="true"]) {
+    z-index: 30;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .model-input-container .vcp-tts-voice-popup-card {
+    position: absolute;
+    top: calc(100% + 4px);
+    bottom: auto;
+    left: 0;
+    right: 0;
+    width: 100%;
+    min-width: 220px;
+    max-width: 100%;
+    max-height: 280px;
+    z-index: 100;
+    box-sizing: border-box;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .model-input-container .vcp-tts-voice-popup-card.vcp-tts-voice-popup-above {
+    top: auto;
+    bottom: calc(100% + 4px);
+}
+
+
 html .vcp-ui-scope .vcp-settings-schema-surface .model-input-container > #refreshTtsModelsBtn {
     position: static;
     transform: none;
@@ -1781,12 +1915,12 @@ html .vcp-ui-scope .vcp-settings-schema-surface .slider-container #ttsSpeedValue
     align-items: center;
     justify-content: center;
     min-width: 36px;
-    height: 22px;
-    padding: 0 7px;
+    height: 24px;
+    padding: 0 8px;
     border-radius: 999px;
-    color: var(--vcp-settings-muted, var(--secondary-text));
-    background: var(--vcp-settings-input, var(--input-bg, var(--vcp-ui-fill-1)));
-    border: 0.5px solid var(--vcp-settings-border, var(--border-color));
+    color: var(--vcp-text-secondary, var(--vcp-settings-muted, var(--secondary-text)));
+    background: var(--vcp-surface-tertiary, var(--vcp-settings-input, var(--input-bg, var(--vcp-ui-fill-1))));
+    border: 0.5px solid var(--vcp-border-subtle, var(--vcp-settings-border, var(--border-color)));
     font-size: var(--vcp-settings-font-xs, 11px);
     font-weight: 600;
     line-height: 1;

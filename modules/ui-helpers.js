@@ -997,21 +997,34 @@
     };
 
     uiHelperFunctions.filterAgentList = function(searchTerm) {
-        const lowerCaseSearchTerm = searchTerm.toLowerCase().trim();
+        const lowerCaseSearchTerm = String(searchTerm ?? '').toLowerCase().trim();
         const itemListUl = document.getElementById('agentList'); // Renamed from agentListUl to itemListUl
         if (!itemListUl) return;
         const items = itemListUl.querySelectorAll('li'); // Get all list items
-    
+
+        if (!lowerCaseSearchTerm) {
+            items.forEach(item => { item.style.display = ''; });
+            return;
+        }
+
+        const terms = lowerCaseSearchTerm.split(/\s+/).filter(Boolean);
         items.forEach(item => {
             const nameElement = item.querySelector('.agent-name');
-            if (nameElement) {
-                const name = nameElement.textContent.toLowerCase();
-                if (name.includes(lowerCaseSearchTerm)) {
-                    item.style.display = ''; // Reset to default display style from CSS
-                } else {
-                    item.style.display = 'none';
+            if (!nameElement) return;
+            const name = (nameElement.textContent || '').toLowerCase();
+
+            // Check if all search terms match the name (via substring or ordered-subsequence)
+            const allMatch = terms.every(term => {
+                if (name.includes(term)) return true;
+                // Ordered subsequence matching
+                let termIdx = 0;
+                for (let i = 0; i < name.length && termIdx < term.length; i++) {
+                    if (name[i] === term[termIdx]) termIdx++;
                 }
-            }
+                return termIdx === term.length;
+            });
+
+            item.style.display = allMatch ? '' : 'none';
         });
     };
 
