@@ -1338,7 +1338,7 @@ const settingsManager = (() => {
             }
         },
         prewarmPromptManager: async () => {
-            const systemPromptContainer = document.getElementById('systemPromptContainer');
+            const systemPromptContainer = getAgentControl('systemPromptContainer');
             if (systemPromptContainer && window.PromptManager && !promptManager) {
                 console.log('[SettingsManager] Pre-warming PromptManager...');
                 promptManager = new window.PromptManager();
@@ -1462,12 +1462,15 @@ const settingsManager = (() => {
                 agentSettingsAutosaveTimer = null;
             }
             const targetAgentId = editingAgentIdInput.value;
+            if (window.settingsManager) window.settingsManager.isFlushing = true;
             try {
                 const saveResult = await saveCurrentAgentSettings();
                 return saveResult;
             } catch (err) {
                 console.warn(`[SettingsManager] Failed to flush pending save for ${targetAgentId}:`, err);
                 return { success: false, error: err?.message || String(err) };
+            } finally {
+                if (window.settingsManager) window.settingsManager.isFlushing = false;
             }
         },
 
@@ -2200,7 +2203,7 @@ function resolveRegexSlots() {
         const maxOutput = agentMaxOutputTokensInput?.value || '未设置';
         const topP = agentTopPInput?.value || '未设置';
         const topK = agentTopKInput?.value || '未设置';
-        const isStream = document.getElementById('agentStreamOutputTrue')?.checked;
+        const isStream = getAgentControl('agentStreamOutputTrue')?.checked;
 
         const formatTokens = val => {
             const num = parseInt(val, 10);
@@ -2279,13 +2282,13 @@ function resolveRegexSlots() {
                 agentTtsRegexSecondaryInput,
                 agentTtsSpeedSlider,
                 agentModelInput,
-                document.getElementById('agentStreamOutputTrue'),
-                document.getElementById('agentStreamOutputFalse'),
+                getAgentControl('agentStreamOutputTrue'),
+                getAgentControl('agentStreamOutputFalse'),
                 agentTtsVoicePrimarySelect,
                 agentTtsVoiceSecondarySelect
             ].forEach(element => bindSummaryRefresh(element, ['input', 'change']));
 
-            const systemPromptContainer = document.getElementById('systemPromptContainer');
+            const systemPromptContainer = getAgentControl('systemPromptContainer');
             if (systemPromptContainer && !systemPromptContainer.dataset.summaryRefreshBound) {
                 const schedulePromptRefresh = () => {
                     window.setTimeout(() => updateSectionSummary('prompt'), 0);
@@ -2459,7 +2462,7 @@ function resolveRegexSlots() {
      * 处理重置头像颜色按钮点击
      */
     function handleResetAvatarColors() {
-        const agentAvatarPreview = document.getElementById('agentAvatarPreview');
+        const agentAvatarPreview = getAgentControl('agentAvatarPreview');
 
         if (!agentAvatarPreview || !agentAvatarPreview.src || agentAvatarPreview.src === '#' || agentAvatarPreview.src.includes('default_avatar.png')) {
             uiHelper.showToastNotification('请先上传头像后再重置颜色', 'warning');

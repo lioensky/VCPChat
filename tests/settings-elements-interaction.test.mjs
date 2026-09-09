@@ -1367,7 +1367,8 @@ test('P1 对抗性防线: 群组设置在脱水态下的 DOM 解析与安全删�
                 deletedGroupId = id;
                 return { success: true };
             },
-            getAgentGroupConfig: async () => ({ name: '脱水测试群组', members: [] })
+            getAgentGroupConfig: async () => ({ name: '脱水测试群组', members: [] }),
+            getAgents: async () => []
         };
 
         gr.init({

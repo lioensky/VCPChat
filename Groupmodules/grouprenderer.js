@@ -438,18 +438,9 @@ window.GroupRenderer = (() => {
         // references only for text compatibility with upstream callers.
         settingsSurface?.show?.('group', { id: groupId });
 
-        // Use the specific module-level reference for selectedItemNameForSettingsElementFromRenderer
-        if (selectedItemNameForSettingsElementFromRenderer) {
-            selectedItemNameForSettingsElementFromRenderer.textContent = groupConfig.name || groupId;
-        } else {
-            console.error('[GroupRenderer] selectedItemNameForSettingsElementFromRenderer is undefined, cannot set textContent.');
-            const fallbackElement = document.getElementById('selectedAgentNameForSettings'); // Fallback
-            if (fallbackElement) {
-                console.warn('[GroupRenderer] Fallback: Setting selectedAgentNameForSettings using direct getElementById.');
-                fallbackElement.textContent = groupConfig.name || groupId;
-            } else {
-                console.error('[GroupRenderer] CRITICAL: selectedAgentNameForSettings element not found even with direct getElementById.');
-            }
+        const titleSpan = selectedItemNameForSettingsElementFromRenderer || document.getElementById('selectedItemNameForSettings') || document.getElementById('selectedAgentNameForSettings');
+        if (titleSpan) {
+            titleSpan.textContent = groupConfig.name || groupId;
         }
         const editingGroupIdInput = getGroupControl('editingGroupId');
         if (editingGroupIdInput) editingGroupIdInput.value = groupId;
@@ -759,18 +750,9 @@ window.GroupRenderer = (() => {
                     messageRenderer.setCurrentItemAvatar(result.agentGroup.avatarUrl);
                     messageRenderer.setCurrentItemAvatarColor(result.agentGroup.avatarCalculatedColor); // Update avatar color
                 }
-                // Use the specific module-level reference for selectedItemNameForSettingsElementFromRenderer
-                if (selectedItemNameForSettingsElementFromRenderer) {
-                    selectedItemNameForSettingsElementFromRenderer.textContent = result.agentGroup.name;
-                } else {
-                    console.error('[GroupRenderer] selectedItemNameForSettingsElementFromRenderer is undefined in handleSaveGroupSettings, cannot set textContent.');
-                    const fallbackElement = document.getElementById('selectedAgentNameForSettings'); // Fallback
-                    if (fallbackElement) {
-                        console.warn('[GroupRenderer] Fallback: Setting selectedAgentNameForSettings using direct getElementById in handleSaveGroupSettings.');
-                        fallbackElement.textContent = result.agentGroup.name;
-                    } else {
-                        console.error('[GroupRenderer] CRITICAL: selectedAgentNameForSettings element not found even with direct getElementById in handleSaveGroupSettings.');
-                    }
+                const titleSpan = selectedItemNameForSettingsElementFromRenderer || document.getElementById('selectedItemNameForSettings') || document.getElementById('selectedAgentNameForSettings');
+                if (titleSpan) {
+                    titleSpan.textContent = result.agentGroup.name;
                 }
                 // uiHelper.showToastNotification(`群组 "${result.agentGroup.name}" 设置已保存。`); // Removed successful save notification
             } else {
