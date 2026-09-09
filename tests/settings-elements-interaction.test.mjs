@@ -52,6 +52,7 @@ test('schema-rendered Agent surface exposes every business anchor and all contro
         'regexToggleHeader', 'regexToggleBtn', 'regexSummary', 'regexContent', 'stripRegexListContainer'
     ];
     for (const id of expectedIds) assert.ok(document.getElementById(id), `schema surface missing #${id}`);
+    assert.ok(document.getElementById('ttsSpeedValue')?.classList.contains('slider-value-pill'), 'ttsSpeedValue 必须包含 slider-value-pill 类');
 
     const sections = [...form.querySelectorAll('[data-schema-section][data-section-key]')];
     assert.deepEqual(sections.map(section => section.dataset.sectionKey), ['identity', 'prompt', 'model', 'params', 'tts', 'regex']);
@@ -384,6 +385,10 @@ test('侧边栏助手与群聊表单控件圆角与 8px 规范及连续曲率对
     assert.match(sidebarCss, /@supports\s*\(corner-shape:\s*superellipse\(1\.5\)\)/, '必须包含连续超椭圆 corner-shape 优雅降级支持');
     assert.match(sidebarCss, /corner-shape:\s*superellipse\(1\.5\);/, '控件必须配置 superellipse(1.5) 曲率');
     assert.match(sidebarCss, /corner-shape:\s*round;/, '正圆指示器与头像必须豁免超椭圆形变');
+
+    // 6. 语速滑杆数值显示胶囊（Pill）规范对齐
+    assert.match(sidebarCss, /#ttsSpeedValue[\s\S]*?border-radius:\s*999px;/, '语速滑杆数值显示必须对齐 999px 胶囊圆角');
+    assert.match(sidebarCss, /#ttsSpeedValue[\s\S]*?display:\s*inline-flex;/, '语速滑杆数值显示必须为 inline-flex 居中胶囊');
 });
 
 test('正则规则列表与操作按钮规范对齐测试：幽灵态操作按钮、展开隐藏摘要框与并排等宽动作行', () => {

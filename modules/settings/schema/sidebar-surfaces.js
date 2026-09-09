@@ -321,7 +321,7 @@ function renderAgentTts(doc) {
     const speed = renderField(doc, agentFields[11]);
     const speedInput = speed.querySelector('input');
     speedInput?.setAttribute('value', '1.0');
-    const speedValue = el(doc, 'span', { id: 'ttsSpeedValue' }, '1.0');
+    const speedValue = el(doc, 'span', { id: 'ttsSpeedValue', class: 'slider-value-pill' }, '1.0');
     const syncSpeedDisplay = () => {
         const val = parseFloat(speedInput.value);
         speedValue.textContent = Number.isFinite(val) ? val.toFixed(1) : speedInput.value;

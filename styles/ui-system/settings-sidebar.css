@@ -1777,13 +1777,30 @@ html .vcp-ui-scope .vcp-settings-schema-surface .slider-container input[type="ra
 }
 
 html .vcp-ui-scope .vcp-settings-schema-surface .slider-container #ttsSpeedValue {
-    min-width: 2.5em;
-    color: var(--secondary-text);
-    font-size: var(--vcp-settings-font-sub);
-    font-weight: 500;
-    line-height: 18px;
-    text-align: right;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 36px;
+    height: 22px;
+    padding: 0 7px;
+    border-radius: 999px;
+    color: var(--vcp-settings-muted, var(--secondary-text));
+    background: var(--vcp-settings-input, var(--input-bg, var(--vcp-ui-fill-1)));
+    border: 0.5px solid var(--vcp-settings-border, var(--border-color));
+    font-size: var(--vcp-settings-font-xs, 11px);
+    font-weight: 600;
+    line-height: 1;
+    text-align: center;
     font-variant-numeric: tabular-nums;
+    box-sizing: border-box;
+    user-select: none;
+    transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .slider-container:hover #ttsSpeedValue,
+html .vcp-ui-scope .vcp-settings-schema-surface .slider-container:focus-within #ttsSpeedValue {
+    border-color: color-mix(in srgb, var(--highlight-text) 45%, var(--vcp-settings-border));
+    color: var(--vcp-settings-text, var(--primary-text));
 }
 
 html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-heading {
@@ -2939,7 +2956,7 @@ html .vcp-ui-scope .vcp-settings-schema-surface .btn-add-regex.btn-add-regex-sec
         corner-shape: superellipse(1.5);
     }
 
-    html .vcp-ui-scope #tabContentSettings :is(.round, .slider.round, .avatar-upload-overlay, img.avatar, .agent-avatar-display, .group-avatar-display, .vcp-settings-info-badge, .badge, [style*="border-radius: 50%"], [style*="border-radius: 999px"]) {
+    html .vcp-ui-scope #tabContentSettings :is(.round, .slider.round, .avatar-upload-overlay, img.avatar, .agent-avatar-display, .group-avatar-display, .vcp-settings-info-badge, .badge, #ttsSpeedValue, .slider-value-pill, [style*="border-radius: 50%"], [style*="border-radius: 999px"]) {
         corner-shape: round;
     }
 }
