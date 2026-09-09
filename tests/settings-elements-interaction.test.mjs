@@ -590,22 +590,41 @@ test('Medium: settings-sidebar-runtime mountedSlots 随 scope 销毁或显式 un
     globalThis.document = dom.window.document;
     globalThis.window = dom.window;
 
+    let setPromptCalls = 0;
+    dom.window.settingsManager = {
+        getTtsDirectorPrompts: () => [],
+        setTtsDirectorPrompts: () => { setPromptCalls++; },
+        getTtsDirectorTemplate: () => 'template'
+    };
+
     try {
         const form = dom.window.document.getElementById('agentSettingsForm');
+        const input = dom.window.document.getElementById('agentTtsDirectorPromptInput');
+        const addBtn = dom.window.document.getElementById('addAgentTtsDirectorPromptBtn');
 
         // 1. 首次挂载
         const m1 = mountSettingsSidebarForm(form);
         assert.ok(m1, '必须返回挂载对象');
         assert.equal(m1.slots.length, 1, '必须挂载 MimoDirectorSlot');
 
+        // 点击触发 1 次
+        input.value = 'prompt 1';
+        addBtn.click();
+        assert.equal(setPromptCalls, 1, '首次挂载点击应触发 1 次');
+
         // 2. 重复调用命中缓存
         const m2 = mountSettingsSidebarForm(form);
         assert.equal(m1, m2, '相同 form 在 scope 活跃期间必须命中缓存');
 
-        // 3. 显式 unmount
+        // 3. 显式 unmount（释放 slot 与 DOM 监听）
         unmountSettingsSidebarForm(form);
         const m3 = mountSettingsSidebarForm(form);
         assert.notEqual(m1, m3, 'unmount 后重新 mount 必须生成新实例');
+
+        // 重新挂载后再次点击，若旧监听已彻底释放，则仅触发 1 次新监听（总计 2 次，而非累计 3 次）
+        input.value = 'prompt 2';
+        addBtn.click();
+        assert.equal(setPromptCalls, 2, '重新挂载后点击应仅累加 1 次，旧 DOM 监听必须已被 dispose 清除');
 
         // 4. scope 销毁自动清理
         const scopeToDispose = takePresentationScope();
@@ -616,116 +635,268 @@ test('Medium: settings-sidebar-runtime mountedSlots 随 scope 销毁或显式 un
         const remainingScope = takePresentationScope();
         await remainingScope?.dispose();
         releaseAllControllers();
+        delete dom.window.settingsManager;
         globalThis.document = prevDoc;
         globalThis.window = prevWin;
         dom.window.close();
     }
 });
 
-test('H5: Agent 保存链路强化测试（完整保留自定义样式/头像颜色/折叠状态，提交 await 与失败捕获）', async () => {
-    const { document } = createDocument();
-    const host = document.getElementById('agentSettingsContainer');
-    const form = schema.renderAgentSettingsSurface(host, document);
+test('H5: Agent 保存链路真实测试（涵盖真实 settingsManager、完整字段收集、状态指示点流转与失败隔离）', async () => {
+    const { dom, document } = createDocument();
+    const prevWin = globalThis.window;
+    const prevDoc = globalThis.document;
+    const prevRaf = globalThis.requestAnimationFrame;
+    const prevMO = globalThis.MutationObserver;
+    const prevCE = globalThis.CustomEvent;
+    const origSetInterval = globalThis.setInterval;
+    const activeIntervals = [];
 
-    // 验证表单存在所有 8 个关键扩展字段控件
-    assert.ok(document.getElementById('agentCustomCss'), '必须存在 #agentCustomCss');
-    assert.ok(document.getElementById('agentCardCss'), '必须存在 #agentCardCss');
-    assert.ok(document.getElementById('agentChatCss'), '必须存在 #agentChatCss');
-    assert.ok(document.getElementById('agentAvatarBorderColor'), '必须存在 #agentAvatarBorderColor');
-    assert.ok(document.getElementById('agentNameTextColor'), '必须存在 #agentNameTextColor');
-    assert.ok(document.getElementById('disableCustomColors'), '必须存在 #disableCustomColors');
-    assert.ok(document.getElementById('useThemeColorsInChat'), '必须存在 #useThemeColorsInChat');
-
-    // 填充测试值
-    document.getElementById('editingAgentId').value = 'agent-test-123';
-    document.getElementById('agentNameInput').value = '测试助手';
-    document.getElementById('agentCustomCss').value = '.test { color: red; }';
-    document.getElementById('agentCardCss').value = '.card { padding: 8px; }';
-    document.getElementById('agentChatCss').value = '.chat { margin: 4px; }';
-    document.getElementById('agentAvatarBorderColor').value = '#112233';
-    document.getElementById('agentNameTextColor').value = '#445566';
-    document.getElementById('disableCustomColors').checked = true;
-    document.getElementById('useThemeColorsInChat').checked = true;
-
-    // 模拟 submit 与状态点流转
-    const stateDotTransitions = [];
-    const updateStateDotIndicator = (kind) => {
-        stateDotTransitions.push(kind);
+    globalThis.window = dom.window;
+    globalThis.document = document;
+    globalThis.MutationObserver = dom.window.MutationObserver;
+    globalThis.CustomEvent = dom.window.CustomEvent;
+    globalThis.requestAnimationFrame = (fn) => setTimeout(fn, 0);
+    globalThis.setInterval = (...args) => {
+        const id = origSetInterval(...args);
+        id.unref?.();
+        activeIntervals.push(id);
+        return id;
     };
 
-    let savedPayload = null;
-    let mockSaveSuccess = true;
-    const fakeElectronAPI = {
-        saveAgentConfig: async (id, config) => {
-            savedPayload = config;
-            if (mockSaveSuccess) {
-                return { success: true };
-            } else {
-                return { success: false, error: 'Write failed' };
-            }
-        }
-    };
+    try {
+        const host = document.getElementById('agentSettingsContainer');
+        const form = schema.renderAgentSettingsSurface(host, document);
 
-    const mockSaveCurrentAgentSettings = async (ev) => {
-        if (ev?.preventDefault) ev.preventDefault();
-        const agentId = document.getElementById('editingAgentId').value;
-        const config = {
-            name: document.getElementById('agentNameInput').value.trim(),
-            customCss: document.getElementById('agentCustomCss').value.trim(),
-            cardCss: document.getElementById('agentCardCss').value.trim(),
-            chatCss: document.getElementById('agentChatCss').value.trim(),
-            avatarBorderColor: document.getElementById('agentAvatarBorderColor').value,
-            nameTextColor: document.getElementById('agentNameTextColor').value,
-            disableCustomColors: document.getElementById('disableCustomColors').checked,
-            useThemeColorsInChat: document.getElementById('useThemeColorsInChat').checked,
-            uiCollapseStates: { identity: true, prompt: false }
+        // 验证表单存在所有 8 个关键扩展字段控件
+        assert.ok(document.getElementById('agentCustomCss'), '必须存在 #agentCustomCss');
+        assert.ok(document.getElementById('agentCardCss'), '必须存在 #agentCardCss');
+        assert.ok(document.getElementById('agentChatCss'), '必须存在 #agentChatCss');
+        assert.ok(document.getElementById('agentAvatarBorderColor'), '必须存在 #agentAvatarBorderColor');
+        assert.ok(document.getElementById('agentNameTextColor'), '必须存在 #agentNameTextColor');
+        assert.ok(document.getElementById('disableCustomColors'), '必须存在 #disableCustomColors');
+        assert.ok(document.getElementById('useThemeColorsInChat'), '必须存在 #useThemeColorsInChat');
+
+        // 加载真实 settingsManager
+        dom.window.eval(fs.readFileSync(path.join(repoRoot, 'modules/settingsManager.js'), 'utf8'));
+        const sm = dom.window.settingsManager;
+        assert.ok(sm, 'settingsManager 必须成功加载');
+
+        let savedData = null;
+        let mockSaveSuccess = true;
+        const fakeElectronAPI = {
+            saveAgentConfig: async (id, config) => {
+                savedData = { id, config };
+                if (mockSaveSuccess) {
+                    return { success: true };
+                }
+                return { success: false, error: 'IPC write failed' };
+            },
+            getAgentConfig: async () => ({ name: savedData?.config?.name })
         };
-        const result = await fakeElectronAPI.saveAgentConfig(agentId, config);
-        if (!result.success) {
-            return { success: false, error: result.error };
-        }
-        return { success: true, result };
+
+        const toasts = [];
+        const uiHelper = {
+            showToastNotification: (msg, type) => {
+                toasts.push({ msg, type });
+            },
+            showSaveFeedback: () => {}
+        };
+
+        sm.init({
+            electronAPI: fakeElectronAPI,
+            uiHelper,
+            refs: {
+                currentSelectedItemRef: {
+                    get: () => ({ id: 'agent-real-test-123', type: 'agent' }),
+                    set: () => {}
+                }
+            },
+            mainRendererFunctions: {
+                getCroppedFile: () => null,
+                resetCroppedFile: () => {}
+            },
+            elements: {
+                agentSettingsContainer: host,
+                groupSettingsContainer: null,
+                selectItemPromptForSettings: document.getElementById('selectAgentPromptForSettings'),
+                itemSettingsContainerTitle: null,
+                selectedItemNameForSettingsSpan: null,
+                deleteItemBtn: document.getElementById('deleteAgentBtn'),
+                agentSettingsForm: form,
+                editingAgentIdInput: document.getElementById('editingAgentId'),
+                agentNameInput: document.getElementById('agentNameInput'),
+                agentAvatarInput: document.getElementById('agentAvatarInput'),
+                agentAvatarPreview: document.getElementById('agentAvatarPreview'),
+                agentModelInput: document.getElementById('agentModel'),
+                agentTemperatureInput: document.getElementById('agentTemperature'),
+                agentContextTokenLimitInput: document.getElementById('agentContextTokenLimit'),
+                agentMaxOutputTokensInput: document.getElementById('agentMaxOutputTokens'),
+                openModelSelectBtn: document.getElementById('openModelSelectBtn'),
+                topicSummaryModelInput: null,
+                openTopicSummaryModelSelectBtn: null,
+                agentTtsSpeedSlider: document.getElementById('agentTtsSpeed')
+            }
+        });
+
+        // 填充测试值
+        document.getElementById('editingAgentId').value = 'agent-real-test-123';
+        document.getElementById('agentNameInput').value = '真实测试助手';
+        document.getElementById('agentCustomCss').value = '.test { color: red; }';
+        document.getElementById('agentCardCss').value = '.card { padding: 8px; }';
+        document.getElementById('agentChatCss').value = '.chat { margin: 4px; }';
+        document.getElementById('agentAvatarBorderColor').value = '#112233';
+        document.getElementById('agentNameTextColor').value = '#445566';
+        document.getElementById('disableCustomColors').checked = true;
+        document.getElementById('useThemeColorsInChat').checked = true;
+
+        // 1. 真实 submit 触发保存成功测试
+        form.dispatchEvent(new document.defaultView.Event('submit', { bubbles: true, cancelable: true }));
+        await new Promise(resolve => setTimeout(resolve, 30));
+
+        assert.equal(savedData?.id, 'agent-real-test-123');
+        assert.equal(savedData?.config?.name, '真实测试助手');
+        assert.equal(savedData?.config?.customCss, '.test { color: red; }');
+        assert.equal(savedData?.config?.cardCss, '.card { padding: 8px; }');
+        assert.equal(savedData?.config?.chatCss, '.chat { margin: 4px; }');
+        assert.equal(savedData?.config?.avatarBorderColor, '#112233');
+        assert.equal(savedData?.config?.nameTextColor, '#445566');
+        assert.equal(savedData?.config?.disableCustomColors, true);
+        assert.equal(savedData?.config?.useThemeColorsInChat, true);
+        assert.equal(document.getElementById('formSaveStateIndicator')?.dataset?.state, 'done', '保存成功时指示点状态必须为 done');
+
+        // 2. 真实 submit 触发保存失败测试
+        mockSaveSuccess = false;
+        toasts.length = 0;
+        form.dispatchEvent(new document.defaultView.Event('submit', { bubbles: true, cancelable: true }));
+        await new Promise(resolve => setTimeout(resolve, 30));
+
+        assert.equal(document.getElementById('formSaveStateIndicator')?.dataset?.state, 'warning', '保存失败时指示点状态必须置为 warning');
+        assert.ok(toasts.some(t => t.type === 'error' && t.msg.includes('IPC write failed')), '保存失败时必须弹出对应错误 toast');
+    } finally {
+        activeIntervals.forEach(clearInterval);
+        globalThis.window = prevWin;
+        globalThis.document = prevDoc;
+        globalThis.requestAnimationFrame = prevRaf;
+        globalThis.MutationObserver = prevMO;
+        globalThis.CustomEvent = prevCE;
+        globalThis.setInterval = origSetInterval;
+        delete dom.window.settingsManager;
+        dom.window.close();
+    }
+});
+
+test('High: 切换 Agent 时 flush 失败必须显式告警且保留未保存状态，不得静默丢失编辑', async () => {
+    const { dom, document } = createDocument();
+    const prevWin = globalThis.window;
+    const prevDoc = globalThis.document;
+    const prevRaf = globalThis.requestAnimationFrame;
+    const prevMO = globalThis.MutationObserver;
+    const prevCE = globalThis.CustomEvent;
+    const origSetInterval = globalThis.setInterval;
+    const activeIntervals = [];
+
+    globalThis.window = dom.window;
+    globalThis.document = document;
+    globalThis.MutationObserver = dom.window.MutationObserver;
+    globalThis.CustomEvent = dom.window.CustomEvent;
+    globalThis.requestAnimationFrame = (fn) => setTimeout(fn, 0);
+    dom.window.requestAnimationFrame = (fn) => setTimeout(fn, 0);
+    globalThis.setInterval = (...args) => {
+        const id = origSetInterval(...args);
+        id.unref?.();
+        activeIntervals.push(id);
+        return id;
     };
 
-    // 注册与 settingsManager 一致的 submit 逻辑
-    form.addEventListener('submit', async (ev) => {
-        ev.preventDefault();
-        updateStateDotIndicator('ongoing');
-        try {
-            const saveResult = await mockSaveCurrentAgentSettings(ev);
-            if (saveResult && saveResult.success) {
-                updateStateDotIndicator('done');
-            } else {
-                updateStateDotIndicator('warning');
+    try {
+        const host = document.getElementById('agentSettingsContainer');
+        const form = schema.renderAgentSettingsSurface(host, document);
+
+        dom.window.eval(fs.readFileSync(path.join(repoRoot, 'modules/settingsManager.js'), 'utf8'));
+        const sm = dom.window.settingsManager;
+
+        let saveCalls = 0;
+        const fakeElectronAPI = {
+            saveAgentConfig: async () => {
+                saveCalls++;
+                return { success: false, error: 'Database locked' };
+            },
+            getAgentConfig: async (id) => ({ id, name: 'Agent ' + id }),
+            sovitsGetModels: async () => ({ models: [] })
+        };
+
+        const toasts = [];
+        const uiHelper = {
+            showToastNotification: (msg, type) => toasts.push({ msg, type }),
+            showSaveFeedback: () => {}
+        };
+
+        let currentItem = { id: 'agent-1', type: 'agent' };
+        sm.init({
+            electronAPI: fakeElectronAPI,
+            uiHelper,
+            refs: {
+                currentSelectedItemRef: {
+                    get: () => currentItem,
+                    set: (val) => { currentItem = val; }
+                }
+            },
+            mainRendererFunctions: {
+                getCroppedFile: () => null,
+                resetCroppedFile: () => {},
+                setCroppedFile: () => {}
+            },
+            elements: {
+                agentSettingsContainer: host,
+                groupSettingsContainer: null,
+                selectItemPromptForSettings: document.getElementById('selectAgentPromptForSettings'),
+                itemSettingsContainerTitle: null,
+                selectedItemNameForSettingsSpan: null,
+                deleteItemBtn: document.getElementById('deleteAgentBtn'),
+                agentSettingsForm: form,
+                editingAgentIdInput: document.getElementById('editingAgentId'),
+                agentNameInput: document.getElementById('agentNameInput'),
+                agentAvatarInput: document.getElementById('agentAvatarInput'),
+                agentAvatarPreview: document.getElementById('agentAvatarPreview'),
+                agentModelInput: document.getElementById('agentModel'),
+                agentTemperatureInput: document.getElementById('agentTemperature'),
+                agentContextTokenLimitInput: document.getElementById('agentContextTokenLimit'),
+                agentMaxOutputTokensInput: document.getElementById('agentMaxOutputTokens'),
+                openModelSelectBtn: document.getElementById('openModelSelectBtn'),
+                topicSummaryModelInput: null,
+                openTopicSummaryModelSelectBtn: null,
+                agentTtsSpeedSlider: document.getElementById('agentTtsSpeed')
             }
-        } catch (err) {
-            updateStateDotIndicator('warning');
-        }
-    });
+        });
 
-    // 1. 成功提交测试
-    form.dispatchEvent(new document.defaultView.Event('submit', { bubbles: true, cancelable: true }));
-    // 等待微任务队列清空
-    await new Promise(resolve => setTimeout(resolve, 10));
+        // 1. 先载入 agent-1
+        await sm.displaySettingsForItem();
+        assert.equal(document.getElementById('editingAgentId').value, 'agent-1');
 
-    assert.deepEqual(stateDotTransitions, ['ongoing', 'done'], '保存成功时指示点必须经历 ongoing -> done');
-    assert.equal(savedPayload.name, '测试助手');
-    assert.equal(savedPayload.customCss, '.test { color: red; }');
-    assert.equal(savedPayload.cardCss, '.card { padding: 8px; }');
-    assert.equal(savedPayload.chatCss, '.chat { margin: 4px; }');
-    assert.equal(savedPayload.avatarBorderColor, '#112233');
-    assert.equal(savedPayload.nameTextColor, '#445566');
-    assert.equal(savedPayload.disableCustomColors, true);
-    assert.equal(savedPayload.useThemeColorsInChat, true);
-    assert.deepEqual(savedPayload.uiCollapseStates, { identity: true, prompt: false });
+        // 2. 模拟用户编辑输入，标记 dirty
+        const nameInput = document.getElementById('agentNameInput');
+        nameInput.value = '修改后的 agent-1';
+        nameInput.dispatchEvent(new document.defaultView.Event('input', { bubbles: true }));
 
-    // 2. 失败提交测试
-    stateDotTransitions.length = 0;
-    mockSaveSuccess = false;
-    form.dispatchEvent(new document.defaultView.Event('submit', { bubbles: true, cancelable: true }));
-    await new Promise(resolve => setTimeout(resolve, 10));
+        // 3. 此时切换至 agent-2，应当触发 flush 保存旧 agent-1
+        // 但保存失败（Database locked）
+        currentItem = { id: 'agent-2', type: 'agent' };
+        await sm.displaySettingsForItem();
 
-    assert.deepEqual(stateDotTransitions, ['ongoing', 'warning'], '保存失败时指示点必须经历 ongoing -> warning');
+        assert.equal(saveCalls, 1, '切换时必须尝试自动保存未提交修改的 agent-1');
+        assert.ok(toasts.some(t => t.type === 'warning' && t.msg.includes('切换前自动保存「agent-1」失败')), 'flush 失败时必须显式告警提示用户修改未成功保存');
+    } finally {
+        activeIntervals.forEach(clearInterval);
+        globalThis.window = prevWin;
+        globalThis.document = prevDoc;
+        globalThis.requestAnimationFrame = prevRaf;
+        globalThis.MutationObserver = prevMO;
+        globalThis.CustomEvent = prevCE;
+        globalThis.setInterval = origSetInterval;
+        delete dom.window.settingsManager;
+        dom.window.close();
+    }
 });
 
 

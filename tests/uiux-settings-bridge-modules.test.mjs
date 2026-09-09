@@ -820,16 +820,19 @@ test('settings 域的 dataset marker 全部登记在统一注册表中', async (
     // （vcpCanonicalRowsMounted 随 M5-c pass6 canonical-rows pass 退役注销。）
     for (const name of ['vcpTypedPrimitiveMounted', 'vcpTypedGlobalSettingsEntry', 'vcpTypedNetworkPathAction',
         'vcpSettingsRow', 'vcpSelectRebuilding',
-        'vcpUiuxToggleMounted', 'vcpAutosaveState', 'vcpSettingsDirty', 'vcpTypedAgentModel']) {
+        'vcpUiuxToggleMounted', 'vcpAutosaveState', 'vcpSettingsDirty', 'vcpTypedAgentModelPicker']) {
         assert.ok(registry.isRegisteredSettingsMarker(name), `known marker ${name} must be registered`);
     }
     assert.equal(registry.isRegisteredSettingsMarker('vcpCanonicalRowsMounted'), false,
         'the retired canonical-rows pass marker must stay deregistered');
+    assert.equal(registry.isRegisteredSettingsMarker('vcpTypedAgentIdentity'), false,
+        'the retired typed agent input marker must stay deregistered');
     assert.equal(registry.isRegisteredSettingsMarker('vcpTotallyUnknownMarker'), false);
 
     // Audit: every dataset marker literal used by the bridge domain must be
     // registered, so new markers cannot accumulate as untracked conventions.
     const domainFiles = [bridgeEntry, sidebarRuntime, typedOwners,
+        path.join(root, 'modules/settings/schema/sidebar-surfaces.js'),
         ...fs.readdirSync(settingsDir).filter(name => name.endsWith('.js'))
             .map(name => path.join(settingsDir, name))];
     // uiMode is a root-level business state attribute, not a lifecycle marker.

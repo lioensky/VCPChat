@@ -41,6 +41,16 @@ function mountSettingsSidebarForm(form) {
 
 function unmountSettingsSidebarForm(form) {
     if (!form) return;
+    const mounted = mountedSlots.get(form);
+    if (mounted?.slots) {
+        mounted.slots.forEach(slot => {
+            try {
+                slot.dispose?.();
+            } catch (e) {
+                console.warn('[SettingsSidebarRuntime] Error disposing slot on unmount:', e);
+            }
+        });
+    }
     mountedSlots.delete(form);
 }
 

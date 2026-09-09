@@ -22,14 +22,15 @@ function uniqueSettingsKey() {
 
 function ensurePresentationScope() {
     if (destroyed) return null;
-    if (!bridgeScope || !bridgeScope.active) {
+    if (!bridgeScope) {
         const LiveScope = globalThis.window?.VCPLifecycle?.LifecycleScope || globalThis.VCPLifecycle?.LifecycleScope || LifecycleScope;
         if (LiveScope) {
             bridgeScope = new LiveScope('settings-bridge-controller');
         }
     }
+    if (!bridgeScope?.active) return null;
     if (!presentationScope || !presentationScope.active) {
-        presentationScope = bridgeScope?.child('settings-presentation') || null;
+        presentationScope = bridgeScope.child('settings-presentation');
     }
     return presentationScope;
 }

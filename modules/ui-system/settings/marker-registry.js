@@ -90,17 +90,6 @@ const MARKERS = Object.freeze({
     vcpSettingsConflictActions: { owner: 'settings-bridge.js conflict action bar', cleanup: 'scope-owned' },
     vcpSettingsConflict: { owner: 'typed-field-owners.js external reconciliation', cleanup: 'business-contract' },
 
-    // settings-sidebar-runtime.js — configured via the private Input owner's
-    // `marker` option and deleted with the owning presentation scope
-    vcpTypedAgentIdentity: { owner: 'settings-sidebar-runtime.js', cleanup: 'scope-owned' },
-    vcpTypedAgentModel: { owner: 'settings-sidebar-runtime.js', cleanup: 'scope-owned' },
-    vcpTypedAgentTemperature: { owner: 'settings-sidebar-runtime.js', cleanup: 'scope-owned' },
-    vcpTypedAgentContextLimit: { owner: 'settings-sidebar-runtime.js', cleanup: 'scope-owned' },
-    vcpTypedAgentMaxOutput: { owner: 'settings-sidebar-runtime.js', cleanup: 'scope-owned' },
-    vcpTypedAgentTopP: { owner: 'settings-sidebar-runtime.js', cleanup: 'scope-owned' },
-    vcpTypedAgentTopK: { owner: 'settings-sidebar-runtime.js', cleanup: 'scope-owned' },
-    vcpTypedAgentStreamChoice: { owner: 'settings-sidebar-runtime.js', cleanup: 'scope-owned' },
-    vcpTypedAgentTtsSpeed: { owner: 'settings-sidebar-runtime.js', cleanup: 'scope-owned' },
     vcpTypedAgentDisclosure: { owner: 'settings/agent-disclosures.js', cleanup: 'scope-owned' },
     vcpTypedAgentModelPicker: { owner: 'settings/agent-model-picker.js', cleanup: 'scope-owned' },
     vcpTypedGroupModelPicker: { owner: 'settings/agent-model-picker.js', cleanup: 'scope-owned' },

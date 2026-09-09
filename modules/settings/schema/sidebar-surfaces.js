@@ -148,6 +148,7 @@ function renderControl(doc, spec) {
 
 function renderField(doc, spec, className = 'settings-schema-field') {
     const row = el(doc, 'div', { class: className, 'data-schema-field': spec.id });
+    row.dataset.schemaField = spec.id;
     const control = renderControl(doc, spec);
     if (spec.tooltip) {
         row.dataset.schemaTooltip = spec.tooltip;
@@ -175,6 +176,7 @@ function renderSection(doc, { kind, key, title, tooltip, summaryId, content, con
         'data-section-key': key,
         'data-schema-section': key,
     });
+    section.dataset.schemaSection = key;
     const headerId = kind === 'agent'
         ? `${key}ToggleHeader`
         : `group${key[0].toUpperCase()}${key.slice(1)}ToggleHeader`;

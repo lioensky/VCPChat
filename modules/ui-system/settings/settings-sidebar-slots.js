@@ -44,28 +44,38 @@ class MimoDirectorSlot {
         const fill = host.querySelector('#fillAgentTtsDirectorTemplateBtn');
         if (!this.input || !this.list || !add || !fill) return null;
 
+        this.slotScope = this.scope.child ? this.scope.child('mimo-director-slot') : this.scope;
         host.dataset.vcpSettingsSlot = 'mimo-director';
         this.prompts = normalizedPrompts(this.manager?.getTtsDirectorPrompts?.());
         this.render();
-        this.scope.listen(add, 'mousedown', event => event.preventDefault(), undefined, 'mimo-director-add-guard');
-        this.scope.listen(add, 'click', () => this.add(), undefined, 'mimo-director-add');
-        this.scope.listen(fill, 'click', () => this.fillTemplate(), undefined, 'mimo-director-template');
-        this.scope.listen(this.input, 'keydown', event => {
+        this.slotScope.listen(add, 'mousedown', event => event.preventDefault(), undefined, 'mimo-director-add-guard');
+        this.slotScope.listen(add, 'click', () => this.add(), undefined, 'mimo-director-add');
+        this.slotScope.listen(fill, 'click', () => this.fillTemplate(), undefined, 'mimo-director-template');
+        this.slotScope.listen(this.input, 'keydown', event => {
             if (event.key !== 'Enter' || !(event.ctrlKey || event.metaKey)) return;
             event.preventDefault();
             this.add();
         }, undefined, 'mimo-director-submit');
         this.bindEditor(this.input, () => this.renderDraftState());
         this.resize(this.input, false);
-        this.release = this.scope.own(() => {
-            if (this.host?.dataset.vcpSettingsSlot === 'mimo-director') delete this.host.dataset.vcpSettingsSlot;
-            this.host = null;
-            this.input = null;
-            this.list = null;
-            this.rowScopes.forEach(rowScope => void rowScope.dispose('mimo-director-slot-released'));
-            this.rowScopes.clear();
-        }, 'mimo-director-slot', 'ui-slot');
+        this.release = () => this.dispose();
+        if (this.scope !== this.slotScope) {
+            this.scope.own(() => this.dispose(), 'mimo-director-slot-owner', 'ui-slot');
+        }
         return this;
+    }
+
+    dispose() {
+        if (this.host?.dataset.vcpSettingsSlot === 'mimo-director') delete this.host.dataset.vcpSettingsSlot;
+        this.host = null;
+        this.input = null;
+        this.list = null;
+        this.rowScopes.forEach(rowScope => void rowScope.dispose?.('mimo-director-slot-released'));
+        this.rowScopes.clear();
+        if (this.slotScope && this.slotScope !== this.scope && this.slotScope.active) {
+            this.slotScope.dispose?.('mimo-director-slot-disposed');
+        }
+        this.slotScope = null;
     }
 
     setPrompts(prompts) {
@@ -222,6 +232,7 @@ class SequentialSpeakerSlot {
         this.scope = scope;
         this.renderer = renderer;
         this.host = null;
+        this.slotScope = null;
     }
 
     mount() {
@@ -231,13 +242,26 @@ class SequentialSpeakerSlot {
         const container = host.closest('#sequentialOrderContainer');
         const root = container || host;
         root.dataset.vcpSettingsSlot = 'sequential-speaker';
+        this.slotScope = this.scope.child ? this.scope.child('sequential-speaker-slot') : this.scope;
         const externalRelease = this.renderer?.bindSequentialSpeakerSlot?.({ host, form: this.form });
-        this.scope.own(() => {
+        this.slotScope.own(() => {
             externalRelease?.();
             if (root.dataset.vcpSettingsSlot === 'sequential-speaker') delete root.dataset.vcpSettingsSlot;
             this.host = null;
         }, 'sequential-speaker-slot', 'ui-slot');
+        this.release = () => this.dispose();
+        if (this.scope !== this.slotScope) {
+            this.scope.own(() => this.dispose(), 'sequential-speaker-slot-owner', 'ui-slot');
+        }
         return this;
+    }
+
+    dispose() {
+        if (this.slotScope && this.slotScope !== this.scope && this.slotScope.active) {
+            this.slotScope.dispose?.('sequential-speaker-slot-disposed');
+        }
+        this.slotScope = null;
+        this.host = null;
     }
 }
 
