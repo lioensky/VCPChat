@@ -1423,5 +1423,456 @@ test('P1 对抗性防线: 群组设置在脱水态下的 DOM 解析与安全删�
     }
 });
 
+test('P0 对抗性防线: Agent 模型配置绝不被静默篡改为 gemini-pro (Bug 1 防护)', async () => {
+    const { dom, document } = createDocument();
+    const prevWin = globalThis.window;
+    const prevDoc = globalThis.document;
+    const prevRaf = globalThis.requestAnimationFrame;
+    const prevMO = globalThis.MutationObserver;
+    const prevCE = globalThis.CustomEvent;
+    const origSetInterval = globalThis.setInterval;
+    const activeIntervals = [];
+
+    globalThis.window = dom.window;
+    globalThis.document = document;
+    globalThis.requestAnimationFrame = cb => setTimeout(cb, 0);
+    dom.window.requestAnimationFrame = cb => setTimeout(cb, 0);
+    globalThis.MutationObserver = class {
+        observe() {}
+        disconnect() {}
+        takeRecords() { return []; }
+    };
+    globalThis.CustomEvent = dom.window.CustomEvent;
+    globalThis.setInterval = (...args) => {
+        const id = origSetInterval(...args);
+        id.unref?.();
+        activeIntervals.push(id);
+        return id;
+    };
+
+    try {
+        const root = document.getElementById('tabContentSettings');
+        const surface = surfaceModule.createSettingsSidebarSurface({ document, root });
+        dom.window.VCPSettingsSidebar = surface;
+        dom.window.VCPSettingsSchema = schema;
+
+        const host = document.getElementById('agentSettingsContainer');
+        const form = schema.renderAgentSettingsSurface(host, document);
+        surface.register('agent', host);
+        assert.ok(host, 'Agent surface host 必须存在');
+
+        dom.window.eval(fs.readFileSync(path.join(repoRoot, 'modules/settingsManager.js'), 'utf8'));
+        const sm = dom.window.settingsManager;
+
+        let savedConfig = null;
+        let currentItem = { id: 'agent-model-test', type: 'agent', config: { name: '初始名字', model: 'claude-3-5-sonnet-v2' } };
+        const fakeElectronAPI = {
+            saveAgentConfig: async (id, config) => {
+                savedConfig = config;
+                return { success: true };
+            },
+            getAgentConfig: async id => ({ id, name: '模型测试助手', model: 'claude-3-5-sonnet-v2' }),
+            sovitsGetModels: async () => ({ models: [] })
+        };
+
+        sm.init({
+            electronAPI: fakeElectronAPI,
+            uiHelper: { showToastNotification: () => {}, showSaveFeedback: () => {} },
+            refs: {
+                currentSelectedItemRef: {
+                    get: () => currentItem,
+                    set: (val) => { currentItem = val; }
+                }
+            },
+            mainRendererFunctions: { getCroppedFile: () => null, resetCroppedFile: () => {} },
+            elements: {
+                agentSettingsContainer: host,
+                groupSettingsContainer: null,
+                selectItemPromptForSettings: document.getElementById('selectAgentPromptForSettings'),
+                itemSettingsContainerTitle: null,
+                selectedItemNameForSettingsSpan: null,
+                deleteItemBtn: document.getElementById('deleteAgentBtn'),
+                agentSettingsForm: form,
+                editingAgentIdInput: form.querySelector('#editingAgentId'),
+                agentNameInput: form.querySelector('#agentNameInput'),
+                agentAvatarInput: form.querySelector('#agentAvatarInput'),
+                agentAvatarPreview: form.querySelector('#agentAvatarPreview'),
+                agentModelInput: form.querySelector('#agentModel'),
+                agentTemperatureInput: form.querySelector('#agentTemperature'),
+                agentContextTokenLimitInput: form.querySelector('#agentContextTokenLimit'),
+                agentMaxOutputTokensInput: form.querySelector('#agentMaxOutputTokens'),
+                openModelSelectBtn: form.querySelector('#openModelSelectBtn'),
+                topicSummaryModelInput: null,
+                openTopicSummaryModelSelectBtn: null,
+                agentTtsSpeedSlider: form.querySelector('#agentTtsSpeed')
+            }
+        });
+
+        // 场景 A: 表单中的 #agentModel 有指定值，triggerAgentSave 保存时必须准确抓取该值，绝不能 fallback 到 gemini-pro
+        const modelInput = host.querySelector('#agentModel');
+        assert.ok(modelInput, '#agentModel 控件必须在 surface 中存在');
+        modelInput.value = 'gpt-4o-custom';
+        form.querySelector('#editingAgentId').value = 'agent-model-test';
+
+        await sm.triggerAgentSave('agent-model-test');
+        assert.equal(savedConfig?.model, 'gpt-4o-custom', '保存时必须读取 #agentModel 中的自定义模型，不可篡改');
+
+        // 场景 B: 假设 #agentModel 的 input 不在 DOM 中（或被脱水移除），但 currentConfig 存在
+        // 回退时必须优先使用 currentConfig.model，不可盲目降级到 gemini-pro
+        modelInput.value = '';
+        await sm.displaySettingsForItem({ id: 'agent-model-test', type: 'agent', model: 'claude-3-5-sonnet-v2' }, 'agent');
+        assert.equal(modelInput.value, 'claude-3-5-sonnet-v2', 'displaySettingsForItem 必须正确回填模型');
+
+        // 触发 triggerAgentSave 保存
+        await sm.triggerAgentSave('agent-model-test');
+        assert.equal(savedConfig?.model, 'claude-3-5-sonnet-v2', 'triggerAgentSave 必须正确保存当前模型');
+    } finally {
+        dom.window.settingsManager?.cancelAutosave?.();
+        activeIntervals.forEach(clearInterval);
+        globalThis.window = prevWin;
+        globalThis.document = prevDoc;
+        globalThis.requestAnimationFrame = prevRaf;
+        globalThis.MutationObserver = prevMO;
+        globalThis.CustomEvent = prevCE;
+        globalThis.setInterval = origSetInterval;
+        delete dom.window.settingsManager;
+        delete dom.window.VCPSettingsSidebar;
+        delete dom.window.VCPSettingsSchema;
+        dom.window.close();
+    }
+});
+
+test('P0 对抗性防线: Autosave 在并发编辑保存时不丢失 Dirty 状态与 Revision 序列 (Bug 2 防护)', async () => {
+    const { dom, document } = createDocument();
+    const prevWin = globalThis.window;
+    const prevDoc = globalThis.document;
+    const prevRaf = globalThis.requestAnimationFrame;
+    const prevMO = globalThis.MutationObserver;
+    const prevCE = globalThis.CustomEvent;
+    const origSetInterval = globalThis.setInterval;
+    const activeIntervals = [];
+
+    globalThis.window = dom.window;
+    globalThis.document = document;
+    globalThis.requestAnimationFrame = cb => setTimeout(cb, 0);
+    dom.window.requestAnimationFrame = cb => setTimeout(cb, 0);
+    globalThis.MutationObserver = class {
+        observe() {}
+        disconnect() {}
+        takeRecords() { return []; }
+    };
+    globalThis.CustomEvent = dom.window.CustomEvent;
+    globalThis.setInterval = (...args) => {
+        const id = origSetInterval(...args);
+        id.unref?.();
+        activeIntervals.push(id);
+        return id;
+    };
+
+    try {
+        const root = document.getElementById('tabContentSettings');
+        const surface = surfaceModule.createSettingsSidebarSurface({ document, root });
+        dom.window.VCPSettingsSidebar = surface;
+        dom.window.VCPSettingsSchema = schema;
+
+        const host = document.getElementById('agentSettingsContainer');
+        const form = schema.renderAgentSettingsSurface(host, document);
+        surface.register('agent', host);
+        dom.window.eval(fs.readFileSync(path.join(repoRoot, 'modules/settingsManager.js'), 'utf8'));
+        const sm = dom.window.settingsManager;
+
+        const saveHistory = [];
+        let saveDelayResolver = null;
+        let currentItem = { id: 'agent-autosave-seq', type: 'agent', config: { name: '初始名字', model: 'gemini-pro' } };
+        const fakeElectronAPI = {
+            saveAgentConfig: async (id, config) => {
+                saveHistory.push({ id, name: config.name });
+                if (saveDelayResolver) {
+                    await new Promise(resolve => {
+                        saveDelayResolver = resolve;
+                    });
+                }
+                return { success: true };
+            },
+            getAgentConfig: async id => ({ id, name: '初始名字', model: 'gemini-pro' }),
+            sovitsGetModels: async () => ({ models: [] })
+        };
+
+        sm.init({
+            electronAPI: fakeElectronAPI,
+            uiHelper: { showToastNotification: () => {}, showSaveFeedback: () => {} },
+            refs: {
+                currentSelectedItemRef: {
+                    get: () => currentItem,
+                    set: (val) => { currentItem = val; }
+                }
+            },
+            mainRendererFunctions: { getCroppedFile: () => null, resetCroppedFile: () => {} },
+            elements: {
+                agentSettingsContainer: host,
+                groupSettingsContainer: null,
+                selectItemPromptForSettings: document.getElementById('selectAgentPromptForSettings'),
+                itemSettingsContainerTitle: null,
+                selectedItemNameForSettingsSpan: null,
+                deleteItemBtn: document.getElementById('deleteAgentBtn'),
+                agentSettingsForm: form,
+                editingAgentIdInput: form.querySelector('#editingAgentId'),
+                agentNameInput: form.querySelector('#agentNameInput'),
+                agentAvatarInput: form.querySelector('#agentAvatarInput'),
+                agentAvatarPreview: form.querySelector('#agentAvatarPreview'),
+                agentModelInput: form.querySelector('#agentModel'),
+                agentTemperatureInput: form.querySelector('#agentTemperature'),
+                agentContextTokenLimitInput: form.querySelector('#agentContextTokenLimit'),
+                agentMaxOutputTokensInput: form.querySelector('#agentMaxOutputTokens'),
+                openModelSelectBtn: form.querySelector('#openModelSelectBtn'),
+                topicSummaryModelInput: null,
+                openTopicSummaryModelSelectBtn: null,
+                agentTtsSpeedSlider: form.querySelector('#agentTtsSpeed')
+            }
+        });
+
+        await sm.displaySettingsForItem({ id: 'agent-autosave-seq', type: 'agent', name: '初始名字' }, 'agent');
+        const indicator = host.querySelector('#formSaveStateIndicator');
+        assert.ok(indicator, '状态指示点宿主必须存在');
+
+        // 模拟用户输入版本 1（触发 input 事件，驱动 markDirtyAndDebounceAutosave）
+        const nameInput = form.querySelector('#agentNameInput');
+        nameInput.value = '名字变更V1';
+        nameInput.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+        assert.equal(indicator.dataset.state, 'warning', '编辑后指示点进入 warning (未保存) 状态');
+
+        // 手动触发并模拟 in-flight 挂起
+        let blockPromise = new Promise(r => { saveDelayResolver = r; });
+        const savePromise1 = sm.triggerAgentSave('agent-autosave-seq');
+
+        // 在保存尚未完成（in-flight）时，用户再次输入版本 2
+        nameInput.value = '名字变更V2';
+        nameInput.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+
+        // 放行第一次保存
+        const resolveFirst = saveDelayResolver;
+        saveDelayResolver = null;
+        resolveFirst();
+        await savePromise1;
+
+        // 等待 debounce autosave 完成后续保存
+        await new Promise(resolve => setTimeout(resolve, 1100));
+        assert.equal(saveHistory.length >= 2, true, '必须按序列执行至少两次保存');
+        assert.equal(saveHistory[saveHistory.length - 1].name, '名字变更V2', '最后一次保存必须包含最新修改');
+        assert.equal(indicator.dataset.state, 'done', '所有序列保存完毕后指示点恢复 done');
+    } finally {
+        dom.window.settingsManager?.cancelAutosave?.();
+        activeIntervals.forEach(clearInterval);
+        globalThis.window = prevWin;
+        globalThis.document = prevDoc;
+        globalThis.requestAnimationFrame = prevRaf;
+        globalThis.MutationObserver = prevMO;
+        globalThis.CustomEvent = prevCE;
+        globalThis.setInterval = origSetInterval;
+        delete dom.window.settingsManager;
+        delete dom.window.VCPSettingsSidebar;
+        delete dom.window.VCPSettingsSchema;
+        dom.window.close();
+    }
+});
+
+test('P1 对抗性防线: displaySettingsForItem 兼容字符串 item 参数及脱水状态安全 (Bug 3 & 4 防护)', async () => {
+    const { dom, document } = createDocument();
+    const prevWin = globalThis.window;
+    const prevDoc = globalThis.document;
+    const prevRaf = globalThis.requestAnimationFrame;
+    const prevMO = globalThis.MutationObserver;
+    const prevCE = globalThis.CustomEvent;
+    const origSetInterval = globalThis.setInterval;
+    const activeIntervals = [];
+
+    globalThis.window = dom.window;
+    globalThis.document = document;
+    globalThis.requestAnimationFrame = cb => setTimeout(cb, 0);
+    dom.window.requestAnimationFrame = cb => setTimeout(cb, 0);
+    globalThis.MutationObserver = class {
+        observe() {}
+        disconnect() {}
+        takeRecords() { return []; }
+    };
+    globalThis.CustomEvent = dom.window.CustomEvent;
+    globalThis.setInterval = (...args) => {
+        const id = origSetInterval(...args);
+        id.unref?.();
+        activeIntervals.push(id);
+        return id;
+    };
+
+    try {
+        const root = document.getElementById('tabContentSettings');
+        const surface = surfaceModule.createSettingsSidebarSurface({ document, root });
+        dom.window.VCPSettingsSidebar = surface;
+        dom.window.VCPSettingsSchema = schema;
+
+        const host = document.getElementById('agentSettingsContainer');
+        const form = schema.renderAgentSettingsSurface(host, document);
+        surface.register('agent', host);
+        dom.window.eval(fs.readFileSync(path.join(repoRoot, 'modules/settingsManager.js'), 'utf8'));
+        const sm = dom.window.settingsManager;
+
+        let fetchedId = null;
+        const fakeElectronAPI = {
+            saveAgentConfig: async () => ({ success: true }),
+            getAgentConfig: async id => {
+                fetchedId = id;
+                return { id, name: '字符串加载助手', model: 'claude-3-opus' };
+            },
+            sovitsGetModels: async () => ({ models: [] })
+        };
+
+        sm.init({
+            electronAPI: fakeElectronAPI,
+            uiHelper: { showToastNotification: () => {}, showSaveFeedback: () => {} },
+            refs: {
+                currentSelectedItemRef: {
+                    get: () => ({ id: 'agent-string-only', type: 'agent' }),
+                    set: () => {}
+                }
+            },
+            mainRendererFunctions: { getCroppedFile: () => null, resetCroppedFile: () => {} },
+            elements: {
+                agentSettingsContainer: host,
+                groupSettingsContainer: null,
+                selectItemPromptForSettings: document.getElementById('selectAgentPromptForSettings'),
+                itemSettingsContainerTitle: null,
+                selectedItemNameForSettingsSpan: null,
+                deleteItemBtn: document.getElementById('deleteAgentBtn'),
+                agentSettingsForm: form,
+                editingAgentIdInput: form.querySelector('#editingAgentId'),
+                agentNameInput: form.querySelector('#agentNameInput'),
+                agentAvatarInput: form.querySelector('#agentAvatarInput'),
+                agentAvatarPreview: form.querySelector('#agentAvatarPreview'),
+                agentModelInput: form.querySelector('#agentModel'),
+                agentTemperatureInput: form.querySelector('#agentTemperature'),
+                agentContextTokenLimitInput: form.querySelector('#agentContextTokenLimit'),
+                agentMaxOutputTokensInput: form.querySelector('#agentMaxOutputTokens'),
+                openModelSelectBtn: form.querySelector('#openModelSelectBtn'),
+                topicSummaryModelInput: null,
+                openTopicSummaryModelSelectBtn: null,
+                agentTtsSpeedSlider: form.querySelector('#agentTtsSpeed')
+            }
+        });
+
+        // 传入纯字符串 'agent-string-only'
+        await sm.displaySettingsForItem('agent-string-only', 'agent');
+        assert.equal(fetchedId, 'agent-string-only', 'displaySettingsForItem 必须自动将字符串 item 转换为对象并拉取配置');
+        assert.equal(form.querySelector('#agentNameInput').value, '字符串加载助手', '表单名字必须成功填充');
+        assert.equal(form.querySelector('#agentModel').value, 'claude-3-opus', '表单模型必须成功填充');
+    } finally {
+        dom.window.settingsManager?.cancelAutosave?.();
+        activeIntervals.forEach(clearInterval);
+        globalThis.window = prevWin;
+        globalThis.document = prevDoc;
+        globalThis.requestAnimationFrame = prevRaf;
+        globalThis.MutationObserver = prevMO;
+        globalThis.CustomEvent = prevCE;
+        globalThis.setInterval = origSetInterval;
+        delete dom.window.settingsManager;
+        delete dom.window.VCPSettingsSidebar;
+        delete dom.window.VCPSettingsSchema;
+        dom.window.close();
+    }
+});
+
+test('P1 对抗性防线: GroupRenderer 绑定 currentChatNameH3 与非阻塞 Toast 验证 (Bug 5, 6, 7 防护)', async () => {
+    const { dom, document } = createDocument();
+    const prevWin = globalThis.window;
+    const prevDoc = globalThis.document;
+    const prevRaf = globalThis.requestAnimationFrame;
+    const prevMO = globalThis.MutationObserver;
+    const prevCE = globalThis.CustomEvent;
+    const origSetInterval = globalThis.setInterval;
+    const activeIntervals = [];
+
+    globalThis.window = dom.window;
+    globalThis.document = document;
+    globalThis.requestAnimationFrame = cb => setTimeout(cb, 0);
+    dom.window.requestAnimationFrame = cb => setTimeout(cb, 0);
+    globalThis.MutationObserver = class {
+        observe() {}
+        disconnect() {}
+        takeRecords() { return []; }
+    };
+    globalThis.CustomEvent = dom.window.CustomEvent;
+    globalThis.setInterval = (...args) => {
+        const id = origSetInterval(...args);
+        id.unref?.();
+        activeIntervals.push(id);
+        return id;
+    };
+
+    try {
+        const root = document.getElementById('tabContentSettings');
+        const surface = surfaceModule.createSettingsSidebarSurface({ document, root });
+        dom.window.VCPSettingsSidebar = surface;
+        dom.window.VCPSettingsSchema = schema;
+
+        dom.window.eval(fs.readFileSync(path.join(repoRoot, 'modules/ui-system/settings/group-slots.js'), 'utf8'));
+        const groupHost = dom.window.VCPGroupSettingsSlots.ensureSettingsSurface({ document, settingsTab: root });
+
+        dom.window.eval(fs.readFileSync(path.join(repoRoot, 'Groupmodules/grouprenderer.js'), 'utf8'));
+        const gr = dom.window.GroupRenderer;
+
+        const toasts = [];
+        const uiHelper = {
+            showToastNotification: (msg, type) => toasts.push({ msg, type }),
+            showConfirmDialog: async () => true
+        };
+
+        const chatHeaderTitle = document.createElement('h3');
+        chatHeaderTitle.id = 'currentChatNameH3';
+
+        let alertCalled = false;
+        dom.window.alert = () => { alertCalled = true; };
+
+        gr.init({
+            electronAPI: {
+                deleteAgentGroup: async () => ({ success: true }),
+                getAgentGroupConfig: async () => ({ name: '测试群组', members: [] }),
+                getAgents: async () => []
+            },
+            globalSettings: {},
+            currentSelectedItemRef: {
+                get: () => ({ id: 'group-1', type: 'group', name: '测试群组' }),
+                set: () => {}
+            },
+            currentTopicIdRef: { get: () => null, set: () => {} },
+            messageRenderer: null,
+            uiHelper,
+            mainRendererElements: {
+                currentChatNameH3: chatHeaderTitle
+            },
+            selectAgentPromptForSettingsElement: document.getElementById('selectAgentPromptForSettings'),
+            agentSettingsContainer: null,
+            selectedItemNameForSettingsElement: null,
+            mainRendererFunctions: {}
+        });
+
+        // 验证 displayGroupSettingsPage
+        await gr.displayGroupSettingsPage('group-1', { name: '测试群组', members: [] });
+
+        // 验证没有触发 alert
+        assert.equal(alertCalled, false, '群组渲染模块不得调用阻塞式 window.alert');
+    } finally {
+        activeIntervals.forEach(clearInterval);
+        globalThis.window = prevWin;
+        globalThis.document = prevDoc;
+        globalThis.requestAnimationFrame = prevRaf;
+        globalThis.MutationObserver = prevMO;
+        globalThis.CustomEvent = prevCE;
+        globalThis.setInterval = origSetInterval;
+        delete dom.window.GroupRenderer;
+        delete dom.window.VCPGroupSettingsSlots;
+        delete dom.window.VCPSettingsSidebar;
+        delete dom.window.VCPSettingsSchema;
+        dom.window.close();
+    }
+});
+
 
 
