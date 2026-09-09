@@ -460,16 +460,17 @@ legacySection.remove();
 const settingsHost = document.createElement('div');
 settingsHost.id = 'tabContentSettings';
 settingsHost.innerHTML = `
-    <form id="agentSettingsForm">
-        <section class="agent-settings-section collapsed">
-            <div class="agent-settings-section-header"><button type="button" class="agent-settings-toggle-btn"></button></div>
-            <div class="agent-settings-section-content"></div>
-        </section>
-        <div class="group-settings-field-shell"><label for="bridgeInput">Name</label><input id="bridgeInput" type="text" required><small>Required</small></div>
-        <select id="bridgeSelect"><option>One</option></select>
-        <label class="switch"><input type="checkbox"><span class="slider"></span></label>
-        <div class="form-actions"><button type="submit">Save</button><button type="button" class="danger-button">Delete</button></div>
-    </form>`;
+    <div id="agentSettingsContainer">
+        <form id="agentSettingsForm">
+            <section class="agent-settings-section collapsed">
+                <div class="agent-settings-section-header"><button type="button" class="agent-settings-toggle-btn"></button></div>
+                <div class="agent-settings-section-content"></div>
+            </section>
+            <div class="group-settings-field-shell"><label for="bridgeInput">Name</label><input id="bridgeInput" type="text" required><small>Required</small></div>
+            <select id="bridgeSelect"><option>One</option></select>
+            <label class="switch"><input type="checkbox"><span class="slider"></span></label>
+        </form>
+    </div>`;
 scope.append(settingsHost);
 // The canonical settings pipeline drives the real Uiux kernel. Boot it the
 // same way main.html does (generated browser bundle) before the bridge import
@@ -479,36 +480,20 @@ const uiuxContractKernel = await import(`${pathToFileURL(`${process.cwd()}/modul
 Object.defineProperty(window, 'VCPUIUX', { value: uiuxContractKernel, configurable: true });
 await import(`${pathToFileURL(`${process.cwd()}/modules/ui-system/settings-bridge.js`).href}?contract-test=1`);
 await new Promise(resolve => setTimeout(resolve, 0));
-assert.ok(document.getElementById('bridgeInput').classList.contains('vcp-ui-native-input'));
-assert.ok(document.getElementById('bridgeSelect').classList.contains('vcp-ui-native-select'));
-assert.equal(settingsHost.querySelector('.switch input').dataset.vcpUiuxToggleMounted, 'true',
-    'sidebar switch uses the Uiux toggle primitive when the kernel is loaded');
-assert.ok(settingsHost.querySelector('.switch .vcp-uiux-toggle'), 'sidebar switch exposes the toggle primitive wrap');
-assert.ok(settingsHost.querySelector('.agent-settings-section').classList.contains('vcp-ui-settings-section'));
-assert.ok(settingsHost.querySelector('.group-settings-field-shell').classList.contains('vcp-ui-settings-field'));
-const bridgedActionBar = settingsHost.querySelector('.form-actions');
-assert.ok(bridgedActionBar.classList.contains('vcp-ui-settings-action-bar'));
-document.getElementById('bridgeInput').value = 'Changed';
-document.getElementById('bridgeInput').dispatchEvent(new Event('input', { bubbles: true }));
-assert.equal(bridgedActionBar.dataset.state, 'dirty');
-document.getElementById('agentSettingsForm').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-assert.equal(bridgedActionBar.dataset.state, 'saving');
-document.getElementById('agentSettingsForm').dispatchEvent(new CustomEvent('vcp-settings-save-result', { detail: { success: true } }));
-assert.equal(bridgedActionBar.dataset.state, 'clean');
-bridgedActionBar.querySelector('.danger-button').click();
-assert.equal(bridgedActionBar.dataset.state, 'deleting');
-document.getElementById('agentSettingsForm').dispatchEvent(new CustomEvent('vcp-settings-delete-result', { detail: { success: false, cancelled: true } }));
-assert.equal(bridgedActionBar.dataset.state, 'clean');
+// Sidebar settings: agent-settings-bridge is retired. Sidebar surfaces are
+// owned by schema-driven renderers and runtime slots, without injecting
+// legacy vcp-ui-native-* classes or action bars.
+assert.ok(window.VCPSettingsSidebar, 'sidebar surface manager is available');
+assert.ok(window.VCPSettingsSidebar.has('agent'), 'agent schema surface is registered');
+assert.ok(window.VCPSettingsSlots?.mimoDirector, 'mimo director slot is mounted for agent form');
 
 const dynamicGroupForm = document.createElement('form');
 dynamicGroupForm.id = 'groupSettingsForm';
-dynamicGroupForm.innerHTML = '<textarea id="dynamicGroupPrompt"></textarea>';
 settingsHost.append(dynamicGroupForm);
 document.dispatchEvent(new CustomEvent('vcp-settings-surface-updated', {
     detail: { kind: 'group', root: dynamicGroupForm }
 }));
 await new Promise(resolve => setTimeout(resolve, 0));
-assert.ok(document.getElementById('dynamicGroupPrompt').classList.contains('vcp-ui-native-textarea'));
 
 // Global settings modal is enhanced independently of the sidebar presentation
 // gate: controls, save bar and injected search use the canonical presentation.
@@ -564,7 +549,7 @@ assert.ok(document.getElementById('globalUserName').closest('.vcp-uiux-input-wra
 await window.VCPUISettingsBridge.destroy();
 modalContainer.remove();
 
-assert.ok(!document.getElementById('bridgeInput').classList.contains('vcp-ui-native-input'));
+assert.ok(!document.getElementById('bridgeInput')?.classList?.contains('vcp-ui-native-input'));
 settingsHost.remove();
 document.documentElement.dataset.uiMode = 'next';
 

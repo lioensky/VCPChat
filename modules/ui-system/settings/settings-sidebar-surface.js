@@ -121,6 +121,7 @@ export function createSettingsSidebarSurface({ document = globalThis.document, r
         root,
         schema: { renderAgentSettingsSurface },
         register,
+        has: kind => views.has(kind),
         getView: kind => views.get(kind) || null,
         show,
         begin: show,
