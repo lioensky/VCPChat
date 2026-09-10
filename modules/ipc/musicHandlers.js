@@ -711,21 +711,39 @@ function initialize(options) {
             }
         });
 
-        ipcMain.handle('music-get-lyrics', async (event, { artist, title }) => {
+        ipcMain.handle('music-get-lyrics', async (event, { artist, title, rawObject }) => {
             if (!title) return null;
 
-            // A simple sanitizer to remove characters that are invalid in file paths.
-            const sanitize = (str) => str.replace(/[\\/:"*?<>|]/g, '_');
+            const sanitize = (str) => (str || '').replace(/[\\/:"*?<>|]/g, '_').trim();
             const sanitizedTitle = sanitize(title);
+            const sanitizedArtist = artist ? sanitize(artist) : '';
 
-            const possiblePaths = [];
-            if (artist) {
-                const sanitizedArtist = sanitize(artist);
-                possiblePaths.push(path.join(LYRIC_DIR, `${sanitizedArtist} - ${sanitizedTitle}.lrc`));
+            // Check JSON first if rawObject requested or available
+            const possibleJsonPaths = [];
+            if (sanitizedArtist) {
+                possibleJsonPaths.push(path.join(LYRIC_DIR, `${sanitizedArtist} - ${sanitizedTitle}.json`));
             }
-            possiblePaths.push(path.join(LYRIC_DIR, `${sanitizedTitle}.lrc`));
+            possibleJsonPaths.push(path.join(LYRIC_DIR, `${sanitizedTitle}.json`));
 
-            for (const lrcPath of possiblePaths) {
+            for (const jsonPath of possibleJsonPaths) {
+                try {
+                    if (await fs.pathExists(jsonPath)) {
+                        const data = await fs.readJson(jsonPath);
+                        return data;
+                    }
+                } catch (err) {
+                    console.warn(`[Music] Error reading JSON lyric cache ${jsonPath}:`, err.message);
+                }
+            }
+
+            // Fallback to LRC text cache
+            const possibleLrcPaths = [];
+            if (sanitizedArtist) {
+                possibleLrcPaths.push(path.join(LYRIC_DIR, `${sanitizedArtist} - ${sanitizedTitle}.lrc`));
+            }
+            possibleLrcPaths.push(path.join(LYRIC_DIR, `${sanitizedTitle}.lrc`));
+
+            for (const lrcPath of possibleLrcPaths) {
                 try {
                     if (await fs.pathExists(lrcPath)) {
                         const content = await fs.readFile(lrcPath, 'utf-8');
@@ -739,14 +757,18 @@ function initialize(options) {
             return null;
         });
 
-        ipcMain.handle('music-fetch-lyrics', async (event, { artist, title }) => {
+        ipcMain.handle('music-fetch-lyrics', async (event, { artist, title, duration, durationMs, album, rawObject }) => {
             if (!title) return null;
             console.log(`[Music] IPC: Received request to fetch lyrics for "${title}" by "${artist}"`);
             try {
-                // Ensure the lyric directory exists before fetching
                 await fs.ensureDir(LYRIC_DIR);
-                const lrcContent = await lyricFetcher.fetchAndSaveLyrics(artist, title, LYRIC_DIR);
-                return lrcContent;
+                const result = await lyricFetcher.fetchAndSaveLyrics(artist, title, LYRIC_DIR, {
+                    duration,
+                    durationMs,
+                    album,
+                    rawObject: rawObject !== undefined ? rawObject : true
+                });
+                return result;
             } catch (error) {
                 console.error(`[Music] Error fetching lyrics via IPC for "${title}":`, error);
                 return null;

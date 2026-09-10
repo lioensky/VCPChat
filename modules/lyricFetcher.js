@@ -1,7 +1,10 @@
 // modules/lyricFetcher.js
+// Enhanced multi-source lyric fetcher bridging legacy calls to lyricFetcherUnified
+
 const fs = require('fs').promises;
 const path = require('path');
 const axios = require('axios');
+const { fetchAndSaveLyricsUnified, convertToLrcString } = require('./lyrics/lyricFetcherUnified');
 
 const lyricApiUrl = 'https://music.163.com/api/song/lyric';
 const searchApiUrl = 'https://music.163.com/api/search/get/';
@@ -162,7 +165,28 @@ function getBestMatch(songs, artist) {
 }
 
 
-async function fetchAndSaveLyrics(artist, title, lyricDir) {
+async function fetchAndSaveLyrics(artist, title, lyricDir, options = {}) {
+    try {
+        const unifiedLyrics = await fetchAndSaveLyricsUnified({
+            artist,
+            title,
+            durationMs: options.durationMs || (options.duration ? options.duration * 1000 : 0),
+            album: options.album,
+            lyricDir
+        });
+
+        if (unifiedLyrics) {
+            // Returns unified LyricData if requested or object format, or LRC string
+            if (options.rawObject) {
+                return unifiedLyrics;
+            }
+            return convertToLrcString(unifiedLyrics);
+        }
+    } catch (unifiedErr) {
+        console.warn('[LyricFetcher] Unified fetch failed, falling back to legacy NetEase API:', unifiedErr.message);
+    }
+
+    // Fallback to legacy NetEase API if unified match didn't succeed
     const songs = await searchSongId(title, artist);
     if (!songs || songs.length === 0) {
         console.log(`[LyricFetcher] Could not find any songs for "${title}".`);
@@ -176,7 +200,7 @@ async function fetchAndSaveLyrics(artist, title, lyricDir) {
     }
 
     const songId = bestMatch.id;
-    console.log(`[LyricFetcher] Found best match song ID: ${songId} for "${title}" (Artist: ${bestMatch.artists.map(a => a.name).join('/')})`);
+    console.log(`[LyricFetcher] Found legacy match song ID: ${songId} for "${title}" (Artist: ${bestMatch.artists.map(a => a.name).join('/')})`);
     const lrcContent = await getLyric(songId);
 
     if (lrcContent) {
@@ -191,7 +215,7 @@ async function fetchAndSaveLyrics(artist, title, lyricDir) {
             return lrcContent;
         } catch (error) {
             console.error(`[LyricFetcher] Error saving lyric file:`, error);
-            return lrcContent; // Still return content even if saving fails
+            return lrcContent;
         }
     }
     
@@ -200,5 +224,6 @@ async function fetchAndSaveLyrics(artist, title, lyricDir) {
 }
 
 module.exports = {
-    fetchAndSaveLyrics
+    fetchAndSaveLyrics,
+    fetchAndSaveLyricsUnified
 };
