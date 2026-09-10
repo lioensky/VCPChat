@@ -12,7 +12,7 @@
     "reason": "per-Surface stream projection factory with an explicit StreamProjectionRuntime provider, owning document/window capabilities, attachStreamProjection lifecycle API, injected view authority, transient message models delegated to StreamTransientHistory, owned animation-frame scheduling and pending operation disposal, no repository or durable commit authority, no exported singleton or hidden root side channel, ContentRuntime render models, and owned Desktop push subscription/timer consumer; producer streamOperationId carried into projection and terminal validation; operation-scoped runtime map adapter, retry retirement, display-id projection index, and renderer-local conversation snapshot/reconcile so an active stream can be reprojected after topic history/DOM replacement without becoming durable authority"
   },
   "modules/topicListManager.js": {
-    "sha256": "0c613e24341ce273ad5807609b089138edbf098259801df7972d8a0733803607",
+    "sha256": "3097222a98c6eff07acce3eb51c3c330e212125ae74daced615647347b3cfd04",
     "reason": "shared topic authority with canonical presentation projection, mandatory repository access without a direct IPC fallback, explicit injected topic-selection readiness, lifecycle listener owner, ui manager and item-list service capabilities, render-scoped listener cleanup, and disposal of observers, sortable state, context menus, and dynamic topic resources"
   },
   "modules/itemListManager.js": {
@@ -20,7 +20,7 @@
     "reason": "shared Agent/group catalog authority with stale-load commit protection"
   },
   "Groupmodules/grouprenderer.js": {
-    "sha256": "b1e6353e21b0625e89d9f711e2aea3303b4bbcb77e7bacc57e6a05649fa6c58e",
+    "sha256": "4511a5492ae0add5ffa8d577b19193ded84669f7afd25fbba8f392588d3d2cb3",
     "reason": "upstream group business surface with retired toolbar binding removed"
   },
   "modules/settingsManager.js": {
