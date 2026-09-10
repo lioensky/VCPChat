@@ -98,3 +98,71 @@ test('持久目标在来源变化或候选歧义时拒绝匹配', () => {
             error.details.candidateCount === 2
     );
 });
+
+test('文本目标优先选择完整名称而不是其短子串按钮', () => {
+    const { window, runtime } = createRuntime();
+    const novaReply = window.document.createElement('button');
+    novaReply.id = 'nova-reply';
+    novaReply.textContent = 'Nova回复';
+    const reply = window.document.createElement('button');
+    reply.id = 'reply';
+    reply.textContent = '回复';
+    window.document.querySelector('main').append(novaReply, reply);
+
+    const resolved = runtime.resolveTarget('Nova回复');
+
+    assert.equal(resolved.element, novaReply);
+    assert.equal(resolved.element.id, 'nova-reply');
+    assert.equal(resolved.confidence, 1);
+    assert.equal(resolved.candidateCount, 1);
+});
+
+test('持久目标不固化动态 title，输入后按钮状态变化仍可解析', () => {
+    const { window, runtime } = createRuntime();
+    const button = window.document.createElement('button');
+    button.id = 'nova-send';
+    button.setAttribute('aria-label', 'Nova 发送消息');
+    button.setAttribute('title', '请先输入消息');
+    button.textContent = 'Nova回复';
+    window.document.querySelector('main').append(button);
+
+    const first = runtime.snapshot();
+    const handle = first.pageGraph.elements.find(item => item.label === 'Nova 发送消息');
+    assert(handle, '快照应包含 Nova 发送按钮');
+
+    const target = runtime.createPersistentTarget(handle.snapshotHandleId, {
+        runtimeInstanceId: first.runtimeInstanceId,
+        documentGeneration: first.documentGeneration,
+        snapshotId: first.snapshotId,
+        strict: true,
+    });
+
+    assert(!target.selectors.some(selector => selector.includes('[title=')));
+    assert.equal(target.attributes.title, undefined);
+
+    button.setAttribute('title', '通过 DeepSeek 原生发送控件提交消息');
+    runtime.snapshot();
+
+    const resolved = runtime.resolveTarget(target);
+    assert.equal(resolved.element, button);
+    assert.equal(resolved.source, 'skill-persistent');
+});
+
+test('持久目标 0 匹配时报告未找到，而不是歧义', () => {
+    const { window, runtime } = createRuntime();
+    const first = runtime.snapshot();
+    const input = first.pageGraph.elements.find(item => item.elementKind === 'textarea');
+    const target = runtime.createPersistentTarget(input.snapshotHandleId, {
+        runtimeInstanceId: first.runtimeInstanceId,
+        documentGeneration: first.documentGeneration,
+        snapshotId: first.snapshotId,
+        strict: true,
+    });
+
+    window.document.getElementById('prompt').remove();
+    assert.throws(
+        () => runtime.resolveTarget(target),
+        error => error.code === 'TARGET_NOT_FOUND' &&
+            error.details.candidateCount === 0
+    );
+});
