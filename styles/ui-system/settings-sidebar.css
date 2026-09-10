@@ -72,10 +72,12 @@ html .vcp-ui-scope #tabContentSettings.sidebar-tab-content:not(.active) {
 }
 
 html .vcp-ui-scope #tabContentSettings > .vcp-settings-schema-surface {
-    display: block;
+    display: flex;
+    flex: 1 0 auto;
+    flex-direction: column;
     width: 100%;
     min-width: 0;
-    min-height: 0;
+    min-height: 100%;
     margin: 0;
     padding: 0;
     box-sizing: border-box;
@@ -200,10 +202,12 @@ html .vcp-ui-scope .vcp-settings-schema-surface > h3 {
 
 html .vcp-ui-scope .vcp-settings-schema-surface > form {
     display: flex;
+    flex: 1 0 auto;
     flex-direction: column;
     gap: var(--vcp-settings-gap);
     width: 100%;
     min-width: 0;
+    min-height: 100%;
     margin: 0;
     padding: 0;
     box-sizing: border-box;
@@ -472,6 +476,14 @@ html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section-summary.
     padding: 0;
     background: transparent;
     border: none;
+}
+
+/* A summary is the collapsed projection of a section, never part of its
+   expanded editor. Keep this rule in the unlayered sidebar owner so summary
+   type rules above cannot override it through cascade-layer precedence. */
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section:not(.collapsed) .agent-settings-section-summary,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-section:not(.collapsed) .group-settings-section-summary {
+    display: none;
 }
 
 html .vcp-ui-scope .vcp-settings-schema-surface .summary-pills-row .vcp-uiux-pill {
