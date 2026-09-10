@@ -9,6 +9,8 @@ class OriginalPromptModule {
     this.textarea = null;
     this.maxAutoHeight = 320;
     this.cachedContent = "";
+    this.contextVersion = 0;
+    this.persistedContent = "";
   }
 
   /**
@@ -17,9 +19,18 @@ class OriginalPromptModule {
    * @param {Object} config 
    */
   updateContext(agentId, config) {
+    this.contextVersion += 1;
+    this.textarea = null;
     this.agentId = agentId;
     this.config = config;
-    this.cachedContent = config.originalSystemPrompt || config.systemPrompt || "";
+    // An explicitly empty original prompt is valid. Only legacy configs
+    // without a mode-specific field may inherit the compatibility prompt.
+    this.cachedContent = typeof config.originalSystemPrompt === "string"
+      ? config.originalSystemPrompt
+      : (!config.promptMode || config.promptMode === "original")
+        ? (config.systemPrompt ?? "")
+        : "";
+    this.persistedContent = this.cachedContent.trim();
   }
 
   /**
@@ -40,8 +51,13 @@ class OriginalPromptModule {
     this.textarea.value = this.cachedContent;
     this.textarea.rows = 3;
 
-    // 添加自动调整大小
+    // The editor is a projection of this context's draft, not a durable
+    // source that can be reassigned to another Agent.
+    const editor = this.textarea;
+    const version = this.contextVersion;
     this.textarea.addEventListener("input", () => {
+      if (version !== this.contextVersion || this.textarea !== editor) return;
+      this.cachedContent = editor.value;
       this.autoResize();
     });
 
@@ -69,16 +85,39 @@ class OriginalPromptModule {
    * 保存数据
    */
   async save() {
-    if (!this.textarea) return;
+    const agentId = this.agentId;
+    const version = this.contextVersion;
+    const content = this.cachedContent.trim();
+    if (!agentId) {
+      return { success: false, error: "提示词没有所属 Agent" };
+    }
 
-    const content = this.textarea.value.trim();
-
-    // 更新缓存
-    this.cachedContent = content;
-
-    await this.electronAPI.updateAgentConfig(this.agentId, {
+    // An installed coordinator owns the write boundary. A rejected stage is
+    // not permission to bypass it with an unversioned IPC write.
+    if (typeof window.settingsManager?.stageAgentPatch === "function") {
+      const staged = window.settingsManager.stageAgentPatch(
+        { originalSystemPrompt: content },
+        agentId
+      );
+      if (staged?.success !== true) {
+        throw new Error(staged?.error || "提示词编辑会话拒绝暂存");
+      }
+      // Keep persistedContent unchanged until a durable acknowledgement.
+      return staged;
+    }
+    if (content === this.persistedContent) {
+      return { success: true, skipped: true };
+    }
+    const result = await this.electronAPI.updateAgentConfig(agentId, {
       originalSystemPrompt: content,
     });
+    if (!result || result.success !== true || result.error) {
+      throw new Error(result?.error || result?.message || "提示词保存失败");
+    }
+    if (this.agentId === agentId && this.contextVersion === version) {
+      this.persistedContent = content;
+    }
+    return result;
   }
 
   /**
@@ -86,16 +125,15 @@ class OriginalPromptModule {
    * @returns {string}
    */
   async getPrompt() {
-    if (this.textarea) {
-      return this.textarea.value.trim();
-    }
-    return this.cachedContent;
+    return this.cachedContent.trim();
   }
 
   /**
    * 销毁模块，释放资源
    */
   destroy() {
+    this.contextVersion += 1;
+    this.agentId = null;
     this.textarea = null;
     this.container = null;
   }

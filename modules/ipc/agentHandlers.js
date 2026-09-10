@@ -42,7 +42,7 @@ async function getAgentConfigById(agentId) {
     let config;
     try {
         if (agentConfigManagerInstance) {
-            config = await agentConfigManagerInstance.readAgentConfig(agentId);
+            config = await agentConfigManagerInstance.readAgentConfig(agentId, { fresh: true });
         } else if (await fs.pathExists(configPath)) {
             config = await fs.readJson(configPath);
         }
@@ -52,20 +52,28 @@ async function getAgentConfigById(agentId) {
     }
 
     if (config) {
+        // Compute before injecting UI-only fields or external regex content.
+        const revision = agentConfigManagerInstance?.getRevision(config);
         // Check for external regex rules file
-        if (await fs.pathExists(regexPath)) {
+        if (config.regexStorageVersion !== 1 && await fs.pathExists(regexPath)) {
             try {
-                config.stripRegexes = await fs.readJson(regexPath);
+                const rules = await fs.readJson(regexPath);
+                if (!Array.isArray(rules)) throw new Error('正则文件内容不是数组');
+                config.stripRegexes = rules;
             } catch (e) {
                 console.error(`Error reading regex_rules.json for agent ${agentId}:`, e);
-                // Keep stripRegexes from config.json as a fallback
+                return { error: `读取旧正则规则失败，已阻止编辑和迁移：${e.message}` };
             }
         }
 
+        if (config.regexStorageVersion === 1 && !Array.isArray(config.stripRegexes)) {
+            return { error: '配置中的正则规则格式错误，已阻止编辑。' };
+        }
         config.avatarUrl = await findAvatarUrl(agentDir, true);
         config.id = agentId;
         // 注入正确的用户数据目录路径，而不是Agent定义目录
         config.agentDataPath = path.join(AGENT_DIR_CACHE.replace('Agents', 'UserData'), agentId);
+        config.__vcpAgentRevision = revision;
         return config;
     }
     return { error: `Agent config for ${agentId} not found.` };
@@ -143,7 +151,7 @@ function initialize(context) {
 
                     // Load external regex rules if they exist
                     const regexPath = path.join(agentPath, 'regex_rules.json');
-                    if (await fs.pathExists(regexPath)) {
+                    if (config.regexStorageVersion !== 1 && await fs.pathExists(regexPath)) {
                         try {
                             config.stripRegexes = await fs.readJson(regexPath);
                         } catch (e) {
@@ -247,38 +255,28 @@ function initialize(context) {
 
     ipcMain.handle('save-agent-config', async (event, agentId, config) => {
         try {
-            const agentDir = path.join(AGENT_DIR, agentId);
-            await fs.ensureDir(agentDir);
-            const regexPath = path.join(agentDir, 'regex_rules.json');
-
-            // Handle stripRegexes separately if the property exists in the incoming config
-            if (config.hasOwnProperty('stripRegexes')) {
-                let stripRegexes = config.stripRegexes;
-                if (Array.isArray(stripRegexes) && stripRegexes.length > 0) {
-                    // 终极修复：在保存到JSON之前，手动“解毒”正则表达式字符串。
-                    // fs.writeJson 会自动转义 \，导致 \\ -> \\\\。
-                    // 我们在这里进行一次反向操作，将 \\ 变回 \，这样经过 fs.writeJson 的转义后，文件里就是正确的 \\。
-                    const cleanedRegexes = stripRegexes.map(rule => {
-                        if (rule.findPattern && typeof rule.findPattern === 'string') {
-                            // 将 \\ 替换为 \，为 fs.writeJson 的自动转义做准备
-                            rule.findPattern = rule.findPattern.replace(/\\\\/g, '\\');
-                        }
-                        return rule;
-                    });
-
-                    // 使用清理过的数据进行保存
-                    await fs.writeJson(regexPath, cleanedRegexes, { spaces: 2 });
-                } else {
-                    // If the array is empty or not an array, remove the regex file if it exists
-                    if (await fs.pathExists(regexPath)) {
-                        await fs.remove(regexPath);
-                    }
-                }
+            if (!config || typeof config !== 'object' || Array.isArray(config)) {
+                return { success: false, error: '无效的 Agent 配置' };
             }
-
-            // CRITICAL: Always remove stripRegexes from the object to be saved to config.json
-            const configToSave = { ...config };
-            delete configToSave.stripRegexes;
+            const configToSave = structuredClone(config);
+            delete configToSave.__vcpAgentRevision;
+            delete configToSave.__vcpAgentEdit;
+            delete configToSave.regexStorageVersion;
+            delete configToSave.id;
+            delete configToSave.agentDataPath;
+            delete configToSave.avatarUrl;
+            // Settings writes never own the chat topic index.
+            delete configToSave.topics;
+            if (Object.prototype.hasOwnProperty.call(configToSave, 'stripRegexes')) {
+                if (!Array.isArray(configToSave.stripRegexes)
+                    || configToSave.stripRegexes.some(rule => !rule || typeof rule !== 'object'
+                        || Array.isArray(rule) || typeof rule.findPattern !== 'string')) {
+                    return { success: false, error: '无效的正则规则数组' };
+                }
+                configToSave.regexStorageVersion = 1;
+            }
+            // Keep the legacy regex file untouched as a recovery source.
+            // Config and regex now share the same atomic replacement.
 
             if (agentConfigManager) {
                 // 使用AgentConfigManager进行安全的配置更新
@@ -302,21 +300,77 @@ function initialize(context) {
     // 新增：更新Agent配置（部分更新）
     ipcMain.handle('update-agent-config', async (event, agentId, updates) => {
         try {
-            if (agentConfigManager) {
-                const result = await agentConfigManager.updateAgentConfig(agentId, existingConfig => ({
-                    ...existingConfig,
-                    ...updates
-                }));
-                invalidateCaches();
-                return { success: true, message: `Agent ${agentId} 配置已更新。` };
-            } else {
-                // AgentConfigManager 不可用，报错而非静默 fallback
-                console.error(`AgentConfigManager not available, cannot safely update config for agent ${agentId}`);
-                return { error: 'AgentConfigManager 未初始化，无法安全更新配置。' };
+            if (!agentConfigManager) {
+                return { success: false, error: 'AgentConfigManager 未初始化，无法安全更新配置。' };
             }
+            const transaction = updates?.__vcpAgentEdit;
+            let patch = updates;
+            let options = {};
+            if (transaction) {
+                const allowed = new Set([
+                    'name', 'model', 'temperature', 'contextTokenLimit', 'maxOutputTokens',
+                    'top_p', 'top_k', 'streamOutput', 'ttsVoicePrimary', 'ttsRegexPrimary',
+                    'ttsVoiceSecondary', 'ttsRegexSecondary', 'ttsDirectorPrompts', 'ttsSpeed',
+                    'avatarBorderColor', 'nameTextColor', 'customCss', 'cardCss', 'chatCss',
+                    'disableCustomColors', 'useThemeColorsInChat', 'uiCollapseStates',
+                    'stripRegexes',
+                    'promptMode', 'systemPrompt', 'originalSystemPrompt', 'advancedSystemPrompt',
+                    'presetSystemPrompt', 'selectedPreset', 'presetPromptPath'
+                ]);
+                patch = transaction.patch;
+                if (!patch || typeof patch !== 'object' || Array.isArray(patch)
+                    || typeof transaction.expectedRevision !== 'string'
+                    || Object.keys(patch).some(key => !allowed.has(key))) {
+                    return { success: false, status: 'failed', error: '无效的 Agent 设置事务或越权字段' };
+                }
+                if ('promptMode' in patch
+                    && !['original', 'modular', 'preset'].includes(patch.promptMode)) {
+                    return { success: false, status: 'failed', error: '无效的提示词模式' };
+                }
+                options = {
+                    expectedRevision: transaction.expectedRevision,
+                    operationId: transaction.operationId
+                };
+            }
+            if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
+                return { success: false, status: 'failed', error: 'Agent 更新必须是对象' };
+            }
+            const protectedFields = ['topics', 'id', 'agentDataPath', 'avatarUrl',
+                '__proto__', 'prototype', 'constructor'];
+            if (Object.keys(patch).some(key => protectedFields.includes(key))) {
+                return { success: false, status: 'failed', error: 'Agent 设置更新包含受保护字段' };
+            }
+            // Protocol metadata must never become a user configuration field.
+            const safePatch = structuredClone(patch);
+            delete safePatch.__vcpAgentRevision;
+            delete safePatch.__vcpAgentEdit;
+            const hasRegexPatch = Object.prototype.hasOwnProperty.call(safePatch, 'stripRegexes');
+            const stripRegexes = hasRegexPatch ? safePatch.stripRegexes : undefined;
+            if (hasRegexPatch && (!Array.isArray(stripRegexes)
+                || stripRegexes.some(rule => !rule || typeof rule !== 'object'
+                    || Array.isArray(rule) || typeof rule.findPattern !== 'string'))) {
+                return { success: false, status: 'failed', error: '正则规则必须是包含查找表达式的对象数组' };
+            }
+            // The storage marker is backend-owned, never caller-controlled.
+            delete safePatch.regexStorageVersion;
+            if (hasRegexPatch) safePatch.regexStorageVersion = 1;
+            // Rules and config now share the same config.json replacement.
+            // The legacy regex file remains untouched as a recovery source.
+            const result = await agentConfigManager.updateAgentConfig(agentId, safePatch, options);
+
+            invalidateCaches();
+            return { ...result, message: `Agent ${agentId} 配置已更新。` };
         } catch (error) {
             console.error(`更新Agent ${agentId} 配置失败:`, error);
-            return { error: error.message };
+            return {
+                success: false,
+                status: error.code === 'AGENT_CONFIG_CONFLICT' ? 'conflict' : 'failed',
+                code: error.code,
+                expectedRevision: error.expectedRevision,
+                currentRevision: error.currentRevision,
+                operationId: error.operationId,
+                error: error.message
+            };
         }
     });
 

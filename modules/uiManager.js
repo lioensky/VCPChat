@@ -19,6 +19,7 @@ const uiManager = (() => {
     let uiHelperCapability = null;
     let disposed = false;
     let generation = 0;
+    let tabSwitchSequence = 0;
     const saveSettingPatch = (patch) => electronAPI?.saveSettings?.({
         __vcpSettingsOps: Object.entries(patch || {}).map(([key, value]) => ({ op: 'set', path: [key], value })),
     });
@@ -453,7 +454,8 @@ const uiManager = (() => {
      * Switches to the specified tab.
      * @param {string} targetTab - The tab to switch to.
      */
-    function switchToTab(targetTab) {
+    async function switchToTab(targetTab) {
+        if (disposed || !['agents', 'topics', 'settings'].includes(targetTab)) return false;
         // “仅头像”是助手列表专属布局；进入话题或设置时恢复完整侧栏。
         if (targetTab !== 'agents' && leftSidebar?.classList.contains('avatar-only')) {
             leftSidebar.classList.remove('avatar-only');
@@ -465,18 +467,28 @@ const uiManager = (() => {
         }
 
         // Settings is an owned surface. Leaving the tab physically detaches
-        // its form from the sidebar, so sticky actions and focusable controls
-        // cannot overlap or intercept the Agent list.
+        // its form only after the current Agent draft has reached a terminal
+        // save result. A generation prevents an old leave task from detaching
+        // a newly reopened settings surface.
+        const tabSwitchGeneration = ++tabSwitchSequence;
         if (targetTab !== 'settings') {
             const activeEl = document.activeElement;
             if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA') && activeEl.closest?.('#agentSettingsForm, #groupSettingsForm')) {
                 try { activeEl.blur(); } catch (_) {}
             }
             if (window.settingsManager?.flushPendingSave) {
-                window.settingsManager.flushPendingSave().catch(e => {
+                try {
+                    const result = await window.settingsManager.flushPendingSave();
+                    if (result?.success === false) {
+                        console.warn('[UIManager] Settings flush failed; keeping the surface mounted:', result.error);
+                        return false;
+                    }
+                } catch (e) {
                     console.warn('[UIManager] Error flushing settings before tab switch:', e);
-                });
+                    return false;
+                }
             }
+            if (disposed || tabSwitchGeneration !== tabSwitchSequence) return false;
         }
         window.VCPSettingsSidebar?.setPanelActive?.(targetTab === 'settings');
 

@@ -23,32 +23,30 @@ function initialize(options) {
     // 定义全局仓库文件的路径
     const GLOBAL_WAREHOUSE_PATH = path.join(APP_DATA_ROOT, 'global_prompt_warehouse.json');
 
-    // 处理器：读取全局仓库
+    const GlobalPromptWarehouseStore = require('../utils/globalPromptWarehouseStore');
+    const warehouseStore = new GlobalPromptWarehouseStore(GLOBAL_WAREHOUSE_PATH);
+
     ipcMain.handle('get-global-warehouse', async () => {
         try {
-            // 检查文件是否存在，不存在则创建一个空的
-            if (!await fs.pathExists(GLOBAL_WAREHOUSE_PATH)) {
-                await fs.writeJson(GLOBAL_WAREHOUSE_PATH, []); // 写入一个空数组
-                return { success: true, data: [] };
-            }
-            // 读取并返回文件内容
-            const data = await fs.readJson(GLOBAL_WAREHOUSE_PATH);
-            return { success: true, data: data };
+            const { success, data, currentRevision } = await warehouseStore.read();
+            return { success, data, currentRevision };
         } catch (error) {
             console.error('[PromptHandlers] Error getting global warehouse:', error);
             return { success: false, error: error.message };
         }
     });
 
-    // 处理器：保存全局仓库
-    ipcMain.handle('save-global-warehouse', async (event, data) => {
+    ipcMain.handle('save-global-warehouse', async (event, transaction) => {
         try {
-            // 将接收到的数据写入文件，格式化以方便阅读
-            await fs.writeJson(GLOBAL_WAREHOUSE_PATH, data, { spaces: 2 });
-            return { success: true };
+            return await warehouseStore.save(transaction);
         } catch (error) {
             console.error('[PromptHandlers] Error saving global warehouse:', error);
-            return { success: false, error: error.message };
+            return {
+                success: false,
+                status: 'failed',
+                error: error.message,
+                code: error.code,
+            };
         }
     });
 
@@ -183,7 +181,9 @@ function setupHandlers() {
 
             switch (promptMode) {
                 case 'original':
-                    systemPrompt = config.originalSystemPrompt || config.systemPrompt || '';
+                    systemPrompt = typeof config.originalSystemPrompt === 'string'
+                        ? config.originalSystemPrompt
+                        : (config.systemPrompt ?? '');
                     break;
 
                 case 'modular':
@@ -200,7 +200,7 @@ function setupHandlers() {
                                     // 如果有轮换文本，使用选中的版本
                                     if (block.variants && block.variants.length > 0) {
                                         const selectedIndex = block.selectedVariant || 0;
-                                        content = block.variants[selectedIndex] || content;
+                                        content = block.variants[selectedIndex] ?? '';
                                     }
                                     return content;
                                 }
@@ -247,13 +247,17 @@ function setupHandlers() {
                     return { success: false, error: 'Agent配置不存在' };
                 }
             }
-            config.promptMode = mode;
+            // Keep the previous mode while resolving legacy prompt fallback.
+            // A missing original field must not inherit another mode's content.
 
             // 更新 systemPrompt 字段
             let systemPrompt = '';
             switch (mode) {
                 case 'original':
-                    systemPrompt = config.originalSystemPrompt || config.systemPrompt || '';
+                    systemPrompt = typeof config.originalSystemPrompt === 'string'
+                        ? config.originalSystemPrompt
+                        : (!config.promptMode || config.promptMode === 'original'
+                            ? (config.systemPrompt ?? '') : '');
                     break;
                 case 'modular':
                     if (config.advancedSystemPrompt && typeof config.advancedSystemPrompt === 'object') {
@@ -267,12 +271,14 @@ function setupHandlers() {
                                     let content = block.content || '';
                                     if (block.variants && block.variants.length > 0) {
                                         const selectedIndex = block.selectedVariant || 0;
-                                        content = block.variants[selectedIndex] || content;
+                                        content = block.variants[selectedIndex] ?? '';
                                     }
                                     return content;
                                 }
                             })
                             .join('');
+                    } else if (typeof config.advancedSystemPrompt === 'string') {
+                        systemPrompt = config.advancedSystemPrompt;
                     }
                     break;
                 case 'preset':
@@ -280,13 +286,25 @@ function setupHandlers() {
                     break;
             }
 
+            config.promptMode = mode;
             config.systemPrompt = systemPrompt;
             // 使用 AgentConfigManager 进行安全的配置更新
             const { getAgentConfigManager } = require('./agentHandlers');
             const agentConfigManager = getAgentConfigManager();
 
             if (agentConfigManager) {
-                await agentConfigManager.writeAgentConfig(agentId, config);
+                // Only a versioned read may authorize this update. Never
+                // persist the UI-enriched config or a stale topic snapshot.
+                if (typeof config.__vcpAgentRevision !== 'string') {
+                    return { success: false, error: '配置缺少读取版本，已阻止模式覆盖，请重新加载。' };
+                }
+                await agentConfigManager.updateAgentConfig(agentId, {
+                    promptMode: mode,
+                    systemPrompt,
+                }, {
+                    expectedRevision: config.__vcpAgentRevision,
+                    operationId: `prompt-mode-${Date.now()}`
+                });
             } else {
                 console.error(`AgentConfigManager not available, cannot safely save mode change for agent ${agentId}`);
                 return { success: false, error: 'AgentConfigManager 未初始化，无法安全保存模式更改。' };

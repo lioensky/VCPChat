@@ -739,6 +739,12 @@ test('H5: Agent 保存链路真实测试（涵盖真实 settingsManager、完整
             }
         });
 
+        // Establish ownership through the real loading path before editing.
+        dom.window.requestAnimationFrame = fn => setTimeout(fn, 0);
+        await sm.displaySettingsForItem({
+            id: 'agent-real-test-123', type: 'agent', config: { name: '初始助手' }
+        });
+
         // 填充测试值
         document.getElementById('editingAgentId').value = 'agent-real-test-123';
         document.getElementById('agentNameInput').value = '真实测试助手';
@@ -816,6 +822,13 @@ test('High: 切换 Agent 时 flush 失败必须显式告警且保留未保存状
         dom.window.eval(fs.readFileSync(path.join(repoRoot, 'modules/settingsManager.js'), 'utf8'));
         const sm = dom.window.settingsManager;
 
+        const surface = surfaceModule.createSettingsSidebarSurface({
+            document,
+            root: document.getElementById('tabContentSettings'),
+        });
+        surface.register('agent', host);
+        dom.window.VCPSettingsSidebar = surface;
+
         let saveCalls = 0;
         const fakeElectronAPI = {
             saveAgentConfig: async () => {
@@ -882,8 +895,15 @@ test('High: 切换 Agent 时 flush 失败必须显式告警且保留未保存状
         // 3. 此时切换至 agent-2，应当触发 flush 保存旧 agent-1
         // 但保存失败（Database locked）
         currentItem = { id: 'agent-2', type: 'agent' };
-        await sm.displaySettingsForItem();
+        const switchingResult = await sm.displaySettingsForItem();
 
+        assert.equal(switchingResult.success, false, '保存失败必须向调用方返回失败');
+        assert.equal(surface.getSnapshot().activeId, 'agent-1', 'surface 归属必须恢复到旧 Agent');
+        assert.equal(surface.getSnapshot().activeKind, 'agent');
+        assert.equal(form.querySelector('#editingAgentId').value, 'agent-1');
+        assert.equal(nameInput.value, '修改后的 agent-1', '不得用磁盘旧值覆盖未保存草稿');
+        assert.equal(host.isConnected, true, '失败后旧编辑器必须仍挂载');
+        assert.equal(form.inert, false, '失败后旧编辑器必须仍可编辑');
         assert.equal(saveCalls, 1, '切换时必须尝试自动保存未提交修改的 agent-1');
         assert.ok(toasts.some(t => t.type === 'warning' && t.msg.includes('切换前自动保存「agent-1」失败')), 'flush 失败时必须显式告警提示用户修改未成功保存');
     } finally {
@@ -1069,6 +1089,11 @@ test('P0 对抗性防线: 侧边栏 Unmount 脱水态保存与 Autosave 保护�
             }
         });
 
+        dom.window.requestAnimationFrame = fn => setTimeout(fn, 0);
+        await sm.displaySettingsForItem({
+            id: 'agent-detached-test', type: 'agent', config: { name: '脱水测试助手' }
+        });
+
         // 填充敏感字段
         form.querySelector('#editingAgentId').value = 'agent-detached-test';
         form.querySelector('#agentNameInput').value = '脱水测试助手';
@@ -1183,8 +1208,8 @@ test('P1 对抗性防线: 侧边栏 Unmount 脱水态切换与加载 Agent 测�
         // 模拟离开设置 Tab（脱水）
         surface.setPanelActive(false);
 
-        // 在脱水状态下切换 Agent 2 并执行加载
-        await sm.displaySettingsForItem({
+        // Hidden chat navigation must defer, not rewrite the shared editor.
+        const selectedAgent = {
             id: 'agent-2',
             type: 'agent',
             config: {
@@ -1195,9 +1220,17 @@ test('P1 对抗性防线: 侧边栏 Unmount 脱水态切换与加载 Agent 测�
                 disableCustomColors: true,
                 useThemeColorsInChat: true
             }
-        });
+        };
+        const deferred = await sm.displaySettingsForItem(selectedAgent);
+        assert.equal(deferred.deferred, true);
+        assert.equal(form.querySelector('#agentCardCss').value, '');
+        assert.equal(form.querySelector('#editingAgentId').value, '');
+        assert.equal(host.isConnected, false);
 
-        // 验证表单 DOM 中已正确灌入 Agent 2 的配置
+        surface.setPanelActive(true);
+        await sm.displaySettingsForItem(selectedAgent);
+
+        // Reopening settings loads the selected Agent without hidden mutation.
         assert.equal(form.querySelector('#agentCardCss').value, '.agent-2-card { border: 2px solid gold; }', '脱水态下 cardCss 必须正确加载到 DOM 控件');
         assert.equal(form.querySelector('#agentChatCss').value, '.agent-2-chat { color: cyan; }', '脱水态下 chatCss 必须正确加载到 DOM 控件');
         assert.equal(form.querySelector('#agentStreamOutputFalse').checked, true, '脱水态下 streamOutput 必须正确加载到 DOM 控件');
@@ -1295,6 +1328,9 @@ test('P1 对抗性防线: triggerAgentSave 准确拦截 IPC { success: false, me
             }
         });
 
+        await sm.displaySettingsForItem({
+            id: 'agent-ipc-fail', type: 'agent', config: { name: 'IPC失败测试助手' }
+        });
         form.querySelector('#editingAgentId').value = 'agent-ipc-fail';
         form.querySelector('#agentNameInput').value = 'IPC失败测试助手';
 
@@ -1507,6 +1543,8 @@ test('P0 对抗性防线: Agent 模型配置绝不被静默篡改为 gemini-pro 
                 agentTtsSpeedSlider: form.querySelector('#agentTtsSpeed')
             }
         });
+
+        await sm.displaySettingsForItem(currentItem);
 
         // 场景 A: 表单中的 #agentModel 有指定值，triggerAgentSave 保存时必须准确抓取该值，绝不能 fallback 到 gemini-pro
         const modelInput = host.querySelector('#agentModel');

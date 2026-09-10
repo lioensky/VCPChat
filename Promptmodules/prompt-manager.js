@@ -7,6 +7,10 @@ class PromptManager {
     this.agentId = null;
     this.config = null;
     this.contextVersion = 0;
+    this.contextRequestGeneration = 0;
+    this.modeSwitchGeneration = 0;
+    this.modeSwitchQueue = Promise.resolve();
+    this.contextReady = false;
 
     // 模块实例
     this.originalModule = null;
@@ -90,10 +94,27 @@ class PromptManager {
    * @param {Object} config 
    */
   async updateAgentContext(agentId, config) {
+    const request = ++this.contextRequestGeneration;
+    const modular = this.modularModule;
+    if (modular) {
+      // Validate the old global draft before changing ANY child or parent
+      // identity. A rejection must leave the original editor usable.
+      await modular.globalSaveQueue.catch(() => {});
+      if (request !== this.contextRequestGeneration) return false;
+      if (modular.globalSaveConflict
+          || (modular.globalWarehouseReady
+            && JSON.stringify(modular.hiddenBlocks.global || []) !== modular.persistedGlobalWarehouse)) {
+        throw new Error("全局仓库存在冲突或未保存草稿，未切换 Agent 上下文");
+      }
+    }
     const contextVersion = ++this.contextVersion;
+    ++this.modeSwitchGeneration;
+    this.contextReady = false;
+    if (this.containerElement) this.containerElement.inert = true;
     this.agentId = agentId;
     this.config = config;
-    this.currentMode = config.promptMode || "original";
+    this.currentMode = ["original", "modular", "preset"].includes(config.promptMode)
+      ? config.promptMode : "original";
 
     // 加载自定义模式名称 (这步可以异步)
     await this.loadCustomModeNames();
@@ -107,8 +128,10 @@ class PromptManager {
     if (this.presetModule) await this.presetModule.updateContext(agentId, config);
     if (contextVersion !== this.contextVersion || this.agentId !== agentId) return false;
 
-    // 重新渲染主框架
+    // Publish readiness only after every child belongs to this context.
     this.render();
+    this.contextReady = true;
+    if (this.containerElement) this.containerElement.inert = false;
     return true;
   }
 
@@ -178,6 +201,7 @@ class PromptManager {
 
     modes.forEach((mode) => {
       const button = document.createElement("button");
+      button.type = "button";
       button.className = "prompt-mode-button";
       button.dataset.mode = mode.id;
       button.innerHTML = `
@@ -368,44 +392,67 @@ class PromptManager {
    * 切换模式
    * @param {string} mode - 目标模式
    */
-  async switchMode(mode) {
-    if (this.currentMode === mode || !this.agentId) return;
+  switchMode(mode) {
+     if (!this.contextReady || !["original", "modular", "preset"].includes(mode) || !this.agentId) {
+       return Promise.resolve({ success: false, stale: true });
+     }
+     // Even a click on the currently displayed mode cancels earlier intent.
+     const generation = ++this.modeSwitchGeneration;
+     const agentId = this.agentId;
+     const version = this.contextVersion;
+     const ownsContext = () => this.agentId === agentId && this.contextVersion === version;
+     const isCurrent = () => ownsContext() && generation === this.modeSwitchGeneration;
+     const task = async () => {
+       if (!isCurrent()) return { success: false, stale: true };
+       await this.saveCurrentModeData();
+       if (!isCurrent()) return { success: false, stale: true };
 
-    // 在任何 await 之前冻结操作上下文。不能在异步恢复后再从共享实例/DOM读取身份。
-    const lockedAgentId = this.agentId;
-    const lockedContextVersion = this.contextVersion;
-    const sourceMode = this.currentMode;
-    const systemPrompt = await this.getCurrentSystemPrompt();
+       const targetModule = mode === "original" ? this.originalModule
+         : mode === "modular" ? this.modularModule : this.presetModule;
+       if (!targetModule) throw new Error("目标提示词模块尚未就绪");
+       const systemPrompt = await targetModule.getPrompt();
+       if (!isCurrent()) return { success: false, stale: true };
 
-    if (
-      this.agentId !== lockedAgentId ||
-      this.contextVersion !== lockedContextVersion ||
-      this.currentMode !== sourceMode
-    ) {
-      console.debug(`[PromptManager] Ignoring stale mode switch for agent ${lockedAgentId}.`);
-      return;
-    }
+       // Commit mode and its effective prompt through the Agent edit session
+       // whenever the settings surface owns this context.
+       const patch = { promptMode: mode, systemPrompt };
+       let result;
+       if (typeof window.settingsManager?.stageAgentPatch === "function") {
+         result = window.settingsManager.stageAgentPatch(patch, agentId);
+         // A rejected session stage must never authorize an unversioned write.
+       } else {
+         result = await this.electronAPI.updateAgentConfig(agentId, patch);
+       }
+       if (!result || result.success !== true || result.error) {
+         throw new Error(result?.error || result?.message || "提示词模式保存失败");
+       }
+       // With a coordinator this projects the accepted draft, not a durable
+       // acknowledgement. The settings save indicator owns persistence status.
+       // Standalone callers reach here only after their IPC acknowledges.
+       if (ownsContext()) {
+         this.currentMode = mode;
+         this.config = { ...this.config, promptMode: mode, systemPrompt };
+         this.updateModeButtons();
+         this.renderCurrentMode();
+       }
+       return result;
+     };
+     const operation = this.modeSwitchQueue.catch(() => {}).then(task);
+     this.modeSwitchQueue = operation;
+     // Event-driven callers do not await switchMode; still report failures.
+     operation.catch(error => {
+       console.error("[PromptManager] Mode switch failed:", error);
+       if (ownsContext()) {
+         window.uiHelperFunctions?.showToastNotification?.(
+           `提示词模式切换失败，草稿已保留：${error.message}`, "error"
+         );
+       }
+     });
+     return operation;
+ }
 
-    // 一次性只更新模式和该操作所捕获的提示词。子模块数据由各子模块自己的、
-    // 已绑定 Agent ID 的保存负责；禁止再从共享设置表单进行整份配置补保存。
-    await this.electronAPI.updateAgentConfig(lockedAgentId, {
-      promptMode: mode,
-      systemPrompt: systemPrompt,
-    });
-
-    // 写入可安全完成到原 Agent，但若用户已经切换上下文，不得改动新 Agent 的 UI。
-    if (this.agentId !== lockedAgentId || this.contextVersion !== lockedContextVersion) {
-      console.debug(`[PromptManager] Mode saved for ${lockedAgentId}; skipped stale UI update.`);
-      return;
-    }
-
-    this.currentMode = mode;
-    this.updateModeButtons();
-    this.renderCurrentMode();
-  }
-
-  /**
-   * 更新模式按钮的激活状态
+ /**
+  * 更新模式按钮的激活状态
    */
   updateModeButtons() {
     const buttons = this.containerElement.querySelectorAll(
@@ -424,7 +471,9 @@ class PromptManager {
    * 渲染当前模式的内容
    */
   renderCurrentMode() {
-    const contentContainer = document.getElementById("promptContentContainer");
+    // The owning settings surface may be detached from document.
+    // Resolve only inside our container, never another surface's editor.
+    const contentContainer = this.containerElement?.querySelector(":scope > .prompt-content-container");
     if (!contentContainer) return;
 
     contentContainer.innerHTML = "";
@@ -450,9 +499,54 @@ class PromptManager {
   }
 
   /**
+   * Drain editor work before an external save or handoff.
+   * Mode-switch tasks must not call this method: it waits for their queue.
+   */
+  async flushEditorWork() {
+    const version = this.contextVersion;
+    const agentId = this.agentId;
+    const assertOwner = () => {
+      if (!this.contextReady || version !== this.contextVersion || agentId !== this.agentId) {
+        throw new Error("等待保存期间提示词上下文已切换");
+      }
+    };
+    assertOwner();
+    while (true) {
+      const modeQueue = this.modeSwitchQueue;
+      // A failed intent leaves the displayed draft intact. Retrying that
+      // draft below must remain possible; persistent conflicts still reject.
+      await modeQueue.catch(() => {});
+      assertOwner();
+      await this.presetModule?.waitForPendingLoads?.();
+      assertOwner();
+      if (modeQueue !== this.modeSwitchQueue) continue;
+      await this.saveCurrentModeData();
+      assertOwner();
+      if (modeQueue === this.modeSwitchQueue
+          && !this.presetModule?.pendingPresetLoads?.size) {
+        return { success: true, agentId, contextVersion: version };
+      }
+    }
+  }
+
+  /**
    * 保存当前模式的数据
    */
   async saveCurrentModeData() {
+    if (!this.contextReady) throw new Error("提示词上下文尚未就绪，已阻止保存");
+    const version = this.contextVersion;
+    const agentId = this.agentId;
+    const modular = this.modularModule;
+    // Global drafts outlive the displayed mode. Drain them before allowing
+    // a handoff even when the user is currently editing original/preset text.
+    if (this.currentMode !== "modular" && modular?.globalWarehouseReady) {
+      await modular.saveGlobalSnapshot(
+        structuredClone(modular.hiddenBlocks.global || []), modular.contextVersion
+      );
+      if (version !== this.contextVersion || agentId !== this.agentId) {
+        throw new Error("保存期间提示词上下文已切换");
+      }
+    }
     switch (this.currentMode) {
       case "original":
         if (this.originalModule) {
@@ -477,6 +571,7 @@ class PromptManager {
    * @returns {string} 格式化后的系统提示词
    */
   async getCurrentSystemPrompt() {
+    if (!this.contextReady) throw new Error("提示词上下文尚未就绪，不能作为空提示词读取");
     switch (this.currentMode) {
       case "original":
         return this.originalModule ? await this.originalModule.getPrompt() : "";
@@ -521,6 +616,11 @@ class PromptManager {
    * 销毁管理器，清理子模块和定时器
    */
   destroy() {
+    ++this.contextRequestGeneration;
+    this.contextReady = false;
+    ++this.contextVersion;
+    ++this.modeSwitchGeneration;
+    this.agentId = null;
     // 1. 清理子模块
     if (this.originalModule && typeof this.originalModule.destroy === "function") {
       this.originalModule.destroy();
@@ -552,3 +652,50 @@ class PromptManager {
 
 // 导出到全局
 window.PromptManager = PromptManager;
+
+
+// Synchronous capture boundary for the Agent edit-session coordinator.
+// No IPC or DOM reads may occur while constructing a persistence snapshot.
+PromptManager.prototype.captureSnapshot = function captureSnapshot() {
+    if (!this.contextReady || !this.agentId) {
+        throw new Error("提示词上下文尚未就绪，无法生成保存快照");
+    }
+    const mode = this.currentMode;
+    const child = mode === "original" ? this.originalModule
+        : mode === "modular" ? this.modularModule
+        : mode === "preset" ? this.presetModule : null;
+    if (!child || child.agentId !== this.agentId) {
+        throw new Error("提示词子模块归属不一致，已阻止保存");
+    }
+    let patch;
+    if (mode === "original") {
+        const content = child.cachedContent.trim();
+        patch = { originalSystemPrompt: content, systemPrompt: content };
+    } else if (mode === "preset") {
+        const content = child.cachedContent.trim();
+        patch = {
+            presetSystemPrompt: content,
+            selectedPreset: child.cachedSelectedPreset,
+            presetPromptPath: child.presetPath,
+            systemPrompt: content,
+        };
+    } else {
+        const hiddenBlocks = structuredClone(child.hiddenBlocks);
+        delete hiddenBlocks.global;
+        patch = {
+            advancedSystemPrompt: {
+                blocks: structuredClone(child.blocks),
+                hiddenBlocks,
+                warehouseOrder: [...child.warehouseOrder],
+                viewMode: child.viewMode,
+            },
+            systemPrompt: child.getFormattedPrompt(),
+        };
+    }
+    return Object.freeze({
+        agentId: this.agentId,
+        contextVersion: this.contextVersion,
+        mode,
+        patch: Object.freeze({ ...patch, promptMode: mode }),
+    });
+};

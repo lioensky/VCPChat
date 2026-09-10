@@ -2,14 +2,21 @@
     const ACCEPT = 'image/png,image/jpeg,image/gif,image/webp';
     let sequence = 0;
 
-    function bindInput({ input, preview, onCommit, cropType = 'agent', onBusyChange, onError }) {
+    function bindInput({ input, preview, onCommit, cropType = 'agent', onBusyChange, onError,
+        captureContext = () => null, isContextCurrent = () => true }) {
         if (!input || !preview || typeof onCommit !== 'function') throw new TypeError('AvatarPicker requires input, preview and onCommit.');
         input.accept = ACCEPT;
         let previewUrl = null;
         let disposed = false;
+        let requestSequence = 0;
         const onChange = () => {
             const file = input.files?.[0];
             if (!file || disposed) return;
+            const request = ++requestSequence;
+            const context = captureContext();
+            const ownsRequest = () => !disposed && request === requestSequence
+                && isContextCurrent(context);
+            if (!ownsRequest()) return;
             const helper = global.uiHelperFunctions;
             if (!helper?.openAvatarCropper) {
                 onError?.(new Error('共享头像裁剪器尚未就绪。'));
@@ -18,18 +25,20 @@
             onBusyChange?.(true);
             helper.openAvatarCropper(file, async (croppedFile) => {
                 try {
-                    if (disposed) return;
+                    if (!ownsRequest()) return;
                     if (previewUrl) global.URL.revokeObjectURL(previewUrl);
                     previewUrl = global.URL.createObjectURL(croppedFile);
                     preview.src = previewUrl;
                     preview.hidden = false;
                     preview.closest('.agent-avatar-wrapper')?.classList.remove('no-avatar');
-                    await onCommit(croppedFile, previewUrl);
+                    await onCommit(croppedFile, previewUrl, context);
                 } catch (error) {
                     onError?.(error);
                 } finally {
-                    input.value = '';
-                    onBusyChange?.(false);
+                    if (!disposed && request === requestSequence) {
+                        if (isContextCurrent(context)) input.value = '';
+                        onBusyChange?.(false);
+                    }
                 }
             }, cropType);
         };

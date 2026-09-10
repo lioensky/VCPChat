@@ -7,6 +7,12 @@ class ModularPromptModule {
         this.electronAPI = options.electronAPI;
         this.agentId = null;
         this.config = null;
+        this.contextVersion = 0;
+        this.globalWarehouseReady = false;
+        this.persistedGlobalWarehouse = null;
+        this.globalWarehouseRevision = null;
+        this.globalSaveQueue = Promise.resolve();
+        this.globalSaveConflict = null;
         
         // 积木块数据
         this.blocks = [];
@@ -37,8 +43,18 @@ class ModularPromptModule {
      * @param {Object} config 
      */
     async updateContext(agentId, config) {
+        await this.globalSaveQueue.catch(() => {});
+        if (this.globalWarehouseReady
+            && JSON.stringify(this.hiddenBlocks.global || []) !== this.persistedGlobalWarehouse) {
+            throw new Error('全局仓库仍有未保存草稿，已阻止替换上下文');
+        }
+        ++this.contextVersion;
         this.agentId = agentId;
         this.config = config;
+        this.draggedBlock = null;
+        this.draggedIndex = null;
+        this.draggedHiddenBlock = null;
+        this.draggedWarehouse = null;
         await this.loadData();
     }
 
@@ -46,12 +62,22 @@ class ModularPromptModule {
      * [修改后] 加载保存的数据（包括私有和全局）
      */
     async loadData() {
-        // 1. 加载Agent私有数据（逻辑不变）
+        const version = this.contextVersion;
+        this.globalWarehouseReady = false;
+        this.persistedGlobalWarehouse = null;
+        this.globalWarehouseRevision = null;
+        this.globalSaveConflict = null;
+        // Missing mode data means an empty private draft, never the previous Agent.
+        this.blocks = [];
+        this.hiddenBlocks = { default: [] };
+        this.warehouseOrder = ['default'];
+        this.currentWarehouse = 'default';
+        this.viewMode = false;
         const savedData = this.config.advancedSystemPrompt;
         if (savedData && typeof savedData === 'object') {
-            this.blocks = savedData.blocks || [];
-            this.hiddenBlocks = savedData.hiddenBlocks || { default: [] };
-            this.warehouseOrder = savedData.warehouseOrder || ['default'];
+            this.blocks = structuredClone(savedData.blocks || []);
+            this.hiddenBlocks = structuredClone(savedData.hiddenBlocks || { default: [] });
+            this.warehouseOrder = [...(savedData.warehouseOrder || ['default'])];
             // 从配置中加载预览模式状态
             if (typeof savedData.viewMode === 'boolean') {
                 this.viewMode = savedData.viewMode;
@@ -63,13 +89,19 @@ class ModularPromptModule {
         // 2. [新增] 加载全局仓库数据
         try {
             const response = await this.electronAPI.getGlobalWarehouse();
-            if (response.success) {
-                this.hiddenBlocks['global'] = response.data || [];
+            if (version !== this.contextVersion) return;
+            if (response.success && Array.isArray(response.data)) {
+                this.hiddenBlocks['global'] = structuredClone(response.data);
+                this.persistedGlobalWarehouse = JSON.stringify(this.hiddenBlocks['global']);
+                this.globalWarehouseRevision = response.currentRevision;
+                this.globalWarehouseReady = typeof this.globalWarehouseRevision === 'string'
+                    && this.globalWarehouseRevision.length > 0;
             } else {
                 console.error('Failed to load global warehouse:', response.error);
                 this.hiddenBlocks['global'] = [];
             }
         } catch (error) {
+            if (version !== this.contextVersion) return;
             console.error('Error invoking get-global-warehouse:', error);
             this.hiddenBlocks['global'] = [];
         }
@@ -232,6 +264,7 @@ class ModularPromptModule {
      * 创建积木块元素
      */
     createBlockElement(block, index) {
+        const contextVersion = this.contextVersion;
         const blockEl = document.createElement('div');
         blockEl.className = 'prompt-block';
         blockEl.dataset.index = index;
@@ -283,7 +316,17 @@ class ModularPromptModule {
                 }
             });
             
+            contentEl.addEventListener('input', () => {
+                if (contextVersion !== this.contextVersion) return;
+                if (block.variants && block.variants.length > 0) {
+                    block.variants[block.selectedVariant || 0] = contentEl.textContent;
+                } else {
+                    block.content = contentEl.textContent;
+                }
+            });
+
             contentEl.addEventListener('blur', () => {
+                if (contextVersion !== this.contextVersion) return;
                 // 退出编辑模式
                 contentEl.contentEditable = false;
                 // 更新当前选中的内容条目
@@ -359,6 +402,7 @@ class ModularPromptModule {
      * 显示积木块右键菜单
      */
     showBlockContextMenu(e, block, index) {
+        const contextVersion = this.contextVersion;
         // 移除已存在的菜单
         const existingMenu = document.querySelector('.block-context-menu');
         if (existingMenu) {
@@ -433,7 +477,7 @@ class ModularPromptModule {
             }
             menuItem.textContent = item.label;
             menuItem.onclick = () => {
-                item.action();
+                if (contextVersion === this.contextVersion) item.action();
                 menu.remove();
             };
             menu.appendChild(menuItem);
@@ -457,6 +501,7 @@ class ModularPromptModule {
      * 编辑积木块内容（包括多内容条目）
      */
     editBlock(block, index) {
+        const contextVersion = this.contextVersion;
         // 创建编辑对话框
         const dialog = document.createElement('div');
         dialog.className = 'edit-hidden-block-dialog';
@@ -547,6 +592,10 @@ class ModularPromptModule {
         };
 
         saveBtn.onclick = () => {
+            if (contextVersion !== this.contextVersion) {
+                closeDialog();
+                return;
+            }
             block.name = nameInput.value.trim();
             
             // 收集所有内容条目
@@ -612,6 +661,7 @@ class ModularPromptModule {
      * 移动积木块到小仓（检查重复）
      */
     moveBlockToWarehouse(index) {
+        if (this.currentWarehouse === 'global' && !this.globalWarehouseReady) return;
         const block = this.blocks[index];
         if (!this.hiddenBlocks[this.currentWarehouse]) {
             this.hiddenBlocks[this.currentWarehouse] = [];
@@ -686,6 +736,9 @@ class ModularPromptModule {
             
             // 仓库名称按钮
             const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.disabled = name === 'global' && !this.globalWarehouseReady;
+            if (btn.disabled) btn.title = '全局仓库加载失败或缺少版本，暂不可编辑';
             btn.className = 'warehouse-btn';
             // [修改] 为 global 仓库添加图标
             if (name === 'global') {
@@ -778,6 +831,7 @@ class ModularPromptModule {
      * 通过拖拽将积木块移到小仓（防止重复）
      */
     moveBlockToWarehouseByDrag(index) {
+        if (this.currentWarehouse === 'global' && !this.globalWarehouseReady) return;
         const block = this.blocks[index];
         if (!this.hiddenBlocks[this.currentWarehouse]) {
             this.hiddenBlocks[this.currentWarehouse] = [];
@@ -860,6 +914,7 @@ class ModularPromptModule {
      * 显示隐藏积木块菜单
      */
     showHiddenBlockMenu(e, block, index) {
+        const contextVersion = this.contextVersion;
         const existingMenu = document.querySelector('.block-context-menu');
         if (existingMenu) {
             existingMenu.remove();
@@ -894,7 +949,7 @@ class ModularPromptModule {
             }
             menuItem.textContent = item.label;
             menuItem.onclick = () => {
-                item.action();
+                if (contextVersion === this.contextVersion) item.action();
                 menu.remove();
             };
             menu.appendChild(menuItem);
@@ -917,6 +972,8 @@ class ModularPromptModule {
      * 编辑隐藏积木块
      */
     editHiddenBlock(block, index) {
+        const contextVersion = this.contextVersion;
+        const warehouse = this.currentWarehouse;
         // 创建编辑对话框
         const dialog = document.createElement('div');
         dialog.className = 'edit-hidden-block-dialog';
@@ -1007,6 +1064,11 @@ class ModularPromptModule {
         };
 
         saveBtn.onclick = () => {
+            if (contextVersion !== this.contextVersion
+                || warehouse !== this.currentWarehouse) {
+                closeDialog();
+                return;
+            }
             block.name = nameInput.value.trim();
             
             // 收集所有内容条目
@@ -1222,7 +1284,7 @@ class ModularPromptModule {
                     // 如果有轮换文本，使用选中的版本
                     if (block.variants && block.variants.length > 0) {
                         const selectedIndex = block.selectedVariant || 0;
-                        content = block.variants[selectedIndex] || content;
+                        content = block.variants[selectedIndex] ?? '';
                     }
                     return content;
                 }
@@ -1250,6 +1312,8 @@ class ModularPromptModule {
      * 销毁模块，释放资源
      */
     destroy() {
+        ++this.contextVersion;
+        this.agentId = null;
         // 1. 移除可能存在的全局右键菜单
         const existingMenu = document.querySelector('.block-context-menu');
         if (existingMenu) {
@@ -1281,13 +1345,31 @@ class ModularPromptModule {
     /**
      * [修改后] 保存数据（分流保存私有和全局数据）
      */
-    async save() {
+    save() {
+        const version = this.contextVersion;
+        const operation = this.persistSnapshot();
+        // Event handlers may intentionally not await this promise. Attach a
+        // rejection observer without converting failure into a success result.
+        operation.catch(error => {
+            console.error('[ModularPromptModule] Save failed; draft retained:', error);
+            if (version === this.contextVersion && this.agentId) {
+                window.uiHelperFunctions?.showToastNotification?.(
+                    `模块提示词保存失败，草稿已保留：${error.message}`, 'warning'
+                );
+            }
+        });
+        return operation;
+    }
+
+    async persistSnapshot() {
         // 在第一个 await 前冻结目标和数据。否则保存全局仓库期间切换 Agent 后，
         // this.agentId/this.blocks 可能已经指向新 Agent，造成跨 Agent 覆盖。
         const targetAgentId = this.agentId;
+        const contextVersion = this.contextVersion;
         if (!targetAgentId) return;
 
         const globalBlocksToSave = structuredClone(this.hiddenBlocks['global'] || []);
+        const shouldSaveGlobal = this.globalWarehouseReady;
         const privateDataToSave = {
             blocks: structuredClone(this.blocks),
             hiddenBlocks: structuredClone(this.hiddenBlocks),
@@ -1296,21 +1378,76 @@ class ModularPromptModule {
         };
         delete privateDataToSave.hiddenBlocks['global'];
 
-        try {
-            await this.electronAPI.saveGlobalWarehouse(globalBlocksToSave);
-        } catch (error) {
-            console.error('Error saving global warehouse:', error);
+        // Resolve ownership synchronously, before the global warehouse await.
+        // Never discover a replacement Agent session after that boundary.
+        let staged = null;
+        if (typeof window.settingsManager?.stageAgentPatch === 'function') {
+            staged = window.settingsManager.stageAgentPatch({
+                advancedSystemPrompt: privateDataToSave
+            }, targetAgentId);
+            if (staged?.success !== true) {
+                throw new Error(staged?.error || '模块提示词编辑会话拒绝暂存');
+            }
         }
 
-        await this.electronAPI.updateAgentConfig(targetAgentId, {
+        if (shouldSaveGlobal) {
+            await this.saveGlobalSnapshot(globalBlocksToSave, contextVersion);
+        }
+
+        if (staged) return staged;
+        const result = await this.electronAPI.updateAgentConfig(targetAgentId, {
             advancedSystemPrompt: privateDataToSave
         });
+        if (!result || result.success !== true || result.error) {
+            throw new Error(result?.error || '模块提示词保存失败');
+        }
+        return result;
     }
     
+    saveGlobalSnapshot(data, contextVersion) {
+        const snapshot = structuredClone(data);
+        const signature = JSON.stringify(snapshot);
+        const run = async () => {
+            if (contextVersion !== this.contextVersion) {
+                throw new Error('全局仓库保存上下文已失效');
+            }
+            if (this.globalSaveConflict) throw this.globalSaveConflict;
+            if (!this.globalWarehouseReady || !this.globalWarehouseRevision) {
+                throw new Error('全局仓库尚未取得有效版本，已阻止覆盖保存');
+            }
+            if (signature === this.persistedGlobalWarehouse) {
+                return { success: true, skipped: true };
+            }
+            const result = await this.electronAPI.saveGlobalWarehouse({
+                data: snapshot,
+                expectedRevision: this.globalWarehouseRevision,
+                operationId: `global-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            });
+            if (contextVersion !== this.contextVersion) {
+                throw new Error('全局仓库回执所属上下文已失效');
+            }
+            if (result?.success !== true || result.error) {
+                const error = new Error(result?.error || '全局仓库保存失败');
+                if (result?.status === 'conflict') this.globalSaveConflict = error;
+                throw error;
+            }
+            if (typeof result.currentRevision !== 'string' || !result.currentRevision) {
+                throw new Error('全局仓库保存回执缺少版本');
+            }
+            this.persistedGlobalWarehouse = signature;
+            this.globalWarehouseRevision = result.currentRevision;
+            return result;
+        };
+        const operation = this.globalSaveQueue.catch(() => {}).then(run);
+        this.globalSaveQueue = operation;
+        return operation;
+    }
+
     /**
      * 新建仓库
      */
     createWarehouse() {
+        const contextVersion = this.contextVersion;
         // 创建对话框
         const dialog = document.createElement('div');
         dialog.className = 'edit-hidden-block-dialog';
@@ -1340,6 +1477,10 @@ class ModularPromptModule {
         };
         
         const createAction = () => {
+            if (contextVersion !== this.contextVersion) {
+                closeDialog();
+                return;
+            }
             const name = nameInput.value.trim();
             
             if (!name) {
@@ -1387,6 +1528,7 @@ class ModularPromptModule {
      * 显示仓库右键菜单
      */
     showWarehouseContextMenu(e, warehouseName) {
+        const contextVersion = this.contextVersion;
         const existingMenu = document.querySelector('.block-context-menu');
         if (existingMenu) {
             existingMenu.remove();
@@ -1417,7 +1559,7 @@ class ModularPromptModule {
             }
             menuItem.textContent = item.label;
             menuItem.onclick = () => {
-                item.action();
+                if (contextVersion === this.contextVersion) item.action();
                 menu.remove();
             };
             menu.appendChild(menuItem);
@@ -1440,6 +1582,7 @@ class ModularPromptModule {
      * 重命名仓库
      */
     renameWarehouse(oldName) {
+        const contextVersion = this.contextVersion;
         // 创建对话框
         const dialog = document.createElement('div');
         dialog.className = 'edit-hidden-block-dialog';
@@ -1469,6 +1612,10 @@ class ModularPromptModule {
         };
         
         const renameAction = () => {
+            if (contextVersion !== this.contextVersion) {
+                closeDialog();
+                return;
+            }
             const newName = nameInput.value.trim();
             
             if (!newName || newName === oldName) {

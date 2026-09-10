@@ -976,6 +976,12 @@ window.itemListManager = (() => {
             });
         }
 
+        // Loading the persisted order is another asynchronous boundary.
+        // A newer list refresh may have finished while this request waited.
+        if (loadToken !== activeLoadItemsToken) {
+            return;
+        }
+
         if (items.length > 0) {
             loadedItemsCache = [...items]; // Cache the loaded items only when we have valid fresh data
             renderItems(items);

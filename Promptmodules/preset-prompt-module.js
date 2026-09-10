@@ -16,6 +16,9 @@ class PresetPromptModule {
         // 缓存内容数据
         this.cachedContent = '';
         this.cachedSelectedPreset = '';
+        this.presetLoadGeneration = 0;
+        this.catalogGeneration = 0;
+        this.pendingPresetLoads = new Set();
         
         // 默认预设路径
         this.defaultPresetPath = './AppData/systemPromptPresets';
@@ -28,6 +31,9 @@ class PresetPromptModule {
      */
     async updateContext(agentId, config) {
         const contextVersion = ++this.contextVersion;
+        ++this.presetLoadGeneration;
+        this.textarea = null;
+        this.presetSelect = null;
         this.agentId = agentId;
         this.config = config;
         this.cachedContent = config.presetSystemPrompt || '';
@@ -49,8 +55,12 @@ class PresetPromptModule {
      * 加载预设列表
      */
     async loadPresets() {
+        const version = this.contextVersion;
+        const generation = ++this.catalogGeneration;
+        const presetPath = this.presetPath;
         try {
-            const result = await this.electronAPI.loadPresetPrompts(this.presetPath);
+            const result = await this.electronAPI.loadPresetPrompts(presetPath);
+            if (version !== this.contextVersion || generation !== this.catalogGeneration || presetPath !== this.presetPath) return;
             if (result.success) {
                 this.presets = result.presets || [];
             } else {
@@ -58,6 +68,7 @@ class PresetPromptModule {
                 this.presets = [];
             }
         } catch (error) {
+            if (version !== this.contextVersion || generation !== this.catalogGeneration) return;
             console.error('Error loading presets:', error);
             this.presets = [];
         }
@@ -66,12 +77,12 @@ class PresetPromptModule {
     /**
      * 渲染模块UI
      */
-    async render(container) {
+    render(container) {
         container.innerHTML = '';
         container.classList.add('preset-prompt-container');
 
-        // 重新加载预设列表（修复初始化问题）
-        await this.loadPresets();
+        // Context initialization loads the catalog. Rendering must be synchronous:
+        // a delayed render must never append this mode into another mode's view.
 
         // 预设路径设置
         const pathSection = this.createPathSection();
@@ -115,14 +126,17 @@ class PresetPromptModule {
         browseBtn.className = 'preset-browse-btn';
         browseBtn.title = '浏览文件夹';
         browseBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><span>浏览</span>';
+        const contextVersion = this.contextVersion;
         browseBtn.onclick = async () => {
             const result = await this.electronAPI.selectDirectory();
+            if (contextVersion !== this.contextVersion) return;
             if (result.success && result.path) {
                 pathInput.value = result.path;
                 this.presetPath = result.path;
                 await this.savePresetPath();
+                if (contextVersion !== this.contextVersion) return;
                 await this.loadPresets();
-                this.updatePresetSelector();
+                if (contextVersion === this.contextVersion) this.updatePresetSelector();
             }
         };
         actions.appendChild(browseBtn);
@@ -133,10 +147,12 @@ class PresetPromptModule {
         refreshBtn.title = '刷新预设列表';
         refreshBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>';
         refreshBtn.onclick = async () => {
+            if (contextVersion !== this.contextVersion) return;
             this.presetPath = pathInput.value;
             await this.savePresetPath();
+            if (contextVersion !== this.contextVersion) return;
             await this.loadPresets();
-            this.updatePresetSelector();
+            if (contextVersion === this.contextVersion) this.updatePresetSelector();
         };
         actions.appendChild(refreshBtn);
 
@@ -184,7 +200,10 @@ class PresetPromptModule {
             this.presetSelect.value = this.cachedSelectedPreset;
         }
 
+        const select = this.presetSelect;
+        const contextVersion = this.contextVersion;
         this.presetSelect.onchange = async () => {
+            if (contextVersion !== this.contextVersion || select !== this.presetSelect) return;
             const targetAgentId = this.agentId;
             const loaded = await this.loadSelectedPreset();
             // 只有预设确实加载到原上下文后才触发保存；显式 ID 也会由 SettingsManager
@@ -263,8 +282,12 @@ class PresetPromptModule {
         this.textarea.value = this.cachedContent;
         this.textarea.rows = 3;
 
-        // 添加输入事件监听器
+        const editor = this.textarea;
+        const contextVersion = this.contextVersion;
         this.textarea.addEventListener('input', () => {
+            if (contextVersion !== this.contextVersion || editor !== this.textarea) return;
+            ++this.presetLoadGeneration;
+            this.cachedContent = editor.value;
             this.autoResize();
         });
 
@@ -272,7 +295,9 @@ class PresetPromptModule {
 
         // 使用setTimeout确保DOM渲染完成后再调整大小
         setTimeout(() => {
-            this.autoResize();
+            if (contextVersion === this.contextVersion && editor === this.textarea) {
+                this.autoResize();
+            }
         }, 0);
 
         return section;
@@ -295,29 +320,55 @@ class PresetPromptModule {
     /**
      * 加载选中的预设
      */
-    async loadSelectedPreset() {
+    loadSelectedPreset() {
+        const operation = this.performPresetLoad();
+        this.pendingPresetLoads.add(operation);
+        const cleanup = () => this.pendingPresetLoads.delete(operation);
+        operation.then(cleanup, cleanup);
+        return operation;
+    }
+
+    async waitForPendingLoads() {
+        while (this.pendingPresetLoads.size) {
+            await Promise.all([...this.pendingPresetLoads]);
+        }
+    }
+
+    async performPresetLoad() {
         const targetAgentId = this.agentId;
         const contextVersion = this.contextVersion;
-        const presetPath = this.presetSelect.value;
+        const generation = ++this.presetLoadGeneration;
+        const select = this.presetSelect;
+        const presetPath = select.value;
+        const ownsRequest = () => this.agentId === targetAgentId
+            && this.contextVersion === contextVersion
+            && generation === this.presetLoadGeneration
+            && select === this.presetSelect;
         
         if (!presetPath) {
-            // 不使用预设，清空内容
+            // Explicit user selection, not a loading failure.
+            this.cachedSelectedPreset = '';
+            this.cachedContent = '';
             if (this.textarea) {
                 this.textarea.value = '';
                 this.autoResize();
             }
             await this.save();
-            return this.agentId === targetAgentId && this.contextVersion === contextVersion;
+            return ownsRequest();
         }
 
         try {
             const result = await this.electronAPI.loadPresetContent(presetPath);
-            if (this.agentId !== targetAgentId || this.contextVersion !== contextVersion) {
+            if (!ownsRequest()) {
                 console.debug(`[PresetPromptModule] Ignoring stale preset load for agent ${targetAgentId}.`);
                 return false;
             }
-            if (result.success && this.textarea) {
-                this.textarea.value = result.content || '';
+            if (result.success && typeof result.content === 'string') {
+                // Publish the selection and its content together only after a
+                // successful load. Empty file contents are a legitimate value.
+                this.cachedSelectedPreset = presetPath;
+                this.cachedContent = result.content;
+                if (this.textarea) this.textarea.value = this.cachedContent;
                 // 使用setTimeout确保内容已渲染
                 setTimeout(() => {
                     if (this.agentId === targetAgentId && this.contextVersion === contextVersion) {
@@ -325,12 +376,14 @@ class PresetPromptModule {
                     }
                 }, 0);
                 await this.save();
-                return true;
+                return ownsRequest();
             } else {
+                select.value = this.cachedSelectedPreset;
                 console.error('Failed to load preset content:', result.error);
                 return false;
             }
         } catch (error) {
+            if (ownsRequest()) select.value = this.cachedSelectedPreset;
             console.error('Error loading preset content:', error);
             return false;
         }
@@ -340,47 +393,78 @@ class PresetPromptModule {
      * 保存预设路径
      */
     async savePresetPath() {
-        await this.electronAPI.updateAgentConfig(this.agentId, {
-            presetPromptPath: this.presetPath
+        const agentId = this.agentId;
+        const presetPromptPath = this.presetPath;
+        if (!agentId) throw new Error('预设路径没有所属 Agent');
+
+        if (typeof window.settingsManager?.stageAgentPatch === 'function') {
+            const staged = window.settingsManager.stageAgentPatch({ presetPromptPath }, agentId);
+            if (staged?.success !== true) {
+                throw new Error(staged?.error || '预设路径编辑会话拒绝暂存');
+            }
+            return staged;
+        }
+
+        const result = await this.electronAPI.updateAgentConfig(agentId, {
+            presetPromptPath
         });
+        if (!result || result.success !== true || result.error) {
+            throw new Error(result?.error || '预设路径保存失败');
+        }
+        return result;
     }
 
     /**
      * 保存数据
      */
     async save() {
-        if (!this.textarea) return;
+        // Save the context-owned draft, never a retained editor from another mode.
 
-        // 在调用 IPC 前冻结目标与数据，后续上下文切换不会改变本次写入归属。
+        // 在调用 IPC 前冻结目标和数据。设置页存在编辑会话时，提示词
+        // 只进入该会话，由统一保存入口提交。
         const targetAgentId = this.agentId;
         if (!targetAgentId) return;
-        const content = this.textarea.value.trim();
-        const selectedPreset = this.presetSelect ? this.presetSelect.value : '';
+        const content = this.cachedContent.trim();
+        const selectedPreset = this.cachedSelectedPreset;
 
-        // 更新缓存
         this.cachedContent = content;
         this.cachedSelectedPreset = selectedPreset;
 
-        await this.electronAPI.updateAgentConfig(targetAgentId, {
+        const patch = {
             presetSystemPrompt: content,
-            selectedPreset: selectedPreset
-        });
+            selectedPreset,
+            presetPromptPath: this.presetPath,
+        };
+        // The coordinator derives the effective prompt from the active mode.
+        // A late preset load must not replace another mode's systemPrompt.
+        if (typeof window.settingsManager?.stageAgentPatch === 'function') {
+            const staged = window.settingsManager.stageAgentPatch(patch, targetAgentId);
+            if (staged?.success !== true) {
+                throw new Error(staged?.error || '预置提示词编辑会话拒绝暂存');
+            }
+            return staged;
+        }
+        const result = await this.electronAPI.updateAgentConfig(targetAgentId, patch);
+        if (!result || result.success !== true || result.error) {
+            throw new Error(result?.error || result?.message || '预置提示词保存失败');
+        }
+        return result;
     }
 
     /**
      * 获取提示词内容
      */
   async getPrompt() {
-    if (this.textarea) {
-      return this.textarea.value.trim();
-    }
-    return this.cachedContent;
+    return this.cachedContent.trim();
   }
 
   /**
    * 销毁模块，释放资源
    */
   destroy() {
+    ++this.contextVersion;
+    ++this.presetLoadGeneration;
+    this.agentId = null;
     this.textarea = null;
     this.presetSelect = null;
     this.container = null;
