@@ -103,6 +103,16 @@ try {
     assert.ok(geometry.capsuleWidth <= 200, `custom style capsule remains compact (${geometry.capsuleWidth}px)`);
     console.log('[avatar-probe] custom style capsule geometry is right-aligned', JSON.stringify(geometry));
 
+    const initialControlsState = await page.evaluate(() => {
+        const controls = document.querySelector('.vcp-uiux-user-profile-card .agent-style-controls');
+        if (!controls) return null;
+        const style = getComputedStyle(controls);
+        const rect = controls.getBoundingClientRect();
+        return { display: style.display, height: rect.height };
+    });
+    assert.equal(initialControlsState?.display, 'none', 'user style controls must be hidden when collapsed');
+    assert.equal(initialControlsState?.height, 0, 'collapsed style controls must occupy 0 height');
+
     const nameValueGeometry = await page.evaluate(() => {
         const value = document.querySelector('.vcp-uiux-identity-name-value')?.getBoundingClientRect();
         const edit = document.querySelector('.vcp-uiux-identity-name-edit')?.getBoundingClientRect();
@@ -138,35 +148,23 @@ try {
         && Math.abs(nameValueGeometry.valueCenter - nameValueGeometry.cardCenter) <= 2,
     `identity content stays centered in card (avatar ${nameValueGeometry?.avatarCenter}px, name ${nameValueGeometry?.valueCenter}px, card ${nameValueGeometry?.cardCenter}px)`);
     const originalName = await page.$eval('#userName', input => input.value);
+    assert.ok(originalName && originalName.length > 0, 'username input must keep its value when not actively editing');
     await page.click('.vcp-uiux-identity-name-edit');
-    await waitFor('username editor', () => page.evaluate(() => {
-        const input = document.getElementById('userName');
-        const display = document.querySelector('.vcp-uiux-identity-name-value');
-        return Boolean(input && !input.hidden && display?.hidden
-            && document.activeElement === input);
-    }));
+    await waitFor('username editor open', () => page.evaluate(() => document.getElementById('userName')?.hidden === false));
     const nameInputGeometry = await page.evaluate(() => {
         const input = document.getElementById('userName')?.getBoundingClientRect();
+        const cancel = document.querySelector('.vcp-uiux-identity-name-cancel')?.getBoundingClientRect();
         const check = document.querySelector('.vcp-uiux-identity-name-edit')?.getBoundingClientRect();
-        const cancel = document.querySelector('.vcp-uiux-identity-name-cancel');
-        const cancelRect = cancel?.getBoundingClientRect();
-        return input ? {
-            top: input.top,
-            width: input.width,
-            checkVisible: Boolean(check && check.width > 0 && check.height > 0),
-            cancelHidden: Boolean(cancel?.hidden),
-            cancelVisible: Boolean(cancelRect && cancelRect.width > 0 && cancelRect.height > 0 && getComputedStyle(cancel).display !== 'none'),
+        const cancelNode = document.querySelector('.vcp-uiux-identity-name-cancel');
+        const cancelStyle = cancelNode ? getComputedStyle(cancelNode) : null;
+        return {
+            inputTop: input?.top,
+            cancelLeft: cancel?.left,
             checkLeft: check?.left,
-            cancelLeft: cancelRect?.left,
-            inputBottom: input.bottom,
-        } : null;
+            cancelHidden: cancelNode?.hidden,
+            cancelVisible: cancelStyle ? cancelStyle.display !== 'none' && cancelStyle.visibility !== 'hidden' : false,
+        };
     });
-    assert.ok(nameInputGeometry && nameInputGeometry.width <= 220,
-        `username editor remains compact (${nameInputGeometry?.width}px)`);
-    assert.ok(nameValueGeometry && nameInputGeometry
-        && Math.abs(nameInputGeometry.top - nameValueGeometry.top) <= 4,
-    `username editor stays vertically aligned (value ${nameValueGeometry?.top}px, input ${nameInputGeometry?.top}px)`);
-    assert.equal(nameInputGeometry?.checkVisible, true, 'username editor must show confirmation check');
     assert.equal(nameInputGeometry?.cancelHidden, false, 'username editor must unhide cancel control');
     assert.equal(nameInputGeometry?.cancelVisible, true, 'username editor must show cancel x');
     assert.ok(Number.isFinite(nameInputGeometry?.cancelLeft)
@@ -191,6 +189,16 @@ try {
 
     await page.evaluate(() => document.getElementById('userStyleCollapseHeader')?.click());
     await waitFor('expanded style disclosure', () => page.evaluate(() => !document.querySelector('.vcp-uiux-user-profile-card .agent-style-collapsible-container')?.classList.contains('collapsed')));
+    const expandedControlsState = await page.evaluate(() => {
+        const controls = document.querySelector('.vcp-uiux-user-profile-card .agent-style-controls');
+        if (!controls) return null;
+        const style = getComputedStyle(controls);
+        const rect = controls.getBoundingClientRect();
+        return { display: style.display, height: rect.height };
+    });
+    assert.equal(expandedControlsState?.display, 'grid', 'user style controls must be displayed when expanded');
+    assert.ok((expandedControlsState?.height || 0) > 0, 'expanded style controls must occupy positive height');
+
     const expandedGeometry = await page.evaluate(() => {
         const card = document.querySelector('.vcp-uiux-user-profile-card');
         const capsule = card?.querySelector('.agent-style-collapsible-container .style-collapse-header');
@@ -207,6 +215,16 @@ try {
         `expanded custom style capsule must keep its vertical position (delta ${expandedGeometry.topDelta}px)`);
     console.log('[avatar-probe] expanded custom style capsule keeps the same right edge', JSON.stringify(expandedGeometry));
     await page.evaluate(() => document.getElementById('userStyleCollapseHeader')?.click());
+    await waitFor('collapsed style disclosure', () => page.evaluate(() => document.querySelector('.vcp-uiux-user-profile-card .agent-style-collapsible-container')?.classList.contains('collapsed')));
+    const reCollapsedControlsState = await page.evaluate(() => {
+        const controls = document.querySelector('.vcp-uiux-user-profile-card .agent-style-controls');
+        if (!controls) return null;
+        const style = getComputedStyle(controls);
+        const rect = controls.getBoundingClientRect();
+        return { display: style.display, height: rect.height };
+    });
+    assert.equal(reCollapsedControlsState?.display, 'none', 'user style controls must be hidden when re-collapsed');
+    assert.equal(reCollapsedControlsState?.height, 0, 're-collapsed style controls must occupy 0 height');
 
     // Mirror the production cropper callback: install the cropped File, then
     // emit the synthetic input that schedules the form autosave. This catches

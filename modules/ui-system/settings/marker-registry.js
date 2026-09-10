@@ -29,7 +29,7 @@ const MARKERS = Object.freeze({
     // 全局设置 schema 面的开关行 holder 已由渲染器直出。vcpUiuxInputPrimitive
     // 随 M5-c pass3 uiux-inputs pass 退役一并注销：Input 包裹由渲染器直出，
     // 运行期不再有包裹标记。）
-    vcpUiuxToggleMounted: { owner: 'agent-settings-bridge.js via settings/bridge-shared.js', cleanup: 'manual-retract' },
+    vcpUiuxToggleMounted: { owner: 'settings-sidebar-runtime.js via settings/bridge-shared.js', cleanup: 'manual-retract' },
     vcpUiuxClose: { owner: 'settings-bridge.js', cleanup: 'manual-retract' },
     // Choice 原语的分段值镜像（checked radio 的 value）。M5-c pass5 起 schema
     // 面的初值由 field-renderer 的 radioGroup 直出、激活后由行为重推导，属于
@@ -39,7 +39,7 @@ const MARKERS = Object.freeze({
     // M5-c pass6 起 settingPrimitive 的写入方全部是直出/渲染层：canonical-row
     // 机械层（row-copy/general-item/appearance-row）、widgets.js 与 agent 面
     // （disclosure）、settings-bridge（section）；settings/canonical-rows.js 已删。
-    settingPrimitive: { owner: 'render/canonical-row.js + render/widgets.js + settings-bridge.js + agent-settings-bridge.js', cleanup: 'manual-retract' },
+    settingPrimitive: { owner: 'render/canonical-row.js + render/widgets.js + settings-bridge.js + settings-sidebar-runtime.js', cleanup: 'manual-retract' },
     // M5-c pass5 retired the schema-surface select-projection step; the
     // module (and this marker) survives for the agent settings surface.
     vcpSelectRebuilding: { owner: 'settings/select-projection.js (agent surface)', cleanup: 'scope-owned' },
@@ -90,18 +90,29 @@ const MARKERS = Object.freeze({
     vcpSettingsConflictActions: { owner: 'settings-bridge.js conflict action bar', cleanup: 'scope-owned' },
     vcpSettingsConflict: { owner: 'typed-field-owners.js external reconciliation', cleanup: 'business-contract' },
 
-    // agent-settings-bridge.js — configured via the private Input owner's
-    // `marker` option and deleted with the owning presentation scope
-    vcpTypedAgentIdentity: { owner: 'agent-settings-bridge.js', cleanup: 'scope-owned' },
-    vcpTypedAgentModel: { owner: 'agent-settings-bridge.js', cleanup: 'scope-owned' },
-    vcpTypedAgentTemperature: { owner: 'agent-settings-bridge.js', cleanup: 'scope-owned' },
-    vcpTypedAgentContextLimit: { owner: 'agent-settings-bridge.js', cleanup: 'scope-owned' },
-    vcpTypedAgentMaxOutput: { owner: 'agent-settings-bridge.js', cleanup: 'scope-owned' },
-    vcpTypedAgentTopP: { owner: 'agent-settings-bridge.js', cleanup: 'scope-owned' },
-    vcpTypedAgentTopK: { owner: 'agent-settings-bridge.js', cleanup: 'scope-owned' },
-    vcpTypedAgentStreamChoice: { owner: 'agent-settings-bridge.js', cleanup: 'scope-owned' },
-    vcpTypedAgentTtsSpeed: { owner: 'agent-settings-bridge.js', cleanup: 'scope-owned' },
     vcpTypedAgentDisclosure: { owner: 'settings/agent-disclosures.js', cleanup: 'scope-owned' },
+    vcpTypedAgentModelPicker: { owner: 'settings/agent-model-picker.js', cleanup: 'scope-owned' },
+    vcpTypedGroupModelPicker: { owner: 'settings/agent-model-picker.js', cleanup: 'scope-owned' },
+    vcpTypedTopicSummaryModelPicker: { owner: 'settings/agent-model-picker.js', cleanup: 'scope-owned' },
+    vcpSettingsSlot: { owner: 'settings-sidebar-slots.js', cleanup: 'scope-owned' },
+    schemaRendered: { owner: 'settings/group-slots.js', cleanup: 'persistent' },
+    agentId: { owner: 'settings/group-slots.js', cleanup: 'persistent' },
+    itemId: { owner: 'settings/group-slots.js', cleanup: 'persistent' },
+    itemType: { owner: 'settings/group-slots.js', cleanup: 'persistent' },
+    topicId: { owner: 'settings/group-slots.js', cleanup: 'persistent' },
+    settingsMounted: { owner: 'settings-sidebar-surface.js', cleanup: 'manual-retract' },
+    settingsMountedView: { owner: 'settings-sidebar-surface.js', cleanup: 'business-contract' },
+    settingsActiveView: { owner: 'settings-sidebar-surface.js', cleanup: 'business-contract' },
+    settingsActiveId: { owner: 'settings-sidebar-surface.js', cleanup: 'business-contract' },
+    settingsView: { owner: 'settings-sidebar-surface.js + sidebar-surfaces.js', cleanup: 'persistent' },
+    settingsPanelActive: { owner: 'settings-sidebar-surface.js', cleanup: 'business-contract' },
+    settingsSurface: { owner: 'settings-sidebar-surface.js', cleanup: 'persistent' },
+    schemaField: { owner: 'sidebar-surfaces.js', cleanup: 'persistent' },
+    schemaSection: { owner: 'sidebar-surfaces.js', cleanup: 'persistent' },
+    schemaTooltip: { owner: 'sidebar-surfaces.js', cleanup: 'persistent' },
+    schemaValidation: { owner: 'sidebar-surfaces.js', cleanup: 'persistent' },
+    schemaDependsOn: { owner: 'sidebar-surfaces.js', cleanup: 'persistent' },
+    collapsibleBound: { owner: 'sidebar-surfaces.js', cleanup: 'persistent' },
 });
 
 export const SETTINGS_MARKERS = MARKERS;

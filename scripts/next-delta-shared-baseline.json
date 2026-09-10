@@ -12,20 +12,20 @@
     "reason": "per-Surface stream projection factory with an explicit StreamProjectionRuntime provider, owning document/window capabilities, attachStreamProjection lifecycle API, injected view authority, transient message models delegated to StreamTransientHistory, owned animation-frame scheduling and pending operation disposal, no repository or durable commit authority, no exported singleton or hidden root side channel, ContentRuntime render models, and owned Desktop push subscription/timer consumer; producer streamOperationId carried into projection and terminal validation; operation-scoped runtime map adapter, retry retirement, display-id projection index, and renderer-local conversation snapshot/reconcile so an active stream can be reprojected after topic history/DOM replacement without becoming durable authority"
   },
   "modules/topicListManager.js": {
-    "sha256": "0c613e24341ce273ad5807609b089138edbf098259801df7972d8a0733803607",
-    "reason": "shared topic authority with canonical presentation projection, mandatory repository access without a direct IPC fallback, explicit injected topic-selection readiness, lifecycle listener owner, ui manager and item-list service capabilities, render-scoped listener cleanup, and disposal of observers, sortable state, context menus, and dynamic topic resources"
+    "sha256": "3097222a98c6eff07acce3eb51c3c330e212125ae74daced615647347b3cfd04",
+    "reason": "shared topic authority with canonical presentation projection, mandatory repository access without a direct IPC fallback, explicit injected topic-selection readiness, lifecycle listener owner, ui manager and item-list service capabilities, render-scoped listener cleanup, and disposal of observers, sortable state, context menus, dynamic topic resources, and topic regeneration support"
   },
   "modules/itemListManager.js": {
     "sha256": "1a227093cc438de479c1ca8dc9c1abf7acd4dace1bd773c4d4256f10be1bd162",
     "reason": "shared Agent/group catalog authority with stale-load commit protection"
   },
   "Groupmodules/grouprenderer.js": {
-    "sha256": "b1e6353e21b0625e89d9f711e2aea3303b4bbcb77e7bacc57e6a05649fa6c58e",
-    "reason": "upstream group business surface with retired toolbar binding removed"
+    "sha256": "22f41ebba1266aaaec778bc79c58fdf3389ab31e4278dcbad600d4df40ae3e11",
+    "reason": "upstream group business surface delegates settings attachment to schema sidebar Surface while resolving controls safely during detachment, protecting group deletion fallback identity, aligning group deletion confirmation with risk modal, and preserving persistence and chat behavior"
   },
   "modules/settingsManager.js": {
-    "sha256": "f0606966a853b7ffd762197b90cbf4671b17836c47be00050b418b611dd7f819",
-    "reason": "reviewed Agent settings behavior after replacing ambient globalSettings reads with the composition-injected settings authority; saved Agent projection and collapse-state updates replace immutable selection snapshots through the injected selection authority"
+    "sha256": "6c430349ae8965aebfd534d469e35d8d14360e8af34cf23156dfb1c3c213cf9f",
+    "reason": "reviewed Agent settings behavior after moving Agent form rendering to schema and Surface lifecycle ownership; delete action implements active risk confirmation gate with managed scope; save pipeline coordinates full custom style, color, and collapse state fields with async submit and robust error handling; dirty edits are flushed before prompt context switch with dirty retention and warning on failure; autosave deduplicates error toasts and sequences revision tokens against in-flight writes; programmatic collapse controller synchronizes aria-expanded attributes; saved projection, collapse state, prompt context and stale reload protection remain manager-owned; scoped form control lookup protects against detachment data loss and intercepts IPC failure results; model input resolution is safely guarded against fallback tampering"
   },
   "modules/filterManager.js": {
     "sha256": "2390116ff961f18cdf2d3defd02d5559de9381f891be7e5eb33ef99f98337225",

@@ -150,38 +150,23 @@
     html .vcp-ui-scope.next-ui-tooltip-layer .next-ui-tooltip-bubble {
         position: relative;
         width: max-content;
-        max-width: min(240px, calc(100vw - 16px));
-        padding: var(--vcp-ui-space-1) var(--vcp-ui-space-2);
-        border: 1px solid var(--vcp-ui-border);
-        border-radius: var(--vcp-ui-radius-sm);
+        max-width: min(280px, calc(100vw - 16px));
+        padding: 6px 10px;
+        border: 0.5px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-md);
         color: var(--vcp-ui-text-0);
         background: var(--vcp-ui-bg-4);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
         box-shadow: var(--vcp-ui-shadow-md);
-        font: 500 var(--vcp-ui-font-caption) / var(--vcp-ui-line-compact) var(--vcp-ui-font-family);
-        text-align: center;
+        font: 400 var(--vcp-ui-font-caption) / var(--vcp-ui-line-compact) var(--vcp-ui-font-family);
+        text-align: left;
         white-space: normal;
-        animation: next-ui-tooltip-in var(--vcp-ui-transition-fast) both;
+        animation: next-ui-tooltip-in var(--vcp-ui-transition-fast) cubic-bezier(0.16, 1, 0.3, 1) both;
     }
 
     html .vcp-ui-scope.next-ui-tooltip-layer .next-ui-tooltip-bubble::after {
-        position: absolute;
-        left: 50%;
-        width: 7px;
-        height: 7px;
-        border-right: 1px solid var(--vcp-ui-border);
-        border-bottom: 1px solid var(--vcp-ui-border);
-        content: "";
-        background: var(--vcp-ui-bg-4);
-    }
-
-    html .vcp-ui-scope.next-ui-tooltip-layer[data-placement="bottom"] .next-ui-tooltip-bubble::after {
-        top: -4px;
-        transform: translateX(-50%) rotate(225deg);
-    }
-
-    html .vcp-ui-scope.next-ui-tooltip-layer[data-placement="top"] .next-ui-tooltip-bubble::after {
-        bottom: -4px;
-        transform: translateX(-50%) rotate(45deg);
+        display: none;
     }
 
     html .vcp-ui-scope.next-ui-tooltip-layer[data-placement="bottom"] .next-ui-tooltip-bubble {
@@ -193,7 +178,7 @@
     }
 
     @keyframes next-ui-tooltip-in {
-        from { opacity: 0; transform: translateY(3px) scale(0.98); }
+        from { opacity: 0; transform: translateY(2px) scale(0.97); }
         to { opacity: 1; transform: translateY(0) scale(1); }
     }
 

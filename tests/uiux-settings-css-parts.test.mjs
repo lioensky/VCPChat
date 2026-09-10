@@ -19,6 +19,7 @@ const ENTRY_PARTS = [
     'settings-template.css',    // M4 合并：overrides 原文 + canonicalized [data-vcp-style] 声明
     'settings-portal.css',      // body-level portal stacking override
     'settings-stream-animation.css', // upstream streaming-animation settings + live preview
+    'settings-sidebar.css',     // schema-driven Agent/Group item-settings surface
 ];
 
 const read = name => fs.readFileSync(path.join(styleDir, name), 'utf8');

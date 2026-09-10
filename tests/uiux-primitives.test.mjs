@@ -670,6 +670,27 @@ test('PopupSelect model search uses case-insensitive whitespace-separated AND te
     );
 });
 
+test('PopupSelect model search ranks boundary-aligned prefix matches and ordered-subsequences via rankByName', () => {
+    const options = [
+        { id: 'gpt-3-5', label: 'gpt-3.5-turbo', detail: 'Legacy' },
+        { id: 'gpt-4', label: 'gpt-4', detail: 'OpenAI model' },
+        { id: 'gpt-4o', label: 'gpt-4o', detail: 'Flagship omni' },
+        { id: 'claude-sonnet', label: 'claude-sonnet', detail: 'General' },
+        { id: 'other-cs', label: 'windows-cs', detail: 'Unrelated' },
+    ];
+
+    const gpt4Results = filterOptions(options, 'gpt4').map(o => o.id);
+    assert.ok(gpt4Results.includes('gpt-4'), 'gpt4 matches gpt-4 via ordered subsequence');
+    assert.ok(gpt4Results.includes('gpt-4o'), 'gpt4 matches gpt-4o via ordered subsequence');
+    assert.ok(!gpt4Results.includes('gpt-3-5'), 'gpt4 does not match gpt-3-5');
+
+    const claudeResults = filterOptions(options, 'claude').map(o => o.id);
+    assert.equal(claudeResults[0], 'claude-sonnet', 'prefix match claude-sonnet ranks first for query claude');
+
+    const csResults = filterOptions(options, 'cs').map(o => o.id);
+    assert.ok(csResults.includes('claude-sonnet'), 'cs matches claude-sonnet via ordered subsequence');
+});
+
 test('Uiux PopupSelect Candidate keeps command wiring injected, owns focus and retracts its overlay', async () => {
     const dom = new JSDOM('<!doctype html><main><div id="host"></div><button id="return-focus">Composer stand-in</button></main>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;

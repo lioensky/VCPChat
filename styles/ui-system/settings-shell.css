@@ -23,9 +23,7 @@
     @scope (#tabContentSettings) {
 
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope .settings-header-bar {
-        /* 新版 UI 下侧栏设置 tab 的"设置"标题与"全局设置"按钮由顶栏入口承载，
-           此 header 在新版隐藏，避免与顶栏重复。 */
-        display: none;
+        display: flex;
     }
 
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope .settings-header-bar h2, :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsContainerTitle {
@@ -52,7 +50,7 @@
 
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsContainer .agent-settings-section:not(.collapsed) .agent-settings-section-header {
         border-bottom-color: var(--vcp-ui-border);
-        background: var(--vcp-ui-bg-2);
+        background: transparent;
     }
 
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsContainer .agent-settings-section-title {
@@ -932,7 +930,7 @@
 
     /* ---- avatar ---- */
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope #globalSettingsModal .agent-avatar-display {
-        border-radius: var(--vcp-ui-radius-md);
+        border-radius: 50%;
     }
 
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .settings-section-title {

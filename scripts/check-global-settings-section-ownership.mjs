@@ -46,20 +46,28 @@ const controlProbeAllowlist = new Map([
     ['streamAnimationDurationValue', 'schema-rendered output label; not a static main.html id'],
 ]);
 // M4 起设置分区没有静态标记：JS 绑定的 id 必须存在于 main.html（模态壳、
-// 导航与非设置域）或 schema 编译产物之中。
+// 导航与非设置域）或 schema 编译产物之中（包含全局设置与侧边栏设置 schema）。
 const { JSDOM } = await import('jsdom');
 const schemaDoc = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://localhost/' }).window.document;
 globalThis.document = schemaDoc;
 globalThis.window = schemaDoc.defaultView;
 const { schemaSurfaceSections } = await import('../modules/settings/schema-surface.js');
 const { renderSchemaSection } = await import('../modules/settings/render/field-renderer.js');
+const { renderAgentSettingsSurface, renderGroupSettingsSurface } = await import('../modules/settings/schema/sidebar-surfaces.js');
 const schemaSurfaceHost = schemaDoc.createElement('div');
 for (const sectionDescriptor of schemaSurfaceSections()) {
     schemaSurfaceHost.append(...renderSchemaSection(sectionDescriptor, schemaDoc));
 }
+const sidebarAgentHost = schemaDoc.createElement('div');
+renderAgentSettingsSurface(sidebarAgentHost, schemaDoc);
+const sidebarGroupHost = schemaDoc.createElement('div');
+renderGroupSettingsSurface(sidebarGroupHost, schemaDoc);
+
 const htmlIds = new Set([
     ...[...mainHtml.matchAll(/id="([A-Za-z][A-Za-z0-9_-]*)"/g)].map(match => match[1]),
     ...[...schemaSurfaceHost.innerHTML.matchAll(/id="([A-Za-z][A-Za-z0-9_-]*)"/g)].map(match => match[1]),
+    ...[...sidebarAgentHost.innerHTML.matchAll(/id="([A-Za-z][A-Za-z0-9_-]*)"/g)].map(match => match[1]),
+    ...[...sidebarGroupHost.innerHTML.matchAll(/id="([A-Za-z][A-Za-z0-9_-]*)"/g)].map(match => match[1]),
 ]);
 const missingControls = [];
 for (const relativePath of controlProbeFiles) {

@@ -38,22 +38,136 @@ const POPUP_CLOSED = {
     open: false, command: null, status: 'pending', options: [], search: '', active: 0,
     submitting: false, confirming: null, acknowledged: false, error: null,
 };
+/** Extra weight for name starts and separator boundaries (- _ / . space). */
+function boundaryBonus(name, index) {
+    if (index === 0) return 8;
+    const prev = name.charAt(index - 1);
+    return prev === '-' || prev === '_' || prev === ' ' || prev === '/' || prev === '.' ? 8 : 0;
+}
+
 /**
- * Filter option rows case-insensitively over label and detail. Search terms
- * separated by whitespace use AND semantics, so `deepseek think` matches only
- * options whose searchable text contains both terms.
+ * Score the strongest ordered-subsequence alignment in O(name × query).
+ * Boundary and adjacent matches earn weight; skipped characters cost weight.
+ * Undefined when the query is not a subsequence of the name.
+ */
+function alignmentScore(name, query) {
+    if (query.length > name.length) return undefined;
+    const noMatch = Number.NEGATIVE_INFINITY;
+    let previous = new Array(name.length).fill(noMatch);
+    for (let index = 0; index < name.length; index++) {
+        if (name.charAt(index) === query.charAt(0)) {
+            previous[index] = 1 + boundaryBonus(name, index) - index;
+        }
+    }
+    for (let queryIndex = 1; queryIndex < query.length; queryIndex++) {
+        const current = new Array(name.length).fill(noMatch);
+        let left = noMatch;
+        let leftLeft = noMatch;
+        let bestGapped = noMatch;
+        for (let index = 0; index < previous.length; index++) {
+            const prior = previous[index];
+            if (leftLeft !== noMatch) bestGapped = Math.max(bestGapped, leftLeft + index - 2);
+            if (name.charAt(index) === query.charAt(queryIndex)) {
+                const bonus = 1 + boundaryBonus(name, index);
+                let score = noMatch;
+                if (left !== noMatch) score = left + bonus + 4;
+                if (bestGapped !== noMatch) score = Math.max(score, bestGapped + bonus + 1 - index);
+                current[index] = score;
+            }
+            leftLeft = left;
+            left = prior;
+        }
+        previous = current;
+    }
+    let best = noMatch;
+    for (let i = 0; i < previous.length; i++) {
+        if (previous[i] > best) best = previous[i];
+    }
+    return best === noMatch ? undefined : best;
+}
+
+/**
+ * Rank items by name query using ordered-subsequence alignment.
+ */
+export function rankByName(items, rawQuery) {
+    const query = String(rawQuery ?? '').toLowerCase().trim();
+    if (query === '') return items;
+    const ranked = [];
+    items.forEach((item, index) => {
+        const name = String(item.name ?? item.label ?? '').toLowerCase();
+        const score = alignmentScore(name, query);
+        if (score !== undefined) {
+            ranked.push({ item, index, prefix: name.startsWith(query), score });
+        }
+    });
+    ranked.sort((left, right) =>
+        Number(right.prefix) - Number(left.prefix) || right.score - left.score || left.index - right.index
+    );
+    return ranked.map(match => match.item);
+}
+
+/**
+ * Filter and rank option rows case-insensitively over label and detail.
+ * Combines ordered-subsequence alignment with whitespace AND terms.
+ * Prefix matches and boundary-aligned terms are boosted to the top of the list.
  */
 export function filterOptions(options, search) {
     const terms = String(search ?? '').trim().toLowerCase().split(/\s+/).filter(Boolean);
     if (terms.length === 0)
         return options;
-    return options.filter(option => {
+
+    const ranked = [];
+    options.forEach((option, index) => {
+        const labelText = String(option.label ?? '').toLowerCase();
+        const detailText = String(option.detail ?? '').toLowerCase();
         const searchableText = [option.label, option.detail]
             .filter(value => value !== undefined && value !== null)
             .join(' ')
             .toLowerCase();
-        return terms.every(term => searchableText.includes(term));
+
+        let totalScore = 0;
+        let isPrefix = false;
+        let allMatch = true;
+
+        for (let i = 0; i < terms.length; i++) {
+            const term = terms[i];
+            const includesWhole = searchableText.includes(term);
+            const includesLabel = labelText.includes(term);
+            const labelScore = alignmentScore(labelText, term);
+            const detailScore = detailText ? alignmentScore(detailText, term) : undefined;
+
+            if (!includesWhole && labelScore === undefined && detailScore === undefined) {
+                allMatch = false;
+                break;
+            }
+
+            if (labelText.startsWith(term)) {
+                isPrefix = true;
+                totalScore += 24;
+            } else if (includesLabel) {
+                totalScore += 12;
+            } else if (includesWhole) {
+                totalScore += 6;
+            }
+
+            const bestSubseqScore = Math.max(
+                labelScore !== undefined ? labelScore : Number.NEGATIVE_INFINITY,
+                detailScore !== undefined ? detailScore - 4 : Number.NEGATIVE_INFINITY
+            );
+            if (bestSubseqScore > Number.NEGATIVE_INFINITY) {
+                totalScore += bestSubseqScore;
+            }
+        }
+
+        if (allMatch) {
+            ranked.push({ option, index, isPrefix, score: totalScore });
+        }
     });
+
+    ranked.sort((left, right) =>
+        Number(right.isPrefix) - Number(left.isPrefix) || right.score - left.score || left.index - right.index
+    );
+    return ranked.map(entry => entry.option);
 }
 /**
  * Headless popupSelect controller replicating ui-commands PopupSelectController:
@@ -342,7 +456,9 @@ export function mountPopupSelectView(host, props, scope) {
                 // select/submit contract remains owned here.
                 const target = event.target;
                 if (target?.tagName === 'BUTTON'
-                    && target.getAttribute('role') === 'menuitem'
+                    && (target.getAttribute('role') === 'menuitem'
+                        || target.dataset?.optionAction === 'favorite'
+                        || target.classList?.contains('vcp-uiux-popup-select-favorite'))
                     && !target.disabled)
                     return;
                 event.preventDefault();
@@ -370,6 +486,18 @@ export function mountPopupSelectView(host, props, scope) {
         if (card.contains(target) || props.anchor?.contains(target))
             return;
         popup.dismiss();
+    }, { capture: true });
+    viewScope.listen(window, 'scroll', () => {
+        const s = popup.getSnapshot();
+        if (!s.open || s.confirming !== null)
+            return;
+        if (props.anchor && typeof props.anchor.getBoundingClientRect === 'function') {
+            const rect = props.anchor.getBoundingClientRect();
+            const viewportHeight = window.innerHeight || document.documentElement?.clientHeight || 800;
+            if (rect.bottom <= 0 || rect.top >= viewportHeight) {
+                popup.dismiss();
+            }
+        }
     }, { capture: true });
     const renderRows = (s) => {
         const previousRowsScope = rowsScope;

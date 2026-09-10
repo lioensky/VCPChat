@@ -3,60 +3,6 @@
 @import url('./setting/settings-sidebar-tabs.css');
 @import url('./setting/settings-sidebar-list.css');
 @import url('./setting/settings-search.css');
-@import url('./setting/settings-agent-form.css');
-@import url('./setting/settings-group-form.css');
-@import url('./setting/settings-form-controls.css');
-@import url('./setting/settings-invite.css');
 @import url('./setting/settings-model-select.css');
 @import url('./setting/settings-regex.css');
-/* Global settings is owned exclusively by styles/ui-system/settings.css.  The
-   former settings-global-modal stylesheet is no longer loaded on this unified
-   surface, preventing legacy geometry from re-entering the cascade. */
-@import url('./setting/settings-agent-params.css');
-
-/* Agent 卡片外壳 - 拆分后的模块 */
-@import url('./setting/agent/agent-card-base.css');
-@import url('./setting/agent/agent-card-uiux.css');
-@import url('./setting/agent/agent-card-layout.css');
-@import url('./setting/agent/agent-card-controls.css');
-@import url('./setting/agent/agent-prompt-editor.css');
-
-@import url('./setting/settings-agent-identity.css');
-@import url('./setting/settings-agent-sections.css');
-@import url('./setting/settings-agent-prompt.css');
-@import url('./setting/settings-agent-style-collapse.css');
-@import url('./setting/settings-group-sections.css');
-
-/* 侧边栏标签页 */
-
-/* 侧边栏列表（Agent列表 + Topic列表 + 时钟） */
-
-/* 搜索框 */
-
-/* Agent 表单基础 */
-
-/* Group 表单基础 */
-
-/* 通用表单控件 */
-
-/* 邀请 Agent 按钮 */
-
-/* 模型选择器 */
-
-/* 正则编辑器 */
-
-/* 全局设置模态框 */
-
-/* Agent 参数折叠容器 */
-
-/* Agent 卡片外壳 */
-
-/* Agent 身份区域（头像+名称+样式控制） */
-
-/* Agent 统一折叠区段 */
-
-/* Agent 提示词编辑器 */
-
-/* Agent 嵌套样式折叠 */
-
-/* Group 最终布局 */
+/* Global settings is owned exclusively by styles/ui-system/settings.css. */

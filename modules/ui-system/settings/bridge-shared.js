@@ -7,8 +7,8 @@ import { fieldProjection } from './field-registry.js';
 
 // globalThis.window?. keeps this module import-safe in bare node (tests);
 // in the renderer window is always defined and this resolves identically.
-const LifecycleScope = globalThis.window?.VCPLifecycle?.LifecycleScope;
-const bridgeScope = LifecycleScope ? new LifecycleScope('settings-bridge-controller') : null;
+const LifecycleScope = globalThis.window?.VCPLifecycle?.LifecycleScope || globalThis.VCPLifecycle?.LifecycleScope;
+let bridgeScope = LifecycleScope ? new LifecycleScope('settings-bridge-controller') : null;
 let presentationScope = null;
 let destroyed = false;
 const controllers = new Set();
@@ -22,14 +22,21 @@ function uniqueSettingsKey() {
 
 function ensurePresentationScope() {
     if (destroyed) return null;
-    if (!presentationScope) {
-        presentationScope = bridgeScope?.child('settings-presentation') || null;
+    if (!bridgeScope) {
+        const LiveScope = globalThis.window?.VCPLifecycle?.LifecycleScope || globalThis.VCPLifecycle?.LifecycleScope || LifecycleScope;
+        if (LiveScope) {
+            bridgeScope = new LiveScope('settings-bridge-controller');
+        }
+    }
+    if (!bridgeScope?.active) return null;
+    if (!presentationScope || !presentationScope.active) {
+        presentationScope = bridgeScope.child('settings-presentation');
     }
     return presentationScope;
 }
 
-// The single Select projection over the generated primitive; the bridge
-// injects the presentation scope so the module never reaches back up here.
+// The single Select projection over the generated primitive; settings surface
+// owners inject the presentation scope so this module never reaches upward.
 const selectProjection = createSelectProjection({ ensurePresentationScope });
 
 function isPresentationDestroyed() {
@@ -71,8 +78,8 @@ function enhance(name, element, options = {}) {
 // visual toggles keep their own mounts, and the legacy VCPUI native-kernel
 // switch stays as the degraded presentation when the primitive runtime or
 // the presentation scope is unavailable.
-// M5-c pass1 起，全局设置 schema 面的开关行 holder 由 field-renderer 直出，
-// 本挂载方只剩 agent 设置面（agent-settings-bridge）一个消费方。
+// M5-c pass1 起，全局设置 schema 面的开关行 holder 由 field-renderer 直出；
+// 该共享 helper 只服务于 schema-rendered sidebar fields。
 function mountUiuxSwitches(form) {
     if (!form) return;
     const api = window.VCPUIUX;

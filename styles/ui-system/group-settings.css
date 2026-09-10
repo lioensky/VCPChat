@@ -182,6 +182,7 @@
         box-shadow: none;
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
+        transition: border-color 0.15s ease, background-color 0.15s ease;
     }
 
     html .vcp-ui-scope #groupSettingsContainer :is(input[type="text"], select) {
@@ -189,7 +190,7 @@
         min-height: 34px;
         max-height: 34px;
         padding: 0 var(--vcp-ui-space-3);
-        border-radius: 16px;
+        border-radius: var(--vcp-settings-radius, 8px);
     }
 
     html .vcp-ui-scope #groupSettingsContainer select {
@@ -200,18 +201,18 @@
     html .vcp-ui-scope #groupSettingsContainer textarea {
         min-height: 96px;
         padding: var(--vcp-ui-space-2) var(--vcp-ui-space-3);
-        border-radius: var(--vcp-ui-radius-md);
+        border-radius: var(--vcp-settings-radius, 8px);
     }
 
     html .vcp-ui-scope #groupSettingsContainer :is(input[type="text"], select, textarea):hover {
-        border-color: var(--vcp-ui-control-focus);
+        border-color: color-mix(in srgb, var(--highlight-text, var(--vcp-ui-control-focus)) 45%, var(--vcp-ui-control-border));
         box-shadow: none;
     }
 
     html .vcp-ui-scope #groupSettingsContainer :is(input[type="text"], select, textarea):focus, html .vcp-ui-scope #groupSettingsContainer :is(input[type="text"], select, textarea):focus-visible {
-        border-color: var(--vcp-ui-control-focus);
+        border-color: var(--highlight-text, var(--vcp-ui-control-focus));
         outline: none;
-        box-shadow: 0 0 0 2px var(--vcp-ui-focus-ring);
+        box-shadow: none;
     }
 
     html .vcp-ui-scope #groupSettingsContainer .group-members-list-container {
@@ -230,21 +231,21 @@
 
     html .vcp-ui-scope #groupSettingsContainer .group-member-item label {
         min-width: 0;
-        display: inline-flex !important;
-        align-items: center !important;
-        justify-content: flex-start !important;
+        display: inline-flex;
+        align-items: center;
+        justify-content: flex-start;
         min-height: 36px;
-        margin: 0 !important;
+        margin: 0;
         padding: var(--vcp-ui-space-2) var(--vcp-ui-space-3);
         border: 1px solid var(--vcp-ui-control-border);
-        border-radius: var(--vcp-ui-radius-md);
+        border-radius: var(--vcp-settings-radius, 8px);
         color: var(--vcp-ui-text-1);
         background: var(--vcp-ui-control-bg);
         box-shadow: none;
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
-        box-sizing: border-box !important;
-        line-height: 1 !important;
+        box-sizing: border-box;
+        line-height: 1;
     }
 
     html .vcp-ui-scope #groupSettingsContainer .group-member-item label:hover {
@@ -300,7 +301,7 @@
         padding: var(--vcp-ui-space-2) var(--vcp-ui-space-3);
         box-sizing: border-box;
         border: 1px solid var(--vcp-ui-control-border);
-        border-radius: var(--vcp-ui-radius-md);
+        border-radius: var(--vcp-settings-radius, 8px);
         color: var(--vcp-ui-text-0);
         background: var(--vcp-ui-control-bg);
         cursor: grab;
