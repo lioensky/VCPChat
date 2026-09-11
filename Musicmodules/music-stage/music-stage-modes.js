@@ -533,7 +533,7 @@
             .sort((left, right) => right.score - left.score)[0] || directedModes[0];
     };
 
-    const STARBORN_TRANSITION_LOCK_SECONDS = 2;
+    const STARBORN_TRANSITION_LOCK_SECONDS = 4;
 
     const createStarbornMode = (container, services) => {
         const mode = makeModeBase('starborn', '星诞', container, services);
