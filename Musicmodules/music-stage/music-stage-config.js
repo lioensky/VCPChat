@@ -23,6 +23,8 @@
     ]);
 
     const PIXI_DEFAULTS = Object.freeze({
+        performanceIntensity: 1.25, beatImpact: 1.15, opticalImpact: 0.65,
+        accentEffects: true, accentMotion: 1,
         cameraBreath: 0.5, cameraTracking: 0.35, shotFlow: 'auto', sceneTransitions: true,
         cameraSoftness: 0.75, cameraRoll: 0.25,
         lyricLayout: 'phrases', phraseLength: 12, phraseEmphasis: 0.4,
@@ -125,6 +127,11 @@
             heroEmphasis: bool(source.heroEmphasis, fallback.heroEmphasis),
             showTranslation: bool(source.showTranslation, fallback.showTranslation),
             showUpcoming: bool(source.showUpcoming, fallback.showUpcoming),
+            performanceIntensity: clamp(source.performanceIntensity, 0, 2, fallback.performanceIntensity),
+            beatImpact: clamp(source.beatImpact, 0, 2, fallback.beatImpact),
+            opticalImpact: clamp(source.opticalImpact, 0, 1, fallback.opticalImpact),
+            accentEffects: bool(source.accentEffects, fallback.accentEffects),
+            accentMotion: clamp(source.accentMotion, 0, 2, fallback.accentMotion),
             cameraIntensity: clamp(source.cameraIntensity, 0, 2, fallback.cameraIntensity),
             typographyMotion: clamp(source.typographyMotion, 0, 2, fallback.typographyMotion),
             glyphMotion: clamp(source.glyphMotion, 0, 2, fallback.glyphMotion),

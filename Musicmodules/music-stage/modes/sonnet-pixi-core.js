@@ -23,6 +23,10 @@
             this.destroyed = false;
             this.pendingShot = null;
             this.postProcess = null;
+            this.performance = Effects.createPerformance();
+            this.phrases = [];
+            this.accents = null;
+            this.orbits = [];
         }
 
         async init() {
@@ -65,6 +69,7 @@
             this.app.stage.addChild(this.sceneContainer);
 
             this.postProcess = Effects.createPostProcess(PIXI, this.app.stage);
+            this.retirement = Effects.createRetirement(PIXI, this.app.stage);
             this.initialized = true;
             this.resize();
             if (this.pendingShot) this.buildShot(...this.pendingShot);
@@ -91,6 +96,7 @@
             const numPrimary = PIXI.Color.shared.setValue(hexPrimary).toNumber();
             const rand = global.MusicStageRuntime.seededRandom(`sonnet:${seed}`);
 
+            this.retirement.capture([this.hudContainer, this.frameDecorContainer], this.sceneContainer, line);
             // 1. 重建外层线框系统 (Frame Decor & Corner Brackets)
             Effects.clear(this.frameDecorContainer);
             const frame = new PIXI.Graphics();
@@ -121,15 +127,33 @@
             Effects.clear(this.geoContainer);
             this.giantText = null;
 
+            this.orbits = [];
             const hud = new PIXI.Graphics();
             const cx = this.width * 0.5;
             const cy = this.height * 0.5;
             const radius = Math.min(this.width, this.height) * 0.38;
 
-            // 几何光环与同心圆
-            hud.circle(cx, cy, radius * 0.9).stroke({ color: numPrimary, width: 1.5, alpha: 0.25 });
-            hud.circle(cx, cy, radius * 0.6).stroke({ color: numPrimary, width: 1, alpha: 0.2 });
-            hud.circle(cx, cy, radius * 0.3).stroke({ color: numPrimary, width: 2, alpha: 0.3 });
+            // Independent local-space orbits, counter-rotating broken arcs and ticks.
+            for (let i = 0; i < 5; i++) {
+                const orbit = new PIXI.Graphics();
+                const r = radius * (0.4 + i * 0.17);
+                for (let segment = 0; segment < 6; segment++) {
+                    const start = segment * Math.PI / 3 + i * 0.24;
+                    orbit.arc(0, 0, r, start, start + Math.PI * (0.16 + i * 0.008));
+                    orbit.stroke({ color: numPrimary, width: i % 2 ? 1 : 2, alpha: 0.22 });
+                }
+                for (let tick = 0; tick < 36; tick++) {
+                    const a = tick * Math.PI / 18;
+                    const outer = r + (tick % 3 ? 4 : 11);
+                    orbit.moveTo(Math.cos(a) * r, Math.sin(a) * r)
+                        .lineTo(Math.cos(a) * outer, Math.sin(a) * outer);
+                }
+                orbit.stroke({ color: numPrimary, width: 1, alpha: 0.35 });
+                orbit.circle(r, 0, 3).fill({ color: numPrimary, alpha: 0.8 });
+                orbit.position.set(cx, cy);
+                this.hudContainer.addChild(orbit);
+                this.orbits.push(orbit);
+            }
 
             // 十字交叉瞄准线
             hud.moveTo(cx - radius, cy).lineTo(cx + radius, cy);
@@ -170,9 +194,17 @@
             Effects.clear(this.textContainer);
             this.words = [];
 
-            Effects.buildMotif(PIXI, this.geoContainer, this.width, this.height, numPrimary, seed);
+            this.motif = Effects.buildMotif(PIXI, this.geoContainer, this.width, this.height, numPrimary, seed);
+            this.motif.pivot.set(cx, cy);
+            this.motif.position.set(cx, cy);
             this.words = Effects.buildLyrics(PIXI, this.textContainer, line, this.width, this.height, tuning, seed);
             this.numPrimary = numPrimary;
+            this.phrases = Effects.buildPhraseStage(PIXI, this.textContainer, this.words, numPrimary);
+            this.accents = Effects.createAccentChoreography(PIXI, this.textContainer, this.words,
+                this.phrases, numPrimary, 'sonnet', seed);
+            this.scan = hud;
+            this.scan.pivot.set(cx, cy);
+            this.scan.position.set(cx, cy);
             this.sceneContainer.pivot.set(cx, cy);
             this.hudContainer.pivot.set(cx, cy);
             this.hudContainer.position.set(cx, cy);
@@ -181,6 +213,8 @@
         update(frame, tuning = {}) {
             if (!this.initialized) return;
 
+            tuning = { ...tuning, performanceMode: 'sonnet',
+                performance: this.performance.update(frame, tuning, this.words) };
             Effects.applyQuality(this.app, this.width, this.height, tuning.quality);
             const progress = clamp(frame.lineProgress || 0);
             const motion = Effects.motionScale(tuning);
@@ -191,27 +225,57 @@
             this.sceneContainer.rotation = camera.rotation;
             this.sceneContainer.alpha = Effects.transition(frame, tuning);
 
-            // 2. HUD 旋转与脉冲
-            if (this.hudContainer) {
-                this.hudContainer.rotation = progress * 0.15 * motion;
-            }
+            const time = frame.playbackTime;
+            const intensity = motion * Effects.amount(tuning.performanceIntensity, 1.25);
+            const kick = tuning.performance.impact;
+            this.orbits.forEach((orbit, index) => {
+                orbit.visible = tuning.quality !== 'energy-saving' || index < 2;
+                const direction = index % 2 ? -1 : 1;
+                orbit.rotation = (time * (0.07 + index * 0.025) + kick * 0.15) * direction * intensity;
+                orbit.scale.set(1 + kick * (0.025 + index * 0.015) * intensity);
+                orbit.alpha = 0.55 + tuning.performance.energy * 0.35;
+            });
+            this.scan.rotation = time * 0.32 * intensity;
+            this.motif.rotation = -time * 0.035 * intensity;
+            this.motif.scale.set(1 + Math.sin(time * 0.6) * 0.025 * intensity);
+            this.frameDecorContainer.scale.set(1 + kick * 0.008 * intensity);
             if (this.giantText) {
-                this.giantText.scale.set(1 + bass * 0.05 * motion);
+                this.giantText.scale.set(1 + tuning.performance.energy * 0.06 * intensity);
+                this.giantText.position.set(this.width * 0.5 + Math.sin(time * 0.14) * this.width * 0.12 * intensity,
+                    this.height * 0.5 - 20 + Math.cos(time * 0.19) * 18 * intensity);
+                this.giantText.rotation = Math.sin(time * 0.12) * 0.035 * intensity;
             }
 
             Effects.animateLyrics(this.words, frame, tuning, this.numPrimary);
+            Effects.animatePhraseStage(this.phrases, frame, tuning, this.activeKind);
+            this.accents?.update(frame, tuning);
 
             // 4. 图层开关
             this.hudContainer.visible = tuning.showBackground !== false && tuning.guideLines !== false;
             this.frameDecorContainer.visible = tuning.showDecor !== false;
             this.geoContainer.visible = tuning.showBackground !== false;
+            this.retirement.update(frame, tuning);
             this.postProcess.update(frame, tuning, this.width, this.height);
             this.app.render();
+        }
+
+        getDebugSnapshot() {
+            return { initialized: this.initialized, camera: this.activeKind,
+                glyphs: this.words.length, phrases: this.phrases.length, orbits: this.orbits.length,
+                performance: this.performance.snapshot(), accents: this.accents?.snapshot(),
+                resolution: this.app?.renderer?.resolution, ...this.retirement?.snapshot() };
         }
 
         destroy() {
             this.destroyed = true;
             this.pendingShot = null;
+            this.performance.reset();
+            this.words = [];
+            this.phrases = [];
+            this.orbits = [];
+            this.accents = null;
+            this.motif = this.scan = this.giantText = null;
+            this.retirement?.destroy();
             this.postProcess?.destroy();
             this.postProcess = null;
             if (this.app && this.initialized) {

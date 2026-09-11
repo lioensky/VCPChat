@@ -95,6 +95,11 @@
         const scope = new DisposableScope();
         let editingSettings = false;
         const pixiTuningDefinitions = [
+            { key: 'performanceIntensity', label: '场景编舞强度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+            { key: 'beatImpact', label: '音频起音冲击', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+            { key: 'opticalImpact', label: '瞬态套印色散', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+            { key: 'accentEffects', label: '偶发强调（商籁螺旋落字／凝彩外框循迹）', type: 'toggle' },
+            { key: 'accentMotion', label: '偶发强调动势', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
             { key: 'sceneTransitions', label: '切句过渡', type: 'toggle' },
             { key: 'shotFlow', label: '分镜镜头', type: 'select', options: [['auto', '自动导演'], ['editorial-column', '编辑纵列'], ['type-impact', '文字冲击'], ['fragment-collage', '碎片拼贴'], ['tracking-ribbon', '带状追焦'], ['mask-reveal', '上升揭幕'], ['poster-blocks', '海报定景'], ['quiet-tableau', '静谧长镜']] },
             { key: 'cameraSoftness', label: '镜头平缓度', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },

@@ -92,10 +92,11 @@ void main() {
         });
         return {
             update(frame, tuning, width, height) {
+                const kick = motionScale(tuning) * amount(tuning.opticalImpact, 0.65, 1) * clamp(tuning.performance?.impact || 0);
                 const values = {
                     Distortion: amount(tuning.lensDistortion, 0.35),
                     Dispersion: amount(tuning.lensDispersion, 0.18, 1),
-                    Rgb: amount(tuning.rgbShift, 0, 1),
+                    Rgb: clamp(amount(tuning.rgbShift, 0, 1) + kick * 0.45),
                     Grain: amount(tuning.grain, 0, 1),
                     Contrast: amount(tuning.contrast, 0, 1),
                     Halftone: amount(tuning.halftone, 0, 1),
@@ -174,8 +175,10 @@ void main() {
                 + Math.sin(time * 0.13) * width * 0.003 * breath * strength,
             y: height / 2 + (path[1] * height * 0.3 - clamp(focusY - height / 2, -height * 0.08, height * 0.08) * tracking) * travel
                 + Math.cos(time * 0.11) * height * 0.003 * breath * strength,
-            scale: 1 + (path[2] - 1) * travel,
-            rotation: path[3] * travel * amount(tuning.cameraRoll, 0.25, 1)
+            scale: 1 + (path[2] - 1) * travel
+                + clamp(tuning.performance?.impact || 0) * 0.035 * strength,
+            rotation: (path[3] * travel + (tuning.performance?.impact || 0) * 0.012 * strength)
+                * amount(tuning.cameraRoll, 0.25, 1)
         };
     };
 
@@ -291,7 +294,17 @@ void main() {
             );
             node.rotation = style === 'scatter' ? d.angle * (entry + bounce) * strength : 0;
             const pop = style === 'impact' ? -entry * 0.38 + bounce * 0.2 : bounce * 0.1 - entry * 0.12;
-            node.scale.set(d.fit * (1 + pop * strength));
+            const phraseAge = time - d.phraseStart;
+            const punch = phraseAge >= 0 ? Math.sin(Math.min(1, phraseAge / 0.48) * Math.PI) * Math.exp(-phraseAge * 3) : 0;
+            const performance = amount(tuning.performanceIntensity, 1.25) * strength;
+            const isTempera = tuning.performanceMode === 'tempera';
+            node.position.x += (isTempera ? direction * punch * d.fontSize * 0.12 : -entry * d.fontSize * 0.45) * performance;
+            node.position.y -= punch * d.fontSize * (isTempera ? 0.18 : 0.07) * performance;
+            node.skew.x = (isTempera ? -punch * 0.09 : entry * 0.16) * performance;
+            node.scale.set(
+                d.fit * Math.max(0.2, 1 + pop * strength + punch * 0.12 * performance),
+                d.fit * Math.max(0.2, 1 + pop * strength - punch * 0.08 * performance)
+            );
             const phraseEmphasis = amount(tuning.phraseEmphasis, 0.4, 1);
             const phraseWeight = ease((time - d.phraseStart + 0.3) / 0.3)
                 * (1 - ease((time - d.phraseEnd) / 0.65));
@@ -314,11 +327,9 @@ void main() {
         if (!motionScale(tuning) || tuning.sceneTransitions === false || !frame.activeLine) return 1;
         const duration = Math.min(0.24, Math.max(0.08, (frame.activeLine.endTime - frame.activeLine.startTime) * 0.12));
         const enter = ease((frame.playbackTime - frame.activeLine.startTime) / duration);
-        const nextStart = frame.nextLines?.[0]?.startTime;
-        // Fade only between adjacent shots; retain the outgoing lyric through an instrumental gap.
-        const exit = Number.isFinite(nextStart) && nextStart <= frame.activeLine.endTime + 0.25
-            ? ease((frame.playbackTime - nextStart + duration) / duration) : 0;
-        return (0.28 + enter * 0.72) * (1 - exit * 0.72);
+        // Never fade still-singing text in anticipation of the next line.
+        // Retiring background geometry supplies the outgoing half of the cut.
+        return 0.45 + enter * 0.55;
     };
 
     // Seeded graphic families complement the retained HUD, without creating per-frame graphics.
@@ -359,7 +370,351 @@ void main() {
         return graphic;
     };
 
+    // Compile once per lyric-array identity. Greedy spacing is deterministic even
+    // after a direct seek; no runtime random draws or replay of missed events.
+    const accentCueCache = new WeakMap();
+    const accentCues = (lines, seed) => {
+        if (!Array.isArray(lines)) return new Set();
+        let cache = accentCueCache.get(lines);
+        if (!cache) { cache = new Map(); accentCueCache.set(lines, cache); }
+        if (cache.has(seed)) return cache.get(seed);
+        const selected = new Set();
+        let previous = -Infinity;
+        lines.forEach((line, index) => {
+            const duration = line.endTime - line.startTime;
+            const count = splitGraphemes(line.fullText).filter(c => c.trim()).length;
+            const gap = index ? line.startTime - lines[index - 1].endTime : 1;
+            const random = seededRandom(`${seed}:${index}:${line.fullText}`);
+            if (duration >= 2.4 && count >= 3 && count / duration < 9
+                && line.startTime - previous >= 11
+                && (gap > 0.45 || /[，。！？…!?]/u.test(line.fullText) || random() > 0.48)) {
+                selected.add(index);
+                previous = line.startTime;
+            }
+        });
+        // Bound alternate track keys when callers replace metadata in place.
+        if (cache.size >= 4) cache.delete(cache.keys().next().value);
+        cache.set(seed, selected);
+        return selected;
+    };
+
+    const createAccentChoreography = (PIXI, parent, nodes, groups, color, mode, seed) => {
+        const layer = new PIXI.Container();
+        parent.addChild(layer);
+        const random = seededRandom(`accent:${mode}:${seed}`);
+        const eligible = nodes.filter(node => node.dataset.text.trim()
+            && !/^[，。！？、,.!?;:：；]$/u.test(node.dataset.text));
+        // Only three glyphs, never a whole-line particle emitter.
+        const targets = eligible.filter((node, index) => index >= Math.floor(eligible.length * 0.3))
+            .filter((node, index) => index % Math.max(1, Math.floor(eligible.length / 3)) === 0).slice(0, 3);
+        const particles = (mode === 'sonnet' ? targets : []).flatMap((target, index) => {
+            const baseAngle = random() * Math.PI * 2;
+            return Array.from({ length: 5 }, (_, arm) => {
+                const trail = [];
+                for (let j = 0; j < 18; j++) {
+                    const dot = new PIXI.Graphics().circle(0, 0, j === 0 ? 3.2 : 1.6)
+                        .fill({ color, alpha: 1 });
+                    layer.addChild(dot);
+                    trail.push(dot);
+                }
+                return {
+                    target, trail, index, arm,
+                    angle: baseAngle + arm * Math.PI * 2 / 5 + (random() - 0.5) * 0.22,
+                    direction: arm % 2 ? -1 : 1,
+                    radiusScale: 0.8 + random() * 0.4,
+                    lead: 1.65 + arm * 0.13 + random() * 0.15
+                };
+            });
+        });
+        const frameSegments = [];
+        const group = groups[Math.min(1, groups.length - 1)];
+        let pen = null, corners = null;
+        if (group && mode === 'tempera') {
+            const x = group.left - 20, y = group.top - 16;
+            const w = group.right - group.left + 40, h = group.bottom - group.top + 32;
+            corners = [[x, y], [x + w, y], [x + w, y + h], [x, y + h], [x, y]];
+            pen = new PIXI.Graphics().rect(-3, -3, 6, 6).fill({ color, alpha: 0.9 });
+            layer.addChild(pen);
+            for (let side = 0; side < 4; side++) {
+                for (let step = 0; step < 12; step++) {
+                    const a = corners[side], b = corners[side + 1];
+                    const segment = new PIXI.Graphics();
+                    const p = step / 12, q = (step + 0.85) / 12;
+                    segment.moveTo(a[0] + (b[0] - a[0]) * p, a[1] + (b[1] - a[1]) * p)
+                        .lineTo(a[0] + (b[0] - a[0]) * q, a[1] + (b[1] - a[1]) * q)
+                        .stroke({ color, width: step === 0 ? 2.5 : 1.2, alpha: 0.7 });
+                    layer.addChild(segment);
+                    frameSegments.push(segment);
+                }
+            }
+        }
+        return {
+            update(frame, tuning) {
+                const strength = motionScale(tuning) * amount(tuning.accentMotion, 1);
+                const track = frame.track?.path || frame.track?.title || '';
+                const enabled = tuning.accentEffects !== false && tuning.showDecor !== false && strength > 0
+                    && accentCues(frame.lines, `${mode}:${track}`).has(frame.currentLineIndex);
+                layer.visible = enabled;
+                if (!enabled) return;
+                const time = frame.playbackTime;
+                const viewportSpan = Math.min(frame.viewport?.width || 900, frame.viewport?.height || 600);
+                particles.forEach(({ target, trail, angle, index, arm, direction, radiusScale, lead }) => {
+                    const d = target.dataset;
+                    // Approach starts inside this shot, arriving shortly after onset.
+                    const arrival = d.startTime + Math.min(0.12, (d.endTime - d.startTime) * 0.3);
+                    const duration = Math.min(lead, Math.max(0.15, arrival - frame.activeLine.startTime));
+                    const p = (time - arrival + duration) / duration;
+                    const glow = p >= 1 ? Math.exp(-(time - arrival) * 7) : 0;
+                    if (mode === 'sonnet' && arm === 0 && glow > 0.01) {
+                        target.tint = color;
+                        target.scale.x *= 1 + glow * 0.07 * strength;
+                        target.scale.y *= 1 + glow * 0.07 * strength;
+                    }
+                    trail.forEach((dot, j) => {
+                        const u = p - j * 0.014;
+                        const armBudget = tuning.quality === 'ultimate' ? 5
+                            : tuning.quality === 'energy-saving' ? 2 : 4;
+                        dot.visible = mode === 'sonnet' && u >= 0 && u <= 1 && arm < armBudget
+                            && (tuning.quality !== 'energy-saving' || (index === 0 && j < 8));
+                        if (!dot.visible) return;
+                        const sweep = Math.PI * 2.6;
+                        const turn = (1 - u) * sweep;
+                        // Normalized logarithmic spiral: large, viewport-bounded
+                        // entrances converge to the glyph, regardless of font size.
+                        const growth = Math.log(1.618034) / (Math.PI / 2);
+                        const reach = Math.min(viewportSpan * 0.44, Math.max(130, d.fontSize * 4.2))
+                            * radiusScale * Math.min(1.5, strength);
+                        const radius = (Math.exp(turn * growth) - 1) / (Math.exp(sweep * growth) - 1) * reach;
+                        dot.position.set(target.x + Math.cos(angle + turn * direction) * radius,
+                            target.y + Math.sin(angle + turn * direction) * radius * 0.86);
+                        dot.alpha = ease(u / 0.08) * (1 - j / trail.length) * (arm === 0 ? 0.8 : 0.55);
+                    });
+                });
+                const age = time - (group?.start ?? frame.activeLine.startTime) + 0.15;
+                const draw = clamp(age / 1.15) * frameSegments.length;
+                if (pen) {
+                    const progress = clamp(age / 1.15) * 4;
+                    const side = Math.min(3, Math.floor(progress));
+                    const local = progress - side;
+                    const a = corners[side], b = corners[side + 1];
+                    pen.position.set(a[0] + (b[0] - a[0]) * local, a[1] + (b[1] - a[1]) * local);
+                    pen.rotation = Math.PI / 4;
+                    pen.alpha = ease(age / 0.12) * (1 - ease((age - 1.15) / 0.25));
+                }
+                frameSegments.forEach((segment, index) => {
+                    const head = draw - index;
+                    const tail = ease((age - 1.65 - index * 0.009) / 0.7);
+                    segment.alpha = head < 0 ? 0 : (0.3 + Math.exp(-head * 0.65) * 0.7) * (1 - tail);
+                });
+            },
+            snapshot() {
+                return { emitters: particles.length, targets: mode === 'sonnet' ? targets.length : 0,
+                    particles: particles.reduce((sum, particle) => sum + particle.trail.length, 0),
+                    visibleParticles: particles.reduce((sum, particle) => sum
+                        + particle.trail.filter(dot => layer.visible && dot.visible).length, 0),
+                    frameSegments: frameSegments.length, visible: layer.visible };
+            }
+        };
+    };
+
+    // Live onsets are deliberately separate from deterministic lyric cues.
+    // Fixed-size spectrum history; no event queue, ticker, timers or unbounded particles.
+    const createPerformance = () => {
+        const bins = new Float32Array(48);
+        let lastTime = null, track = null, source = null, playing = false;
+        let baseline = 0.02, energy = 0, hitAt = -Infinity, hitStrength = 0, hits = 0;
+        const state = { impact: 0, phrasePulse: 0, energy: 0, phrase: -1, time: 0, reset: true };
+        return {
+            update(frame, tuning, nodes) {
+                const time = Number(frame.playbackTime) || 0;
+                const identity = frame.track?.path || frame.track?.title || '';
+                const dt = lastTime === null ? 0 : time - lastTime;
+                const reset = lastTime === null || identity !== track || source !== frame.lines || dt < -0.025 || dt > 0.5;
+                const resumed = frame.isPlaying && !playing;
+                const spectrum = frame.audio?.spectrum || [];
+                let flux = 0;
+                // Do not feed changing analyser samples into a paused scene.
+                if (reset || resumed || (frame.isPlaying && dt > 0)) {
+                    for (let i = 0; i < bins.length; i++) {
+                        const value = clamp(Number(spectrum[Math.floor(i / bins.length * spectrum.length)]) || 0);
+                        flux += Math.max(0, value - bins[i]);
+                        bins[i] = value;
+                    }
+                    flux /= bins.length;
+                    if (reset || resumed) {
+                        baseline = 0.02;
+                        hitAt = -Infinity;
+                        hitStrength = 0;
+                        energy = clamp(frame.audio?.power || 0);
+                    } else {
+                        const a = 1 - Math.exp(-dt * 3);
+                        energy += (clamp(frame.audio?.power || 0) - energy) * a;
+                        const threshold = Math.max(0.018, baseline * 1.8);
+                        if (flux > threshold && energy > 0.035 && time - hitAt > 0.38) {
+                            hitAt = time;
+                            hitStrength = clamp((flux - threshold) * 10 + 0.35);
+                            hits++;
+                        }
+                        baseline += (flux - baseline) * (1 - Math.exp(-dt * 1.8));
+                    }
+                }
+                let phrase = -1, phraseStart = -Infinity;
+                for (const node of nodes) {
+                    const d = node.dataset;
+                    if (d.phraseStart <= time && d.phraseStart > phraseStart) {
+                        phraseStart = d.phraseStart;
+                        phrase = d.phrase;
+                    }
+                }
+                const pulse = age => age >= 0 && age < 0.85
+                    ? (1 - Math.exp(-age * 35)) * Math.exp(-age * 5) : 0;
+                const strength = motionScale(tuning) * amount(tuning.performanceIntensity, 1.25);
+                state.phrasePulse = pulse(time - phraseStart) * strength;
+                state.impact = clamp(pulse(time - hitAt) * hitStrength * amount(tuning.beatImpact, 1.15) * strength
+                    + state.phrasePulse * 0.45);
+                state.energy = energy;
+                state.phrase = phrase;
+                state.time = time;
+                state.reset = reset;
+                lastTime = time;
+                track = identity;
+                source = frame.lines;
+                playing = Boolean(frame.isPlaying);
+                return state;
+            },
+            snapshot() { return { ...state, onsets: hits, historyBins: bins.length }; },
+            reset() { lastTime = null; hitAt = -Infinity; bins.fill(0); }
+        };
+    };
+
+    // One retained graphic per phrase: GPU transforms animate a real reveal mask
+    // and a separate accent rail without rebuilding geometry on every frame.
+    const buildPhraseStage = (PIXI, textContainer, nodes, color) => {
+        const groups = [];
+        for (const node of nodes) {
+            const d = node.dataset;
+            let group = groups[d.phrase];
+            if (!group) {
+                const root = new PIXI.Container();
+                textContainer.addChild(root);
+                group = groups[d.phrase] = { root, nodes: [], start: d.phraseStart, end: d.phraseEnd,
+                    left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity };
+            }
+            group.nodes.push(node);
+            group.root.addChild(node);
+            const margin = d.fontSize * d.fit;
+            group.left = Math.min(group.left, d.baseX - d.advance * d.fit / 2 - margin * 0.25);
+            group.right = Math.max(group.right, d.baseX + d.advance * d.fit / 2 + margin * 0.25);
+            group.top = Math.min(group.top, d.baseY - margin * 0.85);
+            group.bottom = Math.max(group.bottom, d.baseY + margin * 0.85);
+        }
+        for (const group of groups) {
+            if (!group) continue;
+            const width = group.right - group.left, height = group.bottom - group.top;
+            const mask = new PIXI.Graphics().rect(0, 0, width, height).fill(0xffffff);
+            mask.position.set(group.left, group.top);
+            textContainer.addChild(mask);
+            group.root.mask = mask;
+            group.mask = mask;
+            const rail = new PIXI.Graphics().rect(0, 0, width, 3).fill({ color, alpha: 0.85 });
+            rail.position.set(group.left, group.bottom - height * 0.12);
+            textContainer.addChild(rail);
+            group.rail = rail;
+            const bracket = new PIXI.Graphics();
+            bracket.moveTo(12, 0).lineTo(0, 0).lineTo(0, height);
+            bracket.lineTo(12, height);
+            bracket.moveTo(width - 12, 0).lineTo(width, 0).lineTo(width, height).lineTo(width - 12, height);
+            bracket.stroke({ color, width: 1.4, alpha: 0.55 });
+            bracket.position.set(group.left, group.top);
+            textContainer.addChild(bracket);
+            group.bracket = bracket;
+        }
+        return groups;
+    };
+    const animatePhraseStage = (groups, frame, tuning, kind) => {
+        const time = frame.playbackTime;
+        const motion = motionScale(tuning);
+        for (const group of groups) {
+            if (!group) continue;
+            // The reveal is complete at vocal onset, never concealing singing glyphs.
+            const enter = motion && tuning.sceneTransitions !== false ? expo((time - group.start + 0.45) / 0.45) : 1;
+            const focus = ease((time - group.start + 0.25) / 0.25) * (1 - ease((time - group.end) / 0.55));
+            // Detach settled masks to avoid clipping scatter/impact at high strength.
+            const reveal = enter < 1 && tuning.quality !== 'energy-saving';
+            group.root.mask = reveal ? group.mask : null;
+            group.mask.visible = reveal;
+            group.mask.scale.set(kind === 'mask-reveal' ? 1 : Math.max(0.001, enter),
+                kind === 'mask-reveal' ? Math.max(0.001, enter) : 1);
+            group.rail.scale.x = Math.max(0.001, enter);
+            group.rail.alpha = focus * (0.3 + (tuning.performance?.phrasePulse || 0) * 0.35);
+            group.rail.visible = tuning.showDecor !== false;
+            group.bracket.alpha = focus * 0.7;
+            group.bracket.visible = tuning.performanceMode === 'sonnet' && tuning.guideLines !== false;
+        }
+    };
+
+    const createRetirement = (PIXI, stage) => {
+        let layer = null, born = 0, lastFrame = null, lastTuning = null, outgoingLine = null;
+        const release = () => {
+            if (layer) { layer.removeFromParent(); layer.destroy({ children: true }); layer = null; }
+        };
+        return {
+            capture(containers, scene, nextLine) {
+                release();
+                const frame = lastFrame, tuning = lastTuning;
+                if (!frame?.isPlaying || !nextLine || !frame.activeLine
+                    || nextLine === frame.activeLine || !motionScale(tuning)
+                    || tuning.sceneTransitions === false || tuning.quality === 'energy-saving'
+                    || nextLine.startTime < frame.playbackTime
+                    || nextLine.startTime - frame.playbackTime > 0.2) return;
+                layer = new PIXI.Container();
+                layer.position.copyFrom(scene.position);
+                layer.pivot.copyFrom(scene.pivot);
+                layer.scale.copyFrom(scene.scale);
+                layer.rotation = scene.rotation;
+                for (const container of containers) {
+                    if (!container.visible) continue;
+                    const copy = new PIXI.Container();
+                    copy.position.copyFrom(container.position);
+                    copy.pivot.copyFrom(container.pivot);
+                    copy.scale.copyFrom(container.scale);
+                    copy.rotation = container.rotation;
+                    copy.alpha = container.alpha;
+                    for (const child of container.removeChildren()) copy.addChild(child);
+                    layer.addChild(copy);
+                }
+                stage.addChildAt(layer, 0);
+                born = nextLine.startTime;
+                outgoingLine = nextLine;
+            },
+            update(frame, tuning) {
+                if (layer) {
+                    const elapsed = frame.playbackTime - born;
+                    const changedTrack = lastFrame && (frame.track?.path || frame.track?.title || '')
+                        !== (lastFrame.track?.path || lastFrame.track?.title || '');
+                    const jumped = lastFrame && (frame.playbackTime - lastFrame.playbackTime > 0.5
+                        || frame.playbackTime < lastFrame.playbackTime - 0.025);
+                    if (elapsed < 0 || elapsed >= 0.6 || frame.activeLine !== outgoingLine || changedTrack || jumped
+                        || !motionScale(tuning) || tuning.sceneTransitions === false
+                        || tuning.quality === 'energy-saving') release();
+                    else {
+                        const p = ease(elapsed / 0.6);
+                        layer.alpha = (1 - p) * 0.7;
+                        // Pose remains absolute, not integrated.
+                        layer.skew.x = p * 0.045 * motionScale(tuning);
+                    }
+                }
+                lastFrame = frame;
+                lastTuning = tuning;
+            },
+            snapshot() { return { outgoingLayers: layer ? 1 : 0 }; },
+            destroy() { release(); lastFrame = lastTuning = outgoingLine = null; }
+        };
+    };
+
     global.MusicStagePixiEffects = Object.freeze({
+        createRetirement,
+        createPerformance, buildPhraseStage, animatePhraseStage, createAccentChoreography,
         amount, ease, expo, clear, camera, shotKind, glyphTiming, buildLyrics, animateLyrics, motionScale, createPostProcess,
         applyQuality, transition, buildMotif, compilePhrases
     });

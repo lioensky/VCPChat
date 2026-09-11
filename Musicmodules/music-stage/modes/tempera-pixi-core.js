@@ -161,6 +161,9 @@
             this.destroyed = false;
             this.pendingShot = null;
             this.postProcess = null;
+            this.performance = Effects.createPerformance();
+            this.phrases = [];
+            this.accents = null;
         }
 
         async init() {
@@ -203,6 +206,7 @@
             this.app.stage.addChild(this.sceneContainer);
 
             this.postProcess = Effects.createPostProcess(PIXI, this.app.stage);
+            this.retirement = Effects.createRetirement(PIXI, this.app.stage);
             this.initialized = true;
             this.resize();
             if (this.pendingShot) this.buildShot(...this.pendingShot);
@@ -251,6 +255,7 @@
             const kindIndex = Math.floor(rand() * SHOT_KINDS.length);
             this.activeKind = SHOT_KINDS[kindIndex];
 
+            this.retirement.capture([this.blocksContainer, this.hatchContainer, this.decorContainer], this.sceneContainer, line);
             // 1. 重建色块
             Effects.clear(this.blocksContainer);
             Effects.clear(this.hatchContainer);
@@ -288,8 +293,12 @@
                     const lines = buildHatchLines(panel.polygon, angle, 14);
                     lines.forEach(l => hg.moveTo(l.x1, l.y1).lineTo(l.x2, l.y2));
                     hg.stroke({ color: this.palette.accent, width: 1.2, alpha: 0.45 });
-                    hg.dataset = { delay: i * 0.08 + 0.05, enterDX: panel.enterDX * 0.8, enterDY: panel.enterDY * 0.8 };
-                    this.hatchContainer.addChild(hg);
+                    const clip = new PIXI.Graphics().poly(panel.polygon).fill(0xffffff);
+                    const wrapper = new PIXI.Container();
+                    wrapper.addChild(hg, clip);
+                    hg.mask = clip;
+                    wrapper.dataset = { delay: i * 0.08 + 0.05, enterDX: panel.enterDX, enterDY: panel.enterDY, hatch: hg };
+                    this.hatchContainer.addChild(wrapper);
                 }
             });
 
@@ -306,12 +315,17 @@
 
             this.words = Effects.buildLyrics(PIXI, this.textContainer, line, this.width, this.height, tuning, seed);
             this.numPrimary = PIXI.Color.shared.setValue(this.palette.accent).toNumber();
+            this.phrases = Effects.buildPhraseStage(PIXI, this.textContainer, this.words, this.numPrimary);
+            this.accents = Effects.createAccentChoreography(PIXI, this.textContainer, this.words,
+                this.phrases, this.numPrimary, 'tempera', seed);
             this.sceneContainer.pivot.set(this.width / 2, this.height / 2);
         }
 
         update(frame, tuning = {}) {
             if (!this.initialized) return;
 
+            tuning = { ...tuning, performanceMode: 'tempera',
+                performance: this.performance.update(frame, tuning, this.words) };
             Effects.applyQuality(this.app, this.width, this.height, tuning.quality);
             const progress = clamp(frame.lineProgress || 0);
             const motion = Effects.motionScale(tuning);
@@ -328,7 +342,13 @@
                 if (!d) return;
                 const enterProg = motion > 0 ? clamp((elapsed - d.delay) / 0.45) : 1;
                 const ease = 1 - Math.pow(1 - enterProg, 3);
-                b.position.set(d.enterDX * (1 - ease) * motion, d.enterDY * (1 - ease) * motion);
+                const intensity = Effects.amount(tuning.performanceIntensity, 1.25) * motion;
+                const phase = frame.playbackTime * 0.65 + d.delay * 13;
+                const kick = tuning.performance.impact;
+                b.position.set(
+                    d.enterDX * (1 - ease) * motion + Math.sin(phase) * 14 * intensity + d.enterDX * kick * 0.07,
+                    d.enterDY * (1 - ease) * motion + Math.cos(phase * 0.8) * 10 * intensity + d.enterDY * kick * 0.07
+                );
                 b.alpha = ease;
             });
 
@@ -338,23 +358,45 @@
                 if (!d) return;
                 const enterProg = motion > 0 ? clamp((elapsed - d.delay) / 0.5) : 1;
                 const ease = 1 - Math.pow(1 - enterProg, 3);
+                const intensity = Effects.amount(tuning.performanceIntensity, 1.25) * motion;
                 h.position.set(d.enterDX * (1 - ease) * motion, d.enterDY * (1 - ease) * motion);
-                h.alpha = ease * 0.6;
+                d.hatch.position.set(
+                    Math.sin(frame.playbackTime * 0.5 + d.delay) * 24 * intensity + tuning.performance.impact * 18,
+                    Math.cos(frame.playbackTime * 0.35) * 16 * intensity
+                );
+                h.alpha = ease * (0.45 + tuning.performance.impact * 0.25);
             });
 
+            this.decorContainer.position.set(Math.sin(frame.playbackTime * 0.4) * 25 * motion,
+                Math.cos(frame.playbackTime * 0.32) * 18 * motion);
             Effects.animateLyrics(this.words, frame, tuning, this.numPrimary);
+            Effects.animatePhraseStage(this.phrases, frame, tuning, this.cameraKind);
+            this.accents?.update(frame, tuning);
 
             // 显隐开关
             this.blocksContainer.visible = tuning.showBlocks !== false;
             this.decorContainer.visible = tuning.showDecor !== false;
             this.hatchContainer.visible = tuning.showDecor !== false;
+            this.retirement.update(frame, tuning);
             this.postProcess.update(frame, tuning, this.width, this.height);
             this.app.render();
+        }
+
+        getDebugSnapshot() {
+            return { initialized: this.initialized, composition: this.activeKind, camera: this.cameraKind,
+                glyphs: this.words.length, phrases: this.phrases.length,
+                performance: this.performance.snapshot(), accents: this.accents?.snapshot(),
+                resolution: this.app?.renderer?.resolution, ...this.retirement?.snapshot() };
         }
 
         destroy() {
             this.destroyed = true;
             this.pendingShot = null;
+            this.performance.reset();
+            this.words = [];
+            this.phrases = [];
+            this.accents = null;
+            this.retirement?.destroy();
             this.postProcess?.destroy();
             this.postProcess = null;
             if (this.app && this.initialized) {

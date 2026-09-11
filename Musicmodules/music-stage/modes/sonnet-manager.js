@@ -81,6 +81,7 @@
             if (rebuild) renderedKey = '';
             if (latestFrame) mode.updateFrame(latestFrame);
         };
+        mode.getDebugSnapshot = () => director?.getDebugSnapshot() || { initialized: false };
         mode.resize = resize;
         mode.suspend = () => {
             paused = true;
