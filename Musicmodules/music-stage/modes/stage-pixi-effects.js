@@ -386,8 +386,8 @@ void main() {
             const gap = index ? line.startTime - lines[index - 1].endTime : 1;
             const random = seededRandom(`${seed}:${index}:${line.fullText}`);
             if (duration >= 2.4 && count >= 3 && count / duration < 9
-                && line.startTime - previous >= 11
-                && (gap > 0.45 || /[，。！？…!?]/u.test(line.fullText) || random() > 0.48)) {
+                && line.startTime - previous >= 7
+                && (gap > 0.45 || /[，。！？…!?]/u.test(line.fullText) || random() > 0.40)) {
                 selected.add(index);
                 previous = line.startTime;
             }
