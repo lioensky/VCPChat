@@ -37,8 +37,18 @@ class ModularPromptModule {
      * @param {Object} config 
      */
     async updateContext(agentId, config) {
+        this.contextVersion = (this.contextVersion || 0) + 1;
         this.agentId = agentId;
         this.config = config;
+        this.container = null;
+        this.blocksContainer = null;
+        this.warehouseContainer = null;
+        this.draggedBlock = null;
+        this.draggedIndex = null;
+        this.draggedHiddenBlock = null;
+        this.draggedWarehouse = null;
+        document.querySelectorAll('.edit-hidden-block-dialog, .block-context-menu')
+            .forEach(node => node.remove());
         await this.loadData();
     }
 
@@ -46,8 +56,14 @@ class ModularPromptModule {
      * [修改后] 加载保存的数据（包括私有和全局）
      */
     async loadData() {
-        // 1. 加载Agent私有数据（逻辑不变）
-        const savedData = this.config.advancedSystemPrompt;
+        const contextVersion = this.contextVersion;
+        this.blocks = [];
+        this.hiddenBlocks = { default: [] };
+        this.warehouseOrder = ['default'];
+        this.currentWarehouse = 'default';
+        this.viewMode = false;
+        // 不与已加载配置共享可变数组，编辑草稿不能污染权威配置。
+        const savedData = structuredClone(this.config.advancedSystemPrompt);
         if (savedData && typeof savedData === 'object') {
             this.blocks = savedData.blocks || [];
             this.hiddenBlocks = savedData.hiddenBlocks || { default: [] };
@@ -63,6 +79,7 @@ class ModularPromptModule {
         // 2. [新增] 加载全局仓库数据
         try {
             const response = await this.electronAPI.getGlobalWarehouse();
+            if (contextVersion !== this.contextVersion) return;
             if (response.success) {
                 this.hiddenBlocks['global'] = response.data || [];
             } else {
@@ -70,6 +87,7 @@ class ModularPromptModule {
                 this.hiddenBlocks['global'] = [];
             }
         } catch (error) {
+            if (contextVersion !== this.contextVersion) return;
             console.error('Error invoking get-global-warehouse:', error);
             this.hiddenBlocks['global'] = [];
         }
@@ -185,13 +203,17 @@ class ModularPromptModule {
 
         // View 模式开关
         const viewModeToggle = document.createElement('label');
-        viewModeToggle.className = 'toolbar-toggle';
+        viewModeToggle.className = `toolbar-toggle${this.viewMode ? ' active' : ''}`;
         viewModeToggle.title = '切换预览模式';
         viewModeToggle.innerHTML = `
             <input type="checkbox" ${this.viewMode ? 'checked' : ''} id="viewModeCheckbox">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
             <span>预览</span>
         `;
-        viewModeToggle.querySelector('input').onchange = (e) => this.toggleViewMode(e.target.checked);
+        viewModeToggle.querySelector('input').onchange = (e) => {
+            viewModeToggle.classList.toggle('active', e.target.checked);
+            this.toggleViewMode(e.target.checked);
+        };
         toolbar.appendChild(viewModeToggle);
 
         return toolbar;
@@ -279,7 +301,18 @@ class ModularPromptModule {
                 }
             });
             
+            const contextVersion = this.contextVersion;
+            contentEl.addEventListener('input', () => {
+                if (contextVersion !== this.contextVersion || !this.blocks.includes(block)) return;
+                if (block.variants && block.variants.length > 0) {
+                    block.variants[block.selectedVariant || 0] = contentEl.textContent;
+                } else {
+                    block.content = contentEl.textContent;
+                }
+                this.save();
+            });
             contentEl.addEventListener('blur', () => {
+                if (contextVersion !== this.contextVersion || !this.blocks.includes(block)) return;
                 // 退出编辑模式
                 contentEl.contentEditable = false;
                 // 更新当前选中的内容条目
@@ -664,22 +697,7 @@ class ModularPromptModule {
     renderWarehouse() {
         this.warehouseContainer.innerHTML = '';
 
-        const header = document.createElement('div');
-        header.className = 'warehouse-header';
-        header.innerHTML = '<span class="warehouse-title">积木块小仓</span>';
-        
-        // 添加新建仓库按钮
-        const addWarehouseBtn = document.createElement('button');
-        addWarehouseBtn.type = 'button';
-        addWarehouseBtn.className = 'add-warehouse-btn';
-        addWarehouseBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg><span>新建小仓</span>';
-        addWarehouseBtn.title = '新建仓库';
-        addWarehouseBtn.onclick = () => this.createWarehouse();
-        header.appendChild(addWarehouseBtn);
-        
-        this.warehouseContainer.appendChild(header);
-
-        // 仓库选择
+        // 仓库选择与新建
         const warehouseSelector = document.createElement('div');
         warehouseSelector.className = 'warehouse-selector';
         
@@ -697,6 +715,7 @@ class ModularPromptModule {
             
             // 仓库名称按钮
             const btn = document.createElement('button');
+            btn.type = 'button';
             btn.className = 'warehouse-btn';
             // [修改] 为 global 仓库添加图标
             if (name === 'global') {
@@ -731,6 +750,16 @@ class ModularPromptModule {
             
             warehouseSelector.appendChild(warehouseItem);
         });
+
+        // 添加新建仓库圆形按钮（加号圆形图标，与仓库 pill 并列）
+        const addWarehouseBtn = document.createElement('button');
+        addWarehouseBtn.type = 'button';
+        addWarehouseBtn.className = 'add-warehouse-btn';
+        addWarehouseBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>';
+        addWarehouseBtn.title = '新建仓库';
+        addWarehouseBtn.setAttribute('aria-label', '新建仓库');
+        addWarehouseBtn.onclick = () => this.createWarehouse();
+        warehouseSelector.appendChild(addWarehouseBtn);
 
         this.warehouseContainer.appendChild(warehouseSelector);
 
@@ -1223,7 +1252,7 @@ class ModularPromptModule {
                     // 如果有轮换文本，使用选中的版本
                     if (block.variants && block.variants.length > 0) {
                         const selectedIndex = block.selectedVariant || 0;
-                        content = block.variants[selectedIndex] || content;
+                        content = block.variants[selectedIndex] ?? content;
                     }
                     return content;
                 }
@@ -1283,29 +1312,20 @@ class ModularPromptModule {
      * [修改后] 保存数据（分流保存私有和全局数据）
      */
     async save() {
-        // 在第一个 await 前冻结目标和数据。否则保存全局仓库期间切换 Agent 后，
-        // this.agentId/this.blocks 可能已经指向新 Agent，造成跨 Agent 覆盖。
-        const targetAgentId = this.agentId;
-        if (!targetAgentId) return;
+        // 仅标记草稿变更；Agent 配置由保存按钮统一提交。
+        this.container?.dispatchEvent(new CustomEvent('input', { bubbles: true }));
+        return Boolean(this.agentId);
+    }
 
-        const globalBlocksToSave = structuredClone(this.hiddenBlocks['global'] || []);
-        const privateDataToSave = {
+    getDraft() {
+        const hiddenBlocks = structuredClone(this.hiddenBlocks);
+        delete hiddenBlocks.global;
+        return {
             blocks: structuredClone(this.blocks),
-            hiddenBlocks: structuredClone(this.hiddenBlocks),
+            hiddenBlocks,
             warehouseOrder: [...this.warehouseOrder],
-            viewMode: this.viewMode
+            viewMode: this.viewMode,
         };
-        delete privateDataToSave.hiddenBlocks['global'];
-
-        try {
-            await this.electronAPI.saveGlobalWarehouse(globalBlocksToSave);
-        } catch (error) {
-            console.error('Error saving global warehouse:', error);
-        }
-
-        await this.electronAPI.updateAgentConfig(targetAgentId, {
-            advancedSystemPrompt: privateDataToSave
-        });
     }
     
     /**

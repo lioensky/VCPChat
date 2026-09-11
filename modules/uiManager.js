@@ -119,10 +119,19 @@ const uiManager = (() => {
         const channelAlreadyApplied = channelState?.ready === true
             && channelState.effective === theme;
 
+        const root = document.documentElement;
+        const rootNeedsSync = Boolean(
+            root && (
+                root.classList.contains('light-theme') !== shouldUseLight
+                || root.classList.contains('dark-theme') === shouldUseLight
+                || root.dataset.vcpTheme !== theme
+            )
+        );
+
         // setThemeMode() performs an optimistic renderer-side update and the main
         // process broadcasts the persisted value afterwards. Keep this operation
         // idempotent so that the echo cannot invalidate and repaint the whole tree.
-        if (domAlreadyApplied && channelAlreadyApplied) {
+        if (domAlreadyApplied && channelAlreadyApplied && !rootNeedsSync) {
             return false;
         }
 
@@ -137,6 +146,12 @@ const uiManager = (() => {
         // update cannot leave Web Awesome scopes resolving the previous
         // palette while the document visually reports the new mode.
         if (body.dataset.vcpTheme !== theme) body.dataset.vcpTheme = theme;
+
+        if (root) {
+            root.classList.toggle('light-theme', shouldUseLight);
+            root.classList.toggle('dark-theme', !shouldUseLight);
+            if (root.dataset.vcpTheme !== theme) root.dataset.vcpTheme = theme;
+        }
 
         if (!channelAlreadyApplied) {
             themeChannel?.publish(
@@ -449,6 +464,22 @@ const uiManager = (() => {
             });
         }
 
+        // Settings is an owned surface. Leaving the tab physically detaches
+        // its form from the sidebar, so sticky actions and focusable controls
+        // cannot overlap or intercept the Agent list.
+        if (targetTab !== 'settings') {
+            const activeEl = document.activeElement;
+            if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA') && activeEl.closest?.('#agentSettingsForm, #groupSettingsForm')) {
+                try { activeEl.blur(); } catch (_) {}
+            }
+            if (window.settingsManager?.flushPendingSave) {
+                window.settingsManager.flushPendingSave().catch(e => {
+                    console.warn('[UIManager] Error flushing settings before tab switch:', e);
+                });
+            }
+        }
+        window.VCPSettingsSidebar?.setPanelActive?.(targetTab === 'settings');
+
         if (sidebarTabButtons) {
             sidebarTabButtons.forEach(btn => {
                 const isActive = btn.dataset.tab === targetTab;
@@ -556,6 +587,9 @@ const uiManager = (() => {
                 initializeDigitalClock();
                 setupSidebarTabs();
                 setupCompactSidebarNavigation();
+                if (!document.querySelector('.sidebar-tab-button.active[data-tab="settings"]')) {
+                    window.VCPSettingsSidebar?.setPanelActive?.(false);
+                }
             } finally {
                 releaseCapturedListeners();
             }

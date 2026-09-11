@@ -1004,18 +1004,68 @@
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-avatar-wrapper {
     grid-column: 1;
     grid-row: 1;
+    position: relative;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
+    overflow: hidden;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-avatar-display {
     width: 36px !important;
     height: 36px !important;
+    border-radius: 50% !important;
     border: 1px solid rgba(0, 0, 0, 0.1) !important;
     box-shadow: none !important;
+    object-fit: cover;
+    cursor: pointer;
 }
 :is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-avatar-display {
     border: 1px solid rgba(255, 255, 255, 0.12) !important;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .avatar-upload-overlay {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    border-radius: 50% !important;
+    background-color: rgba(0, 0, 0, 0.45);
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    cursor: pointer;
+    opacity: 0;
+    margin: 0 !important;
+    padding: 0 !important;
+    transition: opacity 0.15s ease;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-avatar-wrapper:hover .avatar-upload-overlay {
+    opacity: 1;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-avatar-wrapper.no-avatar .avatar-upload-overlay {
+    opacity: 1;
+    background-color: transparent;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .avatar-upload-overlay :is(svg, .vcp-ui-icon) {
+    width: 18px !important;
+    height: 18px !important;
+    color: #ffffff !important;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-avatar-wrapper.no-avatar .avatar-upload-overlay :is(svg, .vcp-ui-icon) {
+    color: var(--vcp-ui-text-2) !important;
+    filter: none;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-avatar-wrapper > input[type="file"] {
+    display: none !important;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper {
     grid-column: 2;
@@ -1099,6 +1149,7 @@
     min-height: 36px;
     width: auto;
     max-width: none;
+    overflow: hidden;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper:not(.is-editing) #userName {
@@ -1153,8 +1204,14 @@
     pointer-events: auto;
 }
 
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .agent-style-collapsible-container.collapsed .agent-style-controls,
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-style-collapsible-container.collapsed .agent-style-controls {
-    padding: 0 14px;
+    display: none !important;
+    max-height: 0 !important;
+    opacity: 0 !important;
+    overflow: hidden !important;
+    padding: 0 14px !important;
+    pointer-events: none !important;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-style-controls .style-control-item {
@@ -1806,31 +1863,6 @@
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .settings-section > .settings-section-title {
     border: 0 !important;
     box-shadow: none !important;
-}
-
-/* Compact Agent Settings uses a two-row disclosure header.  The older shell
-   grid placed the summary in the same narrow column as the title, which made
-   long summaries overlap and appear vertically clipped. */
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope #tabContentSettings #agentSettingsContainer .agent-settings-section-header {
-    display: grid !important;
-    grid-template-columns: minmax(0, 1fr) auto !important;
-    grid-template-areas: "title toggle" "summary summary" !important;
-    align-items: start !important;
-    align-content: start !important;
-    row-gap: 4px !important;
-    min-height: max-content !important;
-    height: auto !important;
-    padding: 4px 0 6px !important;
-}
-
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope #tabContentSettings #agentSettingsContainer .agent-settings-section-title {
-    align-self: start !important;
-}
-
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope #tabContentSettings #agentSettingsContainer .agent-settings-section-summary {
-    grid-column: 1 / -1 !important;
-    align-self: start !important;
-    margin-top: 0 !important;
 }
 
 /* The sidebar-radius setting reuses the existing Uiux LanguageRow

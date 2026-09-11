@@ -117,7 +117,7 @@ body.light-theme .sidebar {
 }
 
 .sidebar:has(#tabContentSettings.active) {
-    padding-right: 8px;
+    padding-right: 0;
     overflow-y: hidden;
 }
 

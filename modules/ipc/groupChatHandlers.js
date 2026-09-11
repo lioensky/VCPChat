@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs-extra');
 const { pathToFileURL } = require('url');
 const groupChat = require('../../Groupmodules/groupchat');
+const { HistoryMutationQueue } = require('../services/historyMutationQueue');
 
 /**
  * Initializes group chat related IPC handlers.
@@ -30,7 +31,15 @@ async function findAvatarUrl(agentDir, cacheBust = false) {
 }
 
 function initialize(mainWindow, context) {
-    const { AGENT_DIR, USER_DATA_DIR, getSelectionListenerStatus, stopSelectionListener, startSelectionListener, fileWatcher } = context;
+    const {
+        AGENT_DIR,
+        USER_DATA_DIR,
+        getSelectionListenerStatus,
+        stopSelectionListener,
+        startSelectionListener,
+        fileWatcher,
+        historyMutationQueue = new HistoryMutationQueue({ userDataDir: USER_DATA_DIR, fileWatcher })
+    } = context;
 
     if (ipcHandlersRegistered) {
         return;
@@ -118,15 +127,11 @@ function initialize(mainWindow, context) {
             return { success: false, error: errorMsg };
         }
         try {
-            if (fileWatcher) {
-                fileWatcher.signalInternalSave();
-            }
-            // Construct path similar to getGroupChatHistory in groupchat.js
-            const historyDir = path.join(USER_DATA_DIR, groupId, 'topics', topicId);
-            await fs.ensureDir(historyDir);
-            const historyFile = path.join(historyDir, 'history.json');
-            await fs.writeJson(historyFile, history, { spaces: 2 });
-            console.log(`[Main IPC] 群组 ${groupId} 话题 ${topicId} 聊天历史已保存到 ${historyFile}`);
+            await historyMutationQueue.replace(
+                { itemId: groupId, itemType: 'group', topicId },
+                history
+            );
+            console.log(`[Main IPC] 群组 ${groupId} 话题 ${topicId} 聊天历史已通过共享历史队列保存`);
             return { success: true };
         } catch (error) {
             console.error(`[Main IPC] 保存群组 ${groupId} 话题 ${topicId} 聊天历史失败:`, error);

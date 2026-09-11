@@ -19,7 +19,8 @@ class OriginalPromptModule {
   updateContext(agentId, config) {
     this.agentId = agentId;
     this.config = config;
-    this.cachedContent = config.originalSystemPrompt || config.systemPrompt || "";
+    this.textarea = null;
+    this.cachedContent = config.originalSystemPrompt ?? config.systemPrompt ?? "";
   }
 
   /**
@@ -41,7 +42,11 @@ class OriginalPromptModule {
     this.textarea.rows = 3;
 
     // 添加自动调整大小
+    const textarea = this.textarea;
+    const agentId = this.agentId;
     this.textarea.addEventListener("input", () => {
+      if (this.agentId !== agentId || this.textarea !== textarea) return;
+      this.cachedContent = textarea.value;
       this.autoResize();
     });
 
@@ -69,16 +74,8 @@ class OriginalPromptModule {
    * 保存数据
    */
   async save() {
-    if (!this.textarea) return;
-
-    const content = this.textarea.value.trim();
-
-    // 更新缓存
-    this.cachedContent = content;
-
-    await this.electronAPI.updateAgentConfig(this.agentId, {
-      originalSystemPrompt: content,
-    });
+    // 仅更新草稿。持久化统一由 Agent 配置表保存按钮执行。
+    if (this.textarea) this.cachedContent = this.textarea.value;
   }
 
   /**

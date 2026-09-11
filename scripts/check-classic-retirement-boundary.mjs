@@ -5,9 +5,14 @@ import { JSDOM } from 'jsdom';
 const read = file => fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
 const document = new JSDOM(read('main.html')).window.document;
 
-for (const id of ['chatMessages', 'messageInput', 'sendMessageBtn', 'attachFileBtn', 'quickNewTopicBtn', 'emoticonTriggerBtn', 'notificationsList', 'globalSettingsModalTemplate', 'agentSettingsForm']) {
+for (const id of ['chatMessages', 'messageInput', 'sendMessageBtn', 'attachFileBtn', 'quickNewTopicBtn', 'emoticonTriggerBtn', 'notificationsList', 'globalSettingsModalTemplate']) {
     assert.equal(document.querySelectorAll(`#${id}`).length, 1, `shared DOM identity #${id} must exist exactly once`);
 }
+assert.equal(document.querySelectorAll('#agentSettingsContainer').length, 1, 'schema settings Agent host must exist exactly once');
+assert.equal(document.querySelectorAll('#groupSettingsContainer').length, 1, 'schema settings Group host must exist exactly once');
+const sidebarSchema = read('modules/settings/schema/sidebar-surfaces.js');
+assert.match(sidebarSchema, /id: 'agentSettingsForm'/, 'Agent form identity must be schema-rendered');
+assert.match(sidebarSchema, /id: 'groupSettingsForm'/, 'Group form identity must be schema-rendered');
 assert.doesNotMatch(read('modules/renderer/streamManager.js'), /uiMode|data-ui-mode|nextUi/i,
     'shared stream manager must not depend on presentation mode');
 assert.doesNotMatch(read('modules/mainChatCommands.js'), /nextUi[A-Z]|querySelectorAll\(['"]\.notification-item/,

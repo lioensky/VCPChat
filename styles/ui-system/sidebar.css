@@ -398,6 +398,12 @@
 
     html .vcp-ui-scope.sidebar .agent-list li,
     html .vcp-ui-scope.sidebar .topic-list .topic-item {
+        position: relative;
+        isolation: isolate;
+        display: flex;
+        align-items: center;
+        width: 100%;
+        min-width: 0;
         height: var(--vcp-ui-sidebar-row-height);
         min-height: var(--vcp-ui-sidebar-row-height);
         margin-bottom: var(--vcp-ui-space-2);
@@ -440,20 +446,28 @@
     html .vcp-ui-scope.sidebar .agent-list img.avatar,
     html .vcp-ui-scope.sidebar .topic-list .topic-item img.avatar,
     html .vcp-ui-scope.sidebar .agent-list li.active img.avatar {
+        flex: 0 0 auto;
         width: var(--vcp-ui-sidebar-avatar-size);
         height: var(--vcp-ui-sidebar-avatar-size);
         margin-right: var(--vcp-ui-space-2);
         border: 0;
+        object-fit: cover;
     }
 
     html .vcp-ui-scope.sidebar .agent-list .agent-name,
     html .vcp-ui-scope.sidebar .topic-list .topic-item .agent-name,
     html .vcp-ui-scope.sidebar .topic-list .topic-title-display,
     html .vcp-ui-scope.sidebar .topic-list .topic-name {
+        display: block;
+        flex: 1 1 auto;
+        min-width: 0;
         padding-bottom: 0;
         color: var(--vcp-ui-text-0);
         font-size: var(--vcp-ui-sidebar-font-size);
         line-height: var(--vcp-ui-line-compact);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     html .vcp-ui-scope.sidebar .topic-list .topic-item::before,
@@ -462,6 +476,7 @@
     }
 
     html .vcp-ui-scope.sidebar .topic-list .topic-item .message-count {
+        flex: 0 0 auto;
         min-width: 0;
         margin-left: var(--vcp-ui-space-2);
         padding: 2px 6px;

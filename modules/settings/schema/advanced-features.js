@@ -1,7 +1,7 @@
 // schema/advanced-features — "高级功能" 分区（M2）。
 // 依赖行：净化深度容器依赖 enableContextSanitizer（typed-field-owners
 // 快照路径也按容器 id 直写其可见性，id 即锚点）。话题总结模型行为
-// model-input-container 复合控件，由 mountTypedTopicSummaryModelPicker 接管。
+// model-input-container 复合控件保留原生输入与 SettingsManager 兼容命令。
 import { section, switchField, number, custom } from './kernel.js';
 import { buildFormIcon } from '../render/shared.js';
 

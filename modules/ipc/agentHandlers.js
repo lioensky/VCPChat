@@ -299,27 +299,6 @@ function initialize(context) {
         }
     });
 
-    // 新增：更新Agent配置（部分更新）
-    ipcMain.handle('update-agent-config', async (event, agentId, updates) => {
-        try {
-            if (agentConfigManager) {
-                const result = await agentConfigManager.updateAgentConfig(agentId, existingConfig => ({
-                    ...existingConfig,
-                    ...updates
-                }));
-                invalidateCaches();
-                return { success: true, message: `Agent ${agentId} 配置已更新。` };
-            } else {
-                // AgentConfigManager 不可用，报错而非静默 fallback
-                console.error(`AgentConfigManager not available, cannot safely update config for agent ${agentId}`);
-                return { error: 'AgentConfigManager 未初始化，无法安全更新配置。' };
-            }
-        } catch (error) {
-            console.error(`更新Agent ${agentId} 配置失败:`, error);
-            return { error: error.message };
-        }
-    });
-
     ipcMain.handle('save-avatar', async (event, agentId, avatarData) => {
         const listenerWasActive = context.getSelectionListenerStatus();
         if (listenerWasActive) context.stopSelectionListener();

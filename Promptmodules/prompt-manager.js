@@ -7,6 +7,7 @@ class PromptManager {
     this.agentId = null;
     this.config = null;
     this.contextVersion = 0;
+    this.contextReady = false;
 
     // 模块实例
     this.originalModule = null;
@@ -91,6 +92,7 @@ class PromptManager {
    */
   async updateAgentContext(agentId, config) {
     const contextVersion = ++this.contextVersion;
+    this.contextReady = false;
     this.agentId = agentId;
     this.config = config;
     this.currentMode = config.promptMode || "original";
@@ -107,7 +109,8 @@ class PromptManager {
     if (this.presetModule) await this.presetModule.updateContext(agentId, config);
     if (contextVersion !== this.contextVersion || this.agentId !== agentId) return false;
 
-    // 重新渲染主框架
+    // 三个子模块均已绑定目标 Agent 后，才允许编辑和收集保存快照。
+    this.contextReady = true;
     this.render();
     return true;
   }
@@ -178,6 +181,7 @@ class PromptManager {
 
     modes.forEach((mode) => {
       const button = document.createElement("button");
+      button.type = "button";
       button.className = "prompt-mode-button";
       button.dataset.mode = mode.id;
       button.innerHTML = `
@@ -369,39 +373,27 @@ class PromptManager {
    * @param {string} mode - 目标模式
    */
   async switchMode(mode) {
-    if (this.currentMode === mode || !this.agentId) return;
+    if (!["original", "modular", "preset"].includes(mode) ||
+        this.currentMode === mode || !this.agentId || !this.contextReady) return;
 
-    // 在任何 await 之前冻结操作上下文。不能在异步恢复后再从共享实例/DOM读取身份。
-    const lockedAgentId = this.agentId;
-    const lockedContextVersion = this.contextVersion;
-    const sourceMode = this.currentMode;
-    const systemPrompt = await this.getCurrentSystemPrompt();
-
-    if (
-      this.agentId !== lockedAgentId ||
-      this.contextVersion !== lockedContextVersion ||
-      this.currentMode !== sourceMode
-    ) {
-      console.debug(`[PromptManager] Ignoring stale mode switch for agent ${lockedAgentId}.`);
-      return;
-    }
-
-    // 一次性只更新模式和该操作所捕获的提示词。子模块数据由各子模块自己的、
-    // 已绑定 Agent ID 的保存负责；禁止再从共享设置表单进行整份配置补保存。
-    await this.electronAPI.updateAgentConfig(lockedAgentId, {
-      promptMode: mode,
-      systemPrompt: systemPrompt,
-    });
-
-    // 写入可安全完成到原 Agent，但若用户已经切换上下文，不得改动新 Agent 的 UI。
-    if (this.agentId !== lockedAgentId || this.contextVersion !== lockedContextVersion) {
-      console.debug(`[PromptManager] Mode saved for ${lockedAgentId}; skipped stale UI update.`);
-      return;
-    }
-
+    // 在移除编辑器 DOM 前捕获草稿，切回时不能恢复成旧的持久化内容。
+    this.captureCurrentModeDraft();
     this.currentMode = mode;
     this.updateModeButtons();
     this.renderCurrentMode();
+    this.containerElement?.dispatchEvent(new CustomEvent('input', { bubbles: true }));
+  }
+
+  captureCurrentModeDraft() {
+    const module = this.currentMode === "original" ? this.originalModule
+      : this.currentMode === "preset" ? this.presetModule : null;
+    if (module?.textarea) module.cachedContent = module.textarea.value;
+    if (this.currentMode === "preset" && module?.presetSelect) {
+      module.cachedSelectedPreset = module.presetSelect.value;
+    }
+    if (this.currentMode === "preset" && module?.pathInput) {
+      module.presetPath = module.pathInput.value;
+    }
   }
 
   /**
@@ -424,9 +416,18 @@ class PromptManager {
    * 渲染当前模式的内容
    */
   renderCurrentMode() {
-    const contentContainer = document.getElementById("promptContentContainer");
+    const contentContainer = this.containerElement?.querySelector("#promptContentContainer");
     if (!contentContainer) return;
 
+    // 每次更换视图都撤销旧预制编辑器的异步渲染和内容加载。
+    if (this.presetModule) {
+      this.presetModule.renderVersion = (this.presetModule.renderVersion || 0) + 1;
+      this.presetModule.selectionVersion = (this.presetModule.selectionVersion || 0) + 1;
+      this.presetModule.textarea = null;
+      this.presetModule.presetSelect = null;
+      this.presetModule.pathInput = null;
+    }
+    if (this.originalModule) this.originalModule.textarea = null;
     contentContainer.innerHTML = "";
     contentContainer.className = `prompt-content-container ${this.currentMode}-mode`;
 
@@ -450,26 +451,47 @@ class PromptManager {
   }
 
   /**
-   * 保存当前模式的数据
+   * 兼容旧调用方：只收集内存草稿，不执行持久化。
    */
   async saveCurrentModeData() {
-    switch (this.currentMode) {
-      case "original":
-        if (this.originalModule) {
-          await this.originalModule.save();
-        }
-        break;
-      case "modular":
-        if (this.modularModule) {
-          await this.modularModule.save();
-        }
-        break;
-      case "preset":
-        if (this.presetModule) {
-          await this.presetModule.save();
-        }
-        break;
+    this.captureCurrentModeDraft();
+  }
+
+  /**
+   * 保存按钮使用的同步快照；不得在异步等待后重新读取共享编辑器。
+   * 仅包含提示词配置，不包含话题、历史或其他数据库元数据。
+   */
+  collectDraft() {
+    if (!this.contextReady || !this.agentId) {
+      throw new Error('Agent 提示词尚未加载完成，请等待加载完成后保存。');
     }
+    this.captureCurrentModeDraft();
+    const patch = { promptMode: this.currentMode };
+    if (this.originalModule) {
+      patch.originalSystemPrompt = this.originalModule.cachedContent;
+    }
+    if (this.presetModule) {
+      patch.presetSystemPrompt = this.presetModule.cachedContent;
+      patch.selectedPreset = this.presetModule.cachedSelectedPreset;
+      patch.presetPromptPath = this.presetModule.presetPath;
+    }
+    if (this.modularModule) {
+      const module = this.modularModule;
+      const hiddenBlocks = structuredClone(module.hiddenBlocks);
+      delete hiddenBlocks.global;
+      patch.advancedSystemPrompt = {
+        blocks: structuredClone(module.blocks),
+        hiddenBlocks,
+        warehouseOrder: [...module.warehouseOrder],
+        viewMode: module.viewMode,
+      };
+    }
+    patch.systemPrompt = this.currentMode === "original"
+      ? (patch.originalSystemPrompt ?? "")
+      : this.currentMode === "preset"
+        ? (patch.presetSystemPrompt ?? "")
+        : (this.modularModule?.getFormattedPrompt() ?? "");
+    return patch;
   }
 
   /**
@@ -521,6 +543,12 @@ class PromptManager {
    * 销毁管理器，清理子模块和定时器
    */
   destroy() {
+    this.contextReady = false;
+    ++this.contextVersion;
+    if (this.presetModule) {
+      ++this.presetModule.contextVersion;
+      this.presetModule.renderVersion = (this.presetModule.renderVersion || 0) + 1;
+    }
     // 1. 清理子模块
     if (this.originalModule && typeof this.originalModule.destroy === "function") {
       this.originalModule.destroy();

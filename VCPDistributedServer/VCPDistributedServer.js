@@ -58,6 +58,7 @@ class DistributedServer {
         this.chatDataService = config.chatDataService || null; // Shared VCP-CDS facade owned by Electron.
         this.loomManager = config.loomManager || null; // Shared VCP Loom manager owned by Electron.
         this.scriptoriumAgentControl = config.scriptoriumAgentControl || null;
+        this.pluginAgentOperationService = config.pluginAgentOperationService || null;
         this.ws = null;
         this.app = express(); // 创建 Express 应用
         this.server = http.createServer(this.app); // 创建 HTTP 服务器
@@ -144,6 +145,7 @@ class DistributedServer {
             chatDataService: this.chatDataService,
             loomManager: this.loomManager,
             scriptoriumAgentControl: this.scriptoriumAgentControl,
+            pluginAgentOperationService: this.pluginAgentOperationService,
         });
         this.registerDiagnosticRoutes();
 

@@ -258,7 +258,7 @@
     "modules/topicSummarizer.js",
     "modules/trayManager.js",
     "modules/ui-helpers.js",
-    "modules/ui-system/agent-settings-bridge.js",
+    "modules/ui-system/settings/settings-sidebar-runtime.js",
     "modules/ui-system/appearance-engine.js",
     "modules/ui-system/appearance-profile-runtime.js",
     "modules/ui-system/appearance-studio.js",

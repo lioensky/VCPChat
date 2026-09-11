@@ -583,7 +583,7 @@
     function mountNativeTooltipBridge(scope) {
         if (!scope) return;
         const converted = new Map();
-        const isExcluded = element => element.closest?.('#nextUiInternalAppHost, #vchatAppTray');
+        const isExcluded = element => element.closest?.('#nextUiInternalAppHost, #vchatAppTray') || (element.matches?.('input, select, textarea') && element.closest?.('.vcp-settings-schema-surface, .settings-sidebar-surface-view'));
         const convert = element => {
             if (!(element instanceof Element) || isExcluded(element) || !element.hasAttribute('title')) return;
             const title = element.getAttribute('title')?.trim();

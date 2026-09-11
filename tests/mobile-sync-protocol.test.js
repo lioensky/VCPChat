@@ -17,7 +17,12 @@ const {
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/protocol");
 
 test("VCPMobileSync Wire 1.5 握手使用唯一结构化版本合同", () => {
-  assert.equal(manifest.version, "1.5.0");
+  assert.equal(
+    manifest.version,
+    versionFixture.versionAck.versions.find(
+      ({ component }) => component === "desktop_plugin",
+    ).version,
+  );
   const result = negotiateVersionCheck(versionFixture.versionCheck, {
     desktopPluginVersion: manifest.version,
     backendMode: "cds",

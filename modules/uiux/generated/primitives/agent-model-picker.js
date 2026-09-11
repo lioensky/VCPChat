@@ -203,6 +203,7 @@ export function mountAgentModelPicker(host, props, scope) {
     let paneCell = null;
     let cancelDeferredPlacement = () => { };
     pickerScope.own(() => cancelDeferredPlacement(), 'agent-model-picker-deferred-placement', 'animation-frame');
+    let favoriteQueue = Promise.resolve();
     const view = mountPopupSelectView(root, {
         popup,
         anchor: trigger,
@@ -226,14 +227,17 @@ export function mountAgentModelPicker(host, props, scope) {
             return true;
         },
         onFavoriteToggle: props.directory?.toggleFavorite ? option => {
-            if (directoryBusy)
-                return;
             const selected = lastOptions.find(candidate => candidate.id === option.id);
             if (!selected)
                 return;
-            void runDirectoryAction('favorite', signal => props.directory.toggleFavorite(selected.id, signal)).then(applied => {
-                if (applied && popup.getSnapshot().open)
+            favoriteQueue = favoriteQueue.then(async () => {
+                if (!pickerScope.active) return;
+                const applied = await runDirectoryAction('favorite', signal => props.directory.toggleFavorite(selected.id, signal));
+                if (applied && popup.getSnapshot().open) {
                     popup.openWhenReady('agent-model', {}, { via: 'menu', span: { source: 'agent-model-picker-favorite' } });
+                }
+            }).catch(err => {
+                console.warn('[AgentModelPicker] Favorite toggle queue caught error:', err);
             });
         } : undefined,
     }, pickerScope);
@@ -338,15 +342,26 @@ export function mountAgentModelPicker(host, props, scope) {
         // so directory actions remain genuinely hittable, not merely inside
         // the viewport rectangle.
         const topSafeArea = 48;
-        const maxLeft = Math.max(margin, window.innerWidth - cardRect.width - margin);
+        const viewportHeight = window.innerHeight || document.documentElement?.clientHeight || 800;
+        const viewportWidth = window.innerWidth || document.documentElement?.clientWidth || 1200;
+
+        // If trigger is completely scrolled out of the visible viewport, gracefully dismiss
+        if (anchorRect.bottom <= topSafeArea || anchorRect.top >= viewportHeight) {
+            popup.dismiss();
+            return;
+        }
+
+        const maxLeft = Math.max(margin, viewportWidth - cardRect.width - margin);
         const left = Math.min(maxLeft, Math.max(margin, anchorRect.right - cardRect.width));
         const above = anchorRect.top - cardRect.height - margin;
-        const top = above >= margin ? above : Math.min(window.innerHeight - cardRect.height - margin, anchorRect.bottom + margin);
+        const top = above >= margin ? above : Math.min(viewportHeight - cardRect.height - margin, anchorRect.bottom + margin);
         view.card.style.position = 'fixed';
         view.card.style.left = `${left}px`;
         view.card.style.right = 'auto';
         view.card.style.top = `${Math.max(topSafeArea, top)}px`;
         view.card.style.bottom = 'auto';
+        const availableHeight = Math.max(120, viewportHeight - topSafeArea - margin * 2);
+        view.card.style.maxHeight = `min(360px, ${availableHeight}px)`;
     };
     const syncPane = () => {
         const open = popup.getSnapshot().open;

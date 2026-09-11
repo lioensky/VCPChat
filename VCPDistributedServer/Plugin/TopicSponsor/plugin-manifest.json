@@ -1,17 +1,17 @@
 {
   "name": "TopicSponsor",
   "displayName": "AI主动创建话题",
-  "pluginType": "synchronous",
+  "pluginType": "hybridservice",
   "version": "2.2.0",
   "description": "允许 Agent 创建、查询和管理聊天话题，并支持创建可在最终回复落盘后由 Flowlock 原子认领的自主工作话题。",
   "author": "VCPToolBox",
   "license": "MIT",
   "entryPoint": {
-    "command": "node topicsponsor.js",
+    "script": "topicsponsor-service.js",
     "timeout": 15000
   },
   "communication": {
-    "protocol": "stdio"
+    "protocol": "direct"
   },
   "capabilities": {
     "invocationCommands": [

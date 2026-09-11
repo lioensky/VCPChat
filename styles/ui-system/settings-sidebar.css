@@ -1,0 +1,3054 @@
+/* Schema-driven Agent and Group settings sidebar.
+   This is the only presentation owner for the item-settings surface. The
+   business ids remain stable for SettingsManager and GroupRenderer, while all
+   geometry and control styling is expressed through semantic descendants. */
+
+html .vcp-ui-scope #tabContentSettings,
+html .vcp-ui-scope :is(.vcp-settings-schema-surface, .settings-header-bar, .invite-agent-buttons-container) {
+    --vcp-settings-control-height: 30px;
+    --vcp-settings-control-height-compact: 26px;
+    --vcp-settings-radius: 8px;
+    --vcp-settings-gap: 6px;
+    --vcp-settings-field-gap: 3px;
+    --vcp-settings-pad: var(--vcp-ui-space-2, 8px);
+    --vcp-settings-border: var(--vcp-ui-border, var(--border-color, var(--vcp-ui-fill-2)));
+    --vcp-settings-surface: var(--vcp-ui-bg-1, var(--secondary-bg, var(--vcp-ui-fill-0)));
+    --vcp-settings-input: var(--vcp-ui-bg-1, var(--input-bg, var(--vcp-ui-fill-1)));
+    --vcp-settings-text: var(--vcp-ui-text-0, var(--primary-text, var(--vcp-ui-text-0)));
+    --vcp-settings-muted: var(--vcp-ui-text-2, var(--secondary-text, var(--vcp-ui-text-2)));
+    --vcp-settings-accent: var(--vcp-ui-accent, var(--highlight-text, var(--vcp-ui-accent)));
+    --vcp-settings-danger: var(--vcp-ui-danger, var(--danger-color, var(--vcp-ui-danger)));
+    --vcp-surface-tertiary: var(--vcp-ui-bg-2, var(--vcp-ui-bg-tertiary, var(--tertiary-bg, var(--vcp-ui-fill-1))));
+    --vcp-border-subtle: var(--vcp-settings-border, var(--vcp-ui-border));
+    --vcp-text-secondary: var(--vcp-settings-muted, var(--vcp-ui-text-secondary, var(--secondary-text)));
+
+    --vcp-settings-font-micro: var(--vcp-ui-font-micro, 10px);
+    --vcp-settings-font-badge: 9px;
+    --vcp-settings-font-meta: 10.5px;
+    --vcp-settings-font-xs: var(--vcp-ui-font-size-xs, 11px);
+    --vcp-settings-font-sub: 11.5px;
+    --vcp-settings-font-caption: var(--vcp-ui-font-caption, 12px);
+    --vcp-settings-font-compact-title: 12.5px;
+    --vcp-settings-font-helper: var(--vcp-ui-font-helper, 13px);
+    --vcp-settings-font-lg: 13.5px;
+    --vcp-settings-font-header: 1.2em;
+}
+
+html:is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope #tabContentSettings {
+    --vcp-settings-border: var(--border-color, var(--vcp-ui-border));
+    --vcp-settings-surface: var(--secondary-bg, var(--vcp-ui-fill-0));
+    --vcp-settings-input: var(--input-bg, var(--vcp-ui-fill-1));
+    --vcp-settings-text: var(--primary-text, var(--vcp-ui-text-0));
+    --vcp-settings-muted: var(--secondary-text, var(--vcp-ui-text-2));
+    --vcp-settings-accent: var(--highlight-text, var(--vcp-ui-accent));
+    --vcp-settings-danger: var(--danger-color, var(--vcp-ui-danger));
+    --vcp-surface-tertiary: var(--secondary-bg, var(--vcp-ui-fill-1));
+    --vcp-border-subtle: var(--border-color, var(--vcp-ui-border));
+    --vcp-text-secondary: var(--secondary-text, var(--vcp-ui-text-2));
+}
+
+/* Sidebar shell geometry has one owner. The scroll container supplies the
+   gutter; schema surfaces consume the content box without compensating math. */
+html .vcp-ui-scope #tabContentSettings.sidebar-tab-content.active {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    width: 100%;
+    box-sizing: border-box;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    padding: 8px 2px 0 var(--vcp-ui-sidebar-list-gutter, 8px);
+    margin: 0;
+    scrollbar-gutter: stable;
+}
+
+html .vcp-ui-scope #tabContentSettings.sidebar-tab-content:not(.active) {
+    display: none;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+html .vcp-ui-scope #tabContentSettings > .vcp-settings-schema-surface {
+    display: flex;
+    flex: 1 0 auto;
+    flex-direction: column;
+    width: 100%;
+    min-width: 0;
+    min-height: 100%;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html .vcp-ui-scope #tabContentSettings #selectAgentPromptForSettings {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 32px 16px;
+    margin: auto 0;
+    color: var(--vcp-settings-muted, var(--vcp-ui-text-2, var(--secondary-text)));
+    font-size: var(--vcp-settings-font-helper, 13px);
+    line-height: 1.5;
+    user-select: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface[hidden],
+html .vcp-ui-scope .vcp-settings-schema-surface:not([data-settings-mounted="true"]) {
+    display: none;
+}
+
+/* Settings Header Bar */
+html .vcp-ui-scope .settings-header-bar {
+    display: none;
+}
+
+html .vcp-ui-scope .settings-header-bar::after {
+    content: "";
+    position: absolute;
+    left: 12px;
+    right: 0;
+    bottom: 0;
+    height: 1px;
+    background: var(--border-color);
+    pointer-events: none;
+}
+
+html .vcp-ui-scope .settings-header-bar h2 {
+    margin: 0;
+    padding: 0;
+    border-bottom: none;
+    text-align: left;
+    flex-grow: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: var(--vcp-settings-font-header);
+    line-height: 1.2;
+    font-weight: 600;
+    color: var(--secondary-text);
+}
+
+html .vcp-ui-scope .settings-header-bar .global-settings-btn {
+    position: relative;
+    isolation: isolate;
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 0;
+    height: 32px;
+    padding: 0 12px;
+    margin-left: 0;
+    border-radius: 12px;
+    border: 1px solid var(--vcp-settings-border);
+    background: transparent;
+    color: var(--secondary-text);
+    font-size: var(--vcp-settings-font-caption);
+    font-weight: 500;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s, color 0.2s;
+}
+
+html .vcp-ui-scope .settings-header-bar .global-settings-btn:hover {
+    background-color: var(--button-hover-bg);
+    border-color: var(--button-hover-bg);
+    color: var(--primary-text);
+}
+
+html:is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .settings-header-bar .global-settings-btn {
+    background: transparent;
+    border-color: var(--vcp-settings-border);
+    color: var(--button-bg);
+}
+
+html:is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .settings-header-bar .global-settings-btn:hover {
+    background:
+        linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--button-hover-bg) 76%, color-mix(in srgb, var(--vcp-ui-on-accent) 32%, transparent)),
+            color-mix(in srgb, var(--button-hover-bg) 92%, color-mix(in srgb, var(--vcp-ui-on-accent) 12%, transparent))
+        );
+    border-color: var(--button-hover-bg);
+    color: var(--vcp-ui-on-accent);
+}
+
+html:is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .settings-header-bar .global-settings-btn {
+    color: var(--highlight-text);
+}
+
+html:is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .settings-header-bar .global-settings-btn:hover {
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    color: var(--text-on-accent);
+}
+
+/* Schema form contract: hide sub-h3 since header-bar owns the title. */
+html .vcp-ui-scope .vcp-settings-schema-surface > h3 {
+    display: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface > form {
+    display: flex;
+    flex: 1 0 auto;
+    flex-direction: column;
+    gap: var(--vcp-settings-gap);
+    width: 100%;
+    min-width: 0;
+    min-height: 100%;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface [data-schema-field]:not([hidden]),
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-field-shell:not([hidden]),
+html .vcp-ui-scope .vcp-settings-schema-surface .settings-form-group:not([hidden]) {
+    display: flex;
+    flex-direction: column;
+    gap: var(--vcp-settings-field-gap, 3px);
+    margin-bottom: 6px;
+    min-width: 0;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface [hidden],
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-field-shell[hidden],
+html .vcp-ui-scope .vcp-settings-schema-surface [data-schema-field][hidden],
+html .vcp-ui-scope .vcp-settings-schema-surface .settings-form-group[hidden],
+html .vcp-ui-scope .vcp-settings-schema-surface .hidden,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-field-shell.hidden,
+html .vcp-ui-scope .vcp-settings-schema-surface [data-schema-field].hidden,
+html .vcp-ui-scope .vcp-settings-schema-surface .settings-form-group.hidden {
+    display: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface label:not(.switch):not(.agent-stream-mode-option):not(.avatar-upload-overlay):not(.group-member-label),
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-field-label,
+html .vcp-ui-scope .preset-section-label {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    min-width: 0;
+    color: var(--vcp-settings-muted);
+    font-size: var(--vcp-settings-font-xs);
+    font-weight: 500;
+    line-height: 1.3;
+    margin-bottom: 2px;
+    overflow-wrap: anywhere;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+html .vcp-ui-scope .vcp-settings-schema-surface select,
+html .vcp-ui-scope .vcp-settings-schema-surface textarea {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    border: 0.5px solid var(--vcp-settings-border);
+    border-radius: var(--vcp-settings-radius);
+    color: var(--vcp-settings-text);
+    background: var(--vcp-settings-input);
+    font-family: inherit;
+    font-size: var(--vcp-settings-font-caption);
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+html .vcp-ui-scope .vcp-settings-schema-surface select {
+    min-height: var(--vcp-settings-control-height);
+    height: var(--vcp-settings-control-height);
+    line-height: var(--vcp-settings-control-height);
+    padding: 0 8px;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface select {
+    cursor: pointer;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):hover,
+html .vcp-ui-scope .vcp-settings-schema-surface select:hover,
+html .vcp-ui-scope .vcp-settings-schema-surface textarea:hover {
+    border-color: color-mix(in srgb, var(--highlight-text) 45%, var(--vcp-settings-border));
+    background-color: color-mix(in srgb, var(--vcp-settings-input) 80%, var(--vcp-settings-surface));
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface textarea {
+    min-height: 56px;
+    padding: 5px 8px;
+    resize: vertical;
+    line-height: 1.4;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface textarea:active {
+    transition: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface input::placeholder,
+html .vcp-ui-scope .vcp-settings-schema-surface textarea::placeholder {
+    font-size: var(--vcp-settings-font-sub);
+    color: var(--vcp-settings-muted);
+    opacity: 0.8;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):focus,
+html .vcp-ui-scope .vcp-settings-schema-surface input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):focus-visible,
+html .vcp-ui-scope .vcp-settings-schema-surface select:focus,
+html .vcp-ui-scope .vcp-settings-schema-surface select:focus-visible,
+html .vcp-ui-scope .vcp-settings-schema-surface textarea:focus,
+html .vcp-ui-scope .vcp-settings-schema-surface textarea:focus-visible {
+    border-color: var(--highlight-text);
+    outline: none;
+    box-shadow: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface button:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--vcp-settings-accent) 55%, transparent);
+    outline-offset: 1px;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface small,
+html .vcp-ui-scope .vcp-settings-schema-surface .settings-schema-hint,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-helper-text,
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-help {
+    color: var(--vcp-settings-muted);
+    font-size: var(--vcp-settings-font-meta);
+    line-height: 1.4;
+}
+
+/* Collapsible schema sections. */
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-section {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border-bottom: none;
+    transition: background-color var(--vcp-motion-duration-fast, 0.15s) ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section-header,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-section-header {
+    position: relative;
+    isolation: isolate;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: 32px auto;
+    grid-template-areas:
+        "title toggle"
+        "summary summary";
+    align-items: center;
+    min-width: 0;
+    min-height: 36px;
+    gap: 2px 6px;
+    padding: 3px 0 5px;
+    color: var(--vcp-settings-text);
+    background: transparent;
+    cursor: pointer;
+    user-select: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section-header::before,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-section-header::before {
+    content: "";
+    position: absolute;
+    left: 4px;
+    right: 4px;
+    top: 3px;
+    height: 28px;
+    border-radius: 8px;
+    background-color: transparent;
+    transition: background-color 120ms ease, box-shadow 120ms ease;
+    z-index: -1;
+    pointer-events: none;
+}
+
+html:is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section-header:hover::before {
+    background-color: color-mix(in srgb, var(--highlight-text) 12%, color-mix(in srgb, var(--vcp-ui-on-accent) 60%, transparent));
+}
+
+html:is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section-header:hover::before {
+    background-color: color-mix(in srgb, var(--highlight-text) 15%, color-mix(in srgb, var(--vcp-ui-on-accent) 4%, transparent));
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section-title-row,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-section-title-row {
+    display: flex;
+    grid-area: title;
+    align-items: center;
+    height: 32px;
+    min-height: 32px;
+    min-width: 0;
+    gap: 6px;
+    align-self: center;
+    margin: 0;
+    padding: 0 0 0 10px;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section-title,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-section-title {
+    min-width: 0;
+    flex: 0 1 auto;
+    color: var(--highlight-text);
+    font-size: var(--vcp-settings-font-helper);
+    font-weight: 500;
+    letter-spacing: 0.1px;
+    line-height: 24px;
+    margin: 0;
+    padding: 0;
+    align-self: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section-title-row .vcp-settings-info-badge,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-section-title-row .vcp-settings-info-badge {
+    margin-left: 0;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .section-title-icon-wrapper {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    color: var(--highlight-text);
+    flex-shrink: 0;
+    margin-right: 0;
+    opacity: 0.95;
+    transform: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .section-title-icon-wrapper svg {
+    display: block;
+    width: 14px;
+    height: 14px;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section-summary,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-section-summary {
+    grid-area: summary;
+    min-width: 0;
+    color: var(--secondary-text);
+    font-size: var(--vcp-settings-font-xs);
+    line-height: 17px;
+    letter-spacing: 0.1px;
+    overflow-wrap: anywhere;
+}
+
+/* Subtle frosted tags for raw text summaries */
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section-summary:not(.summary-with-avatar):not(.summary-pills-row),
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-section-summary:not(.summary-with-avatar):not(.summary-pills-row) {
+    display: flex;
+    align-items: center;
+    margin: 2px 10px 6px 10px;
+    padding: 3px 9px;
+    background: color-mix(in srgb, var(--vcp-settings-surface) 60%, transparent);
+    border: 0.5px solid color-mix(in srgb, var(--vcp-settings-border) 45%, transparent);
+    border-radius: var(--vcp-settings-radius, 8px);
+    font-size: var(--vcp-settings-font-xs);
+    line-height: 16px;
+    font-weight: 500;
+    box-sizing: border-box;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section-summary.summary-pills-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 5px;
+    margin: 3px 10px 6px 10px;
+    padding: 0;
+    background: transparent;
+    border: none;
+}
+
+/* A summary is the collapsed projection of a section, never part of its
+   expanded editor. Keep this rule in the unlayered sidebar owner so summary
+   type rules above cannot override it through cascade-layer precedence. */
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section:not(.collapsed) .agent-settings-section-summary,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-section:not(.collapsed) .group-settings-section-summary {
+    display: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .summary-pills-row .vcp-uiux-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 24px;
+    padding: 0 8px;
+    border-radius: 12px;
+    font-size: var(--vcp-settings-font-caption);
+    font-weight: 500;
+    line-height: 18px;
+    color: var(--secondary-text);
+    background: color-mix(in srgb, var(--vcp-settings-surface) 75%, transparent);
+    border: 0.5px solid color-mix(in srgb, var(--border-color) 60%, transparent);
+    transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+    user-select: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .summary-pills-row .vcp-uiux-pill.active {
+    color: var(--highlight-text);
+    border-color: color-mix(in srgb, var(--highlight-text) 30%, transparent);
+    background: color-mix(in srgb, var(--highlight-text) 10%, transparent);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-stream-mode-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 4px 0 6px;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-stream-mode-title {
+    font-size: var(--vcp-settings-font-sub);
+    font-weight: 500;
+    color: var(--secondary-text);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-stream-mode-segmented {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--vcp-settings-input) 85%, transparent);
+    border: 1px solid var(--vcp-settings-border);
+    gap: 2px;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-stream-mode-option {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 24px;
+    padding: 0 12px;
+    border-radius: 999px;
+    font-size: var(--vcp-settings-font-sub);
+    font-weight: 500;
+    cursor: pointer;
+    color: var(--secondary-text);
+    transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+    user-select: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-stream-mode-option input[type="radio"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-stream-mode-option:hover {
+    color: var(--primary-text);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-stream-mode-option:has(input[type="radio"]:checked) {
+    background: var(--highlight-text);
+    color: var(--vcp-ui-on-accent);
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--vcp-ui-bg-primary) 15%, transparent);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface :is(#identitySummary, #groupIdentitySummary) {
+    display: none;
+}
+
+/* Fixed-height header for identity section so it never collapses/spikes by 50px */
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-settings-section, .group-settings-section)[data-section-key="identity"] .agent-settings-section-header,
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-settings-section, .group-settings-section)[data-section-key="identity"] .group-settings-section-header {
+    grid-template-rows: 32px 0px;
+    min-height: 36px;
+    padding: 3px 0 3px 0;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface :is(#identitySummary, #groupIdentitySummary).summary-with-avatar {
+    position: absolute;
+    top: -0.5px;
+    left: 10px;
+    right: 10px;
+    margin: 0;
+    height: 44px;
+    box-sizing: border-box;
+    padding: 6px 12px;
+    border-radius: 12px;
+    border: 0.5px solid var(--vcp-settings-border);
+    background: var(--vcp-settings-surface);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    overflow: hidden;
+    z-index: 3;
+    pointer-events: auto;
+    transition: opacity 180ms ease, visibility 0s 0s;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-settings-section, .group-settings-section)[data-section-key="identity"].collapsed :is(#identitySummary, #groupIdentitySummary).summary-with-avatar {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition: opacity 180ms ease, visibility 0s 0s;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-settings-section, .group-settings-section)[data-section-key="identity"]:not(.collapsed) :is(#identitySummary, #groupIdentitySummary).summary-with-avatar {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 180ms ease, visibility 0s 180ms;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section[data-section-key="regex"]:not(.collapsed) #regexSummary {
+    display: none;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+html:is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface :is(#identitySummary, #groupIdentitySummary).summary-with-avatar {
+    background: var(--vcp-settings-surface, var(--vcp-ui-bg-primary));
+    border-color: var(--vcp-settings-border);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+
+html:is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface :is(#identitySummary, #groupIdentitySummary).summary-with-avatar {
+    background: var(--vcp-settings-surface, var(--vcp-ui-bg-primary));
+    border-color: var(--vcp-settings-border);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-summary-avatar,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-summary-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    border: 2px solid color-mix(in srgb, var(--highlight-text) 24%, transparent);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-settings-summary-copy, .group-settings-summary-copy) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: 8px;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-settings-summary-label, .group-settings-summary-label) {
+    display: inline-flex;
+    align-items: center;
+    height: 30px;
+    padding: 0 2px 0 10px;
+    border: 0.5px solid transparent;
+    box-sizing: border-box;
+    font-size: var(--vcp-settings-font-lg);
+    font-weight: 600;
+    line-height: 28px;
+    color: var(--vcp-settings-text, var(--primary-text));
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-settings-summary-meta, .group-settings-summary-meta) {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 7px;
+    border-radius: 999px;
+    font-size: var(--vcp-settings-font-meta);
+    font-weight: 500;
+    line-height: 1.2;
+    color: var(--vcp-settings-muted, var(--secondary-text));
+    background: color-mix(in srgb, var(--vcp-settings-text, var(--primary-text)) 6%, transparent);
+    border: 0.5px solid var(--vcp-settings-border);
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-settings-summary-meta, .group-settings-summary-meta):empty {
+    display: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-toggle-btn,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-toggle-btn {
+    display: inline-flex;
+    grid-area: toggle;
+    align-items: center;
+    justify-content: center;
+    align-self: center;
+    justify-self: end;
+    position: relative;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    margin: 0 10px 0 0;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--secondary-text);
+    z-index: 2;
+    cursor: pointer;
+    transition: color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-toggle-btn::before,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-toggle-btn::before {
+    content: "";
+    position: absolute;
+    inset: 2px;
+    border-radius: 999px;
+    background-color: transparent;
+    transition: background-color 0.2s ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-toggle-btn:hover,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-toggle-btn:hover {
+    color: var(--highlight-text);
+    background-color: transparent;
+    box-shadow: none;
+}
+
+html:is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-toggle-btn:hover::before,
+html:is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .group-settings-toggle-btn:hover::before {
+    background-color: color-mix(in srgb, var(--highlight-text) 16%, color-mix(in srgb, var(--vcp-ui-on-accent) 74%, transparent));
+}
+
+html:is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-toggle-btn:hover::before,
+html:is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .group-settings-toggle-btn:hover::before {
+    background-color: color-mix(in srgb, var(--highlight-text) 20%, color-mix(in srgb, var(--vcp-ui-on-accent) 5%, transparent));
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .toggle-icon {
+    width: 16px;
+    height: 16px;
+    display: inline-block;
+    transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section.collapsed .toggle-icon,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-section.collapsed .toggle-icon {
+    transform: rotate(-90deg);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section:not(.collapsed) .toggle-icon,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-section:not(.collapsed) .toggle-icon {
+    transform: rotate(0deg);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section-content,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-section-content {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    visibility: hidden;
+    min-width: 0;
+    padding: 0 10px;
+    overflow: hidden;
+    pointer-events: none;
+    transition: grid-template-rows 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+                opacity 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+                padding 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+                visibility 0s 220ms;
+    will-change: grid-template-rows, opacity;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section:not(.collapsed) .agent-settings-section-content,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-section:not(.collapsed) .group-settings-section-content {
+    grid-template-rows: 1fr;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    padding: 2px 10px 8px 10px;
+    transition: grid-template-rows 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+                opacity 200ms cubic-bezier(0.2, 0.8, 0.2, 1),
+                padding 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+                visibility 0s 0s;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section-content > *,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-section-content > * {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* Identity Section Content & Container: continuous seamless flow without 50px drop */
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-settings-section, .group-settings-section)[data-section-key="identity"].collapsed :is(.agent-settings-section-content, .group-settings-section-content),
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-settings-section, .group-settings-section)[data-section-key="identity"]:not(.collapsed) :is(.agent-settings-section-content, .group-settings-section-content) {
+    display: block;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    padding: 0 10px 4px 10px;
+    overflow: visible;
+    transition: none;
+}
+
+/* Agent and Group identity custom slots: seamless in-place transition. */
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-identity-container, .group-settings-identity-shell) {
+    position: relative;
+    isolation: isolate;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 6px 12px 8px 12px;
+    margin: 0;
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--vcp-settings-surface);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border: 0.5px solid var(--vcp-settings-border);
+    transition: opacity 180ms ease,
+                border-color var(--vcp-motion-duration-normal, 0.2s) ease,
+                background-color var(--vcp-motion-duration-normal, 0.2s) ease;
+    box-sizing: border-box;
+    min-width: 0;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-settings-section, .group-settings-section)[data-section-key="identity"].collapsed :is(.agent-identity-container, .group-settings-identity-shell) {
+    opacity: 0;
+    pointer-events: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-settings-section, .group-settings-section)[data-section-key="identity"]:not(.collapsed) :is(.agent-identity-container, .group-settings-identity-shell) {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* Collapsible sub-drawer inside identity card (style settings for agent, members list for group) */
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-settings-section, .group-settings-section)[data-section-key="identity"].collapsed :is(.agent-identity-container .agent-style-collapsible-container, .group-settings-identity-shell .group-settings-field-shell) {
+    max-height: 0;
+    opacity: 0;
+    margin: 0;
+    padding: 0;
+    border-top: none;
+    overflow: hidden;
+    pointer-events: none;
+    visibility: hidden;
+    transition: max-height 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+                opacity 160ms ease,
+                margin 220ms ease,
+                padding 220ms ease,
+                visibility 0s 220ms;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-settings-section, .group-settings-section)[data-section-key="identity"]:not(.collapsed) :is(.agent-identity-container .agent-style-collapsible-container, .group-settings-identity-shell .group-settings-field-shell) {
+    max-height: 600px;
+    opacity: 1;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 0.5px solid var(--vcp-settings-border);
+    overflow: visible;
+    pointer-events: auto;
+    visibility: visible;
+    transition: max-height 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+                opacity 200ms ease,
+                margin-top 220ms ease,
+                padding-top 220ms ease,
+                visibility 0s 0s;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-identity-container, .group-settings-identity-shell)::before {
+    display: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-identity-container, .group-settings-identity-shell):hover {
+    border-color: color-mix(in srgb, var(--highlight-text) 50%, var(--vcp-settings-border));
+}
+
+:is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-identity-container, .group-settings-identity-shell) {
+    background: var(--vcp-settings-surface);
+    border-color: var(--vcp-settings-border);
+}
+
+:is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-identity-container, .group-settings-identity-shell):hover {
+    border-color: var(--highlight-text);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-identity-shell .group-settings-field-shell,
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-identity-container .agent-style-collapsible-container {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 0.5px solid var(--vcp-settings-border);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-identity-main, .group-identity-main) {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-avatar-wrapper, .group-avatar-wrapper) {
+    position: relative;
+    width: 30px;
+    height: 30px;
+    min-width: 30px;
+    max-width: 30px;
+    min-height: 30px;
+    max-height: 30px;
+    flex: 0 0 30px;
+    border-radius: 50%;
+    overflow: hidden;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-avatar-display, .group-avatar-display) {
+    display: block;
+    width: 30px;
+    height: 30px;
+    min-width: 30px;
+    max-width: 30px;
+    min-height: 30px;
+    max-height: 30px;
+    border: 2px solid color-mix(in srgb, var(--highlight-text) 24%, transparent);
+    border-radius: 50%;
+    object-fit: cover;
+    margin: 0;
+    transition: transform var(--vcp-motion-duration-normal, 0.2s) ease,
+                border-color var(--vcp-motion-duration-normal, 0.2s) ease;
+    cursor: pointer;
+    box-sizing: border-box;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-avatar-wrapper, .group-avatar-wrapper):hover :is(.agent-avatar-display, .group-avatar-display) {
+    transform: scale(1.04);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-avatar-wrapper, .group-avatar-wrapper) .avatar-upload-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background-color: var(--vcp-ui-backdrop);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    cursor: pointer;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-avatar-wrapper, .group-avatar-wrapper):hover .avatar-upload-overlay {
+    opacity: 1;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-avatar-wrapper, .group-avatar-wrapper) .avatar-upload-overlay svg {
+    width: 14px;
+    height: 14px;
+    color: var(--vcp-ui-on-accent);
+    filter: drop-shadow(0 2px 4px color-mix(in srgb, var(--vcp-ui-bg-primary) 30%, transparent));
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-identity-main, .group-identity-main) :is(.agent-name-wrapper, .group-name-wrapper) {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    margin: 0;
+    padding: 0;
+    gap: 0;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-name-wrapper, .group-name-wrapper) label:not(.switch):not(.agent-stream-mode-option):not(.avatar-upload-overlay) {
+    display: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-identity-main, .group-identity-main) :is(.agent-name-wrapper, .group-name-wrapper) input[type="text"] {
+    width: 100%;
+    margin: 0;
+    height: 30px;
+    min-height: 30px;
+    max-height: 30px;
+    padding: 0 10px;
+    border-radius: 8px;
+    border: 0.5px solid var(--vcp-settings-border);
+    background: color-mix(in srgb, var(--vcp-settings-surface) 85%, var(--vcp-settings-input));
+    color: var(--vcp-settings-text, var(--primary-text));
+    font-size: var(--vcp-settings-font-lg);
+    font-weight: 600;
+    line-height: 28px;
+    box-sizing: border-box;
+    outline: none;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-identity-main, .group-identity-main) :is(.agent-name-wrapper, .group-name-wrapper) input[type="text"]:hover {
+    border-color: color-mix(in srgb, var(--highlight-text) 45%, var(--vcp-settings-border));
+    background-color: var(--vcp-settings-surface);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-identity-main, .group-identity-main) :is(.agent-name-wrapper, .group-name-wrapper) input[type="text"]:focus {
+    border-color: var(--highlight-text);
+    background-color: var(--vcp-settings-surface);
+    outline: none;
+    box-shadow: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-avatar-wrapper, .group-avatar-wrapper) > input[type="file"] {
+    display: none;
+}
+
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-card-shell,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-card-shell {
+    display: flex;
+    flex-direction: column;
+    gap: var(--vcp-settings-gap);
+    min-width: 0;
+    padding: 4px 0 6px;
+    border-radius: var(--vcp-settings-radius);
+    transition: background-color var(--vcp-motion-duration-fast, 0.15s) ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .params-content,
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-style-controls {
+    display: grid;
+    gap: var(--vcp-settings-gap);
+    min-width: 0;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-style-collapsible-container,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsContainer .agent-style-collapsible-container {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-width: 0;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 0.5px solid var(--vcp-settings-border);
+    background: transparent;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .style-collapse-header,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsContainer .style-collapse-header {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    min-height: 24px;
+    padding: 0;
+    margin: 0;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    user-select: none;
+    color: var(--vcp-settings-muted);
+    font-size: var(--vcp-settings-font-sub);
+    line-height: 24px;
+    transition: color 100ms ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .style-collapse-header::before,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsContainer .style-collapse-header::before {
+    display: none;
+    content: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .style-collapse-icon,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsContainer .style-collapse-icon {
+    position: relative;
+    flex: none;
+    width: 14px;
+    height: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--vcp-settings-muted);
+    transition: color 100ms ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .style-collapse-icon::after,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsContainer .style-collapse-icon::after {
+    display: none;
+    content: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .style-collapse-icon::before,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsContainer .style-collapse-icon::before {
+    content: "";
+    width: 4.5px;
+    height: 4.5px;
+    border-right: 1.4px solid currentColor;
+    border-bottom: 1.4px solid currentColor;
+    transform: rotate(-45deg) translate(-0.5px, -0.5px);
+    transition: transform 120ms ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-style-collapsible-container:not(.collapsed) .style-collapse-icon::before,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsContainer .agent-style-collapsible-container:not(.collapsed) .style-collapse-icon::before {
+    transform: rotate(45deg) translate(-0.5px, -0.5px);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .style-collapse-title,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsContainer .style-collapse-title {
+    flex: none;
+    margin: 0;
+    padding: 0;
+    font-size: var(--vcp-settings-font-sub);
+    font-weight: 500;
+    line-height: 24px;
+    color: var(--vcp-settings-muted);
+    transition: color 100ms ease;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .style-collapse-header:hover,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsContainer .style-collapse-header:hover {
+    color: var(--vcp-settings-text);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .style-collapse-header:hover .style-collapse-title,
+html .vcp-ui-scope .vcp-settings-schema-surface .style-collapse-header:hover .style-collapse-icon,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsContainer .style-collapse-header:hover .style-collapse-title,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsContainer .style-collapse-header:hover .style-collapse-icon {
+    color: var(--vcp-settings-text);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .style-collapse-header:focus-visible,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsContainer .style-collapse-header:focus-visible {
+    outline: 2px solid var(--highlight-text);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-style-collapsible-container.collapsed .agent-style-controls,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsContainer .agent-style-collapsible-container.collapsed .agent-style-controls {
+    max-height: 0;
+    opacity: 0;
+    visibility: hidden;
+    padding: 0;
+    margin: 0;
+    overflow: hidden;
+    pointer-events: none;
+    transition: max-height 160ms cubic-bezier(0.2, 0, 0, 1),
+                opacity 120ms ease,
+                padding 160ms cubic-bezier(0.2, 0, 0, 1),
+                visibility 0s 160ms;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-style-collapsible-container:not(.collapsed) .agent-style-controls,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsContainer .agent-style-collapsible-container:not(.collapsed) .agent-style-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 600px;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    padding-top: 8px;
+    padding-bottom: 4px;
+    overflow: hidden;
+    transition: max-height 180ms cubic-bezier(0.2, 0, 0, 1),
+                opacity 140ms ease,
+                padding 180ms cubic-bezier(0.2, 0, 0, 1),
+                visibility 0s 0s;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .style-control-item {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    width: 100%;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .style-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .style-toggle-row label {
+    font-size: var(--vcp-settings-font-sub);
+    font-weight: 500;
+    color: var(--secondary-text);
+    margin: 0;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .style-toggle-row .switch {
+    position: relative;
+    display: inline-block;
+    width: 36px;
+    height: 20px;
+    flex-shrink: 0;
+    margin: 0;
+    box-sizing: border-box;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .style-toggle-row .switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .style-toggle-row .slider.round {
+    position: absolute;
+    cursor: pointer;
+    inset: 0;
+    background-color: color-mix(in srgb, var(--vcp-settings-border) 90%, transparent);
+    transition: background-color 120ms ease;
+    border-radius: 10px;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .style-toggle-row .slider.round::before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 2px;
+    bottom: 2px;
+    background-color: var(--vcp-ui-on-accent);
+    transition: transform 120ms ease;
+    border-radius: 50%;
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--vcp-ui-bg-primary) 20%, transparent);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .style-toggle-row input:checked + .slider.round {
+    background-color: var(--highlight-text);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .style-toggle-row input:checked + .slider.round::before {
+    transform: translateX(16px);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .color-input-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .color-input-group input[type="color"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 24px;
+    height: 24px;
+    border: 2px solid color-mix(in srgb, var(--vcp-ui-on-accent) 20%, transparent);
+    border-radius: 50%;
+    padding: 0;
+    cursor: pointer;
+    background: transparent;
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--vcp-ui-bg-primary) 20%, transparent);
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .color-input-group input[type="color"]::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .color-input-group input[type="color"]::-webkit-color-swatch {
+    border: none;
+    border-radius: 50%;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .color-input-group input[type="text"] {
+    flex: 1;
+    min-width: 0;
+    height: 26px;
+    line-height: 26px;
+    font-family: var(--vcp-ui-font-family-mono, monospace);
+    font-size: var(--vcp-settings-font-sub);
+    text-transform: uppercase;
+    padding: 0 8px;
+    border-radius: 6px;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-style-controls .reset-colors-btn {
+    width: 100%;
+    height: 26px;
+    min-height: 26px;
+    border-radius: 13px;
+    font-size: var(--vcp-settings-font-sub);
+    line-height: 18px;
+    font-weight: 500;
+    color: var(--secondary-text);
+    border: 0.5px solid var(--vcp-settings-border);
+    background: transparent;
+    cursor: pointer;
+    transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 10px;
+    margin-top: 2px;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-style-controls .reset-colors-btn:hover {
+    color: var(--highlight-text);
+    border-color: var(--highlight-text);
+    background: color-mix(in srgb, var(--highlight-text) 8%, transparent);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-style-controls textarea {
+    font-family: var(--vcp-ui-font-family-mono, 'SF Mono', Consolas, Monaco, monospace);
+    font-size: var(--vcp-settings-font-sub);
+    line-height: 17px;
+    min-height: 52px;
+    padding: 5px 8px;
+    border-radius: 8px;
+    background: var(--vcp-settings-input);
+    color: var(--primary-text);
+    border: 0.5px solid var(--vcp-settings-border);
+    box-sizing: border-box;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-style-controls textarea:focus {
+    border-color: var(--highlight-text);
+    outline: none;
+    box-shadow: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .system-prompt-container {
+    border: 0.5px solid var(--vcp-settings-border);
+    border-radius: 10px;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--vcp-settings-surface) 60%, transparent);
+    transition: border-color 0.15s ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .system-prompt-container:focus-within {
+    border-color: var(--highlight-text);
+    box-shadow: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .system-prompt-container .prompt-content-container.original-mode,
+html .vcp-ui-scope .vcp-settings-schema-surface .system-prompt-container .original-prompt-container {
+    padding: 0 6px 6px;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .system-prompt-container .original-prompt-textarea {
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    outline: none;
+    padding: 4px 6px 6px;
+    font-size: var(--vcp-settings-font-sub);
+    line-height: 18px;
+    min-height: 56px;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .system-prompt-container .original-prompt-textarea:focus,
+html .vcp-ui-scope .vcp-settings-schema-surface .system-prompt-container .original-prompt-textarea:focus-visible {
+    border: none;
+    box-shadow: none;
+    outline: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .system-prompt-container .preset-path-input,
+html .vcp-ui-scope .vcp-settings-schema-surface .system-prompt-container .preset-select {
+    height: 30px;
+    line-height: 30px;
+    padding: 0 8px;
+    border-radius: 8px;
+    border: 0.5px solid var(--vcp-settings-border);
+    background: var(--vcp-settings-input);
+    color: var(--primary-text);
+    font-size: var(--vcp-settings-font-caption);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .system-prompt-container .preset-browse-btn,
+html .vcp-ui-scope .vcp-settings-schema-surface .system-prompt-container .preset-refresh-btn {
+    height: 24px;
+    padding: 0 8px;
+    border-radius: 6px;
+    border: 0.5px solid var(--vcp-settings-border);
+    background: color-mix(in srgb, var(--vcp-settings-surface) 80%, transparent);
+    color: var(--secondary-text);
+    font-size: var(--vcp-settings-font-xs);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .system-prompt-container .preset-refresh-btn {
+    width: 24px;
+    min-width: 24px;
+    padding: 0;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .system-prompt-container .preset-prompt-textarea {
+    border-radius: 8px;
+    border: 0.5px solid var(--vcp-settings-border);
+    background: var(--vcp-settings-input);
+    color: var(--primary-text);
+    font-size: var(--vcp-settings-font-sub);
+    line-height: 18px;
+    min-height: 56px;
+    padding: 5px 8px;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .form-group-inline,
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-stream-mode-group,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-switch-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-stream-mode-option,
+html .vcp-ui-scope .vcp-settings-schema-surface .style-toggle-row,
+html .vcp-ui-scope .vcp-settings-schema-surface .agent-stream-mode-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--vcp-settings-muted);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .model-input-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    width: 100%;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .model-input-container > :is(select, input) {
+    min-width: 0;
+    flex: 1 1 auto;
+    width: 100%;
+    height: 30px;
+    min-height: 30px;
+    line-height: 30px;
+    padding: 0 32px 0 8px;
+    border: 0.5px solid var(--vcp-settings-border);
+    border-radius: var(--vcp-settings-radius, 8px);
+    background: var(--vcp-settings-input);
+    color: var(--vcp-settings-text);
+    font-size: var(--vcp-settings-font-caption);
+    box-sizing: border-box;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .model-input-container > input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+html .vcp-ui-scope .vcp-settings-schema-surface .model-input-container > select {
+    padding-right: 32px;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .model-input-container:has(#refreshTtsModelsBtn) {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .model-input-container:has(#refreshTtsModelsBtn) > :is(select, .vcp-uiux-select) {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: auto;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .model-input-container:has(#refreshTtsModelsBtn) > select {
+    height: 30px;
+    min-height: 30px;
+    line-height: 30px;
+    padding-right: 28px;
+}
+
+
+html .vcp-ui-scope .vcp-settings-schema-surface .model-input-container > #refreshTtsModelsBtn {
+    position: static;
+    transform: none;
+    flex: 0 0 30px;
+    width: 30px;
+    min-width: 30px;
+    height: 30px;
+    min-height: 30px;
+    border: 0.5px solid var(--vcp-settings-border);
+    border-radius: var(--vcp-settings-radius, 8px);
+    background: var(--vcp-settings-input);
+    color: var(--vcp-settings-text);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+    margin: 0;
+    box-sizing: border-box;
+    transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .model-input-container > #refreshTtsModelsBtn:hover {
+    color: var(--highlight-text);
+    border-color: var(--highlight-text);
+    background: color-mix(in srgb, var(--highlight-text) 12%, var(--vcp-settings-surface));
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .vcp-uiux-select {
+    display: flex;
+    position: relative;
+    width: 100%;
+    min-width: 0;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .vcp-uiux-select-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    min-height: 30px;
+    height: 30px;
+    padding: 0 8px;
+    border: 0.5px solid var(--vcp-settings-border);
+    border-radius: var(--vcp-settings-radius, 8px);
+    background: var(--vcp-settings-input);
+    color: var(--vcp-settings-text);
+    font-family: inherit;
+    font-size: var(--vcp-settings-font-caption);
+    line-height: 30px;
+    cursor: pointer;
+    box-sizing: border-box;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .vcp-uiux-select-trigger:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--vcp-settings-accent) 55%, transparent);
+    outline-offset: 1px;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .vcp-uiux-select-trigger::after {
+    content: "";
+    width: 5px;
+    height: 5px;
+    border-right: 1.6px solid currentColor;
+    border-bottom: 1.6px solid currentColor;
+    transform: rotate(45deg);
+    margin-right: 2px;
+    opacity: 0.7;
+    flex-shrink: 0;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .vcp-uiux-menu-list,
+html .vcp-ui-scope .vcp-uiux-primitive-menu {
+    border-radius: 8px;
+    border: 0.5px solid var(--vcp-settings-border);
+    background: var(--secondary-bg, var(--vcp-ui-bg-secondary));
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--vcp-ui-bg-primary) 28%, transparent);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .vcp-uiux-menu-item {
+    min-height: 28px;
+    height: 28px;
+    padding: 0 8px;
+    font-size: var(--vcp-settings-font-sub);
+    border-radius: 6px;
+    color: var(--vcp-settings-text);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .vcp-uiux-menu-item:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--highlight-text) 14%, transparent);
+    color: var(--highlight-text);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .model-input-container > #refreshTtsModelsBtn:active {
+    transform: scale(0.96);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .model-input-container > #refreshTtsModelsBtn svg,
+html .vcp-ui-scope .vcp-settings-schema-surface .model-input-container > #refreshTtsModelsBtn .vcp-ui-icon {
+    width: 15px;
+    height: 15px;
+    display: block;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .model-input-container > .small-button,
+html .vcp-ui-scope .vcp-settings-schema-surface .model-input-container > #openModelSelectBtn,
+html .vcp-ui-scope .vcp-settings-schema-surface .model-input-container > #openGroupModelSelectBtn {
+    position: absolute;
+    right: 3px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 24px;
+    min-width: 24px;
+    height: 24px;
+    min-height: 24px;
+    padding: 0;
+    margin: 0;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--vcp-settings-muted);
+    transition: color var(--vcp-motion-duration-fast, 0.15s) ease, background-color var(--vcp-motion-duration-fast, 0.15s) ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .model-input-container > :is(.small-button, #refreshTtsModelsBtn, #openModelSelectBtn, #openGroupModelSelectBtn):hover {
+    color: var(--highlight-text);
+    background: color-mix(in srgb, var(--highlight-text) 15%, transparent);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .model-input-container > :is(.small-button, #refreshTtsModelsBtn, #openModelSelectBtn, #openGroupModelSelectBtn) svg,
+html .vcp-ui-scope .vcp-settings-schema-surface .model-input-container > :is(.small-button, #refreshTtsModelsBtn, #openModelSelectBtn, #openGroupModelSelectBtn) .vcp-ui-icon {
+    width: 14px;
+    height: 14px;
+    display: block;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-composer {
+    position: relative;
+    display: block;
+    width: 100%;
+    min-width: 0;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-composer > textarea {
+    width: 100%;
+    min-width: 0;
+    min-height: 96px;
+    height: 96px;
+    box-sizing: border-box;
+    padding: 8px 76px 8px 10px;
+    line-height: 18px;
+    font-size: var(--vcp-settings-font-sub);
+    border: 0.5px solid var(--vcp-settings-border);
+    border-radius: 8px;
+    background-color: var(--vcp-settings-input);
+    color: var(--vcp-settings-text);
+    resize: vertical;
+    outline: none;
+    transition: height 180ms cubic-bezier(0.4, 0, 0.2, 1),
+                border-color 150ms ease,
+                box-shadow 150ms ease,
+                background-color 150ms ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-composer > textarea:active {
+    transition: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-composer > textarea:hover {
+    border-color: color-mix(in srgb, var(--highlight-text) 45%, var(--vcp-settings-border));
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-composer > textarea:focus {
+    border-color: var(--highlight-text);
+    box-shadow: none;
+    outline: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-floating-actions {
+    position: absolute;
+    right: 8px;
+    top: 6px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    z-index: 2;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-floating-actions button {
+    height: 22px;
+    min-height: 22px;
+    padding: 0 7px;
+    font-size: var(--vcp-settings-font-xs);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--vcp-settings-surface) 85%, transparent);
+    border: 0.5px solid var(--vcp-settings-border);
+    color: var(--vcp-settings-muted);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-floating-actions button:hover {
+    color: var(--highlight-text);
+    border-color: var(--highlight-text);
+    background: var(--vcp-settings-surface);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-floating-actions #addAgentTtsDirectorPromptBtn {
+    width: 22px;
+    min-width: 22px;
+    max-width: 22px;
+    height: 22px;
+    min-height: 22px;
+    max-height: 22px;
+    padding: 0;
+    border-radius: 50%;
+    border: 1px dashed var(--vcp-settings-border);
+    background: transparent;
+    color: var(--vcp-settings-accent);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    line-height: 1;
+    transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-floating-actions #addAgentTtsDirectorPromptBtn:hover {
+    border-color: var(--highlight-text);
+    background: color-mix(in srgb, var(--highlight-text) 12%, transparent);
+    color: var(--highlight-text);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-floating-actions #addAgentTtsDirectorPromptBtn:active {
+    transform: scale(0.92);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-floating-actions #addAgentTtsDirectorPromptBtn svg {
+    width: 10px;
+    height: 10px;
+    display: block;
+    flex-shrink: 0;
+    pointer-events: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .small-button,
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-template-button,
+html .vcp-ui-scope .vcp-settings-schema-surface .reset-colors-btn {
+    min-height: var(--vcp-settings-control-height-compact, 26px);
+    box-sizing: border-box;
+    border: 0.5px solid var(--vcp-settings-border);
+    border-radius: 6px;
+    padding: 0 8px;
+    color: var(--vcp-settings-text);
+    background: var(--vcp-settings-surface);
+    cursor: pointer;
+    font: inherit;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .slider-container {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    width: 100%;
+    margin: 2px 0 4px;
+    box-sizing: border-box;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .slider-container input[type="range"] {
+    width: 100%;
+    height: 20px;
+    margin: 0;
+    cursor: pointer;
+    background: transparent;
+    border: none;
+    padding: 0;
+    appearance: none;
+    -webkit-appearance: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .slider-container input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--border-color) 80%, transparent);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .slider-container input[type="range"]::-webkit-slider-thumb {
+    width: 16px;
+    height: 16px;
+    margin-top: -6px;
+    border: 2px solid var(--highlight-text);
+    border-radius: 50%;
+    background: var(--vcp-settings-input, var(--vcp-ui-bg-input));
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--vcp-ui-bg-primary) 15%, transparent);
+    appearance: none;
+    -webkit-appearance: none;
+    transition: transform 0.15s ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .slider-container input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.15);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .slider-container input[type="range"]::-moz-range-track {
+    height: 4px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--border-color) 80%, transparent);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .slider-container input[type="range"]::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--highlight-text);
+    border-radius: 50%;
+    background: var(--vcp-settings-input, var(--vcp-ui-bg-input));
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--vcp-ui-bg-primary) 15%, transparent);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .slider-container #ttsSpeedValue {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 36px;
+    height: 24px;
+    padding: 0 8px;
+    border-radius: 999px;
+    color: var(--vcp-text-secondary, var(--vcp-settings-muted, var(--secondary-text)));
+    background: var(--vcp-surface-tertiary, var(--vcp-settings-input, var(--input-bg, var(--vcp-ui-fill-1))));
+    border: 0.5px solid var(--vcp-border-subtle, var(--vcp-settings-border, var(--border-color)));
+    font-size: var(--vcp-settings-font-xs, 11px);
+    font-weight: 600;
+    line-height: 1;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    box-sizing: border-box;
+    user-select: none;
+    transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .slider-container:hover #ttsSpeedValue,
+html .vcp-ui-scope .vcp-settings-schema-surface .slider-container:focus-within #ttsSpeedValue {
+    border-color: color-mix(in srgb, var(--highlight-text) 45%, var(--vcp-settings-border));
+    color: var(--vcp-settings-text, var(--primary-text));
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-heading label {
+    flex: 1 1 auto;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-editor {
+    min-height: 96px;
+    padding: 8px 36px 8px 10px;
+    font-size: var(--vcp-settings-font-sub);
+    line-height: 18px;
+    border: 0.5px solid var(--vcp-settings-border);
+    border-radius: 8px;
+    box-sizing: border-box;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-prompts-container {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-item {
+    position: relative;
+    display: block;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-item .tts-director-editor {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    min-height: 96px;
+    height: 96px;
+    padding: 8px 40px 8px 10px;
+    font-size: var(--vcp-settings-font-sub);
+    line-height: 18px;
+    border-radius: 8px;
+    border: 0.5px solid var(--vcp-settings-border);
+    background-color: color-mix(in srgb, var(--vcp-settings-surface) 60%, transparent);
+    color: var(--vcp-settings-text);
+    box-sizing: border-box;
+    resize: vertical;
+    outline: none;
+    box-shadow: none;
+    transition: height 180ms cubic-bezier(0.4, 0, 0.2, 1),
+                border-color 150ms ease,
+                background-color 150ms ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-item .tts-director-editor:active {
+    transition: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-item .tts-director-editor:hover {
+    border-color: color-mix(in srgb, var(--highlight-text) 45%, var(--vcp-settings-border));
+    background-color: var(--vcp-settings-surface);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-item .tts-director-editor:focus {
+    border-color: var(--highlight-text);
+    background-color: var(--vcp-settings-input);
+    outline: none;
+    box-shadow: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-item .tts-director-action-button {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    width: 22px;
+    height: 22px;
+    min-width: 22px;
+    max-width: 22px;
+    min-height: 22px;
+    max-height: 22px;
+    padding: 0;
+    border: 1px dashed var(--vcp-settings-border);
+    border-radius: 50%;
+    background: transparent;
+    color: var(--vcp-settings-muted);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    line-height: 1;
+    z-index: 2;
+    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-item .tts-director-action-button:hover {
+    color: var(--vcp-settings-danger);
+    border-color: var(--vcp-settings-danger);
+    background: color-mix(in srgb, var(--vcp-settings-danger) 14%, transparent);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-item .tts-director-action-button:active {
+    transform: scale(0.92);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-item .tts-director-action-button svg {
+    width: 10px;
+    height: 10px;
+    display: block;
+    flex-shrink: 0;
+    pointer-events: none;
+}
+
+/* Card-internal textarea & scrollable lists: ultra-thin 3px subtle hairline, transparent when idle */
+html .vcp-ui-scope .vcp-settings-schema-surface textarea,
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-editor,
+html .vcp-ui-scope .vcp-settings-schema-surface .sequential-speaker-order-list,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-members-list-container,
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-prompts-container {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface textarea:hover,
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-editor:hover,
+html .vcp-ui-scope .vcp-settings-schema-surface .sequential-speaker-order-list:hover,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-members-list-container:hover,
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-prompts-container:hover {
+    scrollbar-color: color-mix(in srgb, var(--vcp-settings-text) 22%, transparent) transparent;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface textarea::-webkit-scrollbar,
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-editor::-webkit-scrollbar,
+html .vcp-ui-scope .vcp-settings-schema-surface .sequential-speaker-order-list::-webkit-scrollbar,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-members-list-container::-webkit-scrollbar,
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-prompts-container::-webkit-scrollbar {
+    width: 3px;
+    height: 3px;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface textarea::-webkit-scrollbar-track,
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-editor::-webkit-scrollbar-track,
+html .vcp-ui-scope .vcp-settings-schema-surface .sequential-speaker-order-list::-webkit-scrollbar-track,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-members-list-container::-webkit-scrollbar-track,
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-prompts-container::-webkit-scrollbar-track {
+    background: transparent;
+    margin: 4px 0;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface textarea::-webkit-scrollbar-thumb,
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-editor::-webkit-scrollbar-thumb,
+html .vcp-ui-scope .vcp-settings-schema-surface .sequential-speaker-order-list::-webkit-scrollbar-thumb,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-members-list-container::-webkit-scrollbar-thumb,
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-prompts-container::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 999px;
+    transition: background-color 0.2s ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface textarea:hover::-webkit-scrollbar-thumb,
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-editor:hover::-webkit-scrollbar-thumb,
+html .vcp-ui-scope .vcp-settings-schema-surface .sequential-speaker-order-list:hover::-webkit-scrollbar-thumb,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-members-list-container:hover::-webkit-scrollbar-thumb,
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-prompts-container:hover::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--vcp-settings-text) 22%, transparent);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface textarea::-webkit-scrollbar-thumb:hover,
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-editor::-webkit-scrollbar-thumb:hover,
+html .vcp-ui-scope .vcp-settings-schema-surface .sequential-speaker-order-list::-webkit-scrollbar-thumb:hover,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-members-list-container::-webkit-scrollbar-thumb:hover,
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-prompts-container::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, var(--vcp-settings-text) 45%, transparent);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface textarea::-webkit-scrollbar-corner,
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-editor::-webkit-scrollbar-corner,
+html .vcp-ui-scope .vcp-settings-schema-surface .sequential-speaker-order-list::-webkit-scrollbar-corner,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-members-list-container::-webkit-scrollbar-corner,
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-prompts-container::-webkit-scrollbar-corner {
+    background: transparent;
+    border: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface textarea::-webkit-resizer,
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-editor::-webkit-resizer,
+html .vcp-ui-scope .vcp-settings-schema-surface .sequential-speaker-order-list::-webkit-resizer,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-members-list-container::-webkit-resizer,
+html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-prompts-container::-webkit-resizer {
+    background: transparent;
+    border: none;
+}
+
+/* Group custom slots. */
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-card-shell {
+    display: grid;
+    gap: var(--vcp-settings-gap);
+    min-width: 0;
+    padding: 4px 0 6px;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .group-members-list-container,
+html .vcp-ui-scope .vcp-settings-schema-surface .sequential-speaker-order-list,
+html .vcp-ui-scope .vcp-settings-schema-surface #memberTagsInputs {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .group-member-item {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 8px;
+    padding: 6px 10px;
+    min-height: 32px;
+    border: 0.5px solid var(--vcp-settings-border);
+    border-radius: var(--vcp-settings-radius, 8px);
+    color: var(--vcp-settings-text);
+    background: color-mix(in srgb, var(--vcp-settings-surface) 82%, transparent);
+    box-sizing: border-box;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .group-member-item:hover {
+    border-color: color-mix(in srgb, var(--highlight-text) 35%, var(--vcp-settings-border));
+    background: color-mix(in srgb, var(--vcp-settings-surface) 92%, transparent);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .group-member-item input[type="checkbox"] {
+    margin: 0;
+    width: 14px;
+    height: 14px;
+    min-width: 14px;
+    min-height: 14px;
+    flex: 0 0 14px;
+    cursor: pointer;
+    accent-color: var(--highlight-text);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .group-member-item label,
+html .vcp-ui-scope .vcp-settings-schema-surface .group-member-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    flex: 1 1 auto;
+    margin: 0;
+    padding: 0;
+    color: var(--vcp-settings-text);
+    font-size: var(--vcp-settings-font-caption);
+    cursor: pointer;
+    line-height: 1;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .group-member-item .avatar-small {
+    width: 20px;
+    height: 20px;
+    min-width: 20px;
+    min-height: 20px;
+    flex: 0 0 20px;
+    border-radius: 50%;
+    object-fit: cover;
+    display: block;
+    margin: 0;
+    border: 1px solid color-mix(in srgb, var(--highlight-text) 18%, transparent);
+    box-sizing: border-box;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .group-member-name {
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--vcp-settings-font-caption);
+    font-weight: 500;
+    line-height: 1.2;
+    color: var(--vcp-settings-text);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .sequential-speaker-order-item {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 8px;
+    padding: 5px 8px;
+    min-height: 32px;
+    border: 0.5px solid var(--vcp-settings-border);
+    border-radius: var(--vcp-settings-radius, 8px);
+    color: var(--vcp-settings-text);
+    background: color-mix(in srgb, var(--vcp-settings-surface) 82%, transparent);
+    box-sizing: border-box;
+    font-size: var(--vcp-settings-font-caption);
+    cursor: grab;
+    user-select: none;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .sequential-speaker-order-item:hover {
+    border-color: color-mix(in srgb, var(--highlight-text) 35%, var(--vcp-settings-border));
+    background: color-mix(in srgb, var(--vcp-settings-surface) 92%, transparent);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .sequential-speaker-order-item:active {
+    cursor: grabbing;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .sequential-speaker-order-item.dragging {
+    opacity: 0.45;
+    border-style: dashed;
+    transition: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .sequential-speaker-order-item.drag-over {
+    border-color: var(--highlight-text);
+    background: color-mix(in srgb, var(--highlight-text) 12%, transparent);
+    transition: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .sequential-speaker-name {
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--vcp-settings-font-caption);
+    font-weight: 500;
+    line-height: 1.2;
+    color: var(--vcp-settings-text);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .group-member-tags-shell {
+    margin-top: 10px;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .member-tag-input-item {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 8px;
+    padding: 0 8px;
+    height: var(--vcp-settings-control-height);
+    min-height: var(--vcp-settings-control-height);
+    border: 0.5px solid var(--vcp-settings-border);
+    border-radius: var(--vcp-settings-radius, 8px);
+    color: var(--vcp-settings-text);
+    background: var(--vcp-settings-input);
+    box-sizing: border-box;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .member-tag-input-item:hover {
+    background-color: color-mix(in srgb, var(--vcp-settings-input) 80%, var(--vcp-settings-surface));
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .member-tag-input-item:focus-within {
+    border-color: var(--vcp-settings-accent, var(--highlight-text));
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .member-tag-input-item label {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 84px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--vcp-settings-text);
+    font-size: var(--vcp-settings-font-sub);
+    font-weight: 500;
+    line-height: 1;
+    user-select: none;
+    cursor: default;
+    padding-right: 8px;
+    border-right: 0.5px solid var(--vcp-settings-border);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .member-tag-input-item input:not([type="checkbox"]):not([type="radio"]):not([type="color"]) {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 100%;
+    min-height: 0;
+    line-height: var(--vcp-settings-control-height);
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--vcp-settings-text);
+    padding: 0;
+    font-size: var(--vcp-settings-font-sub);
+    box-sizing: border-box;
+    box-shadow: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .member-tag-input-item input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):hover {
+    background: transparent;
+    background-color: transparent;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .member-tag-input-item input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):focus,
+html .vcp-ui-scope .vcp-settings-schema-surface .member-tag-input-item input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):focus-visible {
+    border: none;
+    outline: none;
+    box-shadow: none;
+    background: transparent;
+    background-color: transparent;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .avatar-small {
+    width: 20px;
+    height: 20px;
+    min-width: 20px;
+    min-height: 20px;
+    flex: 0 0 20px;
+    border-radius: 50%;
+    object-fit: cover;
+    display: block;
+    margin: 0;
+    box-sizing: border-box;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .sequential-speaker-drag-handle {
+    flex: 0 0 auto;
+    color: var(--vcp-settings-muted);
+    cursor: grab;
+    user-select: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 3px;
+    font-size: var(--vcp-settings-font-helper);
+    line-height: 1;
+    transition: color var(--vcp-motion-duration-fast, 0.15s) ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .sequential-speaker-drag-handle:active {
+    cursor: grabbing;
+    color: var(--vcp-settings-text);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .sequential-speaker-order-controls {
+    display: inline-flex;
+    flex: 0 0 auto;
+    gap: 4px;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .sequential-order-move-btn {
+    width: 22px;
+    height: 22px;
+    min-height: 22px;
+    max-height: 22px;
+    min-width: 22px;
+    max-width: 22px;
+    padding: 0;
+    border: 0.5px solid var(--vcp-settings-border);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--vcp-settings-muted);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .sequential-order-move-btn:hover {
+    color: var(--highlight-text);
+    border-color: var(--highlight-text);
+    background: color-mix(in srgb, var(--highlight-text) 12%, transparent);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .sequential-order-move-btn:active {
+    transform: scale(0.92);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .sequential-order-move-btn svg {
+    width: 10px;
+    height: 10px;
+    display: block;
+    flex-shrink: 0;
+    pointer-events: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .sequential-speaker-order-empty {
+    padding: 10px 12px;
+    border: 1px dashed var(--vcp-settings-border);
+    border-radius: 8px;
+    text-align: center;
+    color: var(--vcp-settings-muted);
+    font-size: var(--vcp-settings-font-sub);
+    line-height: 18px;
+    background: transparent;
+}
+
+html .vcp-ui-scope .vcp-settings-info-badge,
+html .vcp-ui-scope .vcp-settings-schema-surface .vcp-settings-info-badge {
+    display: inline-flex;
+    flex: 0 0 13px;
+    align-items: center;
+    justify-content: center;
+    width: 13px;
+    min-width: 13px;
+    max-width: 13px;
+    height: 13px;
+    min-height: 13px;
+    max-height: 13px;
+    margin-left: 5px;
+    vertical-align: middle;
+    padding: 0;
+    border: 0.5px solid var(--vcp-settings-border);
+    border-radius: 50%;
+    color: var(--vcp-settings-muted);
+    background: transparent;
+    cursor: help;
+    font-size: var(--vcp-settings-font-badge);
+    font-weight: 600;
+    line-height: 1;
+    box-sizing: border-box;
+    transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
+}
+
+html .vcp-ui-scope .vcp-settings-info-badge:hover,
+html .vcp-ui-scope .vcp-settings-schema-surface .vcp-settings-info-badge:hover {
+    color: var(--highlight-text);
+    border-color: var(--highlight-text);
+    background: color-mix(in srgb, var(--highlight-text) 14%, transparent);
+    transform: scale(1.08);
+}
+
+html .vcp-ui-scope .vcp-settings-info-badge:active,
+html .vcp-ui-scope .vcp-settings-schema-surface .vcp-settings-info-badge:active {
+    transform: scale(0.96);
+}
+
+/* The action bar owns the bottom rhythm; sticky pinned to bottom with upstream glass & height */
+html .vcp-ui-scope .vcp-settings-schema-surface .form-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    flex-shrink: 0;
+    gap: 6px;
+    min-width: 0;
+    width: 100%;
+    margin: auto 0 0;
+    padding: 6px 10px 10px 10px;
+    background-color: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    box-sizing: border-box;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .form-save-state-indicator {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 2px 0;
+    font-size: var(--vcp-settings-font-xs);
+    line-height: 1.2;
+    color: var(--vcp-ui-text-2);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .form-save-state-indicator:is([data-state="warning"], [data-state="ongoing"]) {
+    display: flex;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .form-save-state-indicator[data-state="warning"] {
+    color: var(--vcp-ui-warning);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .form-save-state-indicator[data-state="ongoing"] {
+    color: var(--vcp-ui-accent);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .form-state-dot-host {
+    display: inline-flex;
+    align-items: center;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .form-actions > button,
+html .vcp-ui-scope .vcp-settings-schema-surface .form-actions > .delete-button-container,
+html .vcp-ui-scope .vcp-settings-schema-surface .form-actions > .delete-button-container > button {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .form-actions .delete-button-container {
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    margin-top: 0;
+    will-change: max-height, opacity;
+    transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.3s ease,
+                margin-top 0.4s ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .form-actions.scrolled-to-bottom .delete-button-container {
+    max-height: 50px;
+    opacity: 1;
+    margin-top: 4px;
+    overflow: visible;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .form-actions button {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    align-self: stretch;
+    width: 100%;
+    height: 32px;
+    min-height: 32px;
+    padding: 0 12px;
+    font-size: var(--vcp-settings-font-caption);
+    font-weight: 500;
+    line-height: 1;
+    border-radius: 16px;
+    border: none;
+    cursor: pointer;
+    white-space: nowrap;
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    appearance: none;
+    -webkit-appearance: none;
+    transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        color 0.2s ease,
+        transform 0.2s ease;
+}
+
+/* The floating save control is a navigation-material consumer. Keep these
+   declarations wired to the same outputs as the Next shell so Theme/Solid and
+   the Vibrancy/Mica/Acrylic/Liquid recipes update it without a parallel skin. */
+html .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"],
+:is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"],
+:is(html, body, html body):is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"] {
+    border: 1px solid color-mix(
+        in srgb,
+        var(--next-border, var(--vcp-settings-border)) 72%,
+        var(--vcp-settings-accent, var(--highlight-text)) 28%
+    );
+    background-color: var(
+        --next-shell-bg,
+        color-mix(in srgb, var(--vcp-settings-surface) var(--vcp-material-opacity, 68%), transparent)
+    );
+    background-image: var(--next-material-sheen, none);
+    color: var(--vcp-settings-accent, var(--highlight-text));
+    font-weight: 600;
+    backdrop-filter: var(--next-backdrop-filter, blur(18px) saturate(128%));
+    -webkit-backdrop-filter: var(--next-backdrop-filter, blur(18px) saturate(128%));
+    box-shadow:
+        0 6px 16px color-mix(in srgb, var(--vcp-ui-bg-primary) var(--vcp-material-shadow-color, 7%), transparent),
+        inset 0 1px 0 color-mix(in srgb, var(--vcp-ui-on-accent) var(--vcp-material-sheen-soft, 6%), transparent);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"]:hover,
+:is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"]:hover,
+:is(html, body, html body):is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"]:hover {
+    border-color: color-mix(
+        in srgb,
+        var(--vcp-settings-accent, var(--highlight-text)) 52%,
+        var(--next-border, var(--vcp-settings-border))
+    );
+    background-color: color-mix(
+        in srgb,
+        var(--vcp-settings-accent, var(--highlight-text)) 12%,
+        var(--next-shell-bg, var(--vcp-settings-surface))
+    );
+    background-image: var(--next-material-sheen, none);
+    color: var(--vcp-settings-accent, var(--highlight-text));
+    backdrop-filter: var(--next-backdrop-filter, blur(18px) saturate(128%));
+    -webkit-backdrop-filter: var(--next-backdrop-filter, blur(18px) saturate(128%));
+    box-shadow:
+        0 8px 20px color-mix(in srgb, var(--vcp-ui-bg-primary) var(--vcp-material-shadow-color, 7%), transparent),
+        inset 0 1px 0 color-mix(in srgb, var(--vcp-ui-on-accent) var(--vcp-material-sheen-soft, 6%), transparent);
+    transform: translateY(-0.5px);
+    filter: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"]:active,
+:is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"]:active,
+:is(html, body, html body):is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"]:active {
+    border-color: color-mix(
+        in srgb,
+        var(--vcp-settings-accent, var(--highlight-text)) 62%,
+        var(--next-border, var(--vcp-settings-border))
+    );
+    background-color: color-mix(
+        in srgb,
+        var(--vcp-settings-accent, var(--highlight-text)) 18%,
+        var(--next-shell-bg, var(--vcp-settings-surface))
+    );
+    background-image: var(--next-material-sheen, none);
+    color: var(--vcp-settings-accent, var(--highlight-text));
+    backdrop-filter: var(--next-backdrop-filter, blur(18px) saturate(128%));
+    -webkit-backdrop-filter: var(--next-backdrop-filter, blur(18px) saturate(128%));
+    box-shadow:
+        0 3px 10px color-mix(in srgb, var(--vcp-ui-bg-primary) var(--vcp-material-shadow-color, 7%), transparent),
+        inset 0 1px 0 color-mix(in srgb, var(--vcp-ui-on-accent) var(--vcp-material-sheen-soft, 6%), transparent);
+    transform: translateY(0) scale(0.985);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .form-actions .danger-button,
+html .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteAgentBtn,
+html .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteGroupBtn {
+    border: 0.5px solid color-mix(in srgb, var(--danger-color, var(--vcp-ui-danger)) 40%, transparent);
+    background: transparent;
+    color: var(--danger-color, var(--vcp-ui-danger));
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+
+:is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions .danger-button,
+:is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteAgentBtn,
+:is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteGroupBtn {
+    border: 0.5px solid color-mix(in srgb, var(--danger-color, var(--vcp-ui-danger)) 38%, transparent);
+    background: transparent;
+    color: var(--danger-color, var(--vcp-ui-danger));
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+
+:is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions .danger-button:hover,
+:is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteAgentBtn:hover,
+:is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteGroupBtn:hover {
+    background: color-mix(in srgb, var(--danger-color, var(--vcp-ui-danger)) 10%, transparent);
+    border-color: var(--danger-color, var(--vcp-ui-danger));
+    color: var(--danger-color, var(--vcp-ui-danger));
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+
+:is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions .danger-button:active,
+:is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteAgentBtn:active,
+:is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteGroupBtn:active {
+    background: color-mix(in srgb, var(--danger-color, var(--vcp-ui-danger)) 18%, transparent);
+    border-color: var(--danger-color, var(--vcp-ui-danger));
+    transform: translateY(0) scale(0.985);
+}
+
+:is(html, body, html body):is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions .danger-button,
+:is(html, body, html body):is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteAgentBtn,
+:is(html, body, html body):is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteGroupBtn {
+    border: 0.5px solid color-mix(in srgb, var(--danger-color, var(--vcp-ui-danger)) 45%, transparent);
+    background: transparent;
+    color: var(--danger-color, var(--vcp-ui-danger));
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+
+:is(html, body, html body):is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions .danger-button:hover,
+:is(html, body, html body):is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteAgentBtn:hover,
+:is(html, body, html body):is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteGroupBtn:hover {
+    background: color-mix(in srgb, var(--danger-color, var(--vcp-ui-danger)) 14%, transparent);
+    border-color: var(--danger-color, var(--vcp-ui-danger));
+    color: var(--danger-color, var(--vcp-ui-danger));
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+
+:is(html, body, html body):is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions .danger-button:active,
+:is(html, body, html body):is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteAgentBtn:active,
+:is(html, body, html body):is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions #deleteGroupBtn:active {
+    background: color-mix(in srgb, var(--danger-color, var(--vcp-ui-danger)) 22%, transparent);
+    border-color: var(--danger-color, var(--vcp-ui-danger));
+    transform: translateY(0) scale(0.985);
+}
+
+@media (max-width: 420px) {
+    html .vcp-ui-scope .vcp-settings-schema-surface .agent-identity-main,
+    html .vcp-ui-scope .vcp-settings-schema-surface .group-identity-main {
+        grid-template-columns: 38px minmax(0, 1fr);
+        gap: 8px;
+    }
+
+    html .vcp-ui-scope .vcp-settings-schema-surface .agent-avatar-wrapper,
+    html .vcp-ui-scope .vcp-settings-schema-surface .agent-avatar-display {
+        width: 38px;
+        height: 38px;
+    }
+}
+
+/* --- Container Queries: Narrow Sidebar Protection (max-width: 215px) --- */
+@container sidebar (max-width: 215px) {
+    html .vcp-ui-scope #tabContentSettings.sidebar-tab-content.active {
+        padding: 6px 4px 0 4px;
+    }
+
+    html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section-title-row,
+    html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-section-title-row {
+        padding-left: 6px;
+        gap: 4px;
+    }
+
+    html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section-title,
+    html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-section-title {
+        font-size: var(--vcp-settings-font-compact-title);
+    }
+
+    html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section-summary:not(.summary-with-avatar),
+    html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-section-summary:not(.summary-with-avatar) {
+        margin: 2px 6px 6px 6px;
+        padding: 3px 6px;
+        font-size: var(--vcp-settings-font-meta);
+    }
+
+    html .vcp-ui-scope .vcp-settings-schema-surface .agent-settings-section-content,
+    html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-section-content {
+        padding: 4px 6px 12px 6px;
+    }
+
+    html .vcp-ui-scope .vcp-settings-schema-surface .form-actions {
+        padding: 8px 6px 14px 6px;
+    }
+
+    html .vcp-ui-scope .vcp-settings-schema-surface .agent-identity-main,
+    html .vcp-ui-scope .vcp-settings-schema-surface .group-identity-main {
+        grid-template-columns: 36px minmax(0, 1fr);
+        gap: 6px;
+    }
+
+    html .vcp-ui-scope .vcp-settings-schema-surface .agent-avatar-wrapper,
+    html .vcp-ui-scope .vcp-settings-schema-surface .agent-avatar-display {
+        width: 36px;
+        height: 36px;
+        min-width: 36px;
+        max-width: 36px;
+        min-height: 36px;
+        max-height: 36px;
+        border-radius: 10px;
+    }
+
+    html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-floating-actions {
+        right: 4px;
+        top: 4px;
+    }
+}
+
+/* --- Regex Section Controls (Migrated from settings-regex.css) --- */
+html .vcp-ui-scope .vcp-settings-schema-surface .strip-regex-container {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .strip-regex-list-container {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .strip-regex-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 8px;
+    border: 1px dashed var(--vcp-settings-border);
+    border-radius: var(--vcp-settings-radius, 8px);
+    color: var(--vcp-settings-muted);
+    font-size: var(--vcp-settings-font-sub);
+    line-height: 16px;
+    text-align: center;
+    user-select: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .strip-regex-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 36px;
+    padding: 4px 6px 4px 10px;
+    border-radius: var(--vcp-settings-radius, 8px);
+    background-color: var(--vcp-settings-surface);
+    border: 0.5px solid var(--vcp-settings-border);
+    transition:
+        border-color 160ms ease,
+        background-color 160ms ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .strip-regex-row:hover {
+    border-color: var(--vcp-settings-muted);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .strip-regex-input {
+    flex-grow: 1;
+    height: 28px;
+    line-height: 28px;
+    padding: 0 8px;
+    border-radius: var(--vcp-settings-radius, 8px);
+    border: 0.5px solid var(--vcp-settings-border);
+    background-color: var(--vcp-settings-input);
+    color: var(--vcp-settings-text);
+    font-size: var(--vcp-settings-font-sub);
+    font-family: monospace;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .strip-regex-input::placeholder {
+    color: var(--vcp-settings-muted);
+    opacity: 0.7;
+    font-family: monospace;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .strip-regex-title {
+    font-weight: 500;
+    color: var(--vcp-settings-text);
+    font-size: var(--vcp-settings-font-caption);
+    line-height: 20px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .strip-regex-row-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.btn-edit-regex, .btn-delete-regex) {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    min-height: 28px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--vcp-settings-muted);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition:
+        background-color 120ms ease,
+        color 120ms ease,
+        border-color 120ms ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface :is(.btn-edit-regex, .btn-delete-regex) svg {
+    display: block;
+    width: 15px;
+    height: 15px;
+    stroke: currentColor;
+    flex-shrink: 0;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .btn-edit-regex:hover {
+    background-color: var(--vcp-ui-fill-1);
+    color: var(--vcp-settings-text);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .btn-delete-regex:hover {
+    background-color: color-mix(in srgb, var(--vcp-settings-danger) 12%, transparent);
+    color: var(--vcp-settings-danger);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .custom-select-container {
+    position: relative;
+    flex-shrink: 0;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .custom-select-button {
+    padding: 0;
+    background-color: var(--vcp-ui-fill-1, var(--button-bg));
+    border: 0.5px solid var(--vcp-settings-border);
+    color: var(--vcp-ui-text-0, var(--text-on-accent));
+    border-radius: var(--vcp-settings-radius, 8px);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    height: 28px;
+    width: 28px;
+    position: relative;
+    transition: background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .custom-select-button:hover {
+    background-color: var(--vcp-ui-fill-2, var(--button-hover-bg));
+    border-color: var(--vcp-settings-accent);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .custom-select-button.has-selection::after {
+    content: '';
+    position: absolute;
+    width: 5px;
+    height: 5px;
+    background-color: var(--vcp-settings-accent);
+    border-radius: 50%;
+    top: 3px;
+    right: 3px;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .custom-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin-top: 4px;
+    background-color: var(--vcp-settings-surface);
+    border: 0.5px solid var(--vcp-settings-border);
+    border-radius: 8px;
+    box-shadow: var(--vcp-ui-elevation-3, 0 4px 12px transparent);
+    z-index: 10000;
+    overflow: visible;
+    min-width: 120px;
+}
+
+html:is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .custom-dropdown {
+    background-color: var(--vcp-settings-surface);
+    box-shadow: var(--vcp-ui-elevation-2, 0 4px 12px transparent);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .dropdown-option {
+    padding: 6px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .dropdown-option:hover {
+    background-color: var(--vcp-ui-fill-1);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .dropdown-option input[type="checkbox"] {
+    margin: 0;
+    width: 15px;
+    height: 15px;
+    accent-color: var(--vcp-settings-accent);
+    cursor: pointer;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .dropdown-option label {
+    margin: 0;
+    cursor: pointer;
+    font-size: var(--vcp-settings-font-xs);
+    flex-grow: 1;
+    user-select: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .strip-regex-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .btn-add-regex {
+    position: relative;
+    isolation: isolate;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    flex: 1 1 0;
+    min-width: 100px;
+    width: auto;
+    height: 32px;
+    min-height: 32px;
+    padding: 0 10px;
+    font-size: var(--vcp-settings-font-caption);
+    font-weight: 500;
+    line-height: 1;
+    border-radius: var(--vcp-settings-radius, 8px);
+    border: 1px dashed var(--vcp-settings-border);
+    cursor: pointer;
+    background: transparent;
+    color: var(--vcp-settings-muted);
+    box-sizing: border-box;
+    box-shadow: none;
+    transition:
+        background-color 120ms ease,
+        border-color 120ms ease,
+        color 120ms ease;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .btn-add-regex .vcp-ui-icon-svg {
+    width: 11px;
+    height: 11px;
+    flex-shrink: 0;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .btn-add-regex:hover {
+    background-color: var(--vcp-ui-fill-1);
+    border-color: var(--vcp-settings-accent);
+    color: var(--vcp-settings-text);
+    box-shadow: none;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .btn-add-regex.btn-add-regex-secondary {
+    color: var(--vcp-settings-muted);
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .btn-add-regex.btn-add-regex-secondary:hover {
+    background-color: var(--vcp-ui-fill-1);
+    border-color: var(--vcp-settings-accent);
+    color: var(--vcp-settings-text);
+}
+
+/* Continuous superellipse corner curvature (Progressive Enhancement) */
+/* stylelint-disable property-no-unknown, function-no-unknown */
+@supports (corner-shape: superellipse(1.5)) {
+    html .vcp-ui-scope #tabContentSettings :is(input, select, textarea, button, .vcp-uiux-select-trigger, .custom-select-button, .card, .group-settings-card-shell, .agent-settings-card-shell) {
+        corner-shape: superellipse(1.5);
+    }
+
+    html .vcp-ui-scope #tabContentSettings :is(.round, .slider.round, .avatar-upload-overlay, img.avatar, .agent-avatar-display, .group-avatar-display, .vcp-settings-info-badge, .badge, #ttsSpeedValue, .slider-value-pill, [style*="border-radius: 50%"], [style*="border-radius: 999px"]) {
+        corner-shape: round;
+    }
+}
+/* stylelint-enable property-no-unknown, function-no-unknown */
+
+/* Invite Agent Buttons Container (Group chat invite_only mode) */
+html .vcp-ui-scope .invite-agent-buttons-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 8px;
+    padding: 10px 15px;
+    background-color: var(--panel-bg-dark, color-mix(in srgb, var(--vcp-ui-bg-primary) 60%, transparent));
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+html .vcp-ui-scope .invite-agent-buttons-container[hidden] {
+    display: none;
+}
+
+html:is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .invite-agent-buttons-container {
+    background-color: var(--panel-bg-light, color-mix(in srgb, var(--vcp-ui-on-accent) 70%, transparent));
+}
+
+html .vcp-ui-scope .invite-agent-button {
+    display: flex;
+    align-items: center;
+    padding: 6px 10px;
+    border: 1px solid var(--button-border-color, var(--border-color));
+    background-color: var(--button-bg);
+    color: var(--accent-bg, var(--highlight-text));
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: var(--vcp-settings-font-sub);
+    text-align: left;
+    overflow: hidden;
+    transition: background-color var(--vcp-motion-duration-normal, 0.2s) var(--vcp-motion-ease-standard, ease),
+                border-color var(--vcp-motion-duration-normal, 0.2s) var(--vcp-motion-ease-standard, ease),
+                transform var(--vcp-motion-duration-fast, 0.15s) var(--vcp-motion-ease-standard, ease);
+    min-width: 0;
+}
+
+html .vcp-ui-scope .invite-agent-button:hover {
+    background-color: var(--button-hover-bg);
+    border-color: var(--button-hover-bg);
+    transform: translateY(-1px);
+}
+
+html .vcp-ui-scope .invite-agent-button img {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    margin-right: 7px;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+html .vcp-ui-scope .invite-agent-button span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-grow: 1;
+}
+
+html:is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .invite-agent-button {
+    border-color: var(--border-color-light, color-mix(in srgb, var(--vcp-ui-bg-primary) 12%, transparent));
+    background-color: var(--button-bg);
+    color: var(--vcp-ui-on-accent);
+}
+
+html:is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .invite-agent-button:hover {
+    background-color: var(--accent-bg-light, var(--highlight-text));
+    border-color: var(--accent-bg-light, var(--highlight-text));
+}
+
