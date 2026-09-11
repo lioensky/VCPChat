@@ -529,18 +529,18 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
             varying vec3 vWorldPosition;
         
             void main() {
-                // 沿轨道流动的光束脉冲 (Comet trail)
-                float speed = 0.85;
-                float flow1 = fract(vUvX * 3.5 - uTime * speed);
-                float beam1 = pow(flow1, 8.0) * 1.8;
+                // 沿轨道流动的光束脉冲 (Comet trail) - 显著放缓流动速度（从 0.85 降至 0.18），如月光般缓慢从容地游走
+                float speed = 0.18;
+                float flow1 = fract(vUvX * 2.5 - uTime * speed);
+                float beam1 = pow(flow1, 6.0) * 1.5;
         
-                float flow2 = fract(vUvX * 6.0 + uTime * (speed * 0.65) + 0.5);
-                float beam2 = pow(flow2, 12.0) * 1.2;
+                float flow2 = fract(vUvX * 4.0 + uTime * (speed * 0.7) + 0.5);
+                float beam2 = pow(flow2, 8.0) * 1.1;
         
                 // 更加空灵透明的流光丝线，跑光束更柔和高雅
-                float glow = 0.06 + (beam1 + beam2) * 0.55 + uEnergy * 0.18;
-                vec3 finalColor = mix(uColor, vec3(1.0), (beam1 + beam2) * 0.45);
-                gl_FragColor = vec4(finalColor, glow * 0.45);
+                float glow = 0.05 + (beam1 + beam2) * 0.5 + uEnergy * 0.16;
+                vec3 finalColor = mix(uColor, vec3(1.0), (beam1 + beam2) * 0.4);
+                gl_FragColor = vec4(finalColor, glow * 0.42);
             }
         `;
         
