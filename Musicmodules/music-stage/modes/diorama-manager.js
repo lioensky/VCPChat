@@ -22,7 +22,7 @@
     // 空间步长与视距常数（参考 Folia cameraPath）
     // 空间步长与视距常数：进一步增大距离，消除怼脸感，留足纵深视野
     const STEP_DISTANCE = 11.5; // 每行歌词之间的 3D 前进距离（加大距离以配合更远镜头推进行程）
-    const HERO_DISTANCE = 11.2; // 相机与当前焦点歌词的跟随视距（从 7.4 进一步拉远至 11.2，视野更加开阔从容）
+    const HERO_DISTANCE = 12.4; // 略微拉远初始视距，给交错倾斜的歌词留出边缘空间
     const CAMERA_LIFT = 0.95;   // 稍抬高相机视角，俯瞰歌词长廊更具宏阔感
     const LINES_AHEAD = 4;      // 向前方深处渲染的歌词行数
     const LINES_BEHIND = 1;     // 向后方保留行数缩减为 1，加速已唱完歌词离场
@@ -186,6 +186,26 @@
         const remember = (set, res) => {
             if (res) set.add(res);
             return res;
+        };
+
+        // 装饰重建时立即释放共享几何与材质，避免切歌后一直留到模式销毁。
+        const disposeDecorField = (field) => {
+            if (!field) return;
+            scene.remove(field);
+            const geometries = new Set();
+            const materials = new Set();
+            field.traverse(obj => {
+                if (obj.geometry) geometries.add(obj.geometry);
+                if (obj.material) materials.add(obj.material);
+            });
+            geometries.forEach(geo => {
+                geo.dispose();
+                resources.geometries.delete(geo);
+            });
+            materials.forEach(mat => {
+                mat.dispose();
+                resources.materials.delete(mat);
+            });
         };
 
         const resize = () => {
@@ -422,23 +442,49 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
             uniform float uTime;
             uniform float uEnergy;
             uniform float uDistortion;
+            uniform float uMorph;
+            uniform float uRing;
             varying vec3 vNormal;
             varying vec3 vWorldPosition;
             varying vec3 vViewPosition;
             varying float vDisplacement;
         
-            void main() {
-                vec3 p = position;
-                // 降低时间系数与空间频率，将高频剧烈抖动变为极为平缓优雅的凝胶呼吸
+            vec3 liquidSurface(vec2 coord) {
+                float a = coord.x * 6.28318530718;
+                vec3 p;
+                vec3 n;
+                if (uRing > 0.5) {
+                    float b = coord.y * 6.28318530718;
+                    // 留下极细的中心孔，避免角环闭合处法线退化和表面自交。
+                    float major = mix(0.50, 0.86, uMorph);
+                    float tube = mix(0.47, 0.28, uMorph);
+                    n = vec3(cos(b) * cos(a), cos(b) * sin(a), sin(b));
+                    p = vec3(major * cos(a), major * sin(a), 0.0) + tube * n;
+                    p *= 1.0 + 0.045 * sin(a * 3.0 + uTime * 0.3);
+                } else {
+                    float b = coord.y * 3.14159265359;
+                    n = vec3(-cos(a) * sin(b), -cos(b), sin(a) * sin(b));
+                    p = n * length(position);
+                }
                 float wave1 = sin(p.x * 1.4 + uTime * 0.7) * cos(p.y * 1.2 + uTime * 0.6);
                 float wave2 = sin(p.z * 1.5 - uTime * 0.5) * cos(p.x * 1.1 + uTime * 0.8);
-                float disp = (wave1 + wave2) * (0.06 + uEnergy * 0.08) * uDistortion;
-                p += normal * disp;
-        
+                float disp = (wave1 + wave2) * (0.045 + uEnergy * 0.035) * uDistortion;
+                return p + n * disp;
+            }
+
+            void main() {
+                vec3 p = liquidSurface(uv);
+                // 对连续参数曲面求切线，而非对屏幕三角面求导，插值后高光保持平滑。
+                vec2 sampleUv = vec2(uv.x, clamp(uv.y, 0.001, 0.999));
+                vec3 tangentU = liquidSurface(sampleUv + vec2(0.0005, 0.0))
+                              - liquidSurface(sampleUv - vec2(0.0005, 0.0));
+                vec3 tangentV = liquidSurface(sampleUv + vec2(0.0, 0.0005))
+                              - liquidSurface(sampleUv - vec2(0.0, 0.0005));
+                vec3 smoothNormal = normalize(cross(tangentU, tangentV));
                 vec4 world = modelMatrix * vec4(p, 1.0);
                 vWorldPosition = world.xyz;
-                vNormal = normalize(mat3(modelMatrix) * normal);
-                vDisplacement = disp;
+                vNormal = normalize(normalMatrix * smoothNormal);
+                vDisplacement = length(p) - length(position);
         
                 vec4 mvPosition = viewMatrix * world;
                 vViewPosition = -mvPosition.xyz;
@@ -471,13 +517,14 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                 float spec = pow(max(dot(N, H), 0.0), 32.0);
         
                 // 流变三色渐变
-                float flowCoord = dot(vWorldPosition, vec3(0.25, 0.35, 0.15)) + uTime * 0.8 + vDisplacement * 2.0;
+                float flowCoord = dot(vWorldPosition, vec3(0.25, 0.35, 0.15)) + uTime * 0.18 + vDisplacement * 2.0;
                 float mixT = 0.5 + 0.5 * sin(flowCoord);
                 vec3 liquidColor = mix(uColorA, uColorB, mixT);
                 liquidColor = mix(liquidColor, uColorC, fresnel * 0.85);
         
                 // 高光与清透边缘加强（水银/水晶通透感：中心高度透光，边缘由于折射呈现晶莹菲涅尔光泽）
-                liquidColor += vec3(spec * 0.9 + fresnel * 0.6);
+                liquidColor = mix(liquidColor * 0.65, uColorC, fresnel * 0.35);
+                liquidColor += vec3(spec * 0.42 + fresnel * 0.12);
         
                 // 增强透明感：中心基底保持极高通透（低不透明度），主要由边缘轮廓和高光反射表达形体
                 float alpha = clamp(uOpacity * (0.16 + fresnel * 0.95 + spec * 0.6 + uEnergy * 0.15), 0.0, 0.82);
@@ -492,6 +539,8 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                     uTime: { value: 0 },
                     uEnergy: { value: 0 },
                     uDistortion: { value: distortion },
+                    uMorph: { value: 0 },
+                    uRing: { value: 0 },
                     uColorA: { value: colorA.clone() },
                     uColorB: { value: colorB.clone() },
                     uColorC: { value: colorC.clone() },
@@ -501,8 +550,8 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                 fragmentShader: liquidFragmentShader,
                 transparent: true,
                 depthWrite: false,
-                side: THREE.DoubleSide,
-                blending: THREE.AdditiveBlending
+                side: THREE.FrontSide,
+                blending: THREE.NormalBlending
             })
         );
         
@@ -545,27 +594,29 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
         `;
         
         /**
-         * 1. 稀疏 3D 巨型液体流变体（仅保留 5~7 颗大体型有机果冻，沿双螺旋轨道悠然穿梭漂流）
+         * 1. 视区附近的七颗液体，其中三颗以不同周期舒展为有机环。
          */
         const createLiquidBlobs = (frames) => {
             if (!THREE || !scene || !frames.length) return;
-            if (liquidField) scene.remove(liquidField);
+            disposeDecorField(liquidField);
             liquidField = new THREE.Group();
             liquidBlobs = [];
             
             const palette = getThemePalette(services, THREE);
         
-            // 缩减液体体型：从之前过大的 1.6~2.6 缩减为 0.9~1.4，比例恰到好处，既有存在感又不喧宾夺主
-            const totalBlobs = 5;
+            // 数量略增，大小错落；不再把少量水滴摊到整首歌曲的不可见远处。
+            const totalBlobs = 7;
+            const ringGeometry = remember(resources.geometries, new THREE.TorusGeometry(0.86, 0.28, 32, 64));
             const geoTemplates = [
-                remember(resources.geometries, new THREE.IcosahedronGeometry(0.9, 3)),
-                remember(resources.geometries, new THREE.IcosahedronGeometry(1.15, 3)),
-                remember(resources.geometries, new THREE.IcosahedronGeometry(1.4, 3))
+                remember(resources.geometries, new THREE.SphereGeometry(0.9, 64, 48)),
+                remember(resources.geometries, new THREE.SphereGeometry(1.15, 64, 48)),
+                remember(resources.geometries, new THREE.SphereGeometry(1.4, 64, 48))
             ];
         
             for (let i = 0; i < totalBlobs; i++) {
                 const rnd = seededRandom(`liquid-hero:${currentTrackPath}:${i}`);
-                const geo = geoTemplates[i % geoTemplates.length];
+                const isRing = i % 2 === 1;
+                const geo = isRing ? ringGeometry : geoTemplates[i % geoTemplates.length];
                 const handedness = (i % 2 === 0) ? 1 : -1;
                 const progressOffset = i / totalBlobs;
                 
@@ -577,6 +628,8 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                 // 大幅增加晶莹通透度：base opacity 控制在 0.25 左右
                 const material = makeLiquidMaterial(colA, colB, colC, 0.22 + rnd() * 0.08, 0.6 + rnd() * 0.4);
         
+                material.uniforms.uRing.value = isRing ? 1 : 0;
+
                 const mesh = new THREE.Mesh(geo, material);
                 mesh.frustumCulled = false;
                 mesh.renderOrder = 3;
@@ -587,9 +640,11 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                     material,
                     handedness,
                     progressOffset,
-                    radius: 3.2 + rnd() * 1.6,
+                    radius: 3.4 + rnd() * 1.8,
                     phase: rnd() * Math.PI * 2,
-                    baseScale: 1.0 + rnd() * 0.4
+                    driftSpeed: 0.035 + rnd() * 0.025,
+                    morphSpeed: 0.12 + rnd() * 0.045,
+                    baseScale: 0.72 + rnd() * 0.5
                 });
             }
             scene.add(liquidField);
@@ -600,14 +655,14 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
          */
         const createFloatingGeometry = (frames) => {
             if (!THREE || !scene || !frames.length) return;
-            if (geometryField) scene.remove(geometryField);
+            disposeDecorField(geometryField);
             geometryField = new THREE.Group();
             floatingGlyphs = [];
         
             const palette = getThemePalette(services, THREE);
         
-            // 适度精简密度：每 2~3 行散布 1 个，避免视线过载
-            const glyphCount = Math.max(8, Math.min(28, Math.floor(frames.length * 1.1)));
+            // 每段约三个符号，避免原先总数上限 28 导致长歌曲几乎没有装饰。
+            const glyphCount = Math.max(18, Math.min(384, Math.ceil(frames.length * 3)));
             for (let i = 0; i < glyphCount; i++) {
                 const rnd = seededRandom(`glyph:${currentTrackPath}:${i}`);
                 const type = i % 4; // 0: 十字架, 1: 线框正方形, 2: 线框三角形, 3: 几何环
@@ -620,10 +675,11 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                 const right = f.right;
                 const up = f.up;
         
-                // 散布于外围景深
+                // 三档大小和亮度独立于形状轮换，散布上下两侧，中央留白。
+                const layer = Math.floor(i / 4) % 3;
                 const side = rnd() > 0.5 ? 1 : -1;
-                const lateralDist = side * (4.2 + rnd() * 4.0);
-                const verticalDist = (rnd() - 0.5) * 4.8;
+                const lateralDist = side * (3.0 + rnd() * 4.8);
+                const verticalDist = (rnd() - 0.5) * 9.0;
         
                 let obj = null;
                 const group = new THREE.Group();
@@ -654,7 +710,9 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                 } else if (type === 1) {
                     // 线框正方形 / 菱形
                     const s = 0.65 + rnd() * 0.45;
-                    const boxGeo = remember(resources.geometries, new THREE.EdgesGeometry(new THREE.PlaneGeometry(s, s)));
+                    const sourceGeo = new THREE.PlaneGeometry(s, s);
+                    const boxGeo = remember(resources.geometries, new THREE.EdgesGeometry(sourceGeo));
+                    sourceGeo.dispose();
                     const boxMat = remember(resources.materials, new THREE.LineBasicMaterial({
                         color: glyphColor,
                         transparent: true,
@@ -665,7 +723,9 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                 } else if (type === 2) {
                     // 线框正三角形
                     const r = 0.6 + rnd() * 0.35;
-                    const triGeo = remember(resources.geometries, new THREE.EdgesGeometry(new THREE.CircleGeometry(r, 3)));
+                    const sourceGeo = new THREE.CircleGeometry(r, 3);
+                    const triGeo = remember(resources.geometries, new THREE.EdgesGeometry(sourceGeo));
+                    sourceGeo.dispose();
                     const triMat = remember(resources.materials, new THREE.LineBasicMaterial({
                         color: glyphColor,
                         transparent: true,
@@ -687,7 +747,19 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                     obj = new THREE.Mesh(ringGeo, ringMat);
                 }
         
+                obj.material.depthWrite = false;
+                obj.material.opacity *= [0.85, 0.55, 0.3][layer];
                 group.add(obj);
+                // 少量嵌套轮廓：偏轴小十字、双框、内三角和双环，避免机械复制。
+                if (i % 3 === 0) {
+                    const echo = obj.clone();
+                    echo.material = remember(resources.materials, obj.material.clone());
+                    echo.material.opacity *= 0.42;
+                    echo.scale.setScalar(type === 0 ? 0.32 : 0.66);
+                    echo.position.set(type === 0 ? 0.65 : 0.08, 0.1, -0.16);
+                    echo.rotation.z = type === 1 ? Math.PI / 4 : 0.12;
+                    group.add(echo);
+                }
                 group.position.set(
                     pos.x + right.x * lateralDist + up.x * verticalDist,
                     pos.y + right.y * lateralDist + up.y * verticalDist,
@@ -699,13 +771,15 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                 floatingGlyphs.push({
                     group,
                     obj,
-                    // 降低自转速度，更加从容沉浸
+                    baseRotation: group.rotation.clone(),
+                    basePosition: group.position.clone(),
+                    baseOpacity: obj.material.opacity,
                     rotSpeed: {
-                        x: (rnd() - 0.5) * 0.007,
-                        y: (rnd() - 0.5) * 0.009,
-                        z: (rnd() - 0.5) * 0.006
+                        x: (rnd() - 0.5) * 0.035,
+                        y: (rnd() - 0.5) * 0.045,
+                        z: (rnd() - 0.5) * 0.03
                     },
-                    baseScale: 1.0 + rnd() * 0.25,
+                    baseScale: [1.15, 0.8, 0.48][layer] * (0.85 + rnd() * 0.35),
                     phase: rnd() * Math.PI * 2
                 });
             }
@@ -907,7 +981,12 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
             // 当这行唱完、下一行到来前（间奏/空档），让相机继续自然向前飞行并穿过当前行，让唱过的歌词从镜头后方移出视界
             const nextLine = lines[currentIdx + 1];
             const startTime = activeLine?.startTime || 0;
-            const endTime = activeLine?.endTime || (startTime + 5);
+            const declaredEndTime = activeLine?.endTime || (startTime + 5);
+            const timedWords = (activeLine?.words || []).filter(word =>
+                String(word.text || '').trim() && Number.isFinite(word.endTime) && word.endTime > startTime);
+            const endTime = timedWords.length
+                ? Math.min(declaredEndTime, Math.max(...timedWords.map(word => word.endTime)))
+                : declaredEndTime;
             const nextStartTime = nextLine ? (nextLine.startTime || endTime) : (endTime + 4);
             const currentTime = frame.playbackTime || 0;
 
@@ -971,11 +1050,20 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
             const sway = Math.sin(interLineProgress * Math.PI) * 0.08 * motion;
             const bob = Math.cos(interLineProgress * Math.PI * 2) * 0.04 * motion;
 
-            // 相机目标位置：平稳跟随在焦点歌词后方，维持高级沉静的透视线
+            // 句尾仍保留至少 8.8 的轴向阅读距离，避免推进把歌词从远景推成贴脸特写。
+            // 间奏也延续同一距离函数，不在结束瞬间跳变；旧歌词由独立离场动画退出。
+            const focalAdvance = vsub(currentFocalPos, activeFrame.position);
+            const forwardLength = Math.hypot(currentForward.x, currentForward.y, currentForward.z) || 1;
+            const axialAdvance = (
+                focalAdvance.x * currentForward.x +
+                focalAdvance.y * currentForward.y +
+                focalAdvance.z * currentForward.z
+            ) / forwardLength;
+            const followDistance = Math.max(HERO_DISTANCE, (8.8 + axialAdvance) / forwardLength);
             const targetCamPos = {
-                x: currentFocalPos.x - currentForward.x * HERO_DISTANCE + currentRight.x * (cursorTrackingOffset + sway),
-                y: currentFocalPos.y - currentForward.y * HERO_DISTANCE + currentUp.y * (CAMERA_LIFT + bob),
-                z: currentFocalPos.z - currentForward.z * HERO_DISTANCE
+                x: currentFocalPos.x - currentForward.x * followDistance + currentRight.x * (cursorTrackingOffset + sway),
+                y: currentFocalPos.y - currentForward.y * followDistance + currentUp.y * (CAMERA_LIFT + bob),
+                z: currentFocalPos.z - currentForward.z * followDistance
             };
 
             // 相机注视点：保持向前视准，注视点横向微调大幅收敛，避免视角双重晃动
@@ -1031,6 +1119,14 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                                 new THREE.Vector3(-pFrame.forward.x, -pFrame.forward.y, -pFrame.forward.z)
                             )
                         );
+                        // 水平行与轻斜行穿插，少量较大倾角形成交错，而非每行强制组成 X。
+                        // 固定种子保证高亮重建、回放和拖动进度时角度一致。
+                        const tiltRandom = seededRandom(`line-tilt:${currentTrackPath}:${i}`);
+                        const tiltSign = i % 2 === 0 ? 1 : -1;
+                        const tiltAmount = tiltRandom() < 0.25 ? 0 : Math.pow(tiltRandom(), 1.5);
+                        const lineTilt = tiltSign * tiltAmount * Math.PI / 15; // 0°～12°
+                        node.group.rotateZ(lineTilt);
+                        node.group.rotateY(tiltSign * 0.075 * tiltAmount);
                         corridorGroup.add(node.group);
                         lineNodes.set(i, node);
                     }
@@ -1042,9 +1138,26 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                     // 确保播放结束的歌词彻底离开画面：
                     // 1. 若当前行已唱完，在进入下一行的间奏推进期（0.72~1.0）加速淡出至 0.0，杜绝残留在广角镜头边缘
                     const isPassedCurrent = isCurrent && (currentTime >= endTime);
-                    const currentFadeOut = isPassedCurrent
-                        ? clamp(1.0 - (interLineProgress - 0.72) / 0.22, 0.0, 1.0)
-                        : 1.0;
+                    // 离场使用实际秒数，不再把淡出拉长到整个间奏。
+                    const exitDuration = Math.min(1.1, Math.max(0.25, nextStartTime - endTime));
+                    const exitProgress = isPassedCurrent
+                        ? clamp((currentTime - endTime) / exitDuration, 0, 1)
+                        : 0;
+                    const exitEase = exitProgress * exitProgress * (3 - 2 * exitProgress);
+                    const currentFadeOut = 1 - exitEase;
+                    // 整组包括翻译越过镜头后方，倒退寻址时恢复原位。
+                    const exitDistance = (HERO_DISTANCE + STEP_DISTANCE + 6) * exitEase;
+                    node.group.position.set(
+                        pFrame.position.x - pFrame.forward.x * exitDistance,
+                        pFrame.position.y - pFrame.forward.y * exitDistance,
+                        pFrame.position.z - pFrame.forward.z * exitDistance
+                    );
+                    node.group.visible = offset >= 0 && currentFadeOut > 0;
+                    node.group.children.forEach(child => {
+                        if (child.isMesh && child.material) {
+                            child.material.opacity = (isCurrent ? 0.68 : 0.22) * currentFadeOut;
+                        }
+                    });
                     
                     // 2. 过去的歌词（offset < 0）迅速消隐至 0，绝不阻挡远距离镜头的景深穿透
                     let baseOpacity = 0.0;
@@ -1066,7 +1179,7 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                             u.mat.opacity = isWordActive ? 1.0 : (isWordPassed ? 0.88 : 0.42);
                             if (isWordActive) {
                                 const p = wordState.progress || 0;
-                                u.group.scale.setScalar(1.0 + p * 0.12);
+                                u.group.scale.setScalar(1.0 + p * 0.06);
                                 u.mat.color.copy(u.accentColor);
                                 if (u.glowMat) {
                                     u.glowMat.opacity = 0.85 + (frame.audio?.vocal || 0) * 0.4;
@@ -1101,27 +1214,15 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
             const energy = Number(audio.bass || 0) * 0.65 + Number(audio.vocal || 0) * 0.35;
 
             if (liquidBlobs.length && pathFrames.length) {
-                const totalPathLen = pathFrames.length;
-                // 随着播放进程，液体粒子在当前相机视区周围持续漂流推进
-                const currentBaseProgress = (currentIdx + interLineProgress) / Math.max(1, totalPathLen);
-
                 liquidBlobs.forEach((blob, bIdx) => {
-                    // 大幅降低漂移速度 (0.004x，原本的 1/3)，悠然漫步
-                    const loopP = (currentBaseProgress + blob.progressOffset + timeSec * 0.004) % 1.0;
-                    const exactIdx = loopP * (totalPathLen - 1);
-                    const idxA = Math.floor(exactIdx);
-                    const idxB = Math.min(totalPathLen - 1, idxA + 1);
-                    const alphaT = exactIdx - idxA;
+                    // 固定世界单位的局部景深，不随歌曲长度加速，也没有取模回跳。
+                    const depth = -1.5 + blob.progressOffset * 23
+                        + Math.sin(timeSec * blob.driftSpeed + blob.phase) * 1.4;
+                    const corePos = vadd(currentFocalPos, vscale(currentForward, depth));
+                    const coreRight = currentRight;
+                    const coreUp = currentUp;
 
-                    const frameA = pathFrames[idxA] || pathFrames[0];
-                    const frameB = pathFrames[idxB] || frameA;
-
-                    const corePos = vlerp(frameA.position, frameB.position, alphaT);
-                    const coreRight = frameA.right;
-                    const coreUp = frameA.up;
-
-                    // 大幅放缓螺旋环绕速度 (0.28x)
-                    const angle = blob.phase + timeSec * (0.28 * blob.handedness);
+                    const angle = blob.phase + timeSec * blob.driftSpeed * blob.handedness;
                     const spiralX = Math.cos(angle) * blob.radius;
                     const spiralY = Math.sin(angle) * blob.radius;
 
@@ -1132,17 +1233,22 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                     );
 
                     // 极其舒缓的自转与呼吸
-                    const pulse = blob.baseScale * (1.0 + energy * 0.22 + Math.sin(timeSec * 0.8 + bIdx) * 0.05);
+                    const pulse = blob.baseScale * (1.0 + energy * 0.06 + Math.sin(timeSec * 0.25 + bIdx) * 0.04);
                     blob.mesh.scale.set(
-                        pulse * (1.0 + Math.sin(timeSec * 0.9 + bIdx) * 0.08),
-                        pulse * (1.0 + Math.cos(timeSec * 0.75 + bIdx) * 0.06),
-                        pulse * (1.0 + Math.sin(timeSec * 1.1 + bIdx) * 0.07)
+                        pulse * (1.0 + Math.sin(timeSec * 0.22 + bIdx) * 0.12),
+                        pulse * (1.0 + Math.cos(timeSec * 0.19 + bIdx) * 0.1),
+                        pulse * (1.0 + Math.sin(timeSec * 0.27 + bIdx) * 0.08)
                     );
-                    blob.mesh.rotation.x += 0.0025;
-                    blob.mesh.rotation.y += 0.0035;
+                    // 按时间求值，重复更新同一帧不会额外加速。
+                    blob.mesh.rotation.set(
+                        blob.phase * 0.2 + timeSec * 0.025,
+                        blob.phase + timeSec * 0.035 * blob.handedness,
+                        Math.sin(timeSec * 0.08 + blob.phase) * 0.18
+                    );
 
-                    // 更新 Shader Uniforms
-                    blob.material.uniforms.uTime.value = timeSec;
+                    const morph = clamp((Math.sin(timeSec * blob.morphSpeed + blob.phase) + 0.25) / 1.15, 0, 1);
+                    blob.material.uniforms.uMorph.value = morph * morph * (3 - 2 * morph);
+                    blob.material.uniforms.uTime.value = timeSec * 0.45 + blob.phase;
                     blob.material.uniforms.uEnergy.value = energy;
                 });
             }
@@ -1152,11 +1258,15 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
             // ==========================================
             if (floatingGlyphs.length) {
                 floatingGlyphs.forEach((g) => {
-                    g.group.rotation.x += g.rotSpeed.x;
-                    g.group.rotation.y += g.rotSpeed.y;
-                    g.group.rotation.z += g.rotSpeed.z;
-                    const scalePulse = g.baseScale * (1.0 + energy * 0.2 + Math.sin(timeSec * 2.0 + g.phase) * 0.05);
+                    g.group.rotation.set(
+                        g.baseRotation.x + timeSec * g.rotSpeed.x,
+                        g.baseRotation.y + timeSec * g.rotSpeed.y,
+                        g.baseRotation.z + timeSec * g.rotSpeed.z
+                    );
+                    g.group.position.y = g.basePosition.y + Math.sin(timeSec * 0.18 + g.phase) * 0.18;
+                    const scalePulse = g.baseScale * (1.0 + energy * 0.06 + Math.sin(timeSec * 0.35 + g.phase) * 0.04);
                     g.group.scale.setScalar(scalePulse);
+                    g.obj.material.opacity = g.baseOpacity * (0.88 + Math.sin(timeSec * 0.28 + g.phase) * 0.12);
                 });
             }
 
