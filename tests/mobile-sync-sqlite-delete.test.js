@@ -190,7 +190,6 @@ function insertEntity(db, {
 test("Legacy Avatar 元数据迁移与快路共享同一持久状态", (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-avatar-source-"));
   const filename = path.join(directory, "sync_state_v2.db");
-  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const oldDatabase = new DatabaseSync(filename);
   oldDatabase.exec(`
     CREATE TABLE avatar_index (
@@ -211,6 +210,7 @@ test("Legacy Avatar 元数据迁移与快路共享同一持久状态", (t) => {
   const { database } = loadSqliteModules();
   const db = database.initDb(filename);
   t.after(() => db.close());
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   assert.deepEqual(
     db.prepare("PRAGMA table_info(avatar_index)").all()
       .filter((column) => ["mtime_ms", "file_size"].includes(column.name))
