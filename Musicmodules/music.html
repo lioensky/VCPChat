@@ -613,6 +613,44 @@
             <nav class="music-stage-mode-switcher" aria-label="歌词演出模式"></nav>
         </header>
 
+        <aside class="music-stage-settings" aria-label="舞台视觉设置">
+            <button class="music-stage-settings-toggle" type="button"
+                aria-expanded="false" aria-controls="music-stage-settings-card"
+                title="打开舞台视觉设置">
+                <span class="music-stage-settings-glyph" aria-hidden="true">✦</span>
+                <span class="music-stage-settings-toggle-label">视觉设置</span>
+            </button>
+            <section id="music-stage-settings-card" class="music-stage-settings-card" hidden>
+                <div class="music-stage-settings-header">
+                    <div>
+                        <div class="music-stage-settings-kicker">STAGE LAB</div>
+                        <h2>舞台视觉设置</h2>
+                    </div>
+                    <button class="music-stage-settings-close" type="button" aria-label="关闭舞台视觉设置">×</button>
+                </div>
+                <div class="music-stage-settings-body">
+                    <section class="music-stage-settings-section">
+                        <div class="music-stage-settings-section-title">顶部演出模式</div>
+                        <div class="music-stage-settings-hint">勾选要显示在顶部选择器中的模式</div>
+                        <div class="music-stage-mode-options"></div>
+                    </section>
+                    <section class="music-stage-settings-section">
+                        <div class="music-stage-settings-section-title">当前模式参数</div>
+                        <div class="music-stage-settings-hint music-stage-current-mode-hint"></div>
+                        <div class="music-stage-tuning-controls"></div>
+                    </section>
+                    <section class="music-stage-settings-section">
+                        <div class="music-stage-settings-section-title">通用表现</div>
+                        <div class="music-stage-common-controls"></div>
+                    </section>
+                </div>
+                <div class="music-stage-settings-footer">
+                    <button class="music-stage-settings-reset" type="button">恢复默认</button>
+                    <span class="music-stage-settings-status" aria-live="polite"></span>
+                </div>
+            </section>
+        </aside>
+
         <aside class="music-stage-id3" aria-label="当前曲目信息">
             <div class="music-stage-cover" role="img"></div>
             <div class="music-stage-track-copy">
@@ -820,6 +858,7 @@
     <!-- 确保 JS 在 body 结束前加载 -->
     <script src="socket.io.min.js"></script>
     <script src="music-stage/music-stage-runtime.js"></script>
+    <script src="music-stage/music-stage-config.js"></script>
     <script src="music-stage/music-stage-modes.js"></script>
     <script src="music-stage/music-stage-host.js"></script>
     <script src="music-utils.js"></script>

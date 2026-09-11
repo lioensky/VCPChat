@@ -3,7 +3,8 @@
 
     const Runtime = global.MusicStageRuntime;
     const Modes = global.MusicStageModes;
-    if (!Runtime || !Modes) throw new Error('Music stage runtime and modes must load before music-stage-host.js');
+    const Config = global.MusicStageConfig;
+    if (!Runtime || !Modes || !Config) throw new Error('Music stage runtime, config and modes must load before music-stage-host.js');
 
     const { clamp, DisposableScope } = Runtime;
 
@@ -12,7 +13,10 @@
     const createElement = (tag, className, attributes = {}) => {
         const element = document.createElement(tag);
         if (className) element.className = className;
-        Object.entries(attributes).forEach(([name, value]) => {
+        const resolvedAttributes = typeof attributes === 'string'
+            ? { text: attributes }
+            : attributes;
+        Object.entries(resolvedAttributes || {}).forEach(([name, value]) => {
             if (name === 'text') element.textContent = value;
             else if (name === 'html') element.innerHTML = value;
             else if (value !== undefined && value !== null) element.setAttribute(name, String(value));
@@ -48,6 +52,16 @@
             edgeCanvas: root.querySelector('.music-stage-edge-spectrum-canvas'),
             modeRoot: root.querySelector('.music-stage-mode-root'),
             modeSwitcher: root.querySelector('.music-stage-mode-switcher'),
+            settings: root.querySelector('.music-stage-settings'),
+            settingsToggle: root.querySelector('.music-stage-settings-toggle'),
+            settingsCard: root.querySelector('.music-stage-settings-card'),
+            settingsClose: root.querySelector('.music-stage-settings-close'),
+            modeOptions: root.querySelector('.music-stage-mode-options'),
+            tuningControls: root.querySelector('.music-stage-tuning-controls'),
+            commonControls: root.querySelector('.music-stage-common-controls'),
+            settingsHint: root.querySelector('.music-stage-current-mode-hint'),
+            settingsReset: root.querySelector('.music-stage-settings-reset'),
+            settingsStatus: root.querySelector('.music-stage-settings-status'),
             cover: root.querySelector('.music-stage-cover'),
             title: root.querySelector('.music-stage-track-title'),
             artist: root.querySelector('.music-stage-track-artist'),
@@ -79,6 +93,39 @@
         };
 
         const scope = new DisposableScope();
+        const tuningDefinitions = Object.freeze({
+            luminous: [
+                { key: 'wordRotation', label: '逐字旋转', type: 'toggle' },
+                { key: 'breathing', label: '呼吸浮动', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'wordSpacing', label: '文字间距', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'glow', label: '辉光强度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' }
+            ],
+            partita: [
+                { key: 'guideLines', label: '引导线', type: 'toggle' },
+                { key: 'semanticLayout', label: '语义分块', type: 'toggle' },
+                { key: 'staggerMin', label: '最小错位', type: 'range', min: 0, max: 180, step: 5, unit: 'px' },
+                { key: 'staggerMax', label: '最大错位', type: 'range', min: 0, max: 180, step: 5, unit: 'px' },
+                { key: 'power', label: '构图强度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' }
+            ],
+            cadenza: [
+                { key: 'motion', label: '镜头运动', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'fontScale', label: '文字比例', type: 'range', min: 0.65, max: 1.5, step: 0.05, unit: 'x' },
+                { key: 'widthRatio', label: '构图宽度', type: 'range', min: 0.5, max: 0.95, step: 0.01, unit: '' },
+                { key: 'glow', label: '辉光强度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' }
+            ],
+            fume: [
+                { key: 'geometricBackground', label: '几何背景', type: 'toggle' },
+                { key: 'backgroundOpacity', label: '背景物体', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+                { key: 'cameraSpeed', label: '镜头速度', type: 'range', min: 0.55, max: 1.85, step: 0.05, unit: 'x' },
+                { key: 'cameraMode', label: '镜头方式', type: 'select', options: [['smooth', '平滑'], ['stepped', '定格']] },
+                { key: 'glow', label: '辉光强度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'heroScale', label: '标题比例', type: 'range', min: 0.82, max: 1.32, step: 0.02, unit: 'x' }
+            ],
+            starborn: [
+                { key: 'transitionLock', label: '转场锁定', type: 'range', min: 0.5, max: 12, step: 0.5, unit: 's' },
+                { key: 'avoidRepeat', label: '避免重复', type: 'toggle' }
+            ]
+        });
         const state = {
             active: false,
             modeId: localStorage.getItem('musicStageMode') || 'luminous',
@@ -93,6 +140,8 @@
             lastTransportSignature: '',
             lastNonZeroVolume: Math.max(0.35, Number(app.volumeSlider?.value) || 1),
             destroyed: false,
+            config: Config.get(),
+            settingsOpen: false,
             stats: {
                 modeCreates: 0,
                 modeDestroys: 0,
@@ -121,6 +170,7 @@
             state.modeId = Modes.get(modeId).id;
             state.modeInstance = Modes.create(state.modeId, elements.modeRoot, {
                 app,
+                config: state.config,
                 generation: state.generation,
                 isCurrentGeneration: (generation) => generation === state.generation && !state.destroyed
             });
@@ -138,7 +188,10 @@
 
         const renderModeButtons = () => {
             const fragment = document.createDocumentFragment();
-            Modes.entries.forEach((entry) => {
+            const visibleIds = state.config.enabledModes.includes(state.modeId)
+                ? state.config.enabledModes
+                : [state.modeId, ...state.config.enabledModes];
+            Modes.entries.filter((entry) => visibleIds.includes(entry.id)).forEach((entry) => {
                 const button = createElement('button', 'music-stage-mode-button', {
                     type: 'button',
                     text: entry.label,
@@ -149,6 +202,108 @@
                 fragment.appendChild(button);
             });
             elements.modeSwitcher.replaceChildren(fragment);
+        };
+
+        const formatTuningValue = (definition, value) => {
+            if (definition.type === 'toggle') return value ? '开' : '关';
+            if (definition.unit === '%') return `${Math.round(Number(value) * 100)}%`;
+            return `${Number(value).toFixed(definition.step < 0.1 ? 2 : 1)}${definition.unit || ''}`;
+        };
+
+        const renderSettingsControls = () => {
+            if (!elements.modeOptions || !elements.tuningControls || !elements.commonControls) return;
+            const config = state.config;
+            const modeFragment = document.createDocumentFragment();
+            Modes.entries.forEach((entry) => {
+                const label = createElement('label', 'music-stage-mode-option');
+                const checkbox = createElement('input', '', { type: 'checkbox' });
+                checkbox.checked = config.enabledModes.includes(entry.id);
+                checkbox.disabled = config.enabledModes.length === 1 && checkbox.checked;
+                checkbox.dataset.stageConfigMode = entry.id;
+                const text = createElement('span', 'music-stage-mode-option-copy');
+                text.textContent = entry.label;
+                label.append(checkbox, text);
+                modeFragment.appendChild(label);
+            });
+            elements.modeOptions.replaceChildren(modeFragment);
+
+            const modeMeta = Config.modes.find((entry) => entry.id === state.modeId);
+            if (elements.settingsHint) elements.settingsHint.textContent = modeMeta?.description || '';
+            const tuningFragment = document.createDocumentFragment();
+            (tuningDefinitions[state.modeId] || []).forEach((definition) => {
+                const value = config.modes[state.modeId]?.[definition.key];
+                const row = createElement('label', 'music-stage-tuning-row');
+                const header = createElement('span', 'music-stage-tuning-label');
+                const valueText = createElement('span', 'music-stage-tuning-value');
+                header.textContent = definition.label;
+                valueText.textContent = formatTuningValue(definition, value);
+                const control = definition.type === 'toggle'
+                    ? createElement('input', '', { type: 'checkbox' })
+                    : definition.type === 'select'
+                        ? createElement('select', '')
+                        : createElement('input', '', {
+                            type: 'range',
+                            min: definition.min,
+                            max: definition.max,
+                            step: definition.step,
+                            value
+                        });
+                if (definition.type === 'toggle') control.checked = Boolean(value);
+                if (definition.type === 'select') {
+                    definition.options.forEach(([optionValue, optionLabel]) => {
+                        const option = createElement('option', '', { value: optionValue, text: optionLabel });
+                        control.appendChild(option);
+                    });
+                    control.value = value;
+                }
+                control.dataset.stageConfigKey = definition.key;
+                control.dataset.stageConfigType = definition.type;
+                const handleControlChange = () => {
+                    const next = definition.type === 'toggle'
+                        ? control.checked
+                        : definition.type === 'range'
+                            ? Number(control.value)
+                            : control.value;
+                    valueText.textContent = formatTuningValue(definition, next);
+                    Config.setModePatch(state.modeId, { [definition.key]: next });
+                };
+                control.addEventListener('input', handleControlChange);
+                control.addEventListener('change', handleControlChange);
+                row.append(header, valueText, control);
+                tuningFragment.appendChild(row);
+            });
+            elements.tuningControls.replaceChildren(tuningFragment);
+
+            const commonFragment = document.createDocumentFragment();
+            const edgeRow = createElement('label', 'music-stage-tuning-row');
+            const edgeLabel = createElement('span', 'music-stage-tuning-label', '边缘频谱');
+            const edgeToggle = createElement('input', '', { type: 'checkbox' });
+            edgeToggle.checked = config.edgeSpectrum !== false;
+            edgeToggle.addEventListener('change', () => Config.update({ edgeSpectrum: edgeToggle.checked }));
+            edgeRow.append(edgeLabel, edgeToggle);
+            commonFragment.appendChild(edgeRow);
+
+            const quality = createElement('select', 'music-stage-common-select');
+            [['energy-saving', '节能'], ['standard', '标准'], ['ultimate', '极致']].forEach(([value, label]) => {
+                quality.appendChild(createElement('option', '', { value, text: label }));
+            });
+            quality.value = config.quality;
+            quality.addEventListener('change', () => Config.update({ quality: quality.value }));
+            const qualityRow = createElement('label', 'music-stage-tuning-row');
+            qualityRow.append(createElement('span', 'music-stage-tuning-label', '性能档位'), quality);
+            const intensity = createElement('input', 'music-stage-common-range', {
+                type: 'range', min: 0, max: 2, step: 0.05, value: config.animationIntensity
+            });
+            const intensityValue = createElement('span', 'music-stage-tuning-value', `${config.animationIntensity.toFixed(2)}x`);
+            intensity.addEventListener('input', () => {
+                const next = Number(intensity.value);
+                intensityValue.textContent = `${next.toFixed(2)}x`;
+                Config.update({ animationIntensity: next });
+            });
+            const intensityRow = createElement('label', 'music-stage-tuning-row');
+            intensityRow.append(createElement('span', 'music-stage-tuning-label', '动画总强度'), intensityValue, intensity);
+            commonFragment.append(qualityRow, intensityRow);
+            elements.commonControls.replaceChildren(commonFragment);
         };
 
         const updateBackdrop = (coverUrl) => {
@@ -475,6 +630,7 @@
             if (resolved === state.modeId && state.modeInstance) return;
             state.stats.modeSwitches += 1;
             state.modeId = resolved;
+            renderSettingsControls();
             if (!state.active) {
                 localStorage.setItem('musicStageMode', resolved);
                 return;
@@ -492,6 +648,11 @@
             if (!state.active) return;
             if (event.key === 'Escape') {
                 event.preventDefault();
+                if (state.settingsOpen) {
+                    setSettingsOpen(false);
+                    elements.settingsToggle?.focus({ preventScroll: true });
+                    return;
+                }
                 exit();
             } else if (event.code === 'Space' && !event.target.closest('button, input, select')) {
                 event.preventDefault();
@@ -505,7 +666,33 @@
             }
         };
 
+        const setSettingsOpen = (open) => {
+            state.settingsOpen = Boolean(open);
+            if (elements.settingsCard) elements.settingsCard.hidden = !state.settingsOpen;
+            elements.settingsToggle?.setAttribute('aria-expanded', String(state.settingsOpen));
+            elements.settings?.classList.toggle('is-open', state.settingsOpen);
+            if (state.settingsOpen) {
+                renderSettingsControls();
+                elements.settingsClose?.focus({ preventScroll: true });
+            }
+        };
+
+        const handleConfigChange = (config) => {
+            state.config = config;
+            root.classList.toggle('stage-edge-spectrum-off', config.edgeSpectrum === false);
+            renderModeButtons();
+            renderSettingsControls();
+            state.modeInstance?.updateConfig?.(config);
+            if (elements.settingsStatus) {
+                elements.settingsStatus.textContent = '已保存';
+                elements.settingsStatus.classList.add('is-visible');
+                setTimeout(() => elements.settingsStatus.classList.remove('is-visible'), 1200);
+            }
+        };
+
+        root.classList.toggle('stage-edge-spectrum-off', state.config.edgeSpectrum === false);
         renderModeButtons();
+        renderSettingsControls();
         elements.play.innerHTML = `${icons.play}${icons.pause}`;
         elements.prev.innerHTML = icons.previous;
         elements.next.innerHTML = icons.next;
@@ -513,6 +700,22 @@
         updateTransportControls();
 
         scope.listen(toggleButton, 'click', toggle);
+        scope.listen(elements.settingsToggle, 'click', () => setSettingsOpen(!state.settingsOpen));
+        scope.listen(elements.settingsClose, 'click', () => setSettingsOpen(false));
+        scope.listen(elements.settingsReset, 'click', () => Config.reset());
+        scope.listen(elements.modeOptions, 'change', (event) => {
+            const checkbox = event.target.closest('[data-stage-config-mode]');
+            if (!checkbox) return;
+            Config.toggleMode(checkbox.dataset.stageConfigMode, checkbox.checked);
+        });
+        scope.listen(document, 'pointerdown', (event) => {
+            if (state.settingsOpen
+                && elements.settings
+                && !elements.settings.contains(event.target)) {
+                setSettingsOpen(false);
+            }
+        });
+        scope.add(Config.subscribe(handleConfigChange));
         scope.listen(elements.play, 'click', () => app.isPlaying ? app.pauseTrack() : app.playTrack());
         scope.listen(elements.prev, 'click', () => app.prevTrack());
         scope.listen(elements.next, 'click', () => app.nextTrack());
@@ -608,6 +811,7 @@
                 if (state.destroyed) return;
                 state.destroyed = true;
                 state.active = false;
+                setSettingsOpen(false);
                 app.isStageActive = false;
                 state.generation += 1;
                 if (state.backgroundTimer) clearTimeout(state.backgroundTimer);

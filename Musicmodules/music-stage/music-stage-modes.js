@@ -50,6 +50,7 @@
 
     const makeModeBase = (id, label, container, services) => {
         const scope = new DisposableScope();
+        let config = services?.config || global.MusicStageConfig?.get?.() || {};
         const root = createElement('section', `music-stage-mode music-stage-mode-${id}`);
         root.dataset.mode = id;
         container.appendChild(root);
@@ -61,6 +62,10 @@
             root,
             scope,
             services,
+            get config() { return config; },
+            updateConfig(nextConfig) {
+                config = nextConfig || config;
+            },
             get destroyed() { return destroyed; },
             resize() {},
             updateTheme() {},
@@ -111,10 +116,12 @@
                 layoutSeed = `${key}:${frame.viewport.width}:${frame.viewport.height}`;
                 const random = seededRandom(layoutSeed);
                 wordElements.forEach((word, index) => {
+                    const tuning = mode.config.modes?.luminous || {};
                     const calm = frame.wordStates.length > 12 ? 0.55 : 1;
+                    const rotation = tuning.wordRotation === false ? 0 : (Number(tuning.glow) || 1);
                     word.style.setProperty('--word-x', `${((random() - 0.5) * 44 * calm).toFixed(1)}px`);
                     word.style.setProperty('--word-y', `${((random() - 0.5) * 34 * calm).toFixed(1)}px`);
-                    word.style.setProperty('--word-rotate', `${((random() - 0.5) * 9 * calm).toFixed(2)}deg`);
+                    word.style.setProperty('--word-rotate', `${((random() - 0.5) * 9 * calm * rotation).toFixed(2)}deg`);
                     word.style.setProperty('--word-scale', (1.04 + random() * 0.2).toFixed(3));
                     word.style.setProperty('--word-delay', `${Math.min(index * 28, 260)}ms`);
                 });
@@ -122,11 +129,15 @@
                 updateTimedWords(wordElements, frame.wordStates);
             }
 
+            const tuning = mode.config.modes?.luminous || {};
             const vocal = frame.audio.vocal;
             const bass = frame.audio.bass;
+            const intensity = Number(mode.config.animationIntensity) || 1;
             mode.root.style.setProperty('--stage-vocal', vocal.toFixed(4));
             mode.root.style.setProperty('--stage-bass', bass.toFixed(4));
-            aura.style.transform = `translate3d(-50%, -50%, 0) scale(${(0.88 + bass * 0.2).toFixed(3)})`;
+            aura.style.transform = `translate3d(-50%, -50%, 0) scale(${(0.88 + bass * 0.2 * intensity * (Number(tuning.breathing) || 1)).toFixed(3)})`;
+            mode.root.style.setProperty('--stage-luminous-glow', String(Number(tuning.glow) || 1));
+            mode.root.style.setProperty('--stage-luminous-spacing', `${(Number(tuning.wordSpacing) || 0.7).toFixed(2)}`);
             line.style.setProperty('--line-progress', frame.lineProgress.toFixed(4));
         };
 
@@ -179,7 +190,11 @@
                 groups.forEach((group, groupIndex) => {
                     const block = createElement('div', 'partita-block');
                     block.style.setProperty('--block-order', String(groupIndex));
-                    block.style.setProperty('--block-offset', `${((random() - 0.5) * 9).toFixed(2)}vh`);
+                    const tuning = mode.config.modes?.partita || {};
+                    const staggerMin = Number(tuning.staggerMin) || 20;
+                    const staggerMax = Number(tuning.staggerMax) || 100;
+                    const stagger = staggerMin + random() * Math.max(0, staggerMax - staggerMin);
+                    block.style.setProperty('--block-offset', `${((random() > 0.5 ? 1 : -1) * stagger / 10).toFixed(2)}vh`);
                     block.style.setProperty('--block-angle', `${((random() - 0.5) * 3).toFixed(2)}deg`);
                     const marker = createElement('span', 'partita-marker', String(groupIndex + 1).padStart(2, '0'));
                     const text = createElement('div', 'partita-block-text');
@@ -197,8 +212,11 @@
                 updateTimedWords(wordElements, frame.wordStates);
             }
 
-            mode.root.style.setProperty('--stage-power', frame.audio.power.toFixed(4));
+            const tuning = mode.config.modes?.partita || {};
+            const intensity = Number(mode.config.animationIntensity) || 1;
+            mode.root.style.setProperty('--stage-power', (frame.audio.power * (Number(tuning.power) || 1) * intensity).toFixed(4));
             mode.root.style.setProperty('--partita-progress', frame.lineProgress.toFixed(4));
+            mode.root.classList.toggle('stage-hide-guide-lines', tuning.guideLines === false);
         };
 
         return mode;
@@ -289,11 +307,18 @@
                 updateTimedWords(wordElements, frame.wordStates);
             }
 
+            const tuning = mode.config.modes?.cadenza || {};
+            const intensity = Number(mode.config.animationIntensity) || 1;
             const active = composition.querySelector('.cadenza-line.is-current');
             if (active) {
-                const drift = (frame.lineProgress - 0.5) * -46;
-                composition.style.transform = `translate3d(${drift.toFixed(2)}px, ${(frame.audio.lowMid * -10).toFixed(2)}px, 0)`;
+                const drift = (frame.lineProgress - 0.5) * -46 * (Number(tuning.motion) || 1) * intensity;
+                const vertical = frame.audio.lowMid * -10 * (Number(tuning.motion) || 1) * intensity;
+                composition.style.transform = `translate3d(${drift.toFixed(2)}px, ${vertical.toFixed(2)}px, 0)`;
             }
+            mode.root.style.setProperty('--cadenza-font-scale', String(Number(tuning.fontScale) || 1));
+            mode.root.style.setProperty('--cadenza-glow', String(Number(tuning.glow) || 1));
+            const widthRatio = Number(mode.config.modes?.cadenza?.widthRatio) || 0.78;
+            viewport.style.width = `${Math.round(clamp(widthRatio, 0.5, 0.95) * 100)}vw`;
             mode.root.style.setProperty('--stage-vocal', frame.audio.vocal.toFixed(4));
         };
 
@@ -459,9 +484,21 @@
                 shapes.forEach((shape) => drawFumeShape(context, shape, frame, canvasWidth, canvasHeight));
             }
 
-            const cameraX = (frame.lineProgress - 0.5) * -4.5;
-            const cameraY = Math.sin(frame.lineProgress * Math.PI) * -2.2;
-            world.style.transform = `translate3d(${cameraX.toFixed(2)}vw, ${cameraY.toFixed(2)}vh, 0) scale(${(1 + frame.audio.bass * 0.018).toFixed(4)})`;
+            const tuning = mode.config.modes?.fume || {};
+            const intensity = Number(mode.config.animationIntensity) || 1;
+            const cameraSpeed = Number(tuning.cameraSpeed) || 1;
+            const cameraMode = tuning.cameraMode === 'stepped' ? 'stepped' : 'smooth';
+            const cameraProgress = cameraMode === 'stepped'
+                ? Math.round(frame.lineProgress * 8) / 8
+                : frame.lineProgress;
+            const cameraX = (cameraProgress - 0.5) * -4.5 * cameraSpeed * intensity;
+            const cameraY = Math.sin(cameraProgress * Math.PI) * -2.2 * cameraSpeed * intensity;
+            const scale = 1 + frame.audio.bass * 0.018 * intensity;
+            world.style.transform = `translate3d(${cameraX.toFixed(2)}vw, ${cameraY.toFixed(2)}vh, 0) scale(${scale.toFixed(4)})`;
+            mode.root.style.setProperty('--fume-background-opacity', String(Number(tuning.backgroundOpacity) || 0.5));
+            mode.root.style.setProperty('--fume-glow-intensity', String(Number(tuning.glow) || 1));
+            mode.root.style.setProperty('--fume-hero-scale', String(Number(tuning.heroScale) || 1));
+            mode.root.classList.toggle('stage-hide-fume-background', tuning.geometricBackground === false);
             mode.root.style.setProperty('--stage-vocal', frame.audio.vocal.toFixed(4));
         };
 
@@ -629,11 +666,13 @@
                 pendingSegment = segment;
             }
 
+            const transitionLock = Number(mode.config.modes?.starborn?.transitionLock)
+                || STARBORN_TRANSITION_LOCK_SECONDS;
             const lockElapsed = frame.playbackTime - lastTransitionPlaybackTime;
             const canTransition = !childMode
                 || trackChanged
                 || playbackJumpedBackward
-                || lockElapsed >= STARBORN_TRANSITION_LOCK_SECONDS;
+                || lockElapsed >= transitionLock;
 
             if (pendingSegment && canTransition) {
                 const selection = chooseStarbornMode(
