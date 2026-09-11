@@ -235,6 +235,81 @@ class PluginAgentOperationService {
         return { result: operationResult, config: update.config };
     }
 
+    /**
+     * MobileSync 专用 Agent Owner 配置提交。
+     * 只接受已由同步 DTO 层筛选出的字段，并在锁内重新读取最新配置；
+     * 绝不接收任意 updater，避免同步边界绕过插件配置约束。
+     */
+    async applySyncedAgentOwner(agentId, dto) {
+        const allowedFields = new Set([
+            'name',
+            'systemPrompt',
+            'model',
+            'temperature',
+            'contextTokenLimit',
+            'maxOutputTokens',
+            'streamOutput',
+        ]);
+        if (!dto || typeof dto !== 'object' || Array.isArray(dto)) {
+            throw new TypeError('同步 Agent Owner DTO 无效。');
+        }
+        const patch = {};
+        for (const field of allowedFields) {
+            if (dto[field] !== undefined) patch[field] = dto[field];
+        }
+        const updated = await this.updateAgent(agentId, config => ({
+            config: { ...config, ...patch },
+            result: { fields: Object.keys(patch) },
+        }));
+        return updated.config;
+    }
+
+    /**
+     * MobileSync 专用 Agent Topic 提交。
+     * 在同一个 AgentConfigManager 队列事务内按 Topic ID upsert，保留
+     * 同步期间由后台 Agent/TopicSponsor 创建的其他 Topic。
+     */
+    async applySyncedAgentTopics(agentId, topicDtos) {
+        const id = validateId(agentId, 'agentId');
+        if (!Array.isArray(topicDtos)) {
+            throw new TypeError('同步 Agent Topic DTO 必须是数组。');
+        }
+        const updated = await this.updateAgent(id, config => {
+            const topics = Array.isArray(config.topics) ? [...config.topics] : [];
+            const byId = new Map(topics.map(topic => [topic?.id, topic]));
+            for (const dto of topicDtos) {
+                if (!dto || typeof dto !== 'object' || Array.isArray(dto)
+                    || dto.ownerId !== id
+                    || typeof dto.id !== 'string'
+                    || !dto.id.trim()
+                    || typeof dto.name !== 'string'
+                    || !Number.isSafeInteger(dto.createdAt)
+                    || (dto.locked !== undefined && typeof dto.locked !== 'boolean')
+                    || (dto.unread !== undefined && typeof dto.unread !== 'boolean')) {
+                    throw new TypeError('同步 Agent Topic DTO 无效。');
+                }
+                const previous = byId.get(dto.id);
+                const next = {
+                    ...(previous || {}),
+                    id: dto.id,
+                    name: dto.name,
+                    createdAt: dto.createdAt,
+                    locked: dto.locked ?? previous?.locked ?? true,
+                    unread: dto.unread ?? previous?.unread ?? false,
+                    creatorSource: previous?.creatorSource ?? 'ui',
+                };
+                byId.set(dto.id, next);
+            }
+            const nextTopics = [...byId.values()]
+                .sort((left, right) => (right.createdAt || 0) - (left.createdAt || 0));
+            return {
+                config: { ...config, topics: nextTopics },
+                result: { topicIds: topicDtos.map(dto => dto.id) },
+            };
+        });
+        return updated.config;
+    }
+
     async processToolCall(toolName, args = {}, executionContext = {}) {
         if (toolName === 'PromptSponsor') {
             return this.processPromptCommand(args, executionContext);

@@ -147,6 +147,43 @@ test('提示词与话题并发委托保留双方字段', async t => {
     assert.equal(config.topics[0].flowlockRequest.requestId, 'create-flowlock-concurrent');
 });
 
+test('MobileSync 与后台 TopicSponsor 并发时通过中央配置桥保留双方更新', async t => {
+    const { service, agentId, agentConfigManager } = await fixture(t);
+
+    const [, , backgroundTopic] = await Promise.all([
+        service.applySyncedAgentOwner(agentId, {
+            name: '同步后的名称',
+            model: 'model-synced',
+            topics: [{ id: 'must-not-replace', name: '越权话题' }],
+            unrelated: { keep: false },
+        }),
+        service.applySyncedAgentTopics(agentId, [{
+            id: 'synced-topic',
+            ownerId: agentId,
+            name: '手机同步话题',
+            createdAt: 20,
+            locked: true,
+            unread: false,
+        }]),
+        service.processTopicCommand({
+            command: 'CreateTopic',
+            maid: '小娜',
+            topic_name: '后台汇报话题',
+            initial_message: '后台工作已经完成。',
+        }, { requestId: 'background-report-concurrent' }),
+    ]);
+
+    const config = await agentConfigManager.readAgentConfig(agentId);
+    const topicIds = new Set(config.topics.map(topic => topic.id));
+    assert.equal(config.name, '同步后的名称');
+    assert.equal(config.model, 'model-synced');
+    assert.equal(config.unrelated.keep, true, '同步不得覆盖 Owner 白名单外字段');
+    assert.equal(topicIds.has('existing-topic'), true);
+    assert.equal(topicIds.has('synced-topic'), true);
+    assert.equal(topicIds.has(backgroundTopic.topic_id), true);
+    assert.equal(topicIds.has('must-not-replace'), false);
+});
+
 test('未知命令、非法目标和非唯一名称在写入前被拒绝', async t => {
     const { service, agentConfigManager } = await fixture(t);
 

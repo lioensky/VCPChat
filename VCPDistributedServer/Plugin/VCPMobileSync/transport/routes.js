@@ -212,7 +212,12 @@ function requestStage(req) {
  * @param {string} params.syncToken - 同步令牌
  * @param {string} params.appDataPath - AppData 路径
  */
-function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
+function registerRoutes(app, {
+  syncToken,
+  appDataPath,
+  centralSync = null,
+  pluginAgentOperationService = null,
+}) {
   const router = express.Router();
   const logger = getLogger();
 
@@ -368,13 +373,20 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
         );
         const rawResults = [];
         for (const { internal } of ownerItems) {
-          rawResults.push(await uploadEntity({ ...internal, appDataPath }));
+          rawResults.push(await uploadEntity({
+            ...internal,
+            appDataPath,
+            pluginAgentOperationService,
+          }));
         }
         if (topicItems.length > 0) {
           rawResults.push(...await uploadEntitiesBatch(
             topicItems.map(({ internal }) => internal),
             appDataPath,
-            { maintainLegacyOwnerRoot: centralSync === null },
+            {
+              maintainLegacyOwnerRoot: centralSync === null,
+              pluginAgentOperationService,
+            },
           ));
         }
         const results = rawResults.map((result) =>

@@ -1082,6 +1082,14 @@ if (!gotTheLock) {
             fileWatcher,
             logger: console
         });
+        pluginAgentOperationService = new PluginAgentOperationService({
+            agentDir: AGENT_DIR,
+            userDataDir: USER_DATA_DIR,
+            agentConfigManager,
+            historyMutationQueue,
+            appDataRoot: APP_DATA_ROOT_IN_PROJECT,
+            logger: console
+        });
 
         // Phase 1: VCP-CDS runs only as an optional shadow mirror. Start it in
         // the background so database reconciliation can never delay the window

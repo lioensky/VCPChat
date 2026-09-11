@@ -380,7 +380,10 @@ async function downloadEntities(requests) {
 async function uploadEntitiesBatch(
   items,
   appDataPath,
-  { maintainLegacyOwnerRoot = true } = {},
+  {
+    maintainLegacyOwnerRoot = true,
+    pluginAgentOperationService = null,
+  } = {},
 ) {
   if (!Array.isArray(items)) return [];
 
@@ -492,52 +495,80 @@ async function uploadEntitiesBatch(
   try {
     // 2. 按文件顺序处理，每个文件执行一次读取-修改-写入
     for (const [configPath, group] of fileGroups) {
-      const release = await acquireLock(configPath);
+      const isBridgedAgentGroup =
+        group.items[0]?.ownerType === "agent" &&
+        pluginAgentOperationService &&
+        typeof pluginAgentOperationService.applySyncedAgentTopics === "function";
+      const release = isBridgedAgentGroup
+        ? () => {}
+        : await acquireLock(configPath);
       try {
-        const content = await fs.readFile(configPath, "utf-8");
-        if (!content.trim()) {
-          throw new Error("Parent config is empty");
-        }
-        let config = JSON.parse(content);
-        if (!config || typeof config !== "object" || Array.isArray(config)) {
-          throw new Error("Parent config root must be an object");
-        }
+        let config;
         const successfulIds = new Set();
 
-        // 依次应用该文件下的所有更新
-        for (const item of group.items) {
-          const { id, type, data } = item;
-
-          try {
-            config = await handleTopicUpload({
-              config,
-              id,
-              entityType: type,
-              data,
-              configPath,
-              appDataPath,
-            });
-
+        if (isBridgedAgentGroup) {
+          const ownerId = group.items[0].ownerId;
+          for (const item of group.items) {
+            await ensureTopicHistory(appDataPath, ownerId, item.id);
+          }
+          config = await pluginAgentOperationService.applySyncedAgentTopics(
+            ownerId,
+            group.items.map((item) => item.data),
+          );
+          for (const item of group.items) {
             results.push({
               ...entityResultIdentity(item),
               success: true,
             });
-            successfulIds.add(id);
-          } catch (e) {
-            results.push(entityFailure(e, {
-              code: "SYNC_ENTITY_WRITE_FAILED",
-              stage: "topic_metadata",
-              failedTopicIds: [id],
-            }, entityResultIdentity(item)));
+            successfulIds.add(item.id);
+          }
+        } else {
+          const content = await fs.readFile(configPath, "utf-8");
+          if (!content.trim()) {
+            throw new Error("Parent config is empty");
+          }
+          config = JSON.parse(content);
+          if (!config || typeof config !== "object" || Array.isArray(config)) {
+            throw new Error("Parent config root must be an object");
+          }
+
+          // 依次应用该文件下的所有更新
+          for (const item of group.items) {
+            const { id, type, data } = item;
+
+            try {
+              config = await handleTopicUpload({
+                config,
+                id,
+                entityType: type,
+                data,
+                configPath,
+                appDataPath,
+              });
+
+              results.push({
+                ...entityResultIdentity(item),
+                success: true,
+              });
+              successfulIds.add(id);
+            } catch (e) {
+              results.push(entityFailure(e, {
+                code: "SYNC_ENTITY_WRITE_FAILED",
+                stage: "topic_metadata",
+                failedTopicIds: [id],
+              }, entityResultIdentity(item)));
+            }
+          }
+
+          if (successfulIds.size > 0) {
+            // Group/Legacy 保持原有物理原子写入；Agent 已由中央配置桥提交。
+            const tmpPath = `${configPath}.tmp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+            await fs.writeFile(tmpPath, JSON.stringify(config, null, 2), "utf-8");
+            await fs.rename(tmpPath, configPath);
           }
         }
 
         if (successfulIds.size === 0) continue;
-
-        // 原子写入
-        const tmpPath = `${configPath}.tmp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-        await fs.writeFile(tmpPath, JSON.stringify(config, null, 2), "utf-8");
-        await fs.rename(tmpPath, configPath);
 
         // 同一父 config 的 Topic 状态先全部提交；Legacy 再刷新一次 Owner root。
         const successfulItems = group.items.filter((item) => successfulIds.has(item.id));
@@ -600,7 +631,15 @@ async function uploadEntitiesBatch(
  * @param {string} params.appDataPath - AppData 路径
  * @returns {Promise<{success: boolean, error?: object}>}
  */
-async function uploadEntity({ id, type, ownerType, ownerId, data, appDataPath }) {
+async function uploadEntity({
+  id,
+  type,
+  ownerType,
+  ownerId,
+  data,
+  appDataPath,
+  pluginAgentOperationService = null,
+}) {
   const db = getDb();
   const logger = getLogger();
   if (!db) {
@@ -738,7 +777,12 @@ async function uploadEntity({ id, type, ownerType, ownerId, data, appDataPath })
     ownerId: topicOwnerId,
   });
 
-  const release = await acquireLock(configPath);
+  const useAgentBridge =
+    type === "agent" &&
+    !isNewEntity &&
+    pluginAgentOperationService &&
+    typeof pluginAgentOperationService.applySyncedAgentOwner === "function";
+  const release = useAgentBridge ? () => {} : await acquireLock(configPath);
   try {
     // 2. 读取现有配置或初始化
     let config = {};
@@ -763,37 +807,41 @@ async function uploadEntity({ id, type, ownerType, ownerId, data, appDataPath })
     }
 
     // 3. 根据 type 处理
-    if (isTopic) {
-      config = await handleTopicUpload({
-        config,
-        id: safeId,
-        entityType: type,
-        data,
-        configPath,
-        appDataPath,
-      });
-    } else if (type === "agent") {
-      config = handleAgentUpload({ config, id: safeId, data, fileReadSuccess });
-    } else if (type === "group") {
-      config = handleGroupUpload({ config, id: safeId, data, fileReadSuccess });
-    }
+    if (useAgentBridge) {
+      config = await pluginAgentOperationService.applySyncedAgentOwner(safeId, data);
+    } else {
+      if (isTopic) {
+        config = await handleTopicUpload({
+          config,
+          id: safeId,
+          entityType: type,
+          data,
+          configPath,
+          appDataPath,
+        });
+      } else if (type === "agent") {
+        config = handleAgentUpload({ config, id: safeId, data, fileReadSuccess });
+      } else if (type === "group") {
+        config = handleGroupUpload({ config, id: safeId, data, fileReadSuccess });
+      }
 
-    if (!isTopic) requireTopicProjection(config, safeId);
+      if (!isTopic) requireTopicProjection(config, safeId);
 
-    // 4. 写入前校验：确保 config 不为数组且包含正确的 id
-    if (Array.isArray(config)) {
-      throw new Error(`Refusing to write array as config for ${safeId}`);
-    }
-    // Group 配置必须包含 id 且匹配；Agent 配置不写入 id，由目录名推导
-    if (type === "group" && config.id !== safeId) {
-      logger.logOperation(phase, "upload", safeId, "error", `Config ID mismatch: expected ${safeId}, got ${config.id}`);
-      throw new Error(`Config ID mismatch for ${safeId}`);
-    }
+      // 4. 写入前校验：确保 config 不为数组且包含正确的 id
+      if (Array.isArray(config)) {
+        throw new Error(`Refusing to write array as config for ${safeId}`);
+      }
+      // Group 配置必须包含 id 且匹配；Agent 配置不写入 id，由目录名推导
+      if (type === "group" && config.id !== safeId) {
+        logger.logOperation(phase, "upload", safeId, "error", `Config ID mismatch: expected ${safeId}, got ${config.id}`);
+        throw new Error(`Config ID mismatch for ${safeId}`);
+      }
 
-    // V2: 原子写入，防止并发导致文件内容为空或损坏
-    const tmpPath = `${configPath}.tmp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-    await fs.writeFile(tmpPath, JSON.stringify(config, null, 2), "utf-8");
-    await fs.rename(tmpPath, configPath);
+      // 新建 Agent 与 Group 保持原有物理原子写入；既有 Agent 由中央配置桥提交。
+      const tmpPath = `${configPath}.tmp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      await fs.writeFile(tmpPath, JSON.stringify(config, null, 2), "utf-8");
+      await fs.rename(tmpPath, configPath);
+    }
 
     // 5. 更新索引 (V2: 使用 DTO 提取以对齐默认值处理)
     if (isTopic) {
