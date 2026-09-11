@@ -360,58 +360,133 @@ body.music-playing .ambient-wave-layer-3 {
     padding: 0;
     margin: 0;
     text-align: center;
-    transition: transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-    /* Smoother transition */
+    /* 采用 JS 逐帧 Lerp 阻尼计算 translateY，移除 CSS 动画竞态 */
+    transform-origin: center center;
+    will-change: transform;
     width: 100%;
-    /* Add padding to top and bottom to allow first and last lines to reach the golden ratio spot */
-    padding: 0;
 }
 
 #lyrics-list li {
     font-size: 1.1em;
     line-height: 1.6;
     color: var(--music-text-secondary);
-    transition: color 0.4s ease, font-size 0.4s ease, font-weight 0.4s ease, opacity 0.4s ease, transform 0.3s ease;
+    transition: font-size 0.35s cubic-bezier(0.2, 0.8, 0.25, 1),
+                opacity 0.35s ease,
+                transform 0.35s cubic-bezier(0.2, 0.8, 0.25, 1),
+                background-color 0.2s ease;
     font-weight: 500;
-    padding: 5px 15px;
+    padding: 8px 20px;
     opacity: 0.5;
-    /* Default opacity for non-active lines */
-    transform: scale(0.95);
+    transform: scale(0.96);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    cursor: pointer;
+    border-radius: 12px;
+    user-select: none;
 }
 
-.lyric-original,
-.lyric-translation {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    width: 100%;
+#lyrics-list li:hover {
+    background-color: rgba(255, 255, 255, 0.05);
 }
 
+body.light-theme #lyrics-list li:hover {
+    background-color: rgba(0, 0, 0, 0.04);
+}
+
+.lyric-original {
+    white-space: normal;
+    word-break: break-word;
+    display: inline-block;
+    width: auto;
+    max-width: 100%;
+    color: var(--music-text-secondary);
+    transition: color 0.3s ease;
+}
+
+/* 罗马音 / 拼音注音 */
+.lyric-romanization {
+    font-size: 0.72em;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    color: var(--music-text-secondary);
+    opacity: 0.65;
+    margin-bottom: 2px;
+    line-height: 1.2;
+}
+
+/* 中文/双语翻译 */
 .lyric-translation {
     font-size: 0.85em;
-    opacity: 0.8;
+    opacity: 0.75;
     margin-top: 4px;
+    color: var(--music-text-secondary);
+    line-height: 1.3;
 }
 
+/* 逐字 (Word-by-Word) 核心流光样式 */
+.lyric-original.is-wbyw {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 0px 1px;
+}
+
+.lyric-word {
+    display: inline-block;
+    position: relative;
+    /* 核心：文字裁剪 + 线性渐变染色 */
+    background-image: linear-gradient(
+        to right,
+        var(--music-highlight) 0%,
+        var(--music-highlight) var(--word-progress, 0%),
+        var(--music-text-secondary) var(--word-progress, 0%),
+        var(--music-text-secondary) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    transition: transform 0.15s cubic-bezier(0.2, 0, 0.1, 1),
+                filter 0.15s ease;
+    will-change: transform, filter;
+}
+
+/* 正在演唱的字元呼吸/脉冲微视效 */
+.lyric-word.singing {
+    transform: scale(1.08);
+    filter: drop-shadow(0 0 6px rgba(var(--music-highlight-rgb, 0, 180, 255), 0.55));
+}
+
+.lyric-word.finished {
+    transform: scale(1);
+    filter: none;
+}
+
+/* 活动行样式高亮 */
 #lyrics-list li.active {
     color: var(--music-text) !important;
     font-weight: 700;
-    font-size: 1.3em;
+    font-size: 1.35em;
     opacity: 1;
-    transform: scale(1);
+    transform: scale(1.03);
+    text-shadow: 0 2px 14px rgba(0, 0, 0, 0.35);
 }
 
-#lyrics-list li.active .lyric-original {
+#lyrics-list li.active .lyric-original:not(.is-wbyw) {
     color: var(--music-highlight);
+}
+
+#lyrics-list li.active .lyric-romanization {
+    color: var(--music-highlight);
+    opacity: 0.85;
 }
 
 #lyrics-list li.active .lyric-translation {
-    color: var(--music-highlight);
-    opacity: 1;
+    color: var(--music-text);
+    opacity: 0.95;
+    font-weight: 500;
 }
 
 #lyrics-list .no-lyrics {

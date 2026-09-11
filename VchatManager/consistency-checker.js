@@ -284,8 +284,8 @@ class ConsistencyChecker {
             info.agentName = sortedNames[0][0];
         }
 
-        // Sort topics by createdAt
-        info.topics.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+        // Sort topics by createdAt descending (newest at the top)
+        info.topics.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
         return info;
     }
@@ -464,17 +464,24 @@ class ConsistencyChecker {
         // Process each issue
         for (const issue of issues) {
             if (issue.type === 'orphaned_files' && fixOptions.addOrphaned) {
-                // Add orphaned topics to config
+                // Add orphaned topics to config (placed at the top)
+                const toAdd = [];
                 for (const orphanedTopic of issue.orphanedTopics) {
                     // Check if not already in list
                     if (!currentTopics.find(t => t.id === orphanedTopic.id)) {
-                        currentTopics.push({
+                        toAdd.push({
                             id: orphanedTopic.id,
                             name: orphanedTopic.name,
                             createdAt: orphanedTopic.createdAt
                         });
                         modified = true;
                     }
+                }
+                if (toAdd.length > 0) {
+                    // Sort newly recovered topics by createdAt descending (newest first)
+                    toAdd.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+                    // Prepend to the top of topics list
+                    currentTopics.unshift(...toAdd);
                 }
             }
             

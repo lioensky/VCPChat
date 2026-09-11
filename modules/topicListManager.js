@@ -1005,7 +1005,6 @@ window.topicListManager = (() => {
                 regenerateTitleOption.classList.remove('disabled');
             }
         };
-        menu.appendChild(regenerateTitleOption);
 
         const editTitleOption = document.createElement('div');
         editTitleOption.classList.add('context-menu-item');
@@ -1084,6 +1083,7 @@ window.topicListManager = (() => {
             });
         };
         menu.appendChild(editTitleOption);
+        menu.appendChild(regenerateTitleOption);
 
         const copyTopicIdOption = document.createElement('div');
         copyTopicIdOption.classList.add('context-menu-item');

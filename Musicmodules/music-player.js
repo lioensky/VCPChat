@@ -40,7 +40,10 @@ function setupPlayer(app) {
         }
 
         app.renderPlaylist(app.currentFilteredTracks);
-        app.fetchAndDisplayLyrics(track.artist, track.title);
+        app.fetchAndDisplayLyrics(track.artist, track.title, {
+            duration: track.duration || 0,
+            album: track.album || ''
+        });
         app.updateMediaSessionMetadata();
         if (app.wnpAdapter) app.wnpAdapter.sendUpdate();
 
@@ -271,7 +274,10 @@ function setupPlayer(app) {
             }
             
             app.renderPlaylist(app.currentFilteredTracks);
-            app.fetchAndDisplayLyrics(track.artist, track.title);
+            app.fetchAndDisplayLyrics(track.artist, track.title, {
+                duration: track.duration || 0,
+                album: track.album || ''
+            });
             app.updateMediaSessionMetadata();
 
             // 如果是随机播放，从队列中移除当前已开始播放的这首歌，防止之后再次随机到它
@@ -318,7 +324,10 @@ function setupPlayer(app) {
                     }
                     
                     app.renderPlaylist(app.currentFilteredTracks);
-                    app.fetchAndDisplayLyrics(track.artist, track.title);
+                    app.fetchAndDisplayLyrics(track.artist, track.title, {
+                        duration: track.duration || 0,
+                        album: track.album || ''
+                    });
                     app.updateMediaSessionMetadata();
 
                     // 同样处理模糊匹配的情况
