@@ -66,16 +66,31 @@ function setupLyrics(app) {
             // 仅过滤完整独立行，避免误伤 AC/DC、A/B 等正常歌词。
             .filter(line => String(line?.fullText || '').trim() !== '//')
             .map(line => ({
+                ...line,
+                startTime: line.startTime * app.lyricSpeedFactor + app.lyricOffset,
                 time: line.startTime * app.lyricSpeedFactor + app.lyricOffset,
                 endTime: line.endTime * app.lyricSpeedFactor + app.lyricOffset,
                 original: line.fullText,
                 translation: line.translation || '',
                 romanization: line.romanization || '',
                 words: Array.isArray(line.words) ? line.words.map(w => ({
+                    ...w,
                     text: w.text,
                     startTime: w.startTime * app.lyricSpeedFactor + app.lyricOffset,
-                    endTime: w.endTime * app.lyricSpeedFactor + app.lyricOffset
+                    endTime: w.endTime * app.lyricSpeedFactor + app.lyricOffset,
+                    syllables: Array.isArray(w.syllables) ? w.syllables.map(syllable => ({
+                        ...syllable,
+                        startTime: syllable.startTime * app.lyricSpeedFactor + app.lyricOffset,
+                        endTime: syllable.endTime * app.lyricSpeedFactor + app.lyricOffset
+                    })) : undefined
                 })) : [],
+                renderHints: line.renderHints ? {
+                    ...line.renderHints,
+                    rawDuration: (line.endTime - line.startTime) * app.lyricSpeedFactor,
+                    renderEndTime: Number.isFinite(line.renderHints.renderEndTime)
+                        ? line.renderHints.renderEndTime * app.lyricSpeedFactor + app.lyricOffset
+                        : line.endTime * app.lyricSpeedFactor + app.lyricOffset
+                } : undefined,
                 isWordByWord: Boolean(lyricData.isWordByWord)
             }));
     };

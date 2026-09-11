@@ -24,13 +24,13 @@
         };
     };
 
+    const graphemeSegmenter = typeof Intl !== 'undefined' && Intl.Segmenter
+        ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
     const splitGraphemes = (text) => {
         const value = String(text ?? '');
-        if (typeof Intl !== 'undefined' && Intl.Segmenter) {
-            const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
-            return Array.from(segmenter.segment(value), (entry) => entry.segment);
-        }
-        return Array.from(value);
+        return graphemeSegmenter
+            ? Array.from(graphemeSegmenter.segment(value), (entry) => entry.segment)
+            : Array.from(value);
     };
 
     const EMPTY_LINES = Object.freeze([]);
@@ -67,6 +67,7 @@
         const endTime = Math.max(startTime + 0.08, declaredEnd || nextStart || startTime + 5);
         const words = Array.isArray(line?.words) && line.words.length
             ? line.words.map((word, wordIndex) => ({
+                ...word,
                 text: String(word?.text ?? ''),
                 startTime: Number.isFinite(word?.startTime) ? word.startTime : startTime,
                 endTime: Math.max(
@@ -263,7 +264,14 @@
         }
     }
 
+    // Call after intentional in-place lyric edits; normal source replacement is
+    // already tracked by array identity without hashing the whole song per frame.
+    const invalidateLines = (lines) => {
+        if (Array.isArray(lines)) normalizedLinesCache.delete(lines);
+    };
+
     global.MusicStageRuntime = Object.freeze({
+        invalidateLines,
         clamp,
         hashString,
         seededRandom,

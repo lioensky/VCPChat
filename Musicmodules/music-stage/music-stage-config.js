@@ -63,12 +63,16 @@
                 glow: 1
             },
             luminous: {
+                fontScale: 1, semanticLayout: true, layoutStyle: 'normal',
+                chorusRipple: true, sceneTransitions: true, showTranslation: true, showUpcoming: true,
                 wordRotation: true,
                 breathing: 1,
                 wordSpacing: 0.7,
                 glow: 1
             },
             partita: {
+                fontScale: 1, glow: 1, breathing: 1, layoutStyle: 'normal',
+                chorusRipple: true, sceneTransitions: true, showTranslation: true, showUpcoming: true,
                 guideLines: true,
                 semanticLayout: true,
                 staggerMin: 20,
@@ -76,6 +80,8 @@
                 power: 1
             },
             cadenza: {
+                heroEmphasis: true, breathing: 0.5,
+                chorusRipple: true, sceneTransitions: true, showTranslation: true, showUpcoming: true,
                 motion: 1,
                 fontScale: 1,
                 widthRatio: 0.78,
@@ -104,6 +110,11 @@
         return {
             ...fallback,
             ...source,
+            layoutStyle: enumValue(source.layoutStyle, ['calm', 'normal', 'chaotic'], fallback.layoutStyle),
+            chorusRipple: bool(source.chorusRipple, fallback.chorusRipple),
+            heroEmphasis: bool(source.heroEmphasis, fallback.heroEmphasis),
+            showTranslation: bool(source.showTranslation, fallback.showTranslation),
+            showUpcoming: bool(source.showUpcoming, fallback.showUpcoming),
             cameraIntensity: clamp(source.cameraIntensity, 0, 2, fallback.cameraIntensity),
             typographyMotion: clamp(source.typographyMotion, 0, 2, fallback.typographyMotion),
             glyphMotion: clamp(source.glyphMotion, 0, 2, fallback.glyphMotion),

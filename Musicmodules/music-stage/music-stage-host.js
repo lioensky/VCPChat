@@ -116,6 +116,13 @@
             { key: 'halftone', label: '半调网点', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
             { key: 'vignette', label: '镜头暗角', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' }
         ];
+        const lyricPerformanceControls = [
+            { key: 'chorusRipple', label: '副歌涟漪（需歌词副歌标记）', type: 'toggle' },
+            { key: 'sceneTransitions', label: '切句进退场', type: 'toggle' },
+            { key: 'showTranslation', label: '翻译／罗马音', type: 'toggle' },
+            { key: 'showUpcoming', label: '下一句预告', type: 'toggle' }
+        ];
+        const lyricLayoutStyle = { key: 'layoutStyle', label: '构图风格', type: 'select', options: [['calm', '平静'], ['normal', '原作标准'], ['chaotic', '奔放']] };
         const tuningDefinitions = Object.freeze({
             tempera: [
                 { key: 'cameraIntensity', label: '镜头强度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
@@ -145,12 +152,21 @@
                 { key: 'glow', label: '辉光强度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' }
             ],
             luminous: [
+                { key: 'fontScale', label: '文字比例', type: 'range', min: 0.65, max: 1.5, step: 0.05, unit: 'x' },
+                { key: 'semanticLayout', label: '语义与标点组合', type: 'toggle' },
+                lyricLayoutStyle,
+                ...lyricPerformanceControls,
                 { key: 'wordRotation', label: '逐字旋转', type: 'toggle' },
                 { key: 'breathing', label: '呼吸浮动', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
                 { key: 'wordSpacing', label: '文字间距', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
                 { key: 'glow', label: '辉光强度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' }
             ],
             partita: [
+                { key: 'fontScale', label: '文字比例', type: 'range', min: 0.65, max: 1.5, step: 0.05, unit: 'x' },
+                { key: 'glow', label: '逐字辉光', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'breathing', label: '整句呼吸', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                lyricLayoutStyle,
+                ...lyricPerformanceControls,
                 { key: 'guideLines', label: '引导线', type: 'toggle' },
                 { key: 'semanticLayout', label: '语义分块', type: 'toggle' },
                 { key: 'staggerMin', label: '最小错位', type: 'range', min: 0, max: 180, step: 5, unit: 'px' },
@@ -158,7 +174,10 @@
                 { key: 'power', label: '构图强度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' }
             ],
             cadenza: [
-                { key: 'motion', label: '镜头运动', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'heroEmphasis', label: '中心强调词', type: 'toggle' },
+                { key: 'breathing', label: '构图呼吸', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                ...lyricPerformanceControls,
+                { key: 'motion', label: '词片运动', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
                 { key: 'fontScale', label: '文字比例', type: 'range', min: 0.65, max: 1.5, step: 0.05, unit: 'x' },
                 { key: 'widthRatio', label: '构图宽度', type: 'range', min: 0.5, max: 0.95, step: 0.01, unit: '' },
                 { key: 'glow', label: '辉光强度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' }
@@ -219,6 +238,7 @@
 
         const createMode = (modeId) => {
             destroyMode();
+            elements.modeRoot.classList.remove('is-switching');
             state.generation += 1;
             state.modeId = Modes.get(modeId).id;
             state.modeInstance = Modes.create(state.modeId, elements.modeRoot, {
@@ -236,7 +256,10 @@
                 button.setAttribute('aria-pressed', String(selected));
             });
 
-            if (state.lastFrame) state.modeInstance.updateFrame(state.lastFrame);
+            if (state.active) {
+                state.lastFrame = Runtime.createFrame(app, performance.now());
+                state.modeInstance.updateFrame(state.lastFrame);
+            }
         };
 
         const renderModeButtons = () => {
@@ -539,6 +562,7 @@
         };
 
         const drawEdgeSpectrum = (frame) => {
+            if (state.config.edgeSpectrum === false) return;
             if (!resizeEdgeCanvas(frame) || !edgeContext) return;
             const { width, height } = edgeCanvasState;
             edgeContext.clearRect(0, 0, width, height);
@@ -620,7 +644,7 @@
         };
 
         const updateFrame = (timestamp) => {
-            if (!state.active || state.destroyed) return;
+            if (!state.active || state.destroyed || document.hidden) return;
             const frame = Runtime.createFrame(app, timestamp);
             state.lastFrame = frame;
             state.stats.frameUpdates += 1;
@@ -658,7 +682,9 @@
             root.setAttribute('aria-hidden', 'false');
             createMode(state.modeId);
             setButtonState();
+            const enterGeneration = state.generation;
             requestAnimationFrame(() => {
+                if (!state.active || state.destroyed || state.generation !== enterGeneration) return;
                 root.classList.add('is-visible');
                 root.focus({ preventScroll: true });
                 updateFrame(performance.now());
@@ -673,9 +699,10 @@
             document.body.classList.remove('music-stage-active');
             setButtonState();
             const generation = ++state.generation;
-            setTimeout(() => {
+            scope.timeout(() => {
                 if (state.active || state.destroyed || generation !== state.generation) return;
                 destroyMode();
+                state.lastFrame = null;
                 root.hidden = true;
                 root.setAttribute('aria-hidden', 'true');
                 toggleButton.focus({ preventScroll: true });
@@ -696,10 +723,13 @@
             }
             elements.modeRoot.classList.add('is-switching');
             const generation = ++state.generation;
-            setTimeout(() => {
+            scope.timeout(() => {
                 if (!state.active || state.destroyed || generation !== state.generation) return;
                 createMode(resolved);
-                requestAnimationFrame(() => elements.modeRoot.classList.remove('is-switching'));
+                const createdGeneration = state.generation;
+                requestAnimationFrame(() => {
+                    if (!state.destroyed && state.generation === createdGeneration) elements.modeRoot.classList.remove('is-switching');
+                });
             }, 170);
         };
 
@@ -745,7 +775,7 @@
             if (elements.settingsStatus) {
                 elements.settingsStatus.textContent = '已保存';
                 elements.settingsStatus.classList.add('is-visible');
-                setTimeout(() => elements.settingsStatus.classList.remove('is-visible'), 1200);
+                scope.timeout(() => elements.settingsStatus.classList.remove('is-visible'), 1200);
             }
         };
 
@@ -863,7 +893,8 @@
                     hasModeInstance: Boolean(state.modeInstance),
                     modeRootChildren: elements.modeRoot.childElementCount,
                     canvasCount: elements.modeRoot.querySelectorAll('canvas').length,
-                    ...state.stats
+                    ...state.stats,
+                    mode: state.modeInstance?.getDebugSnapshot?.() || null
                 };
             },
             destroy() {

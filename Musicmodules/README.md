@@ -15,14 +15,18 @@
 | 心象 | Mindscape / Cadenza |
 | 浮名 | Fume |
 
-舞台采用独立模块和统一生命周期协议。任意时刻只保留一个活动模式实例；切换模式或退出舞台时，旧模式会销毁其 DOM、Canvas、监听器、计时器和布局缓存。普通播放器与沉浸舞台共享同一播放状态、歌词时间轴、频谱数据和动画帧时钟，避免两个 UI 同时执行完整渲染。
+舞台采用独立模块和统一生命周期协议。宿主保持一个活动模式；星诞交叉转场期间最多拥有两个子模式，新歌词演出切句时最多保留当前句和退场句两个场景。切换模式或退出舞台时清理所属渲染资源。普通播放器与沉浸舞台共享播放状态、歌词时间轴、频谱数据和动画帧时钟。
+
+流光、云阶、心象已重建为独立管理器，共享字素时序、分层辉光、播放时间驱动的弹性运动与有界布局缓存。心象使用 Pretext 断行和词片空间构图。具体实现范围、与原作的差异和实机验收重点见 [三模式演出移植说明](music-stage/LYRIC-PERFORMANCE-PORT.md)。本轮未运行测试或进行客户端视觉验收。
 
 主要实现位于：
 
-- `music-stage/music-stage-runtime.js`：歌词时间轴、逐词状态、频段聚合和资源作用域。
-- `music-stage/music-stage-modes.js`：流光、云阶、心象、浮名模式。
-- `music-stage/music-stage-host.js`：舞台生命周期、模式切换、ID3 和播放控制。
-- `music-stage/music-stage.css`：舞台与四模式样式。
+- [`music-stage-runtime.js`](music-stage/music-stage-runtime.js)：歌词时间轴、逐词状态、频段聚合和资源作用域。
+- [`music-stage-modes.js`](music-stage/music-stage-modes.js)：模式注册与星诞导演。
+- [`luminous-manager.js`](music-stage/modes/luminous-manager.js)、[`partita-manager.js`](music-stage/modes/partita-manager.js)、[`cadenza-manager.js`](music-stage/modes/cadenza-manager.js)：三个独立歌词布局管理器。
+- [`stage-lyric-layout.js`](music-stage/modes/stage-lyric-layout.js)、[`stage-lyric-performance.js`](music-stage/modes/stage-lyric-performance.js)：共享时序、显示布局与分层演出。
+- [`music-stage-host.js`](music-stage/music-stage-host.js)：舞台生命周期、模式切换、参数和播放控制。
+- [`music-stage.css`](music-stage/music-stage.css)、[`stage-lyric-performance.css`](music-stage/modes/stage-lyric-performance.css)：宿主及模式样式。
 
 ## UI 移植声明
 
