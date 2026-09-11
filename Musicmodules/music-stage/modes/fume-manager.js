@@ -233,16 +233,22 @@
         const drawBackground = frame => {
             if (!context) return;
             context.clearRect(0, 0, width, height);
-            if (tuning().geometricBackground === false) return;
+            const t = tuning();
+            if (t.geometricBackground === false || value(t.backgroundOpacity, 0.5, 0, 1) === 0) return;
             const strength = intensity();
+            const detail = value(t.backgroundDetail, 0.6, 0, 1);
+            const breeze = value(t.backgroundMotion, 1) * strength;
             const count = mode.config.quality === 'energy-saving' ? 12 : shapes.length;
-            shapes.slice(0, count).forEach(shape => {
+            for (let index = 0; index < count; index += 1) {
+                const shape = shapes[index];
                 const energy = value(frame.audio?.[shape.band], 0, 0, 1) * strength;
                 const size = shape.size * Math.min(width, height) * (1 + energy * 0.25);
                 const y = ((shape.y * height - cameraY * 0.12) % (height * 1.4) + height * 1.4) % (height * 1.4) - height * 0.2;
                 context.save();
-                context.translate(shape.x * width - cameraX * 0.1, y);
-                context.rotate(shape.phase + frame.playbackTime * shape.speed * strength);
+                const x = ((shape.x * width - cameraX * 0.1) % (width * 1.4) + width * 1.4) % (width * 1.4) - width * 0.2;
+                const drift = Math.sin(frame.playbackTime * 0.18 * breeze + shape.phase) * 8 * Math.min(1, breeze);
+                context.translate(x, y + drift);
+                context.rotate(shape.phase + frame.playbackTime * shape.speed * breeze);
                 context.globalAlpha = 0.08 + energy * 0.12;
                 context.strokeStyle = shape.color;
                 context.lineWidth = 1;
@@ -257,8 +263,27 @@
                     context.lineTo(0, size); context.lineTo(-size, 0); context.closePath();
                 }
                 context.stroke();
+                if (detail > 0 && (shape.kind === 0 || shape.kind === 1)) {
+                    context.globalAlpha = (0.045 + energy * 0.08) * detail;
+                    context.lineWidth = 0.6;
+                    context.beginPath();
+                    if (shape.kind === 0) {
+                        context.arc(0, 0, size * 0.82, Math.PI * 0.25, Math.PI * 1.5);
+                    } else {
+                        context.rect(-size * 0.8, -size * 0.8, size * 1.6, size * 1.6);
+                    }
+                    context.stroke();
+                    if (shape.kind === 0) {
+                        const phase = shape.phase + frame.playbackTime * 0.25 * breeze;
+                        context.globalAlpha = (0.2 + energy * 0.25) * detail;
+                        context.fillStyle = shape.color;
+                        context.beginPath();
+                        context.arc(Math.cos(phase) * size, Math.sin(phase) * size, 1.5 + energy, 0, Math.PI * 2);
+                        context.fill();
+                    }
+                }
                 context.restore();
-            });
+            }
         };
 
         mode.updateFrame = frame => {

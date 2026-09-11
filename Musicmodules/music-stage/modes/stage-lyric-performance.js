@@ -120,9 +120,11 @@
                 wrapper.style.width = `${group.width}px`;
                 wrapper.style.height = `${group.height}px`;
                 const guide = el('div', `lyric-performance-guide ${group.side === 'right' ? 'is-right' : ''}`);
+                const head = el('span', 'lyric-performance-guide-head');
+                guide.append(head);
                 wrapper.append(guide);
                 field.append(wrapper);
-                scene.groups.push({ ...group, wrapper, guide });
+                scene.groups.push({ ...group, wrapper, guide, head });
                 group.placements.forEach(p => {
                     const node = createWord(p.token, p, scene);
                     wrapper.append(node.outer);
@@ -163,6 +165,10 @@
             const progress = ease((time - group.startTime + profile.lookahead) / 0.4);
             group.guide.style.transform = `scaleX(${progress})`;
             group.guide.style.opacity = time <= group.endTime ? '0.8' : '0.24';
+            const reading = clamp((time - group.startTime) / Math.max(0.001, group.endTime - group.startTime));
+            group.head.hidden = tuning.guidePulse === false || waiting || time > group.endTime || intensity <= 0;
+            group.head.style.left = `${reading * 100}%`;
+            group.head.style.opacity = String(0.45 + clamp(frame.audio.vocal) * 0.55);
         });
         scene.nodes.forEach(node => animateWord(node, scene, time, tuning, intensity, frame.audio));
     };
@@ -177,7 +183,7 @@
         const empty = el('div', 'lyric-performance-empty', '等待音乐');
         subtitle.append(translation, upcoming);
         mode.root.append(viewport, subtitle, empty);
-        const decor = ['luminous', 'cadenza'].includes(id)
+        const decor = ['luminous', 'partita', 'cadenza'].includes(id)
             ? global.MusicStageLyricDecor?.create(mode.root, id) : null;
         if (decor) mode.scope.add(() => decor.destroy());
         const reduced = global.matchMedia?.('(prefers-reduced-motion: reduce)');

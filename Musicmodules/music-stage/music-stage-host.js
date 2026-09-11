@@ -168,6 +168,8 @@
                 { key: 'glow', label: '辉光强度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' }
             ],
             partita: [
+                ...vectorDecorControls,
+                { key: 'guidePulse', label: '短语引导光点', type: 'toggle' },
                 { key: 'fontScale', label: '文字比例', type: 'range', min: 0.65, max: 1.5, step: 0.05, unit: 'x' },
                 { key: 'glow', label: '逐字辉光', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
                 { key: 'breathing', label: '整句呼吸', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
@@ -190,6 +192,8 @@
                 { key: 'glow', label: '辉光强度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' }
             ],
             fume: [
+                { key: 'backgroundDetail', label: '几何细节（双线／轨道光点）', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+                { key: 'backgroundMotion', label: '背景自转与微风', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
                 { key: 'geometricBackground', label: '几何背景', type: 'toggle' },
                 { key: 'backgroundOpacity', label: '背景物体', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
                 { key: 'cameraSpeed', label: '镜头速度', type: 'range', min: 0.55, max: 1.85, step: 0.05, unit: 'x' },

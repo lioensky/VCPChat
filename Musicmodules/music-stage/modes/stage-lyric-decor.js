@@ -66,6 +66,35 @@
                         'stroke-width': 0.8
                     }, { type: 'spark', x, y, speed: 0.35 + random() * 0.45, phase: random() * Math.PI * 2, alpha: 0.7 });
                 }
+            } else if (kind === 'partita') {
+                for (let side = 0; side < 2; side += 1) {
+                    const x = side ? 925 : 45;
+                    let path = `M ${x} 145`;
+                    for (let step = 0; step < 6; step += 1) {
+                        path += ` h ${step % 2 ? -30 : 30} v 48`;
+                        add('rect', {
+                            x: x + (step % 2 ? 0 : 30) - 3,
+                            y: 145 + step * 48 - 3, width: 6, height: 6,
+                            fill: 'currentColor', stroke: 'none'
+                        }, { type: 'tick', phase: step / 6, alpha: 0.7 });
+                    }
+                    add('path', { d: path, 'stroke-width': 0.8 },
+                        { type: 'static', alpha: 0.22 });
+                    add('path', { d: path, pathLength: 100, 'stroke-dasharray': '14 86', 'stroke-width': 1.8 },
+                        { type: 'ribbon', speed: side ? -4 : 4, phase: 0, alpha: 0.55 });
+                }
+                for (let i = 0; i < 24; i += 1) {
+                    const x = 200 + i * 25;
+                    const h = i % 3 === 0 ? 18 : 8;
+                    add('path', { d: `M ${x} 104 v ${-h} M ${1000 - x} 498 v ${h}`, 'stroke-width': 2 },
+                        { type: 'tick', phase: i / 24, alpha: 0.5 });
+                }
+                for (let i = 0; i < 3; i += 1) {
+                    add('path', {
+                        d: `M 200 ${118 + i * 6} H 390 l 24 -18 H 600 l 24 18 H 800`,
+                        pathLength: 100, 'stroke-dasharray': '28 72', 'stroke-width': 0.7
+                    }, { type: 'ribbon', speed: 1 + i * 0.5, phase: i * 30, alpha: 0.25 });
+                }
             } else {
                 [[70, 100], [930, 100], [70, 500], [930, 500]].forEach(([x, y], i) => {
                     const sx = x < 500 ? 1 : -1;

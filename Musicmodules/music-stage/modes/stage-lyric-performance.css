@@ -144,3 +144,18 @@
 .lyric-performance-mode > .lyric-performance-empty {
     z-index: 1;
 }
+
+.lyric-performance-guide-head {
+    position: absolute;
+    top: 50%;
+    width: 5px;
+    height: 5px;
+    border-radius: 1px;
+    background: #fff;
+    box-shadow: 0 0 8px var(--performance-accent), 0 0 15px var(--performance-accent);
+    transform: translate(-50%, -50%) rotate(45deg);
+    pointer-events: none;
+}
+.lyric-performance-guide-head[hidden] {
+    display: none;
+}

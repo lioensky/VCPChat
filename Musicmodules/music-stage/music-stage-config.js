@@ -72,6 +72,7 @@
                 glow: 1
             },
             partita: {
+                vectorDecor: true, decorOpacity: 0.5, decorMotion: 1, guidePulse: true,
                 fontScale: 1, glow: 1, breathing: 1, layoutStyle: 'normal',
                 chorusRipple: true, sceneTransitions: true, showTranslation: true, showUpcoming: true,
                 guideLines: true,
@@ -90,6 +91,7 @@
                 glow: 1
             },
             fume: {
+                backgroundDetail: 0.6, backgroundMotion: 1,
                 geometricBackground: true,
                 backgroundOpacity: 0.5,
                 cameraSpeed: 1,
@@ -112,6 +114,9 @@
         return {
             ...fallback,
             ...source,
+            guidePulse: bool(source.guidePulse, fallback.guidePulse),
+            backgroundDetail: clamp(source.backgroundDetail, 0, 1, fallback.backgroundDetail),
+            backgroundMotion: clamp(source.backgroundMotion, 0, 2, fallback.backgroundMotion),
             vectorDecor: bool(source.vectorDecor, fallback.vectorDecor),
             decorOpacity: clamp(source.decorOpacity, 0, 1, fallback.decorOpacity),
             decorMotion: clamp(source.decorMotion, 0, 2, fallback.decorMotion),
