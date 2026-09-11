@@ -879,13 +879,13 @@ test('High: 切换 Agent 时 flush 失败必须显式告警且保留未保存状
         nameInput.value = '修改后的 agent-1';
         nameInput.dispatchEvent(new document.defaultView.Event('input', { bubbles: true }));
 
-        // 3. 此时切换至 agent-2，应当触发 flush 保存旧 agent-1
-        // 但保存失败（Database locked）
+        // 3. 此时切换至 agent-2，不得隐式保存旧 agent-1；
+        // 未保存草稿必须由用户显式点击保存按钮提交。
         currentItem = { id: 'agent-2', type: 'agent' };
         await sm.displaySettingsForItem();
 
-        assert.equal(saveCalls, 1, '切换时必须尝试自动保存未提交修改的 agent-1');
-        assert.ok(toasts.some(t => t.type === 'warning' && t.msg.includes('切换前自动保存「agent-1」失败')), 'flush 失败时必须显式告警提示用户修改未成功保存');
+        assert.equal(saveCalls, 0, '切换 Agent 不得自动保存未提交修改');
+        assert.equal(toasts.some(t => t.type === 'warning' && t.msg.includes('切换前自动保存')), false, '手动保存契约下不得提示切换前自动保存失败');
     } finally {
         activeIntervals.forEach(clearInterval);
         globalThis.window = prevWin;
@@ -1085,11 +1085,9 @@ test('P0 对抗性防线: 侧边栏 Unmount 脱水态保存与 Autosave 保护�
         // 执行保存：绝对不能因 agentStreamOutputTrue.checked 抛出 TypeError
         // 且 cardCss / chatCss 绝对不能被静默抹除为空字符串！
         const triggerResult = await sm.triggerAgentSave('agent-detached-test');
-        assert.equal(triggerResult.success, true, '脱水态下 triggerAgentSave 必须成功');
-        assert.equal(savedData?.config?.cardCss, '.detached-card { background: purple; }', '脱水态下 cardCss 绝不能被抹除');
-        assert.equal(savedData?.config?.chatCss, '.detached-chat { font-size: 16px; }', '脱水态下 chatCss 绝不能被抹除');
-        assert.equal(savedData?.config?.streamOutput, true, '脱水态下 streamOutput 必须准确获取');
-        assert.equal(savedData?.config?.disableCustomColors, true, '脱水态下 disableCustomColors 必须准确获取');
+        assert.equal(triggerResult.success, false, '兼容入口不得绕过保存按钮写入');
+        assert.equal(triggerResult.skipped, true, '兼容入口必须明确报告已跳过');
+        assert.equal(savedData, null, '脱水态调用兼容入口不得写入配置');
     } finally {
         activeIntervals.forEach(clearInterval);
         globalThis.window = prevWin;
@@ -1300,9 +1298,9 @@ test('P1 对抗性防线: triggerAgentSave 准确拦截 IPC { success: false, me
 
         const saveResult = await sm.triggerAgentSave('agent-ipc-fail');
 
-        // 必须识别为失败，不能误判为 success: true
-        assert.equal(saveResult.success, false, 'triggerAgentSave 必须识别 success: false 为保存失败');
-        assert.match(saveResult.error, /Storage backend write failed/, '错误信息必须从 message 提取');
+        // 兼容入口不再调用 IPC；只有表单 submit 才能触发保存。
+        assert.equal(saveResult.success, false, 'triggerAgentSave 必须拒绝绕过保存按钮');
+        assert.match(saveResult.error, /点击保存 Agent 设置/, '拒绝信息必须指向显式保存按钮');
     } finally {
         activeIntervals.forEach(clearInterval);
         globalThis.window = prevWin;
@@ -1514,7 +1512,17 @@ test('P0 对抗性防线: Agent 模型配置绝不被静默篡改为 gemini-pro 
         modelInput.value = 'gpt-4o-custom';
         form.querySelector('#editingAgentId').value = 'agent-model-test';
 
-        await sm.triggerAgentSave('agent-model-test');
+        const submitAndWait = async () => {
+            const result = await new Promise(resolve => {
+                form.addEventListener('vcp-settings-save-result', event => resolve(event.detail), { once: true });
+                form.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
+            });
+            // 保存结果事件发生在内部保存函数返回前；等待外层 submit
+            // 处理器完成状态更新，之后才能切换上下文或销毁测试 DOM。
+            await new Promise(resolve => setImmediate(resolve));
+            return result;
+        };
+        assert.equal((await submitAndWait()).success, true);
         assert.equal(savedConfig?.model, 'gpt-4o-custom', '保存时必须读取 #agentModel 中的自定义模型，不可篡改');
 
         // 场景 B: 假设 #agentModel 的 input 不在 DOM 中（或被脱水移除），但 currentConfig 存在
@@ -1523,9 +1531,9 @@ test('P0 对抗性防线: Agent 模型配置绝不被静默篡改为 gemini-pro 
         await sm.displaySettingsForItem({ id: 'agent-model-test', type: 'agent', model: 'claude-3-5-sonnet-v2' }, 'agent');
         assert.equal(modelInput.value, 'claude-3-5-sonnet-v2', 'displaySettingsForItem 必须正确回填模型');
 
-        // 触发 triggerAgentSave 保存
-        await sm.triggerAgentSave('agent-model-test');
-        assert.equal(savedConfig?.model, 'claude-3-5-sonnet-v2', 'triggerAgentSave 必须正确保存当前模型');
+        // 通过显式表单提交保存。
+        assert.equal((await submitAndWait()).success, true);
+        assert.equal(savedConfig?.model, 'claude-3-5-sonnet-v2', '表单提交必须正确保存当前模型');
     } finally {
         dom.window.settingsManager?.cancelAutosave?.();
         activeIntervals.forEach(clearInterval);
@@ -1641,11 +1649,11 @@ test('P0 对抗性防线: Autosave 在并发编辑保存时不丢失 Dirty 状�
         nameInput.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
         assert.equal(indicator.dataset.state, 'warning', '编辑后指示点进入 warning (未保存) 状态');
 
-        // 手动触发并模拟 in-flight 挂起
+        // 旧测试曾在此处手动触发 autosave；新契约禁止任何非 submit 写入。
         let blockPromise = new Promise(r => { saveDelayResolver = r; });
         const savePromise1 = sm.triggerAgentSave('agent-autosave-seq');
 
-        // 在保存尚未完成（in-flight）时，用户再次输入版本 2
+        // 在兼容调用期间用户再次输入版本 2
         nameInput.value = '名字变更V2';
         nameInput.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
 
@@ -1655,11 +1663,10 @@ test('P0 对抗性防线: Autosave 在并发编辑保存时不丢失 Dirty 状�
         resolveFirst();
         await savePromise1;
 
-        // 等待 debounce autosave 完成后续保存
+        // 等待旧 debounce 窗口结束，仍不得发生任何自动保存。
         await new Promise(resolve => setTimeout(resolve, 1100));
-        assert.equal(saveHistory.length >= 2, true, '必须按序列执行至少两次保存');
-        assert.equal(saveHistory[saveHistory.length - 1].name, '名字变更V2', '最后一次保存必须包含最新修改');
-        assert.equal(indicator.dataset.state, 'done', '所有序列保存完毕后指示点恢复 done');
+        assert.equal(saveHistory.length, 0, '没有显式 submit 时不得发生自动保存');
+        assert.equal(indicator.dataset.state, 'warning', '未保存编辑必须继续显示 warning');
     } finally {
         dom.window.settingsManager?.cancelAutosave?.();
         activeIntervals.forEach(clearInterval);

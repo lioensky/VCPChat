@@ -1,9 +1,6 @@
 // modules/ipc/regexHandlers.js
 const { ipcMain, dialog } = require('electron');
 const fs = require('fs-extra');
-const path = require('path');
-
-let AGENT_DIR_CACHE;
 
 /**
  * Initializes regex management related IPC handlers.
@@ -11,7 +8,7 @@ let AGENT_DIR_CACHE;
  * @param {string} context.AGENT_DIR - The path to the agents directory.
  */
 function initialize(context) {
-    AGENT_DIR_CACHE = context.AGENT_DIR;
+    // 导入仅解析文件；配置持久化由表单保存入口负责。
 
     ipcMain.handle('import-regex-rules', async (event, agentId) => {
         if (!agentId) {
@@ -65,36 +62,7 @@ function initialize(context) {
                 return { success: false, error: '无法识别的正则文件格式。' };
             }
 
-            const agentDir = path.join(AGENT_DIR_CACHE, agentId);
-            const regexPath = path.join(agentDir, 'regex_rules.json');
-            
-            await fs.ensureDir(agentDir);
-
-            // Read existing rules
-            let existingRules = [];
-            if (await fs.pathExists(regexPath)) {
-                try {
-                    existingRules = await fs.readJson(regexPath);
-                    if (!Array.isArray(existingRules)) existingRules = [];
-                } catch (e) {
-                    console.warn(`Could not read or parse existing regex_rules.json for agent ${agentId}, starting fresh.`, e);
-                    existingRules = [];
-                }
-            }
-
-            // Merge and prevent duplicates based on a unique property, e.g., 'title' or 'id'
-            const existingRuleIds = new Set(existingRules.map(rule => rule.id || rule.title));
-            const newRules = importedRules.filter(rule => !existingRuleIds.has(rule.id || rule.title));
-
-            if (newRules.length === 0) {
-                return { success: true, rules: existingRules, message: '所有规则都已存在，未添加新规则。' };
-            }
-
-            const finalRules = [...existingRules, ...newRules];
-
-            await fs.writeJson(regexPath, finalRules, { spaces: 2 });
-
-            return { success: true, rules: finalRules };
+            return { success: true, rules: importedRules, draftOnly: true };
 
         } catch (error) {
             console.error(`为 Agent ${agentId} 导入正则规则失败:`, error);
