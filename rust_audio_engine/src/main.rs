@@ -7,17 +7,9 @@
 //! We do NOT replace the global allocator here as it would crash env_logger
 //! initialization during startup.
 
-mod decoder;
-mod player;
-mod processor;
-mod server;
-mod config;
-mod webdav;
-mod settings;
-#[cfg(windows)]
-mod wasapi_output;
-
 use std::path::PathBuf;
+
+use vcp_audio_engine::{config, server, settings};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -26,8 +18,16 @@ async fn main() -> std::io::Result<()> {
         .format_timestamp_millis()
         .init();
     
-    log::info!("VCP Hi-Fi Audio Engine v2.0.0 (Full Rust)");
-    log::info!("Built with: Symphonia + cpal + actix-web");
+    log::info!(
+        "VCP Hi-Fi Audio Engine v{} (Rubato/DSP A/B experiment)",
+        vcp_audio_engine::VERSION
+    );
+    log::info!(
+        "Audio route: resampler={} stages={}",
+        vcp_audio_engine::processor::RESAMPLER_BACKEND_NAME,
+        vcp_audio_engine::processor::callback_stage_order_csv()
+    );
+    log::info!("Built with: Symphonia + Rubato f64 + cpal/WASAPI + actix-web");
     
     // Parse command line args
     let args: Vec<String> = std::env::args().collect();
@@ -39,7 +39,7 @@ async fn main() -> std::io::Result<()> {
         .unwrap_or(63789);
     
     // Load config
-    let config = crate::config::AppConfig::load();
+    let config = config::AppConfig::load();
     
     // Determine AppData path for settings persistence
     let app_data_dir = std::env::var("VCP_APP_DATA")

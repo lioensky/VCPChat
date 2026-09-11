@@ -13,27 +13,16 @@ pub enum ResampleQuality {
     UltraHigh,
 }
 
-/// Phase response for resampling filter
-/// - Minimum: Lowest latency, some pre-echo reduction (value = 0)
-/// - Linear: Default, symmetric impulse response (value = 50)  
-/// - Maximum: Maximum phase linearization (value = 100)
+/// Phase response for the pure-Rust resampling filter route.
+///
+/// Linear phase uses Rubato FFT/Sinc or the dedicated half-band route.
+/// Minimum and maximum phase use the migrated spectral/polyphase extensions.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum PhaseResponse {
     #[default]
-    Linear,     // 50 - default, symmetric
-    Minimum,    // 0 - lowest latency
-    Maximum,    // 100 - maximum phase linearization
-}
-
-impl PhaseResponse {
-    /// Convert to soxr phase_response value
-    pub fn to_soxr_value(&self) -> f64 {
-        match self {
-            PhaseResponse::Minimum => 0.0,
-            PhaseResponse::Linear => 50.0,
-            PhaseResponse::Maximum => 100.0,
-        }
-    }
+    Linear,
+    Minimum,
+    Maximum,
 }
 
 /// Loudness normalization mode

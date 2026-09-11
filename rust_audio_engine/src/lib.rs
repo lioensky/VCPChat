@@ -3,9 +3,11 @@
 //! This module exposes the audio engine as a library for direct Rust integration
 //! or communication with the JS frontend via the server module.
 
+pub mod channel_layout;
 pub mod decoder;
 pub mod player;
 pub mod processor;
+pub mod runtime;
 pub mod server;
 pub mod config;
 pub mod webdav;
@@ -16,7 +18,7 @@ pub mod wasapi_output;
 // Re-exports for convenience
 pub use decoder::StreamingDecoder;
 pub use player::{AudioPlayer, PlayerState, AudioDeviceInfo, SharedState};
-pub use processor::{Resampler, StreamingResampler, Equalizer, VolumeController, NoiseShaper, SpectrumAnalyzer, FFTConvolver, LoudnessMeter, LoudnessNormalizer, PeakLimiter, LoudnessInfo, AtomicLoudnessState, LoudnessDatabase, TrackLoudness, DatabaseStats, CURRENT_SCAN_VERSION, GainRamp, TruePeakDetector};
+pub use processor::{Resampler, StreamingResampler, Equalizer, NoiseShaper, SpectrumAnalyzer, FFTConvolver, LoudnessMeter, LoudnessNormalizer, PeakLimiter, LoudnessInfo, AtomicLoudnessState, LoudnessDatabase, TrackLoudness, DatabaseStats, CURRENT_SCAN_VERSION, TruePeakDetector};
 pub use config::{LoudnessConfig, NormalizationMode};
 
 /// Library version
