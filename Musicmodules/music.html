@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <title>音乐播放器</title>
     <link rel="stylesheet" href="music.css">
+    <link rel="stylesheet" href="music-stage/music-stage.css">
     <!-- 仅加载主题覆盖，并置于模块样式之后以确保主题定义生效 -->
     <link rel="stylesheet" href="../styles/themes.css">
 </head>
@@ -20,6 +21,10 @@
                 <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
                     <path fill="none" stroke="currentColor" stroke-width="1" d="M3,1.5 L8,5 L3,8.5 Z"></path>
                 </svg>
+            </button>
+            <button id="stage-toggle-btn" class="window-control-btn stage-toggle-btn" type="button"
+                title="进入歌词舞台" aria-label="进入歌词舞台" aria-pressed="false">
+                <span class="stage-toggle-orbit" aria-hidden="true"></span>
             </button>
             <div class="window-controls">
                 <button id="minimize-music-btn" class="window-control-btn" title="最小化">
@@ -577,6 +582,74 @@
             </div>
         </div>
     </div>
+
+    <!-- Folia-inspired immersive lyrics stage. Playback remains owned by the VCP audio engine. -->
+    <main id="music-stage" class="music-stage" tabindex="-1" hidden aria-hidden="true"
+        aria-label="沉浸式歌词舞台">
+        <div class="music-stage-backdrop" aria-hidden="true">
+            <div class="music-stage-backdrop-layer music-stage-backdrop-current"></div>
+            <div class="music-stage-backdrop-layer music-stage-backdrop-next"></div>
+            <div class="music-stage-backdrop-noise"></div>
+            <div class="music-stage-shade"></div>
+        </div>
+
+        <!-- 共用于四种演出模式的实时音频响应边缘频谱与流光。 -->
+        <div class="music-stage-edge-spectrum" aria-hidden="true">
+            <canvas class="music-stage-edge-spectrum-canvas"></canvas>
+            <div class="music-stage-edge-flow"></div>
+            <div class="music-stage-edge-corners">
+                <i></i><i></i><i></i><i></i>
+            </div>
+        </div>
+
+        <div class="music-stage-mode-root" aria-live="off"></div>
+
+        <header class="music-stage-top-chrome">
+            <div class="music-stage-wordmark" aria-hidden="true">
+                <span>VCP</span>
+                <i></i>
+                <span>LYRIC STAGE</span>
+            </div>
+            <nav class="music-stage-mode-switcher" aria-label="歌词演出模式"></nav>
+        </header>
+
+        <aside class="music-stage-id3" aria-label="当前曲目信息">
+            <div class="music-stage-cover" role="img"></div>
+            <div class="music-stage-track-copy">
+                <div class="music-stage-track-kicker">NOW PERFORMING</div>
+                <div class="music-stage-track-title">未选择歌曲</div>
+                <div class="music-stage-track-artist">未知艺术家</div>
+                <div class="music-stage-track-album" hidden></div>
+            </div>
+        </aside>
+
+        <div class="music-stage-empty-notice" hidden>选择一首歌曲，让文字开始演出</div>
+
+        <section class="music-stage-chrome" aria-label="播放控制">
+            <div class="music-stage-time music-stage-current-time">0:00</div>
+            <div class="music-stage-progress-track" role="slider" tabindex="0"
+                aria-label="播放进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                <div class="music-stage-progress-glow"></div>
+                <div class="music-stage-progress-fill"></div>
+            </div>
+            <div class="music-stage-time music-stage-duration">0:00</div>
+            <div class="music-stage-transport">
+                <button class="music-stage-play-mode-button" type="button" data-stage-action="play-mode"
+                    title="列表循环" aria-label="列表循环"></button>
+                <button type="button" data-stage-action="previous" title="上一首" aria-label="上一首"></button>
+                <button class="music-stage-play-button" type="button" data-stage-action="toggle-play"
+                    title="播放" aria-label="播放"></button>
+                <button type="button" data-stage-action="next" title="下一首" aria-label="下一首"></button>
+                <div class="music-stage-volume">
+                    <button class="music-stage-volume-button" type="button" data-stage-action="toggle-mute"
+                        title="静音" aria-label="静音"></button>
+                    <input class="music-stage-volume-slider" type="range" min="0" max="1" step="0.01"
+                        value="1" aria-label="音量">
+                </div>
+            </div>
+        </section>
+    </main>
+
     <!-- 右键菜单 -->
     <div id="track-context-menu" class="context-menu">
         <div class="context-menu-item" data-action="play">
@@ -590,6 +663,13 @@
                 <path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z" fill="currentColor" />
             </svg>
             <span>下一首播放</span>
+        </div>
+        <div class="context-menu-divider"></div>
+        <div class="context-menu-item" data-action="get-lyrics">
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                <path d="M12 3v10.17l-3.59-3.58L7 11l5 5 5-5-1.41-1.41L13 13.17V3h-1zM5 19v2h14v-2H5z" fill="currentColor" />
+            </svg>
+            <span>获取歌词</span>
         </div>
         <div class="context-menu-divider"></div>
         <div class="context-menu-item has-submenu" data-action="add-to-playlist">
@@ -617,6 +697,45 @@
                     fill="currentColor" />
             </svg>
             <span>从列表中移除</span>
+        </div>
+    </div>
+
+    <!-- 多源歌词获取模态框 -->
+    <div id="lyrics-fetch-modal" class="music-modal-overlay" role="dialog" aria-modal="true"
+        aria-labelledby="lyrics-fetch-modal-title">
+        <div class="music-modal lyrics-fetch-modal">
+            <div class="music-modal-header">
+                <div>
+                    <h3 id="lyrics-fetch-modal-title">获取歌词版本</h3>
+                    <div id="lyrics-fetch-track" class="lyrics-fetch-track"></div>
+                </div>
+                <button class="music-modal-close-btn" id="lyrics-fetch-close" type="button"
+                    aria-label="关闭歌词获取窗口">✕</button>
+            </div>
+            <div class="lyrics-fetch-search">
+                <label>
+                    <span>歌曲</span>
+                    <input id="lyrics-fetch-title" type="text" autocomplete="off">
+                </label>
+                <label>
+                    <span>歌手</span>
+                    <input id="lyrics-fetch-artist" type="text" autocomplete="off">
+                </label>
+                <button id="lyrics-fetch-search-btn" class="dialog-btn confirm" type="button">搜索多个源</button>
+            </div>
+            <div class="lyrics-fetch-legend">
+                <span><i class="lyrics-capability word"></i>支持流式逐字符</span>
+                <span><i class="lyrics-capability line"></i>普通逐行</span>
+                <span>选择后将覆盖当前本地歌词文件</span>
+            </div>
+            <div id="lyrics-fetch-status" class="lyrics-fetch-status" aria-live="polite"></div>
+            <div id="lyrics-fetch-results" class="lyrics-fetch-results">
+                <div class="music-modal-empty">点击“搜索多个源”查找可用歌词版本</div>
+            </div>
+            <div class="music-modal-footer lyrics-fetch-footer">
+                <span id="lyrics-fetch-selection" class="modal-count">尚未选择歌词版本</span>
+                <button id="lyrics-fetch-apply" class="dialog-btn confirm" type="button" disabled>获取并覆盖</button>
+            </div>
         </div>
     </div>
 
@@ -700,6 +819,9 @@
 
     <!-- 确保 JS 在 body 结束前加载 -->
     <script src="socket.io.min.js"></script>
+    <script src="music-stage/music-stage-runtime.js"></script>
+    <script src="music-stage/music-stage-modes.js"></script>
+    <script src="music-stage/music-stage-host.js"></script>
     <script src="music-utils.js"></script>
     <script src="music-visualizer.js"></script>
     <script src="music-lyrics.js"></script>

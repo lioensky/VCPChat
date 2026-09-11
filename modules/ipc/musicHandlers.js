@@ -775,6 +775,46 @@ function initialize(options) {
             }
         });
 
+        ipcMain.handle('music-search-lyrics-candidates', async (event, options = {}) => {
+            const title = typeof options.title === 'string' ? options.title.trim() : '';
+            if (!title) return { success: false, message: '缺少歌曲标题', candidates: [] };
+
+            try {
+                const candidates = await lyricFetcher.searchLyricsCandidates({
+                    title,
+                    artist: typeof options.artist === 'string' ? options.artist.trim() : '',
+                    album: typeof options.album === 'string' ? options.album.trim() : '',
+                    durationMs: Number.isFinite(Number(options.durationMs))
+                        ? Math.max(0, Number(options.durationMs))
+                        : 0
+                });
+                return { success: true, candidates };
+            } catch (error) {
+                console.error(`[Music] Error searching lyric candidates for "${title}":`, error);
+                return { success: false, message: error.message || '搜索歌词失败', candidates: [] };
+            }
+        });
+
+        ipcMain.handle('music-apply-lyrics-candidate', async (event, options = {}) => {
+            const title = typeof options.title === 'string' ? options.title.trim() : '';
+            const candidateKey = typeof options.candidateKey === 'string' ? options.candidateKey : '';
+            if (!title || !candidateKey) {
+                return { success: false, message: '缺少歌曲或歌词候选信息' };
+            }
+
+            try {
+                return await lyricFetcher.saveSelectedLyrics({
+                    candidateKey,
+                    title,
+                    artist: typeof options.artist === 'string' ? options.artist.trim() : '',
+                    lyricDir: LYRIC_DIR
+                });
+            } catch (error) {
+                console.error(`[Music] Error applying lyric candidate for "${title}":`, error);
+                return { success: false, message: error.message || '覆盖歌词失败' };
+            }
+        });
+
         // ============ WebDAV IPC Handlers ============
         // 前端直接传递完整凭据 {url, username, password, path}
 

@@ -4,7 +4,12 @@
 const fs = require('fs').promises;
 const path = require('path');
 const axios = require('axios');
-const { fetchAndSaveLyricsUnified, convertToLrcString } = require('./lyrics/lyricFetcherUnified');
+const {
+    fetchAndSaveLyricsUnified,
+    searchLyricsCandidates,
+    saveSelectedLyrics,
+    convertToLrcString
+} = require('./lyrics/lyricFetcherUnified');
 
 const lyricApiUrl = 'https://music.163.com/api/song/lyric';
 const searchApiUrl = 'https://music.163.com/api/search/get/';
@@ -225,5 +230,7 @@ async function fetchAndSaveLyrics(artist, title, lyricDir, options = {}) {
 
 module.exports = {
     fetchAndSaveLyrics,
-    fetchAndSaveLyricsUnified
+    fetchAndSaveLyricsUnified,
+    searchLyricsCandidates,
+    saveSelectedLyrics
 };

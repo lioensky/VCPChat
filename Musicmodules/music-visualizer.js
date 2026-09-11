@@ -222,13 +222,16 @@ function setupVisualizer(app) {
     };
 
     app.startVisualizerAnimation = () => {
-        const draw = () => {
-            if (app.isPlaying) {
+        const draw = (timestamp) => {
+            const isStageActive = Boolean(app.isStageActive && app.stageHost?.active);
+
+            if (app.isPlaying && !isStageActive) {
                 app.animateLyrics();
             }
 
             // --- Cover Pulse Animation Logic ---
-            if (app.isPlaying && app.currentVisualizerData.length > 0 && app.albumArtWrapper) {
+            // 沉浸舞台拥有自己的封面与音频响应，普通封面在舞台期间停止写入 transform。
+            if (!isStageActive && app.isPlaying && app.currentVisualizerData.length > 0 && app.albumArtWrapper) {
                 const startBin = Math.max(0, Math.floor(app.currentVisualizerData.length * app.COVER_MID_START_RATIO));
                 const endBin = Math.min(
                     app.currentVisualizerData.length,
@@ -259,7 +262,11 @@ function setupVisualizer(app) {
             }
 
             if (app.targetVisualizerData.length === 0) {
-                app.visualizerCtx.clearRect(0, 0, app.visualizerCanvas.width, app.visualizerCanvas.height);
+                if (isStageActive) {
+                    app.stageHost.updateFrame(timestamp);
+                } else {
+                    app.visualizerCtx.clearRect(0, 0, app.visualizerCanvas.width, app.visualizerCanvas.height);
+                }
                 app.animationFrameId = requestAnimationFrame(draw);
                 return;
             }
@@ -270,6 +277,13 @@ function setupVisualizer(app) {
                     app.currentVisualizerData[i] = 0;
                 }
                 app.currentVisualizerData[i] += (app.targetVisualizerData[i] - app.currentVisualizerData[i]) * app.easingFactor;
+            }
+
+            if (isStageActive) {
+                app.stageHost.updateFrame(timestamp);
+                app.visualizerCtx.clearRect(0, 0, app.visualizerCanvas.width, app.visualizerCanvas.height);
+                app.animationFrameId = requestAnimationFrame(draw);
+                return;
             }
 
             app.drawVisualizer(app.currentVisualizerData);

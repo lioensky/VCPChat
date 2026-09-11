@@ -13,6 +13,15 @@ const { calculateMatchScore } = require('./matchScore');
 
 const DEFAULT_TIMEOUT_MS = 6000;
 const AMLL_DB_BASE_URL = 'https://amll-ttml-db.stevexmh.net';
+const MANUAL_CANDIDATE_TTL_MS = 10 * 60 * 1000;
+const manualCandidateCache = new Map();
+
+const SOURCE_LABELS = {
+    netease: '网易云音乐',
+    qq: 'QQ 音乐',
+    kugou: '酷狗音乐',
+    amll: 'AMLL TTML'
+};
 
 // Helper: MD5 hash
 function md5(str) {
@@ -338,6 +347,155 @@ async function fetchAmllDb(platform, songId) {
 }
 
 // ==========================================
+// Manual candidate search / selection
+// ==========================================
+function cleanupManualCandidateCache() {
+    const now = Date.now();
+    for (const [key, entry] of manualCandidateCache) {
+        if (!entry || now - entry.createdAt > MANUAL_CANDIDATE_TTL_MS) {
+            manualCandidateCache.delete(key);
+        }
+    }
+}
+
+function scoreCandidates(target, candidates, limit = 3) {
+    return (candidates || [])
+        .map(candidate => {
+            const details = calculateMatchScore(target, candidate);
+            return { ...candidate, matchScore: details.score, scoreDetails: details };
+        })
+        .sort((a, b) => b.matchScore - a.matchScore)
+        .slice(0, limit);
+}
+
+async function fetchCandidateLyrics(candidate) {
+    if (!candidate || !candidate.source) return null;
+    if (candidate.source === 'netease') return fetchNetEaseLyric(candidate.id);
+    if (candidate.source === 'qq') return fetchQQLyric(candidate);
+    if (candidate.source === 'kugou') return fetchKugouLyric(candidate);
+    if (candidate.source === 'amll') return fetchAmllDb(candidate.platform, candidate.id);
+    return null;
+}
+
+function createCandidateSummary(candidate, result) {
+    const lyrics = result?.lyrics;
+    if (!lyrics || !Array.isArray(lyrics.lines) || lyrics.lines.length === 0) return null;
+
+    const candidateKey = crypto.randomUUID();
+    manualCandidateCache.set(candidateKey, {
+        createdAt: Date.now(),
+        lyrics,
+        source: result.source || candidate.source,
+        platform: result.platform || candidate.platform || null,
+        sourceId: result.id || candidate.id
+    });
+
+    const preview = lyrics.lines
+        .slice(0, 3)
+        .map(line => line.fullText)
+        .filter(Boolean)
+        .join(' / ');
+
+    return {
+        candidateKey,
+        source: result.source || candidate.source,
+        sourceLabel: SOURCE_LABELS[result.source || candidate.source] || result.source || candidate.source,
+        platform: result.platform || candidate.platform || null,
+        title: candidate.title || '',
+        artist: candidate.artist || '',
+        album: candidate.album || '',
+        durationMs: candidate.durationMs || 0,
+        matchScore: Math.round(candidate.matchScore || 0),
+        isWordByWord: Boolean(lyrics.isWordByWord),
+        hasTranslation: lyrics.lines.some(line => Boolean(line.translation)),
+        hasRomanization: lyrics.lines.some(line => Boolean(line.romanization)),
+        lineCount: lyrics.lines.length,
+        preview
+    };
+}
+
+async function searchLyricsCandidates({ artist, title, durationMs, album }) {
+    if (!title) return [];
+    cleanupManualCandidateCache();
+
+    const target = {
+        title: title.trim(),
+        artist: (artist || '').trim(),
+        durationMs: durationMs || 0,
+        album: (album || '').trim()
+    };
+    const query = [target.title, target.artist].filter(Boolean).join(' ');
+
+    const [netease, qq, kugou] = await Promise.all([
+        searchNetEase(query, target),
+        searchQQ(query),
+        searchKugou(query)
+    ]);
+
+    const baseCandidates = [
+        ...scoreCandidates(target, netease),
+        ...scoreCandidates(target, qq),
+        ...scoreCandidates(target, kugou)
+    ];
+
+    const probes = [];
+    for (const candidate of baseCandidates) {
+        probes.push(
+            fetchCandidateLyrics(candidate)
+                .then(result => createCandidateSummary(candidate, result))
+                .catch(() => null)
+        );
+
+        if (candidate.source === 'netease' || candidate.source === 'qq') {
+            const platform = candidate.source === 'netease' ? 'ncm' : 'qq';
+            const amllCandidate = { ...candidate, source: 'amll', platform };
+            probes.push(
+                fetchAmllDb(platform, candidate.id)
+                    .then(result => createCandidateSummary(amllCandidate, result))
+                    .catch(() => null)
+            );
+        }
+    }
+
+    const summaries = (await Promise.all(probes)).filter(Boolean);
+    return summaries.sort((a, b) => {
+        if (a.isWordByWord !== b.isWordByWord) return a.isWordByWord ? -1 : 1;
+        return b.matchScore - a.matchScore;
+    });
+}
+
+async function saveSelectedLyrics({ candidateKey, artist, title, lyricDir }) {
+    if (!candidateKey || !title || !lyricDir) {
+        return { success: false, message: '缺少歌词候选或曲目信息' };
+    }
+
+    cleanupManualCandidateCache();
+    const cached = manualCandidateCache.get(candidateKey);
+    if (!cached?.lyrics) {
+        return { success: false, message: '歌词候选已过期，请重新搜索' };
+    }
+
+    const sanitize = (str) => (str || '').replace(/[\\/:"*?<>|]/g, '_').trim();
+    const baseName = artist ? `${sanitize(artist)} - ${sanitize(title)}` : sanitize(title);
+    const jsonPath = path.join(lyricDir, `${baseName}.json`);
+    const lrcPath = path.join(lyricDir, `${baseName}.lrc`);
+
+    await fs.ensureDir(lyricDir);
+    await Promise.all([
+        fs.writeJson(jsonPath, cached.lyrics, { spaces: 2 }),
+        fs.writeFile(lrcPath, convertToLrcString(cached.lyrics), 'utf8')
+    ]);
+    manualCandidateCache.delete(candidateKey);
+
+    return {
+        success: true,
+        lyrics: cached.lyrics,
+        source: cached.source,
+        platform: cached.platform
+    };
+}
+
+// ==========================================
 // Best Candidate Selection
 // ==========================================
 function pickBestCandidate(target, candidates) {
@@ -485,5 +643,7 @@ async function fetchAndSaveLyricsUnified({ artist, title, durationMs, album, lyr
 module.exports = {
     autoMatchLyrics,
     fetchAndSaveLyricsUnified,
+    searchLyricsCandidates,
+    saveSelectedLyrics,
     convertToLrcString
 };

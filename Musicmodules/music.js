@@ -109,6 +109,16 @@ document.addEventListener('DOMContentLoaded', () => {
         webdavDialogStatus: document.getElementById('webdav-dialog-status'),
         addWebDavBtn: document.getElementById('add-webdav-btn'),
         semanticSearchBtn: document.getElementById('semantic-search-btn'),
+        lyricsFetchModal: document.getElementById('lyrics-fetch-modal'),
+        lyricsFetchClose: document.getElementById('lyrics-fetch-close'),
+        lyricsFetchTrack: document.getElementById('lyrics-fetch-track'),
+        lyricsFetchTitle: document.getElementById('lyrics-fetch-title'),
+        lyricsFetchArtist: document.getElementById('lyrics-fetch-artist'),
+        lyricsFetchSearchBtn: document.getElementById('lyrics-fetch-search-btn'),
+        lyricsFetchStatus: document.getElementById('lyrics-fetch-status'),
+        lyricsFetchResults: document.getElementById('lyrics-fetch-results'),
+        lyricsFetchSelection: document.getElementById('lyrics-fetch-selection'),
+        lyricsFetchApply: document.getElementById('lyrics-fetch-apply'),
         api: window.utilityAPI || window.electronAPI,
 
         // --- State Variables ---
@@ -208,6 +218,12 @@ document.addEventListener('DOMContentLoaded', () => {
         expectedPlayingState: false,
         isSemanticSearchActive: false,
         isSemanticSearching: false,
+        isStageActive: false,
+        stageHost: null,
+        lyricsFetchTrackIndex: null,
+        lyricsFetchCandidates: [],
+        selectedLyricsCandidateKey: null,
+        lyricsFetchRequestToken: 0,
     };
 
 
@@ -237,6 +253,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setupWebDav(app);
         setupSidebar(app);
         setupUI(app);
+        setupMusicStage(app);
 
         // --- Handlers & Listeners ---
         setupEventListeners();
@@ -250,6 +267,7 @@ document.addEventListener('DOMContentLoaded', () => {
         app.visualizerCanvas.height = app.visualizerCanvas.clientHeight;
         app.recreateParticles();
         app.connectWebSocket();
+        if (!app.animationFrameId) app.startVisualizerAnimation();
         app.updateModeButton();
         await initializeTheme();
 
@@ -321,6 +339,218 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const setupEventListeners = () => {
+        const formatCandidateDuration = (durationMs) => {
+            const seconds = Math.max(0, Math.round((durationMs || 0) / 1000));
+            return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+        };
+
+        const setLyricsFetchStatus = (message = '', type = '') => {
+            app.lyricsFetchStatus.textContent = message;
+            app.lyricsFetchStatus.className = `lyrics-fetch-status${type ? ` ${type}` : ''}`;
+        };
+
+        const closeLyricsFetchModal = () => {
+            app.lyricsFetchRequestToken++;
+            app.lyricsFetchModal.classList.remove('visible');
+            app.lyricsFetchTrackIndex = null;
+            app.selectedLyricsCandidateKey = null;
+        };
+
+        const renderLyricsCandidates = () => {
+            app.lyricsFetchResults.innerHTML = '';
+            if (app.lyricsFetchCandidates.length === 0) {
+                app.lyricsFetchResults.innerHTML = '<div class="music-modal-empty">没有找到可用歌词版本，可调整歌曲或歌手后重试</div>';
+                return;
+            }
+
+            const fragment = document.createDocumentFragment();
+            app.lyricsFetchCandidates.forEach(candidate => {
+                const item = document.createElement('div');
+                item.className = `lyrics-candidate${candidate.candidateKey === app.selectedLyricsCandidateKey ? ' selected' : ''}`;
+                item.tabIndex = 0;
+                item.setAttribute('role', 'radio');
+                item.setAttribute('aria-checked', String(candidate.candidateKey === app.selectedLyricsCandidateKey));
+
+                const radio = document.createElement('span');
+                radio.className = 'lyrics-candidate-radio';
+                radio.setAttribute('aria-hidden', 'true');
+
+                const main = document.createElement('div');
+                main.className = 'lyrics-candidate-main';
+
+                const heading = document.createElement('div');
+                heading.className = 'lyrics-candidate-heading';
+
+                const source = document.createElement('span');
+                source.className = 'lyrics-source-badge';
+                source.textContent = candidate.sourceLabel || candidate.source;
+
+                const title = document.createElement('span');
+                title.className = 'lyrics-candidate-title';
+                title.textContent = `${candidate.title || '未知歌曲'} · ${candidate.artist || '未知歌手'}`;
+
+                const timing = document.createElement('span');
+                timing.className = `lyrics-feature-badge ${candidate.isWordByWord ? 'word' : ''}`;
+                timing.textContent = candidate.isWordByWord ? '流式逐字符' : '普通逐行';
+
+                heading.append(source, title, timing);
+                if (candidate.hasTranslation) {
+                    const translation = document.createElement('span');
+                    translation.className = 'lyrics-feature-badge translation';
+                    translation.textContent = '翻译';
+                    heading.appendChild(translation);
+                }
+                if (candidate.hasRomanization) {
+                    const romanization = document.createElement('span');
+                    romanization.className = 'lyrics-feature-badge';
+                    romanization.textContent = '罗马音';
+                    heading.appendChild(romanization);
+                }
+
+                const meta = document.createElement('div');
+                meta.className = 'lyrics-candidate-meta';
+                meta.textContent = `${candidate.album || '未知专辑'} · ${formatCandidateDuration(candidate.durationMs)} · ${candidate.lineCount} 行`;
+
+                const preview = document.createElement('div');
+                preview.className = 'lyrics-candidate-preview';
+                preview.textContent = candidate.preview || '无可用预览';
+
+                const score = document.createElement('div');
+                score.className = 'lyrics-candidate-score';
+                score.textContent = `${candidate.matchScore}% 匹配`;
+
+                main.append(heading, meta, preview);
+                item.append(radio, main, score);
+
+                const selectCandidate = () => {
+                    app.selectedLyricsCandidateKey = candidate.candidateKey;
+                    app.lyricsFetchSelection.textContent = `已选择：${candidate.sourceLabel} · ${candidate.isWordByWord ? '流式逐字符' : '普通逐行'}`;
+                    app.lyricsFetchApply.disabled = false;
+                    renderLyricsCandidates();
+                };
+                item.onclick = selectCandidate;
+                item.onkeydown = (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        selectCandidate();
+                    }
+                };
+                fragment.appendChild(item);
+            });
+            app.lyricsFetchResults.appendChild(fragment);
+        };
+
+        const searchLyricsCandidates = async () => {
+            const track = app.playlist[app.lyricsFetchTrackIndex];
+            const title = app.lyricsFetchTitle.value.trim();
+            const artist = app.lyricsFetchArtist.value.trim();
+            if (!track || !title) {
+                setLyricsFetchStatus('请输入歌曲标题', 'error');
+                return;
+            }
+            if (!app.api?.searchMusicLyricsCandidates) {
+                setLyricsFetchStatus('当前版本未提供多源歌词接口', 'error');
+                return;
+            }
+
+            const requestToken = ++app.lyricsFetchRequestToken;
+            app.lyricsFetchSearchBtn.disabled = true;
+            app.lyricsFetchApply.disabled = true;
+            app.selectedLyricsCandidateKey = null;
+            app.lyricsFetchCandidates = [];
+            app.lyricsFetchSelection.textContent = '尚未选择歌词版本';
+            app.lyricsFetchResults.innerHTML = '<div class="music-modal-empty"><div class="spinner"></div><div>正在并行搜索并检测歌词格式...</div></div>';
+            setLyricsFetchStatus('正在连接网易云、QQ 音乐、酷狗与 AMLL...');
+
+            try {
+                const result = await app.api.searchMusicLyricsCandidates({
+                    title,
+                    artist,
+                    album: track.album || '',
+                    durationMs: Math.round((track.duration || 0) * 1000)
+                });
+                if (requestToken !== app.lyricsFetchRequestToken) return;
+                app.lyricsFetchCandidates = result?.candidates || [];
+                renderLyricsCandidates();
+                setLyricsFetchStatus(
+                    result?.success
+                        ? `找到 ${app.lyricsFetchCandidates.length} 个可用版本`
+                        : (result?.message || '歌词搜索失败'),
+                    result?.success ? 'success' : 'error'
+                );
+            } catch (error) {
+                if (requestToken !== app.lyricsFetchRequestToken) return;
+                app.lyricsFetchCandidates = [];
+                renderLyricsCandidates();
+                setLyricsFetchStatus(error?.message || '歌词搜索失败', 'error');
+            } finally {
+                if (requestToken === app.lyricsFetchRequestToken) {
+                    app.lyricsFetchSearchBtn.disabled = false;
+                }
+            }
+        };
+
+        app.openLyricsFetchModal = (trackIndex) => {
+            const track = app.playlist[trackIndex];
+            if (!track) return;
+            app.lyricsFetchTrackIndex = trackIndex;
+            app.lyricsFetchCandidates = [];
+            app.selectedLyricsCandidateKey = null;
+            app.lyricsFetchTitle.value = app.stripAudioExtension(track.title) || '';
+            app.lyricsFetchArtist.value = track.artist || '';
+            app.lyricsFetchTrack.textContent = `${app.stripAudioExtension(track.title) || '未知歌曲'} · ${track.artist || '未知艺术家'}`;
+            app.lyricsFetchResults.innerHTML = '<div class="music-modal-empty">点击“搜索多个源”查找可用歌词版本</div>';
+            app.lyricsFetchSelection.textContent = '尚未选择歌词版本';
+            app.lyricsFetchApply.disabled = true;
+            app.lyricsFetchSearchBtn.disabled = false;
+            setLyricsFetchStatus('');
+            app.lyricsFetchModal.classList.add('visible');
+            app.lyricsFetchTitle.focus();
+        };
+
+        app.lyricsFetchSearchBtn.onclick = searchLyricsCandidates;
+        app.lyricsFetchClose.onclick = closeLyricsFetchModal;
+        app.lyricsFetchModal.onclick = (event) => {
+            if (event.target === app.lyricsFetchModal) closeLyricsFetchModal();
+        };
+        app.lyricsFetchTitle.onkeydown = app.lyricsFetchArtist.onkeydown = (event) => {
+            if (event.key === 'Enter') searchLyricsCandidates();
+        };
+        app.lyricsFetchApply.onclick = async () => {
+            const track = app.playlist[app.lyricsFetchTrackIndex];
+            if (!track || !app.selectedLyricsCandidateKey || !app.api?.applyMusicLyricsCandidate) return;
+
+            app.lyricsFetchApply.disabled = true;
+            app.lyricsFetchSearchBtn.disabled = true;
+            setLyricsFetchStatus('正在覆盖当前歌词文件...');
+            try {
+                const result = await app.api.applyMusicLyricsCandidate({
+                    candidateKey: app.selectedLyricsCandidateKey,
+                    title: track.title,
+                    artist: track.artist || ''
+                });
+                if (!result?.success) {
+                    setLyricsFetchStatus(result?.message || '覆盖歌词失败', 'error');
+                    app.lyricsFetchApply.disabled = false;
+                    return;
+                }
+
+                setLyricsFetchStatus('歌词已覆盖并立即生效', 'success');
+                if (app.currentTrackIndex === app.lyricsFetchTrackIndex) {
+                    app.currentLyricsData = result.lyrics;
+                    app.currentLyrics = app.normalizeStructuredLyrics(result.lyrics);
+                    app.currentLyricIndex = -1;
+                    app.renderLyrics();
+                }
+                setTimeout(closeLyricsFetchModal, 650);
+            } catch (error) {
+                setLyricsFetchStatus(error?.message || '覆盖歌词失败', 'error');
+                app.lyricsFetchApply.disabled = false;
+            } finally {
+                app.lyricsFetchSearchBtn.disabled = false;
+            }
+        };
+
         app.playPauseBtn.onclick = () => app.isPlaying ? app.pauseTrack() : app.playTrack();
         app.prevBtn.onclick = () => app.prevTrack();
         app.nextBtn.onclick = () => app.nextTrack();
@@ -545,10 +775,14 @@ document.addEventListener('DOMContentLoaded', () => {
         app.modalSearchInput.oninput = (e) => { app.modalSearchQuery = e.target.value; app.renderModalSongList(); };
 
         document.addEventListener('click', (e) => { if (!app.contextMenu.contains(e.target)) app.contextMenu.classList.remove('visible'); });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && app.lyricsFetchModal.classList.contains('visible')) closeLyricsFetchModal();
+        });
         app.contextMenu.querySelectorAll('.context-menu-item').forEach(item => {
             item.onclick = (e) => {
                 const action = item.dataset.action; if (!action || action === 'add-to-playlist') return;
                 if (action === 'play') app.loadTrack(app.contextMenuTrackIndex);
+                else if (action === 'get-lyrics') app.openLyricsFetchModal(app.contextMenuTrackIndex);
                 else if (action === 'play-next') {
                     const t = app.playlist[app.contextMenuTrackIndex];
                     if (app.api?.queueNextMusicTrack) app.api.queueNextMusicTrack({ path: t.path, username: t.username, password: t.password });

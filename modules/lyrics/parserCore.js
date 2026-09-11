@@ -8,6 +8,17 @@ const LRC_LINE_TIME_REGEX = /^\[(\d{2}):(\d{2})[.:](\d{2,3})\]/;
 const GLOBAL_LRC_TIME_REGEX = /\[(\d{2}):(\d{2})[.:](\d{2,3})\]/g;
 const GLOBAL_ANGLE_TIME_REGEX = /<(\d{2}):(\d{2})[.:](\d{2,3})>/g;
 
+function isSourceMigrationArtifact(text) {
+    return typeof text === 'string' && text.trim() === '//';
+}
+
+function createLyricData(lines, isWordByWord) {
+    return {
+        lines: (lines || []).filter(line => !isSourceMigrationArtifact(line?.fullText)),
+        isWordByWord
+    };
+}
+
 function parseTimestamp(minute, second, fraction) {
     const min = parseInt(minute, 10);
     const sec = parseInt(second, 10);
@@ -183,10 +194,7 @@ function parseYRC(yrcString, translationString = '', romanizationString = '') {
         if (romanizations[idx]) line.romanization = romanizations[idx];
     });
 
-    return {
-        lines,
-        isWordByWord: true
-    };
+    return createLyricData(lines, true);
 }
 
 /**
@@ -270,10 +278,7 @@ function parseQRC(qrcString, translationString = '', romanizationString = '') {
         if (romanizations[idx]) line.romanization = romanizations[idx];
     });
 
-    return {
-        lines,
-        isWordByWord: true
-    };
+    return createLyricData(lines, true);
 }
 
 /**
@@ -345,10 +350,7 @@ function parseKRC(krcString, translationString = '', romanizationString = '') {
         if (roma) line.romanization = roma;
     });
 
-    return {
-        lines,
-        isWordByWord: true
-    };
+    return createLyricData(lines, true);
 }
 
 /**
@@ -416,10 +418,7 @@ function parseTTML(ttmlString) {
     }
 
     lines.sort((a, b) => a.startTime - b.startTime);
-    return {
-        lines,
-        isWordByWord: true
-    };
+    return createLyricData(lines, true);
 }
 
 /**
@@ -465,10 +464,7 @@ function parseLRC(lrcString, translationString = '', romanizationString = '') {
         if (romanizations[idx]) line.romanization = romanizations[idx];
     });
 
-    return {
-        lines,
-        isWordByWord: false
-    };
+    return createLyricData(lines, false);
 }
 
 /**

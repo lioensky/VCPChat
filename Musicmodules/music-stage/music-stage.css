@@ -1,0 +1,1589 @@
+/*
+ * VCP Music Lyric Stage
+ * UI adaptation based on Folia's visualizer concepts.
+ * See Musicmodules/README.md for attribution and licensing notes.
+ */
+
+@property --stage-edge-angle {
+    syntax: "<angle>";
+    inherits: false;
+    initial-value: 0deg;
+}
+
+:root {
+    --stage-ink: var(--primary-text, #fff);
+    --stage-muted: var(--secondary-text, rgba(255, 255, 255, 0.65));
+    --stage-accent: var(--highlight-text, #79d8ff);
+    --stage-on-accent: var(--text-on-accent, #071019);
+    --stage-surface: var(--secondary-bg, #11151a);
+    --stage-border: color-mix(in srgb, var(--border-color, #fff) 42%, transparent);
+    --stage-glass: color-mix(in srgb, var(--panel-bg, #080a12) 36%, transparent);
+    --stage-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.stage-toggle-btn {
+    position: relative;
+}
+
+.stage-toggle-orbit {
+    width: 13px;
+    height: 13px;
+    border: 1.4px solid currentColor;
+    border-radius: 50%;
+    transition: background-color 0.28s ease, box-shadow 0.28s ease, transform 0.28s var(--stage-ease);
+}
+
+.stage-toggle-btn:hover .stage-toggle-orbit {
+    transform: scale(1.12);
+}
+
+.stage-toggle-btn.is-active {
+    color: var(--music-highlight);
+}
+
+.stage-toggle-btn.is-active .stage-toggle-orbit {
+    background: currentColor;
+    box-shadow: 0 0 7px currentColor, 0 0 18px color-mix(in srgb, currentColor 55%, transparent);
+}
+
+body.music-stage-active .music-player-container {
+    opacity: 0;
+    transform: scale(1.025);
+    pointer-events: none;
+}
+
+/* 标题栏始终是舞台唯一模式出口；进入舞台后只保留圆形切换键与窗口控制。 */
+body.music-stage-active #custom-title-bar {
+    background: linear-gradient(180deg, rgba(3, 5, 9, 0.075), rgba(3, 5, 9, 0.012)) !important;
+    border-bottom-color: rgba(255, 255, 255, 0.018) !important;
+    box-shadow: none !important;
+    backdrop-filter: blur(2px) saturate(105%);
+    -webkit-backdrop-filter: blur(2px) saturate(105%);
+}
+
+body.music-stage-active #custom-title-bar .title,
+body.music-stage-active #sidebar-toggle-btn {
+    opacity: 0;
+    pointer-events: none;
+}
+
+body.music-stage-active #custom-title-bar .window-control-btn {
+    color: color-mix(in srgb, var(--stage-ink) 62%, transparent);
+}
+
+body.music-stage-active #custom-title-bar .window-control-btn:hover {
+    color: var(--stage-ink);
+    background-color: color-mix(in srgb, var(--stage-ink) 8%, transparent);
+}
+
+body.music-stage-active #custom-title-bar #stage-toggle-btn {
+    color: var(--stage-accent);
+}
+
+.music-player-container {
+    transition: opacity 0.38s ease, transform 0.5s var(--stage-ease);
+}
+
+body.music-stage-active #player-background {
+    opacity: 0;
+}
+
+#player-background {
+    transition: opacity 0.45s ease;
+}
+
+.music-stage[hidden] {
+    display: none;
+}
+
+.music-stage {
+    position: fixed;
+    inset: 0;
+    z-index: 800;
+    overflow: hidden;
+    color: var(--stage-ink);
+    opacity: 0;
+    transform: scale(1.018);
+    background: #070910;
+    outline: none;
+    pointer-events: none;
+    transition: opacity 0.38s ease, transform 0.55s var(--stage-ease);
+    isolation: isolate;
+}
+
+.music-stage.is-visible {
+    opacity: 1;
+    transform: scale(1);
+    pointer-events: auto;
+}
+
+.music-stage-backdrop,
+.music-stage-backdrop-layer,
+.music-stage-backdrop-noise,
+.music-stage-shade {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.music-stage-backdrop {
+    z-index: -5;
+    overflow: hidden;
+    background:
+        radial-gradient(circle at 68% 36%, color-mix(in srgb, var(--stage-accent) 18%, transparent), transparent 42%),
+        #070910;
+}
+
+.music-stage-backdrop-layer {
+    inset: -50px;
+    background-position: center;
+    background-size: cover;
+    filter: blur(46px) saturate(1.45) brightness(0.42);
+    transform: scale(calc(1.13 + var(--stage-audio-bass, 0) * 0.035));
+    transition: opacity 0.85s ease, transform 0.2s linear;
+    will-change: opacity, transform;
+}
+
+.music-stage-backdrop-current {
+    opacity: 0.78;
+}
+
+.music-stage-backdrop-next {
+    opacity: 0;
+}
+
+.music-stage.is-changing-cover .music-stage-backdrop-current {
+    opacity: 0;
+}
+
+.music-stage.is-changing-cover .music-stage-backdrop-next {
+    opacity: 0.78;
+}
+
+.music-stage-backdrop-noise {
+    opacity: 0.055;
+    mix-blend-mode: soft-light;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.78' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.8'/%3E%3C/svg%3E");
+}
+
+.music-stage-shade {
+    background:
+        radial-gradient(ellipse at 50% 42%, transparent 5%, rgba(2, 3, 8, 0.2) 58%, rgba(1, 2, 6, 0.76) 100%),
+        linear-gradient(180deg, rgba(3, 4, 10, 0.36), transparent 24%, transparent 70%, rgba(3, 4, 10, 0.55));
+}
+
+/* 四模式共用的边缘频谱：Canvas 表达真实频率，CSS 光带提供连续的流光氛围。 */
+.music-stage-edge-spectrum {
+    --stage-edge-inset: clamp(7px, 0.8vw, 14px);
+    --stage-edge-energy: var(--stage-audio-power, 0);
+    position: absolute;
+    inset: 0;
+    z-index: 8;
+    overflow: hidden;
+    pointer-events: none;
+    opacity: calc(0.26 + var(--stage-edge-energy) * 0.72);
+    transition: opacity 0.5s ease;
+    contain: strict;
+}
+
+.music-stage-edge-spectrum-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0.9;
+    filter:
+        drop-shadow(0 0 5px color-mix(in srgb, var(--stage-accent) 68%, transparent))
+        drop-shadow(0 0 15px color-mix(in srgb, var(--stage-accent) 30%, transparent));
+}
+
+.music-stage-edge-flow {
+    --stage-edge-angle: 0deg;
+    position: absolute;
+    inset: var(--stage-edge-inset);
+    padding: 1px;
+    border-radius: clamp(13px, 1.6vw, 25px);
+    background: conic-gradient(
+        from var(--stage-edge-angle),
+        transparent 0deg 36deg,
+        color-mix(in srgb, var(--stage-accent) 16%, transparent) 58deg,
+        color-mix(in srgb, var(--stage-accent) 90%, #fff) 76deg,
+        transparent 101deg 192deg,
+        color-mix(in srgb, #fff 28%, transparent) 220deg,
+        color-mix(in srgb, var(--stage-accent) 72%, #fff) 242deg,
+        transparent 270deg 360deg
+    );
+    filter:
+        drop-shadow(0 0 4px color-mix(in srgb, var(--stage-accent) 74%, transparent))
+        drop-shadow(0 0 13px color-mix(in srgb, var(--stage-accent) 36%, transparent));
+    opacity: calc(0.32 + var(--stage-edge-energy) * 0.68);
+    animation: stage-edge-flow-orbit 9s linear infinite;
+    will-change: --stage-edge-angle;
+    -webkit-mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+}
+
+.music-stage-edge-flow::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border: 1px solid color-mix(in srgb, var(--stage-accent) 14%, transparent);
+    border-radius: inherit;
+    box-shadow:
+        inset 0 0 14px color-mix(in srgb, var(--stage-accent) 7%, transparent),
+        0 0 18px color-mix(in srgb, var(--stage-accent) 6%, transparent);
+}
+
+.music-stage-edge-corners {
+    position: absolute;
+    inset: var(--stage-edge-inset);
+}
+
+.music-stage-edge-corners i {
+    position: absolute;
+    width: clamp(20px, 2.8vw, 46px);
+    height: clamp(20px, 2.8vw, 46px);
+    opacity: calc(0.2 + var(--stage-audio-bass, 0) * 0.74);
+    filter: drop-shadow(0 0 7px color-mix(in srgb, var(--stage-accent) 64%, transparent));
+    transition: opacity 0.12s linear;
+}
+
+.music-stage-edge-corners i:nth-child(1) {
+    top: 0;
+    left: 0;
+    border-top: 1px solid var(--stage-accent);
+    border-left: 1px solid var(--stage-accent);
+    border-radius: clamp(13px, 1.6vw, 25px) 0 0;
+}
+
+.music-stage-edge-corners i:nth-child(2) {
+    top: 0;
+    right: 0;
+    border-top: 1px solid var(--stage-accent);
+    border-right: 1px solid var(--stage-accent);
+    border-radius: 0 clamp(13px, 1.6vw, 25px) 0 0;
+}
+
+.music-stage-edge-corners i:nth-child(3) {
+    right: 0;
+    bottom: 0;
+    border-right: 1px solid var(--stage-accent);
+    border-bottom: 1px solid var(--stage-accent);
+    border-radius: 0 0 clamp(13px, 1.6vw, 25px);
+}
+
+.music-stage-edge-corners i:nth-child(4) {
+    bottom: 0;
+    left: 0;
+    border-bottom: 1px solid var(--stage-accent);
+    border-left: 1px solid var(--stage-accent);
+    border-radius: 0 0 0 clamp(13px, 1.6vw, 25px);
+}
+
+.music-stage:not(.is-playing) .music-stage-edge-spectrum {
+    opacity: 0.22;
+}
+
+.music-stage:not(.is-playing) .music-stage-edge-flow {
+    animation-duration: 18s;
+    opacity: 0.26;
+}
+
+@keyframes stage-edge-flow-orbit {
+    to {
+        --stage-edge-angle: 360deg;
+    }
+}
+
+.music-stage-mode-root {
+    position: absolute;
+    inset: 40px 0 0;
+    z-index: 1;
+    opacity: 1;
+    filter: blur(0);
+    transition: opacity 0.17s ease, filter 0.17s ease, transform 0.24s var(--stage-ease);
+}
+
+.music-stage-mode-root.is-switching {
+    opacity: 0;
+    filter: blur(12px);
+    transform: scale(1.015);
+}
+
+.music-stage-mode {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+}
+
+.music-stage-top-chrome {
+    position: absolute;
+    top: 46px;
+    left: 30px;
+    right: 30px;
+    z-index: 20;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    pointer-events: none;
+}
+
+.music-stage-wordmark {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: rgba(255, 255, 255, 0.42);
+    font-size: 9px;
+    font-weight: 750;
+    letter-spacing: 0.22em;
+}
+
+.music-stage-wordmark i {
+    width: 28px;
+    height: 1px;
+    background: currentColor;
+}
+
+.music-stage-mode-switcher {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    background: rgba(5, 7, 13, 0.18);
+    box-shadow: 0 12px 35px rgba(0, 0, 0, 0.16);
+    backdrop-filter: blur(16px);
+    pointer-events: auto;
+    opacity: 0.42;
+    transition: opacity 0.25s ease, background-color 0.25s ease;
+}
+
+.music-stage-mode-switcher:hover,
+.music-stage-mode-switcher:focus-within {
+    opacity: 1;
+    background: rgba(5, 7, 13, 0.52);
+}
+
+.music-stage-mode-button {
+    min-width: 52px;
+    height: 28px;
+    padding: 0 13px;
+    border: 0;
+    border-radius: 999px;
+    color: rgba(255, 255, 255, 0.58);
+    background: transparent;
+    cursor: pointer;
+    font-size: 11px;
+    transition: color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.music-stage-mode-button:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.music-stage-mode-button.is-active {
+    color: var(--stage-on-accent);
+    background: color-mix(in srgb, var(--stage-accent) 84%, var(--stage-ink));
+    box-shadow: 0 0 18px color-mix(in srgb, var(--stage-accent) 28%, transparent);
+}
+
+.music-stage-transport svg {
+    width: 100%;
+    height: 100%;
+}
+
+.music-stage-id3 {
+    position: absolute;
+    left: clamp(28px, 4vw, 70px);
+    bottom: clamp(86px, 12vh, 138px);
+    z-index: 15;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    max-width: min(38vw, 520px);
+    pointer-events: none;
+    transition: opacity 0.28s ease, transform 0.35s var(--stage-ease);
+}
+
+.music-stage-cover {
+    width: clamp(54px, 5vw, 76px);
+    height: clamp(54px, 5vw, 76px);
+    flex: none;
+    border-radius: 17px;
+    background-position: center;
+    background-size: cover;
+    box-shadow: 0 18px 45px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+    transform: scale(calc(1 + var(--stage-audio-bass, 0) * 0.055));
+    transition: background-image 0.5s ease;
+}
+
+.music-stage-track-copy {
+    min-width: 0;
+    padding: 8px 0;
+}
+
+.music-stage-track-kicker {
+    margin-bottom: 5px;
+    color: color-mix(in srgb, var(--stage-accent) 82%, #fff);
+    font-size: 8px;
+    font-weight: 780;
+    letter-spacing: 0.22em;
+}
+
+.music-stage-track-title {
+    overflow: hidden;
+    color: rgba(255, 255, 255, 0.94);
+    font-size: clamp(16px, 1.6vw, 24px);
+    font-weight: 680;
+    line-height: 1.15;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-shadow: 0 3px 20px rgba(0, 0, 0, 0.36);
+}
+
+.music-stage-track-title.is-changing {
+    animation: stage-title-enter 0.55s var(--stage-ease);
+}
+
+@keyframes stage-title-enter {
+    from {
+        opacity: 0;
+        filter: blur(7px);
+        transform: translateY(8px);
+    }
+}
+
+.music-stage-track-artist,
+.music-stage-track-album {
+    overflow: hidden;
+    margin-top: 4px;
+    color: rgba(255, 255, 255, 0.56);
+    font-size: clamp(11px, 0.95vw, 14px);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.music-stage-track-album {
+    display: inline;
+    opacity: 0.64;
+}
+
+.music-stage-track-album::before {
+    content: " · ";
+}
+
+.music-stage-empty-notice {
+    position: absolute;
+    z-index: 12;
+    left: 50%;
+    top: 53%;
+    color: rgba(255, 255, 255, 0.48);
+    font-size: 14px;
+    letter-spacing: 0.1em;
+    transform: translate(-50%, -50%);
+}
+
+.music-stage-chrome {
+    position: absolute;
+    left: 50%;
+    bottom: clamp(24px, 4vh, 46px);
+    z-index: 18;
+    display: grid;
+    grid-template-columns: auto minmax(280px, min(38vw, 560px)) auto;
+    grid-template-areas:
+        "current progress duration"
+        "transport transport transport";
+    align-items: center;
+    gap: 9px 12px;
+    width: min-content;
+    padding: 10px 16px 8px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 24px;
+    background: rgba(3, 5, 10, 0.15);
+    box-shadow: 0 18px 55px rgba(0, 0, 0, 0.18);
+    backdrop-filter: blur(16px);
+    transform: translateX(-50%);
+    opacity: 0.5;
+    transition: opacity 0.25s ease, background-color 0.25s ease, border-color 0.25s ease;
+}
+
+.music-stage-chrome:hover,
+.music-stage-chrome:focus-within {
+    opacity: 1;
+    background: rgba(3, 5, 10, 0.5);
+    border-color: rgba(255, 255, 255, 0.14);
+}
+
+.music-stage-time {
+    color: rgba(255, 255, 255, 0.54);
+    font-family: "SFMono-Regular", Consolas, monospace;
+    font-size: 9px;
+    font-variant-numeric: tabular-nums;
+}
+
+.music-stage-current-time {
+    grid-area: current;
+}
+
+.music-stage-duration {
+    grid-area: duration;
+}
+
+.music-stage-progress-track {
+    position: relative;
+    grid-area: progress;
+    height: 15px;
+    cursor: pointer;
+    touch-action: none;
+}
+
+.music-stage-progress-track::before {
+    content: "";
+    position: absolute;
+    top: 7px;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.22);
+}
+
+.music-stage-progress-fill,
+.music-stage-progress-glow {
+    position: absolute;
+    top: 6px;
+    left: 0;
+    width: 0;
+    height: 3px;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--stage-accent) 78%, #fff);
+}
+
+.music-stage-progress-glow {
+    height: 5px;
+    filter: blur(6px);
+    opacity: 0.68;
+}
+
+.music-stage-progress-track:focus-visible {
+    outline: 1px solid var(--stage-accent);
+    outline-offset: 4px;
+    border-radius: 4px;
+}
+
+.music-stage-transport {
+    grid-area: transport;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+}
+
+.music-stage-transport button {
+    width: 28px;
+    height: 28px;
+    flex: none;
+    padding: 6px;
+    border: 0;
+    border-radius: 50%;
+    color: rgba(255, 255, 255, 0.62);
+    background: transparent;
+    cursor: pointer;
+    transition: color 0.18s ease, background-color 0.18s ease, transform 0.18s ease;
+}
+
+.music-stage-transport button:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+    transform: scale(1.08);
+}
+
+.music-stage-transport .music-stage-play-button {
+    width: 38px;
+    height: 38px;
+    padding: 10px;
+    color: var(--stage-on-accent);
+    background: color-mix(in srgb, var(--stage-accent) 84%, var(--stage-ink));
+    box-shadow: 0 0 24px color-mix(in srgb, var(--stage-accent) 26%, transparent);
+}
+
+.music-stage-play-mode-button.is-active {
+    color: var(--stage-accent);
+    background: color-mix(in srgb, var(--stage-accent) 12%, transparent);
+}
+
+.music-stage-volume {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    width: 30px;
+    overflow: hidden;
+    border-radius: 999px;
+    transition: width 0.32s var(--stage-ease), background-color 0.2s ease;
+}
+
+.music-stage-volume:hover,
+.music-stage-volume:focus-within {
+    width: 116px;
+    padding-right: 8px;
+    background: color-mix(in srgb, var(--stage-ink) 6%, transparent);
+}
+
+.music-stage-volume-slider {
+    --stage-volume: 100%;
+    width: 72px;
+    height: 3px;
+    flex: none;
+    margin: 0;
+    appearance: none;
+    -webkit-appearance: none;
+    border-radius: 999px;
+    outline: none;
+    cursor: pointer;
+    background:
+        linear-gradient(to right, var(--stage-accent), var(--stage-accent)) 0 / var(--stage-volume) 100% no-repeat,
+        color-mix(in srgb, var(--stage-ink) 16%, transparent);
+}
+
+.music-stage-volume-slider::-webkit-slider-thumb {
+    width: 11px;
+    height: 11px;
+    appearance: none;
+    -webkit-appearance: none;
+    border: 1px solid color-mix(in srgb, var(--stage-ink) 42%, transparent);
+    border-radius: 50%;
+    background: var(--stage-ink);
+    box-shadow: 0 0 10px color-mix(in srgb, var(--stage-accent) 35%, transparent);
+}
+
+.music-stage-volume-slider::-moz-range-thumb {
+    width: 11px;
+    height: 11px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--stage-ink);
+}
+
+.stage-muted-icon {
+    display: none;
+}
+
+.music-stage-volume-button.is-muted {
+    color: var(--stage-accent);
+}
+
+.music-stage-volume-button.is-muted .stage-volume-icon {
+    display: none;
+}
+
+.music-stage-volume-button.is-muted .stage-muted-icon {
+    display: block;
+}
+
+.stage-pause-icon {
+    display: none;
+}
+
+.music-stage-play-button.is-playing .stage-play-icon {
+    display: none;
+}
+
+.music-stage-play-button.is-playing .stage-pause-icon {
+    display: block;
+}
+
+.stage-translation {
+    color: rgba(255, 255, 255, 0.56);
+    font-size: clamp(13px, 1.25vw, 19px);
+    font-weight: 440;
+    line-height: 1.45;
+    text-align: center;
+    text-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+}
+
+.stage-word {
+    position: relative;
+    display: inline-block;
+    color: rgba(255, 255, 255, 0.24);
+    white-space: pre-wrap;
+    will-change: transform, opacity, filter;
+}
+
+.stage-word::after {
+    content: attr(data-text);
+}
+
+.stage-word.is-passed {
+    color: color-mix(in srgb, var(--stage-accent) 80%, #fff);
+}
+
+.stage-word.is-active {
+    color: #fff;
+}
+
+/* 流光 / Luminous */
+.music-stage-mode-luminous {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.luminous-aura {
+    position: absolute;
+    top: 45%;
+    left: 50%;
+    width: min(74vw, 900px);
+    aspect-ratio: 1.7;
+    border-radius: 50%;
+    background:
+        radial-gradient(ellipse, color-mix(in srgb, var(--stage-accent) calc(11% + var(--stage-vocal, 0) * 22%), transparent), transparent 66%);
+    filter: blur(28px);
+    opacity: 0.8;
+    transform: translate3d(-50%, -50%, 0);
+}
+
+.luminous-line {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    width: min(82vw, 1180px);
+    min-height: 240px;
+    padding: 40px;
+    font-size: clamp(38px, 6.2vw, 88px);
+    font-weight: 760;
+    line-height: 1.22;
+    letter-spacing: -0.035em;
+    text-align: center;
+    perspective: 900px;
+}
+
+.luminous-line.is-entering {
+    animation: luminous-line-enter 0.72s var(--stage-ease);
+}
+
+@keyframes luminous-line-enter {
+    from {
+        opacity: 0;
+        filter: blur(18px);
+        transform: scale(0.91);
+    }
+}
+
+.luminous-line.is-empty {
+    color: rgba(255, 255, 255, 0.35);
+    font-size: clamp(30px, 4vw, 54px);
+    font-weight: 480;
+}
+
+.luminous-word {
+    margin: 0 0.11em;
+    transform: translate3d(var(--word-x), var(--word-y), 0) rotate(var(--word-rotate)) scale(0.84);
+    filter: blur(8px);
+    opacity: 0.2;
+    transition:
+        color 0.22s linear,
+        opacity 0.48s ease,
+        filter 0.46s ease,
+        transform 0.58s var(--stage-ease),
+        text-shadow 0.25s ease;
+    transition-delay: var(--word-delay, 0ms);
+}
+
+.luminous-word.is-active {
+    opacity: 1;
+    filter: blur(0);
+    transform: translate3d(var(--word-x), calc(var(--word-y) - 5px), 35px) rotate(var(--word-rotate)) scale(var(--word-scale));
+    text-shadow:
+        0 0 calc(12px + var(--stage-vocal, 0) * 22px) color-mix(in srgb, var(--stage-accent) 80%, transparent),
+        0 0 calc(30px + var(--stage-vocal, 0) * 38px) color-mix(in srgb, var(--stage-accent) 44%, transparent);
+}
+
+.luminous-word.is-passed {
+    opacity: 0.82;
+    filter: blur(0);
+    transform: translate3d(var(--word-x), var(--word-y), 0) rotate(calc(var(--word-rotate) * -0.6)) scale(0.98);
+    text-shadow: 0 0 14px color-mix(in srgb, var(--stage-accent) 22%, transparent);
+}
+
+.luminous-context {
+    position: absolute;
+    left: 50%;
+    width: min(70vw, 900px);
+    color: rgba(255, 255, 255, 0.18);
+    font-size: clamp(14px, 1.4vw, 20px);
+    letter-spacing: 0.04em;
+    text-align: center;
+    transform: translateX(-50%);
+    filter: blur(1.5px);
+}
+
+.luminous-context-previous {
+    top: 20%;
+}
+
+.luminous-context-next {
+    bottom: 21%;
+}
+
+.luminous-translation {
+    position: absolute;
+    left: 50%;
+    bottom: 16%;
+    width: min(72vw, 900px);
+    transform: translateX(-50%);
+}
+
+/* 云阶 / Partita */
+.music-stage-mode-partita {
+    padding: 10vh 7vw 17vh;
+    box-sizing: border-box;
+}
+
+.music-stage-mode-partita::before,
+.music-stage-mode-partita::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+}
+
+.music-stage-mode-partita::before {
+    inset: 10vh 6vw 14vh;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.music-stage-mode-partita::after {
+    top: 10vh;
+    bottom: 14vh;
+    left: 38.2%;
+    width: 1px;
+    background: linear-gradient(transparent, rgba(255, 255, 255, 0.16), transparent);
+}
+
+.partita-eyebrow {
+    position: absolute;
+    top: 12vh;
+    left: 8vw;
+    color: color-mix(in srgb, var(--stage-accent) 72%, #fff);
+    font-size: 9px;
+    font-weight: 750;
+    letter-spacing: 0.32em;
+    writing-mode: vertical-rl;
+}
+
+.partita-grid {
+    position: relative;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(110px, 1fr);
+    align-items: center;
+    gap: clamp(10px, 2.2vw, 38px);
+    height: 68vh;
+    width: min(82vw, 1280px);
+    margin: 0 auto;
+    perspective: 1200px;
+}
+
+.partita-block {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 12px;
+    min-width: 0;
+    padding: 16px 8px;
+    transform: translateY(var(--block-offset)) rotate(var(--block-angle));
+    animation: partita-block-enter 0.72s var(--stage-ease) both;
+    animation-delay: calc(var(--block-order) * 70ms);
+}
+
+@keyframes partita-block-enter {
+    from {
+        opacity: 0;
+        filter: blur(9px);
+        transform: translateY(calc(var(--block-offset) + 50px)) rotate(var(--block-angle));
+    }
+}
+
+.partita-marker {
+    color: rgba(255, 255, 255, 0.28);
+    font-family: Consolas, monospace;
+    font-size: 9px;
+    letter-spacing: 0.18em;
+}
+
+.partita-block-text {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    font-size: clamp(27px, 3.5vw, 56px);
+    font-weight: 730;
+    line-height: 1.02;
+    letter-spacing: -0.04em;
+}
+
+.partita-word {
+    max-width: 100%;
+    color: rgba(255, 255, 255, 0.2);
+    opacity: 0.38;
+    transform: translateX(-12px);
+    filter: blur(2.5px);
+    transition: color 0.32s ease, opacity 0.35s ease, transform 0.48s var(--stage-ease), filter 0.35s ease;
+}
+
+.partita-word.is-passed {
+    color: color-mix(in srgb, var(--stage-accent) 72%, #fff);
+    opacity: 0.82;
+    transform: translateX(0);
+    filter: blur(0);
+}
+
+.partita-word.is-active {
+    color: #fff;
+    opacity: 1;
+    transform: translateX(8px) scale(1.08);
+    filter: blur(0);
+    text-shadow: 0 0 28px color-mix(in srgb, var(--stage-accent) 55%, transparent);
+}
+
+.partita-translation {
+    position: absolute;
+    right: 8vw;
+    bottom: 16vh;
+    width: min(50vw, 700px);
+    text-align: right;
+}
+
+.partita-empty {
+    grid-column: 1 / -1;
+    color: rgba(255, 255, 255, 0.32);
+    font-size: 42px;
+    text-align: center;
+}
+
+/* 心象 / Cadenza */
+.music-stage-mode-cadenza {
+    padding: 12vh 8vw 18vh;
+    box-sizing: border-box;
+}
+
+.cadenza-title {
+    position: absolute;
+    right: 5vw;
+    top: 19vh;
+    color: rgba(255, 255, 255, 0.13);
+    font-size: clamp(52px, 11vw, 164px);
+    font-weight: 820;
+    letter-spacing: -0.07em;
+    writing-mode: vertical-rl;
+}
+
+.cadenza-viewport {
+    position: relative;
+    width: min(78vw, 1250px);
+    height: 66vh;
+    margin: 0 auto;
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent);
+    mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent);
+}
+
+.cadenza-axis {
+    position: absolute;
+    top: 0;
+    left: 38.2%;
+    bottom: 0;
+    width: 1px;
+    background: linear-gradient(transparent, color-mix(in srgb, var(--stage-accent) 30%, transparent), transparent);
+}
+
+.cadenza-axis::before {
+    content: "";
+    position: absolute;
+    top: 38.2%;
+    left: -3px;
+    width: 7px;
+    height: 7px;
+    border: 1px solid var(--stage-accent);
+    border-radius: 50%;
+    box-shadow: 0 0 16px var(--stage-accent);
+}
+
+.cadenza-composition {
+    position: absolute;
+    inset: 0;
+    transition: transform 0.16s linear;
+}
+
+.cadenza-line {
+    position: absolute;
+    max-width: 80%;
+    color: rgba(255, 255, 255, 0.18);
+    font-weight: 540;
+    line-height: 1.12;
+    letter-spacing: -0.035em;
+    white-space: nowrap;
+    filter: blur(1.5px);
+    transition: opacity 0.4s ease, filter 0.4s ease;
+    animation: cadenza-enter 0.7s var(--stage-ease) both;
+}
+
+@keyframes cadenza-enter {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+        filter: blur(10px);
+    }
+}
+
+.cadenza-line.is-current {
+    z-index: 3;
+    display: flex;
+    flex-wrap: wrap;
+    color: rgba(255, 255, 255, 0.24);
+    filter: none;
+    white-space: normal;
+}
+
+.cadenza-word {
+    margin-right: 0.1em;
+    opacity: 0.34;
+    transform: translateY(12px) skewX(-5deg);
+    transition: color 0.28s ease, opacity 0.3s ease, transform 0.5s var(--stage-ease), text-shadow 0.28s ease;
+}
+
+.cadenza-word.is-passed {
+    color: color-mix(in srgb, var(--stage-accent) 74%, #fff);
+    opacity: 0.82;
+    transform: translateY(0);
+}
+
+.cadenza-word.is-active {
+    color: #fff;
+    opacity: 1;
+    transform: translateY(-5px) scale(1.08);
+    text-shadow:
+        0 0 calc(15px + var(--stage-vocal, 0) * 30px) color-mix(in srgb, var(--stage-accent) 72%, transparent),
+        0 14px 30px rgba(0, 0, 0, 0.3);
+}
+
+.cadenza-empty {
+    position: absolute;
+    left: 50%;
+    top: 45%;
+    color: rgba(255, 255, 255, 0.32);
+    font-size: 44px;
+    transform: translate(-50%, -50%);
+}
+
+/* 浮名 / Fume */
+.music-stage-mode-fume {
+    background:
+        linear-gradient(115deg, rgba(255, 255, 255, 0.025), transparent 38%),
+        radial-gradient(circle at 70% 40%, color-mix(in srgb, var(--stage-accent) 9%, transparent), transparent 45%);
+}
+
+.fume-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+.fume-world {
+    position: absolute;
+    inset: 0;
+    transition: transform 0.14s linear;
+    will-change: transform;
+}
+
+.fume-paper {
+    position: absolute;
+    left: 50%;
+    top: 48%;
+    width: min(66vw, 980px);
+    min-height: 46vh;
+    padding: clamp(36px, 5vw, 76px);
+    box-sizing: border-box;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.015)),
+        rgba(6, 8, 14, 0.2);
+    box-shadow:
+        0 35px 90px rgba(0, 0, 0, 0.24),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.025);
+    backdrop-filter: blur(8px);
+    transform: translate(-50%, -50%) rotate(-1.2deg);
+}
+
+.fume-paper::before,
+.fume-paper::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+}
+
+.fume-paper::before {
+    left: 26px;
+    top: 26px;
+    width: 52px;
+    height: 52px;
+    border-left: 1px solid color-mix(in srgb, var(--stage-accent) 45%, transparent);
+    border-top: 1px solid color-mix(in srgb, var(--stage-accent) 45%, transparent);
+}
+
+.fume-paper::after {
+    right: 24px;
+    bottom: 24px;
+    width: 80px;
+    height: 1px;
+    background: color-mix(in srgb, var(--stage-accent) 55%, transparent);
+    box-shadow: 0 -5px 0 rgba(255, 255, 255, 0.1);
+}
+
+.fume-paper.is-entering {
+    animation: fume-paper-enter 0.85s var(--stage-ease);
+}
+
+@keyframes fume-paper-enter {
+    from {
+        opacity: 0;
+        filter: blur(15px);
+        transform: translate(-50%, -46%) rotate(1deg) scale(0.94);
+    }
+}
+
+.fume-meta {
+    margin-bottom: clamp(28px, 4vh, 48px);
+    color: rgba(255, 255, 255, 0.35);
+    font-size: 8px;
+    font-weight: 720;
+    letter-spacing: 0.34em;
+}
+
+.fume-hero {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    min-height: 120px;
+    color: rgba(255, 255, 255, 0.2);
+    font-family: Georgia, "Times New Roman", "Noto Serif SC", serif;
+    font-size: clamp(42px, 6vw, 86px);
+    font-weight: 620;
+    line-height: 1.06;
+    letter-spacing: -0.05em;
+}
+
+.fume-word {
+    margin-right: 0.08em;
+    opacity: 0.25;
+    filter: blur(3px);
+    transform: translateY(14px);
+    transition: color 0.3s linear, opacity 0.38s ease, filter 0.42s ease, transform 0.52s var(--stage-ease), text-shadow 0.28s ease;
+}
+
+.fume-word.is-passed {
+    color: color-mix(in srgb, var(--stage-accent) 67%, #fff);
+    opacity: 0.84;
+    filter: blur(0);
+    transform: translateY(0);
+}
+
+.fume-word.is-active {
+    color: #fff;
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(-7px) scale(1.055);
+    text-shadow:
+        0 0 calc(14px + var(--stage-vocal, 0) * 26px) color-mix(in srgb, var(--stage-accent) 64%, transparent),
+        0 0 calc(38px + var(--stage-vocal, 0) * 44px) color-mix(in srgb, var(--stage-accent) 25%, transparent);
+}
+
+.fume-context {
+    overflow: hidden;
+    color: rgba(255, 255, 255, 0.2);
+    font-family: Georgia, "Times New Roman", "Noto Serif SC", serif;
+    font-size: clamp(13px, 1.2vw, 18px);
+    font-style: italic;
+    letter-spacing: 0.02em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fume-before {
+    margin-bottom: 18px;
+}
+
+.fume-after {
+    margin-top: 26px;
+    text-align: right;
+}
+
+.fume-translation {
+    margin-top: 20px;
+    text-align: left;
+}
+
+/* 星诞 / Starborn：依据歌词段落特征自动导演四种基础演出。 */
+.music-stage-mode-starborn {
+    overflow: hidden;
+}
+
+.starborn-performance-layer {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    opacity: 1;
+    filter: blur(0) brightness(1);
+    transform: scale(1);
+    transition:
+        opacity 0.52s ease,
+        filter 0.52s ease,
+        transform 0.64s var(--stage-ease);
+}
+
+.starborn-performance-layer.is-entering {
+    opacity: 0;
+    filter: blur(15px) brightness(1.45);
+    transform: scale(1.025);
+}
+
+.starborn-performance-layer.is-leaving {
+    opacity: 0;
+    filter: blur(12px) brightness(0.72);
+    transform: scale(0.985);
+    pointer-events: none;
+}
+
+.starborn-performance-layer > .music-stage-mode {
+    inset: 0;
+}
+
+.starborn-transition-burst {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    overflow: hidden;
+    pointer-events: none;
+    opacity: 0;
+}
+
+.starborn-transition-burst::before,
+.starborn-transition-burst::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+}
+
+.starborn-transition-burst::before {
+    left: 50%;
+    top: 46%;
+    width: min(78vw, 1080px);
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: radial-gradient(
+        circle,
+        color-mix(in srgb, var(--stage-accent) 38%, #fff) 0,
+        color-mix(in srgb, var(--stage-accent) 18%, transparent) 16%,
+        transparent 62%
+    );
+    filter: blur(8px);
+    transform: translate(-50%, -50%) scale(0.16);
+}
+
+.starborn-transition-burst::after {
+    left: 8%;
+    right: 8%;
+    top: 46%;
+    height: 1px;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        color-mix(in srgb, var(--stage-accent) 68%, #fff) 28%,
+        #fff 50%,
+        color-mix(in srgb, var(--stage-accent) 68%, #fff) 72%,
+        transparent
+    );
+    box-shadow:
+        0 0 9px color-mix(in srgb, var(--stage-accent) 78%, transparent),
+        0 0 32px color-mix(in srgb, var(--stage-accent) 45%, transparent);
+    transform: scaleX(0);
+}
+
+.starborn-transition-burst.is-active {
+    animation: starborn-burst-veil 0.78s var(--stage-ease) both;
+}
+
+.starborn-transition-burst.is-active::before {
+    animation: starborn-burst-orb 0.78s var(--stage-ease) both;
+}
+
+.starborn-transition-burst.is-active::after {
+    animation: starborn-burst-line 0.72s var(--stage-ease) both;
+}
+
+.starborn-director-cue {
+    position: absolute;
+    top: clamp(74px, 10vh, 108px);
+    right: clamp(24px, 4vw, 64px);
+    z-index: 12;
+    padding: 5px 9px;
+    border-right: 1px solid color-mix(in srgb, var(--stage-accent) 52%, transparent);
+    color: color-mix(in srgb, var(--stage-accent) 62%, #fff);
+    font-family: "SFMono-Regular", Consolas, monospace;
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    opacity: 0.42;
+    text-shadow: 0 0 12px color-mix(in srgb, var(--stage-accent) 45%, transparent);
+    animation: starborn-cue-pulse 4.8s ease-in-out infinite;
+}
+
+.music-stage-mode-starborn::after {
+    content: "";
+    position: absolute;
+    top: 12%;
+    right: 8%;
+    z-index: 11;
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow:
+        -9vw 7vh 0 -1px color-mix(in srgb, var(--stage-accent) 68%, transparent),
+        -19vw -3vh 0 -1px rgba(255, 255, 255, 0.35),
+        5vw 14vh 0 -1px rgba(255, 255, 255, 0.3),
+        -31vw 22vh 0 -1px color-mix(in srgb, var(--stage-accent) 42%, transparent);
+    opacity: calc(0.18 + var(--stage-audio-vocal, 0) * 0.48);
+    pointer-events: none;
+}
+
+.starborn-director-cue.is-switching {
+    animation: starborn-cue-switch 0.9s var(--stage-ease) both;
+}
+
+@keyframes starborn-burst-veil {
+    0% {
+        opacity: 0;
+    }
+
+    18% {
+        opacity: calc(0.52 + var(--stage-audio-power, 0) * 0.34);
+    }
+
+    100% {
+        opacity: 0;
+    }
+}
+
+@keyframes starborn-burst-orb {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.12);
+    }
+
+    30% {
+        opacity: 0.9;
+    }
+
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(1.25);
+    }
+}
+
+@keyframes starborn-burst-line {
+    0% {
+        opacity: 0;
+        transform: scaleX(0);
+    }
+
+    28% {
+        opacity: 1;
+        transform: scaleX(1);
+    }
+
+    100% {
+        opacity: 0;
+        transform: scaleX(0.72);
+    }
+}
+
+@keyframes starborn-cue-switch {
+    0% {
+        opacity: 0;
+        filter: blur(8px);
+        transform: translateX(14px);
+    }
+
+    32% {
+        opacity: 1;
+        filter: blur(0);
+        transform: translateX(0);
+    }
+
+    100% {
+        opacity: 0.42;
+    }
+}
+
+@keyframes starborn-cue-pulse {
+    50% {
+        opacity: 0.72;
+        text-shadow:
+            0 0 10px color-mix(in srgb, var(--stage-accent) 72%, transparent),
+            0 0 24px color-mix(in srgb, var(--stage-accent) 32%, transparent);
+    }
+}
+
+/* Responsive */
+@media (max-width: 820px), (max-height: 600px) {
+    .music-stage-top-chrome {
+        top: 44px;
+        left: 18px;
+        right: 18px;
+    }
+
+    .music-stage-wordmark {
+        display: none;
+    }
+
+    .music-stage-top-chrome {
+        grid-template-columns: 1fr auto;
+    }
+
+    .music-stage-mode-switcher {
+        justify-self: start;
+    }
+
+    .music-stage-id3 {
+        left: 22px;
+        bottom: 104px;
+        max-width: calc(100vw - 44px);
+    }
+
+    .music-stage-cover {
+        width: 52px;
+        height: 52px;
+        border-radius: 13px;
+    }
+
+    .music-stage-chrome {
+        bottom: 18px;
+        grid-template-columns: auto minmax(210px, 54vw) auto;
+    }
+
+    .luminous-line {
+        width: 90vw;
+        padding: 24px;
+        font-size: clamp(32px, 8vw, 64px);
+    }
+
+    .music-stage-mode-partita {
+        padding-left: 4vw;
+        padding-right: 4vw;
+    }
+
+    .partita-grid {
+        width: 90vw;
+        gap: 10px;
+    }
+
+    .partita-block-text {
+        font-size: clamp(22px, 4vw, 38px);
+    }
+
+    .fume-paper {
+        width: 84vw;
+        min-height: 44vh;
+        padding: 38px;
+    }
+}
+
+@media (max-width: 560px) {
+    .music-stage-mode-switcher {
+        gap: 0;
+        padding: 3px;
+    }
+
+    .music-stage-mode-button {
+        min-width: 38px;
+        padding: 0 6px;
+        font-size: 10px;
+    }
+
+    .starborn-director-cue {
+        top: 82px;
+        right: 18px;
+        font-size: 7px;
+    }
+
+    .music-stage-chrome {
+        grid-template-columns: auto minmax(150px, 48vw) auto;
+        padding-left: 10px;
+        padding-right: 10px;
+    }
+
+    .music-stage-track-album {
+        display: none;
+    }
+
+    .partita-grid {
+        grid-auto-flow: row;
+        grid-auto-rows: auto;
+        align-content: center;
+        height: 62vh;
+    }
+
+    .partita-block {
+        flex-direction: row;
+        align-items: baseline;
+        padding: 3px;
+    }
+
+    .partita-block-text {
+        flex-direction: row;
+        flex-wrap: wrap;
+        font-size: 25px;
+    }
+
+    .cadenza-title {
+        display: none;
+    }
+
+    .fume-hero {
+        font-size: clamp(35px, 10vw, 58px);
+    }
+}
+
+body.light-theme .music-stage {
+    --stage-glass: rgba(255, 255, 255, 0.22);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .music-stage-edge-spectrum {
+        display: none;
+    }
+
+    .music-stage *,
+    .music-stage *::before,
+    .music-stage *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.001ms !important;
+    }
+
+    .music-stage-backdrop-layer,
+    .music-stage-cover,
+    .fume-world {
+        transform: none !important;
+    }
+}
