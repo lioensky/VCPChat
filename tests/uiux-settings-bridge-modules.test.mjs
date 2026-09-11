@@ -422,7 +422,7 @@ test('Agent TTS Range is a schema-owned native control with slider and pill repr
         'the retired manager-only range progress projection must not remain');
 });
 
-test('Agent actions remain upstream-visible and theme-token driven', () => {
+test('Agent/Group actions remain visible and consume the Next navigation material', () => {
     const sidebarCss = read(path.join(root, 'styles', 'ui-system', 'settings-sidebar.css'));
     assert.doesNotMatch(sidebarCss, /#agentSettingsForm\s*>\s*\.form-actions\s+button\[type="submit"\][^\{]*\{[^}]*display:\s*none\s*!important/,
         'Agent save action must not be hidden by the presentation layer');
@@ -432,6 +432,19 @@ test('Agent actions remain upstream-visible and theme-token driven', () => {
         'delete action container exists in the unified sidebar surface');
     assert.match(sidebarCss, /--highlight-text/,
         'Agent save action keeps the upstream theme color contract');
+
+    const materialRule = sidebarCss.slice(
+        sidebarCss.indexOf('The floating save control is a navigation-material consumer'),
+        sidebarCss.indexOf('.form-actions .danger-button'),
+    );
+    assert.match(materialRule, /background-color:\s*var\(\s*--next-shell-bg/,
+        'Agent and Group save controls must inherit the navigation material surface');
+    assert.match(materialRule, /background-image:\s*var\(--next-material-sheen,\s*none\)/,
+        'Agent and Group save controls must inherit each navigation material sheen recipe');
+    assert.match(materialRule, /backdrop-filter:\s*var\(--next-backdrop-filter,/,
+        'Agent and Group save controls must inherit navigation blur/saturation/brightness');
+    assert.doesNotMatch(materialRule, /background:\s*var\(--vcp-settings-accent/,
+        'the floating save control must not regress to an opaque accent fill');
 });
 
 test('Agent TTS Voice Select is a schema-owned native control with canonical model loading', async () => {

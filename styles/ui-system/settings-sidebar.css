@@ -2484,90 +2484,75 @@ html .vcp-ui-scope .vcp-settings-schema-surface .form-actions button {
         transform 0.2s ease;
 }
 
-html .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"] {
-    border: none;
-    background: var(--vcp-settings-accent, var(--highlight-text));
-    color: var(--vcp-ui-on-accent);
-    font-weight: 600;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    box-shadow: none;
-}
-
-html .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"]:hover {
-    background: color-mix(in srgb, var(--vcp-settings-accent, var(--highlight-text)) 88%, var(--vcp-ui-on-accent) 12%);
-    background-image: none;
-    color: var(--vcp-ui-on-accent);
-    border: none;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    box-shadow: none;
-    transform: translateY(-0.5px);
-    filter: none;
-}
-
-html .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"]:active {
-    background: color-mix(in srgb, var(--vcp-settings-accent, var(--highlight-text)) 88%, var(--vcp-ui-bg-primary) 12%);
-    border: none;
-    color: var(--vcp-ui-on-accent);
-    box-shadow: none;
-    transform: translateY(0) scale(0.985);
-}
-
-:is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"] {
-    border: none;
-    background: var(--vcp-settings-accent, var(--highlight-text));
-    color: var(--vcp-ui-on-accent);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    box-shadow: none;
-}
-
-:is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"]:hover {
-    background: color-mix(in srgb, var(--vcp-settings-accent, var(--highlight-text)) 88%, var(--vcp-ui-bg-primary) 12%);
-    border: none;
-    color: var(--vcp-ui-on-accent);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    box-shadow: none;
-    transform: translateY(-0.5px);
-}
-
-:is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"]:active {
-    background: color-mix(in srgb, var(--vcp-settings-accent, var(--highlight-text)) 78%, var(--vcp-ui-bg-primary) 22%);
-    border: none;
-    color: var(--vcp-ui-on-accent);
-    box-shadow: none;
-    transform: translateY(0) scale(0.985);
-}
-
+/* The floating save control is a navigation-material consumer. Keep these
+   declarations wired to the same outputs as the Next shell so Theme/Solid and
+   the Vibrancy/Mica/Acrylic/Liquid recipes update it without a parallel skin. */
+html .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"],
+:is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"],
 :is(html, body, html body):is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"] {
-    border: none;
-    background: var(--vcp-settings-accent, var(--highlight-text));
-    color: var(--vcp-ui-on-accent);
+    border: 1px solid color-mix(
+        in srgb,
+        var(--next-border, var(--vcp-settings-border)) 72%,
+        var(--vcp-settings-accent, var(--highlight-text)) 28%
+    );
+    background-color: var(
+        --next-shell-bg,
+        color-mix(in srgb, var(--vcp-settings-surface) var(--vcp-material-opacity, 68%), transparent)
+    );
+    background-image: var(--next-material-sheen, none);
+    color: var(--vcp-settings-accent, var(--highlight-text));
     font-weight: 600;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    box-shadow: none;
+    backdrop-filter: var(--next-backdrop-filter, blur(18px) saturate(128%));
+    -webkit-backdrop-filter: var(--next-backdrop-filter, blur(18px) saturate(128%));
+    box-shadow:
+        0 6px 16px color-mix(in srgb, var(--vcp-ui-bg-primary) var(--vcp-material-shadow-color, 7%), transparent),
+        inset 0 1px 0 color-mix(in srgb, var(--vcp-ui-on-accent) var(--vcp-material-sheen-soft, 6%), transparent);
 }
 
+html .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"]:hover,
+:is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"]:hover,
 :is(html, body, html body):is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"]:hover {
-    background: color-mix(in srgb, var(--vcp-settings-accent, var(--highlight-text)) 88%, var(--vcp-ui-on-accent) 12%);
-    background-image: none;
-    color: var(--vcp-ui-on-accent);
-    border: none;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    box-shadow: none;
+    border-color: color-mix(
+        in srgb,
+        var(--vcp-settings-accent, var(--highlight-text)) 52%,
+        var(--next-border, var(--vcp-settings-border))
+    );
+    background-color: color-mix(
+        in srgb,
+        var(--vcp-settings-accent, var(--highlight-text)) 12%,
+        var(--next-shell-bg, var(--vcp-settings-surface))
+    );
+    background-image: var(--next-material-sheen, none);
+    color: var(--vcp-settings-accent, var(--highlight-text));
+    backdrop-filter: var(--next-backdrop-filter, blur(18px) saturate(128%));
+    -webkit-backdrop-filter: var(--next-backdrop-filter, blur(18px) saturate(128%));
+    box-shadow:
+        0 8px 20px color-mix(in srgb, var(--vcp-ui-bg-primary) var(--vcp-material-shadow-color, 7%), transparent),
+        inset 0 1px 0 color-mix(in srgb, var(--vcp-ui-on-accent) var(--vcp-material-sheen-soft, 6%), transparent);
     transform: translateY(-0.5px);
     filter: none;
 }
 
+html .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"]:active,
+:is(html, body, html body):is([data-vcp-theme="light"], .light-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"]:active,
 :is(html, body, html body):is([data-vcp-theme="dark"], .dark-theme) .vcp-ui-scope .vcp-settings-schema-surface .form-actions button[type="submit"]:active {
-    background: color-mix(in srgb, var(--vcp-settings-accent, var(--highlight-text)) 88%, var(--vcp-ui-bg-primary) 12%);
-    border: none;
-    color: var(--vcp-ui-on-accent);
-    box-shadow: none;
+    border-color: color-mix(
+        in srgb,
+        var(--vcp-settings-accent, var(--highlight-text)) 62%,
+        var(--next-border, var(--vcp-settings-border))
+    );
+    background-color: color-mix(
+        in srgb,
+        var(--vcp-settings-accent, var(--highlight-text)) 18%,
+        var(--next-shell-bg, var(--vcp-settings-surface))
+    );
+    background-image: var(--next-material-sheen, none);
+    color: var(--vcp-settings-accent, var(--highlight-text));
+    backdrop-filter: var(--next-backdrop-filter, blur(18px) saturate(128%));
+    -webkit-backdrop-filter: var(--next-backdrop-filter, blur(18px) saturate(128%));
+    box-shadow:
+        0 3px 10px color-mix(in srgb, var(--vcp-ui-bg-primary) var(--vcp-material-shadow-color, 7%), transparent),
+        inset 0 1px 0 color-mix(in srgb, var(--vcp-ui-on-accent) var(--vcp-material-sheen-soft, 6%), transparent);
     transform: translateY(0) scale(0.985);
 }
 
