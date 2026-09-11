@@ -22,10 +22,25 @@
         let renderedKey = '';
         let paused = false;
 
+        let latestFrame = null;
+        const reducedMotion = global.matchMedia?.('(prefers-reduced-motion: reduce)');
+        const getTuning = () => ({
+            ...mode.config.modes?.sonnet,
+            animationIntensity: mode.config.animationIntensity ?? 1,
+            quality: mode.config.quality,
+            reducedMotion: Boolean(reducedMotion?.matches)
+        });
+
         // 实例化 Pixi.js 商籁高级图形导演
         const director = global.SonnetPixiDirector ? new global.SonnetPixiDirector(stageContainer) : null;
         if (director) {
-            director.init().catch(err => console.error('[SonnetPixiDirector] init error:', err));
+            director.init().then(() => {
+                if (!mode.destroyed && latestFrame) mode.updateFrame(latestFrame);
+            }).catch(err => {
+                console.error('[SonnetPixiDirector] init error:', err);
+                if (!mode.destroyed) translation.textContent = '图形引擎初始化失败，请切换其他舞台模式';
+                director.destroy();
+            });
         }
 
         const resize = () => {
@@ -37,22 +52,34 @@
             renderedKey = key;
             const accent = resolveAccent(services?.app);
             translation.textContent = currentFrame.activeLine?.translation || currentFrame.activeLine?.romanization || '';
-            director?.buildShot(currentFrame.activeLine, key, accent);
+            const trackKey = currentFrame.track?.path || currentFrame.track?.title || '';
+            director?.buildShot(currentFrame.activeLine, `${trackKey}:${key}`, accent, getTuning());
         };
 
         mode.updateFrame = (currentFrame) => {
             if (mode.destroyed || paused) return;
+            const changed = latestFrame?.lines !== currentFrame.lines || latestFrame?.track !== currentFrame.track;
+            latestFrame = currentFrame;
             resize();
             const key = getLineKey(currentFrame.activeLine);
-            if (key !== renderedKey) buildScene(currentFrame);
+            if (key !== renderedKey || changed) buildScene(currentFrame);
 
-            const tuning = mode.config.modes?.sonnet || {};
+            const tuning = getTuning();
             director?.update(currentFrame, tuning);
 
             const power = Number(currentFrame.audio?.power) || 0;
             hud.textContent = `FRAME ${String(Math.max(0, currentFrame.currentLineIndex + 1)).padStart(2, '0')}  /  AUDIO ${Math.round(power * 100)}%`;
         };
 
+        const updateConfig = mode.updateConfig;
+        mode.updateConfig = (config) => {
+            const before = mode.config.modes?.sonnet || {};
+            const after = config.modes?.sonnet || {};
+            const rebuild = ['fontScale', 'shotFlow'].some(key => before[key] !== after[key]);
+            updateConfig(config);
+            if (rebuild) renderedKey = '';
+            if (latestFrame) mode.updateFrame(latestFrame);
+        };
         mode.resize = resize;
         mode.suspend = () => {
             paused = true;

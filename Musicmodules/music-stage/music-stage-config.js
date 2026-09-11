@@ -2,7 +2,7 @@
     'use strict';
 
     const STORAGE_KEY = 'musicStageConfig';
-    const VERSION = 1;
+    const VERSION = 2;
     const clamp = (value, min, max, fallback) => {
         const number = Number(value);
         if (!Number.isFinite(number)) return fallback;
@@ -22,6 +22,12 @@
         { id: 'starborn', label: '星诞', description: '按歌词段落自动导演' }
     ]);
 
+    const PIXI_DEFAULTS = Object.freeze({
+        cameraBreath: 0.5, cameraTracking: 0.35, shotFlow: 'auto', sceneTransitions: true,
+        fontScale: 1, glyphStyle: 'rise', waitingOpacity: 0.25, releaseDuration: 0.45,
+        postProcess: true, lensDistortion: 0.35, lensDispersion: 0.18,
+        rgbShift: 0, grain: 0, contrast: 0, halftone: 0, vignette: 0.18
+    });
     const DEFAULTS = Object.freeze({
         enabledModes: ['tempera', 'sonnet', 'diorama', 'fume', 'luminous', 'partita', 'cadenza', 'starborn'],
         quality: 'standard',
@@ -29,6 +35,7 @@
         edgeSpectrum: true,
         modes: {
             tempera: {
+                ...PIXI_DEFAULTS,
                 cameraIntensity: 1,
                 glyphMotion: 1,
                 colorMode: 'duo',
@@ -37,6 +44,7 @@
                 textInversion: true
             },
             sonnet: {
+                ...PIXI_DEFAULTS,
                 cameraIntensity: 1,
                 typographyMotion: 1,
                 guideLines: true,
@@ -91,6 +99,33 @@
         return {
             ...fallback,
             ...source,
+            cameraIntensity: clamp(source.cameraIntensity, 0, 2, fallback.cameraIntensity),
+            typographyMotion: clamp(source.typographyMotion, 0, 2, fallback.typographyMotion),
+            glyphMotion: clamp(source.glyphMotion, 0, 2, fallback.glyphMotion),
+            cameraBreath: clamp(source.cameraBreath, 0, 2, fallback.cameraBreath),
+            cameraTracking: clamp(source.cameraTracking, 0, 1, fallback.cameraTracking),
+            sceneTransitions: bool(source.sceneTransitions, fallback.sceneTransitions),
+            shotFlow: enumValue(source.shotFlow, ['auto', 'editorial-column', 'type-impact', 'fragment-collage', 'tracking-ribbon', 'mask-reveal', 'poster-blocks', 'quiet-tableau'], fallback.shotFlow),
+            glyphStyle: enumValue(source.glyphStyle, ['rise', 'scatter', 'impact'], fallback.glyphStyle),
+            waitingOpacity: clamp(source.waitingOpacity, 0, 1, fallback.waitingOpacity),
+            releaseDuration: clamp(source.releaseDuration, 0, 1.5, fallback.releaseDuration),
+            postProcess: bool(source.postProcess, fallback.postProcess),
+            lensDistortion: clamp(source.lensDistortion, 0, 2, fallback.lensDistortion),
+            lensDispersion: clamp(source.lensDispersion, 0, 1, fallback.lensDispersion),
+            rgbShift: clamp(source.rgbShift, 0, 1, fallback.rgbShift),
+            grain: clamp(source.grain, 0, 1, fallback.grain),
+            contrast: clamp(source.contrast, 0, 1, fallback.contrast),
+            halftone: clamp(source.halftone, 0, 1, fallback.halftone),
+            vignette: clamp(source.vignette, 0, 1, fallback.vignette),
+            colorMode: enumValue(source.colorMode, ['duo', 'mono', 'gradient'], fallback.colorMode),
+            showBlocks: bool(source.showBlocks, fallback.showBlocks),
+            showDecor: bool(source.showDecor, fallback.showDecor),
+            showBackground: bool(source.showBackground, fallback.showBackground),
+            textInversion: bool(source.textInversion, fallback.textInversion),
+            motionAmount: clamp(source.motionAmount, 0, 2, fallback.motionAmount),
+            audioReactivity: clamp(source.audioReactivity, 0, 2, fallback.audioReactivity),
+            showParticles: bool(source.showParticles, fallback.showParticles),
+            geometryMode: enumValue(source.geometryMode, ['clouds', 'corridor'], fallback.geometryMode),
             wordRotation: bool(source.wordRotation, fallback.wordRotation),
             breathing: clamp(source.breathing, 0, 2, fallback.breathing),
             wordSpacing: clamp(source.wordSpacing, 0, 2, fallback.wordSpacing),

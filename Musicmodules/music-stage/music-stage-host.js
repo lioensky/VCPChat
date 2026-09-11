@@ -93,6 +93,24 @@
         };
 
         const scope = new DisposableScope();
+        let editingSettings = false;
+        const pixiTuningDefinitions = [
+            { key: 'sceneTransitions', label: '切句过渡', type: 'toggle' },
+            { key: 'shotFlow', label: '分镜镜头', type: 'select', options: [['auto', '自动导演'], ['editorial-column', '编辑纵列'], ['type-impact', '文字冲击'], ['fragment-collage', '碎片拼贴'], ['tracking-ribbon', '带状追焦'], ['mask-reveal', '上升揭幕'], ['poster-blocks', '海报定景'], ['quiet-tableau', '静谧长镜']] },
+            { key: 'cameraTracking', label: '逐词追焦', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+            { key: 'cameraBreath', label: '镜头呼吸', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+            { key: 'fontScale', label: '歌词字号', type: 'range', min: 0.65, max: 1.5, step: 0.05, unit: 'x' },
+            { key: 'glyphStyle', label: '逐字入场', type: 'select', options: [['rise', '升起落位'], ['scatter', '交错散入'], ['impact', '缩放打击']] },
+            { key: 'waitingOpacity', label: '未唱文字可见度', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+            { key: 'releaseDuration', label: '句尾消散', type: 'range', min: 0, max: 1.5, step: 0.05, unit: 's' },
+            { key: 'lensDistortion', label: '镜头光学畸变', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+            { key: 'lensDispersion', label: '径向色散', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+            { key: 'rgbShift', label: 'RGB 偏移', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+            { key: 'grain', label: '胶片颗粒', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+            { key: 'contrast', label: '对比度增强', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+            { key: 'halftone', label: '半调网点', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+            { key: 'vignette', label: '镜头暗角', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' }
+        ];
         const tuningDefinitions = Object.freeze({
             tempera: [
                 { key: 'cameraIntensity', label: '镜头强度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
@@ -100,7 +118,9 @@
                 { key: 'colorMode', label: '色彩模式', type: 'select', options: [['duo', '主题双色'], ['mono', '黑白灰'], ['gradient', '封面渐变']] },
                 { key: 'showBlocks', label: '色块场景', type: 'toggle' },
                 { key: 'showDecor', label: '装饰元素', type: 'toggle' },
-                { key: 'textInversion', label: '动态反色', type: 'toggle' }
+                { key: 'textInversion', label: '演唱强调色', type: 'toggle' },
+                { key: 'postProcess', label: '光学后处理（节能档关闭）', type: 'toggle' },
+                ...pixiTuningDefinitions
             ],
             sonnet: [
                 { key: 'cameraIntensity', label: '镜头强度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
@@ -108,7 +128,8 @@
                 { key: 'guideLines', label: '轨迹线', type: 'toggle' },
                 { key: 'showBackground', label: '主场景', type: 'toggle' },
                 { key: 'showDecor', label: '背景装饰', type: 'toggle' },
-                { key: 'postProcess', label: '后处理', type: 'toggle' }
+                { key: 'postProcess', label: '光学后处理（节能档关闭）', type: 'toggle' },
+                ...pixiTuningDefinitions
             ],
             diorama: [
                 { key: 'cameraSpeed', label: '镜头速度', type: 'range', min: 0.55, max: 1.85, step: 0.05, unit: 'x' },
@@ -221,8 +242,9 @@
                     text: entry.label,
                     title: `切换至${entry.label}`,
                     'data-stage-mode': entry.id,
-                    'aria-pressed': 'false'
+                    'aria-pressed': String(entry.id === state.modeId)
                 });
+                button.classList.toggle('is-active', entry.id === state.modeId);
                 fragment.appendChild(button);
             });
             elements.modeSwitcher.replaceChildren(fragment);
@@ -230,6 +252,7 @@
 
         const formatTuningValue = (definition, value) => {
             if (definition.type === 'toggle') return value ? '开' : '关';
+            if (definition.type === 'select') return definition.options.find(([key]) => key === value)?.[1] || String(value || '');
             if (definition.unit === '%') return `${Math.round(Number(value) * 100)}%`;
             return `${Number(value).toFixed(definition.step < 0.1 ? 2 : 1)}${definition.unit || ''}`;
         };
@@ -289,7 +312,9 @@
                             ? Number(control.value)
                             : control.value;
                     valueText.textContent = formatTuningValue(definition, next);
-                    Config.setModePatch(state.modeId, { [definition.key]: next });
+                    editingSettings = true;
+                    try { Config.setModePatch(state.modeId, { [definition.key]: next }); }
+                    finally { editingSettings = false; }
                 };
                 control.addEventListener('input', handleControlChange);
                 control.addEventListener('change', handleControlChange);
@@ -322,7 +347,9 @@
             intensity.addEventListener('input', () => {
                 const next = Number(intensity.value);
                 intensityValue.textContent = `${next.toFixed(2)}x`;
-                Config.update({ animationIntensity: next });
+                editingSettings = true;
+                try { Config.update({ animationIntensity: next }); }
+                finally { editingSettings = false; }
             });
             const intensityRow = createElement('label', 'music-stage-tuning-row');
             intensityRow.append(createElement('span', 'music-stage-tuning-label', '动画总强度'), intensityValue, intensity);
@@ -705,7 +732,7 @@
             state.config = config;
             root.classList.toggle('stage-edge-spectrum-off', config.edgeSpectrum === false);
             renderModeButtons();
-            renderSettingsControls();
+            if (!editingSettings) renderSettingsControls();
             state.modeInstance?.updateConfig?.(config);
             if (elements.settingsStatus) {
                 elements.settingsStatus.textContent = '已保存';

@@ -31,10 +31,25 @@
         let renderedKey = '';
         let paused = false;
 
+        let latestFrame = null;
+        const reducedMotion = global.matchMedia?.('(prefers-reduced-motion: reduce)');
+        const getTuning = () => ({
+            ...mode.config.modes?.tempera,
+            animationIntensity: mode.config.animationIntensity ?? 1,
+            quality: mode.config.quality,
+            reducedMotion: Boolean(reducedMotion?.matches)
+        });
+
         // 实例化 Pixi.js 凝彩高级导演
         const director = global.TemperaPixiDirector ? new global.TemperaPixiDirector(stageContainer) : null;
         if (director) {
-            director.init().catch(err => console.error('[TemperaPixiDirector] init error:', err));
+            director.init().then(() => {
+                if (!mode.destroyed && latestFrame) mode.updateFrame(latestFrame);
+            }).catch(err => {
+                console.error('[TemperaPixiDirector] init error:', err);
+                if (!mode.destroyed) translation.textContent = '图形引擎初始化失败，请切换其他舞台模式';
+                director.destroy();
+            });
         }
 
         const resize = () => {
@@ -48,19 +63,31 @@
 
             translation.textContent = frame.activeLine?.translation || frame.activeLine?.romanization || '';
             const accent = resolveAccent(services?.app);
-            const tuning = mode.config.modes?.tempera || {};
-            director?.buildShot(frame.activeLine, key, accent, tuning);
+            const tuning = getTuning();
+            const trackKey = frame.track?.path || frame.track?.title || '';
+            director?.buildShot(frame.activeLine, `${trackKey}:${key}`, accent, tuning);
         };
 
         mode.updateFrame = (frame) => {
             if (mode.destroyed || paused) return;
+            if (latestFrame?.lines !== frame.lines || latestFrame?.track !== frame.track) renderedKey = '';
+            latestFrame = frame;
             resize();
             renderLine(frame);
-            const tuning = mode.config.modes?.tempera || {};
+            const tuning = getTuning();
             director?.update(frame, tuning);
             mode.root.style.setProperty('--stage-vocal', Number(frame.audio?.vocal || 0).toFixed(4));
         };
 
+        const updateConfig = mode.updateConfig;
+        mode.updateConfig = (config) => {
+            const before = mode.config.modes?.tempera || {};
+            const after = config.modes?.tempera || {};
+            const rebuild = ['fontScale', 'shotFlow', 'colorMode'].some(key => before[key] !== after[key]);
+            updateConfig(config);
+            if (rebuild) renderedKey = '';
+            if (latestFrame) mode.updateFrame(latestFrame);
+        };
         mode.resize = resize;
         mode.suspend = () => {
             paused = true;

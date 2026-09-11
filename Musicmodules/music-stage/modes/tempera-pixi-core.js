@@ -3,6 +3,7 @@
 
     // 核心几何与网点算法 (纯算法，无 DOM)
     const TAU = Math.PI * 2;
+    const Effects = global.MusicStagePixiEffects;
     const mix = (from, to, amount) => from + (to - from) * amount;
     const clamp = (val, min = 0, max = 1) => Math.min(max, Math.max(min, val));
 
@@ -157,22 +158,32 @@
             this.activeKind = 'duo-split';
             this.shotSeed = 0;
             this.palette = null;
+            this.destroyed = false;
+            this.pendingShot = null;
+            this.postProcess = null;
         }
 
         async init() {
-            if (this.initialized) return;
+            if (this.initialized || this.destroyed) return;
             const PIXI = global.PIXI;
             if (!PIXI) throw new Error('PIXI is not loaded');
 
             this.app = new PIXI.Application();
             await this.app.init({
                 backgroundAlpha: 0,
-                resizeTo: this.container,
+                preference: 'webgl',
+                autoStart: false,
                 antialias: true,
                 resolution: Math.min(2, global.devicePixelRatio || 1),
                 autoDensity: true
             });
 
+            if (this.destroyed) {
+                this.app.destroy(true, { children: true });
+                this.app = null;
+                return;
+            }
+            this.app.stop();
             this.container.appendChild(this.app.canvas);
             this.app.canvas.className = 'tempera-pixi-canvas';
             this.app.canvas.style.position = 'absolute';
@@ -191,15 +202,21 @@
             this.sceneContainer.addChild(this.textContainer);
             this.app.stage.addChild(this.sceneContainer);
 
+            this.postProcess = Effects.createPostProcess(PIXI, this.app.stage);
             this.initialized = true;
             this.resize();
+            if (this.pendingShot) this.buildShot(...this.pendingShot);
         }
 
         resize() {
             if (!this.initialized || !this.app) return;
-            this.width = Math.max(1, this.container.clientWidth);
-            this.height = Math.max(1, this.container.clientHeight);
-            this.app.renderer.resize(this.width, this.height);
+            const width = Math.max(1, this.container.clientWidth);
+            const height = Math.max(1, this.container.clientHeight);
+            if (width === this.width && height === this.height) return;
+            this.width = width;
+            this.height = height;
+            this.app.renderer.resize(width, height);
+            if (this.pendingShot) this.buildShot(...this.pendingShot);
         }
 
         resolvePalette(accentColor, colorMode = 'duo') {
@@ -231,7 +248,9 @@
         }
 
         buildShot(line, seed, accentColor, tuning = {}) {
-            if (!this.initialized) return;
+            this.pendingShot = [line, seed, accentColor, tuning];
+            if (!this.initialized || this.destroyed) return;
+            this.cameraKind = Effects.shotKind(seed, tuning);
             const PIXI = global.PIXI;
             this.shotSeed = seed;
             const rand = global.MusicStageRuntime.seededRandom(`tempera:${seed}`);
@@ -240,9 +259,9 @@
             this.activeKind = SHOT_KINDS[kindIndex];
 
             // 1. 重建色块
-            this.blocksContainer.removeChildren();
-            this.hatchContainer.removeChildren();
-            this.decorContainer.removeChildren();
+            Effects.clear(this.blocksContainer);
+            Effects.clear(this.hatchContainer);
+            Effects.clear(this.decorContainer);
 
             const ctx = {
                 width: this.width,
@@ -289,73 +308,34 @@
             this.decorContainer.addChild(dec);
 
             // 4. 重建文字层
-            this.textContainer.removeChildren();
+            Effects.clear(this.textContainer);
             this.words = [];
 
-            if (line && line.resolvedWords && line.resolvedWords.length) {
-                const words = line.resolvedWords;
-                const fontSize = Math.max(38, Math.min(76, Math.floor(this.width / Math.max(8, words.length * 1.5))));
-                let cursorX = this.width * 0.1;
-                const baselineY = this.height * 0.5;
-
-                words.forEach((w, index) => {
-                    const textNode = new PIXI.Text({
-                        text: w.text,
-                        style: {
-                            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-                            fontSize: fontSize,
-                            fontWeight: '900',
-                            fill: this.palette.ink,
-                            letterSpacing: 2
-                        }
-                    });
-
-                    textNode.anchor.set(0, 0.5);
-                    textNode.position.set(cursorX, baselineY);
-                    
-                    // 单词初始偏移参数
-                    const enterAngle = (rand() - 0.5) * 0.2;
-                    textNode.dataset = {
-                        baseX: cursorX,
-                        baseY: baselineY,
-                        startTime: w.startTime,
-                        endTime: w.endTime,
-                        angle: enterAngle
-                    };
-
-                    cursorX += textNode.width + fontSize * 0.12;
-                    this.words.push(textNode);
-                    this.textContainer.addChild(textNode);
-                });
-
-                // 整体文字容器居中微调
-                const totalW = cursorX - this.width * 0.1;
-                this.textContainer.position.set((this.width - totalW) / 2 - this.width * 0.1, 0);
-            }
+            this.words = Effects.buildLyrics(PIXI, this.textContainer, line, this.width, this.height, tuning, seed);
+            this.numPrimary = PIXI.Color.shared.setValue(this.palette.accent).toNumber();
+            this.sceneContainer.pivot.set(this.width / 2, this.height / 2);
         }
 
         update(frame, tuning = {}) {
             if (!this.initialized) return;
 
+            Effects.applyQuality(this.app, this.width, this.height, tuning.quality);
             const progress = clamp(frame.lineProgress || 0);
-            const cameraIntensity = Number(tuning.cameraIntensity) || 1;
-            const vocal = Number(frame.audio?.vocal) || 0;
-            const bass = Number(frame.audio?.bass) || 0;
-
-            // 1. 镜头推进与微摆动
-            const travel = (progress - 0.5) * -40 * cameraIntensity;
-            const sway = Math.sin(progress * Math.PI) * -16 * cameraIntensity;
-            const zoom = 1 + bass * 0.03 * cameraIntensity;
-            this.sceneContainer.position.set(travel, sway);
-            this.sceneContainer.scale.set(zoom);
+            const motion = Effects.motionScale(tuning);
+            const elapsed = Math.max(0, frame.playbackTime - (frame.activeLine?.startTime || 0));
+            const camera = Effects.camera(frame, tuning, this.cameraKind, this.width, this.height, this.words);
+            this.sceneContainer.position.set(camera.x, camera.y);
+            this.sceneContainer.scale.set(camera.scale);
+            this.sceneContainer.rotation = camera.rotation;
+            this.sceneContainer.alpha = Effects.transition(frame, tuning);
 
             // 2. 色块进场阻尼动画
             this.blocksContainer.children.forEach(b => {
                 const d = b.dataset;
                 if (!d) return;
-                const enterProg = clamp((progress - d.delay) / 0.35);
+                const enterProg = motion > 0 ? clamp((elapsed - d.delay) / 0.45) : 1;
                 const ease = 1 - Math.pow(1 - enterProg, 3);
-                b.position.set(d.enterDX * (1 - ease), d.enterDY * (1 - ease));
+                b.position.set(d.enterDX * (1 - ease) * motion, d.enterDY * (1 - ease) * motion);
                 b.alpha = ease;
             });
 
@@ -363,45 +343,28 @@
             this.hatchContainer.children.forEach(h => {
                 const d = h.dataset;
                 if (!d) return;
-                const enterProg = clamp((progress - d.delay) / 0.4);
+                const enterProg = motion > 0 ? clamp((elapsed - d.delay) / 0.5) : 1;
                 const ease = 1 - Math.pow(1 - enterProg, 3);
-                h.position.set(d.enterDX * (1 - ease), d.enterDY * (1 - ease));
+                h.position.set(d.enterDX * (1 - ease) * motion, d.enterDY * (1 - ease) * motion);
                 h.alpha = ease * 0.6;
             });
 
-            // 4. 逐字动势与反色高亮
-            const playback = frame.playbackTime || 0;
-            this.words.forEach(wordNode => {
-                const d = wordNode.dataset;
-                if (!d) return;
-                const wordProg = clamp((playback - d.startTime) / Math.max(0.001, d.endTime - d.startTime));
-                
-                if (playback < d.startTime) {
-                    wordNode.alpha = 0.35;
-                    wordNode.tint = 0x888888;
-                    wordNode.scale.set(0.92);
-                } else if (playback >= d.endTime) {
-                    wordNode.alpha = 0.95;
-                    wordNode.tint = 0xffffff;
-                    wordNode.scale.set(1.0);
-                } else {
-                    // 活跃字跳动
-                    wordNode.alpha = 1.0;
-                    wordNode.tint = Number(global.PIXI.Color.shared.setValue(this.palette.accent).toNumber());
-                    const bounce = Math.sin(wordProg * Math.PI) * 0.18;
-                    wordNode.scale.set(1.0 + bounce);
-                    wordNode.rotation = (wordProg - 0.5) * d.angle;
-                }
-            });
+            Effects.animateLyrics(this.words, frame, tuning, this.numPrimary);
 
             // 显隐开关
             this.blocksContainer.visible = tuning.showBlocks !== false;
             this.decorContainer.visible = tuning.showDecor !== false;
             this.hatchContainer.visible = tuning.showDecor !== false;
+            this.postProcess.update(frame, tuning, this.width, this.height);
+            this.app.render();
         }
 
         destroy() {
-            if (this.app) {
+            this.destroyed = true;
+            this.pendingShot = null;
+            this.postProcess?.destroy();
+            this.postProcess = null;
+            if (this.app && this.initialized) {
                 this.app.destroy(true, { children: true });
                 this.app = null;
             }

@@ -123,10 +123,7 @@
             }
         }
 
-        if (result < previousIndex && previousIndex >= 0) {
-            const previous = lines[previousIndex];
-            if (previous && playbackTime >= previous.startTime - 1.25) return previousIndex;
-        }
+        // Absolute-time lookup: hysteresis here retains future lyrics after a backward seek.
         return result;
     };
 
@@ -193,7 +190,8 @@
         const lineDuration = activeLine ? Math.max(0.001, activeLine.endTime - activeLine.startTime) : 1;
         const lineProgress = activeLine ? clamp((playbackTime - activeLine.startTime) / lineDuration) : 0;
         const wordState = resolveWordState(activeLine, playbackTime);
-        const spectrum = Array.isArray(app?.currentVisualizerData) ? app.currentVisualizerData : [];
+        const spectrum = Array.isArray(app?.currentVisualizerData) || ArrayBuffer.isView(app?.currentVisualizerData)
+            ? app.currentVisualizerData : [];
         const track = app?.playlist?.[app?.currentTrackIndex] || null;
 
         return {
