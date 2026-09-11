@@ -33,44 +33,12 @@
         return Array.from(value);
     };
 
-    const normalizeLine = (line, index, lines) => {
-        const startTime = Number.isFinite(line?.time) ? line.time : Number(line?.startTime) || 0;
-        const next = lines[index + 1];
-        const nextStart = Number.isFinite(next?.time) ? next.time : Number(next?.startTime);
-        const declaredEnd = Number.isFinite(line?.endTime) ? line.endTime : 0;
-        const endTime = Math.max(startTime + 0.08, declaredEnd || nextStart || startTime + 5);
-        const words = Array.isArray(line?.words) && line.words.length
-            ? line.words.map((word, wordIndex) => ({
-                text: String(word?.text ?? ''),
-                startTime: Number.isFinite(word?.startTime) ? word.startTime : startTime,
-                endTime: Math.max(
-                    Number.isFinite(word?.startTime) ? word.startTime : startTime,
-                    Number.isFinite(word?.endTime) ? word.endTime : endTime
-                ),
-                index: wordIndex
-            }))
-            : [];
-
-        return {
-            ...line,
-            index,
-            startTime,
-            time: startTime,
-            endTime,
-            fullText: String(line?.fullText ?? line?.original ?? ''),
-            translation: String(line?.translation ?? ''),
-            romanization: String(line?.romanization ?? ''),
-            words
-        };
-    };
-
-    const normalizeLines = (lines) => {
-        const source = Array.isArray(lines) ? lines : [];
-        return source.map((line, index) => normalizeLine(line, index, source));
-    };
+    const EMPTY_LINES = Object.freeze([]);
+    const EMPTY_WORDS = Object.freeze([]);
+    const normalizedLinesCache = new WeakMap();
 
     const buildFallbackWords = (line) => {
-        if (!line?.fullText) return [];
+        if (!line?.fullText) return EMPTY_WORDS;
         const graphemes = splitGraphemes(line.fullText);
         const visibleCount = Math.max(1, graphemes.filter((char) => char.trim()).length);
         const duration = Math.max(0.4, line.endTime - line.startTime);
@@ -89,6 +57,47 @@
                 index
             };
         });
+    };
+
+    const normalizeLine = (line, index, lines) => {
+        const startTime = Number.isFinite(line?.time) ? line.time : Number(line?.startTime) || 0;
+        const next = lines[index + 1];
+        const nextStart = Number.isFinite(next?.time) ? next.time : Number(next?.startTime);
+        const declaredEnd = Number.isFinite(line?.endTime) ? line.endTime : 0;
+        const endTime = Math.max(startTime + 0.08, declaredEnd || nextStart || startTime + 5);
+        const words = Array.isArray(line?.words) && line.words.length
+            ? line.words.map((word, wordIndex) => ({
+                text: String(word?.text ?? ''),
+                startTime: Number.isFinite(word?.startTime) ? word.startTime : startTime,
+                endTime: Math.max(
+                    Number.isFinite(word?.startTime) ? word.startTime : startTime,
+                    Number.isFinite(word?.endTime) ? word.endTime : endTime
+                ),
+                index: wordIndex
+            }))
+            : EMPTY_WORDS;
+        const normalized = {
+            ...line,
+            index,
+            startTime,
+            time: startTime,
+            endTime,
+            fullText: String(line?.fullText ?? line?.original ?? ''),
+            translation: String(line?.translation ?? ''),
+            romanization: String(line?.romanization ?? ''),
+            words
+        };
+        normalized.resolvedWords = words.length ? words : buildFallbackWords(normalized);
+        return normalized;
+    };
+
+    const normalizeLines = (lines) => {
+        if (!Array.isArray(lines) || !lines.length) return EMPTY_LINES;
+        const cached = normalizedLinesCache.get(lines);
+        if (cached) return cached;
+        const normalized = lines.map((line, index) => normalizeLine(line, index, lines));
+        normalizedLinesCache.set(lines, normalized);
+        return normalized;
     };
 
     const resolvePlaybackTime = (app, now) => {
@@ -129,7 +138,7 @@
             wordStates: []
         };
 
-        const words = line.words.length ? line.words : buildFallbackWords(line);
+        const words = line.resolvedWords || (line.words.length ? line.words : buildFallbackWords(line));
         let activeWordIndex = -1;
         let activeProgress = 0;
         const wordStates = words.map((word, index) => {

@@ -71,7 +71,11 @@
         const edgeCanvasState = {
             width: 0,
             height: 0,
-            dpr: 1
+            dpr: 1,
+            top: new Float32Array(0),
+            right: new Float32Array(0),
+            bottom: new Float32Array(0),
+            left: new Float32Array(0)
         };
 
         const scope = new DisposableScope();
@@ -252,23 +256,64 @@
             return clamp(Math.pow(Math.max(0, value - 0.025), 0.78));
         };
 
+        const ensureEdgeBuffer = (side, pointCount) => {
+            const coordinateCount = pointCount * 2;
+            if (edgeCanvasState[side].length !== coordinateCount) {
+                edgeCanvasState[side] = new Float32Array(coordinateCount);
+            }
+            return edgeCanvasState[side];
+        };
+
+        const fillEdgePoints = (
+            points,
+            side,
+            spectrum,
+            offset,
+            inset,
+            width,
+            height,
+            amplitude,
+            idleScale
+        ) => {
+            const count = points.length / 2;
+            const span = side === 'top' || side === 'bottom'
+                ? width - inset * 2
+                : height - inset * 2;
+            for (let index = 0; index < count; index += 1) {
+                const ratio = index / Math.max(1, count - 1);
+                const edgeFade = Math.pow(Math.sin(ratio * Math.PI), 0.42);
+                const energy = getSpectrumSample(spectrum, ratio, offset) * edgeFade * idleScale;
+                const coordinateIndex = index * 2;
+                if (side === 'top') {
+                    points[coordinateIndex] = inset + ratio * span;
+                    points[coordinateIndex + 1] = inset + energy * amplitude;
+                } else if (side === 'bottom') {
+                    points[coordinateIndex] = width - inset - ratio * span;
+                    points[coordinateIndex + 1] = height - inset - energy * amplitude;
+                } else if (side === 'left') {
+                    points[coordinateIndex] = inset + energy * amplitude;
+                    points[coordinateIndex + 1] = height - inset - ratio * span;
+                } else {
+                    points[coordinateIndex] = width - inset - energy * amplitude;
+                    points[coordinateIndex + 1] = inset + ratio * span;
+                }
+            }
+        };
+
         const strokeEdgePath = (points, color, alpha, blur) => {
-            if (!edgeContext || points.length < 2) return;
+            if (!edgeContext || points.length < 4) return;
             edgeContext.save();
             edgeContext.beginPath();
-            edgeContext.moveTo(points[0][0], points[0][1]);
-            for (let index = 1; index < points.length - 1; index += 1) {
-                const current = points[index];
-                const next = points[index + 1];
+            edgeContext.moveTo(points[0], points[1]);
+            for (let index = 2; index < points.length - 2; index += 2) {
                 edgeContext.quadraticCurveTo(
-                    current[0],
-                    current[1],
-                    (current[0] + next[0]) / 2,
-                    (current[1] + next[1]) / 2
+                    points[index],
+                    points[index + 1],
+                    (points[index] + points[index + 2]) / 2,
+                    (points[index + 1] + points[index + 3]) / 2
                 );
             }
-            const last = points[points.length - 1];
-            edgeContext.lineTo(last[0], last[1]);
+            edgeContext.lineTo(points[points.length - 2], points[points.length - 1]);
             edgeContext.lineCap = 'round';
             edgeContext.lineJoin = 'round';
             edgeContext.lineWidth = blur > 0 ? 2.8 : 1.05;
@@ -299,25 +344,24 @@
             const verticalCount = clamp(Math.round(height / 15), 28, 72);
             const idleScale = frame.isPlaying ? 1 : 0.12;
 
-            const makePoints = (count, side, offset) => Array.from({ length: count }, (_, index) => {
-                const ratio = index / Math.max(1, count - 1);
-                const edgeFade = Math.pow(Math.sin(ratio * Math.PI), 0.42);
-                const energy = getSpectrumSample(spectrum, ratio, offset) * edgeFade * idleScale;
-                if (side === 'top') return [inset + ratio * (width - inset * 2), inset + energy * horizontalAmplitude];
-                if (side === 'bottom') return [width - inset - ratio * (width - inset * 2), height - inset - energy * horizontalAmplitude];
-                if (side === 'left') return [inset + energy * verticalAmplitude, height - inset - ratio * (height - inset * 2)];
-                return [width - inset - energy * verticalAmplitude, inset + ratio * (height - inset * 2)];
-            });
+            const top = ensureEdgeBuffer('top', horizontalCount);
+            const right = ensureEdgeBuffer('right', verticalCount);
+            const bottom = ensureEdgeBuffer('bottom', horizontalCount);
+            const left = ensureEdgeBuffer('left', verticalCount);
+            fillEdgePoints(top, 'top', spectrum, 0, inset, width, height, horizontalAmplitude, idleScale);
+            fillEdgePoints(right, 'right', spectrum, 0.11, inset, width, height, verticalAmplitude, idleScale);
+            fillEdgePoints(bottom, 'bottom', spectrum, 0.21, inset, width, height, horizontalAmplitude, idleScale);
+            fillEdgePoints(left, 'left', spectrum, 0.34, inset, width, height, verticalAmplitude, idleScale);
 
-            const paths = [
-                makePoints(horizontalCount, 'top', 0),
-                makePoints(verticalCount, 'right', 0.11),
-                makePoints(horizontalCount, 'bottom', 0.21),
-                makePoints(verticalCount, 'left', 0.34)
-            ];
             const alpha = 0.28 + frame.audio.power * 0.62;
-            paths.forEach((points) => strokeEdgePath(points, color, alpha * 0.38, 13));
-            paths.forEach((points) => strokeEdgePath(points, color, alpha, 2.5));
+            strokeEdgePath(top, color, alpha * 0.38, 13);
+            strokeEdgePath(right, color, alpha * 0.38, 13);
+            strokeEdgePath(bottom, color, alpha * 0.38, 13);
+            strokeEdgePath(left, color, alpha * 0.38, 13);
+            strokeEdgePath(top, color, alpha, 2.5);
+            strokeEdgePath(right, color, alpha, 2.5);
+            strokeEdgePath(bottom, color, alpha, 2.5);
+            strokeEdgePath(left, color, alpha, 2.5);
         };
 
         const getPlayModePresentation = () => {

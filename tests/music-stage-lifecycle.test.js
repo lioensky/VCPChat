@@ -19,6 +19,9 @@ const createStageDom = () => new JSDOM(`<!doctype html>
         <div class="music-stage-backdrop-current"></div>
         <div class="music-stage-backdrop-next"></div>
         <div class="music-stage-shade"></div>
+        <div class="music-stage-edge-spectrum">
+            <canvas class="music-stage-edge-spectrum-canvas"></canvas>
+        </div>
         <div class="music-stage-mode-root"></div>
         <nav class="music-stage-mode-switcher"></nav>
         <div class="music-stage-cover"></div>
@@ -67,6 +70,7 @@ const installCanvasStub = (window) => {
         rect() {},
         moveTo() {},
         lineTo() {},
+        quadraticCurveTo() {},
         closePath() {},
         stroke() {},
         measureText(text) { return { width: String(text).length * 20 }; },
@@ -162,6 +166,40 @@ test('music stage runtime resolves lyric and audio snapshots', () => {
     assert.equal(frame.wordStates[1].status, 'active');
     assert.ok(frame.audio.power > 0);
     assert.equal(frame.audio.spectrum.length, 64);
+});
+
+test('music stage caches normalized lyrics and fallback word timelines by source array', () => {
+    const dom = createStageDom();
+    installCanvasStub(dom.window);
+    runScript(dom, 'Musicmodules/music-stage/music-stage-runtime.js');
+
+    const { app } = createApp();
+    app.currentLyrics = [{
+        time: 0,
+        endTime: 4,
+        original: '缓存歌词'
+    }];
+    app.lastKnownCurrentTime = 1;
+
+    const firstFrame = dom.window.MusicStageRuntime.createFrame(app, 100);
+    const secondFrame = dom.window.MusicStageRuntime.createFrame(app, 116);
+
+    assert.strictEqual(secondFrame.lines, firstFrame.lines);
+    assert.strictEqual(secondFrame.activeLine, firstFrame.activeLine);
+    assert.strictEqual(secondFrame.words, firstFrame.words);
+    assert.equal(firstFrame.words.map((word) => word.text).join(''), '缓存歌词');
+
+    app.currentLyrics = [{
+        time: 0,
+        endTime: 4,
+        original: '新歌词'
+    }];
+    const replacedFrame = dom.window.MusicStageRuntime.createFrame(app, 132);
+
+    assert.notStrictEqual(replacedFrame.lines, firstFrame.lines);
+    assert.notStrictEqual(replacedFrame.words, firstFrame.words);
+    assert.equal(replacedFrame.words.map((word) => word.text).join(''), '新歌词');
+    dom.window.close();
 });
 
 test('music stage keeps one mode instance and releases canvases across switches', async () => {

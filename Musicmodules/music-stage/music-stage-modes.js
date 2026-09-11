@@ -31,18 +31,21 @@
         return word;
     };
 
-    const updateTimedWords = (root, wordStates) => {
-        const words = root.querySelectorAll('[data-word-index]');
-        words.forEach((element) => {
-            const index = Number(element.dataset.wordIndex);
+    const updateTimedWords = (wordElements, wordStates) => {
+        wordElements.forEach((element, index) => {
             setWordVisualState(element, wordStates[index], index);
         });
     };
 
     const buildLineWords = (container, frame, className = '') => {
         const fragment = document.createDocumentFragment();
-        frame.wordStates.forEach((state, index) => fragment.appendChild(createTimedWord(state, index, className)));
+        const wordElements = frame.wordStates.map((state, index) => {
+            const word = createTimedWord(state, index, className);
+            fragment.appendChild(word);
+            return word;
+        });
         container.replaceChildren(fragment);
+        return wordElements;
     };
 
     const makeModeBase = (id, label, container, services) => {
@@ -81,6 +84,7 @@
 
         let renderedKey = '';
         let layoutSeed = '';
+        let wordElements = [];
 
         mode.updateFrame = (frame) => {
             if (mode.destroyed) return;
@@ -95,9 +99,10 @@
                     line.textContent = '等待音乐';
                     line.classList.add('is-empty');
                     translation.textContent = '';
+                    wordElements = [];
                 } else {
                     line.classList.remove('is-empty');
-                    buildLineWords(line, frame, 'luminous-word');
+                    wordElements = buildLineWords(line, frame, 'luminous-word');
                     translation.textContent = frame.activeLine.translation || frame.activeLine.romanization || '';
                 }
 
@@ -105,7 +110,7 @@
                 next.textContent = frame.nextLines[0]?.fullText || '';
                 layoutSeed = `${key}:${frame.viewport.width}:${frame.viewport.height}`;
                 const random = seededRandom(layoutSeed);
-                line.querySelectorAll('.stage-word').forEach((word, index) => {
+                wordElements.forEach((word, index) => {
                     const calm = frame.wordStates.length > 12 ? 0.55 : 1;
                     word.style.setProperty('--word-x', `${((random() - 0.5) * 44 * calm).toFixed(1)}px`);
                     word.style.setProperty('--word-y', `${((random() - 0.5) * 34 * calm).toFixed(1)}px`);
@@ -114,7 +119,7 @@
                     word.style.setProperty('--word-delay', `${Math.min(index * 28, 260)}ms`);
                 });
             } else if (frame.activeLine) {
-                updateTimedWords(line, frame.wordStates);
+                updateTimedWords(wordElements, frame.wordStates);
             }
 
             const vocal = frame.audio.vocal;
@@ -153,6 +158,7 @@
         mode.root.append(eyebrow, grid, translation);
 
         let renderedKey = '';
+        let wordElements = [];
 
         mode.updateFrame = (frame) => {
             if (mode.destroyed) return;
@@ -160,6 +166,7 @@
             if (key !== renderedKey) {
                 renderedKey = key;
                 grid.replaceChildren();
+                wordElements = [];
                 if (!frame.activeLine) {
                     grid.appendChild(createElement('div', 'partita-empty', '等待音乐'));
                     translation.textContent = '';
@@ -176,14 +183,18 @@
                     block.style.setProperty('--block-angle', `${((random() - 0.5) * 3).toFixed(2)}deg`);
                     const marker = createElement('span', 'partita-marker', String(groupIndex + 1).padStart(2, '0'));
                     const text = createElement('div', 'partita-block-text');
-                    group.forEach(({ state, index }) => text.appendChild(createTimedWord(state, index, 'partita-word')));
+                    group.forEach(({ state, index }) => {
+                        const word = createTimedWord(state, index, 'partita-word');
+                        wordElements[index] = word;
+                        text.appendChild(word);
+                    });
                     block.append(marker, text);
                     fragment.appendChild(block);
                 });
                 grid.appendChild(fragment);
                 translation.textContent = frame.activeLine.translation || '';
             } else if (frame.activeLine) {
-                updateTimedWords(grid, frame.wordStates);
+                updateTimedWords(wordElements, frame.wordStates);
             }
 
             mode.root.style.setProperty('--stage-power', frame.audio.power.toFixed(4));
@@ -239,6 +250,7 @@
 
         let renderedKey = '';
         let renderedSize = '';
+        let wordElements = [];
 
         mode.updateFrame = (frame) => {
             if (mode.destroyed) return;
@@ -247,6 +259,7 @@
             if (key !== renderedKey || sizeKey !== renderedSize) {
                 renderedKey = key;
                 renderedSize = sizeKey;
+                wordElements = [];
                 const layout = buildCadenzaComposition(frame);
                 const fragment = document.createDocumentFragment();
 
@@ -260,7 +273,11 @@
                         line.style.top = `${item.y}px`;
                         line.style.fontSize = `${item.fontSize}px`;
                         if (item.isActive) {
-                            frame.wordStates.forEach((state, index) => line.appendChild(createTimedWord(state, index, 'cadenza-word')));
+                            frame.wordStates.forEach((state, index) => {
+                                const word = createTimedWord(state, index, 'cadenza-word');
+                                wordElements[index] = word;
+                                line.appendChild(word);
+                            });
                         } else {
                             line.textContent = item.entry.fullText;
                         }
@@ -269,7 +286,7 @@
                 }
                 composition.replaceChildren(fragment);
             } else {
-                updateTimedWords(composition, frame.wordStates);
+                updateTimedWords(wordElements, frame.wordStates);
             }
 
             const active = composition.querySelector('.cadenza-line.is-current');
@@ -376,6 +393,7 @@
         const context = canvas.getContext('2d');
         let renderedKey = '';
         let paletteSignature = '';
+        let wordElements = [];
         let shapes = buildFumeShapes('fume', resolveFumePalette(services.app));
         let canvasWidth = 0;
         let canvasHeight = 0;
@@ -410,17 +428,18 @@
                 before.textContent = frame.previousLine?.fullText || '';
                 after.textContent = frame.nextLines.map((line) => line.fullText).join('  /  ');
                 if (frame.activeLine) {
-                    buildLineWords(hero, frame, 'fume-word');
+                    wordElements = buildLineWords(hero, frame, 'fume-word');
                     translation.textContent = frame.activeLine.translation || '';
                 } else {
                     hero.textContent = '等待音乐';
                     translation.textContent = '';
+                    wordElements = [];
                 }
                 paper.classList.remove('is-entering');
                 void paper.offsetWidth;
                 paper.classList.add('is-entering');
             } else if (frame.activeLine) {
-                updateTimedWords(hero, frame.wordStates);
+                updateTimedWords(wordElements, frame.wordStates);
             }
 
             if (context) {
