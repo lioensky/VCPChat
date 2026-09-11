@@ -2015,7 +2015,44 @@ body.light-theme .music-stage {
 .music-stage-mode-tempera {
     display: grid;
     place-items: center;
+    isolation: isolate;
     background: radial-gradient(circle at 48% 42%, color-mix(in srgb, var(--stage-ink) 4%, transparent), transparent 56%);
+}
+
+/* Keep the entire Pixi scene below the independent DOM subtitle overlay. */
+.music-stage-mode-tempera > .tempera-stage-container {
+    z-index: 0;
+    pointer-events: none;
+}
+
+.music-stage-mode-tempera > .tempera-kicker {
+    position: absolute;
+    top: 12%;
+    left: 8%;
+    right: 8%;
+    z-index: 1;
+    pointer-events: none;
+}
+
+.music-stage-mode-tempera > .tempera-translation {
+    position: absolute;
+    left: 50%;
+    bottom: max(16%, 110px);
+    z-index: 2;
+    width: max-content;
+    max-width: min(76%, 1000px);
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    transform: translateX(-50%);
+    color: var(--stage-ink);
+    text-shadow: none;
+    overflow-wrap: anywhere;
+    pointer-events: none;
+}
+
+.music-stage-mode-tempera > .tempera-translation:empty {
+    display: none;
 }
 .tempera-canvas,
 .tempera-field {
