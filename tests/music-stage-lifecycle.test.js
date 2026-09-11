@@ -206,6 +206,13 @@ test('music stage keeps one mode instance and releases canvases across switches'
     const dom = createStageDom();
     installCanvasStub(dom.window);
     runScript(dom, 'Musicmodules/music-stage/music-stage-runtime.js');
+    runScript(dom, 'Musicmodules/music-stage/music-stage-config.js');
+    runScript(dom, 'Musicmodules/music-stage/modes/stage-mode-utils.js');
+    runScript(dom, 'Musicmodules/music-stage/modes/tempera-manager.js');
+    runScript(dom, 'Musicmodules/music-stage/modes/sonnet-manager.js');
+    runScript(dom, 'Musicmodules/music-stage/modes/diorama-manager.js');
+    runScript(dom, 'Musicmodules/music-stage/modes/fume-manager.js');
+    runScript(dom, 'Musicmodules/music-stage/music-stage-advanced-modes.js');
     runScript(dom, 'Musicmodules/music-stage/music-stage-modes.js');
     runScript(dom, 'Musicmodules/music-stage/music-stage-host.js');
 
@@ -218,14 +225,18 @@ test('music stage keeps one mode instance and releases canvases across switches'
     assert.equal(app.isStageActive, true);
     assert.equal(app.stageHost.getDebugSnapshot().modeRootChildren, 1);
 
-    for (const mode of ['partita', 'cadenza', 'fume', 'luminous', 'fume']) {
+    for (const mode of ['tempera', 'sonnet', 'diorama', 'fume', 'partita', 'cadenza', 'luminous', 'fume']) {
         app.stageHost.setMode(mode);
         await wait(dom.window, 210);
         app.stageHost.updateFrame(1000);
         const snapshot = app.stageHost.getDebugSnapshot();
         assert.equal(snapshot.modeId, mode);
         assert.equal(snapshot.modeRootChildren, 1);
-        assert.equal(snapshot.canvasCount, mode === 'fume' ? 1 : 0);
+        const expectedCanvases = ['tempera', 'fume'].includes(mode) ? 1 : 0;
+        assert.equal(snapshot.canvasCount, expectedCanvases);
+        if (mode === 'diorama') {
+            assert.ok(document.querySelector('.diorama-fallback'));
+        }
     }
 
     app.stageHost.setMode('luminous');
@@ -233,7 +244,7 @@ test('music stage keeps one mode instance and releases canvases across switches'
     const afterFume = app.stageHost.getDebugSnapshot();
     assert.equal(afterFume.canvasCount, 0);
     assert.equal(afterFume.modeRootChildren, 1);
-    assert.ok(afterFume.modeDestroys >= 5);
+    assert.ok(afterFume.modeDestroys >= 8);
 
     app.stageHost.exit();
     await wait(dom.window, 410);
@@ -251,6 +262,13 @@ test('stage transport synchronizes play mode, mute and volume with the existing 
     const dom = createStageDom();
     installCanvasStub(dom.window);
     runScript(dom, 'Musicmodules/music-stage/music-stage-runtime.js');
+    runScript(dom, 'Musicmodules/music-stage/music-stage-config.js');
+    runScript(dom, 'Musicmodules/music-stage/modes/stage-mode-utils.js');
+    runScript(dom, 'Musicmodules/music-stage/modes/tempera-manager.js');
+    runScript(dom, 'Musicmodules/music-stage/modes/sonnet-manager.js');
+    runScript(dom, 'Musicmodules/music-stage/modes/diorama-manager.js');
+    runScript(dom, 'Musicmodules/music-stage/modes/fume-manager.js');
+    runScript(dom, 'Musicmodules/music-stage/music-stage-advanced-modes.js');
     runScript(dom, 'Musicmodules/music-stage/music-stage-modes.js');
     runScript(dom, 'Musicmodules/music-stage/music-stage-host.js');
 

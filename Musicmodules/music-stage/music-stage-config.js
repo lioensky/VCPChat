@@ -12,19 +12,46 @@
     const enumValue = (value, values, fallback) => values.includes(value) ? value : fallback;
 
     const MODE_META = Object.freeze([
+        { id: 'tempera', label: '凝彩', description: '色块、网点与逐字分镜的实时歌词 MV' },
+        { id: 'sonnet', label: '商籁', description: '编辑排版、HUD 与动态图形节目包装' },
+        { id: 'diorama', label: '镜台', description: '三维歌词空间、点云与电影化运镜' },
+        { id: 'fume', label: '浮名', description: '二维连续文字世界与长卷式镜头叙事' },
         { id: 'luminous', label: '流光', description: '逐字辉光与呼吸浮动' },
         { id: 'partita', label: '云阶', description: '分块排版与引导线' },
         { id: 'cadenza', label: '心象', description: '空间排版与镜头漂移' },
-        { id: 'fume', label: '浮名', description: '文章镜头与几何背景' },
         { id: 'starborn', label: '星诞', description: '按歌词段落自动导演' }
     ]);
 
     const DEFAULTS = Object.freeze({
-        enabledModes: ['luminous', 'partita', 'cadenza', 'fume', 'starborn'],
+        enabledModes: ['tempera', 'sonnet', 'diorama', 'fume', 'luminous', 'partita', 'cadenza', 'starborn'],
         quality: 'standard',
         animationIntensity: 1,
         edgeSpectrum: true,
         modes: {
+            tempera: {
+                cameraIntensity: 1,
+                glyphMotion: 1,
+                colorMode: 'duo',
+                showBlocks: true,
+                showDecor: true,
+                textInversion: true
+            },
+            sonnet: {
+                cameraIntensity: 1,
+                typographyMotion: 1,
+                guideLines: true,
+                showBackground: true,
+                showDecor: true,
+                postProcess: true
+            },
+            diorama: {
+                cameraSpeed: 1,
+                motionAmount: 1,
+                audioReactivity: 1,
+                showParticles: true,
+                geometryMode: 'clouds',
+                glow: 1
+            },
             luminous: {
                 wordRotation: true,
                 breathing: 1,
@@ -94,7 +121,7 @@
             .filter((id) => requestedModes.includes(id));
         const modes = {};
         MODE_META.forEach((entry) => {
-            modes[entry.id] = normalizeMode(source.modes?.[entry.id], DEFAULTS.modes[entry.id]);
+            modes[entry.id] = normalizeMode(source.modes?.[entry.id], DEFAULTS.modes[entry.id] || {});
         });
         if (!enabledModes.length) enabledModes.push('luminous');
 

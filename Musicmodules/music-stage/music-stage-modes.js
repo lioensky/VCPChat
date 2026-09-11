@@ -710,6 +710,11 @@
         ['starborn', { id: 'starborn', label: '星诞', create: createStarbornMode }]
     ]);
 
+    // 四大核心模式由独立管理器提供；轻量模式与星诞继续由本文件维护。
+    global.MusicStageAdvancedModes?.entries?.forEach((entry) => {
+        registry.set(entry.id, entry);
+    });
+
     global.MusicStageModes = Object.freeze({
         ids: Object.freeze(Array.from(registry.keys())),
         entries: Object.freeze(Array.from(registry.values())),

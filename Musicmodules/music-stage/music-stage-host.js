@@ -94,6 +94,30 @@
 
         const scope = new DisposableScope();
         const tuningDefinitions = Object.freeze({
+            tempera: [
+                { key: 'cameraIntensity', label: '镜头强度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'glyphMotion', label: '逐字动势', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'colorMode', label: '色彩模式', type: 'select', options: [['duo', '主题双色'], ['mono', '黑白灰'], ['gradient', '封面渐变']] },
+                { key: 'showBlocks', label: '色块场景', type: 'toggle' },
+                { key: 'showDecor', label: '装饰元素', type: 'toggle' },
+                { key: 'textInversion', label: '动态反色', type: 'toggle' }
+            ],
+            sonnet: [
+                { key: 'cameraIntensity', label: '镜头强度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'typographyMotion', label: '文字动势', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'guideLines', label: '轨迹线', type: 'toggle' },
+                { key: 'showBackground', label: '主场景', type: 'toggle' },
+                { key: 'showDecor', label: '背景装饰', type: 'toggle' },
+                { key: 'postProcess', label: '后处理', type: 'toggle' }
+            ],
+            diorama: [
+                { key: 'cameraSpeed', label: '镜头速度', type: 'range', min: 0.55, max: 1.85, step: 0.05, unit: 'x' },
+                { key: 'motionAmount', label: '运动幅度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'audioReactivity', label: '点云音频响应', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'showParticles', label: '背景粒子', type: 'toggle' },
+                { key: 'geometryMode', label: '几何形态', type: 'select', options: [['clouds', '点云'], ['corridor', '长廊']] },
+                { key: 'glow', label: '辉光强度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' }
+            ],
             luminous: [
                 { key: 'wordRotation', label: '逐字旋转', type: 'toggle' },
                 { key: 'breathing', label: '呼吸浮动', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },

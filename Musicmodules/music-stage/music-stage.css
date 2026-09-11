@@ -222,6 +222,9 @@ body.music-stage-active #player-background {
     -webkit-mask:
         linear-gradient(#000 0 0) content-box,
         linear-gradient(#000 0 0);
+    mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;
 }
@@ -1982,5 +1985,299 @@ body.light-theme .music-stage {
         inset: 3vh 0 auto;
         width: calc(100vw - 24px);
         max-height: 88vh;
+    }
+}
+
+/* 四大核心模式独立管理器 */
+
+/* 凝彩 / Tempera */
+.music-stage-mode-tempera {
+    display: grid;
+    place-items: center;
+    background: radial-gradient(circle at 48% 42%, rgba(255,255,255,0.04), transparent 56%);
+}
+.tempera-canvas,
+.tempera-field {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+.tempera-field {
+    background: linear-gradient(135deg, rgba(255,255,255,0.04), transparent 48%);
+    mix-blend-mode: screen;
+}
+.tempera-shot {
+    position: absolute;
+    left: 50%;
+    top: 48%;
+    z-index: 2;
+    width: min(78vw, 1180px);
+    min-height: 220px;
+    padding: clamp(34px, 5vw, 82px);
+    box-sizing: border-box;
+    border: 1px solid rgba(255,255,255,0.13);
+    background: color-mix(in srgb, var(--stage-surface) 32%, transparent);
+    box-shadow: 0 30px 90px rgba(0,0,0,0.24), inset 0 0 0 1px rgba(255,255,255,0.035);
+    backdrop-filter: blur(8px);
+    transform: translate(-50%, -50%);
+}
+.tempera-shot.is-entering {
+    animation: tempera-shot-enter 0.72s var(--stage-ease);
+}
+@keyframes tempera-shot-enter {
+    from { opacity: 0; filter: blur(16px); transform: translate(-50%, -46%) rotate(var(--tempera-angle)) scale(0.92); }
+}
+.tempera-kicker,
+.sonnet-eyebrow,
+.fume-meta {
+    color: color-mix(in srgb, var(--stage-accent) 68%, #fff);
+    font: 750 9px/1.2 "SFMono-Regular", Consolas, monospace;
+    letter-spacing: 0.25em;
+}
+.tempera-line,
+.sonnet-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: center;
+    margin-top: 34px;
+    color: rgba(255,255,255,0.22);
+    font-size: clamp(42px, 6.6vw, 96px);
+    font-weight: 780;
+    line-height: 1.08;
+    letter-spacing: -0.06em;
+    text-align: center;
+}
+.tempera-line.is-empty,
+.sonnet-line.is-empty {
+    color: rgba(255,255,255,0.38);
+    font-size: clamp(28px, 4vw, 56px);
+    font-weight: 480;
+}
+.tempera-word {
+    margin: 0 0.06em;
+    filter: blur(5px);
+    opacity: 0.25;
+    transform: translateY(18px) scale(0.9);
+    transition: color .28s linear, opacity .35s ease, filter .4s ease, transform .5s var(--stage-ease);
+}
+.tempera-word.is-passed {
+    color: color-mix(in srgb, var(--stage-accent) 72%, #fff);
+    filter: none;
+    opacity: .78;
+    transform: translateY(0);
+}
+.tempera-word.is-active {
+    color: #fff;
+    filter: none;
+    opacity: 1;
+    transform: translateY(-8px) scale(calc(1.04 + var(--stage-word-progress, 0) * .08));
+    text-shadow: 0 0 calc(16px + var(--stage-vocal, 0) * 30px) var(--stage-accent);
+}
+.tempera-translation,
+.sonnet-translation {
+    margin-top: 24px;
+}
+.tempera-decor {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+}
+.tempera-mark {
+    position: absolute;
+    height: 1px;
+    background: var(--stage-accent);
+    opacity: calc(.16 + var(--stage-vocal, 0) * .35);
+    box-shadow: 0 0 12px var(--stage-accent);
+    transition: opacity .2s ease;
+}
+.tempera-no-blocks .tempera-shot {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+}
+.tempera-no-decor .tempera-decor {
+    display: none;
+}
+.tempera-no-inversion .tempera-word.is-active {
+    color: color-mix(in srgb, var(--stage-accent) 72%, #fff);
+}
+
+/* 商籁 / Sonnet */
+.music-stage-mode-sonnet {
+    display: grid;
+    place-items: center;
+    background:
+        linear-gradient(90deg, transparent 49.95%, rgba(255,255,255,.07) 50%, transparent 50.05%),
+        radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--stage-accent) 9%, transparent), transparent 58%);
+}
+.sonnet-frame,
+.sonnet-guide {
+    position: absolute;
+    inset: 8vh 6vw 13vh;
+    border: 1px solid rgba(255,255,255,.1);
+    pointer-events: none;
+}
+.sonnet-guide {
+    inset: 13vh 11vw 18vh;
+    border: 0;
+}
+.sonnet-guide-mark {
+    position: absolute;
+    left: var(--guide-position);
+    top: 0;
+    width: 1px;
+    height: 100%;
+    background: linear-gradient(transparent, color-mix(in srgb, var(--stage-accent) 42%, transparent), transparent);
+    opacity: .45;
+}
+.sonnet-giant {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    z-index: 0;
+    color: transparent;
+    font-size: clamp(100px, 24vw, 360px);
+    font-weight: 900;
+    letter-spacing: -.1em;
+    line-height: .8;
+    opacity: .12;
+    text-align: center;
+    -webkit-text-stroke: 1px color-mix(in srgb, var(--stage-accent) 72%, transparent);
+    transform: translate(-50%, -50%);
+    white-space: nowrap;
+    pointer-events: none;
+}
+.sonnet-scene {
+    position: relative;
+    z-index: 2;
+    width: min(76vw, 1120px);
+    padding: clamp(30px, 5vw, 76px);
+    border-left: 2px solid color-mix(in srgb, var(--stage-accent) 62%, transparent);
+    background: linear-gradient(110deg, rgba(255,255,255,.07), transparent 66%);
+    box-shadow: 25px 30px 80px rgba(0,0,0,.24);
+}
+.sonnet-scene.is-entering {
+    animation: sonnet-scene-enter .62s var(--stage-ease);
+}
+@keyframes sonnet-scene-enter {
+    from { opacity: 0; filter: blur(12px); transform: translateY(22px) rotate(-2deg) scale(.96); }
+}
+.sonnet-shadow {
+    min-height: 24px;
+    color: rgba(255,255,255,.16);
+    font-size: clamp(14px, 1.5vw, 22px);
+    filter: blur(2px);
+}
+.sonnet-word {
+    margin: 0 .05em;
+    opacity: .25;
+    filter: blur(3px);
+    transform: translateY(16px);
+    transition: color .28s ease, opacity .34s ease, filter .35s ease, transform .46s var(--stage-ease);
+}
+.sonnet-word.is-passed {
+    color: color-mix(in srgb, var(--stage-accent) 70%, #fff);
+    opacity: .8;
+    filter: none;
+    transform: none;
+}
+.sonnet-word.is-active {
+    color: #fff;
+    opacity: 1;
+    filter: none;
+    transform: translateY(-6px) scale(1.06);
+    text-shadow: 0 0 calc(14px + var(--stage-power, 0) * 30px) var(--stage-accent);
+}
+.sonnet-hud {
+    position: absolute;
+    right: 7vw;
+    bottom: 18vh;
+    z-index: 4;
+    color: color-mix(in srgb, var(--stage-accent) 62%, #fff);
+    font: 700 9px/1.4 "SFMono-Regular", Consolas, monospace;
+    letter-spacing: .18em;
+}
+.sonnet-hide-guide .sonnet-guide,
+.sonnet-hide-background .sonnet-giant,
+.sonnet-hide-decor .sonnet-frame {
+    display: none;
+}
+.sonnet-post-process-off .sonnet-scene {
+    box-shadow: none;
+}
+
+/* 镜台 / Diorama */
+.music-stage-mode-diorama {
+    background: radial-gradient(circle at 50% 46%, color-mix(in srgb, var(--stage-accent) 12%, transparent), transparent 64%);
+}
+.diorama-canvas {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+.diorama-fallback {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    display: grid;
+    place-items: center;
+    padding: 10vw;
+    text-align: center;
+}
+.diorama-fallback[hidden] {
+    display: none;
+}
+.diorama-fallback-line {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    color: rgba(255,255,255,.32);
+    font-size: clamp(38px, 6vw, 86px);
+    font-weight: 760;
+}
+.diorama-word {
+    margin: 0 .06em;
+    opacity: .3;
+    transition: color .25s ease, opacity .3s ease, transform .35s var(--stage-ease);
+}
+.diorama-word.is-passed {
+    color: color-mix(in srgb, var(--stage-accent) 76%, #fff);
+    opacity: .7;
+}
+.diorama-word.is-active {
+    color: #fff;
+    opacity: 1;
+    transform: translateY(-8px) scale(1.06);
+    text-shadow: 0 0 24px var(--stage-accent);
+}
+.diorama-fallback-translation {
+    position: absolute;
+    bottom: 22%;
+}
+
+/* 核心模式窄屏适配 */
+@media (max-width: 560px) {
+    .tempera-shot,
+    .sonnet-scene {
+        width: 88vw;
+        padding: 30px 24px;
+    }
+    .tempera-line,
+    .sonnet-line {
+        font-size: clamp(31px, 9vw, 58px);
+    }
+    .sonnet-frame {
+        inset: 10vh 4vw 16vh;
+    }
+    .sonnet-hud {
+        right: 7vw;
+        bottom: 26vh;
     }
 }
