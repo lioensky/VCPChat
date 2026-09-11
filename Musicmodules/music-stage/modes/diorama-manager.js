@@ -250,6 +250,11 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
         if (!view) return;
         const geometry = remember(resources.geometries, new THREE.PlaneGeometry(unitW, unitH));
         
+        // 使用独立组包装每个字词，使文字本体与辉光层保持严格同轴等比缩放，杜绝内外错位叠放
+        const unitGroup = new THREE.Group();
+        unitGroup.position.set(currentX + advanceW / 2, 0, 0);
+        lineGroup.add(unitGroup);
+
         // 1. 本体材质
         const material = remember(resources.materials, new THREE.MeshBasicMaterial({
             map: view.texture,
@@ -260,8 +265,8 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
             side: THREE.DoubleSide
         }));
         const mesh = new THREE.Mesh(geometry, material);
-        mesh.position.set(currentX + advanceW / 2, 0, 0);
-        lineGroup.add(mesh);
+        mesh.position.set(0, 0, 0);
+        unitGroup.add(mesh);
 
         // 2. 当前行专属辉光层（AdditiveBlending）
         let glowMesh = null;
@@ -277,18 +282,20 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                 side: THREE.DoubleSide
             }));
             glowMesh = new THREE.Mesh(geometry, glowMat);
-            glowMesh.position.set(currentX + advanceW / 2, 0, -0.01);
-            lineGroup.add(glowMesh);
+            glowMesh.position.set(0, 0, -0.005);
+            unitGroup.add(glowMesh);
         }
 
         unitMeshes.push({
+            group: unitGroup,
             mesh,
             mat: material,
             glowMesh,
             glowMat,
             word: w,
             accentColor,
-            restingColor
+            restingColor,
+            localX: currentX + advanceW / 2
         });
         currentX += advanceW;
     });
@@ -314,7 +321,7 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
         }
     }
 
-    return { group: lineGroup, units: unitMeshes };
+    return { group: lineGroup, units: unitMeshes, totalWidth };
 };
 
         /**
@@ -443,9 +450,26 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
             const activeFrame = pathFrames[currentIdx] || pathFrames[0];
             const nextFrame = pathFrames[Math.min(pathFrames.length - 1, currentIdx + 1)] || activeFrame;
 
-            // 行内播放时间推进度 (0 ~ 1)
-            const duration = Math.max(0.1, (activeLine?.endTime || 5) - (activeLine?.startTime || 0));
-            const lineProgress = clamp(((frame.playbackTime || 0) - (activeLine?.startTime || 0)) / duration, 0, 1);
+            // 计算当前行到下一行之间的连续推进度：
+            // 当这行唱完、下一行到来前（间奏/空档），让相机继续自然向前飞行并穿过当前行，让唱过的歌词从镜头后方移出视界
+            const nextLine = lines[currentIdx + 1];
+            const startTime = activeLine?.startTime || 0;
+            const endTime = activeLine?.endTime || (startTime + 5);
+            const nextStartTime = nextLine ? (nextLine.startTime || endTime) : (endTime + 4);
+            const currentTime = frame.playbackTime || 0;
+
+            let interLineProgress = 0;
+            if (currentTime < endTime) {
+                // 正在唱这一行：从 0 推进到 0.72，相机保持在歌词前方追焦
+                const duration = Math.max(0.1, endTime - startTime);
+                const p = clamp((currentTime - startTime) / duration, 0, 1);
+                interLineProgress = p * 0.72;
+            } else {
+                // 本句已唱完，下一句到来前：从 0.72 继续向前平滑飞跃到 1.0
+                const gap = Math.max(0.1, nextStartTime - endTime);
+                const p = clamp((currentTime - endTime) / gap, 0, 1);
+                interLineProgress = 0.72 + p * 0.28;
+            }
 
             // ==========================================
             // 核心：相机沿 3D 路径持续穿梭飞行 (Flythrough)
@@ -454,28 +478,58 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
             const speed = Number(tuning.cameraSpeed) || 1.0;
             const motion = Number(tuning.motionAmount) || 1.0;
 
-            // 当前正在唱的位置沿着贝塞尔/切线向下一行推进
-            const currentFocalPos = vlerp(activeFrame.position, nextFrame.position, lineProgress * 0.45);
-            const currentForward = vlerp(activeFrame.forward, nextFrame.forward, lineProgress);
+            // 计算当前唱词光标（Word-by-Word）在歌词行中的横向位置偏移：
+            // 让镜头跟随当前唱到的字词进行横向追焦（Tracking Shot），看完整句歌词
+            let wordCursorX = 0;
+            const currentNode = lineNodes.get(currentIdx);
+            if (currentNode && currentNode.units.length > 0 && currentTime < endTime) {
+                const activeWordIdx = frame.activeWordIndex;
+                if (activeWordIdx >= 0 && currentNode.units[activeWordIdx]) {
+                    const unit = currentNode.units[activeWordIdx];
+                    const nextUnit = currentNode.units[activeWordIdx + 1];
+                    const p = frame.wordProgress || 0;
+                    const uX = unit.localX || 0;
+                    const nextX = nextUnit ? (nextUnit.localX || uX) : uX;
+                    // 平滑跟随当前字并向下一个字过渡
+                    wordCursorX = lerp(uX, nextX, p);
+                } else {
+                    // 没有逐字时间戳时，根据行内进度从最左平滑横移到最右
+                    const totalW = currentNode.totalWidth || 0;
+                    const lineP = clamp((currentTime - startTime) / Math.max(0.1, endTime - startTime), 0, 1);
+                    wordCursorX = (-totalW / 2 + totalW * lineP) * 0.65;
+                }
+            }
+            // 间奏阶段光标归中，平滑向下一行对准
+            if (currentTime >= endTime) {
+                const fadeGap = clamp((interLineProgress - 0.72) / 0.28, 0, 1);
+                wordCursorX = lerp(wordCursorX, 0, fadeGap);
+            }
+
+            // 当前正在唱/穿梭的位置沿着切线向下一行持续前进
+            const currentFocalPos = vlerp(activeFrame.position, nextFrame.position, interLineProgress);
+            const currentForward = vlerp(activeFrame.forward, nextFrame.forward, interLineProgress);
             const currentRight = activeFrame.right;
             const currentUp = activeFrame.up;
 
-            // 随着行内进度，相机带有呼吸弧线运镜（避免机械式纯直线，模拟手持摄影机）
-            const sway = Math.sin(lineProgress * Math.PI) * 0.8 * motion;
-            const bob = Math.cos(lineProgress * Math.PI * 2) * 0.3 * motion;
+            // 镜头跟随光标横移（适度衰减系数 0.62，保持歌词在优雅视觉焦点内）
+            const cursorTrackingOffset = wordCursorX * 0.62;
 
-            // 相机目标位置：跟随在当前焦点歌词的后方 HERO_DISTANCE，加上高度升力与运镜晃动
+            // 随着播放进度，相机带有呼吸弧线运镜（避免机械式纯直线，模拟手持摄影机）
+            const sway = Math.sin(interLineProgress * Math.PI) * 0.4 * motion;
+            const bob = Math.cos(interLineProgress * Math.PI * 2) * 0.2 * motion;
+
+            // 相机目标位置：跟随在当前焦点歌词后方，并根据正在唱的字做横向推轨
             const targetCamPos = {
-                x: currentFocalPos.x - currentForward.x * HERO_DISTANCE + currentRight.x * sway,
+                x: currentFocalPos.x - currentForward.x * HERO_DISTANCE + currentRight.x * (cursorTrackingOffset + sway),
                 y: currentFocalPos.y - currentForward.y * HERO_DISTANCE + currentUp.y * (CAMERA_LIFT + bob),
                 z: currentFocalPos.z - currentForward.z * HERO_DISTANCE
             };
 
-            // 相机目标焦点：注视当前歌词稍前方
+            // 相机目标焦点：注视当前歌词正唱到的字的前方
             const targetLookAt = {
-                x: currentFocalPos.x + currentForward.x * 3.5,
+                x: currentFocalPos.x + currentForward.x * 3.2 + currentRight.x * (cursorTrackingOffset * 0.85),
                 y: currentFocalPos.y + currentUp.y * 0.2,
-                z: currentFocalPos.z + currentForward.z * 3.5
+                z: currentFocalPos.z + currentForward.z * 3.2
             };
 
             // 平滑相机追焦 (Critically damped lerp)
@@ -532,29 +586,37 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                 // 逐词实时高亮与透明度更新
                 if (node) {
                     const offset = i - currentIdx;
+                    // 如果是当前行但已经唱完（间奏/行隙阶段），透明度逐渐淡出，配合镜头穿过移出视界
+                    const isPassedCurrent = isCurrent && (currentTime >= endTime);
+                    const currentFadeOut = isPassedCurrent
+                        ? clamp(1.0 - (interLineProgress - 0.72) / 0.28, 0.15, 1.0)
+                        : 1.0;
                     // 距离当前唱段越远，透明度越低，沉入背景雾气中平滑过渡
-                    const baseOpacity = isCurrent ? 1.0 : offset > 0 ? (0.45 / (offset * 1.2)) : 0.22;
+                    const baseOpacity = isCurrent
+                        ? (0.88 * currentFadeOut)
+                        : offset > 0 ? (0.45 / (offset * 1.2)) : 0.22;
+
                     node.units.forEach((u, unitIdx) => {
                         const wordState = frame.wordStates?.[unitIdx];
-                        if (isCurrent && wordState) {
+                        if (isCurrent && wordState && !isPassedCurrent) {
                             const isWordActive = wordState.status === 'active';
                             const isWordPassed = wordState.status === 'passed';
                             u.mat.opacity = isWordActive ? 1.0 : (isWordPassed ? 0.88 : 0.42);
                             if (isWordActive) {
                                 const p = wordState.progress || 0;
-                                u.mesh.scale.setScalar(1.0 + p * 0.12);
+                                u.group.scale.setScalar(1.0 + p * 0.12);
                                 u.mat.color.copy(u.accentColor);
                                 if (u.glowMat) {
                                     u.glowMat.opacity = 0.85 + (frame.audio?.vocal || 0) * 0.4;
                                 }
                             } else if (isWordPassed) {
-                                u.mesh.scale.setScalar(1.0);
+                                u.group.scale.setScalar(1.0);
                                 u.mat.color.copy(u.accentColor);
                                 if (u.glowMat) {
                                     u.glowMat.opacity = 0.15;
                                 }
                             } else {
-                                u.mesh.scale.setScalar(1.0);
+                                u.group.scale.setScalar(1.0);
                                 u.mat.color.copy(u.restingColor);
                                 if (u.glowMat) {
                                     u.glowMat.opacity = 0;
@@ -562,7 +624,7 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                             }
                         } else {
                             u.mat.opacity = baseOpacity;
-                            u.mesh.scale.setScalar(1.0);
+                            u.group.scale.setScalar(1.0);
                             if (u.glowMat) u.glowMat.opacity = 0;
                         }
                     });
