@@ -219,31 +219,24 @@
             if (this.pendingShot) this.buildShot(...this.pendingShot);
         }
 
-        resolvePalette(accentColor, colorMode = 'duo') {
-            const PIXI = global.PIXI;
+        resolvePalette(accentColor, colorMode = 'duo', theme = {}) {
             const accent = accentColor || { r: 121, g: 216, b: 255 };
             const hexAccent = `rgb(${accent.r}, ${accent.g}, ${accent.b})`;
-            
-            if (colorMode === 'mono') {
-                return {
-                    tone1: '#111111',
-                    tone2: '#333333',
-                    tone3: '#666666',
-                    tone4: '#f2f2f2',
-                    ink: '#ffffff',
-                    paper: '#000000',
-                    accent: '#ffffff'
-                };
-            }
-
+            const paper = theme.background || '#171a1d';
+            const surface = theme.surface || '#20252a';
+            const ink = theme.ink || '#f2f0e9';
+            const primary = colorMode === 'mono' ? ink : hexAccent;
+            const secondary = colorMode === 'mono' ? ink : theme.secondary || primary;
+            // Keep all panels on the background side of the palette so that
+            // one foreground remains readable throughout moving split shots.
             return {
-                tone1: mixColors('#10141a', hexAccent, 0.16),
-                tone2: mixColors('#141d28', hexAccent, 0.38),
-                tone3: mixColors('#1a2a3c', hexAccent, 0.68),
-                tone4: '#ffffff',
-                ink: '#ffffff',
-                paper: '#080b10',
-                accent: hexAccent
+                tone1: mixColors(paper, primary, 0.06),
+                tone2: mixColors(surface, secondary, 0.12),
+                tone3: mixColors(paper, primary, 0.18),
+                tone4: surface,
+                ink,
+                paper,
+                accent: primary
             };
         }
 
@@ -254,7 +247,7 @@
             const PIXI = global.PIXI;
             this.shotSeed = seed;
             const rand = global.MusicStageRuntime.seededRandom(`tempera:${seed}`);
-            this.palette = this.resolvePalette(accentColor, tuning.colorMode);
+            this.palette = this.resolvePalette(accentColor, tuning.colorMode, tuning.palette);
             const kindIndex = Math.floor(rand() * SHOT_KINDS.length);
             this.activeKind = SHOT_KINDS[kindIndex];
 

@@ -87,6 +87,9 @@ function setupUI(app) {
 
     app.applyTheme = (theme) => {
         app.currentTheme = theme; document.body.classList.toggle('light-theme', theme === 'light');
+        // CSS variables are immediately readable after changing the theme class.
+        // Notify the stage even while paused; no playback restart is necessary.
+        app.stageHost?.updateTheme?.();
         requestAnimationFrame(() => requestAnimationFrame(() => {
             const rgb = app.hexToRgb(getComputedStyle(document.body).getPropertyValue('--music-highlight'));
             if (rgb) app.visualizerColor = rgb;

@@ -253,7 +253,7 @@
             const motion = reduced?.matches ? 0 : number(mode.config.animationIntensity, 1);
             const nextTrack = frame.track?.path || frame.track?.title || '';
             const changedSource = source !== frame.lines || trackKey !== nextTrack;
-            const accent = services.app?.visualizerColor;
+            const accent = U.resolveAccent(services.app);
             const pausedKey = `${frame.playbackTime}:${width}:${height}:${configEpoch}:${fontEpoch}:${Boolean(pretext)}:${loadError}:${accent?.r}:${accent?.g}:${accent?.b}`;
             if (!force && !changedSource && !frame.isPlaying && pausedKey === lastPausedKey) return;
             if (!force && !changedSource && frame.isPlaying && mode.config.quality === 'energy-saving'

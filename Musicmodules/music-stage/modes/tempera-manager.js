@@ -35,6 +35,7 @@
         const reducedMotion = global.matchMedia?.('(prefers-reduced-motion: reduce)');
         const getTuning = () => ({
             ...mode.config.modes?.tempera,
+            palette: services?.app?.stagePalette,
             animationIntensity: mode.config.animationIntensity ?? 1,
             quality: mode.config.quality,
             reducedMotion: Boolean(reducedMotion?.matches)

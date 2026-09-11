@@ -10,14 +10,19 @@
     initial-value: 0deg;
 }
 
-:root {
-    --stage-ink: var(--primary-text, #fff);
-    --stage-muted: var(--secondary-text, rgba(255, 255, 255, 0.65));
+body {
+    --stage-ink: var(--primary-text, #f2f0e9);
+    --stage-muted: var(--secondary-text, #a7afb1);
     --stage-accent: var(--highlight-text, #79d8ff);
     --stage-on-accent: var(--text-on-accent, #071019);
     --stage-surface: var(--secondary-bg, #11151a);
-    --stage-border: color-mix(in srgb, var(--border-color, #fff) 42%, transparent);
+    --stage-border: color-mix(in srgb, var(--border-color, #3b4449) 42%, transparent);
     --stage-glass: color-mix(in srgb, var(--panel-bg, #080a12) 36%, transparent);
+    --stage-bg: var(--primary-bg, #171a1d);
+    --stage-wallpaper-opacity: 0.38;
+    --stage-cover-brightness: 0.55;
+    --stage-cover-opacity: 0.48;
+    --stage-blend: screen;
     --stage-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -54,8 +59,8 @@ body.music-stage-active .music-player-container {
 
 /* 标题栏始终是舞台唯一模式出口；进入舞台后只保留圆形切换键与窗口控制。 */
 body.music-stage-active #custom-title-bar {
-    background: linear-gradient(180deg, rgba(3, 5, 9, 0.075), rgba(3, 5, 9, 0.012)) !important;
-    border-bottom-color: rgba(255, 255, 255, 0.018) !important;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--stage-bg) 7.5%, transparent), color-mix(in srgb, var(--stage-bg) 1.2%, transparent)) !important;
+    border-bottom-color: color-mix(in srgb, var(--stage-ink) 1.8%, transparent) !important;
     box-shadow: none !important;
     backdrop-filter: blur(2px) saturate(105%);
     -webkit-backdrop-filter: blur(2px) saturate(105%);
@@ -104,7 +109,7 @@ body.music-stage-active #player-background {
     color: var(--stage-ink);
     opacity: 0;
     transform: scale(1.018);
-    background: #070910;
+    background: var(--stage-bg);
     outline: none;
     pointer-events: none;
     transition: opacity 0.38s ease, transform 0.55s var(--stage-ease);
@@ -128,24 +133,41 @@ body.music-stage-active #player-background {
 
 .music-stage-backdrop {
     z-index: -5;
+    isolation: isolate;
     overflow: hidden;
     background:
         radial-gradient(circle at 68% 36%, color-mix(in srgb, var(--stage-accent) 18%, transparent), transparent 42%),
-        #070910;
+        var(--stage-bg);
+}
+
+/* The theme wallpaper is behind cover ambience, noise and readability shade.
+   Overscan prevents transparent blur edges; no extra animation or canvas. */
+.music-stage-backdrop::before {
+    content: "";
+    position: absolute;
+    inset: -64px;
+    z-index: -1;
+    background-image: var(--stage-wallpaper, none);
+    background-position: center;
+    background-size: cover;
+    background-repeat: no-repeat;
+    filter: blur(36px) saturate(0.85);
+    opacity: var(--stage-wallpaper-opacity);
+    pointer-events: none;
 }
 
 .music-stage-backdrop-layer {
     inset: -50px;
     background-position: center;
     background-size: cover;
-    filter: blur(46px) saturate(1.45) brightness(0.42);
+    filter: blur(46px) saturate(1.45) brightness(var(--stage-cover-brightness));
     transform: scale(calc(1.13 + var(--stage-audio-bass, 0) * 0.035));
     transition: opacity 0.85s ease, transform 0.2s linear;
     will-change: opacity, transform;
 }
 
 .music-stage-backdrop-current {
-    opacity: 0.78;
+    opacity: var(--stage-cover-opacity);
 }
 
 .music-stage-backdrop-next {
@@ -157,7 +179,7 @@ body.music-stage-active #player-background {
 }
 
 .music-stage.is-changing-cover .music-stage-backdrop-next {
-    opacity: 0.78;
+    opacity: var(--stage-cover-opacity);
 }
 
 .music-stage-backdrop-noise {
@@ -168,8 +190,8 @@ body.music-stage-active #player-background {
 
 .music-stage-shade {
     background:
-        radial-gradient(ellipse at 50% 42%, transparent 5%, rgba(2, 3, 8, 0.2) 58%, rgba(1, 2, 6, 0.76) 100%),
-        linear-gradient(180deg, rgba(3, 4, 10, 0.36), transparent 24%, transparent 70%, rgba(3, 4, 10, 0.55));
+        radial-gradient(ellipse at 50% 42%, transparent 5%, color-mix(in srgb, var(--stage-bg) 20%, transparent) 58%, color-mix(in srgb, var(--stage-bg) 76%, transparent) 100%),
+        linear-gradient(180deg, color-mix(in srgb, var(--stage-bg) 36%, transparent), transparent 24%, transparent 70%, color-mix(in srgb, var(--stage-bg) 55%, transparent));
 }
 
 /* 四模式共用的边缘频谱：Canvas 表达真实频率，CSS 光带提供连续的流光氛围。 */
@@ -207,10 +229,10 @@ body.music-stage-active #player-background {
         from var(--stage-edge-angle),
         transparent 0deg 36deg,
         color-mix(in srgb, var(--stage-accent) 16%, transparent) 58deg,
-        color-mix(in srgb, var(--stage-accent) 90%, #fff) 76deg,
+        color-mix(in srgb, var(--stage-accent) 90%, var(--stage-ink)) 76deg,
         transparent 101deg 192deg,
-        color-mix(in srgb, #fff 28%, transparent) 220deg,
-        color-mix(in srgb, var(--stage-accent) 72%, #fff) 242deg,
+        color-mix(in srgb, var(--stage-ink) 28%, transparent) 220deg,
+        color-mix(in srgb, var(--stage-accent) 72%, var(--stage-ink)) 242deg,
         transparent 270deg 360deg
     );
     filter:
@@ -348,7 +370,7 @@ body.music-stage-active #player-background {
     display: flex;
     align-items: center;
     gap: 10px;
-    color: rgba(255, 255, 255, 0.42);
+    color: color-mix(in srgb, var(--stage-ink) 42%, transparent);
     font-size: 9px;
     font-weight: 750;
     letter-spacing: 0.22em;
@@ -373,9 +395,9 @@ body.music-stage-active #player-background {
     box-sizing: border-box;
     flex: 0 0 52px;
     padding: 4px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid color-mix(in srgb, var(--stage-ink) 8%, transparent);
     border-radius: 999px;
-    background: rgba(5, 7, 13, 0.18);
+    background: color-mix(in srgb, var(--stage-bg) 18%, transparent);
     box-shadow: 0 12px 35px rgba(0, 0, 0, 0.16);
     backdrop-filter: blur(16px);
     pointer-events: auto;
@@ -415,7 +437,7 @@ body.music-stage-active #player-background {
     height: 38px;
     flex-basis: auto;
     opacity: 1;
-    background: rgba(5, 7, 13, 0.52);
+    background: color-mix(in srgb, var(--stage-bg) 52%, transparent);
 }
 
 .music-stage-mode-switcher:hover .music-stage-mode-button.is-active,
@@ -440,7 +462,7 @@ body.music-stage-active #player-background {
     padding: 0 13px;
     border: 0;
     border-radius: 999px;
-    color: rgba(255, 255, 255, 0.58);
+    color: color-mix(in srgb, var(--stage-ink) 58%, transparent);
     background: transparent;
     cursor: pointer;
     font-size: 11px;
@@ -448,8 +470,8 @@ body.music-stage-active #player-background {
 }
 
 .music-stage-mode-button:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.08);
+    color: var(--stage-ink);
+    background: color-mix(in srgb, var(--stage-ink) 8%, transparent);
 }
 
 .music-stage-mode-button.is-active {
@@ -483,7 +505,7 @@ body.music-stage-active #player-background {
     border-radius: 17px;
     background-position: center;
     background-size: cover;
-    box-shadow: 0 18px 45px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+    box-shadow: 0 18px 45px rgba(0, 0, 0, 0.4), inset 0 0 0 1px color-mix(in srgb, var(--stage-ink) 14%, transparent);
     transform: scale(calc(1 + var(--stage-audio-bass, 0) * 0.055));
     transition: background-image 0.5s ease;
 }
@@ -495,7 +517,7 @@ body.music-stage-active #player-background {
 
 .music-stage-track-kicker {
     margin-bottom: 5px;
-    color: color-mix(in srgb, var(--stage-accent) 82%, #fff);
+    color: color-mix(in srgb, var(--stage-accent) 82%, var(--stage-ink));
     font-size: 8px;
     font-weight: 780;
     letter-spacing: 0.22em;
@@ -503,7 +525,7 @@ body.music-stage-active #player-background {
 
 .music-stage-track-title {
     overflow: hidden;
-    color: rgba(255, 255, 255, 0.94);
+    color: color-mix(in srgb, var(--stage-ink) 94%, transparent);
     font-size: clamp(16px, 1.6vw, 24px);
     font-weight: 680;
     line-height: 1.15;
@@ -528,7 +550,7 @@ body.music-stage-active #player-background {
 .music-stage-track-album {
     overflow: hidden;
     margin-top: 4px;
-    color: rgba(255, 255, 255, 0.56);
+    color: color-mix(in srgb, var(--stage-ink) 56%, transparent);
     font-size: clamp(11px, 0.95vw, 14px);
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -548,7 +570,7 @@ body.music-stage-active #player-background {
     z-index: 12;
     left: 50%;
     top: 53%;
-    color: rgba(255, 255, 255, 0.48);
+    color: color-mix(in srgb, var(--stage-ink) 48%, transparent);
     font-size: 14px;
     letter-spacing: 0.1em;
     transform: translate(-50%, -50%);
@@ -568,9 +590,9 @@ body.music-stage-active #player-background {
     gap: 9px 12px;
     width: min-content;
     padding: 10px 16px 8px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid color-mix(in srgb, var(--stage-ink) 8%, transparent);
     border-radius: 24px;
-    background: rgba(3, 5, 10, 0.15);
+    background: color-mix(in srgb, var(--stage-bg) 15%, transparent);
     box-shadow: 0 18px 55px rgba(0, 0, 0, 0.18);
     backdrop-filter: blur(16px);
     transform: translateX(-50%);
@@ -581,12 +603,12 @@ body.music-stage-active #player-background {
 .music-stage-chrome:hover,
 .music-stage-chrome:focus-within {
     opacity: 1;
-    background: rgba(3, 5, 10, 0.5);
-    border-color: rgba(255, 255, 255, 0.14);
+    background: color-mix(in srgb, var(--stage-bg) 50%, transparent);
+    border-color: color-mix(in srgb, var(--stage-ink) 14%, transparent);
 }
 
 .music-stage-time {
-    color: rgba(255, 255, 255, 0.54);
+    color: color-mix(in srgb, var(--stage-ink) 54%, transparent);
     font-family: "SFMono-Regular", Consolas, monospace;
     font-size: 9px;
     font-variant-numeric: tabular-nums;
@@ -615,7 +637,7 @@ body.music-stage-active #player-background {
     left: 0;
     right: 0;
     height: 1px;
-    background: rgba(255, 255, 255, 0.22);
+    background: color-mix(in srgb, var(--stage-ink) 22%, transparent);
 }
 
 .music-stage-progress-fill,
@@ -626,7 +648,7 @@ body.music-stage-active #player-background {
     width: 0;
     height: 3px;
     border-radius: 3px;
-    background: color-mix(in srgb, var(--stage-accent) 78%, #fff);
+    background: color-mix(in srgb, var(--stage-accent) 78%, var(--stage-ink));
 }
 
 .music-stage-progress-glow {
@@ -656,15 +678,15 @@ body.music-stage-active #player-background {
     padding: 6px;
     border: 0;
     border-radius: 50%;
-    color: rgba(255, 255, 255, 0.62);
+    color: color-mix(in srgb, var(--stage-ink) 62%, transparent);
     background: transparent;
     cursor: pointer;
     transition: color 0.18s ease, background-color 0.18s ease, transform 0.18s ease;
 }
 
 .music-stage-transport button:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--stage-ink);
+    background: color-mix(in srgb, var(--stage-ink) 10%, transparent);
     transform: scale(1.08);
 }
 
@@ -763,7 +785,7 @@ body.music-stage-active #player-background {
 }
 
 .stage-translation {
-    color: rgba(255, 255, 255, 0.56);
+    color: color-mix(in srgb, var(--stage-ink) 56%, transparent);
     font-size: clamp(13px, 1.25vw, 19px);
     font-weight: 440;
     line-height: 1.45;
@@ -774,17 +796,17 @@ body.music-stage-active #player-background {
 .stage-word {
     position: relative;
     display: inline-block;
-    color: rgba(255, 255, 255, 0.24);
+    color: color-mix(in srgb, var(--stage-ink) 24%, transparent);
     white-space: pre-wrap;
     will-change: transform, opacity, filter;
 }
 
 .stage-word.is-passed {
-    color: color-mix(in srgb, var(--stage-accent) 80%, #fff);
+    color: color-mix(in srgb, var(--stage-accent) 80%, var(--stage-ink));
 }
 
 .stage-word.is-active {
-    color: #fff;
+    color: var(--stage-ink);
 }
 
 /* 流光 / Luminous */
@@ -839,7 +861,7 @@ body.music-stage-active #player-background {
 }
 
 .luminous-line.is-empty {
-    color: rgba(255, 255, 255, 0.35);
+    color: color-mix(in srgb, var(--stage-ink) 35%, transparent);
     font-size: clamp(30px, 4vw, 54px);
     font-weight: 480;
 }
@@ -881,7 +903,7 @@ body.music-stage-active #player-background {
     position: absolute;
     left: 50%;
     width: min(70vw, 900px);
-    color: rgba(255, 255, 255, 0.18);
+    color: color-mix(in srgb, var(--stage-ink) 18%, transparent);
     font-size: clamp(14px, 1.4vw, 20px);
     letter-spacing: 0.04em;
     text-align: center;
@@ -920,7 +942,7 @@ body.music-stage-active #player-background {
 
 .music-stage-mode-partita::before {
     inset: 10vh 6vw 14vh;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid color-mix(in srgb, var(--stage-ink) 8%, transparent);
 }
 
 .music-stage-mode-partita::after {
@@ -928,7 +950,7 @@ body.music-stage-active #player-background {
     bottom: 14vh;
     left: 38.2%;
     width: 1px;
-    background: linear-gradient(transparent, rgba(255, 255, 255, 0.16), transparent);
+    background: linear-gradient(transparent, color-mix(in srgb, var(--stage-ink) 16%, transparent), transparent);
 }
 
 .music-stage-mode-partita.stage-hide-guide-lines::before,
@@ -940,7 +962,7 @@ body.music-stage-active #player-background {
     position: absolute;
     top: 12vh;
     left: 8vw;
-    color: color-mix(in srgb, var(--stage-accent) 72%, #fff);
+    color: color-mix(in srgb, var(--stage-accent) 72%, var(--stage-ink));
     font-size: 9px;
     font-weight: 750;
     letter-spacing: 0.32em;
@@ -982,7 +1004,7 @@ body.music-stage-active #player-background {
 }
 
 .partita-marker {
-    color: rgba(255, 255, 255, 0.28);
+    color: color-mix(in srgb, var(--stage-ink) 28%, transparent);
     font-family: Consolas, monospace;
     font-size: 9px;
     letter-spacing: 0.18em;
@@ -1000,7 +1022,7 @@ body.music-stage-active #player-background {
 
 .partita-word {
     max-width: 100%;
-    color: rgba(255, 255, 255, 0.2);
+    color: color-mix(in srgb, var(--stage-ink) 20%, transparent);
     opacity: 0.38;
     transform: translateX(-12px);
     filter: blur(2.5px);
@@ -1008,14 +1030,14 @@ body.music-stage-active #player-background {
 }
 
 .partita-word.is-passed {
-    color: color-mix(in srgb, var(--stage-accent) 72%, #fff);
+    color: color-mix(in srgb, var(--stage-accent) 72%, var(--stage-ink));
     opacity: 0.82;
     transform: translateX(0);
     filter: blur(0);
 }
 
 .partita-word.is-active {
-    color: #fff;
+    color: var(--stage-ink);
     opacity: 1;
     transform: translateX(8px) scale(1.08);
     filter: blur(0);
@@ -1032,7 +1054,7 @@ body.music-stage-active #player-background {
 
 .partita-empty {
     grid-column: 1 / -1;
-    color: rgba(255, 255, 255, 0.32);
+    color: color-mix(in srgb, var(--stage-ink) 32%, transparent);
     font-size: 42px;
     text-align: center;
 }
@@ -1047,7 +1069,7 @@ body.music-stage-active #player-background {
     position: absolute;
     right: 5vw;
     top: 19vh;
-    color: rgba(255, 255, 255, 0.13);
+    color: color-mix(in srgb, var(--stage-ink) 13%, transparent);
     font-size: clamp(52px, 11vw, 164px);
     font-weight: 820;
     letter-spacing: -0.07em;
@@ -1094,7 +1116,7 @@ body.music-stage-active #player-background {
 .cadenza-line {
     position: absolute;
     max-width: 80%;
-    color: rgba(255, 255, 255, 0.18);
+    color: color-mix(in srgb, var(--stage-ink) 18%, transparent);
     font-weight: 540;
     line-height: 1.12;
     letter-spacing: -0.035em;
@@ -1116,7 +1138,7 @@ body.music-stage-active #player-background {
     z-index: 3;
     display: flex;
     flex-wrap: wrap;
-    color: rgba(255, 255, 255, 0.24);
+    color: color-mix(in srgb, var(--stage-ink) 24%, transparent);
     filter: none;
     white-space: normal;
 }
@@ -1135,13 +1157,13 @@ body.music-stage-active #player-background {
 }
 
 .cadenza-word.is-passed {
-    color: color-mix(in srgb, var(--stage-accent) 74%, #fff);
+    color: color-mix(in srgb, var(--stage-accent) 74%, var(--stage-ink));
     opacity: 0.82;
     transform: translateY(0);
 }
 
 .cadenza-word.is-active {
-    color: #fff;
+    color: var(--stage-ink);
     opacity: 1;
     transform: translateY(-5px) scale(calc(1.08 * var(--cadenza-font-scale, 1)));
     text-shadow:
@@ -1153,7 +1175,7 @@ body.music-stage-active #player-background {
     position: absolute;
     left: 50%;
     top: 45%;
-    color: rgba(255, 255, 255, 0.32);
+    color: color-mix(in srgb, var(--stage-ink) 32%, transparent);
     font-size: 44px;
     transform: translate(-50%, -50%);
 }
@@ -1161,7 +1183,7 @@ body.music-stage-active #player-background {
 /* 浮名 / Fume */
 .music-stage-mode-fume {
     background:
-        linear-gradient(115deg, rgba(255, 255, 255, 0.025), transparent 38%),
+        linear-gradient(115deg, color-mix(in srgb, var(--stage-ink) 2.5%, transparent), transparent 38%),
         radial-gradient(circle at 70% 40%, color-mix(in srgb, var(--stage-accent) 9%, transparent), transparent 45%);
 }
 
@@ -1206,13 +1228,13 @@ body.music-stage-active #player-background {
     min-height: 46vh;
     padding: clamp(36px, 5vw, 76px);
     box-sizing: border-box;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid color-mix(in srgb, var(--stage-ink) 12%, transparent);
     background:
-        linear-gradient(135deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.015)),
-        rgba(6, 8, 14, 0.2);
+        linear-gradient(135deg, color-mix(in srgb, var(--stage-ink) 7.5%, transparent), color-mix(in srgb, var(--stage-ink) 1.5%, transparent)),
+        color-mix(in srgb, var(--stage-bg) 20%, transparent);
     box-shadow:
         0 35px 90px rgba(0, 0, 0, 0.24),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.025);
+        inset 0 0 0 1px color-mix(in srgb, var(--stage-ink) 2.5%, transparent);
     backdrop-filter: blur(8px);
     transform: translate(-50%, -50%) rotate(-1.2deg);
 }
@@ -1239,7 +1261,7 @@ body.music-stage-active #player-background {
     width: 80px;
     height: 1px;
     background: color-mix(in srgb, var(--stage-accent) 55%, transparent);
-    box-shadow: 0 -5px 0 rgba(255, 255, 255, 0.1);
+    box-shadow: 0 -5px 0 color-mix(in srgb, var(--stage-ink) 10%, transparent);
 }
 
 .fume-paper.is-entering {
@@ -1256,7 +1278,7 @@ body.music-stage-active #player-background {
 
 .fume-meta {
     margin-bottom: clamp(28px, 4vh, 48px);
-    color: rgba(255, 255, 255, 0.35);
+    color: color-mix(in srgb, var(--stage-ink) 35%, transparent);
     font-size: 8px;
     font-weight: 720;
     letter-spacing: 0.34em;
@@ -1267,7 +1289,7 @@ body.music-stage-active #player-background {
     flex-wrap: wrap;
     align-items: baseline;
     min-height: 120px;
-    color: rgba(255, 255, 255, 0.2);
+    color: color-mix(in srgb, var(--stage-ink) 20%, transparent);
     font-family: Georgia, "Times New Roman", "Noto Serif SC", serif;
     font-size: clamp(42px, 6vw, 86px);
     font-weight: 620;
@@ -1284,14 +1306,14 @@ body.music-stage-active #player-background {
 }
 
 .fume-word.is-passed {
-    color: color-mix(in srgb, var(--stage-accent) 67%, #fff);
+    color: color-mix(in srgb, var(--stage-accent) 67%, var(--stage-ink));
     opacity: 0.84;
     filter: blur(0);
     transform: translateY(0);
 }
 
 .fume-word.is-active {
-    color: #fff;
+    color: var(--stage-ink);
     opacity: 1;
     filter: blur(0);
     transform: translateY(-7px) scale(1.055);
@@ -1302,7 +1324,7 @@ body.music-stage-active #player-background {
 
 .fume-context {
     overflow: hidden;
-    color: rgba(255, 255, 255, 0.2);
+    color: color-mix(in srgb, var(--stage-ink) 20%, transparent);
     font-family: Georgia, "Times New Roman", "Noto Serif SC", serif;
     font-size: clamp(13px, 1.2vw, 18px);
     font-style: italic;
@@ -1384,7 +1406,7 @@ body.music-stage-active #player-background {
     border-radius: 50%;
     background: radial-gradient(
         circle,
-        color-mix(in srgb, var(--stage-accent) 38%, #fff) 0,
+        color-mix(in srgb, var(--stage-accent) 38%, var(--stage-ink)) 0,
         color-mix(in srgb, var(--stage-accent) 18%, transparent) 16%,
         transparent 62%
     );
@@ -1400,9 +1422,9 @@ body.music-stage-active #player-background {
     background: linear-gradient(
         90deg,
         transparent,
-        color-mix(in srgb, var(--stage-accent) 68%, #fff) 28%,
-        #fff 50%,
-        color-mix(in srgb, var(--stage-accent) 68%, #fff) 72%,
+        color-mix(in srgb, var(--stage-accent) 68%, var(--stage-ink)) 28%,
+        var(--stage-ink) 50%,
+        color-mix(in srgb, var(--stage-accent) 68%, var(--stage-ink)) 72%,
         transparent
     );
     box-shadow:
@@ -1430,7 +1452,7 @@ body.music-stage-active #player-background {
     z-index: 12;
     padding: 5px 9px;
     border-right: 1px solid color-mix(in srgb, var(--stage-accent) 52%, transparent);
-    color: color-mix(in srgb, var(--stage-accent) 62%, #fff);
+    color: color-mix(in srgb, var(--stage-accent) 62%, var(--stage-ink));
     font-family: "SFMono-Regular", Consolas, monospace;
     font-size: 8px;
     font-weight: 700;
@@ -1449,11 +1471,11 @@ body.music-stage-active #player-background {
     width: 3px;
     height: 3px;
     border-radius: 50%;
-    background: #fff;
+    background: var(--stage-ink);
     box-shadow:
         -9vw 7vh 0 -1px color-mix(in srgb, var(--stage-accent) 68%, transparent),
-        -19vw -3vh 0 -1px rgba(255, 255, 255, 0.35),
-        5vw 14vh 0 -1px rgba(255, 255, 255, 0.3),
+        -19vw -3vh 0 -1px color-mix(in srgb, var(--stage-ink) 35%, transparent),
+        5vw 14vh 0 -1px color-mix(in srgb, var(--stage-ink) 30%, transparent),
         -31vw 22vh 0 -1px color-mix(in srgb, var(--stage-accent) 42%, transparent);
     opacity: calc(0.18 + var(--stage-audio-vocal, 0) * 0.48);
     pointer-events: none;
@@ -1656,7 +1678,10 @@ body.music-stage-active #player-background {
 }
 
 body.light-theme .music-stage {
-    --stage-glass: rgba(255, 255, 255, 0.22);
+    --stage-wallpaper-opacity: 0.24;
+    --stage-cover-brightness: 1.08;
+    --stage-cover-opacity: 0.18;
+    --stage-blend: normal;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1719,7 +1744,7 @@ body.light-theme .music-stage {
     border-radius: 50%;
     color: color-mix(in srgb, var(--stage-ink) 68%, transparent);
     background: color-mix(in srgb, var(--stage-surface) 42%, transparent);
-    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.24), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.24), inset 0 0 0 1px color-mix(in srgb, var(--stage-ink) 4%, transparent);
     backdrop-filter: blur(14px);
     cursor: pointer;
     pointer-events: auto;
@@ -1754,8 +1779,8 @@ body.light-theme .music-stage {
     border: 1px solid color-mix(in srgb, var(--stage-ink) 15%, transparent);
     border-radius: 22px;
     color: var(--stage-ink);
-    background: color-mix(in srgb, var(--stage-surface) 78%, #05070d 22%);
-    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.42), inset 0 0 0 1px rgba(255, 255, 255, 0.035);
+    background: color-mix(in srgb, var(--stage-surface) 92%, var(--stage-bg) 8%);
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.42), inset 0 0 0 1px color-mix(in srgb, var(--stage-ink) 3.5%, transparent);
     backdrop-filter: blur(24px) saturate(130%);
     pointer-events: auto;
     animation: music-stage-settings-enter 0.32s var(--stage-ease);
@@ -1766,7 +1791,7 @@ body.light-theme .music-stage {
     position: fixed;
     inset: 0;
     z-index: -1;
-    background: rgba(2, 4, 10, 0.58);
+    background: color-mix(in srgb, var(--stage-bg) 58%, transparent);
     backdrop-filter: blur(6px);
     pointer-events: auto;
 }
@@ -1990,7 +2015,7 @@ body.light-theme .music-stage {
 .music-stage-mode-tempera {
     display: grid;
     place-items: center;
-    background: radial-gradient(circle at 48% 42%, rgba(255,255,255,0.04), transparent 56%);
+    background: radial-gradient(circle at 48% 42%, color-mix(in srgb, var(--stage-ink) 4%, transparent), transparent 56%);
 }
 .tempera-canvas,
 .tempera-field {
@@ -2001,8 +2026,8 @@ body.light-theme .music-stage {
     pointer-events: none;
 }
 .tempera-field {
-    background: linear-gradient(135deg, rgba(255,255,255,0.04), transparent 48%);
-    mix-blend-mode: screen;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--stage-ink) 4%, transparent), transparent 48%);
+    mix-blend-mode: var(--stage-blend);
 }
 .tempera-shot {
     position: absolute;
@@ -2013,9 +2038,9 @@ body.light-theme .music-stage {
     min-height: 220px;
     padding: clamp(34px, 5vw, 82px);
     box-sizing: border-box;
-    border: 1px solid rgba(255,255,255,0.13);
+    border: 1px solid color-mix(in srgb, var(--stage-ink) 13%, transparent);
     background: color-mix(in srgb, var(--stage-surface) 32%, transparent);
-    box-shadow: 0 30px 90px rgba(0,0,0,0.24), inset 0 0 0 1px rgba(255,255,255,0.035);
+    box-shadow: 0 30px 90px rgba(0,0,0,0.24), inset 0 0 0 1px color-mix(in srgb, var(--stage-ink) 3.5%, transparent);
     backdrop-filter: blur(8px);
     transform: translate(-50%, -50%);
 }
@@ -2028,7 +2053,7 @@ body.light-theme .music-stage {
 .tempera-kicker,
 .sonnet-eyebrow,
 .fume-meta {
-    color: color-mix(in srgb, var(--stage-accent) 68%, #fff);
+    color: color-mix(in srgb, var(--stage-accent) 68%, var(--stage-ink));
     font: 750 9px/1.2 "SFMono-Regular", Consolas, monospace;
     letter-spacing: 0.25em;
 }
@@ -2039,7 +2064,7 @@ body.light-theme .music-stage {
     align-items: baseline;
     justify-content: center;
     margin-top: 34px;
-    color: rgba(255,255,255,0.22);
+    color: color-mix(in srgb, var(--stage-ink) 22%, transparent);
     font-size: clamp(42px, 6.6vw, 96px);
     font-weight: 780;
     line-height: 1.08;
@@ -2048,7 +2073,7 @@ body.light-theme .music-stage {
 }
 .tempera-line.is-empty,
 .sonnet-line.is-empty {
-    color: rgba(255,255,255,0.38);
+    color: color-mix(in srgb, var(--stage-ink) 38%, transparent);
     font-size: clamp(28px, 4vw, 56px);
     font-weight: 480;
 }
@@ -2060,13 +2085,13 @@ body.light-theme .music-stage {
     transition: color .28s linear, opacity .35s ease, filter .4s ease, transform .5s var(--stage-ease);
 }
 .tempera-word.is-passed {
-    color: color-mix(in srgb, var(--stage-accent) 72%, #fff);
+    color: color-mix(in srgb, var(--stage-accent) 72%, var(--stage-ink));
     filter: none;
     opacity: .78;
     transform: translateY(0);
 }
 .tempera-word.is-active {
-    color: #fff;
+    color: var(--stage-ink);
     filter: none;
     opacity: 1;
     transform: translateY(-8px) scale(calc(1.04 + var(--stage-word-progress, 0) * .08));
@@ -2099,7 +2124,7 @@ body.light-theme .music-stage {
     display: none;
 }
 .tempera-no-inversion .tempera-word.is-active {
-    color: color-mix(in srgb, var(--stage-accent) 72%, #fff);
+    color: color-mix(in srgb, var(--stage-accent) 72%, var(--stage-ink));
 }
 
 /* 商籁 / Sonnet */
@@ -2107,14 +2132,14 @@ body.light-theme .music-stage {
     display: grid;
     place-items: center;
     background:
-        linear-gradient(90deg, transparent 49.95%, rgba(255,255,255,.07) 50%, transparent 50.05%),
+        linear-gradient(90deg, transparent 49.95%, color-mix(in srgb, var(--stage-ink) 7%, transparent) 50%, transparent 50.05%),
         radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--stage-accent) 9%, transparent), transparent 58%);
 }
 .sonnet-frame,
 .sonnet-guide {
     position: absolute;
     inset: 8vh 6vw 13vh;
-    border: 1px solid rgba(255,255,255,.1);
+    border: 1px solid color-mix(in srgb, var(--stage-ink) 10%, transparent);
     pointer-events: none;
 }
 .sonnet-guide {
@@ -2153,7 +2178,7 @@ body.light-theme .music-stage {
     width: min(76vw, 1120px);
     padding: clamp(30px, 5vw, 76px);
     border-left: 2px solid color-mix(in srgb, var(--stage-accent) 62%, transparent);
-    background: linear-gradient(110deg, rgba(255,255,255,.07), transparent 66%);
+    background: linear-gradient(110deg, color-mix(in srgb, var(--stage-ink) 7%, transparent), transparent 66%);
     box-shadow: 25px 30px 80px rgba(0,0,0,.24);
 }
 .sonnet-scene.is-entering {
@@ -2164,7 +2189,7 @@ body.light-theme .music-stage {
 }
 .sonnet-shadow {
     min-height: 24px;
-    color: rgba(255,255,255,.16);
+    color: color-mix(in srgb, var(--stage-ink) 16%, transparent);
     font-size: clamp(14px, 1.5vw, 22px);
     filter: blur(2px);
 }
@@ -2176,13 +2201,13 @@ body.light-theme .music-stage {
     transition: color .28s ease, opacity .34s ease, filter .35s ease, transform .46s var(--stage-ease);
 }
 .sonnet-word.is-passed {
-    color: color-mix(in srgb, var(--stage-accent) 70%, #fff);
+    color: color-mix(in srgb, var(--stage-accent) 70%, var(--stage-ink));
     opacity: .8;
     filter: none;
     transform: none;
 }
 .sonnet-word.is-active {
-    color: #fff;
+    color: var(--stage-ink);
     opacity: 1;
     filter: none;
     transform: translateY(-6px) scale(1.06);
@@ -2193,7 +2218,7 @@ body.light-theme .music-stage {
     right: 7vw;
     bottom: 18vh;
     z-index: 4;
-    color: color-mix(in srgb, var(--stage-accent) 62%, #fff);
+    color: color-mix(in srgb, var(--stage-accent) 62%, var(--stage-ink));
     font: 700 9px/1.4 "SFMono-Regular", Consolas, monospace;
     letter-spacing: .18em;
 }
@@ -2226,7 +2251,7 @@ body.light-theme .music-stage {
     width: 100%;
     height: 100%;
     pointer-events: none;
-    mix-blend-mode: screen;
+    mix-blend-mode: var(--stage-blend);
     opacity: 0.82;
     filter: drop-shadow(0 0 8px color-mix(in srgb, var(--stage-accent) 55%, transparent));
     transition: opacity 0.3s ease;
@@ -2235,7 +2260,7 @@ body.light-theme .music-stage {
 /* 2D 屏幕角标与刻度线 */
 .diorama-hud-bracket {
     fill: none;
-    stroke: color-mix(in srgb, var(--stage-accent) 85%, #fff);
+    stroke: color-mix(in srgb, var(--stage-accent) 85%, var(--stage-ink));
     stroke-width: 2.2;
     stroke-linecap: square;
     opacity: 0.85;
@@ -2243,7 +2268,7 @@ body.light-theme .music-stage {
 
 .diorama-hud-cross {
     fill: none;
-    stroke: #ffffff;
+    stroke: var(--stage-ink);
     stroke-width: 1.8;
     stroke-linecap: round;
     opacity: 0.75;
@@ -2251,7 +2276,7 @@ body.light-theme .music-stage {
 
 .diorama-hud-circle-dashed {
     fill: none;
-    stroke: color-mix(in srgb, var(--stage-accent) 70%, #fff);
+    stroke: color-mix(in srgb, var(--stage-accent) 70%, var(--stage-ink));
     stroke-width: 1.4;
     stroke-dasharray: 3 8;
     opacity: 0.55;
@@ -2267,7 +2292,7 @@ body.light-theme .music-stage {
 
 .diorama-hud-circle-thin {
     fill: none;
-    stroke: rgba(255, 255, 255, 0.35);
+    stroke: color-mix(in srgb, var(--stage-ink) 35%, transparent);
     stroke-width: 1.0;
     opacity: 0.5;
 }
@@ -2305,7 +2330,7 @@ body.light-theme .music-stage {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
-    color: rgba(255,255,255,.32);
+    color: color-mix(in srgb, var(--stage-ink) 32%, transparent);
     font-size: clamp(38px, 6vw, 86px);
     font-weight: 760;
 }
@@ -2315,11 +2340,11 @@ body.light-theme .music-stage {
     transition: color .25s ease, opacity .3s ease, transform .35s var(--stage-ease);
 }
 .diorama-word.is-passed {
-    color: color-mix(in srgb, var(--stage-accent) 76%, #fff);
+    color: color-mix(in srgb, var(--stage-accent) 76%, var(--stage-ink));
     opacity: .7;
 }
 .diorama-word.is-active {
-    color: #fff;
+    color: var(--stage-ink);
     opacity: 1;
     transform: translateY(-8px) scale(1.06);
     text-shadow: 0 0 24px var(--stage-accent);
@@ -2362,7 +2387,7 @@ body.light-theme .music-stage {
     position: absolute;
     box-sizing: border-box;
     transform-origin: center center;
-    color: #f3f1ec;
+    color: var(--stage-ink);
     padding: 14px 18px;
     border-left: 1px solid color-mix(in srgb, var(--stage-accent) 24%, transparent);
 }
@@ -2370,7 +2395,7 @@ body.light-theme .music-stage {
     margin-bottom: 10px;
     font: 600 9px/1.3 Consolas, monospace;
     letter-spacing: .2em;
-    color: color-mix(in srgb, var(--stage-accent) 65%, #fff);
+    color: color-mix(in srgb, var(--stage-accent) 65%, var(--stage-ink));
 }
 .fume-article-number[hidden],
 .fume-article-empty[hidden] { display: none; }
@@ -2390,12 +2415,12 @@ body.light-theme .music-stage {
     position: relative;
     display: inline-block;
     white-space: pre;
-    color: rgba(255,255,255,.65);
+    color: color-mix(in srgb, var(--stage-ink) 65%, transparent);
 }
-.fume-print-glyph.is-printed { color: #f3f1ec; }
+.fume-print-glyph.is-printed { color: var(--stage-ink); }
 .fume-print-glyph.is-printing {
     color: transparent;
-    background: linear-gradient(90deg, var(--stage-accent) var(--print-progress), #fff var(--print-progress));
+    background: linear-gradient(90deg, var(--stage-accent) var(--print-progress), var(--stage-ink) var(--print-progress));
     background-clip: text;
     -webkit-background-clip: text;
     text-shadow: 0 0 calc(18px * var(--fume-glow-intensity, 1)) color-mix(in srgb, var(--stage-accent) 45%, transparent);
@@ -2425,7 +2450,7 @@ body.light-theme .music-stage {
     position: absolute;
     top: 12%;
     left: 8%;
-    color: rgba(255,255,255,.4);
+    color: color-mix(in srgb, var(--stage-ink) 40%, transparent);
     font: 600 9px/1.4 Consolas, monospace;
     letter-spacing: .22em;
 }
@@ -2434,6 +2459,6 @@ body.light-theme .music-stage {
     inset: 0;
     display: grid;
     place-items: center;
-    color: rgba(255,255,255,.45);
+    color: color-mix(in srgb, var(--stage-ink) 45%, transparent);
     font-size: clamp(24px,4vw,48px);
 }

@@ -1,6 +1,6 @@
 /* Folia-inspired native layered lyric performance. AGPL-3.0. */
 .music-stage-mode.lyric-performance-mode {
-    --performance-ink: #f1f2f5;
+    --performance-ink: var(--stage-ink);
     --performance-accent: var(--stage-accent);
     padding: 0;
     display: block;
@@ -104,7 +104,7 @@
 }
 .lyric-performance-upcoming {
     margin-top: 12px;
-    color: rgba(255,255,255,.28);
+    color: color-mix(in srgb, var(--stage-ink) 28%, transparent);
     font-size: clamp(12px,1.6vw,16px);
     filter: blur(.6px);
 }
@@ -113,7 +113,7 @@
     inset: 0;
     display: grid;
     place-items: center;
-    color: rgba(255,255,255,.42);
+    color: color-mix(in srgb, var(--stage-ink) 42%, transparent);
     font-size: clamp(22px,3vw,38px);
 }
 .music-stage-mode-partita.lyric-performance-mode::before,
@@ -151,7 +151,7 @@
     width: 5px;
     height: 5px;
     border-radius: 1px;
-    background: #fff;
+    background: var(--stage-ink);
     box-shadow: 0 0 8px var(--performance-accent), 0 0 15px var(--performance-accent);
     transform: translate(-50%, -50%) rotate(45deg);
     pointer-events: none;

@@ -38,6 +38,7 @@ uniform float uContrast;
 uniform float uHalftone;
 uniform float uVignette;
 uniform float uTime;
+uniform vec3 uPaper;
 vec4 sampleInside(vec2 uv) {
     if (uv.x < uInputClamp.x || uv.y < uInputClamp.y || uv.x > uInputClamp.z || uv.y > uInputClamp.w) return vec4(0.0);
     return texture(uTexture, uv);
@@ -76,12 +77,13 @@ void main() {
     rgb = clamp(rgb + noise*uGrain*0.18,0.0,1.0);
     vec4 color = vec4(rgb*alpha,alpha);
     float vignette = smoothstep(0.52,1.08,radius)*uVignette*0.6;
-    finalColor = mix(color,vec4(0.0,0.0,0.0,1.0),vignette);
+    finalColor = mix(color,vec4(uPaper,1.0),vignette);
 }`;
     const createPostProcess = (PIXI, stage) => {
         const descriptors = {};
         ['Distortion', 'Dispersion', 'Rgb', 'Grain', 'Contrast', 'Halftone', 'Vignette', 'Time']
             .forEach(key => { descriptors[`u${key}`] = { value: 0, type: 'f32' }; });
+        descriptors.uPaper = { value: new Float32Array([0, 0, 0]), type: 'vec3<f32>' };
         const uniforms = new PIXI.UniformGroup(descriptors);
         const filter = new PIXI.Filter({
             glProgram: PIXI.GlProgram.from({ vertex, fragment, name: 'vcp-folia-optical-print' }),
@@ -109,6 +111,9 @@ void main() {
                 stage.filterArea.height = height;
                 Object.entries(values).forEach(([key, value]) => { uniforms.uniforms[`u${key}`] = value; });
                 uniforms.uniforms.uTime = frame.playbackTime || 0;
+                const paper = tuning.palette?.background || '#171a1d';
+                const n = parseInt(paper.slice(1), 16);
+                uniforms.uniforms.uPaper.set([(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]);
             },
             destroy() { stage.filters = null; filter.destroy(); }
         };
@@ -229,7 +234,7 @@ void main() {
                 style: {
                     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif',
                     fontSize, fontWeight: '800', fill: '#ffffff',
-                    stroke: { color: '#080b14', width: Math.max(1, fontSize * 0.025) }
+                    stroke: { color: tuning.palette?.background || '#171a1d', width: Math.max(1, fontSize * 0.025) }
                 }
             });
             node.anchor.set(0.5);
@@ -292,7 +297,9 @@ void main() {
                 * (1 - ease((time - d.phraseEnd) / 0.65));
             const focusAlpha = 1 - phraseEmphasis * 0.5 * (1 - phraseWeight);
             node.alpha = (time < d.startTime ? amount(tuning.waitingOpacity, 0.25, 1) : 1) * (1 - exit * 0.8) * focusAlpha;
-            node.tint = active && tuning.textInversion !== false ? color : 0xffffff;
+            // Keep the raster white for tinting; choose the theme ink on the GPU.
+            node.tint = active && tuning.textInversion !== false
+                ? color : parseInt((tuning.palette?.ink || '#f2f0e9').slice(1), 16);
         });
     };
 

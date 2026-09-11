@@ -45,12 +45,50 @@
         elements.forEach((element, index) => updateWord(element, states?.[index], index));
     };
 
+    // Resolve CSS colors once per theme change, never in the animation loop.
+    // The browser handles variables, named colors, hsl and color-mix for us.
+    const refreshTheme = (app, root = document.body) => {
+        const light = app?.currentTheme === 'light';
+        const defaults = light
+            ? ['#f2efe7', '#fcfaf4', '#1b211f', '#626a66', '#b94832', '#21675c', '#21675c']
+            : ['#171a1d', '#20252a', '#f2f0e9', '#a7afb1', '#f2a900', '#76bfae', '#76bfae'];
+        const names = ['background', 'surface', 'ink', 'muted', 'accent', 'secondary', 'tertiary'];
+        const variables = ['--primary-bg', '--secondary-bg', '--primary-text', '--secondary-text',
+            '--highlight-text', '--success-color', '--quoted-text'];
+        const probe = document.createElement('span');
+        probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;';
+        root.appendChild(probe);
+        const context = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+        const palette = { light };
+        try {
+            names.forEach((name, index) => {
+                probe.style.color = `var(${variables[index]}, ${defaults[index]})`;
+                let hex = defaults[index];
+                if (context?.getImageData) {
+                    context.clearRect(0, 0, 1, 1);
+                    context.fillStyle = defaults[index];
+                    context.fillStyle = global.getComputedStyle(probe).color;
+                    context.fillRect(0, 0, 1, 1);
+                    const data = context.getImageData(0, 0, 1, 1).data;
+                    hex = '#' + Array.from(data).slice(0, 3).map(v => v.toString(16).padStart(2, '0')).join('');
+                }
+                palette[name] = hex;
+            });
+        } finally {
+            probe.remove();
+        }
+        const n = parseInt(palette.accent.slice(1), 16);
+        palette.accentRgb = Object.freeze({ r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 });
+        app.stagePalette = Object.freeze(palette);
+        return app.stagePalette;
+    };
+
     const resolveAccent = (app) => {
-        const color = app?.visualizerColor || { r: 121, g: 216, b: 255 };
+        const color = app?.stagePalette?.accentRgb || app?.visualizerColor || { r: 121, g: 216, b: 255 };
         return {
-            r: clamp(Number(color.r) || 121, 0, 255),
-            g: clamp(Number(color.g) || 216, 0, 255),
-            b: clamp(Number(color.b) || 255, 0, 255)
+            r: clamp(Number.isFinite(color.r) ? color.r : 121, 0, 255),
+            g: clamp(Number.isFinite(color.g) ? color.g : 216, 0, 255),
+            b: clamp(Number.isFinite(color.b) ? color.b : 255, 0, 255)
         };
     };
 
@@ -102,6 +140,7 @@
         renderWords,
         updateWords,
         resolveAccent,
+        refreshTheme,
         makeModeBase
     });
 })(window);

@@ -580,12 +580,7 @@
             if (prefersReducedMotion?.matches || !frame.audio.spectrum?.length) return;
 
             const spectrum = frame.audio.spectrum;
-            const accent = app.visualizerColor || { r: 121, g: 216, b: 255 };
-            const color = {
-                r: clamp(Number(accent.r) || 121, 0, 255),
-                g: clamp(Number(accent.g) || 216, 0, 255),
-                b: clamp(Number(accent.b) || 255, 0, 255)
-            };
+            const color = global.MusicStageModeUtils.resolveAccent(app);
             const inset = clamp(Math.min(width, height) * 0.012, 7, 14);
             const horizontalAmplitude = clamp(height * 0.052, 18, 48);
             const verticalAmplitude = clamp(width * 0.038, 15, 42);
@@ -684,6 +679,18 @@
             if (commit && duration > 0) await app.api?.seekMusic?.(target);
         };
 
+        const updateTheme = () => {
+            if (state.destroyed) return;
+            // Read the computed image rather than copying a raw CSS variable:
+            // relative URLs must resolve against the theme stylesheet, not this one.
+            const wallpaper = getComputedStyle(document.body).backgroundImage;
+            root.style.setProperty('--stage-wallpaper', wallpaper || 'none');
+            const palette = global.MusicStageModeUtils.refreshTheme(app, root);
+            state.modeInstance?.updateTheme?.(palette);
+            state.trackSignature = '';
+            if (state.active) updateFrame(performance.now());
+        };
+
         const enter = () => {
             if (state.active || state.destroyed) return;
             state.active = true;
@@ -691,6 +698,7 @@
             document.body.classList.add('music-stage-active');
             root.hidden = false;
             root.setAttribute('aria-hidden', 'false');
+            updateTheme();
             createMode(state.modeId);
             setButtonState();
             const enterGeneration = state.generation;
@@ -894,6 +902,7 @@
             setMode,
             updateFrame,
             updateTrack,
+            updateTheme,
             get active() { return state.active; },
             get modeId() { return state.modeId; },
             getDebugSnapshot() {

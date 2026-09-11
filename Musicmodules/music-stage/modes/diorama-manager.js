@@ -57,26 +57,12 @@
      * 构建多层次主题色调色板（主警示/高光色、松石冷色、钛金暖色、微光冷白）
      */
     const getThemePalette = (services, THREE) => {
+        const theme = services?.app?.stagePalette || {};
         const accent = resolveAccent(services?.app);
-        // 主强调色（如工业黄 #F2A900 或朱砂红）
         const colorPrimary = new THREE.Color(`rgb(${accent.r}, ${accent.g}, ${accent.b})`);
-        
-        // 次级互补/对比色（偏向青绿松石 / 冰蓝，参考工业石墨中的状态信号 #76BFAE）
-        const colorSecondary = new THREE.Color(
-            Math.max(0.1, 0.46 * (1 - accent.r / 255) + 0.2),
-            Math.min(1.0, 0.75 + (accent.g / 255) * 0.2),
-            Math.min(1.0, 0.68 + (accent.b / 255) * 0.2)
-        );
-
-        // 柔和深邃辅助色（更深更沉的金属偏光色）
-        const colorTertiary = new THREE.Color(
-            (accent.r / 255) * 0.55 + 0.15,
-            (accent.g / 255) * 0.35 + 0.1,
-            (accent.b / 255) * 0.45 + 0.25
-        );
-
-        // 高光晶体色（剔透莹白带微蓝）
-        const colorHighlight = new THREE.Color(0.92, 0.96, 1.0);
+        const colorSecondary = new THREE.Color(theme.secondary || '#76bfae');
+        const colorTertiary = new THREE.Color(theme.tertiary || '#76bfae');
+        const colorHighlight = new THREE.Color(theme.ink || '#f2f0e9');
 
         return { colorPrimary, colorSecondary, colorTertiary, colorHighlight };
     };
@@ -289,7 +275,7 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
     const unitMeshes = [];
     const accent = resolveAccent(services?.app);
     const accentColor = new THREE.Color(`rgb(${accent.r}, ${accent.g}, ${accent.b})`);
-    const restingColor = new THREE.Color(0.88, 0.92, 0.98);
+    const restingColor = new THREE.Color(services?.app?.stagePalette?.ink || '#f2f0e9');
 
     // 预计算总宽度
     let totalWidth = 0;
@@ -340,7 +326,7 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                 opacity: 0,
                 color: accentColor.clone(),
                 depthWrite: false,
-                blending: THREE.AdditiveBlending,
+                blending: services?.app?.stagePalette?.light ? THREE.NormalBlending : THREE.AdditiveBlending,
                 side: THREE.DoubleSide
             }));
             glowMesh = new THREE.Mesh(geometry, glowMat);
@@ -373,7 +359,7 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                 map: transView.texture,
                 transparent: true,
                 opacity: isCurrent ? 0.68 : 0.22,
-                color: new THREE.Color(0.75, 0.85, 0.98),
+                color: new THREE.Color(services?.app?.stagePalette?.muted || '#a7afb1'),
                 depthWrite: false,
                 side: THREE.DoubleSide
             }));
@@ -391,11 +377,7 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
          */
         const createCorridorParticles = (frames) => {
             if (!THREE || !scene || !frames.length) return;
-            if (particleField) {
-                scene.remove(particleField);
-                particleField.geometry?.dispose();
-                particleField.material?.dispose();
-            }
+            disposeDecorField(particleField);
 
             const pointsPerLine = 38;
             const totalPoints = frames.length * pointsPerLine;
@@ -428,7 +410,7 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                 transparent: true,
                 opacity: 0.45,
                 depthWrite: false,
-                blending: THREE.AdditiveBlending
+                blending: services?.app?.stagePalette?.light ? THREE.NormalBlending : THREE.AdditiveBlending
             }));
 
             particleField = new THREE.Points(geometry, material);
@@ -704,7 +686,7 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                         color: glyphColor,
                         transparent: true,
                         opacity: 0.45 + rnd() * 0.25,
-                        blending: THREE.AdditiveBlending
+                        blending: services?.app?.stagePalette?.light ? THREE.NormalBlending : THREE.AdditiveBlending
                     }));
                     obj = new THREE.LineSegments(lineGeo, lineMat);
                 } else if (type === 1) {
@@ -717,7 +699,7 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                         color: glyphColor,
                         transparent: true,
                         opacity: 0.4 + rnd() * 0.25,
-                        blending: THREE.AdditiveBlending
+                        blending: services?.app?.stagePalette?.light ? THREE.NormalBlending : THREE.AdditiveBlending
                     }));
                     obj = new THREE.LineSegments(boxGeo, boxMat);
                 } else if (type === 2) {
@@ -730,7 +712,7 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                         color: glyphColor,
                         transparent: true,
                         opacity: 0.42 + rnd() * 0.25,
-                        blending: THREE.AdditiveBlending
+                        blending: services?.app?.stagePalette?.light ? THREE.NormalBlending : THREE.AdditiveBlending
                     }));
                     obj = new THREE.LineSegments(triGeo, triMat);
                 } else {
@@ -742,7 +724,7 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                         transparent: true,
                         opacity: 0.32 + rnd() * 0.2,
                         side: THREE.DoubleSide,
-                        blending: THREE.AdditiveBlending
+                        blending: services?.app?.stagePalette?.light ? THREE.NormalBlending : THREE.AdditiveBlending
                     }));
                     obj = new THREE.Mesh(ringGeo, ringMat);
                 }
@@ -792,7 +774,7 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
          */
         const createFlowingRibbons = (frames) => {
             if (!THREE || !scene || frames.length < 2) return;
-            if (ribbonField) scene.remove(ribbonField);
+            disposeDecorField(ribbonField);
             ribbonField = new THREE.Group();
             ribbonMaterials = [];
         
@@ -833,7 +815,7 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                     fragmentShader: ribbonFragmentShader,
                     transparent: true,
                     depthWrite: false,
-                    blending: THREE.AdditiveBlending
+                    blending: services?.app?.stagePalette?.light ? THREE.NormalBlending : THREE.AdditiveBlending
                 }));
         
                 const mesh = new THREE.Mesh(tubeGeo, mat);
@@ -912,7 +894,7 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                     }
                     scene = new THREE.Scene();
                     // 空间雾化：远处如深邃星际长廊，从雾中浮现，唱过后渐隐
-                    scene.fog = new THREE.Fog(0x05070f, 10, 48);
+                    scene.fog = new THREE.Fog(services?.app?.stagePalette?.background || '#171a1d', 10, 48);
 
                     camera = new THREE.PerspectiveCamera(54, 1, 0.1, 100);
                     camera.position.set(0, 1, 10);
@@ -1337,8 +1319,31 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
             if (lastFrame) updateFrameVisuals(lastFrame);
         };
         mode.updateTheme = () => {
-            currentTrackPath = ''; // 触发颜色与长廊重构
-            textureCache.clear();
+            if (!THREE || !scene) return;
+            const theme = services?.app?.stagePalette || {};
+            const palette = getThemePalette(services, THREE);
+            scene.fog?.color.set(theme.background || '#171a1d');
+            // White glyph textures are theme-independent: update materials in place,
+            // preserving the camera, timing and cached raster resources.
+            lineNodes.forEach(node => {
+                node.units.forEach(unit => {
+                    unit.accentColor.copy(palette.colorPrimary);
+                    unit.restingColor.copy(palette.colorHighlight);
+                    unit.mat.color.copy(unit.restingColor);
+                    if (unit.glowMat) {
+                        unit.glowMat.color.copy(palette.colorPrimary);
+                        unit.glowMat.blending = theme.light ? THREE.NormalBlending : THREE.AdditiveBlending;
+                        unit.glowMat.needsUpdate = true;
+                    }
+                });
+                node.group.children.forEach(child => {
+                    if (child.isMesh && child.material) child.material.color.set(theme.muted || '#a7afb1');
+                });
+            });
+            createCorridorParticles(pathFrames);
+            createLiquidBlobs(pathFrames);
+            createFloatingGeometry(pathFrames);
+            createFlowingRibbons(pathFrames);
         };
 
         mode.scope.add(() => {
