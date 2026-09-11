@@ -779,10 +779,6 @@ body.music-stage-active #player-background {
     will-change: transform, opacity, filter;
 }
 
-.stage-word::after {
-    content: attr(data-text);
-}
-
 .stage-word.is-passed {
     color: color-mix(in srgb, var(--stage-accent) 80%, #fff);
 }
