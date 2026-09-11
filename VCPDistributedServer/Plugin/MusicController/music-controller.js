@@ -22,18 +22,58 @@ process.stdin.on('end', () => {
         // Be flexible with parameter names from the AI.
         // Accept 'songName' (camelCase), 'songname' (lowercase), or 'song_name' (snake_case).
         const songName = args.songName || args.songname || args.song_name;
-
-        // The 'command' field is now optional. We only need to check for the song name.
-        if (!songName) {
+        if (typeof songName !== 'string' || !songName.trim()) {
             throw new Error("The 'songName', 'songname', or 'song_name' parameter is required.");
         }
 
-        // Format the payload for the main process.
-        // The main process's music handler still uses 'play' and 'target'.
-        const commandPayload = {
-            command: 'play', // Hardcode to 'play' for the internal handler
-            target: songName  // Pass the songName as the target
+        // Optional immersive performance mode. English IDs are the stable wire format,
+        // while Chinese labels and common parameter spellings are accepted for the AI.
+        const requestedStageMode = args.stageMode
+            ?? args.stagemode
+            ?? args.stage_mode
+            ?? args.performanceMode
+            ?? args.performance_mode;
+        const stageModeAliases = {
+            luminous: 'luminous',
+            '流光': 'luminous',
+            partita: 'partita',
+            '云阶': 'partita',
+            cadenza: 'cadenza',
+            '心象': 'cadenza',
+            tempera: 'tempera',
+            '凝彩': 'tempera',
+            sonnet: 'sonnet',
+            '商籁': 'sonnet',
+            diorama: 'diorama',
+            '镜台': 'diorama',
+            fume: 'fume',
+            '浮名': 'fume',
+            starborn: 'starborn',
+            '星诞': 'starborn'
         };
+
+        let stageMode;
+        if (requestedStageMode !== undefined && requestedStageMode !== null && requestedStageMode !== '') {
+            if (typeof requestedStageMode !== 'string') {
+                throw new Error("The optional 'stageMode' parameter must be a string.");
+            }
+            stageMode = stageModeAliases[requestedStageMode.trim().toLowerCase()];
+            if (!stageMode) {
+                throw new Error(
+                    `Unknown stage mode '${requestedStageMode}'. Supported modes: luminous, partita, cadenza, tempera, sonnet, diorama, fume, starborn.`
+                );
+            }
+        }
+
+        // Format the payload for the main process.
+        // Omitting stageMode preserves the existing regular playback behavior.
+        const commandPayload = {
+            command: 'play',
+            target: songName.trim()
+        };
+        if (stageMode) {
+            commandPayload.stageMode = stageMode;
+        }
 
         // Output the final command payload as a JSON string to stdout.
         // This will be captured by the PluginManager.

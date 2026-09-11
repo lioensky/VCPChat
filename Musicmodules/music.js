@@ -241,6 +241,56 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
 
+    const normalizePlaybackRequest = (payload) => {
+        if (payload?.track && typeof payload.track === 'object') {
+            return {
+                track: payload.track,
+                stageMode: typeof payload.stageMode === 'string' ? payload.stageMode : null
+            };
+        }
+
+        // Backward compatibility for callers that still send the track directly.
+        return {
+            track: payload,
+            stageMode: null
+        };
+    };
+
+    app.playRequestedTrack = async (payload) => {
+        const { track, stageMode } = normalizePlaybackRequest(payload);
+        if (!track || !track.path) return false;
+
+        if (stageMode && app.stageHost) {
+            app.stageHost.setMode(stageMode);
+            app.stageHost.enter();
+        }
+
+        const normalizedTrackPath = app.normalizePathForCompare(track.path);
+        let trackIndex = app.playlist.findIndex(candidate =>
+            app.normalizePathForCompare(candidate.path) === normalizedTrackPath
+        );
+
+        // If path matching fails, use the existing title-based fallback.
+        if (trackIndex === -1 && track.title) {
+            const normalizedTitle = track.title.toLowerCase();
+            trackIndex = app.playlist.findIndex(candidate => {
+                const candidateTitle = (candidate.title || '').toLowerCase();
+                return candidateTitle.includes(normalizedTitle)
+                    || (normalizedTitle.includes(candidateTitle) && candidateTitle.length > 2);
+            });
+        }
+
+        if (trackIndex === -1) {
+            app.playlist.push(track);
+            trackIndex = app.playlist.length - 1;
+            app.renderPlaylist(app.currentFilteredTracks);
+            await app.api?.saveMusicPlaylist?.(app.playlist);
+        }
+
+        await app.loadTrack(trackIndex, true);
+        return true;
+    };
+
     // --- Initialization ---
     const init = async () => {
         // Setup modules
@@ -283,32 +333,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 app.renderPlaylist();
             }
 
-            // 检查是否有待播放的曲目（AI 点歌触发的新窗口）
-            const pendingTrack = await app.api.getMusicPendingTrack();
+            // 检查是否有待播放请求（AI 点歌触发的新窗口）
+            const pendingPlayback = await app.api.getMusicPendingTrack();
+            const pendingTrack = pendingPlayback?.track || pendingPlayback;
             if (pendingTrack && pendingTrack.path) {
-                console.log('[Music] Found pending track from main process:', pendingTrack.title);
-                // 在播放列表中查找匹配的曲目
-                const normalizedPendingPath = app.normalizePathForCompare(pendingTrack.path);
-                let pendingIndex = app.playlist.findIndex(t =>
-                    app.normalizePathForCompare(t.path) === normalizedPendingPath
+                console.log(
+                    '[Music] Found pending playback request from main process:',
+                    pendingTrack.title,
+                    pendingPlayback?.stageMode || 'regular'
                 );
-                // 如果路径匹配失败，尝试标题模糊匹配
-                if (pendingIndex === -1 && pendingTrack.title) {
-                    pendingIndex = app.playlist.findIndex(t =>
-                        (t.title || '').toLowerCase().includes(pendingTrack.title.toLowerCase()) ||
-                        (pendingTrack.title.toLowerCase().includes((t.title || '').toLowerCase()) && (t.title || '').length > 2)
-                    );
-                }
-                if (pendingIndex !== -1) {
-                    console.log('[Music] Loading pending track at index:', pendingIndex);
-                    await app.loadTrack(pendingIndex, true); // 加载并播放
-                } else {
-                    // 播放列表中没找到，追加后播放
-                    app.playlist.push(pendingTrack);
-                    app.renderPlaylist();
-                    await app.loadTrack(app.playlist.length - 1, true);
-                    app.api.saveMusicPlaylist(app.playlist);
-                }
+                await app.playRequestedTrack(pendingPlayback);
             } else if (app.playlist.length > 0) {
                 // 没有待播放曲目，按默认行为加载第一首（不自动播放）
                 await app.loadTrack(0, false);
@@ -916,40 +950,16 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // --- 处理从主进程发来的 "点歌" 命令 ---
-        // 当 AI 或分布式服务器点歌时，主进程会发送 music-set-track 通知
-        // 前端在播放列表中查找匹配的曲目，并通过 loadTrack() 统一处理加载+UI更新+播放
-        app.api.onMusicSetTrack((track) => {
-            console.log('[Music] Received music-set-track:', track?.title, track?.path);
-            if (!track || !track.path) return;
-
-            // 在播放列表中查找匹配的曲目
-            const normalizedTrackPath = app.normalizePathForCompare(track.path);
-            let trackIndex = app.playlist.findIndex(t =>
-                app.normalizePathForCompare(t.path) === normalizedTrackPath
+        // 新协议传递 { track, stageMode }；共享消费函数仍兼容旧的纯 track 格式。
+        app.api.onMusicSetTrack((playbackRequest) => {
+            const track = playbackRequest?.track || playbackRequest;
+            console.log(
+                '[Music] Received music-set-track:',
+                track?.title,
+                track?.path,
+                playbackRequest?.stageMode || 'regular'
             );
-
-            // 如果路径精确匹配失败，尝试标题+艺术家模糊匹配
-            if (trackIndex === -1 && track.title) {
-                trackIndex = app.playlist.findIndex(t =>
-                    (t.title || '').toLowerCase().includes(track.title.toLowerCase()) ||
-                    (track.title.toLowerCase().includes((t.title || '').toLowerCase()) && (t.title || '').length > 2)
-                );
-            }
-
-            if (trackIndex !== -1) {
-                console.log('[Music] Found track in playlist at index:', trackIndex);
-                app.loadTrack(trackIndex, true); // true = 加载并自动播放
-            } else {
-                console.warn('[Music] music-set-track: Track not found in local playlist:', track.title);
-                // 即使播放列表中没找到，也可尝试直接用 track 信息播放
-                // 将 track 添加到播放列表末尾后播放
-                app.playlist.push(track);
-                const newIndex = app.playlist.length - 1;
-                app.renderPlaylist(app.currentFilteredTracks);
-                app.loadTrack(newIndex, true);
-                // 持久化
-                app.api?.saveMusicPlaylist?.(app.playlist);
-            }
+            void app.playRequestedTrack(playbackRequest);
         });
     };
 

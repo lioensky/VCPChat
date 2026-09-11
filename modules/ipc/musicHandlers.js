@@ -22,7 +22,7 @@ let LYRIC_DIR;
 let startAudioEngine; // To hold the function from main.js
 let stopAudioEngine; // To hold the function from main.js
 let musicWindowPromise = null; // To handle concurrent window creation requests
-let pendingTrackForNewWindow = null; // 用于在新窗口创建时传递待播放的曲目
+let pendingPlaybackForNewWindow = null; // 用于在新窗口创建时传递待播放曲目及可选演出模式
 let ipcHandlersRegistered = false;
 
 // --- Singleton Music Window Creation Function ---
@@ -117,7 +117,7 @@ function createOrFocusMusicWindow() {
         readyHandler = (event) => {
             if (musicWindow && !musicWindow.isDestroyed() && event.sender === musicWindow.webContents) {
                 console.log('[Music] Received "music-renderer-ready" signal. Resolving promise.');
-                // pendingTrackForNewWindow 由前端通过 music-get-pending-track 主动拉取
+                // pendingPlaybackForNewWindow 由前端通过 music-get-pending-track 主动拉取
                 // 不在这里发送，避免时序问题
                 resolveWindowCreation(musicWindow);
             }
@@ -199,8 +199,26 @@ async function audioEngineApi(endpoint, method = 'POST', body = null) {
 // --- Music Control Handler (Legacy, for distributed server) ---
 // 这个函数统一通过前端 renderer 来控制播放，避免竞态问题
 async function handleMusicControl(args) {
-    const { command, target } = args;
-    console.log(`[MusicControl] Received command: ${command}, Target: ${target}`);
+    const { command, target, stageMode } = args;
+    const supportedStageModes = new Set([
+        'luminous',
+        'partita',
+        'cadenza',
+        'tempera',
+        'sonnet',
+        'diorama',
+        'fume',
+        'starborn'
+    ]);
+    const normalizedStageMode = typeof stageMode === 'string' && stageMode.trim()
+        ? stageMode.trim().toLowerCase()
+        : null;
+
+    if (normalizedStageMode && !supportedStageModes.has(normalizedStageMode)) {
+        return { status: 'error', message: `Unknown music stage mode: ${stageMode}` };
+    }
+
+    console.log(`[MusicControl] Received command: ${command}, Target: ${target}, Stage mode: ${normalizedStageMode || 'regular'}`);
 
     switch (command.toLowerCase()) {
         case 'play':
@@ -218,20 +236,25 @@ async function handleMusicControl(args) {
                 // 判断窗口是否已经存在且 ready
                 const windowAlreadyExists = musicWindow && !musicWindow.isDestroyed();
 
+                const playbackRequest = {
+                    track,
+                    stageMode: normalizedStageMode
+                };
+
                 if (windowAlreadyExists) {
-                    // 窗口已存在，直接发送 music-set-track 让前端处理
+                    // 窗口已存在，直接发送完整播放请求让前端处理
                     console.log('[MusicControl] Window exists, sending music-set-track to renderer.');
-                    musicWindow.webContents.send('music-set-track', track);
+                    musicWindow.webContents.send('music-set-track', playbackRequest);
                     if (!musicWindow.isVisible()) {
                         musicWindow.show();
                     }
                     musicWindow.focus();
                     return { status: 'success', message: `Playing: ${track.title}` };
                 } else {
-                    // 窗口不存在，需要创建。将 track 存入 pending，
-                    // 等窗口 ready 后由 readyHandler 发送给前端
-                    console.log('[MusicControl] Window does not exist, storing pending track and creating window.');
-                    pendingTrackForNewWindow = track;
+                    // 窗口不存在，需要创建。将完整播放请求存入 pending，
+                    // 窗口初始化时由前端主动拉取，避免 ready 信号时序竞争。
+                    console.log('[MusicControl] Window does not exist, storing pending playback request and creating window.');
+                    pendingPlaybackForNewWindow = playbackRequest;
                     await createOrFocusMusicWindow();
                     return { status: 'success', message: `Playing: ${track.title}` };
                 }
@@ -295,14 +318,18 @@ function initialize(options) {
             }
         });
 
-        // --- 前端初始化时拉取待播放曲目（解决新窗口点歌竞态问题）---
+        // --- 前端初始化时拉取待播放请求（解决新窗口点歌竞态问题）---
         ipcMain.handle('music-get-pending-track', () => {
-            const track = pendingTrackForNewWindow;
-            pendingTrackForNewWindow = null; // 取出后清空，只消费一次
-            if (track) {
-                console.log('[Music] Pending track consumed by renderer:', track.title);
+            const playbackRequest = pendingPlaybackForNewWindow;
+            pendingPlaybackForNewWindow = null; // 取出后清空，只消费一次
+            if (playbackRequest?.track) {
+                console.log(
+                    '[Music] Pending playback request consumed by renderer:',
+                    playbackRequest.track.title,
+                    playbackRequest.stageMode || 'regular'
+                );
             }
-            return track; // 返回 null 或 track 对象
+            return playbackRequest; // 返回 null 或 { track, stageMode }
         });
 
         ipcMain.handle('music-load', async (event, track) => {

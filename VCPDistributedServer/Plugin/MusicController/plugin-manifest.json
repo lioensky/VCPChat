@@ -16,7 +16,7 @@
     "invocationCommands": [
       {
         "command": "playSong",
-        "description": "功能: 根据提供的歌曲名称，在用户的播放列表中搜索并播放对应的歌曲。\n参数:\n- songname (字符串, 必需): 要播放的歌曲的准确标题或部分标题。\n- command (字符串, 可选): 此字段为可选，可以忽略。程序会自动识别意图。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」MusicController「末」,\ncommand:「始」playSong「末」,\nsongname:「始」星の余韻「末」\n<<<[END_TOOL_REQUEST]>>>"
+        "description": "功能: 根据提供的歌曲名称，在用户的播放列表中搜索并播放对应的歌曲；可选择直接进入指定的沉浸式歌词演出模式。\n参数:\n- songname (字符串, 必需): 要播放的歌曲的准确标题或部分标题。\n- stageMode (字符串, 可选): 演出模式。不填写时使用常规播放器播放。可选值为 luminous（流光）、partita（云阶）、cadenza（心象）、tempera（凝彩）、sonnet（商籁）、diorama（镜台）、fume（浮名）、starborn（星诞）；也可直接填写括号内的中文名。\n- command (字符串, 可选): 此字段为可选，可以忽略。程序会自动识别意图。\n常规播放调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」MusicController「末」,\ncommand:「始」playSong「末」,\nsongname:「始」星の余韻「末」\n<<<[END_TOOL_REQUEST]>>>\n演出模式调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」MusicController「末」,\ncommand:「始」playSong「末」,\nsongname:「始」星の余韻「末」,\nstageMode:「始」starborn「末」\n<<<[END_TOOL_REQUEST]>>>"
       }
     ]
   }
