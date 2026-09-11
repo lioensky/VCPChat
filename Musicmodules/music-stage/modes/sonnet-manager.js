@@ -75,7 +75,7 @@
         mode.updateConfig = (config) => {
             const before = mode.config.modes?.sonnet || {};
             const after = config.modes?.sonnet || {};
-            const rebuild = ['fontScale', 'shotFlow'].some(key => before[key] !== after[key]);
+            const rebuild = ['fontScale', 'shotFlow', 'lyricLayout', 'phraseLength'].some(key => before[key] !== after[key]);
             updateConfig(config);
             if (rebuild) renderedKey = '';
             if (latestFrame) mode.updateFrame(latestFrame);

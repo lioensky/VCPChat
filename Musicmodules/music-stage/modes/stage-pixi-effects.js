@@ -121,12 +121,10 @@ void main() {
 
     const camera = (frame, tuning, kind, width, height, glyphs = []) => {
         const p = clamp(frame.lineProgress || 0);
-        const e = ['tracking-ribbon', 'fragment-collage', 'quiet-tableau', 'poster-blocks'].includes(kind)
-            ? p * 0.55 + ease(p) * 0.45
-            : p < 0.18 ? expo(p / 0.18) * 0.22 : p < 0.78 ? 0.22 + (p - 0.18) / 0.6 * 0.56 : 0.78 + (1 - (1 - (p - 0.78) / 0.22) ** 2) * 0.22;
+        const e = ease(p);
         const paths = {
             'editorial-column': [-0.055 + e * 0.095, 0.025 - e * 0.04, 0.98 + e * 0.07, -0.006 + e * 0.01],
-            'type-impact': [-0.035 + e * 0.07, 0.018 - e * 0.028, 1 + (1 - expo(p / 0.18)) * 0.22 + e * 0.08, -0.01 + e * 0.016],
+            'type-impact': [-0.025 + e * 0.05, 0.012 - e * 0.02, 1 + Math.sin(e * Math.PI) * 0.055, -0.004 + e * 0.008],
             'fragment-collage': [-0.045 + e * 0.085, 0.028 - Math.sin(e * Math.PI) * 0.055, 0.97 + e * 0.09, -0.014 + e * 0.028],
             'tracking-ribbon': [-0.16 + e * 0.28, 0.05 - e * 0.085, 0.98 + e * 0.07, 0.008 - e * 0.014],
             'mask-reveal': [0.035 - e * 0.065, 0.1 - e * 0.135, 0.96 + e * 0.12, -0.006 + e * 0.009],
@@ -138,24 +136,41 @@ void main() {
         const time = (frame.playbackTime || 0) * Math.PI * 2;
         const breath = amount(tuning.cameraBreath, 0.5);
         let focusX = width / 2, focusY = height / 2;
+        const softness = amount(tuning.cameraSoftness, 0.75, 1);
         if (glyphs.length) {
-            let current = glyphs[0].dataset;
-            let next = current;
-            for (const node of glyphs) {
-                next = node.dataset;
-                if (next.startTime > frame.playbackTime) break;
-                current = next;
-            }
-            const t = ease((frame.playbackTime - current.startTime) / Math.max(0.001, next.startTime - current.startTime));
-            focusX = current.baseX + (next.baseX - current.baseX) * t;
-            focusY = current.baseY + (next.baseY - current.baseY) * t;
+            // Folia-style normalized focus weights: temporal averaging, not frame-history damping.
+            // Subtract the closest distance before exponentiation to remain stable during long gaps.
+            const sigma = 0.18 + softness * 0.65;
+            const distance = d => Math.max(d.startTime - frame.playbackTime, frame.playbackTime - d.endTime, 0);
+            let nearest = Infinity;
+            glyphs.forEach(node => { nearest = Math.min(nearest, distance(node.dataset)); });
+            let total = 0, x = 0, y = 0;
+            glyphs.forEach(node => {
+                const d = node.dataset;
+                const delta = distance(d);
+                const weight = Math.exp(-(delta * delta - nearest * nearest) / (2 * sigma * sigma));
+                total += weight;
+                x += d.baseX * weight;
+                y += d.baseY * weight;
+            });
+            focusX = x / total;
+            focusY = y / total;
         }
         const tracking = amount(tuning.cameraTracking, 0.35, 1);
+        const start = frame.activeLine?.startTime ?? frame.playbackTime;
+        const end = Math.min(frame.activeLine?.endTime ?? start, frame.nextLines?.[0]?.startTime ?? Infinity);
+        const ramp = Math.min(Math.max(0.001, (end - start) * 0.4), 0.45 + softness * 0.75);
+        // All shots share a neutral boundary pose and a continuous absolute-time breathing layer.
+        // Thus a direct seek gives exactly the same pose as uninterrupted playback.
+        const envelope = ease((frame.playbackTime - start) / ramp) * ease((end - frame.playbackTime) / ramp);
+        const travel = strength * envelope * (1 - softness * 0.4);
         return {
-            x: width / 2 + (path[0] * width * 0.45 - clamp(focusX - width / 2, -width * 0.2, width * 0.2) * tracking + Math.sin(time * 0.13) * width * 0.006 * breath) * strength,
-            y: height / 2 + (path[1] * height * 0.45 - clamp(focusY - height / 2, -height * 0.15, height * 0.15) * tracking + Math.cos(time * 0.11) * height * 0.006 * breath) * strength,
-            scale: 1 + (path[2] - 1) * strength,
-            rotation: path[3] * strength
+            x: width / 2 + (path[0] * width * 0.35 - clamp(focusX - width / 2, -width * 0.12, width * 0.12) * tracking) * travel
+                + Math.sin(time * 0.13) * width * 0.003 * breath * strength,
+            y: height / 2 + (path[1] * height * 0.3 - clamp(focusY - height / 2, -height * 0.08, height * 0.08) * tracking) * travel
+                + Math.cos(time * 0.11) * height * 0.003 * breath * strength,
+            scale: 1 + (path[2] - 1) * travel,
+            rotation: path[3] * travel * amount(tuning.cameraRoll, 0.25, 1)
         };
     };
 
@@ -169,6 +184,35 @@ void main() {
         }));
     });
 
+    // Lightweight phrase compiler: punctuation and vocal gaps are boundaries; source timing is unchanged.
+    const compilePhrases = (line, tuning) => {
+        const glyphs = glyphTiming(line);
+        const limit = Math.round(amount(tuning.phraseLength, 12, 24)) || 12;
+        let phrase = 0, count = 0;
+        glyphs.forEach((glyph, index) => {
+            const previous = glyphs[index - 1];
+            const naturalBreak = previous && (/[，。！？；、,.!?;:：]/u.test(previous.text)
+                || glyph.startTime - previous.endTime > 0.4);
+            const wordBreak = previous && (/\s/u.test(previous.text) || /[\u3040-\u30ff\u3400-\u9fff]/u.test(glyph.text));
+            if (count >= 3 && (naturalBreak || (count >= limit && wordBreak))) {
+                phrase += 1;
+                count = 0;
+            }
+            glyph.phrase = phrase;
+            if (glyph.text.trim()) count += 1;
+        });
+        const groups = [];
+        glyphs.forEach(glyph => {
+            if (!groups[glyph.phrase]) groups[glyph.phrase] = { start: glyph.startTime, end: glyph.endTime };
+            groups[glyph.phrase].end = Math.max(groups[glyph.phrase].end, glyph.endTime);
+        });
+        glyphs.forEach(glyph => {
+            glyph.phraseStart = groups[glyph.phrase].start;
+            glyph.phraseEnd = groups[glyph.phrase].end;
+        });
+        return glyphs;
+    };
+
     const buildLyrics = (PIXI, container, line, width, height, tuning, seed) => {
         clear(container);
         container.position.set(0, 0);
@@ -178,7 +222,8 @@ void main() {
         const maxWidth = width * 0.68;
         const rows = [[]];
         let rowWidth = 0;
-        const nodes = glyphTiming(line).map((glyph, index) => {
+        const layout = tuning.lyricLayout || 'phrases';
+        const nodes = compilePhrases(line, tuning).map((glyph, index) => {
             const node = new PIXI.Text({
                 text: glyph.text,
                 style: {
@@ -189,7 +234,9 @@ void main() {
             });
             node.anchor.set(0.5);
             const advance = Math.max(fontSize * 0.18, node.width) + fontSize * 0.035;
-            if (rowWidth + advance > maxWidth && rows[rows.length - 1].length) {
+            const row = rows[rows.length - 1];
+            const phraseBreak = layout !== 'lines' && row.length && row[row.length - 1].dataset.phrase !== glyph.phrase;
+            if ((rowWidth + advance > maxWidth || phraseBreak) && row.length) {
                 rows.push([]);
                 rowWidth = 0;
             }
@@ -207,7 +254,8 @@ void main() {
                 : kind === 'fragment-collage' ? (rowIndex % 2 ? 1 : -1) * width * 0.035 : 0;
             row.forEach(node => {
                 const d = node.dataset;
-                d.baseX = width / 2 + (d.rowX - total / 2) * fit + shift;
+                const alignment = layout === 'staircase' ? (rowIndex % 3 - 1) * width * 0.055 : 0;
+                d.baseX = width / 2 + (d.rowX - total / 2) * fit + shift + alignment;
                 d.baseY = height * 0.47 + (rowIndex - (rows.length - 1) / 2) * lineHeight * fit;
                 d.fit = fit;
                 d.fontSize = fontSize;
@@ -239,7 +287,11 @@ void main() {
             node.rotation = style === 'scatter' ? d.angle * (entry + bounce) * strength : 0;
             const pop = style === 'impact' ? -entry * 0.38 + bounce * 0.2 : bounce * 0.1 - entry * 0.12;
             node.scale.set(d.fit * (1 + pop * strength));
-            node.alpha = (time < d.startTime ? amount(tuning.waitingOpacity, 0.25, 1) : 1) * (1 - exit * 0.8);
+            const phraseEmphasis = amount(tuning.phraseEmphasis, 0.4, 1);
+            const phraseWeight = ease((time - d.phraseStart + 0.3) / 0.3)
+                * (1 - ease((time - d.phraseEnd) / 0.65));
+            const focusAlpha = 1 - phraseEmphasis * 0.5 * (1 - phraseWeight);
+            node.alpha = (time < d.startTime ? amount(tuning.waitingOpacity, 0.25, 1) : 1) * (1 - exit * 0.8) * focusAlpha;
             node.tint = active && tuning.textInversion !== false ? color : 0xffffff;
         });
     };
@@ -302,6 +354,6 @@ void main() {
 
     global.MusicStagePixiEffects = Object.freeze({
         amount, ease, expo, clear, camera, shotKind, glyphTiming, buildLyrics, animateLyrics, motionScale, createPostProcess,
-        applyQuality, transition, buildMotif
+        applyQuality, transition, buildMotif, compilePhrases
     });
 })(window);

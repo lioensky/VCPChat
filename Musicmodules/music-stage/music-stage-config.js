@@ -24,6 +24,8 @@
 
     const PIXI_DEFAULTS = Object.freeze({
         cameraBreath: 0.5, cameraTracking: 0.35, shotFlow: 'auto', sceneTransitions: true,
+        cameraSoftness: 0.75, cameraRoll: 0.25,
+        lyricLayout: 'phrases', phraseLength: 12, phraseEmphasis: 0.4,
         fontScale: 1, glyphStyle: 'rise', waitingOpacity: 0.25, releaseDuration: 0.45,
         postProcess: true, lensDistortion: 0.35, lensDispersion: 0.18,
         rgbShift: 0, grain: 0, contrast: 0, halftone: 0, vignette: 0.18
@@ -85,7 +87,10 @@
                 cameraSpeed: 1,
                 cameraMode: 'smooth',
                 glow: 1,
-                heroScale: 1
+                heroScale: 1,
+                articleSpacing: 1,
+                textHoldRatio: 0.35,
+                hidePrintSymbols: false
             },
             starborn: {
                 transitionLock: 4,
@@ -104,6 +109,11 @@
             glyphMotion: clamp(source.glyphMotion, 0, 2, fallback.glyphMotion),
             cameraBreath: clamp(source.cameraBreath, 0, 2, fallback.cameraBreath),
             cameraTracking: clamp(source.cameraTracking, 0, 1, fallback.cameraTracking),
+            cameraSoftness: clamp(source.cameraSoftness, 0, 1, fallback.cameraSoftness),
+            cameraRoll: clamp(source.cameraRoll, 0, 1, fallback.cameraRoll),
+            lyricLayout: enumValue(source.lyricLayout, ['lines', 'phrases', 'staircase'], fallback.lyricLayout),
+            phraseLength: Math.round(clamp(source.phraseLength, 6, 24, fallback.phraseLength) || 12),
+            phraseEmphasis: clamp(source.phraseEmphasis, 0, 1, fallback.phraseEmphasis),
             sceneTransitions: bool(source.sceneTransitions, fallback.sceneTransitions),
             shotFlow: enumValue(source.shotFlow, ['auto', 'editorial-column', 'type-impact', 'fragment-collage', 'tracking-ribbon', 'mask-reveal', 'poster-blocks', 'quiet-tableau'], fallback.shotFlow),
             glyphStyle: enumValue(source.glyphStyle, ['rise', 'scatter', 'impact'], fallback.glyphStyle),
@@ -143,6 +153,9 @@
             cameraSpeed: clamp(source.cameraSpeed, 0.55, 1.85, fallback.cameraSpeed),
             cameraMode: enumValue(source.cameraMode, ['stepped', 'smooth'], fallback.cameraMode),
             heroScale: clamp(source.heroScale, 0.82, 1.32, fallback.heroScale),
+            articleSpacing: clamp(source.articleSpacing, 0.65, 1.6, fallback.articleSpacing),
+            textHoldRatio: clamp(source.textHoldRatio, 0, 1, fallback.textHoldRatio),
+            hidePrintSymbols: bool(source.hidePrintSymbols, fallback.hidePrintSymbols),
             transitionLock: clamp(source.transitionLock, 0.5, 12, fallback.transitionLock),
             avoidRepeat: bool(source.avoidRepeat, fallback.avoidRepeat)
         };

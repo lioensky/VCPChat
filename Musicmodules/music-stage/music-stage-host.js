@@ -97,6 +97,11 @@
         const pixiTuningDefinitions = [
             { key: 'sceneTransitions', label: '切句过渡', type: 'toggle' },
             { key: 'shotFlow', label: '分镜镜头', type: 'select', options: [['auto', '自动导演'], ['editorial-column', '编辑纵列'], ['type-impact', '文字冲击'], ['fragment-collage', '碎片拼贴'], ['tracking-ribbon', '带状追焦'], ['mask-reveal', '上升揭幕'], ['poster-blocks', '海报定景'], ['quiet-tableau', '静谧长镜']] },
+            { key: 'cameraSoftness', label: '镜头平缓度', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+            { key: 'cameraRoll', label: '镜头侧倾', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+            { key: 'lyricLayout', label: '歌词构图', type: 'select', options: [['lines', '整句分行'], ['phrases', '短语分组'], ['staircase', '阶梯短语']] },
+            { key: 'phraseLength', label: '短语目标字数', type: 'range', min: 6, max: 24, step: 1, unit: '字' },
+            { key: 'phraseEmphasis', label: '短语聚光', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
             { key: 'cameraTracking', label: '逐词追焦', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
             { key: 'cameraBreath', label: '镜头呼吸', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
             { key: 'fontScale', label: '歌词字号', type: 'range', min: 0.65, max: 1.5, step: 0.05, unit: 'x' },
@@ -164,7 +169,10 @@
                 { key: 'cameraSpeed', label: '镜头速度', type: 'range', min: 0.55, max: 1.85, step: 0.05, unit: 'x' },
                 { key: 'cameraMode', label: '镜头方式', type: 'select', options: [['smooth', '平滑'], ['stepped', '定格']] },
                 { key: 'glow', label: '辉光强度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
-                { key: 'heroScale', label: '标题比例', type: 'range', min: 0.82, max: 1.32, step: 0.02, unit: 'x' }
+                { key: 'heroScale', label: '标题比例', type: 'range', min: 0.82, max: 1.32, step: 0.02, unit: 'x' },
+                { key: 'articleSpacing', label: '长卷段落间距', type: 'range', min: 0.65, max: 1.6, step: 0.05, unit: 'x' },
+                { key: 'textHoldRatio', label: '已唱文字驻留（100% 不淡出）', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+                { key: 'hidePrintSymbols', label: '隐藏打印标记', type: 'toggle' }
             ],
             starborn: [
                 { key: 'transitionLock', label: '转场锁定', type: 'range', min: 0.5, max: 12, step: 0.5, unit: 's' },

@@ -2348,3 +2348,92 @@ body.light-theme .music-stage {
         bottom: 26vh;
     }
 }
+
+/* Fume native article world: transforms are evaluated by the playback clock, not CSS transitions. */
+.fume-article-world {
+    position: absolute;
+    left: 0;
+    top: 0;
+    transform-origin: 0 0;
+    will-change: transform;
+    pointer-events: none;
+}
+.fume-article-block {
+    position: absolute;
+    box-sizing: border-box;
+    transform-origin: center center;
+    color: #f3f1ec;
+    padding: 14px 18px;
+    border-left: 1px solid color-mix(in srgb, var(--stage-accent) 24%, transparent);
+}
+.fume-article-number {
+    margin-bottom: 10px;
+    font: 600 9px/1.3 Consolas, monospace;
+    letter-spacing: .2em;
+    color: color-mix(in srgb, var(--stage-accent) 65%, #fff);
+}
+.fume-article-number[hidden],
+.fume-article-empty[hidden] { display: none; }
+.fume-article-text {
+    position: relative;
+    font-family: Georgia, "Noto Serif SC", "Microsoft YaHei", serif;
+    font-weight: 600;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+.fume-article-block.is-hero .fume-article-text { font-weight: 800; }
+.fume-article-block.is-current {
+    border-left-color: var(--stage-accent);
+}
+.fume-print-glyph {
+    position: relative;
+    display: inline-block;
+    white-space: pre;
+    color: rgba(255,255,255,.65);
+}
+.fume-print-glyph.is-printed { color: #f3f1ec; }
+.fume-print-glyph.is-printing {
+    color: transparent;
+    background: linear-gradient(90deg, var(--stage-accent) var(--print-progress), #fff var(--print-progress));
+    background-clip: text;
+    -webkit-background-clip: text;
+    text-shadow: 0 0 calc(18px * var(--fume-glow-intensity, 1)) color-mix(in srgb, var(--stage-accent) 45%, transparent);
+}
+.fume-print-glyph.is-printing::after {
+    content: "";
+    position: absolute;
+    left: 8%;
+    right: 8%;
+    bottom: -.06em;
+    height: 2px;
+    background: var(--stage-accent);
+    opacity: var(--print-pulse, 0);
+    transform: scaleX(var(--print-pulse, 0));
+}
+.fume-hide-print-symbols .fume-print-glyph::after { display: none; }
+.fume-article-subtitle {
+    position: absolute;
+    bottom: 23%;
+    left: 15%;
+    width: 70%;
+    padding: 10px 0;
+    margin: 0;
+    pointer-events: none;
+}
+.fume-article-heading {
+    position: absolute;
+    top: 12%;
+    left: 8%;
+    color: rgba(255,255,255,.4);
+    font: 600 9px/1.4 Consolas, monospace;
+    letter-spacing: .22em;
+}
+.fume-article-empty {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: rgba(255,255,255,.45);
+    font-size: clamp(24px,4vw,48px);
+}

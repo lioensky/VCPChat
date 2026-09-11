@@ -83,7 +83,7 @@
         mode.updateConfig = (config) => {
             const before = mode.config.modes?.tempera || {};
             const after = config.modes?.tempera || {};
-            const rebuild = ['fontScale', 'shotFlow', 'colorMode'].some(key => before[key] !== after[key]);
+            const rebuild = ['fontScale', 'shotFlow', 'colorMode', 'lyricLayout', 'phraseLength'].some(key => before[key] !== after[key]);
             updateConfig(config);
             if (rebuild) renderedKey = '';
             if (latestFrame) mode.updateFrame(latestFrame);
