@@ -16,14 +16,16 @@
         createElement
     } = Utils;
 
-    const THREE_MODULE_PATH = '../../../node_modules/three/build/three.module.js';
+    // 与 music.html 使用同一份随应用发布的 Three.js，避免 node_modules 与 vendor 版本分裂。
+    const THREE_MODULE_PATH = '../../../vendor/three.module.js';
 
     // 空间步长与视距常数（参考 Folia cameraPath）
-    const STEP_DISTANCE = 8.5; // 每行歌词之间的 3D 前进距离
-    const HERO_DISTANCE = 5.8; // 相机与当前焦点歌词的跟随距离
-    const CAMERA_LIFT = 0.65;  // 相机相对焦点的高度提升
-    const LINES_AHEAD = 4;     // 向前方深处渲染的歌词行数
-    const LINES_BEHIND = 2;    // 向后方退去渲染的歌词行数
+    // 空间步长与视距常数：进一步增大距离，消除怼脸感，留足纵深视野
+    const STEP_DISTANCE = 11.5; // 每行歌词之间的 3D 前进距离（加大距离以配合更远镜头推进行程）
+    const HERO_DISTANCE = 11.2; // 相机与当前焦点歌词的跟随视距（从 7.4 进一步拉远至 11.2，视野更加开阔从容）
+    const CAMERA_LIFT = 0.95;   // 稍抬高相机视角，俯瞰歌词长廊更具宏阔感
+    const LINES_AHEAD = 4;      // 向前方深处渲染的歌词行数
+    const LINES_BEHIND = 1;     // 向后方保留行数缩减为 1，加速已唱完歌词离场
 
     // 高分辨率文字光栅化常量（参考 Folia dioramaTextRaster: 128px 高清纹理配合各向异性过滤与 mipmap，彻底告别模糊与锯齿）
     const RASTER_FONT_PX = 144;
@@ -50,6 +52,34 @@
         y: lerp(a.y, b.y, t),
         z: lerp(a.z, b.z, t)
     });
+
+    /**
+     * 构建多层次主题色调色板（主警示/高光色、松石冷色、钛金暖色、微光冷白）
+     */
+    const getThemePalette = (services, THREE) => {
+        const accent = resolveAccent(services?.app);
+        // 主强调色（如工业黄 #F2A900 或朱砂红）
+        const colorPrimary = new THREE.Color(`rgb(${accent.r}, ${accent.g}, ${accent.b})`);
+        
+        // 次级互补/对比色（偏向青绿松石 / 冰蓝，参考工业石墨中的状态信号 #76BFAE）
+        const colorSecondary = new THREE.Color(
+            Math.max(0.1, 0.46 * (1 - accent.r / 255) + 0.2),
+            Math.min(1.0, 0.75 + (accent.g / 255) * 0.2),
+            Math.min(1.0, 0.68 + (accent.b / 255) * 0.2)
+        );
+
+        // 柔和深邃辅助色（更深更沉的金属偏光色）
+        const colorTertiary = new THREE.Color(
+            (accent.r / 255) * 0.55 + 0.15,
+            (accent.g / 255) * 0.35 + 0.1,
+            (accent.b / 255) * 0.45 + 0.25
+        );
+
+        // 高光晶体色（剔透莹白带微蓝）
+        const colorHighlight = new THREE.Color(0.92, 0.96, 1.0);
+
+        return { colorPrimary, colorSecondary, colorTertiary, colorHighlight };
+    };
 
     /**
      * 生成整首歌曲的 3D 蜿蜒飞行路径（仿照 Folia 的 buildDioramaPath）
@@ -109,6 +139,14 @@
         let camera = null;
         let renderer = null;
         let corridorGroup = null;
+        let liquidField = null;
+        let liquidBlobs = [];
+        let geometryField = null;
+        let floatingGlyphs = [];
+        let ribbonField = null;
+        let ribbonMaterials = [];
+        let vectorDecor = null;
+        let vectorDecorNodes = [];
         let particleField = null;
         let particlePositions = null;
         let animationFrame = 0;
@@ -252,7 +290,11 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
         
         // 使用独立组包装每个字词，使文字本体与辉光层保持严格同轴等比缩放，杜绝内外错位叠放
         const unitGroup = new THREE.Group();
-        unitGroup.position.set(currentX + advanceW / 2, 0, 0);
+        // 逐词深度错落：不同字词轻微前后、上下、旋转，形成官方镜台式层叠纵深。
+        const depth = Math.sin(unitIdx * 1.73 + lineIdx * 0.61) * 0.32;
+        const staggerY = Math.cos(unitIdx * 1.31 + lineIdx) * 0.12;
+        unitGroup.position.set(currentX + advanceW / 2, staggerY, depth);
+        unitGroup.rotation.z = Math.sin(unitIdx * 0.9 + lineIdx) * 0.035;
         lineGroup.add(unitGroup);
 
         // 1. 本体材质
@@ -373,6 +415,413 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
             scene.add(particleField);
         };
 
+        /**
+         * 高级 3D 拟态液体流变体 Shader (果冻/有机水银质感 + Fresnel 彩虹折射 + 波动形变)
+         */
+        const liquidVertexShader = `
+            uniform float uTime;
+            uniform float uEnergy;
+            uniform float uDistortion;
+            varying vec3 vNormal;
+            varying vec3 vWorldPosition;
+            varying vec3 vViewPosition;
+            varying float vDisplacement;
+        
+            void main() {
+                vec3 p = position;
+                // 降低时间系数与空间频率，将高频剧烈抖动变为极为平缓优雅的凝胶呼吸
+                float wave1 = sin(p.x * 1.4 + uTime * 0.7) * cos(p.y * 1.2 + uTime * 0.6);
+                float wave2 = sin(p.z * 1.5 - uTime * 0.5) * cos(p.x * 1.1 + uTime * 0.8);
+                float disp = (wave1 + wave2) * (0.06 + uEnergy * 0.08) * uDistortion;
+                p += normal * disp;
+        
+                vec4 world = modelMatrix * vec4(p, 1.0);
+                vWorldPosition = world.xyz;
+                vNormal = normalize(mat3(modelMatrix) * normal);
+                vDisplacement = disp;
+        
+                vec4 mvPosition = viewMatrix * world;
+                vViewPosition = -mvPosition.xyz;
+                gl_Position = projectionMatrix * mvPosition;
+            }
+        `;
+        
+        const liquidFragmentShader = `
+            uniform float uTime;
+            uniform float uEnergy;
+            uniform vec3 uColorA;
+            uniform vec3 uColorB;
+            uniform vec3 uColorC;
+            uniform float uOpacity;
+            varying vec3 vNormal;
+            varying vec3 vWorldPosition;
+            varying vec3 vViewPosition;
+            varying float vDisplacement;
+        
+            void main() {
+                vec3 N = normalize(vNormal);
+                vec3 V = normalize(vViewPosition);
+        
+                // 菲涅尔边缘光 (Fresnel)
+                float fresnel = pow(1.0 - max(dot(N, V), 0.0), 2.8);
+                
+                // 伪高光反射
+                vec3 lightDir = normalize(vec3(0.6, 0.8, 0.5));
+                vec3 H = normalize(lightDir + V);
+                float spec = pow(max(dot(N, H), 0.0), 32.0);
+        
+                // 流变三色渐变
+                float flowCoord = dot(vWorldPosition, vec3(0.25, 0.35, 0.15)) + uTime * 0.8 + vDisplacement * 2.0;
+                float mixT = 0.5 + 0.5 * sin(flowCoord);
+                vec3 liquidColor = mix(uColorA, uColorB, mixT);
+                liquidColor = mix(liquidColor, uColorC, fresnel * 0.85);
+        
+                // 高光与清透边缘加强（水银/水晶通透感：中心高度透光，边缘由于折射呈现晶莹菲涅尔光泽）
+                liquidColor += vec3(spec * 0.9 + fresnel * 0.6);
+        
+                // 增强透明感：中心基底保持极高通透（低不透明度），主要由边缘轮廓和高光反射表达形体
+                float alpha = clamp(uOpacity * (0.16 + fresnel * 0.95 + spec * 0.6 + uEnergy * 0.15), 0.0, 0.82);
+                gl_FragColor = vec4(liquidColor, alpha);
+            }
+        `;
+        
+        const makeLiquidMaterial = (colorA, colorB, colorC, opacity, distortion = 1.0) => remember(
+            resources.materials,
+            new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uEnergy: { value: 0 },
+                    uDistortion: { value: distortion },
+                    uColorA: { value: colorA.clone() },
+                    uColorB: { value: colorB.clone() },
+                    uColorC: { value: colorC.clone() },
+                    uOpacity: { value: opacity }
+                },
+                vertexShader: liquidVertexShader,
+                fragmentShader: liquidFragmentShader,
+                transparent: true,
+                depthWrite: false,
+                side: THREE.DoubleSide,
+                blending: THREE.AdditiveBlending
+            })
+        );
+        
+        /**
+         * 动态 3D 发光流动光轨 Shader（带彗星式跑光/能量流束）
+         */
+        const ribbonVertexShader = `
+            uniform float uTime;
+            varying float vUvX;
+            varying vec3 vWorldPosition;
+            void main() {
+                vUvX = uv.x;
+                vec4 world = modelMatrix * vec4(position, 1.0);
+                vWorldPosition = world.xyz;
+                gl_Position = projectionMatrix * viewMatrix * world;
+            }
+        `;
+        
+        const ribbonFragmentShader = `
+            uniform float uTime;
+            uniform float uEnergy;
+            uniform vec3 uColor;
+            varying float vUvX;
+            varying vec3 vWorldPosition;
+        
+            void main() {
+                // 沿轨道流动的光束脉冲 (Comet trail)
+                float speed = 0.85;
+                float flow1 = fract(vUvX * 3.5 - uTime * speed);
+                float beam1 = pow(flow1, 8.0) * 1.8;
+        
+                float flow2 = fract(vUvX * 6.0 + uTime * (speed * 0.65) + 0.5);
+                float beam2 = pow(flow2, 12.0) * 1.2;
+        
+                // 更加空灵透明的流光丝线，跑光束更柔和高雅
+                float glow = 0.06 + (beam1 + beam2) * 0.55 + uEnergy * 0.18;
+                vec3 finalColor = mix(uColor, vec3(1.0), (beam1 + beam2) * 0.45);
+                gl_FragColor = vec4(finalColor, glow * 0.45);
+            }
+        `;
+        
+        /**
+         * 1. 稀疏 3D 巨型液体流变体（仅保留 5~7 颗大体型有机果冻，沿双螺旋轨道悠然穿梭漂流）
+         */
+        const createLiquidBlobs = (frames) => {
+            if (!THREE || !scene || !frames.length) return;
+            if (liquidField) scene.remove(liquidField);
+            liquidField = new THREE.Group();
+            liquidBlobs = [];
+            
+            const palette = getThemePalette(services, THREE);
+        
+            // 缩减液体体型：从之前过大的 1.6~2.6 缩减为 0.9~1.4，比例恰到好处，既有存在感又不喧宾夺主
+            const totalBlobs = 5;
+            const geoTemplates = [
+                remember(resources.geometries, new THREE.IcosahedronGeometry(0.9, 3)),
+                remember(resources.geometries, new THREE.IcosahedronGeometry(1.15, 3)),
+                remember(resources.geometries, new THREE.IcosahedronGeometry(1.4, 3))
+            ];
+        
+            for (let i = 0; i < totalBlobs; i++) {
+                const rnd = seededRandom(`liquid-hero:${currentTrackPath}:${i}`);
+                const geo = geoTemplates[i % geoTemplates.length];
+                const handedness = (i % 2 === 0) ? 1 : -1;
+                const progressOffset = i / totalBlobs;
+                
+                // 各流变体使用调色板的不同层次（主色、副色、辅助色交替），制造丰富着色
+                const colA = (i % 2 === 0) ? palette.colorPrimary : palette.colorSecondary;
+                const colB = (i % 3 === 0) ? palette.colorTertiary : (i % 2 === 0 ? palette.colorSecondary : palette.colorPrimary);
+                const colC = palette.colorHighlight;
+        
+                // 大幅增加晶莹通透度：base opacity 控制在 0.25 左右
+                const material = makeLiquidMaterial(colA, colB, colC, 0.22 + rnd() * 0.08, 0.6 + rnd() * 0.4);
+        
+                const mesh = new THREE.Mesh(geo, material);
+                mesh.frustumCulled = false;
+                mesh.renderOrder = 3;
+                liquidField.add(mesh);
+        
+                liquidBlobs.push({
+                    mesh,
+                    material,
+                    handedness,
+                    progressOffset,
+                    radius: 3.2 + rnd() * 1.6,
+                    phase: rnd() * Math.PI * 2,
+                    baseScale: 1.0 + rnd() * 0.4
+                });
+            }
+            scene.add(liquidField);
+        };
+        
+        /**
+         * 2. 空间 3D 线框矢量悬浮几何体（十字准星、旋转线框正方形、线框三角形、几何环）
+         */
+        const createFloatingGeometry = (frames) => {
+            if (!THREE || !scene || !frames.length) return;
+            if (geometryField) scene.remove(geometryField);
+            geometryField = new THREE.Group();
+            floatingGlyphs = [];
+        
+            const palette = getThemePalette(services, THREE);
+        
+            // 适度精简密度：每 2~3 行散布 1 个，避免视线过载
+            const glyphCount = Math.max(8, Math.min(28, Math.floor(frames.length * 1.1)));
+            for (let i = 0; i < glyphCount; i++) {
+                const rnd = seededRandom(`glyph:${currentTrackPath}:${i}`);
+                const type = i % 4; // 0: 十字架, 1: 线框正方形, 2: 线框三角形, 3: 几何环
+                const frameIdx = Math.floor((i / glyphCount) * (frames.length - 1));
+                const f = frames[frameIdx] || frames[0];
+                const nextF = frames[Math.min(frames.length - 1, frameIdx + 1)] || f;
+        
+                const subP = rnd();
+                const pos = vlerp(f.position, nextF.position, subP);
+                const right = f.right;
+                const up = f.up;
+        
+                // 散布于外围景深
+                const side = rnd() > 0.5 ? 1 : -1;
+                const lateralDist = side * (4.2 + rnd() * 4.0);
+                const verticalDist = (rnd() - 0.5) * 4.8;
+        
+                let obj = null;
+                const group = new THREE.Group();
+        
+                // 颜色分层：主警示黄/朱砂红、松石绿、金属辅助色、冷白
+                const glyphColor = (i % 4 === 0) ? palette.colorPrimary
+                                : (i % 4 === 1) ? palette.colorSecondary
+                                : (i % 4 === 2) ? palette.colorHighlight
+                                : palette.colorTertiary;
+        
+                if (type === 0) {
+                    // 3D 粗细十字标 (Crosshair)
+                    const s = 0.5 + rnd() * 0.4;
+                    const lineGeo = remember(resources.geometries, new THREE.BufferGeometry());
+                    const verts = new Float32Array([
+                        -s, 0, 0,   s, 0, 0,
+                        0, -s, 0,   0, s, 0,
+                        0, 0, -s * 0.25, 0, 0, s * 0.25
+                    ]);
+                    lineGeo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+                    const lineMat = remember(resources.materials, new THREE.LineBasicMaterial({
+                        color: glyphColor,
+                        transparent: true,
+                        opacity: 0.45 + rnd() * 0.25,
+                        blending: THREE.AdditiveBlending
+                    }));
+                    obj = new THREE.LineSegments(lineGeo, lineMat);
+                } else if (type === 1) {
+                    // 线框正方形 / 菱形
+                    const s = 0.65 + rnd() * 0.45;
+                    const boxGeo = remember(resources.geometries, new THREE.EdgesGeometry(new THREE.PlaneGeometry(s, s)));
+                    const boxMat = remember(resources.materials, new THREE.LineBasicMaterial({
+                        color: glyphColor,
+                        transparent: true,
+                        opacity: 0.4 + rnd() * 0.25,
+                        blending: THREE.AdditiveBlending
+                    }));
+                    obj = new THREE.LineSegments(boxGeo, boxMat);
+                } else if (type === 2) {
+                    // 线框正三角形
+                    const r = 0.6 + rnd() * 0.35;
+                    const triGeo = remember(resources.geometries, new THREE.EdgesGeometry(new THREE.CircleGeometry(r, 3)));
+                    const triMat = remember(resources.materials, new THREE.LineBasicMaterial({
+                        color: glyphColor,
+                        transparent: true,
+                        opacity: 0.42 + rnd() * 0.25,
+                        blending: THREE.AdditiveBlending
+                    }));
+                    obj = new THREE.LineSegments(triGeo, triMat);
+                } else {
+                    // 线框双环
+                    const r = 0.75 + rnd() * 0.45;
+                    const ringGeo = remember(resources.geometries, new THREE.RingGeometry(r, r + 0.035, 32));
+                    const ringMat = remember(resources.materials, new THREE.MeshBasicMaterial({
+                        color: glyphColor,
+                        transparent: true,
+                        opacity: 0.32 + rnd() * 0.2,
+                        side: THREE.DoubleSide,
+                        blending: THREE.AdditiveBlending
+                    }));
+                    obj = new THREE.Mesh(ringGeo, ringMat);
+                }
+        
+                group.add(obj);
+                group.position.set(
+                    pos.x + right.x * lateralDist + up.x * verticalDist,
+                    pos.y + right.y * lateralDist + up.y * verticalDist,
+                    pos.z + right.z * lateralDist + up.z * verticalDist
+                );
+                group.rotation.set(rnd() * Math.PI, rnd() * Math.PI, rnd() * Math.PI);
+        
+                geometryField.add(group);
+                floatingGlyphs.push({
+                    group,
+                    obj,
+                    // 降低自转速度，更加从容沉浸
+                    rotSpeed: {
+                        x: (rnd() - 0.5) * 0.007,
+                        y: (rnd() - 0.5) * 0.009,
+                        z: (rnd() - 0.5) * 0.006
+                    },
+                    baseScale: 1.0 + rnd() * 0.25,
+                    phase: rnd() * Math.PI * 2
+                });
+            }
+        
+            scene.add(geometryField);
+        };
+        
+        /**
+         * 3. 动态穿梭流光导轨（有流动脉冲的 3D 双螺旋光轨线条）
+         */
+        const createFlowingRibbons = (frames) => {
+            if (!THREE || !scene || frames.length < 2) return;
+            if (ribbonField) scene.remove(ribbonField);
+            ribbonField = new THREE.Group();
+            ribbonMaterials = [];
+        
+            const palette = getThemePalette(services, THREE);
+        
+            [1, -1].forEach((handedness, strandIdx) => {
+                const points = [];
+                const rnd = seededRandom(`ribbon:${currentTrackPath}:${strandIdx}`);
+                const phase = rnd() * Math.PI * 2;
+        
+                frames.forEach((f, idx) => {
+                    const t = idx / Math.max(1, frames.length - 1);
+                    const angle = phase + handedness * t * Math.PI * 8.0;
+                    const r = 2.4 + Math.sin(t * 12.0 + phase) * 0.6;
+                    const upShift = Math.cos(t * 16.0 + phase) * 0.8;
+                    points.push(new THREE.Vector3(
+                        f.position.x + f.right.x * Math.cos(angle) * r + f.up.x * upShift,
+                        f.position.y + f.right.y * Math.cos(angle) * r + f.up.y * upShift,
+                        f.position.z + f.right.z * Math.cos(angle) * r + f.up.z * upShift
+                    ));
+                });
+        
+                const curve = new THREE.CatmullRomCurve3(points);
+                curve.curveType = 'centripetal';
+                // 极细光轨丝线：管径从 0.045 细化至 0.018，打造轻盈若现的纤细流光
+                const tubeGeo = remember(resources.geometries, new THREE.TubeGeometry(
+                    curve, Math.max(36, frames.length * 6), 0.018, 6, false
+                ));
+        
+                const mat = remember(resources.materials, new THREE.ShaderMaterial({
+                    uniforms: {
+                        uTime: { value: 0 },
+                        uEnergy: { value: 0 },
+                        // 导轨双线使用主色与松石副色交织
+                        uColor: { value: strandIdx === 0 ? palette.colorPrimary : palette.colorSecondary }
+                    },
+                    vertexShader: ribbonVertexShader,
+                    fragmentShader: ribbonFragmentShader,
+                    transparent: true,
+                    depthWrite: false,
+                    blending: THREE.AdditiveBlending
+                }));
+        
+                const mesh = new THREE.Mesh(tubeGeo, mat);
+                mesh.frustumCulled = false;
+                ribbonField.add(mesh);
+                ribbonMaterials.push(mat);
+            });
+        
+            scene.add(ribbonField);
+        };
+        
+        /**
+         * 4. 增强版 2D 矢量屏幕 HUD（带鲜明角标十字、雷达圆盘与扫描刻度）
+         */
+        const createVectorDecor = () => {
+            if (vectorDecor) vectorDecor.remove();
+            vectorDecorNodes = [];
+            vectorDecor = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            vectorDecor.classList.add('diorama-vector-decor');
+            vectorDecor.setAttribute('viewBox', '0 0 1000 1000');
+            vectorDecor.setAttribute('preserveAspectRatio', 'xMidYMid slice');
+            vectorDecor.setAttribute('aria-hidden', 'true');
+        
+            const add = (tag, attrs) => {
+                const node = document.createElementNS('http://www.w3.org/2000/svg', tag);
+                Object.entries(attrs).forEach(([key, value]) => node.setAttribute(key, value));
+                vectorDecor.appendChild(node);
+                vectorDecorNodes.push(node);
+                return node;
+            };
+        
+            // 精炼 2D 界面：减少画面杂乱元素，保留四角视窗标和两个极度轻巧的雷达环
+            add('path', { class: 'diorama-hud-bracket', d: 'M 45 75 L 45 45 L 75 45' });
+            add('path', { class: 'diorama-hud-bracket', d: 'M 925 45 L 955 45 L 955 75' });
+            add('path', { class: 'diorama-hud-bracket', d: 'M 955 925 L 955 955 L 925 955' });
+            add('path', { class: 'diorama-hud-bracket', d: 'M 75 955 L 45 955 L 45 925' });
+        
+            // 少量呼吸小十字
+            add('path', { class: 'diorama-hud-cross', d: 'M 50 492 v 16 M 42 500 h 16' });
+            add('path', { class: 'diorama-hud-cross', d: 'M 950 492 v 16 M 942 500 h 16' });
+        
+            // 纯粹的轻量转盘
+            add('circle', { class: 'diorama-hud-circle-dashed', cx: '120', cy: '200', r: '36' });
+            add('circle', { class: 'diorama-hud-circle-dashed', cx: '880', cy: '800', r: '42' });
+        
+            // 细致对角刻度线
+            add('line', { class: 'diorama-hud-gridline', x1: '20', y1: '500', x2: '160', y2: '500' });
+            add('line', { class: 'diorama-hud-gridline', x1: '840', y1: '500', x2: '980', y2: '500' });
+        
+            mode.root.insertBefore(vectorDecor, fallback);
+        };
+        
+        const updateVectorDecor = (frame, energy) => {
+            if (!vectorDecor) return;
+            const time = (frame.now || 0) * 0.001;
+            // 带有随音频呼吸的细微微动与透明度提升
+            vectorDecor.style.opacity = String(Math.min(1, 0.65 + energy * 0.35));
+            vectorDecorNodes.forEach((node, index) => {
+                const pulse = 0.7 + Math.sin(time * 1.2 + index * 0.4) * 0.2 + energy * 0.3;
+                node.style.opacity = String(Math.max(0.3, Math.min(1.0, pulse)));
+            });
+        };
         const initializeThree = async () => {
             if (initializationPromise) return initializationPromise;
             initializationPromise = Promise.resolve().then(async () => {
@@ -408,6 +857,7 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
 
                     corridorGroup = new THREE.Group();
                     scene.add(corridorGroup);
+                    createVectorDecor();
 
                     initialized = true;
                     fallback.hidden = true;
@@ -443,6 +893,9 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                 });
                 lineNodes.clear();
                 createCorridorParticles(pathFrames);
+                createLiquidBlobs(pathFrames);
+                createFloatingGeometry(pathFrames);
+                createFlowingRibbons(pathFrames);
             }
 
             const currentIdx = Math.max(0, Math.min(lines.length - 1, frame.currentLineIndex >= 0 ? frame.currentLineIndex : 0));
@@ -511,30 +964,30 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
             const currentRight = activeFrame.right;
             const currentUp = activeFrame.up;
 
-            // 镜头跟随光标横移（适度衰减系数 0.62，保持歌词在优雅视觉焦点内）
-            const cursorTrackingOffset = wordCursorX * 0.62;
+            // 镜头横向稳定追轨：镜头拉远后整行歌词尽收眼底，大幅削减逐字偏移系数（从 0.62 降至 0.18），消除字词间拉扯感
+            const cursorTrackingOffset = wordCursorX * 0.18;
 
-            // 随着播放进度，相机带有呼吸弧线运镜（避免机械式纯直线，模拟手持摄影机）
-            const sway = Math.sin(interLineProgress * Math.PI) * 0.4 * motion;
-            const bob = Math.cos(interLineProgress * Math.PI * 2) * 0.2 * motion;
+            // 消除晃荡感：将模拟手持摄影机的摇晃大幅弱化（从 0.4/0.2 降为极其平稳的 0.08/0.04），呈电影导轨（Dolly Track）般稳健运镜
+            const sway = Math.sin(interLineProgress * Math.PI) * 0.08 * motion;
+            const bob = Math.cos(interLineProgress * Math.PI * 2) * 0.04 * motion;
 
-            // 相机目标位置：跟随在当前焦点歌词后方，并根据正在唱的字做横向推轨
+            // 相机目标位置：平稳跟随在焦点歌词后方，维持高级沉静的透视线
             const targetCamPos = {
                 x: currentFocalPos.x - currentForward.x * HERO_DISTANCE + currentRight.x * (cursorTrackingOffset + sway),
                 y: currentFocalPos.y - currentForward.y * HERO_DISTANCE + currentUp.y * (CAMERA_LIFT + bob),
                 z: currentFocalPos.z - currentForward.z * HERO_DISTANCE
             };
 
-            // 相机目标焦点：注视当前歌词正唱到的字的前方
+            // 相机注视点：保持向前视准，注视点横向微调大幅收敛，避免视角双重晃动
             const targetLookAt = {
-                x: currentFocalPos.x + currentForward.x * 3.2 + currentRight.x * (cursorTrackingOffset * 0.85),
-                y: currentFocalPos.y + currentUp.y * 0.2,
-                z: currentFocalPos.z + currentForward.z * 3.2
+                x: currentFocalPos.x + currentForward.x * 4.5 + currentRight.x * (cursorTrackingOffset * 0.25),
+                y: currentFocalPos.y + currentUp.y * 0.15,
+                z: currentFocalPos.z + currentForward.z * 4.5
             };
 
-            // 平滑相机追焦 (Critically damped lerp)
-            cameraFollow.pos = vlerp(cameraFollow.pos, targetCamPos, 0.08 * speed);
-            cameraFollow.look = vlerp(cameraFollow.look, targetLookAt, 0.1 * speed);
+            // 增强相机阻尼与缓动过渡（通过适度降低每帧插值权重至 0.048，获得丝滑从容的重力阻尼感）
+            cameraFollow.pos = vlerp(cameraFollow.pos, targetCamPos, 0.048 * speed);
+            cameraFollow.look = vlerp(cameraFollow.look, targetLookAt, 0.055 * speed);
 
             camera.position.set(cameraFollow.pos.x, cameraFollow.pos.y, cameraFollow.pos.z);
             camera.lookAt(cameraFollow.look.x, cameraFollow.look.y, cameraFollow.look.z);
@@ -586,15 +1039,24 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                 // 逐词实时高亮与透明度更新
                 if (node) {
                     const offset = i - currentIdx;
-                    // 如果是当前行但已经唱完（间奏/行隙阶段），透明度逐渐淡出，配合镜头穿过移出视界
+                    // 确保播放结束的歌词彻底离开画面：
+                    // 1. 若当前行已唱完，在进入下一行的间奏推进期（0.72~1.0）加速淡出至 0.0，杜绝残留在广角镜头边缘
                     const isPassedCurrent = isCurrent && (currentTime >= endTime);
                     const currentFadeOut = isPassedCurrent
-                        ? clamp(1.0 - (interLineProgress - 0.72) / 0.28, 0.15, 1.0)
+                        ? clamp(1.0 - (interLineProgress - 0.72) / 0.22, 0.0, 1.0)
                         : 1.0;
-                    // 距离当前唱段越远，透明度越低，沉入背景雾气中平滑过渡
-                    const baseOpacity = isCurrent
-                        ? (0.88 * currentFadeOut)
-                        : offset > 0 ? (0.45 / (offset * 1.2)) : 0.22;
+                    
+                    // 2. 过去的歌词（offset < 0）迅速消隐至 0，绝不阻挡远距离镜头的景深穿透
+                    let baseOpacity = 0.0;
+                    if (isCurrent) {
+                        baseOpacity = 0.92 * currentFadeOut;
+                    } else if (offset > 0) {
+                        // 前方歌词在深处雾气中若隐若现
+                        baseOpacity = 0.42 / (offset * 1.35);
+                    } else {
+                        // 已经完全唱过去的上一行歌词：随着向后飞驰彻底隐没
+                        baseOpacity = 0.0;
+                    }
 
                     node.units.forEach((u, unitIdx) => {
                         const wordState = frame.wordStates?.[unitIdx];
@@ -630,6 +1092,86 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                     });
                 }
             }
+
+            // ==========================================
+            // 1. 稀疏 3D 巨型有机流变体：沿走廊双螺旋悠然巡游漂浮
+            // ==========================================
+            const timeSec = (frame.now || 0) * 0.001;
+            const audio = frame.audio || {};
+            const energy = Number(audio.bass || 0) * 0.65 + Number(audio.vocal || 0) * 0.35;
+
+            if (liquidBlobs.length && pathFrames.length) {
+                const totalPathLen = pathFrames.length;
+                // 随着播放进程，液体粒子在当前相机视区周围持续漂流推进
+                const currentBaseProgress = (currentIdx + interLineProgress) / Math.max(1, totalPathLen);
+
+                liquidBlobs.forEach((blob, bIdx) => {
+                    // 大幅降低漂移速度 (0.004x，原本的 1/3)，悠然漫步
+                    const loopP = (currentBaseProgress + blob.progressOffset + timeSec * 0.004) % 1.0;
+                    const exactIdx = loopP * (totalPathLen - 1);
+                    const idxA = Math.floor(exactIdx);
+                    const idxB = Math.min(totalPathLen - 1, idxA + 1);
+                    const alphaT = exactIdx - idxA;
+
+                    const frameA = pathFrames[idxA] || pathFrames[0];
+                    const frameB = pathFrames[idxB] || frameA;
+
+                    const corePos = vlerp(frameA.position, frameB.position, alphaT);
+                    const coreRight = frameA.right;
+                    const coreUp = frameA.up;
+
+                    // 大幅放缓螺旋环绕速度 (0.28x)
+                    const angle = blob.phase + timeSec * (0.28 * blob.handedness);
+                    const spiralX = Math.cos(angle) * blob.radius;
+                    const spiralY = Math.sin(angle) * blob.radius;
+
+                    blob.mesh.position.set(
+                        corePos.x + coreRight.x * spiralX + coreUp.x * spiralY,
+                        corePos.y + coreRight.y * spiralX + coreUp.y * spiralY,
+                        corePos.z + coreRight.z * spiralX + coreUp.z * spiralY
+                    );
+
+                    // 极其舒缓的自转与呼吸
+                    const pulse = blob.baseScale * (1.0 + energy * 0.22 + Math.sin(timeSec * 0.8 + bIdx) * 0.05);
+                    blob.mesh.scale.set(
+                        pulse * (1.0 + Math.sin(timeSec * 0.9 + bIdx) * 0.08),
+                        pulse * (1.0 + Math.cos(timeSec * 0.75 + bIdx) * 0.06),
+                        pulse * (1.0 + Math.sin(timeSec * 1.1 + bIdx) * 0.07)
+                    );
+                    blob.mesh.rotation.x += 0.0025;
+                    blob.mesh.rotation.y += 0.0035;
+
+                    // 更新 Shader Uniforms
+                    blob.material.uniforms.uTime.value = timeSec;
+                    blob.material.uniforms.uEnergy.value = energy;
+                });
+            }
+
+            // ==========================================
+            // 2. 空间悬浮 3D 几何（十字、线框正方、三角形、圆环）：旋转与呼吸
+            // ==========================================
+            if (floatingGlyphs.length) {
+                floatingGlyphs.forEach((g) => {
+                    g.group.rotation.x += g.rotSpeed.x;
+                    g.group.rotation.y += g.rotSpeed.y;
+                    g.group.rotation.z += g.rotSpeed.z;
+                    const scalePulse = g.baseScale * (1.0 + energy * 0.2 + Math.sin(timeSec * 2.0 + g.phase) * 0.05);
+                    g.group.scale.setScalar(scalePulse);
+                });
+            }
+
+            // ==========================================
+            // 3. 动态穿梭流光导轨（有流动能量光束的线条）：随时间前进
+            // ==========================================
+            if (ribbonMaterials.length) {
+                ribbonMaterials.forEach((mat) => {
+                    mat.uniforms.uTime.value = timeSec;
+                    mat.uniforms.uEnergy.value = energy;
+                });
+            }
+
+            // 4. 更新 2D 矢量 HUD 响应
+            updateVectorDecor(frame, energy);
 
             // ==========================================
             // 星尘粒子响应与空间穿行光效
@@ -695,6 +1237,23 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
             if (particleField) {
                 scene?.remove(particleField);
             }
+            if (liquidField) {
+                scene?.remove(liquidField);
+                liquidBlobs = [];
+            }
+            if (geometryField) {
+                scene?.remove(geometryField);
+                floatingGlyphs = [];
+            }
+            if (ribbonField) {
+                scene?.remove(ribbonField);
+                ribbonMaterials = [];
+            }
+            if (vectorDecor) {
+                vectorDecor.remove();
+                vectorDecor = null;
+            }
+            vectorDecorNodes = [];
             lineNodes.forEach(node => {
                 corridorGroup?.remove(node.group);
             });

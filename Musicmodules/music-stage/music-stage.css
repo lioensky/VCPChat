@@ -2218,6 +2218,77 @@ body.light-theme .music-stage {
     height: 100%;
     display: block;
 }
+
+.diorama-vector-decor {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    mix-blend-mode: screen;
+    opacity: 0.82;
+    filter: drop-shadow(0 0 8px color-mix(in srgb, var(--stage-accent) 55%, transparent));
+    transition: opacity 0.3s ease;
+}
+
+/* 2D 屏幕角标与刻度线 */
+.diorama-hud-bracket {
+    fill: none;
+    stroke: color-mix(in srgb, var(--stage-accent) 85%, #fff);
+    stroke-width: 2.2;
+    stroke-linecap: square;
+    opacity: 0.85;
+}
+
+.diorama-hud-cross {
+    fill: none;
+    stroke: #ffffff;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    opacity: 0.75;
+}
+
+.diorama-hud-circle-dashed {
+    fill: none;
+    stroke: color-mix(in srgb, var(--stage-accent) 70%, #fff);
+    stroke-width: 1.4;
+    stroke-dasharray: 3 8;
+    opacity: 0.55;
+    animation: diorama-hud-spin 60s linear infinite;
+    transform-origin: 120px 200px;
+}
+
+.diorama-hud-circle-dashed:last-of-type {
+    transform-origin: 880px 800px;
+    animation-duration: 75s;
+    animation-direction: reverse;
+}
+
+.diorama-hud-circle-thin {
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.35);
+    stroke-width: 1.0;
+    opacity: 0.5;
+}
+
+.diorama-hud-gridline {
+    stroke: color-mix(in srgb, var(--stage-accent) 60%, transparent);
+    stroke-width: 1.2;
+    stroke-dasharray: 10 15;
+    opacity: 0.55;
+}
+
+@keyframes diorama-hud-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .music-stage-mode-diorama .diorama-vector-decor {
+        animation: none;
+    }
+}
 .diorama-fallback {
     position: absolute;
     inset: 0;
