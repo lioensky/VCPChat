@@ -379,4 +379,5 @@
         renderInviteButtons,
         clearInviteButtons,
     });
+    global.dispatchEvent(new CustomEvent('vcp-group-settings-slots-ready'));
 })(window);

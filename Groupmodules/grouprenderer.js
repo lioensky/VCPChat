@@ -32,6 +32,35 @@ window.GroupRenderer = (() => {
     const groupSectionControllers = new Map();
     let groupSettingsGeneration = 0;
     let groupSettingsReady = false;
+    let groupSlotsLoadPromise = null;
+
+    function ensureGroupSlotsBridge() {
+        if (window.VCPGroupSettingsSlots) return Promise.resolve(true);
+        if (groupSlotsLoadPromise) return groupSlotsLoadPromise;
+
+        // main.html 同步加载插槽脚本。这里仅容忍正在完成的脚本执行，
+        // 不由业务 Renderer 动态创建 DOM 或注入第二份脚本。
+        groupSlotsLoadPromise = new Promise(resolve => {
+            let settled = false;
+            const finish = () => {
+                if (settled) return;
+                settled = true;
+                window.removeEventListener('vcp-group-settings-slots-ready', onReady);
+                clearTimeout(timeoutId);
+                resolve(Boolean(window.VCPGroupSettingsSlots));
+            };
+            const onReady = () => finish();
+            const timeoutId = setTimeout(finish, 1000);
+            window.addEventListener('vcp-group-settings-slots-ready', onReady, { once: true });
+            queueMicrotask(() => {
+                if (window.VCPGroupSettingsSlots) finish();
+            });
+        }).finally(() => {
+            if (!window.VCPGroupSettingsSlots) groupSlotsLoadPromise = null;
+        });
+
+        return groupSlotsLoadPromise;
+    }
 
     function setCurrentItemActionButtonText(button, text) {
         if (!button) return;
@@ -88,8 +117,12 @@ window.GroupRenderer = (() => {
 
     function ensureGroupSettingsDOM() {
         const settingsTab = document.getElementById('tabContentSettings');
-        if (!settingsTab || !window.VCPGroupSettingsSlots) {
-            console.error("[GroupRenderer] Could not find tabContentSettings to append group settings DOM.");
+        if (!settingsTab) {
+            console.error("[GroupRenderer] tabContentSettings is not currently attached.");
+            return false;
+        }
+        if (!window.VCPGroupSettingsSlots) {
+            console.warn("[GroupRenderer] Group settings slots are not ready.");
             return false;
         }
         groupSettingsContainer = window.VCPGroupSettingsSlots.ensureSettingsSurface({ document, settingsTab });
@@ -153,6 +186,24 @@ window.GroupRenderer = (() => {
         groupPromptTextarea = getGroupControl('groupPrompt');
         invitePromptTextarea = getGroupControl('invitePrompt');
         deleteGroupBtn = getGroupControl('deleteGroupBtn'); // This is the button inside the group settings form
+
+        const requiredControls = [
+            groupSettingsForm,
+            groupNameInput,
+            groupAvatarInput,
+            groupAvatarPreview,
+            groupMembersListDiv,
+            groupChatModeSelect,
+            groupUseUnifiedModel,
+            groupUnifiedModelContainer,
+            groupUnifiedModelInput,
+            groupPromptTextarea,
+            invitePromptTextarea
+        ];
+        if (requiredControls.some(control => !control)) {
+            console.error('[GroupRenderer] Group settings surface is incomplete.');
+            return false;
+        }
         return true;
     }
 
@@ -410,7 +461,22 @@ window.GroupRenderer = (() => {
         groupSettingsReady = false;
 
         const settingsSurface = window.VCPSettingsSidebar;
-        const viewToken = settingsSurface?.show?.('group', { id: groupId });
+        let viewToken = settingsSurface?.show?.('group', { id: groupId });
+
+        if (!window.VCPGroupSettingsSlots && !await ensureGroupSlotsBridge()) {
+            console.error('[GroupRenderer] Failed to load the group settings slots bridge.');
+            uiHelper?.showToastNotification?.('群组设置组件加载失败，请重新打开设置页面。', 'error');
+            return;
+        }
+        if (generation !== groupSettingsGeneration) return;
+
+        // Surface 可能在初始化阶段处于物理卸载状态；打开页面时必须重新挂载并解析。
+        viewToken = settingsSurface?.show?.('group', { id: groupId }) || viewToken;
+        if (!ensureGroupSettingsDOM()) {
+            console.error('[GroupRenderer] Group settings DOM is unavailable after surface activation.');
+            uiHelper?.showToastNotification?.('群组设置页面尚未准备完成，请重试。', 'error');
+            return;
+        }
 
         // Use the module-level specific references that were set during init
         // const localSelectPrompt = selectAgentPromptForSettingsElementFromRenderer; // No longer needed if mainRendererElements is used directly
@@ -420,8 +486,9 @@ window.GroupRenderer = (() => {
         console.log('[GroupRenderer] agentSettingsContainerFromRenderer at start of displayGroupSettingsPage:', agentSettingsContainerFromRenderer);
 
 
-        if (!getGroupSettingsElements()) { // This function primarily gets elements specific to group settings form
+        if (!getGroupSettingsElements()) {
             console.error('[GroupRenderer] getGroupSettingsElements() failed in displayGroupSettingsPage.');
+            uiHelper?.showToastNotification?.('群组设置表单不完整，请重新打开设置页面。', 'error');
             return;
         }
 
@@ -1272,17 +1339,33 @@ window.GroupRenderer = (() => {
     }
 
     function clearInviteAgentButtons() {
-        const container = inviteAgentButtonsContainerRef ? inviteAgentButtonsContainerRef.get() : null;
-        window.VCPGroupSettingsSlots.clearInviteButtons(container);
+        const container = inviteAgentButtonsContainerRef?.get?.() || null;
+        const clearInviteButtons = window.VCPGroupSettingsSlots?.clearInviteButtons;
+        if (typeof clearInviteButtons === 'function') {
+            clearInviteButtons(container);
+            return;
+        }
+        // 邀请按钮属于聊天通知栏，不应因设置表面插槽尚未安装而阻断开局。
+        container?.replaceChildren?.();
+        if (container) container.hidden = true;
     }
 
     async function displayInviteAgentButtons(groupId, topicId, membersConfigs, groupConfig) {
-        const container = inviteAgentButtonsContainerRef ? inviteAgentButtonsContainerRef.get() : null;
+        const container = inviteAgentButtonsContainerRef?.get?.() || null;
         if (!container) {
-            console.error("[GroupRenderer] Invite agent buttons container not found.");
+            console.warn("[GroupRenderer] Invite agent buttons container is not attached yet.");
             return;
         }
-        window.VCPGroupSettingsSlots.renderInviteButtons({
+        if (!window.VCPGroupSettingsSlots && !await ensureGroupSlotsBridge()) {
+            clearInviteAgentButtons();
+            return;
+        }
+        const renderInviteButtons = window.VCPGroupSettingsSlots?.renderInviteButtons;
+        if (typeof renderInviteButtons !== 'function') {
+            clearInviteAgentButtons();
+            return;
+        }
+        renderInviteButtons({
             container,
             membersConfigs,
             groupConfig,

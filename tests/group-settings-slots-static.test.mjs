@@ -11,6 +11,26 @@ test('GroupRenderer delegates settings and list DOM to group slots', () => {
     assert.doesNotMatch(renderer, /GroupSettingsMarkup|groupSettingsMarkup/);
 });
 
+test('GroupRenderer invite-button cleanup tolerates an unavailable slots bridge during startup', () => {
+    const renderer = read('Groupmodules/grouprenderer.js');
+    assert.match(
+        renderer,
+        /window\.VCPGroupSettingsSlots\?\.clearInviteButtons/
+    );
+    assert.match(
+        renderer,
+        /container\?\.replaceChildren\?\.\(\)/
+    );
+    assert.match(
+        renderer,
+        /container\.hidden = true/
+    );
+    assert.match(
+        renderer,
+        /window\.VCPGroupSettingsSlots\?\.renderInviteButtons/
+    );
+});
+
 test('main loads the system group slots and removes the legacy markup bridge', () => {
     const main = read('main.html');
     assert.match(main, /modules\/ui-system\/settings\/group-slots\.js/);
