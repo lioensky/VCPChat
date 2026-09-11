@@ -162,6 +162,8 @@
         };
     };
 
+    // Retained as a public utility for compatibility. The per-frame multi-band
+    // resolver below uses one traversal instead of invoking this five times.
     const averageRange = (spectrum, startRatio, endRatio) => {
         if (!spectrum?.length) return 0;
         const start = Math.max(0, Math.floor(spectrum.length * startRatio));
@@ -173,11 +175,33 @@
 
     const resolveAudioBands = (spectrum) => {
         const values = spectrum || [];
-        const bass = averageRange(values, 0.01, 0.10);
-        const lowMid = averageRange(values, 0.10, 0.24);
-        const mid = averageRange(values, 0.24, 0.46);
-        const vocal = averageRange(values, 0.18, 0.58);
-        const treble = averageRange(values, 0.58, 0.98);
+        if (!values.length) {
+            return { power: 0, bass: 0, lowMid: 0, mid: 0, vocal: 0, treble: 0, spectrum: values };
+        }
+
+        const length = values.length;
+        const ranges = [
+            [Math.max(0, Math.floor(length * 0.01)), Math.min(length, Math.max(1, Math.ceil(length * 0.10)))],
+            [Math.max(0, Math.floor(length * 0.10)), Math.min(length, Math.max(Math.floor(length * 0.10) + 1, Math.ceil(length * 0.24)))],
+            [Math.max(0, Math.floor(length * 0.24)), Math.min(length, Math.max(Math.floor(length * 0.24) + 1, Math.ceil(length * 0.46)))],
+            [Math.max(0, Math.floor(length * 0.18)), Math.min(length, Math.max(Math.floor(length * 0.18) + 1, Math.ceil(length * 0.58)))],
+            [Math.max(0, Math.floor(length * 0.58)), Math.min(length, Math.max(Math.floor(length * 0.58) + 1, Math.ceil(length * 0.98)))]
+        ];
+        const totals = [0, 0, 0, 0, 0];
+
+        // One spectrum traversal; additions within every band retain the original
+        // ascending-index order, preserving the previous audio response values.
+        for (let index = 0; index < length; index += 1) {
+            const value = Number(values[index]) || 0;
+            for (let band = 0; band < ranges.length; band += 1) {
+                if (index >= ranges[band][0] && index < ranges[band][1]) totals[band] += value;
+            }
+        }
+
+        const averages = totals.map((total, index) => clamp(
+            total / Math.max(1, ranges[index][1] - ranges[index][0])
+        ));
+        const [bass, lowMid, mid, vocal, treble] = averages;
         const power = clamp(bass * 0.25 + lowMid * 0.2 + mid * 0.2 + vocal * 0.25 + treble * 0.1);
         return { power, bass, lowMid, mid, vocal, treble, spectrum: values };
     };

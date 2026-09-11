@@ -135,7 +135,6 @@
         let vectorDecorNodes = [];
         let particleField = null;
         let particlePositions = null;
-        let animationFrame = 0;
         let destroyed = false;
         let suspended = false;
         let initialized = false;
@@ -172,6 +171,44 @@
         const remember = (set, res) => {
             if (res) set.add(res);
             return res;
+        };
+
+        // 歌词行拥有自己的 geometry/material；纹理由跨行缓存共享，
+        // 因此行离开活动窗口时只释放前两者，绝不误释放仍在使用的纹理。
+        const disposeLineNode = (node) => {
+            if (!node) return;
+            corridorGroup?.remove(node.group);
+            const geometries = new Set();
+            const materials = new Set();
+            node.group?.traverse?.(object => {
+                if (object.geometry) geometries.add(object.geometry);
+                const material = object.material;
+                if (Array.isArray(material)) material.forEach(entry => materials.add(entry));
+                else if (material) materials.add(material);
+            });
+            geometries.forEach(geometry => {
+                geometry.dispose?.();
+                resources.geometries.delete(geometry);
+            });
+            materials.forEach(material => {
+                material.dispose?.();
+                resources.materials.delete(material);
+            });
+        };
+
+        const clearLineNodes = () => {
+            lineNodes.forEach(disposeLineNode);
+            lineNodes.clear();
+        };
+
+        // Only call after clearLineNodes(): active line materials may share these
+        // textures, so all material references must be released before disposal.
+        const clearTextureCache = () => {
+            textureCache.forEach(record => {
+                record.texture?.dispose?.();
+                resources.textures.delete(record.texture);
+            });
+            textureCache.clear();
         };
 
         // 装饰重建时立即释放共享几何与材质，避免切歌后一直留到模式销毁。
@@ -939,15 +976,13 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
             const lines = frame.lines || [];
             if (!lines.length) return;
 
-            // 歌曲切换时重构 3D 长廊轨迹
+            // 歌曲切换时重构 3D 长廊轨迹。先释放引用纹理的材质，
+            // 再释放跨行纹理缓存，避免连续切歌累积上一曲的 CanvasTexture。
             if (trackId !== currentTrackPath || pathFrames.length !== lines.length) {
                 currentTrackPath = trackId;
                 pathFrames = buildDioramaPath(lines.length, trackId);
-                // 清理旧行与旧纹理
-                lineNodes.forEach(node => {
-                    corridorGroup.remove(node.group);
-                });
-                lineNodes.clear();
+                clearLineNodes();
+                clearTextureCache();
                 createCorridorParticles(pathFrames);
                 createLiquidBlobs(pathFrames);
                 createFloatingGeometry(pathFrames);
@@ -1068,10 +1103,10 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
             const minLine = Math.max(0, currentIdx - LINES_BEHIND);
             const maxLine = Math.min(lines.length - 1, currentIdx + LINES_AHEAD);
 
-            // 回收超出视野的歌词
+            // 回收超出视野的歌词及其独占 GPU 资源。
             lineNodes.forEach((node, idx) => {
                 if (idx < minLine || idx > maxLine) {
-                    corridorGroup.remove(node.group);
+                    disposeLineNode(node);
                     lineNodes.delete(idx);
                 }
             });
@@ -1087,7 +1122,7 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                 let node = lineNodes.get(i);
 
                 if (!node || node.key !== lineKey) {
-                    if (node) corridorGroup.remove(node.group);
+                    if (node) disposeLineNode(node);
                     const built = buildLineMesh(lineData, i, isCurrent);
                     if (built) {
                         node = { ...built, key: lineKey };
@@ -1294,12 +1329,6 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
             fallback.hidden = false;
         };
 
-        const frameLoop = () => {
-            if (destroyed) return;
-            if (!suspended && lastFrame) updateFrameVisuals(lastFrame);
-            animationFrame = global.requestAnimationFrame(frameLoop);
-        };
-
         mode.updateFrame = (frame) => {
             if (mode.destroyed) return;
             lastFrame = frame;
@@ -1321,34 +1350,22 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
         mode.updateTheme = () => {
             if (!THREE || !scene) return;
             const theme = services?.app?.stagePalette || {};
-            const palette = getThemePalette(services, THREE);
             scene.fog?.color.set(theme.background || '#171a1d');
-            // White glyph textures are theme-independent: update materials in place,
-            // preserving the camera, timing and cached raster resources.
-            lineNodes.forEach(node => {
-                node.units.forEach(unit => {
-                    unit.accentColor.copy(palette.colorPrimary);
-                    unit.restingColor.copy(palette.colorHighlight);
-                    unit.mat.color.copy(unit.restingColor);
-                    if (unit.glowMat) {
-                        unit.glowMat.color.copy(palette.colorPrimary);
-                        unit.glowMat.blending = theme.light ? THREE.NormalBlending : THREE.AdditiveBlending;
-                        unit.glowMat.needsUpdate = true;
-                    }
-                });
-                node.group.children.forEach(child => {
-                    if (child.isMesh && child.material) child.material.color.set(theme.muted || '#a7afb1');
-                });
-            });
+
+            // Rebuild the small active lyric window from the same absolute frame.
+            // This releases all cached CanvasTextures without resetting camera/timing,
+            // and guarantees every rebuilt material uses the new theme blending/color.
+            clearLineNodes();
+            clearTextureCache();
             createCorridorParticles(pathFrames);
             createLiquidBlobs(pathFrames);
             createFloatingGeometry(pathFrames);
             createFlowingRibbons(pathFrames);
+            if (lastFrame && !suspended) updateFrameVisuals(lastFrame);
         };
 
         mode.scope.add(() => {
             destroyed = true;
-            global.cancelAnimationFrame(animationFrame);
             if (particleField) {
                 scene?.remove(particleField);
             }
@@ -1369,12 +1386,8 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                 vectorDecor = null;
             }
             vectorDecorNodes = [];
-            lineNodes.forEach(node => {
-                corridorGroup?.remove(node.group);
-            });
-            lineNodes.clear();
-            textureCache.forEach(rec => rec.texture?.dispose?.());
-            textureCache.clear();
+            clearLineNodes();
+            clearTextureCache();
             resources.geometries.forEach(res => res.dispose?.());
             resources.materials.forEach(res => res.dispose?.());
             resources.textures.forEach(res => res.dispose?.());
@@ -1392,7 +1405,6 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
         });
 
         resize();
-        animationFrame = global.requestAnimationFrame(frameLoop);
         void initializeThree();
         return mode;
     };

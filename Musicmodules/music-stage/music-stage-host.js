@@ -70,6 +70,7 @@
             duration: root.querySelector('.music-stage-duration'),
             progressTrack: root.querySelector('.music-stage-progress-track'),
             progressFill: root.querySelector('.music-stage-progress-fill'),
+            progressGlow: root.querySelector('.music-stage-progress-glow'),
             playMode: root.querySelector('[data-stage-action="play-mode"]'),
             prev: root.querySelector('[data-stage-action="previous"]'),
             play: root.querySelector('[data-stage-action="toggle-play"]'),
@@ -226,6 +227,15 @@
             lastFrame: null,
             draggingProgress: false,
             lastTransportSignature: '',
+            lastProgressWidth: '',
+            lastCurrentTimeText: '',
+            lastDurationText: '',
+            lastProgressAriaValue: '',
+            lastProgressAriaText: '',
+            lastPlaybackState: null,
+            lastAudioPower: '',
+            lastAudioBass: '',
+            lastAudioVocal: '',
             lastNonZeroVolume: Math.max(0.35, Number(app.volumeSlider?.value) || 1),
             destroyed: false,
             config: Config.get(),
@@ -455,15 +465,39 @@
 
         const updateProgress = (frame) => {
             const percent = frame.duration > 0 ? clamp(frame.playbackTime / frame.duration) * 100 : 0;
-            elements.progressFill.style.width = `${percent.toFixed(3)}%`;
-            elements.progressTrack.querySelector('.music-stage-progress-glow').style.width = `${percent.toFixed(3)}%`;
-            elements.currentTime.textContent = app.formatTime?.(frame.playbackTime) || '0:00';
-            elements.duration.textContent = app.formatTime?.(frame.duration) || '0:00';
-            elements.progressTrack.setAttribute('aria-valuenow', String(Math.round(percent)));
-            elements.progressTrack.setAttribute('aria-valuetext', `${elements.currentTime.textContent} / ${elements.duration.textContent}`);
+            const width = `${percent.toFixed(3)}%`;
+            if (width !== state.lastProgressWidth) {
+                state.lastProgressWidth = width;
+                elements.progressFill.style.width = width;
+                if (elements.progressGlow) elements.progressGlow.style.width = width;
+            }
+
+            const currentTimeText = app.formatTime?.(frame.playbackTime) || '0:00';
+            if (currentTimeText !== state.lastCurrentTimeText) {
+                state.lastCurrentTimeText = currentTimeText;
+                elements.currentTime.textContent = currentTimeText;
+            }
+            const durationText = app.formatTime?.(frame.duration) || '0:00';
+            if (durationText !== state.lastDurationText) {
+                state.lastDurationText = durationText;
+                elements.duration.textContent = durationText;
+            }
+
+            const ariaValue = String(Math.round(percent));
+            if (ariaValue !== state.lastProgressAriaValue) {
+                state.lastProgressAriaValue = ariaValue;
+                elements.progressTrack.setAttribute('aria-valuenow', ariaValue);
+            }
+            const ariaText = `${currentTimeText} / ${durationText}`;
+            if (ariaText !== state.lastProgressAriaText) {
+                state.lastProgressAriaText = ariaText;
+                elements.progressTrack.setAttribute('aria-valuetext', ariaText);
+            }
         };
 
         const updatePlaybackState = (isPlaying) => {
+            if (isPlaying === state.lastPlaybackState) return;
+            state.lastPlaybackState = isPlaying;
             root.classList.toggle('is-playing', isPlaying);
             elements.play.classList.toggle('is-playing', isPlaying);
             elements.play.setAttribute('aria-label', isPlaying ? '暂停' : '播放');
@@ -664,9 +698,21 @@
             updateProgress(frame);
             updatePlaybackState(frame.isPlaying);
             updateTransportControls();
-            root.style.setProperty('--stage-audio-power', frame.audio.power.toFixed(4));
-            root.style.setProperty('--stage-audio-bass', frame.audio.bass.toFixed(4));
-            root.style.setProperty('--stage-audio-vocal', frame.audio.vocal.toFixed(4));
+            const audioPower = frame.audio.power.toFixed(4);
+            if (audioPower !== state.lastAudioPower) {
+                state.lastAudioPower = audioPower;
+                root.style.setProperty('--stage-audio-power', audioPower);
+            }
+            const audioBass = frame.audio.bass.toFixed(4);
+            if (audioBass !== state.lastAudioBass) {
+                state.lastAudioBass = audioBass;
+                root.style.setProperty('--stage-audio-bass', audioBass);
+            }
+            const audioVocal = frame.audio.vocal.toFixed(4);
+            if (audioVocal !== state.lastAudioVocal) {
+                state.lastAudioVocal = audioVocal;
+                root.style.setProperty('--stage-audio-vocal', audioVocal);
+            }
             drawEdgeSpectrum(frame);
             state.modeInstance?.updateFrame?.(frame);
         };
@@ -676,9 +722,13 @@
             const ratio = clamp((event.clientX - rect.left) / Math.max(rect.width, 1));
             const duration = state.lastFrame?.duration || app.lastKnownDuration || 0;
             const target = duration * ratio;
-            elements.progressFill.style.width = `${(ratio * 100).toFixed(3)}%`;
-            elements.progressTrack.querySelector('.music-stage-progress-glow').style.width = `${(ratio * 100).toFixed(3)}%`;
-            elements.currentTime.textContent = app.formatTime?.(target) || '0:00';
+            const width = `${(ratio * 100).toFixed(3)}%`;
+            state.lastProgressWidth = width;
+            elements.progressFill.style.width = width;
+            if (elements.progressGlow) elements.progressGlow.style.width = width;
+            const currentTimeText = app.formatTime?.(target) || '0:00';
+            state.lastCurrentTimeText = currentTimeText;
+            elements.currentTime.textContent = currentTimeText;
             app.lastKnownCurrentTime = target;
             app.lastStateUpdateTime = Date.now();
             if (commit && duration > 0) await app.api?.seekMusic?.(target);
