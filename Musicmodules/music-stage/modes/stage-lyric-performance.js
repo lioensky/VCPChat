@@ -177,6 +177,9 @@
         const empty = el('div', 'lyric-performance-empty', '等待音乐');
         subtitle.append(translation, upcoming);
         mode.root.append(viewport, subtitle, empty);
+        const decor = ['luminous', 'cadenza'].includes(id)
+            ? global.MusicStageLyricDecor?.create(mode.root, id) : null;
+        if (decor) mode.scope.add(() => decor.destroy());
         const reduced = global.matchMedia?.('(prefers-reduced-motion: reduce)');
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d');
@@ -269,6 +272,7 @@
             mode.root.style.setProperty('--performance-accent', accent
                 ? `rgb(${clamp(accent.r, 0, 255)},${clamp(accent.g, 0, 255)},${clamp(accent.b, 0, 255)})`
                 : 'var(--stage-accent)');
+            decor?.update(frame, tuning, motion);
             const env = { width, height, tuning, motion, family, measure, pretext, trackKey };
             if (force || changedSource || jumped) {
                 clear();

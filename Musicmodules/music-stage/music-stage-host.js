@@ -122,6 +122,11 @@
             { key: 'showTranslation', label: '翻译／罗马音', type: 'toggle' },
             { key: 'showUpcoming', label: '下一句预告', type: 'toggle' }
         ];
+        const vectorDecorControls = [
+            { key: 'vectorDecor', label: '矢量装饰', type: 'toggle' },
+            { key: 'decorOpacity', label: '装饰可见度', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+            { key: 'decorMotion', label: '装饰运动', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' }
+        ];
         const lyricLayoutStyle = { key: 'layoutStyle', label: '构图风格', type: 'select', options: [['calm', '平静'], ['normal', '原作标准'], ['chaotic', '奔放']] };
         const tuningDefinitions = Object.freeze({
             tempera: [
@@ -152,6 +157,7 @@
                 { key: 'glow', label: '辉光强度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' }
             ],
             luminous: [
+                ...vectorDecorControls,
                 { key: 'fontScale', label: '文字比例', type: 'range', min: 0.65, max: 1.5, step: 0.05, unit: 'x' },
                 { key: 'semanticLayout', label: '语义与标点组合', type: 'toggle' },
                 lyricLayoutStyle,
@@ -174,6 +180,7 @@
                 { key: 'power', label: '构图强度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' }
             ],
             cadenza: [
+                ...vectorDecorControls,
                 { key: 'heroEmphasis', label: '中心强调词', type: 'toggle' },
                 { key: 'breathing', label: '构图呼吸', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
                 ...lyricPerformanceControls,

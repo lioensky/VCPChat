@@ -124,3 +124,23 @@
     .lyric-performance-viewport { inset: 12% 4% 33%; }
     .lyric-performance-subtitle { left: 8%; right: 8%; bottom: 28%; }
 }
+
+/* Original vector accompaniment stays behind text and outside its central quiet zone. */
+.lyric-vector-decor {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+    color: var(--performance-accent, var(--stage-accent));
+}
+.lyric-vector-decor.decor-luminous {
+    filter: drop-shadow(0 0 4px currentColor);
+}
+.lyric-performance-mode > .lyric-performance-viewport,
+.lyric-performance-mode > .lyric-performance-subtitle,
+.lyric-performance-mode > .lyric-performance-empty {
+    z-index: 1;
+}

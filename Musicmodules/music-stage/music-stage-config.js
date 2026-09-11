@@ -63,6 +63,7 @@
                 glow: 1
             },
             luminous: {
+                vectorDecor: true, decorOpacity: 0.55, decorMotion: 1,
                 fontScale: 1, semanticLayout: true, layoutStyle: 'normal',
                 chorusRipple: true, sceneTransitions: true, showTranslation: true, showUpcoming: true,
                 wordRotation: true,
@@ -80,6 +81,7 @@
                 power: 1
             },
             cadenza: {
+                vectorDecor: true, decorOpacity: 0.5, decorMotion: 1,
                 heroEmphasis: true, breathing: 0.5,
                 chorusRipple: true, sceneTransitions: true, showTranslation: true, showUpcoming: true,
                 motion: 1,
@@ -110,6 +112,9 @@
         return {
             ...fallback,
             ...source,
+            vectorDecor: bool(source.vectorDecor, fallback.vectorDecor),
+            decorOpacity: clamp(source.decorOpacity, 0, 1, fallback.decorOpacity),
+            decorMotion: clamp(source.decorMotion, 0, 2, fallback.decorMotion),
             layoutStyle: enumValue(source.layoutStyle, ['calm', 'normal', 'chaotic'], fallback.layoutStyle),
             chorusRipple: bool(source.chorusRipple, fallback.chorusRipple),
             heroEmphasis: bool(source.heroEmphasis, fallback.heroEmphasis),
