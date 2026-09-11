@@ -2037,7 +2037,7 @@ body.light-theme .music-stage {
 .music-stage-mode-tempera > .tempera-translation {
     position: absolute;
     left: 50%;
-    bottom: max(16%, 110px);
+    bottom: max(calc(16% + 12px), 122px);
     z-index: 2;
     width: max-content;
     max-width: min(76%, 1000px);
@@ -2045,8 +2045,6 @@ body.light-theme .music-stage {
     margin: 0;
     padding: 0;
     transform: translateX(-50%);
-    color: var(--stage-ink);
-    text-shadow: none;
     overflow-wrap: anywhere;
     pointer-events: none;
 }
