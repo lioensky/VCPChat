@@ -688,7 +688,14 @@ void main() {
             const junction = amount(tuning.trackJunction, 0.45, 1);
             lines.forEach((line, index) => {
                 const random = seededRandom(`editorial-track:${seed}:${index}:${line.fullText}`);
-                const vertical = random() < verticalChance;
+                let vertical = random() < verticalChance;
+                // Probability shapes the normal rhythm, while a three-line
+                // guard guarantees that the editorial route eventually turns.
+                if (result.length >= 3) {
+                    const recent = result.slice(-3);
+                    const repeated = recent.every(point => point.vertical === recent[0].vertical);
+                    if (repeated) vertical = !recent[0].vertical;
+                }
                 const turn = index > 0 && vertical !== result[index - 1].vertical;
                 if (index > 0) {
                     const previous = result[index - 1];
