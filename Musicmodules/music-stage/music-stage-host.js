@@ -109,7 +109,7 @@
             { key: 'trackVerticalChance', label: '版轨纵排概率', type: 'range', min: 0.1, max: 0.9, step: 0.05, unit: '%' },
             { key: 'trackJunction', label: '版轨交错幅度', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
             { key: 'trackLookAhead', label: '镜头前路预瞄', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
-            { key: 'trackMinSegment', label: '空格错栏最短字数', type: 'range', min: 2, max: 8, step: 1, unit: '字' },
+            { key: 'trackMinSegment', label: '错栏断句最短字数', type: 'range', min: 2, max: 8, step: 1, unit: '字' },
             { key: 'phraseLength', label: '短语目标字数', type: 'range', min: 6, max: 24, step: 1, unit: '字' },
             { key: 'phraseEmphasis', label: '短语聚光', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
             { key: 'cameraTracking', label: '逐词追焦', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },

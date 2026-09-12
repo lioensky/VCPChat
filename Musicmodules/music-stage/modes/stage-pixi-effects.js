@@ -732,16 +732,36 @@ void main() {
             const segmentByGlyph = new Array(timed.length).fill(0);
             let segment = 0;
             let visibleBefore = 0;
+            const isDelimiter = (text) => !text.trim() || text === ',' || text === '，';
+            const countRemainingWords = (startIndex) => {
+                let remaining = 0;
+                for (let i = startIndex; i < timed.length; i += 1) {
+                    const t = timed[i].text;
+                    if (t.trim() && t !== ',' && t !== '，') remaining += 1;
+                }
+                return remaining;
+            };
+
             timed.forEach((glyph, glyphIndex) => {
+                const text = glyph.text;
+                const isComma = text === ',' || text === '，';
+                const isBlank = !text.trim();
+
+                // 逗号保留在当前分段句末，因此当前字符先分配所属分段
                 segmentByGlyph[glyphIndex] = segment;
-                if (glyph.text.trim()) {
+
+                if (!isComma && !isBlank) {
                     visibleBefore += 1;
                     return;
                 }
-                const visibleAfter = timed.slice(glyphIndex + 1).filter(item => item.text.trim()).length;
-                if (visibleBefore >= minimumSegment && visibleAfter >= minimumSegment) {
-                    segment += 1;
-                    visibleBefore = 0;
+
+                // 遇到空格或中英文逗号时，若前后字符数均达到保底字数，则在此处断句错栏
+                if (visibleBefore >= minimumSegment) {
+                    const visibleAfter = countRemainingWords(glyphIndex + 1);
+                    if (visibleAfter >= minimumSegment) {
+                        segment += 1;
+                        visibleBefore = 0;
+                    }
                 }
             });
             const segmentCount = segment + 1;
