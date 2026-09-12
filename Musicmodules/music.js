@@ -224,7 +224,60 @@ document.addEventListener('DOMContentLoaded', () => {
         lyricsFetchCandidates: [],
         selectedLyricsCandidateKey: null,
         lyricsFetchRequestToken: 0,
+        silentAudioUrl: null,
+        destroyed: false,
     };
+
+
+    app.destroy = () => {
+        if (app.destroyed) return;
+        app.destroyed = true;
+
+        app.stageHost?.destroy?.();
+        app.destroyVisualizer?.();
+        app.wnpAdapter?.destroy?.();
+        app.wnpAdapter = null;
+
+        app.stopStatePolling?.();
+        if (app.saveSettingsTimer) {
+            clearTimeout(app.saveSettingsTimer);
+            app.saveSettingsTimer = null;
+        }
+        if (app.backgroundTransitionTimer) {
+            clearTimeout(app.backgroundTransitionTimer);
+            app.backgroundTransitionTimer = null;
+        }
+        if (app._gaplessSwitchTimer) {
+            clearTimeout(app._gaplessSwitchTimer);
+            app._gaplessSwitchTimer = null;
+        }
+
+        if ('mediaSession' in navigator) {
+            ['play', 'pause', 'previoustrack', 'nexttrack'].forEach((action) => {
+                try { navigator.mediaSession.setActionHandler(action, null); } catch (error) {}
+            });
+            navigator.mediaSession.metadata = null;
+        }
+
+        if (app.phantomAudio) {
+            app.phantomAudio.onplay = null;
+            app.phantomAudio.onpause = null;
+            app.phantomAudio.pause();
+            app.phantomAudio.removeAttribute('src');
+            app.phantomAudio.load();
+        }
+        if (app.silentAudioUrl) {
+            URL.revokeObjectURL(app.silentAudioUrl);
+            app.silentAudioUrl = null;
+        }
+
+        app.currentLyrics = [];
+        app.lyricsFetchCandidates = [];
+        app.currentFilteredTracks = null;
+        app.filteredPlaylistSource = null;
+    };
+
+    window.addEventListener('beforeunload', app.destroy, { once: true });
 
 
     app.updateSidebarToggleState = (isSidebarCollapsed) => {

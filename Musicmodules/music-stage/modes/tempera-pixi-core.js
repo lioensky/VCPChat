@@ -171,8 +171,9 @@
             const PIXI = global.PIXI;
             if (!PIXI) throw new Error('PIXI is not loaded');
 
-            this.app = new PIXI.Application();
-            await this.app.init({
+            const application = new PIXI.Application();
+            this.app = application;
+            await application.init({
                 backgroundAlpha: 0,
                 preference: 'webgl',
                 autoStart: false,
@@ -181,9 +182,14 @@
                 autoDensity: true
             });
 
-            if (this.destroyed) {
-                this.app.destroy(true, { children: true });
-                this.app = null;
+            if (this.destroyed || this.app !== application) {
+                // destroy() may have already released this application while
+                // init was pending. PIXI destruction is not guaranteed to be
+                // safely repeatable, so only dispose it here while still owned.
+                if (this.app === application) {
+                    application.destroy(true, { children: true });
+                    this.app = null;
+                }
                 return;
             }
             this.app.stop();
@@ -390,6 +396,7 @@
         }
 
         destroy() {
+            if (this.destroyed && !this.app) return;
             this.destroyed = true;
             this.pendingShot = null;
             this.performance.reset();
@@ -397,12 +404,27 @@
             this.phrases = [];
             this.accents = null;
             this.retirement?.destroy();
+            this.retirement = null;
             this.postProcess?.destroy();
             this.postProcess = null;
-            if (this.app && this.initialized) {
-                this.app.destroy(true, { children: true });
+            // PIXI.Application may already own a renderer/canvas even when init()
+            // rejected before `initialized` became true. Always destroy the
+            // application object so failed or interrupted stage entries cannot
+            // retain a WebGL context.
+            if (this.app) {
+                try {
+                    this.app.destroy(true, { children: true });
+                } catch (error) {
+                    console.warn('[MusicStage:Tempera] PIXI cleanup failed:', error);
+                }
                 this.app = null;
             }
+            this.sceneContainer = null;
+            this.blocksContainer = null;
+            this.hatchContainer = null;
+            this.decorContainer = null;
+            this.textContainer = null;
+            this.container = null;
             this.initialized = false;
         }
     }

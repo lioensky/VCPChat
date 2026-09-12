@@ -98,17 +98,36 @@ function setupVisualizer(app) {
     };
 
     // --- WebSocket for Visualization ---
-    app.connectWebSocket = () => {
-        app.ws = new WebSocket("ws://127.0.0.1:63789/ws");
+    app.visualizerDestroyed = false;
+    app.visualizerReconnectTimer = null;
 
-        app.ws.onopen = () => {
+    app.connectWebSocket = () => {
+        if (app.visualizerDestroyed) return;
+        if (app.visualizerReconnectTimer) {
+            clearTimeout(app.visualizerReconnectTimer);
+            app.visualizerReconnectTimer = null;
+        }
+        if (app.ws && (
+            app.ws.readyState === WebSocket.OPEN
+            || app.ws.readyState === WebSocket.CONNECTING
+        )) return;
+
+        const socket = new WebSocket("ws://127.0.0.1:63789/ws");
+        app.ws = socket;
+
+        socket.onopen = () => {
+            if (app.visualizerDestroyed || app.ws !== socket) {
+                socket.close();
+                return;
+            }
             console.log('[Music.js] Connected to Rust Audio Engine via WebSocket.');
             if (!app.animationFrameId) {
                 app.startVisualizerAnimation();
             }
         };
 
-        app.ws.onmessage = (event) => {
+        socket.onmessage = (event) => {
+            if (app.visualizerDestroyed || app.ws !== socket) return;
             try {
                 const message = JSON.parse(event.data);
                 if (message.type === 'spectrum_data') {
@@ -160,14 +179,46 @@ function setupVisualizer(app) {
             }
         };
 
-        app.ws.onclose = () => {
-            setTimeout(app.connectWebSocket, 5000);
+        socket.onclose = () => {
+            if (app.ws === socket) app.ws = null;
+            if (app.visualizerDestroyed || app.visualizerReconnectTimer) return;
+            app.visualizerReconnectTimer = setTimeout(() => {
+                app.visualizerReconnectTimer = null;
+                app.connectWebSocket();
+            }, 5000);
         };
 
-        app.ws.onerror = (err) => {
-            console.error('[Music.js] WebSocket error:', err);
-            app.ws.close();
+        socket.onerror = (err) => {
+            if (!app.visualizerDestroyed) console.error('[Music.js] WebSocket error:', err);
+            socket.close();
         };
+    };
+
+    app.destroyVisualizer = () => {
+        if (app.visualizerDestroyed) return;
+        app.visualizerDestroyed = true;
+        if (app.visualizerReconnectTimer) {
+            clearTimeout(app.visualizerReconnectTimer);
+            app.visualizerReconnectTimer = null;
+        }
+        if (app.animationFrameId) {
+            cancelAnimationFrame(app.animationFrameId);
+            app.animationFrameId = null;
+        }
+        const socket = app.ws;
+        app.ws = null;
+        if (socket) {
+            socket.onopen = null;
+            socket.onmessage = null;
+            socket.onerror = null;
+            socket.onclose = null;
+            try { socket.close(); } catch (error) {}
+        }
+        app.targetVisualizerData.length = 0;
+        app.currentVisualizerData.length = 0;
+        app.particles.length = 0;
+        app.visualizerCanvas.width = app.visualizerCanvas.height = 1;
+        if (app.vocalCanvas) app.vocalCanvas.width = app.vocalCanvas.height = 1;
     };
 
     app.drawVisualizer = (data) => {
@@ -222,7 +273,12 @@ function setupVisualizer(app) {
     };
 
     app.startVisualizerAnimation = () => {
+        if (app.visualizerDestroyed || app.animationFrameId) return;
         const draw = (timestamp) => {
+            if (app.visualizerDestroyed) {
+                app.animationFrameId = null;
+                return;
+            }
             const isStageActive = Boolean(app.isStageActive && app.stageHost?.active);
 
             if (app.isPlaying && !isStageActive) {

@@ -34,8 +34,9 @@
             const PIXI = global.PIXI;
             if (!PIXI) throw new Error('PIXI is not loaded');
 
-            this.app = new PIXI.Application();
-            await this.app.init({
+            const application = new PIXI.Application();
+            this.app = application;
+            await application.init({
                 backgroundAlpha: 0,
                 preference: 'webgl',
                 autoStart: false,
@@ -44,9 +45,14 @@
                 autoDensity: true
             });
 
-            if (this.destroyed) {
-                this.app.destroy(true, { children: true });
-                this.app = null;
+            if (this.destroyed || this.app !== application) {
+                // The mode may be destroyed while initialization is awaiting
+                // GPU setup. Avoid dereferencing or destroying an application
+                // which the synchronous teardown path has already released.
+                if (this.app === application) {
+                    application.destroy(true, { children: true });
+                    this.app = null;
+                }
                 return;
             }
             this.app.stop();
@@ -267,6 +273,7 @@
         }
 
         destroy() {
+            if (this.destroyed && !this.app) return;
             this.destroyed = true;
             this.pendingShot = null;
             this.performance.reset();
@@ -276,12 +283,26 @@
             this.accents = null;
             this.motif = this.scan = this.giantText = null;
             this.retirement?.destroy();
+            this.retirement = null;
             this.postProcess?.destroy();
             this.postProcess = null;
-            if (this.app && this.initialized) {
-                this.app.destroy(true, { children: true });
+            // A rejected or interrupted init can allocate the renderer before
+            // `initialized` is set. Destroy any existing application regardless
+            // of that flag to release its WebGL context and canvas references.
+            if (this.app) {
+                try {
+                    this.app.destroy(true, { children: true });
+                } catch (error) {
+                    console.warn('[MusicStage:Sonnet] PIXI cleanup failed:', error);
+                }
                 this.app = null;
             }
+            this.sceneContainer = null;
+            this.frameDecorContainer = null;
+            this.hudContainer = null;
+            this.geoContainer = null;
+            this.textContainer = null;
+            this.container = null;
             this.initialized = false;
         }
     }
