@@ -838,7 +838,72 @@ void main() {
             marker.position.set(left, top - Math.max(14, fontSize * 0.28));
             entryDecor.addChild(marker);
 
-            return { root: entryRoot, nodes, line, lineIndex, point, entryDecor, entryText };
+            const accentLayer = new PIXI.Container();
+            entryRoot.addChild(accentLayer);
+            const accent = {
+                layer: accentLayer,
+                pen: null,
+                segments: [],
+                particles: [],
+                left,
+                top,
+                width: boxWidth,
+                height: boxHeight
+            };
+            if (lineIndex === activeIndex && mode === 'tempera') {
+                const corners = [
+                    [left - 12, top - 9],
+                    [left + boxWidth + 12, top - 9],
+                    [left + boxWidth + 12, top + boxHeight + 9],
+                    [left - 12, top + boxHeight + 9],
+                    [left - 12, top - 9]
+                ];
+                accent.corners = corners;
+                accent.pen = new PIXI.Graphics().rect(-3, -3, 6, 6).fill({ color, alpha: 0.95 });
+                accentLayer.addChild(accent.pen);
+                for (let side = 0; side < 4; side += 1) {
+                    const a = corners[side];
+                    const b = corners[side + 1];
+                    for (let step = 0; step < 12; step += 1) {
+                        const p = step / 12;
+                        const q = (step + 0.82) / 12;
+                        const part = new PIXI.Graphics();
+                        part.moveTo(a[0] + (b[0] - a[0]) * p, a[1] + (b[1] - a[1]) * p)
+                            .lineTo(a[0] + (b[0] - a[0]) * q, a[1] + (b[1] - a[1]) * q)
+                            .stroke({ color, width: step === 0 ? 2.6 : 1.25, alpha: 0.8 });
+                        accentLayer.addChild(part);
+                        accent.segments.push(part);
+                    }
+                }
+            } else if (lineIndex === activeIndex && mode === 'sonnet') {
+                const targets = nodes.filter(node => node.visible)
+                    .filter((node, index, list) => index % Math.max(1, Math.floor(list.length / 3)) === 0)
+                    .slice(0, 3);
+                const random = seededRandom(`track-accent:${lineIndex}:${line.fullText}`);
+                targets.forEach((target, targetIndex) => {
+                    for (let arm = 0; arm < 4; arm += 1) {
+                        const trail = [];
+                        for (let dotIndex = 0; dotIndex < 14; dotIndex += 1) {
+                            const dot = new PIXI.Graphics().circle(0, 0, dotIndex ? 1.5 : 3)
+                                .fill({ color, alpha: 1 });
+                            accentLayer.addChild(dot);
+                            trail.push(dot);
+                        }
+                        accent.particles.push({
+                            target,
+                            targetIndex,
+                            arm,
+                            trail,
+                            angle: random() * Math.PI * 2 + arm * Math.PI * 0.5,
+                            direction: arm % 2 ? -1 : 1,
+                            reach: fontSize * (2.8 + random() * 1.7)
+                        });
+                    }
+                });
+            }
+            accentLayer.visible = false;
+
+            return { root: entryRoot, nodes, line, lineIndex, point, entryDecor, entryText, accent };
         };
 
         const rebuild = (frame, tuning, nextColor, seed) => {
@@ -931,6 +996,59 @@ void main() {
                         node.alpha = time < d.startTime ? amount(tuning.waitingOpacity, 0.25, 1) : 1;
                         node.tint = active && tuning.textInversion !== false ? nextColor : ink;
                     });
+
+                    const cueSeed = `${mode}:${seed}`;
+                    const accentEnabled = entry.lineIndex === activeIndex
+                        && tuning.accentEffects !== false
+                        && tuning.showDecor !== false
+                        && glyphStrength > 0
+                        && accentCues(frame.lines, cueSeed).has(activeIndex);
+                    const accent = entry.accent;
+                    accent.layer.visible = accentEnabled;
+                    if (accentEnabled && mode === 'tempera' && accent.pen) {
+                        const age = time - entry.line.startTime + 0.12;
+                        const route = clamp(age / 1.2) * 4;
+                        const side = Math.min(3, Math.floor(route));
+                        const local = route - side;
+                        const a = accent.corners[side];
+                        const b = accent.corners[side + 1];
+                        accent.pen.position.set(
+                            a[0] + (b[0] - a[0]) * local,
+                            a[1] + (b[1] - a[1]) * local
+                        );
+                        accent.pen.rotation = Math.PI / 4;
+                        accent.pen.alpha = ease(age / 0.1) * (1 - ease((age - 1.25) / 0.35));
+                        const draw = clamp(age / 1.2) * accent.segments.length;
+                        accent.segments.forEach((segmentNode, segmentIndex) => {
+                            const head = draw - segmentIndex;
+                            const tail = ease((age - 1.55 - segmentIndex * 0.008) / 0.65);
+                            segmentNode.alpha = head < 0 ? 0
+                                : (0.28 + Math.exp(-head * 0.7) * 0.72) * (1 - tail);
+                        });
+                    } else if (accentEnabled && mode === 'sonnet') {
+                        accent.particles.forEach(particle => {
+                            const d = particle.target.dataset;
+                            const arrivalTime = d.startTime + Math.min(0.12, (d.endTime - d.startTime) * 0.3);
+                            const duration = Math.min(1.45, Math.max(0.35, arrivalTime - entry.line.startTime));
+                            const travel = (time - arrivalTime + duration) / duration;
+                            const armBudget = tuning.quality === 'ultimate' ? 4
+                                : tuning.quality === 'energy-saving' ? 2 : 3;
+                            particle.trail.forEach((dot, dotIndex) => {
+                                const u = travel - dotIndex * 0.018;
+                                dot.visible = particle.arm < armBudget && u >= 0 && u <= 1
+                                    && (tuning.quality !== 'energy-saving' || dotIndex < 8);
+                                if (!dot.visible) return;
+                                const turn = (1 - u) * Math.PI * 2.35;
+                                const radius = (1 - ease(u)) * particle.reach * Math.min(1.5, glyphStrength);
+                                dot.position.set(
+                                    d.baseX + Math.cos(particle.angle + turn * particle.direction) * radius,
+                                    d.baseY + Math.sin(particle.angle + turn * particle.direction) * radius * 0.84
+                                );
+                                dot.alpha = ease(u / 0.08) * (1 - dotIndex / particle.trail.length)
+                                    * (particle.arm ? 0.55 : 0.85);
+                            });
+                        });
+                    }
                 });
 
                 const point = layout[activeIndex];
@@ -968,7 +1086,15 @@ void main() {
                 layout = [];
             },
             snapshot() {
-                return { trackEntries: entries.length, trackGlyphs: glyphs.length, trackActive: activeIndex };
+                return {
+                    trackEntries: entries.length,
+                    trackGlyphs: glyphs.length,
+                    trackActive: activeIndex,
+                    trackAccentObjects: entries.reduce((total, entry) => total
+                        + entry.accent.segments.length
+                        + entry.accent.particles.reduce((sum, particle) => sum + particle.trail.length, 0), 0),
+                    trackAccentVisible: entries.some(entry => entry.accent.layer.visible)
+                };
             }
         };
     };
