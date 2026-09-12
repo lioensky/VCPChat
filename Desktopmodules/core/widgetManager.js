@@ -131,6 +131,7 @@
             _intervals: [],
             _timeouts: [],
             _windowListeners: [],
+            _pixiApps: [],
         };
 
         // 监听 Shadow DOM 内容变化，自动调整尺寸
@@ -258,6 +259,23 @@
         if (widgetData._windowListeners) {
             widgetData._windowListeners.forEach(l => window.removeEventListener(l.type, l.listener, l.options));
             widgetData._windowListeners = [];
+        }
+
+        // 释放 Pixi.js Application 实例与 WebGL 上下文，防止显存与 Ticker 泄露
+        if (widgetData._pixiApps && widgetData._pixiApps.length > 0) {
+            widgetData._pixiApps.forEach(app => {
+                try {
+                    if (app && !app._destroyed) {
+                        if (typeof app.stop === 'function') app.stop();
+                        if (typeof app.destroy === 'function') {
+                            app.destroy(true, { children: true, texture: true, textureSource: true });
+                        }
+                    }
+                } catch (e) {
+                    console.warn(`[Desktop] Failed to clean up Pixi app for widget ${widgetId}:`, e);
+                }
+            });
+            widgetData._pixiApps = [];
         }
 
         state.widgets.delete(widgetId);
@@ -455,6 +473,33 @@
                         };
                     };
 
+                    // Pixi.js v8 支持：暴露 PIXI 变量，并包装 Application 跟踪生命周期
+                    var _createPixiFacade = function() {
+                        var realPixi = _realWindow.PIXI;
+                        if (!realPixi) return realPixi;
+                        var RealApp = realPixi.Application;
+                        if (!RealApp) return realPixi;
+
+                        function SandboxedPixiApp() {
+                            var app = Reflect.construct(RealApp, arguments, new.target === SandboxedPixiApp ? RealApp : new.target);
+                            if (_widgetData) {
+                                _widgetData._pixiApps = _widgetData._pixiApps || [];
+                                _widgetData._pixiApps.push(app);
+                            }
+                            return app;
+                        }
+                        SandboxedPixiApp.prototype = RealApp.prototype;
+                        Object.setPrototypeOf(SandboxedPixiApp, RealApp);
+
+                        return new Proxy(realPixi, {
+                            get: function(target, prop, receiver) {
+                                if (prop === 'Application') return SandboxedPixiApp;
+                                return Reflect.get(target, prop, receiver);
+                            }
+                        });
+                    };
+                    var PIXI = _createPixiFacade();
+
                     var setInterval = function(fn, delay) {
                         var id = _realWindow.setInterval(_wrap(fn), delay);
                         if (_widgetData) _widgetData._intervals.push(id);
@@ -507,6 +552,7 @@
                             if (prop === 'clearInterval') return clearInterval;
                             if (prop === 'setTimeout') return setTimeout;
                             if (prop === 'clearTimeout') return clearTimeout;
+                            if (prop === 'PIXI') return PIXI;
                             
                             if (prop === 'requestAnimationFrame') {
                                 return function(callback) {
@@ -645,6 +691,14 @@
             if (oldScript.src) {
                 // 外部脚本：判断是否为本地/同源
                 const scriptUrl = oldScript.src;
+
+                // 若为已全局注入的核心库（如 Pixi、Three、Anime 等），直接跳过冗余加载
+                if (/(?:pixi(?:\.min)?\.js|pixi-unsafe-eval|three(?:\.min)?\.js|anime(?:\.min)?\.js)/i.test(scriptUrl) && _hasPreloadedCoreLibrary(scriptUrl)) {
+                    console.log(`[Desktop] Preloaded core library detected, skipping script tag: ${scriptUrl}`);
+                    oldScript.remove();
+                    return;
+                }
+
                 const isLocalOrSameOrigin = _isLocalScript(scriptUrl);
 
                 if (isLocalOrSameOrigin) {
@@ -719,6 +773,18 @@
             // URL 解析失败，保守地视为本地
             return true;
         }
+    }
+
+    /**
+     * 检查当前页面是否已全局预加载了指定库
+     * @param {string} url
+     * @returns {boolean}
+     */
+    function _hasPreloadedCoreLibrary(url) {
+        if (/pixi/i.test(url) && window.PIXI) return true;
+        if (/three/i.test(url) && window.THREE) return true;
+        if (/anime/i.test(url) && window.anime) return true;
+        return false;
     }
 
     // ============================================================

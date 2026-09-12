@@ -266,6 +266,18 @@
                 try { if (svg.pauseAnimations) svg.pauseAnimations(); } catch (e) { }
             });
         }
+
+        // Pixi.js 动画挂件：暂停 Application 与 Ticker 运行
+        if (widgetData._pixiApps && widgetData._pixiApps.length > 0) {
+            widgetData._pixiApps.forEach(app => {
+                try {
+                    if (app && !app._destroyed) {
+                        if (typeof app.stop === 'function') app.stop();
+                        else if (app.ticker && typeof app.ticker.stop === 'function') app.ticker.stop();
+                    }
+                } catch (e) { }
+            });
+        }
     }
 
     /**
@@ -313,6 +325,18 @@
             const svgs = widgetData.shadowRoot.querySelectorAll('svg');
             svgs.forEach(svg => {
                 try { if (svg.unpauseAnimations) svg.unpauseAnimations(); } catch (e) { }
+            });
+        }
+
+        // 恢复 Pixi.js 动画挂件运行
+        if (widgetData._pixiApps && widgetData._pixiApps.length > 0) {
+            widgetData._pixiApps.forEach(app => {
+                try {
+                    if (app && !app._destroyed) {
+                        if (typeof app.start === 'function') app.start();
+                        else if (app.ticker && typeof app.ticker.start === 'function') app.ticker.start();
+                    }
+                } catch (e) { }
             });
         }
     }

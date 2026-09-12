@@ -19,6 +19,7 @@ VCPdesktop 是 VChat 的桌面渲染层扩展。它在 Electron 实例中创建�
 | **流式挂件创建** | AI 在聊天中流式输出 HTML，实时逐 token 渲染到桌面 | ✅ |
 | **Shadow DOM 隔离** | 每个挂件运行在独立 Shadow DOM 中，CSS/JS 互不污染 | ✅ |
 | **脚本沙箱** | 挂件内 `<script>` 自动注入 Shadow DOM 代理，安全执行 | ✅ |
+| **Pixi.js v8 动画引擎** | 挂件内开箱即用 Pixi v8 与硬件加速，自动托管生命周期与显存释放 | ✅ |
 | **施工态动画** | 流式渲染过程中挂件显示呼吸光效，完成后自动切换为正常态 | ✅ |
 | **挂件拖拽** | 抓手带 + 边界限位，防止拖出可视区域 | ✅ |
 | **挂件自动尺寸** | 根据内容自动调整宽高，MutationObserver 实时监听变化 | ✅ |
@@ -227,6 +228,11 @@ AI 拿到源码后，可以配合 `FileOperator` 插件直接编辑收藏目录�
 document.querySelector(sel)     // 在挂件内部查找
 document.getElementById(id)     // 在挂件内部查找
 document.body                   // 指向挂件内容容器
+
+// PIXI — Pixi.js v8 动画引擎（开箱即用，生命周期自动托管）
+const app = new PIXI.Application();
+await app.init({ width: 300, height: 200, backgroundAlpha: 0 });
+document.body.appendChild(app.canvas);
 
 // vcpAPI — 后端数据访问（自动认证）
 vcpAPI.weather()                // 获取天气 JSON
