@@ -653,6 +653,319 @@ void main() {
         }
     };
 
+    // A bounded, deterministic typographic world. Lyrics are the route itself:
+    // complete horizontal/vertical lines join into an editorial path while only
+    // a small window around the active line owns display objects.
+    const createEditorialTrack = (PIXI, parent, mode) => {
+        const root = new PIXI.Container();
+        const decor = new PIXI.Container();
+        const text = new PIXI.Container();
+        root.addChild(decor, text);
+        parent.addChild(root);
+
+        let entries = [];
+        let source = null;
+        let signature = '';
+        let activeIndex = -1;
+        let width = 1;
+        let height = 1;
+        let color = 0xffffff;
+        let layout = [];
+        let glyphs = [];
+
+        const release = () => {
+            clear(decor);
+            clear(text);
+            entries = [];
+            glyphs = [];
+        };
+
+        const compileLayout = (lines, seed, nextWidth, nextHeight, tuning) => {
+            const result = [];
+            let x = nextWidth * 0.5;
+            let y = nextHeight * 0.48;
+            const verticalChance = amount(tuning.trackVerticalChance, 0.42, 0.9);
+            const junction = amount(tuning.trackJunction, 0.45, 1);
+            lines.forEach((line, index) => {
+                const random = seededRandom(`editorial-track:${seed}:${index}:${line.fullText}`);
+                const vertical = random() < verticalChance;
+                const turn = index > 0 && vertical !== result[index - 1].vertical;
+                if (index > 0) {
+                    const previous = result[index - 1];
+                    const sideStep = (random() - 0.5) * junction;
+                    if (vertical) {
+                        y += nextHeight * (0.39 + random() * 0.08);
+                        x += nextWidth * (turn ? 0.13 + sideStep * 0.09 : sideStep * 0.14);
+                    } else {
+                        x += nextWidth * (0.40 + random() * 0.08);
+                        y += nextHeight * (turn ? 0.12 + sideStep * 0.08 : sideStep * 0.13);
+                    }
+                }
+                result.push({
+                    x, y, vertical,
+                    rotation: (random() - 0.5) * 0.045 * junction,
+                    scale: 0.88 + random() * 0.16,
+                    labelSide: random() > 0.5 ? 1 : -1
+                });
+            });
+            return result;
+        };
+
+        const makeEntry = (line, lineIndex, point, tuning) => {
+            const entryRoot = new PIXI.Container();
+            const entryDecor = new PIXI.Container();
+            const entryText = new PIXI.Container();
+            entryRoot.addChild(entryDecor, entryText);
+            entryRoot.position.set(point.x, point.y);
+            entryRoot.rotation = point.rotation;
+            const timed = compilePhrases(line, tuning);
+            const visible = timed.filter(glyph => glyph.text.trim());
+            const count = Math.max(1, visible.length);
+            const minimumSegment = Math.round(amount(tuning.trackMinSegment, 3, 8)) || 3;
+            const segmentByGlyph = new Array(timed.length).fill(0);
+            let segment = 0;
+            let visibleBefore = 0;
+            timed.forEach((glyph, glyphIndex) => {
+                segmentByGlyph[glyphIndex] = segment;
+                if (glyph.text.trim()) {
+                    visibleBefore += 1;
+                    return;
+                }
+                const visibleAfter = timed.slice(glyphIndex + 1).filter(item => item.text.trim()).length;
+                if (visibleBefore >= minimumSegment && visibleAfter >= minimumSegment) {
+                    segment += 1;
+                    visibleBefore = 0;
+                }
+            });
+            const segmentCount = segment + 1;
+            const baseFontSize = Math.min(width * 0.065, height * 0.092, 66)
+                * amount(tuning.fontScale, 1, 1.5) * point.scale;
+            const maxSpan = point.vertical ? height * 0.76 : width * 0.66;
+            const minimumFontSize = Math.min(width, height) * 0.022;
+            // Never compress the advance below a glyph body. Long lines reduce
+            // their type size first; this keeps vertical CJK text from stacking.
+            const fontSize = Math.max(minimumFontSize, Math.min(baseFontSize, maxSpan / (count * 1.08)));
+            const advance = fontSize * 1.08;
+            const start = -(count - 1) * advance * 0.5;
+            const segmentOffset = fontSize * (0.62 + amount(tuning.trackJunction, 0.45, 1) * 0.7);
+            let visibleIndex = 0;
+            const nodes = timed.map((glyph, glyphIndex) => {
+                const node = new PIXI.Text({
+                    text: glyph.text,
+                    style: {
+                        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif',
+                        fontSize,
+                        fontWeight: mode === 'tempera' ? '900' : '750',
+                        fill: '#ffffff',
+                        stroke: { color: tuning.palette?.background || '#171a1d', width: Math.max(1, fontSize * 0.022) }
+                    }
+                });
+                node.anchor.set(0.5);
+                const blank = !glyph.text.trim();
+                const ordinal = visibleIndex;
+                if (!blank) visibleIndex += 1;
+                const axis = start + ordinal * advance;
+                const segmentIndex = segmentByGlyph[glyphIndex];
+                const centeredSegment = segmentIndex - (segmentCount - 1) * 0.5;
+                const crossAxis = centeredSegment * segmentOffset;
+                const baseX = point.vertical ? crossAxis : axis;
+                const baseY = point.vertical ? axis : crossAxis;
+                node.position.set(baseX, baseY);
+                node.visible = !blank;
+                node.dataset = {
+                    ...glyph,
+                    index: glyphIndex,
+                    baseX,
+                    baseY,
+                    worldX: point.x + baseX,
+                    worldY: point.y + baseY,
+                    fontSize,
+                    fit: 1,
+                    advance,
+                    segment: segmentIndex,
+                    angle: ((glyphIndex % 5) - 2) * 0.035
+                };
+                entryText.addChild(node);
+                return node;
+            });
+
+            const span = Math.max(fontSize * 1.5, (count - 1) * advance + fontSize * 1.35);
+            const breadth = fontSize * 1.62 + Math.max(0, segmentCount - 1) * segmentOffset;
+            const left = point.vertical ? -breadth * 0.5 : -span * 0.5;
+            const top = point.vertical ? -span * 0.5 : -breadth * 0.5;
+            const boxWidth = point.vertical ? breadth : span;
+            const boxHeight = point.vertical ? span : breadth;
+            const graphic = new PIXI.Graphics();
+            if (mode === 'tempera') {
+                graphic.roundRect(left - 12, top - 9, boxWidth + 24, boxHeight + 18, 4)
+                    .fill({ color, alpha: lineIndex % 2 ? 0.085 : 0.14 });
+                graphic.rect(
+                    point.vertical ? left - 17 : left,
+                    point.vertical ? top : top + boxHeight + 7,
+                    point.vertical ? 4 : boxWidth,
+                    point.vertical ? boxHeight : 4
+                ).fill({ color, alpha: 0.72 });
+            } else {
+                const corner = Math.min(18, breadth * 0.24);
+                graphic.moveTo(left + corner, top).lineTo(left, top).lineTo(left, top + corner);
+                graphic.moveTo(left + boxWidth - corner, top).lineTo(left + boxWidth, top).lineTo(left + boxWidth, top + corner);
+                graphic.moveTo(left, top + boxHeight - corner).lineTo(left, top + boxHeight).lineTo(left + corner, top + boxHeight);
+                graphic.moveTo(left + boxWidth - corner, top + boxHeight).lineTo(left + boxWidth, top + boxHeight)
+                    .lineTo(left + boxWidth, top + boxHeight - corner);
+                graphic.stroke({ color, width: 1.25, alpha: 0.52 });
+            }
+            entryDecor.addChild(graphic);
+
+            const marker = new PIXI.Text({
+                text: `${String(lineIndex + 1).padStart(2, '0')} / ${point.vertical ? 'VERTICAL' : 'HORIZONTAL'}`,
+                style: {
+                    fontFamily: '"Segoe UI", sans-serif',
+                    fontSize: Math.max(9, fontSize * 0.16),
+                    fontWeight: '600',
+                    letterSpacing: 2,
+                    fill: '#ffffff'
+                }
+            });
+            marker.tint = color;
+            marker.alpha = 0.64;
+            marker.position.set(left, top - Math.max(14, fontSize * 0.28));
+            entryDecor.addChild(marker);
+
+            return { root: entryRoot, nodes, line, lineIndex, point, entryDecor, entryText };
+        };
+
+        const rebuild = (frame, tuning, nextColor, seed) => {
+            release();
+            source = frame.lines;
+            activeIndex = frame.currentLineIndex;
+            color = nextColor;
+            layout = compileLayout(frame.lines, seed, width, height, tuning);
+            const before = tuning.quality === 'energy-saving' ? 1 : 2;
+            const after = tuning.quality === 'energy-saving' ? 2 : 4;
+            const first = Math.max(0, activeIndex - before);
+            const last = Math.min(frame.lines.length - 1, Math.max(activeIndex, 0) + after);
+            for (let index = first; index <= last; index += 1) {
+                const entry = makeEntry(frame.lines[index], index, layout[index], tuning);
+                text.addChild(entry.root);
+                entries.push(entry);
+                glyphs.push(...entry.nodes);
+            }
+
+            // Sparse junction marks suggest continuation without drawing a literal railway.
+            for (let index = Math.max(1, first); index <= last; index += 1) {
+                const a = layout[index - 1], b = layout[index];
+                const junction = new PIXI.Graphics();
+                const elbowX = b.vertical ? b.x : a.x;
+                const elbowY = b.vertical ? a.y : b.y;
+                junction.moveTo(a.x, a.y).lineTo(elbowX, elbowY).lineTo(b.x, b.y);
+                junction.stroke({ color, width: mode === 'tempera' ? 2 : 1, alpha: mode === 'tempera' ? 0.18 : 0.24 });
+                const tickSize = Math.min(width, height) * 0.012;
+                junction.moveTo(elbowX - tickSize, elbowY).lineTo(elbowX + tickSize, elbowY);
+                junction.moveTo(elbowX, elbowY - tickSize).lineTo(elbowX, elbowY + tickSize);
+                junction.stroke({ color, width: 1, alpha: 0.42 });
+                decor.addChild(junction);
+            }
+        };
+
+        return {
+            update(frame, tuning, nextColor, seed, nextWidth, nextHeight) {
+                width = nextWidth;
+                height = nextHeight;
+                const nextSignature = [
+                    seed, width, height, tuning.fontScale, tuning.trackVerticalChance,
+                    tuning.trackJunction, tuning.trackMinSegment, tuning.quality, nextColor
+                ].join(':');
+                if (source !== frame.lines || activeIndex !== frame.currentLineIndex || signature !== nextSignature) {
+                    signature = nextSignature;
+                    rebuild(frame, tuning, nextColor, seed);
+                }
+                if (activeIndex < 0 || !layout[activeIndex]) {
+                    root.visible = false;
+                    return { x: width / 2, y: height / 2, scale: 1, rotation: 0, glyphs };
+                }
+                root.visible = true;
+                const time = frame.playbackTime;
+                const motion = motionScale(tuning);
+                const glyphStrength = amount(tuning.typographyMotion ?? tuning.glyphMotion, 1) * motion;
+                const glyphStyle = tuning.glyphStyle || 'rise';
+                const ink = parseInt((tuning.palette?.ink || '#f2f0e9').slice(1), 16);
+                entries.forEach(entry => {
+                    const relative = entry.lineIndex - activeIndex;
+                    const lead = Math.max(0.8, Math.min(4.5, entry.line.startTime - (frame.activeLine?.startTime || time)));
+                    const paved = relative <= 0 ? 1 : ease(1 - (entry.line.startTime - time) / lead);
+                    const retired = relative < 0 ? Math.max(0.12, 0.42 - Math.abs(relative) * 0.11) : 1;
+                    entry.root.alpha = paved * retired;
+                    entry.root.scale.set(0.94 + paved * 0.06);
+                    entry.nodes.forEach(node => {
+                        const d = node.dataset;
+                        const p = clamp((time - d.startTime) / Math.max(0.04, d.endTime - d.startTime));
+                        const arrival = 1 - expo((time - d.startTime + 0.18) / 0.52);
+                        const active = time >= d.startTime && time < d.endTime;
+                        const direction = d.index % 2 ? 1 : -1;
+                        let offsetX = 0;
+                        let offsetY = 0;
+                        if (glyphStyle === 'scatter') {
+                            offsetX = direction * arrival * d.fontSize * 0.72;
+                            offsetY = -direction * arrival * d.fontSize * 0.48;
+                        } else {
+                            offsetX = entry.point.vertical ? arrival * d.fontSize * 0.7 : 0;
+                            offsetY = entry.point.vertical ? 0 : arrival * d.fontSize * 0.7;
+                        }
+                        node.position.set(
+                            d.baseX + offsetX * glyphStrength,
+                            d.baseY + offsetY * glyphStrength
+                        );
+                        node.rotation = glyphStyle === 'scatter'
+                            ? d.angle * arrival * glyphStrength
+                            : 0;
+                        const activePulse = active ? Math.sin(p * Math.PI) * 0.08 : 0;
+                        const entryScale = glyphStyle === 'impact' ? arrival * 0.48 : arrival * 0.16;
+                        node.scale.set(Math.max(0.28, 1 - entryScale * glyphStrength + activePulse * glyphStrength));
+                        node.alpha = time < d.startTime ? amount(tuning.waitingOpacity, 0.25, 1) : 1;
+                        node.tint = active && tuning.textInversion !== false ? nextColor : ink;
+                    });
+                });
+
+                const point = layout[activeIndex];
+                const hasNext = activeIndex + 1 < layout.length;
+                const next = hasNext ? layout[activeIndex + 1] : point;
+                const lookAhead = amount(tuning.trackLookAhead, 0.38, 1);
+                const lineProgress = ease(frame.lineProgress || 0);
+                const axisSpan = (point.vertical ? height : width) * 0.13;
+                const readingX = point.x + (point.vertical ? 0 : axisSpan * (lineProgress * 2 - 1));
+                const readingY = point.y + (point.vertical ? axisSpan * (lineProgress * 2 - 1) : 0);
+                const nextSpan = (next.vertical ? height : width) * 0.13;
+                const nextStartX = next.x + (next.vertical ? 0 : -nextSpan);
+                const nextStartY = next.y + (next.vertical ? -nextSpan : 0);
+                const junctionDuration = 0.18 + lookAhead * 0.42;
+                const junctionProgress = hasNext
+                    ? ease((lineProgress - (1 - junctionDuration)) / junctionDuration)
+                    : 0;
+                const focusX = readingX + (nextStartX - readingX) * junctionProgress;
+                const focusY = readingY + (nextStartY - readingY) * junctionProgress;
+                const tracking = amount(tuning.cameraTracking, 0.35, 1);
+                const breath = Math.sin(time * 0.43) * 0.012 * amount(tuning.cameraBreath, 0.5) * motion;
+                return {
+                    x: focusX,
+                    y: focusY,
+                    scale: 1.02 + tracking * 0.08 + breath,
+                    rotation: -point.rotation * amount(tuning.cameraRoll, 0.25, 1) * motion,
+                    glyphs
+                };
+            },
+            destroy() {
+                release();
+                root.removeFromParent();
+                root.destroy({ children: true });
+                source = null;
+                layout = [];
+            },
+            snapshot() {
+                return { trackEntries: entries.length, trackGlyphs: glyphs.length, trackActive: activeIndex };
+            }
+        };
+    };
+
     const createRetirement = (PIXI, stage) => {
         let layer = null, born = 0, lastFrame = null, lastTuning = null, outgoingLine = null;
         const release = () => {
@@ -713,7 +1026,7 @@ void main() {
     };
 
     global.MusicStagePixiEffects = Object.freeze({
-        createRetirement,
+        createRetirement, createEditorialTrack,
         createPerformance, buildPhraseStage, animatePhraseStage, createAccentChoreography,
         amount, ease, expo, clear, camera, shotKind, glyphTiming, buildLyrics, animateLyrics, motionScale, createPostProcess,
         applyQuality, transition, buildMotif, compilePhrases

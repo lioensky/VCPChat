@@ -151,6 +151,8 @@
             this.hatchContainer = null;
             this.decorContainer = null;
             this.textContainer = null;
+            this.trackContainer = null;
+            this.editorialTrack = null;
             this.words = [];
             this.width = 1;
             this.height = 1;
@@ -204,11 +206,14 @@
             this.hatchContainer = new PIXI.Container();
             this.decorContainer = new PIXI.Container();
             this.textContainer = new PIXI.Container();
+            this.trackContainer = new PIXI.Container();
 
             this.sceneContainer.addChild(this.blocksContainer);
             this.sceneContainer.addChild(this.hatchContainer);
             this.sceneContainer.addChild(this.decorContainer);
             this.sceneContainer.addChild(this.textContainer);
+            this.sceneContainer.addChild(this.trackContainer);
+            this.editorialTrack = Effects.createEditorialTrack(PIXI, this.trackContainer, 'tempera');
             this.app.stage.addChild(this.sceneContainer);
 
             this.postProcess = Effects.createPostProcess(PIXI, this.app.stage);
@@ -324,7 +329,9 @@
             this.phrases = Effects.buildPhraseStage(PIXI, this.textContainer, this.words, this.numPrimary);
             this.accents = Effects.createAccentChoreography(PIXI, this.textContainer, this.words,
                 this.phrases, this.numPrimary, 'tempera', seed);
-            this.sceneContainer.pivot.set(this.width / 2, this.height / 2);
+            if (tuning.lyricLayout !== 'editorial-track') {
+                this.sceneContainer.pivot.set(this.width / 2, this.height / 2);
+            }
         }
 
         update(frame, tuning = {}) {
@@ -336,11 +343,28 @@
             const progress = clamp(frame.lineProgress || 0);
             const motion = Effects.motionScale(tuning);
             const elapsed = Math.max(0, frame.playbackTime - (frame.activeLine?.startTime || 0));
-            const camera = Effects.camera(frame, tuning, this.cameraKind, this.width, this.height, this.words);
-            this.sceneContainer.position.set(camera.x, camera.y);
+            const trackMode = tuning.lyricLayout === 'editorial-track';
+            const trackSeed = frame.track?.path || frame.track?.title || 'tempera-track';
+            const trackCamera = trackMode
+                ? this.editorialTrack.update(frame, tuning, this.numPrimary || 0xffffff, trackSeed, this.width, this.height)
+                : null;
+            const camera = trackCamera || Effects.camera(frame, tuning, this.cameraKind, this.width, this.height, this.words);
+            this.textContainer.visible = !trackMode;
+            this.trackContainer.visible = trackMode;
+            if (trackMode) {
+                this.sceneContainer.pivot.set(camera.x, camera.y);
+                this.sceneContainer.position.set(this.width / 2, this.height / 2);
+            } else {
+                this.sceneContainer.pivot.set(this.width / 2, this.height / 2);
+                this.sceneContainer.position.set(camera.x, camera.y);
+            }
             this.sceneContainer.scale.set(camera.scale);
             this.sceneContainer.rotation = camera.rotation;
-            this.sceneContainer.alpha = Effects.transition(frame, tuning);
+            this.sceneContainer.alpha = trackMode ? 1 : Effects.transition(frame, tuning);
+            const fixedOffsetX = trackMode ? camera.x - this.width / 2 : 0;
+            const fixedOffsetY = trackMode ? camera.y - this.height / 2 : 0;
+            this.blocksContainer.position.set(fixedOffsetX, fixedOffsetY);
+            this.hatchContainer.position.set(fixedOffsetX, fixedOffsetY);
 
             // 2. 色块进场阻尼动画
             this.blocksContainer.children.forEach(b => {
@@ -373,11 +397,15 @@
                 h.alpha = ease * (0.45 + tuning.performance.impact * 0.25);
             });
 
-            this.decorContainer.position.set(Math.sin(frame.playbackTime * 0.4) * 25 * motion,
-                Math.cos(frame.playbackTime * 0.32) * 18 * motion);
-            Effects.animateLyrics(this.words, frame, tuning, this.numPrimary);
-            Effects.animatePhraseStage(this.phrases, frame, tuning, this.cameraKind);
-            this.accents?.update(frame, tuning);
+            this.decorContainer.position.set(
+                fixedOffsetX + Math.sin(frame.playbackTime * 0.4) * 25 * motion,
+                fixedOffsetY + Math.cos(frame.playbackTime * 0.32) * 18 * motion
+            );
+            if (!trackMode) {
+                Effects.animateLyrics(this.words, frame, tuning, this.numPrimary);
+                Effects.animatePhraseStage(this.phrases, frame, tuning, this.cameraKind);
+                this.accents?.update(frame, tuning);
+            }
 
             // 显隐开关
             this.blocksContainer.visible = tuning.showBlocks !== false;
@@ -392,6 +420,7 @@
             return { initialized: this.initialized, composition: this.activeKind, camera: this.cameraKind,
                 glyphs: this.words.length, phrases: this.phrases.length,
                 performance: this.performance.snapshot(), accents: this.accents?.snapshot(),
+                ...this.editorialTrack?.snapshot(),
                 resolution: this.app?.renderer?.resolution, ...this.retirement?.snapshot() };
         }
 
@@ -403,6 +432,8 @@
             this.words = [];
             this.phrases = [];
             this.accents = null;
+            this.editorialTrack?.destroy();
+            this.editorialTrack = null;
             this.retirement?.destroy();
             this.retirement = null;
             this.postProcess?.destroy();
@@ -424,6 +455,7 @@
             this.hatchContainer = null;
             this.decorContainer = null;
             this.textContainer = null;
+            this.trackContainer = null;
             this.container = null;
             this.initialized = false;
         }
