@@ -14,6 +14,7 @@
  */
 
 import { PIPELINE_MODES } from '../chat/contentModes.js';
+import { replaceMarkdownCodeDomains } from './markdownCodeDomainScanner.js';
 
 function noop(value) {
     return value;
@@ -344,11 +345,10 @@ function createContentPipeline(deps = {}) {
     }
 
     function protectCodeBlocks(text, ctx) {
-        const codeFenceRegex = typeof getCodeFenceRegex === 'function' ? getCodeFenceRegex() : null;
-        if (!codeFenceRegex || !/```/.test(text)) return text;
+        if (typeof text !== 'string' || (!text.includes('```') && !text.includes('~~~'))) return text;
 
         ctx.state.codeBlockMap = new Map();
-        return text.replace(codeFenceRegex, (match) => {
+        return replaceMarkdownCodeDomains(text, (match) => {
             const placeholder = `__VCP_CODE_BLOCK_PLACEHOLDER_${ctx.state.codeBlockPlaceholderId}__`;
             ctx.state.codeBlockMap.set(placeholder, match);
             ctx.state.codeBlockPlaceholderId += 1;
@@ -357,7 +357,12 @@ function createContentPipeline(deps = {}) {
     }
 
     function restoreCodeBlocks(text, ctx) {
-        return createMapPlaceholderReplacer(ctx.state.codeBlockMap)(text);
+        if (!ctx.state.codeBlockMap || ctx.state.codeBlockMap.size === 0) return text;
+        let result = text;
+        for (const [placeholder, original] of ctx.state.codeBlockMap.entries()) {
+            result = result.split(placeholder).join(original);
+        }
+        return result;
     }
 
     function transformDesktopPush(text, ctx) {
@@ -481,9 +486,11 @@ function createContentPipeline(deps = {}) {
         // 防止普通正文提及该语法时被提前转义或造成排版抖动。
         step(ctx, 'strip-persona-backfill-tail', (text) => stripPersonaBackfillTail(text));
         step(ctx, 'normalize-emoticon-urls', (text) => fixEmoticonUrlsInMarkdown(text));
+        step(ctx, 'protect-code-blocks', protectCodeBlocks);
         step(ctx, 'deindent-misinterpreted-code-blocks', (text) => deIndentMisinterpretedCodeBlocks(text));
         step(ctx, 'apply-common-content-processors', (text) => applyContentProcessors(text));
         step(ctx, 'normalize-adjacent-bold-boundaries', normalizeAdjacentBoldBoundaries);
+        step(ctx, 'restore-code-blocks', restoreCodeBlocks);
 
         return {
             text: ctx.text,

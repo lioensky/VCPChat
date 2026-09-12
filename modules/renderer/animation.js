@@ -293,11 +293,21 @@ function processScripts(containerElement, visibilityOptimizer) {
     if (visibilityOptimizer) visibilityOwnerByContent.set(containerElement, visibilityOptimizer);
     const messageItem = containerElement.closest('.message-item');
 
-    // Separate scripts by type
+    // Markdown fenced/inline code and HTML code preview wrappers are display-only domains.
+    // They must never be promoted back into executable scripts, even if malformed upstream HTML
+    // happens to produce a real <script> element inside <pre>/<code> or preview containers.
+    const isDisplayOnlyCodeScript = (scriptElement) => Boolean(
+        scriptElement?.closest?.('pre, code, .vcp-html-preview-container, .vcp-stream-code-block')
+    );
+
+    // Separate executable scripts from display-only code examples.
+    // A bare HTML animation island (for example, a top-level <div>) remains
+    // executable and can still be handled by the existing runtime.
     const allScripts = Array.from(containerElement.querySelectorAll('script'));
-    const threeScripts = allScripts.filter(s => s.src && s.src.includes('three'));
-    const otherExternalScripts = allScripts.filter(s => s.src && !s.src.includes('three'));
-    const inlineScripts = allScripts
+    const executableScripts = allScripts.filter(script => !isDisplayOnlyCodeScript(script));
+    const threeScripts = executableScripts.filter(s => s.src && s.src.includes('three'));
+    const otherExternalScripts = executableScripts.filter(s => s.src && !s.src.includes('three'));
+    const inlineScripts = executableScripts
         .filter(s => !s.src && s.textContent.trim())
         .map(s => ({
             textContent: s.textContent,
@@ -312,8 +322,9 @@ function processScripts(containerElement, visibilityOptimizer) {
             hasAttribute: (name) => s.hasAttribute(name),
         }));
 
-    // Clean up all script tags from the message body
-    allScripts.forEach(s => { if (s.parentNode) s.parentNode.removeChild(s); });
+    // Remove only executable script tags. Scripts inside a display-only code
+    // block are left untouched so the rendered example remains visible as code.
+    executableScripts.forEach(s => { if (s.parentNode) s.parentNode.removeChild(s); });
 
     const executeInline = () => {
         // 🛡️ 拦截 anime.js 的创建，以便自动注册

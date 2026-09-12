@@ -179,8 +179,9 @@ function processStartEndMarkers(text) {
  */
 function ensureNewlineAfterCodeBlock(text) {
     if (typeof text !== 'string') return text;
-    // Replace ``` (possibly with leading spaces) not followed by \n or \r\n with the same ``` (and spaces) followed by \n
-    return text.replace(/^(\s*```)(?![\r\n])/gm, '$1\n');
+    // 仅当代码围栏标记后在同一行紧随实际代码内容时，才将代码移至下一行（如 ```html <div>）
+    // 绝不能在 ``` 与语言标记之间（如 ```html）插入多余换行，避免围栏被切断
+    return text.replace(/^([ \t]{0,3}(?:`{3,}|~{3,})[^\S\r\n]*\w*)[^\S\r\n]+(\S.*)$/gm, '$1\n$2');
 }
 
 /**
@@ -1344,7 +1345,7 @@ function applyContentProcessors(text) {
     // Then apply simple regex replacements
     return processedText
         // ensureNewlineAfterCodeBlock
-        .replace(/^(\s*```)(?![\r\n])/gm, '$1\n')
+        .replace(/^([ \t]{0,3}(?:`{3,}|~{3,})[^\S\r\n]*\w*)[^\S\r\n]+(\S.*)$/gm, '$1\n$2')
         // ensureSpaceAfterTilde
         .replace(/(^|[^/\\=~])~(?![\s~=/])/g, '$1~ ')
         // removeSpeakerTags - Simplified regex to remove all occurrences at the start
