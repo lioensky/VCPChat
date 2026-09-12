@@ -1329,7 +1329,7 @@ function extractSpeakableTextFromContentElement(contentElement) {
     // 旧历史 DOM / 第三方渲染结果的兼容兜底；@tag 是路由提示而非正文，
     // 无论后处理高亮是否已经完成，都不应进入 TTS。
     contentClone.querySelectorAll(
-        '[data-vcp-block-type], .vcp-tool-use-bubble, .vcp-tool-result-bubble, .vcp-tool-call-summary-bubble, .vcp-flowlock-bubble, .maid-diary-bubble, .maid-diary-update-bubble, .vcp-role-divider, .vcp-thought-chain-bubble, .highlighted-tag, .highlighted-alert-tag, style, script'
+        '[data-vcp-block-type], .vcp-tool-use-bubble, .vcp-tool-result-bubble, .vcp-tool-call-summary-bubble, .vcp-flowlock-bubble, .maid-diary-bubble, .maid-diary-update-bubble, .vcp-role-divider, .vcp-thought-chain-bubble, .vcp-desktop-push-placeholder, .highlighted-tag, .highlighted-alert-tag, style, script'
     ).forEach(el => el.remove());
 
     let speakableText = contentClone.innerText || contentClone.textContent || '';
@@ -1341,12 +1341,14 @@ function extractSpeakableTextFromContentElement(contentElement) {
     speakableText = speakableText
         .replace(TOOL_RESULT_REGEX, '')
         .replace(TOOL_CALL_SUMMARY_REGEX, '')
-        .replace(ROLE_DIVIDER_REGEX, '');
+        .replace(ROLE_DIVIDER_REGEX, '')
+        .replace(DESKTOP_PUSH_REGEX, '');
 
     // 上述正则是带 global 状态的共享常量，显式复位，避免后续渲染调用受影响。
     TOOL_RESULT_REGEX.lastIndex = 0;
     TOOL_CALL_SUMMARY_REGEX.lastIndex = 0;
     ROLE_DIVIDER_REGEX.lastIndex = 0;
+    DESKTOP_PUSH_REGEX.lastIndex = 0;
 
     return speakableText
         // 提取可能早于异步 @tag 高亮完成，因此还需清理纯文本形式。
@@ -2025,7 +2027,7 @@ function parseStreamTailMarkdown(text) {
 
     const processedText = preprocessStreamTailContent(text);
 
-    // 工具请求、工具结果和思维链都属于流式隔离域。按源码中最早出现的入口决定
+    // 工具请求、工具结果、桌面推送和思维链都属于流式隔离域。按源码中最早出现的入口决定
     // 封印边界，禁止后续协议扫描或 Markdown 原始 HTML 解释进入其不可信载荷。
     const unclosedToolBlock = findEarliestUnclosedToolBlock(processedText);
     const unclosedThoughtChain = findUnclosedStreamThoughtChain(processedText);
@@ -2039,11 +2041,14 @@ function parseStreamTailMarkdown(text) {
             : '';
         const isThoughtChain = sealedBlock === unclosedThoughtChain;
         const sealedText = isThoughtChain ? sealedBlock.thought : sealedBlock.content;
-        const sealClass = isThoughtChain
-            ? 'vcp-stream-thought-chain-sealed'
-            : (sealedBlock.type === 'tool-result'
-                ? 'vcp-stream-tool-result-sealed'
-                : 'vcp-stream-tool-request-sealed');
+        let sealClass = 'vcp-stream-tool-request-sealed';
+        if (isThoughtChain) {
+            sealClass = 'vcp-stream-thought-chain-sealed';
+        } else if (sealedBlock.type === 'tool-result') {
+            sealClass = 'vcp-stream-tool-result-sealed';
+        } else if (sealedBlock.type === 'desktop-push') {
+            sealClass = 'vcp-stream-desktop-push-sealed';
+        }
         return `${prefixHtml}<pre class="${sealClass}"><code>${escapeHtml(sealedText)}</code></pre>`;
     }
 

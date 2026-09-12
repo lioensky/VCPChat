@@ -406,6 +406,37 @@ test('反引号包裹的工具请求示例不建立流式严格隔离边界', as
     assert.equal(findEarliestUnclosedToolBlock(source), null);
 });
 
+test('流式中间帧将未闭合桌面推送从协议入口严格隔离到流尾', async () => {
+    const {
+        DESKTOP_PUSH_START_MARKER,
+        findEarliestUnclosedToolBlock
+    } = await loadScanner();
+
+    const source = `推送前正文\n\n${DESKTOP_PUSH_START_MARKER}\n<div class="desktop-card">\n<style>body { background: black; }</style>\n<h1>Streaming Push</h1>`;
+
+    const block = findEarliestUnclosedToolBlock(source);
+
+    assert.equal(block?.type, 'desktop-push');
+    assert.equal(block?.prefix, '推送前正文\n\n');
+    assert.equal(block?.content.startsWith(DESKTOP_PUSH_START_MARKER), true);
+    assert.match(block?.content || '', /<style>/);
+    assert.match(block?.content || '', /<h1>Streaming Push<\/h1>/);
+});
+
+test('反引号包裹的桌面推送示例不建立流式严格隔离边界且闭合推送不被误判', async () => {
+    const {
+        DESKTOP_PUSH_START_MARKER,
+        DESKTOP_PUSH_END_MARKER,
+        findEarliestUnclosedToolBlock
+    } = await loadScanner();
+
+    const wrappedSource = `文档中提到：\`${DESKTOP_PUSH_START_MARKER}\` 示例`;
+    assert.equal(findEarliestUnclosedToolBlock(wrappedSource), null);
+
+    const closedSource = `${DESKTOP_PUSH_START_MARKER}<div>content</div>${DESKTOP_PUSH_END_MARKER}\n正文继续`;
+    assert.equal(findEarliestUnclosedToolBlock(closedSource), null);
+});
+
 test('消息渲染器必须把工具请求结束扫描器显式接入流式投影', () => {
     const rendererSource = fs.readFileSync(
         path.join(root, 'modules/messageRenderer.js'),
