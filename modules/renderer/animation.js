@@ -8,11 +8,18 @@ const CDN_TO_LOCAL_MAP = {
     'https://cdnjs.cloudflare.com/ajax/libs/animejs': 'vendor/anime.min.js',
     'https://cdn.jsdelivr.net/npm/animejs': 'vendor/anime.min.js',
     'https://unpkg.com/animejs': 'vendor/anime.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/pixi.js': 'vendor/pixi.min.js',
+    'https://cdn.jsdelivr.net/npm/pixi.js': 'vendor/pixi.min.js',
+    'https://unpkg.com/pixi.js': 'vendor/pixi.min.js',
 };
 
 // 🔥 全局跟踪已加载的脚本，防止跨消息重复加载
 if (!window._vcp_loaded_scripts) {
     window._vcp_loaded_scripts = new Set();
+}
+
+if (window.PIXI) {
+    window._vcp_loaded_scripts.add('vendor/pixi.min.js');
 }
 
 function replaceCdnUrls(scriptContent) {
@@ -42,9 +49,20 @@ function replaceCdnUrls(scriptContent) {
         processed = processed.replace(pattern, 'vendor/anime.min.js');
     });
     
+    const pixiJsPatterns = [
+        /https?:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/pixi\.js\/[^'"`);\s]*/gi,
+        /https?:\/\/cdn\.jsdelivr\.net\/npm\/pixi\.js(?:@[^\/'"`);\s]+)?\/[^'"`);\s]*/gi,
+        /https?:\/\/unpkg\.com\/pixi\.js(?:@[^\/'"`);\s]+)?\/[^'"`);\s]*/gi,
+    ];
+
+    pixiJsPatterns.forEach(pattern => {
+        processed = processed.replace(pattern, 'vendor/pixi.min.js');
+    });
+
     const genericCdnPatterns = [
         { pattern: /https?:\/\/[^'"`);\s]*(?:three\.js|three)[^'"`);\s]*\/[^'"`);\s]*\.js(?:\?[^'"`);\s]*)?/gi, replacement: 'vendor/three.min.js' },
         { pattern: /https?:\/\/[^'"`);\s]*(?:animejs|anime)[^'"`);\s]*\/[^'"`);\s]*\.js(?:\?[^'"`);\s]*)?/gi, replacement: 'vendor/anime.min.js' },
+        { pattern: /https?:\/\/[^'"`);\s]*(?:pixi\.js|pixijs|pixi)[^'"`);\s]*\/[^'"`);\s]*\.js(?:\?[^'"`);\s]*)?/gi, replacement: 'vendor/pixi.min.js' },
     ];
     
     genericCdnPatterns.forEach(({ pattern, replacement }) => {
@@ -150,6 +168,104 @@ function patchThreeJS() {
     window.THREE.WebGLRenderer.prototype = OriginalWebGLRenderer.prototype;
     isThreePatched = true;
     console.log('[Three.js Patch] THREE.WebGLRenderer patched with safety checks.');
+}
+
+function createMessagePixiFacade(messageItem, visibilityOptimizer) {
+    const originalPixi = window.PIXI;
+    if (!originalPixi?.Application || !messageItem || !visibilityOptimizer?.registerPixiContext) {
+        return originalPixi;
+    }
+
+    const OriginalApplication = originalPixi.Application;
+
+    function MessageOwnedApplication(...args) {
+        const app = Reflect.construct(OriginalApplication, args, new.target === MessageOwnedApplication
+            ? OriginalApplication
+            : new.target);
+        const originalInit = typeof app.init === 'function' ? app.init.bind(app) : null;
+        const originalStart = typeof app.start === 'function' ? app.start.bind(app) : null;
+        const originalStop = typeof app.stop === 'function' ? app.stop.bind(app) : null;
+        const originalDestroy = typeof app.destroy === 'function' ? app.destroy.bind(app) : null;
+
+        const context = {
+            app,
+            isReady: !originalInit,
+            isPaused: true,
+            isDestroyed: false,
+            pause() {
+                if (context.isDestroyed) return;
+                try { originalStop?.(); } catch (error) { /* partially initialized */ }
+                try { app.ticker?.stop?.(); } catch (error) { /* partially initialized */ }
+            },
+            resume() {
+                if (context.isDestroyed || !context.isReady) return;
+                try {
+                    if (originalStart) originalStart();
+                    else app.ticker?.start?.();
+                } catch (error) {
+                    console.warn('[Animation] Pixi resume failed:', error);
+                }
+            },
+            destroy() {
+                if (context.isDestroyed) return;
+                context.isDestroyed = true;
+                context.pause();
+                const canvas = app.canvas || app.view;
+                try {
+                    originalDestroy?.(
+                        { removeView: true },
+                        { children: true, texture: true, textureSource: true }
+                    );
+                } catch (error) {
+                    console.warn('[Animation] Pixi destroy failed:', error);
+                }
+                canvas?.remove?.();
+            }
+        };
+
+        // AI 的显式 start 也必须经过气泡热区与话题配额，不得绕过调度器。
+        app.start = () => {
+            visibilityOptimizer.registerPixiContext(messageItem, context);
+        };
+        app.stop = () => {
+            context.pause();
+            context.isPaused = true;
+        };
+        app.destroy = (...destroyArgs) => {
+            if (context.isDestroyed) return;
+            context.isDestroyed = true;
+            try {
+                originalStop?.();
+                app.ticker?.stop?.();
+                return originalDestroy?.(...destroyArgs);
+            } finally {
+                (app.canvas || app.view)?.remove?.();
+            }
+        };
+
+        if (originalInit) {
+            app.init = async (options = {}) => {
+                const result = await originalInit({ ...options, autoStart: false });
+                context.isReady = true;
+                visibilityOptimizer.registerPixiContext(messageItem, context);
+                return result;
+            };
+        }
+
+        // 构造即登记并冻结；Pixi v8 会在 init 完成后再次登记。
+        visibilityOptimizer.registerPixiContext(messageItem, context);
+        return app;
+    }
+
+    MessageOwnedApplication.prototype = OriginalApplication.prototype;
+    Object.setPrototypeOf(MessageOwnedApplication, OriginalApplication);
+
+    return new Proxy(originalPixi, {
+        get(target, prop, receiver) {
+            if (prop === 'Application') return MessageOwnedApplication;
+            return Reflect.get(target, prop, receiver);
+        }
+    });
 }
 
 function loadScript(src, onLoad, onError) {
@@ -266,6 +382,8 @@ function processScripts(containerElement, visibilityOptimizer) {
                     const tempDocId = `_vcp_doc_${Math.random().toString(36).slice(2, 11)}`;
                     const tempContainerId = `_vcp_container_${Math.random().toString(36).slice(2, 11)}`;
                     window[tempContainerId] = containerElement;
+                    const tempPixiId = `_vcp_pixi_${Math.random().toString(36).slice(2, 11)}`;
+                    window[tempPixiId] = createMessagePixiFacade(messageItem, visibilityOptimizer);
                     const virtualCurrentScript = {
                         tagName: 'SCRIPT',
                         nodeName: 'SCRIPT',
@@ -379,6 +497,7 @@ function processScripts(containerElement, visibilityOptimizer) {
                     // 简单的正则替换，处理常见的 window.* 调用方式
                     // 注意：这只是辅助手段，核心拦截靠 IIFE 作用域覆盖
                     scriptContent = scriptContent
+                        .replace(/window\.PIXI/g, `window['${tempPixiId}']`)
                         .replace(/window\.requestAnimationFrame/g, `window['${tempRafId}']`)
                         .replace(/window\.webkitRequestAnimationFrame/g, `window['${tempRafId}']`)
                         .replace(/window\.mozRequestAnimationFrame/g, `window['${tempRafId}']`)
@@ -390,6 +509,7 @@ function processScripts(containerElement, visibilityOptimizer) {
                     const wrappedScript = `
 (function() {
     const document = window['${tempDocId}'];
+    const PIXI = window['${tempPixiId}'];
     const requestAnimationFrame = window['${tempRafId}'];
     // 同时也覆盖 webkitRequestAnimationFrame 等变体以防万一
     const webkitRequestAnimationFrame = requestAnimationFrame;
@@ -420,6 +540,7 @@ function processScripts(containerElement, visibilityOptimizer) {
                         delete window[tempTimerId];
                         delete window[tempDocId];
                         delete window[tempContainerId];
+                        delete window[tempPixiId];
                     }, 0);
 
                 } catch (e) {
@@ -474,6 +595,9 @@ export function processAnimationsInContent(containerElement, visibilityOptimizer
 
 export function cleanupAnimationsInContent(contentDiv) {
     if (!contentDiv) return;
+    const visibilityOptimizer = visibilityOwnerByContent.get(contentDiv);
+    const messageItem = contentDiv.closest?.('.message-item');
+    visibilityOptimizer?.destroyPixiMessage?.(messageItem);
     visibilityOwnerByContent.delete(contentDiv);
 
     if (window.anime) {
