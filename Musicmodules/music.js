@@ -234,6 +234,7 @@ document.addEventListener('DOMContentLoaded', () => {
         app.destroyed = true;
 
         app.stageHost?.destroy?.();
+        app.destroyAmbientPixi?.();
         app.destroyVisualizer?.();
         app.wnpAdapter?.destroy?.();
         app.wnpAdapter = null;
@@ -348,6 +349,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const init = async () => {
         // Setup modules
         setupUtils(app);
+        if (typeof setupAmbientPixi === 'function') {
+            setupAmbientPixi(app);
+        }
         setupVisualizer(app);
         setupLyrics(app);
         setupPlayer(app);

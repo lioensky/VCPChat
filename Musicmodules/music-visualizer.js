@@ -321,6 +321,7 @@ function setupVisualizer(app) {
                 if (isStageActive) {
                     app.stageHost.updateFrame(timestamp);
                 } else {
+                    app.updateAmbientPixi?.(0.016);
                     app.visualizerCtx.clearRect(0, 0, app.visualizerCanvas.width, app.visualizerCanvas.height);
                 }
                 app.animationFrameId = requestAnimationFrame(draw);
@@ -342,6 +343,7 @@ function setupVisualizer(app) {
                 return;
             }
 
+            app.updateAmbientPixi?.(0.016);
             app.drawVisualizer(app.currentVisualizerData);
             app.drawVocalVisualizer();
 

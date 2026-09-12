@@ -754,6 +754,7 @@
             if (state.active || state.destroyed) return;
             state.active = true;
             app.isStageActive = true;
+            app.destroyAmbientPixi?.();
             document.body.classList.add('music-stage-active');
             root.hidden = false;
             root.setAttribute('aria-hidden', 'false');
@@ -784,6 +785,7 @@
                 root.hidden = true;
                 root.setAttribute('aria-hidden', 'true');
                 toggleButton.focus({ preventScroll: true });
+                app.createAmbientPixi?.();
             }, 380);
         };
 
