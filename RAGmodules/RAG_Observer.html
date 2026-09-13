@@ -2162,8 +2162,34 @@
         return result;
       }
 
-      function normalizeCompareText(text) {
-        return String(text ?? "").replace(/\r\n?/g, "\n").trim();
+      function stripTrailingCompareTags(text) {
+        const lines = String(text ?? "")
+          .replace(/\r\n?/g, "\n")
+          .split("\n");
+        let endIndex = lines.length;
+
+        while (endIndex > 0 && !lines[endIndex - 1].trim()) {
+          endIndex -= 1;
+        }
+
+        if (
+          endIndex > 0 &&
+          /^Tag\s*:/i.test(lines[endIndex - 1].trim())
+        ) {
+          endIndex -= 1;
+          while (endIndex > 0 && !lines[endIndex - 1].trim()) {
+            endIndex -= 1;
+          }
+        }
+
+        return lines.slice(0, endIndex).join("\n");
+      }
+
+      function normalizeCompareContent(result) {
+        return stripTrailingCompareTags(result?.text)
+          .toLocaleLowerCase()
+          .replace(/\s+/g, " ")
+          .trim();
       }
 
       function updateCompareBar() {
@@ -2260,12 +2286,12 @@
         const summary = document.getElementById("compareModalSummary");
         const setA = new Set(
           (selectedCardA.data.results || []).map((result) =>
-            normalizeCompareText(result?.text)
+            normalizeCompareContent(result)
           )
         );
         const setB = new Set(
           (selectedCardB.data.results || []).map((result) =>
-            normalizeCompareText(result?.text)
+            normalizeCompareContent(result)
           )
         );
         const columns = [
@@ -3499,9 +3525,7 @@
 
           let diffBadgeHTML = "";
           if (mode === "compare") {
-            const isCommon = otherItemsTextSet.has(
-              normalizeCompareText(r.text)
-            );
+            const isCommon = otherItemsTextSet.has(normalizeCompareContent(r));
             const diffClass = isCommon ? "diff-common" : `diff-unique-${slot.toLowerCase()}`;
             const diffLabel = isCommon ? "共同召回" : `仅 ${slot} 召回`;
             diffBadgeHTML = `<span class="diff-badge ${diffClass}">${diffLabel}</span>`;
