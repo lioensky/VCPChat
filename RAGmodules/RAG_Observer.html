@@ -277,16 +277,22 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 4px;
         height: 28px;
-        margin-left: 2px;
-        padding: 0 9px;
         box-sizing: border-box;
-        color: #8fd3ff;
-        border: 1px solid rgba(52, 152, 219, 0.4);
-        background: rgba(52, 152, 219, 0.08);
+        gap: 5px;
+        margin-left: 0;
+        padding: 4px 10px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 12px;
+        background: rgba(0, 0, 0, 0.3);
+        color: rgba(255, 255, 255, 0.72);
         font-size: 0.75rem;
-        line-height: 1;
+      }
+
+      .compare-entry-btn:hover {
+        color: #fff;
+        border-color: rgba(255, 255, 255, 0.14);
+        background: rgba(255, 255, 255, 0.1);
       }
 
       .compare-entry-btn.is-active {
@@ -296,8 +302,8 @@
       }
 
       .compare-entry-btn svg {
-        width: 12px;
-        height: 12px;
+        width: 14px;
+        height: 14px;
       }
 
       /* --- Scrollable Content --- */
@@ -1499,30 +1505,40 @@
 
       /* --- Gear Icon --- */
       .settings-trigger {
-        background: rgba(255, 255, 255, 0.08);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        color: rgba(255, 255, 255, 0.6);
         width: 28px;
         height: 28px;
-        border-radius: 8px;
+        box-sizing: border-box;
+        padding: 0;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 12px;
+        background: rgba(0, 0, 0, 0.3);
+        color: rgba(255, 255, 255, 0.6);
         display: flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
-        transition: all 0.2s;
-        margin-left: 8px;
+        transition: background 0.2s ease, border-color 0.2s ease,
+          color 0.2s ease;
+        margin-left: 0;
       }
 
       .settings-trigger:hover {
-        background: rgba(255, 255, 255, 0.15);
+        background: rgba(255, 255, 255, 0.1);
+        border-color: rgba(255, 255, 255, 0.14);
         color: #fff;
-        transform: rotate(30deg);
       }
 
       .status-container {
         display: flex;
         align-items: center;
+        gap: 6px;
         margin-bottom: 15px;
+      }
+
+      .status-container .status-pill {
+        height: 28px;
+        box-sizing: border-box;
+        margin-bottom: 0;
       }
 
       .scroll-top-btn {
