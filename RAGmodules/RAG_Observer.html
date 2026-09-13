@@ -273,6 +273,27 @@
         color: var(--primary-text);
       }
 
+      .compare-entry-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        margin-left: 4px;
+        color: #8fd3ff;
+        border: 1px solid rgba(52, 152, 219, 0.4);
+        background: rgba(52, 152, 219, 0.08);
+      }
+
+      .compare-entry-btn.is-active {
+        color: #fff;
+        background: rgba(52, 152, 219, 0.28);
+        border-color: rgba(52, 152, 219, 0.75);
+      }
+
+      .compare-entry-btn svg {
+        width: 14px;
+        height: 14px;
+      }
+
       /* --- Scrollable Content --- */
       #infoContainer {
         flex: 1;
@@ -340,6 +361,73 @@
       .card-raw-copy-btn svg {
         width: 14px;
         height: 14px;
+      }
+
+      .compare-card-actions {
+        position: absolute;
+        top: 10px;
+        right: 48px;
+        display: none;
+        align-items: center;
+        gap: 4px;
+        z-index: 2;
+      }
+
+      .compare-mode-active .compare-card-actions {
+        display: inline-flex;
+      }
+
+      .compare-card-slot-btn {
+        min-width: 48px;
+        height: 24px;
+        padding: 0 7px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 5px;
+        background: rgba(255, 255, 255, 0.06);
+        color: rgba(255, 255, 255, 0.72);
+        font: 600 0.68rem "JetBrains Mono", monospace;
+        cursor: pointer;
+        transition: background 0.2s ease, border-color 0.2s ease,
+          color 0.2s ease;
+      }
+
+      .compare-card-slot-btn:hover {
+        color: #fff;
+        background: rgba(255, 255, 255, 0.14);
+      }
+
+      .compare-card-slot-btn[data-slot="A"].is-selected {
+        color: #9edbff;
+        border-color: rgba(90, 178, 255, 0.9);
+        background: rgba(52, 152, 219, 0.28);
+      }
+
+      .compare-card-slot-btn[data-slot="B"].is-selected {
+        color: #ffd08a;
+        border-color: rgba(255, 159, 67, 0.9);
+        background: rgba(255, 159, 67, 0.24);
+      }
+
+      .card-base.card-selected-a {
+        border-color: rgba(90, 178, 255, 0.8);
+        box-shadow: 0 0 0 1px rgba(90, 178, 255, 0.22),
+          0 12px 36px rgba(52, 152, 219, 0.16);
+      }
+
+      .card-base.card-selected-b {
+        border-color: rgba(255, 159, 67, 0.82);
+        box-shadow: 0 0 0 1px rgba(255, 159, 67, 0.22),
+          0 12px 36px rgba(255, 159, 67, 0.14);
+      }
+
+      .card-base.card-selected-a::before {
+        background: #5ab2ff;
+        opacity: 1;
+      }
+
+      .card-base.card-selected-b::before {
+        background: #ff9f43;
+        opacity: 1;
       }
 
       .card-base:hover {
@@ -976,6 +1064,297 @@
         text-shadow: 0 0 8px rgba(255, 193, 7, 0.4);
       }
 
+      .compare-floating-bar {
+        position: fixed;
+        left: 50%;
+        bottom: 18px;
+        z-index: 2500;
+        display: none;
+        align-items: center;
+        gap: 8px;
+        max-width: calc(100vw - 32px);
+        padding: 8px 10px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 10px;
+        background: rgba(28, 30, 36, 0.96);
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.38);
+        transform: translateX(-50%);
+      }
+
+      .compare-floating-bar.active {
+        display: inline-flex;
+      }
+
+      .compare-toolbar-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        min-height: 30px;
+        padding: 0 10px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.06);
+        color: rgba(255, 255, 255, 0.8);
+        font-size: 0.75rem;
+        cursor: pointer;
+      }
+
+      .compare-toolbar-btn:hover:not(:disabled) {
+        color: #fff;
+        background: rgba(255, 255, 255, 0.14);
+      }
+
+      .compare-toolbar-btn.primary {
+        color: #fff;
+        border-color: rgba(90, 178, 255, 0.7);
+        background: rgba(52, 152, 219, 0.34);
+      }
+
+      .compare-toolbar-btn.danger {
+        color: #ff9d9d;
+      }
+
+      .compare-toolbar-btn:disabled {
+        cursor: not-allowed;
+        opacity: 0.4;
+      }
+
+      .compare-toolbar-status {
+        min-width: 230px;
+        color: rgba(255, 255, 255, 0.62);
+        font-size: 0.72rem;
+        text-align: center;
+      }
+
+      .compare-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 3500;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 6vh 3vw;
+        background: rgba(0, 0, 0, 0.72);
+        opacity: 0;
+        transition: opacity 0.2s ease;
+      }
+
+      .compare-modal.active {
+        display: flex;
+        opacity: 1;
+      }
+
+      .compare-panel {
+        display: flex;
+        flex-direction: column;
+        width: min(1400px, 94vw);
+        height: min(88vh, 900px);
+        min-height: 0;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 12px;
+        background: rgba(24, 26, 32, 0.98);
+        box-shadow: 0 18px 60px rgba(0, 0, 0, 0.52);
+      }
+
+      .compare-panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 18px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .compare-panel-title {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        min-width: 0;
+      }
+
+      .compare-panel-title h2 {
+        margin: 0;
+        color: #fff;
+        font-size: 1.05rem;
+      }
+
+      .compare-panel-title span {
+        color: rgba(255, 255, 255, 0.48);
+        font-size: 0.72rem;
+      }
+
+      .compare-close-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        padding: 0;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.06);
+        color: rgba(255, 255, 255, 0.72);
+        cursor: pointer;
+      }
+
+      .compare-close-btn:hover {
+        color: #fff;
+        background: rgba(255, 255, 255, 0.14);
+      }
+
+      .compare-columns {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      .compare-column {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: 0;
+      }
+
+      .compare-column + .compare-column {
+        border-left: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .compare-column-header {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 12px 16px;
+        background: rgba(255, 255, 255, 0.035);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .compare-column-header h3 {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0;
+        color: #9edbff;
+        font-size: 0.92rem;
+      }
+
+      .compare-column[data-slot="B"] .compare-column-header h3 {
+        color: #ffd08a;
+      }
+
+      .compare-column-list {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 12px;
+      }
+
+      .compare-column-list::-webkit-scrollbar {
+        width: 6px;
+      }
+
+      .compare-column-list::-webkit-scrollbar-thumb {
+        border-radius: 3px;
+        background: rgba(255, 255, 255, 0.16);
+      }
+
+      .compare-rendered-card.card-base {
+        min-height: 100%;
+        margin-bottom: 0;
+        padding: 20px;
+        opacity: 1;
+        transform: none;
+        will-change: auto;
+        contain: initial;
+      }
+
+      .compare-rendered-card.card-base:hover {
+        transform: none;
+      }
+
+      .compare-diff-badges {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .diff-badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 18px;
+        padding: 1px 6px;
+        border-radius: 4px;
+        font-size: 0.68rem;
+        font-weight: 700;
+      }
+
+      .diff-common {
+        color: #9ae6a5;
+        border: 1px solid rgba(105, 210, 138, 0.65);
+        background: rgba(105, 210, 138, 0.14);
+      }
+
+      .diff-unique-a {
+        color: #9edbff;
+        border: 1px solid rgba(90, 178, 255, 0.7);
+        background: rgba(52, 152, 219, 0.16);
+      }
+
+      .diff-unique-b {
+        color: #ffd08a;
+        border: 1px solid rgba(255, 159, 67, 0.72);
+        background: rgba(255, 159, 67, 0.16);
+      }
+
+      .compare-rendered-card .rag-sub-item {
+        position: relative;
+      }
+
+      .compare-empty {
+        padding: 28px 16px;
+        color: rgba(255, 255, 255, 0.38);
+        font-size: 0.78rem;
+        text-align: center;
+      }
+
+      @media (max-width: 760px) {
+        .compare-floating-bar {
+          flex-wrap: wrap;
+          justify-content: center;
+        }
+
+        .compare-toolbar-status {
+          width: 100%;
+          order: -1;
+          min-width: 0;
+        }
+
+        .compare-panel {
+          width: 96vw;
+          height: 92vh;
+        }
+
+        .compare-columns {
+          grid-template-columns: 1fr;
+          overflow-y: auto;
+        }
+
+        .compare-column {
+          min-height: 42vh;
+        }
+
+        .compare-column + .compare-column {
+          border-top: 1px solid rgba(255, 255, 255, 0.1);
+          border-left: 0;
+        }
+      }
+
       /* --- Settings Modal --- */
       .settings-modal {
         position: fixed;
@@ -1294,6 +1673,28 @@
               ></path>
             </svg>
           </button>
+          <button
+            id="compareEntryBtn"
+            class="filter-btn compare-entry-btn"
+            type="button"
+            onclick="toggleCompareMode()"
+            title="选择召回项进行双列对比"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <rect x="3" y="4" width="7" height="16" rx="1"></rect>
+              <rect x="14" y="4" width="7" height="16" rx="1"></rect>
+              <path d="M7 8h0"></path>
+              <path d="M17 8h0"></path>
+            </svg>
+            对比
+          </button>
         </div>
 
         <div class="filter-bar">
@@ -1379,6 +1780,83 @@
         >
           <p>等待数据接入...</p>
           <p style="font-size: 0.8em">System Ready</p>
+        </div>
+      </div>
+    </div>
+
+    <div id="compareFloatingBar" class="compare-floating-bar" aria-live="polite">
+      <div id="compareToolbarStatus" class="compare-toolbar-status">
+        A 轮：未选择 · B 轮：未选择
+      </div>
+      <button
+        class="compare-toolbar-btn"
+        type="button"
+        onclick="clearCompareSelection()"
+      >
+        清空
+      </button>
+      <button
+        id="openCompareModalButton"
+        class="compare-toolbar-btn primary"
+        type="button"
+        onclick="openCompareModal()"
+        disabled
+      >
+        开始对比 A vs B
+      </button>
+      <button
+        class="compare-toolbar-btn danger"
+        type="button"
+        onclick="toggleCompareMode(false)"
+      >
+        退出
+      </button>
+    </div>
+
+    <div
+      id="compareModal"
+      class="compare-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="compareModalTitle"
+      onclick="if (event.target === this) closeCompareModal()"
+    >
+      <div class="compare-panel">
+        <div class="compare-panel-header">
+          <div class="compare-panel-title">
+            <h2 id="compareModalTitle">召回对比视图 (A vs B)</h2>
+            <span id="compareModalSummary"></span>
+          </div>
+          <button
+            class="compare-close-btn"
+            type="button"
+            title="关闭对比视图"
+            aria-label="关闭对比视图"
+            onclick="closeCompareModal()"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            >
+              <path d="M18 6 6 18"></path>
+              <path d="m6 6 12 12"></path>
+            </svg>
+          </button>
+        </div>
+        <div class="compare-columns">
+          <section class="compare-column" data-slot="A">
+            <div id="compareColumnAHeader" class="compare-column-header"></div>
+            <div id="compareColumnAList" class="compare-column-list"></div>
+          </section>
+          <section class="compare-column" data-slot="B">
+            <div id="compareColumnBHeader" class="compare-column-header"></div>
+            <div id="compareColumnBList" class="compare-column-list"></div>
+          </section>
         </div>
       </div>
     </div>
@@ -1585,6 +2063,13 @@
       const _rawDataStore = new Map();
       let _rawDataIdCounter = 0;
 
+      // --- RAG Compare State ---
+      let isCompareMode = false;
+      let selectedCardA = null;
+      let selectedCardB = null;
+      let _compareCardIdCounter = 0;
+      const _compareCardStore = new Map();
+
       function copyRawData(dataId, btn) {
         const rawJson = _rawDataStore.get(dataId);
         if (rawJson) {
@@ -1676,6 +2161,206 @@
         }
         return result;
       }
+
+      function stripTrailingCompareTags(text) {
+        const lines = String(text ?? "")
+          .replace(/\r\n?/g, "\n")
+          .split("\n");
+        let endIndex = lines.length;
+
+        while (endIndex > 0 && !lines[endIndex - 1].trim()) {
+          endIndex -= 1;
+        }
+
+        if (
+          endIndex > 0 &&
+          /^Tag\s*:/i.test(lines[endIndex - 1].trim())
+        ) {
+          endIndex -= 1;
+          while (endIndex > 0 && !lines[endIndex - 1].trim()) {
+            endIndex -= 1;
+          }
+        }
+
+        return lines.slice(0, endIndex).join("\n");
+      }
+
+      function normalizeCompareContent(result) {
+        return stripTrailingCompareTags(result?.text)
+          .toLocaleLowerCase()
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+
+      function updateCompareBar() {
+        const floatingBar = document.getElementById("compareFloatingBar");
+        const entryButton = document.getElementById("compareEntryBtn");
+        const openButton = document.getElementById("openCompareModalButton");
+        const status = document.getElementById("compareToolbarStatus");
+        const hasBothSelections = !!selectedCardA && !!selectedCardB;
+
+        document.body.classList.toggle("compare-mode-active", isCompareMode);
+        floatingBar?.classList.toggle("active", isCompareMode);
+        entryButton?.classList.toggle("is-active", isCompareMode);
+        if (openButton) {
+          openButton.disabled = !hasBothSelections;
+        }
+        if (status) {
+          status.textContent = `A 轮：${
+            selectedCardA ? "已选择" : "未选择"
+          } · B 轮：${selectedCardB ? "已选择" : "未选择"}`;
+        }
+
+        document.querySelectorAll(".card-base.type-rag").forEach((card) => {
+          const cardId = card.getAttribute("data-compare-card-id");
+          card.classList.toggle(
+            "card-selected-a",
+            !!selectedCardA && selectedCardA.cardId === cardId
+          );
+          card.classList.toggle(
+            "card-selected-b",
+            !!selectedCardB && selectedCardB.cardId === cardId
+          );
+        });
+
+        document.querySelectorAll(".compare-card-actions").forEach((actions) => {
+          const cardId = actions.getAttribute("data-card-id");
+          const card = cardId ? _compareCardStore.get(cardId) : null;
+          if (!card) return;
+          ["A", "B"].forEach((slot) => {
+            const button = actions.querySelector(
+              `.compare-card-slot-btn[data-slot="${slot}"]`
+            );
+            if (!button) return;
+            const selected =
+              (slot === "A" ? selectedCardA : selectedCardB)?.cardId ===
+              card.cardId;
+            button.classList.toggle("is-selected", selected);
+            button.textContent = selected ? `已选 ${slot}` : `设为 ${slot}`;
+            button.setAttribute("aria-pressed", String(selected));
+          });
+        });
+      }
+
+      function toggleCompareMode(enable) {
+        isCompareMode =
+          typeof enable === "boolean" ? enable : !isCompareMode;
+        if (!isCompareMode) closeCompareModal();
+        updateCompareBar();
+      }
+
+      function setCardAsSlot(slot, cardId) {
+        if (slot !== "A" && slot !== "B") return;
+        const card = _compareCardStore.get(cardId);
+        if (!card) return;
+
+        if (slot === "A") {
+          if (selectedCardA?.cardId === cardId) {
+            selectedCardA = null;
+          } else {
+            selectedCardA = card;
+            if (selectedCardB?.cardId === cardId) selectedCardB = null;
+          }
+        } else {
+          if (selectedCardB?.cardId === cardId) {
+            selectedCardB = null;
+          } else {
+            selectedCardB = card;
+            if (selectedCardA?.cardId === cardId) selectedCardA = null;
+          }
+        }
+
+        if (!isCompareMode) isCompareMode = true;
+        updateCompareBar();
+      }
+
+      function clearCompareSelection() {
+        selectedCardA = null;
+        selectedCardB = null;
+        closeCompareModal();
+        updateCompareBar();
+      }
+
+      function renderCompareModal() {
+        if (!selectedCardA || !selectedCardB) return;
+        const summary = document.getElementById("compareModalSummary");
+        const setA = new Set(
+          (selectedCardA.data.results || []).map((result) =>
+            normalizeCompareContent(result)
+          )
+        );
+        const setB = new Set(
+          (selectedCardB.data.results || []).map((result) =>
+            normalizeCompareContent(result)
+          )
+        );
+        const columns = [
+          {
+            slot: "A",
+            card: selectedCardA,
+            otherItemsTextSet: setB,
+            header: document.getElementById("compareColumnAHeader"),
+            list: document.getElementById("compareColumnAList"),
+          },
+          {
+            slot: "B",
+            card: selectedCardB,
+            otherItemsTextSet: setA,
+            header: document.getElementById("compareColumnBHeader"),
+            list: document.getElementById("compareColumnBList"),
+          },
+        ];
+
+        if (summary) {
+          summary.textContent = `${selectedCardA.data.dbName || "Unknown"} vs ${
+            selectedCardB.data.dbName || "Unknown"
+          }`;
+        }
+
+        columns.forEach(({ slot, card, otherItemsTextSet, header, list }) => {
+          if (!header || !list) return;
+          const resultCount = Array.isArray(card.data.results)
+            ? card.data.results.length
+            : 0;
+          header.innerHTML = `
+            <h3>${slot} 轮检索 <span class="meta-pill">${resultCount} 条召回</span></h3>
+          `;
+          list.innerHTML = `
+            <div class="card-base type-rag compare-rendered-card settled">
+              ${buildRagCardHTML(card.data, {
+                mode: "compare",
+                slot,
+                otherItemsTextSet,
+              })}
+            </div>
+          `;
+        });
+      }
+
+      function openCompareModal() {
+        if (!selectedCardA || !selectedCardB) return;
+        const modal = document.getElementById("compareModal");
+        if (!modal) return;
+        renderCompareModal();
+        modal.classList.add("active");
+      }
+
+      function closeCompareModal() {
+        document.getElementById("compareModal")?.classList.remove("active");
+      }
+
+      function removeCompareCard(cardId) {
+        const card = _compareCardStore.get(cardId);
+        if (!card) return;
+        if (selectedCardA?.cardId === cardId) selectedCardA = null;
+        if (selectedCardB?.cardId === cardId) selectedCardB = null;
+        _compareCardStore.delete(cardId);
+        updateCompareBar();
+      }
+
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") closeCompareModal();
+      });
 
       // --- 消息节流队列 ---
       let _messageQueue = [];
@@ -2343,6 +3028,13 @@
       }
 
       function clearLogs() {
+        selectedCardA = null;
+        selectedCardB = null;
+        isCompareMode = false;
+        closeCompareModal();
+        _compareCardStore.clear();
+        updateCompareBar();
+
         const cards = infoContainer.querySelectorAll(".card-base");
         if (cards.length === 0) return;
 
@@ -2556,6 +3248,316 @@
         `;
       }
 
+      function buildRagCardHTML(data, options = {}) {
+        const mode = options.mode === "compare" ? "compare" : "normal";
+        const cardId = String(options.cardId || "");
+        const slot = options.slot === "B" ? "B" : "A";
+        const otherItemsTextSet =
+          options.otherItemsTextSet instanceof Set
+            ? options.otherItemsTextSet
+            : new Set();
+        const results = Array.isArray(data.results) ? data.results : [];
+
+        let coreTagsHTML = "";
+        if (Array.isArray(data.coreTags) && data.coreTags.length > 0) {
+          coreTagsHTML = `
+                          <div class="core-tags-container" title="显性意图核心标签">
+                              ${data.coreTags
+                                .map(
+                                  (tag) =>
+                                    `<span class="core-tag-pill">${escapeHTML(
+                                      String(tag)
+                                    )}</span>`
+                                )
+                                .join("")}
+                          </div>
+                      `;
+        }
+
+        let bm25DetailsHTML = "";
+        if (data.useBM25) {
+          const bm25ModeLabel =
+            data.bm25Mode === "tag"
+              ? "标签模式"
+              : data.bm25Mode === "text"
+              ? "全文模式"
+              : data.bm25Mode
+              ? String(data.bm25Mode)
+              : "未知模式";
+          const rawBM25Tokens = Array.isArray(data.bm25QueryTokens)
+            ? data.bm25QueryTokens
+                .map((token) => String(token).trim())
+                .filter(Boolean)
+            : [];
+          const seenBM25TokenKeys = new Set();
+          const bm25Tokens = [];
+          rawBM25Tokens.forEach((token) => {
+            const normalizedKey = token.toLowerCase();
+            if (!normalizedKey || seenBM25TokenKeys.has(normalizedKey)) return;
+            seenBM25TokenKeys.add(normalizedKey);
+            bm25Tokens.push(token);
+          });
+
+          const resultTextForBM25 = results
+            .map((result) => `${result?.text || ""} ${result?.source || ""}`)
+            .join("\n")
+            .toLowerCase();
+          const matchedBM25Tokens = [];
+          const matchedBM25TokenKeys = new Set();
+          const otherBM25Tokens = [];
+          bm25Tokens.forEach((token) => {
+            const normalizedToken = token.toLowerCase();
+            if (normalizedToken && resultTextForBM25.includes(normalizedToken)) {
+              matchedBM25Tokens.push(token);
+              matchedBM25TokenKeys.add(normalizedToken);
+            } else {
+              otherBM25Tokens.push(token);
+            }
+          });
+
+          const orderedBM25Tokens = [...matchedBM25Tokens, ...otherBM25Tokens];
+          const bm25PreviewLimit = Math.max(
+            8,
+            Math.min(16, matchedBM25Tokens.length || 8)
+          );
+          const shouldCollapseBM25Tokens =
+            orderedBM25Tokens.length > bm25PreviewLimit;
+          const bm25TokenHTML = orderedBM25Tokens
+            .map((token, index) => {
+              const isMatched = matchedBM25TokenKeys.has(token.toLowerCase());
+              const extraClass =
+                shouldCollapseBM25Tokens && index >= bm25PreviewLimit
+                  ? " bm25-token-extra"
+                  : "";
+              return `<span class="bm25-token-pill${
+                isMatched ? " is-matched" : ""
+              }${extraClass}">${escapeHTML(String(token))}</span>`;
+            })
+            .join("");
+          const bm25ExtraCount = Math.max(
+            0,
+            orderedBM25Tokens.length - bm25PreviewLimit
+          );
+          const bm25TokenToggleHTML = shouldCollapseBM25Tokens
+            ? `<button class="bm25-token-toggle" type="button" aria-expanded="false" data-extra-count="${bm25ExtraCount}" onclick="toggleBM25Tokens(this)">展开 ${bm25ExtraCount} 个</button>`
+            : "";
+          bm25DetailsHTML = `
+                          <div class="bm25-details-container" title="BM25 查询词与命中统计">
+                              <span class="bm25-token-pill" style="color:#fff; background:rgba(52,152,219,0.28); border-color:rgba(52,152,219,0.65);">BM25: ${escapeHTML(
+                                bm25ModeLabel
+                              )}</span>
+                              <span class="bm25-token-pill">Matched: ${escapeHTML(
+                                String(data.bm25MatchedCount ?? 0)
+                              )}</span>
+                              <span class="bm25-token-pill">Tokens: ${escapeHTML(
+                                rawBM25Tokens.length === orderedBM25Tokens.length
+                                  ? String(orderedBM25Tokens.length)
+                                  : `${orderedBM25Tokens.length}/${rawBM25Tokens.length}`
+                              )}</span>
+                              <span class="bm25-token-list${
+                                shouldCollapseBM25Tokens ? " is-collapsed" : ""
+                              }">${bm25TokenHTML}</span>
+                              ${bm25TokenToggleHTML}
+                          </div>
+                      `;
+        }
+
+        const riverMemoHTML = createRiverMemoHTML(data);
+        const rawDataId = "raw_" + ++_rawDataIdCounter;
+        _rawDataStore.set(rawDataId, JSON.stringify(data, null, 2));
+        const compareActionsHTML =
+          mode === "normal" && cardId
+            ? `
+                      <div class="compare-card-actions" data-card-id="${cardId}">
+                          <button class="compare-card-slot-btn" type="button" data-slot="A" aria-label="设为 A 轮" onclick="event.stopPropagation(); setCardAsSlot('A', '${cardId}')">设为 A</button>
+                          <button class="compare-card-slot-btn" type="button" data-slot="B" aria-label="设为 B 轮" onclick="event.stopPropagation(); setCardAsSlot('B', '${cardId}')">设为 B</button>
+                      </div>
+                  `
+            : "";
+
+        let headerHTML = `
+                      <button class="card-raw-copy-btn" title="复制原始JSON数据" onclick="copyRawData('${rawDataId}', this)">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
+                      </button>
+                      ${compareActionsHTML}
+                      <h3>
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                          ${escapeHTML(String(data.dbName || "Unknown"))}
+                      </h3>
+                      <div class="meta-info">
+                          <span class="meta-pill">K: ${escapeHTML(
+                            String(data.k ?? "N/A")
+                          )}</span>
+                          <span class="meta-pill">Time: ${escapeHTML(
+                            String(!!data.useTime)
+                          )}</span>
+                          <span class="meta-pill">Group: ${escapeHTML(
+                            String(!!data.useGroup)
+                          )}</span>
+                          <span class="meta-pill">VirtualIndex: ${escapeHTML(
+                            String(!!data.virtualIndex)
+                          )}</span>
+                          <span class="meta-pill">ReRank: ${escapeHTML(
+                            String(!!data.useRerank)
+                          )}</span>
+                          ${
+                            data.useRiverMemo
+                              ? `<span class="meta-pill" style="color:#8ff5dc; border-color:rgba(26,188,156,0.65);">RiverMemo: ON</span>`
+                              : ""
+                          }
+                          ${
+                            data.fromCache
+                              ? `<span class="meta-pill" style="color:#b8c7ff; border-color:rgba(155,89,182,0.6);">Cache Hit</span>`
+                              : ""
+                          }
+                          ${
+                            data.useBM25
+                              ? `<span class="meta-pill" style="color:#8fd3ff; border-color:#3498db;">BM25: ${escapeHTML(
+                                  String(data.bm25Mode || "on")
+                                )}</span>`
+                              : ""
+                          }
+                          ${
+                            data.useTagMemo
+                              ? `<span class="meta-pill" style="color:#ffc107; border-color:#ffc107;">TagBoost: ${escapeHTML(
+                                  String(data.tagWeight)
+                                )}</span>`
+                              : ""
+                          }
+                          ${
+                            data.useGeodesicRerank
+                              ? `<span class="meta-pill" style="color:#1abc9c; border-color:#1abc9c;">GeoReRank: true</span>`
+                              : ""
+                          }
+                          ${
+                            data.geoAlpha !== undefined &&
+                            data.geoAlpha !== null
+                              ? `<span class="meta-pill" style="color:#1abc9c; border-color:#1abc9c;">geoAlpha: ${escapeHTML(
+                                  String(data.geoAlpha)
+                                )}</span>`
+                              : ""
+                          }
+                      </div>
+                      ${riverMemoHTML}
+                      ${bm25DetailsHTML}
+                      ${coreTagsHTML}
+                      ${createContentHTML(data.query)}
+                  `;
+
+        let resultsHTML = "";
+        results.forEach((r) => {
+          const hasScore = typeof r.score === "number";
+          const scoreDisplay = hasScore ? r.score.toFixed(3) : "Time";
+          const scoreClass = hasScore
+            ? r.score >= 0.8
+              ? "score-high"
+              : r.score >= 0.5
+              ? "score-med"
+              : "score-low"
+            : "score-med";
+          const isBoosted =
+            data.useTagMemo &&
+            typeof r.originalScore === "number" &&
+            r.originalScore !== r.score;
+
+          let bm25ScoresHTML = "";
+          if (data.useBM25 || r.source === "bm25" || r.source === "bm25_tag") {
+            const bm25ScoreParts = [];
+            if (typeof r.bm25Score === "number") {
+              bm25ScoreParts.push(
+                `<span class="meta-pill">BM25: ${r.bm25Score.toFixed(4)}</span>`
+              );
+            }
+            if (typeof r.normalizedBM25Score === "number") {
+              bm25ScoreParts.push(
+                `<span class="meta-pill">Norm: ${r.normalizedBM25Score.toFixed(
+                  4
+                )}</span>`
+              );
+            }
+            if (bm25ScoreParts.length > 0) {
+              bm25ScoresHTML = `<div class="bm25-score-row" style="margin-bottom:6px;">${bm25ScoreParts.join(
+                ""
+              )}</div>`;
+            }
+          }
+
+          let tagsHTML = "";
+          const isTimeRecall =
+            r.source === "time" || !r.matchedTags || r.matchedTags.length === 0;
+          const globalUniqueTags = (
+            (data.tagStats && data.tagStats.uniqueMatchedTags) ||
+            []
+          ).filter((tag) => tag !== "time" && tag !== "Time");
+          const resultMatchedTags = new Set(
+            (r.matchedTags || []).filter(
+              (tag) => tag !== "time" && tag !== "Time"
+            )
+          );
+          const allTagsSet = new Set([
+            ...globalUniqueTags,
+            ...resultMatchedTags,
+          ]);
+
+          if (allTagsSet.size > 0 && !isTimeRecall) {
+            const sortedTags = [...allTagsSet].sort((a, b) => {
+              const aIsMatched = resultMatchedTags.has(a);
+              const bIsMatched = resultMatchedTags.has(b);
+              if (aIsMatched && !bIsMatched) return -1;
+              if (!aIsMatched && bIsMatched) return 1;
+              return 0;
+            });
+            const renderedTags = sortedTags
+              .map((tag) =>
+                resultMatchedTags.has(tag)
+                  ? `<span class="tag-match-highlight">${escapeHTML(
+                      String(tag)
+                    )}</span>`
+                  : escapeHTML(String(tag))
+              )
+              .join(", ");
+            const hasMatched = resultMatchedTags.size > 0;
+            const tagIcon = hasMatched
+              ? `<span style="filter: drop-shadow(0 0 5px #ffc107); color: #ffc107; font-weight: bold;">🏷️</span>`
+              : `🏷️`;
+            tagsHTML = `<div style="margin-top:4px; font-size:0.75em; color:rgba(255,193,7,0.6);">${tagIcon} ${renderedTags}</div>`;
+          }
+
+          let diffBadgeHTML = "";
+          if (mode === "compare") {
+            const isCommon = otherItemsTextSet.has(normalizeCompareContent(r));
+            const diffClass = isCommon ? "diff-common" : `diff-unique-${slot.toLowerCase()}`;
+            const diffLabel = isCommon ? "共同召回" : `仅 ${slot} 召回`;
+            diffBadgeHTML = `<span class="diff-badge ${diffClass}">${diffLabel}</span>`;
+          }
+
+          resultsHTML += `
+                          <div class="rag-sub-item">
+                              <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:6px;">
+                                  <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                      <span class="score-badge ${
+                                        isBoosted ? "score-boosted" : scoreClass
+                                      }">
+                                          ${scoreDisplay} ${
+                                            isBoosted ? "⚡" : ""
+                                          }
+                                      </span>
+                                      ${diffBadgeHTML}
+                                  </div>
+                                  <span style="font-size:0.75em; opacity:0.6; flex:0 0 auto;">${escapeHTML(
+                                    String(r.source || "Unknown")
+                                  )}</span>
+                              </div>
+                              ${bm25ScoresHTML}
+                              ${createContentHTML(r.text)}
+                              ${tagsHTML}
+                          </div>
+                      `;
+        });
+
+        return headerHTML + `<div style="margin-top:15px;">${resultsHTML}</div>`;
+      }
+
       // 1. RAG BLOCK
       function displayRagInfo(data) {
         // 审批类消息（请求/响应）不受 notificationsEnabled 开关影响，
@@ -2592,8 +3594,50 @@
         if (isNotificationData(data))
           return enqueueMessage(displaySystemNotification, data);
 
+        {
+          const cardId = `rag_${++_compareCardIdCounter}`;
+          const block = document.createElement("div");
+          block.className = "card-base type-rag card-enter";
+          block.dataset.compareCardId = cardId;
+          const card = {
+            cardId,
+            data,
+            el: block,
+          };
+          _compareCardStore.set(cardId, card);
+          block.innerHTML = buildRagCardHTML(data, {
+            mode: "normal",
+            cardId,
+          });
+          prependCard(block);
+          updateCompareBar();
+          return;
+        }
+
+        if (false) {
         const block = document.createElement("div");
         block.className = "card-base type-rag card-enter";
+        const compareCardId = `rag_${++_compareCardIdCounter}`;
+        const compareCard = {
+          cardId: compareCardId,
+          query: String(data.query || ""),
+          coreTags: Array.isArray(data.coreTags)
+            ? data.coreTags.map((tag) => String(tag))
+            : [],
+          dbName: String(data.dbName || "Unknown"),
+          itemIds: [],
+        };
+        (data.results || []).forEach((result, index) => {
+          const snapshot = createCompareSnapshot(
+            compareCardId,
+            data,
+            result,
+            index
+          );
+          compareCard.itemIds.push(snapshot.id);
+        });
+        _compareCardStore.set(compareCardId, compareCard);
+        block.dataset.compareCardId = compareCardId;
 
         // Core Tags (Spotlight)
         let coreTagsHTML = "";
@@ -2710,6 +3754,10 @@
                       <button class="card-raw-copy-btn" title="复制原始JSON数据" onclick="copyRawData('${rawDataId}', this)">
                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
                       </button>
+                      <div class="compare-card-actions" data-card-id="${compareCardId}">
+                          <button class="compare-select-action compare-card-action" type="button" data-slot="A" onclick="event.stopPropagation(); addEntireCardToSlot('A', '${compareCardId}')">+A 全部</button>
+                          <button class="compare-select-action compare-card-action" type="button" data-slot="B" onclick="event.stopPropagation(); addEntireCardToSlot('B', '${compareCardId}')">+B 全部</button>
+                      </div>
                       <h3>
                           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
                           ${escapeHTML(String(data.dbName || "Unknown"))}
@@ -2776,7 +3824,7 @@
 
         // Results
         let resultsHTML = "";
-        (data.results || []).forEach((r) => {
+        (data.results || []).forEach((r, resultIndex) => {
           // BUG FIX: Check if r.score is a valid number before calling toFixed().
           // Time-based results from the backend don't have a score, which was causing a rendering crash.
           const hasScore = typeof r.score === "number";
@@ -2863,16 +3911,20 @@
           }
 
           resultsHTML += `
-                          <div class="rag-sub-item">
+                          <div class="rag-sub-item" data-compare-id="${compareCardId}_${resultIndex}">
                               <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
                                   <span class="score-badge ${
                                     isBoosted ? "score-boosted" : scoreClass
                                   }">
                                       ${scoreDisplay} ${isBoosted ? "⚡" : ""}
                                   </span>
-                                  <span style="font-size:0.75em; opacity:0.6;">${escapeHTML(
-                                    String(r.source || "Unknown")
-                                  )}</span>
+                                  <div style="display:flex; align-items:center; gap:6px;">
+                                      <span style="font-size:0.75em; opacity:0.6;">${escapeHTML(
+                                        String(r.source || "Unknown")
+                                      )}</span>
+                                      <button class="compare-select-action" type="button" data-compare-id="${compareCardId}_${resultIndex}" data-slot="A" aria-label="加入 A 槽" onclick="event.stopPropagation(); toggleItemInSlot('A', '${compareCardId}_${resultIndex}')">A</button>
+                                      <button class="compare-select-action" type="button" data-compare-id="${compareCardId}_${resultIndex}" data-slot="B" aria-label="加入 B 槽" onclick="event.stopPropagation(); toggleItemInSlot('B', '${compareCardId}_${resultIndex}')">B</button>
+                                  </div>
                               </div>
                               ${bm25ScoresHTML}
                               ${createContentHTML(r.text)}
@@ -2884,7 +3936,9 @@
         block.innerHTML =
           headerHTML + `<div style="margin-top:15px;">${resultsHTML}</div>`;
         prependCard(block);
+        updateCompareUI();
       }
+        }
 
       // 2. CHAIN BLOCK
       function displayChain(data) {
@@ -3544,9 +4598,12 @@
           i >= 0 && i >= cards.length - excess;
           i--
         ) {
+          const cardId = cards[i].getAttribute("data-compare-card-id");
+          if (cardId) removeCompareCard(cardId);
           cards[i].remove();
         }
         _cardCount = infoContainer.querySelectorAll(".card-base").length;
+        updateCompareBar();
       }
 
       // --- Spectrum Animation ---
