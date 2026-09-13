@@ -432,6 +432,10 @@ class ModularPromptModule {
                 hidden: block.type === 'newline'
             },
             {
+                label: '复制到小仓',
+                action: () => this.copyBlockToWarehouse(index)
+            },
+            {
                 label: '移到小仓',
                 action: () => this.moveBlockToWarehouse(index)
             },
@@ -635,6 +639,30 @@ class ModularPromptModule {
         this.blocks[index].disabled = !this.blocks[index].disabled;
         this.save();
         this.renderBlocks();
+    }
+
+    /**
+     * 复制积木块到当前选中的小仓（检查重复）
+     */
+    copyBlockToWarehouse(index) {
+        const block = this.blocks[index];
+        if (!block) return;
+
+        if (!this.hiddenBlocks[this.currentWarehouse]) {
+            this.hiddenBlocks[this.currentWarehouse] = [];
+        }
+
+        const isDuplicate = this.hiddenBlocks[this.currentWarehouse].some(hiddenBlock => {
+            return this.areBlocksEqual(hiddenBlock, block);
+        });
+        if (isDuplicate) return;
+
+        const copiedBlock = structuredClone(block);
+        copiedBlock.id = this.generateId();
+        this.hiddenBlocks[this.currentWarehouse].push(copiedBlock);
+
+        this.save();
+        this.renderWarehouse();
     }
 
     /**
@@ -906,6 +934,10 @@ class ModularPromptModule {
                 action: () => this.editHiddenBlock(block, index)
             },
             {
+                label: '复制到编辑区',
+                action: () => this.copyBlockToEditor(index)
+            },
+            {
                 label: '恢复到编辑区',
                 action: () => this.restoreBlock(index)
             },
@@ -1060,6 +1092,21 @@ class ModularPromptModule {
         dialog.querySelector('.dialog-overlay').onclick = closeDialog;
 
         nameInput.focus();
+    }
+
+    /**
+     * 复制当前小仓中的积木块到编辑区
+     */
+    copyBlockToEditor(index) {
+        const block = this.hiddenBlocks[this.currentWarehouse]?.[index];
+        if (!block) return;
+
+        const copiedBlock = structuredClone(block);
+        copiedBlock.id = this.generateId();
+        this.blocks.push(copiedBlock);
+
+        this.save();
+        this.renderBlocks();
     }
 
     /**
