@@ -58,6 +58,10 @@
                 postProcess: true
             },
             diorama: {
+                narrativeStations: true,
+                stationIntensity: 1,
+                waterReflection: true,
+                waterStrength: 1,
                 cameraSpeed: 1,
                 motionAmount: 1,
                 audioReactivity: 1,
@@ -165,6 +169,10 @@
             showDecor: bool(source.showDecor, fallback.showDecor),
             showBackground: bool(source.showBackground, fallback.showBackground),
             textInversion: bool(source.textInversion, fallback.textInversion),
+            narrativeStations: bool(source.narrativeStations, fallback.narrativeStations),
+            stationIntensity: clamp(source.stationIntensity, 0, 2, fallback.stationIntensity),
+            waterReflection: bool(source.waterReflection, fallback.waterReflection),
+            waterStrength: clamp(source.waterStrength, 0, 2, fallback.waterStrength),
             motionAmount: clamp(source.motionAmount, 0, 2, fallback.motionAmount),
             audioReactivity: clamp(source.audioReactivity, 0, 2, fallback.audioReactivity),
             showParticles: bool(source.showParticles, fallback.showParticles),

@@ -477,10 +477,11 @@ async function searchLyricsCandidates({ artist, title, durationMs, album }) {
         .map(({ candidate, result }) => createCandidateSummary(candidate, result))
         .filter(Boolean);
 
-    return summaries.sort((a, b) => {
-        if (a.isWordByWord !== b.isWordByWord) return a.isWordByWord ? -1 : 1;
-        return b.matchScore - a.matchScore;
-    });
+    // 自动获取直接使用首项：匹配分数优先，同分才优先逐字歌词。
+    return summaries.sort((a, b) =>
+        b.matchScore - a.matchScore
+        || Number(b.isWordByWord) - Number(a.isWordByWord)
+    );
 }
 
 async function saveSelectedLyrics({ candidateKey, artist, title, lyricDir }) {
@@ -551,9 +552,10 @@ function createAuditedLyrics(candidate, result) {
 function rankAuditedLyrics(entries) {
     return (entries || [])
         .filter(Boolean)
+        // 兼容自动下载同样以匹配分数为首要依据，质量加分仅用于同分选优。
         .sort((a, b) =>
-            b.auditScore - a.auditScore
-            || b.matchScore - a.matchScore
+            b.matchScore - a.matchScore
+            || b.auditScore - a.auditScore
             || Number(b.features?.isWordByWord) - Number(a.features?.isWordByWord)
             || Number(b.result?.source === 'amll') - Number(a.result?.source === 'amll')
         );

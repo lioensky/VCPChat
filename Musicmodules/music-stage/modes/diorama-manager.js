@@ -147,6 +147,12 @@
         let fallbackMode = false;
         let initializationPromise = null;
         let renderedKey = null;
+        const liquidAudio = { bass: 0, mid: 0, treble: 0 };
+        let stations = null;
+        let sourceLines = null;
+        let lastVisualTime = null;
+        let lastVisualNow = null;
+        const reducedMotion = global.matchMedia?.('(prefers-reduced-motion: reduce)');
 
         // 缓存各行的 3D 渲染对象
         // Map<lineIndex, { group, units: [{ mesh, mat, state }], lineMesh, lineMat, key }>
@@ -343,10 +349,12 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
             transparent: true,
             opacity: isCurrent ? 0.95 : 0.32,
             color: isCurrent ? accentColor.clone() : restingColor.clone(),
+            depthTest: !isCurrent,
             depthWrite: false,
             side: THREE.DoubleSide
         }));
         const mesh = new THREE.Mesh(geometry, material);
+        mesh.renderOrder = isCurrent ? 20 : 6;
         mesh.position.set(0, 0, 0);
         unitGroup.add(mesh);
 
@@ -359,11 +367,13 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                 transparent: true,
                 opacity: 0,
                 color: accentColor.clone(),
+                depthTest: false,
                 depthWrite: false,
                 blending: services?.app?.stagePalette?.light ? THREE.NormalBlending : THREE.AdditiveBlending,
                 side: THREE.DoubleSide
             }));
             glowMesh = new THREE.Mesh(geometry, glowMat);
+            glowMesh.renderOrder = 21;
             glowMesh.position.set(0, 0, -0.005);
             unitGroup.add(glowMesh);
         }
@@ -399,6 +409,7 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                 side: THREE.DoubleSide
             }));
             const tMesh = new THREE.Mesh(tGeo, tMat);
+            tMesh.renderOrder = isCurrent ? 19 : 5;
             tMesh.position.set(0, -0.75, 0);
             lineGroup.add(tMesh);
         }
@@ -905,7 +916,7 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
         
         const updateVectorDecor = (frame, energy) => {
             if (!vectorDecor) return;
-            const time = (frame.now || 0) * 0.001;
+            const time = reducedMotion?.matches ? 0 : (frame.playbackTime || 0);
             // 带有随音频呼吸的细微微动与透明度提升
             vectorDecor.style.opacity = String(Math.min(1, 0.65 + energy * 0.35));
             vectorDecorNodes.forEach((node, index) => {
@@ -949,6 +960,7 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                     corridorGroup = new THREE.Group();
                     scene.add(corridorGroup);
                     createVectorDecor();
+                    stations = global.MusicStageDioramaStations?.create(THREE, scene) || null;
 
                     initialized = true;
                     fallback.hidden = true;
@@ -972,12 +984,34 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
 
             const trackId = frame.track?.path || frame.track?.title || 'track';
             const lines = frame.lines || [];
-            if (!lines.length) return;
+            if (!lines.length) {
+                clearLineNodes();
+                if (sourceLines !== lines) {
+                    sourceLines = lines;
+                    pathFrames = [];
+                    stations?.reset([], trackId, services?.app?.stagePalette);
+                }
+                [particleField, liquidField, geometryField, ribbonField].forEach(field => {
+                    if (field) field.visible = false;
+                });
+                renderer.clear();
+                fallback.hidden = false;
+                fallbackLine.textContent = frame.track ? '纯音乐 · 等待下一段文字' : '等待音乐';
+                fallbackTranslation.textContent = '';
+                lastVisualTime = null;
+                return;
+            }
+            fallback.hidden = true;
+            [particleField, liquidField, geometryField, ribbonField].forEach(field => {
+                if (field) field.visible = true;
+            });
 
             // 歌曲切换时重构 3D 长廊轨迹。先释放引用纹理的材质，
             // 再释放跨行纹理缓存，避免连续切歌累积上一曲的 CanvasTexture。
-            if (trackId !== currentTrackPath || pathFrames.length !== lines.length) {
+            if (trackId !== currentTrackPath || sourceLines !== lines || pathFrames.length !== lines.length) {
                 currentTrackPath = trackId;
+                sourceLines = lines;
+                lastVisualTime = null;
                 pathFrames = buildDioramaPath(lines.length, trackId);
                 clearLineNodes();
                 clearTextureCache();
@@ -985,6 +1019,7 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                 createLiquidBlobs(pathFrames);
                 createFloatingGeometry(pathFrames);
                 createFlowingRibbons(pathFrames);
+                stations?.reset(pathFrames, trackId, services?.app?.stagePalette);
             }
 
             const currentIdx = Math.max(0, Math.min(lines.length - 1, frame.currentLineIndex >= 0 ? frame.currentLineIndex : 0));
@@ -998,11 +1033,12 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
             const startTime = activeLine?.startTime || 0;
             const declaredEndTime = activeLine?.endTime || (startTime + 5);
             const hintedEndTime = Number(activeLine?.renderHints?.renderEndTime);
-            const endTime = Math.max(
-                startTime,
-                activeLine?.vocalEndTime || declaredEndTime,
-                Number.isFinite(hintedEndTime) ? hintedEndTime : declaredEndTime
-            );
+            // Source-timed words carry a real vocal end; synthesized LRC words do not.
+            const vocalEnd = activeLine.words?.length
+                ? Math.max(startTime + 0.08, activeLine.vocalEndTime || declaredEndTime)
+                : declaredEndTime;
+            const endTime = Math.max(vocalEnd,
+                Number.isFinite(hintedEndTime) ? hintedEndTime : vocalEnd);
             const nextStartTime = nextLine ? (nextLine.startTime || endTime) : (endTime + 4);
             const currentTime = frame.playbackTime || 0;
 
@@ -1016,7 +1052,9 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                 // 本句已唱完，下一句到来前：从 0.72 继续向前平滑飞跃到 1.0
                 const gap = Math.max(0.1, nextStartTime - endTime);
                 const p = clamp((currentTime - endTime) / gap, 0, 1);
-                interLineProgress = 0.72 + p * 0.28;
+                // Nonzero entry speed, gradual acceleration, then match the next reading shot.
+                const travel = 0.18 * p + 0.82 * p * p * (3 - 2 * p);
+                interLineProgress = 0.72 + travel * 0.28;
             }
 
             // ==========================================
@@ -1024,7 +1062,9 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
             // ==========================================
             const tuning = mode.config.modes?.diorama || {};
             const speed = Number(tuning.cameraSpeed) || 1.0;
-            const motion = Number(tuning.motionAmount) || 1.0;
+            const motion = reducedMotion?.matches ? 0
+                : clamp(tuning.motionAmount ?? 1, 0, 2) * clamp(mode.config.animationIntensity ?? 1, 0, 2);
+            if (!motion) interLineProgress = 0;
 
             // 计算当前唱词光标（Word-by-Word）在歌词行中的横向位置偏移：
             // 让镜头跟随当前唱到的字词进行横向追焦（Tracking Shot），看完整句歌词
@@ -1077,7 +1117,12 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                 focalAdvance.y * currentForward.y +
                 focalAdvance.z * currentForward.z
             ) / forwardLength;
-            const followDistance = Math.max(HERO_DISTANCE, (8.8 + axialAdvance) / forwardLength);
+            const protectedDistance = Math.max(HERO_DISTANCE, (8.8 + axialAdvance) / forwardLength);
+            // Release the reading guard in the gap: otherwise it cancels forward camera travel.
+            const gapProgress = currentTime >= endTime
+                ? clamp((currentTime - endTime) / Math.max(0.1, nextStartTime - endTime)) : 0;
+            const release = gapProgress * gapProgress * (3 - 2 * gapProgress);
+            const followDistance = lerp(protectedDistance, HERO_DISTANCE, release);
             const targetCamPos = {
                 x: currentFocalPos.x - currentForward.x * followDistance + currentRight.x * (cursorTrackingOffset + sway),
                 y: currentFocalPos.y - currentForward.y * followDistance + currentUp.y * (CAMERA_LIFT + bob),
@@ -1091,9 +1136,19 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                 z: currentFocalPos.z + currentForward.z * 4.5
             };
 
-            // 增强相机阻尼与缓动过渡（通过适度降低每帧插值权重至 0.048，获得丝滑从容的重力阻尼感）
-            cameraFollow.pos = vlerp(cameraFollow.pos, targetCamPos, 0.048 * speed);
-            cameraFollow.look = vlerp(cameraFollow.look, targetLookAt, 0.055 * speed);
+            // Preserve the original tracking character, but make damping refresh-rate independent.
+            const clockDelta = lastVisualTime === null ? 0 : currentTime - lastVisualTime;
+            const dt = Math.max(0, Math.min(0.1, ((frame.now || 0) - (lastVisualNow ?? frame.now)) / 1000));
+            const seek = lastVisualTime === null || clockDelta < -0.05 || clockDelta > 0.75;
+            if (seek || !motion) {
+                cameraFollow.pos = targetCamPos;
+                cameraFollow.look = targetLookAt;
+            } else if (frame.isPlaying && clockDelta !== 0) {
+                cameraFollow.pos = vlerp(cameraFollow.pos, targetCamPos, 1 - Math.exp(-2.95 * speed * dt));
+                cameraFollow.look = vlerp(cameraFollow.look, targetLookAt, 1 - Math.exp(-3.4 * speed * dt));
+            }
+            lastVisualTime = currentTime;
+            lastVisualNow = frame.now;
 
             camera.position.set(cameraFollow.pos.x, cameraFollow.pos.y, cameraFollow.pos.z);
             camera.lookAt(cameraFollow.look.x, cameraFollow.look.y, cameraFollow.look.z);
@@ -1231,10 +1286,21 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
             // ==========================================
             // 1. 稀疏 3D 巨型有机流变体：沿走廊双螺旋悠然巡游漂浮
             // ==========================================
-            const timeSec = (frame.now || 0) * 0.001;
+            const timeSec = currentTime * motion;
             const audio = frame.audio || {};
-            const energy = Number(audio.bass || 0) * 0.65 + Number(audio.vocal || 0) * 0.35;
+            const energy = clamp((Number(audio.bass || 0) * 0.65 + Number(audio.vocal || 0) * 0.35)
+                * clamp(tuning.audioReactivity ?? 1, 0, 2));
 
+            // Fast attack, soft release; freeze the envelope on paused/repeated frames.
+            const audioGain = clamp(tuning.audioReactivity ?? 1, 0, 2) * Math.min(1, motion);
+            for (const band of ['bass', 'mid', 'treble']) {
+                const target = clamp(audio[band] || 0) * audioGain;
+                if (seek || audioGain === 0) liquidAudio[band] = target;
+                else if (frame.isPlaying && clockDelta !== 0) {
+                    const rate = target > liquidAudio[band] ? 16 : 5;
+                    liquidAudio[band] = lerp(liquidAudio[band], target, 1 - Math.exp(-rate * dt));
+                }
+            }
             if (liquidBlobs.length && pathFrames.length) {
                 liquidBlobs.forEach((blob, bIdx) => {
                     // 固定世界单位的局部景深，不随歌曲长度加速，也没有取模回跳。
@@ -1254,12 +1320,17 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                         corePos.z + coreRight.z * spiralX + coreUp.z * spiralY
                     );
 
-                    // 极其舒缓的自转与呼吸
-                    const pulse = blob.baseScale * (1.0 + energy * 0.06 + Math.sin(timeSec * 0.25 + bIdx) * 0.04);
+                    // Low frequencies swell; mid/high energy excites small elastic vibrations.
+                    const response = 0.8 + bIdx / Math.max(1, liquidBlobs.length - 1) * 0.35;
+                    const vibration = (Math.sin(timeSec * (19 + bIdx * 0.7) + blob.phase) * liquidAudio.mid
+                        + Math.sin(timeSec * (37 + bIdx * 1.1) - blob.phase) * liquidAudio.treble * 0.55)
+                        * 0.012 * response;
+                    const pulse = blob.baseScale * (1.0 + liquidAudio.bass * 0.075 * response
+                        + Math.sin(timeSec * 0.25 + bIdx) * 0.04);
                     blob.mesh.scale.set(
-                        pulse * (1.0 + Math.sin(timeSec * 0.22 + bIdx) * 0.12),
-                        pulse * (1.0 + Math.cos(timeSec * 0.19 + bIdx) * 0.1),
-                        pulse * (1.0 + Math.sin(timeSec * 0.27 + bIdx) * 0.08)
+                        pulse * (1.0 + Math.sin(timeSec * 0.22 + bIdx) * 0.12 + vibration),
+                        pulse * (1.0 + Math.cos(timeSec * 0.19 + bIdx) * 0.1 - vibration * 0.75),
+                        pulse * (1.0 + Math.sin(timeSec * 0.27 + bIdx) * 0.08 + vibration * 0.4)
                     );
                     // 按时间求值，重复更新同一帧不会额外加速。
                     blob.mesh.rotation.set(
@@ -1271,7 +1342,7 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                     const morph = clamp((Math.sin(timeSec * blob.morphSpeed + blob.phase) + 0.25) / 1.15, 0, 1);
                     blob.material.uniforms.uMorph.value = morph * morph * (3 - 2 * morph);
                     blob.material.uniforms.uTime.value = timeSec * 0.45 + blob.phase;
-                    blob.material.uniforms.uEnergy.value = energy;
+                    blob.material.uniforms.uEnergy.value = liquidAudio.bass * 0.65 + liquidAudio.mid * 0.35;
                 });
             }
 
@@ -1310,11 +1381,17 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
             // ==========================================
             if (particleField) {
                 const audio = frame.audio || {};
-                const reactivity = Number(tuning.audioReactivity) || 1.0;
+                particleField.visible = tuning.showParticles !== false;
+                const reactivity = clamp(tuning.audioReactivity ?? 1, 0, 2);
                 particleField.material.opacity = 0.25 + (audio.bass || 0) * 0.45 * reactivity;
                 particleField.material.size = 0.045 + (audio.treble || 0) * 0.04 * reactivity;
             }
 
+            // Old ambient symbols remain as connective tissue, not the main narrative.
+            if (geometryField) geometryField.visible = tuning.geometryMode !== 'corridor';
+            if (liquidField) liquidField.visible = tuning.geometryMode !== 'corridor';
+            stations?.update(currentIdx + interLineProgress, currentTime, energy, mode.config, motion);
+            stations?.renderReflection(renderer, camera);
             renderer.render(scene, camera);
         };
 
@@ -1331,6 +1408,7 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                     fallbackTranslation.textContent = '';
                 }
             }
+            updateWords(Array.from(fallbackLine.children), frame.wordStates || []);
             fallback.hidden = false;
         };
 
@@ -1342,6 +1420,10 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
             if (initialized && !suspended) updateFrameVisuals(frame);
         };
 
+        mode.getDebugSnapshot = () => ({
+            ...stations?.snapshot(), camera: camera?.position.toArray(),
+            lyricNodes: lineNodes.size, initialized, fallbackMode
+        });
         mode.resize = resize;
         mode.suspend = () => {
             suspended = true;
@@ -1366,11 +1448,14 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
             createLiquidBlobs(pathFrames);
             createFloatingGeometry(pathFrames);
             createFlowingRibbons(pathFrames);
+            stations?.reset(pathFrames, currentTrackPath, theme);
             if (lastFrame && !suspended) updateFrameVisuals(lastFrame);
         };
 
         mode.scope.add(() => {
             destroyed = true;
+            stations?.destroy();
+            stations = null;
             if (particleField) {
                 scene?.remove(particleField);
             }

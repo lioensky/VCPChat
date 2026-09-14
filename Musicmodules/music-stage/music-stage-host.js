@@ -160,11 +160,15 @@
                 ...pixiTuningDefinitions
             ],
             diorama: [
+                { key: 'narrativeStations', label: '轨道叙事站点', type: 'toggle' },
+                { key: 'stationIntensity', label: '站点可见度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'waterReflection', label: '沉水段涟漪反射', type: 'toggle' },
+                { key: 'waterStrength', label: '水面反射强度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
                 { key: 'cameraSpeed', label: '镜头速度', type: 'range', min: 0.55, max: 1.85, step: 0.05, unit: 'x' },
                 { key: 'motionAmount', label: '运动幅度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
-                { key: 'audioReactivity', label: '点云音频响应', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'audioReactivity', label: '空间音频响应', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
                 { key: 'showParticles', label: '背景粒子', type: 'toggle' },
-                { key: 'geometryMode', label: '几何形态', type: 'select', options: [['clouds', '点云'], ['corridor', '长廊']] },
+                { key: 'geometryMode', label: '伴随装饰', type: 'select', options: [['clouds', '保留液体与符号'], ['corridor', '纯轨道站点']] },
                 { key: 'glow', label: '辉光强度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' }
             ],
             luminous: [
