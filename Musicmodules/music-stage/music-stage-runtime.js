@@ -341,6 +341,99 @@
         };
     };
 
+    const createInterludeVisualizer = (options = {}) => {
+        const barCount = Math.max(20, Math.min(64, Math.round(finiteNumber(options.barCount, 36))));
+        const root = document.createElement('div');
+        root.className = `stage-interlude-visualizer${options.className ? ` ${options.className}` : ''}`;
+        root.setAttribute('role', 'status');
+        root.setAttribute('aria-live', 'polite');
+
+        const halo = document.createElement('span');
+        halo.className = 'stage-interlude-halo';
+        halo.setAttribute('aria-hidden', 'true');
+        const orbit = document.createElement('span');
+        orbit.className = 'stage-interlude-orbit';
+        orbit.setAttribute('aria-hidden', 'true');
+        const bars = document.createElement('span');
+        bars.className = 'stage-interlude-bars';
+        bars.setAttribute('aria-hidden', 'true');
+        const core = document.createElement('span');
+        core.className = 'stage-interlude-core';
+        core.setAttribute('aria-hidden', 'true');
+        const barsList = Array.from({ length: barCount }, (_, index) => {
+            const bar = document.createElement('i');
+            bar.style.setProperty('--interlude-index', String(index));
+            bar.style.setProperty('--interlude-angle', `${index * 360 / barCount}deg`);
+            bars.appendChild(bar);
+            return bar;
+        });
+        orbit.append(bars, core);
+        root.append(halo, orbit);
+
+        let visible = false;
+        let destroyed = false;
+        let lastLabel = '';
+        const update = (frame, state = {}) => {
+            if (destroyed) return;
+            const nextVisible = state.visible !== false;
+            if (nextVisible !== visible) {
+                visible = nextVisible;
+                root.hidden = !visible;
+            }
+            const label = String(state.label || '音乐间奏');
+            if (label !== lastLabel) {
+                lastLabel = label;
+                root.setAttribute('aria-label', label);
+            }
+            if (!visible) return;
+
+            const spectrum = frame?.audio?.spectrum || EMPTY_WORDS;
+            const hasSpectrum = spectrum.length > 0;
+            const time = finiteNumber(frame?.playbackTime, finiteNumber(frame?.now, 0) / 1000);
+            const playing = Boolean(frame?.isPlaying);
+            const power = clamp(frame?.audio?.power);
+            root.classList.toggle('is-playing', playing);
+            root.style.setProperty('--interlude-power', power.toFixed(4));
+            root.style.setProperty('--interlude-phase', `${(time * (playing ? 22 : 4)) % 360}deg`);
+
+            barsList.forEach((bar, index) => {
+                const ratio = index / barCount;
+                let energy;
+                if (hasSpectrum) {
+                    const mirrored = ratio <= 0.5 ? ratio * 2 : (1 - ratio) * 2;
+                    const spectrumRatio = 0.025 + Math.pow(mirrored, 1.65) * 0.92;
+                    const center = Math.min(spectrum.length - 1, Math.floor(spectrumRatio * spectrum.length));
+                    const radius = Math.max(1, Math.floor(spectrum.length / 128));
+                    let total = 0;
+                    let samples = 0;
+                    for (let sample = Math.max(0, center - radius); sample <= Math.min(spectrum.length - 1, center + radius); sample += 1) {
+                        total += finiteNumber(spectrum[sample]);
+                        samples += 1;
+                    }
+                    energy = clamp(Math.pow(total / Math.max(1, samples), 0.72));
+                } else {
+                    const wave = Math.sin(time * 2.15 + index * 0.71) * 0.5
+                        + Math.sin(time * 1.17 - index * 0.39) * 0.28;
+                    energy = 0.16 + Math.max(0, wave) * 0.22;
+                }
+                const settled = playing ? energy : Math.min(energy, 0.12);
+                const length = 0.34 + settled * 1.05;
+                bar.style.setProperty('--interlude-level', settled.toFixed(4));
+                bar.style.transform = `rotate(var(--interlude-angle)) translateY(-50%) scaleY(${length.toFixed(4)})`;
+                bar.style.opacity = (0.24 + settled * 0.76).toFixed(4);
+            });
+        };
+        const destroy = () => {
+            if (destroyed) return;
+            destroyed = true;
+            barsList.length = 0;
+            root.remove();
+        };
+
+        root.hidden = true;
+        return Object.freeze({ root, update, destroy });
+    };
+
     class DisposableScope {
         constructor() {
             this.disposers = [];
@@ -409,6 +502,7 @@
         resolveWordState,
         resolveAudioBands,
         createFrame,
+        createInterludeVisualizer,
         DisposableScope
     });
 })(window);

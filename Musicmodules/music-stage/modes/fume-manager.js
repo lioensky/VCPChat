@@ -6,7 +6,7 @@
     const U = global.MusicStageModeUtils;
     const R = global.MusicStageRuntime;
     const { clamp, seededRandom, splitGraphemes, resolveAccent, makeModeBase, createElement } = U;
-    const { buildGlyphTimeline, resolveSupplementalText } = R;
+    const { buildGlyphTimeline, resolveSupplementalText, createInterludeVisualizer } = R;
     const value = (v, fallback, min = 0, max = 2) => clamp(Number.isFinite(Number(v)) ? Number(v) : fallback, min, max);
     const ease = v => { const t = clamp(v); return t * t * t * (t * (t * 6 - 15) + 10); };
 
@@ -16,8 +16,10 @@
         const world = createElement('div', 'fume-article-world');
         const translation = createElement('div', 'stage-translation fume-article-subtitle');
         const heading = createElement('div', 'fume-article-heading');
-        const empty = createElement('div', 'fume-article-empty', '等待歌词');
-        mode.root.append(canvas, world, heading, translation, empty);
+        const empty = createElement('div', 'fume-article-empty', '等待音乐');
+        const interlude = createInterludeVisualizer({ className: 'stage-interlude-fume' });
+        mode.root.append(canvas, world, heading, translation, empty, interlude.root);
+        mode.scope.add(() => interlude.destroy());
         const context = canvas.getContext('2d');
         const reduced = global.matchMedia?.('(prefers-reduced-motion: reduce)');
         const mounted = new Map();
@@ -306,8 +308,10 @@
             const index = Math.max(0, Math.min(blocks.length - 1, frame.currentLineIndex));
             const block = blocks[index];
             const previous = blocks[Math.max(0, index - 1)];
-            empty.hidden = Boolean(block);
-            empty.textContent = frame.track ? '纯音乐 / 暂无歌词' : '等待音乐';
+            const showInstrumental = Boolean(frame.track && !block);
+            interlude.update(frame, { visible: showInstrumental, label: '纯音乐播放中' });
+            empty.hidden = Boolean(block || showInstrumental);
+            empty.textContent = '等待音乐';
             if (block) {
                 const pose = resolveCamera(index, time);
                 cameraX = pose.x; cameraY = pose.y; cameraScale = pose.scale;

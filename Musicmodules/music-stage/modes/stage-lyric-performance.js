@@ -8,7 +8,7 @@
     const U = global.MusicStageModeUtils;
     const L = global.MusicStageLyricLayout;
     const { clamp, createElement: el, seededRandom } = U;
-    const { resolveSupplementalText } = global.MusicStageRuntime;
+    const { resolveSupplementalText, createInterludeVisualizer } = global.MusicStageRuntime;
     const { number } = L;
     const ease = value => 1 - Math.pow(1 - clamp(value), 3);
     // Unit mass, stiffness 200, damping 20: analytic underdamped step response.
@@ -182,8 +182,10 @@
         const translation = el('div', 'stage-translation');
         const upcoming = el('div', 'lyric-performance-upcoming');
         const empty = el('div', 'lyric-performance-empty', '等待音乐');
+        const interlude = createInterludeVisualizer({ className: `stage-interlude-${id}` });
         subtitle.append(translation, upcoming);
-        mode.root.append(viewport, subtitle, empty);
+        mode.root.append(viewport, subtitle, empty, interlude.root);
+        mode.scope.add(() => interlude.destroy());
         const decor = ['luminous', 'partita', 'cadenza'].includes(id)
             ? global.MusicStageLyricDecor?.create(mode.root, id) : null;
         if (decor) mode.scope.add(() => decor.destroy());
@@ -311,11 +313,18 @@
                 return true;
             });
             const alive = line && scenes.some(scene => scene.line === line && frame.playbackTime <= scene.profile.end);
-            empty.hidden = Boolean(alive && scenes.length);
-            empty.textContent = options.pretext && !pretext
+            const preparing = Boolean(options.pretext && !pretext);
+            const unavailable = preparing || compileError;
+            const showInterlude = Boolean(frame.track && !alive && !unavailable);
+            interlude.update(frame, {
+                visible: showInterlude,
+                label: frame.lines.length ? '音乐间奏' : '纯音乐播放中'
+            });
+            empty.hidden = Boolean((alive && scenes.length) || showInterlude);
+            empty.textContent = preparing
                 ? loadError ? '排版引擎加载失败，请重新进入舞台' : '正在准备空间排版…'
                 : compileError ? '歌词排版失败，请查看控制台'
-                    : frame.lines.length ? '间奏' : frame.track ? '纯音乐 · 暂无歌词' : '等待音乐';
+                    : '等待音乐';
             if (compileError) empty.hidden = false;
             translation.textContent = tuning.showTranslation === false ? '' : resolveSupplementalText(line);
             upcoming.textContent = tuning.showUpcoming === false ? '' : frame.nextLines[0]?.fullText || '';
