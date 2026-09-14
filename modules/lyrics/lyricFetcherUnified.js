@@ -477,10 +477,14 @@ async function searchLyricsCandidates({ artist, title, durationMs, album }) {
         .map(({ candidate, result }) => createCandidateSummary(candidate, result))
         .filter(Boolean);
 
-    // 自动获取直接使用首项：匹配分数优先，同分才优先逐字歌词。
+    // 自动获取直接使用首项：
+    // 匹配分数优先；分数相同则流式逐字符优先；
+    // 仍相同则优先选择时长与目标音频时长更接近的歌词。
     return summaries.sort((a, b) =>
         b.matchScore - a.matchScore
         || Number(b.isWordByWord) - Number(a.isWordByWord)
+        || Math.abs((a.durationMs || 0) - target.durationMs)
+            - Math.abs((b.durationMs || 0) - target.durationMs)
     );
 }
 
@@ -545,6 +549,9 @@ function createAuditedLyrics(candidate, result) {
         features,
         matchScore: Number(candidate.matchScore),
         qualityBonus,
+        durationDifference: Math.abs(
+            Number(candidate.durationMs || 0) - Number(target.durationMs || 0)
+        ),
         auditScore: Number(candidate.matchScore) + qualityBonus
     };
 }
@@ -552,11 +559,15 @@ function createAuditedLyrics(candidate, result) {
 function rankAuditedLyrics(entries) {
     return (entries || [])
         .filter(Boolean)
-        // 兼容自动下载同样以匹配分数为首要依据，质量加分仅用于同分选优。
+        // 自动下载选优规则：
+        // 匹配分数优先；同分时流式逐字符优先；
+        // 仍相同则优先歌词时长与目标音频时长更接近；
+        // 最后才使用质量加分和其他特性打破剩余平局。
         .sort((a, b) =>
             b.matchScore - a.matchScore
-            || b.auditScore - a.auditScore
             || Number(b.features?.isWordByWord) - Number(a.features?.isWordByWord)
+            || (a.durationDifference || 0) - (b.durationDifference || 0)
+            || b.auditScore - a.auditScore
             || Number(b.result?.source === 'amll') - Number(a.result?.source === 'amll')
         );
 }
