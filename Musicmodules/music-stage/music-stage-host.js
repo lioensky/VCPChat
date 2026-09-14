@@ -95,6 +95,7 @@
 
         const scope = new DisposableScope();
         let editingSettings = false;
+        let settingsReturnFocus = null;
         const pixiTuningDefinitions = [
             { key: 'performanceIntensity', label: '场景编舞强度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
             { key: 'beatImpact', label: '音频起音冲击', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
@@ -323,8 +324,13 @@
             const config = state.config;
             const modeFragment = document.createDocumentFragment();
             Modes.entries.forEach((entry) => {
-                const label = createElement('label', 'music-stage-mode-option');
-                const checkbox = createElement('input', '', { type: 'checkbox' });
+                const label = createElement('label', 'music-stage-mode-option', {
+                    title: `${entry.label} · ${entry.description}`
+                });
+                const checkbox = createElement('input', '', {
+                    type: 'checkbox',
+                    'aria-label': `在顶部切换器中显示${entry.label}`
+                });
                 checkbox.checked = config.enabledModes.includes(entry.id);
                 checkbox.disabled = config.enabledModes.length === 1 && checkbox.checked;
                 checkbox.dataset.stageConfigMode = entry.id;
@@ -346,15 +352,21 @@
                 header.textContent = definition.label;
                 valueText.textContent = formatTuningValue(definition, value);
                 const control = definition.type === 'toggle'
-                    ? createElement('input', '', { type: 'checkbox' })
+                    ? createElement('input', '', {
+                        type: 'checkbox',
+                        'aria-label': definition.label
+                    })
                     : definition.type === 'select'
-                        ? createElement('select', '')
+                        ? createElement('select', '', {
+                            'aria-label': definition.label
+                        })
                         : createElement('input', '', {
                             type: 'range',
                             min: definition.min,
                             max: definition.max,
                             step: definition.step,
-                            value
+                            value,
+                            'aria-label': definition.label
                         });
                 if (definition.type === 'toggle') control.checked = Boolean(value);
                 if (definition.type === 'select') {
@@ -387,13 +399,18 @@
             const commonFragment = document.createDocumentFragment();
             const edgeRow = createElement('label', 'music-stage-tuning-row');
             const edgeLabel = createElement('span', 'music-stage-tuning-label', '边缘频谱');
-            const edgeToggle = createElement('input', '', { type: 'checkbox' });
+            const edgeToggle = createElement('input', '', {
+                type: 'checkbox',
+                'aria-label': '边缘频谱'
+            });
             edgeToggle.checked = config.edgeSpectrum !== false;
             edgeToggle.addEventListener('change', () => Config.update({ edgeSpectrum: edgeToggle.checked }));
             edgeRow.append(edgeLabel, edgeToggle);
             commonFragment.appendChild(edgeRow);
 
-            const quality = createElement('select', 'music-stage-common-select');
+            const quality = createElement('select', 'music-stage-common-select', {
+                'aria-label': '性能档位'
+            });
             [['energy-saving', '节能'], ['standard', '标准'], ['ultimate', '极致']].forEach(([value, label]) => {
                 quality.appendChild(createElement('option', '', { value, text: label }));
             });
@@ -402,7 +419,12 @@
             const qualityRow = createElement('label', 'music-stage-tuning-row');
             qualityRow.append(createElement('span', 'music-stage-tuning-label', '性能档位'), quality);
             const intensity = createElement('input', 'music-stage-common-range', {
-                type: 'range', min: 0, max: 2, step: 0.05, value: config.animationIntensity
+                type: 'range',
+                min: 0,
+                max: 2,
+                step: 0.05,
+                value: config.animationIntensity,
+                'aria-label': '动画总强度'
             });
             const intensityValue = createElement('span', 'music-stage-tuning-value', `${config.animationIntensity.toFixed(2)}x`);
             intensity.addEventListener('input', () => {
@@ -772,6 +794,7 @@
 
         const exit = () => {
             if (!state.active || state.destroyed) return;
+            if (state.settingsOpen) setSettingsOpen(false);
             state.active = false;
             app.isStageActive = false;
             root.classList.remove('is-visible');
@@ -815,11 +838,25 @@
 
         const onKeyDown = (event) => {
             if (!state.active) return;
-            if (event.key === 'Escape') {
+            if (event.key === 'Tab' && state.settingsOpen && elements.settingsCard) {
+                const focusable = Array.from(elements.settingsCard.querySelectorAll(
+                    'button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+                )).filter((element) => !element.hidden && element.getClientRects().length > 0);
+                if (focusable.length) {
+                    const first = focusable[0];
+                    const last = focusable[focusable.length - 1];
+                    if (event.shiftKey && document.activeElement === first) {
+                        event.preventDefault();
+                        last.focus({ preventScroll: true });
+                    } else if (!event.shiftKey && document.activeElement === last) {
+                        event.preventDefault();
+                        first.focus({ preventScroll: true });
+                    }
+                }
+            } else if (event.key === 'Escape') {
                 event.preventDefault();
                 if (state.settingsOpen) {
                     setSettingsOpen(false);
-                    elements.settingsToggle?.focus({ preventScroll: true });
                     return;
                 }
                 exit();
@@ -836,13 +873,26 @@
         };
 
         const setSettingsOpen = (open) => {
-            state.settingsOpen = Boolean(open);
-            if (elements.settingsCard) elements.settingsCard.hidden = !state.settingsOpen;
+            const nextOpen = Boolean(open);
+            if (nextOpen === state.settingsOpen) return;
+
+            if (nextOpen) settingsReturnFocus = document.activeElement;
+            state.settingsOpen = nextOpen;
+            if (elements.settingsCard) {
+                elements.settingsCard.hidden = !state.settingsOpen;
+                elements.settingsCard.setAttribute('aria-hidden', String(!state.settingsOpen));
+            }
             elements.settingsToggle?.setAttribute('aria-expanded', String(state.settingsOpen));
             elements.settings?.classList.toggle('is-open', state.settingsOpen);
             if (state.settingsOpen) {
                 renderSettingsControls();
                 elements.settingsClose?.focus({ preventScroll: true });
+            } else if (!state.destroyed) {
+                const focusTarget = settingsReturnFocus?.isConnected
+                    ? settingsReturnFocus
+                    : elements.settingsToggle;
+                focusTarget?.focus?.({ preventScroll: true });
+                settingsReturnFocus = null;
             }
         };
 
@@ -878,20 +928,24 @@
             Config.toggleMode(checkbox.dataset.stageConfigMode, checkbox.checked);
         });
         scope.listen(document, 'pointerdown', (event) => {
-            if (state.settingsOpen
-                && elements.settings
-                && !elements.settings.contains(event.target)) {
-                setSettingsOpen(false);
-            }
+            if (!state.settingsOpen) return;
+            const clickedCard = elements.settingsCard?.contains(event.target);
+            const clickedToggle = elements.settingsToggle?.contains(event.target);
+            if (!clickedCard && !clickedToggle) setSettingsOpen(false);
         });
         scope.add(Config.subscribe(handleConfigChange));
         scope.listen(elements.play, 'click', () => app.isPlaying ? app.pauseTrack() : app.playTrack());
         scope.listen(elements.prev, 'click', () => app.prevTrack());
         scope.listen(elements.next, 'click', () => app.nextTrack());
         scope.listen(elements.playMode, 'click', () => {
-            app.currentPlayMode = (app.currentPlayMode + 1) % app.playModes.length;
-            app.updateModeButton?.();
-            if (app.wnpAdapter) app.wnpAdapter.sendUpdate();
+            if (typeof app.setPlayMode === 'function') {
+                app.setPlayMode(app.currentPlayMode + 1);
+            } else {
+                app.currentPlayMode = (app.currentPlayMode + 1) % app.playModes.length;
+                app.updateModeButton?.();
+                app.saveSettings?.();
+                if (app.wnpAdapter) app.wnpAdapter.sendUpdate();
+            }
             state.lastTransportSignature = '';
             updateTransportControls();
         });

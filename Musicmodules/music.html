@@ -562,38 +562,72 @@
 
         <aside class="music-stage-settings" aria-label="舞台视觉设置">
             <button class="music-stage-settings-toggle" type="button"
-                aria-expanded="false" aria-controls="music-stage-settings-card"
-                title="打开舞台视觉设置">
+                aria-expanded="false" aria-haspopup="dialog" aria-controls="music-stage-settings-card"
+                title="打开舞台控制舱">
                 <span class="music-stage-settings-glyph" aria-hidden="true">✦</span>
-                <span class="music-stage-settings-toggle-label">视觉设置</span>
+                <span class="music-stage-settings-toggle-copy">
+                    <span class="music-stage-settings-toggle-kicker">STAGE LAB</span>
+                    <span class="music-stage-settings-toggle-label">控制舞台</span>
+                </span>
+                <span class="music-stage-settings-toggle-pulse" aria-hidden="true"></span>
             </button>
-            <section id="music-stage-settings-card" class="music-stage-settings-card" hidden>
+            <section id="music-stage-settings-card" class="music-stage-settings-card" role="dialog"
+                aria-modal="true" aria-labelledby="music-stage-settings-title"
+                aria-describedby="music-stage-settings-description" tabindex="-1" hidden>
                 <div class="music-stage-settings-header">
-                    <div>
-                        <div class="music-stage-settings-kicker">STAGE LAB</div>
-                        <h2>舞台视觉设置</h2>
+                    <div class="music-stage-settings-heading">
+                        <span class="music-stage-settings-emblem" aria-hidden="true">S</span>
+                        <div>
+                            <div class="music-stage-settings-kicker">VCP · STAGE LAB / LIVE</div>
+                            <h2 id="music-stage-settings-title">舞台控制舱</h2>
+                            <p id="music-stage-settings-description">编排视觉语言、镜头响应与演出性能</p>
+                        </div>
                     </div>
-                    <button class="music-stage-settings-close" type="button" aria-label="关闭舞台视觉设置">×</button>
+                    <button class="music-stage-settings-close" type="button" aria-label="关闭舞台控制舱">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="m7 7 10 10M17 7 7 17" fill="none" stroke="currentColor"
+                                stroke-width="1.8" stroke-linecap="round"/>
+                        </svg>
+                    </button>
                 </div>
                 <div class="music-stage-settings-body">
                     <section class="music-stage-settings-section">
-                        <div class="music-stage-settings-section-title">顶部演出模式</div>
-                        <div class="music-stage-settings-hint">勾选要显示在顶部选择器中的模式</div>
+                        <div class="music-stage-settings-section-heading">
+                            <span class="music-stage-settings-section-index">01</span>
+                            <div>
+                                <div class="music-stage-settings-section-title">演出阵列</div>
+                                <div class="music-stage-settings-hint">选择要部署到顶部快速切换器的舞台模式</div>
+                            </div>
+                        </div>
                         <div class="music-stage-mode-options"></div>
                     </section>
                     <section class="music-stage-settings-section">
-                        <div class="music-stage-settings-section-title">当前模式参数</div>
-                        <div class="music-stage-settings-hint music-stage-current-mode-hint"></div>
+                        <div class="music-stage-settings-section-heading">
+                            <span class="music-stage-settings-section-index">02</span>
+                            <div>
+                                <div class="music-stage-settings-section-title">模式调制</div>
+                                <div class="music-stage-settings-hint music-stage-current-mode-hint"></div>
+                            </div>
+                        </div>
                         <div class="music-stage-tuning-controls"></div>
                     </section>
                     <section class="music-stage-settings-section">
-                        <div class="music-stage-settings-section-title">通用表现</div>
+                        <div class="music-stage-settings-section-heading">
+                            <span class="music-stage-settings-section-index">03</span>
+                            <div>
+                                <div class="music-stage-settings-section-title">全局输出</div>
+                                <div class="music-stage-settings-hint">作用于所有演出模式的渲染策略</div>
+                            </div>
+                        </div>
                         <div class="music-stage-common-controls"></div>
                     </section>
                 </div>
                 <div class="music-stage-settings-footer">
-                    <button class="music-stage-settings-reset" type="button">恢复默认</button>
-                    <span class="music-stage-settings-status" aria-live="polite"></span>
+                    <button class="music-stage-settings-reset" type="button">
+                        <span aria-hidden="true">↺</span> 恢复出厂编排
+                    </button>
+                    <span class="music-stage-settings-status" role="status" aria-live="polite"></span>
+                    <span class="music-stage-settings-footnote" aria-hidden="true">ESC TO CLOSE</span>
                 </div>
             </section>
         </aside>

@@ -1,5 +1,10 @@
 // Musicmodules/music.js - Entry Point for the Refactored Music Player
 document.addEventListener('DOMContentLoaded', () => {
+    const PLAY_MODE_STORAGE_KEY = 'musicPlayMode';
+    const PLAY_MODES = Object.freeze(['repeat', 'repeat-one', 'shuffle']);
+    const storedPlayMode = localStorage.getItem(PLAY_MODE_STORAGE_KEY);
+    const initialPlayModeIndex = Math.max(0, PLAY_MODES.indexOf(storedPlayMode));
+
     const app = {
         // --- DOM Elements ---
         playPauseBtn: document.getElementById('play-pause-btn'),
@@ -127,8 +132,8 @@ document.addEventListener('DOMContentLoaded', () => {
         filteredPlaylistSource: null,
         currentTrackIndex: 0,
         isPlaying: false,
-        playModes: ['repeat', 'repeat-one', 'shuffle'],
-        currentPlayMode: 0,
+        playModes: PLAY_MODES,
+        currentPlayMode: initialPlayModeIndex,
         currentDeviceId: null,
         useWasapiExclusive: false,
         eqEnabled: false,
@@ -646,9 +651,7 @@ document.addEventListener('DOMContentLoaded', () => {
         app.prevBtn.onclick = () => app.prevTrack();
         app.nextBtn.onclick = () => app.nextTrack();
         app.modeBtn.onclick = () => {
-            app.currentPlayMode = (app.currentPlayMode + 1) % app.playModes.length;
-            app.updateModeButton();
-            if (app.wnpAdapter) app.wnpAdapter.sendUpdate();
+            app.setPlayMode(app.currentPlayMode + 1);
         };
 
         app.volumeSlider.oninput = (e) => {
@@ -1139,14 +1142,28 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    app.setPlayMode = (modeOrIndex) => {
+        const requestedIndex = typeof modeOrIndex === 'string'
+            ? app.playModes.indexOf(modeOrIndex)
+            : Number(modeOrIndex);
+        app.currentPlayMode = Number.isInteger(requestedIndex) && requestedIndex >= 0
+            ? requestedIndex % app.playModes.length
+            : 0;
+        localStorage.setItem(PLAY_MODE_STORAGE_KEY, app.playModes[app.currentPlayMode]);
+        app.updateModeButton();
+        if (app.wnpAdapter) app.wnpAdapter.sendUpdate();
+    };
+
     app.updateModeButton = () => {
         const mode = app.playModes[app.currentPlayMode];
         let svg = '';
         if (mode === 'repeat') svg = '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>';
         else if (mode === 'repeat-one') svg = '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path><path d="M11 10h1v4"></path></svg>';
         else svg = '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>';
+        const label = mode === 'repeat' ? '列表循环' : (mode === 'repeat-one' ? '单曲循环' : '随机播放');
         app.modeBtn.innerHTML = svg;
-        app.modeBtn.title = mode === 'repeat' ? '列表循环' : (mode === 'repeat-one' ? '单曲循环' : '随机播放');
+        app.modeBtn.title = label;
+        app.modeBtn.setAttribute('aria-label', label);
         app.modeBtn.classList.toggle('active', mode !== 'repeat');
     };
 
