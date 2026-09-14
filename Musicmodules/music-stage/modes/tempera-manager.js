@@ -5,6 +5,7 @@
     if (!Utils) throw new Error('MusicStageModeUtils must load before tempera-manager.js');
 
     const { clamp, seededRandom, splitGraphemes, getLineKey, renderWords, updateWords, resolveAccent, makeModeBase, createElement } = Utils;
+    const { resolveSupplementalText } = global.MusicStageRuntime;
 
     const createPalette = (accent, random) => {
         const hue = Math.round((Math.atan2(accent.g - 128, accent.r - 128) * 180 / Math.PI + 360) % 360);
@@ -62,7 +63,7 @@
             if (key === renderedKey) return;
             renderedKey = key;
 
-            translation.textContent = frame.activeLine?.translation || frame.activeLine?.romanization || '';
+            translation.textContent = resolveSupplementalText(frame.activeLine);
             const accent = resolveAccent(services?.app);
             const tuning = getTuning();
             const trackKey = frame.track?.path || frame.track?.title || '';

@@ -5,6 +5,7 @@
     if (!Utils) throw new Error('MusicStageModeUtils must load before sonnet-manager.js');
 
     const { clamp, seededRandom, getLineKey, renderWords, updateWords, resolveAccent, makeModeBase, createElement } = Utils;
+    const { resolveSupplementalText } = global.MusicStageRuntime;
 
     const createManager = (container, services) => {
         const mode = makeModeBase('sonnet', '商籁', container, services);
@@ -52,7 +53,7 @@
             const key = getLineKey(currentFrame.activeLine);
             renderedKey = key;
             const accent = resolveAccent(services?.app);
-            translation.textContent = currentFrame.activeLine?.translation || currentFrame.activeLine?.romanization || '';
+            translation.textContent = resolveSupplementalText(currentFrame.activeLine);
             const trackKey = currentFrame.track?.path || currentFrame.track?.title || '';
             director?.buildShot(currentFrame.activeLine, `${trackKey}:${key}`, accent, getTuning());
         };

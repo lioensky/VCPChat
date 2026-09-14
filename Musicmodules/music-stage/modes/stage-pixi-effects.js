@@ -182,15 +182,9 @@ void main() {
         };
     };
 
-    // Split timing within each source word, preserving its real boundaries rather than retiming a whole line.
-    const glyphTiming = line => (line?.resolvedWords || []).flatMap(word => {
-        const chars = splitGraphemes(word.text);
-        return chars.map((text, index) => ({
-            text,
-            startTime: word.startTime + (word.endTime - word.startTime) * index / Math.max(1, chars.length),
-            endTime: word.startTime + (word.endTime - word.startTime) * (index + 1) / Math.max(1, chars.length)
-        }));
-    });
+    // Consume the shared syllable-aware timeline. Plain LRC still reaches this
+    // path through Runtime's resolvedWords fallback and retains legacy behavior.
+    const glyphTiming = line => R.buildGlyphTimeline(line);
 
     // Lightweight phrase compiler: punctuation and vocal gaps are boundaries; source timing is unchanged.
     const compilePhrases = (line, tuning) => {
@@ -276,11 +270,17 @@ void main() {
 
     const animateLyrics = (nodes, frame, tuning, color) => {
         const strength = amount(tuning.typographyMotion ?? tuning.glyphMotion, 1) * motionScale(tuning);
-        const style = tuning.glyphStyle || 'rise';
+        const hints = frame.activeLine?.renderHints || {};
+        const style = hints.glyphStyle || tuning.glyphStyle || 'rise';
         const time = frame.playbackTime || 0;
-        const release = amount(tuning.releaseDuration, 0.45, 1.5);
-        const lineEnd = frame.activeLine?.endTime ?? Infinity;
-        const exit = release > 0 ? ease((time - lineEnd) / release) : 0;
+        const requestedRelease = hints.lineTransitionMode === 'none' ? 0
+            : hints.lineTransitionMode === 'fast' ? 0.08
+                : amount(tuning.releaseDuration, 0.45, 1.5);
+        const release = requestedRelease;
+        const lineEnd = frame.activeLine?.vocalEndTime ?? frame.activeLine?.endTime ?? Infinity;
+        const renderEnd = Number.isFinite(Number(hints.renderEndTime)) ? Number(hints.renderEndTime) : lineEnd;
+        const exitStart = Math.max(lineEnd, renderEnd - release);
+        const exit = release > 0 ? ease((time - exitStart) / release) : time > renderEnd ? 1 : 0;
         nodes.forEach(node => {
             const d = node.dataset;
             const progress = clamp((time - d.startTime) / Math.max(0.04, d.endTime - d.startTime));
@@ -324,8 +324,11 @@ void main() {
     };
 
     const transition = (frame, tuning) => {
-        if (!motionScale(tuning) || tuning.sceneTransitions === false || !frame.activeLine) return 1;
-        const duration = Math.min(0.24, Math.max(0.08, (frame.activeLine.endTime - frame.activeLine.startTime) * 0.12));
+        if (!motionScale(tuning) || tuning.sceneTransitions === false || !frame.activeLine
+            || frame.activeLine.renderHints?.lineTransitionMode === 'none') return 1;
+        const fast = frame.activeLine.renderHints?.lineTransitionMode === 'fast';
+        const duration = fast ? 0.06
+            : Math.min(0.24, Math.max(0.08, (frame.activeLine.endTime - frame.activeLine.startTime) * 0.12));
         const enter = ease((frame.playbackTime - frame.activeLine.startTime) / duration);
         // Never fade still-singing text in anticipation of the next line.
         // Retiring background geometry supplies the outgoing half of the cut.

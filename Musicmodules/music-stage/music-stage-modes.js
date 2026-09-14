@@ -16,6 +16,10 @@
     });
     global.MusicStageAdvancedModes?.entries?.forEach(entry => registry.set(entry.id, entry));
 
+    const STARBORN_CANDIDATE_IDS = Object.freeze([
+        'luminous', 'partita', 'cadenza', 'fume', 'tempera', 'sonnet'
+    ]);
+
     const resolveSegment = frame => {
         const current = frame.activeLine;
         const track = frame.track?.path || frame.track?.title || 'unknown-track';
@@ -25,24 +29,42 @@
         };
     };
     const chooseMode = (frame, segment, previous, recent, config) => {
-        const ids = ['luminous', 'partita', 'cadenza', 'fume'].filter(id => registry.has(id));
+        // Diorama is deliberately excluded: Starborn crossfades can temporarily
+        // own two children, which is unsuitable for concurrent Three/WebGL scenes.
+        const ids = STARBORN_CANDIDATE_IDS.filter(id => registry.has(id));
         const text = segment.lines.map(line => line.fullText).join(' ');
         const chars = splitGraphemes(text).filter(char => char.trim()).length;
         const words = segment.lines.reduce((sum, line) => sum + (line.words?.length || 0), 0);
+        const syllables = segment.lines.reduce((sum, line) => sum + (line.words || [])
+            .reduce((count, word) => count + (word.syllables?.length || 0), 0), 0);
         const duration = segment.lines.reduce((sum, line) => sum + Math.max(0.2, line.endTime - line.startTime), 0);
         const translated = segment.lines.some(line => line.translation);
+        const romanized = segment.lines.some(line => line.romanization);
+        const chorus = segment.lines.some(line => line.isChorus);
+        const hintedFast = segment.lines.some(line =>
+            ['fast', 'instant'].includes(line.renderHints?.wordRevealMode));
         const marks = (text.match(/[!?！？…—]/g) || []).length;
         const random = seededRandom(`starborn:${segment.key}`);
         const scores = {
-            luminous: random() * 0.42 + frame.audio.vocal * 1.05 + frame.audio.bass * 0.72,
-            partita: random() * 0.42 + Math.min(1.4, words / Math.max(1, duration) * 0.48) + Math.min(0.7, words * 0.035),
-            cadenza: random() * 0.42 + marks * 0.28 + (1 - frame.audio.power) * 0.66,
-            fume: random() * 0.42 + Math.min(1.15, chars / 34) + (translated ? 0.48 : 0)
+            luminous: random() * 0.42 + frame.audio.vocal * 1.05 + frame.audio.bass * 0.72
+                + (chorus ? 0.5 : 0) + Math.min(0.4, syllables * 0.025),
+            partita: random() * 0.42 + Math.min(1.4, words / Math.max(1, duration) * 0.48)
+                + Math.min(0.7, words * 0.035) + (syllables ? 0.18 : 0),
+            cadenza: random() * 0.42 + marks * 0.28 + (1 - frame.audio.power) * 0.66
+                + (romanized && translated ? 0.2 : 0),
+            fume: random() * 0.42 + Math.min(1.15, chars / 34)
+                + (translated ? 0.32 : 0) + (romanized ? 0.2 : 0),
+            tempera: random() * 0.42 + frame.audio.bass * 0.95 + frame.audio.power * 0.65
+                + (chorus ? 0.36 : 0) + (hintedFast ? 0.28 : 0),
+            sonnet: random() * 0.42 + frame.audio.vocal * 0.72 + marks * 0.22
+                + Math.min(0.52, chars / 48) + (hintedFast ? 0.2 : 0)
         };
         if (chars <= 18) scores.luminous += 0.48;
         if (chars >= 34) scores.fume += 0.58;
         if (words >= 10) scores.partita += 0.42;
         if (marks >= 2) scores.cadenza += 0.38;
+        if (frame.audio.bass > 0.55) scores.tempera += 0.35;
+        if (chars >= 20 && chars <= 42) scores.sonnet += 0.28;
         scores[ids[hashString(segment.key) % ids.length]] += 0.44;
         const avoid = config.modes?.starborn?.avoidRepeat !== false;
         if (avoid) recent.forEach((id, index) => { if (scores[id] !== undefined) scores[id] -= index === 0 ? 0.72 : 0.34; });
@@ -150,16 +172,12 @@
             }
             if (line && observedLine !== line) {
                 observedLine = line;
-                // Protect every observed overlapping line until its final timed
-                // word/syllable ends; line-only lyrics use their declared end.
-                let vocalEnd = line.words?.length ? line.startTime : line.endTime;
-                (line.words || []).forEach(word => {
-                    if (Number.isFinite(word.endTime)) vocalEnd = Math.max(vocalEnd, word.endTime);
-                    (word.syllables || []).forEach(syllable => {
-                        if (Number.isFinite(syllable.endTime)) vocalEnd = Math.max(vocalEnd, syllable.endTime);
-                    });
-                });
-                protectedUntil = Math.max(protectedUntil, vocalEnd);
+                // Runtime already resolves words, fallback glyphs and nested
+                // syllables into one authoritative vocal boundary.
+                protectedUntil = Math.max(
+                    protectedUntil,
+                    line.vocalEndTime ?? line.endTime
+                );
             }
             const duration = reduced?.matches ? 0.001 : 0.52;
             children.forEach(child => {
@@ -191,6 +209,8 @@
             children: children.size, directedMode: current?.id || null,
             transitionCount: count, lastTransition, protectedUntil,
             transitionPolicy: 'fresh-line-boundary',
+            candidateModes: STARBORN_CANDIDATE_IDS.slice(),
+            excludesWebGLModes: true,
             child: current?.mode.getDebugSnapshot?.() || null
         });
         mode.scope.add(() => { clear(); latest = source = observedLine = null; });

@@ -8,6 +8,7 @@
     const U = global.MusicStageModeUtils;
     const L = global.MusicStageLyricLayout;
     const { clamp, createElement: el, seededRandom } = U;
+    const { resolveSupplementalText } = global.MusicStageRuntime;
     const { number } = L;
     const ease = value => 1 - Math.pow(1 - clamp(value), 3);
     // Unit mass, stiffness 200, damping 20: analytic underdamped step response.
@@ -288,7 +289,8 @@
             if (line !== currentLine) {
                 scenes = scenes.filter(scene => {
                     if (scene.retireAt !== null) { scene.root.remove(); return false; }
-                    scene.retireAt = line?.startTime ?? frame.playbackTime;
+                    const requestedRetire = line?.startTime ?? frame.playbackTime;
+                    scene.retireAt = Math.max(requestedRetire, scene.line.vocalEndTime ?? scene.line.endTime);
                     return true;
                 });
                 currentLine = line;
@@ -315,7 +317,7 @@
                 : compileError ? '歌词排版失败，请查看控制台'
                     : frame.lines.length ? '间奏' : frame.track ? '纯音乐 · 暂无歌词' : '等待音乐';
             if (compileError) empty.hidden = false;
-            translation.textContent = tuning.showTranslation === false ? '' : line?.translation || line?.romanization || '';
+            translation.textContent = tuning.showTranslation === false ? '' : resolveSupplementalText(line);
             upcoming.textContent = tuning.showUpcoming === false ? '' : frame.nextLines[0]?.fullText || '';
             // Preheat only the next line, using the same bounded layout cache.
             const next = frame.nextLines[0];

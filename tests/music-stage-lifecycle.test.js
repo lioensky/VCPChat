@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { JSDOM } = require('jsdom');
+const { parseLRC } = require('../modules/lyrics/parserCore');
 
 const workspace = path.resolve(__dirname, '..');
 const read = (relativePath) => fs.readFileSync(path.join(workspace, relativePath), 'utf8');
@@ -202,12 +203,86 @@ test('music stage caches normalized lyrics and fallback word timelines by source
     dom.window.close();
 });
 
+test('music stage normalizes advanced JSON syllables, numeric strings and dual subtitles', () => {
+    const dom = createStageDom();
+    installCanvasStub(dom.window);
+    runScript(dom, 'Musicmodules/music-stage/music-stage-runtime.js');
+
+    const app = createApp().app;
+    app.isPlaying = false;
+    app.lastKnownCurrentTime = 1.25;
+    app.currentLyrics = [{
+        startTime: '1',
+        endTime: '3',
+        fullText: 'Hello',
+        translation: '你好',
+        romanization: 'Nǐ hǎo',
+        chorus: true,
+        words: [{
+            text: 'Hello',
+            startTime: '1',
+            endTime: '3',
+            syllables: [
+                { text: 'Hel', startTime: '1', endTime: '1.6' },
+                { text: 'lo', startTime: '1.6', endTime: '3.2' }
+            ]
+        }]
+    }];
+
+    const frame = dom.window.MusicStageRuntime.createFrame(app, 100);
+    const glyphs = dom.window.MusicStageRuntime.buildGlyphTimeline(frame.activeLine);
+
+    assert.equal(frame.activeLine.startTime, 1);
+    assert.equal(frame.activeLine.isChorus, true);
+    assert.equal(frame.activeLine.vocalEndTime, 3.2);
+    assert.equal(glyphs.map(glyph => glyph.text).join(''), 'Hello');
+    assert.equal(glyphs[0].syllableIndex, 0);
+    assert.equal(glyphs.at(-1).syllableIndex, 1);
+    assert.equal(
+        dom.window.MusicStageRuntime.resolveSupplementalText(frame.activeLine),
+        'Nǐ hǎo\n你好'
+    );
+    dom.window.close();
+});
+
+test('plain LRC keeps fallback timing and untouched display spaces', () => {
+    const dom = createStageDom();
+    installCanvasStub(dom.window);
+    runScript(dom, 'Musicmodules/music-stage/music-stage-runtime.js');
+
+    const parsed = parseLRC('[00:01.00]Hello world\n[00:05.00]下一句');
+    const app = createApp().app;
+    app.isPlaying = false;
+    app.lastKnownCurrentTime = 2;
+    app.currentLyrics = parsed.lines.map(line => ({
+        ...line,
+        time: line.startTime,
+        original: line.fullText,
+        isWordByWord: parsed.isWordByWord
+    }));
+
+    const frame = dom.window.MusicStageRuntime.createFrame(app, 100);
+    const glyphs = dom.window.MusicStageRuntime.buildGlyphTimeline(frame.activeLine);
+
+    assert.equal(parsed.isWordByWord, false);
+    assert.equal(frame.activeLine.fullText, 'Hello world');
+    assert.equal(glyphs.map(glyph => glyph.text).join(''), 'Hello world');
+    assert.equal(glyphs.some(glyph => glyph.text === ' '), true);
+    assert.equal(frame.wordStates.length, 2);
+    dom.window.close();
+});
+
 test('music stage keeps one mode instance and releases canvases across switches', async () => {
     const dom = createStageDom();
     installCanvasStub(dom.window);
     runScript(dom, 'Musicmodules/music-stage/music-stage-runtime.js');
     runScript(dom, 'Musicmodules/music-stage/music-stage-config.js');
     runScript(dom, 'Musicmodules/music-stage/modes/stage-mode-utils.js');
+    runScript(dom, 'Musicmodules/music-stage/modes/stage-lyric-layout.js');
+    runScript(dom, 'Musicmodules/music-stage/modes/stage-lyric-performance.js');
+    runScript(dom, 'Musicmodules/music-stage/modes/luminous-manager.js');
+    runScript(dom, 'Musicmodules/music-stage/modes/partita-manager.js');
+    runScript(dom, 'Musicmodules/music-stage/modes/cadenza-manager.js');
     runScript(dom, 'Musicmodules/music-stage/modes/tempera-manager.js');
     runScript(dom, 'Musicmodules/music-stage/modes/sonnet-manager.js');
     runScript(dom, 'Musicmodules/music-stage/modes/diorama-manager.js');
@@ -232,12 +307,24 @@ test('music stage keeps one mode instance and releases canvases across switches'
         const snapshot = app.stageHost.getDebugSnapshot();
         assert.equal(snapshot.modeId, mode);
         assert.equal(snapshot.modeRootChildren, 1);
-        const expectedCanvases = ['tempera', 'fume'].includes(mode) ? 1 : 0;
+        // The jsdom lifecycle harness does not load Pixi directors or WebGL;
+        // Fume is the only manager that synchronously owns a canvas here.
+        const expectedCanvases = mode === 'fume' ? 1 : 0;
         assert.equal(snapshot.canvasCount, expectedCanvases);
         if (mode === 'diorama') {
-            assert.ok(document.querySelector('.diorama-fallback'));
+            assert.ok(dom.window.document.querySelector('.diorama-fallback'));
         }
     }
+
+    app.stageHost.setMode('starborn');
+    await wait(dom.window, 210);
+    app.stageHost.updateFrame(1200);
+    const starborn = app.stageHost.getDebugSnapshot();
+    assert.equal(starborn.modeId, 'starborn');
+    assert.equal(starborn.mode.excludesWebGLModes, true);
+    assert.equal(starborn.mode.candidateModes.includes('diorama'), false);
+    assert.equal(starborn.mode.candidateModes.includes('tempera'), true);
+    assert.equal(starborn.mode.candidateModes.includes('sonnet'), true);
 
     app.stageHost.setMode('luminous');
     await wait(dom.window, 210);
@@ -264,6 +351,11 @@ test('stage transport synchronizes play mode, mute and volume with the existing 
     runScript(dom, 'Musicmodules/music-stage/music-stage-runtime.js');
     runScript(dom, 'Musicmodules/music-stage/music-stage-config.js');
     runScript(dom, 'Musicmodules/music-stage/modes/stage-mode-utils.js');
+    runScript(dom, 'Musicmodules/music-stage/modes/stage-lyric-layout.js');
+    runScript(dom, 'Musicmodules/music-stage/modes/stage-lyric-performance.js');
+    runScript(dom, 'Musicmodules/music-stage/modes/luminous-manager.js');
+    runScript(dom, 'Musicmodules/music-stage/modes/partita-manager.js');
+    runScript(dom, 'Musicmodules/music-stage/modes/cadenza-manager.js');
     runScript(dom, 'Musicmodules/music-stage/modes/tempera-manager.js');
     runScript(dom, 'Musicmodules/music-stage/modes/sonnet-manager.js');
     runScript(dom, 'Musicmodules/music-stage/modes/diorama-manager.js');

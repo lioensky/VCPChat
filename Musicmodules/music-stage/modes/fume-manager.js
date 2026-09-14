@@ -6,6 +6,7 @@
     const U = global.MusicStageModeUtils;
     const R = global.MusicStageRuntime;
     const { clamp, seededRandom, splitGraphemes, resolveAccent, makeModeBase, createElement } = U;
+    const { buildGlyphTimeline, resolveSupplementalText } = R;
     const value = (v, fallback, min = 0, max = 2) => clamp(Number.isFinite(Number(v)) ? Number(v) : fallback, min, max);
     const ease = v => { const t = clamp(v); return t * t * t * (t * (t * 6 - 15) + 10); };
 
@@ -100,16 +101,18 @@
             element.style.width = `${block.width}px`;
             text.style.fontSize = `${block.fontSize}px`;
             element.append(number, text);
-            const glyphs = [];
-            (block.line.resolvedWords || []).forEach(word => {
-                const chars = splitGraphemes(word.text);
-                chars.forEach((char, index) => {
-                    const span = createElement('span', 'fume-print-glyph', char);
-                    const start = word.startTime + (word.endTime - word.startTime) * index / Math.max(1, chars.length);
-                    const end = word.startTime + (word.endTime - word.startTime) * (index + 1) / Math.max(1, chars.length);
-                    glyphs.push({ span, start, end, char });
-                    text.appendChild(span);
-                });
+            const glyphs = buildGlyphTimeline(block.line).map(timing => {
+                const span = createElement('span', 'fume-print-glyph', timing.text);
+                const glyph = {
+                    span,
+                    start: timing.startTime,
+                    end: timing.endTime,
+                    char: timing.text,
+                    wordIndex: timing.wordIndex,
+                    syllableIndex: timing.syllableIndex
+                };
+                text.appendChild(span);
+                return glyph;
             });
             element.style.left = `${block.x}px`;
             element.style.top = `${block.y}px`;
@@ -210,8 +213,10 @@
             const loft = clamp(distance * Math.max(from.scale, target.scale) / Math.min(width, height) - 0.8, 0, 1);
             pose.scale *= 1 - Math.sin(p * Math.PI) ** 2 * loft * 0.45;
             const last = blocks[blocks.length - 1];
-            if (index === blocks.length - 1 && time >= last.line.endTime) {
-                return interpolate(readingFocus(last, last.line.endTime, stepped), overview(), ease((time - last.line.endTime) / 2.4));
+            const lastEnd = Number(last.line.renderHints?.renderEndTime)
+                || last.line.vocalEndTime || last.line.endTime;
+            if (index === blocks.length - 1 && time >= lastEnd) {
+                return interpolate(readingFocus(last, lastEnd, stepped), overview(), ease((time - lastEnd) / 2.4));
             }
             return pose;
         };
@@ -313,9 +318,11 @@
                 const hold = holdRatio >= 1 ? Infinity : clamp(songDuration * holdRatio, 2.4, 130);
                 mounted.forEach((entry, i) => {
                     const b = blocks[i];
+                    const lineEnd = Number(b.line.renderHints?.renderEndTime)
+                        || b.line.vocalEndTime || b.line.endTime;
                     const current = i === index && time >= b.line.startTime;
-                    const passed = time >= b.line.endTime;
-                    const dim = passed ? ease((time - b.line.endTime) / hold) : 0;
+                    const passed = time >= lineEnd;
+                    const dim = passed ? ease((time - lineEnd) / hold) : 0;
                     entry.element.style.opacity = String(current ? 1 : passed ? 0.58 - dim * 0.45 : 0.13);
                     entry.element.classList.toggle('is-current', current);
                     // Keep measured geometry stable when hiding the decorative header.
@@ -331,7 +338,7 @@
                         glyph.span.classList.toggle('is-printed', printed);
                     });
                 });
-                translation.textContent = frame.activeLine?.translation || frame.activeLine?.romanization || '';
+                translation.textContent = resolveSupplementalText(frame.activeLine);
                 heading.textContent = `FUME / ${String(index + 1).padStart(3, '0')} — ${String(blocks.length).padStart(3, '0')}`;
             } else {
                 translation.textContent = '';

@@ -138,7 +138,11 @@
         const enter = transition === 'none' ? 0 : transition === 'fast' ? clamp(duration * 0.45, 0.045, 0.06) : clamp(duration * 0.34, 0.22, 0.42);
         const exit = transition === 'none' ? 0 : transition === 'fast' ? clamp(duration * 0.22, 0.03, 0.04) : clamp(duration * 0.18, 0.18, 0.32);
         const words = line.resolvedWords || line.words || [];
-        const lastEnd = Math.max(line.startTime, ...words.map(word => word.endTime));
+        const lastEnd = Math.max(
+            line.startTime,
+            Number(line.vocalEndTime) || line.startTime,
+            ...words.map(word => Number(word.endTime) || line.startTime)
+        );
         const exitStart = Math.max(lastEnd + (reveal === 'instant' ? 0 : 0.06), line.endTime - exit);
         return {
             reveal, transition, enter, exit, exitStart,

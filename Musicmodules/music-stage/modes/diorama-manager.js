@@ -15,6 +15,7 @@
         makeModeBase,
         createElement
     } = Utils;
+    const { buildGlyphTimeline, resolveSupplementalText } = global.MusicStageRuntime;
 
     // 与 music.html 使用同一份随应用发布的 Three.js，避免 node_modules 与 vendor 版本分裂。
     const THREE_MODULE_PATH = '../../../vendor/three.module.js';
@@ -301,13 +302,9 @@ const createTextTexture = (text, isGlow = false) => {
 const buildLineMesh = (lineData, lineIdx, isCurrent) => {
     if (!THREE || !lineData || !lineData.fullText) return null;
     const lineGroup = new THREE.Group();
-    const words = (lineData.words && lineData.words.length > 0)
-        ? lineData.words
-        : splitGraphemes(lineData.fullText).map((text, idx) => ({
-            text,
-            startTime: lineData.startTime + idx * 0.2,
-            endTime: lineData.startTime + (idx + 1) * 0.2
-        }));
+    // One shared syllable-aware glyph timeline for both advanced JSON and the
+    // legacy LRC fallback; no private fixed-duration retiming remains.
+    const words = buildGlyphTimeline(lineData);
 
     const unitMeshes = [];
     const accent = resolveAccent(services?.app);
@@ -385,9 +382,10 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
         currentX += advanceW;
     });
 
-    // 翻译文本平面（置于主歌词下方）
-    if (lineData.translation) {
-        const transView = createTextTexture(lineData.translation, false);
+    // 翻译与罗马音平面（两者同时存在时保留双行信息）
+    const supplementalText = resolveSupplementalText(lineData);
+    if (supplementalText) {
+        const transView = createTextTexture(supplementalText, false);
         if (transView) {
             const tw = transView.canvasWidth * WORLD_PER_PX * 0.65;
             const th = transView.canvasHeight * WORLD_PER_PX * 0.65;
@@ -999,11 +997,12 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
             const nextLine = lines[currentIdx + 1];
             const startTime = activeLine?.startTime || 0;
             const declaredEndTime = activeLine?.endTime || (startTime + 5);
-            const timedWords = (activeLine?.words || []).filter(word =>
-                String(word.text || '').trim() && Number.isFinite(word.endTime) && word.endTime > startTime);
-            const endTime = timedWords.length
-                ? Math.min(declaredEndTime, Math.max(...timedWords.map(word => word.endTime)))
-                : declaredEndTime;
+            const hintedEndTime = Number(activeLine?.renderHints?.renderEndTime);
+            const endTime = Math.max(
+                startTime,
+                activeLine?.vocalEndTime || declaredEndTime,
+                Number.isFinite(hintedEndTime) ? hintedEndTime : declaredEndTime
+            );
             const nextStartTime = nextLine ? (nextLine.startTime || endTime) : (endTime + 4);
             const currentTime = frame.playbackTime || 0;
 
@@ -1032,14 +1031,16 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
             let wordCursorX = 0;
             const currentNode = lineNodes.get(currentIdx);
             if (currentNode && currentNode.units.length > 0 && currentTime < endTime) {
-                const activeWordIdx = frame.activeWordIndex;
-                if (activeWordIdx >= 0 && currentNode.units[activeWordIdx]) {
-                    const unit = currentNode.units[activeWordIdx];
-                    const nextUnit = currentNode.units[activeWordIdx + 1];
-                    const p = frame.wordProgress || 0;
+                const activeGlyphIdx = currentNode.units.findIndex(unit =>
+                    currentTime >= unit.word.startTime && currentTime < unit.word.endTime);
+                if (activeGlyphIdx >= 0) {
+                    const unit = currentNode.units[activeGlyphIdx];
+                    const nextUnit = currentNode.units[activeGlyphIdx + 1];
+                    const p = clamp((currentTime - unit.word.startTime)
+                        / Math.max(0.001, unit.word.endTime - unit.word.startTime));
                     const uX = unit.localX || 0;
                     const nextX = nextUnit ? (nextUnit.localX || uX) : uX;
-                    // 平滑跟随当前字并向下一个字过渡
+                    // 平滑跟随当前音节级字素并向下一个字素过渡
                     wordCursorX = lerp(uX, nextX, p);
                 } else {
                     // 没有逐字时间戳时，根据行内进度从最左平滑横移到最右
@@ -1188,14 +1189,18 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                         baseOpacity = 0.0;
                     }
 
-                    node.units.forEach((u, unitIdx) => {
-                        const wordState = frame.wordStates?.[unitIdx];
-                        if (isCurrent && wordState && !isPassedCurrent) {
-                            const isWordActive = wordState.status === 'active';
-                            const isWordPassed = wordState.status === 'passed';
+                    node.units.forEach((u) => {
+                        const unitStart = u.word.startTime;
+                        const unitEnd = u.word.endTime;
+                        const unitProgress = clamp((currentTime - unitStart) / Math.max(0.001, unitEnd - unitStart));
+                        const unitStatus = currentTime < unitStart ? 'waiting'
+                            : currentTime >= unitEnd ? 'passed' : 'active';
+                        if (isCurrent && !isPassedCurrent) {
+                            const isWordActive = unitStatus === 'active';
+                            const isWordPassed = unitStatus === 'passed';
                             u.mat.opacity = isWordActive ? 1.0 : (isWordPassed ? 0.88 : 0.42);
                             if (isWordActive) {
-                                const p = wordState.progress || 0;
+                                const p = unitProgress;
                                 u.group.scale.setScalar(1.0 + p * 0.06);
                                 u.mat.color.copy(u.accentColor);
                                 if (u.glowMat) {
@@ -1320,7 +1325,7 @@ const buildLineMesh = (lineData, lineIdx, isCurrent) => {
                 renderedKey = key;
                 if (frame.activeLine) {
                     renderWords(fallbackLine, frame, 'diorama-word');
-                    fallbackTranslation.textContent = frame.activeLine.translation || frame.activeLine.romanization || '';
+                    fallbackTranslation.textContent = resolveSupplementalText(frame.activeLine);
                 } else {
                     fallbackLine.textContent = '等待音乐';
                     fallbackTranslation.textContent = '';
