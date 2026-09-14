@@ -318,6 +318,7 @@
             const showInterlude = Boolean(frame.track && !alive && !unavailable);
             interlude.update(frame, {
                 visible: showInterlude,
+                intensity: motion,
                 label: frame.lines.length ? '音乐间奏' : '纯音乐播放中'
             });
             empty.hidden = Boolean((alive && scenes.length) || showInterlude);

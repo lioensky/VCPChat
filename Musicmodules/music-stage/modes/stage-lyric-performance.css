@@ -117,111 +117,100 @@
     font-size: clamp(22px,3vw,38px);
 }
 
-/* Shared, playback-clock-driven instrumental indicator. */
+/* A quiet vector rest, sharing the lyric composition rather than a HUD overlay. */
 .stage-interlude-visualizer {
     --interlude-power: 0;
     --interlude-phase: 0deg;
+    --interlude-radius: clamp(32px, 4vw, 48px);
+    --interlude-stroke: 1.5px;
+    --interlude-color: color-mix(in srgb, var(--stage-ink) 72%, var(--performance-accent, var(--stage-accent)));
     position: absolute;
-    inset: 0;
-    z-index: 4;
+    inset: 11% 5% 27%;
+    z-index: 1;
     display: grid;
     place-items: center;
-    overflow: hidden;
     pointer-events: none;
-    opacity: 1;
-    transition: opacity 0.5s ease, filter 0.5s ease;
 }
 .stage-interlude-visualizer[hidden] {
     display: none;
 }
-.stage-interlude-halo {
-    position: absolute;
-    width: clamp(150px, 22vw, 270px);
-    aspect-ratio: 1;
-    border-radius: 50%;
-    background: radial-gradient(
-        circle,
-        color-mix(in srgb, var(--performance-accent, var(--stage-accent)) calc(9% + var(--interlude-power) * 16%), transparent) 0 16%,
-        color-mix(in srgb, var(--performance-accent, var(--stage-accent)) calc(5% + var(--interlude-power) * 9%), transparent) 32%,
-        transparent 69%
-    );
-    filter: blur(calc(13px + var(--interlude-power) * 12px));
-    transform: scale(calc(0.94 + var(--interlude-power) * 0.12));
-}
 .stage-interlude-orbit {
-    --interlude-radius: clamp(47px, 6vw, 71px);
     position: relative;
     width: calc(var(--interlude-radius) * 2);
     aspect-ratio: 1;
-    border: 1px solid color-mix(in srgb, var(--performance-accent, var(--stage-accent)) 24%, transparent);
-    border-radius: 50%;
-    box-shadow:
-        0 0 22px color-mix(in srgb, var(--performance-accent, var(--stage-accent)) calc(8% + var(--interlude-power) * 18%), transparent),
-        inset 0 0 20px color-mix(in srgb, var(--performance-accent, var(--stage-accent)) 6%, transparent);
+    color: var(--interlude-color);
     transform: rotate(var(--interlude-phase));
-    will-change: transform;
-}
-.stage-interlude-orbit::before,
-.stage-interlude-orbit::after {
-    content: "";
-    position: absolute;
-    border-radius: 50%;
-    pointer-events: none;
 }
 .stage-interlude-orbit::before {
-    inset: 12%;
-    border: 1px dashed color-mix(in srgb, var(--stage-ink) 15%, transparent);
-    transform: rotate(calc(var(--interlude-phase) * -1.7));
-}
-.stage-interlude-orbit::after {
-    top: 8%;
-    left: 50%;
-    width: 4px;
-    height: 4px;
-    background: color-mix(in srgb, var(--performance-accent, var(--stage-accent)) 88%, var(--stage-ink));
-    box-shadow:
-        0 0 7px var(--performance-accent, var(--stage-accent)),
-        0 0 17px var(--performance-accent, var(--stage-accent));
-    transform: translate(-50%, -50%);
-}
-.stage-interlude-bars,
-.stage-interlude-bars > i {
+    content: "";
     position: absolute;
+    inset: 7px;
+    border: 1px solid currentColor;
+    border-right-color: transparent;
+    border-bottom-color: transparent;
+    border-radius: 50%;
+    opacity: 0.12;
 }
 .stage-interlude-bars {
+    position: absolute;
     inset: 0;
 }
 .stage-interlude-bars > i {
-    left: calc(50% - 1.5px);
-    top: -9px;
-    width: 3px;
-    height: 18px;
-    border-radius: 999px;
-    background: linear-gradient(
-        to top,
-        color-mix(in srgb, var(--performance-accent, var(--stage-accent)) 52%, transparent),
-        color-mix(in srgb, var(--performance-accent, var(--stage-accent)) 88%, var(--stage-ink))
-    );
-    box-shadow: 0 0 calc(3px + var(--interlude-level) * 8px)
-        color-mix(in srgb, var(--performance-accent, var(--stage-accent)) 72%, transparent);
-    transform-origin: 50% calc(50% + var(--interlude-radius));
-    will-change: transform, opacity;
-}
-.stage-interlude-core {
     position: absolute;
-    inset: 31%;
-    border-radius: 50%;
-    background:
-        radial-gradient(circle at 38% 34%, color-mix(in srgb, var(--stage-ink) 68%, transparent), transparent 14%),
-        radial-gradient(circle, color-mix(in srgb, var(--performance-accent, var(--stage-accent)) 32%, transparent), transparent 68%);
-    box-shadow:
-        inset 0 0 0 1px color-mix(in srgb, var(--stage-ink) 13%, transparent),
-        0 0 calc(14px + var(--interlude-power) * 22px) color-mix(in srgb, var(--performance-accent, var(--stage-accent)) 31%, transparent);
-    transform: scale(calc(0.9 + var(--interlude-power) * 0.24));
+    left: calc(50% - var(--interlude-stroke) / 2);
+    top: calc(50% - 14px);
+    width: var(--interlude-stroke);
+    height: 14px;
+    border-radius: 0;
+    background: currentColor;
+    transform-origin: 50% 100%;
+}
+.stage-interlude-bars > i:nth-child(6n + 1) {
+    color: var(--performance-accent, var(--stage-accent));
 }
 .stage-interlude-visualizer:not(.is-playing) {
-    opacity: 0.58;
-    filter: saturate(0.72);
+    opacity: 0.65;
+}
+/* Luminous: soft strokes, only a trace of its existing vector glow. */
+.stage-interlude-luminous {
+    --interlude-color: color-mix(in srgb, var(--stage-ink) 48%, var(--performance-accent));
+}
+.stage-interlude-luminous .stage-interlude-bars {
+    filter: drop-shadow(0 0 2px color-mix(in srgb, var(--performance-accent) 25%, transparent));
+}
+.stage-interlude-luminous .stage-interlude-bars > i {
+    border-radius: 1px;
+}
+/* Partita: grouped, square-ended score ticks echo the stepped guides. */
+.stage-interlude-partita {
+    --interlude-stroke: 2px;
+}
+.stage-interlude-partita .stage-interlude-bars > i:nth-child(6n) {
+    visibility: hidden;
+}
+.stage-interlude-partita .stage-interlude-orbit::before {
+    border-radius: 0;
+    inset: 32%;
+    transform: rotate(45deg);
+}
+/* Cadenza: a restrained geometric accent, not another concentric dial. */
+.stage-interlude-cadenza .stage-interlude-orbit::before {
+    inset: 37%;
+    border-radius: 0;
+    transform: rotate(-45deg);
+    opacity: 0.22;
+}
+/* Fume: neutral ink and an open centre, matching the printed article world. */
+.stage-interlude-fume {
+    --interlude-color: var(--stage-ink);
+    --interlude-stroke: 1px;
+    inset: 12% 5% 24%;
+}
+.stage-interlude-fume .stage-interlude-orbit::before {
+    display: none;
+}
+.stage-interlude-fume .stage-interlude-bars > i {
+    color: inherit;
 }
 .music-stage-mode-partita.lyric-performance-mode::before,
 .music-stage-mode-partita.lyric-performance-mode::after {
@@ -268,9 +257,9 @@
     display: none;
 }
 
-@media (max-width: 560px), (max-height: 560px) {
-    .stage-interlude-visualizer {
-        transform: translateY(-4vh) scale(0.86);
+@media (max-width: 560px) {
+    .lyric-performance-mode > .stage-interlude-visualizer {
+        inset: 12% 4% 33%;
     }
 }
 
@@ -279,10 +268,7 @@
         transform: none !important;
     }
     .stage-interlude-bars > i {
-        transform: rotate(var(--interlude-angle)) translateY(-50%) scaleY(0.48) !important;
-        opacity: 0.48 !important;
-    }
-    .stage-interlude-core {
-        transform: none;
+        transform: rotate(var(--interlude-angle)) translateY(calc(-1 * var(--interlude-radius))) scaleY(0.28) !important;
+        opacity: 0.3 !important;
     }
 }

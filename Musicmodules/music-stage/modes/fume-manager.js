@@ -309,7 +309,7 @@
             const block = blocks[index];
             const previous = blocks[Math.max(0, index - 1)];
             const showInstrumental = Boolean(frame.track && !block);
-            interlude.update(frame, { visible: showInstrumental, label: '纯音乐播放中' });
+            interlude.update(frame, { visible: showInstrumental, intensity: intensity(), label: '纯音乐播放中' });
             empty.hidden = Boolean(block || showInstrumental);
             empty.textContent = '等待音乐';
             if (block) {
