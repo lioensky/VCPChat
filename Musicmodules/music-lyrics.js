@@ -7,12 +7,27 @@ function setupLyrics(app) {
         app.resetLyrics();
         if (!app.api?.getMusicLyrics) return;
 
+        const rawTitle = String(title || '').trim();
+        const normalizedTitle = app.stripAudioExtension?.(rawTitle) || rawTitle;
         const duration = options.duration || app.lastKnownDuration || 0;
         const album = options.album || '';
 
-        // 尝试从本地缓存读取（兼容结构化 LyricData 对象与旧版文本）
-        const cached = await app.api.getMusicLyrics({ artist, title, rawObject: true });
+        // 先按原始标题读取，兼容历史上以“歌名.flac”保存的缓存；
+        // 未命中时再读取规范化标题，新下载一律不携带音频扩展名。
+        let cached = await app.api.getMusicLyrics({
+            artist,
+            title: rawTitle,
+            rawObject: true
+        });
         if (requestToken !== app.lyricsRequestToken) return;
+        if (!cached && normalizedTitle && normalizedTitle !== rawTitle) {
+            cached = await app.api.getMusicLyrics({
+                artist,
+                title: normalizedTitle,
+                rawObject: true
+            });
+            if (requestToken !== app.lyricsRequestToken) return;
+        }
 
         if (cached) {
             if (typeof cached === 'object' && Array.isArray(cached.lines)) {
@@ -23,18 +38,50 @@ function setupLyrics(app) {
             }
             app.renderLyrics();
         } else {
-            // 尝试从多平台聚合网络获取歌词
-            app.lyricsList.innerHTML = '<li class="no-lyrics">正在自动匹配高精度网络歌词...</li>';
+            // 自动下载与手动搜索严格复用同一条候选搜索、解析和写盘链路。
+            // 这避免单体 fetchMusicLyrics 接口与手动候选接口出现 provider 行为差异。
+            app.lyricsList.innerHTML = '<li class="no-lyrics">正在跨平台审计高精度歌词...</li>';
             try {
-                const fetched = await app.api.fetchMusicLyrics({
-                    artist,
-                    title,
-                    duration,
-                    durationMs: Math.round(duration * 1000),
-                    album,
-                    rawObject: true
-                });
-                if (requestToken !== app.lyricsRequestToken) return;
+                let fetched = null;
+                if (app.api.searchMusicLyricsCandidates && app.api.applyMusicLyricsCandidate) {
+                    const searchResult = await app.api.searchMusicLyricsCandidates({
+                        artist,
+                        title: normalizedTitle,
+                        durationMs: Math.round(duration * 1000),
+                        album
+                    });
+                    if (requestToken !== app.lyricsRequestToken) return;
+
+                    const bestCandidate = searchResult?.candidates?.[0];
+                    if (bestCandidate?.candidateKey) {
+                        const applyResult = await app.api.applyMusicLyricsCandidate({
+                            candidateKey: bestCandidate.candidateKey,
+                            artist,
+                            title: normalizedTitle
+                        });
+                        if (requestToken !== app.lyricsRequestToken) return;
+                        if (applyResult?.success && applyResult.lyrics) {
+                            fetched = applyResult.lyrics;
+                            console.log(
+                                '[MusicLyrics] Automatic candidate applied:',
+                                bestCandidate.sourceLabel || bestCandidate.source,
+                                `${bestCandidate.matchScore}%`,
+                                bestCandidate.isWordByWord ? 'word-by-word' : 'line-level'
+                            );
+                        }
+                    }
+                } else if (app.api.fetchMusicLyrics) {
+                    // 兼容尚未暴露候选 IPC 的旧预加载环境。
+                    fetched = await app.api.fetchMusicLyrics({
+                        artist,
+                        title: normalizedTitle,
+                        duration,
+                        durationMs: Math.round(duration * 1000),
+                        album,
+                        rawObject: true
+                    });
+                    if (requestToken !== app.lyricsRequestToken) return;
+                }
 
                 if (fetched) {
                     if (typeof fetched === 'object' && Array.isArray(fetched.lines)) {

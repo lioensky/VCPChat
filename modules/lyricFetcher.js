@@ -188,10 +188,18 @@ async function fetchAndSaveLyrics(artist, title, lyricDir, options = {}) {
             return convertToLrcString(unifiedLyrics);
         }
     } catch (unifiedErr) {
-        console.warn('[LyricFetcher] Unified fetch failed, falling back to legacy NetEase API:', unifiedErr.message);
+        console.warn('[LyricFetcher] Unified cross-provider audit failed:', unifiedErr.message);
     }
 
-    // Fallback to legacy NetEase API if unified match didn't succeed
+    // The legacy matcher validates only artist similarity and can bypass title,
+    // album, duration and confidence checks. Keep it as an explicit compatibility
+    // escape hatch instead of silently accepting a low-confidence lyric.
+    if (options.allowLegacyFallback !== true) {
+        console.warn(`[LyricFetcher] Strict audit found no safe lyrics for "${title} - ${artist || ''}".`);
+        return null;
+    }
+
+    console.warn(`[LyricFetcher] Explicit legacy fallback enabled for "${title} - ${artist || ''}".`);
     const songs = await searchSongId(title, artist);
     if (!songs || songs.length === 0) {
         console.log(`[LyricFetcher] Could not find any songs for "${title}".`);

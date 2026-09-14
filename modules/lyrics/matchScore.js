@@ -31,6 +31,7 @@ function normalizeTitleForMatch(value) {
     const versionMarkerPattern = /(instrumental|inst|off\s*vocal|karaoke|remix|mix|version|ver\.?|cover|live|edit|arrange|伴奏|カラオケ|インスト|リミックス|remaster|remastered)/i;
     return normalizeLyricMatchText(
         String(value)
+            .replace(/\.(mp3|flac|wav|ogg|m4a|aac|ape|opus|wma|alac|aiff?)$/i, '')
             .replace(/[\(\[（【]\s*(feat|featuring|ft)\.?\s+[^\)\]）】]+[\)\]）】]/gi, '')
             .replace(/\b(feat|featuring|ft)\.?\s+.+$/i, '')
             .replace(/[\(\[（【]([^\)\]）】]+)[\)\]）】]/g, (match, content) => {

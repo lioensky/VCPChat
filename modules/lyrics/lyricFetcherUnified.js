@@ -14,6 +14,14 @@ const { calculateMatchScore } = require('./matchScore');
 const DEFAULT_TIMEOUT_MS = 6000;
 const AMLL_DB_BASE_URL = 'https://amll-ttml-db.stevexmh.net';
 const MANUAL_CANDIDATE_TTL_MS = 10 * 60 * 1000;
+const AUTO_MATCH_MIN_SCORE = 60;
+const AUTO_CANDIDATES_PER_SOURCE = 3;
+const LYRIC_QUALITY_BONUS = Object.freeze({
+    wordByWord: 12,
+    amllTtml: 3,
+    translation: 1,
+    romanization: 0.5
+});
 const manualCandidateCache = new Map();
 
 const SOURCE_LABELS = {
@@ -414,6 +422,46 @@ function createCandidateSummary(candidate, result) {
     };
 }
 
+function buildCandidateProbeTasks(candidate) {
+    const tasks = [
+        fetchCandidateLyrics(candidate)
+            .then(result => result?.lyrics ? { candidate, result } : null)
+            .catch(() => null)
+    ];
+
+    if (candidate.source === 'netease' || candidate.source === 'qq') {
+        const platform = candidate.source === 'netease' ? 'ncm' : 'qq';
+        tasks.push(
+            fetchAmllDb(platform, candidate.id)
+                .then(result => result?.lyrics ? { candidate, result } : null)
+                .catch(() => null)
+        );
+    }
+    return tasks;
+}
+
+/**
+ * Shared provider pipeline for manual and automatic lyric acquisition.
+ * Both consumers see the exact same searched, scored, downloaded and parsed set.
+ */
+async function collectProbedLyrics(target) {
+    const query = [target.title, target.artist].filter(Boolean).join(' ');
+    const [netease, qq, kugou] = await Promise.all([
+        searchNetEase(query, target),
+        searchQQ(query),
+        searchKugou(query)
+    ]);
+
+    const candidates = [
+        ...scoreCandidates(target, netease),
+        ...scoreCandidates(target, qq),
+        ...scoreCandidates(target, kugou)
+    ];
+
+    return (await Promise.all(candidates.flatMap(buildCandidateProbeTasks)))
+        .filter(Boolean);
+}
+
 async function searchLyricsCandidates({ artist, title, durationMs, album }) {
     if (!title) return [];
     cleanupManualCandidateCache();
@@ -424,40 +472,11 @@ async function searchLyricsCandidates({ artist, title, durationMs, album }) {
         durationMs: durationMs || 0,
         album: (album || '').trim()
     };
-    const query = [target.title, target.artist].filter(Boolean).join(' ');
+    const probed = await collectProbedLyrics(target);
+    const summaries = probed
+        .map(({ candidate, result }) => createCandidateSummary(candidate, result))
+        .filter(Boolean);
 
-    const [netease, qq, kugou] = await Promise.all([
-        searchNetEase(query, target),
-        searchQQ(query),
-        searchKugou(query)
-    ]);
-
-    const baseCandidates = [
-        ...scoreCandidates(target, netease),
-        ...scoreCandidates(target, qq),
-        ...scoreCandidates(target, kugou)
-    ];
-
-    const probes = [];
-    for (const candidate of baseCandidates) {
-        probes.push(
-            fetchCandidateLyrics(candidate)
-                .then(result => createCandidateSummary(candidate, result))
-                .catch(() => null)
-        );
-
-        if (candidate.source === 'netease' || candidate.source === 'qq') {
-            const platform = candidate.source === 'netease' ? 'ncm' : 'qq';
-            const amllCandidate = { ...candidate, source: 'amll', platform };
-            probes.push(
-                fetchAmllDb(platform, candidate.id)
-                    .then(result => createCandidateSummary(amllCandidate, result))
-                    .catch(() => null)
-            );
-        }
-    }
-
-    const summaries = (await Promise.all(probes)).filter(Boolean);
     return summaries.sort((a, b) => {
         if (a.isWordByWord !== b.isWordByWord) return a.isWordByWord ? -1 : 1;
         return b.matchScore - a.matchScore;
@@ -496,107 +515,76 @@ async function saveSelectedLyrics({ candidateKey, artist, title, lyricDir }) {
 }
 
 // ==========================================
-// Best Candidate Selection
+// Cross-provider audit and selection
 // ==========================================
-function pickBestCandidate(target, candidates) {
-    if (!candidates || candidates.length === 0) return null;
+function getLyricFeatureFlags(result) {
+    const lyrics = result?.lyrics;
+    const lines = Array.isArray(lyrics?.lines) ? lyrics.lines : [];
+    return {
+        valid: lines.length > 0,
+        isWordByWord: Boolean(lyrics?.isWordByWord),
+        hasTranslation: lines.some(line => Boolean(line?.translation)),
+        hasRomanization: lines.some(line => Boolean(line?.romanization))
+    };
+}
 
-    let best = null;
-    let maxScore = -1;
+function createAuditedLyrics(candidate, result) {
+    const features = getLyricFeatureFlags(result);
+    if (!features.valid || Number(candidate?.matchScore) < AUTO_MATCH_MIN_SCORE) return null;
 
-    for (const c of candidates) {
-        const details = calculateMatchScore(target, c);
-        if (details.score > maxScore) {
-            maxScore = details.score;
-            best = { ...c, matchScore: details.score, scoreDetails: details };
-        }
-    }
+    const qualityBonus =
+        (features.isWordByWord ? LYRIC_QUALITY_BONUS.wordByWord : 0)
+        + (result.source === 'amll' ? LYRIC_QUALITY_BONUS.amllTtml : 0)
+        + (features.hasTranslation ? LYRIC_QUALITY_BONUS.translation : 0)
+        + (features.hasRomanization ? LYRIC_QUALITY_BONUS.romanization : 0);
 
-    if (best && best.matchScore >= 60) {
-        return best;
-    }
-    return null;
+    return {
+        candidate,
+        result,
+        features,
+        matchScore: Number(candidate.matchScore),
+        qualityBonus,
+        auditScore: Number(candidate.matchScore) + qualityBonus
+    };
+}
+
+function rankAuditedLyrics(entries) {
+    return (entries || [])
+        .filter(Boolean)
+        .sort((a, b) =>
+            b.auditScore - a.auditScore
+            || b.matchScore - a.matchScore
+            || Number(b.features?.isWordByWord) - Number(a.features?.isWordByWord)
+            || Number(b.result?.source === 'amll') - Number(a.result?.source === 'amll')
+        );
 }
 
 // ==========================================
 // Master Auto Match Pipeline
 // ==========================================
 async function autoMatchLyrics(target) {
-    const { title, artist, durationMs, album } = target;
+    const { title, artist, durationMs } = target;
     const query = [title, artist].filter(Boolean).join(' ');
-    console.log(`[LyricFetcher] Searching lyrics for "${query}" (duration: ${durationMs}ms)`);
+    console.log(`[LyricFetcher] Auditing shared provider results for "${query}" (duration: ${durationMs}ms)`);
 
-    // 1. NetEase Search
-    const neteaseCandidates = await searchNetEase(query, target);
-    const bestNetEase = pickBestCandidate(target, neteaseCandidates);
+    const probed = await collectProbedLyrics(target);
+    const audited = rankAuditedLyrics(
+        probed.map(({ candidate, result }) => createAuditedLyrics(candidate, result))
+    );
+    const winner = audited[0];
 
-    if (bestNetEase) {
-        // Probe AMLL TTML DB first with NetEase ID
-        const amllNcm = await fetchAmllDb('ncm', bestNetEase.id);
-        if (amllNcm && amllNcm.lyrics && amllNcm.lyrics.isWordByWord) {
-            console.log(`[LyricFetcher] Matched high quality AMLL TTML (NCM) lyrics for ${title}!`);
-            return amllNcm;
-        }
-
-        const neteaseResult = await fetchNetEaseLyric(bestNetEase.id);
-        if (neteaseResult) {
-            if (neteaseResult.isPureMusic || (neteaseResult.lyrics && neteaseResult.lyrics.isWordByWord)) {
-                console.log(`[LyricFetcher] Matched NetEase YRC word-by-word lyrics for ${title}!`);
-                return neteaseResult;
-            }
-        }
+    if (!winner) {
+        console.warn(`[LyricFetcher] No audited candidate contained usable lyrics for ${title} - ${artist}`);
+        return null;
     }
 
-    // 2. QQ Music Search
-    const qqCandidates = await searchQQ(query);
-    const bestQQ = pickBestCandidate(target, qqCandidates);
-
-    if (bestQQ) {
-        // Probe AMLL TTML DB with QQ Music ID
-        const amllQQ = await fetchAmllDb('qq', bestQQ.id);
-        if (amllQQ && amllQQ.lyrics && amllQQ.lyrics.isWordByWord) {
-            console.log(`[LyricFetcher] Matched high quality AMLL TTML (QQ) lyrics for ${title}!`);
-            return amllQQ;
-        }
-
-        const qqResult = await fetchQQLyric(bestQQ);
-        if (qqResult && qqResult.lyrics && qqResult.lyrics.isWordByWord) {
-            console.log(`[LyricFetcher] Matched QQ Music QRC word-by-word lyrics for ${title}!`);
-            return qqResult;
-        }
-    }
-
-    // 3. Kugou Music Search
-    const kugouCandidates = await searchKugou(query);
-    const bestKugou = pickBestCandidate(target, kugouCandidates);
-
-    if (bestKugou) {
-        const kugouResult = await fetchKugouLyric(bestKugou);
-        if (kugouResult && kugouResult.lyrics && kugouResult.lyrics.isWordByWord) {
-            console.log(`[LyricFetcher] Matched Kugou KRC word-by-word lyrics for ${title}!`);
-            return kugouResult;
-        }
-    }
-
-    // 4. Fallback: If no word-by-word lyric matched, fallback to line-level NetEase or QQ lyric
-    if (bestNetEase) {
-        const neteaseFallback = await fetchNetEaseLyric(bestNetEase.id);
-        if (neteaseFallback && neteaseFallback.lyrics) {
-            console.log(`[LyricFetcher] Fallback to standard NetEase LRC lyrics for ${title}`);
-            return neteaseFallback;
-        }
-    }
-
-    if (bestQQ) {
-        const qqFallback = await fetchQQLyric(bestQQ);
-        if (qqFallback && qqFallback.lyrics) {
-            console.log(`[LyricFetcher] Fallback to standard QQ LRC lyrics for ${title}`);
-            return qqFallback;
-        }
-    }
-
-    console.warn(`[LyricFetcher] No suitable lyrics found for ${title} - ${artist}`);
-    return null;
+    console.log(
+        `[LyricFetcher] Audit winner: ${winner.result.source}`
+        + `${winner.result.platform ? `/${winner.result.platform}` : ''}`
+        + `, match=${winner.matchScore}, quality=+${winner.qualityBonus}, total=${winner.auditScore}`
+        + `, wordByWord=${winner.features.isWordByWord}`
+    );
+    return winner.result;
 }
 
 /**
@@ -641,7 +629,13 @@ async function fetchAndSaveLyricsUnified({ artist, title, durationMs, album, lyr
 }
 
 module.exports = {
+    AUTO_MATCH_MIN_SCORE,
+    LYRIC_QUALITY_BONUS,
     autoMatchLyrics,
+    collectProbedLyrics,
+    createCandidateSummary,
+    createAuditedLyrics,
+    rankAuditedLyrics,
     fetchAndSaveLyricsUnified,
     searchLyricsCandidates,
     saveSelectedLyrics,
