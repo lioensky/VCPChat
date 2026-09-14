@@ -2933,3 +2933,47 @@ body.light-theme .music-stage-settings-card option {
     color: color-mix(in srgb, var(--stage-ink) 45%, transparent);
     font-size: clamp(24px,4vw,48px);
 }
+
+/* 舞台自定义主题的浅色控制层：不依赖 body.light-theme，避免影响主播放器。 */
+.music-stage.stage-theme-light {
+    color-scheme: light;
+    --stage-control-bg: #eef3f6;
+    --stage-control-surface: #f8fafb;
+    --stage-control-surface-raised: #ffffff;
+    --stage-control-text: #101820;
+    --stage-control-muted: #5c6872;
+    --stage-wallpaper-opacity: 0.24;
+    --stage-cover-brightness: 1.08;
+    --stage-cover-opacity: 0.18;
+    --stage-blend: normal;
+}
+
+.music-stage.stage-theme-light .music-stage-settings-card {
+    color-scheme: light;
+    background:
+        linear-gradient(145deg, color-mix(in srgb, var(--stage-accent) 8%, transparent), transparent 38%),
+        color-mix(in srgb, var(--stage-control-bg) 76%, transparent);
+    backdrop-filter: blur(30px) saturate(135%) brightness(1.04);
+    -webkit-backdrop-filter: blur(30px) saturate(135%) brightness(1.04);
+    box-shadow:
+        -24px 28px 80px rgba(26, 45, 58, 0.22),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.8);
+}
+
+.music-stage.stage-theme-light .music-stage-tuning-row select,
+.music-stage.stage-theme-light .music-stage-settings-card select {
+    color-scheme: light;
+}
+
+.music-stage.stage-theme-light .music-stage-tuning-row select option,
+.music-stage.stage-theme-light .music-stage-settings-card option {
+    color: #101820;
+    background-color: #ffffff;
+}
+
+.music-stage.stage-theme-light .music-stage-settings-toggle,
+.music-stage.stage-theme-light .music-stage-chrome {
+    box-shadow:
+        0 14px 38px rgba(26, 45, 58, 0.16),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+}

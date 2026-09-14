@@ -2,7 +2,7 @@
     'use strict';
 
     const STORAGE_KEY = 'musicStageConfig';
-    const VERSION = 2;
+    const VERSION = 3;
     const clamp = (value, min, max, fallback) => {
         const number = Number(value);
         if (!Number.isFinite(number)) return fallback;
@@ -38,6 +38,9 @@
         quality: 'standard',
         animationIntensity: 1,
         edgeSpectrum: true,
+        themeMode: 'global',
+        themeFile: '',
+        themeVariant: 'dark',
         modes: {
             tempera: {
                 ...PIXI_DEFAULTS,
@@ -220,6 +223,9 @@
             quality: enumValue(source.quality, ['energy-saving', 'standard', 'ultimate'], DEFAULTS.quality),
             animationIntensity: clamp(source.animationIntensity, 0, 2, DEFAULTS.animationIntensity),
             edgeSpectrum: bool(source.edgeSpectrum, DEFAULTS.edgeSpectrum),
+            themeMode: enumValue(source.themeMode, ['global', 'custom'], DEFAULTS.themeMode),
+            themeFile: typeof source.themeFile === 'string' ? source.themeFile : DEFAULTS.themeFile,
+            themeVariant: enumValue(source.themeVariant, ['dark', 'light'], DEFAULTS.themeVariant),
             modes
         };
     };

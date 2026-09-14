@@ -48,7 +48,12 @@
     // Resolve CSS colors once per theme change, never in the animation loop.
     // The browser handles variables, named colors, hsl and color-mix for us.
     const refreshTheme = (app, root = document.body) => {
-        const light = app?.currentTheme === 'light';
+        // Custom stage palettes carry their own light/dark state. In global
+        // mode, retain the application's authoritative theme state.
+        const light = root?.closest?.('.music-stage')?.classList.contains('stage-theme-light')
+            || (root?.classList.contains?.('music-stage') && root.classList.contains('stage-theme-light'))
+            || (!(root?.closest?.('.music-stage') || root?.classList.contains?.('music-stage'))
+                && app?.currentTheme === 'light');
         const defaults = light
             ? ['#f2efe7', '#fcfaf4', '#1b211f', '#626a66', '#b94832', '#21675c', '#21675c']
             : ['#171a1d', '#20252a', '#f2f0e9', '#a7afb1', '#f2a900', '#76bfae', '#76bfae'];

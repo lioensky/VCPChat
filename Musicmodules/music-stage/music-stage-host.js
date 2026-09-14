@@ -10,6 +10,22 @@
 
     const fileUrl = (path) => path ? `file://${String(path).replace(/\\/g, '/')}` : '';
 
+    const resolveThemeAssetValue = (value) => {
+        if (typeof value !== 'string' || !value.includes('url(')) return value;
+        // Theme files are normally copied to styles/themes.css before being
+        // loaded by the main page. Resolve their relative assets against that
+        // effective stylesheet location, not against this music-stage script.
+        const base = new URL('../styles/themes.css', document.baseURI);
+        return value.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/g, (match, quote, assetPath) => {
+            if (/^(?:data:|https?:|file:|blob:|#)/i.test(assetPath)) return match;
+            try {
+                return `url("${new URL(assetPath, base).href}")`;
+            } catch (error) {
+                return match;
+            }
+        });
+    };
+
     const createElement = (tag, className, attributes = {}) => {
         const element = document.createElement(tag);
         if (className) element.className = className;
@@ -246,6 +262,8 @@
             lastAudioBass: '',
             lastAudioVocal: '',
             lastNonZeroVolume: Math.max(0.35, Number(app.volumeSlider?.value) || 1),
+            themeCatalog: [],
+            appliedThemeVariables: new Set(),
             destroyed: false,
             config: Config.get(),
             settingsOpen: false,
@@ -321,6 +339,75 @@
             if (definition.type === 'select') return definition.options.find(([key]) => key === value)?.[1] || String(value || '');
             if (definition.unit === '%') return `${Math.round(Number(value) * 100)}%`;
             return `${Number(value).toFixed(definition.step < 0.1 ? 2 : 1)}${definition.unit || ''}`;
+        };
+
+        const applyStageTheme = () => {
+            const config = state.config;
+            const useCustom = config.themeMode === 'custom';
+            const selectedTheme = state.themeCatalog.find(theme => theme.fileName === config.themeFile);
+            const variables = useCustom
+                ? (selectedTheme?.variables?.[config.themeVariant] || {})
+                : {};
+
+            state.appliedThemeVariables.forEach(name => root.style.removeProperty(name));
+            state.appliedThemeVariables.clear();
+            root.classList.toggle('stage-theme-custom', useCustom);
+            root.classList.toggle('stage-theme-light', useCustom && config.themeVariant === 'light');
+            root.classList.toggle('stage-theme-dark', useCustom && config.themeVariant !== 'light');
+
+            if (useCustom && selectedTheme) {
+                const styleTarget = root;
+                Object.entries(variables).forEach(([name, value]) => {
+                    styleTarget.style.setProperty(name, resolveThemeAssetValue(value));
+                    state.appliedThemeVariables.add(name);
+                });
+                // These are declared on body in the normal theme stylesheet. Rebind
+                // them on the stage so the descendant stage tokens resolve against
+                // the selected custom palette rather than the page palette.
+                [
+                    ['--stage-bg', '--primary-bg'],
+                    ['--stage-surface', '--secondary-bg'],
+                    ['--stage-ink', '--primary-text'],
+                    ['--stage-muted', '--secondary-text'],
+                    ['--stage-accent', '--highlight-text'],
+                    ['--stage-on-accent', '--text-on-accent'],
+                    ['--stage-border', '--border-color'],
+                    ['--stage-glass', '--panel-bg'],
+                    ['--stage-blend', 'normal']
+                ].forEach(([target, source]) => {
+                    styleTarget.style.setProperty(target, source === 'normal' ? source : `var(${source})`);
+                    state.appliedThemeVariables.add(target);
+                });
+                styleTarget.style.setProperty(
+                    '--stage-wallpaper',
+                    variables[`--chat-wallpaper-${config.themeVariant}`]
+                        ? resolveThemeAssetValue(variables[`--chat-wallpaper-${config.themeVariant}`])
+                        : 'none'
+                );
+                state.appliedThemeVariables.add('--stage-wallpaper');
+                styleTarget.style.setProperty('color-scheme', config.themeVariant === 'light' ? 'light' : 'dark');
+                state.appliedThemeVariables.add('color-scheme');
+            }
+
+            updateTheme();
+        };
+
+        const loadThemeCatalog = async () => {
+            if (!app.api?.getThemes) return;
+            try {
+                const themes = await app.api.getThemes();
+                state.themeCatalog = Array.isArray(themes) ? themes : [];
+                if (
+                    state.config.themeMode === 'custom'
+                    && !state.themeCatalog.some(theme => theme.fileName === state.config.themeFile)
+                ) {
+                    state.config = Config.update({ themeMode: 'global', themeFile: '' });
+                }
+                renderSettingsControls();
+                applyStageTheme();
+            } catch (error) {
+                console.warn('[MusicStage] Failed to load theme catalog:', error);
+            }
         };
 
         const renderSettingsControls = () => {
@@ -441,6 +528,53 @@
             const intensityRow = createElement('label', 'music-stage-tuning-row');
             intensityRow.append(createElement('span', 'music-stage-tuning-label', '动画总强度'), intensityValue, intensity);
             commonFragment.append(qualityRow, intensityRow);
+
+            const themeSelect = createElement('select', 'music-stage-common-select', {
+                'aria-label': '舞台主题'
+            });
+            themeSelect.appendChild(createElement('option', '', {
+                value: 'global',
+                text: '跟随全局主题'
+            }));
+            state.themeCatalog.forEach((theme) => {
+                const name = theme.name || theme.fileName.replace(/^themes/, '').replace(/\.css$/i, '');
+                if (theme.variables?.light && Object.keys(theme.variables.light).length) {
+                    themeSelect.appendChild(createElement('option', '', {
+                        value: `custom:${theme.fileName}:light`,
+                        text: `${name} 明`
+                    }));
+                }
+                if (theme.variables?.dark && Object.keys(theme.variables.dark).length) {
+                    themeSelect.appendChild(createElement('option', '', {
+                        value: `custom:${theme.fileName}:dark`,
+                        text: `${name} 暗`
+                    }));
+                }
+            });
+            themeSelect.value = state.config.themeMode === 'custom'
+                ? `custom:${state.config.themeFile}:${state.config.themeVariant}`
+                : 'global';
+            if (![...themeSelect.options].some(option => option.value === themeSelect.value)) {
+                themeSelect.value = 'global';
+            }
+            themeSelect.addEventListener('change', () => {
+                const [kind, fileName, variant] = themeSelect.value.split(':');
+                editingSettings = true;
+                try {
+                    Config.update(kind === 'custom'
+                        ? { themeMode: 'custom', themeFile: fileName, themeVariant: variant }
+                        : { themeMode: 'global', themeFile: '' });
+                } finally {
+                    editingSettings = false;
+                }
+            });
+            const themeRow = createElement('label', 'music-stage-tuning-row');
+            themeRow.append(
+                createElement('span', 'music-stage-tuning-label', '舞台主题'),
+                themeSelect
+            );
+            commonFragment.appendChild(themeRow);
+
             elements.commonControls.replaceChildren(commonFragment);
         };
 
@@ -766,10 +900,13 @@
 
         const updateTheme = () => {
             if (state.destroyed) return;
-            // Read the computed image rather than copying a raw CSS variable:
-            // relative URLs must resolve against the theme stylesheet, not this one.
-            const wallpaper = getComputedStyle(document.body).backgroundImage;
-            root.style.setProperty('--stage-wallpaper', wallpaper || 'none');
+            // Custom palettes are already scoped to the stage root. Global mode
+            // reads the page's computed wallpaper and color variables.
+            if (state.config.themeMode !== 'custom') {
+                const wallpaper = getComputedStyle(document.body).backgroundImage;
+                root.style.setProperty('--stage-wallpaper', wallpaper || 'none');
+                root.classList.remove('stage-theme-custom', 'stage-theme-light', 'stage-theme-dark');
+            }
             const palette = global.MusicStageModeUtils.refreshTheme(app, root);
             state.modeInstance?.updateTheme?.(palette);
             state.trackSignature = '';
@@ -907,6 +1044,7 @@
         const handleConfigChange = (config) => {
             state.config = config;
             root.classList.toggle('stage-edge-spectrum-off', config.edgeSpectrum === false);
+            applyStageTheme();
             renderModeButtons();
             if (!editingSettings) renderSettingsControls();
             state.modeInstance?.updateConfig?.(config);
@@ -920,6 +1058,7 @@
         root.classList.toggle('stage-edge-spectrum-off', state.config.edgeSpectrum === false);
         renderModeButtons();
         renderSettingsControls();
+        loadThemeCatalog();
         elements.play.innerHTML = `${icons.play}${icons.pause}`;
         elements.prev.innerHTML = icons.previous;
         elements.next.innerHTML = icons.next;
