@@ -40,6 +40,7 @@ function setupPlayer(app) {
         }
 
         app.renderPlaylist(app.currentFilteredTracks);
+        app.scrollCurrentTrackToSidebarTop?.();
         app.fetchAndDisplayLyrics(track.artist, track.title, {
             duration: track.duration || 0,
             album: track.album || ''
@@ -274,6 +275,7 @@ function setupPlayer(app) {
             }
             
             app.renderPlaylist(app.currentFilteredTracks);
+            app.scrollCurrentTrackToSidebarTop?.();
             app.fetchAndDisplayLyrics(track.artist, track.title, {
                 duration: track.duration || 0,
                 album: track.album || ''
@@ -324,6 +326,7 @@ function setupPlayer(app) {
                     }
                     
                     app.renderPlaylist(app.currentFilteredTracks);
+                    app.scrollCurrentTrackToSidebarTop?.();
                     app.fetchAndDisplayLyrics(track.artist, track.title, {
                         duration: track.duration || 0,
                         album: track.album || ''

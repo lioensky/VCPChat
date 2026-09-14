@@ -801,6 +801,10 @@
             document.body.classList.remove('music-stage-active');
             setButtonState();
             const generation = ++state.generation;
+            requestAnimationFrame(() => {
+                if (state.active || state.destroyed || generation !== state.generation) return;
+                app.scrollCurrentTrackToSidebarTop?.();
+            });
             scope.timeout(() => {
                 if (state.active || state.destroyed || generation !== state.generation) return;
                 destroyMode();

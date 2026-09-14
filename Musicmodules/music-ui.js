@@ -69,6 +69,31 @@ function setupUI(app) {
         app.playlistEl.appendChild(frag); app.updateAllCount();
     };
 
+    app.scrollCurrentTrackToSidebarTop = () => {
+        const playlist = app.playlistEl;
+        if (!playlist || playlist.style.display === 'none') return false;
+
+        const activeItem = Array.from(playlist.children).find(
+            item => Number(item.dataset.index) === app.currentTrackIndex
+        );
+        if (!activeItem) return false;
+
+        // Place the active row around 1/4 of the visible list instead of directly
+        // against the top edge. This leaves tolerance for restored layout/rounded
+        // panel clipping while preserving useful context above and below the track.
+        const playlistRect = playlist.getBoundingClientRect();
+        const itemRect = activeItem.getBoundingClientRect();
+        const viewportHeight = playlist.clientHeight || playlistRect.height || 0;
+        const targetOffset = viewportHeight * 0.25;
+        const desiredScrollTop = playlist.scrollTop
+            + itemRect.top
+            - playlistRect.top
+            - targetOffset;
+        const maxScrollTop = Math.max(0, playlist.scrollHeight - viewportHeight);
+        playlist.scrollTop = Math.min(maxScrollTop, Math.max(0, desiredScrollTop));
+        return true;
+    };
+
     app.createSilentAudio = () => {
         // The WAV only needs a known sample count. Creating an AudioContext here
         // left a native audio graph alive for the entire renderer lifetime.

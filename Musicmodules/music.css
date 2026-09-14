@@ -1743,6 +1743,8 @@ body.sidebar-collapsed .left-sidebar > * {
     overflow-y: auto;
     padding: 0;
     margin: 0;
+    overscroll-behavior: contain;
+    contain: layout paint style;
 }
 
 .sidebar-playlist li {
@@ -1765,6 +1767,26 @@ body.sidebar-collapsed .left-sidebar > * {
     background-color: var(--music-highlight);
     color: white;
     font-weight: 500;
+}
+
+/*
+ * Scroll performance budget:
+ * preserve full glass while idle, but stop live backdrop sampling during the
+ * short interval in which Chromium is compositing playlist scroll frames.
+ */
+body.sidebar-is-scrolling .left-sidebar {
+    background: rgba(20, 20, 20, 0.88);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    transition: none;
+}
+
+body.light-theme.sidebar-is-scrolling .left-sidebar {
+    background: rgba(255, 255, 255, 0.92);
+}
+
+body.sidebar-is-scrolling .sidebar-playlist li {
+    transition: none;
 }
 
 /* 分类视图容器 */

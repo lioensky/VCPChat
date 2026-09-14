@@ -73,6 +73,7 @@ const installCanvasStub = (window) => {
         lineTo() {},
         quadraticCurveTo() {},
         closePath() {},
+        fill() {},
         stroke() {},
         measureText(text) { return { width: String(text).length * 20 }; },
         set fillStyle(value) {},
@@ -98,6 +99,7 @@ const createApp = () => {
         pause: 0,
         previous: 0,
         next: 0,
+        sidebarScrolls: 0,
         volumes: []
     };
 
@@ -139,6 +141,7 @@ const createApp = () => {
         updateVolumeSliderBackground() {},
         updateModeButton() {},
         saveSettings() {},
+        scrollCurrentTrackToSidebarTop() { calls.sidebarScrolls += 1; },
         playTrack() { calls.play += 1; },
         pauseTrack() { calls.pause += 1; },
         prevTrack() { calls.previous += 1; },
@@ -272,6 +275,58 @@ test('plain LRC keeps fallback timing and untouched display spaces', () => {
     dom.window.close();
 });
 
+test('music UI positions the current visible track at one quarter of the sidebar without changing filtered context', () => {
+    const dom = new JSDOM('<!doctype html><body><ul id="playlist"></ul></body>', {
+        url: 'http://localhost/',
+        pretendToBeVisual: true,
+        runScripts: 'outside-only'
+    });
+    runScript(dom, 'Musicmodules/music-ui.js');
+
+    const playlistEl = dom.window.document.getElementById('playlist');
+    const playlist = [
+        { title: '第一首.flac' },
+        { title: '当前歌曲.flac' },
+        { title: '第三首.flac' }
+    ];
+    const app = {
+        playlist,
+        playlistEl,
+        currentTrackIndex: 1,
+        stripAudioExtension: (value) => String(value).replace(/\.[^.]+$/, ''),
+        updateAllCount() {}
+    };
+    dom.window.setupUI(app);
+    app.renderPlaylist([playlist[2], playlist[1]]);
+
+    Object.defineProperty(playlistEl, 'clientHeight', { configurable: true, value: 200 });
+    Object.defineProperty(playlistEl, 'scrollHeight', { configurable: true, value: 500 });
+    playlistEl.scrollTop = 35;
+    playlistEl.getBoundingClientRect = () => ({ top: 100, height: 200 });
+    const activeItem = playlistEl.querySelector('[data-index="1"]');
+    activeItem.getBoundingClientRect = () => ({ top: 220 });
+
+    assert.equal(app.scrollCurrentTrackToSidebarTop(), true);
+    assert.equal(playlistEl.scrollTop, 105);
+    assert.equal(playlistEl.firstElementChild.dataset.index, '2');
+
+    app.renderPlaylist([playlist[2]]);
+    playlistEl.scrollTop = 48;
+    assert.equal(app.scrollCurrentTrackToSidebarTop(), false);
+    assert.equal(playlistEl.scrollTop, 48);
+    dom.window.close();
+});
+
+test('music player repositions the sidebar after normal and gapless track changes', () => {
+    const source = read('Musicmodules/music-player.js');
+    const renderThenPosition = /app\.renderPlaylist\(app\.currentFilteredTracks\);\s*app\.scrollCurrentTrackToSidebarTop\?\.\(\);/g;
+    assert.equal(
+        Array.from(source.matchAll(renderThenPosition)).length,
+        3,
+        'normal load plus exact and fuzzy gapless synchronization must reposition the current track'
+    );
+});
+
 test('music stage keeps one mode instance and releases canvases across switches', async () => {
     const dom = createStageDom();
     installCanvasStub(dom.window);
@@ -291,7 +346,7 @@ test('music stage keeps one mode instance and releases canvases across switches'
     runScript(dom, 'Musicmodules/music-stage/music-stage-modes.js');
     runScript(dom, 'Musicmodules/music-stage/music-stage-host.js');
 
-    const { app } = createApp();
+    const { app, calls } = createApp();
     dom.window.setupMusicStage(app);
     app.stageHost.enter();
     await wait(dom.window, 20);
@@ -337,6 +392,7 @@ test('music stage keeps one mode instance and releases canvases across switches'
     await wait(dom.window, 410);
     const exited = app.stageHost.getDebugSnapshot();
     assert.equal(exited.active, false);
+    assert.equal(calls.sidebarScrolls, 1);
     assert.equal(exited.hasModeInstance, false);
     assert.equal(exited.modeRootChildren, 0);
     assert.equal(app.isStageActive, false);

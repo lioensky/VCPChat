@@ -454,7 +454,10 @@
         };
 
         app.updateAmbientPixi = (dt) => {
-            if (app.isStageActive) return;
+            // Keep the last rendered frame while the sidebar moves. Reusing the
+            // existing WebGL resources is much cheaper than destroy/recreate and
+            // avoids competing with Chromium's scroll compositor.
+            if (app.isStageActive || app.isSidebarScrolling) return;
             app.ambientPixiController?.update(dt);
         };
 

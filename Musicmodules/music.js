@@ -229,6 +229,8 @@ document.addEventListener('DOMContentLoaded', () => {
         lyricsFetchCandidates: [],
         selectedLyricsCandidateKey: null,
         lyricsFetchRequestToken: 0,
+        sidebarScrollEndTimer: null,
+        isSidebarScrolling: false,
         silentAudioUrl: null,
         destroyed: false,
     };
@@ -257,6 +259,12 @@ document.addEventListener('DOMContentLoaded', () => {
             clearTimeout(app._gaplessSwitchTimer);
             app._gaplessSwitchTimer = null;
         }
+        if (app.sidebarScrollEndTimer) {
+            clearTimeout(app.sidebarScrollEndTimer);
+            app.sidebarScrollEndTimer = null;
+        }
+        app.isSidebarScrolling = false;
+        document.body.classList.remove('sidebar-is-scrolling');
 
         if ('mediaSession' in navigator) {
             ['play', 'pause', 'previoustrack', 'nexttrack'].forEach((action) => {
@@ -838,6 +846,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
         app.outputBitsSelect.onchange = () => app.updateNoiseShaperSettings();
         app.noiseShaperCurveSelect.onchange = () => app.updateNoiseShaperSettings();
+
+        const markSidebarScrolling = () => {
+            if (!app.isSidebarScrolling) {
+                app.isSidebarScrolling = true;
+                document.body.classList.add('sidebar-is-scrolling');
+            }
+            if (app.sidebarScrollEndTimer) clearTimeout(app.sidebarScrollEndTimer);
+            app.sidebarScrollEndTimer = setTimeout(() => {
+                app.sidebarScrollEndTimer = null;
+                app.isSidebarScrolling = false;
+                document.body.classList.remove('sidebar-is-scrolling');
+            }, 140);
+        };
+        app.playlistEl.addEventListener('scroll', markSidebarScrolling, { passive: true });
 
         app.playlistEl.addEventListener('click', (e) => {
             if (e.target.tagName === 'LI') app.loadTrack(parseInt(e.target.dataset.index, 10));
