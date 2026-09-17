@@ -233,6 +233,7 @@ class VCPLoomManager {
         this.pagePreloadPath = path.join(this.projectRoot, 'preloads', 'loom-page.js');
         this.webCoreRoot = path.join(__dirname, 'webcore');
         this.webAgentSourceCache = null;
+        this.comfyUIMainWorldBridgeSourceCache = null;
         this.mainWindow = options.mainWindow || null;
         this.openChildWindows = options.openChildWindows || [];
         this.managerWindow = null;
@@ -483,6 +484,8 @@ class VCPLoomManager {
         const files = [
             'web-agent-protocol.js',
             'web-agent-page-core.js',
+            // Runtime Core 初始化时从全局读取专用页面适配器，必须先注入。
+            'comfyui-page-adapter.js',
             'web-agent-page-runtime-core.js',
         ];
         this.webAgentSourceCache = await Promise.all(files.map(async (fileName) => ({
@@ -490,6 +493,17 @@ class VCPLoomManager {
             url: `vcp-loom-webcore://${fileName}`,
         })));
         return this.webAgentSourceCache;
+    }
+
+    async getComfyUIMainWorldBridgeSource() {
+        if (this.comfyUIMainWorldBridgeSourceCache) {
+            return this.comfyUIMainWorldBridgeSourceCache;
+        }
+        this.comfyUIMainWorldBridgeSourceCache = await fs.readFile(
+            path.join(this.webCoreRoot, 'comfyui-main-world-bridge.js'),
+            'utf8'
+        );
+        return this.comfyUIMainWorldBridgeSourceCache;
     }
 
     async waitForDocumentReady(instance, generation) {
@@ -520,7 +534,22 @@ class VCPLoomManager {
         }
 
         await this.waitForDocumentReady(instance, generation);
-        const sources = await this.getWebAgentSources();
+        const [sources, comfyUIMainWorldBridgeSource] = await Promise.all([
+            this.getWebAgentSources(),
+            this.getComfyUIMainWorldBridgeSource(),
+        ]);
+        if (generation !== instance.documentGeneration) {
+            const error = new Error('页面已导航，放弃旧文档的 Web Agent 初始化。');
+            error.code = 'LOOM_DOCUMENT_CHANGED';
+            throw error;
+        }
+
+        // LiteGraph 的 app/graph 对象只存在于页面 MAIN World。先安装最小状态桥，
+        // 再启动隔离世界 Runtime；普通页面上该桥会立即无操作返回。
+        await contents.executeJavaScript(
+            `${comfyUIMainWorldBridgeSource}\n//# sourceURL=vcp-loom-webcore://comfyui-main-world-bridge.js`,
+            true
+        );
         if (generation !== instance.documentGeneration) {
             const error = new Error('页面已导航，放弃旧文档的 Web Agent 初始化。');
             error.code = 'LOOM_DOCUMENT_CHANGED';
