@@ -19,6 +19,121 @@ const { PRELOAD_ROLES, resolveAppPreload } = require('../services/preloadPaths')
  */
 let ipcHandlersRegistered = false;
 
+const COMFYUI_IMAGE_PROXY_MAX_BYTES = 32 * 1024 * 1024;
+const COMFYUI_IMAGE_PROXY_TIMEOUT_MS = 15000;
+const COMFYUI_LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
+
+function validateComfyUIImageUrl(rawUrl) {
+    if (typeof rawUrl !== 'string' || !rawUrl.trim()) {
+        throw new TypeError('图片地址不能为空。');
+    }
+
+    const url = new URL(rawUrl);
+    if (
+        url.protocol !== 'http:'
+        || !COMFYUI_LOOPBACK_HOSTS.has(url.hostname.toLowerCase())
+        || url.port !== '8188'
+        || url.pathname !== '/api/view'
+        || url.username
+        || url.password
+    ) {
+        throw new TypeError('只允许代理本机 ComfyUI 的 http://127.0.0.1:8188/api/view 图片。');
+    }
+
+    if (!url.searchParams.get('filename')) {
+        throw new TypeError('ComfyUI 图片地址缺少 filename 参数。');
+    }
+
+    return url.toString();
+}
+
+function requestComfyUIImage(rawUrl) {
+    const imageUrl = validateComfyUIImageUrl(rawUrl);
+
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        let request;
+        const finish = (callback, value) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeoutId);
+            callback(value);
+        };
+        const timeoutId = setTimeout(() => {
+            request?.abort();
+            finish(reject, new Error('ComfyUI 图片请求超时。'));
+        }, COMFYUI_IMAGE_PROXY_TIMEOUT_MS);
+
+        try {
+            request = net.request({
+                method: 'GET',
+                url: imageUrl,
+                redirect: 'error'
+            });
+            request.setHeader('Accept', 'image/avif,image/webp,image/apng,image/svg+xml,image/*;q=0.8,*/*;q=0.5');
+
+            request.on('redirect', () => {
+                request.abort();
+                finish(reject, new Error('ComfyUI 图片代理不允许重定向。'));
+            });
+
+            request.on('response', (response) => {
+                const statusCode = Number(response.statusCode) || 0;
+                const rawContentType = response.headers?.['content-type'];
+                const contentTypeHeader = Array.isArray(rawContentType)
+                    ? rawContentType[0]
+                    : rawContentType;
+                const mimeType = String(contentTypeHeader || '')
+                    .split(';', 1)[0]
+                    .trim()
+                    .toLowerCase();
+
+                if (statusCode !== 200) {
+                    response.resume();
+                    finish(reject, new Error(`ComfyUI 返回 HTTP ${statusCode}。`));
+                    return;
+                }
+
+                if (!mimeType.startsWith('image/')) {
+                    response.resume();
+                    finish(reject, new Error(`ComfyUI 返回了非图片内容：${mimeType || '未知类型'}。`));
+                    return;
+                }
+
+                const chunks = [];
+                let totalBytes = 0;
+                response.on('data', (chunk) => {
+                    if (settled) return;
+                    const buffer = Buffer.from(chunk);
+                    totalBytes += buffer.length;
+                    if (totalBytes > COMFYUI_IMAGE_PROXY_MAX_BYTES) {
+                        response.destroy();
+                        request.abort();
+                        finish(reject, new Error('ComfyUI 图片超过 32MB 限制。'));
+                        return;
+                    }
+                    chunks.push(buffer);
+                });
+                response.on('end', () => {
+                    if (settled) return;
+                    const buffer = Buffer.concat(chunks, totalBytes);
+                    finish(resolve, {
+                        data: buffer.toString('base64'),
+                        mimeType,
+                        sourceUrl: imageUrl
+                    });
+                });
+                response.on('error', (error) => finish(reject, error));
+            });
+
+            request.on('error', (error) => finish(reject, error));
+            request.end();
+        } catch (error) {
+            finish(reject, error);
+        }
+    });
+}
+
 function initialize(mainWindow, context) {
     let { openChildWindows } = context;
 
@@ -86,6 +201,16 @@ function initialize(mainWindow, context) {
             return { success: true, text: text };
         } catch (error) {
             console.error('[Main Process] Error reading text from clipboard:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('proxy-comfyui-image', async (_event, imageUrl) => {
+        try {
+            const result = await requestComfyUIImage(imageUrl);
+            return { success: true, ...result };
+        } catch (error) {
+            console.warn('[Main Process] ComfyUI image proxy rejected request:', error.message);
             return { success: false, error: error.message };
         }
     });
