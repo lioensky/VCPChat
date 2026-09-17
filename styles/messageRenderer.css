@@ -206,25 +206,17 @@
 }
 
 .vcp-tool-details {
-    max-height: 0;
-    opacity: 0;
+    display: none;
     overflow: hidden;
-    font-size: 0;
-    /* Use font-size to collapse content, preventing width issues */
-    transition: max-height 0.5s ease-in-out, opacity 0.5s ease-in-out, margin-top 0.5s ease-in-out;
     background-color: rgba(0, 0, 0, 0.2);
     border-radius: 6px;
     margin-top: 0;
 }
 
-.vcp-tool-use-bubble:hover .vcp-tool-details {
-    max-height: 500px;
-    /* Allow space for content to show */
-    opacity: 1;
+.vcp-tool-use-bubble.expanded .vcp-tool-details {
+    display: block;
     margin-top: 10px;
     /* Add space between summary and details */
-    font-size: initial;
-    /* Restore font-size on hover */
 }
 
 .vcp-tool-details pre {

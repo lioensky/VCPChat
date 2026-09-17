@@ -2567,7 +2567,16 @@ function initializeMessageRenderer(refs) {
 
     // --- Event Delegation ---
     ownRendererListener(mainRendererReferences.chatMessagesDiv, 'click', (e) => {
-        // 1. Handle collapsible tool results and thought chains
+        // 1. Handle collapsible tool calls, tool results and thought chains
+        const toolSummary = e.target.closest('.vcp-tool-summary');
+        if (toolSummary) {
+            const bubble = toolSummary.closest('.vcp-tool-use-bubble');
+            if (bubble) {
+                bubble.classList.toggle('expanded');
+            }
+            return;
+        }
+
         const toolHeader = e.target.closest('.vcp-tool-result-header');
         if (toolHeader) {
             const bubble = toolHeader.closest('.vcp-tool-result-bubble.collapsible');
