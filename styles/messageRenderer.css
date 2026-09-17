@@ -253,9 +253,20 @@
     animation: vcp-tool-details-reveal 180ms ease-out both;
 }
 
-.vcp-tool-details pre {
-    margin: 0;
+/*
+ * ToolUse 参数的 <pre> 只是保留格式的文本载体，外层
+ * .vcp-tool-details 已经负责背景、圆角与滚动。必须显式覆盖通用
+ * Markdown 代码块外观，否则其 margin-top、背景和边框会在展开区
+ * 顶部形成一条额外图层，并产生双层卡片。
+ */
+.message-item .md-content .vcp-tool-details > pre {
+    margin: 0 !important;
     padding: 10px;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    overflow: visible;
     color: #f0f0f0;
     white-space: pre-wrap;
     word-break: break-all;
