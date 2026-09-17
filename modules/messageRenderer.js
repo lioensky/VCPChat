@@ -1159,12 +1159,21 @@ function transformSpecialBlocks(text, codeBlockMap, thoughtChainMap = null) {
             // 气泡对 Markdown 解析器保持为单行、不可拆分 HTML；写入 DOM 后仍显示为换行。
             const escapedFullContent = escapeHtml(restoreBlocks(content))
                 .replace(/\r\n?|\n/g, '&#10;');
+            /*
+             * ToolUse 载荷可能包含超长单行 JSON / JavaScript。折叠时若仍把
+             * <pre> 放在活动 DOM 中，展开会同时触发内在宽度、换行、高度与
+             * 祖先 backdrop-filter 表面的重新计算。
+             *
+             * <template> 的 DocumentFragment 不参与样式、布局、绘制与合成；
+             * 点击展开时才将其克隆到 .vcp-tool-details，收起时再次释放。
+             */
             return `\n\n<div class="vcp-tool-use-bubble" data-vcp-block-type="tool-use" data-vcp-preserve-children="true">` +
                 `<div class="vcp-tool-summary">` +
                 `<span class="vcp-tool-label">VCP-ToolUse:</span> ` +
                 `<span class="vcp-tool-name-highlight">${escapeHtml(toolName)}</span>` +
                 `</div>` +
-                `<div class="vcp-tool-details"><pre>${escapedFullContent}</pre></div>` +
+                `<div class="vcp-tool-details"></div>` +
+                `<template class="vcp-tool-details-template"><pre>${escapedFullContent}</pre></template>` +
                 `</div>\n\n`;
         }
     });
@@ -2572,7 +2581,21 @@ function initializeMessageRenderer(refs) {
         if (toolSummary) {
             const bubble = toolSummary.closest('.vcp-tool-use-bubble');
             if (bubble) {
-                bubble.classList.toggle('expanded');
+                const details = bubble.querySelector(':scope > .vcp-tool-details');
+                const template = bubble.querySelector(':scope > .vcp-tool-details-template');
+                const willExpand = !bubble.classList.contains('expanded');
+
+                if (willExpand) {
+                    // 真正的懒挂载：折叠态不让完整工具载荷进入活动布局树。
+                    if (details && template?.content && details.childNodes.length === 0) {
+                        details.appendChild(template.content.cloneNode(true));
+                    }
+                    bubble.classList.add('expanded');
+                } else {
+                    bubble.classList.remove('expanded');
+                    // 收起后释放活动 DOM；原始载荷仍安全保存在 inert template 中。
+                    details?.replaceChildren();
+                }
             }
             return;
         }
@@ -3555,8 +3578,10 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
         const finalHtml = rawHtml;
         contentDiv.innerHTML = finalHtml;
 
-        // [Pretext集成] 延后填充文本高度缓存，避免阻塞首屏与批量历史渲染
-        scheduleMessagePretextEstimate(message.id, textToRender, chatMessagesDiv);
+        // [Pretext集成] 延后填充文本高度缓存，避免阻塞首屏与批量历史渲染。
+        // 必须传入当前消息自己的内容节点；传聊天根会令 querySelector 始终命中
+        // 第一条 .md-content，导致所有消息争用同一个 idle handle。
+        scheduleMessagePretextEstimate(message.id, textToRender, contentDiv);
 
         // Define the post-processing logic as a function.
         // This allows us to control WHEN it gets executed.
@@ -3909,19 +3934,30 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId, opt
     mainRendererReferences.uiHelper.scrollToBottom();
 }
 
-function scheduleMessagePretextEstimate(messageId, text, container) {
+function scheduleMessagePretextEstimate(messageId, text, contentDiv) {
     if (!mainRendererReferences.pretextBridge || !mainRendererReferences.pretextBridge.isReady() || !messageId || !text) return;
+
+    /*
+     * Pretext 只能估算纯文本换行，无法复现 ToolUse 折叠态、角色分隔器、
+     * 图片、表格和任意 HTML 的真实 DOM 高度。把这类结果写进墓碑缓存，
+     * 会在 content-visibility 切换时以错误高度替换真实消息，反而造成跳动。
+     * 结构化消息由 visibilityOptimizer 的实测高度路径负责。
+     */
+    const containsStructuredLayout =
+        /<<<\[(?:TOOL_REQUEST|ROLE_DIVIDE_|END_ROLE_DIVIDE_|DESKTOP_PUSH)|\[\[VCP调用结果信息汇总:|<\s*(?:img|table|audio|video|canvas|svg|iframe|style|script)\b|```|!\[[^\]]*\]\(/i.test(text);
+    if (containsStructuredLayout) return;
 
     const run = () => {
         try {
-            const containerWidth = container ? container.clientWidth : 800;
-        mainRendererReferences.pretextBridge.estimateHeight(messageId, text, 'body', containerWidth);
+            const messageItem = contentDiv?.closest?.('.message-item');
+            const widthSource = contentDiv || messageItem?.parentElement;
+            const containerWidth = widthSource?.clientWidth || 800;
+            mainRendererReferences.pretextBridge.estimateHeight(messageId, text, 'body', containerWidth);
         } catch (e) {
             // Pretext 失败不影响正常渲染
         }
     };
 
-    const contentDiv = container?.closest?.('.md-content') || container?.querySelector?.('.md-content') || null;
     if (contentDiv?._vcpPretextIdleHandle) {
         const previous = contentDiv._vcpPretextIdleHandle;
         const ownerWindow = contentDiv.ownerDocument?.defaultView;

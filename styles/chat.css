@@ -286,24 +286,31 @@ body.light-theme #moon-icon {
     max-width: var(--chat-bubble-max-width, 82%); /* Default width when sidebar is closed */
     word-wrap: break-word;
     line-height: 1.5;
-    /* Bubble surfaces are defined by their clipped fill and border.  A
+    /* Bubble surfaces are defined by their clipped fill and border. A
      * generic outer shadow here creates a dark halo on translucent themes
      * (especially while the list is scrolling), so keep emphasis inside the
      * rounded boundary instead. */
     box-shadow: none;
     position: relative;
-    /* Keep animated/colored descendants and backdrop compositing inside the
-     * rounded bubble.  Without an explicit clipping/isolation boundary,
-     * Chromium may paint translucent bubble layers into the surrounding
-     * scrolling surface during fast scrolls. */
+    /*
+     * Do not apply backdrop-filter to every message bubble.
+     *
+     * A long conversation otherwise creates one live backdrop capture and
+     * off-screen texture per visible message. Combined with
+     * content-visibility, streaming border animations and nested tool cards,
+     * Chromium repeatedly destroys/rebuilds those compositing layers while
+     * scrolling. That can produce scrollbar-range jitter, full-list repaints
+     * and GPU texture pressure. The translucent fills, borders and inset
+     * highlights retain the glass appearance without another blur pass.
+     */
     overflow: hidden;
     isolation: isolate;
-    backdrop-filter: blur(8px); /* Keep if desired */
-    -webkit-backdrop-filter: blur(8px); /* Keep if desired */
-    /* Theme backgrounds can be multi-layer color-mix() gradients over a
-     * backdrop-filter. Interpolating them on every visible message is much
-     * more expensive than committing the target surface once. Keep layout,
-     * text, border and shadow feedback smooth without animating background. */
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    /* Theme backgrounds can be multi-layer color-mix() gradients.
+     * Interpolating them on every visible message is much more expensive than
+     * committing the target surface once. Keep layout, text, border and
+     * shadow feedback smooth without animating background. */
     transition:
         max-width 0.4s ease-in-out,
         color 0.16s ease,
@@ -337,8 +344,6 @@ body.light-theme .message-item .md-content {
         inset 0 1px 0 rgba(255, 255, 255, 0.55),
         inset 0 0 0 1px rgba(255, 255, 255, 0.18),
         inset 0 -1px 0 rgba(255, 255, 255, 0.12);
-    backdrop-filter: blur(9px) saturate(114%);
-    -webkit-backdrop-filter: blur(9px) saturate(114%);
     background-clip: padding-box;
 }
 
@@ -367,8 +372,6 @@ body.light-theme .message-item.user .md-content {
     border-bottom-left-radius: 5px;
     background-color: color-mix(in srgb, var(--assistant-bubble-bg) 88%, var(--user-bubble-bg) 12%);
     color: var(--agent-text);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
 }
 
 .main-content.notifications-sidebar-active .message-item.user.user-bubble-ui-disabled .md-content {
@@ -1296,13 +1299,22 @@ body.light-theme {
         );
 }
 
-/* Panel and immersive use a full-chat-area frosted surface.
- * Edge gaps constrain message content only, never the background surface. */
+/*
+ * Panel and immersive use a full-chat-area translucent surface.
+ * Edge gaps constrain message content only, never the background surface.
+ *
+ * The message container is the scrolling element, so it must not also be a
+ * viewport-sized backdrop capture. Filtering the scroll owner invalidates the
+ * entire sampled surface whenever descendants move, defeating
+ * content-visibility and causing scroll-range/compositor instability on long
+ * conversations. The gradient supplies the visual veil; stable header and
+ * composer surfaces may retain their own bounded blur.
+ */
 body.chat-presentation-panel .chat-messages-container,
 body.chat-presentation-immersive .chat-messages-container {
     background: var(--chat-presentation-surface);
-    backdrop-filter: var(--chat-presentation-surface-filter);
-    -webkit-backdrop-filter: var(--chat-presentation-surface-filter);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 body.chat-presentation-panel .chat-messages,

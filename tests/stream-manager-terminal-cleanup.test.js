@@ -750,6 +750,34 @@ test('thinking and streaming messages opt out of content-visibility clipping', (
     );
 });
 
+test('scrolling chat surfaces do not create per-message or scroll-owner backdrop captures', () => {
+    const chatCss = fs.readFileSync('styles/chat.css', 'utf8');
+    const messageRendererCss = fs.readFileSync('styles/messageRenderer.css', 'utf8');
+
+    assert.match(
+        chatCss,
+        /\.message-item \.md-content\s*\{[\s\S]*?backdrop-filter:\s*none;[\s\S]*?-webkit-backdrop-filter:\s*none;[\s\S]*?\}/,
+        'ordinary bubbles must not allocate one backdrop capture per visible message'
+    );
+    assert.match(
+        chatCss,
+        /body\.chat-presentation-panel \.chat-messages-container,\s*body\.chat-presentation-immersive \.chat-messages-container\s*\{[\s\S]*?backdrop-filter:\s*none;[\s\S]*?-webkit-backdrop-filter:\s*none;[\s\S]*?\}/,
+        'the scrolling owner must not be a viewport-sized backdrop capture'
+    );
+
+    for (const selector of [
+        '\\.vcp-tool-call-summary-bubble',
+        '\\.vcp-desktop-push-placeholder',
+        '\\.vcp-flowlock-bubble',
+    ]) {
+        assert.match(
+            messageRendererCss,
+            new RegExp(`${selector}\\s*\\{[\\s\\S]*?backdrop-filter:\\s*none;[\\s\\S]*?-webkit-backdrop-filter:\\s*none;[\\s\\S]*?\\}`),
+            `${selector} must remain a paint-only translucent card`
+        );
+    }
+});
+
 
 test('a live stream frame reclaims the final message floor after a late history batch mounts', async () => {
     const createStreamProjection = await loadFactory();

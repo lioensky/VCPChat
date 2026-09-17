@@ -35,16 +35,19 @@
 
 @keyframes vcp-bubble-border-flow-kf {
     0% {
-        background-position: 0% 50%;
+        background-position:
+            -200% 0,
+            100% -200%,
+            300% 100%,
+            0 300%;
     }
 
-    50% {
-        background-position: 200% 50%;
-    }
-
-    /* Adjusted for more color travel */
     100% {
-        background-position: 0% 50%;
+        background-position:
+            300% 0,
+            100% 300%,
+            -200% 100%,
+            0 -200%;
     }
 }
 
@@ -141,7 +144,8 @@
 .vcp-tool-use-bubble {
     background: linear-gradient(145deg, #3a7bd5 0%, #00d2ff 100%) !important;
     background-size: 200% 200% !important;
-    animation: vcp-bubble-background-flow-kf 20s ease-in-out infinite;
+    /* 持续流动；取消原先播放一次、2 秒后停在终态的限制。 */
+    animation: vcp-bubble-background-flow-kf 2s ease-in-out infinite;
     border-radius: 10px !important;
     padding: 8px 15px 8px 35px !important;
     color: #ffffff !important;
@@ -162,40 +166,52 @@
     /* Restore: Allow wrapping but preserve whitespace */
     word-break: break-all !important;
     /* Restore: Break long strings */
-    transition: all 0.4s ease-in-out;
-    /* Add transition for smooth hover effect */
-    will-change: transform;
-    /* 优化：工具气泡通常包含动画，提升为独立层 */
+    /*
+     * 不要使用 transition: all：
+     * ToolUse 使用 fit-content，长参数会令实际宽度受 max-width 约束。
+     * 滚动时元素反复经过静止指针会切换 :hover；若尺寸也参与过渡，
+     * Chromium 必须逐帧重算整条超高消息的内在宽度与换行，继而重绘
+     * 外层 backdrop-filter，可能造成全局闪烁和主线程阻塞。
+     */
+    transition: box-shadow 0.2s ease, filter 0.2s ease;
+    /*
+     * 气泡本体没有 transform 动画，不应永久强制提升为合成层。
+     * 长 ToolUse 展开时，该层会与全尺寸 mask 及外层 backdrop-filter
+     * 一起触发整条消息重新栅格化。
+     */
+    will-change: auto;
+}
+/*
+ * 外框流光只绘制四条 1px 边缘渐变，不再使用覆盖整张卡片的双层
+ * mask-composite。这样保留环绕流光，同时避免长 ToolUse 展开时创建
+ * 巨大的离屏遮罩纹理。
+ */
+.vcp-tool-use-bubble {
+    border: 1px solid rgba(118, 196, 247, 0.58);
 }
 
-/* Animated Border for VCP ToolUse */
 .vcp-tool-use-bubble::after {
     content: "";
     position: absolute;
-    box-sizing: border-box;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
+    inset: 0;
+    z-index: 3;
     border-radius: inherit;
-    padding: 2px;
-    /* Border thickness */
-    background: linear-gradient(60deg, #76c4f7, #00d2ff, #3a7bd5, #ffffff, #3a7bd5, #00d2ff, #76c4f7);
-    background-size: 300% 300%;
-    animation: vcp-bubble-border-flow-kf 7s linear infinite;
-    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
-    z-index: 0;
     pointer-events: none;
+    background:
+        linear-gradient(90deg, transparent 0%, #f1c40f 38%, #ffffff 50%, #00d2ff 62%, transparent 100%) top left / 45% 1px no-repeat,
+        linear-gradient(180deg, transparent 0%, #00d2ff 38%, #ffffff 50%, #f1c40f 62%, transparent 100%) top right / 1px 45% no-repeat,
+        linear-gradient(270deg, transparent 0%, #f1c40f 38%, #ffffff 50%, #00d2ff 62%, transparent 100%) bottom right / 45% 1px no-repeat,
+        linear-gradient(0deg, transparent 0%, #00d2ff 38%, #ffffff 50%, #f1c40f 62%, transparent 100%) bottom left / 1px 45% no-repeat;
+    animation: vcp-bubble-border-flow-kf 2s linear infinite;
 }
 
-/* On hover, we don't need to force a width. `fit-content` will adjust to the new content. */
-/* We can keep a max-width to prevent it from becoming too wide. */
+/*
+ * ToolUse 的宽度在 hover 前后必须保持不变。
+ * 特别是含长 JSON/code 参数的卡片，100% → 90% 会改变换行点并触发
+ * 整条消息重排；短 ToolUse 因未触及上限而通常无法暴露此问题。
+ */
 .vcp-tool-use-bubble:hover {
-    max-width: 90%;
-    /* Just constrain the max width on hover */
+    max-width: 100%;
 }
 
 /* New styles for summary and details sections */
@@ -207,16 +223,34 @@
 
 .vcp-tool-details {
     display: none;
-    overflow: hidden;
+    max-height: 500px;
+    overflow: auto;
     background-color: rgba(0, 0, 0, 0.2);
     border-radius: 6px;
     margin-top: 0;
 }
 
+/*
+ * 高度仍采用一次性状态切换，不对 max-height / margin 做插值；只在新挂载
+ * 的详情层上执行 opacity + transform 合成动画，获得类似 ToolResult 的
+ * 简单展开反馈，而不会在动画期间连续重排整条消息。
+ */
+@keyframes vcp-tool-details-reveal {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
 .vcp-tool-use-bubble.expanded .vcp-tool-details {
     display: block;
     margin-top: 10px;
-    /* Add space between summary and details */
+    animation: vcp-tool-details-reveal 180ms ease-out both;
 }
 
 .vcp-tool-details pre {
@@ -260,6 +294,7 @@
 .vcp-tool-use-bubble .vcp-tool-name-highlight {
     background: linear-gradient(90deg, #f1c40f, #ffffff, #00d2ff, #f1c40f) !important;
     background-size: 300% 100% !important;
+    background-position: 0 50%;
     -webkit-background-clip: text !important;
     background-clip: text !important;
     -webkit-text-fill-color: transparent !important;
@@ -268,7 +303,7 @@
     font-weight: bold !important;
     padding: 1px 3px !important;
     border-radius: 4px !important;
-    animation: vcp-toolname-color-flow-kf 4s linear infinite;
+    animation: vcp-toolname-color-flow-kf 2s linear infinite;
     margin-left: 2px;
 }
 
@@ -281,7 +316,7 @@
     font-size: 14px;
     color: rgba(255, 255, 255, 0.75);
     z-index: 2;
-    animation: vcp-icon-rotate 4s linear infinite;
+    animation: vcp-icon-rotate 2s linear infinite;
     transform-origin: center center;
 }
 
@@ -1021,6 +1056,10 @@ body[data-vcp-theme="light"] .vcp-audio-play {
     .vcp-audio-button,
     .vcp-audio-range::-webkit-slider-thumb {
         transition: none;
+    }
+
+    .vcp-tool-use-bubble.expanded .vcp-tool-details {
+        animation: none;
     }
 
     .vcp-audio-player.is-buffering .vcp-audio-play::after {
@@ -2594,7 +2633,13 @@ body[data-vcp-theme="light"] .vcp-thought-chain-bubble {
     font-size: 0.92em !important;
     line-height: 1.5;
     box-sizing: border-box;
-    backdrop-filter: blur(6px);
+    /*
+     * This card lives inside .md-content and can repeat many times in one
+     * message. Its translucent gradient already supplies the material look;
+     * a backdrop capture per card multiplies scrolling compositing cost.
+     */
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 .vcp-tool-call-summary-header {
@@ -2862,8 +2907,9 @@ body[data-vcp-theme="light"] .vcp-role-divider.role-user {
     line-height: 1.5;
     width: fit-content;
     max-width: 95%;
-    transition: all 0.3s ease;
-    backdrop-filter: blur(4px);
+    transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 .vcp-desktop-push-placeholder.constructing {
@@ -2977,8 +3023,9 @@ body[data-vcp-theme="light"] .vcp-thought-chain-body hr {
     font-size: 0.88em !important;
     line-height: 1.5;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-    backdrop-filter: blur(4px);
-    transition: all 0.3s ease;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
     user-select: none;
 }
 
