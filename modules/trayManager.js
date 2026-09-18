@@ -333,6 +333,8 @@ const trayManager = (function () {
 
         const modal = document.createElement('div');
         modal.id = modalId;
+        // 保留该旧版动态弹窗原有的主题继承；不要套用整窗 vcp-ui-scope，
+        // 否则新版 token 会覆盖正文与列表的既有配色。
         modal.className = 'modal active';
         modal.setAttribute('role', 'dialog');
         modal.setAttribute('aria-modal', 'true');
@@ -341,7 +343,7 @@ const trayManager = (function () {
         modal.style.zIndex = '20001'; 
         modal.innerHTML = `
             <div class="modal-content" style="max-width: 400px;">
-                <button type="button" class="close-button" data-tray-settings-close aria-label="关闭">×</button>
+                <button type="button" class="close-button tray-settings-close-button" data-tray-settings-close aria-label="关闭" title="关闭">×</button>
                 <h2 id="appTraySettingsTitle" style="margin-top: 0; font-size: 1.2em;">优先显示的按钮</h2>
                 <p style="font-size: 0.85em; opacity: 0.7; margin-bottom: 15px;">请选择 4 个要在底栏直接显示的应用：</p>
                 <div class="settings-app-list" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-height: 400px; overflow-y: auto; padding: 5px;">

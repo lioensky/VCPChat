@@ -752,6 +752,42 @@ body.light-theme .modal-content .danger-button {
     text-decoration: none;
 }
 
+/* 托盘设置弹窗仍使用旧版主题变量，只对关闭按钮做局部组件化，
+   避免套用 vcp-ui-scope 后重写整窗正文与列表的颜色。 */
+#appTraySettingsModal .tray-settings-close-button {
+    /* 与标题首行垂直居中，并从卡片右边缘向内容区内收。 */
+    top: 20px;
+    right: 24px;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    border: 0;
+    border-radius: 6px;
+    color: var(--secondary-text);
+    background: transparent;
+    font: inherit;
+    font-size: 22px;
+    font-weight: 400;
+    line-height: 1;
+    cursor: pointer;
+    transition: background-color 0.16s ease, color 0.16s ease;
+}
+
+#appTraySettingsModal .tray-settings-close-button:hover,
+#appTraySettingsModal .tray-settings-close-button:focus-visible {
+    color: var(--danger-color);
+    background-color: color-mix(in srgb, var(--danger-color) 14%, transparent);
+    outline: none;
+    text-decoration: none;
+}
+
+#appTraySettingsModal .tray-settings-close-button:focus-visible {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger-color) 28%, transparent);
+}
+
 @media (max-width: 768px) {
     .modal-content {
         width: 95%;
