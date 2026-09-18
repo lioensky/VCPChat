@@ -1073,8 +1073,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- Theme Management ---
     function applyTheme(theme) {
-        const currentTheme = theme || 'dark';
+        const currentTheme = theme === 'light' ? 'light' : 'dark';
+
+        /*
+         * 保留阅读器原有的 light-theme 类，同时同步主消息渲染器使用的
+         * data-vcp-theme 契约。工具块、工具结果和日记组件由此直接复用
+         * messageRenderer.css 的同一套深浅主题样式，不再维护分叉皮肤。
+         */
         document.body.classList.toggle('light-theme', currentTheme === 'light');
+        document.body.dataset.vcpTheme = currentTheme;
+
         const highlightThemeStyle = document.getElementById('highlight-theme-style');
         if (highlightThemeStyle) {
             highlightThemeStyle.href = currentTheme === 'light'

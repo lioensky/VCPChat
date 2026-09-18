@@ -31,19 +31,6 @@
             --viewer-top-light-effect-bg: var(--shimmer-color-transparent); /* 使用主题中的透明闪烁色 */
             --viewer-heading-color: var(--highlight-text); /* 新增：深色主题下的标题颜色 */
 
-            /* Tool Result Bubble Dark Theme */
-            --tool-result-bg: linear-gradient(145deg, #2b3a42, #3f5159);
-            --tool-result-border-color: rgba(255, 255, 255, 0.1);
-            --tool-result-text-color: #e0e0e0;
-            --tool-result-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-            --tool-result-header-border-color: rgba(255, 255, 255, 0.15);
-            --tool-result-name-color: #81d4fa;
-            --tool-result-name-bg: rgba(129, 212, 250, 0.1);
-            --tool-result-item-key-color: #90a4ae;
-            --tool-result-item-value-color: #cfd8dc;
-            --tool-result-item-link-color: #82b1ff;
-            --tool-result-item-strong-color: #ffd54f;
-            --tool-result-footer-color: #b0bec5;
         }
 
         /* Define CSS variables for light theme */
@@ -60,19 +47,6 @@
             --viewer-top-light-effect-bg: var(--shimmer-color-transparent); /* 使用主题中的透明闪烁色 */
             --viewer-heading-color-light: var(--highlight-text); /* 新增：浅色主题下的标题颜色 */
 
-            /* Tool Result Bubble Light Theme */
-            --tool-result-bg: linear-gradient(145deg, #f4f6f8, #e8eaf0);
-            --tool-result-border-color: rgba(0, 0, 0, 0.1);
-            --tool-result-text-color: #333;
-            --tool-result-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-            --tool-result-header-border-color: rgba(0, 0, 0, 0.1);
-            --tool-result-name-color: #0277bd;
-            --tool-result-name-bg: rgba(2, 119, 189, 0.1);
-            --tool-result-item-key-color: #546e7a;
-            --tool-result-item-value-color: #263238;
-            --tool-result-item-link-color: #1976d2;
-            --tool-result-item-strong-color: #b8860b; /* DarkGoldenRod */
-            --tool-result-footer-color: #78909c;
         }
 
         .custom-quote-dark {
@@ -637,143 +611,22 @@
         .content-container .vcp-tool-use-bubble:hover .vcp-tool-details {
             max-height: none !important;
         }
-        .vcp-tool-use-bubble::before {
-            content: "⚙️";
-            position: absolute;
-            top: 8px;
-            left: 10px;
-            font-size: 14px;
-            color: rgba(255, 255, 255, 0.75);
-            z-index: 2;
-            animation: vcp-icon-rotate 4s linear infinite;
-            transform-origin: center center;
-        }
-        .vcp-tool-use-bubble .vcp-tool-label {
-            font-weight: bold;
-            color: #f1c40f;
-            margin-right: 6px;
-        }
-        .vcp-tool-use-bubble .vcp-tool-name-highlight {
-            background: linear-gradient(90deg, #f1c40f, #ffffff, #00d2ff, #f1c40f) !important;
-            background-size: 300% 100% !important;
-            -webkit-background-clip: text !important;
-            background-clip: text !important;
-            -webkit-text-fill-color: transparent !important;
-            text-fill-color: transparent !important;
-            font-style: normal !important;
-            font-weight: bold !important;
-            padding: 1px 3px !important;
-            border-radius: 4px !important;
-            animation: vcp-toolname-color-flow-kf 4s linear infinite;
-            margin-left: 2px;
-        }
 
-        /* Maid Diary Bubble Redesign */
-        .content-container .maid-diary-bubble {
-            background: #fdfaf6 !important;
-            border: 1px solid #eaddd0;
-            border-radius: 8px !important;
-            padding: 12px 18px 15px 18px !important;
-            color: #5d4037 !important;
-            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
-            margin-top: 10px !important;
-            margin-bottom: 12px !important;
-            position: relative;
+        /*
+         * 工具参数的 pre 仅用于保留原始排版，不应再次套用阅读器的通用
+         * 代码块背景、边框与内边距。组件皮肤由 messageRenderer.css 统一维护。
+         */
+        .content-container .vcp-tool-details > pre {
+            margin: 0 !important;
+            padding: 10px !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            color: inherit !important;
             overflow: visible;
-            line-height: 1.7;
-            display: block !important;
-            font-family: 'Georgia', 'Times New Roman', serif !important;
-            font-size: 1em !important;
-        }
-        .content-container .maid-diary-bubble::before {
-            display: none !important;
-        }
-        .diary-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: baseline;
-            border-bottom: 1px solid #d7ccc8;
-            padding-bottom: 6px;
-            margin-bottom: 10px;
-        }
-        .diary-title {
-            font-weight: bold;
-            font-size: 1.1em;
-            color: #6d4c41;
-        }
-        .diary-date {
             font-size: 0.85em;
-            color: #a1887f;
-            font-style: italic;
-        }
-        .diary-maid-info {
-            margin-bottom: 12px;
-            font-size: 0.9em;
-            color: #8d6e63;
-        }
-        .diary-maid-label {
-            font-weight: bold;
-        }
-        .diary-maid-name {
-            font-style: italic;
-            color: #a1887f;
-            background: rgba(161, 136, 127, 0.08);
-            padding: 1px 5px;
-            border-radius: 4px;
-        }
-        .diary-content {
-            font-size: 0.95em;
-            color: #4e342e;
-            white-space: normal;
-            word-break: break-word;
-        }
-        /* --- Maid Diary Dark Theme Overrides --- */
-        body:not(.light-theme) .maid-diary-bubble {
-            background: #2c2a3a !important; /* A deep, slightly magical purple-gray */
-            border-color: #4a485f;
-            color: #d8d2c9 !important; /* A soft, parchment-like off-white */
-            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
-        }
-
-        body:not(.light-theme) .diary-header {
-            border-bottom-color: #4a485f;
-        }
-
-        body:not(.light-theme) .diary-title {
-            color: #ffb74d; /* A warm, golden-orange for the title */
-        }
-
-        body:not(.light-theme) .diary-date {
-            color: #a0a0b0; /* A muted gray for secondary info */
-        }
-
-        body:not(.light-theme) .diary-maid-info {
-            color: #b0bec5;
-        }
-
-        body:not(.light-theme) .diary-maid-name {
-            color: #ffcc80; /* Lighter shade of the title color */
-            background: rgba(255, 183, 77, 0.1);
-        }
-
-        body:not(.light-theme) .diary-content {
-            color: #c5c8c6; /* A clear, readable light gray for the main content */
-        }
-
-        /* Keyframes needed for animations */
-        @keyframes vcp-bubble-background-flow-kf {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
-        }
-        @keyframes vcp-icon-rotate {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        @keyframes vcp-toolname-color-flow-kf {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 150% 50%; }
-            100% { background-position: 0% 50%; }
+            line-height: 1.5;
         }
         /* 阅读模式：工具返回块默认折叠，点击头部展开。 */
         .content-container .vcp-tool-result-bubble.collapsible .vcp-tool-result-header {
@@ -808,202 +661,32 @@
             max-width: 100%;
         }
 
-        /* --- End: Viewer-specific overrides --- */
-
-        /* --- VCP Tool Result Bubble --- */
-        .vcp-tool-result-bubble {
-            display: block !important;
-            background: var(--tool-result-bg, linear-gradient(145deg, #f4f6f8, #e8eaf0)) !important;
-            border-radius: 10px !important;
-            border: 1px solid var(--tool-result-border-color, rgba(0, 0, 0, 0.1));
-            padding: 12px 18px !important;
-            color: var(--tool-result-text-color, #333) !important;
-            box-shadow: var(--tool-result-shadow, 0 4px 12px rgba(0, 0, 0, 0.1));
-            margin-top: 10px !important;
-            margin-bottom: 12px !important;
-            position: relative;
-            font-family: 'Segoe UI', 'Roboto', sans-serif !important;
-            font-size: 0.95em !important;
-            line-height: 1.6;
-            width: 100%;
+        /* 工具与日记组件的视觉样式统一由 messageRenderer.css 提供。 */
+        .content-container .vcp-tool-result-bubble {
             max-width: 100%;
-            min-width: 0;
-            box-sizing: border-box;
-            transition: background 0.3s, color 0.3s, border-color 0.3s, box-shadow 0.3s;
         }
-        .vcp-tool-result-bubble::before {
-            content: "📊";
-            position: absolute;
-            top: 12px;
-            left: 15px;
-            font-size: 16px;
-            opacity: 0.7;
-        }
-        .vcp-tool-result-header {
-            display: flex;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 8px;
-            padding-left: 28px; /* Space for the icon */
-            border-bottom: 1px solid var(--tool-result-header-border-color, rgba(0, 0, 0, 0.1));
-            padding-bottom: 8px;
-            margin-bottom: 10px;
-        }
-        .vcp-tool-result-label {
-            font-weight: bold;
-            color: #4caf50;
-            font-size: 1.05em;
-        }
-        .vcp-tool-result-name {
-            font-weight: bold;
-            color: var(--tool-result-name-color, #0277bd);
-            background-color: var(--tool-result-name-bg, rgba(2, 119, 189, 0.1));
-            padding: 2px 6px;
-            border-radius: 4px;
-        }
-        .vcp-tool-result-status {
-            font-weight: bold;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-size: 0.9em;
-        }
+
         .vcp-tool-result-status.status-success {
             color: #1b5e20;
             background-color: rgba(76, 175, 80, 0.15);
         }
-        body:not(.light-theme) .vcp-tool-result-status.status-success {
+
+        body[data-vcp-theme="dark"] .vcp-tool-result-status.status-success {
             color: #c8e6c9;
             background-color: rgba(76, 175, 80, 0.2);
         }
+
         .vcp-tool-result-status.status-failure {
             color: #b71c1c;
             background-color: rgba(211, 47, 47, 0.15);
         }
-        body:not(.light-theme) .vcp-tool-result-status.status-failure {
+
+        body[data-vcp-theme="dark"] .vcp-tool-result-status.status-failure {
             color: #ffcdd2;
             background-color: rgba(211, 47, 47, 0.2);
         }
-        .vcp-tool-result-details {
-            padding-left: 28px;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            min-width: 0;
-        }
-        .vcp-tool-result-item {
-            display: flex;
-            flex-direction: row;
-            align-items: flex-start;
-            min-width: 0;
-        }
-        .vcp-tool-result-item-key {
-            font-weight: bold;
-            color: var(--tool-result-item-key-color, #546e7a);
-            margin-right: 8px;
-            white-space: nowrap;
-        }
-        .vcp-tool-result-item-value {
-            color: var(--tool-result-item-value-color, #263238);
-            min-width: 0;
-            max-width: 100%;
-            white-space: normal;
-            word-break: normal;
-            overflow-wrap: anywhere;
-            line-break: anywhere;
-        }
-        .vcp-tool-result-item-markdown {
-            flex-direction: column;
-        }
-        .vcp-tool-result-item-markdown .vcp-tool-result-item-key {
-            margin-right: 0;
-            margin-bottom: 4px;
-        }
-        .vcp-tool-result-item-markdown .vcp-tool-result-item-value {
-            display: block;
-            width: 100%;
-        }
-        .vcp-tool-result-markdown-content {
-            display: block;
-            width: 100%;
-            max-width: 100%;
-            min-width: 0;
-            box-sizing: border-box;
-            overflow-x: auto;
-            white-space: normal;
-            word-break: normal;
-            overflow-wrap: anywhere;
-            line-break: anywhere;
-        }
-        .vcp-tool-result-markdown-content *,
-        .vcp-tool-result-footer *,
-        .vcp-tool-result-raw-content {
-            max-width: 100%;
-            min-width: 0;
-            white-space: normal;
-            word-break: normal;
-            overflow-wrap: anywhere;
-            line-break: anywhere;
-        }
-        .vcp-tool-result-markdown-content a,
-        .vcp-tool-result-footer a,
-        .vcp-tool-result-item-value a {
-            word-break: break-all;
-            overflow-wrap: anywhere;
-        }
-        .vcp-tool-result-bubble table,
-        .vcp-tool-result-markdown-content table {
-            display: block;
-            width: 100%;
-            max-width: 100%;
-            table-layout: fixed;
-            overflow-x: auto;
-            white-space: normal;
-        }
-        .vcp-tool-result-bubble th,
-        .vcp-tool-result-bubble td,
-        .vcp-tool-result-markdown-content th,
-        .vcp-tool-result-markdown-content td {
-            max-width: 28em;
-            white-space: normal;
-            word-break: normal;
-            overflow-wrap: anywhere;
-            line-break: anywhere;
-        }
-        .vcp-tool-result-item-value a {
-            color: var(--tool-result-item-link-color, #1976d2) !important;
-            text-decoration: underline !important;
-        }
-        .vcp-tool-result-item-value strong {
-            color: var(--tool-result-item-strong-color, #b8860b);
-            font-weight: bold;
-        }
-        .vcp-tool-result-image {
-            max-width: 100%;
-            max-height: 250px;
-            border-radius: 6px;
-            margin-top: 5px;
-            border: 2px solid var(--tool-result-border-color, rgba(0, 0, 0, 0.1));
-            cursor: pointer;
-            transition: transform 0.2s ease;
-        }
-        .vcp-tool-result-image:hover {
-            transform: scale(1.05);
-        }
-        .vcp-tool-result-footer {
-            margin-top: 10px;
-            padding-top: 8px;
-            border-top: 1px solid var(--tool-result-header-border-color, rgba(0, 0, 0, 0.1));
-            font-size: 0.9em;
-            color: var(--tool-result-footer-color, #78909c);
-        }
-        .vcp-tool-result-footer pre {
-            margin: 0;
-            padding: 0;
-            white-space: pre-wrap;
-            word-break: break-word;
-            font-family: inherit;
-            background: none;
-        }
+
+        /* --- End: Viewer-specific overrides --- */
 
        /* --- Custom Title Bar --- */
        #custom-title-bar {
