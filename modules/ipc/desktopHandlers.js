@@ -766,6 +766,8 @@ function resolveAppActionToAppId(appAction) {
             return WINDOW_APP_IDS.DICE;
         case 'open-canvas-window':
             return WINDOW_APP_IDS.CANVAS;
+        case 'open-chart-window':
+            return WINDOW_APP_IDS.CHART;
         case 'open-translator-window':
             return WINDOW_APP_IDS.TRANSLATOR;
         case 'open-music-window':

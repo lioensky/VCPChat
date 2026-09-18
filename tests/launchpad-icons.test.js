@@ -114,3 +114,35 @@ test('controller disposes previous artwork synchronously and preserves activatio
     f.icons.dispose();
     f.dom.window.close();
 });
+
+test('chart artwork replaces fallback, animates columns and respects reduced motion', () => {
+    const f = fixture();
+    try {
+        const rects = [];
+        f.context.roundRect = (...args) => rects.push(args);
+        f.host.innerHTML = '<svg></svg>';
+        assert.equal(f.icons.attach(f.button, f.host, 'chart'), true);
+        assert.equal(f.host.firstChild.tagName, 'CANVAS');
+        assert.equal(f.host.classList.contains('next-ui-app-icon-living'), true);
+        const columns = () => rects.filter(([x, , width]) => width === 10 && [35, 52, 69, 86].includes(x));
+        const resting = columns();
+        assert.equal(resting.length, 4, 'chart must draw four columns, not only the shared shadow');
+        f.icons.setActive(true);
+        f.step();
+        assert.equal(f.frames.size, 0);
+        rects.length = 0;
+        f.button.dispatchEvent(new f.w.Event('pointerenter'));
+        f.step();
+        assert.notDeepEqual(columns(), resting);
+        assert.equal(f.frames.size, 1);
+        rects.length = 0;
+        f.motion.matches = true;
+        f.motion.dispatchEvent(new f.w.Event('change'));
+        f.step();
+        assert.deepEqual(columns(), resting);
+        assert.equal(f.frames.size, 0);
+    } finally {
+        f.icons.dispose();
+        f.dom.window.close();
+    }
+});

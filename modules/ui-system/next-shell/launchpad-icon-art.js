@@ -49,6 +49,24 @@ box(c,49,76-b,2,12,1,'#b4a1ff');box(c,49,74-b,13,3,1,'#b4a1ff');
 line(c,[[42,105],[80,105],[76,101]],'#a6e8e4',2);
 line(c,[[86,20],[48,20],[52,24]],'#b4baff',2);
 circle(c,44+(Math.sin(t*2)*.5+.5)*35,105,2.5,'#eafffb');
+}else if(type==='chart'){
+// A mint analytics card: breathing columns and a travelling trend highlight.
+box(c,20,25,88,79,14,gradient(c,20,25,108,104,['#c4f7ec','#539eaa']));
+c.shadowBlur=0;box(c,25,30,78,68,10,'#203f50');
+for(let i=0;i<3;i++)line(c,[[33,49+i*18],[96,49+i*18]],'#b5eee51c',1);
+const points=[];
+for(let i=0;i<4;i++){
+const x=35+i*17,h=[21,35,29,49][i]+Math.sin(t*3-i*.8)*e*5;
+box(c,x,91-h,10,h,3,gradient(c,x,91-h,x,91,[i%2?'#9acbff':'#8aedd4',i%2?'#527cb8':'#3d9e99']));
+points.push([x+5,83-h]);
+}
+line(c,points,'#ffe2a5',2.5);
+points.forEach(p=>{circle(c,...p,3,'#fff0c9');circle(c,...p,1.3,'#c79259')});
+const phase=(Math.sin(t*1.8)*.5+.5)*(points.length-1),index=Math.min(points.length-2,Math.floor(phase)),mix=phase-index;
+const px=points[index][0]+(points[index+1][0]-points[index][0])*mix,py=points[index][1]+(points[index+1][1]-points[index][1])*mix;
+c.globalAlpha=e;circle(c,px,py,5,'#fff2c940');circle(c,px,py,2.5,'#fff9e9');c.globalAlpha=1;
+line(c,[[32,39],[32,92],[97,92]],'#b3e4e880',1.5);
+box(c,37,104,54,3,1.5,'#9bd9ce');
 }else if(type==='memo'){
 circle(c,64,65,31,gradient(c,40,35,87,95,['#f7caff','#9451cd','#55379b']));c.shadowBlur=0;
 for(let i=0;i<3;i++){c.save();c.translate(64,65);c.rotate(i*1.04+t*.12*e);c.beginPath();c.ellipse(0,0,44,19,0,0,7);c.strokeStyle=['#e9b8ff','#c199ff','#ffc5e4'][i];c.lineWidth=2;c.stroke();circle(c,44*Math.cos(t*.7+i*2),19*Math.sin(t*.7+i*2),4,'#fff0ff');c.restore()}

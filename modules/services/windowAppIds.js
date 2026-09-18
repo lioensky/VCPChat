@@ -14,5 +14,6 @@ module.exports = Object.freeze({
     THEMES: 'themes',
     TASK: 'task',
     PLUGIN_MANAGER: 'plugin-manager',
+    CHART: 'chart-workbench',
     DOCX: 'docx-editor',
 });

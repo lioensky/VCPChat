@@ -59,6 +59,7 @@ class DistributedServer {
         this.loomManager = config.loomManager || null; // Shared VCP Loom manager owned by Electron.
         this.scriptoriumAgentControl = config.scriptoriumAgentControl || null;
         this.pluginAgentOperationService = config.pluginAgentOperationService || null;
+        this.chartService = config.chartService || null;
         this.ws = null;
         this.app = express(); // 创建 Express 应用
         this.server = http.createServer(this.app); // 创建 HTTP 服务器
@@ -146,6 +147,7 @@ class DistributedServer {
             loomManager: this.loomManager,
             scriptoriumAgentControl: this.scriptoriumAgentControl,
             pluginAgentOperationService: this.pluginAgentOperationService,
+            chartService: this.chartService,
         });
         this.registerDiagnosticRoutes();
 

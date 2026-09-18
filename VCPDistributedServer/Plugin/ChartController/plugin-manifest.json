@@ -1,0 +1,119 @@
+{
+  "name": "ChartController",
+  "displayName": "VCP 图表控制器",
+  "version": "1.0.0",
+  "description": "供 Agent 创建、查询、打开、关闭、删除、恢复和编辑持久图表，并通过 chartId + JSON Pointer 增量更新外置数据。支持标准 CSS、Canvas、anime.js、Three.js、Pixi.js、本地沙箱渲染和多模态截图观察。",
+  "pluginType": "hybridservice",
+  "communication": {
+    "protocol": "direct",
+    "timeout": 120000
+  },
+  "entryPoint": {
+    "type": "nodejs",
+    "script": "ChartControllerService.js"
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "command": "ListCharts",
+        "description": "列出已有图表及其 chartId、名称、描述、代码版本、数据版本、依赖和当前展示状态。query 可选，用于按名称、ID 或描述搜索。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ChartController「末」,\ncommand:「始」ListCharts「末」,\nquery:「始」CPU「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "GetChart",
+        "description": "获取一个图表的 Manifest 摘要。chartId 必需。返回 revision、codeRevision、dataRevision、依赖和窗口尺寸，不返回完整源码。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ChartController「末」,\ncommand:「始」GetChart「末」,\nchartId:「始」cpu-monitor「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "GetChartData",
+        "description": "读取图表外置 JSON 数据。chartId 必需；path 可选，使用 JSON Pointer（如 /metrics/cpu）；paths 可选，为 JSON 路径数组；tail 可选，用于只取数组末尾 N 项。返回当前 dataRevision。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ChartController「末」,\ncommand:「始」GetChartData「末」,\nchartId:「始」cpu-monitor「末」,\npaths:「始」[\"/metrics\",\"/series/cpu\"]「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "ReadDataSource",
+        "description": "以只读方式检查图表真实数据源。chartId 和 type 必需。type=http-json 时提供 url，可读取 HTTP/HTTPS（包括局域网）JSON；type=json/csv/text 时提供绝对路径或 file:// URL；type=sqlite 时提供本地 SQLite 绝对路径/file URL、只读 SELECT 或 WITH...SELECT 的 sql，以及可选 params JSON 数组/对象。无需插件额外 require；服务端统一处理读取、超时、体积限制和 SQLite readonly。结果主体在 details.data。",
+        "example": "HTTP JSON:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ChartController「末」,\ncommand:「始」ReadDataSource「末」,\nchartId:「始」cpu-monitor「末」,\ntype:「始」http-json「末」,\nurl:「始」http://192.168.1.20:8080/status「末」\n<<<[END_TOOL_REQUEST]>>>\n\nSQLite:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ChartController「末」,\ncommand:「始」ReadDataSource「末」,\nchartId:「始」cpu-monitor「末」,\ntype:「始」sqlite「末」,\nsource:「始」file:///D:/data/metrics.db「末」,\nsql:「始」SELECT time, cpu FROM samples ORDER BY time DESC LIMIT ?「末」,\nparams:「始」[100]「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "GetChartSource",
+        "description": "读取图表逻辑文件。chartId 和 file 必需；file 可为 chart.json、template.html、style.css、runtime.js 或别名；lines 可选，支持 head:N、tail:N、M-N、M:N、N。返回源码、SHA-256 和 codeRevision，适合先局部读取再精确编辑。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ChartController「末」,\ncommand:「始」GetChartSource「末」,\nchartId:「始」cpu-monitor「末」,\nfile:「始」runtime.js「末」,\nlines:「始」40-100「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "CreateChart",
+        "description": "创建持久化图表。manifest 为 JSON 对象或字符串，必须含 id，可含 name、description、libraries、dataSources、window 和 access；template/html、style/css、runtime/js、initialData/data 分别为图表骨架、样式、运行时和外置数据；open 默认 true。libraries 仅允许 anime、three、pixi，并自动重定向到本地 vendor，无需写 script 标签。runtime.js 顶层应 return 一个包含 mount(context)、update(change, context)、resize(size, context)、setTheme(theme, context)、destroy(context) 的对象。context 提供 root、data、manifest、libraries、resources、signal、dataSources、reportReady/reportBusy/reportStable/reportError。dataSources 提供 fetchJson(httpUrl)、readJson(fileUrlOrAbsolutePath)、readCsv(...)、readText(...)、querySqlite(source, selectSql, params)，全部只读且无需 require。禁止在 template 中放远程 script、iframe 或 webview。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ChartController「末」,\ncommand:「始」CreateChart「末」,\nmanifest:「始」{\"id\":\"cpu-monitor\",\"name\":\"CPU Monitor\",\"description\":\"CPU 与内存状态\",\"libraries\":[\"anime\"],\"window\":{\"width\":800,\"height\":500}}「末」,\ntemplate:「始ESCAPE」<main class=\"dashboard\"><strong id=\"cpu\">0%</strong></main>「末ESCAPE」,\nstyle:「始ESCAPE」.dashboard{width:100%;height:100%;display:grid;place-items:center;background:#0b1820;color:#75d9e8}「末ESCAPE」,\nruntime:「始ESCAPE」return { mount(context){ this.node=context.root.querySelector('#cpu'); this.node.textContent=context.data.metrics.cpu+'%'; }, update(change,context){ this.node.textContent=context.data.metrics.cpu+'%'; }, resize(){}, destroy(){} };「末ESCAPE」,\ninitialData:「始」{\"metrics\":{\"cpu\":10}}「末」,\nopen:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "OpenChart",
+        "description": "打开或聚焦单例图表工作台，并在右侧展示区选中指定 chartId；左侧轻量侧栏仍可浏览其他图表。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ChartController「末」,\ncommand:「始」OpenChart「末」,\nchartId:「始」cpu-monitor「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "CloseChart",
+        "description": "从图表工作台当前展示区关闭指定图表，但不删除图表定义、源码或数据。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ChartController「末」,\ncommand:「始」CloseChart「末」,\nchartId:「始」cpu-monitor「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "DeleteChart",
+        "description": "软删除图表：关闭展示并把图表目录移入可恢复回收区。chartId 必需；expectedRevision 可选，用于乐观锁。返回 trashId，可由 RestoreChart 恢复。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ChartController「末」,\ncommand:「始」DeleteChart「末」,\nchartId:「始」cpu-monitor「末」,\nexpectedRevision:「始」7「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "ListDeletedCharts",
+        "description": "列出图表回收区内容及 trashId、原 chartId、名称和删除时间。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ChartController「末」,\ncommand:「始」ListDeletedCharts「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "RestoreChart",
+        "description": "根据 trashId 从回收区恢复图表。若原 chartId 已被占用则拒绝覆盖。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ChartController「末」,\ncommand:「始」RestoreChart「末」,\ntrashId:「始」cpu-monitor-1789725600000「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "PurgeChart",
+        "description": "永久删除一个回收项。trashId 必需，并且必须显式提交 confirm=true。此操作不可恢复。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ChartController「末」,\ncommand:「始」PurgeChart「末」,\ntrashId:「始」cpu-monitor-1789725600000「末」,\nconfirm:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "SetData",
+        "description": "只更新一个外置数据节点。chartId、path、value 必需；path 使用 JSON Pointer；expectedDataRevision 推荐提供；create=true 时允许创建对象字段，否则要求路径已存在。value 可为 JSON 或普通字符串。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ChartController「末」,\ncommand:「始」SetData「末」,\nchartId:「始」cpu-monitor「末」,\npath:「始」/metrics/cpu「末」,\nvalue:「始」63.5「末」,\nexpectedDataRevision:「始」4「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "PatchData",
+        "description": "原子执行一组外置数据操作。chartId 和 operations 必需；operations 为 JSON 数组，支持 add、remove、replace、set、copy、move、test、append、prepend、splice、merge、increment、toggle。append/prepend 支持 maxItems 自动裁剪；expectedDataRevision 用于乐观锁；operationId 用于幂等防重。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ChartController「末」,\ncommand:「始」PatchData「末」,\nchartId:「始」cpu-monitor「末」,\nexpectedDataRevision:「始」4「末」,\noperationId:「始」cpu-sample-1789725600000「末」,\noperations:「始」[{\"op\":\"replace\",\"path\":\"/metrics/cpu\",\"value\":63.5},{\"op\":\"append\",\"path\":\"/series/cpu\",\"value\":{\"t\":1789725600000,\"y\":63.5},\"maxItems\":120}]「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "MutateData",
+        "description": "PatchData 的便捷别名。既可提交 operations，也可平铺提交 op、path、value、maxItems 等单一操作；还支持 op1/path1/value1、op2/path2/value2 编号形式并原子执行。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ChartController「末」,\ncommand:「始」MutateData「末」,\nchartId:「始」cpu-monitor「末」,\nop:「始」increment「末」,\npath:「始」/counters/samples「末」,\nvalue:「始」1「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "ReplaceData",
+        "description": "完整替换图表外置数据，仅适合初始化或结构大改。chartId 和 data 必需；expectedDataRevision 推荐提供。日常更新优先使用 SetData/PatchData。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ChartController「末」,\ncommand:「始」ReplaceData「末」,\nchartId:「始」cpu-monitor「末」,\ndata:「始」{\"metrics\":{\"cpu\":0},\"series\":{\"cpu\":[]}}「末」,\nexpectedDataRevision:「始」4「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "EditChartSource",
+        "description": "编辑 chart.json、template.html、style.css 或 runtime.js。chartId、file 必需。局部编辑提交 target 和 replace：服务会归一化 CRLF/LF，并要求 target 恰好命中一次；完整替换提交 content。expectedCodeRevision 推荐提供。编辑前执行阻断性校验，成功后热重载并保留源码历史。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ChartController「末」,\ncommand:「始」EditChartSource「末」,\nchartId:「始」cpu-monitor「末」,\nfile:「始」style.css「末」,\nexpectedCodeRevision:「始」2「末」,\ntarget:「始ESCAPE」color: #75d9e8;「末ESCAPE」,\nreplace:「始ESCAPE」color: #8fe7b4;「末ESCAPE」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "RollbackChartSource",
+        "description": "把指定逻辑文件恢复到保留的旧 codeRevision 内容，并生成一个新的 codeRevision。chartId、file、targetRevision 必需。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ChartController「末」,\ncommand:「始」RollbackChartSource「末」,\nchartId:「始」cpu-monitor「末」,\nfile:「始」runtime.js「末」,\ntargetRevision:「始」2「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "ObserveChart",
+        "description": "渲染并观察图表，返回 AI 友好文字、标准 image_url 多模态截图以及布局/Canvas/稳定性诊断。chartId 必需；mode=preview（默认）使用不干扰用户的隔离临时窗口，mode=current 截取工作台当前展示区；width、height、format=png/jpeg、quality、timeoutMs、region 可选。创建或修改源码后应调用本命令验证布局。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ChartController「末」,\ncommand:「始」ObserveChart「末」,\nchartId:「始」cpu-monitor「末」,\nmode:「始」preview「末」,\nwidth:「始」800「末」,\nheight:「始」500「末」,\nformat:「始」png「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "GetChartRuntimeStatus",
+        "description": "查询图表当前工作台运行状态、代码版本、数据版本、稳定状态和最近错误。未在工作台选择时返回 not-selected 或 closed。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ChartController「末」,\ncommand:「始」GetChartRuntimeStatus「末」,\nchartId:「始」cpu-monitor「末」\n<<<[END_TOOL_REQUEST]>>>"
+      }
+    ]
+  }
+}

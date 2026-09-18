@@ -77,6 +77,7 @@ const translatorHandlers = require('./modules/ipc/translatorHandlers'); // Impor
 const voiceHandlers = require('./modules/ipc/voiceHandlers'); // Import voice chat handlers
 // speechRecognizer is now lazy-loaded
 const canvasHandlers = require('./modules/ipc/canvasHandlers'); // Import canvas handlers
+const chartHandlers = require('./modules/ipc/chartHandlers'); // Agent 图表工作台与持久化服务
 const desktopHandlers = require('./modules/ipc/desktopHandlers'); // Import VCPdesktop handlers
 const desktopRemoteHandlers = require('./modules/ipc/desktopRemoteHandlers'); // Import desktop remote control handlers
 const tavernHandlers = require('./modules/ipc/tavernHandlers'); // Import VCPChatTarven (advanced reply) handlers
@@ -291,6 +292,7 @@ let distributedServerStartPromise = null;
 let chatDataService = null; // Optional VCP-CDS shadow service.
 let historyMutationQueue = null;
 let pluginAgentOperationService = null;
+let chartService = null;
 let appSettingsManager = null;
 let loomManager = null;
 let scriptoriumAgentControl = null;
@@ -488,7 +490,8 @@ function startDistributedServerAfterRenderer() {
                 chatDataService,
                 loomManager,
                 scriptoriumAgentControl,
-                pluginAgentOperationService
+                pluginAgentOperationService,
+                chartService
             });
             distributedServer = server;
             await server.initialize();
@@ -689,6 +692,13 @@ async function performQuitCleanup() {
         await historyMutationQueue?.dispose?.();
         historyMutationQueue = null;
         pluginAgentOperationService = null;
+        if (chartService) {
+            try {
+                await chartHandlers.shutdown();
+            } finally {
+                chartService = null;
+            }
+        }
         await stopAudioEngine();
     })();
 
@@ -1513,6 +1523,13 @@ if (!gotTheLock) {
         emoticonHandlers.initialize({ SETTINGS_FILE, APP_DATA_ROOT_IN_PROJECT });
         emoticonHandlers.setupEmoticonHandlers();
         canvasHandlers.initialize({ mainWindow, openChildWindows, CANVAS_CACHE_DIR });
+        chartService = await chartHandlers.initialize({
+            projectRoot: PROJECT_ROOT,
+            appDataRoot: APP_DATA_ROOT_IN_PROJECT,
+            mainWindow,
+            openChildWindows,
+            logger: console,
+        });
         configureDocxHandlers({
             mainWindow,
             openChildWindows,

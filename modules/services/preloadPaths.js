@@ -5,6 +5,7 @@ const PRELOAD_ROLES = Object.freeze({
     DESKTOP: 'desktop',
     UTILITY: 'utility',
     DOCX: 'docx',
+    CHART: 'chart',
 });
 
 function resolvePreloadPathFromBase(basePath, role) {
