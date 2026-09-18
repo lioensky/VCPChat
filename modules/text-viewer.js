@@ -298,7 +298,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         return result;
     };
 
-    function transformSpecialBlocksForViewer(text) {
+    function transformSpecialBlocksForViewer(text, restoreCodeDomains = (value) => value) {
         const noteRegex = /<<<DailyNoteStart>>>(.*?)<<<DailyNoteEnd>>>/gs;
         const toolResultRegex = /\[\[VCP调用结果信息汇总:(.*?)VCP调用结果结束\]\]/gs;
         const toolCallSummaryRegex = /\[本轮工具调用摘要:\]([\s\S]*?)\[本轮工具调用摘要结束\]/g;
@@ -341,7 +341,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         };
 
         const renderMarkdownField = (rawText) => {
-            const source = rawText || '';
+            /*
+             * 围栏代码在外层预处理阶段会被占位符保护。特殊块（尤其日记）
+             * 会在外层 Markdown 解析前先独立调用 marked.parse，因此必须在
+             * 此处恢复其字段内的代码域，否则占位符会被固化为普通段落文本。
+             */
+            const source = restoreCodeDomains(rawText || '');
             if (window.marked) {
                 try {
                     return window.marked.parse(source);
@@ -861,7 +866,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Step 5: Run other pre-processing on the text (which still has placeholders).
         processed = deIndentHtml(processed);
-        processed = transformSpecialBlocksForViewer(processed);
+
+        /*
+         * 仅为特殊块的内嵌 Markdown 字段按需恢复代码域。普通正文仍保留
+         * 占位符直到 Step 7，避免下面的通用文本修正规则改写代码内容。
+         */
+        const restoreCodeDomains = (value) => {
+            let restored = value;
+            for (const [placeholder, block] of codeBlockMap.entries()) {
+                restored = restored.split(placeholder).join(block);
+            }
+            return restored;
+        };
+        processed = transformSpecialBlocksForViewer(processed, restoreCodeDomains);
         
         // Basic content processors from contentProcessor.js
         processed = processed.replace(/^(\s*```)(?![\r\n])/gm, '$1\n'); // ensureNewlineAfterCodeBlock

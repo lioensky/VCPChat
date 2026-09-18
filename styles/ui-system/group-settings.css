@@ -216,7 +216,8 @@
     }
 
     html .vcp-ui-scope #groupSettingsContainer .group-members-list-container {
-        max-height: 220px;
+        max-height: none;
+        overflow: visible;
         padding: var(--vcp-ui-space-1) 0 0;
         gap: var(--vcp-ui-space-2);
         border: 0;

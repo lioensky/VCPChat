@@ -871,6 +871,12 @@ html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-settings-section, .gr
                 visibility 0s 0s;
 }
 
+/* The group member picker expands to its natural height so every Agent remains
+   visible; the settings sidebar itself owns scrolling for the complete form. */
+html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-section[data-section-key="identity"]:not(.collapsed) .group-settings-identity-shell .group-settings-field-shell {
+    max-height: none;
+}
+
 html .vcp-ui-scope .vcp-settings-schema-surface :is(.agent-identity-container, .group-settings-identity-shell)::before {
     display: none;
 }
