@@ -579,7 +579,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
             flushCurrentField();
 
-            let html = `<div class="vcp-tool-result-bubble collapsible" data-vcp-block-type="tool-result">`;
+            // 阅读模式默认展开工具结果，同时保留点击标题折叠/展开的能力。
+            let html = `<div class="vcp-tool-result-bubble collapsible expanded" data-vcp-block-type="tool-result">`;
             html += `<div class="vcp-tool-result-header">`;
             html += `<span class="vcp-tool-result-label">VCP-ToolResult</span>`;
             html += `<span class="vcp-tool-result-name">${escapeHtml(toolName)}</span>`;
@@ -677,7 +678,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             toolName = toolName.replace(/[「{](?:始|末)(?:[Ee][Ss][Cc][Aa][Pp][Ee])?[」}]/gi, '').replace(/,$/, '').trim();
 
             const escapedFullContent = escapeHtml(content.trim());
-            return `\n\n<div class="vcp-tool-use-bubble" data-vcp-block-type="tool-use">` +
+            // 阅读模式以完整阅读为主，工具调用默认展开。
+            return `\n\n<div class="vcp-tool-use-bubble expanded" data-vcp-block-type="tool-use">` +
                 `<div class="vcp-tool-summary">` +
                 `<span class="vcp-tool-label">VCP-ToolUse:</span> ` +
                 `<span class="vcp-tool-name-highlight">${escapeHtml(toolName)}</span>` +
