@@ -894,7 +894,7 @@ export const tools = {
     },
     'LightMemo': {
         displayName: '快速回忆 / 生产构型 A/B 对比',
-        description: '检索日记或 TDB 冷知识库，并支持 KNN、TagMemo V9 与 RiverMemo Topology V3 生产构型 A/B 对比。[后端插件: LightMemo]',
+        description: '检索日记或 TDB 冷知识库，支持 Jev 扩散神经网络确认概率决策精排，以及 KNN、TagMemo V9 与 RiverMemo Topology V3 生产构型 A/B 对比。[后端插件: LightMemo]',
         commands: {
             'query': {
                 description: '快速回忆 — 检索日记或 TDB 冷知识库',
@@ -905,7 +905,8 @@ export const tools = {
                     { name: 'folder', type: 'text', required: false, placeholder: '一个或多个日记文件夹，以逗号、中文逗号或 | 分隔' },
                     { name: 'knowledge_base', type: 'text', required: false, placeholder: '一个或多个 TDB 冷知识库名称，以逗号分隔', description: '显式检索 knowledge/ 下的冷知识库；也可在 query 中使用 [知识库] 语法' },
                     { name: 'k', type: 'number', required: false, default: 5, min: 1, step: 1, description: '返回结果数量' },
-                    { name: 'rerank', type: 'text', required: false, default: 'false', placeholder: 'false / true / rrf / rrf0.7 / 0.7', description: 'Rerank 精排或 RRF 融合；数字表示 Reranker 权重' },
+                    { name: 'rerank', type: 'text', required: false, default: 'false', placeholder: 'false / true / rrf / rrf0.7 / 0.7', description: '传统 Rerank 精排或 RRF 融合；仅消费前 2×K 候选，数字表示 Reranker 权重' },
+                    { name: 'jev', type: 'text', required: false, default: 'false', placeholder: 'false / true / rrf / rrf0.7 / 0.7', description: 'Jev 决策精排：由扩散神经网络输出确认概率；取值语义与 rerank 相同，仅消费前 2×K 候选。与 rerank 同时启用时仅执行 Jev，避免双重费用' },
                     { name: 'BM25', type: 'checkbox', required: false, default: true, description: '启用日记检索的 BM25 初筛与混合打分；冷知识库检索时忽略' },
                     { name: 'search_all_knowledge_bases', type: 'checkbox', required: false, default: false, description: '搜索所有未屏蔽的日记本；关闭时按 maid/folder 定位' },
                     { name: 'tag_boost', type: 'text', required: false, default: '0.5', placeholder: '0.5 或 0.6+', description: 'RiverMemo：V9 降噪源强度；TagMemo：V9.1 增强，+ 后缀开启势能场；KNN 与冷知识库忽略' },
@@ -916,19 +917,20 @@ export const tools = {
                 ]
             },
             'tagmemo_ab': {
-                description: '生产构型 A/B 对比 — 在同一 SQL 权限作用域、查询向量和候选事实域中固定比较原始 KNN、标准 TagMemo V9、Rust/Rayon RiverMemo Topology V3，并默认增加独立 Rerank。输出包含重合率和统一排名表的紧凑 Markdown；不运行任何 V10 实验构型。',
+                description: '生产构型 A/B 对比 — 在同一 SQL 权限作用域、查询向量和候选事实域中固定比较原始 KNN、标准 TagMemo V9、Rust/Rayon RiverMemo Topology V3，并可增加独立 Rerank 与 Jev 扩散神经网络确认概率决策精排轨道。外部精排仅消费三条基础轨道按 RRF 共识排序后的前 2×K 候选；输出包含重合率和统一排名表的紧凑 Markdown，不运行任何 V10 实验构型。',
                 params: [
                     { name: 'query', type: 'textarea', required: true, placeholder: '输入生产构型对比查询，例如：TagMemo 如何恢复连续记忆中的逻辑链' },
                     { name: 'folder', type: 'text', required: false, advanced: false, placeholder: '日记文件夹，例如：VCP开发', description: '作用域：必须提供 folder/maid，或显式开启全库搜索；可与 maid 同时使用' },
                     { name: 'maid', type: 'text', required: false, advanced: false, placeholder: '按署名限定作用域', description: '作用域：必须提供 maid/folder，或显式开启全库搜索；可与 folder 同时使用' },
                     { name: 'search_all_knowledge_bases', type: 'checkbox', required: false, advanced: false, default: false, description: '显式开启全库对比；启用后可不填 folder/maid' },
                     { name: 'k', type: 'number', required: false, default: 5, min: 1, step: 1, description: '每条轨道展示的 Top-K 数量' },
-                    { name: 'candidate_k', type: 'number', required: false, min: 1, step: 1, placeholder: '留空使用 max(30, k×5)', description: 'TagMemo V9、Rust V3 与 Rerank 共用的对称候选窗口；后端也兼容 candidateK' },
+                    { name: 'candidate_k', type: 'number', required: false, min: 1, step: 1, placeholder: '留空使用 max(30, k×5)', description: '三条基础轨道共用的对称候选窗口；外部 Rerank/Jev 仅消费 RRF 共识排序后的前 2×K 候选，后端也兼容 candidateK' },
                     { name: 'tag_boost', type: 'number', required: false, default: 0.6, min: 0, max: 1, step: 0.05, description: 'V9 增强及 Rust V3 共享 V9 观测源的强度' },
                     { name: 'core_tags', type: 'textarea', required: false, placeholder: 'JSON 数组或逗号、空格分隔的核心 Tag', description: '核心 Tag' },
                     { name: 'core_boost_factor', type: 'number', required: false, default: 1.33, min: 0, step: 0.01, description: '核心 Tag 额外增强系数' },
                     { name: 'BM25', type: 'checkbox', required: false, default: true, description: '向 Rust V3 候选超集提供 BM25 来源；后端也兼容 bm25/use_bm25' },
-                    { name: 'compare_rerank', type: 'checkbox', required: false, default: true, description: '增加独立 Rerank 轨道；未配置服务时报告会明确标记不可用' }
+                    { name: 'compare_rerank', type: 'checkbox', required: false, default: true, description: '增加独立传统 Rerank 轨道；后端也兼容 compareRerank/rerank_compare，未配置服务时明确标记不可用' },
+                    { name: 'compare_jev', type: 'checkbox', required: false, default: false, description: '增加独立 Jev 决策精排轨道，由扩散神经网络输出确认概率；后端也兼容 compareJev/jev_compare，未配置服务时明确标记不可用' }
                 ]
             },
         }
