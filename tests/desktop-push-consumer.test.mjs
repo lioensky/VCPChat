@@ -161,3 +161,34 @@ test('a queued timer from a closed block cannot act on a later block for the sam
     assert.equal(harness.pushes.length, pushesBeforeStaleTick);
     consumer.dispose();
 });
+test('consumer pushes single finalize with full content in offline state without intervals or leak', () => {
+    const harness = createHarness();
+    const consumer = createDesktopPushConsumer({
+        electronAPI: harness.electronAPI,
+        scheduler: harness.scheduler,
+        createWidgetId: () => 'widget-offline-1',
+        logger: { log() {}, warn() {} },
+    });
+    consumer.start();
+    // 模拟离线状态：桌面未打开
+    harness.emitStatus(false);
+
+    const output = consumer.processToken(
+        'message-offline',
+        'prefix<<<[DESKTOP_PUSH]>>><div id="clock">Offline Clock</div><<<[DESKTOP_PUSH_END]>>>suffix',
+    );
+
+    assert.equal(output, 'prefixsuffix');
+    assert.equal(harness.intervals.size, 0, 'must not start throttle timer in offline state');
+    assert.equal(harness.pushes.length, 1, 'must emit exactly one finalize payload in offline state');
+    assert.deepEqual(harness.pushes[0], {
+        action: 'finalize',
+        widgetId: 'widget-offline-1',
+        content: '<div id="clock">Offline Clock</div>',
+        offline: true,
+    });
+
+    consumer.cleanupMessage('message-offline');
+    assert.equal(consumer.getStateCount(), 0);
+    consumer.dispose();
+});

@@ -382,6 +382,7 @@ function createCatalog(ops) {
 
         // Desktop APIs
         desktopPush: command((data) => ops.send('desktop-push', data)),
+        desktopCanvasReady: query(() => ops.invoke('desktop-canvas-ready')),
         onDesktopPush: subscription(ops.subscribe('desktop-push-to-canvas', (_event, data) => data)),
         onDesktopStatus: subscription(ops.subscribe('desktop-status', (_event, data) => data)),
         onDesktopRemoteSetWallpaper: subscription(ops.subscribe('desktop-remote-set-wallpaper', (_event, data) => data)),
@@ -440,6 +441,7 @@ const ALLOWED_KEYS = [
     "getPlatform",
     "onWindowOccluded",
     "desktopPush",
+    "desktopCanvasReady",
     "onDesktopPush",
     "onDesktopStatus",
     "openDesktopWindow",

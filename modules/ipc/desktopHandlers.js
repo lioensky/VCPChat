@@ -20,6 +20,7 @@ let openChildWindows = [];
 let appSettingsManager = null;
 let alwaysOnBottomEnabled = false;
 let alwaysOnBottomInterval = null;
+let pendingAutoSpawnQueue = []; // 🌟 开门迎客离线挂件待上屏队列
 
 // --- 独立 Electron App 子进程引用（防止重复启动） ---
 const standaloneAppProcesses = new Map(); // appDir -> child_process
@@ -966,6 +967,7 @@ function initialize(params) {
         || path.join(PROJECT_ROOT, 'AppData');
     DESKTOP_WIDGETS_DIR = path.join(appDataRoot, 'DesktopWidgets');
     DESKTOP_DATA_DIR = path.join(appDataRoot, 'DesktopData');
+    DESKTOP_INBOX_DIR = path.join(DESKTOP_DATA_DIR, 'inbox');
     DOCK_CONFIG_PATH = path.join(DESKTOP_DATA_DIR, 'dock.json');
     LAYOUT_CONFIG_PATH = path.join(DESKTOP_DATA_DIR, 'layout.json');
     CATALOG_PATH = path.join(DESKTOP_WIDGETS_DIR, 'CATALOG.md');
@@ -979,6 +981,7 @@ function initialize(params) {
     // 确保目录存在
     fs.ensureDirSync(DESKTOP_WIDGETS_DIR);
     fs.ensureDirSync(DESKTOP_DATA_DIR);
+    fs.ensureDirSync(DESKTOP_INBOX_DIR);
 
     // 启动时生成/更新 CATALOG.md
     generateCatalog().catch(err => {
@@ -990,6 +993,15 @@ function initialize(params) {
         await openDesktopWindow();
     });
 
+    // --- IPC: 桌面画布 DOM 与模块彻底就绪事件（零延时精准握手）---
+    ipcMain.handle('desktop-canvas-ready', async (event) => {
+        console.log('[DesktopHandlers] Desktop canvas reported ready via IPC handshake.');
+        if (desktopWindow && !desktopWindow.isDestroyed()) {
+            triggerAutoSpawnOnWindow(desktopWindow, 50);
+        }
+        return { success: true };
+    });
+
     // --- IPC: 窗口始终置底控制 ---
     ipcMain.handle('desktop-set-always-on-bottom', (event, enabled) => {
         setAlwaysOnBottom(enabled);
@@ -997,9 +1009,120 @@ function initialize(params) {
     });
 
     // --- IPC: 主窗口 -> 桌面画布的流式推送 ---
-    ipcMain.on('desktop-push', (event, data) => {
-        if (desktopWindow && !desktopWindow.isDestroyed()) {
-            desktopWindow.webContents.send('desktop-push-to-canvas', data);
+    ipcMain.on('desktop-push', async (event, data) => {
+        const { action, widgetId, content, offline } = data || {};
+        // 关键：必须同时检查 isVisible()！如果窗口处于隐藏或未打开状态，物理视同离线！
+        const isWindowVisible = desktopWindow && !desktopWindow.isDestroyed() && desktopWindow.isVisible();
+
+        // 1. 主进程权威仲裁（Master-Arbiter Pipeline）:
+        // 若桌面窗口真实处于可见在线状态 (isWindowVisible)，无视前端是否误标 offline！
+        if (isWindowVisible) {
+            if (action === 'finalize' && offline && typeof content === 'string' && content.trim().length > 0) {
+                // 收到前端误判离线的合并单包：主进程权威负责解包为标准创建三部曲，直通画布实时上屏！
+                console.log(`[DesktopHandlers] Master-Arbiter: Unpacking offline bundle for visible canvas: ${widgetId}`);
+                desktopWindow.webContents.send('desktop-push-to-canvas', {
+                    action: 'create',
+                    widgetId,
+                    options: { width: 340, height: 220 }
+                });
+                desktopWindow.webContents.send('desktop-push-to-canvas', {
+                    action: 'append',
+                    widgetId,
+                    content
+                });
+                desktopWindow.webContents.send('desktop-push-to-canvas', {
+                    action: 'finalize',
+                    widgetId
+                });
+            } else if (!offline) {
+                // 标准在线流式数据包直接转发
+                desktopWindow.webContents.send('desktop-push-to-canvas', data);
+            }
+        }
+
+        // 2. 无论桌面在不在线，收到 finalize 闭合且附带有效 HTML 时，出厂即归档落盘至收件箱 (路线 A)
+        if (action === 'finalize' && typeof content === 'string' && content.trim().length > 0 && widgetId) {
+            try {
+                if (isSafeWidgetId(widgetId)) {
+                    // 终局企划：大一统挂件库 + 置顶星标模型 (DesktopWidgets)
+                    const widgetDir = path.join(DESKTOP_WIDGETS_DIR, widgetId);
+                    await fs.ensureDir(widgetDir);
+
+                    // 写入挂件源码
+                    await fs.writeFile(path.join(widgetDir, 'widget.html'), content, 'utf-8');
+
+                    // 启发式提取友好名称
+                    let detectedName = '';
+                    const titleMatch = content.match(/<title>([^<]+)<\/title>/i);
+                    if (titleMatch && titleMatch[1].trim()) {
+                        detectedName = titleMatch[1].trim();
+                    } else {
+                        const hMatch = content.match(/<h[12][^>]*>([^<]+)<\/h[12]>/i);
+                        if (hMatch && hMatch[1].trim()) {
+                            detectedName = hMatch[1].trim();
+                        } else {
+                            const nowD = new Date();
+                            detectedName = `挂件-${nowD.getFullYear()}${String(nowD.getMonth() + 1).padStart(2, '0')}${String(nowD.getDate()).padStart(2, '0')}-${String(nowD.getHours()).padStart(2, '0')}${String(nowD.getMinutes()).padStart(2, '0')}`;
+                        }
+                    }
+
+                    // 写入元数据：随聊生成默认未加星置顶 (pinned: false)
+                    const metaPath = path.join(widgetDir, 'meta.json');
+                    const meta = {
+                        id: widgetId,
+                        name: detectedName,
+                        origin: 'chat-stream',
+                        pinned: false,
+                        createdAt: Date.now(),
+                        updatedAt: Date.now(),
+                    };
+                    if (await fs.pathExists(metaPath)) {
+                        try {
+                            const existingMeta = await fs.readJson(metaPath);
+                            meta.createdAt = existingMeta.createdAt || meta.createdAt;
+                            if (existingMeta.name) meta.name = existingMeta.name;
+                            if (existingMeta.pinned !== undefined) meta.pinned = existingMeta.pinned;
+                        } catch (e) { /* ignore */ }
+                    }
+                    await fs.writeJson(metaPath, meta, { spaces: 2 });
+
+                    // 生成默认矢量占位图（纯英文无乱码设计 + 统一使用真实 PNG 后缀兼容）
+                    const thumbPath = path.join(widgetDir, 'thumbnail.png');
+                    if (!await fs.pathExists(thumbPath)) {
+                        const initial = (detectedName || 'W').trim().charAt(0).toUpperCase();
+                        // 避免任何中文字符导致字体库方块乱码，纯 CSS 渐变质感徽章
+                        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 320 200"><defs><linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#1e1b4b"/><stop offset="100%" stop-color="#0f172a"/></linearGradient></defs><rect width="320" height="200" fill="url(#bg)" rx="10"/><circle cx="160" cy="85" r="36" fill="#312e81" stroke="#6366f1" stroke-width="2"/><text x="160" y="96" font-size="32" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, monospace" font-weight="bold" fill="#38bdf8" text-anchor="middle">${initial}</text><rect x="60" y="145" width="200" height="20" rx="4" fill="rgba(255,255,255,0.06)"/><text x="160" y="159" font-size="11" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, monospace" font-weight="bold" fill="#94a3b8" text-anchor="middle" letter-spacing="1">DESKTOP WIDGET</text></svg>`;
+                        await fs.writeFile(thumbPath, Buffer.from(svg, 'utf-8'));
+                    }
+
+                    console.log(`[DesktopHandlers] Auto-archived stream widget to Library: ${detectedName} (${widgetId}) at ${widgetDir}`);
+
+                    // 异步更新 CATALOG.md
+                    generateCatalog().catch(err => {
+                        console.warn('[DesktopHandlers] CATALOG.md update failed:', err.message);
+                    });
+
+                    // 3. 若此时桌面处于离线（未打开或隐藏状态），推入待上屏队列（上限 5 个防膨胀，FIFO 淘汰）
+                    if (!isWindowVisible) {
+                        const existingIdx = pendingAutoSpawnQueue.findIndex(item => item.widgetId === widgetId);
+                        if (existingIdx >= 0) {
+                            pendingAutoSpawnQueue.splice(existingIdx, 1);
+                        }
+                        if (pendingAutoSpawnQueue.length >= 5) {
+                            pendingAutoSpawnQueue.shift();
+                        }
+                        pendingAutoSpawnQueue.push({
+                            widgetId,
+                            content,
+                            name: detectedName,
+                            createdAt: Date.now(),
+                        });
+                        console.log(`[DesktopHandlers] Queued widget for auto-spawn: ${detectedName} (${widgetId}), queue length: ${pendingAutoSpawnQueue.length}`);
+                    }
+                }
+            } catch (err) {
+                console.error('[DesktopHandlers] Stash stream widget to Inbox error:', err);
+            }
         }
     });
 
@@ -1063,10 +1186,12 @@ function initialize(params) {
             // 保存 HTML 内容
             await fs.writeFile(path.join(widgetDir, 'widget.html'), html, 'utf-8');
 
-            // 保存元数据
+            // 保存元数据：用户主动收藏/更新，打上加星置顶标记 (pinned: true)
             const meta = {
                 id,
                 name,
+                origin: 'user-favorite',
+                pinned: true,
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
             };
@@ -1299,26 +1424,41 @@ function initialize(params) {
                     } catch (e) { /* ignore */ }
                 }
 
-                // 读取缩略图为 Data URL
+                // 读取缩略图为 Data URL (智能适配 PNG 真实位图与 SVG 矢量图)
                 let thumbnail = '';
                 if (await fs.pathExists(thumbPath)) {
                     try {
                         const thumbBuffer = await fs.readFile(thumbPath);
-                        thumbnail = `data:image/png;base64,${thumbBuffer.toString('base64')}`;
+                        const isSvg = thumbBuffer.slice(0, 100).toString('utf-8').trim().startsWith('<svg');
+                        const mimeType = isSvg ? 'image/svg+xml' : 'image/png';
+                        thumbnail = `data:${mimeType};base64,${thumbBuffer.toString('base64')}`;
                     } catch (e) { /* ignore */ }
                 }
+
+                // 兼容性核心：老挂件未定义 pinned 时，无感默认判定为 true（老收藏全部置顶）
+                const isPinned = meta.pinned !== undefined ? Boolean(meta.pinned) : true;
 
                 widgets.push({
                     id: meta.id || entry.name,
                     name: meta.name || entry.name,
                     thumbnail,
+                    pinned: isPinned,
+                    origin: meta.origin || 'user-favorite',
                     createdAt: meta.createdAt,
                     updatedAt: meta.updatedAt,
                 });
             }
 
-            // 按更新时间倒序排列
-            widgets.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+            // 终极排序权重：
+            // 1. 加星置顶挂件 (pinned: true) 绝对排在前面
+            // 2. 随聊生成未加星挂件 (pinned: false) 紧随其后
+            // 3. 同级别内部按 updatedAt / createdAt 倒序
+            widgets.sort((a, b) => {
+                const aWeight = a.pinned ? 1 : 0;
+                const bWeight = b.pinned ? 1 : 0;
+                if (bWeight !== aWeight) return bWeight - aWeight;
+                return (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0);
+            });
 
             return { success: true, widgets };
         } catch (err) {
@@ -2303,12 +2443,52 @@ function initialize(params) {
 }
 
 /**
+ * 错落级联自动挂载上屏核心函数（统一供给首次打开与后台唤醒复用）
+ */
+function triggerAutoSpawnOnWindow(targetWin, delayMs = 350) {
+    if (!targetWin || targetWin.isDestroyed() || pendingAutoSpawnQueue.length === 0) return;
+
+    const itemsToSpawn = pendingAutoSpawnQueue.splice(0, 3);
+    pendingAutoSpawnQueue = [];
+
+    setTimeout(() => {
+        if (!targetWin || targetWin.isDestroyed()) return;
+        console.log(`[DesktopHandlers] Auto-spawning ${itemsToSpawn.length} queued widgets...`);
+        itemsToSpawn.forEach((item, index) => {
+            const cardW = 340;
+            const cardGap = 24;
+            const col = index % 3;
+            const row = Math.floor(index / 3);
+            const x = 60 + col * (cardW + cardGap);
+            const y = 50 + row * (220 + cardGap);
+
+            targetWin.webContents.send('desktop-push-to-canvas', {
+                action: 'create',
+                widgetId: item.widgetId,
+                options: { x, y, width: cardW, height: 220 }
+            });
+            targetWin.webContents.send('desktop-push-to-canvas', {
+                action: 'append',
+                widgetId: item.widgetId,
+                content: item.content
+            });
+            targetWin.webContents.send('desktop-push-to-canvas', {
+                action: 'finalize',
+                widgetId: item.widgetId
+            });
+        });
+    }, delayMs);
+}
+
+/**
  * 打开或聚焦桌面画布窗口
  */
 async function openDesktopWindow() {
     if (desktopWindow && !desktopWindow.isDestroyed()) {
         if (!desktopWindow.isVisible()) desktopWindow.show();
         desktopWindow.focus();
+        // 关键修复：当窗口只是隐藏（非初次启动）时，唤醒瞬间立即消费迎客队列！
+        triggerAutoSpawnOnWindow(desktopWindow, 150);
         return desktopWindow;
     }
 
@@ -2335,10 +2515,13 @@ async function openDesktopWindow() {
             preload: resolveAppPreload(app.getAppPath(), PRELOAD_ROLES.DESKTOP),
             contextIsolation: true,
             nodeIntegration: false,
+            devTools: true,
         },
         icon: path.join(app.getAppPath(), 'assets', 'icon.png'),
         show: false,
     });
+
+    // 生产环境保持正常，不自动弹出 DevTools
 
     const desktopUrl = `file://${path.join(app.getAppPath(), 'Desktopmodules', 'desktop.html')}?currentThemeMode=${encodeURIComponent(currentThemeMode)}`;
     desktopWindow.loadURL(desktopUrl);
@@ -2385,6 +2568,18 @@ async function openDesktopWindow() {
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('desktop-status', { connected: true, message: 'Desktop window is ready.' });
         }
+
+        // ============================================================
+        // 🌟 推进 1：离线挂件开门迎客（严禁在 ready-to-show 盲目 350ms 抢跑清空！）
+        // 绝对安全策略：由前端全部 DOM 与 ipcBridge 彻底就绪后触发的 'desktop-canvas-ready' 握手精准消费！
+        // 保底防御：若前端握手未达，1200ms 后才由 triggerAutoSpawnOnWindow 执行保底消费
+        // ============================================================
+        const fallbackSpawnTimer = setTimeout(() => {
+            if (desktopWindow && !desktopWindow.isDestroyed()) {
+                triggerAutoSpawnOnWindow(desktopWindow, 0);
+            }
+        }, 1200);
+        desktopWindow.once('closed', () => clearTimeout(fallbackSpawnTimer));
     });
 
     // 锁定最大化状态：如果开启了自动最大化，阻止用户手动还原

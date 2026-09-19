@@ -117,6 +117,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // 7. 初始化调试工具
     D.debug.init();
 
+    // 8. 向主进程回传握手：通知桌面端所有子系统和 DOM 彻底就绪，可立即分发待上屏挂件
+    if (desktopApi?.desktopCanvasReady) {
+        desktopApi.desktopCanvasReady().catch(() => {});
+    } else if (desktopApi?.invoke) {
+        desktopApi.invoke('desktop-canvas-ready').catch(() => {});
+    }
+
     console.log('[VCPdesktop] Desktop canvas renderer initialized (modular).');
     console.log('[VCPdesktop] Debug: window.__desktopDebug.test() to create a test widget.');
 });
