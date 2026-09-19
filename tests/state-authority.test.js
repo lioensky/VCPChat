@@ -119,3 +119,59 @@ test('assistant catalog rejects stale load completion without a test-only state 
     assert.equal(window.document.querySelector('[data-item-id="stale"]'), null);
     dom.window.close();
 });
+
+
+test('assistant catalog preserves per-item speaking indicators across concurrent streams and rerenders', async () => {
+    const dom = new JSDOM('<!doctype html><html><body><ul id="agentList"></ul></body></html>', {
+        url: 'https://vcpchat.local/main.html', runScripts: 'outside-only'
+    });
+    const { window } = dom;
+    window.eval(source('modules/itemListManager.js'));
+    const electronAPI = {
+        getAgents: async () => [{ id: 'nova', name: 'Nova' }],
+        getAgentGroups: async () => [{ id: 'council', name: 'Council' }],
+        loadSettings: async () => ({ combinedItemOrder: [], vcpServerUrl: '' }),
+        getUnreadTopicCounts: async () => ({ success: true, counts: {} }),
+    };
+    window.itemListManager.init({
+        elements: { itemListUl: window.document.getElementById('agentList') },
+        electronAPI,
+        refs: { currentSelectedItemRef: { get: () => null, set() {} } },
+        mainRendererFunctions: { selectItem() {} },
+        uiHelper: { showToastNotification() {} },
+    });
+    await window.itemListManager.loadItems();
+
+    const event = (type, messageId, context) => ({ type, messageId, context });
+    const groupContext = { groupId: 'council', topicId: 'topic-a', isGroupMessage: true };
+    window.itemListManager.consumeStreamActivityEvent(event('agent_thinking', 'group-stream-1', groupContext));
+    window.itemListManager.consumeStreamActivityEvent(event('start', 'group-stream-2', groupContext));
+
+    let groupItem = window.document.querySelector('[data-item-id="council"][data-item-type="group"]');
+    assert.equal(groupItem.classList.contains('is-stream-speaking'), true);
+    assert.equal(groupItem.dataset.activeStreamCount, '2');
+    assert.equal(groupItem.querySelectorAll('.stream-speaking-bar').length, 3);
+    assert.equal(groupItem.querySelector('.stream-speaking-indicator').hidden, false);
+
+    window.itemListManager.consumeStreamActivityEvent(event('end', 'group-stream-1', groupContext));
+    assert.equal(groupItem.classList.contains('is-stream-speaking'), true, 'one completed stream must not hide another');
+    assert.equal(groupItem.dataset.activeStreamCount, '1');
+
+    await window.itemListManager.loadItems();
+    groupItem = window.document.querySelector('[data-item-id="council"][data-item-type="group"]');
+    assert.equal(groupItem.classList.contains('is-stream-speaking'), true, 'rerender must restore active background stream');
+
+    window.itemListManager.consumeStreamActivityEvent(event('error', 'group-stream-2', groupContext));
+    assert.equal(groupItem.classList.contains('is-stream-speaking'), false);
+    assert.equal(groupItem.dataset.activeStreamCount, '0');
+    assert.equal(groupItem.querySelector('.stream-speaking-indicator').hidden, true);
+
+    const agentContext = { agentId: 'nova', topicId: 'topic-b', isGroupMessage: false };
+    window.itemListManager.consumeStreamActivityEvent(event('data', 'agent-stream-1', agentContext));
+    const agentItem = window.document.querySelector('[data-item-id="nova"][data-item-type="agent"]');
+    assert.equal(agentItem.classList.contains('is-stream-speaking'), true);
+    window.itemListManager.consumeStreamActivityEvent(event('full_response', 'agent-stream-1', agentContext));
+    assert.equal(agentItem.classList.contains('is-stream-speaking'), false);
+
+    dom.window.close();
+});

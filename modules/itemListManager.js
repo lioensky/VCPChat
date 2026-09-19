@@ -57,6 +57,10 @@ window.itemListManager = (() => {
     };
     let personaAutoRefreshTimer = null;
 
+    // 流状态独立于列表 DOM 保存，确保列表刷新或切换会话后仍能恢复后台说话标识。
+    const activeStreamOwners = new Map();
+    const activeStreamsByItem = new Map();
+
     /**
      * Initializes the ItemListManager module.
      * @param {object} config - The configuration object.
@@ -740,6 +744,95 @@ window.itemListManager = (() => {
         showPersonaCard(li);
     }
 
+    function getStreamItemKey(itemId, itemType) {
+        return itemId && itemType ? `${itemType}:${itemId}` : '';
+    }
+
+    function resolveStreamOwner(event) {
+        const context = event?.context || {};
+        const isGroup = context.isGroupMessage === true || Boolean(context.groupId);
+        const itemId = isGroup ? context.groupId : context.agentId;
+        const itemType = isGroup ? 'group' : 'agent';
+        const operationId = String(event?.streamOperationId || event?.operationId || event?.messageId || '').trim();
+        if (!itemId || !operationId) return null;
+        return { itemId, itemType, operationId, itemKey: getStreamItemKey(itemId, itemType) };
+    }
+
+    function syncSpeakingIndicator(itemId, itemType) {
+        if (!itemListUl) return;
+        const itemKey = getStreamItemKey(itemId, itemType);
+        const activeCount = activeStreamsByItem.get(itemKey)?.size || 0;
+        const li = Array.from(itemListUl.querySelectorAll('li[data-item-id][data-item-type]'))
+            .find(candidate => candidate.dataset.itemId === itemId && candidate.dataset.itemType === itemType);
+        if (!li) return;
+
+        li.classList.toggle('is-stream-speaking', activeCount > 0);
+        li.dataset.activeStreamCount = String(activeCount);
+        const indicator = li.querySelector('.stream-speaking-indicator');
+        if (indicator) {
+            indicator.hidden = activeCount === 0;
+            indicator.setAttribute('aria-label', activeCount > 0 ? '正在说话' : '');
+        }
+    }
+
+    function setStreamOwnerActive(owner, active) {
+        if (!owner) return;
+        const previousOwner = activeStreamOwners.get(owner.operationId);
+        if (previousOwner && previousOwner.itemKey !== owner.itemKey) {
+            const previousSet = activeStreamsByItem.get(previousOwner.itemKey);
+            previousSet?.delete(owner.operationId);
+            if (previousSet?.size === 0) activeStreamsByItem.delete(previousOwner.itemKey);
+            syncSpeakingIndicator(previousOwner.itemId, previousOwner.itemType);
+        }
+
+        if (active) {
+            activeStreamOwners.set(owner.operationId, owner);
+            let operations = activeStreamsByItem.get(owner.itemKey);
+            if (!operations) {
+                operations = new Set();
+                activeStreamsByItem.set(owner.itemKey, operations);
+            }
+            operations.add(owner.operationId);
+        } else {
+            const effectiveOwner = previousOwner || owner;
+            activeStreamOwners.delete(owner.operationId);
+            const operations = activeStreamsByItem.get(effectiveOwner.itemKey);
+            operations?.delete(owner.operationId);
+            if (operations?.size === 0) activeStreamsByItem.delete(effectiveOwner.itemKey);
+            owner = effectiveOwner;
+        }
+        syncSpeakingIndicator(owner.itemId, owner.itemType);
+    }
+
+    function consumeStreamActivityEvent(event) {
+        const owner = resolveStreamOwner(event);
+        if (!owner) return false;
+
+        if (event.type === 'agent_thinking' || event.type === 'start' || event.type === 'data') {
+            setStreamOwnerActive(owner, true);
+            return true;
+        }
+        if (event.type === 'end' || event.type === 'error' || event.type === 'full_response') {
+            setStreamOwnerActive(owner, false);
+            return true;
+        }
+        return false;
+    }
+
+    function createSpeakingIndicator() {
+        const indicator = document.createElement('span');
+        indicator.className = 'stream-speaking-indicator';
+        indicator.hidden = true;
+        indicator.setAttribute('role', 'status');
+        for (let index = 0; index < 3; index += 1) {
+            const bar = document.createElement('span');
+            bar.className = 'stream-speaking-bar';
+            bar.style.setProperty('--stream-bar-index', String(index));
+            indicator.appendChild(bar);
+        }
+        return indicator;
+    }
+
     function createItemElement(item) {
         const li = document.createElement('li');
         li.dataset.itemId = item.id;
@@ -755,8 +848,9 @@ window.itemListManager = (() => {
         avatarImg.alt = `${item.name} 头像`;
         avatarImg.onerror = () => { avatarImg.src = (item.type === 'group' ? 'assets/default_group_avatar.png' : 'assets/default_avatar.png'); };
 
-        // 将头像添加到包装器中
+        // 将头像和顶层说话频谱添加到包装器中。
         avatarWrapper.appendChild(avatarImg);
+        avatarWrapper.appendChild(createSpeakingIndicator());
 
         const nameSpan = document.createElement('span');
         nameSpan.classList.add('agent-name');
@@ -807,6 +901,7 @@ window.itemListManager = (() => {
         }
 
         hydratePersonaElement(li, item);
+        syncSpeakingIndicator(item.id, item.type);
 
         // 为每个项目添加独立的状态管理
         li._lastClickTime = 0;
@@ -893,6 +988,9 @@ window.itemListManager = (() => {
             fragment.appendChild(createItemElement(item));
         });
         itemListUl.appendChild(fragment);
+
+        // 新列表节点已挂载，现在从独立流状态中恢复后台说话标识。
+        items.forEach(item => syncSpeakingIndicator(item.id, item.type));
 
         const currentSelectedItem = currentSelectedItemRef.get();
         if (currentSelectedItem && currentSelectedItem.id) {
@@ -1272,6 +1370,7 @@ window.itemListManager = (() => {
         findItemById, // Expose the new function
         updateLoadedItemConfig,
         updateUnreadBadges, // Part C: 暴露更新徽章函数供外部调用
-        refreshUnreadCounts
+        refreshUnreadCounts,
+        consumeStreamActivityEvent
     };
 })();

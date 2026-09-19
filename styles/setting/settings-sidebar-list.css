@@ -400,6 +400,105 @@ body[data-vcp-theme="dark"] .sidebar .topic-list .topic-unread-indicator {
     z-index: 1;
 }
 
+/* 后台流式说话状态：头像上方、未读徽章下方的轻量三柱频谱。 */
+.sidebar #agentList .avatar {
+    transition:
+        filter var(--vcp-motion-duration-fast, 160ms) ease,
+        opacity var(--vcp-motion-duration-fast, 160ms) ease;
+}
+
+.sidebar #agentList li.is-stream-speaking .avatar {
+    filter: brightness(0.66) saturate(0.82);
+}
+
+.sidebar #agentList .stream-speaking-indicator {
+    position: absolute;
+    inset: 2px;
+    z-index: 8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    border-radius: 50%;
+    pointer-events: none;
+    line-height: 1;
+    background: rgba(7, 10, 18, 0.16);
+    opacity: 0;
+    transform: scale(0.9);
+    transition:
+        opacity var(--vcp-motion-duration-fast, 160ms) ease,
+        transform var(--vcp-motion-duration-fast, 160ms) ease;
+}
+
+.sidebar #agentList .stream-speaking-indicator[hidden] {
+    display: none;
+}
+
+.sidebar #agentList li.is-stream-speaking .stream-speaking-indicator {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.sidebar #agentList .stream-speaking-bar {
+    width: 3px;
+    height: 14px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--highlight-text) 88%, white 12%);
+    box-shadow: 0 0 5px color-mix(in srgb, var(--highlight-text) 52%, transparent);
+    transform-origin: center;
+    animation: sidebarSpeakingSpectrum 0.72s ease-in-out infinite alternate;
+    animation-delay: calc(var(--stream-bar-index) * -0.19s);
+}
+
+.sidebar #agentList .stream-speaking-bar:nth-child(1) {
+    height: 10px;
+}
+
+.sidebar #agentList .stream-speaking-bar:nth-child(3) {
+    height: 8px;
+}
+
+body.light-theme .sidebar #agentList .stream-speaking-indicator {
+    background: rgba(25, 32, 48, 0.12);
+}
+
+@keyframes sidebarSpeakingSpectrum {
+    0% {
+        transform: scaleY(0.38);
+        opacity: 0.68;
+    }
+
+    100% {
+        transform: scaleY(1);
+        opacity: 1;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sidebar #agentList .avatar,
+    .sidebar #agentList .stream-speaking-indicator {
+        transition: none;
+    }
+
+    .sidebar #agentList .stream-speaking-bar {
+        animation: none;
+        opacity: 0.92;
+        transform: none;
+    }
+
+    .sidebar #agentList .stream-speaking-bar:nth-child(1) {
+        height: 8px;
+    }
+
+    .sidebar #agentList .stream-speaking-bar:nth-child(2) {
+        height: 14px;
+    }
+
+    .sidebar #agentList .stream-speaking-bar:nth-child(3) {
+        height: 10px;
+    }
+}
+
 .sidebar .agent-list li:hover::after,
 .sidebar .topic-list .topic-item:hover::after {
     content: "";

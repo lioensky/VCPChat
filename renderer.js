@@ -694,7 +694,11 @@ mainChatSettingsPresentationOwner.configureStartup({
 
     mainChatEventBridge = createMainChatEventBridge({
         chatAPI,
-        acceptStreamEvent: eventData => mainChatAdapter?.acceptStreamEvent(eventData) === true,
+        acceptStreamEvent: eventData => {
+            // 侧栏说话状态必须先于当前会话路由更新，后台 Agent/群聊也能保持可见。
+            window.itemListManager?.consumeStreamActivityEvent?.(eventData);
+            return mainChatAdapter?.acceptStreamEvent(eventData) === true;
+        },
         consumeNonStreamingEvent: eventData => nonStreamingEventConsumer?.consume(eventData),
     });
 
