@@ -1,7 +1,7 @@
 // VCPHumanToolBox/main.js
 // 这是一个独立的Electron入口，用于启动人类工具箱。
 
-const { app, BrowserWindow, ipcMain, Menu, dialog, clipboard, nativeImage, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, dialog, clipboard, nativeImage, globalShortcut, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -12,6 +12,25 @@ const sharp = require('sharp');
 const { registerComfyUIIpcHandlers } = require('./ComfyUImodules/comfyui-ipc');
 
 let mainWindow = null;
+
+function openExternalHttpUrl(rawUrl) {
+    if (typeof rawUrl !== 'string') return false;
+
+    try {
+        const url = new URL(rawUrl);
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+            return false;
+        }
+
+        shell.openExternal(url.href).catch(error => {
+            console.error('[Main] Failed to open external URL:', error);
+        });
+        return true;
+    } catch (error) {
+        console.warn('[Main] Ignored invalid external URL:', rawUrl);
+        return false;
+    }
+}
 
 function createWindow() {
     // 创建浏览器窗口。
@@ -29,6 +48,20 @@ function createWindow() {
             nodeIntegration: false,
             contextIsolation: true // 启用上下文隔离
         }
+    });
+
+    // 所有网页链接交给系统默认浏览器，禁止在工具箱窗口内部导航。
+    mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+        openExternalHttpUrl(url);
+        return { action: 'deny' };
+    });
+
+    mainWindow.webContents.on('will-navigate', (event, url) => {
+        const currentUrl = mainWindow?.webContents.getURL();
+        if (!currentUrl || url === currentUrl) return;
+
+        event.preventDefault();
+        openExternalHttpUrl(url);
     });
 
     // 加载应用的 index.html
@@ -187,6 +220,11 @@ ipcMain.on('show-image-context-menu', (event, imageUrl) => {
     ];
     const menu = Menu.buildFromTemplate(template);
     menu.popup({ window: BrowserWindow.fromWebContents(event.sender) });
+});
+
+// --- External Link Handler ---
+ipcMain.on('open-external-link', (event, url) => {
+    openExternalHttpUrl(url);
 });
 
 // --- Window Control Handlers ---

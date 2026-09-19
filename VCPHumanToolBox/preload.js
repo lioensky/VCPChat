@@ -69,7 +69,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     send: (channel, ...args) => {
         const allowedChannels = [
-            'window-control'
+            'window-control',
+            'open-external-link'
         ];
         if (allowedChannels.includes(channel)) {
             ipcRenderer.send(channel, ...args);

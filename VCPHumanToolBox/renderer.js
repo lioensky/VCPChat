@@ -1405,14 +1405,30 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (e.target === viewer) closeModal();
         };
 
-        resultContainer.addEventListener('click', (e) => {
-            let target = e.target;
-            if (target.tagName === 'IMG' && target.parentElement.tagName === 'A') {
-                target = target.parentElement;
+        resultContainer.addEventListener('click', (event) => {
+            const target = event.target;
+            if (!(target instanceof Element)) return;
+
+            const link = target.closest('a');
+            if (!link?.href) return;
+
+            const isImageLink = /\.(?:jpe?g|png|gif|webp)(?:[?#].*)?$/i.test(link.href)
+                || link.href.startsWith('data:image');
+
+            event.preventDefault();
+
+            if (isImageLink) {
+                openModal(link.href);
+                return;
             }
-            if (target.tagName === 'A' && target.href && (target.href.match(/\.(jpeg|jpg|gif|png|webp)$/i) || target.href.startsWith('data:image'))) {
-                e.preventDefault();
-                openModal(target.href);
+
+            try {
+                const url = new URL(link.href);
+                if (url.protocol === 'http:' || url.protocol === 'https:') {
+                    window.electronAPI.send('open-external-link', url.href);
+                }
+            } catch (error) {
+                console.warn('[VCPHumanToolBox] Ignored invalid result URL:', link.href);
             }
         });
     }
