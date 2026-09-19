@@ -162,6 +162,31 @@ test('an upward wheel gesture revokes bottom follow and blocks later async growt
     fixture.dom.window.close();
 });
 
+test('a small upward wheel step inside the bottom threshold cannot be relocked by its scroll event', () => {
+    const fixture = createFixture();
+    fixture.uiHelper.captureChatScrollFollow();
+
+    // 用户从精确底部向上滚动很小一步，仍落在 50px 的“接近底部”阈值内。
+    fixture.container.dispatchEvent(new fixture.window.WheelEvent('wheel', { deltaY: -10 }));
+    fixture.setGeometry({ scrollTop: 590 });
+    fixture.container.dispatchEvent(new fixture.window.Event('scroll'));
+
+    assert.equal(
+        fixture.uiHelper.captureChatScrollFollow().followBottom,
+        false,
+        'the wheel unlock intent must win over near-bottom geometry'
+    );
+
+    // 即使这一刻流式文本或图片继续增高，也不能取消刚刚发生的用户上滚。
+    fixture.setGeometry({ scrollHeight: 1400 });
+    fixture.triggerResize();
+    fixture.flushAnimationFrames();
+
+    assert.equal(fixture.geometry().scrollTop, 590);
+    assert.equal(fixture.uiHelper.captureChatScrollFollow().followBottom, false);
+    fixture.dom.window.close();
+});
+
 test('returning to the bottom re-enables continuous follow for subsequent async growth', () => {
     const fixture = createFixture();
     fixture.uiHelper.captureChatScrollFollow();

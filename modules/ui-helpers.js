@@ -306,8 +306,11 @@
         };
 
         const settleUserScrollIntent = () => {
+            const expectedGeneration = state.generation;
             requestAnimationFrame(() => {
-                if (!container.isConnected) return;
+                // 结算必须仍属于发起它的那次用户操作。比如一次向下滚动排队后，
+                // 用户立刻改为向上滚动，旧结算不得在下一帧重新开启跟随。
+                if (!container.isConnected || state.generation !== expectedGeneration) return;
                 const nearBottom = isChatNearBottom(container);
                 // 用户主动回到底部时重新授权持续跟随；离开底部则保持关闭。
                 state.followBottom = nearBottom;
@@ -318,8 +321,10 @@
         container.addEventListener('wheel', (event) => {
             markUserIntent();
             if (event.deltaY < 0) {
+                // 向上滚轮是明确的解锁意图。保持 userScrollActive，直到后续
+                // 向下滚动结算；这样该滚轮默认行为产生的近底部 scroll 事件
+                // 不会在同一轮事件中立刻把 followBottom 改回 true。
                 state.followBottom = false;
-                state.userScrollActive = false;
             } else {
                 settleUserScrollIntent();
             }
@@ -347,16 +352,19 @@
             if (state.programmatic) return;
 
             if (state.userScrollActive) {
-                // 只有明确的滚轮、触摸或滚动条拖动才能撤销跟随授权。
-                // 单纯的图片解码、字体替换或浏览器滚动锚定不属于用户意图。
-                state.followBottom = isChatNearBottom(container);
+                // 用户操作期间，scroll 几何只能证明“已经离开底部”，不能覆盖
+                // 更早到达的向上滚轮解锁意图。重新开启统一交给向下滚轮、
+                // touchend 或滚动条 pointerup 的代际保护结算。
+                if (!isChatNearBottom(container)) {
+                    state.followBottom = false;
+                }
                 return;
             }
 
-            // 兼容键盘、无障碍工具及脚本之外的原生滚动输入：
-            // 到达底部可以重新开启跟随，但未知来源的“远离底部”不关闭它，
-            // 避免异步布局变化被误判成用户上滚。
-            if (isChatNearBottom(container)) {
+            // 兼容键盘 End、无障碍工具等未被上述输入事件标记的原生滚动：
+            // 只有真正到达底部（而非落入 50px 追踪阈值）才重新开启跟随。
+            // 这同时防止小幅向上滚轮产生的 scroll 事件发生近底部竞态。
+            if (getDistanceFromChatBottom(container) <= 1) {
                 state.followBottom = true;
             }
         }, { passive: true });
