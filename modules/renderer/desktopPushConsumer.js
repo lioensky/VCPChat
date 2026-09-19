@@ -41,8 +41,8 @@ export function createDesktopPushConsumer({
         state.pushTimer = null;
     };
 
-    const send = payload => {
-        if (disposed || !connected || typeof electronAPI?.desktopPush !== 'function') return;
+    const send = (payload, force = false) => {
+        if (disposed || (!connected && !force) || typeof electronAPI?.desktopPush !== 'function') return;
         electronAPI.desktopPush(payload);
     };
 
@@ -126,8 +126,10 @@ export function createDesktopPushConsumer({
                         }
                     } else {
                         send({ action: 'append', widgetId: state.widgetId, content: state.buffer });
-                        send({ action: 'finalize', widgetId: state.widgetId });
+                        send({ action: 'finalize', widgetId: state.widgetId, content: state.buffer });
                     }
+                } else if (!state.isReplaceMode && state.validated && state.buffer.trim().length > 0) {
+                    send({ action: 'finalize', widgetId: state.widgetId, content: state.buffer, offline: true }, true);
                 }
                 resetState(state);
                 continue;
@@ -147,7 +149,8 @@ export function createDesktopPushConsumer({
                         || (connected && typeof electronAPI?.desktopPush === 'function');
 
                     if (!state.isReplaceMode && state.created) {
-                        send({ action: 'create', widgetId: state.widgetId, options: { x: 200, y: 150, width: 400, height: 300 } });
+                        // 关键重构：在线创建挂件时不传硬编码固定坐标 x/y，让画布端 widgetManager 的响应式多列网格算法自动计算错落排布！
+                        send({ action: 'create', widgetId: state.widgetId, options: { width: 340, height: 220 } });
                     }
 
                     if (connected && typeof electronAPI?.desktopPush === 'function') {

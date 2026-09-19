@@ -35,13 +35,47 @@
         widget.className = 'desktop-widget constructing entering';
         widget.dataset.widgetId = widgetId;
 
-        const x = options.x || 100;
-        const y = Math.max(options.y || 100, CONSTANTS.TITLE_BAR_HEIGHT + 4);
         const width = options.width || 320;
         const height = options.height || 200;
 
-        widget.style.left = `${x}px`;
-        widget.style.top = `${y}px`;
+        // 安全视口边界计算（完美防御 100%、125%、150% 等系统 DPI 缩放下的边缘溢出）
+        const winW = window.innerWidth || 1200;
+        const winH = window.innerHeight || 800;
+        const topSafeMargin = (CONSTANTS.TITLE_BAR_HEIGHT || 32) + 12;
+        const bottomSafeMargin = 80; // 预留底部 Dock 栏高度，防止遮挡
+        const rightSafeMargin = 60; // 预留侧栏展开安全距离
+
+        const maxX = Math.max(50, winW - width - rightSafeMargin);
+        const maxY = Math.max(topSafeMargin, winH - height - bottomSafeMargin);
+
+        let finalX = options.x;
+        let finalY = options.y;
+
+        // 若调用方未显式传入坐标（例如在线多挂件流式直推），启动智能多列网格/瀑布流布局算法
+        if (typeof finalX !== 'number' || typeof finalY !== 'number') {
+            const existingCount = state.widgets ? state.widgets.size : 0;
+            const cardGapX = 24;
+            const cardGapY = 24;
+            const startX = 60;
+            const startY = topSafeMargin + 10;
+
+            // 计算一行最多可容纳的完整列数（基于当前可用逻辑视口，扣除右侧侧栏 80px）
+            const usableWidth = Math.max(width, winW - startX - 80);
+            const cols = Math.max(1, Math.floor(usableWidth / (width + cardGapX)));
+
+            const colIndex = existingCount % cols;
+            const rowIndex = Math.floor(existingCount / cols) % 3; // 最多排 3 行避免遮挡底部 Dock
+
+            finalX = startX + colIndex * (width + cardGapX);
+            finalY = startY + rowIndex * (height + cardGapY);
+        }
+
+        // 严格安全钳制在当前有效可视区域内（保证不飞出外框，不盖住 Dock）
+        finalX = Math.max(20, Math.min(maxX, finalX));
+        finalY = Math.max(topSafeMargin, Math.min(maxY, finalY));
+
+        widget.style.left = `${Math.round(finalX)}px`;
+        widget.style.top = `${Math.round(finalY)}px`;
         widget.style.width = `${width}px`;
         widget.style.height = `${height}px`;
 
@@ -93,7 +127,13 @@
         shadowRoot.appendChild(contentContainer);
 
         widget.appendChild(contentWrapper);
-        domRefs.canvas.appendChild(widget);
+        // 关键防护：确保 canvas 容器存在（防止在 DOMContentLoaded 之前收到早产消息时 domRefs.canvas 仍为 null）
+        const canvasEl = domRefs.canvas || document.getElementById('desktop-canvas');
+        if (canvasEl) {
+            canvasEl.appendChild(widget);
+        } else {
+            console.error('[Desktop] Critical: #desktop-canvas element not found in DOM!');
+        }
 
         // 进入动画
         widget.addEventListener('animationend', () => {

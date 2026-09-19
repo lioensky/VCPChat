@@ -117,6 +117,22 @@ document.addEventListener('DOMContentLoaded', () => {
     // 7. 初始化调试工具
     D.debug.init();
 
+    // 8. 向主进程回传握手：通知桌面端所有子系统和 DOM 彻底就绪，可立即分发待上屏挂件
+    console.log('%c[PROBE-DESKTOP] 🤝 Step 8 reached: Sending desktopCanvasReady handshake...', 'color: #06b6d4; font-weight: bold');
+    if (desktopApi?.desktopCanvasReady) {
+        console.log('[PROBE-DESKTOP] Invoking desktopApi.desktopCanvasReady()...');
+        desktopApi.desktopCanvasReady().then(() => {
+            console.log('%c[PROBE-DESKTOP] ✅ desktopCanvasReady handshake ACK returned!', 'color: #22c55e');
+        }).catch((err) => {
+            console.error('[PROBE-DESKTOP] ❌ desktopCanvasReady failed:', err);
+        });
+    } else if (desktopApi?.invoke) {
+        console.log('[PROBE-DESKTOP] Fallback invoking desktopApi.invoke("desktop-canvas-ready")...');
+        desktopApi.invoke('desktop-canvas-ready').catch(() => {});
+    } else {
+        console.error('%c[PROBE-DESKTOP] ❌ No handshake method found on desktopApi!', 'color: red; font-weight: bold', desktopApi);
+    }
+
     console.log('[VCPdesktop] Desktop canvas renderer initialized (modular).');
     console.log('[VCPdesktop] Debug: window.__desktopDebug.test() to create a test widget.');
 });

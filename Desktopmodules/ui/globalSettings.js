@@ -404,14 +404,17 @@
                 const presets = await loadPresetsFromDisk();
                 const defaultPreset = presets.find(p => p.id === s.defaultPresetId);
                 if (defaultPreset && window.VCPDesktop.sidebar) {
-                    // 延迟一些时间让其他系统初始化完成
-                    setTimeout(() => {
-                        console.log(`[GlobalSettings] Auto-loading default preset: ${defaultPreset.name}`);
-                        // 调用 sidebar 中暴露的 applyPreset（需要在 sidebar 中导出）
+                    // 关键修复：严禁延迟 1500ms 后盲目清空画布（D.widget.clearAll() 会把刚推送的随聊挂件直接冲刷蒸发）！
+                    // 检查画布上是否已经有在线推送或开门迎客的随聊挂件 (dw-*)
+                    const hasActiveStreamWidgets = Array.from(state.widgets.keys()).some(id => id.startsWith('dw-'));
+                    if (hasActiveStreamWidgets) {
+                        console.log('[GlobalSettings] Active stream widgets detected on canvas. Skipping default preset auto-clear to prevent wiping.');
+                    } else {
+                        // 仅在无活动随聊挂件时应用默认预设
                         if (window.VCPDesktop.sidebar.applyPreset) {
                             window.VCPDesktop.sidebar.applyPreset(defaultPreset);
                         }
-                    }, 1500);
+                    }
                 }
             } catch (err) {
                 console.error('[GlobalSettings] Failed to load default preset:', err);
@@ -443,17 +446,19 @@
      * 保存设置到磁盘（合并写入 layout.json）
      */
     async function saveSettings() {
-        if (!desktopApi?.desktopPatchLayout) {
-            console.warn('[GlobalSettings] Layout Patch API not available, cannot save settings');
+        if (!desktopApi?.desktopSaveLayout || !desktopApi?.desktopLoadLayout) {
+            console.warn('[GlobalSettings] Layout API not available, cannot save settings');
             return;
         }
 
         try {
-            // 使用增量更新 API，只更新 globalSettings 字段，由主进程负责合并
-            await desktopApi.desktopPatchLayout({
-                globalSettings: { ...state.globalSettings }
-            });
-            console.log('[GlobalSettings] Settings patched to layout.json');
+            // 先读取现有的 layout.json 数据（包含预设等）
+            const existing = await loadLayoutData();
+            // 合并 globalSettings 字段
+            existing.globalSettings = { ...state.globalSettings };
+            // 写回
+            await desktopApi.desktopSaveLayout(existing);
+            console.log('[GlobalSettings] Settings saved to layout.json');
         } catch (err) {
             console.error('[GlobalSettings] Save error:', err);
         }
