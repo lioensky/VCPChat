@@ -107,6 +107,7 @@ header p {
     margin-top: 15px;
     display: flex;
     justify-content: center;
+    align-items: center;
     gap: 10px;
 }
 
@@ -184,13 +185,21 @@ header p {
 }
 
 .back-btn {
+    box-sizing: border-box;
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     background-color: var(--button-bg);
     color: var(--text-on-accent);
     border: none;
-    padding: 10px 15px;
-    border-radius: 5px;
+    padding: 0 18px;
+    border-radius: 6px;
     cursor: pointer;
     margin-bottom: 20px;
+    font: inherit;
+    font-size: 14px;
+    line-height: 1;
     transition: background-color 0.2s;
 }
 
@@ -217,12 +226,14 @@ header p {
 #tool-form input,
 #tool-form textarea,
 #tool-form select {
+    box-sizing: border-box;
     background-color: var(--input-bg);
     color: var(--primary-text);
     border: 1px solid var(--border-color);
-    border-radius: 5px;
+    border-radius: 6px;
     padding: 10px;
-    font-size: 16px;
+    font: inherit;
+    font-size: 14px;
 }
 
 #tool-form textarea {
@@ -230,20 +241,70 @@ header p {
     resize: vertical;
 }
 
-#tool-form button {
+/*
+ * 主界面统一按钮系统。
+ * 固定控件高度，避免字号、emoji 字体度量和内联 padding 导致相邻按钮不等高。
+ * 规则限定在工具表单及显式的 .tool-ui-btn，不影响后续将重做的工作流界面。
+ */
+#tool-form button,
+.tool-ui-btn {
+    box-sizing: border-box;
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
     align-self: flex-start;
-    padding: 12px 25px;
+    padding: 0 18px;
     background-color: var(--success-color);
     color: var(--text-on-accent);
-    border: none;
-    border-radius: 5px;
+    border: 1px solid transparent;
+    border-radius: 6px;
     cursor: pointer;
-    font-size: 16px;
-    transition: background-color 0.2s;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+    vertical-align: middle;
+    transition: opacity 0.2s, background-color 0.2s, border-color 0.2s, transform 0.2s;
 }
 
-#tool-form button:hover {
+#tool-form button:hover,
+.tool-ui-btn:hover {
     opacity: 0.9;
+}
+
+#tool-form button:disabled,
+.tool-ui-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+#tool-form .tool-ui-btn-compact,
+.tool-ui-btn-compact {
+    min-height: 34px;
+    padding: 0 14px;
+    font-size: 13px;
+}
+
+#tool-form .tool-ui-btn-secondary,
+.tool-ui-btn-secondary {
+    background-color: var(--secondary-color, #6b7280);
+    color: #fff;
+}
+
+#tool-form .tool-ui-btn-warning,
+.tool-ui-btn-warning {
+    background-color: var(--warning-color, #f59e0b);
+    color: #fff;
+}
+
+#tool-form .tool-ui-btn-outline,
+.tool-ui-btn-outline {
+    background: transparent;
+    color: var(--secondary-text);
+    border-color: var(--border-color);
 }
 
 .result-container {
@@ -1161,14 +1222,21 @@ header p {
    ======================================== */
 
 .tab-btn {
-    padding: 8px 16px;
+    box-sizing: border-box;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 16px;
     border: none;
     background: rgba(255,255,255,0.05);
     color: var(--secondary-text);
     border-radius: 6px;
     cursor: pointer;
+    font: inherit;
     font-size: 14px;
-    margin-right: 8px;
+    line-height: 1;
+    margin-right: 0;
     transition: all 0.2s;
 }
 

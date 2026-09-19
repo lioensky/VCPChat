@@ -389,36 +389,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // 添加按钮容器
         const buttonContainer = document.createElement('div');
-        buttonContainer.style.cssText = 'display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap;';
+        buttonContainer.style.cssText = 'display: flex; align-items: center; gap: 10px; margin-top: 15px; flex-wrap: wrap;';
         
         const submitButton = document.createElement('button');
         submitButton.type = 'submit';
+        submitButton.className = 'tool-ui-btn';
         submitButton.textContent = '执行';
-        submitButton.style.cssText = `
-            background-color: var(--success-color);
-            color: var(--text-on-accent);
-            border: none;
-            padding: 12px 25px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            transition: background-color 0.2s;`;
         buttonContainer.appendChild(submitButton);
         
         // 添加全部清空按钮
         const clearAllButton = document.createElement('button');
         clearAllButton.type = 'button';
+        clearAllButton.className = 'tool-ui-btn tool-ui-btn-warning';
         clearAllButton.innerHTML = '🗑️ 全部清空';
-        clearAllButton.style.cssText = `
-            background-color: var(--warning-color, #f59e0b);
-            color: white;
-            border: none;
-            padding: 12px 20px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: all 0.2s;
-        `;
         
         clearAllButton.addEventListener('click', () => {
             clearAllFormData(toolName);
@@ -431,7 +414,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const settingsButton = document.createElement('button');
             settingsButton.type = 'button';
             settingsButton.textContent = '⚙️ 设置';
-            settingsButton.className = 'back-btn';
+            settingsButton.className = 'tool-ui-btn tool-ui-btn-secondary';
             settingsButton.style.cssText = 'margin-left: auto;';
             settingsButton.addEventListener('click', () => openComfyUISettings());
             buttonContainer.appendChild(settingsButton);
@@ -441,17 +424,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (toolName === 'NanoBananaGen') {
             const filenameSettingsButton = document.createElement('button');
             filenameSettingsButton.type = 'button';
+            filenameSettingsButton.className = 'tool-ui-btn tool-ui-btn-secondary';
             filenameSettingsButton.innerHTML = '⚙️ 设置';
-            filenameSettingsButton.style.cssText = `
-                background-color: var(--secondary-color, #6b7280);
-                color: white;
-                border: none;
-                padding: 12px 20px;
-                border-radius: 5px;
-                cursor: pointer;
-                font-size: 14px;
-                transition: all 0.2s;
-            `;
             
             filenameSettingsButton.addEventListener('click', () => {
                 showFilenameSettings();
@@ -804,28 +778,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         const translateButton = document.createElement('button');
         translateButton.type = 'button';
+        translateButton.className = 'tool-ui-btn tool-ui-btn-compact';
         translateButton.innerHTML = '🌍 翻译';
-        translateButton.style.cssText = `
-            background: var(--primary-color);
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;`;
+        translateButton.style.background = 'var(--primary-color)';
         
         const useOriginalButton = document.createElement('button');
         useOriginalButton.type = 'button';
+        useOriginalButton.className = 'tool-ui-btn tool-ui-btn-compact tool-ui-btn-warning';
         useOriginalButton.innerHTML = '⬅️ 使用原文';
-        useOriginalButton.style.cssText = `
-            background: var(--warning-color, #f59e0b);
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-        `;
         
         translateButton.addEventListener('click', async () => {
             const promptTextarea = toolForm.querySelector('textarea[name="prompt"]');
@@ -1019,9 +979,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <input type="number" id="filename-length-input" value="${MAX_FILENAME_LENGTH}" min="50" max="1000" style="width: 100%; padding: 8px; margin-top: 5px; background: var(--input-bg); color: var(--primary-text); border: 1px solid var(--border-color); border-radius: 4px;">
             </div>
             <p style="font-size: 12px; color: var(--secondary-text);">建议范围：50-1000 字符，默认为 400</p>
-            <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
-                <button id="cancel-btn" style="padding: 8px 16px; background: var(--secondary-color, #6b7280); color: white; border: none; border-radius: 4px; cursor: pointer;">取消</button>
-                <button id="save-btn" style="padding: 8px 16px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer;">保存</button>
+            <div style="display: flex; align-items: center; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+                <button id="cancel-btn" class="tool-ui-btn tool-ui-btn-compact tool-ui-btn-secondary">取消</button>
+                <button id="save-btn" class="tool-ui-btn tool-ui-btn-compact">保存</button>
             </div>
         `;
         
@@ -1231,12 +1191,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             // 重试按钮
             const retryBtn = document.createElement('button');
             retryBtn.type = 'button';
+            retryBtn.className = 'tool-ui-btn tool-ui-btn-compact';
             retryBtn.innerHTML = '🔄 重试';
             retryBtn.style.cssText = `
-                margin-top: 10px; padding: 8px 16px; border-radius: 5px;
-                border: 1px solid var(--danger-color); background: transparent;
-                color: var(--danger-color); cursor: pointer; font-size: 14px;
-                transition: all 0.2s;
+                margin-top: 10px; border-color: var(--danger-color); background: transparent;
+                color: var(--danger-color);
             `;
             retryBtn.addEventListener('click', () => executeTool(toolName));
             retryBtn.addEventListener('mouseenter', () => {
@@ -1355,13 +1314,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (textContent && textContent.length > 10) {
             const copyBtn = document.createElement('button');
             copyBtn.type = 'button';
+            copyBtn.className = 'tool-ui-btn tool-ui-btn-compact tool-ui-btn-outline';
             copyBtn.innerHTML = '📋 复制结果';
-            copyBtn.style.cssText = `
-                margin-top: 12px; padding: 6px 14px; border-radius: 5px;
-                border: 1px solid var(--border-color); background: transparent;
-                color: var(--secondary-text); cursor: pointer; font-size: 12px;
-                transition: all 0.2s;
-            `;
+            copyBtn.style.marginTop = '12px';
             copyBtn.addEventListener('click', async () => {
                 try {
                     await navigator.clipboard.writeText(textContent);

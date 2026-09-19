@@ -745,6 +745,10 @@ export class ToolManagerUI {
         }
     }
     renderImportList(container, adapted) {
+        if (!container) {
+            throw new Error('导入插件对话框内容容器不存在');
+        }
+
         const selectedTools = new Set();
 
         container.innerHTML = `
@@ -756,21 +760,25 @@ export class ToolManagerUI {
         </div>
         <div class="tm-import-list" id="tm-plugin-list" style="max-height:50vh;overflow-y:auto;">
             ${adapted.map((p, idx) => {
-            const shortDesc = p.adapted.description.slice(0, 120);
-            const needsExpand = p.adapted.description.length > 120;
+            const description = String(p.adapted.description || '');
+            const displayName = String(p.adapted.displayName || p.raw.name || '未命名插件');
+            const rawName = String(p.raw.name || '');
+            const shortDesc = description.slice(0, 120);
+            const needsExpand = description.length > 120;
+            const searchText = `${displayName} ${description} ${rawName}`.toLowerCase();
             return `
-                    <div class="tm-import-item" data-idx="${idx}" data-search="${(p.adapted.displayName + ' ' + p.adapted.description + ' ' + p.raw.name).toLowerCase()}" style="padding:12px;margin-bottom:8px;border:1px solid var(--border-color);border-radius:6px;background:rgba(255,255,255,0.02);">
+                    <div class="tm-import-item" data-idx="${idx}" data-search="${this.escapeHtml(searchText)}" style="padding:12px;margin-bottom:8px;border:1px solid var(--border-color);border-radius:6px;background:rgba(255,255,255,0.02);">
                         <label class="tm-import-checkbox" style="display:flex;align-items:start;cursor:pointer;">
                             <input type="checkbox" data-idx="${idx}" style="margin-right:12px;margin-top:4px;">
                             <div style="flex:1;">
                                 <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-                                    <strong style="font-size:14px;">${p.adapted.displayName}</strong>
+                                    <strong style="font-size:14px;">${this.escapeHtml(displayName)}</strong>
                                     <span style="font-size:11px;padding:2px 6px;border-radius:3px;background:${p.raw.isDistributed ? 'rgba(59,130,246,0.2)' : 'rgba(16,185,129,0.2)'};color:${p.raw.isDistributed ? '#60a5fa' : '#34d399'}">${p.raw.isDistributed ? '[分布式]' : '[后端]'}</span>
                                 </div>
                                 <div style="font-size:12px;color:var(--secondary-text);line-height:1.5;">
-                                    <span class="tm-desc-short">${shortDesc}${needsExpand ? '...' : ''}</span>
-                                    ${needsExpand ? `<span class="tm-desc-full" style="display:none;">${p.adapted.description}</span>` : ''}
-                                    ${needsExpand ? `<button class="tm-btn tm-btn-sm" onclick="this.previousElementSibling.style.display='inline';this.previousElementSibling.previousElementSibling.style.display='none';this.style.display='none'" style="margin-left:6px;font-size:11px;padding:2px 6px">展开</button>` : ''}
+                                    <span class="tm-desc-short">${this.escapeHtml(shortDesc)}${needsExpand ? '...' : ''}</span>
+                                    ${needsExpand ? `<span class="tm-desc-full" style="display:none;">${this.escapeHtml(description)}</span>` : ''}
+                                    ${needsExpand ? `<button type="button" class="tm-btn tm-btn-sm tm-expand-description" style="margin-left:6px;font-size:11px;padding:2px 6px">展开</button>` : ''}
                                 </div>
                             </div>
                         </label>
@@ -789,6 +797,10 @@ export class ToolManagerUI {
         const confirmBtn = container.querySelector('#tm-import-confirm');
         const cancelBtn = container.querySelector('#tm-import-cancel');
 
+        if (!searchInput || !confirmBtn || !cancelBtn) {
+            throw new Error('导入插件对话框结构不完整，请检查插件元数据');
+        }
+
         // 搜索过滤
         searchInput.addEventListener('input', () => {
             const query = searchInput.value.toLowerCase().trim();
@@ -803,6 +815,16 @@ export class ToolManagerUI {
                 cb.checked ? selectedTools.add(idx) : selectedTools.delete(idx);
                 confirmBtn.disabled = selectedTools.size === 0;
                 confirmBtn.textContent = `导入选中 (${selectedTools.size})`;
+            });
+        });
+
+        container.querySelectorAll('.tm-expand-description').forEach(button => {
+            button.addEventListener('click', () => {
+                const description = button.previousElementSibling;
+                const shortDescription = description?.previousElementSibling;
+                if (description) description.style.display = 'inline';
+                if (shortDescription) shortDescription.style.display = 'none';
+                button.style.display = 'none';
             });
         });
 
@@ -1185,6 +1207,13 @@ export class ToolManagerUI {
     // ========================================
     // 工具函数
     // ========================================
+
+    escapeHtml(value) {
+        return String(value ?? '').replace(
+            /[&<>"']/g,
+            character => String.fromCharCode(38) + '#' + character.charCodeAt(0) + ';'
+        );
+    }
 
     createOverlay() {
         const overlay = document.createElement('div');
