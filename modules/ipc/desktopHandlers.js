@@ -2446,26 +2446,14 @@ function initialize(params) {
  * 错落级联自动挂载上屏核心函数（统一供给首次打开与后台唤醒复用）
  */
 function triggerAutoSpawnOnWindow(targetWin, delayMs = 350) {
-    console.log(`[PROBE-MAIN] 🚀 triggerAutoSpawnOnWindow called. delayMs=${delayMs}, pendingQueueLen=${pendingAutoSpawnQueue.length}`);
-    if (!targetWin || targetWin.isDestroyed()) {
-        console.warn('[PROBE-MAIN] ⚠️ triggerAutoSpawnOnWindow aborted: targetWin is null or destroyed.');
-        return;
-    }
-    if (pendingAutoSpawnQueue.length === 0) {
-        console.log('[PROBE-MAIN] ℹ️ triggerAutoSpawnOnWindow: pendingAutoSpawnQueue is empty. Nothing to spawn.');
-        return;
-    }
+    if (!targetWin || targetWin.isDestroyed() || pendingAutoSpawnQueue.length === 0) return;
 
     const itemsToSpawn = pendingAutoSpawnQueue.splice(0, 3);
-    console.log(`[PROBE-MAIN] 📦 Extracted ${itemsToSpawn.length} items from queue for spawning:`, itemsToSpawn.map(i => i.widgetId));
     pendingAutoSpawnQueue = [];
 
     setTimeout(() => {
-        if (!targetWin || targetWin.isDestroyed()) {
-            console.warn('[PROBE-MAIN] ⚠️ Delayed spawn aborted: targetWin destroyed during wait.');
-            return;
-        }
-        console.log(`[PROBE-MAIN] 💥 Dispatching ${itemsToSpawn.length} items to canvas via webContents.send('desktop-push-to-canvas')...`);
+        if (!targetWin || targetWin.isDestroyed()) return;
+        console.log(`[DesktopHandlers] Auto-spawning ${itemsToSpawn.length} queued widgets...`);
         itemsToSpawn.forEach((item, index) => {
             const cardW = 340;
             const cardGap = 24;
@@ -2474,25 +2462,21 @@ function triggerAutoSpawnOnWindow(targetWin, delayMs = 350) {
             const x = 60 + col * (cardW + cardGap);
             const y = 50 + row * (220 + cardGap);
 
-            console.log(`[PROBE-MAIN] -> Sending create: ${item.widgetId} at (${x}, ${y})`);
             targetWin.webContents.send('desktop-push-to-canvas', {
                 action: 'create',
                 widgetId: item.widgetId,
                 options: { x, y, width: cardW, height: 220 }
             });
-            console.log(`[PROBE-MAIN] -> Sending append: ${item.widgetId} (content length: ${item.content?.length})`);
             targetWin.webContents.send('desktop-push-to-canvas', {
                 action: 'append',
                 widgetId: item.widgetId,
                 content: item.content
             });
-            console.log(`[PROBE-MAIN] -> Sending finalize: ${item.widgetId}`);
             targetWin.webContents.send('desktop-push-to-canvas', {
                 action: 'finalize',
                 widgetId: item.widgetId
             });
         });
-        console.log('[PROBE-MAIN] ✅ All auto-spawn messages dispatched to target window webContents.');
     }, delayMs);
 }
 
@@ -2537,8 +2521,7 @@ async function openDesktopWindow() {
         show: false,
     });
 
-    // 🌟 全量探针：启动时自动以独立弹窗形式弹出开发者工具，让所有日志纤毫毕现
-    desktopWindow.webContents.openDevTools({ mode: 'detach' });
+    // 生产环境保持正常，不自动弹出 DevTools
 
     const desktopUrl = `file://${path.join(app.getAppPath(), 'Desktopmodules', 'desktop.html')}?currentThemeMode=${encodeURIComponent(currentThemeMode)}`;
     desktopWindow.loadURL(desktopUrl);
