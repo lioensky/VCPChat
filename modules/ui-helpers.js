@@ -277,38 +277,57 @@
         if (state) return state;
 
         state = {
+            // 这是用户授予的“持续跟随底部”意图，不是瞬时几何测量结果。
+            // 图片、图表等异步增高可能暂时令滚动条远离底部，但不能据此关闭跟随。
             followBottom: true,
             generation: 0,
             programmatic: false,
+            userScrollActive: false,
             frameId: 0,
-            requestedGeneration: null
+            layoutFrameId: 0,
+            requestedGeneration: null,
+            resizeObserver: null
         };
         chatScrollStates.set(container, state);
 
-        const markUserIntent = () => {
-            state.programmatic = false;
-            state.generation += 1;
+        const cancelPendingScroll = () => {
             if (state.frameId) {
                 cancelAnimationFrame(state.frameId);
                 state.frameId = 0;
-                state.requestedGeneration = null;
             }
+            state.requestedGeneration = null;
+        };
+
+        const markUserIntent = () => {
+            state.programmatic = false;
+            state.userScrollActive = true;
+            state.generation += 1;
+            cancelPendingScroll();
+        };
+
+        const settleUserScrollIntent = () => {
+            requestAnimationFrame(() => {
+                if (!container.isConnected) return;
+                const nearBottom = isChatNearBottom(container);
+                // 用户主动回到底部时重新授权持续跟随；离开底部则保持关闭。
+                state.followBottom = nearBottom;
+                state.userScrollActive = false;
+            });
         };
 
         container.addEventListener('wheel', (event) => {
             markUserIntent();
             if (event.deltaY < 0) {
                 state.followBottom = false;
+                state.userScrollActive = false;
             } else {
-                requestAnimationFrame(() => {
-                    if (container.isConnected) {
-                        state.followBottom = isChatNearBottom(container);
-                    }
-                });
+                settleUserScrollIntent();
             }
         }, { passive: true });
 
         container.addEventListener('touchstart', markUserIntent, { passive: true });
+        container.addEventListener('touchend', settleUserScrollIntent, { passive: true });
+        container.addEventListener('touchcancel', settleUserScrollIntent, { passive: true });
         container.addEventListener('pointerdown', (event) => {
             // 普通内容点击不改变跟随状态；只把滚动条槽附近的按下视为滚动意图。
             const scrollbarWidth = Math.max(0, container.offsetWidth - container.clientWidth);
@@ -317,11 +336,58 @@
                 markUserIntent();
             }
         }, { passive: true });
+        container.addEventListener('pointerup', () => {
+            if (state.userScrollActive) settleUserScrollIntent();
+        }, { passive: true });
+        container.addEventListener('pointercancel', () => {
+            if (state.userScrollActive) settleUserScrollIntent();
+        }, { passive: true });
 
         container.addEventListener('scroll', () => {
             if (state.programmatic) return;
-            state.followBottom = isChatNearBottom(container);
+
+            if (state.userScrollActive) {
+                // 只有明确的滚轮、触摸或滚动条拖动才能撤销跟随授权。
+                // 单纯的图片解码、字体替换或浏览器滚动锚定不属于用户意图。
+                state.followBottom = isChatNearBottom(container);
+                return;
+            }
+
+            // 兼容键盘、无障碍工具及脚本之外的原生滚动输入：
+            // 到达底部可以重新开启跟随，但未知来源的“远离底部”不关闭它，
+            // 避免异步布局变化被误判成用户上滚。
+            if (isChatNearBottom(container)) {
+                state.followBottom = true;
+            }
         }, { passive: true });
+
+        // 统一处理图片、Mermaid、公式、附件及字体加载造成的异步内容增高。
+        // ResizeObserver 观察内容根而非滚动视口；仅在用户的跟随授权仍有效、
+        // 且滚动代际未变化时补滚到底部。
+        const ResizeObserverCtor = window.ResizeObserver;
+        if (typeof ResizeObserverCtor === 'function') {
+            const contentRoot = container.querySelector('#chatMessages') || container.firstElementChild || container;
+            state.resizeObserver = new ResizeObserverCtor(() => {
+                if (!state.followBottom || state.layoutFrameId || !container.isConnected) return;
+                const expectedGeneration = state.generation;
+                state.layoutFrameId = requestAnimationFrame(() => {
+                    state.layoutFrameId = 0;
+                    if (
+                        !container.isConnected
+                        || !state.followBottom
+                        || state.generation !== expectedGeneration
+                    ) {
+                        return;
+                    }
+                    uiHelperFunctions.scrollToBottom({
+                        force: true,
+                        immediate: true,
+                        expectedGeneration
+                    });
+                });
+            });
+            state.resizeObserver.observe(contentRoot);
+        }
 
         return state;
     }
@@ -353,10 +419,15 @@
         state.generation += 1;
         state.followBottom = true;
         state.programmatic = false;
+        state.userScrollActive = false;
         state.requestedGeneration = null;
         if (state.frameId) {
             cancelAnimationFrame(state.frameId);
             state.frameId = 0;
+        }
+        if (state.layoutFrameId) {
+            cancelAnimationFrame(state.layoutFrameId);
+            state.layoutFrameId = 0;
         }
     };
 
@@ -404,8 +475,11 @@
             container.scrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
             requestAnimationFrame(() => {
                 state.programmatic = false;
-                if (container.isConnected) {
-                    state.followBottom = isChatNearBottom(container);
+                // 不用下一帧的几何位置反向撤销跟随授权。图片可能恰好在两帧
+                // 之间完成解码并再次撑高内容；只要用户没有产生新滚动意图，
+                // ResizeObserver 会继续补偿到新的底部。
+                if (container.isConnected && isChatNearBottom(container)) {
+                    state.followBottom = true;
                 }
             });
         };
