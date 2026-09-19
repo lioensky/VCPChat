@@ -413,7 +413,10 @@ body[data-vcp-theme="dark"] .sidebar .topic-list .topic-unread-indicator {
 
 .sidebar #agentList .stream-speaking-indicator {
     position: absolute;
-    inset: 2px;
+    top: 2px;
+    right: 11px; /* 2px 内边距 + 普通侧栏头像的 9px margin-right */
+    bottom: 2px;
+    left: 2px;
     z-index: 8;
     display: flex;
     align-items: center;
@@ -437,6 +440,11 @@ body[data-vcp-theme="dark"] .sidebar .topic-list .topic-unread-indicator {
 .sidebar #agentList li.is-stream-speaking .stream-speaking-indicator {
     opacity: 1;
     transform: scale(1);
+}
+
+/* 紧凑侧栏已移除头像右外边距，遮罩恢复四边等距以严格居中。 */
+.sidebar.avatar-only #agentList .stream-speaking-indicator {
+    right: 2px;
 }
 
 .sidebar #agentList .stream-speaking-bar {
