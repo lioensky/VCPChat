@@ -359,26 +359,39 @@ function initializeInputEnhancer(refs) {
     });
 
     addListener(messageInput, 'keydown', (e) => {
-        if (noteSuggestionPopup && noteSuggestionPopup.style.display === 'block') {
-            const items = noteSuggestionPopup.querySelectorAll('.suggestion-item');
-            if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                activeSuggestionIndex = (activeSuggestionIndex + 1) % items.length;
-                updateSuggestionHighlight();
-            } else if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                activeSuggestionIndex = (activeSuggestionIndex - 1 + items.length) % items.length;
-                updateSuggestionHighlight();
-            } else if (e.key === 'Enter') {
-                e.preventDefault();
-                if (activeSuggestionIndex > -1) {
-                    items[activeSuggestionIndex].click();
-                }
-            } else if (e.key === 'Escape') {
-                hideNoteSuggestions();
-            }
+        if (e.isComposing || !noteSuggestionPopup || noteSuggestionPopup.style.display !== 'block') {
+            return;
         }
-    });
+
+        const items = noteSuggestionPopup.querySelectorAll('.suggestion-item');
+        if (items.length === 0) {
+            hideNoteSuggestions();
+            return;
+        }
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            activeSuggestionIndex = (activeSuggestionIndex + 1) % items.length;
+            updateSuggestionHighlight();
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            activeSuggestionIndex = (activeSuggestionIndex - 1 + items.length) % items.length;
+            updateSuggestionHighlight();
+        } else if (e.key === 'Enter' || e.key === 'Tab') {
+            // While the note picker is open, Enter/Tab confirm the highlighted
+            // note instead of sending the message or moving focus out of input.
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            const selectedIndex = activeSuggestionIndex > -1 ? activeSuggestionIndex : 0;
+            items[selectedIndex]?.click();
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            hideNoteSuggestions();
+        }
+    }, true);
 
     function showNoteSuggestions(notes, query) {
         if (!noteSuggestionPopup) {
