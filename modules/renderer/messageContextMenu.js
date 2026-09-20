@@ -129,7 +129,7 @@ function showContextMenu(event, messageItem, message) {
     if (currentSelectedItemVal.type === 'group') {
         const interruptGroupQueueOption = ownerDocument.createElement('div');
         interruptGroupQueueOption.classList.add('context-menu-item', 'danger-item');
-        interruptGroupQueueOption.innerHTML = `<i class="fas fa-stop"></i> 中止群聊队列`;
+        interruptGroupQueueOption.innerHTML = `<i class="fas fa-stop"></i> 中止群聊`;
         interruptGroupQueueOption.onclick = async () => {
             closeContextMenu();
 

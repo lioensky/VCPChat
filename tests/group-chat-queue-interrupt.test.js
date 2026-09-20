@@ -60,7 +60,7 @@ test('group queue interruption is exposed from engine through IPC and chat prelo
     assert.match(handlers, /ipcMain\.handle\('interrupt-group-chat-queue'/);
     assert.match(preload, /interruptGroupChatQueue: query\(\(groupId, topicId\)/);
     assert.match(roles, /'interruptGroupChatQueue'/);
-    assert.match(contextMenu, /中止群聊队列/);
+    assert.match(contextMenu, /中止群聊/);
     assert.match(contextMenu, /GroupRenderer\?\.interruptGroupChatQueue/);
 });
 
