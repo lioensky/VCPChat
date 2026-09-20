@@ -531,7 +531,7 @@ window.GroupRenderer = (() => {
             tagMatchModeSelect.value = persistedNaturalSettings.tagMatchMode || groupConfig.tagMatchMode || 'strict';
         }
         groupPromptTextarea.value = groupConfig.groupPrompt || '';
-        invitePromptTextarea.value = groupConfig.invitePrompt ?? '现在轮到你{{VCPChatAgentName}}发言了。';
+        invitePromptTextarea.value = groupConfig.invitePrompt ?? '[系统邀请指令:] 现在轮到你{{VCPChatAgentName}}发言了。';
 
         const isCurrentLoad = () => generation === groupSettingsGeneration &&
             (!settingsSurface || settingsSurface.isCurrent(viewToken));
@@ -1172,6 +1172,44 @@ window.GroupRenderer = (() => {
     }
 
     // --- Group Chat Message Handling ---
+    async function interruptGroupChatQueue(groupId, topicId) {
+        const currentSelected = currentSelectedItemRef?.get?.();
+        const effectiveGroupId = groupId || (
+            currentSelected?.type === 'group' ? currentSelected.id : null
+        );
+        const effectiveTopicId = topicId || currentTopicIdRef?.get?.();
+
+        if (!effectiveGroupId || !effectiveTopicId) {
+            uiHelper?.showToastNotification?.('无法中止群聊队列：群组或话题上下文不完整。', 'error');
+            return { success: false, error: 'missing-group-context' };
+        }
+
+        if (typeof electronAPI?.interruptGroupChatQueue !== 'function') {
+            uiHelper?.showToastNotification?.('无法中止群聊队列：接口不可用。', 'error');
+            return { success: false, error: 'interrupt-group-chat-queue-unavailable' };
+        }
+
+        try {
+            const result = await electronAPI.interruptGroupChatQueue(effectiveGroupId, effectiveTopicId);
+            if (result?.success) {
+                const interruptedCount = Number(result.interruptedRequests) || 0;
+                uiHelper?.showToastNotification?.(
+                    interruptedCount > 0
+                        ? `已中止群聊队列，并停止 ${interruptedCount} 个进行中的回复。`
+                        : '已中止群聊队列。',
+                    'success'
+                );
+            } else {
+                uiHelper?.showToastNotification?.(`中止群聊队列失败：${result?.error || '未知错误'}`, 'error');
+            }
+            return result;
+        } catch (error) {
+            console.error('[GroupRenderer] Failed to interrupt group chat queue:', error);
+            uiHelper?.showToastNotification?.(`中止群聊队列失败：${error.message}`, 'error');
+            return { success: false, error: error.message };
+        }
+    }
+
     async function handleSendGroupMessage() {
         const content = mainRendererElements.messageInput.value.trim();
         const attachedFiles = mainRendererFunctions.getAttachedFiles(); // Get from renderer.js
@@ -1219,9 +1257,9 @@ window.GroupRenderer = (() => {
                 // 🔴 关键修复：在群聊发送前就准备好完整路径
                 const fileManagerData = af._fileManagerData || {};
                 // 🟢 极其关键：优先使用 internalPath (物理路径)
-                const filePathForContext = (fileManagerData && fileManagerData.internalPath) || 
-                                           af.localPath || 
-                                           af.src || 
+                const filePathForContext = (fileManagerData && fileManagerData.internalPath) ||
+                                           af.localPath ||
+                                           af.src ||
                                            af.originalName;
 
                 if (af._fileManagerData && af._fileManagerData.extractedText) {
@@ -1414,6 +1452,7 @@ window.GroupRenderer = (() => {
         displayGroupSettingsPage,
         loadTopicsForGroup, // Called when topics tab is selected for a group
         handleSendGroupMessage, // Called by renderer's send button if current chat is group
+        interruptGroupChatQueue,
         loadGroupChatHistory,
         handleGroupTopicSelection,
         handleRenameGroupTopic,

@@ -116,6 +116,7 @@ const CHAT_KEYS = [
     'inviteAgentToSpeak',
     'redoGroupChatMessage',
     'interruptGroupRequest',
+    'interruptGroupChatQueue',
     'exportTopicAsMarkdown',
     'connectVCPLog',
     'disconnectVCPLog',

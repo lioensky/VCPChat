@@ -10,14 +10,14 @@ class NatureRandomMode extends BaseChatMode {
 
     /**
      * 自然随机模式：根据 @提及、Tag 匹配、概率等规则决定哪些 Agent 发言
-     * 
+     *
      * @param {Array<object>} activeMembersConfigs - 活跃成员配置数组
      * @param {Array<object>} history - 聊天历史
      * @param {object} groupConfig - 群组配置
      * @param {object} userMessageEntry - 用户消息
      * @returns {Array<object>} 需要发言的 Agent 配置数组，按发言顺序排列
      */
-    determineSpeakers(activeMembersConfigs, history, groupConfig, userMessageEntry) {
+    determineSpeakers(activeMembersConfigs, history, groupConfig, userMessageEntry, queueContext) {
         const speakers = [];
         const spokenThisTurn = new Set(); // 存储已确定发言的 Agent ID
         const userMessageText = (userMessageEntry.content && typeof userMessageEntry.content === 'string')
@@ -59,7 +59,7 @@ class NatureRandomMode extends BaseChatMode {
         this._sortByRelevance(speakers, userMessageText, contextText, groupConfig);
 
         console.log(`[NatureRandom] Mode: ${tagMatchMode}. Speakers: ${speakers.map(s => s.name).join(', ')}`);
-        return speakers;
+        return this.finalizeSpeakerQueue(speakers, queueContext);
     }
 
     /**

@@ -10,14 +10,14 @@ class SequentialMode extends BaseChatMode {
 
     /**
      * 顺序模式：所有活跃成员按列表顺序依次发言
-     * 
+     *
      * @param {Array<object>} activeMembersConfigs - 活跃成员配置数组
      * @param {Array<object>} history - 聊天历史
      * @param {object} groupConfig - 群组配置
      * @param {object} userMessageEntry - 用户消息
      * @returns {Array<object>} 需要发言的 Agent 配置数组
      */
-    determineSpeakers(activeMembersConfigs, history, groupConfig, userMessageEntry) {
+    determineSpeakers(activeMembersConfigs, history, groupConfig, userMessageEntry, queueContext) {
         const configuredOrder = groupConfig?.modeSettings?.sequential?.speakerOrder
             || groupConfig?.sequentialSpeakerOrder
             || [];
@@ -33,7 +33,7 @@ class SequentialMode extends BaseChatMode {
         });
 
         console.log(`[SequentialMode] Agents to respond: ${orderedMembers.map(agent => agent.name).join(', ')}`);
-        return orderedMembers;
+        return this.finalizeSpeakerQueue(orderedMembers, queueContext);
     }
 }
 

@@ -11,16 +11,16 @@ class InviteOnlyMode extends BaseChatMode {
     /**
      * 邀请模式：用户发言后 AI 不主动响应
      * Agent 的发言由 handleInviteAgentToSpeak 单独触发，不经过此方法
-     * 
+     *
      * @param {Array<object>} activeMembersConfigs - 活跃成员配置数组
      * @param {Array<object>} history - 聊天历史
      * @param {object} groupConfig - 群组配置
      * @param {object} userMessageEntry - 用户消息
      * @returns {Array<object>} 空数组 - 邀请模式下不自动发言
      */
-    determineSpeakers(activeMembersConfigs, history, groupConfig, userMessageEntry) {
+    determineSpeakers(activeMembersConfigs, history, groupConfig, userMessageEntry, queueContext) {
         console.log(`[InviteOnlyMode] No agents will respond automatically to user message.`);
-        return [];
+        return this.finalizeSpeakerQueue([], queueContext);
     }
 }
 

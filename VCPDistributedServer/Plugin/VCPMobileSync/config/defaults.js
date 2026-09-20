@@ -22,7 +22,7 @@ const GROUP_DEFAULTS = {
   memberTags: {},
   groupPrompt: "",
   invitePrompt:
-    "现在轮到你{{VCPChatAgentName}}发言了。系统已经为大家添加[xxx的发言：]这样的标记头，以用于区分不同发言来自谁。大家不用自己再输出自己的发言标记头，也不需要讨论发言标记系统，正常聊天即可。",
+    "[系统邀请指令:] 现在轮到你{{VCPChatAgentName}}发言了。系统已经为大家添加[xxx的发言：]这样的标记头，以用于区分不同发言来自谁。大家不用自己再输出自己的发言标记头，也不需要讨论发言标记系统，正常聊天即可。",
   useUnifiedModel: false,
   unifiedModel: "",
   tagMatchMode: "strict",
@@ -177,7 +177,7 @@ function createDesktopAttachment(dto, desktopPath, ext, fallbackCreatedAt = 0) {
   const type = dto.type || "application/octet-stream";
   const size = dto.size || 0;
   const createdAt = dto.createdAt ?? fallbackCreatedAt;
-  
+
   // 只使用调用方基于实际 AppData 解析出的路径；不得在协议层猜测安装目录。
   const internalFileName = hash ? `${hash}${ext}` : "";
   const desktopSrc = desktopPath ? `file://${desktopPath}` : "";
