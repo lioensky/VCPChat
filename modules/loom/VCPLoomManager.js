@@ -1787,12 +1787,43 @@ class VCPLoomManager {
     }
 
     async navigate(instance, action) {
+        const normalizedAction = String(action || '').trim().toLowerCase();
+        if (!['back', 'forward', 'reload', 'home'].includes(normalizedAction)) {
+            throw new Error(`不支持的 LoomAPP 导航操作：${action || '(empty)'}`);
+        }
+
         const contents = instance.view.webContents;
-        if (contents.isDestroyed()) return;
-        if (action === 'back' && contents.navigationHistory.canGoBack()) contents.navigationHistory.goBack();
-        if (action === 'forward' && contents.navigationHistory.canGoForward()) contents.navigationHistory.goForward();
-        if (action === 'reload') contents.reload();
-        if (action === 'home') await contents.loadURL(instance.manifest.startUrl);
+        if (contents.isDestroyed()) throw new Error('LoomAPP 页面进程不可用。');
+
+        let dispatched = true;
+        if (normalizedAction === 'back') {
+            if (contents.navigationHistory.canGoBack()) {
+                contents.navigationHistory.goBack();
+            } else {
+                dispatched = false;
+            }
+        } else if (normalizedAction === 'forward') {
+            if (contents.navigationHistory.canGoForward()) {
+                contents.navigationHistory.goForward();
+            } else {
+                dispatched = false;
+            }
+        } else if (normalizedAction === 'reload') {
+            contents.reload();
+        } else if (normalizedAction === 'home') {
+            await contents.loadURL(instance.manifest.startUrl);
+        }
+
+        return {
+            ...this.buildShellState(instance),
+            action: normalizedAction,
+            dispatched,
+        };
+    }
+
+    async navigateApp(appId, action) {
+        const instance = this.getRunningInstance(appId);
+        return this.navigate(instance, action);
     }
 
     normalizeNavigationUrl(value) {

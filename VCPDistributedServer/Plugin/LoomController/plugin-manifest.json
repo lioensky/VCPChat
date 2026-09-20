@@ -1,8 +1,8 @@
 {
   "name": "LoomController",
   "displayName": "VCP Loom Agent 控制器",
-  "version": "1.7.0",
-  "description": "供 Agent 创建、感知、打开、关闭、查询、编辑并通过 appId + 自然页面命令安全操作 VCP LoomAPP 的直接业务适配器。常用交互使用 click、type、send_keys、scroll 等一级命令与平铺参数。",
+  "version": "1.8.0",
+  "description": "供 Agent 创建、感知、打开、关闭、导航、查询、编辑并通过 appId + 自然页面命令安全操作 VCP LoomAPP 的直接业务适配器。常用交互使用 NavigateBack、NavigateForward、NavigateHome、ReloadPage、click、type、send_keys、scroll 等一级命令与平铺参数。",
   "pluginType": "hybridservice",
   "communication": {
     "protocol": "direct",
@@ -63,6 +63,26 @@
         "command": "CloseApp",
         "description": "关闭指定 LoomAPP 的当前运行窗口，不删除应用配置和独立登录会话。未打开时该操作仍可安全完成。\n参数:\n- command (字符串, 必需): 固定为 CloseApp。\n- appId (字符串, 必需): 要关闭的 LoomAPP ID。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」CloseApp「末」,\nappId:「始」example-app「末」\n<<<[END_TOOL_REQUEST]>>>",
         "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」CloseApp「末」,\nappId:「始」example-app「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "NavigateBack",
+        "description": "让指定且已打开的 LoomAPP 在其单一主页面中后退到上一条浏览历史。没有可后退历史时安全返回 dispatched=false，不关闭应用、不打开外部浏览器。\n参数:\n- command (字符串, 必需): 固定为 NavigateBack。\n- appId (字符串, 必需): 已打开的 LoomAPP ID。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」NavigateBack「末」,\nappId:「始」example-app「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "NavigateForward",
+        "description": "让指定且已打开的 LoomAPP 在其单一主页面中前进到下一条浏览历史。没有可前进历史时安全返回 dispatched=false。\n参数:\n- command (字符串, 必需): 固定为 NavigateForward。\n- appId (字符串, 必需): 已打开的 LoomAPP ID。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」NavigateForward「末」,\nappId:「始」example-app「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "NavigateHome",
+        "description": "让指定且已打开的 LoomAPP 在当前主页面中加载其清单 startUrl，用于从视频、详情页或其他站内页面返回应用主页。\n参数:\n- command (字符串, 必需): 固定为 NavigateHome。\n- appId (字符串, 必需): 已打开的 LoomAPP ID。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」NavigateHome「末」,\nappId:「始」example-app「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "ReloadPage",
+        "description": "刷新指定且已打开的 LoomAPP 当前主页面，保持该应用的独立持久化会话和当前 URL。\n参数:\n- command (字符串, 必需): 固定为 ReloadPage。\n- appId (字符串, 必需): 已打开的 LoomAPP ID。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」ReloadPage「末」,\nappId:「始」example-app「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
         "command": "GetAppSources",

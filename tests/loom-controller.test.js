@@ -44,6 +44,20 @@ function createFakeManager() {
             calls.push(['closeApp', appId]);
             return { success: true };
         },
+        async navigateApp(appId, action) {
+            calls.push(['navigateApp', appId, action]);
+            return {
+                appId,
+                name: app.name,
+                url: action === 'home' ? app.startUrl : `${app.startUrl}${action}`,
+                loading: false,
+                canGoBack: action !== 'back',
+                canGoForward: action !== 'forward',
+                error: null,
+                action,
+                dispatched: action !== 'forward',
+            };
+        },
         async readSources(appId) {
             calls.push(['readSources', appId]);
             return {
@@ -146,6 +160,10 @@ async function run() {
     const registeredCommands = loomManifest.capabilities.invocationCommands
         .map((definition) => definition.command);
     for (const command of [
+        'NavigateBack',
+        'NavigateForward',
+        'NavigateHome',
+        'ReloadPage',
         'click',
         'type',
         'send_keys',
@@ -213,6 +231,40 @@ async function run() {
         id: 'test-app',
     });
     assertContentResult(closed);
+
+    const navigatedBack = await loomController.processToolCall({
+        command: 'NavigateBack',
+        appId: 'test-app',
+    });
+    assertContentResult(navigatedBack);
+    assert.strictEqual(navigatedBack.details.action, 'back');
+    assert.strictEqual(navigatedBack.details.dispatched, true);
+    assert(manager.calls.some((call) =>
+        call[0] === 'navigateApp' && call[1] === 'test-app' && call[2] === 'back'
+    ));
+
+    const navigatedForward = await loomController.processToolCall({
+        command: 'NavigateForward',
+        appId: 'test-app',
+    });
+    assertContentResult(navigatedForward);
+    assert.strictEqual(navigatedForward.details.action, 'forward');
+    assert.strictEqual(navigatedForward.details.dispatched, false);
+    assert(navigatedForward.content[0].text.includes('当前无可用历史记录'));
+
+    const navigatedHome = await loomController.processToolCall({
+        command: 'NavigateHome',
+        appId: 'test-app',
+    });
+    assertContentResult(navigatedHome);
+    assert.strictEqual(navigatedHome.details.state.url, 'https://example.com/');
+
+    const reloaded = await loomController.processToolCall({
+        command: 'ReloadPage',
+        appId: 'test-app',
+    });
+    assertContentResult(reloaded);
+    assert.strictEqual(reloaded.details.action, 'reload');
 
     const sources = await loomController.processToolCall({
         command: 'GetAppSources',
@@ -361,6 +413,16 @@ async function run() {
     assert.strictEqual(directClickCall[2], 'click');
     assert.deepStrictEqual(directClickCall[3], { target: '登录' });
     assert.deepStrictEqual(directClickCall[4], { allowFallback: false });
+
+    const serialNavigation = await loomController.processToolCall({
+        appId: 'test-app',
+        command1: 'NavigateHome',
+        command2: 'ReloadPage',
+    });
+    assertContentResult(serialNavigation);
+    assert.strictEqual(serialNavigation.details.status, 'success');
+    assert.strictEqual(serialNavigation.details.steps[0].details.action, 'home');
+    assert.strictEqual(serialNavigation.details.steps[1].details.action, 'reload');
 
     const serialStartedAt = Date.now();
     const serial = await loomController.processToolCall({

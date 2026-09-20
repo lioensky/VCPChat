@@ -225,6 +225,10 @@ function normalizeSkillStep(entry, rawArgs) {
     const business = {
         openapp: 'OpenApp',
         closeapp: 'CloseApp',
+        navigateback: 'NavigateBack',
+        navigateforward: 'NavigateForward',
+        navigatehome: 'NavigateHome',
+        reloadpage: 'ReloadPage',
         getpageinfo: 'GetPageInfo',
         get_page_info: 'GetPageInfo',
         page_get_info: 'GetPageInfo',
@@ -237,7 +241,14 @@ function normalizeSkillStep(entry, rawArgs) {
         const params = { ...stepArgs };
         delete params.appId;
         delete params.app_id;
-        if (business[normalized] === 'OpenApp' || business[normalized] === 'CloseApp') {
+        if ([
+            'OpenApp',
+            'CloseApp',
+            'NavigateBack',
+            'NavigateForward',
+            'NavigateHome',
+            'ReloadPage',
+        ].includes(business[normalized])) {
             return {
                 index: entry.index,
                 command: business[normalized],
@@ -437,7 +448,9 @@ async function processSerialToolCall(rawArgs) {
             }
 
             const businessCommands = new Set([
-                'openapp', 'closeapp', 'getpageinfo', 'get_page_info', 'page_get_info',
+                'openapp', 'closeapp',
+                'navigateback', 'navigateforward', 'navigatehome', 'reloadpage',
+                'getpageinfo', 'get_page_info', 'page_get_info',
                 'getrenderedtext', 'getpageimage', 'get_page_image', 'page_get_image',
             ]);
             const output = businessCommands.has(normalized)
@@ -598,6 +611,31 @@ async function closeApp(args) {
     return textResult(
         `LoomAPP “${appId}” 已关闭。`,
         { command: 'CloseApp', appId }
+    );
+}
+
+const NAVIGATION_COMMANDS = Object.freeze({
+    navigateback: { action: 'back', label: '后退' },
+    navigateforward: { action: 'forward', label: '前进' },
+    navigatehome: { action: 'home', label: '返回主页' },
+    reloadpage: { action: 'reload', label: '刷新' },
+});
+
+async function navigateApp(args, command) {
+    const appId = requireAppId(args);
+    const definition = NAVIGATION_COMMANDS[command];
+    if (!definition) throw new Error(`[LoomController] 不支持的导航命令：${command}`);
+    const state = await requireManager().navigateApp(appId, definition.action);
+    const outcome = state.dispatched === false ? '当前无可用历史记录，未执行跳转' : '已分派';
+    return textResult(
+        `LoomAPP “${appId}”页面${definition.label}操作${outcome}。`,
+        {
+            command: definition.action,
+            appId,
+            action: definition.action,
+            dispatched: state.dispatched !== false,
+            state,
+        }
     );
 }
 
@@ -857,6 +895,11 @@ async function processToolCall(rawArgs = {}) {
             return openApp(rawArgs);
         case 'closeapp':
             return closeApp(rawArgs);
+        case 'navigateback':
+        case 'navigateforward':
+        case 'navigatehome':
+        case 'reloadpage':
+            return navigateApp(rawArgs, command);
         case 'getappsources':
             return getAppSources(rawArgs);
         case 'getruntimesource':
@@ -904,7 +947,7 @@ async function processToolCall(rawArgs = {}) {
                 return executeAction(buildSerialActionArgs(command, rawArgs));
             }
             throw new Error(
-                '[LoomController] 不支持的 command。可用值：ListApps、ListOpenApps、CreateApp、OpenApp、CloseApp、GetAppSources、GetRuntimeSource、GetRenderedText、GetPageInfo、GetPageImage、click、type、send_keys、press、scroll、wait_for 等页面命令、ExecuteAction、EditAppSources。'
+                '[LoomController] 不支持的 command。可用值：ListApps、ListOpenApps、CreateApp、OpenApp、CloseApp、NavigateBack、NavigateForward、NavigateHome、ReloadPage、GetAppSources、GetRuntimeSource、GetRenderedText、GetPageInfo、GetPageImage、click、type、send_keys、press、scroll、wait_for 等页面命令、ExecuteAction、EditAppSources。'
             );
     }
 }
