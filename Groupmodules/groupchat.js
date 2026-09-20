@@ -19,6 +19,11 @@ const {
     normalizeJevModeSettings
 } = require('./modes/jevDecisionMode');
 const { JevGroupSessionOrchestrator } = require('./jevGroupSessionOrchestrator');
+const {
+    DEFAULT_GROUP_CONTEXT_MESSAGE_WINDOW_SIZE,
+    normalizeGroupContextWindowSettings,
+    selectGroupContextHistory
+} = require('./groupContextWindow');
 
 // 话题标题管理模块
 const topicTitleManager = require('./topicTitleManager');
@@ -477,6 +482,7 @@ function normalizeGroupModeSettings(config = {}) {
 
     return {
         ...config,
+        ...normalizeGroupContextWindowSettings(config),
         members,
         modeSettings: {
             ...existingModeSettings,
@@ -541,6 +547,9 @@ async function createAgentGroup(groupName, initialConfig = {}) {
             memberTags: {},
             groupPrompt: '',
             invitePrompt: '[系统邀请指令:] 现在轮到你{{VCPChatAgentName}}发言了。系统已经为大家添加[xxx的发言：]这样的标记头，以用于区分不同发言来自谁。大家不用自己再输出自己的发言标记头，也不需要讨论发言标记系统，正常聊天即可。',
+            // 模型上下文窗口默认关闭；开启后仅发送最近指定楼层。
+            enableContextMessageWindow: false,
+            contextMessageWindowSize: DEFAULT_GROUP_CONTEXT_MESSAGE_WINDOW_SIZE,
            // 新增：统一模型设置
            useUnifiedModel: false,
            unifiedModel: '',
@@ -910,7 +919,9 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
         }
 
         // 2. 构建上下文结构 (每次循环都基于最新的 groupHistory)
-        const contextForAgentPromises = groupHistory.map(async msg => {
+        // 历史仍完整持久化；窗口仅限制本次发送给模型的最近楼层。
+        const contextHistoryForAgent = selectGroupContextHistory(groupHistory, groupConfig);
+        const contextForAgentPromises = contextHistoryForAgent.map(async msg => {
             const speakerName = msg.name || (msg.role === 'user' ? userNameForMessage : (memberAgentConfigs[msg.agentId]?.name || 'AI'));
 
             let textForAIContext;
@@ -1497,9 +1508,10 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
     }
 
     // 2. 构建上下文结构 (基于最新的 groupHistory)
-    // 注意：这里需要确定用户消息是否应该从 groupHistory 的最后一条获取，或者由调用者传递
-    // 假设 groupHistory 已经包含了最新的用户消息（如果有的话）
-    const contextForAgentPromises = groupHistory.map(async (msg, index, arr) => {
+    // 历史仍完整持久化；窗口仅限制本次发送给模型的最近楼层。
+    // JEV 的 Agent 发言也通过邀请路径执行，因此自动继承该窗口。
+    const contextHistoryForAgent = selectGroupContextHistory(groupHistory, groupConfig);
+    const contextForAgentPromises = contextHistoryForAgent.map(async (msg, index, arr) => {
         const speakerName = msg.name || (msg.role === 'user' ? (globalVcpSettings.userName || '用户') : (msg.agentName || 'AI')); // Use msg.agentName if available for AI
 
         let textForAIContext = (typeof msg.content === 'string') ? msg.content : (msg.content?.text || '');
@@ -2380,6 +2392,9 @@ async function interruptGroupChatQueue(groupId, topicId) {
 
 
 module.exports = {
+    DEFAULT_GROUP_CONTEXT_MESSAGE_WINDOW_SIZE,
+    normalizeGroupContextWindowSettings,
+    selectGroupContextHistory,
     initializePaths,
     initializeRuntimeServices,
     createAgentGroup,

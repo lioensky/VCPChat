@@ -46,6 +46,8 @@ const groupFields = Object.freeze([
     field('jevMaxAutonomousRounds', 'number', '最大自治裁决轮数', { min: 1, max: 100, step: 1, tooltip: '一次自治运行最多连续裁决轮数，用于防止无限对话。' }),
     field('jevHistoryWindow', 'number', 'JEV 历史窗口消息数', { min: 1, max: 200, step: 1, tooltip: '发送给 JEV 裁判的最近消息数量。' }),
     field('jevContinueDebounceMs', 'number', '继续群聊防抖 (ms)', { min: 0, max: 10000, step: 100, tooltip: '防止重复点击继续群聊产生多次运行。' }),
+    field('groupEnableContextMessageWindow', 'checkbox', '启用上下文楼层窗口', { tooltip: '默认关闭。开启后仅把最近指定数量的消息发送给群成员模型；完整聊天记录仍会保存和显示。' }),
+    field('groupContextMessageWindowSize', 'number', '最多保留楼层数', { min: 1, max: 10000, step: 1, tooltip: '发送给群成员模型的最近消息条数（包括用户和 Agent 消息）。不影响历史记录、瀑布流显示和话题总结。', dependsOn: { field: 'groupEnableContextMessageWindow', equals: true } }),
 ]);
 
 export const settingsSidebarSchema = Object.freeze({
@@ -438,7 +440,33 @@ function renderGroupSectionContent(doc, key) {
         return el(doc, 'div', { class: 'group-settings-card-shell' }, mode, el(doc, 'div', { id: 'sequentialOrderContainer', class: 'group-settings-field-shell', hidden: true }, seqLabel, el(doc, 'div', { id: 'sequentialSpeakerOrderList', class: 'sequential-speaker-order-list', role: 'list', 'aria-label': '顺序发言次序' })), el(doc, 'div', { id: 'memberTagsContainer', class: 'group-settings-field-shell', hidden: true }, tags), jevSettings);
     }
     if (key === 'model') {
-        return el(doc, 'div', { class: 'group-settings-card-shell' }, el(doc, 'div', { class: 'group-settings-switch-row' }, el(doc, 'label', { for: 'groupUseUnifiedModel' }, '启用群组统一模型'), el(doc, 'label', { class: 'switch', for: 'groupUseUnifiedModel', 'aria-label': '启用群组统一模型' }, el(doc, 'input', { id: 'groupUseUnifiedModel', type: 'checkbox' }), el(doc, 'span', { class: 'slider round' }))), el(doc, 'div', { id: 'groupUnifiedModelContainer', class: 'group-settings-field-shell', hidden: true, 'data-schema-field': groupFields[3].id, 'data-schema-depends-on': JSON.stringify(groupFields[3].dependsOn) }, el(doc, 'div', { class: 'model-input-container' }, renderControl(doc, groupFields[3]), el(doc, 'button', { type: 'button', id: 'openGroupModelSelectBtn', class: 'small-button model-picker-toggle-btn', title: '选择模型', 'aria-label': '打开模型选择器' }, el(doc, 'span', { class: 'vcp-ui-icon', 'aria-hidden': 'true' }, 'expand_more')))));
+        const contextWindowToggleSpec = groupFields[14];
+        const contextWindowSizeSpec = groupFields[15];
+        return el(doc, 'div', { class: 'group-settings-card-shell' },
+            el(doc, 'div', { class: 'group-settings-switch-row' },
+                el(doc, 'label', { for: 'groupUseUnifiedModel' }, '启用群组统一模型'),
+                el(doc, 'label', { class: 'switch', for: 'groupUseUnifiedModel', 'aria-label': '启用群组统一模型' },
+                    el(doc, 'input', { id: 'groupUseUnifiedModel', type: 'checkbox' }),
+                    el(doc, 'span', { class: 'slider round' }))),
+            el(doc, 'div', { id: 'groupUnifiedModelContainer', class: 'group-settings-field-shell', hidden: true, 'data-schema-field': groupFields[3].id, 'data-schema-depends-on': JSON.stringify(groupFields[3].dependsOn) },
+                el(doc, 'div', { class: 'model-input-container' },
+                    renderControl(doc, groupFields[3]),
+                    el(doc, 'button', { type: 'button', id: 'openGroupModelSelectBtn', class: 'small-button model-picker-toggle-btn', title: '选择模型', 'aria-label': '打开模型选择器' },
+                        el(doc, 'span', { class: 'vcp-ui-icon', 'aria-hidden': 'true' }, 'expand_more')))),
+            el(doc, 'div', { class: 'group-settings-switch-row', 'data-schema-field': contextWindowToggleSpec.id },
+                el(doc, 'label', { for: contextWindowToggleSpec.id },
+                    contextWindowToggleSpec.label,
+                    makeHelpBadge(doc, contextWindowToggleSpec.tooltip)),
+                el(doc, 'label', { class: 'switch', for: contextWindowToggleSpec.id, 'aria-label': contextWindowToggleSpec.label },
+                    renderControl(doc, contextWindowToggleSpec),
+                    el(doc, 'span', { class: 'slider round' }))),
+            el(doc, 'div', {
+                id: 'groupContextMessageWindowContainer',
+                class: 'group-settings-field-shell',
+                hidden: true,
+                'data-schema-field': contextWindowSizeSpec.id,
+                'data-schema-depends-on': JSON.stringify(contextWindowSizeSpec.dependsOn)
+            }, labelFor(doc, contextWindowSizeSpec), renderControl(doc, contextWindowSizeSpec)));
     }
     const groupPrompt = renderField(doc, groupFields[4]);
     groupPrompt.querySelector('textarea')?.setAttribute('placeholder', '例如：这里是用户家的聊天空间，成员应保持协作与角色分工。');

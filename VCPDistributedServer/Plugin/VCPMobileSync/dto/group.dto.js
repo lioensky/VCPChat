@@ -14,6 +14,8 @@ const GROUP_SYNC_FIELDS = [
   "invitePrompt",
   "useUnifiedModel",
   "unifiedModel",
+  "enableContextMessageWindow",
+  "contextMessageWindowSize",
   "tagMatchMode",
   "createdAt",
 ];

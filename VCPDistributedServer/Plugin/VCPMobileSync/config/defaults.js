@@ -25,6 +25,8 @@ const GROUP_DEFAULTS = {
     "[系统邀请指令:] 现在轮到你{{VCPChatAgentName}}发言了。系统已经为大家添加[xxx的发言：]这样的标记头，以用于区分不同发言来自谁。大家不用自己再输出自己的发言标记头，也不需要讨论发言标记系统，正常聊天即可。",
   useUnifiedModel: false,
   unifiedModel: "",
+  enableContextMessageWindow: false,
+  contextMessageWindowSize: 100,
   tagMatchMode: "strict",
   createdAt: 0,
   avatar: null,
@@ -130,6 +132,10 @@ function createGroupConfig(id, dto) {
     invitePrompt: dto.invitePrompt ?? GROUP_DEFAULTS.invitePrompt,
     useUnifiedModel: dto.useUnifiedModel ?? GROUP_DEFAULTS.useUnifiedModel,
     unifiedModel: dto.unifiedModel ?? GROUP_DEFAULTS.unifiedModel,
+    enableContextMessageWindow:
+      dto.enableContextMessageWindow ?? GROUP_DEFAULTS.enableContextMessageWindow,
+    contextMessageWindowSize:
+      dto.contextMessageWindowSize ?? GROUP_DEFAULTS.contextMessageWindowSize,
     createdAt: dto.createdAt ?? GROUP_DEFAULTS.createdAt,
     topics: [],
   };

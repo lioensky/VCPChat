@@ -28,6 +28,7 @@ window.GroupRenderer = (() => {
     let jevMaxSpeakersPerRound, jevMaxAutonomousRounds, jevHistoryWindow, jevContinueDebounceMs;
     let groupPromptTextarea, invitePromptTextarea;
     let groupUseUnifiedModel, groupUnifiedModelContainer, groupUnifiedModelInput, openGroupModelSelectBtn;
+    let groupEnableContextMessageWindow, groupContextMessageWindowContainer, groupContextMessageWindowSize;
     let deleteGroupBtn;
 
     // State for group settings
@@ -182,6 +183,9 @@ window.GroupRenderer = (() => {
         groupUnifiedModelContainer = getGroupControl('groupUnifiedModelContainer');
         groupUnifiedModelInput = getGroupControl('groupUnifiedModelInput');
         openGroupModelSelectBtn = getGroupControl('openGroupModelSelectBtn');
+        groupEnableContextMessageWindow = getGroupControl('groupEnableContextMessageWindow');
+        groupContextMessageWindowContainer = getGroupControl('groupContextMessageWindowContainer');
+        groupContextMessageWindowSize = getGroupControl('groupContextMessageWindowSize');
 
         memberTagsContainer = getGroupControl('memberTagsContainer');
         memberTagsInputsDiv = getGroupControl('memberTagsInputs');
@@ -210,6 +214,9 @@ window.GroupRenderer = (() => {
             groupUseUnifiedModel,
             groupUnifiedModelContainer,
             groupUnifiedModelInput,
+            groupEnableContextMessageWindow,
+            groupContextMessageWindowContainer,
+            groupContextMessageWindowSize,
             groupPromptTextarea,
             invitePromptTextarea
         ];
@@ -313,10 +320,13 @@ window.GroupRenderer = (() => {
     }
 
     function buildGroupModelSummary() {
-        if (!groupUseUnifiedModel?.checked) {
-            return '跟随成员模型';
-        }
-        return groupUnifiedModelInput?.value?.trim() || '已启用统一模型，尚未选择';
+        const modelSummary = groupUseUnifiedModel?.checked
+            ? (groupUnifiedModelInput?.value?.trim() || '已启用统一模型，尚未选择')
+            : '跟随成员模型';
+        const contextSummary = groupEnableContextMessageWindow?.checked
+            ? `上下文: 最近 ${groupContextMessageWindowSize?.value || 100} 楼`
+            : '上下文: 不限制楼层';
+        return `${modelSummary}\n${contextSummary}`;
     }
 
     function buildGroupPromptSummary() {
@@ -362,6 +372,8 @@ window.GroupRenderer = (() => {
                 tagMatchModeSelect,
                 groupUseUnifiedModel,
                 groupUnifiedModelInput,
+                groupEnableContextMessageWindow,
+                groupContextMessageWindowSize,
                 groupPromptTextarea,
                 invitePromptTextarea
             ].forEach((element) => bindSummaryRefresh(element, ['input', 'change']));
@@ -564,15 +576,22 @@ window.GroupRenderer = (() => {
         if (!isCurrentLoad() || !membersLoaded) return;
         toggleModeSettingsVisibility(groupConfig.mode);
 
-        // 新增：处理统一模型UI
+        // 新增：处理统一模型与模型上下文窗口 UI
         groupUseUnifiedModel.checked = groupConfig.useUnifiedModel === true;
         groupUnifiedModelInput.value = groupConfig.unifiedModel || '';
         groupUnifiedModelContainer.hidden = !groupUseUnifiedModel.checked;
+        groupEnableContextMessageWindow.checked = groupConfig.enableContextMessageWindow === true;
+        groupContextMessageWindowSize.value = groupConfig.contextMessageWindowSize ?? 100;
+        groupContextMessageWindowContainer.hidden = !groupEnableContextMessageWindow.checked;
 
         setupGroupSettingsSections();
 
         groupUseUnifiedModel.onchange = () => {
             groupUnifiedModelContainer.hidden = !groupUseUnifiedModel.checked;
+            updateGroupSectionSummary('model');
+        };
+        groupEnableContextMessageWindow.onchange = () => {
+            groupContextMessageWindowContainer.hidden = !groupEnableContextMessageWindow.checked;
             updateGroupSectionSummary('model');
         };
 
@@ -776,6 +795,8 @@ window.GroupRenderer = (() => {
             mode: groupChatModeSelect?.value || 'sequential',
             useUnifiedModel: groupUseUnifiedModel?.checked === true,
             unifiedModel: groupUnifiedModelInput?.value?.trim?.() || '',
+            enableContextMessageWindow: groupEnableContextMessageWindow?.checked === true,
+            contextMessageWindowSize: Number(groupContextMessageWindowSize?.value || 100),
             groupPrompt: groupPromptTextarea?.value?.trim?.() || '',
             invitePrompt: invitePromptTextarea?.value?.trim?.() || '',
             tagMatchMode: tagMatchModeSelect?.value || 'strict',
@@ -855,9 +876,11 @@ window.GroupRenderer = (() => {
             // 保留旧字段供旧版本读取；权威数据位于 modeSettings。
             sequentialSpeakerOrder: normalizedSequentialOrder,
             tagMatchMode: naturalSettings.tagMatchMode,
-            // 新增：读取保存开始时冻结的统一模型与提示词设置
+            // 新增：读取保存开始时冻结的统一模型、上下文窗口与提示词设置
             useUnifiedModel: formDraft.useUnifiedModel,
             unifiedModel: formDraft.unifiedModel,
+            enableContextMessageWindow: formDraft.enableContextMessageWindow,
+            contextMessageWindowSize: formDraft.contextMessageWindowSize,
             memberTags: memberTags,
             groupPrompt: formDraft.groupPrompt,
             invitePrompt: formDraft.invitePrompt
@@ -880,6 +903,18 @@ window.GroupRenderer = (() => {
                 groupUnifiedModelInput.focus();
             }
             reportSettingsSaveResult(false, 'missing-unified-model');
+            return;
+        }
+
+        if (newConfig.enableContextMessageWindow && (
+            !Number.isInteger(newConfig.contextMessageWindowSize)
+            || newConfig.contextMessageWindowSize < 1
+            || newConfig.contextMessageWindowSize > 10000
+        )) {
+            const errorMessage = '上下文楼层数必须是 1 到 10000 之间的整数。';
+            uiHelper?.showToastNotification?.(errorMessage, 'error');
+            groupContextMessageWindowSize?.focus?.();
+            reportSettingsSaveResult(false, 'invalid-context-message-window-size');
             return;
         }
 
