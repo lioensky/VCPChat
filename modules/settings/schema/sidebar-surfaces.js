@@ -44,7 +44,7 @@ const groupFields = Object.freeze([
     field('jevStopThreshold', 'number', '结束选项阈值', { min: 0, max: 1, step: 0.01, tooltip: '结束选项达到此值且权重最高时智能结束。' }),
     field('jevMaxSpeakersPerRound', 'number', '单轮最大回复人数 K', { min: 1, max: 32, step: 1, tooltip: '每次裁决最多选取多少位成员依次发言。' }),
     field('jevMaxAutonomousRounds', 'number', '最大自治裁决轮数', { min: 1, max: 100, step: 1, tooltip: '一次自治运行最多连续裁决轮数，用于防止无限对话。' }),
-    field('jevHistoryWindow', 'number', 'JEV 历史窗口消息数', { min: 1, max: 200, step: 1, tooltip: '发送给 JEV 裁判的最近消息数量。' }),
+    field('jevHistoryWindow', 'number', 'JEV 历史窗口消息数', { min: 1, max: 200, step: 1, tooltip: '发送给 JEV 裁判的最近消息数量，默认 12。适当减小可减少输入 Token 和裁决费用，但窗口过小可能削弱上下文判断。' }),
     field('jevContinueDebounceMs', 'number', '继续群聊防抖 (ms)', { min: 0, max: 10000, step: 100, tooltip: '防止重复点击继续群聊产生多次运行。' }),
     field('groupEnableContextMessageWindow', 'checkbox', '启用上下文楼层窗口', { tooltip: '默认关闭。开启后仅把最近指定数量的消息发送给群成员模型；完整聊天记录仍会保存和显示。' }),
     field('groupContextMessageWindowSize', 'number', '最多保留楼层数', { min: 1, max: 10000, step: 1, tooltip: '发送给群成员模型的最近消息条数（包括用户和 Agent 消息）。不影响历史记录、瀑布流显示和话题总结。', dependsOn: { field: 'groupEnableContextMessageWindow', equals: true } }),

@@ -565,7 +565,7 @@ window.GroupRenderer = (() => {
         jevStopThreshold.value = jevSettings.stopThreshold ?? 0.55;
         jevMaxSpeakersPerRound.value = jevSettings.maxSpeakersPerRound ?? 3;
         jevMaxAutonomousRounds.value = jevSettings.maxAutonomousRounds ?? 12;
-        jevHistoryWindow.value = jevSettings.historyWindow ?? 24;
+        jevHistoryWindow.value = jevSettings.historyWindow ?? 12;
         jevContinueDebounceMs.value = jevSettings.continueDebounceMs ?? 800;
         groupPromptTextarea.value = groupConfig.groupPrompt || '';
         invitePromptTextarea.value = groupConfig.invitePrompt ?? '[系统邀请指令:] 现在轮到你{{VCPChatAgentName}}发言了。';

@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const {
     JevDecisionMode,
     DEFAULT_NAVIGATOR_PROMPT,
+    DEFAULT_JEV_MODE_SETTINGS,
     normalizeJevModeSettings,
     buildDecisionRequest,
     parseDecisionResponse
@@ -39,6 +40,13 @@ function createGroupConfig(overrides = {}) {
         }
     };
 }
+
+test('JEV 历史窗口默认使用最近 12 楼', () => {
+    const normalized = normalizeJevModeSettings({}, members.map(member => member.id));
+
+    assert.equal(DEFAULT_JEV_MODE_SETTINGS.historyWindow, 12);
+    assert.equal(normalized.historyWindow, 12);
+});
 
 test('JEV 配置归一化会裁剪范围并只保留当前成员风格', () => {
     const normalized = normalizeJevModeSettings({

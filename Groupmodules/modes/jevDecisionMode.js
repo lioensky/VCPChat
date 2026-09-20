@@ -15,7 +15,7 @@ const DEFAULT_JEV_MODE_SETTINGS = Object.freeze({
     stopThreshold: 0.55,
     maxSpeakersPerRound: 3,
     maxAutonomousRounds: 12,
-    historyWindow: 24,
+    historyWindow: 12,
     continueDebounceMs: 800,
     fallbackPolicy: 'stop',
     memberStyles: Object.freeze({})
