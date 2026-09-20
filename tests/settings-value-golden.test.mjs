@@ -60,6 +60,21 @@ function legacyCollect({ doc, currentSettings, settingsManager, getAppearance, n
         enableRegenerateConfirmation: getElementById('enableRegenerateConfirmation').checked,
         vcpServerUrl: settingsManager.completeVcpUrl(getElementById('vcpServerUrl').value.trim()),
         vcpApiKey: getElementById('vcpApiKey').value,
+        jevEnabled: getElementById('jevEnabled').checked,
+        jevProvider: ['typesafe', 'openrouter'].includes(getElementById('jevProvider').value)
+            ? getElementById('jevProvider').value
+            : 'typesafe',
+        jevApiUrl: getElementById('jevApiUrl').value.trim(),
+        jevApiKey: getElementById('jevApiKey').value.trim(),
+        jevModel: getElementById('jevModel').value.trim(),
+        jevTimeoutMs: Math.min(300000, Math.max(1000, parseInt(getElementById('jevTimeoutMs').value, 10))) || 30000,
+        jevMaxRetries: Number.isFinite(parseInt(getElementById('jevMaxRetries').value, 10))
+            ? Math.min(10, Math.max(0, parseInt(getElementById('jevMaxRetries').value, 10)))
+            : 2,
+        jevRetryBaseDelayMs: Math.min(30000, Math.max(1, parseInt(getElementById('jevRetryBaseDelayMs').value, 10))) || 500,
+        jevProxyUrl: getElementById('jevProxyUrl').value.trim(),
+        jevHttpReferer: getElementById('jevHttpReferer').value.trim(),
+        jevAppTitle: getElementById('jevAppTitle').value.trim() || 'VCPChat',
         fileKey: getElementById('fileKey')?.value || '',
         vcpLogUrl: getElementById('vcpLogUrl').value.trim(),
         vcpLogKey: getElementById('vcpLogKey').value.trim(),
@@ -155,7 +170,7 @@ function legacyCollect({ doc, currentSettings, settingsManager, getAppearance, n
     return newSettings;
 }
 
-// —— 测试环境：八分区渲染进同一张表单 —— //
+// —— 测试环境：九分区渲染进同一张表单 —— //
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://localhost/' });
 global.document = dom.window.document;
 global.CustomEvent = dom.window.CustomEvent;
@@ -318,11 +333,17 @@ test('值语义特例：parseInt||fallback 的 0 兜底、钳位顺序、白名�
     form.querySelector('#middleClickAdvancedDelay').value = '0';
     form.querySelector('#streamAnimationDurationMs').value = '0';
     form.querySelector('#contextSanitizerDepth').value = '0';
+    form.querySelector('#jevTimeoutMs').value = '500';
+    form.querySelector('#jevMaxRetries').value = '99';
+    form.querySelector('#jevRetryBaseDelayMs').value = '0';
     let payload = run();
     assert.equal(payload.flowlockContinueDelay, 5);
     assert.equal(payload.middleClickAdvancedDelay, 1000);
     assert.equal(payload.streamAnimationDurationMs, 100); // Number('0')=0 有限 → 取整钳位，不走兜底
     assert.equal(payload.contextSanitizerDepth, 0);       // 0||0 === 0，兜底不改变结果
+    assert.equal(payload.jevTimeoutMs, 1000);
+    assert.equal(payload.jevMaxRetries, 10);
+    assert.equal(payload.jevRetryBaseDelayMs, 1);
 
     form.querySelector('#streamAnimationDurationMs').value = 'abc';
     form.querySelector('#middleClickAdvancedDelay').value = '-20';

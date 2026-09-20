@@ -13,7 +13,7 @@
 //      (single-column rhythm) within a 2px tolerance;
 //   4. no <hr> survives the canonical pass.
 //
-// All eight sections are flattened (Phase 3 complete); FLAT_SECTIONS keeps
+// All nine sections are flattened (Phase 3 complete); FLAT_SECTIONS keeps
 // enforcing the flat row contract on every run.
 //
 // Usage: node scripts/audit-settings-layout.mjs [--shots]
@@ -38,7 +38,7 @@ const wantShots = process.argv.includes('--shots');
 const screenshotsDir = path.join(root, 'screenshots');
 
 // Phase 3 progress: sections whose rows are direct children of the section.
-const FLAT_SECTIONS = new Set(['quick-actions', 'advanced-features', 'render-settings', 'server-connection', 'voice-settings', 'selection-assistant', 'user-identity', 'appearance-settings']);
+const FLAT_SECTIONS = new Set(['quick-actions', 'advanced-features', 'render-settings', 'server-connection', 'jev-service', 'voice-settings', 'selection-assistant', 'user-identity', 'appearance-settings']);
 
 async function freePort() {
     const server = net.createServer();

@@ -149,6 +149,8 @@ function createCatalog(ops) {
         getWallpaperThumbnail: query((filePath) => ops.invoke('get-wallpaper-thumbnail', filePath)),
         askNovaQuery: query((payload) => ops.invoke('ask-nova:query', payload)),
         cancelAskNovaQuery: query((requestId) => ops.invoke('ask-nova:cancel', requestId)),
+        getJevStatus: query(() => ops.invoke('jev:get-status')),
+        decideWithJev: query((state, questions) => ops.invoke('jev:decide', { state, questions })),
 
         // Shared window launching
         openNotesWindow: query((theme) => ops.invoke('open-notes-window', theme)),
@@ -498,6 +500,8 @@ const ALLOWED_KEYS = [
     "getWallpaperThumbnail",
     "askNovaQuery",
     "cancelAskNovaQuery",
+    "getJevStatus",
+    "decideWithJev",
     "openNotesWindow",
     "openNotesWithContent",
     "openTranslatorWindow",

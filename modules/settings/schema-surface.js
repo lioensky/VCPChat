@@ -11,6 +11,7 @@
 import { quickActionsSection } from './schema/quick-actions.js';
 import { userIdentitySection } from './schema/user-identity.js';
 import { serverConnectionSection } from './schema/server-connection.js';
+import { jevServiceSection } from './schema/jev-service.js';
 import { renderSettingsSection } from './schema/render-settings.js';
 import { selectionAssistantSection } from './schema/selection-assistant.js';
 import { voiceSettingsSection } from './schema/voice-settings.js';
@@ -22,6 +23,7 @@ import { renderSchemaSection } from './render/field-renderer.js';
 const SCHEMA_SECTIONS = Object.freeze([
     userIdentitySection,
     serverConnectionSection,
+    jevServiceSection,
     appearanceSettingsSection,
     renderSettingsSection,
     selectionAssistantSection,

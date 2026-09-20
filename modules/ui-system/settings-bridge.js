@@ -216,6 +216,7 @@ function mountGlobalSettingsPathAction(root) {
 const GLOBAL_CATEGORY_ICONS = Object.freeze({
     'user-identity': 'user',
     'server-connection': 'server',
+    'jev-service': 'brain-circuit',
     'appearance-settings': 'palette',
     'render-settings': 'activity',
     'selection-assistant': 'mouse-pointer-click',

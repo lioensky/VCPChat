@@ -896,11 +896,11 @@ test('data-visible-when 投影：复选/取值/未知来源放行/隐藏还原',
 });
 
 test('设置分区静态标记退役（M4）：分区契约由 schema 渲染承接', () => {
-    // main.html 的八个分区壳只剩 id + data-settings-section-key；行结构、
+    // main.html 的九个分区壳只剩 id + data-settings-section-key；行结构、
     // 业务锚点与 data-visible-when 组合的全部契约移到
     // tests/settings-schema-render.test.mjs（schema 编译产物逐字对齐原静态标记）。
     const html = read(path.join(root, 'main.html'));
-    for (const key of ['user-identity', 'server-connection', 'appearance-settings', 'render-settings',
+    for (const key of ['user-identity', 'server-connection', 'jev-service', 'appearance-settings', 'render-settings',
         'selection-assistant', 'voice-settings', 'advanced-features', 'quick-actions']) {
         assert.match(html, new RegExp(`id="section-${key}" data-settings-section-key="${key}"></div>`),
             `section ${key} shell must remain for nav/ownership`);
@@ -941,7 +941,7 @@ test('设置分区静态标记退役（M4）：分区契约由 schema 渲染承�
     const legacy = read(eventListeners);
     assert.match(legacy, /syncDependentRows/);
     const audit = read(path.join(root, 'scripts', 'audit-settings-layout.mjs'));
-    assert.match(audit, /FLAT_SECTIONS = new Set\(\['quick-actions', 'advanced-features', 'render-settings', 'server-connection', 'voice-settings', 'selection-assistant', 'user-identity', 'appearance-settings'\]\)/,
+    assert.match(audit, /FLAT_SECTIONS = new Set\(\['quick-actions', 'advanced-features', 'render-settings', 'server-connection', 'jev-service', 'voice-settings', 'selection-assistant', 'user-identity', 'appearance-settings'\]\)/,
         'the layout probe must enforce the flattened sections');
     // 事件路径与快照路径都改走共享行评估器，不允许残留直写。
     const presentation = read(path.join(root, 'modules', 'renderer', 'mainChatSettingsPresentationOwner.js'));

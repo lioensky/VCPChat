@@ -5,6 +5,7 @@ import { JSDOM } from 'jsdom';
 import { quickActionsSection } from '../modules/settings/schema/quick-actions.js';
 import { userIdentitySection } from '../modules/settings/schema/user-identity.js';
 import { serverConnectionSection } from '../modules/settings/schema/server-connection.js';
+import { jevServiceSection } from '../modules/settings/schema/jev-service.js';
 import { renderSettingsSection } from '../modules/settings/schema/render-settings.js';
 import { selectionAssistantSection } from '../modules/settings/schema/selection-assistant.js';
 import { voiceSettingsSection } from '../modules/settings/schema/voice-settings.js';
@@ -41,9 +42,9 @@ function renderIntoForm(sectionDescriptor) {
     return { form, host };
 }
 
-test('八分区全部登记且 schema 编译无异常', () => {
+test('九分区全部登记且 schema 编译无异常', () => {
     const keys = schemaSurfaceSections().map(s => s.key);
-    assert.deepEqual(keys, ['user-identity', 'server-connection', 'appearance-settings', 'render-settings',
+    assert.deepEqual(keys, ['user-identity', 'server-connection', 'jev-service', 'appearance-settings', 'render-settings',
         'selection-assistant', 'voice-settings', 'advanced-features', 'quick-actions']);
     for (const sectionDescriptor of schemaSurfaceSections()) {
         const nodes = renderSchemaSection(sectionDescriptor, doc);
@@ -142,6 +143,28 @@ test('server-connection：卡片结构与动态容器锚点', () => {
     assert.equal(form.querySelector('#vcpApiKey').getAttribute('type'), 'password');
     assert.equal(form.querySelector('#addNetworkPathBtn').getAttribute('data-vcp-style'), '6');
     assert.ok(form.querySelector('#addNetworkPathBtn').classList.contains('vcp-settings-card-add-row'));
+});
+
+test('jev-service：全局服务配置控件、默认值与敏感字段形态', () => {
+    const { form } = renderIntoForm(jevServiceSection);
+    for (const id of [
+        'jevEnabled', 'jevProvider', 'jevApiUrl', 'jevApiKey', 'jevModel',
+        'jevTimeoutMs', 'jevMaxRetries', 'jevRetryBaseDelayMs', 'jevProxyUrl',
+        'jevHttpReferer', 'jevAppTitle',
+    ]) {
+        assert.ok(form.querySelector(`#${id}`), `missing #${id}`);
+    }
+    assert.equal(form.querySelector('#jevApiKey').type, 'password');
+    assert.equal(form.querySelector('#jevProvider').value, 'typesafe');
+    assert.deepEqual(
+        [...form.querySelector('#jevProvider').options].map(option => option.value),
+        ['typesafe', 'openrouter']
+    );
+    assert.equal(form.querySelector('#jevTimeoutMs').value, '30000');
+    assert.equal(form.querySelector('#jevMaxRetries').value, '2');
+    assert.equal(form.querySelector('#jevRetryBaseDelayMs').value, '500');
+    assert.equal(form.querySelector('#jevAppTitle').placeholder, 'VCPChat');
+    assert.equal(form.querySelectorAll('.vcp-settings-card').length, 3);
 });
 
 test('render-settings：stepper 内联行、预设行、滑杆与自定义行', () => {
