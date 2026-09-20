@@ -3105,6 +3105,33 @@ html .vcp-ui-scope .invite-agent-button img {
     flex-shrink: 0;
 }
 
+html .vcp-ui-scope .jev-group-control-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-height: 34px;
+    padding: 6px 13px 6px 7px;
+    line-height: 1;
+    text-align: center;
+}
+
+html .vcp-ui-scope .jev-group-control-button .jev-group-control-icon {
+    display: block;
+    width: 16px;
+    height: 16px;
+    min-width: 16px;
+    margin: 0;
+    flex: 0 0 16px;
+    transform: translateX(2px);
+    pointer-events: none;
+}
+
+html .vcp-ui-scope .jev-group-control-button span {
+    flex: 0 1 auto;
+    line-height: 16px;
+}
+
 html .vcp-ui-scope .invite-agent-button span {
     white-space: nowrap;
     overflow: hidden;

@@ -130,6 +130,41 @@
         return svg;
     }
 
+    function buildJevControlIcon(doc, type) {
+        const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.classList.add('jev-group-control-icon');
+        svg.setAttribute('viewBox', '0 0 20 20');
+        svg.setAttribute('width', '16');
+        svg.setAttribute('height', '16');
+        svg.setAttribute('fill', 'none');
+        svg.setAttribute('stroke', 'currentColor');
+        svg.setAttribute('stroke-width', '1.7');
+        svg.setAttribute('stroke-linecap', 'round');
+        svg.setAttribute('stroke-linejoin', 'round');
+        svg.setAttribute('aria-hidden', 'true');
+        svg.setAttribute('focusable', 'false');
+        svg.style.flex = '0 0 auto';
+
+        const paths = type === 'start'
+            ? [
+                'M3.25 4.25h9.5a2.5 2.5 0 0 1 2.5 2.5v4.5a2.5 2.5 0 0 1-2.5 2.5H8l-3.75 2.5v-2.9a2.5 2.5 0 0 1-1-2V6.75a2.5 2.5 0 0 1 2.5-2.5Z',
+                'M7 8.9h4.5',
+                'M16.25 6.75h.25a2.25 2.25 0 0 1 2.25 2.25v3.25a2.25 2.25 0 0 1-1.25 2l.15 2.25-2.8-1.85'
+            ]
+            : [
+                'M16.4 7.1A7 7 0 0 0 4.2 5.25L2.5 7',
+                'M2.5 3.5V7H6',
+                'M3.6 12.9a7 7 0 0 0 12.2 1.85L17.5 13',
+                'M17.5 16.5V13H14'
+            ];
+        paths.forEach(data => {
+            const path = doc.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', data);
+            svg.append(path);
+        });
+        return svg;
+    }
+
     function buildGripVerticalIcon(doc) {
         const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.setAttribute('viewBox', '0 0 16 16');
@@ -397,14 +432,18 @@
             startButton.type = 'button';
             startButton.className = 'invite-agent-button jev-group-control-button';
             startButton.title = '随机选择一名成员开场，随后进入 JEV 自治裁决';
-            startButton.textContent = '发起群聊';
+            const startLabel = doc.createElement('span');
+            startLabel.textContent = '发起群聊';
+            startButton.append(buildJevControlIcon(doc, 'start'), startLabel);
             startButton.addEventListener('click', () => onStartJev?.(groupId, topicId));
 
             const continueButton = doc.createElement('button');
             continueButton.type = 'button';
             continueButton.className = 'invite-agent-button jev-group-control-button';
             continueButton.title = '让 JEV 基于当前历史继续裁决';
-            continueButton.textContent = '继续群聊';
+            const continueLabel = doc.createElement('span');
+            continueLabel.textContent = '继续群聊';
+            continueButton.append(buildJevControlIcon(doc, 'continue'), continueLabel);
             continueButton.addEventListener('click', () => onContinueJev?.(groupId, topicId));
             container.append(startButton, continueButton);
         }
