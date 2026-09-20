@@ -38,7 +38,8 @@ function initialize(mainWindow, context) {
         stopSelectionListener,
         startSelectionListener,
         fileWatcher,
-        historyMutationQueue = new HistoryMutationQueue({ userDataDir: USER_DATA_DIR, fileWatcher })
+        historyMutationQueue = new HistoryMutationQueue({ userDataDir: USER_DATA_DIR, fileWatcher }),
+        jevService = null
     } = context;
 
     if (ipcHandlersRegistered) {
@@ -56,6 +57,18 @@ function initialize(mainWindow, context) {
             return config;
         }
         return { error: `Agent config for ${agentId} not found.` };
+    };
+
+    groupChat.initializeRuntimeServices({
+        historyMutationQueue,
+        jevService,
+        getAgentConfigById
+    });
+
+    const createStreamSender = () => data => {
+        if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+            mainWindow.webContents.send('vcp-stream-event', data);
+        }
     };
 
     // --- Group Chat IPC Handlers ---
@@ -164,11 +177,16 @@ function initialize(mainWindow, context) {
     ipcMain.handle('inviteAgentToSpeak', async (event, groupId, topicId, invitedAgentId) => {
         console.log(`[Main IPC] Received inviteAgentToSpeak for Group: ${groupId}, Topic: ${topicId}, Agent: ${invitedAgentId}`);
         try {
-            const sendStreamChunkToRenderer = (data) => { // Channel is now fixed
-                if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
-                    mainWindow.webContents.send('vcp-stream-event', data);
-                }
-            };
+            const sendStreamChunkToRenderer = createStreamSender();
+            const groupConfig = await groupChat.getAgentGroupConfig(groupId);
+            if (groupConfig?.mode === 'jev') {
+                return await groupChat.enqueueJevGroupAgent(
+                    groupId,
+                    topicId,
+                    invitedAgentId,
+                    sendStreamChunkToRenderer
+                );
+            }
 
             await groupChat.handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendStreamChunkToRenderer, getAgentConfigById);
             return { success: true, message: "Agent invitation processing started." };
@@ -176,6 +194,50 @@ function initialize(mainWindow, context) {
             console.error(`[Main IPC] Error in inviteAgentToSpeak handler for Group ${groupId}, Agent ${invitedAgentId}:`, error);
             return { success: false, error: error.message };
         }
+    });
+
+    ipcMain.handle('start-jev-group-chat', async (event, groupId, topicId) => {
+        try {
+            return await groupChat.startJevGroupChat(
+                groupId,
+                topicId,
+                createStreamSender()
+            );
+        } catch (error) {
+            console.error(`[Main IPC] Error starting JEV group chat for ${groupId}/${topicId}:`, error);
+            return { success: false, error: error.message, code: error.code };
+        }
+    });
+
+    ipcMain.handle('continue-jev-group-chat', async (event, groupId, topicId) => {
+        try {
+            return await groupChat.continueJevGroupChat(
+                groupId,
+                topicId,
+                createStreamSender()
+            );
+        } catch (error) {
+            console.error(`[Main IPC] Error continuing JEV group chat for ${groupId}/${topicId}:`, error);
+            return { success: false, error: error.message, code: error.code };
+        }
+    });
+
+    ipcMain.handle('enqueue-jev-group-agent', async (event, groupId, topicId, agentId) => {
+        try {
+            return await groupChat.enqueueJevGroupAgent(
+                groupId,
+                topicId,
+                agentId,
+                createStreamSender()
+            );
+        } catch (error) {
+            console.error(`[Main IPC] Error enqueueing JEV group agent for ${groupId}/${topicId}:`, error);
+            return { success: false, error: error.message, code: error.code };
+        }
+    });
+
+    ipcMain.handle('get-jev-group-chat-state', async (event, groupId, topicId) => {
+        return groupChat.getJevGroupChatState(groupId, topicId);
     });
 
     ipcMain.handle('interrupt-group-chat-queue', async (event, groupId, topicId) => {

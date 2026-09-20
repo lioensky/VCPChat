@@ -378,6 +378,68 @@
         line-height: var(--vcp-ui-line-body);
     }
 
+    /* JEV 参数位于窄设置侧栏中，必须纵向排列，避免通用 grid 将
+       七个数值字段压进同一行。字段自身保持完整宽度和可读标签。 */
+    html .vcp-ui-scope #groupSettingsContainer #jevModeSettingsContainer {
+        width: 100%;
+        min-width: 0;
+        gap: var(--vcp-ui-space-3);
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer #jevModeSettingsContainer > .group-settings-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--vcp-ui-space-2);
+        width: 100%;
+        min-width: 0;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer #jevModeSettingsContainer > .group-settings-grid > .group-settings-field-shell {
+        width: 100%;
+        min-width: 0;
+        margin: 0;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer #jevModeSettingsContainer input[type="number"] {
+        width: 100%;
+        min-width: 0;
+        height: 34px;
+        box-sizing: border-box;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer #jevMemberStylesInputs {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--vcp-ui-space-2);
+        width: 100%;
+        min-width: 0;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .jev-member-style-item {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        height: auto;
+        min-height: 0;
+        padding: var(--vcp-ui-space-2);
+        gap: var(--vcp-ui-space-1);
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .jev-member-style-item label {
+        max-width: none;
+        padding: 0;
+        border-right: 0;
+        white-space: normal;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .jev-member-style-item textarea {
+        width: 100%;
+        min-width: 0;
+        min-height: 76px;
+        margin: 0;
+        resize: vertical;
+    }
+
     html .vcp-ui-scope #groupSettingsContainer .member-tag-input-item {
         display: flex;
         flex-direction: column;

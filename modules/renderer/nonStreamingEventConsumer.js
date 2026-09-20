@@ -18,6 +18,13 @@ export function createNonStreamingEventConsumer({ renderTarget, messageRenderer,
                 return true;
             }
             if (type === 'no_ai_response') return true;
+            if ([
+                'group_queue_state',
+                'group_queue_updated',
+                'group_queue_stopped',
+                'jev_arbitration_started',
+                'jev_arbitration_result'
+            ].includes(type)) return true;
             if (!relevant) return false;
             if (type) onUnhandled(`[NonStreamingEventConsumer] Unhandled event: ${type}`, event);
             return false;

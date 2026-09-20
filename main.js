@@ -1483,7 +1483,8 @@ if (!gotTheLock) {
             stopSelectionListener: assistantHandlers.stopSelectionListener,
             startSelectionListener: assistantHandlers.startSelectionListener,
             fileWatcher, // Inject fileWatcher here as well
-            historyMutationQueue
+            historyMutationQueue,
+            jevService: globalJevService
         });
         regexHandlers.initialize({ AGENT_DIR });
         chatHandlers.initialize(mainWindow, {

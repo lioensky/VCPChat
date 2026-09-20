@@ -23,6 +23,9 @@ window.GroupRenderer = (() => {
     let sequentialOrderContainer, sequentialSpeakerOrderList;
     let memberTagsContainer, memberTagsInputsDiv;
     let tagMatchModeSelect;
+    let jevModeSettingsContainer, jevMemberStylesInputs;
+    let jevNavigatorPrompt, jevSpeakerThreshold, jevContinueThreshold, jevStopThreshold;
+    let jevMaxSpeakersPerRound, jevMaxAutonomousRounds, jevHistoryWindow, jevContinueDebounceMs;
     let groupPromptTextarea, invitePromptTextarea;
     let groupUseUnifiedModel, groupUnifiedModelContainer, groupUnifiedModelInput, openGroupModelSelectBtn;
     let deleteGroupBtn;
@@ -183,6 +186,16 @@ window.GroupRenderer = (() => {
         memberTagsContainer = getGroupControl('memberTagsContainer');
         memberTagsInputsDiv = getGroupControl('memberTagsInputs');
         tagMatchModeSelect = getGroupControl('tagMatchMode');
+        jevModeSettingsContainer = getGroupControl('jevModeSettingsContainer');
+        jevMemberStylesInputs = getGroupControl('jevMemberStylesInputs');
+        jevNavigatorPrompt = getGroupControl('jevNavigatorPrompt');
+        jevSpeakerThreshold = getGroupControl('jevSpeakerThreshold');
+        jevContinueThreshold = getGroupControl('jevContinueThreshold');
+        jevStopThreshold = getGroupControl('jevStopThreshold');
+        jevMaxSpeakersPerRound = getGroupControl('jevMaxSpeakersPerRound');
+        jevMaxAutonomousRounds = getGroupControl('jevMaxAutonomousRounds');
+        jevHistoryWindow = getGroupControl('jevHistoryWindow');
+        jevContinueDebounceMs = getGroupControl('jevContinueDebounceMs');
         groupPromptTextarea = getGroupControl('groupPrompt');
         invitePromptTextarea = getGroupControl('invitePrompt');
         deleteGroupBtn = getGroupControl('deleteGroupBtn'); // This is the button inside the group settings form
@@ -275,7 +288,8 @@ window.GroupRenderer = (() => {
         const modeLabels = {
             sequential: '顺序发言',
             naturerandom: '自然随机',
-            invite_only: '邀请发言'
+            invite_only: '邀请发言',
+            jev: 'JEV 智能群聊'
         };
         const tagModeLabels = {
             strict: '严格模式',
@@ -292,6 +306,8 @@ window.GroupRenderer = (() => {
             }
         } else if (groupChatModeSelect?.value === 'naturerandom') {
             lines.push(`Tag: ${tagModeLabels[tagMatchModeSelect?.value] || '严格模式'}`);
+        } else if (groupChatModeSelect?.value === 'jev') {
+            lines.push(`K: ${jevMaxSpeakersPerRound?.value || 3} · 截断: ${jevSpeakerThreshold?.value || 0.16}`);
         }
         return lines.join('\n');
     }
@@ -436,7 +452,7 @@ window.GroupRenderer = (() => {
 
         // After selecting group and loading history, update invite buttons
         console.log(`[GroupRenderer handleSelectGroup] Checking mode for group ${groupId}. Mode: ${groupConfig?.mode}`);
-        if (groupConfig && groupConfig.mode === 'invite_only') {
+        if (groupConfig && ['invite_only', 'jev'].includes(groupConfig.mode)) {
             console.log(`[GroupRenderer handleSelectGroup] Group ${groupId} is in invite_only mode. Members:`, groupConfig.members);
             const membersDetails = await Promise.all(
                 (groupConfig.members || []).map(async (id) => {
@@ -530,6 +546,15 @@ window.GroupRenderer = (() => {
         if (tagMatchModeSelect) {
             tagMatchModeSelect.value = persistedNaturalSettings.tagMatchMode || groupConfig.tagMatchMode || 'strict';
         }
+        const jevSettings = groupConfig.modeSettings?.jev || {};
+        jevNavigatorPrompt.value = jevSettings.navigatorPrompt || '';
+        jevSpeakerThreshold.value = jevSettings.speakerThreshold ?? 0.16;
+        jevContinueThreshold.value = jevSettings.continueThreshold ?? 0.45;
+        jevStopThreshold.value = jevSettings.stopThreshold ?? 0.55;
+        jevMaxSpeakersPerRound.value = jevSettings.maxSpeakersPerRound ?? 3;
+        jevMaxAutonomousRounds.value = jevSettings.maxAutonomousRounds ?? 12;
+        jevHistoryWindow.value = jevSettings.historyWindow ?? 24;
+        jevContinueDebounceMs.value = jevSettings.continueDebounceMs ?? 800;
         groupPromptTextarea.value = groupConfig.groupPrompt || '';
         invitePromptTextarea.value = groupConfig.invitePrompt ?? '[系统邀请指令:] 现在轮到你{{VCPChatAgentName}}发言了。';
 
@@ -636,12 +661,14 @@ window.GroupRenderer = (() => {
                 onChange: () => {
                     updateMemberTagsInputs(groupConfig);
                     updateSequentialSpeakerOrder(groupConfig);
+                    updateJevMemberStyles(groupConfig);
                     updateGroupSectionSummary('identity');
                     updateGroupSectionSummary('mode');
                 }
             });
             updateMemberTagsInputs(groupConfig); // Initial population of tag inputs
             updateSequentialSpeakerOrder(groupConfig);
+            updateJevMemberStyles(groupConfig);
             updateGroupSectionSummary('identity');
             updateGroupSectionSummary('mode');
             return true;
@@ -680,8 +707,23 @@ window.GroupRenderer = (() => {
     }
 
 
+    function updateJevMemberStyles(groupConfig = {}) {
+        window.VCPGroupSettingsSlots.renderJevMemberStyles({
+            container: jevMemberStylesInputs,
+            membersContainer: groupMembersListDiv,
+            agents: availableAgentsForGroup,
+            groupConfig,
+            onChanged: () => updateGroupSectionSummary('mode')
+        });
+    }
+
     function toggleModeSettingsVisibility(mode) {
-        window.VCPGroupSettingsSlots.setModeVisibility({ sequentialContainer: sequentialOrderContainer, tagsContainer: memberTagsContainer, mode });
+        window.VCPGroupSettingsSlots.setModeVisibility({
+            sequentialContainer: sequentialOrderContainer,
+            tagsContainer: memberTagsContainer,
+            jevContainer: jevModeSettingsContainer,
+            mode
+        });
         updateGroupSectionSummary('mode');
     }
 
@@ -738,7 +780,19 @@ window.GroupRenderer = (() => {
             invitePrompt: invitePromptTextarea?.value?.trim?.() || '',
             tagMatchMode: tagMatchModeSelect?.value || 'strict',
             memberTags: window.VCPGroupSettingsSlots.readMemberTags(memberTagsInputsDiv),
-            sequentialSpeakerOrder: getSequentialSpeakerOrder()
+            sequentialSpeakerOrder: getSequentialSpeakerOrder(),
+            jev: {
+                navigatorPrompt: jevNavigatorPrompt?.value?.trim?.() || '',
+                speakerThreshold: Number(jevSpeakerThreshold?.value),
+                continueThreshold: Number(jevContinueThreshold?.value),
+                stopThreshold: Number(jevStopThreshold?.value),
+                maxSpeakersPerRound: Number(jevMaxSpeakersPerRound?.value),
+                maxAutonomousRounds: Number(jevMaxAutonomousRounds?.value),
+                historyWindow: Number(jevHistoryWindow?.value),
+                continueDebounceMs: Number(jevContinueDebounceMs?.value),
+                fallbackPolicy: 'stop',
+                memberStyles: window.VCPGroupSettingsSlots.readJevMemberStyles(jevMemberStylesInputs)
+            }
         });
         const formDraft = readFormDraft();
 
@@ -788,7 +842,15 @@ window.GroupRenderer = (() => {
                 ...existingModeSettings,
                 sequential: sequentialSettings,
                 naturerandom: naturalSettings,
-                invite_only: { ...(existingModeSettings.invite_only || {}) }
+                invite_only: { ...(existingModeSettings.invite_only || {}) },
+                jev: {
+                    ...(existingModeSettings.jev || {}),
+                    ...formDraft.jev,
+                    memberStyles: {
+                        ...(existingModeSettings.jev?.memberStyles || {}),
+                        ...formDraft.jev.memberStyles
+                    }
+                }
             },
             // 保留旧字段供旧版本读取；权威数据位于 modeSettings。
             sequentialSpeakerOrder: normalizedSequentialOrder,
@@ -858,7 +920,11 @@ window.GroupRenderer = (() => {
                 // If current selected group is this one, update its details
                 const currentSelected = currentSelectedItemRef.get();
                 if (currentSelected.id === targetGroupId && currentSelected.type === 'group') {
-                    currentSelectedItemRef.set({ ...currentSelected, ...result.agentGroup });
+                    currentSelectedItemRef.set({
+                        ...currentSelected,
+                        ...result.agentGroup,
+                        config: result.agentGroup
+                    });
                     const chatHeaderEl = mainRendererElements?.currentChatNameH3 || mainRendererElements?.currentChatAgentNameH3;
                     if (chatHeaderEl) {
                         chatHeaderEl.textContent = `与群组 ${result.agentGroup.name} 聊天中`;
@@ -882,7 +948,7 @@ window.GroupRenderer = (() => {
                 currentSelectedItemRef.get()?.type !== 'group') return;
             // Update invite buttons based on new mode after saving
             const updatedGroupConfig = result.agentGroup || newConfig; // Use result if available, else optimistic newConfig
-            if (updatedGroupConfig.mode === 'invite_only') {
+            if (['invite_only', 'jev'].includes(updatedGroupConfig.mode)) {
                 const membersDetails = await Promise.all(
                     (updatedGroupConfig.members || []).map(id => electronAPI.getAgentConfig(id))
                 );
@@ -1038,7 +1104,7 @@ window.GroupRenderer = (() => {
         const currentSelected = currentSelectedItemRef.get();
         if (currentSelected && currentSelected.type === 'group' && currentSelected.config) {
             const groupConfig = currentSelected.config;
-            if (groupConfig.mode === 'invite_only') {
+            if (['invite_only', 'jev'].includes(groupConfig.mode)) {
                 console.log(`[GroupRenderer handleGroupTopicSelection] InviteOnly mode detected for group ${groupId}, topic ${topicId}. Refreshing invite buttons.`);
                 const membersDetails = await Promise.all(
                     (groupConfig.members || []).map(async (id) => {
@@ -1192,11 +1258,10 @@ window.GroupRenderer = (() => {
         try {
             const result = await electronAPI.interruptGroupChatQueue(effectiveGroupId, effectiveTopicId);
             if (result?.success) {
-                const interruptedCount = Number(result.interruptedRequests) || 0;
                 uiHelper?.showToastNotification?.(
-                    interruptedCount > 0
-                        ? `已中止群聊队列，并停止 ${interruptedCount} 个进行中的回复。`
-                        : '已中止群聊队列。',
+                    result.currentReplyContinues
+                        ? '已停止后续群聊队列，当前回复将继续完成。'
+                        : '已停止后续群聊队列。',
                     'success'
                 );
             } else {
@@ -1409,8 +1474,34 @@ window.GroupRenderer = (() => {
             groupConfig,
             groupId,
             topicId,
-            onInvite: handleInviteAgentButtonClick
+            onInvite: handleInviteAgentButtonClick,
+            onStartJev: handleStartJevGroupChat,
+            onContinueJev: handleContinueJevGroupChat
         });
+    }
+
+    async function handleStartJevGroupChat(groupId) {
+        const topicId = currentTopicIdRef.get();
+        if (!topicId) {
+            uiHelper.showToastNotification('请先选择一个群聊话题。', 'error');
+            return;
+        }
+        const result = await electronAPI.startJevGroupChat(groupId, topicId);
+        if (!result?.success) {
+            uiHelper.showToastNotification(`发起 JEV 群聊失败：${result?.error || '未知错误'}`, 'error');
+        }
+    }
+
+    async function handleContinueJevGroupChat(groupId) {
+        const topicId = currentTopicIdRef.get();
+        if (!topicId) {
+            uiHelper.showToastNotification('请先选择一个群聊话题。', 'error');
+            return;
+        }
+        const result = await electronAPI.continueJevGroupChat(groupId, topicId);
+        if (!result?.success) {
+            uiHelper.showToastNotification(`继续 JEV 群聊失败：${result?.error || '未知错误'}`, 'error');
+        }
     }
 
     async function handleInviteAgentButtonClick(groupId, _topicId, agentId, agentName) { // _topicId is ignored

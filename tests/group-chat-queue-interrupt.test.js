@@ -47,7 +47,14 @@ test('group queue interruption is exposed from engine through IPC and chat prelo
 
     assert.match(engine, /async function interruptGroupChatQueue\(groupId, topicId\)/);
     assert.match(engine, /groupQueueCancellationVersions\.set/);
-    assert.match(engine, /request\.controller\.abort\(\)/);
+    const queueInterruptBody = engine.slice(
+        engine.indexOf('async function interruptGroupChatQueue'),
+        engine.indexOf('\n\nmodule.exports')
+    );
+    assert.doesNotMatch(queueInterruptBody, /request\.controller\.abort\(\)/);
+    assert.doesNotMatch(queueInterruptBody, /sendRemoteGroupInterrupt/);
+    assert.match(queueInterruptBody, /currentReplyContinues/);
+    assert.match(queueInterruptBody, /active reply\/replies continue to completion/);
     assert.match(engine, /interruptGroupChatQueue,/);
 
     assert.match(handlers, /ipcMain\.handle\('interrupt-group-chat-queue'/);

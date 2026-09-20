@@ -286,9 +286,48 @@
             .map(input => [input.dataset.agentId, input.value.trim()]));
     }
 
-    function setModeVisibility({ sequentialContainer, tagsContainer, mode }) {
+    function renderJevMemberStyles({ container, membersContainer, agents, groupConfig = {}, onChanged }) {
+        if (!container || !membersContainer) return;
+        const draftStyles = Object.fromEntries(
+            Array.from(container.querySelectorAll('textarea[data-agent-id]'))
+                .map(input => [input.dataset.agentId, input.value])
+        );
+        const persisted = groupConfig.modeSettings?.jev?.memberStyles || {};
+        const selectedIds = readSelectedMemberIds(membersContainer);
+        const doc = container.ownerDocument;
+        clear(container);
+
+        selectedIds.forEach(agentId => {
+            const agent = (agents || []).find(candidate => candidate.id === agentId);
+            if (!agent) return;
+            const row = doc.createElement('div');
+            row.className = 'member-tag-input-item jev-member-style-item';
+            const label = doc.createElement('label');
+            label.htmlFor = `jev_style_for_${agentId}`;
+            label.textContent = agent.name || agent.id;
+            const input = doc.createElement('textarea');
+            input.id = `jev_style_for_${agentId}`;
+            input.dataset.agentId = agentId;
+            input.rows = 3;
+            input.placeholder = '例如：熟悉 VCP 与新技术；遇到相关问题、需要补充新信息或被点名时积极回应，避免重复他人结论。';
+            input.value = draftStyles[agentId] ?? persisted[agentId] ?? '';
+            input.addEventListener('input', () => onChanged?.());
+            row.append(label, input);
+            container.appendChild(row);
+        });
+    }
+
+    function readJevMemberStyles(container) {
+        return Object.fromEntries(
+            Array.from(container?.querySelectorAll('textarea[data-agent-id]') || [])
+                .map(input => [input.dataset.agentId, input.value.trim()])
+        );
+    }
+
+    function setModeVisibility({ sequentialContainer, tagsContainer, jevContainer, mode }) {
         if (sequentialContainer) sequentialContainer.hidden = mode !== 'sequential';
         if (tagsContainer) tagsContainer.hidden = mode !== 'naturerandom';
+        if (jevContainer) jevContainer.hidden = mode !== 'jev';
     }
 
     function renderTopicList({ topics, container, groupId, currentTopicId, avatarSrc, onSelect, onContextMenu }) {
@@ -330,20 +369,53 @@
         });
     }
 
-    function renderInviteButtons({ container, membersConfigs, groupConfig, groupId, topicId, onInvite }) {
+    function renderInviteButtons({
+        container,
+        membersConfigs,
+        groupConfig,
+        groupId,
+        topicId,
+        onInvite,
+        onStartJev,
+        onContinueJev
+    }) {
         if (!container) return;
         clear(container);
-        if (!membersConfigs?.length || !groupConfig || groupConfig.mode !== 'invite_only') {
+        if (
+            !membersConfigs?.length
+            || !groupConfig
+            || !['invite_only', 'jev'].includes(groupConfig.mode)
+        ) {
             container.hidden = true;
             return;
         }
         container.hidden = false;
         const doc = container.ownerDocument;
+
+        if (groupConfig.mode === 'jev') {
+            const startButton = doc.createElement('button');
+            startButton.type = 'button';
+            startButton.className = 'invite-agent-button jev-group-control-button';
+            startButton.title = '随机选择一名成员开场，随后进入 JEV 自治裁决';
+            startButton.textContent = '发起群聊';
+            startButton.addEventListener('click', () => onStartJev?.(groupId, topicId));
+
+            const continueButton = doc.createElement('button');
+            continueButton.type = 'button';
+            continueButton.className = 'invite-agent-button jev-group-control-button';
+            continueButton.title = '让 JEV 基于当前历史继续裁决';
+            continueButton.textContent = '继续群聊';
+            continueButton.addEventListener('click', () => onContinueJev?.(groupId, topicId));
+            container.append(startButton, continueButton);
+        }
+
         membersConfigs.filter(member => member && !member.error).forEach(member => {
             const button = doc.createElement('button');
             button.type = 'button';
             button.className = 'invite-agent-button';
-            button.title = `邀请 ${member.name} 发言`;
+            button.title = groupConfig.mode === 'jev'
+                ? `将 ${member.name} 插入 JEV 发言队列`
+                : `邀请 ${member.name} 发言`;
             const avatar = doc.createElement('img');
             avatar.src = member.avatarUrl || defaultAvatar;
             avatar.alt = member.name || member.id;
@@ -374,6 +446,8 @@
         renderSequentialSpeakerOrder,
         renderMemberTags,
         readMemberTags,
+        renderJevMemberStyles,
+        readJevMemberStyles,
         setModeVisibility,
         renderTopicList,
         renderInviteButtons,

@@ -2049,6 +2049,71 @@ html .vcp-ui-scope .vcp-settings-schema-surface .group-settings-card-shell {
     padding: 4px 0 6px;
 }
 
+/* JEV group mode uses a deliberately vertical form in the narrow settings
+   sidebar. Do not inherit generic multi-column grid geometry here. */
+html .vcp-ui-scope .vcp-settings-schema-surface #jevModeSettingsContainer {
+    width: 100%;
+    min-width: 0;
+    gap: 10px;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface #jevModeSettingsContainer > .group-settings-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface #jevModeSettingsContainer > .group-settings-grid > .group-settings-field-shell {
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface #jevModeSettingsContainer input[type="number"] {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface #jevMemberStylesInputs {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .member-tag-input-item.jev-member-style-item {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    height: auto;
+    min-height: 0;
+    padding: 8px;
+    gap: 5px;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .member-tag-input-item.jev-member-style-item label {
+    max-width: none;
+    padding: 0;
+    border-right: 0;
+    white-space: normal;
+}
+
+html .vcp-ui-scope .vcp-settings-schema-surface .member-tag-input-item.jev-member-style-item textarea {
+    width: 100%;
+    min-width: 0;
+    min-height: 76px;
+    margin: 0;
+    padding: 6px 8px;
+    border: 0.5px solid var(--vcp-settings-border);
+    background: var(--vcp-settings-input);
+    resize: vertical;
+    box-sizing: border-box;
+}
+
 html .vcp-ui-scope .vcp-settings-schema-surface .group-members-list-container,
 html .vcp-ui-scope .vcp-settings-schema-surface .sequential-speaker-order-list,
 html .vcp-ui-scope .vcp-settings-schema-surface #memberTagsInputs {

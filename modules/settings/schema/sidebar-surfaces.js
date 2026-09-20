@@ -33,11 +33,19 @@ const agentFields = Object.freeze([
 
 const groupFields = Object.freeze([
     field('groupNameInput', 'text', '群组名称', { placeholder: '群组名称', required: true, tooltip: '列表和聊天中显示的群组名称。', validation: { required: true } }),
-    field('groupChatMode', 'select', '群聊模式', { options: [['sequential', '顺序发言'], ['naturerandom', '自然随机'], ['invite_only', '邀请发言']], tooltip: '决定群组如何选择下一位发言者：顺序发言、自然随机或仅受邀请。' }),
+    field('groupChatMode', 'select', '群聊模式', { options: [['sequential', '顺序发言'], ['naturerandom', '自然随机'], ['invite_only', '邀请发言'], ['jev', 'JEV 智能群聊']], tooltip: '决定群组如何选择下一位发言者。JEV 智能群聊会按成员权重截断并自主推进话题。' }),
     field('tagMatchMode', 'select', 'Tag 触发模式', { options: [['strict', '严格模式'], ['natural', '自然模式']], tooltip: '自然模式会区分 Tag 来源，尽量避免 Agent 因引用自身历史发言而重复触发。', dependsOn: { field: 'groupChatMode', equals: 'naturerandom' } }),
     field('groupUnifiedModelInput', 'text', '群组统一模型', { placeholder: '选择群组统一模型', tooltip: '启用统一模型后，群组成员共享此模型。', dependsOn: { field: 'groupUseUnifiedModel', equals: true } }),
     field('groupPrompt', 'textarea', 'GroupPrompt', { rows: 4, tooltip: '注入群聊上下文的系统提示词，作为群组整体对话指导。' }),
     field('invitePrompt', 'textarea', 'InvitePrompt', { rows: 4, tooltip: '邀请某个成员发言时使用的提示词。可使用 {{VCPChatAgentName}} 作为被邀请发言的 Agent 名称占位符。' }),
+    field('jevNavigatorPrompt', 'textarea', 'JEV 导航员提示词', { rows: 5, tooltip: '指导 JEV 根据群聊上下文、成员风格和结束必要性分配发言权重。' }),
+    field('jevSpeakerThreshold', 'number', '发言权重截断阈值', { min: 0, max: 1, step: 0.01, tooltip: '概率低于此值的成员不会进入本轮 K 队列。' }),
+    field('jevContinueThreshold', 'number', '继续讨论阈值', { min: 0, max: 1, step: 0.01, tooltip: 'JEV 判断继续讨论的概率低于此值时智能结束。' }),
+    field('jevStopThreshold', 'number', '结束选项阈值', { min: 0, max: 1, step: 0.01, tooltip: '结束选项达到此值且权重最高时智能结束。' }),
+    field('jevMaxSpeakersPerRound', 'number', '单轮最大回复人数 K', { min: 1, max: 32, step: 1, tooltip: '每次裁决最多选取多少位成员依次发言。' }),
+    field('jevMaxAutonomousRounds', 'number', '最大自治裁决轮数', { min: 1, max: 100, step: 1, tooltip: '一次自治运行最多连续裁决轮数，用于防止无限对话。' }),
+    field('jevHistoryWindow', 'number', 'JEV 历史窗口消息数', { min: 1, max: 200, step: 1, tooltip: '发送给 JEV 裁判的最近消息数量。' }),
+    field('jevContinueDebounceMs', 'number', '继续群聊防抖 (ms)', { min: 0, max: 10000, step: 100, tooltip: '防止重复点击继续群聊产生多次运行。' }),
 ]);
 
 export const settingsSidebarSchema = Object.freeze({
@@ -420,7 +428,14 @@ function renderGroupSectionContent(doc, key) {
         const tags = renderField(doc, groupFields[2], 'group-settings-field-shell');
         tags.append(el(doc, 'div', { class: 'group-settings-field-shell group-member-tags-shell' }, el(doc, 'label', { class: 'group-settings-field-label', for: 'memberTagsInputs' }, '成员 Tags', makeHelpBadge(doc, '为成员配置触发标签（逗号分隔），在自然随机模式下匹配。')), el(doc, 'div', { id: 'memberTagsInputs' })));
         const seqLabel = el(doc, 'label', { class: 'group-settings-field-label', for: 'sequentialSpeakerOrderList' }, '顺序发言次序', makeHelpBadge(doc, '拖拽成员或点击上下箭头调整发言顺序。新加入且尚未排序的成员会自动追加到末尾。'));
-        return el(doc, 'div', { class: 'group-settings-card-shell' }, mode, el(doc, 'div', { id: 'sequentialOrderContainer', class: 'group-settings-field-shell', hidden: true }, seqLabel, el(doc, 'div', { id: 'sequentialSpeakerOrderList', class: 'sequential-speaker-order-list', role: 'list', 'aria-label': '顺序发言次序' })), el(doc, 'div', { id: 'memberTagsContainer', class: 'group-settings-field-shell', hidden: true }, tags));
+        const jevSettings = el(doc, 'div', { id: 'jevModeSettingsContainer', class: 'group-settings-field-shell', hidden: true },
+            renderField(doc, groupFields[6], 'group-settings-field-shell'),
+            el(doc, 'div', { class: 'group-settings-grid' },
+                ...groupFields.slice(7, 14).map(spec => renderField(doc, spec, 'group-settings-field-shell'))),
+            el(doc, 'div', { class: 'group-settings-field-shell' },
+                el(doc, 'label', { class: 'group-settings-field-label', for: 'jevMemberStylesInputs' }, '成员发言触发事件风格', makeHelpBadge(doc, '为每位成员填写自然语言描述，告诉 JEV 在什么话题和情境下应提高其发言权重。')),
+                el(doc, 'div', { id: 'jevMemberStylesInputs' })));
+        return el(doc, 'div', { class: 'group-settings-card-shell' }, mode, el(doc, 'div', { id: 'sequentialOrderContainer', class: 'group-settings-field-shell', hidden: true }, seqLabel, el(doc, 'div', { id: 'sequentialSpeakerOrderList', class: 'sequential-speaker-order-list', role: 'list', 'aria-label': '顺序发言次序' })), el(doc, 'div', { id: 'memberTagsContainer', class: 'group-settings-field-shell', hidden: true }, tags), jevSettings);
     }
     if (key === 'model') {
         return el(doc, 'div', { class: 'group-settings-card-shell' }, el(doc, 'div', { class: 'group-settings-switch-row' }, el(doc, 'label', { for: 'groupUseUnifiedModel' }, '启用群组统一模型'), el(doc, 'label', { class: 'switch', for: 'groupUseUnifiedModel', 'aria-label': '启用群组统一模型' }, el(doc, 'input', { id: 'groupUseUnifiedModel', type: 'checkbox' }), el(doc, 'span', { class: 'slider round' }))), el(doc, 'div', { id: 'groupUnifiedModelContainer', class: 'group-settings-field-shell', hidden: true, 'data-schema-field': groupFields[3].id, 'data-schema-depends-on': JSON.stringify(groupFields[3].dependsOn) }, el(doc, 'div', { class: 'model-input-container' }, renderControl(doc, groupFields[3]), el(doc, 'button', { type: 'button', id: 'openGroupModelSelectBtn', class: 'small-button model-picker-toggle-btn', title: '选择模型', 'aria-label': '打开模型选择器' }, el(doc, 'span', { class: 'vcp-ui-icon', 'aria-hidden': 'true' }, 'expand_more')))));
