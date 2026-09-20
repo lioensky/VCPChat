@@ -37,8 +37,9 @@ export const jevServiceSection = section('jev-service', 'Jev 服务', [
             }),
             text('jevApiKey', {
                 inputType: 'password',
-                label: 'API Key',
-                placeholder: '仅保存在本机 settings.json，由主进程使用',
+                label: 'API Key（支持多个）',
+                placeholder: '多个 Key 可用英文逗号、中文逗号或 | 分隔',
+                description: '仅保存在本机 settings.json；多个 Key 按请求依次轮询，同一请求重试时不切换 Key。',
                 stacked: true,
                 save: { trim: true },
             }),

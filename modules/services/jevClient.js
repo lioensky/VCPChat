@@ -29,6 +29,13 @@ function parseNonNegativeInteger(value, fallback, max = Number.MAX_SAFE_INTEGER)
     return Math.min(parsed, max);
 }
 
+function parseApiKeys(value) {
+    return String(value || '')
+        .split(/[,，|]/)
+        .map(key => key.trim())
+        .filter(Boolean);
+}
+
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -49,6 +56,7 @@ class JevClient {
     constructor(options = {}) {
         this.options = { ...options };
         this.proxyAgents = new Map();
+        this.apiKeyCursors = new Map();
     }
 
     _resolveConfig(overrides = {}) {
@@ -65,12 +73,12 @@ class JevClient {
             || process.env.JEV_API_URL
             || defaults.url
         ).trim();
-        const apiKey = String(
+        const apiKeys = parseApiKeys(
             overrides.apiKey
             || this.options.apiKey
             || process.env.JEV_API_KEY
             || ''
-        ).trim();
+        );
         const model = String(
             overrides.model
             || this.options.model
@@ -109,7 +117,7 @@ class JevClient {
         return {
             provider,
             url,
-            apiKey,
+            apiKeys,
             model,
             timeoutMs,
             maxRetries,
@@ -128,6 +136,16 @@ class JevClient {
                 || 'VCPToolBox'
             ).trim()
         };
+    }
+
+    _selectApiKey(apiKeys) {
+        if (!apiKeys.length) return '';
+
+        // 每个 Key 池独立轮询；选择操作发生在首个异步点之前，并发调用不会取得同一游标。
+        const poolId = JSON.stringify(apiKeys);
+        const cursor = this.apiKeyCursors.get(poolId) || 0;
+        this.apiKeyCursors.set(poolId, (cursor + 1) % apiKeys.length);
+        return apiKeys[cursor % apiKeys.length];
     }
 
     _validateState(state) {
@@ -256,9 +274,9 @@ class JevClient {
         }
     }
 
-    _buildHeaders(config, extraHeaders = {}) {
+    _buildHeaders(config, apiKey, extraHeaders = {}) {
         const headers = {
-            Authorization: `Bearer ${config.apiKey}`,
+            Authorization: `Bearer ${apiKey}`,
             'Content-Type': 'application/json'
         };
         if (config.provider === 'openrouter') {
@@ -297,13 +315,13 @@ class JevClient {
 
     isConfigured(overrides = {}) {
         const config = this._resolveConfig(overrides);
-        return Boolean(config.url && config.apiKey && config.model);
+        return Boolean(config.url && config.apiKeys.length && config.model);
     }
 
     getStatus(overrides = {}) {
         const config = this._resolveConfig(overrides);
         return Object.freeze({
-            configured: Boolean(config.url && config.apiKey && config.model),
+            configured: Boolean(config.url && config.apiKeys.length && config.model),
             provider: config.provider,
             url: config.url,
             model: config.model,
@@ -318,9 +336,9 @@ class JevClient {
         this._validateQuestions(questions);
 
         const config = this._resolveConfig(options);
-        if (!config.url || !config.apiKey || !config.model) {
+        if (!config.url || !config.apiKeys.length || !config.model) {
             throw new JevClientError(
-                'Jev 尚未配置，请设置 JEV_API_KEY，并按需设置 JEV_PROVIDER、JEV_API_URL 与 JEV_MODEL。',
+                'Jev 尚未配置，请设置一个或多个 JEV_API_KEY，并按需设置 JEV_PROVIDER、JEV_API_URL 与 JEV_MODEL。',
                 {
                     code: 'JEV_NOT_CONFIGURED',
                     provider: config.provider
@@ -333,7 +351,9 @@ class JevClient {
             state,
             questions
         };
-        const headers = this._buildHeaders(config, options.headers);
+        // 一次 decide（包括其全部重试）固定使用同一个 Key。
+        const apiKey = this._selectApiKey(config.apiKeys);
+        const headers = this._buildHeaders(config, apiKey, options.headers);
         const proxyAgent = this._getProxyAgent(config.proxyUrl);
         let lastError = null;
 
@@ -395,3 +415,4 @@ const jevClient = new JevClient();
 module.exports = jevClient;
 module.exports.JevClient = JevClient;
 module.exports.JevClientError = JevClientError;
+module.exports.parseApiKeys = parseApiKeys;
