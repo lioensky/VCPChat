@@ -1147,10 +1147,14 @@ function transformSpecialBlocks(text, codeBlockMap, thoughtChainMap = null) {
             // 显式单引号工具名优先；未显式指定时才展示能力名称。
             const escapedFullContent = escapeHtml(restoreBlocks(content))
                 .replace(/\r\n?|\n/g, '&#10;');
+            const jevLabel = detectedJev.displayName ? 'JEVToolUse:' : 'JEVToolUse';
+            const jevNameHtml = detectedJev.displayName
+                ? ` <span class="vcp-tool-name-highlight">${escapeHtml(detectedJev.displayName)}</span>`
+                : '';
             return `\n\n<div class="vcp-tool-use-bubble vcp-jev-tool-use-bubble" data-vcp-block-type="jev-tool-use" data-vcp-preserve-children="true">` +
                 `<div class="vcp-tool-summary">` +
-                `<span class="vcp-tool-label">JEVToolUse:</span> ` +
-                `<span class="vcp-tool-name-highlight">${escapeHtml(detectedJev.displayName)}</span>` +
+                `<span class="vcp-tool-label">${jevLabel}</span>` +
+                jevNameHtml +
                 `</div>` +
                 `<div class="vcp-tool-details"></div>` +
                 `<template class="vcp-tool-details-template"><pre>${escapedFullContent}</pre></template>` +

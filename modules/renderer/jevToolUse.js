@@ -28,10 +28,8 @@ function parseJevToolUse(value) {
         || ''
     ).trim();
 
-    // A JEV field without either grammar signal is malformed and should fall
-    // through to the legacy tool renderer rather than becoming a false card.
-    if (!capability && !explicitToolName) return null;
-
+    // JEV 本身就是协议身份。即使内容是完全自由的自然语言，没有能力花括号
+    // 或显式工具名，也仍应生成 JEVToolUse；此时 displayName 留空即可。
     return Object.freeze({
         raw,
         displayName: explicitToolName || capability,

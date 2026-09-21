@@ -47,10 +47,13 @@ test('JEV 支持中文引号中的显式工具名', async () => {
     );
 });
 
-test('缺少 JEV 能力和显式工具语法时不误判为 JEVToolUse', async () => {
+test('纯自然语言 JEV 仍被识别且不生成显示名称', async () => {
     const { parseJevToolUse } = await loadJevParser();
+    const parsed = parseJevToolUse('我要睡10分钟');
 
-    assert.equal(parseJevToolUse('普通自然语言工具描述'), null);
+    assert.equal(parsed?.displayName, '');
+    assert.equal(parsed?.capability, '');
+    assert.equal(parsed?.explicitToolName, '');
     assert.equal(parseJevToolUse(''), null);
     assert.equal(parseJevToolUse(null), null);
 });
@@ -63,7 +66,7 @@ test('主消息渲染器以附加分支渲染 JEV 且保留旧 VCP ToolUse', () 
 
     assert.match(source, /parseJevToolUse\(extractMarkedField\(content,\s*\/JEV:/);
     assert.match(source, /vcp-jev-tool-use-bubble/);
-    assert.match(source, /JEVToolUse:/);
+    assert.match(source, /detectedJev\.displayName\s*\?\s*'JEVToolUse:'\s*:\s*'JEVToolUse'/);
     assert.match(source, /data-vcp-block-type="jev-tool-use"/);
 
     // 兼容渲染不能替代原有协议分支。
@@ -80,7 +83,8 @@ test('阅读模式同步支持 JEVToolUse 并保留旧 VCP ToolUse', () => {
 
     assert.match(source, /parseJevToolUse\(extractMarkedField\(content,\s*\/JEV:/);
     assert.match(source, /vcp-jev-tool-use-bubble/);
-    assert.match(source, /isJevToolUse\s*\?\s*'JEVToolUse:'\s*:\s*'VCP-ToolUse:'/);
+    assert.match(source, /displayName\s*\?\s*'JEVToolUse:'\s*:\s*'JEVToolUse'/);
+    assert.match(source, /:\s*'VCP-ToolUse:'/);
 });
 
 test('JEV 修饰样式复用原 ToolUse 组件而不覆盖旧组件规则', () => {

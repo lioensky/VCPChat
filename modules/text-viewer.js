@@ -690,13 +690,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                 ? 'vcp-tool-use-bubble vcp-jev-tool-use-bubble expanded'
                 : 'vcp-tool-use-bubble expanded';
             const blockType = isJevToolUse ? 'jev-tool-use' : 'tool-use';
-            const label = isJevToolUse ? 'JEVToolUse:' : 'VCP-ToolUse:';
             const displayName = isJevToolUse ? detectedJev.displayName : toolName;
+            const label = isJevToolUse
+                ? (displayName ? 'JEVToolUse:' : 'JEVToolUse')
+                : 'VCP-ToolUse:';
+            const nameHtml = displayName
+                ? ` <span class="vcp-tool-name-highlight">${escapeHtml(displayName)}</span>`
+                : '';
             // 阅读模式以完整阅读为主，工具调用默认展开；JEV 只是兼容分支。
             return `\n\n<div class="${bubbleClass}" data-vcp-block-type="${blockType}">` +
                 `<div class="vcp-tool-summary">` +
-                `<span class="vcp-tool-label">${label}</span> ` +
-                `<span class="vcp-tool-name-highlight">${escapeHtml(displayName)}</span>` +
+                `<span class="vcp-tool-label">${label}</span>` +
+                nameHtml +
                 `</div>` +
                 `<div class="vcp-tool-details"><pre>${escapedFullContent}</pre></div>` +
                 `</div>\n\n`;
