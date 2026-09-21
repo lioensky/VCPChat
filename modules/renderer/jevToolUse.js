@@ -5,7 +5,8 @@
  * plugin fields and does not replace the existing tool_name rendering path.
  *
  * Display priority:
- * 1. Explicit tool name enclosed in single quotes, for example 'GPT生图'
+ * 1. Explicit tool name enclosed in quotes or backticks, for example
+ *    'GPT生图' or `GPT生图`
  * 2. Capability enclosed in braces, for example {联网搜索}
  *
  * @param {string} value Raw value inside JEV:「始」...「末」
@@ -27,6 +28,7 @@ function parseJevToolUse(value) {
     const capability = (parseSource.match(/\{([^{}\r\n]+)\}/u)?.[1] || '').trim();
     const explicitToolName = (
         parseSource.match(/'([^'\r\n]+)'/u)?.[1]
+        || parseSource.match(/`([^`\r\n]+)`/u)?.[1]
         || parseSource.match(/‘([^’\r\n]+)’/u)?.[1]
         || parseSource.match(/“([^”\r\n]+)”/u)?.[1]
         || ''

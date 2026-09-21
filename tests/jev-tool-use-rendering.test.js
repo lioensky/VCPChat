@@ -57,6 +57,10 @@ test('JEV 支持中文引号及 HTML 转义单引号中的显式工具名', asyn
         parseJevToolUse("请使用 {联网搜索} 中的 'Tavily'，搜索【主题】。")?.displayName,
         'Tavily'
     );
+    assert.equal(
+        parseJevToolUse('请使用 {联网搜索} 中的 `B站获取`，获取视频【BV1Q4tz6NE1Q】。')?.displayName,
+        'B站获取'
+    );
 });
 
 test('纯自然语言 JEV 仍被识别且不生成显示名称', async () => {
