@@ -65,10 +65,17 @@ function createFixture(options = {}) {
         ['agent-a:topic-a', [{ id: 'a-message', role: 'assistant', content: 'A', timestamp: 1 }]],
         ['agent-b:topic-b', [{ id: 'b-message', role: 'assistant', content: 'B', timestamp: 2 }]],
         ['agent-b:topic-b-2', [{ id: 'b2-message', role: 'assistant', content: 'B2', timestamp: 3 }]],
+        ['group-jev:topic-jev', [{ id: 'jev-existing', role: 'assistant', content: 'JEV', timestamp: 4 }]],
     ]);
     const configs = {
         'agent-a': { id: 'agent-a', name: 'Agent A', agentDataPath: '/tmp/a', topics: [{ id: 'topic-a', createdAt: 1 }] },
         'agent-b': { id: 'agent-b', name: 'Agent B', agentDataPath: '/tmp/b', topics: [{ id: 'topic-b', createdAt: 2 }, { id: 'topic-b-2', createdAt: 3 }] },
+        'group-jev': { id: 'group-jev', name: 'JEV Group', mode: 'jev', agentDataPath: '/tmp/group-jev', topics: [{ id: 'topic-jev', createdAt: 4 }] },
+    };
+    const pendingGroupMessageIds = options.pendingGroupMessageIds || new Set();
+    const groupRenderer = options.groupRenderer || {
+        isPendingUserMessage: messageId => pendingGroupMessageIds.has(messageId),
+        acknowledgePendingUserMessage: messageId => pendingGroupMessageIds.delete(messageId),
     };
     const chatMessages = window.document.getElementById('chatMessages');
     let canvasContentListener = null;
@@ -123,6 +130,11 @@ function createFixture(options = {}) {
             topicRequests.set(itemId, pending);
             return pending.promise;
         },
+        getGroupTopics: itemId => {
+            const pending = deferred();
+            topicRequests.set(itemId, pending);
+            return pending.promise;
+        },
         getChatHistory: async (itemId, requestedTopicId) => {
             const gate = nextHistoryReadGate;
             if (gate) {
@@ -133,6 +145,7 @@ function createFixture(options = {}) {
             return histories.get(`${itemId}:${requestedTopicId}`) || [];
         },
         getAgentConfig: async itemId => configs[itemId],
+        getAgentGroupConfig: async itemId => configs[itemId],
         createNewTopicForAgent: itemId => {
             const pending = deferred();
             const requests = createTopicRequests.get(itemId) || [];
@@ -232,7 +245,7 @@ function createFixture(options = {}) {
                 },
             },
             topicListManager: { loadTopicList: () => options.topicListProjection?.promise },
-            groupRenderer: null,
+            groupRenderer,
         },
         refs: {
             currentSelectedItemRef: { get: () => selected, set: value => { selected = Object.freeze({ ...value }); } },
@@ -920,5 +933,56 @@ test('history sync does not delete a terminal message that commits while the fil
     await sync;
 
     assert.ok(fixture.state().history.some(message => message.id === 'tool-terminal'));
+    fixture.dom.window.close();
+});
+
+test('JEV history sync cannot delete a pending user bubble from a pre-commit file snapshot', async () => {
+    const pendingGroupMessageIds = new Set();
+    const fixture = createFixture({ pendingGroupMessageIds });
+    const selected = fixture.chatManager.selectItem(
+        'group-jev',
+        'group',
+        'JEV Group',
+        null,
+        fixture.configs['group-jev']
+    );
+    await new Promise(resolve => setImmediate(resolve));
+    fixture.topicRequests.get('group-jev').resolve(fixture.configs['group-jev'].topics);
+    await selected;
+
+    const optimisticUser = {
+        id: 'jev-pending-user',
+        role: 'user',
+        content: '@Nova 请回答',
+        timestamp: 5,
+    };
+    pendingGroupMessageIds.add(optimisticUser.id);
+    fixture.setCurrentHistory([...fixture.state().history, optimisticUser]);
+    await fixture.window.document.defaultView.Promise.resolve();
+    const bubble = fixture.window.document.createElement('div');
+    bubble.className = 'message-item user';
+    bubble.dataset.messageId = optimisticUser.id;
+    fixture.window.document.getElementById('chatMessages').append(bubble);
+
+    // JEV 编排刚启动时，监听器读到了用户消息落盘前的旧快照。
+    await fixture.chatManager.syncHistoryFromFile('group-jev', 'group', 'topic-jev');
+    assert.ok(fixture.state().history.some(message => message.id === optimisticUser.id));
+    assert.ok(fixture.window.document.querySelector('[data-message-id="jev-pending-user"]'));
+
+    // 后续快照包含该消息，发送事务得到确认并释放保护。
+    fixture.setPersistedHistory('group-jev', 'topic-jev', [
+        { id: 'jev-existing', role: 'assistant', content: 'JEV', timestamp: 4 },
+        optimisticUser,
+    ]);
+    await fixture.chatManager.syncHistoryFromFile('group-jev', 'group', 'topic-jev');
+    assert.equal(pendingGroupMessageIds.has(optimisticUser.id), false);
+
+    // 确认后的真实文件删除仍应正常同步。
+    fixture.setPersistedHistory('group-jev', 'topic-jev', [
+        { id: 'jev-existing', role: 'assistant', content: 'JEV', timestamp: 4 },
+    ]);
+    await fixture.chatManager.syncHistoryFromFile('group-jev', 'group', 'topic-jev');
+    assert.equal(fixture.state().history.some(message => message.id === optimisticUser.id), false);
+    assert.equal(fixture.window.document.querySelector('[data-message-id="jev-pending-user"]'), null);
     fixture.dom.window.close();
 });

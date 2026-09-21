@@ -35,6 +35,9 @@ window.GroupRenderer = (() => {
     // State for group settings
     let availableAgentsForGroup = []; // To populate member selection
     const groupSectionControllers = new Map();
+    // 用户气泡从前端乐观提交到主进程确认期间，文件监听可能读到尚未包含
+    // 该消息的旧快照。显式持有这些 ID，避免同步器把它们误判为外部删除。
+    const pendingGroupUserMessageIds = new Set();
     let groupSettingsGeneration = 0;
     let groupSettingsReady = false;
     let groupSlotsLoadPromise = null;
@@ -1391,9 +1394,10 @@ window.GroupRenderer = (() => {
             attachments: uiAttachments
         };
 
-        // 群聊用户消息必须先进入当前历史真源，再投影到 DOM。此前这里只渲染
-        // 气泡，右键菜单按 messageId 查询历史时会在主进程写盘完成前查不到消息；
-        // 同期发生历史重投影时，这个不受状态持有的“孤儿气泡”也可能被清除。
+        // 群聊用户消息必须先进入当前历史真源，再投影到 DOM。JEV 会在发送后
+        // 立即启动编排并连续触发历史文件同步；在主进程完成首次追加前，旧文件
+        // 快照不能获得删除这个乐观消息的权威。
+        pendingGroupUserMessageIds.add(userMessageForUI.id);
         const currentHistory = currentChatHistoryRef?.get?.();
         if (Array.isArray(currentHistory) && !currentHistory.some(message => message?.id === userMessageForUI.id)) {
             currentChatHistoryRef.set([...currentHistory, userMessageForUI]);
@@ -1427,6 +1431,7 @@ window.GroupRenderer = (() => {
                 currentTopic,
                 userMessageForIPC // Pass the message object with combined text to IPC
             );
+            pendingGroupUserMessageIds.delete(userMessageForUI.id);
 
             if (result.error) {
                 // console.error("Sending group chat message failed (main process response):", result.error); // 根据用户要求移除此报错
@@ -1441,6 +1446,7 @@ window.GroupRenderer = (() => {
                 console.log("Group message sent to main process for handling.");
             }
         } catch (error) {
+            pendingGroupUserMessageIds.delete(userMessageForUI.id);
             // console.error('发送群聊消息时出错:', error); // 根据用户要求移除此报错
             // messageRenderer.renderMessage({ // 根据用户要求移除此报错
             //     role: 'system',
@@ -1584,6 +1590,8 @@ window.GroupRenderer = (() => {
     console.log('[GroupRenderer] Preparing to return public API.');
     return {
         init,
+        isPendingUserMessage: messageId => pendingGroupUserMessageIds.has(messageId),
+        acknowledgePendingUserMessage: messageId => pendingGroupUserMessageIds.delete(messageId),
         handleSelectGroup,
         displayGroupSettingsPage,
         loadTopicsForGroup, // Called when topics tab is selected for a group

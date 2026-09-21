@@ -2664,8 +2664,11 @@ function initializeMessageRenderer(refs) {
         if (!messageItem) return;
 
         const messageId = messageItem.dataset.messageId;
+        // 历史数组可能正被 JEV 文件同步原子替换。气泡自身保存其渲染模型，
+        // 使右键交互不依赖某一瞬间的外部状态命中；历史仍是菜单修改操作的权威。
         const message = mainRendererReferences.currentChatHistoryRef.get()
-            .find(m => m.id === messageId);
+            .find(m => m.id === messageId)
+            || messageItem._vcpMessageModel;
 
         if (message && (message.role === 'assistant' || message.role === 'user')) {
             e.preventDefault();
@@ -3427,6 +3430,9 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
         currentSelectedItem,
         { document: mainRendererReferences.document, window: mainRendererReferences.window }
     );
+    // DOM 气泡拥有只用于交互解析的消息快照。JEV 的历史同步可能在右键事件
+    // 到达时正处于替换窗口，不能因此让一个仍可见的气泡失去上下文菜单。
+    messageItem._vcpMessageModel = message;
     messageItem.dataset.vcpInitialLoad = isInitialLoad ? 'true' : 'false';
 
     // --- NEW: Scoped CSS Implementation ---
@@ -3873,6 +3879,8 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId, opt
         console.debug(`[renderFullMessage] No DOM element for ${messageId}. History updated, UI skipped.`);
         return; // No UI to update, but history is now consistent.
     }
+    const projectedMessage = currentChatHistoryArray.find(msg => msg.id === messageId);
+    if (projectedMessage) messageItem._vcpMessageModel = projectedMessage;
 
     messageItem.classList.remove('thinking', 'streaming');
     mainRendererReferences.messageCommands.updateSendButtonState?.();

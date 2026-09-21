@@ -2144,6 +2144,15 @@ export const chatManager = (() => {
             }
             
             const newMsgData = newHistoryMap.get(oldMsg.id);
+            const isPendingGroupUserMessage = itemType === 'group'
+                && oldMsg?.role === 'user'
+                && groupRenderer?.isPendingUserMessage?.(oldMsg.id) === true;
+
+            if (!newMsgData && isPendingGroupUserMessage) {
+                // JEV 在用户消息首次写盘后会立即产生多轮编排写入。文件监听可能
+                // 先读到写盘前的旧快照；这个快照无权删除仍由发送事务持有的用户气泡。
+                continue;
+            }
 
             if (!newMsgData) {
                 // Message was DELETED from the file
@@ -2153,6 +2162,9 @@ export const chatManager = (() => {
                     historyInMem.splice(indexToRemove, 1); // Update Memory
                 }
             } else {
+                if (isPendingGroupUserMessage) {
+                    groupRenderer?.acknowledgePendingUserMessage?.(oldMsg.id);
+                }
                 // Message exists, check for MODIFICATION
                 if (JSON.stringify(oldMsg.content) !== JSON.stringify(newMsgData.content)) {
                     if (typeof messageRenderer.updateMessageContent === 'function') {
