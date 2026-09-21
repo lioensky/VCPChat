@@ -225,6 +225,33 @@ body[data-vcp-theme="light"] .vcp-tool-use-bubble {
     box-shadow: 0 4px 10px rgba(30, 100, 160, 0.14);
 }
 
+/*
+ * JEV 自然语言入口复用 ToolUse 的折叠、懒挂载与动画结构，仅以紫蓝色调
+ * 表达兼容协议身份；旧 VCP-ToolUse 的类名与外观保持不变。
+ */
+.vcp-tool-use-bubble.vcp-jev-tool-use-bubble {
+    background: linear-gradient(145deg, #6254d9 0%, #298bd6 100%) !important;
+    border-color: rgba(190, 180, 255, 0.62);
+}
+
+.vcp-tool-use-bubble.vcp-jev-tool-use-bubble::after {
+    background:
+        linear-gradient(90deg, transparent 0%, #d8b4fe 38%, #ffffff 50%, #67e8f9 62%, transparent 100%) top left / 45% 1px no-repeat,
+        linear-gradient(180deg, transparent 0%, #67e8f9 38%, #ffffff 50%, #d8b4fe 62%, transparent 100%) top right / 1px 45% no-repeat,
+        linear-gradient(270deg, transparent 0%, #d8b4fe 38%, #ffffff 50%, #67e8f9 62%, transparent 100%) bottom right / 45% 1px no-repeat,
+        linear-gradient(0deg, transparent 0%, #67e8f9 38%, #ffffff 50%, #d8b4fe 62%, transparent 100%) bottom left / 1px 45% no-repeat;
+}
+
+.vcp-tool-use-bubble.vcp-jev-tool-use-bubble::before {
+    content: "\2728";
+}
+
+body[data-vcp-theme="light"] .vcp-tool-use-bubble.vcp-jev-tool-use-bubble {
+    background: linear-gradient(145deg, #eee9ff 0%, #ccecff 100%) !important;
+    border-color: rgba(99, 102, 241, 0.32);
+    color: #293056 !important;
+}
+
 /* New styles for summary and details sections */
 .vcp-tool-summary {
     display: flex;

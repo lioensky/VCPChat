@@ -1,5 +1,6 @@
 import { createEmoticonUrlFixer } from './renderer/emoticonUrlFixer.js';
 import { replaceMarkdownCodeDomains } from './renderer/markdownCodeDomainScanner.js';
+import { parseJevToolUse } from './renderer/jevToolUse.js';
 import { domToCanvas, domToBlob } from '../vendor/modern-screenshot.js';
 
 const emoticonFixer = createEmoticonUrlFixer();
@@ -640,6 +641,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         processed = replaceToolRequestBlocks(processed, (match, content) => {
             const detectedToolName = extractMarkedField(content, /tool_name:\s*/i);
             const detectedCommand = extractMarkedField(content, /command:\s*/i);
+            const detectedJev = parseJevToolUse(extractMarkedField(content, /JEV:\s*/i));
             const normalizedToolName = (detectedToolName || '').trim().toLowerCase();
             const normalizedCommand = (detectedCommand || '').trim().toLowerCase();
 
@@ -683,11 +685,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             toolName = toolName.replace(/[「{](?:始|末)(?:[Ee][Ss][Cc][Aa][Pp][Ee])?[」}]/gi, '').replace(/,$/, '').trim();
 
             const escapedFullContent = escapeHtml(content.trim());
-            // 阅读模式以完整阅读为主，工具调用默认展开。
-            return `\n\n<div class="vcp-tool-use-bubble expanded" data-vcp-block-type="tool-use">` +
+            const isJevToolUse = !!detectedJev;
+            const bubbleClass = isJevToolUse
+                ? 'vcp-tool-use-bubble vcp-jev-tool-use-bubble expanded'
+                : 'vcp-tool-use-bubble expanded';
+            const blockType = isJevToolUse ? 'jev-tool-use' : 'tool-use';
+            const label = isJevToolUse ? 'JEVToolUse:' : 'VCP-ToolUse:';
+            const displayName = isJevToolUse ? detectedJev.displayName : toolName;
+            // 阅读模式以完整阅读为主，工具调用默认展开；JEV 只是兼容分支。
+            return `\n\n<div class="${bubbleClass}" data-vcp-block-type="${blockType}">` +
                 `<div class="vcp-tool-summary">` +
-                `<span class="vcp-tool-label">VCP-ToolUse:</span> ` +
-                `<span class="vcp-tool-name-highlight">${escapeHtml(toolName)}</span>` +
+                `<span class="vcp-tool-label">${label}</span> ` +
+                `<span class="vcp-tool-name-highlight">${escapeHtml(displayName)}</span>` +
                 `</div>` +
                 `<div class="vcp-tool-details"><pre>${escapedFullContent}</pre></div>` +
                 `</div>\n\n`;

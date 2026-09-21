@@ -17,6 +17,7 @@ import {
     replaceToolRequestBlocks
 } from './renderer/toolRequestScanner.js';
 import { replaceMarkdownCodeDomains } from './renderer/markdownCodeDomainScanner.js';
+import { parseJevToolUse } from './renderer/jevToolUse.js';
 
 import { createContentProcessor } from './renderer/contentProcessor.js';
 import { createMessageContextMenu } from './renderer/messageContextMenu.js';
@@ -1101,6 +1102,7 @@ function transformSpecialBlocks(text, codeBlockMap, thoughtChainMap = null) {
     processed = replaceToolRequestBlocks(processed, (match, content) => {
         const detectedToolName = extractMarkedField(content, /tool_name:\s*/i);
         const detectedCommand = extractMarkedField(content, /command:\s*/i);
+        const detectedJev = parseJevToolUse(extractMarkedField(content, /JEV:\s*/i));
         const normalizedToolName = (detectedToolName || '').trim().toLowerCase();
         const normalizedCommand = (detectedCommand || '').trim().toLowerCase();
 
@@ -1140,6 +1142,19 @@ function transformSpecialBlocks(text, codeBlockMap, thoughtChainMap = null) {
                 target: dailyNoteTarget || '',
                 replace: dailyNoteReplace || ''
             });
+        } else if (detectedJev) {
+            // JEV 是自然语言工具入口的兼容展示分支，不替代既有 tool_name/XML 协议。
+            // 显式单引号工具名优先；未显式指定时才展示能力名称。
+            const escapedFullContent = escapeHtml(restoreBlocks(content))
+                .replace(/\r\n?|\n/g, '&#10;');
+            return `\n\n<div class="vcp-tool-use-bubble vcp-jev-tool-use-bubble" data-vcp-block-type="jev-tool-use" data-vcp-preserve-children="true">` +
+                `<div class="vcp-tool-summary">` +
+                `<span class="vcp-tool-label">JEVToolUse:</span> ` +
+                `<span class="vcp-tool-name-highlight">${escapeHtml(detectedJev.displayName)}</span>` +
+                `</div>` +
+                `<div class="vcp-tool-details"></div>` +
+                `<template class="vcp-tool-details-template"><pre>${escapedFullContent}</pre></template>` +
+                `</div>\n\n`;
         } else {
             // --- It's a regular tool call, render it normally ---
             const xmlToolNameMatch = content.match(/<tool_name>([\s\S]*?)<\/tool_name>/i);
