@@ -353,9 +353,35 @@ class JevGroupSessionOrchestrator {
             this._emit(session, 'jev_arbitration_result', { decision });
             if (decision.shouldStop) {
                 session.stopReason = decision.stopReason;
+
+                // 🎯 仅在“用户发送消息后，Jev 第一刀判定全员无需回复（0 发言收敛）”时透出日志并挂载到事件
+                // 若已有伙伴完成发言后的自然收官，则保持绝对静默，避免刷屏噪音
+                const totalSpeechCount = Object.values(session.speechCounts || {}).reduce((sum, count) => sum + (Number(count) || 0), 0);
+                let silentConvergenceMeta = null;
+
+                if (totalSpeechCount === 0 && session.trigger === 'user_message') {
+                    const topicName = groupConfig?.topics?.find(t => t?.id === session.topicId)?.name || session.topicId;
+                    const reasonInfo = decision.stopReason || 'conversation_ended';
+                    const endProb = typeof decision.endProbability === 'number' ? `${(decision.endProbability * 100).toFixed(1)}%` : 'N/A';
+                    const conf = typeof decision.confidence === 'number' ? `${(decision.confidence * 100).toFixed(1)}%` : 'N/A';
+                    
+                    silentConvergenceMeta = {
+                        occurred: true,
+                        topicName,
+                        reason: reasonInfo,
+                        endProbability: endProb,
+                        confidence: conf
+                    };
+
+                    const logPrefix = '\x1b[33m[JEV 仲裁收敛]\x1b[0m';
+                    const logMsg = `${logPrefix} 用户发言已裁定收敛，无需伙伴回复 (原因: ${reasonInfo}, 结束概率: ${endProb}, 置信度: ${conf}, 话题: ${topicName})`;
+                    (this.logger?.info || console.log).call(this.logger || console, logMsg);
+                }
+
                 this._emit(session, 'group_queue_stopped', {
                     reason: session.stopReason,
-                    decision
+                    decision,
+                    silentConvergence: silentConvergenceMeta
                 });
                 return;
             }

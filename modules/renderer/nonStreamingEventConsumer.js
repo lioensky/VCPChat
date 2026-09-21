@@ -18,10 +18,20 @@ export function createNonStreamingEventConsumer({ renderTarget, messageRenderer,
                 return true;
             }
             if (type === 'no_ai_response') return true;
+            if (type === 'group_queue_stopped') {
+                if (event?.silentConvergence?.occurred) {
+                    const meta = event.silentConvergence;
+                    console.log(
+                        `%c[JEV 仲裁收敛]%c 用户发言已裁定收敛，无需伙伴回复 (原因: ${meta.reason}, 结束概率: ${meta.endProbability}, 置信度: ${meta.confidence}, 话题: ${meta.topicName})`,
+                        'color: #d97706; font-weight: bold; background: #fef3c7; padding: 2px 6px; border-radius: 4px; border: 1px solid #fde68a;',
+                        'color: #b45309; font-weight: normal;'
+                    );
+                }
+                return true;
+            }
             if ([
                 'group_queue_state',
                 'group_queue_updated',
-                'group_queue_stopped',
                 'jev_arbitration_started',
                 'jev_arbitration_result'
             ].includes(type)) return true;

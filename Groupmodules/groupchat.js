@@ -1171,9 +1171,17 @@ ${canvasData.errors || 'No errors'}
                 stream: agentConfig.streamOutput === true || String(agentConfig.streamOutput) === 'true'
             };
 
-            // 添加超时控制，并登记到群组/话题级队列所有权中。
+            // === 分阶段弹性超时设计 (Phased Timeout Architecture) ===
+            // 阶段 1: TTFT 首包/思考宽容窗口 (120秒/2分钟)，容纳深度思考与排队，不提早误杀
+            // 阶段 2: 块间流式看门狗 (30秒)，开始吐字后若连续 30秒无新数据则熔断僵死
+            const GROUP_TTFT_TIMEOUT_MS = 120000;
+            const GROUP_CHUNK_IDLE_TIMEOUT_MS = 30000;
+
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 60000); // 60秒超时
+            let activeTimer = setTimeout(() => {
+                console.warn(`[GroupChat] TTFT 超时 (${GROUP_TTFT_TIMEOUT_MS}ms) 未收到响应头，主动中止: ${agentName}`);
+                controller.abort('ttft_timeout');
+            }, GROUP_TTFT_TIMEOUT_MS);
             registerActiveGroupRequest(messageIdForAgentResponse, controller, groupId, topicId);
 
             let response;
@@ -1192,14 +1200,9 @@ ${canvasData.errors || 'No errors'}
                     signal: controller.signal
                 });
             } catch (fetchError) {
-                clearTimeout(timeoutId);
+                clearTimeout(activeTimer);
                 if (fetchError.name === 'AbortError') {
-                    // This case handles when the request is aborted BEFORE the stream starts.
-                    // The stream's own catch block will handle abortions DURING streaming.
                     console.log(`[GroupChat] VCP fetch for ${agentName} was aborted before stream began.`);
-                    // We don't need to save history here as no response was generated.
-                    // The 'thinking' bubble will just disappear without a message, which is acceptable.
-                    // We send an 'end' event to make sure the UI cleans up the thinking bubble.
                      if (typeof sendStreamChunkToRenderer === 'function') {
                          sendStreamChunkToRenderer({ type: 'end', error: '用户中止', fullResponse: '', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true }, interrupted: true });
                      }
@@ -1208,7 +1211,7 @@ ${canvasData.errors || 'No errors'}
                 }
                 throw fetchError;
             } finally {
-                clearTimeout(timeoutId);
+                clearTimeout(activeTimer);
             }
 
             if (!response.ok) {
@@ -1252,13 +1255,24 @@ ${canvasData.errors || 'No errors'}
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
 
+                // 启动阶段 2 块间流式看门狗 (Chunk Idle Watchdog)
+                const resetIdleTimer = () => {
+                    clearTimeout(activeTimer);
+                    activeTimer = setTimeout(() => {
+                        console.warn(`[GroupChat] 流式空闲超时：连续 ${GROUP_CHUNK_IDLE_TIMEOUT_MS}ms 无新数据，判定僵死主动熔断: ${agentName}`);
+                        controller.abort('chunk_idle_timeout');
+                    }, GROUP_CHUNK_IDLE_TIMEOUT_MS);
+                };
+
                 // This function will now be awaited
                 async function processStreamForGroupAndUpdateHistory() {
                     let accumulatedResponse = "";
                     try {
+                        resetIdleTimer();
                         while (true) {
                             const { done, value } = await reader.read();
                             if (done) {
+                                clearTimeout(activeTimer);
                                 console.log(`[GroupChat] VCP stream ended for ${agentName} (msgId: ${messageIdForAgentResponse})`);
                                 const finalAiResponseEntry = { role: 'assistant', name: agentName, agentId: agentId, model: modelConfigForAgent.model, modelSource: modelResolution.usingUnifiedModel ? 'group_unified' : 'agent', content: accumulatedResponse, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor };
                                 groupHistory.push(finalAiResponseEntry);
@@ -1268,6 +1282,7 @@ ${canvasData.errors || 'No errors'}
                                 }
                                 break;
                             }
+                            resetIdleTimer();
                             const chunkString = decoder.decode(value, { stream: true });
                             const lines = chunkString.split('\n').filter(line => line.trim() !== '');
                             for (const line of lines) {
@@ -1361,6 +1376,7 @@ ${canvasData.errors || 'No errors'}
                             }
                         }
                     } finally {
+                        clearTimeout(activeTimer);
                         reader.releaseLock();
                         activeRequestControllers.delete(messageIdForAgentResponse);
                         console.log(`[GroupChat] Active request controller removed for ${messageIdForAgentResponse}`);
@@ -1744,12 +1760,20 @@ ${canvasData.errors || 'No errors'}
             stream: agentConfig.streamOutput === true || String(agentConfig.streamOutput) === 'true'
         };
 
-        // 添加超时控制，并登记到群组/话题级队列所有权中。
+        // === 分阶段弹性超时设计 (Phased Timeout Architecture) - Jev / 点名邀请 ===
+        // 阶段 1: TTFT 首包/思考宽容窗口 (120秒/2分钟)，容纳深度思考与排队，不提早误杀
+        // 阶段 2: 块间流式看门狗 (30秒)，开始吐字后若连续 30秒无新数据则熔断僵死
+        const GROUP_TTFT_TIMEOUT_MS = 120000;
+        const GROUP_CHUNK_IDLE_TIMEOUT_MS = 30000;
+
         const controller = new AbortController();
         const abortFromSession = () => controller.abort();
         if (options.signal?.aborted) controller.abort();
         else options.signal?.addEventListener?.('abort', abortFromSession, { once: true });
-        const timeoutId = setTimeout(() => controller.abort(), 60000); // 60秒超时
+        let activeTimer = setTimeout(() => {
+            console.warn(`[GroupChat Invite] TTFT 超时 (${GROUP_TTFT_TIMEOUT_MS}ms) 未收到响应头，主动中止: ${agentName}`);
+            controller.abort('ttft_timeout');
+        }, GROUP_TTFT_TIMEOUT_MS);
         registerActiveGroupRequest(messageIdForAgentResponse, controller, groupId, topicId);
 
         let response;
@@ -1769,7 +1793,7 @@ ${canvasData.errors || 'No errors'}
                 signal: controller.signal
             });
         } catch (fetchError) {
-            clearTimeout(timeoutId);
+            clearTimeout(activeTimer);
             if (fetchError.name === 'AbortError') {
                 console.log(`[GroupChat Invite] VCP fetch for ${agentName} was aborted before stream began.`);
                 if (typeof sendStreamChunkToRenderer === 'function') {
@@ -1780,7 +1804,7 @@ ${canvasData.errors || 'No errors'}
             }
             throw fetchError;
         } finally {
-            clearTimeout(timeoutId);
+            clearTimeout(activeTimer);
             options.signal?.removeEventListener?.('abort', abortFromSession);
         }
 
@@ -1822,12 +1846,23 @@ ${canvasData.errors || 'No errors'}
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
 
+            // 启动阶段 2 块间流式看门狗 (Chunk Idle Watchdog) - Jev / 点名邀请
+            const resetIdleTimer = () => {
+                clearTimeout(activeTimer);
+                activeTimer = setTimeout(() => {
+                    console.warn(`[GroupChat Invite] 流式空闲超时：连续 ${GROUP_CHUNK_IDLE_TIMEOUT_MS}ms 无新数据，判定僵死主动熔断: ${agentName}`);
+                    controller.abort('chunk_idle_timeout');
+                }, GROUP_CHUNK_IDLE_TIMEOUT_MS);
+            };
+
             async function processStreamForInvitedAgent() {
                 let accumulatedResponse = "";
                 try {
+                    resetIdleTimer();
                     while (true) {
                         const { done, value } = await reader.read();
                         if (done) {
+                            clearTimeout(activeTimer);
                             const finalAiResponseEntry = { role: 'assistant', name: agentName, agentId: invitedAgentId, model: modelConfigForAgent.model, modelSource: modelResolution.usingUnifiedModel ? 'group_unified' : 'agent', content: accumulatedResponse, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor };
                             groupHistory = await appendGroupHistoryMessage(groupId, topicId, finalAiResponseEntry);
                             if (typeof sendStreamChunkToRenderer === 'function') {
@@ -1835,6 +1870,7 @@ ${canvasData.errors || 'No errors'}
                             }
                             break;
                         }
+                        resetIdleTimer();
                         const chunkString = decoder.decode(value, { stream: true });
                         const lines = chunkString.split('\n').filter(line => line.trim() !== '');
                         for (const line of lines) {
@@ -1924,6 +1960,7 @@ ${canvasData.errors || 'No errors'}
                         }
                     }
                 } finally {
+                    clearTimeout(activeTimer);
                     reader.releaseLock();
                     activeRequestControllers.delete(messageIdForAgentResponse);
                     console.log(`[GroupChat Invite] Active request controller removed for ${messageIdForAgentResponse}`);
