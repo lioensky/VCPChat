@@ -86,3 +86,12 @@ VCPChat-Setup.exe
 
 # 独立的 VChat Music Next 音频引擎源码，不由主仓库跟踪
 /vchat_music_next/
+
+
+# Python runtime / test caches
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.mypy_cache/
+.coverage
+coverage.xml

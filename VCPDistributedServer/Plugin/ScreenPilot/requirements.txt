@@ -4,3 +4,5 @@ pywin32
 psutil
 uiautomation
 rapidocr-onnxruntime
+numpy
+dxcam

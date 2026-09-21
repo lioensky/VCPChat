@@ -592,14 +592,33 @@ class PluginManager {
         return valuesMap;
     }
 
-    // 新增：关闭所有插件
+    // 关闭所有插件：停止定时任务，并释放 direct service / hybridservice 资源。
     async shutdownAllPlugins() {
         console.log('[DistPluginManager] Shutting down all plugins...');
         for (const job of this.scheduledJobs.values()) {
             job.cancel();
         }
         this.scheduledJobs.clear();
-        console.log('[DistPluginManager] All scheduled jobs cancelled.');
+
+        for (const [name, serviceData] of this.serviceModules) {
+            const cleanup = serviceData?.module?.cleanup;
+            if (typeof cleanup !== 'function') {
+                continue;
+            }
+            try {
+                await cleanup();
+                if (this.debugMode) {
+                    console.log(`[DistPluginManager] Cleaned up service plugin: ${name}`);
+                }
+            } catch (error) {
+                console.error(
+                    `[DistPluginManager] Error cleaning up service plugin ${name}:`,
+                    error
+                );
+            }
+        }
+
+        console.log('[DistPluginManager] Plugin shutdown completed.');
     }
 }
 

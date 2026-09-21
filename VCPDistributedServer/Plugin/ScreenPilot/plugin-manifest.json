@@ -1,17 +1,17 @@
 {
     "manifestVersion": "1.0.0",
     "name": "ScreenPilot",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "displayName": "屏幕视觉与操控",
-    "description": "一个强大的屏幕交互插件，允许AI对任意窗口截图（返回base64和分辨率信息）、通过OCR检测截图中的文本位置、直接点击截图中的文本、模拟鼠标点击操作（支持后台不劫持鼠标）、滚轮滚动操作、以及通过Windows UI Automation API检索窗口内可交互元素的名称和坐标。支持DirectX/OpenGL/Vulkan游戏窗口智能截图——自动检测GDI黑屏并fallback到DXGI，且通过学习记忆机制（capture_strategy.json）记住每个进程的最优截图方式，下次直接使用。支持通过进程名查找游戏窗口（适用于启动器+游戏分离架构）。",
+    "description": "面向分布式Windows设备的常驻Computer Use执行引擎。保持ScreenCapture、ClickAt、ClickText、ClickVisual、InspectUI、ScrollAt、TypeText、QueryWindows原有调用及返回结构兼容，并新增UI Automation原生Pattern动作、统一Interact自动降级、等待与操作后验证。Node.js常驻协调器管理Python能力Worker，使RapidOCR、UIA元素引用和截图策略可跨调用复用；图生图局部编辑定位能力完整保留。",
     "author": "VCPToolBox",
-    "pluginType": "synchronous",
+    "pluginType": "hybridservice",
     "entryPoint": {
-        "type": "python",
-        "command": "python screen_pilot.py"
+        "type": "nodejs",
+        "script": "ScreenPilotService.js"
     },
     "communication": {
-        "protocol": "stdio",
+        "protocol": "direct",
         "timeout": 180000
     },
     "configSchema": {
@@ -53,7 +53,7 @@
             },
             {
                 "commandIdentifier": "InspectUI",
-                "description": "功能: 通过Windows UI Automation API获取指定窗口内所有可交互UI元素（按钮、编辑框、菜单项等）的名称、类型和屏幕坐标。返回的坐标可直接用于ClickAt指令进行自动化操作。注意：此功能在标准Windows应用（WinForms, WPF, UWP, Win32）上效果最佳；对Electron应用内部网页内容、游戏、自绘UI可能无法获取。\n参数:\n- windowTitle (字符串, 可选): 目标窗口标题关键词。\n- hwnd (整数, 可选): 目标窗口HWND句柄，优先级高于windowTitle。\n- controlType (字符串, 可选): 筛选控件类型，如 Button, Edit, MenuItem, CheckBox, RadioButton, ComboBox, Hyperlink, ListItem, TreeItem, TabItem 等。不提供则返回所有可交互元素。\n- maxDepth (整数, 可选, 默认5): UI元素树最大遍历深度，增大可获取更深层元素但会更慢。\n- maxItems (整数, 可选, 默认50): 返回的最大元素数量。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」InspectUI「末」,\nwindowTitle:「始」记事本「末」,\ncontrolType:「始」Button「末」\n<<<[END_TOOL_REQUEST]>>>"
+                "description": "功能: 通过Windows UI Automation获取窗口元素树。除原有名称、类型、边界和点击坐标外，还返回elementId、AutomationId、ClassName、FrameworkId、RuntimeId、焦点/离屏状态及支持的Pattern；elementId可在短期内直接交给UIAction。支持按hwnd、windowTitle、processName、pid或className定位窗口。UIA访问受Worker级超时与自动重建保护。\n参数:\n- hwnd/windowTitle/processName/pid/className: 目标窗口选择器。\n- controlType (可选): Button、Edit、MenuItem等。\n- maxDepth (整数, 默认5)、maxItems (整数, 默认50)。\n- timeBudgetMs (整数, 默认3000): 本次UIA遍历时间预算。\n- includeNonInteractive (布尔, 默认false): 是否包含非交互元素。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」InspectUI「末」,\nprocessName:「始」notepad.exe「末」,\ncontrolType:「始」Button「末」\n<<<[END_TOOL_REQUEST]>>>"
             },
             {
                 "commandIdentifier": "ClickText",
@@ -70,6 +70,26 @@
             {
                 "commandIdentifier": "TypeText",
                 "description": "功能: 向目标窗口输入文本。支持双轨制——有窗口句柄/标题时使用后台模式（PostMessage WM_CHAR逐字发送，不劫持键盘焦点）；无窗口信息时使用前台模式（剪贴板Ctrl+V粘贴，支持全Unicode/中文）。\n参数:\n- text (字符串, 必需): 要输入的文本内容。\n- hwnd (整数, 可选): 目标窗口HWND。提供后启用后台模式。\n- windowTitle (字符串, 可选): 目标窗口标题关键词（模糊匹配），可代替hwnd。\n- enter (布尔值, 可选, 默认false): 设为true时，输入文本后自动按下回车键。适合搜索框、命令行等场景。\n调用格式:\n后台输入（不劫持键盘）:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」TypeText「末」,\ntext:「始」Hello World「末」,\nwindowTitle:「始」记事本「末」,\nenter:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>\n\n前台输入（剪贴板粘贴）:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」TypeText「末」,\ntext:「始」你好世界「末」\n<<<[END_TOOL_REQUEST]>>>"
+            },
+            {
+                "commandIdentifier": "UIAction",
+                "description": "功能: 通过Windows UI Automation Pattern直接执行语义动作，不移动鼠标，不依赖像素坐标。支持Invoke、SetValue、Toggle、Select、Expand、Collapse、Focus；优先使用InvokePattern、ValuePattern、TogglePattern、SelectionItemPattern、ExpandCollapsePattern，必要时使用LegacyIAccessible默认动作。\n参数:\n- hwnd/windowTitle/processName/pid/className: 目标窗口选择器。\n- elementId (可选): InspectUI返回的短期元素引用；也可改用name、automationId、controlType、index组合定位。\n- action (可选, 默认invoke): invoke/click/setValue/type/toggle/select/expand/collapse/focus。\n- value或text (可选): setValue/type动作写入的值。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」UIAction「末」,\nwindowTitle:「始」记事本「末」,\nautomationId:「始」SaveButton「末」,\naction:「始」invoke「末」\n<<<[END_TOOL_REQUEST]>>>"
+            },
+            {
+                "commandIdentifier": "Interact",
+                "description": "功能: 统一目标定位与动作入口。默认按UI Automation原生Pattern→OCR文本点击→图生图局部编辑定位的顺序自动降级。图生图通道沿用ClickVisual的局部编辑与像素差分算法，不要求普通视觉模型输出坐标。可在动作后等待文字出现或消失以验证结果。\n参数:\n- action (默认click): click/invoke/setValue/type/toggle/select/expand/collapse/focus。\n- name/automationId/controlType/elementId: UIA选择器。\n- text: OCR目标文字，也可作为UIA名称及图生图描述的fallback。\n- description: 图生图局部编辑定位描述。\n- channels (可选): uia,ocr,image_edit，默认按此前顺序。\n- verifyText或textAppears (可选): 动作后等待该文字出现。\n- textDisappears (可选): 动作后等待该文字消失。\n- verifyTimeoutMs (默认8000)。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」Interact「末」,\nwindowTitle:「始」安装程序「末」,\nname:「始」下一步「末」,\ncontrolType:「始」Button「末」,\naction:「始」click「末」,\nverifyText:「始」安装位置「末」\n<<<[END_TOOL_REQUEST]>>>"
+            },
+            {
+                "commandIdentifier": "WaitForElement",
+                "description": "功能: 轮询等待UI Automation元素出现或消失，避免固定延迟导致竞态。\n参数: hwnd/windowTitle/processName/pid/className指定窗口；elementId或name/automationId/controlType/index指定元素；condition可选appear/disappear；timeoutMs默认10000；pollIntervalMs默认200。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」WaitForElement「末」,\nwindowTitle:「始」安装程序「末」,\nname:「始」下一步「末」,\ncontrolType:「始」Button「末」,\ntimeoutMs:「始」10000「末」\n<<<[END_TOOL_REQUEST]>>>"
+            },
+            {
+                "commandIdentifier": "WaitForText",
+                "description": "功能: 周期截图并通过常驻RapidOCR等待指定文字出现或消失。支持窗口或全虚拟桌面、多显示器负坐标。\n参数: text必需；hwnd/windowTitle/processName可选；condition可选appear/disappear；matchMode可选contains/exact；timeoutMs默认10000；pollIntervalMs默认200。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScreenPilot「末」,\ncommand:「始」WaitForText「末」,\ntext:「始」保存成功「末」,\ntimeoutMs:「始」8000「末」\n<<<[END_TOOL_REQUEST]>>>"
+            },
+            {
+                "commandIdentifier": "WaitForDisappear",
+                "description": "功能: 等待指定UIA元素或OCR文字消失。参数与WaitForElement/WaitForText相同；提供text并设置ocr=true时使用OCR，否则使用UIA选择器。"
             },
             {
                 "commandIdentifier": "QueryWindows",
