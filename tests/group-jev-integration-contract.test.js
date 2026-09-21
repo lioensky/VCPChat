@@ -42,6 +42,20 @@ test('JEV 发起、继续、插队和状态查询 IPC 完整暴露给聊天 prel
     }
 });
 
+test('JEV 继续群聊仅向 IPC 返回可结构化克隆的数据', () => {
+    const engine = read('Groupmodules/groupchat.js');
+    const continueBody = engine.slice(
+        engine.indexOf('async function continueJevGroupChat'),
+        engine.indexOf('\n\nasync function enqueueJevGroupAgent')
+    );
+
+    assert.match(continueBody, /const result = await ensureJevSessionOrchestrator\(\)\.continue/);
+    assert.match(continueBody, /success:\s*result\.success/);
+    assert.match(continueBody, /state:\s*result\.state/);
+    assert.doesNotMatch(continueBody, /return ensureJevSessionOrchestrator\(\)\.continue/);
+    assert.doesNotMatch(continueBody, /promise:\s*result\.promise/);
+});
+
 test('JEV 模式配置包含权重截断、K 上限、自治保护和成员风格', () => {
     const decision = read('Groupmodules/modes/jevDecisionMode.js');
     const engine = read('Groupmodules/groupchat.js');

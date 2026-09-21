@@ -2343,7 +2343,16 @@ async function continueJevGroupChat(groupId, topicId, sendStreamChunkToRenderer)
         return { success: false, error: '当前群组未启用 JEV 群聊模式。' };
     }
     setGroupStreamCallback(groupId, topicId, sendStreamChunkToRenderer);
-    return ensureJevSessionOrchestrator().continue(groupId, topicId);
+    const result = await ensureJevSessionOrchestrator().continue(groupId, topicId);
+
+    // result may contain the internal runPromise. Electron IPC cannot clone Promise
+    // instances, so expose only the renderer-facing, structured-clone-safe fields.
+    return {
+        success: result.success,
+        error: result.error,
+        reason: result.reason,
+        state: result.state
+    };
 }
 
 async function enqueueJevGroupAgent(groupId, topicId, agentId, sendStreamChunkToRenderer) {
