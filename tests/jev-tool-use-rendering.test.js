@@ -34,7 +34,7 @@ test('JEV 没有显式工具名时显示能力名', async () => {
     assert.equal(parsed?.displayName, '联网搜索');
 });
 
-test('JEV 支持中文引号中的显式工具名', async () => {
+test('JEV 支持中文引号及 HTML 转义单引号中的显式工具名', async () => {
     const { parseJevToolUse } = await loadJevParser();
 
     assert.equal(
@@ -44,6 +44,18 @@ test('JEV 支持中文引号中的显式工具名', async () => {
     assert.equal(
         parseJevToolUse('请使用 {图片生成} 中的 “豆包”，生成【主题】。')?.displayName,
         '豆包'
+    );
+    assert.equal(
+        parseJevToolUse('请使用 {联网搜索} 中的 &#039;B站获取&#039;，获取视频【BV1Q4tz6NE1Q】。')?.displayName,
+        'B站获取'
+    );
+    assert.equal(
+        parseJevToolUse("请使用 {联网搜索} 中的 'B站搜索'，搜索【主题】。")?.displayName,
+        'B站搜索'
+    );
+    assert.equal(
+        parseJevToolUse("请使用 {联网搜索} 中的 'Tavily'，搜索【主题】。")?.displayName,
+        'Tavily'
     );
 });
 
