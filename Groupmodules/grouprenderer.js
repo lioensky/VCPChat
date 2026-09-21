@@ -5,6 +5,7 @@ window.GroupRenderer = (() => {
     let globalSettings;
     let currentSelectedItemRef; // Reference to renderer's currentSelectedItem { get, set }
     let currentTopicIdRef;      // Reference to renderer's currentTopicId { get, set }
+    let currentChatHistoryRef;  // Reference to renderer's current chat history { get, set }
     let messageRenderer;        // Reference to messageRenderer module
     let uiHelper;               // Reference to UI helper functions from renderer.js (openModal, closeModal, etc.)
     let mainRendererElements;   // Restore module-level mainRendererElements
@@ -82,6 +83,7 @@ window.GroupRenderer = (() => {
         globalSettings = dependencies.globalSettingsRef;
         currentSelectedItemRef = dependencies.currentSelectedItemRef;
         currentTopicIdRef = dependencies.currentTopicIdRef;
+        currentChatHistoryRef = dependencies.currentChatHistoryRef;
         messageRenderer = dependencies.messageRenderer;
         uiHelper = dependencies.uiHelper;
         mainRendererElements = dependencies.mainRendererElements; // Restore assignment
@@ -1388,6 +1390,14 @@ window.GroupRenderer = (() => {
             id: `msg_${Date.now()}_user_${Math.random().toString(36).substring(2, 9)}`,
             attachments: uiAttachments
         };
+
+        // 群聊用户消息必须先进入当前历史真源，再投影到 DOM。此前这里只渲染
+        // 气泡，右键菜单按 messageId 查询历史时会在主进程写盘完成前查不到消息；
+        // 同期发生历史重投影时，这个不受状态持有的“孤儿气泡”也可能被清除。
+        const currentHistory = currentChatHistoryRef?.get?.();
+        if (Array.isArray(currentHistory) && !currentHistory.some(message => message?.id === userMessageForUI.id)) {
+            currentChatHistoryRef.set([...currentHistory, userMessageForUI]);
+        }
 
         messageRenderer.renderMessage(userMessageForUI); // Render user's own message in UI
 

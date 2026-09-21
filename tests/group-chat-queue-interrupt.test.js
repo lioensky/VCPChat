@@ -64,6 +64,28 @@ test('group queue interruption is exposed from engine through IPC and chat prelo
     assert.match(contextMenu, /GroupRenderer\?\.interruptGroupChatQueue/);
 });
 
+test('group user bubbles enter current history before DOM projection', () => {
+    const renderer = read('renderer.js');
+    const groupRenderer = read('Groupmodules/grouprenderer.js');
+
+    assert.match(renderer, /currentChatHistoryRef:\s*mainHistoryRef/);
+    assert.match(groupRenderer, /currentChatHistoryRef\s*=\s*dependencies\.currentChatHistoryRef/);
+
+    const historyCommitIndex = groupRenderer.indexOf(
+        'currentChatHistoryRef.set([...currentHistory, userMessageForUI])'
+    );
+    const renderIndex = groupRenderer.indexOf(
+        'messageRenderer.renderMessage(userMessageForUI)'
+    );
+
+    assert.notEqual(historyCommitIndex, -1, 'group user message must be committed to current history');
+    assert.notEqual(renderIndex, -1, 'group user message must still be rendered');
+    assert.ok(
+        historyCommitIndex < renderIndex,
+        'history must own the group user message before the context-menu-capable DOM bubble is rendered'
+    );
+});
+
 test('default invitation prompt carries the central group-chat system indicator', () => {
     const engine = read('Groupmodules/groupchat.js');
     const renderer = read('Groupmodules/grouprenderer.js');

@@ -472,6 +472,7 @@ mainChatSettingsPresentationOwner.configureStartup({
             globalSettingsRef: mainChatSettingsOwner.ref,
             currentSelectedItemRef,
             currentTopicIdRef,
+            currentChatHistoryRef: mainHistoryRef,
             messageRenderer, // Explicit provider; initialized below
             uiHelper: uiHelperFunctions,
             mainRendererElements: mainRendererElementsForGroupRenderer, // 使用构造好的对象
