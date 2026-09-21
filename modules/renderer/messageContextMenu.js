@@ -72,6 +72,46 @@ function showContextMenu(event, messageItem, message) {
     const isThinkingOrStreaming = message.isThinking || messageItem.classList.contains('streaming');
     const isError = message.finishReason === 'error';
 
+    const createInterruptGroupQueueOption = () => {
+        if (currentSelectedItemVal.type !== 'group') return null;
+        const interruptGroupQueueOption = ownerDocument.createElement('div');
+        interruptGroupQueueOption.classList.add('context-menu-item', 'danger-item');
+        interruptGroupQueueOption.innerHTML = `<i class="fas fa-stop"></i> 中止群聊`;
+        interruptGroupQueueOption.onclick = async () => {
+            closeContextMenu();
+
+            if (!currentSelectedItemVal.id || !currentTopicIdVal) {
+                uiHelper.showToastNotification('无法中止群聊队列：群组或话题上下文不完整。', 'error');
+                return;
+            }
+
+            if (typeof ownerWindow.GroupRenderer?.interruptGroupChatQueue === 'function') {
+                await ownerWindow.GroupRenderer.interruptGroupChatQueue(
+                    currentSelectedItemVal.id,
+                    currentTopicIdVal
+                );
+                return;
+            }
+
+            if (typeof electronAPI?.interruptGroupChatQueue === 'function') {
+                const result = await electronAPI.interruptGroupChatQueue(
+                    currentSelectedItemVal.id,
+                    currentTopicIdVal
+                );
+                uiHelper.showToastNotification(
+                    result?.success
+                        ? '已中止群聊队列。'
+                        : `中止群聊队列失败：${result?.error || '未知错误'}`,
+                    result?.success ? 'success' : 'error'
+                );
+                return;
+            }
+
+            uiHelper.showToastNotification('无法中止群聊队列：接口不可用。', 'error');
+        };
+        return interruptGroupQueueOption;
+    };
+
     if (isThinkingOrStreaming) {
         const interruptOption = ownerDocument.createElement('div');
         interruptOption.classList.add('context-menu-item', 'danger-item');
@@ -124,45 +164,11 @@ function showContextMenu(event, messageItem, message) {
             }
         };
         menu.appendChild(interruptOption);
-    }
 
-    if (currentSelectedItemVal.type === 'group') {
-        const interruptGroupQueueOption = ownerDocument.createElement('div');
-        interruptGroupQueueOption.classList.add('context-menu-item', 'danger-item');
-        interruptGroupQueueOption.innerHTML = `<i class="fas fa-stop"></i> 中止群聊`;
-        interruptGroupQueueOption.onclick = async () => {
-            closeContextMenu();
-
-            if (!currentSelectedItemVal.id || !currentTopicIdVal) {
-                uiHelper.showToastNotification('无法中止群聊队列：群组或话题上下文不完整。', 'error');
-                return;
-            }
-
-            if (typeof ownerWindow.GroupRenderer?.interruptGroupChatQueue === 'function') {
-                await ownerWindow.GroupRenderer.interruptGroupChatQueue(
-                    currentSelectedItemVal.id,
-                    currentTopicIdVal
-                );
-                return;
-            }
-
-            if (typeof electronAPI?.interruptGroupChatQueue === 'function') {
-                const result = await electronAPI.interruptGroupChatQueue(
-                    currentSelectedItemVal.id,
-                    currentTopicIdVal
-                );
-                uiHelper.showToastNotification(
-                    result?.success
-                        ? '已中止群聊队列。'
-                        : `中止群聊队列失败：${result?.error || '未知错误'}`,
-                    result?.success ? 'success' : 'error'
-                );
-                return;
-            }
-
-            uiHelper.showToastNotification('无法中止群聊队列：接口不可用。', 'error');
-        };
-        menu.appendChild(interruptGroupQueueOption);
+        const interruptGroupQueueOption = createInterruptGroupQueueOption();
+        if (interruptGroupQueueOption) {
+            menu.appendChild(interruptGroupQueueOption);
+        }
     }
 
     // For non-thinking/non-streaming messages (including errors and completed messages)
@@ -428,6 +434,11 @@ function showContextMenu(event, messageItem, message) {
                 closeContextMenu();
             };
             menu.appendChild(redoGroupOption);
+        }
+
+        const interruptGroupQueueOption = createInterruptGroupQueueOption();
+        if (interruptGroupQueueOption) {
+            menu.appendChild(interruptGroupQueueOption);
         }
 
         menu.appendChild(deleteOption);
