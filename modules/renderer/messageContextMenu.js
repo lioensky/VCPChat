@@ -550,16 +550,28 @@ function toggleEditMode(messageItem, message) {
             const newContent = textarea.value;
 
             // 编辑器打开后，删除操作、JEV 投影或文件同步都可能原子替换历史数组。
-            // 保存时必须重新取得当前真源，不能继续使用进入编辑态时捕获的旧数组。
+            // 只要原气泡仍连接在当前 Surface，它就继续拥有编辑权；历史暂时缺少
+            // 该 ID 时使用气泡模型恢复，而不是把同步空窗误判成“消息已变化”。
             const latestHistory = mainRefs.currentChatHistoryRef.get();
-            const liveMessage = latestHistory.find(msg => msg.id === message.id);
+            const liveMessage = latestHistory.find(msg => msg.id === message.id)
+                || messageItem._vcpMessageModel
+                || message;
 
-            if (!liveMessage) {
-                uiHelper.showToastNotification("该消息已被删除或当前历史已变化，无法保存编辑。", "warning");
-                if (!messageItem.isConnected) return;
-                toggleEditMode(messageItem, message);
+            if (!messageItem.isConnected || !liveMessage?.id) {
+                uiHelper.showToastNotification("该消息已离开当前聊天，无法保存编辑。", "warning");
                 return;
             }
+
+            const visibleItems = Array.from(
+                mainRefs.chatMessagesDiv?.querySelectorAll?.('.message-item[data-message-id]') || []
+            );
+            const visibleIndex = visibleItems.indexOf(messageItem);
+            const previousMessageId = visibleIndex > 0
+                ? visibleItems[visibleIndex - 1]?.dataset?.messageId
+                : null;
+            const nextMessageId = visibleIndex >= 0 && visibleIndex < visibleItems.length - 1
+                ? visibleItems[visibleIndex + 1]?.dataset?.messageId
+                : null;
 
             let originalTextContent = "";
             if (typeof liveMessage.content === 'string') {
@@ -609,15 +621,39 @@ function toggleEditMode(messageItem, message) {
                         topicId: currentTopicIdVal,
                         category: 'message-edit',
                     }, historyForSave => {
-                        const liveIndex = historyForSave.findIndex(entry => entry?.id === message.id);
-                        if (liveIndex === -1) {
-                            const missingError = new Error('该消息已不存在于最新聊天记录中');
-                            missingError.code = 'MESSAGE_EDIT_TARGET_MISSING';
-                            throw missingError;
-                        }
                         const nextHistory = [...historyForSave];
+                        let liveIndex = nextHistory.findIndex(entry => entry?.id === message.id);
+
+                        if (liveIndex === -1) {
+                            // 可见气泡仍在，但 JEV/删除写盘竞态使持久历史暂时漏掉它。
+                            // 依据当前 DOM 邻居恢复原楼层；邻居也已变化时按时间戳插入。
+                            const restoredMessage = {
+                                ...liveMessage,
+                                id: message.id
+                            };
+                            const previousIndex = previousMessageId
+                                ? nextHistory.findIndex(entry => entry?.id === previousMessageId)
+                                : -1;
+                            const nextIndex = nextMessageId
+                                ? nextHistory.findIndex(entry => entry?.id === nextMessageId)
+                                : -1;
+
+                            if (previousIndex >= 0) {
+                                liveIndex = previousIndex + 1;
+                            } else if (nextIndex >= 0) {
+                                liveIndex = nextIndex;
+                            } else {
+                                const restoredTimestamp = Number(restoredMessage.timestamp) || 0;
+                                liveIndex = nextHistory.findIndex(entry => (
+                                    (Number(entry?.timestamp) || 0) > restoredTimestamp
+                                ));
+                                if (liveIndex < 0) liveIndex = nextHistory.length;
+                            }
+                            nextHistory.splice(liveIndex, 0, restoredMessage);
+                        }
+
                         nextHistory[liveIndex] = {
-                            ...historyForSave[liveIndex],
+                            ...nextHistory[liveIndex],
                             content: newContent,
                             updatedAt
                         };
@@ -640,17 +676,9 @@ function toggleEditMode(messageItem, message) {
                 }
 
                 if (uiHelper && typeof uiHelper.showToastNotification === 'function') {
-                    uiHelper.showToastNotification(
-                        error?.code === 'MESSAGE_EDIT_TARGET_MISSING'
-                            ? '该消息已被删除，无法保存编辑。'
-                            : `编辑保存失败: ${error.message}`,
-                        error?.code === 'MESSAGE_EDIT_TARGET_MISSING' ? 'warning' : 'error'
-                    );
+                    uiHelper.showToastNotification(`编辑保存失败: ${error.message}`, "error");
                 }
-                if (error?.code === 'MESSAGE_EDIT_TARGET_MISSING' && messageItem.isConnected) {
-                    toggleEditMode(messageItem, message);
-                }
-                return; // 其他保存错误保留编辑模式，让用户重试
+                return; // 保存错误保留编辑模式，让用户重试
             }
 
             const activeItem = mainRefs.currentSelectedItemRef.get();

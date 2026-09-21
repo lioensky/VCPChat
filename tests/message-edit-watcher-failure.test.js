@@ -151,3 +151,81 @@ test('editing survives deletion of another message and replacement of the histor
     assert.equal(toasts.some(toast => toast.type === 'error' || toast.type === 'warning'), false);
     dom.window.close();
 });
+
+test('a visible edited bubble is restored when a concurrent history snapshot temporarily omits it', async () => {
+    const dom = new JSDOM(`<!doctype html><div id="chatMessages">
+        <div class="message-item" data-message-id="before"><div class="md-content">before</div></div>
+        <div class="message-item" data-message-id="edit-target"><div class="md-content">target content</div></div>
+        <div class="message-item" data-message-id="after"><div class="md-content">after</div></div>
+    </div>`, { runScripts: 'outside-only', url: 'https://vcpchat.local/' });
+    const executableSource = source
+        .replace('export function createMessageContextMenu()', 'function createMessageContextMenu()')
+        .concat('\nwindow.__messageEditTestApi = createMessageContextMenu();\n');
+    dom.window.eval(executableSource);
+
+    const staleBubbleMessage = {
+        id: 'edit-target',
+        role: 'user',
+        content: 'target content',
+        timestamp: 2,
+    };
+    let history = [
+        { id: 'before', role: 'assistant', content: 'before', timestamp: 1 },
+        { id: 'after', role: 'assistant', content: 'after', timestamp: 3 },
+    ];
+    let committedHistory = null;
+    const toasts = [];
+    const chatMessagesDiv = dom.window.document.getElementById('chatMessages');
+
+    dom.window.__messageEditTestApi.initializeContextMenu({
+        chatMessagesDiv,
+        electronAPI: {},
+        markedInstance: { parse: value => value },
+        uiHelper: {
+            autoResizeTextarea() {},
+            showToastNotification(messageText, type) { toasts.push({ message: messageText, type }); },
+        },
+        currentChatHistoryRef: {
+            get: () => history,
+            set: next => { history = [...next]; },
+        },
+        currentSelectedItemRef: {
+            get: () => ({ id: 'group-1', type: 'group', config: {} }),
+        },
+        currentTopicIdRef: { get: () => 'topic-1' },
+        historyMutationAuthority: {
+            mutate: async (_descriptor, mutator) => {
+                committedHistory = mutator(history.map(entry => ({ ...entry })));
+                history = [...committedHistory];
+                return { result: { success: true }, history: committedHistory };
+            },
+        },
+    }, {
+        updateMessageContent() {},
+    });
+
+    const messageItem = chatMessagesDiv.querySelector('[data-message-id="edit-target"]');
+    messageItem._vcpMessageModel = staleBubbleMessage;
+    dom.window.__messageEditTestApi.toggleEditMode(messageItem, staleBubbleMessage);
+    messageItem.querySelector('.message-edit-textarea').value = 'restored and edited';
+    messageItem.querySelector('.message-edit-controls button').click();
+
+    const deadline = Date.now() + 1_000;
+    while (messageItem.classList.contains('message-item-editing') && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 5));
+    }
+
+    assert.equal(
+        Array.from(committedHistory, entry => entry.id).join(','),
+        'before,edit-target,after'
+    );
+    assert.equal(committedHistory[1].content, 'restored and edited');
+    assert.equal(history[1].content, 'restored and edited');
+    assert.equal(messageItem.classList.contains('message-item-editing'), false);
+    assert.ok(toasts.some(toast => toast.type === 'success'));
+    assert.equal(
+        toasts.some(toast => /已变化|已被删除|无法保存/.test(toast.message)),
+        false
+    );
+    dom.window.close();
+});
