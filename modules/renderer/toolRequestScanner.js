@@ -24,7 +24,14 @@ function collectProtocolLiteralCodeRanges(text) {
 
     // 未闭合 fenced code 在流式阶段同样拥有当前流尾；其中出现的协议标记
     // 只是代码字面量，不能建立工具调用或桌面推送隔离边界。
-    return collectMarkdownCodeDomains(text);
+    //
+    // 行内代码域额外限制为同一行。Markdown code span 虽可容纳换行，但聊天
+    // 正文中的颜文字（如 `(・`ω´・)`）常含不成对反引号；若允许它与数百字后
+    // 工具载荷中的反引号跨行配对，会把真实 TOOL_REQUEST 错误覆盖为代码示例。
+    return collectMarkdownCodeDomains(text).filter(range => (
+        range.kind === 'fence'
+        || !text.slice(range.start, range.end).includes('\n')
+    ));
 }
 
 function isIndexInCodeDomain(index, codeRanges) {

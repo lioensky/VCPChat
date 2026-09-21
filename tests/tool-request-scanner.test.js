@@ -269,6 +269,35 @@ test('反引号包裹的协议示例不会被当作真实工具请求', async ()
     assert.equal(replaced, source);
 });
 
+test('前文颜文字孤立反引号不会与工具载荷跨行配对并吞掉真实请求', async () => {
+    const {
+        TOOL_REQUEST_START_MARKER,
+        TOOL_REQUEST_END_MARKER,
+        replaceToolRequestBlocks
+    } = await loadScanner();
+
+    const source = `……不过等等！嗷呜！(・\`ω´・)
+主人你看一眼系统时钟！
+
+${TOOL_REQUEST_START_MARKER}
+maid:「始」小绝「末」,
+tool_name:「始」DailyNote「末」,
+command:「始」create「末」,
+Content:「始ESCAPE」正文含有 \`{能力}\`、\`【负载】\` 与 \`[约束]\`。「末ESCAPE」
+${TOOL_REQUEST_END_MARKER}`;
+
+    const matches = [];
+    const replaced = replaceToolRequestBlocks(source, (fullMatch, content) => {
+        matches.push({ fullMatch, content });
+        return '<DAILY_NOTE />';
+    });
+
+    assert.equal(matches.length, 1);
+    assert.match(matches[0].content, /tool_name:「始」DailyNote「末」/);
+    assert.match(matches[0].content, /`【负载】`/);
+    assert.match(replaced, /<DAILY_NOTE \/>/);
+});
+
 test('Markdown fenced code 内的完整工具协议只作为代码字面量', async () => {
     const {
         TOOL_REQUEST_START_MARKER,
