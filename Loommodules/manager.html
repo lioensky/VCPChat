@@ -267,7 +267,8 @@
                             <div class="field third"><label for="emoji">Emoji 图标</label><input id="emoji" value="🕸️" maxlength="8"></div>
                             <div class="field full"><label for="description">描述</label><input id="description" placeholder="此 LoomAPP 的用途"></div>
                             <div class="field full"><label for="startUrl">启动 URL</label><input id="startUrl" required type="url" value="https://example.com/"></div>
-                            <div class="field full"><label for="icon">图标</label><input id="icon" placeholder="应用目录内相对路径、https URL 或 data URL"><div class="hint">社区分发建议使用应用目录内文件名，例如 icon.png。</div></div>
+                            <div class="field full"><label for="icon">传统图标</label><input id="icon" placeholder="应用目录内相对路径、https URL 或 data:image URL"><div class="hint">社区分发可使用应用目录内文件名，例如 icon.png；配置图标源码后将优先显示源码图标。</div></div>
+                            <div class="field full"><label for="iconSource">手绘图标源码（JSON）</label><textarea id="iconSource" spellcheck="false" placeholder='{"type":"svg","source":"<svg viewBox=\"0 0 64 64\">...</svg>"}'></textarea><div class="hint">支持 svg、css、canvas。Canvas 使用声明式 commands，不执行任意 JavaScript；留空则使用传统图标或 Emoji。</div></div>
                             <div class="check-row">
                                 <label class="check"><input id="enabled" type="checkbox" checked>启用应用</label>
                                 <label class="check"><input id="exposeDrawer" type="checkbox" checked>暴露在应用抽屉</label>
@@ -384,6 +385,7 @@
                 exposeInAppDrawer: true,
                 exposeManagerInAppDrawer: true,
                 icon: '',
+                iconSource: null,
                 emoji: '🕸️',
                 window: { width: 420, height: 780, minWidth: 320, minHeight: 480, maxWidth: null, maxHeight: null, resizable: true },
                 viewport: { width: 390, height: 700, autoResize: true },
@@ -399,6 +401,9 @@
             $('description').value = manifest.description || '';
             $('startUrl').value = manifest.startUrl || '';
             $('icon').value = manifest.icon || '';
+            $('iconSource').value = manifest.iconSource
+                ? JSON.stringify(manifest.iconSource, null, 2)
+                : '';
             $('emoji').value = manifest.emoji || '🕸️';
             $('enabled').checked = manifest.enabled !== false;
             $('exposeDrawer').checked = manifest.exposeInAppDrawer !== false;
@@ -438,6 +443,18 @@
             } catch {
                 throw new Error('附加请求头不是有效 JSON。');
             }
+            let iconSource = null;
+            const iconSourceText = $('iconSource').value.trim();
+            if (iconSourceText) {
+                try {
+                    iconSource = JSON.parse(iconSourceText);
+                } catch {
+                    throw new Error('手绘图标源码不是有效 JSON。');
+                }
+                if (!iconSource || typeof iconSource !== 'object' || Array.isArray(iconSource)) {
+                    throw new Error('手绘图标源码必须是 JSON 对象。');
+                }
+            }
             return {
                 schemaVersion: 1,
                 id: $('appId').value.trim(),
@@ -448,6 +465,7 @@
                 exposeInAppDrawer: $('exposeDrawer').checked,
                 exposeManagerInAppDrawer: $('exposeManager').checked,
                 icon: $('icon').value.trim(),
+                iconSource,
                 emoji: $('emoji').value.trim() || '🕸️',
                 window: {
                     width: numberValue('windowWidth', 420),

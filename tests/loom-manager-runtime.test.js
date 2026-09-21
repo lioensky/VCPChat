@@ -346,6 +346,86 @@ function testLegacyDeviceFingerprintMigration(VCPLoomManager) {
     );
 }
 
+function testAgentDrawnIcons(managerModule) {
+    const {
+        VCPLoomManager,
+        normalizeIconSource,
+        iconSourceToSvg,
+        iconSourceToDataUrl,
+    } = managerModule;
+
+    const svgSource = normalizeIconSource({
+        type: 'svg',
+        source: '<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="24" fill="#7357ff"/></svg>',
+    });
+    assert.strictEqual(svgSource.type, 'svg');
+    assert(svgSource.source.includes('xmlns="http://www.w3.org/2000/svg"'));
+    assert(iconSourceToDataUrl(svgSource).startsWith('data:image/svg+xml;charset=utf-8,'));
+
+    const cssSource = normalizeIconSource({
+        type: 'css',
+        width: 72,
+        height: 48,
+        source: 'background:linear-gradient(135deg,#7357ff,#33d6c5);border-radius:14px;',
+    });
+    const cssSvg = iconSourceToSvg(cssSource);
+    assert(cssSvg.includes('foreignObject'));
+    assert(cssSvg.includes('width:72px'));
+    assert(cssSvg.includes('linear-gradient'));
+
+    const canvasSource = normalizeIconSource({
+        type: 'canvas',
+        width: 64,
+        height: 64,
+        background: '#10131a',
+        commands: [
+            { op: 'circle', cx: 32, cy: 32, r: 25, fill: '#7357ff' },
+            {
+                op: 'path',
+                d: 'M18 33 L28 43 L47 21',
+                stroke: '#ffffff',
+                strokeWidth: 6,
+            },
+            { op: 'text', x: 32, y: 20, text: 'VCP', textAnchor: 'middle', fill: '#fff' },
+        ],
+    });
+    const canvasSvg = iconSourceToSvg(canvasSource);
+    assert(canvasSvg.includes('<circle'));
+    assert(canvasSvg.includes('<path'));
+    assert(canvasSvg.includes('VCP'));
+
+    const manager = new VCPLoomManager();
+    const resolved = manager.resolveIcon({
+        id: 'drawn-icon',
+        icon: 'https://example.com/legacy.png',
+        iconSource: canvasSource,
+    });
+    assert(resolved.startsWith('data:image/svg+xml;charset=utf-8,'));
+    assert(!resolved.includes('legacy.png'));
+
+    assert.throws(
+        () => normalizeIconSource({
+            type: 'svg',
+            source: '<svg><script>alert(1)</script></svg>',
+        }),
+        /不安全内容/
+    );
+    assert.throws(
+        () => normalizeIconSource({
+            type: 'css',
+            source: 'background:url(https://evil.example/icon.png)',
+        }),
+        /仅允许/
+    );
+    assert.throws(
+        () => normalizeIconSource({
+            type: 'canvas',
+            commands: [{ op: 'executeScript', code: 'alert(1)' }],
+        }),
+        /不支持指令/
+    );
+}
+
 function testDetachedDevTools(VCPLoomManager) {
     const manager = new VCPLoomManager();
     const calls = [];
@@ -379,11 +459,13 @@ function testDetachedDevTools(VCPLoomManager) {
 }
 
 async function run() {
-    await withElectronMock(async ({ VCPLoomManager }, dialogResponses) => {
+    await withElectronMock(async (managerModule, dialogResponses) => {
+        const { VCPLoomManager } = managerModule;
         await testInitializeLock(VCPLoomManager);
         await testGenericDeviceBroker(VCPLoomManager, dialogResponses);
         await testDeviceRequestDoesNotReload(VCPLoomManager);
         testLegacyDeviceFingerprintMigration(VCPLoomManager);
+        testAgentDrawnIcons(managerModule);
         testDetachedDevTools(VCPLoomManager);
     });
     console.log('loom-manager-runtime.test.js: all assertions passed');

@@ -1,5 +1,52 @@
 # LoomController
 
+## 1.9.0：Agent 手绘 LoomAPP 图标
+
+[`CreateApp`](plugin-manifest.json:53) 与 [`EditAppSources`](plugin-manifest.json:163) 的 `manifest` 现支持结构化 `iconSource`。Agent 可以使用 SVG、CSS 或声明式 Canvas 指令手绘应用图标；Loom 在主进程中校验源码并统一编译为 SVG Data URL，现有管理器、Dock、应用抽屉和桌面图标无需执行 Agent 脚本。
+
+`iconSource` 优先于传统 `icon`，清除后自动回退到 `icon` 或 `emoji`：
+
+```json
+{
+  "iconSource": {
+    "type": "svg",
+    "source": "<svg viewBox=\"0 0 64 64\"><rect width=\"64\" height=\"64\" rx=\"16\" fill=\"#7357ff\"/><circle cx=\"32\" cy=\"32\" r=\"12\" fill=\"#fff\"/></svg>"
+  }
+}
+```
+
+CSS 模式接受作用于单个隔离图标元素的声明列表：
+
+```json
+{
+  "iconSource": {
+    "type": "css",
+    "width": 64,
+    "height": 64,
+    "source": "background:linear-gradient(135deg,#7357ff,#33d6c5);border-radius:18px;box-shadow:inset 0 0 0 4px rgba(255,255,255,.25);"
+  }
+}
+```
+
+Canvas 模式不执行 JavaScript，而使用可审计的绘图指令：
+
+```json
+{
+  "iconSource": {
+    "type": "canvas",
+    "width": 64,
+    "height": 64,
+    "background": "#10131a",
+    "commands": [
+      { "op": "circle", "cx": 32, "cy": 32, "r": 25, "fill": "#7357ff" },
+      { "op": "path", "d": "M18 33 L28 43 L47 21", "stroke": "#ffffff", "strokeWidth": 6 }
+    ]
+  }
+}
+```
+
+Canvas 支持 `rect`、`fillRect`、`strokeRect`、`circle`、`ellipse`、`line`、`path`、`polygon`、`polyline` 和 `text`。SVG/CSS 源码最多 128 KB，Canvas 最多 256 条指令；脚本、事件处理器、外部资源、`url()`、任意 Canvas JavaScript 均会被拒绝。该结构会随 `loom.json` 和 `.vloom.json` 分发包保存、导入与导出。
+
 ## 1.7.0：编号串语法 Skill 闭环（以下旧版章节作为历史参考）
 
 当前版本提供三个独立维护入口：
@@ -246,7 +293,7 @@ command:「始」ListOpenApps「末」
 ### 参数
 
 - `command`：固定为 `CreateApp`。
-- `manifest`：JSON 对象或 JSON 字符串，必需。
+- `manifest`：JSON 对象或 JSON 字符串，必需；可包含 `iconSource` 手绘图标。
 - `css`：完整 `inject.css` 内容，可选。
 - `js`：完整 `inject.js` 内容，可选。
 
@@ -285,6 +332,7 @@ js:「始」console.log('Loom injection loaded');「末」
 - ID 必须以字母或数字开头。
 - 启动 URL 仅支持 HTTP 和 HTTPS。
 - 请求头不能覆写 `Cookie` 和 `Host`。
+- `iconSource.type` 只能是 `svg`、`css` 或 `canvas`；图标源码不得包含脚本或外部资源。
 - 单个 CSS 或 JavaScript 文件不能超过 Loom 管理器规定的体积限制。
 - 已存在的应用 ID 不能重复创建。
 
@@ -481,6 +529,7 @@ js:「始」document.documentElement.dataset.loomReady = 'true';「末」
 ### 更新规则
 
 - 未提交的部分保持原值。
+- 可通过 `manifest.iconSource` 创建或替换手绘图标；传 `null` 清除手绘图标。
 - `manifest` 支持部分更新。
 - 以下嵌套字段会与当前值合并：
   - `window`
@@ -496,7 +545,7 @@ js:「始」document.documentElement.dataset.loomReady = 'true';「末」
 
 如果应用正在运行，将立即：
 
-- 更新窗口标题。
+- 更新窗口标题和公开图标。
 - 更新窗口尺寸限制。
 - 更新窗口是否允许调整尺寸。
 - 更新页面视口。

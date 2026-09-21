@@ -25,6 +25,8 @@ const PACKAGE_VERSION = 1;
 const TITLE_BAR_HEIGHT = 44;
 const SAFE_APP_ID = /^[a-z0-9][a-z0-9_-]{1,63}$/;
 const MAX_INJECT_BYTES = 2 * 1024 * 1024;
+const MAX_ICON_SOURCE_BYTES = 128 * 1024;
+const MAX_ICON_CANVAS_COMMANDS = 256;
 const MAX_SHARE_TEXT = 100000;
 const MAX_RUNTIME_SOURCE = 4 * 1024 * 1024;
 const MAX_RENDERED_TEXT = 500000;
@@ -65,6 +67,7 @@ const DEFAULT_MANIFEST = Object.freeze({
     exposeInAppDrawer: true,
     exposeManagerInAppDrawer: true,
     icon: '',
+    iconSource: null,
     emoji: '🕸️',
     window: {
         width: 420,
@@ -140,6 +143,208 @@ function normalizeHeaders(headers) {
     return normalized;
 }
 
+function assertIconSourceSize(value, label) {
+    const text = String(value ?? '');
+    if (Buffer.byteLength(text, 'utf8') > MAX_ICON_SOURCE_BYTES) {
+        throw new Error(`${label} 超过 ${Math.round(MAX_ICON_SOURCE_BYTES / 1024)} KB 限制。`);
+    }
+    return text;
+}
+
+function escapeXml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '\u0026amp;')
+        .replace(/</g, '\u0026lt;')
+        .replace(/>/g, '\u0026gt;')
+        .replace(/"/g, '\u0026quot;')
+        .replace(/'/g, '\u0026apos;');
+}
+
+function finiteIconNumber(value, fallback = 0, min = -8192, max = 8192) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return fallback;
+    return Math.min(max, Math.max(min, number));
+}
+
+function iconDimension(value, fallback = 64) {
+    return Math.round(finiteIconNumber(value, fallback, 16, 1024));
+}
+
+function safeSvgPaint(value, fallback = 'none') {
+    const paint = String(value ?? fallback).trim().slice(0, 128) || fallback;
+    if (/[\u0000-\u001f<>{};]|url\s*\(|javascript:/i.test(paint)) {
+        throw new Error('Canvas 图标包含不安全的颜色或画笔值。');
+    }
+    return paint;
+}
+
+function sanitizeSvgIcon(source) {
+    let svg = assertIconSourceSize(source, 'SVG 图标源码').trim();
+    if (!/^<svg(?:\s|>)/i.test(svg) || !/<\/svg>\s*$/i.test(svg)) {
+        throw new Error('SVG 图标源码必须是完整的 <svg> 文档。');
+    }
+    const blocked = [
+        /<!doctype/i,
+        /<!entity/i,
+        /<\s*(?:script|foreignObject|iframe|object|embed|audio|video|image|use)\b/i,
+        /\son[a-z]+\s*=/i,
+        /\b(?:href|xlink:href)\s*=/i,
+        /\bjavascript\s*:/i,
+        /\bdata\s*:\s*text\/html/i,
+        /url\s*\(/i,
+        /@import/i,
+    ];
+    if (blocked.some((pattern) => pattern.test(svg))) {
+        throw new Error('SVG 图标包含脚本、外部资源或其他不安全内容。');
+    }
+    if (!/\sxmlns\s*=/.test(svg.match(/^<svg\b[^>]*>/i)?.[0] || '')) {
+        svg = svg.replace(/^<svg\b/i, '<svg xmlns="http://www.w3.org/2000/svg"');
+    }
+    return svg;
+}
+
+function sanitizeCssIcon(source) {
+    const css = assertIconSourceSize(source, 'CSS 图标源码').trim();
+    if (!css) throw new Error('CSS 图标源码不能为空。');
+    // CSS 模式只允许单个隔离图标元素的声明列表，不接受选择器或 @ 规则。
+    // 禁止反斜杠可阻止对 url、expression 等关键字进行 CSS 转义绕过。
+    if (
+        /[<>{}@\\]/.test(css)
+        || /url\s*\(|image-set\s*\(|expression\s*\(|javascript\s*:|behavior\s*:|-moz-binding/i.test(css)
+    ) {
+        throw new Error('CSS 图标仅允许不含选择器、外部资源和转义的安全声明。');
+    }
+    return css;
+}
+
+function canvasCommandToSvg(command, index) {
+    if (!isPlainObject(command)) {
+        throw new Error(`Canvas 图标第 ${index + 1} 条指令必须是对象。`);
+    }
+    const op = String(command.op || command.type || '').trim().toLowerCase();
+    const n = (name, fallback = 0) => finiteIconNumber(command[name], fallback);
+    const paintAttrs = (defaultFill = 'none') => {
+        const fill = safeSvgPaint(command.fill, defaultFill);
+        const stroke = safeSvgPaint(command.stroke, 'none');
+        const strokeWidth = finiteIconNumber(command.strokeWidth, 1, 0, 256);
+        const opacity = finiteIconNumber(command.opacity, 1, 0, 1);
+        return ` fill="${escapeXml(fill)}" stroke="${escapeXml(stroke)}" stroke-width="${strokeWidth}" opacity="${opacity}"`;
+    };
+
+    if (op === 'fillrect' || op === 'strokerect' || op === 'rect') {
+        const defaultFill = op === 'fillrect' ? '#000' : 'none';
+        const defaultStroke = op === 'strokerect' ? '#000' : command.stroke;
+        const normalized = defaultStroke === command.stroke
+            ? command
+            : { ...command, stroke: defaultStroke };
+        const attrs = canvasCommandToSvg({ ...normalized, op: 'normalized-rect', fill: normalized.fill ?? defaultFill }, index);
+        return attrs;
+    }
+    if (op === 'normalized-rect') {
+        return `<rect x="${n('x')}" y="${n('y')}" width="${n('width')}" height="${n('height')}" rx="${n('rx')}"${paintAttrs('#000')}/>`;
+    }
+    if (op === 'circle') {
+        return `<circle cx="${n('cx', n('x'))}" cy="${n('cy', n('y'))}" r="${n('r')}"${paintAttrs('#000')}/>`;
+    }
+    if (op === 'ellipse') {
+        return `<ellipse cx="${n('cx', n('x'))}" cy="${n('cy', n('y'))}" rx="${n('rx')}" ry="${n('ry')}"${paintAttrs('#000')}/>`;
+    }
+    if (op === 'line') {
+        return `<line x1="${n('x1')}" y1="${n('y1')}" x2="${n('x2')}" y2="${n('y2')}"${paintAttrs('none')} stroke-linecap="${escapeXml(String(command.lineCap || 'round').slice(0, 16))}"/>`;
+    }
+    if (op === 'path') {
+        const d = String(command.d || '').trim();
+        if (!d || d.length > 16384 || /[^0-9a-zA-Z,.\s+\-]/.test(d)) {
+            throw new Error(`Canvas 图标第 ${index + 1} 条 path 指令无效。`);
+        }
+        return `<path d="${escapeXml(d)}"${paintAttrs('none')} stroke-linecap="round" stroke-linejoin="round"/>`;
+    }
+    if (op === 'polygon' || op === 'polyline') {
+        const points = Array.isArray(command.points)
+            ? command.points.map((point) => Array.isArray(point)
+                ? `${finiteIconNumber(point[0])},${finiteIconNumber(point[1])}`
+                : `${finiteIconNumber(point?.x)},${finiteIconNumber(point?.y)}`
+            ).join(' ')
+            : String(command.points || '');
+        if (!points || points.length > 16384 || /[^0-9,.\s+\-]/.test(points)) {
+            throw new Error(`Canvas 图标第 ${index + 1} 条 ${op} 指令无效。`);
+        }
+        return `<${op} points="${escapeXml(points)}"${paintAttrs(op === 'polygon' ? '#000' : 'none')}/>`;
+    }
+    if (op === 'text') {
+        const text = String(command.text ?? '').slice(0, 256);
+        const fontSize = finiteIconNumber(command.fontSize, 16, 1, 512);
+        const fontWeight = String(command.fontWeight || 'normal').slice(0, 32);
+        const textAnchor = ['start', 'middle', 'end'].includes(command.textAnchor)
+            ? command.textAnchor
+            : 'start';
+        return `<text x="${n('x')}" y="${n('y')}" font-size="${fontSize}" font-weight="${escapeXml(fontWeight)}" text-anchor="${textAnchor}"${paintAttrs('#000')}>${escapeXml(text)}</text>`;
+    }
+    throw new Error(`Canvas 图标不支持指令：${op || '(empty)'}`);
+}
+
+function normalizeIconSource(input) {
+    if (input === undefined || input === null || input === '') return null;
+    if (!isPlainObject(input)) throw new Error('iconSource 必须是对象。');
+    const type = String(input.type || '').trim().toLowerCase();
+    const width = iconDimension(input.width, 64);
+    const height = iconDimension(input.height, 64);
+
+    if (type === 'svg') {
+        return { type, source: sanitizeSvgIcon(input.source ?? input.svg), width, height };
+    }
+    if (type === 'css') {
+        return { type, source: sanitizeCssIcon(input.source ?? input.css), width, height };
+    }
+    if (type === 'canvas') {
+        const commands = input.commands;
+        if (!Array.isArray(commands) || !commands.length) {
+            throw new Error('Canvas 图标 commands 必须是非空数组。');
+        }
+        if (commands.length > MAX_ICON_CANVAS_COMMANDS) {
+            throw new Error(`Canvas 图标最多允许 ${MAX_ICON_CANVAS_COMMANDS} 条指令。`);
+        }
+        // 在保存清单前完成全部指令校验，避免无效图标延迟到 UI 展示时才失败。
+        commands.forEach((command, index) => canvasCommandToSvg(command, index));
+        return {
+            type,
+            width,
+            height,
+            background: safeSvgPaint(input.background, 'transparent'),
+            commands: clone(commands),
+        };
+    }
+    throw new Error('iconSource.type 必须为 svg、css 或 canvas。');
+}
+
+function iconSourceToSvg(iconSource) {
+    if (!iconSource) return '';
+    const width = iconDimension(iconSource.width, 64);
+    const height = iconDimension(iconSource.height, 64);
+    if (iconSource.type === 'svg') return sanitizeSvgIcon(iconSource.source);
+    if (iconSource.type === 'css') {
+        const css = sanitizeCssIcon(iconSource.source);
+        return [
+            `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
+            '<foreignObject width="100%" height="100%">',
+            '<div xmlns="http://www.w3.org/1999/xhtml" class="icon"></div>',
+            `<style>.icon{box-sizing:border-box;width:${width}px;height:${height}px;position:relative;overflow:hidden}${css}</style>`,
+            '</foreignObject></svg>',
+        ].join('');
+    }
+    if (iconSource.type === 'canvas') {
+        const body = iconSource.commands.map(canvasCommandToSvg).join('');
+        const background = safeSvgPaint(iconSource.background, 'transparent');
+        return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="${escapeXml(background)}"/>${body}</svg>`;
+    }
+    throw new Error(`不支持的图标源码类型：${iconSource.type}`);
+}
+
+function iconSourceToDataUrl(iconSource) {
+    const svg = iconSourceToSvg(iconSource);
+    return svg ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}` : '';
+}
+
 function normalizeManifest(input, forcedId = null) {
     const manifest = mergeManifest(input);
     const id = String(forcedId || manifest.id || '').trim().toLowerCase();
@@ -170,7 +375,8 @@ function normalizeManifest(input, forcedId = null) {
         enabled: manifest.enabled !== false,
         exposeInAppDrawer: manifest.exposeInAppDrawer !== false,
         exposeManagerInAppDrawer: manifest.exposeManagerInAppDrawer !== false,
-        icon: String(manifest.icon || '').trim().slice(0, 500),
+        icon: String(manifest.icon || '').trim().slice(0, 4096),
+        iconSource: normalizeIconSource(manifest.iconSource),
         emoji: String(manifest.emoji || '🕸️').trim().slice(0, 8) || '🕸️',
         window: {
             width: clampInteger(manifest.window.width, 420, 320, 3840),
@@ -335,8 +541,9 @@ class VCPLoomManager {
     }
 
     resolveIcon(manifest) {
+        if (manifest.iconSource) return iconSourceToDataUrl(manifest.iconSource);
         if (!manifest.icon) return '';
-        if (/^(data:|https?:|file:)/i.test(manifest.icon)) return manifest.icon;
+        if (/^(data:image\/|https?:|file:)/i.test(manifest.icon)) return manifest.icon;
         const candidate = path.resolve(this.appDir(manifest.id), manifest.icon);
         const relative = path.relative(this.appDir(manifest.id), candidate);
         if (relative.startsWith('..') || path.isAbsolute(relative) || !fs.pathExistsSync(candidate)) return '';
@@ -2196,4 +2403,7 @@ module.exports = {
     USER_AGENTS,
     LOOM_PAGE_ACTIONS,
     LOOM_ACTIONS,
+    normalizeIconSource,
+    iconSourceToSvg,
+    iconSourceToDataUrl,
 };
