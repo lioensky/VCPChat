@@ -1,3 +1,5 @@
+import { collectMarkdownCodeDomains } from './markdownCodeDomainScanner.js';
+
 const TOOL_REQUEST_START_MARKER = '<<<[TOOL_REQUEST]>>>';
 const TOOL_REQUEST_END_MARKER = '<<<[END_TOOL_REQUEST]>>>';
 const TOOL_RESULT_START_MARKER = '[[VCP调用结果信息汇总:';
@@ -13,6 +15,25 @@ const FIELD_START_REGEX = /(^|\n|,)([ \t]*)([^\s,:：「」{}]+)[ \t]*[:：][ \t
 
 function isBacktickWrappedToolMarker(text, index, marker) {
     return text[index - 1] === '`' || text[index + marker.length] === '`';
+}
+
+function collectProtocolLiteralCodeRanges(text) {
+    if (typeof text !== 'string' || (!text.includes('`') && !text.includes('~'))) {
+        return [];
+    }
+
+    // 未闭合 fenced code 在流式阶段同样拥有当前流尾；其中出现的协议标记
+    // 只是代码字面量，不能建立工具调用或桌面推送隔离边界。
+    return collectMarkdownCodeDomains(text);
+}
+
+function isIndexInCodeDomain(index, codeRanges) {
+    return codeRanges.some(range => index >= range.start && index < range.end);
+}
+
+function isLiteralProtocolMarker(text, index, marker, codeRanges) {
+    return isBacktickWrappedToolMarker(text, index, marker)
+        || isIndexInCodeDomain(index, codeRanges);
 }
 
 function getFieldEndMarker(startMarker) {
@@ -205,12 +226,13 @@ function findUnclosedToolRequest(text) {
         return null;
     }
 
+    const codeRanges = collectProtocolLiteralCodeRanges(text);
     let cursor = 0;
     while (cursor < text.length) {
         const startIndex = text.indexOf(TOOL_REQUEST_START_MARKER, cursor);
         if (startIndex === -1) return null;
 
-        if (isBacktickWrappedToolMarker(text, startIndex, TOOL_REQUEST_START_MARKER)) {
+        if (isLiteralProtocolMarker(text, startIndex, TOOL_REQUEST_START_MARKER, codeRanges)) {
             cursor = startIndex + TOOL_REQUEST_START_MARKER.length;
             continue;
         }
@@ -311,6 +333,7 @@ function replaceToolRequestBlocks(text, replacer) {
         return text;
     }
 
+    const codeRanges = collectProtocolLiteralCodeRanges(text);
     let result = '';
     let cursor = 0;
 
@@ -321,7 +344,7 @@ function replaceToolRequestBlocks(text, replacer) {
             break;
         }
 
-        if (isBacktickWrappedToolMarker(text, startIndex, TOOL_REQUEST_START_MARKER)) {
+        if (isLiteralProtocolMarker(text, startIndex, TOOL_REQUEST_START_MARKER, codeRanges)) {
             const markerEnd = startIndex + TOOL_REQUEST_START_MARKER.length;
             result += text.slice(cursor, markerEnd);
             cursor = markerEnd;

@@ -2,15 +2,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 
 const root = path.resolve(__dirname, '..');
 
 async function loadScanner() {
-    const source = fs.readFileSync(
-        path.join(root, 'modules/renderer/toolRequestScanner.js'),
-        'utf8'
-    );
-    const moduleUrl = `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`;
+    const moduleUrl = pathToFileURL(
+        path.join(root, 'modules/renderer/toolRequestScanner.js')
+    ).href;
     return import(moduleUrl);
 }
 
@@ -268,6 +267,88 @@ test('反引号包裹的协议示例不会被当作真实工具请求', async ()
 
     assert.equal(calls, 0);
     assert.equal(replaced, source);
+});
+
+test('Markdown fenced code 内的完整工具协议只作为代码字面量', async () => {
+    const {
+        TOOL_REQUEST_START_MARKER,
+        TOOL_REQUEST_END_MARKER,
+        replaceToolRequestBlocks,
+        findEarliestUnclosedToolBlock
+    } = await loadScanner();
+
+    for (const fence of ['```', '```text', '~~~text']) {
+        const closingFence = fence.startsWith('~') ? '~~~' : '```';
+        const source = `${fence}
+${TOOL_REQUEST_START_MARKER}
+tool_name:「始」Demo「末」
+${TOOL_REQUEST_END_MARKER}
+${closingFence}`;
+
+        let calls = 0;
+        const replaced = replaceToolRequestBlocks(source, () => {
+            calls += 1;
+            return '<TOOL />';
+        });
+
+        assert.equal(calls, 0, fence);
+        assert.equal(replaced, source, fence);
+        assert.equal(findEarliestUnclosedToolBlock(source), null, fence);
+    }
+});
+
+test('流式未闭合代码围栏内的 TOOL_REQUEST 不建立工具隔离边界', async () => {
+    const {
+        TOOL_REQUEST_START_MARKER,
+        replaceToolRequestBlocks,
+        findEarliestUnclosedToolBlock
+    } = await loadScanner();
+
+    const source = `前文
+\`\`\`text
+${TOOL_REQUEST_START_MARKER}
+tool_name:「始」Demo「末」`;
+
+    let calls = 0;
+    const replaced = replaceToolRequestBlocks(source, () => {
+        calls += 1;
+        return '<TOOL />';
+    });
+
+    assert.equal(calls, 0);
+    assert.equal(replaced, source);
+    assert.equal(findEarliestUnclosedToolBlock(source), null);
+});
+
+test('代码围栏外的真实工具请求仍会正常转换', async () => {
+    const {
+        TOOL_REQUEST_START_MARKER,
+        TOOL_REQUEST_END_MARKER,
+        replaceToolRequestBlocks
+    } = await loadScanner();
+
+    const fencedExample = `\`\`\`text
+${TOOL_REQUEST_START_MARKER}
+tool_name:「始」Example「末」
+${TOOL_REQUEST_END_MARKER}
+\`\`\``;
+    const realRequest = `${TOOL_REQUEST_START_MARKER}
+tool_name:「始」RealTool「末」
+${TOOL_REQUEST_END_MARKER}`;
+    const source = `${fencedExample}
+
+${realRequest}`;
+    const matches = [];
+    const replaced = replaceToolRequestBlocks(source, (fullMatch, content) => {
+        matches.push({ fullMatch, content });
+        return '<TOOL />';
+    });
+
+    assert.equal(matches.length, 1);
+    assert.match(matches[0].content, /RealTool/);
+    assert.match(replaced, /Example/);
+    assert.equal(replaced.includes(realRequest), false);
+    assert.match(replaced, /<TOOL \/>/);
 });
 
 test('工具请求与前后普通正文直接相邻时，替换结果自动补充边界换行', async () => {
