@@ -941,6 +941,13 @@ function renderPreview(content) {
 async function handleSaveMemo() {
     if (!currentMemo) return;
 
+    const newTitle = editorTitleInput.value.trim();
+    if (!newTitle) {
+        await customAlert('日记文件名/标题不能为空！', '提示');
+        editorTitleInput.focus();
+        return;
+    }
+
     const newContent = editorTextarea.value;
     const saveBtn = document.getElementById('save-memo-btn');
     const originalText = saveBtn.textContent;
@@ -949,18 +956,25 @@ async function handleSaveMemo() {
         saveBtn.disabled = true;
         saveBtn.textContent = '正在保存...';
 
-        await apiFetch(`/note/${encodeURIComponent(currentMemo.folder)}/${encodeURIComponent(currentMemo.file)}`, {
+        const data = await apiFetch(`/note/${encodeURIComponent(currentMemo.folder)}/${encodeURIComponent(currentMemo.file)}`, {
             method: 'POST',
-            body: JSON.stringify({ content: newContent })
+            body: JSON.stringify({
+                content: newContent,
+                newFileName: newTitle
+            })
         });
 
+        const savedFileName = data.savedFileName || newTitle;
+        currentMemo.file = savedFileName;
         currentMemo.content = newContent;
+        editorTitleInput.value = savedFileName;
+
         editorStatus.textContent = '保存成功 ' + new Date().toLocaleTimeString();
 
         // 刷新列表预览
         await refreshMemoList();
     } catch (error) {
-        alert('保存失败: ' + error.message);
+        await customAlert(error.message, '保存失败');
     } finally {
         saveBtn.disabled = false;
         saveBtn.textContent = originalText;
