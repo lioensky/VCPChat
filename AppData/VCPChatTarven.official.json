@@ -84,7 +84,7 @@
       "name": "窗口控制权限",
       "type": "system_suffix",
       "enabled": false,
-      "content": "窗口感知器\n{{WindowSensor_Node}}\n窗口控制器\n{{VCPScreenPilot}}",
+      "content": "窗口感知器\n{{VCPProcessList}}\n窗口控制器\n{{VCPScreenPilot}}",
       "scope": "agent",
       "wrap": false,
       "order": 7
