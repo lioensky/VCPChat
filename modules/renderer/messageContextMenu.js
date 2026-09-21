@@ -473,7 +473,6 @@ function showContextMenu(event, messageItem, message) {
 
 function toggleEditMode(messageItem, message) {
     const { electronAPI, markedInstance, uiHelper } = mainRefs;
-    const currentChatHistoryArray = mainRefs.currentChatHistoryRef.get();
     const currentSelectedItemVal = mainRefs.currentSelectedItemRef.get();
     const currentTopicIdVal = mainRefs.currentTopicIdRef.get();
 
@@ -548,36 +547,36 @@ function toggleEditMode(messageItem, message) {
         const saveButton = ownerDocument.createElement('button');
         saveButton.innerHTML = `<i class="fas fa-save"></i> 保存`;
         saveButton.onclick = async () => {
-            // 🔧 关键修复：添加防御性编程和错误处理
             const newContent = textarea.value;
 
-            // Get original content for comparison
-            let originalTextContent = "";
-            if (typeof message.content === 'string') {
-                originalTextContent = message.content;
-            } else if (message.content && typeof message.content.text === 'string') {
-                originalTextContent = message.content.text;
-            }
+            // 编辑器打开后，删除操作、JEV 投影或文件同步都可能原子替换历史数组。
+            // 保存时必须重新取得当前真源，不能继续使用进入编辑态时捕获的旧数组。
+            const latestHistory = mainRefs.currentChatHistoryRef.get();
+            const liveMessage = latestHistory.find(msg => msg.id === message.id);
 
-            // If content hasn't changed, just exit edit mode without saving.
-            if (newContent === originalTextContent) {
+            if (!liveMessage) {
+                uiHelper.showToastNotification("该消息已被删除或当前历史已变化，无法保存编辑。", "warning");
+                if (!messageItem.isConnected) return;
                 toggleEditMode(messageItem, message);
                 return;
             }
 
-            const messageIndex = currentChatHistoryArray.findIndex(msg => msg.id === message.id);
+            let originalTextContent = "";
+            if (typeof liveMessage.content === 'string') {
+                originalTextContent = liveMessage.content;
+            } else if (liveMessage.content && typeof liveMessage.content.text === 'string') {
+                originalTextContent = liveMessage.content.text;
+            }
 
-            if (messageIndex === -1) {
-                uiHelper.showToastNotification("无法找到要编辑的消息，编辑失败。", "error");
+            // If content hasn't changed, just exit edit mode without saving.
+            if (newContent === originalTextContent) {
+                toggleEditMode(messageItem, liveMessage);
                 return;
             }
 
-            // 🔧 保存原始状态以便回滚
-            const originalContent = currentChatHistoryArray[messageIndex].content;
-            const originalMessageContent = message.content;
-            const originalUpdatedAt = currentChatHistoryArray[messageIndex].updatedAt;
-            const originalMessageUpdatedAt = message.updatedAt;
             let watcherLeaseToken = null;
+            let committedHistory = null;
+            let committedMessage = null;
 
             // Watching is ancillary to the edit transaction. Failure to pause
             // or resume it must not turn a durable save into an apparent
@@ -600,31 +599,37 @@ function toggleEditMode(messageItem, message) {
                 console.warn('[EditMode] Failed to pause history watcher; continuing with edit:', watcherError);
             }
 
-            currentChatHistoryArray[messageIndex].content = newContent;
-            message.content = newContent;
-            const updatedAt = Date.now();
-            currentChatHistoryArray[messageIndex].updatedAt = updatedAt;
-            message.updatedAt = updatedAt;
-
             try {
                 if (currentSelectedItemVal.id && currentTopicIdVal) {
                     if (!mainRefs.historyMutationAuthority) throw new Error('History mutation authority is required for message edits');
-                    await mainRefs.historyMutationAuthority.replace({
+                    const updatedAt = Date.now();
+                    const commit = await mainRefs.historyMutationAuthority.mutate({
                         itemId: currentSelectedItemVal.id,
                         itemType: currentSelectedItemVal.type,
                         topicId: currentTopicIdVal,
                         category: 'message-edit',
-                    }, currentChatHistoryArray);
+                    }, historyForSave => {
+                        const liveIndex = historyForSave.findIndex(entry => entry?.id === message.id);
+                        if (liveIndex === -1) {
+                            const missingError = new Error('该消息已不存在于最新聊天记录中');
+                            missingError.code = 'MESSAGE_EDIT_TARGET_MISSING';
+                            throw missingError;
+                        }
+                        const nextHistory = [...historyForSave];
+                        nextHistory[liveIndex] = {
+                            ...historyForSave[liveIndex],
+                            content: newContent,
+                            updatedAt
+                        };
+                        return nextHistory;
+                    });
+                    committedHistory = [...commit.history];
+                    committedMessage = committedHistory.find(entry => entry?.id === message.id) || null;
                 }
             } catch (error) {
-                console.error('[EditMode] Save failed, rolling back:', error);
-                currentChatHistoryArray[messageIndex].content = originalContent;
-                message.content = originalMessageContent;
-                currentChatHistoryArray[messageIndex].updatedAt = originalUpdatedAt;
-                message.updatedAt = originalMessageUpdatedAt;
-                mainRefs.currentChatHistoryRef.set([...currentChatHistoryArray]);
+                console.error('[EditMode] Save failed:', error);
 
-                // 🔧 重新启动文件监控（即使保存失败）
+                // 重新启动文件监控（即使保存失败）
                 if (electronAPI.watcherStart && currentSelectedItemVal.config?.agentDataPath) {
                     try {
                         const historyFilePath = `${currentSelectedItemVal.config.agentDataPath}\\topics\\${currentTopicIdVal}\\history.json`;
@@ -635,12 +640,33 @@ function toggleEditMode(messageItem, message) {
                 }
 
                 if (uiHelper && typeof uiHelper.showToastNotification === 'function') {
-                    uiHelper.showToastNotification(`编辑保存失败: ${error.message}`, "error");
+                    uiHelper.showToastNotification(
+                        error?.code === 'MESSAGE_EDIT_TARGET_MISSING'
+                            ? '该消息已被删除，无法保存编辑。'
+                            : `编辑保存失败: ${error.message}`,
+                        error?.code === 'MESSAGE_EDIT_TARGET_MISSING' ? 'warning' : 'error'
+                    );
                 }
-                return; // 不退出编辑模式，让用户重试
+                if (error?.code === 'MESSAGE_EDIT_TARGET_MISSING' && messageItem.isConnected) {
+                    toggleEditMode(messageItem, message);
+                }
+                return; // 其他保存错误保留编辑模式，让用户重试
             }
 
-            mainRefs.currentChatHistoryRef.set([...currentChatHistoryArray]);
+            const activeItem = mainRefs.currentSelectedItemRef.get();
+            if (
+                committedHistory
+                && activeItem?.id === currentSelectedItemVal.id
+                && activeItem?.type === currentSelectedItemVal.type
+                && mainRefs.currentTopicIdRef.get() === currentTopicIdVal
+            ) {
+                mainRefs.currentChatHistoryRef.set(committedHistory);
+            }
+            if (committedMessage) {
+                message.content = committedMessage.content;
+                message.updatedAt = committedMessage.updatedAt;
+                messageItem._vcpMessageModel = committedMessage;
+            }
 
             if (contextMenuDependencies.updateMessageContent) {
                 contextMenuDependencies.updateMessageContent(message.id, newContent);
@@ -673,8 +699,8 @@ function toggleEditMode(messageItem, message) {
                 uiHelper.showToastNotification("消息编辑已保存。", "success");
             }
 
-            // 🔧 只有在保存成功后才退出编辑模式
-            toggleEditMode(messageItem, message);
+            // 只有在保存成功后才退出编辑模式，并使用最新提交模型恢复显示。
+            toggleEditMode(messageItem, committedMessage || message);
         };
 
         const cancelButton = ownerDocument.createElement('button');
