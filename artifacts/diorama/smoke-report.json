@@ -64,6 +64,46 @@
       "eventPlan": [
         {
           "id": 0,
+          "kind": "pigeons",
+          "start": 0,
+          "end": 7,
+          "duration": 7,
+          "side": 1,
+          "seed": "smoke-track:pigeons:0",
+          "anchor": {
+            "x": 20.626519045835074,
+            "y": 4.2,
+            "z": -33.36386552185399
+          },
+          "right": {
+            "x": 0.7238330268575791,
+            "y": 0,
+            "z": 0.689975180155196
+          },
+          "forward": {
+            "x": 0.689975180155196,
+            "y": 0,
+            "z": -0.7238330268575791
+          },
+          "yaw": 0.7614547627255891,
+          "readingClearance": "peripheral",
+          "reflection": true,
+          "budget": {
+            "points": 900,
+            "ripples": 12
+          },
+          "perch": "sign",
+          "encounterId": 0,
+          "birdCount": 2,
+          "takeoff": 3,
+          "perchPosition": {
+            "x": 20.7093160674537,
+            "y": 6.755000000000001,
+            "z": -33.450725485076894
+          }
+        },
+        {
+          "id": 1,
           "kind": "meteor",
           "start": 9.15,
           "end": 11.95,
@@ -92,10 +132,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 209.54000000000013
         },
         {
-          "id": 1,
+          "id": 2,
           "kind": "rabbit",
           "start": 27.15,
           "end": 35.15,
@@ -103,9 +144,9 @@
           "side": -1,
           "seed": "smoke-track:rabbit:27.15",
           "anchor": {
-            "x": 31.08342280083161,
+            "x": 24.272465826945314,
             "y": 0,
-            "z": -101.3588532553897
+            "z": -108.68079733465373
           },
           "right": {
             "x": 0.6810956973886297,
@@ -124,10 +165,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 111.94000000000048,
+          "collisionClearance": 1.6
         },
         {
-          "id": 2,
+          "id": 3,
           "kind": "meteor",
           "start": 51.15,
           "end": 53.949999999999996,
@@ -156,10 +199,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 327.1400000000027
         },
         {
-          "id": 3,
+          "id": 4,
           "kind": "rabbit",
           "start": 69.15,
           "end": 77.15,
@@ -188,10 +232,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 235.87500000000506,
+          "collisionClearance": 1.6
         },
         {
-          "id": 4,
+          "id": 5,
           "kind": "meteor",
           "start": 93.15,
           "end": 95.95,
@@ -220,10 +266,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 482.6100000000017
         },
         {
-          "id": 5,
+          "id": 6,
           "kind": "rabbit",
           "start": 111.15,
           "end": 119.15,
@@ -231,9 +278,9 @@
           "side": -1,
           "seed": "smoke-track:rabbit:111.15",
           "anchor": {
-            "x": 39.069264954609615,
+            "x": 44.06519627374888,
             "y": 0,
-            "z": -408.03682236783703
+            "z": -407.8351536929185
           },
           "right": {
             "x": 0.9991862638278529,
@@ -252,10 +299,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 410.20999999999844,
+          "collisionClearance": 1.6
         },
         {
-          "id": 6,
+          "id": 7,
           "kind": "meteor",
           "start": 135.15,
           "end": 137.95000000000002,
@@ -284,10 +333,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 637.9399999999888
         },
         {
-          "id": 7,
+          "id": 8,
           "kind": "rabbit",
           "start": 153.15,
           "end": 161.15,
@@ -316,10 +366,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 540.3399999999777,
+          "collisionClearance": 1.6
         },
         {
-          "id": 8,
+          "id": 9,
           "kind": "meteor",
           "start": 177.15,
           "end": 179.95000000000002,
@@ -348,10 +400,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 780.4109999999824
         },
         {
-          "id": 9,
+          "id": 10,
           "kind": "rabbit",
           "start": 195.15,
           "end": 203.15,
@@ -359,9 +412,9 @@
           "side": -1,
           "seed": "smoke-track:rabbit:195.15",
           "anchor": {
-            "x": 33.48360032623383,
+            "x": 38.45230504866994,
             "y": 0,
-            "z": -712.8507893638372
+            "z": -713.4093351374681
           },
           "right": {
             "x": 0.9937409444872232,
@@ -380,10 +433,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 715.5709999999846,
+          "collisionClearance": 1.6
         },
         {
-          "id": 10,
+          "id": 11,
           "kind": "meteor",
           "start": 219.15,
           "end": 221.95000000000002,
@@ -412,10 +467,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 968.8999999999879
         },
         {
-          "id": 11,
+          "id": 12,
           "kind": "meteor",
           "start": 239.5,
           "end": 242.3,
@@ -447,11 +503,25 @@
           }
         }
       ],
-      "activeEvent": null,
+      "activeEvent": {
+        "id": 0,
+        "kind": "pigeons",
+        "age": 0,
+        "progress": 0,
+        "fade": 0,
+        "body": {
+          "x": 20.7093160674537,
+          "y": 6.755000000000001,
+          "z": -33.450725485076894,
+          "age": 0
+        },
+        "stage": "perched",
+        "ripples": []
+      },
       "eventPoints": 0,
-      "eventLineVertices": 0,
-      "eventVertices": 0,
-      "eventInView": 0,
+      "eventLineVertices": 1180,
+      "eventVertices": 1180,
+      "eventInView": 1180,
       "eventRipples": 0,
       "camera": [
         -0.24857569810686142,
@@ -511,8 +581,8 @@
       ],
       "cutsCount": 13,
       "rhythmSource": "travel-rhythm",
-      "drawCalls": 58,
-      "geometries": 10,
+      "drawCalls": 60,
+      "geometries": 12,
       "textures": 4,
       "signSpectrum": [
         0,
@@ -605,6 +675,46 @@
       "eventPlan": [
         {
           "id": 0,
+          "kind": "pigeons",
+          "start": 0,
+          "end": 7,
+          "duration": 7,
+          "side": 1,
+          "seed": "smoke-track:pigeons:0",
+          "anchor": {
+            "x": 20.626519045835074,
+            "y": 4.2,
+            "z": -33.36386552185399
+          },
+          "right": {
+            "x": 0.7238330268575791,
+            "y": 0,
+            "z": 0.689975180155196
+          },
+          "forward": {
+            "x": 0.689975180155196,
+            "y": 0,
+            "z": -0.7238330268575791
+          },
+          "yaw": 0.7614547627255891,
+          "readingClearance": "peripheral",
+          "reflection": true,
+          "budget": {
+            "points": 900,
+            "ripples": 12
+          },
+          "perch": "sign",
+          "encounterId": 0,
+          "birdCount": 2,
+          "takeoff": 3,
+          "perchPosition": {
+            "x": 20.7093160674537,
+            "y": 6.755000000000001,
+            "z": -33.450725485076894
+          }
+        },
+        {
+          "id": 1,
           "kind": "meteor",
           "start": 9.15,
           "end": 11.95,
@@ -633,10 +743,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 209.54000000000013
         },
         {
-          "id": 1,
+          "id": 2,
           "kind": "rabbit",
           "start": 27.15,
           "end": 35.15,
@@ -644,9 +755,9 @@
           "side": -1,
           "seed": "smoke-track:rabbit:27.15",
           "anchor": {
-            "x": 31.08342280083161,
+            "x": 24.272465826945314,
             "y": 0,
-            "z": -101.3588532553897
+            "z": -108.68079733465373
           },
           "right": {
             "x": 0.6810956973886297,
@@ -665,10 +776,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 111.94000000000048,
+          "collisionClearance": 1.6
         },
         {
-          "id": 2,
+          "id": 3,
           "kind": "meteor",
           "start": 51.15,
           "end": 53.949999999999996,
@@ -697,10 +810,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 327.1400000000027
         },
         {
-          "id": 3,
+          "id": 4,
           "kind": "rabbit",
           "start": 69.15,
           "end": 77.15,
@@ -729,10 +843,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 235.87500000000506,
+          "collisionClearance": 1.6
         },
         {
-          "id": 4,
+          "id": 5,
           "kind": "meteor",
           "start": 93.15,
           "end": 95.95,
@@ -761,10 +877,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 482.6100000000017
         },
         {
-          "id": 5,
+          "id": 6,
           "kind": "rabbit",
           "start": 111.15,
           "end": 119.15,
@@ -772,9 +889,9 @@
           "side": -1,
           "seed": "smoke-track:rabbit:111.15",
           "anchor": {
-            "x": 39.069264954609615,
+            "x": 44.06519627374888,
             "y": 0,
-            "z": -408.03682236783703
+            "z": -407.8351536929185
           },
           "right": {
             "x": 0.9991862638278529,
@@ -793,10 +910,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 410.20999999999844,
+          "collisionClearance": 1.6
         },
         {
-          "id": 6,
+          "id": 7,
           "kind": "meteor",
           "start": 135.15,
           "end": 137.95000000000002,
@@ -825,10 +944,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 637.9399999999888
         },
         {
-          "id": 7,
+          "id": 8,
           "kind": "rabbit",
           "start": 153.15,
           "end": 161.15,
@@ -857,10 +977,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 540.3399999999777,
+          "collisionClearance": 1.6
         },
         {
-          "id": 8,
+          "id": 9,
           "kind": "meteor",
           "start": 177.15,
           "end": 179.95000000000002,
@@ -889,10 +1011,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 780.4109999999824
         },
         {
-          "id": 9,
+          "id": 10,
           "kind": "rabbit",
           "start": 195.15,
           "end": 203.15,
@@ -900,9 +1023,9 @@
           "side": -1,
           "seed": "smoke-track:rabbit:195.15",
           "anchor": {
-            "x": 33.48360032623383,
+            "x": 38.45230504866994,
             "y": 0,
-            "z": -712.8507893638372
+            "z": -713.4093351374681
           },
           "right": {
             "x": 0.9937409444872232,
@@ -921,10 +1044,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 715.5709999999846,
+          "collisionClearance": 1.6
         },
         {
-          "id": 10,
+          "id": 11,
           "kind": "meteor",
           "start": 219.15,
           "end": 221.95000000000002,
@@ -953,10 +1078,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 968.8999999999879
         },
         {
-          "id": 11,
+          "id": 12,
           "kind": "meteor",
           "start": 239.5,
           "end": 242.3,
@@ -1053,7 +1179,7 @@
       "cutsCount": 13,
       "rhythmSource": "travel-rhythm",
       "drawCalls": 44,
-      "geometries": 10,
+      "geometries": 12,
       "textures": 4,
       "signSpectrum": [
         0,
@@ -1146,6 +1272,46 @@
       "eventPlan": [
         {
           "id": 0,
+          "kind": "pigeons",
+          "start": 0,
+          "end": 7,
+          "duration": 7,
+          "side": 1,
+          "seed": "smoke-track:pigeons:0",
+          "anchor": {
+            "x": 20.626519045835074,
+            "y": 4.2,
+            "z": -33.36386552185399
+          },
+          "right": {
+            "x": 0.7238330268575791,
+            "y": 0,
+            "z": 0.689975180155196
+          },
+          "forward": {
+            "x": 0.689975180155196,
+            "y": 0,
+            "z": -0.7238330268575791
+          },
+          "yaw": 0.7614547627255891,
+          "readingClearance": "peripheral",
+          "reflection": true,
+          "budget": {
+            "points": 900,
+            "ripples": 12
+          },
+          "perch": "sign",
+          "encounterId": 0,
+          "birdCount": 2,
+          "takeoff": 3,
+          "perchPosition": {
+            "x": 20.7093160674537,
+            "y": 6.755000000000001,
+            "z": -33.450725485076894
+          }
+        },
+        {
+          "id": 1,
           "kind": "meteor",
           "start": 9.15,
           "end": 11.95,
@@ -1174,10 +1340,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 209.54000000000013
         },
         {
-          "id": 1,
+          "id": 2,
           "kind": "rabbit",
           "start": 27.15,
           "end": 35.15,
@@ -1185,9 +1352,9 @@
           "side": -1,
           "seed": "smoke-track:rabbit:27.15",
           "anchor": {
-            "x": 31.08342280083161,
+            "x": 24.272465826945314,
             "y": 0,
-            "z": -101.3588532553897
+            "z": -108.68079733465373
           },
           "right": {
             "x": 0.6810956973886297,
@@ -1206,10 +1373,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 111.94000000000048,
+          "collisionClearance": 1.6
         },
         {
-          "id": 2,
+          "id": 3,
           "kind": "meteor",
           "start": 51.15,
           "end": 53.949999999999996,
@@ -1238,10 +1407,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 327.1400000000027
         },
         {
-          "id": 3,
+          "id": 4,
           "kind": "rabbit",
           "start": 69.15,
           "end": 77.15,
@@ -1270,10 +1440,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 235.87500000000506,
+          "collisionClearance": 1.6
         },
         {
-          "id": 4,
+          "id": 5,
           "kind": "meteor",
           "start": 93.15,
           "end": 95.95,
@@ -1302,10 +1474,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 482.6100000000017
         },
         {
-          "id": 5,
+          "id": 6,
           "kind": "rabbit",
           "start": 111.15,
           "end": 119.15,
@@ -1313,9 +1486,9 @@
           "side": -1,
           "seed": "smoke-track:rabbit:111.15",
           "anchor": {
-            "x": 39.069264954609615,
+            "x": 44.06519627374888,
             "y": 0,
-            "z": -408.03682236783703
+            "z": -407.8351536929185
           },
           "right": {
             "x": 0.9991862638278529,
@@ -1334,10 +1507,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 410.20999999999844,
+          "collisionClearance": 1.6
         },
         {
-          "id": 6,
+          "id": 7,
           "kind": "meteor",
           "start": 135.15,
           "end": 137.95000000000002,
@@ -1366,10 +1541,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 637.9399999999888
         },
         {
-          "id": 7,
+          "id": 8,
           "kind": "rabbit",
           "start": 153.15,
           "end": 161.15,
@@ -1398,10 +1574,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 540.3399999999777,
+          "collisionClearance": 1.6
         },
         {
-          "id": 8,
+          "id": 9,
           "kind": "meteor",
           "start": 177.15,
           "end": 179.95000000000002,
@@ -1430,10 +1608,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 780.4109999999824
         },
         {
-          "id": 9,
+          "id": 10,
           "kind": "rabbit",
           "start": 195.15,
           "end": 203.15,
@@ -1441,9 +1620,9 @@
           "side": -1,
           "seed": "smoke-track:rabbit:195.15",
           "anchor": {
-            "x": 33.48360032623383,
+            "x": 38.45230504866994,
             "y": 0,
-            "z": -712.8507893638372
+            "z": -713.4093351374681
           },
           "right": {
             "x": 0.9937409444872232,
@@ -1462,10 +1641,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 715.5709999999846,
+          "collisionClearance": 1.6
         },
         {
-          "id": 10,
+          "id": 11,
           "kind": "meteor",
           "start": 219.15,
           "end": 221.95000000000002,
@@ -1494,10 +1675,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 968.8999999999879
         },
         {
-          "id": 11,
+          "id": 12,
           "kind": "meteor",
           "start": 239.5,
           "end": 242.3,
@@ -1530,15 +1712,15 @@
         }
       ],
       "activeEvent": {
-        "id": 1,
+        "id": 2,
         "kind": "rabbit",
         "age": 4.850000000000001,
         "progress": 0.6062500000000002,
         "fade": 1,
         "body": {
-          "x": 34.272125087123456,
+          "x": 27.461168113237164,
           "y": 1.3217239769633888,
-          "z": -106.5322097368016,
+          "z": -113.85415381606563,
           "hop": 0.617379181570711,
           "phase": 0.3125000000000018,
           "flight": 0.21180555555555802,
@@ -1551,44 +1733,44 @@
         "stage": "passing",
         "ripples": [
           {
-            "x": 29.562865083147955,
+            "x": 22.75190810926166,
             "y": 0.045,
-            "z": -101.96573399094873,
+            "z": -109.28767807021276,
             "radius": 3.1100000000000017,
             "opacity": 0.06363636363636349
           },
           {
-            "x": 29.944278673685588,
+            "x": 23.133321699799293,
             "y": 0.045,
-            "z": -101.55570512250995,
+            "z": -108.87764920177398,
             "radius": 3.1100000000000017,
             "opacity": 0.06363636363636349
           },
           {
-            "x": 29.38072323712074,
+            "x": 22.569766263234445,
             "y": 0.045,
-            "z": -106.71303052138855,
+            "z": -114.03497460065257,
             "radius": 1.8300000000000018,
             "opacity": 0.2090909090909089
           },
           {
-            "x": 29.762136827658374,
+            "x": 22.95117985377208,
             "y": 0.045,
-            "z": -106.30300165294976,
+            "z": -113.62494573221379,
             "radius": 1.8300000000000018,
             "opacity": 0.2090909090909089
           },
           {
-            "x": 34.10247041229165,
+            "x": 27.29151343840536,
             "y": 0.045,
-            "z": -106.18852731475825,
+            "z": -113.51047139402228,
             "radius": 0.5500000000000028,
             "opacity": 0.3545454545454543
           },
           {
-            "x": 34.483884002829285,
+            "x": 27.672927028942993,
             "y": 0.045,
-            "z": -105.77849844631946,
+            "z": -113.10044252558349,
             "radius": 0.5500000000000028,
             "opacity": 0.3545454545454543
           }
@@ -1752,6 +1934,46 @@
       "eventPlan": [
         {
           "id": 0,
+          "kind": "pigeons",
+          "start": 0,
+          "end": 7,
+          "duration": 7,
+          "side": 1,
+          "seed": "smoke-track:pigeons:0",
+          "anchor": {
+            "x": 20.626519045835074,
+            "y": 4.2,
+            "z": -33.36386552185399
+          },
+          "right": {
+            "x": 0.7238330268575791,
+            "y": 0,
+            "z": 0.689975180155196
+          },
+          "forward": {
+            "x": 0.689975180155196,
+            "y": 0,
+            "z": -0.7238330268575791
+          },
+          "yaw": 0.7614547627255891,
+          "readingClearance": "peripheral",
+          "reflection": true,
+          "budget": {
+            "points": 900,
+            "ripples": 12
+          },
+          "perch": "sign",
+          "encounterId": 0,
+          "birdCount": 2,
+          "takeoff": 3,
+          "perchPosition": {
+            "x": 20.7093160674537,
+            "y": 6.755000000000001,
+            "z": -33.450725485076894
+          }
+        },
+        {
+          "id": 1,
           "kind": "meteor",
           "start": 9.15,
           "end": 11.95,
@@ -1780,10 +2002,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 209.54000000000013
         },
         {
-          "id": 1,
+          "id": 2,
           "kind": "rabbit",
           "start": 27.15,
           "end": 35.15,
@@ -1791,9 +2014,9 @@
           "side": -1,
           "seed": "smoke-track:rabbit:27.15",
           "anchor": {
-            "x": 31.08342280083161,
+            "x": 24.272465826945314,
             "y": 0,
-            "z": -101.3588532553897
+            "z": -108.68079733465373
           },
           "right": {
             "x": 0.6810956973886297,
@@ -1812,10 +2035,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 111.94000000000048,
+          "collisionClearance": 1.6
         },
         {
-          "id": 2,
+          "id": 3,
           "kind": "meteor",
           "start": 51.15,
           "end": 53.949999999999996,
@@ -1844,10 +2069,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 327.1400000000027
         },
         {
-          "id": 3,
+          "id": 4,
           "kind": "rabbit",
           "start": 69.15,
           "end": 77.15,
@@ -1876,10 +2102,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 235.87500000000506,
+          "collisionClearance": 1.6
         },
         {
-          "id": 4,
+          "id": 5,
           "kind": "meteor",
           "start": 93.15,
           "end": 95.95,
@@ -1908,10 +2136,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 482.6100000000017
         },
         {
-          "id": 5,
+          "id": 6,
           "kind": "rabbit",
           "start": 111.15,
           "end": 119.15,
@@ -1919,9 +2148,9 @@
           "side": -1,
           "seed": "smoke-track:rabbit:111.15",
           "anchor": {
-            "x": 39.069264954609615,
+            "x": 44.06519627374888,
             "y": 0,
-            "z": -408.03682236783703
+            "z": -407.8351536929185
           },
           "right": {
             "x": 0.9991862638278529,
@@ -1940,10 +2169,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 410.20999999999844,
+          "collisionClearance": 1.6
         },
         {
-          "id": 6,
+          "id": 7,
           "kind": "meteor",
           "start": 135.15,
           "end": 137.95000000000002,
@@ -1972,10 +2203,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 637.9399999999888
         },
         {
-          "id": 7,
+          "id": 8,
           "kind": "rabbit",
           "start": 153.15,
           "end": 161.15,
@@ -2004,10 +2236,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 540.3399999999777,
+          "collisionClearance": 1.6
         },
         {
-          "id": 8,
+          "id": 9,
           "kind": "meteor",
           "start": 177.15,
           "end": 179.95000000000002,
@@ -2036,10 +2270,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 780.4109999999824
         },
         {
-          "id": 9,
+          "id": 10,
           "kind": "rabbit",
           "start": 195.15,
           "end": 203.15,
@@ -2047,9 +2282,9 @@
           "side": -1,
           "seed": "smoke-track:rabbit:195.15",
           "anchor": {
-            "x": 33.48360032623383,
+            "x": 38.45230504866994,
             "y": 0,
-            "z": -712.8507893638372
+            "z": -713.4093351374681
           },
           "right": {
             "x": 0.9937409444872232,
@@ -2068,10 +2303,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 715.5709999999846,
+          "collisionClearance": 1.6
         },
         {
-          "id": 10,
+          "id": 11,
           "kind": "meteor",
           "start": 219.15,
           "end": 221.95000000000002,
@@ -2100,10 +2337,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 968.8999999999879
         },
         {
-          "id": 11,
+          "id": 12,
           "kind": "meteor",
           "start": 239.5,
           "end": 242.3,
@@ -2289,6 +2527,46 @@
       "eventPlan": [
         {
           "id": 0,
+          "kind": "pigeons",
+          "start": 0,
+          "end": 7,
+          "duration": 7,
+          "side": 1,
+          "seed": "smoke-track:pigeons:0",
+          "anchor": {
+            "x": 20.626519045835074,
+            "y": 4.2,
+            "z": -33.36386552185399
+          },
+          "right": {
+            "x": 0.7238330268575791,
+            "y": 0,
+            "z": 0.689975180155196
+          },
+          "forward": {
+            "x": 0.689975180155196,
+            "y": 0,
+            "z": -0.7238330268575791
+          },
+          "yaw": 0.7614547627255891,
+          "readingClearance": "peripheral",
+          "reflection": true,
+          "budget": {
+            "points": 900,
+            "ripples": 12
+          },
+          "perch": "sign",
+          "encounterId": 0,
+          "birdCount": 2,
+          "takeoff": 3,
+          "perchPosition": {
+            "x": 20.7093160674537,
+            "y": 6.755000000000001,
+            "z": -33.450725485076894
+          }
+        },
+        {
+          "id": 1,
           "kind": "meteor",
           "start": 9.15,
           "end": 11.95,
@@ -2317,10 +2595,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 209.54000000000013
         },
         {
-          "id": 1,
+          "id": 2,
           "kind": "rabbit",
           "start": 27.15,
           "end": 35.15,
@@ -2328,9 +2607,9 @@
           "side": -1,
           "seed": "smoke-track:rabbit:27.15",
           "anchor": {
-            "x": 31.08342280083161,
+            "x": 24.272465826945314,
             "y": 0,
-            "z": -101.3588532553897
+            "z": -108.68079733465373
           },
           "right": {
             "x": 0.6810956973886297,
@@ -2349,10 +2628,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 111.94000000000048,
+          "collisionClearance": 1.6
         },
         {
-          "id": 2,
+          "id": 3,
           "kind": "meteor",
           "start": 51.15,
           "end": 53.949999999999996,
@@ -2381,10 +2662,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 327.1400000000027
         },
         {
-          "id": 3,
+          "id": 4,
           "kind": "rabbit",
           "start": 69.15,
           "end": 77.15,
@@ -2413,10 +2695,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 235.87500000000506,
+          "collisionClearance": 1.6
         },
         {
-          "id": 4,
+          "id": 5,
           "kind": "meteor",
           "start": 93.15,
           "end": 95.95,
@@ -2445,10 +2729,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 482.6100000000017
         },
         {
-          "id": 5,
+          "id": 6,
           "kind": "rabbit",
           "start": 111.15,
           "end": 119.15,
@@ -2456,9 +2741,9 @@
           "side": -1,
           "seed": "smoke-track:rabbit:111.15",
           "anchor": {
-            "x": 39.069264954609615,
+            "x": 44.06519627374888,
             "y": 0,
-            "z": -408.03682236783703
+            "z": -407.8351536929185
           },
           "right": {
             "x": 0.9991862638278529,
@@ -2477,10 +2762,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 410.20999999999844,
+          "collisionClearance": 1.6
         },
         {
-          "id": 6,
+          "id": 7,
           "kind": "meteor",
           "start": 135.15,
           "end": 137.95000000000002,
@@ -2509,10 +2796,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 637.9399999999888
         },
         {
-          "id": 7,
+          "id": 8,
           "kind": "rabbit",
           "start": 153.15,
           "end": 161.15,
@@ -2541,10 +2829,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 540.3399999999777,
+          "collisionClearance": 1.6
         },
         {
-          "id": 8,
+          "id": 9,
           "kind": "meteor",
           "start": 177.15,
           "end": 179.95000000000002,
@@ -2573,10 +2863,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 780.4109999999824
         },
         {
-          "id": 9,
+          "id": 10,
           "kind": "rabbit",
           "start": 195.15,
           "end": 203.15,
@@ -2584,9 +2875,9 @@
           "side": -1,
           "seed": "smoke-track:rabbit:195.15",
           "anchor": {
-            "x": 33.48360032623383,
+            "x": 38.45230504866994,
             "y": 0,
-            "z": -712.8507893638372
+            "z": -713.4093351374681
           },
           "right": {
             "x": 0.9937409444872232,
@@ -2605,10 +2896,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 715.5709999999846,
+          "collisionClearance": 1.6
         },
         {
-          "id": 10,
+          "id": 11,
           "kind": "meteor",
           "start": 219.15,
           "end": 221.95000000000002,
@@ -2637,10 +2930,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 968.8999999999879
         },
         {
-          "id": 11,
+          "id": 12,
           "kind": "meteor",
           "start": 239.5,
           "end": 242.3,
@@ -2826,6 +3120,46 @@
       "eventPlan": [
         {
           "id": 0,
+          "kind": "pigeons",
+          "start": 0,
+          "end": 7,
+          "duration": 7,
+          "side": 1,
+          "seed": "smoke-track:pigeons:0",
+          "anchor": {
+            "x": 20.626519045835074,
+            "y": 4.2,
+            "z": -33.36386552185399
+          },
+          "right": {
+            "x": 0.7238330268575791,
+            "y": 0,
+            "z": 0.689975180155196
+          },
+          "forward": {
+            "x": 0.689975180155196,
+            "y": 0,
+            "z": -0.7238330268575791
+          },
+          "yaw": 0.7614547627255891,
+          "readingClearance": "peripheral",
+          "reflection": true,
+          "budget": {
+            "points": 900,
+            "ripples": 12
+          },
+          "perch": "sign",
+          "encounterId": 0,
+          "birdCount": 2,
+          "takeoff": 3,
+          "perchPosition": {
+            "x": 20.7093160674537,
+            "y": 6.755000000000001,
+            "z": -33.450725485076894
+          }
+        },
+        {
+          "id": 1,
           "kind": "meteor",
           "start": 9.15,
           "end": 11.95,
@@ -2854,10 +3188,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 209.54000000000013
         },
         {
-          "id": 1,
+          "id": 2,
           "kind": "rabbit",
           "start": 27.15,
           "end": 35.15,
@@ -2865,9 +3200,9 @@
           "side": -1,
           "seed": "smoke-track:rabbit:27.15",
           "anchor": {
-            "x": 31.08342280083161,
+            "x": 24.272465826945314,
             "y": 0,
-            "z": -101.3588532553897
+            "z": -108.68079733465373
           },
           "right": {
             "x": 0.6810956973886297,
@@ -2886,10 +3221,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 111.94000000000048,
+          "collisionClearance": 1.6
         },
         {
-          "id": 2,
+          "id": 3,
           "kind": "meteor",
           "start": 51.15,
           "end": 53.949999999999996,
@@ -2918,10 +3255,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 327.1400000000027
         },
         {
-          "id": 3,
+          "id": 4,
           "kind": "rabbit",
           "start": 69.15,
           "end": 77.15,
@@ -2950,10 +3288,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 235.87500000000506,
+          "collisionClearance": 1.6
         },
         {
-          "id": 4,
+          "id": 5,
           "kind": "meteor",
           "start": 93.15,
           "end": 95.95,
@@ -2982,10 +3322,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 482.6100000000017
         },
         {
-          "id": 5,
+          "id": 6,
           "kind": "rabbit",
           "start": 111.15,
           "end": 119.15,
@@ -2993,9 +3334,9 @@
           "side": -1,
           "seed": "smoke-track:rabbit:111.15",
           "anchor": {
-            "x": 39.069264954609615,
+            "x": 44.06519627374888,
             "y": 0,
-            "z": -408.03682236783703
+            "z": -407.8351536929185
           },
           "right": {
             "x": 0.9991862638278529,
@@ -3014,10 +3355,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 410.20999999999844,
+          "collisionClearance": 1.6
         },
         {
-          "id": 6,
+          "id": 7,
           "kind": "meteor",
           "start": 135.15,
           "end": 137.95000000000002,
@@ -3046,10 +3389,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 637.9399999999888
         },
         {
-          "id": 7,
+          "id": 8,
           "kind": "rabbit",
           "start": 153.15,
           "end": 161.15,
@@ -3078,10 +3422,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 540.3399999999777,
+          "collisionClearance": 1.6
         },
         {
-          "id": 8,
+          "id": 9,
           "kind": "meteor",
           "start": 177.15,
           "end": 179.95000000000002,
@@ -3110,10 +3456,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 780.4109999999824
         },
         {
-          "id": 9,
+          "id": 10,
           "kind": "rabbit",
           "start": 195.15,
           "end": 203.15,
@@ -3121,9 +3468,9 @@
           "side": -1,
           "seed": "smoke-track:rabbit:195.15",
           "anchor": {
-            "x": 33.48360032623383,
+            "x": 38.45230504866994,
             "y": 0,
-            "z": -712.8507893638372
+            "z": -713.4093351374681
           },
           "right": {
             "x": 0.9937409444872232,
@@ -3142,10 +3489,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 715.5709999999846,
+          "collisionClearance": 1.6
         },
         {
-          "id": 10,
+          "id": 11,
           "kind": "meteor",
           "start": 219.15,
           "end": 221.95000000000002,
@@ -3174,10 +3523,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 968.8999999999879
         },
         {
-          "id": 11,
+          "id": 12,
           "kind": "meteor",
           "start": 239.5,
           "end": 242.3,
@@ -3458,6 +3808,46 @@
         "eventPlan": [
           {
             "id": 0,
+            "kind": "pigeons",
+            "start": 0,
+            "end": 7,
+            "duration": 7,
+            "side": 1,
+            "seed": "events-test:pigeons:0",
+            "anchor": {
+              "x": 14.390746388251028,
+              "y": 4.2,
+              "z": -37.106194355950166
+            },
+            "right": {
+              "x": 0.8455825284086916,
+              "y": 0,
+              "z": 0.5338447224146401
+            },
+            "forward": {
+              "x": 0.5338447224146401,
+              "y": 0,
+              "z": -0.8455825284086916
+            },
+            "yaw": 0.5631409064239264,
+            "readingClearance": "peripheral",
+            "reflection": true,
+            "budget": {
+              "points": 900,
+              "ripples": 12
+            },
+            "perch": "sign",
+            "encounterId": 0,
+            "birdCount": 2,
+            "takeoff": 3,
+            "perchPosition": {
+              "x": 14.454807754940784,
+              "y": 6.755000000000001,
+              "z": -37.207664259359206
+            }
+          },
+          {
+            "id": 1,
             "kind": "meteor",
             "start": 9.15,
             "end": 11.95,
@@ -3486,10 +3876,11 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 209.54000000000013
           },
           {
-            "id": 1,
+            "id": 2,
             "kind": "rabbit",
             "start": 27.15,
             "end": 35.15,
@@ -3497,9 +3888,9 @@
             "side": -1,
             "seed": "events-test:rabbit:27.15",
             "anchor": {
-              "x": 6.34366893426496,
+              "x": -2.309568261091483,
               "y": 0,
-              "z": -107.01523122359451
+              "z": -112.02736510457771
             },
             "right": {
               "x": 0.8653237195356444,
@@ -3518,10 +3909,12 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 111.94000000000048,
+            "collisionClearance": 1.6
           },
           {
-            "id": 2,
+            "id": 3,
             "kind": "meteor",
             "start": 51.15,
             "end": 53.949999999999996,
@@ -3550,10 +3943,11 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 327.1400000000027
           },
           {
-            "id": 3,
+            "id": 4,
             "kind": "rabbit",
             "start": 69.15,
             "end": 77.15,
@@ -3582,10 +3976,12 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 235.87500000000506,
+            "collisionClearance": 1.6
           },
           {
-            "id": 4,
+            "id": 5,
             "kind": "meteor",
             "start": 93.15,
             "end": 95.95,
@@ -3614,10 +4010,11 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 482.6100000000017
           },
           {
-            "id": 5,
+            "id": 6,
             "kind": "rabbit",
             "start": 111.15,
             "end": 119.15,
@@ -3625,9 +4022,9 @@
             "side": -1,
             "seed": "events-test:rabbit:111.15",
             "anchor": {
-              "x": -36.319746106370324,
+              "x": -31.321864467634136,
               "y": 0,
-              "z": -407.6985582368503
+              "z": -407.55302774113323
             },
             "right": {
               "x": 0.9995763277472379,
@@ -3646,10 +4043,12 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 410.20999999999844,
+            "collisionClearance": 1.6
           },
           {
-            "id": 6,
+            "id": 7,
             "kind": "meteor",
             "start": 135.15,
             "end": 137.95000000000002,
@@ -3678,10 +4077,11 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 637.9399999999888
           },
           {
-            "id": 7,
+            "id": 8,
             "kind": "rabbit",
             "start": 153.15,
             "end": 161.15,
@@ -3710,10 +4110,12 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 540.3399999999777,
+            "collisionClearance": 1.6
           },
           {
-            "id": 8,
+            "id": 9,
             "kind": "meteor",
             "start": 177.15,
             "end": 179.95000000000002,
@@ -3742,10 +4144,11 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 780.4109999999824
           },
           {
-            "id": 9,
+            "id": 10,
             "kind": "rabbit",
             "start": 195.15,
             "end": 203.15,
@@ -3753,9 +4156,9 @@
             "side": -1,
             "seed": "events-test:rabbit:195.15",
             "anchor": {
-              "x": -16.134118221837166,
+              "x": -11.16035820508848,
               "y": 0,
-              "z": -712.3585265074313
+              "z": -711.8469492446526
             },
             "right": {
               "x": 0.9947520033497372,
@@ -3774,10 +4177,12 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 715.5709999999846,
+            "collisionClearance": 1.6
           },
           {
-            "id": 10,
+            "id": 11,
             "kind": "meteor",
             "start": 219.15,
             "end": 221.95000000000002,
@@ -3806,11 +4211,12 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 968.8999999999879
           }
         ],
         "activeEvent": {
-          "id": 0,
+          "id": 1,
           "kind": "meteor",
           "age": 1.4000000000000004,
           "progress": 0.5000000000000001,
@@ -3953,6 +4359,46 @@
         "eventPlan": [
           {
             "id": 0,
+            "kind": "pigeons",
+            "start": 0,
+            "end": 7,
+            "duration": 7,
+            "side": 1,
+            "seed": "events-test:pigeons:0",
+            "anchor": {
+              "x": 14.390746388251028,
+              "y": 4.2,
+              "z": -37.106194355950166
+            },
+            "right": {
+              "x": 0.8455825284086916,
+              "y": 0,
+              "z": 0.5338447224146401
+            },
+            "forward": {
+              "x": 0.5338447224146401,
+              "y": 0,
+              "z": -0.8455825284086916
+            },
+            "yaw": 0.5631409064239264,
+            "readingClearance": "peripheral",
+            "reflection": true,
+            "budget": {
+              "points": 900,
+              "ripples": 12
+            },
+            "perch": "sign",
+            "encounterId": 0,
+            "birdCount": 2,
+            "takeoff": 3,
+            "perchPosition": {
+              "x": 14.454807754940784,
+              "y": 6.755000000000001,
+              "z": -37.207664259359206
+            }
+          },
+          {
+            "id": 1,
             "kind": "meteor",
             "start": 9.15,
             "end": 11.95,
@@ -3981,10 +4427,11 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 209.54000000000013
           },
           {
-            "id": 1,
+            "id": 2,
             "kind": "rabbit",
             "start": 27.15,
             "end": 35.15,
@@ -3992,9 +4439,9 @@
             "side": -1,
             "seed": "events-test:rabbit:27.15",
             "anchor": {
-              "x": 6.34366893426496,
+              "x": -2.309568261091483,
               "y": 0,
-              "z": -107.01523122359451
+              "z": -112.02736510457771
             },
             "right": {
               "x": 0.8653237195356444,
@@ -4013,10 +4460,12 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 111.94000000000048,
+            "collisionClearance": 1.6
           },
           {
-            "id": 2,
+            "id": 3,
             "kind": "meteor",
             "start": 51.15,
             "end": 53.949999999999996,
@@ -4045,10 +4494,11 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 327.1400000000027
           },
           {
-            "id": 3,
+            "id": 4,
             "kind": "rabbit",
             "start": 69.15,
             "end": 77.15,
@@ -4077,10 +4527,12 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 235.87500000000506,
+            "collisionClearance": 1.6
           },
           {
-            "id": 4,
+            "id": 5,
             "kind": "meteor",
             "start": 93.15,
             "end": 95.95,
@@ -4109,10 +4561,11 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 482.6100000000017
           },
           {
-            "id": 5,
+            "id": 6,
             "kind": "rabbit",
             "start": 111.15,
             "end": 119.15,
@@ -4120,9 +4573,9 @@
             "side": -1,
             "seed": "events-test:rabbit:111.15",
             "anchor": {
-              "x": -36.319746106370324,
+              "x": -31.321864467634136,
               "y": 0,
-              "z": -407.6985582368503
+              "z": -407.55302774113323
             },
             "right": {
               "x": 0.9995763277472379,
@@ -4141,10 +4594,12 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 410.20999999999844,
+            "collisionClearance": 1.6
           },
           {
-            "id": 6,
+            "id": 7,
             "kind": "meteor",
             "start": 135.15,
             "end": 137.95000000000002,
@@ -4173,10 +4628,11 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 637.9399999999888
           },
           {
-            "id": 7,
+            "id": 8,
             "kind": "rabbit",
             "start": 153.15,
             "end": 161.15,
@@ -4205,10 +4661,12 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 540.3399999999777,
+            "collisionClearance": 1.6
           },
           {
-            "id": 8,
+            "id": 9,
             "kind": "meteor",
             "start": 177.15,
             "end": 179.95000000000002,
@@ -4237,10 +4695,11 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 780.4109999999824
           },
           {
-            "id": 9,
+            "id": 10,
             "kind": "rabbit",
             "start": 195.15,
             "end": 203.15,
@@ -4248,9 +4707,9 @@
             "side": -1,
             "seed": "events-test:rabbit:195.15",
             "anchor": {
-              "x": -16.134118221837166,
+              "x": -11.16035820508848,
               "y": 0,
-              "z": -712.3585265074313
+              "z": -711.8469492446526
             },
             "right": {
               "x": 0.9947520033497372,
@@ -4269,10 +4728,12 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 715.5709999999846,
+            "collisionClearance": 1.6
           },
           {
-            "id": 10,
+            "id": 11,
             "kind": "meteor",
             "start": 219.15,
             "end": 221.95000000000002,
@@ -4301,11 +4762,12 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 968.8999999999879
           }
         ],
         "activeEvent": {
-          "id": 0,
+          "id": 1,
           "kind": "meteor",
           "age": 1.4000000000000004,
           "progress": 0.5000000000000001,
@@ -4452,6 +4914,46 @@
         "eventPlan": [
           {
             "id": 0,
+            "kind": "pigeons",
+            "start": 0,
+            "end": 7,
+            "duration": 7,
+            "side": 1,
+            "seed": "events-test:pigeons:0",
+            "anchor": {
+              "x": 14.390746388251028,
+              "y": 4.2,
+              "z": -37.106194355950166
+            },
+            "right": {
+              "x": 0.8455825284086916,
+              "y": 0,
+              "z": 0.5338447224146401
+            },
+            "forward": {
+              "x": 0.5338447224146401,
+              "y": 0,
+              "z": -0.8455825284086916
+            },
+            "yaw": 0.5631409064239264,
+            "readingClearance": "peripheral",
+            "reflection": true,
+            "budget": {
+              "points": 900,
+              "ripples": 12
+            },
+            "perch": "sign",
+            "encounterId": 0,
+            "birdCount": 2,
+            "takeoff": 3,
+            "perchPosition": {
+              "x": 14.454807754940784,
+              "y": 6.755000000000001,
+              "z": -37.207664259359206
+            }
+          },
+          {
+            "id": 1,
             "kind": "meteor",
             "start": 9.15,
             "end": 11.95,
@@ -4480,10 +4982,11 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 209.54000000000013
           },
           {
-            "id": 1,
+            "id": 2,
             "kind": "rabbit",
             "start": 27.15,
             "end": 35.15,
@@ -4491,9 +4994,9 @@
             "side": -1,
             "seed": "events-test:rabbit:27.15",
             "anchor": {
-              "x": 6.34366893426496,
+              "x": -2.309568261091483,
               "y": 0,
-              "z": -107.01523122359451
+              "z": -112.02736510457771
             },
             "right": {
               "x": 0.8653237195356444,
@@ -4512,10 +5015,12 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 111.94000000000048,
+            "collisionClearance": 1.6
           },
           {
-            "id": 2,
+            "id": 3,
             "kind": "meteor",
             "start": 51.15,
             "end": 53.949999999999996,
@@ -4544,10 +5049,11 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 327.1400000000027
           },
           {
-            "id": 3,
+            "id": 4,
             "kind": "rabbit",
             "start": 69.15,
             "end": 77.15,
@@ -4576,10 +5082,12 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 235.87500000000506,
+            "collisionClearance": 1.6
           },
           {
-            "id": 4,
+            "id": 5,
             "kind": "meteor",
             "start": 93.15,
             "end": 95.95,
@@ -4608,10 +5116,11 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 482.6100000000017
           },
           {
-            "id": 5,
+            "id": 6,
             "kind": "rabbit",
             "start": 111.15,
             "end": 119.15,
@@ -4619,9 +5128,9 @@
             "side": -1,
             "seed": "events-test:rabbit:111.15",
             "anchor": {
-              "x": -36.319746106370324,
+              "x": -31.321864467634136,
               "y": 0,
-              "z": -407.6985582368503
+              "z": -407.55302774113323
             },
             "right": {
               "x": 0.9995763277472379,
@@ -4640,10 +5149,12 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 410.20999999999844,
+            "collisionClearance": 1.6
           },
           {
-            "id": 6,
+            "id": 7,
             "kind": "meteor",
             "start": 135.15,
             "end": 137.95000000000002,
@@ -4672,10 +5183,11 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 637.9399999999888
           },
           {
-            "id": 7,
+            "id": 8,
             "kind": "rabbit",
             "start": 153.15,
             "end": 161.15,
@@ -4704,10 +5216,12 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 540.3399999999777,
+            "collisionClearance": 1.6
           },
           {
-            "id": 8,
+            "id": 9,
             "kind": "meteor",
             "start": 177.15,
             "end": 179.95000000000002,
@@ -4736,10 +5250,11 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 780.4109999999824
           },
           {
-            "id": 9,
+            "id": 10,
             "kind": "rabbit",
             "start": 195.15,
             "end": 203.15,
@@ -4747,9 +5262,9 @@
             "side": -1,
             "seed": "events-test:rabbit:195.15",
             "anchor": {
-              "x": -16.134118221837166,
+              "x": -11.16035820508848,
               "y": 0,
-              "z": -712.3585265074313
+              "z": -711.8469492446526
             },
             "right": {
               "x": 0.9947520033497372,
@@ -4768,10 +5283,12 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 715.5709999999846,
+            "collisionClearance": 1.6
           },
           {
-            "id": 10,
+            "id": 11,
             "kind": "meteor",
             "start": 219.15,
             "end": 221.95000000000002,
@@ -4800,19 +5317,20 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 968.8999999999879
           }
         ],
         "activeEvent": {
-          "id": 1,
+          "id": 2,
           "kind": "rabbit",
           "age": 2,
           "progress": 0.25,
           "fade": 1,
           "body": {
-            "x": 0.41982958407123316,
+            "x": -8.233407611285209,
             "y": 1.2216245104335313,
-            "z": -105.74682609389095,
+            "z": -110.75895997487414,
             "hop": 0.5372996083468249,
             "phase": 0.7499999999999998,
             "flight": 0.8194444444444441,
@@ -4825,30 +5343,30 @@
           "stage": "passing",
           "ripples": [
             {
-              "x": -3.064309441959317,
+              "x": -11.71754663731576,
               "y": 0.045,
-              "z": -100.90815803977753,
+              "z": -105.92029192076075,
               "radius": 2.3899999999999997,
               "opacity": 0.1454545454545455
             },
             {
-              "x": -2.5797281590193557,
+              "x": -11.232965354375798,
               "y": 0.045,
-              "z": -100.62747854244247,
+              "z": -105.63961242342567,
               "radius": 2.3899999999999997,
               "opacity": 0.1454545454545455
             },
             {
-              "x": 1.6046174514737963,
+              "x": -7.048619743882647,
               "y": 0.045,
-              "z": -101.78629337318408,
+              "z": -106.79842725416728,
               "radius": 1.11,
               "opacity": 0.29090909090909095
             },
             {
-              "x": 2.089198734413757,
+              "x": -6.564038460942687,
               "y": 0.045,
-              "z": -101.50561387584902,
+              "z": -106.51774775683222,
               "radius": 1.11,
               "opacity": 0.29090909090909095
             }
@@ -4988,6 +5506,46 @@
         "eventPlan": [
           {
             "id": 0,
+            "kind": "pigeons",
+            "start": 0,
+            "end": 7,
+            "duration": 7,
+            "side": 1,
+            "seed": "events-test:pigeons:0",
+            "anchor": {
+              "x": 14.390746388251028,
+              "y": 4.2,
+              "z": -37.106194355950166
+            },
+            "right": {
+              "x": 0.8455825284086916,
+              "y": 0,
+              "z": 0.5338447224146401
+            },
+            "forward": {
+              "x": 0.5338447224146401,
+              "y": 0,
+              "z": -0.8455825284086916
+            },
+            "yaw": 0.5631409064239264,
+            "readingClearance": "peripheral",
+            "reflection": true,
+            "budget": {
+              "points": 900,
+              "ripples": 12
+            },
+            "perch": "sign",
+            "encounterId": 0,
+            "birdCount": 2,
+            "takeoff": 3,
+            "perchPosition": {
+              "x": 14.454807754940784,
+              "y": 6.755000000000001,
+              "z": -37.207664259359206
+            }
+          },
+          {
+            "id": 1,
             "kind": "meteor",
             "start": 9.15,
             "end": 11.95,
@@ -5016,10 +5574,11 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 209.54000000000013
           },
           {
-            "id": 1,
+            "id": 2,
             "kind": "rabbit",
             "start": 27.15,
             "end": 35.15,
@@ -5027,9 +5586,9 @@
             "side": -1,
             "seed": "events-test:rabbit:27.15",
             "anchor": {
-              "x": 6.34366893426496,
+              "x": -2.309568261091483,
               "y": 0,
-              "z": -107.01523122359451
+              "z": -112.02736510457771
             },
             "right": {
               "x": 0.8653237195356444,
@@ -5048,10 +5607,12 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 111.94000000000048,
+            "collisionClearance": 1.6
           },
           {
-            "id": 2,
+            "id": 3,
             "kind": "meteor",
             "start": 51.15,
             "end": 53.949999999999996,
@@ -5080,10 +5641,11 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 327.1400000000027
           },
           {
-            "id": 3,
+            "id": 4,
             "kind": "rabbit",
             "start": 69.15,
             "end": 77.15,
@@ -5112,10 +5674,12 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 235.87500000000506,
+            "collisionClearance": 1.6
           },
           {
-            "id": 4,
+            "id": 5,
             "kind": "meteor",
             "start": 93.15,
             "end": 95.95,
@@ -5144,10 +5708,11 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 482.6100000000017
           },
           {
-            "id": 5,
+            "id": 6,
             "kind": "rabbit",
             "start": 111.15,
             "end": 119.15,
@@ -5155,9 +5720,9 @@
             "side": -1,
             "seed": "events-test:rabbit:111.15",
             "anchor": {
-              "x": -36.319746106370324,
+              "x": -31.321864467634136,
               "y": 0,
-              "z": -407.6985582368503
+              "z": -407.55302774113323
             },
             "right": {
               "x": 0.9995763277472379,
@@ -5176,10 +5741,12 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 410.20999999999844,
+            "collisionClearance": 1.6
           },
           {
-            "id": 6,
+            "id": 7,
             "kind": "meteor",
             "start": 135.15,
             "end": 137.95000000000002,
@@ -5208,10 +5775,11 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 637.9399999999888
           },
           {
-            "id": 7,
+            "id": 8,
             "kind": "rabbit",
             "start": 153.15,
             "end": 161.15,
@@ -5240,10 +5808,12 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 540.3399999999777,
+            "collisionClearance": 1.6
           },
           {
-            "id": 8,
+            "id": 9,
             "kind": "meteor",
             "start": 177.15,
             "end": 179.95000000000002,
@@ -5272,10 +5842,11 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 780.4109999999824
           },
           {
-            "id": 9,
+            "id": 10,
             "kind": "rabbit",
             "start": 195.15,
             "end": 203.15,
@@ -5283,9 +5854,9 @@
             "side": -1,
             "seed": "events-test:rabbit:195.15",
             "anchor": {
-              "x": -16.134118221837166,
+              "x": -11.16035820508848,
               "y": 0,
-              "z": -712.3585265074313
+              "z": -711.8469492446526
             },
             "right": {
               "x": 0.9947520033497372,
@@ -5304,10 +5875,12 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 715.5709999999846,
+            "collisionClearance": 1.6
           },
           {
-            "id": 10,
+            "id": 11,
             "kind": "meteor",
             "start": 219.15,
             "end": 221.95000000000002,
@@ -5336,19 +5909,20 @@
               "points": 900,
               "ripples": 12
             },
-            "viewPlaced": true
+            "viewPlaced": true,
+            "trackAddress": 968.8999999999879
           }
         ],
         "activeEvent": {
-          "id": 1,
+          "id": 2,
           "kind": "rabbit",
           "age": 2,
           "progress": 0.25,
           "fade": 1,
           "body": {
-            "x": 0.41982958407123316,
+            "x": -8.233407611285209,
             "y": 1.2216245104335313,
-            "z": -105.74682609389095,
+            "z": -110.75895997487414,
             "hop": 0.5372996083468249,
             "phase": 0.7499999999999998,
             "flight": 0.8194444444444441,
@@ -5361,30 +5935,30 @@
           "stage": "passing",
           "ripples": [
             {
-              "x": -3.064309441959317,
+              "x": -11.71754663731576,
               "y": 0.045,
-              "z": -100.90815803977753,
+              "z": -105.92029192076075,
               "radius": 2.3899999999999997,
               "opacity": 0.1454545454545455
             },
             {
-              "x": -2.5797281590193557,
+              "x": -11.232965354375798,
               "y": 0.045,
-              "z": -100.62747854244247,
+              "z": -105.63961242342567,
               "radius": 2.3899999999999997,
               "opacity": 0.1454545454545455
             },
             {
-              "x": 1.6046174514737963,
+              "x": -7.048619743882647,
               "y": 0.045,
-              "z": -101.78629337318408,
+              "z": -106.79842725416728,
               "radius": 1.11,
               "opacity": 0.29090909090909095
             },
             {
-              "x": 2.089198734413757,
+              "x": -6.564038460942687,
               "y": 0.045,
-              "z": -101.50561387584902,
+              "z": -106.51774775683222,
               "radius": 1.11,
               "opacity": 0.29090909090909095
             }
@@ -5574,6 +6148,129 @@
           {
             "id": 1,
             "kind": "pigeons",
+            "start": 23,
+            "end": 30,
+            "duration": 7,
+            "side": -1,
+            "seed": "events-test:pigeons:23",
+            "anchor": {
+              "x": -11.921802399611625,
+              "y": 0,
+              "z": -95.23276952100349
+            },
+            "right": {
+              "x": 0.9876391411573147,
+              "y": 0,
+              "z": -0.1567447825416907
+            },
+            "forward": {
+              "x": -0.1567447825416907,
+              "y": 0,
+              "z": -0.9876391411573147
+            },
+            "yaw": -0.15739382615046968,
+            "readingClearance": "peripheral",
+            "reflection": true,
+            "budget": {
+              "points": 900,
+              "ripples": 12
+            },
+            "perch": "lamp",
+            "poleId": 6,
+            "address": 96,
+            "birdCount": 1,
+            "takeoff": 3,
+            "perchPosition": {
+              "x": -14.934101780141434,
+              "y": 6.16,
+              "z": -94.75469793425134
+            }
+          },
+          {
+            "id": 2,
+            "kind": "pigeons",
+            "start": 36,
+            "end": 43,
+            "duration": 7,
+            "side": -1,
+            "seed": "events-test:pigeons:36",
+            "anchor": {
+              "x": -17.08106432110543,
+              "y": 0,
+              "z": -126.8140538198055
+            },
+            "right": {
+              "x": 0.9865027962638446,
+              "y": 0,
+              "z": -0.16374441353406682
+            },
+            "forward": {
+              "x": -0.16374441353406682,
+              "y": 0,
+              "z": -0.9865027962638446
+            },
+            "yaw": -0.16448511125771204,
+            "readingClearance": "peripheral",
+            "reflection": true,
+            "budget": {
+              "points": 900,
+              "ripples": 12
+            },
+            "perch": "lamp",
+            "poleId": 8,
+            "address": 128,
+            "birdCount": 1,
+            "takeoff": 3,
+            "perchPosition": {
+              "x": -20.089897849710155,
+              "y": 6.16,
+              "z": -126.31463335852659
+            }
+          },
+          {
+            "id": 3,
+            "kind": "pigeons",
+            "start": 62,
+            "end": 69,
+            "duration": 7,
+            "side": -1,
+            "seed": "events-test:pigeons:62",
+            "anchor": {
+              "x": -27.111830267032623,
+              "y": 0,
+              "z": -190.0216727622846
+            },
+            "right": {
+              "x": 0.9898694193653639,
+              "y": 0,
+              "z": -0.1419807473049689
+            },
+            "forward": {
+              "x": -0.1419807473049689,
+              "y": 0,
+              "z": -0.9898694193653639
+            },
+            "yaw": -0.1424621477539393,
+            "readingClearance": "peripheral",
+            "reflection": true,
+            "budget": {
+              "points": 900,
+              "ripples": 12
+            },
+            "perch": "lamp",
+            "poleId": 12,
+            "address": 192,
+            "birdCount": 1,
+            "takeoff": 3,
+            "perchPosition": {
+              "x": -30.130931996096983,
+              "y": 6.16,
+              "z": -189.58863148300443
+            }
+          },
+          {
+            "id": 4,
+            "kind": "pigeons",
             "start": 83.92857163213193,
             "end": 89.92857163213193,
             "duration": 6,
@@ -5605,7 +6302,171 @@
             "address": 258
           },
           {
-            "id": 2,
+            "id": 5,
+            "kind": "pigeons",
+            "start": 101,
+            "end": 108,
+            "duration": 7,
+            "side": -1,
+            "seed": "events-test:pigeons:101",
+            "anchor": {
+              "x": -37.185913178049,
+              "y": 0,
+              "z": -301.50660763089945
+            },
+            "right": {
+              "x": 0.9995100111030586,
+              "y": 0,
+              "z": -0.03130076204765251
+            },
+            "forward": {
+              "x": -0.03130076204765251,
+              "y": 0,
+              "z": -0.9995100111030586
+            },
+            "yaw": -0.031305875391815674,
+            "readingClearance": "peripheral",
+            "reflection": true,
+            "budget": {
+              "points": 900,
+              "ripples": 12
+            },
+            "perch": "lamp",
+            "poleId": 19,
+            "address": 304,
+            "birdCount": 1,
+            "takeoff": 3,
+            "perchPosition": {
+              "x": -40.23441871191333,
+              "y": 6.16,
+              "z": -301.4111403066541
+            }
+          },
+          {
+            "id": 6,
+            "kind": "pigeons",
+            "start": 114,
+            "end": 121,
+            "duration": 7,
+            "side": -1,
+            "seed": "events-test:pigeons:114",
+            "anchor": {
+              "x": -37.58415101993776,
+              "y": 0,
+              "z": -349.5010976739897
+            },
+            "right": {
+              "x": 0.9999221604097123,
+              "y": 0,
+              "z": 0.012476903525060572
+            },
+            "forward": {
+              "x": 0.012476903525060572,
+              "y": 0,
+              "z": -0.9999221604097123
+            },
+            "yaw": 0.012477227267493403,
+            "readingClearance": "peripheral",
+            "reflection": true,
+            "budget": {
+              "points": 900,
+              "ripples": 12
+            },
+            "perch": "lamp",
+            "poleId": 22,
+            "address": 352,
+            "birdCount": 1,
+            "takeoff": 3,
+            "perchPosition": {
+              "x": -40.63391360918738,
+              "y": 6.16,
+              "z": -349.53915222974115
+            }
+          },
+          {
+            "id": 7,
+            "kind": "pigeons",
+            "start": 140,
+            "end": 147,
+            "duration": 7,
+            "side": -1,
+            "seed": "events-test:pigeons:140",
+            "anchor": {
+              "x": -35.56563709874345,
+              "y": 0,
+              "z": -413.4663384483688
+            },
+            "right": {
+              "x": 0.9989715621934656,
+              "y": 0,
+              "z": 0.04534112844589225
+            },
+            "forward": {
+              "x": 0.04534112844589225,
+              "y": 0,
+              "z": -0.9989715621934656
+            },
+            "yaw": 0.0453566783531535,
+            "readingClearance": "peripheral",
+            "reflection": true,
+            "budget": {
+              "points": 900,
+              "ripples": 12
+            },
+            "perch": "lamp",
+            "poleId": 26,
+            "address": 416,
+            "birdCount": 1,
+            "takeoff": 3,
+            "perchPosition": {
+              "x": -38.61250036343352,
+              "y": 6.16,
+              "z": -413.60462889012877
+            }
+          },
+          {
+            "id": 8,
+            "kind": "pigeons",
+            "start": 153,
+            "end": 160,
+            "duration": 7,
+            "side": -1,
+            "seed": "events-test:pigeons:153",
+            "anchor": {
+              "x": -34.0097217968343,
+              "y": 0,
+              "z": -445.42844844692337
+            },
+            "right": {
+              "x": 0.9987034233841521,
+              "y": 0,
+              "z": 0.05090650371784594
+            },
+            "forward": {
+              "x": 0.05090650371784594,
+              "y": 0,
+              "z": -0.9987034233841521
+            },
+            "yaw": 0.05092851652889248,
+            "readingClearance": "peripheral",
+            "reflection": true,
+            "budget": {
+              "points": 900,
+              "ripples": 12
+            },
+            "perch": "lamp",
+            "poleId": 28,
+            "address": 448,
+            "birdCount": 1,
+            "takeoff": 3,
+            "perchPosition": {
+              "x": -37.055767238155966,
+              "y": 6.16,
+              "z": -445.5837132832628
+            }
+          },
+          {
+            "id": 9,
             "kind": "pigeons",
             "start": 162.4999997485429,
             "end": 168.4999997485429,
@@ -5803,6 +6664,129 @@
           {
             "id": 1,
             "kind": "pigeons",
+            "start": 23,
+            "end": 30,
+            "duration": 7,
+            "side": -1,
+            "seed": "events-test:pigeons:23",
+            "anchor": {
+              "x": -11.921802399611625,
+              "y": 0,
+              "z": -95.23276952100349
+            },
+            "right": {
+              "x": 0.9876391411573147,
+              "y": 0,
+              "z": -0.1567447825416907
+            },
+            "forward": {
+              "x": -0.1567447825416907,
+              "y": 0,
+              "z": -0.9876391411573147
+            },
+            "yaw": -0.15739382615046968,
+            "readingClearance": "peripheral",
+            "reflection": true,
+            "budget": {
+              "points": 900,
+              "ripples": 12
+            },
+            "perch": "lamp",
+            "poleId": 6,
+            "address": 96,
+            "birdCount": 1,
+            "takeoff": 3,
+            "perchPosition": {
+              "x": -14.934101780141434,
+              "y": 6.16,
+              "z": -94.75469793425134
+            }
+          },
+          {
+            "id": 2,
+            "kind": "pigeons",
+            "start": 36,
+            "end": 43,
+            "duration": 7,
+            "side": -1,
+            "seed": "events-test:pigeons:36",
+            "anchor": {
+              "x": -17.08106432110543,
+              "y": 0,
+              "z": -126.8140538198055
+            },
+            "right": {
+              "x": 0.9865027962638446,
+              "y": 0,
+              "z": -0.16374441353406682
+            },
+            "forward": {
+              "x": -0.16374441353406682,
+              "y": 0,
+              "z": -0.9865027962638446
+            },
+            "yaw": -0.16448511125771204,
+            "readingClearance": "peripheral",
+            "reflection": true,
+            "budget": {
+              "points": 900,
+              "ripples": 12
+            },
+            "perch": "lamp",
+            "poleId": 8,
+            "address": 128,
+            "birdCount": 1,
+            "takeoff": 3,
+            "perchPosition": {
+              "x": -20.089897849710155,
+              "y": 6.16,
+              "z": -126.31463335852659
+            }
+          },
+          {
+            "id": 3,
+            "kind": "pigeons",
+            "start": 62,
+            "end": 69,
+            "duration": 7,
+            "side": -1,
+            "seed": "events-test:pigeons:62",
+            "anchor": {
+              "x": -27.111830267032623,
+              "y": 0,
+              "z": -190.0216727622846
+            },
+            "right": {
+              "x": 0.9898694193653639,
+              "y": 0,
+              "z": -0.1419807473049689
+            },
+            "forward": {
+              "x": -0.1419807473049689,
+              "y": 0,
+              "z": -0.9898694193653639
+            },
+            "yaw": -0.1424621477539393,
+            "readingClearance": "peripheral",
+            "reflection": true,
+            "budget": {
+              "points": 900,
+              "ripples": 12
+            },
+            "perch": "lamp",
+            "poleId": 12,
+            "address": 192,
+            "birdCount": 1,
+            "takeoff": 3,
+            "perchPosition": {
+              "x": -30.130931996096983,
+              "y": 6.16,
+              "z": -189.58863148300443
+            }
+          },
+          {
+            "id": 4,
+            "kind": "pigeons",
             "start": 83.92857163213193,
             "end": 89.92857163213193,
             "duration": 6,
@@ -5834,7 +6818,171 @@
             "address": 258
           },
           {
-            "id": 2,
+            "id": 5,
+            "kind": "pigeons",
+            "start": 101,
+            "end": 108,
+            "duration": 7,
+            "side": -1,
+            "seed": "events-test:pigeons:101",
+            "anchor": {
+              "x": -37.185913178049,
+              "y": 0,
+              "z": -301.50660763089945
+            },
+            "right": {
+              "x": 0.9995100111030586,
+              "y": 0,
+              "z": -0.03130076204765251
+            },
+            "forward": {
+              "x": -0.03130076204765251,
+              "y": 0,
+              "z": -0.9995100111030586
+            },
+            "yaw": -0.031305875391815674,
+            "readingClearance": "peripheral",
+            "reflection": true,
+            "budget": {
+              "points": 900,
+              "ripples": 12
+            },
+            "perch": "lamp",
+            "poleId": 19,
+            "address": 304,
+            "birdCount": 1,
+            "takeoff": 3,
+            "perchPosition": {
+              "x": -40.23441871191333,
+              "y": 6.16,
+              "z": -301.4111403066541
+            }
+          },
+          {
+            "id": 6,
+            "kind": "pigeons",
+            "start": 114,
+            "end": 121,
+            "duration": 7,
+            "side": -1,
+            "seed": "events-test:pigeons:114",
+            "anchor": {
+              "x": -37.58415101993776,
+              "y": 0,
+              "z": -349.5010976739897
+            },
+            "right": {
+              "x": 0.9999221604097123,
+              "y": 0,
+              "z": 0.012476903525060572
+            },
+            "forward": {
+              "x": 0.012476903525060572,
+              "y": 0,
+              "z": -0.9999221604097123
+            },
+            "yaw": 0.012477227267493403,
+            "readingClearance": "peripheral",
+            "reflection": true,
+            "budget": {
+              "points": 900,
+              "ripples": 12
+            },
+            "perch": "lamp",
+            "poleId": 22,
+            "address": 352,
+            "birdCount": 1,
+            "takeoff": 3,
+            "perchPosition": {
+              "x": -40.63391360918738,
+              "y": 6.16,
+              "z": -349.53915222974115
+            }
+          },
+          {
+            "id": 7,
+            "kind": "pigeons",
+            "start": 140,
+            "end": 147,
+            "duration": 7,
+            "side": -1,
+            "seed": "events-test:pigeons:140",
+            "anchor": {
+              "x": -35.56563709874345,
+              "y": 0,
+              "z": -413.4663384483688
+            },
+            "right": {
+              "x": 0.9989715621934656,
+              "y": 0,
+              "z": 0.04534112844589225
+            },
+            "forward": {
+              "x": 0.04534112844589225,
+              "y": 0,
+              "z": -0.9989715621934656
+            },
+            "yaw": 0.0453566783531535,
+            "readingClearance": "peripheral",
+            "reflection": true,
+            "budget": {
+              "points": 900,
+              "ripples": 12
+            },
+            "perch": "lamp",
+            "poleId": 26,
+            "address": 416,
+            "birdCount": 1,
+            "takeoff": 3,
+            "perchPosition": {
+              "x": -38.61250036343352,
+              "y": 6.16,
+              "z": -413.60462889012877
+            }
+          },
+          {
+            "id": 8,
+            "kind": "pigeons",
+            "start": 153,
+            "end": 160,
+            "duration": 7,
+            "side": -1,
+            "seed": "events-test:pigeons:153",
+            "anchor": {
+              "x": -34.0097217968343,
+              "y": 0,
+              "z": -445.42844844692337
+            },
+            "right": {
+              "x": 0.9987034233841521,
+              "y": 0,
+              "z": 0.05090650371784594
+            },
+            "forward": {
+              "x": 0.05090650371784594,
+              "y": 0,
+              "z": -0.9987034233841521
+            },
+            "yaw": 0.05092851652889248,
+            "readingClearance": "peripheral",
+            "reflection": true,
+            "budget": {
+              "points": 900,
+              "ripples": 12
+            },
+            "perch": "lamp",
+            "poleId": 28,
+            "address": 448,
+            "birdCount": 1,
+            "takeoff": 3,
+            "perchPosition": {
+              "x": -37.055767238155966,
+              "y": 6.16,
+              "z": -445.5837132832628
+            }
+          },
+          {
+            "id": 9,
             "kind": "pigeons",
             "start": 162.4999997485429,
             "end": 168.4999997485429,
@@ -6069,7 +7217,8 @@
             "budget": {
               "points": 900,
               "ripples": 12
-            }
+            },
+            "collisionClearance": 1.6
           },
           {
             "id": 3,
@@ -6101,7 +7250,8 @@
             "budget": {
               "points": 900,
               "ripples": 12
-            }
+            },
+            "collisionClearance": 1.6
           },
           {
             "id": 4,
@@ -6133,7 +7283,8 @@
             "budget": {
               "points": 900,
               "ripples": 12
-            }
+            },
+            "collisionClearance": 1.6
           },
           {
             "id": 5,
@@ -6165,7 +7316,8 @@
             "budget": {
               "points": 900,
               "ripples": 12
-            }
+            },
+            "collisionClearance": 1.6
           },
           {
             "id": 6,
@@ -6197,10 +7349,52 @@
             "budget": {
               "points": 900,
               "ripples": 12
-            }
+            },
+            "collisionClearance": 1.6
           },
           {
             "id": 7,
+            "kind": "pigeons",
+            "start": 205,
+            "end": 212,
+            "duration": 7,
+            "side": -1,
+            "seed": "events-test:pigeons:205",
+            "anchor": {
+              "x": -16.89577390391196,
+              "y": 0,
+              "z": -700.8061101261883
+            },
+            "right": {
+              "x": 0.9933302966714804,
+              "y": 0,
+              "z": 0.11530360668491146
+            },
+            "forward": {
+              "x": 0.11530360668491146,
+              "y": 0,
+              "z": -0.9933302966714804
+            },
+            "yaw": 0.11556063949863053,
+            "readingClearance": "peripheral",
+            "reflection": true,
+            "budget": {
+              "points": 900,
+              "ripples": 12
+            },
+            "perch": "lamp",
+            "poleId": 44,
+            "address": 704,
+            "birdCount": 1,
+            "takeoff": 3,
+            "perchPosition": {
+              "x": -19.925431308759975,
+              "y": 6.16,
+              "z": -701.1577861265773
+            }
+          },
+          {
+            "id": 8,
             "kind": "rabbit",
             "start": 226.8,
             "end": 234.8,
@@ -6209,9 +7403,9 @@
             "address": 789.0700000000679,
             "seed": "events-test:rabbit:7",
             "anchor": {
-              "x": -5.700304726822424,
+              "x": 4.2025367424786815,
               "y": 0,
-              "z": -785.1338261667574
+              "z": -783.7432396595993
             },
             "right": {
               "x": 0.9902841469301106,
@@ -6229,7 +7423,8 @@
             "budget": {
               "points": 900,
               "ripples": 12
-            }
+            },
+            "collisionClearance": 1.6
           }
         ],
         "activeEvent": {
@@ -6443,7 +7638,8 @@
             "budget": {
               "points": 900,
               "ripples": 12
-            }
+            },
+            "collisionClearance": 1.6
           },
           {
             "id": 3,
@@ -6475,7 +7671,8 @@
             "budget": {
               "points": 900,
               "ripples": 12
-            }
+            },
+            "collisionClearance": 1.6
           },
           {
             "id": 4,
@@ -6507,7 +7704,8 @@
             "budget": {
               "points": 900,
               "ripples": 12
-            }
+            },
+            "collisionClearance": 1.6
           },
           {
             "id": 5,
@@ -6539,7 +7737,8 @@
             "budget": {
               "points": 900,
               "ripples": 12
-            }
+            },
+            "collisionClearance": 1.6
           },
           {
             "id": 6,
@@ -6571,10 +7770,52 @@
             "budget": {
               "points": 900,
               "ripples": 12
-            }
+            },
+            "collisionClearance": 1.6
           },
           {
             "id": 7,
+            "kind": "pigeons",
+            "start": 205,
+            "end": 212,
+            "duration": 7,
+            "side": -1,
+            "seed": "events-test:pigeons:205",
+            "anchor": {
+              "x": -16.89577390391196,
+              "y": 0,
+              "z": -700.8061101261883
+            },
+            "right": {
+              "x": 0.9933302966714804,
+              "y": 0,
+              "z": 0.11530360668491146
+            },
+            "forward": {
+              "x": 0.11530360668491146,
+              "y": 0,
+              "z": -0.9933302966714804
+            },
+            "yaw": 0.11556063949863053,
+            "readingClearance": "peripheral",
+            "reflection": true,
+            "budget": {
+              "points": 900,
+              "ripples": 12
+            },
+            "perch": "lamp",
+            "poleId": 44,
+            "address": 704,
+            "birdCount": 1,
+            "takeoff": 3,
+            "perchPosition": {
+              "x": -19.925431308759975,
+              "y": 6.16,
+              "z": -701.1577861265773
+            }
+          },
+          {
+            "id": 8,
             "kind": "rabbit",
             "start": 226.8,
             "end": 234.8,
@@ -6583,9 +7824,9 @@
             "address": 789.0700000000679,
             "seed": "events-test:rabbit:7",
             "anchor": {
-              "x": -5.700304726822424,
+              "x": 4.2025367424786815,
               "y": 0,
-              "z": -785.1338261667574
+              "z": -783.7432396595993
             },
             "right": {
               "x": 0.9902841469301106,
@@ -6603,7 +7844,8 @@
             "budget": {
               "points": 900,
               "ripples": 12
-            }
+            },
+            "collisionClearance": 1.6
           }
         ],
         "activeEvent": {
@@ -6818,7 +8060,8 @@
             "budget": {
               "points": 900,
               "ripples": 12
-            }
+            },
+            "collisionClearance": 1.6
           },
           {
             "id": 3,
@@ -6850,7 +8093,8 @@
             "budget": {
               "points": 900,
               "ripples": 12
-            }
+            },
+            "collisionClearance": 1.6
           },
           {
             "id": 4,
@@ -6882,7 +8126,8 @@
             "budget": {
               "points": 900,
               "ripples": 12
-            }
+            },
+            "collisionClearance": 1.6
           },
           {
             "id": 5,
@@ -6914,7 +8159,8 @@
             "budget": {
               "points": 900,
               "ripples": 12
-            }
+            },
+            "collisionClearance": 1.6
           },
           {
             "id": 6,
@@ -6946,10 +8192,52 @@
             "budget": {
               "points": 900,
               "ripples": 12
-            }
+            },
+            "collisionClearance": 1.6
           },
           {
             "id": 7,
+            "kind": "pigeons",
+            "start": 205,
+            "end": 212,
+            "duration": 7,
+            "side": -1,
+            "seed": "events-test:pigeons:205",
+            "anchor": {
+              "x": -16.89577390391196,
+              "y": 0,
+              "z": -700.8061101261883
+            },
+            "right": {
+              "x": 0.9933302966714804,
+              "y": 0,
+              "z": 0.11530360668491146
+            },
+            "forward": {
+              "x": 0.11530360668491146,
+              "y": 0,
+              "z": -0.9933302966714804
+            },
+            "yaw": 0.11556063949863053,
+            "readingClearance": "peripheral",
+            "reflection": true,
+            "budget": {
+              "points": 900,
+              "ripples": 12
+            },
+            "perch": "lamp",
+            "poleId": 44,
+            "address": 704,
+            "birdCount": 1,
+            "takeoff": 3,
+            "perchPosition": {
+              "x": -19.925431308759975,
+              "y": 6.16,
+              "z": -701.1577861265773
+            }
+          },
+          {
+            "id": 8,
             "kind": "rabbit",
             "start": 226.8,
             "end": 234.8,
@@ -6958,9 +8246,9 @@
             "address": 789.0700000000679,
             "seed": "events-test:rabbit:7",
             "anchor": {
-              "x": -5.700304726822424,
+              "x": 4.2025367424786815,
               "y": 0,
-              "z": -785.1338261667574
+              "z": -783.7432396595993
             },
             "right": {
               "x": 0.9902841469301106,
@@ -6978,7 +8266,8 @@
             "budget": {
               "points": 900,
               "ripples": 12
-            }
+            },
+            "collisionClearance": 1.6
           }
         ],
         "activeEvent": {
@@ -7135,6 +8424,46 @@
       "eventPlan": [
         {
           "id": 0,
+          "kind": "pigeons",
+          "start": 0,
+          "end": 7,
+          "duration": 7,
+          "side": 1,
+          "seed": "smoke-track:pigeons:0",
+          "anchor": {
+            "x": 20.626519045835074,
+            "y": 4.2,
+            "z": -33.36386552185399
+          },
+          "right": {
+            "x": 0.7238330268575791,
+            "y": 0,
+            "z": 0.689975180155196
+          },
+          "forward": {
+            "x": 0.689975180155196,
+            "y": 0,
+            "z": -0.7238330268575791
+          },
+          "yaw": 0.7614547627255891,
+          "readingClearance": "peripheral",
+          "reflection": true,
+          "budget": {
+            "points": 900,
+            "ripples": 12
+          },
+          "perch": "sign",
+          "encounterId": 0,
+          "birdCount": 2,
+          "takeoff": 3,
+          "perchPosition": {
+            "x": 20.7093160674537,
+            "y": 6.755000000000001,
+            "z": -33.450725485076894
+          }
+        },
+        {
+          "id": 1,
           "kind": "meteor",
           "start": 9.15,
           "end": 11.95,
@@ -7163,10 +8492,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 209.54000000000013
         },
         {
-          "id": 1,
+          "id": 2,
           "kind": "rabbit",
           "start": 27.15,
           "end": 35.15,
@@ -7174,9 +8504,9 @@
           "side": -1,
           "seed": "smoke-track:rabbit:27.15",
           "anchor": {
-            "x": 31.08342280083161,
+            "x": 24.272465826945314,
             "y": 0,
-            "z": -101.3588532553897
+            "z": -108.68079733465373
           },
           "right": {
             "x": 0.6810956973886297,
@@ -7195,10 +8525,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 111.94000000000048,
+          "collisionClearance": 1.6
         },
         {
-          "id": 2,
+          "id": 3,
           "kind": "meteor",
           "start": 51.15,
           "end": 53.949999999999996,
@@ -7227,10 +8559,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 327.1400000000027
         },
         {
-          "id": 3,
+          "id": 4,
           "kind": "rabbit",
           "start": 69.15,
           "end": 77.15,
@@ -7259,10 +8592,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 235.87500000000506,
+          "collisionClearance": 1.6
         },
         {
-          "id": 4,
+          "id": 5,
           "kind": "meteor",
           "start": 93.15,
           "end": 95.95,
@@ -7291,10 +8626,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 482.6100000000017
         },
         {
-          "id": 5,
+          "id": 6,
           "kind": "rabbit",
           "start": 111.15,
           "end": 119.15,
@@ -7302,9 +8638,9 @@
           "side": -1,
           "seed": "smoke-track:rabbit:111.15",
           "anchor": {
-            "x": 39.069264954609615,
+            "x": 44.06519627374888,
             "y": 0,
-            "z": -408.03682236783703
+            "z": -407.8351536929185
           },
           "right": {
             "x": 0.9991862638278529,
@@ -7323,10 +8659,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 410.20999999999844,
+          "collisionClearance": 1.6
         },
         {
-          "id": 6,
+          "id": 7,
           "kind": "meteor",
           "start": 135.15,
           "end": 137.95000000000002,
@@ -7355,10 +8693,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 637.9399999999888
         },
         {
-          "id": 7,
+          "id": 8,
           "kind": "rabbit",
           "start": 153.15,
           "end": 161.15,
@@ -7387,10 +8726,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 540.3399999999777,
+          "collisionClearance": 1.6
         },
         {
-          "id": 8,
+          "id": 9,
           "kind": "meteor",
           "start": 177.15,
           "end": 179.95000000000002,
@@ -7419,10 +8760,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 780.4109999999824
         },
         {
-          "id": 9,
+          "id": 10,
           "kind": "rabbit",
           "start": 195.15,
           "end": 203.15,
@@ -7430,9 +8772,9 @@
           "side": -1,
           "seed": "smoke-track:rabbit:195.15",
           "anchor": {
-            "x": 33.48360032623383,
+            "x": 38.45230504866994,
             "y": 0,
-            "z": -712.8507893638372
+            "z": -713.4093351374681
           },
           "right": {
             "x": 0.9937409444872232,
@@ -7451,10 +8793,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 715.5709999999846,
+          "collisionClearance": 1.6
         },
         {
-          "id": 10,
+          "id": 11,
           "kind": "meteor",
           "start": 219.15,
           "end": 221.95000000000002,
@@ -7483,10 +8827,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 968.8999999999879
         },
         {
-          "id": 11,
+          "id": 12,
           "kind": "meteor",
           "start": 239.5,
           "end": 242.3,
@@ -7672,6 +9017,46 @@
       "eventPlan": [
         {
           "id": 0,
+          "kind": "pigeons",
+          "start": 0,
+          "end": 7,
+          "duration": 7,
+          "side": 1,
+          "seed": "smoke-track:pigeons:0",
+          "anchor": {
+            "x": 20.626519045835074,
+            "y": 4.2,
+            "z": -33.36386552185399
+          },
+          "right": {
+            "x": 0.7238330268575791,
+            "y": 0,
+            "z": 0.689975180155196
+          },
+          "forward": {
+            "x": 0.689975180155196,
+            "y": 0,
+            "z": -0.7238330268575791
+          },
+          "yaw": 0.7614547627255891,
+          "readingClearance": "peripheral",
+          "reflection": true,
+          "budget": {
+            "points": 900,
+            "ripples": 12
+          },
+          "perch": "sign",
+          "encounterId": 0,
+          "birdCount": 2,
+          "takeoff": 3,
+          "perchPosition": {
+            "x": 20.7093160674537,
+            "y": 6.755000000000001,
+            "z": -33.450725485076894
+          }
+        },
+        {
+          "id": 1,
           "kind": "meteor",
           "start": 9.15,
           "end": 11.95,
@@ -7700,10 +9085,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 209.54000000000013
         },
         {
-          "id": 1,
+          "id": 2,
           "kind": "rabbit",
           "start": 27.15,
           "end": 35.15,
@@ -7711,9 +9097,9 @@
           "side": -1,
           "seed": "smoke-track:rabbit:27.15",
           "anchor": {
-            "x": 31.08342280083161,
+            "x": 24.272465826945314,
             "y": 0,
-            "z": -101.3588532553897
+            "z": -108.68079733465373
           },
           "right": {
             "x": 0.6810956973886297,
@@ -7732,10 +9118,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 111.94000000000048,
+          "collisionClearance": 1.6
         },
         {
-          "id": 2,
+          "id": 3,
           "kind": "meteor",
           "start": 51.15,
           "end": 53.949999999999996,
@@ -7764,10 +9152,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 327.1400000000027
         },
         {
-          "id": 3,
+          "id": 4,
           "kind": "rabbit",
           "start": 69.15,
           "end": 77.15,
@@ -7796,10 +9185,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 235.87500000000506,
+          "collisionClearance": 1.6
         },
         {
-          "id": 4,
+          "id": 5,
           "kind": "meteor",
           "start": 93.15,
           "end": 95.95,
@@ -7828,10 +9219,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 482.6100000000017
         },
         {
-          "id": 5,
+          "id": 6,
           "kind": "rabbit",
           "start": 111.15,
           "end": 119.15,
@@ -7839,9 +9231,9 @@
           "side": -1,
           "seed": "smoke-track:rabbit:111.15",
           "anchor": {
-            "x": 39.069264954609615,
+            "x": 44.06519627374888,
             "y": 0,
-            "z": -408.03682236783703
+            "z": -407.8351536929185
           },
           "right": {
             "x": 0.9991862638278529,
@@ -7860,10 +9252,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 410.20999999999844,
+          "collisionClearance": 1.6
         },
         {
-          "id": 6,
+          "id": 7,
           "kind": "meteor",
           "start": 135.15,
           "end": 137.95000000000002,
@@ -7892,10 +9286,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 637.9399999999888
         },
         {
-          "id": 7,
+          "id": 8,
           "kind": "rabbit",
           "start": 153.15,
           "end": 161.15,
@@ -7924,10 +9319,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 540.3399999999777,
+          "collisionClearance": 1.6
         },
         {
-          "id": 8,
+          "id": 9,
           "kind": "meteor",
           "start": 177.15,
           "end": 179.95000000000002,
@@ -7956,10 +9353,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 780.4109999999824
         },
         {
-          "id": 9,
+          "id": 10,
           "kind": "rabbit",
           "start": 195.15,
           "end": 203.15,
@@ -7967,9 +9365,9 @@
           "side": -1,
           "seed": "smoke-track:rabbit:195.15",
           "anchor": {
-            "x": 33.48360032623383,
+            "x": 38.45230504866994,
             "y": 0,
-            "z": -712.8507893638372
+            "z": -713.4093351374681
           },
           "right": {
             "x": 0.9937409444872232,
@@ -7988,10 +9386,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 715.5709999999846,
+          "collisionClearance": 1.6
         },
         {
-          "id": 10,
+          "id": 11,
           "kind": "meteor",
           "start": 219.15,
           "end": 221.95000000000002,
@@ -8020,10 +9420,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 968.8999999999879
         },
         {
-          "id": 11,
+          "id": 12,
           "kind": "meteor",
           "start": 239.5,
           "end": 242.3,
@@ -8209,6 +9610,46 @@
       "eventPlan": [
         {
           "id": 0,
+          "kind": "pigeons",
+          "start": 0,
+          "end": 7,
+          "duration": 7,
+          "side": 1,
+          "seed": "smoke-track:pigeons:0",
+          "anchor": {
+            "x": 20.626519045835074,
+            "y": 4.2,
+            "z": -33.36386552185399
+          },
+          "right": {
+            "x": 0.7238330268575791,
+            "y": 0,
+            "z": 0.689975180155196
+          },
+          "forward": {
+            "x": 0.689975180155196,
+            "y": 0,
+            "z": -0.7238330268575791
+          },
+          "yaw": 0.7614547627255891,
+          "readingClearance": "peripheral",
+          "reflection": true,
+          "budget": {
+            "points": 900,
+            "ripples": 12
+          },
+          "perch": "sign",
+          "encounterId": 0,
+          "birdCount": 2,
+          "takeoff": 3,
+          "perchPosition": {
+            "x": 20.7093160674537,
+            "y": 6.755000000000001,
+            "z": -33.450725485076894
+          }
+        },
+        {
+          "id": 1,
           "kind": "meteor",
           "start": 9.15,
           "end": 11.95,
@@ -8237,10 +9678,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 209.54000000000013
         },
         {
-          "id": 1,
+          "id": 2,
           "kind": "rabbit",
           "start": 27.15,
           "end": 35.15,
@@ -8248,9 +9690,9 @@
           "side": -1,
           "seed": "smoke-track:rabbit:27.15",
           "anchor": {
-            "x": 31.074036844013843,
+            "x": 24.266415501129465,
             "y": 0,
-            "z": -101.34817923618357
+            "z": -108.67322474129172
           },
           "right": {
             "x": 0.6807621342884376,
@@ -8269,10 +9711,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 111.94000000000048,
+          "collisionClearance": 1.6
         },
         {
-          "id": 2,
+          "id": 3,
           "kind": "meteor",
           "start": 51.15,
           "end": 53.949999999999996,
@@ -8301,10 +9745,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 327.1400000000027
         },
         {
-          "id": 3,
+          "id": 4,
           "kind": "rabbit",
           "start": 69.15,
           "end": 77.15,
@@ -8333,10 +9778,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 235.87500000000506,
+          "collisionClearance": 1.6
         },
         {
-          "id": 4,
+          "id": 5,
           "kind": "meteor",
           "start": 93.15,
           "end": 95.95,
@@ -8365,10 +9812,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 482.6100000000017
         },
         {
-          "id": 5,
+          "id": 6,
           "kind": "rabbit",
           "start": 111.15,
           "end": 119.15,
@@ -8376,9 +9824,9 @@
           "side": -1,
           "seed": "smoke-track:rabbit:111.15",
           "anchor": {
-            "x": 39.0352981097413,
+            "x": 44.03128986948925,
             "y": 0,
-            "z": -408.0372091877326
+            "z": -407.8370434151076
           },
           "right": {
             "x": 0.9991983519495902,
@@ -8397,10 +9845,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 410.20999999999844,
+          "collisionClearance": 1.6
         },
         {
-          "id": 6,
+          "id": 7,
           "kind": "meteor",
           "start": 135.15,
           "end": 137.95000000000002,
@@ -8429,10 +9879,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 637.9399999999888
         },
         {
-          "id": 7,
+          "id": 8,
           "kind": "rabbit",
           "start": 153.15,
           "end": 161.15,
@@ -8461,10 +9912,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 540.3399999999777,
+          "collisionClearance": 1.6
         },
         {
-          "id": 8,
+          "id": 9,
           "kind": "meteor",
           "start": 177.15,
           "end": 179.95000000000002,
@@ -8493,10 +9946,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 780.4109999999824
         },
         {
-          "id": 9,
+          "id": 10,
           "kind": "rabbit",
           "start": 195.15,
           "end": 203.15,
@@ -8504,9 +9958,9 @@
           "side": -1,
           "seed": "smoke-track:rabbit:195.15",
           "anchor": {
-            "x": 33.45970334986362,
+            "x": 38.42802072630978,
             "y": 0,
-            "z": -712.8483103495015
+            "z": -713.4102911738212
           },
           "right": {
             "x": 0.9936634752892333,
@@ -8525,10 +9979,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 715.5709999999846,
+          "collisionClearance": 1.6
         },
         {
-          "id": 10,
+          "id": 11,
           "kind": "meteor",
           "start": 219.15,
           "end": 221.95000000000002,
@@ -8557,10 +10013,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 968.8999999999879
         },
         {
-          "id": 11,
+          "id": 12,
           "kind": "meteor",
           "start": 239.5,
           "end": 242.3,
@@ -8807,7 +10264,8 @@
           "budget": {
             "points": 900,
             "ripples": 12
-          }
+          },
+          "collisionClearance": 1.6
         },
         {
           "id": 3,
@@ -8819,9 +10277,9 @@
           "address": 353.87000000000126,
           "seed": "smoke-track:rabbit:3",
           "anchor": {
-            "x": 36.985643141583495,
+            "x": 46.97591188125024,
             "y": 0,
-            "z": -351.7341848166336
+            "z": -351.29312868728334
           },
           "right": {
             "x": 0.9990268739666746,
@@ -8839,7 +10297,8 @@
           "budget": {
             "points": 900,
             "ripples": 12
-          }
+          },
+          "collisionClearance": 1.6
         }
       ],
       "activeEvent": null,
@@ -8992,6 +10451,46 @@
       "eventPlan": [
         {
           "id": 0,
+          "kind": "pigeons",
+          "start": 0,
+          "end": 7,
+          "duration": 7,
+          "side": 1,
+          "seed": "smoke-track:pigeons:0",
+          "anchor": {
+            "x": 20.626519045835074,
+            "y": 4.2,
+            "z": -33.36386552185399
+          },
+          "right": {
+            "x": 0.7238330268575791,
+            "y": 0,
+            "z": 0.689975180155196
+          },
+          "forward": {
+            "x": 0.689975180155196,
+            "y": 0,
+            "z": -0.7238330268575791
+          },
+          "yaw": 0.7614547627255891,
+          "readingClearance": "peripheral",
+          "reflection": true,
+          "budget": {
+            "points": 900,
+            "ripples": 12
+          },
+          "perch": "sign",
+          "encounterId": 0,
+          "birdCount": 2,
+          "takeoff": 3,
+          "perchPosition": {
+            "x": 20.7093160674537,
+            "y": 6.755000000000001,
+            "z": -33.450725485076894
+          }
+        },
+        {
+          "id": 1,
           "kind": "meteor",
           "start": 9.15,
           "end": 11.95,
@@ -9020,10 +10519,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 209.54000000000013
         },
         {
-          "id": 1,
+          "id": 2,
           "kind": "rabbit",
           "start": 27.15,
           "end": 35.15,
@@ -9031,9 +10531,9 @@
           "side": -1,
           "seed": "smoke-track:rabbit:27.15",
           "anchor": {
-            "x": 31.08342280083161,
+            "x": 24.272465826945314,
             "y": 0,
-            "z": -101.3588532553897
+            "z": -108.68079733465373
           },
           "right": {
             "x": 0.6810956973886297,
@@ -9052,10 +10552,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 111.94000000000048,
+          "collisionClearance": 1.6
         },
         {
-          "id": 2,
+          "id": 3,
           "kind": "meteor",
           "start": 51.15,
           "end": 53.949999999999996,
@@ -9084,10 +10586,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 327.1400000000027
         },
         {
-          "id": 3,
+          "id": 4,
           "kind": "rabbit",
           "start": 69.15,
           "end": 77.15,
@@ -9116,10 +10619,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 235.87500000000506,
+          "collisionClearance": 1.6
         },
         {
-          "id": 4,
+          "id": 5,
           "kind": "meteor",
           "start": 93.15,
           "end": 95.95,
@@ -9148,10 +10653,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 482.6100000000017
         },
         {
-          "id": 5,
+          "id": 6,
           "kind": "rabbit",
           "start": 111.15,
           "end": 119.15,
@@ -9180,10 +10686,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 410.20999999999844,
+          "collisionClearance": 1.6
         },
         {
-          "id": 6,
+          "id": 7,
           "kind": "meteor",
           "start": 135.15,
           "end": 137.95000000000002,
@@ -9212,10 +10720,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 637.9399999999888
         },
         {
-          "id": 7,
+          "id": 8,
           "kind": "rabbit",
           "start": 153.15,
           "end": 161.15,
@@ -9244,10 +10753,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 540.3399999999777,
+          "collisionClearance": 1.6
         },
         {
-          "id": 8,
+          "id": 9,
           "kind": "meteor",
           "start": 177.15,
           "end": 179.95000000000002,
@@ -9276,10 +10787,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 780.4109999999824
         },
         {
-          "id": 9,
+          "id": 10,
           "kind": "rabbit",
           "start": 195.15,
           "end": 203.15,
@@ -9308,10 +10820,12 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 715.5709999999846,
+          "collisionClearance": 1.6
         },
         {
-          "id": 10,
+          "id": 11,
           "kind": "meteor",
           "start": 219.15,
           "end": 221.95000000000002,
@@ -9340,10 +10854,11 @@
             "points": 900,
             "ripples": 12
           },
-          "viewPlaced": true
+          "viewPlaced": true,
+          "trackAddress": 968.8999999999879
         },
         {
-          "id": 11,
+          "id": 12,
           "kind": "meteor",
           "start": 239.5,
           "end": 242.3,

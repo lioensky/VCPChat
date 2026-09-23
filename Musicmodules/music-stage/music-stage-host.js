@@ -177,7 +177,7 @@
             ],
             diorama: [
                 { key: 'journeyEvents', label: '旅途奇遇（留白中的流星与水面生灵）', type: 'toggle' },
-                { key: 'fireworks', label: '远方烟花（仅副歌后留白，默认关闭）', type: 'toggle' },
+                { key: 'fireworks', label: '远方烟花（副歌句尾与段后，默认关闭）', type: 'toggle' },
                 { key: 'cameraCuts', label: '自动剪辑（避开演唱中的字）', type: 'toggle' },
                 { key: 'letterbox', label: '电影遮幅', type: 'toggle' },
                 { key: 'lyricCarrier', label: '歌词载体', type: 'select', options: [['auto', '章节自动编排'], ['sign', '沿线站牌'], ['constellation', '星空文字']] },

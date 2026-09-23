@@ -16,7 +16,7 @@ const E = context.MusicStageDioramaEvents;
 const plain = v => JSON.parse(JSON.stringify(v));
 const build = (lines = [], duration = 180, options = {}) => {
     const timeline = D.compile({ lines: R.normalizeLines(lines), duration, trackId: 'events-test' });
-    const track = C.createTrack(timeline);
+    const track = C.createTrack(timeline, options.cameraSpeed ?? 1, options);
     return { timeline, track, events: E.compile(timeline, track, options) };
 };
 test('events are deterministic, separated and whale appears at most once', () => {
@@ -26,7 +26,7 @@ test('events are deterministic, separated and whale appears at most once', () =>
     assert.ok(events.some(e => e.kind === 'rabbit'));
     for (let i = 0; i < events.length; i++) {
         assert.ok(events[i].end <= timeline.duration);
-        if (i) assert.ok(events[i].start - events[i - 1].end >= 24);
+        if (i) assert.ok(events[i].start >= events[i - 1].end);
         const e = events[i], t = e.start + e.duration * 0.5;
         const first = plain(E.sample(e, t));
         E.sample(e, e.end - 0.1);
@@ -86,11 +86,14 @@ test('station birds have physical addresses and respect the scenery toggle', () 
     const birds = build(lines, 181).events.filter(e => e.kind === 'pigeons');
     assert.ok(birds.length > 0);
     birds.forEach(e => {
-        assert.equal(e.address, e.stationId * 110 + 38);
+        if (!e.perch) assert.equal(e.address, e.stationId * 110 + 38);
+        if (e.perch === 'lamp') assert.equal(e.address, e.poleId * 16);
+        if (e.perch === 'sign') assert.equal(e.birdCount, 2);
         assert.equal(E.sample(e, e.start + 0.5).stage, 'perched');
-        assert.equal(E.sample(e, e.start + 2).stage, 'flight');
+        assert.equal(E.sample(e, e.start + (e.takeoff ?? 1) + 1).stage, 'flight');
     });
-    assert.ok(!build(lines, 181, { narrativeStations: false }).events.some(e => e.kind === 'pigeons'));
+    assert.ok(build(lines, 181, { narrativeStations: false }).events
+        .filter(e => e.kind === 'pigeons').every(e => e.perch === 'sign'));
 });
 test('whale camera follows the shared body trajectory and seeks exactly', () => {
     const { timeline, track, events } = build();
@@ -133,4 +136,51 @@ test('rabbit alternates landing sides and keeps position and heading continuous'
         assert.ok(Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) < 0.001);
         assert.ok(Math.abs(a.turn - b.turn) < 0.001);
     }
+});
+
+test('rabbit swept path rejects a platform crossing and compiled routes remain clear', () => {
+    const { track, events } = build();
+    const f = track.at(38);
+    const unsafe = { anchor: f.position, right: f.right, forward: f.forward,
+        yaw: f.yaw, address: 38, side: -1, viewPlaced: false };
+    assert.equal(E.rabbitPathClear(unsafe, track), false);
+    for (const speed of [0.55, 1, 1.85]) {
+        const result = build([], 240, { cameraSpeed: speed });
+        const rabbits = result.events.filter(e => e.kind === 'rabbit');
+        assert.ok(rabbits.length > 0);
+        for (const event of rabbits) {
+            assert.equal(E.rabbitPathClear(event, result.track, { cameraSpeed: speed }), true);
+            assert.equal(event.collisionClearance, 1.6);
+        }
+    }
+});
+test('birds perch in pairs on sign tops and singly on existing lamps', () => {
+    const lines = Array.from({ length: 60 }, (_, i) => ({
+        startTime: i * 5, endTime: i * 5 + 5, fullText: `沿途第${i}站`
+    }));
+    const { events, track } = build(lines, 301);
+    const signs = events.filter(e => e.perch === 'sign');
+    const lamps = events.filter(e => e.perch === 'lamp');
+    assert.ok(signs.length > 0);
+    assert.ok(lamps.length > 0);
+    for (const event of signs) {
+        const sign = track.encounters[event.encounterId];
+        assert.equal(event.birdCount, 2);
+        const feet = E.sample(event, event.start + 1).body.y - 0.32;
+        assert.ok(Math.abs(feet - (sign.position.y + sign.height / 2 + 0.435)) < 1e-9);
+    }
+    for (const event of lamps) {
+        assert.equal(event.birdCount, 1);
+        assert.notEqual(event.poleId % 7, 3);
+        assert.ok(Math.abs(event.perchPosition.y - 0.32 - 5.84) < 1e-9);
+    }
+});
+test('enabled fireworks use chorus phrase endings without requiring a long silent gap', () => {
+    const lines = Array.from({ length: 24 }, (_, i) => ({
+        startTime: i * 5, endTime: i * 5 + 4.5, fullText: `副歌${i}`, isChorus: true
+    }));
+    const enabled = build(lines, 125, { fireworks: true }).events.filter(e => e.kind === 'fireworks');
+    assert.ok(enabled.length >= 2);
+    for (let i = 1; i < enabled.length; i++) assert.ok(enabled[i].start - enabled[i - 1].start >= 32);
+    assert.ok(!build(lines, 125, { fireworks: false }).events.some(e => e.kind === 'fireworks'));
 });

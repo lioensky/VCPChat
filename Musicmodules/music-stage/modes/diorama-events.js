@@ -4,6 +4,55 @@
     const D = global.MusicStageDioramaDirector;
     const { clamp, seededRandom } = R;
     const smooth = D.smooth;
+    // Conservative swept footprint: includes the rabbit's body/ears, not just feet.
+    const rabbitPathClear = (event, track, options = {}) => {
+        const boxes = [];
+        const enabled = options.narrativeStations !== false && (options.stationIntensity ?? 1) > 0;
+        if (enabled) {
+            // Local addresses only: compilation cost does not grow with song length.
+            const address = event.address ?? event.trackAddress ?? 0;
+            for (let id = Math.max(0, Math.floor((address - 180) / 110)); id <= Math.ceil((address + 180) / 110); id++) {
+                const f = track.at(id * 110 + 38);
+                const side = id % 2 ? 1 : -1;
+                boxes.push({ frame: f, x: side * 8.7, z: 0, hx: 5.8, hz: 17 });
+            }
+            const spacing = 16 / clamp(options.stationIntensity ?? 1, 0.5, 2);
+            for (let id = Math.floor((address - 100) / spacing); id <= Math.ceil((address + 100) / spacing); id++)
+                boxes.push({ frame: track.at(id * spacing), x: -3.4, z: 0, hx: 0.2, hz: 0.2 });
+        }
+        for (const sign of track.encounters || []) {
+            if (Math.hypot(sign.position.x - event.anchor.x, sign.position.z - event.anchor.z) > 60) continue;
+            boxes.push({ frame: { position: sign.position,
+                right: { x: Math.cos(sign.yaw), z: Math.sin(sign.yaw) },
+                forward: { x: Math.sin(sign.yaw), z: -Math.cos(sign.yaw) } },
+                x: 0, z: 0, hx: sign.width / 2 + 0.5, hz: 0.4 });
+        }
+        const local = (p, box) => {
+            const dx = p.x - box.frame.position.x, dz = p.z - box.frame.position.z;
+            return [dx * box.frame.right.x + dz * box.frame.right.z - box.x,
+                dx * box.frame.forward.x + dz * box.frame.forward.z - box.z];
+        };
+        for (let step = 0; step < 7; step++) {
+            const a = rabbitAt(event, 0.6 + step * 0.8), b = rabbitAt(event, 0.6 + (step + 1) * 0.8);
+            for (const box of boxes) {
+                const p = local(a, box), q = local(b, box);
+                let enter = 0, exit = 1;
+                for (let axis = 0; axis < 2; axis++) {
+                    const half = (axis ? box.hz : box.hx) + 1.6;
+                    const delta = q[axis] - p[axis];
+                    if (Math.abs(delta) < 1e-9) {
+                        if (Math.abs(p[axis]) > half) { enter = 2; break; }
+                    } else {
+                        const t0 = (-half - p[axis]) / delta, t1 = (half - p[axis]) / delta;
+                        enter = Math.max(enter, Math.min(t0, t1));
+                        exit = Math.min(exit, Math.max(t0, t1));
+                    }
+                }
+                if (enter <= exit) return false;
+            }
+        }
+        return true;
+    };
     // Compile once. No live audio, frame counters, or random births.
     const compile = (timeline, track, options = {}) => {
         const events = [];
@@ -55,6 +104,22 @@
                 readingClearance: 'peripheral', reflection: true,
                 budget: { points: 900, ripples: 12 }, ...extra });
         };
+        // Fireworks get a chance before the small encounters consume the breath.
+        if (options.fireworks === true) {
+            let previous = -40;
+            for (const phrase of timeline.phrases) {
+                const start = phrase.end + 0.2;
+                if (timeline.sample(phrase.start).act !== 'Chorus'
+                    || start - previous < 32 || start + 6 > timeline.duration || !free(start, start + 6)) continue;
+                const view = global.MusicStageDioramaCamera.pose(timeline, track, start + 2, options);
+                const forward = { x: Math.sin(view.yaw), y: 0, z: -Math.cos(view.yaw) };
+                add('fireworks', start, 6, { yaw: view.yaw, forward,
+                    right: { x: Math.cos(view.yaw), y: 0, z: Math.sin(view.yaw) },
+                    position: { x: view.position.x + forward.x * 180, y: 0,
+                        z: view.position.z + forward.z * 180 } }, 1, { viewPlaced: true });
+                previous = start;
+            }
+        }
         let smallIndex = 0;
         for (let i = 0; i + 1 < timeline.protectedIntervals.length; i++) {
             const a = timeline.protectedIntervals[i], b = timeline.protectedIntervals[i + 1];
@@ -72,7 +137,8 @@
                 x: pose.position.x + forward.x * distance,
                 y: 0, z: pose.position.z + forward.z * distance
             } };
-            add(kind, start, duration, frame, smallIndex % 2 ? -1 : 1, { viewPlaced: true });
+            add(kind, start, duration, frame, smallIndex % 2 ? -1 : 1, { viewPlaced: true,
+                trackAddress: timeline.distanceAt(start + 1.4, options.cameraSpeed ?? 1) + distance });
             smallIndex++;
         }
         if (options.narrativeStations !== false && (options.stationIntensity ?? 1) > 0) {
@@ -97,6 +163,60 @@
                 if (Math.abs(angle) > halfFov * 0.85) continue;
                 add('pigeons', start, 6, f, side, { stationId: id, address });
             }
+        }
+        // Perched birds need no long spectacle cooldown, but never overlap a pool owner.
+        const birdFree = start => !events.some(e => start < e.end + 2 && start + 7 > e.start - 2);
+        for (const sign of track.encounters || []) {
+            if (sign.id % 3 === 2) continue;
+            const start = Math.max(0, sign.start - 1);
+            if (start + 7 > timeline.duration || !birdFree(start)) continue;
+            const yaw = sign.yaw;
+            const right = { x: Math.cos(yaw), y: 0, z: Math.sin(yaw) };
+            const forward = { x: Math.sin(yaw), y: 0, z: -Math.cos(yaw) };
+            add('pigeons', start, 7, { position: sign.position, right, forward, yaw }, sign.side,
+                { perch: 'sign', encounterId: sign.id, birdCount: 2, takeoff: 3,
+                    perchPosition: { x: sign.position.x + forward.x * 0.12,
+                        y: sign.position.y + sign.height / 2 + 0.4 + 0.035 + 0.32,
+                        z: sign.position.z + forward.z * 0.12 } });
+        }
+        if (options.narrativeStations !== false && (options.stationIntensity ?? 1) > 0) {
+            const spacing = 16 / clamp(options.stationIntensity ?? 1, 0.5, 2);
+            const speed = options.cameraSpeed ?? 1;
+            for (let start = 10; start + 7 < timeline.duration; start += 13) {
+                if (!birdFree(start)) continue;
+                const address = Math.ceil((timeline.distanceAt(start, speed) + 18) / spacing) * spacing;
+                const id = Math.round(address / spacing);
+                if (id % 7 === 3) continue;
+                let lo = 0, hi = timeline.duration;
+                for (let j = 0; j < 24; j++) {
+                    const mid = (lo + hi) / 2;
+                    if (timeline.distanceAt(mid, speed) < address) lo = mid; else hi = mid;
+                }
+                if (timeline.sample((lo + hi) / 2).density < 0.4 && id % 4 !== 0) continue;
+                const f = track.at(address);
+                const p = worldPoint({ anchor: f.position, ...f }, -3.05, 0, 6.16);
+                const view = global.MusicStageDioramaCamera.pose(timeline, track, start + 1, options);
+                const angle = Math.atan2(p.x - view.position.x, view.position.z - p.z) - view.yaw;
+                if (Math.abs(Math.atan2(Math.sin(angle), Math.cos(angle)))
+                    > Math.atan(Math.tan(view.fov * Math.PI / 360) * (options.aspect || 1.6)) * 0.85) continue;
+                add('pigeons', start, 7, f, -1, { perch: 'lamp', poleId: id, address,
+                    birdCount: 1, takeoff: 3, perchPosition: p });
+            }
+        }
+        // Shift the entire deterministic path, not the current frame. Reject
+        // unsafe routes when no nearby water corridor fits the whole sweep.
+        for (let i = events.length - 1; i >= 0; i--) {
+            const event = events[i];
+            if (event.kind !== 'rabbit') continue;
+            const original = { ...event.anchor };
+            let safe = false;
+            for (const shift of [0, 5, -5, 10, -10, 16, -16, 23, -23]) {
+                event.anchor = { ...original, x: original.x + event.right.x * shift,
+                    z: original.z + event.right.z * shift };
+                if (rabbitPathClear(event, track, options)) { safe = true; break; }
+            }
+            if (!safe) events.splice(i, 1);
+            else event.collisionClearance = 1.6;
         }
         events.sort((a, b) => a.start - b.start);
         events.forEach((e, i) => { e.id = i; });
@@ -149,8 +269,8 @@
                 });
             }
         } else if (event.kind === 'pigeons') {
-            body = { ...worldPoint(event, event.side * 4.8, 0, 1.5), age };
-            stage = age < 1 ? 'perched' : 'flight';
+            body = { ...(event.perchPosition || worldPoint(event, event.side * 4.8, 0, 1.5)), age };
+            stage = age < (event.takeoff ?? 1) ? 'perched' : 'flight';
         } else if (event.kind === 'whale') {
             stage = age < 2 ? 'omen' : age < 3 ? 'emerge' : age < 5 ? 'rise'
                 : age < 6 ? 'cross' : age < 7.5 ? 'land' : 'afterglow';
@@ -237,10 +357,11 @@
                 }
                 contour([[-0.18,0.16,0.8],[0,0.42,1.1],[0.18,0.16,0.8],[0,0,0.95]], transform(), true);
             } else {
-                for (let bird = 0; bird < 3; bird++) {
-                    const flight = Math.max(0, pose.age - 1 - bird * 0.22);
+                for (let bird = 0; bird < (event.birdCount ?? 3); bird++) {
+                    const flight = Math.max(0, pose.age - (event.takeoff ?? 1) - bird * 0.22);
                     const lift = flight * smooth(flight / 0.4);
-                    const tr = transform([bird * 0.85 + lift * 0.8, lift * 1.7, bird * 0.7 - lift * 3]);
+                    const tr = transform([(event.perch ? bird - ((event.birdCount ?? 1) - 1) / 2 : bird) * 0.85
+                        + lift * 0.8, lift * 1.7, (event.perch ? 0 : bird * 0.7) - lift * 3]);
                     const opening = smooth(flight / 0.3);
                     const flap = Math.sin(flight * 11) * opening;
                     for (const side of [-1, 1]) {
@@ -348,7 +469,7 @@
                 active = events[Math.max(0, D.upperBound(events, time, 'start') - 1)];
                 state = active ? sample(active, time) : null;
                 root.visible = root.visible && Boolean(state)
-                    && (active?.kind !== 'pigeons' || options.narrativeStations !== false
+                    && (active?.kind !== 'pigeons' || active.perch === 'sign' || options.narrativeStations !== false
                         && (options.stationIntensity ?? 1) > 0);
                 if (!root.visible) { state = null; return; }
                 setSeed(active);
@@ -414,7 +535,7 @@
                         const burst = i % 2;
                         const age = state.age - 0.7 - burst * 1.7;
                         const expansion = Math.max(0, age);
-                        p = worldPoint(active, active.side * (65 + burst * 30) + s[0] * expansion * 12,
+                        p = worldPoint(active, active.side * (active.viewPlaced ? 18 + burst * 12 : 65 + burst * 30) + s[0] * expansion * 12,
                             s[2] * expansion * 8, 27 + burst * 9 + s[1] * expansion * 12 - expansion * expansion * 2.2);
                         brightness *= age < 0 ? 0 : Math.exp(-expansion * 0.8);
                     }
@@ -471,5 +592,5 @@
             }
         };
     };
-    global.MusicStageDioramaEvents = Object.freeze({ compile, sample, rabbitAt, worldPoint, create });
+    global.MusicStageDioramaEvents = Object.freeze({ compile, sample, rabbitAt, rabbitPathClear, worldPoint, create });
 })(window);
