@@ -523,44 +523,12 @@ void main() {
     // Live onsets are deliberately separate from deterministic lyric cues.
     // Fixed-size spectrum history; no event queue, ticker, timers or unbounded particles.
     const createPerformance = () => {
-        const bins = new Float32Array(48);
-        let lastTime = null, track = null, source = null, playing = false;
-        let baseline = 0.02, energy = 0, hitAt = -Infinity, hitStrength = 0, hits = 0;
+        const onset = R.createAudioOnset();
         const state = { impact: 0, phrasePulse: 0, energy: 0, phrase: -1, time: 0, reset: true };
         return {
             update(frame, tuning, nodes) {
                 const time = Number(frame.playbackTime) || 0;
-                const identity = frame.track?.path || frame.track?.title || '';
-                const dt = lastTime === null ? 0 : time - lastTime;
-                const reset = lastTime === null || identity !== track || source !== frame.lines || dt < -0.025 || dt > 0.5;
-                const resumed = frame.isPlaying && !playing;
-                const spectrum = frame.audio?.spectrum || [];
-                let flux = 0;
-                // Do not feed changing analyser samples into a paused scene.
-                if (reset || resumed || (frame.isPlaying && dt > 0)) {
-                    for (let i = 0; i < bins.length; i++) {
-                        const value = clamp(Number(spectrum[Math.floor(i / bins.length * spectrum.length)]) || 0);
-                        flux += Math.max(0, value - bins[i]);
-                        bins[i] = value;
-                    }
-                    flux /= bins.length;
-                    if (reset || resumed) {
-                        baseline = 0.02;
-                        hitAt = -Infinity;
-                        hitStrength = 0;
-                        energy = clamp(frame.audio?.power || 0);
-                    } else {
-                        const a = 1 - Math.exp(-dt * 3);
-                        energy += (clamp(frame.audio?.power || 0) - energy) * a;
-                        const threshold = Math.max(0.018, baseline * 1.8);
-                        if (flux > threshold && energy > 0.035 && time - hitAt > 0.38) {
-                            hitAt = time;
-                            hitStrength = clamp((flux - threshold) * 10 + 0.35);
-                            hits++;
-                        }
-                        baseline += (flux - baseline) * (1 - Math.exp(-dt * 1.8));
-                    }
-                }
+                const live = onset.update(frame);
                 let phrase = -1, phraseStart = -Infinity;
                 for (const node of nodes) {
                     const d = node.dataset;
@@ -573,20 +541,19 @@ void main() {
                     ? (1 - Math.exp(-age * 35)) * Math.exp(-age * 5) : 0;
                 const strength = motionScale(tuning) * amount(tuning.performanceIntensity, 1.25);
                 state.phrasePulse = pulse(time - phraseStart) * strength;
-                state.impact = clamp(pulse(time - hitAt) * hitStrength * amount(tuning.beatImpact, 1.15) * strength
+                state.impact = clamp(live.impact * amount(tuning.beatImpact, 1.15) * strength
                     + state.phrasePulse * 0.45);
-                state.energy = energy;
+                state.energy = live.energy;
                 state.phrase = phrase;
                 state.time = time;
-                state.reset = reset;
-                lastTime = time;
-                track = identity;
-                source = frame.lines;
-                playing = Boolean(frame.isPlaying);
+                state.reset = live.reset;
                 return state;
             },
-            snapshot() { return { ...state, onsets: hits, historyBins: bins.length }; },
-            reset() { lastTime = null; hitAt = -Infinity; bins.fill(0); }
+            snapshot() {
+                const live = onset.snapshot();
+                return { ...state, onsets: live.onsets, historyBins: live.historyBins };
+            },
+            reset() { onset.reset(); }
         };
     };
 

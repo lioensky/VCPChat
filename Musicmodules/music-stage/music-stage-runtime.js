@@ -305,6 +305,65 @@
         return { power, bass, lowMid, mid, vocal, treble, spectrum: values };
     };
 
+    // Renderer-independent live spectral-flux detector. This is deliberately
+    // NOT a beat grid: history-dependent transients must never place scenery,
+    // schedule cuts or change a deterministic camera pose.
+    const createAudioOnset = () => {
+        const bins = new Float32Array(48);
+        let lastTime = null, track = null, source = null, playing = false;
+        let baseline = 0.02, energy = 0, hitAt = -Infinity, hitStrength = 0, hits = 0;
+        const state = { impact: 0, energy: 0, time: 0, reset: true, onsets: 0 };
+        const pulse = age => age >= 0 && age < 0.85
+            ? (1 - Math.exp(-age * 35)) * Math.exp(-age * 5) : 0;
+        return {
+            update(frame) {
+                const time = finiteNumber(frame.playbackTime);
+                const identity = frame.track?.path || frame.track?.title || '';
+                const dt = lastTime === null ? 0 : time - lastTime;
+                const reset = lastTime === null || identity !== track || source !== frame.lines
+                    || dt < -0.025 || dt > 0.5;
+                const resumed = frame.isPlaying && !playing;
+                const spectrum = frame.audio?.spectrum || EMPTY_WORDS;
+                if (reset || resumed || (frame.isPlaying && dt > 0)) {
+                    let flux = 0;
+                    for (let i = 0; i < bins.length; i++) {
+                        const value = clamp(spectrum[Math.floor(i / bins.length * spectrum.length)]);
+                        flux += Math.max(0, value - bins[i]);
+                        bins[i] = value;
+                    }
+                    flux /= bins.length;
+                    if (reset || resumed) {
+                        baseline = 0.02;
+                        hitAt = -Infinity;
+                        hitStrength = 0;
+                        energy = clamp(frame.audio?.power);
+                    } else {
+                        energy += (clamp(frame.audio?.power) - energy) * (1 - Math.exp(-dt * 3));
+                        const threshold = Math.max(0.018, baseline * 1.8);
+                        if (flux > threshold && energy > 0.035 && time - hitAt > 0.38) {
+                            hitAt = time;
+                            hitStrength = clamp((flux - threshold) * 10 + 0.35);
+                            hits++;
+                        }
+                        baseline += (flux - baseline) * (1 - Math.exp(-dt * 1.8));
+                    }
+                }
+                state.impact = pulse(time - hitAt) * hitStrength;
+                state.energy = energy;
+                state.time = time;
+                state.reset = reset;
+                state.onsets = hits;
+                lastTime = time;
+                track = identity;
+                source = frame.lines;
+                playing = Boolean(frame.isPlaying);
+                return state;
+            },
+            snapshot() { return { ...state, historyBins: bins.length }; },
+            reset() { lastTime = null; hitAt = -Infinity; bins.fill(0); }
+        };
+    };
+
     const createFrame = (app, now = performance.now()) => {
         const wallNow = Date.now();
         const lines = normalizeLines(app?.currentLyrics);
@@ -499,6 +558,7 @@
         resolveWordState,
         resolveAudioBands,
         createFrame,
+        createAudioOnset,
         createInterludeVisualizer,
         DisposableScope
     });

@@ -2702,10 +2702,29 @@ body.light-theme .music-stage-settings-card option {
     box-shadow: none;
 }
 
-/* 镜台 / Diorama */
+/* 镜台 / Last Train: cinematic framing follows the playback clock. */
 .music-stage-mode-diorama {
-    background: radial-gradient(circle at 50% 46%, color-mix(in srgb, var(--stage-accent) 12%, transparent), transparent 64%);
+    background: var(--stage-bg);
+    overflow: hidden;
 }
+.diorama-letterbox {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    pointer-events: none;
+    --diorama-bar: 0px;
+}
+.diorama-letterbox::before,
+.diorama-letterbox::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: var(--diorama-bar);
+    background: #030508;
+}
+.diorama-letterbox::before { top: 0; }
+.diorama-letterbox::after { bottom: 0; }
 .diorama-canvas {
     position: absolute;
     inset: 0;
