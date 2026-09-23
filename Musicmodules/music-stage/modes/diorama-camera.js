@@ -113,7 +113,8 @@
         const vocalEnd = line ? (line.vocalEndTime ?? line.endTime) : 0;
         const lineDuration = line ? Math.max(0.1, vocalEnd - line.startTime) : 1;
         const lineProgress = line ? clamp((t - line.startTime) / lineDuration) : 0;
-        const arch = Math.sin(Math.PI * lineProgress) ** 2;
+        // Rapid credits/short syllables must not compress a full camera move into milliseconds.
+        const arch = Math.sin(Math.PI * lineProgress) ** 2 * smooth((lineDuration - 1.2) / 2);
         const directionSign = lineIndex % 2 ? -1 : 1;
         const strength = Math.min(1.5, motion);
         const openness = state.openness;
@@ -132,9 +133,8 @@
         let yaw = frame.yaw + yawBias + n(0.55, 3) * 0.003 * handheld
             + directionSign * arch * openness * 0.012 * strength;
         let pitch = mix(-0.025, -0.12, state.openness);
-        if (state.act === 'Terminus' && motion && !timeline.isSinging(t)) {
-            pitch = mix(pitch, 0.32, smooth((t - act.start) / Math.max(1, act.end - act.start)));
-        }
+        const finale = state.act === 'Terminus' && motion && !timeline.isSinging(t)
+            ? smooth((t - act.start) / Math.max(1, act.end - act.start)) : 0;
         // A stationary roadside screen owns the gaze, never the train position.
         // Derive the blend analytically so seeking midway through a handoff is exact.
         const encounters = track.encounters || [];
@@ -202,14 +202,18 @@
             fov = mix(fov, Math.max(fov, Math.min(80, fit)), weight);
             eventFocus = { id: event.id, weight };
         }
-        pitch += n(0.7, 4) * 0.0025 * handheld;
+        // Apply after roadside gaze release so the last sign cannot cancel the skyward finale.
+        // The moon uses this same fixed celestial offset in the world renderer.
+        yaw = blendAngle(yaw, Math.atan2(-210, 420), finale);
+        pitch = mix(pitch, Math.atan2(300 - position.y, Math.hypot(210, 420)), finale);
+        pitch += n(0.7, 4) * 0.0025 * handheld * (1 - finale);
         const cp = Math.cos(pitch);
         const direction = { x: Math.sin(yaw) * cp, y: Math.sin(pitch), z: -Math.cos(yaw) * cp };
         return {
             position, direction, yaw, pitch,
             roll: motion ? n(0.45, 5) * 0.002 * handheld
                 + directionSign * arch * openness * 0.006 * strength : 0,
-            fov, eventFocus,
+            fov, eventFocus, finale,
             shot: openness > 0.6 ? 'rising-traverse' : 'window-tracking',
             rig: !motion ? 'CAB' : rig,
             encounterId, reading, distance, state,

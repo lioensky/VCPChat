@@ -181,3 +181,55 @@ test('phrase camera choreography changes position and lens without boundary jump
         assert.ok(lateral * encounter.side > 0, 'Side must match the actual world position');
     });
 });
+
+test('English phrases retain multiple words and all original glyph clocks', () => {
+    const source = R.normalizeLines([{ startTime: 0, endTime: 8,
+        fullText: 'Walking through the night we find our way home together' }]);
+    const phrases = D.compilePhrases(source);
+    assert.ok(phrases.length <= 2);
+    assert.ok(phrases.every(p => p.text.trim().split(/\s+/).length >= 2));
+    assert.ok(phrases.every(p => p.glyphs.length <= 64));
+    assert.deepEqual(plain(phrases.flatMap(p => p.glyphs)), plain(R.buildGlyphTimeline(source[0])));
+});
+
+test('rapid opening credits share a sign without full-amplitude camera oscillation', () => {
+    const source = R.normalizeLines([
+        ...Array.from({ length: 8 }, (_, i) => ({
+            startTime: i * 0.25, endTime: (i + 1) * 0.25, fullText: `Credit ${i}`
+        })),
+        { startTime: 3, endTime: 8, fullText: 'Here begins the song' }
+    ]);
+    const timeline = D.compile({ lines: source, duration: 20 });
+    const track = C.createTrack(timeline);
+    const ids = timeline.phrases.filter(p => p.start < 2).map(p => track.pageEncounter.get(p.id));
+    assert.equal(new Set(ids).size, 1);
+    let previous = C.pose(timeline, track, 0);
+    for (let t = 1 / 120; t < 2; t += 1 / 120) {
+        const current = C.pose(timeline, track, t);
+        assert.ok(Math.abs(current.yaw - previous.yaw) < 0.005);
+        assert.ok(Math.abs(current.pitch - previous.pitch) < 0.005);
+        assert.ok(Math.abs(current.fov - previous.fov) < 0.01);
+        previous = current;
+    }
+});
+
+test('finale progress is monotonic, seekable and ends facing the moon', () => {
+    const timeline = D.compile({ lines: R.normalizeLines([
+        { startTime: 0, endTime: 10, fullText: 'The last song' }
+    ]), duration: 22 });
+    const track = C.createTrack(timeline);
+    let progress = 0;
+    for (let t = 10; t <= 22; t += 0.1) {
+        const pose = C.pose(timeline, track, t);
+        assert.ok(pose.finale >= progress);
+        progress = pose.finale;
+    }
+    const final = C.pose(timeline, track, 22);
+    const target = [-210, 300 - final.position.y, -420];
+    const dot = (target[0] * final.direction.x + target[1] * final.direction.y
+        + target[2] * final.direction.z) / Math.hypot(...target);
+    assert.ok(dot > 0.99999);
+    C.pose(timeline, track, 0);
+    assert.deepEqual(plain(C.pose(timeline, track, 22)), plain(final));
+    assert.equal(C.pose(timeline, track, 22, { reducedMotion: true }).finale, 0);
+});

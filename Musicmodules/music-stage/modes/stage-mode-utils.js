@@ -50,16 +50,21 @@
     const refreshTheme = (app, root = document.body) => {
         // Custom stage palettes carry their own light/dark state. In global
         // mode, retain the application's authoritative theme state.
-        const light = root?.closest?.('.music-stage')?.classList.contains('stage-theme-light')
-            || (root?.classList.contains?.('music-stage') && root.classList.contains('stage-theme-light'))
-            || (!(root?.closest?.('.music-stage') || root?.classList.contains?.('music-stage'))
-                && app?.currentTheme === 'light');
+        const stage = root?.closest?.('.music-stage');
+        const custom = stage?.classList.contains('stage-theme-custom');
+        const light = custom ? stage.classList.contains('stage-theme-light')
+            : app?.currentTheme === 'light' || document.body.classList.contains('light-theme');
         const defaults = light
             ? ['#f2efe7', '#fcfaf4', '#1b211f', '#626a66', '#b94832', '#21675c', '#21675c']
             : ['#171a1d', '#20252a', '#f2f0e9', '#a7afb1', '#f2a900', '#76bfae', '#76bfae'];
-        const names = ['background', 'surface', 'ink', 'muted', 'accent', 'secondary', 'tertiary'];
+        defaults.push(...(light
+            ? ['#f2efe7', '#e7e1d5', '#d2cbc0', '#b94832']
+            : ['#171a1d', '#2a3035', '#3b4449', '#f2a900']));
+        const names = ['background', 'surface', 'ink', 'muted', 'accent', 'secondary', 'tertiary',
+            'deep', 'material', 'border', 'emission'];
         const variables = ['--primary-bg', '--secondary-bg', '--primary-text', '--secondary-text',
-            '--highlight-text', '--success-color', '--quoted-text'];
+            '--highlight-text', '--success-color', '--quoted-text',
+            '--tertiary-bg', '--accent-bg', '--border-color', '--button-bg'];
         const probe = document.createElement('span');
         probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;';
         root.appendChild(probe);

@@ -12,7 +12,9 @@
             const group = new T.Group();
             group.position.set(encounter.position.x, encounter.position.y, encounter.position.z);
             group.rotation.y = -encounter.yaw;
-            const back = new T.MeshStandardMaterial({ color: '#111b1c', roughness: 0.58, metalness: 0.35 });
+            const backingColor = new T.Color(palette.surface || palette.background || '#111b1c')
+                .lerp(new T.Color(palette.deep || palette.background || '#111b1c'), 0.35);
+            const back = new T.MeshStandardMaterial({ color: backingColor, roughness: 0.58, metalness: 0.35 });
             const trim = new T.MeshStandardMaterial({ color: palette.secondary || '#76bfae', roughness: 0.35, metalness: 0.7 });
             const backing = new T.InstancedMesh(box, back, 1);
             const frame = new T.InstancedMesh(box, trim, 3);
@@ -145,7 +147,7 @@
                 x += advances[index];
             });
             ctx.restore();
-            while (ranges.length < 24) { ranges.push(2); starts.push(1e8); ends.push(1e8); }
+            while (ranges.length < 64) { ranges.push(2); starts.push(1e8); ends.push(1e8); }
             const map = texture(canvas);
             textures.push(map);
             const mat = new T.ShaderMaterial({
@@ -191,10 +193,10 @@
                     }`,
                 fragmentShader: `uniform sampler2D map;uniform float time,fade,glow,vocal;
                     uniform float constellation,entrance,departure,style,waterEcho;
-                    uniform vec3 accent,ink,cold;uniform float ranges[24],starts[24],ends[24];
+                    uniform vec3 accent,ink,cold;uniform float ranges[64],starts[64],ends[64];
                     varying vec2 vUv;
                     void main(){float start=1e8,end=1e8;float selected=0.0;
-                        for(int i=0;i<24;i++){if(selected<0.5 && vUv.x<=ranges[i]){
+                        for(int i=0;i<64;i++){if(selected<0.5 && vUv.x<=ranges[i]){
                             start=starts[i];end=ends[i];selected=1.0;}}
                         float age=time-start;float singing=step(start,time)*(1.0-step(end,time));
                         float passed=step(end,time);float attack=smoothstep(0.0,0.08,age);

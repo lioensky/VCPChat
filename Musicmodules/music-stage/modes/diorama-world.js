@@ -76,22 +76,67 @@
         });
         const skyMat = material(new T.ShaderMaterial({
             side: T.BackSide, depthWrite: false,
-            uniforms: { night: { value: new T.Color('#080f20') }, horizon: { value: new T.Color('#415266') },
-                cold: { value: new T.Color('#8bbfc8') }, open: { value: 0 } },
+            uniforms: {
+                night: { value: new T.Color('#080f20') },
+                horizon: { value: new T.Color('#415266') },
+                cold: { value: new T.Color('#8bbfc8') },
+                open: { value: 0 },
+                auroraActive: { value: 1.0 },
+                auroraTime: { value: 0.0 },
+                auroraRhythm: { value: 0.0 },
+                auroraHeading: { value: 0.0 },
+                auroraGreen: { value: new T.Color('#22f09d') },
+                auroraViolet: { value: new T.Color('#9d4edd') }
+            },
             vertexShader: `varying vec3 ray;
                 void main(){ray=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
             fragmentShader: `varying vec3 ray;uniform vec3 night,horizon,cold;uniform float open;
+                uniform float auroraActive, auroraTime, auroraRhythm, auroraHeading;
+                uniform vec3 auroraGreen, auroraViolet;
                 float hash(vec3 p){return fract(sin(dot(p,vec3(127.1,311.7,74.7)))*43758.5453);}
                 float noise(vec3 p){vec3 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);
                     return mix(mix(mix(hash(i),hash(i+vec3(1,0,0)),f.x),
                     mix(hash(i+vec3(0,1,0)),hash(i+vec3(1,1,0)),f.x),f.y),
                     mix(mix(hash(i+vec3(0,0,1)),hash(i+vec3(1,0,1)),f.x),
                     mix(hash(i+vec3(0,1,1)),hash(i+vec3(1,1,1)),f.x),f.y),f.z);}
-                void main(){vec3 d=normalize(ray);float h=pow(max(d.y,0.0),0.45);
+                void main(){
+                    vec3 d=normalize(ray);
+                    float h=pow(max(d.y,0.0),0.45);
                     vec3 c=mix(horizon,night,clamp(h*1.7,0.0,1.0));
                     float band=exp(-pow(dot(d,normalize(vec3(0.35,0.8,0.48)))-0.18,2.0)*90.0);
                     float cloud=noise(d*12.0)*0.6+noise(d*33.0)*0.3+noise(d*91.0)*0.1;
                     c+=cold*band*pow(cloud,3.0)*(0.12+open*0.22);
+                    // Angular curtains share the same coordinates as their visibility mask.
+                    // Fixed celestial heading, calibrated once to the opening shot, not a HUD.
+                    if (auroraActive > 0.001 && d.y > 0.02) {
+                        float angle = atan(d.x, -d.z) - auroraHeading;
+                        float u = atan(sin(angle), cos(angle));
+                        float elevation = asin(clamp(d.y, -1.0, 1.0));
+                        float sector = smoothstep(-0.85, -0.48, u)
+                                     * (1.0 - smoothstep(0.16, 0.48, u));
+                        float drift = auroraTime * 0.065;
+                        vec3 emission = vec3(0.0);
+                        for (int layer = 0; layer < 3; layer++) {
+                            float k = float(layer);
+                            float fold = sin(u * 8.0 + drift + k * 1.7)
+                                       + 0.35 * sin(u * 19.0 - drift * 0.7 + k);
+                            float base = 0.13 + k * 0.045 + fold * 0.025;
+                            float altitude = elevation - base;
+                            float height = 0.17 + 0.045 * sin(u * 6.0 + k + drift * 0.4);
+                            float v = max(0.0, altitude) / height;
+                            float filament = noise(vec3(u * 95.0 + fold * 1.4,
+                                drift * 0.4 + k * 5.0, v * 0.18));
+                            float fine = pow(0.5 + 0.5 * sin(u * 310.0 + fold * 6.0
+                                + drift * 1.2 + v * 0.7), 6.0);
+                            float veil = smoothstep(-0.012, 0.015, altitude)
+                                * exp(-v * 2.7) * (0.22 + filament * 0.65 + fine * 0.28);
+                            float hem = exp(-pow(altitude / 0.012, 2.0)) * 0.22;
+                            vec3 spectral = mix(auroraGreen, auroraViolet,
+                                smoothstep(0.25, 1.1, v));
+                            emission += spectral * (veil + hem) / (1.0 + k * 0.65);
+                        }
+                        c += emission * sector * auroraActive * (0.75 + auroraRhythm * 0.2);
+                    }
                     gl_FragColor=vec4(c,1.0);
                     #include <tonemapping_fragment>
                     #include <colorspace_fragment>
@@ -116,7 +161,7 @@
             vertexColors: true, transparent: true, opacity: 0.8, depthWrite: false, fog: false }));
         const stars = new T.Points(starGeo, starMat);
         root.add(stars);
-        const moon = new T.Mesh(geometry(new T.SphereGeometry(8, 24, 16)),
+        const moon = new T.Mesh(geometry(new T.SphereGeometry(20, 32, 24)),
             material(new T.MeshBasicMaterial({ color: '#cbdde8', fog: false })));
         root.add(moon);
         const target = new T.WebGLRenderTarget(512, 320, { depthBuffer: true });
@@ -148,6 +193,8 @@
         root.add(water);
         let dead = false, reflectionEnabled = true, liveStations = 0, quality = 'standard';
         let instanceKey = '', instanceTrack = null, lightAnchors = [], instanceRebuilds = 0;
+        let auroraTrack = null;
+        let baseStarOpacity = 0.8;
         const updateLights = (track, s, saving, audio) => {
             lightAnchors.sort((a, b) => Math.abs(a.address - s) - Math.abs(b.address - s));
             for (let i = 0; i < lights.length; i++) {
@@ -160,17 +207,47 @@
         const setPalette = (palette = {}) => {
             const light = Boolean(palette.light);
             const background = new T.Color(palette.background || '#171a1d');
-            skyMat.uniforms.night.value.copy(background).multiplyScalar(light ? 0.95 : 0.3);
-            skyMat.uniforms.horizon.value.copy(background).lerp(new T.Color(palette.secondary || '#76bfae'), light ? 0.12 : 0.22);
-            skyMat.uniforms.cold.value.set(palette.secondary || '#76bfae');
-            waterMat.uniforms.tint.value.copy(background).multiplyScalar(light ? 0.85 : 0.45);
+            const surface = new T.Color(palette.surface || palette.background || '#20252a');
+            const deep = new T.Color(palette.deep || palette.background || '#171a1d');
+            const ink = new T.Color(palette.ink || '#f2f0e9');
+            const muted = new T.Color(palette.muted || '#a7afb1');
+            const secondary = new T.Color(palette.secondary || '#76bfae');
+            const tertiary = new T.Color(palette.tertiary || palette.secondary || '#76bfae');
+            const emission = new T.Color(palette.emission || palette.accent || '#f2a900');
+            const structure = new T.Color(palette.material || palette.surface || '#2a3035');
+            const border = new T.Color(palette.border || palette.muted || '#3b4449');
+            // Separate substrate, atmospheric fill and luminous accents.
+            skyMat.uniforms.night.value.copy(deep).lerp(tertiary, light ? 0.025 : 0.045)
+                .multiplyScalar(light ? 0.85 : 0.42);
+            skyMat.uniforms.horizon.value.copy(background).lerp(muted, light ? 0.08 : 0.2)
+                .lerp(tertiary, light ? 0.035 : 0.06);
+            skyMat.uniforms.cold.value.copy(tertiary);
+            // Theme-native spectral pair; keep luminance bounded, retaining hue.
+            const luminous = color => {
+                const hsl = color.getHSL({});
+                return color.setHSL(hsl.h, clamp(hsl.s, 0.25, 0.88), clamp(hsl.l, 0.42, 0.66));
+            };
+            skyMat.uniforms.auroraGreen.value.copy(luminous(secondary.clone()));
+            skyMat.uniforms.auroraViolet.value.copy(luminous(emission.clone().lerp(tertiary, 0.12)));
+            waterMat.uniforms.tint.value.copy(deep).lerp(secondary, light ? 0.04 : 0.025)
+                .multiplyScalar(light ? 0.78 : 0.48);
             scene.fog = new T.FogExp2(skyMat.uniforms.horizon.value, 0.008);
+            steel.color.copy(structure).lerp(muted, light ? 0.3 : 0.5);
+            concrete.color.copy(surface).lerp(border, light ? 0.2 : 0.45);
+            timber.color.copy(deep).lerp(structure, 0.55).lerp(emission, 0.025);
+            hemisphere.color.copy(light ? surface : muted).lerp(tertiary, 0.12);
+            hemisphere.groundColor.copy(deep);
             hemisphere.intensity = light ? 1.8 : 0.65;
-            lampMaterial.color.set(palette.accent || '#f2a900');
-            lights.forEach(l => l.color.set(palette.accent || '#f2a900'));
-            starMat.opacity = light ? 0.15 : 0.8;
-            ridgeMaterial.color.copy(skyMat.uniforms.horizon.value).multiplyScalar(light ? 0.8 : 0.55);
-            wireMaterial.color.set(palette.secondary || '#76bfae');
+            moonLight.color.copy(light ? surface : ink).lerp(tertiary, 0.12);
+            moon.material.color.copy(light ? surface : ink).lerp(emission, 0.08);
+            lampMaterial.color.copy(emission);
+            lights.forEach(l => l.color.copy(emission));
+            starMat.color.copy(light ? surface : ink).lerp(tertiary, 0.08);
+            baseStarOpacity = light ? 0.15 : 0.8;
+            starMat.opacity = baseStarOpacity;
+            ridgeMaterial.color.copy(skyMat.uniforms.horizon.value).lerp(deep, 0.35)
+                .multiplyScalar(light ? 0.8 : 0.55);
+            wireMaterial.color.copy(border).lerp(secondary, 0.25);
         };
         const update = (timeline, track, pose, time, config, audio = {}) => {
             if (dead) return;
@@ -184,8 +261,27 @@
             moon.position.set(sky.position.x - 210, 300, sky.position.z - 420);
             water.position.set(pose.position.x, 0, pose.position.z);
             stars.visible = tuning.showParticles !== false;
+            starMat.opacity = baseStarOpacity * (1 - clamp(pose.finale ?? 0));
             starGeo.setDrawRange(0, saving ? 1500 : quality === 'ultimate' ? 8000 : 4000);
             skyMat.uniforms.open.value = pose.state.openness;
+            const auroraEnabled = tuning.aurora !== false;
+            skyMat.uniforms.auroraActive.value = auroraEnabled ? 1.0 : 0.0;
+            if (auroraTrack !== track) {
+                const opening = global.MusicStageDioramaCamera.pose(timeline, track, 0, tuning);
+                skyMat.uniforms.auroraHeading.value = opening.yaw - 0.34;
+                auroraTrack = track;
+            }
+            const motion = clamp(tuning.motionAmount ?? 1, 0, 2) * clamp(config.animationIntensity ?? 1, 0, 2);
+            skyMat.uniforms.auroraTime.value = time * motion;
+            // A phrase-length beat envelope, not the fast onset impulse (which flickers).
+            const beats = timeline.beats || [];
+            const index = global.MusicStageDioramaDirector.upperBound(beats, time) - 1;
+            const next = beats[index + 1] ?? ((beats[index] ?? 0) + 0.9);
+            const phase = Math.max(0, index) + clamp((time - (beats[index] ?? 0))
+                / Math.max(0.08, next - (beats[index] ?? 0)));
+            const gain = clamp(tuning.audioReactivity ?? 1, 0, 2);
+            skyMat.uniforms.auroraRhythm.value = time === 0 || motion === 0 ? 0
+                : (0.5 - 0.5 * Math.cos(phase * Math.PI / 8)) * gain;
             waterMat.uniforms.time.value = time;
             waterMat.uniforms.energy.value = clamp(audio.energy);
             reflectionEnabled = tuning.waterReflection !== false && (tuning.waterStrength ?? 1) > 0;
@@ -389,6 +485,8 @@
         return {
             update, setPalette, renderReflection,
             snapshot: () => ({ liveStations, stationTypes, waterVisible: water.visible, reflectionEnabled,
+                auroraVisible: Boolean(skyMat.uniforms.auroraActive.value > 0.5),
+                starOpacity: starMat.opacity, moonRadius: 20,
                 instanceRebuilds, reflectionSize: [target.width, target.height],
                 architecturalInstances: architecture.count + masonry.count + furnishings.count + stationGlow.count,
                 worldInstances: rails.count + sleepers.count + poles.count + platforms.count

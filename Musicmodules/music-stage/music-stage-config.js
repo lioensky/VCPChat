@@ -61,6 +61,7 @@
                 postProcess: true
             },
             diorama: {
+                aurora: true,
                 journeyEvents: true,
                 fireworks: false,
                 cameraCuts: true,
@@ -181,6 +182,7 @@
             showDecor: bool(source.showDecor, fallback.showDecor),
             showBackground: bool(source.showBackground, fallback.showBackground),
             textInversion: bool(source.textInversion, fallback.textInversion),
+            aurora: bool(source.aurora, fallback.aurora),
             journeyEvents: bool(source.journeyEvents, fallback.journeyEvents),
             fireworks: bool(source.fireworks, fallback.fireworks),
             cameraCuts: bool(source.cameraCuts, fallback.cameraCuts),

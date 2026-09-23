@@ -12,6 +12,9 @@
       ],
       "waterVisible": true,
       "reflectionEnabled": true,
+      "auroraVisible": true,
+      "starOpacity": 0.8,
+      "moonRadius": 20,
       "instanceRebuilds": 2,
       "reflectionSize": [
         512,
@@ -519,9 +522,9 @@
         "ripples": []
       },
       "eventPoints": 0,
-      "eventLineVertices": 1180,
-      "eventVertices": 1180,
-      "eventInView": 1180,
+      "eventLineVertices": 1380,
+      "eventVertices": 1380,
+      "eventInView": 1380,
       "eventRipples": 0,
       "camera": [
         -0.24857569810686142,
@@ -623,6 +626,9 @@
       ],
       "waterVisible": true,
       "reflectionEnabled": true,
+      "auroraVisible": true,
+      "starOpacity": 0.8,
+      "moonRadius": 20,
       "instanceRebuilds": 3,
       "reflectionSize": [
         512,
@@ -633,10 +639,10 @@
       "readingBounds": [
         {
           "phraseId": 3,
-          "left": -0.26105666332044297,
-          "right": 0.23654262102570273,
-          "bottom": -0.12249351418651651,
-          "top": 0.137049579702028,
+          "left": -0.2609441271552634,
+          "right": 0.23645687249312555,
+          "bottom": -0.12246298338056168,
+          "top": 0.13699993918931166,
           "carrier": "sign",
           "encounterId": 0,
           "side": 1,
@@ -644,7 +650,7 @@
           "animatedVertices": 24,
           "attached": true,
           "anchorError": 0.05499999999999737,
-          "heightRatio": 0.12977154694427226,
+          "heightRatio": 0.12973146128493668,
           "inside": true
         }
       ],
@@ -1121,15 +1127,15 @@
       "eventInView": 0,
       "eventRipples": 0,
       "camera": [
-        0.943062104432842,
-        2.3818443248002676,
-        -22.50916153958915
+        0.9535276045729395,
+        2.376699324800268,
+        -22.505133238077644
       ],
       "quaternion": [
-        0.034984719494468304,
-        -0.5080427839599826,
-        0.019922507467039653,
-        0.8603904304234846
+        0.035089492836442,
+        -0.5078763774620255,
+        0.01999370301366541,
+        0.8604827508720513
       ],
       "act": "Verse",
       "rig": "WINDOW",
@@ -1220,6 +1226,9 @@
       ],
       "waterVisible": true,
       "reflectionEnabled": true,
+      "auroraVisible": true,
+      "starOpacity": 0.8,
+      "moonRadius": 20,
       "instanceRebuilds": 4,
       "reflectionSize": [
         512,
@@ -1230,10 +1239,10 @@
       "readingBounds": [
         {
           "phraseId": 11,
-          "left": -0.260791234743622,
-          "right": 0.23649280396981,
-          "bottom": -0.12148044994716865,
-          "top": 0.13788814839294308,
+          "left": -0.2606775776618014,
+          "right": 0.23640628207722317,
+          "bottom": -0.12145002160660764,
+          "top": 0.1378367794691811,
           "carrier": "sign",
           "encounterId": 2,
           "side": 1,
@@ -1241,7 +1250,7 @@
           "animatedVertices": 24,
           "attached": true,
           "anchorError": 0.05499999999999654,
-          "heightRatio": 0.12968429917005586,
+          "heightRatio": 0.12964340053789436,
           "inside": true
         }
       ],
@@ -1777,20 +1786,20 @@
         ]
       },
       "eventPoints": 0,
-      "eventLineVertices": 680,
-      "eventVertices": 680,
-      "eventInView": 680,
+      "eventLineVertices": 840,
+      "eventVertices": 840,
+      "eventInView": 840,
       "eventRipples": 6,
       "camera": [
-        8.577372291419795,
-        2.379284554475757,
-        -89.30130623302195
+        8.587602041533213,
+        2.3741395544757573,
+        -89.29671209339988
       ],
       "quaternion": [
-        0.03416585016663845,
-        -0.528398684660791,
-        0.020866920924246628,
-        0.8480519420072556
+        0.034268683590630615,
+        -0.528233861073019,
+        0.02094046591647697,
+        0.8481486557367504
       ],
       "act": "Verse",
       "rig": "WINDOW",
@@ -1882,6 +1891,9 @@
       ],
       "waterVisible": true,
       "reflectionEnabled": true,
+      "auroraVisible": true,
+      "starOpacity": 0.8,
+      "moonRadius": 20,
       "instanceRebuilds": 5,
       "reflectionSize": [
         512,
@@ -1892,10 +1904,10 @@
       "readingBounds": [
         {
           "phraseId": 23,
-          "left": -0.2596132465815801,
-          "right": 0.2912150808207331,
-          "bottom": -0.12005779711464483,
-          "top": 0.13786619399928543,
+          "left": -0.25920187642726056,
+          "right": 0.2907417938118107,
+          "bottom": -0.11988536652221045,
+          "top": 0.13766778904140167,
           "carrier": "sign",
           "encounterId": 5,
           "side": -1,
@@ -1903,7 +1915,7 @@
           "animatedVertices": 28,
           "attached": true,
           "anchorError": 0.05500000000000722,
-          "heightRatio": 0.12896199555696514,
+          "heightRatio": 0.12877657778180607,
           "inside": true
         }
       ],
@@ -2380,15 +2392,15 @@
       "eventInView": 0,
       "eventRipples": 0,
       "camera": [
-        23.404082445792973,
-        2.7301598643153415,
-        -193.66127647815622
+        23.416141477672934,
+        2.7234398643153415,
+        -193.65463739312003
       ],
       "quaternion": [
-        0.03053202978374277,
-        0.38570969778784614,
-        -0.013585141226167033,
-        0.9220147873692471
+        0.030663251306740025,
+        0.3857864070109503,
+        -0.013615847216898245,
+        0.9219778857919789
       ],
       "act": "Pre",
       "rig": "WINDOW",
@@ -2480,6 +2492,9 @@
       ],
       "waterVisible": true,
       "reflectionEnabled": true,
+      "auroraVisible": true,
+      "starOpacity": 0.8,
+      "moonRadius": 20,
       "instanceRebuilds": 6,
       "reflectionSize": [
         512,
@@ -2490,10 +2505,10 @@
       "readingBounds": [
         {
           "phraseId": 27,
-          "left": -0.2098527730951012,
-          "right": 0.24472459005546304,
-          "bottom": 0.03930570843092022,
-          "top": 0.24002925847915044,
+          "left": -0.21018764123934824,
+          "right": 0.24395298587100053,
+          "bottom": 0.039930691347088154,
+          "top": 0.2404352065849324,
           "carrier": "sky",
           "encounterId": null,
           "side": null,
@@ -2501,7 +2516,7 @@
           "animatedVertices": 28,
           "attached": true,
           "anchorError": 0,
-          "heightRatio": 0.10036177502411511,
+          "heightRatio": 0.10025225761892212,
           "inside": true
         }
       ],
@@ -2973,15 +2988,15 @@
       "eventInView": 0,
       "eventRipples": 0,
       "camera": [
-        28.45378484477746,
-        6.968251691549819,
-        -240.1827898370078
+        28.473427017194677,
+        6.955231691549819,
+        -240.16816297600715
       ],
       "quaternion": [
-        -0.06009071152731508,
-        -0.044827007416050495,
-        -0.004802119163563252,
-        0.9971743004338818
+        -0.06009293788106562,
+        -0.04494886525585295,
+        -0.004746868920981291,
+        0.9971689453470162
       ],
       "act": "Chorus",
       "rig": "WIDE",
@@ -3073,6 +3088,9 @@
       ],
       "waterVisible": true,
       "reflectionEnabled": true,
+      "auroraVisible": true,
+      "starOpacity": 0.8,
+      "moonRadius": 20,
       "instanceRebuilds": 7,
       "reflectionSize": [
         512,
@@ -3083,10 +3101,10 @@
       "readingBounds": [
         {
           "phraseId": 57,
-          "left": -0.25009028855744814,
-          "right": 0.2143597184480428,
-          "bottom": 0.04251587165176697,
-          "top": 0.24868589663375182,
+          "left": -0.2494183307771004,
+          "right": 0.2146397616766238,
+          "bottom": 0.043069491889441106,
+          "top": 0.24902067042076373,
           "carrier": "sky",
           "encounterId": null,
           "side": null,
@@ -3094,7 +3112,7 @@
           "animatedVertices": 28,
           "attached": true,
           "anchorError": 0,
-          "heightRatio": 0.10308501249099242,
+          "heightRatio": 0.1029755892656613,
           "inside": true
         }
       ],
@@ -3566,15 +3584,15 @@
       "eventInView": 0,
       "eventRipples": 0,
       "camera": [
-        44.10342989631602,
-        6.308692538791742,
-        -559.1386115938387
+        44.08452366484886,
+        6.297305872125075,
+        -559.1280242166303
       ],
       "quaternion": [
-        -0.0526075491414747,
-        -0.0051827678280872225,
-        0.001815953897374766,
-        0.9986001637304143
+        -0.052607085481060155,
+        -0.005079315445663901,
+        0.0017684257700143393,
+        0.9986008050177445
       ],
       "act": "Chorus",
       "rig": "WIDE",
@@ -3778,6 +3796,9 @@
         ],
         "waterVisible": true,
         "reflectionEnabled": true,
+        "auroraVisible": true,
+        "starOpacity": 0.8,
+        "moonRadius": 20,
         "instanceRebuilds": 293,
         "reflectionSize": [
           512,
@@ -4329,6 +4350,9 @@
         ],
         "waterVisible": true,
         "reflectionEnabled": true,
+        "auroraVisible": true,
+        "starOpacity": 0.8,
+        "moonRadius": 20,
         "instanceRebuilds": 295,
         "reflectionSize": [
           512,
@@ -4884,6 +4908,9 @@
         ],
         "waterVisible": true,
         "reflectionEnabled": true,
+        "auroraVisible": true,
+        "starOpacity": 0.8,
+        "moonRadius": 20,
         "instanceRebuilds": 297,
         "reflectionSize": [
           512,
@@ -5373,9 +5400,9 @@
           ]
         },
         "eventPoints": 0,
-        "eventLineVertices": 680,
-        "eventVertices": 680,
-        "eventInView": 680,
+        "eventLineVertices": 800,
+        "eventVertices": 800,
+        "eventInView": 800,
         "eventRipples": 4,
         "camera": [
           -9.946120059437808,
@@ -5476,6 +5503,9 @@
         ],
         "waterVisible": true,
         "reflectionEnabled": true,
+        "auroraVisible": true,
+        "starOpacity": 0.8,
+        "moonRadius": 20,
         "instanceRebuilds": 299,
         "reflectionSize": [
           512,
@@ -5965,9 +5995,9 @@
           ]
         },
         "eventPoints": 0,
-        "eventLineVertices": 680,
-        "eventVertices": 680,
-        "eventInView": 680,
+        "eventLineVertices": 800,
+        "eventVertices": 800,
+        "eventInView": 800,
         "eventRipples": 4,
         "camera": [
           -9.946120059437808,
@@ -6072,6 +6102,9 @@
         ],
         "waterVisible": true,
         "reflectionEnabled": true,
+        "auroraVisible": true,
+        "starOpacity": 0.8,
+        "moonRadius": 20,
         "instanceRebuilds": 301,
         "reflectionSize": [
           512,
@@ -6515,9 +6548,9 @@
           "ripples": []
         },
         "eventPoints": 0,
-        "eventLineVertices": 1770,
-        "eventVertices": 1770,
-        "eventInView": 1770,
+        "eventLineVertices": 2070,
+        "eventVertices": 2070,
+        "eventInView": 2070,
         "eventRipples": 0,
         "camera": [
           -1.9513557989605985,
@@ -6588,6 +6621,9 @@
         ],
         "waterVisible": true,
         "reflectionEnabled": true,
+        "auroraVisible": true,
+        "starOpacity": 0.8,
+        "moonRadius": 20,
         "instanceRebuilds": 303,
         "reflectionSize": [
           512,
@@ -7031,9 +7067,9 @@
           "ripples": []
         },
         "eventPoints": 0,
-        "eventLineVertices": 1770,
-        "eventVertices": 1770,
-        "eventInView": 1770,
+        "eventLineVertices": 2070,
+        "eventVertices": 2070,
+        "eventInView": 2070,
         "eventRipples": 0,
         "camera": [
           -1.9513557989605985,
@@ -7108,6 +7144,9 @@
         ],
         "waterVisible": true,
         "reflectionEnabled": true,
+        "auroraVisible": true,
+        "starOpacity": 0.8,
+        "moonRadius": 20,
         "instanceRebuilds": 305,
         "reflectionSize": [
           512,
@@ -7529,6 +7568,9 @@
         ],
         "waterVisible": true,
         "reflectionEnabled": true,
+        "auroraVisible": true,
+        "starOpacity": 0.8,
+        "moonRadius": 20,
         "instanceRebuilds": 307,
         "reflectionSize": [
           512,
@@ -7951,6 +7993,9 @@
         ],
         "waterVisible": true,
         "reflectionEnabled": true,
+        "auroraVisible": true,
+        "starOpacity": 0.8,
+        "moonRadius": 20,
         "instanceRebuilds": 308,
         "reflectionSize": [
           512,
@@ -8377,6 +8422,9 @@
       ],
       "waterVisible": true,
       "reflectionEnabled": true,
+      "auroraVisible": true,
+      "starOpacity": 0.15,
+      "moonRadius": 20,
       "instanceRebuilds": 283,
       "reflectionSize": [
         512,
@@ -8387,10 +8435,10 @@
       "readingBounds": [
         {
           "phraseId": 27,
-          "left": -0.2098527730951012,
-          "right": 0.24472459005546304,
-          "bottom": 0.03930570843092022,
-          "top": 0.24002925847915044,
+          "left": -0.21018764123934824,
+          "right": 0.24395298587100053,
+          "bottom": 0.039930691347088154,
+          "top": 0.2404352065849324,
           "carrier": "sky",
           "encounterId": null,
           "side": null,
@@ -8398,7 +8446,7 @@
           "animatedVertices": 28,
           "attached": true,
           "anchorError": 0,
-          "heightRatio": 0.10036177502411511,
+          "heightRatio": 0.10025225761892212,
           "inside": true
         }
       ],
@@ -8870,15 +8918,15 @@
       "eventInView": 0,
       "eventRipples": 0,
       "camera": [
-        28.45378484477746,
-        6.968251691549819,
-        -240.1827898370078
+        28.473427017194677,
+        6.955231691549819,
+        -240.16816297600715
       ],
       "quaternion": [
-        -0.06009071152731508,
-        -0.044827007416050495,
-        -0.004802119163563252,
-        0.9971743004338818
+        -0.06009293788106562,
+        -0.04494886525585295,
+        -0.004746868920981291,
+        0.9971689453470162
       ],
       "act": "Chorus",
       "rig": "WIDE",
@@ -8970,6 +9018,9 @@
       ],
       "waterVisible": true,
       "reflectionEnabled": false,
+      "auroraVisible": true,
+      "starOpacity": 0.8,
+      "moonRadius": 20,
       "instanceRebuilds": 284,
       "reflectionSize": [
         512,
@@ -8980,10 +9031,10 @@
       "readingBounds": [
         {
           "phraseId": 27,
-          "left": -0.2098527730951012,
-          "right": 0.24472459005546304,
-          "bottom": 0.03930570843092022,
-          "top": 0.24002925847915044,
+          "left": -0.21018764123934824,
+          "right": 0.24395298587100053,
+          "bottom": 0.039930691347088154,
+          "top": 0.2404352065849324,
           "carrier": "sky",
           "encounterId": null,
           "side": null,
@@ -8991,7 +9042,7 @@
           "animatedVertices": 28,
           "attached": true,
           "anchorError": 0,
-          "heightRatio": 0.10036177502411511,
+          "heightRatio": 0.10025225761892212,
           "inside": true
         }
       ],
@@ -9463,15 +9514,15 @@
       "eventInView": 0,
       "eventRipples": 0,
       "camera": [
-        28.45378484477746,
-        6.968251691549819,
-        -240.1827898370078
+        28.473427017194677,
+        6.955231691549819,
+        -240.16816297600715
       ],
       "quaternion": [
-        -0.06009071152731508,
-        -0.044827007416050495,
-        -0.004802119163563252,
-        0.9971743004338818
+        -0.06009293788106562,
+        -0.04494886525585295,
+        -0.004746868920981291,
+        0.9971689453470162
       ],
       "act": "Chorus",
       "rig": "WIDE",
@@ -9563,6 +9614,9 @@
       ],
       "waterVisible": true,
       "reflectionEnabled": true,
+      "auroraVisible": true,
+      "starOpacity": 0.8,
+      "moonRadius": 20,
       "instanceRebuilds": 285,
       "reflectionSize": [
         512,
@@ -10155,6 +10209,9 @@
       ],
       "waterVisible": true,
       "reflectionEnabled": true,
+      "auroraVisible": true,
+      "starOpacity": 0.8,
+      "moonRadius": 20,
       "instanceRebuilds": 287,
       "reflectionSize": [
         512,
@@ -10371,21 +10428,450 @@
       ]
     }
   ],
+  "themeChecks": [
+    {
+      "name": "themesEva",
+      "light": false,
+      "palette": {
+        "light": false,
+        "background": "#0f172a",
+        "surface": "#1e293b",
+        "ink": "#f1f5f9",
+        "muted": "#94a3b8",
+        "accent": "#e9c46a",
+        "secondary": "#4ade80",
+        "tertiary": "#fde68a",
+        "deep": "#020617",
+        "material": "#334155",
+        "border": "#e8c369",
+        "emission": "#e9c46a",
+        "accentRgb": {
+          "r": 233,
+          "g": 196,
+          "b": 106
+        }
+      },
+      "skyChanged": 233715,
+      "waterChanged": 83982
+    },
+    {
+      "name": "themesEva",
+      "light": true,
+      "palette": {
+        "light": true,
+        "background": "#fafafa",
+        "surface": "#ffffff",
+        "ink": "#2d2d30",
+        "muted": "#6a6a70",
+        "accent": "#ff3e5f",
+        "secondary": "#22c55e",
+        "tertiary": "#ff3e5f",
+        "deep": "#f5f5f5",
+        "material": "#ffeaea",
+        "border": "#ff3f60",
+        "emission": "#ff3e5f",
+        "accentRgb": {
+          "r": 255,
+          "g": 62,
+          "b": 95
+        }
+      },
+      "skyChanged": 104586,
+      "waterChanged": 26289
+    },
+    {
+      "name": "themes纸墨与机芯",
+      "light": false,
+      "palette": {
+        "light": false,
+        "background": "#171a1d",
+        "surface": "#20252a",
+        "ink": "#f2f0e9",
+        "muted": "#a7afb1",
+        "accent": "#f2a900",
+        "secondary": "#76bfae",
+        "tertiary": "#76bfae",
+        "deep": "#171a1d",
+        "material": "#2a3035",
+        "border": "#3b4449",
+        "emission": "#f2a900",
+        "accentRgb": {
+          "r": 242,
+          "g": 169,
+          "b": 0
+        }
+      },
+      "skyChanged": 235299,
+      "waterChanged": 74580
+    },
+    {
+      "name": "themes纸墨与机芯",
+      "light": true,
+      "palette": {
+        "light": true,
+        "background": "#f2efe7",
+        "surface": "#fcfaf4",
+        "ink": "#1b211f",
+        "muted": "#626a66",
+        "accent": "#b94832",
+        "secondary": "#21675c",
+        "tertiary": "#21675c",
+        "deep": "#f2efe7",
+        "material": "#e7e1d5",
+        "border": "#d2cbc0",
+        "emission": "#b94832",
+        "accentRgb": {
+          "r": 185,
+          "g": 72,
+          "b": 50
+        }
+      },
+      "skyChanged": 108294,
+      "waterChanged": 28561
+    },
+    {
+      "name": "themes酸性玄武",
+      "light": false,
+      "palette": {
+        "light": false,
+        "background": "#0d1013",
+        "surface": "#15191f",
+        "ink": "#f0f4f8",
+        "muted": "#8c96a5",
+        "accent": "#d4ff00",
+        "secondary": "#00e5ff",
+        "tertiary": "#00e5ff",
+        "deep": "#0d1013",
+        "material": "#1f252e",
+        "border": "#2b3441",
+        "emission": "#d4ff00",
+        "accentRgb": {
+          "r": 212,
+          "g": 255,
+          "b": 0
+        }
+      },
+      "skyChanged": 235062,
+      "waterChanged": 75623
+    },
+    {
+      "name": "themes酸性玄武",
+      "light": true,
+      "palette": {
+        "light": true,
+        "background": "#f4f6f9",
+        "surface": "#ffffff",
+        "ink": "#0f172a",
+        "muted": "#475569",
+        "accent": "#709600",
+        "secondary": "#00838f",
+        "tertiary": "#00838f",
+        "deep": "#eaeff5",
+        "material": "#e1e7ef",
+        "border": "#cbd5e1",
+        "emission": "#ccff00",
+        "accentRgb": {
+          "r": 112,
+          "g": 150,
+          "b": 0
+        }
+      },
+      "skyChanged": 121054,
+      "waterChanged": 28355
+    }
+  ],
+  "finaleChecks": {
+    "reading": {
+      "initialized": true,
+      "fallbackMode": false,
+      "liveStations": 3,
+      "stationTypes": [
+        "water-stairs",
+        "water-stairs",
+        "water-stairs"
+      ],
+      "waterVisible": true,
+      "reflectionEnabled": true,
+      "auroraVisible": true,
+      "starOpacity": 0.8,
+      "moonRadius": 20,
+      "instanceRebuilds": 319,
+      "reflectionSize": [
+        512,
+        320
+      ],
+      "architecturalInstances": 63,
+      "worldInstances": 794,
+      "readingBounds": [
+        {
+          "phraseId": 0,
+          "left": -0.6937468934040381,
+          "right": 0.7098095812877573,
+          "bottom": 0.13756768280155385,
+          "top": 0.3333540654205829,
+          "carrier": "sky",
+          "encounterId": null,
+          "side": null,
+          "fitsCarrier": true,
+          "animatedVertices": 152,
+          "attached": true,
+          "anchorError": 0,
+          "heightRatio": 0.09789319130951452,
+          "inside": true
+        }
+      ],
+      "liveSigns": 0,
+      "visibleSignPages": [],
+      "encounterCount": 0,
+      "encounterSides": [],
+      "lyricNodes": 2,
+      "lyricTextures": 2,
+      "eventPlan": [
+        {
+          "id": 0,
+          "kind": "meteor",
+          "start": 10.5,
+          "end": 13.3,
+          "duration": 2.8,
+          "side": 1,
+          "address": 239.90000000000006,
+          "seed": "english-finale:meteor:0",
+          "anchor": {
+            "x": -22.779481608315375,
+            "y": 0,
+            "z": -238.5129399604164
+          },
+          "right": {
+            "x": 0.9998298781936721,
+            "y": 0,
+            "z": 0.018444909086977098
+          },
+          "forward": {
+            "x": 0.018444909086977098,
+            "y": 0,
+            "z": -0.9998298781936721
+          },
+          "yaw": 0.0184459551185757,
+          "readingClearance": "silent-window",
+          "reflection": true,
+          "budget": {
+            "points": 900,
+            "ripples": 12
+          }
+        }
+      ],
+      "activeEvent": null,
+      "eventPoints": 0,
+      "eventLineVertices": 0,
+      "eventVertices": 0,
+      "eventInView": 0,
+      "eventRipples": 0,
+      "camera": [
+        -0.9092902165060646,
+        6.809353415187873,
+        -8.65695353879238
+      ],
+      "quaternion": [
+        -0.05928026218212456,
+        0.06363896263017697,
+        0.0049699083627488694,
+        0.9961983903630035
+      ],
+      "act": "Chorus",
+      "rig": "WIDE",
+      "distance": 8.400000000000004,
+      "acts": [
+        {
+          "kind": "Chorus",
+          "start": 0,
+          "end": 8
+        },
+        {
+          "kind": "Terminus",
+          "start": 8,
+          "end": 20
+        }
+      ],
+      "cutsCount": 0,
+      "rhythmSource": "travel-rhythm",
+      "drawCalls": 34,
+      "geometries": 15,
+      "textures": 3,
+      "signSpectrum": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "opacities": [
+      0.8,
+      0.5925925925925926,
+      0.20740740740740746,
+      0
+    ],
+    "final": {
+      "initialized": true,
+      "fallbackMode": false,
+      "liveStations": 3,
+      "stationTypes": [
+        "water-stairs",
+        "water-stairs",
+        "water-stairs"
+      ],
+      "waterVisible": true,
+      "reflectionEnabled": true,
+      "auroraVisible": true,
+      "starOpacity": 0,
+      "moonRadius": 20,
+      "instanceRebuilds": 321,
+      "reflectionSize": [
+        512,
+        320
+      ],
+      "architecturalInstances": 63,
+      "worldInstances": 794,
+      "readingBounds": [],
+      "liveSigns": 0,
+      "visibleSignPages": [],
+      "encounterCount": 0,
+      "encounterSides": [],
+      "lyricNodes": 1,
+      "lyricTextures": 1,
+      "eventPlan": [
+        {
+          "id": 0,
+          "kind": "meteor",
+          "start": 10.5,
+          "end": 13.3,
+          "duration": 2.8,
+          "side": 1,
+          "address": 239.90000000000006,
+          "seed": "english-finale:meteor:0",
+          "anchor": {
+            "x": -22.779481608315375,
+            "y": 0,
+            "z": -238.5129399604164
+          },
+          "right": {
+            "x": 0.9998298781936721,
+            "y": 0,
+            "z": 0.018444909086977098
+          },
+          "forward": {
+            "x": 0.018444909086977098,
+            "y": 0,
+            "z": -0.9998298781936721
+          },
+          "yaw": 0.0184459551185757,
+          "readingClearance": "silent-window",
+          "reflection": true,
+          "budget": {
+            "points": 900,
+            "ripples": 12
+          }
+        }
+      ],
+      "activeEvent": null,
+      "eventPoints": 0,
+      "eventLineVertices": 0,
+      "eventVertices": 0,
+      "eventInView": 0,
+      "eventRipples": 0,
+      "camera": [
+        -5.7175729518418015,
+        3.591787684528006,
+        -39.486586254156975
+      ],
+      "quaternion": [
+        0.270228565904531,
+        0.22091265624382941,
+        -0.06454059040471775,
+        0.9348842883858338
+      ],
+      "act": "Terminus",
+      "rig": "CAB",
+      "distance": 39.90000000000007,
+      "acts": [
+        {
+          "kind": "Chorus",
+          "start": 0,
+          "end": 8
+        },
+        {
+          "kind": "Terminus",
+          "start": 8,
+          "end": 20
+        }
+      ],
+      "cutsCount": 0,
+      "rhythmSource": "travel-rhythm",
+      "drawCalls": 31,
+      "geometries": 15,
+      "textures": 3,
+      "signSpectrum": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  },
   "checks": {
     "first": [
-      0.943062104432842,
-      2.3818443248002676,
-      -22.50916153958915
+      0.9535276045729395,
+      2.376699324800268,
+      -22.505133238077644
     ],
     "paused": [
-      0.943062104432842,
-      2.3818443248002676,
-      -22.50916153958915
+      0.9535276045729395,
+      2.376699324800268,
+      -22.505133238077644
     ],
     "sought": [
-      0.943062104432842,
-      2.3818443248002676,
-      -22.50916153958915
+      0.9535276045729395,
+      2.376699324800268,
+      -22.505133238077644
     ],
     "gapStart": [
       0.269917445460567,
@@ -10404,7 +10890,10 @@
       "stationTypes": [],
       "waterVisible": true,
       "reflectionEnabled": true,
-      "instanceRebuilds": 329,
+      "auroraVisible": true,
+      "starOpacity": 0.8,
+      "moonRadius": 20,
+      "instanceRebuilds": 344,
       "reflectionSize": [
         512,
         320
@@ -10414,10 +10903,10 @@
       "readingBounds": [
         {
           "phraseId": 27,
-          "left": -0.2098527730951012,
-          "right": 0.24472459005546304,
-          "bottom": 0.03930570843092022,
-          "top": 0.24002925847915044,
+          "left": -0.21018764123934824,
+          "right": 0.24395298587100053,
+          "bottom": 0.039930691347088154,
+          "top": 0.2404352065849324,
           "carrier": "sky",
           "encounterId": null,
           "side": null,
@@ -10425,7 +10914,7 @@
           "animatedVertices": 28,
           "attached": true,
           "anchorError": 0,
-          "heightRatio": 0.10036177502411511,
+          "heightRatio": 0.10025225761892212,
           "inside": true
         }
       ],
@@ -10897,15 +11386,15 @@
       "eventInView": 0,
       "eventRipples": 0,
       "camera": [
-        28.45378484477746,
-        6.968251691549819,
-        -240.1827898370078
+        28.473427017194677,
+        6.955231691549819,
+        -240.16816297600715
       ],
       "quaternion": [
-        -0.06009071152731508,
-        -0.044827007416050495,
-        -0.004802119163563252,
-        0.9971743004338818
+        -0.06009293788106562,
+        -0.04494886525585295,
+        -0.004746868920981291,
+        0.9971689453470162
       ],
       "act": "Chorus",
       "rig": "WIDE",
@@ -10995,7 +11484,10 @@
       ],
       "waterVisible": true,
       "reflectionEnabled": true,
-      "instanceRebuilds": 331,
+      "auroraVisible": true,
+      "starOpacity": 0.8,
+      "moonRadius": 20,
+      "instanceRebuilds": 346,
       "reflectionSize": [
         512,
         320

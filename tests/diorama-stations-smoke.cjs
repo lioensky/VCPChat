@@ -229,6 +229,119 @@ const puppeteer = require('puppeteer');
             eventShots.push(result);
             await page.screenshot({ path: `artifacts/diorama/event-${kind}.png` });
         }
+        // Real CSS palettes: dark/light extraction and live WebGL theme changes.
+        const themeChecks = [];
+        for (const name of ['themesEva', 'themes纸墨与机芯', 'themes酸性玄武']) {
+            const css = fs.readFileSync(`styles/themes/${name}.css`, 'utf8');
+            // Wallpaper assets are irrelevant to the procedural scene.
+            const style = await page.addStyleTag({ content: css.replace(/url\([^)]*\)/g, 'none') });
+            for (const light of [false, true]) {
+                const result = await page.evaluate(light => {
+                    document.body.classList.toggle('light-theme', light);
+                    const stage = document.getElementById('stage');
+                    stage.classList.add('music-stage');
+                    stageApp.currentTheme = light ? 'light' : 'dark';
+                    const palette = MusicStageModeUtils.refreshTheme(stageApp, stage);
+                    const next = structuredClone(config);
+                    next.modes.diorama.aurora = true;
+                    manager.updateConfig(next);
+                    manager.updateTheme();
+                    manager.updateFrame(frameAt(0, false));
+                    return { palette, snapshot: manager.getDebugSnapshot() };
+                }, light);
+                assert.equal(result.palette.light, light);
+                assert.ok(result.palette.emission && result.palette.material && result.palette.border);
+                assert.equal(result.snapshot.fallbackMode, false);
+                assert.equal(result.snapshot.auroraVisible, true);
+                if (name === 'themes酸性玄武' && light) {
+                    assert.equal(result.palette.accent, '#709600');
+                    assert.equal(result.palette.emission, '#ccff00');
+                }
+                const on = await page.screenshot({
+                    path: `artifacts/diorama/${name}-${light ? 'light' : 'dark'}.png`
+                });
+                const offState = await page.evaluate(() => {
+                    const next = structuredClone(config);
+                    next.modes.diorama.aurora = false;
+                    manager.updateConfig(next);
+                    return manager.getDebugSnapshot();
+                });
+                assert.equal(offState.auroraVisible, false);
+                assert.equal(offState.instanceRebuilds, result.snapshot.instanceRebuilds,
+                    'Aurora toggle must not rebuild track/scenery');
+                const off = await page.screenshot();
+                const sharp = require('sharp');
+                const a = await sharp(on).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+                const b = await sharp(off).removeAlpha().raw().toBuffer();
+                let skyChanged = 0, waterChanged = 0;
+                for (let y = 0; y < a.info.height; y++) {
+                    for (let x = 0; x < a.info.width; x++) {
+                        const i = (y * a.info.width + x) * 3;
+                        const delta = Math.max(...[0, 1, 2].map(c => Math.abs(a.data[i + c] - b[i + c])));
+                        if (delta < 5) continue;
+                        if (y < a.info.height * 0.45 && x < a.info.width * 0.55) skyChanged++;
+                        if (y > a.info.height * 0.55) waterChanged++;
+                    }
+                }
+                assert.ok(skyChanged > 500, `${name}/${light}: aurora must be visible in upper-left sky`);
+                assert.ok(waterChanged > 100, `${name}/${light}: aurora must appear in reflection`);
+                themeChecks.push({ name, light, palette: result.palette, skyChanged, waterChanged });
+            }
+            await style.dispose();
+            await page.evaluate(() => {
+                // dispose() releases the handle, not the style element.
+                document.querySelectorAll('style').forEach(s => {
+                    if (s.textContent.includes('--primary-bg')) s.remove();
+                });
+            });
+        }
+        await page.evaluate(() => {
+            document.body.classList.remove('light-theme');
+            stageApp.currentTheme = 'dark';
+            stageApp.stagePalette = { background: '#171a1d', ink: '#f2f0e9',
+                accent: '#f2a900', secondary: '#76bfae' };
+            manager.updateConfig(config);
+            manager.updateTheme();
+        });
+        // Include theme checks in the single JSON report below.
+        const finaleChecks = await page.evaluate(() => {
+            const english = MusicStageRuntime.normalizeLines([{
+                startTime: 0, endTime: 8,
+                fullText: 'Walking through the night we find our way home together',
+                isChorus: true
+            }]);
+            const next = structuredClone(config);
+            next.modes.diorama.lyricCarrier = 'constellation';
+            manager.updateConfig(next);
+            const frame = t => ({ ...frameAt(t, false), lines: english,
+                duration: 20, activeLine: english[0], track: { path: 'english-finale' } });
+            manager.updateFrame(frame(2));
+            const reading = manager.getDebugSnapshot();
+            const opacities = [8, 12, 16, 20].map(t => {
+                manager.updateFrame(frame(t));
+                return manager.getDebugSnapshot().starOpacity;
+            });
+            const final = manager.getDebugSnapshot();
+            manager.updateFrame(frame(2));
+            return { reading, opacities, final };
+        });
+        assert.ok(finaleChecks.reading.readingBounds.length > 0);
+        assert.ok(finaleChecks.reading.readingBounds.every(b => b.inside));
+        assert.ok(finaleChecks.reading.readingBounds.some(b => b.animatedVertices > 96),
+            'English page must render more than the old 24 glyph limit');
+        finaleChecks.opacities.forEach((value, i, values) => {
+            if (i) assert.ok(value <= values[i - 1]);
+        });
+        assert.equal(finaleChecks.opacities.at(-1), 0);
+        assert.equal(finaleChecks.final.moonRadius, 20);
+        await page.screenshot({ path: 'artifacts/diorama/english-phrase.png' });
+        await page.evaluate(() => {
+            manager.updateFrame({ ...frameAt(20, false), lines: MusicStageRuntime.normalizeLines([{
+                startTime: 0, endTime: 8, fullText: 'The last song', isChorus: true
+            }]), duration: 20, track: { path: 'finale-shot' } });
+        });
+        await page.screenshot({ path: 'artifacts/diorama/finale-moon.png' });
+        await page.evaluate(() => manager.updateConfig(config));
         const checks = await page.evaluate(() => {
             manager.updateFrame(frameAt(8));
             const first = manager.getDebugSnapshot().camera;
@@ -264,7 +377,8 @@ const puppeteer = require('puppeteer');
         assert.equal(checks.empty.lyricNodes, 0);
         assert.equal(checks.canvasCount, 0);
         assert.deepEqual(errors, [], 'No browser or shader errors');
-        console.log(JSON.stringify({ snapshots, readingChecks, spectrumChecks, eventShots, variants, checks, errors }, null, 2));
+        console.log(JSON.stringify({ snapshots, readingChecks, spectrumChecks, eventShots, variants,
+            themeChecks, finaleChecks, checks, errors }, null, 2));
     } finally {
         await browser.close();
     }

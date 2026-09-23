@@ -176,6 +176,7 @@
                 ...pixiTuningDefinitions
             ],
             diorama: [
+                { key: 'aurora', label: '天际极光（左上方流动光幕，随韵律波动）', type: 'toggle' },
                 { key: 'journeyEvents', label: '旅途奇遇（留白中的流星与水面生灵）', type: 'toggle' },
                 { key: 'fireworks', label: '远方烟花（副歌句尾与段后，默认关闭）', type: 'toggle' },
                 { key: 'cameraCuts', label: '自动剪辑（避开演唱中的字）', type: 'toggle' },

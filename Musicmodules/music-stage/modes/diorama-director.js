@@ -72,6 +72,7 @@
         const phrases = [];
         lines.forEach((line, lineIndex) => {
             const glyphs = buildGlyphTimeline(line);
+            const cjkLine = /[\u3040-\u30ff\u3400-\u9fff]/u.test(line.fullText);
             let group = [];
             const flush = () => {
                 if (!group.length) return;
@@ -88,8 +89,12 @@
                 const boundary = previous && (/[\s，。！？；,.!?;:：]/u.test(previous.text)
                     || glyph.startTime - previous.endTime > 0.4);
                 const cjk = /[\u3040-\u30ff\u3400-\u9fff]/u.test(glyph.text);
-                if (group.length >= 4 && boundary || group.length >= 12 && cjk
-                    || group.length >= 24) flush();
+                // Latin spaces delimit words, not shots. Keep several words together.
+                const punctuation = previous && /[，。！？；,.!?;:：]/u.test(previous.text);
+                if (cjkLine
+                    ? (group.length >= 4 && boundary || group.length >= 12 && cjk || group.length >= 24)
+                    : (group.length >= 36 && boundary || group.length >= 18 && punctuation
+                        || group.length >= 64)) flush();
                 group.push(glyph);
             });
             flush();
