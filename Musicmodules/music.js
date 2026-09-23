@@ -239,6 +239,7 @@ document.addEventListener('DOMContentLoaded', () => {
     app.destroy = () => {
         if (app.destroyed) return;
         app.destroyed = true;
+        app.lyricsRequestToken++;
 
         app.stageHost?.destroy?.();
         app.destroyAmbientPixi?.();
@@ -597,6 +598,7 @@ document.addEventListener('DOMContentLoaded', () => {
         app.openLyricsFetchModal = (trackIndex) => {
             const track = app.playlist[trackIndex];
             if (!track) return;
+            app.lyricsFetchRequestToken++;
             app.lyricsFetchTrackIndex = trackIndex;
             app.lyricsFetchCandidates = [];
             app.selectedLyricsCandidateKey = null;
@@ -624,6 +626,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const track = app.playlist[app.lyricsFetchTrackIndex];
             if (!track || !app.selectedLyricsCandidateKey || !app.api?.applyMusicLyricsCandidate) return;
 
+            const requestToken = app.lyricsFetchRequestToken;
+            // 手选版本优先，作废当前曲目仍在进行的自动获取。
+            if (app.pendingTrackPath === track.path) app.lyricsRequestToken++;
             app.lyricsFetchApply.disabled = true;
             app.lyricsFetchSearchBtn.disabled = true;
             setLyricsFetchStatus('正在覆盖当前歌词文件...');
@@ -633,6 +638,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     title: track.title,
                     artist: track.artist || ''
                 });
+                if (requestToken !== app.lyricsFetchRequestToken) return;
                 if (!result?.success) {
                     setLyricsFetchStatus(result?.message || '覆盖歌词失败', 'error');
                     app.lyricsFetchApply.disabled = false;
@@ -640,18 +646,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 setLyricsFetchStatus('歌词已覆盖并立即生效', 'success');
-                if (app.currentTrackIndex === app.lyricsFetchTrackIndex) {
+                if (app.pendingTrackPath === track.path) {
                     app.currentLyricsData = result.lyrics;
                     app.currentLyrics = app.normalizeStructuredLyrics(result.lyrics);
                     app.currentLyricIndex = -1;
                     app.renderLyrics();
                 }
-                setTimeout(closeLyricsFetchModal, 650);
+                setTimeout(() => {
+                    if (requestToken === app.lyricsFetchRequestToken) closeLyricsFetchModal();
+                }, 650);
             } catch (error) {
+                if (requestToken !== app.lyricsFetchRequestToken) return;
                 setLyricsFetchStatus(error?.message || '覆盖歌词失败', 'error');
                 app.lyricsFetchApply.disabled = false;
             } finally {
-                app.lyricsFetchSearchBtn.disabled = false;
+                if (requestToken === app.lyricsFetchRequestToken) app.lyricsFetchSearchBtn.disabled = false;
             }
         };
 

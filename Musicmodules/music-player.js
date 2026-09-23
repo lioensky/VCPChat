@@ -4,10 +4,13 @@
 function setupPlayer(app) {
     app.loadTrack = async (trackIndex, andPlay = true) => {
         const requestId = ++app.pendingLoadRequestId;
+        // 切歌意图一出现就作废旧歌词，不能等取消预加载返回后才作废。
+        app.resetLyrics();
         app.isPreloadingNext = false;
         try {
             await app.api?.cancelMusicPreload?.();
         } catch (e) {}
+        if (requestId !== app.pendingLoadRequestId) return;
 
         if (app.playlist.length === 0) {
             app.trackTitle.textContent = '未选择歌曲';
@@ -49,6 +52,7 @@ function setupPlayer(app) {
         if (app.wnpAdapter) app.wnpAdapter.sendUpdate();
 
         const result = await app.api.musicLoad(track);
+        if (requestId !== app.pendingLoadRequestId) return;
         if (result && result.status === 'success') {
             app.updateUIWithState(result.state);
 
@@ -61,6 +65,7 @@ function setupPlayer(app) {
                     if (requestId !== app.pendingLoadRequestId) return false;
 
                     const stateResult = await app.api.getMusicState();
+                    if (requestId !== app.pendingLoadRequestId) return false;
                     if (stateResult && stateResult.status === 'success' && stateResult.state) {
                         const state = stateResult.state;
                         app.updateUIWithState(state);
@@ -77,7 +82,7 @@ function setupPlayer(app) {
 
             const ready = await waitForTrackReady();
             if (requestId === app.pendingLoadRequestId) app.isTrackLoading = false;
-            if (andPlay && ready) app.playTrack();
+            if (requestId === app.pendingLoadRequestId && andPlay && ready) app.playTrack();
         } else {
             if (requestId === app.pendingLoadRequestId) app.isTrackLoading = false;
             console.error("Failed to load track:", result.message);

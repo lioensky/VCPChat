@@ -77,7 +77,7 @@ test('higher identity confidence beats a substantially lower-scored word-by-word
     assert.equal(ranked[0].matchScore, 100);
 });
 
-test('word-by-word lyrics win when metadata confidence is sufficiently close', () => {
+test('100-point line lyrics beat 90-point word lyrics despite quality bonuses', () => {
     const exactLineLyric = createAuditedLyrics(
         candidate('netease', 100),
         lyricResult({ source: 'netease' })
@@ -89,9 +89,9 @@ test('word-by-word lyrics win when metadata confidence is sufficiently close', (
 
     const ranked = rankAuditedLyrics([exactLineLyric, closeWordLyric]);
 
-    assert.equal(ranked[0].result.source, 'qq');
-    assert.equal(ranked[0].qualityBonus, LYRIC_QUALITY_BONUS.wordByWord);
-    assert.equal(ranked[0].auditScore, 102);
+    assert.equal(ranked[0].result.source, 'netease');
+    assert.equal(ranked[0].matchScore, 100);
+    assert.equal(closeWordLyric.auditScore, 102);
 });
 
 test('AMLL, translation and romanization contribute bounded quality bonuses', () => {

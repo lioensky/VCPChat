@@ -749,8 +749,9 @@ function initialize(options) {
             const possibleJsonPaths = [];
             if (sanitizedArtist) {
                 possibleJsonPaths.push(path.join(LYRIC_DIR, `${sanitizedArtist} - ${sanitizedTitle}.json`));
+            } else {
+                possibleJsonPaths.push(path.join(LYRIC_DIR, `${sanitizedTitle}.json`));
             }
-            possibleJsonPaths.push(path.join(LYRIC_DIR, `${sanitizedTitle}.json`));
 
             for (const jsonPath of possibleJsonPaths) {
                 try {
@@ -767,8 +768,9 @@ function initialize(options) {
             const possibleLrcPaths = [];
             if (sanitizedArtist) {
                 possibleLrcPaths.push(path.join(LYRIC_DIR, `${sanitizedArtist} - ${sanitizedTitle}.lrc`));
+            } else {
+                possibleLrcPaths.push(path.join(LYRIC_DIR, `${sanitizedTitle}.lrc`));
             }
-            possibleLrcPaths.push(path.join(LYRIC_DIR, `${sanitizedTitle}.lrc`));
 
             for (const lrcPath of possibleLrcPaths) {
                 try {

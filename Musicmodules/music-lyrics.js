@@ -3,13 +3,15 @@
 
 function setupLyrics(app) {
     app.fetchAndDisplayLyrics = async (artist, title, options = {}) => {
-        const requestToken = ++app.lyricsRequestToken;
         app.resetLyrics();
+        const requestToken = app.lyricsRequestToken;
         if (!app.api?.getMusicLyrics) return;
 
         const rawTitle = String(title || '').trim();
         const normalizedTitle = app.stripAudioExtension?.(rawTitle) || rawTitle;
-        const duration = options.duration || app.lastKnownDuration || 0;
+        // 未知时长保持未知，不能借用上一首的播放状态参与匹配评分。
+        const duration = Number.isFinite(Number(options.duration)) && Number(options.duration) > 0
+            ? Number(options.duration) : 0;
         const album = options.album || '';
 
         // 先按原始标题读取，兼容历史上以“歌名.flac”保存的缓存；
@@ -52,7 +54,16 @@ function setupLyrics(app) {
                     });
                     if (requestToken !== app.lyricsRequestToken) return;
 
-                    const bestCandidate = searchResult?.candidates?.[0];
+                    const durationDifference = candidate => duration > 0 && candidate.durationMs > 0
+                        ? Math.abs(candidate.durationMs - duration * 1000) : Infinity;
+                    // 不依赖接口返回顺序；质量特性只能在匹配分相同时打破平局。
+                    const bestCandidate = (searchResult?.success ? [...(searchResult.candidates || [])] : [])
+                        .filter(candidate => candidate?.candidateKey
+                            && Number.isFinite(Number(candidate.matchScore))
+                            && Number(candidate.matchScore) >= 60)
+                        .sort((a, b) => b.matchScore - a.matchScore
+                            || Number(b.isWordByWord) - Number(a.isWordByWord)
+                            || durationDifference(a) - durationDifference(b))[0];
                     if (bestCandidate?.candidateKey) {
                         const applyResult = await app.api.applyMusicLyricsCandidate({
                             candidateKey: bestCandidate.candidateKey,
@@ -494,6 +505,8 @@ function setupLyrics(app) {
     };
 
     app.resetLyrics = () => {
+        app.lyricsRequestToken = (app.lyricsRequestToken || 0) + 1;
+        app.currentLyricsData = null;
         app.currentLyrics = [];
         app.currentLyricIndex = -1;
         app.currentScrollY = 0;

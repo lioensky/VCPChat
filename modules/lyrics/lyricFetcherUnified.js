@@ -533,9 +533,10 @@ function getLyricFeatureFlags(result) {
     };
 }
 
-function createAuditedLyrics(candidate, result) {
+function createAuditedLyrics(candidate, result, target = {}) {
     const features = getLyricFeatureFlags(result);
-    if (!features.valid || Number(candidate?.matchScore) < AUTO_MATCH_MIN_SCORE) return null;
+    if (!features.valid || !Number.isFinite(Number(candidate?.matchScore))
+        || Number(candidate.matchScore) < AUTO_MATCH_MIN_SCORE) return null;
 
     const qualityBonus =
         (features.isWordByWord ? LYRIC_QUALITY_BONUS.wordByWord : 0)
@@ -549,9 +550,9 @@ function createAuditedLyrics(candidate, result) {
         features,
         matchScore: Number(candidate.matchScore),
         qualityBonus,
-        durationDifference: Math.abs(
-            Number(candidate.durationMs || 0) - Number(target.durationMs || 0)
-        ),
+        durationDifference: target.durationMs > 0 && candidate.durationMs > 0
+            ? Math.abs(Number(candidate.durationMs) - Number(target.durationMs))
+            : Infinity,
         auditScore: Number(candidate.matchScore) + qualityBonus
     };
 }
@@ -582,7 +583,7 @@ async function autoMatchLyrics(target) {
 
     const probed = await collectProbedLyrics(target);
     const audited = rankAuditedLyrics(
-        probed.map(({ candidate, result }) => createAuditedLyrics(candidate, result))
+        probed.map(({ candidate, result }) => createAuditedLyrics(candidate, result, target))
     );
     const winner = audited[0];
 
