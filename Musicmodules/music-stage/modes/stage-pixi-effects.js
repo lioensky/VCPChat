@@ -598,6 +598,24 @@ void main() {
             bracket.position.set(group.left, group.top);
             textContainer.addChild(bracket);
             group.bracket = bracket;
+            // Two offset print frames and four fine rays, retained behind the type.
+            // No duplicated text textures; a phrase owns only three extra graphics.
+            group.echoes = [0, 1].map(index => {
+                const echo = new PIXI.Graphics().rect(-width / 2, -height / 2, width, height)
+                    .stroke({ color, width: index ? 1 : 2, alpha: 0.5 });
+                echo.position.set((group.left + group.right) / 2, (group.top + group.bottom) / 2);
+                textContainer.addChildAt(echo, 0);
+                return echo;
+            });
+            const rays = new PIXI.Graphics();
+            for (const side of [-1, 1]) {
+                const x = side * (width / 2 + 10);
+                rays.moveTo(x, -height * 0.23).lineTo(x + side * 22, -height * 0.38);
+                rays.moveTo(x, height * 0.23).lineTo(x + side * 22, height * 0.38);
+            }
+            rays.stroke({ color, width: 1.3, alpha: 0.7 });
+            textContainer.addChildAt(rays, 0);
+            group.rays = rays;
         }
         return groups;
     };
@@ -619,7 +637,31 @@ void main() {
             group.rail.alpha = focus * (0.3 + (tuning.performance?.phrasePulse || 0) * 0.35);
             group.rail.visible = tuning.showDecor !== false;
             group.bracket.alpha = focus * 0.7;
-            group.bracket.visible = tuning.performanceMode === 'sonnet' && tuning.guideLines !== false;
+            group.bracket.visible = tuning.showDecor !== false
+                && tuning.performanceMode === 'sonnet' && tuning.guideLines !== false;
+            const flourish = tuning.accentEffects !== false && tuning.showDecor !== false
+                && tuning.quality !== 'energy-saving' && motion > 0;
+            const strength = motion * amount(tuning.accentMotion, 1) * amount(tuning.performanceIntensity, 1.25);
+            const duration = Math.max(0, group.end - group.start);
+            // Short/rapid phrases retain quiet typography; long phrases get a tail response.
+            const age = time - group.start;
+            const tailAge = time - group.end;
+            const pulse = age >= 0 && age < 0.8 ? Math.sin(age / 0.8 * Math.PI) * (1 - age / 0.8) : 0;
+            const tail = duration > 1.5 && tailAge >= 0 && tailAge < 0.65
+                ? Math.sin(tailAge / 0.65 * Math.PI) * 0.45 : 0;
+            const amplitude = Math.min(1, (pulse + tail) * strength);
+            const cx = (group.left + group.right) / 2, cy = (group.top + group.bottom) / 2;
+            group.echoes.forEach((echo, index) => {
+                echo.visible = flourish && duration >= 0.65 && amplitude > 0;
+                const spread = (index + 1) * amplitude;
+                echo.position.set(cx + (tuning.performanceMode === 'tempera' ? spread * 9 : 0), cy - spread * 4);
+                echo.scale.set(1 + spread * 0.07, 1 + spread * 0.15);
+                echo.alpha = amplitude * (index ? 0.2 : 0.35);
+            });
+            group.rays.visible = flourish && duration >= 0.65 && amplitude > 0;
+            group.rays.position.set(cx, cy);
+            group.rays.scale.set(1 + amplitude * 0.14);
+            group.rays.alpha = amplitude * (frame.activeLine?.isChorus ? 0.85 : 0.55);
         }
     };
 
@@ -1089,7 +1131,9 @@ void main() {
         };
     };
 
-    const createRetirement = (PIXI, stage) => {
+    const createRetirement = (PIXI, stage, options = {}) => {
+        const dissolve = options.dissolve === true;
+        let duration = 0.6;
         let layer = null, born = 0, lastFrame = null, lastTuning = null, outgoingLine = null;
         const release = () => {
             if (layer) { layer.removeFromParent(); layer.destroy({ children: true }); layer = null; }
@@ -1101,6 +1145,7 @@ void main() {
                 if (!frame?.isPlaying || !nextLine || !frame.activeLine
                     || nextLine === frame.activeLine || !motionScale(tuning)
                     || tuning.sceneTransitions === false || tuning.quality === 'energy-saving'
+                    || (dissolve && nextLine.renderHints?.lineTransitionMode === 'none')
                     || nextLine.startTime < frame.playbackTime
                     || nextLine.startTime - frame.playbackTime > 0.2) return;
                 layer = new PIXI.Container();
@@ -1120,28 +1165,39 @@ void main() {
                     layer.addChild(copy);
                 }
                 stage.addChildAt(layer, 0);
+                duration = dissolve
+                    ? nextLine.renderHints?.lineTransitionMode === 'fast' ? 0.12
+                        : clamp((nextLine.endTime - nextLine.startTime) * 0.3, 0.12, 0.8)
+                    : 0.6;
                 born = nextLine.startTime;
                 outgoingLine = nextLine;
             },
             update(frame, tuning) {
+                let incoming = 1;
                 if (layer) {
                     const elapsed = frame.playbackTime - born;
                     const changedTrack = lastFrame && (frame.track?.path || frame.track?.title || '')
                         !== (lastFrame.track?.path || lastFrame.track?.title || '');
                     const jumped = lastFrame && (frame.playbackTime - lastFrame.playbackTime > 0.5
                         || frame.playbackTime < lastFrame.playbackTime - 0.025);
-                    if (elapsed < 0 || elapsed >= 0.6 || frame.activeLine !== outgoingLine || changedTrack || jumped
+                    if (elapsed < 0 || elapsed >= duration || frame.activeLine !== outgoingLine || changedTrack || jumped
+                        || (dissolve && (frame.lines !== lastFrame?.lines
+                            || tuning.showBackground !== lastTuning?.showBackground
+                            || tuning.guideLines !== lastTuning?.guideLines
+                            || tuning.lyricLayout !== lastTuning?.lyricLayout))
                         || !motionScale(tuning) || tuning.sceneTransitions === false
                         || tuning.quality === 'energy-saving') release();
                     else {
-                        const p = ease(elapsed / 0.6);
-                        layer.alpha = (1 - p) * 0.7;
-                        // Pose remains absolute, not integrated.
-                        layer.skew.x = p * 0.045 * motionScale(tuning);
+                        const p = ease(elapsed / duration);
+                        layer.alpha = (1 - p) * (dissolve ? 1 : 0.7);
+                        if (dissolve) incoming = p;
+                        // Sonnet dissolves without the print-skew used by Tempera.
+                        layer.skew.x = dissolve ? 0 : p * 0.045 * motionScale(tuning);
                     }
                 }
                 lastFrame = frame;
                 lastTuning = tuning;
+                return incoming;
             },
             snapshot() { return { outgoingLayers: layer ? 1 : 0 }; },
             destroy() { release(); lastFrame = lastTuning = outgoingLine = null; }

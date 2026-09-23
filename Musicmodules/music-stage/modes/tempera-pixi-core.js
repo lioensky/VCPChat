@@ -139,6 +139,57 @@
         }
     };
 
+    Object.assign(COMPOSITIONS, {
+        'folded-fan': ({ width: w, height: h, palette: p, bleed: b }) => {
+            const tones = [p.tone1, p.tone3, p.tone2, p.tone4];
+            return Array.from({ length: 8 }, (_, i) => {
+                const a = i * TAU / 8, z = (i + 1) * TAU / 8;
+                const reach = Math.hypot(w, h) + b * 2;
+                return { polygon: [w * 0.32, h * 0.58,
+                    w * 0.32 + Math.cos(a) * reach, h * 0.58 + Math.sin(a) * reach,
+                    w * 0.32 + Math.cos(z) * reach, h * 0.58 + Math.sin(z) * reach],
+                    tone: tones[i % 4], enterDX: Math.cos(a) * w * 0.2, enterDY: Math.sin(a) * h * 0.2 };
+            });
+        },
+        'paper-staircase': ({ width: w, height: h, palette: p, bleed: b }) => [
+            { polygon: rectPolygon(-b, -b, w + b * 2, h + b * 2), tone: p.tone1, enterDX: 0, enterDY: 0 },
+            ...Array.from({ length: 5 }, (_, i) => ({
+                polygon: rectPolygon(w * (0.08 + i * 0.17), h * (0.18 + i * 0.1), w * 0.2, h + b),
+                tone: i % 2 ? p.tone2 : p.tone3, enterDX: 0, enterDY: h * (0.3 + i * 0.04)
+            }))
+        ],
+        'diagonal-weave': ({ width: w, height: h, palette: p, bleed: b }) => [
+            { polygon: rectPolygon(-b, -b, w + b * 2, h + b * 2), tone: p.tone4, enterDX: 0, enterDY: 0 },
+            ...Array.from({ length: 6 }, (_, i) => {
+                const x = (i - 2) * w * 0.28;
+                return { polygon: [x, -b, x + w * 0.16, -b, x + w * 0.8, h + b, x + w * 0.64, h + b],
+                    tone: i % 2 ? p.tone1 : p.tone3,
+                    enterDX: (i % 2 ? 1 : -1) * w * 0.3, enterDY: 0 };
+            })
+        ],
+        'offset-collage': ({ width: w, height: h, palette: p, bleed: b }) => [
+            { polygon: rectPolygon(-b, -b, w + b * 2, h + b * 2), tone: p.tone1, enterDX: 0, enterDY: 0 },
+            { polygon: rectPolygon(w * 0.04, h * 0.1, w * 0.38, h * 0.72), tone: p.tone3, enterDX: -w * 0.4, enterDY: 0 },
+            { polygon: rectPolygon(w * 0.49, h * 0.03, w * 0.46, h * 0.38), tone: p.tone2, enterDX: 0, enterDY: -h * 0.4 },
+            { polygon: rectPolygon(w * 0.57, h * 0.58, w * 0.48, h * 0.35), tone: p.tone4, enterDX: w * 0.4, enterDY: 0 },
+            { polygon: diamondPolygon(w * 0.48, h * 0.52, w * 0.2, h * 0.34), tone: p.tone2, enterDX: 0, enterDY: h * 0.3 }
+        ],
+        'nested-diamonds': ({ width: w, height: h, palette: p, bleed: b }) => [
+            { polygon: rectPolygon(-b, -b, w + b * 2, h + b * 2), tone: p.tone1, enterDX: 0, enterDY: 0 },
+            ...Array.from({ length: 5 }, (_, i) => ({
+                polygon: diamondPolygon(w * 0.5, h * 0.47, w * (0.85 - i * 0.14), h * (1.1 - i * 0.18)),
+                tone: [p.tone3, p.tone4, p.tone2][i % 3],
+                enterDX: (i % 2 ? -1 : 1) * w * 0.2, enterDY: 0
+            }))
+        ],
+        'letterpress-shutters': ({ width: w, height: h, palette: p, bleed: b }) =>
+            Array.from({ length: 7 }, (_, i) => ({
+                polygon: rectPolygon(-b, -b + i * (h + b * 2) / 7, w + b * 2, (h + b * 2) / 7 + 1),
+                tone: [p.tone1, p.tone2, p.tone4, p.tone3][i % 4],
+                enterDX: (i % 2 ? 1 : -1) * w * 0.45, enterDY: 0
+            }))
+    });
+
     const SHOT_KINDS = Object.keys(COMPOSITIONS);
 
     // Pixi 渲染器实现
@@ -315,8 +366,21 @@
 
             // 3. 装饰元素 (穿插斜线与标记)
             const dec = new PIXI.Graphics();
-            dec.moveTo(-40, this.height * 0.3).lineTo(this.width + 40, this.height * 0.35);
-            dec.moveTo(-40, this.height * 0.7).lineTo(this.width + 40, this.height * 0.65);
+            // Registration marks follow the selected composition rather than a fixed pair of diagonals.
+            const decorStyle = kindIndex % 3;
+            for (let i = 0; i < 6; i++) {
+                const x = this.width * (0.12 + i * 0.15);
+                const y = this.height * (i % 2 ? 0.78 : 0.2);
+                if (decorStyle === 0) {
+                    dec.moveTo(x - 16, y).lineTo(x + 16, y);
+                    dec.moveTo(x, y - 16).lineTo(x, y + 16);
+                } else if (decorStyle === 1) {
+                    dec.poly(diamondPolygon(x, y, 12 + i * 2, 12 + i * 2));
+                } else {
+                    dec.moveTo(x, y).lineTo(x + this.width * 0.12, y);
+                    dec.moveTo(x, y + 6).lineTo(x + this.width * 0.06, y + 6);
+                }
+            }
             dec.stroke({ color: this.palette.accent, width: 1.5, alpha: 0.6 });
             this.decorContainer.addChild(dec);
 

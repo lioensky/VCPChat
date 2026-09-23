@@ -80,7 +80,7 @@
             this.app.stage.addChild(this.sceneContainer);
 
             this.postProcess = Effects.createPostProcess(PIXI, this.app.stage);
-            this.retirement = Effects.createRetirement(PIXI, this.app.stage);
+            this.retirement = Effects.createRetirement(PIXI, this.app.stage, { dissolve: true });
             this.initialized = true;
             this.resize();
             if (this.pendingShot) this.buildShot(...this.pendingShot);
@@ -107,7 +107,9 @@
             const numPrimary = PIXI.Color.shared.setValue(hexPrimary).toNumber();
             const rand = global.MusicStageRuntime.seededRandom(`sonnet:${seed}`);
 
-            this.retirement.capture([this.hudContainer, this.frameDecorContainer], this.sceneContainer, line);
+            this.retirement.capture([this.geoContainer, this.hudContainer], this.sceneContainer, line);
+            this.backgroundKind = ['orbital', 'constellation', 'perspective', 'wave-score', 'orrery', 'editorial-lattice'][
+                global.MusicStageRuntime.hashString(`scene:${seed}`) % 6];
             // 1. 重建外层线框系统 (Frame Decor & Corner Brackets)
             Effects.clear(this.frameDecorContainer);
             const frame = new PIXI.Graphics();
@@ -144,6 +146,7 @@
             const cy = this.height * 0.5;
             const radius = Math.min(this.width, this.height) * 0.38;
 
+            if (this.backgroundKind === 'orbital' || this.backgroundKind === 'orrery') {
             // Independent local-space orbits, counter-rotating broken arcs and ticks.
             for (let i = 0; i < 5; i++) {
                 const orbit = new PIXI.Graphics();
@@ -161,6 +164,10 @@
                 }
                 orbit.stroke({ color: numPrimary, width: 1, alpha: 0.35 });
                 orbit.circle(r, 0, 3).fill({ color: numPrimary, alpha: 0.8 });
+                if (this.backgroundKind === 'orrery') {
+                    orbit.scale.y = 0.35 + i * 0.09;
+                    orbit.dataset = { flattened: orbit.scale.y };
+                }
                 orbit.position.set(cx, cy);
                 this.hudContainer.addChild(orbit);
                 this.orbits.push(orbit);
@@ -177,6 +184,55 @@
             hud.lineTo(cx, cy);
             hud.fill({ color: numPrimary, alpha: 0.08 });
 
+            } else {
+                // Distinct retained scenery: no per-frame path rebuilding or particle allocation.
+                for (let i = 0; i < 6; i++) {
+                    const part = new PIXI.Graphics();
+                    if (this.backgroundKind === 'constellation') {
+                        let x = -radius + rand() * radius * 2;
+                        let y = (i < 3 ? -1 : 1) * radius * (0.5 + rand() * 0.55);
+                        part.moveTo(x, y);
+                        for (let j = 0; j < 5; j++) {
+                            const nx = x + (rand() - 0.4) * radius * 0.55;
+                            const ny = y + (rand() - 0.5) * radius * 0.35;
+                            part.lineTo(nx, ny).stroke({ color: numPrimary, width: 1, alpha: 0.28 });
+                            part.circle(nx, ny, j % 2 ? 2 : 4).fill({ color: numPrimary, alpha: 0.65 });
+                            part.moveTo(nx, ny);
+                            x = nx; y = ny;
+                        }
+                    } else if (this.backgroundKind === 'perspective') {
+                        const s = 0.24 + i * 0.19;
+                        const w = this.width * 0.43 * s, h = this.height * 0.39 * s;
+                        part.rect(-w, -h, w * 2, h * 2);
+                        for (const side of [-1, 1]) {
+                            part.moveTo(side * w, -h).lineTo(side * w * 1.18, -h * 1.18);
+                            part.moveTo(side * w, h).lineTo(side * w * 1.18, h * 1.18);
+                        }
+                        part.stroke({ color: numPrimary, width: 1.2, alpha: 0.3 });
+                    } else if (this.backgroundKind === 'wave-score') {
+                        for (let j = 0; j <= 64; j++) {
+                            const x = (j / 64 - 0.5) * this.width * 0.85;
+                            const y = (i - 2.5) * radius * 0.3
+                                + Math.sin(j * 0.22 + i * 0.8) * radius * 0.13
+                                + Math.cos(j * 0.09 - i) * radius * 0.08;
+                            if (!j) part.moveTo(x, y); else part.lineTo(x, y);
+                        }
+                        part.stroke({ color: numPrimary, width: i % 2 ? 1 : 2, alpha: 0.25 });
+                    } else {
+                        const x = (i - 2.5) * this.width * 0.135;
+                        part.moveTo(x, -radius).lineTo(x, radius);
+                        for (let j = 0; j < 7; j++) {
+                            const y = (j - 3) * radius * 0.3;
+                            part.moveTo(x - 10, y).lineTo(x + 10, y);
+                            part.rect(x + 15, y - 3, 3 + rand() * 18, 6);
+                        }
+                        part.stroke({ color: numPrimary, width: 1, alpha: 0.32 });
+                    }
+                    part.position.set(cx, cy);
+                    this.hudContainer.addChild(part);
+                    this.orbits.push(part);
+                }
+            }
             this.hudContainer.addChild(hud);
 
             // 3. 巨型装饰文字 (Giant Outline Text)
@@ -249,7 +305,8 @@
             }
             this.sceneContainer.scale.set(camera.scale);
             this.sceneContainer.rotation = camera.rotation;
-            this.sceneContainer.alpha = trackMode ? 1 : Effects.transition(frame, tuning);
+            // Background handoff must not dim the lyrics or blink the persistent frame.
+            this.sceneContainer.alpha = 1;
             const fixedOffsetX = trackMode ? camera.x - this.width / 2 : 0;
             const fixedOffsetY = trackMode ? camera.y - this.height / 2 : 0;
             this.geoContainer.position.set(fixedOffsetX, fixedOffsetY);
@@ -262,15 +319,25 @@
             this.orbits.forEach((orbit, index) => {
                 orbit.visible = tuning.quality !== 'energy-saving' || index < 2;
                 const direction = index % 2 ? -1 : 1;
-                orbit.rotation = (time * (0.07 + index * 0.025) + kick * 0.15) * direction * intensity;
-                orbit.scale.set(1 + kick * (0.025 + index * 0.015) * intensity);
+                const circular = this.backgroundKind === 'orbital' || this.backgroundKind === 'orrery';
+                orbit.rotation = circular
+                    ? (time * (0.07 + index * 0.025) + kick * 0.15) * direction * intensity
+                    : Math.sin(time * 0.16 + index) * 0.012 * intensity;
+                const depth = this.backgroundKind === 'perspective'
+                    ? Math.sin(time * 0.55 - index * 0.5) * 0.06 * intensity : 0;
+                const scale = 1 + depth + kick * (0.025 + index * 0.015) * intensity;
+                orbit.scale.set(scale, scale * (orbit.dataset?.flattened || 1));
+                orbit.position.set(this.width / 2,
+                    this.height / 2 + (circular ? 0 : Math.sin(time * 0.4 + index * 0.7) * 12 * intensity));
                 orbit.alpha = 0.55 + tuning.performance.energy * 0.35;
             });
             this.scan.rotation = time * 0.32 * intensity;
+            this.motif.visible = this.backgroundKind === 'orbital' || this.backgroundKind === 'orrery';
             this.motif.rotation = -time * 0.035 * intensity;
             this.motif.scale.set(1 + Math.sin(time * 0.6) * 0.025 * intensity);
             this.frameDecorContainer.scale.set(1 + kick * 0.008 * intensity);
             if (this.giantText) {
+                this.giantText.alpha = this.backgroundKind === 'editorial-lattice' ? 0.12 : 0.055;
                 this.giantText.scale.set(1 + tuning.performance.energy * 0.06 * intensity);
                 this.giantText.position.set(this.width * 0.5 + Math.sin(time * 0.14) * this.width * 0.12 * intensity,
                     this.height * 0.5 - 20 + Math.cos(time * 0.19) * 18 * intensity);
@@ -287,13 +354,15 @@
             this.hudContainer.visible = tuning.showBackground !== false && tuning.guideLines !== false;
             this.frameDecorContainer.visible = tuning.showDecor !== false;
             this.geoContainer.visible = tuning.showBackground !== false;
-            this.retirement.update(frame, tuning);
+            const backgroundAlpha = this.retirement.update(frame, tuning) ?? 1;
+            this.geoContainer.alpha = backgroundAlpha;
+            this.hudContainer.alpha = backgroundAlpha;
             this.postProcess.update(frame, tuning, this.width, this.height);
             this.app.render();
         }
 
         getDebugSnapshot() {
-            return { initialized: this.initialized, camera: this.activeKind,
+            return { initialized: this.initialized, camera: this.activeKind, composition: this.backgroundKind,
                 glyphs: this.words.length, phrases: this.phrases.length, orbits: this.orbits.length,
                 performance: this.performance.snapshot(), accents: this.accents?.snapshot(),
                 ...this.editorialTrack?.snapshot(),
