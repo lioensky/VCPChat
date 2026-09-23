@@ -354,8 +354,25 @@
                         [x,-0.5+tuck,-0.17],[x,-0.31+tuck,0.1],[x,0.23,0.53]], tr);
                     contour([[x,0.67,-0.85],[x+side*0.025,0.7,-0.88],
                         [x,0.72,-0.85]], tr, true);
+                    // Whiskers and lively eye contour
+                    contour([[x+side*0.06,0.64,-0.96],[x+side*0.22,0.68,-1.18]], tr);
+                    contour([[x+side*0.06,0.58,-0.98],[x+side*0.24,0.56,-1.22]], tr);
                 }
                 contour([[-0.18,0.16,0.8],[0,0.42,1.1],[0.18,0.16,0.8],[0,0,0.95]], transform(), true);
+                // Fluffy tail contour with bounce
+                const tailBounce = Math.sin(pose.flight * Math.PI * 2) * 0.08;
+                contour([[0,0.22+tailBounce,0.92],[0,0.42+tailBounce,1.16],
+                    [0,0.16+tailBounce,1.26],[0,-0.02+tailBounce,1.06]], transform(), true);
+                // Micro splash droplets when bounding off water surface
+                if (pose.flight > 0 && pose.flight < 0.6) {
+                    const dropAge = pose.flight;
+                    for (const side of [-1, 1]) {
+                        const sx = side * 0.32;
+                        const sy = -0.45 + dropAge * 0.65 - dropAge * dropAge * 1.35;
+                        const sz = 0.55 + dropAge * 1.15;
+                        contour([[sx, sy, sz], [sx + side * 0.06, sy + 0.1, sz + 0.12]], transform());
+                    }
+                }
             } else {
                 for (let bird = 0; bird < (event.birdCount ?? 3); bird++) {
                     const flight = Math.max(0, pose.age - (event.takeoff ?? 1) - bird * 0.22);
@@ -363,22 +380,27 @@
                     const tr = transform([(event.perch ? bird - ((event.birdCount ?? 1) - 1) / 2 : bird) * 0.85
                         + lift * 0.8, lift * 1.7, (event.perch ? 0 : bird * 0.7) - lift * 3]);
                     const opening = smooth(flight / 0.3);
-                    const flap = Math.sin(flight * 11) * opening;
+                    // Power downstroke followed by graceful glide recovery
+                    const flapCycle = (flight * 10) % (Math.PI * 2);
+                    const powerStroke = flapCycle < Math.PI ? Math.sin(flapCycle) : -Math.sin(flapCycle) * 0.4;
+                    const flap = powerStroke * opening;
                     for (const side of [-1, 1]) {
                         const x = side * 0.13;
                         contour([[x,0,0.35],[x,0.22,0],[x,0.4,-0.25],
                             [x,0.37,-0.48],[x,0.27,-0.64],[x,0.22,-0.44],
                             [x,-0.12,-0.1],[x,-0.16,0.3]], tr, true);
+                        // Beak and head profile
+                        contour([[0,0.26,-0.55],[0,0.22,-0.78],[0,0.18,-0.52]], tr);
                         // Shoulder -> elbow -> wrist -> feather tips -> shoulder.
-                        const wing = (u, z) => [side * (0.12 + u * (0.2 + opening * 0.8)),
-                            0.13 + u * flap * 0.65, z + (1 - opening) * u * 0.5];
+                        const wing = (u, z) => [side * (0.12 + u * (0.24 + opening * 0.88)),
+                            0.13 + u * flap * 0.72, z + (1 - opening) * u * 0.45];
                         contour([[x,0.13,-0.08],wing(0.45,-0.2),wing(0.9,-0.12),
-                            wing(1.25,0.08),wing(1.1,0.24),wing(0.8,0.36),
+                            wing(1.3,0.08),wing(1.15,0.24),wing(0.85,0.36),
                             wing(0.4,0.3),[x,0.08,0.18]], tr, true);
-                        for (let feather = 0; feather < 4; feather++)
-                            contour([wing(0.5,0.12),wing(0.8+feather*0.12,0.34-feather*0.06)], tr);
-                        contour([[x,-0.12,0.05],[x,-0.3+opening*0.2,0.14],
-                            [x,-0.32+opening*0.2,-0.03]], tr);
+                        for (let feather = 0; feather < 5; feather++)
+                            contour([wing(0.48,0.1),wing(0.82+feather*0.11,0.36-feather*0.06)], tr);
+                        contour([[x,-0.12,0.05],[x,-0.3+opening*0.22,0.15],
+                            [x,-0.32+opening*0.22,-0.03]], tr);
                     }
                     contour([[-0.1,0,0.27],[-0.28,-0.04,0.72],[0,0,0.64],
                         [0.28,-0.04,0.72],[0.1,0,0.27]], tr, true);
@@ -435,13 +457,16 @@
             }
             const tail = Math.sin(pose.leap * Math.PI * 3) * 0.4;
             return [
-                [0, 0, -0.8, 2.1, 2.3, 6.4, 0],
-                [0, 0.25, -5.2, 2, 1.85, 2.6, 0],
-                [0, -0.1, 5.3, 1.05, 1.05, 3.6, tail],
-                [-2.6, -1.3, -1.2, 2.8, 0.22, 1.05, -0.3],
-                [2.6, -1.3, -1.2, 2.8, 0.22, 1.05, 0.3],
-                [-1.65, 0, 8.1, 2.5, 0.28, 1.25, tail],
-                [1.65, 0, 8.1, 2.5, 0.28, 1.25, tail]
+                [0, 0, -0.6, 2.3, 2.4, 5.8, 0],
+                [0, 0.2, -4.9, 1.9, 1.7, 2.8, 0],
+                [0, -0.7, -3.2, 1.5, 1.1, 3.8, 0],
+                [0, 0.1, 3.4, 1.6, 1.7, 3.6, tail * 0.5],
+                [0, -0.05, 6.5, 1.0, 1.1, 3.2, tail],
+                [-2.9, -1.1, -1.0, 3.1, 0.22, 1.15, -0.32],
+                [2.9, -1.1, -1.0, 3.1, 0.22, 1.15, 0.32],
+                [0, 2.1, 3.6, 0.25, 0.85, 1.2, tail * 0.4],
+                [-1.8, 0, 8.6, 2.6, 0.26, 1.35, tail],
+                [1.8, 0, 8.6, 2.6, 0.26, 1.35, tail]
             ];
         };
         const setSeed = event => {
@@ -475,7 +500,9 @@
                 setSeed(active);
                 cold.set(palette.secondary || '#76bfae');
                 warm.set(palette.accent || '#f2a900');
-                material.opacity = state.fade * (palette.light ? 0.55 : 0.85) * (1 + clamp(audio.energy) * 0.08);
+                const impact = clamp(audio.impact || 0);
+                const energy = clamp(audio.energy || 0);
+                material.opacity = state.fade * (palette.light ? 0.6 : 0.88) * (1 + energy * 0.14 + impact * 0.1);
                 const count = quality === 'energy-saving' ? 320 : quality === 'ultimate' ? 1800 : 900;
                 geometry.setDrawRange(0, count);
                 volumes.count = 0;
@@ -503,7 +530,7 @@
                 };
                 if (bodyParts && !vectorAnimal && quality !== 'energy-saving') {
                     bodyMaterial.color.copy(cold);
-                    bodyMaterial.opacity = state.fade * (whale ? 0.07 : 0.12);
+                    bodyMaterial.opacity = state.fade * (whale ? 0.08 : 0.12);
                     bodyParts.forEach(part => {
                         const p = bodyPoint(part[0], part[1], part[2]);
                         dummy.position.set(p.x, p.y, p.z);
@@ -517,14 +544,45 @@
                 for (let i = 0; i < (vectorAnimal ? 0 : count); i++) {
                     const s = samples[i];
                     let p, brightness = 0.5 + s[3] * 0.5;
+                    let isSpout = false, isSplash = false, burst = 0, burstAge = 0;
                     if (bodyParts) {
-                        const part = bodyParts[i % bodyParts.length];
-                        const a = part[6], ca = Math.cos(a), sa = Math.sin(a);
-                        const y = s[1] * part[4], z = s[2] * part[5];
-                        p = bodyPoint(part[0] + s[0] * part[3],
-                            part[1] + y * ca - z * sa, part[2] + y * sa + z * ca);
-                        // Keep the real underwater position: the water depth
-                        // buffer and reflection clip plane hide submerged parts.
+                        const partRatio = i / count;
+                        if (whale && partRatio >= 0.65 && partRatio < 0.82 && state.age >= 2.0 && state.age <= 5.8) {
+                            // Blowhole spout mist rising toward night sky
+                            isSpout = true;
+                            const spoutCycle = ((state.age - 2.0) * 1.6 + s[3] * 0.4) % 1.25;
+                            const cone = 0.4 + spoutCycle * 1.6;
+                            const blowhole = bodyPoint(0, 1.8, -4.0);
+                            const sx = s[0] * cone, sz = s[2] * cone + spoutCycle * 2.8;
+                            const sy = spoutCycle * 11.5 - spoutCycle * spoutCycle * 8.2;
+                            p = { x: blowhole.x + sx * cy - sz * sy, y: Math.max(0.05, blowhole.y + sy),
+                                z: blowhole.z + sx * sy + sz * cy };
+                            brightness = (1 - spoutCycle / 1.25) * (1.1 + energy * 0.25);
+                        } else if (whale && partRatio >= 0.82 && (Math.abs(state.age - 2.2) < 1.6 || Math.abs(state.age - 7.1) < 1.8)) {
+                            // Parabolic water splash droplets on breaching and landing
+                            isSplash = true;
+                            const isEmerge = Math.abs(state.age - 2.2) < Math.abs(state.age - 7.1);
+                            const contactTime = isEmerge ? 2.2 : 7.1;
+                            const splashDelta = Math.max(0, state.age - contactTime);
+                            const splashSpan = isEmerge ? 1.6 : 1.8;
+                            const splashProgress = clamp(splashDelta / splashSpan);
+                            const splashR = splashProgress * (isEmerge ? 8.5 : 12.0);
+                            const splashY = Math.max(0.04, Math.sin(splashProgress * Math.PI) * (isEmerge ? 6.5 : 9.5)
+                                - splashProgress * splashProgress * 3.5);
+                            const center = worldPoint(active, active.side * (isEmerge ? 25 : -25), 0, 0);
+                            p = { x: center.x + s[0] * splashR, y: splashY, z: center.z + s[2] * splashR };
+                            brightness = (1 - splashProgress) * (1.2 + impact * 0.4);
+                        } else {
+                            // Body surface and lateral line constellation
+                            const part = bodyParts[i % bodyParts.length];
+                            const a = part[6], ca = Math.cos(a), sa = Math.sin(a);
+                            const y = s[1] * part[4], z = s[2] * part[5];
+                            p = bodyPoint(part[0] + s[0] * part[3],
+                                part[1] + y * ca - z * sa, part[2] + y * sa + z * ca);
+                            if (whale && i % 5 === 0) {
+                                brightness *= 0.75 + 0.45 * Math.sin(state.age * 5 + s[3] * 12);
+                            }
+                        }
                     } else if (active.kind === 'meteor') {
                         const tail = i / count;
                         const progress = state.progress - tail * 0.16;
@@ -532,20 +590,81 @@
                             0, active.viewPlaced ? 58 - progress * 18 : 95 - progress * 45);
                         brightness *= (1 - tail) ** 2;
                     } else {
-                        const burst = i % 2;
-                        const age = state.age - 0.7 - burst * 1.7;
-                        const expansion = Math.max(0, age);
-                        p = worldPoint(active, active.side * (active.viewPlaced ? 18 + burst * 12 : 65 + burst * 30) + s[0] * expansion * 12,
-                            s[2] * expansion * 8, 27 + burst * 9 + s[1] * expansion * 12 - expansion * expansion * 2.2);
-                        brightness *= age < 0 ? 0 : Math.exp(-expansion * 0.8);
+                        // Fireworks: 3 diverse artistic types (Peony, Willow, Ring) with ascent rocket trail
+                        burst = i % 3;
+                        const burstStart = 0.8 + burst * 1.25;
+                        burstAge = state.age - burstStart;
+                        const sideOffset = active.side * (active.viewPlaced ? 16 + burst * 13 : 58 + burst * 26);
+                        const aheadOffset = (burst - 1) * 14;
+                        const targetY = 27 + burst * 8;
+                        if (burstAge < 0) {
+                            // Rocket ascent trail with rising spark tail
+                            const ascentDuration = 0.75;
+                            const ascentProg = clamp((burstAge + ascentDuration) / ascentDuration);
+                            if (ascentProg > 0) {
+                                const trailLag = s[3] * 0.18;
+                                const rocketH = Math.max(0, ascentProg - trailLag);
+                                const spiral = Math.sin(ascentProg * 22 + s[3] * 6) * 0.32;
+                                p = worldPoint(active, sideOffset + spiral, aheadOffset,
+                                    Math.max(0.5, rocketH * targetY));
+                                brightness = (1 - trailLag / 0.22) * (1.25 + impact * 0.4);
+                            } else {
+                                p = worldPoint(active, sideOffset, aheadOffset, 0);
+                                brightness = 0;
+                            }
+                        } else if (burst === 0) {
+                            // Type 0: Peony / Twinkle Chrysanthemum with air drag deceleration & late glitter
+                            const expansion = (13.5 + impact * 3.2) * (1 - Math.exp(-burstAge * 1.6));
+                            const flicker = burstAge > 0.6 ? (0.65 + 0.35 * Math.sin(burstAge * 44 + s[3] * 28)) : 1.0;
+                            p = worldPoint(active, sideOffset + s[0] * expansion,
+                                aheadOffset + s[2] * expansion * 0.9,
+                                targetY + s[1] * expansion - burstAge * burstAge * 1.65);
+                            brightness = Math.exp(-burstAge * 0.78) * flicker * (1.2 + impact * 0.3);
+                        } else if (burst === 1) {
+                            // Type 1: Brocade Willow waterfall with heavy gravity cascades
+                            const expansion = (9.2 + impact * 2.2) * (1 - Math.exp(-burstAge * 1.25));
+                            p = worldPoint(active, sideOffset + s[0] * expansion * 1.15,
+                                aheadOffset + s[2] * expansion * 1.15,
+                                targetY + s[1] * expansion * 0.45 - burstAge * burstAge * 3.6);
+                            brightness = Math.exp(-burstAge * 0.46) * (1.1 + impact * 0.25);
+                        } else {
+                            // Type 2: Geometric Ring Shell with stardust halo
+                            const ringAngle = s[3] * Math.PI * 2;
+                            const ringR = (14.5 + impact * 3.0) * (1 - Math.exp(-burstAge * 1.75));
+                            const rx = Math.cos(ringAngle) * ringR;
+                            const rz = Math.sin(ringAngle) * ringR;
+                            const ry = (s[0] * 0.22) * ringR - burstAge * burstAge * 1.85;
+                            p = worldPoint(active, sideOffset + rx, aheadOffset + rz, targetY + ry);
+                            brightness = Math.exp(-burstAge * 0.82) * (1.3 + impact * 0.35);
+                        }
                     }
                     positions[i * 3] = p.x; positions[i * 3 + 1] = p.y; positions[i * 3 + 2] = p.z;
-                    color.copy(cold).lerp(warm, active.kind === 'fireworks' ? 0.7 : 0.15).multiplyScalar(brightness);
+                    if (active.kind === 'fireworks') {
+                        if (burstAge >= 0 && burstAge < 0.22) {
+                            color.set('#ffffff').lerp(warm, burstAge / 0.22).multiplyScalar(brightness);
+                        } else if (burst === 1) {
+                            color.copy(warm).lerp(new T.Color('#fff2b8'), 0.35).multiplyScalar(brightness);
+                        } else if (burst === 2) {
+                            color.copy(cold).lerp(new T.Color('#d4ffff'), 0.55).multiplyScalar(brightness);
+                        } else {
+                            color.copy(warm).lerp(cold, 0.4).multiplyScalar(brightness);
+                        }
+                    } else if (whale) {
+                        if (isSpout) {
+                            color.copy(cold).lerp(new T.Color('#ffffff'), 0.72).multiplyScalar(brightness);
+                        } else if (isSplash) {
+                            color.copy(cold).lerp(new T.Color('#e0f8ff'), 0.52).multiplyScalar(brightness);
+                        } else {
+                            color.copy(cold).lerp(warm, 0.15).multiplyScalar(brightness);
+                        }
+                    } else {
+                        color.copy(cold).lerp(warm, 0.15).multiplyScalar(brightness);
+                    }
                     color.toArray(colors, i * 3);
                 }
                 geometry.attributes.position.needsUpdate = true;
                 geometry.attributes.color.needsUpdate = true;
-                material.size = ['rabbit', 'pigeons'].includes(active.kind) ? 0.11 : whale ? 0.16 : 0.6;
+                material.size = ['rabbit', 'pigeons'].includes(active.kind) ? 0.11 : whale ? 0.18 : (0.55 + impact * 0.15);
                 rings.count = 0;
                 ringMaterial.color.copy(cold);
                 for (const ripple of state.ripples.slice(0, 12)) {
