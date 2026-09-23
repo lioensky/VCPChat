@@ -4,6 +4,15 @@
     const D = global.MusicStageDioramaDirector;
     const { clamp, seededRandom } = R;
     const smooth = D.smooth;
+    // Finite ember lifetime and bounded settling: fade in the sky, never rain to the ground.
+    const fireworkEnvelope = (age, type, variation) => {
+        const t = Math.max(0, age);
+        const life = (type === 1 ? 1.8 : 1.35) + clamp(variation) * 0.65;
+        const fade = age < 0 ? 0 : (1 - smooth(t / life)) ** 1.5;
+        const settle = 1 - Math.exp(-t * 0.85);
+        const drop = (type === 1 ? 2.2 : 0.65) * settle * settle;
+        return { fade, drop, life };
+    };
     // Conservative swept footprint: includes the rabbit's body/ears, not just feet.
     const rabbitPathClear = (event, track, options = {}) => {
         const boxes = [];
@@ -502,6 +511,7 @@
                 warm.set(palette.accent || '#f2a900');
                 const impact = clamp(audio.impact || 0);
                 const energy = clamp(audio.energy || 0);
+                material.blending = active.kind === 'fireworks' ? T.AdditiveBlending : T.NormalBlending;
                 material.opacity = state.fade * (palette.light ? 0.6 : 0.88) * (1 + energy * 0.14 + impact * 0.1);
                 const count = quality === 'energy-saving' ? 320 : quality === 'ultimate' ? 1800 : 900;
                 geometry.setDrawRange(0, count);
@@ -597,6 +607,7 @@
                         const sideOffset = active.side * (active.viewPlaced ? 16 + burst * 13 : 58 + burst * 26);
                         const aheadOffset = (burst - 1) * 14;
                         const targetY = 27 + burst * 8;
+                        const ember = fireworkEnvelope(burstAge, burst, s[3]);
                         if (burstAge < 0) {
                             // Rocket ascent trail with rising spark tail
                             const ascentDuration = 0.75;
@@ -614,28 +625,28 @@
                             }
                         } else if (burst === 0) {
                             // Type 0: Peony / Twinkle Chrysanthemum with air drag deceleration & late glitter
-                            const expansion = (13.5 + impact * 3.2) * (1 - Math.exp(-burstAge * 1.6));
+                            const expansion = 13.5 * (1 - Math.exp(-burstAge * 1.6));
                             const flicker = burstAge > 0.6 ? (0.65 + 0.35 * Math.sin(burstAge * 44 + s[3] * 28)) : 1.0;
                             p = worldPoint(active, sideOffset + s[0] * expansion,
                                 aheadOffset + s[2] * expansion * 0.9,
-                                targetY + s[1] * expansion - burstAge * burstAge * 1.65);
-                            brightness = Math.exp(-burstAge * 0.78) * flicker * (1.2 + impact * 0.3);
+                                targetY + s[1] * expansion - ember.drop);
+                            brightness = ember.fade * flicker * (1.2 + impact * 0.3);
                         } else if (burst === 1) {
-                            // Type 1: Brocade Willow waterfall with heavy gravity cascades
-                            const expansion = (9.2 + impact * 2.2) * (1 - Math.exp(-burstAge * 1.25));
+                            // Type 1: Brocade embers retain a slight droop, then burn out aloft.
+                            const expansion = 9.2 * (1 - Math.exp(-burstAge * 1.25));
                             p = worldPoint(active, sideOffset + s[0] * expansion * 1.15,
                                 aheadOffset + s[2] * expansion * 1.15,
-                                targetY + s[1] * expansion * 0.45 - burstAge * burstAge * 3.6);
-                            brightness = Math.exp(-burstAge * 0.46) * (1.1 + impact * 0.25);
+                                targetY + s[1] * expansion * 0.45 - ember.drop);
+                            brightness = ember.fade * (1.1 + impact * 0.25);
                         } else {
                             // Type 2: Geometric Ring Shell with stardust halo
                             const ringAngle = s[3] * Math.PI * 2;
-                            const ringR = (14.5 + impact * 3.0) * (1 - Math.exp(-burstAge * 1.75));
+                            const ringR = 14.5 * (1 - Math.exp(-burstAge * 1.75));
                             const rx = Math.cos(ringAngle) * ringR;
                             const rz = Math.sin(ringAngle) * ringR;
-                            const ry = (s[0] * 0.22) * ringR - burstAge * burstAge * 1.85;
+                            const ry = (s[0] * 0.22) * ringR - ember.drop;
                             p = worldPoint(active, sideOffset + rx, aheadOffset + rz, targetY + ry);
-                            brightness = Math.exp(-burstAge * 0.82) * (1.3 + impact * 0.35);
+                            brightness = ember.fade * (1.3 + impact * 0.35);
                         }
                     }
                     positions[i * 3] = p.x; positions[i * 3 + 1] = p.y; positions[i * 3 + 2] = p.z;
@@ -711,5 +722,5 @@
             }
         };
     };
-    global.MusicStageDioramaEvents = Object.freeze({ compile, sample, rabbitAt, rabbitPathClear, worldPoint, create });
+    global.MusicStageDioramaEvents = Object.freeze({ compile, sample, rabbitAt, rabbitPathClear, worldPoint, fireworkEnvelope, create });
 })(window);

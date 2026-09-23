@@ -184,3 +184,28 @@ test('enabled fireworks use chorus phrase endings without requiring a long silen
     for (let i = 1; i < enabled.length; i++) assert.ok(enabled[i].start - enabled[i - 1].start >= 32);
     assert.ok(!build(lines, 125, { fireworks: false }).events.some(e => e.kind === 'fireworks'));
 });
+
+test('firework embers fade out aloft with bounded settling and staggered lifetimes', () => {
+    for (const type of [0, 1, 2]) {
+        for (const variation of [0, 0.25, 0.5, 1]) {
+            const initial = E.fireworkEnvelope(0, type, variation);
+            assert.equal(initial.fade, 1);
+            assert.equal(initial.drop, 0);
+            assert.equal(E.fireworkEnvelope(-0.1, type, variation).fade, 0);
+            let previous = 1;
+            for (let age = 0; age <= 6; age += 0.025) {
+                const state = E.fireworkEnvelope(age, type, variation);
+                assert.ok(state.fade >= 0 && state.fade <= previous);
+                assert.ok(state.drop >= 0 && state.drop <= (type === 1 ? 2.2 : 0.65));
+                if (age >= state.life) assert.equal(state.fade, 0);
+                previous = state.fade;
+            }
+            assert.equal(E.fireworkEnvelope(initial.life, type, variation).fade, 0);
+            assert.ok(E.fireworkEnvelope(initial.life - 0.001, type, variation).fade < 0.00001);
+            const sought = plain(E.fireworkEnvelope(0.8, type, variation));
+            E.fireworkEnvelope(5, type, variation);
+            assert.deepEqual(plain(E.fireworkEnvelope(0.8, type, variation)), sought);
+        }
+        assert.ok(E.fireworkEnvelope(0, type, 1).life > E.fireworkEnvelope(0, type, 0).life);
+    }
+});
