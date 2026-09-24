@@ -72,6 +72,13 @@ const puppeteer = require('puppeteer');
             assert.ok(snapshot.lyricNodes <= 6);
             assert.ok(snapshot.architecturalInstances > 0, 'Station architecture must remain present');
             assert.ok(snapshot.stationTypes.length > 0);
+            assert.ok(Number.isFinite(snapshot.warmth) && snapshot.warmth >= 0 && snapshot.warmth <= 1.5);
+            assert.ok(Number.isFinite(snapshot.fogDensity) && snapshot.fogDensity > 0);
+            assert.ok(snapshot.lampHalos > 0, `${label}: lamps must carry glow halos`);
+            assert.ok(snapshot.accent >= 0 && snapshot.accent <= 1);
+            assert.ok(snapshot.cabinWeight >= 0 && snapshot.cabinWeight <= 1);
+            if (label === 'chorus') assert.ok(snapshot.accent > 0, 'Chorus entry must carry a chapter swell');
+            if (label === 'verse') assert.equal(snapshot.accent, 0);
             snapshots.push({ label, ...snapshot });
             await page.screenshot({ path: `artifacts/diorama/${label}.png` });
         }
@@ -225,6 +232,7 @@ const puppeteer = require('puppeteer');
             if (kind === 'whale') {
                 assert.equal(result.after.eventPoints, 0);
                 assert.ok(result.after.eventRipples > 0);
+                assert.ok(result.after.eventSplashes > 0, 'Whale re-entry must leave a splash halo');
             }
             eventShots.push(result);
             await page.screenshot({ path: `artifacts/diorama/event-${kind}.png` });
@@ -355,6 +363,11 @@ const puppeteer = require('puppeteer');
             const gapStart = manager.getDebugSnapshot().camera;
             for (let time = 3.02; time < 5.95; time += 0.02) manager.updateFrame(frameAt(time));
             const gapEnd = manager.getDebugSnapshot().camera;
+            manager.updateFrame(frameAt(75));
+            const accentA = manager.getDebugSnapshot().accent;
+            manager.updateFrame(frameAt(150));
+            manager.updateFrame(frameAt(75));
+            const accentSeek = [accentA, manager.getDebugSnapshot().accent];
             const off = structuredClone(config);
             off.modes.diorama.narrativeStations = false;
             manager.updateConfig(off);
@@ -366,9 +379,11 @@ const puppeteer = require('puppeteer');
             manager.updateFrame({ ...frameAt(0), lines: [], activeLine: null, currentLineIndex: -1 });
             const empty = manager.getDebugSnapshot();
             manager.destroy();
-            return { first, paused, sought, gapStart, gapEnd, disabled, empty,
+            return { first, paused, sought, gapStart, gapEnd, disabled, empty, accentSeek,
                 canvasCount: document.querySelectorAll('canvas').length, revision: THREE.REVISION };
         });
+        assert.ok(checks.accentSeek[0] > 0, 'Chorus entry at 75s must carry a swell');
+        assert.equal(checks.accentSeek[0], checks.accentSeek[1], 'Chapter swell must be seek-exact');
         assert.deepEqual(checks.first, checks.paused, 'Pause must freeze the camera');
         assert.deepEqual(checks.first, checks.sought, 'Backward seek must snap to the same target');
         assert.ok(Math.hypot(...checks.gapEnd.map((v, i) => v - checks.gapStart[i])) > 1, 'Gap must advance');

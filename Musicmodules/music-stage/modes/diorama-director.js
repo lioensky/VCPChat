@@ -222,6 +222,19 @@
             seed, seedHash: hashString(seed), lines, duration, acts, cuts,
             phrases: compilePhrases(lines), beats, rhythmSource, protectedIntervals,
             sample, distanceAt, isSinging,
+            // Chapter accent: a one-shot swell entering each chorus / open passage.
+            // Pure function of time, so seeking mid-swell reproduces the same frame.
+            accentAt(time) {
+                const index = Math.max(0, upperBound(acts, time, 'start') - 1);
+                const act = acts[index];
+                if (!index || !act || !['Chorus', 'Open'].includes(act.kind)) return 0;
+                const age = time - act.start;
+                if (age < 0) return 0;
+                const attack = smooth(age / 0.5);
+                const decay = Math.exp(-Math.max(0, age - 0.5) / 4);
+                const weight = act.kind === 'Open' ? 0.55 : act.visit > 1 ? 1 : 0.85;
+                return attack * decay * weight;
+            },
             rhythmAt(time) {
                 const index = upperBound(beats, time) - 1;
                 const age = index < 0 ? Infinity : time - beats[index];

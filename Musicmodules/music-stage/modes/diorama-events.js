@@ -304,8 +304,28 @@
         const geometry = new T.BufferGeometry();
         geometry.setAttribute('position', new T.BufferAttribute(positions, 3).setUsage(T.DynamicDrawUsage));
         geometry.setAttribute('color', new T.BufferAttribute(colors, 3).setUsage(T.DynamicDrawUsage));
-        const material = new T.PointsMaterial({ size: 0.12, transparent: true, opacity: 0.8,
-            vertexColors: true, depthWrite: false, fog: false });
+        geometry.setAttribute('pSize', new T.BufferAttribute(new Float32Array(capacity).fill(1), 1));
+        // Soft round sprites with perspective attenuation and a hot core,
+        // replacing square PointsMaterial pixels for meteors, whale and fireworks.
+        const pointShader = {
+            transparent: true, depthWrite: false, vertexColors: true,
+            uniforms: { size: { value: 0.12 }, opacity: { value: 0.8 },
+                scale: { value: 400 }, core: { value: 1 } },
+            vertexShader: `attribute float pSize;uniform float size,scale;varying vec3 vColor;
+                void main(){vColor=color;vec4 mv=modelViewMatrix*vec4(position,1.0);
+                    gl_Position=projectionMatrix*mv;
+                    gl_PointSize=clamp(size*pSize*scale/max(0.1,-mv.z),1.0,256.0);}`,
+            fragmentShader: `uniform float opacity,core;varying vec3 vColor;
+                void main(){vec2 p=gl_PointCoord*2.0-1.0;float r=dot(p,p);
+                    if(r>1.0)discard;
+                    float hot=exp(-r*9.0);float soft=exp(-r*3.0)*0.45;
+                    float a=(hot*core+soft)*opacity;
+                    gl_FragColor=vec4(vColor*(1.0+hot*core*0.6),a);
+                    #include <tonemapping_fragment>
+                    #include <colorspace_fragment>
+                }`
+        };
+        const material = new T.ShaderMaterial(pointShader);
         const points = new T.Points(geometry, material);
         points.frustumCulled = false;
         root.add(points);
@@ -425,13 +445,49 @@
         rings.instanceMatrix.setUsage(T.DynamicDrawUsage);
         rings.frustumCulled = false;
         root.add(rings);
-        const bodyGeometry = new T.SphereGeometry(1, 16, 10);
-        const bodyMaterial = new T.MeshBasicMaterial({ color: '#76bfae', transparent: true,
-            opacity: 0.085, depthWrite: false });
+        const bodyGeometry = new T.SphereGeometry(1, 20, 14);
+        // Fresnel rim light: bodies read as luminous silhouettes rather than
+        // stacked translucent balls; the centre stays nearly transparent.
+        const bodyMaterial = new T.ShaderMaterial({
+            transparent: true, depthWrite: false, blending: T.AdditiveBlending,
+            uniforms: { color: { value: new T.Color('#76bfae') }, opacity: { value: 0.085 } },
+            vertexShader: `varying vec3 vNormal;varying vec3 vWorld;
+                void main(){vec4 local=vec4(position,1.0);vec3 n=normal;
+                    #ifdef USE_INSTANCING
+                    local=instanceMatrix*local;n=mat3(instanceMatrix)*n;
+                    #endif
+                    vec4 world=modelMatrix*local;vWorld=world.xyz;
+                    vNormal=normalize(mat3(modelMatrix)*n);
+                    gl_Position=projectionMatrix*viewMatrix*world;}`,
+            fragmentShader: `uniform vec3 color;uniform float opacity;varying vec3 vNormal;varying vec3 vWorld;
+                void main(){vec3 v=normalize(cameraPosition-vWorld);
+                    float rim=pow(1.0-abs(dot(normalize(vNormal),v)),2.4);
+                    float a=opacity*(0.18+rim*2.6);
+                    gl_FragColor=vec4(color*a,a);
+                    #include <tonemapping_fragment>
+                    #include <colorspace_fragment>
+                }`
+        });
+        // Aliases keep the existing per-frame assignments readable.
+        Object.defineProperty(bodyMaterial, 'color', { get: () => bodyMaterial.uniforms.color.value });
         const volumes = new T.InstancedMesh(bodyGeometry, bodyMaterial, 12);
         volumes.instanceMatrix.setUsage(T.DynamicDrawUsage);
         volumes.frustumCulled = false;
         root.add(volumes);
+        // Splash halos at water contact: additive soft glows sized by ripple radius.
+        const splashPositions = new Float32Array(12 * 3), splashColors = new Float32Array(12 * 3);
+        const splashSizes = new Float32Array(12);
+        const splashGeometry = new T.BufferGeometry();
+        splashGeometry.setAttribute('position', new T.BufferAttribute(splashPositions, 3).setUsage(T.DynamicDrawUsage));
+        splashGeometry.setAttribute('color', new T.BufferAttribute(splashColors, 3).setUsage(T.DynamicDrawUsage));
+        splashGeometry.setAttribute('pSize', new T.BufferAttribute(splashSizes, 1).setUsage(T.DynamicDrawUsage));
+        const splashMaterial = new T.ShaderMaterial({ ...pointShader,
+            uniforms: T.UniformsUtils.clone(pointShader.uniforms), blending: T.AdditiveBlending });
+        splashMaterial.uniforms.core.value = 0.25;
+        const splashes = new T.Points(splashGeometry, splashMaterial);
+        splashes.frustumCulled = false;
+        root.add(splashes);
+        let splashCount = 0;
         const dummy = new T.Object3D(), cold = new T.Color(), warm = new T.Color(), color = new T.Color();
         let events = [], active = null, state = null, seedId = null, samples = [];
         let dead = false;
@@ -511,8 +567,10 @@
                 warm.set(palette.accent || '#f2a900');
                 const impact = clamp(audio.impact || 0);
                 const energy = clamp(audio.energy || 0);
-                material.blending = active.kind === 'fireworks' ? T.AdditiveBlending : T.NormalBlending;
-                material.opacity = state.fade * (palette.light ? 0.6 : 0.88) * (1 + energy * 0.14 + impact * 0.1);
+                material.blending = ['fireworks', 'meteor'].includes(active.kind) && !palette.light
+                    ? T.AdditiveBlending : T.NormalBlending;
+                material.uniforms.opacity.value = state.fade * (palette.light ? 0.6 : 0.88)
+                    * (1 + energy * 0.14 + impact * 0.1);
                 const count = quality === 'energy-saving' ? 320 : quality === 'ultimate' ? 1800 : 900;
                 geometry.setDrawRange(0, count);
                 volumes.count = 0;
@@ -539,8 +597,9 @@
                         z: state.body.z + x * sy + pz * cy };
                 };
                 if (bodyParts && !vectorAnimal && quality !== 'energy-saving') {
-                    bodyMaterial.color.copy(cold);
-                    bodyMaterial.opacity = state.fade * (whale ? 0.08 : 0.12);
+                    bodyMaterial.color.copy(cold).lerp(warm, 0.08);
+                    bodyMaterial.uniforms.opacity.value = state.fade * (whale ? 0.07 : 0.1)
+                        * (palette.light ? 0.6 : 1);
                     bodyParts.forEach(part => {
                         const p = bodyPoint(part[0], part[1], part[2]);
                         dummy.position.set(p.x, p.y, p.z);
@@ -598,7 +657,9 @@
                         const progress = state.progress - tail * 0.16;
                         p = worldPoint(active, active.side * (active.viewPlaced ? 24 - progress * 48 : 95 - progress * 110),
                             0, active.viewPlaced ? 58 - progress * 18 : 95 - progress * 45);
-                        brightness *= (1 - tail) ** 2;
+                        // Bright head, tapering ionised tail with a slight sparkle.
+                        brightness *= (1 - tail) ** 2.2 * (tail < 0.02 ? 2.2 : 1)
+                            * (0.8 + 0.2 * Math.sin(i * 12.9898 + state.age * 30));
                     } else {
                         // Fireworks: 3 diverse artistic types (Peony, Willow, Ring) with ascent rocket trail
                         burst = i % 3;
@@ -675,7 +736,28 @@
                 }
                 geometry.attributes.position.needsUpdate = true;
                 geometry.attributes.color.needsUpdate = true;
-                material.size = ['rabbit', 'pigeons'].includes(active.kind) ? 0.11 : whale ? 0.18 : (0.55 + impact * 0.15);
+                material.uniforms.size.value = ['rabbit', 'pigeons'].includes(active.kind) ? 0.11
+                    : whale ? 0.24 : active.kind === 'meteor' ? 0.7 : (0.6 + impact * 0.15);
+                material.uniforms.core.value = whale ? 0.6 : 1;
+                splashCount = 0;
+                if (whale && quality !== 'energy-saving') {
+                    for (const ripple of state.ripples.slice(0, 12)) {
+                        const glow = ripple.opacity * state.fade * (palette.light ? 0.5 : 1);
+                        if (glow <= 0.001) continue;
+                        splashPositions.set([ripple.x, 0.6, ripple.z], splashCount * 3);
+                        color.copy(cold).lerp(new T.Color('#e0f8ff'), 0.5).multiplyScalar(glow * 1.6);
+                        color.toArray(splashColors, splashCount * 3);
+                        splashSizes[splashCount] = ripple.radius * 0.9;
+                        splashCount++;
+                    }
+                }
+                splashGeometry.setDrawRange(0, splashCount);
+                splashGeometry.attributes.position.needsUpdate = true;
+                splashGeometry.attributes.color.needsUpdate = true;
+                splashGeometry.attributes.pSize.needsUpdate = true;
+                splashes.visible = splashCount > 0;
+                splashMaterial.uniforms.size.value = 1;
+                splashMaterial.uniforms.opacity.value = 0.55;
                 rings.count = 0;
                 ringMaterial.color.copy(cold);
                 for (const ripple of state.ripples.slice(0, 12)) {
@@ -706,13 +788,21 @@
                     }
                 }
                 return { eventPlan: events, activeEvent: state, eventPoints: count,
+                    eventSplashes: root.visible && splashes.visible ? splashCount : 0,
                     eventLineVertices: lineCount, eventVertices: diagnosticCount,
                     eventInView: inView, eventRipples: root.visible ? rings.count : 0 };
+            },
+            setViewport(pixelHeight) {
+                // Match three's attenuation convention: scale = drawing-buffer height / 2.
+                const scale = Math.max(1, pixelHeight || 800) * 0.5;
+                material.uniforms.scale.value = scale;
+                splashMaterial.uniforms.scale.value = scale;
             },
             destroy() {
                 if (dead) return;
                 dead = true;
                 scene.remove(root);
+                splashGeometry.dispose(); splashMaterial.dispose();
                 rings.dispose(); volumes.dispose();
                 geometry.dispose(); material.dispose();
                 lineGeometry.dispose(); lineMaterial.dispose();

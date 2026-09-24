@@ -44,6 +44,8 @@
             const cap = quality === 'energy-saving' ? 1 : quality === 'ultimate' ? 2 : 1.5;
             renderer.setPixelRatio(Math.min(cap, global.devicePixelRatio || 1));
             renderer.setSize(width, height, false);
+            world?.setPixelRatio?.(renderer.getPixelRatio());
+            events?.setViewport?.(height * renderer.getPixelRatio());
             camera.aspect = width / height;
             camera.updateProjectionMatrix();
         };
@@ -141,7 +143,15 @@
                 camera.fov = pose.fov;
                 camera.updateProjectionMatrix();
             }
+            // Cabin window foreground: derived from gaze vs. track heading, never from history.
+            world.updateCabin?.(camera, pose, track, width / height, mode.config);
             world.update(timeline, track, pose, settings.reducedMotion ? 0 : time, mode.config, audio);
+            // Exposure: analytic chapter swell + low-frequency breathing (frozen on pause).
+            const moving = !settings.reducedMotion && (settings.motionAmount ?? 1) > 0
+                && (settings.animationIntensity ?? 1) > 0;
+            const swell = moving ? (timeline.accentAt?.(time) ?? 0) : 0;
+            const breath = moving ? R.clamp(audio.energy) * 0.05 : 0;
+            renderer.toneMappingExposure = 1.15 * (1 + swell * 0.12 + breath);
             lyrics.update(time, settings, audio, camera);
             events.update(time, settings, mode.config.quality, palette(), audio);
             const bars = settings.letterbox !== false && settings.geometryMode !== 'corridor'
@@ -166,6 +176,8 @@
                 if (mode.destroyed) return;
                 scene = new T.Scene();
                 camera = new T.PerspectiveCamera(48, 1, 0.1, 1800);
+                // Layer 1 = cabin foreground: seen by the viewer, excluded from the mirror pass.
+                camera.layers.enable(1);
                 renderer = new T.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
                 renderer.outputColorSpace = T.SRGBColorSpace;
                 renderer.toneMapping = T.ACESFilmicToneMapping;

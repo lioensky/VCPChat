@@ -1,6 +1,7 @@
 (function (global) {
     'use strict';
     const { clamp, seededRandom } = global.MusicStageRuntime;
+    const smooth = value => { const p = clamp(value); return p * p * (3 - 2 * p); };
     const create = (T, scene) => {
         const root = new T.Group();
         scene.add(root);
@@ -57,6 +58,7 @@
         const ridge = new T.Mesh(ridgeGeometry, ridgeMaterial);
         root.add(ridge);
         const dummy = new T.Object3D();
+        const scratch = new T.Color(), white = new T.Color('#ffffff');
         const place = (mesh, index, track, s, lateral, y, sx, sy, sz) => {
             const f = track.at(s);
             dummy.position.set(f.position.x + f.right.x * lateral, y, f.position.z + f.right.z * lateral);
@@ -81,6 +83,13 @@
                 horizon: { value: new T.Color('#415266') },
                 cold: { value: new T.Color('#8bbfc8') },
                 open: { value: 0 },
+                // Fixed celestial moon direction, identical to the moon mesh offset.
+                moonDir: { value: new T.Vector3(-210, 300, -420).normalize() },
+                moonTint: { value: new T.Color('#cbdde8') },
+                glowTint: { value: new T.Color('#415266') },
+                moonGlow: { value: 1 },
+                horizonGlow: { value: 1 },
+                accent: { value: 0 },
                 auroraActive: { value: 1.0 },
                 auroraTime: { value: 0.0 },
                 auroraRhythm: { value: 0.0 },
@@ -91,6 +100,7 @@
             vertexShader: `varying vec3 ray;
                 void main(){ray=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
             fragmentShader: `varying vec3 ray;uniform vec3 night,horizon,cold;uniform float open;
+                uniform vec3 moonDir,moonTint,glowTint;uniform float moonGlow,horizonGlow,accent;
                 uniform float auroraActive, auroraTime, auroraRhythm, auroraHeading;
                 uniform vec3 auroraGreen, auroraViolet;
                 float hash(vec3 p){return fract(sin(dot(p,vec3(127.1,311.7,74.7)))*43758.5453);}
@@ -106,6 +116,13 @@
                     float band=exp(-pow(dot(d,normalize(vec3(0.35,0.8,0.48)))-0.18,2.0)*90.0);
                     float cloud=noise(d*12.0)*0.6+noise(d*33.0)*0.3+noise(d*91.0)*0.1;
                     c+=cold*band*pow(cloud,3.0)*(0.12+open*0.22);
+                    // Moonlight scattering: a tight corona plus a wide, faint veil.
+                    float md=max(dot(d,moonDir),0.0);
+                    float corona=pow(md,220.0)*0.55+pow(md,48.0)*0.16+pow(md,7.0)*0.05;
+                    c+=moonTint*corona*moonGlow*(0.85+cloud*0.3)*(1.0+accent*0.4);
+                    // Residual light pooled at the horizon (distant towns, last dusk).
+                    float rim=exp(-abs(d.y)*16.0)*(0.6+0.4*noise(vec3(d.xz*4.0,1.0)));
+                    c+=glowTint*rim*horizonGlow*(0.1+open*0.08);
                     // Angular curtains share the same coordinates as their visibility mask.
                     // Fixed celestial heading, calibrated once to the opening shot, not a HUD.
                     if (auroraActive > 0.001 && d.y > 0.02) {
@@ -135,7 +152,8 @@
                                 smoothstep(0.25, 1.1, v));
                             emission += spectral * (veil + hem) / (1.0 + k * 0.65);
                         }
-                        c += emission * sector * auroraActive * (0.75 + auroraRhythm * 0.2);
+                        c += emission * sector * auroraActive
+                            * (0.75 + auroraRhythm * 0.2 + accent * 0.55);
                     }
                     gl_FragColor=vec4(c,1.0);
                     #include <tonemapping_fragment>
@@ -146,19 +164,56 @@
         sky.renderOrder = -100;
         root.add(sky);
         const random = seededRandom('last-train-fixed-sky');
-        const positions = [], colors = [];
+        const positions = [], colors = [], sizes = [], phases = [];
         for (let i = 0; i < 8000; i++) {
             const y = random(), angle = random() * Math.PI * 2;
             const r = Math.sqrt(1 - y * y);
             positions.push(Math.cos(angle) * r * 780, y * 780, Math.sin(angle) * r * 780);
-            const brightness = 0.25 + Math.pow(random(), 5) * 0.75;
-            colors.push(brightness * 0.86, brightness * 0.93, brightness);
+            const magnitude = Math.pow(random(), 5);
+            const brightness = 0.25 + magnitude * 0.75;
+            // Stellar temperature: most white-blue, a few warm giants.
+            const warm = random() > 0.9 ? 1 : 0;
+            colors.push(brightness * (0.86 + warm * 0.14), brightness * (0.93 - warm * 0.05),
+                brightness * (1 - warm * 0.22));
+            sizes.push(1.1 + magnitude * 2.8);
+            phases.push(random());
         }
         const starGeo = geometry(new T.BufferGeometry());
         starGeo.setAttribute('position', new T.Float32BufferAttribute(positions, 3));
-        starGeo.setAttribute('color', new T.Float32BufferAttribute(colors, 3));
-        const starMat = material(new T.PointsMaterial({ size: 1.15, sizeAttenuation: false,
-            vertexColors: true, transparent: true, opacity: 0.8, depthWrite: false, fog: false }));
+        starGeo.setAttribute('starColor', new T.Float32BufferAttribute(colors, 3));
+        starGeo.setAttribute('starSize', new T.Float32BufferAttribute(sizes, 1));
+        starGeo.setAttribute('phase', new T.Float32BufferAttribute(phases, 1));
+        // Soft round stars; twinkle is a pure function of the playback clock.
+        const starMat = material(new T.ShaderMaterial({
+            transparent: true, depthWrite: false,
+            uniforms: {
+                time: { value: 0 }, opacity: { value: 0.8 }, twinkle: { value: 1 }, accent: { value: 0 },
+                pixelRatio: { value: 1 }, tint: { value: new T.Color('#ffffff') }
+            },
+            vertexShader: `attribute vec3 starColor;attribute float starSize,phase;
+                uniform float time,opacity,twinkle,pixelRatio,accent;
+                varying vec3 vColor;varying float vAlpha;
+                void main(){
+                    gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);
+                    float tw=0.5+0.5*sin(time*(0.6+phase*2.1)+phase*43.0);
+                    float slow=0.5+0.5*sin(time*0.23+phase*17.0);
+                    vColor=starColor*mix(1.0,0.5+0.5*tw*slow+0.25,twinkle);
+                    // Chapter accent: stars surge in as a chorus opens.
+                    vAlpha=opacity*(1.0+accent*0.45);
+                    gl_PointSize=starSize*pixelRatio*(0.9+0.25*tw*twinkle);
+                }`,
+            fragmentShader: `uniform vec3 tint;varying vec3 vColor;varying float vAlpha;
+                void main(){
+                    vec2 p=gl_PointCoord*2.0-1.0;float r=dot(p,p);
+                    if(r>1.0)discard;
+                    float core=exp(-r*7.0);float halo=exp(-r*2.4)*0.32;
+                    float a=(core+halo)*vAlpha;
+                    gl_FragColor=vec4(vColor*tint*(core*1.25+halo),a);
+                    #include <tonemapping_fragment>
+                    #include <colorspace_fragment>
+                }`
+        }));
+        starMat.opacity = 0.8;
         const stars = new T.Points(starGeo, starMat);
         root.add(stars);
         const moon = new T.Mesh(geometry(new T.SphereGeometry(20, 32, 24)),
@@ -171,18 +226,63 @@
             depthWrite: true, transparent: false,
             uniforms: { reflection: { value: target.texture }, textureMatrix: { value: textureMatrix },
                 time: { value: 0 }, strength: { value: 1 }, tint: { value: new T.Color('#10212d') },
-                energy: { value: 0 } },
+                energy: { value: 0 },
+                moonDir: { value: new T.Vector3(-210, 300, -420).normalize() },
+                moonTint: { value: new T.Color('#cbdde8') }, glitter: { value: 1 },
+                fogTint: { value: new T.Color('#415266') }, fogDensity: { value: 0.008 },
+                lampTint: { value: new T.Color('#ffd28c') },
+                lampPos: { value: Array.from({ length: 4 }, () => new T.Vector3()) },
+                lampPower: { value: new Float32Array(4) } },
             vertexShader: `uniform mat4 textureMatrix;varying vec4 reflected;varying vec3 world;
                 void main(){vec4 p=modelMatrix*vec4(position,1.0);world=p.xyz;reflected=textureMatrix*p;
                     gl_Position=projectionMatrix*viewMatrix*p;}`,
-            fragmentShader: `uniform sampler2D reflection;uniform float time,strength,energy;uniform vec3 tint;
+            fragmentShader: `uniform sampler2D reflection;uniform float time,strength,energy,glitter,fogDensity;
+                uniform vec3 tint,moonDir,moonTint,fogTint,lampTint;
+                uniform vec3 lampPos[4];uniform float lampPower[4];
                 varying vec4 reflected;varying vec3 world;
-                void main(){vec2 wave=vec2(sin(world.z*0.65+time*0.45),cos(world.x*0.48-time*0.32));
-                    vec2 uv=reflected.xy/max(reflected.w,0.001)+wave*(0.0007+energy*0.0004);
+                float h21(vec2 p){return fract(sin(dot(p,vec2(41.3,289.1)))*43758.5453);}
+                void main(){
+                    vec3 toCam=cameraPosition-world;float dist=length(toCam);vec3 v=toCam/max(dist,0.001);
+                    // Analytic ripple normal: two swells and fine chop, damped with distance.
+                    float damp=1.0/(1.0+dist*0.02);
+                    vec2 g=vec2(0.0);
+                    g+=vec2(0.65,0.0)*cos(world.z*0.65+world.x*0.12+time*0.45)*0.05;
+                    g+=vec2(0.0,0.48)*-sin(world.x*0.48-time*0.32)*0.05;
+                    g+=vec2(1.9,1.3)*cos(world.x*1.9+world.z*1.3+time*1.1)*0.018;
+                    g+=vec2(-1.4,2.3)*cos(-world.x*1.4+world.z*2.3-time*0.9)*0.014;
+                    g*=damp*(1.0+energy*0.6);
+                    vec3 n=normalize(vec3(-g.x,1.0,-g.y));
+                    vec2 uv=reflected.xy/max(reflected.w,0.001)+n.xz*(0.018+energy*0.008);
                     float valid=step(0.0,uv.x)*step(uv.x,1.0)*step(0.0,uv.y)*step(uv.y,1.0)*step(0.0,reflected.w);
                     vec3 r=texture2D(reflection,clamp(uv,0.001,0.999)).rgb;
-                    float f=0.12+0.75*pow(1.0-abs(normalize(cameraPosition-world).y),3.0);
-                    vec3 c=mix(tint,r,clamp(f*strength*valid,0.0,0.92));
+                    // Schlick Fresnel for water (F0 ~ 0.02), lifted so the mirror reads at night.
+                    float cosT=clamp(dot(n,v),0.0,1.0);
+                    float f=0.1+0.9*(0.02+0.98*pow(1.0-cosT,5.0));
+                    f=max(f,0.12+0.75*pow(1.0-abs(v.y),3.0));
+                    vec3 c=mix(tint,r,clamp(f*strength*valid,0.0,0.94));
+                    // Broken moon path: tight specular lobe sparked by a flickering facet grid.
+                    vec3 refl=reflect(-v,n);
+                    float lobe=pow(max(dot(refl,moonDir),0.0),260.0);
+                    float wide=pow(max(dot(refl,moonDir),0.0),28.0)*0.08;
+                    vec2 cell=floor(world.xz*vec2(2.2,1.1));
+                    float spark=step(0.72,h21(cell+floor(time*3.0+h21(cell)*7.0)));
+                    c+=moonTint*(lobe*(0.6+spark*2.4)+wide)*glitter*strength;
+                    // Vertical lamp streaks along the camera-lamp bearing.
+                    for(int i=0;i<4;i++){
+                        if(lampPower[i]<=0.0)continue;
+                        vec2 cam=cameraPosition.xz;vec2 L=lampPos[i].xz-cam;float ld=length(L);
+                        if(ld<0.5)continue;
+                        vec2 dir=L/ld;vec2 rel=world.xz-cam;
+                        float along=dot(rel,dir);float across=abs(rel.x*dir.y-rel.y*dir.x);
+                        float width=0.18+ld*0.012;
+                        float band=exp(-across*across/(width*width))
+                            *smoothstep(ld*0.35,ld*0.8,along)*(1.0-smoothstep(ld*0.98,ld*1.08,along));
+                        float shimmer=0.55+0.45*sin(along*5.0-time*2.2+n.x*20.0);
+                        c+=lampTint*band*shimmer*lampPower[i]*0.55*strength;
+                    }
+                    // Match scene FogExp2 so the far plane melts into the horizon.
+                    float fog=1.0-exp(-fogDensity*fogDensity*dist*dist);
+                    c=mix(c,fogTint,clamp(fog,0.0,1.0));
                     gl_FragColor=vec4(c,1.0);
                     #include <tonemapping_fragment>
                     #include <colorspace_fragment>
@@ -191,10 +291,107 @@
         const water = new T.Mesh(geometry(new T.PlaneGeometry(1800, 1800)), waterMat);
         water.rotation.x = -Math.PI / 2;
         root.add(water);
+        // Additive lamp halos: one soft point per lit lamp, reflected by the mirror pass too.
+        const haloPositions = new Float32Array(48 * 3);
+        const haloGeometry = geometry(new T.BufferGeometry());
+        haloGeometry.setAttribute('position', new T.BufferAttribute(haloPositions, 3).setUsage(T.DynamicDrawUsage));
+        haloGeometry.setDrawRange(0, 0);
+        const haloMat = material(new T.ShaderMaterial({
+            transparent: true, depthWrite: false, blending: T.AdditiveBlending,
+            uniforms: { color: { value: new T.Color('#ffd28c') }, intensity: { value: 1 },
+                size: { value: 1.6 }, pixelRatio: { value: 1 } },
+            vertexShader: `uniform float size,pixelRatio;varying float vFade;
+                void main(){vec4 mv=modelViewMatrix*vec4(position,1.0);gl_Position=projectionMatrix*mv;
+                    float d=max(1.0,-mv.z);
+                    gl_PointSize=clamp(size*pixelRatio*300.0/d,2.0,180.0);
+                    vFade=1.0-smoothstep(70.0,150.0,d);}`,
+            fragmentShader: `uniform vec3 color;uniform float intensity;varying float vFade;
+                void main(){vec2 p=gl_PointCoord*2.0-1.0;float r=dot(p,p);
+                    if(r>1.0)discard;
+                    float core=exp(-r*22.0);float glow=exp(-r*4.5)*0.32;
+                    float a=(core+glow)*intensity*vFade;
+                    gl_FragColor=vec4(color*a,a);
+                    #include <tonemapping_fragment>
+                    #include <colorspace_fragment>
+                }`
+        }));
+        const halos = new T.Points(haloGeometry, haloMat);
+        halos.frustumCulled = false;
+        root.add(halos);
+        // Cabin window foreground (layer 1: viewer only, never mirrored).
+        const cabin = new T.Group();
+        cabin.renderOrder = 1000;
+        const panel = geometry(new T.PlaneGeometry(1, 1));
+        const frameMat = material(new T.MeshBasicMaterial({ color: '#07090c', transparent: true,
+            depthTest: false, depthWrite: false, fog: false }));
+        const rimMat = material(new T.MeshBasicMaterial({ color: '#ffd28c', transparent: true,
+            depthTest: false, depthWrite: false, fog: false, blending: T.AdditiveBlending }));
+        const sheenMat = material(new T.ShaderMaterial({
+            transparent: true, depthTest: false, depthWrite: false, blending: T.AdditiveBlending,
+            uniforms: { color: { value: new T.Color('#ffd28c') }, opacity: { value: 0 } },
+            vertexShader: `varying vec2 vUv;void main(){vUv=uv;
+                gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+            // Faint reflection of the lit carriage in the glass, pooled at the sill.
+            fragmentShader: `uniform vec3 color;uniform float opacity;varying vec2 vUv;
+                void main(){float a=(pow(1.0-vUv.y,3.0)*0.8+pow(abs(vUv.x-0.5)*2.0,4.0)*0.3)*opacity;
+                    gl_FragColor=vec4(color*a,a);}`
+        }));
+        const cabinPart = mat => {
+            const mesh = new T.Mesh(panel, mat);
+            mesh.layers.set(1);
+            mesh.renderOrder = 1000 + (mat === frameMat ? 2 : mat === rimMat ? 3 : 1);
+            mesh.frustumCulled = false;
+            cabin.add(mesh);
+            return mesh;
+        };
+        const sheen = cabinPart(sheenMat);
+        const pillars = [cabinPart(frameMat), cabinPart(frameMat)];
+        const header = cabinPart(frameMat), sill = cabinPart(frameMat);
+        const rims = [cabinPart(rimMat), cabinPart(rimMat)];
+        root.add(cabin);
+        let cabinWeight = 0;
+        const updateCabin = (camera, pose, track, aspect, config) => {
+            const tuning = config.modes?.diorama || {};
+            const f = track.at(pose.distance);
+            const delta = Math.abs(Math.atan2(Math.sin(pose.yaw - f.yaw), Math.cos(pose.yaw - f.yaw)));
+            const gaze = smooth((delta - 0.22) / 0.4);
+            const inside = 1 - smooth((pose.state.openness - 0.45) / 0.3);
+            cabinWeight = tuning.cabinFrame === false ? 0
+                : gaze * inside * (1 - clamp(pose.finale ?? 0)) * (1 - clamp(pose.eventFocus?.weight ?? 0));
+            cabin.visible = cabinWeight > 0.002;
+            if (!cabin.visible) return;
+            cabin.position.copy(camera.position);
+            cabin.quaternion.copy(camera.quaternion);
+            const z = -0.5;
+            const h = Math.tan(camera.fov * Math.PI / 360) * -z, w = h * Math.max(0.35, aspect);
+            // Slide in from beyond the frame edges; the reading centre stays clear.
+            const pw = Math.min(w * 0.12, h * 0.16), bh = h * 0.1;
+            const e = smooth(cabinWeight);
+            pillars.forEach((mesh, i) => {
+                const s = i ? 1 : -1;
+                mesh.scale.set(pw, h * 2.4, 1);
+                mesh.position.set(s * (w + pw / 2 - pw * e), 0, z);
+                rims[i].scale.set(pw * 0.06, h * 2.2, 1);
+                rims[i].position.set(s * (w - pw * e + pw * 0.03), 0, z);
+            });
+            header.scale.set(w * 2.4, bh, 1);
+            header.position.set(0, h + bh / 2 - bh * e, z);
+            sill.scale.set(w * 2.4, bh * 1.3, 1);
+            sill.position.set(0, -h - bh * 0.65 + bh * 1.3 * e, z);
+            sheen.scale.set(w * 2, h * 2, 1);
+            sheen.position.set(0, 0, z);
+            frameMat.opacity = e;
+            rimMat.opacity = e * 0.35;
+            rimMat.color.copy(haloMat.uniforms.color.value);
+            sheenMat.uniforms.color.value.copy(haloMat.uniforms.color.value);
+            sheenMat.uniforms.opacity.value = e * (palBase?.light ? 0.03 : 0.07);
+        };
         let dead = false, reflectionEnabled = true, liveStations = 0, quality = 'standard';
         let instanceKey = '', instanceTrack = null, lightAnchors = [], instanceRebuilds = 0;
         let auroraTrack = null;
         let baseStarOpacity = 0.8;
+        // Palette-derived baselines; chapter warmth modulates around them each frame.
+        let palBase = null, liveWarmth = 0.5, liveAccent = 0, haloBase = 1;
         const updateLights = (track, s, saving, audio) => {
             lightAnchors.sort((a, b) => Math.abs(a.address - s) - Math.abs(b.address - s));
             for (let i = 0; i < lights.length; i++) {
@@ -202,6 +399,18 @@
                 const f = track.at(anchor?.address ?? s);
                 lights[i].position.set(f.position.x - f.right.x * 3.05, 5.6, f.position.z - f.right.z * 3.05);
                 lights[i].intensity = anchor && !saving ? 24 * (1 + clamp(audio.impact) * 0.12) : 0;
+            }
+            // Water streaks only for lamps still ahead of the camera.
+            const ahead = lightAnchors.filter(a => a.address > s + 2);
+            for (let i = 0; i < 4; i++) {
+                const anchor = ahead[i];
+                const power = anchor ? Math.exp(-(anchor.address - s) / 70) : 0;
+                if (anchor) {
+                    const f = track.at(anchor.address);
+                    waterMat.uniforms.lampPos.value[i].set(f.position.x - f.right.x * 3.05, 5.8,
+                        f.position.z - f.right.z * 3.05);
+                }
+                waterMat.uniforms.lampPower.value[i] = saving ? 0 : power;
             }
         };
         const setPalette = (palette = {}) => {
@@ -232,6 +441,10 @@
             waterMat.uniforms.tint.value.copy(deep).lerp(secondary, light ? 0.04 : 0.025)
                 .multiplyScalar(light ? 0.78 : 0.48);
             scene.fog = new T.FogExp2(skyMat.uniforms.horizon.value, 0.008);
+            waterMat.uniforms.fogTint.value.copy(skyMat.uniforms.horizon.value);
+            waterMat.uniforms.moonTint.value.copy(light ? surface : ink).lerp(emission, 0.08);
+            waterMat.uniforms.glitter.value = light ? 0.25 : 1;
+            waterMat.uniforms.lampTint.value.copy(emission);
             steel.color.copy(structure).lerp(muted, light ? 0.3 : 0.5);
             concrete.color.copy(surface).lerp(border, light ? 0.2 : 0.45);
             timber.color.copy(deep).lerp(structure, 0.55).lerp(emission, 0.025);
@@ -242,12 +455,56 @@
             moon.material.color.copy(light ? surface : ink).lerp(emission, 0.08);
             lampMaterial.color.copy(emission);
             lights.forEach(l => l.color.copy(emission));
-            starMat.color.copy(light ? surface : ink).lerp(tertiary, 0.08);
+            starMat.uniforms.tint.value.copy(light ? surface : ink).lerp(tertiary, 0.08);
             baseStarOpacity = light ? 0.15 : 0.8;
             starMat.opacity = baseStarOpacity;
+            starMat.uniforms.opacity.value = baseStarOpacity;
+            skyMat.uniforms.moonTint.value.copy(moon.material.color);
+            skyMat.uniforms.moonGlow.value = light ? 0.3 : 1;
+            skyMat.uniforms.glowTint.value.copy(emission).lerp(tertiary, 0.5);
+            skyMat.uniforms.horizonGlow.value = light ? 0.35 : 1;
             ridgeMaterial.color.copy(skyMat.uniforms.horizon.value).lerp(deep, 0.35)
                 .multiplyScalar(light ? 0.8 : 0.55);
             wireMaterial.color.copy(border).lerp(secondary, 0.25);
+            haloBase = light ? 0.35 : 1;
+            frameMat.color.copy(deep).lerp(structure, 0.35).multiplyScalar(light ? 0.55 : 0.4);
+            haloMat.uniforms.color.value.copy(emission);
+            palBase = {
+                light,
+                horizon: skyMat.uniforms.horizon.value.clone(),
+                night: skyMat.uniforms.night.value.clone(),
+                hemi: hemisphere.color.clone(), hemiIntensity: hemisphere.intensity,
+                lamp: emission.clone(), warm: emission.clone(), cold: tertiary.clone()
+            };
+        };
+        // Warmth 0..1 → bias -1 (cold, open chorus) .. +1 (warm, tightening pre-chorus).
+        // Everything is re-derived from the palette baseline, so no state accumulates.
+        const applyWarmth = (warmth, openness, energy) => {
+            if (!palBase) return;
+            liveWarmth = warmth;
+            const bias = (clamp(warmth) - 0.5) * 2;
+            const toward = bias > 0 ? palBase.warm : palBase.cold;
+            const amount = Math.abs(bias);
+            const k = palBase.light ? 0.5 : 1;
+            scratch.copy(palBase.horizon).lerp(toward, amount * 0.12 * k);
+            skyMat.uniforms.horizon.value.copy(scratch);
+            waterMat.uniforms.fogTint.value.copy(scratch);
+            if (scene.fog) {
+                scene.fog.color.copy(scratch);
+                // Warm passages close in; open chapters and loud passages thin the haze.
+                scene.fog.density = 0.008 * (1 + Math.max(0, bias) * 0.18)
+                    * (1 - clamp(openness) * 0.18) * (1 - clamp(energy) * 0.06);
+                waterMat.uniforms.fogDensity.value = scene.fog.density;
+            }
+            skyMat.uniforms.night.value.copy(palBase.night).lerp(palBase.cold, Math.max(0, -bias) * 0.05 * k);
+            hemisphere.color.copy(palBase.hemi).lerp(toward, amount * 0.16 * k);
+            hemisphere.intensity = palBase.hemiIntensity * (1 + Math.max(0, -bias) * 0.12);
+            // Warm chapters deepen lamps toward amber, cold ones bleach them slightly.
+            scratch.copy(palBase.lamp).lerp(white, Math.max(0, -bias) * 0.22);
+            lights.forEach(l => l.color.copy(scratch));
+            waterMat.uniforms.lampTint.value.copy(scratch);
+            haloMat.uniforms.color.value.copy(scratch);
+            lampMaterial.color.copy(scratch).multiplyScalar(1 + Math.max(0, bias) * 0.15);
         };
         const update = (timeline, track, pose, time, config, audio = {}) => {
             if (dead) return;
@@ -262,6 +519,8 @@
             water.position.set(pose.position.x, 0, pose.position.z);
             stars.visible = tuning.showParticles !== false;
             starMat.opacity = baseStarOpacity * (1 - clamp(pose.finale ?? 0));
+            starMat.uniforms.opacity.value = starMat.opacity;
+            starMat.uniforms.time.value = time;
             starGeo.setDrawRange(0, saving ? 1500 : quality === 'ultimate' ? 8000 : 4000);
             skyMat.uniforms.open.value = pose.state.openness;
             const auroraEnabled = tuning.aurora !== false;
@@ -273,6 +532,7 @@
             }
             const motion = clamp(tuning.motionAmount ?? 1, 0, 2) * clamp(config.animationIntensity ?? 1, 0, 2);
             skyMat.uniforms.auroraTime.value = time * motion;
+            starMat.uniforms.twinkle.value = clamp(motion);
             // A phrase-length beat envelope, not the fast onset impulse (which flickers).
             const beats = timeline.beats || [];
             const index = global.MusicStageDioramaDirector.upperBound(beats, time) - 1;
@@ -284,6 +544,13 @@
                 : (0.5 - 0.5 * Math.cos(phase * Math.PI / 8)) * gain;
             waterMat.uniforms.time.value = time;
             waterMat.uniforms.energy.value = clamp(audio.energy);
+            // Analytic chapter swell (seek-exact) plus frozen-on-pause audio response.
+            const accent = motion ? (timeline.accentAt?.(time) ?? 0) : 0;
+            liveAccent = accent;
+            skyMat.uniforms.accent.value = accent;
+            starMat.uniforms.accent.value = accent;
+            applyWarmth(pose.state.warmth ?? 0.5, pose.state.openness, audio.energy);
+            haloMat.uniforms.intensity.value = haloBase * (1 + clamp(audio.impact) * 0.35 + accent * 0.25);
             reflectionEnabled = tuning.waterReflection !== false && (tuning.waterStrength ?? 1) > 0;
             waterMat.uniforms.strength.value = reflectionEnabled ? clamp(tuning.waterStrength ?? 1, 0, 2) : 0;
             const spacing = 16 / clamp(tuning.stationIntensity ?? 1, 0.5, 2);
@@ -308,6 +575,7 @@
             for (let i = 0; i < sleepers.count; i++) place(sleepers, i, track, (tieStart + i) * 0.75, 0, 0.18, 2.35, 0.16, 0.24);
             const enabled = tuning.narrativeStations !== false && (tuning.stationIntensity ?? 1) > 0;
             poles.count = arms.count = lamps.count = 0;
+            let haloCount = 0;
             const poleStart = Math.floor(s / spacing) - 3;
             const speed = tuning.cameraSpeed ?? 1;
             const densityAt = address => {
@@ -331,6 +599,11 @@
                 place(arms, arms.count++, track, address, -1.8, 6.7, 3.4, 0.09, 0.1);
                 if (id % 7 !== 3) {
                     place(lamps, lamps.count++, track, address, -3.05, 5.8, 0.65, 0.08, 0.22);
+                    const hf = track.at(address);
+                    haloPositions[haloCount * 3] = hf.position.x - hf.right.x * 3.05;
+                    haloPositions[haloCount * 3 + 1] = 5.72;
+                    haloPositions[haloCount * 3 + 2] = hf.position.z - hf.right.z * 3.05;
+                    haloCount++;
                     lightAnchors.push({ address, distance: Math.abs(address - s) });
                 }
                 if (density >= 0.4) {
@@ -347,6 +620,9 @@
             wireGeometry.setDrawRange(0, wireVertex / 3);
             wireGeometry.attributes.position.needsUpdate = true;
             wires.visible = enabled;
+            haloGeometry.setDrawRange(0, haloCount);
+            haloGeometry.attributes.position.needsUpdate = true;
+            halos.visible = enabled && !saving;
             lightAnchors.sort((a, b) => a.distance - b.distance);
             platforms.count = benches.count = 0;
             architecture.count = masonry.count = furnishings.count = stationGlow.count = 0;
@@ -483,8 +759,15 @@
         };
         setPalette();
         return {
-            update, setPalette, renderReflection,
+            update, setPalette, renderReflection, updateCabin,
+            setPixelRatio(ratio) {
+                starMat.uniforms.pixelRatio.value = Math.max(0.5, ratio || 1);
+                haloMat.uniforms.pixelRatio.value = Math.max(0.5, ratio || 1);
+            },
             snapshot: () => ({ liveStations, stationTypes, waterVisible: water.visible, reflectionEnabled,
+                warmth: liveWarmth, accent: liveAccent, fogDensity: scene.fog?.density ?? 0,
+                lampHalos: halos.visible ? haloGeometry.drawRange.count : 0,
+                cabinWeight: cabin.visible ? cabinWeight : 0,
                 auroraVisible: Boolean(skyMat.uniforms.auroraActive.value > 0.5),
                 starOpacity: starMat.opacity, moonRadius: 20,
                 instanceRebuilds, reflectionSize: [target.width, target.height],

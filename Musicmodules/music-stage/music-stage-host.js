@@ -195,6 +195,7 @@
                 { key: 'audioReactivity', label: '空间音频响应', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
                 { key: 'showParticles', label: '天球星空', type: 'toggle' },
                 { key: 'geometryMode', label: '取景方式', type: 'select', options: [['clouds', '电影取景'], ['corridor', '全幅取景']] },
+                { key: 'cabinFrame', label: '车窗前景（侧望窗外时淡入）', type: 'toggle' },
                 { key: 'glow', label: '辉光强度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' }
             ],
             luminous: [

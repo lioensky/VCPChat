@@ -80,6 +80,7 @@
                 audioReactivity: 1,
                 showParticles: true,
                 geometryMode: 'clouds',
+                cabinFrame: true,
                 glow: 1
             },
             luminous: {
@@ -196,6 +197,7 @@
             audioReactivity: clamp(source.audioReactivity, 0, 2, fallback.audioReactivity),
             showParticles: bool(source.showParticles, fallback.showParticles),
             geometryMode: enumValue(source.geometryMode, ['clouds', 'corridor'], fallback.geometryMode),
+            cabinFrame: bool(source.cabinFrame, fallback.cabinFrame),
             wordRotation: bool(source.wordRotation, fallback.wordRotation),
             breathing: clamp(source.breathing, 0, 2, fallback.breathing),
             wordSpacing: clamp(source.wordSpacing, 0, 2, fallback.wordSpacing),
