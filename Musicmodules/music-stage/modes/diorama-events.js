@@ -258,6 +258,71 @@
         return { ...worldPoint(event, lateral, ahead, 0.55 + hop * 1.25 - crouch),
             hop, phase, flight, crouch, turn, lateral, ahead, travel: cycle / 7 };
     };
+    // Whale coordinates: head -Z, tail +Z, dorsal +Y. All effects share this rig.
+    const whaleAt = (event, age) => {
+        const leap = clamp((age - 1.3) / 6.8);
+        const travel = smooth(clamp(age / 9));
+        const rise = smooth((age - 1.3) / 3.2);
+        const fall = smooth((age - 4.5) / 4);
+        return { ...worldPoint(event, event.side * (29 - travel * 58), 0,
+            -12 + 25 * rise - 29 * fall), age, leap,
+            pitch: 0.62 * (1 - smooth((age - 3.1) / 2.3))
+                - 0.78 * smooth((age - 5.1) / 2.4),
+            roll: 0.18 * Math.sin(Math.PI * leap) ** 2 };
+    };
+    const whalePoint = (event, pose, x, y, z) => {
+        // A travelling dorsoventral wave grows toward the tail, not a rigid wag.
+        y += smooth((z + 1) / 10) * Math.sin(pose.age * 2.1 - z * 0.32) * 0.8;
+        const cr = Math.cos(pose.roll), sr = Math.sin(pose.roll);
+        const rx = x * cr - y * sr, ry = x * sr + y * cr;
+        const cp = Math.cos(pose.pitch), sp = Math.sin(pose.pitch);
+        const py = ry * cp - z * sp, pz = ry * sp + z * cp;
+        const yaw = event.yaw - event.side * Math.PI / 2;
+        const cy = Math.cos(yaw), sy = Math.sin(yaw);
+        return { x: pose.x + rx * cy - pz * sy, y: pose.y + py,
+            z: pose.z + rx * sy + pz * cy };
+    };
+    // Continuous tapered trunk, swept pectorals and two horizontal fluke lobes.
+    // u runs along each patch; v wraps its thin elliptical cross-section.
+    const whaleSurface = (patch, u, v, age) => {
+        const angle = v * Math.PI * 2, c = Math.cos(angle), s = Math.sin(angle);
+        if (patch === 0) {
+            const z = -8 + u * 17;
+            const radius = Math.sqrt(Math.max(0, 1 - (2 * u - 1) ** 2))
+                * (2.8 - 2.2 * smooth((u - 0.3) / 0.7));
+            return { x: radius * c, y: radius * s * 0.88 + 0.18 * Math.sin(u * Math.PI), z };
+        }
+        const side = patch === 1 || patch === 3 ? -1 : 1;
+        const width = Math.sin(Math.PI * u);
+        if (patch <= 2) return {
+            x: side * (0.15 + 4.8 * u),
+            y: 0.12 * width * s,
+            z: 8.3 + 1.5 * u - 0.65 * u * u + width * 1.15 * c
+        };
+        if (patch <= 4) return {
+            x: side * (1.7 + 4.8 * u),
+            y: -0.65 - u * (0.65 + Math.sin(age * 1.5 - 0.5) * 0.38) + width * 0.14 * s,
+            z: -2.5 + 3.3 * u + width * 0.65 * c
+        };
+        return { x: width * 0.16 * s, y: 1.25 + 1.45 * u,
+            z: 3.2 + 1.1 * u + width * 0.8 * c };
+    };
+    const whaleSpout = (event, age, seed) => {
+        const birth = 2.55 + seed[3] * 0.48;
+        const elapsed = age - birth, life = 1.45;
+        // Emitted from the head at birth; released mist no longer rides the whale.
+        const origin = whalePoint(event, whaleAt(event, birth), 0, 1.65, -5.1);
+        const t = clamp(elapsed, 0, life);
+        return { x: origin.x + seed[0] * t * 1.8 + t * 0.6,
+            y: origin.y + 8 * t - 3.5 * t * t,
+            z: origin.z + seed[2] * t * 1.8,
+            brightness: elapsed >= 0 && elapsed < life && origin.y > 0
+                ? (1 - smooth(t / life)) * smooth(t / 0.08) : 0 };
+    };
+    const whaleContact = (event, age) => {
+        const p = whalePoint(event, whaleAt(event, age), 0, 0, -6);
+        return { x: p.x, y: 0.05, z: p.z };
+    };
     const sample = (event, time) => {
         const age = time - event.start;
         if (time < event.start || time >= event.end) return null;
@@ -283,13 +348,11 @@
         } else if (event.kind === 'whale') {
             stage = age < 2 ? 'omen' : age < 3 ? 'emerge' : age < 5 ? 'rise'
                 : age < 6 ? 'cross' : age < 7.5 ? 'land' : 'afterglow';
-            const leap = clamp((age - 2) / 5.5);
-            body = { ...worldPoint(event, event.side * (26 - leap * 52), 0,
-                -3 + Math.sin(leap * Math.PI) * 16 - 10 * smooth((age - 6.5) / 2)), leap };
-            for (const contact of [0, 2.2, 7.1]) {
+            body = whaleAt(event, age);
+            for (const contact of [0, 2.55, 6.85]) {
                 const elapsed = age - contact;
                 if (elapsed < 0 || elapsed > 4) continue;
-                ripples.push({ ...worldPoint(event, event.side * (contact < 3 ? 25 : -25), 0, 0.05),
+                ripples.push({ ...whaleContact(event, contact),
                     radius: 2 + elapsed * 5, opacity: smooth(elapsed / 0.3) * (1 - elapsed / 4) * 0.5 });
             }
         }
@@ -474,6 +537,26 @@
         volumes.instanceMatrix.setUsage(T.DynamicDrawUsage);
         volumes.frustumCulled = false;
         root.add(volumes);
+        // One connected trunk and shaped fin patches replace overlapping ellipsoids.
+        const whaleGeometry = new T.BufferGeometry();
+        const whaleRest = [], whaleIndices = [];
+        const rows = 24, columns = 12;
+        for (let patch = 0; patch < 6; patch++) {
+            const base = whaleRest.length;
+            for (let u = 0; u <= rows; u++) for (let v = 0; v <= columns; v++)
+                whaleRest.push([patch, u / rows, v / columns]);
+            for (let u = 0; u < rows; u++) for (let v = 0; v < columns; v++) {
+                const a = base + u * (columns + 1) + v, b = a + columns + 1;
+                whaleIndices.push(a, b, a + 1, b, b + 1, a + 1);
+            }
+        }
+        const whaleVertices = new Float32Array(whaleRest.length * 3);
+        whaleGeometry.setAttribute('position', new T.BufferAttribute(whaleVertices, 3).setUsage(T.DynamicDrawUsage));
+        whaleGeometry.setIndex(whaleIndices);
+        const whaleMesh = new T.Mesh(whaleGeometry, bodyMaterial);
+        whaleMesh.frustumCulled = false;
+        whaleMesh.visible = false;
+        root.add(whaleMesh);
         // Splash halos at water contact: additive soft glows sized by ripple radius.
         const splashPositions = new Float32Array(12 * 3), splashColors = new Float32Array(12 * 3);
         const splashSizes = new Float32Array(12);
@@ -520,19 +603,7 @@
                     [0, 0.12, 0.88, 0.23, 0.23, 0.23, 0]
                 ];
             }
-            const tail = Math.sin(pose.leap * Math.PI * 3) * 0.4;
-            return [
-                [0, 0, -0.6, 2.3, 2.4, 5.8, 0],
-                [0, 0.2, -4.9, 1.9, 1.7, 2.8, 0],
-                [0, -0.7, -3.2, 1.5, 1.1, 3.8, 0],
-                [0, 0.1, 3.4, 1.6, 1.7, 3.6, tail * 0.5],
-                [0, -0.05, 6.5, 1.0, 1.1, 3.2, tail],
-                [-2.9, -1.1, -1.0, 3.1, 0.22, 1.15, -0.32],
-                [2.9, -1.1, -1.0, 3.1, 0.22, 1.15, 0.32],
-                [0, 2.1, 3.6, 0.25, 0.85, 1.2, tail * 0.4],
-                [-1.8, 0, 8.6, 2.6, 0.26, 1.35, tail],
-                [1.8, 0, 8.6, 2.6, 0.26, 1.35, tail]
-            ];
+            return null;
         };
         const setSeed = event => {
             if (seedId === event.seed) return;
@@ -587,15 +658,28 @@
                 }
                 const bodyParts = state.body ? parts(active.kind, state.body) : null;
                 const whale = active.kind === 'whale';
-                const yaw = active.yaw + (whale ? active.side * Math.PI / 2 : 0);
+                const yaw = active.yaw;
                 const cy = Math.cos(yaw), sy = Math.sin(yaw);
-                const pitch = whale ? Math.cos(state.body.leap * Math.PI) * -0.55 : 0;
+                const pitch = whale ? state.body.pitch : 0;
                 const cp = Math.cos(pitch), sp = Math.sin(pitch);
                 const bodyPoint = (x, y, z) => {
+                    if (whale) return whalePoint(active, state.body, x, y, z);
                     const py = y * cp - z * sp, pz = y * sp + z * cp;
                     return { x: state.body.x + x * cy - pz * sy, y: state.body.y + py,
                         z: state.body.z + x * sy + pz * cy };
                 };
+                whaleMesh.visible = whale && bodyVisible && quality !== 'energy-saving';
+                if (whaleMesh.visible) {
+                    bodyMaterial.color.copy(cold).lerp(warm, 0.08);
+                    bodyMaterial.uniforms.opacity.value = state.fade * (palette.light ? 0.07 : 0.13);
+                    whaleRest.forEach(([patch, u, v], i) => {
+                        const local = whaleSurface(patch, u, v, state.age);
+                        const p = bodyPoint(local.x, local.y, local.z);
+                        whaleVertices.set([p.x, p.y, p.z], i * 3);
+                    });
+                    whaleGeometry.attributes.position.needsUpdate = true;
+                    whaleGeometry.computeVertexNormals();
+                }
                 if (bodyParts && !vectorAnimal && quality !== 'energy-saving') {
                     bodyMaterial.color.copy(cold).lerp(warm, 0.08);
                     bodyMaterial.uniforms.opacity.value = state.fade * (whale ? 0.07 : 0.1)
@@ -614,44 +698,38 @@
                     const s = samples[i];
                     let p, brightness = 0.5 + s[3] * 0.5;
                     let isSpout = false, isSplash = false, burst = 0, burstAge = 0;
-                    if (bodyParts) {
-                        const partRatio = i / count;
-                        if (whale && partRatio >= 0.65 && partRatio < 0.82 && state.age >= 2.0 && state.age <= 5.8) {
-                            // Blowhole spout mist rising toward night sky
+                    if (whale) {
+                        const ratio = i / count;
+                        if (ratio >= 0.78 && ratio < 0.88) {
                             isSpout = true;
-                            const spoutCycle = ((state.age - 2.0) * 1.6 + s[3] * 0.4) % 1.25;
-                            const cone = 0.4 + spoutCycle * 1.6;
-                            const blowhole = bodyPoint(0, 1.8, -4.0);
-                            const sx = s[0] * cone, sz = s[2] * cone + spoutCycle * 2.8;
-                            const sy = spoutCycle * 11.5 - spoutCycle * spoutCycle * 8.2;
-                            p = { x: blowhole.x + sx * cy - sz * sy, y: Math.max(0.05, blowhole.y + sy),
-                                z: blowhole.z + sx * sy + sz * cy };
-                            brightness = (1 - spoutCycle / 1.25) * (1.1 + energy * 0.25);
-                        } else if (whale && partRatio >= 0.82 && (Math.abs(state.age - 2.2) < 1.6 || Math.abs(state.age - 7.1) < 1.8)) {
-                            // Parabolic water splash droplets on breaching and landing
+                            p = whaleSpout(active, state.age, s);
+                            brightness = p.brightness;
+                        } else if (ratio >= 0.88) {
                             isSplash = true;
-                            const isEmerge = Math.abs(state.age - 2.2) < Math.abs(state.age - 7.1);
-                            const contactTime = isEmerge ? 2.2 : 7.1;
-                            const splashDelta = Math.max(0, state.age - contactTime);
-                            const splashSpan = isEmerge ? 1.6 : 1.8;
-                            const splashProgress = clamp(splashDelta / splashSpan);
-                            const splashR = splashProgress * (isEmerge ? 8.5 : 12.0);
-                            const splashY = Math.max(0.04, Math.sin(splashProgress * Math.PI) * (isEmerge ? 6.5 : 9.5)
-                                - splashProgress * splashProgress * 3.5);
-                            const center = worldPoint(active, active.side * (isEmerge ? 25 : -25), 0, 0);
-                            p = { x: center.x + s[0] * splashR, y: splashY, z: center.z + s[2] * splashR };
-                            brightness = (1 - splashProgress) * (1.2 + impact * 0.4);
+                            const contact = state.age < 5 ? 2.55 : 6.85;
+                            const elapsed = state.age - contact;
+                            const life = 1.1 + s[3] * 0.8;
+                            const t = clamp(elapsed, 0, life);
+                            const center = whaleContact(active, contact);
+                            p = { x: center.x + s[0] * t * 7,
+                                y: 0.05 + Math.max(0, (5 + s[3] * 3) * t - 5 * t * t),
+                                z: center.z + s[2] * t * 7 };
+                            brightness = elapsed >= 0 && elapsed < life
+                                ? (1 - smooth(t / life)) : 0;
                         } else {
-                            // Body surface and lateral line constellation
-                            const part = bodyParts[i % bodyParts.length];
-                            const a = part[6], ca = Math.cos(a), sa = Math.sin(a);
-                            const y = s[1] * part[4], z = s[2] * part[5];
-                            p = bodyPoint(part[0] + s[0] * part[3],
-                                part[1] + y * ca - z * sa, part[2] + y * sa + z * ca);
-                            if (whale && i % 5 === 0) {
-                                brightness *= 0.75 + 0.45 * Math.sin(state.age * 5 + s[3] * 12);
-                            }
+                            const patch = ratio < 0.51 ? 0 : ratio < 0.59 ? 1
+                                : ratio < 0.67 ? 2 : ratio < 0.72 ? 3 : ratio < 0.77 ? 4 : 5;
+                            const local = whaleSurface(patch, s[3],
+                                Math.atan2(s[1], s[0]) / (Math.PI * 2), state.age);
+                            p = bodyPoint(local.x, local.y, local.z);
+                            brightness *= 0.85;
                         }
+                    } else if (bodyParts) {
+                        const part = bodyParts[i % bodyParts.length];
+                        const a = part[6], ca = Math.cos(a), sa = Math.sin(a);
+                        const y = s[1] * part[4], z = s[2] * part[5];
+                        p = bodyPoint(part[0] + s[0] * part[3],
+                            part[1] + y * ca - z * sa, part[2] + y * sa + z * ca);
                     } else if (active.kind === 'meteor') {
                         const tail = i / count;
                         const progress = state.progress - tail * 0.16;
@@ -806,11 +884,12 @@
                 rings.dispose(); volumes.dispose();
                 geometry.dispose(); material.dispose();
                 lineGeometry.dispose(); lineMaterial.dispose();
-                ringGeometry.dispose(); ringMaterial.dispose();
+                ringGeometry.dispose(); ringMaterial.dispose(); whaleGeometry.dispose();
                 bodyGeometry.dispose(); bodyMaterial.dispose();
                 events = []; samples = [];
             }
         };
     };
-    global.MusicStageDioramaEvents = Object.freeze({ compile, sample, rabbitAt, rabbitPathClear, worldPoint, fireworkEnvelope, create });
+    global.MusicStageDioramaEvents = Object.freeze({ compile, sample, rabbitAt, rabbitPathClear,
+        worldPoint, fireworkEnvelope, whaleAt, whalePoint, whaleSurface, whaleSpout, create });
 })(window);

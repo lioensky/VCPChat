@@ -209,3 +209,60 @@ test('firework embers fade out aloft with bounded settling and staggered lifetim
         assert.ok(E.fireworkEnvelope(0, type, 1).life > E.fireworkEnvelope(0, type, 0).life);
     }
 });
+
+test('whale stays submerged during omen and after landing, and swims head first on both sides', () => {
+    const original = build().events.find(e => e.kind === 'whale');
+    for (const side of [-1, 1]) {
+        const event = { ...original, side };
+        for (const age of [0, 0.5, 1, 1.5, 8.5, 9]) {
+            const pose = E.whaleAt(event, age);
+            for (let patch = 0; patch < 6; patch++) {
+                for (let u = 0; u <= 20; u++) for (let v = 0; v < 12; v++) {
+                    const p = E.whaleSurface(patch, u / 20, v / 12, age);
+                    assert.ok(E.whalePoint(event, pose, p.x, p.y, p.z).y < 0,
+                        `Surface exposed at age ${age}, patch ${patch}`);
+                }
+            }
+        }
+        for (const age of [2.5, 4, 5.5, 7]) {
+            const a = E.whaleAt(event, age), b = E.whaleAt(event, age + 0.001);
+            const head = E.whalePoint(event, a, 0, 0, -7);
+            const tail = E.whalePoint(event, a, 0, 0, 8);
+            assert.ok((head.x - tail.x) * (b.x - a.x) + (head.z - tail.z) * (b.z - a.z) > 0);
+            assert.ok(age < 3 ? head.y > tail.y : age > 6 ? head.y < tail.y : true);
+        }
+        for (const age of [1.3, 3.1, 4.5, 5.1, 5.4, 7.5, 8.5]) {
+            const a = E.whaleAt(event, age - 0.00001), b = E.whaleAt(event, age + 0.00001);
+            assert.ok(Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) < 0.001);
+            assert.ok(Math.abs(a.pitch - b.pitch) < 0.001);
+        }
+    }
+});
+test('whale has a tapered trunk, paired horizontal flukes and swept long pectorals', () => {
+    const trunk = u => E.whaleSurface(0, u, 0, 4);
+    assert.ok(trunk(0.35).x > trunk(0.85).x * 2);
+    const left = E.whaleSurface(1, 1, 0, 4), right = E.whaleSurface(2, 1, 0, 4);
+    assert.ok(left.x < -4 && right.x > 4);
+    assert.ok(Math.abs(left.y) < 0.01 && Math.abs(right.y) < 0.01);
+    assert.ok(left.z > E.whaleSurface(1, 0, 0, 4).z);
+    assert.ok(E.whaleSurface(3, 1, 0, 4).x < -6);
+    assert.ok(E.whaleSurface(4, 1, 0, 4).x > 6);
+});
+test('whale mist is born at the head, drifts independently and never loops or appears underwater', () => {
+    const event = build().events.find(e => e.kind === 'whale');
+    for (const seed of [[0.4, 0.3, -0.5, 0], [-0.4, 0.2, 0.5, 0.5], [0, 1, 0, 1]]) {
+        const birth = 2.55 + seed[3] * 0.48;
+        const origin = E.whalePoint(event, E.whaleAt(event, birth), 0, 1.65, -5.1);
+        const initial = E.whaleSpout(event, birth, seed);
+        assert.ok(origin.y > 0);
+        assert.ok(Math.hypot(initial.x - origin.x, initial.y - origin.y, initial.z - origin.z) < 1e-9);
+        assert.equal(E.whaleSpout(event, birth - 0.01, seed).brightness, 0);
+        const mid = E.whaleSpout(event, birth + 0.5, seed);
+        assert.ok(mid.brightness > 0 && mid.y > origin.y);
+        assert.ok(Math.hypot(mid.x - origin.x, mid.z - origin.z) < 2);
+        assert.equal(E.whaleSpout(event, birth + 1.5, seed).brightness, 0);
+        assert.equal(E.whaleSpout(event, 7, seed).brightness, 0);
+        E.whaleSpout(event, 10, seed);
+        assert.deepEqual(plain(E.whaleSpout(event, birth + 0.5, seed)), plain(mid));
+    }
+});
