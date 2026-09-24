@@ -1173,9 +1173,9 @@ ${canvasData.errors || 'No errors'}
 
             // === 分阶段弹性超时设计 (Phased Timeout Architecture) ===
             // 阶段 1: TTFT 首包/思考宽容窗口 (120秒/2分钟)，容纳深度思考与排队，不提早误杀
-            // 阶段 2: 块间流式看门狗 (30秒)，开始吐字后若连续 30秒无新数据则熔断僵死
+            // 阶段 2: 块间流式看门狗 (62秒)，开始收到流数据后若连续 62秒无新数据则熔断僵死
             const GROUP_TTFT_TIMEOUT_MS = 120000;
-            const GROUP_CHUNK_IDLE_TIMEOUT_MS = 30000;
+            const GROUP_CHUNK_IDLE_TIMEOUT_MS = 62000;
 
             const controller = new AbortController();
             let activeTimer = setTimeout(() => {
@@ -1762,9 +1762,9 @@ ${canvasData.errors || 'No errors'}
 
         // === 分阶段弹性超时设计 (Phased Timeout Architecture) - Jev / 点名邀请 ===
         // 阶段 1: TTFT 首包/思考宽容窗口 (120秒/2分钟)，容纳深度思考与排队，不提早误杀
-        // 阶段 2: 块间流式看门狗 (30秒)，开始吐字后若连续 30秒无新数据则熔断僵死
+        // 阶段 2: 块间流式看门狗 (62秒)，开始收到流数据后若连续 62秒无新数据则熔断僵死
         const GROUP_TTFT_TIMEOUT_MS = 120000;
-        const GROUP_CHUNK_IDLE_TIMEOUT_MS = 30000;
+        const GROUP_CHUNK_IDLE_TIMEOUT_MS = 62000;
 
         const controller = new AbortController();
         const abortFromSession = () => controller.abort();
