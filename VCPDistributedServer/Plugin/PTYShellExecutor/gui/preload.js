@@ -80,10 +80,10 @@ contextBridge.exposeInMainWorld('shellAPI', {
     onClear: (callback) => ipcRenderer.on('shell-clear', () => callback()),
     
     /**
-     * 监听主题初始化/变化
+     * 监听主进程发布的权威主题状态。
      * @param {Function} callback - 回调函数
      */
-    onThemeInit: (callback) => ipcRenderer.on('theme-init', (event, data) => callback(data)),
+    onThemeState: (callback) => ipcRenderer.on('theme-state-updated', (event, data) => callback(data)),
     
     /**
      * 监听 PTY 状态变化

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>VCP PTY Shell</title>
     <!-- 引入 VCP 核心主题变量 -->
-    <link rel="stylesheet" href="../../../../styles/themes.css">
+    <link id="app-theme-stylesheet" rel="stylesheet" href="../../../../styles/themes.css">
     <!-- 引入自定义样式 -->
     <link rel="stylesheet" href="ShellViewer.css" />
 </head>
@@ -78,6 +78,7 @@
     </div>
 
     <!-- 引入终端逻辑脚本 -->
+    <script src="ShellThemeRuntime.js"></script>
     <script src="ShellViewer.js"></script>
 </body>
 </html>

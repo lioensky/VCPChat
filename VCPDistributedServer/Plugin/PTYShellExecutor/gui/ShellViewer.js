@@ -4,6 +4,9 @@
 let terminal = null;
 let fitAddon = null;
 let isConnected = false;
+let activeOutputGeneration = null;
+let lastOutputSequence = 0;
+let themeController = null;
 
 // --- DOM 元素引用 ---
 const terminalContainer = document.getElementById('terminal-container');
@@ -14,23 +17,9 @@ const statusText = document.querySelector('.status-text');
 
 // --- 工具函数 ---
 
-/**
- * 添加调试日志
- * @param {string} message - 日志消息
- * @param {string} type - 日志类型 (info, error, warn)
- */
 function addDebugLog(message, type = 'info') {
     // 调试面板已移除，仅保留控制台输出
     console.log(`[DEBUG] ${type.toUpperCase()}: ${message}`);
-}
-
-/**
- * 获取 CSS 变量值
- * @param {string} variable - CSS 变量名
- * @returns {string} - 变量值
- */
-function getCssVariable(variable) {
-    return getComputedStyle(document.body).getPropertyValue(variable).trim();
 }
 
 /**
@@ -90,67 +79,12 @@ function sendCommand() {
     }
 }
 
-/**
- * 自动调整输入框高度
- */
 function autoResizeInput() {
     if (!commandInput) return;
     
     commandInput.style.height = 'auto';
     const newHeight = Math.min(commandInput.scrollHeight, 120);
     commandInput.style.height = newHeight + 'px';
-}
-
-/**
- * 应用主题到终端
- * @param {string} themeName - 主题名称 ('dark' 或 'light')
- */
-function applyTheme(themeName) {
-    if (!terminal) return;
-    
-    const isLight = themeName === 'light';
-    
-    // 切换 body 的主题类
-    if (isLight) {
-        document.body.classList.add('light-theme');
-        document.body.setAttribute('data-theme', 'light');
-    } else {
-        document.body.classList.remove('light-theme');
-        document.body.removeAttribute('data-theme');
-    }
-    
-    // 延迟应用终端主题，确保 CSS 变量已更新
-    setTimeout(() => {
-        const theme = {
-            background: 'transparent',
-            foreground: getCssVariable('--primary-text') || (isLight ? '#4c4f69' : '#cdd6f4'),
-            cursor: getCssVariable('--highlight-text') || (isLight ? '#1e66f5' : '#89b4fa'),
-            cursorAccent: getCssVariable('--primary-bg') || (isLight ? '#eff1f5' : '#1e1e2e'),
-            selectionBackground: getCssVariable('--accent-bg') || (isLight ? '#acb0be' : '#45475a'),
-            selectionForeground: getCssVariable('--primary-text') || (isLight ? '#4c4f69' : '#cdd6f4'),
-            black: getCssVariable('--tertiary-bg') || (isLight ? '#dce0e8' : '#11111b'),
-            red: getCssVariable('--danger-color') || (isLight ? '#d20f39' : '#f38ba8'),
-            green: getCssVariable('--success-color') || (isLight ? '#40a02b' : '#a6e3a1'),
-            yellow: getCssVariable('--warning-color') || (isLight ? '#df8e1d' : '#f9e2af'),
-            blue: getCssVariable('--button-bg') || (isLight ? '#1e66f5' : '#89b4fa'),
-            magenta: getCssVariable('--highlight-text') || (isLight ? '#1e66f5' : '#89b4fa'),
-            cyan: getCssVariable('--secondary-text') || (isLight ? '#6c6f85' : '#a6adc8'),
-            white: getCssVariable('--primary-text') || (isLight ? '#4c4f69' : '#cdd6f4'),
-            brightBlack: getCssVariable('--secondary-text') || (isLight ? '#6c6f85' : '#a6adc8'),
-            brightRed: getCssVariable('--danger-hover-bg') || (isLight ? '#e64553' : '#eba0ac'),
-            brightGreen: getCssVariable('--success-color') || (isLight ? '#40a02b' : '#a6e3a1'),
-            brightYellow: getCssVariable('--warning-color') || (isLight ? '#df8e1d' : '#f9e2af'),
-            brightBlue: getCssVariable('--button-hover-bg') || (isLight ? '#7287fd' : '#b4befe'),
-            brightMagenta: getCssVariable('--highlight-text') || (isLight ? '#1e66f5' : '#89b4fa'),
-            brightCyan: getCssVariable('--secondary-text') || (isLight ? '#6c6f85' : '#a6adc8'),
-            brightWhite: getCssVariable('--primary-text') || (isLight ? '#4c4f69' : '#cdd6f4')
-        };
-        terminal.options.theme = theme;
-        // 强制重新渲染整个终端
-        terminal.refresh(0, terminal.rows - 1);
-        // 额外触发一次尺寸调整以确保背景透明度等属性正确应用
-        fitTerminal();
-    }, 100);
 }
 
 // --- 终端初始化 ---
@@ -197,27 +131,7 @@ async function initTerminal() {
         fontSize: 14,
         fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
         theme: {
-            background: 'transparent',
-            foreground: '#cdd6f4',
-            cursor: '#f5e0dc',
-            cursorAccent: '#1e1e2e',
-            selectionBackground: '#45475a',
-            black: '#45475a',
-            red: '#f38ba8',
-            green: '#a6e3a1',
-            yellow: '#f9e2af',
-            blue: '#89b4fa',
-            magenta: '#f5c2e7',
-            cyan: '#94e2d5',
-            white: '#bac2de',
-            brightBlack: '#585b70',
-            brightRed: '#f38ba8',
-            brightGreen: '#a6e3a1',
-            brightYellow: '#f9e2af',
-            brightBlue: '#89b4fa',
-            brightMagenta: '#f5c2e7',
-            brightCyan: '#94e2d5',
-            brightWhite: '#a6adc8'
+            background: 'transparent'
         },
         allowTransparency: true,
         scrollback: 10000,
@@ -231,6 +145,14 @@ async function initTerminal() {
     // 挂载终端
     terminal.open(terminalContainer);
     fitAddon.fit();
+
+    if (!window.ShellThemeRuntime?.createThemeController) {
+        throw new Error('ShellThemeRuntime is unavailable.');
+    }
+    themeController = window.ShellThemeRuntime.createThemeController({
+        getTerminal: () => terminal,
+        fitTerminal
+    });
     
     // 设置事件监听
     setupTerminalEvents();
@@ -273,10 +195,6 @@ function loadScript(src) {
     });
 }
 
-/**
- * 动态加载 CSS
- * @param {string} href - CSS 路径
- */
 function loadCSS(href) {
     const link = document.createElement('link');
     link.rel = 'stylesheet';
@@ -325,6 +243,23 @@ function setupTerminalEvents() {
     });
 }
 
+function handleShellData(payload) {
+    if (!terminal || !payload) return;
+    if (typeof payload === 'string') {
+        terminal.write(payload);
+        return;
+    }
+    if (payload.version !== 1 || typeof payload.data !== 'string'
+        || !Number.isInteger(payload.generation) || !Number.isInteger(payload.sequence)) {
+        return;
+    }
+
+    if (activeOutputGeneration === null) activeOutputGeneration = payload.generation;
+    if (payload.generation !== activeOutputGeneration || payload.sequence <= lastOutputSequence) return;
+    lastOutputSequence = payload.sequence;
+    terminal.write(payload.data);
+}
+
 /**
  * 设置 IPC 事件监听
  */
@@ -337,12 +272,7 @@ function setupIPCEvents() {
     
     addDebugLog('Setting up IPC event listeners...');
 
-    // 接收终端数据
-    window.shellAPI.onData((data) => {
-        if (terminal && data) {
-            terminal.write(data);
-        }
-    });
+    window.shellAPI.onData(handleShellData);
     
     // 清屏事件
     window.shellAPI.onClear(() => {
@@ -351,10 +281,12 @@ function setupIPCEvents() {
         }
     });
     
-    // 主题变化
-    window.shellAPI.onThemeInit((data) => {
-        if (data && data.themeName) {
-            applyTheme(data.themeName);
+    // 主题变化：只消费插件主进程发送的结构化快照。
+    window.shellAPI.onThemeState((themeState) => {
+        if (themeState && themeState.resolvedMode) {
+            themeController.apply(themeState).catch((error) => {
+                console.error('Failed to apply theme state:', error);
+            });
         }
     });
 
