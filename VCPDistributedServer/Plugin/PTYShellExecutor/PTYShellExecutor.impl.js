@@ -8,8 +8,17 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { EventEmitter } = require('events');
 const { spawn } = require('child_process');
-const { BrowserWindow, ipcMain, clipboard } = require('electron');
 const chokidar = require('chokidar');
+const { BrowserWindow, ipcMain, clipboard, nativeTheme } = require('electron');
+const {
+    createExecutionId,
+    createShellOutputBus,
+    createUtf8StreamDecoder,
+    normalizeForTerminal,
+    writeExecutionTranscriptEnd,
+    writeExecutionTranscriptStart
+} = require('./ShellOutputPipeline');
+const { createShellThemeBridge } = require('./ShellThemeBridge');
 
 // --- Pager 兼容性：默认禁用常见分页器，避免命令进入 less/more 导致边界标记永远无法输出 ---
 function withPagerDisabledEnv(baseEnv) {
@@ -58,12 +67,15 @@ function killProcessGroup(pid, signal = 'SIGTERM') {
  * 用于管理长时间运行的后台任务（如 codex、长时间编译等）
  */
 class AsyncTaskManager {
-    constructor() {
+    constructor({ publishShellData = sendShellData, stateDir = path.join(__dirname, 'state') } = {}) {
         // 任务存储: Map<taskId, TaskInfo>
         this.tasks = new Map();
+
+        // 所有异步输出与同步/交互输出共用同一条窗口分发管线。
+        this.publishShellData = publishShellData;
         
         // 任务状态目录（持久化）
-        this.stateDir = path.join(__dirname, 'state');
+        this.stateDir = stateDir;
         this.ensureStateDir();
         
         // 最大保留任务数（防止内存泄漏）
@@ -166,6 +178,19 @@ class AsyncTaskManager {
         this.runningCount++;
         taskInfo.status = 'running';
 
+        const transcriptOptions = {
+            cwd: options.cwd,
+            source: 'agent-async',
+            targetGeneration: options.targetGeneration
+        };
+        writeExecutionTranscriptStart(
+            command,
+            transcriptOptions,
+            shell,
+            taskId,
+            this.publishShellData
+        );
+
         // 初始化 headless 终端
         const term = new Terminal({
             cols: 120, rows: 100, allowProposedApi: true
@@ -173,6 +198,25 @@ class AsyncTaskManager {
         taskInfo._term = term;
 
         let currentOutputSize = 0;
+        let outputLimitReported = false;
+        const streamDecoder = createUtf8StreamDecoder();
+
+        const publishDecodedOutput = (decoded, stream) => {
+            if (!decoded) return;
+            term.write(decoded);
+            this.publishShellData(normalizeForTerminal(decoded), {
+                ...transcriptOptions,
+                executionId: taskId,
+                phase: 'data',
+                stream
+            });
+        };
+
+        const flushStreamDecoders = () => {
+            for (const tail of streamDecoder.end()) {
+                publishDecodedOutput(tail.data, tail.stream);
+            }
+        };
 
         try {
             const proc = spawn(shell, ['-c', command], {
@@ -192,21 +236,30 @@ class AsyncTaskManager {
             taskInfo.pid = proc.pid;
             taskInfo._process = proc;
 
-            const onData = (data) => {
+            const onData = (data, stream) => {
+                const raw = Buffer.isBuffer(data) ? data : Buffer.from(String(data), 'utf-8');
                 if (currentOutputSize < this.maxOutputLength) {
                     const remaining = this.maxOutputLength - currentOutputSize;
-                    const toWrite = data.length > remaining ? data.slice(0, remaining) : data;
-                    term.write(toWrite);
+                    const toWrite = raw.length > remaining ? raw.subarray(0, remaining) : raw;
                     currentOutputSize += toWrite.length;
-                    
-                    if (currentOutputSize >= this.maxOutputLength) {
-                        term.write('\r\n\x1b[31m[Error] Output limit exceeded, truncating...\x1b[0m\r\n');
-                    }
+                    publishDecodedOutput(streamDecoder.write(stream, toWrite), stream);
+                }
+
+                if (currentOutputSize >= this.maxOutputLength && !outputLimitReported) {
+                    outputLimitReported = true;
+                    const limitMessage = '\r\n\x1b[31m[Error] Output limit exceeded, truncating...\x1b[0m\r\n';
+                    term.write(limitMessage);
+                    this.publishShellData(limitMessage, {
+                        ...transcriptOptions,
+                        executionId: taskId,
+                        phase: 'error',
+                        stream
+                    });
                 }
             };
 
-            proc.stdout.on('data', onData);
-            proc.stderr.on('data', onData);
+            proc.stdout.on('data', data => onData(data, 'stdout'));
+            proc.stderr.on('data', data => onData(data, 'stderr'));
 
             // P0: 修复 cancel 导致队列死锁 - 使用 _finalized 标志确保只执行一次
             const finalize = (status, code, errorMsg = null) => {
@@ -226,12 +279,30 @@ class AsyncTaskManager {
                 } else {
                     taskInfo.status = status;
                 }
+
+                flushStreamDecoders();
                 
                 taskInfo.exitCode = code;
                 taskInfo.endTime = new Date().toISOString();
                 taskInfo.output = getCleanTextFromBuffer(term);
-                if (errorMsg) taskInfo.output += `\n[Error] ${errorMsg}`;
+                if (errorMsg) {
+                    taskInfo.output += `\n[Error] ${errorMsg}`;
+                    this.publishShellData(`\r\n\x1b[31m[Agent Error] ${errorMsg}\x1b[0m\r\n`, {
+                        ...transcriptOptions,
+                        executionId: taskId,
+                        phase: 'error'
+                    });
+                }
                 if (taskInfo._cancelRequested) taskInfo.output += '\n\n[任务已被用户取消]';
+
+                writeExecutionTranscriptEnd(
+                    code,
+                    null,
+                    transcriptOptions,
+                    taskId,
+                    this.publishShellData,
+                    taskInfo.status
+                );
 
                 // 彻底释放资源
                 if (taskInfo._term) {
@@ -269,6 +340,19 @@ class AsyncTaskManager {
             this.runningCount--;
             taskInfo.status = 'failed';
             taskInfo.output = `[Launch Error] ${err.message}`;
+            this.publishShellData(`\r\n\x1b[31m[Agent Launch Error] ${err.message}\x1b[0m\r\n`, {
+                ...transcriptOptions,
+                executionId: taskId,
+                phase: 'error'
+            });
+            writeExecutionTranscriptEnd(
+                -1,
+                null,
+                transcriptOptions,
+                taskId,
+                this.publishShellData,
+                'failed'
+            );
             reporter.capture('asyncTaskLaunch', err, { taskId, command, shell });
             this.saveTaskState(taskId, taskInfo);
             this.processQueue();
@@ -537,51 +621,32 @@ const asyncTaskManager = new AsyncTaskManager();
 
 // --- GUI Window Management ---
 let guiWindow = null;
-let shellGuiReady = false;
-let shellDataBacklog = [];
-let shellDataBacklogBytes = 0;
-const SHELL_DATA_BACKLOG_LIMIT = 2 * 1024 * 1024;
 
-function bufferShellData(data) {
-    const text = typeof data === 'string' ? data : String(data);
-    const bytes = Buffer.byteLength(text, 'utf-8');
-    shellDataBacklog.push(text);
-    shellDataBacklogBytes += bytes;
+const shellOutputBus = createShellOutputBus();
+const applicationRoot = path.join(__dirname, '..', '..', '..');
+const shellThemeBridge = createShellThemeBridge({
+    chokidar,
+    nativeTheme,
+    settingsPaths: [
+        path.join(applicationRoot, 'AppData', 'settings.json'),
+        path.join(applicationRoot, 'settings.json')
+    ],
+    themeStylesheetPath: path.join(applicationRoot, 'styles', 'themes.css'),
+    getTarget: () => shellOutputBus.currentWebContents()
+}).start();
 
-    while (shellDataBacklogBytes > SHELL_DATA_BACKLOG_LIMIT && shellDataBacklog.length > 0) {
-        const removed = shellDataBacklog.shift();
-        shellDataBacklogBytes -= Buffer.byteLength(removed, 'utf-8');
-    }
-}
-
-function flushShellDataBacklog(targetWebContents) {
-    if (!targetWebContents || targetWebContents.isDestroyed() || shellDataBacklog.length === 0) return;
-    const backlog = shellDataBacklog.join('');
-    shellDataBacklog = [];
-    shellDataBacklogBytes = 0;
-    targetWebContents.send('shell-data', backlog);
-}
-
-function sendShellData(data) {
-    if (!data) return;
-    const text = typeof data === 'string' ? data : data.toString('utf-8');
-    if (guiWindow && !guiWindow.isDestroyed() && shellGuiReady && guiWindow.webContents && !guiWindow.webContents.isDestroyed()) {
-        guiWindow.webContents.send('shell-data', text);
-        return;
-    }
-    bufferShellData(text);
+function sendShellData(data, meta = {}) {
+    return shellOutputBus.publish(data, meta);
 }
 
 function ensureGuiWindow() {
     if (!BrowserWindow) return; // 非 Electron 环境下跳过 GUI
     if (guiWindow && !guiWindow.isDestroyed()) {
         guiWindow.focus();
-        return;
+        return guiWindow;
     }
 
-    shellGuiReady = false;
-
-    guiWindow = new BrowserWindow({
+    const createdWindow = new BrowserWindow({
         width: 900,
         height: 600,
         title: 'VCP Local Shell Executor',
@@ -598,98 +663,63 @@ function ensureGuiWindow() {
         backgroundColor: '#00000000',
         hasShadow: true
     });
+    guiWindow = createdWindow;
+    const attachedWindowGeneration = shellOutputBus.attach(createdWindow.webContents);
 
-    guiWindow.loadFile(path.join(__dirname, 'gui', 'ShellViewer.html'));
+    createdWindow.loadFile(path.join(__dirname, 'gui', 'ShellViewer.html'));
 
-    guiWindow.on('closed', () => {
-        guiWindow = null;
-        shellGuiReady = false;
-        if (ptyProcess) {
+    createdWindow.on('closed', () => {
+        const wasCurrentWindow = guiWindow === createdWindow;
+        shellOutputBus.detach(createdWindow.webContents);
+        if (ptyProcess && activeSessionWindowGeneration === attachedWindowGeneration) {
+            const closingSession = ptyProcess;
+            ptyProcess = null;
+            activeSessionMode = null;
+            activeSessionWindowGeneration = null;
+            sessionGeneration += 1;
+            childProcesses.delete(closingSession);
             try {
-                ptyProcess.kill();
+                closingSession.kill();
                 console.log('[PTYShellExecutor] GUI closed, pty process terminated.');
             } catch (e) {
                 console.error('[PTYShellExecutor] Error terminating pty on GUI close:', e);
             }
         }
+        if (!wasCurrentWindow) return;
+        guiWindow = null;
     });
+
+    return createdWindow;
 }
-
-// --- 主题管理 ---
-const settingsPath = path.join(__dirname, '..', '..', '..', 'AppData', 'settings.json');
-const rootSettingsPath = path.join(__dirname, '..', '..', '..', 'settings.json');
-let settingsWatcher = null;
-let lastSentTheme = null;
-
-function sendThemeUpdate(targetWebContents, forceSend = false) {
-    if (!targetWebContents || targetWebContents.isDestroyed()) return;
-    try {
-        let currentTheme = 'dark';
-        // 优先检查 AppData/settings.json，回退到根目录 settings.json
-        const targetPath = fs.existsSync(settingsPath) ? settingsPath : (fs.existsSync(rootSettingsPath) ? rootSettingsPath : null);
-        
-        if (targetPath) {
-            // 使用同步读取并强制不使用缓存
-            const content = fs.readFileSync(targetPath, 'utf-8');
-            const settings = JSON.parse(content);
-            currentTheme = settings.currentThemeMode || 'dark';
-            console.log(`[PTYShellExecutor] Detected theme from ${targetPath}: ${currentTheme}`);
-        }
-        
-        if (currentTheme !== lastSentTheme || forceSend) {
-            targetWebContents.send('theme-init', { themeName: currentTheme });
-            lastSentTheme = currentTheme;
-        }
-    } catch (error) {
-        console.error('[PTYShellExecutor] Error sending theme:', error);
-    }
-}
-
-function setupThemeWatcher() {
-    if (settingsWatcher) settingsWatcher.close();
-    // 同时监听两个可能的配置文件路径
-    // 使用更激进的轮询模式以确保在某些文件系统上能检测到变化
-    settingsWatcher = chokidar.watch([settingsPath, rootSettingsPath], {
-        persistent: true,
-        ignoreInitial: true,
-        usePolling: true,
-        interval: 500,
-        binaryInterval: 1000
-    });
-    
-    settingsWatcher.on('all', (event, path) => {
-        if (guiWindow && !guiWindow.isDestroyed()) {
-            // 稍微延迟读取，确保文件写入已完成
-            setTimeout(() => {
-                // 竞态保护：延迟期间窗口可能已关闭并将 guiWindow 置空
-                if (guiWindow && !guiWindow.isDestroyed()) {
-                    sendThemeUpdate(guiWindow.webContents);
-                }
-            }, 100);
-        }
-    });
-}
-
-setupThemeWatcher();
 
 // --- IPC 事件监听 ---
+function isShellGuiSender(event) {
+    return Boolean(event && shellOutputBus.isCurrentTarget(event.sender));
+}
+
 if (ipcMain) {
     ipcMain.on('shell-gui-ready', async (event) => {
-        sendThemeUpdate(event.sender, true);
-        flushShellDataBacklog(event.sender);
+        if (!isShellGuiSender(event)) return;
+
+        shellThemeBridge.sendSnapshot(event.sender);
+        if (!shellOutputBus.markReady(event.sender)) return;
+        const readyGeneration = shellOutputBus.currentGeneration();
         
-        // 如果 PTY 尚未启动，则主动启动一个默认会话
-        if (!ptyProcess) {
-            console.log('[PTYShellExecutor] GUI ready but no PTY session. Starting default session...');
+        // 只复用属于当前窗口代次的交互会话；旧代次会话必须替换。
+        if (!ptyProcess || activeSessionWindowGeneration !== readyGeneration) {
+            console.log('[PTYShellExecutor] GUI ready without a current-generation shell. Starting session...');
             try {
-                await createNewShellSession();
+                await ensureShellSessionForGeneration(readyGeneration);
             } catch (e) {
                 console.error('[PTYShellExecutor] Failed to start shell session on GUI ready:', e);
             }
         }
+
+        // 创建会话期间窗口可能已关闭或被替换，迟到结果不得更新新窗口。
+        if (!isShellGuiSender(event) || shellOutputBus.currentGeneration() !== readyGeneration) return;
         
         // 通知 GUI PTY 连接状态
-        if (ptyProcess) {
+        if (ptyProcess && activeSessionWindowGeneration === readyGeneration) {
             event.sender.send('pty-status', { connected: true, mode: activeSessionMode || 'unknown' });
         } else {
             event.sender.send('pty-status', { connected: false });
@@ -698,43 +728,63 @@ if (ipcMain) {
 
     // 原始按键输入 - 直接写入 PTY（用于终端直接输入模式）
     ipcMain.on('shell-input', (event, data) => {
-        if (ptyProcess && data) {
+        if (isShellGuiSender(event) && ptyProcess
+            && activeSessionWindowGeneration === shellOutputBus.currentGeneration()
+            && typeof data === 'string' && data) {
             ptyProcess.write(data);
         }
     });
 
     // 完整命令执行 - 走同步非交互 runner（用于输入框模式）
     ipcMain.on('shell-command', async (event, command) => {
-        if (!command || !String(command).trim()) return;
+        if (!isShellGuiSender(event) || !command || !String(command).trim()) return;
 
-        isExecutingCommand = true;
+        const targetGeneration = shellOutputBus.currentGeneration();
+        const executionId = createExecutionId('user');
         try {
-            await executeSingleCommand(command);
+            await executeSingleCommand(command, {
+                source: 'user-command',
+                targetGeneration,
+                executionId
+            });
         } catch (err) {
             const message = err && err.message ? err.message : String(err);
-            sendShellData(`\r\n[PTYShellExecutor] ${message}\r\n`);
-        } finally {
-            isExecutingCommand = false;
+            sendShellData(`\r\n[PTYShellExecutor] ${message}\r\n`, {
+                source: 'user-command',
+                targetGeneration,
+                executionId,
+                phase: 'error'
+            });
         }
     });
 
     ipcMain.on('copy-to-clipboard', (event, text) => {
-        if (text && clipboard) clipboard.writeText(text);
+        if (isShellGuiSender(event) && text && clipboard) clipboard.writeText(text);
     });
 
-    ipcMain.on('shell-resize', (event, { cols, rows }) => {
-        if (ptyProcess) {
-            try { ptyProcess.resize(cols, rows); } catch (e) { /* ignore */ }
+    ipcMain.on('shell-resize', (event, payload = {}) => {
+        const { cols, rows } = payload || {};
+        const normalizedCols = Number(cols);
+        const normalizedRows = Number(rows);
+        if (isShellGuiSender(event) && ptyProcess
+            && activeSessionWindowGeneration === shellOutputBus.currentGeneration()
+            && Number.isInteger(normalizedCols) && normalizedCols > 0
+            && Number.isInteger(normalizedRows) && normalizedRows > 0) {
+            try { ptyProcess.resize(normalizedCols, normalizedRows); } catch (e) { /* ignore */ }
         }
     });
 
-    ipcMain.on('minimize-window', () => { if (guiWindow) guiWindow.minimize(); });
-    ipcMain.on('maximize-window', () => {
-        if (guiWindow) {
+    ipcMain.on('minimize-window', (event) => {
+        if (isShellGuiSender(event) && guiWindow) guiWindow.minimize();
+    });
+    ipcMain.on('maximize-window', (event) => {
+        if (isShellGuiSender(event) && guiWindow) {
             guiWindow.isMaximized() ? guiWindow.unmaximize() : guiWindow.maximize();
         }
     });
-    ipcMain.on('close-window', () => { if (guiWindow) guiWindow.close(); });
+    ipcMain.on('close-window', (event) => {
+        if (isShellGuiSender(event) && guiWindow) guiWindow.close();
+    });
 }
 
 // --- ANSI 清理 ---
@@ -965,8 +1015,8 @@ function cleanOutput(str) {
 // --- 模块级状态 ---
 let ptyProcess = null;
 const childProcesses = new Set();
-let isExecutingCommand = false;
 let activeSessionMode = null; // 'pty' | 'pipe' | null
+let activeSessionWindowGeneration = null;
 let executionQueue = Promise.resolve();
 let executionQueueLength = 0;
 const MAX_EXECUTION_QUEUE_LENGTH = 50;
@@ -1099,23 +1149,33 @@ function createNewPtySession(preferredShell) {
     });
     ptyProcess = session;
     const currentGeneration = ++sessionGeneration;
+    const targetGeneration = shellOutputBus.currentGeneration();
+    const sessionExecutionId = `session-${currentGeneration}`;
     childProcesses.add(session);
     activeSessionMode = 'pty';
+    activeSessionWindowGeneration = targetGeneration;
 
     // 数据监听 - 转发到 GUI
     session.onData((data) => {
-        if (isExecutingCommand) return;
-        sendShellData(data);
+        sendShellData(data, {
+            source: 'interactive',
+            executionId: sessionExecutionId,
+            phase: 'data',
+            stream: 'pty',
+            targetGeneration
+        });
     });
 
     session.onExit(() => {
         childProcesses.delete(session);
         if (ptyProcess === session && sessionGeneration === currentGeneration) {
             ptyProcess = null;
-            isExecutingCommand = false;
             activeSessionMode = null;
+            activeSessionWindowGeneration = null;
             if (guiWindow && !guiWindow.isDestroyed()) {
-                guiWindow.webContents.send('pty-status', { connected: false });
+                if (shellOutputBus.currentGeneration() === targetGeneration) {
+                    guiWindow.webContents.send('pty-status', { connected: false });
+                }
             }
         } else {
             console.log('[PTYShellExecutor] Ignoring stale PTY exit for replaced session.');
@@ -1208,13 +1268,21 @@ function createNewPipeSession(preferredShell) {
 
     ptyProcess = session;
     const currentGeneration = ++sessionGeneration;
+    const targetGeneration = shellOutputBus.currentGeneration();
+    const sessionExecutionId = `session-${currentGeneration}`;
     childProcesses.add(session);
     activeSessionMode = 'pipe';
+    activeSessionWindowGeneration = targetGeneration;
 
-    // 数据监听 - 转发到 GUI（复用与 PTY 一致的 gating 逻辑）
+    // 数据监听 - 与 PTY 一样始终进入输出总线，不因 Agent 命令执行而丢弃。
     session.onData((data) => {
-        if (isExecutingCommand) return;
-        sendShellData(typeof data === 'string' ? data : data.toString('utf-8'));
+        sendShellData(data, {
+            source: 'interactive',
+            executionId: sessionExecutionId,
+            phase: 'data',
+            stream: 'pipe',
+            targetGeneration
+        });
     });
 
     session.onExit(() => {
@@ -1222,9 +1290,11 @@ function createNewPipeSession(preferredShell) {
         if (ptyProcess === session && sessionGeneration === currentGeneration) {
             ptyProcess = null;
             activeSessionMode = null;
-            isExecutingCommand = false;
+            activeSessionWindowGeneration = null;
             if (guiWindow && !guiWindow.isDestroyed()) {
-                guiWindow.webContents.send('pty-status', { connected: false });
+                if (shellOutputBus.currentGeneration() === targetGeneration) {
+                    guiWindow.webContents.send('pty-status', { connected: false });
+                }
             }
         } else {
             console.log('[PTYShellExecutor] Ignoring stale pipe exit for replaced session.');
@@ -1248,6 +1318,22 @@ function createNewShellSession(preferredShell) {
     });
 
     return sessionCreationPromise;
+}
+
+async function ensureShellSessionForGeneration(targetGeneration, preferredShell) {
+    let created = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+        if (shellOutputBus.currentGeneration() !== targetGeneration) return null;
+        if (ptyProcess && activeSessionWindowGeneration === targetGeneration) {
+            return created || { shellName: 'existing', mode: activeSessionMode || 'unknown' };
+        }
+        created = await createNewShellSession(preferredShell);
+    }
+
+    if (!ptyProcess || activeSessionWindowGeneration !== targetGeneration) {
+        throw new Error(`Unable to create shell session for window generation ${targetGeneration}.`);
+    }
+    return created;
 }
 
 function createNewShellSessionImmediate(preferredShell) {
@@ -1294,33 +1380,15 @@ function cleanSyncOutput(str) {
         .trim();
 }
 
-function normalizeForTerminal(data) {
-    return String(data).replace(/\r?\n/g, '\r\n');
-}
-
-function formatTranscriptCommand(command) {
-    return String(command)
-        .replace(/\r\n/g, '\n')
-        .replace(/\r/g, '\n')
-        .split('\n')
-        .map((line, index) => `${index === 0 ? '$' : '>'} ${line}`)
-        .join('\r\n');
-}
-
-function writeSyncTranscriptStart(command, options, shell) {
-    const cwd = options.cwd || process.env.HOME || '/home';
-    sendShellData(`\r\n\x1b[90m[Agent Execute] cwd=${cwd} shell=${shell}\x1b[0m\r\n\x1b[36m${formatTranscriptCommand(command)}\x1b[0m\r\n`);
-}
-
-function writeSyncTranscriptEnd(code, signal) {
-    const signalText = signal ? ` signal=${signal}` : '';
-    sendShellData(`\r\n\x1b[90m[Agent Exit] code=${code === null || code === undefined ? 'null' : code}${signalText}\x1b[0m\r\n`);
-}
-
 function executeSingleCommand(singleCommand, options = {}) {
     return new Promise((resolve, reject) => {
         const maxOutput = 1024 * 1024; // 同步执行限制 1MB
         const { shell, args } = getSyncShellInvocation();
+        const executionId = options.executionId || createExecutionId('agent');
+        const transcriptOptions = {
+            ...options,
+            source: options.source || 'agent-sync'
+        };
         const wrappedCommand = wrapSyncCommand(singleCommand);
         const proc = spawn(shell, [...args, wrappedCommand], {
             cwd: options.cwd || process.env.HOME || '/home',
@@ -1339,7 +1407,7 @@ function executeSingleCommand(singleCommand, options = {}) {
             stdio: ['ignore', 'pipe', 'pipe']
         });
         console.log(`[PTYShellExecutor] Sync runner pid=${proc.pid || 'unknown'} shell=${shell} cwd=${options.cwd || process.env.HOME || '/home'}`);
-        writeSyncTranscriptStart(singleCommand, options, shell);
+        writeExecutionTranscriptStart(singleCommand, transcriptOptions, shell, executionId, sendShellData);
 
         const trackedProcess = {
             kill: (signal = 'SIGTERM') => {
@@ -1356,20 +1424,35 @@ function executeSingleCommand(singleCommand, options = {}) {
         let currentOutputSize = 0;
         let settled = false;
         let killTimer = null;
+        const streamDecoder = createUtf8StreamDecoder();
 
-        const appendOutput = (chunk) => {
+        const publishDecodedOutput = (decoded, stream) => {
+            if (!decoded) return;
+            output += decoded;
+            sendShellData(normalizeForTerminal(decoded), {
+                source: transcriptOptions.source,
+                executionId,
+                phase: 'data',
+                stream,
+                targetGeneration: transcriptOptions.targetGeneration
+            });
+        };
+
+        const flushStreamDecoders = () => {
+            for (const tail of streamDecoder.end()) {
+                publishDecodedOutput(tail.data, tail.stream);
+            }
+        };
+
+        const appendOutput = (chunk, stream) => {
             const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), 'utf-8');
-            const dataStr = data.toString('utf-8');
 
             if (currentOutputSize < maxOutput) {
                 const remaining = maxOutput - currentOutputSize;
                 const toWrite = data.length > remaining ? data.subarray(0, remaining) : data;
-                output += toWrite.toString('utf-8');
                 currentOutputSize += toWrite.length;
+                publishDecodedOutput(streamDecoder.write(stream, toWrite), stream);
             }
-
-            // 转发原始数据到 GUI
-            sendShellData(normalizeForTerminal(dataStr));
         };
 
         const clearTimers = () => {
@@ -1380,6 +1463,7 @@ function executeSingleCommand(singleCommand, options = {}) {
         const finish = (callback) => {
             if (settled) return;
             settled = true;
+            flushStreamDecoders();
             clearTimers();
             childProcesses.delete(trackedProcess);
             callback();
@@ -1388,6 +1472,7 @@ function executeSingleCommand(singleCommand, options = {}) {
         const rejectAfterTimeout = (err) => {
             if (settled) return;
             settled = true;
+            flushStreamDecoders();
             clearTimeout(timeoutId);
             reject(err);
         };
@@ -1395,35 +1480,48 @@ function executeSingleCommand(singleCommand, options = {}) {
         const timeoutId = setTimeout(() => {
             const err = new Error(`Command timed out after ${defaultConfig.commandTimeout / 1000} seconds.`);
             reporter.capture('syncCommandTimeout', err, { singleCommand });
-            sendShellData(`\r\n\x1b[31m[Agent Timeout] ${err.message}\x1b[0m\r\n`);
+            sendShellData(`\r\n\x1b[31m[Agent Timeout] ${err.message}\x1b[0m\r\n`, {
+                source: transcriptOptions.source,
+                executionId,
+                phase: 'error',
+                targetGeneration: transcriptOptions.targetGeneration
+            });
             try { trackedProcess.kill('SIGTERM'); } catch (_) { /* ignore */ }
             killTimer = setTimeout(() => {
                 try { trackedProcess.kill('SIGKILL'); } catch (_) { /* ignore */ }
                 childProcesses.delete(trackedProcess);
             }, 1000);
+            flushStreamDecoders();
+            writeExecutionTranscriptEnd(-2, 'SIGTERM', transcriptOptions, executionId, sendShellData, 'timed_out');
             rejectAfterTimeout(err);
         }, defaultConfig.commandTimeout);
 
-        if (proc.stdout) proc.stdout.on('data', appendOutput);
-        if (proc.stderr) proc.stderr.on('data', appendOutput);
+        if (proc.stdout) proc.stdout.on('data', chunk => appendOutput(chunk, 'stdout'));
+        if (proc.stderr) proc.stderr.on('data', chunk => appendOutput(chunk, 'stderr'));
 
         proc.on('error', (err) => {
             reporter.capture('syncCommandSpawnError', err, { singleCommand, shell });
-            finish(() => reject(err));
+            finish(() => {
+                sendShellData(`\r\n\x1b[31m[Agent Launch Error] ${err.message}\x1b[0m\r\n`, {
+                    source: transcriptOptions.source,
+                    executionId,
+                    phase: 'error',
+                    targetGeneration: transcriptOptions.targetGeneration
+                });
+                writeExecutionTranscriptEnd(-1, null, transcriptOptions, executionId, sendShellData, 'failed');
+                reject(err);
+            });
         });
 
-        proc.on('exit', (code, signal) => {
-            if (settled) return;
-            writeSyncTranscriptEnd(code, signal);
-            finish(() => resolve(cleanSyncOutput(output)));
-        });
-
+        // `exit` 可能早于 stdout/stderr 完全排空；只在 `close` 结算，避免丢失尾部输出。
         proc.on('close', (code, signal) => {
             childProcesses.delete(trackedProcess);
             if (killTimer) clearTimeout(killTimer);
             if (settled) return;
-            writeSyncTranscriptEnd(code, signal);
-            finish(() => resolve(cleanSyncOutput(output)));
+            finish(() => {
+                writeExecutionTranscriptEnd(code, signal, transcriptOptions, executionId, sendShellData);
+                resolve(cleanSyncOutput(output));
+            });
         });
     });
 }
@@ -1473,11 +1571,16 @@ function handleAsyncExecute(args) {
     if (check.blocked) {
         throw new Error(`执行被阻止：${check.reason}`);
     }
-    
+
+    // 异步任务同样绑定到启动时的 ShellViewer 代次并镜像完整输出。
+    ensureGuiWindow();
+    const targetGeneration = shellOutputBus.currentGeneration();
+
     // 启动异步任务
     const result = asyncTaskManager.startTask(command, {
         shell: args.shell,
-        cwd: args.cwd
+        cwd: args.cwd,
+        targetGeneration
     });
     
     return result;
@@ -1561,24 +1664,26 @@ async function handleSyncExecute(args) {
 
         // 确保 GUI 窗口存在
         ensureGuiWindow();
+        const targetGeneration = shellOutputBus.currentGeneration();
 
-        // 创建会话
-        if (!ptyProcess) {
-            const created = await createNewShellSession(args.shell);
+        // 创建或复用会话
+        if (!ptyProcess || activeSessionWindowGeneration !== targetGeneration) {
+            const created = await ensureShellSessionForGeneration(targetGeneration, args.shell);
+            if (!created) throw new Error('ShellViewer changed while creating its terminal session.');
             await new Promise(resolve => setTimeout(resolve, 800)); // 等待 shell 初始化
             console.log(`[PTYShellExecutor] Session started with ${created.shellName} (mode=${created.mode})`);
         }
         // 执行命令
         const outputs = [];
-        isExecutingCommand = true;
-        
-        try {
-            for (const entry of commandEntries) {
-                const output = await executeSingleCommand(entry.value, { cwd: args.cwd });
-                outputs.push({ command: entry.value, output });
-            }
-        } finally {
-            isExecutingCommand = false;
+
+        for (const entry of commandEntries) {
+            const output = await executeSingleCommand(entry.value, {
+                cwd: args.cwd,
+                source: 'agent-sync',
+                targetGeneration,
+                executionId: createExecutionId('agent')
+            });
+            outputs.push({ command: entry.value, output });
         }
 
         // 格式化返回
@@ -1627,27 +1732,36 @@ function cleanup() {
     // 清理异步任务管理器
     asyncTaskManager.cleanup();
 
-    if (guiWindow && !guiWindow.isDestroyed()) {
-        guiWindow.removeAllListeners('closed');
-        guiWindow.close();
+    if (guiWindow) {
+        if (!guiWindow.isDestroyed()) {
+            shellOutputBus.detach(guiWindow.webContents);
+            guiWindow.removeAllListeners('closed');
+            guiWindow.close();
+        }
         guiWindow = null;
     }
+    shellThemeBridge.dispose();
 
     for (const proc of childProcesses) {
         try { proc.kill(); } catch (e) { /* ignore */ }
     }
     childProcesses.clear();
 
-    if (settingsWatcher) {
-        settingsWatcher.close();
-        settingsWatcher = null;
-    }
-
     ptyProcess = null;
     activeSessionMode = null;
-    shellGuiReady = false;
-    shellDataBacklog = [];
-    shellDataBacklogBytes = 0;
+    activeSessionWindowGeneration = null;
+    shellOutputBus.detach();
 }
 
-module.exports = { processToolCall, cleanup };
+module.exports = {
+    processToolCall,
+    cleanup,
+    __test: {
+        AsyncTaskManager,
+        createShellOutputBus,
+        createUtf8StreamDecoder,
+        executeSingleCommand,
+        normalizeForTerminal,
+        shellThemeBridge
+    }
+};

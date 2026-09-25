@@ -15,50 +15,6 @@ body, html {
     box-sizing: border-box;
 }
 
-/* CSS 变量 - 深色主题 (Catppuccin Mocha) */
-:root {
-    --primary-bg: #1e1e2e;
-    --secondary-bg: #181825;
-    --tertiary-bg: #11111b;
-    --panel-bg: rgba(30, 30, 46, 0.45);
-    --primary-text: #cdd6f4;
-    --secondary-text: #a6adc8;
-    --highlight-text: #89b4fa;
-    --accent-bg: #45475a;
-    --border-color: #313244;
-    --button-bg: #89b4fa;
-    --button-hover-bg: #b4befe;
-    --text-on-accent: #1e1e2e;
-    --success-color: #a6e3a1;
-    --danger-color: #f38ba8;
-    --danger-hover-bg: #eba0ac;
-    --warning-color: #f9e2af;
-    --quoted-text: #f9e2af;
-    --chat-bubble-border-radius: 10px;
-}
-
-/* 浅色主题 (Catppuccin Latte) */
-[data-theme="light"],
-.light-theme {
-    --primary-bg: #eff1f5;
-    --secondary-bg: #e6e9ef;
-    --tertiary-bg: #dce0e8;
-    --panel-bg: rgba(239, 241, 245, 0.45);
-    --primary-text: #4c4f69;
-    --secondary-text: #6c6f85;
-    --highlight-text: #1e66f5;
-    --accent-bg: #acb0be;
-    --border-color: #ccd0da;
-    --button-bg: #1e66f5;
-    --button-hover-bg: #7287fd;
-    --text-on-accent: #eff1f5;
-    --success-color: #40a02b;
-    --danger-color: #d20f39;
-    --danger-hover-bg: #e64553;
-    --warning-color: #df8e1d;
-    --quoted-text: #df8e1d;
-}
-
 /* --- 自定义标题栏 --- */
 #custom-title-bar {
     position: fixed;
