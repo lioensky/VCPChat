@@ -23,6 +23,36 @@ ROOT_DIR = os.path.abspath(os.path.join(CURRENT_DIR, "..", "..", ".."))
 USER_AVATAR_PATH = os.path.join(ROOT_DIR, "AppData", "UserData", "user_avatar.png")
 AI_AVATAR_DIR = os.path.join(ROOT_DIR, "AppData", "avatarimage")
 
+AVATAR_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
+
+
+def find_ai_avatar_paths(maid_name):
+    """从用户头像目录查找：完整名称优先，其次文件名包含角色名。"""
+    if not isinstance(maid_name, str) or not maid_name.strip():
+        return []
+    name = maid_name.strip().casefold()
+    try:
+        with os.scandir(AI_AVATAR_DIR) as entries:
+            candidates = []
+            for entry in entries:
+                stem, extension = os.path.splitext(entry.name)
+                normalized_stem = stem.casefold()
+                if (extension.casefold() in AVATAR_EXTENSIONS
+                        and name in normalized_stem and entry.is_file()):
+                    # 同名优先 PNG；多个包含匹配优先最短名称，再按文件名排序。
+                    priority = (
+                        normalized_stem != name,
+                        len(normalized_stem),
+                        extension.casefold() != ".png",
+                        entry.name.casefold(),
+                        entry.name,
+                    )
+                    candidates.append((priority, entry.path))
+        return [path for _, path in sorted(candidates)]
+    except OSError:
+        return []
+
+
 # ---------------------------------------------------------
 # 游戏常量
 # ---------------------------------------------------------
@@ -58,6 +88,7 @@ class BladeGameApp:
         self.default_img = ImageTk.PhotoImage(Image.new('RGB', (100, 100), color='gray'))
         self.user_img = self.default_img
         self.ai_img = self.default_img
+        self.ai_avatar_name = None
         
         # 加载用户头像
         if os.path.exists(USER_AVATAR_PATH):
@@ -68,15 +99,20 @@ class BladeGameApp:
                 pass
                 
     def load_ai_avatar(self, maid_name):
-        # 尝试加载AI头像
-        path = os.path.join(AI_AVATAR_DIR, f"{maid_name}.png")
-        if os.path.exists(path):
+        self.ai_avatar_name = maid_name
+        self.ai_img = self.default_img
+        for path in find_ai_avatar_paths(maid_name):
             try:
-                img = Image.open(path).resize((100, 100))
-                self.ai_img_label.config(image=ImageTk.PhotoImage(img))
-                self.ai_img_label.image = ImageTk.PhotoImage(img) # keep reference
-            except:
-                pass
+                with Image.open(path) as source:
+                    img = source.convert("RGBA").resize((100, 100), Image.Resampling.LANCZOS)
+                    self.ai_img = ImageTk.PhotoImage(img)
+                break
+            except (OSError, ValueError):
+                # 图片损坏或不可读取时，继续尝试其他匹配项。
+                continue
+        # 显示与持有同一个图片对象，避免 Tk 图片被垃圾回收。
+        self.ai_img_label.config(image=self.ai_img)
+        self.ai_img_label.image = self.ai_img
 
     def create_widgets(self):
         # 顶部：信息栏
@@ -157,10 +193,11 @@ class BladeGameApp:
         self.state = state
         
         # 更新基本信息
-        self.ai_name_label.config(text=state.get("maid_name", "AI"))
-        # 尝试一次性加载AI头像
-        if state.get("maid_name") and str(self.ai_img_label.cget("image")) == str(self.default_img):
-            self.load_ai_avatar(state.get("maid_name"))
+        maid_name = state.get("maid_name", "AI")
+        self.ai_name_label.config(text=maid_name)
+        # 角色变化时刷新；未找到头像时允许后续状态更新重试。
+        if maid_name != self.ai_avatar_name or self.ai_img is self.default_img:
+            self.load_ai_avatar(maid_name)
 
         # 更新数值
         self.user_hp_label.config(text=f"HP: {state['user_hp']}/6")
