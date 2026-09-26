@@ -139,6 +139,82 @@ async function storeFile(sourcePathOrBuffer, originalName, agentId, topicId, fil
     return attachmentData;
 }
 
+// 允许以"实时引用"方式附加的文本扩展名（@笔记）。
+const LIVE_REFERENCE_EXTENSIONS = new Set(['.md', '.txt']);
+
+function isLiveReferenceCandidate(filePath) {
+    return typeof filePath === 'string'
+        && LIVE_REFERENCE_EXTENSIONS.has(path.extname(filePath).toLowerCase());
+}
+
+/**
+ * 创建一个"实时引用"附件：不复制文件，直接指向用户笔记区中的真实文件。
+ * - internalPath 为真实文件的 file:// 路径，AI 可以直接定位并修改该文件；
+ * - extractedText 只是附加时的快照，发送 / 重建上下文时会按 sourcePath 重新读取，
+ *   因此用户更新笔记后，上下文也会同步更新。
+ * 注意：此类附件绝不能被当作可清理的内部副本删除。
+ */
+async function createLiveFileReference(sourcePath, originalName, fileTypeHint = 'text/plain') {
+    if (typeof sourcePath !== 'string' || !sourcePath) {
+        throw new Error('实时引用需要有效的文件路径。');
+    }
+    const cleanSource = sourcePath.startsWith('file://') ? sourcePath.substring(7) : sourcePath;
+    const resolvedPath = path.resolve(cleanSource);
+    if (!isLiveReferenceCandidate(resolvedPath)) {
+        throw new Error(`仅支持实时引用 .md / .txt 笔记文件: ${resolvedPath}`);
+    }
+
+    const stat = await fs.stat(resolvedPath);
+    if (!stat.isFile()) {
+        throw new Error(`实时引用的路径不是普通文件: ${resolvedPath}`);
+    }
+
+    const name = originalName || path.basename(resolvedPath);
+    const pathHash = crypto.createHash('sha256').update(resolvedPath).digest('hex');
+    const mimeType = (fileTypeHint && fileTypeHint !== 'application/octet-stream') ? fileTypeHint : 'text/plain';
+
+    const attachmentData = {
+        id: `live_note_${pathHash}`,
+        name,
+        internalFileName: path.basename(resolvedPath),
+        // 与 storeFile 保持相同的 file:// 格式，方便现有读取逻辑复用。
+        internalPath: `file://${resolvedPath}`,
+        sourcePath: resolvedPath,
+        isLiveReference: true,
+        type: mimeType,
+        size: stat.size,
+        hash: null,
+        createdAt: Date.now(),
+        modifiedAt: stat.mtimeMs,
+        extractedText: null,
+        imageFrames: null,
+    };
+
+    const textContentResult = await getTextContent(resolvedPath, mimeType);
+    if (textContentResult && typeof textContentResult.text === 'string') {
+        attachmentData.extractedText = textContentResult.text;
+    }
+
+    console.log(`[FileManager] Created live note reference: ${resolvedPath}`);
+    return attachmentData;
+}
+
+/**
+ * 读取实时引用附件的最新文本。失败时返回 null，由调用方回退到快照文本。
+ */
+async function readLiveReferenceText(attachmentData) {
+    const sourcePath = attachmentData?.sourcePath
+        || (typeof attachmentData?.internalPath === 'string' ? attachmentData.internalPath : null);
+    if (!attachmentData?.isLiveReference || !sourcePath) return null;
+    try {
+        const result = await getTextContent(sourcePath, attachmentData.type || 'text/plain');
+        return result && typeof result.text === 'string' ? result.text : null;
+    } catch (error) {
+        console.warn(`[FileManager] Failed to refresh live note reference ${sourcePath}:`, error);
+        return null;
+    }
+}
+
 // Placeholder for future functions
 async function getFileAsBase64(internalPath) {
     try {
@@ -368,6 +444,9 @@ async function _convertPdfToImages(pdfPath) {
 module.exports = {
     initializeFileManager,
     storeFile,
+    createLiveFileReference,
+    readLiveReferenceText,
+    isLiveReferenceCandidate,
     getFileAsBase64, // Exposing for now, might be internalized later
     getTextContent,   // Exposing for now
 };

@@ -913,9 +913,25 @@ function initialize(mainWindow, context) {
                     }
                 }
 
+                const fileManager = require('../fileManager');
+
+                // @笔记：以实时引用方式附加真实笔记文件，不复制到 attachments 目录。
+                // AI 拿到的是笔记区真实路径，可直接修改；用户更新笔记后上下文也会同步。
+                if (fileData.liveReference === true
+                    && typeof fileData.path === 'string'
+                    && fileManager.isLiveReferenceCandidate(fileData.path)) {
+                    try {
+                        const liveRef = await fileManager.createLiveFileReference(fileData.path, fileData.name, fileTypeHint || 'text/plain');
+                        console.log(`[Main - handle-file-drop] Attached live note reference: ${liveRef.internalPath}`);
+                        storedFilesInfo.push({ success: true, attachment: liveRef, name: fileData.name });
+                        continue;
+                    } catch (liveError) {
+                        console.warn(`[Main - handle-file-drop] Live reference failed for ${fileData.path}, falling back to copy:`, liveError.message);
+                    }
+                }
+
                 console.log(`[Main - handle-file-drop] Attempting to store dropped file: ${fileData.name} (Type: ${fileTypeHint}) for Agent: ${agentId}, Topic: ${topicId}`);
 
-                const fileManager = require('../fileManager');
                 const storedFile = await fileManager.storeFile(fileSource, fileData.name, agentId, topicId, fileTypeHint);
                 storedFilesInfo.push({ success: true, attachment: storedFile, name: fileData.name });
 

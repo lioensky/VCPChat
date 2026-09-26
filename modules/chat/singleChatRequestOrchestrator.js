@@ -76,12 +76,40 @@ function getAttachmentType(attachment, data) {
     return attachment?.type || data?.type || 'application/octet-stream';
 }
 
-function appendAttachmentContext(text, attachment, data) {
+function isLiveReferenceAttachment(attachment, data) {
+    return attachment?.isLiveReference === true || data?.isLiveReference === true;
+}
+
+// @笔记实时引用：每次构建上下文都从笔记区真实文件重新读取，保证内容与用户最新编辑一致。
+async function refreshLiveReferenceText(electronAPI, attachment, data) {
+    if (!isLiveReferenceAttachment(attachment, data)) return null;
+    if (!electronAPI || typeof electronAPI.getTextContent !== 'function') return null;
+    const source = data?.sourcePath || data?.internalPath || attachment?.internalPath || attachment?.src;
+    if (!source) return null;
+    try {
+        const result = await electronAPI.getTextContent(source, getAttachmentType(attachment, data));
+        return result && typeof result.text === 'string' ? result.text : null;
+    } catch (error) {
+        console.warn(
+            `[SingleChatRequestOrchestrator] 刷新实时笔记 ${attachment?.name || source} 失败，使用快照内容:`,
+            error
+        );
+        return null;
+    }
+}
+
+function appendAttachmentContext(text, attachment, data, liveText = null) {
     const path = getAttachmentPath(attachment, data);
     const name = attachment?.name || data?.name || '未知文件';
     const type = getAttachmentType(attachment, data);
     const imageFrames = data?.imageFrames || attachment?.imageFrames;
-    const extractedText = data?.extractedText || attachment?.extractedText;
+    const extractedText = typeof liveText === 'string'
+        ? liveText
+        : (data?.extractedText || attachment?.extractedText);
+
+    if (isLiveReferenceAttachment(attachment, data)) {
+        return `${text}\n\n[附加文件: ${path} (笔记区实时文件，可直接修改)]\n${extractedText || ''}\n[/附加文件结束: ${name}]`;
+    }
 
     if (Array.isArray(imageFrames) && imageFrames.length > 0) {
         return `${text}\n\n[附加文件: ${path} (扫描版PDF，已转换为图片)]`;
@@ -144,7 +172,8 @@ async function buildDefaultMessageContent({ message, electronAPI }) {
 
     for (const attachment of attachments) {
         const data = getAttachmentData(attachment);
-        text = appendAttachmentContext(text, attachment, data);
+        const liveText = await refreshLiveReferenceText(electronAPI, attachment, data);
+        text = appendAttachmentContext(text, attachment, data, liveText);
         const framePayload = await readAttachmentFrames(electronAPI, attachment, data);
         if (!framePayload) continue;
 

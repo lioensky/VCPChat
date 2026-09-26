@@ -461,12 +461,13 @@ function initializeInputEnhancer(refs) {
 
         hideNoteSuggestions();
 
-        // Attach the file using existing logic
+        // 以"实时引用"方式附加笔记：主进程不复制文件，附件路径直接指向笔记区真实文件，
+        // AI 可以看到并修改该文件；用户更新笔记后，上下文也会重新读取最新内容。
         try {
             const results = await localElectronAPI.handleFileDrop(agentId, topicId, [{
                 path: note.path, // Pass the full path
-                name: note.name
-                // No need to specify type or data, main process will handle it
+                name: note.name,
+                liveReference: true
             }]);
             if (!isActive()) return;
 
@@ -476,6 +477,7 @@ function initializeInputEnhancer(refs) {
                     file: { name: att.name, type: att.type, size: att.size },
                     localPath: att.internalPath,
                     originalName: att.name,
+                    isLiveReference: att.isLiveReference === true,
                     _fileManagerData: att
                 });
                 updateAttachmentPreviewRef();

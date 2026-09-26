@@ -965,14 +965,22 @@ ${canvasData.errors || 'No errors'}
                         // 🟢 同步：多级路径探测。优先使用 internalPath (物理路径)
                         // 兼容上下文编辑/拖拽追加后附件元数据位于顶层，或 _fileManagerData 丢失的历史结构。
                         const effectiveType = fileManagerData.type || att?.type || '';
-                        const effectiveExtractedText = fileManagerData.extractedText || att?.extractedText || '';
+                        // @笔记实时引用：从笔记区真实文件重新读取最新内容。
+                        const isLiveNote = fileManagerData.isLiveReference === true || att?.isLiveReference === true;
+                        let effectiveExtractedText = fileManagerData.extractedText || att?.extractedText || '';
+                        if (isLiveNote) {
+                            const liveText = await fileManager.readLiveReferenceText({ ...att, ...fileManagerData, isLiveReference: true });
+                            if (typeof liveText === 'string') effectiveExtractedText = liveText;
+                        }
                         const effectiveInternalPath = fileManagerData.internalPath || att?.internalPath;
                         const filePathForContext = effectiveInternalPath ||
                                                    att?.localPath ||
                                                    att?.src ||
                                                    (att?.name || '未知文件');
 
-                        if (typeof effectiveExtractedText === 'string' && effectiveExtractedText.trim() !== '') {
+                        if (isLiveNote) {
+                            textForAIContext += `\n\n[附加文件: ${filePathForContext} (笔记区实时文件，可直接修改)]\n${effectiveExtractedText}\n[/附加文件结束: ${att?.name || '未知文件'}]`;
+                        } else if (typeof effectiveExtractedText === 'string' && effectiveExtractedText.trim() !== '') {
                             textForAIContext += `\n\n[附加文件: ${filePathForContext}]\n${effectiveExtractedText}\n[/附加文件结束: ${att?.name || '未知文件'}]`;
                         } else if (effectiveType.startsWith('audio/')) {
                             textForAIContext += `\n\n[附加音频: ${filePathForContext}]`;
@@ -1565,14 +1573,22 @@ ${canvasData.errors || 'No errors'}
                 // 🟢 极其关键：直接强取物理路径，不给文件名回退的机会
                 // 兼容上下文编辑/拖拽追加后附件元数据位于顶层，或 _fileManagerData 丢失的历史结构。
                 const effectiveType = fileManagerData.type || att?.type || '';
-                const effectiveExtractedText = fileManagerData.extractedText || att?.extractedText || '';
+                // @笔记实时引用：从笔记区真实文件重新读取最新内容。
+                const isLiveNote = fileManagerData.isLiveReference === true || att?.isLiveReference === true;
+                let effectiveExtractedText = fileManagerData.extractedText || att?.extractedText || '';
+                if (isLiveNote) {
+                    const liveText = await fileManager.readLiveReferenceText({ ...att, ...fileManagerData, isLiveReference: true });
+                    if (typeof liveText === 'string') effectiveExtractedText = liveText;
+                }
                 const effectiveInternalPath = fileManagerData.internalPath || att?.internalPath;
                 const filePathForContext = effectiveInternalPath ||
                                            att?.localPath ||
                                            att?.src ||
                                            (att?.name || '未知文件');
 
-                if (typeof effectiveExtractedText === 'string' && effectiveExtractedText.trim() !== '') {
+                if (isLiveNote) {
+                    textForAIContext += `\n\n[附加文件: ${filePathForContext} (笔记区实时文件，可直接修改)]\n${effectiveExtractedText}\n[/附加文件结束: ${att?.name || '未知文件'}]`;
+                } else if (typeof effectiveExtractedText === 'string' && effectiveExtractedText.trim() !== '') {
                     textForAIContext += `\n\n[附加文件: ${filePathForContext}]\n${effectiveExtractedText}\n[/附加文件结束: ${att?.name || '未知文件'}]`;
                 } else if (effectiveType.startsWith('audio/')) {
                     textForAIContext += `\n\n[附加音频: ${filePathForContext}]`;
