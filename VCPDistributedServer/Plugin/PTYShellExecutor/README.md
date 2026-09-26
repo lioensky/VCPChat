@@ -14,11 +14,12 @@ PTYShellExecutor 是一个为 VCPChat 设计的本地 Shell 执行插件。同�
 - 🔄 **PTY 可视化** - GUI 终端保留 PTY 会话能力，工具同步回调不依赖 PTY
 - ⚡ **同步/异步双模式** - 短命令同步执行，长任务后台托管
 - 👁️ **Agent 执行轨迹** - GUI 终端显示 agent 输入命令、原始输出和退出状态
+- 🧵 **代次隔离输出** - 同步、异步、PTY 与 pipe 共用有序输出总线，关闭窗口后不会向新窗口回放旧内容
 - 🧻 **禁用分页器** - 默认禁用常见分页器（PAGER/GIT_PAGER/SYSTEMD_PAGER/MANPAGER 等），避免命令进入 less 导致超时
 - 🧹 **智能输出清理** - 自动过滤 ANSI 转义序列、Shell Integration 标记
 - 🧯 **自动降级** - 当环境禁止创建 PTY 时，自动切换为 pipe 模式执行
 - 🖥️ **可视化终端** - 内置 GUI 窗口，实时查看命令执行
-- 🎨 **主题跟随** - 自动同步 VCPChat 的明暗主题设置
+- 🎨 **主题跟随** - 跟随 VCPChat 的明暗/系统模式与主题套装，热换样式时不中断终端输出
 - 💾 **任务持久化** - 异步任务状态保存至磁盘，7 天自动清理
 
 ## 🚀 快速开始
@@ -87,11 +88,16 @@ PTYShellExecutor 是一个为 VCPChat 设计的本地 Shell 执行插件。同�
 ## 🏗️ 架构设计
 
     PTYShellExecutor/
-    ├── PTYShellExecutor.js    # 主逻辑
+    ├── PTYShellExecutor.js      # 插件入口与加载边界
+    ├── PTYShellExecutor.impl.js # 命令、会话与窗口协调
+    ├── ShellOutputPipeline.js   # 输出协议、窗口代次与 UTF-8 增量解码
+    ├── ShellThemeBridge.js      # 插件内主题设置/样式监听与快照
     ├── plugin-manifest.json   # 插件清单
     ├── config.env             # 配置文件
     ├── gui/                   # GUI 相关
     │   ├── ShellViewer.html   # 终端界面
+    │   ├── ShellViewer.js     # xterm 与 IPC 交互
+    │   ├── ShellThemeRuntime.js # 主题快照与样式热换
     │   └── preload.js         # Electron 预加载
     └── state/                 # 异步任务状态存储
         └── task_xxx.json      # 任务状态文件
@@ -117,7 +123,12 @@ PTYShellExecutor 是一个为 VCPChat 设计的本地 Shell 执行插件。同�
 **GUI Window** - 可视化终端
 - Electron BrowserWindow
 - xterm.js 终端渲染
-- 主题同步
+- 插件内主题快照与 revision 热换
+
+**Shell Output Pipeline** - 终端输出总线
+- 窗口 generation 与 ready 屏障
+- 同步、异步、PTY 和 pipe 统一事件包
+- executionId/sequence 归属与 UTF-8 分片保护
 
 ## 🔒 安全机制
 
