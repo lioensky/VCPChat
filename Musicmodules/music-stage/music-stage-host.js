@@ -249,6 +249,24 @@
             starborn: [
                 { key: 'transitionLock', label: '转场锁定', type: 'range', min: 0.5, max: 12, step: 0.5, unit: 's' },
                 { key: 'avoidRepeat', label: '避免重复', type: 'toggle' }
+            ],
+            tunnel: [
+                { key: 'cameraSpeed', label: '穿行速度', type: 'range', min: 0.55, max: 1.85, step: 0.05, unit: 'x' },
+                { key: 'motionAmount', label: '空间运动', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'pauseDuration', label: '镜头停驻', type: 'range', min: 0, max: 3, step: 0.05, unit: 's' },
+                { key: 'cameraBreath', label: '镜头呼吸', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'cameraShake', label: '镜头晃动', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'objectDensity', label: '物体密度', type: 'range', min: 0.25, max: 2, step: 0.05, unit: 'x' },
+                { key: 'starfield', label: '星场', type: 'toggle' },
+                { key: 'showPlanets', label: '星球', type: 'toggle' },
+                { key: 'showRings', label: '星环', type: 'toggle' },
+                { key: 'showShips', label: '飞船', type: 'toggle' },
+                { key: 'showStations', label: '空间站', type: 'toggle' },
+                { key: 'dissolveAmount', label: '点阵消散', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+                { key: 'textHoldRatio', label: '歌词驻留', type: 'range', min: 0, max: 0.8, step: 0.05, unit: '%' },
+                { key: 'fontScale', label: '歌词字号', type: 'range', min: 0.65, max: 1.5, step: 0.05, unit: 'x' },
+                { key: 'glow', label: '点阵辉光', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'audioReactivity', label: '音频响应', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' }
             ]
         });
         const state = {

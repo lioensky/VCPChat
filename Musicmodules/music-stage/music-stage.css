@@ -1559,6 +1559,138 @@ body.music-stage-active #player-background {
     }
 }
 
+/* 隧图 / Tunnel Diagram：独立的纯色深空点阵剧场。 */
+.music-stage-mode-tunnel {
+    --tunnel-bg: var(--stage-bg, #14181c);
+    --tunnel-ink: var(--stage-ink, #f2f0e9);
+    --tunnel-accent: var(--stage-accent, #f2a900);
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    isolation: isolate;
+    background-color: var(--tunnel-bg);
+    background-image:
+        radial-gradient(ellipse at 50% 50%, color-mix(in srgb, var(--tunnel-accent) 4.5%, transparent), transparent 72%),
+        radial-gradient(circle at 50% 48%, color-mix(in srgb, var(--tunnel-ink) 2.5%, transparent), transparent 48%);
+}
+
+.music-stage-mode-tunnel::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+        linear-gradient(90deg, transparent 0 49.96%, color-mix(in srgb, var(--tunnel-accent) 6%, transparent) 50%, transparent 50.04%),
+        radial-gradient(ellipse at 50% 50%, transparent 25%, color-mix(in srgb, var(--tunnel-bg) 55%, transparent) 85%);
+    opacity: calc(0.24 + var(--stage-audio-power, 0) * 0.22);
+}
+
+.music-stage-mode-tunnel::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    background:
+        repeating-linear-gradient(90deg, transparent 0 8px, color-mix(in srgb, var(--tunnel-ink) 1.2%, transparent) 8px 9px),
+        radial-gradient(ellipse at center, transparent 45%, color-mix(in srgb, var(--tunnel-bg) 65%, transparent) 100%);
+    mix-blend-mode: screen;
+    opacity: 0.14;
+}
+
+.music-stage-mode-tunnel > .tunnel-canvas {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: block;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+.music-stage-mode-tunnel > .tunnel-fallback {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    align-content: center;
+    gap: 18px;
+    padding: 10vw;
+    box-sizing: border-box;
+    text-align: center;
+    background: var(--tunnel-bg);
+}
+
+.music-stage-mode-tunnel > .tunnel-fallback[hidden] {
+    display: none;
+}
+
+.tunnel-fallback-line {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: min(88vw, 1180px);
+    color: color-mix(in srgb, var(--tunnel-ink) 28%, transparent);
+    font-size: clamp(34px, 6vw, 88px);
+    font-weight: 760;
+    line-height: 1.16;
+    letter-spacing: -0.045em;
+    text-shadow: 0 0 26px color-mix(in srgb, var(--tunnel-accent) 34%, transparent);
+}
+
+.tunnel-fallback-word {
+    margin: 0 0.06em;
+    filter: blur(6px);
+    opacity: 0.2;
+    transform: translateY(18px) scale(0.94);
+    transition: color 0.45s ease, opacity 0.45s ease, filter 0.48s ease, transform 0.56s var(--stage-ease);
+}
+
+.tunnel-fallback-word.is-passed {
+    color: color-mix(in srgb, var(--tunnel-accent) 70%, var(--tunnel-ink));
+    filter: none;
+    opacity: 0.78;
+    transform: none;
+}
+
+.tunnel-fallback-word.is-active {
+    color: var(--tunnel-ink);
+    filter: none;
+    opacity: 1;
+    transform: translateY(-7px) scale(1.06);
+    text-shadow:
+        0 0 16px color-mix(in srgb, var(--tunnel-accent) 85%, transparent),
+        0 0 46px color-mix(in srgb, var(--tunnel-accent) 38%, transparent);
+}
+
+.tunnel-fallback-sub {
+    width: min(70vw, 900px);
+    color: color-mix(in srgb, var(--tunnel-ink) 48%, transparent);
+    text-align: center;
+}
+
+.music-stage-mode-tunnel .stage-word {
+    will-change: transform, opacity, filter;
+}
+
+@media (max-width: 560px) {
+    .tunnel-fallback-line {
+        max-width: 90vw;
+        font-size: clamp(28px, 9vw, 58px);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .music-stage-mode-tunnel::after {
+        display: none;
+    }
+
+    .tunnel-fallback-word {
+        transition: none;
+    }
+}
 /* Responsive */
 @media (max-width: 820px), (max-height: 600px) {
     .music-stage-top-chrome {

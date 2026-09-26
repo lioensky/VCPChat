@@ -2,7 +2,7 @@
     'use strict';
 
     const STORAGE_KEY = 'musicStageConfig';
-    const VERSION = 3;
+    const VERSION = 4;
     const clamp = (value, min, max, fallback) => {
         const number = Number(value);
         if (!Number.isFinite(number)) return fallback;
@@ -19,7 +19,8 @@
         { id: 'luminous', label: '流光', description: '逐字辉光与呼吸浮动' },
         { id: 'partita', label: '云阶', description: '分块排版与引导线' },
         { id: 'cadenza', label: '心象', description: '空间排版与镜头漂移' },
-        { id: 'starborn', label: '星诞', description: '按歌词段落自动导演' }
+        { id: 'starborn', label: '星诞', description: '按歌词段落自动导演' },
+        { id: 'tunnel', label: '隧图', description: '点阵星际穿行、实体化歌词与深空物体演出' }
     ]);
 
     const PIXI_DEFAULTS = Object.freeze({
@@ -34,7 +35,7 @@
         rgbShift: 0, grain: 0, contrast: 0, halftone: 0, vignette: 0.18
     });
     const DEFAULTS = Object.freeze({
-        enabledModes: ['tempera', 'sonnet', 'diorama', 'fume', 'luminous', 'partita', 'cadenza', 'starborn'],
+        enabledModes: ['tempera', 'sonnet', 'diorama', 'fume', 'luminous', 'partita', 'cadenza', 'starborn', 'tunnel'],
         quality: 'standard',
         animationIntensity: 1,
         edgeSpectrum: true,
@@ -126,6 +127,24 @@
             starborn: {
                 transitionLock: 4,
                 avoidRepeat: true
+            },
+            tunnel: {
+                cameraSpeed: 1,
+                motionAmount: 1,
+                cameraBreath: 0.5,
+                cameraShake: 1,
+                pauseDuration: 0.9,
+                objectDensity: 1,
+                starfield: true,
+                showPlanets: true,
+                showRings: true,
+                showShips: true,
+                showStations: true,
+                dissolveAmount: 0.72,
+                textHoldRatio: 0.32,
+                fontScale: 1,
+                glow: 1,
+                audioReactivity: 1
             }
         }
     });
@@ -219,7 +238,23 @@
             textHoldRatio: clamp(source.textHoldRatio, 0, 1, fallback.textHoldRatio),
             hidePrintSymbols: bool(source.hidePrintSymbols, fallback.hidePrintSymbols),
             transitionLock: clamp(source.transitionLock, 0.5, 12, fallback.transitionLock),
-            avoidRepeat: bool(source.avoidRepeat, fallback.avoidRepeat)
+            avoidRepeat: bool(source.avoidRepeat, fallback.avoidRepeat),
+            pauseDuration: clamp(source.pauseDuration, 0, 3, fallback.pauseDuration),
+            objectDensity: clamp(source.objectDensity, 0.25, 2, fallback.objectDensity),
+            starfield: bool(source.starfield, fallback.starfield),
+            showPlanets: bool(source.showPlanets, fallback.showPlanets),
+            showRings: bool(source.showRings, fallback.showRings),
+            showShips: bool(source.showShips, fallback.showShips),
+            showStations: bool(source.showStations, fallback.showStations),
+            dissolveAmount: clamp(source.dissolveAmount, 0, 1, fallback.dissolveAmount),
+            textHoldRatio: clamp(source.textHoldRatio, 0, 0.8, fallback.textHoldRatio),
+            audioReactivity: clamp(source.audioReactivity, 0, 2, fallback.audioReactivity),
+            cameraSpeed: clamp(source.cameraSpeed, 0.55, 1.85, fallback.cameraSpeed),
+            motionAmount: clamp(source.motionAmount, 0, 2, fallback.motionAmount),
+            cameraBreath: clamp(source.cameraBreath, 0, 2, fallback.cameraBreath),
+            cameraShake: clamp(source.cameraShake, 0, 2, fallback.cameraShake),
+            fontScale: clamp(source.fontScale, 0.65, 1.5, fallback.fontScale),
+            glow: clamp(source.glow, 0, 2, fallback.glow)
         };
     };
 
