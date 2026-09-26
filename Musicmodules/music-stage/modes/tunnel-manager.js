@@ -7,20 +7,11 @@
 
     const { clamp, seededRandom } = R;
 
-    const smooth = (value) => {
-        const p = clamp(value);
-        return p * p * (3 - 2 * p);
-    };
-
-    const easeOutCubic = (value) => {
-        const p = clamp(value);
-        return 1 - Math.pow(1 - p, 3);
-    };
-
-    const easeInCubic = (value) => {
-        const p = clamp(value);
-        return p * p * p;
-    };
+    const smooth = (v) => { const p = clamp(v); return p * p * (3 - 2 * p); };
+    const easeOutCubic = (v) => { const p = clamp(v); return 1 - Math.pow(1 - p, 3); };
+    const easeInCubic = (v) => { const p = clamp(v); return p * p * p; };
+    const easeOutQuart = (v) => { const p = clamp(v); return 1 - Math.pow(1 - p, 4); };
+    const lerp = (a, b, t) => a + (b - a) * t;
 
     const create = (container, services) => {
         const mode = U.makeModeBase('tunnel', '隧图', container, services);
@@ -31,21 +22,10 @@
         mode.root.appendChild(fallback);
 
         const reduced = global.matchMedia?.('(prefers-reduced-motion: reduce)');
-        let T = null;
-        let scene = null;
-        let camera = null;
-        let renderer = null;
-        let world = null;
-        let initialized = false;
-        let fallbackMode = false;
-        let initializing = null;
-        let latest = null;
-        let source = null;
-        let identity = '';
-        let width = 1;
-        let height = 1;
-        let lastTime = null;
-        let paletteKey = '';
+        let T = null, scene = null, camera = null, renderer = null, world = null;
+        let initialized = false, fallbackMode = false, initializing = null;
+        let latest = null, source = null, identity = '';
+        let width = 1, height = 1, lastTime = null, paletteKey = '';
 
         const tuning = () => ({
             ...(mode.config.modes?.tunnel || {}),
@@ -154,12 +134,11 @@
                 if (mode.destroyed) return;
 
                 scene = new T.Scene();
-                // 简洁深邃的冷石墨背景，与纸墨与机芯的石墨板相呼应
-                const initialBg = new T.Color('#14181d');
+                const initialBg = new T.Color('#0a0d11');
                 scene.background = initialBg;
-                scene.fog = new T.FogExp2(initialBg, 0.00055);
+                scene.fog = new T.FogExp2(initialBg, 0.00038);
 
-                camera = new T.PerspectiveCamera(48, 1, 0.1, 3600);
+                camera = new T.PerspectiveCamera(56, 1, 0.1, 4600);
                 camera.position.set(0, 0, 0);
 
                 renderer = new T.WebGLRenderer({
@@ -169,7 +148,7 @@
                 });
                 renderer.outputColorSpace = T.SRGBColorSpace;
                 renderer.toneMapping = T.ACESFilmicToneMapping;
-                renderer.toneMappingExposure = 1.12;
+                renderer.toneMappingExposure = 1.06;
                 renderer.domElement.className = 'tunnel-canvas';
                 mode.root.insertBefore(renderer.domElement, fallback);
 
@@ -197,25 +176,12 @@
         };
 
         mode.updateFrame = update;
-        mode.resize = () => {
-            resize();
-            if (latest && initialized) update(latest);
-        };
+        mode.resize = () => { resize(); if (latest && initialized) update(latest); };
         const baseConfig = mode.updateConfig;
-        mode.updateConfig = (config) => {
-            baseConfig(config);
-            resize();
-            if (latest && initialized) update(latest);
-        };
-        mode.updateTheme = () => {
-            if (latest && initialized) update(latest);
-        };
+        mode.updateConfig = (config) => { baseConfig(config); resize(); if (latest && initialized) update(latest); };
+        mode.updateTheme = () => { if (latest && initialized) update(latest); };
         const resume = mode.resume;
-        mode.resume = () => {
-            resume();
-            lastTime = null;
-            if (latest) update(latest);
-        };
+        mode.resume = () => { resume(); lastTime = null; if (latest) update(latest); };
         mode.getDebugSnapshot = () => ({
             initialized,
             fallbackMode,
@@ -224,185 +190,245 @@
             cameraPos: camera?.position?.toArray() || null,
             activeLine: latest?.activeLine?.fullText || null
         });
-        mode.scope.add(() => {
-            disposeGraphics();
-            latest = source = null;
-        });
+        mode.scope.add(() => { disposeGraphics(); latest = source = null; });
 
         resize();
         void initialize();
         return mode;
     };
 
-    /**
-     * 点阵与几何体生成助手
-     */
-    const createModelGenerators = (T) => {
-        // 1. 巨大星球（斐波那契球面点阵）
+    /* =====================================================
+     * 点阵模型生成器 —— 极简笔触描绘巨大天体
+     * 每个模型带 shade 通道，标识子结构以便材质着色分级
+     * ===================================================== */
+    const createModelGenerators = () => {
+
+        // 巨型行星：斐波那契球面 + 纬向暗纹 + 极冠辉点
+        // shade: 0=纬线暗纹 1=主体表面 2=极冠辉点
         const generatePlanet = (radius, count, seedStr) => {
             const rand = seededRandom(seedStr);
             const pos = new Float32Array(count * 3);
-            const offset = 2 / count;
-            const increment = Math.PI * (3 - Math.sqrt(5));
+            const shade = new Float32Array(count);
+            const golden = Math.PI * (3 - Math.sqrt(5));
+            const latBands = [-0.52, -0.18, 0.22, 0.55];
             for (let i = 0; i < count; i += 1) {
-                const y = (i * offset - 1) + (offset / 2);
-                const r = Math.sqrt(Math.max(0, 1 - y * y));
-                const phi = i * increment;
-                const jitter = 0.985 + rand() * 0.03;
-                pos[i * 3] = Math.cos(phi) * r * radius * jitter;
-                pos[i * 3 + 1] = y * radius * jitter;
-                pos[i * 3 + 2] = Math.sin(phi) * r * radius * jitter;
+                const u = rand();
+                if (u < 0.10) {
+                    const pole = rand() < 0.5 ? 1 : -1;
+                    const theta = rand() * Math.PI * 2;
+                    const capR = radius * (0.10 + rand() * 0.30);
+                    pos[i * 3] = Math.cos(theta) * capR;
+                    pos[i * 3 + 1] = pole * Math.sqrt(Math.max(0, radius * radius - capR * capR)) * (0.995 + rand() * 0.01);
+                    pos[i * 3 + 2] = Math.sin(theta) * capR;
+                    shade[i] = 2;
+                } else if (u < 0.24) {
+                    const lat = latBands[Math.floor(rand() * latBands.length)] + (rand() - 0.5) * 0.03;
+                    const rr = Math.sqrt(Math.max(0, 1 - lat * lat)) * radius;
+                    const theta = rand() * Math.PI * 2;
+                    pos[i * 3] = Math.cos(theta) * rr;
+                    pos[i * 3 + 1] = lat * radius;
+                    pos[i * 3 + 2] = Math.sin(theta) * rr;
+                    shade[i] = 0;
+                } else {
+                    const k = i + 0.5;
+                    const y = 1 - (k / count) * 2;
+                    const r = Math.sqrt(Math.max(0, 1 - y * y));
+                    const phi = k * golden;
+                    const jitter = 0.99 + rand() * 0.02;
+                    pos[i * 3] = Math.cos(phi) * r * radius * jitter;
+                    pos[i * 3 + 1] = y * radius * jitter;
+                    pos[i * 3 + 2] = Math.sin(phi) * r * radius * jitter;
+                    shade[i] = 1;
+                }
             }
-            return pos;
+            return { pos, shade };
         };
 
-        // 2. 倾斜星环点阵（同心光晕粒子带）
+        // 行星环：三段剖面 + 卡西尼缝
+        // shade: 0=内亮带 1=中带 2=外散晕
         const generateRing = (innerRadius, outerRadius, count, seedStr) => {
             const rand = seededRandom(seedStr);
             const pos = new Float32Array(count * 3);
+            const shade = new Float32Array(count);
+            const span = outerRadius - innerRadius;
             for (let i = 0; i < count; i += 1) {
-                const angle = rand() * Math.PI * 2;
-                const rRatio = Math.pow(rand(), 0.72);
-                const r = innerRadius + rRatio * (outerRadius - innerRadius);
-                const thickness = (rand() - 0.5) * 0.45;
-                pos[i * 3] = Math.cos(angle) * r;
-                pos[i * 3 + 1] = thickness;
-                pos[i * 3 + 2] = Math.sin(angle) * r;
+                const u = rand();
+                let r;
+                if (u < 0.40) { r = innerRadius + span * rand() * 0.30; shade[i] = 0; }
+                else if (u < 0.70) { r = innerRadius + span * (0.34 + rand() * 0.28); shade[i] = 1; }
+                else { r = innerRadius + span * (0.66 + Math.pow(rand(), 1.7) * 0.34); shade[i] = 2; }
+                const theta = rand() * Math.PI * 2;
+                const thick = (rand() - 0.5) * (shade[i] === 2 ? 1.1 : 0.30);
+                pos[i * 3] = Math.cos(theta) * r;
+                pos[i * 3 + 1] = thick;
+                pos[i * 3 + 2] = Math.sin(theta) * r;
             }
-            return pos;
+            return { pos, shade };
         };
 
-        // 3. 远空环形空间站（Endurance 轴向环架）
+        // 环形空间站：12 模块外环 + 4 辐条 + 中轴龙骨 + 航行灯
+        // shade: 0=骨架辐条 1=舱体模块 2=航行灯 3=中轴
         const generateStation = (radius, count, seedStr) => {
             const rand = seededRandom(seedStr);
             const pos = new Float32Array(count * 3);
-            const modules = 12;
+            const shade = new Float32Array(count);
             for (let i = 0; i < count; i += 1) {
-                const choose = rand();
-                if (choose < 0.64) {
-                    const modIdx = Math.floor(rand() * modules);
-                    const baseAngle = (modIdx / modules) * Math.PI * 2;
-                    const spread = (rand() - 0.5) * 0.24;
-                    const r = radius + (rand() - 0.5) * 2.0;
-                    pos[i * 3] = Math.cos(baseAngle + spread) * r;
-                    pos[i * 3 + 1] = Math.sin(baseAngle + spread) * r;
-                    pos[i * 3 + 2] = (rand() - 0.5) * 1.8;
-                } else if (choose < 0.88) {
+                const u = rand();
+                if (u < 0.46) {
+                    const modIdx = Math.floor(rand() * 12);
+                    const a = (modIdx / 12) * Math.PI * 2 + (rand() - 0.5) * 0.30;
+                    const r = radius + (rand() - 0.5) * 2.4;
+                    pos[i * 3] = Math.cos(a) * r;
+                    pos[i * 3 + 1] = Math.sin(a) * r;
+                    pos[i * 3 + 2] = (rand() - 0.5) * 2.2;
+                    shade[i] = 1;
+                } else if (u < 0.70) {
                     const spoke = Math.floor(rand() * 4);
-                    const spokeAngle = (spoke / 4) * Math.PI * 2;
-                    const spokeDist = rand() * radius;
-                    pos[i * 3] = Math.cos(spokeAngle) * spokeDist;
-                    pos[i * 3 + 1] = Math.sin(spokeAngle) * spokeDist;
+                    const a = (spoke / 4) * Math.PI * 2;
+                    const d = rand() * radius * 0.94;
+                    pos[i * 3] = Math.cos(a) * d;
+                    pos[i * 3 + 1] = Math.sin(a) * d;
                     pos[i * 3 + 2] = (rand() - 0.5) * 0.5;
+                    shade[i] = 0;
+                } else if (u < 0.90) {
+                    const r = Math.pow(rand(), 0.6) * 3.0;
+                    const a = rand() * Math.PI * 2;
+                    pos[i * 3] = Math.cos(a) * r;
+                    pos[i * 3 + 1] = Math.sin(a) * r;
+                    pos[i * 3 + 2] = (rand() - 0.5) * 10.0;
+                    shade[i] = 3;
                 } else {
-                    const r = rand() * 3.5;
-                    const angle = rand() * Math.PI * 2;
-                    pos[i * 3] = Math.cos(angle) * r;
-                    pos[i * 3 + 1] = Math.sin(angle) * r;
-                    pos[i * 3 + 2] = (rand() - 0.5) * 6.5;
+                    const a = rand() * Math.PI * 2;
+                    pos[i * 3] = Math.cos(a) * radius;
+                    pos[i * 3 + 1] = Math.sin(a) * radius;
+                    pos[i * 3 + 2] = (rand() - 0.5) * 2.2;
+                    shade[i] = 2;
                 }
             }
-            return pos;
+            return { pos, shade };
         };
 
-        // 4. 巨型战巡母舰（Behemoth Cruiser：巨大机身横穿下方视野）
+        // 母舰：楔形龙骨 + 舰桥塔 + 脊线 + 引擎阵 + 等离子尾焰
+        // shade: 0=舰体 1=舰桥/脊线 2=引擎喷口 3=尾焰流光
         const generateFlagship = (scale, count, seedStr) => {
             const rand = seededRandom(seedStr);
             const pos = new Float32Array(count * 3);
+            const shade = new Float32Array(count);
             for (let i = 0; i < count; i += 1) {
-                const part = rand();
-                if (part < 0.48) {
-                    // 主舰体大型楔形龙骨
-                    const u = rand();
-                    const halfSpan = (1 - Math.pow(u, 1.4)) * 32 * scale;
-                    const x = (rand() - 0.5) * 2 * halfSpan;
-                    const y = (1 - Math.abs(x) / (halfSpan + 0.01)) * (rand() - 0.5) * 5.5 * scale;
-                    const z = (u - 0.5) * 54 * scale;
-                    pos[i * 3] = x;
-                    pos[i * 3 + 1] = y;
-                    pos[i * 3 + 2] = z;
-                } else if (part < 0.78) {
-                    // 上层舰桥、装甲折角与雷达脊线
-                    const t = rand();
-                    const x = (rand() - 0.5) * 8 * scale;
-                    const y = 2.5 * scale + (rand() - 0.5) * 3.2 * scale;
-                    const z = (t - 0.5) * 24 * scale;
-                    pos[i * 3] = x;
-                    pos[i * 3 + 1] = y;
-                    pos[i * 3 + 2] = z;
+                const u = rand();
+                if (u < 0.40) {
+                    // 楔形主龙骨
+                    const v = rand();
+                    const halfSpan = (1 - Math.pow(v, 1.5)) * 36 * scale;
+                    pos[i * 3] = (rand() - 0.5) * 2 * halfSpan;
+                    pos[i * 3 + 1] = (rand() - 0.5) * (1 - Math.abs(pos[i * 3]) / (halfSpan + 0.01)) * 6.5 * scale;
+                    pos[i * 3 + 2] = (v - 0.5) * 64 * scale;
+                    shade[i] = 0;
+                } else if (u < 0.58) {
+                    // 舰桥塔 + 双脊线
+                    if (rand() < 0.5) {
+                        // 舰桥塔（前 1/3 处隆起的指挥岛）
+                        const w = rand();
+                        pos[i * 3] = (rand() - 0.5) * 6.5 * scale * (1 - w * 0.5);
+                        pos[i * 3 + 1] = (2.0 + w * 5.5) * scale;
+                        pos[i * 3 + 2] = (-18 + w * 14 + (rand() - 0.5) * 3) * scale;
+                    } else {
+                        // 双脊线
+                        const side = rand() < 0.5 ? -1 : 1;
+                        pos[i * 3] = side * (4.5 + rand() * 1.5) * scale;
+                        pos[i * 3 + 1] = (1.2 + rand() * 1.4) * scale;
+                        pos[i * 3 + 2] = (rand() - 0.5) * 48 * scale;
+                    }
+                    shade[i] = 1;
+                } else if (u < 0.78) {
+                    // 引擎喷口阵列（4 具，尾部分布）
+                    const eng = Math.floor(rand() * 4) - 1.5;
+                    pos[i * 3] = eng * 7.2 * scale + (rand() - 0.5) * 2.4;
+                    pos[i * 3 + 1] = (rand() - 0.5) * 2.6;
+                    pos[i * 3 + 2] = (30 + rand() * 4.5) * scale;
+                    shade[i] = 2;
                 } else {
-                    // 舰尾巨型推进引擎阵列与等离子尾迹
-                    const engX = ((Math.floor(rand() * 4) - 1.5) * 6.5) * scale;
-                    const x = engX + (rand() - 0.5) * 1.5;
-                    const y = (rand() - 0.5) * 2.0;
-                    const z = 27 * scale + rand() * 22 * scale;
-                    pos[i * 3] = x;
-                    pos[i * 3 + 1] = y;
-                    pos[i * 3 + 2] = z;
+                    // 等离子尾焰（拉长的消散锥）
+                    const t = Math.pow(rand(), 1.4);
+                    const eng = Math.floor(rand() * 4) - 1.5;
+                    const spread = 1 + t * 3.2;
+                    pos[i * 3] = eng * 7.2 * scale * spread * 0.4 + (rand() - 0.5) * 2.0 * spread;
+                    pos[i * 3 + 1] = (rand() - 0.5) * 2.0 * spread;
+                    pos[i * 3 + 2] = (34 + t * 30) * scale;
+                    shade[i] = 3;
                 }
             }
-            return pos;
+            return { pos, shade };
         };
 
-        // 5. 敏捷侦察穿梭机（Scout Craft）
+        // 侦察机：锐利三角翼 + 双引擎
+        // shade: 0=机翼 1=机身 2=引擎
         const generateScout = (scale, count, seedStr) => {
             const rand = seededRandom(seedStr);
             const pos = new Float32Array(count * 3);
+            const shade = new Float32Array(count);
             for (let i = 0; i < count; i += 1) {
                 const u = rand();
-                const halfSpan = (1 - u) * 7.5 * scale;
-                const x = (rand() - 0.5) * 2 * halfSpan;
-                const y = (rand() - 0.5) * 1.8 * scale;
-                const z = (u - 0.5) * 13 * scale;
-                pos[i * 3] = x;
-                pos[i * 3 + 1] = y;
-                pos[i * 3 + 2] = z;
+                if (u < 0.55) {
+                    const v = rand();
+                    const halfSpan = (1 - v) * 8.5 * scale;
+                    pos[i * 3] = (rand() - 0.5) * 2 * halfSpan;
+                    pos[i * 3 + 1] = (rand() - 0.5) * 1.4 * scale;
+                    pos[i * 3 + 2] = (v - 0.5) * 14 * scale;
+                    shade[i] = 0;
+                } else if (u < 0.82) {
+                    pos[i * 3] = (rand() - 0.5) * 2.2 * scale;
+                    pos[i * 3 + 1] = (rand() - 0.5) * 1.6 * scale;
+                    pos[i * 3 + 2] = (rand() - 0.5) * 15 * scale;
+                    shade[i] = 1;
+                } else {
+                    const side = rand() < 0.5 ? -1 : 1;
+                    pos[i * 3] = side * (2.2 + rand() * 0.8) * scale;
+                    pos[i * 3 + 1] = (rand() - 0.5) * 0.8;
+                    pos[i * 3 + 2] = (7 + rand() * 4) * scale;
+                    shade[i] = 2;
+                }
             }
-            return pos;
+            return { pos, shade };
         };
 
-        return {
-            generatePlanet,
-            generateRing,
-            generateStation,
-            generateFlagship,
-            generateScout
-        };
+        return { generatePlanet, generateRing, generateStation, generateFlagship, generateScout };
     };
 
-    /**
-     * 核心隧图三维世界构建
-     */
+    /* =====================================================
+     * 隧图世界 —— 深空的极简与庞大
+     * ===================================================== */
     const createTunnelWorld = (T, scene, app) => {
         const root = new T.Group();
         scene.add(root);
 
-        const modelGen = createModelGenerators(T);
+        const modelGen = createModelGenerators();
+        const TUNNEL_LENGTH = 2600;
 
-        // ==========================
-        // 1. 稀疏深空星尘（Cosmic Dust & Sparse Stars）- 只保留少数作为深空点缀
-        // ==========================
-        const starCount = 260; // 削减至 260 颗，确保深空极度干净、空旷与留白
+        /* ---------- 1. 深空星场：双层视差，极简留白 ---------- */
+        const STAR_FAR = 420;   // 远景细星
+        const STAR_NEAR = 90;   // 近景亮星（大而稀）
+        const starCount = STAR_FAR + STAR_NEAR;
         const starPos = new Float32Array(starCount * 3);
         const starBase = new Float32Array(starCount * 3);
         const starSizes = new Float32Array(starCount);
         const starSeeds = new Float32Array(starCount * 3);
-        const starRand = seededRandom('tunnel-sparse-stars-v4');
+        const starRand = seededRandom('tunnel-stars-v6');
 
-        const TUNNEL_LENGTH = 2400;
         for (let i = 0; i < starCount; i += 1) {
+            const near = i >= STAR_FAR;
             const angle = starRand() * Math.PI * 2;
-            const radius = 25 + Math.pow(starRand(), 1.2) * 140;
+            const radius = near
+                ? 18 + Math.pow(starRand(), 1.1) * 120
+                : 40 + Math.pow(starRand(), 0.8) * 320;
             const z = -starRand() * TUNNEL_LENGTH;
             starBase[i * 3] = Math.cos(angle) * radius;
-            starBase[i * 3 + 1] = Math.sin(angle) * radius * 0.58;
+            starBase[i * 3 + 1] = Math.sin(angle) * radius * (near ? 0.62 : 0.85);
             starBase[i * 3 + 2] = z;
-
             starPos[i * 3] = starBase[i * 3];
             starPos[i * 3 + 1] = starBase[i * 3 + 1];
             starPos[i * 3 + 2] = z;
-
-            starSizes[i] = 0.9 + starRand() * 1.8;
+            starSizes[i] = near ? 1.8 + starRand() * 2.6 : 0.7 + starRand() * 1.4;
             starSeeds[i * 3] = starRand();
             starSeeds[i * 3 + 1] = starRand();
             starSeeds[i * 3 + 2] = starRand();
@@ -419,24 +445,95 @@
             blending: T.AdditiveBlending,
             uniforms: {
                 tint: { value: new T.Color('#8fa4b3') },
-                travelSpeed: { value: 1 },
+                time: { value: 0 },
+                stretch: { value: 0 },
                 pixelRatio: { value: 1 }
             },
             vertexShader: `
                 attribute float aSize;
                 attribute vec3 aSeed;
-                uniform float travelSpeed;
+                uniform float time;
                 uniform float pixelRatio;
                 varying float vAlpha;
+                varying float vTwinkle;
                 void main() {
                     vec4 mv = modelViewMatrix * vec4(position, 1.0);
                     gl_Position = projectionMatrix * mv;
                     float depth = max(0.1, -mv.z);
-                    gl_PointSize = clamp(aSize * pixelRatio * 260.0 / depth, 1.0, 22.0);
-                    
-                    float nearFade = smoothstep(12.0, 45.0, depth);
+                    gl_PointSize = clamp(aSize * pixelRatio * 300.0 / depth, 1.0, 26.0);
+                    float nearFade = smoothstep(14.0, 55.0, depth);
+                    float farFade = 1.0 - smoothstep(1600.0, 2500.0, depth);
+                    // 每颗星独立节律的缓慢闪烁
+                    vTwinkle = 0.72 + 0.28 * sin(time * (0.4 + aSeed.y * 1.2) + aSeed.x * 40.0);
+                    vAlpha = nearFade * farFade * (0.18 + aSeed.x * 0.5) * vTwinkle;
+                }
+            `,
+            fragmentShader: `
+                uniform vec3 tint;
+                varying float vAlpha;
+                varying float vTwinkle;
+                void main() {
+                    vec2 p = gl_PointCoord * 2.0 - 1.0;
+                    float r = dot(p, p);
+                    if (r > 1.0) discard;
+                    float core = exp(-r * 7.0);
+                    float halo = exp(-r * 2.4) * 0.3 * vTwinkle;
+                    gl_FragColor = vec4(tint * (core * 1.4 + halo), (core + halo) * vAlpha);
+                }
+            `
+        });
+        const starPoints = new T.Points(starGeo, starMat);
+        starPoints.frustumCulled = false;
+        root.add(starPoints);
+
+        /* ---------- 2. 超空间光条：音频驱动的速度残影 ---------- */
+        const STREAK_COUNT = 160;
+        const streakPos = new Float32Array(STREAK_COUNT * 3);
+        const streakBase = new Float32Array(STREAK_COUNT * 3);
+        const streakSeeds = new Float32Array(STREAK_COUNT * 3);
+        const streakSizes = new Float32Array(STREAK_COUNT);
+        const streakRand = seededRandom('tunnel-streaks-v2');
+        for (let i = 0; i < STREAK_COUNT; i += 1) {
+            const angle = streakRand() * Math.PI * 2;
+            const radius = 14 + Math.pow(streakRand(), 1.3) * 90;
+            streakBase[i * 3] = Math.cos(angle) * radius;
+            streakBase[i * 3 + 1] = Math.sin(angle) * radius * 0.7;
+            streakBase[i * 3 + 2] = -streakRand() * TUNNEL_LENGTH;
+            streakSeeds[i * 3] = streakRand();
+            streakSeeds[i * 3 + 1] = streakRand();
+            streakSeeds[i * 3 + 2] = streakRand();
+            streakSizes[i] = 0.8 + streakRand() * 1.4;
+        }
+        const streakGeo = new T.BufferGeometry();
+        streakGeo.setAttribute('position', new T.BufferAttribute(streakPos, 3).setUsage(T.DynamicDrawUsage));
+        streakGeo.setAttribute('aSeed', new T.BufferAttribute(streakSeeds, 3));
+        streakGeo.setAttribute('aSize', new T.BufferAttribute(streakSizes, 1));
+        const streakMat = new T.ShaderMaterial({
+            transparent: true,
+            depthWrite: false,
+            blending: T.AdditiveBlending,
+            uniforms: {
+                tint: { value: new T.Color('#cfd8dd') },
+                pixelRatio: { value: 1 },
+                stretch: { value: 0 }  // 0..1 速度拉伸强度
+            },
+            vertexShader: `
+                attribute vec3 aSeed;
+                attribute float aSize;
+                uniform float pixelRatio;
+                uniform float stretch;
+                varying float vAlpha;
+                void main() {
+                    // 速度拉伸：沿视线方向把点向后拖成光条
+                    vec3 p = position;
+                    p.z -= stretch * (30.0 + aSeed.y * 90.0);
+                    vec4 mv = modelViewMatrix * vec4(p, 1.0);
+                    gl_Position = projectionMatrix * mv;
+                    float depth = max(0.1, -mv.z);
+                    gl_PointSize = clamp(aSize * pixelRatio * 240.0 / depth, 0.5, 8.0);
+                    float nearFade = smoothstep(10.0, 40.0, depth);
                     float farFade = 1.0 - smoothstep(1500.0, 2400.0, depth);
-                    vAlpha = nearFade * farFade * (0.2 + aSeed.x * 0.45);
+                    vAlpha = nearFade * farFade * stretch * (0.25 + aSeed.x * 0.4);
                 }
             `,
             fragmentShader: `
@@ -446,28 +543,39 @@
                     vec2 p = gl_PointCoord * 2.0 - 1.0;
                     float r = dot(p, p);
                     if (r > 1.0) discard;
-                    float core = exp(-r * 6.0);
+                    float core = exp(-r * 5.0);
                     gl_FragColor = vec4(tint * core, core * vAlpha);
                 }
             `
         });
+        const streakPoints = new T.Points(streakGeo, streakMat);
+        streakPoints.frustumCulled = false;
+        root.add(streakPoints);
 
-        const starPoints = new T.Points(starGeo, starMat);
-        starPoints.frustumCulled = false;
-        root.add(starPoints);
+        /* ---------- 3. 低频冲击波脉冲环 ---------- */
+        const PULSE_COUNT = 3;
+        const pulseMeshes = [];
+        const pulseGeo = new T.RingGeometry(0.96, 1.0, 96);
+        for (let i = 0; i < PULSE_COUNT; i += 1) {
+            const m = new T.Mesh(pulseGeo, new T.MeshBasicMaterial({
+                color: new T.Color('#f2a900'),
+                transparent: true,
+                opacity: 0,
+                side: T.DoubleSide,
+                depthWrite: false,
+                blending: T.AdditiveBlending
+            }));
+            m.visible = false;
+            root.add(m);
+            pulseMeshes.push({ mesh: m, age: 99, life: 1.4 });
+        }
+        let pulseCursor = 0;
+        let bassSmooth = 0;
+        let prevBass = 0;
 
-        // ==========================
-        // 2. 电影级空间分镜构图：巨物穿梭感与天体色差群
-        // ==========================
-        // 槽位构图设定：
-        // 槽 0：画面下方掠过的超巨型战巡母舰（Behemoth Dreadnought / Flagship）
-        // 槽 1：画面左上方孤悬的深空点阵星球（Giant Planet - 深灰冰青）
-        // 槽 2：环绕或掠过的薄星环（Planetary Rings - 琥珀微金）
-        // 槽 3：远空倾斜环形空间站（Orbital Ring Station - 冷白工业骨架）
-        // 槽 4：右下近景护航巡航舰（Cruiser / Scout）
-        // 槽 5：中远景第二星球
+        /* ---------- 4. 天体槽位 ---------- */
         const ENTITY_SLOTS = 6;
-        const POINTS_PER_ENTITY = 1400;
+        const POINTS_PER_ENTITY = 1800;
         const totalEntityPoints = ENTITY_SLOTS * POINTS_PER_ENTITY;
 
         const entityPositions = new Float32Array(totalEntityPoints * 3);
@@ -475,13 +583,14 @@
         const entityColors = new Float32Array(totalEntityPoints * 3);
         const entitySeeds = new Float32Array(totalEntityPoints * 3);
         const entitySizes = new Float32Array(totalEntityPoints);
+        const entityShade = new Float32Array(totalEntityPoints);
 
         const templates = {
-            flagship: modelGen.generateFlagship(1.0, POINTS_PER_ENTITY, 'seed-flagship'),
-            planet: modelGen.generatePlanet(28, POINTS_PER_ENTITY, 'seed-planet'),
-            rings: modelGen.generateRing(32, 56, POINTS_PER_ENTITY, 'seed-rings'),
-            station: modelGen.generateStation(22, POINTS_PER_ENTITY, 'seed-station'),
-            scout: modelGen.generateScout(1.8, POINTS_PER_ENTITY, 'seed-scout')
+            flagship: modelGen.generateFlagship(1.0, POINTS_PER_ENTITY, 'seed-flagship-v2'),
+            planet: modelGen.generatePlanet(30, POINTS_PER_ENTITY, 'seed-planet-v2'),
+            rings: modelGen.generateRing(34, 62, POINTS_PER_ENTITY, 'seed-rings-v2'),
+            station: modelGen.generateStation(24, POINTS_PER_ENTITY, 'seed-station-v2'),
+            scout: modelGen.generateScout(2.0, POINTS_PER_ENTITY, 'seed-scout-v2')
         };
 
         const entityGeo = new T.BufferGeometry();
@@ -497,7 +606,8 @@
             blending: T.AdditiveBlending,
             uniforms: {
                 pixelRatio: { value: 1 },
-                time: { value: 0 }
+                time: { value: 0 },
+                breath: { value: 0 }
             },
             vertexShader: `
                 attribute vec3 aTarget;
@@ -506,26 +616,23 @@
                 attribute float aSize;
                 uniform float pixelRatio;
                 uniform float time;
+                uniform float breath;
                 varying vec3 vColor;
                 varying float vAlpha;
                 void main() {
-                    // aSeed.y 代表当前粒子的凝聚成型度 (cohesion)
                     float cohesion = clamp(aSeed.y, 0.0, 1.0);
-                    // 远方是离散星雾，快逼近眼前时迅速吸附咬合到目标骨架模型
                     vec3 currentPos = mix(position, aTarget, cohesion);
-
-                    // 空间星尘微扰
-                    currentPos.y += sin(time * 0.9 + aSeed.x * 12.0) * (1.0 - cohesion) * 0.5;
-
+                    // 凝聚后的有机微呼吸
+                    currentPos += normalize(currentPos - aTarget + vec3(0.001)) * sin(time * 1.4 + aSeed.x * 20.0) * breath * cohesion * 0.35;
+                    // 未凝聚时的缓慢漂浮
+                    currentPos.y += sin(time * 0.7 + aSeed.x * 12.0) * (1.0 - cohesion) * 0.8;
                     vec4 mv = modelViewMatrix * vec4(currentPos, 1.0);
                     gl_Position = projectionMatrix * mv;
                     float depth = max(0.1, -mv.z);
-                    gl_PointSize = clamp((aSize + cohesion * 0.7) * pixelRatio * 320.0 / depth, 1.0, 36.0);
-                    
-                    // 掠过镜头身后迅速消散
-                    float nearFade = smoothstep(10.0, 42.0, depth);
-                    float farFade = 1.0 - smoothstep(1800.0, 2400.0, depth);
-                    vAlpha = nearFade * farFade * (0.2 + cohesion * 0.8);
+                    gl_PointSize = clamp((aSize + cohesion * 0.8) * pixelRatio * 340.0 / depth, 1.0, 40.0);
+                    float nearFade = smoothstep(12.0, 50.0, depth);
+                    float farFade = 1.0 - smoothstep(1900.0, 2500.0, depth);
+                    vAlpha = nearFade * farFade * (0.12 + cohesion * 0.88);
                     vColor = aColor;
                 }
             `,
@@ -536,89 +643,105 @@
                     vec2 p = gl_PointCoord * 2.0 - 1.0;
                     float r = dot(p, p);
                     if (r > 1.0) discard;
-                    float core = exp(-r * 6.5);
-                    float halo = exp(-r * 2.2) * 0.35;
-                    gl_FragColor = vec4(vColor * (core * 1.5 + halo), (core + halo) * vAlpha);
+                    float core = exp(-r * 7.0);
+                    float halo = exp(-r * 2.2) * 0.32;
+                    gl_FragColor = vec4(vColor * (core * 1.6 + halo), (core + halo) * vAlpha);
                 }
             `
         });
-
         const entityPoints = new T.Points(entityGeo, entityMat);
         entityPoints.frustumCulled = false;
         root.add(entityPoints);
 
-        // 分镜槽位初始配置：紧凑交错分布，确保刚进入即有前景巨舰，深空随时有天体交替巡航
+        // 分镜槽位：构图遵循「三分法 + 巨大体量对比」
         const slotConfigs = [
-            // 0: 近景下方折跃战巡母舰（一进入舞台即在眼前沉稳滑过，巨物穿梭感！）
-            { type: 'flagship', initialZ: -140, x: 0, y: -24, rotX: 0.1, rotY: 0, rotZ: 0, scale: 1.0, seed: 'slot-behemoth' },
-            // 1: 中景左上方孤悬的深空冰青星球（从容自转）
-            { type: 'planet', initialZ: -420, x: -36, y: 16, rotX: 0.2, rotY: 0.15, rotZ: -0.08, scale: 1.0, seed: 'slot-planet-1' },
-            // 2: 偏右上倾斜掠过的微金星环
-            { type: 'rings', initialZ: -680, x: 32, y: 12, rotX: 0.72, rotY: 0.35, rotZ: 0.25, scale: 1.0, seed: 'slot-rings-1' },
-            // 3: 远空倾斜环形空间站
-            { type: 'station', initialZ: -940, x: 24, y: -12, rotX: 0.45, rotY: 0.2, rotZ: 0.3, scale: 1.0, seed: 'slot-station' },
-            // 4: 下方偏右护航侦察巡航机
-            { type: 'scout', initialZ: -1200, x: 20, y: -16, rotX: -0.05, rotY: 0.08, rotZ: 0.05, scale: 1.0, seed: 'slot-scout' },
-            // 5: 深远方右侧第二星球
-            { type: 'planet', initialZ: -1460, x: 38, y: 20, rotX: 0.1, rotY: -0.1, rotZ: 0.05, scale: 0.85, seed: 'slot-planet-2' }
+            // 0 近景下方：母舰缓缓横穿（开场即在）
+            { type: 'flagship', initialZ: -160, x: 0, y: -26, rotSpeed: 0.05, rotPhase: 0, scale: 1.0 },
+            // 1 中景左上：冰青行星
+            { type: 'planet', initialZ: -460, x: -42, y: 18, rotSpeed: 0.10, rotPhase: 1.2, scale: 1.0 },
+            // 2 右上：琥珀星环
+            { type: 'rings', initialZ: -740, x: 36, y: 14, rotSpeed: 0.16, rotPhase: 2.4, scale: 1.0 },
+            // 3 远空：环形空间站
+            { type: 'station', initialZ: -1020, x: 26, y: -14, rotSpeed: 0.12, rotPhase: 3.1, scale: 1.0 },
+            // 4 右下近景：侦察护航机
+            { type: 'scout', initialZ: -1280, x: 22, y: -18, rotSpeed: 0.20, rotPhase: 4.0, scale: 1.0 },
+            // 5 深远：第二行星
+            { type: 'planet', initialZ: -1560, x: 40, y: 22, rotSpeed: 0.08, rotPhase: 5.3, scale: 0.9 }
+        ];
+        // 环带预设倾角
+        const slotTilt = [
+            { x: 0.06, z: 0.0 },
+            { x: 0.18, z: -0.10 },
+            { x: 0.72, z: 0.28 },
+            { x: 0.48, z: 0.32 },
+            { x: -0.06, z: 0.06 },
+            { x: 0.12, z: 0.04 }
         ];
 
-        // ==========================
-        // 3. 歌词空间迎面拉近穿梭与纯净实心咬合凝聚
-        // ==========================
-        const LYRIC_PARTICLE_CAP = 3000;
+        /* ---------- 5. 歌词点阵 + 实心文字 ---------- */
+        const LYRIC_PARTICLE_CAP = 3400;
         const lyricParticlePos = new Float32Array(LYRIC_PARTICLE_CAP * 3);
         const lyricParticleTarget = new Float32Array(LYRIC_PARTICLE_CAP * 3);
         const lyricParticleSeeds = new Float32Array(LYRIC_PARTICLE_CAP * 3);
         const lyricParticleColors = new Float32Array(LYRIC_PARTICLE_CAP * 3);
+        const lyricParticleWord = new Float32Array(LYRIC_PARTICLE_CAP); // 所属 word 索引
 
         const lyricGeo = new T.BufferGeometry();
         lyricGeo.setAttribute('position', new T.BufferAttribute(lyricParticlePos, 3).setUsage(T.DynamicDrawUsage));
         lyricGeo.setAttribute('aTarget', new T.BufferAttribute(lyricParticleTarget, 3).setUsage(T.DynamicDrawUsage));
         lyricGeo.setAttribute('aSeed', new T.BufferAttribute(lyricParticleSeeds, 3).setUsage(T.DynamicDrawUsage));
         lyricGeo.setAttribute('aColor', new T.BufferAttribute(lyricParticleColors, 3).setUsage(T.DynamicDrawUsage));
+        lyricGeo.setAttribute('aWord', new T.BufferAttribute(lyricParticleWord, 1).setUsage(T.DynamicDrawUsage));
 
+        // 逐字进度材质：aWord + uniform 数组驱动声波涟漪
+        const MAX_WORDS = 24;
+        const wordProgressArray = new Float32Array(MAX_WORDS);
         const lyricParticleMat = new T.ShaderMaterial({
             transparent: true,
             depthWrite: false,
             blending: T.AdditiveBlending,
             uniforms: {
-                tint: { value: new T.Color('#f2f0e9') },
+                tint: { value: new T.Color('#f2a900') },
                 pixelRatio: { value: 1 },
                 cohesion: { value: 0 },
                 disperse: { value: 0 },
                 time: { value: 0 },
-                opacity: { value: 1 }
+                opacity: { value: 1 },
+                wordProgress: { value: wordProgressArray }
             },
             vertexShader: `
                 attribute vec3 aTarget;
                 attribute vec3 aSeed;
                 attribute vec3 aColor;
+                attribute float aWord;
                 uniform float pixelRatio;
                 uniform float cohesion;
                 uniform float disperse;
                 uniform float time;
+                uniform float wordProgress[${MAX_WORDS}];
                 varying vec3 vColor;
                 varying float vAlpha;
+                varying float vGlow;
                 void main() {
-                    // 入场：从深空发散点云迅速聚拢到字符实体骨架
                     vec3 pos = mix(position, aTarget, cohesion);
-
-                    // 离场：加速冲破镜头向后扩散消散
                     if (disperse > 0.001) {
-                        pos.z += disperse * (50.0 + aSeed.z * 140.0);
-                        pos.x += (aSeed.x - 0.5) * disperse * 42.0;
-                        pos.y += (aSeed.y - 0.5) * disperse * 28.0;
+                        pos.z += disperse * (60.0 + aSeed.z * 160.0);
+                        pos.x += (aSeed.x - 0.5) * disperse * 55.0;
+                        pos.y += (aSeed.y - 0.5) * disperse * 36.0;
                     }
-
+                    // 逐字声波涟漪：已唱出的字粒子外扩脉冲
+                    int wi = int(aWord + 0.5);
+                    float wp = (wi >= 0 && wi < ${MAX_WORDS}) ? wordProgress[wi] : 0.0;
+                    float ripple = sin(wp * 3.14159) * cohesion;
+                    pos.xy += normalize(aTarget.xy + vec2(0.001)) * ripple * 0.55;
+                    vGlow = ripple;
                     vec4 mv = modelViewMatrix * vec4(pos, 1.0);
                     gl_Position = projectionMatrix * mv;
                     float depth = max(0.1, -mv.z);
-                    gl_PointSize = clamp((1.6 + cohesion * 0.9) * pixelRatio * 320.0 / depth, 1.0, 26.0);
-                    
+                    gl_PointSize = clamp((1.7 + cohesion * 0.9 + ripple * 0.8) * pixelRatio * 340.0 / depth, 1.0, 28.0);
                     float nearFade = smoothstep(4.0, 18.0, depth);
-                    vAlpha = nearFade * (0.25 + cohesion * 0.75) * (1.0 - disperse * 0.9);
-                    vColor = aColor;
+                    vAlpha = nearFade * (0.22 + cohesion * 0.78) * (1.0 - disperse * 0.9);
+                    vColor = aColor + vec3(ripple * 0.45);
                 }
             `,
             fragmentShader: `
@@ -626,27 +749,26 @@
                 uniform float opacity;
                 varying vec3 vColor;
                 varying float vAlpha;
+                varying float vGlow;
                 void main() {
                     vec2 p = gl_PointCoord * 2.0 - 1.0;
                     float r = dot(p, p);
                     if (r > 1.0) discard;
                     float core = exp(-r * 7.5);
-                    float halo = exp(-r * 2.2) * 0.35;
-                    gl_FragColor = vec4(mix(tint, vColor, 0.5) * (core * 1.5 + halo), (core + halo) * vAlpha * opacity);
+                    float halo = exp(-r * 2.2) * (0.32 + vGlow * 0.5);
+                    gl_FragColor = vec4(mix(tint, vColor, 0.55) * (core * 1.5 + halo), (core + halo) * vAlpha * opacity);
                 }
             `
         });
-
         const lyricPoints = new T.Points(lyricGeo, lyricParticleMat);
         lyricPoints.frustumCulled = false;
         root.add(lyricPoints);
 
-        // 实体实心文字平面：纯净高对比度，无描边，边缘干净利落
+        // 实心文字平面
         const textCanvas = document.createElement('canvas');
         textCanvas.width = 2048;
         textCanvas.height = 512;
-        const textCtx = textCanvas.getContext('2d');
-
+        const textCtx = textCanvas.getContext('2d', { willReadFrequently: true });
         const textTexture = new T.CanvasTexture(textCanvas);
         textTexture.generateMipmaps = false;
         textTexture.minFilter = T.LinearFilter;
@@ -660,13 +782,12 @@
             blending: T.NormalBlending,
             opacity: 0
         });
-
         const solidTextMesh = new T.Mesh(solidPlaneGeo, solidPlaneMat);
         solidTextMesh.position.set(0, 0, -36);
         root.add(solidTextMesh);
 
+        // 舞台状态
         let currentLineKey = '';
-        let currentLineIndex = 0;
         let lineStartTime = 0;
         let lineEndTime = 1;
         let activePointCount = 0;
@@ -677,211 +798,221 @@
         let totalTravelDistance = 0;
         let cruiseSpeed = 1.0;
         let stagePalette = {};
+        let fovCurrent = 56;
 
-// 统一主题色彩解析
-function parseThemeColors() {
-    const accent = stagePalette.accent || '#F2A900'; // 琥珀金/警示黄（主歌词、星环）
-    const secondary = stagePalette.secondary || '#76BFAE'; // 铜绿/松石（星球、译文、信号点）
-    const ink = stagePalette.ink || '#F2F0E9'; // 骨白（母舰骨架、空间站）
-    const muted = stagePalette.muted || '#A7AFB1'; // 次级金属灰（星尘、护航机）
-    const danger = '#E06C5F'; // 警示朱砂红（推进引擎尾喷火）
-    return {
-        accent: new T.Color(accent),
-        secondary: new T.Color(secondary),
-        ink: new T.Color(ink),
-        muted: new T.Color(muted),
-        danger: new T.Color(danger),
-        accentHex: accent,
-        secondaryHex: secondary,
-        inkHex: ink
-    };
-}
+        function parseThemeColors() {
+            const accent = stagePalette.accent || '#F2A900';
+            const secondary = stagePalette.secondary || '#76BFAE';
+            const ink = stagePalette.ink || '#F2F0E9';
+            const muted = stagePalette.muted || '#A7AFB1';
+            const danger = '#E06C5F';
+            return {
+                accent: new T.Color(accent),
+                secondary: new T.Color(secondary),
+                ink: new T.Color(ink),
+                muted: new T.Color(muted),
+                danger: new T.Color(danger),
+                accentHex: accent,
+                secondaryHex: secondary,
+                inkHex: ink
+            };
+        }
 
-// 根据 themes.css 精确配置每个天体的专属色调（提前声明，杜绝 TDZ 引用错误）
-function applyEntityPalette() {
-    const colors = parseThemeColors();
-    const colorsArr = entityGeo.attributes.aColor.array;
-
-    for (let s = 0; s < ENTITY_SLOTS; s += 1) {
-        const slot = slotConfigs[s];
-        const offsetStart = s * POINTS_PER_ENTITY * 3;
-
-        for (let p = 0; p < POINTS_PER_ENTITY; p += 1) {
-            const pi = offsetStart + p * 3;
-
-            if (slot.type === 'flagship') {
-                // 巨舰：工业石墨骨白(--primary-text) + 铜绿信号灯(--success-color) + 尾喷火(--danger-color / --highlight-text)
-                if (p % 16 === 0) {
-                    colorsArr[pi] = colors.danger.r;
-                    colorsArr[pi + 1] = colors.danger.g;
-                    colorsArr[pi + 2] = colors.danger.b;
-                } else if (p % 8 === 0) {
-                    colorsArr[pi] = colors.secondary.r;
-                    colorsArr[pi + 1] = colors.secondary.g;
-                    colorsArr[pi + 2] = colors.secondary.b;
-                } else {
-                    colorsArr[pi] = colors.ink.r;
-                    colorsArr[pi + 1] = colors.ink.g;
-                    colorsArr[pi + 2] = colors.ink.b;
-                }
-            } else if (slot.type === 'planet') {
-                // 星球：松石铜绿(--quoted-text / --success-color) + 冰灰大气
-                if (p % 3 === 0) {
-                    colorsArr[pi] = colors.secondary.r * 1.05;
-                    colorsArr[pi + 1] = colors.secondary.g * 1.05;
-                    colorsArr[pi + 2] = colors.secondary.b * 1.05;
-                } else {
-                    colorsArr[pi] = colors.secondary.r * 0.75;
-                    colorsArr[pi + 1] = colors.secondary.g * 0.85;
-                    colorsArr[pi + 2] = colors.secondary.b * 0.95;
-                }
-            } else if (slot.type === 'rings') {
-                // 星环：耀眼琥珀金(--highlight-text)微尘环带，与铜绿星球形成冷暖对冲！
-                colorsArr[pi] = colors.accent.r;
-                colorsArr[pi + 1] = colors.accent.g;
-                colorsArr[pi + 2] = colors.accent.b;
-            } else if (slot.type === 'station') {
-                // 空间站：工业骨白(--primary-text) + 金属灰(--secondary-text)
-                if (p % 6 === 0) {
-                    colorsArr[pi] = colors.secondary.r;
-                    colorsArr[pi + 1] = colors.secondary.g;
-                    colorsArr[pi + 2] = colors.secondary.b;
-                } else {
-                    colorsArr[pi] = colors.ink.r;
-                    colorsArr[pi + 1] = colors.ink.g;
-                    colorsArr[pi + 2] = colors.ink.b;
-                }
-            } else {
-                // 护航侦察机：松石铜绿机翼 + 琥珀金座舱光
-                if (p % 5 === 0) {
-                    colorsArr[pi] = colors.accent.r;
-                    colorsArr[pi + 1] = colors.accent.g;
-                    colorsArr[pi + 2] = colors.accent.b;
-                } else {
-                    colorsArr[pi] = colors.secondary.r;
-                    colorsArr[pi + 1] = colors.secondary.g;
-                    colorsArr[pi + 2] = colors.secondary.b;
+        // 天体配色：尊重 shade 子结构
+        function applyEntityPalette() {
+            const colors = parseThemeColors();
+            const colorsArr = entityGeo.attributes.aColor.array;
+            for (let s = 0; s < ENTITY_SLOTS; s += 1) {
+                const slot = slotConfigs[s];
+                const tmpl = templates[slot.type];
+                const offset = s * POINTS_PER_ENTITY;
+                for (let p = 0; p < POINTS_PER_ENTITY; p += 1) {
+                    const gi = offset + p;
+                    const pi = gi * 3;
+                    const sh = tmpl.shade[p];
+                    entityShade[gi] = sh;
+                    let c;
+                    if (slot.type === 'flagship') {
+                        if (sh === 3) { // 尾焰：琥珀金渐消
+                            c = colors.accent;
+                        } else if (sh === 2) { // 引擎喷口：朱砂红
+                            c = colors.danger;
+                        } else if (sh === 1) { // 舰桥/脊线：松石信号灯
+                            c = colors.secondary;
+                        } else { // 舰体：骨白
+                            c = colors.ink;
+                        }
+                        const dim = sh === 3 ? 0.9 : 1.0;
+                        colorsArr[pi] = c.r * dim; colorsArr[pi + 1] = c.g * dim; colorsArr[pi + 2] = c.b * dim;
+                    } else if (slot.type === 'planet') {
+                        if (sh === 2) { // 极冠辉点：亮松石
+                            colorsArr[pi] = colors.secondary.r * 1.25;
+                            colorsArr[pi + 1] = colors.secondary.g * 1.25;
+                            colorsArr[pi + 2] = colors.secondary.b * 1.25;
+                        } else if (sh === 0) { // 纬线暗纹：深松石
+                            colorsArr[pi] = colors.secondary.r * 0.5;
+                            colorsArr[pi + 1] = colors.secondary.g * 0.55;
+                            colorsArr[pi + 2] = colors.secondary.b * 0.6;
+                        } else { // 主体表面
+                            colorsArr[pi] = colors.secondary.r * 0.85;
+                            colorsArr[pi + 1] = colors.secondary.g * 0.92;
+                            colorsArr[pi + 2] = colors.secondary.b;
+                        }
+                    } else if (slot.type === 'rings') {
+                        if (sh === 0) { // 内亮带：亮琥珀
+                            colorsArr[pi] = colors.accent.r * 1.3; colorsArr[pi + 1] = colors.accent.g * 1.3; colorsArr[pi + 2] = colors.accent.b * 1.3;
+                        } else if (sh === 1) { // 中带：琥珀
+                            colorsArr[pi] = colors.accent.r; colorsArr[pi + 1] = colors.accent.g; colorsArr[pi + 2] = colors.accent.b;
+                        } else { // 外散晕：暗琥珀
+                            colorsArr[pi] = colors.accent.r * 0.55; colorsArr[pi + 1] = colors.accent.g * 0.55; colorsArr[pi + 2] = colors.accent.b * 0.55;
+                        }
+                    } else if (slot.type === 'station') {
+                        if (sh === 2) { // 航行灯：朱砂
+                            c = colors.danger;
+                        } else if (sh === 3) { // 中轴：琥珀
+                            c = colors.accent;
+                        } else if (sh === 1) { // 舱体：骨白
+                            c = colors.ink;
+                        } else { // 辐条骨架：金属灰
+                            c = colors.muted;
+                        }
+                        colorsArr[pi] = c.r; colorsArr[pi + 1] = c.g; colorsArr[pi + 2] = c.b;
+                    } else {
+                        // 侦察机
+                        if (sh === 2) { c = colors.danger; }
+                        else if (sh === 1) { c = colors.accent; }
+                        else { c = colors.secondary; }
+                        colorsArr[pi] = c.r; colorsArr[pi + 1] = c.g; colorsArr[pi + 2] = c.b;
+                    }
                 }
             }
+            entityGeo.attributes.aColor.needsUpdate = true;
         }
-    }
-    entityGeo.attributes.aColor.needsUpdate = true;
-}
 
-// 纯净实心文字排版：主文本使用高亮琥珀金，变成文字的粒子也是琥珀金，完全一致！
-function rasterizeLyric(line, frame) {
-    const fullText = line?.fullText || '';
-    const subText = R.resolveSupplementalText(line) || '';
-    const lineIdx = line?.index ?? 0;
-    currentLineIndex = lineIdx;
-
-    const colors = parseThemeColors();
-
-    // 水平交叉微滚转角：偶数句顺时针 (+5.8°)，奇数句逆时针 (-4.6°)
-    const sign = (lineIdx % 2 === 0) ? 1 : -1;
-    const magnitude = (lineIdx % 2 === 0) ? 0.101 : 0.080;
-    lyricRollAngle = sign * magnitude;
-
-    textCtx.clearRect(0, 0, textCanvas.width, textCanvas.height);
-
-    // 1. 主歌词：主题高光琥珀金，高对比度实心呈现
-    textCtx.font = '900 82px "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif';
-    textCtx.fillStyle = colors.accentHex;
-    textCtx.textBaseline = 'middle';
-    textCtx.fillText(fullText, 140, 200);
-
-    // 2. 译文 / 补充文本：典雅铜绿/松石副阶
-    if (subText) {
-        textCtx.font = '500 32px "Microsoft YaHei", "PingFang SC", sans-serif';
-        textCtx.fillStyle = colors.secondaryHex;
-        textCtx.fillText(subText, 144, 280);
-    }
-
-    textTexture.needsUpdate = true;
-
-    // 3. 点阵提取与粒子颜色赋值：变成文本的粒子严格使用与主歌词完全一致的琥珀金色！
-    const imgData = textCtx.getImageData(0, 0, textCanvas.width, textCanvas.height).data;
-    const stride = 6;
-    const points = [];
-    const W = textCanvas.width;
-    const H = textCanvas.height;
-
-    for (let y = 0; y < H; y += stride) {
-        for (let x = 0; x < W; x += stride) {
-            const alpha = imgData[(y * W + x) * 4 + 3];
-            if (alpha > 85) {
-                const worldX = (x / W - 0.5) * 58;
-                const worldY = (0.5 - y / H) * 14.5;
-                points.push({ x: worldX, y: worldY });
-            }
-        }
-    }
-
-    const rand = seededRandom(`lyric-scatter-${lineIdx}-${fullText}`);
-    activePointCount = Math.min(points.length, LYRIC_PARTICLE_CAP);
-
-    const cAccent = colors.accent;
-    for (let i = 0; i < LYRIC_PARTICLE_CAP; i += 1) {
-        const target = points[i % Math.max(1, points.length)] || { x: 0, y: 0 };
-        lyricParticleTarget[i * 3] = target.x;
-        lyricParticleTarget[i * 3 + 1] = target.y;
-        lyricParticleTarget[i * 3 + 2] = 0;
-
-        // 初始深空发散态
-        const scatterDist = 18 + rand() * 42;
-        lyricParticlePos[i * 3] = target.x + (rand() - 0.5) * scatterDist * 1.5;
-        lyricParticlePos[i * 3 + 1] = target.y + (rand() - 0.5) * scatterDist;
-        lyricParticlePos[i * 3 + 2] = -140 - rand() * 320;
-
-        lyricParticleSeeds[i * 3] = rand();
-        lyricParticleSeeds[i * 3 + 1] = rand();
-        lyricParticleSeeds[i * 3 + 2] = rand();
-
-        // 核心修复：汇聚成文本的粒子，其颜色就是主歌词的琥珀金！色调100%浑然一体！
-        lyricParticleColors[i * 3] = cAccent.r;
-        lyricParticleColors[i * 3 + 1] = cAccent.g;
-        lyricParticleColors[i * 3 + 2] = cAccent.b;
-    }
-
-    lyricGeo.setDrawRange(0, activePointCount);
-    lyricGeo.attributes.position.needsUpdate = true;
-    lyricGeo.attributes.aTarget.needsUpdate = true;
-    lyricGeo.attributes.aSeed.needsUpdate = true;
-    lyricGeo.attributes.aColor.needsUpdate = true;
-};
-        function setPalette(palette) {
-            stagePalette = palette || {};
-            const bg = stagePalette.background || '#14181d';
+        // 歌词文字栅格化（含逐字粒子归属）
+        function rasterizeLyric(line, frame) {
+            const fullText = line?.fullText || '';
+            const subText = R.resolveSupplementalText(line) || '';
+            const lineIdx = line?.index ?? 0;
             const colors = parseThemeColors();
 
+            const sign = (lineIdx % 2 === 0) ? 1 : -1;
+            lyricRollAngle = sign * ((lineIdx % 2 === 0) ? 0.085 : 0.068);
+
+            textCtx.clearRect(0, 0, textCanvas.width, textCanvas.height);
+            textCtx.textBaseline = 'middle';
+            textCtx.font = '900 82px "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif';
+            textCtx.fillStyle = colors.accentHex;
+            textCtx.fillText(fullText, 140, 200);
+            if (subText) {
+                textCtx.font = '500 32px "Microsoft YaHei", "PingFang SC", sans-serif';
+                textCtx.fillStyle = colors.secondaryHex;
+                textCtx.fillText(subText, 144, 282);
+            }
+            textTexture.needsUpdate = true;
+
+            // 逐字粒子归属：用 wordStates 在 canvas 上按字测量宽度定位
+            const words = frame?.wordStates || [];
+            const wordRanges = []; // 每字 canvas x 范围
+            let cursorX = 140;
+            const measureFont = textCtx.font;
+            textCtx.font = '900 82px "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif';
+            const fullWidth = Math.max(1, textCtx.measureText(fullText).width);
+            if (words.length && fullText) {
+                for (let w = 0; w < words.length; w += 1) {
+                    const wText = words[w]?.text || '';
+                    const wWidth = textCtx.measureText(wText).width;
+                    wordRanges.push({ start: cursorX, end: cursorX + wWidth });
+                    cursorX += wWidth;
+                }
+            }
+            textCtx.font = measureFont;
+
+            const imgData = textCtx.getImageData(0, 0, textCanvas.width, textCanvas.height).data;
+            const stride = 5;
+            const points = [];
+            const W = textCanvas.width, H = textCanvas.height;
+            for (let y = 0; y < H; y += stride) {
+                for (let x = 0; x < W; x += stride) {
+                    const alpha = imgData[(y * W + x) * 4 + 3];
+                    if (alpha > 85) {
+                        const worldX = (x / W - 0.5) * 58;
+                        const worldY = (0.5 - y / H) * 14.5;
+                        // 判断所属字（仅主歌词区 y<260）
+                        let wi = -1;
+                        if (y < 250 && wordRanges.length) {
+                            for (let w = 0; w < wordRanges.length; w += 1) {
+                                if (x >= wordRanges[w].start && x < wordRanges[w].end) { wi = Math.min(w, MAX_WORDS - 1); break; }
+                            }
+                        }
+                        points.push({ x: worldX, y: worldY, word: wi });
+                    }
+                }
+            }
+
+            const rand = seededRandom(`lyric-scatter-${lineIdx}-${fullText}`);
+            activePointCount = Math.min(points.length, LYRIC_PARTICLE_CAP);
+            const cAccent = colors.accent;
+            const cSecondary = colors.secondary;
+            for (let i = 0; i < LYRIC_PARTICLE_CAP; i += 1) {
+                const target = points[i % Math.max(1, points.length)] || { x: 0, y: 0, word: -1 };
+                lyricParticleTarget[i * 3] = target.x;
+                lyricParticleTarget[i * 3 + 1] = target.y;
+                lyricParticleTarget[i * 3 + 2] = 0;
+
+                const scatterDist = 20 + rand() * 50;
+                lyricParticlePos[i * 3] = target.x + (rand() - 0.5) * scatterDist * 1.6;
+                lyricParticlePos[i * 3 + 1] = target.y + (rand() - 0.5) * scatterDist;
+                lyricParticlePos[i * 3 + 2] = -160 - rand() * 360;
+
+                lyricParticleSeeds[i * 3] = rand();
+                lyricParticleSeeds[i * 3 + 1] = rand();
+                lyricParticleSeeds[i * 3 + 2] = rand();
+                lyricParticleWord[i] = target.word;
+
+                // 主文琥珀金，译文松石
+                const cc = target.y < 0.5 ? cAccent : cSecondary;
+                lyricParticleColors[i * 3] = cc.r;
+                lyricParticleColors[i * 3 + 1] = cc.g;
+                lyricParticleColors[i * 3 + 2] = cc.b;
+            }
+
+            lyricParticleMat.uniforms.wordProgress.value.fill(0);
+            lyricGeo.setDrawRange(0, activePointCount);
+            lyricGeo.attributes.position.needsUpdate = true;
+            lyricGeo.attributes.aTarget.needsUpdate = true;
+            lyricGeo.attributes.aSeed.needsUpdate = true;
+            lyricGeo.attributes.aColor.needsUpdate = true;
+            lyricGeo.attributes.aWord.needsUpdate = true;
+        }
+
+        function setPalette(palette) {
+            stagePalette = palette || {};
+            const bg = stagePalette.background || '#0a0d11';
+            const colors = parseThemeColors();
             const bgColor = new T.Color(bg);
+            // 深空压暗背景，保证黑场
+            bgColor.multiplyScalar(0.55);
             if (scene?.background?.copy) scene.background.copy(bgColor);
             else if (scene) scene.background = bgColor;
             if (scene?.fog?.color?.copy) scene.fog.color.copy(bgColor);
 
-            // 装饰星尘使用次级工业灰
-            if (starMat?.uniforms?.tint?.value?.copy) {
-                starMat.uniforms.tint.value.copy(colors.muted);
-            }
-            // 歌词粒子的统一基调着色：与主文本同为琥珀金
-            if (lyricParticleMat?.uniforms?.tint?.value?.copy) {
-                lyricParticleMat.uniforms.tint.value.copy(colors.accent);
-            }
+            if (starMat?.uniforms?.tint?.value?.copy) starMat.uniforms.tint.value.copy(colors.muted);
+            if (streakMat?.uniforms?.tint?.value?.copy) streakMat.uniforms.tint.value.copy(colors.ink);
+            if (lyricParticleMat?.uniforms?.tint?.value?.copy) lyricParticleMat.uniforms.tint.value.copy(colors.accent);
+            pulseMeshes.forEach((p) => p.mesh.material.color.copy(colors.accent));
 
-            // 刷新天体对象的固有色
             applyEntityPalette();
-            // 如果有正在显示的歌词，刷新其贴图与粒子色彩
-            if (currentActiveLine) {
-                rasterizeLyric(currentActiveLine, currentFrame);
-            }
+            if (currentActiveLine) rasterizeLyric(currentActiveLine, currentFrame);
         }
 
-        const reset = (lines, newIdentity) => {
+        const reset = () => {
             currentLineKey = '';
             currentActiveLine = null;
             currentFrame = null;
             totalTravelDistance = 0;
             cruiseSpeed = 1.0;
+            pulseMeshes.forEach((p) => { p.age = 99; p.mesh.visible = false; });
         };
 
         const update = (time, frame, settings, audioState, cameraInstance) => {
@@ -897,9 +1028,8 @@ function rasterizeLyric(line, frame) {
                 currentLineKey = nextKey;
                 lineStartTime = activeLine?.startTime ?? time;
                 lineEndTime = Math.max(lineStartTime + 0.6, activeLine?.endTime ?? (lineStartTime + 4));
-                if (activeLine) {
-                    rasterizeLyric(activeLine, frame);
-                } else {
+                if (activeLine) rasterizeLyric(activeLine, frame);
+                else {
                     activePointCount = 0;
                     lyricGeo.setDrawRange(0, 0);
                     solidPlaneMat.opacity = 0;
@@ -910,177 +1040,204 @@ function rasterizeLyric(line, frame) {
             const age = time - lineStartTime;
             const progress = clamp(age / duration);
 
-            // 镜头推进曲线：飞驰逼近 => 优雅停驻漂移 => 破空脱离
+            /* ----- 镜头推进：三段落权威轨道 ----- */
             let speedMod = 1.0;
             if (activeLine) {
-                if (progress < 0.28) {
-                    speedMod = 1.6 - 1.1 * easeOutCubic(progress / 0.28);
-                } else if (progress < 0.85) {
-                    speedMod = 0.42; // 平稳沉浸区
+                if (progress < 0.26) {
+                    speedMod = 1.75 - 1.3 * easeOutQuart(progress / 0.26);
+                } else if (progress < 0.84) {
+                    speedMod = 0.38;
                 } else {
-                    const p = (progress - 0.85) / 0.15;
-                    speedMod = 0.42 + 1.8 * easeInCubic(p);
+                    const p = (progress - 0.84) / 0.16;
+                    speedMod = 0.38 + 2.2 * easeInCubic(p);
                 }
             } else {
-                speedMod = 1.35;
+                speedMod = 1.4;
             }
 
-            const baseSpeed = (settings.cameraSpeed ?? 1) * (settings.motionAmount ?? 1)
-                * (settings.animationIntensity ?? 1);
+            const baseSpeed = (settings.cameraSpeed ?? 1) * (settings.motionAmount ?? 1) * (settings.animationIntensity ?? 1);
             const instantSpeed = baseSpeed * speedMod * (settings.reducedMotion ? 0 : 1);
-            cruiseSpeed += (instantSpeed - cruiseSpeed) * (1 - Math.exp(-dt * 8));
+            cruiseSpeed += (instantSpeed - cruiseSpeed) * (1 - Math.exp(-dt * 7.5));
 
-            // 空间累计距离推进：沉稳星际穿梭航速
-            if (live) {
-                totalTravelDistance += cruiseSpeed * dt * 32;
+            if (live) totalTravelDistance += cruiseSpeed * dt * 34;
+
+            // 音频平滑
+            bassSmooth += (audioState.bass - bassSmooth) * (1 - Math.exp(-dt * 10));
+
+            /* ----- 低频冲击波检测 ----- */
+            if (live && bassSmooth > 0.55 && bassSmooth - prevBass > 0.18) {
+                const p = pulseMeshes[pulseCursor % PULSE_COUNT];
+                pulseCursor += 1;
+                p.age = 0;
+                p.mesh.visible = true;
             }
+            prevBass = bassSmooth;
 
-            // ==========================
-            // 2. 摄像机极其平稳深邃的深空漂流（无高频抖动！）
-            // ==========================
+            const colors = parseThemeColors();
+            pulseMeshes.forEach((p) => {
+                if (!p.mesh.visible) return;
+                p.age += dt;
+                const t = p.age / p.life;
+                if (t >= 1) { p.mesh.visible = false; p.mesh.material.opacity = 0; return; }
+                const scale = 4 + easeOutCubic(t) * 90;
+                p.mesh.scale.set(scale, scale, 1);
+                p.mesh.position.set(0, 0, -50 - easeOutCubic(t) * 60);
+                p.mesh.material.opacity = (1 - t) * 0.32;
+            });
+
+            /* ----- 镜头：电影式漂移 + FOV 呼吸 ----- */
             const motionPower = (settings.motionAmount ?? 1) * (settings.animationIntensity ?? 1);
-            // 8~12 秒长周期超平滑浮游呼吸，消除所有机械高频抖动
-            const driftTime = time * 0.16;
-            const driftX = Math.sin(driftTime) * 2.2 + Math.cos(driftTime * 0.58) * 1.0;
-            const driftY = Math.cos(driftTime * 0.82) * 1.5 + Math.sin(driftTime * 0.44) * 0.6;
+            const driftTime = time * 0.14;
+            const driftX = Math.sin(driftTime * 0.9) * 2.4 + Math.cos(driftTime * 0.53) * 1.1;
+            const driftY = Math.cos(driftTime * 0.76) * 1.6 + Math.sin(driftTime * 0.41) * 0.7;
+            const driftRoll = Math.sin(driftTime * 0.31) * 0.018;
 
             cameraInstance.position.x = driftX * motionPower;
-            cameraInstance.position.y = (driftY + audioState.bass * 0.25) * motionPower;
+            cameraInstance.position.y = (driftY + bassSmooth * 0.4) * motionPower;
             cameraInstance.position.z = 0;
 
-            const lookX = Math.sin(driftTime * 0.75) * 1.4 * motionPower;
-            const lookY = Math.cos(driftTime * 0.62) * 1.1 * motionPower;
-            cameraInstance.lookAt(lookX, lookY, -240);
+            const lookX = Math.sin(driftTime * 0.66) * 1.6 * motionPower;
+            const lookY = Math.cos(driftTime * 0.58) * 1.2 * motionPower;
+            cameraInstance.lookAt(lookX, lookY, -260);
+            cameraInstance.rotation.z += driftRoll * motionPower;
 
-            // ==========================
-            // 3. 稀疏星尘朝迎面飞掠
-            // ==========================
-            starMat.uniforms.travelSpeed.value = cruiseSpeed;
+            // FOV 呼吸：随速度与低频缓慢张开
+            const fovTarget = 56 + clamp(cruiseSpeed - 1.0, 0, 1.6) * 8 + bassSmooth * 4;
+            fovCurrent += (fovTarget - fovCurrent) * (1 - Math.exp(-dt * 3));
+            cameraInstance.fov = fovCurrent;
+            cameraInstance.updateProjectionMatrix();
 
+            /* ----- 星场流动 ----- */
+            starMat.uniforms.time.value = time;
             const starPosArr = starGeo.attributes.position.array;
             for (let i = 0; i < starCount; i += 1) {
                 const idx = i * 3;
                 const baseZ = starBase[idx + 2];
-                const currentZ = (baseZ + totalTravelDistance) % TUNNEL_LENGTH;
-                const z = currentZ > 0 ? currentZ - TUNNEL_LENGTH : currentZ;
-                starPosArr[idx] = starBase[idx];
-                starPosArr[idx + 1] = starBase[idx + 1];
+                const parallax = i >= STAR_FAR ? 1.0 : 0.45; // 远星慢，近星快
+                let z = (baseZ + totalTravelDistance * parallax) % TUNNEL_LENGTH;
+                if (z > 0) z -= TUNNEL_LENGTH;
                 starPosArr[idx + 2] = z;
             }
             starGeo.attributes.position.needsUpdate = true;
 
-            // ==========================
-            // 4. 空间分镜物体群：远方点云 -> 快逼近前凝聚成形 -> 掠过镜头消散
-            // ==========================
+            /* ----- 超空间光条 ----- */
+            const stretchTarget = live ? clamp((cruiseSpeed - 0.9) * 0.55 + bassSmooth * 0.35, 0, 1) : 0;
+            streakMat.uniforms.stretch.value += (stretchTarget - streakMat.uniforms.stretch.value) * (1 - Math.exp(-dt * 5));
+            const streakPosArr = streakGeo.attributes.position.array;
+            const streakDist = totalTravelDistance * 1.55; // 光条比星更快
+            for (let i = 0; i < STREAK_COUNT; i += 1) {
+                const idx = i * 3;
+                let z = (streakBase[idx + 2] + streakDist) % TUNNEL_LENGTH;
+                if (z > 0) z -= TUNNEL_LENGTH;
+                streakPosArr[idx] = streakBase[idx];
+                streakPosArr[idx + 1] = streakBase[idx + 1];
+                streakPosArr[idx + 2] = z;
+            }
+            streakGeo.attributes.position.needsUpdate = true;
+
+            /* ----- 天体槽位 ----- */
+            entityMat.uniforms.time.value = time;
+            entityMat.uniforms.breath.value = bassSmooth * 0.8;
+
             const objPositions = entityGeo.attributes.position.array;
             const objTargets = entityGeo.attributes.aTarget.array;
             const objSeedsArr = entityGeo.attributes.aSeed.array;
-            const objColorsArr = entityGeo.attributes.aColor.array;
             const objSizesArr = entityGeo.attributes.aSize.array;
 
-            entityMat.uniforms.time.value = time;
-
-            // 天体推进：周期设为 1600，速度与星尘保持自然视差比（0.45x），保证全曲持续交替巡航
-            const entityTravelDist = totalTravelDistance * 0.45;
-            const CELESTIAL_CYCLE = 1600;
+            const entityTravelDist = totalTravelDistance * 0.5;
+            const CELESTIAL_CYCLE = 1750;
 
             for (let s = 0; s < ENTITY_SLOTS; s += 1) {
                 const slot = slotConfigs[s];
-                const currentZ = (slot.initialZ + entityTravelDist) % CELESTIAL_CYCLE;
-                const depth = currentZ > 0 ? currentZ - CELESTIAL_CYCLE : currentZ;
+                const tilt = slotTilt[s];
+                let depth = (slot.initialZ + entityTravelDist) % CELESTIAL_CYCLE;
+                if (depth > 0) depth -= CELESTIAL_CYCLE;
 
-                const tmpl = templates[slot.type] || templates.flagship;
+                const tmpl = templates[slot.type];
 
-                // 物理生命周期优化：
-                // 远方（depth < -850）保持微幅散离；
-                // 逼近阶段（-850 到 -520）迅速向心吸附聚拢（快速成型，不再拖沓！）；
-                // 黄金观赏区（-520 到 -35）始终呈现完全凝聚定型的清晰点阵实体模型；
-                // 掠过镜头（depth > -35）平滑淡出消散。
+                // 凝聚生命周期：远方成雾 → 逼近凝聚 → 黄金展示 → 掠过消散
                 let cohesion = 0;
-                if (depth < -850) {
-                    cohesion = 0.0;
-                } else if (depth < -520) {
-                    const p = (depth + 850) / 330;
-                    cohesion = easeOutCubic(p);
-                } else if (depth < -35) {
-                    cohesion = 1.0;
-                } else {
-                    cohesion = smooth((-depth) / 35);
-                }
+                if (depth < -900) cohesion = 0;
+                else if (depth < -540) cohesion = easeOutCubic((depth + 900) / 360);
+                else if (depth < -32) cohesion = 1.0;
+                else cohesion = smooth(-depth / 32);
 
-                // 旋转姿态更新
-                const rotTime = time * 0.14 + s * 1.2;
-                const cosR = Math.cos(rotTime * 0.5 + slot.rotY);
-                const sinR = Math.sin(rotTime * 0.5 + slot.rotY);
+                // 自转 + 预设倾角
+                const rotA = time * slot.rotSpeed + slot.rotPhase;
+                const cosY = Math.cos(rotA), sinY = Math.sin(rotA);
+                const cosX = Math.cos(tilt.x), sinX = Math.sin(tilt.x);
+                const cosZ = Math.cos(tilt.z), sinZ = Math.sin(tilt.z);
 
-                const offsetStart = s * POINTS_PER_ENTITY * 3;
-                const offsetSeed = s * POINTS_PER_ENTITY * 3;
+                const offset = s * POINTS_PER_ENTITY;
 
                 for (let p = 0; p < POINTS_PER_ENTITY; p += 1) {
-                    const pi = offsetStart + p * 3;
-                    const si = offsetSeed + p * 3;
+                    const pi = (offset + p) * 3;
+                    const tx0 = tmpl.pos[p * 3] * slot.scale;
+                    const ty0 = tmpl.pos[p * 3 + 1] * slot.scale;
+                    const tz0 = tmpl.pos[p * 3 + 2] * slot.scale;
 
-                    const tx0 = tmpl[p * 3] * slot.scale;
-                    const ty0 = tmpl[p * 3 + 1] * slot.scale;
-                    const tz0 = tmpl[p * 3 + 2] * slot.scale;
+                    // Y 自转
+                    let rx = tx0 * cosY - tz0 * sinY;
+                    let rz = tx0 * sinY + tz0 * cosY;
+                    let ry = ty0;
+                    // X 倾角
+                    const ry2 = ry * cosX - rz * sinX;
+                    const rz2 = ry * sinX + rz * cosX;
+                    ry = ry2; rz = rz2;
+                    // Z 微倾
+                    const rx2 = rx * cosZ - ry * sinZ;
+                    const ry3 = rx * sinZ + ry * cosZ;
+                    rx = rx2; ry = ry3;
 
-                    const rx = tx0 * cosR - tz0 * sinR;
-                    const rz = tx0 * sinR + tz0 * cosR;
+                    const fx = slot.x + rx;
+                    const fy = slot.y + ry;
+                    const fz = depth + rz;
 
-                    const finalTargetX = slot.x + rx;
-                    const finalTargetY = slot.y + ty0;
-                    const finalTargetZ = depth + rz;
+                    objTargets[pi] = fx;
+                    objTargets[pi + 1] = fy;
+                    objTargets[pi + 2] = fz;
 
-                    objTargets[pi] = finalTargetX;
-                    objTargets[pi + 1] = finalTargetY;
-                    objTargets[pi + 2] = finalTargetZ;
+                    const randSeed = (p * 0.23 + s * 0.71) % 1;
+                    const scatterR = (1 - cohesion) * (4.5 + randSeed * 6.0);
+                    objPositions[pi] = fx + Math.sin(p * 2.1) * scatterR;
+                    objPositions[pi + 1] = fy + Math.cos(p * 1.7) * scatterR;
+                    objPositions[pi + 2] = fz + (randSeed - 0.5) * scatterR * 1.3;
 
-                    // 关键修复：消除过度弥散！
-                    // 远方的散离幅度从 75 米大幅缩小到微幅量子扰动（6 米以内），保证远方即能识别点阵轮廓，并在逼近后迅速严密咬合！
-                    const randSeed = (p * 0.23 + s) % 1;
-                    const scatterR = (1 - cohesion) * (3.5 + randSeed * 4.5);
-                    objPositions[pi] = finalTargetX + Math.sin(p * 2.1) * scatterR;
-                    objPositions[pi + 1] = finalTargetY + Math.cos(p * 1.7) * scatterR;
-                    objPositions[pi + 2] = finalTargetZ + (randSeed - 0.5) * scatterR * 1.2;
+                    objSeedsArr[pi] = randSeed;
+                    objSeedsArr[pi + 1] = cohesion;
 
-                    objSeedsArr[si] = randSeed;
-                    objSeedsArr[si + 1] = cohesion;
-
-                    objSizesArr[s * POINTS_PER_ENTITY + p] = slot.type === 'flagship' ? 1.6 : slot.type === 'planet' ? 2.0 : 1.3;
+                    const sh = entityShade[offset + p];
+                    objSizesArr[offset + p] =
+                        slot.type === 'flagship' ? (sh === 3 ? 2.0 : sh === 2 ? 1.9 : 1.5) :
+                        slot.type === 'planet' ? (sh === 2 ? 2.4 : sh === 0 ? 1.4 : 1.9) :
+                        slot.type === 'rings' ? (sh === 0 ? 1.8 : sh === 2 ? 1.0 : 1.4) :
+                        slot.type === 'station' ? (sh === 2 ? 1.7 : 1.3) :
+                        (sh === 2 ? 1.8 : 1.3);
                 }
             }
 
             entityGeo.attributes.position.needsUpdate = true;
             entityGeo.attributes.aTarget.needsUpdate = true;
             entityGeo.attributes.aSeed.needsUpdate = true;
-            entityGeo.attributes.aColor.needsUpdate = true;
             entityGeo.attributes.aSize.needsUpdate = true;
 
-            // ==========================
-            // 5. 歌词空间迎面拉近、向心凝聚成实心文字与破空消散
-            // ==========================
+            /* ----- 歌词三段相位 ----- */
             if (activeLine && activePointCount > 0) {
                 let lyricZ = -36;
                 let cohesionPhase = 0;
                 let dispersePhase = 0;
 
-                if (progress < 0.28) {
-                    // 1. 从远方深空呼啸拉近到眼前停驻面 (-320 -> -36)
-                    const p = progress / 0.28;
-                    lyricZ = -320 + (320 - 36) * easeOutCubic(p);
-                    // 逼近眼前时迅速向心凝聚咬合
+                if (progress < 0.26) {
+                    const p = progress / 0.26;
+                    lyricZ = -340 + (340 - 36) * easeOutQuart(p);
                     cohesionPhase = smooth(p);
-                    dispersePhase = 0;
-                } else if (progress < 0.85) {
-                    // 2. 停驻展示区：点阵完全凝固为实心实体文字，极度平稳
-                    const p = (progress - 0.28) / (0.85 - 0.28);
-                    lyricZ = -36 + p * 2.5; // 平缓推进浮游
+                } else if (progress < 0.84) {
+                    const p = (progress - 0.26) / 0.58;
+                    lyricZ = -36 + p * 3.0;
                     cohesionPhase = 1.0;
-                    dispersePhase = 0;
                 } else {
-                    // 3. 句末破空加速脱离：飞速穿透视点消散在身后
-                    const p = (progress - 0.85) / 0.15;
-                    lyricZ = -33.5 + easeInCubic(p) * 58.0;
+                    const p = (progress - 0.84) / 0.16;
+                    lyricZ = -33 + easeInCubic(p) * 62.0;
                     cohesionPhase = 1.0;
                     dispersePhase = smooth(p);
                 }
@@ -1089,37 +1246,29 @@ function rasterizeLyric(line, frame) {
                 lyricParticleMat.uniforms.disperse.value = dispersePhase;
                 lyricParticleMat.uniforms.time.value = time;
 
-                // 彻底消除文字与点阵重影毛边：
-                // 1. 实心文字在凝聚收拢到 0.45 时开始清晰显现，并在 progress >= 0.28 完全定型接管
+                // 逐字 wordProgress 同步（声波涟漪）
+                const wpArr = lyricParticleMat.uniforms.wordProgress.value;
+                const words = frame.wordStates || [];
+                for (let w = 0; w < MAX_WORDS; w += 1) {
+                    wpArr[w] = w < words.length ? clamp(words[w]?.progress ?? 0) : 0;
+                }
+
                 const solidOpacity = clamp((cohesionPhase - 0.45) / 0.45) * (1.0 - dispersePhase * 1.15);
                 solidPlaneMat.opacity = solidOpacity * (settings.reducedMotion ? 0.9 : 1.0);
 
-                // 2. 粒子透明度与实心文字平滑交接：
-                // 入场：粒子向心汇聚，在实心文字成型时粒子同步淡出（1.0 -> 0.0）；
-                // 停驻期间：粒子完全隐退（opacity = 0），只保留纯净高对比度的实心文本，绝无重影与毛边描边！
-                // 离场阶段：实心文字淡出，粒子重新接管并爆发消散向后飞掠
                 let lyricParticleAlpha = 0;
-                if (progress < 0.28) {
-                    lyricParticleAlpha = 1.0 - smooth(Math.max(0, (cohesionPhase - 0.45) / 0.45));
-                } else if (progress > 0.85) {
-                    lyricParticleAlpha = dispersePhase;
-                } else {
-                    lyricParticleAlpha = 0.0;
-                }
+                if (progress < 0.26) lyricParticleAlpha = 1.0 - smooth(Math.max(0, (cohesionPhase - 0.45) / 0.45));
+                else if (progress > 0.84) lyricParticleAlpha = dispersePhase;
                 lyricParticleMat.uniforms.opacity.value = lyricParticleAlpha;
 
-                // 水平微交叉滚转姿态
                 solidTextMesh.rotation.z = lyricRollAngle;
                 lyricPoints.rotation.z = lyricRollAngle;
 
-                // 随低频平稳浮游微动
-                const lyricFloatX = Math.sin(time * 0.3) * 0.4;
-                const lyricFloatY = Math.cos(time * 0.25) * 0.25;
-
+                const lyricFloatX = Math.sin(time * 0.28) * 0.45;
+                const lyricFloatY = Math.cos(time * 0.23) * 0.3 + bassSmooth * 0.25;
                 solidTextMesh.position.set(lyricFloatX, lyricFloatY, lyricZ);
                 lyricPoints.position.set(lyricFloatX, lyricFloatY, lyricZ);
 
-                // 保持实心文字颜色稳定恒定，其色彩已在 Canvas 内部渲染为高光琥珀金，材质保持纯白滤镜，绝不跳色闪白
                 solidPlaneMat.color.set('#ffffff');
             } else {
                 solidPlaneMat.opacity = 0;
@@ -1134,13 +1283,15 @@ function rasterizeLyric(line, frame) {
             update,
             resize(w, h, ratio) {
                 starMat.uniforms.pixelRatio.value = ratio;
+                streakMat.uniforms.pixelRatio.value = ratio;
                 entityMat.uniforms.pixelRatio.value = ratio;
                 lyricParticleMat.uniforms.pixelRatio.value = ratio;
             },
             destroy() {
                 scene.remove(root);
-                [starGeo, entityGeo, lyricGeo, solidPlaneGeo].forEach((g) => g?.dispose?.());
-                [starMat, entityMat, lyricParticleMat, solidPlaneMat].forEach((m) => m?.dispose?.());
+                [starGeo, streakGeo, entityGeo, lyricGeo, solidPlaneGeo, pulseGeo].forEach((g) => g?.dispose?.());
+                [starMat, streakMat, entityMat, lyricParticleMat, solidPlaneMat].forEach((m) => m?.dispose?.());
+                pulseMeshes.forEach((p) => p.mesh.material.dispose());
                 textTexture?.dispose?.();
             }
         };
