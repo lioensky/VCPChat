@@ -3500,12 +3500,52 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
                 }
             }
         } else if (currentSelectedItem) {
-            avatarColorToUse = currentSelectedItem.config?.avatarCalculatedColor
-                || currentSelectedItem.avatarCalculatedColor
-                || currentSelectedItem.config?.avatarColor
-                || currentSelectedItem.avatarColor
-                || message.avatarColor;
-            avatarUrlToUse = message.avatarUrl || currentSelectedItem.avatarUrl;
+            const hostName = currentSelectedItem.name || currentSelectedItem.config?.name || '';
+            const senderName = message.name || message._metadata?.sender_name || '';
+            const isCrossAgentMessage = message._metadata?.isPluginReply === true
+                || (Boolean(message.agentId) && message.agentId !== currentSelectedItem.id)
+                || (Boolean(senderName) && Boolean(hostName) && senderName !== hostName);
+
+            if (isCrossAgentMessage) {
+                // 跨 Agent 发言：基础采用消息自带的属性
+                avatarColorToUse = message.avatarColor || null;
+                avatarUrlToUse = message.avatarUrl || null;
+
+                // 历史旧错/空头像动态自愈机制 (三级降级防线)
+                const isBadAvatar = !avatarUrlToUse || (typeof avatarUrlToUse === 'string' && avatarUrlToUse.includes(currentSelectedItem.id));
+                if (isBadAvatar && senderName && senderName !== hostName) {
+                    const senderLower = senderName.toLowerCase();
+                    // 防线 1: 从 window.itemListManager 的缓存快照自愈查表 (三级匹配: 精确 > 前缀 > 双向包含)
+                    const loadedItems = typeof window !== 'undefined' && window.itemListManager?.getLoadedItems
+                        ? window.itemListManager.getLoadedItems()
+                        : [];
+                    
+                    const matchedItem = loadedItems.find(it => {
+                        if (it.type !== 'agent' || !it.name) return false;
+                        const itLower = it.name.toLowerCase();
+                        return itLower === senderLower || itLower.startsWith(senderLower) || itLower.includes(senderLower) || senderLower.includes(itLower);
+                    });
+
+                    if (matchedItem && matchedItem.avatarUrl) {
+                        avatarUrlToUse = matchedItem.avatarUrl;
+                        avatarColorToUse = matchedItem.avatarColor || matchedItem.avatarCalculatedColor || avatarColorToUse;
+                    } else if (message.agentId && message.agentId !== currentSelectedItem.id) {
+                        // 防线 2: 若已知发送者 agentId，直接组装标准的 file:// 物理头像路径兜底
+                        avatarUrlToUse = `file:///D:/VCP/VCP_itself_2nd/VCPChat/AppData/Agents/${message.agentId}/avatar.png`;
+                    }
+                }
+
+                // 优雅兜底：若前两道防线全未命中（极端异常角色），回退当前宿主头像以防默认灰色占位符影响视觉
+                avatarUrlToUse ||= currentSelectedItem.avatarUrl;
+                avatarColorToUse ||= currentSelectedItem.avatarColor;
+            } else {
+                avatarColorToUse = currentSelectedItem.config?.avatarCalculatedColor
+                    || currentSelectedItem.avatarCalculatedColor
+                    || currentSelectedItem.config?.avatarColor
+                    || currentSelectedItem.avatarColor
+                    || message.avatarColor;
+                avatarUrlToUse = message.avatarUrl || currentSelectedItem.avatarUrl;
+            }
 
             // 非群组消息，获取当前Agent的设置
             const agentConfig = currentSelectedItem.config || currentSelectedItem;
