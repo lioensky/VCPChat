@@ -265,14 +265,18 @@ h1 {
     border-radius: 18px;
     isolation: isolate;
     background:
-        radial-gradient(circle at 50% 52%, color-mix(in srgb, var(--blade-accent) 10%, transparent), transparent 42%),
-        color-mix(in srgb, var(--secondary-bg, #20252a) 74%, transparent);
+        radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--blade-accent) 14%, transparent) 0%, transparent 60%),
+        radial-gradient(ellipse at 50% 80%, color-mix(in srgb, var(--blade-success) 8%, transparent) 0%, transparent 50%),
+        linear-gradient(180deg, color-mix(in srgb, var(--primary-bg, #171a1d) 50%, transparent), color-mix(in srgb, var(--secondary-bg, #20252a) 90%, transparent));
+    box-shadow: inset 0 0 60px rgb(0 0 0 / 45%), 0 14px 35px rgb(0 0 0 / 22%);
+    border: 1px solid color-mix(in srgb, var(--blade-border) 80%, var(--blade-accent) 20%);
 }
 
 .pixi-arena {
     position: absolute;
     inset: 0;
-    z-index: -1;
+    z-index: 0;
+    pointer-events: none;
 }
 
 .pixi-arena canvas {
@@ -285,12 +289,21 @@ h1 {
     position: absolute;
     top: 50%;
     left: 50%;
-    color: color-mix(in srgb, var(--blade-accent) 86%, white);
-    font-size: 28px;
-    font-weight: 700;
-    letter-spacing: 0.12em;
+    z-index: 2;
+    color: color-mix(in srgb, var(--blade-accent) 92%, white);
+    font-size: 32px;
+    font-weight: 800;
+    font-style: italic;
+    letter-spacing: 0.16em;
     transform: translate(-50%, -50%);
-    text-shadow: 0 0 24px color-mix(in srgb, var(--blade-accent) 60%, transparent);
+    text-shadow:
+        0 0 12px color-mix(in srgb, var(--blade-accent) 75%, transparent),
+        0 0 28px color-mix(in srgb, var(--blade-accent) 40%, transparent),
+        0 2px 4px rgb(0 0 0 / 80%);
+    pointer-events: none;
+    opacity: 0.88;
+    transition: transform 220ms ease, opacity 220ms ease;
+    user-select: none;
 }
 
 .speech-bubble {
@@ -323,18 +336,31 @@ h1 {
 .damage-floaters {
     position: absolute;
     inset: 0;
+    z-index: 10;
     pointer-events: none;
 }
 
 .damage-floater {
     position: absolute;
-    top: 46%;
+    top: 45%;
     left: 50%;
-    color: var(--blade-danger);
-    font-size: 28px;
-    font-weight: 700;
-    text-shadow: 0 2px 8px rgb(0 0 0 / 45%);
-    animation: bladeDamageFloat 900ms ease-out forwards;
+    font-size: 30px;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    font-family: "Microsoft YaHei", sans-serif;
+    color: #ff5252;
+    text-shadow:
+        0 0 16px rgba(255, 60, 60, 0.85),
+        0 2px 8px rgb(0 0 0 / 90%);
+    animation: bladeDamageFloat 950ms cubic-bezier(.12, .88, .32, 1) forwards;
+}
+
+.damage-floater.damage-user {
+    left: 28%;
+}
+
+.damage-floater.damage-ai {
+    left: 72%;
 }
 
 .battle-log-panel,
@@ -409,16 +435,29 @@ h1 {
 }
 
 @keyframes bladeDamageFloat {
-    from { opacity: 0; transform: translate(-50%, 10px) scale(.7); }
-    18% { opacity: 1; }
-    to { opacity: 0; transform: translate(-50%, -70px) scale(1.15); }
+    from {
+        opacity: 0;
+        transform: translate(-50%, 18px) scale(0.6);
+    }
+    15% {
+        opacity: 1;
+        transform: translate(-50%, -8px) scale(1.22);
+    }
+    30% {
+        transform: translate(-50%, -14px) scale(1.05);
+    }
+    to {
+        opacity: 0;
+        transform: translate(-50%, -75px) scale(1.15);
+    }
 }
 
 @keyframes bladeHit {
-    0%, 100% { transform: translateX(0); }
-    25% { transform: translateX(-8px); }
-    50% { transform: translateX(8px); }
-    75% { transform: translateX(-4px); }
+    0%, 100% { transform: translateX(0) scale(1); filter: brightness(1); }
+    20% { transform: translateX(-12px) scale(0.97); filter: brightness(1.5) drop-shadow(0 0 12px var(--blade-danger)); }
+    40% { transform: translateX(10px) scale(1.02); filter: brightness(1.2); }
+    60% { transform: translateX(-6px); }
+    80% { transform: translateX(3px); }
 }
 
 @media (max-width: 980px) {
