@@ -29,6 +29,9 @@ body {
     position: relative;
     display: flex;
     flex-direction: column;
+    background:
+        radial-gradient(ellipse at 30% 0%, color-mix(in srgb, var(--blade-accent) 10%, transparent), transparent 55%),
+        var(--primary-bg, #171a1d);
 }
 
 .blade-title-bar {
@@ -40,14 +43,10 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding-left: 16px;
+    padding-left: 30px;
     color: var(--blade-muted);
-    background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--secondary-bg, #20252a) 86%, transparent),
-        color-mix(in srgb, var(--secondary-bg, #20252a) 46%, transparent)
-    );
-    border-bottom: 1px solid color-mix(in srgb, var(--blade-border) 58%, transparent);
+    background: transparent;
+    border-bottom: 0;
     -webkit-app-region: drag;
     user-select: none;
 }
@@ -56,8 +55,8 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 12px;
-    letter-spacing: 0.08em;
+    font-size: 11px;
+    letter-spacing: 0.24em;
     -webkit-app-region: drag;
     pointer-events: none;
 }
@@ -75,20 +74,58 @@ body {
 }
 
 .blade-window-control {
+    position: relative;
     width: 46px;
     height: 100%;
     padding: 0;
     border: 0;
     color: var(--blade-muted);
     background: transparent;
-    font-size: 17px;
+    font-size: 0;
     line-height: 1;
     cursor: pointer;
     transition: color 160ms ease, background 160ms ease;
     -webkit-app-region: no-drag;
 }
 
-.blade-window-control:hover,
+.blade-window-control::before,
+.blade-window-control::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    display: block;
+    pointer-events: none;
+    transition: background-color 160ms ease, border-color 160ms ease;
+}
+
+/* 使用统一的 CSS 几何图标，避免系统字体造成基线和粗细不一致。 */
+#blade-minimize-btn::before {
+    width: 13px;
+    height: 1px;
+    background: currentColor;
+    transform: translate(-50%, -50%);
+}
+
+#blade-maximize-btn::before {
+    width: 11px;
+    height: 11px;
+    border: 1px solid currentColor;
+    transform: translate(-50%, -50%);
+}
+
+#blade-close-btn::before,
+#blade-close-btn::after {
+    width: 14px;
+    height: 1px;
+    background: currentColor;
+    transform: translate(-50%, -50%) rotate(45deg);
+}
+
+#blade-close-btn::after {
+    transform: translate(-50%, -50%) rotate(-45deg);
+}
+
 .blade-window-control:focus-visible {
     color: var(--blade-text);
     background: color-mix(in srgb, var(--blade-accent) 14%, transparent);
@@ -106,13 +143,11 @@ body {
     width: 100%;
     min-height: 0;
     margin: 0;
-    padding: 16px max(30px, calc((100% - 1280px) / 2)) 30px;
-    overflow-x: hidden;
-    overflow-y: auto;
-    scrollbar-gutter: stable;
-    background:
-        linear-gradient(145deg, color-mix(in srgb, var(--blade-accent) 5%, transparent), transparent 42%),
-        color-mix(in srgb, var(--primary-bg, #171a1d) 72%, transparent);
+    padding: 8px max(24px, calc((100% - 1280px) / 2)) 20px;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    gap: 14px;
+    overflow: hidden;
 }
 
 .blade-header,
@@ -126,7 +161,7 @@ body {
 }
 
 .blade-header {
-    margin-bottom: 20px;
+    margin-bottom: 0;
 }
 
 .eyebrow,
@@ -139,7 +174,8 @@ body {
 
 h1 {
     margin: 0;
-    font-size: clamp(24px, 4vw, 38px);
+    font-size: clamp(24px, 4vh, 34px);
+    font-family: "STKaiti", "KaiTi", "Microsoft YaHei", serif;
     letter-spacing: 0.08em;
 }
 
@@ -159,9 +195,9 @@ h1 {
 
 .battle-layout {
     display: grid;
-    grid-template-columns: 190px minmax(420px, 1fr) 190px;
+    grid-template-columns: clamp(140px, 16vw, 190px) minmax(0, 1fr) clamp(140px, 16vw, 190px);
     gap: 18px;
-    min-height: 390px;
+    min-height: 0;
 }
 
 .fighter-card,
@@ -205,7 +241,7 @@ h1 {
 
 .avatar-frame {
     width: 100%;
-    aspect-ratio: 1;
+    height: clamp(72px, 18vh, 156px);
     overflow: hidden;
     margin-bottom: 16px;
     border: 1px solid var(--blade-border);
@@ -260,7 +296,7 @@ h1 {
 
 .arena-panel {
     position: relative;
-    min-height: 390px;
+    min-height: 0;
     overflow: hidden;
     border-radius: 18px;
     isolation: isolate;
@@ -311,6 +347,10 @@ h1 {
     top: 20px;
     right: 20px;
     max-width: 66%;
+    max-height: 30%;
+    overflow: auto;
+    z-index: 3;
+    overflow-wrap: anywhere;
     padding: 11px 14px;
     border: 1px solid color-mix(in srgb, var(--blade-success) 52%, var(--blade-border));
     border-radius: 14px 14px 3px 14px;
@@ -365,8 +405,8 @@ h1 {
 
 .battle-log-panel,
 .move-panel {
-    margin-top: 18px;
-    padding: 16px 18px;
+    margin-top: 0;
+    padding: 12px 16px;
     border-radius: 14px;
 }
 
@@ -376,8 +416,11 @@ h1 {
 }
 
 .battle-log-panel p {
-    min-height: 42px;
-    margin: 12px 0 0;
+    height: 42px;
+    overflow: auto;
+    overflow-wrap: anywhere;
+    scrollbar-width: thin;
+    margin: 8px 0 0;
     color: var(--blade-text);
     font-size: 13px;
     line-height: 1.6;
@@ -385,7 +428,7 @@ h1 {
 
 .move-grid {
     display: grid;
-    grid-template-columns: repeat(7, minmax(90px, 1fr));
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: 9px;
     margin-top: 14px;
 }
@@ -460,12 +503,90 @@ h1 {
     80% { transform: translateX(3px); }
 }
 
-@media (max-width: 980px) {
-    .battle-layout {
-        grid-template-columns: 150px minmax(360px, 1fr) 150px;
-    }
+.blade-title-bar::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 24px;
+    right: 150px;
+    height: 1px;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--blade-accent) 30%, transparent), transparent 75%);
+}
 
-    .move-grid {
-        grid-template-columns: repeat(4, 1fr);
+.blade-window-control {
+    width: 42px;
+    font-family: "Segoe UI", sans-serif;
+}
+
+.blade-window-control:focus-visible,
+.move-button:focus-visible {
+    outline: 2px solid var(--blade-accent);
+    outline-offset: -3px;
+}
+
+.blade-header,
+.fighter-card,
+.move-panel {
+    animation: bladeEnter 650ms cubic-bezier(.2, .8, .2, 1) both;
+}
+
+.fighter-card-ai { animation-delay: 100ms; }
+.move-panel { animation-delay: 160ms; }
+
+.arena-panel::after {
+    content: "";
+    position: absolute;
+    inset: 10px;
+    border: 1px solid color-mix(in srgb, var(--blade-accent) 12%, transparent);
+    border-radius: 12px;
+    pointer-events: none;
+}
+
+.blade-performing .arena-vs {
+    opacity: 0.12;
+    transform: translate(-50%, -50%) scale(.8);
+}
+
+.move-button:active:not(:disabled) { transform: translateY(1px) scale(.97); }
+.move-button.is-selected {
+    border-color: var(--blade-accent);
+    box-shadow: inset 0 0 20px color-mix(in srgb, var(--blade-accent) 12%, transparent);
+    opacity: 1;
+}
+.damage-floater.is-heal {
+    top: 62%;
+    color: var(--blade-success);
+    font-size: 23px;
+    text-shadow: 0 0 16px color-mix(in srgb, var(--blade-success) 60%, transparent);
+}
+
+.battle-caption {
+    width: max-content;
+    padding: 7px 14px;
+    border-radius: 99px;
+    background: color-mix(in srgb, var(--primary-bg, #171a1d) 80%, transparent);
+    z-index: 3;
+}
+
+@keyframes bladeEnter {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-height: 700px) {
+    .blade-shell { gap: 10px; padding-top: 4px; padding-bottom: 12px; }
+    .fighter-card { padding: 12px; }
+    .fighter-heading { margin-bottom: 8px; gap: 4px; }
+    .avatar-frame { height: 90px; margin-bottom: 10px; }
+    .move-button { min-height: 58px; }
+    .move-grid { margin-top: 9px; gap: 6px; }
+    .battle-log-panel, .move-panel { padding: 10px 14px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 1ms !important;
+        animation-delay: 0ms !important;
+        transition-duration: 1ms !important;
     }
 }

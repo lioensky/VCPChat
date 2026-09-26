@@ -45,6 +45,10 @@ let lastStateSignature = '';
 let lastEventTurn = null;
 let pixiController = null;
 let currentState = null;
+let performing = false;
+let presentationTimer = null;
+let impactTimer = null;
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
 function setText(id, text) {
     const node = $(id);
@@ -116,13 +120,17 @@ function createMoveButtons() {
         button.className = 'move-button';
         button.dataset.move = key;
         button.innerHTML = `<span class="move-name">${move.name}</span><span class="move-desc">${move.desc}</span>`;
-        button.addEventListener('click', () => submitMove(key));
+        button.addEventListener('click', () => {
+            document.querySelectorAll('.move-button').forEach(item => item.classList.remove('is-selected'));
+            button.classList.add('is-selected');
+            submitMove(key);
+        });
         grid.appendChild(button);
     });
 }
 
 async function submitMove(moveKey) {
-    if (!currentState || currentState.user_ready || currentState.game_over) return;
+    if (!currentState || currentState.user_ready || currentState.game_over || document.body.classList.contains('blade-performing')) return;
     const move = MOVES[moveKey];
     if (!move || Number(currentState.user_energy) < move.cost) return;
 
@@ -147,6 +155,7 @@ function updateButtons(state) {
     document.querySelectorAll('.move-button').forEach(button => {
         const move = MOVES[button.dataset.move];
         button.disabled = Boolean(
+            performing ||
             state.game_over ||
             state.user_ready ||
             !move ||
@@ -156,7 +165,7 @@ function updateButtons(state) {
 
     setText(
         'moveHint',
-        state.game_over ? '对局结束' : state.user_ready ? '等待 AI 出招…' : '请选择招式'
+        performing ? '剑招交锋中…' : state.game_over ? '对局结束' : state.user_ready ? '等待 AI 出招…' : '请选择招式'
     );
 }
 
@@ -191,34 +200,39 @@ function showSpeech(text) {
     bubble.classList.add('speech-bubble-ai');
 }
 
-function showDamage(event) {
+function showDamage(event, healEvent = null) {
     const container = $('damageFloaters');
     if (!container) return;
 
     const values = [
-        ['AI', Number(event.user_damage) || 0, 'user'],
-        ['你', Number(event.ai_damage) || 0, 'ai'],
+        ['AI', Number(event?.user_damage) || 0, 'ai', '伤'],
+        ['你', Number(event?.ai_damage) || 0, 'user', '伤'],
+        ['AI', Number(healEvent?.ai_heal) || 0, 'ai', '愈'],
+        ['你', Number(healEvent?.user_heal) || 0, 'user', '愈'],
     ];
-    values.forEach(([label, damage, side]) => {
-        if (!damage) return;
+    values.forEach(([label, value, side, suffix]) => {
+        if (!value) return;
         const floater = document.createElement('span');
-        floater.className = `damage-floater damage-${side}`;
-        floater.textContent = `${damage} 伤`;
-        floater.title = `${label}受到伤害`;
+        floater.className = `damage-floater damage-${side}${suffix === '愈' ? ' is-heal' : ''}`;
+        floater.textContent = `${suffix === '愈' ? '+' : ''}${value} ${suffix}`;
+        floater.title = `${label}${suffix === '愈' ? '回复生命' : '受到伤害'}`;
         container.appendChild(floater);
         floater.addEventListener('animationend', () => floater.remove(), { once: true });
     });
 }
 
-function applyBattleClass(resultType) {
-    document.body.classList.remove('blade-hit-ai', 'blade-hit-user');
-    if (resultType === 'ai-hit' || resultType === 'trade') {
-        document.body.classList.add('blade-hit-user');
-    }
-    if (resultType === 'user-hit' || resultType === 'trade') {
-        document.body.classList.add('blade-hit-ai');
-    }
-    window.setTimeout(() => document.body.classList.remove('blade-hit-ai', 'blade-hit-user'), 460);
+function applyBattleClass(damageEvent) {
+    document.body.classList.toggle('blade-hit-user', Number(damageEvent?.ai_damage) > 0);
+    document.body.classList.toggle('blade-hit-ai', Number(damageEvent?.user_damage) > 0);
+}
+
+function cancelPresentation() {
+    clearTimeout(impactTimer);
+    clearTimeout(presentationTimer);
+    performing = false;
+    document.body.classList.remove('blade-hit-ai', 'blade-hit-user', 'blade-performing');
+    $('damageFloaters')?.replaceChildren();
+    pixiController?.resetEffects();
 }
 
 function resultLabel(resultType) {
@@ -238,6 +252,7 @@ function presentEvents(state) {
     const speechEvent = state.events.find(event => event.type === 'speech');
     const clashEvent = state.events.find(event => event.type === 'clash');
     const damageEvent = state.events.find(event => event.type === 'damage');
+    const healEvent = state.events.find(event => event.type === 'heal');
     const moveEvents = state.events.filter(event => event.type === 'move');
 
     showSpeech(speechEvent?.text || state.ai_speech || '');
@@ -254,24 +269,48 @@ function presentEvents(state) {
             : moveSummary
     );
 
-    if (damageEvent) showDamage(damageEvent);
-    if (damageEvent) showDamage(damageEvent);
-    applyBattleClass(clashEvent?.result);
+    cancelPresentation();
+    performing = true;
+    document.body.classList.add('blade-performing');
+    updateButtons(state);
+    setText('battleCaption', moveSummary);
+    impactTimer = window.setTimeout(() => {
+        showDamage(damageEvent, healEvent);
+        applyBattleClass(damageEvent);
+        updateFighterState(currentState);
+        setText('battleCaption', `${resultLabel(clashEvent?.result)}　${moveSummary}`);
+    }, reducedMotion.matches ? 0 : 540);
+    presentationTimer = window.setTimeout(() => {
+        performing = false;
+        document.body.classList.remove('blade-hit-ai', 'blade-hit-user', 'blade-performing');
+        document.querySelectorAll('.move-button').forEach(button => button.classList.remove('is-selected'));
+        updateButtons(currentState);
+        if (currentState.game_over) {
+            setText('battleCaption', currentState.events?.find(event => event.type === 'game-over')?.text || '胜负已分');
+        }
+    }, reducedMotion.matches ? 100 : 1550);
     pixiController?.playClash(
         clashEvent?.result || 'neutral',
         aiMoveEvent?.move,
         userMoveEvent?.move,
         {
             damageEvent,
-            healEvent: state.events.find(event => event.type === 'heal'),
+            healEvent,
             gameOver: state.game_over,
         }
     );
 }
 
 function updateUi(state) {
+    const isNewClash = state.turn_result && state.turn_result.turn !== lastEventTurn;
+    if (!state.turn_result) {
+        cancelPresentation();
+        lastEventTurn = null;
+        setText('battleCaption', '凝神蓄势 · 静待出招');
+        showSpeech('');
+    }
+    if (!isNewClash || !currentState) updateFighterState(state);
     currentState = state;
-    updateFighterState(state);
     updateButtons(state);
     setText('turnText', `回合 ${Math.max(1, Number(state.turn || 1))}`);
     setText('battleLog', state.last_log || '等待游戏状态…');
@@ -396,18 +435,27 @@ class BladePixiController {
         );
     }
 
+    resetEffects() {
+        this.moveEffects = [];
+        this.sparks = [];
+        this.shockwaves = [];
+        this.pendingShake = null;
+        this.shakeTimer = 0;
+    }
+
     playClash(result, aiMove, userMove, extra = {}) {
+        if (reducedMotion.matches) return;
         const isFlash = aiMove === 'Flash' || userMove === 'Flash';
         const isTrade = result === 'trade';
         const isHit = result === 'ai-hit' || result === 'user-hit';
 
         // 震屏与冲击力度
         const shakePower = isFlash ? 14 : isTrade ? 10 : isHit ? 7 : 4;
-        this.triggerShake(shakePower, isFlash ? 0.45 : 0.28);
+        this.pendingShake = { delay: 0.54, power: result === 'neutral' ? 0 : shakePower * 0.65 };
 
         // 产生中心冲击波
         this.shockwaves.push({
-            age: 0,
+            age: -0.54,
             life: isFlash ? 0.95 : 0.65,
             color: isFlash ? 0xfff4d0 : result === 'ai-hit' ? 0xf2a900 : result === 'user-hit' ? 0x76bfae : 0xffffff,
             maxRadius: isFlash ? 260 : 160,
@@ -427,7 +475,7 @@ class BladePixiController {
                 vy: Math.sin(angle) * speed,
                 color: isFlash ? (Math.random() > 0.4 ? 0xffffff : 0xffbb33) : (Math.random() > 0.5 ? 0xf2a900 : 0x76bfae),
                 size: 2 + Math.random() * 3.5,
-                age: 0,
+                age: -0.54,
                 life: 0.4 + Math.random() * 0.45,
             });
         }
@@ -721,7 +769,7 @@ class BladePixiController {
             }
 
             // 回春生机流光回流自身 (Heal Aura)
-            if (progress > 0.35) {
+            if (progress > 0.35 && effect.heal > 0) {
                 const healP = (progress - 0.35) / 0.65;
                 const healX = targetX + (originX - targetX) * healP;
                 const healY = cy - Math.sin(healP * Math.PI) * 35;
@@ -875,7 +923,16 @@ class BladePixiController {
         const height = this.root.clientHeight;
         const cx = width / 2;
         const cy = height / 2;
-        this.now += dt;
+        if (!width || !height || document.hidden) return;
+        dt = Math.min(dt, 0.05);
+        this.now += reducedMotion.matches ? 0 : dt;
+        if (this.pendingShake) {
+            this.pendingShake.delay -= dt;
+            if (this.pendingShake.delay <= 0) {
+                this.triggerShake(this.pendingShake.power, 0.28);
+                this.pendingShake = null;
+            }
+        }
 
         // 震屏阻尼更新
         if (this.shakeTimer > 0) {
@@ -900,7 +957,7 @@ class BladePixiController {
 
         // 3. 漫天环境氛围粒子（寒梅、雪晶、剑尘）
         this.ambientLayer.clear();
-        this.ambientParticles.forEach(p => {
+        if (!reducedMotion.matches) this.ambientParticles.forEach(p => {
             p.age += dt;
             p.x += p.vx * dt;
             p.y += p.vy * dt;
@@ -938,6 +995,7 @@ class BladePixiController {
         // 冲击波
         this.shockwaves = this.shockwaves.filter(wave => {
             wave.age += Math.min(dt, 0.05);
+            if (wave.age < 0) return true;
             const p = wave.age / wave.life;
             if (p >= 1) return false;
             const r = 16 + p * wave.maxRadius;
@@ -955,6 +1013,7 @@ class BladePixiController {
         // 碰撞火星
         this.sparks = this.sparks.filter(spark => {
             spark.age += Math.min(dt, 0.05);
+            if (spark.age < 0) return true;
             if (spark.age >= spark.life) return false;
             spark.xRatio += (spark.vx * dt) / width;
             spark.yRatio += (spark.vy * dt) / height;
@@ -965,6 +1024,9 @@ class BladePixiController {
             const sx = width * spark.xRatio;
             const sy = height * spark.yRatio;
 
+            this.impactsLayer.moveTo(sx - spark.vx * 0.025, sy - spark.vy * 0.025)
+                .lineTo(sx, sy)
+                .stroke({ color: spark.color, width: 1.3, alpha: a * 0.6 });
             this.impactsLayer.circle(sx, sy, spark.size * (1 - p * 0.5))
                 .fill({ color: spark.color, alpha: a });
             return true;
@@ -997,13 +1059,7 @@ class BladePixiController {
 async function pollState() {
     const state = await readJson(STATE_URL, null);
     if (!state) return;
-    const signature = JSON.stringify({
-        turn: state.turn,
-        user_ready: state.user_ready,
-        last_log: state.last_log,
-        ai_hp: state.ai_hp,
-        user_hp: state.user_hp,
-    });
+    const signature = JSON.stringify(state);
     if (signature !== lastStateSignature) {
         lastStateSignature = signature;
         updateUi(state);
@@ -1068,6 +1124,8 @@ async function bootstrap() {
     window.addEventListener('beforeunload', () => {
         clearInterval(timer);
         clearInterval(themeTimer);
+        clearTimeout(impactTimer);
+        clearTimeout(presentationTimer);
     }, { once: true });
 }
 
