@@ -1368,6 +1368,7 @@ window.itemListManager = (() => {
         highlightActiveItem,
         resetMouseEventStates,
         findItemById, // Expose the new function
+        getLoadedItems: () => [...loadedItemsCache], // 暴露只读快照供消息自愈渲染查表
         updateLoadedItemConfig,
         updateUnreadBadges, // Part C: 暴露更新徽章函数供外部调用
         refreshUnreadCounts,

@@ -1,6 +1,27 @@
 const fs = require('fs-extra');
 const path = require('path');
 const crypto = require('crypto');
+const { pathToFileURL } = require('url');
+
+const AVATAR_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
+const agentAvatarCache = new Map();
+
+async function resolveAgentAvatarUrl(agentDir, cacheBust = false) {
+    if (!cacheBust && agentAvatarCache.has(agentDir)) {
+        return agentAvatarCache.get(agentDir);
+    }
+    for (const ext of AVATAR_EXTS) {
+        const p = path.join(agentDir, `avatar${ext}`);
+        if (await fs.pathExists(p)) {
+            const url = pathToFileURL(p).toString();
+            const finalUrl = cacheBust ? `${url}?t=${Date.now()}` : url;
+            agentAvatarCache.set(agentDir, finalUrl);
+            return finalUrl;
+        }
+    }
+    agentAvatarCache.set(agentDir, null);
+    return null;
+}
 
 const PROMPT_COMMANDS = new Set([
     'GetPromptMode',
@@ -109,8 +130,9 @@ function ensurePromptState(config) {
     };
 }
 
-function pluginMessage(agent, content, senderName, metadata = {}) {
+function pluginMessage(agent, content, senderName, metadata = {}, senderAgent = null) {
     const timestamp = Date.now();
+    const effectiveAgent = senderAgent || agent;
     return {
         role: 'assistant',
         name: senderName,
@@ -118,14 +140,16 @@ function pluginMessage(agent, content, senderName, metadata = {}) {
         timestamp,
         id: `msg_${timestamp}_assistant_${crypto.randomUUID()}`,
         isThinking: false,
-        avatarUrl: agent.avatarUrl || null,
-        avatarColor: agent.avatarColor || 'rgb(96,106,116)',
+        avatarUrl: effectiveAgent.avatarUrl || null,
+        avatarColor: effectiveAgent.avatarColor || 'rgb(96,106,116)',
         isGroupMessage: false,
-        agentId: agent.id,
+        agentId: effectiveAgent.id,
         finishReason: 'completed',
         _metadata: {
             createdBy: 'plugin',
             createdAt: timestamp,
+            speaker_agent_id: effectiveAgent.id,
+            speaker_name: senderName,
             ...metadata,
         },
     };
@@ -191,28 +215,55 @@ class PluginAgentOperationService {
 
     async findAgent(query) {
         const requested = validateId(query, 'Agent');
+        const requestedLower = requested.toLowerCase();
         const folders = await fs.readdir(this.agentDir, { withFileTypes: true });
+
+        // 1. ID 精确匹配
         const exactFolder = folders.find(entry => entry.isDirectory() && entry.name === requested);
         if (exactFolder) {
             const config = await this.agentConfigManager.readAgentConfig(exactFolder.name);
-            return { ...config, id: exactFolder.name };
+            const avatarUrl = await resolveAgentAvatarUrl(path.join(this.agentDir, exactFolder.name));
+            return { ...config, id: exactFolder.name, avatarUrl: avatarUrl || config.avatarUrl || null };
         }
 
-        const matches = [];
+        // 收集所有候选并计算匹配层级
+        const candidates = [];
         for (const entry of folders) {
             if (!entry.isDirectory()) continue;
             try {
                 const config = await this.agentConfigManager.readAgentConfig(entry.name);
-                if (typeof config.name === 'string' && config.name.includes(requested)) {
-                    matches.push({ ...config, id: entry.name });
+                if (typeof config.name === 'string') {
+                    const candidateLower = config.name.toLowerCase();
+                    let tier = 0; // 0: 无匹配, 1: 双向包含, 2: 前缀匹配, 3: 精确全名匹配
+                    if (candidateLower === requestedLower) {
+                        tier = 3;
+                    } else if (candidateLower.startsWith(requestedLower)) {
+                        tier = 2;
+                    } else if (candidateLower.includes(requestedLower) || requestedLower.includes(candidateLower)) {
+                        tier = 1;
+                    }
+
+                    if (tier > 0) {
+                        candidates.push({ config, id: entry.name, tier });
+                    }
                 }
             } catch (error) {
                 this.logger.warn?.(`[PluginAgentOperationService] 跳过无效 Agent ${entry.name}: ${error.message}`);
             }
         }
-        if (matches.length === 0) throw new Error(`未找到 Agent: ${requested}`);
-        if (matches.length > 1) throw new Error(`Agent 名称匹配不唯一: ${requested}`);
-        return matches[0];
+
+        if (candidates.length === 0) throw new Error(`未找到 Agent: ${requested}`);
+
+        // 按优先级降序排序 (精确 > 前缀 > 双向包含)
+        candidates.sort((a, b) => b.tier - a.tier);
+
+        const best = candidates[0];
+        const avatarUrl = await resolveAgentAvatarUrl(path.join(this.agentDir, best.id));
+        return {
+            ...best.config,
+            id: best.id,
+            avatarUrl: avatarUrl || best.config.avatarUrl || null
+        };
     }
 
     async readAgent(agentId) {
@@ -676,11 +727,27 @@ class PluginAgentOperationService {
             if (typeof args.sender_name !== 'string' || !args.sender_name.trim()) {
                 throw new TypeError('sender_name 不能为空。');
             }
-            const message = pluginMessage(agent, args.message, args.sender_name.trim(), {
+            const rawSenderName = args.sender_name.trim();
+            let senderAgent = null;
+            if (rawSenderName !== agent.name) {
+                try {
+                    senderAgent = await this.findAgent(rawSenderName);
+                } catch (_) {
+                    // 若 sender_name 是外部未注册角色，保持 null 并优雅回退
+                }
+            }
+
+            // 遵循前端既有的群聊多Agent规范: [xxx的发言]:
+            const formattedMessage = rawSenderName !== agent.name && !args.message.startsWith(`[${rawSenderName}的发言]`)
+                ? `[${rawSenderName}的发言]:\n${args.message}`
+                : args.message;
+
+            const message = pluginMessage(agent, formattedMessage, rawSenderName, {
                 isPluginReply: true,
-                originalSender: args.sender_name.trim(),
+                originalSender: rawSenderName,
                 targetAgent: agent.name,
-            });
+            }, senderAgent);
+
             await this.historyMutationQueue.mutate(
                 { itemId: agent.id, itemType: 'agent', topicId },
                 history => [...history, message]
@@ -720,9 +787,92 @@ class PluginAgentOperationService {
         if (topicId && !selectedTopic) throw new Error(`话题 ${topicId} 不存在。`);
 
         if (command === 'ReadTopicContent') {
-            const messages = await this.historyMutationQueue.read(
+            const rawMessages = await this.historyMutationQueue.read(
                 { itemId: agent.id, itemType: 'agent', topicId }
             );
+            // 默认返回 Markdown（复用官方导出话题标准），显式指定 format: 'json' / 'clean' / 'raw' 时返回结构化对象
+            const format = String(args.format || 'markdown').toLowerCase();
+
+            // 逃生通道：若显式传入 format: 'raw'，则保留底层全量原始对象
+            if (format === 'raw') {
+                return {
+                    agent_name: agent.name,
+                    agent_id: agent.id,
+                    topic_id: topicId,
+                    topic_name: selectedTopic.name,
+                    topic_info: {
+                        locked: selectedTopic.locked !== undefined ? selectedTopic.locked : true,
+                        unread: selectedTopic.unread === true,
+                        created_at: selectedTopic.createdAt,
+                    },
+                    message_count: rawMessages.length,
+                    messages: rawMessages,
+                };
+            }
+
+            // 剥离 [[VCP调用结果信息汇总...]] 物理块，避免自指与渲染断裂
+            const stripToolPayload = (text) => {
+                if (typeof text !== 'string') return text;
+                return text.replace(/\[\[VCP调用结果信息汇总[\s\S]*?VCP调用结果结束\]\]/g, '').trim();
+            };
+
+            const sanitizedMessages = rawMessages.map(msg => {
+                const cleanedContent = stripToolPayload(msg.content);
+                return {
+                    id: msg.id,
+                    role: msg.role,
+                    name: msg.name,
+                    content: cleanedContent,
+                    timestamp: msg.timestamp,
+                    attachments: Array.isArray(msg.attachments) ? msg.attachments.map(att => ({
+                        name: att.name || 'attachment',
+                        type: att.type || 'file',
+                        size: att.size || 0
+                        // 彻底剔除 extractedText 与 _fileManagerData
+                    })) : []
+                };
+            });
+
+            // 默认或显式 markdown: 复用官方“导出此话题(完整)”标准排版，具备时序、发信人和消息锚点
+            if (format === 'markdown' || format === 'md') {
+                let markdownContent = `# 话题: ${selectedTopic.name || '未命名话题'}\n\n`;
+                markdownContent += `> 模式: 跨话题读取 (已脱毒清洗)\n\n`;
+
+                sanitizedMessages.forEach((msg, index) => {
+                    const sender = msg.name || (msg.role === 'assistant' ? agent.name : 'User');
+                    const timeStr = msg.timestamp ? new Date(msg.timestamp).toISOString() : '';
+
+                    markdownContent += `===== 消息 ${index + 1} =====\n`;
+                    markdownContent += `Role: ${msg.role || 'unknown'}\n`;
+                    markdownContent += `Agent: ${sender}\n`;
+                    if (timeStr) {
+                        markdownContent += `Timestamp: ${timeStr}\n`;
+                    }
+                    markdownContent += `\n${msg.content || '*(空消息)*'}\n\n`;
+
+                    if (Array.isArray(msg.attachments) && msg.attachments.length > 0) {
+                        const attList = msg.attachments.map(a => `[附件: ${a.name} (${Math.round(a.size / 1024)}KB)]`).join(' ');
+                        markdownContent += `> 📎 ${attList}\n\n`;
+                    }
+                });
+
+                return {
+                    agent_name: agent.name,
+                    agent_id: agent.id,
+                    topic_id: topicId,
+                    topic_name: selectedTopic.name,
+                    topic_info: {
+                        locked: selectedTopic.locked !== undefined ? selectedTopic.locked : true,
+                        unread: selectedTopic.unread === true,
+                        created_at: selectedTopic.createdAt,
+                    },
+                    message_count: sanitizedMessages.length,
+                    format: 'markdown',
+                    content: markdownContent.trim(),
+                };
+            }
+
+            // format: 'json' 或 'clean' 返回轻量纯净的结构化 DTO
             return {
                 agent_name: agent.name,
                 agent_id: agent.id,
@@ -733,8 +883,8 @@ class PluginAgentOperationService {
                     unread: selectedTopic.unread === true,
                     created_at: selectedTopic.createdAt,
                 },
-                message_count: messages.length,
-                messages,
+                message_count: sanitizedMessages.length,
+                messages: sanitizedMessages,
             };
         }
 

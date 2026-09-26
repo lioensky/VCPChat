@@ -272,6 +272,7 @@ async function handleListUnlockedTopics(vchatPath, args) {
 async function handleReadTopicContent(vchatPath, args) {
     const maidName = args.maid;
     const topicId = args.topic_id;
+    const format = args.format || 'markdown';
 
     if (!maidName) {
         throw new Error("请求中缺少 'maid' 参数。");
@@ -285,7 +286,7 @@ async function handleReadTopicContent(vchatPath, args) {
         throw new Error(`未找到名为 "${maidName}" 的Agent。`);
     }
 
-    return await readTopicContent(vchatPath, agentInfo, topicId);
+    return await readTopicContent(vchatPath, agentInfo, topicId, format);
 }
 
 // --- 辅助函数 ---
@@ -695,7 +696,7 @@ async function listUnlockedTopics(vchatPath, agentInfo) {
     };
 }
 
-async function readTopicContent(vchatPath, agentInfo, topicId) {
+async function readTopicContent(vchatPath, agentInfo, topicId, format = 'markdown') {
     // 1. 读取 Agent 配置，获取话题信息
     const agentConfigPath = path.join(vchatPath, 'Agents', agentInfo.uuid, 'config.json');
     const config = JSON.parse(await fs.readFile(agentConfigPath, 'utf-8'));
@@ -719,7 +720,93 @@ async function readTopicContent(vchatPath, agentInfo, topicId) {
         throw new Error(`读取话题 ${topicId} 的历史记录失败: ${e.message}`);
     }
 
-    // 4. 返回完整的话题内容
+    const normalizedFormat = String(format || 'markdown').toLowerCase();
+
+    // 逃生通道：保留全量原始生肉对象
+    if (normalizedFormat === 'raw') {
+        return {
+            status: 'success',
+            result: {
+                agent_name: agentInfo.name,
+                agent_id: agentInfo.uuid,
+                topic_id: topicId,
+                topic_name: topic.name,
+                topic_info: {
+                    locked: topic.locked !== undefined ? topic.locked : true,
+                    unread: topic.unread || false,
+                    created_at: topic.createdAt
+                },
+                message_count: messages.length,
+                messages: messages
+            }
+        };
+    }
+
+    // 核心脱敏：剥离 [[VCP调用结果信息汇总...]] 巨型块与 extractedText
+    const stripToolPayload = (text) => {
+        if (typeof text !== 'string') return text;
+        return text.replace(/\[\[VCP调用结果信息汇总[\s\S]*?VCP调用结果结束\]\]/g, '').trim();
+    };
+
+    const sanitizedMessages = messages.map(msg => {
+        const cleanedContent = stripToolPayload(msg.content);
+        return {
+            id: msg.id,
+            role: msg.role,
+            name: msg.name,
+            content: cleanedContent,
+            timestamp: msg.timestamp,
+            attachments: Array.isArray(msg.attachments) ? msg.attachments.map(att => ({
+                name: att.name || 'attachment',
+                type: att.type || 'file',
+                size: att.size || 0
+            })) : []
+        };
+    });
+
+    // 默认返回 Markdown（复用官方“导出此话题(完整)”标准排版）
+    if (normalizedFormat === 'markdown' || normalizedFormat === 'md') {
+        let markdownContent = `# 话题: ${topic.name || '未命名话题'}\n\n`;
+        markdownContent += `> 模式: 跨话题读取 (已脱毒清洗)\n\n`;
+
+        sanitizedMessages.forEach((msg, index) => {
+            const sender = msg.name || (msg.role === 'assistant' ? agentInfo.name : 'User');
+            const timeStr = msg.timestamp ? new Date(msg.timestamp).toISOString() : '';
+
+            markdownContent += `===== 消息 ${index + 1} =====\n`;
+            markdownContent += `Role: ${msg.role || 'unknown'}\n`;
+            markdownContent += `Agent: ${sender}\n`;
+            if (timeStr) {
+                markdownContent += `Timestamp: ${timeStr}\n`;
+            }
+            markdownContent += `\n${msg.content || '*(空消息)*'}\n\n`;
+
+            if (Array.isArray(msg.attachments) && msg.attachments.length > 0) {
+                const attList = msg.attachments.map(a => `[附件: ${a.name} (${Math.round(a.size / 1024)}KB)]`).join(' ');
+                markdownContent += `> 📎 ${attList}\n\n`;
+            }
+        });
+
+        return {
+            status: 'success',
+            result: {
+                agent_name: agentInfo.name,
+                agent_id: agentInfo.uuid,
+                topic_id: topicId,
+                topic_name: topic.name,
+                topic_info: {
+                    locked: topic.locked !== undefined ? topic.locked : true,
+                    unread: topic.unread || false,
+                    created_at: topic.createdAt
+                },
+                message_count: sanitizedMessages.length,
+                format: 'markdown',
+                content: markdownContent.trim()
+            }
+        };
+    }
+
+    // format: 'json' 返回纯净结构化对象
     return {
         status: 'success',
         result: {
@@ -732,8 +819,8 @@ async function readTopicContent(vchatPath, agentInfo, topicId) {
                 unread: topic.unread || false,
                 created_at: topic.createdAt
             },
-            message_count: messages.length,
-            messages: messages
+            message_count: sanitizedMessages.length,
+            messages: sanitizedMessages
         }
     };
 }
