@@ -4,14 +4,14 @@
   "displayName": "华山论剑",
   "description": "一个回合制武侠博弈游戏。你需要管理生命值(HP)和剑气(Energy)与用户对战。",
   "author": "Ryan & Gemini",
-  "pluginType": "synchronous",
+  "pluginType": "hybridservice",
   "entryPoint": {
-    "type": "python",
-    "command": "python blade_controller.py"
+    "type": "nodejs",
+    "script": "blade-service.js"
   },
   "communication": {
-    "protocol": "stdio",
-    "timeout": 10000
+    "protocol": "direct",
+    "timeout": 600000
   },
   "capabilities": {
     "invocationCommands": [

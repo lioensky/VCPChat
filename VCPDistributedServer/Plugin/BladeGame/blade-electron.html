@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>华山论剑</title>
+    <link rel="stylesheet" href="../../../styles/themes.css">
+    <link rel="stylesheet" href="./blade-electron.css">
+</head>
+<body>
+    <header id="blade-title-bar" class="blade-title-bar">
+        <div class="blade-title">
+            <span class="blade-title-mark">⚔</span>
+            <span>华山论剑</span>
+        </div>
+        <div class="blade-window-controls">
+            <button id="blade-minimize-btn" class="blade-window-control" type="button" title="最小化" aria-label="最小化">─</button>
+            <button id="blade-maximize-btn" class="blade-window-control" type="button" title="最大化" aria-label="最大化">□</button>
+            <button id="blade-close-btn" class="blade-window-control blade-window-control-close" type="button" title="关闭" aria-label="关闭">×</button>
+        </div>
+    </header>
+
+    <main class="blade-shell">
+        <header class="blade-header">
+            <div>
+                <p class="eyebrow">VCP BLADE GAME / 回合制博弈</p>
+                <h1>华山论剑</h1>
+            </div>
+            <div class="header-status">
+                <span class="status-dot"></span>
+                <span id="statusText">正在连接战场…</span>
+            </div>
+        </header>
+
+        <section class="battle-layout">
+            <article class="fighter-card fighter-card-user">
+                <div class="fighter-heading">
+                    <span class="fighter-kicker">USER</span>
+                    <strong>大侠</strong>
+                </div>
+                <div class="avatar-frame">
+                    <img id="userAvatar" alt="用户头像">
+                </div>
+                <div class="meter-group">
+                    <div class="meter-label"><span>生命</span><b id="userHpText">5 / 6</b></div>
+                    <div class="meter hp-meter"><i id="userHpBar"></i></div>
+                    <div class="meter-label"><span>剑气</span><b id="userEnergyText">0 / 6</b></div>
+                    <div class="meter energy-meter"><i id="userEnergyBar"></i></div>
+                </div>
+            </article>
+
+            <section class="arena-panel">
+                <div id="pixiArena" class="pixi-arena"></div>
+                <div class="arena-vs">VS</div>
+                <div id="aiSpeech" class="speech-bubble speech-bubble-ai" hidden></div>
+                <div id="battleCaption" class="battle-caption">等待游戏开始</div>
+                <div id="damageFloaters" class="damage-floaters"></div>
+            </section>
+
+            <article class="fighter-card fighter-card-ai">
+                <div class="fighter-heading">
+                    <span class="fighter-kicker">OPPONENT</span>
+                    <strong id="aiName">AI</strong>
+                </div>
+                <div class="avatar-frame">
+                    <img id="aiAvatar" alt="AI头像">
+                </div>
+                <div class="meter-group">
+                    <div class="meter-label"><span>生命</span><b id="aiHpText">5 / 6</b></div>
+                    <div class="meter hp-meter"><i id="aiHpBar"></i></div>
+                    <div class="meter-label"><span>剑气</span><b id="aiEnergyText">0 / 6</b></div>
+                    <div class="meter energy-meter"><i id="aiEnergyBar"></i></div>
+                </div>
+            </article>
+        </section>
+
+        <section class="battle-log-panel">
+            <div class="panel-heading">
+                <span>战斗记录</span>
+                <span id="turnText">回合 —</span>
+            </div>
+            <p id="battleLog">等待游戏状态…</p>
+        </section>
+
+        <section class="move-panel">
+            <div class="panel-heading">
+                <span>请选择你的招式</span>
+                <span id="moveHint">等待连接</span>
+            </div>
+            <div id="moveGrid" class="move-grid"></div>
+        </section>
+    </main>
+
+    <script src="../../../vendor/pixi.min.js"></script>
+    <script src="../../../vendor/pixi-unsafe-eval.min.js"></script>
+    <script src="./blade-electron.js"></script>
+</body>
+</html>
