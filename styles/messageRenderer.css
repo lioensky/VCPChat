@@ -1484,6 +1484,54 @@ body[data-vcp-theme="light"] {
     transform: translate(-50%, -50%) rotateZ(90deg);
 }
 
+/* 工具结果删除按钮：从上下文历史中移除该结果块 */
+.vcp-tool-result-delete-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-width: 24px;
+    height: 24px;
+    padding: 0 6px;
+    margin-left: 4px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--tool-result-item-key-color);
+    font-size: 0.8em;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.55;
+    transition: opacity 0.18s ease, color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+    user-select: none;
+}
+
+.vcp-tool-result-header:hover .vcp-tool-result-delete-btn,
+.vcp-tool-result-delete-btn:focus-visible {
+    opacity: 1;
+}
+
+.vcp-tool-result-delete-btn:hover,
+.vcp-tool-result-delete-btn.confirming {
+    opacity: 1;
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.35);
+}
+
+.vcp-tool-result-delete-btn:focus-visible {
+    outline: 2px solid rgba(239, 68, 68, 0.6);
+    outline-offset: 1px;
+}
+
+body[data-vcp-theme="light"] .vcp-tool-result-delete-btn:hover,
+body[data-vcp-theme="light"] .vcp-tool-result-delete-btn.confirming {
+    color: #dc2626;
+    background: rgba(220, 38, 38, 0.08);
+    border-color: rgba(220, 38, 38, 0.3);
+}
+
 .vcp-tool-result-status:containing("SUCCESS") {
     /* This is a pseudo-selector, might not work directly in CSS */
     color: #c8e6c9;
