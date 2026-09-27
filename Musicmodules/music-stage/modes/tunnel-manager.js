@@ -403,7 +403,7 @@
         scene.add(root);
 
         const modelGen = createModelGenerators();
-        const TUNNEL_LENGTH = 2600;
+        const TUNNEL_LENGTH = 3200;
 
         /* ---------- 1. 深空星场：双层视差，极简留白 ---------- */
         const STAR_FAR = 420;   // 远景细星
@@ -487,15 +487,15 @@
         root.add(starPoints);
 
         /* ---------- 1.5. 同心点阵门框：把视线锁回中心轴 ---------- */
-        const PORTAL_COUNT = 4;
+        const PORTAL_COUNT = 6;
         const PORTAL_DOTS = 144;
         const portalPos = new Float32Array(PORTAL_COUNT * PORTAL_DOTS * 3);
         const portalBase = new Float32Array(PORTAL_COUNT * PORTAL_DOTS * 3);
         const portalSeed = new Float32Array(PORTAL_COUNT * PORTAL_DOTS);
         const portalRand = seededRandom('tunnel-portals-v1');
         for (let ring = 0; ring < PORTAL_COUNT; ring += 1) {
-            const radius = 38 + ring * 30;
-            const z = -240 - ring * 360;
+            const radius = 34 + ring * 27;
+            const z = -210 - ring * 420;
             for (let i = 0; i < PORTAL_DOTS; i += 1) {
                 const a = (i / PORTAL_DOTS) * Math.PI * 2;
                 const wobble = (portalRand() - 0.5) * 0.7;
@@ -548,7 +548,7 @@
         root.add(portalPoints);
 
         /* ---------- 2. 超空间光条：音频驱动的速度残影 ---------- */
-        const STREAK_COUNT = 160;
+        const STREAK_COUNT = 220;
         const streakPos = new Float32Array(STREAK_COUNT * 3);
         const streakBase = new Float32Array(STREAK_COUNT * 3);
         const streakSeeds = new Float32Array(STREAK_COUNT * 3);
@@ -719,7 +719,8 @@
                     if (r > 1.0) discard;
                     float core = exp(-r * 7.0);
                     float halo = exp(-r * 2.2) * 0.32;
-                    gl_FragColor = vec4(vColor * (core * 1.6 + halo) * vLight, (core + halo) * vAlpha);
+                    float edge = smoothstep(1.0, 0.08, r);
+                    gl_FragColor = vec4(vColor * (core * 1.75 + halo) * vLight, (core + halo) * vAlpha * edge);
                 }
             `
         });
@@ -730,17 +731,17 @@
         // 分镜槽位：构图遵循「三分法 + 巨大体量对比」
         const slotConfigs = [
             // 0 近景下方：母舰缓缓横穿（开场即在）
-            { type: 'flagship', initialZ: -360, x: 0, y: -22, rotSpeed: 0.035, rotPhase: 0, scale: 0.72 },
+            { type: 'flagship', initialZ: -460, x: -8, y: -18, rotSpeed: 0.024, rotPhase: 0, scale: 0.92 },
             // 1 中景左上：冰青行星
-            { type: 'planet', initialZ: -620, x: -34, y: 16, rotSpeed: 0.065, rotPhase: 1.2, scale: 0.78 },
+            { type: 'planet', initialZ: -760, x: -42, y: 22, rotSpeed: 0.042, rotPhase: 1.2, scale: 0.92 },
             // 2 右上：琥珀星环
-            { type: 'rings', initialZ: -900, x: 30, y: 12, rotSpeed: 0.09, rotPhase: 2.4, scale: 0.78 },
+            { type: 'rings', initialZ: -1120, x: 42, y: 8, rotSpeed: 0.055, rotPhase: 2.4, scale: 0.92 },
             // 3 远空：环形空间站
-            { type: 'station', initialZ: -1190, x: 23, y: -12, rotSpeed: 0.07, rotPhase: 3.1, scale: 0.72 },
+            { type: 'station', initialZ: -1480, x: 32, y: -14, rotSpeed: 0.046, rotPhase: 3.1, scale: 0.86 },
             // 4 右下近景：侦察护航机
-            { type: 'scout', initialZ: -1440, x: 20, y: -16, rotSpeed: 0.12, rotPhase: 4.0, scale: 0.72 },
+            { type: 'scout', initialZ: -1820, x: 18, y: -20, rotSpeed: 0.075, rotPhase: 4.0, scale: 0.82 },
             // 5 深远：第二行星
-            { type: 'planet', initialZ: -1760, x: 34, y: 20, rotSpeed: 0.05, rotPhase: 5.3, scale: 0.66 }
+            { type: 'planet', initialZ: -2260, x: 48, y: 28, rotSpeed: 0.034, rotPhase: 5.3, scale: 0.78 }
         ];
         // 环带预设倾角
         const slotTilt = [
@@ -873,6 +874,7 @@
         let cruiseSpeed = 1.0;
         let stagePalette = {};
         let fovCurrent = 56;
+        let cameraRoll = 0;
 
         function parseThemeColors() {
             const accent = stagePalette.accent || '#F2A900';
@@ -1129,12 +1131,19 @@
             currentFrame = null;
             totalTravelDistance = 0;
             cruiseSpeed = 1.0;
+            cameraRoll = 0;
             pulseMeshes.forEach((p) => { p.age = 99; p.mesh.visible = false; });
         };
 
         const update = (time, frame, settings, audioState, cameraInstance) => {
             const dt = audioState.dt;
             const live = audioState.playing;
+
+            if (audioState.seek) {
+                totalTravelDistance = Math.max(0, time) * 22.5;
+                cruiseSpeed = 1.0;
+                cameraRoll = 0;
+            }
 
             const activeLine = frame.activeLine;
             currentActiveLine = activeLine || null;
@@ -1161,23 +1170,18 @@
             /* ----- 镜头推进：三段落权威轨道 ----- */
             let speedMod = 1.0;
             if (activeLine) {
-                if (progress < 0.26) {
-                    speedMod = 1.75 - 1.3 * easeOutQuart(progress / 0.26);
-                } else if (progress < 0.84) {
-                    speedMod = 0.38;
-                } else {
-                    const p = (progress - 0.84) / 0.16;
-                    speedMod = 0.38 + 2.2 * easeInCubic(p);
-                }
+                const entrance = 1.05 - 0.42 * easeOutQuart(clamp(progress / 0.22));
+                const exit = 0.42 + 0.82 * easeInCubic(clamp((progress - 0.78) / 0.22));
+                speedMod = progress < 0.78 ? entrance : exit;
             } else {
-                speedMod = 1.4;
+                speedMod = 0.82;
             }
 
             const baseSpeed = (settings.cameraSpeed ?? 1) * (settings.motionAmount ?? 1) * (settings.animationIntensity ?? 1);
             const instantSpeed = baseSpeed * speedMod * (settings.reducedMotion ? 0 : 1);
             cruiseSpeed += (instantSpeed - cruiseSpeed) * (1 - Math.exp(-dt * 7.5));
 
-            if (live) totalTravelDistance += cruiseSpeed * dt * 34;
+            if (live) totalTravelDistance += cruiseSpeed * dt * 22.5;
 
             // 音频平滑
             bassSmooth += (audioState.bass - bassSmooth) * (1 - Math.exp(-dt * 10));
@@ -1208,7 +1212,7 @@
             const driftTime = time * 0.14;
             const driftX = Math.sin(driftTime * 0.42) * 0.72 + Math.cos(driftTime * 0.23) * 0.35;
             const driftY = Math.cos(driftTime * 0.34) * 0.48 + Math.sin(driftTime * 0.19) * 0.22;
-            const driftRoll = Math.sin(driftTime * 0.17) * 0.006;
+            const driftRoll = Math.sin(driftTime * 0.17) * 0.004;
 
             cameraInstance.position.x = driftX * motionPower;
             cameraInstance.position.y = (driftY + bassSmooth * 0.4) * motionPower;
@@ -1216,12 +1220,13 @@
 
             const lookX = Math.sin(driftTime * 0.32) * 0.55 * motionPower;
             const lookY = Math.cos(driftTime * 0.28) * 0.42 * motionPower;
-            cameraInstance.lookAt(lookX, lookY, -260);
-            cameraInstance.rotation.z += driftRoll * motionPower;
+            cameraInstance.lookAt(lookX, lookY, -300);
+            cameraRoll = driftRoll * motionPower + bassSmooth * 0.002 * Math.sin(time * 0.8);
+            cameraInstance.rotation.z = cameraRoll;
 
             // FOV 呼吸：随速度与低频缓慢张开
-            const fovTarget = 56 + clamp(cruiseSpeed - 1.0, 0, 1.6) * 8 + bassSmooth * 4;
-            fovCurrent += (fovTarget - fovCurrent) * (1 - Math.exp(-dt * 3));
+            const fovTarget = 54 + clamp(cruiseSpeed - 0.8, 0, 1.3) * 5 + bassSmooth * 2.5;
+            fovCurrent += (fovTarget - fovCurrent) * (1 - Math.exp(-dt * 2.2));
             cameraInstance.fov = fovCurrent;
             cameraInstance.updateProjectionMatrix();
 
