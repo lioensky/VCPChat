@@ -188,7 +188,6 @@
                         if(style>1.5 && style<2.5){
                             p.x+=motion*constellation*(incoming*0.2-departure*0.28);
                         }
-                        if(waterEcho>0.5)p=position;
                         gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0);
                     }`,
                 fragmentShader: `uniform sampler2D map;uniform float time,fade,glow,vocal;
@@ -220,6 +219,9 @@
                             sampleUv=vUv+vec2(sin(vUv.y*27.0+time*0.6)*0.004,
                                 sin(vUv.x*43.0-time*0.7)*0.018);
                             alpha=texture2D(map,sampleUv).a;
+                            // Preserve the source glyph's reveal and dissolve
+                            // while adding only the water's soft breakup.
+                            alpha*=mix(0.72,1.0,waterReveal*dissolve);
                         }
                         float brightness=1.0+peak*glow*0.7;
                         brightness+=singing*step(0.8,end-start)*vocal*0.15*glow;
@@ -317,6 +319,14 @@
                     group.userData.reflectedSubtitle = reflectedSubtitle;
                 }
             }
+            // The water pass reflects layer 0 automatically. Keep the live
+            // constellation on layer 1 so the explicit echo below is the only
+            // lyric reflection and can own its opacity and animation.
+            if (constellation) {
+                group.traverse(object => object.layers.set(1));
+                if (group.userData.reflectedSubtitle)
+                    group.userData.reflectedSubtitle.layers.set(2);
+            }
             let echo = null, echoMat = null;
             if (constellation) {
                 // Exact atlas, layout and parent world transform, mirror-only.
@@ -407,10 +417,10 @@
                     if (node.echoMat) {
                         const echoFade = reflectionOn && moving
                             ? D.smooth((time - node.phrase.start + enterDuration + 0.7) / 0.7)
-                                * (1 - D.smooth((time - node.phrase.end - 0.5) / 2.8)) * 0.18 : 0;
+                                * (1 - D.smooth((time - node.phrase.end - 0.5) / 2.8))
+                                * node.mat.uniforms.fade.value * 0.18 : 0;
                         node.echoMat.uniforms.time.value = time;
                         node.echoMat.uniforms.fade.value = echoFade;
-                        node.group.visible ||= echoFade > 0;
                         node.echo.visible = echoFade > 0;
                     }
                     if (node.encounter) {

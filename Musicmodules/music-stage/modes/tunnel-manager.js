@@ -26,6 +26,9 @@
         let initialized = false, fallbackMode = false, initializing = null;
         let latest = null, source = null, identity = '';
         let width = 1, height = 1, lastTime = null, paletteKey = '';
+        // Keep the track clock as the single source of truth.  This makes seeks,
+        // pause/resume and replay land on the same shot instead of inheriting
+        // whatever distance happened to be accumulated before the seek.
 
         const tuning = () => ({
             ...(mode.config.modes?.tunnel || {}),
@@ -323,7 +326,9 @@
                     pos[i * 3] = (rand() - 0.5) * 2 * halfSpan;
                     pos[i * 3 + 1] = (rand() - 0.5) * (1 - Math.abs(pos[i * 3]) / (halfSpan + 0.01)) * 6.5 * scale;
                     pos[i * 3 + 2] = (v - 0.5) * 64 * scale;
-                    shade[i] = 0;
+                    // Cool bow facets make the direction readable against the
+                    // warm engine bank at the opposite end.
+                    shade[i] = pos[i * 3 + 2] < -22 * scale && rand() < 0.42 ? 1 : 0;
                 } else if (u < 0.58) {
                     // 舰桥塔 + 双脊线
                     if (rand() < 0.5) {
@@ -348,15 +353,26 @@
                     pos[i * 3 + 2] = (30 + rand() * 4.5) * scale;
                     shade[i] = 2;
                 } else {
-                    // 等离子尾焰（拉长的消散锥）
+                    // 等离子尾焰（明确位于舰艉，向右侧拉长）
                     const t = Math.pow(rand(), 1.4);
                     const eng = Math.floor(rand() * 4) - 1.5;
                     const spread = 1 + t * 3.2;
                     pos[i * 3] = eng * 7.2 * scale * spread * 0.4 + (rand() - 0.5) * 2.0 * spread;
                     pos[i * 3 + 1] = (rand() - 0.5) * 2.0 * spread;
-                    pos[i * 3 + 2] = (34 + t * 30) * scale;
+                    pos[i * 3 + 2] = (34 + t * 62) * scale;
                     shade[i] = 3;
                 }
+            }
+            // The camera looks down the tunnel axis. Rotate the generated
+            // hull into screen space so the audience reads a broad carrier
+            // silhouette. Negative screen-X is the bow; positive screen-X
+            // carries the engine bank and exhaust.
+            for (let i = 0; i < count; i += 1) {
+                const idx = i * 3;
+                const x = pos[idx];
+                pos[idx] = pos[idx + 2] * 0.82;
+                pos[idx + 1] *= 1.65;
+                pos[idx + 2] = x * 0.72;
             }
             return { pos, shade };
         };
@@ -494,14 +510,14 @@
         const portalSeed = new Float32Array(PORTAL_COUNT * PORTAL_DOTS);
         const portalRand = seededRandom('tunnel-portals-v1');
         for (let ring = 0; ring < PORTAL_COUNT; ring += 1) {
-            const radius = 34 + ring * 27;
-            const z = -210 - ring * 420;
+            const radius = 15 + ring * 20;
+            const z = -58 - ring * 330;
             for (let i = 0; i < PORTAL_DOTS; i += 1) {
                 const a = (i / PORTAL_DOTS) * Math.PI * 2;
                 const wobble = (portalRand() - 0.5) * 0.7;
                 const idx = (ring * PORTAL_DOTS + i) * 3;
                 portalBase[idx] = Math.cos(a) * (radius + wobble);
-                portalBase[idx + 1] = Math.sin(a) * (radius + wobble) * 0.86;
+                portalBase[idx + 1] = Math.sin(a) * (radius + wobble) * 0.72;
                 portalBase[idx + 2] = z + (portalRand() - 0.5) * 2.0;
                 portalPos[idx] = portalBase[idx];
                 portalPos[idx + 1] = portalBase[idx + 1];
@@ -528,7 +544,7 @@
                     gl_Position = projectionMatrix * mv;
                     float depth = max(0.1, -mv.z);
                     gl_PointSize = clamp(pixelRatio * (2.2 + aSeed * 1.5) * 260.0 / depth, 1.0, 7.0);
-                    vAlpha = (0.28 + aSeed * 0.32) * (0.88 + 0.12 * sin(time * 0.35 + aSeed * 20.0)) * (1.0 + audioPulse * 0.3);
+                    vAlpha = (0.46 + aSeed * 0.42) * (0.88 + 0.12 * sin(time * 0.35 + aSeed * 20.0)) * (1.0 + audioPulse * 0.65);
                 }
             `,
             fragmentShader: `
@@ -546,6 +562,93 @@
         const portalPoints = new T.Points(portalGeo, portalMat);
         portalPoints.frustumCulled = false;
         root.add(portalPoints);
+
+        // A readable foreground gate: the distant dot rings sell depth, while
+        // this crisp ellipse gives the lyric a clear stage to perform on.
+        const heroGate = new T.Group();
+        heroGate.position.z = -42;
+        const heroGateMaterials = [];
+        const heroGateGeometries = [];
+        for (let g = 0; g < 4; g += 1) {
+            const start = g * Math.PI * 0.5 + 0.16;
+            const curve = new T.EllipseCurve(0, 0, 27, 14, start, start + Math.PI * 0.5 - 0.32, false, 0);
+            const points = curve.getPoints(96).map((p) => new T.Vector3(p.x, p.y, 0));
+            const geometry = new T.BufferGeometry().setFromPoints(points);
+            const material = new T.LineBasicMaterial({
+                color: new T.Color('#f2a900'),
+                transparent: true,
+                opacity: 0.30 - g * 0.025,
+                blending: T.AdditiveBlending,
+                depthWrite: false
+            });
+            const line = new T.LineLoop(geometry, material);
+            line.rotation.z = g % 2 ? 0.025 : -0.018;
+            heroGate.add(line);
+            heroGateGeometries.push(geometry);
+            heroGateMaterials.push(material);
+        }
+        root.add(heroGate);
+
+        /* ---------- 1.75. 航道骨架：让镜头真的“穿过”空间 ---------- */
+        const RAIL_COUNT = 6;
+        const RAIL_DOTS = 180;
+        const railPos = new Float32Array(RAIL_COUNT * RAIL_DOTS * 3);
+        const railBase = new Float32Array(RAIL_COUNT * RAIL_DOTS * 3);
+        const railSeed = new Float32Array(RAIL_COUNT * RAIL_DOTS);
+        const railRand = seededRandom('tunnel-rails-v3');
+        for (let r = 0; r < RAIL_COUNT; r += 1) {
+            const angle = (r / RAIL_COUNT) * Math.PI * 2;
+            for (let i = 0; i < RAIL_DOTS; i += 1) {
+                const idx = (r * RAIL_DOTS + i) * 3;
+                const z = -24 - (i / RAIL_DOTS) * TUNNEL_LENGTH;
+                const wobble = (railRand() - 0.5) * 1.2;
+                railBase[idx] = Math.cos(angle) * (22 + wobble);
+                railBase[idx + 1] = Math.sin(angle) * (14 + wobble * 0.6);
+                railBase[idx + 2] = z;
+                railPos[idx] = railBase[idx];
+                railPos[idx + 1] = railBase[idx + 1];
+                railPos[idx + 2] = z;
+                railSeed[r * RAIL_DOTS + i] = railRand();
+            }
+        }
+        const railGeo = new T.BufferGeometry();
+        railGeo.setAttribute('position', new T.BufferAttribute(railPos, 3).setUsage(T.DynamicDrawUsage));
+        railGeo.setAttribute('aSeed', new T.BufferAttribute(railSeed, 1));
+        const railMat = new T.ShaderMaterial({
+            transparent: true,
+            depthWrite: false,
+            blending: T.AdditiveBlending,
+            uniforms: { tint: { value: new T.Color('#6f8790') }, time: { value: 0 }, pixelRatio: { value: 1 }, pulse: { value: 0 } },
+            vertexShader: `
+                attribute float aSeed;
+                uniform float time;
+                uniform float pixelRatio;
+                uniform float pulse;
+                varying float vAlpha;
+                void main() {
+                    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+                    gl_Position = projectionMatrix * mv;
+                    float depth = max(0.1, -mv.z);
+                    gl_PointSize = clamp(pixelRatio * (1.2 + aSeed * 1.6) * 190.0 / depth, 1.0, 8.0);
+                    float wave = 0.72 + 0.28 * sin(time * 0.9 + aSeed * 24.0);
+                    vAlpha = smoothstep(8.0, 55.0, depth) * (1.0 - smoothstep(1300.0, 2700.0, depth)) * wave * (0.42 + pulse * 0.36);
+                }
+            `,
+            fragmentShader: `
+                uniform vec3 tint;
+                varying float vAlpha;
+                void main() {
+                    vec2 p = gl_PointCoord * 2.0 - 1.0;
+                    float r = dot(p, p);
+                    if (r > 1.0) discard;
+                    float core = exp(-r * 8.0);
+                    gl_FragColor = vec4(tint * (0.7 + core), core * vAlpha);
+                }
+            `
+        });
+        const railPoints = new T.Points(railGeo, railMat);
+        railPoints.frustumCulled = false;
+        root.add(railPoints);
 
         /* ---------- 2. 超空间光条：音频驱动的速度残影 ---------- */
         const STREAK_COUNT = 220;
@@ -650,7 +753,7 @@
             flagship: modelGen.generateFlagship(1.0, POINTS_PER_ENTITY, 'seed-flagship-v2'),
             planet: modelGen.generatePlanet(30, POINTS_PER_ENTITY, 'seed-planet-v2'),
             rings: modelGen.generateRing(34, 62, POINTS_PER_ENTITY, 'seed-rings-v2'),
-            station: modelGen.generateStation(24, POINTS_PER_ENTITY, 'seed-station-v2'),
+            station: modelGen.generateStation(38, POINTS_PER_ENTITY, 'seed-station-v3'),
             scout: modelGen.generateScout(2.0, POINTS_PER_ENTITY, 'seed-scout-v2')
         };
 
@@ -731,13 +834,13 @@
         // 分镜槽位：构图遵循「三分法 + 巨大体量对比」
         const slotConfigs = [
             // 0 近景下方：母舰缓缓横穿（开场即在）
-            { type: 'flagship', initialZ: -460, x: -8, y: -18, rotSpeed: 0.024, rotPhase: 0, scale: 0.92 },
+            { type: 'flagship', initialZ: -300, x: -18, y: -17, rotSpeed: 0.018, rotPhase: 0, scale: 1.85 },
             // 1 中景左上：冰青行星
             { type: 'planet', initialZ: -760, x: -42, y: 22, rotSpeed: 0.042, rotPhase: 1.2, scale: 0.92 },
             // 2 右上：琥珀星环
             { type: 'rings', initialZ: -1120, x: 42, y: 8, rotSpeed: 0.055, rotPhase: 2.4, scale: 0.92 },
             // 3 远空：环形空间站
-            { type: 'station', initialZ: -1480, x: 32, y: -14, rotSpeed: 0.046, rotPhase: 3.1, scale: 0.86 },
+            { type: 'station', initialZ: -760, x: 34, y: -10, rotSpeed: 0.032, rotPhase: 3.1, scale: 1.55 },
             // 4 右下近景：侦察护航机
             { type: 'scout', initialZ: -1820, x: 18, y: -20, rotSpeed: 0.075, rotPhase: 4.0, scale: 0.82 },
             // 5 深远：第二行星
@@ -849,7 +952,7 @@
         textTexture.minFilter = T.LinearFilter;
         textTexture.magFilter = T.LinearFilter;
 
-        const solidPlaneGeo = new T.PlaneGeometry(58, 14.5);
+        const solidPlaneGeo = new T.PlaneGeometry(50, 12.5);
         const solidPlaneMat = new T.MeshBasicMaterial({
             map: textTexture,
             transparent: true,
@@ -858,7 +961,7 @@
             opacity: 0
         });
         const solidTextMesh = new T.Mesh(solidPlaneGeo, solidPlaneMat);
-        solidTextMesh.position.set(0, 0, -36);
+        solidTextMesh.position.set(0, 0, -34);
         root.add(solidTextMesh);
 
         // 舞台状态
@@ -875,6 +978,30 @@
         let stagePalette = {};
         let fovCurrent = 56;
         let cameraRoll = 0;
+
+        const setting = (settings, key, fallback) => {
+            const value = Number(settings?.[key]);
+            return Number.isFinite(value) ? value : fallback;
+        };
+
+        const deterministicTravel = (time, settings) => {
+            const speed = clamp(setting(settings, 'cameraSpeed', 1), 0.15, 3);
+            const motion = clamp(setting(settings, 'motionAmount', 1), 0, 2);
+            // A small eased surge at every lyric boundary gives the camera a
+            // musical phrase without making the result depend on frame count.
+            const lines = currentFrame?.lines || [];
+            let distance = Math.max(0, time) * 18 * speed;
+            for (let i = 0; i < lines.length; i += 1) {
+                const line = lines[i];
+                const start = Number(line?.startTime);
+                if (!Number.isFinite(start) || start > time) continue;
+                const next = Number(lines[i + 1]?.startTime);
+                const gap = Number.isFinite(next) ? Math.max(0.25, next - start) : 3.5;
+                const age = clamp((time - start) / gap);
+                distance += smooth(age) * 10 * speed * (0.35 + motion * 0.25);
+            }
+            return distance;
+        };
 
         function parseThemeColors() {
             const accent = stagePalette.accent || '#F2A900';
@@ -1117,7 +1244,9 @@
 
             if (starMat?.uniforms?.tint?.value?.copy) starMat.uniforms.tint.value.copy(colors.muted);
             if (streakMat?.uniforms?.tint?.value?.copy) streakMat.uniforms.tint.value.copy(colors.ink);
-            if (portalMat?.uniforms?.tint?.value?.copy) portalMat.uniforms.tint.value.copy(colors.muted);
+            if (portalMat?.uniforms?.tint?.value?.copy) portalMat.uniforms.tint.value.copy(colors.accent);
+            if (railMat?.uniforms?.tint?.value?.copy) railMat.uniforms.tint.value.copy(colors.secondary);
+            heroGateMaterials.forEach((material, index) => material.color.copy(colors.accent).offsetHSL(index * 0.015, 0, 0));
             if (lyricParticleMat?.uniforms?.tint?.value?.copy) lyricParticleMat.uniforms.tint.value.copy(colors.accent);
             pulseMeshes.forEach((p) => p.mesh.material.color.copy(colors.accent));
 
@@ -1138,9 +1267,11 @@
         const update = (time, frame, settings, audioState, cameraInstance) => {
             const dt = audioState.dt;
             const live = audioState.playing;
+            currentFrame = frame || currentFrame;
+            currentActiveLine = frame?.activeLine || null;
 
             if (audioState.seek) {
-                totalTravelDistance = Math.max(0, time) * 22.5;
+                totalTravelDistance = deterministicTravel(time, settings);
                 cruiseSpeed = 1.0;
                 cameraRoll = 0;
             }
@@ -1181,7 +1312,11 @@
             const instantSpeed = baseSpeed * speedMod * (settings.reducedMotion ? 0 : 1);
             cruiseSpeed += (instantSpeed - cruiseSpeed) * (1 - Math.exp(-dt * 7.5));
 
-            if (live) totalTravelDistance += cruiseSpeed * dt * 22.5;
+            if (live) {
+                // Do not integrate this value: the same playback time must
+                // always produce the same world position, even after a seek.
+                totalTravelDistance = deterministicTravel(time, settings);
+            }
 
             // 音频平滑
             bassSmooth += (audioState.bass - bassSmooth) * (1 - Math.exp(-dt * 10));
@@ -1206,32 +1341,50 @@
                 p.mesh.position.set(0, 0, -50 - easeOutCubic(t) * 60);
                 p.mesh.material.opacity = (1 - t) * 0.32;
             });
+            heroGate.visible = settings.starfield !== false;
+            heroGate.rotation.z = Math.sin(time * 0.16) * 0.018 + cameraRoll * 0.35;
+            const gatePulse = 0.16 + bassSmooth * 0.22 + (activeLine ? Math.sin(clamp(progress) * Math.PI) * 0.16 : 0);
+            heroGateMaterials.forEach((material, index) => {
+                material.opacity = Math.max(0.03, gatePulse - index * 0.035);
+            });
 
             /* ----- 镜头：电影式漂移 + FOV 呼吸 ----- */
-            const motionPower = (settings.motionAmount ?? 1) * (settings.animationIntensity ?? 1);
+            const motionPower = clamp(setting(settings, 'motionAmount', 1), 0, 2)
+                * clamp(setting(settings, 'animationIntensity', 1), 0, 2);
+            const breath = clamp(setting(settings, 'cameraBreath', 0.5), 0, 2);
+            const shake = clamp(setting(settings, 'cameraShake', 1), 0, 2);
             const driftTime = time * 0.14;
-            const driftX = Math.sin(driftTime * 0.42) * 0.72 + Math.cos(driftTime * 0.23) * 0.35;
-            const driftY = Math.cos(driftTime * 0.34) * 0.48 + Math.sin(driftTime * 0.19) * 0.22;
-            const driftRoll = Math.sin(driftTime * 0.17) * 0.004;
+            const driftX = (Math.sin(driftTime * 0.42) * 0.72 + Math.cos(driftTime * 0.23) * 0.35) * breath;
+            const driftY = (Math.cos(driftTime * 0.34) * 0.48 + Math.sin(driftTime * 0.19) * 0.22) * breath;
+            const driftRoll = Math.sin(driftTime * 0.17) * 0.004 * breath;
+            const shakeX = Math.sin(time * 17.0) * bassSmooth * 0.22 * shake;
+            const shakeY = Math.cos(time * 19.0) * bassSmooth * 0.16 * shake;
+            const pathPhase = totalTravelDistance * 0.012;
+            const pathX = Math.sin(pathPhase * 0.73) * 1.8 + Math.sin(pathPhase * 0.19) * 0.8;
+            const pathY = Math.cos(pathPhase * 0.51) * 1.1;
 
-            cameraInstance.position.x = driftX * motionPower;
-            cameraInstance.position.y = (driftY + bassSmooth * 0.4) * motionPower;
+            cameraInstance.position.x = pathX * motionPower * 0.45 + driftX * motionPower + shakeX;
+            cameraInstance.position.y = pathY * motionPower * 0.35 + (driftY + bassSmooth * 0.4 * shake) * motionPower + shakeY;
             cameraInstance.position.z = 0;
 
-            const lookX = Math.sin(driftTime * 0.32) * 0.55 * motionPower;
-            const lookY = Math.cos(driftTime * 0.28) * 0.42 * motionPower;
+            const lookX = pathX * motionPower * 0.72 + Math.sin(driftTime * 0.32) * 0.55 * motionPower;
+            const lookY = pathY * motionPower * 0.56 + Math.cos(driftTime * 0.28) * 0.42 * motionPower;
             cameraInstance.lookAt(lookX, lookY, -300);
             cameraRoll = driftRoll * motionPower + bassSmooth * 0.002 * Math.sin(time * 0.8);
             cameraInstance.rotation.z = cameraRoll;
 
             // FOV 呼吸：随速度与低频缓慢张开
-            const fovTarget = 54 + clamp(cruiseSpeed - 0.8, 0, 1.3) * 5 + bassSmooth * 2.5;
+            const fovTarget = 54 + clamp(cruiseSpeed - 0.8, 0, 1.3) * 5 * motionPower + bassSmooth * 2.5 * shake;
             fovCurrent += (fovTarget - fovCurrent) * (1 - Math.exp(-dt * 2.2));
             cameraInstance.fov = fovCurrent;
             cameraInstance.updateProjectionMatrix();
 
             /* ----- 星场流动 ----- */
             starMat.uniforms.time.value = time;
+            starPoints.visible = settings.starfield !== false;
+            portalPoints.visible = settings.starfield !== false;
+            railPoints.visible = settings.starfield !== false;
+            streakPoints.visible = settings.starfield !== false && !settings.reducedMotion;
             const starPosArr = starGeo.attributes.position.array;
             for (let i = 0; i < starCount; i += 1) {
                 const idx = i * 3;
@@ -1245,7 +1398,9 @@
 
             // 门框随航行缓慢后退，维持“穿过一层层同心空间”的节奏。
             portalMat.uniforms.time.value = time;
-            portalMat.uniforms.audioPulse.value += (bassSmooth - portalMat.uniforms.audioPulse.value) * (1 - Math.exp(-dt * 8));
+            const lyricPulse = activeLine ? Math.sin(clamp(progress) * Math.PI) * 0.75 : 0;
+            const portalPulse = Math.max(bassSmooth, lyricPulse);
+            portalMat.uniforms.audioPulse.value += (portalPulse - portalMat.uniforms.audioPulse.value) * (1 - Math.exp(-dt * 8));
             const portalTravel = totalTravelDistance * 0.22;
             const portalArr = portalGeo.attributes.position.array;
             for (let i = 0; i < portalPos.length / 3; i += 1) {
@@ -1257,6 +1412,21 @@
                 portalArr[idx + 2] = z;
             }
             portalGeo.attributes.position.needsUpdate = true;
+
+            railMat.uniforms.time.value = time;
+            railMat.uniforms.pulse.value += (bassSmooth - railMat.uniforms.pulse.value) * (1 - Math.exp(-dt * 7));
+            const railArr = railGeo.attributes.position.array;
+            const railTravel = totalTravelDistance * 0.42;
+            for (let i = 0; i < railBase.length / 3; i += 1) {
+                const idx = i * 3;
+                let z = (railBase[idx + 2] + railTravel) % TUNNEL_LENGTH;
+                if (z > 0) z -= TUNNEL_LENGTH;
+                const bend = Math.sin((z + totalTravelDistance) * 0.006) * motionPower * 1.8;
+                railArr[idx] = railBase[idx] + bend;
+                railArr[idx + 1] = railBase[idx + 1] + Math.cos((z + totalTravelDistance) * 0.004) * motionPower * 1.1;
+                railArr[idx + 2] = z;
+            }
+            railGeo.attributes.position.needsUpdate = true;
 
             /* ----- 超空间光条 ----- */
             const stretchTarget = live ? clamp((cruiseSpeed - 0.9) * 0.55 + bassSmooth * 0.35, 0, 1) : 0;
@@ -1277,6 +1447,11 @@
             entityMat.uniforms.time.value = time;
             entityMat.uniforms.breath.value = bassSmooth * 0.8;
             entityMat.uniforms.audioPulse.value = clamp(bassSmooth * 1.25 + audioState.vocal * 0.22, 0, 1);
+            const showPlanets = settings.showPlanets !== false;
+            const showRings = settings.showRings !== false;
+            const showShips = settings.showShips !== false;
+            const showStations = settings.showStations !== false;
+            entityPoints.visible = showPlanets || showRings || showShips || showStations;
 
             const objPositions = entityGeo.attributes.position.array;
             const objTargets = entityGeo.attributes.aTarget.array;
@@ -1289,6 +1464,10 @@
 
             for (let s = 0; s < ENTITY_SLOTS; s += 1) {
                 const slot = slotConfigs[s];
+                const slotVisible = slot.type === 'planet' ? showPlanets
+                    : slot.type === 'rings' ? showRings
+                        : slot.type === 'flagship' || slot.type === 'scout' ? showShips
+                            : showStations;
                 const tilt = slotTilt[s];
                 let depth = (slot.initialZ + entityTravelDist) % CELESTIAL_CYCLE;
                 if (depth > 0) depth -= CELESTIAL_CYCLE;
@@ -1313,6 +1492,16 @@
 
                 for (let p = 0; p < POINTS_PER_ENTITY; p += 1) {
                     const pi = (offset + p) * 3;
+                    if (!slotVisible) {
+                        objPositions[pi] = 0;
+                        objPositions[pi + 1] = 0;
+                        objPositions[pi + 2] = 99999;
+                        objTargets[pi] = 0;
+                        objTargets[pi + 1] = 0;
+                        objTargets[pi + 2] = 99999;
+                        objSeedsArr[pi + 1] = 0;
+                        continue;
+                    }
                     const tx0 = tmpl.pos[p * 3] * slot.scale;
                     const ty0 = tmpl.pos[p * 3 + 1] * slot.scale;
                     const tz0 = tmpl.pos[p * 3 + 2] * slot.scale;
@@ -1368,18 +1557,24 @@
             /* ----- 歌词三段相位 ----- */
             if (activeLine && activePointCount > 0) {
                 // 文字是空间中的固定展板，不随镜头向前划出；只有粒子在它周围完成聚散。
-                const lyricZ = -28;
+                const lyricZ = -34;
                 let cohesionPhase = 0;
                 let dispersePhase = 0;
 
+                const holdRatio = clamp(setting(settings, 'textHoldRatio', 0.32), 0, 0.8);
+                const dissolveAmount = clamp(setting(settings, 'dissolveAmount', 0.72), 0, 1);
+                const pause = clamp(setting(settings, 'pauseDuration', 0.9), 0, 3);
+                const holdStart = 0.78 + Math.min(0.14, pause * 0.035);
+                const holdEnd = Math.min(0.98, holdStart + 0.12 + holdRatio * 0.08);
+
                 if (progress < 0.10) {
                     cohesionPhase = smooth(progress / 0.10);
-                } else if (progress < 0.86) {
+                } else if (progress < holdStart) {
                     cohesionPhase = 1.0;
                 } else {
-                    const p = (progress - 0.86) / 0.14;
+                    const p = (progress - holdStart) / Math.max(0.04, 1 - holdStart);
                     cohesionPhase = 1.0;
-                    dispersePhase = smooth(p);
+                    dispersePhase = smooth(p) * dissolveAmount;
                 }
 
                 lyricParticleMat.uniforms.cohesion.value = cohesionPhase;
@@ -1396,7 +1591,7 @@
                 // 结成后交给 2D Canvas 阅读；文字退场后才把控制权交回粒子消散。
                 // 在歌词段落开头立即交接，给演唱留下完整的可读时间。
                 const solidIn = smooth(clamp((progress - 0.055) / 0.105));
-                const solidOut = progress <= 0.88 ? 1 : 1 - smooth(clamp((progress - 0.88) / 0.10));
+                const solidOut = progress <= holdEnd ? 1 : 1 - smooth(clamp((progress - holdEnd) / Math.max(0.04, 0.16 - holdRatio * 0.08)));
                 const solidOpacity = solidIn * solidOut * (settings.reducedMotion ? 0.9 : 1.0);
                 solidPlaneMat.opacity = solidOpacity * (settings.reducedMotion ? 0.9 : 1.0);
 
@@ -1406,11 +1601,11 @@
                 } else if (progress < 0.16) {
                     // 与 2D 文字短距离交叉淡化，避免闪断。
                     lyricParticleAlpha = 0.90 * (1 - smooth((progress - 0.04) / 0.12));
-                } else if (progress <= 0.86) {
+                } else if (progress <= holdStart) {
                     lyricParticleAlpha = 0;
                 } else {
                     // 实体文字渐隐后，粒子消散动画接手。
-                    lyricParticleAlpha = smooth(clamp((progress - 0.86) / 0.14));
+                    lyricParticleAlpha = smooth(clamp((progress - holdStart) / Math.max(0.04, 1 - holdStart))) * dissolveAmount;
                 }
                 lyricParticleMat.uniforms.opacity.value = lyricParticleAlpha;
 
@@ -1437,14 +1632,16 @@
             resize(w, h, ratio) {
                 starMat.uniforms.pixelRatio.value = ratio;
                 portalMat.uniforms.pixelRatio.value = ratio;
+                railMat.uniforms.pixelRatio.value = ratio;
                 streakMat.uniforms.pixelRatio.value = ratio;
                 entityMat.uniforms.pixelRatio.value = ratio;
                 lyricParticleMat.uniforms.pixelRatio.value = ratio;
             },
             destroy() {
                 scene.remove(root);
-                [starGeo, portalGeo, streakGeo, entityGeo, lyricGeo, solidPlaneGeo, pulseGeo].forEach((g) => g?.dispose?.());
-                [starMat, portalMat, streakMat, entityMat, lyricParticleMat, solidPlaneMat].forEach((m) => m?.dispose?.());
+                [starGeo, portalGeo, railGeo, streakGeo, entityGeo, lyricGeo, solidPlaneGeo, pulseGeo, ...heroGateGeometries].forEach((g) => g?.dispose?.());
+                [starMat, portalMat, railMat, streakMat, entityMat, lyricParticleMat, solidPlaneMat].forEach((m) => m?.dispose?.());
+                heroGateMaterials.forEach((m) => m.dispose?.());
                 pulseMeshes.forEach((p) => p.mesh.material.dispose());
                 textTexture?.dispose?.();
             }
