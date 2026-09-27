@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 function command(value) {
     return { kind: 'command', value };
@@ -297,6 +297,23 @@ function createCatalog(ops) {
         onNetworkNotesScanned: subscription(ops.subscribe('network-notes-scanned', (_event, networkTree) => networkTree)),
         getCachedNetworkNotes: query(() => ops.invoke('get-cached-network-notes')),
         searchNotes: query((queryText) => ops.invoke('search-notes', queryText)),
+        // 工作区：索引搜索、管理与拖拽真实路径解析
+        searchWorkspaceFiles: query((queryText, options = {}) => ops.invoke('workspaces:search', queryText, options)),
+        listWorkspaces: query(() => ops.invoke('workspaces:list')),
+        setActiveWorkspace: query((workspaceId = null) => ops.invoke('workspaces:set-active', workspaceId)),
+        addWorkspace: query((dirPath, alias = '') => ops.invoke('workspaces:add', dirPath, alias)),
+        removeWorkspace: query((workspaceId) => ops.invoke('workspaces:remove', workspaceId)),
+        updateWorkspace: query((workspaceId, patch) => ops.invoke('workspaces:update', workspaceId, patch)),
+        rebuildWorkspaceIndex: query((workspaceId = null) => ops.invoke('workspaces:rebuild', workspaceId)),
+        selectWorkspaceDirectory: query(() => ops.invoke('workspaces:select-directory')),
+        // 同步返回拖拽 File 对应的本地路径；非本地文件（如浏览器拖入的数据）返回空串。
+        getPathForFile: query((file) => {
+            try {
+                return webUtils?.getPathForFile?.(file) || '';
+            } catch {
+                return '';
+            }
+        }),
         onSharedNoteData: subscription(ops.subscribe('shared-note-data', (_event, data) => data)),
         loadForumConfig: query(() => ops.invoke('load-forum-config')),
         saveForumConfig: query((config) => ops.invoke('save-forum-config', config)),
@@ -563,6 +580,15 @@ const ALLOWED_KEYS = [
     "handleTextPasteAsFile",
     "handleFileDrop",
     "searchNotes",
+    "searchWorkspaceFiles",
+    "listWorkspaces",
+    "setActiveWorkspace",
+    "addWorkspace",
+    "removeWorkspace",
+    "updateWorkspace",
+    "rebuildWorkspaceIndex",
+    "selectWorkspaceDirectory",
+    "getPathForFile",
     "onAddFileToInput",
     "onLoomShareTextToInput",
     "saveAgentOrder",

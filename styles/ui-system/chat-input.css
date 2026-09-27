@@ -17,7 +17,7 @@
         gap: var(--vcp-ui-space-1);
     }
 
-    html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button), html .vcp-ui-scope :is(#attachFileBtn, .chat-attach-button), html .vcp-ui-scope :is(#quickNewTopicBtn, .chat-quick-new-button), html .vcp-ui-scope :is(#emoticonTriggerBtn, .chat-emoticon-button) {
+    html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button), html .vcp-ui-scope :is(#attachFileBtn, .chat-attach-button), html .vcp-ui-scope :is(#quickNewTopicBtn, .chat-quick-new-button), html .vcp-ui-scope :is(#emoticonTriggerBtn, .chat-emoticon-button), html .vcp-ui-scope :is(#workspacePickerBtn, .chat-workspace-button) {
         width: var(--vcp-ui-control-md);
         height: var(--vcp-ui-control-md);
         margin: 0;
@@ -45,6 +45,7 @@
         #attachFileBtn,
         #quickNewTopicBtn,
         #emoticonTriggerBtn,
+        #workspacePickerBtn,
         .chat-attach-button,
         .chat-quick-new-button,
         .chat-emoticon-button
@@ -64,7 +65,7 @@
         flex: 0 0 auto;
     }
 
-    html .vcp-ui-scope :is(#attachFileBtn, .chat-attach-button):hover:not(:disabled), html .vcp-ui-scope :is(#quickNewTopicBtn, .chat-quick-new-button):hover:not(:disabled), html .vcp-ui-scope :is(#emoticonTriggerBtn, .chat-emoticon-button):hover:not(:disabled) {
+    html .vcp-ui-scope :is(#attachFileBtn, .chat-attach-button):hover:not(:disabled), html .vcp-ui-scope :is(#quickNewTopicBtn, .chat-quick-new-button):hover:not(:disabled), html .vcp-ui-scope :is(#emoticonTriggerBtn, .chat-emoticon-button):hover:not(:disabled), html .vcp-ui-scope :is(#workspacePickerBtn, .chat-workspace-button):hover:not(:disabled) {
         color: var(--vcp-ui-text-0);
         background: var(--vcp-ui-fill-1);
     }
@@ -112,8 +113,28 @@
         opacity: 0.55;
     }
 
-    html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button):focus-visible, html .vcp-ui-scope :is(#attachFileBtn, .chat-attach-button):focus-visible, html .vcp-ui-scope :is(#quickNewTopicBtn, .chat-quick-new-button):focus-visible, html .vcp-ui-scope :is(#emoticonTriggerBtn, .chat-emoticon-button):focus-visible {
+    html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button):focus-visible, html .vcp-ui-scope :is(#attachFileBtn, .chat-attach-button):focus-visible, html .vcp-ui-scope :is(#quickNewTopicBtn, .chat-quick-new-button):focus-visible, html .vcp-ui-scope :is(#emoticonTriggerBtn, .chat-emoticon-button):focus-visible, html .vcp-ui-scope :is(#workspacePickerBtn, .chat-workspace-button):focus-visible {
         outline: 2px solid var(--vcp-ui-focus-ring);
         outline-offset: 2px;
+    }
+
+    /* 当前工作区按钮：与表情包等工具按钮同形，仅用强调色 + 角标点提示已选定工作区。 */
+    html .vcp-ui-scope :is(#workspacePickerBtn, .chat-workspace-button) {
+        position: relative;
+    }
+
+    html .vcp-ui-scope :is(#workspacePickerBtn, .chat-workspace-button).has-active-workspace {
+        color: var(--vcp-ui-accent);
+    }
+
+    html .vcp-ui-scope :is(#workspacePickerBtn, .chat-workspace-button).has-active-workspace::after {
+        content: "";
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        width: 5px;
+        height: 5px;
+        border-radius: var(--vcp-ui-radius-full);
+        background: var(--vcp-ui-accent);
     }
 }

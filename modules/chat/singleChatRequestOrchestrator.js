@@ -80,6 +80,16 @@ function isLiveReferenceAttachment(attachment, data) {
     return attachment?.isLiveReference === true || data?.isLiveReference === true;
 }
 
+// 实时引用标签：工作区文件附带工作区别名与相对路径，帮助 AI 理解项目结构。
+function describeLiveReference(data) {
+    const ref = data?.workspaceRef;
+    if (data?.liveSource === 'workspace' || ref) {
+        const location = ref?.alias && ref?.relPath ? ` ${ref.alias}: ${ref.relPath}` : '';
+        return `工作区${location}，实时文件，可直接修改`;
+    }
+    return '笔记区实时文件，可直接修改';
+}
+
 // @笔记实时引用：每次构建上下文都从笔记区真实文件重新读取，保证内容与用户最新编辑一致。
 async function refreshLiveReferenceText(electronAPI, attachment, data) {
     if (!isLiveReferenceAttachment(attachment, data)) return null;
@@ -108,7 +118,7 @@ function appendAttachmentContext(text, attachment, data, liveText = null) {
         : (data?.extractedText || attachment?.extractedText);
 
     if (isLiveReferenceAttachment(attachment, data)) {
-        return `${text}\n\n[附加文件: ${path} (笔记区实时文件，可直接修改)]\n${extractedText || ''}\n[/附加文件结束: ${name}]`;
+        return `${text}\n\n[附加文件: ${path} (${describeLiveReference(data)})]\n${extractedText || ''}\n[/附加文件结束: ${name}]`;
     }
 
     if (Array.isArray(imageFrames) && imageFrames.length > 0) {
@@ -409,6 +419,7 @@ function createSingleChatRequestOrchestrator({
 
 export {
     attachTimestampMetadata,
+    describeLiveReference,
     buildDefaultMessageContent,
     buildModelConfig,
     createSingleChatRequestOrchestrator,

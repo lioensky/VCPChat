@@ -45,7 +45,7 @@ function renderIntoForm(sectionDescriptor) {
 test('九分区全部登记且 schema 编译无异常', () => {
     const keys = schemaSurfaceSections().map(s => s.key);
     assert.deepEqual(keys, ['user-identity', 'server-connection', 'jev-service', 'appearance-settings', 'render-settings',
-        'selection-assistant', 'voice-settings', 'advanced-features', 'quick-actions']);
+        'selection-assistant', 'voice-settings', 'advanced-features', 'workspace-management', 'quick-actions']);
     for (const sectionDescriptor of schemaSurfaceSections()) {
         const nodes = renderSchemaSection(sectionDescriptor, doc);
         assert.ok(nodes.length > 1, `${sectionDescriptor.key} 应编译出标题与行`);

@@ -1109,6 +1109,146 @@ body.light-theme .suggestion-item {
     text-overflow: ellipsis;  
     flex-shrink: 1;  
 }
+/* @ 提及：来源徽标（笔记 / 工作区别名），工作区结果路径更长，弹窗适当加宽 */
+#note-suggestion-popup {
+    width: min(460px, calc(100vw - 32px));
+    max-height: 280px;
+}
+
+.suggestion-source {
+    flex-shrink: 0;
+    max-width: 96px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.75em;
+    line-height: 1.5;
+    background-color: rgba(127, 127, 127, 0.18);
+    color: var(--secondary-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.suggestion-kind-alias .suggestion-source {
+    background-color: var(--accent-bg);
+    color: var(--highlight-text);
+}
+
+.suggestion-item .suggestion-name {
+    flex-shrink: 1;
+    min-width: 0;
+}
+
+.suggestion-item .suggestion-path {
+    margin-left: auto;
+}
+
+/* --- 全局设置：工作区管理面板 --- */
+.vcp-workspace-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.vcp-workspace-intro {
+    color: var(--secondary-text);
+    line-height: 1.5;
+}
+
+.vcp-workspace-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.vcp-workspace-empty {
+    color: var(--secondary-text);
+    opacity: 0.8;
+    padding: 6px 0;
+}
+
+.vcp-workspace-item {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 4px 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.vcp-workspace-item.is-disabled {
+    opacity: 0.6;
+}
+
+.vcp-workspace-item-head {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.vcp-workspace-alias-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    font-weight: 600;
+}
+
+.vcp-workspace-alias {
+    min-width: 0;
+    width: 180px;
+    padding: 2px 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+}
+
+.vcp-workspace-enable {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.9em;
+}
+
+.vcp-workspace-path,
+.vcp-workspace-meta {
+    grid-column: 1;
+    font-size: 0.85em;
+    color: var(--secondary-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.vcp-workspace-item-actions {
+    grid-column: 2;
+    grid-row: 2 / span 2;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.vcp-workspace-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.vcp-workspace-status {
+    min-height: 1.2em;
+    font-size: 0.85em;
+    color: var(--secondary-text);
+}
+
+.vcp-workspace-status.is-error {
+    color: #e5484d;
+}
 /*
  * Final, more robust fix for centering images.
  * Only turn the paragraph into a flex container WHEN it contains images only.
@@ -1675,4 +1815,64 @@ body.chat-presentation-immersive .message-item.message-item-editing .message-edi
     margin-top: 0;
     justify-content: flex-end;
     flex-wrap: wrap;
+}
+
+/* --- 输入框：当前工作区菜单（按钮样式与其他工具按钮共用 ui-system/chat-input.css） --- */
+.workspace-picker-menu {
+    position: fixed;
+    z-index: 1001;
+    min-width: 220px;
+    max-width: min(420px, calc(100vw - 16px));
+    max-height: 320px;
+    overflow-y: auto;
+    padding: 4px;
+    background-color: var(--secondary-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.workspace-picker-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    width: 100%;
+    padding: 6px 10px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--primary-text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.workspace-picker-item:hover,
+.workspace-picker-item:focus-visible {
+    background-color: var(--accent-bg);
+    color: var(--highlight-text);
+    outline: none;
+}
+
+.workspace-picker-item[aria-checked="true"] .workspace-picker-item-name::before {
+    content: "✓ ";
+}
+
+.workspace-picker-item-name {
+    font-size: 14px;
+}
+
+.workspace-picker-item-detail {
+    max-width: 100%;
+    font-size: 12px;
+    opacity: 0.65;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.workspace-picker-separator {
+    height: 1px;
+    margin: 4px 6px;
+    background-color: var(--border-color);
 }

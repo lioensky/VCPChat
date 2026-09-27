@@ -7,7 +7,7 @@ const doc = fs.readFileSync(new URL('../docs/global-settings-section-ownership.m
 const settingsDir = new URL('../modules/ui-system/settings/', import.meta.url);
 const identity = fs.readFileSync(new URL('identity-controls.js', settingsDir), 'utf8');
 const typedOwners = fs.readFileSync(new URL('../modules/ui-system/typed-field-owners.js', import.meta.url), 'utf8');
-const sections = ['user-identity', 'server-connection', 'appearance-settings', 'render-settings', 'selection-assistant', 'voice-settings', 'advanced-features', 'quick-actions'];
+const sections = ['user-identity', 'server-connection', 'appearance-settings', 'render-settings', 'selection-assistant', 'voice-settings', 'advanced-features', 'workspace-management', 'quick-actions'];
 for (const section of sections) assert.ok(doc.includes(`| \`${section}\` |`), `ownership document must list ${section}`);
 assert.match(bridge, /function enhanceGlobalSettings\(root, form\)/, 'bridge must retain one global section entry point during migration');
 assert.match(`${bridge}\n${identity}`, /(?:function mountTypedAvatarColorPair|export function mountIdentityColorPairs)\(/, 'identity owner must remain explicit');

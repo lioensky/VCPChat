@@ -222,6 +222,7 @@ const GLOBAL_CATEGORY_ICONS = Object.freeze({
     'selection-assistant': 'mouse-pointer-click',
     'voice-settings': 'mic',
     'advanced-features': 'layers',
+    'workspace-management': 'folder-git-2',
     'quick-actions': 'zap',
 });
 

@@ -159,6 +159,20 @@ class SettingsValidator {
             hasIssues = true;
         }
 
+        // 工作区列表：只保留带有效 path 的条目，其余字段由 WorkspaceIndex 规范化。
+        if (!Array.isArray(validated.workspaces)) {
+            validated.workspaces = [];
+            hasIssues = true;
+        } else {
+            const cleaned = validated.workspaces.filter(item => (
+                item && typeof item === 'object' && typeof item.path === 'string' && item.path.trim()
+            ));
+            if (cleaned.length !== validated.workspaces.length) {
+                validated.workspaces = cleaned;
+                hasIssues = true;
+            }
+        }
+
         if (!Array.isArray(validated.combinedItemOrder)) {
             validated.combinedItemOrder = [];
             hasIssues = true;
@@ -210,6 +224,8 @@ class SettingsManager extends EventEmitter {
             // request paths and the model picker placeholder.
             topicSummaryModel: 'gemini-2.5-flash-preview-05-20',
             networkNotesPaths: [],
+            workspaces: [],
+            activeWorkspaceId: null,
             filterEnabled: false,
             filterRules: [],
             toolAutoApprovalEnabled: false,

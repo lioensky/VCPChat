@@ -11,6 +11,31 @@ const {
 } = require('../services/attachmentDialogState');
 const topicTitleManager = require('../../Groupmodules/topicTitleManager');
 const { HistoryMutationQueue } = require('../services/historyMutationQueue');
+const workspaceHandlers = require('./workspaceHandlers');
+
+/**
+ * 若 filePath 属于已登记工作区且是文本/代码文件，创建真实路径实时引用；否则返回 null，
+ * 调用方继续走复制附件逻辑。超出大小上限等失败同样回退复制，不阻断附件添加。
+ */
+async function tryCreateWorkspaceLiveReference(filePath, displayName, fileTypeHint) {
+    if (typeof filePath !== 'string' || !filePath) return null;
+    const fileManager = require('../fileManager');
+    const owner = workspaceHandlers.resolveWorkspaceFile(filePath);
+    if (!owner || !fileManager.isLiveReferenceCandidate(owner.absolutePath, { workspace: true })) return null;
+    try {
+        const liveRef = await fileManager.createLiveFileReference(
+            owner.absolutePath,
+            displayName || path.basename(owner.absolutePath),
+            fileTypeHint || 'text/plain',
+            { workspace: { workspaceId: owner.workspaceId, alias: owner.alias, relPath: owner.relPath } }
+        );
+        console.log(`[ChatHandlers] Attached workspace live reference ${owner.alias}:${owner.relPath}`);
+        return liveRef;
+    } catch (error) {
+        console.warn(`[ChatHandlers] Workspace live reference failed for ${filePath}, falling back to copy:`, error.message);
+        return null;
+    }
+}
 
 function stableStringify(value) {
     if (value === null || typeof value !== 'object') {
@@ -767,7 +792,8 @@ function initialize(mainWindow, context) {
                 }
 
                 const fileManager = require('../fileManager');
-                storedFileObject = await fileManager.storeFile(fileData.path, originalFileName, agentId, topicId, fileTypeHint);
+                storedFileObject = await tryCreateWorkspaceLiveReference(fileData.path, originalFileName, fileTypeHint)
+                    || await fileManager.storeFile(fileData.path, originalFileName, agentId, topicId, fileTypeHint);
             } else if (fileData.type === 'base64') {
                 const fileManager = require('../fileManager');
                 const originalFileName = `pasted_image_${Date.now()}.${fileData.extension || 'png'}`;
@@ -845,7 +871,8 @@ function initialize(mainWindow, context) {
                     }
 
                     const fileManager = require('../fileManager');
-                    const storedFile = await fileManager.storeFile(filePath, originalName, agentId, topicId, fileTypeHint);
+                    const storedFile = await tryCreateWorkspaceLiveReference(filePath, originalName, fileTypeHint)
+                        || await fileManager.storeFile(filePath, originalName, agentId, topicId, fileTypeHint);
                     storedFilesInfo.push(storedFile);
                 } catch (error) {
                     console.error(`[Main - select-files-to-send] Error storing file ${filePath}:`, error);
@@ -914,6 +941,15 @@ function initialize(mainWindow, context) {
                 }
 
                 const fileManager = require('../fileManager');
+
+                // 工作区文件（@工作区 / 拖拽 / 分享）：识别为真实路径实时引用。
+                if (typeof fileData.path === 'string') {
+                    const workspaceRef = await tryCreateWorkspaceLiveReference(fileData.path, fileData.name, fileTypeHint);
+                    if (workspaceRef) {
+                        storedFilesInfo.push({ success: true, attachment: workspaceRef, name: fileData.name });
+                        continue;
+                    }
+                }
 
                 // @笔记：以实时引用方式附加真实笔记文件，不复制到 attachments 目录。
                 // AI 拿到的是笔记区真实路径，可直接修改；用户更新笔记后上下文也会同步。

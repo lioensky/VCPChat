@@ -979,7 +979,8 @@ ${canvasData.errors || 'No errors'}
                                                    (att?.name || '未知文件');
 
                         if (isLiveNote) {
-                            textForAIContext += `\n\n[附加文件: ${filePathForContext} (笔记区实时文件，可直接修改)]\n${effectiveExtractedText}\n[/附加文件结束: ${att?.name || '未知文件'}]`;
+                            const liveLabel = fileManager.describeLiveReference({ ...att, ...fileManagerData });
+                            textForAIContext += `\n\n[附加文件: ${filePathForContext} (${liveLabel})]\n${effectiveExtractedText}\n[/附加文件结束: ${att?.name || '未知文件'}]`;
                         } else if (typeof effectiveExtractedText === 'string' && effectiveExtractedText.trim() !== '') {
                             textForAIContext += `\n\n[附加文件: ${filePathForContext}]\n${effectiveExtractedText}\n[/附加文件结束: ${att?.name || '未知文件'}]`;
                         } else if (effectiveType.startsWith('audio/')) {
@@ -1587,7 +1588,8 @@ ${canvasData.errors || 'No errors'}
                                            (att?.name || '未知文件');
 
                 if (isLiveNote) {
-                    textForAIContext += `\n\n[附加文件: ${filePathForContext} (笔记区实时文件，可直接修改)]\n${effectiveExtractedText}\n[/附加文件结束: ${att?.name || '未知文件'}]`;
+                    const liveLabel = fileManager.describeLiveReference({ ...att, ...fileManagerData });
+                    textForAIContext += `\n\n[附加文件: ${filePathForContext} (${liveLabel})]\n${effectiveExtractedText}\n[/附加文件结束: ${att?.name || '未知文件'}]`;
                 } else if (typeof effectiveExtractedText === 'string' && effectiveExtractedText.trim() !== '') {
                     textForAIContext += `\n\n[附加文件: ${filePathForContext}]\n${effectiveExtractedText}\n[/附加文件结束: ${att?.name || '未知文件'}]`;
                 } else if (effectiveType.startsWith('audio/')) {

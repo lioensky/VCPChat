@@ -142,8 +142,9 @@ function initialize(paths) {
             const ops = payload.__vcpSettingsOps;
             // User avatar URL is handled by 'save-user-avatar', remove it from general settings to avoid saving a file path
             // Also protect order fields from being accidentally overwritten by stale renderer snapshots.
+            // workspaces / activeWorkspaceId 只由 workspaces:* IPC 写入，同样不接受渲染进程快照覆盖。
             const source = patch && typeof patch === 'object' ? patch : payload;
-            const { userAvatarUrl, combinedItemOrder, agentOrder, __vcpSettingsPatch, __vcpSettingsOps, __vcpSettingsOperationId, expectedRevision: ignoredRevision, operationId: ignoredOperationId, ...settingsToSave } = source;
+            const { userAvatarUrl, combinedItemOrder, agentOrder, workspaces, activeWorkspaceId, __vcpSettingsPatch, __vcpSettingsOps, __vcpSettingsOperationId, expectedRevision: ignoredRevision, operationId: ignoredOperationId, ...settingsToSave } = source;
 
             // 确保 flowlockContinueDelay 是一个有效的数字
             if ('flowlockContinueDelay' in settingsToSave

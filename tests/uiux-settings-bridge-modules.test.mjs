@@ -901,7 +901,7 @@ test('设置分区静态标记退役（M4）：分区契约由 schema 渲染承�
     // tests/settings-schema-render.test.mjs（schema 编译产物逐字对齐原静态标记）。
     const html = read(path.join(root, 'main.html'));
     for (const key of ['user-identity', 'server-connection', 'jev-service', 'appearance-settings', 'render-settings',
-        'selection-assistant', 'voice-settings', 'advanced-features', 'quick-actions']) {
+        'selection-assistant', 'voice-settings', 'advanced-features', 'workspace-management', 'quick-actions']) {
         assert.match(html, new RegExp(`id="section-${key}" data-settings-section-key="${key}"></div>`),
             `section ${key} shell must remain for nav/ownership`);
     }
@@ -941,7 +941,7 @@ test('设置分区静态标记退役（M4）：分区契约由 schema 渲染承�
     const legacy = read(eventListeners);
     assert.match(legacy, /syncDependentRows/);
     const audit = read(path.join(root, 'scripts', 'audit-settings-layout.mjs'));
-    assert.match(audit, /FLAT_SECTIONS = new Set\(\['quick-actions', 'advanced-features', 'render-settings', 'server-connection', 'jev-service', 'voice-settings', 'selection-assistant', 'user-identity', 'appearance-settings'\]\)/,
+    assert.match(audit, /FLAT_SECTIONS = new Set\(\['quick-actions', 'advanced-features', 'render-settings', 'server-connection', 'jev-service', 'voice-settings', 'selection-assistant', 'user-identity', 'appearance-settings', 'workspace-management'\]\)/,
         'the layout probe must enforce the flattened sections');
     // 事件路径与快照路径都改走共享行评估器，不允许残留直写。
     const presentation = read(path.join(root, 'modules', 'renderer', 'mainChatSettingsPresentationOwner.js'));

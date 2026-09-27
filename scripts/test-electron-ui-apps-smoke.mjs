@@ -1671,7 +1671,7 @@ try {
             nextShell: Boolean(modal.querySelector('.vcp-uiux-settings-panel')),
         };
     });
-    assert.equal(unifiedSettingsNavigation.navCount, 8, `Settings category count changed: ${JSON.stringify(unifiedSettingsNavigation)}`);
+    assert.equal(unifiedSettingsNavigation.navCount, 10, `Settings category count changed: ${JSON.stringify(unifiedSettingsNavigation)}`);
     assert.equal(unifiedSettingsNavigation.activeSection, 'section-server-connection', `Settings content did not follow navigation: ${JSON.stringify(unifiedSettingsNavigation)}`);
     assert.equal(unifiedSettingsNavigation.nextShell, true, `canonical SettingsShell was not retained: ${JSON.stringify(unifiedSettingsNavigation)}`);
     const unifiedAppearanceSettings = await page.evaluate(async () => {

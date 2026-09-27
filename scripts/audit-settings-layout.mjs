@@ -38,7 +38,7 @@ const wantShots = process.argv.includes('--shots');
 const screenshotsDir = path.join(root, 'screenshots');
 
 // Phase 3 progress: sections whose rows are direct children of the section.
-const FLAT_SECTIONS = new Set(['quick-actions', 'advanced-features', 'render-settings', 'server-connection', 'jev-service', 'voice-settings', 'selection-assistant', 'user-identity', 'appearance-settings']);
+const FLAT_SECTIONS = new Set(['quick-actions', 'advanced-features', 'render-settings', 'server-connection', 'jev-service', 'voice-settings', 'selection-assistant', 'user-identity', 'appearance-settings', 'workspace-management']);
 
 async function freePort() {
     const server = net.createServer();

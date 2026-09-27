@@ -760,6 +760,16 @@ function toggleEditMode(messageItem, message) {
     }
 }
 
+// 实时引用上下文标签（与 singleChatRequestOrchestrator.describeLiveReference 同构）。
+function describeLiveReferenceForContext(data) {
+    const ref = data?.workspaceRef;
+    if (data?.liveSource === 'workspace' || ref) {
+        const location = ref?.alias && ref?.relPath ? ` ${ref.alias}: ${ref.relPath}` : '';
+        return `工作区${location}，实时文件，可直接修改`;
+    }
+    return '笔记区实时文件，可直接修改';
+}
+
 function attachTimestampMetaToVcpMessage(vcpMessage, historyMessage) {
     if (!vcpMessage || !historyMessage || !historyMessage.id || typeof historyMessage.timestamp !== 'number') {
         return vcpMessage;
@@ -943,7 +953,12 @@ async function handleRegenerateResponse(originalAssistantMessage) {
                         }
                     }
 
-                    if (effectiveImageFrames && effectiveImageFrames.length > 0) {
+                    const isLiveReference = fileManagerData.isLiveReference === true || att.isLiveReference === true;
+                    if (isLiveReference) {
+                        // 与单聊主路径一致：实时引用始终带来源标签，告知 AI 可直接修改真实文件。
+                        const liveLabel = describeLiveReferenceForContext({ ...att, ...fileManagerData });
+                        historicalAppendedText += `\n\n[附加文件: ${filePathForContext} (${liveLabel})]\n${effectiveExtractedText || ''}\n[/附加文件结束: ${att.name || '未知文件'}]`;
+                    } else if (effectiveImageFrames && effectiveImageFrames.length > 0) {
                          historicalAppendedText += `\n\n[附加文件: ${filePathForContext} (扫描版PDF，已转换为图片)]`;
                     } else if (effectiveExtractedText) {
                         historicalAppendedText += `\n\n[附加文件: ${filePathForContext}]\n${effectiveExtractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;

@@ -157,8 +157,8 @@ try {
         };
     });
     assert.ok(shellState.shell, 'SettingsShell class applied');
-    assert.equal(shellState.navCount, 8, '8 categories in VCPUI List nav');
-    assert.equal(shellState.sectionIds.length, 8, '8 setting sections present');
+    assert.equal(shellState.navCount, 10, '10 categories in VCPUI List nav');
+    assert.equal(shellState.sectionIds.length, 10, '10 setting sections present');
     assert.equal(shellState.activeSection, 'section-user-identity', 'starts on user identity');
     // Icons inside the form are normalized to VCPUI Lucide icons (the lucide
     // adapter renders the marker span into an svg shortly after insertion).

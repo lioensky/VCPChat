@@ -11,6 +11,7 @@
 | `selection-assistant` | `#globalSettingsForm` / assistant rows | typed projection + Rust/assistant capability adapters | Select, Input, Toggle, Textarea | capability discovery and diagnostics | assistant capability errors remain unchanged |
 | `voice-settings` | `#globalSettingsForm` / voice rows | Choice + generic Input + voice capability owner | Choice, Input | provider discovery/default display values | mode/credentials conditional paths have one owner |
 | `advanced-features` | `#globalSettingsForm` / advanced rows | typed projection + Toggle/Range owners | Toggle, Input, Range | feature capability commands | each boolean/numeric row has one owner |
+| `workspace-management` | `#globalSettingsForm` / `#workspaceManagerList` | schema custom panel + `workspaces:*` IPC | Input, Button | none (new section; `settings.workspaces` is written only by workspace IPC and stripped from `save-settings`) | panel stays outside form collect/autosave |
 | `quick-actions` | `#globalSettingsForm` / quick-action rows | typed projection + legacy chat command handlers | Toggle, Input, Select, Textarea | middle-click/chat command behavior | presentation-only paths separated from frozen command behavior |
 
 ## Rules
