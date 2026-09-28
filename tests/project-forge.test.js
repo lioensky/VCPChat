@@ -218,3 +218,55 @@ test('store：旧库自动补列迁移', () => {
     assert.equal(s.getBatch(p.id, b).maid, 'Nova');
     s.close();
 });
+test('GUI 门面：只读浏览 + 署名单文件回退（预检 / 冲突 / force / 再回退）', async () => {
+    const r = await call({ command: 'CreateProject', name: 'gui', dir: 'gui', maid: 'Nova', todos: '界面' });
+    const pid = r.details.project.id;
+    const file = path.join(wsRoot, 'gui', 'g.js');
+    await call({ command: 'CreateFile', projectId: pid, path: 'g.js', content: 'v1\n', reason: '初始化', maid: 'Nova' });
+    const edit = await call({ command: 'EditCode', projectId: pid, path: 'g.js', reason: '升级到 v2', start: '1', end: '1', content: 'v2', maid: 'Aemeath' });
+    const editNode = edit.details.nodeId;
+
+    // 只读浏览
+    const list = forge.gui.listProjects();
+    const summary = list.find(p => p.id === pid);
+    assert.ok(summary && summary.progress.total === 1 && summary.report === undefined);
+    const detail = forge.gui.getProject(pid);
+    assert.equal(detail.timeline.length, 2);
+    assert.ok(Array.isArray(detail.timeline[0].files));
+    assert.deepEqual(detail.contributors.map(c => c.maid).sort(), ['Aemeath', 'Nova']);
+    assert.equal(forge.gui.searchHistory({ projectId: pid, byMaid: 'aemeath' }).length, 1);
+    assert.equal(forge.gui.searchHistory({ projectId: pid, file: 'g.js' }).length, 2);
+    const node = forge.gui.getNodeDetail(pid, editNode);
+    assert.equal(node.before.text, 'v1\n');
+    assert.equal(node.after.text, 'v2\n');
+    assert.equal(node.batch.maid, 'Aemeath');
+
+    // 必须署名
+    await assert.rejects(forge.gui.revertFileChange({ projectId: pid, nodeId: editNode }), /署名/);
+
+    // dryRun 不落盘
+    const plan = await forge.gui.revertFileChange({ projectId: pid, nodeId: editNode, signature: '主人', dryRun: true });
+    assert.equal(plan.status, 'dryRun');
+    assert.equal(plan.action, '恢复内容');
+    assert.equal(fs.readFileSync(file, 'utf8'), 'v2\n');
+
+    // 外部修改 → 冲突，force 才执行
+    fs.writeFileSync(file, 'manual\n');
+    const conflict = await forge.gui.revertFileChange({ projectId: pid, nodeId: editNode, signature: '主人' });
+    assert.equal(conflict.status, 'conflict');
+    assert.equal(fs.readFileSync(file, 'utf8'), 'manual\n');
+    const ok = await forge.gui.revertFileChange({ projectId: pid, nodeId: editNode, signature: '主人', reason: '人工撤销', force: true });
+    assert.equal(ok.status, 'ok');
+    assert.equal(fs.readFileSync(file, 'utf8'), 'v1\n');
+
+    // 回退批次带署名与原因，且可再回退（恢复到该节点完成时）
+    const batch = forge.gui.getBatchNodes(pid, ok.batchId);
+    assert.equal(batch.batch.maid, '主人');
+    assert.equal(batch.batch.reason, '人工撤销');
+    const redo = await forge.gui.revertFileChange({ projectId: pid, nodeId: editNode, mode: 'after', signature: '主人' });
+    assert.equal(redo.status, 'conflict'); // 此后该文件还有改动（回退节点）
+    const redoForced = await forge.gui.revertFileChange({ projectId: pid, nodeId: editNode, mode: 'after', signature: '主人', force: true });
+    assert.equal(redoForced.status, 'ok');
+    assert.equal(fs.readFileSync(file, 'utf8'), 'v2\n');
+    assert.ok(forge.gui.getProject(pid).contributors.some(c => c.maid === '主人'));
+});

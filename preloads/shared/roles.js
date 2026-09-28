@@ -357,6 +357,12 @@ const UTILITY_KEYS = [
     'toggleSelectionListener',
     'getSelectionListenerStatus',
     'getEmoticonLibrary',
+    'projectForgeListProjects',
+    'projectForgeGetProject',
+    'projectForgeSearchHistory',
+    'projectForgeGetBatch',
+    'projectForgeGetNode',
+    'projectForgeRevertFile',
 ];
 
 module.exports = {

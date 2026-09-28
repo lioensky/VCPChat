@@ -35,6 +35,7 @@ let vchatMusicWindow = null;
 let vchatThemesWindow = null;
 let vchatTaskWindow = null;
 let vchatPluginManagerWindow = null;
+let vchatProjectForgeWindow = null;
 
 // --- 收藏系统路径 - 使用项目根目录的 AppData ---
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
@@ -488,6 +489,7 @@ function createOrFocusChildWindow(existingWindow, options) {
         if (win === vchatThemesWindow) vchatThemesWindow = null;
         if (win === vchatTaskWindow) vchatTaskWindow = null;
         if (win === vchatPluginManagerWindow) vchatPluginManagerWindow = null;
+        if (win === vchatProjectForgeWindow) vchatProjectForgeWindow = null;
     });
 
     console.log(`[DesktopHandlers] Created child window: ${options.title}`);
@@ -745,6 +747,26 @@ function registerManagedWindows() {
             return vchatPluginManagerWindow;
         },
     });
+
+    windowService.register(WINDOW_APP_IDS.PROJECT_FORGE, {
+        owner: 'desktopHandlers',
+        getWindow: () => vchatProjectForgeWindow || findWindowByUrl('projectforge.html'),
+        open: async () => {
+            const existing = findWindowByUrl('projectforge.html');
+            if (existing) {
+                if (!existing.isVisible()) existing.show();
+                existing.focus();
+                vchatProjectForgeWindow = existing;
+                return existing;
+            }
+            vchatProjectForgeWindow = createOrFocusChildWindow(vchatProjectForgeWindow, {
+                width: 1320, height: 860, minWidth: 960, minHeight: 620,
+                title: 'ProjectForge 施工图',
+                htmlPath: path.join(app.getAppPath(), 'ProjectForgemodules', 'projectforge.html'),
+            });
+            return vchatProjectForgeWindow;
+        },
+    });
 }
 
 function resolveAppActionToAppId(appAction) {
@@ -779,6 +801,8 @@ function resolveAppActionToAppId(appAction) {
             return WINDOW_APP_IDS.TASK;
         case 'open-plugin-manager-window':
             return WINDOW_APP_IDS.PLUGIN_MANAGER;
+        case 'open-project-forge-window':
+            return WINDOW_APP_IDS.PROJECT_FORGE;
         case 'open-scriptorium-window':
             return WINDOW_APP_IDS.DOCX;
         case 'open-desktop-window':

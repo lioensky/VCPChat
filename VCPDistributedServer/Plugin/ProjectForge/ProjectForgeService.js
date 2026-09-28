@@ -41,6 +41,7 @@ function freshRuntime(overrides = {}) {
         readMaxFiles: 20,
         readMaxBytes: 30 * 1024 * 1024,
         trash: null, // 可注入（单测用）；为空时使用系统回收站
+        initialized: false,
         ...overrides,
     };
 }
@@ -64,7 +65,17 @@ function initialize(options = {}) {
         readMaxFiles: posInt(config.READ_MAX_FILES, 20),
         readMaxBytes: posInt(config.READ_MAX_TOTAL_BYTES, 30 * 1024 * 1024),
         trash: typeof options.trash === 'function' ? options.trash : null,
+        initialized: true,
     });
+}
+
+/**
+ * 供 VChat 主进程的 GUI 使用：分布式服务器未启用时插件不会被初始化，
+ * 这里按同样的配置懒初始化；已初始化则保持插件自身的运行时不变。
+ */
+function ensureRuntime(options = {}) {
+    if (!runtime.initialized) initialize(options);
+    return runtime;
 }
 
 function closeStore() {
@@ -1039,10 +1050,171 @@ async function processToolCall(rawArgs = {}, _executionContext = {}) {
     return handler(args);
 }
 
+// ============================ GUI 门面 ============================
+// 供 VChat 施工图 GUI 调用：除 revertFileChange 外全部只读，返回纯 JSON（经 IPC 结构化克隆）。
+
+const GUI_TEXT_LIMIT = 2 * 1024 * 1024;
+
+function guiRootInfo(project) {
+    const info = runtime.resolver.projectRoot(project);
+    return { root: info.root, writable: info.writable, blockedReason: info.blockedReason, workspaceAlias: info.workspaceAlias };
+}
+
+function guiProjectSummary(project) {
+    const s = store();
+    return {
+        ...project,
+        report: undefined,
+        hasReport: Boolean(project.report),
+        rootInfo: guiRootInfo(project),
+        progress: todoProgress(s.listTodos(project.id)),
+        stats: s.projectStats(project.id),
+        maids: s.contributors(project.id).map(c => c.maid || null),
+    };
+}
+
+function guiProjectOf(projectId) {
+    const project = store().getProject(projectId, { includeDeleted: true });
+    if (!project) throw new Error(`${P} 工程 ${projectId || '(空)'} 不存在。`);
+    return project;
+}
+
+function guiBlobText(hash) {
+    if (!hash) return { exists: false, binary: false, truncated: false, size: 0, text: '' };
+    const buf = store().getBlob(hash);
+    if (buf.subarray(0, 8000).includes(0)) return { exists: true, binary: true, truncated: false, size: buf.length, text: '' };
+    const truncated = buf.length > GUI_TEXT_LIMIT;
+    const text = T.normalizeEol(buf.subarray(0, truncated ? GUI_TEXT_LIMIT : buf.length).toString('utf8').replace(/^\uFEFF/, ''));
+    return { exists: true, binary: false, truncated, size: buf.length, text };
+}
+
+const gui = {
+    listProjects({ includeDeleted = false, query = '' } = {}) {
+        return store().listProjects({ includeDeleted: Boolean(includeDeleted), query: String(query || '').trim() || null })
+            .map(guiProjectSummary);
+    },
+
+    getProject(projectId, { timelineLimit = 200 } = {}) {
+        const s = store();
+        const project = guiProjectOf(projectId);
+        return {
+            project: { ...guiProjectSummary(project), report: project.report || null },
+            todos: s.listTodos(project.id),
+            contributors: s.contributors(project.id),
+            files: s.changedFiles(project.id),
+            timeline: s.timeline(project.id, { limit: timelineLimit }).map(r => ({
+                ...r, files: String(r.files || '').split(',').filter(Boolean),
+            })),
+        };
+    },
+
+    searchHistory(filters = {}) {
+        const s = store();
+        const contentKw = String(filters.content || '').trim();
+        const limit = Math.min(Math.max(Number(filters.limit) || 200, 1), 500);
+        const glob = String(filters.file || '').trim();
+        let rows = s.searchNodes({
+            projectId: filters.projectId || null,
+            filePattern: glob ? `%${glob.replace(/\\/g, '/').replace(/\*/g, '%').replace(/\?/g, '_')}%` : null,
+            op: filters.op || null,
+            batchId: filters.batchId ? Number(filters.batchId) : null,
+            maid: String(filters.byMaid || '').trim() || null,
+            keyword: String(filters.keyword || '').trim() || null,
+            since: filters.since || null,
+            until: filters.until || null,
+            limit: contentKw ? 500 : limit,
+        });
+        if (contentKw) {
+            rows = rows.filter(r => {
+                try { return r.after_hash && s.getBlob(r.after_hash).toString('utf8').includes(contentKw); } catch (_e) { return false; }
+            }).slice(0, limit);
+        }
+        return rows;
+    },
+
+    getBatchNodes(projectId, batchId) {
+        const s = store();
+        const batch = s.getBatch(projectId, Number(batchId));
+        if (!batch) throw new Error(`${P} 批次 b${batchId} 不存在。`);
+        return { batch, nodes: s.getBatchNodes(projectId, batch.id) };
+    },
+
+    /** 节点详情 + 改动前后全文（供 MergeView 渲染）+ 回退预检信息。 */
+    getNodeDetail(projectId, nodeId) {
+        const s = store();
+        const node = s.getNode(projectId, Number(nodeId));
+        if (!node) throw new Error(`${P} 节点 n${nodeId} 不存在。`);
+        const batch = node.batch_id ? s.getBatch(projectId, node.batch_id) : null;
+        return {
+            node,
+            batch,
+            todo: node.todo_id ? s.listTodos(projectId).find(t => t.id === node.todo_id) || null : null,
+            before: guiBlobText(node.before_hash),
+            after: guiBlobText(node.after_hash),
+            laterChanges: s.nodesAfter(projectId, node.id, node.file_path).length,
+        };
+    },
+
+    /**
+     * 回退单个文件变动（GUI 唯一的写操作），必须署名。
+     * mode=before：撤销该节点，文件恢复到改动前；mode=after：文件恢复到该节点完成时的状态。
+     * 与 Rollback 一致：外部修改或后续还有改动视为冲突，需 force；回退本身生成新批次，可再回退。
+     */
+    async revertFileChange({ projectId, nodeId, mode = 'before', signature, reason = '', dryRun = false, force = false } = {}) {
+        const maid = String(signature || '').trim().slice(0, 100);
+        if (!maid) throw new Error(`${P} 回退需要署名。`);
+        const ctx = projectOf({ projectid: projectId }, { write: true });
+        return withLock(ctx.project.id, async () => {
+            const s = store();
+            const node = s.getNode(ctx.project.id, Number(nodeId));
+            if (!node) throw new Error(`${P} 节点 n${nodeId} 不存在。`);
+            const useAfter = mode === 'after';
+            const target = (useAfter ? node.after_hash : node.before_hash) ?? null;
+            const file = fileOf(ctx, node.file_path, { write: true });
+            const disk = await readDisk(file.abs);
+            const expected = s.getFileState(ctx.project.id, node.file_path) ?? null;
+            const later = s.nodesAfter(ctx.project.id, node.id, node.file_path).length;
+            let action;
+            if (target === null) action = disk.exists ? '移到回收站' : '无需操作';
+            else if (disk.hash === target) action = '无需操作';
+            else action = disk.exists ? '恢复内容' : '重建文件';
+            const conflicts = [];
+            if (disk.hash !== expected) conflicts.push('磁盘内容与记录不一致（外部修改）');
+            if (later) conflicts.push(`此后该文件还有 ${later} 次改动，将一并被覆盖`);
+            const label = `${useAfter ? '恢复到' : '撤销'}节点 n${node.id} · ${node.file_path}（GUI 人工回退）`;
+            const plan = { label, file: node.file_path, action, conflicts, mode: useAfter ? 'after' : 'before' };
+            if (action === '无需操作') return { status: 'noop', ...plan };
+            if (dryRun) return { status: 'dryRun', ...plan };
+            if (conflicts.length && !force) return { status: 'conflict', ...plan };
+
+            let batchId;
+            let newNodeId;
+            if (disk.exists) s.putBlob(disk.buffer);
+            if (target === null) {
+                await moveToTrash(file.abs);
+            } else {
+                await fsp.mkdir(path.dirname(file.abs), { recursive: true });
+                await fsp.writeFile(file.abs, s.getBlob(target));
+            }
+            s.transaction(() => {
+                batchId = s.createBatch(ctx.project.id, 'rollback', String(reason || '').trim().slice(0, 500) || label, maid);
+                newNodeId = s.addNode({
+                    projectId: ctx.project.id, batchId, filePath: node.file_path, op: 'rollback',
+                    beforeHash: disk.hash, afterHash: target, summary: label,
+                });
+            });
+            runtime.logger?.log?.(`${P} GUI 回退 n${node.id} by @${maid} → b${batchId}`);
+            return { status: 'ok', ...plan, batchId, nodeId: newNodeId, maid };
+        });
+    },
+};
+
 module.exports = {
     initialize,
+    ensureRuntime,
     processToolCall,
     cleanup,
+    gui,
     _test: {
         resetForTests: () => { closeStore(); runtime = freshRuntime(); },
         getRuntime: () => runtime,

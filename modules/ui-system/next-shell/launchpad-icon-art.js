@@ -158,6 +158,22 @@ box(c,24,39,81,62,11,gradient(c,24,39,105,101,['#edbd84','#b66e4e']));c.shadowBl
 box(c,24,40,81,22,9,'#f8d6a3');line(c,[[29,65],[100,65]],'#995c43',2);
 box(c,57,56,15,19,4,'#ffedce');
 c.save();c.translate(87,73);c.rotate(.3+b*.05);line(c,[[0,17],[0,-10]],'#d7e8e8',7);line(c,[[-6,-18],[-6,-10],[6,-10],[6,-18]],'#d7e8e8',4);c.restore();
+}else if(type==='forge'){
+// Ember forge card: a branch graph flowing into the trunk, pulsing head node and rising sparks.
+box(c,20,26,88,76,14,gradient(c,20,26,108,102,['#ffc99c','#c4583f']));
+c.shadowBlur=0;box(c,25,31,78,66,10,'#2f2128');
+line(c,[[44,43],[44,86]],'#ffd2a3',3);
+const branch=()=>{c.beginPath();c.moveTo(82,51);c.bezierCurveTo(82,68,64,74,44,76)};
+branch();c.strokeStyle='#ffab77';c.lineWidth=3;c.lineCap='round';c.stroke();
+branch();c.strokeStyle='#fff1d8';c.lineWidth=1.4;c.setLineDash([3,7]);c.lineDashOffset=-t*14;c.stroke();c.setLineDash([]);
+circle(c,44,43,6,'#ffe2bb');circle(c,44,43,2.4,'#8f4a3a');
+circle(c,44,86,6,'#ffe2bb');circle(c,44,86,2.4,'#8f4a3a');
+const pulse=Math.sin(t*4)*e*1.6;
+circle(c,82,51,9+pulse,'#ff9b6a40');circle(c,82,51,6,'#ffc58f');circle(c,82,51,2.4,'#fff5e4');
+box(c,60,80,32,6,3,'#eaa57c');box(c,68,86,16,5,1,'#b86b53');box(c,63,91,26,4,2,'#eaa57c');
+c.globalAlpha=1;
+for(let i=0;i<4;i++){const p=(t*.8+i*.25)%1;c.globalAlpha=e*(1-p);circle(c,82+Math.sin(i*2.3+t*2)*6,43-p*22,1.7,'#ffe6a8')}
+c.globalAlpha=1;
 }else if(type==='plugin'||type==='widgets'){
 const colors=type==='plugin'?['#b5a0f3','#89d9db','#eeb4d2','#f0d099']:['#99c8fa','#cab2f1','#9fe0c3','#ffd2ab'];
 for(let i=0;i<4;i++){const x=29+(i%2)*38,y=28+Math.floor(i/2)*39+(i===3?b*2:0);box(c,x,y,33,33,9,gradient(c,x,y,x+33,y+33,[colors[i],'#817caf']));c.shadowBlur=0;if(type==='plugin'){circle(c,x+16,y,5,colors[i]);circle(c,x+33,y+16,5,colors[i])}else{box(c,x+8,y+9,17,3,1,'#ffffffa0');box(c,x+8,y+16,11,3,1,'#ffffff70')}}

@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src * data: file:;">
+    <title>ProjectForge 施工图</title>
+    <link rel="stylesheet" href="../styles/themes.css">
+    <link rel="stylesheet" href="../node_modules/codemirror/lib/codemirror.css">
+    <link rel="stylesheet" href="../node_modules/codemirror/theme/material-darker.css">
+    <link rel="stylesheet" href="../node_modules/codemirror/addon/merge/merge.css">
+    <link rel="stylesheet" href="projectforge.css">
+    <script src="../vendor/marked.min.js"></script>
+</head>
+<body>
+    <header id="title-bar">
+        <div class="title-left">
+            <span class="app-mark" aria-hidden="true">PF</span>
+            <span class="title">ProjectForge 施工图</span>
+            <span class="subtitle">工程数据 · 进度 · 变动脉络</span>
+        </div>
+        <div class="title-right">
+            <label class="signature-chip" title="回退操作将以此署名记录">
+                <span>署名</span>
+                <input id="signature-input" type="text" maxlength="100" placeholder="未设置" autocomplete="off">
+            </label>
+            <button id="refresh-btn" class="icon-btn" title="刷新">⟳</button>
+            <span class="divider"></span>
+            <button id="minimize-btn" class="icon-btn" title="最小化">—</button>
+            <button id="maximize-btn" class="icon-btn" title="最大化">☐</button>
+            <button id="close-btn" class="icon-btn danger" title="关闭">✕</button>
+        </div>
+    </header>
+
+    <div class="layout">
+        <aside id="project-sidebar" class="panel">
+            <div class="sidebar-head">
+                <input id="project-search" type="search" placeholder="搜索工程名称 / ID..." autocomplete="off">
+                <label class="toggle"><input id="include-deleted" type="checkbox"> 含已删除</label>
+            </div>
+            <ul id="project-list" aria-label="工程列表"></ul>
+        </aside>
+
+        <main id="main-panel" class="panel">
+            <div id="empty-state" class="empty-state">
+                <div class="empty-mark">⌁</div>
+                <p>选择左侧工程以查看施工图</p>
+            </div>
+
+            <section id="project-view" hidden>
+                <div id="project-header"></div>
+                <nav class="tabs" role="tablist">
+                    <button class="tab active" data-tab="overview" role="tab">概览</button>
+                    <button class="tab" data-tab="timeline" role="tab">开发脉络</button>
+                    <button class="tab" data-tab="files" role="tab">改动文件</button>
+                    <button class="tab" data-tab="history" role="tab">搜索历史</button>
+                    <button class="tab" data-tab="report" role="tab">验收报告</button>
+                </nav>
+                <div class="tab-body">
+                    <div class="tab-pane active" data-pane="overview" id="pane-overview"></div>
+                    <div class="tab-pane" data-pane="timeline" id="pane-timeline"></div>
+                    <div class="tab-pane" data-pane="files" id="pane-files"></div>
+                    <div class="tab-pane" data-pane="history">
+                        <form id="history-form" class="filter-bar">
+                            <input name="keyword" type="search" placeholder="关键字（reason / 摘要 / 路径）">
+                            <input name="content" type="search" placeholder="改动后内容包含...">
+                            <input name="file" type="search" placeholder="文件路径（可用 *）">
+                            <input name="byMaid" type="search" placeholder="操作者">
+                            <select name="op">
+                                <option value="">全部操作</option>
+                                <option value="create">create</option>
+                                <option value="edit">edit</option>
+                                <option value="delete">delete</option>
+                                <option value="move">move</option>
+                                <option value="rollback">rollback</option>
+                                <option value="external">external</option>
+                            </select>
+                            <button type="submit" class="btn primary">搜索</button>
+                        </form>
+                        <div id="history-results"></div>
+                    </div>
+                    <div class="tab-pane" data-pane="report" id="pane-report"></div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- 节点详情 / Diff -->
+    <div id="node-modal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="node-title">
+        <div class="modal-card panel">
+            <div class="modal-head">
+                <div>
+                    <strong id="node-title">节点</strong>
+                    <div id="node-meta" class="node-meta"></div>
+                </div>
+                <div class="modal-tools">
+                    <button id="diff-wrap-btn" class="btn small toggle-btn" type="button" aria-pressed="false" title="切换 Diff 自动换行">↩ 自动换行</button>
+                    <button class="icon-btn" data-close-modal title="关闭 (Esc)">✕</button>
+                </div>
+            </div>
+            <div class="diff-legend"><span>改动前</span><span>改动后</span></div>
+            <div id="diff-view"></div>
+            <div id="diff-fallback" class="diff-fallback" hidden></div>
+            <div class="revert-bar">
+                <input id="revert-reason" type="text" maxlength="500" placeholder="回退原因（可选，将写入开发脉络）">
+                <button id="revert-before-btn" class="btn danger" type="button" title="把该文件恢复到这次改动之前">撤销此变动</button>
+                <button id="revert-after-btn" class="btn" type="button" title="把该文件恢复到这次改动完成时的状态">恢复到此版本</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 确认对话框 -->
+    <div id="confirm-modal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+        <div class="modal-card panel small">
+            <h3 id="confirm-title">确认</h3>
+            <div id="confirm-body" class="confirm-body"></div>
+            <div class="modal-actions">
+                <button id="confirm-cancel" class="btn" type="button">取消</button>
+                <button id="confirm-ok" class="btn danger" type="button">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast" hidden></div>
+
+    <script src="../node_modules/codemirror/lib/codemirror.js"></script>
+    <script src="../node_modules/codemirror/mode/javascript/javascript.js"></script>
+    <script src="../node_modules/codemirror/mode/python/python.js"></script>
+    <script src="../node_modules/codemirror/mode/css/css.js"></script>
+    <script src="../node_modules/codemirror/mode/xml/xml.js"></script>
+    <script src="../node_modules/codemirror/mode/htmlmixed/htmlmixed.js"></script>
+    <script src="../node_modules/codemirror/mode/markdown/markdown.js"></script>
+    <script src="../node_modules/codemirror/mode/rust/rust.js"></script>
+    <script src="../node_modules/codemirror/mode/clike/clike.js"></script>
+    <script src="../node_modules/codemirror/mode/go/go.js"></script>
+    <script src="../node_modules/codemirror/mode/shell/shell.js"></script>
+    <script src="../node_modules/codemirror/mode/yaml/yaml.js"></script>
+    <script src="../node_modules/codemirror/mode/sql/sql.js"></script>
+    <script src="../Canvasmodules/vendor/diff_match_patch.js"></script>
+    <script>
+        // CodeMirror merge addon 需要全局 diff_match_patch 及其常量
+        window.diff_match_patch = diff_match_patch;
+        window.DIFF_DELETE = -1; window.DIFF_INSERT = 1; window.DIFF_EQUAL = 0;
+    </script>
+    <script src="../node_modules/codemirror/addon/merge/merge.js"></script>
+    <script src="projectforge.js"></script>
+</body>
+</html>

@@ -17,6 +17,7 @@
         { action: 'open-themes-window', page: 'Themesmodules/themes.html' },
         { action: 'open-task-window', page: 'Agenttaskmodules/task.html' },
         { action: 'open-plugin-manager-window', page: 'PluginManagerModules/plugin-manager.html' },
+        { action: 'open-project-forge-window', page: 'ProjectForgemodules/projectforge.html' },
     ].map(Object.freeze));
     const byAction = new Map(entries.map(entry => [entry.action, entry]));
     return Object.freeze({

@@ -351,6 +351,14 @@ function createCatalog(ops) {
         desktopMetricsGetCapabilities: query(() => ops.invoke('desktop-metrics-get-capabilities')),
         desktopMetricsGetDetailedProcesses: query(() => ops.invoke('desktop-metrics-get-detailed-processes')),
         desktopOpenSystemTool: query((cmd) => ops.invoke('desktop-open-system-tool', cmd)),
+
+        // ProjectForge 施工图 GUI（只读 + 署名单文件回退）
+        projectForgeListProjects: query((options) => ops.invoke('project-forge:list-projects', options)),
+        projectForgeGetProject: query((projectId) => ops.invoke('project-forge:get-project', projectId)),
+        projectForgeSearchHistory: query((filters) => ops.invoke('project-forge:search-history', filters)),
+        projectForgeGetBatch: query((projectId, batchId) => ops.invoke('project-forge:get-batch', projectId, batchId)),
+        projectForgeGetNode: query((projectId, nodeId) => ops.invoke('project-forge:get-node', projectId, nodeId)),
+        projectForgeRevertFile: query((payload) => ops.invoke('project-forge:revert-file', payload)),
     };
 }
 

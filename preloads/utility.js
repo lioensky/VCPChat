@@ -473,6 +473,14 @@ function createCatalog(ops) {
         pluginManagerSaveConfigEnv: query((data) => ops.invoke('plugin-manager-save-config-env', data)),
         pluginManagerSetPluginEnabled: query((data) => ops.invoke('plugin-manager-set-plugin-enabled', data)),
         pluginManagerOpenPluginFolder: query((data) => ops.invoke('plugin-manager-open-plugin-folder', data)),
+
+        // ProjectForge 施工图 GUI（只读 + 署名单文件回退）
+        projectForgeListProjects: query((options) => ops.invoke('project-forge:list-projects', options)),
+        projectForgeGetProject: query((projectId) => ops.invoke('project-forge:get-project', projectId)),
+        projectForgeSearchHistory: query((filters) => ops.invoke('project-forge:search-history', filters)),
+        projectForgeGetBatch: query((projectId, batchId) => ops.invoke('project-forge:get-batch', projectId, batchId)),
+        projectForgeGetNode: query((projectId, nodeId) => ops.invoke('project-forge:get-node', projectId, nodeId)),
+        projectForgeRevertFile: query((payload) => ops.invoke('project-forge:revert-file', payload)),
     };
 }
 
@@ -660,7 +668,13 @@ const ALLOWED_KEYS = [
     "pluginManagerSaveManifest",
     "pluginManagerSaveConfigEnv",
     "pluginManagerSetPluginEnabled",
-    "pluginManagerOpenPluginFolder"
+    "pluginManagerOpenPluginFolder",
+    "projectForgeListProjects",
+    "projectForgeGetProject",
+    "projectForgeSearchHistory",
+    "projectForgeGetBatch",
+    "projectForgeGetNode",
+    "projectForgeRevertFile"
 ];
 
 const ops = createOps();
