@@ -134,6 +134,246 @@
     color: #b3402f;
 }
 
+/* Workspace management panel styles (aligned with NextUI global settings standards) */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-workspace-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-workspace-intro {
+    font-size: var(--vcp-ui-font-caption, 12px) !important;
+    line-height: 18px !important;
+    color: var(--dsw-alias-label-tertiary, var(--vcp-ui-text-3)) !important;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-workspace-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-workspace-item {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 6px 12px;
+    padding: 12px 14px;
+    border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border, rgba(0, 0, 0, 0.08)));
+    border-radius: 10px;
+    background: var(--vcp-ui-fill-0, rgba(0, 0, 0, 0.02));
+    box-sizing: border-box;
+    transition: background-color var(--vcp-ui-transition-fast, 120ms ease), border-color var(--vcp-ui-transition-fast, 120ms ease);
+}
+
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal .vcp-workspace-item {
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    background: rgba(255, 255, 255, 0.02) !important;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-workspace-item-head {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-workspace-alias-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 500;
+    color: var(--vcp-ui-text-0);
+    font-size: var(--vcp-ui-font-helper, 13px);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-workspace-alias {
+    width: 160px;
+    min-height: 28px;
+    height: 28px;
+    padding: 0 8px;
+    border: 1px solid var(--vcp-ui-control-border, var(--vcp-ui-border, rgba(0, 0, 0, 0.12)));
+    border-radius: 6px;
+    background: var(--vcp-ui-bg-1, #FFFFFF);
+    color: var(--vcp-ui-text-0);
+    font-size: var(--vcp-ui-font-helper, 13px);
+    box-sizing: border-box;
+    outline: none;
+    transition: border-color 150ms ease;
+}
+
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal .vcp-workspace-alias {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: #FFFFFF;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-workspace-alias:focus {
+    border-color: var(--vcp-ui-control-focus, #1677ff);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-workspace-enable {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--vcp-ui-font-caption, 12px);
+    color: var(--vcp-ui-text-2);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-workspace-path {
+    grid-column: 1;
+    font-size: var(--vcp-ui-font-caption, 12px);
+    color: var(--vcp-ui-text-1);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-workspace-meta {
+    grid-column: 1;
+    font-size: var(--vcp-ui-font-caption, 12px);
+    color: var(--dsw-alias-label-tertiary, var(--vcp-ui-text-3));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-workspace-item-actions {
+    grid-column: 2;
+    grid-row: 2 / span 2;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-workspace-item-actions > button {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 0;
+    min-height: 0;
+    height: 28px;
+    padding: 0 var(--vcp-ui-space-3, 12px);
+    border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border, rgba(0, 0, 0, 0.12)));
+    border-radius: 8px;
+    background: transparent;
+    box-shadow: none;
+    font-family: var(--vcp-ui-font-family, inherit);
+    font-size: var(--vcp-ui-font-helper, 12px);
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color var(--vcp-ui-transition-fast, 120ms ease), border-color var(--vcp-ui-transition-fast, 120ms ease), color var(--vcp-ui-transition-fast, 120ms ease);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-workspace-item-actions > button.danger-button {
+    color: #b3402f;
+    border-color: var(--vcp-ui-border-subtle, var(--vcp-ui-border, rgba(0, 0, 0, 0.12)));
+    background: transparent;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-workspace-item-actions > button.danger-button:hover:not(:disabled) {
+    border-color: #b3402f;
+    background: rgba(179, 64, 47, 0.08);
+    color: #b3402f;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-workspace-item-actions > button:not(.danger-button) {
+    color: var(--vcp-ui-text-1, #666666);
+    border-color: var(--vcp-ui-border-subtle, var(--vcp-ui-border, rgba(0, 0, 0, 0.12)));
+    background: transparent;
+}
+
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal .vcp-workspace-item-actions > button:not(.danger-button) {
+    border-color: rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.7);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-workspace-item-actions > button:not(.danger-button):hover:not(:disabled) {
+    border-color: var(--vcp-ui-border-strong, rgba(0, 0, 0, 0.24));
+    background: var(--vcp-ui-fill-1, rgba(0, 0, 0, 0.04));
+    color: var(--vcp-ui-text-0, #111111);
+}
+
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal .vcp-workspace-item-actions > button:not(.danger-button):hover:not(:disabled) {
+    border-color: rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.08);
+    color: #FFFFFF;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-workspace-item-actions > button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-workspace-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    margin-top: 4px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-workspace-actions .vcp-settings-card-add-row {
+    flex: 1 1 auto;
+    width: auto;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-workspace-actions #rebuildWorkspacesBtn {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 0;
+    min-height: 0;
+    height: var(--vcp-ui-control-md, 32px);
+    padding: 0 var(--vcp-ui-space-3, 14px);
+    border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border, rgba(0, 0, 0, 0.12)));
+    border-radius: 8px;
+    color: var(--vcp-ui-text-1, #666666);
+    background: transparent;
+    box-shadow: none;
+    font-family: var(--vcp-ui-font-family, inherit);
+    font-size: var(--vcp-ui-font-helper, 13px);
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color var(--vcp-ui-transition-fast, 120ms ease), border-color var(--vcp-ui-transition-fast, 120ms ease), color var(--vcp-ui-transition-fast, 120ms ease);
+}
+
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal .vcp-workspace-actions #rebuildWorkspacesBtn {
+    border-color: rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.7);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-workspace-actions #rebuildWorkspacesBtn:hover:not(:disabled) {
+    border-color: var(--vcp-ui-border-strong, rgba(0, 0, 0, 0.24));
+    background: var(--vcp-ui-fill-1, rgba(0, 0, 0, 0.04));
+    color: var(--vcp-ui-text-0, #111111);
+}
+
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal .vcp-workspace-actions #rebuildWorkspacesBtn:hover:not(:disabled) {
+    border-color: rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.08);
+    color: #FFFFFF;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-workspace-actions #rebuildWorkspacesBtn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-workspace-status {
+    min-height: 1.2em;
+    font-size: var(--vcp-ui-font-caption, 12px);
+    color: var(--dsw-alias-label-tertiary, var(--vcp-ui-text-3));
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-workspace-status.is-error {
+    color: var(--dsw-state-error-primary, #d92d20);
+}
+
 /* Settings card: groups related rows behind a titled frame (e.g. the
    server-connection VCP fields). The wrapper is presentation-only — the
    canonical row projection and form serialization are untouched. */
@@ -212,7 +452,7 @@
 
 /* Card footer strip for row-level actions (e.g. the network-notes add
    button): right-aligned under a hairline, like the card action bars. */
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card[data-vcp-settings-card="network-notes"] .vcp-settings-card-body {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card:is([data-vcp-settings-card="network-notes"], [data-vcp-settings-card="workspace-manager"]) .vcp-settings-card-body {
     display: flex;
     flex-direction: column;
     padding: 16px 0 !important;

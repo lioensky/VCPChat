@@ -150,7 +150,7 @@ function hydrateWorkspacePanel(doc, refs) {
             const itemActions = doc.createElement('div');
             itemActions.className = 'vcp-workspace-item-actions';
             const rebuildButton = makeButton(doc, '重建索引', { ariaLabel: `重建工作区 ${ws.alias} 的索引` });
-            const removeButton = makeButton(doc, '移除', { className: 'sidebar-button small-button danger-button', ariaLabel: `移除工作区 ${ws.alias}` });
+            const removeButton = makeButton(doc, '删除', { className: 'sidebar-button small-button danger-button', ariaLabel: `删除工作区 ${ws.alias}` });
             itemActions.append(rebuildButton, removeButton);
 
             const commitAlias = async () => {
@@ -183,8 +183,8 @@ function hydrateWorkspacePanel(doc, refs) {
             });
             removeButton.addEventListener('click', async () => {
                 const confirmFn = doc.defaultView?.confirm;
-                if (typeof confirmFn === 'function' && !confirmFn(`移除工作区 "${ws.alias}"？\n只会取消登记，不会删除磁盘上的任何文件。`)) return;
-                handleResult(await api.removeWorkspace(ws.id), `已移除 ${ws.alias}。`);
+                if (typeof confirmFn === 'function' && !confirmFn(`删除工作区 "${ws.alias}"？\n只会取消登记，不会删除磁盘上的任何文件。`)) return;
+                handleResult(await api.removeWorkspace(ws.id), `已删除 ${ws.alias}。`);
             });
 
             item.append(head, pathNode, meta, itemActions);
