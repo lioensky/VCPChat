@@ -41,8 +41,10 @@ test('stream-fast protocol path is intentionally lightweight and does not create
     assert.deepEqual(result.meta.stepsApplied, [
         'strip-persona-backfill-tail',
         'normalize-emoticon-urls',
+        'protect-code-blocks',
         'deindent-misinterpreted-code-blocks',
         'apply-common-content-processors',
-        'normalize-adjacent-bold-boundaries'
+        'normalize-adjacent-bold-boundaries',
+        'restore-code-blocks'
     ]);
 });

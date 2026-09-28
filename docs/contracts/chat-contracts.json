@@ -75,6 +75,23 @@
     "evidence": ["npm run test:ui-system"]
   },
   {
+    "id": "loom.comfyui.agent-response-bridge",
+    "kind": "event",
+    "owner": "modules/loom/webcore/comfyui-main-world-bridge.js",
+    "status": "manual_required",
+    "dynamic": true,
+    "dynamicSites": [
+      { "file": "modules/loom/webcore/comfyui-main-world-bridge.js", "line": 271 },
+      { "file": "modules/loom/webcore/comfyui-main-world-bridge.js", "line": 276 }
+    ],
+    "producer": ["modules/loom/webcore/comfyui-main-world-bridge.js"],
+    "consumers": ["modules/loom/webcore/comfyui-page-adapter.js"],
+    "mode": "emit",
+    "durable": false,
+    "terminal": { "single": true, "late": "request-scoped" },
+    "evidence": ["RESPONSE_EVENT is the constant 'vcp-comfyui-agent-response'; exactly one success or error reply per set-widget-value requestId; no automated test yet"]
+  },
+  {
     "id": "snapshot.chat-stream.completed",
     "kind": "snapshot",
     "owner": "scripts/test-chat-transcript-snapshot.mjs",
