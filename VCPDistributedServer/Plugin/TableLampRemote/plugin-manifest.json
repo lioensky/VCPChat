@@ -27,5 +27,46 @@
         "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」TableLampRemote「末」,\ncommand:「始」LampControl「末」,\npower:「始」True「末」,\nbrightness:「始」100「末」\n<<<[END_TOOL_REQUEST]>>>"
       }
     ]
+  },
+  "jev": {
+    "schemaVersion": 1,
+    "enabled": true,
+    "category": "物联网控制",
+    "jevDescPrompt": "控制米家台灯Pro的开关、亮度（1~100）和色温（2500~4800），或查询台灯当前状态。",
+    "jevPrompt": "用户想开灯、需要照明时 power 为真；想关灯、要睡觉或不再需要照明时 power 为假；只调亮度或色温且未提及开关时不判断 power。",
+    "agentPrompt": "控制台灯时使用 {物联网控制} `TableLampRemote`。开关直接写“打开台灯/关闭台灯”；亮度写 [亮度:1~100]，色温写 [色温:2500~4800]；查询状态写“查询台灯状态”。",
+    "defaultCommand": "LampControl",
+    "commands": [
+      {
+        "commandIdentifier": "GetLampStatus",
+        "description": "查询台灯的开关、亮度和色温",
+        "aliases": ["查询", "状态", "查看"]
+      },
+      {
+        "commandIdentifier": "LampControl",
+        "description": "设置台灯开关、亮度或色温",
+        "aliases": ["打开", "关闭", "开灯", "关灯", "调节", "设置", "亮度", "色温"],
+        "parameters": {
+          "power": {
+            "type": "boolean",
+            "description": "台灯是否开启",
+            "trueAliases": ["打开", "开灯", "开启"],
+            "falseAliases": ["关闭", "关灯", "关掉"]
+          },
+          "brightness": {
+            "type": "text",
+            "source": "constraints",
+            "prefixes": ["亮度"],
+            "maxLength": 4
+          },
+          "color_temperature": {
+            "type": "text",
+            "source": "constraints",
+            "prefixes": ["色温"],
+            "maxLength": 5
+          }
+        }
+      }
+    ]
   }
 }

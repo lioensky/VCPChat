@@ -26,5 +26,64 @@
         "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」BladeGame「末」,\ncommand:「始」PlayTurn「末」,\naction:「始」Charge「末」,\nreason:「始」我需要积攒剑气来释放大招。「末」\n<<<[END_TOOL_REQUEST]>>>"
       }
     ]
+  },
+  "jev": {
+    "schemaVersion": 1,
+    "enabled": true,
+    "category": "媒体娱乐",
+    "jevDescPrompt": "华山论剑回合制武侠对战游戏：开局，或在每回合选择一个招式并附带演出台词。",
+    "jevPrompt": "招式以【】中的招式名为准。蓄势+1气；斩击0气1伤；轻霜踏雪1气2伤；寒梅逐鹿2气4伤并回血；回光无影3气9伤；御剑格挡减免4伤；太极两仪化解回光无影。用户只描述意图时：想攒气选蓄势，想防守选御剑格挡，担心对方大招选太极两仪。",
+    "agentPrompt": "开局：{媒体娱乐} `BladeGame` 【开始游戏】。出招：{媒体娱乐} `BladeGame` 我决定使出【招式名】，[台词]。招式名：蓄势、斩击、轻霜踏雪、寒梅逐鹿、回光无影、御剑格挡、太极两仪。[] 中的台词会原样显示在游戏里。",
+    "defaultCommand": "PlayTurn",
+    "commands": [
+      {
+        "commandIdentifier": "StartGame",
+        "description": "开始一局新的华山论剑",
+        "aliases": ["开始游戏", "开局", "新游戏", "开始对战"],
+        "parameters": {
+          "difficulty": {
+            "type": "text",
+            "source": "constraints",
+            "prefixes": ["难度"],
+            "maxLength": 50
+          }
+        }
+      },
+      {
+        "commandIdentifier": "PlayTurn",
+        "description": "执行本回合招式",
+        "aliases": ["出招", "使出", "施展", "蓄势", "斩击", "轻霜踏雪", "寒梅逐鹿", "回光无影", "御剑格挡", "太极两仪"],
+        "parameters": {
+          "action": {
+            "type": "enum",
+            "required": true,
+            "description": "本回合 AI 采取的招式",
+            "values": {
+              "Charge": "蓄势：剑气+1",
+              "Slash": "斩击：0气，1伤害",
+              "LightStep": "轻霜踏雪：1气，2伤害",
+              "PlumBlossom": "寒梅逐鹿：2气，4伤害并回血",
+              "Flash": "回光无影：3气，9伤害",
+              "Block": "御剑格挡：减免4点伤害",
+              "Taiji": "太极两仪：化解回光无影"
+            },
+            "aliases": {
+              "Charge": ["蓄势", "蓄气"],
+              "Slash": ["斩击"],
+              "LightStep": ["轻霜踏雪"],
+              "PlumBlossom": ["寒梅逐鹿"],
+              "Flash": ["回光无影"],
+              "Block": ["御剑格挡", "格挡"],
+              "Taiji": ["太极两仪", "太极"]
+            }
+          },
+          "reason": {
+            "type": "text",
+            "source": "constraints",
+            "maxLength": 200
+          }
+        }
+      }
+    ]
   }
 }
