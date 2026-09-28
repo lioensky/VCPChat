@@ -219,6 +219,19 @@ async function readDisk(abs) {
     return { exists: true, buffer, hash: sha256(buffer) };
 }
 
+/**
+ * 写盘前复核：读取与写入之间可能夹着 await（代码审查、回退规划），
+ * 期间文件若被外部修改（编辑器、其他插件、另一个工程），直接写入会静默覆盖。
+ * hash 不一致时放弃写入，交由调用方重新读取。
+ */
+async function assertDiskUnchanged(abs, expectedHash, rel) {
+    const now = await readDisk(abs);
+    if (now.hash !== expectedHash) {
+        const short = h => (h ? String(h).slice(0, 8) : '不存在');
+        throw new Error(`${P} ${rel} 在处理期间被外部修改（读取时 ${short(expectedHash)}，写入前 ${short(now.hash)}），为避免覆盖已放弃写入。请重新 ReadCode 后再操作。`);
+    }
+}
+
 function decodeText(buffer, rel) {
     if (buffer.length > runtime.maxEditSize) {
         throw new Error(`${P} ${rel} 超过可编辑上限 ${T.formatFileSize(runtime.maxEditSize)}。`);
@@ -668,6 +681,7 @@ async function commitEdit(ctx, file, plan) {
     const outBuf = encodeText(result.text, meta);
     s.putBlob(disk.buffer);
     const afterHash = s.putBlob(outBuf);
+    await assertDiskUnchanged(file.abs, disk.hash, file.rel);
     await fsp.writeFile(file.abs, outBuf);
     const stepReasons = plan.steps.filter(st => st.reason).map(st => `步骤${st.step}：${st.reason}`).join('；');
     let batchId;
@@ -752,6 +766,7 @@ async function createFile(args) {
         }
         if (disk.exists) s.putBlob(disk.buffer);
         const afterHash = s.putBlob(outBuf);
+        await assertDiskUnchanged(file.abs, disk.hash, file.rel);
         await fsp.mkdir(path.dirname(file.abs), { recursive: true });
         await fsp.writeFile(file.abs, outBuf);
         let batchId;
@@ -1116,22 +1131,54 @@ async function rollback(args) {
 
         const todo = items.filter(i => i.action !== '无需操作');
         if (!todo.length) return textResult(`## ℹ️ 无需回退：${label}\n${table}`, { command: 'Rollback', status: 'noop' });
-        const batchId = s.createBatch(ctx.project.id, 'rollback', A.str(args, 'reason') || label, maidOf(args));
-        const done = [];
-        for (const item of todo) {
-            if (item.disk.exists) s.putBlob(item.disk.buffer);
-            if (item.target === null) {
-                await moveToTrash(item.abs);
-            } else {
-                await fsp.mkdir(path.dirname(item.abs), { recursive: true });
-                await fsp.writeFile(item.abs, s.getBlob(item.target));
+        // 先写完所有文件，全部成功后再在一个事务里记批次与节点；
+        // 中途失败（例如文件被编辑器占用）时按逆序把已写入的文件恢复为回退前内容，不留下"回退了一半"的状态。
+        const applied = [];
+        try {
+            for (const item of todo) {
+                await assertDiskUnchanged(item.abs, item.disk.hash, item.rel);
+                if (item.disk.exists) s.putBlob(item.disk.buffer);
+                if (item.target === null) {
+                    await moveToTrash(item.abs);
+                } else {
+                    await fsp.mkdir(path.dirname(item.abs), { recursive: true });
+                    await fsp.writeFile(item.abs, s.getBlob(item.target));
+                }
+                applied.push(item);
             }
-            const nodeId = s.addNode({
-                projectId: ctx.project.id, batchId, filePath: item.rel, op: 'rollback',
-                beforeHash: item.disk.hash, afterHash: item.target, summary: label,
-            });
-            done.push(`\`${item.rel}\`：${item.action}（节点 \`n${nodeId}\`）`);
+        } catch (error) {
+            const unrestored = [];
+            for (const item of applied.slice().reverse()) {
+                try {
+                    if (item.disk.exists) {
+                        await fsp.mkdir(path.dirname(item.abs), { recursive: true });
+                        await fsp.writeFile(item.abs, item.disk.buffer);
+                    } else {
+                        await moveToTrash(item.abs);
+                    }
+                } catch (restoreError) {
+                    unrestored.push(`\`${item.rel}\`（${restoreError.message}）`);
+                }
+            }
+            const lines = [
+                `${P} 回退中途失败，未记录回退批次：${error.message}`,
+                `- 已写入的 ${applied.length} 个文件中，${applied.length - unrestored.length} 个已恢复为回退前内容。`,
+            ];
+            if (unrestored.length) lines.push(`- 以下文件未能自动恢复，请手动检查（回退前内容已存快照）：${unrestored.join('、')}`);
+            throw new Error(lines.join('\n'));
         }
+        let batchId;
+        const done = [];
+        s.transaction(() => {
+            batchId = s.createBatch(ctx.project.id, 'rollback', A.str(args, 'reason') || label, maidOf(args));
+            for (const item of applied) {
+                const nodeId = s.addNode({
+                    projectId: ctx.project.id, batchId, filePath: item.rel, op: 'rollback',
+                    beforeHash: item.disk.hash, afterHash: item.target, summary: label,
+                });
+                done.push(`\`${item.rel}\`：${item.action}（节点 \`n${nodeId}\`）`);
+            }
+        });
         return textResult([
             `## ✅ 已回退：${label}`,
             `- 回退批次 \`b${batchId}\`（回退本身也可再回退：Rollback batch=b${batchId}）`,
@@ -1392,6 +1439,7 @@ const gui = {
 
             let batchId;
             let newNodeId;
+            await assertDiskUnchanged(file.abs, disk.hash, node.file_path);
             if (disk.exists) s.putBlob(disk.buffer);
             if (target === null) {
                 await moveToTrash(file.abs);

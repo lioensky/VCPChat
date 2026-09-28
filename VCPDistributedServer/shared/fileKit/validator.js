@@ -6,7 +6,8 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { execFileSync } = require('child_process');
+const crypto = require('crypto');
+const { execFile } = require('child_process');
 
 let eslintInstances = null;
 let stylelintModule = null;
@@ -94,12 +95,28 @@ function validateJson(content) {
     }
 }
 
-function validatePython(content) {
-    const tempFile = path.join(os.tmpdir(), `vcp_val_${process.pid}_${Date.now()}.py`);
-    fs.writeFileSync(tempFile, content);
+// 异步执行 py_compile：同步调用最长阻塞 20s，且 reviewCode 前后各跑一次，
+// 在常驻进程（ProjectForge）中会卡住整个事件循环。临时文件名加随机后缀，避免并发校验同毫秒撞名。
+function execFileAsync(file, args, options) {
+    return new Promise((resolve, reject) => {
+        execFile(file, args, options, (error, stdout, stderr) => {
+            if (error) {
+                error.stdout = stdout;
+                error.stderr = stderr;
+                reject(error);
+            } else {
+                resolve({ stdout, stderr });
+            }
+        });
+    });
+}
+
+async function validatePython(content) {
+    const tempFile = path.join(os.tmpdir(), `vcp_val_${process.pid}_${Date.now()}_${crypto.randomBytes(4).toString('hex')}.py`);
+    await fs.promises.writeFile(tempFile, content);
     try {
         // 参数数组形式调用，不经过 shell，杜绝路径注入。
-        execFileSync('python', ['-m', 'py_compile', tempFile], { stdio: 'pipe', windowsHide: true, timeout: 20000 });
+        await execFileAsync('python', ['-m', 'py_compile', tempFile], { windowsHide: true, timeout: 20000 });
         return [];
     } catch (error) {
         if (error.code === 'ENOENT') return []; // 未安装 python：跳过校验而非报错
@@ -115,7 +132,7 @@ function validatePython(content) {
             fatal: true,
         }];
     } finally {
-        try { fs.unlinkSync(tempFile); } catch (_e) { /* 已删除 */ }
+        await fs.promises.unlink(tempFile).catch(() => { /* 已删除 */ });
     }
 }
 
@@ -143,7 +160,7 @@ async function validateCode(filePath, content) {
             case '.json':
                 return validateJson(text);
             case '.py':
-                return validatePython(text);
+                return await validatePython(text);
             default:
                 return [];
         }
