@@ -520,6 +520,8 @@
         "photo_library": "images",
         "pie_chart": "chart-pie",
         "pill": "pill",
+        "pin": "pin",
+        "push_pin": "pin",
         "place": "map-pin",
         "play_arrow": "play",
         "play_circle": "circle-play",

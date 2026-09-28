@@ -3,6 +3,7 @@ const { ipcMain, app, BrowserWindow, clipboard } = require('electron');
 const crypto = require('crypto');
 const path = require('path');
 const { PRELOAD_ROLES, resolveAppPreload } = require('../services/preloadPaths');
+const windowPinService = require('../services/windowPinService');
 
 /**
  * Initializes window control IPC handlers.
@@ -61,6 +62,32 @@ function initialize(mainWindow, openChildWindows) {
         if (win) {
             win.unmaximize();
         }
+    });
+
+    ipcMain.handle('toggle-pin-window', (event) => {
+        if (process.platform !== 'win32') return false;
+        const win = BrowserWindow.fromWebContents(event.sender);
+        if (!win || win === mainWindow) return false;
+        if (event.sender !== win.webContents) return false;
+        try {
+            const desktopHandlers = require('./desktopHandlers');
+            const desktopWindow = desktopHandlers.getDesktopWindow?.();
+            if (desktopWindow && win === desktopWindow) return false;
+        } catch (_) {}
+        return windowPinService.togglePin(win);
+    });
+
+    ipcMain.handle('is-window-pinned', (event) => {
+        if (process.platform !== 'win32') return false;
+        const win = BrowserWindow.fromWebContents(event.sender);
+        if (!win || win === mainWindow) return false;
+        if (event.sender !== win.webContents) return false;
+        try {
+            const desktopHandlers = require('./desktopHandlers');
+            const desktopWindow = desktopHandlers.getDesktopWindow?.();
+            if (desktopWindow && win === desktopWindow) return false;
+        } catch (_) {}
+        return windowPinService.isPinned(win);
     });
 
     ipcMain.on('close-window', (event) => {
@@ -432,6 +459,8 @@ function initialize(mainWindow, openChildWindows) {
         const WINDOW_APP_IDS = require('../services/windowAppIds');
         await windowService.open(WINDOW_APP_IDS.TASK);
     });
+
+    windowPinService.setupGlobalWindowPinObserver(app, mainWindow);
 
     ipcHandlersRegistered = true;
 }
