@@ -161,6 +161,9 @@ function createCatalog(ops) {
         closeWindow: command(() => ops.send(
             isEmbeddedSurface ? 'embedded-vchat-app:request-close' : 'close-window'
         )),
+        togglePinWindow: query(() => ops.invoke('toggle-pin-window')),
+        isWindowPinned: query(() => ops.invoke('is-window-pinned')),
+        onWindowPinnedChanged: subscription(ops.subscribe('window-pinned-changed', (_event, isPinned) => isPinned)),
         hideWindow: command(() => ops.send('hide-window')),
         openDevTools: command(() => ops.send('open-dev-tools')),
         sendToggleNotificationsSidebar: command(() => ops.send('toggle-notifications-sidebar')),
@@ -497,6 +500,9 @@ const ALLOWED_KEYS = [
     "maximizeWindow",
     "unmaximizeWindow",
     "closeWindow",
+    "togglePinWindow",
+    "isWindowPinned",
+    "onWindowPinnedChanged",
     "hideWindow",
     "openDevTools",
     "sendToggleNotificationsSidebar",
@@ -683,5 +689,245 @@ const roleApi = materializeApi(definitions, ALLOWED_KEYS);
 const compatApi = createCompatApi(definitions, ALLOWED_KEYS);
 
 exposeRoleApis('utilityAPI', roleApi, compatApi, ops);
+
+/**
+ * 窗口置顶控制按钮自动挂载增强器。
+ * 为各子窗口标题栏自动挂载置顶按钮并同步置顶状态。
+ *
+ * 排除范围：
+ * 1. 主聊天视口 (main.html)
+ * 2. 桌面底座窗口 (desktop.html)
+ * 3. 内嵌应用与 iframe (vcpEmbedded / .next-ui-internal-app-view)
+ */
+function isExcludedWindowContext() {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return true;
+
+    // 1. 主聊天视口排除
+    if (
+        document.body?.id === 'main-chat-window' ||
+        document.getElementById('nextUiHomeTab') ||
+        window.location.pathname.endsWith('main.html') ||
+        window.location.href.includes('main.html')
+    ) {
+        return true;
+    }
+
+    // 2. 桌面底座窗口排除
+    if (
+        document.body?.id === 'desktop-window' ||
+        window.location.pathname.endsWith('desktop.html') ||
+        window.location.href.includes('desktop.html') ||
+        window.location.search.includes('desktop-only')
+    ) {
+        return true;
+    }
+
+    // 3. 内嵌标签页 / 嵌入式应用 / iframe 排除
+    try {
+        if (window.top !== window) {
+            return true;
+        }
+    } catch (_) {
+        return true;
+    }
+
+    if (
+        document.documentElement?.dataset?.vcpEmbeddedApp === 'true' ||
+        new URLSearchParams(window.location.search).has('vcpEmbedded') ||
+        document.querySelector('.next-ui-internal-app-view')
+    ) {
+        return true;
+    }
+
+    return false;
+}
+
+function installUniversalPinControl() {
+    if (typeof document === 'undefined') return;
+
+    // 平台门禁：当前实现专精于 Windows 平台实机调优
+    const isWindows = typeof process !== 'undefined'
+        ? process.platform === 'win32'
+        : (typeof navigator !== 'undefined' && navigator.platform.toUpperCase().includes('WIN'));
+    if (!isWindows) return;
+
+    const allInjectedButtons = new Set();
+    const updateAllButtons = (isPinned) => {
+        const pinned = Boolean(isPinned);
+        for (const btn of allInjectedButtons) {
+            if (!btn.isConnected) {
+                allInjectedButtons.delete(btn);
+                continue;
+            }
+            btn.classList.toggle('is-pinned', pinned);
+            btn.setAttribute('aria-pressed', String(pinned));
+            btn.title = pinned ? '取消置顶' : '置顶窗口';
+        }
+        // 兜底同步当前文档内所有 Universal Pin 按钮，杜绝多容器或跨域注入导致的渲染孤立
+        try {
+            document.querySelectorAll('.vcp-universal-pin-btn').forEach(btn => {
+                btn.classList.toggle('is-pinned', pinned);
+                btn.setAttribute('aria-pressed', String(pinned));
+                btn.title = pinned ? '取消置顶' : '置顶窗口';
+            });
+        } catch (_) {}
+    };
+
+    try {
+        ops.subscribe('window-pinned-changed', (_event, isPinned) => {
+            updateAllButtons(isPinned);
+        });
+    } catch (_) {}
+
+    let mountScheduled = false;
+    const scheduleMount = () => {
+        if (mountScheduled) return;
+        mountScheduled = true;
+        (typeof requestAnimationFrame !== 'undefined' ? requestAnimationFrame : setTimeout)(() => {
+            mountScheduled = false;
+            tryMount();
+        }, 16);
+    };
+
+    const tryMount = () => {
+        if (isExcludedWindowContext()) return;
+
+        const candidateSelectors = [
+            '.window-controls-win',
+            '.window-controls:not(.window-controls-mac)',
+            '.mini-window-controls',
+            '.blade-window-controls',
+            '.vcp-ui-window-controls'
+        ];
+
+        const allContainers = Array.from(document.querySelectorAll(candidateSelectors.join(', ')));
+        if (!allContainers.length) return;
+
+        // 目标容器过滤：排除已被标记或包含置顶按钮的容器
+        const targetContainers = allContainers.filter(container => {
+            if (container.querySelector('.vcp-universal-pin-btn, .vcp-ui-window-control-pin')) return false;
+            if (container.classList.contains('window-controls-mac')) return false;
+            return true;
+        });
+
+        if (!targetContainers.length) return;
+
+        targetContainers.forEach(container => {
+            if (container.querySelector('.vcp-universal-pin-btn, .vcp-ui-window-control-pin')) return;
+            const sampleBtn = container.querySelector('button');
+            const sampleClass = sampleBtn ? sampleBtn.className : 'window-control-btn';
+
+            const pinBtn = document.createElement('button');
+            pinBtn.type = 'button';
+            pinBtn.className = `${sampleClass} vcp-universal-pin-btn`.trim();
+            pinBtn.title = '置顶窗口';
+            pinBtn.setAttribute('aria-label', '置顶窗口');
+            pinBtn.setAttribute('aria-pressed', 'false');
+
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('width', '11');
+            svg.setAttribute('height', '11');
+            svg.setAttribute('viewBox', '0 0 16 16');
+            svg.setAttribute('fill', 'currentColor');
+            svg.setAttribute('aria-hidden', 'true');
+            svg.style.pointerEvents = 'none';
+
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', 'M4.5 1.5 L11.5 1.5 L10.5 4.5 L12.5 8.5 L9 8.5 L9 14.5 L7 14.5 L7 8.5 L3.5 8.5 L5.5 4.5 Z');
+            svg.appendChild(path);
+            pinBtn.appendChild(svg);
+
+            allInjectedButtons.add(pinBtn);
+
+            pinBtn.addEventListener('click', async (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                try {
+                    const isPinned = await ops.invoke('toggle-pin-window');
+                    updateAllButtons(isPinned);
+                } catch (err) {
+                    console.warn('[UniversalPin] Toggle failed:', err);
+                }
+            });
+
+            ops.invoke('is-window-pinned').then(isPinned => {
+                if (isPinned) updateAllButtons(true);
+            }).catch(() => {});
+
+            // 优先插入到最小化/托盘按钮左侧
+            const minBtn = container.querySelector(
+                '#win-minimize-btn, #minimize-btn, #minimize-notes-btn, #minimize-music-btn, #minimize-theme-btn, #minimize-translator-btn, #minimize-viewer-btn, #blade-minimize-btn, .btn-minimize, .vcp-ui-window-control-button, [aria-label*="最小化"]'
+            );
+            const trayBtn = container.querySelector('#win-tray-btn');
+            const insertTarget = trayBtn || minBtn;
+
+            if (insertTarget && insertTarget.parentNode === container) {
+                container.insertBefore(pinBtn, insertTarget);
+            } else {
+                container.prepend(pinBtn);
+            }
+        });
+
+        if (!document.getElementById('vcp-universal-pin-style')) {
+            const style = document.createElement('style');
+            style.id = 'vcp-universal-pin-style';
+            style.textContent = `
+                .vcp-universal-pin-btn.is-pinned {
+                    color: var(--vcp-ui-primary, #6366f1) !important;
+                    background: var(--vcp-ui-primary-bg, rgba(99, 102, 241, 0.16)) !important;
+                }
+                .vcp-universal-pin-btn.is-pinned svg {
+                    transform: rotate(-15deg);
+                }
+            `;
+            (document.head || document.documentElement).appendChild(style);
+        }
+    };
+
+    const setupObserver = () => {
+        try {
+            const target = document.documentElement || document.body;
+            if (!target) return;
+            const observer = new MutationObserver((mutations) => {
+                const isOnlySelfMutation = mutations.length > 0 && mutations.every(m =>
+                    m.target?.classList?.contains?.('vcp-universal-pin-btn')
+                );
+                if (!isOnlySelfMutation) scheduleMount();
+            });
+            observer.observe(target, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeFilter: ['class', 'style']
+            });
+        } catch (_) {}
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            scheduleMount();
+            setupObserver();
+        }, { once: true });
+    } else {
+        scheduleMount();
+        setupObserver();
+    }
+
+    // 自销毁轻量轮询守护（对抗偶发性主进程卡顿或超长异步加载，成功挂载后立即停止，最多 3 秒）
+    let pollCount = 0;
+    const pollInterval = setInterval(() => {
+        pollCount++;
+        scheduleMount();
+        if (document.querySelector('.vcp-universal-pin-btn, .vcp-ui-window-control-pin') || pollCount >= 30) {
+            clearInterval(pollInterval);
+        }
+    }, 100);
+
+    if (typeof window !== 'undefined') {
+        window.addEventListener('load', scheduleMount, { once: true });
+    }
+}
+
+installUniversalPinControl();
 
 console.log('[Preload][utility] loaded');
