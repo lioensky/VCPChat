@@ -318,8 +318,8 @@ pip install -r requirements.txt
 <table width="100%">
   <tr>
     <td width="50%" align="center">
-      <img src="assets/E1-Vchat主界面.jpg" width="100%" style="border-radius: 8px;" /><br>
-      <b>NextVchat 主聊天工作台</b>
+      <img src="assets/E1.5-Vchat前端应用群.jpg" width="100%" style="border-radius: 8px;" /><br>
+      <b>NextVchat 前端应用群</b>
     </td>
     <td width="50%" align="center">
       <img src="assets/E5-V文坊.jpg" width="100%" style="border-radius: 8px;" /><br>
