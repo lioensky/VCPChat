@@ -1,0 +1,220 @@
+'use strict';
+// ProjectForge 集成测试：临时目录 + 注入的工作区门面与回收站，不触碰真实设置与系统回收站。
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+const forge = require('../VCPDistributedServer/Plugin/ProjectForge/ProjectForgeService');
+const engine = require('../VCPDistributedServer/Plugin/ProjectForge/engine');
+const { isPathInside } = require('../VCPDistributedServer/shared/fileKit/paths');
+
+let tmp;
+let wsRoot;
+let trashDir;
+
+function textOf(result) {
+    return result.content.filter(p => p.type === 'text').map(p => p.text).join('\n');
+}
+
+const call = args => forge.processToolCall(args);
+
+test.before(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pf-test-'));
+    wsRoot = path.join(tmp, 'ws');
+    trashDir = path.join(tmp, 'trash');
+    fs.mkdirSync(wsRoot, { recursive: true });
+    fs.mkdirSync(trashDir, { recursive: true });
+    forge.initialize({
+        dbPath: path.join(tmp, 'db', 'pf.db'),
+        services: {
+            workspaceService: {
+                list: () => [{ id: 'ws1', alias: 'demo', path: wsRoot, enabled: true, status: 'ready' }],
+                getActiveWorkspaceId: () => 'ws1',
+            },
+        },
+        trash: async abs => fs.renameSync(abs, path.join(trashDir, `${Date.now()}-${path.basename(abs)}`)),
+        logger: { log() {}, warn() {}, error() {} },
+    });
+});
+
+test.after(async () => {
+    await forge.cleanup();
+    fs.rmSync(tmp, { recursive: true, force: true });
+});
+
+async function newProject(name) {
+    const r = await call({ command: 'CreateProject', name, dir: name, todos: '写代码\n写测试' });
+    return r.details.project.id;
+}
+
+test('isPathInside 拒绝前缀相同的兄弟目录', () => {
+    assert.equal(isPathInside(path.join(tmp, 'ws', 'a.js'), path.join(tmp, 'ws')), true);
+    assert.equal(isPathInside(path.join(tmp, 'ws2', 'a.js'), path.join(tmp, 'ws')), false);
+});
+
+test('引擎：串内行号以原始快照为准，重叠报错', () => {
+    const src = 'a\nb\nc\nd\n';
+    const ok = engine.runEditString(src, [
+        { step: 1, op: 'replace', start: 1, end: 1, content: 'A\nA2' },
+        { step: 2, op: 'replace', start: 3, end: 3, content: 'C' },
+    ]);
+    assert.equal(ok.status, 'ok');
+    assert.equal(ok.text, 'A\nA2\nb\nC\nd\n');
+    const bad = engine.runEditString(src, [
+        { step: 1, op: 'replace', start: 1, end: 2, content: 'x' },
+        { step: 2, op: 'delete', start: 2, end: 3 },
+    ]);
+    assert.equal(bad.status, 'error');
+    assert.match(bad.errors[0].message, /重叠/);
+});
+
+test('工程生命周期：创建 → 编辑 → 歧义票据 → 回退 → 删除只动数据库', async () => {
+    const pid = await newProject('life');
+    const root = path.join(wsRoot, 'life');
+    assert.ok(fs.existsSync(root));
+
+    // reason 必填
+    await assert.rejects(call({ command: 'CreateFile', projectId: pid, path: 'a.js', content: 'x' }), /reason/);
+
+    const src = 'function a() {\n  return 1;\n}\nfunction b() {\n  return 1;\n}\n';
+    const created = await call({ command: 'CreateFile', projectId: pid, path: 'src/a.js', content: src, reason: '初始化' });
+    assert.equal(created.details.status, 'ok');
+    assert.equal(fs.readFileSync(path.join(root, 'src/a.js'), 'utf8'), src);
+
+    // 串语法：原始行号
+    const edited = await call({
+        command: 'EditCode', projectId: pid, path: 'src/a.js', reason: '改返回值', todo: '1',
+        op1: 'replace', start1: '2', end1: '2', content1: '  return 10;\n  // extra',
+        op2: 'replace', start2: '5', end2: '5', content2: '  return 20;',
+    });
+    assert.equal(edited.details.status, 'ok', textOf(edited));
+    assert.match(fs.readFileSync(path.join(root, 'src/a.js'), 'utf8'), /return 10;\n  \/\/ extra\n\}\nfunction b\(\) \{\n  return 20;/);
+    assert.match(textOf(edited), /```diff/);
+
+    // 歧义 → 票据 → ResolveEdit
+    const amb = await call({ command: 'EditCode', projectId: pid, path: 'src/a.js', reason: '统一注释', target: 'function', replace: 'async function' });
+    assert.equal(amb.details.status, 'ambiguous');
+    assert.match(textOf(amb), /候选 2 · L5/);
+    const resolved = await call({ command: 'ResolveEdit', ticketId: amb.details.ticketId, pick: '2' });
+    assert.equal(resolved.details.status, 'ok', textOf(resolved));
+    const afterResolve = fs.readFileSync(path.join(root, 'src/a.js'), 'utf8');
+    assert.match(afterResolve, /^function a\(\)/);
+    assert.match(afterResolve, /async function b\(\)/);
+
+    // 回退最近一次 → 回退回退（重做）
+    const rb = await call({ command: 'Rollback', projectId: pid, batch: 'last' });
+    assert.equal(rb.details.status, 'ok', textOf(rb));
+    assert.doesNotMatch(fs.readFileSync(path.join(root, 'src/a.js'), 'utf8'), /async/);
+    const redo = await call({ command: 'Rollback', projectId: pid, batch: 'last' });
+    assert.equal(redo.details.status, 'ok');
+    assert.match(fs.readFileSync(path.join(root, 'src/a.js'), 'utf8'), /async function b/);
+
+    // 外部修改 → 回退冲突，force 才执行
+    fs.writeFileSync(path.join(root, 'src/a.js'), 'manual\n');
+    const conflict = await call({ command: 'Rollback', projectId: pid, batch: `b${created.details.batchId}` });
+    assert.equal(conflict.details.status, 'conflict');
+
+    // RemoveFile 走回收站，Rollback 可恢复
+    const removed = await call({ command: 'RemoveFile', projectId: pid, path: 'src/a.js', reason: '不再需要' });
+    assert.equal(removed.details.removed, 1);
+    assert.equal(fs.existsSync(path.join(root, 'src/a.js')), false);
+    assert.equal(fs.readdirSync(trashDir).length, 1);
+    await call({ command: 'Rollback', projectId: pid, batch: `b${removed.details.batchId}` });
+    assert.equal(fs.readFileSync(path.join(root, 'src/a.js'), 'utf8'), 'manual\n');
+
+    // 历史搜索匹配 reason，外部修改被记录
+    const hist = await call({ command: 'SearchHistory', projectId: pid, keyword: '改返回值' });
+    assert.ok(hist.details.count >= 1);
+    const ext = await call({ command: 'SearchHistory', projectId: pid, op: 'external' });
+    assert.ok(ext.details.count >= 1);
+
+    // 报告与工程读取
+    await call({ command: 'UpdateTodos', projectId: pid, done: '1,2' });
+    const report = await call({ command: 'SubmitReport', projectId: pid, conclusion: '完成' });
+    assert.match(textOf(report), /开发脉络/);
+    const info = await call({ command: 'GetProject', projectId: pid });
+    assert.match(textOf(info), /2\/2/);
+    assert.match(textOf(info), /验收报告/);
+
+    // 删除工程只动数据库
+    await call({ command: 'DeleteProjects', projectIds: pid });
+    assert.ok(fs.existsSync(path.join(root, 'src/a.js')));
+    await assert.rejects(call({ command: 'GetProject', projectId: pid }), /不存在或已删除/);
+    await assert.rejects(call({ command: 'PurgeProjects', projectIds: pid }), /confirm/);
+    const purged = await call({ command: 'PurgeProjects', projectIds: pid, confirm: 'true' });
+    assert.deepEqual(purged.details.purged, [pid]);
+    assert.ok(fs.existsSync(path.join(root, 'src/a.js')));
+});
+
+test('ReadCode：行号、单文件行范围、find 消歧、越界拒绝', async () => {
+    const pid = await newProject('read');
+    await call({ command: 'CreateFile', projectId: pid, path: 'x.js', content: 'const a = 1;\nfunction f() {\n  a();\n}\nfunction g() {\n  a();\n}\n', reason: 'fixture' });
+    const r = await call({ command: 'ReadCode', projectId: pid, path: 'x.js:2-3' });
+    const t = textOf(r);
+    assert.match(t, /2 \| function f\(\)/);
+    assert.doesNotMatch(t, /function g/);
+    const f = await call({ command: 'ReadCode', projectId: pid, path: 'x.js', find: 'a();' });
+    assert.equal(f.details.total, 2);
+    assert.match(textOf(f), /in g/);
+    await assert.rejects(call({ command: 'ReadCode', projectId: pid, path: '../../outside.js' }), /越出工程根/);
+});
+
+test('EditCode：行号前缀剥除、expect 漂移、bestEffort、CRLF 保持', async () => {
+    const pid = await newProject('tol');
+    const file = path.join(wsRoot, 'tol', 'c.js');
+    await call({ command: 'CreateFile', projectId: pid, path: 'c.js', content: 'one\ntwo\nthree\n', reason: 'fixture' });
+    fs.writeFileSync(file, 'one\r\ntwo\r\nthree\r\n'); // 外部改为 CRLF
+    const r = await call({
+        command: 'EditCode', projectId: pid, path: 'c.js', reason: '容错', mode: 'bestEffort',
+        op1: 'replace', start1: '1', end1: '1', expect1: 'three', content1: '  3 | THREE',
+        op2: 'target', target2: 'not-exist', replace2: 'x',
+    });
+    assert.equal(r.details.status, 'ok', textOf(r));
+    assert.equal(r.details.skipped.length, 1);
+    assert.equal(fs.readFileSync(file, 'utf8'), 'one\r\ntwo\r\nTHREE\r\n');
+    assert.match(textOf(r), /漂移校正/);
+    assert.match(textOf(r), /剥除行号前缀/);
+});
+
+test('maid：多 Agent 署名持久化、byMaid 过滤、参与者统计', async () => {
+    const r = await call({ command: 'CreateProject', name: 'multi', dir: 'multi', maid: 'Nova' });
+    const pid = r.details.project.id;
+    assert.match(textOf(r), /@Nova/);
+    await call({ command: 'CreateFile', projectId: pid, path: 'm.js', content: 'a\nb\n', reason: '初始化', maid: 'Nova' });
+    await call({ command: 'EditCode', projectId: pid, path: 'm.js', reason: '改 b', start: '2', end: '2', content: 'B', maid: '{"name":"Aemeath","id":"agent-2"}' });
+    await call({ command: 'Rollback', projectId: pid, batch: 'last', maid: 'Cora' });
+
+    const byAemeath = await call({ command: 'SearchHistory', projectId: pid, byMaid: 'aemeath', maid: 'Nova' });
+    assert.equal(byAemeath.details.count, 1);
+    assert.equal(byAemeath.details.nodes[0].maid, 'Aemeath');
+
+    const info = textOf(await call({ command: 'GetProject', projectId: pid }));
+    for (const who of ['@Nova', '@Aemeath', '@Cora']) assert.ok(info.includes(who), `缺少 ${who}`);
+    assert.match(info, /创建者：@Nova/);
+
+    const report = textOf(await call({ command: 'SubmitReport', projectId: pid, conclusion: 'ok', maid: 'Cora' }));
+    assert.match(report, /提交者：@Cora/);
+    assert.match(report, /## 参与者/);
+});
+
+test('store：旧库自动补列迁移', () => {
+    const Database = require('better-sqlite3');
+    const { ProjectStore } = require('../VCPDistributedServer/Plugin/ProjectForge/store');
+    const dbPath = path.join(tmp, 'legacy.db');
+    const legacy = new Database(dbPath);
+    legacy.exec(`CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, workspace_id TEXT, workspace_alias TEXT,
+        root TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active', report TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT);
+        CREATE TABLE batches (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT NOT NULL, kind TEXT NOT NULL, summary TEXT, created_at TEXT NOT NULL);`);
+    legacy.close();
+    const s = new ProjectStore(dbPath);
+    const cols = t => s.db.prepare(`PRAGMA table_info(${t})`).all().map(c => c.name);
+    assert.ok(cols('batches').includes('maid') && cols('batches').includes('reason'));
+    assert.ok(cols('projects').includes('created_by') && cols('projects').includes('subpath'));
+    const p = s.createProject({ name: 'x', root: tmp, createdBy: 'Nova' });
+    const b = s.createBatch(p.id, 'edit', 'r', 'Nova');
+    assert.equal(s.getBatch(p.id, b).maid, 'Nova');
+    s.close();
+});

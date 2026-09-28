@@ -494,7 +494,9 @@ function startDistributedServerAfterRenderer() {
                 loomManager,
                 scriptoriumAgentControl,
                 pluginAgentOperationService,
-                chartService
+                chartService,
+                // 工作区只读门面：direct 插件据此动态获取写入白名单
+                workspaceService: workspaceHandlers.workspaceService
             });
             distributedServer = server;
             await server.initialize();

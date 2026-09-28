@@ -201,10 +201,35 @@ function dispose() {
     workspaceIndex = null;
 }
 
+/**
+ * 供主进程内其他服务（如 VCPDistributedServer 的 direct 插件）使用的稳定只读门面。
+ * 每次调用都读取当前 workspaceIndex，索引被重建/替换后无需重新注入。
+ * 只暴露已启用工作区的路径信息，不提供任何写入 settings 的能力。
+ */
+const workspaceService = Object.freeze({
+    /** 所有已登记工作区（含停用），字段：id, alias, path, enabled, status */
+    list() {
+        return workspaceIndex ? workspaceIndex.list().map(ws => ({
+            id: ws.id,
+            alias: ws.alias,
+            path: ws.path,
+            enabled: ws.enabled,
+            status: ws.status,
+        })) : [];
+    },
+    /** 已启用工作区的根目录列表，用作写入白名单 */
+    getEnabledRoots() {
+        return this.list().filter(ws => ws.enabled).map(ws => ws.path);
+    },
+    getActiveWorkspaceId,
+    resolveFile: resolveWorkspaceFile,
+});
+
 module.exports = {
     initialize,
     dispose,
     getWorkspaceIndex,
     getActiveWorkspaceId,
     resolveWorkspaceFile,
+    workspaceService,
 };

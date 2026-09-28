@@ -1,0 +1,138 @@
+{
+  "name": "ProjectForge",
+  "displayName": "工程施工台",
+  "version": "1.0.0",
+  "description": "面向 Agent 的工程化代码施工插件。创建工程获得 projectId，在工作区内做行级编辑（串语法、原始快照行号、歧义票据）、自动代码审查、每次改动自动存快照并记录 reason，可按批次/节点回退，支持 todo 进度与验收报告。写入白名单自动取自已启用的工作区。删除文件移到系统回收站；删除工程只动数据库。",
+  "author": "VCPToolBox",
+  "license": "MIT",
+  "pluginType": "hybridservice",
+  "communication": {
+    "protocol": "direct",
+    "timeout": 120000
+  },
+  "entryPoint": {
+    "type": "nodejs",
+    "script": "ProjectForgeService.js"
+  },
+  "configSchema": {
+    "ALLOWED_DIRECTORIES": {
+      "type": "string",
+      "description": "除已启用工作区外，额外允许写入的目录（绝对路径，逗号分隔）。通常留空即可。",
+      "default": ""
+    },
+    "PROJECTFORGE_DB_PATH": {
+      "type": "string",
+      "description": "SQLite 数据库路径。默认 AppData/ProjectForge/projectforge.db。",
+      "default": ""
+    },
+    "MAX_EDIT_FILE_SIZE": {
+      "type": "integer",
+      "description": "可编辑文本文件的最大字节数。",
+      "default": 5242880
+    },
+    "READ_MAX_FILES": {
+      "type": "integer",
+      "description": "ReadCode 单批最多读取的文件数。",
+      "default": 20
+    },
+    "READ_MAX_TOTAL_BYTES": {
+      "type": "integer",
+      "description": "ReadCode 单批最大总字节数（含图片等多模态文件）。",
+      "default": 31457280
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "command": "ListWorkspaces",
+        "description": "列出已登记的工作区（别名、路径、是否启用、当前工作区）。工程只能建在已启用的工作区内。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」ListWorkspaces「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "CreateProject",
+        "description": "创建工程并获得 projectId。name 必需；workspace 可选（工作区别名，不填则用当前工作区或唯一工作区）；dir 可选（工作区内子目录，作为工程根）；todos 可选（换行或逗号分隔的待办列表）。之后所有文件路径都相对工程根书写。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」CreateProject「末」,\nname:「始」登录页重构「末」,\nworkspace:「始」vcpchat「末」,\ntodos:「始」拆分表单组件\n补充输入校验\n编写单元测试「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "ListProjects",
+        "description": "查询工程。workspace 可选：工作区别名或 all（默认全部）；query 可选按名称/ID 过滤；includeDeleted=true 显示已删除工程。返回 ID、名称、状态、todo 进度、是否有报告。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」ListProjects「末」,\nworkspace:「始」all「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "GetProject",
+        "description": "轻量读取工程：名称、根目录、todo 进度、改动统计、最近开发脉络（按批次列出 reason 与涉及文件）、验收报告（如有）。projectId 必需；timeline 可选（显示条数，默认 8）。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」GetProject「末」,\nprojectId:「始」p1a2b「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "UpdateTodos",
+        "description": "更新 todo。projectId 必需。add：新增（换行或逗号分隔）；done / doing / pending / blocked / remove：序号列表（如 1,3）；seq + title / note：修改单项。编辑时带 todo=序号 会自动把该项标为 doing 并关联改动。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」UpdateTodos「末」,\nprojectId:「始」p1a2b「末」,\ndone:「始」1,2「末」,\nadd:「始」补充文档「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "ReadCode",
+        "description": "读取工程文件，默认带行号（showLine=false 关闭）。path：单个文件，可写成 src/a.js:40-80 指定行范围；lines：行范围（head:N、tail:N、M-N、N）；paths：多个文件（换行或逗号分隔，每项都可带 :M-N）；glob：通配批量读取（如 shots/*.png）。图片/音视频以多模态 image_url 返回，PDF/Word/Excel 自动提取文本。find：在所选文件中查找文本，返回每处命中的行号、所在函数和上下文（用于同名代码消歧）。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」ReadCode「末」,\nprojectId:「始」p1a2b「末」,\npaths:「始」src/login.js:1-60\nsrc/validate.js「末」\n<<<[END_TOOL_REQUEST]>>>\n\n批量读截图:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」ReadCode「末」,\nprojectId:「始」p1a2b「末」,\nglob:「始」artifacts/shots/*.png「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "EditCode",
+        "description": "行级编辑单个文件，写入前后自动做代码审查（只报告本次新增的问题）并返回 diff。projectId、path、reason 必需。\n单步：start/end/content 替换行（或 lines=M-N）；op=insert + after=N（0 为文件开头）+ content；op=delete + start/end；target/replace 精确文本替换。\n串语法：op1/start1/end1/content1、op2/target2/replace2 …，projectId 和 path 只写一次，所有行号都以编辑前的原始文件为准，不必自己计算偏移；区间重叠会报错。\n容错：expect=该行原文，行号有偏差时在 ±20 行内自动校正；粘贴带 `N | ` 前缀的内容会自动剥除；target 缩进不一致时自动匹配并对齐缩进。\ntarget 多处命中时不写入，返回候选（行号、所在函数、上下文）和 ticketId，再用 ResolveEdit 选择；也可预先给 line=近似行号 或 pick=候选序号。\n可选：mode=bestEffort（跳过失败步骤，默认 atomic 全部成功才写）、todo=序号、reasonN=单步原因、revertOnSyntaxError=true（引入语法错误时不写入）。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」EditCode「末」,\nprojectId:「始」p1a2b「末」,\npath:「始」src/login.js「末」,\nreason:「始」提交前校验邮箱格式，并修正按钮文案「末」,\ntodo:「始」2「末」,\nop1:「始」replace「末」,\nstart1:「始」12「末」,\nend1:「始」14「末」,\nexpect1:「始」function submit(form) {「末」,\ncontent1:「始ESCAPE」function submit(form) {\n  if (!isEmail(form.email)) return showError('邮箱格式不正确');\n  return api.login(form);「末ESCAPE」,\nop2:「始」target「末」,\ntarget2:「始」'登陆'「末」,\nreplace2:「始」'登录'「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "ResolveEdit",
+        "description": "为 EditCode 返回的歧义票据选择候选，无需重发内容。ticketId、pick 必需。单个歧义步骤：pick=2、pick=1,3 或 pick=all；多个歧义步骤：pick=2:1;5:3（步骤:候选）。票据 30 分钟有效；若文件在此期间变化且候选位置改变，会返回新的候选。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」ResolveEdit「末」,\nticketId:「始」t3f9a1c「末」,\npick:「始」2「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "CreateFile",
+        "description": "新建文件（自动创建父目录），写入后做代码审查。projectId、path、content、reason 必需。文件已存在时拒绝写入，确需整体覆盖请加 overwrite=true（旧内容会存快照）。可选 todo、revertOnSyntaxError。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」CreateFile「末」,\nprojectId:「始」p1a2b「末」,\npath:「始」src/validate.js「末」,\nreason:「始」抽出通用校验函数，供登录与注册复用「末」,\ncontent:「始ESCAPE」export function isEmail(value) {\n  return /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(value);\n}\n「末ESCAPE」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "RemoveFile",
+        "description": "删除文件：先把内容快照存入数据库，再移到系统回收站（不会硬删）。projectId、reason 必需；path 或 paths（多个）。即使回收站被清空，也可用 Rollback 恢复。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」RemoveFile「末」,\nprojectId:「始」p1a2b「末」,\npath:「始」src/legacyLogin.js「末」,\nreason:「始」旧登录逻辑已被 login.js 完全替代「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "MoveFile",
+        "description": "移动或重命名文件，目标已存在时拒绝。projectId、from、to、reason 必需。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」MoveFile「末」,\nprojectId:「始」p1a2b「末」,\nfrom:「始」src/util.js「末」,\nto:「始」src/utils/index.js「末」,\nreason:「始」工具函数统一放到 utils 目录「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "Rollback",
+        "description": "回退改动，回退本身也会生成新批次（可再回退，相当于重做）。projectId 必需，另选其一：batch=bX 撤销某个批次（batch=last 撤销最近一次）；toNode=nX 把整个工程恢复到该节点时的状态，配合 path 只恢复单个文件。dryRun=true 只预演不执行。磁盘内容与记录不一致（外部修改）或该文件之后还有改动时会拒绝执行，确认覆盖请加 force=true（当前内容仍会先存快照）。reason 可选。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」Rollback「末」,\nprojectId:「始」p1a2b「末」,\nbatch:「始」last「末」,\ndryRun:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "SearchHistory",
+        "description": "搜索施工的文件变动历史，每条记录都带操作者署名（@maid）。均可选：projectId（不填则搜全部工程）、file（路径通配，如 src/*.js）、keyword（匹配 reason、摘要与路径）、content（匹配改动后的文件内容）、byMaid（按操作者署名过滤，查看某个 Agent 做过什么）、todo（序号，需 projectId）、op（create/edit/delete/move/rollback/external）、batch、since/until（ISO 时间）、limit（默认 30）。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」SearchHistory「末」,\nprojectId:「始」p1a2b「末」,\nkeyword:「始」校验「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "GetNodeDiff",
+        "description": "查看某个节点或批次的完整 unified diff。projectId 必需；node=nX 或 batch=bX 二选一；maxLines 可选（默认 400）。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」GetNodeDiff「末」,\nprojectId:「始」p1a2b「末」,\nbatch:「始」b12「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "SubmitReport",
+        "description": "提交验收报告。插件根据数据库自动生成骨架（todo 完成情况、改动文件、开发脉络），你只需填写 conclusion（验收结论，必需）和 issues（遗留问题，可选）。status 可选：review（默认，待验收）、accepted（已验收）或 active（退回继续施工）。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」SubmitReport「末」,\nprojectId:「始」p1a2b「末」,\nconclusion:「始」登录页拆分完成，邮箱校验已接入，单元测试 12/12 通过。「末」,\nissues:「始」注册页尚未复用 validate.js「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "DeleteProjects",
+        "description": "批量删除工程（软删）。只修改数据库记录，绝不改动任何磁盘文件；可用 RestoreProjects 恢复。projectIds 必需（逗号或换行分隔）。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」DeleteProjects「末」,\nprojectIds:「始」p1a2b,p9x8y「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "RestoreProjects",
+        "description": "恢复被 DeleteProjects 删除的工程。projectIds 必需。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」RestoreProjects「末」,\nprojectIds:「始」p1a2b「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "PurgeProjects",
+        "description": "永久清除已删除工程的记录、todo、报告和全部历史快照，之后无法回退。只针对已 DeleteProjects 的工程，需要 confirm=true。磁盘文件不受影响。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」PurgeProjects「末」,\nprojectIds:「始」p9x8y「末」,\nconfirm:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>"
+      }
+    ]
+  }
+}

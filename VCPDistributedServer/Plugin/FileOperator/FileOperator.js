@@ -8,6 +8,7 @@ const mammoth = require('mammoth');
 const ExcelJS = require('exceljs');
 const axios = require('axios');
 const { validateCode } = require('./CodeValidator');
+const fileKit = require('../../shared/fileKit');
 
 // Load environment variables with fallback chain: config.env → .env → defaults
 const dotenv = require('dotenv');
@@ -132,36 +133,17 @@ function createLineEndingHelper(content) {
   };
 }
 
+// 白名单守卫：使用共享 fileKit，按路径层级判断包含关系，
+// 修复了旧实现 startsWith 前缀比较导致 D:\VCP 误放行 D:\VCP2 的越权问题。
+// 白名单外仅允许绝对路径的只读操作（ReadFile / FileInfo）。
+const pathGuard = fileKit.paths.createPathGuard(ALLOWED_DIRECTORIES, {
+  readOnlyBypassOps: ['ReadFile', 'FileInfo'],
+});
+
 function isPathAllowed(targetPath, operationType = 'generic') {
-  const resolvedPath = path.resolve(targetPath);
-
-  // 1. 如果在允许的目录内，则授予所有权限。
-  if (ALLOWED_DIRECTORIES.length > 0) {
-    const isInAllowedDir = ALLOWED_DIRECTORIES.some(allowedDir => {
-      const resolvedAllowedDir = path.resolve(allowedDir);
-      // Normalize to lower case for case-insensitive comparison, crucial for Windows
-      return resolvedPath.toLowerCase().startsWith(resolvedAllowedDir.toLowerCase());
-    });
-    if (isInAllowedDir) {
-      debugLog(`Path is within allowed directories. Access granted.`, { targetPath, operationType });
-      return true;
-    }
-  } else {
-    // 如果没有配置允许的目录，则允许所有操作（保持原有灵活性）。
-    debugLog('No ALLOWED_DIRECTORIES configured, allowing access to all paths.');
-    return true;
-  }
-
-  // 2. 如果路径在允许的目录之外，则只对只读操作开绿灯。
-  const readOnlyBypassOperations = ['ReadFile', 'FileInfo'];
-  if (readOnlyBypassOperations.includes(operationType) && path.isAbsolute(targetPath)) {
-    debugLog(`Path is outside allowed directories, but operation is a read-only bypass. Access granted.`, { targetPath, operationType });
-    return true;
-  }
-
-  // 3. 对于所有其他情况（例如，在沙箱外的写/删除操作），一律拒绝。
-  debugLog(`Access denied. Path is outside allowed directories and operation is not a read-only bypass.`, { targetPath, operationType });
-  return false;
+  const allowed = pathGuard.isAllowed(targetPath, operationType);
+  debugLog(allowed ? 'Access granted.' : 'Access denied.', { targetPath, operationType });
+  return allowed;
 }
 
 function formatFileSize(bytes) {
@@ -610,6 +592,7 @@ async function readFile(filePath, encoding = 'utf8', lines) {
 
 async function writeFile(filePath, content, encoding = 'utf8') {
   try {
+    filePath = resolveAndNormalizePath(filePath);
     debugLog('Writing file', { filePath, contentLength: content.length, encoding });
 
     if (!isPathAllowed(filePath, 'WriteFile')) {
@@ -1378,6 +1361,7 @@ async function editCanvas(target, replacement, encoding = 'utf8') {
 
 async function updateHistory(filePath, searchString, replaceString, encoding = 'utf8') {
   try {
+    filePath = resolveAndNormalizePath(filePath);
     debugLog('Updating history file', { filePath, searchString, replaceString });
 
     if (!isPathAllowed(filePath, 'UpdateHistory')) {
@@ -1508,7 +1492,8 @@ async function applyDiff(parameters) {
       }
     }
 
-    return await runValidationAndAttachResults(editResult, resolvedPath, newContent);
+    // editFile() 内部已执行过一次校验，这里不再重复校验，避免结果重复附加。
+    return editResult;
   } catch (error) {
     debugLog('Error in applyDiff', { error: error.message });
     return { success: false, error: `Failed to apply diff: ${error.message}` };
