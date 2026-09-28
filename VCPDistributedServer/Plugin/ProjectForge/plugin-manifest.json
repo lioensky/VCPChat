@@ -75,8 +75,8 @@
       },
       {
         "command": "EditCode",
-        "description": "行级编辑单个文件，写入前后自动做代码审查（只报告本次新增的问题）并返回 diff。projectId、path、reason 必需。\n单步：start/end/content 替换行（或 lines=M-N）；op=insert + after=N（0 为文件开头）+ content；op=delete + start/end；target/replace 精确文本替换。\n串语法：op1/start1/end1/content1、op2/target2/replace2 …，projectId 和 path 只写一次，所有行号都以编辑前的原始文件为准，不必自己计算偏移；区间重叠会报错。\n容错：expect=该行原文，行号有偏差时在 ±20 行内自动校正；粘贴带 `N | ` 前缀的内容会自动剥除；target 缩进不一致时自动匹配并对齐缩进。\ntarget 多处命中时不写入，返回候选（行号、所在函数、上下文）和 ticketId，再用 ResolveEdit 选择；也可预先给 line=近似行号 或 pick=候选序号。\n可选：mode=bestEffort（跳过失败步骤，默认 atomic 全部成功才写）、todo=序号、reasonN=单步原因、revertOnSyntaxError=true（引入语法错误时不写入）。",
-        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」EditCode「末」,\nprojectId:「始」p1a2b「末」,\npath:「始」src/login.js「末」,\nreason:「始」提交前校验邮箱格式，并修正按钮文案「末」,\ntodo:「始」2「末」,\nop1:「始」replace「末」,\nstart1:「始」12「末」,\nend1:「始」14「末」,\nexpect1:「始」function submit(form) {「末」,\ncontent1:「始ESCAPE」function submit(form) {\n  if (!isEmail(form.email)) return showError('邮箱格式不正确');\n  return api.login(form);「末ESCAPE」,\nop2:「始」target「末」,\ntarget2:「始」'登陆'「末」,\nreplace2:「始」'登录'「末」\n<<<[END_TOOL_REQUEST]>>>"
+        "description": "行级编辑单个文件，写入前后自动做代码审查（只报告本次新增的问题）并返回 diff。projectId、path、reason 必需。\n单步：start/end/content 替换行（或 lines=M-N）；op=insert + after=N（0 为文件开头，end 为末尾）或 before=N + content；op=delete + start/end；target/replace 精确文本替换。\n串语法：op1/start1/end1/content1、op2/target2/replace2 …，projectId 和 path 只写一次，所有行号都以编辑前的原始文件为准，不必自己计算偏移；区间重叠会报错。\n首尾锚定（替换大段代码时省 token）：target 只写首行、一行 `...`、尾行，即匹配首行到尾行之间的整段（整行），replace 为新内容（留空即删除该段）。首尾行可直接粘贴 ReadCode 的 `N | 代码`，按行号 ±20 行定位并校验内容；不带行号时按内容配对，尾行优先匹配与首行缩进相同的那一处。字面能匹配时不启用此语法。\n容错：expect=该行原文，行号有偏差时在 ±20 行内自动校正；粘贴带 `N | ` 前缀的内容会自动剥除；target 缩进不一致时自动匹配并对齐缩进。\ntarget 多处命中时不写入，返回候选（行号、所在函数、上下文）和 ticketId，再用 ResolveEdit 选择；也可预先给 line=近似行号 或 pick=候选序号。\n可选：mode=bestEffort（跳过失败步骤，默认 atomic 全部成功才写）、todo=序号、reasonN=单步原因、revertOnSyntaxError=true（引入语法错误时不写入）。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」EditCode「末」,\nprojectId:「始」p1a2b「末」,\npath:「始」src/login.js「末」,\nreason:「始」提交前校验邮箱格式，并修正按钮文案「末」,\ntodo:「始」2「末」,\nop1:「始」replace「末」,\nstart1:「始」12「末」,\nend1:「始」14「末」,\nexpect1:「始」function submit(form) {「末」,\ncontent1:「始ESCAPE」function submit(form) {\n  if (!isEmail(form.email)) return showError('邮箱格式不正确');\n  return api.login(form);「末ESCAPE」,\nop2:「始」target「末」,\ntarget2:「始」'登陆'「末」,\nreplace2:「始」'登录'「末」\n<<<[END_TOOL_REQUEST]>>>\n\n首尾锚定替换整个函数:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」EditCode「末」,\nprojectId:「始」p1a2b「末」,\npath:「始」src/login.js「末」,\nreason:「始」重写 render，改用模板渲染「末」,\ntarget:「始ESCAPE」40 | function render(state) {\n...\n88 | }「末ESCAPE」,\nreplace:「始ESCAPE」function render(state) {\n  return template(state);\n}「末ESCAPE」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
         "command": "ResolveEdit",
@@ -97,6 +97,16 @@
         "command": "MoveFile",
         "description": "移动或重命名文件，目标已存在时拒绝。projectId、from、to、reason 必需。",
         "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」MoveFile「末」,\nprojectId:「始」p1a2b「末」,\nfrom:「始」src/util.js「末」,\nto:「始」src/utils/index.js「末」,\nreason:「始」工具函数统一放到 utils 目录「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "MoveCode",
+        "description": "剪切一段整行代码，粘贴到同一文件或另一文件的目标行（相当于剪切 + 粘贴）。projectId、from、reason 必需。\n源块：from=src/a.js:40-60，或 from=src/a.js 配合 lines=M-N / start+end（可带 expect 做漂移校正）/ target（支持首尾锚定“首行 … 尾行”，多处命中时返回候选，加 pick 或 line 重发）。\n目标：to=目标文件（省略则为同一文件；不存在会新建）+ after=N（0 为开头、end 为末尾）或 before=N。所有行号都以本次调用前的原文为准，同文件移动不必计算偏移。\nindent 可选：auto（默认，对齐目标位置的缩进）、keep、N（绝对空格数）、+N / -N。\n跨文件时两个文件的改动记为同一批次，Rollback batch=bX 可整体撤销。可选 todo、revertOnSyntaxError。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」MoveCode「末」,\nprojectId:「始」p1a2b「末」,\nfrom:「始」src/login.js:40-58「末」,\nto:「始」src/validate.js「末」,\nafter:「始」end「末」,\nreason:「始」校验函数移到 validate.js 统一维护「末」\n<<<[END_TOOL_REQUEST]>>>\n\n首尾锚定选源块:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」MoveCode「末」,\nprojectId:「始」p1a2b「末」,\nfrom:「始」src/login.js「末」,\ntarget:「始ESCAPE」40 | function isEmail(value) {\n...\n58 | }「末ESCAPE」,\nbefore:「始」12「末」,\nreason:「始」工具函数放到文件前部「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "CopyCode",
+        "description": "复制一段整行代码到同一文件或另一文件的目标行，源文件不变。参数与 MoveCode 相同：from（可带 :M-N）/ lines / start+end / target、to、after / before、indent、reason。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」CopyCode「末」,\nprojectId:「始」p1a2b「末」,\nfrom:「始」src/login.js:20-35「末」,\nto:「始」src/register.js「末」,\nafter:「始」8「末」,\nreason:「始」注册页复用同一段表单校验「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
         "command": "Rollback",

@@ -522,7 +522,8 @@ async function findInFiles(ctx, targets, needle) {
         let meta;
         try { meta = decodeText(disk.buffer, t.rel); } catch (_e) { continue; }
         const idx = engine.buildIndex(meta.text);
-        const hits = engine.findTarget(idx, query);
+        let hits;
+        try { hits = engine.locateTarget(idx, query).hits; } catch (_e) { hits = []; } // 首尾锚定未命中视为 0 处
         total += hits.length;
         for (const h of hits.slice(0, Math.max(0, 30 - out.length))) {
             const scope = engine.enclosingScope(idx, h.startLine);
@@ -843,6 +844,206 @@ async function moveFile(args) {
     });
 }
 
+// ============================ 代码块搬运 ============================
+
+/** 源代码块：target（支持首尾锚定）优先；否则 start/end、lines，最后取 from 里的 :M-N。 */
+function blockSpecOf(args, rangeFromPath) {
+    const spec = {};
+    const target = A.pick(args, 'target', 'block');
+    if (target !== undefined) {
+        spec.target = String(target);
+        if (A.pick(args, 'line') !== undefined) spec.line = A.pick(args, 'line');
+        if (A.pick(args, 'pick') !== undefined) spec.pick = A.pick(args, 'pick');
+        return spec;
+    }
+    if (A.pick(args, 'start') !== undefined) {
+        spec.start = A.pick(args, 'start');
+        spec.end = A.pick(args, 'end');
+    } else if (A.str(args, 'lines')) {
+        spec.lines = A.str(args, 'lines');
+    } else if (rangeFromPath) {
+        spec.lines = rangeFromPath;
+    } else {
+        throw new Error(`${P} 需要指定源代码块：from=文件:M-N、lines=M-N、start/end，或 target（支持“首行 … 尾行”首尾锚定）。`);
+    }
+    if (A.pick(args, 'expect') !== undefined) spec.expect = String(A.pick(args, 'expect'));
+    return spec;
+}
+
+function indentLabel(ws) {
+    if (!ws) return '无缩进';
+    const tabs = (ws.match(/\t/g) || []).length;
+    return tabs === ws.length ? `${tabs} 个 Tab` : `${ws.replace(/\t/g, '    ').length} 空格`;
+}
+
+function renderBlockAmbiguity(file, command, a, notes) {
+    const lang = T.languageOf(file.rel);
+    return [
+        `## ⚠️ 源 target 共命中 ${a.total} 处，未执行 · \`${file.rel}\`${a.tooMany ? `（仅列出前 ${a.candidates.length} 处）` : ''}`,
+        `- 下一步：保留原参数，加 pick=候选序号（或 line=近似行号）重发 ${command}。`,
+        notes.length ? `- 提示：${notes.join('；')}` : '',
+        ...a.candidates.map(c => `#### 候选 ${c.index} · L${c.startLine}-${c.endLine}${c.scope ? ` · in ${c.scope}` : ''}\n${T.markdownFence(c.context, lang)}`),
+    ].filter(Boolean).join('\n');
+}
+
+function engineOk(result, rel) {
+    if (result.status === 'ok') return result;
+    const msg = result.errors.map(e => `${e.message}${renderHints(e.hints)}`).join('；') || '未知错误';
+    throw new Error(`${P} ${rel}：${msg}`);
+}
+
+/**
+ * MoveCode / CopyCode：把一段整行代码剪切或复制到（同一或另一文件的）目标行。
+ * 所有行号都以本次调用前的原文为准；同文件时删除与插入在同一快照上一次完成。
+ * 跨文件时两个文件的改动落在同一批次，Rollback batch=bX 可整体撤销。
+ */
+async function transferCode(args, kind) {
+    const isMove = kind === 'move';
+    const command = isMove ? 'MoveCode' : 'CopyCode';
+    const reason = A.requireReason(args, command);
+    const ctx = projectOf(args, { write: true });
+    const fromRaw = A.str(args, 'from', 'source', 'path', 'file');
+    if (!fromRaw) throw new Error(`${P} ${command} 需要 from（源文件，可写成 src/a.js:40-60）。`);
+    const { path: fromPath, lines: rangeFromPath } = splitPathRange(fromRaw);
+    const toRaw = A.str(args, 'to', 'dest', 'destination');
+    const src = fileOf(ctx, fromPath, { write: isMove || !toRaw });
+    const dst = toRaw ? fileOf(ctx, toRaw, { write: true }) : src;
+    const spec = blockSpecOf(args, rangeFromPath);
+    const pos = { after: A.pick(args, 'after'), before: A.pick(args, 'before') };
+    const indentSpec = A.str(args, 'indent') || 'auto';
+    const opts = editOptions(args);
+    const todo = todoOf(ctx.project, args);
+    const maid = maidOf(args);
+
+    return withLock(ctx.project.id, async () => {
+        const s = store();
+        const notes = [];
+        const same = dst.rel === src.rel;
+
+        const srcDisk = await readDisk(src.abs);
+        if (!srcDisk.exists) throw new Error(`${P} 源文件不存在：${src.rel}`);
+        const srcMeta = decodeText(srcDisk.buffer, src.rel);
+        let block;
+        try {
+            block = engine.resolveBlock(srcMeta.text, spec, { drift: opts.drift });
+        } catch (error) {
+            throw new Error(`${P} 源代码块定位失败 · ${src.rel}：${error.message}${renderHints(error.hints)}`);
+        }
+        notes.push(...block.notes);
+        if (block.status === 'ambiguous') {
+            return textResult(renderBlockAmbiguity(src, command, block.ambiguity, notes),
+                { command, status: 'ambiguous', candidates: block.ambiguity.candidates.length });
+        }
+        if (block.note) notes.push(block.note);
+
+        const dstDisk = same ? srcDisk : await readDisk(dst.abs);
+        const dstMeta = dstDisk.exists ? (same ? srcMeta : decodeText(dstDisk.buffer, dst.rel)) : null;
+        const dstText = dstMeta ? dstMeta.text : '';
+        const dstIdx = engine.buildIndex(dstText);
+        if (!dstDisk.exists && pos.after === undefined && pos.before === undefined) pos.after = 0;
+        if (pos.after === undefined && pos.before === undefined) {
+            throw new Error(`${P} ${command} 需要目标位置：after=N（0 为文件开头、end 为末尾）或 before=N。行号以本次调用前的原文为准。`);
+        }
+        let point;
+        try { point = engine.insertPoint(dstIdx, pos); } catch (error) { throw new Error(`${P} ${dst.rel}：${error.message}`); }
+        const pointText = point.kind === 'before' ? `L${point.after + 1}之前` : `L${point.after}之后`;
+        if (same && isMove && point.after >= block.startLine && point.after < block.endLine) {
+            throw new Error(`${P} 目标位置 ${pointText} 位于源块 L${block.startLine}-${block.endLine} 内部。`);
+        }
+
+        const skip = same && isMove ? [block.startLine, block.endLine] : null;
+        const refIndent = dstDisk.exists ? engine.autoIndent(dstIdx, point.after, skip) : '';
+        let shifted;
+        try { shifted = engine.shiftIndent(block.text, indentSpec, refIndent); } catch (error) { throw new Error(`${P} ${error.message}`); }
+        if (shifted.from !== shifted.to) notes.push(`缩进已调整：${indentLabel(shifted.from)} → ${indentLabel(shifted.to)}`);
+
+        const delStep = { step: 1, op: 'delete', start: block.startLine, end: block.endLine };
+        const insStep = { step: 2, op: 'insert', after: point.after, content: shifted.text, raw: true };
+        const changes = [];
+        let placed;
+        if (same) {
+            const r = engineOk(engine.runEditString(srcMeta.text, isMove ? [delStep, insStep] : [insStep], { drift: opts.drift }), src.rel);
+            placed = r.applied.find(a => a.step === 2)?.newRanges[0];
+            changes.push({ file: src, disk: srcDisk, meta: srcMeta, before: srcMeta.text, after: r.text, op: 'edit' });
+        } else {
+            const r = engineOk(engine.runEditString(dstText, [insStep], { drift: opts.drift }), dst.rel);
+            placed = r.applied[0]?.newRanges[0];
+            changes.push({
+                file: dst, disk: dstDisk, meta: dstMeta || { bom: false, lineEnding: srcMeta.lineEnding },
+                before: dstText, after: r.text, op: dstDisk.exists ? 'edit' : 'create',
+            });
+            if (isMove) {
+                const rs = engineOk(engine.runEditString(srcMeta.text, [delStep], { drift: opts.drift }), src.rel);
+                changes.push({ file: src, disk: srcDisk, meta: srcMeta, before: srcMeta.text, after: rs.text, op: 'edit' });
+            }
+        }
+        const effective = changes.filter(c => c.after !== c.before || !c.disk.exists);
+        if (!effective.length) {
+            return textResult(`## ℹ️ 内容无变化，未写入 · \`${src.rel}\` L${block.startLine}-${block.endLine} → ${pointText}`, { command, status: 'unchanged' });
+        }
+
+        for (const c of effective) {
+            c.review = await reviewCode(c.file.abs, c.before, c.after);
+            c.diff = renderDiff(c.before, c.after, c.file.rel);
+        }
+        if (opts.revertOnSyntaxError && effective.some(c => c.review.introduced.some(d => d.fatal))) {
+            return textResult([
+                `## ❌ ${command} 会引入语法错误，已按 revertOnSyntaxError 放弃写入`,
+                ...effective.map(c => [`### \`${c.file.rel}\``, renderReview(c.review), c.diff.block].filter(Boolean).join('\n')),
+            ].join('\n'), { command, status: 'rejected' });
+        }
+
+        // 外部修改先记账，保证回退不会吞掉手动改动
+        for (const c of effective) {
+            if (!c.disk.exists) continue;
+            const note = recordExternalDrift(ctx.project, c.file.rel, c.disk);
+            if (note) notes.push(note);
+        }
+        // 先写目标、后删源：中途失败时最多多出一份副本，不会丢代码
+        for (const c of effective) {
+            if (c.disk.exists) s.putBlob(c.disk.buffer);
+            c.outBuf = encodeText(c.after, c.meta);
+            c.afterHash = s.putBlob(c.outBuf);
+            await fsp.mkdir(path.dirname(c.file.abs), { recursive: true });
+            await fsp.writeFile(c.file.abs, c.outBuf);
+        }
+        const srcLabel = `${src.rel} L${block.startLine}-${block.endLine}`;
+        const dstLabel = `${dst.rel} ${pointText}`;
+        let batchId;
+        s.transaction(() => {
+            batchId = s.createBatch(ctx.project.id, 'edit', reason, maid);
+            for (const c of effective) {
+                let summary;
+                if (same) summary = `${isMove ? '剪切' : '复制'} L${block.startLine}-${block.endLine} → ${pointText}`;
+                else if (c.file === src) summary = `剪切 L${block.startLine}-${block.endLine} → ${dstLabel}`;
+                else summary = `${isMove ? '移入' : '复制'} ← ${srcLabel}（${pointText}）`;
+                c.nodeId = s.addNode({
+                    projectId: ctx.project.id, batchId, filePath: c.file.rel, op: c.op,
+                    beforeHash: c.disk.hash, afterHash: c.afterHash, todoId: todo?.id ?? null,
+                    summary, added: c.diff.added, removed: c.diff.removed,
+                });
+            }
+        });
+
+        return textResult([
+            `## ✅ 已${isMove ? '剪切' : '复制'} · \`${srcLabel}\` → \`${dstLabel}\``,
+            `- 批次 \`b${batchId}\` · 节点 ${effective.map(c => `\`n${c.nodeId}\`（${c.file.rel}）`).join('、')} · 工程 \`${ctx.project.id}\` · ${whoOf(maid)}`,
+            `- reason：${reason}`,
+            `- 源块：L${block.startLine}-${block.endLine}（${block.lineCount} 行）${block.scope ? ` · in ${block.scope}` : ''}`,
+            `- 落点：\`${dst.rel}\` ${placed || pointText}（新行号）${dstDisk.exists ? '' : '（新建文件）'}`,
+            notes.length ? `- 提示：${notes.join('；')}` : '',
+            `- 可用 Rollback batch=b${batchId} 整体撤销。`,
+            ...effective.map(c => [`### \`${c.file.rel}\``, renderReview(c.review), c.diff.block].filter(Boolean).join('\n')),
+        ].filter(Boolean).join('\n'), {
+            command, status: 'ok', batchId, nodeIds: effective.map(c => c.nodeId),
+            source: { path: src.rel, startLine: block.startLine, endLine: block.endLine }, placed,
+        });
+    });
+}
+
+const moveCode = args => transferCode(args, 'move');
+const copyCode = args => transferCode(args, 'copy');
+
 // ============================ 回退 ============================
 
 function planBatchRollback(project, batch) {
@@ -1032,12 +1233,14 @@ const COMMANDS = {
     createfile: createFile,
     removefile: removeFile,
     movefile: moveFile,
+    movecode: moveCode,
+    copycode: copyCode,
     rollback,
     searchhistory: searchHistory,
     getnodediff: getNodeDiff,
 };
 
-const COMMAND_NAMES = 'ListWorkspaces、CreateProject、ListProjects、GetProject、UpdateTodos、SubmitReport、DeleteProjects、RestoreProjects、PurgeProjects、ReadCode、EditCode、ResolveEdit、CreateFile、RemoveFile、MoveFile、Rollback、SearchHistory、GetNodeDiff';
+const COMMAND_NAMES = 'ListWorkspaces、CreateProject、ListProjects、GetProject、UpdateTodos、SubmitReport、DeleteProjects、RestoreProjects、PurgeProjects、ReadCode、EditCode、ResolveEdit、CreateFile、RemoveFile、MoveFile、MoveCode、CopyCode、Rollback、SearchHistory、GetNodeDiff';
 
 async function processToolCall(rawArgs = {}, _executionContext = {}) {
     if (!rawArgs || typeof rawArgs !== 'object' || Array.isArray(rawArgs)) {

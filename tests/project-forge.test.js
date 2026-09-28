@@ -270,3 +270,93 @@ test('GUI 门面：只读浏览 + 署名单文件回退（预检 / 冲突 / forc
     assert.equal(fs.readFileSync(file, 'utf8'), 'v2\n');
     assert.ok(forge.gui.getProject(pid).contributors.some(c => c.maid === '主人'));
 });
+
+test('引擎：首尾锚定 target（带行号 / 按内容配对缩进 / 字面优先）', () => {
+    const src = 'function a() {\n  if (x) {\n    y();\n  }\n  return 1;\n}\nfunction b() {}\n';
+
+    // 不带行号：尾行优先配对与首行同缩进的 `}`，而不是内层的 `  }`
+    const byContent = engine.runEditString(src, [{ step: 1, op: 'target', target: 'function a() {\n...\n}', replace: 'function a() {}' }]);
+    assert.equal(byContent.status, 'ok', JSON.stringify(byContent.errors));
+    assert.equal(byContent.text, 'function a() {}\nfunction b() {}\n');
+    assert.match(byContent.applied[0].note, /首尾锚定命中 L1-6/);
+
+    // 带 ReadCode 行号前缀：按行号定位，尾行可指定内层
+    const byLine = engine.runEditString(src, [{ step: 1, op: 'target', target: '1 | function a() {\n...\n4 |   }', replace: 'function a() {' }]);
+    assert.equal(byLine.status, 'ok', JSON.stringify(byLine.errors));
+    assert.equal(byLine.text, 'function a() {\n  return 1;\n}\nfunction b() {}\n');
+
+    // 行号有偏差时 ±drift 校正；内容对不上则报错并给出建议
+    const drifted = engine.runEditString(src, [{ step: 1, op: 'target', target: '3 | function a() {\n…\n8 | }', replace: '' }]);
+    assert.equal(drifted.status, 'ok', JSON.stringify(drifted.errors));
+    assert.equal(drifted.text, 'function b() {}\n');
+    const missing = engine.runEditString(src, [{ step: 1, op: 'target', target: 'function zzz() {\n...\n}', replace: '' }]);
+    assert.equal(missing.status, 'error');
+    assert.match(missing.errors[0].message, /首行/);
+
+    // 字面能匹配时不启用首尾语法（Python 的 ... 占位）
+    const py = 'def f():\n    ...\n\ndef g():\n    pass\n';
+    const lit = engine.runEditString(py, [{ step: 1, op: 'target', target: 'def f():\n    ...', replace: 'def f():\n    return 1' }]);
+    assert.equal(lit.text, 'def f():\n    return 1\n\ndef g():\n    pass\n');
+
+    // 多处命中照常返回歧义
+    const twice = 'if (a) {\n  x();\n}\nif (b) {\n  x();\n}\n';
+    const amb = engine.runEditString(twice, [{ step: 1, op: 'target', target: '  x();\n...\n}', replace: '' }]);
+    assert.equal(amb.status, 'ambiguous');
+    assert.equal(amb.ambiguities[0].total, 2);
+});
+
+test('引擎：insert before=N / after=end', () => {
+    const src = 'a\nb\nc\n';
+    const r = engine.runEditString(src, [
+        { step: 1, op: 'insert', before: 1, content: 'top' },
+        { step: 2, op: 'insert', before: 3, content: 'mid' },
+        { step: 3, op: 'insert', after: 'end', content: 'bottom' },
+    ]);
+    assert.equal(r.status, 'ok', JSON.stringify(r.errors));
+    assert.equal(r.text, 'top\na\nb\nmid\nc\nbottom\n');
+});
+
+test('MoveCode / CopyCode：同文件剪切、跨文件剪切 + 整批回退、复制对齐缩进、歧义候选', async () => {
+    const pid = await newProject('xfer');
+    const root = path.join(wsRoot, 'xfer');
+    const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
+
+    // 同文件：行号均以原文为准
+    await call({ command: 'CreateFile', projectId: pid, path: 'l.txt', content: 'a\nb\nc\nd\ne\n', reason: 'fixture' });
+    const same = await call({ command: 'MoveCode', projectId: pid, from: 'l.txt:2-3', after: '4', reason: '调整顺序' });
+    assert.equal(same.details.status, 'ok', textOf(same));
+    assert.equal(read('l.txt'), 'a\nd\nb\nc\ne\n');
+    await assert.rejects(call({ command: 'MoveCode', projectId: pid, from: 'l.txt:2-4', after: '3', reason: 'x' }), /源块/);
+
+    // 跨文件剪切：目标不存在时新建，两文件同批次，Rollback 整体撤销
+    const lib = 'const k = 1;\nfunction helper(v) {\n  if (v) {\n    return v;\n  }\n  return k;\n}\nmodule.exports = { k };\n';
+    await call({ command: 'CreateFile', projectId: pid, path: 'lib.js', content: lib, reason: 'fixture' });
+    const cut = await call({
+        command: 'MoveCode', projectId: pid, from: 'lib.js', to: 'util/helper.js',
+        target: '2 | function helper(v) {\n...\n7 | }', reason: '抽出 helper',
+    });
+    assert.equal(cut.details.status, 'ok', textOf(cut));
+    assert.equal(read('lib.js'), 'const k = 1;\nmodule.exports = { k };\n');
+    assert.equal(read('util/helper.js'), 'function helper(v) {\n  if (v) {\n    return v;\n  }\n  return k;\n}\n');
+    assert.equal(cut.details.nodeIds.length, 2);
+    const rb = await call({ command: 'Rollback', projectId: pid, batch: `b${cut.details.batchId}` });
+    assert.equal(rb.details.status, 'ok', textOf(rb));
+    assert.equal(read('lib.js'), lib);
+    assert.equal(fs.existsSync(path.join(root, 'util/helper.js')), false);
+
+    // 复制：源不变，缩进自动对齐到目标位置
+    await call({ command: 'CreateFile', projectId: pid, path: 'cls.js', content: 'class A {\n  m() {}\n}\n', reason: 'fixture' });
+    const copy = await call({ command: 'CopyCode', projectId: pid, from: 'lib.js', lines: '2-7', to: 'cls.js', after: '2', reason: '复制' });
+    assert.equal(copy.details.status, 'ok', textOf(copy));
+    assert.equal(read('lib.js'), lib);
+    assert.equal(read('cls.js'), 'class A {\n  m() {}\n  function helper(v) {\n    if (v) {\n      return v;\n    }\n    return k;\n  }\n}\n');
+    assert.match(textOf(copy), /缩进已调整/);
+
+    // 源 target 多处命中：返回候选，pick 后执行
+    await call({ command: 'CreateFile', projectId: pid, path: 'dup.txt', content: 'x\n1\nx\n2\n', reason: 'fixture' });
+    const amb = await call({ command: 'CopyCode', projectId: pid, from: 'dup.txt', target: 'x', after: 'end', reason: '复制 x' });
+    assert.equal(amb.details.status, 'ambiguous');
+    const picked = await call({ command: 'CopyCode', projectId: pid, from: 'dup.txt', target: 'x', pick: '2', before: '1', reason: '复制 x' });
+    assert.equal(picked.details.status, 'ok', textOf(picked));
+    assert.equal(read('dup.txt'), 'x\nx\n1\nx\n2\n');
+});
