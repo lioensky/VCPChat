@@ -630,6 +630,16 @@ mainChatSettingsPresentationOwner.configureStartup({
     const auxiliaryEventOwner = createMainChatAuxiliaryEventOwner({
         subscriptions: {
             loomShareText: chatAPI?.onLoomShareTextToInput,
+    if (window.ComposerModelSelect) {
+        const composerModelSelect = window.ComposerModelSelect.init({
+            electronAPI: window.electronAPI || chatAPI,
+            selectedItemRef: currentSelectedItemRef,
+            nameObserveTarget: currentChatNameH3,
+            sendMessageBtn,
+        });
+        ownedRendererSubscriptions.add({ dispose: () => composerModelSelect.dispose?.() });
+    }
+
             logStatus: chatAPI?.onVCPLogStatus,
             logMessage: chatAPI?.onVCPLogMessage,
             groupTopicUpdated: chatAPI?.onVCPGroupTopicUpdated,
