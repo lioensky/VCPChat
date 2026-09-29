@@ -1,0 +1,30 @@
+[package]
+name = "projectforge_indexer"
+version = "0.1.0"
+edition = "2021"
+# 与仓库其他 Rust 服务共用工具链；MSRV 感知解析（resolver 3）自动选择兼容 1.88 的传递依赖。
+rust-version = "1.88"
+resolver = "3"
+description = "ProjectForge AST symbol indexer: tree-sitter outline / symbol search over stdio JSON-lines"
+license = "CC-BY-NC-SA-4.0"
+
+[dependencies]
+ignore = "0.4"
+rayon = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# tree-sitter 核心与各 grammar 精确锁定：grammar ABI 与核心版本相关，升级需整体验证。
+# 0.27 起要求 rustc 1.90；0.25 系列支持 ABI 15，满足当前 grammar。
+tree-sitter = "~0.25"
+tree-sitter-javascript = "=0.25.0"
+tree-sitter-python = "=0.25.0"
+tree-sitter-rust = "=0.24.2"
+tree-sitter-typescript = "=0.23.2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

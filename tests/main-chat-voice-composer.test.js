@@ -274,10 +274,11 @@ test('主进程 voiceHandlers 委托并导出合法 IPC 通道，无后门存盘
 });
 
 test('Preload 隔离层白名单契约合规', () => {
-    const preloadSource = fs.readFileSync(path.join(__dirname, '..', 'preloads', 'chat.js'), 'utf8');
-    assert.doesNotMatch(preloadSource, /saveRecordedAudioFile/);
-    assert.match(preloadSource, /startMainChatVoiceInput/);
-    assert.match(preloadSource, /onMainChatVoiceSessionEnded/);
+    const { describeApis } = require('../preloads/core/registry');
+    const chatApis = new Set(describeApis().filter(api => api.roles.includes('chat')).map(api => api.name));
+    assert.ok(!chatApis.has('saveRecordedAudioFile'));
+    assert.ok(chatApis.has('startMainChatVoiceInput'));
+    assert.ok(chatApis.has('onMainChatVoiceSessionEnded'));
 });
 
 // ==========================================

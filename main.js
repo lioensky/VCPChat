@@ -725,6 +725,7 @@ function createWindow({ deferLoad = false } = {}) {
         ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
         webPreferences: {
             preload: resolveProjectPreload(__dirname, PRELOAD_ROLES.CHAT),
+            sandbox: false, // preloads/* 需要 require 本地模块，沙箱内不可用，见 preloads/README.md
             contextIsolation: true,    // 恢复: 开启上下文隔离
             nodeIntegration: false,  // 恢复: 关闭Node.js集成在渲染进程
             spellcheck: true, // Enable spellcheck for input fields

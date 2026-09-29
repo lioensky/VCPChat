@@ -244,6 +244,7 @@ function initialize(mainWindow, openChildWindows) {
             ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }), // 隐藏标题栏
             webPreferences: {
                 preload: resolveAppPreload(app.getAppPath(), PRELOAD_ROLES.UTILITY),
+                sandbox: false, // preloads/* 需要 require 本地模块，见 preloads/README.md
                 contextIsolation: true,
                 nodeIntegration: false,
             },
@@ -305,6 +306,7 @@ function initialize(mainWindow, openChildWindows) {
             ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
             webPreferences: {
                 preload: resolveAppPreload(app.getAppPath(), PRELOAD_ROLES.UTILITY),
+                sandbox: false, // preloads/* 需要 require 本地模块，见 preloads/README.md
                 contextIsolation: true,
                 nodeIntegration: false,
             },
@@ -362,6 +364,7 @@ function initialize(mainWindow, openChildWindows) {
             ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
             webPreferences: {
                 preload: resolveAppPreload(app.getAppPath(), PRELOAD_ROLES.UTILITY),
+                sandbox: false, // preloads/* 需要 require 本地模块，见 preloads/README.md
                 contextIsolation: true,
                 nodeIntegration: false,
             },
@@ -419,6 +422,7 @@ function initialize(mainWindow, openChildWindows) {
             ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
             webPreferences: {
                 preload: resolveAppPreload(app.getAppPath(), PRELOAD_ROLES.UTILITY),
+                sandbox: false, // preloads/* 需要 require 本地模块，见 preloads/README.md
                 contextIsolation: true,
                 nodeIntegration: false,
             },

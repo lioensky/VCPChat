@@ -473,6 +473,7 @@ function createOrFocusNoteMiniWindow() {
         alwaysOnTop: false,
         webPreferences: {
             preload: resolveProjectPreload(path.join(__dirname, '..', '..'), PRELOAD_ROLES.UTILITY),
+            sandbox: false, // preloads/* 需要 require 本地模块，见 preloads/README.md
             contextIsolation: true,
             nodeIntegration: false,
             devTools: true
@@ -524,6 +525,7 @@ function createOrFocusNotesWindow() {
         modal: false,
         webPreferences: {
             preload: resolveProjectPreload(path.join(__dirname, '..', '..'), PRELOAD_ROLES.UTILITY),
+            sandbox: false, // preloads/* 需要 require 本地模块，见 preloads/README.md
             contextIsolation: true,
             nodeIntegration: false,
             devTools: true

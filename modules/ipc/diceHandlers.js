@@ -120,6 +120,7 @@ async function createOrFocusDiceWindow(projectRoot) {
         modal: false,
         webPreferences: {
             preload: resolveProjectPreload(projectRoot, PRELOAD_ROLES.UTILITY),
+            sandbox: false, // preloads/* 需要 require 本地模块，见 preloads/README.md
             contextIsolation: true,
             nodeIntegration: false,
             devTools: true

@@ -1043,6 +1043,7 @@ function createAssistantBarWindow() {
         focusable: false,
         webPreferences: {
                 preload: resolveProjectPreload(path.join(__dirname, '..', '..'), PRELOAD_ROLES.CHAT),
+            sandbox: false, // preloads/* 需要 require 本地模块，见 preloads/README.md
             contextIsolation: true,
         }
     });
@@ -1104,6 +1105,7 @@ function createAssistantWindow(data) {
         ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
         webPreferences: {
                 preload: resolveProjectPreload(path.join(__dirname, '..', '..'), PRELOAD_ROLES.CHAT),
+            sandbox: false, // preloads/* 需要 require 本地模块，见 preloads/README.md
             contextIsolation: true,
             nodeIntegration: false,
         },

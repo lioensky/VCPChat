@@ -275,6 +275,7 @@ async function createCanvasWindow(eventOrFilePath = null, maybeFilePath = null) 
         ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
         webPreferences: {
             preload: resolveProjectPreload(path.join(__dirname, '..', '..'), PRELOAD_ROLES.UTILITY),
+            sandbox: false, // preloads/* 需要 require 本地模块，见 preloads/README.md
             contextIsolation: true,
             nodeIntegration: false,
         },

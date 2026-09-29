@@ -175,6 +175,7 @@ function createThemesWindow() {
         frame: false, // 移除原生窗口框架
         webPreferences: {
             preload: resolveProjectPreload(PROJECT_ROOT, PRELOAD_ROLES.UTILITY),
+            sandbox: false, // preloads/* 需要 require 本地模块，见 preloads/README.md
             contextIsolation: true,
         },
         icon: path.join(PROJECT_ROOT, 'assets', 'icon.png'),

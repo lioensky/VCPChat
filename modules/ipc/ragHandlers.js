@@ -178,6 +178,7 @@ function ensureRagOverlayWindow() {
         hasShadow: true,
         webPreferences: {
             preload: resolveAppPreload(app.getAppPath(), PRELOAD_ROLES.UTILITY),
+            sandbox: false, // preloads/* 需要 require 本地模块，见 preloads/README.md
             contextIsolation: true,
             nodeIntegration: false,
         },
@@ -251,6 +252,7 @@ async function openRagObserverWindow() {
         ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
         webPreferences: {
             preload: resolveAppPreload(app.getAppPath(), PRELOAD_ROLES.UTILITY),
+            sandbox: false, // preloads/* 需要 require 本地模块，见 preloads/README.md
             contextIsolation: true,
             nodeIntegration: false,
         },

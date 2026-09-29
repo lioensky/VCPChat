@@ -41,8 +41,8 @@ test('all group chat modes obey the engine-owned cancellation context', () => {
 test('group queue interruption is exposed from engine through IPC and chat preload', () => {
     const engine = read('Groupmodules/groupchat.js');
     const handlers = read('modules/ipc/groupChatHandlers.js');
-    const preload = read('preloads/chat.js');
-    const roles = read('preloads/shared/roles.js');
+    const { describeApis } = require('../preloads/core/registry');
+    const queueApi = describeApis().find(api => api.name === 'interruptGroupChatQueue');
     const contextMenu = read('modules/renderer/messageContextMenu.js');
 
     assert.match(engine, /async function interruptGroupChatQueue\(groupId, topicId\)/);
@@ -58,8 +58,10 @@ test('group queue interruption is exposed from engine through IPC and chat prelo
     assert.match(engine, /interruptGroupChatQueue,/);
 
     assert.match(handlers, /ipcMain\.handle\('interrupt-group-chat-queue'/);
-    assert.match(preload, /interruptGroupChatQueue: query\(\(groupId, topicId\)/);
-    assert.match(roles, /'interruptGroupChatQueue'/);
+    assert.ok(queueApi, 'preloads/api 中缺少 interruptGroupChatQueue');
+    assert.equal(queueApi.channel, 'interrupt-group-chat-queue');
+    assert.equal(queueApi.kind, 'query');
+    assert.ok(queueApi.roles.includes('chat'));
     assert.match(contextMenu, /中止群聊/);
     assert.match(contextMenu, /GroupRenderer\?\.interruptGroupChatQueue/);
 });

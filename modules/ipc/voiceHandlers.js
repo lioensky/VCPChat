@@ -478,6 +478,7 @@ function createVoiceChatWindow(agentId) {
         title: '语音聊天',
         webPreferences: {
             preload: resolveProjectPreload(PROJECT_ROOT, PRELOAD_ROLES.CHAT),
+            sandbox: false, // preloads/* 需要 require 本地模块，见 preloads/README.md
             contextIsolation: true,
             nodeIntegration: false,
         },

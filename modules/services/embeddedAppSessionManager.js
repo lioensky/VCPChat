@@ -141,6 +141,7 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, powerMo
         const view = new WebContentsView({
             webPreferences: {
                 preload: resolveAppPreload(appRoot, PRELOAD_ROLES.UTILITY),
+                sandbox: false, // preloads/* 需要 require 本地模块，见 preloads/README.md
                 contextIsolation: true,
                 nodeIntegration: false,
                 devTools: true,

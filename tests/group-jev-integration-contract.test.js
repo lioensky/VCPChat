@@ -22,9 +22,8 @@ test('JEV 群聊从主进程服务注入到群聊运行时', () => {
 
 test('JEV 发起、继续、插队和状态查询 IPC 完整暴露给聊天 preload', () => {
     const handlers = read('modules/ipc/groupChatHandlers.js');
-    const catalog = read('preloads/shared/catalog.js');
-    const roles = read('preloads/shared/roles.js');
-    const chatPreload = read('preloads/chat.js');
+    const { describeApis } = require('../preloads/core/registry');
+    const apis = new Map(describeApis().map(api => [api.name, api]));
 
     const contracts = [
         ['start-jev-group-chat', 'startJevGroupChat'],
@@ -35,10 +34,10 @@ test('JEV 发起、继续、插队和状态查询 IPC 完整暴露给聊天 prel
 
     for (const [channel, apiName] of contracts) {
         assert.ok(handlers.includes(`ipcMain.handle('${channel}'`), `missing IPC ${channel}`);
-        assert.ok(catalog.includes(`${apiName}:`), `missing shared catalog API ${apiName}`);
-        assert.ok(roles.includes(`'${apiName}'`), `missing role API ${apiName}`);
-        assert.ok(chatPreload.includes(`${apiName}:`), `missing generated chat preload API ${apiName}`);
-        assert.ok(chatPreload.includes(`"${apiName}"`), `missing generated chat preload allowlist ${apiName}`);
+        const api = apis.get(apiName);
+        assert.ok(api, `missing preload API ${apiName}`);
+        assert.equal(api.channel, channel, `${apiName} 通道不一致`);
+        assert.ok(api.roles.includes('chat'), `${apiName} 未对 chat 角色开放`);
     }
 });
 

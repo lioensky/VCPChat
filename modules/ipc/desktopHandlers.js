@@ -447,6 +447,7 @@ function createOrFocusChildWindow(existingWindow, options) {
         modal: false,
         webPreferences: {
             preload: options.preloadPath || resolveAppPreload(app.getAppPath(), PRELOAD_ROLES.UTILITY),
+            sandbox: false, // preloads/* 需要 require 本地模块，见 preloads/README.md
             contextIsolation: true,
             nodeIntegration: false,
             devTools: true,
@@ -2537,6 +2538,7 @@ async function openDesktopWindow() {
         ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
         webPreferences: {
             preload: resolveAppPreload(app.getAppPath(), PRELOAD_ROLES.DESKTOP),
+            sandbox: false, // preloads/* 需要 require 本地模块，见 preloads/README.md
             contextIsolation: true,
             nodeIntegration: false,
             devTools: true,
