@@ -4,46 +4,61 @@
 .tavern-popover {
     position: fixed;
     z-index: 5000;
-    width: 360px;
-    max-height: 70vh;
-    background: var(--secondary-bg, #2a2d3a);
-    color: var(--primary-text, #fff);
-    border: 1px solid var(--border-color, rgba(255,255,255,0.12));
-    border-radius: 12px;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+    width: min(100%, calc(100vw - 16px));
+    max-height: calc(100dvh - 16px);
+    box-sizing: border-box;
+    background: var(--vcp-ui-composer-input, var(--vcp-ui-color-menu, var(--secondary-bg, #2a2d3a)));
+    color: var(--vcp-ui-color-foreground, var(--primary-text, #fff));
+    border: 1px solid var(--vcp-ui-border, var(--vcp-ui-composer-border, var(--border-color, rgba(255, 255, 255, 0.1))));
+    border-radius: 16px;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    font-size: 13px;
+    font-size: var(--vcp-ui-text-sm, 12px);
+    transform-origin: bottom left;
+    animation: tavern-popover-enter 100ms ease-out;
+}
+
+@keyframes tavern-popover-enter {
+    from { opacity: 0; transform: scale(0.98); }
+    to { opacity: 1; transform: scale(1); }
 }
 
 .tavern-popover-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 14px;
-    border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.08));
-    background: var(--button-bg, rgba(255,255,255,0.03));
+    height: 32px;
+    min-height: 32px;
+    max-height: 32px;
+    padding: 0 8px 0 12px;
+    background: transparent;
+    box-sizing: border-box;
 }
 
 .tavern-popover-title {
     font-weight: 600;
-    font-size: 14px;
-    color: var(--text-on-accent);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--vcp-ui-color-foreground-subtle, var(--secondary-text, #aaa));
 }
 
 .tavern-popover-actions {
     display: flex;
-    gap: 6px;
+    gap: 4px;
     align-items: center;
 }
 
-.tavern-icon-btn {
+.tavern-popover-header .tavern-icon-btn {
+    width: 22px;
+    height: 22px;
     background: transparent;
     border: none;
-    color: var(--secondary-text, rgba(255,255,255,0.7));
+    color: var(--vcp-ui-color-foreground-subtle, var(--secondary-text, #aaa));
     cursor: pointer;
-    padding: 4px;
+    padding: 0;
     border-radius: 6px;
     line-height: 0;
     display: inline-flex;
@@ -51,81 +66,234 @@
     justify-content: center;
 }
 
-.tavern-icon-btn:hover {
-    color: var(--primary-text, #fff);
-    background: rgba(255,255,255,0.06);
+.tavern-popover-header .tavern-icon-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+.tavern-popover-header .tavern-icon-btn:hover {
+    color: var(--vcp-ui-color-foreground, var(--primary-text, #fff));
+    background: var(--vcp-ui-color-hover, rgba(255, 255, 255, 0.06));
+}
+
+.tavern-popover-header .tavern-icon-btn:focus-visible {
+    outline: 2px solid var(--vcp-ui-focus-ring, var(--button-bg));
+    outline-offset: 2px;
 }
 
 .tavern-popover-body {
+    min-height: 0;
+    max-height: 256px;
     overflow-y: auto;
-    padding: 8px 6px;
+    padding: 2px 4px;
 }
 
-.tavern-popover-empty {
-    padding: 18px 14px;
-    color: var(--secondary-text, rgba(255,255,255,0.6));
-    text-align: center;
-    font-size: 12.5px;
-}
-
-.tavern-popover-empty button {
-    margin-top: 10px;
-    padding: 5px 10px;
-    background: var(--user-bubble-bg, #4a90e2);
-    color: var(--text-on-accent, #fff);
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 12px;
-}
-
-.tavern-rule-row {
+.tavern-popover-footer {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 8px 10px;
-    border-radius: 8px;
-    transition: background-color 0.12s ease;
+    justify-content: space-between;
+    gap: 8px;
+    height: 32px;
+    min-height: 32px;
+    max-height: 32px;
+    padding: 0 12px;
+    color: var(--vcp-ui-color-foreground-subtle, var(--secondary-text, #aaa));
+    font-size: 11px;
+    box-sizing: border-box;
+    background: transparent;
 }
 
-.tavern-rule-row:hover {
-    background: rgba(255,255,255,0.04);
-}
-
-.tavern-rule-info {
-    flex: 1 1 auto;
-    min-width: 0;
-}
-
-.tavern-rule-name {
-    font-weight: 500;
+.tavern-popover-footer span {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.tavern-rule-meta {
+.tavern-popover-footer button {
+    flex: none;
+    border: 0;
+    border-radius: 6px;
+    padding: 2px 6px;
+    background: transparent;
+    color: var(--vcp-ui-color-foreground, var(--primary-text, #fff));
+    font: inherit;
     font-size: 11px;
-    color: var(--secondary-text, rgba(255,255,255,0.55));
-    margin-top: 2px;
+    cursor: pointer;
+    transition: background-color 100ms ease;
+}
+
+.tavern-popover-footer button:hover {
+    background: var(--vcp-ui-color-hover, rgba(255, 255, 255, 0.06));
+}
+
+.tavern-popover-empty {
+    padding: 16px 12px;
+    color: var(--vcp-ui-color-foreground-subtle, var(--secondary-text, #aaa));
+    text-align: center;
+    font-size: 12px;
+}
+
+.tavern-popover-empty button {
+    margin-top: 8px;
+    padding: 4px 8px;
+    background: var(--vcp-ui-fill-0, rgba(255, 255, 255, 0.06));
+    color: var(--vcp-ui-color-foreground, var(--primary-text, #fff));
+    border: 1px solid var(--vcp-ui-border, var(--border-color));
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 11px;
+}
+
+.tavern-popover-empty button:hover {
+    background: var(--vcp-ui-fill-1, rgba(255, 255, 255, 0.08));
+}
+
+/* Popover 中的规则行使用 32px 紧凑规格 (h-8) */
+.tavern-rule-row {
     display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    height: 32px;
+    min-height: 32px;
+    max-height: 32px;
+    margin: 1px 0;
+    padding: 0 10px;
+    border-radius: 8px;
+    box-sizing: border-box;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 100ms ease;
+}
+
+.tavern-rule-row:hover {
+    background: var(--vcp-ui-color-hover, rgba(255, 255, 255, 0.06));
+}
+
+.tavern-rule-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.tavern-rule-name {
+    font-size: var(--vcp-ui-text-sm, 12px);
+    font-weight: 500;
+    color: var(--vcp-ui-color-foreground, var(--primary-text, #fff));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 0;
+    max-width: 55%;
+}
+
+.tavern-rule-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 0;
+    min-width: 0;
+    flex-shrink: 1;
+    overflow: hidden;
+    flex-wrap: nowrap;
 }
 
 .tavern-rule-tag {
-    padding: 1px 6px;
-    border-radius: 999px;
-    background: rgba(255,255,255,0.06);
+    display: inline-flex;
+    align-items: center;
+    height: 18px;
+    line-height: 18px;
+    padding: 0 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--vcp-ui-color-foreground-subtle, var(--secondary-text, #aaa));
     font-size: 10.5px;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
-.tavern-rule-tag.tag-system { background: rgba(99,179,237,0.16); color: #63b3ed; }
-.tavern-rule-tag.tag-user   { background: rgba(72,187,120,0.16); color: #48bb78; }
-.tavern-rule-tag.tag-context{ background: rgba(237,137,54,0.16); color: #ed8936; }
-.tavern-rule-tag.tag-scope-agent { background: rgba(159,122,234,0.16); color: #9f7aea; }
-.tavern-rule-tag.tag-scope-group { background: rgba(237,100,166,0.16); color: #ed64a6; }
-.tavern-rule-tag.tag-scope-global{ background: rgba(255,255,255,0.08); color: var(--secondary-text, #aaa); }
+.tavern-rule-tag.tag-system { background: rgba(99, 179, 237, 0.16); color: #63b3ed; }
+.tavern-rule-tag.tag-user   { background: rgba(72, 187, 120, 0.16); color: #48bb78; }
+.tavern-rule-tag.tag-context{ background: rgba(237, 137, 54, 0.16); color: #ed8936; }
+.tavern-rule-tag.tag-scope-agent { background: rgba(159, 122, 234, 0.16); color: #9f7aea; }
+.tavern-rule-tag.tag-scope-group { background: rgba(237, 100, 166, 0.16); color: #ed64a6; }
+.tavern-rule-tag.tag-scope-global{ background: rgba(255, 255, 255, 0.08); color: var(--secondary-text, #aaa); }
+.tavern-rule-tag.tag-builtin     { background: rgba(255, 255, 255, 0.08); color: var(--secondary-text, #aaa); }
+
+/* Popover 内统一微调为扁平低对比风格 */
+.tavern-popover .tavern-rule-tag {
+    padding: 0 4px;
+    height: 16px;
+    line-height: 16px;
+    border-radius: 3px;
+    background: var(--vcp-ui-fill-0, rgba(255, 255, 255, 0.06));
+    color: var(--vcp-ui-color-foreground-subtle, var(--secondary-text, #aaa));
+    font-size: var(--vcp-ui-text-xs, 10px);
+}
+
+.tavern-popover .tavern-rule-tag[class*="tag-"] {
+    background: var(--vcp-ui-fill-0, rgba(255, 255, 255, 0.06));
+    color: var(--vcp-ui-color-foreground-subtle, var(--secondary-text, #aaa));
+}
+
+/* Popover 内的迷你滑动开关 (28px × 16px)，完美贴合 32px 紧凑行高 */
+.tavern-popover .tavern-switch {
+    position: relative;
+    display: inline-block;
+    width: 28px;
+    height: 16px;
+    flex-shrink: 0;
+    margin: 0;
+}
+.tavern-popover .tavern-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+.tavern-popover .tavern-switch .tavern-slider {
+    position: absolute;
+    cursor: pointer;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 999px;
+    transition: background-color 0.15s ease;
+}
+.tavern-popover .tavern-switch .tavern-slider::before {
+    content: "";
+    position: absolute;
+    height: 12px;
+    width: 12px;
+    left: 2px;
+    top: 2px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.15s ease;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+.tavern-popover .tavern-switch input:checked + .tavern-slider {
+    background: var(--button-bg, #4a90e2);
+}
+.tavern-popover .tavern-switch input:checked + .tavern-slider::before {
+    transform: translateX(12px);
+}
+
+/* 浅色主题下 popover 内 mini 开关与边框 */
+body.light-theme .tavern-popover .tavern-switch .tavern-slider,
+body[data-vcp-theme="light"] .tavern-popover .tavern-switch .tavern-slider {
+    background: rgba(0, 0, 0, 0.14);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+body.light-theme .tavern-popover .tavern-switch .tavern-slider::before,
+body[data-vcp-theme="light"] .tavern-popover .tavern-switch .tavern-slider::before {
+    background: #ffffff;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+body.light-theme .tavern-popover .tavern-switch input:checked + .tavern-slider,
+body[data-vcp-theme="light"] .tavern-popover .tavern-switch input:checked + .tavern-slider {
+    background: var(--button-bg, #4a90e2);
+    border-color: var(--button-bg, #4a90e2);
+}
 
 /* 滑动开关 */
 .tavern-switch {
@@ -184,13 +352,20 @@ body.light-theme .tavern-switch input:checked + .tavern-slider {
     border-color: var(--button-bg);
 }
 
-body.light-theme .tavern-popover-header .tavern-icon-btn {
-    color: var(--text-on-accent);
+body.light-theme .tavern-popover-header .tavern-icon-btn,
+body[data-vcp-theme="light"] .tavern-popover-header .tavern-icon-btn {
+    color: var(--vcp-ui-color-foreground-subtle, var(--secondary-text));
 }
 
-body.light-theme .tavern-popover-header .tavern-icon-btn:hover {
-    color: #ffffff;
-    background: rgba(255, 255, 255, 0.2);
+body.light-theme .tavern-popover-header .tavern-icon-btn:hover,
+body[data-vcp-theme="light"] .tavern-popover-header .tavern-icon-btn:hover {
+    color: var(--vcp-ui-color-foreground, var(--primary-text));
+    background: var(--vcp-ui-color-hover, rgba(0, 0, 0, 0.05));
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tavern-popover { animation: none; }
+    .tavern-rule-row { transition: none; }
 }
 
 /* 大号开关（仅在独立行如"包裹标记"中使用） */

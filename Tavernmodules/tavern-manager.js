@@ -42,6 +42,7 @@
     const TavernManager = {
         store: { version: 1, rules: [] },
         popoverEl: null,
+        popoverAnchorEl: null,
         modalEl: null,
         selectedRuleId: null,
         _outsideClickHandler: null,
@@ -52,7 +53,7 @@
             this._outsideClickHandler = (e) => {
                 if (!this.popoverEl) return;
                 if (this.popoverEl.contains(e.target)) return;
-                // 点击发送按钮自身（右键触发）不算外部点击 - 由 contextmenu 处理
+                if (this.popoverAnchorEl?.contains(e.target)) return;
                 this.hidePopover();
             };
             console.log('[TavernManager] Initialized.');
@@ -107,27 +108,41 @@
             this.hidePopover();
             const popover = document.createElement('div');
             popover.className = 'tavern-popover';
+            popover.id = 'tavernPopover';
+            popover.setAttribute('role', 'dialog');
+            popover.setAttribute('aria-label', '高级回复');
             popover.innerHTML = `
                 <div class="tavern-popover-header">
                     <span class="tavern-popover-title">高级回复</span>
                     <div class="tavern-popover-actions">
-                        <button type="button" class="tavern-icon-btn" data-action="manage" title="管理规则">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-                        </button>
                         <button type="button" class="tavern-icon-btn" data-action="close" title="关闭">
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                         </button>
                     </div>
                 </div>
                 <div class="tavern-popover-body"></div>
+                <div class="tavern-popover-footer">
+                    <span>开启的规则将用于下一次回复</span>
+                    <button type="button" data-action="manage">管理规则</button>
+                </div>
             `;
             document.body.appendChild(popover);
             this.popoverEl = popover;
+            this.popoverAnchorEl = anchorEl || null;
+            this.popoverAnchorEl?.setAttribute('aria-expanded', 'true');
+            this.popoverAnchorEl?.setAttribute('aria-controls', 'tavernPopover');
 
             this._renderPopoverList();
 
-            // 定位：尽量出现在按钮上方
+            // 按钮负责触发，整个输入框负责定位和宽度。
             this._positionPopover(anchorEl);
+            this._repositionPopover = () => this._positionPopover(this.popoverAnchorEl);
+            window.addEventListener('resize', this._repositionPopover);
+            const composer = anchorEl?.closest('.chat-input-card');
+            if (composer && typeof ResizeObserver !== 'undefined') {
+                this._composerResizeObserver = new ResizeObserver(this._repositionPopover);
+                this._composerResizeObserver.observe(composer);
+            }
 
             // 事件
             popover.querySelector('[data-action="close"]').addEventListener('click', () => this.hidePopover());
@@ -143,6 +158,17 @@
         },
 
         hidePopover() {
+            if (this._repositionPopover) {
+                window.removeEventListener('resize', this._repositionPopover);
+                this._repositionPopover = null;
+            }
+            this._composerResizeObserver?.disconnect();
+            this._composerResizeObserver = null;
+            if (this.popoverAnchorEl) {
+                this.popoverAnchorEl.setAttribute('aria-expanded', 'false');
+                this.popoverAnchorEl.removeAttribute('aria-controls');
+                this.popoverAnchorEl = null;
+            }
             if (this.popoverEl) {
                 this.popoverEl.remove();
                 this.popoverEl = null;
@@ -153,21 +179,17 @@
         _positionPopover(anchorEl) {
             if (!this.popoverEl) return;
             const popover = this.popoverEl;
-            const margin = 8;
-            const rect = anchorEl ? anchorEl.getBoundingClientRect() : null;
+            const viewportMargin = 8;
+            const composerGap = 4;
+            const composer = anchorEl?.closest('.chat-input-card') || anchorEl;
+            const rect = composer?.getBoundingClientRect();
             if (rect) {
-                // 优先在按钮上方
-                const popH = popover.offsetHeight || 320;
-                const popW = popover.offsetWidth || 360;
-                let top = rect.top - popH - margin;
-                if (top < margin) {
-                    top = rect.bottom + margin;
-                }
-                let left = rect.right - popW;
-                if (left < margin) left = margin;
-                if (left + popW > window.innerWidth - margin) {
-                    left = window.innerWidth - popW - margin;
-                }
+                const width = Math.min(rect.width, window.innerWidth - viewportMargin * 2);
+                const availableHeight = Math.max(80, rect.top - viewportMargin - composerGap);
+                popover.style.width = `${width}px`;
+                popover.style.maxHeight = `${availableHeight}px`;
+                const top = Math.max(viewportMargin, rect.top - popover.offsetHeight - composerGap);
+                const left = Math.max(viewportMargin, Math.min(rect.left, window.innerWidth - width - viewportMargin));
                 popover.style.top = `${top}px`;
                 popover.style.left = `${left}px`;
             } else {
@@ -201,16 +223,19 @@
                 const ruleId = rule.id;
                 const row = document.createElement('div');
                 row.className = 'tavern-rule-row';
+                row.setAttribute('role', 'option');
+                row.setAttribute('data-rule-id', ruleId);
                 const typeTagClass = rule.type === 'system_suffix' ? 'tag-system'
                                     : rule.type === 'user_suffix' ? 'tag-user' : 'tag-context';
                 const scopeTagClass = `tag-scope-${rule.scope || 'global'}`;
                 row.innerHTML = `
                     <div class="tavern-rule-info">
-                        <div class="tavern-rule-name">${escapeHtml(rule.name || '未命名规则')}${rule.isBuiltin ? ' <span class="tavern-rule-tag">官方预置</span>' : ''}</div>
+                        <span class="tavern-rule-name" title="${escapeHtml(rule.name || '未命名规则')}">${escapeHtml(rule.name || '未命名规则')}</span>
                         <div class="tavern-rule-meta">
                             <span class="tavern-rule-tag ${typeTagClass}">${TYPE_LABELS[rule.type] || rule.type}</span>
                             <span class="tavern-rule-tag ${scopeTagClass}">${SCOPE_LABELS[rule.scope || 'global']}</span>
                             ${rule.type === 'context_inject' ? `<span class="tavern-rule-tag">${rule.role === 'assistant' ? 'AI' : '用户'} · 深度 ${rule.depth || 0}</span>` : ''}
+                            ${rule.isBuiltin ? '<span class="tavern-rule-tag tag-builtin">官方预置</span>' : ''}
                         </div>
                     </div>
                     <label class="tavern-switch">
@@ -219,6 +244,10 @@
                     </label>
                 `;
                 const checkbox = row.querySelector('input[type="checkbox"]');
+                row.addEventListener('click', (e) => {
+                    if (e.target.closest('.tavern-switch')) return;
+                    checkbox.click();
+                });
                 checkbox.addEventListener('change', async () => {
                     // 防止快速连点引发的并发保存
                     if (checkbox.disabled) return;

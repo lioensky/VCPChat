@@ -14,7 +14,7 @@ test('official presets are loaded from the independent official JSON file', () =
     const names = officialStore.rules.map(rule => rule.name);
 
     assert.equal(Object.hasOwn(engine, 'BUILTIN_RULES'), false);
-    assert.equal(officialStore.rules.length, 9);
+    assert.equal(officialStore.rules.length, 10);
     assert.deepEqual(names, [
         'Agent输出动画气泡',
         '心流锁系统',
@@ -24,7 +24,8 @@ test('official presets are loaded from the independent official JSON file', () =
         'VCP桌面权限',
         '获取服务器验证码',
         '窗口控制权限',
-        '启用HTML多媒体权限'
+        '启用HTML多媒体权限',
+        '工作区目录感知'
     ]);
     assert.equal(names.includes('插件管理员'), false);
 });
