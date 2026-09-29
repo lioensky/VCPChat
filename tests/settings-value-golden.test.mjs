@@ -26,11 +26,15 @@ function legacyCollect({ doc, currentSettings, settingsManager, getAppearance, n
     const networkNotesPaths = Array.from(pathInputs).map(input => input.value.trim()).filter(path => path);
 
     const voiceMode = getElementById('voiceModeNetwork')?.checked ? 'network' : 'local';
-    const allowedVoiceInputModes = new Set(['windows_voice_typing', 'right_alt_hold']);
+    const allowedVoiceInputModes = new Set(['windows_voice_typing', 'right_alt_hold', 'local_sensevoice']);
     const selectedVoiceInputMode = getElementById('voiceInputMode')?.value;
     const voiceInputMode = allowedVoiceInputModes.has(selectedVoiceInputMode)
         ? selectedVoiceInputMode
         : 'windows_voice_typing';
+    const selectedLocalSttLanguage = getElementById('localSttLanguage')?.value;
+    const localSttLanguage = ['auto', 'zh', 'en', 'yue', 'ja', 'ko'].includes(selectedLocalSttLanguage)
+        ? selectedLocalSttLanguage
+        : 'auto';
     const voiceInputShortcut = (
         getElementById('voiceInputShortcut')?.value.trim()
         || 'F7'
@@ -159,6 +163,7 @@ function legacyCollect({ doc, currentSettings, settingsManager, getAppearance, n
         assistantAgent: getElementById('assistantAgent').value,
         voiceMode,
         voiceInputMode,
+        localSttLanguage,
         voiceInputShortcut,
         mainChatVoiceInitialIdleTimeout,
         mainChatVoiceQuietTimeout,

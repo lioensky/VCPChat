@@ -34,6 +34,8 @@ class ChatVoiceComposer {
 		this.quietTimeoutMs = 2500;
 		this.idleTimeoutMs = 5500;
 		this.voiceInputMode = "windows_voice_typing";
+		this.localSttLanguage = "auto";
+		this.platform = null;
 
 		this.draftRev = 0;
 		this.activeSpan = null;
@@ -44,6 +46,10 @@ class ChatVoiceComposer {
 		this.maxAudioDurationSeconds = 180;
 		this.audioRecordTimer = null;
 		this.transcribingTimeout = null;
+		this.feedbackTimer = null;
+		this.sentinelResumeTimer = null;
+		this.audioRecordPurpose = 'attach';
+		this.localSttRun = 0;
 
 		this.disposers = [];
 	}
@@ -78,6 +84,10 @@ class ChatVoiceComposer {
 
 	// 状态迁移：同步更新视图、活动栏、提示及哨兵生命周期
 	transitionTo(nextState, payload = {}) {
+		if (this.feedbackTimer) {
+			clearTimeout(this.feedbackTimer);
+			this.feedbackTimer = null;
+		}
 		this.state = nextState;
 		const isStt = this.isSttActive;
 		const isAudio = this.isRecordingAudio;
@@ -123,6 +133,16 @@ class ChatVoiceComposer {
 				this.sentinel.stop();
 			} catch (_) {}
 			this.sentinel = null;
+		}
+
+		// 无待插入文字的提示不应常驻：数秒后自动收起，回到空闲态
+		if (nextState === COMPOSER_STATE.FEEDBACK && !this.pendingText) {
+			this.feedbackTimer = setTimeout(() => {
+				this.feedbackTimer = null;
+				if (this.state === COMPOSER_STATE.FEEDBACK && !this.pendingText) {
+					this.transitionTo(COMPOSER_STATE.IDLE);
+				}
+			}, 4000);
 		}
 	}
 
@@ -170,6 +190,8 @@ class ChatVoiceComposer {
 				messageInput: this.messageInput,
 				sendMessageBtn: this.sendMessageBtn,
 				onLeftClick: () => this.handleLeftClick(),
+				onPress: () => this.prewarmMic(),
+				onLongPress: () => this.openMicMenu(),
 				onContextMenu: () => this.handleContextMenu(),
 				onCancel: () => this.cancelCurrentVoiceSession(),
 				onStop: () => this.stopCurrentVoiceSession(),
@@ -186,6 +208,7 @@ class ChatVoiceComposer {
 		}
 
 		this.syncConfigFromSettings();
+		void this.resolvePlatform();
 		this.setupIpcListeners();
 		this.setupDefensiveLifecycles();
 	}
@@ -233,12 +256,8 @@ class ChatVoiceComposer {
 		const before = original.slice(0, start);
 		const after = original.slice(end);
 
-		// 仅当前文末尾与新句开头均为半角英文字母或数字时才补空格分词；
-		// 中文与标点自然连贯拼接（对齐上游 joinSpeechTexts 规则）。
-		const needsLeadingSpace =
-			before.length > 0 &&
-			/[a-zA-Z0-9]$/.test(before) &&
-			/^[a-zA-Z0-9]/.test(textToInsert);
+		// 仅当交界处两侧都是半角英文字母/数字时补空格分词，中文与标点自然衔接（同上游 PR #216）
+		const needsLeadingSpace = needsSpeechJoinSpace(before, textToInsert);
 		const insertedStr = needsLeadingSpace ? ` ${textToInsert}` : textToInsert;
 
 		let appliedViaExec = false;
@@ -264,12 +283,10 @@ class ChatVoiceComposer {
 		try {
 			this.messageInput.dispatchEvent?.(new Event("input", { bubbles: true }));
 		} catch (_) {}
-		// 在末尾追加时滚动到最下方，确保长文本时最新识别的内容始终可见
-		if (after.length === 0) {
-			try {
-				this.messageInput.scrollTop = this.messageInput.scrollHeight;
-			} catch (_) {}
-		}
+		// 长文本时保证最新识别的内容可见
+		try {
+			this.messageInput.scrollTop = this.messageInput.scrollHeight;
+		} catch (_) {}
 		return true;
 	}
 
@@ -297,6 +314,14 @@ class ChatVoiceComposer {
 			clearTimeout(this.transcribingTimeout);
 			this.transcribingTimeout = null;
 		}
+		if (this.feedbackTimer) {
+			clearTimeout(this.feedbackTimer);
+			this.feedbackTimer = null;
+		}
+		if (this.sentinelResumeTimer) {
+			clearTimeout(this.sentinelResumeTimer);
+			this.sentinelResumeTimer = null;
+		}
 	}
 
 	// 防御性生命周期：Blur 失焦防偷录、VisibilityChange 最小化保护、ESC 撤销
@@ -304,7 +329,8 @@ class ChatVoiceComposer {
 		if (typeof window === "undefined") return;
 
 		const onBlur = () => {
-			if (this.state === COMPOSER_STATE.STT_RECORDING || this.state === COMPOSER_STATE.AUDIO_RECORDING) {
+			// 原生听写会由主进程唤起独立的语音捕获窗口并抢走焦点，主窗口失焦是预期行为，不能据此取消
+			if (this.state === COMPOSER_STATE.AUDIO_RECORDING) {
 				this.cancelCurrentVoiceSession();
 			}
 		};
@@ -372,6 +398,9 @@ class ChatVoiceComposer {
 		if (Number.isFinite(quiet) && quiet > 0) {
 			this.quietTimeoutMs = quiet * 1000;
 		}
+		this.localSttLanguage = ['auto', 'zh', 'en', 'yue', 'ja', 'ko'].includes(settings.localSttLanguage)
+			? settings.localSttLanguage
+			: 'auto';
 		if (settings.voiceInputMode) {
 			this.voiceInputMode = settings.voiceInputMode;
 		}
@@ -405,6 +434,7 @@ class ChatVoiceComposer {
 
 	updateButtonTooltip() {
 		this.view?.updateTooltip({
+			isWindows: this.isNativeSttSupported(),
 			isRecordingAudio: this.isRecordingAudio,
 			isSttActive: this.isSttActive,
 			voiceInputMode: this.voiceInputMode,
@@ -468,19 +498,42 @@ class ChatVoiceComposer {
 			return;
 		}
 		if (this.state === COMPOSER_STATE.STT_RECORDING || this.state === COMPOSER_STATE.TRANSCRIBING) {
-			if (!this.receivedSpeechInSession && !this.pendingText) {
-				this.transitionTo(COMPOSER_STATE.FEEDBACK, {
-					message: '未识别到语音',
-				});
-			} else if (this.pendingText) {
+			const wasManualStop = this.state === COMPOSER_STATE.TRANSCRIBING;
+			// 输入法语音可能绕过捕获窗、直接把文字打进主输入框：草稿相对录音起点有变化也算识别成功
+			const draftChanged =
+				typeof this.activeSpan?.draftText === "string" &&
+				String(this.messageInput?.value || "") !== this.activeSpan.draftText;
+			const gotSpeech = this.receivedSpeechInSession || draftChanged;
+			if (this.pendingText) {
 				this.transitionTo(COMPOSER_STATE.FEEDBACK, {
 					message: '草稿已被修改。可在当前光标处插入。',
 				});
-			} else {
+			} else if (!gotSpeech) {
+				// 输入法常在会话结束后才把文字提交进主输入框：先给 1.2s 观察期，草稿有变化则视为成功
+				const baseline = String(this.activeSpan?.draftText ?? this.messageInput?.value ?? "");
+				const epoch = this.sessionEpoch;
 				this.transitionTo(COMPOSER_STATE.IDLE);
-			}
-			if (this.sentinel) {
-				this.sentinel.resume();
+				setTimeout(() => {
+					if (epoch !== this.sessionEpoch || this.state !== COMPOSER_STATE.IDLE) return;
+					if (String(this.messageInput?.value || "") !== baseline) return;
+					this.transitionTo(COMPOSER_STATE.FEEDBACK, {
+						message: '未识别到语音',
+					});
+				}, 1200);
+			} else if (wasManualStop) {
+				// 用户主动点击停止：本轮结束并退出听写，不再自动待命
+				this.deactivateSttMode();
+			} else {
+				// 静音自动结算：沿用上游哨兵常驻设计，退回待命并在硬件释放缓冲后恢复哨兵，
+				// 再次检测到人声时自动开启下一轮
+				this.transitionTo(COMPOSER_STATE.STT_READY);
+				clearTimeout(this.sentinelResumeTimer);
+				this.sentinelResumeTimer = setTimeout(() => {
+					this.sentinelResumeTimer = null;
+					if (this.state === COMPOSER_STATE.STT_READY) {
+						void this.ensureSentinelActive();
+					}
+				}, 80);
 			}
 		}
 	}
@@ -551,6 +604,7 @@ class ChatVoiceComposer {
 	cancelCurrentVoiceSession() {
 		this.pendingText = "";
 		this.activeSpan = null;
+		this.localSttRun++;
 		this.clearTimers();
 		if (this.state === COMPOSER_STATE.AUDIO_RECORDING) {
 			this.cancelAudioRecording();
@@ -581,11 +635,35 @@ class ChatVoiceComposer {
 		}
 	}
 
+	// 渲染进程 contextIsolation 下没有 process，这里依次尝试 IPC 缓存 → process → navigator
 	isNativeSttSupported() {
-		if (typeof process !== "undefined" && process.platform) {
-			return process.platform === "win32";
+		return detectPlatform(this.platform) === "win32";
+	}
+
+	async resolvePlatform() {
+		try {
+			const platform = await this.callIpc('getPlatform', 'get-platform');
+			if (typeof platform === "string" && platform) {
+				this.platform = platform;
+				this.updateButtonTooltip();
+			}
+		} catch (_) {}
+	}
+
+	// 按下按钮（click 之前约 100ms）就先打开麦克风，缩短录音开始前的等待
+	async prewarmMic() {
+		// 顺带在后台同步一次设置（点击前的这段时间足够完成），避免模式缓存过期又不阻塞点击
+		await this.syncConfigFromSettings();
+		if (this.state !== COMPOSER_STATE.IDLE || this.messageInput?.disabled) return;
+		if (this.voiceInputMode !== 'local_sensevoice' && this.isNativeSttSupported()) return;
+		if (!this.recorder) {
+			const RecorderClass =
+				typeof window !== "undefined"
+					? window.VcpVoice?.AudioRecorder || window.AudioRecorder
+					: null;
+			if (RecorderClass) this.recorder = new RecorderClass();
 		}
-		return false;
+		void this.recorder?.prewarm?.();
 	}
 
 	async handleLeftClick() {
@@ -603,6 +681,12 @@ class ChatVoiceComposer {
 				return;
 			}
 
+			// 本地 SenseVoice 模式：录音 → 本地离线转写 → 插入文字（不依赖系统听写/输入法）
+			if (this.voiceInputMode === 'local_sensevoice') {
+				await this.startAudioRecording({ purpose: 'transcribe' });
+				return;
+			}
+
 			// 非 Windows 环境（如 macOS / Linux）无系统级 Win+H 原生听写管道，左键直接无缝启动高质量原声录音
 			if (!this.isNativeSttSupported()) {
 				await this.startAudioRecording();
@@ -612,6 +696,38 @@ class ChatVoiceComposer {
 			await this.startSttMode();
 		} finally {
 			this.isTransitioning = false;
+		}
+	}
+
+	async openMicMenu() {
+		if (this.state !== COMPOSER_STATE.IDLE || !this.view?.showMicMenu) return;
+		const md = typeof navigator !== "undefined" ? navigator.mediaDevices : null;
+		if (!md?.enumerateDevices) return;
+		try {
+			let devices = (await md.enumerateDevices()).filter((d) => d.kind === "audioinput");
+			// 未授权前设备名为空：先短暂申请一次权限以获取名称
+			if (devices.length && devices.every((d) => !d.label) && md.getUserMedia) {
+				try {
+					const probe = await md.getUserMedia({ audio: true });
+					probe.getTracks().forEach((t) => t.stop());
+					devices = (await md.enumerateDevices()).filter((d) => d.kind === "audioinput");
+				} catch (_) {}
+			}
+			const Rec = this.recorder?.constructor;
+			const selectedId = Rec?.getPreferredDeviceId?.() || "";
+			const usesRecorder = this.voiceInputMode === "local_sensevoice" || !this.isNativeSttSupported();
+			this.view.showMicMenu({
+				devices: devices.map((d) => ({ deviceId: d.deviceId, label: d.label })),
+				selectedId,
+				note: usesRecorder ? "" : "系统听写使用系统默认麦克风；此选择用于本地识别与录音",
+				onSelect: (id) => {
+					Rec?.setPreferredDeviceId?.(id === "default" ? "" : id);
+					this.recorder?.releaseWarm?.();
+					if (usesRecorder) this.prewarmMic();
+				},
+			});
+		} catch (error) {
+			console.warn("[ChatVoiceComposer] 获取麦克风列表失败", error);
 		}
 	}
 
@@ -643,6 +759,11 @@ class ChatVoiceComposer {
 		const epoch = ++this.sessionEpoch;
 		this.transitionTo(COMPOSER_STATE.REQUESTING, { mode: 'stt' });
 
+		await this.startVoiceSession(epoch);
+	}
+
+	// 首次点击不预先启动哨兵（getUserMedia 很慢）；首轮结算后才按需创建并启动
+	async ensureSentinelActive() {
 		const SentinelClass =
 			typeof window !== "undefined"
 				? window.VcpVoice?.PassiveVoiceSentinel || window.PassiveVoiceSentinel
@@ -651,37 +772,39 @@ class ChatVoiceComposer {
 			this.sentinel = new SentinelClass({
 				thresholdRms: 0.007,
 				onTrigger: () => {
-					this.onVoiceTriggered(epoch);
+					void this.onVoiceTriggered();
 				},
 			});
 		}
-
-		if (this.sentinel) {
-			let started = false;
-			try {
-				started = await this.sentinel.start();
-			} catch (_) {}
-			if (!started) {
-				this.deactivateSttMode();
-				this.transitionTo(COMPOSER_STATE.FEEDBACK, {
-					mode: 'stt',
-					message: '麦克风权限未开启，请在系统设置中允许访问',
-				});
-				return;
-			}
-			// 若启动期间用户已主动退出，直接销毁并返回
-			if (epoch !== this.sessionEpoch || !this.isSttActive) {
-				this.deactivateSttMode();
-				return;
-			}
-			this.sentinel.suspend();
-		}
-
-		await this.onVoiceTriggered(epoch);
+		const sentinel = this.sentinel;
+		if (!sentinel) return;
+		try {
+			if (!sentinel.active) await sentinel.start();
+			else if (sentinel.suspended) sentinel.resume();
+		} catch (_) {}
+		if (this.state !== COMPOSER_STATE.STT_READY) sentinel.suspend?.();
 	}
 
-	async onVoiceTriggered(invokingEpoch = this.sessionEpoch) {
-		if (invokingEpoch !== this.sessionEpoch) return;
+	// 哨兵常驻期间检测到人声：自动开启下一轮听写
+	async onVoiceTriggered() {
+		if (this.state !== COMPOSER_STATE.STT_READY) return;
+
+		this.checkSessionSwitch();
+		if (this.state !== COMPOSER_STATE.STT_READY) return;
+		this.transitionTo(COMPOSER_STATE.STT_RECORDING);
+		this.sentinel?.suspend();
+
+		// 留出声卡与驱动交接缓冲，避免与语音输入引擎争抢麦克风
+		await new Promise((resolve) => setTimeout(resolve, 80));
+		if (this.state !== COMPOSER_STATE.STT_RECORDING) return;
+
+		this.activeSpan = this.captureInsertion();
+		this.pendingText = "";
+		this.receivedSpeechInSession = false;
+		await this.startVoiceSession(++this.sessionEpoch);
+	}
+
+	async startVoiceSession(invokingEpoch = this.sessionEpoch) {
 
 		this.transitionTo(COMPOSER_STATE.STT_RECORDING);
 
@@ -759,7 +882,8 @@ class ChatVoiceComposer {
 		} catch (_) {}
 	}
 
-	async startAudioRecording() {
+	async startAudioRecording({ purpose = 'attach' } = {}) {
+		this.audioRecordPurpose = purpose;
 		this.checkSessionSwitch();
 		this.activeSpan = this.captureInsertion();
 		this.pendingText = "";
@@ -777,7 +901,9 @@ class ChatVoiceComposer {
 		this.transitionTo(COMPOSER_STATE.REQUESTING, { mode: 'audio-record' });
 
 		try {
+			const t0 = performance.now();
 			await this.recorder.start();
+			console.info(`[ChatVoiceComposer] 麦克风就绪耗时 ${Math.round(performance.now() - t0)}ms`);
 			this.transitionTo(COMPOSER_STATE.AUDIO_RECORDING);
 			if (this.audioRecordTimer) clearTimeout(this.audioRecordTimer);
 			this.audioRecordTimer = setTimeout(() => {
@@ -811,11 +937,20 @@ class ChatVoiceComposer {
 			this.audioRecordTimer = null;
 		}
 		if (this.state !== COMPOSER_STATE.AUDIO_RECORDING || !this.recorder) return;
+		const run = this.localSttRun;
+		const origin = this.currentSessionKey();
 		this.transitionTo(COMPOSER_STATE.TRANSCRIBING, { mode: 'audio-record', message: '正在处理音频…' });
 
 		try {
-			const wavBlob = await this.recorder.stop();
-			if (wavBlob) {
+			const wavBlob = await this.recorder.stop({
+				speech: this.audioRecordPurpose === 'transcribe',
+				maxSeconds: this.maxAudioDurationSeconds,
+			});
+			// 处理音频期间用户点了取消：丢弃结果，不再转写/附加
+			if (run !== this.localSttRun) return;
+			if (wavBlob && this.audioRecordPurpose === 'transcribe') {
+				await this.transcribeLocally(wavBlob, run, origin);
+			} else if (wavBlob) {
 				await this.attachWavAudioFile(wavBlob);
 				this.transitionTo(COMPOSER_STATE.IDLE);
 			} else {
@@ -833,11 +968,58 @@ class ChatVoiceComposer {
 		}
 	}
 
+	// 本地 SenseVoice：WAV 交给主进程子进程识别，结果直接插入（草稿冲突则暂存并给出“插入”按钮）
+	currentSessionKey() {
+		const agent = typeof this.getCurrentAgentId === "function" ? this.getCurrentAgentId() : "default";
+		const topic = typeof this.getCurrentTopicId === "function" ? this.getCurrentTopicId() : "default";
+		return `${agent}::${topic}`;
+	}
+
+	async transcribeLocally(wavBlob, run = this.localSttRun, origin = this.currentSessionKey()) {
+		const fail = (message) => {
+			if (run !== this.localSttRun) return;
+			this.transitionTo(COMPOSER_STATE.FEEDBACK, { mode: 'audio-record', message });
+		};
+		try {
+			const status = await this.callIpc('getLocalSttStatus', 'local-stt:status');
+			if (run !== this.localSttRun) return;
+			if (status?.phase !== 'ready') {
+				fail('本地语音资源包未安装，请在 设置 → 语音设置 中下载安装');
+				return;
+			}
+			this.transitionTo(COMPOSER_STATE.TRANSCRIBING, { mode: 'audio-record', message: '正在本地识别…' });
+			const wav = new Uint8Array(await wavBlob.arrayBuffer());
+			const result = await this.callIpc('transcribeLocalStt', 'local-stt:transcribe', { wav, language: this.localSttLanguage || 'auto' });
+			if (run !== this.localSttRun) return;
+			// 识别期间切换了会话/话题：不把文字写进别的输入框
+			if (origin !== this.currentSessionKey()) {
+				this.transitionTo(COMPOSER_STATE.IDLE);
+				return;
+			}
+			if (!result?.success) {
+				fail(`本地识别失败：${result?.error || '未知错误'}`);
+				return;
+			}
+			const text = String(result.text || '').trim();
+			if (!text) {
+				fail('未识别到语音');
+				return;
+			}
+			this.handleIncomingSpeechText(text);
+			if (this.state === COMPOSER_STATE.TRANSCRIBING) {
+				this.transitionTo(COMPOSER_STATE.IDLE);
+			}
+		} catch (error) {
+			console.error('[ChatVoiceComposer] 本地识别异常:', error);
+			fail('本地识别失败，请重试');
+		}
+	}
+
 	retryVoiceSession() {
 		const wasAudio = this.state === COMPOSER_STATE.AUDIO_RECORDING || this.view?.waveformContainer?.classList.contains('mode-audio-record');
 		this.cancelCurrentVoiceSession();
 		if (wasAudio) {
-			void this.startAudioRecording();
+			void this.startAudioRecording({ purpose: this.audioRecordPurpose });
 		} else {
 			void this.startSttMode();
 		}
@@ -931,6 +1113,34 @@ class ChatVoiceComposer {
 	}
 }
 
+function needsSpeechJoinSpace(before, incoming) {
+	const prev = String(before || "");
+	const next = String(incoming || "");
+	if (!prev || !next) return false;
+	if (/\s$/.test(prev) || /^\s/.test(next)) return false;
+	return /[a-zA-Z0-9]$/.test(prev) && /^[a-zA-Z0-9]/.test(next);
+}
+
+function joinSpeechTexts(existingText, incomingText) {
+	const prev = String(existingText || "");
+	const next = String(incomingText || "").trim();
+	if (!prev) return next;
+	if (!next) return prev;
+	return needsSpeechJoinSpace(prev, next) ? `${prev} ${next}` : `${prev}${next}`;
+}
+
+function detectPlatform(cached) {
+	if (cached) return cached;
+	if (typeof process !== "undefined" && process.platform) return process.platform;
+	if (typeof navigator !== "undefined") {
+		const hint = `${navigator.userAgentData?.platform || ""} ${navigator.platform || ""} ${navigator.userAgent || ""}`;
+		if (/win/i.test(hint) && !/darwin/i.test(hint)) return "win32";
+		if (/mac/i.test(hint)) return "darwin";
+		if (/linux|x11/i.test(hint)) return "linux";
+	}
+	return null;
+}
+
 function getSpeechDirectiveMatcher() {
 	if (typeof window !== "undefined") {
 		if (window.VcpVoice?.SpeechDirectiveMatcher)
@@ -942,20 +1152,6 @@ function getSpeechDirectiveMatcher() {
 		} catch (_) {}
 	}
 	return null;
-}
-
-function joinSpeechTexts(existingText, incomingText) {
-	const prev = String(existingText || "");
-	const next = String(incomingText || "").trim();
-	if (!prev) return next;
-	if (!next) return prev;
-	// 若前缀末尾或新文字开头已有空白，不重复补空格
-	if (/\s$/.test(prev) || /^\s/.test(next)) {
-		return `${prev}${next}`;
-	}
-	// 仅当前句末尾与新句开头均为半角英文字母或数字时，才补充空格分词；其余中文或标点自然连贯拼接
-	const needSpace = /[a-zA-Z0-9]$/.test(prev) && /^[a-zA-Z0-9]/.test(next);
-	return needSpace ? `${prev} ${next}` : `${prev}${next}`;
 }
 
 function parseCommaPhrases(phraseStr) {

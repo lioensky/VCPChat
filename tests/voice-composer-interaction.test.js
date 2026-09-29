@@ -152,7 +152,7 @@ test('ChatVoiceComposer: 草稿冲突拦截——录音期间手动修改草稿�
 
     // 4. 用户点击 [插入文字]，将暂存内容插入到当前光标处
     composer.insertPendingDraftText();
-    assert.equal(inputMock.value, '已被修改的内容 追加语音', '点击插入后精准插入到当前最新光标');
+    assert.equal(inputMock.value, '已被修改的内容追加语音', '点击插入后精准插入到当前最新光标');
     assert.equal(composer.state, COMPOSER_STATE.IDLE, '插入后状态机平稳恢复为 IDLE');
     assert.equal(composer.pendingText, '', '暂存内容被清空');
 });

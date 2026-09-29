@@ -1,7 +1,8 @@
 // schema/voice-settings — "语音设置" 分区（M1）。
 // 语音工作模式是单选组（M5-c pass5 起分段结构由渲染器直出，运行期只绑
 // 行为）；输入模式为语言行胶囊 select；其余为 text/url/password 行。
-import { section, radioGroup, radio, select, text, number, card } from './kernel.js';
+import { section, radioGroup, radio, select, text, number, card, custom } from './kernel.js';
+import { buildLocalSttPanel } from './local-stt-panel.js';
 
 export const voiceSettingsSection = section('voice-settings', '语音设置', [
     radioGroup('voiceModeGroup', {
@@ -30,9 +31,29 @@ export const voiceSettingsSection = section('voice-settings', '语音设置', [
         options: [
             { value: 'windows_voice_typing', label: 'Windows 语音键入（Win+H）' },
             { value: 'right_alt_hold', label: '输入法语音（模拟长按右 Alt）' },
+            { value: 'local_sensevoice', label: '本地 SenseVoice 转写（录音后离线识别）' },
         ],
-        save: { allowed: ['windows_voice_typing', 'right_alt_hold'], fallback: 'windows_voice_typing' },
+        save: { allowed: ['windows_voice_typing', 'right_alt_hold', 'local_sensevoice'], fallback: 'windows_voice_typing' },
     }),
+    select('localSttLanguage', {
+        rowId: 'localSttLanguageRow',
+        groupRowClass: 'vcp-settings-row',
+        languageRow: {
+            title: '本地识别语言',
+            description: '指定语言可提高准确率；自动检测适合中英混说。仅对“本地 SenseVoice 转写”生效。',
+        },
+        hintStyle: null,
+        options: [
+            { value: 'auto', label: '自动检测' },
+            { value: 'zh', label: '中文' },
+            { value: 'en', label: 'English' },
+            { value: 'yue', label: '粤语' },
+            { value: 'ja', label: '日本語' },
+            { value: 'ko', label: '한국어' },
+        ],
+        save: { allowed: ['auto', 'zh', 'en', 'yue', 'ja', 'ko'], fallback: 'auto' },
+    }),
+    custom('localSttPanel', buildLocalSttPanel),
     text('voiceInputShortcut', {
         inputType: 'text',
         label: '语音输入快捷键:',

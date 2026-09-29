@@ -173,18 +173,94 @@ class AudioRecorder {
         this.analyser = null;
         this.sourceNode = null;
         this.amplitudeSamples = null;
+        this.warmStream = null;
+        this.warmTimer = null;
+        this.warmPending = null;
+    }
+
+    // 冷启动打开麦克风在 Windows 上常要数百毫秒。按下按钮时预热、录完后短暂保留，
+    // 让 start() 直接复用已打开的音轨（超时未使用则自动释放，麦克风指示灯随之熄灭）。
+    static get WARM_KEEP_MS() { return 20000; }
+
+    static get DEVICE_KEY() { return 'vcpVoiceInputDeviceId'; }
+
+    static getPreferredDeviceId() {
+        try { return localStorage.getItem(AudioRecorder.DEVICE_KEY) || ''; } catch (_) { return ''; }
+    }
+
+    static setPreferredDeviceId(id) {
+        try {
+            if (id) localStorage.setItem(AudioRecorder.DEVICE_KEY, id);
+            else localStorage.removeItem(AudioRecorder.DEVICE_KEY);
+        } catch (_) {}
+    }
+
+    async openStream() {
+        const base = { echoCancellation: true, noiseSuppression: true };
+        const deviceId = AudioRecorder.getPreferredDeviceId();
+        if (deviceId) {
+            try {
+                return await navigator.mediaDevices.getUserMedia({ audio: { ...base, deviceId: { exact: deviceId } } });
+            } catch (error) {
+                // 所选麦克风已拔出：回退到系统默认，不让录音失败
+                if (error?.name !== 'OverconstrainedError' && error?.name !== 'NotFoundError') throw error;
+            }
+        }
+        return navigator.mediaDevices.getUserMedia({ audio: base });
+    }
+
+    scheduleWarmRelease() {
+        clearTimeout(this.warmTimer);
+        this.warmTimer = setTimeout(() => this.releaseWarm(), AudioRecorder.WARM_KEEP_MS);
+    }
+
+    releaseWarm() {
+        clearTimeout(this.warmTimer);
+        this.warmTimer = null;
+        const stream = this.warmStream;
+        this.warmStream = null;
+        if (stream) {
+            try { stream.getTracks().forEach(track => track.stop()); } catch (_) {}
+        }
+    }
+
+    async prewarm() {
+        if (this.isRecording || this.warmStream || this.warmPending) return;
+        if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) return;
+        this.warmPending = this.openStream()
+            .then(stream => {
+                this.warmStream = stream;
+                this.scheduleWarmRelease();
+            })
+            .catch(() => {})
+            .finally(() => { this.warmPending = null; });
+        await this.warmPending;
+    }
+
+    async takeStream() {
+        if (this.warmPending) await this.warmPending;
+        const warm = this.warmStream;
+        if (warm && warm.getTracks().some(track => track.readyState === 'live')) {
+            clearTimeout(this.warmTimer);
+            this.warmTimer = null;
+            this.warmStream = null;
+            return warm;
+        }
+        this.releaseWarm();
+        return this.openStream();
+    }
+
+    // 录音结束：音轨转入预热保留，而不是立即关闭
+    parkStream(stream) {
+        if (!stream) return;
+        this.releaseWarm();
+        this.warmStream = stream;
+        this.scheduleWarmRelease();
     }
 
     async start() {
         if (this.isRecording) return;
-        const stream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-                channelCount: 1,
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: false,
-            },
-        });
+        const stream = await this.takeStream();
 
         this.stream = stream;
         this.recordedBlobs = [];
@@ -255,7 +331,9 @@ class AudioRecorder {
         this.amplitudeSamples = null;
     }
 
-    async stop() {
+    // speech: true 时OfflineAudioContext 原生重采样为 16kHz 单声道 PCM16 WAV，
+    // 不做高通/静音裁剪/噪声门（识别模型自带 VAD，预处理反而会改变输入分布）。maxSeconds 截断计时器超时的多余部分。
+    async stop({ speech = false, maxSeconds = 0 } = {}) {
         if (!this.isRecording) return null;
         this.isRecording = false;
 
@@ -274,9 +352,7 @@ class AudioRecorder {
         }
 
         if (this.stream) {
-            try {
-                this.stream.getTracks().forEach(track => track.stop());
-            } catch (_) {}
+            this.parkStream(this.stream);
             this.stream = null;
         }
         this.cleanupAnalyser();
@@ -295,8 +371,9 @@ class AudioRecorder {
 
         let pcmData = null;
         let sampleRate = 48000;
+        let audioBuffer = null;
         try {
-            const audioBuffer = await decodeCtx.decodeAudioData(arrayBuffer);
+            audioBuffer = await decodeCtx.decodeAudioData(arrayBuffer);
             pcmData = audioBuffer.getChannelData(0);
             sampleRate = audioBuffer.sampleRate;
         } catch (decodeErr) {
@@ -310,6 +387,20 @@ class AudioRecorder {
 
         if (!pcmData || pcmData.length === 0) return null;
 
+        if (speech) {
+            const encodeSpeech = getEncodeWav();
+            if (!encodeSpeech) return null;
+            const OfflineClass = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+            const seconds = maxSeconds > 0 ? Math.min(audioBuffer.duration, maxSeconds) : audioBuffer.duration;
+            const offline = new OfflineClass(1, Math.max(1, Math.floor(seconds * 16000)), 16000);
+            const source = offline.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(offline.destination);
+            source.start();
+            const rendered = await offline.startRendering();
+            return encodeSpeech(rendered.getChannelData(0), 16000, 1);
+        }
+
         const filteredPcm = applyHighpassFilter(pcmData, sampleRate, 80);
         const cleanSamples = trimSilenceAndFade(filteredPcm, sampleRate);
         const encodeWavFn = getEncodeWav();
@@ -320,11 +411,10 @@ class AudioRecorder {
     dispose() {
         this.isRecording = false;
         if (this.stream) {
-            try {
-                this.stream.getTracks().forEach(track => track.stop());
-            } catch (_) {}
+            this.parkStream(this.stream);
             this.stream = null;
         }
+        this.releaseWarm();
         this.cleanupAnalyser();
         if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
             try {

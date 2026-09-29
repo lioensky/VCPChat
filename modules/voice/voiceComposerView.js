@@ -111,20 +111,21 @@ class VoiceComposerView {
         style.id = styleId;
         style.textContent = `
 #mainVoiceInputBtn {
+    /* .trigger { width: 28px; padding: 0 }，18px 线性麦克风，无描边幽灵按钮 */
     position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: var(--vcp-ui-send-button-size, 36px);
-    height: var(--vcp-ui-send-button-size, 36px);
+    width: 28px;
+    height: 28px;
     margin-left: auto !important;
     margin-right: 6px !important;
-    border-radius: 50%;
-    border: 1.5px solid color-mix(in srgb, var(--vcp-ui-accent, var(--button-bg, #ff4f8b)) 82%, #fbf9f5 18%);
+    border-radius: 8px;
+    border: 0;
     background: transparent;
-    color: color-mix(in srgb, var(--vcp-ui-accent, var(--button-bg, #ff4f8b)) 82%, #fbf9f5 18%);
+    color: var(--vcp-ui-text-2, #a7afb1);
     cursor: pointer;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: background-color 0.15s ease, color 0.15s ease;
     box-sizing: border-box;
     padding: 0;
     flex-shrink: 0;
@@ -137,23 +138,22 @@ html .vcp-ui-scope .chat-input-actions #mainVoiceInputBtn + :is(#sendMessageBtn,
 .chat-input-actions #mainVoiceInputBtn + :is(#sendMessageBtn, .chat-send-button) {
     margin-left: 0 !important;
 }
-#mainVoiceInputBtn:hover {
-    background: color-mix(in srgb, var(--vcp-ui-accent, #ff4f8b) 12%, transparent);
-    transform: translateY(-1px);
+#mainVoiceInputBtn:hover:not(:disabled) {
+    background: var(--vcp-ui-interactive-hover, rgba(127, 127, 127, 0.16));
+    color: var(--vcp-ui-text-0, currentColor);
 }
 #mainVoiceInputBtn svg {
     width: 18px;
     height: 18px;
     fill: none;
     stroke: currentColor;
-    stroke-width: 1.25;
+    stroke-width: 1;
     stroke-linecap: round;
     stroke-linejoin: round;
     transition: transform 0.2s ease;
 }
 #mainVoiceInputBtn.stt-mode-active {
     background: #ff4f8b !important;
-    border-color: #ff3377 !important;
     color: #ffffff !important;
     animation: vcp-voice-pulse-pink 2.4s ease-in-out infinite;
 }
@@ -163,7 +163,6 @@ html .vcp-ui-scope .chat-input-actions #mainVoiceInputBtn + :is(#sendMessageBtn,
 }
 #mainVoiceInputBtn.audio-record-mode-active {
     background: #f39c12 !important;
-    border-color: #e67e22 !important;
     color: #ffffff !important;
     animation: vcp-voice-pulse-orange 2.4s ease-in-out infinite;
 }
@@ -190,6 +189,22 @@ html .vcp-ui-scope .chat-input-actions #mainVoiceInputBtn + :is(#sendMessageBtn,
     cursor: not-allowed;
     pointer-events: none;
 }
+
+.vcp-mic-menu {
+    position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 1000; width: 300px; padding: 6px;
+    border-radius: 12px; background: var(--vcp-ui-surface-raised, var(--secondary-bg, #2b2f31));
+    color: var(--vcp-ui-text-0, var(--primary-text, #e6e9ea));
+    border: 1px solid var(--vcp-ui-border, rgba(127,127,127,.25)); box-shadow: 0 8px 24px rgba(0,0,0,.28);
+}
+.vcp-mic-menu-title { padding: 4px 8px 6px; font-size: 13px; opacity: .55; }
+.vcp-mic-menu-item {
+    display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: 0; border-radius: 8px;
+    background: transparent; color: inherit; font: inherit; font-size: 14px; line-height: 20px; text-align: left; cursor: pointer;
+}
+.vcp-mic-menu-item:hover, .vcp-mic-menu-item:focus-visible, .vcp-mic-menu-item[aria-checked="true"] { background: var(--vcp-ui-interactive-hover, rgba(127,127,127,.16)); outline: none; }
+.vcp-mic-menu-item .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vcp-mic-menu-item .check { flex: none; width: 16px; color: var(--vcp-ui-accent, #4c8dff); }
+.vcp-mic-menu-note { padding: 6px 8px 2px; font-size: 12px; opacity: .55; border-top: 1px solid var(--vcp-ui-border, rgba(127,127,127,.2)); margin-top: 4px; }
 
 /* 展开活动栏（Activity Bar / captureRow） */
 html .vcp-ui-scope .chat-input-actions.vcp-voice-expanded > :not(#vcpVoiceActivityBar):not(#sendMessageBtn):not(.chat-send-button),
@@ -569,9 +584,26 @@ html .vcp-ui-scope .chat-input-actions.vcp-voice-expanded > :not(#vcpVoiceActivi
         };
 
         // 事件监听绑定
+        // 长按麦克风按钮：弹出麦克风选择面板
+        const LONG_PRESS_MS = 500;
+        let pressTimer = null;
+        let longPressed = false;
+        const cancelPress = () => { clearTimeout(pressTimer); pressTimer = null; };
+        const onPressStart = event => {
+            if (event.button !== 0 || !options.onLongPress) return;
+            longPressed = false;
+            cancelPress();
+            pressTimer = setTimeout(() => {
+                pressTimer = null;
+                longPressed = true;
+                options.onLongPress();
+            }, LONG_PRESS_MS);
+        };
+
         const onLeftClick = event => {
             event.preventDefault();
             event.stopPropagation();
+            if (longPressed) { longPressed = false; return; }
             options.onLeftClick?.();
         };
 
@@ -605,12 +637,17 @@ html .vcp-ui-scope .chat-input-actions.vcp-voice-expanded > :not(#vcpVoiceActivi
             options.onRetry?.();
         };
 
+        const onPress = () => options.onPress?.();
+        btn.addEventListener('mousedown', onPress);
         btn.addEventListener('mousedown', keepDraftFocus);
         this.cancelBtn?.addEventListener('mousedown', keepDraftFocus);
         this.stopBtn?.addEventListener('mousedown', keepDraftFocus);
         this.insertBtn?.addEventListener('mousedown', keepDraftFocus);
         this.retryBtn?.addEventListener('mousedown', keepDraftFocus);
 
+        btn.addEventListener('mousedown', onPressStart);
+        btn.addEventListener('mouseup', cancelPress);
+        btn.addEventListener('mouseleave', cancelPress);
         btn.addEventListener('click', onLeftClick);
         btn.addEventListener('contextmenu', onContextMenu);
         this.cancelBtn?.addEventListener('click', onCancelClick);
@@ -619,12 +656,18 @@ html .vcp-ui-scope .chat-input-actions.vcp-voice-expanded > :not(#vcpVoiceActivi
         this.retryBtn?.addEventListener('click', onRetryClick);
 
         this.disposers.push(() => {
+            btn.removeEventListener('mousedown', onPress);
             btn.removeEventListener('mousedown', keepDraftFocus);
             this.cancelBtn?.removeEventListener('mousedown', keepDraftFocus);
             this.stopBtn?.removeEventListener('mousedown', keepDraftFocus);
             this.insertBtn?.removeEventListener('mousedown', keepDraftFocus);
             this.retryBtn?.removeEventListener('mousedown', keepDraftFocus);
 
+            cancelPress();
+            btn.removeEventListener('mousedown', onPressStart);
+            btn.removeEventListener('mouseup', cancelPress);
+            btn.removeEventListener('mouseleave', cancelPress);
+            this.closeMicMenu();
             btn.removeEventListener('click', onLeftClick);
             btn.removeEventListener('contextmenu', onContextMenu);
             this.cancelBtn?.removeEventListener('click', onCancelClick);
@@ -774,11 +817,79 @@ html .vcp-ui-scope .chat-input-actions.vcp-voice-expanded > :not(#vcpVoiceActivi
         }
     }
 
+    closeMicMenu() {
+        this.micMenu?.remove();
+        this.micMenu = null;
+        if (this.micMenuCleanup) { this.micMenuCleanup(); this.micMenuCleanup = null; }
+    }
+
+    // devices: [{ deviceId, label }]，selectedId 为空表示系统默认
+    showMicMenu({ devices = [], selectedId = '', note = '', onSelect } = {}) {
+        if (!this.button || !this.actionsContainer) return;
+        this.closeMicMenu();
+        const menu = document.createElement('div');
+        menu.className = 'vcp-mic-menu';
+        menu.setAttribute('role', 'menu');
+        const title = document.createElement('div');
+        title.className = 'vcp-mic-menu-title';
+        title.textContent = '麦克风';
+        menu.appendChild(title);
+        const entries = devices.length ? devices : [{ deviceId: '', label: '系统默认麦克风' }];
+        const hasSelected = entries.some(d => d.deviceId === selectedId);
+        entries.forEach(d => {
+            const checked = hasSelected ? d.deviceId === selectedId : (d.deviceId === 'default' || d === entries[0]);
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'vcp-mic-menu-item';
+            item.setAttribute('role', 'menuitemradio');
+            item.setAttribute('aria-checked', String(checked));
+            const name = document.createElement('span');
+            name.className = 'name';
+            name.textContent = d.label || '麦克风';
+            name.title = d.label || '';
+            const check = document.createElement('span');
+            check.className = 'check';
+            check.textContent = checked ? '\u2713' : '';
+            item.append(name, check);
+            item.addEventListener('click', event => {
+                event.stopPropagation();
+                this.closeMicMenu();
+                onSelect?.(d.deviceId);
+            });
+            menu.appendChild(item);
+        });
+        if (note) {
+            const n = document.createElement('div');
+            n.className = 'vcp-mic-menu-note';
+            n.textContent = note;
+            menu.appendChild(n);
+        }
+        const host = this.actionsContainer;
+        if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+        host.appendChild(menu);
+        this.micMenu = menu;
+        const onDown = event => { if (!menu.contains(event.target)) this.closeMicMenu(); };
+        const onKey = event => { if (event.key === 'Escape') { this.closeMicMenu(); event.stopPropagation(); } };
+        document.addEventListener('mousedown', onDown, true);
+        document.addEventListener('keydown', onKey, true);
+        this.micMenuCleanup = () => {
+            document.removeEventListener('mousedown', onDown, true);
+            document.removeEventListener('keydown', onKey, true);
+        };
+    }
+
     updateTooltip(state = {}) {
         if (!this.button) return;
         const { isRecordingAudio, isSttActive, voiceInputMode } = state;
-        const isWindows = typeof process !== 'undefined' && process.platform === 'win32';
+        const isWindows = typeof state.isWindows === 'boolean'
+            ? state.isWindows
+            : typeof process !== 'undefined' && process.platform === 'win32';
         const isAltMode = voiceInputMode === 'right_alt_hold';
+
+        if (isRecordingAudio && voiceInputMode === 'local_sensevoice') {
+            this.button.title = '正在录音... 点击停止并在本地转写为文字 (ESC 取消)';
+            return;
+        }
 
         if (isRecordingAudio) {
             this.button.title = '正在录制原声音频... 点击停止并生成 WAV 附件 (ESC 取消)';
@@ -789,6 +900,11 @@ html .vcp-ui-scope .chat-input-actions.vcp-voice-expanded > :not(#vcpVoiceActivi
             this.button.title = isAltMode
                 ? '语音听写运行中【右 Alt 模拟长按模式，期间请勿按压其他键；点击停止关闭】'
                 : '语音听写运行中 (停顿自动完成，点击立即关闭退出)';
+            return;
+        }
+
+        if (voiceInputMode === 'local_sensevoice') {
+            this.button.title = '左键录音并本地转写为文字 (SenseVoice 离线)；右键录制原声 WAV 附件';
             return;
         }
 
