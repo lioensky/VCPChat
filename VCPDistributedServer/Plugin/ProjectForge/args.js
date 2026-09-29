@@ -2,7 +2,7 @@
 // 参数解析：命令名、布尔/数字/JSON、reason 必填校验、串语法（编号参数）解析。
 // 所有参数名大小写不敏感（VCP 工具调用中 AI 常混用大小写）。
 
-const STEP_FIELDS = ['op', 'start', 'end', 'lines', 'after', 'before', 'content', 'target', 'replace', 'expect', 'line', 'pick', 'reason', 'todo'];
+const STEP_FIELDS = ['op', 'start', 'end', 'lines', 'after', 'before', 'content', 'target', 'replace', 'expect', 'line', 'pick', 'symbol', 'range', 'reason', 'todo'];
 
 /** 返回键名全部小写的浅拷贝，便于大小写不敏感取值。 */
 function lowerKeys(args) {
@@ -76,6 +76,7 @@ function requireReason(args, command) {
 
 function inferOp(step) {
     if (step.op) return String(step.op).trim().toLowerCase();
+    if (step.symbol !== undefined) return 'symbol';
     if (step.target !== undefined) return 'target';
     if (step.after !== undefined || step.before !== undefined) return 'insert';
     return 'replace';
@@ -124,9 +125,9 @@ function parseEditSteps(args) {
         if (f === 'reason' || f === 'todo') continue; // 平铺形式下 reason/todo 属于批次级
         if (args[f] !== undefined) single[f] = args[f];
     }
-    if (single.op === undefined && single.target === undefined && single.start === undefined
+    if (single.op === undefined && single.target === undefined && single.start === undefined && single.symbol === undefined
         && single.lines === undefined && single.after === undefined && single.before === undefined) {
-        throw new Error('EditCode 缺少编辑内容。单步示例：start/end/content 或 target/replace；多步用 op1/start1/content1、op2/target2/replace2 …');
+        throw new Error('EditCode 缺少编辑内容。单步示例：start/end/content、target/replace 或 symbol/content；多步用 op1/start1/content1、op2/target2/replace2、symbol3/content3 …');
     }
     single.op = inferOp(single);
     return [single];

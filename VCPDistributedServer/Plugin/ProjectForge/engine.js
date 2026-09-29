@@ -132,8 +132,25 @@ function matchScope(line) {
     return null;
 }
 
-/** 轻量识别所在定义：向上寻找缩进更浅的函数/类定义，返回如 "Store > putBlob"。 */
-function enclosingScope(idx, lineNo) {
+const AST_CONTAINER_KINDS = new Set(['function', 'method', 'class', 'object', 'interface', 'namespace', 'struct', 'trait', 'impl', 'module', 'enum', 'union']);
+
+/** AST 符号表（outline.symbols）中包含 lineNo 的最内层容器链；没有则返回 null。 */
+function astScope(symbols, lineNo) {
+    if (!Array.isArray(symbols) || !symbols.length) return null;
+    const chain = symbols
+        .filter(s => AST_CONTAINER_KINDS.has(s.kind) && lineNo >= s.start && lineNo <= s.end)
+        .sort((a, b) => (a.depth ?? 0) - (b.depth ?? 0) || a.start - b.start);
+    return chain.length ? chain.slice(-3).map(s => s.name).join(' > ') : null;
+}
+
+/**
+ * 识别所在定义，返回如 "Store > putBlob"。
+ * 传入 symbols（与 idx 同一份文本的 outline.symbols）时按 AST 区间包含关系取最内层符号链；
+ * 否则（或 AST 未覆盖该行）向上寻找缩进更浅的函数/类定义（正则启发式）。
+ */
+function enclosingScope(idx, lineNo, symbols = null) {
+    const fromAst = astScope(symbols, lineNo);
+    if (fromAst) return fromAst;
     const chain = [];
     let limitIndent = Infinity;
     const selfName = matchScope(idx.lines[lineNo - 1] || '');
@@ -428,18 +445,18 @@ function parsePick(pick, total) {
     return [...new Set(picks)].sort((a, b) => a - b);
 }
 
-function describeCandidates(idx, hits) {
+function describeCandidates(idx, hits, symbols = null) {
     return hits.slice(0, MAX_CANDIDATES).map((h, i) => ({
         index: i + 1,
         startLine: h.startLine,
         endLine: h.endLine,
-        scope: enclosingScope(idx, h.startLine),
+        scope: enclosingScope(idx, h.startLine, symbols),
         context: contextBlock(idx, h.startLine, h.endLine),
     }));
 }
 
 /** 多处命中时按 pick / line 选择；都没有则返回 ambiguity。 */
-function chooseHits(idx, hits, step) {
+function chooseHits(idx, hits, step, symbols = null) {
     const picks = parsePick(step.pick, hits.length);
     if (picks) return { chosen: picks.map(n => hits[n - 1]), note: null };
     if (hits.length === 1) return { chosen: hits, note: null };
@@ -455,7 +472,7 @@ function chooseHits(idx, hits, step) {
             total: hits.length,
             tooMany: hits.length > MAX_CANDIDATES,
             signature: hits.map(h => h.startLine).join(','),
-            candidates: describeCandidates(idx, hits),
+            candidates: describeCandidates(idx, hits, symbols),
         },
     };
 }
@@ -534,7 +551,7 @@ function autoIndent(idx, after, skip = null) {
  * 返回 { edits:[...], note? } 或 { ambiguity:{...} }；错误以异常抛出。
  * step.raw=true 时 content 不做行号前缀剥除（插件内部搬运原文时使用）。
  */
-function planStep(idx, step, notes, drift) {
+function planStep(idx, step, notes, drift, symbols = null) {
     const op = String(step.op || '').toLowerCase();
     const label = `步骤${step.step}`;
     const clean = (value, what) => (step.raw ? normalizeEol(value ?? '') : cleanText(value ?? '', notes, `${label} ${what}`));
@@ -586,7 +603,7 @@ function planStep(idx, step, notes, drift) {
         const replace = cleanText(step.replace ?? '', notes, `${label} replace`);
         const { hits, elided } = locateTarget(idx, target, drift);
         if (!hits.length) throw targetNotFound(idx, target);
-        const choice = chooseHits(idx, hits, step);
+        const choice = chooseHits(idx, hits, step, symbols);
         if (choice.ambiguity) return { ambiguity: choice.ambiguity };
         const chosen = choice.chosen;
         let note;
@@ -628,6 +645,7 @@ function planStep(idx, step, notes, drift) {
  */
 function resolveBlock(original, spec = {}, options = {}) {
     const drift = Number.isInteger(options.drift) ? options.drift : DEFAULT_DRIFT;
+    const symbols = options.symbols || null;
     const idx = buildIndex(normalizeEol(original));
     const notes = [];
     let startLine;
@@ -637,7 +655,7 @@ function resolveBlock(original, spec = {}, options = {}) {
         const target = cleanText(spec.target, notes, '源 target');
         const { hits, elided } = locateTarget(idx, target, drift);
         if (!hits.length) throw targetNotFound(idx, target);
-        const choice = chooseHits(idx, hits, { ...spec, step: 1 });
+        const choice = chooseHits(idx, hits, { ...spec, step: 1 }, symbols);
         if (choice.ambiguity) return { status: 'ambiguous', ambiguity: choice.ambiguity, notes };
         if (choice.chosen.length !== 1) throw new Error('源代码块只能选择一处（pick 只给一个序号）');
         const hit = choice.chosen[0];
@@ -665,7 +683,7 @@ function resolveBlock(original, spec = {}, options = {}) {
     const lines = idx.lines.slice(startLine - 1, endLine);
     return {
         status: 'ok', startLine, endLine, text: `${lines.join('\n')}\n`, lineCount: lines.length,
-        scope: enclosingScope(idx, startLine), notes, note,
+        scope: enclosingScope(idx, startLine, symbols), notes, note,
     };
 }
 
@@ -699,12 +717,14 @@ function applyEdits(original, edits) {
  * 执行一串编辑。
  * @param {string} original 原文（任意换行，内部归一化为 LF）
  * @param {Array} steps 规范化步骤 [{ step, op, start, end, lines, after, before, content, target, replace, expect, line, pick, raw }]
- * @param {{ mode?: 'atomic'|'bestEffort', drift?: number }} options
+ * @param {{ mode?: 'atomic'|'bestEffort', drift?: number, symbols?: Array }} options
+ *   symbols：与 original 同一份文本的 outline.symbols，仅用于歧义候选的 scope 显示
  * @returns {{ status: 'ok'|'error'|'ambiguous', text?, applied?, errors, ambiguities?, notes }}
  */
 function runEditString(original, steps, options = {}) {
     const mode = options.mode === 'bestEffort' ? 'bestEffort' : 'atomic';
     const drift = Number.isInteger(options.drift) ? options.drift : DEFAULT_DRIFT;
+    const symbols = options.symbols || null;
     const text = normalizeEol(original);
     const idx = buildIndex(text);
     const notes = [];
@@ -714,7 +734,7 @@ function runEditString(original, steps, options = {}) {
 
     steps.forEach((step, order) => {
         try {
-            const result = planStep(idx, step, notes, drift);
+            const result = planStep(idx, step, notes, drift, symbols);
             if (result.ambiguity) { ambiguities.push(result.ambiguity); return; }
             planned.push({ step, order, note: result.note, edits: result.edits.map(e => ({ ...e, step: step.step, order })) });
         } catch (error) {
@@ -783,5 +803,5 @@ module.exports = {
     shiftIndent,
     autoIndent,
     MAX_CANDIDATES,
-    _test: { findTarget, applyEdits, parsePick, similarity, resolveAnchor, reindent, parseElision, findElided, commonIndent },
+    _test: { findTarget, applyEdits, parsePick, similarity, resolveAnchor, reindent, parseElision, findElided, commonIndent, astScope },
 };

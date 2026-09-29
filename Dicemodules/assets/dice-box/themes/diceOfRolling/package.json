@@ -1,0 +1,34 @@
+{
+	"name": "@3d-dice/theme-dice-of-rolling",
+  "private": false,
+	"author": {
+		"name": "Frank Ali"
+	},
+	"description": "Multicolored dice skin based on Dice of Rolling",
+	"version": "0.2.1",
+	"keywords": [
+		"3D",
+		"dice",
+    "skins",
+    "theme",
+    "dice of rolling",
+		"javascript",
+		"rpg",
+		"dnd",
+		"d&d",
+		"tabletop"
+	],
+	"license": "MIT",
+	"homepage": "https://fantasticdice.games",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/3d-dice/dice-themes",
+    "directory": "themes/diceOfRolling"
+	},
+	"bugs": {
+		"url": "https://github.com/3d-dice/dice-themes/issues"
+	},
+  "files": [
+		"*"
+	]
+}

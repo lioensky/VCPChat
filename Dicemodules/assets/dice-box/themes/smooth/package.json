@@ -1,0 +1,33 @@
+{
+	"name": "@3d-dice/theme-smooth",
+  "private": false,
+	"author": {
+		"name": "Frank Ali"
+	},
+	"description": "Smooth edged dice with configurable colors",
+	"version": "0.2.1",
+	"keywords": [
+		"3D",
+		"dice",
+    "skins",
+    "theme",
+		"javascript",
+		"rpg",
+		"dnd",
+		"d&d",
+		"tabletop"
+	],
+	"license": "MIT",
+	"homepage": "https://fantasticdice.games",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/3d-dice/dice-themes",
+    "directory": "themes/smooth"
+	},
+	"bugs": {
+		"url": "https://github.com/3d-dice/dice-themes/issues"
+	},
+  "files": [
+		"*"
+	]
+}

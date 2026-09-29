@@ -14,6 +14,10 @@ const { ProjectStore, sha256 } = require('./store');
 const engine = require('./engine');
 const { WorkspaceResolver } = require('./workspace');
 const { TicketStore, parsePickSpec } = require('./tickets');
+const { IndexerClient } = require('./indexerClient');
+const SR = require('./symbolResolver');
+const LG = require('./linkGraph');
+const { isPathInside, toPosixRelative } = require('../../shared/fileKit/paths');
 const A = require('./args');
 const T = require('../../shared/fileKit/text');
 const { validateCode, diffDiagnostics, isValidatable } = require('../../shared/fileKit/validator');
@@ -30,6 +34,32 @@ function posInt(value, fallback) {
     return Number.isInteger(n) && n > 0 ? n : fallback;
 }
 
+/** 配置布尔值容错解析：非法值不阻断插件初始化，按默认值处理并告警。 */
+function configBool(value, fallback, name, logger) {
+    try {
+        return A.bool(value, fallback);
+    } catch (_e) {
+        logger?.warn?.(`${P} 配置 ${name}=${value} 无法识别为布尔值，按默认 ${fallback} 处理。`);
+        return fallback;
+    }
+}
+
+// 忽略目录唯一来源：主进程工作区索引的 DEFAULT_IGNORED_DIRS。
+// 引用失败时不传 ignoreDirs，由索引器内置的同一份列表兜底（不影响施工）。
+let ignoredDirsCache;
+function astIgnoreDirs() {
+    if (ignoredDirsCache === undefined) {
+        try {
+            const { DEFAULT_IGNORED_DIRS } = require('../../../modules/services/workspaceIndex');
+            ignoredDirsCache = DEFAULT_IGNORED_DIRS ? [...DEFAULT_IGNORED_DIRS] : null;
+        } catch (error) {
+            ignoredDirsCache = null;
+            runtime.logger?.warn?.(`${P} 无法载入工作区忽略目录列表，改用索引器内置列表：${error.message}`);
+        }
+    }
+    return ignoredDirsCache || undefined;
+}
+
 function freshRuntime(overrides = {}) {
     return {
         store: null,
@@ -41,6 +71,7 @@ function freshRuntime(overrides = {}) {
         readMaxFiles: 20,
         readMaxBytes: 30 * 1024 * 1024,
         trash: null, // 可注入（单测用）；为空时使用系统回收站
+        indexer: null, // AST 符号索引客户端；只创建对象，首次需要符号时才启动进程
         initialized: false,
         ...overrides,
     };
@@ -53,18 +84,26 @@ const locks = new Map();
 
 function initialize(options = {}) {
     closeStore();
+    const previousIndexer = runtime.indexer;
+    if (previousIndexer) previousIndexer.stop().catch(() => { /* 旧进程已退出 */ });
     const config = options.config || {};
+    const logger = options.logger || console;
     runtime = freshRuntime({
         resolver: new WorkspaceResolver({
             workspaceService: options.services?.workspaceService || options.workspaceService || null,
             extraAllowed: String(config.ALLOWED_DIRECTORIES || '').split(','),
         }),
-        logger: options.logger || console,
+        logger,
         dbPath: config.PROJECTFORGE_DB_PATH ? path.resolve(config.PROJECTFORGE_DB_PATH) : (options.dbPath || DEFAULT_DB_PATH),
         maxEditSize: posInt(config.MAX_EDIT_FILE_SIZE, 5 * 1024 * 1024),
         readMaxFiles: posInt(config.READ_MAX_FILES, 20),
         readMaxBytes: posInt(config.READ_MAX_TOTAL_BYTES, 30 * 1024 * 1024),
         trash: typeof options.trash === 'function' ? options.trash : null,
+        indexer: new IndexerClient({
+            logger,
+            binaryPath: options.indexerBinaryPath,
+            disabled: !configBool(config.AST_INDEX_ENABLED, true, 'AST_INDEX_ENABLED', logger),
+        }),
         initialized: true,
     });
 }
@@ -84,8 +123,15 @@ function closeStore() {
     runtime.tickets?.clear();
 }
 
+async function stopIndexer() {
+    const indexer = runtime.indexer;
+    if (!indexer) return;
+    try { await indexer.stop(); } catch (_e) { /* 已退出 */ }
+}
+
 async function cleanup() {
     closeStore();
+    await stopIndexer();
 }
 
 function store() {
@@ -503,13 +549,18 @@ function splitPathRange(entry) {
 function collectReadTargets(ctx, args) {
     const targets = [];
     const single = A.str(args, 'path', 'file', 'filePath');
+    const symbolArg = A.str(args, 'symbol');
     if (single) {
-        const { path: p, lines } = splitPathRange(single);
-        targets.push({ ...fileOf(ctx, p), lines: A.str(args, 'lines') || lines });
+        const { path: p0, lines } = splitPathRange(single);
+        const { path: p, symbol } = SR.splitPathSymbol(p0);
+        targets.push({ ...fileOf(ctx, p), lines: A.str(args, 'lines') || lines, symbol: symbol || symbolArg || null });
+    } else if (symbolArg) {
+        throw new Error(`${P} ReadCode 的 symbol= 需要配合 path（或直接写 path=文件#符号）。不知道在哪个文件时先用 FindSymbol。`);
     }
     for (const entry of A.list(A.pick(args, 'paths', 'files'))) {
-        const { path: p, lines } = splitPathRange(entry);
-        targets.push({ ...fileOf(ctx, p), lines });
+        const { path: p0, lines } = splitPathRange(entry);
+        const { path: p, symbol } = SR.splitPathSymbol(p0);
+        targets.push({ ...fileOf(ctx, p), lines, symbol });
     }
     const pattern = A.str(args, 'glob', 'pattern');
     if (pattern) {
@@ -522,7 +573,8 @@ function collectReadTargets(ctx, args) {
     }
     if (!targets.length) throw new Error(`${P} ReadCode 需要 path、paths 或 glob。`);
     const seen = new Set();
-    return targets.filter(t => !seen.has(`${t.rel}|${t.lines || ''}`) && seen.add(`${t.rel}|${t.lines || ''}`));
+    const keyOf = t => `${t.rel}|${t.lines || ''}|${t.symbol || ''}`;
+    return targets.filter(t => !seen.has(keyOf(t)) && seen.add(keyOf(t)));
 }
 
 async function findInFiles(ctx, targets, needle) {
@@ -538,8 +590,9 @@ async function findInFiles(ctx, targets, needle) {
         let hits;
         try { hits = engine.locateTarget(idx, query).hits; } catch (_e) { hits = []; } // 首尾锚定未命中视为 0 处
         total += hits.length;
+        const outline = hits.length && out.length < 30 ? await outlineOf(t.rel, meta.text) : null;
         for (const h of hits.slice(0, Math.max(0, 30 - out.length))) {
-            const scope = engine.enclosingScope(idx, h.startLine);
+            const scope = engine.enclosingScope(idx, h.startLine, outline?.symbols);
             out.push(`#### \`${t.rel}\` · L${h.startLine}-${h.endLine}${scope ? ` · in ${scope}` : ''}\n${T.markdownFence(engine.contextBlock(idx, h.startLine, h.endLine), T.languageOf(t.rel))}`);
         }
     }
@@ -553,15 +606,263 @@ async function readCode(args) {
     const needle = A.pick(args, 'find', 'search');
     if (needle !== undefined) return findInFiles(ctx, targets, String(needle));
     const showLine = A.bool(A.pick(args, 'showLine', 'showLines', 'lineNumbers'), true);
+
+    // 符号目标：在本次读到的内容上解析为行区间，再交给通用 reader 按 lines 渲染
+    const range = A.str(args, 'range') || 'full';
+    const context = Math.max(0, Math.floor(Number(A.pick(args, 'context')) || 0));
+    const symNotes = [];
+    const misses = [];
+    const symbols = [];
+    const readable = [];
+    for (const t of targets) {
+        if (!t.symbol) { readable.push(t); continue; }
+        try {
+            const r = await resolveSymbolInFile(t, t.symbol, { pick: A.pick(args, 'pick'), line: A.pick(args, 'line') });
+            if (r.res.status !== 'ok') { misses.push(renderSymbolMiss(t, r.res, 'ReadCode')); continue; }
+            const sym = r.res.symbol;
+            const rg = SR.symbolRange(sym, { range, context, lineCount: T.splitLines(r.meta.text).lines.length });
+            symNotes.push(`- \`${t.rel}#${sym.qualified}\` · ${sym.kind} · 读取 L${rg.startLine}-${rg.endLine}（${rg.mode === 'body' ? '从签名行起' : '含前置注释'}${context ? `，上下文 ±${context} 行` : ''}）${r.res.note ? ` · ${r.res.note}` : ''}`);
+            symbols.push({ path: t.rel, ...sym, readStart: rg.startLine, readEnd: rg.endLine });
+            readable.push({ ...t, lines: `${rg.startLine}-${rg.endLine}` });
+        } catch (error) {
+            misses.push(`## ❌ \`${t.rel}#${t.symbol}\`\n- ${error.message}`);
+        }
+    }
+
     const result = await readFilesAsContent(
-        targets.map(t => ({ absPath: t.abs, displayPath: t.rel, lines: t.lines })),
+        readable.map(t => ({ absPath: t.abs, displayPath: t.symbol ? `${t.rel}#${t.symbol}` : t.rel, lines: t.lines })),
         { withLineNumbers: showLine, maxFiles: runtime.readMaxFiles, maxTotalBytes: runtime.readMaxBytes, maxFileSize: runtime.maxEditSize * 4 },
     );
     const head = {
         type: 'text',
-        text: `## ReadCode · ${result.read.length} 个文件\n${projectHeader(ctx.project, ctx.rootInfo)}${showLine ? '\n- 行号前缀 `N | ` 仅供定位，EditCode 时可直接粘贴，插件会自动剥除。' : ''}`,
+        text: [
+            `## ReadCode · ${result.read.length} 个文件`,
+            projectHeader(ctx.project, ctx.rootInfo),
+            showLine ? '- 行号前缀 `N | ` 仅供定位，EditCode 时可直接粘贴，插件会自动剥除。' : '',
+            symNotes.length ? `### 符号\n${symNotes.join('\n')}` : '',
+        ].filter(Boolean).join('\n'),
     };
-    return partsResult([head, ...result.parts], { command: 'ReadCode', read: result.read, skipped: result.skipped, failed: result.failed });
+    const parts = [head, ...result.parts];
+    if (misses.length) parts.push({ type: 'text', text: misses.join('\n\n') });
+    return partsResult(parts, { command: 'ReadCode', read: result.read, skipped: result.skipped, failed: result.failed, symbols, symbolMisses: misses.length });
+}
+
+// ============================ 符号（AST） ============================
+// 区间以内容为准：每次都把本次读到的文本交给索引器现场解析（按 sha256+lang 缓存），
+// 返回的行号与这份内容严格对应；索引器不可用时明确提示改用 lines / target，不做猜测。
+
+function astStatusNote() {
+    const indexer = runtime.indexer;
+    if (!indexer) return '索引器未初始化';
+    if (indexer.disabled) return '已通过配置 AST_INDEX_ENABLED=false 关闭';
+    const st = indexer.status();
+    if (st.circuit) return st.circuit;
+    return null;
+}
+
+function astUnavailableReason(rel) {
+    if (runtime.indexer && !runtime.indexer.supports(rel)) {
+        return '该文件类型不支持 AST 符号（支持 JS/TS/TSX/Python/Rust），请用 lines / target 定位';
+    }
+    return `AST 索引器不可用（${astStatusNote() || '启动失败或暂时降级'}），请用 lines / target 定位`;
+}
+
+async function outlineOf(rel, text) {
+    const indexer = runtime.indexer;
+    if (!indexer || !indexer.supports(rel)) return null;
+    return indexer.outline(text, rel);
+}
+
+/**
+ * 读文件并在本次内容上解析符号地址。写操作必须在 withLock 内调用，
+ * 之后用同一份 disk.hash 做 assertDiskUnchanged。
+ * @returns {{ disk, meta, outline, res }} res 见 symbolResolver.resolveInOutline
+ */
+async function resolveSymbolInFile(file, ref, options = {}) {
+    const disk = await readDisk(file.abs);
+    if (!disk.exists) throw new Error(`${P} 文件不存在：${file.rel}`);
+    const meta = decodeText(disk.buffer, file.rel);
+    const outline = await outlineOf(file.rel, meta.text);
+    if (!outline) throw new Error(`${P} ${file.rel}：${astUnavailableReason(file.rel)}。`);
+    const res = SR.resolveInOutline(outline, ref, options);
+    return { disk, meta, outline, res };
+}
+
+/** notFound / ambiguous 的统一提示（非票据场景：ReadCode / MoveCode / CopyCode）。 */
+function renderSymbolMiss(file, res, command) {
+    if (res.status === 'notFound') {
+        return [
+            `## ❌ 未找到符号 \`${res.query}\` · \`${file.rel}\``,
+            '- 最相似的符号：',
+            SR.renderSuggestions(res.suggestions),
+            `- 可用 Outline path=${file.rel} 查看全部符号，或用 FindSymbol 在工程内查找。`,
+        ].join('\n');
+    }
+    return [
+        `## ⚠️ 符号 \`${res.query}\` 在 \`${file.rel}\` 中有 ${res.total} 处同名定义，未执行 ${command}${res.tooMany ? `（仅列出前 ${res.candidates.length} 处）` : ''}`,
+        SR.renderCandidateLines(res.candidates),
+        `- 下一步：保留原参数，加 pick=候选序号 或 line=近似行号 重发；也可写更完整的限定名（如 \`父级.${res.query.split('.').pop()}\`）。`,
+    ].join('\n');
+}
+
+async function outlineCmd(args) {
+    const ctx = projectOf(args);
+    const inputs = [A.str(args, 'path', 'file', 'filePath'), ...A.list(A.pick(args, 'paths', 'files'))].filter(Boolean);
+    if (!inputs.length) throw new Error(`${P} Outline 需要 path 或 paths（多个用换行或逗号分隔）。`);
+    const depth = posInt(A.pick(args, 'depth'), undefined);
+    const kinds = A.list(A.pick(args, 'kind', 'kinds'));
+    const seen = new Set();
+    const files = [];
+    for (const input of inputs) {
+        const p = SR.splitPathSymbol(splitPathRange(input).path).path;
+        const file = fileOf(ctx, p);
+        if (seen.has(file.rel)) continue;
+        seen.add(file.rel);
+        files.push(file);
+    }
+    const blocks = [];
+    const details = [];
+    for (const file of files.slice(0, runtime.readMaxFiles)) {
+        const disk = await readDisk(file.abs);
+        if (!disk.exists) { blocks.push(`### \`${file.rel}\`\n- 文件不存在`); continue; }
+        let meta;
+        try { meta = decodeText(disk.buffer, file.rel); } catch (error) { blocks.push(`### \`${file.rel}\`\n- ${error.message}`); continue; }
+        const outline = await outlineOf(file.rel, meta.text);
+        if (!outline) { blocks.push(`### \`${file.rel}\`\n- ${astUnavailableReason(file.rel)}`); continue; }
+        const r = SR.renderOutline(outline, { depth, kinds });
+        blocks.push([
+            `### \`${file.rel}\` · ${outline.lang} · ${outline.lineCount} 行 · 显示 ${r.shown}/${r.total} 个符号${outline.hasError ? ' · ⚠️ 文件存在语法错误，区间为尽力提取' : ''}`,
+            r.text || '- （无符号）',
+        ].join('\n'));
+        details.push({ path: file.rel, lang: outline.lang, hasError: outline.hasError, lineCount: outline.lineCount, symbols: outline.symbols });
+    }
+    if (files.length > runtime.readMaxFiles) blocks.push(`- ⚠️ 仅处理前 ${runtime.readMaxFiles} 个文件（共 ${files.length} 个）。`);
+    const head = [
+        `## Outline · ${files.length} 个文件`,
+        projectHeader(ctx.project, ctx.rootInfo),
+        '- `L起-止` 为签名行到结束行，`注释自 L` 为含前置注释 / 装饰器的起点。可用 `path#限定名` 回填 ReadCode / EditCode / MoveCode / CopyCode。',
+    ].join('\n');
+    return textResult(`${head}\n\n${blocks.join('\n\n')}`, { command: 'Outline', files: details });
+}
+
+function swapQualifier(name) {
+    if (name.includes('::')) return name.replace(/::/g, '.');
+    if (name.includes('.')) return name.replace(/\./g, '::');
+    return null;
+}
+
+async function findSymbolCmd(args) {
+    const ctx = projectOf(args);
+    const name = A.str(args, 'name', 'symbol', 'query');
+    if (!name) throw new Error(`${P} FindSymbol 需要 name（符号名或限定名，如 commitEdit、Store.putBlob、Store::put_blob）。`);
+    if (!runtime.indexer?.usable) {
+        throw new Error(`${P} FindSymbol 需要 AST 索引器：${astStatusNote() || '不可用'}。可改用 ReadCode glob=… find=… 做文本查找。`);
+    }
+    const scopeArg = A.str(args, 'scope').toLowerCase();
+    let root = ctx.rootInfo.root;
+    let scopeLabel = '工程根';
+    if (scopeArg === 'workspace') {
+        const ws = runtime.resolver.list()
+            .filter(item => isPathInside(root, item.path) || path.resolve(item.path) === path.resolve(root))
+            .sort((a, b) => b.path.length - a.path.length)[0];
+        if (ws) { root = path.resolve(ws.path); scopeLabel = `工作区 \`${ws.alias}\`（工程外的结果只读）`; }
+        else scopeLabel = '工程根（未找到所属工作区）';
+    } else if (scopeArg && scopeArg !== 'project') {
+        throw new Error(`${P} scope 只能是 project（默认）或 workspace。`);
+    }
+    const query = {
+        kind: A.str(args, 'kind') || undefined,
+        glob: A.str(args, 'glob', 'pattern') || undefined,
+        exact: A.bool(A.pick(args, 'exact'), false),
+        limit: Math.min(posInt(A.pick(args, 'limit'), 20), 500),
+        ignoreDirs: astIgnoreDirs(),
+    };
+    let usedName = name;
+    let result = await runtime.indexer.findSymbols(root, { ...query, name });
+    const alt = swapQualifier(name);
+    if (result && !result.total && alt) {
+        const retry = await runtime.indexer.findSymbols(root, { ...query, name: alt });
+        if (retry && retry.total) { result = retry; usedName = alt; }
+    }
+    if (!result) throw new Error(`${P} FindSymbol 失败：${astStatusNote() || 'AST 索引器暂时不可用'}。可改用 ReadCode glob=… find=… 做文本查找。`);
+
+    const hits = (result.hits || []).map(h => {
+        const abs = path.resolve(root, ...String(h.path).split(/[\\/]+/));
+        const inProject = isPathInside(abs, ctx.rootInfo.root);
+        const rel = inProject ? toPosixRelative(ctx.rootInfo.root, abs) : toPosixRelative(root, abs);
+        return { ...h, rel, inProject };
+    });
+    const lines = hits.map(h => `- \`${h.rel}#${h.qualified || h.name}\` · ${SR.lineLabel(h)} · ${h.kind}${h.inProject ? '' : ' · （工程外，只读）'} — ${SR.oneLine(h.signature)}`);
+    const stats = `- 范围：${scopeLabel} · 扫描 ${result.scanned} 个文件 · 解析 ${result.parsed} · ${result.lines} 行 · 命中 ${result.total}${result.total > hits.length ? `（显示前 ${hits.length}）` : ''}${result.truncated ? ' · ⚠️ 扫描已截断（文件数或单文件大小超限），可用 glob 缩小范围' : ''}`;
+    return textResult([
+        `## FindSymbol “${usedName}”${usedName !== name ? `（按 ${usedName} 重试后命中）` : ''}${query.kind ? ` · kind=${query.kind}` : ''}${query.exact ? ' · exact' : ''}`,
+        projectHeader(ctx.project, ctx.rootInfo),
+        stats,
+        lines.join('\n') || '- 未找到。可去掉 exact、换用更短的名称，或用 ReadCode find= 做文本查找。',
+        hits.length ? '- 每条结果可直接写成 `path=文件#限定名` 交给 ReadCode / EditCode。' : '',
+    ].filter(Boolean).join('\n'), {
+        command: 'FindSymbol', total: result.total, scanned: result.scanned, parsed: result.parsed, truncated: result.truncated,
+        hits: hits.map(({ rel, inProject, name: n, qualified, kind, fullStart, start, end, signature, lang }) => ({ path: rel, inProject, name: n, qualified, kind, fullStart, start, end, signature, lang })),
+    });
+}
+
+const traceBridgeCache = new Map();
+
+/** 扫描根：默认工程根；scope=workspace 时取工程所属的最深工作区根（只读）。 */
+function scanRootOf(ctx, args) {
+    const scopeArg = A.str(args, 'scope').toLowerCase();
+    const root = ctx.rootInfo.root;
+    if (!scopeArg || scopeArg === 'project') return { root, label: '工程根' };
+    if (scopeArg !== 'workspace') throw new Error(`${P} scope 只能是 project（默认）或 workspace。`);
+    const ws = runtime.resolver.list()
+        .filter(item => isPathInside(root, item.path))
+        .sort((a, b) => b.path.length - a.path.length)[0];
+    return ws ? { root: path.resolve(ws.path), label: `工作区 \`${ws.alias}\`` } : { root, label: '工程根（未找到所属工作区）' };
+}
+
+async function traceCmd(args) {
+    const ctx = projectOf(args);
+    const raw = A.str(args, 'target', 'query');
+    const target = LG.parseTarget(raw);
+    if (!target) {
+        throw new Error(`${P} Trace 需要 target，形如 ipc:通道名（或 API 名）、global:名称、page:xxx.html、file:相对路径。`);
+    }
+    if (!runtime.indexer?.usable) throw new Error(`${P} Trace 需要 AST 索引器：${astStatusNote() || '不可用'}。`);
+    const scan = scanRootOf(ctx, args);
+    const started = Date.now();
+    const decls = await LG.loadPreloadDecls(scan.root);
+    // 桥接名单 = 角色全局 + 顶层别名（如 `const api = window.utilityAPI || …`）。别名名单按根缓存，
+    // 使后续调用一轮扫描即可、索引器 facts 缓存稳定命中；发现新别名时扩展名单并重扫一次。
+    const base = LG.bridgeGlobalsOf(decls);
+    const query = { glob: A.str(args, 'glob') || undefined, ignoreDirs: astIgnoreDirs() };
+    let bridge = traceBridgeCache.get(scan.root) || base;
+    let facts = await runtime.indexer.facts(scan.root, { ...query, bridgeGlobals: bridge });
+    if (facts) {
+        const extended = [...new Set([...base, ...LG.aliasNames(facts)])].sort();
+        if (extended.some(n => !bridge.includes(n))) {
+            bridge = [...new Set([...bridge, ...extended])].sort();
+            traceBridgeCache.set(scan.root, bridge);
+            facts = await runtime.indexer.facts(scan.root, { ...query, bridgeGlobals: bridge });
+        }
+    }
+    if (!facts) throw new Error(`${P} Trace 失败：${astStatusNote() || 'AST 索引器暂时不可用'}。`);
+    const graph = LG.buildGraph(scan.root, facts, decls);
+    let value = target.value;
+    if (target.kind === 'file' || target.kind === 'page') {
+        const abs = path.isAbsolute(value) ? path.resolve(value) : path.resolve(ctx.rootInfo.root, ...value.split(/[\\/]+/));
+        if (isPathInside(abs, scan.root)) value = toPosixRelative(scan.root, abs);
+    }
+    const r = LG.trace(graph, target.kind, value);
+    const declNote = decls.status === 'ok'
+        ? `preload 声明表 ${decls.apis.length} 个 API`
+        : decls.status === 'absent' ? '无 preload 声明表（只有字面量边）' : `⚠️ preload 声明表读取失败：${decls.error}`;
+    const head = [
+        projectHeader(ctx.project, ctx.rootInfo),
+        `- 范围：${scan.label} · ${graph.stats.scanned} 个 JS/HTML 文件 · ${graph.stats.pages} 个页面 · ${declNote} · ${Date.now() - started} ms${graph.stats.truncated ? ' · ⚠️ 扫描已截断' : ''}`,
+        '- 置信度：literal / const 为字面量或同文件常量直连，declared 经 preload 声明表；动态参数不入边。结果中的 `路径:行` 可直接回填 ReadCode。',
+    ].join('\n');
+    const [title, ...rest] = r.text.split('\n');
+    return textResult([title, head, ...rest].join('\n'), { command: 'Trace', kind: target.kind, found: r.found, ...r.details });
 }
 
 // ============================ 编辑 ============================
@@ -584,7 +885,7 @@ function renderErrors(errors) {
 function renderAmbiguity(file, ambiguities, ticketId, notes, extraNote) {
     const lang = T.languageOf(file.rel);
     const blocks = ambiguities.map(a => [
-        `### 步骤 ${a.step}：target 共命中 ${a.total} 处${a.tooMany ? `（仅列出前 ${a.candidates.length} 处，建议加长 target 或提供 line）` : ''}`,
+        `### 步骤 ${a.step}：${a.kind === 'symbol' ? `符号 \`${a.query}\` 有 ${a.total} 处同名定义（只能单选）` : `target 共命中 ${a.total} 处`}${a.tooMany ? `（仅列出前 ${a.candidates.length} 处，建议${a.kind === 'symbol' ? '写更完整的限定名' : '加长 target'}或提供 line）` : ''}`,
         ...a.candidates.map(c => `#### 候选 ${c.index} · L${c.startLine}-${c.endLine}${c.scope ? ` · in ${c.scope}` : ''}\n${T.markdownFence(c.context, lang)}`),
     ].join('\n'));
     const example = ambiguities.length === 1
@@ -598,6 +899,131 @@ function renderAmbiguity(file, ambiguities, ticketId, notes, extraNote) {
         notes.length ? `- 提示：${notes.join('；')}` : '',
         ...blocks,
     ].filter(Boolean).join('\n');
+}
+
+// ---------------- 符号步骤 → 行号步骤 ----------------
+// 符号只在 Service 层解析：转换为普通 replace / delete / insert 步骤（行号 + expect=起始行原文），
+// 与行号步骤一起交给 engine，复用原有的漂移校验与重叠检测；engine 不感知 AST。
+
+const SYMBOL_POS_RE = /^\s*symbol\s*:\s*(.+?)\s*$/i;
+
+function symbolPosOf(value) {
+    const m = SYMBOL_POS_RE.exec(String(value ?? ''));
+    return m ? m[1] : null;
+}
+
+function hasSymbolRef(st) {
+    return st.symbol !== undefined && st.symbol !== null && String(st.symbol).trim() !== '';
+}
+
+function stepNeedsSymbol(st) {
+    if (st.op === 'symbol' || hasSymbolRef(st)) return true;
+    return st.op === 'insert' && Boolean(symbolPosOf(st.after) || symbolPosOf(st.before));
+}
+
+function symbolNotFoundMessage(res) {
+    const near = res.suggestions.slice(0, 5).map(s => `\`${s.qualified}\`（L${s.start}）`).join('、');
+    return `未找到符号 \`${res.query}\`${near ? `；相近的符号：${near}` : ''}。可用 Outline 查看全部符号`;
+}
+
+/** 与 engine target 歧义同构的条目（可进票据、可被 ResolveEdit 以 pick 选择）。 */
+function symbolAmbiguity(idx, step, res) {
+    return {
+        step,
+        kind: 'symbol',
+        query: res.query,
+        total: res.total,
+        tooMany: res.tooMany,
+        signature: res.signature,
+        candidates: res.candidates.map(c => ({
+            index: c.candidate,
+            startLine: c.fullStart,
+            endLine: c.end,
+            scope: `${c.kind} ${c.qualified}${c.parent ? `（in ${c.parent}）` : ''}`,
+            context: engine.contextBlock(idx, c.start, c.end),
+        })),
+    };
+}
+
+async function resolveSymbolSteps(file, text, steps) {
+    const out = { steps: [], ambiguities: [], errors: [], notes: [], symbols: null };
+    if (!steps.some(stepNeedsSymbol)) { out.steps = steps; return out; }
+    const outline = await outlineOf(file.rel, text);
+    out.symbols = outline?.symbols || null;
+    const idx = engine.buildIndex(text);
+    for (const st of steps) {
+        if (!stepNeedsSymbol(st)) { out.steps.push(st); continue; }
+        const fail = message => out.errors.push({ step: st.step, op: st.op, message, hints: [] });
+        if (!outline) { fail(astUnavailableReason(file.rel)); continue; }
+        try {
+            if (st.op === 'insert') {
+                const beforeRef = symbolPosOf(st.before);
+                const ref = beforeRef || symbolPosOf(st.after) || String(st.symbol);
+                const res = SR.resolveInOutline(outline, ref, { pick: st.pick, line: st.line });
+                if (res.status === 'notFound') { fail(symbolNotFoundMessage(res)); continue; }
+                if (res.status === 'ambiguous') { out.ambiguities.push(symbolAmbiguity(idx, st.step, res)); continue; }
+                const sym = res.symbol;
+                const next = { step: st.step, op: 'insert', content: st.content, reason: st.reason };
+                if (beforeRef) next.before = sym.fullStart; else next.after = sym.end;
+                out.steps.push(next);
+                out.notes.push(`步骤${st.step}：插入到符号 \`${sym.qualified}\` ${beforeRef ? `之前（L${sym.fullStart} 前，含其前置注释）` : `之后（L${sym.end} 后）`}${res.note ? `，${res.note}` : ''}`);
+                continue;
+            }
+            let op;
+            if (st.op === 'delete') op = 'delete';
+            else if (st.op === 'symbol' || st.op === 'replace') op = 'replace';
+            else { fail(`op=${st.op} 不能配合 symbol 使用；可用 op=symbol（替换）、op=delete、op=insert + after/before=symbol:名称`); continue; }
+            if (!hasSymbolRef(st)) { fail('op=symbol 需要 symbol（符号名或限定名）'); continue; }
+            if (op === 'replace' && st.content === undefined) { fail('按符号替换需要 content（新的完整代码块）；删除请用 op=delete'); continue; }
+            const res = SR.resolveInOutline(outline, st.symbol, { pick: st.pick, line: st.line });
+            if (res.status === 'notFound') { fail(symbolNotFoundMessage(res)); continue; }
+            if (res.status === 'ambiguous') { out.ambiguities.push(symbolAmbiguity(idx, st.step, res)); continue; }
+            const sym = res.symbol;
+            const rg = SR.symbolRange(sym, { range: st.range, lineCount: idx.count });
+            out.steps.push({
+                step: st.step, op, start: rg.startLine, end: rg.endLine,
+                expect: idx.lines[rg.startLine - 1], content: st.content, reason: st.reason,
+            });
+            const span = rg.mode === 'body'
+                ? (sym.fullStart < sym.start ? '（range=body，保留前置注释）' : '')
+                : (sym.fullStart < sym.start ? '（含前置注释）' : '');
+            out.notes.push(`步骤${st.step}：符号 \`${sym.qualified}\` → L${rg.startLine}-${rg.endLine}${span}${res.note ? `，${res.note}` : ''}`);
+        } catch (error) {
+            fail(error.message);
+        }
+    }
+    return out;
+}
+
+/**
+ * 规划一次编辑串：符号步骤先转换，再交给 engine；两边的错误 / 歧义合并。
+ * 返回结构与 engine.runEditString 一致。EditCode 与票据复核共用，保证口径一致。
+ */
+async function planEdit(file, text, steps, engineOpts) {
+    const sym = await resolveSymbolSteps(file, text, steps);
+    const r = sym.steps.length
+        ? engine.runEditString(text, sym.steps, { ...engineOpts, symbols: sym.symbols })
+        : { status: 'error', errors: [], notes: [], ambiguities: [] };
+    const byStep = (a, b) => a.step - b.step;
+    const errors = [...sym.errors, ...(r.errors || [])].sort(byStep);
+    const ambiguities = [...sym.ambiguities, ...(r.ambiguities || [])].sort(byStep);
+    const notes = [...sym.notes, ...(r.notes || [])];
+    if (ambiguities.length) {
+        // target 歧义候选的所在符号：有 outline 就用 outline
+        if (!sym.symbols && ambiguities.some(a => a.kind !== 'symbol')) {
+            const outline = await outlineOf(file.rel, text);
+            if (outline?.symbols) {
+                const idx = engine.buildIndex(text);
+                for (const a of ambiguities) {
+                    if (a.kind === 'symbol') continue;
+                    for (const c of a.candidates) c.scope = engine.enclosingScope(idx, c.startLine, outline.symbols) || c.scope;
+                }
+            }
+        }
+        return { status: 'ambiguous', ambiguities, errors, notes };
+    }
+    if (r.status !== 'ok' || (errors.length && engineOpts.mode !== 'bestEffort')) return { status: 'error', errors, notes };
+    return { ...r, errors, notes };
 }
 
 /**
@@ -615,7 +1041,7 @@ async function commitEdit(ctx, file, plan) {
     const engineOpts = { mode: plan.mode, drift: plan.drift };
 
     if (plan.ticket && plan.ticket.fileHash !== disk.hash) {
-        const probe = engine.runEditString(meta.text, plan.ticket.steps, engineOpts);
+        const probe = await planEdit(file, meta.text, plan.ticket.steps, engineOpts);
         const expected = plan.ticket.signatures;
         const same = probe.status === 'ambiguous'
             && probe.ambiguities.length === Object.keys(expected).length
@@ -634,7 +1060,7 @@ async function commitEdit(ctx, file, plan) {
         notes.push('票据签发后文件有变化，但候选位置未变，按原选择执行');
     }
 
-    const result = engine.runEditString(meta.text, plan.steps, engineOpts);
+    const result = await planEdit(file, meta.text, plan.steps, engineOpts);
     notes.push(...result.notes);
 
     if (result.status === 'ambiguous') {
@@ -716,8 +1142,11 @@ async function commitEdit(ctx, file, plan) {
 async function editCode(args) {
     const reason = A.requireReason(args, 'EditCode');
     const ctx = projectOf(args, { write: true });
-    const file = fileOf(ctx, A.str(args, 'path', 'file', 'filePath'), { write: true });
-    const steps = A.parseEditSteps(args);
+    const { path: filePath, symbol: pathSymbol } = SR.splitPathSymbol(A.str(args, 'path', 'file', 'filePath'));
+    const file = fileOf(ctx, filePath, { write: true });
+    // path=文件#符号：等价于平铺形式的 symbol=（编号串请用 symbolN）
+    const stepArgs = pathSymbol && A.pick(args, 'symbol') === undefined ? { ...args, symbol: pathSymbol } : args;
+    const steps = A.parseEditSteps(stepArgs);
     const todo = todoOf(ctx.project, args);
     return withLock(ctx.project.id, () => commitEdit(ctx, file, { ...editOptions(args), steps, reason, maid: maidOf(args), todoId: todo?.id ?? null }));
 }
@@ -861,9 +1290,17 @@ async function moveFile(args) {
 
 // ============================ 代码块搬运 ============================
 
-/** 源代码块：target（支持首尾锚定）优先；否则 start/end、lines，最后取 from 里的 :M-N。 */
-function blockSpecOf(args, rangeFromPath) {
+/** 源代码块：symbol（或 from=文件#符号）优先；其次 target（支持首尾锚定）；否则 start/end、lines，最后取 from 里的 :M-N。 */
+function blockSpecOf(args, rangeFromPath, symbolFromPath = null) {
     const spec = {};
+    const symbol = A.str(args, 'symbol') || symbolFromPath;
+    if (symbol) {
+        spec.symbol = symbol;
+        spec.range = A.str(args, 'range') || 'full';
+        if (A.pick(args, 'line') !== undefined) spec.line = A.pick(args, 'line');
+        if (A.pick(args, 'pick') !== undefined) spec.pick = A.pick(args, 'pick');
+        return spec;
+    }
     const target = A.pick(args, 'target', 'block');
     if (target !== undefined) {
         spec.target = String(target);
@@ -919,12 +1356,13 @@ async function transferCode(args, kind) {
     const ctx = projectOf(args, { write: true });
     const fromRaw = A.str(args, 'from', 'source', 'path', 'file');
     if (!fromRaw) throw new Error(`${P} ${command} 需要 from（源文件，可写成 src/a.js:40-60）。`);
-    const { path: fromPath, lines: rangeFromPath } = splitPathRange(fromRaw);
+    const { path: fromPath0, lines: rangeFromPath } = splitPathRange(fromRaw);
+    const { path: fromPath, symbol: fromSymbol } = SR.splitPathSymbol(fromPath0);
     const toRaw = A.str(args, 'to', 'dest', 'destination');
     const src = fileOf(ctx, fromPath, { write: isMove || !toRaw });
     const dst = toRaw ? fileOf(ctx, toRaw, { write: true }) : src;
-    const spec = blockSpecOf(args, rangeFromPath);
-    const pos = { after: A.pick(args, 'after'), before: A.pick(args, 'before') };
+    const spec = blockSpecOf(args, rangeFromPath, fromSymbol);
+    let pos = { after: A.pick(args, 'after'), before: A.pick(args, 'before') };
     const indentSpec = A.str(args, 'indent') || 'auto';
     const opts = editOptions(args);
     const todo = todoOf(ctx.project, args);
@@ -938,9 +1376,21 @@ async function transferCode(args, kind) {
         const srcDisk = await readDisk(src.abs);
         if (!srcDisk.exists) throw new Error(`${P} 源文件不存在：${src.rel}`);
         const srcMeta = decodeText(srcDisk.buffer, src.rel);
+        const srcOutline = await outlineOf(src.rel, srcMeta.text);
+        let blockSpec = spec;
+        if (spec.symbol) {
+            if (!srcOutline) throw new Error(`${P} ${src.rel}：${astUnavailableReason(src.rel)}。`);
+            let res;
+            try { res = SR.resolveInOutline(srcOutline, spec.symbol, { pick: spec.pick, line: spec.line }); } catch (error) { throw new Error(`${P} ${src.rel}：${error.message}`); }
+            if (res.status !== 'ok') return textResult(renderSymbolMiss(src, res, command), { command, status: res.status });
+            let rg;
+            try { rg = SR.symbolRange(res.symbol, { range: spec.range, lineCount: engine.buildIndex(srcMeta.text).count }); } catch (error) { throw new Error(`${P} ${error.message}`); }
+            blockSpec = { start: rg.startLine, end: rg.endLine };
+            notes.push(`源符号 \`${res.symbol.qualified}\` → L${rg.startLine}-${rg.endLine}${rg.mode === 'full' && res.symbol.fullStart < res.symbol.start ? '（含前置注释）' : ''}${res.note ? `，${res.note}` : ''}`);
+        }
         let block;
         try {
-            block = engine.resolveBlock(srcMeta.text, spec, { drift: opts.drift });
+            block = engine.resolveBlock(srcMeta.text, blockSpec, { drift: opts.drift, symbols: srcOutline?.symbols });
         } catch (error) {
             throw new Error(`${P} 源代码块定位失败 · ${src.rel}：${error.message}${renderHints(error.hints)}`);
         }
@@ -955,6 +1405,21 @@ async function transferCode(args, kind) {
         const dstMeta = dstDisk.exists ? (same ? srcMeta : decodeText(dstDisk.buffer, dst.rel)) : null;
         const dstText = dstMeta ? dstMeta.text : '';
         const dstIdx = engine.buildIndex(dstText);
+        // 目标位置 after=symbol:Foo（插到符号之后）/ before=symbol:Foo（插到符号及其前置注释之前）
+        const beforeRef = symbolPosOf(pos.before);
+        const posRef = beforeRef || symbolPosOf(pos.after);
+        if (posRef) {
+            if (!dstMeta) throw new Error(`${P} 目标文件 ${dst.rel} 不存在，不能按符号定位插入点。`);
+            const dstOutline = same ? srcOutline : await outlineOf(dst.rel, dstText);
+            if (!dstOutline) throw new Error(`${P} ${dst.rel}：${astUnavailableReason(dst.rel)}。`);
+            const res = SR.resolveInOutline(dstOutline, posRef);
+            if (res.status === 'notFound') throw new Error(`${P} 目标位置：${symbolNotFoundMessage(res)}。`);
+            if (res.status === 'ambiguous') {
+                throw new Error(`${P} 目标位置符号 \`${res.query}\` 在 ${dst.rel} 中有 ${res.total} 处同名定义，请写更完整的限定名，或改用 after=N / before=N：\n${SR.renderCandidateLines(res.candidates)}`);
+            }
+            pos = beforeRef ? { before: res.symbol.fullStart } : { after: res.symbol.end };
+            notes.push(`落点按符号 \`${res.symbol.qualified}\` 定位：${beforeRef ? `L${res.symbol.fullStart} 之前（含其前置注释）` : `L${res.symbol.end} 之后`}`);
+        }
         if (!dstDisk.exists && pos.after === undefined && pos.before === undefined) pos.after = 0;
         if (pos.after === undefined && pos.before === undefined) {
             throw new Error(`${P} ${command} 需要目标位置：after=N（0 为文件开头、end 为末尾）或 before=N。行号以本次调用前的原文为准。`);
@@ -1285,9 +1750,12 @@ const COMMANDS = {
     rollback,
     searchhistory: searchHistory,
     getnodediff: getNodeDiff,
+    outline: outlineCmd,
+    findsymbol: findSymbolCmd,
+    trace: traceCmd,
 };
 
-const COMMAND_NAMES = 'ListWorkspaces、CreateProject、ListProjects、GetProject、UpdateTodos、SubmitReport、DeleteProjects、RestoreProjects、PurgeProjects、ReadCode、EditCode、ResolveEdit、CreateFile、RemoveFile、MoveFile、MoveCode、CopyCode、Rollback、SearchHistory、GetNodeDiff';
+const COMMAND_NAMES = 'ListWorkspaces、CreateProject、ListProjects、GetProject、UpdateTodos、SubmitReport、DeleteProjects、RestoreProjects、PurgeProjects、ReadCode、EditCode、ResolveEdit、CreateFile、RemoveFile、MoveFile、MoveCode、CopyCode、Rollback、SearchHistory、GetNodeDiff、Outline、FindSymbol、Trace';
 
 async function processToolCall(rawArgs = {}, _executionContext = {}) {
     if (!rawArgs || typeof rawArgs !== 'object' || Array.isArray(rawArgs)) {
@@ -1467,7 +1935,14 @@ module.exports = {
     cleanup,
     gui,
     _test: {
-        resetForTests: () => { closeStore(); runtime = freshRuntime(); },
+        // 同步替换运行时（不 await 也不会覆盖随后的 initialize）；返回的 Promise 可选择等待旧索引器退出
+        resetForTests: () => {
+            closeStore();
+            const old = runtime.indexer;
+            runtime = freshRuntime();
+            return old ? old.stop().catch(() => { /* 已退出 */ }) : Promise.resolve();
+        },
         getRuntime: () => runtime,
+        astIgnoreDirs,
     },
 };

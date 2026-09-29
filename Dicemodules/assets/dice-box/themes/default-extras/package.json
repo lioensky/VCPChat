@@ -1,0 +1,33 @@
+{
+	"name": "@3d-dice/theme-default-extras",
+  "private": false,
+	"author": {
+		"name": "Frank Ali"
+	},
+	"description": "Extra dice for the default theme. Includes d6 with pips, fate die and d2 coin",
+	"version": "0.1.1",
+	"keywords": [
+		"3D",
+		"dice",
+    "skins",
+    "theme",
+		"javascript",
+		"rpg",
+		"dnd",
+		"d&d",
+		"tabletop"
+	],
+	"license": "MIT",
+	"homepage": "https://fantasticdice.games",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/3d-dice/dice-themes",
+    "directory": "themes/default-extras"
+	},
+	"bugs": {
+		"url": "https://github.com/3d-dice/dice-themes/issues"
+	},
+  "files": [
+		"*"
+	]
+}

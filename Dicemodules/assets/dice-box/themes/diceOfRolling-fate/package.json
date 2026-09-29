@@ -1,0 +1,34 @@
+{
+	"name": "@3d-dice/theme-dice-of-rolling-fate",
+  "private": false,
+	"author": {
+		"name": "Frank Ali"
+	},
+	"description": "Fate die for the Dice of Rolling theme",
+	"version": "0.1.0",
+	"keywords": [
+		"3D",
+		"dice",
+    "skins",
+    "theme",
+    "dice of rolling",
+		"javascript",
+		"rpg",
+		"dnd",
+		"d&d",
+		"tabletop"
+	],
+	"license": "MIT",
+	"homepage": "https://fantasticdice.games",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/3d-dice/dice-themes",
+    "directory": "themes/diceOfRolling-fate"
+	},
+	"bugs": {
+		"url": "https://github.com/3d-dice/dice-themes/issues"
+	},
+  "files": [
+		"*"
+	]
+}
