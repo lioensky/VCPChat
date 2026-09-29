@@ -4,12 +4,14 @@ const { BrowserWindow, ipcMain, nativeTheme, screen } = require('electron');
 const path = require('path');
 const { PRELOAD_ROLES, resolveProjectPreload } = require('../services/preloadPaths');
 const { VoiceInputEngineAdapter } = require('../voice/voice-input-engine-adapter');
+const { MainChatVoiceCoordinator } = require('./mainChatVoiceCoordinator');
 
 let mainWindow = null;
 let openChildWindows = [];
 let settingsManager = null;
 let PROJECT_ROOT = null;
 let isInitialized = false;
+let mainChatVoiceCoordinator = null;
 let voiceInputEngine = null;
 let nativeVoiceInputOwnerId = null;
 let configuredVoiceInputShortcut = null;
@@ -162,6 +164,14 @@ async function beginVoiceCaptureFromHotkey(eventData = {}) {
         originalWindowHandle: eventData?.detail?.originalWindowHandle || null,
     };
 
+    const onTargetDestroyed = () => {
+        if (voiceCaptureSession?.id === sessionId) {
+            cancelVoiceCaptureFromHotkey().catch(() => {});
+        }
+    };
+    voiceCaptureSession.cleanupTarget = onTargetDestroyed;
+    target.webContents.once('destroyed', onTargetDestroyed);
+
     positionVoiceCaptureWindow();
     // The native window must be visible and foreground before the renderer
     // focuses its editable control. A hidden Chromium document can report
@@ -283,6 +293,10 @@ async function finishVoiceCaptureFromHotkey() {
     if (voiceCaptureWindow && !voiceCaptureWindow.isDestroyed()) {
         voiceCaptureWindow.hide();
     }
+    if (session.cleanupTarget && session.target && !session.target.isDestroyed() && !session.target.webContents.isDestroyed()) {
+        session.target.webContents.removeListener('destroyed', session.cleanupTarget);
+        session.cleanupTarget = null;
+    }
     voiceCaptureSession = null;
 
     if (text && session.target && !session.target.isDestroyed() && !session.target.webContents.isDestroyed()) {
@@ -301,9 +315,37 @@ async function finishVoiceCaptureFromHotkey() {
     });
 }
 
+async function cancelVoiceCaptureFromHotkey() {
+    const session = voiceCaptureSession;
+    if (!session) return;
+    session.stopping = true;
+    clearCaptureSettleTimers(session);
+    if (session.cleanupTarget && session.target && !session.target.isDestroyed() && !session.target.webContents.isDestroyed()) {
+        session.target.webContents.removeListener('destroyed', session.cleanupTarget);
+        session.cleanupTarget = null;
+    }
+    voiceCaptureSession = null;
+    await voiceInputEngine?.stopSession().catch(() => {});
+    await voiceInputEngine?.releaseAll().catch(() => {});
+    await voiceInputEngine?.restoreFocus().catch(() => {});
+    if (voiceCaptureWindow && !voiceCaptureWindow.isDestroyed()) {
+        voiceCaptureWindow.hide();
+    }
+    broadcastVoiceInputShortcutStatus({
+        success: true,
+        registered: true,
+        active: false,
+        shortcut: configuredVoiceInputShortcut,
+        mode: configuredVoiceInputMode,
+    });
+}
+
 function handleVoiceEngineEvent(eventData) {
     if (!eventData?.event) return;
     if (eventData.event === 'hotkey_down') {
+        if (mainChatVoiceCoordinator?.isSessionActive()) {
+            mainChatVoiceCoordinator.cancelSession({ reason: 'hotkey_preempted' }).catch(() => {});
+        }
         beginVoiceCaptureFromHotkey(eventData).catch(async error => {
             console.error('[VoiceHandlers] Failed to begin voice capture:', error);
             await voiceInputEngine?.releaseAll().catch(() => {});
@@ -488,6 +530,10 @@ function createVoiceChatWindow(agentId) {
             openChildWindows.splice(index, 1);
         }
 
+        if (voiceCaptureSession?.target === voiceChatWindow) {
+            cancelVoiceCaptureFromHotkey().catch(() => {});
+        }
+
         if (nativeVoiceInputOwnerId === voiceWebContentsId) {
             releaseNativeVoiceInput({ restoreFocus: true, shutdown: true }).catch(error => {
                 console.warn('[VoiceHandlers] Native voice input close cleanup failed:', error.message);
@@ -504,7 +550,7 @@ function createVoiceChatWindow(agentId) {
     return voiceChatWindow;
 }
 
-function handleOpenVoiceChatWindow(event, { agentId } = {}) {
+function handleOpenVoiceChatWindow(_event, { agentId } = {}) {
     return createVoiceChatWindow(agentId);
 }
 
@@ -525,7 +571,12 @@ function initialize(options) {
         }
     });
     ipcMain.on('voice-input-capture:update', (event, payload = {}) => {
-        if (voiceCaptureWindow?.webContents !== event.sender || !voiceCaptureSession) return;
+        if (voiceCaptureWindow?.webContents !== event.sender) return;
+        if (mainChatVoiceCoordinator?.getActiveSession()) {
+            mainChatVoiceCoordinator.handleCaptureUpdate(payload);
+            return;
+        }
+        if (!voiceCaptureSession) return;
         const session = voiceCaptureSession;
         session.text = String(payload.text || '');
         session.composing = payload.composing === true;
@@ -537,12 +588,13 @@ function initialize(options) {
         }
     });
     ipcMain.on('voice-input-capture:focus-ready', async (event, payload = {}) => {
+        const activeSession = mainChatVoiceCoordinator?.getActiveSession() || voiceCaptureSession;
         if (
             voiceCaptureWindow?.webContents !== event.sender
-            || !voiceCaptureSession
-            || voiceCaptureSession.focusReadySent
+            || !activeSession
+            || activeSession.focusReadySent
             || !voiceInputEngine
-            || payload.sessionId !== voiceCaptureSession.id
+            || payload.sessionId !== activeSession.id
             || payload.editable !== true
             || !Number.isInteger(payload.selectionStart)
             || !Number.isInteger(payload.selectionEnd)
@@ -555,7 +607,7 @@ function initialize(options) {
             voiceCaptureWindow.focus();
             voiceCaptureWindow.webContents.focus();
             voiceCaptureWindow.webContents.send('voice-input-capture:prepare', {
-                sessionId: voiceCaptureSession.id,
+                sessionId: activeSession.id,
             });
             return;
         }
@@ -565,18 +617,23 @@ function initialize(options) {
             await voiceInputEngine.releaseAll().catch(() => {});
             return;
         }
-        voiceCaptureSession.focusReadySent = true;
+        activeSession.focusReadySent = true;
         try {
-            await voiceInputEngine.focusReady({ targetWindowHandle });
-        } catch (error) {
-            voiceCaptureSession.focusReadySent = false;
-            await voiceInputEngine.releaseAll().catch(() => {});
-            broadcastVoiceInputShortcutStatus({
-                success: false,
-                registered: true,
-                shortcut: configuredVoiceInputShortcut,
-                error: error.message || String(error),
+            await voiceInputEngine.focusReady({
+                targetWindowHandle,
+                programmatic: Boolean(activeSession.isMainChat),
             });
+        } catch (error) {
+            activeSession.focusReadySent = false;
+            await voiceInputEngine.releaseAll().catch(() => {});
+            if (!activeSession.isMainChat) {
+                broadcastVoiceInputShortcutStatus({
+                    success: false,
+                    registered: true,
+                    shortcut: configuredVoiceInputShortcut,
+                    error: error.message || String(error),
+                });
+            }
         }
     });
     ipcMain.handle('voice-input-native:status', event => {
@@ -601,6 +658,23 @@ function initialize(options) {
             },
         };
     });
+
+    mainChatVoiceCoordinator = new MainChatVoiceCoordinator({
+        getMainWindow: () => mainWindow,
+        getVoiceCaptureWindow: () => voiceCaptureWindow,
+        ensureVoiceCaptureWindowReady,
+        positionVoiceCaptureWindow,
+        getVoiceInputEngine,
+        ensureEngineEvents: () => {
+            if (!releaseVoiceEngineEvents && voiceInputEngine) {
+                releaseVoiceEngineEvents = voiceInputEngine.onEvent(handleVoiceEngineEvent);
+            }
+        },
+        getConfiguredShortcut: () => configuredVoiceInputShortcut,
+        getSettingsManager: () => settingsManager,
+        isSubwindowHotkeyActive: () => Boolean(voiceCaptureSession && !voiceCaptureSession.stopping),
+    });
+    mainChatVoiceCoordinator.registerIpcHandlers();
 
     if (settingsManager?.on && !settingsUpdatedListener) {
         settingsUpdatedListener = () => {
