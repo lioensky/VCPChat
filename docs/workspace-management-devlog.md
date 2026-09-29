@@ -14,8 +14,8 @@
   - 出现事件风暴（git checkout、npm install）、`.gitignore` 或 `pyvenv.cfg` 变化、新目录、监听报错时，把工作区标脏，下次查询时整树重扫。
   - 无法建立监听时，退化为 60s TTL 重扫。
 - **"当前工作区"全局只有一个，不与 Agent、话题、群组绑定。** 它只决定 `@关键词` 的默认搜索范围。
-- **Agent 如何感知工作区结构由 VCP 中央服务器负责**，客户端不往系统提示注入文件树。
-- **持久化只走专用 IPC。** `settings.workspaces` 和 `settings.activeWorkspaceId` 只能由 `workspaces:*` 写入。`save-settings` 会剔除这两个键，防止设置页自动保存时用旧快照覆盖（与 `combinedItemOrder` 的保护方式相同）。
+- **客户端默认不往系统提示注入文件树。** 唯一例外是用户显式写入的 `{{VCPChatWorkSpace}}` 占位符（2026-09-29 修订，见下文“系统提示词占位符”）。未写占位符时，Agent 对工作区结构的感知仍由 VCP 中央服务器负责。
+- **持久化只走专用 IPC。** `settings.workspaces`、`settings.activeWorkspaceId`、`settings.workspacePromptSettings` 只能由 `workspaces:*` 写入。`save-settings` 会剔除这三个键，防止设置页自动保存时用旧快照覆盖（与 `combinedItemOrder` 的保护方式相同）。
 
 ## 功能
 
@@ -59,6 +59,26 @@
 
 笔记实时引用的标签保持不变。顺带修复了"重新回复"原先丢失实时标签的不一致。
 
+### 系统提示词占位符 `{{VCPChatWorkSpace}}`（2026-09-29）
+- 写法：
+  - `{{VCPChatWorkSpace:文件夹名}}`：先按别名匹配，匹配不到再按根目录 basename 匹配（大小写不敏感）。改过别名后仍可以用原文件夹名。
+  - `{{VCPChatWorkSpace}}`：展开输入框中当前选定的工作区。
+- 展开内容：别名、真实根路径、已索引文件数，以及相对路径目录树（目录在前，已应用 `.gitignore` 和默认忽略规则）。**不含文件正文**，AI 需要内容时按“根目录 + 相对路径”读取，或由用户 @ 附加实时引用。
+- 字符预算：先按设定层数渲染，超出预算时逐级降低展开层数，折叠的目录显示为 `dir/ (N 个文件，未展开)`；降到只剩顶层仍超出时按行截断，并注明省略的条目数。
+- 异常情况：
+  - 未登记或已停用：替换为一行说明。
+  - 未选择当前工作区：给出提示。
+  - 索引出错：给出错误原因。
+  - 同一名称在一次展开中只渲染一次。
+- 展开位置（均在主进程）：
+  - 单聊：`buildRequest` 通过 `workspaces:expand-placeholders` IPC 展开。
+  - 群聊：`groupchat.js` 的两处系统提示构造直接调用 `workspaceHandlers.expandPlaceholders`。
+  - 顺序统一为：系统提示 + 群聊设定 → Tavern `system_suffix` → 展开占位符。因此 Tavern 预设规则里的占位符同样生效。
+  - 文本不含占位符时不发 IPC；展开失败时保留原文，不阻断发送。
+- 行为设置 `settings.workspacePromptSettings { enabled, maxChars, maxDepth }`：默认 `true / 20000 / 6`，范围 `maxChars` 1000–200000、`maxDepth` 1–20。停用后占位符原样发送，交给下游处理。
+- 设置界面位于“工作区管理”面板内的“系统提示词占位符”块，数字输入复用 `buildInputPrimitiveWrap`，满足直出完备性不变量。
+- 官方 Tavern 预设新增 `workspace-tree` 规则“工作区目录感知”，默认停用，内容使用 `{{VCPChatWorkSpace}}`。注意：规则的说明文字里不要再写占位符，否则会被一并展开。
+
 ### 全局设置"工作区管理"分区
 - 新文件 `modules/settings/schema/workspace-management.js`，位于"高级功能"与"快捷操作"之间。
 - 功能：系统选择器添加目录、编辑别名、启用/停用、移除（只取消登记，不删文件）、单个或全部重建索引，并显示文件数和状态。索引期间自动轮询刷新。
@@ -75,6 +95,8 @@
 | `workspaces:rebuild` | `rebuildWorkspaceIndex(id?)` |
 | `workspaces:set-active` | `setActiveWorkspace(id \| null)` |
 | `workspaces:select-directory` | `selectWorkspaceDirectory()` |
+| `workspaces:expand-placeholders` | `expandWorkspacePlaceholders(text)` → `{ success, text }` |
+| `workspaces:get-prompt-settings` / `set-prompt-settings` | `getWorkspacePromptSettings()` / `setWorkspacePromptSettings(patch)` |
 | — | `getPathForFile(file)`（同步，`webUtils`） |
 
 ## 改动文件
@@ -86,6 +108,10 @@
 - `tests/workspace-index.test.js`
 - `tests/workspace-live-reference.test.js`
 - `tests/input-enhancer-workspace-mention.test.js`
+- `modules/services/workspacePromptPlaceholders.js`（占位符展开，2026-09-29）
+- `tests/workspace-prompt-placeholders.test.js`（2026-09-29）
+
+占位符功能（2026-09-29）另外修改了：`workspaceIndex.js`（`renderWorkspaceTreeText` / `findByName` / `renderTree`）、`workspaceHandlers.js`、`preloads/chat.js`、`singleChatRequestOrchestrator.js`、`Groupmodules/groupchat.js`、`appSettingsManager.js`、`settingsHandlers.js`、`schema/workspace-management.js`、`AppData/VCPChatTarven.official.json`。
 
 修改：
 - `main.js`：初始化与退出清理
@@ -117,6 +143,7 @@
 - `stylelint` 检查 `chat-input.css` 通过，改动文件均通过 `node --check`。
 - 用户已完成手动实测。
 - Electron smoke 脚本（`test-settings-wa-electron`、`test-electron-ui-apps-smoke`）只更新了断言，本次未运行。
+- 占位符功能：`workspace-prompt-placeholders`（7）与 `workspace-index`、`workspace-live-reference`、`input-enhancer-workspace-mention`、`settings-schema-render`、`uiux-settings-bridge-modules` 回归合计 79 个，全部通过。改动文件均通过 `node --check`，官方预设 JSON 解析通过。
 
 ## 已知问题
 

@@ -4,6 +4,7 @@
 // 面板在编译期只产出结构；挂载到真实窗口（存在 electronAPI）后异步水合列表。
 // 后续 VCPCode 相关能力（工作区级工具权限等）也在本分区扩展。
 import { section, card, custom } from './kernel.js';
+import { buildInputPrimitiveWrap } from '../render/field-renderer.js';
 
 const REFRESH_WHILE_SCANNING_MS = 1500;
 
@@ -30,6 +31,90 @@ function describeStatus(ws) {
         case 'error': return `错误：${ws.error || '未知'}`;
         default: return '等待索引';
     }
+}
+
+// {{VCPChatWorkSpace}} 系统提示占位符的行为设置块。持久化走 workspaces:set-prompt-settings。
+function buildPromptSettingsBlock(doc) {
+    const block = doc.createElement('fieldset');
+    block.className = 'vcp-workspace-prompt-settings';
+
+    const legend = doc.createElement('legend');
+    legend.textContent = '系统提示词占位符';
+
+    const hint = doc.createElement('small');
+    hint.className = 'vcp-workspace-intro';
+    hint.textContent = '在 Agent 系统提示词或群聊设定中写入 {{VCPChatWorkSpace:文件夹名}}，发送时会展开为该工作区的真实根路径和目录树（不含文件内容）；'
+        + '{{VCPChatWorkSpace}} 展开当前选定的工作区。文件夹名可以是别名或目录名。停用后占位符原样发送。';
+
+    const makeField = (labelText, input) => {
+        const label = doc.createElement('label');
+        label.className = 'vcp-workspace-prompt-field';
+        const text = doc.createElement('span');
+        text.textContent = labelText;
+        // 与 schema 直出字段一致使用 Input 原语包裹（settings-schema-render 直出完备性不变量）。
+        label.append(text, buildInputPrimitiveWrap(doc, input));
+        return label;
+    };
+
+    const enabledInput = doc.createElement('input');
+    enabledInput.type = 'checkbox';
+    enabledInput.id = 'workspacePromptEnabled';
+    const enabledLabel = doc.createElement('label');
+    enabledLabel.className = 'vcp-workspace-enable';
+    const enabledText = doc.createElement('span');
+    enabledText.textContent = '启用占位符展开';
+    enabledLabel.append(enabledInput, enabledText);
+
+    const maxCharsInput = doc.createElement('input');
+    maxCharsInput.type = 'number';
+    maxCharsInput.id = 'workspacePromptMaxChars';
+    maxCharsInput.min = '1000';
+    maxCharsInput.max = '200000';
+    maxCharsInput.step = '1000';
+
+    const maxDepthInput = doc.createElement('input');
+    maxDepthInput.type = 'number';
+    maxDepthInput.id = 'workspacePromptMaxDepth';
+    maxDepthInput.min = '1';
+    maxDepthInput.max = '20';
+    maxDepthInput.step = '1';
+
+    block.append(
+        legend,
+        hint,
+        enabledLabel,
+        makeField('每个工作区目录树字符上限', maxCharsInput),
+        makeField('最大展开层数（超出预算时自动降低）', maxDepthInput),
+    );
+    return { block, enabledInput, maxCharsInput, maxDepthInput };
+}
+
+function hydratePromptSettings(api, refs, setStatus) {
+    if (typeof api.getWorkspacePromptSettings !== 'function') return;
+    const { enabledInput, maxCharsInput, maxDepthInput } = refs;
+    const apply = settings => {
+        if (!settings) return;
+        enabledInput.checked = settings.enabled !== false;
+        maxCharsInput.value = String(settings.maxChars);
+        maxDepthInput.value = String(settings.maxDepth);
+        maxCharsInput.disabled = !enabledInput.checked;
+        maxDepthInput.disabled = !enabledInput.checked;
+    };
+    const save = async patch => {
+        try {
+            const result = await api.setWorkspacePromptSettings(patch);
+            apply(result?.settings);
+            setStatus(result?.success ? '占位符设置已保存。' : (result?.error || '保存失败'), !result?.success);
+        } catch (error) {
+            setStatus(`保存占位符设置失败：${error.message}`, true);
+        }
+    };
+    enabledInput.addEventListener('change', () => save({ enabled: enabledInput.checked }));
+    maxCharsInput.addEventListener('change', () => save({ maxChars: Number(maxCharsInput.value) }));
+    maxDepthInput.addEventListener('change', () => save({ maxDepth: Number(maxDepthInput.value) }));
+    Promise.resolve(api.getWorkspacePromptSettings())
+        .then(result => apply(result?.settings))
+        .catch(error => setStatus(`读取占位符设置失败：${error.message}`, true));
 }
 
 function buildWorkspacePanel(doc) {
@@ -59,27 +144,31 @@ function buildWorkspacePanel(doc) {
     rebuildAllButton.id = 'rebuildWorkspacesBtn';
     actions.append(addButton, rebuildAllButton);
 
-    row.append(intro, list, actions, status);
+    const prompt = buildPromptSettingsBlock(doc);
+
+    row.append(intro, list, actions, prompt.block, status);
 
     // 面板内的编辑不属于全局设置表单，阻止事件冒泡触发表单脏标记 / 自动保存。
     for (const type of ['input', 'change']) {
         row.addEventListener(type, event => event.stopPropagation());
     }
 
-    queueMicrotask(() => hydrateWorkspacePanel(doc, { list, status, addButton, rebuildAllButton }));
+    queueMicrotask(() => hydrateWorkspacePanel(doc, { list, status, addButton, rebuildAllButton, prompt }));
     return row;
 }
 
 function hydrateWorkspacePanel(doc, refs) {
     const api = getApi(doc);
     if (!api) return; // 测试 / 非聊天窗口：只保留结构
-    const { list, status, addButton, rebuildAllButton } = refs;
+    const { list, status, addButton, rebuildAllButton, prompt } = refs;
     let refreshTimer = null;
 
     const setStatus = (message, isError = false) => {
         status.textContent = message || '';
         status.classList.toggle('is-error', Boolean(isError));
     };
+
+    if (prompt) hydratePromptSettings(api, prompt, setStatus);
 
     const handleResult = (result, successMessage = '') => {
         if (!result?.success) {

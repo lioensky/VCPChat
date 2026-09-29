@@ -9,6 +9,10 @@ const path = require('path');
 const fs = require('fs-extra');
 const fileManager = require('../fileManager');
 const { WorkspaceIndex, normalizeWorkspaceList, sanitizeAlias } = require('../services/workspaceIndex');
+const {
+    normalizePromptSettings,
+    expandWorkspacePlaceholders,
+} = require('../services/workspacePromptPlaceholders');
 
 const CHANNELS = [
     'workspaces:list',
@@ -19,12 +23,17 @@ const CHANNELS = [
     'workspaces:remove',
     'workspaces:update',
     'workspaces:select-directory',
+    'workspaces:expand-placeholders',
+    'workspaces:get-prompt-settings',
+    'workspaces:set-prompt-settings',
 ];
 
 let workspaceIndex = null;
 let settingsManagerRef = null;
 // 全局"当前工作区"：只影响 @ 提及的默认搜索范围，不与 Agent / 话题绑定。
 let activeWorkspaceId = null;
+// {{VCPChatWorkSpace}} 系统提示占位符的行为设置（settings.workspacePromptSettings）。
+let promptSettings = normalizePromptSettings(null);
 let settingsListener = null;
 let externalSettingsListener = null;
 
@@ -41,6 +50,20 @@ function applySettings(settings) {
     if (!workspaceIndex) return;
     workspaceIndex.configure(Array.isArray(settings?.workspaces) ? settings.workspaces : []);
     activeWorkspaceId = typeof settings?.activeWorkspaceId === 'string' ? settings.activeWorkspaceId : null;
+    promptSettings = normalizePromptSettings(settings?.workspacePromptSettings);
+}
+
+function getPromptSettings() {
+    return { ...promptSettings };
+}
+
+/** 展开文本中的 {{VCPChatWorkSpace}} / {{VCPChatWorkSpace:文件夹名}}；无占位符时原样返回。 */
+function expandPlaceholders(text) {
+    return expandWorkspacePlaceholders(text, {
+        index: workspaceIndex,
+        activeWorkspaceId: getActiveWorkspaceId(),
+        settings: promptSettings,
+    });
 }
 
 /** 当前工作区 id；已被移除或停用时视为未选择（全部工作区）。 */
@@ -178,6 +201,35 @@ function initialize({ settingsManager, logger = console } = {}) {
         }
     });
 
+    ipcMain.handle('workspaces:expand-placeholders', async (_event, text) => {
+        try {
+            if (typeof text !== 'string') return { success: false, error: '文本必须是字符串。' };
+            return { success: true, text: await expandPlaceholders(text) };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('workspaces:get-prompt-settings', () => ({ success: true, settings: getPromptSettings() }));
+
+    ipcMain.handle('workspaces:set-prompt-settings', async (_event, patch = {}) => {
+        try {
+            if (!settingsManagerRef) throw new Error('SettingsManager 未初始化。');
+            const source = patch && typeof patch === 'object' && !Array.isArray(patch) ? patch : {};
+            const result = await settingsManagerRef.updateSettings(current => ({
+                ...current,
+                workspacePromptSettings: normalizePromptSettings({
+                    ...normalizePromptSettings(current.workspacePromptSettings),
+                    ...source,
+                }),
+            }));
+            applySettings(result?.settings);
+            return { success: true, settings: getPromptSettings() };
+        } catch (error) {
+            return { success: false, error: error.message, settings: getPromptSettings() };
+        }
+    });
+
     ipcMain.handle('workspaces:select-directory', async event => {
         const owner = BrowserWindow.fromWebContents(event.sender) || undefined;
         const result = await dialog.showOpenDialog(owner, {
@@ -223,6 +275,8 @@ const workspaceService = Object.freeze({
     },
     getActiveWorkspaceId,
     resolveFile: resolveWorkspaceFile,
+    getPromptSettings,
+    expandPlaceholders,
 });
 
 module.exports = {
@@ -231,5 +285,7 @@ module.exports = {
     getWorkspaceIndex,
     getActiveWorkspaceId,
     resolveWorkspaceFile,
+    expandPlaceholders,
+    getPromptSettings,
     workspaceService,
 };

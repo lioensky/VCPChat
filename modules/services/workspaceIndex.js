@@ -34,6 +34,8 @@ const WATCH_DEBOUNCE_MS = 250;
 const WATCH_STORM_THRESHOLD = 300;
 const FALLBACK_TTL_MS = 60_000;
 const DEFAULT_SEARCH_LIMIT = 50;
+const DEFAULT_TREE_MAX_CHARS = 20000;
+const DEFAULT_TREE_MAX_DEPTH = 6;
 
 function toPosix(p) {
     return String(p).split(path.sep).join('/').replace(/\\/g, '/');
@@ -195,6 +197,90 @@ async function scanWorkspace(root, { maxFiles = MAX_FILES_PER_WORKSPACE } = {}) 
     return { files, ignoreByDir, truncated };
 }
 
+// --- 目录树渲染（供 {{VCPChatWorkSpace}} 系统提示占位符使用） ---
+
+function createTreeNode() {
+    return { dirs: new Map(), files: [], count: 0 };
+}
+
+function buildTreeNodes(relPaths) {
+    const root = createTreeNode();
+    for (const relPath of relPaths) {
+        const parts = relPath.split('/');
+        let node = root;
+        node.count += 1;
+        for (let i = 0; i < parts.length - 1; i += 1) {
+            let child = node.dirs.get(parts[i]);
+            if (!child) {
+                child = createTreeNode();
+                node.dirs.set(parts[i], child);
+            }
+            child.count += 1;
+            node = child;
+        }
+        node.files.push(parts[parts.length - 1]);
+    }
+    return root;
+}
+
+function compareTreeNames(a, b) {
+    return a.localeCompare(b, 'en', { sensitivity: 'base' }) || (a < b ? -1 : a > b ? 1 : 0);
+}
+
+/**
+ * 深度优先渲染：目录在前、文件在后，均按名称排序。
+ * maxDepth 为展示层数：1 = 只列顶层（顶层目录折叠为摘要），2 = 再展开一层，依此类推。
+ */
+function renderTreeLines(node, maxDepth, depth = 1, indent = '', out = { lines: [], collapsed: 0 }) {
+    for (const name of [...node.dirs.keys()].sort(compareTreeNames)) {
+        const child = node.dirs.get(name);
+        if (depth >= maxDepth) {
+            out.lines.push(`${indent}${name}/ (${child.count} 个文件，未展开)`);
+            out.collapsed += 1;
+        } else {
+            out.lines.push(`${indent}${name}/`);
+            renderTreeLines(child, maxDepth, depth + 1, `${indent}  `, out);
+        }
+    }
+    for (const name of [...node.files].sort(compareTreeNames)) out.lines.push(`${indent}${name}`);
+    return out;
+}
+
+/**
+ * 在字符预算内渲染目录树：先按 maxDepth 渲染，超出预算时逐级降低展开深度，
+ * 降到只剩顶层仍超出时按行硬截断。
+ */
+function renderWorkspaceTreeText(relPaths, { maxChars = DEFAULT_TREE_MAX_CHARS, maxDepth = DEFAULT_TREE_MAX_DEPTH } = {}) {
+    const budget = Math.max(1, Math.floor(Number(maxChars) || DEFAULT_TREE_MAX_CHARS));
+    const requestedDepth = Math.max(1, Math.floor(Number(maxDepth) || DEFAULT_TREE_MAX_DEPTH));
+    const tree = buildTreeNodes(relPaths);
+
+    for (let depth = requestedDepth; depth >= 1; depth -= 1) {
+        const { lines, collapsed } = renderTreeLines(tree, depth);
+        const text = lines.join('\n');
+        if (text.length <= budget) {
+            return { text, depth, requestedDepth, collapsedDirs: collapsed, omittedLines: 0 };
+        }
+    }
+
+    const { lines, collapsed } = renderTreeLines(tree, 1);
+    const kept = [];
+    let used = 0;
+    for (const line of lines) {
+        const cost = line.length + (kept.length > 0 ? 1 : 0);
+        if (used + cost > budget) break;
+        kept.push(line);
+        used += cost;
+    }
+    return {
+        text: kept.join('\n'),
+        depth: 1,
+        requestedDepth,
+        collapsedDirs: collapsed,
+        omittedLines: lines.length - kept.length,
+    };
+}
+
 function isSubsequence(needle, haystack) {
     let index = 0;
     for (const char of haystack) {
@@ -299,6 +385,37 @@ class WorkspaceIndex {
     findByAlias(alias) {
         const target = sanitizeAlias(alias);
         return this.getEnabled().find(state => state.config.alias === target) || null;
+    }
+
+    /**
+     * 按"文件夹名"定位启用的工作区：先匹配别名（别名默认由文件夹名生成），
+     * 再按根目录 basename 大小写不敏感匹配（用户改过别名时仍可用原文件夹名）。
+     */
+    findByName(name) {
+        const raw = String(name || '').trim();
+        if (!raw) return null;
+        const byAlias = this.findByAlias(raw);
+        if (byAlias) return byAlias;
+        const lower = raw.toLowerCase();
+        return this.getEnabled().find(state => path.basename(state.config.path).toLowerCase() === lower) || null;
+    }
+
+    /** 渲染某个启用工作区的目录树（会等待索引就绪）。未找到或已停用返回 null。 */
+    async renderTree(workspaceId, options = {}) {
+        const state = this.states.get(workspaceId);
+        if (!state || !state.config.enabled) return null;
+        await this._ensureReady(state).catch(() => {});
+        const base = {
+            id: state.config.id,
+            alias: state.config.alias,
+            path: state.config.path,
+            status: state.status,
+            error: state.error,
+            fileCount: state.files.size,
+            truncated: state.truncated,
+        };
+        if (state.status !== 'ready') return { ...base, text: '', depth: 0, requestedDepth: 0, collapsedDirs: 0, omittedLines: 0 };
+        return { ...base, ...renderWorkspaceTreeText([...state.files.keys()], options) };
     }
 
     /** 判断一个绝对路径是否落在某个启用的工作区内（取最深的根目录）。 */
@@ -519,6 +636,7 @@ module.exports = {
     normalizeWorkspaceList,
     scanWorkspace,
     scoreEntry,
+    renderWorkspaceTreeText,
     sanitizeAlias,
     DEFAULT_IGNORED_DIRS,
 };

@@ -4,6 +4,7 @@ const nodeFs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { EventEmitter } = require('events');
+const { normalizePromptSettings } = require('../services/workspacePromptPlaceholders');
 
 class SettingsValidator {
     static validate(settings, defaultSettings) {
@@ -173,6 +174,13 @@ class SettingsValidator {
             }
         }
 
+        // {{VCPChatWorkSpace}} 占位符行为设置：非法字段回落默认值并钳制范围。
+        const normalizedPromptSettings = normalizePromptSettings(validated.workspacePromptSettings);
+        if (JSON.stringify(normalizedPromptSettings) !== JSON.stringify(validated.workspacePromptSettings)) {
+            validated.workspacePromptSettings = normalizedPromptSettings;
+            hasIssues = true;
+        }
+
         if (!Array.isArray(validated.combinedItemOrder)) {
             validated.combinedItemOrder = [];
             hasIssues = true;
@@ -226,6 +234,7 @@ class SettingsManager extends EventEmitter {
             networkNotesPaths: [],
             workspaces: [],
             activeWorkspaceId: null,
+            workspacePromptSettings: { enabled: true, maxChars: 20000, maxDepth: 6 },
             filterEnabled: false,
             filterRules: [],
             toolAutoApprovalEnabled: false,

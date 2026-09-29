@@ -99,6 +99,17 @@
       "scope": "global",
       "wrap": true,
       "order": 8
+    },
+    {
+      "id": "builtin_workspace_tree",
+      "builtinKey": "workspace-tree",
+      "name": "工作区目录感知",
+      "type": "system_suffix",
+      "enabled": false,
+      "content": "当前本地工作区的真实根路径与目录结构如下（不含文件内容，需要时请按“根目录 + 相对路径”读取真实文件）：\n{{VCPChatWorkSpace}}",
+      "scope": "global",
+      "wrap": true,
+      "order": 9
     }
   ]
 }

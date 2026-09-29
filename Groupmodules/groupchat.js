@@ -39,6 +39,20 @@ const activeRequestControllers = new Map();
 const groupQueueCancellationVersions = new Map();
 const CANVAS_PLACEHOLDER = '{{VCPChatCanvas}}';
 const GROUP_SESSION_WATCHER_PLACEHOLDER = '{{VCPChatGroupSessionWatcher}}';
+const WORKSPACE_PLACEHOLDER_HINT = '{{VCPChatWorkSpace';
+
+// {{VCPChatWorkSpace}} / {{VCPChatWorkSpace:文件夹名}}：展开为工作区目录树。
+// 延迟 require，避免与主进程模块初始化顺序耦合；失败时保留原文，不阻断群聊。
+async function expandWorkspacePlaceholdersInPrompt(text) {
+    if (typeof text !== 'string' || !text.includes(WORKSPACE_PLACEHOLDER_HINT)) return text;
+    try {
+        const { expandPlaceholders } = require('../modules/ipc/workspaceHandlers');
+        return typeof expandPlaceholders === 'function' ? await expandPlaceholders(text) : text;
+    } catch (error) {
+        console.warn('[GroupChat] 工作区占位符展开失败，保留原文:', error?.message || error);
+        return text;
+    }
+}
 
 
 let mainAppPaths = {}; // 将由 main.js 初始化时传入
@@ -917,6 +931,8 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
         if (Array.isArray(tavernRules) && tavernRules.length > 0) {
             combinedSystemPrompt = tavernEngine.applySystemSuffix(combinedSystemPrompt, tavernRules, 'group');
         }
+        // 最后展开工作区占位符，使 Tavern 预设规则中的占位符同样生效。
+        combinedSystemPrompt = await expandWorkspacePlaceholdersInPrompt(combinedSystemPrompt);
 
         // 2. 构建上下文结构 (每次循环都基于最新的 groupHistory)
         // 历史仍完整持久化；窗口仅限制本次发送给模型的最近楼层。
@@ -1523,13 +1539,15 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
         if (groupPrompt.includes(GROUP_SESSION_WATCHER_PLACEHOLDER)) {
             const sessionWatcherInfo = await getGroupSessionWatcher(groupId, topicId);
             groupPrompt = groupPrompt.replace(new RegExp(GROUP_SESSION_WATCHER_PLACEHOLDER, 'g'), JSON.stringify(sessionWatcherInfo));
-        }
         combinedSystemPrompt += `\n\n[群聊设定]:\n${groupPrompt}`;
     }
 
     // VCPChatTarven: 在系统提示词尾部追加 system_suffix 规则
     if (Array.isArray(tavernRulesInvite) && tavernRulesInvite.length > 0) {
         combinedSystemPrompt = tavernEngine.applySystemSuffix(combinedSystemPrompt, tavernRulesInvite, 'group');
+    }
+    // 最后展开工作区占位符，使 Tavern 预设规则中的占位符同样生效。
+    combinedSystemPrompt = await expandWorkspacePlaceholdersInPrompt(combinedSystemPrompt);
     }
 
     // 2. 构建上下文结构 (基于最新的 groupHistory)

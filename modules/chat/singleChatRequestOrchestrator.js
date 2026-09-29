@@ -290,6 +290,23 @@ function applyContextRules(messages, rules, engine) {
     return [...systemMessages, ...injected];
 }
 
+// {{VCPChatWorkSpace}} / {{VCPChatWorkSpace:文件夹名}}：由主进程按工作区索引展开为目录树。
+// 无占位符时不发 IPC；展开失败保留原文，不阻断发送。
+const WORKSPACE_PLACEHOLDER_HINT = '{{VCPChatWorkSpace';
+
+async function expandWorkspacePlaceholdersInPrompt(electronAPI, text) {
+    if (typeof text !== 'string' || !text.includes(WORKSPACE_PLACEHOLDER_HINT)) return text;
+    if (typeof electronAPI?.expandWorkspacePlaceholders !== 'function') return text;
+    try {
+        const result = await electronAPI.expandWorkspacePlaceholders(text);
+        if (result?.success && typeof result.text === 'string') return result.text;
+        console.warn('[SingleChatRequestOrchestrator] 工作区占位符展开失败，保留原文:', result?.error);
+    } catch (error) {
+        console.warn('[SingleChatRequestOrchestrator] 工作区占位符展开异常，保留原文:', error);
+    }
+    return text;
+}
+
 function createSingleChatRequestOrchestrator({
     electronAPI,
     tavernEngine = null,
@@ -375,7 +392,11 @@ function createSingleChatRequestOrchestrator({
             baseSystemPrompt.trim(),
             normalizeText(systemPromptAppend).trim(),
         ].filter(Boolean);
-        const systemPrompt = applySystemRules(systemParts.join('\n\n'), rules, engine);
+        // 先追加 Tavern system_suffix，再展开工作区占位符，使预设规则中的占位符同样生效。
+        const systemPrompt = await expandWorkspacePlaceholdersInPrompt(
+            electronAPI,
+            applySystemRules(systemParts.join('\n\n'), rules, engine)
+        );
         if (systemPrompt.trim()) {
             messages.unshift({ role: 'system', content: systemPrompt });
         }
@@ -419,6 +440,7 @@ function createSingleChatRequestOrchestrator({
 
 export {
     attachTimestampMetadata,
+    expandWorkspacePlaceholdersInPrompt,
     describeLiveReference,
     buildDefaultMessageContent,
     buildModelConfig,

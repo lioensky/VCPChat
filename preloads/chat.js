@@ -306,6 +306,10 @@ function createCatalog(ops) {
         updateWorkspace: query((workspaceId, patch) => ops.invoke('workspaces:update', workspaceId, patch)),
         rebuildWorkspaceIndex: query((workspaceId = null) => ops.invoke('workspaces:rebuild', workspaceId)),
         selectWorkspaceDirectory: query(() => ops.invoke('workspaces:select-directory')),
+        // {{VCPChatWorkSpace}} / {{VCPChatWorkSpace:文件夹名}} 系统提示占位符展开与行为设置
+        expandWorkspacePlaceholders: query((text) => ops.invoke('workspaces:expand-placeholders', text)),
+        getWorkspacePromptSettings: query(() => ops.invoke('workspaces:get-prompt-settings')),
+        setWorkspacePromptSettings: query((patch) => ops.invoke('workspaces:set-prompt-settings', patch)),
         // 同步返回拖拽 File 对应的本地路径；非本地文件（如浏览器拖入的数据）返回空串。
         getPathForFile: query((file) => {
             try {
@@ -588,6 +592,9 @@ const ALLOWED_KEYS = [
     "updateWorkspace",
     "rebuildWorkspaceIndex",
     "selectWorkspaceDirectory",
+    "expandWorkspacePlaceholders",
+    "getWorkspacePromptSettings",
+    "setWorkspacePromptSettings",
     "getPathForFile",
     "onAddFileToInput",
     "onLoomShareTextToInput",
