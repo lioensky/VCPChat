@@ -471,7 +471,8 @@ function describeContent(buffer) {
         return { exists: true, binary: true, text: '', size, truncated: false };
     }
     const truncated = size > DIFF_TEXT_LIMIT;
-    const text = (truncated ? buffer.subarray(0, DIFF_TEXT_LIMIT) : buffer).toString('utf8');
+    const rawText = (truncated ? buffer.subarray(0, DIFF_TEXT_LIMIT) : buffer).toString('utf8');
+    const text = rawText.replace(/\r\n/g, '\n');
     return { exists: true, binary: false, text, size, truncated };
 }
 

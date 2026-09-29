@@ -132,7 +132,11 @@ test('unstaged diff reads the working tree; discard restores tracked files and h
     const diff = await gitService.getDiff(root, 'src/app.js');
     assert.equal(diff.before.text, 'const a = 1;\n');
     assert.equal(diff.after.text, 'const a = 3;\n');
-
+    // 验证 Windows 风格 CRLF 磁盘文件在 getDiff 中被归一化为 LF，避免差异视图全局爆红
+    fs.writeFileSync(path.join(root, 'crlf.txt'), 'line1\r\nline2\r\n');
+    const crlfDiff = await gitService.getDiff(root, 'crlf.txt');
+    assert.equal(crlfDiff.after.text, 'line1\nline2\n');
+    fs.unlinkSync(path.join(root, 'crlf.txt'));
     const untrackedDiff = await gitService.getDiff(root, 'tmp.txt');
     assert.equal(untrackedDiff.before.exists, false);
     assert.equal(untrackedDiff.after.text, 'x');

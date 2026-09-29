@@ -16,6 +16,7 @@ const CHANNELS = [
     'project-forge:get-batch',
     'project-forge:get-node',
     'project-forge:revert-file',
+    'project-forge:delete-project',
 ];
 
 let workspaceServiceRef = null;
@@ -74,6 +75,7 @@ function initialize({ workspaceService = null } = {}) {
             force: p.force === true,
         });
     }));
+    ipcMain.handle('project-forge:delete-project', wrap((projectId, signature) => forge().deleteProject(projectId, signature)));
 }
 
 module.exports = { initialize };

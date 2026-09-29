@@ -165,7 +165,19 @@ function renderProjectList() {
         <li class="project-item${p.id === state.currentId ? ' active' : ''}${p.deleted_at ? ' deleted' : ''}" data-id="${escapeHtml(p.id)}">
             <div class="row"><span class="name" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span>${statusBadge(p)}</div>
             <div class="sub"><code>${escapeHtml(p.id)}</code> · ${escapeHtml(p.workspace_alias || '-')} · Todo ${escapeHtml(p.progress?.text || '无')}</div>
-            <div class="sub">${p.stats?.nodeCount || 0} 次变动 · 最近 ${escapeHtml(fmtTime(p.stats?.lastAt || p.updated_at))}</div>
+            <div class="sub meta-line">
+                <span>${p.stats?.nodeCount || 0} 次变动 · 最近 ${escapeHtml(fmtTime(p.stats?.lastAt || p.updated_at))}</span>
+                ${p.status === 'accepted' && !p.deleted_at ? `
+                <div class="project-delete-wrap" data-id="${escapeHtml(p.id)}">
+                    <button class="project-delete-trigger" type="button" title="删除工程" aria-label="删除工程">
+                        <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor">
+                            <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+                            <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+                        </svg>
+                    </button>
+                    <button class="project-delete-confirm" type="button" data-id="${escapeHtml(p.id)}">是否删除工程？</button>
+                </div>` : ''}
+            </div>
             ${progressBar(p.progress)}
         </li>`).join('');
 }
@@ -555,7 +567,67 @@ function bindEvents() {
     $('project-search').addEventListener('input', debounce(renderProjectList, 120));
     $('include-deleted').addEventListener('change', loadProjects);
 
-    $('project-list').addEventListener('click', e => {
+    let activeDeleteWrap = null;
+    let activeDeleteTimer = null;
+
+    function collapseActiveDelete() {
+        if (activeDeleteTimer) {
+            clearTimeout(activeDeleteTimer);
+            activeDeleteTimer = null;
+        }
+        if (activeDeleteWrap) {
+            activeDeleteWrap.classList.remove('expanded');
+            activeDeleteWrap = null;
+        }
+    }
+
+    document.addEventListener('click', e => {
+        if (activeDeleteWrap && !activeDeleteWrap.contains(e.target)) {
+            collapseActiveDelete();
+        }
+    });
+
+    $('project-list').addEventListener('click', async e => {
+        const trigger = e.target.closest('.project-delete-trigger');
+        if (trigger) {
+            e.stopPropagation();
+            const wrap = trigger.closest('.project-delete-wrap');
+            if (!wrap) return;
+            if (activeDeleteWrap && activeDeleteWrap !== wrap) collapseActiveDelete();
+            wrap.classList.add('expanded');
+            activeDeleteWrap = wrap;
+            activeDeleteTimer = setTimeout(() => collapseActiveDelete(), 3000);
+            return;
+        }
+
+        const confirmBtn = e.target.closest('.project-delete-confirm');
+        if (confirmBtn) {
+            e.stopPropagation();
+            collapseActiveDelete();
+            const projectId = confirmBtn.dataset.id;
+            if (!projectId) return;
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = '删除中...';
+            try {
+                await call(api.projectForgeDeleteProject(projectId, getSignature()));
+                toast('工程已删除（仅数据库记录）', 'info');
+                await loadProjects();
+                if (state.currentId === projectId) {
+                    if ($('include-deleted').checked) {
+                        await selectProject(projectId, { keepTab: true });
+                    } else {
+                        state.currentId = null;
+                        showProjectView(false);
+                    }
+                }
+            } catch (err) {
+                toast(`删除工程失败：${err.message}`, 'error');
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = '是否删除工程？';
+            }
+            return;
+        }
+
         const item = e.target.closest('.project-item');
         if (item) selectProject(item.dataset.id);
     });

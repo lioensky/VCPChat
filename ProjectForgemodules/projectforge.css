@@ -124,6 +124,30 @@ button, input, select { font: inherit; color: inherit; }
 .project-item .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .project-item .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-item .sub { color: var(--pf-sub); font-size: 12px; margin-top: 4px; }
+.project-item .meta-line { display: flex; justify-content: space-between; align-items: center; min-height: 20px; }
+.project-delete-wrap { display: inline-flex; align-items: center; position: relative; margin-left: 6px; }
+.project-delete-trigger {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px; padding: 0; border: none; border-radius: 4px;
+    background: transparent; color: var(--pf-sub); cursor: pointer;
+    opacity: 0.6; transition: all 0.18s ease;
+}
+.project-item:hover .project-delete-trigger { opacity: 0.85; }
+.project-delete-trigger:hover { opacity: 1 !important; color: var(--pf-danger); background: rgba(229, 115, 115, 0.12); }
+.project-delete-confirm {
+    display: none; align-items: center; font-size: 11px; font-weight: 500; line-height: 1;
+    color: #fff; background: var(--pf-danger); border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 10px; padding: 3px 8px; cursor: pointer; white-space: nowrap;
+    animation: pf-pop-in 0.16s cubic-bezier(0.16, 1, 0.3, 1); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
+}
+.project-delete-confirm:hover:not(:disabled) { filter: brightness(1.08); }
+.project-delete-confirm:disabled { opacity: 0.65; cursor: wait; }
+.project-delete-wrap.expanded .project-delete-trigger { display: none; }
+.project-delete-wrap.expanded .project-delete-confirm { display: inline-flex; }
+@keyframes pf-pop-in {
+    from { opacity: 0; transform: scale(0.88); }
+    to { opacity: 1; transform: scale(1); }
+}
 
 .progress { height: 4px; border-radius: 2px; background: var(--pf-border); overflow: hidden; margin-top: 8px; }
 .progress > span { display: block; height: 100%; background: var(--pf-ok); }

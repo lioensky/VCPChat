@@ -528,10 +528,11 @@
         viewEl.innerHTML = '';
 
         const note = (b, label) => (b.exists && b.truncated ? `\n\n/* …${label}内容超过 2MB 已截断 */` : '');
+        const norm = s => String(s || '').replace(/\r\n/g, '\n');
 
         git.diffView = CodeMirror.MergeView(viewEl, {
-            origLeft: before.exists ? before.text + note(before, '改动前') : '',
-            value: after.exists ? after.text + note(after, '改动后') : '',
+            origLeft: before.exists ? norm(before.text) + note(before, '改动前') : '',
+            value: after.exists ? norm(after.text) + note(after, '改动后') : '',
             connect: 'align',
             mode: modeForPath(filePath),
             theme: isLightTheme() ? 'default' : 'material-darker',

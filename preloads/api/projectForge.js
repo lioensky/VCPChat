@@ -16,6 +16,7 @@ module.exports = {
         projectForgeGetBatch: invoke('project-forge:get-batch', 'projectId', 'batchId'),
         projectForgeGetNode: invoke('project-forge:get-node', 'projectId', 'nodeId'),
         projectForgeRevertFile: invoke('project-forge:revert-file', 'payload'),
+        projectForgeDeleteProject: invoke('project-forge:delete-project', 'projectId', 'signature'),
 
         // Git 侧栏
         gitListWorkspaces: invoke('git:list-workspaces'),

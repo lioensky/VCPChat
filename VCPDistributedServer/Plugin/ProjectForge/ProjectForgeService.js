@@ -1926,6 +1926,14 @@ const gui = {
             return { status: 'ok', ...plan, batchId, nodeId: newNodeId, maid };
         });
     },
+
+    deleteProject(projectId, maid = '') {
+        const id = String(projectId || '').trim();
+        if (!id) throw new Error(`${P} 删除工程需要指定 projectId。`);
+        const done = store().softDeleteProjects([id], String(maid || '').trim());
+        runtime.logger?.log?.(`${P} GUI 删除工程 ${id} by @${maid || 'anonymous'}`);
+        return { deleted: done.includes(id), projectId: id };
+    },
 };
 
 module.exports = {

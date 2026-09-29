@@ -268,6 +268,13 @@ test('GUI 门面：只读浏览 + 署名单文件回退（预检 / 冲突 / forc
     const redoForced = await forge.gui.revertFileChange({ projectId: pid, nodeId: editNode, mode: 'after', signature: '主人', force: true });
     assert.equal(redoForced.status, 'ok');
     assert.equal(fs.readFileSync(file, 'utf8'), 'v2\n');
+    // GUI 删除工程：仅数据库软删除，磁盘文件完好
+    const delRes = forge.gui.deleteProject(pid, '莱恩');
+    assert.deepEqual(delRes, { deleted: true, projectId: pid });
+    assert.ok(!forge.gui.listProjects().some(p => p.id === pid));
+    const deletedProj = forge.gui.listProjects({ includeDeleted: true }).find(p => p.id === pid);
+    assert.ok(deletedProj && deletedProj.deleted_at && deletedProj.deleted_by === '莱恩');
+    assert.equal(fs.readFileSync(file, 'utf8'), 'v2\n');
     assert.ok(forge.gui.getProject(pid).contributors.some(c => c.maid === '主人'));
 });
 
