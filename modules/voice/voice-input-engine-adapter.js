@@ -285,9 +285,10 @@ class VoiceInputEngineAdapter {
         });
     }
 
-    focusReady({ targetWindowHandle }) {
+    focusReady({ targetWindowHandle, programmatic = false }) {
         return this.request('focus_ready', {
             target_window_handle: String(targetWindowHandle),
+            programmatic: Boolean(programmatic),
         });
     }
 

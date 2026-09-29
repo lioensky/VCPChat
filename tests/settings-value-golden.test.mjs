@@ -46,6 +46,15 @@ function legacyCollect({ doc, currentSettings, settingsManager, getAppearance, n
         : 500;
     const streamAnimationCustomCss = (getElementById('streamAnimationCustomCss')?.value || '').slice(0, 4000);
 
+    const rawInitialIdle = Number(getElementById('mainChatVoiceInitialIdleTimeout')?.value);
+    const mainChatVoiceInitialIdleTimeout = Number.isFinite(rawInitialIdle)
+        ? Math.min(12, Math.max(1, rawInitialIdle))
+        : 5.5;
+    const rawQuiet = Number(getElementById('mainChatVoiceQuietTimeout')?.value);
+    const mainChatVoiceQuietTimeout = Number.isFinite(rawQuiet)
+        ? Math.min(15, Math.max(0.5, rawQuiet))
+        : 2.5;
+
     const newSettings = {
         userName: getElementById('userName').value.trim() || '用户',
         userAvatarBorderColor: getElementById('userAvatarBorderColor')?.value || '#3d5a80',
@@ -151,6 +160,10 @@ function legacyCollect({ doc, currentSettings, settingsManager, getAppearance, n
         voiceMode,
         voiceInputMode,
         voiceInputShortcut,
+        mainChatVoiceInitialIdleTimeout,
+        mainChatVoiceQuietTimeout,
+        mainChatVoiceClearPhrase: getElementById('mainChatVoiceClearPhrase')?.value.trim() || '',
+        mainChatVoiceSendPhrase: getElementById('mainChatVoiceSendPhrase')?.value.trim() || '',
         voiceLocalSettings: {
             sovitsUrl: getElementById('voiceLocalSovitsUrl')?.value.trim() || '',
             sovitsKey: getElementById('voiceLocalSovitsKey')?.value || ''

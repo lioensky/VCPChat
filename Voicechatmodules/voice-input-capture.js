@@ -7,13 +7,15 @@ document.addEventListener('DOMContentLoaded', () => {
     let sessionId = null;
     let focusAttemptToken = 0;
     let focusReadySessionId = null;
+    let isStopping = false;
 
-    const report = () => {
+    const report = (settled = false) => {
         window.voiceCaptureAPI.update({
             text: input.value,
             composing,
             updatedAt: Date.now(),
             sessionId,
+            settled: Boolean(settled && !composing),
         });
     };
 
@@ -79,33 +81,35 @@ document.addEventListener('DOMContentLoaded', () => {
     input.addEventListener('compositionstart', () => {
         composing = true;
         state.textContent = '正在识别';
-        report();
+        report(false);
     });
 
-    input.addEventListener('compositionupdate', report);
+    input.addEventListener('compositionupdate', () => report(false));
 
     input.addEventListener('compositionend', () => {
         composing = false;
-        state.textContent = '正在听写';
-        report();
+        state.textContent = isStopping ? '听写结束' : '正在听写';
+        report(isStopping);
     });
 
-    input.addEventListener('input', report);
+    input.addEventListener('input', () => report(false));
 
     window.voiceCaptureAPI.onPrepare(payload => {
         sessionId = payload?.sessionId || null;
         focusReadySessionId = null;
+        isStopping = false;
         input.value = '';
         composing = false;
         state.textContent = '正在选择输入区';
-        report();
+        report(false);
         focusAndConfirm();
     });
 
     window.voiceCaptureAPI.onStop(() => {
         focusAttemptToken += 1;
+        isStopping = true;
         state.textContent = composing ? '等待文字上屏' : '听写结束';
-        report();
+        report(!composing);
     });
 
     window.addEventListener('focus', () => {

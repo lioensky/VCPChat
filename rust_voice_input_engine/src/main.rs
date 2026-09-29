@@ -70,6 +70,8 @@ enum Command {
         #[serde(default)]
         request_id: Option<String>,
         target_window_handle: String,
+        #[serde(default)]
+        programmatic: bool,
     },
     StopSession {
         #[serde(default)]
@@ -470,11 +472,12 @@ fn process_command(command: Command, state: &Arc<SharedState>) -> bool {
         }
         Command::FocusReady {
             target_window_handle,
+            programmatic,
             ..
         } => {
             let result = parse_window_handle(&target_window_handle).and_then(|target| {
                 let awaiting_focus = state.awaiting_focus.load(Ordering::SeqCst);
-                if !awaiting_focus {
+                if !awaiting_focus && !programmatic {
                     return Err(
                         "focus_ready rejected without an active voice input request".to_string()
                     );

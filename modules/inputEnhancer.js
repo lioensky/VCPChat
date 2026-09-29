@@ -63,6 +63,9 @@ function initializeInputEnhancer(refs) {
     inputEnhancerDispose = async () => {
         if (!lifecycle.active) return;
         lifecycle.active = false;
+        try {
+            window.chatVoiceComposer?.dispose?.();
+        } catch (_) {}
         ownedDisposers.splice(0).reverse().forEach(dispose => dispose());
         noteSuggestionPopup?.remove?.();
         noteSuggestionPopup = null;
@@ -784,6 +787,23 @@ function initializeInputEnhancer(refs) {
             if (!isActive()) return;
             console.error('[InputEnhancer] Error attaching mention file:', err);
             alert(`附加${label} "${suggestion.name}" 时发生意外错误。`);
+        }
+    }
+
+    if (typeof window !== 'undefined' && window.chatVoiceComposer?.init) {
+        try {
+            window.chatVoiceComposer.init({
+                messageInput,
+                electronAPI: localElectronAPI,
+                attachedFiles: attachedFilesRef,
+                updateAttachmentPreview: updateAttachmentPreviewRef,
+                sendMessageBtn: typeof document !== 'undefined' ? document.getElementById('sendMessageBtn') : null,
+                getCurrentAgentId: refs.getCurrentAgentId,
+                getCurrentTopicId: refs.getCurrentTopicId,
+                listenerOwner: refs.listenerOwner,
+            });
+        } catch (voiceInitErr) {
+            console.warn('[InputEnhancer] chatVoiceComposer 初始化警告:', voiceInitErr);
         }
     }
 }

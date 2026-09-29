@@ -58,6 +58,30 @@ class SettingsValidator {
             validated.voiceInputShortcut = validated.voiceInputShortcut.trim().toUpperCase();
         }
 
+        const initialIdle = Number(validated.mainChatVoiceInitialIdleTimeout);
+        validated.mainChatVoiceInitialIdleTimeout = Number.isFinite(initialIdle)
+            ? Math.min(12, Math.max(1, initialIdle))
+            : 5.5;
+
+        const quietTimeout = Number(validated.mainChatVoiceQuietTimeout);
+        validated.mainChatVoiceQuietTimeout = Number.isFinite(quietTimeout)
+            ? Math.min(15, Math.max(0.5, quietTimeout))
+            : 2.5;
+
+        if (typeof validated.mainChatVoiceClearPhrase !== 'string') {
+            validated.mainChatVoiceClearPhrase = '';
+            hasIssues = true;
+        } else {
+            validated.mainChatVoiceClearPhrase = validated.mainChatVoiceClearPhrase.trim();
+        }
+
+        if (typeof validated.mainChatVoiceSendPhrase !== 'string') {
+            validated.mainChatVoiceSendPhrase = '';
+            hasIssues = true;
+        } else {
+            validated.mainChatVoiceSendPhrase = validated.mainChatVoiceSendPhrase.trim();
+        }
+
         if (
             validated.lastAttachmentDirectory !== null
             && typeof validated.lastAttachmentDirectory !== 'string'
@@ -295,6 +319,10 @@ class SettingsManager extends EventEmitter {
             voiceMode: 'local',
             voiceInputMode: 'windows_voice_typing',
             voiceInputShortcut: 'F7',
+            mainChatVoiceInitialIdleTimeout: 5.5,
+            mainChatVoiceQuietTimeout: 2.5,
+            mainChatVoiceClearPhrase: '',
+            mainChatVoiceSendPhrase: '',
             voiceLocalSettings: {
                 sovitsUrl: '',
                 sovitsKey: ''
