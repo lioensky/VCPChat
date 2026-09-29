@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "description": "通过指令控制VChat内置音乐播放器，实现播放、暂停、切歌等功能。",
   "author": "Roo",
-  "license": "MIT",
+  "license": "CC BY-NC-SA 4.0",
   "entryPoint": {
     "command": "node music-controller.js"
   },

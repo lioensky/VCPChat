@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "description": "面向 Agent 的工程化代码施工插件。创建工程获得 projectId，在工作区内做行级编辑（串语法、原始快照行号、歧义票据）、自动代码审查、每次改动自动存快照并记录 reason，可按批次/节点回退，支持 todo 进度与验收报告。写入白名单自动取自已启用的工作区。删除文件移到系统回收站；删除工程只动数据库。支持 AST 符号寻址（Outline / FindSymbol / symbol=，JS/TS/TSX/Python/Rust），按“文件#限定名”读改函数无需行号；索引器不可用时自动退回 lines / target。",
   "author": "VCPToolBox",
-  "license": "MIT",
+  "license": "CC BY-NC-SA 4.0",
   "pluginType": "hybridservice",
   "communication": {
     "protocol": "direct",

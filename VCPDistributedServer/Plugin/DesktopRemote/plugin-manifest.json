@@ -5,7 +5,7 @@
   "version": "1.4.0",
   "description": "远程控制VCPdesktop桌面画布，支持推送壁纸、感知查询桌面状态、查询Dock应用列表、查看挂件源码、创建新挂件，以及指标驱动全局样式自动化。",
   "author": "VCPToolBox",
-  "license": "MIT",
+  "license": "CC BY-NC-SA 4.0",
   "entryPoint": {
     "command": "node desktop-remote.js"
   },

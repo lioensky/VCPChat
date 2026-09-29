@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "description": "一个强大的系统提示词管理插件，允许AI完全控制和管理Agent的系统提示词。支持三种模式：原始富文本、模块化积木块、临时与预制。提供对积木块的增删改查、小仓管理、多仓库操作等完整功能。",
   "author": "VCPToolBox",
-  "license": "MIT",
+  "license": "CC BY-NC-SA 4.0",
   "entryPoint": {
     "script": "prompt-sponsor-service.js",
     "timeout": 30000

@@ -5,7 +5,7 @@
   "version": "1.1.0",
   "description": "基于物理引擎的3D骰子插件。AI可选择骰子材质、颜色与安全的物理魔法预设，也可在受控范围内精调物理参数。",
   "author": "Kilo Code",
-  "license": "MIT",
+  "license": "CC BY-NC-SA 4.0",
   "entryPoint": {
     "command": "node superdice.js"
   },
