@@ -362,6 +362,16 @@ function createCatalog(ops) {
         projectForgeGetBatch: query((projectId, batchId) => ops.invoke('project-forge:get-batch', projectId, batchId)),
         projectForgeGetNode: query((projectId, nodeId) => ops.invoke('project-forge:get-node', projectId, nodeId)),
         projectForgeRevertFile: query((payload) => ops.invoke('project-forge:revert-file', payload)),
+
+        // ProjectForge Git 侧栏（主进程按调用页面校验，仅施工图可用）
+        gitListWorkspaces: query(() => ops.invoke('git:list-workspaces')),
+        gitStatus: query((workspaceId) => ops.invoke('git:status', workspaceId)),
+        gitDiff: query((workspaceId, relPath, options) => ops.invoke('git:diff', workspaceId, relPath, options)),
+        gitStage: query((workspaceId, paths) => ops.invoke('git:stage', workspaceId, paths)),
+        gitUnstage: query((workspaceId, paths) => ops.invoke('git:unstage', workspaceId, paths)),
+        gitDiscard: query((workspaceId, paths) => ops.invoke('git:discard', workspaceId, paths)),
+        gitCommit: query((workspaceId, payload) => ops.invoke('git:commit', workspaceId, payload)),
+        gitPush: query((workspaceId, payload) => ops.invoke('git:push', workspaceId, payload)),
     };
 }
 

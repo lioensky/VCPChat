@@ -262,12 +262,13 @@ table.grid tr.clickable:hover { background: var(--pf-hover); }
 .node-meta { color: var(--pf-sub); font-size: 12px; margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .node-meta .reason { width: 100%; color: var(--pf-text); font-size: 13px; }
 .diff-legend { display: grid; grid-template-columns: 1fr 1fr; font-size: 12px; color: var(--pf-sub); padding: 0 4px 4px; }
-#diff-view { flex: 1; min-height: 0; border: 1px solid var(--pf-border); border-radius: 8px; overflow: hidden; }
-#diff-view .CodeMirror-merge, #diff-view .CodeMirror-merge .CodeMirror { height: 100%; }
-#diff-view .CodeMirror-merge { border: none; }
+:is(#diff-view, #git-diff-view) { flex: 1; min-height: 0; border: 1px solid var(--pf-border); border-radius: 8px; overflow: hidden; }
+:is(#diff-view, #git-diff-view) .CodeMirror-merge,
+:is(#diff-view, #git-diff-view) .CodeMirror-merge .CodeMirror { height: 100%; }
+:is(#diff-view, #git-diff-view) .CodeMirror-merge { border: none; }
 
-/* ---------- MergeView 配色：左 = 改动前（红），右 = 改动后（绿） ---------- */
-#diff-view {
+/* ---------- MergeView 配色：左 = 改动前（红），右 = 改动后（绿）；施工图节点与 Git 侧栏共用 ---------- */
+:is(#diff-view, #git-diff-view) {
     --pf-del-line: rgba(229, 83, 75, 0.14);
     --pf-del-word: rgba(229, 83, 75, 0.38);
     --pf-add-line: rgba(63, 185, 80, 0.14);
@@ -275,7 +276,7 @@ table.grid tr.clickable:hover { background: var(--pf-hover); }
     --pf-chunk-edge: rgba(127, 127, 127, 0.35);
     --pf-gap-bg: rgba(0, 0, 0, 0.18);
 }
-body.light-theme #diff-view {
+body.light-theme :is(#diff-view, #git-diff-view) {
     --pf-del-line: rgba(215, 58, 73, 0.09);
     --pf-del-word: rgba(215, 58, 73, 0.25);
     --pf-add-line: rgba(40, 167, 69, 0.10);
@@ -283,41 +284,41 @@ body.light-theme #diff-view {
     --pf-chunk-edge: rgba(0, 0, 0, 0.15);
     --pf-gap-bg: rgba(0, 0, 0, 0.04);
 }
-#diff-view .CodeMirror {
+:is(#diff-view, #git-diff-view) .CodeMirror {
     font-family: Consolas, 'Cascadia Code', monospace;
     font-size: 13px;
     line-height: 1.5;
 }
-#diff-view .CodeMirror-merge-pane { height: 100%; }
-#diff-view .CodeMirror-merge-gap {
+:is(#diff-view, #git-diff-view) .CodeMirror-merge-pane { height: 100%; }
+:is(#diff-view, #git-diff-view) .CodeMirror-merge-gap {
     height: 100%;
     background: var(--pf-gap-bg);
     border-color: var(--pf-border);
 }
 /* 块整行底色：左侧（原文）标红，右侧（编辑器）标绿 */
-#diff-view .CodeMirror-merge-left .CodeMirror-merge-l-chunk { background: var(--pf-del-line); }
-#diff-view .CodeMirror-merge-editor .CodeMirror-merge-l-chunk { background: var(--pf-add-line); }
-#diff-view .CodeMirror-merge-l-chunk-start { border-top: 1px solid var(--pf-chunk-edge); }
-#diff-view .CodeMirror-merge-l-chunk-end { border-bottom: 1px solid var(--pf-chunk-edge); }
+:is(#diff-view, #git-diff-view) .CodeMirror-merge-left .CodeMirror-merge-l-chunk { background: var(--pf-del-line); }
+:is(#diff-view, #git-diff-view) .CodeMirror-merge-editor .CodeMirror-merge-l-chunk { background: var(--pf-add-line); }
+:is(#diff-view, #git-diff-view) .CodeMirror-merge-l-chunk-start { border-top: 1px solid var(--pf-chunk-edge); }
+:is(#diff-view, #git-diff-view) .CodeMirror-merge-l-chunk-end { border-bottom: 1px solid var(--pf-chunk-edge); }
 /* 块内字级差异：去掉默认虚线下划线，改为实色高亮 */
-#diff-view .CodeMirror-merge-l-deleted,
-#diff-view .CodeMirror-merge-l-inserted {
+:is(#diff-view, #git-diff-view) .CodeMirror-merge-l-deleted,
+:is(#diff-view, #git-diff-view) .CodeMirror-merge-l-inserted {
     background-image: none;
     border-radius: 2px;
 }
-#diff-view .CodeMirror-merge-l-deleted { background-color: var(--pf-del-word); }
-#diff-view .CodeMirror-merge-l-inserted { background-color: var(--pf-add-word); }
+:is(#diff-view, #git-diff-view) .CodeMirror-merge-l-deleted { background-color: var(--pf-del-word); }
+:is(#diff-view, #git-diff-view) .CodeMirror-merge-l-inserted { background-color: var(--pf-add-word); }
 /* 中间连接线 */
-#diff-view .CodeMirror-merge-l-connect { fill: var(--pf-add-line); stroke: var(--pf-chunk-edge); stroke-width: 1px; }
+:is(#diff-view, #git-diff-view) .CodeMirror-merge-l-connect { fill: var(--pf-add-line); stroke: var(--pf-chunk-edge); stroke-width: 1px; }
 /* 折叠的相同段落 */
-#diff-view .CodeMirror-merge-collapsed-widget {
+:is(#diff-view, #git-diff-view) .CodeMirror-merge-collapsed-widget {
     background: var(--pf-hover);
     border: 1px solid var(--pf-border);
     color: var(--pf-sub);
     border-radius: 4px;
     padding: 0 8px;
 }
-#diff-view .CodeMirror-merge-collapsed-widget:before { content: '⋯ 相同内容已折叠，点击展开'; }
+:is(#diff-view, #git-diff-view) .CodeMirror-merge-collapsed-widget:before { content: '⋯ 相同内容已折叠，点击展开'; }
 .diff-fallback { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--pf-sub); border: 1px dashed var(--pf-border); border-radius: 8px; }
 .diff-fallback[hidden] { display: none; }
 .revert-bar { display: flex; gap: 8px; margin-top: 10px; }
@@ -343,3 +344,272 @@ h3 { margin: 0; }
 
 /* 嵌入模式下隐藏窗口控制 */
 html[data-vcp-embedded-app="true"] #title-bar .divider { display: none; }
+/* ---------- 侧栏滑动分页（与 VChat 主侧栏「助手 / 话题 / 设置」同款下划线指示条） ---------- */
+#project-sidebar { overflow: hidden; }
+#project-sidebar [hidden] { display: none !important; }
+.side-tabs {
+    display: flex;
+    align-items: center;
+    padding: 8px 8px 0;
+    border-bottom: 1px solid var(--pf-border);
+}
+.side-tab {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    height: 34px;
+    padding: 0 6px 4px;
+    background: transparent;
+    border: none;
+    border-radius: 8px 8px 0 0;
+    color: var(--pf-sub);
+    cursor: pointer;
+    font-size: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: color 0.2s ease;
+}
+.side-tab::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: -1px;
+    transform: translateX(-50%);
+    width: 0;
+    height: 3px;
+    border-radius: 999px;
+    background-color: color-mix(in srgb, var(--highlight-text, var(--pf-accent)) 45%, transparent);
+    transition: width 0.22s ease, background-color 0.22s ease;
+}
+.side-tab:hover { color: var(--pf-text); }
+.side-tab:hover::after { width: 16px; }
+.side-tab.active { color: var(--highlight-text, var(--pf-accent)); font-weight: 600; }
+.side-tab.active::after { width: 30px; background-color: var(--highlight-text, var(--pf-accent)); }
+.side-tab:focus-visible { outline: 2px solid var(--pf-accent); outline-offset: -2px; }
+.tab-count {
+    min-width: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    font-size: 11px;
+    line-height: 16px;
+    font-weight: 500;
+    background: var(--pf-accent);
+    color: var(--text-on-accent, #fff);
+}
+.side-viewport { flex: 1; min-height: 0; overflow: hidden; }
+.side-track {
+    display: flex;
+    width: 200%;
+    height: 100%;
+    transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+#project-sidebar[data-side-active="git"] .side-track { transform: translateX(-50%); }
+.side-page {
+    width: 50%;
+    min-width: 0;
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    transition: opacity 0.28s ease;
+}
+.side-page[aria-hidden="true"] { opacity: 0.3; }
+
+/* ---------- Git 侧栏 ---------- */
+.git-head { padding: 10px 10px 6px; display: flex; gap: 6px; align-items: center; }
+.git-head select {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 8px;
+    border-radius: 8px;
+    border: 1px solid var(--pf-border);
+    background: var(--pf-code-bg);
+    outline: none;
+}
+.git-head select:focus { border-color: var(--pf-accent); }
+.git-head select option { background: var(--pf-bg); color: var(--pf-text); }
+.icon-btn.spinning { animation: pf-spin 0.9s linear infinite; }
+@keyframes pf-spin { to { transform: rotate(360deg); } }
+
+.git-branch-line {
+    padding: 0 12px 8px;
+    font-size: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+}
+.git-branch { font-family: Consolas, 'Cascadia Code', monospace; font-weight: 600; }
+
+.git-commit-box {
+    padding: 0 10px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    border-bottom: 1px solid var(--pf-border);
+}
+.git-commit-box textarea {
+    width: 100%;
+    min-height: 56px;
+    max-height: 220px;
+    resize: vertical;
+    padding: 7px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--pf-border);
+    background: var(--pf-code-bg);
+    color: inherit;
+    font: inherit;
+    line-height: 1.45;
+    outline: none;
+}
+.git-commit-box textarea:focus { border-color: var(--pf-accent); }
+.git-commit-box textarea:disabled { opacity: 0.5; }
+.git-commit-actions { display: flex; gap: 6px; }
+.git-commit-actions .btn { padding: 6px 10px; }
+.git-commit-actions .btn.primary { flex: 1; }
+
+.git-notice {
+    margin: 8px 10px 0;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px dashed var(--pf-border);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--pf-sub);
+}
+.git-notice.error { color: var(--pf-danger); border-color: var(--pf-danger); }
+.git-notice.warn { color: var(--pf-warn); border-color: var(--pf-warn); }
+
+.git-op-output { margin: 8px 10px 0; border: 1px solid var(--pf-danger); border-radius: 8px; font-size: 12px; }
+.git-op-output.success { border-color: var(--pf-ok); }
+.git-op-output-head { display: flex; justify-content: space-between; align-items: center; padding: 2px 2px 0 10px; color: var(--pf-danger); }
+.git-op-output.success .git-op-output-head { color: var(--pf-ok); }
+.git-op-output pre {
+    margin: 0;
+    padding: 4px 10px 8px;
+    max-height: 160px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: Consolas, 'Cascadia Code', monospace;
+}
+
+.git-groups { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 4px 10px; }
+.git-empty { padding: 12px 8px; margin: 0; }
+.git-group + .git-group { margin-top: 6px; }
+.git-group-head { display: flex; align-items: center; gap: 6px; padding: 2px 4px 2px 8px; border-radius: 6px; }
+.git-group-head:hover { background: var(--pf-hover); }
+.git-group-toggle {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 0;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: var(--pf-sub);
+}
+.git-group-toggle .chev { display: inline-block; width: 10px; transition: transform 0.15s ease; }
+.git-group.collapsed .chev { transform: rotate(-90deg); }
+.git-count {
+    padding: 0 6px;
+    border-radius: 999px;
+    border: 1px solid var(--pf-border);
+    font-size: 11px;
+    font-weight: 500;
+}
+.git-sel-chip { font-size: 11px; color: var(--pf-accent); white-space: nowrap; }
+.git-sel-chip:empty { display: none; }
+.git-group-actions { display: flex; gap: 2px; flex-shrink: 0; }
+
+.git-list { list-style: none; margin: 0; padding: 0; }
+.git-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 28px;
+    padding: 1px 4px 1px 8px;
+    border-radius: 6px;
+}
+.git-row:hover { background: var(--pf-hover); }
+.git-row.selected { box-shadow: inset 2px 0 0 var(--pf-accent); }
+.git-row.active { background: color-mix(in srgb, var(--pf-accent) 18%, transparent); }
+.git-check, .git-check-all { margin: 0; flex-shrink: 0; cursor: pointer; accent-color: var(--pf-accent); }
+.git-open {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 4px 0;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    overflow: hidden;
+}
+.git-name { white-space: nowrap; }
+.git-name.deleted { text-decoration: line-through; opacity: 0.8; }
+.git-dir { min-width: 0; font-size: 12px; color: var(--pf-sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 行内操作悬停/聚焦时显现；用透明度而不是 display，保证键盘可达 */
+.git-row-actions { display: flex; gap: 2px; flex-shrink: 0; opacity: 0; }
+.git-row:hover .git-row-actions, .git-row:focus-within .git-row-actions { opacity: 1; }
+.git-icon-btn {
+    width: 24px;
+    height: 24px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    cursor: pointer;
+    font-size: 14px;
+    opacity: 0.8;
+}
+.git-icon-btn:hover { opacity: 1; background: var(--pf-hover); }
+.git-icon-btn.danger:hover { color: var(--pf-danger); }
+.git-icon-btn:focus-visible, .git-open:focus-visible, .git-group-toggle:focus-visible {
+    outline: 2px solid var(--pf-accent);
+    outline-offset: -2px;
+    opacity: 1;
+}
+.git-status {
+    display: inline-block;
+    width: 16px;
+    flex-shrink: 0;
+    text-align: center;
+    font-family: Consolas, 'Cascadia Code', monospace;
+    font-size: 12px;
+    font-weight: 700;
+}
+.st-m { color: var(--pf-warn); }
+.st-a, .st-u { color: var(--pf-ok); }
+.st-d { color: var(--pf-danger); }
+.st-r, .st-c { color: #6cb6ff; }
+.st-t { color: var(--pf-sub); }
+.st-conflict { color: #b388ff; }
+#side-page-git.busy :is(.git-icon-btn, .git-check, .git-check-all) { pointer-events: none; opacity: 0.35; }
+
+/* ---------- Git 差异视图（主面板） ---------- */
+#main-panel:not([data-mode="git"]) > #git-view { display: none; }
+#main-panel[data-mode="git"] > #empty-state,
+#main-panel[data-mode="git"] > #project-view { display: none !important; }
+#git-view { display: flex; flex-direction: column; min-height: 0; height: 100%; padding: 14px; }
+#git-view [hidden] { display: none !important; }
+.git-view-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
+.git-view-title { min-width: 0; }
+.git-view-title strong { display: flex; align-items: center; gap: 6px; word-break: break-all; }
+
+@media (prefers-reduced-motion: reduce) {
+    .side-track, .side-page, .side-tab::after, .git-group-toggle .chev { transition: none; }
+    .icon-btn.spinning { animation: none; }
+}

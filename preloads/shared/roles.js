@@ -370,6 +370,14 @@ const UTILITY_KEYS = [
     'projectForgeGetBatch',
     'projectForgeGetNode',
     'projectForgeRevertFile',
+    'gitListWorkspaces',
+    'gitStatus',
+    'gitDiff',
+    'gitStage',
+    'gitUnstage',
+    'gitDiscard',
+    'gitCommit',
+    'gitPush',
 ];
 
 module.exports = {

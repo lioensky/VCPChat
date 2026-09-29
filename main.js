@@ -67,6 +67,7 @@ const promptHandlers = require('./modules/ipc/promptHandlers'); // Import prompt
 const notesHandlers = require('./modules/ipc/notesHandlers'); // Import notes handlers
 const workspaceHandlers = require('./modules/ipc/workspaceHandlers'); // 工作区索引与实时引用
 const projectForgeHandlers = require('./modules/ipc/projectForgeHandlers'); // ProjectForge 施工图 GUI（只读 + 署名回退）
+const gitHandlers = require('./modules/ipc/gitHandlers'); // ProjectForge Git 源代码管理侧栏
 const assistantHandlers = require('./modules/ipc/assistantHandlers'); // Import assistant handlers
 const musicHandlers = require('./modules/ipc/musicHandlers'); // Import music handlers
 const diceHandlers = require('./modules/ipc/diceHandlers'); // Import dice handlers
@@ -1446,6 +1447,7 @@ if (!gotTheLock) {
         // 工作区索引在后台预热，不阻塞首屏。
         workspaceHandlers.initialize({ settingsManager: appSettingsManager, logger: console });
         projectForgeHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService });
+        gitHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService });
 
         translatorHandlers.initialize({
             mainWindow,

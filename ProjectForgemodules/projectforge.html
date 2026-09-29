@@ -33,15 +33,49 @@
     </header>
 
     <div class="layout">
-        <aside id="project-sidebar" class="panel">
-            <div class="sidebar-head">
-                <input id="project-search" type="search" placeholder="搜索工程名称 / ID..." autocomplete="off">
-                <label class="toggle"><input id="include-deleted" type="checkbox"> 含已删除</label>
+        <aside id="project-sidebar" class="panel" data-side-active="projects">
+            <div id="side-tabs" class="side-tabs" role="tablist" aria-label="侧栏分页">
+                <button id="side-tab-projects" class="side-tab active" type="button" role="tab" data-side-tab="projects" aria-selected="true" aria-controls="side-page-projects">工程</button>
+                <button id="side-tab-git" class="side-tab" type="button" role="tab" data-side-tab="git" aria-selected="false" aria-controls="side-page-git" tabindex="-1">Git<span id="git-tab-count" class="tab-count" aria-hidden="true" hidden></span></button>
             </div>
-            <ul id="project-list" aria-label="工程列表"></ul>
+            <div class="side-viewport">
+                <div class="side-track">
+                    <section id="side-page-projects" class="side-page" data-side-page="projects" role="tabpanel" aria-labelledby="side-tab-projects">
+                        <div class="sidebar-head">
+                            <input id="project-search" type="search" placeholder="搜索工程名称 / ID..." autocomplete="off">
+                            <label class="toggle"><input id="include-deleted" type="checkbox"> 含已删除</label>
+                        </div>
+                        <ul id="project-list" aria-label="工程列表"></ul>
+                    </section>
+
+                    <section id="side-page-git" class="side-page" data-side-page="git" role="tabpanel" aria-labelledby="side-tab-git" aria-hidden="true" inert>
+                        <div class="git-head">
+                            <select id="git-workspace-select" aria-label="Git 工作区"></select>
+                            <button id="git-refresh-btn" class="icon-btn" type="button" title="刷新 Git 状态" aria-label="刷新 Git 状态">⟳</button>
+                        </div>
+                        <div id="git-branch-line" class="git-branch-line" hidden></div>
+                        <div class="git-commit-box">
+                            <textarea id="git-commit-message" rows="3" maxlength="20000" placeholder="提交信息（Ctrl+Enter 提交）" aria-label="提交信息"></textarea>
+                            <div class="git-commit-actions">
+                                <button id="git-commit-btn" class="btn primary" type="button" disabled>✓ 提交</button>
+                                <button id="git-push-btn" class="btn" type="button" disabled>↑ 推送</button>
+                            </div>
+                        </div>
+                        <div id="git-op-output" class="git-op-output" role="status" hidden>
+                            <div class="git-op-output-head">
+                                <span id="git-op-title">输出</span>
+                                <button id="git-op-close" class="git-icon-btn" type="button" aria-label="关闭输出">✕</button>
+                            </div>
+                            <pre id="git-op-text"></pre>
+                        </div>
+                        <div id="git-notice" class="git-notice" role="status" hidden></div>
+                        <div id="git-groups" class="git-groups" aria-label="Git 变更"></div>
+                    </section>
+                </div>
+            </div>
         </aside>
 
-        <main id="main-panel" class="panel">
+        <main id="main-panel" class="panel" data-mode="projects">
             <div id="empty-state" class="empty-state">
                 <div class="empty-mark">⌁</div>
                 <p>选择左侧工程以查看施工图</p>
@@ -81,6 +115,23 @@
                     </div>
                     <div class="tab-pane" data-pane="report" id="pane-report"></div>
                 </div>
+            </section>
+
+            <!-- Git 差异（侧栏切到 Git 分页时显示） -->
+            <section id="git-view" aria-label="Git 差异">
+                <div class="git-view-head">
+                    <div class="git-view-title">
+                        <strong id="git-diff-title">Git 差异</strong>
+                        <div id="git-diff-meta" class="node-meta"></div>
+                    </div>
+                    <div class="modal-tools">
+                        <button id="git-diff-action" class="btn small" type="button" hidden></button>
+                        <button id="git-diff-wrap-btn" class="btn small toggle-btn" type="button" aria-pressed="false" title="切换 Diff 自动换行">↩ 自动换行</button>
+                    </div>
+                </div>
+                <div id="git-diff-legend" class="diff-legend" hidden><span id="git-legend-left">改动前</span><span id="git-legend-right">改动后</span></div>
+                <div id="git-diff-view" hidden></div>
+                <div id="git-diff-fallback" class="diff-fallback">选择左侧的变更文件以查看差异</div>
             </section>
         </main>
     </div>
@@ -144,5 +195,6 @@
     </script>
     <script src="../node_modules/codemirror/addon/merge/merge.js"></script>
     <script src="projectforge.js"></script>
+    <script src="projectforge-git.js"></script>
 </body>
 </html>
