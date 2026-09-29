@@ -17,6 +17,73 @@ function getVoiceWaveformClass() {
     return null;
 }
 
+// ============================================================================
+// 图标生成器（矢量几何）
+// ============================================================================
+function createMicrophoneSvg(size = 18) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', String(size));
+    svg.setAttribute('height', String(size));
+    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '1');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    svg.setAttribute('aria-hidden', 'true');
+
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('x', '5');
+    rect.setAttribute('y', '1.5');
+    rect.setAttribute('width', '6');
+    rect.setAttribute('height', '9');
+    rect.setAttribute('rx', '3');
+
+    // <path d="M2.35 8.675C3.075 11.3 5.2 13.125 8 13.125C10.8 13.125 12.925 11.3 13.65 8.675M8 13.125V15" />
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', 'M2.35 8.675C3.075 11.3 5.2 13.125 8 13.125C10.8 13.125 12.925 11.3 13.65 8.675M8 13.125V15');
+
+    svg.append(rect, path);
+    return svg;
+}
+
+function createCloseSvg(size = 14) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', String(size));
+    svg.setAttribute('height', String(size));
+    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '1');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    svg.setAttribute('aria-hidden', 'true');
+
+    const p1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    p1.setAttribute('d', 'M2.5 2.5L13.5 13.5');
+    const p2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    p2.setAttribute('d', 'M13.5 2.5L2.5 13.5');
+
+    svg.append(p1, p2);
+    return svg;
+}
+
+function createStopSvg(size = 14) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', String(size));
+    svg.setAttribute('height', String(size));
+    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('aria-hidden', 'true');
+
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', 'M12.5 2.5H3.5C2.94772 2.5 2.5 2.94772 2.5 3.5V12.5C2.5 13.0523 2.94772 13.5 3.5 13.5H12.5C13.0523 13.5 13.5 13.0523 13.5 12.5V3.5C13.5 2.94772 13.0523 2.5 12.5 2.5Z');
+    path.setAttribute('fill', 'currentColor');
+
+    svg.appendChild(path);
+    return svg;
+}
+
 class VoiceComposerView {
     constructor() {
         this.button = null;
@@ -75,11 +142,11 @@ html .vcp-ui-scope .chat-input-actions #mainVoiceInputBtn + :is(#sendMessageBtn,
     transform: translateY(-1px);
 }
 #mainVoiceInputBtn svg {
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     fill: none;
-    stroke: color-mix(in srgb, var(--vcp-ui-accent, var(--button-bg, #ff4f8b)) 82%, #fbf9f5 18%) !important;
-    stroke-width: 2;
+    stroke: currentColor;
+    stroke-width: 1.25;
     stroke-linecap: round;
     stroke-linejoin: round;
     transition: transform 0.2s ease;
@@ -124,7 +191,7 @@ html .vcp-ui-scope .chat-input-actions #mainVoiceInputBtn + :is(#sendMessageBtn,
     pointer-events: none;
 }
 
-/* 展开活动栏（Activity Bar） */
+/* 展开活动栏（Activity Bar / captureRow） */
 html .vcp-ui-scope .chat-input-actions.vcp-voice-expanded > :not(#vcpVoiceActivityBar):not(#sendMessageBtn):not(.chat-send-button),
 .chat-input-actions.vcp-voice-expanded > :not(#vcpVoiceActivityBar):not(#sendMessageBtn):not(.chat-send-button) {
     display: none !important;
@@ -133,11 +200,11 @@ html .vcp-ui-scope .chat-input-actions.vcp-voice-expanded > :not(#vcpVoiceActivi
 .vcp-voice-activity-bar {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     flex: 1 1 0;
     width: 0;
     min-width: 0;
-    min-height: 36px;
+    min-height: 34px;
     box-sizing: border-box;
     padding: 0 4px;
     margin-right: 6px;
@@ -149,44 +216,47 @@ html .vcp-ui-scope .chat-input-actions.vcp-voice-expanded > :not(#vcpVoiceActivi
     to { opacity: 1; transform: translateY(0); }
 }
 
+/* 圆形按钮样式 */
 .vcp-voice-round-btn {
     width: 32px;
     height: 32px;
+    padding: 0;
     border-radius: 50%;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border: 1px solid var(--vcp-ui-border, rgba(255, 255, 255, 0.12));
+    border: 1px solid var(--vcp-ui-border, rgba(255, 255, 255, 0.10));
     background: var(--vcp-ui-surface-2, rgba(255, 255, 255, 0.06));
     color: var(--vcp-ui-text-2, #a7afb1);
     cursor: pointer;
-    flex: 0 0 auto;
-    padding: 0;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    flex: none;
+    box-sizing: border-box;
+    transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.vcp-voice-round-btn:hover {
-    background: var(--vcp-ui-interactive-hover, rgba(255, 255, 255, 0.12));
-    color: var(--vcp-ui-text-1, #f2f0e9);
+.vcp-voice-round-btn:hover:not(:disabled) {
+    background: var(--vcp-ui-interactive-hover, rgba(255, 255, 255, 0.14));
+    color: var(--vcp-ui-text-0, #f2f0e9);
+    border-color: var(--vcp-ui-border-strong, rgba(255, 255, 255, 0.20));
 }
 
-.vcp-voice-cancel-btn:hover {
-    border-color: rgba(235, 87, 87, 0.45);
-    background: rgba(235, 87, 87, 0.15);
+.vcp-voice-cancel-btn:hover:not(:disabled) {
+    border-color: rgba(235, 87, 87, 0.40);
+    background: rgba(235, 87, 87, 0.12);
     color: #ff5c5c;
 }
 
 .vcp-voice-stop-btn {
-    border-color: color-mix(in srgb, var(--vcp-ui-accent, #ff4f8b) 60%, transparent);
-    background: color-mix(in srgb, var(--vcp-ui-accent, #ff4f8b) 16%, transparent);
+    border-color: color-mix(in srgb, var(--vcp-ui-accent, #ff4f8b) 45%, transparent);
+    background: color-mix(in srgb, var(--vcp-ui-accent, #ff4f8b) 12%, transparent);
     color: var(--vcp-ui-accent, #ff4f8b);
 }
 
-.vcp-voice-stop-btn:hover {
+.vcp-voice-stop-btn:hover:not(:disabled) {
     background: var(--vcp-ui-accent, #ff4f8b);
     border-color: var(--vcp-ui-accent, #ff4f8b);
     color: #ffffff;
-    box-shadow: 0 0 12px color-mix(in srgb, var(--vcp-ui-accent, #ff4f8b) 45%, transparent);
+    box-shadow: 0 0 10px color-mix(in srgb, var(--vcp-ui-accent, #ff4f8b) 35%, transparent);
 }
 
 .vcp-voice-center-slot {
@@ -201,12 +271,12 @@ html .vcp-ui-scope .chat-input-actions.vcp-voice-expanded > :not(#vcpVoiceActivi
 }
 
 .vcp-voice-waveform-container {
+    display: flex;
+    align-items: center;
     flex: 1 1 0;
     width: 0;
     min-width: 24px;
     height: 24px;
-    display: flex;
-    align-items: center;
     color: var(--vcp-ui-accent, #ff4f8b);
 }
 
@@ -231,43 +301,32 @@ html .vcp-ui-scope .chat-input-actions.vcp-voice-expanded > :not(#vcpVoiceActivi
     display: inline-flex;
     align-items: center;
     gap: 8px;
-}
-
-.vcp-voice-state-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--vcp-ui-accent, #ff4f8b);
-    animation: vcp-voice-dot-blink 1.2s ease-in-out infinite;
-    flex-shrink: 0;
-}
-
-@keyframes vcp-voice-dot-blink {
-    0%, 100% { opacity: 0.3; transform: scale(0.9); }
-    50% { opacity: 1; transform: scale(1.15); }
+    flex: 1 1 0;
+    min-width: 0;
 }
 
 .vcp-voice-action-slot {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    flex: 0 0 auto;
+    flex: none;
     height: 32px;
     gap: 8px;
 }
 
 .vcp-voice-retry-btn {
-    border-color: var(--vcp-ui-border, rgba(255, 255, 255, 0.15));
-    background: var(--vcp-ui-surface-2, rgba(255, 255, 255, 0.08));
+    border-color: var(--vcp-ui-border, rgba(255, 255, 255, 0.12));
+    background: var(--vcp-ui-surface-2, rgba(255, 255, 255, 0.06));
     color: var(--vcp-ui-text-1, #f2f0e9);
 }
 
-.vcp-voice-retry-btn:hover {
+.vcp-voice-retry-btn:hover:not(:disabled) {
     border-color: var(--vcp-ui-accent, #ff4f8b);
     background: color-mix(in srgb, var(--vcp-ui-accent, #ff4f8b) 16%, transparent);
     color: var(--vcp-ui-accent, #ff4f8b);
 }
 
+/* 动态加载弧 */
 .vcp-voice-spinner {
     flex: none;
     color: var(--vcp-ui-accent, #ff4f8b);
@@ -275,14 +334,14 @@ html .vcp-ui-scope .chat-input-actions.vcp-voice-expanded > :not(#vcpVoiceActivi
 
 .vcp-voice-spinner-motion {
     transform-origin: center;
-    animation: vcp-voice-spin 1.5s linear infinite;
+    animation: voice-state-dot-spin 1.5s linear infinite;
 }
 
 .vcp-voice-spinner-track,
 .vcp-voice-spinner-arc {
     fill: none;
     stroke: currentColor;
-    stroke-width: 2.5;
+    stroke-width: 2;
     stroke-linecap: round;
 }
 
@@ -291,42 +350,52 @@ html .vcp-ui-scope .chat-input-actions.vcp-voice-expanded > :not(#vcpVoiceActivi
 }
 
 .vcp-voice-spinner-arc {
-    stroke-dasharray: 20 150;
-    animation: vcp-voice-arc-breathe 1.5s ease-in-out infinite;
+    stroke-dasharray: 12 150;
+    animation: voice-state-dot-dash 1.5s ease-in-out infinite;
 }
 
-@keyframes vcp-voice-spin {
-    from { transform: rotate(0deg); }
+@keyframes voice-state-dot-spin {
     to { transform: rotate(360deg); }
 }
 
-@keyframes vcp-voice-arc-breathe {
-    0%, 100% { stroke-dashoffset: 0; }
-    50% { stroke-dashoffset: -35; }
+@keyframes voice-state-dot-dash {
+    0% {
+        stroke-dasharray: 12 150;
+        stroke-dashoffset: 0;
+    }
+    50% {
+        stroke-dasharray: 24 150;
+        stroke-dashoffset: -6;
+    }
+    100% {
+        stroke-dasharray: 12 150;
+        stroke-dashoffset: 0;
+    }
 }
 
+/* 行内操作按钮（小号主按钮） */
 .vcp-voice-insert-action-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 0 12px;
     height: 28px;
-    border-radius: 14px;
     font-size: 12px;
-    font-weight: 600;
-    border: 1px solid var(--vcp-ui-accent, #ff4f8b);
-    background: color-mix(in srgb, var(--vcp-ui-accent, #ff4f8b) 16%, transparent);
-    color: var(--vcp-ui-accent, #ff4f8b);
-    cursor: pointer;
-    flex: 0 0 auto;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.vcp-voice-insert-action-btn:hover {
+    line-height: 18px;
+    padding: 0 10px;
+    border-radius: var(--vcp-ui-radius-sm, 6px);
+    border: none;
     background: var(--vcp-ui-accent, #ff4f8b);
     color: #ffffff;
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px color-mix(in srgb, var(--vcp-ui-accent, #ff4f8b) 35%, transparent);
+    font-weight: 500;
+    cursor: pointer;
+    flex: none;
+    box-sizing: border-box;
+    transition: background 0.15s ease, opacity 0.15s ease, transform 0.15s ease;
+}
+
+.vcp-voice-insert-action-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--vcp-ui-accent, #ff4f8b) 86%, #ffffff 14%);
+    transform: translateY(-0.5px);
 }
 
 .vcp-voice-popover-bubble {
@@ -383,24 +452,7 @@ html .vcp-ui-scope .chat-input-actions.vcp-voice-expanded > :not(#vcpVoiceActivi
             btn.type = 'button';
             btn.setAttribute('aria-label', '语音输入与录音');
 
-            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-            svg.setAttribute('viewBox', '0 0 24 24');
-            svg.setAttribute('aria-hidden', 'true');
-
-            const path1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            path1.setAttribute('d', 'M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z');
-
-            const path2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            path2.setAttribute('d', 'M19 10v2a7 7 0 0 1-14 0v-2');
-
-            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            line.setAttribute('x1', '12');
-            line.setAttribute('y1', '19');
-            line.setAttribute('x2', '12');
-            line.setAttribute('y2', '22');
-
-            svg.append(path1, path2, line);
-            btn.replaceChildren(svg);
+            btn.replaceChildren(createMicrophoneSvg(18));
 
             if (sendBtn && sendBtn.parentNode === actionsContainer) {
                 actionsContainer.insertBefore(btn, sendBtn);
@@ -426,21 +478,7 @@ html .vcp-ui-scope .chat-input-actions.vcp-voice-expanded > :not(#vcpVoiceActivi
             cancelBtn.className = 'vcp-voice-round-btn vcp-voice-cancel-btn';
             cancelBtn.title = '取消并放弃本次录音 (ESC)';
             cancelBtn.setAttribute('aria-label', '取消并放弃');
-            const cancelSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-            cancelSvg.setAttribute('viewBox', '0 0 24 24');
-            cancelSvg.setAttribute('width', '14');
-            cancelSvg.setAttribute('height', '14');
-            cancelSvg.setAttribute('fill', 'none');
-            cancelSvg.setAttribute('stroke', 'currentColor');
-            cancelSvg.setAttribute('stroke-width', '2');
-            cancelSvg.setAttribute('stroke-linecap', 'round');
-            cancelSvg.setAttribute('stroke-linejoin', 'round');
-            const l1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            l1.setAttribute('x1', '18'); l1.setAttribute('y1', '6'); l1.setAttribute('x2', '6'); l1.setAttribute('y2', '18');
-            const l2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            l2.setAttribute('x1', '6'); l2.setAttribute('y1', '6'); l2.setAttribute('x2', '18'); l2.setAttribute('y2', '18');
-            cancelSvg.append(l1, l2);
-            cancelBtn.appendChild(cancelSvg);
+            cancelBtn.appendChild(createCloseSvg(14));
 
             // [中间槽位：SVG 波形或状态提示]
             const centerSlot = document.createElement('div');
@@ -470,17 +508,7 @@ html .vcp-ui-scope .chat-input-actions.vcp-voice-expanded > :not(#vcpVoiceActivi
             stopBtn.className = 'vcp-voice-round-btn vcp-voice-stop-btn';
             stopBtn.title = '停止并完成录音';
             stopBtn.setAttribute('aria-label', '停止并完成');
-            const stopSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-            stopSvg.setAttribute('viewBox', '0 0 24 24');
-            stopSvg.setAttribute('width', '12');
-            stopSvg.setAttribute('height', '12');
-            stopSvg.setAttribute('fill', 'currentColor');
-            const stopRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-            stopRect.setAttribute('x', '5'); stopRect.setAttribute('y', '5');
-            stopRect.setAttribute('width', '14'); stopRect.setAttribute('height', '14');
-            stopRect.setAttribute('rx', '2');
-            stopSvg.appendChild(stopRect);
-            stopBtn.appendChild(stopSvg);
+            stopBtn.appendChild(createStopSvg(14));
 
             const insertBtn = document.createElement('button');
             insertBtn.id = 'vcpVoiceInsertBtn';
@@ -498,24 +526,7 @@ html .vcp-ui-scope .chat-input-actions.vcp-voice-expanded > :not(#vcpVoiceActivi
             retryBtn.style.display = 'none';
             retryBtn.title = '重新录音';
             retryBtn.setAttribute('aria-label', '重新录音');
-            const retrySvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-            retrySvg.setAttribute('viewBox', '0 0 24 24');
-            retrySvg.setAttribute('width', '16');
-            retrySvg.setAttribute('height', '16');
-            retrySvg.setAttribute('fill', 'none');
-            retrySvg.setAttribute('stroke', 'currentColor');
-            retrySvg.setAttribute('stroke-width', '2');
-            retrySvg.setAttribute('stroke-linecap', 'round');
-            retrySvg.setAttribute('stroke-linejoin', 'round');
-            const retryPath1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            retryPath1.setAttribute('d', 'M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z');
-            const retryPath2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            retryPath2.setAttribute('d', 'M19 10v2a7 7 0 0 1-14 0v-2');
-            const retryLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            retryLine.setAttribute('x1', '12'); retryLine.setAttribute('x2', '12');
-            retryLine.setAttribute('y1', '19'); retryLine.setAttribute('y2', '22');
-            retrySvg.append(retryPath1, retryPath2, retryLine);
-            retryBtn.appendChild(retrySvg);
+            retryBtn.appendChild(createMicrophoneSvg(18));
 
             actionSlot.append(stopBtn, insertBtn, retryBtn);
 
