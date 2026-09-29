@@ -1,12 +1,13 @@
 'use strict';
 
-// ProjectForge 施工图：项目/批次/节点只读查询、署名单文件回退，以及 Git 侧栏。
-// 主进程：modules/ipc/projectForgeHandlers.js、modules/ipc/gitHandlers.js（按调用页面 URL 校验，仅施工图页面可用）
+// ProjectForge 施工图：项目/批次/节点只读查询、署名单文件回退，以及 Git 侧栏、源码侧栏。
+// 主进程：modules/ipc/projectForgeHandlers.js、modules/ipc/gitHandlers.js、modules/ipc/sourceHandlers.js
+//        （Git / 源码接口按调用页面 URL 校验，仅施工图页面可用）
 // 渲染端：ProjectForgemodules/
 const { invoke } = require('../core/define');
 
 module.exports = {
-    handlers: ['modules/ipc/projectForgeHandlers.js', 'modules/ipc/gitHandlers.js'],
+    handlers: ['modules/ipc/projectForgeHandlers.js', 'modules/ipc/gitHandlers.js', 'modules/ipc/sourceHandlers.js'],
     roles: ['utility'],
     api: {
         projectForgeListProjects: invoke('project-forge:list-projects', 'options'),
@@ -25,5 +26,11 @@ module.exports = {
         gitDiscard: invoke('git:discard', 'workspaceId', 'paths'),
         gitCommit: invoke('git:commit', 'workspaceId', 'payload'),
         gitPush: invoke('git:push', 'workspaceId', 'payload'),
+
+        // 源码侧栏（工作区列表复用 gitListWorkspaces）
+        sourceListFiles: invoke('source:list-files', 'workspaceId'),
+        sourceReadFile: invoke('source:read-file', 'workspaceId', 'relPath'),
+        sourceWriteFile: invoke('source:write-file', 'workspaceId', 'relPath', 'payload'),
+        sourceCheck: invoke('source:check', 'relPath', 'text'),
     },
 };

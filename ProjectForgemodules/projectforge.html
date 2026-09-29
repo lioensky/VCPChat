@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="../node_modules/codemirror/lib/codemirror.css">
     <link rel="stylesheet" href="../node_modules/codemirror/theme/material-darker.css">
     <link rel="stylesheet" href="../node_modules/codemirror/addon/merge/merge.css">
+    <link rel="stylesheet" href="../node_modules/codemirror/addon/lint/lint.css">
     <link rel="stylesheet" href="projectforge.css">
     <script src="../vendor/marked.min.js"></script>
 </head>
@@ -37,6 +38,7 @@
             <div id="side-tabs" class="side-tabs" role="tablist" aria-label="侧栏分页">
                 <button id="side-tab-projects" class="side-tab active" type="button" role="tab" data-side-tab="projects" aria-selected="true" aria-controls="side-page-projects">工程</button>
                 <button id="side-tab-git" class="side-tab" type="button" role="tab" data-side-tab="git" aria-selected="false" aria-controls="side-page-git" tabindex="-1">Git<span id="git-tab-count" class="tab-count" aria-hidden="true" hidden></span></button>
+                <button id="side-tab-source" class="side-tab" type="button" role="tab" data-side-tab="source" aria-selected="false" aria-controls="side-page-source" tabindex="-1">源码<span id="source-tab-dirty" class="tab-dot" aria-hidden="true" hidden></span></button>
             </div>
             <div class="side-viewport">
                 <div class="side-track">
@@ -70,6 +72,20 @@
                         </div>
                         <div id="git-notice" class="git-notice" role="status" hidden></div>
                         <div id="git-groups" class="git-groups" aria-label="Git 变更"></div>
+                    </section>
+
+                    <section id="side-page-source" class="side-page" data-side-page="source" role="tabpanel" aria-labelledby="side-tab-source" aria-hidden="true" inert>
+                        <div class="git-head">
+                            <select id="source-workspace-select" aria-label="源码工作区"></select>
+                            <button id="source-reveal-btn" class="icon-btn" type="button" title="在树中定位当前文件" aria-label="在树中定位当前文件">◎</button>
+                            <button id="source-collapse-btn" class="icon-btn" type="button" title="折叠全部文件夹" aria-label="折叠全部文件夹">⊟</button>
+                            <button id="source-refresh-btn" class="icon-btn" type="button" title="重新扫描文件" aria-label="重新扫描文件">⟳</button>
+                        </div>
+                        <div class="source-search">
+                            <input id="source-search" type="search" placeholder="按文件名搜索（空格分隔多个关键字）" autocomplete="off" spellcheck="false" aria-label="按文件名搜索">
+                        </div>
+                        <div id="source-summary" class="source-summary muted" role="status"></div>
+                        <ul id="source-file-list" class="source-file-list" aria-label="工作区文件"></ul>
                     </section>
                 </div>
             </div>
@@ -133,6 +149,37 @@
                 <div id="git-diff-view" hidden></div>
                 <div id="git-diff-fallback" class="diff-fallback">选择左侧的变更文件以查看差异</div>
             </section>
+
+            <!-- 源码编辑（侧栏切到源码分页时显示） -->
+            <section id="source-view" aria-label="源码编辑">
+                <div class="git-view-head">
+                    <div class="git-view-title">
+                        <strong id="source-title">源码</strong>
+                        <div id="source-meta" class="node-meta"></div>
+                    </div>
+                    <div class="modal-tools">
+                        <button id="source-check-btn" class="btn small" type="button" title="检查语法 / 格式" disabled>✓ 格式检查</button>
+                        <button id="source-wrap-btn" class="btn small toggle-btn" type="button" aria-pressed="false" title="切换自动换行">↩ 自动换行</button>
+                        <button id="source-save-btn" class="btn small primary" type="button" title="保存 (Ctrl+S)" disabled>保存</button>
+                    </div>
+                </div>
+                <div id="source-notice" class="git-notice" role="status" hidden></div>
+                <div id="source-editor" hidden></div>
+                <div id="source-fallback" class="diff-fallback">选择左侧的文件以查看 / 编辑源码</div>
+                <div id="source-problems" class="source-problems" hidden>
+                    <div class="source-problems-head">
+                        <span id="source-problems-title">问题</span>
+                        <button id="source-problems-close" class="git-icon-btn" type="button" aria-label="关闭问题面板">✕</button>
+                    </div>
+                    <ul id="source-problems-list"></ul>
+                </div>
+                <div id="source-status" class="source-status">
+                    <span id="source-status-state"></span>
+                    <span id="source-status-cursor"></span>
+                    <span id="source-status-lang"></span>
+                    <span id="source-status-eol"></span>
+                </div>
+            </section>
         </main>
     </div>
 
@@ -187,6 +234,8 @@
     <script src="../node_modules/codemirror/mode/shell/shell.js"></script>
     <script src="../node_modules/codemirror/mode/yaml/yaml.js"></script>
     <script src="../node_modules/codemirror/mode/sql/sql.js"></script>
+    <script src="../node_modules/codemirror/mode/toml/toml.js"></script>
+    <script src="../node_modules/codemirror/addon/lint/lint.js"></script>
     <script src="../Canvasmodules/vendor/diff_match_patch.js"></script>
     <script>
         // CodeMirror merge addon 需要全局 diff_match_patch 及其常量
@@ -195,6 +244,8 @@
     </script>
     <script src="../node_modules/codemirror/addon/merge/merge.js"></script>
     <script src="projectforge.js"></script>
+    <script src="projectforge-sidetabs.js"></script>
     <script src="projectforge-git.js"></script>
+    <script src="projectforge-source.js"></script>
 </body>
 </html>

@@ -1,12 +1,11 @@
 // ProjectForgemodules/projectforge-git.js
-// 侧栏滑动分页（工程 / Git）与 Git 源代码管理视图。
+// Git 源代码管理视图（侧栏分页切换由 projectforge-sidetabs.js 统一管理）。
 // 与 projectforge.js 同为经典脚本，直接复用其顶层工具：
 //   api、$、escapeHtml、toast、confirmDialog、modeForPath、isLightTheme、state、DIFF_WRAP_KEY、syncDiffWrapButton
 // Git 操作全部在主进程执行（modules/ipc/gitHandlers.js），这里只传工作区 id 与仓库相对路径。
 'use strict';
 
 (() => {
-    const SIDE_TAB_KEY = 'vcp-projectforge-side-tab';
     const GIT_WS_KEY = 'vcp-projectforge-git-workspace';
     const POLL_MS = 8000;
     const MAX_CONFIRM_LIST = 8;
@@ -83,56 +82,18 @@
         return `<button type="button" class="git-icon-btn${danger ? ' danger' : ''}" data-git-action="${action}" title="${escapeHtml(text)}" aria-label="${escapeHtml(text)}">${icon}</button>`;
     }
 
-    // ============================ 侧栏滑动分页 ============================
+    // ============================ 分页进入 / 离开 ============================
 
-    const sideTabs = () => [...document.querySelectorAll('.side-tab')];
-
-    function switchSideTab(name, { focus = false } = {}) {
-        const target = name === 'git' ? 'git' : 'projects';
-        $('project-sidebar').dataset.sideActive = target;
-        $('main-panel').dataset.mode = target;
-        sideTabs().forEach(tab => {
-            const active = tab.dataset.sideTab === target;
-            tab.classList.toggle('active', active);
-            tab.setAttribute('aria-selected', String(active));
-            tab.tabIndex = active ? 0 : -1;
-            if (active && focus) tab.focus();
-        });
-        document.querySelectorAll('.side-page').forEach(page => {
-            const active = page.dataset.sidePage === target;
-            page.inert = !active;
-            page.setAttribute('aria-hidden', String(!active));
-        });
-        localStorage.setItem(SIDE_TAB_KEY, target);
-
-        if (target !== 'git' || !git.enabled) {
-            stopPolling();
-            return;
-        }
+    function onEnterGitTab() {
+        if (!git.enabled) return;
         startPolling();
         if (git.workspaces.length) refreshStatus({ quiet: true });
         else loadWorkspaces();
         requestAnimationFrame(refreshDiffLayout);
     }
 
-    function bindTabEvents() {
-        const bar = $('side-tabs');
-        bar.addEventListener('click', e => {
-            const tab = e.target.closest('.side-tab');
-            if (tab) switchSideTab(tab.dataset.sideTab);
-        });
-        bar.addEventListener('keydown', e => {
-            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
-            e.preventDefault();
-            const tabs = sideTabs();
-            const current = Math.max(0, tabs.indexOf(document.activeElement));
-            let next = current;
-            if (e.key === 'ArrowRight') next = (current + 1) % tabs.length;
-            else if (e.key === 'ArrowLeft') next = (current - 1 + tabs.length) % tabs.length;
-            else if (e.key === 'Home') next = 0;
-            else next = tabs.length - 1;
-            switchSideTab(tabs[next].dataset.sideTab, { focus: true });
-        });
+    function onLeaveGitTab() {
+        stopPolling();
     }
 
     // ============================ 状态刷新与轮询 ============================
@@ -711,15 +672,15 @@
 
     document.addEventListener('DOMContentLoaded', async () => {
         if (!api?.gitStatus) {
-            console.info('[ProjectForgeGit] Git API 不可用，侧栏分页保持传统模式。');
+            console.info('[ProjectForgeGit] Git API 不可用，隐藏 Git 分页。');
+            $('side-tab-git').hidden = true;
             return;
         }
         git.enabled = true;
-        bindTabEvents();
         bindGitEvents();
+        window.ProjectForgeSideTabs?.register('git', { onEnter: onEnterGitTab, onLeave: onLeaveGitTab });
 
-        const savedTab = localStorage.getItem(SIDE_TAB_KEY);
-        if (savedTab === 'git') switchSideTab('git');
-        else loadWorkspaces({ quiet: true });
+        // 不在 Git 分页时也静默加载一次，用于分页角标
+        if (window.ProjectForgeSideTabs?.savedTab !== 'git') loadWorkspaces({ quiet: true });
     });
 })();

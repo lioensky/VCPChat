@@ -398,16 +398,25 @@ html[data-vcp-embedded-app="true"] #title-bar .divider { display: none; }
     background: var(--pf-accent);
     color: var(--text-on-accent, #fff);
 }
+.tab-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--pf-warn);
+}
 .side-viewport { flex: 1; min-height: 0; overflow: hidden; }
+/* 三个分页并排，轨道宽 300%；translate 百分比相对轨道自身宽度，每页为 1/3 */
 .side-track {
     display: flex;
-    width: 200%;
+    width: 300%;
     height: 100%;
+    transform: translateX(calc(var(--side-index, 0) * -100% / 3));
     transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
-#project-sidebar[data-side-active="git"] .side-track { transform: translateX(-50%); }
+#project-sidebar[data-side-active="git"] { --side-index: 1; }
+#project-sidebar[data-side-active="source"] { --side-index: 2; }
 .side-page {
-    width: 50%;
+    width: calc(100% / 3);
     min-width: 0;
     height: 100%;
     min-height: 0;
@@ -601,15 +610,209 @@ html[data-vcp-embedded-app="true"] #title-bar .divider { display: none; }
 
 /* ---------- Git 差异视图（主面板） ---------- */
 #main-panel:not([data-mode="git"]) > #git-view { display: none; }
-#main-panel[data-mode="git"] > #empty-state,
-#main-panel[data-mode="git"] > #project-view { display: none !important; }
+#main-panel:not([data-mode="source"]) > #source-view { display: none; }
+#main-panel:is([data-mode="git"], [data-mode="source"]) > #empty-state,
+#main-panel:is([data-mode="git"], [data-mode="source"]) > #project-view { display: none !important; }
 #git-view { display: flex; flex-direction: column; min-height: 0; height: 100%; padding: 14px; }
 #git-view [hidden] { display: none !important; }
 .git-view-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
 .git-view-title { min-width: 0; }
 .git-view-title strong { display: flex; align-items: center; gap: 6px; word-break: break-all; }
 
+/* ---------- 源码侧栏 ---------- */
+.source-search { padding: 0 10px 6px; }
+.source-search input {
+    width: 100%;
+    padding: 7px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--pf-border);
+    background: var(--pf-code-bg);
+    outline: none;
+}
+.source-search input:focus { border-color: var(--pf-accent); }
+.source-summary { padding: 0 12px 6px; font-size: 12px; border-bottom: 1px solid var(--pf-border); }
+.source-file-list { list-style: none; margin: 0; padding: 6px 4px 10px; flex: 1; min-height: 0; overflow-y: auto; }
+.source-row { border-radius: 6px; }
+.source-row:hover { background: var(--pf-hover); }
+.source-row.active { background: color-mix(in srgb, var(--pf-accent) 18%, transparent); }
+.source-open {
+    width: 100%;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 5px 8px;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    text-align: left;
+    overflow: hidden;
+}
+.source-open:focus-visible { outline: 2px solid var(--pf-accent); outline-offset: -2px; }
+.source-ext {
+    flex-shrink: 0;
+    min-width: 30px;
+    padding: 0 3px;
+    border: 1px solid var(--pf-border);
+    border-radius: 4px;
+    font-family: Consolas, 'Cascadia Code', monospace;
+    font-size: 10px;
+    text-align: center;
+    text-transform: uppercase;
+    color: var(--pf-sub);
+}
+.source-row mark {
+    background: color-mix(in srgb, var(--pf-warn) 38%, transparent);
+    color: inherit;
+    border-radius: 2px;
+}
+
+/* 文件夹树：按 --depth 缩进，带层级引导线 */
+.source-file-list.tree .source-row { position: relative; }
+.source-file-list.tree .source-open {
+    align-items: center;
+    padding: 3px 8px 3px calc(6px + var(--depth, 0) * 14px);
+    background-image: repeating-linear-gradient(
+        to right,
+        transparent 0 12px,
+        color-mix(in srgb, var(--pf-border) 70%, transparent) 12px 13px,
+        transparent 13px 14px
+    );
+    background-size: calc(var(--depth, 0) * 14px) 100%;
+    background-position: 6px 0;
+    background-repeat: no-repeat;
+}
+.source-chev {
+    flex-shrink: 0;
+    width: 12px;
+    font-size: 10px;
+    text-align: center;
+    color: var(--pf-sub);
+    transition: transform 0.15s ease;
+}
+.source-dir.open .source-chev { transform: rotate(90deg); }
+.source-folder {
+    flex-shrink: 0;
+    width: 14px;
+    height: 10px;
+    border-radius: 2px 3px 3px 3px;
+    background: color-mix(in srgb, var(--pf-warn) 70%, transparent);
+    position: relative;
+}
+.source-folder::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: -3px;
+    width: 6px;
+    height: 4px;
+    border-radius: 2px 2px 0 0;
+    background: inherit;
+}
+.source-dir.open .source-folder { background: color-mix(in srgb, var(--pf-warn) 45%, transparent); }
+.source-dir .git-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
+.source-count {
+    margin-left: auto;
+    flex-shrink: 0;
+    padding: 0 6px;
+    border-radius: 999px;
+    font-size: 10px;
+    color: var(--pf-sub);
+    border: 1px solid var(--pf-border);
+}
+.source-file-list.tree .source-file .source-ext { min-width: 26px; }
+.source-file-list .git-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- 源码编辑视图（主面板） ---------- */
+#source-view { display: flex; flex-direction: column; min-height: 0; height: 100%; padding: 14px; }
+#source-view [hidden] { display: none !important; }
+#source-title.dirty::after { content: '●'; color: var(--pf-warn); font-size: 12px; }
+#source-notice { margin: 0 0 8px; }
+#source-notice .btn { margin-left: 6px; }
+#source-editor { flex: 1; min-height: 0; border: 1px solid var(--pf-border); border-radius: 8px; overflow: hidden; }
+#source-editor .CodeMirror {
+    height: 100%;
+    font-family: Consolas, 'Cascadia Code', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+}
+#source-editor .CodeMirror-lint-markers { width: 16px; }
+.CodeMirror-lint-tooltip {
+    background: var(--pf-bg);
+    color: var(--pf-text);
+    border: 1px solid var(--pf-border);
+    border-radius: 6px;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 12px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+    z-index: 1500;
+}
+
+.source-problems {
+    margin-top: 8px;
+    max-height: 32%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--pf-danger);
+    border-radius: 8px;
+    font-size: 12px;
+}
+.source-problems.warn { border-color: var(--pf-warn); }
+.source-problems-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 2px 2px 2px 10px;
+    font-weight: 600;
+    color: var(--pf-danger);
+}
+.source-problems.warn .source-problems-head { color: var(--pf-warn); }
+.source-problems ul { list-style: none; margin: 0; padding: 0 4px 4px; overflow-y: auto; min-height: 0; }
+.source-problems li.muted { padding: 4px 6px; }
+.source-problem {
+    width: 100%;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 4px 6px;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    text-align: left;
+}
+.source-problem:hover { background: var(--pf-hover); }
+.source-problem:focus-visible { outline: 2px solid var(--pf-accent); outline-offset: -2px; }
+.source-problem .sev { flex-shrink: 0; width: 14px; text-align: center; }
+.source-problem.error .sev { color: var(--pf-danger); }
+.source-problem.warning .sev { color: var(--pf-warn); }
+.source-problem .msg { flex: 1; min-width: 0; word-break: break-word; }
+.source-problem .pos { flex-shrink: 0; color: var(--pf-sub); font-family: Consolas, 'Cascadia Code', monospace; }
+
+.source-status {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 6px 2px 0;
+    font-size: 12px;
+    color: var(--pf-sub);
+}
+#source-status-state { margin-right: auto; }
+.source-status .dirty, .source-status .warn { color: var(--pf-warn); }
+.source-status .ok { color: var(--pf-ok); }
+.source-status .error { color: var(--pf-danger); }
+.source-eol-btn {
+    padding: 0 5px;
+    border: 1px solid var(--pf-border);
+    border-radius: 4px;
+    background: transparent;
+    cursor: pointer;
+    font-size: 11px;
+}
+.source-eol-btn:hover { border-color: var(--pf-accent); color: var(--pf-text); }
+
 @media (prefers-reduced-motion: reduce) {
-    .side-track, .side-page, .side-tab::after, .git-group-toggle .chev { transition: none; }
+    .side-track, .side-page, .side-tab::after, .git-group-toggle .chev, .source-chev { transition: none; }
     .icon-btn.spinning { animation: none; }
 }
