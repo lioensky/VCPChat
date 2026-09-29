@@ -1,9 +1,13 @@
 // 主聊天语音交互控制器：编排语音听写与原声录音的状态机及交互
+// 融合光标级写入、草稿冲突自愈、活动栏展开与防御性生命周期
 const COMPOSER_STATE = Object.freeze({
 	IDLE: "idle",
 	STT_READY: "stt_ready",
 	STT_RECORDING: "stt_recording",
 	AUDIO_RECORDING: "audio_recording",
+	REQUESTING: "requesting",
+	TRANSCRIBING: "transcribing",
+	FEEDBACK: "feedback",
 });
 
 class ChatVoiceComposer {
@@ -31,13 +35,26 @@ class ChatVoiceComposer {
 		this.idleTimeoutMs = 5500;
 		this.voiceInputMode = "windows_voice_typing";
 
+		this.draftRev = 0;
+		this.activeSpan = null;
+		this.pendingText = "";
+		this.lastAgentId = null;
+		this.lastTopicId = null;
+
+		this.maxAudioDurationSeconds = 180;
+		this.audioRecordTimer = null;
+		this.transcribingTimeout = null;
+
 		this.disposers = [];
 	}
 
 	get isSttActive() {
 		return (
 			this.state === COMPOSER_STATE.STT_READY ||
-			this.state === COMPOSER_STATE.STT_RECORDING
+			this.state === COMPOSER_STATE.STT_RECORDING ||
+			this.state === COMPOSER_STATE.REQUESTING ||
+			this.state === COMPOSER_STATE.TRANSCRIBING ||
+			this.state === COMPOSER_STATE.FEEDBACK
 		);
 	}
 
@@ -59,8 +76,8 @@ class ChatVoiceComposer {
 		}
 	}
 
-	// 状态迁移：同步更新视图、提示及哨兵生命周期
-	transitionTo(nextState) {
+	// 状态迁移：同步更新视图、活动栏、提示及哨兵生命周期
+	transitionTo(nextState, payload = {}) {
 		this.state = nextState;
 		const isStt = this.isSttActive;
 		const isAudio = this.isRecordingAudio;
@@ -68,6 +85,38 @@ class ChatVoiceComposer {
 		this.view?.setSttActive(isStt);
 		this.view?.setRecordingAudio(isAudio);
 		this.updateButtonTooltip();
+
+		let phase = 'idle';
+		let mode = 'stt';
+		let source = null;
+
+		if (nextState === COMPOSER_STATE.AUDIO_RECORDING) {
+			phase = 'recording';
+			mode = 'audio-record';
+			source = this.recorder;
+		} else if (nextState === COMPOSER_STATE.STT_RECORDING || nextState === COMPOSER_STATE.STT_READY) {
+			phase = 'recording';
+			mode = 'stt';
+			source = this.sentinel;
+		} else if (nextState === COMPOSER_STATE.REQUESTING) {
+			phase = 'requesting';
+			mode = payload.mode || (this.isRecordingAudio ? 'audio-record' : 'stt');
+		} else if (nextState === COMPOSER_STATE.TRANSCRIBING) {
+			phase = 'transcribing';
+			mode = payload.mode || (this.isRecordingAudio ? 'audio-record' : 'stt');
+		} else if (nextState === COMPOSER_STATE.FEEDBACK) {
+			phase = 'feedback';
+			mode = payload.mode || (this.isRecordingAudio ? 'audio-record' : 'stt');
+		} else {
+			phase = 'idle';
+		}
+
+		this.view?.setPhase(phase, {
+			mode,
+			source: payload.source || source,
+			message: payload.message,
+			hasPending: Boolean(this.pendingText),
+		});
 
 		if (!isStt && this.sentinel) {
 			try {
@@ -109,15 +158,23 @@ class ChatVoiceComposer {
 		this.getCurrentTopicId = refs.getCurrentTopicId || (() => "default");
 		this.listenerOwner = refs.listenerOwner || null;
 
+		this.lastAgentId = this.getCurrentAgentId();
+		this.lastTopicId = this.getCurrentTopicId();
+
 		const ViewClass =
 			typeof window !== "undefined" &&
 			(window.VcpVoice?.VoiceComposerView || window.VoiceComposerView);
 		if (ViewClass) {
 			this.view = new ViewClass();
 			this.view.mount({
+				messageInput: this.messageInput,
 				sendMessageBtn: this.sendMessageBtn,
 				onLeftClick: () => this.handleLeftClick(),
 				onContextMenu: () => this.handleContextMenu(),
+				onCancel: () => this.cancelCurrentVoiceSession(),
+				onStop: () => this.stopCurrentVoiceSession(),
+				onInsertPending: () => this.insertPendingDraftText(),
+				onRetry: () => this.retryVoiceSession(),
 			});
 		}
 
@@ -130,6 +187,164 @@ class ChatVoiceComposer {
 
 		this.syncConfigFromSettings();
 		this.setupIpcListeners();
+		this.setupDefensiveLifecycles();
+	}
+
+	// 捕获草稿选区与版本标尺
+	captureInsertion() {
+		if (!this.messageInput) {
+			return { start: 0, end: 0, draftText: "", rev: ++this.draftRev };
+		}
+		const val = String(this.messageInput.value || "");
+		const start = typeof this.messageInput.selectionStart === "number"
+			? this.messageInput.selectionStart
+			: val.length;
+		const end = typeof this.messageInput.selectionEnd === "number"
+			? this.messageInput.selectionEnd
+			: start;
+		return {
+			start,
+			end,
+			draftText: val,
+			rev: ++this.draftRev,
+		};
+	}
+
+	// 光标级原子写入与草稿冲突检测
+	insertText(text, span = this.activeSpan) {
+		if (!this.messageInput) return false;
+		const textToInsert = String(text || "").trim();
+		if (!textToInsert) return true;
+
+		// 冲突检测：如果当前输入框内容与录音发起时的草稿快照不一致，说明用户在录音期间改动了文字
+		if (span && typeof span.draftText === "string" && this.messageInput.value !== span.draftText) {
+			return false; // 触发冲突自愈流程
+		}
+
+		const original = String(this.messageInput.value || "");
+		let start = original.length;
+		let end = original.length;
+
+		if (span && typeof span.start === "number") {
+			start = Math.max(0, Math.min(span.start, original.length));
+			end = Math.max(start, Math.min(typeof span.end === "number" ? span.end : start, original.length));
+		}
+
+		const before = original.slice(0, start);
+		const after = original.slice(end);
+
+		// 仅当前文末尾与新句开头均为半角英文字母或数字时才补空格分词；
+		// 中文与标点自然连贯拼接（对齐上游 joinSpeechTexts 规则）。
+		const needsLeadingSpace =
+			before.length > 0 &&
+			/[a-zA-Z0-9]$/.test(before) &&
+			/^[a-zA-Z0-9]/.test(textToInsert);
+		const insertedStr = needsLeadingSpace ? ` ${textToInsert}` : textToInsert;
+
+		let appliedViaExec = false;
+		if (typeof document !== "undefined" && typeof document.execCommand === "function") {
+			try {
+				this.messageInput.focus?.({ preventScroll: true });
+				this.messageInput.setSelectionRange?.(start, end);
+				appliedViaExec = document.execCommand("insertText", false, insertedStr);
+			} catch (_) {
+				appliedViaExec = false;
+			}
+		}
+
+		if (!appliedViaExec) {
+			this.messageInput.value = `${before}${insertedStr}${after}`;
+			const newPos = start + insertedStr.length;
+			try {
+				this.messageInput.selectionStart = newPos;
+				this.messageInput.selectionEnd = newPos;
+			} catch (_) {}
+		}
+
+		try {
+			this.messageInput.dispatchEvent?.(new Event("input", { bubbles: true }));
+		} catch (_) {}
+		// 在末尾追加时滚动到最下方，确保长文本时最新识别的内容始终可见
+		if (after.length === 0) {
+			try {
+				this.messageInput.scrollTop = this.messageInput.scrollHeight;
+			} catch (_) {}
+		}
+		return true;
+	}
+
+	// 冲突自愈：将暂存的识别文本插入到当前最新光标处
+	insertPendingDraftText() {
+		if (!this.pendingText) {
+			this.transitionTo(COMPOSER_STATE.IDLE);
+			return;
+		}
+		const currentSpan = this.captureInsertion();
+		this.insertText(this.pendingText, currentSpan);
+		this.pendingText = "";
+		this.transitionTo(COMPOSER_STATE.IDLE);
+		try {
+			this.messageInput?.focus({ preventScroll: true });
+		} catch (_) {}
+	}
+
+	clearTimers() {
+		if (this.audioRecordTimer) {
+			clearTimeout(this.audioRecordTimer);
+			this.audioRecordTimer = null;
+		}
+		if (this.transcribingTimeout) {
+			clearTimeout(this.transcribingTimeout);
+			this.transcribingTimeout = null;
+		}
+	}
+
+	// 防御性生命周期：Blur 失焦防偷录、VisibilityChange 最小化保护、ESC 撤销
+	setupDefensiveLifecycles() {
+		if (typeof window === "undefined") return;
+
+		const onBlur = () => {
+			if (this.state === COMPOSER_STATE.STT_RECORDING || this.state === COMPOSER_STATE.AUDIO_RECORDING) {
+				this.cancelCurrentVoiceSession();
+			}
+		};
+
+		const onVisibility = () => {
+			if (typeof document !== "undefined" && document.hidden) {
+				if (this.state !== COMPOSER_STATE.TRANSCRIBING && this.state !== COMPOSER_STATE.IDLE) {
+					this.cancelCurrentVoiceSession();
+				}
+			}
+		};
+
+		const onKeyDown = (event) => {
+			if (event.key === "Escape" && this.state !== COMPOSER_STATE.IDLE) {
+				event.preventDefault();
+				this.cancelCurrentVoiceSession();
+			}
+		};
+
+		window.addEventListener("blur", onBlur);
+		document.addEventListener("visibilitychange", onVisibility);
+		document.addEventListener("keydown", onKeyDown);
+
+		this.own(() => {
+			window.removeEventListener("blur", onBlur);
+			document.removeEventListener("visibilitychange", onVisibility);
+			document.removeEventListener("keydown", onKeyDown);
+		});
+	}
+
+	checkSessionSwitch() {
+		const curAgent = typeof this.getCurrentAgentId === "function" ? this.getCurrentAgentId() : "default";
+		const curTopic = typeof this.getCurrentTopicId === "function" ? this.getCurrentTopicId() : "default";
+		if ((this.lastAgentId && this.lastAgentId !== curAgent) || (this.lastTopicId && this.lastTopicId !== curTopic)) {
+			if (this.state !== COMPOSER_STATE.IDLE) {
+				this.cancelCurrentVoiceSession();
+			}
+		}
+		this.lastAgentId = curAgent;
+		this.lastTopicId = curTopic;
 	}
 
 	async syncConfigFromSettings() {
@@ -244,22 +459,29 @@ class ChatVoiceComposer {
 	}
 
 	handleSessionEnded(payload = {}) {
+		if (this.transcribingTimeout) {
+			clearTimeout(this.transcribingTimeout);
+			this.transcribingTimeout = null;
+		}
 		if (payload?.canceled || payload?.forceDeactivate) {
 			this.deactivateSttMode();
 			return;
 		}
-		if (this.state === COMPOSER_STATE.STT_RECORDING) {
-			this.transitionTo(COMPOSER_STATE.STT_READY);
-			// 听写完成后留出 80ms 硬件/驱动释放缓冲，平滑过渡回哨兵监听，避免设备争抢
-			clearTimeout(this.sentinelResumeTimer);
-			this.sentinelResumeTimer = setTimeout(() => {
-				this.sentinelResumeTimer = null;
-				if (this.state === COMPOSER_STATE.STT_READY) {
-					this.ensureSentinelActive().catch((err) => {
-						console.warn("[ChatVoiceComposer] 哨兵常驻启动异常:", err);
-					});
-				}
-			}, 80);
+		if (this.state === COMPOSER_STATE.STT_RECORDING || this.state === COMPOSER_STATE.TRANSCRIBING) {
+			if (!this.receivedSpeechInSession && !this.pendingText) {
+				this.transitionTo(COMPOSER_STATE.FEEDBACK, {
+					message: '未识别到语音',
+				});
+			} else if (this.pendingText) {
+				this.transitionTo(COMPOSER_STATE.FEEDBACK, {
+					message: '草稿已被修改。可在当前光标处插入。',
+				});
+			} else {
+				this.transitionTo(COMPOSER_STATE.IDLE);
+			}
+			if (this.sentinel) {
+				this.sentinel.resume();
+			}
 		}
 	}
 
@@ -292,19 +514,26 @@ class ChatVoiceComposer {
 
 		if (result.action === "CLEAR") {
 			this.messageInput.value = "";
-			this.messageInput.dispatchEvent(new Event("input", { bubbles: true }));
+			this.messageInput.dispatchEvent?.(new Event("input", { bubbles: true }));
+			this.activeSpan = this.captureInsertion();
 			return;
 		}
 
 		if (result.text) {
-			this.messageInput.value = joinSpeechTexts(this.messageInput.value, result.text);
-			this.messageInput.dispatchEvent(new Event("input", { bubbles: true }));
-			// 自动将光标定位至末尾并将滚动条滚动到最下方，确保长文本时最新识别的内容始终可见
-			try {
-				const len = this.messageInput.value.length;
-				this.messageInput.setSelectionRange?.(len, len);
-				this.messageInput.scrollTop = this.messageInput.scrollHeight;
-			} catch (_) {}
+			this.receivedSpeechInSession = true;
+			const ok = this.insertText(result.text, this.activeSpan);
+			if (!ok) {
+				// 草稿发生冲突（录音期间用户改动了草稿），进入 feedback 阶段
+				// 避免多句流式推送覆盖旧词，多句累加保存
+				this.pendingText = this.pendingText
+					? `${this.pendingText} ${result.text}`
+					: result.text;
+				this.transitionTo(COMPOSER_STATE.FEEDBACK, {
+					message: "草稿已被修改。可在当前光标处插入。",
+				});
+				return;
+			}
+			this.activeSpan = this.captureInsertion();
 		}
 
 		if (result.action === "SEND") {
@@ -318,8 +547,50 @@ class ChatVoiceComposer {
 		}
 	}
 
+	// 统一取消当前录音或听写会话（左侧 ✕ 取消按钮 / ESC / 失焦触发）
+	cancelCurrentVoiceSession() {
+		this.pendingText = "";
+		this.activeSpan = null;
+		this.clearTimers();
+		if (this.state === COMPOSER_STATE.AUDIO_RECORDING) {
+			this.cancelAudioRecording();
+		} else {
+			this.stopSttMode();
+		}
+		this.transitionTo(COMPOSER_STATE.IDLE);
+		try {
+			this.messageInput?.focus({ preventScroll: true });
+		} catch (_) {}
+	}
+
+	// 统一停止当前会话（右侧 ■ 停止按钮触发）
+	async stopCurrentVoiceSession() {
+		this.clearTimers();
+		if (this.state === COMPOSER_STATE.AUDIO_RECORDING) {
+			await this.stopAudioRecording();
+		} else if (this.isSttActive) {
+			this.transitionTo(COMPOSER_STATE.TRANSCRIBING);
+			this.transcribingTimeout = setTimeout(() => {
+				if (this.state === COMPOSER_STATE.TRANSCRIBING) {
+					this.transitionTo(COMPOSER_STATE.IDLE);
+				}
+			}, 8000);
+			try {
+				await this.callIpc('stopMainChatVoiceInput', 'main-chat-voice:stop');
+			} catch (_) {}
+		}
+	}
+
+	isNativeSttSupported() {
+		if (typeof process !== "undefined" && process.platform) {
+			return process.platform === "win32";
+		}
+		return false;
+	}
+
 	async handleLeftClick() {
 		if (this.isTransitioning) return;
+		if (this.messageInput?.disabled) return;
 		this.isTransitioning = true;
 		try {
 			if (this.state === COMPOSER_STATE.AUDIO_RECORDING) {
@@ -329,9 +600,16 @@ class ChatVoiceComposer {
 
 			if (this.isSttActive) {
 				this.stopSttMode();
-			} else {
-				await this.startSttMode();
+				return;
 			}
+
+			// 非 Windows 环境（如 macOS / Linux）无系统级 Win+H 原生听写管道，左键直接无缝启动高质量原声录音
+			if (!this.isNativeSttSupported()) {
+				await this.startAudioRecording();
+				return;
+			}
+
+			await this.startSttMode();
 		} finally {
 			this.isTransitioning = false;
 		}
@@ -339,6 +617,7 @@ class ChatVoiceComposer {
 
 	async handleContextMenu() {
 		if (this.isTransitioning) return;
+		if (this.messageInput?.disabled) return;
 		this.isTransitioning = true;
 		try {
 			if (this.isSttActive) {
@@ -356,13 +635,13 @@ class ChatVoiceComposer {
 	}
 
 	async startSttMode() {
-		const epoch = ++this.sessionEpoch;
-		// 第一次点击为主观主动输入：直接启动听写会话，不开启哨兵也不占用麦克风
-		await this.startVoiceSession(epoch);
-	}
+		this.checkSessionSwitch();
+		this.activeSpan = this.captureInsertion();
+		this.pendingText = "";
+		this.receivedSpeechInSession = false;
 
-	async ensureSentinelActive() {
-		if (this.state !== COMPOSER_STATE.STT_READY) return;
+		const epoch = ++this.sessionEpoch;
+		this.transitionTo(COMPOSER_STATE.REQUESTING, { mode: 'stt' });
 
 		const SentinelClass =
 			typeof window !== "undefined"
@@ -372,44 +651,38 @@ class ChatVoiceComposer {
 			this.sentinel = new SentinelClass({
 				thresholdRms: 0.007,
 				onTrigger: () => {
-					this.onVoiceTriggered();
+					this.onVoiceTriggered(epoch);
 				},
 			});
 		}
 
 		if (this.sentinel) {
+			let started = false;
 			try {
-				if (!this.sentinel.active) {
-					await this.sentinel.start();
-				} else if (this.sentinel.suspended) {
-					this.sentinel.resume();
-				}
-			} catch (err) {
-				console.warn("[ChatVoiceComposer] 哨兵启动失败:", err);
+				started = await this.sentinel.start();
+			} catch (_) {}
+			if (!started) {
+				this.deactivateSttMode();
+				this.transitionTo(COMPOSER_STATE.FEEDBACK, {
+					mode: 'stt',
+					message: '麦克风权限未开启，请在系统设置中允许访问',
+				});
+				return;
 			}
-		}
-	}
-
-	async onVoiceTriggered() {
-		if (this.state !== COMPOSER_STATE.STT_READY) return;
-
-		// 立即切换为听写中状态
-		this.transitionTo(COMPOSER_STATE.STT_RECORDING);
-
-		// 哨兵检测到人声后立刻暂停，释放麦克风，避免抢占输入法的音频输入
-		if (this.sentinel) {
+			// 若启动期间用户已主动退出，直接销毁并返回
+			if (epoch !== this.sessionEpoch || !this.isSttActive) {
+				this.deactivateSttMode();
+				return;
+			}
 			this.sentinel.suspend();
 		}
 
-		// 优雅留出 80ms 声卡与驱动交接缓冲时间，避免与语音输入引擎发生麦克风抢占碰撞
-		await new Promise((resolve) => setTimeout(resolve, 80));
-		if (this.state !== COMPOSER_STATE.STT_RECORDING) return;
-
-		const epoch = ++this.sessionEpoch;
-		await this.startVoiceSession(epoch);
+		await this.onVoiceTriggered(epoch);
 	}
 
-	async startVoiceSession(invokingEpoch = this.sessionEpoch) {
+	async onVoiceTriggered(invokingEpoch = this.sessionEpoch) {
+		if (invokingEpoch !== this.sessionEpoch) return;
+
 		this.transitionTo(COMPOSER_STATE.STT_RECORDING);
 
 		if (this.sentinel) {
@@ -468,9 +741,8 @@ class ChatVoiceComposer {
 
 	// 退出 STT 模式：重置状态并释放哨兵资源
 	deactivateSttMode() {
+		this.clearTimers();
 		this.sessionEpoch += 1;
-		clearTimeout(this.sentinelResumeTimer);
-		this.sentinelResumeTimer = null;
 		this.transitionTo(COMPOSER_STATE.IDLE);
 		if (this.sentinel) {
 			try {
@@ -488,6 +760,11 @@ class ChatVoiceComposer {
 	}
 
 	async startAudioRecording() {
+		this.checkSessionSwitch();
+		this.activeSpan = this.captureInsertion();
+		this.pendingText = "";
+		this.receivedSpeechInSession = false;
+
 		if (!this.recorder) {
 			const RecorderClass =
 				typeof window !== "undefined"
@@ -497,26 +774,72 @@ class ChatVoiceComposer {
 		}
 		if (!this.recorder) return;
 
+		this.transitionTo(COMPOSER_STATE.REQUESTING, { mode: 'audio-record' });
+
 		try {
 			await this.recorder.start();
 			this.transitionTo(COMPOSER_STATE.AUDIO_RECORDING);
+			if (this.audioRecordTimer) clearTimeout(this.audioRecordTimer);
+			this.audioRecordTimer = setTimeout(() => {
+				void this.stopAudioRecording();
+			}, this.maxAudioDurationSeconds * 1000);
 		} catch (error) {
 			console.error("[ChatVoiceComposer] 录音启动失败:", error);
-			this.transitionTo(COMPOSER_STATE.IDLE);
+			const isPermission = error?.name === 'NotAllowedError' || /permission/i.test(error?.message);
+			this.transitionTo(COMPOSER_STATE.FEEDBACK, {
+				mode: 'audio-record',
+				message: isPermission ? '麦克风权限未开启，请在系统设置中允许访问' : '麦克风设备启动失败，请检查硬件连接',
+			});
 		}
 	}
 
-	async stopAudioRecording() {
-		if (this.state !== COMPOSER_STATE.AUDIO_RECORDING || !this.recorder) return;
+	cancelAudioRecording() {
+		if (this.audioRecordTimer) {
+			clearTimeout(this.audioRecordTimer);
+			this.audioRecordTimer = null;
+		}
 		this.transitionTo(COMPOSER_STATE.IDLE);
+		try {
+			this.recorder?.dispose();
+		} catch (_) {}
+		this.recorder = null;
+	}
+
+	async stopAudioRecording() {
+		if (this.audioRecordTimer) {
+			clearTimeout(this.audioRecordTimer);
+			this.audioRecordTimer = null;
+		}
+		if (this.state !== COMPOSER_STATE.AUDIO_RECORDING || !this.recorder) return;
+		this.transitionTo(COMPOSER_STATE.TRANSCRIBING, { mode: 'audio-record', message: '正在处理音频…' });
 
 		try {
 			const wavBlob = await this.recorder.stop();
 			if (wavBlob) {
 				await this.attachWavAudioFile(wavBlob);
+				this.transitionTo(COMPOSER_STATE.IDLE);
+			} else {
+				this.transitionTo(COMPOSER_STATE.FEEDBACK, {
+					mode: 'audio-record',
+					message: '未识别到有效语音',
+				});
 			}
 		} catch (error) {
 			console.error("[ChatVoiceComposer] 录音停止或保存异常:", error);
+			this.transitionTo(COMPOSER_STATE.FEEDBACK, {
+				mode: 'audio-record',
+				message: '录音处理失败，请重试',
+			});
+		}
+	}
+
+	retryVoiceSession() {
+		const wasAudio = this.state === COMPOSER_STATE.AUDIO_RECORDING || this.view?.waveformContainer?.classList.contains('mode-audio-record');
+		this.cancelCurrentVoiceSession();
+		if (wasAudio) {
+			void this.startAudioRecording();
+		} else {
+			void this.startSttMode();
 		}
 	}
 
@@ -586,6 +909,7 @@ class ChatVoiceComposer {
 	}
 
 	dispose() {
+		this.clearTimers();
 		this.stopSttMode();
 		try {
 			this.recorder?.dispose();

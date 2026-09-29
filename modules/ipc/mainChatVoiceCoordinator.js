@@ -165,8 +165,12 @@ class MainChatVoiceCoordinator {
         const shortcut = String(settings?.voiceInputShortcut || this.deps.getConfiguredShortcut?.() || 'F7').trim();
         const cacheKey = `${shortcut}:${mode}`;
         if (this.configuredHotkeyCache !== cacheKey) {
-            await engine.configureHotkey({ shortcut, mode });
-            this.configuredHotkeyCache = cacheKey;
+            try {
+                await engine.configureHotkey({ shortcut, mode });
+                this.configuredHotkeyCache = cacheKey;
+            } catch (err) {
+                console.warn('[MainChatVoiceCoordinator] Hotkey configuration warning:', err.message || err);
+            }
         }
 
         const initialIdle = Number(options.idleTimeoutMs)

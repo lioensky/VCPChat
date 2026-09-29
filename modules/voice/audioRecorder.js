@@ -169,6 +169,10 @@ class AudioRecorder {
         this.mediaRecorder = null;
         this.recordedBlobs = [];
         this.isRecording = false;
+        this.audioContext = null;
+        this.analyser = null;
+        this.sourceNode = null;
+        this.amplitudeSamples = null;
     }
 
     async start() {
@@ -184,6 +188,20 @@ class AudioRecorder {
 
         this.stream = stream;
         this.recordedBlobs = [];
+
+        const AudioContextClass = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext);
+        if (AudioContextClass) {
+            try {
+                this.audioContext = new AudioContextClass();
+                this.analyser = this.audioContext.createAnalyser();
+                this.analyser.fftSize = 256;
+                this.sourceNode = this.audioContext.createMediaStreamSource(stream);
+                this.sourceNode.connect(this.analyser);
+                this.amplitudeSamples = new Float32Array(this.analyser.fftSize);
+            } catch (err) {
+                console.warn('[AudioRecorder] AnalyserNode setup warning:', err);
+            }
+        }
 
         let options = { mimeType: 'audio/webm;codecs=opus' };
         if (typeof MediaRecorder !== 'undefined' && !MediaRecorder.isTypeSupported(options.mimeType)) {
@@ -204,6 +222,37 @@ class AudioRecorder {
 
         recorder.start(100);
         this.isRecording = true;
+    }
+
+    amplitude() {
+        if (!this.analyser || !this.amplitudeSamples) return 0;
+        try {
+            this.analyser.getFloatTimeDomainData(this.amplitudeSamples);
+            let sum = 0;
+            for (let i = 0; i < this.amplitudeSamples.length; i++) {
+                const val = this.amplitudeSamples[i];
+                sum += val * val;
+            }
+            return Math.sqrt(sum / this.amplitudeSamples.length);
+        } catch (_) {
+            return 0;
+        }
+    }
+
+    cleanupAnalyser() {
+        if (this.sourceNode) {
+            try { this.sourceNode.disconnect(); } catch (_) {}
+            this.sourceNode = null;
+        }
+        if (this.analyser) {
+            try { this.analyser.disconnect(); } catch (_) {}
+            this.analyser = null;
+        }
+        if (this.audioContext) {
+            try { this.audioContext.close(); } catch (_) {}
+            this.audioContext = null;
+        }
+        this.amplitudeSamples = null;
     }
 
     async stop() {
@@ -230,6 +279,7 @@ class AudioRecorder {
             } catch (_) {}
             this.stream = null;
         }
+        this.cleanupAnalyser();
 
         if (!this.recordedBlobs || this.recordedBlobs.length === 0) {
             return null;
@@ -275,6 +325,7 @@ class AudioRecorder {
             } catch (_) {}
             this.stream = null;
         }
+        this.cleanupAnalyser();
         if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
             try {
                 this.mediaRecorder.stop();
