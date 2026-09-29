@@ -51,6 +51,17 @@ export const jevServiceSection = section('jev-service', 'Jev 服务', [
             }),
         ],
     }),
+    card('flowlockJev', {
+        cardKey: 'flowlock-jev',
+        title: '心流锁 JEV 裁决',
+        description: 'Agent 生成候选，JEV 选择唯一下一步或结束。需先启用全局 JEV；新会话生效，失败不会降级为盲目续写。',
+        fields: [
+            switchField('flowlockJevEnabled', { label: '心流锁使用 JEV 裁决', checked: true }),
+            number('flowlockJevMaxRounds', { label: '最大自治轮数（含规划轮）', min: 1, max: 200, step: 1, defaultValue: 30, save: { parse: 'int', min: 1, max: 200, fallback: 30 } }),
+            number('flowlockJevMinConfidence', { label: 'Choice 最低置信度', min: 0, max: 1, step: 0.05, defaultValue: 0.6, description: '低于阈值停止并等待人工确认；置信度不是授权。', save: { parse: 'float', min: 0, max: 1, nanFallback: 0.6 } }),
+            number('flowlockJevMinEvidence', { label: '证据 / 可执行性最低概率', min: 0, max: 1, step: 0.05, defaultValue: 0.85, description: 'Noul 门槛；默认值是保守应用策略，需用实际任务评估校准。', save: { parse: 'float', min: 0, max: 1, nanFallback: 0.85 } })
+        ]
+    }),
     card('jevReliability', {
         cardKey: 'jev-reliability',
         title: '可靠性与网络',

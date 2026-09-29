@@ -691,3 +691,6 @@ Flowlock 后续迭代应保持：
 - 单元测试全部通过。
 - 工作流测试全部通过。
 - TopicSponsor manifest 已通过真实插件发现流程验证。
+## JEV 裁决式心流（可选）
+
+启用全局 JEV 后，心流锁可改为「Agent 生成候选 → JEV 判断生命周期并选择唯一动作 → Agent 执行 → 再次裁决」。详细配置、Candidates 协议、提示词设计和安全边界见 [心流锁 × JEV](../docs/flowlock-jev.md)。未启用 JEV 时保留本文描述的原有协议语义；启用时 Agent 终止标记仅为提案，实际退出由 JEV 与程序安全边界共同决定。

@@ -206,9 +206,17 @@
 
     function parse(rawText, options = {}) {
         const text = typeof rawText === 'string' ? rawText : '';
-        const safeText = createSafeScanText(text);
+        let safeText = createSafeScanText(text);
         const commands = [];
         const ranges = [];
+        const candidateBlock = collectBlockCommand(text, safeText, /\[\[Flowlock::Candidates\]\]/gi, /\[\[\/Flowlock::Candidates\]\]/gi, 'candidates');
+        if (candidateBlock) {
+            commands.push(candidateBlock);
+            ranges.push({ start: candidateBlock.start, end: candidateBlock.end });
+            const chars = safeText.split('');
+            maskRange(chars, candidateBlock.start, candidateBlock.end);
+            safeText = chars.join('');
+        }
 
         CONTROL_LINE_REGEX.lastIndex = 0;
         let match;
@@ -310,6 +318,14 @@
                 return { state: 'fail', icon: '!', title: '心流任务中止', detail: command.value || '当前 Agent 报告任务无法继续' };
             case 'nextheartbeat':
                 return { state: 'heartbeat', icon: '↻', title: '安排下次心跳', detail: `${command.delaySeconds} 秒后再次唤醒` };
+            case 'candidates': {
+                let detail = '候选格式待校验，尚未授权执行';
+                try {
+                    const plan = JSON.parse(command.value);
+                    if (Array.isArray(plan.candidates)) detail = plan.candidates.map(c => String(c.action || '')).join('；').slice(0, 800) || '无后续候选，等待 JEV 判断是否结束';
+                } catch (_) { /* Render safely even while a candidate block is streaming. */ }
+                return { state: 'prompt', icon: '◇', title: '候选动作 · 等待 JEV 裁决', detail };
+            }
             case 'nextprompt':
                 return { state: 'prompt', icon: '✦', title: '设置下轮目标', detail: command.value || '已设置下一轮提示词' };
             default:

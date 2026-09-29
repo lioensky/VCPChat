@@ -14,6 +14,8 @@ class FlowlockManager {
         this.globalSettingsRef = null;
         this.continueWritingForContext = null;
         this.claimedRequestIds = new Set();
+        this.handledMessageIds = new Set();
+        this.retiredMessageIds = new Set();
     }
 
     /**
@@ -122,7 +124,8 @@ class FlowlockManager {
             nextHeartbeatAt: null,
             lastControlMessageId: null,
             lastError: null,
-            completionReason: null
+            completionReason: null,
+            jev: window.flowlockJevController?.createSession(globalSettings) || null
         };
 
         this.sessions.set(agentId, session);
@@ -168,6 +171,11 @@ class FlowlockManager {
         // 增加 generation 防止旧 timer 复活
         session.generation++;
         session.status = 'stopped';
+        if (session.activeMessageId) {
+            this.retiredMessageIds.add(session.activeMessageId);
+            if (this.retiredMessageIds.size > 500) this.retiredMessageIds.delete(this.retiredMessageIds.values().next().value);
+        }
+        this.sessions.delete(agentId);
         session.completionReason = session.completionReason || 'manual_stop';
 
         console.log(`[Flowlock] Stopped for agent: ${agentId}`);
@@ -183,7 +191,6 @@ class FlowlockManager {
             this.uiHelper.showToastNotification(`Agent "${agentName}" 心流锁已停止`, 'info');
         }
 
-        this.sessions.delete(agentId);
         return { success: true, message: '心流锁已停止' };
     }
 
@@ -206,7 +213,13 @@ class FlowlockManager {
             return { success: false, code: 'UNAVAILABLE' };
         }
 
+        const sessionAtClaim = this.sessions.get(agentId);
+        const generationAtClaim = sessionAtClaim?.generation;
         const result = await this.electronAPI.claimPendingFlowlockTopic(agentId, constraints);
+        if (sessionAtClaim && (this.sessions.get(agentId) !== sessionAtClaim || sessionAtClaim.generation !== generationAtClaim)) {
+            if (result?.success && result.claim?.requestId) await this.electronAPI.restoreFlowlockClaim?.(agentId, result.claim.requestId, 'session_changed');
+            return { success: false, code: 'STALE_SESSION' };
+        }
         if (!result?.success) {
             if (result?.code === 'CONFLICT') {
                 console.error(`[Flowlock] Multiple pending requests for ${agentId}; handoff rejected.`, result.conflicts);
@@ -267,6 +280,7 @@ class FlowlockManager {
             existing.pendingTimer = null;
         }
         existing.generation++;
+        existing.jev = window.flowlockJevController?.createSession(this.globalSettingsRef?.get?.() || {}) || null;
         existing.topicId = topicId;
         existing.status = 'active';
         existing.activeMessageId = null;
@@ -327,6 +341,15 @@ class FlowlockManager {
             return;
         }
 
+        // Ignore duplicate or retired stream terminals before any Start or handoff.
+        if (messageId && (this.retiredMessageIds.has(messageId) || this.handledMessageIds.has(messageId))) return;
+        const observedSession = this.sessions.get(context.agentId);
+        if (observedSession && (observedSession.topicId !== context.topicId || (observedSession.activeMessageId && observedSession.activeMessageId !== messageId))) return;
+        if (messageId) {
+            this.handledMessageIds.add(messageId);
+            if (this.handledMessageIds.size > 500) this.handledMessageIds.delete(this.handledMessageIds.values().next().value);
+        }
+
         // TopicSponsor 请求只能在当前 assistant 最终回复完整落盘后认领。
         // 错误完成不消费请求，保留为 pending 供后续明确恢复。
         if (type !== 'error' && finishReason !== 'error') {
@@ -336,6 +359,8 @@ class FlowlockManager {
             }
         }
 
+        if (observedSession && this.sessions.get(context.agentId) !== observedSession) return;
+        if (messageId && this.retiredMessageIds.has(messageId)) return;
         const protocol = type !== 'error' && typeof content === 'string'
             ? window.flowlockProtocol?.parse(content)
             : null;
@@ -363,6 +388,11 @@ class FlowlockManager {
             return;
         }
 
+        if (['abort', 'aborted', 'cancelled', 'canceled', 'interrupted'].includes(finishReason)) {
+            session.completionReason = 'interrupted';
+            await this.stop(context.agentId);
+            return;
+        }
         session.lastCompletedAt = Date.now();
         session.activeMessageId = null;
 
@@ -399,6 +429,11 @@ class FlowlockManager {
 
         // 正常完成 - 解析 AI 输出中的控制协议
         session.retryCount = 0; // 重置重试计数
+
+        if (session.jev) {
+            await window.flowlockJevController.afterReply(this, session, typeof content === 'string' ? content : '', protocol);
+            return;
+        }
 
         if (protocol && protocol.hasCommands) {
                 // 处理终端命令（优先级：Fail > Complete > Stop）
@@ -467,7 +502,7 @@ class FlowlockManager {
 
         session.pendingTimer = setTimeout(async () => {
             // 检查 generation 防止旧 timer 复活
-            if (session.generation !== currentGeneration) {
+            if (this.sessions.get(agentId) !== session || session.status !== 'active' || session.generation !== currentGeneration) {
                 console.log(`[Flowlock] Agent ${agentId} timer expired but generation changed, skipping.`);
                 return;
             }
@@ -494,6 +529,19 @@ class FlowlockManager {
             return;
         }
 
+        if (session.activeMessageId || session.jev?.pending) return;
+        if (session.pendingTimer) clearTimeout(session.pendingTimer);
+        session.pendingTimer = null;
+        session.nextHeartbeatAt = null;
+        if (session.jev && session.round >= session.jev.maxRounds) {
+            await window.flowlockJevController.finish(this, session, 'jev_max_rounds', '已达到心流自治轮数上限，等待人工检查。', 'warning');
+            return;
+        }
+        if (session.jev && this.globalSettingsRef?.get?.()?.jevEnabled !== true) {
+            await window.flowlockJevController.finish(this, session, 'jev_disabled', 'JEV 已关闭，当前裁决式心流已安全停止。', 'warning');
+            return;
+        }
+        const generation = session.generation;
         session.round++;
         session.lastTriggeredAt = Date.now();
 
@@ -502,6 +550,8 @@ class FlowlockManager {
         if (prompt === null || prompt === undefined) {
             prompt = session.defaultPrompt;
         }
+
+        if (session.jev) prompt = window.flowlockJevController.heartbeatPrompt(session, prompt);
 
         // 生成消息 ID
         const messageId = `flowlock_${agentId}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -523,10 +573,17 @@ class FlowlockManager {
                 agentId: session.agentId,
                 topicId: session.topicId,
                 prompt: prompt || '',
-                messageId: messageId
+                messageId: messageId,
+                expectedUserContextKey: session.jev?.phase === 'executing' ? session.jev.userContextKey : undefined,
+                isSessionCurrent: () => this.sessions.get(agentId) === session && session.status === 'active' && session.generation === generation && session.activeMessageId === messageId
             });
         } catch (error) {
             console.error(`[Flowlock] Agent ${agentId} continue writing failed:`, error);
+            if (this.sessions.get(agentId) !== session || session.status !== 'active' || session.generation !== generation) return;
+            if (error.code === 'FLOWLOCK_CONTEXT_CHANGED' && session.jev) {
+                await window.flowlockJevController.finish(this, session, 'jev_stale_context', error.message, 'warning');
+                return;
+            }
             session.lastError = error.message;
             session.activeMessageId = null;
 
@@ -636,7 +693,8 @@ class FlowlockManager {
             lastError: session.lastError,
             completionReason: session.completionReason,
             hasCustomPrompt: session.nextPrompt !== null,
-            nextDelaySeconds: session.nextDelaySeconds
+            nextDelaySeconds: session.nextDelaySeconds,
+            jev: session.jev ? { phase: session.jev.phase, pending: session.jev.pending, maxRounds: session.jev.maxRounds, proposalFailures: session.jev.proposalFailures, lastDecision: session.jev.lastDecision ? JSON.parse(JSON.stringify(session.jev.lastDecision)) : null } : null
         };
     }
 
@@ -649,7 +707,7 @@ class FlowlockManager {
             if (session.status === 'active') {
                 return {
                     isActive: true,
-                    isProcessing: !!session.activeMessageId,
+                    isProcessing: !!session.activeMessageId || !!session.jev?.pending,
                     currentAgentId: session.agentId,
                     currentTopicId: session.topicId,
                     retryCount: session.retryCount,
@@ -777,6 +835,8 @@ class FlowlockManager {
         }
         this.sessions.clear();
         this.claimedRequestIds.clear();
+        this.handledMessageIds.clear();
+        this.retiredMessageIds.clear();
     }
 }
 

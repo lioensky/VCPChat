@@ -4,7 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
 
-function loadFlowlockIntegration({ history, onSend }) {
+function loadFlowlockIntegration({ history, onSend, parameters = {} }) {
     let continueWritingForContext;
     const chatAPI = {
         getChatHistory: async () => history,
@@ -23,6 +23,7 @@ function loadFlowlockIntegration({ history, onSend }) {
     const window = {
         chatAPI,
         electronAPI: chatAPI,
+        flowlockJev: require('../Flowlockmodules/flowlock-jev'),
         VCPMainChatState: {
             snapshot: () => ({ selectedItem: { id: 'agent-1' }, topicId: 'topic-1' })
         },
@@ -67,7 +68,8 @@ function loadFlowlockIntegration({ history, onSend }) {
     return async () => continueWritingForContext({
         agentId: 'agent-1',
         topicId: 'topic-1',
-        messageId: 'flowlock-request-1'
+        messageId: 'flowlock-request-1',
+        ...parameters
     });
 }
 
@@ -100,4 +102,19 @@ test('Flowlock preserves history timestamps for OneRing and ends with a user hea
     assert.equal(sentMessages[3].__vcpchatTimestampMeta, undefined);
     assert.equal(sentMessages.at(-1).role, 'user');
     assert.match(sentMessages.at(-1).content, /^\[系统提示:\] 请继续$/);
+});
+
+test('Flowlock never dispatches after its session is stopped during preparation', async () => {
+    let sent = false;
+    const run = loadFlowlockIntegration({ history: [{ role: 'user', content: '任务' }], onSend: () => { sent = true; }, parameters: { isSessionCurrent: () => false } });
+    await run();
+    assert.equal(sent, false);
+});
+test('Flowlock rejects stale selected actions after a new user message', async () => {
+    let sent = false;
+    const engine = require('../Flowlockmodules/flowlock-jev');
+    const expectedUserContextKey = engine.userContextKey([{ role: 'user', content: '旧任务' }]);
+    const run = loadFlowlockIntegration({ history: [{ role: 'user', content: '新任务' }], onSend: () => { sent = true; }, parameters: { expectedUserContextKey } });
+    await assert.rejects(run(), error => error.code === 'FLOWLOCK_CONTEXT_CHANGED');
+    assert.equal(sent, false);
 });

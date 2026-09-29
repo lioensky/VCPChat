@@ -20,7 +20,7 @@ function initializeFlowlock() {
         return;
     }
 
-    const electronAPI = window.electronAPI || (window.chatAPI);
+    const electronAPI = window.chatAPI || window.electronAPI;
 
     // 初始化flowlockManager
     window.flowlockManager.initialize({
@@ -79,7 +79,7 @@ function attachFlowlockTimestampMetadata(vcpMessage, historyMessage) {
  * @param {Object} params - { agentId, topicId, prompt, messageId }
  */
 async function continueWritingForContext(params) {
-    const { agentId, topicId, prompt, messageId } = params;
+    const { agentId, topicId, prompt, messageId, isSessionCurrent, expectedUserContextKey } = params;
     const chatAPI = window.chatAPI || window.electronAPI;
     const globalSettings = settingsProvider?.get?.() || {};
 
@@ -98,6 +98,12 @@ async function continueWritingForContext(params) {
     let historyForVCP = await chatAPI.getChatHistory(agentId, topicId);
     if (!historyForVCP || historyForVCP.error) {
         throw new Error(`无法读取历史记录: ${historyForVCP?.error || 'unknown'}`);
+    }
+
+    if (expectedUserContextKey !== undefined && window.flowlockJev?.userContextKey(historyForVCP) !== expectedUserContextKey) {
+        const error = new Error('用户输入已改变，拒绝执行旧的 JEV 候选');
+        error.code = 'FLOWLOCK_CONTEXT_CHANGED';
+        throw error;
     }
 
     // 过滤掉思考中消息
@@ -253,6 +259,7 @@ async function continueWritingForContext(params) {
     // Streaming lifecycle is now started by the VCP stream bridge when the
     // producer publishes its first owned event. This prevents Flowlock from
     // creating a second terminal state machine for the same message.
+    if (isSessionCurrent && !isSessionCurrent()) return;
     if (!useStreaming) {
         let historyWithThinking = await chatAPI.getChatHistory(agentId, topicId);
         if (!historyWithThinking || historyWithThinking.error) {
@@ -267,6 +274,8 @@ async function continueWritingForContext(params) {
         }, historyWithThinking);
     }
 
+    // Recheck after asynchronous history/rules reads; stopped sessions must not dispatch.
+    if (isSessionCurrent && !isSessionCurrent()) return;
     // 发送到 VCP
     const vcpResponse = await chatAPI.sendToVCP(
         globalSettings.vcpServerUrl,

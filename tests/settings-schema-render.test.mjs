@@ -151,6 +151,7 @@ test('jev-service：全局服务配置控件、默认值与敏感字段形态', 
         'jevEnabled', 'jevProvider', 'jevApiUrl', 'jevApiKey', 'jevModel',
         'jevTimeoutMs', 'jevMaxRetries', 'jevRetryBaseDelayMs', 'jevProxyUrl',
         'jevHttpReferer', 'jevAppTitle',
+        'flowlockJevEnabled', 'flowlockJevMaxRounds', 'flowlockJevMinConfidence', 'flowlockJevMinEvidence',
     ]) {
         assert.ok(form.querySelector(`#${id}`), `missing #${id}`);
     }
@@ -164,7 +165,11 @@ test('jev-service：全局服务配置控件、默认值与敏感字段形态', 
     assert.equal(form.querySelector('#jevMaxRetries').value, '2');
     assert.equal(form.querySelector('#jevRetryBaseDelayMs').value, '500');
     assert.equal(form.querySelector('#jevAppTitle').placeholder, 'VCPChat');
-    assert.equal(form.querySelectorAll('.vcp-settings-card').length, 3);
+    assert.equal(form.querySelector('#flowlockJevEnabled').checked, true);
+    assert.equal(form.querySelector('#flowlockJevMaxRounds').value, '30');
+    assert.equal(form.querySelector('#flowlockJevMinConfidence').value, '0.6');
+    assert.equal(form.querySelector('#flowlockJevMinEvidence').value, '0.85');
+    assert.equal(form.querySelectorAll('.vcp-settings-card').length, 4);
 });
 
 test('render-settings：stepper 内联行、预设行、滑杆与自定义行', () => {
