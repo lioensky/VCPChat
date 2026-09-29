@@ -365,6 +365,9 @@ function handleVoiceEngineEvent(eventData) {
         return;
     }
     if (eventData.event === 'watchdog_release') {
+        if (mainChatVoiceCoordinator?.isSessionActive()) {
+            mainChatVoiceCoordinator.stopSession().catch(() => {});
+        }
         finishVoiceCaptureFromHotkey().catch(() => {});
     }
 }

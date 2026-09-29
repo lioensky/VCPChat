@@ -250,9 +250,16 @@ class ChatVoiceComposer {
 		}
 		if (this.state === COMPOSER_STATE.STT_RECORDING) {
 			this.transitionTo(COMPOSER_STATE.STT_READY);
-			if (this.sentinel) {
-				this.sentinel.resume();
-			}
+			// 听写完成后留出 80ms 硬件/驱动释放缓冲，平滑过渡回哨兵监听，避免设备争抢
+			clearTimeout(this.sentinelResumeTimer);
+			this.sentinelResumeTimer = setTimeout(() => {
+				this.sentinelResumeTimer = null;
+				if (this.state === COMPOSER_STATE.STT_READY) {
+					this.ensureSentinelActive().catch((err) => {
+						console.warn("[ChatVoiceComposer] 哨兵常驻启动异常:", err);
+					});
+				}
+			}, 80);
 		}
 	}
 
@@ -290,11 +297,14 @@ class ChatVoiceComposer {
 		}
 
 		if (result.text) {
-			const current = this.messageInput.value
-				? `${this.messageInput.value} `
-				: "";
-			this.messageInput.value = `${current}${result.text}`;
+			this.messageInput.value = joinSpeechTexts(this.messageInput.value, result.text);
 			this.messageInput.dispatchEvent(new Event("input", { bubbles: true }));
+			// 自动将光标定位至末尾并将滚动条滚动到最下方，确保长文本时最新识别的内容始终可见
+			try {
+				const len = this.messageInput.value.length;
+				this.messageInput.setSelectionRange?.(len, len);
+				this.messageInput.scrollTop = this.messageInput.scrollHeight;
+			} catch (_) {}
 		}
 
 		if (result.action === "SEND") {
@@ -347,7 +357,12 @@ class ChatVoiceComposer {
 
 	async startSttMode() {
 		const epoch = ++this.sessionEpoch;
-		this.transitionTo(COMPOSER_STATE.STT_READY);
+		// 第一次点击为主观主动输入：直接启动听写会话，不开启哨兵也不占用麦克风
+		await this.startVoiceSession(epoch);
+	}
+
+	async ensureSentinelActive() {
+		if (this.state !== COMPOSER_STATE.STT_READY) return;
 
 		const SentinelClass =
 			typeof window !== "undefined"
@@ -357,28 +372,44 @@ class ChatVoiceComposer {
 			this.sentinel = new SentinelClass({
 				thresholdRms: 0.007,
 				onTrigger: () => {
-					this.onVoiceTriggered(epoch);
+					this.onVoiceTriggered();
 				},
 			});
 		}
 
 		if (this.sentinel) {
-			await this.sentinel.start();
-			// 若启动期间用户已主动退出，直接销毁并返回
-			if (epoch !== this.sessionEpoch || !this.isSttActive) {
-				this.deactivateSttMode();
-				return;
+			try {
+				if (!this.sentinel.active) {
+					await this.sentinel.start();
+				} else if (this.sentinel.suspended) {
+					this.sentinel.resume();
+				}
+			} catch (err) {
+				console.warn("[ChatVoiceComposer] 哨兵启动失败:", err);
 			}
+		}
+	}
+
+	async onVoiceTriggered() {
+		if (this.state !== COMPOSER_STATE.STT_READY) return;
+
+		// 立即切换为听写中状态
+		this.transitionTo(COMPOSER_STATE.STT_RECORDING);
+
+		// 哨兵检测到人声后立刻暂停，释放麦克风，避免抢占输入法的音频输入
+		if (this.sentinel) {
 			this.sentinel.suspend();
 		}
 
-		await this.onVoiceTriggered(epoch);
+		// 优雅留出 80ms 声卡与驱动交接缓冲时间，避免与语音输入引擎发生麦克风抢占碰撞
+		await new Promise((resolve) => setTimeout(resolve, 80));
+		if (this.state !== COMPOSER_STATE.STT_RECORDING) return;
+
+		const epoch = ++this.sessionEpoch;
+		await this.startVoiceSession(epoch);
 	}
 
-	async onVoiceTriggered(invokingEpoch = this.sessionEpoch) {
-		if (this.state !== COMPOSER_STATE.STT_READY) return;
-		if (invokingEpoch !== this.sessionEpoch) return;
-
+	async startVoiceSession(invokingEpoch = this.sessionEpoch) {
 		this.transitionTo(COMPOSER_STATE.STT_RECORDING);
 
 		if (this.sentinel) {
@@ -438,6 +469,8 @@ class ChatVoiceComposer {
 	// 退出 STT 模式：重置状态并释放哨兵资源
 	deactivateSttMode() {
 		this.sessionEpoch += 1;
+		clearTimeout(this.sentinelResumeTimer);
+		this.sentinelResumeTimer = null;
 		this.transitionTo(COMPOSER_STATE.IDLE);
 		if (this.sentinel) {
 			try {
@@ -587,6 +620,20 @@ function getSpeechDirectiveMatcher() {
 	return null;
 }
 
+function joinSpeechTexts(existingText, incomingText) {
+	const prev = String(existingText || "");
+	const next = String(incomingText || "").trim();
+	if (!prev) return next;
+	if (!next) return prev;
+	// 若前缀末尾或新文字开头已有空白，不重复补空格
+	if (/\s$/.test(prev) || /^\s/.test(next)) {
+		return `${prev}${next}`;
+	}
+	// 仅当前句末尾与新句开头均为半角英文字母或数字时，才补充空格分词；其余中文或标点自然连贯拼接
+	const needSpace = /[a-zA-Z0-9]$/.test(prev) && /^[a-zA-Z0-9]/.test(next);
+	return needSpace ? `${prev} ${next}` : `${prev}${next}`;
+}
+
 function parseCommaPhrases(phraseStr) {
 	const matcher = getSpeechDirectiveMatcher();
 	if (matcher?.parseCommaPhrases) {
@@ -614,6 +661,7 @@ if (typeof module !== "undefined" && module.exports) {
 	module.exports = {
 		COMPOSER_STATE,
 		parseCommaPhrases,
+		joinSpeechTexts,
 		ChatVoiceComposer,
 		chatVoiceComposer,
 	};
