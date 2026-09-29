@@ -2,7 +2,7 @@ const { ipcMain } = require('electron');
 
 const MAIN_CHAT_INITIAL_IDLE_MS = 5500;
 const MAIN_CHAT_CAPTURE_QUIET_MS = 2500;
-const MAIN_CHAT_SETTLE_FAST_MS = 50;
+const MAIN_CHAT_SETTLE_FAST_MS = 300;
 const MAIN_CHAT_MAX_SETTLE_MS = 6000;
 
 function clearSettleTimers(session) {
@@ -29,7 +29,9 @@ function resetSettleTimer(session, isSettled = false) {
     clearTimeout(session.settleTimer);
     session.settleTimer = null;
 
-    if (!session.composing) {
+    // 对于 right_alt_hold 模式，取消对输入法合成态（下划线 composing）的拦截等待，避免死等
+    const isComposing = session.mode === 'right_alt_hold' ? false : session.composing;
+    if (!isComposing) {
         const delay = isSettled ? 10 : MAIN_CHAT_SETTLE_FAST_MS;
         session.settleTimer = setTimeout(() => {
             resolveSessionText(session);
@@ -55,14 +57,19 @@ function scheduleAutoFinish(session, onAutoFinish) {
     clearTimeout(session.autoFinishTimer);
     session.autoFinishTimer = null;
 
-    if (session.mode !== 'windows_voice_typing' || session.stopping || session.composing || !session.text.trim()) {
+    // 对于 right_alt_hold 模式，取消对输入法正在转换文字的下划线（composing）状态的等待
+    const isComposing = session.mode === 'right_alt_hold' ? false : session.composing;
+    if (session.stopping || isComposing || !session.text.trim()) {
         return;
     }
 
-    const finishDelay = Math.max(500, session.quietTimeoutMs || MAIN_CHAT_CAPTURE_QUIET_MS);
+    // 额外增加 1000ms 缓冲，确保第三方输入法有充足的时间完成最终文字转换与状态敲定
+    const baseQuietMs = Math.max(500, session.quietTimeoutMs || MAIN_CHAT_CAPTURE_QUIET_MS);
+    const finishDelay = baseQuietMs + 1000;
     session.autoFinishTimer = setTimeout(() => {
         session.autoFinishTimer = null;
-        if (!session.stopping && !session.composing) {
+        const stillComposing = session.mode === 'right_alt_hold' ? false : session.composing;
+        if (!session.stopping && !stillComposing) {
             onAutoFinish?.();
         }
     }, finishDelay);
@@ -94,6 +101,7 @@ class MainChatVoiceCoordinator {
         this.deps = deps;
         this.activeSession = null;
         this.sessionSequence = 0;
+        this.configuredHotkeyCache = null;
     }
 
     getActiveSession() {
@@ -154,8 +162,12 @@ class MainChatVoiceCoordinator {
         await engine.start();
         this.deps.ensureEngineEvents?.();
 
-        const shortcut = this.deps.getConfiguredShortcut?.() || 'F7';
-        await engine.configureHotkey({ shortcut, mode });
+        const shortcut = String(settings?.voiceInputShortcut || this.deps.getConfiguredShortcut?.() || 'F7').trim();
+        const cacheKey = `${shortcut}:${mode}`;
+        if (this.configuredHotkeyCache !== cacheKey) {
+            await engine.configureHotkey({ shortcut, mode });
+            this.configuredHotkeyCache = cacheKey;
+        }
 
         const initialIdle = Number(options.idleTimeoutMs)
             || (Number(settings?.mainChatVoiceInitialIdleTimeout) ? Number(settings.mainChatVoiceInitialIdleTimeout) * 1000 : MAIN_CHAT_INITIAL_IDLE_MS);

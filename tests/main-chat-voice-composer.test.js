@@ -529,6 +529,12 @@ test('ChatVoiceComposer: 处于 STT_RECORDING 状态时左键点击具有最高�
     assert.equal(sentinelStopped, true, '哨兵必须执行 stop');
 });
 
-
-
-
+test('joinSpeechTexts: 智能拼接中文自然连贯，英文数字之间保留分词空格', () => {
+    const { joinSpeechTexts } = require('../modules/voice/chatVoiceComposer');
+    assert.equal(joinSpeechTexts('今天天气真好', '我们去散步'), '今天天气真好我们去散步');
+    assert.equal(joinSpeechTexts('今天天气真好，', '我们去散步'), '今天天气真好，我们去散步');
+    assert.equal(joinSpeechTexts('Hello', 'World'), 'Hello World');
+    assert.equal(joinSpeechTexts('Model', 'V2'), 'Model V2');
+    assert.equal(joinSpeechTexts('这是', 'GPT4'), '这是GPT4');
+    assert.equal(joinSpeechTexts('GPT4', '很强'), 'GPT4很强');
+});
