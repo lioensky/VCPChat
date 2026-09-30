@@ -929,12 +929,23 @@ function processInteractiveButtons(contentDiv, settings = {}) {
         return;
     }
 
-    // Find all button elements
+    // 排除系统内建的控制按钮（工具结果删除、代码复制、Mermaid 视图栏等），避免劫持系统功能
     const buttons = contentDiv.querySelectorAll('button');
 
     buttons.forEach(button => {
         // Skip if already processed
         if (button.dataset.vcpInteractive === 'true') return;
+
+        // 🟢 第一道防线：识别系统内建按钮与工具栏控件，直接放行
+        if (
+            button.classList.contains('vcp-tool-result-delete-btn') ||
+            button.classList.contains('code-copy-btn') ||
+            button.classList.contains('mermaid-viewer-btn') ||
+            button.dataset.vcpSystemControl === 'true' ||
+            button.closest('.vcp-tool-result-header, .code-copy-toolbar, .mermaid-viewer-toolbar')
+        ) {
+            return;
+        }
 
         // Mark as processed
         button.dataset.vcpInteractive = 'true';
@@ -973,24 +984,25 @@ function handleAIButtonClick(event) {
     const button = event.currentTarget;
     if (!button || button.tagName !== 'BUTTON') return false;
 
-    // Completely prevent any default behavior
-    event.preventDefault();
-    event.stopPropagation();
-    event.stopImmediatePropagation();
-
     // Check if button is disabled
     if (button.disabled) {
+        event.preventDefault();
+        event.stopPropagation();
         return false;
     }
 
     // Get text to send (priority: data-send attribute > button text)
     const sendText = button.dataset.send || button.textContent.trim();
 
-    // Validate text
+    // 🟢 第二道防线：若无有效发送内容，静默让出事件处理权，绝不掐死系统级事件冒泡
     if (!sendText || sendText.length === 0) {
-        console.warn('[ContentProcessor] Button has no text to send');
         return false;
     }
+
+    // 确定是合法的 AI 交互按钮时，才完全阻断默认行为与上层冒泡
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
 
     // Format the text to be sent
     let finalSendText = `[[点击按钮:${sendText}]]`;
