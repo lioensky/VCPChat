@@ -627,6 +627,16 @@ mainChatSettingsPresentationOwner.configureStartup({
         console.error('[RENDERER_INIT] inputEnhancer module not found!');
     }
 
+    if (window.ComposerModelSelect) {
+        const composerModelSelect = window.ComposerModelSelect.init({
+            electronAPI: window.electronAPI || chatAPI,
+            selectedItemRef: currentSelectedItemRef,
+            nameObserveTarget: currentChatNameH3,
+            sendMessageBtn,
+        });
+        ownedRendererSubscriptions.add({ dispose: () => composerModelSelect.dispose?.() });
+    }
+
     const auxiliaryEventOwner = createMainChatAuxiliaryEventOwner({
         subscriptions: {
             loomShareText: chatAPI?.onLoomShareTextToInput,
@@ -997,45 +1007,12 @@ mainChatSettingsPresentationOwner.configureStartup({
         window.topicListManager.setupTopicSearch(); // Ensure this is called after DOM for topic search input is ready
         if(messageInput) uiHelperFunctions.autoResizeTextarea(messageInput);
 
-        if (quickNewTopicBtn && currentItemActionBtn) {
-            const syncQuickNewTopicButton = () => {
-                const isVisible = window.getComputedStyle(currentItemActionBtn).display !== 'none';
-                const buttonLabel = currentItemActionBtn.querySelector('.button-label')?.textContent?.trim();
-
-                quickNewTopicBtn.style.display = 'inline-flex';
-                quickNewTopicBtn.disabled = !isVisible;
-                quickNewTopicBtn.title = currentItemActionBtn.title || '新建聊天话题';
-
-                if (buttonLabel) {
-                    quickNewTopicBtn.setAttribute('aria-label', buttonLabel);
+        if (quickNewTopicBtn) {
+            mainChatDomListenerOwner.add(quickNewTopicBtn, 'click', () => {
+                if (window.TavernManager?.togglePopover) {
+                    window.TavernManager.togglePopover(quickNewTopicBtn);
                 }
-            };
-
-            const forwardCurrentItemAction = (eventName) => {
-                if (quickNewTopicBtn.disabled) return;
-                currentItemActionBtn.dispatchEvent(new MouseEvent(eventName, {
-                    bubbles: true,
-                    cancelable: true,
-                    view: window
-                }));
-            };
-
-            mainChatDomListenerOwner.add(quickNewTopicBtn, 'click', () => forwardCurrentItemAction('click'));
-            mainChatDomListenerOwner.add(quickNewTopicBtn, 'contextmenu', (event) => {
-                event.preventDefault();
-                forwardCurrentItemAction('contextmenu');
             });
-
-            const quickTopicObserver = mainChatDomListenerOwner.own(new MutationObserver(syncQuickNewTopicButton));
-            quickTopicObserver.observe(currentItemActionBtn, {
-                attributes: true,
-                attributeFilter: ['style', 'title'],
-                childList: true,
-                subtree: true,
-                characterData: true
-            });
-
-            syncQuickNewTopicButton();
         }
 
         // Set default view if no item is selected

@@ -114,7 +114,7 @@ class PassiveVoiceSentinel {
             processor.onaudioprocess = event => {
                 const output = event.outputBuffer?.getChannelData(0);
                 if (output) output.fill(0);
-                if (!this.active || this.suspended) return;
+                if (!this.active) return;
                 const input = event.inputBuffer.getChannelData(0);
                 this.processAudioFrame(input);
             };
@@ -136,7 +136,7 @@ class PassiveVoiceSentinel {
     }
 
     processAudioFrame(samples) {
-        if (!this.active || this.suspended) return;
+        if (!this.active) return;
         const now = performance.now();
 
         if (this.resumeTime > 0) {
@@ -162,7 +162,11 @@ class PassiveVoiceSentinel {
             else eBack += sq;
         }
         const rms = Math.sqrt(sum / len);
+        this.lastRms = rms;
         this.updateNoiseFloor(rms);
+
+        // 如果处于挂起状态（听写会话执行中），仅保留振幅计算供波形使用，不触发重复唤醒
+        if (this.suspended) return;
 
         const crestFactor = rms > 0.0001 ? peak / rms : 0;
         const impulseRatio = (eFront + 0.00001) / (eBack + 0.00001);
@@ -195,14 +199,6 @@ class PassiveVoiceSentinel {
 
     suspend() {
         this.suspended = true;
-        try {
-            this.mediaStream?.getAudioTracks().forEach(track => {
-                track.enabled = false;
-            });
-        } catch (_) {}
-        if (this.audioContext && this.audioContext.state === 'running') {
-            this.audioContext.suspend().catch(() => {});
-        }
     }
 
     resume() {
@@ -210,14 +206,6 @@ class PassiveVoiceSentinel {
         this.suspended = false;
         this.consecutiveSpeechFrames = 0;
         this.resumeTime = performance.now();
-        try {
-            this.mediaStream?.getAudioTracks().forEach(track => {
-                track.enabled = true;
-            });
-        } catch (_) {}
-        if (this.audioContext && this.audioContext.state === 'suspended') {
-            this.audioContext.resume().catch(() => {});
-        }
     }
 
     stop() {
@@ -256,6 +244,10 @@ class PassiveVoiceSentinel {
             this.audioContext = null;
         }
         this.consecutiveSpeechFrames = 0;
+    }
+
+    amplitude() {
+        return this.active ? (this.lastRms || 0) : 0;
     }
 }
 

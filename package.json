@@ -152,6 +152,7 @@
     "portfinder": "^1.0.37",
     "puppeteer": "^25.9.0",
     "sharp": "^0.35.3",
+    "sherpa-onnx-node": "^1.13.8",
     "smol-toml": "^1.9.0",
     "stylelint": "^16.25.0",
     "superdoc": "^1.45.0",
@@ -174,7 +175,14 @@
       "modules/services/chatDataService/bin/**/*",
       "audio_engine/**/*",
       "rust_assistant_engine/runtime/**/*",
-      "rust_voice_input_engine/runtime/**/*"
+      "rust_voice_input_engine/runtime/**/*",
+      "node_modules/sherpa-onnx-node/**/*",
+      "node_modules/sherpa-onnx-win-x64/**/*",
+      "node_modules/sherpa-onnx-darwin-arm64/**/*",
+      "node_modules/sherpa-onnx-darwin-x64/**/*",
+      "node_modules/sherpa-onnx-linux-arm64/**/*",
+      "node_modules/sherpa-onnx-linux-x64/**/*",
+      "modules/voice/localStt/sttWorker.js"
     ],
     "files": [
       "main.js",

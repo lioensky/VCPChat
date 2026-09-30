@@ -79,6 +79,7 @@ const memoHandlers = require('./modules/ipc/memoHandlers'); // Import memo handl
 const ragHandlers = require('./modules/ipc/ragHandlers'); // Import RAG handlers
 const translatorHandlers = require('./modules/ipc/translatorHandlers'); // Import translator handlers
 const voiceHandlers = require('./modules/ipc/voiceHandlers'); // Import voice chat handlers
+const localSttHandlers = require('./modules/ipc/localSttHandlers'); // 本地 SenseVoice 语音识别
 // speechRecognizer is now lazy-loaded
 const canvasHandlers = require('./modules/ipc/canvasHandlers'); // Import canvas handlers
 const chartHandlers = require('./modules/ipc/chartHandlers'); // Agent 图表工作台与持久化服务
@@ -665,6 +666,7 @@ async function performQuitCleanup() {
         await historyWatcherLeases.dispose();
 
         try {
+            localSttHandlers.shutdown();
             await voiceHandlers.shutdownVoiceInputEngine();
         } catch (error) {
             console.warn('[Main] Failed to shut down native voice input engine:', error.message || error);
@@ -1704,6 +1706,7 @@ if (!gotTheLock) {
         promptHandlers.initialize({ AGENT_DIR, APP_DATA_ROOT_IN_PROJECT });
         tavernHandlers.initialize({ APP_DATA_ROOT_IN_PROJECT });
         voiceHandlers.initialize({ mainWindow, openChildWindows, settingsManager: appSettingsManager, projectRoot: PROJECT_ROOT });
+        localSttHandlers.initialize({ appDataRoot: APP_DATA_ROOT_IN_PROJECT });
 
         ipcMain.on('minimize-to-tray', () => {
             if (mainWindow) {

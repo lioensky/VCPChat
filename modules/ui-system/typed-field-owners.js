@@ -671,6 +671,7 @@ const TYPED_FIELD_DEFINITIONS = Object.freeze({
     // canonical text value can already use the single typed save owner.
     topicSummaryModel: { path: 'topicSummaryModel', kind: 'string' },
     voiceInputMode: { path: 'voiceInputMode', kind: 'string', fallback: 'windows_voice_typing' },
+    localSttLanguage: { path: 'localSttLanguage', kind: 'string', fallback: 'auto' },
     voiceInputShortcut: { path: 'voiceInputShortcut', kind: 'string', fallback: 'F7', trimValue: true },
     streamAnimationPreset: { path: 'streamAnimationPreset', kind: 'string', fallback: 'slide-left' },
     streamAnimationDurationMs: { path: 'streamAnimationDurationMs', kind: 'number', fallback: 500 },
@@ -768,6 +769,7 @@ function mountTypedFieldOwner(root, form) {
         set('chatToolFontPreset', settings.chatToolFontPreset || 'system');
         set('chatToolFontCustom', settings.chatToolFontCustom || '');
         set('voiceInputMode', settings.voiceInputMode || 'windows_voice_typing');
+        set('localSttLanguage', settings.localSttLanguage || 'auto');
         set('voiceInputShortcut', fieldRestore('voiceInputShortcut', settings) ?? '');
         set('streamAnimationPreset', settings.streamAnimationPreset || 'slide-left');
         set('streamAnimationDurationMs', settings.streamAnimationDurationMs ?? 500);

@@ -43,7 +43,11 @@ class SettingsValidator {
             console.log('Fixed invalid chatPresentationMode');
         }
 
-        const allowedVoiceInputModes = new Set(['windows_voice_typing', 'right_alt_hold']);
+        if (!['auto', 'zh', 'en', 'yue', 'ja', 'ko'].includes(validated.localSttLanguage)) {
+            validated.localSttLanguage = 'auto';
+        }
+
+        const allowedVoiceInputModes = new Set(['windows_voice_typing', 'right_alt_hold', 'local_sensevoice']);
         if (!allowedVoiceInputModes.has(validated.voiceInputMode)) {
             validated.voiceInputMode = 'windows_voice_typing';
             hasIssues = true;
@@ -318,6 +322,7 @@ class SettingsManager extends EventEmitter {
             assistantAgent: '',
             voiceMode: 'local',
             voiceInputMode: 'windows_voice_typing',
+            localSttLanguage: 'auto',
             voiceInputShortcut: 'F7',
             mainChatVoiceInitialIdleTimeout: 5.5,
             mainChatVoiceQuietTimeout: 2.5,

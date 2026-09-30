@@ -441,7 +441,7 @@ fn process_command(command: Command, state: &Arc<SharedState>) -> bool {
                 thread::sleep(Duration::from_millis(10));
             }
 
-            let result = if state.native_hook_active.load(Ordering::SeqCst) {
+            let result = if state.native_hook_active.load(Ordering::SeqCst) || cfg!(not(target_os = "windows")) {
                 InputMode::parse(&mode).and_then(|parsed_mode| {
                     parse_function_key(&shortcut).map(|vk| (parsed_mode, vk))
                 })

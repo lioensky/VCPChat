@@ -431,14 +431,9 @@ export function setupEventListeners(deps) {
         chatManager.handleSendMessage();
     });
 
-    // 发送按钮右键 - 打开「高级回复」(VCPChatTarven) 浮窗
+    // 高级回复入口已移至输入框左侧加号，发送按钮只负责发送。
     addListener(sendMessageBtn, 'contextmenu', (e) => {
         e.preventDefault();
-        if (window.TavernManager && typeof window.TavernManager.togglePopover === 'function') {
-            window.TavernManager.togglePopover(sendMessageBtn);
-        } else {
-            console.warn('[EventListeners] TavernManager not available.');
-        }
     });
     addListener(messageInput, 'keydown', (e) => {
         if (e.defaultPrevented || e.isComposing) return;
