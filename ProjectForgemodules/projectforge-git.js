@@ -528,23 +528,13 @@
         viewEl.innerHTML = '';
 
         const note = (b, label) => (b.exists && b.truncated ? `\n\n/* …${label}内容超过 2MB 已截断 */` : '');
-        const norm = s => String(s || '').replace(/\r\n/g, '\n');
 
-        git.diffView = CodeMirror.MergeView(viewEl, {
-            origLeft: before.exists ? norm(before.text) + note(before, '改动前') : '',
-            value: after.exists ? norm(after.text) + note(after, '改动后') : '',
-            connect: 'align',
-            mode: modeForPath(filePath),
-            theme: isLightTheme() ? 'default' : 'material-darker',
-            lineNumbers: true,
-            readOnly: true,
-            revertButtons: false,
-            highlightDifferences: true,
-            collapseIdentical: 4,
-            lineWrapping: state.diffWrap,
+        git.diffView = createDiffMergeView(viewEl, {
+            left: before.exists ? normalizeEol(before.text) + note(before, '改动前') : '',
+            right: after.exists ? normalizeEol(after.text) + note(after, '改动后') : '',
+            filePath,
         });
-
-        requestAnimationFrame(refreshDiffLayout);
+        // 若创建时 Git 视图不可见（后台轮询触发），进入分页时 onEnterGitTab 会统一 refresh
     }
 
     // ============================ 通知与输出 ============================

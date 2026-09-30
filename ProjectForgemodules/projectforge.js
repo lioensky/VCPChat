@@ -106,6 +106,46 @@ function isLightTheme() {
     return document.body.classList.contains('light-theme');
 }
 
+/** CodeMirror 按 \n 分行并丢弃 \r；diff 必须在同样的文本上计算，否则 CRLF 文件字级标记错位、甚至整篇标红。 */
+function normalizeEol(text) {
+    return String(text || '').replace(/\r\n?/g, '\n');
+}
+
+function countLines(text) {
+    let n = 1;
+    for (let i = text.indexOf('\n'); i !== -1; i = text.indexOf('\n', i + 1)) n++;
+    return n;
+}
+
+// 不超过该行数时一次性渲染全部行（相同段落已折叠，实际 DOM 量通常很小）
+const DIFF_FULL_RENDER_MAX_LINES = 1500;
+
+/** 施工图节点与 Git 侧栏共用的只读 MergeView。left = 改动前，right = 改动后。 */
+function createDiffMergeView(container, { left, right, filePath }) {
+    const lines = Math.max(countLines(left), countLines(right));
+    return CodeMirror.MergeView(container, {
+        // origLeft = 改动前（删除标红），value = 改动后（新增标绿）。
+        // value=前 / orig=后 会让 MergeView 把增删方向完全颠倒。
+        origLeft: left,
+        value: right,
+        connect: 'align',
+        mode: modeForPath(filePath),
+        theme: isLightTheme() ? 'default' : 'material-darker',
+        lineNumbers: true,
+        readOnly: true,
+        revertButtons: false,
+        highlightDifferences: true,
+        collapseIdentical: 4,
+        lineWrapping: state.diffWrap,
+        // 中小文件全量渲染：滚动时两侧编辑器不再重绘，行高也不再变化，
+        // 避免 align 模式在滚动中反复清空并重建所有对齐占位（换行模式下最明显）
+        viewportMargin: lines <= DIFF_FULL_RENDER_MAX_LINES ? Infinity : 30,
+        // 语法高亮后台任务切成短片，避免默认 100ms 的长任务卡帧
+        workTime: 16,
+        workDelay: 50,
+    });
+}
+
 // ============================ 署名 ============================
 
 function getSignature() {
@@ -386,28 +426,16 @@ function buildDiffView({ topLine = null } = {}) {
     const { node, before, after } = detail;
     destroyDiffView();
     const note = (b, label) => (b.exists ? (b.truncated ? `\n\n/* …${label}内容超过 2MB，已截断显示 */` : '') : '');
-    // origLeft = 改动前（删除标红），value = 改动后（新增标绿）。
-    // value=前 / orig=后 会让 MergeView 把增删方向完全颠倒。
-    state.diffView = CodeMirror.MergeView($('diff-view'), {
-        origLeft: before.exists ? before.text + note(before, '改动前') : '',
-        value: after.exists ? after.text + note(after, '改动后') : '',
-        connect: 'align',
-        mode: modeForPath(node.file_path),
-        theme: isLightTheme() ? 'default' : 'material-darker',
-        lineNumbers: true,
-        readOnly: true,
-        revertButtons: false,
-        highlightDifferences: true,
-        collapseIdentical: 4,
-        lineWrapping: state.diffWrap,
+    state.diffView = createDiffMergeView($('diff-view'), {
+        left: before.exists ? normalizeEol(before.text) + note(before, '改动前') : '',
+        right: after.exists ? normalizeEol(after.text) + note(after, '改动后') : '',
+        filePath: node.file_path,
     });
-    requestAnimationFrame(() => {
-        const editor = state.diffView?.editor();
-        if (!editor) return;
-        editor.refresh();
-        state.diffView.leftOriginal()?.refresh();
-        if (topLine != null) editor.scrollTo(null, editor.heightAtLine(topLine, 'local'));
-    });
+    // 容器在创建前已可见，尺寸测量正确，无需 refresh（refresh 会让两侧编辑器整体重测重绘一遍）
+    if (topLine != null) {
+        const editor = state.diffView.editor();
+        editor.scrollTo(null, editor.heightAtLine(topLine, 'local'));
+    }
 }
 
 function toggleDiffWrap() {

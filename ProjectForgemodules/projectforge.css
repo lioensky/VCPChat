@@ -275,6 +275,9 @@ table.grid tr.clickable:hover { background: var(--pf-hover); }
     width: min(1400px, 94vw); height: min(900px, 90vh);
     display: flex; flex-direction: column; padding: 14px;
     background: var(--pf-bg);
+    /* 卡片底色本身不透明，毛玻璃看不出效果，却会让大面积 diff 每次滚动都重算模糊，
+       并把整张卡片提升为半透明合成层，导致文字失去子像素抗锯齿、落在半像素上发虚 */
+    backdrop-filter: none;
 }
 .modal-card.small { width: min(520px, 92vw); height: auto; }
 .modal-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
@@ -286,25 +289,29 @@ table.grid tr.clickable:hover { background: var(--pf-hover); }
 .node-meta { color: var(--pf-sub); font-size: 12px; margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .node-meta .reason { width: 100%; color: var(--pf-text); font-size: 13px; }
 .diff-legend { display: grid; grid-template-columns: 1fr 1fr; font-size: 12px; color: var(--pf-sub); padding: 0 4px 4px; }
-:is(#diff-view, #git-diff-view) { flex: 1; min-height: 0; border: 1px solid var(--pf-border); border-radius: 8px; overflow: hidden; }
+:is(#diff-view, #git-diff-view) {
+    flex: 1; min-height: 0; border: 1px solid var(--pf-border); border-radius: 8px; overflow: hidden;
+    /* 对齐占位与行高变化只在 diff 内部重排/重绘，不波及外层布局 */
+    contain: layout paint;
+}
+/* 滚动容器使用编辑器主题的不透明底色：合成滚动层不透明时文字才能保持清晰的子像素抗锯齿 */
+:is(#diff-view, #git-diff-view) .CodeMirror-scroll { background-color: inherit; }
 :is(#diff-view, #git-diff-view) .CodeMirror-merge,
 :is(#diff-view, #git-diff-view) .CodeMirror-merge .CodeMirror { height: 100%; }
 :is(#diff-view, #git-diff-view) .CodeMirror-merge { border: none; }
 
 /* ---------- MergeView 配色：左 = 改动前（红），右 = 改动后（绿）；施工图节点与 Git 侧栏共用 ---------- */
+/* 只用整行连续色块表达增删（VS Code 式），不再叠加字级二层底色；
+   单层底色可以适当加深，块边界清楚，文字下面只有一层颜色，对比度稳定 */
 :is(#diff-view, #git-diff-view) {
-    --pf-del-line: rgba(229, 83, 75, 0.14);
-    --pf-del-word: rgba(229, 83, 75, 0.38);
-    --pf-add-line: rgba(63, 185, 80, 0.14);
-    --pf-add-word: rgba(63, 185, 80, 0.38);
+    --pf-del-line: rgba(248, 81, 73, 0.18);
+    --pf-add-line: rgba(46, 160, 67, 0.20);
     --pf-chunk-edge: rgba(127, 127, 127, 0.35);
     --pf-gap-bg: rgba(0, 0, 0, 0.18);
 }
 body.light-theme :is(#diff-view, #git-diff-view) {
-    --pf-del-line: rgba(215, 58, 73, 0.09);
-    --pf-del-word: rgba(215, 58, 73, 0.25);
-    --pf-add-line: rgba(40, 167, 69, 0.10);
-    --pf-add-word: rgba(40, 167, 69, 0.28);
+    --pf-del-line: rgba(215, 58, 73, 0.12);
+    --pf-add-line: rgba(40, 167, 69, 0.14);
     --pf-chunk-edge: rgba(0, 0, 0, 0.15);
     --pf-gap-bg: rgba(0, 0, 0, 0.04);
 }
@@ -314,6 +321,10 @@ body.light-theme :is(#diff-view, #git-diff-view) {
     line-height: 1.5;
 }
 :is(#diff-view, #git-diff-view) .CodeMirror-merge-pane { height: 100%; }
+/* material-darker 的注释 / 行号色 #545454 在 #212121 上对比度仅约 2.1:1，叠加红绿底色后几乎不可读；
+   提到约 5.3:1（接近 GitHub 暗色 diff 的注释色），仍明显弱于代码正文 */
+:is(#diff-view, #git-diff-view, #source-editor) .cm-s-material-darker .cm-comment { color: #8b949e; }
+:is(#diff-view, #git-diff-view, #source-editor) .cm-s-material-darker .CodeMirror-linenumber { color: #6e7681; }
 :is(#diff-view, #git-diff-view) .CodeMirror-merge-gap {
     height: 100%;
     background: var(--pf-gap-bg);
@@ -324,14 +335,11 @@ body.light-theme :is(#diff-view, #git-diff-view) {
 :is(#diff-view, #git-diff-view) .CodeMirror-merge-editor .CodeMirror-merge-l-chunk { background: var(--pf-add-line); }
 :is(#diff-view, #git-diff-view) .CodeMirror-merge-l-chunk-start { border-top: 1px solid var(--pf-chunk-edge); }
 :is(#diff-view, #git-diff-view) .CodeMirror-merge-l-chunk-end { border-bottom: 1px solid var(--pf-chunk-edge); }
-/* 块内字级差异：去掉默认虚线下划线，改为实色高亮 */
+/* 块内字级差异：去掉 merge.css 默认的虚线下划线，也不加底色，只保留整行色块 */
 :is(#diff-view, #git-diff-view) .CodeMirror-merge-l-deleted,
 :is(#diff-view, #git-diff-view) .CodeMirror-merge-l-inserted {
-    background-image: none;
-    border-radius: 2px;
+    background: none;
 }
-:is(#diff-view, #git-diff-view) .CodeMirror-merge-l-deleted { background-color: var(--pf-del-word); }
-:is(#diff-view, #git-diff-view) .CodeMirror-merge-l-inserted { background-color: var(--pf-add-word); }
 /* 中间连接线 */
 :is(#diff-view, #git-diff-view) .CodeMirror-merge-l-connect { fill: var(--pf-add-line); stroke: var(--pf-chunk-edge); stroke-width: 1px; }
 /* 折叠的相同段落 */
