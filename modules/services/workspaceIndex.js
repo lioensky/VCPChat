@@ -25,6 +25,9 @@ const DEFAULT_IGNORED_DIRS = new Set([
     '.next', '.nuxt', '.svelte-kit', '.angular', '.parcel-cache', '.turbo', '.vercel', '.cache', '.gradle',
     'dist', 'build', 'out', 'target', 'coverage', '.nyc_output',
     '.idea', '.vs', '.vscode-test',
+    'assets', 'asset', 'appdata',
+    'artifacts', 'artifact', 'vendor',
+    'release', 'releases', 'temp', 'tmp',
 ]);
 const DEFAULT_IGNORED_FILES = new Set(['.ds_store', 'thumbs.db', 'desktop.ini']);
 const DEFAULT_IGNORED_FILE_EXTENSIONS = new Set(['.pyc', '.pyo', '.class', '.o', '.obj']);
