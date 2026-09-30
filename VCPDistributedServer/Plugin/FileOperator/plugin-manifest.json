@@ -1,17 +1,18 @@
 {
   "name": "FileOperator",
   "displayName": "文件操作器",
-  "pluginType": "synchronous",
-  "version": "1.0.2",
+  "pluginType": "hybridservice",
+  "version": "1.1.0",
   "description": "一个强大的文件系统操作插件，允许AI对受限目录进行读、写、列出、移动、复制、删除等多种文件和目录操作。特别增强了文件读取能力，可自动提取PDF、Word(.docx)和表格(.xlsx, .csv)文件的纯文本内容。",
   "author": "VCPToolBox",
   "license": "CC BY-NC-SA 4.0",
   "entryPoint": {
-    "command": "node FileOperator.js",
+    "type": "nodejs",
+    "script": "FileOperator.js",
     "timeout": 300000
   },
   "communication": {
-    "protocol": "stdio"
+    "protocol": "direct"
   },
   "configSchema": {
     "ALLOWED_DIRECTORIES": {

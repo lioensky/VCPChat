@@ -1731,31 +1731,6 @@ async function processRequest(request) {
   }
 }
 
-// Setup stdio communication
-process.stdin.setEncoding('utf8');
-process.stdin.on('data', async data => {
-  try {
-    const lines = data.toString().trim().split('\n');
-
-    for (const line of lines) {
-      if (!line.trim()) continue;
-
-      const request = JSON.parse(line); // This is now the flat object from VCP
-      const response = await processRequest(request);
-
-      // Convert internal format to VCP protocol format
-      const vcpResponse = convertToVCPFormat(response);
-      console.log(JSON.stringify(vcpResponse));
-    }
-  } catch (error) {
-    const errorResponse = {
-      status: 'error',
-      error: `Invalid request format: ${error.message}`,
-    };
-    console.log(JSON.stringify(errorResponse));
-  }
-});
-
 // Convert internal response format to VCP protocol format
 function convertToVCPFormat(response) {
   if (response.success) {
@@ -1841,15 +1816,106 @@ function convertToVCPFormat(response) {
   }
 }
 
-// Handle process termination
-process.on('SIGTERM', () => {
-  debugLog('Received SIGTERM, shutting down gracefully');
-  process.exit(0);
-});
+/**
+ * hybridservice direct 协议接口：服务初始化
+ */
+async function initialize(context = {}) {
+  debugLog('FileOperator hybridservice initialized', {
+    hasServices: Boolean(context.services),
+    projectBasePath: context.projectBasePath
+  });
+}
 
-process.on('SIGINT', () => {
-  debugLog('Received SIGINT, shutting down gracefully');
-  process.exit(0);
-});
+/**
+ * hybridservice direct 协议接口：直接处理工具调用，常驻内存无需 spawn
+ */
+async function processToolCall(toolArgs, executionContext = {}) {
+  let request = toolArgs;
+  if (typeof request === 'string') {
+    try {
+      request = JSON.parse(request);
+    } catch (e) {
+      throw new Error(`Invalid request format: ${e.message}`);
+    }
+  }
+  if (!request || typeof request !== 'object') {
+    throw new Error('Invalid request: expected an object or JSON string');
+  }
 
-debugLog('FileOperator plugin started and listening for requests');
+  const response = await processRequest(request);
+  const vcpResponse = convertToVCPFormat(response);
+
+  if (vcpResponse.status === 'success') {
+    const finalResult = vcpResponse.result || {};
+    if (vcpResponse._specialAction) {
+      finalResult._specialAction = vcpResponse._specialAction;
+      finalResult.payload = vcpResponse.payload;
+    }
+    return finalResult;
+  } else {
+    throw new Error(vcpResponse.error || response.error || 'Unknown error occurred in FileOperator');
+  }
+}
+
+// 仅在作为独立脚本直接执行时监听 stdio（保持 CLI 兼容性）
+if (require.main === module) {
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', async data => {
+    try {
+      const lines = data.toString().trim().split('\n');
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+
+        const request = JSON.parse(line);
+        const response = await processRequest(request);
+
+        const vcpResponse = convertToVCPFormat(response);
+        console.log(JSON.stringify(vcpResponse));
+      }
+    } catch (error) {
+      const errorResponse = {
+        status: 'error',
+        error: `Invalid request format: ${error.message}`,
+      };
+      console.log(JSON.stringify(errorResponse));
+    }
+  });
+
+  process.on('SIGTERM', () => {
+    debugLog('Received SIGTERM, shutting down gracefully');
+    process.exit(0);
+  });
+
+  process.on('SIGINT', () => {
+    debugLog('Received SIGINT, shutting down gracefully');
+    process.exit(0);
+  });
+
+  debugLog('FileOperator plugin started and listening for requests');
+}
+
+module.exports = {
+  initialize,
+  processToolCall,
+  processRequest,
+  convertToVCPFormat,
+  readFile,
+  writeFile,
+  appendFile,
+  editFile,
+  listDirectory,
+  getFileInfo,
+  copyFile,
+  moveFile,
+  renameFile,
+  deleteFile,
+  createDirectory,
+  searchFiles,
+  downloadFile,
+  createCanvas,
+  editCanvas,
+  updateHistory,
+  applyDiff,
+  listAllowedDirectories,
+};

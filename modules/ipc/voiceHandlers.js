@@ -533,8 +533,6 @@ function createVoiceChatWindow(agentId) {
             contextIsolation: true,
             nodeIntegration: false,
         },
-        parent: mainWindow,
-        modal: false,
         show: false,
     });
 
