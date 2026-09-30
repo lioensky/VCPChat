@@ -685,6 +685,22 @@ function bindEvents() {
         lastFocusRefresh = Date.now();
         loadProjects();
     });
+    // 监听主进程广播的工程变动（反向 IPC 推送，防抖 160ms）
+    const scheduleAutoRefresh = debounce(async payload => {
+        if (!$('node-modal').hidden) return;
+        await loadProjects();
+        if (state.currentId) {
+            if (!payload?.projectId || payload.projectId === state.currentId) {
+                await selectProject(state.currentId, { keepTab: true });
+            }
+        }
+    }, 160);
+
+    if (typeof api?.onProjectForgeChanged === 'function') {
+        api.onProjectForgeChanged(payload => {
+            scheduleAutoRefresh(payload);
+        });
+    }
 }
 
 function applyTheme(theme) {

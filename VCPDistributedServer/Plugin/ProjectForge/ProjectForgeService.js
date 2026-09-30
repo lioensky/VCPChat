@@ -10,6 +10,7 @@
 const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
+const EventEmitter = require('events');
 const { ProjectStore, sha256 } = require('./store');
 const engine = require('./engine');
 const { WorkspaceResolver } = require('./workspace');
@@ -29,6 +30,19 @@ const P = '[ProjectForge]';
 const DEFAULT_DB_PATH = path.join(__dirname, '..', '..', '..', 'AppData', 'ProjectForge', 'projectforge.db');
 const UTF8_BOM = Buffer.from([0xEF, 0xBB, 0xBF]);
 
+const projectEvents = new EventEmitter();
+projectEvents.setMaxListeners(50);
+
+function emitProjectChanged(payload = {}) {
+    try {
+        projectEvents.emit('changed', {
+            timestamp: Date.now(),
+            ...payload,
+        });
+    } catch (e) {
+        runtime.logger?.warn?.(`${P} 广播工程变更事件失败:`, e?.message || e);
+    }
+}
 function posInt(value, fallback) {
     const n = parseInt(value, 10);
     return Number.isInteger(n) && n > 0 ? n : fallback;
@@ -1757,6 +1771,12 @@ const COMMANDS = {
 
 const COMMAND_NAMES = 'ListWorkspaces、CreateProject、ListProjects、GetProject、UpdateTodos、SubmitReport、DeleteProjects、RestoreProjects、PurgeProjects、ReadCode、EditCode、ResolveEdit、CreateFile、RemoveFile、MoveFile、MoveCode、CopyCode、Rollback、SearchHistory、GetNodeDiff、Outline、FindSymbol、Trace';
 
+const MUTATING_COMMANDS = new Set([
+    'createproject', 'updatetodos', 'submitreport', 'deleteprojects',
+    'restoreprojects', 'purgeprojects', 'editcode', 'resolveedit',
+    'createfile', 'removefile', 'movefile', 'movecode', 'copycode', 'rollback',
+]);
+
 async function processToolCall(rawArgs = {}, _executionContext = {}) {
     if (!rawArgs || typeof rawArgs !== 'object' || Array.isArray(rawArgs)) {
         throw new Error(`${P} 无效的工具参数。`);
@@ -1765,7 +1785,15 @@ async function processToolCall(rawArgs = {}, _executionContext = {}) {
     const command = A.str(args, 'command', 'action').toLowerCase();
     const handler = COMMANDS[command];
     if (!handler) throw new Error(`${P} 不支持的 command“${command || '(空)'}”。可用：${COMMAND_NAMES}。`);
-    return handler(args);
+    const result = await handler(args);
+    if (MUTATING_COMMANDS.has(command)) {
+        emitProjectChanged({
+            action: command,
+            projectId: result?.details?.projectId || args.projectid || null,
+            details: result?.details || null,
+        });
+    }
+    return result;
 }
 
 // ============================ GUI 门面 ============================
@@ -1923,25 +1951,26 @@ const gui = {
                 });
             });
             runtime.logger?.log?.(`${P} GUI 回退 n${node.id} by @${maid} → b${batchId}`);
+            emitProjectChanged({ action: 'gui:revert', projectId: ctx.project.id, batchId, nodeId: newNodeId, maid });
             return { status: 'ok', ...plan, batchId, nodeId: newNodeId, maid };
         });
     },
-
     deleteProject(projectId, maid = '') {
         const id = String(projectId || '').trim();
         if (!id) throw new Error(`${P} 删除工程需要指定 projectId。`);
         const done = store().softDeleteProjects([id], String(maid || '').trim());
         runtime.logger?.log?.(`${P} GUI 删除工程 ${id} by @${maid || 'anonymous'}`);
+        emitProjectChanged({ action: 'gui:delete', projectId: id, maid: maid || null });
         return { deleted: done.includes(id), projectId: id };
     },
 };
-
 module.exports = {
     initialize,
     ensureRuntime,
     processToolCall,
     cleanup,
     gui,
+    events: projectEvents,
     _test: {
         // 同步替换运行时（不 await 也不会覆盖随后的 initialize）；返回的 Promise 可选择等待旧索引器退出
         resetForTests: () => {

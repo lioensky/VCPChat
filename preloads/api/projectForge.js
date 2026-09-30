@@ -4,7 +4,7 @@
 // 主进程：modules/ipc/projectForgeHandlers.js、modules/ipc/gitHandlers.js、modules/ipc/sourceHandlers.js
 //        （Git / 源码接口按调用页面 URL 校验，仅施工图页面可用）
 // 渲染端：ProjectForgemodules/
-const { invoke } = require('../core/define');
+const { invoke, on } = require('../core/define');
 
 module.exports = {
     handlers: ['modules/ipc/projectForgeHandlers.js', 'modules/ipc/gitHandlers.js', 'modules/ipc/sourceHandlers.js'],
@@ -17,6 +17,7 @@ module.exports = {
         projectForgeGetNode: invoke('project-forge:get-node', 'projectId', 'nodeId'),
         projectForgeRevertFile: invoke('project-forge:revert-file', 'payload'),
         projectForgeDeleteProject: invoke('project-forge:delete-project', 'projectId', 'signature'),
+        onProjectForgeChanged: on('project-forge:changed'),
 
         // Git 侧栏
         gitListWorkspaces: invoke('git:list-workspaces'),

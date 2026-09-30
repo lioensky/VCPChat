@@ -4,7 +4,7 @@
 // GUI 只读；唯一的写操作是带署名的单文件回退。
 'use strict';
 
-const { ipcMain } = require('electron');
+const { ipcMain, webContents } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -21,6 +21,31 @@ const CHANNELS = [
 
 let workspaceServiceRef = null;
 let forgeModule = null;
+let listeningEvents = false;
+
+function broadcastToProjectForge(channel, payload) {
+    if (!webContents || typeof webContents.getAllWebContents !== 'function') return;
+    for (const wc of webContents.getAllWebContents()) {
+        try {
+            if (wc.isDestroyed()) continue;
+            const url = (wc.getURL() || '').toLowerCase();
+            if (url.includes('projectforge.html')) {
+                wc.send(channel, payload);
+            }
+        } catch (_e) { /* ignore */ }
+    }
+}
+
+function setupEventListener() {
+    if (listeningEvents) return;
+    if (!forgeModule) forgeModule = require(path.join(PLUGIN_DIR, 'ProjectForgeService.js'));
+    if (forgeModule?.events) {
+        forgeModule.events.on('changed', payload => {
+            broadcastToProjectForge('project-forge:changed', payload);
+        });
+        listeningEvents = true;
+    }
+}
 
 function readPluginConfig() {
     try {
@@ -57,6 +82,7 @@ function wrap(fn) {
 function initialize({ workspaceService = null } = {}) {
     workspaceServiceRef = workspaceService;
     CHANNELS.forEach(channel => ipcMain.removeHandler(channel));
+    setupEventListener();
 
     ipcMain.handle('project-forge:list-projects', wrap((options = {}) => forge().listProjects(options)));
     ipcMain.handle('project-forge:get-project', wrap(projectId => forge().getProject(String(projectId || ''))));
