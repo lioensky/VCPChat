@@ -93,6 +93,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             await saveVoiceChatToHistory();
         } finally {
+            disposeLocalHold();
             await ttsSurfaceOwner?.dispose();
             ttsSurfaceOwner = null;
             await streamRuntime?.dispose();
@@ -225,9 +226,12 @@ document.addEventListener('DOMContentLoaded', () => {
     function getVoiceRuntimeSettings(settings = {}) {
         return {
             voiceMode: settings.voiceMode === 'network' ? 'network' : 'local',
-            voiceInputMode: ['windows_voice_typing', 'right_alt_hold'].includes(settings.voiceInputMode)
+            voiceInputMode: ['windows_voice_typing', 'right_alt_hold', 'local_sensevoice'].includes(settings.voiceInputMode)
                 ? settings.voiceInputMode
                 : 'windows_voice_typing',
+            localSttLanguage: ['auto', 'zh', 'en', 'yue', 'ja', 'ko'].includes(settings.localSttLanguage)
+                ? settings.localSttLanguage
+                : 'auto',
             voiceInputShortcut: settings.voiceInputShortcut || 'F7',
             voiceNetworkSettings: settings.voiceNetworkSettings || { providerUrl: '', providerKey: '' },
             voiceLocalSettings: settings.voiceLocalSettings || { sovitsUrl: '', sovitsKey: '' }
@@ -236,6 +240,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function getVoiceModeLabel(runtimeSettings) {
         return runtimeSettings.voiceMode === 'network' ? '网络语音模式' : '本地语音模式';
+    }
+
+    function isLocalSttMode() {
+        return globalSettings.voiceInputMode === 'local_sensevoice';
+    }
+
+    function getIdlePlaceholder() {
+        return isLocalSttMode()
+            ? `按住 ${globalSettings.voiceInputShortcut || 'F7'} 说话，松开后本地识别并发送...`
+            : '输入消息或使用全局语音快捷键...';
+    }
+
+    // 主界面切换语音输入模式后，主进程会重新配置快捷键并广播注册状态；这里据此重载设置
+    async function refreshVoiceRuntimeSettings() {
+        if (!agentId) return;
+        try {
+            const latest = await window.electronAPI.loadSettings();
+            globalSettings = { ...latest, ...getVoiceRuntimeSettings(latest) };
+            if (agentConfig) {
+                agentNameSpan.textContent = `${agentConfig.name} - ${getVoiceModeLabel(globalSettings)}`;
+            }
+            if (inputMode === 'text') {
+                messageInput.placeholder = getIdlePlaceholder();
+            }
+        } catch (error) {
+            console.warn('[VoiceChat] Failed to refresh voice settings:', error);
+        }
     }
 
     waitForElectronAPI(() => {
@@ -273,8 +304,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     error: `快捷键 ${globalSettings.voiceInputShortcut} 未注册`,
                 }
         );
+        if (nativeStatus?.shortcut?.registered && isLocalSttMode()) {
+            renderLocalHoldReady();
+        }
         agentAvatarImg.src = agentConfig.avatarUrl || '../assets/default_avatar.png';
         agentNameSpan.textContent = `${agentConfig.name} - ${getVoiceModeLabel(globalSettings)}`;
+        messageInput.placeholder = getIdlePlaceholder();
 
         initializeRenderer();
         });
@@ -419,12 +454,16 @@ document.addEventListener('DOMContentLoaded', () => {
         keyboardIcon.style.display = active ? 'none' : 'block';
         micIcon.style.display = active ? 'block' : 'none';
         toggleInputModeBtn.setAttribute('aria-pressed', String(active));
-        const voiceInputModeLabel = globalSettings.voiceInputMode === 'right_alt_hold'
-            ? '右 Alt'
-            : 'Win+H';
-        messageInput.placeholder = active
-            ? `正在使用 ${voiceInputModeLabel} 系统听写...`
-            : '输入消息或使用全局语音快捷键...';
+        let activePlaceholder;
+        if (isLocalSttMode()) {
+            activePlaceholder = '正在录音，松开快捷键后本地识别...';
+        } else {
+            const voiceInputModeLabel = globalSettings.voiceInputMode === 'right_alt_hold'
+                ? '右 Alt'
+                : 'Win+H';
+            activePlaceholder = `正在使用 ${voiceInputModeLabel} 系统听写...`;
+        }
+        messageInput.placeholder = active ? activePlaceholder : getIdlePlaceholder();
     }
 
     function renderVoiceInputShortcutStatus(status, state = null) {
@@ -449,7 +488,165 @@ document.addEventListener('DOMContentLoaded', () => {
         voiceInputShortcutStatus.title = error;
     }
 
+    // --- 本地 SenseVoice 按住说话 ---
+    // 主进程在 local_sensevoice 模式下把快捷键的物理按下/松开原样转发过来；
+    // 小窗自行录音，松开后交给本地识别子进程，结果直接发送。
+    const LOCAL_HOLD_MIN_MS = 300;
+    const LOCAL_HOLD_MAX_SECONDS = 180;
+    const localHold = {
+        recorder: null,
+        startPromise: null,
+        startedAt: 0,
+        maxTimer: null,
+        busy: false,
+    };
+
+    function isLocalHoldInProgress() {
+        return Boolean(localHold.startPromise || localHold.busy);
+    }
+
+    function getLocalHoldRecorder() {
+        if (!localHold.recorder) {
+            const RecorderClass = window.VcpVoice?.AudioRecorder;
+            if (RecorderClass) localHold.recorder = new RecorderClass();
+        }
+        return localHold.recorder;
+    }
+
+    function renderLocalHoldStatus(text, state) {
+        if (!voiceInputShortcutStatus) return;
+        voiceInputShortcutStatus.classList.remove('is-ready', 'is-active', 'is-error');
+        voiceInputShortcutStatus.classList.add(`is-${state}`);
+        voiceInputShortcutStatus.textContent = text;
+        voiceInputShortcutStatus.title = text;
+    }
+
+    function renderLocalHoldReady() {
+        renderLocalHoldStatus(`${globalSettings.voiceInputShortcut || 'F7'} 按住说话`, 'ready');
+    }
+
+    function submitVoiceText(text) {
+        // 上一轮回复仍在流式输出：不并发发送，把识别结果留在输入框里
+        if (activeStreamingMessageId) {
+            messageInput.value = messageInput.value ? `${messageInput.value} ${text}` : text;
+            return;
+        }
+        messageInput.value = text;
+        sendMessage(text).catch(error => {
+            console.error('[VoiceChat] Failed to send captured voice text:', error);
+            messageInput.disabled = false;
+            sendMessageBtn.disabled = false;
+            messageInput.value = text;
+        });
+    }
+
+    function beginLocalHold() {
+        if (isLocalHoldInProgress() || !agentConfig) return;
+        const recorder = getLocalHoldRecorder();
+        if (!recorder) {
+            renderLocalHoldStatus('录音组件不可用', 'error');
+            return;
+        }
+
+        // 按住说话即打断正在播放的朗读，也避免把 TTS 录进去
+        window.electronAPI.sovitsStop?.();
+        localHold.startedAt = Date.now();
+        applyNativeCapturePresentation(true);
+        renderLocalHoldStatus('正在录音，松开结束', 'active');
+        localHold.startPromise = recorder.start().then(() => true, error => {
+            console.error('[VoiceChat] Local hold recording failed to start:', error);
+            const isPermission = error?.name === 'NotAllowedError' || /permission/i.test(error?.message || '');
+            renderLocalHoldStatus(isPermission ? '麦克风权限未开启' : '麦克风启动失败', 'error');
+            return false;
+        });
+        clearTimeout(localHold.maxTimer);
+        localHold.maxTimer = setTimeout(() => {
+            endLocalHold().catch(() => {});
+        }, LOCAL_HOLD_MAX_SECONDS * 1000);
+    }
+
+    async function endLocalHold() {
+        const startPromise = localHold.startPromise;
+        if (!startPromise) return;
+        localHold.startPromise = null;
+        clearTimeout(localHold.maxTimer);
+        localHold.maxTimer = null;
+        localHold.busy = true;
+
+        try {
+            // 松开可能早于麦克风就绪，先等启动完成再停止
+            const started = await startPromise;
+            if (!started) return;
+            const heldMs = Date.now() - localHold.startedAt;
+            const wavBlob = await localHold.recorder.stop({
+                speech: true,
+                maxSeconds: LOCAL_HOLD_MAX_SECONDS,
+            });
+            if (heldMs < LOCAL_HOLD_MIN_MS || !wavBlob) {
+                renderLocalHoldStatus('按住时间太短', 'error');
+                return;
+            }
+
+            renderLocalHoldStatus('正在本地识别...', 'active');
+            messageInput.placeholder = '正在本地识别...';
+            const sttStatus = await window.electronAPI.getLocalSttStatus?.();
+            if (sttStatus?.phase !== 'ready') {
+                renderLocalHoldStatus('本地语音资源包未安装', 'error');
+                return;
+            }
+            const wav = new Uint8Array(await wavBlob.arrayBuffer());
+            const result = await window.electronAPI.transcribeLocalStt({
+                wav,
+                language: globalSettings.localSttLanguage || 'auto',
+            });
+            if (!result?.success) {
+                renderLocalHoldStatus(`识别失败：${result?.error || '未知错误'}`, 'error');
+                return;
+            }
+            const text = String(result.text || '').trim();
+            if (!text) {
+                renderLocalHoldStatus('未识别到语音', 'error');
+                return;
+            }
+            renderLocalHoldReady();
+            submitVoiceText(text);
+        } catch (error) {
+            console.error('[VoiceChat] Local hold transcription failed:', error);
+            renderLocalHoldStatus('本地识别失败，请重试', 'error');
+        } finally {
+            localHold.busy = false;
+            applyNativeCapturePresentation(false);
+        }
+    }
+
+    function disposeLocalHold() {
+        clearTimeout(localHold.maxTimer);
+        localHold.maxTimer = null;
+        localHold.startPromise = null;
+        try {
+            localHold.recorder?.dispose();
+        } catch (_) {}
+        localHold.recorder = null;
+    }
+
+    window.electronAPI.onVoiceInputLocalHold?.((payload) => {
+        if (payload?.phase === 'down') {
+            beginLocalHold();
+        } else if (payload?.phase === 'up') {
+            endLocalHold().catch(() => {});
+        }
+    });
+
     window.electronAPI.onVoiceInputShortcutStatus?.((status) => {
+        // 注册类状态（不带 active）意味着快捷键被重新配置，可能是主界面切换了语音输入模式
+        if (status && !('active' in status)) {
+            refreshVoiceRuntimeSettings().then(() => {
+                if (status.success && isLocalSttMode() && !isLocalHoldInProgress()) {
+                    renderLocalHoldReady();
+                }
+            });
+        }
+        if (isLocalHoldInProgress()) return;
         applyNativeCapturePresentation(status?.active === true);
         renderVoiceInputShortcutStatus(status, status?.active === true ? 'active' : null);
         if (status?.success) return;
@@ -464,13 +661,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const text = String(payload?.text || '').trim();
         applyNativeCapturePresentation(false);
         if (!text) return;
-        messageInput.value = text;
-        sendMessage(text).catch(error => {
-            console.error('[VoiceChat] Failed to send captured voice text:', error);
-            messageInput.disabled = false;
-            sendMessageBtn.disabled = false;
-            messageInput.value = text;
-        });
+        submitVoiceText(text);
     });
 
     const sendMessage = async (messageContent) => {

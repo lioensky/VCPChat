@@ -30,6 +30,8 @@ module.exports = {
         onVoiceInputGlobalToggle: on('voice-input-global-toggle'),
         onVoiceInputShortcutStatus: on('voice-input-shortcut-status'),
         onVoiceInputCapturedText: on('voice-input-captured-text'),
+        // 本地推理模式下的按住说话快捷键：{ phase: 'down' | 'up', shortcut }
+        onVoiceInputLocalHold: on('voice-input-local-hold'),
 
         // 主聊天输入框的语音会话；录音附件复用 chat.handleFileDrop，不另开存盘通道
         startMainChatVoiceInput: invoke('main-chat-voice:start', (options = {}) => [options]),

@@ -19,6 +19,10 @@ static HOOK_KEY_PRESSED: AtomicBool = AtomicBool::new(false);
 enum InputMode {
     WindowsVoiceTyping,
     RightAltHold,
+    /// Push-to-talk for local speech recognition. Physical press/release are
+    /// reported as-is; no keys are injected and no focus handoff is needed,
+    /// so the IME keyboard race that forces tap-to-toggle does not apply.
+    LocalHold,
 }
 
 impl InputMode {
@@ -26,6 +30,7 @@ impl InputMode {
         match value {
             "windows_voice_typing" | "win_h" => Ok(Self::WindowsVoiceTyping),
             "right_alt_hold" | "right_alt" => Ok(Self::RightAltHold),
+            "local_hold" | "local_sensevoice" => Ok(Self::LocalHold),
             other => Err(format!("unsupported voice input mode: {other}")),
         }
     }
@@ -34,6 +39,7 @@ impl InputMode {
         match self {
             Self::WindowsVoiceTyping => "windows_voice_typing",
             Self::RightAltHold => "right_alt_hold",
+            Self::LocalHold => "local_hold",
         }
     }
 
@@ -41,6 +47,7 @@ impl InputMode {
         match self {
             Self::WindowsVoiceTyping => 1,
             Self::RightAltHold => 2,
+            Self::LocalHold => 3,
         }
     }
 
@@ -48,6 +55,7 @@ impl InputMode {
         match value {
             1 => Some(Self::WindowsVoiceTyping),
             2 => Some(Self::RightAltHold),
+            3 => Some(Self::LocalHold),
             _ => None,
         }
     }
@@ -320,7 +328,16 @@ fn start_hotkey_monitor(state: Arc<SharedState>) -> thread::JoinHandle<()> {
                         matches!(state.mode(), Some(InputMode::RightAltHold))
                             && state.right_alt_held.load(Ordering::SeqCst);
 
-                    if windows_session_active || right_alt_session_active {
+                    if matches!(state.mode(), Some(InputMode::LocalHold)) {
+                        // Hold-to-talk: report the physical press directly.
+                        // Auto-repeat is already collapsed by the hook's edge
+                        // filter, so one hold yields exactly one down/up pair.
+                        emit_unsolicited(
+                            "hotkey_down",
+                            state.mode(),
+                            json!({ "virtualKey": vk, "trigger": "hold_press" }),
+                        );
+                    } else if windows_session_active || right_alt_session_active {
                         // Both modes use the same tap-to-toggle interaction.
                         // Win+H is already released; Right Alt must be released
                         // before notifying JS so its normal stop/settle/send
@@ -368,7 +385,16 @@ fn start_hotkey_monitor(state: Arc<SharedState>) -> thread::JoinHandle<()> {
                 Ok(false) => {
                     state.hotkey_pressed.store(false, Ordering::SeqCst);
 
-                    if matches!(state.mode(), Some(InputMode::RightAltHold)) {
+                    if matches!(state.mode(), Some(InputMode::LocalHold)) {
+                        emit_unsolicited(
+                            "hotkey_up",
+                            state.mode(),
+                            json!({
+                                "virtualKey": CONFIGURED_HOTKEY_VK.load(Ordering::SeqCst),
+                                "trigger": "hold_release"
+                            }),
+                        );
+                    } else if matches!(state.mode(), Some(InputMode::RightAltHold)) {
                         // Do not hold the physical F-key while injecting Right
                         // Alt: the IME rejects Right Alt when another physical
                         // key is still down. The first F-key release arms the
@@ -498,6 +524,11 @@ fn process_command(command: Command, state: &Arc<SharedState>) -> bool {
                         // Right Alt starts only after both prerequisites are
                         // true: Chromium/TSF focus is ready and the first
                         // physical F-key has been released.
+                    }
+                    Some(InputMode::LocalHold) => {
+                        return Err(
+                            "focus_ready is not used in local_hold mode".to_string()
+                        );
                     }
                     None => return Err("voice input mode is not configured".to_string()),
                 }
@@ -953,6 +984,14 @@ mod tests {
         assert_eq!(
             InputMode::parse("right_alt_hold").unwrap(),
             InputMode::RightAltHold
+        );
+        assert_eq!(
+            InputMode::parse("local_hold").unwrap(),
+            InputMode::LocalHold
+        );
+        assert_eq!(
+            InputMode::from_code(InputMode::LocalHold.code()),
+            Some(InputMode::LocalHold)
         );
     }
 

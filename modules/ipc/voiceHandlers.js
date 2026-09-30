@@ -23,9 +23,18 @@ let voiceCaptureReadyPromise = null;
 let voiceCaptureSession = null;
 let voiceCaptureSequence = 0;
 let releaseVoiceEngineEvents = null;
+// 本地推理按住说话：记录按下时的目标小窗，保证松开事件发回同一窗口
+let localHoldTarget = null;
 
 const CAPTURE_QUIET_MS = 700;
 const CAPTURE_MAX_SETTLE_MS = 7000;
+
+// 设置里的 voiceInputMode → Rust 引擎模式。本地 SenseVoice 走按住说话，无需输入法捕获窗
+function resolveEngineMode(voiceInputMode) {
+    if (voiceInputMode === 'right_alt_hold') return 'right_alt_hold';
+    if (voiceInputMode === 'local_sensevoice') return 'local_hold';
+    return 'windows_voice_typing';
+}
 
 function getNativeWindowHandleString(win) {
     if (!win || win.isDestroyed() || typeof win.getNativeWindowHandle !== 'function') {
@@ -340,8 +349,43 @@ async function cancelVoiceCaptureFromHotkey() {
     });
 }
 
+function isWindowAlive(win) {
+    return Boolean(win && !win.isDestroyed() && !win.webContents.isDestroyed());
+}
+
+// 本地推理模式：按下开始录音、松开结束，由小窗自行录音并调用本地识别
+function handleLocalHoldEvent(eventData) {
+    if (eventData.event === 'hotkey_down') {
+        if (mainChatVoiceCoordinator?.isSessionActive()) {
+            mainChatVoiceCoordinator.cancelSession({ reason: 'hotkey_preempted' }).catch(() => {});
+        }
+        const target = getVoiceCaptureTarget();
+        if (!isWindowAlive(target)) return;
+        localHoldTarget = target;
+        target.webContents.send('voice-input-local-hold', {
+            phase: 'down',
+            shortcut: configuredVoiceInputShortcut,
+        });
+        return;
+    }
+    if (eventData.event === 'hotkey_up') {
+        const target = localHoldTarget;
+        localHoldTarget = null;
+        if (isWindowAlive(target)) {
+            target.webContents.send('voice-input-local-hold', {
+                phase: 'up',
+                shortcut: configuredVoiceInputShortcut,
+            });
+        }
+    }
+}
+
 function handleVoiceEngineEvent(eventData) {
     if (!eventData?.event) return;
+    if (eventData.mode === 'local_hold') {
+        handleLocalHoldEvent(eventData);
+        return;
+    }
     if (eventData.event === 'hotkey_down') {
         if (mainChatVoiceCoordinator?.isSessionActive()) {
             mainChatVoiceCoordinator.cancelSession({ reason: 'hotkey_preempted' }).catch(() => {});
@@ -387,12 +431,12 @@ async function configureNativeVoiceHotkey() {
 
     const settings = settingsManager ? await settingsManager.readSettings() : {};
     const shortcut = String(settings?.voiceInputShortcut || 'F7').trim();
-    const mode = settings?.voiceInputMode === 'right_alt_hold'
-        ? 'right_alt_hold'
-        : 'windows_voice_typing';
+    const mode = resolveEngineMode(settings?.voiceInputMode);
 
     try {
-        await ensureVoiceCaptureWindowReady();
+        if (mode !== 'local_hold') {
+            await ensureVoiceCaptureWindowReady();
+        }
         const engine = getVoiceInputEngine();
         await engine.start();
         if (!releaseVoiceEngineEvents) {
@@ -401,6 +445,10 @@ async function configureNativeVoiceHotkey() {
         const result = await engine.configureHotkey({ shortcut, mode });
         configuredVoiceInputShortcut = shortcut;
         configuredVoiceInputMode = mode;
+        // 引擎模式已被改写，同步主聊天协调器的配置缓存，避免它误以为引擎仍处于旧模式
+        if (mainChatVoiceCoordinator) {
+            mainChatVoiceCoordinator.configuredHotkeyCache = `${shortcut}:${mode}`;
+        }
         const status = {
             success: true,
             registered: true,
@@ -536,6 +584,9 @@ function createVoiceChatWindow(agentId) {
 
         if (voiceCaptureSession?.target === voiceChatWindow) {
             cancelVoiceCaptureFromHotkey().catch(() => {});
+        }
+        if (localHoldTarget === voiceChatWindow) {
+            localHoldTarget = null;
         }
 
         if (nativeVoiceInputOwnerId === voiceWebContentsId) {
@@ -676,7 +727,9 @@ function initialize(options) {
         },
         getConfiguredShortcut: () => configuredVoiceInputShortcut,
         getSettingsManager: () => settingsManager,
-        isSubwindowHotkeyActive: () => Boolean(voiceCaptureSession && !voiceCaptureSession.stopping),
+        isSubwindowHotkeyActive: () => Boolean(
+            (voiceCaptureSession && !voiceCaptureSession.stopping) || localHoldTarget
+        ),
     });
     mainChatVoiceCoordinator.registerIpcHandlers();
 

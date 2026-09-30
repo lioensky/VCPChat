@@ -74,6 +74,39 @@ test('voice input sidecar starts on demand, answers ping, and shuts down', async
     assert.equal(stopped.processAlive, false);
 });
 
+test('voice input sidecar accepts local_hold push-to-talk mode', async t => {
+    const adapter = new VoiceInputEngineAdapter({ projectRoot });
+    t.after(async () => {
+        await adapter.shutdown();
+    });
+
+    await adapter.start();
+    const configured = await adapter.configureHotkey({ shortcut: 'F24', mode: 'local_hold' });
+    assert.equal(configured.event, 'hotkey_configured');
+    assert.equal(configured.mode, 'local_hold');
+
+    // local_hold 不做焦点交接，focus_ready 必须被拒绝
+    await assert.rejects(
+        adapter.focusReady({ targetWindowHandle: '1', programmatic: true }),
+    );
+});
+
+test('local SenseVoice mode is wired to hold-to-talk in the voice chat window', () => {
+    const voiceSource = source('Voicechatmodules/voicechat.js');
+    const voiceHtml = source('Voicechatmodules/voicechat.html');
+    const voiceHandlersSource = source('modules/ipc/voiceHandlers.js');
+    const preloadSource = source('preloads/api/voice.js');
+
+    assert.match(voiceHandlersSource, /'local_sensevoice'\) return 'local_hold'/);
+    assert.match(voiceHandlersSource, /voice-input-local-hold/);
+    assert.match(preloadSource, /onVoiceInputLocalHold: on\('voice-input-local-hold'\)/);
+    assert.match(voiceSource, /onVoiceInputLocalHold/);
+    assert.match(voiceSource, /transcribeLocalStt/);
+    assert.match(voiceSource, /'local_sensevoice'/);
+    assert.match(voiceHtml, /modules\/voice\/audioRecorder\.js/);
+    assert.match(voiceHtml, /modules\/voice\/wavAudioEncoder\.js/);
+});
+
 test('voice chat native input stays isolated to the auxiliary surface', () => {
     const voiceSource = source('Voicechatmodules/voicechat.js');
     const mainRendererSource = source('renderer.js');
