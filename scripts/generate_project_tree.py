@@ -298,12 +298,15 @@ class ProjectTreeGenerator:
         files.sort(key=lambda e: e.name.lower())
 
         sub_trees = []
-        for d in dirs:
-            subtree = self.build_tree_structure(Path(d.path), current_depth + 1)
-            if subtree is not None:
-                if self.prune_empty and subtree["empty"]:
-                    continue
-                sub_trees.append(subtree)
+        # 若未达最大深度，则继续递归钻取子目录；达最大深度时停止深入子目录，但保留当前目录自身文件
+        can_go_deeper = (self.max_depth is None or current_depth < self.max_depth)
+        if can_go_deeper:
+            for d in dirs:
+                subtree = self.build_tree_structure(Path(d.path), current_depth + 1)
+                if subtree is not None:
+                    if self.prune_empty and subtree["empty"]:
+                        continue
+                    sub_trees.append(subtree)
 
         node_empty = (len(files) == 0 and all(st["empty"] for st in sub_trees))
 
@@ -328,13 +331,6 @@ class ProjectTreeGenerator:
 
         self.total_dirs += 1
         child_prefix = prefix + ("    " if is_last else "│   ") if node["depth"] > 0 else ""
-
-        # 检查是否已达到设定的最大深度
-        if self.max_depth is not None and node["depth"] == self.max_depth:
-            total_hidden = len(node["dirs"]) + len(node["files"])
-            if total_hidden > 0:
-                lines.append(f"{child_prefix}└── ... ({len(node['dirs'])} dirs, {len(node['files'])} files omitted)")
-            return lines
 
         items = []
         for d in node["dirs"]:

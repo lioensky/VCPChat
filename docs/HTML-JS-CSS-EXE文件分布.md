@@ -1,6 +1,6 @@
 # HTML、JavaScript、CSS 与 EXE 文件分布
 
-> 自动生成于：2026-09-30 11:37:29  
+> 自动生成于：2026-09-30 11:39:55  
 
 > 项目根目录：`H:\VCP\VCPMain\VCPChat`  
 
@@ -13,16 +13,16 @@
 ## 文件统计
 
 - **总目录数**：128
-- **总文件数**：724
+- **总文件数**：899
 - **文件类型数**：4
 
 | 类型 | 扩展名 | 数量 |
 | :--- | :--- | ---: |
-| JavaScript | `.js` | 580 |
-| CSS | `.css` | 101 |
-| HTML | `.html` | 38 |
-| EXE 运行时/可执行程序 | `.exe` | 5 |
-| **合计** | - | **724** |
+| JavaScript | `.js` | 739 |
+| CSS | `.css` | 111 |
+| HTML | `.html` | 39 |
+| EXE 运行时/可执行程序 | `.exe` | 10 |
+| **合计** | - | **899** |
 
 ## 目录结构树
 
@@ -35,12 +35,12 @@ VCPChat/
 ├── apps/
 │   └── bootstrap-installer/
 │       ├── src/
-│       │   └── ... (0 dirs, 1 files omitted)
+│       │   └── styles.css
 │       └── index.html
 ├── assets/
 │   └── font/
 │       └── vcp-ui/
-│           └── ... (0 dirs, 1 files omitted)
+│           └── noto-sans-sc.css
 ├── audio_engine/
 │   ├── audio_server.exe
 │   ├── audio_server.old.soxR.exe
@@ -240,7 +240,16 @@ VCPChat/
 │   │   └── workspaceHandlers.js
 │   ├── loom/
 │   │   ├── webcore/
-│   │   │   └── ... (0 dirs, 10 files omitted)
+│   │   │   ├── adapter-contract.js
+│   │   │   ├── chrome-adapter.js
+│   │   │   ├── comfyui-main-world-bridge.js
+│   │   │   ├── comfyui-page-adapter.js
+│   │   │   ├── electron-adapter.js
+│   │   │   ├── index.js
+│   │   │   ├── web-agent-page-core.js
+│   │   │   ├── web-agent-page-runtime-core.js
+│   │   │   ├── web-agent-protocol.js
+│   │   │   └── web-agent-runtime-core.js
 │   │   └── VCPLoomManager.js
 │   ├── lyrics/
 │   │   ├── krcDecrypt.js
@@ -295,7 +304,9 @@ VCPChat/
 │   │   └── windowStreamRuntime.js
 │   ├── services/
 │   │   ├── chatDataService/
-│   │   │   └── ... (0 dirs, 3 files omitted)
+│   │   │   ├── client.js
+│   │   │   ├── index.js
+│   │   │   └── lifecycle.js
 │   │   ├── attachmentDialogState.js
 │   │   ├── chartDataSourceService.js
 │   │   ├── chartService.js
@@ -323,9 +334,24 @@ VCPChat/
 │   │   └── workspacePromptPlaceholders.js
 │   ├── settings/
 │   │   ├── render/
-│   │   │   └── ... (0 dirs, 4 files omitted)
+│   │   │   ├── canonical-row.js
+│   │   │   ├── field-renderer.js
+│   │   │   ├── shared.js
+│   │   │   └── widgets.js
 │   │   ├── schema/
-│   │   │   └── ... (0 dirs, 13 files omitted)
+│   │   │   ├── advanced-features.js
+│   │   │   ├── appearance-settings.js
+│   │   │   ├── jev-service.js
+│   │   │   ├── kernel.js
+│   │   │   ├── local-stt-panel.js
+│   │   │   ├── quick-actions.js
+│   │   │   ├── render-settings.js
+│   │   │   ├── selection-assistant.js
+│   │   │   ├── server-connection.js
+│   │   │   ├── sidebar-surfaces.js
+│   │   │   ├── user-identity.js
+│   │   │   ├── voice-settings.js
+│   │   │   └── workspace-management.js
 │   │   ├── schema-surface.js
 │   │   ├── store.js
 │   │   └── value-semantics.js
@@ -333,9 +359,43 @@ VCPChat/
 │   │   └── embeddedAppAllowlist.js
 │   ├── ui-system/
 │   │   ├── next-shell/
-│   │   │   └── ... (0 dirs, 12 files omitted)
+│   │   │   ├── account-menu-controller.js
+│   │   │   ├── app-tab-host.js
+│   │   │   ├── assistant-search-controller.js
+│   │   │   ├── creation-controller.js
+│   │   │   ├── embedded-app-controller.js
+│   │   │   ├── escape-dispatcher.js
+│   │   │   ├── launchpad-controller.js
+│   │   │   ├── launchpad-icon-art.js
+│   │   │   ├── launchpad-icons.js
+│   │   │   ├── next-shell-controller.js
+│   │   │   ├── notification-menu-controller.js
+│   │   │   └── overlay-coordinator.js
 │   │   ├── settings/
-│   │   │   └── ... (0 dirs, 24 files omitted)
+│   │   │   ├── agent-disclosures.js
+│   │   │   ├── agent-model-picker-directory.js
+│   │   │   ├── agent-model-picker.js
+│   │   │   ├── appearance-ranges.js
+│   │   │   ├── appearance-toggles.js
+│   │   │   ├── autosave.js
+│   │   │   ├── bridge-shared.js
+│   │   │   ├── dependent-rows.js
+│   │   │   ├── field-registry.js
+│   │   │   ├── forum-controls.js
+│   │   │   ├── global-input-upgrades.js
+│   │   │   ├── global-language-rows.js
+│   │   │   ├── group-slots.js
+│   │   │   ├── home-controls.js
+│   │   │   ├── identity-controls.js
+│   │   │   ├── marker-registry.js
+│   │   │   ├── pipeline.js
+│   │   │   ├── render-visibility.js
+│   │   │   ├── save-coordinator.js
+│   │   │   ├── section-ownership.js
+│   │   │   ├── select-projection.js
+│   │   │   ├── settings-sidebar-runtime.js
+│   │   │   ├── settings-sidebar-slots.js
+│   │   │   └── settings-sidebar-surface.js
 │   │   ├── appearance-engine.js
 │   │   ├── appearance-profile-runtime.js
 │   │   ├── appearance-studio.js
@@ -370,15 +430,19 @@ VCPChat/
 │   │   └── webawesome-runtime-manifest.js
 │   ├── uiux/
 │   │   ├── generated/
-│   │   │   └── ... (0 dirs, 3 files omitted)
+│   │   │   ├── browser-entry.js
+│   │   │   ├── contracts.js
+│   │   │   └── index.js
 │   │   └── runtime/
-│   │       └── ... (0 dirs, 1 files omitted)
+│   │       └── dom-renderer.js
 │   ├── utils/
 │   │   ├── agentConfigManager.js
 │   │   └── appSettingsManager.js
 │   ├── voice/
 │   │   ├── localStt/
-│   │   │   └── ... (0 dirs, 3 files omitted)
+│   │   │   ├── localSttService.js
+│   │   │   ├── modelManager.js
+│   │   │   └── sttWorker.js
 │   │   ├── audioRecorder.js
 │   │   ├── chatVoiceComposer.js
 │   │   ├── passiveVoiceSentinel.js
@@ -424,7 +488,29 @@ VCPChat/
 ├── Musicmodules/
 │   ├── music-stage/
 │   │   ├── modes/
-│   │   │   └── ... (0 dirs, 23 files omitted)
+│   │   │   ├── cadenza-manager.js
+│   │   │   ├── diorama-camera.js
+│   │   │   ├── diorama-director.js
+│   │   │   ├── diorama-events.js
+│   │   │   ├── diorama-lyrics.js
+│   │   │   ├── diorama-manager.js
+│   │   │   ├── diorama-optics.js
+│   │   │   ├── diorama-stations.js
+│   │   │   ├── diorama-world.js
+│   │   │   ├── fume-manager.js
+│   │   │   ├── luminous-manager.js
+│   │   │   ├── partita-manager.js
+│   │   │   ├── sonnet-manager.js
+│   │   │   ├── sonnet-pixi-core.js
+│   │   │   ├── stage-lyric-decor.js
+│   │   │   ├── stage-lyric-layout.js
+│   │   │   ├── stage-lyric-performance.css
+│   │   │   ├── stage-lyric-performance.js
+│   │   │   ├── stage-mode-utils.js
+│   │   │   ├── stage-pixi-effects.js
+│   │   │   ├── tempera-manager.js
+│   │   │   ├── tempera-pixi-core.js
+│   │   │   └── tunnel-manager.js
 │   │   ├── music-stage-advanced-modes.js
 │   │   ├── music-stage-config.js
 │   │   ├── music-stage-host.js
@@ -522,7 +608,7 @@ VCPChat/
 ├── rust_assistant_engine/
 │   ├── runtime/
 │   │   └── assistant_core_server-Windows-X64/
-│   │       └── ... (0 dirs, 1 files omitted)
+│   │       └── assistant_core_server-windows-x64.exe
 │   └── ui/
 │       ├── assistant-bar.html
 │       ├── assistant-bar.js
@@ -539,7 +625,7 @@ VCPChat/
 ├── rust_voice_input_engine/
 │   ├── runtime/
 │   │   └── win32-x64/
-│   │       └── ... (0 dirs, 1 files omitted)
+│   │       └── vcp_voice_input_engine.exe
 │   └── build-runtime.js
 ├── ScriptoriumModules/
 │   ├── font-font-test.html
@@ -626,7 +712,8 @@ VCPChat/
 │   │   └── themes黑白简约.css
 │   ├── ui-system/
 │   │   ├── uiux-theme/
-│   │   │   └── ... (0 dirs, 2 files omitted)
+│   │   │   ├── semantic.css
+│   │   │   └── static-scale.css
 │   │   ├── appearance-studio.css
 │   │   ├── ask-nova.css
 │   │   ├── business-modals.css
@@ -807,64 +894,103 @@ VCPChat/
 ├── VCPDistributedServer/
 │   ├── Plugin/
 │   │   ├── BladeGame/
-│   │   │   └── ... (0 dirs, 5 files omitted)
+│   │   │   ├── blade-electron.css
+│   │   │   ├── blade-electron.html
+│   │   │   ├── blade-electron.js
+│   │   │   ├── blade-preload.js
+│   │   │   └── blade-service.js
 │   │   ├── ChartController/
-│   │   │   └── ... (0 dirs, 1 files omitted)
+│   │   │   └── ChartControllerService.js
 │   │   ├── ChatRoomViewer/
-│   │   │   └── ... (0 dirs, 1 files omitted)
+│   │   │   └── ChatRoomViewer.js
 │   │   ├── CodeSearcher/
-│   │   │   └── ... (0 dirs, 3 files omitted)
+│   │   │   ├── CodeSearcher-x86_64-pc-windows-msvc.exe
+│   │   │   ├── CodeSearcher.exe
+│   │   │   └── CodeSearcher.js
 │   │   ├── DeepMemo/
-│   │   │   └── ... (0 dirs, 3 files omitted)
+│   │   │   ├── DeepMemo.js
+│   │   │   ├── deepmemo_rust.exe
+│   │   │   └── DeepMemoService.js
 │   │   ├── DesktopRemote/
-│   │   │   └── ... (0 dirs, 1 files omitted)
+│   │   │   └── desktop-remote.js
 │   │   ├── DistImageServer/
-│   │   │   └── ... (0 dirs, 1 files omitted)
+│   │   │   └── image-server.js
 │   │   ├── FileOperator/
-│   │   │   └── ... (0 dirs, 2 files omitted)
+│   │   │   ├── CodeValidator.js
+│   │   │   └── FileOperator.js
 │   │   ├── LoomController/
-│   │   │   └── ... (0 dirs, 2 files omitted)
+│   │   │   ├── LoomControllerService.js
+│   │   │   └── LoomSkillService.js
 │   │   ├── MusicController/
-│   │   │   └── ... (0 dirs, 1 files omitted)
+│   │   │   └── music-controller.js
 │   │   ├── OldPowerShellExecutor/
-│   │   │   └── ... (0 dirs, 1 files omitted)
+│   │   │   └── PowerShellExecutor.js
 │   │   ├── PluginSourceViewer/
-│   │   │   └── ... (0 dirs, 1 files omitted)
+│   │   │   └── PluginSourceViewer.js
 │   │   ├── PowerShellExecutor/
-│   │   │   └── ... (0 dirs, 3 files omitted)
+│   │   │   ├── PowerShellExecutor.js
+│   │   │   ├── test_interactive_sequence.js
+│   │   │   └── test_security_check.js
 │   │   ├── ProjectForge/
-│   │   │   └── ... (0 dirs, 9 files omitted)
+│   │   │   ├── args.js
+│   │   │   ├── engine.js
+│   │   │   ├── indexerClient.js
+│   │   │   ├── linkGraph.js
+│   │   │   ├── ProjectForgeService.js
+│   │   │   ├── store.js
+│   │   │   ├── symbolResolver.js
+│   │   │   ├── tickets.js
+│   │   │   └── workspace.js
 │   │   ├── PromptSponsor/
-│   │   │   └── ... (0 dirs, 2 files omitted)
+│   │   │   ├── prompt-sponsor-service.js
+│   │   │   └── prompt-sponsor.js
 │   │   ├── PTYShellExecutor/
-│   │   │   └── ... (0 dirs, 5 files omitted)
+│   │   │   ├── PluginErrorReporter.js
+│   │   │   ├── PTYShellExecutor.impl.js
+│   │   │   ├── PTYShellExecutor.js
+│   │   │   ├── ShellOutputPipeline.js
+│   │   │   └── ShellThemeBridge.js
 │   │   ├── ScreenPilot/
-│   │   │   └── ... (0 dirs, 1 files omitted)
+│   │   │   └── ScreenPilotService.js
 │   │   ├── ScriptoriumCollaborator/
-│   │   │   └── ... (0 dirs, 1 files omitted)
+│   │   │   └── ScriptoriumCollaboratorService.js
 │   │   ├── TopicMemo/
-│   │   │   └── ... (0 dirs, 1 files omitted)
+│   │   │   └── TopicMemo.js
 │   │   ├── TopicSponsor/
-│   │   │   └── ... (0 dirs, 2 files omitted)
+│   │   │   ├── topicsponsor-service.js
+│   │   │   └── topicsponsor.js
 │   │   ├── VChatAutoTTS/
-│   │   │   └── ... (0 dirs, 2 files omitted)
+│   │   │   ├── plugin.css
+│   │   │   └── plugin.js
 │   │   ├── VChatDynamicWallpaper/
-│   │   │   └── ... (0 dirs, 2 files omitted)
+│   │   │   ├── plugin.css
+│   │   │   └── plugin.js
 │   │   ├── VCPEverything/
-│   │   │   └── ... (0 dirs, 1 files omitted)
+│   │   │   └── local-search-controller.js
 │   │   ├── VCPMobileSync/
-│   │   │   └── ... (0 dirs, 3 files omitted)
+│   │   │   ├── error-contract.js
+│   │   │   ├── index.js
+│   │   │   └── protocol.js
 │   │   ├── VCPSuperDice/
-│   │   │   └── ... (0 dirs, 3 files omitted)
+│   │   │   ├── example style.css
+│   │   │   ├── example.js
+│   │   │   └── superdice.js
 │   │   ├── VCPWEWallpaper/
-│   │   │   └── ... (0 dirs, 1 files omitted)
+│   │   │   └── we-wallpaper-service.js
 │   │   ├── VCPWEWallpaperUI/
-│   │   │   └── ... (0 dirs, 2 files omitted)
+│   │   │   ├── plugin.css
+│   │   │   └── plugin.js
 │   │   └── WindowSensor/
-│   │       └── ... (0 dirs, 1 files omitted)
+│   │       └── sensor-wrapper.js
 │   ├── shared/
 │   │   └── fileKit/
-│   │       └── ... (0 dirs, 7 files omitted)
+│   │       ├── diff.js
+│   │       ├── index.js
+│   │       ├── output.js
+│   │       ├── paths.js
+│   │       ├── reader.js
+│   │       ├── text.js
+│   │       └── validator.js
 │   ├── frontend-plugin-loader.js
 │   ├── Plugin.js
 │   └── VCPDistributedServer.js
@@ -879,12 +1005,15 @@ VCPChat/
 │   │   └── PathResolver.js
 │   ├── renderer_modules/
 │   │   ├── ui/
-│   │   │   └── ... (0 dirs, 3 files omitted)
+│   │   │   ├── canvas-editor.js
+│   │   │   ├── canvas-handler.js
+│   │   │   └── dynamic-image-handler.js
 │   │   ├── config.js
 │   │   └── tool-manager.js
 │   ├── WorkflowEditormodules/
 │   │   ├── ai/
-│   │   │   └── ... (0 dirs, 2 files omitted)
+│   │   │   ├── AiClientFactory.js
+│   │   │   └── HttpAiClient.js
 │   │   ├── jsplumb.min.js
 │   │   ├── workflow-editor.css
 │   │   ├── WorkflowEditor_ApiConfigDialog.css
