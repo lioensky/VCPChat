@@ -97,8 +97,10 @@
         // ====================== Popover ======================
         async togglePopover(anchorEl) {
             if (this.popoverEl) {
+                const sameAnchor = !anchorEl || anchorEl === this.popoverAnchorEl;
                 this.hidePopover();
-                return;
+                // 同一入口再次触发 = 关闭；换了入口（加号 ↔ 发送按钮）则在新的一侧重新打开
+                if (sameAnchor) return;
             }
             await this.loadStore();
             this.showPopover(anchorEl);
@@ -181,15 +183,25 @@
             const popover = this.popoverEl;
             const viewportMargin = 8;
             const composerGap = 4;
+            // 半宽模式下的最小宽度，避免窄窗口里标签被挤没
+            const minHalfWidth = 320;
             const composer = anchorEl?.closest('.chat-input-card') || anchorEl;
             const rect = composer?.getBoundingClientRect();
             if (rect) {
-                const width = Math.min(rect.width, window.innerWidth - viewportMargin * 2);
+                // 根据触发按钮位于输入框的左/右半边，决定浮窗贴左还是贴右
+                const anchorRect = anchorEl?.getBoundingClientRect();
+                const alignRight = !!anchorRect
+                    && (anchorRect.left + anchorRect.width / 2) > (rect.left + rect.width / 2);
+                popover.classList.toggle('tavern-popover--right', alignRight);
+
+                const maxWidth = Math.min(rect.width, window.innerWidth - viewportMargin * 2);
+                const width = Math.min(maxWidth, Math.max(minHalfWidth, rect.width / 2));
                 const availableHeight = Math.max(80, rect.top - viewportMargin - composerGap);
                 popover.style.width = `${width}px`;
                 popover.style.maxHeight = `${availableHeight}px`;
                 const top = Math.max(viewportMargin, rect.top - popover.offsetHeight - composerGap);
-                const left = Math.max(viewportMargin, Math.min(rect.left, window.innerWidth - width - viewportMargin));
+                const preferredLeft = alignRight ? rect.right - width : rect.left;
+                const left = Math.max(viewportMargin, Math.min(preferredLeft, window.innerWidth - width - viewportMargin));
                 popover.style.top = `${top}px`;
                 popover.style.left = `${left}px`;
             } else {

@@ -20,6 +20,11 @@
     animation: tavern-popover-enter 100ms ease-out;
 }
 
+/* 由输入框右侧按钮（发送按钮右键）打开时，贴右对齐，动画从右下角展开 */
+.tavern-popover.tavern-popover--right {
+    transform-origin: bottom right;
+}
+
 @keyframes tavern-popover-enter {
     from { opacity: 0; transform: scale(0.98); }
     to { opacity: 1; transform: scale(1); }
