@@ -9,6 +9,24 @@ import { createStreamProjection } from '../modules/renderer/streamManager.js';
 import { createStreamTransientHistory } from '../modules/chat/streamTransientHistory.js';
 import { createTtsSurfaceOwner } from '../modules/renderer/ttsSurfaceOwner.js';
 import { createSingleChatRequestOrchestrator } from '../modules/chat/singleChatRequestOrchestrator.js';
+import { collectClosedToolResultRanges } from '../modules/renderer/toolResultRegions.js';
+
+/**
+ * 嵌套感知地剥离完整工具结果块（与主渲染器同一配对规则）。
+ * 工具结果内部成对出现的字面量起止标记被整体包含在外层块中，不会在第一个内层结束标记处截断。
+ */
+function stripToolResultsNested(text) {
+    const ranges = collectClosedToolResultRanges(text);
+    if (ranges.length === 0) return text;
+
+    let result = '';
+    let cursor = 0;
+    for (const range of ranges) {
+        result += text.slice(cursor, range.start);
+        cursor = range.end;
+    }
+    return result + text.slice(cursor);
+}
 
 const streamManager = createStreamProjection();
 const messageRenderer = createMessageRenderer({ streamManager });
@@ -521,11 +539,11 @@ document.addEventListener('DOMContentLoaded', () => {
             '[data-vcp-block-type], .vcp-tool-use-bubble, .vcp-tool-result-bubble, .vcp-tool-call-summary-bubble, .vcp-flowlock-bubble, .maid-diary-bubble, .maid-diary-update-bubble, .vcp-role-divider, .vcp-thought-chain-bubble, .highlighted-tag, .highlighted-alert-tag, style, script'
         ).forEach(el => el.remove());
 
-        return (contentClone.innerText || contentClone.textContent || '')
-            // 最终 DOM 理论上已将完整工具协议转换为气泡；以下规则覆盖异常
-            // 历史 DOM 或边界粘连后仍残留为纯文本的完整协议块。
+        // 最终 DOM 理论上已将完整工具协议转换为气泡；以下规则覆盖异常
+        // 历史 DOM 或边界粘连后仍残留为纯文本的完整协议块。
+        // 工具结果优先级最高且嵌套感知，最先整体剥离，其内部的工具请求字面量随之移除。
+        return stripToolResultsNested(contentClone.innerText || contentClone.textContent || '')
             .replace(/<<<\[TOOL_REQUEST\]>>>[\s\S]*?<{2,4}\[END_TOOL_REQUEST\]>{2,4}/gi, '')
-            .replace(/\[\[VCP调用结果信息汇总:[\s\S]*?VCP调用结果结束\]\]/gi, '')
             .replace(/\[本轮工具调用摘要:\][\s\S]*?\[本轮工具调用摘要结束\]/gi, '')
             .replace(/<<<\[(?:END_)?ROLE_DIVIDE_(?:SYSTEM|ASSISTANT|USER)\]>>>/gi, '')
             .replace(/@!?[\u4e00-\u9fa5A-Za-z0-9_]+/g, '')

@@ -35,6 +35,35 @@
         }
     }
 
+    /**
+     * 嵌套感知地查找工具结果结束位置（与 modules/renderer/toolResultRegions.js 同一规则）。
+     * 起始标记深度 +1，结束标记深度 -1，深度回到 0 时外层工具结果才闭合。
+     * 工具结果内部成对出现的字面量标记（例如读取渲染器源码）被整体包含在外层块中。
+     * 未闭合时延伸到文末，与原有“未闭合块遮蔽到流尾”的语义一致。
+     */
+    function findToolResultEnd(text, contentStart) {
+        let depth = 1;
+        let cursor = contentStart;
+
+        while (cursor < text.length) {
+            const nextEnd = text.indexOf(TOKENS.toolResultEnd, cursor);
+            if (nextEnd === -1) return text.length;
+
+            const nextStart = text.indexOf(TOKENS.toolResultStart, cursor);
+            if (nextStart !== -1 && nextStart < nextEnd) {
+                depth += 1;
+                cursor = nextStart + TOKENS.toolResultStart.length;
+                continue;
+            }
+
+            depth -= 1;
+            cursor = nextEnd + TOKENS.toolResultEnd.length;
+            if (depth === 0) return cursor;
+        }
+
+        return text.length;
+    }
+
     function findToolRequestEnd(text, contentStart) {
         let cursor = contentStart;
 
@@ -161,15 +190,20 @@
     function createSafeScanText(text) {
         const chars = text.split('');
 
-        // 工具结果优先级最高：其内部允许包含任意协议、代码和标记。
-        maskDelimitedBlocks(text, chars, TOKENS.toolResultStart, TOKENS.toolResultEnd);
-        maskDelimitedBlocks(text, chars, TOKENS.toolRequestStart, TOKENS.toolRequestEnd, findToolRequestEnd);
-        maskToolCallSummaries(text, chars);
-        maskDelimitedBlocks(text, chars, TOKENS.desktopStart, TOKENS.desktopEnd);
-        maskDelimitedBlocks(text, chars, TOKENS.thoughtStart, TOKENS.thoughtEnd);
-        maskConventionalThoughts(text, chars);
-        maskCodeFences(text, chars);
-        maskInlineCode(text, chars);
+        // 工具结果优先级最高：其内部允许包含任意协议、代码和标记（嵌套感知配对）。
+        maskDelimitedBlocks(text, chars, TOKENS.toolResultStart, TOKENS.toolResultEnd, findToolResultEnd);
+
+        // 后续扫描一律读取“工具结果已遮蔽”的文本（等长、保留换行，偏移不变）。
+        // 否则工具数据里的 TOOL_REQUEST / DESKTOP_PUSH / 思维链 / 反引号会从工具结果内部
+        // 开启一个块并越过工具结果边界，遮蔽其后真实的 Flowlock 指令。
+        const scanText = chars.join('');
+        maskDelimitedBlocks(scanText, chars, TOKENS.toolRequestStart, TOKENS.toolRequestEnd, findToolRequestEnd);
+        maskToolCallSummaries(scanText, chars);
+        maskDelimitedBlocks(scanText, chars, TOKENS.desktopStart, TOKENS.desktopEnd);
+        maskDelimitedBlocks(scanText, chars, TOKENS.thoughtStart, TOKENS.thoughtEnd);
+        maskConventionalThoughts(scanText, chars);
+        maskCodeFences(scanText, chars);
+        maskInlineCode(scanText, chars);
 
         return chars.join('');
     }

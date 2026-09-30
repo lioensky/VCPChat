@@ -17,6 +17,10 @@ import {
     replaceToolRequestBlocks
 } from './renderer/toolRequestScanner.js';
 import { replaceMarkdownCodeDomains } from './renderer/markdownCodeDomainScanner.js';
+import {
+    collectToolResultRanges,
+    collectClosedToolResultRanges,
+} from './renderer/toolResultRegions.js';
 import { parseJevToolUse } from './renderer/jevToolUse.js';
 
 import { createContentProcessor } from './renderer/contentProcessor.js';
@@ -380,6 +384,17 @@ const TOOL_RESULT_SAFE_MARKDOWN_OPTIONS = Object.freeze({
     mangle: false,
     headerIds: false
 });
+
+/** 按区间替换工具结果；replacer 返回替换文本。区间须按源码顺序且互不重叠。 */
+function replaceToolResultRanges(text, ranges, replacer) {
+    let result = '';
+    let cursor = 0;
+    for (const range of ranges) {
+        result += text.slice(cursor, range.start) + replacer(text.slice(range.start, range.end), range);
+        cursor = range.end;
+    }
+    return result + text.slice(cursor);
+}
 
 function containsAssistantHtmlNeedingScope(text) {
     return typeof text === 'string' && ASSISTANT_HTML_SCOPE_TRIGGER_REGEX.test(text);
@@ -1362,18 +1377,21 @@ function extractSpeakableTextFromContentElement(contentElement) {
 
     let speakableText = contentClone.innerText || contentClone.textContent || '';
 
-    // DOM 块删除是主路径；下面是协议文本残留的防御性兜底。工具请求扫描器
-    // 不依赖换行，支持“前文<<<[TOOL_REQUEST]>>>tool_name...结束标记后文”。
+    // DOM 块删除是主路径；下面是协议文本残留的防御性兜底。
+    // 工具结果优先级最高且嵌套感知，最先整体剥离；其内部的工具请求/推送标记随之移除。
+    // 工具请求扫描器不依赖换行，支持“前文<<<[TOOL_REQUEST]>>>tool_name...结束标记后文”。
     // 因此即使 Markdown 没有生成独立气泡，也不会把完整工具载荷送入 TTS。
+    const speakableToolResultRanges = collectClosedToolResultRanges(speakableText);
+    if (speakableToolResultRanges.length > 0) {
+        speakableText = replaceToolResultRanges(speakableText, speakableToolResultRanges, () => '');
+    }
     speakableText = replaceToolRequestBlocks(speakableText, () => '');
     speakableText = speakableText
-        .replace(TOOL_RESULT_REGEX, '')
         .replace(TOOL_CALL_SUMMARY_REGEX, '')
         .replace(ROLE_DIVIDER_REGEX, '')
         .replace(DESKTOP_PUSH_REGEX, '');
 
     // 上述正则是带 global 状态的共享常量，显式复位，避免后续渲染调用受影响。
-    TOOL_RESULT_REGEX.lastIndex = 0;
     TOOL_CALL_SUMMARY_REGEX.lastIndex = 0;
     ROLE_DIVIDER_REGEX.lastIndex = 0;
     DESKTOP_PUSH_REGEX.lastIndex = 0;
@@ -1493,26 +1511,29 @@ function processAssistantScopedHtmlContent(content, scopeId, messageItem = null,
     // 即使只是结构化 HTML / 内联 style，也会进入该路径以跳过 HTML 缓存并统一保护扫描。
     const protectedBlocks = [];
 
+    // 🔴 最高优先级：保护工具结果块（[[VCP调用结果信息汇总:...VCP调用结果结束]]），
+    // 包括流式中尚未闭合、延伸到流尾的工具结果。工具协议载荷属于不可信数据域，
+    // 不是可执行的 assistant HTML 岛；其中任意 style/script/HTML/注释都只是工具数据。
+    // 必须先于 HTML 注释保护：否则工具结果之前的 <!-- 可能与工具数据中的 --> 配对，
+    // 把起始标记吞进注释，使剩余载荷暴露给消息级 CSS 提取器。
+    const toolResultRanges = collectToolResultRanges(content);
+    let textWithProtectedBlocks = toolResultRanges.length > 0
+        ? replaceToolResultRanges(content, toolResultRanges, (match) => {
+            const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+            protectedBlocks.push(match);
+            return placeholder;
+        })
+        : content;
+
     // HTML 注释是字面量域。诸如
     // <!-- 子组件拥有独立的 <style> 标签 -->
     // 这样的说明不能让 STYLE_REGEX 从伪开始标签跨越吞到后续真实 </style>。
     // 未闭合注释在流式中同样拥有当前尾部，直到 --> 到达前不得产生 CSS 副作用。
-    let textWithProtectedBlocks = content.replace(/<!--[\s\S]*?(?:-->|$)/g, (match) => {
+    textWithProtectedBlocks = textWithProtectedBlocks.replace(/<!--[\s\S]*?(?:-->|$)/g, (match) => {
         const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
         protectedBlocks.push(match);
         return placeholder;
     });
-
-    // 🔴 最高优先级：保护完整工具结果块（[[VCP调用结果信息汇总:...VCP调用结果结束]]）。
-    // 工具协议载荷属于不可信数据域，不是可执行的 assistant HTML 岛；其中任意
-    // style/script/HTML 都只能作为工具数据处理，绝不能进入消息级 CSS 提取器。
-    TOOL_RESULT_REGEX.lastIndex = 0;
-    textWithProtectedBlocks = textWithProtectedBlocks.replace(TOOL_RESULT_REGEX, (match) => {
-        const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
-        protectedBlocks.push(match);
-        return placeholder;
-    });
-    TOOL_RESULT_REGEX.lastIndex = 0;
 
     // 🔴 保护完整工具请求块（<<<[TOOL_REQUEST]>>>...<<<[END_TOOL_REQUEST]>>>）。
     // 使用 ESCAPE 感知的扫描器，避免参数内容里的 END 标记导致工具块提前闭合。
@@ -2053,7 +2074,37 @@ function parseStreamTailMarkdown(text) {
     const markedInstance = mainRendererReferences.markedInstance;
     if (!markedInstance) return escapeHtml(text);
 
-    const processedText = preprocessStreamTailContent(text);
+    // 工具结果优先级最高：完整工具结果先于任何流式预处理与协议扫描封存为占位符，
+    // 其内部的 DESKTOP_PUSH / TOOL_REQUEST / <think> / 围栏等不能开启流尾隔离域，
+    // 也不会被 marked 按原始 Markdown/HTML 解释。流尾只做安全的转义预览；
+    // 规范气泡由稳定区或终态完整渲染生成（避免每帧登记大内容懒加载条目）。
+    const streamToolResults = new Map();
+    const closedToolResultRanges = collectClosedToolResultRanges(text);
+    const sourceText = closedToolResultRanges.length > 0
+        ? replaceToolResultRanges(text, closedToolResultRanges, (match) => {
+            const placeholder = `<!--VCP_STREAM_TOOL_RESULT_${streamToolResults.size}-->`;
+            streamToolResults.set(placeholder, match);
+            return `\n\n${placeholder}\n\n`;
+        })
+        : text;
+    const STREAM_TOOL_RESULT_PLACEHOLDER_REGEX = /<!--VCP_STREAM_TOOL_RESULT_\d+-->/g;
+    // HTML 输出：占位符 → 转义后的封印预览。
+    const restoreToolResultHtml = (html) => streamToolResults.size === 0 ? html : html.replace(
+        STREAM_TOOL_RESULT_PLACEHOLDER_REGEX,
+        (placeholder) => {
+            const raw = streamToolResults.get(placeholder);
+            return raw === undefined
+                ? placeholder
+                : `<pre class="vcp-stream-tool-result-sealed"><code>${escapeHtml(raw)}</code></pre>`;
+        }
+    );
+    // 将要被整体转义显示的源码：占位符 → 原文，避免把占位符本身显示给用户。
+    const restoreToolResultSource = (source) => streamToolResults.size === 0 ? source : source.replace(
+        STREAM_TOOL_RESULT_PLACEHOLDER_REGEX,
+        (placeholder) => streamToolResults.get(placeholder) ?? placeholder
+    );
+
+    const processedText = preprocessStreamTailContent(sourceText);
 
     // 工具请求、工具结果、桌面推送和思维链都属于流式隔离域。按源码中最早出现的入口决定
     // 封印边界，禁止后续协议扫描或 Markdown 原始 HTML 解释进入其不可信载荷。
@@ -2065,10 +2116,10 @@ function parseStreamTailMarkdown(text) {
 
     if (sealedBlock) {
         const prefixHtml = sealedBlock.prefix
-            ? markedInstance.parse(sealedBlock.prefix)
+            ? restoreToolResultHtml(markedInstance.parse(sealedBlock.prefix))
             : '';
         const isThoughtChain = sealedBlock === unclosedThoughtChain;
-        const sealedText = isThoughtChain ? sealedBlock.thought : sealedBlock.content;
+        const sealedText = restoreToolResultSource(isThoughtChain ? sealedBlock.thought : sealedBlock.content);
         let sealClass = 'vcp-stream-tool-request-sealed';
         if (isThoughtChain) {
             sealClass = 'vcp-stream-thought-chain-sealed';
@@ -2083,16 +2134,16 @@ function parseStreamTailMarkdown(text) {
     const unclosedFence = findUnclosedStreamCodeFence(processedText);
 
     if (!unclosedFence) {
-        return markedInstance.parse(processedText);
+        return restoreToolResultHtml(markedInstance.parse(processedText));
     }
 
     const prefixHtml = unclosedFence.prefix
-        ? markedInstance.parse(unclosedFence.prefix)
+        ? restoreToolResultHtml(markedInstance.parse(unclosedFence.prefix))
         : '';
     const languageClass = unclosedFence.language
         ? ` language-${escapeHtml(unclosedFence.language)}`
         : '';
-    const codeLines = unclosedFence.code.replace(/\r\n?/g, '\n').split('\n');
+    const codeLines = restoreToolResultSource(unclosedFence.code).replace(/\r\n?/g, '\n').split('\n');
     const completedLineCount = Math.max(0, codeLines.length - 1);
     const lineHtml = codeLines.map((lineText, lineIndex) => {
         const escapedLine = lineText ? escapeHtml(lineText) : '&#8203;';
@@ -2369,18 +2420,17 @@ function removeToolResultFromMessage(messageItem, ordinal, hash) {
         return false;
     }
 
-    const matches = [];
-    TOOL_RESULT_REGEX.lastIndex = 0;
-    let match;
-    while ((match = TOOL_RESULT_REGEX.exec(content)) !== null) {
-        matches.push({
-            start: match.index,
-            end: match.index + match[0].length,
-            ordinal: matches.length,
-            hash: hashStringFNV1a(match[0])
-        });
-    }
-    TOOL_RESULT_REGEX.lastIndex = 0;
+    // 与渲染占位符（contentPipeline.protectToolResults）使用同一嵌套感知配对，
+    // 保证气泡上的序号/哈希能精确对应原文中的最外层工具结果块。
+    const matches = collectClosedToolResultRanges(content).map((range, index) => {
+        const raw = content.slice(range.start, range.end);
+        return {
+            start: range.start,
+            end: range.end,
+            ordinal: index,
+            hash: hashStringFNV1a(raw)
+        };
+    });
 
     let target = null;
     const hashMatches = hash ? matches.filter(item => item.hash === hash) : [];

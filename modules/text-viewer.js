@@ -1,5 +1,10 @@
 import { createEmoticonUrlFixer } from './renderer/emoticonUrlFixer.js';
 import { replaceMarkdownCodeDomains } from './renderer/markdownCodeDomainScanner.js';
+import {
+    TOOL_RESULT_START_MARKER,
+    TOOL_RESULT_END_MARKER,
+    collectClosedToolResultRanges,
+} from './renderer/toolResultRegions.js';
 import { parseJevToolUse } from './renderer/jevToolUse.js';
 import { domToCanvas, domToBlob } from '../vendor/modern-screenshot.js';
 
@@ -299,9 +304,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         return result;
     };
 
+    /**
+     * 嵌套感知地替换工具结果块（与主渲染器 toolResultRegions 同一配对规则）。
+     * 工具结果内部成对出现的字面量起止标记（例如读取渲染器源码）被整体包含在外层块中，
+     * 不会在第一个内层结束标记处截断。回调签名与原 String#replace 保持一致：(match, rawContent)。
+     */
+    const replaceToolResultsNested = (source, replacer) => {
+        const ranges = collectClosedToolResultRanges(source);
+        if (ranges.length === 0) return source;
+
+        let result = '';
+        let cursor = 0;
+        for (const range of ranges) {
+            const match = source.slice(range.start, range.end);
+            const rawContent = match.slice(
+                TOOL_RESULT_START_MARKER.length,
+                match.length - TOOL_RESULT_END_MARKER.length
+            );
+            result += source.slice(cursor, range.start) + replacer(match, rawContent);
+            cursor = range.end;
+        }
+        return result + source.slice(cursor);
+    };
+
     function transformSpecialBlocksForViewer(text, restoreCodeDomains = (value) => value) {
         const noteRegex = /<<<DailyNoteStart>>>(.*?)<<<DailyNoteEnd>>>/gs;
-        const toolResultRegex = /\[\[VCP调用结果信息汇总:(.*?)VCP调用结果结束\]\]/gs;
         const toolCallSummaryRegex = /\[本轮工具调用摘要:\]([\s\S]*?)\[本轮工具调用摘要结束\]/g;
         const thoughtChainRegex = /^[ \t]*\[--- VCP元思考链(?::\s*"([^"]*)")?\s*---\][ \t]*\r?\n([\s\S]*?)^[ \t]*\[--- 元思考链结束 ---\][ \t]*(?:\r?\n|$)/gm;
         const conventionalThoughtRegex = /^[ \t]*<think(?:ing)?>[ \t]*\r?\n([\s\S]*?)^[ \t]*<\/think(?:ing)?>[ \t]*(?:\r?\n|$)/gim;
@@ -540,7 +567,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
 
         // Process VCP Tool Results - Viewer Mode (Full Details)
-        processed = processed.replace(toolResultRegex, (match, rawContent) => {
+        // 嵌套感知配对，避免工具结果内的字面量标记截断外层块。
+        processed = replaceToolResultsNested(processed, (match, rawContent) => {
             const content = rawContent.trim();
             const lines = content.split('\n');
             const markdownFieldKeys = new Set(['返回内容', '内容', 'Result', '返回结果', 'output']);

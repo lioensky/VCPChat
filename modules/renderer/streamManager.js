@@ -4,7 +4,13 @@ import { createContentPipeline, PIPELINE_MODES } from './contentPipeline.js';
 import { createContentRuntime } from '../chat/contentRuntime.js';
 import { createDesktopPushConsumer } from './desktopPushConsumer.js';
 import { createStreamProjectionRuntime } from './streamProjectionRuntime.js';
-import { collectMarkdownCodeDomains } from './markdownCodeDomainScanner.js';
+import {
+    collectToolResultRanges,
+    collectCodeDomainsOutsideToolResults,
+    findToolResultEnd,
+    findToolResultRangeAt,
+    indexOfOutsideToolResults,
+} from './toolResultRegions.js';
 
 /** Creates one DOM stream projection owner for one renderer Surface. */
 export function createStreamProjection() {
@@ -464,8 +470,11 @@ function getOrCreateStreamSegmentState(messageId) {
             stableBlockSeq: 0,
             lastTailText: '',
             lastParagraphBoundary: 0,
-            // 高级匀速流式的工具结果区间追踪：未闭合 VCPToolResult 起始标记的源码偏移，-1 表示不在区间内。
-            toolResultOpenAt: -1
+            // 高级匀速流式的工具结果区间追踪（嵌套感知）：
+            // toolResultDepth 为当前未闭合工具结果的嵌套深度，0 表示不在区间内；
+            // toolResultScannedTo 为已计数标记的末尾偏移，防止回看窗口重复计数同一标记。
+            toolResultDepth: 0,
+            toolResultScannedTo: 0
         };
         streamSegmentStates.set(messageId, state);
     }
@@ -677,9 +686,18 @@ function findDisplayMathBlockEnd(text, startIndex, openDelimiter, closeDelimiter
     return -1;
 }
 
-function findLineDelimitedBlockEnd(text, startIndex, endRegex) {
+/**
+ * 查找行级结束标记。落在工具结果区间内的命中只是工具数据，跳过整个区间继续查找，
+ * 避免工具结果里的同名结束行提前闭合外层思维链。
+ */
+function findLineDelimitedBlockEnd(text, startIndex, endRegex, toolResultRanges = null) {
     endRegex.lastIndex = startIndex;
-    const match = endRegex.exec(text);
+    let match;
+    while ((match = endRegex.exec(text)) !== null) {
+        const range = findToolResultRangeAt(match.index, toolResultRanges);
+        if (!range) break;
+        endRegex.lastIndex = range.end;
+    }
     endRegex.lastIndex = 0;
     return match ? match.index + match[0].length : -1;
 }
@@ -691,16 +709,16 @@ function findLineDelimitedBlockStart(text, startIndex, startRegex) {
     return match ? match.index : -1;
 }
 
-function findConventionalThinkEnd(text, startIndex) {
-    return findLineDelimitedBlockEnd(text, startIndex, THINK_END_REGEX);
+function findConventionalThinkEnd(text, startIndex, toolResultRanges = null) {
+    return findLineDelimitedBlockEnd(text, startIndex, THINK_END_REGEX, toolResultRanges);
 }
 
 function findConventionalThinkStart(text, startIndex) {
     return findLineDelimitedBlockStart(text, startIndex, THINK_START_REGEX);
 }
 
-function findThoughtChainEnd(text, startIndex) {
-    return findLineDelimitedBlockEnd(text, startIndex, THOUGHT_CHAIN_END_LINE_REGEX);
+function findThoughtChainEnd(text, startIndex, toolResultRanges = null) {
+    return findLineDelimitedBlockEnd(text, startIndex, THOUGHT_CHAIN_END_LINE_REGEX, toolResultRanges);
 }
 
 function findThoughtChainStart(text, startIndex) {
@@ -995,7 +1013,7 @@ function findToolRequestBlockEnd(text, startIndex) {
     return endIndex === -1 ? -1 : endIndex + TOOL_REQUEST_END.length;
 }
 
-function findRoleDividerSectionEnd(text, startIndex) {
+function findRoleDividerSectionEnd(text, startIndex, toolResultRanges = null) {
     ROLE_DIVIDER_REGEX.lastIndex = startIndex;
     const startMatch = ROLE_DIVIDER_REGEX.exec(text);
     ROLE_DIVIDER_REGEX.lastIndex = 0;
@@ -1006,7 +1024,7 @@ function findRoleDividerSectionEnd(text, startIndex) {
 
     const role = startMatch[2];
     const endToken = `<<<[END_ROLE_DIVIDE_${role}]>>>`;
-    const endIndex = text.indexOf(endToken, startIndex + startMatch[0].length);
+    const endIndex = indexOfOutsideToolResults(text, endToken, startIndex + startMatch[0].length, toolResultRanges);
     return endIndex === -1 ? -1 : endIndex + endToken.length;
 }
 
@@ -1015,7 +1033,11 @@ function findExplicitStablePrefix(text, startOffset = 0) {
     let stableCutoff = startOffset;
     let paragraphFloor = startOffset;
     let blockedByUnclosedExplicitBlock = false;
-    const codeDomains = collectMarkdownCodeDomains(text, {
+    // 工具结果是最高优先级的数据域：代码域收集前先遮蔽工具结果，
+    // 其中孤立的反引号/围栏不会生成延伸到文末的未闭合代码域而永久冻结稳定区；
+    // 外层块查找结束标记时也跳过工具结果内的同名标记。
+    const toolResultRanges = collectToolResultRanges(text);
+    const codeDomains = collectCodeDomainsOutsideToolResults(text, toolResultRanges, {
         includeUnclosedInline: true,
     });
     let codeDomainIndex = 0;
@@ -1097,19 +1119,20 @@ function findExplicitStablePrefix(text, startOffset = 0) {
         }
 
         if (startsWithAt(text, index, TOOL_RESULT_START)) {
-            const endIndex = text.indexOf(TOOL_RESULT_END, index + TOOL_RESULT_START.length);
-            if (endIndex === -1) {
+            // 嵌套感知：内层成对的字面量标记不会在第一个结束标记处截断外层工具结果。
+            const toolResultEnd = findToolResultEnd(text, index);
+            if (toolResultEnd === -1) {
                 blockedByUnclosedExplicitBlock = true;
                 break;
             }
-            stableCutoff = endIndex + TOOL_RESULT_END.length;
+            stableCutoff = toolResultEnd;
             paragraphFloor = stableCutoff;
             index = stableCutoff;
             continue;
         }
 
         if (startsWithAt(text, index, TOOL_CALL_SUMMARY_START)) {
-            const endIndex = text.indexOf(TOOL_CALL_SUMMARY_END, index + TOOL_CALL_SUMMARY_START.length);
+            const endIndex = indexOfOutsideToolResults(text, TOOL_CALL_SUMMARY_END, index + TOOL_CALL_SUMMARY_START.length, toolResultRanges);
             if (endIndex === -1) {
                 blockedByUnclosedExplicitBlock = true;
                 break;
@@ -1121,7 +1144,7 @@ function findExplicitStablePrefix(text, startOffset = 0) {
         }
 
         if (startsWithAt(text, index, '<<<[ROLE_DIVIDE_')) {
-            const sectionEnd = findRoleDividerSectionEnd(text, index);
+            const sectionEnd = findRoleDividerSectionEnd(text, index, toolResultRanges);
             if (sectionEnd === -1) {
                 blockedByUnclosedExplicitBlock = true;
                 break;
@@ -1133,7 +1156,7 @@ function findExplicitStablePrefix(text, startOffset = 0) {
         }
 
         if (startsWithAt(text, index, DESKTOP_PUSH_START)) {
-            const endIndex = text.indexOf(DESKTOP_PUSH_END, index + DESKTOP_PUSH_START.length);
+            const endIndex = indexOfOutsideToolResults(text, DESKTOP_PUSH_END, index + DESKTOP_PUSH_START.length, toolResultRanges);
             if (endIndex === -1) {
                 blockedByUnclosedExplicitBlock = true;
                 break;
@@ -1146,7 +1169,7 @@ function findExplicitStablePrefix(text, startOffset = 0) {
 
         const thoughtChainStart = findThoughtChainStart(text, index);
         if (thoughtChainStart === index) {
-            const thoughtChainEnd = findThoughtChainEnd(text, index);
+            const thoughtChainEnd = findThoughtChainEnd(text, index, toolResultRanges);
             if (thoughtChainEnd === -1) {
                 blockedByUnclosedExplicitBlock = true;
                 break;
@@ -1158,7 +1181,7 @@ function findExplicitStablePrefix(text, startOffset = 0) {
         }
 
         if (startsWithAt(text, index, DAILY_NOTE_START)) {
-            const endIndex = text.indexOf(DAILY_NOTE_END, index + DAILY_NOTE_START.length);
+            const endIndex = indexOfOutsideToolResults(text, DAILY_NOTE_END, index + DAILY_NOTE_START.length, toolResultRanges);
             if (endIndex === -1) {
                 blockedByUnclosedExplicitBlock = true;
                 break;
@@ -1182,7 +1205,7 @@ function findExplicitStablePrefix(text, startOffset = 0) {
 
         const thinkStart = findConventionalThinkStart(text, index);
         if (thinkStart === index) {
-            const thinkEnd = findConventionalThinkEnd(text, index);
+            const thinkEnd = findConventionalThinkEnd(text, index, toolResultRanges);
             if (thinkEnd === -1) {
                 blockedByUnclosedExplicitBlock = true;
                 break;
@@ -2190,29 +2213,33 @@ const TOOL_RESULT_MARKER_OVERLAP = Math.max(TOOL_RESULT_START.length, TOOL_RESUL
  * 增量追踪工具结果区间，返回本 chunk 是否落在某个工具结果内（含开启与闭合它的 chunk）。
  * 工具结果可能被后端分成多个网络写入，尾片可能很小；只看单块长度或单块是否含起始标记，
  * 会让尾片重新进入匀速队列。每次只扫描新增文本及标记长度的回看窗口，整体 O(n)。
+ *
+ * 嵌套感知（与 findToolResultEnd 同一规则）：起始标记深度 +1，结束标记深度 -1，
+ * 深度回到 0 才离开区间；深度为 0 时的孤立结束标记忽略。
  */
 function trackToolResultRegion(messageId, accumulatedText, chunkLength) {
     const segmentState = getOrCreateStreamSegmentState(messageId);
     const previousLength = accumulatedText.length - chunkLength;
-    let touched = segmentState.toolResultOpenAt !== -1;
-    let cursor = Math.max(0, previousLength - TOOL_RESULT_MARKER_OVERLAP);
+    let touched = segmentState.toolResultDepth > 0;
+    // 回看窗口捕获跨分片的标记；已计数的标记末尾之前不再扫描，避免重复计数。
+    let cursor = Math.max(0, segmentState.toolResultScannedTo, previousLength - TOOL_RESULT_MARKER_OVERLAP);
 
     while (cursor < accumulatedText.length) {
-        if (segmentState.toolResultOpenAt !== -1) {
-            const endIndex = accumulatedText.indexOf(
-                TOOL_RESULT_END,
-                Math.max(cursor, segmentState.toolResultOpenAt + TOOL_RESULT_START.length)
-            );
-            if (endIndex === -1) break;
-            segmentState.toolResultOpenAt = -1;
-            cursor = endIndex + TOOL_RESULT_END.length;
-        } else {
-            const startIndex = accumulatedText.indexOf(TOOL_RESULT_START, cursor);
-            if (startIndex === -1) break;
-            segmentState.toolResultOpenAt = startIndex;
+        const nextStart = accumulatedText.indexOf(TOOL_RESULT_START, cursor);
+        const nextEnd = segmentState.toolResultDepth > 0
+            ? accumulatedText.indexOf(TOOL_RESULT_END, cursor)
+            : -1;
+        if (nextStart === -1 && nextEnd === -1) break;
+
+        if (nextStart !== -1 && (nextEnd === -1 || nextStart < nextEnd)) {
+            segmentState.toolResultDepth += 1;
             touched = true;
-            cursor = startIndex + TOOL_RESULT_START.length;
+            cursor = nextStart + TOOL_RESULT_START.length;
+        } else {
+            segmentState.toolResultDepth -= 1;
+            cursor = nextEnd + TOOL_RESULT_END.length;
         }
+        segmentState.toolResultScannedTo = cursor;
     }
 
     return touched;
@@ -2247,11 +2274,10 @@ function flushSmoothQueueForBurst(messageId, queue) {
  * VCPdesktop 流式推送处理器
  * 在token流中拦截 <<<[DESKTOP_PUSH]>>> 语法，实时转发到桌面画布
  *
- * 注意：工具调用结果块 ([[VCP调用结果信息汇总:...VCP调用结果结束]]) 内部的
- * DESKTOP_PUSH 语法不需要在这里保护，因为：
- * 1. 工具调用结果是后端一次性拼接到消息中的，不是AI逐token流式生成的
- * 2. preprocessFullContent 中已经通过 toolResultMap 保护了工具结果块
- * 3. 在逐字符级别做工具结果块检测会与推送标签检测产生字符竞争bug
+ * 工具调用结果块 ([[VCP调用结果信息汇总:...VCP调用结果结束]]) 优先级高于推送语法：
+ * 工具读取的文件/网页可能恰好包含推送标签，它们只是数据，不能真的推送到桌面。
+ * desktopPushConsumer 以滑动窗口追踪工具结果区间（可跨网络分片），区间内不识别推送标签。
+ * 两种标记首字符不同（`[` vs `<`），不会与推送标签前缀缓冲产生字符竞争。
  */
 function processDesktopPushToken(messageId, textToAppend) {
     return desktopPushConsumer?.processToken(messageId, textToAppend) ?? textToAppend;

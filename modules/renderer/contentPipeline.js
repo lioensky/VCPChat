@@ -15,6 +15,12 @@
 
 import { PIPELINE_MODES } from '../chat/contentModes.js';
 import { replaceMarkdownCodeDomains } from './markdownCodeDomainScanner.js';
+import {
+    collectToolResultRanges,
+    collectClosedToolResultRanges,
+    maskToolResults,
+    transformOutsideToolResults,
+} from './toolResultRegions.js';
 
 function noop(value) {
     return value;
@@ -50,6 +56,13 @@ function findPersonaJsonEnd(text, startIndex) {
 }
 
 function stripPersonaBackfillTail(text) {
+    if (!text || text.indexOf('persona_') === -1) return text;
+    // 工具结果是权威数据域：其中出现的 persona 注释只是数据，不能被剥离；
+    // 工具结果之前的半截回填也只能剥到工具结果边界，不得吞掉整个工具结果。
+    return transformOutsideToolResults(text, stripPersonaBackfillSegment);
+}
+
+function stripPersonaBackfillSegment(text) {
     if (!text || text.indexOf('persona_') === -1) return text;
     let result = '';
     let cursor = 0;
@@ -200,6 +213,23 @@ function createContentPipeline(deps = {}) {
 
         ctx.state.thoughtChainMap = new Map();
 
+        // 工具结果优先级高于思维链：先以等长空白遮蔽（保持偏移与换行），
+        // 其内部的 <think> / 元思考链 / 围栏都不参与扫描；并以工具结果为硬边界，
+        // 跨越工具结果的思维链视为未闭合，不得把工具结果吞进思维链渲染域。
+        const toolResultRanges = collectToolResultRanges(text);
+        const scanText = maskToolResults(text, toolResultRanges);
+        let toolResultCursor = 0;
+        const lineOverlapsToolResult = (lineStart, lineEnd) => {
+            while (
+                toolResultCursor < toolResultRanges.length
+                && toolResultRanges[toolResultCursor].end <= lineStart
+            ) {
+                toolResultCursor += 1;
+            }
+            const range = toolResultRanges[toolResultCursor];
+            return !!range && range.start < lineEnd;
+        };
+
         // 使用围栏感知的逐行扫描器，避免把 Markdown 代码块中用于说明协议的
         // <think> 或 VCP 元思考链示例误识别为真实思维链。
         const lineRegex = /.*(?:\r\n|\n|\r|$)/g;
@@ -208,9 +238,14 @@ function createContentPipeline(deps = {}) {
         let activeThought = null;
         let lineMatch;
 
-        while ((lineMatch = lineRegex.exec(text)) !== null) {
+        while ((lineMatch = lineRegex.exec(scanText)) !== null) {
             const line = lineMatch[0];
-            if (line === '' && lineMatch.index === text.length) break;
+            if (line === '' && lineMatch.index === scanText.length) break;
+
+            if (toolResultRanges.length > 0 && lineOverlapsToolResult(lineMatch.index, lineMatch.index + line.length)) {
+                activeThought = null;
+                continue;
+            }
 
             const lineWithoutEnding = line.replace(/\r\n|\n|\r$/, '');
             const fenceMatch = lineWithoutEnding.match(/^[ \t]{0,3}(`{3,}|~{3,})(.*)$/);
@@ -289,27 +324,29 @@ function createContentPipeline(deps = {}) {
     }
 
     function protectToolResults(text, ctx) {
-        const toolResultRegex = typeof getToolResultRegex === 'function' ? getToolResultRegex() : null;
-        if (!toolResultRegex) return text;
+        // 未注入工具结果能力的流水线不做保护（保持原有依赖注入契约）。
+        if (typeof getToolResultRegex !== 'function') return text;
 
-        toolResultRegex.lastIndex = 0;
-        const hasToolResults = toolResultRegex.test(text);
-        toolResultRegex.lastIndex = 0;
-
-        if (!hasToolResults) return text;
+        // 嵌套感知配对：工具结果内部成对出现的字面量起止标记（例如读取渲染器源码）
+        // 被整体包含在最外层工具结果中，不会在第一个内层结束标记处截断。
+        // 占位符序号与删除功能（removeToolResultFromMessage）使用同一配对规则，保持一致。
+        const ranges = collectClosedToolResultRanges(text);
+        if (ranges.length === 0) return text;
 
         ctx.state.toolResultMap = new Map();
-        const result = text.replace(toolResultRegex, (match) => {
+        let result = '';
+        let cursor = 0;
+        for (const range of ranges) {
             // 🟢 架构级修复：工具结果块保持原始内容不做任何转义
             // 占位符将贯穿整个 Markdown 解析过程，在 parse() 之后才恢复为渲染好的 HTML
             // 🔴 关键：使用 HTML 注释格式，避免 __ 被 Markdown 解释为粗体
             const placeholder = `<!--VCP_TOOL_RESULT_${ctx.state.toolResultPlaceholderId}-->`;
-            ctx.state.toolResultMap.set(placeholder, match);
+            ctx.state.toolResultMap.set(placeholder, text.slice(range.start, range.end));
             ctx.state.toolResultPlaceholderId += 1;
-            return placeholder;
-        });
-        toolResultRegex.lastIndex = 0;
-        return result;
+            result += text.slice(cursor, range.start) + placeholder;
+            cursor = range.end;
+        }
+        return result + text.slice(cursor);
     }
 
     function protectToolRequests(text, ctx) {
