@@ -6,7 +6,8 @@
     const STYLE_ID = 'vcp-composer-model-select-style';
     const CSS = `
 .vcp-model-select { position: relative; display: inline-flex; margin-left: auto !important; margin-right: 2px; flex: 0 1 auto; min-width: 0; }
-.vcp-model-select ~ #mainVoiceInputBtn { margin-left: 0 !important; }
+.vcp-model-select:not([hidden]) ~ #mainVoiceInputBtn { margin-left: 0 !important; }
+.vcp-model-select:not([hidden]) ~ :is(#sendMessageBtn, .chat-send-button) { margin-left: 0 !important; }
 .vcp-model-select[hidden] { display: none !important; }
 .vcp-model-select-trigger {
     display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 4px 0 8px; max-width: 200px;

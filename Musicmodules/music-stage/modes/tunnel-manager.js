@@ -111,17 +111,17 @@
 
             const audio = live
                 ? {
-                    power: clamp(frame.audio.power) * reactivity,
-                    bass: clamp(frame.audio.bass) * reactivity,
-                    vocal: clamp(frame.audio.vocal) * reactivity,
-                    treble: clamp(frame.audio.treble) * reactivity
+                    power: clamp(frame.audio?.power) * reactivity,
+                    bass: clamp(frame.audio?.bass) * reactivity,
+                    vocal: clamp(frame.audio?.vocal) * reactivity,
+                    treble: clamp(frame.audio?.treble) * reactivity
                 }
                 : { power: 0, bass: 0, vocal: 0, treble: 0 };
 
             world.update(time, frame, settings, {
                 seek: seeking,
                 playing: live,
-                dt: seeking ? 0.016 : Math.max(0.001, Math.min(0.08, dt)),
+                dt: seeking ? 0 : Math.max(0, Math.min(0.08, dt)),
                 ...audio
             }, camera);
 
@@ -417,6 +417,7 @@
     const createTunnelWorld = (T, scene, app) => {
         const root = new T.Group();
         scene.add(root);
+        let viewportAspect = 1;
 
         const modelGen = createModelGenerators();
         const TUNNEL_LENGTH = 3200;
@@ -568,6 +569,7 @@
         const heroGate = new T.Group();
         heroGate.position.z = -42;
         const heroGateMaterials = [];
+        const gateProgressLines = [];
         const heroGateGeometries = [];
         for (let g = 0; g < 4; g += 1) {
             const start = g * Math.PI * 0.5 + 0.16;
@@ -581,138 +583,193 @@
                 blending: T.AdditiveBlending,
                 depthWrite: false
             });
-            const line = new T.LineLoop(geometry, material);
+            const line = new T.Line(geometry, material);
             line.rotation.z = g % 2 ? 0.025 : -0.018;
             heroGate.add(line);
             heroGateGeometries.push(geometry);
             heroGateMaterials.push(material);
+            const brightGeometry = geometry.clone();
+            brightGeometry.setDrawRange(0, 0);
+            const brightMaterial = material.clone();
+            brightMaterial.opacity = 0.75;
+            const bright = new T.Line(brightGeometry, brightMaterial);
+            bright.rotation.copy(line.rotation);
+            bright.position.z = 0.02;
+            heroGate.add(bright);
+            gateProgressLines.push(bright);
+            heroGateGeometries.push(brightGeometry);
         }
         root.add(heroGate);
 
-        /* ---------- 1.75. 航道骨架：让镜头真的“穿过”空间 ---------- */
-        const RAIL_COUNT = 6;
-        const RAIL_DOTS = 180;
-        const railPos = new Float32Array(RAIL_COUNT * RAIL_DOTS * 3);
-        const railBase = new Float32Array(RAIL_COUNT * RAIL_DOTS * 3);
-        const railSeed = new Float32Array(RAIL_COUNT * RAIL_DOTS);
-        const railRand = seededRandom('tunnel-rails-v3');
-        for (let r = 0; r < RAIL_COUNT; r += 1) {
-            const angle = (r / RAIL_COUNT) * Math.PI * 2;
-            for (let i = 0; i < RAIL_DOTS; i += 1) {
-                const idx = (r * RAIL_DOTS + i) * 3;
-                const z = -24 - (i / RAIL_DOTS) * TUNNEL_LENGTH;
-                const wobble = (railRand() - 0.5) * 1.2;
-                railBase[idx] = Math.cos(angle) * (22 + wobble);
-                railBase[idx + 1] = Math.sin(angle) * (14 + wobble * 0.6);
-                railBase[idx + 2] = z;
-                railPos[idx] = railBase[idx];
-                railPos[idx + 1] = railBase[idx + 1];
-                railPos[idx + 2] = z;
-                railSeed[r * RAIL_DOTS + i] = railRand();
+        /* ---------- 1.75. Twin wake: irregular, world-anchored ribbon routes ---------- */
+        // This centerline is shared verbatim with GLSL. Audio never moves the route.
+        const routeCenter = s => ({
+            x: Math.sin(s * 0.0031) * 8 + Math.sin(s * 0.0073 + 0.8) * 4,
+            y: Math.cos(s * 0.0027 + 0.4) * 4 + Math.sin(s * 0.0061) * 2
+        });
+        const routeGLSL = `
+            vec2 centerAt(float s) {
+                return vec2(sin(s*0.0031)*8.0+sin(s*0.0073+0.8)*4.0,
+                    cos(s*0.0027+0.4)*4.0+sin(s*0.0061)*2.0);
+            }
+            vec3 wakeAt(float s, float lane) {
+                float phase=s*0.009+0.75*sin(s*0.0021)
+                    +0.32*sin(s*0.0053+lane*1.7)+lane*3.14159265;
+                float radius=38.0+12.0*sin(s*0.0037+lane*1.9)
+                    +6.0*cos(s*0.0081+lane*0.6);
+                vec2 orbit=vec2(cos(phase)*radius,
+                    sin(phase)*(22.0+7.0*cos(s*0.0043+lane)));
+                orbit+=vec2(sin(s*0.0059+lane*2.4)*7.0,
+                    cos(s*0.0077+lane)*3.5);
+                return vec3(centerAt(s)*motion+orbit,-(s-travel));
+            }`;
+        const RAIL_SEGMENTS = 640;
+        const RAIL_STEP = 4;
+        const railPos = new Float32Array(RAIL_SEGMENTS * 2 * 6 * 3);
+        const railAddress = new Float32Array(RAIL_SEGMENTS * 2 * 6 * 3);
+        const corners = [[0,-1],[1,-1],[0,1],[0,1],[1,-1],[1,1]];
+        let railVertex = 0;
+        for (let lane = 0; lane < 2; lane++) {
+            for (let i = 0; i < RAIL_SEGMENTS; i++) {
+                for (const [end, side] of corners) {
+                    railAddress.set([i + end, lane, side], railVertex * 3);
+                    railVertex++;
+                }
             }
         }
         const railGeo = new T.BufferGeometry();
-        railGeo.setAttribute('position', new T.BufferAttribute(railPos, 3).setUsage(T.DynamicDrawUsage));
-        railGeo.setAttribute('aSeed', new T.BufferAttribute(railSeed, 1));
+        railGeo.setAttribute('position', new T.BufferAttribute(railPos, 3));
+        railGeo.setAttribute('aRoute', new T.BufferAttribute(railAddress, 3));
         const railMat = new T.ShaderMaterial({
-            transparent: true,
-            depthWrite: false,
+            transparent: true, depthWrite: false, side: T.DoubleSide,
             blending: T.AdditiveBlending,
-            uniforms: { tint: { value: new T.Color('#6f8790') }, time: { value: 0 }, pixelRatio: { value: 1 }, pulse: { value: 0 } },
+            uniforms: {
+                tint: { value: new T.Color('#76bfae') },
+                accent: { value: new T.Color('#f2a900') },
+                time: { value: 0 }, travel: { value: 0 },
+                motion: { value: 1 }, pulse: { value: 0 },
+                pixelRatio: { value: 1 }, glow: { value: 1 },
+                viewport: { value: new T.Vector2(1, 1) }
+            },
             vertexShader: `
-                attribute float aSeed;
-                uniform float time;
-                uniform float pixelRatio;
-                uniform float pulse;
-                varying float vAlpha;
+                attribute vec3 aRoute;
+                uniform float travel,motion,time,pulse,glow;
+                uniform vec2 viewport;
+                varying float vSide,vLane,vAlpha,vFlash;
+                ${routeGLSL}
                 void main() {
-                    vec4 mv = modelViewMatrix * vec4(position, 1.0);
-                    gl_Position = projectionMatrix * mv;
-                    float depth = max(0.1, -mv.z);
-                    gl_PointSize = clamp(pixelRatio * (1.2 + aSeed * 1.6) * 190.0 / depth, 1.0, 8.0);
-                    float wave = 0.72 + 0.28 * sin(time * 0.9 + aSeed * 24.0);
-                    vAlpha = smoothstep(8.0, 55.0, depth) * (1.0 - smoothstep(1300.0, 2700.0, depth)) * wave * (0.42 + pulse * 0.36);
-                }
-            `,
+                    // Snap to spatial cells: old samples never swim with the camera.
+                    float s=(floor(travel/4.0)+aRoute.x)*4.0;
+                    vec3 p=wakeAt(s,aRoute.y);
+                    vec4 mv=modelViewMatrix*vec4(p,1.0);
+                    vec4 clip=projectionMatrix*mv;
+                    vec4 next=projectionMatrix*modelViewMatrix*vec4(wakeAt(s+0.5,aRoute.y),1.0);
+                    vec2 delta=(next.xy/max(next.w,0.1)-clip.xy/max(clip.w,0.1))*viewport;
+                    vec2 tangent=delta/max(length(delta),0.001);
+                    vec2 normal=vec2(-tangent.y,tangent.x);
+                    float width=2.2+1.0*sin(s*0.013+aRoute.y*2.0);
+                    clip.xy+=normal*aRoute.z*width*2.0/viewport*clip.w;
+                    gl_Position=clip;
+                    vSide=aRoute.z;vLane=aRoute.y;
+                    float depth=max(0.0,-mv.z);
+                    float cell=floor(s/42.0);
+                    float h=fract(sin(cell*12.9898+aRoute.y*78.233)*43758.5453);
+                    float gaps=smoothstep(0.10,0.28,h);
+                    float flow=fract(s*0.0018-time*0.11+aRoute.y*0.37);
+                    vFlash=exp(-pow((flow-0.5)*15.0,2.0));
+                    float envelope=0.55+0.45*sin(s*0.007+aRoute.y*2.2);
+                    // Reserve the center for reading; trails frame rather than cross the words.
+                    vec2 ndc=clip.xy/max(clip.w,0.1);
+                    float reading=smoothstep(0.35,0.75,length(ndc*vec2(1.0,1.5)));
+                    vAlpha=smoothstep(18.0,85.0,depth)
+                        *(1.0-smoothstep(1700.0,2500.0,depth))
+                        *gaps*(0.13+envelope*0.18+vFlash*0.38)
+                        *(0.2+reading*0.8)*(1.0+pulse*0.25);
+                }`,
             fragmentShader: `
-                uniform vec3 tint;
-                varying float vAlpha;
+                uniform vec3 tint,accent;
+                uniform float glow;
+                varying float vSide,vLane,vAlpha,vFlash;
                 void main() {
-                    vec2 p = gl_PointCoord * 2.0 - 1.0;
-                    float r = dot(p, p);
-                    if (r > 1.0) discard;
-                    float core = exp(-r * 8.0);
-                    gl_FragColor = vec4(tint * (0.7 + core), core * vAlpha);
-                }
-            `
+                    float crossSection=exp(-vSide*vSide*5.0)
+                        +exp(-vSide*vSide*1.5)*0.18*glow;
+                    vec3 color=mix(tint,accent,vLane);
+                    gl_FragColor=vec4(color*(1.0+vFlash*0.55),
+                        crossSection*vAlpha);
+                    #include <tonemapping_fragment>
+                    #include <colorspace_fragment>
+                }`
         });
-        const railPoints = new T.Points(railGeo, railMat);
+        const railPoints = new T.Mesh(railGeo, railMat);
         railPoints.frustumCulled = false;
         root.add(railPoints);
-
-        /* ---------- 2. 超空间光条：音频驱动的速度残影 ---------- */
+        /* ---------- 2. GPU warp trails: static endpoints, playback-clock wrapping ---------- */
         const STREAK_COUNT = 220;
-        const streakPos = new Float32Array(STREAK_COUNT * 3);
-        const streakBase = new Float32Array(STREAK_COUNT * 3);
-        const streakSeeds = new Float32Array(STREAK_COUNT * 3);
-        const streakSizes = new Float32Array(STREAK_COUNT);
-        const streakRand = seededRandom('tunnel-streaks-v2');
-        for (let i = 0; i < STREAK_COUNT; i += 1) {
+        const streakPos = new Float32Array(STREAK_COUNT * 2 * 3);
+        const streakSeeds = new Float32Array(STREAK_COUNT * 2 * 3);
+        const streakEnds = new Float32Array(STREAK_COUNT * 2);
+        const streakRand = seededRandom('tunnel-warp-v1');
+        for (let i = 0; i < STREAK_COUNT; i++) {
             const angle = streakRand() * Math.PI * 2;
-            const radius = 14 + Math.pow(streakRand(), 1.3) * 90;
-            streakBase[i * 3] = Math.cos(angle) * radius;
-            streakBase[i * 3 + 1] = Math.sin(angle) * radius * 0.7;
-            streakBase[i * 3 + 2] = -streakRand() * TUNNEL_LENGTH;
-            streakSeeds[i * 3] = streakRand();
-            streakSeeds[i * 3 + 1] = streakRand();
-            streakSeeds[i * 3 + 2] = streakRand();
-            streakSizes[i] = 0.8 + streakRand() * 1.4;
+            const radius = 24 + Math.pow(streakRand(), 1.3) * 110;
+            const x = Math.cos(angle) * radius;
+            const y = Math.sin(angle) * radius * 0.7;
+            const z = -streakRand() * TUNNEL_LENGTH;
+            const seed = [streakRand(), streakRand(), streakRand()];
+            for (let e = 0; e < 2; e++) {
+                const index = i * 2 + e;
+                streakPos.set([x, y, z], index * 3);
+                streakSeeds.set(seed, index * 3);
+                streakEnds[index] = e;
+            }
         }
         const streakGeo = new T.BufferGeometry();
-        streakGeo.setAttribute('position', new T.BufferAttribute(streakPos, 3).setUsage(T.DynamicDrawUsage));
+        streakGeo.setAttribute('position', new T.BufferAttribute(streakPos, 3));
         streakGeo.setAttribute('aSeed', new T.BufferAttribute(streakSeeds, 3));
-        streakGeo.setAttribute('aSize', new T.BufferAttribute(streakSizes, 1));
+        streakGeo.setAttribute('aEnd', new T.BufferAttribute(streakEnds, 1));
         const streakMat = new T.ShaderMaterial({
             transparent: true,
             depthWrite: false,
             blending: T.AdditiveBlending,
             uniforms: {
                 tint: { value: new T.Color('#cfd8dd') },
-                pixelRatio: { value: 1 },
-                stretch: { value: 0 }  // 0..1 速度拉伸强度
+                travel: { value: 0 },
+                stretch: { value: 0 },
+                glow: { value: 1 }
             },
             vertexShader: `
                 attribute vec3 aSeed;
-                attribute float aSize;
-                uniform float pixelRatio;
-                uniform float stretch;
+                attribute float aEnd;
+                uniform float travel, stretch;
                 varying float vAlpha;
                 void main() {
-                    // 速度拉伸：沿视线方向把点向后拖成光条
                     vec3 p = position;
-                    p.z -= stretch * (30.0 + aSeed.y * 90.0);
+                    p.z = -mod(-position.z - travel, 3200.0);
+                    // Both endpoints share one wrap address: no trail across the recycle seam.
+                    float length = 2.0 + stretch * (24.0 + aSeed.y * 100.0);
+                    float headDepth = -p.z;
+                    p.z -= aEnd * length;
                     vec4 mv = modelViewMatrix * vec4(p, 1.0);
                     gl_Position = projectionMatrix * mv;
                     float depth = max(0.1, -mv.z);
-                    gl_PointSize = clamp(aSize * pixelRatio * 240.0 / depth, 0.5, 8.0);
-                    float nearFade = smoothstep(10.0, 40.0, depth);
-                    float farFade = 1.0 - smoothstep(1500.0, 2400.0, depth);
-                    vAlpha = nearFade * farFade * stretch * (0.25 + aSeed.x * 0.4);
+                    float fade = smoothstep(24.0, 85.0, headDepth)
+                        * (1.0 - smoothstep(1400.0, 2400.0, depth));
+                    vAlpha = fade * stretch * (0.12 + aSeed.x * 0.35)
+                        * mix(1.0, 0.08, aEnd);
                 }
             `,
             fragmentShader: `
                 uniform vec3 tint;
+                uniform float glow;
                 varying float vAlpha;
                 void main() {
-                    vec2 p = gl_PointCoord * 2.0 - 1.0;
-                    float r = dot(p, p);
-                    if (r > 1.0) discard;
-                    float core = exp(-r * 5.0);
-                    gl_FragColor = vec4(tint * core, core * vAlpha);
+                    gl_FragColor = vec4(tint * (1.0 + glow * 0.35), vAlpha);
+                    #include <tonemapping_fragment>
+                    #include <colorspace_fragment>
                 }
             `
         });
-        const streakPoints = new T.Points(streakGeo, streakMat);
+        const streakPoints = new T.LineSegments(streakGeo, streakMat);
         streakPoints.frustumCulled = false;
         root.add(streakPoints);
 
@@ -793,7 +850,9 @@
                     vec3 currentPos = mix(position, aTarget, cohesion);
                     // 凝聚后的有机微呼吸
                     currentPos += normalize(currentPos - aTarget + vec3(0.001)) * sin(time * 1.4 + aSeed.x * 20.0) * breath * cohesion * 0.35;
-                    currentPos += normalize(aTarget - currentPos + vec3(0.001)) * sin(time * 2.8 + aSeed.z * 31.0) * audioPulse * cohesion * 0.42;
+                    // Reduce audio displacement so formed silhouettes remain stable.
+                    currentPos += normalize(aTarget - currentPos + vec3(0.001))
+                        * sin(time * 2.8 + aSeed.x * 31.0) * audioPulse * cohesion * 0.07;
                     // 未凝聚时的缓慢漂浮
                     currentPos.y += sin(time * 0.7 + aSeed.x * 12.0) * (1.0 - cohesion) * 0.8;
                     // 球面法线光照 + 边缘辉光，让点阵行星保留体积感。
@@ -808,7 +867,10 @@
                     gl_PointSize = clamp((aSize + cohesion * (0.8 + audioPulse * 0.22)) * pixelRatio * 340.0 / depth, 1.0, 40.0);
                     float nearFade = smoothstep(12.0, 50.0, depth);
                     float farFade = 1.0 - smoothstep(1900.0, 2500.0, depth);
-                    vAlpha = nearFade * farFade * (0.12 + cohesion * 0.88) * (1.0 + audioPulse * 0.16);
+                    // Dissolve by spatial separation, not by fading the whole model.
+                    // Keep the particles visible while they leave the silhouette.
+                    vAlpha = nearFade * farFade * clamp(aSeed.z, 0.0, 1.0)
+                        * (0.72 + cohesion * 0.28) * (1.0 + audioPulse * 0.10);
                     vColor = aColor;
                 }
             `,
@@ -1190,45 +1252,203 @@
             lyricGeo.attributes.aWord.needsUpdate = true;
         }
 
-        // 可读阶段的逐字动画由 Canvas 完成；粒子材质不再承担歌词跳动。
-        function animateCanvasLyric(line, frame, settings) {
-            if (!line) return;
-            const fullText = line.fullText || '';
-            const subText = R.resolveSupplementalText(line) || '';
-            const colors = parseThemeColors();
-            const words = frame?.wordStates || [];
-            textCtx.clearRect(0, 0, textCanvas.width, textCanvas.height);
-            textCtx.textBaseline = 'middle';
-            textCtx.font = '900 82px "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif';
-
-            if (!words.length) {
-                textCtx.fillStyle = colors.accentHex;
-                textCtx.fillText(fullText, 140, 200);
-            } else {
-                let x = 140;
-                for (const word of words) {
-                    const label = word?.text || '';
-                    const amount = clamp(word?.progress ?? 0);
-                    const width = textCtx.measureText(label).width;
-                    const pulse = settings.reducedMotion ? 0 : Math.sin(amount * Math.PI);
-                    const bounce = pulse * 15;
-                    const scale = 1 + pulse * 0.08;
-                    textCtx.save();
-                    textCtx.translate(x + width * 0.5, 200 - bounce);
-                    textCtx.scale(scale, scale);
-                    textCtx.translate(-(x + width * 0.5), -(200 - bounce));
-                    textCtx.fillStyle = amount > 0.04 ? colors.accentHex : colors.inkHex;
-                    textCtx.fillText(label, x, 200 - bounce);
-                    textCtx.restore();
-                    x += width;
+        // Rasterize only on line/layout/palette changes. Playback never uploads a canvas.
+        const glyphStage = new T.Group();
+        glyphStage.renderOrder = 30;
+        root.add(glyphStage);
+        let glyphCacheKey = '';
+        let glyphVocalEnd = 0;
+        // Sample the exact cached glyph planes, including subtitle fit and wrapping.
+        function rebuildGlyphParticles() {
+            const samples = [];
+            glyphStage.children.forEach(mesh => {
+                const canvas = mesh.material.uniforms.map.value.image;
+                const ctx = canvas.getContext('2d');
+                const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+                const w = mesh.geometry.parameters.width * mesh.scale.x;
+                const h = mesh.geometry.parameters.height * mesh.scale.y;
+                const color = mesh.material.uniforms.sung.value;
+                for (let y = 0; y < canvas.height; y += 5) {
+                    for (let x = 0; x < canvas.width; x += 5) {
+                        if (pixels[(y * canvas.width + x) * 4 + 3] < 150) continue;
+                        samples.push({
+                            x: mesh.position.x + ((x + 0.5) / canvas.width - 0.5) * w,
+                            y: mesh.position.y + (0.5 - (y + 0.5) / canvas.height) * h,
+                            color
+                        });
+                    }
                 }
+            });
+            const rand = seededRandom(`glyph-particles:${currentLineKey}`);
+            activePointCount = Math.min(LYRIC_PARTICLE_CAP, samples.length);
+            for (let i = 0; i < activePointCount; i++) {
+                const sample = samples[Math.floor(i * samples.length / activePointCount)];
+                const j = i * 3;
+                lyricParticleTarget[j] = sample.x;
+                lyricParticleTarget[j + 1] = sample.y;
+                lyricParticleTarget[j + 2] = 0;
+                lyricParticlePos[j] = sample.x + (rand() - 0.5) * 65;
+                lyricParticlePos[j + 1] = sample.y + (rand() - 0.5) * 40;
+                lyricParticlePos[j + 2] = -80 - rand() * 160;
+                lyricParticleSeeds[j] = rand();
+                lyricParticleSeeds[j + 1] = rand();
+                lyricParticleSeeds[j + 2] = rand();
+                lyricParticleColors[j] = sample.color.r;
+                lyricParticleColors[j + 1] = sample.color.g;
+                lyricParticleColors[j + 2] = sample.color.b;
+                lyricParticleWord[i] = -1;
             }
-            if (subText) {
-                textCtx.font = '500 32px "Microsoft YaHei", "PingFang SC", sans-serif';
-                textCtx.fillStyle = colors.secondaryHex;
-                textCtx.fillText(subText, 144, 282);
+            lyricGeo.setDrawRange(0, activePointCount);
+            ['position', 'aTarget', 'aSeed', 'aColor', 'aWord'].forEach(name => {
+                lyricGeo.attributes[name].needsUpdate = true;
+            });
+        }
+        const clearGlyphStage = () => {
+            while (glyphStage.children.length) {
+                const mesh = glyphStage.children[0];
+                glyphStage.remove(mesh);
+                mesh.material.uniforms.map.value.dispose();
+                mesh.material.dispose();
+                mesh.geometry.dispose();
             }
-            textTexture.needsUpdate = true;
+            glyphCacheKey = '';
+        };
+        function animateCanvasLyric(line, frame, settings) {
+            if (!line) { glyphStage.visible = false; return; }
+            const colors = parseThemeColors();
+            const scale = clamp(setting(settings, 'fontScale', 1), 0.65, 1.5);
+            const key = JSON.stringify([currentLineKey, R.resolveSupplementalText(line),
+                colors.inkHex, colors.accentHex, colors.secondaryHex, scale]);
+            if (key !== glyphCacheKey) {
+                clearGlyphStage();
+                glyphCacheKey = key;
+                const font = '900 82px "Microsoft YaHei","PingFang SC","Segoe UI",sans-serif';
+                textCtx.font = font;
+                let glyphs = R.buildGlyphTimeline(line);
+                if (!glyphs.length || !glyphs.some(g => g.endTime > g.startTime)) {
+                    const chars = R.splitGraphemes(line.fullText || '');
+                    const start = R.finiteNumber(line.startTime);
+                    const end = Math.max(start + 0.6, R.finiteNumber(line.endTime, start + 4));
+                    glyphs = chars.map((text, i) => ({ text,
+                        startTime: start + (end - start) * i / Math.max(1, chars.length),
+                        endTime: start + (end - start) * (i + 1) / Math.max(1, chars.length) }));
+                }
+                glyphVocalEnd = glyphs.reduce((end, g) =>
+                    g.text.trim() ? Math.max(end, R.finiteNumber(g.endTime)) : end,
+                    R.finiteNumber(line.startTime));
+                const rows = [[]];
+                let rowWidth = 0;
+                glyphs.forEach(g => {
+                    const advance = textCtx.measureText(g.text).width;
+                    if (rowWidth + advance > 1400 && rows[rows.length - 1].length) {
+                        rows.push([]); rowWidth = 0;
+                    }
+                    rows[rows.length - 1].push({ ...g, advance });
+                    rowWidth += advance;
+                });
+                const maxWidth = Math.max(1, ...rows.map(row => row.reduce((sum, g) => sum + g.advance, 0)));
+                const unit = Math.min(0.025 * scale, 42 / maxWidth, 13 / (rows.length * 110 + 80));
+                const addGlyph = (label, px, py, advance, start, end, subtitle = false) => {
+                    if (!label.trim()) return;
+                    const canvas = document.createElement('canvas');
+                    canvas.width = Math.ceil(advance + 48);
+                    canvas.height = subtitle ? 96 : 152;
+                    const ctx = canvas.getContext('2d');
+                    ctx.font = subtitle ? '500 32px "Microsoft YaHei","Segoe UI",sans-serif' : font;
+                    ctx.textBaseline = 'middle';
+                    ctx.fillStyle = '#fff';
+                    ctx.shadowColor = '#fff';
+                    ctx.shadowBlur = subtitle ? 3 : 8;
+                    ctx.fillText(label, 24, canvas.height / 2);
+                    const map = new T.CanvasTexture(canvas);
+                    map.generateMipmaps = false;
+                    map.minFilter = T.LinearFilter;
+                    const material = new T.ShaderMaterial({
+                        transparent: true, depthTest: false, depthWrite: false,
+                        uniforms: {
+                            map: { value: map }, time: { value: 0 },
+                            begin: { value: start }, finish: { value: end },
+                            alpha: { value: 1 }, motion: { value: 1 }, glow: { value: 1 },
+                            wait: { value: subtitle ? colors.secondary.clone() : colors.ink.clone().multiplyScalar(0.65) },
+                            sung: { value: subtitle ? colors.secondary.clone() : colors.accent.clone() }
+                        },
+                        vertexShader: `
+                            uniform float time,begin,finish,motion;
+                            varying vec2 vUv;
+                            void main(){
+                                vUv=uv;
+                                float p=clamp((time-begin)/max(0.001,finish-begin),0.0,1.0);
+                                float beat=sin(p*3.14159265)*motion;
+                                vec3 pos=position;
+                                pos.xy*=1.0+beat*0.055;
+                                pos.y+=beat*0.28;
+                                gl_Position=projectionMatrix*modelViewMatrix*vec4(pos,1.0);
+                            }`,
+                        fragmentShader: `
+                            uniform sampler2D map;
+                            uniform float time,begin,finish,alpha,glow;
+                            uniform vec3 wait,sung;
+                            varying vec2 vUv;
+                            void main(){
+                                float coverage=texture2D(map,vUv).a;
+                                float p=clamp((time-begin)/max(0.001,finish-begin),0.0,1.0);
+                                float wipe=1.0-smoothstep(p-0.025,p+0.025,vUv.x);
+                                if(p<=0.0)wipe=0.0;
+                                if(p>=1.0)wipe=1.0;
+                                float core=smoothstep(0.15,0.75,coverage);
+                                float a=clamp(core+coverage*(1.0-core)*glow*0.65,0.0,1.0)*alpha;
+                                gl_FragColor=vec4(mix(wait,sung,wipe),a);
+                                #include <tonemapping_fragment>
+                                #include <colorspace_fragment>
+                            }`
+                    });
+                    const mesh = new T.Mesh(new T.PlaneGeometry(canvas.width * unit, canvas.height * unit), material);
+                    mesh.position.set(px + advance * unit / 2, py, 0);
+                    mesh.renderOrder = 30;
+                    glyphStage.add(mesh);
+                };
+                rows.forEach((row, ri) => {
+                    let x = -row.reduce((sum, g) => sum + g.advance, 0) * unit / 2;
+                    const y = ((rows.length - 1) / 2 - ri) * 110 * unit + 0.6;
+                    row.forEach(g => {
+                        addGlyph(g.text, x, y, g.advance, g.startTime, g.endTime);
+                        x += g.advance * unit;
+                    });
+                });
+                const sub = R.resolveSupplementalText(line);
+                if (sub) {
+                    textCtx.font = '500 32px "Microsoft YaHei","Segoe UI",sans-serif';
+                    // Keep subtitle textures bounded even for pathological metadata.
+                    const labels = R.splitGraphemes(sub);
+                    const advances = labels.map(s => textCtx.measureText(s).width);
+                    const total = advances.reduce((a, b) => a + b, 0);
+                    const fit = Math.min(1, 1400 / Math.max(1, total));
+                    let x = -total * unit * fit / 2;
+                    labels.forEach((s, i) => {
+                        const before = glyphStage.children.length;
+                        addGlyph(s, x, -(rows.length * 55 + 50) * unit,
+                            advances[i], -1, -0.5, true);
+                        if (glyphStage.children.length > before) {
+                            const mesh = glyphStage.children[glyphStage.children.length - 1];
+                            mesh.scale.x = fit;
+                            mesh.position.x = x + advances[i] * unit * fit / 2;
+                        }
+                        x += advances[i] * unit * fit;
+                    });
+                }
+                rebuildGlyphParticles();
+            }
+            glyphStage.visible = true;
+            glyphStage.position.set(0, 0, -34);
+            // Fit to the actual frustum, including portrait windows.
+            const aspect = Math.max(0.1, viewportAspect);
+            glyphStage.scale.setScalar(Math.min(1, aspect * 0.7));
+            glyphStage.children.forEach(mesh => {
+                mesh.material.uniforms.time.value = R.finiteNumber(frame.playbackTime);
+                mesh.material.uniforms.motion.value = settings.reducedMotion ? 0
+                    : clamp(setting(settings, 'animationIntensity', 1), 0, 2);
+                mesh.material.uniforms.glow.value = clamp(setting(settings, 'glow', 1), 0, 2);
+            });
         }
 
         function setPalette(palette) {
@@ -1246,6 +1466,7 @@
             if (streakMat?.uniforms?.tint?.value?.copy) streakMat.uniforms.tint.value.copy(colors.ink);
             if (portalMat?.uniforms?.tint?.value?.copy) portalMat.uniforms.tint.value.copy(colors.accent);
             if (railMat?.uniforms?.tint?.value?.copy) railMat.uniforms.tint.value.copy(colors.secondary);
+            railMat.uniforms.accent.value.copy(colors.accent);
             heroGateMaterials.forEach((material, index) => material.color.copy(colors.accent).offsetHSL(index * 0.015, 0, 0));
             if (lyricParticleMat?.uniforms?.tint?.value?.copy) lyricParticleMat.uniforms.tint.value.copy(colors.accent);
             pulseMeshes.forEach((p) => p.mesh.material.color.copy(colors.accent));
@@ -1255,6 +1476,7 @@
         }
 
         const reset = () => {
+            clearGlyphStage();
             currentLineKey = '';
             currentActiveLine = null;
             currentFrame = null;
@@ -1292,7 +1514,7 @@
                     solidPlaneMat.opacity = 0;
                 }
             }
-            if (activeLine) animateCanvasLyric(activeLine, frame, settings);
+            animateCanvasLyric(activeLine, frame, settings);
 
             const duration = Math.max(0.6, lineEndTime - lineStartTime);
             const age = time - lineStartTime;
@@ -1310,12 +1532,12 @@
 
             const baseSpeed = (settings.cameraSpeed ?? 1) * (settings.motionAmount ?? 1) * (settings.animationIntensity ?? 1);
             const instantSpeed = baseSpeed * speedMod * (settings.reducedMotion ? 0 : 1);
-            cruiseSpeed += (instantSpeed - cruiseSpeed) * (1 - Math.exp(-dt * 7.5));
+            cruiseSpeed = instantSpeed;
 
-            if (live) {
-                // Do not integrate this value: the same playback time must
-                // always produce the same world position, even after a seek.
-                totalTravelDistance = deterministicTravel(time, settings);
+            totalTravelDistance = deterministicTravel(time, settings);
+            if (audioState.seek) {
+                bassSmooth = prevBass = 0;
+                pulseMeshes.forEach(p => { p.age = 99; p.mesh.visible = false; });
             }
 
             // 音频平滑
@@ -1347,35 +1569,54 @@
             heroGateMaterials.forEach((material, index) => {
                 material.opacity = Math.max(0.03, gatePulse - index * 0.035);
             });
+            // Match the actual final timed glyph, not a line's trailing instrumental gap.
+            const gateEnd = Math.max(lineStartTime + 0.001, glyphVocalEnd);
+            const gateProgress = activeLine ? clamp((time - lineStartTime) / (gateEnd - lineStartTime)) : 0;
+            const gateFadeStart = gateEnd + Math.min(0.8,
+                clamp(setting(settings, 'textHoldRatio', 0.32), 0, 0.8) * 0.5
+                + clamp(setting(settings, 'pauseDuration', 0.9), 0, 3) * 0.15);
+            const gateFade = 1 - smooth((time - gateFadeStart)
+                / (0.45 + clamp(setting(settings, 'dissolveAmount', 0.72)) * 0.55));
+            gateProgressLines.forEach((line, index) => {
+                const fraction = clamp(gateProgress * 4 - index);
+                const count = line.geometry.attributes.position.count;
+                line.geometry.setDrawRange(0, fraction > 0 ? Math.max(2, Math.ceil(fraction * count)) : 0);
+                line.material.color.copy(heroGateMaterials[index].color);
+                line.material.opacity = gateFade * (0.5 + bassSmooth * 0.2);
+                line.visible = Boolean(activeLine) && gateFade > 0;
+            });
 
             /* ----- 镜头：电影式漂移 + FOV 呼吸 ----- */
-            const motionPower = clamp(setting(settings, 'motionAmount', 1), 0, 2)
+            const motionPower = (settings.reducedMotion ? 0 : 1) * clamp(setting(settings, 'motionAmount', 1), 0, 2)
                 * clamp(setting(settings, 'animationIntensity', 1), 0, 2);
             const breath = clamp(setting(settings, 'cameraBreath', 0.5), 0, 2);
-            const shake = clamp(setting(settings, 'cameraShake', 1), 0, 2);
+            const shake = settings.reducedMotion ? 0 : clamp(setting(settings, 'cameraShake', 1), 0, 2);
             const driftTime = time * 0.14;
             const driftX = (Math.sin(driftTime * 0.42) * 0.72 + Math.cos(driftTime * 0.23) * 0.35) * breath;
             const driftY = (Math.cos(driftTime * 0.34) * 0.48 + Math.sin(driftTime * 0.19) * 0.22) * breath;
             const driftRoll = Math.sin(driftTime * 0.17) * 0.004 * breath;
             const shakeX = Math.sin(time * 17.0) * bassSmooth * 0.22 * shake;
             const shakeY = Math.cos(time * 19.0) * bassSmooth * 0.16 * shake;
-            const pathPhase = totalTravelDistance * 0.012;
-            const pathX = Math.sin(pathPhase * 0.73) * 1.8 + Math.sin(pathPhase * 0.19) * 0.8;
-            const pathY = Math.cos(pathPhase * 0.51) * 1.1;
-
-            cameraInstance.position.x = pathX * motionPower * 0.45 + driftX * motionPower + shakeX;
-            cameraInstance.position.y = pathY * motionPower * 0.35 + (driftY + bassSmooth * 0.4 * shake) * motionPower + shakeY;
+            const routeDistance = totalTravelDistance * 0.42;
+            const routeNow = routeCenter(routeDistance);
+            const routeAhead = routeCenter(routeDistance + 180);
+            const pathX = routeNow.x;
+            const pathY = routeNow.y;
+            // Modest lateral dolly; look ahead without pulling the lyric out of frame.
+            cameraInstance.position.x = pathX * motionPower * 0.20 + driftX * motionPower + shakeX;
+            cameraInstance.position.y = pathY * motionPower * 0.18 + driftY * motionPower + shakeY;
             cameraInstance.position.z = 0;
-
-            const lookX = pathX * motionPower * 0.72 + Math.sin(driftTime * 0.32) * 0.55 * motionPower;
-            const lookY = pathY * motionPower * 0.56 + Math.cos(driftTime * 0.28) * 0.42 * motionPower;
+            const lookX = cameraInstance.position.x
+                + clamp(routeAhead.x - pathX, -6, 6) * motionPower * 0.55;
+            const lookY = cameraInstance.position.y
+                + clamp(routeAhead.y - pathY, -4, 4) * motionPower * 0.45;
             cameraInstance.lookAt(lookX, lookY, -300);
             cameraRoll = driftRoll * motionPower + bassSmooth * 0.002 * Math.sin(time * 0.8);
             cameraInstance.rotation.z = cameraRoll;
 
             // FOV 呼吸：随速度与低频缓慢张开
             const fovTarget = 54 + clamp(cruiseSpeed - 0.8, 0, 1.3) * 5 * motionPower + bassSmooth * 2.5 * shake;
-            fovCurrent += (fovTarget - fovCurrent) * (1 - Math.exp(-dt * 2.2));
+            fovCurrent = fovTarget;
             cameraInstance.fov = fovCurrent;
             cameraInstance.updateProjectionMatrix();
 
@@ -1396,52 +1637,24 @@
             }
             starGeo.attributes.position.needsUpdate = true;
 
-            // 门框随航行缓慢后退，维持“穿过一层层同心空间”的节奏。
-            portalMat.uniforms.time.value = time;
-            const lyricPulse = activeLine ? Math.sin(clamp(progress) * Math.PI) * 0.75 : 0;
-            const portalPulse = Math.max(bassSmooth, lyricPulse);
-            portalMat.uniforms.audioPulse.value += (portalPulse - portalMat.uniforms.audioPulse.value) * (1 - Math.exp(-dt * 8));
-            const portalTravel = totalTravelDistance * 0.22;
-            const portalArr = portalGeo.attributes.position.array;
-            for (let i = 0; i < portalPos.length / 3; i += 1) {
-                const idx = i * 3;
-                let z = (portalBase[idx + 2] + portalTravel) % TUNNEL_LENGTH;
-                if (z > 0) z -= TUNNEL_LENGTH;
-                portalArr[idx] = portalBase[idx];
-                portalArr[idx + 1] = portalBase[idx + 1];
-                portalArr[idx + 2] = z;
-            }
-            portalGeo.attributes.position.needsUpdate = true;
+            // Twin wakes replace the background ring cage. The lyric progress gate stays.
+            portalPoints.visible = false;
+            railMat.uniforms.time.value = settings.reducedMotion ? 0 : time;
+            railMat.uniforms.travel.value = totalTravelDistance * 0.42;
+            railMat.uniforms.motion.value = motionPower;
+            railMat.uniforms.pulse.value = bassSmooth;
+            railMat.uniforms.glow.value = clamp(setting(settings, 'glow', 1), 0, 2);
 
-            railMat.uniforms.time.value = time;
-            railMat.uniforms.pulse.value += (bassSmooth - railMat.uniforms.pulse.value) * (1 - Math.exp(-dt * 7));
-            const railArr = railGeo.attributes.position.array;
-            const railTravel = totalTravelDistance * 0.42;
-            for (let i = 0; i < railBase.length / 3; i += 1) {
-                const idx = i * 3;
-                let z = (railBase[idx + 2] + railTravel) % TUNNEL_LENGTH;
-                if (z > 0) z -= TUNNEL_LENGTH;
-                const bend = Math.sin((z + totalTravelDistance) * 0.006) * motionPower * 1.8;
-                railArr[idx] = railBase[idx] + bend;
-                railArr[idx + 1] = railBase[idx + 1] + Math.cos((z + totalTravelDistance) * 0.004) * motionPower * 1.1;
-                railArr[idx + 2] = z;
-            }
-            railGeo.attributes.position.needsUpdate = true;
-
-            /* ----- 超空间光条 ----- */
-            const stretchTarget = live ? clamp((cruiseSpeed - 0.9) * 0.55 + bassSmooth * 0.35, 0, 1) : 0;
-            streakMat.uniforms.stretch.value += (stretchTarget - streakMat.uniforms.stretch.value) * (1 - Math.exp(-dt * 5));
-            const streakPosArr = streakGeo.attributes.position.array;
-            const streakDist = totalTravelDistance * 1.55; // 光条比星更快
-            for (let i = 0; i < STREAK_COUNT; i += 1) {
-                const idx = i * 3;
-                let z = (streakBase[idx + 2] + streakDist) % TUNNEL_LENGTH;
-                if (z > 0) z -= TUNNEL_LENGTH;
-                streakPosArr[idx] = streakBase[idx];
-                streakPosArr[idx + 1] = streakBase[idx + 1];
-                streakPosArr[idx + 2] = z;
-            }
-            streakGeo.attributes.position.needsUpdate = true;
+            /* ----- Warp trails: motion from the playback clock, audio only decorates ----- */
+            const travelVelocity = Math.max(0,
+                (deterministicTravel(time + 0.025, settings)
+                    - deterministicTravel(Math.max(0, time - 0.025), settings))
+                / (time < 0.025 ? time + 0.025 : 0.05));
+            streakMat.uniforms.travel.value = totalTravelDistance * 1.55;
+            streakMat.uniforms.stretch.value = settings.reducedMotion ? 0
+                : clamp((travelVelocity / 18 - 0.65) * 0.42 + bassSmooth * 0.25)
+                    * Math.min(1, motionPower);
+            streakMat.uniforms.glow.value = clamp(setting(settings, 'glow', 1), 0, 2);
 
             /* ----- 天体槽位 ----- */
             entityMat.uniforms.time.value = time;
@@ -1476,14 +1689,14 @@
 
                 // 凝聚生命周期：远方成雾 → 逼近凝聚 → 黄金展示 → 掠过消散
                 let cohesion = 0;
-                if (depth < -260) cohesion = 0;
-                else if (depth < -92) cohesion = easeOutCubic((depth + 260) / 168);
-                else if (depth < -28) cohesion = 1.0;
-                else cohesion = smooth(-depth / 28);
+                if (depth < -190) cohesion = 0;
+                else if (depth < -112) cohesion = easeOutCubic((depth + 190) / 78);
+                else if (depth < -76) cohesion = 1.0;
+                else cohesion = smooth((-depth - 8) / 68);
 
                 // 自转 + 预设倾角
-                const rotA = time * slot.rotSpeed + slot.rotPhase
-                    + bassSmooth * Math.sin(time * 1.7 + s * 0.9) * 0.18;
+                // Stable rotation: audio must not rock the entire silhouette.
+                const rotA = time * slot.rotSpeed + slot.rotPhase;
                 const cosY = Math.cos(rotA), sinY = Math.sin(rotA);
                 const cosX = Math.cos(tilt.x), sinX = Math.sin(tilt.x);
                 const cosZ = Math.cos(tilt.z), sinZ = Math.sin(tilt.z);
@@ -1530,7 +1743,7 @@
                     const randSeed = (p * 0.23 + s * 0.71) % 1;
                     const stationMist = slot.type === 'station' ? 1.55 : 1.0;
                     const scatterR = (1 - cohesion) * stationMist * (24.0 + randSeed * 58.0);
-                    const phase = time * (0.32 + randSeed * 0.24) + p * 0.071 + s * 1.7 + bassSmooth * 0.55;
+                    const phase = time * (0.32 + randSeed * 0.24) + p * 0.071 + s * 1.7;
                     const curl = Math.sin(phase) * 0.55 + Math.cos(phase * 0.63) * 0.35;
                     objPositions[pi] = fx + (Math.sin(p * 2.1 + phase) + curl) * scatterR;
                     objPositions[pi + 1] = fy + (Math.cos(p * 1.7 + phase * 0.8) - curl * 0.55) * scatterR;
@@ -1538,6 +1751,9 @@
 
                     objSeedsArr[pi] = randSeed;
                     objSeedsArr[pi + 1] = cohesion;
+                    // Entrance suppresses unformed distant dust; exit keeps scattered particles lit.
+                    objSeedsArr[pi + 2] = depth < -112
+                        ? smooth((cohesion - 0.35) / 0.65) : 1;
 
                     const sh = entityShade[offset + p];
                     objSizesArr[offset + p] =
@@ -1554,72 +1770,58 @@
             entityGeo.attributes.aSeed.needsUpdate = true;
             entityGeo.attributes.aSize.needsUpdate = true;
 
-            /* ----- 歌词三段相位 ----- */
-            if (activeLine && activePointCount > 0) {
-                // 文字是空间中的固定展板，不随镜头向前划出；只有粒子在它周围完成聚散。
-                const lyricZ = -34;
-                let cohesionPhase = 0;
-                let dispersePhase = 0;
-
-                const holdRatio = clamp(setting(settings, 'textHoldRatio', 0.32), 0, 0.8);
-                const dissolveAmount = clamp(setting(settings, 'dissolveAmount', 0.72), 0, 1);
+            /* ----- Absolute-time lyric lifecycle; independent of particle count ----- */
+            solidPlaneMat.opacity = 0;
+            if (activeLine) {
+                const start = R.finiteNumber(activeLine.startTime);
+                const vocalEnd = Math.max(start, glyphVocalEnd);
+                const hold = clamp(setting(settings, 'textHoldRatio', 0.32), 0, 0.8);
                 const pause = clamp(setting(settings, 'pauseDuration', 0.9), 0, 3);
-                const holdStart = 0.78 + Math.min(0.14, pause * 0.035);
-                const holdEnd = Math.min(0.98, holdStart + 0.12 + holdRatio * 0.08);
+                const dissolve = clamp(setting(settings, 'dissolveAmount', 0.72), 0, 1);
+                // Keep the last syllable intact. Hold is finite, including the final line.
+                const exitStart = vocalEnd + Math.min(0.8, hold * 0.5 + pause * 0.15);
+                const exitDuration = 0.45 + dissolve * 0.55;
+                // Separate the shape motion from the solid/particle hand-off.
+                const entryPhase = clamp((time - start) / 0.22);
+                const exitPhase = clamp((time - exitStart) / exitDuration);
+                const entrance = settings.reducedMotion ? 1 : smooth(entryPhase / 0.78);
+                const solidIn = settings.reducedMotion ? 1 : smooth((entryPhase - 0.60) / 0.40);
+                const solidOut = 1 - smooth(exitPhase / 0.28);
+                const departure = smooth((exitPhase - 0.18) / 0.82);
+                const alive = time >= start && time < exitStart + exitDuration;
+                const glyphAlpha = alive ? solidIn * solidOut : 0;
+                glyphStage.visible = alive;
+                glyphStage.children.forEach(mesh => {
+                    mesh.material.uniforms.alpha.value = glyphAlpha;
+                });
 
-                if (progress < 0.10) {
-                    cohesionPhase = smooth(progress / 0.10);
-                } else if (progress < holdStart) {
-                    cohesionPhase = 1.0;
-                } else {
-                    const p = (progress - holdStart) / Math.max(0.04, 1 - holdStart);
-                    cohesionPhase = 1.0;
-                    dispersePhase = smooth(p) * dissolveAmount;
-                }
-
-                lyricParticleMat.uniforms.cohesion.value = cohesionPhase;
-                lyricParticleMat.uniforms.disperse.value = dispersePhase;
+                // Keep formed particles visible until the solid glyphs take over.
+                // On exit, recover the particle shape before appreciable scatter.
+                const releaseIn = smooth(exitPhase / 0.20);
+                const releaseOut = 1 - smooth((exitPhase - 0.55) / 0.45);
+                const particleAlpha = !alive || settings.reducedMotion ? 0
+                    : (1 - solidIn) * 0.9
+                        + solidIn * releaseIn * releaseOut * dissolve;
+                lyricPoints.visible = particleAlpha > 0 && activePointCount > 0;
+                lyricParticleMat.uniforms.cohesion.value = entrance;
+                lyricParticleMat.uniforms.disperse.value = departure * dissolve;
+                lyricParticleMat.uniforms.opacity.value = particleAlpha;
                 lyricParticleMat.uniforms.time.value = time;
+                lyricParticleMat.uniforms.wordProgress.value.fill(0);
 
-                // 逐字动画由 Canvas 文字层负责；粒子层保持纯粹的凝结/消散。
-                const wpArr = lyricParticleMat.uniforms.wordProgress.value;
-                for (let w = 0; w < MAX_WORDS; w += 1) {
-                    wpArr[w] = 0;
-                }
-
-                // 两种文字严格交接：先看粒子字，粒子退场后才显示实心字，避免重影。
-                // 结成后交给 2D Canvas 阅读；文字退场后才把控制权交回粒子消散。
-                // 在歌词段落开头立即交接，给演唱留下完整的可读时间。
-                const solidIn = smooth(clamp((progress - 0.055) / 0.105));
-                const solidOut = progress <= holdEnd ? 1 : 1 - smooth(clamp((progress - holdEnd) / Math.max(0.04, 0.16 - holdRatio * 0.08)));
-                const solidOpacity = solidIn * solidOut * (settings.reducedMotion ? 0.9 : 1.0);
-                solidPlaneMat.opacity = solidOpacity * (settings.reducedMotion ? 0.9 : 1.0);
-
-                let lyricParticleAlpha = 0;
-                if (progress < 0.04) {
-                    lyricParticleAlpha = 0.90;
-                } else if (progress < 0.16) {
-                    // 与 2D 文字短距离交叉淡化，避免闪断。
-                    lyricParticleAlpha = 0.90 * (1 - smooth((progress - 0.04) / 0.12));
-                } else if (progress <= holdStart) {
-                    lyricParticleAlpha = 0;
-                } else {
-                    // 实体文字渐隐后，粒子消散动画接手。
-                    lyricParticleAlpha = smooth(clamp((progress - holdStart) / Math.max(0.04, 1 - holdStart))) * dissolveAmount;
-                }
-                lyricParticleMat.uniforms.opacity.value = lyricParticleAlpha;
-
-                solidTextMesh.rotation.z = lyricRollAngle;
-                lyricPoints.rotation.z = lyricRollAngle;
-
-                const lyricFloatX = Math.sin(time * 0.28) * 0.45;
-                const lyricFloatY = Math.cos(time * 0.23) * 0.3 + bassSmooth * 0.25;
-                solidTextMesh.position.set(lyricFloatX, lyricFloatY, lyricZ);
-                lyricPoints.position.set(lyricFloatX, lyricFloatY, lyricZ);
-
-                solidPlaneMat.color.set('#ffffff');
+                const motion = settings.reducedMotion ? 0
+                    : clamp(setting(settings, 'animationIntensity', 1), 0, 2);
+                const floatX = Math.sin(time * 0.28) * 0.45 * motion;
+                const floatY = (Math.cos(time * 0.23) * 0.3 + bassSmooth * 0.25) * motion;
+                glyphStage.position.set(floatX, floatY, -34);
+                glyphStage.rotation.z = lyricRollAngle * motion;
+                lyricPoints.position.copy(glyphStage.position);
+                lyricPoints.rotation.copy(glyphStage.rotation);
+                lyricPoints.scale.copy(glyphStage.scale);
             } else {
-                solidPlaneMat.opacity = 0;
+                glyphStage.visible = false;
+                lyricPoints.visible = false;
+                lyricParticleMat.uniforms.opacity.value = 0;
             }
         };
 
@@ -1630,18 +1832,22 @@
             setPalette,
             update,
             resize(w, h, ratio) {
+                viewportAspect = Math.max(0.1, Number(w) / Math.max(1, Number(h)));
                 starMat.uniforms.pixelRatio.value = ratio;
                 portalMat.uniforms.pixelRatio.value = ratio;
                 railMat.uniforms.pixelRatio.value = ratio;
-                streakMat.uniforms.pixelRatio.value = ratio;
+                railMat.uniforms.viewport.value.set(Math.max(1, w * ratio), Math.max(1, h * ratio));
+                // Warp lines use geometry, not point-size attenuation.
                 entityMat.uniforms.pixelRatio.value = ratio;
                 lyricParticleMat.uniforms.pixelRatio.value = ratio;
             },
             destroy() {
+                clearGlyphStage();
                 scene.remove(root);
                 [starGeo, portalGeo, railGeo, streakGeo, entityGeo, lyricGeo, solidPlaneGeo, pulseGeo, ...heroGateGeometries].forEach((g) => g?.dispose?.());
                 [starMat, portalMat, railMat, streakMat, entityMat, lyricParticleMat, solidPlaneMat].forEach((m) => m?.dispose?.());
                 heroGateMaterials.forEach((m) => m.dispose?.());
+                gateProgressLines.forEach(line => line.material.dispose());
                 pulseMeshes.forEach((p) => p.mesh.material.dispose());
                 textTexture?.dispose?.();
             }
