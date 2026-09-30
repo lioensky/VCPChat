@@ -58,8 +58,8 @@ export const voiceSettingsSection = section('voice-settings', '语音设置', [
         inputType: 'text',
         label: '语音输入快捷键:',
         value: 'F7',
-        placeholder: '当前支持 F1 - F24',
-        hint: '当前支持 F1 - F24 单键。按一次开始听写，再按一次停止并发送；停止后会等待输入法完成文字上屏和静默防抖，请勿连续快速触发。',
+        placeholder: '例如 F7、·、Backquote、Space',
+        hint: '仅支持单键（如 F1-F24、数字 1 左侧键 ` / · / Backquote、A-Z、Space 等，不支持组合键）。绑定键会被全局拦截，建议使用不常用按键。',
         save: { trim: true, falsy: 'F7', upper: true },
     }),
     card('mainChatVoiceSettingsCard', {

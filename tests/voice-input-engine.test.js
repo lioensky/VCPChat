@@ -91,6 +91,47 @@ test('voice input sidecar accepts local_hold push-to-talk mode', async t => {
     );
 });
 
+test('voice input sidecar accepts common single keys and rejects chords', async t => {
+    const adapter = new VoiceInputEngineAdapter({ projectRoot });
+    t.after(async () => { await adapter.shutdown(); });
+    await adapter.start();
+
+    for (const [shortcut, virtualKey] of [
+        ['Backquote', 0xC0], ['`', 0xC0], ['·', 0xC0], ['~', 0xC0],
+        ['a', 0x41], ['H', 0x48], ['0', 0x30], ['Space', 0x20],
+        ['Tab', 0x09], ['Enter', 0x0D], ['Escape', 0x1B],
+        ['Backspace', 0x08], ['Delete', 0x2E], ['PageUp', 0x21],
+        ['ArrowLeft', 0x25], ['CapsLock', 0x14], [';', 0xBA],
+        ['Numpad0', 0x60], ['Numpad9', 0x69], ['NumpadAdd', 0x6B],
+        ['F24', 0x87],
+    ]) {
+        const configured = await adapter.configureHotkey({ shortcut, mode: 'local_hold' });
+        assert.equal(configured.event, 'hotkey_configured');
+        assert.equal(configured.detail.virtualKey, virtualKey, shortcut);
+        assert.equal(configured.detail.shortcut, shortcut);
+    }
+    for (const shortcut of ['Ctrl+Space', 'Alt+F7', 'Ctrl', 'Shift', 'Win', 'F25', 'Unknown']) {
+        await assert.rejects(
+            adapter.configureHotkey({ shortcut, mode: 'local_hold' }),
+            /仅支持单键/,
+        );
+    }
+});
+
+test('native hotkeys ignore injected events before matching configured keys', () => {
+    const rustSource = source('rust_voice_input_engine/src/main.rs');
+    const hook = rustSource.slice(rustSource.indexOf('unsafe extern "system" fn low_level_keyboard_proc'));
+    assert.match(hook, /event\.flags\.contains\(LLKHF_INJECTED\)/);
+    assert.ok(
+        hook.indexOf('event.flags.contains(LLKHF_INJECTED)')
+        < hook.indexOf('event.vkCode == configured_vk'),
+    );
+    const settingsSource = source('modules/settings/schema/voice-settings.js');
+    assert.match(settingsSource, /Backquote/);
+    assert.match(settingsSource, /全局拦截/);
+    assert.match(settingsSource, /不支持组合键/);
+});
+
 test('local SenseVoice mode is wired to hold-to-talk in the voice chat window', () => {
     const voiceSource = source('Voicechatmodules/voicechat.js');
     const voiceHtml = source('Voicechatmodules/voicechat.html');
@@ -149,17 +190,16 @@ test('voice input lifecycle has native key release and application quit safety c
 
 test('global voice settings expose native mode and shortcut instead of Puppeteer paths', () => {
     const mainHtml = source('main.html');
-    const dom = new JSDOM(mainHtml);
-    const template = dom.window.document.getElementById('globalSettingsModalTemplate');
-    const settingsRoot = template.content;
+    const voiceSettingsSource = source('modules/settings/schema/voice-settings.js');
 
-    assert.ok(settingsRoot.getElementById('voiceInputMode'));
-    assert.ok(settingsRoot.getElementById('voiceInputShortcut'));
-    assert.equal(settingsRoot.getElementById('voiceInputMode').value, 'windows_voice_typing');
-    assert.equal(settingsRoot.getElementById('voiceInputShortcut').value, 'F7');
-    assert.equal(settingsRoot.getElementById('speechRecognizerBrowserPath'), null);
-    assert.equal(settingsRoot.getElementById('speechRecognizerPagePath'), null);
-    dom.window.close();
+    assert.match(voiceSettingsSource, /select\('voiceInputMode'/);
+    assert.match(voiceSettingsSource, /text\('voiceInputShortcut'/);
+    assert.match(voiceSettingsSource, /value:\s*'F7'/);
+    assert.match(voiceSettingsSource, /fallback:\s*'windows_voice_typing'/);
+    assert.doesNotMatch(voiceSettingsSource, /speechRecognizerBrowserPath/);
+    assert.doesNotMatch(voiceSettingsSource, /speechRecognizerPagePath/);
+    assert.doesNotMatch(mainHtml, /speechRecognizerBrowserPath/);
+    assert.doesNotMatch(mainHtml, /speechRecognizerPagePath/);
 });
 
 test('settings persistence migrates legacy Puppeteer STT fields', async t => {

@@ -234,7 +234,7 @@ impl SharedState {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
 
         // Recheck after taking the transition lock. FocusReady and the hook
-        // thread may both observe the first physical F-key release.
+        // thread may both observe the first physical hotkey release.
         if self.hotkey_pressed.load(Ordering::SeqCst)
             || self.awaiting_focus.load(Ordering::SeqCst)
             || self.target_window_handle.load(Ordering::SeqCst) == 0
@@ -294,17 +294,77 @@ fn parse_window_handle(value: &str) -> Result<u64, String> {
     }
 }
 
-fn parse_function_key(value: &str) -> Result<u16, String> {
+const SUPPORTED_HOTKEYS: &str =
+    "F1-F24, A-Z, 0-9, Backquote (`/·/~), punctuation, Space, Tab, Enter, Escape, Backspace, navigation, lock keys, Numpad0-Numpad9 and numpad operators";
+
+fn parse_single_key(value: &str) -> Result<u16, String> {
     let normalized = value.trim().to_ascii_uppercase();
-    let number = normalized
-        .strip_prefix('F')
-        .ok_or_else(|| "P0 native hotkey currently supports F1-F24 only".to_string())?
-        .parse::<u16>()
-        .map_err(|_| "P0 native hotkey currently supports F1-F24 only".to_string())?;
-    if !(1..=24).contains(&number) {
-        return Err("P0 native hotkey currently supports F1-F24 only".to_string());
+    if normalized.len() == 1 {
+        let byte = normalized.as_bytes()[0];
+        if byte.is_ascii_uppercase() || byte.is_ascii_digit() {
+            return Ok(byte as u16);
+        }
     }
-    Ok(0x70 + number - 1)
+    if let Some(number) = normalized
+        .strip_prefix('F')
+        .and_then(|v| v.parse::<u16>().ok())
+    {
+        if (1..=24).contains(&number) {
+            return Ok(0x70 + number - 1);
+        }
+    }
+    if let Some(number) = normalized
+        .strip_prefix("NUMPAD")
+        .and_then(|v| v.parse::<u16>().ok())
+    {
+        if number <= 9 {
+            return Ok(0x60 + number);
+        }
+    }
+    // OEM punctuation VKs refer to keys, not characters committed by an IME.
+    // These symbol aliases assume the usual US/Chinese keyboard layout.
+    let vk = match normalized.as_str() {
+        "`" | "·" | "~" | "BACKQUOTE" | "GRAVE" => 0xC0,
+        "-" | "MINUS" => 0xBD,
+        "=" | "EQUAL" | "EQUALS" => 0xBB,
+        "[" | "BRACKETLEFT" => 0xDB,
+        "]" | "BRACKETRIGHT" => 0xDD,
+        "\\" | "BACKSLASH" => 0xDC,
+        ";" | "SEMICOLON" => 0xBA,
+        "'" | "QUOTE" | "APOSTROPHE" => 0xDE,
+        "," | "COMMA" => 0xBC,
+        "." | "PERIOD" => 0xBE,
+        "/" | "SLASH" => 0xBF,
+        "SPACE" | "SPACEBAR" | "空格" => 0x20,
+        "TAB" => 0x09,
+        "ENTER" | "RETURN" => 0x0D,
+        "ESC" | "ESCAPE" => 0x1B,
+        "BACKSPACE" => 0x08,
+        "INSERT" | "INS" => 0x2D,
+        "DELETE" | "DEL" => 0x2E,
+        "HOME" => 0x24,
+        "END" => 0x23,
+        "PAGEUP" | "PGUP" => 0x21,
+        "PAGEDOWN" | "PGDN" => 0x22,
+        "LEFT" | "ARROWLEFT" => 0x25,
+        "UP" | "ARROWUP" => 0x26,
+        "RIGHT" | "ARROWRIGHT" => 0x27,
+        "DOWN" | "ARROWDOWN" => 0x28,
+        "CAPSLOCK" => 0x14,
+        "NUMLOCK" => 0x90,
+        "SCROLLLOCK" => 0x91,
+        "PRINTSCREEN" | "PRTSC" => 0x2C,
+        "PAUSE" => 0x13,
+        "NUMPADMULTIPLY" => 0x6A,
+        "NUMPADADD" => 0x6B,
+        "NUMPADSUBTRACT" => 0x6D,
+        "NUMPADDECIMAL" => 0x6E,
+        "NUMPADDIVIDE" => 0x6F,
+        _ => return Err(format!(
+            "不支持的语音快捷键：{value}。仅支持单键，不支持组合键或 Ctrl/Alt/Shift/Win；可用键：{SUPPORTED_HOTKEYS}"
+        )),
+    };
+    Ok(vk)
 }
 
 fn start_hotkey_monitor(state: Arc<SharedState>) -> thread::JoinHandle<()> {
@@ -395,10 +455,10 @@ fn start_hotkey_monitor(state: Arc<SharedState>) -> thread::JoinHandle<()> {
                             }),
                         );
                     } else if matches!(state.mode(), Some(InputMode::RightAltHold)) {
-                        // Do not hold the physical F-key while injecting Right
+                        // Do not hold the physical hotkey while injecting Right
                         // Alt: the IME rejects Right Alt when another physical
-                        // key is still down. The first F-key release arms the
-                        // latched Right Alt session. A second F-key press ends
+                        // key is still down. The first hotkey release arms the
+                        // latched Right Alt session. A second hotkey press ends
                         // it in the key-down branch above.
                         if let Err(error) = state.start_right_alt_if_ready() {
                             state.release_all();
@@ -467,9 +527,17 @@ fn process_command(command: Command, state: &Arc<SharedState>) -> bool {
                 thread::sleep(Duration::from_millis(10));
             }
 
-            let result = if state.native_hook_active.load(Ordering::SeqCst) || cfg!(not(target_os = "windows")) {
+            let result = if state.native_hook_active.load(Ordering::SeqCst)
+                || cfg!(not(target_os = "windows"))
+            {
                 InputMode::parse(&mode).and_then(|parsed_mode| {
-                    parse_function_key(&shortcut).map(|vk| (parsed_mode, vk))
+                    parse_single_key(&shortcut).and_then(|vk| {
+                        if HOOK_KEY_PRESSED.load(Ordering::SeqCst) {
+                            Err("请先松开当前语音快捷键，再更改配置".to_string())
+                        } else {
+                            Ok((parsed_mode, vk))
+                        }
+                    })
                 })
             } else {
                 Err("native low-level keyboard hook is not active".to_string())
@@ -523,12 +591,10 @@ fn process_command(command: Command, state: &Arc<SharedState>) -> bool {
                     Some(InputMode::RightAltHold) => {
                         // Right Alt starts only after both prerequisites are
                         // true: Chromium/TSF focus is ready and the first
-                        // physical F-key has been released.
+                        // physical hotkey has been released.
                     }
                     Some(InputMode::LocalHold) => {
-                        return Err(
-                            "focus_ready is not used in local_hold mode".to_string()
-                        );
+                        return Err("focus_ready is not used in local_hold mode".to_string());
                     }
                     None => return Err("voice input mode is not configured".to_string()),
                 }
@@ -641,7 +707,7 @@ fn main() {
             "platform": std::env::consts::OS,
             "nativeHotkey": true,
             "nativeHookActive": state.native_hook_active.load(Ordering::SeqCst),
-            "supportedHotkeys": "F1-F24"
+            "supportedHotkeys": SUPPORTED_HOTKEYS
         })),
     });
 
@@ -688,8 +754,8 @@ mod platform {
     use windows::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, DispatchMessageW, GetForegroundWindow, IsWindow, PeekMessageW,
         SetForegroundWindow, SetWindowsHookExW, ShowWindow, TranslateMessage, UnhookWindowsHookEx,
-        HC_ACTION, KBDLLHOOKSTRUCT, MSG, PM_REMOVE, SW_RESTORE, WH_KEYBOARD_LL, WM_KEYDOWN,
-        WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
+        HC_ACTION, KBDLLHOOKSTRUCT, LLKHF_INJECTED, MSG, PM_REMOVE, SW_RESTORE, WH_KEYBOARD_LL,
+        WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
     };
 
     const VK_H: VIRTUAL_KEY = VIRTUAL_KEY(0x48);
@@ -708,6 +774,11 @@ mod platform {
     ) -> LRESULT {
         if code == HC_ACTION as i32 {
             let event = &*(lparam.0 as *const KBDLLHOOKSTRUCT);
+            // Never interpret SendInput (including our Win+H/stop/release
+            // events) as physical hotkeys or swallow it when H/F24 is bound.
+            if event.flags.contains(LLKHF_INJECTED) {
+                return CallNextHookEx(None, code, wparam, lparam);
+            }
             let configured_vk = CONFIGURED_HOTKEY_VK.load(Ordering::SeqCst);
             if configured_vk != 0 && event.vkCode == configured_vk as u32 {
                 let message = wparam.0 as u32;
@@ -728,7 +799,7 @@ mod platform {
                         }
                     }
                     // Swallow the initial edge and all auto-repeat events so
-                    // the foreground app can never retain an unmatched F-key.
+                    // the foreground app can never retain an unmatched hotkey.
                     return LRESULT(1);
                 }
             }
@@ -967,12 +1038,101 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_function_keys() {
-        assert_eq!(parse_function_key("F1").unwrap(), 0x70);
-        assert_eq!(parse_function_key("f7").unwrap(), 0x76);
-        assert_eq!(parse_function_key("F24").unwrap(), 0x87);
-        assert!(parse_function_key("Control+Alt+Space").is_err());
-        assert!(parse_function_key("F25").is_err());
+    fn parses_single_keys() {
+        for number in 1..=24 {
+            assert_eq!(
+                parse_single_key(&format!("F{number}")).unwrap(),
+                0x70 + number - 1
+            );
+        }
+        for key in b'A'..=b'Z' {
+            assert_eq!(
+                parse_single_key(&(key as char).to_string()).unwrap(),
+                key as u16
+            );
+        }
+        for key in b'0'..=b'9' {
+            assert_eq!(
+                parse_single_key(&(key as char).to_string()).unwrap(),
+                key as u16
+            );
+        }
+        assert_eq!(parse_single_key(" f7 ").unwrap(), 0x76);
+        assert_eq!(parse_single_key("h").unwrap(), 0x48);
+        for alias in ["`", "·", "~", "Backquote", "grave"] {
+            assert_eq!(parse_single_key(alias).unwrap(), 0xC0);
+        }
+        for (name, vk) in [
+            ("Space", 0x20),
+            ("空格", 0x20),
+            ("Tab", 0x09),
+            ("Enter", 0x0D),
+            ("Escape", 0x1B),
+            ("Backspace", 0x08),
+            ("Insert", 0x2D),
+            ("Delete", 0x2E),
+            ("Home", 0x24),
+            ("End", 0x23),
+            ("PageUp", 0x21),
+            ("PageDown", 0x22),
+            ("ArrowLeft", 0x25),
+            ("ArrowUp", 0x26),
+            ("ArrowRight", 0x27),
+            ("ArrowDown", 0x28),
+            ("CapsLock", 0x14),
+            ("NumLock", 0x90),
+            ("ScrollLock", 0x91),
+            ("PrintScreen", 0x2C),
+            ("Pause", 0x13),
+            ("-", 0xBD),
+            ("=", 0xBB),
+            ("[", 0xDB),
+            ("]", 0xDD),
+            ("\\", 0xDC),
+            (";", 0xBA),
+            ("'", 0xDE),
+            (",", 0xBC),
+            (".", 0xBE),
+            ("/", 0xBF),
+            ("NumpadMultiply", 0x6A),
+            ("NumpadAdd", 0x6B),
+            ("NumpadSubtract", 0x6D),
+            ("NumpadDecimal", 0x6E),
+            ("NumpadDivide", 0x6F),
+        ] {
+            assert_eq!(parse_single_key(name).unwrap(), vk, "{name}");
+        }
+        for number in 0..=9 {
+            assert_eq!(
+                parse_single_key(&format!("Numpad{number}")).unwrap(),
+                0x60 + number
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_chords_modifiers_and_unknown_keys() {
+        for key in [
+            "",
+            " ",
+            "Control+Alt+Space",
+            "Ctrl+A",
+            "Shift+F7",
+            "Ctrl",
+            "Control",
+            "Alt",
+            "RightAlt",
+            "Shift",
+            "Win",
+            "F0",
+            "F25",
+            "Numpad10",
+            "NumpadEnter",
+            "Unknown",
+            "中",
+        ] {
+            assert!(parse_single_key(key).is_err(), "{key}");
+        }
     }
 
     #[test]
