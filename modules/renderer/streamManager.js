@@ -17,6 +17,10 @@ const {
 const streamMessageModels = new Map();
 const STREAM_CODE_LINE_SWEEP_DURATION_MS = 2400;
 const STREAM_CODE_MAX_ACTIVE_SWEEPS = 3;
+// 高级匀速流式的突发块阈值：模型逐 token 输出的网络 chunk 通常只有几十字符，
+// 超过该长度的单块基本是后端一次性注入的内容（持久化上下文返回的 VCPToolResult 等），
+// 强行切片匀速播放只会让半截工具结果以原文形式慢慢“流”出来。
+const SMOOTH_STREAM_BURST_CHUNK_CHARS = 1024;
 
 const TOOL_REQUEST_START = '<<<[TOOL_REQUEST]>>>';
 const TOOL_REQUEST_END = '<<<[END_TOOL_REQUEST]>>>';
@@ -459,7 +463,9 @@ function getOrCreateStreamSegmentState(messageId) {
             stableBlocks: [],
             stableBlockSeq: 0,
             lastTailText: '',
-            lastParagraphBoundary: 0
+            lastParagraphBoundary: 0,
+            // 高级匀速流式的工具结果区间追踪：未闭合 VCPToolResult 起始标记的源码偏移，-1 表示不在区间内。
+            toolResultOpenAt: -1
         };
         streamSegmentStates.set(messageId, state);
     }
@@ -2177,6 +2183,66 @@ function intelligentChunkSplit(text) {
     return chunks;
 }
 
+// 新 chunk 之前回看的字符数，用于捕获被网络分片切开的起止标记。
+const TOOL_RESULT_MARKER_OVERLAP = Math.max(TOOL_RESULT_START.length, TOOL_RESULT_END.length) - 1;
+
+/**
+ * 增量追踪工具结果区间，返回本 chunk 是否落在某个工具结果内（含开启与闭合它的 chunk）。
+ * 工具结果可能被后端分成多个网络写入，尾片可能很小；只看单块长度或单块是否含起始标记，
+ * 会让尾片重新进入匀速队列。每次只扫描新增文本及标记长度的回看窗口，整体 O(n)。
+ */
+function trackToolResultRegion(messageId, accumulatedText, chunkLength) {
+    const segmentState = getOrCreateStreamSegmentState(messageId);
+    const previousLength = accumulatedText.length - chunkLength;
+    let touched = segmentState.toolResultOpenAt !== -1;
+    let cursor = Math.max(0, previousLength - TOOL_RESULT_MARKER_OVERLAP);
+
+    while (cursor < accumulatedText.length) {
+        if (segmentState.toolResultOpenAt !== -1) {
+            const endIndex = accumulatedText.indexOf(
+                TOOL_RESULT_END,
+                Math.max(cursor, segmentState.toolResultOpenAt + TOOL_RESULT_START.length)
+            );
+            if (endIndex === -1) break;
+            segmentState.toolResultOpenAt = -1;
+            cursor = endIndex + TOOL_RESULT_END.length;
+        } else {
+            const startIndex = accumulatedText.indexOf(TOOL_RESULT_START, cursor);
+            if (startIndex === -1) break;
+            segmentState.toolResultOpenAt = startIndex;
+            touched = true;
+            cursor = startIndex + TOOL_RESULT_START.length;
+        }
+    }
+
+    return touched;
+}
+
+/**
+ * 判断一个网络 chunk 是否应绕过匀速队列整块投影。
+ * - 工具结果区间内的 chunk：工具结果由后端一次性拼接，不是模型逐 token 生成。
+ * - 超大块：后端注入或上游批量缓冲，按字符匀速播放没有意义。
+ * 区间追踪必须对每个 chunk 都执行，不能被长度判断短路，否则会漏记起始标记。
+ */
+function shouldBypassSmoothQueue(messageId, textToAppend, accumulatedText) {
+    const touchesToolResult = trackToolResultRegion(messageId, accumulatedText, textToAppend.length);
+    return touchesToolResult || textToAppend.length >= SMOOTH_STREAM_BURST_CHUNK_CHARS;
+}
+
+/**
+ * 突发块到达时，把队列中尚未展示的前文与该块一起立即追平。
+ * 必须连同前文一起推进 visibleTextLength，否则可见前缀会跳过前文、破坏文本顺序。
+ * 实际场景中工具执行存在等待间隙，前文队列此时通常已排空。
+ */
+function flushSmoothQueueForBurst(messageId, queue) {
+    const segmentState = getOrCreateStreamSegmentState(messageId);
+    queue.length = 0;
+    segmentState.queuedChars = 0;
+    segmentState.visibleTextLength = (accumulatedStreamText.get(messageId) || '').length;
+    // 由全局 rAF 循环在下一帧渲染，沿用 processAndRenderSmoothChunk 的滚动跟随逻辑。
+    pendingDirectRenderMessages.add(messageId);
+}
+
 /**
  * VCPdesktop 流式推送处理器
  * 在token流中拦截 <<<[DESKTOP_PUSH]>>> 语法，实时转发到桌面画布
@@ -2269,17 +2335,22 @@ function appendStreamChunk(messageId, chunkData, context, streamOperationId = nu
 
     if (shouldEnableSmoothStreaming()) {
         const queue = streamingChunkQueues.get(messageId);
-        if (queue) {
-            // 🟢 新代码：智能分块
+        if (!queue) {
+            renderChunkDirectlyToDOM(messageId, textToAppend);
+            return;
+        }
+
+        if (shouldBypassSmoothQueue(messageId, textToAppend, currentAccumulated)) {
+            // 超大块 / 工具结果：整块一次性投影，不切片匀速播放。
+            flushSmoothQueueForBurst(messageId, queue);
+        } else {
+            // 🟢 智能分块
             const semanticChunks = intelligentChunkSplit(textToAppend);
             const segmentState = getOrCreateStreamSegmentState(messageId);
             for (const chunk of semanticChunks) {
                 queue.push(chunk);
                 segmentState.queuedChars += chunk.length;
             }
-        } else {
-            renderChunkDirectlyToDOM(messageId, textToAppend);
-            return;
         }
 
         // 🟢 使用全局循环替代单独的定时器
