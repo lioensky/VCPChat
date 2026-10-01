@@ -180,6 +180,90 @@ test('sub-directory workspace: status is scoped, outside paths are rejected, com
     assert.equal(git(root, ['rev-list', '--count', 'HEAD']), '1');
 });
 
+test('branches: list, create, switch and refuse unsafe cases', { skip: SKIP_GIT }, async t => {
+    const root = createRepo(t);
+    const first = await gitService.listBranches(root);
+    assert.equal(first.current, 'main');
+    assert.deepEqual(first.branches.map(x => [x.name, x.current]), [['main', true]]);
+
+    const created = await gitService.createBranch(root, 'feature/one');
+    assert.equal(created.ok, true);
+    assert.equal(created.changed, true);
+    assert.equal(git(root, ['branch', '--show-current']), 'feature/one');
+    assert.equal((await gitService.listBranches(root)).current, 'feature/one');
+
+    const same = await gitService.switchBranch(root, 'feature/one');
+    assert.deepEqual([same.ok, same.changed], [true, false]);
+    assert.equal((await gitService.switchBranch(root, 'main')).changed, true);
+    assert.equal(git(root, ['branch', '--show-current']), 'main');
+
+    for (const bad of ['', '  ', 'a b', 'x..y', '-oops']) {
+        const result = await gitService.createBranch(root, bad);
+        assert.equal(result.ok, false, bad);
+        assert.equal(result.issues[0].code, 'invalid-branch-name', bad);
+    }
+    const missing = await gitService.switchBranch(root, 'nope');
+    assert.equal(missing.ok, false);
+    assert.equal(missing.issues[0].code, 'git-error');
+    assert.equal(git(root, ['branch', '--show-current']), 'main');
+
+    // a start point that looks like an option must not be parsed as one
+    const odd = await gitService.createBranch(root, 'topic', '--detach');
+    assert.equal(odd.ok, false);
+    assert.equal(git(root, ['branch', '--show-current']), 'main');
+
+    // a merge in progress blocks switching
+    git(root, ['switch', '-q', '-c', 'other']);
+    write(root, 'README.md', '# other\n');
+    git(root, ['commit', '-q', '-am', 'other change']);
+    git(root, ['switch', '-q', 'main']);
+    write(root, 'README.md', '# main\n');
+    git(root, ['commit', '-q', '-am', 'main change']);
+    try { git(root, ['merge', 'other']); } catch (_error) { /* conflict expected */ }
+    const blocked = await gitService.switchBranch(root, 'other');
+    assert.equal(blocked.ok, false);
+    assert.ok(['conflicts-present', 'operation-in-progress'].includes(blocked.issues[0].code));
+});
+
+test('commit graph pages through visible history with refs', { skip: SKIP_GIT }, async t => {
+    const root = createRepo(t);
+    for (let i = 1; i <= 4; i++) {
+        write(root, `f${i}.txt`, `${i}\n`);
+        git(root, ['add', '-A']);
+        git(root, ['commit', '-q', '-m', `c${i}`]);
+    }
+    git(root, ['tag', 'v1']);
+    const page1 = await gitService.getCommitGraph(root, { maxCount: 2 });
+    assert.equal(page1.commits.length, 2);
+    assert.equal(page1.hasMore, true);
+    assert.equal(page1.commits[0].subject, 'c4');
+    assert.equal(page1.commits[0].parents.length, 1);
+    assert.ok(page1.commits[0].refs.some(r => r.includes('main')));
+    assert.ok(page1.commits[0].refs.some(r => r.includes('v1')));
+    const page2 = await gitService.getCommitGraph(root, { maxCount: 10, skip: 2 });
+    assert.deepEqual(page2.commits.map(c => c.subject), ['c2', 'c1', 'init']);
+    assert.equal(page2.hasMore, false);
+
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'vcp-empty-'));
+    t.after(() => fs.rmSync(empty, { recursive: true, force: true }));
+    git(empty, ['init', '-q', '-b', 'main']);
+    assert.deepEqual(await gitService.getCommitGraph(empty), { commits: [], hasMore: false });
+});
+
+test('change summary counts tracked and untracked text lines', { skip: SKIP_GIT }, async t => {
+    const root = createRepo(t);
+    let summary = await gitService.getChangeSummary(root);
+    assert.deepEqual([summary.files, summary.added, summary.removed], [0, 0, 0]);
+
+    write(root, 'src/app.js', 'const a = 2;\nconst b = 3;\n');   // +2 -1
+    write(root, 'new.txt', 'a\nb\nc\n');                          // untracked +3
+    fs.writeFileSync(path.join(root, 'bin.dat'), Buffer.from([0, 1, 2, 0]));
+    git(root, ['add', 'src/app.js']);
+    summary = await gitService.getChangeSummary(root);
+    assert.deepEqual([summary.files, summary.added, summary.removed], [3, 5, 1]);
+    assert.equal(summary.branch.head, 'main');
+});
+
 test('non-repository directory reports isRepo=false', { skip: SKIP_GIT }, async t => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vcp-nogit-'));
     t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -187,11 +271,12 @@ test('non-repository directory reports isRepo=false', { skip: SKIP_GIT }, async 
     assert.equal(status.isRepo, false);
 });
 
-test('git IPC only accepts the ProjectForge page as sender', () => {
-    assert.equal(isAllowedSenderUrl('file:///H:/VCP/VCPMain/VCPChat/ProjectForgemodules/projectforge.html'), true);
-    assert.equal(isAllowedSenderUrl('file:///H:/VCP/VCPMain/VCPChat/ProjectForgemodules/projectforge.html?vcpEmbedded=1'), true);
-    assert.equal(isAllowedSenderUrl('file:///C:/Program%20Files/VCP/resources/app.asar/ProjectForgemodules/projectforge.html'), true);
-    assert.equal(isAllowedSenderUrl('file:///H:/VCP/VCPMain/VCPChat/Forummodules/forum.html'), false);
-    assert.equal(isAllowedSenderUrl('https://evil.example/ProjectForgemodules/projectforge.html'), false);
-    assert.equal(isAllowedSenderUrl(''), false);
+test('git IPC accepts only exact application pages, including embedded query parameters', () => {
+    const {pathToFileURL}=require('node:url');
+    const projectPage=pathToFileURL(path.resolve(__dirname,'../ProjectForgemodules/projectforge.html')).href;
+    const mainPage=pathToFileURL(path.resolve(__dirname,'../main.html')).href;
+    assert.equal(isAllowedSenderUrl(projectPage),true);
+    assert.equal(isAllowedSenderUrl(projectPage+'?vcpEmbedded=1'),true);
+    assert.equal(isAllowedSenderUrl(mainPage),true);
+    for(const url of ['file:///C:/attacker/main.html','file:///H:/VCP/VCPMain/VCPChat/ProjectForgemodules/projectforge.html','https://evil.example/main.html','']) assert.equal(isAllowedSenderUrl(url),false,url);
 });

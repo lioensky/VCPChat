@@ -5,8 +5,10 @@
 // - 放弃未跟踪文件时使用 shell.trashItem，文件进入系统回收站而不是硬删。
 'use strict';
 
+const path = require('path');
 const { ipcMain, shell } = require('electron');
 const gitService = require('../services/gitService');
+const { createApplicationSenderGuard, isApplicationPageUrl } = require('./applicationSender');
 
 const CHANNELS = [
     'git:list-workspaces',
@@ -17,27 +19,20 @@ const CHANNELS = [
     'git:discard',
     'git:commit',
     'git:push',
+    'git:list-branches',
+    'git:switch-branch',
+    'git:create-branch',
+    'git:commit-graph',
+    'git:change-summary',
+    'git:reveal-path',
 ];
 
-const ALLOWED_PAGE_SUFFIX = '/projectforgemodules/projectforge.html';
+const ALLOWED_PAGES = ['ProjectForgemodules/projectforge.html', 'main.html'];
 const MAX_PATHS = 5000;
-
 let workspaceServiceRef = null;
-
-function isAllowedSenderUrl(raw) {
-    try {
-        const url = new URL(String(raw || ''));
-        if (url.protocol !== 'file:') return false;
-        return decodeURIComponent(url.pathname).replace(/\\/g, '/').toLowerCase().endsWith(ALLOWED_PAGE_SUFFIX);
-    } catch (_error) {
-        return false;
-    }
-}
-
-function isAllowedSender(event) {
-    const raw = event?.senderFrame?.url || event?.sender?.getURL?.() || '';
-    return isAllowedSenderUrl(raw);
-}
+let mainWindowRef = null;
+const isAllowedSender = createApplicationSenderGuard({ pages: ALLOWED_PAGES, getMainWebContents: () => mainWindowRef?.webContents });
+function isAllowedSenderUrl(raw) { return isApplicationPageUrl(raw, ALLOWED_PAGES); }
 
 function listEnabledWorkspaces() {
     return (workspaceServiceRef?.list() || [])
@@ -78,7 +73,8 @@ function handle(channel, fn) {
     });
 }
 
-function initialize({ workspaceService = null } = {}) {
+function initialize({ workspaceService = null, mainWindow = null } = {}) {
+    mainWindowRef = mainWindow;
     workspaceServiceRef = workspaceService;
     CHANNELS.forEach(channel => ipcMain.removeHandler(channel));
 
@@ -117,6 +113,35 @@ function initialize({ workspaceService = null } = {}) {
         resolveWorkspaceRoot(workspaceId),
         { setUpstream: payload?.setUpstream === true },
     ));
+
+    // 在系统文件管理器中定位文件：只接受工作区内的相对路径，越界一律拒绝。
+    handle('git:reveal-path', (workspaceId, relPath) => {
+        const root = path.resolve(resolveWorkspaceRoot(workspaceId));
+        const target = path.resolve(root, typeof relPath === 'string' ? relPath : '');
+        if (target !== root && !target.startsWith(root + path.sep)) throw new Error('路径不在工作区内。');
+        shell.showItemInFolder(target);
+        return { revealed: true };
+    });
+
+    handle('git:list-branches', workspaceId => gitService.listBranches(resolveWorkspaceRoot(workspaceId)));
+
+    handle('git:switch-branch', (workspaceId, name) => gitService.switchBranch(
+        resolveWorkspaceRoot(workspaceId),
+        typeof name === 'string' ? name : '',
+    ));
+
+    handle('git:create-branch', (workspaceId, name, startPoint) => gitService.createBranch(
+        resolveWorkspaceRoot(workspaceId),
+        typeof name === 'string' ? name : '',
+        typeof startPoint === 'string' ? startPoint : '',
+    ));
+
+    handle('git:commit-graph', (workspaceId, options = {}) => gitService.getCommitGraph(
+        resolveWorkspaceRoot(workspaceId),
+        { maxCount: options?.maxCount, skip: options?.skip },
+    ));
+
+    handle('git:change-summary', workspaceId => gitService.getChangeSummary(resolveWorkspaceRoot(workspaceId)));
 }
 
 module.exports = {

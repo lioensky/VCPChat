@@ -1503,7 +1503,7 @@ if (!gotTheLock) {
         // 工作区索引在后台预热，不阻塞首屏。
         workspaceHandlers.initialize({ settingsManager: appSettingsManager, logger: console });
         projectForgeHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService });
-        gitHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService });
+        gitHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService, mainWindow });
         sourceHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService });
 
         translatorHandlers.initialize({

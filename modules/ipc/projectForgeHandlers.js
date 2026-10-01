@@ -29,7 +29,8 @@ function broadcastToProjectForge(channel, payload) {
         try {
             if (wc.isDestroyed()) continue;
             const url = (wc.getURL() || '').toLowerCase();
-            if (url.includes('projectforge.html')) {
+            // 施工图窗口之外，主窗口的状态面板与计划详情侧栏也要实时收到变更
+            if (url.includes('projectforge.html') || url.includes('main.html')) {
                 wc.send(channel, payload);
             }
         } catch (_e) { /* ignore */ }

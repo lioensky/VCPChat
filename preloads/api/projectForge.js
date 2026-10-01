@@ -8,7 +8,7 @@ const { invoke, on } = require('../core/define');
 
 module.exports = {
     handlers: ['modules/ipc/projectForgeHandlers.js', 'modules/ipc/gitHandlers.js', 'modules/ipc/sourceHandlers.js'],
-    roles: ['utility'],
+    roles: ['utility', 'chat'],
     api: {
         projectForgeListProjects: invoke('project-forge:list-projects', 'options'),
         projectForgeGetProject: invoke('project-forge:get-project', 'projectId'),
@@ -28,6 +28,12 @@ module.exports = {
         gitDiscard: invoke('git:discard', 'workspaceId', 'paths'),
         gitCommit: invoke('git:commit', 'workspaceId', 'payload'),
         gitPush: invoke('git:push', 'workspaceId', 'payload'),
+        gitListBranches: invoke('git:list-branches', 'workspaceId'),
+        gitSwitchBranch: invoke('git:switch-branch', 'workspaceId', 'name'),
+        gitCreateBranch: invoke('git:create-branch', 'workspaceId', 'name', 'startPoint'),
+        gitCommitGraph: invoke('git:commit-graph', 'workspaceId', 'options'),
+        gitChangeSummary: invoke('git:change-summary', 'workspaceId'),
+        gitRevealPath: invoke('git:reveal-path', 'workspaceId', 'relPath'),
 
         // 源码侧栏（工作区列表复用 gitListWorkspaces）
         sourceListFiles: invoke('source:list-files', 'workspaceId'),
