@@ -363,6 +363,7 @@
     "modules/ui-system/next-shell/overlay-coordinator.js",
     "modules/ui-system/next-ui-apps.js",
     "modules/ui-system/performance-recorder.js",
+    "modules/ui-system/project-plan-model.js",
     "modules/ui-system/settings-bridge.js",
     "modules/ui-system/settings/agent-disclosures.js",
     "modules/ui-system/settings/agent-model-picker-directory.js",
@@ -392,6 +393,7 @@
     "modules/ui-system/side-pane/browserSideProvider.js",
     "modules/ui-system/side-pane/codeViewerSideProvider.js",
     "modules/ui-system/side-pane/notesSideProvider.js",
+    "modules/ui-system/side-pane/planDetailSideProvider.js",
     "modules/ui-system/side-pane/selection-reference.js",
     "modules/ui-system/side-pane/side-pane-controller.js",
     "modules/ui-system/side-pane/side-pane-resizer-owner.js",
@@ -5013,25 +5015,25 @@
       "consumers": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 434,
+          "line": 449,
           "kind": "preload-subscription"
         },
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 459,
+          "line": 474,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 434,
+          "line": 449,
           "kind": "preload-subscription",
           "match": "onMessageItem("
         },
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 459,
+          "line": 474,
           "kind": "preload-subscription",
           "match": "onMessageItem("
         }
@@ -6638,14 +6640,14 @@
       "consumers": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 464,
+          "line": 479,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 464,
+          "line": 479,
           "kind": "custom-event-listener",
           "match": "addEventListener('selectionchange'"
         }
@@ -7258,7 +7260,7 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 1697,
+          "line": 1699,
           "kind": "ipc-send"
         }
       ],
@@ -7284,7 +7286,7 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 1697,
+          "line": 1699,
           "kind": "ipc-send",
           "match": "send('terminal-paste-request'"
         }

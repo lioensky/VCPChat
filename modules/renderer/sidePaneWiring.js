@@ -6,6 +6,7 @@ import { createCodeViewerSideProvider } from '../ui-system/side-pane/codeViewerS
 import { createBrowserSideProvider } from '../ui-system/side-pane/browserSideProvider.js';
 import { createTerminalSideProvider } from '../ui-system/side-pane/terminalSideProvider.js';
 import { createToolOutputSideProvider } from '../ui-system/side-pane/toolOutputSideProvider.js';
+import { createPlanDetailSideProvider } from '../ui-system/side-pane/planDetailSideProvider.js';
 import {
     createSideChatDescriptor,
     createChildTopicForAgent,
@@ -359,6 +360,20 @@ export function initWorkspaceSidePane({
     controller.registerProvider('tool-output', toolOutputProvider);
     controller.registerOpenTabEntry({ id: 'terminal', label: '终端', icon: 'terminal', order: 50, open: () => terminalProvider.openTerminalTab() });
     controller.registerOpenTabEntry({ id: 'tool-output', label: '命令输出', icon: 'description', order: 60, open: () => toolOutputProvider.openToolOutputTab() });
+    // V工程计划详情：没有工程时只提示，并能打开 ProjectForge 去创建
+    const planDetailProvider = createPlanDetailSideProvider({
+        document: doc,
+        api: chatAPI || win.electronAPI,
+        sidePaneController: controller,
+        uiHelper,
+        onOpenProjectForge: () => {
+            const launcher = doc.querySelector('[data-action="open-project-forge-window"]');
+            if (launcher) launcher.click();
+            else chatAPI?.desktopCreateEmbeddedVchatApp?.('open-project-forge-window');
+        }
+    });
+    controller.registerProvider('plan-detail', planDetailProvider);
+    controller.registerOpenTabEntry({ id: 'plan-detail', label: 'V工程计划', icon: 'checklist', order: 70, open: () => planDetailProvider.openPlanDetailTab() });
 
     // 跟随主聊天：切换助手或话题时，侧栏换成那个话题的标签
     const syncSidePaneParent = async ({ item, topicId }) => {
