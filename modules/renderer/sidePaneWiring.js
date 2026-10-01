@@ -7,6 +7,7 @@ import { createBrowserSideProvider } from '../ui-system/side-pane/browserSidePro
 import { createTerminalSideProvider } from '../ui-system/side-pane/terminalSideProvider.js';
 import { createToolOutputSideProvider } from '../ui-system/side-pane/toolOutputSideProvider.js';
 import { createPlanDetailSideProvider } from '../ui-system/side-pane/planDetailSideProvider.js';
+import { createGitSideProvider } from '../ui-system/side-pane/gitSideProvider.js';
 import {
     createSideChatDescriptor,
     createChildTopicForAgent,
@@ -342,6 +343,14 @@ export function initWorkspaceSidePane({
         sidePaneController: controller
     });
     controller.registerProvider('browser', browserProvider);
+    // Git 变更：工作区里未暂存 / 已暂存 / 上一轮 AI 改动的文件，逐个展开看差异
+    const gitProvider = createGitSideProvider({
+        electronAPI: chatAPI || win.electronAPI,
+        sidePaneController: controller,
+        uiHelper
+    });
+    controller.registerProvider('git', gitProvider);
+    controller.registerOpenTabEntry({ id: 'git', label: 'Git 变更', icon: 'branch', order: 35, open: () => gitProvider.openGitTab() });
     controller.registerOpenTabEntry({ id: 'browser', label: '浏览器', icon: 'public', order: 40, open: () => browserProvider.openBrowserTab() });
     // 终端与命令输出共用 PowerShellExecutor 的同一个会话；终端里的链接交给浏览器标签打开
     const terminalProvider = createTerminalSideProvider({

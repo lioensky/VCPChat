@@ -343,6 +343,7 @@
     "modules/ui-system/component-showcase.js",
     "modules/ui-system/contribution-registry.js",
     "modules/ui-system/conversation-turn-navigator.js",
+    "modules/ui-system/git-file-diff.js",
     "modules/ui-system/interactive-chat-app.js",
     "modules/ui-system/lifecycle-inspector.js",
     "modules/ui-system/lifecycle-scope.js",
@@ -392,6 +393,8 @@
     "modules/ui-system/settlement.js",
     "modules/ui-system/side-pane/browserSideProvider.js",
     "modules/ui-system/side-pane/codeViewerSideProvider.js",
+    "modules/ui-system/side-pane/gitSideProvider.js",
+    "modules/ui-system/side-pane/menu-position.js",
     "modules/ui-system/side-pane/notesSideProvider.js",
     "modules/ui-system/side-pane/planDetailSideProvider.js",
     "modules/ui-system/side-pane/selection-reference.js",
@@ -5015,25 +5018,25 @@
       "consumers": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 449,
+          "line": 458,
           "kind": "preload-subscription"
         },
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 474,
+          "line": 483,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 449,
+          "line": 458,
           "kind": "preload-subscription",
           "match": "onMessageItem("
         },
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 474,
+          "line": 483,
           "kind": "preload-subscription",
           "match": "onMessageItem("
         }
@@ -6640,14 +6643,14 @@
       "consumers": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 479,
+          "line": 488,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 479,
+          "line": 488,
           "kind": "custom-event-listener",
           "match": "addEventListener('selectionchange'"
         }
@@ -9064,6 +9067,25 @@
           "line": 70,
           "kind": "custom-event-dispatch",
           "match": "dispatchEvent(new CustomEvent('vcp-webawesome-loaded'"
+        }
+      ]
+    },
+    {
+      "name": "vcp:git-focus-path",
+      "producers": [
+        {
+          "file": "modules/ui-system/side-pane/gitSideProvider.js",
+          "line": 124,
+          "kind": "custom-event-dispatch"
+        }
+      ],
+      "consumers": [],
+      "evidence": [
+        {
+          "file": "modules/ui-system/side-pane/gitSideProvider.js",
+          "line": 124,
+          "kind": "custom-event-dispatch",
+          "match": "dispatchEvent(new CustomEvent('vcp:git-focus-path'"
         }
       ]
     },

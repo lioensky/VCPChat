@@ -142,6 +142,7 @@ const inlineStyleCompatibilityAllowlist = new Set([
     path.join(moduleDir, 'side-pane', 'side-pane-controller.js'), // Pane width animation and pointer-anchored menu/tooltip coordinates are measured at runtime.
     path.join(moduleDir, 'side-pane', 'side-pane-resizer-owner.js'), // Dragged pane width follows the pointer, same as the left sidebar resizer.
     path.join(moduleDir, 'side-pane', 'side-pane-tab-dnd.js'), // Tab reorder offsets follow the pointer.
+    path.join(moduleDir, 'side-pane', 'menu-position.js'), // Pointer-anchored context menus are placed at measured coordinates.
 ]);
 
 for (const file of filesIn(moduleDir, '.js')) {
