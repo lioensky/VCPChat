@@ -4,6 +4,7 @@ import sys
 import base64
 import subprocess
 import ctypes
+import time
 
 def is_admin():
     try:
@@ -14,6 +15,7 @@ def is_admin():
 class ModernConfirmDialog:
     def __init__(self, command, is_interactive=False):
         self.result = False
+        self.status = "PENDING"
         self.root = tk.Tk()
         self.root.title("操作确认" if is_interactive else "管理员权限确认")
         
@@ -30,6 +32,24 @@ class ModernConfirmDialog:
         # 移除默认边框，创建自定义窗口
         self.root.overrideredirect(True)
         
+        # 窗口置顶与夺取焦点 (Todo #1)
+        self.root.attributes('-topmost', True)
+        self.root.lift()
+        self.root.focus_force()
+        
+        # 键盘快速取消 (Todo #1)
+        self.root.bind('<Escape>', lambda e: self.on_cancel())
+        
+        # 活性检测心跳初始化 (Todo #2)
+        self.last_active_time = time.time()
+        self.start_time = time.time()
+        self._timer_id = None
+        
+        # 全局输入事件监听以重置无操作计时
+        self.root.bind_all('<Motion>', self.reset_active)
+        self.root.bind_all('<Key>', self.reset_active)
+        self.root.bind_all('<Button>', self.reset_active)
+        self.root.bind_all('<MouseWheel>', self.reset_active)
         # 主题颜色
         self.colors = {
             'bg': '#1e1e2e',
@@ -48,12 +68,15 @@ class ModernConfirmDialog:
         self.root.configure(bg=self.colors['bg'])
         self.setup_ui(command, is_interactive)
         
-        # 窗口阴影效果（仅在Windows 10+）
+        # 窗口阴影与淡入效果
         try:
             self.root.attributes('-alpha', 0.0)
             self.root.after(10, lambda: self.fade_in())
         except:
             pass
+            
+        # 启动超时轮询心跳 (Todo #2)
+        self.check_timeout()
     
     def fade_in(self):
         """淡入动画"""
@@ -116,6 +139,16 @@ class ModernConfirmDialog:
         button_frame = tk.Frame(main_frame, bg=self.colors['bg'])
         button_frame.pack(side='bottom', fill='x', padx=30, pady=20)
         
+        # 倒计时微文本标签 (Todo #2)
+        self.timer_label = tk.Label(
+            button_frame,
+            text="",
+            font=('Microsoft YaHei UI', 9),
+            bg=self.colors['bg'],
+            fg=self.colors['text_secondary'],
+            anchor='w'
+        )
+        self.timer_label.pack(side='left', padx=(0, 10))
         # 内容区域 (在按钮区域之后创建，它会填充剩余空间)
         content_frame = tk.Frame(main_frame, bg=self.colors['bg'])
         content_frame.pack(fill='both', expand=True, padx=30, pady=20)
@@ -257,21 +290,60 @@ class ModernConfirmDialog:
         y = self.root.winfo_y() + deltay
         self.root.geometry(f"+{x}+{y}")
     
+    def reset_active(self, event=None):
+        """用户交互时刷新活性时间"""
+        self.last_active_time = time.time()
+
+    def check_timeout(self):
+        """活性心跳检测：双阶2分钟无操作/5分钟硬性兜底"""
+        now = time.time()
+        idle_rem = max(0, int(120 - (now - self.last_active_time)))
+        total_rem = max(0, int(300 - (now - self.start_time)))
+        remaining = min(idle_rem, total_rem)
+
+        if hasattr(self, 'timer_label') and self.timer_label.winfo_exists():
+            self.timer_label.config(text=f"⏱️ 剩余确认时间: {remaining}s (无操作120s / 上限300s)")
+
+        if idle_rem <= 0 or total_rem <= 0:
+            self.on_timeout()
+            return
+
+        self._timer_id = self.root.after(1000, self.check_timeout)
+
+    def on_timeout(self):
+        """超时自动退出"""
+        self.status = "TIMEOUT"
+        self.result = False
+        if self._timer_id:
+            try:
+                self.root.after_cancel(self._timer_id)
+            except:
+                pass
+        self.root.destroy()
+
     def on_allow(self):
+        self.status = "APPROVED"
         self.result = True
+        if self._timer_id:
+            try:
+                self.root.after_cancel(self._timer_id)
+            except:
+                pass
         self.root.destroy()
     
     def on_cancel(self):
+        self.status = "CANCELLED"
         self.result = False
-        # 在 pythonw.exe 模式下，任何对 sys.stderr 的写入都可能导致进程挂起。
-        # 移除所有 print 和 flush 调用，因为主逻辑通过临时文件通信。
+        if self._timer_id:
+            try:
+                self.root.after_cancel(self._timer_id)
+            except:
+                pass
         self.root.destroy()
     
     def show(self):
         self.root.mainloop()
-        # 窗口已在 on_allow/on_cancel 中通过 destroy() 关闭，
-        # mainloop 会因此退出。此处无需再次调用 destroy。
-        return self.result
+        return self.status, self.result
 
 def main():
     # This script is launched with admin rights by Node.js.
@@ -301,10 +373,16 @@ def main():
         sys.exit(1)
 
     # 显示确认对话框，并传入交互模式的状态
+    # 显示确认对话框，并传入交互模式的状态
     dialog = ModernConfirmDialog(decoded_command, is_interactive=is_interactive)
-    user_confirmed = dialog.show()
+    status, user_confirmed = dialog.show()
 
-    if not user_confirmed:
+    if status == "TIMEOUT":
+        with open(output_file_path, 'w', encoding='utf-8') as f:
+            f.write("TIMEOUT_REJECTED")
+        sys.exit(1)
+
+    if not user_confirmed or status == "CANCELLED":
         with open(output_file_path, 'w', encoding='utf-8') as f:
             f.write("USER_CANCELLED")
         sys.exit(1)
