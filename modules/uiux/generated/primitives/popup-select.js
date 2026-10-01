@@ -1,5 +1,4 @@
 import { mountRiskConfirmation } from './risk-confirmation.js';
-import { mountSemanticIcon } from './semantic-icon.js';
 const STYLE_ID = 'vcp-uiux-uiux-popup-select';
 /**
  * ModelSelect renders its selected marker as a 16px inline SVG, not through
@@ -429,12 +428,16 @@ export function mountPopupSelectView(host, props, scope) {
     let riskScope = null;
     let rowsScope = null;
     let focusActiveOption = false;
+    let scrollActiveIntoView = false;
     const moveAndFocus = (direction) => {
         const before = popup.getSnapshot().active;
         focusActiveOption = optionRole === 'menuitemradio';
+        scrollActiveIntoView = true; // 键盘主动移动光标，授权执行滚入视野
         popup.move(direction);
-        if (popup.getSnapshot().active === before)
+        if (popup.getSnapshot().active === before) {
             focusActiveOption = false;
+            scrollActiveIntoView = false;
+        }
     };
     viewScope.listen(card, 'keydown', event => {
         const s = popup.getSnapshot();
@@ -474,7 +477,10 @@ export function mountPopupSelectView(host, props, scope) {
             default: return; // ArrowLeft/Right fall through: native caret movement.
         }
     });
-    viewScope.listen(search, 'input', () => popup.setSearch(search.value));
+    viewScope.listen(search, 'input', () => {
+        scrollActiveIntoView = true; // 输入过滤词发生变化时，将焦点首项复位到可视区域
+        popup.setSearch(search.value);
+    });
     viewScope.listen(retryButton, 'click', () => popup.retry());
     viewScope.listen(document, 'pointerdown', event => {
         const s = popup.getSnapshot();
@@ -523,15 +529,19 @@ export function mountPopupSelectView(host, props, scope) {
             }
             row.setAttribute('role', optionRole);
             row.setAttribute('aria-disabled', String(disabled));
-            if (optionRole === 'menuitemradio')
+            const isActive = index === s.active;
+            row.dataset.active = String(isActive);
+            if (optionRole === 'menuitemradio') {
                 row.setAttribute('aria-checked', String(option.active === true));
-            else
-                row.setAttribute('aria-selected', String(index === s.active));
-            row.className = optionRole === 'menuitemradio'
-                ? 'vcp-uiux-popup-select-option'
-                : (index === s.active
+                row.className = isActive
+                    ? 'vcp-uiux-popup-select-option vcp-uiux-popup-select-option-active'
+                    : 'vcp-uiux-popup-select-option';
+            } else {
+                row.setAttribute('aria-selected', String(isActive));
+                row.className = isActive
                     ? 'vcp-uiux-popup-select-row vcp-uiux-popup-select-row-active'
-                    : 'vcp-uiux-popup-select-row');
+                    : 'vcp-uiux-popup-select-row';
+            }
             if (disabled)
                 row.classList.add(optionRole === 'menuitemradio' ? 'vcp-uiux-popup-select-option-disabled' : 'vcp-uiux-popup-select-row-disabled');
             const copy = document.createElement('span');
@@ -554,11 +564,8 @@ export function mountPopupSelectView(host, props, scope) {
                 const check = document.createElement('span');
                 check.className = optionRole === 'menuitemradio' ? 'vcp-uiux-popup-select-option-check' : 'vcp-uiux-popup-select-check';
                 check.setAttribute('aria-hidden', 'true');
-                if (option.active === true && grouped && optionRole === 'menuitemradio') {
+                if (option.active === true) {
                     mountUiuxModelSelectCheck(check);
-                }
-                else if (option.active === true) {
-                    mountSemanticIcon(check, { name: 'check', size: 16 }, nextRowsScope.child('uiux-popup-select-check'));
                 }
                 row.append(check);
             }
@@ -585,15 +592,23 @@ export function mountPopupSelectView(host, props, scope) {
                 actionRow.className = 'vcp-uiux-popup-select-action-row';
                 nextRowsScope.listen(row, 'click', () => { if (!disabled)
                     void popup.select(index); });
-                nextRowsScope.listen(row, 'mouseenter', () => { if (!disabled)
-                    popup.highlight(index); });
+                nextRowsScope.listen(row, 'mouseenter', () => {
+                    if (!disabled) {
+                        scrollActiveIntoView = false; // 严防死守：鼠标移动引发的高亮决不触发 scrollIntoView
+                        popup.highlight(index);
+                    }
+                });
                 actionRow.append(row, favorite);
                 return actionRow;
             }
             nextRowsScope.listen(row, 'click', () => { if (!disabled)
                 void popup.select(index); });
-            nextRowsScope.listen(row, 'mouseenter', () => { if (!disabled)
-                popup.highlight(index); });
+            nextRowsScope.listen(row, 'mouseenter', () => {
+                if (!disabled) {
+                    scrollActiveIntoView = false; // 严防死守：鼠标移动引发的高亮决不触发 scrollIntoView
+                    popup.highlight(index);
+                }
+            });
             return row;
         };
         if (grouped) {
@@ -621,9 +636,12 @@ export function mountPopupSelectView(host, props, scope) {
         }
         else
             rows.forEach((option, index) => listbox.append(renderOption(option, index)));
-        // Focus ownership sits with the search input, so scrolling the virtual
-        // highlight into view is explicit here (source useEffect on `active`).
-        listbox.querySelector('[aria-selected="true"], [aria-checked="true"]')?.scrollIntoView?.({ block: 'nearest' });
+        // 仅在明确需要滚动（如键盘上下移动或搜索词刷新）时执行，且靶点必须是真正的当前光标项
+        if (scrollActiveIntoView) {
+            scrollActiveIntoView = false;
+            const targetRow = listbox.querySelector('[data-active="true"]');
+            targetRow?.scrollIntoView?.({ block: 'nearest' });
+        }
         if (focusActiveOption) {
             focusActiveOption = false;
             const row = listbox.querySelectorAll('[role="menuitemradio"]')[s.active];
