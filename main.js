@@ -84,6 +84,7 @@ const projectForgeHandlers = require('./modules/ipc/projectForgeHandlers'); // P
 const gitHandlers = require('./modules/ipc/gitHandlers'); // ProjectForge Git 源代码管理侧栏
 const sourceHandlers = require('./modules/ipc/sourceHandlers'); // ProjectForge 源码浏览 / 轻量编辑侧栏
 const terminalHandlers = require('./modules/ipc/terminalHandlers'); // 侧栏终端（镜像自带终端会话）
+const modelTrajectoryHandlers = require('./modules/ipc/modelTrajectoryHandlers'); // 侧栏调用轨迹（模型请求 / 响应记录）
 const browserHandlers = require('./modules/ipc/browserHandlers'); // 侧栏浏览器（<webview> 的安全围栏）
 const assistantHandlers = require('./modules/ipc/assistantHandlers'); // Import assistant handlers
 const musicHandlers = require('./modules/ipc/musicHandlers'); // Import music handlers
@@ -1511,6 +1512,8 @@ if (!gotTheLock) {
         gitHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService, getMainWindow: () => mainWindow });
         sourceHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService });
         terminalHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService, getMainWindow: () => mainWindow });
+        // 必须早于 chatHandlers.initialize：聊天请求一发出就要有记录器
+        modelTrajectoryHandlers.initialize({ rootDir: path.join(APP_DATA_ROOT_IN_PROJECT, 'ModelTrajectory') });
         browserHandlers.initialize({ getMainWindow: () => mainWindow });
 
         translatorHandlers.initialize({
@@ -1912,6 +1915,7 @@ if (!gotTheLock) {
         }
 
         terminalHandlers.disposeAll();
+        modelTrajectoryHandlers.disposeAll();
         browserHandlers.dispose();
 
         // 1. 停止所有底层监听器
