@@ -612,6 +612,45 @@ function setupSingleCodeCopyButton(preElement, rawText) {
     copyButton.setAttribute('aria-label', '复制代码');
     copyButton.innerHTML = '<span class="vcp-code-copy-icon">📋</span><span class="vcp-code-copy-text">复制</span>';
 
+    const sideViewBtn = document.createElement('button');
+    sideViewBtn.type = 'button';
+    sideViewBtn.className = 'vcp-code-copy-button vcp-code-sideview-button';
+    sideViewBtn.dataset.vcpInteractive = 'true';
+    sideViewBtn.title = '在侧边副屏中查看代码';
+    sideViewBtn.setAttribute('aria-label', '侧边副屏查看');
+    sideViewBtn.innerHTML = '<span class="vcp-code-copy-icon">⤢</span><span class="vcp-code-copy-text">副屏</span>';
+
+    sideViewBtn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+
+        const sideCtrl = (typeof window !== 'undefined' ? window.vcpSidePaneController : null)
+            || (typeof globalThis !== 'undefined' ? globalThis.vcpSidePaneController : null);
+        if (sideCtrl?.openTab) {
+            const codeEl = preElement.querySelector('code');
+            const classList = codeEl ? Array.from(codeEl.classList) : [];
+            const langClass = classList.find(c => c.startsWith('language-'));
+            const language = langClass ? langClass.replace('language-', '') : 'plaintext';
+            // 同一段代码重复点击回到已有标签，不再堆出重复标签
+            let hash = 5381;
+            for (let i = 0; i < codeText.length; i++) hash = ((hash * 33) ^ codeText.charCodeAt(i)) >>> 0;
+            sideCtrl.openTab({
+                id: `code-viewer:snippet-${hash.toString(36)}-${codeText.length}`,
+                kind: 'code-viewer',
+                title: `${language.toUpperCase()} 代码片段`,
+                icon: 'code',
+                closable: true,
+                scopeMode: 'global',
+                payload: {
+                    code: codeText,
+                    language,
+                    mode: 'view'
+                }
+            });
+        }
+    });
+
     copyButton.addEventListener('click', async (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -646,10 +685,12 @@ function setupSingleCodeCopyButton(preElement, rawText) {
             actions.className = 'vcp-codeblock-actions';
             previewContainer.appendChild(actions);
         }
+        actions.insertBefore(sideViewBtn, actions.firstChild);
         actions.insertBefore(copyButton, actions.firstChild);
         previewContainer.classList.add('has-code-copy');
     } else {
         preElement.classList.add('vcp-codeblock-with-copy');
+        preElement.appendChild(sideViewBtn);
         preElement.appendChild(copyButton);
     }
 

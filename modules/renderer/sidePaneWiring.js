@@ -1,6 +1,8 @@
 import { createSidePaneController } from '../ui-system/side-pane/side-pane-controller.js';
 import { captureSelectionReference } from '../ui-system/side-pane/selection-reference.js';
 import { createSideChatSurfaceOwner } from './sideChatSurfaceOwner.js';
+import { createNotesSideProvider } from '../ui-system/side-pane/notesSideProvider.js';
+import { createCodeViewerSideProvider } from '../ui-system/side-pane/codeViewerSideProvider.js';
 import {
     createSideChatDescriptor,
     createChildTopicForAgent,
@@ -293,6 +295,42 @@ export function initWorkspaceSidePane({
     });
     win.vcpSidePaneController = controller;
     subscriptions.add(controller);
+
+    // 笔记和代码查看是全局标签，不随话题切换
+    const notesProvider = createNotesSideProvider({
+        electronAPI: chatAPI,
+        utilityAPI: win.utilityAPI,
+        sidePaneController: controller,
+        uiHelper
+    });
+    controller.registerProvider('notes', notesProvider);
+    const codeViewerProvider = createCodeViewerSideProvider({
+        document: doc,
+        api: chatAPI || win.utilityAPI || win.electronAPI,
+        uiHelper,
+        sidePaneController: controller
+    });
+    controller.registerProvider('code-viewer', codeViewerProvider);
+    controller.registerOpenTabEntry({ id: 'notes', label: '随手笔记', icon: 'edit_note', order: 20, open: () => notesProvider.openNotesTab() });
+    controller.registerOpenTabEntry({
+        id: 'code-viewer',
+        label: '代码查看',
+        icon: 'code',
+        order: 30,
+        // 空载荷进入浏览模式（选工作区和文件）；固定 id，重复点击回到同一个标签
+        open: async () => {
+            await controller.openTab({
+                id: 'code-viewer:browse',
+                kind: 'code-viewer',
+                title: '代码查看',
+                icon: 'code',
+                closable: true,
+                scopeMode: 'global',
+                payload: {}
+            });
+            controller.setVisible(true);
+        }
+    });
 
     // 跟随主聊天：切换助手或话题时，侧栏换成那个话题的标签
     const syncSidePaneParent = async ({ item, topicId }) => {

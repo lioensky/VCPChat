@@ -343,6 +343,7 @@
     "modules/ui-system/interactive-chat-app.js",
     "modules/ui-system/lifecycle-inspector.js",
     "modules/ui-system/lifecycle-scope.js",
+    "modules/ui-system/line-diff.js",
     "modules/ui-system/lucide-adapter.js",
     "modules/ui-system/material-runtime.js",
     "modules/ui-system/next-shell/account-menu-controller.js",
@@ -385,6 +386,8 @@
     "modules/ui-system/settings/settings-sidebar-slots.js",
     "modules/ui-system/settings/settings-sidebar-surface.js",
     "modules/ui-system/settlement.js",
+    "modules/ui-system/side-pane/codeViewerSideProvider.js",
+    "modules/ui-system/side-pane/notesSideProvider.js",
     "modules/ui-system/side-pane/selection-reference.js",
     "modules/ui-system/side-pane/side-pane-controller.js",
     "modules/ui-system/side-pane/side-pane-resizer-owner.js",
@@ -3718,7 +3721,7 @@
         },
         {
           "file": "modules/renderer/contentProcessor.js",
-          "line": 886,
+          "line": 927,
           "kind": "custom-event-listener"
         },
         {
@@ -3781,7 +3784,7 @@
         },
         {
           "file": "modules/renderer/contentProcessor.js",
-          "line": 886,
+          "line": 927,
           "kind": "custom-event-listener",
           "match": "addEventListener('message'"
         },
@@ -4761,6 +4764,25 @@
       ]
     },
     {
+      "name": "onAttachmentInTextEditor(",
+      "producers": [],
+      "consumers": [
+        {
+          "file": "modules/ui-system/side-pane/codeViewerSideProvider.js",
+          "line": 600,
+          "kind": "preload-subscription"
+        }
+      ],
+      "evidence": [
+        {
+          "file": "modules/ui-system/side-pane/codeViewerSideProvider.js",
+          "line": 600,
+          "kind": "preload-subscription",
+          "match": "onAttachmentInTextEditor("
+        }
+      ]
+    },
+    {
       "name": "onCancel(",
       "producers": [],
       "consumers": [
@@ -4940,12 +4962,12 @@
       "consumers": [
         {
           "file": "modules/renderer/contentProcessor.js",
-          "line": 1023,
+          "line": 1064,
           "kind": "preload-subscription"
         },
         {
           "file": "modules/renderer/contentProcessor.js",
-          "line": 1067,
+          "line": 1108,
           "kind": "preload-subscription"
         },
         {
@@ -4957,13 +4979,13 @@
       "evidence": [
         {
           "file": "modules/renderer/contentProcessor.js",
-          "line": 1023,
+          "line": 1064,
           "kind": "preload-subscription",
           "match": "onMessage("
         },
         {
           "file": "modules/renderer/contentProcessor.js",
-          "line": 1067,
+          "line": 1108,
           "kind": "preload-subscription",
           "match": "onMessage("
         },
@@ -4981,25 +5003,25 @@
       "consumers": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 368,
+          "line": 406,
           "kind": "preload-subscription"
         },
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 393,
+          "line": 431,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 368,
+          "line": 406,
           "kind": "preload-subscription",
           "match": "onMessageItem("
         },
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 393,
+          "line": 431,
           "kind": "preload-subscription",
           "match": "onMessageItem("
         }
@@ -6606,14 +6628,14 @@
       "consumers": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 398,
+          "line": 436,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 398,
+          "line": 436,
           "kind": "custom-event-listener",
           "match": "addEventListener('selectionchange'"
         }
