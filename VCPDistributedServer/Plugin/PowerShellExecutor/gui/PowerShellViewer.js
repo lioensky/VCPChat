@@ -357,6 +357,8 @@ window.addEventListener('DOMContentLoaded', () => {
     });
 });
 window.addEventListener('resize', () => scheduleFitTerminal(100));
+// PTY 尺寸由所有视图（本窗口与主窗口侧栏终端）共用；重新获得焦点时重新认领尺寸。
+window.addEventListener('focus', () => scheduleFitTerminal(0));
 if (sendButton && commandInput) {
     sendButton.addEventListener('click', sendCommand);
     commandInput.addEventListener('keydown', (event) => {

@@ -42,6 +42,7 @@
     "VCPDistributedServer/Plugin/PowerShellExecutor/command-output-parser.js",
     "VCPDistributedServer/Plugin/PowerShellExecutor/gui/PowerShellViewer.js",
     "VCPDistributedServer/Plugin/PowerShellExecutor/gui/preload.js",
+    "VCPDistributedServer/Plugin/PowerShellExecutor/nativeHelperPath.js",
     "VCPDistributedServer/Plugin/PowerShellExecutor/test_interactive_sequence.js",
     "VCPDistributedServer/Plugin/PowerShellExecutor/test_security_check.js",
     "VCPDistributedServer/Plugin/ProjectForge/ProjectForgeService.js",
@@ -195,6 +196,7 @@
     "modules/ipc/sourceHandlers.js",
     "modules/ipc/sovitsHandlers.js",
     "modules/ipc/tavernHandlers.js",
+    "modules/ipc/terminalHandlers.js",
     "modules/ipc/themeHandlers.js",
     "modules/ipc/translatorHandlers.js",
     "modules/ipc/voiceHandlers.js",
@@ -396,6 +398,10 @@
     "modules/ui-system/side-pane/side-pane-state.js",
     "modules/ui-system/side-pane/side-pane-tab-dnd.js",
     "modules/ui-system/side-pane/side-pane-tab-utils.js",
+    "modules/ui-system/side-pane/terminalLinks.js",
+    "modules/ui-system/side-pane/terminalSideProvider.js",
+    "modules/ui-system/side-pane/terminalTheme.js",
+    "modules/ui-system/side-pane/toolOutputSideProvider.js",
     "modules/ui-system/sidebar-resizer.js",
     "modules/ui-system/standalone-chat-app.js",
     "modules/ui-system/startup-theme-gate.js",
@@ -496,6 +502,7 @@
     "preloads/api/settings.js",
     "preloads/api/sideChat.js",
     "preloads/api/tavern.js",
+    "preloads/api/terminal.js",
     "preloads/api/theme.js",
     "preloads/api/vcpLog.js",
     "preloads/api/voice.js",
@@ -1207,7 +1214,7 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 2013,
+          "line": 2016,
           "kind": "ipc-send"
         },
         {
@@ -1219,20 +1226,20 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 2013,
+          "line": 2016,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 2013,
+          "line": 2016,
           "kind": "custom-event-listener",
           "match": "on('connect-vcplog'"
         },
         {
           "file": "main.js",
-          "line": 2013,
+          "line": 2016,
           "kind": "ipc-send",
           "match": "on('connect-vcplog'"
         },
@@ -1337,7 +1344,7 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 1299,
+          "line": 1300,
           "kind": "ipc-send"
         }
       ],
@@ -1345,7 +1352,7 @@
       "evidence": [
         {
           "file": "main.js",
-          "line": 1299,
+          "line": 1300,
           "kind": "ipc-send",
           "match": "send('create-unlocked-topic'"
         }
@@ -2342,7 +2349,7 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 2024,
+          "line": 2027,
           "kind": "ipc-send"
         },
         {
@@ -2354,20 +2361,20 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 2024,
+          "line": 2027,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 2024,
+          "line": 2027,
           "kind": "custom-event-listener",
           "match": "on('disconnect-vcplog'"
         },
         {
           "file": "main.js",
-          "line": 2024,
+          "line": 2027,
           "kind": "ipc-send",
           "match": "on('disconnect-vcplog'"
         },
@@ -2578,27 +2585,27 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 1715,
+          "line": 1717,
           "kind": "ipc-send"
         }
       ],
       "consumers": [
         {
           "file": "main.js",
-          "line": 1715,
+          "line": 1717,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1715,
+          "line": 1717,
           "kind": "custom-event-listener",
           "match": "on('embedded-vchat-app:request-close'"
         },
         {
           "file": "main.js",
-          "line": 1715,
+          "line": 1717,
           "kind": "ipc-send",
           "match": "on('embedded-vchat-app:request-close'"
         }
@@ -3199,7 +3206,7 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 1567,
+          "line": 1569,
           "kind": "ipc-send"
         },
         {
@@ -3218,7 +3225,7 @@
       "evidence": [
         {
           "file": "main.js",
-          "line": 1567,
+          "line": 1569,
           "kind": "ipc-send",
           "match": "send('history-file-updated'"
         },
@@ -5006,25 +5013,25 @@
       "consumers": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 415,
+          "line": 434,
           "kind": "preload-subscription"
         },
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 440,
+          "line": 459,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 415,
+          "line": 434,
           "kind": "preload-subscription",
           "match": "onMessageItem("
         },
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 440,
+          "line": 459,
           "kind": "preload-subscription",
           "match": "onMessageItem("
         }
@@ -6089,14 +6096,14 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 297,
+          "line": 302,
           "kind": "ipc-send"
         }
       ],
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 297,
+          "line": 302,
           "kind": "custom-event-listener"
         }
       ],
@@ -6109,13 +6116,13 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 297,
+          "line": 302,
           "kind": "custom-event-listener",
           "match": "on('powershell-window:close'"
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 297,
+          "line": 302,
           "kind": "ipc-send",
           "match": "on('powershell-window:close'"
         }
@@ -6131,14 +6138,14 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 279,
+          "line": 284,
           "kind": "ipc-send"
         }
       ],
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 279,
+          "line": 284,
           "kind": "custom-event-listener"
         }
       ],
@@ -6151,13 +6158,13 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 279,
+          "line": 284,
           "kind": "custom-event-listener",
           "match": "on('powershell-window:minimize'"
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 279,
+          "line": 284,
           "kind": "ipc-send",
           "match": "on('powershell-window:minimize'"
         }
@@ -6173,14 +6180,14 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 285,
+          "line": 290,
           "kind": "ipc-send"
         }
       ],
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 285,
+          "line": 290,
           "kind": "custom-event-listener"
         }
       ],
@@ -6193,13 +6200,13 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 285,
+          "line": 290,
           "kind": "custom-event-listener",
           "match": "on('powershell-window:toggle-maximize'"
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 285,
+          "line": 290,
           "kind": "ipc-send",
           "match": "on('powershell-window:toggle-maximize'"
         }
@@ -6631,14 +6638,14 @@
       "consumers": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 445,
+          "line": 464,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 445,
+          "line": 464,
           "kind": "custom-event-listener",
           "match": "addEventListener('selectionchange'"
         }
@@ -6687,7 +6694,7 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 2036,
+          "line": 2039,
           "kind": "ipc-send"
         },
         {
@@ -6699,20 +6706,20 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 2036,
+          "line": 2039,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 2036,
+          "line": 2039,
           "kind": "custom-event-listener",
           "match": "on('send-vcplog-message'"
         },
         {
           "file": "main.js",
-          "line": 2036,
+          "line": 2039,
           "kind": "ipc-send",
           "match": "on('send-vcplog-message'"
         },
@@ -7209,14 +7216,14 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 251,
+          "line": 256,
           "kind": "ipc-send"
         }
       ],
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 251,
+          "line": 256,
           "kind": "custom-event-listener"
         }
       ],
@@ -7229,13 +7236,13 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 251,
+          "line": 256,
           "kind": "custom-event-listener",
           "match": "on('terminal-paste-complete'"
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 251,
+          "line": 256,
           "kind": "ipc-send",
           "match": "on('terminal-paste-complete'"
         }
@@ -7251,7 +7258,7 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 1474,
+          "line": 1697,
           "kind": "ipc-send"
         }
       ],
@@ -7277,9 +7284,304 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 1474,
+          "line": 1697,
           "kind": "ipc-send",
           "match": "send('terminal-paste-request'"
+        }
+      ]
+    },
+    {
+      "name": "terminal:cd",
+      "producers": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 18,
+          "kind": "ipc-send"
+        }
+      ],
+      "consumers": [],
+      "evidence": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 18,
+          "kind": "ipc-send",
+          "match": "invoke('terminal:cd'"
+        }
+      ]
+    },
+    {
+      "name": "terminal:clear",
+      "producers": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 24,
+          "kind": "ipc-send"
+        }
+      ],
+      "consumers": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 24,
+          "kind": "custom-event-listener"
+        }
+      ],
+      "evidence": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 24,
+          "kind": "custom-event-listener",
+          "match": "on('terminal:clear'"
+        },
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 24,
+          "kind": "ipc-send",
+          "match": "on('terminal:clear'"
+        }
+      ]
+    },
+    {
+      "name": "terminal:command-run",
+      "producers": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 20,
+          "kind": "ipc-send"
+        }
+      ],
+      "consumers": [],
+      "evidence": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 20,
+          "kind": "ipc-send",
+          "match": "invoke('terminal:command-run'"
+        }
+      ]
+    },
+    {
+      "name": "terminal:command-run-changed",
+      "producers": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 22,
+          "kind": "ipc-send"
+        }
+      ],
+      "consumers": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 22,
+          "kind": "custom-event-listener"
+        }
+      ],
+      "evidence": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 22,
+          "kind": "custom-event-listener",
+          "match": "on('terminal:command-run-changed'"
+        },
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 22,
+          "kind": "ipc-send",
+          "match": "on('terminal:command-run-changed'"
+        }
+      ]
+    },
+    {
+      "name": "terminal:command-runs",
+      "producers": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 19,
+          "kind": "ipc-send"
+        }
+      ],
+      "consumers": [],
+      "evidence": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 19,
+          "kind": "ipc-send",
+          "match": "invoke('terminal:command-runs'"
+        }
+      ]
+    },
+    {
+      "name": "terminal:create",
+      "producers": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 13,
+          "kind": "ipc-send"
+        }
+      ],
+      "consumers": [],
+      "evidence": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 13,
+          "kind": "ipc-send",
+          "match": "invoke('terminal:create'"
+        }
+      ]
+    },
+    {
+      "name": "terminal:data",
+      "producers": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 23,
+          "kind": "ipc-send"
+        }
+      ],
+      "consumers": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 23,
+          "kind": "custom-event-listener"
+        }
+      ],
+      "evidence": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 23,
+          "kind": "custom-event-listener",
+          "match": "on('terminal:data'"
+        },
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 23,
+          "kind": "ipc-send",
+          "match": "on('terminal:data'"
+        }
+      ]
+    },
+    {
+      "name": "terminal:exit",
+      "producers": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 25,
+          "kind": "ipc-send"
+        }
+      ],
+      "consumers": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 25,
+          "kind": "custom-event-listener"
+        }
+      ],
+      "evidence": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 25,
+          "kind": "custom-event-listener",
+          "match": "on('terminal:exit'"
+        },
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 25,
+          "kind": "ipc-send",
+          "match": "on('terminal:exit'"
+        }
+      ]
+    },
+    {
+      "name": "terminal:kill",
+      "producers": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 16,
+          "kind": "ipc-send"
+        }
+      ],
+      "consumers": [],
+      "evidence": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 16,
+          "kind": "ipc-send",
+          "match": "invoke('terminal:kill'"
+        }
+      ]
+    },
+    {
+      "name": "terminal:resize",
+      "producers": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 15,
+          "kind": "ipc-send"
+        }
+      ],
+      "consumers": [],
+      "evidence": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 15,
+          "kind": "ipc-send",
+          "match": "invoke('terminal:resize'"
+        }
+      ]
+    },
+    {
+      "name": "terminal:restart",
+      "producers": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 17,
+          "kind": "ipc-send"
+        }
+      ],
+      "consumers": [],
+      "evidence": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 17,
+          "kind": "ipc-send",
+          "match": "invoke('terminal:restart'"
+        }
+      ]
+    },
+    {
+      "name": "terminal:watch-command-runs",
+      "producers": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 21,
+          "kind": "ipc-send"
+        }
+      ],
+      "consumers": [],
+      "evidence": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 21,
+          "kind": "ipc-send",
+          "match": "invoke('terminal:watch-command-runs'"
+        }
+      ]
+    },
+    {
+      "name": "terminal:write",
+      "producers": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 14,
+          "kind": "ipc-send"
+        }
+      ],
+      "consumers": [],
+      "evidence": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 14,
+          "kind": "ipc-send",
+          "match": "invoke('terminal:write'"
         }
       ]
     },
@@ -7293,7 +7595,7 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 129,
+          "line": 130,
           "kind": "ipc-send"
         }
       ],
@@ -7319,7 +7621,7 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 129,
+          "line": 130,
           "kind": "ipc-send",
           "match": "send('theme-init'"
         }
@@ -8108,17 +8410,17 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 1970,
-          "kind": "ipc-send"
-        },
-        {
-          "file": "main.js",
-          "line": 1984,
+          "line": 1973,
           "kind": "ipc-send"
         },
         {
           "file": "main.js",
           "line": 1987,
+          "kind": "ipc-send"
+        },
+        {
+          "file": "main.js",
+          "line": 1990,
           "kind": "ipc-send"
         },
         {
@@ -8142,19 +8444,19 @@
       "evidence": [
         {
           "file": "main.js",
-          "line": 1970,
-          "kind": "ipc-send",
-          "match": "send('vcp-log-message'"
-        },
-        {
-          "file": "main.js",
-          "line": 1984,
+          "line": 1973,
           "kind": "ipc-send",
           "match": "send('vcp-log-message'"
         },
         {
           "file": "main.js",
           "line": 1987,
+          "kind": "ipc-send",
+          "match": "send('vcp-log-message'"
+        },
+        {
+          "file": "main.js",
+          "line": 1990,
           "kind": "ipc-send",
           "match": "send('vcp-log-message'"
         },
@@ -8183,32 +8485,32 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 1947,
+          "line": 1950,
           "kind": "ipc-send"
         },
         {
           "file": "main.js",
-          "line": 1960,
+          "line": 1963,
           "kind": "ipc-send"
         },
         {
           "file": "main.js",
-          "line": 1968,
+          "line": 1971,
           "kind": "ipc-send"
         },
         {
           "file": "main.js",
-          "line": 1993,
+          "line": 1996,
           "kind": "ipc-send"
         },
         {
           "file": "main.js",
-          "line": 2006,
+          "line": 2009,
           "kind": "ipc-send"
         },
         {
           "file": "main.js",
-          "line": 2032,
+          "line": 2035,
           "kind": "ipc-send"
         },
         {
@@ -8227,37 +8529,37 @@
       "evidence": [
         {
           "file": "main.js",
-          "line": 1947,
+          "line": 1950,
           "kind": "ipc-send",
           "match": "send('vcp-log-status'"
         },
         {
           "file": "main.js",
-          "line": 1960,
+          "line": 1963,
           "kind": "ipc-send",
           "match": "send('vcp-log-status'"
         },
         {
           "file": "main.js",
-          "line": 1968,
+          "line": 1971,
           "kind": "ipc-send",
           "match": "send('vcp-log-status'"
         },
         {
           "file": "main.js",
-          "line": 1993,
+          "line": 1996,
           "kind": "ipc-send",
           "match": "send('vcp-log-status'"
         },
         {
           "file": "main.js",
-          "line": 2006,
+          "line": 2009,
           "kind": "ipc-send",
           "match": "send('vcp-log-status'"
         },
         {
           "file": "main.js",
-          "line": 2032,
+          "line": 2035,
           "kind": "ipc-send",
           "match": "send('vcp-log-status'"
         },
@@ -9361,27 +9663,27 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 1850,
+          "line": 1852,
           "kind": "ipc-send"
         }
       ],
       "consumers": [
         {
           "file": "main.js",
-          "line": 1850,
+          "line": 1852,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1850,
+          "line": 1852,
           "kind": "custom-event-listener",
           "match": "on('window-all-closed'"
         },
         {
           "file": "main.js",
-          "line": 1850,
+          "line": 1852,
           "kind": "ipc-send",
           "match": "on('window-all-closed'"
         }
@@ -9433,7 +9735,7 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 839,
+          "line": 840,
           "kind": "ipc-send"
         }
       ],
@@ -9441,7 +9743,7 @@
       "evidence": [
         {
           "file": "main.js",
-          "line": 839,
+          "line": 840,
           "kind": "ipc-send",
           "match": "send('window-maximized'"
         }
@@ -9525,7 +9827,7 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 844,
+          "line": 845,
           "kind": "ipc-send"
         }
       ],
@@ -9533,7 +9835,7 @@
       "evidence": [
         {
           "file": "main.js",
-          "line": 844,
+          "line": 845,
           "kind": "ipc-send",
           "match": "send('window-unmaximized'"
         }

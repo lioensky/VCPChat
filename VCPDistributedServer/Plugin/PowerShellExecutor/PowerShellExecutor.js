@@ -8,6 +8,7 @@ const { BrowserWindow, ipcMain, clipboard } = require('electron');
 const tmp = require('tmp');
 const chokidar = require('chokidar');
 const { CommandOutputParser } = require('./command-output-parser');
+const { resolveConfirmationScript } = require('./nativeHelperPath.js');
 
 // --- GUI Window Management ---
 let guiWindow = null;
@@ -194,7 +195,7 @@ ipcMain.handle('read-from-clipboard', () => {
 });
 
 // 监听来自GUI的尺寸调整请求
-ipcMain.on('powershell-resize', (event, { cols, rows }) => {
+function applyPtyResize(cols, rows) {
     const normalizedCols = Number(cols);
     const normalizedRows = Number(rows);
 
@@ -209,6 +210,10 @@ ipcMain.on('powershell-resize', (event, { cols, rows }) => {
             console.error('[PowerShellExecutor] Failed to resize pty:', e);
         }
     }
+}
+
+ipcMain.on('powershell-resize', (event, { cols, rows }) => {
+    applyPtyResize(cols, rows);
 });
 
 // 监听来自GUI的真实终端输入透传。
@@ -643,7 +648,9 @@ function executeAdminCommand(command) {
                 return reject(new Error(`无法创建临时文件: ${err.message}`));
             }
 
-            const pythonConfirmScript = path.join(__dirname, 'AdminConfirm.py');
+            let pythonConfirmScript;
+            try { pythonConfirmScript = resolveConfirmationScript(__dirname); }
+            catch (error) { cleanupCallback(); reject(error); return; }
             const commandAsBase64 = Buffer.from(command).toString('base64');
 
             // 2. 准备传递给Python脚本的参数
@@ -781,7 +788,9 @@ function requestInteractiveConfirmation(command) {
                 return reject(new Error(`无法创建临时文件: ${err.message}`));
             }
 
-            const pythonConfirmScript = path.join(__dirname, 'AdminConfirm.py');
+            let pythonConfirmScript;
+            try { pythonConfirmScript = resolveConfirmationScript(__dirname); }
+            catch (error) { cleanupCallback(); reject(error); return; }
             const commandAsBase64 = Buffer.from(command).toString('base64');
 
             // 普通敏感命令只需要当前权限确认，不应绕过主 PTY/xterm 执行链路。
@@ -839,18 +848,115 @@ function requestInteractiveConfirmation(command) {
  * GUI 仅接收原始PTY投影；渲染窗口失效不得打断命令完成检测。
  */
 function dispatchPtyData(rawData) {
+    const dataStr = rawData.toString('utf-8');
+    if (!dataStr) {
+        return;
+    }
+
+    if (mirrorStartupPending) {
+        // 启动握手（编码设置与就绪标记）是内部细节，握手完成前不投影到侧栏
+        mirrorStartupHeld = (mirrorStartupHeld + dataStr).slice(-MIRROR_REPLAY_LIMIT);
+    } else {
+        emitMirrorData(dataStr);
+    }
+
     try {
         if (!guiWindow || guiWindow.isDestroyed()
             || guiWindow.webContents.isDestroyed()) {
             return;
         }
-        const dataStr = rawData.toString('utf-8');
-        if (dataStr) {
-            guiWindow.webContents.send('powershell-data', dataStr);
-        }
+        guiWindow.webContents.send('powershell-data', dataStr);
     } catch (error) {
         console.warn('[PowerShellExecutor] GUI output delivery failed:', error.message);
     }
+}
+
+// --- 侧栏镜像 ---
+// 主窗口侧栏的「终端」标签是同一个 PTY 会话的另一个视图：输出同时送往 GUI 窗口和镜像，
+// 输入与尺寸调整直接落到同一个 PTY，AI 工具执行的命令因此对两处都可见。
+const MIRROR_REPLAY_LIMIT = 256 * 1024;
+const mirrorSinks = new Set();
+let replayBuffer = '';
+let mirrorStartupPending = false;
+let mirrorStartupHeld = '';
+
+function emitMirrorData(dataStr) {
+    if (!dataStr) return;
+    // 侧栏终端可能在会话进行中才挂载，缓存最近输出用于回放。
+    replayBuffer += dataStr;
+    if (replayBuffer.length > MIRROR_REPLAY_LIMIT) {
+        replayBuffer = replayBuffer.slice(-MIRROR_REPLAY_LIMIT);
+    }
+    notifyMirrors('onData', dataStr);
+}
+
+/** 结束启动握手：成功时只放出就绪标记之后的内容（通常是提示符），失败时原样放出便于排查。 */
+function releaseMirrorStartup(afterReady = null) {
+    if (!mirrorStartupPending) return;
+    mirrorStartupPending = false;
+    const held = mirrorStartupHeld;
+    mirrorStartupHeld = '';
+    emitMirrorData(afterReady === null ? held : afterReady);
+}
+
+function notifyMirrors(method, ...args) {
+    for (const sink of mirrorSinks) {
+        try {
+            sink[method]?.(...args);
+        } catch (e) {
+            console.error('[PowerShellExecutor] Mirror sink failed:', e);
+        }
+    }
+}
+
+/**
+ * 注册一个镜像视图并回放已有输出。
+ * @param {{onData: Function, onClear?: Function, onExit?: Function}} sink
+ * @returns {Function} 取消注册
+ */
+function attachMirror(sink) {
+    mirrorSinks.add(sink);
+    if (replayBuffer) {
+        try {
+            sink.onData(replayBuffer);
+        } catch (e) {
+            console.error('[PowerShellExecutor] Mirror replay failed:', e);
+        }
+    }
+    return () => mirrorSinks.delete(sink);
+}
+
+/** 确保有一个 PTY 会话（不打开 GUI 窗口）。 */
+function ensureMirrorSession() {
+    if (!ptyProcess) {
+        createNewPtySession();
+    }
+    return getSessionState();
+}
+
+/** 重置为全新的 PTY 会话（与 GUI 窗口共用）。 */
+function restartSession() {
+    createNewPtySession();
+    return getSessionState();
+}
+
+function getSessionState() {
+    return {
+        running: Boolean(ptyProcess),
+        pid: ptyProcess ? ptyProcess.pid : null,
+        // AI 短命令或交互式 TUI 占用期间，不应向会话里塞入额外命令。
+        busy: Boolean(isExecutingCommand || interactiveMode),
+        cols: lastKnownSize.cols,
+        rows: lastKnownSize.rows,
+    };
+}
+
+function writeSessionInput(data) {
+    if (!ptyProcess || typeof data !== 'string') {
+        return false;
+    }
+    ptyProcess.write(data);
+    return true;
 }
 
 /**
@@ -914,6 +1020,8 @@ function createNewPtySession() {
             guiWindow.webContents.send('powershell-clear');
         }
     }
+    replayBuffer = '';
+    notifyMirrors('onClear');
 
     let shell = 'bash';
     let args = [];
@@ -980,6 +1088,8 @@ function createNewPtySession() {
     // PSReadLine 的输入回显中；只有 PowerShell 真正执行 Write-Host 后才会命中。
     const readyBoundary = `__VCP_PTY_READY_${crypto.randomUUID()}__`;
     const encodedReadyBoundary = Buffer.from(readyBoundary, 'utf8').toString('base64');
+    mirrorStartupPending = true;
+    mirrorStartupHeld = '';
     ptyReadyPromise = new Promise((resolve, reject) => {
         let startupOutput = '';
         let settled = false;
@@ -1008,9 +1118,13 @@ function createNewPtySession() {
                 startupOutput = startupOutput.slice(-65536);
             }
 
-            if (startupOutput.includes(readyBoundary)) {
+            const boundaryIndex = startupOutput.indexOf(readyBoundary);
+            if (boundaryIndex !== -1) {
                 settled = true;
                 cleanupReadyProbe();
+                if (ptyProcess === currentPtyProcess) {
+                    releaseMirrorStartup(startupOutput.slice(boundaryIndex + readyBoundary.length).replace(/^\r?\n/, ''));
+                }
                 resolve();
             }
         });
@@ -1021,6 +1135,7 @@ function createNewPtySession() {
             }
             settled = true;
             cleanupReadyProbe();
+            if (ptyProcess === currentPtyProcess) releaseMirrorStartup();
             reject(new Error('PowerShell did not complete its startup readiness probe within 15 seconds.'));
         }, 15000);
 
@@ -1036,15 +1151,24 @@ function createNewPtySession() {
             'function global:more { param([string[]]$paths) if ($paths) { foreach ($file in $paths) { Get-Content $file } } else { $input } }',
             'function global:help { Get-Help @args }',
             `$__vcpReady = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${encodedReadyBoundary}'))`,
-            'Write-Host $__vcpReady'
+            'Write-Host $__vcpReady',
+            // 清掉握手留下的几行：侧栏只从就绪标记之后开始显示，ConPTY 的光标也得回到左上角，
+            // 否则 PSReadLine 按绝对坐标重绘时会和侧栏错开几行
+            'Clear-Host'
         ].join('; ');
         currentPtyProcess.write(`${initializationCommand}\r`);
     });
 
     // 当 pty 进程意外退出时，清理资源。
     // 注意：newSession 会先 kill 旧 PTY 再创建新 PTY，旧 PTY 的异步 onExit 不能误清理新会话。
-    currentPtyProcess.onExit(() => {
+    currentPtyProcess.onExit((exitInfo) => {
         childProcesses.delete(currentPtyProcess);
+        // 自行结束的 shell 仍占着 ConPTY 的管道句柄，显式 kill 才会释放
+        try {
+            currentPtyProcess.kill();
+        } catch (e) {
+            // 进程已经退出
+        }
 
         if (ptyProcess !== currentPtyProcess) {
             return;
@@ -1055,6 +1179,7 @@ function createNewPtySession() {
         isExecutingCommand = false;
         interactiveMode = false;
         activeCommandAbort = null;
+        notifyMirrors('onExit', exitInfo && exitInfo.exitCode);
     });
 }
 
@@ -1178,6 +1303,97 @@ function openGuiTerminal() {
  * @param {string} singleCommand - 要执行的单条命令。
  * @returns {Promise<string>} - 该命令的增量输出。
  */
+// --- AI 命令运行记录 ---
+// 侧栏「命令输出」标签读取这里：每条 AI 短命令一条记录（命令、状态、输出），只保留最近若干条与有限输出。
+const COMMAND_RUN_LIMIT = 30;
+const COMMAND_RUN_RAW_LIMIT = 512 * 1024;
+const COMMAND_RUN_READ_LIMIT = 64 * 1024;
+const commandRuns = [];
+const commandRunListeners = new Set();
+let commandRunSequence = 0;
+
+function summarizeCommandRun(run) {
+    return {
+        id: run.id,
+        command: run.command,
+        status: run.status,
+        startedAt: run.startedAt,
+        endedAt: run.endedAt,
+    };
+}
+
+function emitCommandRunChanged(run) {
+    const summary = summarizeCommandRun(run);
+    for (const listener of commandRunListeners) {
+        try {
+            listener(summary);
+        } catch (e) {
+            console.error('[PowerShellExecutor] Command run listener failed:', e);
+        }
+    }
+}
+
+function beginCommandRun(command) {
+    commandRunSequence += 1;
+    const run = {
+        id: `run-${Date.now().toString(36)}-${commandRunSequence}`,
+        command: String(command),
+        status: 'running',
+        startedAt: Date.now(),
+        endedAt: null,
+        raw: '',
+        rawTruncated: false,
+    };
+    commandRuns.push(run);
+    if (commandRuns.length > COMMAND_RUN_LIMIT) {
+        commandRuns.splice(0, commandRuns.length - COMMAND_RUN_LIMIT);
+    }
+    emitCommandRunChanged(run);
+    return run;
+}
+
+function appendCommandRunOutput(run, chunk) {
+    if (!chunk) return;
+    run.raw += chunk;
+    if (run.raw.length > COMMAND_RUN_RAW_LIMIT) {
+        run.raw = run.raw.slice(-COMMAND_RUN_RAW_LIMIT);
+        run.rawTruncated = true;
+    }
+    emitCommandRunChanged(run);
+}
+
+function finishCommandRun(run, status) {
+    if (run.status !== 'running') return;
+    run.status = status;
+    run.endedAt = Date.now();
+    emitCommandRunChanged(run);
+}
+
+/** 最近的命令运行记录（新的在前），不含输出正文。 */
+function listCommandRuns() {
+    return commandRuns.map(summarizeCommandRun).reverse();
+}
+
+/** 读取一条记录，输出为清洗后的纯文本，只保留末尾 maxChars 个字符。 */
+function getCommandRun(id, { maxChars = COMMAND_RUN_READ_LIMIT } = {}) {
+    const run = commandRuns.find(item => item.id === id);
+    if (!run) return null;
+    const limit = Math.max(1, Math.min(COMMAND_RUN_READ_LIMIT, Math.floor(Number(maxChars)) || COMMAND_RUN_READ_LIMIT));
+    // 起始标记那一行留下的换行不算输出
+    const clean = sanitizeTerminalOutput(run.raw).replace(/\r\n/g, '\n').replace(/\r/g, '').replace(/^\n/, '');
+    const truncated = run.rawTruncated || clean.length > limit;
+    return {
+        ...summarizeCommandRun(run),
+        output: truncated ? clean.slice(-limit) : clean,
+        truncated,
+    };
+}
+
+function subscribeCommandRuns(listener) {
+    commandRunListeners.add(listener);
+    return () => commandRunListeners.delete(listener);
+}
+
 function executeSingleCommandInPty(ptyProcess, singleCommand) {
     return new Promise((resolve, reject) => {
         if (!ptyProcess) {
@@ -1185,12 +1401,14 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
         }
 
         let rawOutput = '';
-
+        let rawOutputTruncated = false;
         let settled = false;
         let tempScriptPath = null;
+        let wrapperScriptPath = null;
         let listenerDisposable = null;
         let timeoutId = null;
 
+        const run = beginCommandRun(singleCommand);
         const startBoundary = `__VCP_COMMAND_START_${crypto.randomUUID()}__`;
         const endBoundary = `__VCP_COMMAND_END_${crypto.randomUUID()}__`;
         const outputParser = new CommandOutputParser(startBoundary, endBoundary);
@@ -1201,6 +1419,7 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
             }
 
             settled = true;
+            finishCommandRun(run, 'cancelled');
             // ETX 等价于用户在真实终端按下 Ctrl+C，用于中断当前前台命令。
             ptyProcess.write('\x03');
             cleanupListener(listenerDisposable, timeoutId);
@@ -1218,14 +1437,16 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
             if (activeCommandAbort === abortThisCommand) {
                 activeCommandAbort = null;
             }
-            if (tempScriptPath) {
+            for (const scriptPath of [tempScriptPath, wrapperScriptPath]) {
+                if (!scriptPath) continue;
                 try {
-                    fs.unlinkSync(tempScriptPath);
+                    fs.unlinkSync(scriptPath);
                 } catch (e) {
                     console.warn('[PowerShellExecutor] Failed to remove temporary script:', e.message);
                 }
-                tempScriptPath = null;
             }
+            tempScriptPath = null;
+            wrapperScriptPath = null;
         };
 
         const flushToGui = (text) => {
@@ -1240,12 +1461,15 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
             }
 
             const result = outputParser.push(data.toString('utf-8'));
-            rawOutput += result.output;
+            rawOutputTruncated ||= rawOutput.length + result.output.length > COMMAND_RUN_RAW_LIMIT;
+            rawOutput = (rawOutput + result.output).slice(-COMMAND_RUN_RAW_LIMIT);
+            appendCommandRunOutput(run, result.output);
 
             if (result.done) {
                 settled = true;
+                finishCommandRun(run, 'completed');
                 cleanupListener(listenerDisposable, timeoutId);
-                resolve(sanitizeTerminalOutput(rawOutput).trim());
+                resolve((rawOutputTruncated ? '[输出超过容量限制，仅保留末尾内容]\n' : '') + sanitizeTerminalOutput(rawOutput).trim());
             }
 
             // GUI 是投影，不是完成裁决者；保留同块中的结束后提示符。
@@ -1257,6 +1481,7 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
                 return;
             }
             settled = true;
+            finishCommandRun(run, 'timed_out');
             cleanupListener(listenerDisposable, timeoutId);
             reject(new Error(`Command "${singleCommand}" timed out after 60 seconds.`));
         }, 60000);
@@ -1270,8 +1495,6 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
             fs.writeFileSync(tempScriptPath, `\ufeff${singleCommand}`, 'utf8');
 
             const escapedTempScriptPath = tempScriptPath.replace(/'/g, "''");
-            const encodedStartBoundary = Buffer.from(startBoundary, 'utf8').toString('base64');
-            const encodedEndBoundary = Buffer.from(endBoundary, 'utf8').toString('base64');
 
             // 不能把 boundary 明文写进交互式命令行：
             // PowerShell/PSReadLine 会先回显整行输入，若监听器在“输入回显”里提前匹配到 boundary，
@@ -1285,13 +1508,18 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
                 `$__vcpEnd = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${encodedEndBoundary}'))`,
                 `Write-Host $__vcpStart`,
                 // 即使临时脚本发生 ParserError / RuntimeException，也必须输出 end boundary，
-                // 否则 AI 调用会一直等待直到超时。错误文本仍由 PTY 原样进入 rawOutput。
-                `try { & '${escapedTempScriptPath}' } finally { Write-Host $__vcpEnd }`
-            ].join('; ');
+                // 否则 AI 调用会一直等待直到超时。终止性错误要在结束标记之前打印，
+                // 否则 PowerShell 会在命令行结束后才显示它，AI 拿到的输出就是空的。
+                `try { & '${escapedTempScriptPath}' } catch { $_ | Out-Host } finally { Write-Host '${endBoundary}' }`
+            ].join('\r\n');
+            wrapperScriptPath = path.join(os.tmpdir(), `vcp-run-${crypto.randomUUID()}.ps1`);
+            fs.writeFileSync(wrapperScriptPath, `\ufeff${wrapperScript}`, 'utf8');
+            const wrappedCommand = `& '${wrapperScriptPath.replace(/'/g, "''")}'`;
 
             ptyProcess.write(`${wrappedCommand}\r`);
         } catch (error) {
             settled = true;
+            finishCommandRun(run, 'spawn_error');
             cleanupListener(listenerDisposable, timeoutId);
             reject(new Error(`无法创建或执行临时 PowerShell 脚本: ${error.message}`));
         }
@@ -1915,6 +2143,10 @@ function cleanup() {
     }
 
     // 4. 确保 ptyProcess 状态被重置
+    mirrorSinks.clear();
+    replayBuffer = '';
+    mirrorStartupPending = false;
+    mirrorStartupHeld = '';
     ptyProcess = null;
     ptyReadyPromise = Promise.resolve();
     guiDataListener = null;
@@ -1927,6 +2159,17 @@ function cleanup() {
 module.exports = {
     processToolCall,
     openGuiTerminal,
+    attachMirror,
+    listCommandRuns,
+    getCommandRun,
+    subscribeCommandRuns,
+    // 仅供测试：跳过 GUI 窗口，直接在共享 PTY 会话里跑一条短命令
+    _runCommandForTest: (command) => executeSingleCommandInPty(ptyProcess, command),
+    ensureMirrorSession,
+    restartSession,
+    getSessionState,
+    writeSessionInput,
+    resizeSession: applyPtyResize,
     cleanup,
     parseInteractiveSequence,
     parseWaitDuration,

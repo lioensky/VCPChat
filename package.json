@@ -176,13 +176,15 @@
       "audio_engine/**/*",
       "rust_assistant_engine/runtime/**/*",
       "rust_voice_input_engine/runtime/**/*",
+      "node_modules/node-pty/**/*",
       "node_modules/sherpa-onnx-node/**/*",
       "node_modules/sherpa-onnx-win-x64/**/*",
       "node_modules/sherpa-onnx-darwin-arm64/**/*",
       "node_modules/sherpa-onnx-darwin-x64/**/*",
       "node_modules/sherpa-onnx-linux-arm64/**/*",
       "node_modules/sherpa-onnx-linux-x64/**/*",
-      "modules/voice/localStt/sttWorker.js"
+      "modules/voice/localStt/sttWorker.js",
+      "VCPDistributedServer/Plugin/PowerShellExecutor/AdminConfirm.py"
     ],
     "files": [
       "main.js",
@@ -203,6 +205,10 @@
       "VCPDistributedServer/Plugin/VCPMobileSync/**/*",
       "VCPDistributedServer/Plugin/VChatDynamicWallpaper/**/*",
       "VCPDistributedServer/Plugin/VChatAutoTTS/**/*",
+      "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
+      "VCPDistributedServer/Plugin/PowerShellExecutor/plugin-manifest.json",
+      "VCPDistributedServer/Plugin/PowerShellExecutor/AdminConfirm.py",
+      "VCPDistributedServer/Plugin/PowerShellExecutor/gui/**/*",
       "assets/",
       "modules/**/*",
       "Groupmodules/**/*",
@@ -217,7 +223,8 @@
       "Notemodules/**/*",
       "Translatormodules/**/*",
       "vendor/**/*",
-      "node_modules/**/*"
+      "node_modules/**/*",
+      "VCPDistributedServer/Plugin/PowerShellExecutor/nativeHelperPath.js"
     ],
     "directories": {
       "buildResources": "assets"

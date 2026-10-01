@@ -4,6 +4,8 @@ import { createSideChatSurfaceOwner } from './sideChatSurfaceOwner.js';
 import { createNotesSideProvider } from '../ui-system/side-pane/notesSideProvider.js';
 import { createCodeViewerSideProvider } from '../ui-system/side-pane/codeViewerSideProvider.js';
 import { createBrowserSideProvider } from '../ui-system/side-pane/browserSideProvider.js';
+import { createTerminalSideProvider } from '../ui-system/side-pane/terminalSideProvider.js';
+import { createToolOutputSideProvider } from '../ui-system/side-pane/toolOutputSideProvider.js';
 import {
     createSideChatDescriptor,
     createChildTopicForAgent,
@@ -340,6 +342,23 @@ export function initWorkspaceSidePane({
     });
     controller.registerProvider('browser', browserProvider);
     controller.registerOpenTabEntry({ id: 'browser', label: '浏览器', icon: 'public', order: 40, open: () => browserProvider.openBrowserTab() });
+    // 终端与命令输出共用 PowerShellExecutor 的同一个会话；终端里的链接交给浏览器标签打开
+    const terminalProvider = createTerminalSideProvider({
+        document: doc,
+        api: chatAPI || win.electronAPI,
+        sidePaneController: controller,
+        onOpenUrl: (url) => browserProvider.openBrowserTab({ url, forceNew: true })
+    });
+    controller.registerProvider('terminal', terminalProvider);
+    const toolOutputProvider = createToolOutputSideProvider({
+        document: doc,
+        api: chatAPI || win.electronAPI,
+        sidePaneController: controller,
+        uiHelper
+    });
+    controller.registerProvider('tool-output', toolOutputProvider);
+    controller.registerOpenTabEntry({ id: 'terminal', label: '终端', icon: 'terminal', order: 50, open: () => terminalProvider.openTerminalTab() });
+    controller.registerOpenTabEntry({ id: 'tool-output', label: '命令输出', icon: 'description', order: 60, open: () => toolOutputProvider.openToolOutputTab() });
 
     // 跟随主聊天：切换助手或话题时，侧栏换成那个话题的标签
     const syncSidePaneParent = async ({ item, topicId }) => {

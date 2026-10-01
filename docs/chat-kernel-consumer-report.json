@@ -330,6 +330,7 @@
     "modules/ipc/settingsHandlers.js",
     "modules/ipc/sovitsHandlers.js",
     "modules/ipc/tavernHandlers.js",
+    "modules/ipc/terminalHandlers.js",
     "modules/ipc/themeHandlers.js",
     "modules/ipc/translatorHandlers.js",
     "modules/ipc/voiceHandlers.js",
@@ -12819,7 +12820,7 @@
       "documentReferences": 11,
       "electronReferences": 28,
       "timers": 2,
-      "listeners": 12,
+      "listeners": 13,
       "mutableMaps": 0
     },
     "VCPDistributedServer/Plugin/PowerShellExecutor/gui/preload.js": {
@@ -14069,6 +14070,14 @@
       "timers": 0,
       "listeners": 0,
       "mutableMaps": 0
+    },
+    "modules/ipc/terminalHandlers.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 3
     },
     "modules/ipc/themeHandlers.js": {
       "windowReferences": 2,

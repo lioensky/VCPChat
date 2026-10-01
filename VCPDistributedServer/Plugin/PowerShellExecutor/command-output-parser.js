@@ -4,6 +4,16 @@
  * PTY 数据块不是消息边界。仅保留可能属于标记的末尾，正文逐块交给调用方。
  * 标记由调用方随机生成且不以明文出现在输入回显中。
  */
+/** text 的末尾与 marker 开头重合的最长长度（不含整段 marker）。 */
+function partialSuffixLength(text, marker) {
+    for (let length = Math.min(text.length, marker.length - 1); length > 0; length--) {
+        if (marker.startsWith(text.slice(-length))) {
+            return length;
+        }
+    }
+    return 0;
+}
+
 class CommandOutputParser {
     constructor(startBoundary, endBoundary) {
         if (!startBoundary || !endBoundary) {
@@ -41,9 +51,9 @@ class CommandOutputParser {
             return { output, done: true, trailing };
         }
 
-        // 只有结尾可能仍是一个尚未收齐的 endBoundary。
-        const keep = this.endBoundary.length - 1;
-        const emitLength = Math.max(0, this.pending.length - keep);
+        // 只扣住确实可能是 endBoundary 开头的结尾，其余立即交出，短输出也能边跑边看。
+        const keep = partialSuffixLength(this.pending, this.endBoundary);
+        const emitLength = this.pending.length - keep;
         const output = this.pending.slice(0, emitLength);
         this.pending = this.pending.slice(emitLength);
         return { output, done: false, trailing: '' };

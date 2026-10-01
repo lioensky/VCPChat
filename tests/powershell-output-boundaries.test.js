@@ -47,11 +47,23 @@ test('multi-megabyte output is intact while parser retains only bounded lookbehi
     assert.equal(outputs.join(''), body);
 });
 
+test('short output is handed over right away while the command is still running', () => {
+    const parser = new CommandOutputParser(start, end);
+    parser.push(start);
+    assert.equal(parser.push('step 1\r\n').output, 'step 1\r\n');
+    // only a tail that could begin the end marker is held back
+    assert.equal(parser.push('step 2\r\n__VCP').output, 'step 2\r\n');
+    const result = parser.push('_COMMAND_END_test__');
+    assert.equal(result.output, '');
+    assert.equal(result.done, true);
+});
+
 test('GUI IPC failure does not escape the PTY dispatcher', () => {
     const source = fs.readFileSync(path.join(__dirname, '../VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js'), 'utf8');
     const begin = source.indexOf('function dispatchPtyData(');
     const finish = source.indexOf('\n}', begin) + 2;
     let warnings = 0;
+    const mirrored = [];
     const context = {
         guiWindow: {
             isDestroyed: () => false,
@@ -60,10 +72,39 @@ test('GUI IPC failure does not escape the PTY dispatcher', () => {
                 send: () => { throw new Error('renderer gone'); }
             }
         },
-        console: { warn: () => { warnings++; } }
+        console: { warn: () => { warnings++; } },
+        mirrorStartupPending: false,
+        emitMirrorData: (data) => { mirrored.push(data); }
     };
     vm.createContext(context);
     vm.runInContext(source.slice(begin, finish), context);
     assert.doesNotThrow(() => context.dispatchPtyData('output'));
     assert.equal(warnings, 1);
+    assert.deepEqual(mirrored, ['output'], 'the side-pane mirror still receives output when the GUI window fails');
+});
+test('the startup handshake is held back from the side-pane mirror until PowerShell is ready', () => {
+    const source = fs.readFileSync(path.join(__dirname, '../VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js'), 'utf8');
+    const pick = (name, isLet = false) => {
+        const begin = source.indexOf(isLet ? `let ${name}` : `function ${name}(`);
+        return source.slice(begin, isLet ? source.indexOf('\n', begin) : source.indexOf('\n}', begin) + 2);
+    };
+    const notified = [];
+    const context = { guiWindow: null, console, notifyMirrors: (method, data) => notified.push([method, data]) };
+    vm.createContext(context);
+    vm.runInContext([
+        'const MIRROR_REPLAY_LIMIT = 1024;',
+        "var replayBuffer = '';",
+        'var mirrorStartupPending = true;',
+        "var mirrorStartupHeld = '';",
+        pick('emitMirrorData'),
+        pick('releaseMirrorStartup'),
+        pick('dispatchPtyData'),
+        'this.release = releaseMirrorStartup; this.getReplay = () => replayBuffer;'
+    ].join('\n'), context);
+    context.dispatchPtyData("[Console]::OutputEncoding = ...; Write-Host $__vcpReady\r\n__VCP_PTY_READY_x__\r\n");
+    assert.deepEqual(notified, [], 'nothing reaches the side pane during startup');
+    context.release('PS C:\\> ');
+    context.dispatchPtyData('dir\r\n');
+    assert.deepEqual(notified.map(([, data]) => data), ['PS C:\\> ', 'dir\r\n']);
+    assert.equal(context.getReplay(), 'PS C:\\> dir\r\n');
 });
