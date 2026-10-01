@@ -643,7 +643,7 @@ export function createCodeViewerSideProvider({
                 oldCode = '',
                 newCode = '',
                 closable = true,
-                scopeMode = 'topic'
+                scopeMode = 'global'
             } = options;
 
             const langMeta = detectLanguage(filePath || title || language, language);

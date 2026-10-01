@@ -350,6 +350,7 @@
     "modules/ui-system/line-diff.js",
     "modules/ui-system/lucide-adapter.js",
     "modules/ui-system/material-runtime.js",
+    "modules/ui-system/message-file-changes.js",
     "modules/ui-system/next-shell/account-menu-controller.js",
     "modules/ui-system/next-shell/app-tab-host.js",
     "modules/ui-system/next-shell/assistant-search-controller.js",
@@ -5018,25 +5019,25 @@
       "consumers": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 458,
+          "line": 478,
           "kind": "preload-subscription"
         },
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 483,
+          "line": 503,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 458,
+          "line": 478,
           "kind": "preload-subscription",
           "match": "onMessageItem("
         },
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 483,
+          "line": 503,
           "kind": "preload-subscription",
           "match": "onMessageItem("
         }
@@ -6643,14 +6644,14 @@
       "consumers": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 488,
+          "line": 508,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 488,
+          "line": 508,
           "kind": "custom-event-listener",
           "match": "addEventListener('selectionchange'"
         }

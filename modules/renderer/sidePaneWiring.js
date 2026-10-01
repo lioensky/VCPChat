@@ -8,6 +8,8 @@ import { createTerminalSideProvider } from '../ui-system/side-pane/terminalSideP
 import { createToolOutputSideProvider } from '../ui-system/side-pane/toolOutputSideProvider.js';
 import { createPlanDetailSideProvider } from '../ui-system/side-pane/planDetailSideProvider.js';
 import { createGitSideProvider } from '../ui-system/side-pane/gitSideProvider.js';
+import { createGitFileDiffResolver, toWorkspaceRelative } from '../ui-system/git-file-diff.js';
+import { createMessageFileChanges } from '../ui-system/message-file-changes.js';
 import {
     createSideChatDescriptor,
     createChildTopicForAgent,
@@ -351,6 +353,24 @@ export function initWorkspaceSidePane({
     });
     controller.registerProvider('git', gitProvider);
     controller.registerOpenTabEntry({ id: 'git', label: 'Git 变更', icon: 'branch', order: 35, open: () => gitProvider.openGitTab() });
+    // 回答下方的「本轮改动」：文件名打开代码查看，+N -N 打开 Git 标签定位到该文件
+    const gitFileDiffResolver = createGitFileDiffResolver({ api: chatAPI || win.electronAPI });
+    let knownWorkspaces = [];
+    const messageFileChanges = createMessageFileChanges({
+        document: doc,
+        messagesRoot: doc.getElementById('chatMessages'),
+        getHistory: () => historyRef.get() || [],
+        openFile: (filePath) => codeViewerProvider.openViewer({ filePath }),
+        getDiffStats: (filePath) => gitFileDiffResolver.resolve(filePath),
+        openDiff: (filePath) => gitProvider.openGitTab({ focusPath: filePath }),
+        relativePath: (filePath) => toWorkspaceRelative(filePath, knownWorkspaces)?.relPath || null
+    });
+    // 先拿到工作区列表再挂载，已有消息的目录才能按工作区相对路径显示
+    gitFileDiffResolver.listWorkspaces()
+        .then((list) => { knownWorkspaces = list; })
+        .catch(() => {})
+        .finally(() => messageFileChanges.mount());
+    subscriptions.add({ dispose: () => messageFileChanges.dispose() });
     controller.registerOpenTabEntry({ id: 'browser', label: '浏览器', icon: 'public', order: 40, open: () => browserProvider.openBrowserTab() });
     // 终端与命令输出共用 PowerShellExecutor 的同一个会话；终端里的链接交给浏览器标签打开
     const terminalProvider = createTerminalSideProvider({
