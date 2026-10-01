@@ -10,6 +10,7 @@ const {
     rememberAttachmentDirectory
 } = require('../services/attachmentDialogState');
 const topicTitleManager = require('../../Groupmodules/topicTitleManager');
+const { beginTrajectoryCall, sessionKeyFromContext, sourceFromContext } = require('../modelTrajectory');
 const { HistoryMutationQueue } = require('../services/historyMutationQueue');
 const workspaceHandlers = require('./workspaceHandlers');
 const { removeSideChatChildrenOfParent } = require('./sideChatHandlers');
@@ -565,7 +566,7 @@ function initialize(mainWindow, context) {
                 return { success: false, error: '请先在全局设置中配置 VCP 服务器 URL。' };
             }
 
-            const newTitle = await topicTitleManager.generateTitleForHistory(history, globalVcpSettings);
+            const newTitle = await topicTitleManager.generateTitleForHistory(history, globalVcpSettings, { agentId, topicId });
             if (!newTitle) {
                 return { success: false, error: 'AI 未能生成有效的话题标题。' };
             }
@@ -1042,6 +1043,7 @@ function initialize(mainWindow, context) {
 
         let streamTask = null;
         let streamTaskDetached = false;
+        let trajectoryCall = null; // 侧栏「调用轨迹」的记录句柄；记录器自己吞掉一切异常
         const finishStreamTask = () => {
             if (!streamTask) return;
             vcpStreamTasks.finish(event.sender, messageId);
@@ -1288,6 +1290,14 @@ function initialize(mainWindow, context) {
             if (vcpchatExtensions) {
                 requestBody.vcpchatExtensions = vcpchatExtensions;
             }
+            trajectoryCall = beginTrajectoryCall({
+                sessionKey: sessionKeyFromContext(context),
+                requestId: messageId,
+                source: sourceFromContext(context),
+                model: modelConfig.model,
+                params: modelConfig,
+                messages
+            });
 
             // 🔥 记录模型使用频率
             try {
@@ -1308,6 +1318,7 @@ function initialize(mainWindow, context) {
             } catch (serializeError) {
                 console.error('[Main - sendToVCP] Failed to serialize request body:', serializeError);
                 console.error('[Main - sendToVCP] Problematic request body:', requestBody);
+                trajectoryCall.finish({ error: serializeError });
                 return { error: `请求体序列化失败: ${serializeError.message}` };
             }
 
@@ -1352,6 +1363,7 @@ function initialize(mainWindow, context) {
                 }
 
                 const errorMessageToPropagate = `VCP请求失败: ${response.status} - ${errorMessage}`;
+                trajectoryCall.finish({ error: { name: 'HTTPError', message: errorMessageToPropagate } });
 
                 if (modelConfig.stream === true && event && event.sender && !event.sender.isDestroyed()) {
                     // 构造更详细的错误信息
@@ -1408,6 +1420,7 @@ function initialize(mainWindow, context) {
                                     const jsonData = line.substring(5).trim();
                                     if (jsonData === '[DONE]') {
                                         console.log(`VCP流明确[DONE] for messageId: ${messageId}`);
+                                        trajectoryCall.finish();
                                         const donePayload = { type: 'end', messageId: messageId, context };
                                         sendStreamPayload(donePayload);
                                         return; // [DONE] 是明确的结束信号，退出函数
@@ -1418,6 +1431,7 @@ function initialize(mainWindow, context) {
                                     }
                                     try {
                                         const parsedChunk = JSON.parse(jsonData);
+                                        trajectoryCall.chunk(parsedChunk);
                                         const dataPayload = { type: 'data', chunk: parsedChunk, messageId: messageId, context };
                                         sendStreamPayload(dataPayload);
                                     } catch (e) {
@@ -1432,6 +1446,7 @@ function initialize(mainWindow, context) {
                                 // 流因连接关闭而结束，而不是[DONE]消息。
                                 // 缓冲区已被处理，现在发送最终的 'end' 信号。
                                 console.log(`VCP流结束 for messageId: ${messageId}`);
+                                trajectoryCall.finish();
                                 const endPayload = { type: 'end', messageId: messageId, context };
                                 sendStreamPayload(endPayload);
                                 break; // 退出 while 循环
@@ -1439,6 +1454,7 @@ function initialize(mainWindow, context) {
                         }
                     } catch (streamError) {
                         console.error(`VCP流读取错误 for messageId: ${messageId}:`, streamError);
+                        trajectoryCall.finish({ error: streamError, aborted: streamError?.name === 'AbortError' });
                         const streamErrPayload = { type: 'error', error: `VCP流读取错误: ${streamError.message}`, messageId: messageId };
                         if (context) streamErrPayload.context = context;
                         sendStreamPayload(streamErrPayload);
@@ -1479,6 +1495,7 @@ function initialize(mainWindow, context) {
             } else { // Non-streaming
                 console.log('VCP响应: 非流式处理');
                 const vcpResponse = await response.json();
+                trajectoryCall.finish({ response: vcpResponse });
                 // For non-streaming, wrap the response with the original context
                 // so the renderer knows where to save the history.
                 return { response: vcpResponse, context };
@@ -1486,6 +1503,7 @@ function initialize(mainWindow, context) {
 
         } catch (error) {
             console.error('VCP请求错误 (catch block):', error);
+            trajectoryCall?.finish({ error, aborted: error?.name === 'AbortError' });
             if (modelConfig.stream === true && event && event.sender && !event.sender.isDestroyed()) {
                 const catchErrorPayload = { type: 'error', error: `VCP请求错误: ${error.message}`, messageId: messageId, context };
                 sendStreamPayload(catchErrorPayload);

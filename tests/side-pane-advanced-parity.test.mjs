@@ -516,6 +516,9 @@ test('Parity: tab context menu is scoped, keyboard friendly and closes on Escape
     // 外壳的 backdrop-filter 会把 fixed 菜单的定位和背后内容都带偏，所以菜单挂在 body 下
     assert.equal(contextMenu.parentNode, doc.body);
     assert.ok(contextMenu.classList.contains('vcp-ui-scope'));
+    // 出了侧栏就没有 #vcpSidePane [hidden] 兜底，菜单自己的 display: flex 会让它一直显示
+    const overlaysCss = fs.readFileSync(new URL('../styles/ui-system/side-pane-tab-overlays.css', import.meta.url), 'utf8');
+    assert.match(overlaysCss, /html \.side-pane-context-menu\[hidden\]:where\(\.vcp-ui-scope, \.vcp-ui-scope \*\) \{\s*display: none;/);
 
     ctrl.setParent({ itemType: 'agent', itemId: 'agent-1', topicId: 'parent' });
     await ctrl.openTab({ kind: 'chat', descriptor: createDesc('s1', 'c1') });

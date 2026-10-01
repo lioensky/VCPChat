@@ -15,6 +15,11 @@ html .side-pane-context-menu:where(.vcp-ui-scope, .vcp-ui-scope *) {
     gap: 2px;
 }
 
+/* 菜单挂在 body 下，上面的 display: flex 会盖过 hidden */
+html .side-pane-context-menu[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: none;
+}
+
 html body[data-vcp-theme="light"] .side-pane-context-menu:where(.vcp-ui-scope, .vcp-ui-scope *) {
     background: var(--panel-bg-light, var(--vcp-ui-port-color-ffffff));
     border-color: var(--vcp-ui-port-color-rgba-0-0-0-0-12);
