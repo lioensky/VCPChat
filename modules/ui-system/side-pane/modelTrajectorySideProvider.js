@@ -24,7 +24,7 @@ import {
 
 const TAB_ID = 'model-trajectory:main';
 const FOLLOW_THRESHOLD_PX = 40;
-const FOLLOW_POLL_MS = 1000;
+const FOLLOW_POLL_MS = 3000;
 const RELOAD_DEBOUNCE_MS = 80;
 const SEARCH_DEBOUNCE_MS = 120;
 const HIGHLIGHT = 'vcp-trajectory-find';
@@ -49,7 +49,8 @@ export function createModelTrajectorySideProvider({
     api = (typeof window !== 'undefined' ? window.electronAPI : null),
     sidePaneController = null,
     uiHelper = null,
-    getConversation = () => null
+    getConversation = () => null,
+    onConversationChange = null
 } = {}) {
     const kind = 'model-trajectory';
     const win = doc.defaultView || window;
@@ -118,6 +119,7 @@ export function createModelTrajectorySideProvider({
             let reloadTimer = null;
             let searchTimer = null;
             let unsubscribe = null;
+            let unsubscribeConversation = null;
             let poller = null;
             let focusRequestId = requestedRequestId;
             let searchOpen = false;
@@ -229,7 +231,7 @@ export function createModelTrajectorySideProvider({
                     badge.title = metadata.ids;
                     body.appendChild(badge);
                 }
-                const meta = h('span', 'side-traj-row-meta', `${formatDuration(record.durationMs)} · ${formatDateTime(record.startedAt)}`);
+                const meta = h('span', 'side-traj-row-meta', formatClockTime(record.startedAt));
                 meta.title = formatDateTime(record.startedAt);
                 const copyText = messageContent(message);
                 const copyBtn = iconButton('content_copy', '复制内容', async event => {
@@ -767,7 +769,8 @@ export function createModelTrajectorySideProvider({
                 await api?.modelTrajectoryWatch?.();
                 unsubscribe = api?.onModelTrajectoryChanged?.(onChanged) || null;
             } catch (_error) { /* 订阅失败时仍可手动刷新 */ }
-            // 主聊天切换智能体 / 话题时没有统一的事件可订阅，轻量地对比一次当前话题
+            // 切换智能体 / 话题时由主聊天通知；轮询只是兜底（比如话题被外部流程切换）
+            unsubscribeConversation = onConversationChange?.(() => { if (!disposed && currentKey() !== sessionKey) void load(); }) || null;
             poller = win.setInterval(() => { if (!doc.hidden && currentKey() !== sessionKey) void load(); }, FOLLOW_POLL_MS);
             await load();
 
@@ -783,6 +786,7 @@ export function createModelTrajectorySideProvider({
                     clearHighlights();
                     doc.removeEventListener('click', onDocumentClick);
                     try { unsubscribe?.(); } catch (_error) { /* 已取消 */ }
+                    try { unsubscribeConversation?.(); } catch (_error) { /* 已取消 */ }
                     viewElement.innerHTML = '';
                     viewElement.classList.remove('side-traj-view');
                 }

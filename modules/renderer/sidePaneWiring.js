@@ -11,6 +11,7 @@ import { defineBrowserTabType } from '../ui-system/side-pane/tab-types/browser.j
 import { defineTerminalTabType } from '../ui-system/side-pane/tab-types/terminal.js';
 import { defineToolOutputTabType } from '../ui-system/side-pane/tab-types/tool-output.js';
 import { definePlanDetailTabType } from '../ui-system/side-pane/tab-types/plan-detail.js';
+import { defineModelTrajectoryTabType } from '../ui-system/side-pane/tab-types/model-trajectory.js';
 
 export function initWorkspaceSidePane({
     document: doc,
@@ -64,8 +65,9 @@ export function initWorkspaceSidePane({
     const browser = defineBrowserTabType(deps);
     const toolOutput = defineToolOutputTabType(deps);
     const planDetail = definePlanDetailTabType({ ...deps, historyRef, openProjectForge });
+    const modelTrajectory = defineModelTrajectoryTabType({ ...deps, selectedItemRef, topicIdRef });
     const terminal = defineTerminalTabType({ ...deps, onOpenUrl: url => browser.provider.openBrowserTab({ url, forceNew: true }) });
-    for (const definition of [defineNotificationsTabType(), defineChatTabType({ provider: sideChat.provider, openSideChat: sideChat.openSideChat, onClosed: sideChat.onTabClosed }), codeViewer, browser, terminal, toolOutput, planDetail]) {
+    for (const definition of [defineNotificationsTabType(), defineChatTabType({ provider: sideChat.provider, openSideChat: sideChat.openSideChat, onClosed: sideChat.onTabClosed }), codeViewer, browser, terminal, toolOutput, planDetail, modelTrajectory]) {
         controller.registerTabType(definition);
     }
     // 标签类型都登记完才能认出存档里的标签

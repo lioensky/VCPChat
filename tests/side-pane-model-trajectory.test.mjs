@@ -27,7 +27,7 @@ function records() {
 function makeEnv({ conversation = { item: { id: 'agent1', name: '小助手' }, topicId: 't1' }, recs = records(), result } = {}) {
     const dom = new JSDOM('<div id="view"></div>', { pretendToBeVisual: true });
     const doc = dom.window.document;
-    const state = { lists: [], opened: [], toasts: [], watch: 0, copied: [], cleared: [], recs, conversation };
+    const state = { lists: [], opened: [], toasts: [], watch: 0, copied: [], cleared: [], recs, conversation, conversationListeners: [], conversationUnsubscribed: false };
     let changed = null;
     let unsubscribed = false;
     Object.defineProperty(dom.window.navigator, 'clipboard', { value: { writeText: async text => { state.copied.push(text); } } });
@@ -42,7 +42,8 @@ function makeEnv({ conversation = { item: { id: 'agent1', name: '小助手' }, t
     const sidePaneController = { openTab: async tab => { state.opened.push(tab); return { focus() {} }; }, setVisible() {} };
     const provider = createModelTrajectorySideProvider({
         document: doc, api, sidePaneController, uiHelper: { showToastNotification: m => state.toasts.push(m) },
-        getConversation: () => state.conversation
+        getConversation: () => state.conversation,
+        onConversationChange: callback => { state.conversationListeners.push(callback); return () => { state.conversationUnsubscribed = true; }; }
     });
     return { dom, doc, provider, state, view: doc.getElementById('view'), fire: c => changed?.(c), wasUnsubscribed: () => unsubscribed };
 }
@@ -185,6 +186,18 @@ test('empty and no-conversation states, list errors, clear', async () => {
     env.view.querySelector('[aria-label="清空这个话题的调用轨迹"]').click();
     await wait();
     assert.deepEqual(env.state.cleared, ['agent1__t1']);
+});
+
+test('switching conversation reloads through the selection subscription, and dispose unsubscribes', async () => {
+    const { provider, view, state } = makeEnv();
+    const handle = await provider.mountTab({ id: 'x' }, view);
+    assert.equal(state.conversationListeners.length, 1);
+    state.conversation = { item: { id: 'agent2', name: '另一个' }, topicId: 't9' };
+    state.conversationListeners[0]();
+    await wait(80);
+    assert.equal(state.lists.at(-1)[0], 'agent2__t9');
+    handle.dispose();
+    assert.ok(state.conversationUnsubscribed);
 });
 
 test('truncated notice and dispose cleanup', async () => {

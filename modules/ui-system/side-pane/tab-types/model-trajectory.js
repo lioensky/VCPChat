@@ -1,0 +1,13 @@
+import { createModelTrajectorySideProvider } from '../modelTrajectorySideProvider.js';
+
+export function defineModelTrajectoryTabType({ document: doc, window: win, chatAPI, sidePaneController, uiHelper, selectedItemRef, topicIdRef }) {
+    const provider = createModelTrajectorySideProvider({
+        document: doc, api: chatAPI || win.electronAPI, sidePaneController, uiHelper,
+        getConversation: () => ({ item: selectedItemRef.get(), topicId: topicIdRef.get() })
+    });
+    return Object.freeze({
+        kind: 'model-trajectory', label: '调用轨迹', icon: 'monitoring', searchHint: '模型调用 请求 响应 token 轨迹',
+        entry: { id: 'model-trajectory', order: 65, open: () => provider.openModelTrajectoryTab() },
+        provider
+    });
+}
