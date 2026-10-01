@@ -809,9 +809,12 @@ body.light-theme .message-item.system.welcome-bubble {
     color: var(--primary-text);
     font-family: var(--vcp-chat-font-family, inherit);
     font-size: 0.95em;
-    resize: both; 
+    resize: vertical; 
     max-width: 100%; 
     box-sizing: border-box;
+    /* 现代 Chromium 原生排版引擎支持，自动随内容无界扩展且不引起外层视口截断 */
+    field-sizing: content;
+    overflow-y: hidden;
     /* Will be a flex child of .message-item.message-item-editing */
     flex-grow: 1;
 }

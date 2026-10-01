@@ -744,7 +744,11 @@ function toggleEditMode(messageItem, message) {
         messageItem.appendChild(controlsDiv);
 
         if (uiHelper.autoResizeTextarea) uiHelper.autoResizeTextarea(textarea);
-        textarea.focus();
+        try {
+            textarea.focus({ preventScroll: true });
+        } catch {
+            textarea.focus();
+        }
         textarea.addEventListener('input', () => uiHelper.autoResizeTextarea(textarea));
         textarea.addEventListener('keydown', (event) => {
             if (event.key === 'Escape') {
