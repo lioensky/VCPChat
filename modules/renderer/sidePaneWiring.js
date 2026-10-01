@@ -10,6 +10,7 @@ import { createPlanDetailSideProvider } from '../ui-system/side-pane/planDetailS
 import { createGitSideProvider } from '../ui-system/side-pane/gitSideProvider.js';
 import { createGitFileDiffResolver, toWorkspaceRelative } from '../ui-system/git-file-diff.js';
 import { createMessageFileChanges } from '../ui-system/message-file-changes.js';
+import { createConversationStatusPanel } from '../ui-system/conversation-status-panel.js';
 import {
     createSideChatDescriptor,
     createChildTopicForAgent,
@@ -389,20 +390,37 @@ export function initWorkspaceSidePane({
     controller.registerProvider('tool-output', toolOutputProvider);
     controller.registerOpenTabEntry({ id: 'terminal', label: '终端', icon: 'terminal', order: 50, open: () => terminalProvider.openTerminalTab() });
     controller.registerOpenTabEntry({ id: 'tool-output', label: '命令输出', icon: 'description', order: 60, open: () => toolOutputProvider.openToolOutputTab() });
+    const openProjectForge = () => {
+        const launcher = doc.querySelector('[data-action="open-project-forge-window"]');
+        if (launcher) launcher.click();
+        else chatAPI?.desktopCreateEmbeddedVchatApp?.('open-project-forge-window');
+    };
     // V工程计划详情：没有工程时只提示，并能打开 ProjectForge 去创建
     const planDetailProvider = createPlanDetailSideProvider({
         document: doc,
         api: chatAPI || win.electronAPI,
         sidePaneController: controller,
         uiHelper,
-        onOpenProjectForge: () => {
-            const launcher = doc.querySelector('[data-action="open-project-forge-window"]');
-            if (launcher) launcher.click();
-            else chatAPI?.desktopCreateEmbeddedVchatApp?.('open-project-forge-window');
-        }
+        onOpenProjectForge: openProjectForge
     });
     controller.registerProvider('plan-detail', planDetailProvider);
     controller.registerOpenTabEntry({ id: 'plan-detail', label: 'V工程计划', icon: 'checklist', order: 70, open: () => planDetailProvider.openPlanDetailTab() });
+
+    // 聊天区右上角的状态面板：只显示当前话题用过的 V工程、它所在工作区的 Git 和它发起过的命令
+    const conversationStatusPanel = createConversationStatusPanel({
+        document: doc,
+        api: chatAPI || win.electronAPI,
+        uiHelper,
+        onOpenGitTab: () => gitProvider.openGitTab(),
+        onOpenPlanDetail: (project) => planDetailProvider.openPlanDetailTab({ projectId: project?.id, projectName: project?.name }),
+        onOpenToolOutput: (run) => toolOutputProvider.openToolOutputTab({ runId: run?.id }),
+        onOpenProjectForge: openProjectForge,
+        getHistory: () => historyRef.get() || [],
+        messagesRoot: doc.getElementById('chatMessages'),
+        onConversationChange: (callback) => chatManager?.onSelectionChange?.(callback)
+    });
+    conversationStatusPanel.mount();
+    subscriptions.add({ dispose: () => conversationStatusPanel.dispose() });
 
     // 跟随主聊天：切换助手或话题时，侧栏换成那个话题的标签
     const syncSidePaneParent = async ({ item, topicId }) => {

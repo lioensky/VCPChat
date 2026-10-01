@@ -342,8 +342,11 @@
     "modules/ui-system/component-manifest.js",
     "modules/ui-system/component-showcase.js",
     "modules/ui-system/contribution-registry.js",
+    "modules/ui-system/conversation-scope.js",
+    "modules/ui-system/conversation-status-panel.js",
     "modules/ui-system/conversation-turn-navigator.js",
     "modules/ui-system/git-file-diff.js",
+    "modules/ui-system/git-graph-layout.js",
     "modules/ui-system/interactive-chat-app.js",
     "modules/ui-system/lifecycle-inspector.js",
     "modules/ui-system/lifecycle-scope.js",
@@ -5019,25 +5022,25 @@
       "consumers": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 478,
+          "line": 496,
           "kind": "preload-subscription"
         },
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 503,
+          "line": 521,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 478,
+          "line": 496,
           "kind": "preload-subscription",
           "match": "onMessageItem("
         },
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 503,
+          "line": 521,
           "kind": "preload-subscription",
           "match": "onMessageItem("
         }
@@ -6644,14 +6647,14 @@
       "consumers": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 508,
+          "line": 526,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 508,
+          "line": 526,
           "kind": "custom-event-listener",
           "match": "addEventListener('selectionchange'"
         }
