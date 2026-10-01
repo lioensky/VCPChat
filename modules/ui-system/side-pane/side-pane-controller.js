@@ -827,6 +827,19 @@ export function createSidePaneController({
             }
         },
 
+        /** 改已打开标签的标题或 payload（关掉后重新打开时用新的 payload），不切换标签 */
+        updateTab(tabId, patch = {}) {
+            if (isDisposed || !tabId) return;
+            const next = SidePaneState.updateTab(state, tabId, patch);
+            if (next === state) return;
+            const titleChanged = next.tabs.find(t => t.id === tabId)?.title !== state.tabs.find(t => t.id === tabId)?.title;
+            state = next;
+            if (!titleChanged) return;
+            const title = state.tabs.find(t => t.id === tabId).title;
+            mountedTabMap.get(tabId)?.viewElement?.setAttribute?.('aria-label', title);
+            renderTabList();
+        },
+
         getTabHandle(tabId) {
             if (isDisposed || !tabId) return null;
             return mountedTabMap.get(tabId)?.handle || null;

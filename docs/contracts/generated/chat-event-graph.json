@@ -164,6 +164,7 @@
     "modules/ipc/agentHandlers.js",
     "modules/ipc/applicationSender.js",
     "modules/ipc/assistantHandlers.js",
+    "modules/ipc/browserHandlers.js",
     "modules/ipc/canvasHandlers.js",
     "modules/ipc/chartHandlers.js",
     "modules/ipc/chatHandlers.js",
@@ -386,6 +387,7 @@
     "modules/ui-system/settings/settings-sidebar-slots.js",
     "modules/ui-system/settings/settings-sidebar-surface.js",
     "modules/ui-system/settlement.js",
+    "modules/ui-system/side-pane/browserSideProvider.js",
     "modules/ui-system/side-pane/codeViewerSideProvider.js",
     "modules/ui-system/side-pane/notesSideProvider.js",
     "modules/ui-system/side-pane/selection-reference.js",
@@ -471,6 +473,7 @@
     "preloads/api/agents.js",
     "preloads/api/askNova.js",
     "preloads/api/assistant.js",
+    "preloads/api/browser.js",
     "preloads/api/canvas.js",
     "preloads/api/chat.js",
     "preloads/api/desktop.js",
@@ -1204,7 +1207,7 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 2005,
+          "line": 2013,
           "kind": "ipc-send"
         },
         {
@@ -1216,20 +1219,20 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 2005,
+          "line": 2013,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 2005,
+          "line": 2013,
           "kind": "custom-event-listener",
           "match": "on('connect-vcplog'"
         },
         {
           "file": "main.js",
-          "line": 2005,
+          "line": 2013,
           "kind": "ipc-send",
           "match": "on('connect-vcplog'"
         },
@@ -1334,7 +1337,7 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 1294,
+          "line": 1299,
           "kind": "ipc-send"
         }
       ],
@@ -1342,7 +1345,7 @@
       "evidence": [
         {
           "file": "main.js",
-          "line": 1294,
+          "line": 1299,
           "kind": "ipc-send",
           "match": "send('create-unlocked-topic'"
         }
@@ -2339,7 +2342,7 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 2016,
+          "line": 2024,
           "kind": "ipc-send"
         },
         {
@@ -2351,20 +2354,20 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 2016,
+          "line": 2024,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 2016,
+          "line": 2024,
           "kind": "custom-event-listener",
           "match": "on('disconnect-vcplog'"
         },
         {
           "file": "main.js",
-          "line": 2016,
+          "line": 2024,
           "kind": "ipc-send",
           "match": "on('disconnect-vcplog'"
         },
@@ -2575,27 +2578,27 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 1709,
+          "line": 1715,
           "kind": "ipc-send"
         }
       ],
       "consumers": [
         {
           "file": "main.js",
-          "line": 1709,
+          "line": 1715,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1709,
+          "line": 1715,
           "kind": "custom-event-listener",
           "match": "on('embedded-vchat-app:request-close'"
         },
         {
           "file": "main.js",
-          "line": 1709,
+          "line": 1715,
           "kind": "ipc-send",
           "match": "on('embedded-vchat-app:request-close'"
         }
@@ -3196,7 +3199,7 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 1561,
+          "line": 1567,
           "kind": "ipc-send"
         },
         {
@@ -3215,7 +3218,7 @@
       "evidence": [
         {
           "file": "main.js",
-          "line": 1561,
+          "line": 1567,
           "kind": "ipc-send",
           "match": "send('history-file-updated'"
         },
@@ -5003,25 +5006,25 @@
       "consumers": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 406,
+          "line": 415,
           "kind": "preload-subscription"
         },
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 431,
+          "line": 440,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 406,
+          "line": 415,
           "kind": "preload-subscription",
           "match": "onMessageItem("
         },
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 431,
+          "line": 440,
           "kind": "preload-subscription",
           "match": "onMessageItem("
         }
@@ -5033,14 +5036,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 988,
+          "line": 1001,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 988,
+          "line": 1001,
           "kind": "preload-subscription",
           "match": "onOpenSideChat("
         }
@@ -6628,14 +6631,14 @@
       "consumers": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 436,
+          "line": 445,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 436,
+          "line": 445,
           "kind": "custom-event-listener",
           "match": "addEventListener('selectionchange'"
         }
@@ -6684,7 +6687,7 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 2028,
+          "line": 2036,
           "kind": "ipc-send"
         },
         {
@@ -6696,20 +6699,20 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 2028,
+          "line": 2036,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 2028,
+          "line": 2036,
           "kind": "custom-event-listener",
           "match": "on('send-vcplog-message'"
         },
         {
           "file": "main.js",
-          "line": 2028,
+          "line": 2036,
           "kind": "ipc-send",
           "match": "on('send-vcplog-message'"
         },
@@ -8105,17 +8108,17 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 1962,
+          "line": 1970,
           "kind": "ipc-send"
         },
         {
           "file": "main.js",
-          "line": 1976,
+          "line": 1984,
           "kind": "ipc-send"
         },
         {
           "file": "main.js",
-          "line": 1979,
+          "line": 1987,
           "kind": "ipc-send"
         },
         {
@@ -8139,19 +8142,19 @@
       "evidence": [
         {
           "file": "main.js",
-          "line": 1962,
+          "line": 1970,
           "kind": "ipc-send",
           "match": "send('vcp-log-message'"
         },
         {
           "file": "main.js",
-          "line": 1976,
+          "line": 1984,
           "kind": "ipc-send",
           "match": "send('vcp-log-message'"
         },
         {
           "file": "main.js",
-          "line": 1979,
+          "line": 1987,
           "kind": "ipc-send",
           "match": "send('vcp-log-message'"
         },
@@ -8180,12 +8183,7 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 1939,
-          "kind": "ipc-send"
-        },
-        {
-          "file": "main.js",
-          "line": 1952,
+          "line": 1947,
           "kind": "ipc-send"
         },
         {
@@ -8195,17 +8193,22 @@
         },
         {
           "file": "main.js",
-          "line": 1985,
+          "line": 1968,
           "kind": "ipc-send"
         },
         {
           "file": "main.js",
-          "line": 1998,
+          "line": 1993,
           "kind": "ipc-send"
         },
         {
           "file": "main.js",
-          "line": 2024,
+          "line": 2006,
+          "kind": "ipc-send"
+        },
+        {
+          "file": "main.js",
+          "line": 2032,
           "kind": "ipc-send"
         },
         {
@@ -8224,13 +8227,7 @@
       "evidence": [
         {
           "file": "main.js",
-          "line": 1939,
-          "kind": "ipc-send",
-          "match": "send('vcp-log-status'"
-        },
-        {
-          "file": "main.js",
-          "line": 1952,
+          "line": 1947,
           "kind": "ipc-send",
           "match": "send('vcp-log-status'"
         },
@@ -8242,19 +8239,25 @@
         },
         {
           "file": "main.js",
-          "line": 1985,
+          "line": 1968,
           "kind": "ipc-send",
           "match": "send('vcp-log-status'"
         },
         {
           "file": "main.js",
-          "line": 1998,
+          "line": 1993,
           "kind": "ipc-send",
           "match": "send('vcp-log-status'"
         },
         {
           "file": "main.js",
-          "line": 2024,
+          "line": 2006,
+          "kind": "ipc-send",
+          "match": "send('vcp-log-status'"
+        },
+        {
+          "file": "main.js",
+          "line": 2032,
           "kind": "ipc-send",
           "match": "send('vcp-log-status'"
         },
@@ -9358,27 +9361,27 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 1844,
+          "line": 1850,
           "kind": "ipc-send"
         }
       ],
       "consumers": [
         {
           "file": "main.js",
-          "line": 1844,
+          "line": 1850,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1844,
+          "line": 1850,
           "kind": "custom-event-listener",
           "match": "on('window-all-closed'"
         },
         {
           "file": "main.js",
-          "line": 1844,
+          "line": 1850,
           "kind": "ipc-send",
           "match": "on('window-all-closed'"
         }
@@ -9430,7 +9433,7 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 836,
+          "line": 839,
           "kind": "ipc-send"
         }
       ],
@@ -9438,7 +9441,7 @@
       "evidence": [
         {
           "file": "main.js",
-          "line": 836,
+          "line": 839,
           "kind": "ipc-send",
           "match": "send('window-maximized'"
         }
@@ -9522,7 +9525,7 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 841,
+          "line": 844,
           "kind": "ipc-send"
         }
       ],
@@ -9530,7 +9533,7 @@
       "evidence": [
         {
           "file": "main.js",
-          "line": 841,
+          "line": 844,
           "kind": "ipc-send",
           "match": "send('window-unmaximized'"
         }

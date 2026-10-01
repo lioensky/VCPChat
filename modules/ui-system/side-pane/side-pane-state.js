@@ -326,6 +326,19 @@ export function closeTab(state, tabId, options = {}) {
         : next;
 }
 
+/** 只改标题 / payload，不激活、不改可见性（比如浏览器标签跟着页面标题走） */
+export function updateTab(state, tabId, patch = {}) {
+    const index = state.tabs.findIndex(tab => tab.id === tabId);
+    if (index === -1) return state;
+    const current = state.tabs[index];
+    const title = typeof patch.title === 'string' && patch.title.trim() ? patch.title.trim() : current.title;
+    const payload = patch.payload && typeof patch.payload === 'object' ? patch.payload : current.payload;
+    if (title === current.title && payload === current.payload) return state;
+    const copy = [...state.tabs];
+    copy[index] = Object.freeze({ ...current, title, payload });
+    return Object.freeze({ ...state, tabs: Object.freeze(copy) });
+}
+
 /** 把 activeId 挪到 overId 的位置（arrayMove 语义）。通知标签始终留在最前面。 */
 export function reorderTabs(state, activeId, overId) {
     if (!activeId || !overId || activeId === overId) return state;

@@ -149,3 +149,16 @@ test('global tools retain selection and visibility across topic changes', () => 
  state=SidePaneState.setParent(state,{itemId:'b',topicId:'other',itemType:'agent'});
  assert.equal(state.activeTabId,'git-global');assert.equal(state.visible,false);
 });
+
+test('updateTab changes title and payload without activating the tab', () => {
+    let s = SidePaneState.openTab(SidePaneState.createInitialSidePaneState(), { id: 'b1', kind: 'browser', title: '浏览器', payload: {} });
+    s = SidePaneState.openTab(s, { id: 'n1', kind: 'notes', title: '笔记' });
+    const next = SidePaneState.updateTab(s, 'b1', { title: '  Example Domain ', payload: { url: 'https://example.com/' } });
+    assert.equal(next.activeTabId, 'n1');
+    const tab = next.tabs.find(t => t.id === 'b1');
+    assert.equal(tab.title, 'Example Domain');
+    assert.deepEqual(tab.payload, { url: 'https://example.com/' });
+    assert.ok(Object.isFrozen(tab));
+    assert.equal(SidePaneState.updateTab(next, 'b1', { title: '' }), next, 'empty title is ignored');
+    assert.equal(SidePaneState.updateTab(next, 'missing', { title: 'x' }), next);
+});

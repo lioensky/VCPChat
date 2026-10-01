@@ -3,6 +3,7 @@ import { captureSelectionReference } from '../ui-system/side-pane/selection-refe
 import { createSideChatSurfaceOwner } from './sideChatSurfaceOwner.js';
 import { createNotesSideProvider } from '../ui-system/side-pane/notesSideProvider.js';
 import { createCodeViewerSideProvider } from '../ui-system/side-pane/codeViewerSideProvider.js';
+import { createBrowserSideProvider } from '../ui-system/side-pane/browserSideProvider.js';
 import {
     createSideChatDescriptor,
     createChildTopicForAgent,
@@ -331,6 +332,14 @@ export function initWorkspaceSidePane({
             controller.setVisible(true);
         }
     });
+    // 浏览器标签同样是全局的；网页里的新窗口由主进程转成新的浏览器标签
+    const browserProvider = createBrowserSideProvider({
+        document: doc,
+        api: chatAPI || win.electronAPI,
+        sidePaneController: controller
+    });
+    controller.registerProvider('browser', browserProvider);
+    controller.registerOpenTabEntry({ id: 'browser', label: '浏览器', icon: 'public', order: 40, open: () => browserProvider.openBrowserTab() });
 
     // 跟随主聊天：切换助手或话题时，侧栏换成那个话题的标签
     const syncSidePaneParent = async ({ item, topicId }) => {

@@ -83,6 +83,7 @@ const workspaceHandlers = require('./modules/ipc/workspaceHandlers'); // 工作�
 const projectForgeHandlers = require('./modules/ipc/projectForgeHandlers'); // ProjectForge 施工图 GUI（只读 + 署名回退）
 const gitHandlers = require('./modules/ipc/gitHandlers'); // ProjectForge Git 源代码管理侧栏
 const sourceHandlers = require('./modules/ipc/sourceHandlers'); // ProjectForge 源码浏览 / 轻量编辑侧栏
+const browserHandlers = require('./modules/ipc/browserHandlers'); // 侧栏浏览器（<webview> 的安全围栏）
 const assistantHandlers = require('./modules/ipc/assistantHandlers'); // Import assistant handlers
 const musicHandlers = require('./modules/ipc/musicHandlers'); // Import music handlers
 const diceHandlers = require('./modules/ipc/diceHandlers'); // Import dice handlers
@@ -775,6 +776,7 @@ function createWindow({ deferLoad = false } = {}) {
         title: 'VCP AI 聊天客户端',
         show: false, // Don't show until ready
     });
+    browserHandlers.attachToWindow(mainWindow);
 
     if (!deferLoad) {
         loadMainWindow();
@@ -1111,6 +1113,8 @@ if (!gotTheLock) {
                 // WebContentsView 不由 BrowserWindow.fromWebContents() 解析，
                 // 因此可与普通 VChat 壳窗口可靠区分。
                 if (contents.isDestroyed() || !BrowserWindow.fromWebContents(contents)) return;
+                // <webview> guests (side-pane browser) route their popups through modules/ipc/browserHandlers.js
+                if (contents.getType() === 'webview') return;
                 contents.setWindowOpenHandler(({ url }) => {
                     if (url.startsWith('http:') || url.startsWith('https:')) {
                         shell.openExternal(url);
@@ -1505,6 +1509,7 @@ if (!gotTheLock) {
         projectForgeHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService });
         gitHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService, mainWindow });
         sourceHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService });
+        browserHandlers.initialize({ mainWindow });
 
         translatorHandlers.initialize({
             mainWindow,
@@ -1903,6 +1908,8 @@ if (!gotTheLock) {
         if (fs.existsSync(readyFile)) {
             fs.unlinkSync(readyFile);
         }
+
+        browserHandlers.dispose();
 
         // 1. 停止所有底层监听器
         console.log('[Main] App is quitting. Stopping all listeners...');

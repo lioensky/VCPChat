@@ -306,6 +306,7 @@
     "modules/interruptHandler.js",
     "modules/ipc/agentHandlers.js",
     "modules/ipc/assistantHandlers.js",
+    "modules/ipc/browserHandlers.js",
     "modules/ipc/canvasHandlers.js",
     "modules/ipc/chatHandlers.js",
     "modules/ipc/deepWikiHandlers.js",
@@ -13874,6 +13875,14 @@
       "documentReferences": 2,
       "electronReferences": 0,
       "timers": 5,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/ipc/browserHandlers.js": {
+      "windowReferences": 2,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
       "listeners": 0,
       "mutableMaps": 0
     },
