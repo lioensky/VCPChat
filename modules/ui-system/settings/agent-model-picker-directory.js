@@ -60,11 +60,20 @@ export function createAgentModelPickerDirectory({ electronAPI, input }) {
         const inOrder = (ids, group) => ids
             .map(id => byId.get(id))
             .filter(Boolean)
-            .map(option => ({ ...option, group }));
+            .map(option => ({
+                ...option,
+                group,
+                // 保留原生 id 供 onSelect 消费，同时补充 viewKey 避免复合状态混淆
+                viewKey: `${group}:${option.id}`,
+            }));
         return [
             ...inOrder(hotIds, '热门模型'),
             ...inOrder(favoriteIds, '收藏模型'),
-            ...normalized.map(option => ({ ...option, group: '全部模型' })),
+            ...normalized.map(option => ({
+                ...option,
+                group: '全部模型',
+                viewKey: `全部模型:${option.id}`,
+            })),
         ];
     };
 
