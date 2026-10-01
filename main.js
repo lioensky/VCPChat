@@ -23,6 +23,14 @@ if (process.env.VCPCHAT_BOOTSTRAP_OPERATION_ID && process.env.VCPCHAT_STATE_DIR)
         } catch { /* the original fatal error remains authoritative */ }
     });
 }
+// --- 核心流式守卫：挂载 stdout 与 stderr 的 EPIPE 错误静默吸收守卫 ---
+['stdout', 'stderr'].forEach((streamName) => {
+    if (process[streamName] && typeof process[streamName].on === 'function') {
+        process[streamName].on('error', (err) => {
+            if (err.code === 'EPIPE') return;
+        });
+    }
+});
 
 function reportLauncherProgress(stage, progress, message) {
     if (process.env.VCP_LAUNCHER_PROTOCOL !== '1') return;

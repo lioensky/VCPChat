@@ -651,9 +651,8 @@ function executeAdminCommand(command) {
             const tmpPathForPS = tmpFilePath.replace(/'/g, "''");
             const argumentList = `"${scriptPathForPS}", "${commandForPS}", "${tmpPathForPS}"`;
 
-            // 3. 构造PowerShell命令以管理员权限运行Python脚本
-            const psCommand = `Start-Process -FilePath "pythonw.exe" -ArgumentList ${argumentList} -Verb RunAs -Wait`;
-
+            // 3. 构造PowerShell命令以管理员权限运行Python脚本（捕获UAC异常并注入纯ASCII标记）
+            const psCommand = `$ErrorActionPreference = 'Stop'; try { Start-Process -FilePath "pythonw.exe" -ArgumentList ${argumentList} -Verb RunAs -Wait } catch { [Console]::Error.WriteLine('UAC_CANCELLED_OR_FAILED: ' + $_.Exception.Message) }`;
             const child = spawn('powershell.exe', [
                 '-NoProfile',
                 '-ExecutionPolicy', 'Bypass',
@@ -664,24 +663,67 @@ function executeAdminCommand(command) {
             childProcesses.add(child); // 跟踪进程
 
             let stderrOutput = '';
+            let isSettled = false;
+
+            // 310 秒外部安全定时器守护，防止后台卡死挂起 (Todo #3)
+            const safetyTimeout = setTimeout(() => {
+                if (isSettled) return;
+                isSettled = true;
+                try {
+                    child.kill();
+                } catch { }
+                childProcesses.delete(child);
+                cleanupCallback();
+                resolve({
+                    isCancelled: true,
+                    content: [{
+                        type: 'text',
+                        text: '⚠️ [操作超时]：等待管理员确认超时（超过无操作安全时限），系统已自动拒绝执行。'
+                    }]
+                });
+            }, 310000);
+
             child.stderr.on('data', (data) => {
                 stderrOutput += data.toString('utf-8');
             });
 
             child.on('error', (err) => {
+                if (isSettled) return;
+                isSettled = true;
+                clearTimeout(safetyTimeout);
                 childProcesses.delete(child); // 停止跟踪
                 cleanupCallback(); // 清理临时文件
                 reject(new Error(`无法启动PowerShell包装脚本: ${err.message}`));
             });
 
             child.on('close', (code) => {
+                if (isSettled) return;
+                isSettled = true;
+                clearTimeout(safetyTimeout);
                 childProcesses.delete(child); // 停止跟踪
-                // PowerShell脚本执行完毕，现在我们可以安全地读取临时文件的内容了。
+                // PowerShell脚本执行完毕，安全读取临时文件内容
                 fs.readFile(tmpFilePath, 'utf-8', (readErr, data) => {
-                    cleanupCallback(); // 确保无论如何都清理临时文件
+                    cleanupCallback(); // 确保清理临时文件
 
+                    // 检测 UAC 取消或拒绝错误（显式捕获标记、0x800704C7 或中文取消提示）
+                    const isUacCancelled = stderrOutput && (
+                        stderrOutput.includes('UAC_CANCELLED_OR_FAILED') ||
+                        stderrOutput.includes('0x800704C7') ||
+                        stderrOutput.includes('74C7') ||
+                        stderrOutput.includes('操作已被用户取消') ||
+                        stderrOutput.includes('The operation was canceled by the user')
+                    );
+
+                    if (isUacCancelled) {
+                        return resolve({
+                            isCancelled: true,
+                            content: [{
+                                type: 'text',
+                                text: '⚠️ [操作未执行/未授权]：用户在 Windows UAC 提权界面取消了授权，或未获取到管理员权限。敏感命令未执行。'
+                            }]
+                        });
+                    }
                     if (readErr) {
-                        // 如果读取文件失败，但我们从stderr得到了信息，就用它。
                         if (stderrOutput.trim()) {
                             return reject(new Error(`管理员脚本执行失败: ${stderrOutput.trim()}`));
                         }
@@ -690,9 +732,32 @@ function executeAdminCommand(command) {
 
                     const result = data.trim();
                     if (result === "USER_CANCELLED") {
-                        resolve("用户取消了管理员权限请求。");
+                        resolve({
+                            isCancelled: true,
+                            content: [{
+                                type: 'text',
+                                text: '⚠️ [操作已取消]：用户已主动拒绝或取消了本次管理员权限申请。敏感命令未执行。'
+                            }]
+                        });
+                    } else if (result === "TIMEOUT_REJECTED") {
+                        resolve({
+                            isCancelled: true,
+                            content: [{
+                                type: 'text',
+                                text: '⚠️ [操作超时]：等待管理员确认超时（超过无操作安全时限），系统已自动拒绝执行。'
+                            }]
+                        });
                     } else if (result.startsWith("ERROR:")) {
                         reject(new Error(result.substring(6).trim()));
+                    } else if (result === "") {
+                        // 空输出防穿透：脚本根本未生成内容或提权未通过时，绝不能当作正常执行成功
+                        resolve({
+                            isCancelled: true,
+                            content: [{
+                                type: 'text',
+                                text: '⚠️ [操作未执行/未授权]：用户在 Windows UAC 提权界面取消了授权，或未获取到管理员权限。敏感命令未执行。'
+                            }]
+                        });
                     } else {
                         resolve(result);
                     }
@@ -756,7 +821,7 @@ function requestInteractiveConfirmation(command) {
                     const result = data.trim();
                     if (result === 'CONFIRMED') {
                         resolve(true);
-                    } else if (result === 'USER_CANCELLED') {
+                    } else if (result === 'USER_CANCELLED' || result === 'TIMEOUT_REJECTED') {
                         resolve(false);
                     } else if (result.startsWith('ERROR:')) {
                         reject(new Error(result.substring(6).trim()));
@@ -1699,7 +1764,10 @@ async function processToolCall(args) {
         const command = commandEntries[0].value;
         const fullCommand = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; ${command}`;
         const output = await executeAdminCommand(fullCommand);
-        const cleanOutput = output.replace(/\r\n/g, '\n').replace(/\r/g, '');
+        if (output && typeof output === 'object' && Array.isArray(output.content)) {
+            return output;
+        }
+        const cleanOutput = (typeof output === 'string' ? output : String(output || '')).replace(/\r\n/g, '\n').replace(/\r/g, '');
         return { content: [{ type: 'text', text: `\`\`\`powershell\n${cleanOutput}\n\`\`\`` }] };
     }
 
