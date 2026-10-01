@@ -532,6 +532,21 @@
             state.frameId = 0;
             if (!textarea.isConnected) return;
 
+            // 🟢 视口锚定守护：找到向上最近的滚动容器，记录当前的 scrollTop
+            const scrollContainer = textarea.closest?.('.chat-messages-container')
+                || textarea.closest?.('.sidebar-list-scroll')
+                || (textarea.parentElement && getComputedStyle(textarea.parentElement).overflowY !== 'visible' ? textarea.parentElement : null);
+            const savedScrollTop = scrollContainer ? scrollContainer.scrollTop : null;
+
+            // 避免父级发生高度瞬间崩塌（利用父级临时 minHeight 或当前 clientHeight 撑住）
+            const currentHeight = textarea.clientHeight;
+            const parent = textarea.parentElement;
+            let originalParentMinHeight = '';
+            if (parent && currentHeight > 0) {
+                originalParentMinHeight = parent.style.minHeight;
+                parent.style.minHeight = `${parent.clientHeight}px`;
+            }
+
             textarea.style.height = 'auto';
             const computed = getComputedStyle(textarea);
             const maxHeight = parseFloat(computed.maxHeight);
@@ -547,6 +562,16 @@
                 state.lastHeight = nextHeight;
             } else {
                 textarea.style.height = `${state.lastHeight}px`;
+            }
+
+            // 恢复父级 minHeight
+            if (parent && currentHeight > 0) {
+                parent.style.minHeight = originalParentMinHeight;
+            }
+
+            // 🟢 恢复被截断的 scrollTop，保证视口绝对纹丝不动
+            if (scrollContainer && savedScrollTop !== null && scrollContainer.scrollTop !== savedScrollTop) {
+                scrollContainer.scrollTop = savedScrollTop;
             }
         });
     };
