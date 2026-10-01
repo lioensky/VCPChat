@@ -16,7 +16,7 @@
 'use strict';
 
 import {
-    ROLE_LABELS, formatClockTime, formatDateTime, formatDuration, finishReasonLabel, sourceLabel,
+    ROLE_LABELS, formatClockTime, formatDateTime, formatDuration, finishReasonLabel, effectiveFinishReason, sourceLabel,
     buildTimeline, summarizeRecords, buildSearchIndex, findTextMatches,
     inputRowKey, outputRowKey, messagePreview, messageContent, toolMetadata, toolHasError, toolOutputs, toolCallInputs,
     visualRoleOf, formatToolPayload
@@ -370,8 +370,9 @@ export function createModelTrajectorySideProvider({
                 } else if (status === 'aborted') {
                     sourceWrap.appendChild(h('span', 'side-traj-pill aborted', '已中断'));
                 } else if (record.response?.finishReason) {
-                    const pill = h('span', 'side-traj-pill', finishReasonLabel(record.response.finishReason));
-                    pill.dataset.finishReason = record.response.finishReason;
+                    const finishReason = effectiveFinishReason(record.response);
+                    const pill = h('span', 'side-traj-pill', finishReasonLabel(finishReason));
+                    pill.dataset.finishReason = finishReason;
                     sourceWrap.appendChild(pill);
                 }
                 bar.appendChild(sourceWrap);

@@ -37,7 +37,17 @@ export function formatDuration(durationMs) {
     return `${(durationMs / 1000).toFixed(durationMs < 10000 ? 2 : 1)}s`;
 }
 
-const FINISH_LABELS = { stop: '正常结束', 'tool-call': '工具调用', 'tool-calls': '工具调用', length: '达到长度限制', 'content-filter': '内容过滤' };
+const FINISH_LABELS = { stop: '正常结束', 'tool-call': '工具调用', 'tool-calls': '工具调用', length: '达到长度限制', 'content-filter': '内容过滤', error: '服务端报错' };
+/**
+ * 一次调用的结束原因。VCP 服务器在连不上上游模型时会照常以 200 流式返回一段 `[ERROR] …` 文本，
+ * 上游给的 finish_reason 仍是 stop；只看 finish_reason 会把失败显示成「正常结束」。
+ */
+export function effectiveFinishReason(response) {
+    const reason = response?.finishReason;
+    if ((!reason || String(reason).toLowerCase() === 'stop') && /^\s*\[ERROR\]/.test(response?.text || '')) return 'error';
+    return reason;
+}
+
 export function finishReasonLabel(reason) {
     const key = String(reason || '').toLowerCase().replaceAll('_', '-');
     return FINISH_LABELS[key] || String(reason || '');

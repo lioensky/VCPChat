@@ -66,12 +66,12 @@
 /* ---- 调用卡片 ---- */
 .side-traj-call { border: 1px solid var(--zc-border); border-radius: 10px; background: var(--zc-card-bg); overflow: hidden; content-visibility: auto; contain-intrinsic-size: auto 120px; }
 .side-traj-call.flash { animation: side-traj-flash 1.6s ease-out; }
-.side-traj-call-bar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--zc-secondary); font-size: 12px; }
+.side-traj-call-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px 10px; background: var(--zc-secondary); font-size: 12px; }
 .side-traj-call-index { flex: 0 0 auto; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--zc-fg-subtle); }
-.side-traj-call-source { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.side-traj-call-source { flex: 1 1 150px; min-width: 0; display: flex; align-items: center; gap: 6px; }
 .side-traj-call-source-title { font-weight: 600; white-space: nowrap; }
 .side-traj-call-agent { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--zc-fg-subtlest); }
-.side-traj-call-meta { flex: 0 0 auto; display: flex; gap: 4px; font-variant-numeric: tabular-nums; color: var(--zc-fg-subtle); white-space: nowrap; }
+.side-traj-call-meta { flex: 0 0 auto; margin-left: auto; display: flex; gap: 4px; font-variant-numeric: tabular-nums; color: var(--zc-fg-subtle); white-space: nowrap; }
 .side-traj-pill { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 3px; padding: 0 7px; border-radius: 999px; font-size: 11px; line-height: 18px; background: var(--zc-secondary-hover); color: var(--zc-fg-subtle); }
 .side-traj-pill.running { color: var(--zc-lane-descendant); }
 .side-traj-pill.aborted, .side-traj-pill[data-finish-reason="length"] { color: var(--zc-warning); }

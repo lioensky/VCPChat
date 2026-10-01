@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    formatDuration, finishReasonLabel, sourceLabel, extractToolCalls, expandMessage, buildOutputRows, buildTimeline,
+    formatDuration, finishReasonLabel, effectiveFinishReason, sourceLabel, extractToolCalls, expandMessage, buildOutputRows, buildTimeline,
     summarizeRecords, buildSearchIndex, findTextMatches, normalizeQuery, messagePreview, messageContent, toolHasError, toolMetadata,
     inputRowKey, outputRowKey
 } from '../modules/ui-system/side-pane/modelTrajectoryModel.js';
@@ -94,4 +94,14 @@ test('search folds whitespace and case, maps back to source offsets, and reaches
     assert.equal(index.matches[1].expansionKey, outputRowKey(items[0], items[0].outputRows[1]));
     assert.equal(buildSearchIndex(items, 'fileoperator').matches[0].field, 'tool-name');
     assert.deepEqual(buildSearchIndex(items, '   ').matches, []);
+});
+
+test('a VCP server error relayed as a normal stream is not reported as a clean finish', () => {
+    // 真实记录：上游连不上时服务器返回 200，正文是 [ERROR] 文本，finish_reason 仍是 stop
+    const relayed = { finishReason: 'stop', text: '[ERROR] 代理服务器在连接上游API时失败: Fetch failed after all retries.' };
+    assert.equal(effectiveFinishReason(relayed), 'error');
+    assert.equal(finishReasonLabel(effectiveFinishReason(relayed)), '服务端报错');
+    assert.equal(effectiveFinishReason({ finishReason: 'stop', text: '你好 [ERROR] 只是正文里提到' }), 'stop');
+    assert.equal(effectiveFinishReason({ finishReason: 'length', text: '[ERROR] x' }), 'length');
+    assert.equal(effectiveFinishReason(undefined), undefined);
 });
