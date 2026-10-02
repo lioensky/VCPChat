@@ -40,6 +40,9 @@ const DEFAULT_SEARCH_LIMIT = 50;
 const DEFAULT_TREE_MAX_CHARS = 20000;
 const DEFAULT_TREE_MAX_DEPTH = 6;
 
+const WORK_SLICE_SIZE = 256;
+const yieldToEventLoop = () => new Promise(resolve => setImmediate(resolve));
+
 function toPosix(p) {
     return String(p).split(path.sep).join('/').replace(/\\/g, '/');
 }
@@ -150,13 +153,16 @@ function makeEntry(relPath) {
  * 全量扫描一个工作区。应用默认忽略、逐层 .gitignore、pyvenv.cfg 虚拟环境识别，
  * 不跟随符号链接，超过 maxFiles 时截断。
  */
-async function scanWorkspace(root, { maxFiles = MAX_FILES_PER_WORKSPACE } = {}) {
+async function scanWorkspace(root, { maxFiles = MAX_FILES_PER_WORKSPACE, shouldStop = () => false } = {}) {
     const files = new Map();
     const ignoreByDir = new Map();
     let truncated = false;
     const stack = [''];
 
+    let processed = 0;
+
     while (stack.length > 0 && !truncated) {
+        if (shouldStop()) return null;
         const relDir = stack.pop();
         const absDir = relDir ? path.join(root, ...relDir.split('/')) : root;
         let entries;
@@ -166,6 +172,7 @@ async function scanWorkspace(root, { maxFiles = MAX_FILES_PER_WORKSPACE } = {}) 
             continue;
         }
 
+        if (shouldStop()) return null;
         // 目录内存在 pyvenv.cfg 即为 Python 虚拟环境，不论目录名。
         if (relDir && entries.some(entry => entry.isFile() && entry.name === 'pyvenv.cfg')) continue;
 
@@ -179,6 +186,10 @@ async function scanWorkspace(root, { maxFiles = MAX_FILES_PER_WORKSPACE } = {}) 
         }
 
         for (const entry of entries) {
+            if (++processed % WORK_SLICE_SIZE === 0) {
+                await yieldToEventLoop();
+                if (shouldStop()) return null;
+            }
             if (entry.isSymbolicLink()) continue;
             const relPath = relDir ? `${relDir}/${entry.name}` : entry.name;
             if (entry.isDirectory()) {
@@ -315,21 +326,25 @@ function scoreEntry(entry, query) {
 }
 
 class WorkspaceIndex {
-    constructor({ logger = console, maxFiles = MAX_FILES_PER_WORKSPACE, watch = true } = {}) {
+    constructor({ logger = console, maxFiles = MAX_FILES_PER_WORKSPACE, watch = true, scanConcurrency = 2 } = {}) {
         this.logger = logger;
         this.maxFiles = maxFiles;
         this.watchEnabled = watch;
         this.states = new Map(); // id -> state
         this.disposed = false;
+        this.scanConcurrency = Math.max(1, Math.min(8, Math.floor(Number(scanConcurrency) || 2)));
+        this.activeScans = 0;
+        this.scanQueue = [];
     }
 
     configure(rawWorkspaces) {
+        if (this.disposed) return [];
         const next = normalizeWorkspaceList(rawWorkspaces);
-        const nextIds = new Set(next.map(item => item.id));
+        const nextById = new Map(next.map(item => [item.id, item]));
 
         for (const [id, state] of this.states) {
-            const replacement = next.find(item => item.id === id);
-            if (!nextIds.has(id)
+            const replacement = nextById.get(id);
+            if (!replacement
                 || !replacement.enabled
                 || normalizeForCompare(replacement.path) !== normalizeForCompare(state.config.path)) {
                 this._disposeState(state);
@@ -345,6 +360,7 @@ class WorkspaceIndex {
             }
             const state = {
                 config,
+                disposed: false,
                 files: new Map(),
                 ignoreByDir: new Map(),
                 status: 'idle',
@@ -463,18 +479,31 @@ class WorkspaceIndex {
         }
         await Promise.all(targets.map(state => this._ensureReady(state).catch(() => {})));
 
+        const resultLimit = Math.max(1, Math.floor(Number(limit) || DEFAULT_SEARCH_LIMIT));
+        const compare = (a, b) => (b.score - a.score)
+            || (a.entry.depth - b.entry.depth)
+            || a.entry.relPath.localeCompare(b.entry.relPath);
         const scored = [];
+        let processed = 0;
         for (const state of targets) {
+            if (!this._isStateActive(state)) continue;
             for (const entry of state.files.values()) {
+                if (++processed % WORK_SLICE_SIZE === 0) {
+                    // 仅排序当前候选集，避免对数十万匹配项做一次大排序。
+                    scored.sort(compare);
+                    scored.length = Math.min(scored.length, resultLimit);
+                    await yieldToEventLoop();
+                    if (this.disposed) return [];
+                    if (!this._isStateActive(state)) break;
+                }
                 const score = scoreEntry(entry, normalizedQuery);
                 if (score > 0) scored.push({ score, entry, state });
             }
         }
-        scored.sort((a, b) => (b.score - a.score)
-            || (a.entry.depth - b.entry.depth)
-            || a.entry.relPath.localeCompare(b.entry.relPath));
+        scored.sort(compare);
 
-        return scored.slice(0, Math.max(1, limit)).map(({ entry, state }) => ({
+        return scored.filter(item => this._isStateActive(item.state))
+            .slice(0, resultLimit).map(({ entry, state }) => ({
             source: 'workspace',
             workspaceId: state.config.id,
             alias: state.config.alias,
@@ -497,27 +526,61 @@ class WorkspaceIndex {
         this.disposed = true;
         for (const state of this.states.values()) this._disposeState(state);
         this.states.clear();
+        this._drainScanQueue();
     }
 
     // --- internals ---
 
+    _isStateActive(state) {
+        return !this.disposed && !state.disposed && state.config.enabled
+            && this.states.get(state.config.id) === state;
+    }
+
+    _scheduleScan(run) {
+        return new Promise((resolve, reject) => {
+            this.scanQueue.push({ run, resolve, reject });
+            this._drainScanQueue();
+        });
+    }
+
+    _drainScanQueue() {
+        while (!this.disposed && this.activeScans < this.scanConcurrency && this.scanQueue.length) {
+            const task = this.scanQueue.shift();
+            this.activeScans++;
+            // configure 只登记和排队，扫描不进入当前窗口初始化调用栈。
+            void yieldToEventLoop().then(task.run).then(task.resolve, task.reject).finally(() => {
+                this.activeScans--;
+                this._drainScanQueue();
+            });
+        }
+        if (this.disposed) {
+            for (const task of this.scanQueue.splice(0)) task.resolve();
+        }
+    }
+
     async _ensureReady(state) {
-        if (this.disposed || !state.config.enabled) return;
+        if (!this._isStateActive(state)) return;
         if (!state.watcher && state.status === 'ready' && Date.now() - state.lastScanAt > FALLBACK_TTL_MS) {
             state.dirty = true;
         }
         if (!state.dirty && state.status === 'ready') return;
         if (state.scanPromise) return state.scanPromise;
 
-        state.scanPromise = (async () => {
+        state.status = 'queued';
+        state.scanPromise = this._scheduleScan(async () => {
+            if (!this._isStateActive(state)) return;
             state.status = 'scanning';
             state.dirty = false;
             const startedAt = Date.now();
             try {
                 const stat = await fsp.stat(state.config.path);
                 if (!stat.isDirectory()) throw new Error('工作区路径不是目录');
-                const result = await scanWorkspace(state.config.path, { maxFiles: this.maxFiles });
-                if (this.states.get(state.config.id) !== state) return; // 扫描期间被移除
+                if (!this._isStateActive(state)) return;
+                const result = await scanWorkspace(state.config.path, {
+                    maxFiles: this.maxFiles,
+                    shouldStop: () => !this._isStateActive(state),
+                });
+                if (!result || !this._isStateActive(state)) return;
                 state.files = result.files;
                 state.ignoreByDir = result.ignoreByDir;
                 state.truncated = result.truncated;
@@ -527,14 +590,15 @@ class WorkspaceIndex {
                 if (this.watchEnabled && !state.watcher) this._startWatcher(state);
                 this.logger.log?.(`[WorkspaceIndex] ${state.config.alias}: ${state.files.size} files in ${Date.now() - startedAt}ms${state.truncated ? ' (truncated)' : ''}`);
             } catch (error) {
+                if (!this._isStateActive(state)) return;
                 state.status = 'error';
                 state.error = error.message;
                 state.files = new Map();
                 this.logger.warn?.(`[WorkspaceIndex] Failed to scan ${state.config.path}:`, error.message);
-            } finally {
-                state.scanPromise = null;
             }
-        })();
+        }).finally(() => {
+            state.scanPromise = null;
+        });
         return state.scanPromise;
     }
 
@@ -624,6 +688,7 @@ class WorkspaceIndex {
     }
 
     _disposeState(state) {
+        state.disposed = true;
         clearTimeout(state.flushTimer);
         state.flushTimer = null;
         state.pending.clear();

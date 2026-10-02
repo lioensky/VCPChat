@@ -479,6 +479,7 @@ function startDistributedServerAfterRenderer() {
     }
 
     distributedServerStartPromise = (async () => {
+        let server = null;
         try {
             const settings = await appSettingsManager?.readSettings();
             if (!settings?.enableDistributedServer) {
@@ -491,7 +492,7 @@ function startDistributedServerAfterRenderer() {
 
             console.log('[Main] Renderer is ready. Initializing distributed server in the background...');
             const DistributedServer = require('./VCPDistributedServer/VCPDistributedServer.js');
-            const server = new DistributedServer({
+            server = new DistributedServer({
                 mainServerUrl: settings.vcpLogUrl,
                 vcpKey: settings.vcpLogKey,
                 serverName: 'VCPChat-Desktop-Client-Distributed-Server',
@@ -512,9 +513,15 @@ function startDistributedServerAfterRenderer() {
             });
             distributedServer = server;
             await server.initialize();
-            return server;
+            return isFinalizingQuit || app.isQuitting ? null : server;
         } catch (error) {
-            distributedServer = null;
+            // 启动失败也需清理已加载的插件和可能创建的监听器。
+            if (server) {
+                await server.stop().catch(cleanupError => {
+                    console.warn('[Main] Failed to clean up distributed server startup:', cleanupError);
+                });
+            }
+            if (distributedServer === server) distributedServer = null;
             console.error('[Main] Failed to initialize distributed server after renderer readiness:', error);
             return null;
         }
