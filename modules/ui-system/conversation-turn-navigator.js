@@ -391,10 +391,16 @@ export function createConversationTurnNavigator({
         else if (bottom > railScroll.scrollTop + railScroll.clientHeight) railScroll.scrollTop = bottom - railScroll.clientHeight;
     }
 
+    // 输入区叠放在滚动区底部时（chat-composer-inset.js），底部留白那段被输入区挡住，不算可视区
+    function visibleHeight() {
+        const inset = parseFloat(win.getComputedStyle(scroller).paddingBottom) || 0;
+        return Math.max(0, scroller.clientHeight - inset);
+    }
+
     function measureOverlay() {
         if (!nav || !scroller) return;
         nav.style.top = `${scroller.offsetTop}px`;
-        nav.style.height = `${scroller.clientHeight}px`;
+        nav.style.height = `${visibleHeight()}px`;
         const wide = scroller.clientWidth >= minWidthPx;
         nav.classList.toggle('is-wide', wide);
         if (!wide) hideCard();
@@ -417,7 +423,7 @@ export function createConversationTurnNavigator({
                 return measured.get(i);
             },
             scrollOffsetPx: scrollTop,
-            viewportHeightPx: scroller.clientHeight
+            viewportHeightPx: visibleHeight()
         });
         const next = items[index]?.key;
         if (next === activeKey) return;

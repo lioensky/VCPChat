@@ -20,6 +20,7 @@ import { createMainChatAttachmentOwner } from './modules/renderer/mainChatAttach
 import { createMainChatSendOwner } from './modules/renderer/mainChatSendOwner.js';
 import { createConversationTurnNavigator } from './modules/ui-system/conversation-turn-navigator.js';
 import { createChatBackToBottom } from './modules/ui-system/chat-back-to-bottom.js';
+import { createChatComposerInset } from './modules/ui-system/chat-composer-inset.js';
 
 const streamManager = createStreamProjection();
 const messageRenderer = createMessageRenderer({ streamManager });
@@ -667,6 +668,9 @@ mainChatSettingsPresentationOwner.configureStartup({
     const chatBackToBottom = createChatBackToBottom({ document, uiHelper: uiHelperFunctions, messagesRoot: chatMessagesDiv });
     chatBackToBottom.mount();
     ownedRendererSubscriptions.add({ dispose: () => chatBackToBottom.dispose() });
+    const chatComposerInset = createChatComposerInset({ document, uiHelper: uiHelperFunctions });
+    chatComposerInset.mount();
+    ownedRendererSubscriptions.add({ dispose: () => chatComposerInset.dispose() });
 
     const auxiliaryEventOwner = createMainChatAuxiliaryEventOwner({
         subscriptions: {

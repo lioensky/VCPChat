@@ -327,6 +327,7 @@
     "modules/ui-system/ask-nova-modal.js",
     "modules/ui-system/avatar-picker.js",
     "modules/ui-system/chat-back-to-bottom.js",
+    "modules/ui-system/chat-composer-inset.js",
     "modules/ui-system/component-manifest.js",
     "modules/ui-system/component-showcase.js",
     "modules/ui-system/contribution-registry.js",
@@ -3038,7 +3039,7 @@
       "consumers": [
         {
           "file": "renderer.js",
-          "line": 661,
+          "line": 662,
           "kind": "custom-event-listener"
         },
         {
@@ -3070,7 +3071,7 @@
       "evidence": [
         {
           "file": "renderer.js",
-          "line": 661,
+          "line": 662,
           "kind": "custom-event-listener",
           "match": "addEventListener('global-settings-updated'"
         },
@@ -5137,7 +5138,7 @@
       "consumers": [
         {
           "file": "renderer.js",
-          "line": 605,
+          "line": 606,
           "kind": "preload-subscription"
         },
         {
@@ -5149,7 +5150,7 @@
       "evidence": [
         {
           "file": "renderer.js",
-          "line": 605,
+          "line": 606,
           "kind": "preload-subscription",
           "match": "onStreamingEventConsumer("
         },
@@ -7648,7 +7649,7 @@
       "producers": [
         {
           "file": "renderer.js",
-          "line": 264,
+          "line": 265,
           "kind": "custom-event-dispatch"
         }
       ],
@@ -7662,7 +7663,7 @@
       "evidence": [
         {
           "file": "renderer.js",
-          "line": 264,
+          "line": 265,
           "kind": "custom-event-dispatch",
           "match": "dispatchEvent(new CustomEvent('vcp-appearance-studio-configure'"
         },
@@ -7679,7 +7680,7 @@
       "producers": [
         {
           "file": "renderer.js",
-          "line": 254,
+          "line": 255,
           "kind": "custom-event-dispatch"
         }
       ],
@@ -7693,7 +7694,7 @@
       "evidence": [
         {
           "file": "renderer.js",
-          "line": 254,
+          "line": 255,
           "kind": "custom-event-dispatch",
           "match": "dispatchEvent(new CustomEvent('vcp-appearance-studio-dispose'"
         },
@@ -7729,7 +7730,7 @@
       "producers": [
         {
           "file": "renderer.js",
-          "line": 574,
+          "line": 575,
           "kind": "custom-event-dispatch"
         }
       ],
@@ -7737,7 +7738,7 @@
       "evidence": [
         {
           "file": "renderer.js",
-          "line": 574,
+          "line": 575,
           "kind": "custom-event-dispatch",
           "match": "dispatchEvent(new CustomEvent('vcp-chat-stream-terminal'"
         }
@@ -8027,7 +8028,7 @@
       "producers": [
         {
           "file": "renderer.js",
-          "line": 833,
+          "line": 837,
           "kind": "custom-event-dispatch"
         }
       ],
@@ -8041,7 +8042,7 @@
       "evidence": [
         {
           "file": "renderer.js",
-          "line": 833,
+          "line": 837,
           "kind": "custom-event-dispatch",
           "match": "dispatchEvent(new CustomEvent('vcp-main-chat-commands-configure'"
         },
@@ -8058,7 +8059,7 @@
       "producers": [
         {
           "file": "renderer.js",
-          "line": 1012,
+          "line": 1016,
           "kind": "custom-event-dispatch"
         }
       ],
@@ -8066,7 +8067,7 @@
       "evidence": [
         {
           "file": "renderer.js",
-          "line": 1012,
+          "line": 1016,
           "kind": "custom-event-dispatch",
           "match": "dispatchEvent(new CustomEvent('vcp-renderer-ready'"
         }

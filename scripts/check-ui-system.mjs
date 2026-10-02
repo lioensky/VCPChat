@@ -138,6 +138,7 @@ const inlineStyleCompatibilityAllowlist = new Set([
     path.join(moduleDir, 'settings', 'render-visibility.js'), // Legacy custom typography row visibility is an owned projection.
     path.join(moduleDir, 'typed-field-owners.js'), // Settings snapshot projection updates canonical dependent rows.
     path.join(moduleDir, 'conversation-turn-navigator.js'), // Rail bars magnify by pointer distance; rail and card follow the measured chat scroller.
+    path.join(moduleDir, 'chat-composer-inset.js'), // Publishes the measured composer height and scrollbar width as CSS variables.
 ]);
 
 for (const file of filesIn(moduleDir, '.js')) {
