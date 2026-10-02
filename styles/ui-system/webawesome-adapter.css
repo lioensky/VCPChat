@@ -3,22 +3,22 @@ html .vcp-ui-scope .vcp-ui-wa-comparison.wa-light,
 html .vcp-ui-scope .vcp-ui-wa-comparison.wa-dark {
     --wa-font-family-body: inherit;
     --wa-font-family-heading: inherit;
-    --wa-font-size-s: var(--vcp-ui-font-caption);
-    --wa-font-size-m: var(--vcp-ui-font-body);
-    --wa-font-size-l: var(--vcp-ui-font-emphasis);
+    --wa-font-size-s: var(--vcp-ui-text-sm);
+    --wa-font-size-m: var(--vcp-ui-text-base);
+    --wa-font-size-l: var(--vcp-ui-text-lg);
     --wa-line-height-condensed: var(--vcp-ui-line-compact);
     --wa-line-height-normal: var(--vcp-ui-line-body);
     --wa-line-height-expanded: var(--vcp-ui-line-relaxed);
-    --wa-color-surface-raised: var(--vcp-ui-bg-secondary);
-    --wa-color-surface-default: var(--vcp-ui-bg-primary);
-    --wa-color-surface-lowered: var(--vcp-ui-bg-tertiary);
-    --wa-color-surface-border: var(--vcp-ui-border);
-    --wa-color-text-normal: var(--vcp-ui-text-primary);
-    --wa-color-text-quiet: var(--vcp-ui-text-secondary);
+    --wa-color-surface-raised: var(--vcp-ui-color-popover);
+    --wa-color-surface-default: var(--vcp-ui-color-background);
+    --wa-color-surface-lowered: var(--vcp-ui-color-surface);
+    --wa-color-surface-border: var(--vcp-ui-color-border);
+    --wa-color-text-normal: var(--vcp-ui-color-foreground);
+    --wa-color-text-quiet: var(--vcp-ui-color-foreground-subtle);
     --wa-color-text-link: var(--vcp-ui-text-accent);
     --wa-color-focus: var(--vcp-ui-control-focus);
-    --wa-color-brand-fill-loud: var(--vcp-ui-accent);
-    --wa-color-brand-border-loud: var(--vcp-ui-accent);
+    --wa-color-brand-fill-loud: var(--vcp-ui-color-brand);
+    --wa-color-brand-border-loud: var(--vcp-ui-color-brand);
     --wa-color-brand-on-loud: var(--vcp-ui-on-accent);
     --wa-color-neutral-fill-quiet: var(--vcp-ui-surface-soft);
     --wa-color-neutral-fill-normal: var(--vcp-ui-surface);
@@ -48,7 +48,7 @@ html .vcp-ui-scope .vcp-ui-wa-comparison.wa-dark {
     --wa-transition-normal: var(--vcp-ui-duration-normal);
     --wa-transition-slow: var(--vcp-ui-duration-slow);
     --wa-transition-easing: var(--vcp-ui-easing-standard);
-    --wa-form-control-background-color: var(--vcp-ui-control-bg);
+    --wa-form-control-background-color: var(--vcp-ui-color-input);
     --wa-form-control-border-color: var(--vcp-ui-control-border);
     --wa-form-control-border-radius: var(--vcp-ui-radius-control);
     --wa-form-control-height: var(--vcp-ui-control-md);
@@ -83,7 +83,7 @@ html .vcp-ui-scope wa-button.vcp-ui-wa-button:active {
 }
 html .vcp-ui-scope wa-button.vcp-ui-wa-button::part(base) {
     border-radius: var(--vcp-ui-radius-control);
-    font-weight: 600;
+    font-weight: 500;
 }
 html .vcp-ui-scope wa-button.vcp-ui-wa-button.is-block {
     width: 100%;

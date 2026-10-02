@@ -16,6 +16,7 @@
 html {
     --ui-mode: next;
     --next-topbar-height: 42px;
+    --next-workspace-gutter: 4px;
 }
 
 html body {
@@ -205,26 +206,28 @@ html .next-ui-window-button {
 
 .next-ui-tab {
     position: relative;
-    height: 30px;
-    min-width: 96px;
+    height: 28px;
+    min-width: 80px;
     max-width: 160px;
-    padding: 0 10px;
+    padding: 0 8px;
     box-sizing: border-box;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    gap: 6px;
     border-radius: 8px;
     color: var(--next-muted);
-    font-size: 15px;
+    font-size: 13px;
+    font-weight: 500;
     white-space: nowrap;
     transition: color var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard), background-color var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard), font-weight var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard);
 }
 
 html #nextUiHomeTab {
-    min-width: 80px;
+    min-width: 76px;
     max-width: 96px;
-    padding: 0 10px 0 3px;
+    height: 28px;
+    padding: 0 10px 0 4px;
     justify-content: flex-start;
     border-radius: 0 8px 8px 0;
     background: transparent;
@@ -235,7 +238,7 @@ html #nextUiHomeTab > span:last-child {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 15px;
+    font-size: 13px;
     font-weight: 600;
     line-height: 1;
     letter-spacing: 0;
@@ -297,13 +300,23 @@ html #nextUiHomeTab > span:last-child {
     opacity: 0;
 }
 
-.next-ui-tab > svg,
+.next-ui-tab > svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    flex: 0 0 auto;
+}
+
 .next-ui-add-tab > svg,
 .next-ui-icon-button > svg,
 .next-ui-window-button > svg,
 .next-ui-app-icon svg {
-    width: 19px;
-    height: 19px;
+    width: 16px;
+    height: 16px;
     fill: none;
     stroke: currentColor;
     stroke-width: 1.8;
@@ -315,7 +328,7 @@ html #nextUiHomeTab > span:last-child {
 .next-ui-tab-label {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     min-width: 0;
 }
 
@@ -328,18 +341,21 @@ html #nextUiHomeTab > span:last-child {
     color: inherit;
     background: transparent;
     font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.2;
     text-align: left;
     cursor: pointer;
 }
 
 .next-ui-tab-close {
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     display: grid;
     place-items: center;
     padding: 0;
     border: 0;
-    border-radius: 5px;
+    border-radius: 4px;
     color: var(--next-muted);
     background: transparent;
     cursor: pointer;
@@ -357,8 +373,8 @@ html #nextUiHomeTab > span:last-child {
 }
 
 .next-ui-tab-close svg {
-    width: 13px;
-    height: 13px;
+    width: 12px;
+    height: 12px;
     fill: none;
     stroke: currentColor;
     stroke-width: 2;
@@ -366,10 +382,10 @@ html #nextUiHomeTab > span:last-child {
 
 html .next-ui-tab-svg,
 html .next-ui-tab-svg svg {
-    width: 19px;
-    height: 19px;
+    width: 14px;
+    height: 14px;
     display: block;
-    flex: 0 0 19px;
+    flex: 0 0 14px;
 }
 
 html .next-ui-tab.is-dragging {
@@ -430,10 +446,19 @@ html .next-ui-embedded-app-status.is-error .vcp-ui-icon {
     }
 }
 
-.next-ui-add-tab,
-.next-ui-icon-button {
+.next-ui-add-tab {
     width: 30px;
     height: 30px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+    flex: 0 0 auto;
+}
+
+.next-ui-icon-button {
+    width: 28px;
+    height: 28px;
     padding: 0;
     display: grid;
     place-items: center;
@@ -457,14 +482,14 @@ html .next-ui-window-button {
 
 html .next-ui-topbar-actions {
     margin-left: auto;
-    gap: 0;
+    gap: 2px;
     flex: 0 0 auto;
     align-self: stretch;
 }
 
 html .next-ui-topbar-actions > .next-ui-presentation-switcher,
 html .next-ui-topbar-actions > #nextUiThemeStoreBtn {
-    margin-right: 6px;
+    margin-right: 0;
 }
 
 html .next-ui-window-button:hover {
@@ -505,13 +530,15 @@ html .next-ui-main-panel {
     display: flex;
     flex: 1 1 auto;
     min-width: 0;
-    height: 100%;
     overflow: hidden;
     isolation: isolate;
+    /* The workspace floats as a card: a 4px gutter on the right and bottom,
+       every corner rounded. The shared material plane below paints the
+       gutter and all four corner reveals, so the shell stays one surface. */
+    height: calc(100% - var(--next-workspace-gutter));
+    margin: 0 var(--next-workspace-gutter) var(--next-workspace-gutter) 0;
     border: 1px solid var(--next-panel-edge);
-    border-right: 0;
-    border-bottom: 0;
-    border-radius: var(--vcp-ui-shell-radius) 0 0 0;
+    border-radius: var(--vcp-ui-shell-radius);
     box-sizing: border-box;
     /* The navigation material is the continuous shell base. Keeping an opaque
        primary-bg here creates a hard rectangular patch for legacy themes that
@@ -625,15 +652,15 @@ html[data-vcp-wallpaper-scope="global"] .sidebar {
     -webkit-backdrop-filter: none !important;
 }
 
-/* Paint the sidebar and the main panel's rounded-corner cutout as one
-   continuous material surface. Because this is a single compositing plane,
-   the revealed corner and sidebar cannot diverge in color or blur sampling. */
+/* Paint the sidebar, the workspace gutter and the main panel's four
+   rounded-corner reveals as one continuous material surface. Because this is
+   a single compositing plane, the gutter, the corners and the sidebar cannot
+   diverge in color or blur sampling. */
 html[data-vcp-wallpaper-scope="global"] .container::before {
     content: "";
     position: absolute;
-    inset: 0 auto 0 0;
+    inset: 0;
     z-index: 0;
-    width: calc(var(--next-sidebar-width, 260px) + var(--vcp-ui-shell-radius));
     pointer-events: none;
     background-color: var(
         --panel-bg,
@@ -643,46 +670,69 @@ html[data-vcp-wallpaper-scope="global"] .container::before {
     backdrop-filter: var(--next-backdrop-filter);
     -webkit-backdrop-filter: var(--next-backdrop-filter);
 
-    /* One compositing surface, two visible regions:
-       1. the full sidebar rectangle;
-       2. only the exterior crescent of the main panel's top-left radius.
-       The unused extension below the corner stays transparent, preventing the
-       previous full-height material stripe. */
+    /* One compositing surface, seven visible regions: the sidebar rectangle,
+       the right and bottom gutters, and only the exterior crescent of each
+       workspace corner. Everything inside the workspace stays transparent, so
+       the chat wallpaper behind it keeps its own sharp presentation. */
     -webkit-mask-image:
         linear-gradient(#000 0 0),
-        radial-gradient(
-            circle var(--vcp-ui-shell-radius) at 100% 100%,
-            transparent calc(100% - 0.75px),
-            #000 100%
-        );
+        linear-gradient(#000 0 0),
+        linear-gradient(#000 0 0),
+        radial-gradient(circle var(--vcp-ui-shell-radius) at 100% 100%, transparent calc(100% - 0.75px), #000 100%),
+        radial-gradient(circle var(--vcp-ui-shell-radius) at 0 100%, transparent calc(100% - 0.75px), #000 100%),
+        radial-gradient(circle var(--vcp-ui-shell-radius) at 100% 0, transparent calc(100% - 0.75px), #000 100%),
+        radial-gradient(circle var(--vcp-ui-shell-radius) at 0 0, transparent calc(100% - 0.75px), #000 100%);
     -webkit-mask-size:
         var(--next-sidebar-width, 260px) 100%,
+        var(--next-workspace-gutter) 100%,
+        100% var(--next-workspace-gutter),
+        var(--vcp-ui-shell-radius) var(--vcp-ui-shell-radius),
+        var(--vcp-ui-shell-radius) var(--vcp-ui-shell-radius),
+        var(--vcp-ui-shell-radius) var(--vcp-ui-shell-radius),
         var(--vcp-ui-shell-radius) var(--vcp-ui-shell-radius);
     -webkit-mask-position:
         left top,
-        right top;
+        right top,
+        left bottom,
+        left var(--next-sidebar-width, 260px) top 0,
+        right var(--next-workspace-gutter) top 0,
+        left var(--next-sidebar-width, 260px) bottom var(--next-workspace-gutter),
+        right var(--next-workspace-gutter) bottom var(--next-workspace-gutter);
     -webkit-mask-repeat: no-repeat;
     -webkit-mask-composite: source-over;
 
     mask-image:
         linear-gradient(#000 0 0),
-        radial-gradient(
-            circle var(--vcp-ui-shell-radius) at 100% 100%,
-            transparent calc(100% - 0.75px),
-            #000 100%
-        );
+        linear-gradient(#000 0 0),
+        linear-gradient(#000 0 0),
+        radial-gradient(circle var(--vcp-ui-shell-radius) at 100% 100%, transparent calc(100% - 0.75px), #000 100%),
+        radial-gradient(circle var(--vcp-ui-shell-radius) at 0 100%, transparent calc(100% - 0.75px), #000 100%),
+        radial-gradient(circle var(--vcp-ui-shell-radius) at 100% 0, transparent calc(100% - 0.75px), #000 100%),
+        radial-gradient(circle var(--vcp-ui-shell-radius) at 0 0, transparent calc(100% - 0.75px), #000 100%);
     mask-size:
         var(--next-sidebar-width, 260px) 100%,
+        var(--next-workspace-gutter) 100%,
+        100% var(--next-workspace-gutter),
+        var(--vcp-ui-shell-radius) var(--vcp-ui-shell-radius),
+        var(--vcp-ui-shell-radius) var(--vcp-ui-shell-radius),
+        var(--vcp-ui-shell-radius) var(--vcp-ui-shell-radius),
         var(--vcp-ui-shell-radius) var(--vcp-ui-shell-radius);
     mask-position:
         left top,
-        right top;
+        right top,
+        left bottom,
+        left var(--next-sidebar-width, 260px) top 0,
+        right var(--next-workspace-gutter) top 0,
+        left var(--next-sidebar-width, 260px) bottom var(--next-workspace-gutter),
+        right var(--next-workspace-gutter) bottom var(--next-workspace-gutter);
     mask-repeat: no-repeat;
     mask-composite: add;
 }
 
 html .sidebar:not(.avatar-only) {
     padding-left: 0;
+    padding-right: 0;
+    padding-bottom: 0;
 }
 
 html .sidebar.avatar-only {
@@ -715,7 +765,8 @@ html .main-content {
 
 html .chat-header {
     padding: 7px 20px;
-    border-bottom: 1px solid var(--next-border);
+    /* A faint 5% hairline under the title instead of the full panel border. */
+    border-bottom: 1px solid var(--zcode-header-divider, var(--next-border));
     background: var(--next-header-bg);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
@@ -747,7 +798,7 @@ html body #toggleSidebarModeBtn.next-ui-sidebar-mode-button.active:focus-visible
 }
 
 html .next-ui-brand-tab-group {
-    height: 30px;
+    height: 28px;
     display: flex;
     align-items: stretch;
     overflow: hidden;
@@ -766,8 +817,8 @@ html .next-ui-brand-tab-group #nextUiHomeTab:hover {
 
 html #toggleSidebarModeBtn.next-ui-sidebar-mode-button {
     position: relative;
-    width: 30px;
-    height: 30px;
+    width: 28px;
+    height: 28px;
     display: grid;
     overflow: hidden;
     border-color: transparent;
@@ -787,8 +838,8 @@ html .next-ui-sidebar-control-icon {
 }
 
 html .next-ui-sidebar-brand {
-    width: 30px;
-    height: 30px;
+    width: 28px;
+    height: 28px;
     padding: 0;
     overflow: hidden;
     box-sizing: border-box;
@@ -798,18 +849,18 @@ html .next-ui-sidebar-brand {
 }
 
 html .next-ui-sidebar-brand img {
-    width: 22px;
-    height: 22px;
+    width: 20px;
+    height: 20px;
     margin: 4px;
     display: block;
     object-fit: contain;
 }
 
 html .next-ui-sidebar-mode-button > .next-ui-sidebar-control-icon {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
     display: block;
-    flex: 0 0 18px;
+    flex: 0 0 16px;
     stroke: currentColor;
     opacity: 0;
     transform: translate(-50%, -50%) scale(0.76);
@@ -1017,15 +1068,33 @@ html .chat-actions #themeToggleBtn {
 }
 
 html .chat-actions .header-button {
-    min-width: 30px;
-    height: 30px;
+    height: 28px;
     margin-left: 0;
-    padding: 0 6px;
     border: 0;
-    border-radius: 6px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     color: var(--next-muted);
     background: transparent;
     box-shadow: none;
+}
+
+html .chat-actions .header-button:not(#currentAgentSettingsBtn) {
+    min-width: 28px;
+    width: 28px;
+    padding: 0;
+}
+
+html .chat-actions .header-button#currentAgentSettingsBtn {
+    width: auto;
+    min-width: auto;
+    padding: 0 8px;
+    flex-shrink: 0;
+}
+
+html .chat-actions .header-button#voiceChatBtn {
+    margin-right: 0 !important;
 }
 
 html .chat-actions .header-button:hover {

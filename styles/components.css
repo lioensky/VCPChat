@@ -447,10 +447,6 @@ body:not(.light-theme) .chat-actions .header-button {
     flex-shrink: 0;
 }
 
-.chat-actions .header-button#voiceChatBtn svg {
-    transform: translateY(1.4px);
-}
-
 .chat-actions .header-button#currentAgentSettingsBtn svg {
     transform: translate(3px, 0);
 }
