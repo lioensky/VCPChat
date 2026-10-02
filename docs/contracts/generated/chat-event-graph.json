@@ -4509,7 +4509,7 @@
       "producers": [
         {
           "file": "modules/ui-helpers.js",
-          "line": 599,
+          "line": 639,
           "kind": "custom-event-dispatch"
         }
       ],
@@ -4567,7 +4567,7 @@
         },
         {
           "file": "modules/ui-helpers.js",
-          "line": 599,
+          "line": 639,
           "kind": "custom-event-dispatch",
           "match": "dispatchEvent(new CustomEvent('modal-ready'"
         },
@@ -4584,12 +4584,12 @@
       "producers": [
         {
           "file": "modules/ui-helpers.js",
-          "line": 608,
+          "line": 648,
           "kind": "custom-event-dispatch"
         },
         {
           "file": "modules/ui-helpers.js",
-          "line": 630,
+          "line": 670,
           "kind": "custom-event-dispatch"
         }
       ],
@@ -4613,13 +4613,13 @@
       "evidence": [
         {
           "file": "modules/ui-helpers.js",
-          "line": 608,
+          "line": 648,
           "kind": "custom-event-dispatch",
           "match": "dispatchEvent(new CustomEvent('modal-visibility-changed'"
         },
         {
           "file": "modules/ui-helpers.js",
-          "line": 630,
+          "line": 670,
           "kind": "custom-event-dispatch",
           "match": "dispatchEvent(new CustomEvent('modal-visibility-changed'"
         },
@@ -5914,14 +5914,14 @@
       "consumers": [
         {
           "file": "modules/ui-helpers.js",
-          "line": 347,
+          "line": 359,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-helpers.js",
-          "line": 347,
+          "line": 359,
           "kind": "custom-event-listener",
           "match": "addEventListener('pointercancel'"
         }
@@ -7476,14 +7476,14 @@
       "consumers": [
         {
           "file": "modules/ui-helpers.js",
-          "line": 335,
+          "line": 347,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-helpers.js",
-          "line": 335,
+          "line": 347,
           "kind": "custom-event-listener",
           "match": "addEventListener('touchcancel'"
         }

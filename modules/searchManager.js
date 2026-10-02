@@ -576,6 +576,8 @@ const searchManager = {
 
         const messageEl = document.querySelector(`.message-item[data-message-id='${message.id}']`);
         if (messageEl) {
+            // 切话题会重新打开粘底跟随；不先释放，长话题里平滑滚动途中消息增高，会被拽回底部。
+            this.uiHelper.releaseChatScrollFollow?.();
             messageEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
             messageEl.classList.add('message-highlight');
             setTimeout(() => {

@@ -196,6 +196,7 @@ const allowedSourceDifferences = new Set([
     'scripts/check-theme-provenance.mjs',
     'tests/message-regeneration-stream-animation.test.js',
     'tests/topic-summary-model.test.mjs',
+    'tests/ui-helper-chat-scroll-follow.test.js',
     'tests/ui-helpers-settings-close.test.js',
     'tests/vcpchat-installer-contract.test.mjs',
     'scripts/check-ui-async-state-matrix.mjs',

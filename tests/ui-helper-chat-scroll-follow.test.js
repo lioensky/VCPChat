@@ -224,3 +224,53 @@ test('a stale resize compensation cannot override a newer user scroll generation
     assert.equal(fixture.uiHelper.captureChatScrollFollow().followBottom, false);
     fixture.dom.window.close();
 });
+test('releaseChatScrollFollow cancels a pending bottom scroll and keeps later growth from snapping back', () => {
+    const fixture = createFixture();
+    fixture.uiHelper.captureChatScrollFollow();
+
+    // 跟随中内容增高，已排队一帧回底补偿
+    fixture.setGeometry({ scrollHeight: 1400 });
+    fixture.triggerResize();
+
+    // 程序化跳转（搜索结果、轮次导航）先释放跟随，再自己设置 scrollTop
+    fixture.uiHelper.releaseChatScrollFollow();
+    fixture.setGeometry({ scrollTop: 200 });
+    fixture.flushAnimationFrames();
+
+    assert.equal(fixture.geometry().scrollTop, 200);
+    assert.equal(fixture.uiHelper.captureChatScrollFollow().followBottom, false);
+
+    // 跳转途中经过的消息继续增高，也不能把视图拽回底部
+    fixture.setGeometry({ scrollHeight: 1800 });
+    fixture.triggerResize();
+    fixture.flushAnimationFrames();
+
+    assert.equal(fixture.geometry().scrollTop, 200);
+    assert.equal(fixture.uiHelper.captureChatScrollFollow().followBottom, false);
+    fixture.dom.window.close();
+});
+
+test('follow changes are announced once per flip on the scroll container', () => {
+    const fixture = createFixture();
+    const seen = [];
+    fixture.container.addEventListener(fixture.uiHelper.CHAT_FOLLOW_CHANGE_EVENT, event => {
+        seen.push(event.detail.followBottom);
+    });
+    fixture.uiHelper.captureChatScrollFollow();
+
+    fixture.uiHelper.releaseChatScrollFollow();
+    fixture.uiHelper.releaseChatScrollFollow();
+    assert.deepEqual(seen, [false], 'releasing twice must not announce twice');
+
+    fixture.uiHelper.resetChatScrollFollow();
+    assert.deepEqual(seen, [false, true]);
+
+    fixture.setGeometry({ scrollTop: 300 });
+    fixture.container.dispatchEvent(new fixture.window.WheelEvent('wheel', { deltaY: -100 }));
+    assert.deepEqual(seen, [false, true, false]);
+
+    fixture.uiHelper.scrollToBottom({ force: true });
+    fixture.flushAnimationFrames();
+    assert.deepEqual(seen, [false, true, false, true]);
+    fixture.dom.window.close();
+});
