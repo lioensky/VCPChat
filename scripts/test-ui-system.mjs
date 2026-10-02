@@ -759,7 +759,7 @@ assert.match(mainHtml,
     /id="nextUiMainPanel"[^>]*>[\s\S]*<main class="main-content">[\s\S]*id="resizerRight"[\s\S]*id="notificationsSidebar"[\s\S]*<\/section>/s,
     'main chat, notification resizer, and notification sidebar must share one clipping host');
 assert.match(nextUiCss,
-    /html \.next-ui-main-panel\s*\{[^}]*overflow:\s*hidden;[^}]*isolation:\s*isolate;[^}]*border-radius:\s*var\(--vcp-ui-shell-radius\) 0 0 0;[^}]*var\(--next-wallpaper\);/s,
+    /html \.next-ui-main-panel\s*\{[^}]*overflow:\s*hidden;[^}]*isolation:\s*isolate;[^}]*border-radius:\s*var\(--vcp-ui-shell-radius\);[^}]*var\(--next-wallpaper\);/s,
     'the shared host must own both the panel radius and the theme wallpaper clip');
 assert.match(nextUiCss,
     /html \.main-content\s*\{[^}]*background:\s*transparent;/s,

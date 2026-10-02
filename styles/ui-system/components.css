@@ -607,12 +607,12 @@
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope .vcp-ui-integrated-main {
         min-width: 0;
         min-height: 0;
-        height: 100%;
+        height: calc(100% - 4px);
+        margin: 0 4px 4px 0;
+        box-sizing: border-box;
         overflow: hidden;
         border: 1px solid var(--vcp-ui-border);
-        border-right: 0;
-        border-bottom: 0;
-        border-radius: var(--vcp-ui-shell-radius) 0 0 0;
+        border-radius: var(--vcp-ui-shell-radius);
         background: var(--vcp-ui-bg-primary);
         box-shadow: var(--vcp-ui-shadow-md);
     }

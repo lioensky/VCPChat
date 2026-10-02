@@ -483,9 +483,17 @@
                             </path>
                         </svg>
                     </button>
+                    <button id="voiceChatBtn" class="header-button" type="button" title="语音聊天"
+                        style="margin-right: 5px; display: none;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none"
+                            stroke="currentColor" stroke-width="1.33" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect x="5" y="1.5" width="6" height="9" rx="3"></rect>
+                            <path d="M2.35 8.675C3.075 11.3 5.2 13.125 8 13.125C10.8 13.125 12.925 11.3 13.65 8.675M8 13.125V15"></path>
+                        </svg>
+                    </button>
 
                     <button id="currentAgentSettingsBtn" class="header-button" type="button" title="当前Agent设置" style="display: none;">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 110 44" width="110" height="44"
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="2.6 0 97 44" width="97" height="44"
                             aria-hidden="true">
                             <g transform="translate(1 2) scale(1.62)" stroke="currentColor" stroke-width="2" fill="none"
                                 stroke-linejoin="round" stroke-linecap="round">
@@ -497,20 +505,11 @@
                             </g>
                             <g fill="currentColor" font-family="system-ui, -apple-system, sans-serif" font-size="15"
                                 font-weight="500">
-                                <text x="45" y="17">CREATE</text>
-                                <text x="45" y="33">TOPIC</text>
+                                <text x="45" y="19">CREATE</text>
+                                <text x="45" y="35">TOPIC</text>
                             </g>
                         </svg>
                         <span class="button-label">新建聊天话题</span>
-                    </button>
-                    <button id="voiceChatBtn" class="header-button" type="button" title="语音聊天"
-                        style="margin-right: 5px; display: none;">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M12 19v3"></path>
-                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                            <rect x="9" y="2" width="6" height="13" rx="3"></rect>
-                        </svg>
                     </button>
                     <span id="nextUiChatNotificationHost" class="next-ui-notification-toggle-host"></span>
                 </div>
@@ -605,7 +604,7 @@
                 </div>
             </footer>
           </main>
-          <div class="resizer" id="resizerRight"></div>
+          <div class="resizer vcp-ui-scope" id="resizerRight"></div>
           <aside class="notifications-sidebar vcp-ui-scope" id="notificationsSidebar">
             <header class="notifications-header">
                 <h4 id="notificationTitle" style="display: none;">VCP 通知</h4>

@@ -1,12 +1,72 @@
 /*
  * 消息输入区。
  *
- * 输入卡片（圆角、边框、渐变背景、分层阴影与悬停/聚焦/拖拽态）以及文本域
- * 保持迁移前（最近提交）的微调效果，统一由 styles/chat.css（vcp-ui.legacy 层）
- * 对两种 UI 模式生效，本文件不再二次覆写。
- * 附件等工具按钮使用新版样式；发送按钮保留迁移前的圆形强调按钮。
+ * 输入壳和操作控件使用 VCPUI 语义色与紧凑尺寸。输入壳的圆角仍由外观设置控制。
  */
 @layer vcp-ui.components {
+    html .vcp-ui-scope .chat-input-card {
+        /* ZCode prompt-shell states; the existing VCPChat geometry stays intact. */
+        gap: var(--vcp-ui-space-1);
+        /* 8px sides and bottom keep the round end buttons concentric with the
+           card corner: send radius 18 + 8 inset + 1 border sits under the 28px
+           corner once the superellipse below pulls the curve in. The empty
+           card comes to 98px: 8 + 36 text + 10 + 34 row + 8, plus borders. */
+        padding: var(--vcp-ui-space-2);
+        border: 1px solid var(--vcp-ui-composer-border);
+        /* Translucent fill over a bounded blur, so the wallpaper still reads
+           through the card the way the upstream frosted composer did. */
+        background: color-mix(in srgb, var(--vcp-ui-composer-input) 72%, transparent);
+        box-shadow: none;
+        backdrop-filter: blur(10px) saturate(112%);
+        -webkit-backdrop-filter: blur(10px) saturate(112%);
+        transition: border-color 150ms cubic-bezier(0.4, 0, 0.2, 1), background-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    html .vcp-ui-scope .chat-input-card:hover:not(:focus-within):not(.drag-over) {
+        border-color: var(--vcp-ui-composer-border-active);
+        background: color-mix(in srgb, var(--vcp-ui-composer-input) 78%, transparent);
+        box-shadow: none;
+    }
+
+    html .vcp-ui-scope .chat-input-card:focus-within {
+        border-color: var(--vcp-ui-composer-border-active);
+        background: color-mix(in srgb, var(--vcp-ui-composer-input) 84%, transparent);
+        box-shadow: none;
+    }
+
+    /* Panel and immersive already frost the whole input area behind the card;
+       a second blur here would only stack another backdrop capture. */
+    html body:is(.chat-presentation-panel, .chat-presentation-immersive) .vcp-ui-scope .chat-input-card {
+        background: color-mix(in srgb, var(--vcp-ui-composer-input) 36%, transparent);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+
+    html .vcp-ui-scope .chat-input-card.drag-over {
+        border-color: var(--vcp-ui-color-brand);
+        box-shadow: 0 0 0 2px var(--vcp-ui-focus-ring);
+    }
+
+    html .vcp-ui-scope :is(#messageInput, .chat-message-input) {
+        min-width: 0;
+        color: var(--vcp-ui-composer-foreground);
+        font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+        font-size: var(--vcp-ui-text-base);
+        font-weight: 400;
+        line-height: 24px;
+        /* One 24px line plus a 4px top pad and an 8px breath below it. The
+           left pad gives back the 4px the card's side padding lost, so the
+           text column still starts where it did. */
+        min-height: 36px;
+        padding-top: 4px;
+        padding-left: 10px;
+    }
+
+    html .vcp-ui-scope :is(#messageInput, .chat-message-input)::placeholder {
+        color: var(--vcp-ui-composer-placeholder);
+        opacity: 1;
+    }
+
     html .vcp-ui-scope :is(#messageInput, .chat-message-input):focus, html .vcp-ui-scope :is(#messageInput, .chat-message-input):focus-visible {
         outline: none;
         outline-offset: 0;
@@ -14,12 +74,21 @@
     }
 
     html .vcp-ui-scope .chat-input-actions {
-        gap: var(--vcp-ui-space-1);
+        gap: var(--vcp-ui-space-2);
+        /* Bottom-aligned, not centred: the 28px controls then sit as far from
+           the bottom border as from the side, like the taller send button, so
+           the round button in the lower-left corner shares the card's arc. */
+        align-items: flex-end;
+        /* With the card gap this leaves 10px between the text box and the
+           row, so the 28px controls start 61px below the top edge. */
+        margin-top: 6px;
     }
 
     html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button), html .vcp-ui-scope :is(#attachFileBtn, .chat-attach-button), html .vcp-ui-scope :is(#quickNewTopicBtn, .chat-quick-new-button), html .vcp-ui-scope :is(#emoticonTriggerBtn, .chat-emoticon-button), html .vcp-ui-scope :is(#workspacePickerBtn, .chat-workspace-button) {
-        width: var(--vcp-ui-control-md);
-        height: var(--vcp-ui-control-md);
+        /* Same 28px box, 8px radius and hover fill as the model picker and
+           mic button on the right of this row. */
+        width: var(--vcp-ui-control-sm);
+        height: var(--vcp-ui-control-sm);
         margin: 0;
         padding: 0;
         display: flex;
@@ -27,7 +96,7 @@
         justify-content: center;
         flex: 0 0 auto;
         border: 1px solid transparent;
-        border-radius: var(--vcp-ui-radius-sm);
+        border-radius: 8px;
         color: var(--vcp-ui-text-2);
         background: transparent;
         cursor: pointer;
@@ -67,6 +136,13 @@
 
     html .vcp-ui-scope :is(#attachFileBtn, .chat-attach-button):hover:not(:disabled), html .vcp-ui-scope :is(#quickNewTopicBtn, .chat-quick-new-button):hover:not(:disabled), html .vcp-ui-scope :is(#emoticonTriggerBtn, .chat-emoticon-button):hover:not(:disabled), html .vcp-ui-scope :is(#workspacePickerBtn, .chat-workspace-button):hover:not(:disabled) {
         color: var(--vcp-ui-text-0);
+        background: var(--vcp-ui-interactive-hover, var(--vcp-ui-composer-control-hover));
+    }
+
+    /* The leftmost control mirrors the send button: a filled circle at the
+       card's lower-left corner, so both ends of the row follow the corner. */
+    html .vcp-ui-scope :is(#quickNewTopicBtn, .chat-quick-new-button) {
+        border-radius: var(--vcp-ui-radius-full);
         background: var(--vcp-ui-fill-1);
     }
 
@@ -78,12 +154,12 @@
         border-radius: var(--vcp-ui-radius-full);
         color: var(--vcp-ui-on-accent);
         background: var(--vcp-ui-accent);
-        box-shadow: var(--vcp-ui-send-button-shadow);
+        box-shadow: none;
     }
 
     html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button):hover:not(:disabled) {
         background: var(--vcp-ui-accent-hover);
-        transform: translateY(-1px);
+        transform: none;
     }
 
     html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button).interrupt-mode {
@@ -138,3 +214,57 @@
         background: var(--vcp-ui-accent);
     }
 }
+
+/* Smooth the card corner along superellipse(1.5); full circles opt back out
+   so they stay round. Engines without corner-shape keep circular corners. */
+/* stylelint-disable property-no-unknown, function-no-unknown */
+@supports (corner-shape: superellipse(1.5)) {
+    html .vcp-ui-scope .chat-input-card,
+    html .vcp-ui-scope .vcp-model-select-menu {
+        corner-shape: superellipse(1.5);
+    }
+
+    html .vcp-ui-scope :is(#quickNewTopicBtn, .chat-quick-new-button, #sendMessageBtn, .chat-send-button) {
+        corner-shape: round;
+    }
+}
+/* stylelint-enable property-no-unknown, function-no-unknown */
+
+/* The model picker's menu shares the composer card's surface: same fill,
+   same hairline, a soft lift instead of a hard drop, and a 16px corner whose
+   4px-inset rows take 12px so they stay concentric. The advanced-reply
+   popover gets the same treatment in appearance.css (it mounts on body, outside
+   any .vcp-ui-scope). Unlayered on purpose: the picker's injected sheet is
+   unlayered, so a layered rule would lose to it. */
+html .vcp-ui-scope .vcp-model-select-menu {
+    border: 1px solid var(--vcp-ui-composer-border);
+    border-radius: 16px;
+    background: var(--vcp-ui-composer-input);
+    box-shadow: var(--vcp-ui-composer-popover-shadow);
+}
+
+html .vcp-ui-scope .vcp-model-select-menu :is(.vcp-model-select-item, .vcp-model-select-search) {
+    border-radius: 12px;
+}
+
+html .vcp-ui-scope .vcp-model-select-menu .vcp-model-select-search {
+    border-color: var(--vcp-ui-composer-border);
+}
+
+/* The model menu opens above the whole card, 4px clear and flush with its
+   right edge, like the advanced-reply popover, instead of covering the draft
+   from the trigger. */
+/* stylelint-disable property-no-unknown, function-no-unknown */
+html .vcp-ui-scope .chat-input-card {
+    anchor-name: --vcp-composer-card;
+}
+
+@supports (position-anchor: --vcp-composer-card) {
+    html .vcp-ui-scope .vcp-model-select-menu {
+        position: fixed;
+        position-anchor: --vcp-composer-card;
+        right: anchor(right);
+        bottom: calc(anchor(top) + 4px);
+    }
+}
+/* stylelint-enable property-no-unknown, function-no-unknown */

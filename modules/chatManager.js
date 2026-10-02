@@ -609,7 +609,7 @@ export const chatManager = (() => {
         currentItemActionBtn.style.display = 'inline-flex';
         
         if (voiceChatBtn) {
-            voiceChatBtn.style.display = itemType === 'agent' ? 'inline-block' : 'none';
+            voiceChatBtn.style.display = itemType === 'agent' ? 'inline-flex' : 'none';
         }
 
         itemListManager.highlightActiveItem(itemId, itemType);
