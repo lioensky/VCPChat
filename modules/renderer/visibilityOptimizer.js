@@ -241,7 +241,7 @@ function observeMessage(messageItem) {
     }
 
     visibilityObserver.observe(messageItem);
-    rememberMessageHeight(messageItem);
+    rememberMessageHeightLater(messageItem);
 
     // 🔑 延迟扫描，确保脚本已执行完毕
     const messageWindow = messageItem.ownerDocument?.defaultView || ownerWindow || window;
@@ -251,7 +251,7 @@ function observeMessage(messageItem) {
         scanTimers.delete(messageItem);
         if (!observedMessages.has(messageItem) || visibilityOwnerByMessage.get(messageItem) !== publicApi) return;
         scanAnimatedElements(messageItem);
-        rememberMessageHeight(messageItem);
+        rememberMessageHeightLater(messageItem);
     }, CONFIG.scanDelay);
     scanTimers.set(messageItem, { id: scanTimer, window: messageWindow });
 }
@@ -331,13 +331,17 @@ function scanAnimatedElements(messageItem) {
 
 function rememberMessageHeight(messageItem) {
     if (!messageItem || !messageItem.isConnected) return;
-    const messageId = messageItem.dataset?.messageId || messageItem.id;
     let height = 0;
     try {
         height = messageItem.offsetHeight;
     } catch (e) {
         height = 0;
     }
+    applyMessageHeight(messageItem, height);
+}
+
+function applyMessageHeight(messageItem, height) {
+    const messageId = messageItem.dataset?.messageId || messageItem.id;
     if (height > 0) {
         messageItem.dataset.vcpMeasuredHeight = String(height);
         messageItem.style.containIntrinsicSize = `auto ${height}px`;
@@ -349,6 +353,40 @@ function rememberMessageHeight(messageItem) {
             }
         }
     }
+}
+
+// 长话题一次加载几十条消息：每条消息「读 offsetHeight → 写 containIntrinsicSize」交替进行，
+// 写会让布局失效，下一条的读就要同步重排一次（94 条的话题里这一项占掉加载的一半时间）。
+// 登记和延迟扫描这两处不需要立刻拿到高度，攒到下一帧，先一起读、再一起写。
+const pendingHeightMemory = new Set();
+let heightMemoryScheduled = false;
+
+function rememberMessageHeightLater(messageItem) {
+    if (!messageItem) return;
+    pendingHeightMemory.add(messageItem);
+    if (heightMemoryScheduled) return;
+    heightMemoryScheduled = true;
+    const frameWindow = messageItem.ownerDocument?.defaultView || window;
+    if (typeof frameWindow.requestAnimationFrame === 'function') frameWindow.requestAnimationFrame(flushHeightMemory);
+    else if (typeof requestAnimationFrame === 'function') requestAnimationFrame(flushHeightMemory);
+    else setTimeout(flushHeightMemory, 16);
+}
+
+function flushHeightMemory() {
+    heightMemoryScheduled = false;
+    const measured = [];
+    for (const messageItem of pendingHeightMemory) {
+        if (!messageItem.isConnected) continue;
+        let height = 0;
+        try {
+            height = messageItem.offsetHeight;
+        } catch (e) {
+            height = 0;
+        }
+        measured.push([messageItem, height]);
+    }
+    pendingHeightMemory.clear();
+    for (const [messageItem, height] of measured) applyMessageHeight(messageItem, height);
 }
 
 function destroyPixiContext(context) {
