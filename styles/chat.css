@@ -1437,18 +1437,16 @@ body.light-theme {
  * Panel and immersive use a full-chat-area translucent surface.
  * Edge gaps constrain message content only, never the background surface.
  *
- * The message container is the scrolling element, so it must not also be a
- * viewport-sized backdrop capture. Filtering the scroll owner invalidates the
- * entire sampled surface whenever descendants move, defeating
- * content-visibility and causing scroll-range/compositor instability on long
- * conversations. The gradient supplies the visual veil; stable header and
- * composer surfaces may retain their own bounded blur.
+ * Keep one shared backdrop capture for the message viewport rather than
+ * adding blur to every message. The translucent gradient supplies the tint;
+ * the backdrop filter supplies real wallpaper blur, matching the frosted
+ * header and composer. Mode-specific message bodies remain transparent.
  */
 body.chat-presentation-panel .chat-messages-container,
 body.chat-presentation-immersive .chat-messages-container {
     background: var(--chat-presentation-surface);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
+    backdrop-filter: var(--chat-presentation-surface-filter);
+    -webkit-backdrop-filter: var(--chat-presentation-surface-filter);
 }
 
 body.chat-presentation-panel .chat-messages,
