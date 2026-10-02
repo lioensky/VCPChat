@@ -48,6 +48,7 @@
     <link rel="stylesheet" href="styles/ui-system/status-panel.css">
     <link rel="stylesheet" href="styles/ui-system/message-file-changes.css">
     <link rel="stylesheet" href="styles/ui-system/side-pane-side-chat-extras.css">
+    <link rel="stylesheet" href="styles/ui-system/notification-center.css">
     <script src="modules/ui-system/lifecycle-scope.js"></script>
     <script src="modules/ui-system/performance-recorder.js"></script>
     <script src="modules/ui-system/task-handle.js"></script>
@@ -653,10 +654,9 @@
                 <section class="side-pane-view active" id="sidePaneViewNotifications" role="tabpanel" aria-label="通知视图">
                   <aside class="notifications-sidebar vcp-ui-scope" id="notificationsSidebar">
             <header class="notifications-header">
-                <h4 id="notificationTitle" style="display: none;">VCP 通知</h4>
-                <div class="datetime-container">
-                    <div id="digitalClock" class="digital-clock"></div>
-                    <div id="dateDisplay" class="date-display"></div>
+                <div class="notifications-status" id="vcpLogConnectionStatus" data-status="unknown" role="status" aria-live="polite">
+                    <span class="notifications-status-dot" aria-hidden="true"></span>
+                    <span class="notifications-status-text">VCPLog: 未连接</span>
                 </div>
 
                 <div class="next-ui-notification-actions">
@@ -673,26 +673,6 @@
                     </button>
                     <div id="nextUiNotificationMenu" class="next-ui-notification-menu" role="menu"
                         aria-label="通知选项" hidden>
-                        <button id="nextUiNotificationForum" class="next-ui-notification-menu-item"
-                            type="button" role="menuitem" title="打开论坛">
-                            <span class="vcp-ui-icon" aria-hidden="true">forum</span>
-                            <span>论坛</span>
-                        </button>
-                        <button id="nextUiNotificationMemo" class="next-ui-notification-menu-item"
-                            type="button" role="menuitem" title="打开记忆">
-                            <span class="vcp-ui-icon" aria-hidden="true">sticky_note_2</span>
-                            <span>记忆</span>
-                        </button>
-                        <button id="nextUiNotificationLog" class="next-ui-notification-menu-item"
-                            type="button" role="menuitem" title="打开 VCP 日志">
-                            <span class="vcp-ui-icon" aria-hidden="true">scroll_text</span>
-                            <span>VCP 日志</span>
-                        </button>
-                        <button id="nextUiNotificationObserver" class="next-ui-notification-menu-item"
-                            type="button" role="menuitem" title="打开 VCP 监听">
-                            <span class="vcp-ui-icon" aria-hidden="true">activity</span>
-                            <span>VCP 监听</span>
-                        </button>
                         <button id="nextUiNotificationFilterToggle" class="next-ui-notification-menu-item"
                             type="button" role="menuitemcheckbox" aria-checked="false"
                             title="切换通知过滤模式">
@@ -705,28 +685,55 @@
                             <span class="vcp-ui-icon" aria-hidden="true">settings</span>
                             <span>通知栏设置</span>
                         </button>
-                        <div class="next-ui-notification-menu-divider" role="separator"></div>
-                        <button id="nextUiNotificationClear" class="next-ui-notification-menu-item danger"
-                            type="button" role="menuitem">
-                            <span class="vcp-ui-icon" aria-hidden="true">trash_2</span>
-                            <span>清空通知</span>
-                        </button>
                     </div>
                 </div>
                 <span id="nextUiPanelNotificationHost" class="next-ui-notification-toggle-host"></span>
             </header>
-            <div class="notifications-status" id="vcpLogConnectionStatus">
-                VCPLog: 未连接
+            <div class="notification-pending-banner" id="notificationPendingBanner" role="region" aria-label="待审批" hidden>
+                <button type="button" class="notification-pending-summary" data-action="jump-next"
+                    title="定位到下一个待审批" aria-label="定位到下一个待审批">
+                    <span class="vcp-ui-icon" aria-hidden="true">gpp_maybe</span>
+                    <span class="notification-pending-text"><strong data-role="pending-count">0</strong> 项待审批</span>
+                    <span class="vcp-ui-icon notification-pending-jump" aria-hidden="true">keyboard_arrow_down</span>
+                </button>
+                <div class="notification-pending-actions">
+                    <button type="button" class="notification-pending-btn is-reject" data-action="reject-all"
+                        title="拒绝全部待审批（需再点一次确认）"><span data-role="label">全部拒绝</span></button>
+                    <button type="button" class="notification-pending-btn is-approve" data-action="approve-all"
+                        title="允许全部待审批（需再点一次确认；含内容变更的请求需逐条审计）"><span data-role="label">全部允许</span></button>
+                </div>
+            </div>
+            <div class="notification-toolbar" id="notificationToolbar" role="group" aria-label="筛选通知">
+                <button type="button" class="notification-chip" data-filter="all" aria-pressed="true">全部<span class="notification-chip-count"></span></button>
+                <button type="button" class="notification-chip" data-filter="pending" aria-pressed="false">待审批<span class="notification-chip-count"></span></button>
+                <button type="button" class="notification-chip" data-filter="error" aria-pressed="false">错误<span class="notification-chip-count"></span></button>
+                <button type="button" class="notification-chip" data-filter="resolved" aria-pressed="false">已处理<span class="notification-chip-count"></span></button>
+                <button id="nextUiNotificationClear" class="notification-toolbar-clear" type="button"
+                    title="清空通知（保留待审批）" aria-label="清空通知">
+                    <span class="vcp-ui-icon" aria-hidden="true">delete_sweep</span>
+                </button>
             </div>
             <ul class="notifications-list" id="notificationsList">
             </ul>
-            <div id="inviteAgentButtonsContainer" class="invite-agent-buttons-container" hidden
-                style="padding: 10px; border-top: 1px solid var(--border-color); margin-top:10px;">
+            <div id="inviteAgentButtonsContainer" class="invite-agent-buttons-container" hidden>
                 <!-- 邀请发言按钮将由 JavaScript 动态填充到这里 -->
             </div>
-            <hr class="section-divider">
             <div id="vchatAppTray" class="notes-section">
-                <!-- App tray UI -->
+                <div class="notification-dock-links" role="group" aria-label="通知相关快捷入口">
+                    <button id="nextUiNotificationForum" class="notification-dock-btn" type="button" title="打开论坛" aria-label="打开论坛">
+                        <span class="vcp-ui-icon" aria-hidden="true">forum</span>
+                    </button>
+                    <button id="nextUiNotificationMemo" class="notification-dock-btn" type="button" title="打开记忆" aria-label="打开记忆">
+                        <span class="vcp-ui-icon" aria-hidden="true">sticky_note_2</span>
+                    </button>
+                    <button id="nextUiNotificationLog" class="notification-dock-btn" type="button" title="打开 VCP 日志" aria-label="打开 VCP 日志">
+                        <span class="vcp-ui-icon" aria-hidden="true">scroll_text</span>
+                    </button>
+                    <button id="nextUiNotificationObserver" class="notification-dock-btn" type="button" title="打开 VCP 监听" aria-label="打开 VCP 监听">
+                        <span class="vcp-ui-icon" aria-hidden="true">activity</span>
+                    </button>
+                </div>
+                <span class="notification-dock-sep" aria-hidden="true"></span>
                 <div id="appTrayPinnedApps" class="app-tray-pinned-apps"></div>
                 <button id="appTrayMoreBtn" class="app-tray-more-btn" type="button"
                     aria-label="更多应用" aria-controls="appTrayDrawer" aria-expanded="false" aria-haspopup="true"
@@ -1394,6 +1401,7 @@
 
     <script src="modules/topicSummarizer.js"></script>
     <script src="modules/notificationRenderer.js"></script>
+    <script src="modules/notificationCenter.js"></script>
     <script src="modules/voice/wavAudioEncoder.js"></script>
     <script src="modules/voice/speechDirectiveMatcher.js"></script>
     <script src="modules/voice/audioRecorder.js"></script>

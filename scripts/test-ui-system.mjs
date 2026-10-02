@@ -698,8 +698,8 @@ assert.doesNotMatch(topTabManagerSource, /nextUiAccountThemeLabel[\s\S]*setAttri
     'topTabManager must delegate account and theme presentation state');
 assert.match(eventListenersSource, /const runMenuAction = async[\s\S]*catch \(error\)[\s\S]*finally \{[\s\S]*closeNotificationMenu/,
     'notification menu actions must close and restore focus even after rejection');
-assert.match(mainHtml, /id="nextUiNotificationForum"[\s\S]*id="nextUiNotificationMemo"[\s\S]*id="nextUiNotificationFilterToggle"[\s\S]*id="nextUiNotificationClear"/,
-    'the Next notification menu must contain separate Forum and Memo entries plus filter and clear commands');
+assert.match(mainHtml, /id="nextUiNotificationFilterToggle"[\s\S]*id="nextUiNotificationSettings"[\s\S]*id="nextUiNotificationClear"[\s\S]*id="nextUiNotificationForum"[\s\S]*id="nextUiNotificationMemo"/,
+    'the notification menu keeps filter/settings, the toolbar owns clear, and the dock owns separate Forum and Memo entries');
 assert.doesNotMatch(eventListenersSource, /(?:doNotDisturbBtn|clearNotificationsBtn)\.click\(\)/,
     'Next notification actions must not proxy hidden Classic controls');
 assert.match(eventListenersSource, /nextUiNotificationMemo\.addEventListener\('click'[\s\S]*openMemo/,

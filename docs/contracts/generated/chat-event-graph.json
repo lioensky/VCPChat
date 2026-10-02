@@ -224,6 +224,7 @@
     "modules/messageRenderer.js",
     "modules/modelUsageTracker.js",
     "modules/musicScannerWorker.js",
+    "modules/notificationCenter.js",
     "modules/notificationRenderer.js",
     "modules/renderer/animation.js",
     "modules/renderer/colorUtils.js",
@@ -3076,7 +3077,7 @@
       "consumers": [
         {
           "file": "renderer.js",
-          "line": 668,
+          "line": 671,
           "kind": "custom-event-listener"
         },
         {
@@ -3108,7 +3109,7 @@
       "evidence": [
         {
           "file": "renderer.js",
-          "line": 668,
+          "line": 671,
           "kind": "custom-event-listener",
           "match": "addEventListener('global-settings-updated'"
         },
@@ -5281,7 +5282,7 @@
       "consumers": [
         {
           "file": "renderer.js",
-          "line": 612,
+          "line": 615,
           "kind": "preload-subscription"
         },
         {
@@ -5293,7 +5294,7 @@
       "evidence": [
         {
           "file": "renderer.js",
-          "line": 612,
+          "line": 615,
           "kind": "preload-subscription",
           "match": "onStreamingEventConsumer("
         },
@@ -8293,7 +8294,7 @@
       "producers": [
         {
           "file": "renderer.js",
-          "line": 581,
+          "line": 584,
           "kind": "custom-event-dispatch"
         }
       ],
@@ -8301,7 +8302,7 @@
       "evidence": [
         {
           "file": "renderer.js",
-          "line": 581,
+          "line": 584,
           "kind": "custom-event-dispatch",
           "match": "dispatchEvent(new CustomEvent('vcp-chat-stream-terminal'"
         }
@@ -8591,7 +8592,7 @@
       "producers": [
         {
           "file": "renderer.js",
-          "line": 843,
+          "line": 846,
           "kind": "custom-event-dispatch"
         }
       ],
@@ -8605,7 +8606,7 @@
       "evidence": [
         {
           "file": "renderer.js",
-          "line": 843,
+          "line": 846,
           "kind": "custom-event-dispatch",
           "match": "dispatchEvent(new CustomEvent('vcp-main-chat-commands-configure'"
         },
@@ -8622,7 +8623,7 @@
       "producers": [
         {
           "file": "renderer.js",
-          "line": 1049,
+          "line": 1052,
           "kind": "custom-event-dispatch"
         }
       ],
@@ -8630,7 +8631,7 @@
       "evidence": [
         {
           "file": "renderer.js",
-          "line": 1049,
+          "line": 1052,
           "kind": "custom-event-dispatch",
           "match": "dispatchEvent(new CustomEvent('vcp-renderer-ready'"
         }

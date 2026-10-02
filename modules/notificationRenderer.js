@@ -47,8 +47,12 @@ function updateVCPLogStatus(statusUpdate, vcpLogConnectionStatusDiv) {
     const status = statusUpdate.status;
 
     const prefix = source || 'VCPLog';
-    vcpLogConnectionStatusDiv.textContent = `${prefix}: ${message || '状态未知'}`;
+    const statusText = `${prefix}: ${message || '状态未知'}`;
+    const textElement = vcpLogConnectionStatusDiv.querySelector?.('.notifications-status-text');
+    if (textElement) textElement.textContent = statusText;
+    else vcpLogConnectionStatusDiv.textContent = statusText;
     vcpLogConnectionStatusDiv.className = `notifications-status status-${status || 'unknown'}`;
+    vcpLogConnectionStatusDiv.dataset.status = status || 'unknown';
 }
 
 const handledToolApprovalRequestIds = new Set();
@@ -202,7 +206,9 @@ function openToolChangeAuditModal(approvalData, options = {}) {
         close();
     };
 
-    requestAnimationFrame(() => reasonInput.focus());
+    // 从头开始审：聚焦理由框时不要把工具名和摘要滚出视野
+    modal.querySelectorAll('.modal-content').forEach(node => { node.scrollTop = 0; });
+    requestAnimationFrame(() => reasonInput.focus({ preventScroll: true }));
     return true;
 }
 
@@ -285,12 +291,17 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
     let titleText = 'VCP 通知:';
     let mainContent = '';
     let contentIsPreformatted = false;
+    // 卡片语气：驱动通知列表左侧状态点和「错误」筛选
+    let notificationTone = 'neutral';
 
     // --- Content Parsing Logic (adapted from original renderer.js) ---
     if (logData && typeof logData === 'object' && logData.type === 'vcp_log' && logData.data && typeof logData.data === 'object') {
         const vcpData = logData.data;
         if (vcpData.tool_name && vcpData.status) {
             titleText = `${vcpData.tool_name} ${vcpData.status}`;
+            const normalizedStatus = String(vcpData.status).toLowerCase();
+            if (/(error|fail|timeout)/.test(normalizedStatus)) notificationTone = 'error';
+            else if (/(success|ok|done|complete)/.test(normalizedStatus)) notificationTone = 'success';
             if (typeof vcpData.content !== 'undefined') {
                 let rawContentString = String(vcpData.content);
                 mainContent = rawContentString;
@@ -403,6 +414,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
     } else if (logData && typeof logData === 'object' && logData.type === 'tool_auto_approval' && logData.data && typeof logData.data === 'object') {
         const approvalLog = logData.data;
         titleText = `✅ 已自动允许: ${approvalLog.toolName || '未知工具'}`;
+        notificationTone = 'success';
         mainContent = `助手: ${approvalLog.maid || '未知'}\n规则: ${approvalLog.ruleName || '未命名规则'}\n请求ID: ${approvalLog.requestId || 'N/A'}\n状态: ${approvalLog.sent ? '已发送允许响应' : '发送失败'}`;
         contentIsPreformatted = true;
     } else if (logData && typeof logData === 'object' && logData.type && logData.message) { // Generic type + message
@@ -415,6 +427,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
     } else if (logData && typeof logData === 'object' && logData.type === 'tool_approval_request' && logData.data && typeof logData.data === 'object') {
         const approvalData = logData.data;
         titleText = `🛠️ 审核请求: ${approvalData.toolName}`;
+        notificationTone = 'warn';
         mainContent = `助手: ${approvalData.maid}\n命令: ${approvalData.args?.command || JSON.stringify(approvalData.args)}\n时间: ${approvalData.timestamp}`;
         contentIsPreformatted = true;
     } else { // Fallback for other structures or plain string
@@ -438,9 +451,28 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
             element.classList.add('notification-protected', 'notification-tool-approval');
         }
 
+        if (!isToast) {
+            // 状态归类交给 notificationCenter：pending 置顶、resolved 折叠归档
+            element.dataset.notificationState = isToolApprovalRequest
+                ? 'pending'
+                : (logData?.type === 'tool_auto_approval' ? 'resolved' : 'info');
+            element.dataset.notificationTone = notificationTone;
+        }
+
         const strongTitle = document.createElement('strong');
         strongTitle.textContent = titleText;
-        element.appendChild(strongTitle);
+        let headRow = null;
+        if (isToast) {
+            element.appendChild(strongTitle);
+        } else {
+            headRow = document.createElement('div');
+            headRow.classList.add('notification-head');
+            const toneDot = document.createElement('span');
+            toneDot.classList.add('notification-tone-dot');
+            toneDot.setAttribute('aria-hidden', 'true');
+            headRow.append(toneDot, strongTitle);
+            element.appendChild(headRow);
+        }
 
         const contentDiv = document.createElement('div');
         contentDiv.classList.add('notification-content');
@@ -469,7 +501,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
             reasonInput.classList.add('notification-approval-reason-input');
             reasonInput.placeholder = '可选：告诉 AI 为什么通过或拒绝';
             reasonInput.maxLength = 1000;
-            reasonInput.rows = isToast ? 2 : 3;
+            reasonInput.rows = isToast ? 2 : 1;
             reasonInput.addEventListener('click', (e) => e.stopPropagation());
             reasonInput.addEventListener('keydown', (e) => e.stopPropagation());
 
@@ -492,7 +524,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
                 if (!sent) return false;
 
                 handledToolApprovalRequestIds.add(requestId);
-                dismissToolApprovalNotifications(requestId);
+                dismissToolApprovalNotifications(requestId, { approved, reason: suppliedReason });
                 return true;
             };
 
@@ -536,7 +568,8 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
         const timestampSpan = document.createElement('span');
         timestampSpan.classList.add('notification-timestamp');
         timestampSpan.textContent = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-        element.appendChild(timestampSpan);
+        if (headRow) headRow.appendChild(timestampSpan);
+        else element.appendChild(timestampSpan);
 
         if (isToast) {
             if (isToolApprovalRequest) {
@@ -580,21 +613,24 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
                     }, 1500);
                 });
             };
-            element.appendChild(copyButton);
+            const cardActions = document.createElement('div');
+            cardActions.classList.add('notification-card-actions');
+            cardActions.appendChild(copyButton);
 
-            // Click to dismiss for list items
-            element.onclick = () => {
-                // If it's an approval request, don't dismiss on body click to avoid misoperation
-                if (logData && logData.type === 'tool_approval_request') return;
-
-                element.style.opacity = '0';
-                element.style.transform = 'translateX(100%)'; // Assuming this is the desired animation for list items
-                scheduleNotificationTimeout(() => {
-                    if (element.parentNode) {
-                        element.parentNode.removeChild(element);
-                    }
-                }, 500); // Match CSS transition for .notification-item
+            // 列表用于回看历史：不再「点一下就消失」，改为显式的关闭按钮（待审批卡片不显示）
+            const dismissButton = document.createElement('button');
+            dismissButton.type = 'button';
+            dismissButton.className = 'notification-dismiss-btn';
+            dismissButton.title = '移除这条通知';
+            dismissButton.setAttribute('aria-label', '移除这条通知');
+            dismissButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+            dismissButton.onclick = (e) => {
+                e.stopPropagation();
+                if (element.dataset.notificationState === 'pending') return;
+                element.remove();
             };
+            cardActions.appendChild(dismissButton);
+            element.appendChild(cardActions);
         }
     };
 
@@ -616,7 +652,33 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
         }, { once: true });
     };
 
-    const dismissToolApprovalNotifications = (requestId) => {
+    const settleApprovalListItem = (approvalElement, decision) => {
+        const approved = decision?.approved === true;
+        const reason = typeof decision?.reason === 'string' ? decision.reason.trim() : '';
+        approvalElement.querySelectorAll('.notification-approval-reason, .notification-actions').forEach(node => node.remove());
+        delete approvalElement.dataset.protectedNotification;
+        approvalElement.classList.remove('notification-protected');
+        approvalElement.dataset.notificationTone = approved ? 'success' : 'muted';
+
+        const result = document.createElement('div');
+        result.classList.add('notification-result', approved ? 'is-approved' : 'is-rejected');
+        const verdict = document.createElement('span');
+        verdict.classList.add('notification-result-verdict');
+        verdict.textContent = approved ? '已允许' : '已拒绝';
+        result.appendChild(verdict);
+        if (reason) {
+            const reasonText = document.createElement('span');
+            reasonText.classList.add('notification-result-reason');
+            reasonText.textContent = reason;
+            result.appendChild(reasonText);
+        }
+        const content = approvalElement.querySelector('.notification-content');
+        (content || approvalElement.querySelector('.notification-head'))?.after(result);
+        // 最后切换状态，让 notificationCenter 一次性归档
+        approvalElement.dataset.notificationState = 'resolved';
+    };
+
+    const dismissToolApprovalNotifications = (requestId, decision = null) => {
         if (!requestId) return;
 
         const escapedRequestId = CSS.escape(String(requestId));
@@ -635,10 +697,10 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
 
             if (approvalElement.classList.contains('floating-toast-notification')) {
                 closeToastNotification(approvalElement);
+            } else if (decision) {
+                settleApprovalListItem(approvalElement, decision);
             } else {
-                approvalElement.style.opacity = '0';
-                approvalElement.style.transform = 'translateX(100%)';
-                scheduleNotificationTimeout(() => approvalElement.remove(), 500);
+                approvalElement.remove();
             }
         });
     };

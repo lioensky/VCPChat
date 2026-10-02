@@ -422,6 +422,9 @@ const allowedSourceDifferencePatterns = [
     // Conversation navigation: turn navigator rail, back-to-bottom button, composer overlay.
     /^modules\/ui-system\/(?:conversation-turn-navigator|chat-back-to-bottom|chat-composer-inset)\.js$/,
     /^tests\/(?:conversation-turn-navigator|chat-back-to-bottom|chat-composer-inset)\.test\.mjs$/,
+    // Notification center: grouping, pending-approval banner and filters.
+    /^modules\/notificationCenter\.js$/,
+    /^tests\/notification-center\.test\.js$/,
     /^docs\/(?:global-settings-section-ownership|settings-ui-pr-scope-2026-08-31)\.md$/,
     /^docs\/research\/settings-schema-render-plan\.md$/,
     /^docs\/archive\/2026-08-chat-kernel-and-ui-roadmaps\//,

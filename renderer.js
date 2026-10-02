@@ -422,6 +422,9 @@ mainChatSettingsPresentationOwner.configureStartup({
         console.error('[RENDERER_INIT] trayManager module not found!');
     }
 
+    // 通知面板分组、待审批横幅与筛选（卡片仍由 notificationRenderer 生成）
+    window.notificationCenter?.mount?.({ document });
+
     if (window.topTabManager) {
         window.topTabManager.init();
     } else {

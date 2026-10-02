@@ -32,8 +32,8 @@
     "reason": "shared filter authority; canonical menu calls its public API; filter persistence now uses operation-aware path patches to avoid complete-snapshot overwrite"
   },
   "modules/notificationRenderer.js": {
-    "sha256": "0abeb968314af2042d13493751c4836e560b4f7d1ee06ffe2c0a068665ceb81e",
-    "reason": "reviewed notification rendering after injected filtering and owner-scoped toast timers and transition listeners replaced ambient lifecycle effects"
+    "sha256": "357b81ceb8469de7d2db68743592817ae22630bcbc18f4559b2317c1dc6c2aeb",
+    "reason": "reviewed notification rendering after injected filtering and owner-scoped toast timers and transition listeners replaced ambient lifecycle effects; cards carry tone/state metadata and an explicit dismiss control, and settled tool approvals stay listed as resolved for the notification center"
   },
   "VCPDistributedServer/frontend-plugin-loader.js": {
     "sha256": "0987ee41ed76c8b4f0963353c4b387f0b46a6202b9e8516aa02cce27568862ca",
