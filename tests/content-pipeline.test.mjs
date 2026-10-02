@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createContentPipeline, PIPELINE_MODES } from '../modules/renderer/contentPipeline.js';
+import { TOOL_RESULT_START_MARKER, TOOL_RESULT_END_MARKER } from '../modules/renderer/toolResultRegions.js';
 
 test('content pipeline keeps thought, tool, request and code protocols ordered and isolated', () => {
     const pipeline = createContentPipeline({
@@ -9,9 +10,10 @@ test('content pipeline keeps thought, tool, request and code protocols ordered a
         getCodeFenceRegex: () => /```[\s\S]*?```/g,
         processStartEndMarkers: value => value.replace('「始」', '<START>').replace('「末」', '<END>')
     });
+    const toolResult = `${TOOL_RESULT_START_MARKER} **raw tool output** ${TOOL_RESULT_END_MARKER}`;
     const input = [
         '<think>\nprivate reasoning\n</think>',
-        '[RESULT: **raw tool output**]',
+        toolResult,
         '<<<[TOOL_REQUEST]>>> tool_name:「始」Demo「末」 <<<[END_TOOL_REQUEST]>>>',
         '```js\nconst marker = "not a tool result";\n```'
     ].join('\n');
@@ -28,6 +30,10 @@ test('content pipeline keeps thought, tool, request and code protocols ordered a
         'protect-tool-requests'
     ]);
     assert.match(result.state.toolRequestMap.values().next().value, /<START>Demo<END>/);
+    const [toolResultPlaceholder, protectedToolResult] = result.state.toolResultMap.entries().next().value;
+    assert.equal(protectedToolResult, toolResult);
+    assert.ok(result.text.includes(toolResultPlaceholder));
+    assert.ok(!result.text.includes(toolResult));
 });
 
 test('stream-fast protocol path is intentionally lightweight and does not create protection maps', () => {
