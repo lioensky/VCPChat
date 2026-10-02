@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const { BrowserWindow, ipcMain, clipboard } = require('electron');
 const tmp = require('tmp');
 const chokidar = require('chokidar');
+const { CommandOutputParser } = require('./command-output-parser');
 
 // --- GUI Window Management ---
 let guiWindow = null;
@@ -835,18 +836,20 @@ function requestInteractiveConfirmation(command) {
 }
 
 /**
- * 将 PTY 原始输出分发给消费者。
- * 一期只转发给 GUI；二期可在这里接入 @xterm/headless 等后端终端 buffer。
- * @param {string|Buffer} rawData - PTY 原始输出，不能在 GUI 路径前清洗 ANSI。
+ * GUI 仅接收原始PTY投影；渲染窗口失效不得打断命令完成检测。
  */
 function dispatchPtyData(rawData) {
-    if (!guiWindow || guiWindow.isDestroyed()) {
-        return;
-    }
-
-    const dataStr = rawData.toString('utf-8');
-    if (dataStr) {
-        guiWindow.webContents.send('powershell-data', dataStr);
+    try {
+        if (!guiWindow || guiWindow.isDestroyed()
+            || guiWindow.webContents.isDestroyed()) {
+            return;
+        }
+        const dataStr = rawData.toString('utf-8');
+        if (dataStr) {
+            guiWindow.webContents.send('powershell-data', dataStr);
+        }
+    } catch (error) {
+        console.warn('[PowerShellExecutor] GUI output delivery failed:', error.message);
     }
 }
 
@@ -1164,7 +1167,7 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
         }
 
         let rawOutput = '';
-        let hasSeenStartBoundary = false;
+
         let settled = false;
         let tempScriptPath = null;
         let listenerDisposable = null;
@@ -1172,6 +1175,7 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
 
         const startBoundary = `__VCP_COMMAND_START_${crypto.randomUUID()}__`;
         const endBoundary = `__VCP_COMMAND_END_${crypto.randomUUID()}__`;
+        const outputParser = new CommandOutputParser(startBoundary, endBoundary);
 
         const abortThisCommand = () => {
             if (settled) {
@@ -1217,33 +1221,17 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
                 return;
             }
 
-            let chunk = data.toString('utf-8');
+            const result = outputParser.push(data.toString('utf-8'));
+            rawOutput += result.output;
 
-            // 丢弃开始边界之前的所有迟到输出，避免上一条命令残留串入本次结果
-            if (!hasSeenStartBoundary) {
-                const startIndex = chunk.indexOf(startBoundary);
-                if (startIndex === -1) {
-                    return;
-                }
-
-                hasSeenStartBoundary = true;
-                chunk = chunk.substring(startIndex + startBoundary.length);
-            }
-
-            const endIndex = chunk.indexOf(endBoundary);
-            if (endIndex !== -1) {
-                const finalChunk = chunk.substring(0, endIndex);
-                rawOutput += finalChunk;
-                flushToGui(finalChunk);
-
+            if (result.done) {
                 settled = true;
                 cleanupListener(listenerDisposable, timeoutId);
                 resolve(sanitizeTerminalOutput(rawOutput).trim());
-                return;
             }
 
-            rawOutput += chunk;
-            flushToGui(chunk);
+            // GUI 是投影，不是完成裁决者；保留同块中的结束后提示符。
+            flushToGui(result.output + result.trailing);
         });
 
         timeoutId = setTimeout(() => {
@@ -1782,6 +1770,9 @@ async function processToolCall(args) {
     }
 
     // 路径 C: 标准非管理员会话执行
+    if (isExecutingCommand) {
+        throw new Error('当前已有同步命令执行中，请等待完成或使用 interrupt。');
+    }
     ensureGuiWindow();
 
     if (newSession || !ptyProcess) {
@@ -1808,6 +1799,10 @@ async function processToolCall(args) {
         throw new Error('当前终端正被交互式程序 (snow/codex/claude) 占用，请先退出并调用 action:"endInteractive"，或使用 newSession:true 重置会话。');
     }
 
+    // 就绪等待期间其它调用可能先取得PTY，await后必须再次检查。
+    if (isExecutingCommand) {
+        throw new Error('当前已有同步命令执行中，请等待完成或使用 interrupt。');
+    }
     const deltaOutputs = [];
     isExecutingCommand = true;
     try {
