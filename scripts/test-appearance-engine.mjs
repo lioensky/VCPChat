@@ -139,7 +139,7 @@ assert.match(appearanceCss, /\.vcp-material-optics\s*\{[^}]*position:\s*fixed/s)
 assert.match(appearanceCss, /html\[data-vcp-radius="square"\] \.vcp-ui-scope/);
 assert.doesNotMatch(appearanceCss, /data-ui-mode/);
 assert.match(appearanceCss, /--vcp-ui-font-family:\s*var\(--vcp-appearance-font-family\)/);
-assert.match(appearanceCss, /\.chat-input-card\s*\{\s*border-radius:\s*var\(--vcp-ui-composer-radius, 24px\)/s);
+assert.match(appearanceCss, /\.chat-input-card\s*\{\s*border-radius:\s*var\(--vcp-ui-composer-radius, 28px\)/s);
 assert.match(appearanceCss, /--vcp-ui-shell-radius:\s*0px/);
 assert.match(appearanceCss, /--vcp-ui-shell-radius:\s*18px/);
 assert.match(appearanceCss, /data-vcp-shell-radius="tuned"/);

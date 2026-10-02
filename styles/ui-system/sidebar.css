@@ -1,8 +1,9 @@
 /*
- * 新版侧栏（助手 / 话题 / 设置）。
+ * 侧栏系统样式（对齐 ZCode 列表与交互规格，保留经典顶部 Tab 切换器）。
  *
- * 列表密度与状态参考 Cherry Studio：37px 行高、24px 头像、13px 文字、
- * 10px 圆角和 8px 行间距。侧栏容器继续透出顶栏共用材质，经典 UI 不变。
+ * 核心指标：
+ * - 紧凑行高：36px 列表行高、26px 头像、13.5px 字体、8px 圆角和 2px 密集行间距
+ * - 纯平极简状态：无突兀投影，采用 ZCode 标志性的 bg-surface-hover 与 bg-selected 极淡半透明遮罩
  */
 @layer vcp-ui.components {
     html .vcp-ui-scope :is(.agents-header, .topics-header-container) {
@@ -12,14 +13,25 @@
 
     html .vcp-ui-scope .agents-header .sidebar-search-subtab,
     html .vcp-ui-scope .topics-header-container .sidebar-search-subtab {
-        border: 1px solid var(--vcp-ui-control-border);
-        border-radius: var(--vcp-ui-radius-md);
-        background: var(--vcp-ui-control-bg);
+        height: 32px;
+        min-height: 32px;
+        margin: 2px var(--vcp-ui-sidebar-list-gutter, 8px) 6px;
+        border: 1px solid transparent;
+        border-radius: var(--vcp-ui-radius-md, 8px);
+        background: var(--vcp-ui-port-color-rgba-255-255-255-0-05);
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
         box-shadow: none;
         filter: none;
-        transition: border-color var(--vcp-ui-transition-fast), background var(--vcp-ui-transition-fast), box-shadow var(--vcp-ui-transition-fast);
+        transition: border-color var(--vcp-ui-transition-fast), background var(--vcp-ui-transition-fast);
+    }
+
+    html body[data-vcp-theme="light"] .vcp-ui-scope .agents-header .sidebar-search-subtab,
+    html body[data-vcp-theme="light"] .vcp-ui-scope .topics-header-container .sidebar-search-subtab,
+    html body.light-theme .vcp-ui-scope .agents-header .sidebar-search-subtab,
+    html body.light-theme .vcp-ui-scope .topics-header-container .sidebar-search-subtab {
+        background: var(--vcp-ui-port-color-rgba-0-0-0-0-04);
+        border-color: transparent;
     }
 
     html .vcp-ui-scope .agents-header .sidebar-search-subtab::before,
@@ -32,22 +44,39 @@
 
     html .vcp-ui-scope .agents-header .sidebar-search-subtab:hover,
     html .vcp-ui-scope .topics-header-container .sidebar-search-subtab:hover {
-        border-color: var(--vcp-ui-border-strong);
-        background: var(--vcp-ui-bg-3);
+        border-color: var(--vcp-ui-port-color-rgba-255-255-255-0-12);
+        background: var(--vcp-ui-port-color-rgba-255-255-255-0-08);
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
         box-shadow: none;
         filter: none;
     }
 
+    html body[data-vcp-theme="light"] .vcp-ui-scope .agents-header .sidebar-search-subtab:hover,
+    html body[data-vcp-theme="light"] .vcp-ui-scope .topics-header-container .sidebar-search-subtab:hover,
+    html body.light-theme .vcp-ui-scope .agents-header .sidebar-search-subtab:hover,
+    html body.light-theme .vcp-ui-scope .topics-header-container .sidebar-search-subtab:hover {
+        border-color: var(--vcp-ui-port-color-rgba-0-0-0-0-08);
+        background: var(--vcp-ui-port-color-rgba-0-0-0-0-06);
+    }
+
     html .vcp-ui-scope .agents-header .sidebar-search-subtab:focus-within,
     html .vcp-ui-scope .topics-header-container .sidebar-search-subtab:focus-within {
-        border-color: var(--vcp-ui-control-focus);
-        background: var(--vcp-ui-bg-3);
+        border-color: var(--vcp-ui-port-color-rgba-255-255-255-0-2);
+        background: var(--vcp-ui-port-color-rgba-255-255-255-0-08);
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
-        box-shadow: 0 0 0 2px var(--vcp-ui-focus-ring);
+        box-shadow: none;
         filter: none;
+    }
+
+    html body[data-vcp-theme="light"] .vcp-ui-scope .agents-header .sidebar-search-subtab:focus-within,
+    html body[data-vcp-theme="light"] .vcp-ui-scope .topics-header-container .sidebar-search-subtab:focus-within,
+    html body.light-theme .vcp-ui-scope .agents-header .sidebar-search-subtab:focus-within,
+    html body.light-theme .vcp-ui-scope .topics-header-container .sidebar-search-subtab:focus-within {
+        border-color: var(--vcp-ui-port-color-rgba-0-0-0-0-16);
+        background: var(--vcp-ui-port-color-rgba-0-0-0-0-06);
+        box-shadow: none;
     }
 
     html .vcp-ui-scope .agent-search-icon {
@@ -65,45 +94,41 @@
         filter: none;
     }
 
-    html .vcp-ui-scope .next-ui-agent-tools {
-        width: calc(100% - var(--vcp-ui-sidebar-list-gutter) - var(--vcp-ui-sidebar-list-gutter));
-        height: var(--vcp-ui-sidebar-row-height);
-        min-height: var(--vcp-ui-sidebar-row-height);
-        margin: 2px var(--vcp-ui-sidebar-list-gutter) 0;
-        display: flex;
-        align-items: center;
-        gap: var(--vcp-ui-space-1);
-    }
-
+    html .vcp-ui-scope .next-ui-agent-tools,
     html .vcp-ui-scope .next-ui-topic-tools {
         width: calc(100% - var(--vcp-ui-sidebar-list-gutter) - var(--vcp-ui-sidebar-list-gutter));
-        height: var(--vcp-ui-sidebar-row-height);
-        min-height: var(--vcp-ui-sidebar-row-height);
-        margin: 2px var(--vcp-ui-sidebar-list-gutter) 0;
+        height: 32px;
+        min-height: 32px;
+        margin: 2px var(--vcp-ui-sidebar-list-gutter) 4px;
         display: flex;
         align-items: center;
-        gap: var(--vcp-ui-space-1);
+        gap: 4px;
     }
 
     html .vcp-ui-scope .next-ui-create-item-trigger,
     html .vcp-ui-scope .next-ui-agent-search-trigger,
     html .vcp-ui-scope .next-ui-create-topic-trigger,
     html .vcp-ui-scope .next-ui-topic-icon-trigger {
-        height: var(--vcp-ui-sidebar-row-height);
-        min-height: var(--vcp-ui-sidebar-row-height);
-        padding: 0 var(--vcp-ui-space-3);
+        height: 32px;
+        min-height: 32px;
+        padding: 0 10px;
         display: flex;
         align-items: center;
-        gap: var(--vcp-ui-space-2);
+        gap: 8px;
         border: 0;
-        border-radius: var(--vcp-ui-sidebar-item-radius);
-        color: var(--vcp-ui-text-2);
+        border-radius: var(--vcp-ui-sidebar-item-radius, 8px);
+        color: var(--vcp-ui-text-1);
         background: transparent;
         font: inherit;
-        font-size: var(--vcp-ui-sidebar-font-size);
+        font-size: calc(var(--vcp-ui-font-size) - 1px);
+        font-weight: 500;
         text-align: left;
         cursor: pointer;
         transition: color var(--vcp-ui-transition-fast), background var(--vcp-ui-transition-fast);
+    }
+
+    html body[data-vcp-theme="light"] .vcp-ui-scope :is(.next-ui-create-item-trigger, .next-ui-agent-search-trigger, .next-ui-create-topic-trigger, .next-ui-topic-icon-trigger), html body.light-theme .vcp-ui-scope :is(.next-ui-create-item-trigger, .next-ui-agent-search-trigger, .next-ui-create-topic-trigger, .next-ui-topic-icon-trigger) {
+        color: var(--vcp-ui-port-color-475569);
     }
 
     html .vcp-ui-scope .next-ui-create-item-trigger {
@@ -124,19 +149,23 @@
     }
 
     html .vcp-ui-scope .next-ui-agent-search-trigger {
-        width: var(--vcp-ui-sidebar-row-height);
-        min-width: var(--vcp-ui-sidebar-row-height);
+        width: 32px;
+        height: 32px;
+        min-width: 32px;
+        min-height: 32px;
         padding: 0;
         justify-content: center;
-        flex: 0 0 var(--vcp-ui-sidebar-row-height);
+        flex: 0 0 32px;
     }
 
     html .vcp-ui-scope .next-ui-topic-icon-trigger {
-        width: var(--vcp-ui-sidebar-row-height);
-        min-width: var(--vcp-ui-sidebar-row-height);
+        width: 32px;
+        height: 32px;
+        min-width: 32px;
+        min-height: 32px;
         padding: 0;
         justify-content: center;
-        flex: 0 0 var(--vcp-ui-sidebar-row-height);
+        flex: 0 0 32px;
     }
 
     html .vcp-ui-scope .next-ui-create-item-trigger:hover,
@@ -144,8 +173,13 @@
     html .vcp-ui-scope .next-ui-create-topic-trigger:hover,
     html .vcp-ui-scope .next-ui-topic-icon-trigger:hover,
     html .vcp-ui-scope .next-ui-topic-icon-trigger.active {
-        color: var(--vcp-ui-text-1);
-        background: var(--vcp-ui-fill-0);
+        color: var(--vcp-ui-text-0);
+        background: var(--vcp-ui-port-color-rgba-255-255-255-0-08);
+    }
+
+    html body[data-vcp-theme="light"] .vcp-ui-scope :is(.next-ui-create-item-trigger:hover, .next-ui-agent-search-trigger:hover, .next-ui-create-topic-trigger:hover, .next-ui-topic-icon-trigger:hover, .next-ui-topic-icon-trigger.active), html body.light-theme .vcp-ui-scope :is(.next-ui-create-item-trigger:hover, .next-ui-agent-search-trigger:hover, .next-ui-create-topic-trigger:hover, .next-ui-topic-icon-trigger:hover, .next-ui-topic-icon-trigger.active) {
+        color: var(--vcp-ui-port-color-0f172a);
+        background: var(--vcp-ui-port-color-rgba-0-0-0-0-05);
     }
 
     html .vcp-ui-scope .next-ui-create-item-trigger:focus-visible,
@@ -404,17 +438,18 @@
         align-items: center;
         width: 100%;
         min-width: 0;
-        height: var(--vcp-ui-sidebar-row-height);
-        min-height: var(--vcp-ui-sidebar-row-height);
-        margin-bottom: var(--vcp-ui-space-2);
-        padding: 0 var(--vcp-ui-space-2);
+        height: var(--vcp-ui-sidebar-row-height, 36px);
+        min-height: var(--vcp-ui-sidebar-row-height, 36px);
+        margin-bottom: 2px;
+        padding: 0 8px;
         border: 0;
-        border-radius: var(--vcp-ui-sidebar-item-radius);
+        border-radius: var(--vcp-ui-sidebar-item-radius, 8px);
         background: transparent;
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
         box-shadow: none;
-        transition: color var(--vcp-ui-transition-fast), background var(--vcp-ui-transition-fast), border-color var(--vcp-ui-transition-fast);
+        cursor: pointer;
+        transition: color var(--vcp-ui-transition-fast), background var(--vcp-ui-transition-fast);
     }
 
     html .vcp-ui-scope.sidebar .agent-list li::after,
@@ -424,34 +459,52 @@
 
     html .vcp-ui-scope.sidebar .agent-list li:hover,
     html .vcp-ui-scope.sidebar .topic-list .topic-item:hover {
-        background: var(--vcp-ui-fill-0);
-        backdrop-filter: none;
-        -webkit-backdrop-filter: none;
-        box-shadow: none;
+        background: var(--vcp-ui-port-color-rgba-255-255-255-0-06);
+        color: var(--vcp-ui-text-0, var(--vcp-ui-port-color-ffffff));
+    }
+
+    html body[data-vcp-theme="light"] .vcp-ui-scope.sidebar .agent-list li:hover,
+    html body.light-theme .vcp-ui-scope.sidebar .agent-list li:hover,
+    html body[data-vcp-theme="light"] .vcp-ui-scope.sidebar .topic-list .topic-item:hover,
+    html body.light-theme .vcp-ui-scope.sidebar .topic-list .topic-item:hover {
+        background: var(--vcp-ui-port-color-rgba-0-0-0-0-04);
+        color: var(--vcp-ui-port-color-0f172a);
     }
 
     html .vcp-ui-scope.sidebar .agent-list li.active,
     html .vcp-ui-scope.sidebar .topic-list .topic-item.active {
-        color: var(--vcp-ui-text-0);
-        background: var(--vcp-ui-selection-bg);
-        backdrop-filter: none;
-        -webkit-backdrop-filter: none;
-        box-shadow: var(--vcp-ui-sidebar-item-shadow);
+        color: var(--vcp-ui-text-0, var(--vcp-ui-port-color-ffffff));
+        background: var(--vcp-ui-port-color-rgba-255-255-255-0-12);
+        box-shadow: none;
     }
 
-    html .vcp-ui-scope.sidebar .agent-list li.active .agent-name {
-        color: var(--vcp-ui-text-0);
+    html body[data-vcp-theme="light"] .vcp-ui-scope.sidebar .agent-list li.active,
+    html body.light-theme .vcp-ui-scope.sidebar .agent-list li.active,
+    html body[data-vcp-theme="light"] .vcp-ui-scope.sidebar .topic-list .topic-item.active,
+    html body.light-theme .vcp-ui-scope.sidebar .topic-list .topic-item.active {
+        color: var(--vcp-ui-port-color-0f172a);
+        background: var(--vcp-ui-port-color-rgba-0-0-0-0-08);
+        box-shadow: none;
     }
 
     html .vcp-ui-scope.sidebar .agent-list img.avatar,
     html .vcp-ui-scope.sidebar .topic-list .topic-item img.avatar,
     html .vcp-ui-scope.sidebar .agent-list li.active img.avatar {
-        flex: 0 0 auto;
-        width: var(--vcp-ui-sidebar-avatar-size);
-        height: var(--vcp-ui-sidebar-avatar-size);
-        margin-right: var(--vcp-ui-space-2);
+        flex: 0 0 26px;
+        width: 26px;
+        height: 26px;
+        margin-right: 8px;
         border: 0;
+        border-radius: var(--vcp-ui-radius-full, 9999px);
+        box-shadow: inset 0 0 0 1px var(--vcp-ui-port-color-rgba-255-255-255-0-1);
         object-fit: cover;
+    }
+
+    html body[data-vcp-theme="light"] .vcp-ui-scope.sidebar .agent-list img.avatar,
+    html body.light-theme .vcp-ui-scope.sidebar .agent-list img.avatar,
+    html body[data-vcp-theme="light"] .vcp-ui-scope.sidebar .topic-list .topic-item img.avatar,
+    html body.light-theme .vcp-ui-scope.sidebar .topic-list .topic-item img.avatar {
+        box-shadow: inset 0 0 0 1px var(--vcp-ui-port-color-rgba-0-0-0-0-08);
     }
 
     html .vcp-ui-scope.sidebar .agent-list .agent-name,
@@ -462,12 +515,41 @@
         flex: 1 1 auto;
         min-width: 0;
         padding-bottom: 0;
-        color: var(--vcp-ui-text-0);
-        font-size: var(--vcp-ui-sidebar-font-size);
-        line-height: var(--vcp-ui-line-compact);
+        color: var(--vcp-ui-text-1, var(--vcp-ui-port-color-rgba-255-255-255-0-75));
+        font-size: var(--vcp-ui-sidebar-font-size, 13.5px);
+        font-weight: 500;
+        line-height: 1.25;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+    }
+
+    html body[data-vcp-theme="light"] .vcp-ui-scope.sidebar .agent-list .agent-name,
+    html body.light-theme .vcp-ui-scope.sidebar .agent-list .agent-name,
+    html body[data-vcp-theme="light"] .vcp-ui-scope.sidebar .topic-list .topic-item .agent-name,
+    html body.light-theme .vcp-ui-scope.sidebar .topic-list .topic-item .agent-name,
+    html body[data-vcp-theme="light"] .vcp-ui-scope.sidebar .topic-list .topic-title-display,
+    html body.light-theme .vcp-ui-scope.sidebar .topic-list .topic-title-display,
+    html body[data-vcp-theme="light"] .vcp-ui-scope.sidebar .topic-list .topic-name,
+    html body.light-theme .vcp-ui-scope.sidebar .topic-list .topic-name {
+        color: var(--vcp-ui-port-color-334155);
+    }
+
+    html .vcp-ui-scope.sidebar .agent-list li.active .agent-name,
+    html .vcp-ui-scope.sidebar .topic-list .topic-item.active .topic-title-display,
+    html .vcp-ui-scope.sidebar .topic-list .topic-item.active .topic-name {
+        color: var(--vcp-ui-text-0, var(--vcp-ui-port-color-ffffff));
+        font-weight: 600;
+    }
+
+    html body[data-vcp-theme="light"] .vcp-ui-scope.sidebar .agent-list li.active .agent-name,
+    html body.light-theme .vcp-ui-scope.sidebar .agent-list li.active .agent-name,
+    html body[data-vcp-theme="light"] .vcp-ui-scope.sidebar .topic-list .topic-item.active .topic-title-display,
+    html body.light-theme .vcp-ui-scope.sidebar .topic-list .topic-item.active .topic-title-display,
+    html body[data-vcp-theme="light"] .vcp-ui-scope.sidebar .topic-list .topic-item.active .topic-name,
+    html body.light-theme .vcp-ui-scope.sidebar .topic-list .topic-item.active .topic-name {
+        color: var(--vcp-ui-port-color-0f172a);
+        font-weight: 600;
     }
 
     html .vcp-ui-scope.sidebar .topic-list .topic-item::before,
@@ -478,34 +560,42 @@
     html .vcp-ui-scope.sidebar .topic-list .topic-item .message-count {
         flex: 0 0 auto;
         min-width: 0;
-        margin-left: var(--vcp-ui-space-2);
-        padding: 2px 6px;
+        margin-left: 6px;
+        padding: 1px 6px;
         border: 0;
-        border-radius: var(--vcp-ui-radius-full);
-        color: var(--vcp-ui-text-2);
-        background: var(--vcp-ui-fill-1);
-        backdrop-filter: none;
-        -webkit-backdrop-filter: none;
-        box-shadow: none;
-        font-family: inherit;
-        font-size: var(--vcp-ui-font-caption);
+        border-radius: var(--vcp-ui-radius-full, 9999px);
+        color: var(--vcp-ui-text-2, var(--vcp-ui-port-color-rgba-255-255-255-0-5));
+        background: var(--vcp-ui-port-color-rgba-255-255-255-0-08);
+        font-size: calc(var(--vcp-ui-font-size) - 3px);
         font-weight: 500;
-        line-height: var(--vcp-ui-line-compact);
+        line-height: 1.2;
+    }
+
+    html body[data-vcp-theme="light"] .vcp-ui-scope.sidebar .topic-list .topic-item .message-count,
+    html body.light-theme .vcp-ui-scope.sidebar .topic-list .topic-item .message-count {
+        color: var(--vcp-ui-port-color-64748b);
+        background: var(--vcp-ui-port-color-rgba-0-0-0-0-05);
     }
 
     html .vcp-ui-scope .sidebar-actions {
         display: none;
     }
 
+    html .vcp-ui-scope.sidebar:not(.avatar-only) {
+        padding-right: 0;
+        padding-bottom: 0;
+    }
+
     html .vcp-ui-scope .next-ui-account-dock {
         position: relative;
-        width: calc(100% - var(--vcp-ui-sidebar-list-gutter) - var(--vcp-ui-sidebar-list-gutter));
-        min-height: var(--vcp-ui-sidebar-row-height);
-        margin: var(--vcp-ui-space-2) var(--vcp-ui-sidebar-list-gutter) 0;
+        width: 100%;
+        margin-top: auto;
+        padding: 8px 12px 16px 16px;
         display: flex;
         align-items: center;
-        gap: var(--vcp-ui-space-1);
+        gap: 8px;
         flex: 0 0 auto;
+        box-sizing: border-box;
     }
 
     html .vcp-ui-scope .next-ui-account-trigger,
@@ -519,50 +609,75 @@
         cursor: pointer;
     }
 
+    /* ZCode Profile Ghost Button */
     html .vcp-ui-scope .next-ui-account-trigger {
-        height: var(--vcp-ui-sidebar-row-height);
+        height: 32px;
         min-width: 0;
-        padding: 0 var(--vcp-ui-space-2) 0 var(--vcp-ui-sidebar-account-left-padding);
+        padding: 0 8px 0 0;
         display: flex;
         align-items: center;
-        gap: var(--vcp-ui-space-2);
-        flex: 1;
-        border-radius: var(--vcp-ui-radius-md);
+        gap: 8px;
+        flex: 1 1 auto;
+        border-radius: 16px 8px 8px 16px;
+        border: 0;
+        background: transparent;
         text-align: left;
+        box-sizing: border-box;
+        transition: background var(--vcp-ui-transition-fast), color var(--vcp-ui-transition-fast);
     }
 
     html .vcp-ui-scope .next-ui-account-trigger:hover,
-    html .vcp-ui-scope .next-ui-account-trigger[aria-expanded="true"],
-    html .vcp-ui-scope .next-ui-account-settings:hover {
+    html .vcp-ui-scope .next-ui-account-trigger[aria-expanded="true"] {
         color: var(--vcp-ui-text-0);
-        background: var(--vcp-ui-fill-0);
+        background: var(--vcp-ui-port-color-rgba-255-255-255-0-08);
     }
 
+    html body[data-vcp-theme="light"] .vcp-ui-scope .next-ui-account-trigger:hover,
+    html body[data-vcp-theme="light"] .vcp-ui-scope .next-ui-account-trigger[aria-expanded="true"],
+    html body.light-theme .vcp-ui-scope .next-ui-account-trigger:hover,
+    html body.light-theme .vcp-ui-scope .next-ui-account-trigger[aria-expanded="true"] {
+        color: var(--vcp-ui-port-color-0f172a);
+        background: var(--vcp-ui-port-color-rgba-0-0-0-0-05);
+    }
+
+    /* ZCode 32px Circular Avatar */
     html .vcp-ui-scope #nextUiAccountAvatar {
         width: var(--vcp-ui-sidebar-avatar-size);
         height: var(--vcp-ui-sidebar-avatar-size);
         flex: 0 0 var(--vcp-ui-sidebar-avatar-size);
-        border: 1px solid var(--vcp-ui-border);
-        border-radius: var(--vcp-ui-radius-full);
-        background: var(--vcp-ui-bg-2);
+        border-radius: var(--vcp-ui-radius-full, 9999px);
+        box-shadow: inset 0 0 0 1px var(--vcp-ui-port-color-rgba-255-255-255-0-1);
+        background: var(--vcp-ui-bg-2, var(--vcp-ui-port-color-26262b));
         object-fit: cover;
+        display: block;
     }
 
+    html body[data-vcp-theme="light"] .vcp-ui-scope #nextUiAccountAvatar,
+    html body.light-theme .vcp-ui-scope #nextUiAccountAvatar {
+        box-shadow: inset 0 0 0 1px var(--vcp-ui-port-color-rgba-0-0-0-0-08);
+    }
+
+    /* ZCode Semi-Bold Username */
     html .vcp-ui-scope #nextUiAccountName {
         min-width: 0;
+        flex: 1 1 auto;
         overflow: hidden;
-        color: inherit;
-        font-size: var(--vcp-ui-font-helper);
+        color: var(--vcp-ui-text-0, var(--vcp-ui-port-color-f8fafc));
+        font-size: calc(var(--vcp-ui-font-size) - 0.5px);
         font-weight: 600;
         text-overflow: ellipsis;
         white-space: nowrap;
+        line-height: 1.25;
     }
 
+    html body[data-vcp-theme="light"] .vcp-ui-scope #nextUiAccountName,
+    html body.light-theme .vcp-ui-scope #nextUiAccountName {
+        color: var(--vcp-ui-port-color-0f172a);
+    }
+
+    /* ZCode hides chevron arrow in bottom profile */
     html .vcp-ui-scope .next-ui-account-expand-icon {
-        margin-left: auto;
-        color: var(--vcp-ui-text-3);
-        font-size: var(--vcp-ui-icon-sm);
-        transition: transform var(--vcp-ui-transition-fast);
+        display: none;
     }
 
     html .vcp-ui-scope svg.next-ui-account-expand-icon,
@@ -572,103 +687,240 @@
         flex: 0 0 14px;
     }
 
-    html .vcp-ui-scope .next-ui-account-trigger[aria-expanded="true"] .next-ui-account-expand-icon {
-        transform: rotate(180deg);
-    }
-
+    /* Settings Action Button (32px × 32px matching ZCode size="icon-lg") */
     html .vcp-ui-scope .next-ui-account-settings {
-        width: var(--vcp-ui-sidebar-row-height);
-        height: var(--vcp-ui-sidebar-row-height);
+        width: 32px;
+        height: 32px;
+        flex: 0 0 32px;
         padding: 0;
-        display: grid;
-        place-items: center;
-        flex: 0 0 var(--vcp-ui-sidebar-row-height);
-        border-radius: var(--vcp-ui-radius-md);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: var(--vcp-ui-radius-md, 8px);
+        border: 0;
+        background: transparent;
+        color: var(--vcp-ui-text-2, var(--vcp-ui-port-color-rgba-255-255-255-0-65));
+        transition: background var(--vcp-ui-transition-fast), color var(--vcp-ui-transition-fast);
     }
 
-    html .vcp-ui-scope .next-ui-account-settings .vcp-ui-icon {
-        font-size: var(--vcp-ui-icon-md);
+    html body[data-vcp-theme="light"] .vcp-ui-scope .next-ui-account-settings,
+    html body.light-theme .vcp-ui-scope .next-ui-account-settings {
+        color: var(--vcp-ui-port-color-64748b);
+    }
+
+    html .vcp-ui-scope .next-ui-account-settings:hover {
+        background: var(--vcp-ui-port-color-rgba-255-255-255-0-08);
+        color: var(--vcp-ui-text-0, var(--vcp-ui-port-color-ffffff));
+    }
+
+    html body[data-vcp-theme="light"] .vcp-ui-scope .next-ui-account-settings:hover,
+    html body.light-theme .vcp-ui-scope .next-ui-account-settings:hover {
+        background: var(--vcp-ui-port-color-rgba-0-0-0-0-05);
+        color: var(--vcp-ui-port-color-0f172a);
+    }
+
+    html .vcp-ui-scope .next-ui-account-settings svg {
+        width: 16px;
+        height: 16px;
+        flex: 0 0 16px;
+    }
+
+    /* --- ZCode Parity: Account & Settings Popover Menu --- */
+    @keyframes nextUiMenuFadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(3px) scale(0.985);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
     }
 
     html .vcp-ui-scope .next-ui-account-menu {
         position: absolute;
         z-index: 80;
-        right: 0;
-        bottom: calc(100% + var(--vcp-ui-space-2));
-        left: 0;
+        left: 12px;
+        right: 12px;
+        bottom: calc(100% + 6px);
         max-height: min(70vh, 560px);
-        padding: var(--vcp-ui-space-2);
+        padding: 4px;
+        display: none;
         overflow-y: auto;
         overscroll-behavior: contain;
-        border: 1px solid var(--vcp-ui-border);
-        border-radius: var(--vcp-ui-radius-card);
-        color: var(--vcp-ui-text-1);
-        background: var(--vcp-ui-bg-1);
-        box-shadow: var(--vcp-ui-shadow-lg);
+        border: 1px solid var(--vcp-ui-port-color-rgba-255-255-255-0-08);
+        border-radius: 8px;
+        color: var(--vcp-ui-text-0, var(--vcp-ui-port-color-f8fafc));
+        background: var(--vcp-ui-port-color-222225);
+        backdrop-filter: blur(20px) saturate(180%);
+        -webkit-backdrop-filter: blur(20px) saturate(180%);
+        box-shadow: 0 6px 20px -2px var(--vcp-ui-port-color-rgba-0-0-0-0-4), 0 2px 8px -1px var(--vcp-ui-port-color-rgba-0-0-0-0-25);
+        box-sizing: border-box;
+    }
+
+    html body[data-vcp-theme="light"] .vcp-ui-scope .next-ui-account-menu,
+    html body.light-theme .vcp-ui-scope .next-ui-account-menu {
+        background: var(--vcp-ui-port-color-ffffff);
+        border-color: var(--vcp-ui-port-color-rgba-0-0-0-0-08);
+        color: var(--vcp-ui-port-color-0f172a);
+        box-shadow: 0 4px 16px -2px var(--vcp-ui-port-color-rgba-0-0-0-0-08), 0 2px 6px -1px var(--vcp-ui-port-color-rgba-0-0-0-0-04);
     }
 
     html .vcp-ui-scope .next-ui-account-menu:not([hidden]) {
         display: grid;
-        gap: var(--vcp-ui-space-1);
+        gap: 2px;
+        animation: nextUiMenuFadeIn 0.12s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
     html .vcp-ui-scope .next-ui-account-menu-item,
     html .vcp-ui-scope .next-ui-account-submenu-item {
         width: 100%;
-        min-height: var(--vcp-ui-sidebar-row-height);
-        padding: 0 var(--vcp-ui-space-2);
+        height: 32px;
+        min-height: 32px;
+        padding: 0 8px;
         display: flex;
         align-items: center;
-        gap: var(--vcp-ui-space-2);
-        border-radius: var(--vcp-ui-radius-sm);
-        font-size: var(--vcp-ui-font-helper);
+        gap: 8px;
+        border-radius: 6px;
+        font-size: calc(var(--vcp-ui-font-size) - 1px);
+        font-weight: 500;
+        line-height: 1.3;
         text-align: left;
+        color: var(--vcp-ui-text-0, var(--vcp-ui-port-color-f8fafc));
+        background: transparent;
+        border: 0;
+        box-sizing: border-box;
+        cursor: pointer;
+        transition: background var(--vcp-ui-transition-fast), color var(--vcp-ui-transition-fast);
+        outline: none;
+    }
+
+    html body[data-vcp-theme="light"] .vcp-ui-scope .next-ui-account-menu-item,
+    html body[data-vcp-theme="light"] .vcp-ui-scope .next-ui-account-submenu-item,
+    html body.light-theme .vcp-ui-scope .next-ui-account-menu-item,
+    html body.light-theme .vcp-ui-scope .next-ui-account-submenu-item {
+        color: var(--vcp-ui-port-color-0f172a);
     }
 
     html .vcp-ui-scope .next-ui-account-menu-item:hover,
     html .vcp-ui-scope .next-ui-account-menu-item[aria-expanded="true"],
     html .vcp-ui-scope .next-ui-account-submenu-item:hover,
     html .vcp-ui-scope .next-ui-account-submenu-item.active {
-        color: var(--vcp-ui-text-0);
-        background: var(--vcp-ui-fill-1);
+        color: var(--vcp-ui-port-color-ffffff);
+        background: var(--vcp-ui-port-color-rgba-255-255-255-0-08);
+    }
+
+    html body[data-vcp-theme="light"] .vcp-ui-scope .next-ui-account-menu-item:hover,
+    html body[data-vcp-theme="light"] .vcp-ui-scope .next-ui-account-menu-item[aria-expanded="true"],
+    html body[data-vcp-theme="light"] .vcp-ui-scope .next-ui-account-submenu-item:hover,
+    html body[data-vcp-theme="light"] .vcp-ui-scope .next-ui-account-submenu-item.active,
+    html body.light-theme .vcp-ui-scope .next-ui-account-menu-item:hover,
+    html body.light-theme .vcp-ui-scope .next-ui-account-menu-item[aria-expanded="true"],
+    html body.light-theme .vcp-ui-scope .next-ui-account-submenu-item:hover,
+    html body.light-theme .vcp-ui-scope .next-ui-account-submenu-item.active {
+        color: var(--vcp-ui-port-color-0f172a);
+        background: var(--vcp-ui-port-color-rgba-0-0-0-0-05);
+    }
+
+    html .vcp-ui-scope .next-ui-account-menu-item:active,
+    html .vcp-ui-scope .next-ui-account-submenu-item:active {
+        background: var(--vcp-ui-port-color-rgba-255-255-255-0-12);
+    }
+
+    html body[data-vcp-theme="light"] .vcp-ui-scope .next-ui-account-menu-item:active,
+    html body[data-vcp-theme="light"] .vcp-ui-scope .next-ui-account-submenu-item:active,
+    html body.light-theme .vcp-ui-scope .next-ui-account-menu-item:active,
+    html body.light-theme .vcp-ui-scope .next-ui-account-submenu-item:active {
+        background: var(--vcp-ui-port-color-rgba-0-0-0-0-08);
     }
 
     html .vcp-ui-scope .next-ui-account-menu-item > .vcp-ui-icon:first-child,
     html .vcp-ui-scope .next-ui-account-submenu-item > .vcp-ui-icon:first-child {
-        width: var(--vcp-ui-icon-md);
-        flex: 0 0 var(--vcp-ui-icon-md);
-        font-size: var(--vcp-ui-icon-md);
+        width: 16px;
+        height: 16px;
+        flex: 0 0 16px;
+        font-size: calc(var(--vcp-ui-font-size) + 2px);
+        line-height: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--vcp-ui-port-color-rgba-255-255-255-0-7);
+        transition: color var(--vcp-ui-transition-fast);
+    }
+
+    html body[data-vcp-theme="light"] .vcp-ui-scope .next-ui-account-menu-item > .vcp-ui-icon:first-child,
+    html body[data-vcp-theme="light"] .vcp-ui-scope .next-ui-account-submenu-item > .vcp-ui-icon:first-child,
+    html body.light-theme .vcp-ui-scope .next-ui-account-menu-item > .vcp-ui-icon:first-child,
+    html body.light-theme .vcp-ui-scope .next-ui-account-submenu-item > .vcp-ui-icon:first-child {
+        color: var(--vcp-ui-port-color-475569);
+    }
+
+    html .vcp-ui-scope .next-ui-account-menu-item:hover > .vcp-ui-icon:first-child,
+    html body[data-vcp-theme="light"] .vcp-ui-scope .next-ui-account-menu-item:hover > .vcp-ui-icon:first-child,
+    html body.light-theme .vcp-ui-scope .next-ui-account-menu-item:hover > .vcp-ui-icon:first-child {
+        color: inherit;
     }
 
     html .vcp-ui-scope .next-ui-account-menu-label {
         min-width: 0;
-        flex: 1;
+        flex: 1 1 auto;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     html .vcp-ui-scope .next-ui-account-menu-value {
-        color: var(--vcp-ui-text-3);
-        font-size: var(--vcp-ui-font-caption);
+        flex: 0 0 auto;
+        margin-right: 2px;
+        color: var(--vcp-ui-port-color-rgba-255-255-255-0-5);
+        font-size: calc(var(--vcp-ui-font-size) - 2px);
+        font-weight: 400;
+        line-height: 1;
+    }
+
+    html body[data-vcp-theme="light"] .vcp-ui-scope .next-ui-account-menu-value,
+    html body.light-theme .vcp-ui-scope .next-ui-account-menu-value {
+        color: var(--vcp-ui-port-color-64748b);
     }
 
     html .vcp-ui-scope .next-ui-account-menu-chevron {
-        color: var(--vcp-ui-text-3);
-        font-size: var(--vcp-ui-icon-sm);
+        flex: 0 0 14px;
+        width: 14px;
+        height: 14px;
+        color: var(--vcp-ui-port-color-rgba-255-255-255-0-35);
+        transition: color var(--vcp-ui-transition-fast);
+    }
+
+    html body[data-vcp-theme="light"] .vcp-ui-scope .next-ui-account-menu-chevron,
+    html body.light-theme .vcp-ui-scope .next-ui-account-menu-chevron {
+        color: var(--vcp-ui-port-color-94a3b8);
+    }
+
+    html .vcp-ui-scope .next-ui-account-menu-item:hover .next-ui-account-menu-chevron,
+    html body[data-vcp-theme="light"] .vcp-ui-scope .next-ui-account-menu-item:hover .next-ui-account-menu-chevron,
+    html body.light-theme .vcp-ui-scope .next-ui-account-menu-item:hover .next-ui-account-menu-chevron {
+        color: inherit;
     }
 
     html .vcp-ui-scope .next-ui-account-submenu {
-        padding: var(--vcp-ui-space-1) 0 var(--vcp-ui-space-1) var(--vcp-ui-space-4);
-        border-bottom: 1px solid var(--vcp-ui-border);
+        padding: 2px 0 2px 16px;
+        border-bottom: 1px solid var(--vcp-ui-port-color-rgba-255-255-255-0-08);
+    }
+
+    html body[data-vcp-theme="light"] .vcp-ui-scope .next-ui-account-submenu,
+    html body.light-theme .vcp-ui-scope .next-ui-account-submenu {
+        border-bottom-color: var(--vcp-ui-port-color-rgba-0-0-0-0-08);
     }
 
     html .vcp-ui-scope .next-ui-account-submenu:not([hidden]) {
         display: grid;
-        gap: var(--vcp-ui-space-1);
+        gap: 2px;
     }
 
     html .vcp-ui-scope .next-ui-account-option-check {
         margin-left: auto;
         color: var(--vcp-ui-accent);
-        font-size: var(--vcp-ui-icon-sm);
+        font-size: var(--vcp-ui-font-size);
         opacity: 0;
     }
 
@@ -676,9 +928,20 @@
         opacity: 1;
     }
 
-    html .vcp-ui-scope :is(.next-ui-account-trigger, .next-ui-account-settings, .next-ui-account-menu-item, .next-ui-account-submenu-item):focus-visible {
+    html .vcp-ui-scope :is(.next-ui-account-trigger, .next-ui-account-settings):focus-visible {
         outline: 2px solid var(--vcp-ui-focus-ring);
         outline-offset: 2px;
+    }
+
+    html .vcp-ui-scope :is(.next-ui-account-menu-item, .next-ui-account-submenu-item):focus-visible {
+        outline: none;
+        background: var(--vcp-ui-port-color-rgba-255-255-255-0-08);
+        color: var(--vcp-ui-port-color-ffffff);
+    }
+
+    html body[data-vcp-theme="light"] .vcp-ui-scope :is(.next-ui-account-menu-item, .next-ui-account-submenu-item):focus-visible, html body.light-theme .vcp-ui-scope :is(.next-ui-account-menu-item, .next-ui-account-submenu-item):focus-visible {
+        background: var(--vcp-ui-port-color-rgba-0-0-0-0-05);
+        color: var(--vcp-ui-port-color-0f172a);
     }
 
     html .vcp-ui-scope.sidebar.avatar-only .next-ui-account-dock {
