@@ -255,14 +255,12 @@ pub fn canonicalize_message(
         canonical.insert(key.to_string(), value);
     }
 
-    for key in ["finishReason"] {
-        if let Some(value) = object.get(key).filter(|value| !value.is_null()) {
-            anyhow::ensure!(
-                value.is_string(),
-                "Message {message_id} {key} must be a string"
-            );
-            canonical.insert(key.to_string(), value.clone());
-        }
+    if let Some(value) = object.get("finishReason").filter(|value| !value.is_null()) {
+        anyhow::ensure!(
+            value.is_string(),
+            "Message {message_id} finishReason must be a string"
+        );
+        canonical.insert("finishReason".to_string(), value.clone());
     }
 
     match object.get("attachments") {
