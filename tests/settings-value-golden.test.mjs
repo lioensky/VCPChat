@@ -149,6 +149,7 @@ function legacyCollect({ doc, currentSettings, settingsManager, getAppearance, n
         ),
         enableUserChatBubbleUi: getElementById('enableUserChatBubbleUi')?.checked !== false,
         showUserMetaInChatBubbleUi: getElementById('showUserMetaInChatBubbleUi')?.checked !== false,
+        enableTurnNavigator: getElementById('enableTurnNavigator')?.checked !== false,
         chatBubbleMaxWidthDefault: clampBubbleWidthPercent(currentSettings.chatBubbleMaxWidthDefault, 82),
         chatBubbleMaxWidthNotifications: clampBubbleWidthPercent(currentSettings.chatBubbleMaxWidthNotifications, 90),
         chatBubbleMaxWidthNarrow: clampBubbleWidthPercent(currentSettings.chatBubbleMaxWidthNarrow, 85),

@@ -418,6 +418,9 @@ const allowedSourceDifferencePatterns = [
     /^modules\/ui-system\/vcp-icons(?:\.MIT)?\.(?:js|txt)$/,
     /^styles\/(?:base|messageRenderer)\.css$/,
     /^tests\/notification-menu-controller\.test\.js$/,
+    // Conversation navigation: turn navigator rail.
+    /^modules\/ui-system\/conversation-turn-navigator\.js$/,
+    /^tests\/conversation-turn-navigator\.test\.mjs$/,
     /^docs\/(?:global-settings-section-ownership|settings-ui-pr-scope-2026-08-31)\.md$/,
     /^docs\/research\/settings-schema-render-plan\.md$/,
     /^docs\/archive\/2026-08-chat-kernel-and-ui-roadmaps\//,
