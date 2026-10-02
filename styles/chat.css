@@ -292,21 +292,12 @@ body.light-theme #moon-icon {
      * rounded boundary instead. */
     box-shadow: none;
     position: relative;
-    /*
-     * Do not apply backdrop-filter to every message bubble.
-     *
-     * A long conversation otherwise creates one live backdrop capture and
-     * off-screen texture per visible message. Combined with
-     * content-visibility, streaming border animations and nested tool cards,
-     * Chromium repeatedly destroys/rebuilds those compositing layers while
-     * scrolling. That can produce scrollbar-range jitter, full-list repaints
-     * and GPU texture pressure. The translucent fills, borders and inset
-     * highlights retain the glass appearance without another blur pass.
-     */
+    /* 气泡模式保留真实磨砂背景；内部工具卡片与其他显示模式
+     * 仍由各自规则控制，避免为嵌套表面重复添加模糊。 */
     overflow: hidden;
     isolation: isolate;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     /* Theme backgrounds can be multi-layer color-mix() gradients.
      * Interpolating them on every visible message is much more expensive than
      * committing the target surface once. Keep layout, text, border and
