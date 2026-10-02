@@ -60,8 +60,13 @@
       },
       {
         "command": "ListProjects",
-        "description": "查询工程。workspace 可选：工作区别名或 all（默认全部）；query 可选按名称/ID 过滤；includeDeleted=true 显示已删除工程。返回 ID、名称、状态、todo 进度、是否有报告。",
-        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」ListProjects「末」,\nworkspace:「始」all「末」\n<<<[END_TOOL_REQUEST]>>>"
+        "description": "列出工程，按最近更新时间倒序，默认只返回最新 10 个；limit 可选（正整数，手动指定返回数量）。workspace 可选：工作区别名/ID 或 all（默认全部）；query 可选按名称关键字/完整工程 ID 过滤；includeDeleted=true 显示已删除工程。返回 ID、名称、状态、todo 进度、是否有报告。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」ListProjects「末」,\nworkspace:「始」all「末」\n<<<[END_TOOL_REQUEST]>>>\n\n手动列出最新 20 个工程:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」ListProjects「末」,\nlimit:「始」20「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "SearchProjects",
+        "description": "搜索指定工作区下已登记的工程（不扫描磁盘目录）。workspace 必需（工作区别名或 ID，不能为 all）；query 必需（工程名称关键字或完整工程 ID，也可用 keyword）。按最近更新时间倒序，默认返回最新 10 个匹配工程；limit 可选（正整数，指定返回数量）；includeDeleted=true 包含已删除工程。支持查询已停用工作区。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」SearchProjects「末」,\nworkspace:「始」vcpchat「末」,\nquery:「始」登录「末」,\nlimit:「始」5「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
         "command": "GetProject",

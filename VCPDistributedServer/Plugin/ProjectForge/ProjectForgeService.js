@@ -399,23 +399,38 @@ async function createProject(args) {
     ].join('\n'), { command: 'CreateProject', project, todos });
 }
 
-async function listProjects(args) {
+async function listProjects(args, command = 'ListProjects') {
     const ws = A.str(args, 'workspace', 'workspaceAlias');
     const all = !ws || ws.toLowerCase() === 'all';
+    const workspace = all ? null : runtime.resolver.find(ws, { includeDisabled: true });
+    const rawLimit = A.pick(args, 'limit');
+    const limit = rawLimit === undefined ? 10 : Number(rawLimit);
+    if (!Number.isSafeInteger(limit) || limit < 1) throw new Error(`${P} limit 必须是正整数（默认 10）。`);
     const s = store();
     const rows = s.listProjects({
-        workspaceAlias: all ? null : (runtime.resolver.find(ws, { includeDisabled: true })?.alias || ws.toLowerCase()),
+        workspaceId: workspace?.id || null,
+        workspaceAlias: all ? null : (workspace?.alias || ws.toLowerCase()),
         includeDeleted: A.bool(A.pick(args, 'includeDeleted'), false),
         query: A.str(args, 'query') || null,
+        limit,
     });
     const lines = rows.map(p => {
         const prog = todoProgress(s.listTodos(p.id));
         return `| \`${p.id}\` | ${p.name} | ${p.workspace_alias || '-'} | ${p.deleted_at ? '已删除' : p.status} | ${prog.text} | ${p.report ? '有' : '-'} | ${fmtTime(p.updated_at)} |`;
     });
     const text = rows.length
-        ? `## 工程列表（${all ? '全部工作区' : `工作区 ${ws}`}，${rows.length} 个）\n| ID | 名称 | 工作区 | 状态 | Todo | 报告 | 更新 |\n|---|---|---|---|---|---|---|\n${lines.join('\n')}`
+        ? `## 工程列表（${all ? '全部工作区' : `工作区 ${ws}`}，${rows.length} 个，按最近更新排序，最多 ${limit} 个）\n| ID | 名称 | 工作区 | 状态 | Todo | 报告 | 更新 |\n|---|---|---|---|---|---|---|\n${lines.join('\n')}\n- 默认显示最新 10 个；可用 limit 指定返回数量。`
         : `## 工程列表\n- 没有匹配的工程。可用 CreateProject 创建。`;
-    return textResult(text, { command: 'ListProjects', count: rows.length, projects: rows });
+    return textResult(text, { command, count: rows.length, limit, projects: rows });
+}
+
+async function searchProjects(args) {
+    const ws = A.str(args, 'workspace', 'workspaceAlias');
+    if (!ws || ws.toLowerCase() === 'all') throw new Error(`${P} SearchProjects 需要 workspace（指定工作区别名或 ID，不能为 all）。`);
+    if (!runtime.resolver.find(ws, { includeDisabled: true })) throw new Error(`${P} 工作区“${ws}”不存在。可用 ListWorkspaces 查询。`);
+    const query = A.str(args, 'query', 'keyword');
+    if (!query) throw new Error(`${P} SearchProjects 需要 query（工程名称关键字或完整工程 ID）。`);
+    return listProjects({ ...args, query }, 'SearchProjects');
 }
 
 async function getProject(args) {
@@ -1747,6 +1762,7 @@ const COMMANDS = {
     listworkspaces: listWorkspaces,
     createproject: createProject,
     listprojects: listProjects,
+    searchprojects: searchProjects,
     getproject: getProject,
     updatetodos: updateTodos,
     submitreport: submitReport,
@@ -1769,7 +1785,7 @@ const COMMANDS = {
     trace: traceCmd,
 };
 
-const COMMAND_NAMES = 'ListWorkspaces、CreateProject、ListProjects、GetProject、UpdateTodos、SubmitReport、DeleteProjects、RestoreProjects、PurgeProjects、ReadCode、EditCode、ResolveEdit、CreateFile、RemoveFile、MoveFile、MoveCode、CopyCode、Rollback、SearchHistory、GetNodeDiff、Outline、FindSymbol、Trace';
+const COMMAND_NAMES = 'ListWorkspaces、CreateProject、ListProjects、SearchProjects、GetProject、UpdateTodos、SubmitReport、DeleteProjects、RestoreProjects、PurgeProjects、ReadCode、EditCode、ResolveEdit、CreateFile、RemoveFile、MoveFile、MoveCode、CopyCode、Rollback、SearchHistory、GetNodeDiff、Outline、FindSymbol、Trace';
 
 const MUTATING_COMMANDS = new Set([
     'createproject', 'updatetodos', 'submitreport', 'deleteprojects',
