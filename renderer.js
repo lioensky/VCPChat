@@ -19,6 +19,7 @@ import { createMainChatSettingsPresentationOwner } from './modules/renderer/main
 import { createMainChatAttachmentOwner } from './modules/renderer/mainChatAttachmentOwner.js';
 import { createMainChatSendOwner } from './modules/renderer/mainChatSendOwner.js';
 import { createConversationTurnNavigator } from './modules/ui-system/conversation-turn-navigator.js';
+import { createChatBackToBottom } from './modules/ui-system/chat-back-to-bottom.js';
 
 const streamManager = createStreamProjection();
 const messageRenderer = createMessageRenderer({ streamManager });
@@ -663,6 +664,9 @@ mainChatSettingsPresentationOwner.configureStartup({
         conversationTurnNavigator?.dispose();
         conversationTurnNavigator = null;
     } });
+    const chatBackToBottom = createChatBackToBottom({ document, uiHelper: uiHelperFunctions, messagesRoot: chatMessagesDiv });
+    chatBackToBottom.mount();
+    ownedRendererSubscriptions.add({ dispose: () => chatBackToBottom.dispose() });
 
     const auxiliaryEventOwner = createMainChatAuxiliaryEventOwner({
         subscriptions: {
