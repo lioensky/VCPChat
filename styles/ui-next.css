@@ -205,28 +205,26 @@ html .next-ui-window-button {
 
 .next-ui-tab {
     position: relative;
-    height: 28px;
-    min-width: 80px;
+    height: 30px;
+    min-width: 96px;
     max-width: 160px;
-    padding: 0 8px;
+    padding: 0 10px;
     box-sizing: border-box;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 6px;
+    gap: 8px;
     border-radius: 8px;
     color: var(--next-muted);
-    font-size: 13px;
-    font-weight: 500;
+    font-size: 15px;
     white-space: nowrap;
     transition: color var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard), background-color var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard), font-weight var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard);
 }
 
 html #nextUiHomeTab {
-    min-width: 76px;
+    min-width: 80px;
     max-width: 96px;
-    height: 28px;
-    padding: 0 10px 0 4px;
+    padding: 0 10px 0 3px;
     justify-content: flex-start;
     border-radius: 0 8px 8px 0;
     background: transparent;
@@ -237,7 +235,7 @@ html #nextUiHomeTab > span:last-child {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 13px;
+    font-size: 15px;
     font-weight: 600;
     line-height: 1;
     letter-spacing: 0;
@@ -299,23 +297,13 @@ html #nextUiHomeTab > span:last-child {
     opacity: 0;
 }
 
-.next-ui-tab > svg {
-    width: 14px;
-    height: 14px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.8;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    flex: 0 0 auto;
-}
-
+.next-ui-tab > svg,
 .next-ui-add-tab > svg,
 .next-ui-icon-button > svg,
 .next-ui-window-button > svg,
 .next-ui-app-icon svg {
-    width: 16px;
-    height: 16px;
+    width: 19px;
+    height: 19px;
     fill: none;
     stroke: currentColor;
     stroke-width: 1.8;
@@ -327,7 +315,7 @@ html #nextUiHomeTab > span:last-child {
 .next-ui-tab-label {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     min-width: 0;
 }
 
@@ -340,21 +328,18 @@ html #nextUiHomeTab > span:last-child {
     color: inherit;
     background: transparent;
     font: inherit;
-    font-size: 13px;
-    font-weight: 500;
-    line-height: 1.2;
     text-align: left;
     cursor: pointer;
 }
 
 .next-ui-tab-close {
-    width: 18px;
-    height: 18px;
+    width: 20px;
+    height: 20px;
     display: grid;
     place-items: center;
     padding: 0;
     border: 0;
-    border-radius: 4px;
+    border-radius: 5px;
     color: var(--next-muted);
     background: transparent;
     cursor: pointer;
@@ -372,8 +357,8 @@ html #nextUiHomeTab > span:last-child {
 }
 
 .next-ui-tab-close svg {
-    width: 12px;
-    height: 12px;
+    width: 13px;
+    height: 13px;
     fill: none;
     stroke: currentColor;
     stroke-width: 2;
@@ -381,10 +366,10 @@ html #nextUiHomeTab > span:last-child {
 
 html .next-ui-tab-svg,
 html .next-ui-tab-svg svg {
-    width: 14px;
-    height: 14px;
+    width: 19px;
+    height: 19px;
     display: block;
-    flex: 0 0 14px;
+    flex: 0 0 19px;
 }
 
 html .next-ui-tab.is-dragging {
@@ -445,19 +430,10 @@ html .next-ui-embedded-app-status.is-error .vcp-ui-icon {
     }
 }
 
-.next-ui-add-tab {
+.next-ui-add-tab,
+.next-ui-icon-button {
     width: 30px;
     height: 30px;
-    padding: 0;
-    display: grid;
-    place-items: center;
-    border-radius: 8px;
-    flex: 0 0 auto;
-}
-
-.next-ui-icon-button {
-    width: 28px;
-    height: 28px;
     padding: 0;
     display: grid;
     place-items: center;
@@ -481,14 +457,14 @@ html .next-ui-window-button {
 
 html .next-ui-topbar-actions {
     margin-left: auto;
-    gap: 2px;
+    gap: 0;
     flex: 0 0 auto;
     align-self: stretch;
 }
 
 html .next-ui-topbar-actions > .next-ui-presentation-switcher,
 html .next-ui-topbar-actions > #nextUiThemeStoreBtn {
-    margin-right: 0;
+    margin-right: 6px;
 }
 
 html .next-ui-window-button:hover {
@@ -707,8 +683,6 @@ html[data-vcp-wallpaper-scope="global"] .container::before {
 
 html .sidebar:not(.avatar-only) {
     padding-left: 0;
-    padding-right: 0;
-    padding-bottom: 0;
 }
 
 html .sidebar.avatar-only {
@@ -741,8 +715,7 @@ html .main-content {
 
 html .chat-header {
     padding: 7px 20px;
-    /* A faint 5% hairline under the title instead of the full panel border. */
-    border-bottom: 1px solid var(--zcode-header-divider, var(--next-border));
+    border-bottom: 1px solid var(--next-border);
     background: var(--next-header-bg);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
@@ -774,7 +747,7 @@ html body #toggleSidebarModeBtn.next-ui-sidebar-mode-button.active:focus-visible
 }
 
 html .next-ui-brand-tab-group {
-    height: 28px;
+    height: 30px;
     display: flex;
     align-items: stretch;
     overflow: hidden;
@@ -793,8 +766,8 @@ html .next-ui-brand-tab-group #nextUiHomeTab:hover {
 
 html #toggleSidebarModeBtn.next-ui-sidebar-mode-button {
     position: relative;
-    width: 28px;
-    height: 28px;
+    width: 30px;
+    height: 30px;
     display: grid;
     overflow: hidden;
     border-color: transparent;
@@ -814,8 +787,8 @@ html .next-ui-sidebar-control-icon {
 }
 
 html .next-ui-sidebar-brand {
-    width: 28px;
-    height: 28px;
+    width: 30px;
+    height: 30px;
     padding: 0;
     overflow: hidden;
     box-sizing: border-box;
@@ -825,18 +798,18 @@ html .next-ui-sidebar-brand {
 }
 
 html .next-ui-sidebar-brand img {
-    width: 20px;
-    height: 20px;
+    width: 22px;
+    height: 22px;
     margin: 4px;
     display: block;
     object-fit: contain;
 }
 
 html .next-ui-sidebar-mode-button > .next-ui-sidebar-control-icon {
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
     display: block;
-    flex: 0 0 16px;
+    flex: 0 0 18px;
     stroke: currentColor;
     opacity: 0;
     transform: translate(-50%, -50%) scale(0.76);
@@ -1044,33 +1017,15 @@ html .chat-actions #themeToggleBtn {
 }
 
 html .chat-actions .header-button {
-    height: 28px;
+    min-width: 30px;
+    height: 30px;
     margin-left: 0;
+    padding: 0 6px;
     border: 0;
-    border-radius: 8px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+    border-radius: 6px;
     color: var(--next-muted);
     background: transparent;
     box-shadow: none;
-}
-
-html .chat-actions .header-button:not(#currentAgentSettingsBtn) {
-    min-width: 28px;
-    width: 28px;
-    padding: 0;
-}
-
-html .chat-actions .header-button#currentAgentSettingsBtn {
-    width: auto;
-    min-width: auto;
-    padding: 0 8px;
-    flex-shrink: 0;
-}
-
-html .chat-actions .header-button#voiceChatBtn {
-    margin-right: 0 !important;
 }
 
 html .chat-actions .header-button:hover {
