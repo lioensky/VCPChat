@@ -18,7 +18,8 @@
     "invocationCommands": [
       {
         "commandIdentifier": "PowerShellExecutor",
-        "description": "调用此工具执行指定的 PowerShell 命令并返回其输出。可以选择阻塞或后台执行，或请求管理员权限。\n参数:\n- command (字符串, 必需): 要执行的 PowerShell 命令内容。\n- executionType (字符串, 必须): 执行类型。'blocking' 用于短期运行并立即返回结果；'background' 用于长期运行的服务类任务，将打开一个用户可见的PowerShell窗口。\n- requireAdmin (布尔值, 可选): 如果为 true，则尝试以管理员权限执行命令。这将向用户显示一个UAC（用户帐户控制）确认对话框。默认为 false。\n注意: 当 executionType 为 'background' 或 requireAdmin 为 true 时，命令的输出不会直接返回给你，只会返回任务是否已提交。\n\n标准调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」PowerShellExecutor「末」,\ncommand:「始」Get-ChildItem「末」,\nexecutionType:「始」blocking「末」\n<<<[END_TOOL_REQUEST]>>>\n\n管理员权限执行示例:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」PowerShellExecutor「末」,\ncommand:「始」Get-Process -Name 'winlogon'「末」,\nexecutionType:「始」blocking「末」,\nrequireAdmin:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>"
+        "description": "调用此工具执行指定的 PowerShell 命令并返回其输出。可以选择阻塞或后台执行，或请求管理员权限。\n参数:\n- command (字符串, 必需): 要执行的 PowerShell 命令内容。\n- executionType (字符串, 必须): 执行类型。'blocking' 用于短期运行并立即返回结果；'background' 用于长期运行的服务类任务，将打开一个用户可见的PowerShell窗口。\n- requireAdmin (布尔值, 可选): 如果为 true，则尝试以管理员权限执行命令。这将向用户显示一个UAC（用户帐户控制）确认对话框。默认为 false。\n注意: 当 executionType 为 'background' 或 requireAdmin 为 true 时，命令的输出不会直接返回给你，只会返回任务是否已提交。\n\n标准调用格式:\n\n\n管理员权限执行示例:\n",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」PowerShellExecutor「末」,\ncommand:「始」Get-ChildItem「末」,\nexecutionType:「始」blocking「末」\n<<<[END_TOOL_REQUEST]>>>\n\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」PowerShellExecutor「末」,\ncommand:「始」Get-Process -Name 'winlogon'「末」,\nexecutionType:「始」blocking「末」,\nrequireAdmin:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>"
       }
     ]
   }

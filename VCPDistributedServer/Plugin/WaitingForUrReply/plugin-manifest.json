@@ -25,7 +25,7 @@
         "invocationCommands": [
             {
                 "commandIdentifier": "WaitForUserInput",
-                "description": "在工具调用过程中可以使用该插件征求用户意见，等待用户输入后继续回复。\n\n参数说明:\n- title (字符串, 可选): 弹出窗口的标题，默认为\"等待用户回复\"\n- prompt (字符串, 可选): 显示给用户的提示信息\n- option01 到 option09 (字符串, 可选): 预设选项，用户可通过数字键1-9快速选择\n- placeholder (字符串, 可选): 输入框中的默认内容，会被全选中\n- timeout (整数, 可选): 超时时间（秒），默认1200秒（20分钟）\n\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」WaitingForUrReply「末」,\nprompt:「始」请选择你的回应:「末」,\ntitle:「始」请做出选择「末」,\nplaceholder:「始」可以在此参数中继续发挥AI的创意，符合语境，文本会被全选，比如说你希望或建议用户会有怎样的单个回应「末」,\noption01:「始」我同意这个建议「末」,\noption02:「始」我需要更多信息「末」,\noption03:「始」我不同意「末」\n<<<[END_TOOL_REQUEST]>>>",
+                "description": "在工具调用过程中可以使用该插件征求用户意见，等待用户输入后继续回复。\n\n参数说明:\n- title (字符串, 可选): 弹出窗口的标题，默认为\"等待用户回复\"\n- prompt (字符串, 可选): 显示给用户的提示信息\n- option01 到 option09 (字符串, 可选): 预设选项，用户可通过数字键1-9快速选择\n- placeholder (字符串, 可选): 输入框中的默认内容，会被全选中\n- timeout (整数, 可选): 超时时间（秒），默认1200秒（20分钟）\n\n调用格式:\n",
                 "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」WaitingForUrReply「末」,\ntitle:「始」等待用户回复「末」,\nprompt:「始」你希望如何处理这个问题？「末」,\noption01:「始」立即处理「末」,\noption02:「始」稍后处理「末」,\noption03:「始」需要更多信息「末」\n<<<[END_TOOL_REQUEST]>>>"
             }
         ]

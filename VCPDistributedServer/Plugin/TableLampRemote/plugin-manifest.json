@@ -18,12 +18,12 @@
     "invocationCommands": [
       {
         "commandIdentifier": "GetLampStatus",
-        "description": "获取米家台灯Pro的状态，将一次性返回开关状态、亮度、色温三个信息。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」TableLampRemote「末」,\ncommand:「始」GetLampStatus「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "description": "获取米家台灯Pro的状态，将一次性返回开关状态、亮度、色温三个信息。\n调用格式:\n",
         "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」TableLampRemote「末」,\ncommand:「始」GetLampStatus「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
         "commandIdentifier": "LampControl",
-        "description": "控制米家台灯Pro。你可以一次性设置一个或多个属性。所有参数均为可选。\n参数:\n- power (字符串): 控制开关。设为 'True' 打开，'False' 关闭。\n- brightness (整数): 设置亮度，范围是 1 到 100。\n- color_temperature (整数): 设置色温，范围是 2500 到 4800。\n\n单项控制示例:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」TableLampRemote「末」,\ncommand:「始」LampControl「末」,\nbrightness:「始」80「末」\n<<<[END_TOOL_REQUEST]>>>\n\n多项控制（批处理）示例:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」TableLampRemote「末」,\ncommand:「始」LampControl「末」,\npower:「始」True「末」,\nbrightness:「始」100「末」,\ncolor_temperature:「始」4000「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "description": "控制米家台灯Pro。你可以一次性设置一个或多个属性。所有参数均为可选。\n参数:\n- power (字符串): 控制开关。设为 'True' 打开，'False' 关闭。\n- brightness (整数): 设置亮度，范围是 1 到 100。\n- color_temperature (整数): 设置色温，范围是 2500 到 4800。\n\n单项控制示例:\n\n\n多项控制（批处理）示例:\n",
         "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」TableLampRemote「末」,\ncommand:「始」LampControl「末」,\npower:「始」True「末」,\nbrightness:「始」100「末」\n<<<[END_TOOL_REQUEST]>>>"
       }
     ]
@@ -40,29 +40,54 @@
       {
         "commandIdentifier": "GetLampStatus",
         "description": "查询台灯的开关、亮度和色温",
-        "aliases": ["查询", "状态", "查看"]
+        "aliases": [
+          "查询",
+          "状态",
+          "查看"
+        ]
       },
       {
         "commandIdentifier": "LampControl",
         "description": "设置台灯开关、亮度或色温",
-        "aliases": ["打开", "关闭", "开灯", "关灯", "调节", "设置", "亮度", "色温"],
+        "aliases": [
+          "打开",
+          "关闭",
+          "开灯",
+          "关灯",
+          "调节",
+          "设置",
+          "亮度",
+          "色温"
+        ],
         "parameters": {
           "power": {
             "type": "boolean",
             "description": "台灯是否开启",
-            "trueAliases": ["打开", "开灯", "开启"],
-            "falseAliases": ["关闭", "关灯", "关掉"]
+            "trueAliases": [
+              "打开",
+              "开灯",
+              "开启"
+            ],
+            "falseAliases": [
+              "关闭",
+              "关灯",
+              "关掉"
+            ]
           },
           "brightness": {
             "type": "text",
             "source": "constraints",
-            "prefixes": ["亮度"],
+            "prefixes": [
+              "亮度"
+            ],
             "maxLength": 4
           },
           "color_temperature": {
             "type": "text",
             "source": "constraints",
-            "prefixes": ["色温"],
+            "prefixes": [
+              "色温"
+            ],
             "maxLength": 5
           }
         }
