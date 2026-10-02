@@ -184,7 +184,7 @@
     }
 
     html[data-vcp-composer-radius="tuned"],
-    html[data-vcp-composer-radius="tuned"] .vcp-ui-scope { --vcp-ui-composer-radius: 24px; }
+    html[data-vcp-composer-radius="tuned"] .vcp-ui-scope { --vcp-ui-composer-radius: 28px; }
     html[data-vcp-composer-radius="follow"],
     html[data-vcp-composer-radius="follow"] .vcp-ui-scope { --vcp-ui-composer-radius: var(--vcp-ui-radius-xl); }
     html[data-vcp-composer-radius="square"],
@@ -330,18 +330,27 @@
 
     html .vcp-ui-scope {
         --vcp-ui-font-family: var(--vcp-appearance-font-family);
-        --vcp-ui-font-caption: calc(12px * var(--vcp-appearance-font-scale));
-        --vcp-ui-font-micro: calc(10px * var(--vcp-appearance-font-scale));
-        --vcp-ui-font-helper: calc(13px * var(--vcp-appearance-font-scale));
-        --vcp-ui-font-body: calc(14px * var(--vcp-appearance-font-scale));
-        --vcp-ui-font-emphasis: calc(15px * var(--vcp-appearance-font-scale));
-        --vcp-ui-font-title: calc(18px * var(--vcp-appearance-font-scale));
-        --vcp-ui-font-display: calc(22px * var(--vcp-appearance-font-scale));
+        --vcp-ui-font-size: calc(14px * var(--vcp-appearance-font-scale));
+        --vcp-ui-text-xl: calc(var(--vcp-ui-font-size) + 4px);
+        --vcp-ui-text-lg: calc(var(--vcp-ui-font-size) + 2px);
+        --vcp-ui-text-base: var(--vcp-ui-font-size);
+        --vcp-ui-text-caption: calc(var(--vcp-ui-font-size) - 1px);
+        --vcp-ui-text-sm: calc(var(--vcp-ui-font-size) - 2px);
+        --vcp-ui-text-xs: calc(var(--vcp-ui-font-size) - 4px);
+        /* Compatibility aliases for the existing VCPUI components. */
+        --vcp-ui-font-caption: var(--vcp-ui-text-sm);
+        --vcp-ui-font-micro: var(--vcp-ui-text-xs);
+        --vcp-ui-font-helper: var(--vcp-ui-text-caption);
+        --vcp-ui-font-body: var(--vcp-ui-text-base);
+        --vcp-ui-font-emphasis: var(--vcp-ui-text-base);
+        --vcp-ui-font-section: var(--vcp-ui-text-lg);
+        --vcp-ui-font-title: var(--vcp-ui-text-xl);
+        --vcp-ui-font-display: var(--vcp-ui-text-xl);
         font-family: var(--vcp-ui-font-family);
     }
 
     html .vcp-ui-scope .chat-input-card {
-        border-radius: var(--vcp-ui-composer-radius, 24px);
+        border-radius: var(--vcp-ui-composer-radius, 28px);
     }
 
     html[data-vcp-content-width="centered"] .chat-messages {
@@ -378,3 +387,38 @@
         .appearance-settings-grid { grid-template-columns: 1fr; }
     }
 }
+
+/* Advanced-reply popover (+ button / send right-click): same surface as the
+   composer card it opens from, with the soft composer-popover lift and a
+   superellipse corner; rows inset 4px take 12px to stay concentric. */
+html body .tavern-popover {
+    border: 1px solid var(--vcp-ui-composer-border);
+    border-radius: 16px;
+    background: var(--vcp-ui-composer-input);
+    box-shadow: var(--vcp-ui-composer-popover-shadow);
+}
+
+html body .tavern-popover .tavern-rule-row {
+    border-radius: 12px;
+}
+
+html body .tavern-popover .tavern-popover-search-input:not(:focus) {
+    border-color: var(--vcp-ui-composer-border);
+}
+
+/* The light theme gives the mini switch track a 1px border, but the knob kept
+   its borderless 2px offset, which is measured inside that border: it sat 3px
+   from the top and 1px from the bottom. 1px inside the border puts it 2px
+   from every edge, in both positions. */
+html body:is(.light-theme, [data-vcp-theme="light"]) .tavern-popover .tavern-switch .tavern-slider::before {
+    top: 1px;
+    left: 1px;
+}
+
+/* stylelint-disable property-no-unknown, function-no-unknown */
+@supports (corner-shape: superellipse(1.5)) {
+    html body .tavern-popover {
+        corner-shape: superellipse(1.5);
+    }
+}
+/* stylelint-enable property-no-unknown, function-no-unknown */
