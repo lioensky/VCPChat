@@ -251,20 +251,9 @@ html .vcp-ui-scope .vcp-model-select-menu .vcp-model-select-search {
     border-color: var(--vcp-ui-composer-border);
 }
 
-/* The model menu opens above the whole card, 4px clear and flush with its
-   right edge, like the advanced-reply popover, instead of covering the draft
-   from the trigger. */
-/* stylelint-disable property-no-unknown, function-no-unknown */
-html .vcp-ui-scope .chat-input-card {
-    anchor-name: --vcp-composer-card;
+/* ComposerModelSelect measures the card and positions the menu 4px above it.
+   Keep it absolute: backdrop-filter on the card creates a containing block
+   for fixed descendants, which makes viewport-based anchor offsets unsafe. */
+html .vcp-ui-scope .vcp-model-select-menu {
+    position: absolute;
 }
-
-@supports (position-anchor: --vcp-composer-card) {
-    html .vcp-ui-scope .vcp-model-select-menu {
-        position: fixed;
-        position-anchor: --vcp-composer-card;
-        right: anchor(right);
-        bottom: calc(anchor(top) + 4px);
-    }
-}
-/* stylelint-enable property-no-unknown, function-no-unknown */

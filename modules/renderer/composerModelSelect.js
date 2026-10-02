@@ -97,7 +97,24 @@
             trigger.title = model ? `当前模型：${model}（点击切换）` : '点击选择模型';
         };
 
+        let menuResizeObserver = null;
+
+        function positionMenu() {
+            if (!menu) return;
+            const card = wrap.closest('.chat-input-card');
+            if (!card) return;
+            const cardRect = card.getBoundingClientRect();
+            const wrapRect = wrap.getBoundingClientRect();
+            // 保持 absolute 定位在触发器内，避开磨砂卡片对 fixed 的包含块影响。
+            // 弹层下沿位于整个卡片上方 4px，右沿与卡片对齐。
+            menu.style.bottom = `${wrapRect.bottom - cardRect.top + 4}px`;
+            menu.style.right = `${wrapRect.right - cardRect.right}px`;
+        }
+
         function closeMenu() {
+            menuResizeObserver?.disconnect();
+            menuResizeObserver = null;
+            window.removeEventListener('resize', positionMenu);
             menu?.remove();
             menu = null;
             trigger.setAttribute('aria-expanded', 'false');
@@ -152,6 +169,14 @@
             el.append(search, list);
             wrap.appendChild(el);
             menu = el;
+            positionMenu();
+            window.addEventListener('resize', positionMenu);
+            if (typeof ResizeObserver !== 'undefined') {
+                menuResizeObserver = new ResizeObserver(positionMenu);
+                menuResizeObserver.observe(wrap);
+                const card = wrap.closest('.chat-input-card');
+                if (card) menuResizeObserver.observe(card);
+            }
             list.innerHTML = '<div class="vcp-model-select-empty">加载中…</div>';
 
             let models = [];
