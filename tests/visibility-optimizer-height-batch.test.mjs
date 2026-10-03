@@ -95,6 +95,7 @@ function ownedFixture() {
     globalThis.MutationObserver = dom.window.MutationObserver;
     globalThis.requestAnimationFrame = callback => { frames.push(callback); return frames.length; };
     dom.window.requestAnimationFrame = globalThis.requestAnimationFrame;
+    dom.window.cancelAnimationFrame = id => { frames[id - 1] = null; };
     const writes = [];
     dom.window.pretextBridge = { rememberHeight(id, height) { writes.push([id, height]); } };
     const item = dom.window.document.querySelector('article');
@@ -104,9 +105,9 @@ function ownedFixture() {
     const b = dom.window.document.getElementById('b');
     const owner = createVisibilityOptimizer();
     owner.initializeVisibilityOptimizer(a);
-    const flush = () => { const pending = frames.splice(0); pending.forEach(callback => callback()); };
+    const flush = () => { const pending = frames.splice(0); pending.filter(Boolean).forEach(callback => callback()); };
     const reset = () => { reads = 0; writes.length = 0; };
-    return { owner, item, a, b, flush, reset, writes, get reads() { return reads; }, close() { owner.destroyVisibilityOptimizer(); for (const key of keys) globalThis[key] = saved[key]; dom.window.close(); } };
+    return { owner, item, a, b, frames, flush, reset, writes, dom, get reads() { return reads; }, close() { owner.destroyVisibilityOptimizer(); for (const key of keys) globalThis[key] = saved[key]; dom.window.close(); } };
 }
 
 test('height queue: relinquished connected message receives no deferred height writes', () => {
@@ -149,4 +150,157 @@ test('height queue: frame from former owner cannot rewrite a transferred message
         fixture.reset(); fixture.flush();
         assert.equal(fixture.writes.length, 1);
     } finally { next.destroyVisibilityOptimizer(); fixture.close(); }
+});
+
+test('height queue: destroy cancels its frame and reinitialization schedules independent work', () => {
+    const fixture = ownedFixture();
+    try {
+        const formerFrame = fixture.frames[0];
+        fixture.owner.destroyVisibilityOptimizer();
+        assert.equal(fixture.frames.filter(Boolean).length, 0, 'destroy must cancel the owned frame');
+        fixture.owner.initializeVisibilityOptimizer(fixture.a);
+        assert.equal(fixture.frames.filter(Boolean).length, 1, 'new work needs a new frame');
+        fixture.reset();
+        formerFrame();
+        assert.equal(fixture.reads, 0, 'late callback from the disposed generation must be inert');
+        fixture.flush();
+        assert.equal(fixture.reads, 1);
+        assert.deepEqual(fixture.writes, [['m', 120]]);
+    } finally { fixture.close(); }
+});
+
+test('height queue: root replacement cancels the old frame before scheduling the new root', () => {
+    const fixture = ownedFixture();
+    try {
+        const formerFrame = fixture.frames[0];
+        fixture.b.appendChild(fixture.item);
+        fixture.owner.initializeVisibilityOptimizer(fixture.b);
+        assert.equal(fixture.frames[0], null, 'the old root must release its frame');
+        assert.equal(fixture.frames.filter(Boolean).length, 1);
+        fixture.reset();
+        formerFrame();
+        assert.equal(fixture.reads, 0);
+        fixture.flush();
+        assert.deepEqual(fixture.writes, [['m', 120]]);
+    } finally { fixture.close(); }
+});
+
+test('height queue: a bridge callback that relinquishes a measured message prevents its later write', () => {
+    const fixture = ownedFixture();
+    try {
+        const second = fixture.item.cloneNode(true);
+        second.dataset.messageId = 'second';
+        Object.defineProperty(second, 'offsetHeight', { get: () => 240 });
+        fixture.a.appendChild(second);
+        fixture.owner.observeMessage(second);
+        fixture.dom.window.pretextBridge.rememberHeight = (id, height) => {
+            fixture.writes.push([id, height]);
+            if (id === 'm') fixture.owner.unobserveMessage(second);
+        };
+        fixture.flush();
+        assert.deepEqual(fixture.writes, [['m', 120]]);
+        assert.equal(second.dataset.vcpMeasuredHeight, undefined);
+    } finally { fixture.close(); }
+});
+
+test('height queue: resetting the owner during bridge writes discards the rest of the old batch', () => {
+    const fixture = ownedFixture();
+    try {
+        const second = fixture.item.cloneNode(true);
+        second.dataset.messageId = 'second';
+        let height = 240;
+        Object.defineProperty(second, 'offsetHeight', { get: () => height });
+        fixture.a.appendChild(second);
+        fixture.owner.observeMessage(second);
+        fixture.dom.window.pretextBridge.rememberHeight = (id, measuredHeight) => {
+            fixture.writes.push([id, measuredHeight]);
+            if (id === 'm' && fixture.writes.length === 1) {
+                fixture.owner.destroyVisibilityOptimizer();
+                height = 360;
+                fixture.owner.initializeVisibilityOptimizer(fixture.a);
+            }
+        };
+        fixture.flush();
+        assert.deepEqual(fixture.writes, [['m', 120]], 'old measurements must not leak into the new generation');
+        fixture.flush();
+        assert.deepEqual(fixture.writes, [['m', 120], ['m', 120], ['second', 360]]);
+    } finally { fixture.close(); }
+});
+
+test('height queue: messages registered during bridge writes run in the next batch', () => {
+    const fixture = ownedFixture();
+    try {
+        const second = fixture.item.cloneNode(true);
+        second.dataset.messageId = 'second';
+        Object.defineProperty(second, 'offsetHeight', { get: () => 240 });
+        fixture.dom.window.pretextBridge.rememberHeight = (id, height) => {
+            fixture.writes.push([id, height]);
+            if (id === 'm') {
+                fixture.a.appendChild(second);
+                fixture.owner.observeMessage(second);
+            }
+        };
+        fixture.flush();
+        assert.deepEqual(fixture.writes, [['m', 120]]);
+        fixture.flush();
+        assert.deepEqual(fixture.writes, [['m', 120], ['second', 240]]);
+    } finally { fixture.close(); }
+});
+
+test('height queue: a height read failure does not prevent measuring another message', () => {
+    const fixture = ownedFixture();
+    try {
+        const broken = fixture.item.cloneNode(true);
+        Object.defineProperty(broken, 'offsetHeight', { get() { throw Error('unavailable layout'); } });
+        fixture.a.prepend(broken);
+        fixture.owner.unobserveMessage(fixture.item);
+        fixture.owner.observeMessage(broken);
+        fixture.owner.observeMessage(fixture.item);
+        fixture.flush();
+        assert.equal(broken.dataset.vcpMeasuredHeight, undefined);
+        assert.deepEqual(fixture.writes, [['m', 120]]);
+    } finally { fixture.close(); }
+});
+
+test('height queue: global animation frame fallback is cancelled on destroy', () => {
+    const fixture = ownedFixture();
+    const savedCancel = globalThis.cancelAnimationFrame;
+    try {
+        fixture.owner.destroyVisibilityOptimizer();
+        fixture.dom.window.requestAnimationFrame = undefined;
+        globalThis.cancelAnimationFrame = id => { fixture.frames[id - 1] = null; };
+        fixture.owner.initializeVisibilityOptimizer(fixture.a);
+        assert.equal(fixture.frames.filter(Boolean).length, 1);
+        fixture.owner.destroyVisibilityOptimizer();
+        assert.equal(fixture.frames.filter(Boolean).length, 0);
+    } finally { fixture.close(); globalThis.cancelAnimationFrame = savedCancel; }
+});
+
+test('height queue: timeout fallback is cancelled and stale callbacks cannot drain new work', () => {
+    const fixture = ownedFixture();
+    const saved = { setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout };
+    const timers = new Map();
+    let timerId = 0;
+    try {
+        fixture.owner.destroyVisibilityOptimizer();
+        fixture.dom.window.requestAnimationFrame = undefined;
+        globalThis.requestAnimationFrame = undefined;
+        globalThis.setTimeout = (callback, delay) => { timers.set(++timerId, { callback, delay }); return timerId; };
+        globalThis.clearTimeout = id => timers.delete(id);
+        fixture.owner.initializeVisibilityOptimizer(fixture.a);
+        const frameTimer = [...timers.values()].find(timer => timer.delay === 16);
+        assert.ok(frameTimer);
+        fixture.owner.destroyVisibilityOptimizer();
+        assert.equal([...timers.values()].some(timer => timer.delay === 16), false);
+        fixture.owner.initializeVisibilityOptimizer(fixture.a);
+        fixture.reset();
+        frameTimer.callback();
+        assert.equal(fixture.reads, 0);
+        [...timers.values()].find(timer => timer.delay === 16).callback();
+        assert.deepEqual(fixture.writes, [['m', 120]]);
+    } finally {
+        fixture.close();
+        globalThis.setTimeout = saved.setTimeout;
+        globalThis.clearTimeout = saved.clearTimeout;
+    }
 });

@@ -83,6 +83,7 @@ const pixiStartOrder = [];
  * 初始化可见性优化器
  */
 function initializeVisibilityOptimizer(chatContainer) {
+    clearHeightMemory();
     if (visibilityObserver) {
         [...observedMessages].forEach(unobserveMessage);
         visibilityObserver.disconnect();
@@ -356,27 +357,52 @@ function applyMessageHeight(messageItem, height) {
 }
 
 // 长话题一次加载几十条消息：每条消息「读 offsetHeight → 写 containIntrinsicSize」交替进行，
-// 写会让布局失效，下一条的读就要同步重排一次（94 条的话题里这一项占掉加载的一半时间）。
+// 写会让布局失效，下一条的读可能再次触发同步重排。
 // 登记和延迟扫描这两处不需要立刻拿到高度，攒到下一帧，先一起读、再一起写。
 const pendingHeightMemory = new Set();
-let heightMemoryScheduled = false;
+let heightMemoryTask = null;
+let heightMemoryGeneration = 0;
+
+function clearHeightMemory() {
+    heightMemoryGeneration++;
+    pendingHeightMemory.clear();
+    const task = heightMemoryTask;
+    heightMemoryTask = null;
+    task?.cancel?.();
+}
+
+function ownsHeightMemory(messageItem) {
+    return messageItem.isConnected && observedMessages.has(messageItem) && visibilityOwnerByMessage.get(messageItem) === publicApi;
+}
 
 function rememberMessageHeightLater(messageItem) {
     if (!messageItem) return;
     pendingHeightMemory.add(messageItem);
-    if (heightMemoryScheduled) return;
-    heightMemoryScheduled = true;
+    if (heightMemoryTask) return;
+    const task = { generation: heightMemoryGeneration, cancel: null };
+    heightMemoryTask = task;
+    const flush = () => {
+        if (heightMemoryTask !== task || task.generation !== heightMemoryGeneration) return;
+        heightMemoryTask = null;
+        flushHeightMemory(task.generation);
+    };
     const frameWindow = messageItem.ownerDocument?.defaultView || window;
-    if (typeof frameWindow.requestAnimationFrame === 'function') frameWindow.requestAnimationFrame(flushHeightMemory);
-    else if (typeof requestAnimationFrame === 'function') requestAnimationFrame(flushHeightMemory);
-    else setTimeout(flushHeightMemory, 16);
+    if (typeof frameWindow.requestAnimationFrame === 'function') {
+        const id = frameWindow.requestAnimationFrame(flush);
+        task.cancel = () => frameWindow.cancelAnimationFrame?.(id);
+    } else if (typeof requestAnimationFrame === 'function') {
+        const id = requestAnimationFrame(flush);
+        task.cancel = () => { if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(id); };
+    } else {
+        const id = setTimeout(flush, 16);
+        task.cancel = () => clearTimeout(id);
+    }
 }
 
-function flushHeightMemory() {
-    heightMemoryScheduled = false;
+function flushHeightMemory(generation) {
     const measured = [];
     for (const messageItem of pendingHeightMemory) {
-        if (!messageItem.isConnected || !observedMessages.has(messageItem) || visibilityOwnerByMessage.get(messageItem) !== publicApi) continue;
+        if (!ownsHeightMemory(messageItem)) continue;
         let height = 0;
         try {
             height = messageItem.offsetHeight;
@@ -386,7 +412,10 @@ function flushHeightMemory() {
         measured.push([messageItem, height]);
     }
     pendingHeightMemory.clear();
-    for (const [messageItem, height] of measured) applyMessageHeight(messageItem, height);
+    for (const [messageItem, height] of measured) {
+        if (generation !== heightMemoryGeneration) break;
+        if (ownsHeightMemory(messageItem)) applyMessageHeight(messageItem, height);
+    }
 }
 
 function destroyPixiContext(context) {
@@ -1111,6 +1140,7 @@ function recheckVisibility() {
  * 🛑 销毁优化器
  */
 function destroyVisibilityOptimizer() {
+    clearHeightMemory();
     if (visibilityObserver) {
         [...observedMessages].forEach(unobserveMessage);
         visibilityObserver.disconnect();
@@ -1127,7 +1157,6 @@ function destroyVisibilityOptimizer() {
 
     pendingPause.clear();
     pendingResume.clear();
-    pendingHeightMemory.clear();
     startedPixiMessages.clear();
     pixiStartOrder.length = 0;
     [...observedMessages].forEach(unobserveMessage);
