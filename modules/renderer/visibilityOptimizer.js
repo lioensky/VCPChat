@@ -376,7 +376,7 @@ function flushHeightMemory() {
     heightMemoryScheduled = false;
     const measured = [];
     for (const messageItem of pendingHeightMemory) {
-        if (!messageItem.isConnected) continue;
+        if (!messageItem.isConnected || !observedMessages.has(messageItem) || visibilityOwnerByMessage.get(messageItem) !== publicApi) continue;
         let height = 0;
         try {
             height = messageItem.offsetHeight;
@@ -1066,6 +1066,7 @@ function unobserveMessage(messageItem) {
 
     pendingPause.delete(messageItem);
     pendingResume.delete(messageItem);
+    pendingHeightMemory.delete(messageItem);
 }
 
 function isMessageInHotZone(messageItem, margin = 200) {
@@ -1126,6 +1127,7 @@ function destroyVisibilityOptimizer() {
 
     pendingPause.clear();
     pendingResume.clear();
+    pendingHeightMemory.clear();
     startedPixiMessages.clear();
     pixiStartOrder.length = 0;
     [...observedMessages].forEach(unobserveMessage);

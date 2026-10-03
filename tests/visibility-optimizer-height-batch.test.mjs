@@ -82,3 +82,71 @@ test('a message removed before the frame is skipped, and a zero height is not fr
         restore();
     }
 });
+
+function ownedFixture() {
+    const dom = new JSDOM('<main id="a"><article class="message-item" data-message-id="m"><div class="md-content"></div></article></main><main id="b"></main>');
+    const keys = ['window', 'Element', 'IntersectionObserver', 'MutationObserver', 'requestAnimationFrame'];
+    const saved = Object.fromEntries(keys.map(key => [key, globalThis[key]]));
+    const frames = [];
+    class Observer { observe() {} unobserve() {} disconnect() {} }
+    globalThis.window = dom.window;
+    globalThis.Element = dom.window.Element;
+    globalThis.IntersectionObserver = Observer;
+    globalThis.MutationObserver = dom.window.MutationObserver;
+    globalThis.requestAnimationFrame = callback => { frames.push(callback); return frames.length; };
+    dom.window.requestAnimationFrame = globalThis.requestAnimationFrame;
+    const writes = [];
+    dom.window.pretextBridge = { rememberHeight(id, height) { writes.push([id, height]); } };
+    const item = dom.window.document.querySelector('article');
+    let reads = 0;
+    Object.defineProperty(item, 'offsetHeight', { get() { reads++; return 120; } });
+    const a = dom.window.document.getElementById('a');
+    const b = dom.window.document.getElementById('b');
+    const owner = createVisibilityOptimizer();
+    owner.initializeVisibilityOptimizer(a);
+    const flush = () => { const pending = frames.splice(0); pending.forEach(callback => callback()); };
+    const reset = () => { reads = 0; writes.length = 0; };
+    return { owner, item, a, b, flush, reset, writes, get reads() { return reads; }, close() { owner.destroyVisibilityOptimizer(); for (const key of keys) globalThis[key] = saved[key]; dom.window.close(); } };
+}
+
+test('height queue: relinquished connected message receives no deferred height writes', () => {
+    const fixture = ownedFixture();
+    try {
+        fixture.owner.unobserveMessage(fixture.item);
+        fixture.reset(); fixture.flush();
+        assert.equal(fixture.reads, 0);
+        assert.deepEqual(fixture.writes, []);
+    } finally { fixture.close(); }
+});
+
+test('height queue: destroyed owner cannot measure retained DOM on its queued frame', () => {
+    const fixture = ownedFixture();
+    try {
+        fixture.owner.destroyVisibilityOptimizer();
+        fixture.reset(); fixture.flush();
+        assert.equal(fixture.reads, 0);
+        assert.deepEqual(fixture.writes, []);
+    } finally { fixture.close(); }
+});
+
+test('height queue: replacing the observed root drops the previous height queue', () => {
+    const fixture = ownedFixture();
+    try {
+        fixture.owner.initializeVisibilityOptimizer(fixture.b);
+        fixture.reset(); fixture.flush();
+        assert.equal(fixture.reads, 0);
+        assert.deepEqual(fixture.writes, []);
+    } finally { fixture.close(); }
+});
+
+test('height queue: frame from former owner cannot rewrite a transferred message', () => {
+    const fixture = ownedFixture();
+    const next = createVisibilityOptimizer();
+    try {
+        fixture.owner.unobserveMessage(fixture.item);
+        fixture.b.appendChild(fixture.item);
+        next.initializeVisibilityOptimizer(fixture.b);
+        fixture.reset(); fixture.flush();
+        assert.equal(fixture.writes.length, 1);
+    } finally { next.destroyVisibilityOptimizer(); fixture.close(); }
+});
