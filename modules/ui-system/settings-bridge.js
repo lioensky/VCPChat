@@ -25,6 +25,7 @@ import { mountGlobalLanguageRows } from './settings/global-language-rows.js';
 import { mountGlobalChoices, mountGlobalSteppers, mountVoiceShortcutInput, mountGlobalTextInputs } from './settings/global-input-upgrades.js';
 import { mountForumCredentialInputs } from './settings/forum-controls.js';
 import { applySchemaSurface } from '../settings/schema-surface.js';
+import { mountPluginsSettings } from './settings/plugins-settings.js';
 import { renderAgentSettingsSurface } from '../settings/schema/sidebar-surfaces.js';
 import { ensureSettingsSidebarSurface } from './settings/settings-sidebar-surface.js';
 import { mountSettingsSidebarForm } from './settings/settings-sidebar-runtime.js';
@@ -218,6 +219,7 @@ const GLOBAL_CATEGORY_ICONS = Object.freeze({
     'server-connection': 'server',
     'jev-service': 'brain-circuit',
     'appearance-settings': 'palette',
+    'plugins-tools': 'puzzle',
     'render-settings': 'activity',
     'selection-assistant': 'mouse-pointer-click',
     'voice-settings': 'mic',
@@ -339,6 +341,7 @@ function enhanceGlobalSettings(root, form) {
                 if (field.querySelector('input:not([type="hidden"]), select, textarea')) enhance('Field', field);
             }),
         },
+        { name: 'plugins-settings', run: () => mountPluginsSettings(form.querySelector('[data-vcp-plugin-settings]'), { scope: scope() }) },
         { name: 'settings-shell', run: () => mountSettingsShell(root) },
         { name: 'autosave', run: () => mountSettingsAutosave(root, form, scope()) },
         { name: 'typed-field-owner', run: () => mountTypedFieldOwner(root, form) },
@@ -792,8 +795,10 @@ function mountSettingsShell(root) {
             state.sectionHost.append(next);
         }
         renderList();
+        next?.dispatchEvent(new CustomEvent('vcp-settings-section-activated'));
     };
 
+    listenSearch(root, 'vcp-settings-open-section', event => activateSection(event.detail?.key), 'settings-open-section');
     renderList();
 }
 
@@ -948,6 +953,15 @@ if (bridgeScope) {
 scheduleRefresh();
 
 window.VCPUISettingsBridge = Object.freeze({
+    openSection(key) {
+        if (isPresentationDestroyed()) return false;
+        window.uiHelperFunctions?.openModal?.('globalSettingsModal');
+        refresh();
+        const root = document.getElementById('globalSettingsModal');
+        if (!root) return false;
+        root.dispatchEvent(new CustomEvent('vcp-settings-open-section', { detail: { key } }));
+        return true;
+    },
     refresh: scheduleRefresh,
     flush: flushSettingsAutosave,
     getSnapshot() {

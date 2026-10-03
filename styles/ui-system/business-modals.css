@@ -6,6 +6,12 @@
         backdrop-filter: blur(5px);
     }
 
+    /* DSH web-styling.md: settings retain a translucent mask without filtering the page. */
+    html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal {
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope.modal .modal-content {
         width: min(100%, var(--vcp-ui-modal-width));
         max-height: min(var(--vcp-ui-modal-height), calc(100vh - var(--vcp-ui-space-7)));

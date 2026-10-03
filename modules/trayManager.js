@@ -174,7 +174,9 @@ const trayManager = (function () {
         // 动态获取最新的 API 引用
         const currentApi = window.chatAPI || window.electronAPI;
 
-        if (app.action === 'open-loom-manager' && currentApi?.loomOpenManager) {
+        if (app.action === 'open-plugin-manager-window' && window.VCPUISettingsBridge?.openSection) {
+            window.VCPUISettingsBridge.openSection('plugins-tools');
+        } else if (app.action === 'open-loom-manager' && currentApi?.loomOpenManager) {
             try {
                 const result = await currentApi.loomOpenManager();
                 if (!result?.success) {

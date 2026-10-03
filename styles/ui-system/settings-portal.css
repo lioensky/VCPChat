@@ -33,3 +33,10 @@
 :is(html, html.vcp-global-settings-host) > body :is(.vcp-uiux-menu-portal, .vcp-uiux-primitive-menu) .vcp-uiux-menu-item-label {
     max-width: none !important;
 }
+
+/* DSH Menu.module.css: keyboard focus uses the same row fill as pointer hover. */
+:is(html, html.vcp-global-settings-host) > body .vcp-uiux-primitive-menu .vcp-uiux-menu-item:focus-visible:not(:disabled) {
+    background: var(--dsw-alias-interactive-bg-hover, var(--vcp-ui-fill-1));
+    outline: none !important;
+    box-shadow: none !important;
+}

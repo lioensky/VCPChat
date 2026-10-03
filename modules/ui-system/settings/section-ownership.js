@@ -5,6 +5,7 @@ const SECTION_KEYS = Object.freeze({
     '服务器连接': 'server-connection',
     'Jev 服务': 'jev-service',
     '界面与外观': 'appearance-settings',
+    '插件与工具': 'plugins-tools',
     '消息渲染': 'render-settings',
     '划词助手': 'selection-assistant',
     '语音设置': 'voice-settings',

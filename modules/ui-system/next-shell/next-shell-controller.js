@@ -311,6 +311,10 @@
 
     async function openEmbeddedAppInternal(app) {
         if (!mounted) return;
+        if (app.action === 'open-plugin-manager-window' && window.VCPUISettingsBridge?.openSection) {
+            window.VCPUISettingsBridge.openSection('plugins-tools');
+            return;
+        }
         const generation = mountGeneration;
         if (!embeddedAppController?.supported) {
             await window.trayManager?.launchApp(app);

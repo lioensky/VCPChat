@@ -42,6 +42,16 @@ const forbiddenPaths = [
 ];
 
 const allowedSourceDifferences = new Set([
+    // Settings plugin management: feature-owned services and their focused tests.
+    'docs/settings-plugins.md',
+    'modules/ipc/pluginSettingsHandlers.js',
+    'modules/ipc/applicationSender.js',
+    'modules/services/pluginSettingsService.js',
+    'preloads/api/pluginSettings.js',
+    'tests/helpers/trusted-main-sender.cjs',
+    'tests/plugin-settings-handlers.test.js',
+    'tests/plugin-settings-service.test.js',
+    'tests/plugin-settings-ui.test.mjs',
     '.github/workflows/canonical_ui.yml',
     '.github/workflows/chat_kernel_ui.yml',
     '.github/workflows/mobile_sync.yml',

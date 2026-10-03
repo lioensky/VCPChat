@@ -1,0 +1,78 @@
+/* DSH 639ed015: PluginsSettingsSection + PluginInventorySettingsTab.
+   Configurable cards use one column; colors inherit the existing settings theme. */
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-settings {
+    --plugins-fill: var(--dsw-alias-settings-card-fill, var(--dsw-alias-bg-layer-2, var(--vcp-ui-surface-1)));
+    --plugins-stroke: var(--dsw-alias-settings-card-stroke, var(--dsw-alias-border-l4, color-mix(in srgb, var(--plugins-text) 16%, transparent)));
+    --plugins-text: var(--dsw-alias-label-primary, var(--vcp-ui-text-1));
+    --plugins-muted: var(--dsw-alias-label-tertiary, var(--vcp-ui-text-3));
+    display: flex; flex-direction: column; gap: 12px; max-width: 760px; min-width: 0;
+    color: var(--plugins-text); font: 400 var(--vcp-ui-text-caption, 13px)/20px var(--vcp-ui-font-family);
+}
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-settings [hidden] { display: none; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-heading { margin: 0; font-size: var(--vcp-ui-text-xl, 18px); line-height: 24px; font-weight: 600; color: var(--plugins-text); }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-settings :is(button, input, select, textarea) { font: inherit; box-sizing: border-box; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-settings :is(button, input, select, textarea, summary):focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary, var(--plugins-text)); outline-offset: 2px; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-settings :is(button, summary) { cursor: pointer; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-settings button:disabled { cursor: not-allowed; opacity: .4; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-notice, html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-hint, html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-empty { margin: 0; color: var(--plugins-muted); font-size: var(--vcp-ui-text-sm, 12px); line-height: 18px; overflow-wrap: anywhere; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-notice:empty { display: none; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-tabs { display: flex; gap: 22px; border-bottom: .5px solid var(--plugins-stroke); }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-tab { position: relative; padding: 7px 1px 9px; border: 0; background: transparent; color: var(--plugins-muted); white-space: nowrap; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-tab[aria-selected="true"] { color: var(--plugins-text); font-weight: 500; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-tab[aria-selected="true"]::after { content: ''; position: absolute; inset: auto 0 -1px; height: 2px; background: var(--plugins-text); border-radius: 1px; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-panel { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-search { display: flex; position: relative; align-items: center; flex: 1 1 180px; min-width: 0; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-search > .vcp-ui-icon { position: absolute; left: 12px; width: 16px; height: 16px; pointer-events: none; color: var(--plugins-muted); }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-settings .plugins-search-input { width: 100%; height: 36px; padding: 0 34px 0 36px; border: .5px solid var(--plugins-stroke); border-radius: var(--dsw-radius-md, 12px); background: var(--dsw-alias-bg-layer-1, var(--plugins-fill)); color: var(--plugins-text); }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-settings .plugins-input { width: 100%; min-height: 32px; margin: 0; padding: 5px 8px; border: .5px solid var(--plugins-stroke); border-radius: var(--dsw-radius-md, 12px); background: var(--dsw-alias-bg-layer-1, var(--plugins-fill)); color: var(--plugins-text); }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-settings .plugins-button { display: inline-flex; align-items: center; justify-content: center; height: 36px; padding: 0 14px; border: .5px solid var(--dsw-alias-border-l3, var(--plugins-stroke)); border-radius: var(--dsw-radius-md, 12px); background: transparent; color: var(--plugins-text); font-size: var(--vcp-ui-text-base, 14px); line-height: 22px; white-space: nowrap; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-settings .plugins-button:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover, var(--vcp-ui-surface-2)); }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-settings .plugins-button-primary { background: var(--dsw-alias-button-primary-fill, var(--plugins-text)); color: var(--dsw-alias-label-primary-foreground, var(--dsw-alias-bg-layer-1, var(--vcp-ui-surface-1))); border-color: transparent; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-settings .plugins-button-primary:hover:not(:disabled) { background: var(--dsw-alias-button-primary-hover, color-mix(in srgb, var(--plugins-text) 86%, var(--plugins-fill))); }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-list { display: flex; flex-direction: column; gap: 10px; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-card { border: .5px solid var(--plugins-stroke); border-radius: var(--dsw-radius-xl, 20px); background: var(--plugins-fill); overflow: hidden; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-card-header { display: flex; align-items: center; gap: 12px; padding: 12px 14px; min-height: 52px; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-card-header:hover, html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-card-header:has(.plugins-card-expand[aria-expanded="true"]) { background: var(--dsw-alias-interactive-bg-hover, var(--vcp-ui-surface-2)); }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-settings .plugins-card-expand:focus-visible { outline-offset: -2px; border-radius: var(--dsw-radius-sm, 8px); }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-card-expand { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-card-copy { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-card-title { font-size: var(--vcp-ui-text-base, 14px); line-height: 20px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-card-description { color: var(--plugins-muted); font-size: var(--vcp-ui-text-sm, 12px); line-height: 18px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-chevron { flex: 0 0 16px; width: 16px; height: 16px; transition: transform 140ms ease; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-card-expand[aria-expanded="true"] .plugins-chevron { transform: rotate(180deg); }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-card-tools { display: flex; align-items: center; gap: 10px; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-runtime { display: flex; align-items: center; white-space: nowrap; color: var(--plugins-muted); font-size: var(--vcp-ui-font-size-xs, 11px); line-height: 16px; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-settings [data-tone="error"] { color: var(--vcp-ui-danger, var(--vcp-color-danger)); }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-settings [data-tone="pending"] { color: var(--vcp-ui-warning, var(--vcp-color-warning)); }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-settings .plugins-switch { position: relative; flex: 0 0 36px; width: 36px; height: 20px; padding: 2px; border: 0; border-radius: 999px; background: var(--dsw-alias-border-l3, var(--plugins-stroke)); }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--dsw-alias-switch-thumb, var(--dsw-alias-bg-layer-1, var(--plugins-fill))); transition: transform 120ms ease; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-settings .plugins-switch[aria-checked="true"] { background: var(--dsw-alias-brand-primary, var(--plugins-text)); }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-switch[aria-checked="true"]::after { transform: translateX(16px); background: var(--dsw-alias-label-primary-foreground, var(--dsw-alias-bg-layer-1, var(--plugins-fill))); }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-card-details { display: flex; flex-direction: column; gap: 14px; padding: 10px 14px 12px; border-top: .5px solid var(--plugins-stroke); background: var(--dsw-alias-bg-module-platform, var(--vcp-ui-surface-2)); }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-meta { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 6px 10px; margin: 0; font-size: var(--vcp-ui-text-sm, 12px); line-height: 18px; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-meta dt { color: var(--plugins-muted); } html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-meta dd { margin: 0; overflow-wrap: anywhere; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-config-fields, html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-login { display: flex; flex-direction: column; gap: 12px; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; margin: 0; padding: 0; color: var(--plugins-text); font-weight: 400; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-field-label { font-size: var(--vcp-ui-text-caption, 13px); line-height: 20px; font-weight: 500; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-advanced { border-top: .5px solid var(--plugins-stroke); padding-top: 10px; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-advanced > summary { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: transparent; list-style: none; font-size: var(--vcp-ui-text-caption, 13px); line-height: 20px; color: var(--dsw-alias-label-secondary, var(--plugins-muted)); }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-advanced > summary::marker { content: ''; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-advanced > summary::-webkit-details-marker { display: none; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-advanced[open] > summary .plugins-chevron { transform: rotate(180deg); }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-advanced[open] > :not(summary) { margin-top: 10px; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-settings .plugins-code { width: 100%; resize: vertical; padding: 10px; border: .5px solid var(--plugins-stroke); border-radius: var(--dsw-radius-md, 12px); color: var(--plugins-text); background: var(--plugins-fill); font: var(--vcp-ui-text-sm, 12px)/18px var(--vcp-ui-font-mono, monospace); }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-config-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-card-notice { padding: 0 14px 10px; } html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-card-notice:empty { display: none; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-empty { padding: 28px 12px; text-align: center; }
+
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-panels { container-type: inline-size; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-settings .vcp-uiux-select { min-width: 0; }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-settings .vcp-uiux-select-trigger { min-height: 32px; padding: 5px 8px; border: .5px solid var(--plugins-stroke); border-radius: var(--dsw-radius-md, 12px); font: inherit; background: var(--dsw-alias-bg-layer-1, var(--plugins-fill)); color: var(--plugins-text); }
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-settings .vcp-uiux-select-trigger .plugins-chevron { margin-left: auto; }
+@media (prefers-reduced-motion: reduce) { html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-chevron, html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-switch::after { transition: none; } }
+
+/* DSH Switch opts out of the settings superellipse. Stylelint's older CSS data lacks this Chromium property. */
+/* stylelint-disable property-no-unknown */
+html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-settings .plugins-switch, html.vcp-global-settings-host .vcp-ui-scope#globalSettingsModal .plugins-settings .plugins-switch::after { corner-shape: round; }
+/* stylelint-enable property-no-unknown */

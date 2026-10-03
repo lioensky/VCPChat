@@ -20,6 +20,7 @@ const ENTRY_PARTS = [
     'settings-portal.css',      // body-level portal stacking override
     'settings-stream-animation.css', // upstream streaming-animation settings + live preview
     'settings-sidebar.css',     // schema-driven Agent/Group item-settings surface
+    'settings-plugins.css',     // independent plugin configuration cards
 ];
 
 const read = name => fs.readFileSync(path.join(styleDir, name), 'utf8');

@@ -4,9 +4,11 @@
     if (window.VCPFrontendPlugins?.loaderStarted) return;
 
     const registry = new Map();
+    const loadStates = new Map();
     const api = {
         loaderStarted: true,
         registry,
+        getLoadState(id) { return loadStates.get(id); },
         register(id, instance) {
             if (!id || registry.has(id)) return false;
             registry.set(id, instance || {});
@@ -53,7 +55,9 @@
             const plugins = response?.success && Array.isArray(response.plugins) ? response.plugins : [];
             for (const plugin of plugins) {
                 loadStyle(plugin);
-                results.push(await loadScript(plugin));
+                const result = await loadScript(plugin);
+                loadStates.set(plugin.id, Object.freeze(result));
+                results.push(result);
             }
         } catch (error) {
             console.error('[FrontendPlugins] 无法读取已启用插件清单。', error);

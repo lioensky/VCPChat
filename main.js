@@ -1621,6 +1621,18 @@ if (!gotTheLock) {
             settingsManager: appSettingsManager,
             APP_DATA_ROOT_IN_PROJECT,
         });
+        require('./modules/ipc/pluginSettingsHandlers').initialize({
+            mainWindow,
+            settingsManager: appSettingsManager,
+            getRuntime: () => {
+                const manager = require('./VCPDistributedServer/Plugin');
+                return {
+                    plugins: distributedServer ? manager.plugins : new Map(),
+                    services: distributedServer ? manager.serviceModules : new Map(),
+                    connected: distributedServer?.ws?.readyState === 1,
+                };
+            },
+        });
         await embeddedAppSessions?.closeAll();
         embeddedAppTasks?.dispose('main-window-reinitialized');
         embeddedAppTasks = new SenderTaskRegistry({ label: 'embedded-app-tasks' });

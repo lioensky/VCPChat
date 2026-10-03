@@ -87,6 +87,10 @@ const MARKERS = Object.freeze({
     vcpKeepOpenAfterSave: { owner: 'settings/autosave.js + global-settings-manager.js', cleanup: 'business-contract' },
     globalSettingsSaving: { owner: 'settings/autosave.js', cleanup: 'business-contract' },
     vcpAutosaveMounted: { owner: 'settings/autosave.js', cleanup: 'manual-retract' },
+    tone: { owner: 'settings/plugins-settings.js status projection', cleanup: 'scope-owned' },
+    pluginId: { owner: 'settings/plugins-settings.js inventory card', cleanup: 'scope-owned' },
+    configKey: { owner: 'settings/plugins-settings.js config form', cleanup: 'scope-owned' },
+    vcpPluginSettings: { owner: 'schema/plugins-tools.js independent save boundary', cleanup: 'persistent' },
     vcpSettingsConflictActions: { owner: 'settings-bridge.js conflict action bar', cleanup: 'scope-owned' },
     vcpSettingsConflict: { owner: 'typed-field-owners.js external reconciliation', cleanup: 'business-contract' },
 

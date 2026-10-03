@@ -131,6 +131,7 @@ export function mountSettingsAutosave(root, form, scope = null, options = {}) {
     state.schedule = schedule;
     state.setStatus = setStatus;
     const onInput = event => {
+        if (event.target?.closest?.('[data-vcp-plugin-settings]')) return;
         if (!event.target?.matches?.('input, select, textarea')) return;
         // The native file-input change fires before the avatar cropper has
         // produced the File consumed by handleSaveGlobalSettings. Ignore that

@@ -36,7 +36,7 @@
     "reason": "reviewed notification rendering after injected filtering and owner-scoped toast timers and transition listeners replaced ambient lifecycle effects"
   },
   "VCPDistributedServer/frontend-plugin-loader.js": {
-    "sha256": "0987ee41ed76c8b4f0963353c4b387f0b46a6202b9e8516aa02cce27568862ca",
-    "reason": "upstream plugin loader contract; dynamic wallpaper internals remain out of scope"
+    "sha256": "94a7a193ac6db1d35a03f64625382cb4bf2ec33069e11b1b8765dc11ead9216e",
+    "reason": "PR 30 reviewed: expose immutable script load outcomes for truthful plugin-settings status; preserve enabled-only discovery, serial loading and registration semantics."
   }
 }
