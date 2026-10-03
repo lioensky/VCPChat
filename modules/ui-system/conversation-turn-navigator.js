@@ -12,6 +12,8 @@
 
 'use strict';
 
+import { bindChatNavigationIdle } from './chat-navigation-idle.js';
+
 
 export const TURN_NAVIGATOR_MIN_WIDTH_PX = 864; // 同 ZCode：聊天列不够宽就隐藏，不挤占消息
 const DEFAULT_MAX_PREVIEW_CHARS = 220;
@@ -216,6 +218,7 @@ export function createConversationTurnNavigator({
     let disposed = false;
     let mounted = false;
     let nav = null;
+    let idleControl = null;
     let railScroll = null;
     let railInner = null;
     let card = null;
@@ -447,6 +450,7 @@ export function createConversationTurnNavigator({
         const nextSignature = items.map(item => item.key).join('|');
         const show = items.length >= 2;
         nav.hidden = !show;
+        idleControl?.refresh();
         if (!show) {
             signature = '';
             buttons = [];
@@ -587,6 +591,8 @@ export function createConversationTurnNavigator({
         nav.append(railScroll, card);
         host.appendChild(nav);
         mounted = true;
+        idleControl = bindChatNavigationIdle({ element: nav, scroller });
+        cleanups.push(() => { idleControl.dispose(); idleControl = null; });
 
         on(railScroll, 'pointerleave', () => setInteraction(undefined));
         on(railScroll, 'scroll', () => { setInteraction(undefined); hideCard(); });
