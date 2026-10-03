@@ -225,6 +225,13 @@ export const appearanceSettingsSection = section('appearance-settings', '界面�
         when: ['chatPresentationModeBubble', 'enableUserChatBubbleUi'],
         save: { present: true },
     }),
+    switchField('enableTurnNavigator', {
+        label: '显示提问导航条',
+        hint: '聊天区左侧每条提问一根短横条，悬停预览、点击跳转。聊天区宽度不足 864px 时自动隐藏。',
+        hintInsideWrapper: true,
+        checked: true,
+        save: { present: true },
+    }),
     numberCells('chatBubbleWideWidth', {
         label: '宽屏模式自定义宽度（%）',
         hint: '可设置范围为 50% - 98%。标准模式沿用系统默认宽度，这里只调整气泡模式的宽屏布局。',

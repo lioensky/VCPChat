@@ -18,6 +18,9 @@ import { createMainChatThemeOwner } from './modules/renderer/mainChatThemeOwner.
 import { createMainChatSettingsPresentationOwner } from './modules/renderer/mainChatSettingsPresentationOwner.js';
 import { createMainChatAttachmentOwner } from './modules/renderer/mainChatAttachmentOwner.js';
 import { createMainChatSendOwner } from './modules/renderer/mainChatSendOwner.js';
+import { createConversationTurnNavigator } from './modules/ui-system/conversation-turn-navigator.js';
+import { createChatBackToBottom } from './modules/ui-system/chat-back-to-bottom.js';
+import { createChatComposerInset } from './modules/ui-system/chat-composer-inset.js';
 
 const streamManager = createStreamProjection();
 const messageRenderer = createMessageRenderer({ streamManager });
@@ -75,6 +78,7 @@ const mainChatSettingsOwner = createMainChatSettingsOwner({ initial: {
     chatToolFontCustom: '',
     enableUserChatBubbleUi: true,
     showUserMetaInChatBubbleUi: true,
+    enableTurnNavigator: true,
     voiceMode: 'local',
     voiceInputMode: 'windows_voice_typing',
     voiceInputShortcut: 'F7',
@@ -636,6 +640,37 @@ mainChatSettingsPresentationOwner.configureStartup({
         });
         ownedRendererSubscriptions.add({ dispose: () => composerModelSelect.dispose?.() });
     }
+
+    // 「显示提问导航条」设置：关掉时整个卸载（不留观察器），设置加载或保存后按新值挂上或卸下
+    let conversationTurnNavigator = null;
+    const syncConversationTurnNavigator = () => {
+        const enabled = getGlobalSettings().enableTurnNavigator !== false;
+        if (enabled === (conversationTurnNavigator !== null)) return;
+        if (!enabled) {
+            conversationTurnNavigator.dispose();
+            conversationTurnNavigator = null;
+            return;
+        }
+        conversationTurnNavigator = createConversationTurnNavigator({
+            document,
+            messagesRoot: chatMessagesDiv,
+            releaseFollow: () => uiHelperFunctions.releaseChatScrollFollow?.()
+        });
+        conversationTurnNavigator.mount();
+    };
+    syncConversationTurnNavigator();
+    window.addEventListener('global-settings-updated', syncConversationTurnNavigator);
+    ownedRendererSubscriptions.add({ dispose: () => {
+        window.removeEventListener('global-settings-updated', syncConversationTurnNavigator);
+        conversationTurnNavigator?.dispose();
+        conversationTurnNavigator = null;
+    } });
+    const chatBackToBottom = createChatBackToBottom({ document, uiHelper: uiHelperFunctions, messagesRoot: chatMessagesDiv });
+    chatBackToBottom.mount();
+    ownedRendererSubscriptions.add({ dispose: () => chatBackToBottom.dispose() });
+    const chatComposerInset = createChatComposerInset({ document, uiHelper: uiHelperFunctions });
+    chatComposerInset.mount();
+    ownedRendererSubscriptions.add({ dispose: () => chatComposerInset.dispose() });
 
     const auxiliaryEventOwner = createMainChatAuxiliaryEventOwner({
         subscriptions: {

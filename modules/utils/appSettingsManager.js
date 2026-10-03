@@ -317,6 +317,7 @@ class SettingsManager extends EventEmitter {
             chatToolFontCustom: '',
             enableUserChatBubbleUi: true,
             showUserMetaInChatBubbleUi: true,
+            enableTurnNavigator: true,
             minChunkBufferSize: 1,
             smoothStreamIntervalMs: 25,
             assistantAgent: '',

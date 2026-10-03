@@ -13,6 +13,7 @@
     const textareaResizeStates = new WeakMap();
     const chatScrollStates = new WeakMap();
     const CHAT_BOTTOM_THRESHOLD_PX = 50;
+    const CHAT_FOLLOW_CHANGE_EVENT = 'vcp-chat-follow-change';
     const REGEX_CACHE_MAX_ENTRIES = 512;
     const regexCompileCache = new Map();
     const filePreviewIconMarkup = `
@@ -272,6 +273,17 @@
         return getDistanceFromChatBottom(container) <= threshold;
     }
 
+    // 跟随状态每次真正翻转都在滚动容器上派发 CHAT_FOLLOW_CHANGE_EVENT；
+    // 「回到底部」按钮这类界面只订阅事件，不直接读写内部状态。
+    function setChatFollowBottom(container, state, followBottom) {
+        if (state.followBottom === followBottom) return;
+        state.followBottom = followBottom;
+        const EventCtor = container.ownerDocument?.defaultView?.CustomEvent;
+        if (typeof EventCtor === 'function') {
+            container.dispatchEvent(new EventCtor(CHAT_FOLLOW_CHANGE_EVENT, { detail: { followBottom } }));
+        }
+    }
+
     function getChatScrollState(container) {
         let state = chatScrollStates.get(container);
         if (state) return state;
@@ -313,7 +325,7 @@
                 if (!container.isConnected || state.generation !== expectedGeneration) return;
                 const nearBottom = isChatNearBottom(container);
                 // 用户主动回到底部时重新授权持续跟随；离开底部则保持关闭。
-                state.followBottom = nearBottom;
+                setChatFollowBottom(container, state, nearBottom);
                 state.userScrollActive = false;
             });
         };
@@ -324,7 +336,7 @@
                 // 向上滚轮是明确的解锁意图。保持 userScrollActive，直到后续
                 // 向下滚动结算；这样该滚轮默认行为产生的近底部 scroll 事件
                 // 不会在同一轮事件中立刻把 followBottom 改回 true。
-                state.followBottom = false;
+                setChatFollowBottom(container, state, false);
             } else {
                 settleUserScrollIntent();
             }
@@ -356,7 +368,7 @@
                 // 更早到达的向上滚轮解锁意图。重新开启统一交给向下滚轮、
                 // touchend 或滚动条 pointerup 的代际保护结算。
                 if (!isChatNearBottom(container)) {
-                    state.followBottom = false;
+                    setChatFollowBottom(container, state, false);
                 }
                 return;
             }
@@ -365,7 +377,7 @@
             // 只有真正到达底部（而非落入 50px 追踪阈值）才重新开启跟随。
             // 这同时防止小幅向上滚轮产生的 scroll 事件发生近底部竞态。
             if (getDistanceFromChatBottom(container) <= 1) {
-                state.followBottom = true;
+                setChatFollowBottom(container, state, true);
             }
         }, { passive: true });
 
@@ -425,7 +437,7 @@
         if (!container) return;
         const state = getChatScrollState(container);
         state.generation += 1;
-        state.followBottom = true;
+        setChatFollowBottom(container, state, true);
         state.programmatic = false;
         state.userScrollActive = false;
         state.requestedGeneration = null;
@@ -438,6 +450,34 @@
             state.layoutFrameId = 0;
         }
     };
+
+    /**
+     * Releases bottom-follow before a programmatic jump (search result, turn
+     * navigator). The jump itself is not user input, so follow would stay on and
+     * content-visibility messages that grow while the jump passes them would let
+     * the ResizeObserver pull the view back to the bottom. Reaching the bottom
+     * again re-enables follow as usual.
+     */
+    uiHelperFunctions.releaseChatScrollFollow = function() {
+        const container = getChatScrollContainer();
+        if (!container) return;
+        const state = getChatScrollState(container);
+        state.generation += 1;
+        state.programmatic = false;
+        state.userScrollActive = false;
+        state.requestedGeneration = null;
+        if (state.frameId) {
+            cancelAnimationFrame(state.frameId);
+            state.frameId = 0;
+        }
+        if (state.layoutFrameId) {
+            cancelAnimationFrame(state.layoutFrameId);
+            state.layoutFrameId = 0;
+        }
+        setChatFollowBottom(container, state, false);
+    };
+
+    uiHelperFunctions.CHAT_FOLLOW_CHANGE_EVENT = CHAT_FOLLOW_CHANGE_EVENT;
 
     /**
      * Scrolls the chat Surface to the bottom when bottom-follow is active.
@@ -465,7 +505,7 @@
             return false;
         }
 
-        state.followBottom = true;
+        setChatFollowBottom(container, state, true);
         state.requestedGeneration = expectedGeneration ?? state.generation;
 
         const commitScroll = () => {
@@ -487,7 +527,7 @@
                 // 之间完成解码并再次撑高内容；只要用户没有产生新滚动意图，
                 // ResizeObserver 会继续补偿到新的底部。
                 if (container.isConnected && isChatNearBottom(container)) {
-                    state.followBottom = true;
+                    setChatFollowBottom(container, state, true);
                 }
             });
         };
