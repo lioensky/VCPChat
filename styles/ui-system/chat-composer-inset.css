@@ -2,7 +2,7 @@
  * 主聊天输入区叠放在滚动区底部之上（modules/ui-system/chat-composer-inset.js 挂上
  * .vcp-chat-composer-overlay 后才生效）。
  * 对照 ZCode composer dock（https://github.com/zai-org/ZCode ，Apache-2.0）：
- * 滚动区与滚动条一直到底；消息在输入区所在的一段透明、其上淡出，滚动条那一列不加遮罩。
+ * 滚动区与滚动条一直到底；底部留白避开输入区，不使用影响背景模糊的渐变遮罩。
  */
 
 html .vcp-chat-composer-overlay > .chat-input-area:where(.vcp-ui-scope, .vcp-ui-scope *) {
@@ -14,28 +14,7 @@ html .vcp-chat-composer-overlay > .chat-input-area:where(.vcp-ui-scope, .vcp-ui-
 }
 
 html .vcp-chat-composer-overlay > .chat-messages-container:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    --vcp-chat-composer-fade: 20px;
-    /* 贴底时最后一条消息停在淡出带之上 */
-    padding-bottom: calc(var(--vcp-chat-composer-inset, 0px) + var(--vcp-chat-composer-fade));
-    scroll-padding-bottom: calc(var(--vcp-chat-composer-inset, 0px) + var(--vcp-chat-composer-fade));
-    -webkit-mask-image:
-        linear-gradient(
-            to bottom,
-            black calc(100% - var(--vcp-chat-composer-inset, 0px) - var(--vcp-chat-composer-fade)),
-            transparent calc(100% - var(--vcp-chat-composer-inset, 0px))
-        ),
-        linear-gradient(black, black);
-    mask-image:
-        linear-gradient(
-            to bottom,
-            black calc(100% - var(--vcp-chat-composer-inset, 0px) - var(--vcp-chat-composer-fade)),
-            transparent calc(100% - var(--vcp-chat-composer-inset, 0px))
-        ),
-        linear-gradient(black, black);
-    -webkit-mask-size: 100% 100%, var(--vcp-chat-scrollbar-size, 0px) 100%;
-    mask-size: 100% 100%, var(--vcp-chat-scrollbar-size, 0px) 100%;
-    -webkit-mask-position: 0 0, 100% 0;
-    mask-position: 0 0, 100% 0;
-    -webkit-mask-repeat: no-repeat;
-    mask-repeat: no-repeat;
+    /* 贴底时最后一条消息与输入区之间保留 20px 阅读间距。 */
+    padding-bottom: calc(var(--vcp-chat-composer-inset, 0px) + 20px);
+    scroll-padding-bottom: calc(var(--vcp-chat-composer-inset, 0px) + 20px);
 }
