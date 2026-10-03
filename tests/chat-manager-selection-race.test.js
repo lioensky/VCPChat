@@ -986,3 +986,14 @@ test('JEV history sync cannot delete a pending user bubble from a pre-commit fil
     assert.equal(fixture.window.document.querySelector('[data-message-id="jev-pending-user"]'), null);
     fixture.dom.window.close();
 });
+
+test('creating a topic commits a selection event after the empty history identity changes', async () => {
+ const fixture=createFixture();
+ const selecting=fixture.chatManager.selectItem('agent-a','agent','Agent A',null,fixture.configs['agent-a']);
+ await new Promise(resolve => setImmediate(resolve));
+ fixture.topicRequests.get('agent-a').resolve(fixture.configs['agent-a'].topics);await selecting;
+ const events=[];const unsubscribe=fixture.chatManager.onSelectionChange(event=>events.push({topicId:event.topicId,history:fixture.state().history}));
+ const creating=fixture.chatManager.createNewTopicForItem('agent-a','agent');
+ fixture.createTopicRequests.get('agent-a')[0].resolve({success:true,topicId:'topic-a-created',topicName:'Created'});
+ await creating;assert.deepEqual(events,[{topicId:'topic-a-created',history:[]}]);unsubscribe();fixture.dom.window.close();
+});

@@ -100,6 +100,7 @@ const chartHandlers = require('./modules/ipc/chartHandlers'); // Agent 图表工
 const desktopHandlers = require('./modules/ipc/desktopHandlers'); // Import VCPdesktop handlers
 const desktopRemoteHandlers = require('./modules/ipc/desktopRemoteHandlers'); // Import desktop remote control handlers
 const tavernHandlers = require('./modules/ipc/tavernHandlers'); // Import VCPChatTarven (advanced reply) handlers
+const sideChatHandlers = require('./modules/ipc/sideChatHandlers'); // Workspace Side Chat handlers
 const { ScriptoriumAgentControlService } = require('./modules/services/scriptoriumAgentControlService');
 const { GlobalJevService } = require('./modules/services/globalJevService');
 // docxHandlers 依赖链较重（mammoth/cheerio/marked/jszip 等），冷启动不加载。
@@ -1567,6 +1568,7 @@ if (!gotTheLock) {
             settingsManager: appSettingsManager,
             historyMutationQueue
         });
+        sideChatHandlers.initialize({ USER_DATA_DIR, AGENT_DIR, historyMutationQueue, mainWindow });
 
         // A renderer claims a lease before beginning asynchronous selection.
         // Late start/stop completions from older selections are rejected in

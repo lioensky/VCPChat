@@ -105,3 +105,19 @@ test('terminal persistence preserves concurrent durable fields outside the owned
         finishReason: 'completed',
     });
 });
+
+test('terminal persistence rejects when saveHistory resolves with error object or success:false', async () => {
+    for (const returned of [
+        { success: false, error: 'fixture-disk-failure' },
+        { error: 'fixture-disk-failure' },
+    ]) {
+        const persistence = createChatHistoryPersistence({
+            async getHistory() { return []; },
+            async saveHistory() { return returned; },
+        });
+        await assert.rejects(
+            persistence.commit(projected([{ id: 'assistant-a', role: 'assistant', content: 'answer' }])),
+            /fixture-disk-failure/
+        );
+    }
+});

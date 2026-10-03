@@ -69,6 +69,19 @@ function showContextMenu(event, messageItem, message) {
     menu.id = 'chatContextMenu';
     menu.classList.add('context-menu');
 
+    const activeSel = ownerWindow?.getSelection ? ownerWindow.getSelection() : null;
+    let selectedTextSnapshot = '';
+    if (activeSel && !activeSel.isCollapsed && activeSel.rangeCount > 0) {
+        try {
+            const range = activeSel.getRangeAt(0);
+            if (messageItem.contains(range.commonAncestorContainer) || messageItem.contains(range.startContainer)) {
+                selectedTextSnapshot = activeSel.toString().trim();
+            }
+        } catch {
+            // ignore range errors
+        }
+    }
+
     const isThinkingOrStreaming = message.isThinking || messageItem.classList.contains('streaming');
     const isError = message.finishReason === 'error';
 
@@ -260,6 +273,23 @@ function showContextMenu(event, messageItem, message) {
                 closeContextMenu();
             };
             menu.appendChild(createBranchOption);
+        }
+
+        if (currentSelectedItemVal.type === 'agent' && typeof ownerWindow?.openSideChatWithSelection === 'function') {
+            const sideChatOption = ownerDocument.createElement('div');
+            sideChatOption.classList.add('context-menu-item');
+            sideChatOption.innerHTML = `<i class="fas fa-columns"></i> 在侧栏提问`;
+            sideChatOption.onclick = async () => {
+                closeContextMenu();
+                if (typeof ownerWindow?.openSideChatWithSelection === 'function') {
+                    await ownerWindow.openSideChatWithSelection({
+                        messageItem,
+                        message,
+                        selectedText: selectedTextSnapshot || null
+                    });
+                }
+            };
+            menu.appendChild(sideChatOption);
         }
 
         const forwardOption = ownerDocument.createElement('div');

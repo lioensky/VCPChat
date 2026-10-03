@@ -12,6 +12,7 @@ const {
 const topicTitleManager = require('../../Groupmodules/topicTitleManager');
 const { HistoryMutationQueue } = require('../services/historyMutationQueue');
 const workspaceHandlers = require('./workspaceHandlers');
+const { removeSideChatChildrenOfParent } = require('./sideChatHandlers');
 
 /**
  * 若 filePath 属于已登记工作区且是文本/代码文件，创建真实路径实时引用；否则返回 null，
@@ -760,6 +761,8 @@ function initialize(mainWindow, context) {
 
                 const topicDataDir = path.join(USER_DATA_DIR, agentId, 'topics', topicIdToDelete);
                 if (await fs.pathExists(topicDataDir)) await fs.remove(topicDataDir);
+                await removeSideChatChildrenOfParent({ USER_DATA_DIR, agentId, parentTopicId: topicIdToDelete })
+                    .catch(err => console.warn('[delete-topic] Failed to remove side chats:', err));
 
                 return { success: true, remainingTopics };
             } else {

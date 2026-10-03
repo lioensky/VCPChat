@@ -10,7 +10,7 @@ const uiManager = (() => {
     const themeChannel = window.VCPStateChannels?.create('theme', Object.freeze({ ready: false, effective: 'light' })) || null;
 
     // DOM Elements (will be initialized in init)
-    let leftSidebar, rightNotificationsSidebar, resizerLeft, resizerRight;
+    let leftSidebar, rightNotificationsSidebar, resizerLeft, resizerRight, vcpSidePane;
     let digitalClockElement, dateDisplayElement, notificationTitleElement;
     let sidebarTabButtons, sidebarTabContents;
     let lifecycleOwner = null;
@@ -89,12 +89,14 @@ const uiManager = (() => {
         };
 
         createResizer(resizerLeft, leftSidebar, 180, 1, 'sidebarWidth');
-        createResizer(resizerRight, rightNotificationsSidebar, 220, -1, 'notificationsSidebarWidth', (event, resume) => {
-            if (rightNotificationsSidebar.classList.contains('active')) return true;
-            electronAPI.sendToggleNotificationsSidebar();
-            requestAnimationFrame(resume);
-            return false;
-        });
+        if (!vcpSidePane && resizerRight && rightNotificationsSidebar) {
+            createResizer(resizerRight, rightNotificationsSidebar, 220, -1, 'notificationsSidebarWidth', (event, resume) => {
+                if (rightNotificationsSidebar.classList.contains('active')) return true;
+                electronAPI?.sendToggleNotificationsSidebar?.();
+                requestAnimationFrame(resume);
+                return false;
+            });
+        }
     }
 
     /**
@@ -570,6 +572,7 @@ const uiManager = (() => {
             // Assign DOM elements from options.elements
             leftSidebar = options.elements.leftSidebar;
             rightNotificationsSidebar = options.elements.rightNotificationsSidebar;
+            vcpSidePane = options.elements.vcpSidePane || null;
             resizerLeft = options.elements.resizerLeft;
             resizerRight = options.elements.resizerRight;
             digitalClockElement = options.elements.digitalClockElement;
@@ -613,7 +616,7 @@ const uiManager = (() => {
             settingsManagerCapability = null;
             itemListManagerCapability = null;
             uiHelperCapability = null;
-            leftSidebar = rightNotificationsSidebar = resizerLeft = resizerRight = null;
+            leftSidebar = rightNotificationsSidebar = resizerLeft = resizerRight = vcpSidePane = null;
             digitalClockElement = dateDisplayElement = notificationTitleElement = null;
             sidebarTabButtons = sidebarTabContents = null;
         }

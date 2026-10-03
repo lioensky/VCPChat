@@ -1,0 +1,108 @@
+/*
+ * styles/ui-system/side-pane-tabs.css
+ * 侧栏标签条的 ZCode 对齐细节：标题末尾渐隐、拖拽排序、溢出边缘渐隐、悬停提示。
+ * 对应 ZCode packages/ui/src/app-shell/SidePaneTabTrigger.tsx / AnimatedSidePanePanel.tsx / SidePaneTabTitleTooltip.tsx。
+ */
+
+/* ---- 标题：不再用省略号，改为末尾渐隐；关闭按钮出现时预留 1.25rem ---- */
+html .side-pane-tab-item .side-pane-tab:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    --tab-fade-offset: 0px;
+    padding-right: 8px;
+    -webkit-mask-image: linear-gradient(to right, var(--vcp-ui-port-color-000) calc(100% - var(--tab-fade-offset) - 0.5rem), transparent calc(100% - var(--tab-fade-offset)));
+    mask-image: linear-gradient(to right, var(--vcp-ui-port-color-000) calc(100% - var(--tab-fade-offset) - 0.5rem), transparent calc(100% - var(--tab-fade-offset)));
+    cursor: default;
+}
+
+html .side-pane-tab-item.active .side-pane-tab:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-pane-tab-item:hover .side-pane-tab:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-pane-tab-item:focus-within .side-pane-tab:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    --tab-fade-offset: 1.25rem;
+}
+
+html .side-pane-tab-item .side-pane-tab .tab-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 0 0 auto;
+    overflow: visible;
+    text-overflow: clip;
+}
+
+/* ---- 拖拽排序 ---- */
+html .side-pane-tabs.is-sorting:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    user-select: none;
+    cursor: grabbing;
+}
+
+html .side-pane-tab-item.is-shifting:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    transition: transform 200ms cubic-bezier(0.2, 0, 0, 1), background-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html .side-pane-tab-item.is-dragging:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    z-index: 5;
+    cursor: grabbing;
+    transition: none;
+    background-color: var(--vcp-ui-port-color-rgba-255-255-255-0-10);
+    box-shadow: 0 4px 6px -1px var(--vcp-ui-port-color-rgba-0-0-0-0-25), 0 2px 4px -2px var(--vcp-ui-port-color-rgba-0-0-0-0-2);
+}
+
+html body[data-vcp-theme="light"] .side-pane-tab-item.is-dragging:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background-color: var(--vcp-ui-port-color-rgba-0-0-0-0-08);
+    box-shadow: 0 4px 6px -1px var(--vcp-ui-port-color-rgba-0-0-0-0-12), 0 2px 4px -2px var(--vcp-ui-port-color-rgba-0-0-0-0-1);
+}
+
+html .side-pane-tab-item.is-dragging .side-pane-tab:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    cursor: grabbing;
+}
+
+/* ---- 标签条溢出：只提示还能继续滚动的一侧 ---- */
+html .side-pane-tabs.mask-left.mask-right:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    -webkit-mask-image: linear-gradient(to right, transparent 0, var(--vcp-ui-port-color-000) 16px, var(--vcp-ui-port-color-000) calc(100% - 16px), transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0, var(--vcp-ui-port-color-000) 16px, var(--vcp-ui-port-color-000) calc(100% - 16px), transparent 100%);
+}
+
+html .side-pane-tabs.mask-left:not(.mask-right):where(.vcp-ui-scope, .vcp-ui-scope *) {
+    -webkit-mask-image: linear-gradient(to right, transparent 0, var(--vcp-ui-port-color-000) 16px, var(--vcp-ui-port-color-000) 100%);
+    mask-image: linear-gradient(to right, transparent 0, var(--vcp-ui-port-color-000) 16px, var(--vcp-ui-port-color-000) 100%);
+}
+
+html .side-pane-tabs.mask-right:not(.mask-left):where(.vcp-ui-scope, .vcp-ui-scope *) {
+    -webkit-mask-image: linear-gradient(to right, var(--vcp-ui-port-color-000) 0, var(--vcp-ui-port-color-000) calc(100% - 16px), transparent 100%);
+    mask-image: linear-gradient(to right, var(--vcp-ui-port-color-000) 0, var(--vcp-ui-port-color-000) calc(100% - 16px), transparent 100%);
+}
+
+/* 新增按钮跟在最后一个标签后面时不参与收缩 */
+html .side-pane-tabs > .side-pane-action-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 0 0 auto;
+}
+
+/* ---- 标题悬停提示（ZCode ControlHintTooltip 的 bottom 形态） ---- */
+html .side-pane-tab-tooltip:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: fixed;
+    z-index: 10050;
+    max-width: 320px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    background: var(--vcp-ui-port-color-262626);
+    color: var(--vcp-ui-port-color-fafafa);
+    font-size: calc(var(--vcp-ui-font-size) - 2px);
+    line-height: 1.35;
+    pointer-events: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-shadow: 0 4px 12px var(--vcp-ui-port-color-rgba-0-0-0-0-18);
+    animation: side-pane-tab-tooltip-in 120ms ease-out;
+}
+
+html body[data-vcp-theme="dark"] .side-pane-tab-tooltip:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-port-color-f0f0f0);
+    color: var(--vcp-ui-port-color-1a1a1a);
+}
+
+@keyframes side-pane-tab-tooltip-in {
+    from { opacity: 0; transform: translateY(-2px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html .side-pane-tab-item.is-shifting:where(.vcp-ui-scope, .vcp-ui-scope *) { transition: none; }
+    html .side-pane-tab-tooltip:where(.vcp-ui-scope, .vcp-ui-scope *) { animation: none; }
+}

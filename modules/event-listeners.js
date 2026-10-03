@@ -1199,15 +1199,26 @@ export function setupEventListeners(deps) {
         });
 
         listenerOwner?.own(chatAPI.onDoToggleNotificationsSidebar(() => {
-            const isActive = notificationsSidebar.classList.toggle('active');
-            const mainContent = document.querySelector('.main-content');
-            if (mainContent) {
-                mainContent.classList.toggle('notifications-sidebar-active', isActive);
+            // 有工作区侧栏时由它负责开合与通知按钮的位置
+            if (globalThis.vcpSidePaneController) {
+                const snap = globalThis.vcpSidePaneController.getSnapshot();
+                const isNotifOpen = snap.visible && snap.activeTabId === 'notifications';
+                if (isNotifOpen) {
+                    globalThis.vcpSidePaneController.setVisible(false);
+                } else {
+                    globalThis.vcpSidePaneController.showNotifications();
+                }
+            } else {
+                const isActive = notificationsSidebar.classList.toggle('active');
+                const mainContent = document.querySelector('.main-content');
+                if (mainContent) {
+                    mainContent.classList.toggle('notifications-sidebar-active', isActive);
+                }
+                if (isActive && refs.globalSettings.get().notificationsSidebarWidth) {
+                    notificationsSidebar.style.width = `${refs.globalSettings.get().notificationsSidebarWidth}px`;
+                }
+                syncNotificationTogglePlacement(isActive);
             }
-            if (isActive && refs.globalSettings.get().notificationsSidebarWidth) {
-                notificationsSidebar.style.width = `${refs.globalSettings.get().notificationsSidebarWidth}px`;
-            }
-            syncNotificationTogglePlacement(isActive);
         }));
 
         syncNotificationTogglePlacement();

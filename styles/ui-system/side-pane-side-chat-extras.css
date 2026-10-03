@@ -1,0 +1,156 @@
+/* 状态文字（如「发送失败：…」）很长时不要把左侧的模型选择挤掉：右侧最多占一半并省略 */
+/* 模型选择弹层：真实模型列表，带搜索，可滚动 */
+html .side-chat-model-search:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    box-sizing: border-box;
+    width: 100%;
+    height: 26px;
+    margin: 0 0 4px;
+    padding: 0 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color, var(--vcp-ui-port-color-rgba-127-127-127-0-25));
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: calc(var(--vcp-ui-font-size) - 2px);
+    outline: none;
+}
+
+html .side-chat-model-list:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+html .side-chat-model-group:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    padding: 6px 8px 2px;
+    font-size: calc(var(--vcp-ui-font-size) - 3px);
+    opacity: 0.55;
+}
+
+html .side-chat-model-empty:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    padding: 8px;
+    font-size: calc(var(--vcp-ui-font-size) - 2px);
+    opacity: 0.6;
+}
+
+/* 输入区和主聊天的 .chat-input-card 一致：一行 [错误提示 … 幽灵模型选择 发送] */
+html .side-chat-input-actions:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 4px;
+    min-height: 32px;
+    padding-top: 0;
+}
+
+html .side-chat-status-bar:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1 1 0;
+    min-width: 0;
+    font-size: calc(var(--vcp-ui-font-size) - 2px);
+    color: var(--secondary-text, var(--vcp-ui-port-color-rgba-241-245-249-0-6));
+}
+
+html .side-chat-status-bar .side-chat-status-text:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+html .side-chat-model-picker-wrapper:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: relative;
+    display: inline-flex;
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+html .side-chat-model-picker-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 28px;
+    max-width: 180px;
+    padding: 0 4px 0 8px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--vcp-ui-text-2, var(--secondary-text, var(--vcp-ui-port-color-a7afb1)));
+    font: inherit;
+    font-size: calc(var(--vcp-ui-font-size) - 1px);
+    line-height: 20px;
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s;
+}
+
+html .side-chat-model-picker-btn:hover:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-chat-model-picker-btn[aria-expanded="true"]:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-interactive-hover, var(--vcp-ui-port-color-rgba-127-127-127-0-16));
+    color: var(--vcp-ui-text-0, currentColor);
+}
+
+html .side-chat-model-picker-btn .side-chat-model-name:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+html .side-chat-model-picker-btn svg:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    width: 12px;
+    height: 12px;
+    flex: none;
+    opacity: 0.7;
+}
+
+/* 弹层和主聊的 .vcp-model-select-menu 同款，向上展开 */
+html .side-chat-model-popover:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 6px);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    width: 260px;
+    max-width: calc(100vw - 32px);
+    padding: 4px;
+    border-radius: 10px;
+    background: var(--vcp-ui-surface-raised, var(--secondary-bg, var(--vcp-ui-port-color-2b2f31)));
+    color: var(--vcp-ui-text-0, var(--primary-text, var(--vcp-ui-port-color-e6e9ea)));
+    border: 1px solid var(--vcp-ui-border, var(--vcp-ui-port-color-rgba-127-127-127-0-25));
+    box-shadow: 0 8px 24px var(--vcp-ui-port-color-rgba-0-0-0-0-28);
+}
+
+html .side-chat-model-list .side-chat-model-item:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: calc(var(--vcp-ui-font-size) - 1px);
+    line-height: 20px;
+    color: inherit;
+    cursor: pointer;
+}
+
+html .side-chat-model-list .side-chat-model-item:hover:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-chat-model-list .side-chat-model-item:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-interactive-hover, var(--vcp-ui-port-color-rgba-127-127-127-0-16));
+    outline: none;
+}
+
+html .side-chat-model-list .side-chat-model-item.active:where(.vcp-ui-scope, .vcp-ui-scope *)::before {
+    content: "✓";
+    display: inline-block;
+    width: 14px;
+}
+
+html .side-chat-model-list .side-chat-model-item:not(.active):where(.vcp-ui-scope, .vcp-ui-scope *)::before {
+    content: "";
+    display: inline-block;
+    width: 14px;
+}

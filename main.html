@@ -40,6 +40,9 @@
     <link rel="stylesheet" href="styles/ui-system/turn-navigator.css">
     <link rel="stylesheet" href="styles/ui-system/chat-back-to-bottom.css">
     <link rel="stylesheet" href="styles/ui-system/chat-composer-inset.css">
+    <link rel="stylesheet" href="styles/ui-system/side-pane.css">
+    <link rel="stylesheet" href="styles/ui-system/side-pane-tabs.css">
+    <link rel="stylesheet" href="styles/ui-system/side-pane-side-chat-extras.css">
     <script src="modules/ui-system/lifecycle-scope.js"></script>
     <script src="modules/ui-system/performance-recorder.js"></script>
     <script src="modules/ui-system/task-handle.js"></script>
@@ -549,6 +552,11 @@
                 <div class="chat-messages" id="chatMessages">
                 </div>
             </div>
+            <!-- 放在 #chatMessages 之外：消息列表重渲染会清空它，按钮不能跟着被删 -->
+            <button id="floatingSelectionSideChatBtn" class="floating-selection-side-chat-btn vcp-ui-scope" type="button" hidden title="在侧栏提问" aria-label="在侧栏提问">
+                <span class="vcp-ui-icon" aria-hidden="true">chat_bubble</span>
+                <span>在侧栏提问</span>
+            </button>
             <footer class="chat-input-area vcp-ui-scope" aria-label="消息输入区">
                 <div class="chat-input-card">
                     <div class="attachment-preview-area" id="attachmentPreviewArea"></div>
@@ -607,7 +615,37 @@
             </footer>
           </main>
           <div class="resizer vcp-ui-scope" id="resizerRight"></div>
-          <aside class="notifications-sidebar vcp-ui-scope" id="notificationsSidebar">
+          <aside class="vcp-side-pane vcp-ui-scope" id="vcpSidePane" aria-label="工作区侧栏" aria-hidden="true">
+            <header class="side-pane-tab-bar">
+                <button id="sidePaneTabOverviewBtn" class="side-pane-action-btn" type="button" title="标签页概览" aria-label="标签页概览">
+                    <svg class="lucide lucide-chevrons-down" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 6 5 5 5-5"/><path d="m7 13 5 5 5-5"/></svg>
+                </button>
+                <div class="side-pane-tabs" role="tablist" aria-label="侧边栏标签页"></div>
+                <div class="side-pane-tab-actions">
+                    <button id="addSidePaneChatBtn" class="side-pane-action-btn" type="button" title="打开标签页" aria-label="打开标签页">
+                        <svg class="lucide lucide-plus" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                    </button>
+                    <button id="closeSidePaneBtn" class="side-pane-action-btn" type="button" title="收起侧边栏" aria-label="收起侧边栏">
+                        <svg class="lucide lucide-panel-right-close" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/><path d="m8 9 3 3-3 3"/></svg>
+                    </button>
+                </div>
+                <div id="sidePaneTabOverviewPopover" class="side-pane-tab-overview-popover" role="dialog" aria-label="标签页概览" hidden>
+                    <div class="side-pane-overview-search">
+                        <span class="vcp-ui-icon" aria-hidden="true">search</span>
+                        <input type="text" class="side-pane-overview-input" placeholder="搜索标签页..." aria-label="搜索标签页">
+                    </div>
+                    <div class="side-pane-overview-list" id="sidePaneOpenTabsList"></div>
+                </div>
+                <div id="sidePaneAddMenuPopover" class="side-pane-add-menu-popover" role="menu" aria-label="打开标签页" hidden></div>
+                <div id="sidePaneTabContextMenu" class="side-pane-context-menu" role="menu" aria-label="标签页操作" hidden>
+                    <button type="button" class="side-pane-menu-item" role="menuitem" data-action="close-tab">关闭当前标签页</button>
+                    <button type="button" class="side-pane-menu-item" role="menuitem" data-action="close-others">关闭其他标签页</button>
+                    <button type="button" class="side-pane-menu-item" role="menuitem" data-action="close-all">关闭所有标签页</button>
+                </div>
+            </header>
+            <div class="side-pane-content-container">
+                <section class="side-pane-view active" id="sidePaneViewNotifications" role="tabpanel" aria-label="通知视图">
+                  <aside class="notifications-sidebar vcp-ui-scope" id="notificationsSidebar">
             <header class="notifications-header">
                 <h4 id="notificationTitle" style="display: none;">VCP 通知</h4>
                 <div class="datetime-container">
@@ -708,6 +746,20 @@
                     </div>
                     <div id="appTrayDrawerGrid" class="app-tray-drawer-grid"></div>
                 </div>
+            </div>
+          </aside>
+                </section>
+                <section class="side-pane-view" id="sidePaneViewLauncher" data-tab-id="launcher" role="tabpanel" aria-label="打开标签页" hidden>
+                    <div class="side-pane-open-tab-shell">
+                        <div class="side-pane-open-tab-content">
+                            <div class="side-pane-open-tab-header">
+                                <h2 class="side-pane-open-tab-title">打开标签页</h2>
+                                <p class="side-pane-open-tab-desc">选择要在侧栏中打开的内容</p>
+                            </div>
+                            <div class="side-pane-open-tab-list"></div>
+                        </div>
+                    </div>
+                </section>
             </div>
           </aside>
         </section>

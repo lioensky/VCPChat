@@ -21,6 +21,7 @@ import { createMainChatSendOwner } from './modules/renderer/mainChatSendOwner.js
 import { createConversationTurnNavigator } from './modules/ui-system/conversation-turn-navigator.js';
 import { createChatBackToBottom } from './modules/ui-system/chat-back-to-bottom.js';
 import { createChatComposerInset } from './modules/ui-system/chat-composer-inset.js';
+import { initWorkspaceSidePane } from './modules/renderer/sidePaneWiring.js';
 
 const streamManager = createStreamProjection();
 const messageRenderer = createMessageRenderer({ streamManager });
@@ -130,6 +131,8 @@ const {
     leftSidebar, rightNotificationsSidebar, resizerLeft, resizerRight,
     agentSearchInput, notificationTitleElement, digitalClockElement,
     dateDisplayElement, toggleAssistantBtn, toggleSidebarModeBtn, openModelSelectBtn,
+    vcpSidePane, sidePaneTabs, sidePaneContentContainer,
+    toggleSidePaneChatBtn, closeSidePaneBtn, addSidePaneChatBtn,
 } = createMainChatDomBindings(document);
 // 模态框及其内部元素现在延迟加载，不再在顶层缓存引用
 let globalSettingsForm = null;
@@ -232,6 +235,7 @@ const mainChatSettingsPresentationOwner = createMainChatSettingsPresentationOwne
     elements: {
         leftSidebar,
         rightNotificationsSidebar,
+        vcpSidePane,
         vcpLogConnectionStatus: vcpLogConnectionStatusDiv,
         toggleAssistant: toggleAssistantBtn,
         toggleSidebarMode: toggleSidebarModeBtn,
@@ -295,7 +299,7 @@ const forwardMessageOwner = createForwardMessageOwner({
 ownedRendererSubscriptions.add(forwardMessageOwner);
 const showForwardModal = message => forwardMessageOwner.show(message);
 
-function createOwnedInternalChatRenderer({ root, mode = 'readonly', handleSendMessage = null, conversation = null } = {}) {
+function createOwnedInternalChatRenderer({ root, mode = 'readonly', handleSendMessage = null, conversation = null, shouldScrollToBottom = null } = {}) {
     if (!root?.querySelector) throw new TypeError('Internal chat renderer requires a Surface root');
     const conversationCapability = createSurfaceConversation({
         selectedItem: conversation?.selectedItem || currentSelectedItemRef.get(),
@@ -335,6 +339,8 @@ function createOwnedInternalChatRenderer({ root, mode = 'readonly', handleSendMe
         regexFromString: uiHelperFunctions.regexFromString,
         showToastNotification: uiHelperFunctions.showToastNotification,
         scrollToBottom() {
+            // 宿主可以按自己的贴底状态拒绝滚动（例如用户在辅助对话里往上翻时不被拉回底部）
+            if (typeof shouldScrollToBottom === 'function' && shouldScrollToBottom() === false) return;
             const scrollRoot = root.closest('.chat-messages-container') || root;
             scrollRoot.scrollTop = scrollRoot.scrollHeight;
         },
@@ -939,6 +945,7 @@ mainChatSettingsPresentationOwner.configureStartup({
                 elements: {
                     leftSidebar: document.querySelector('.sidebar'),
                     rightNotificationsSidebar: document.getElementById('notificationsSidebar'),
+                    vcpSidePane,
                     resizerLeft: document.getElementById('resizerLeft'),
                     resizerRight: document.getElementById('resizerRight'),
                     digitalClockElement: document.getElementById('digitalClock'),
@@ -951,6 +958,32 @@ mainChatSettingsPresentationOwner.configureStartup({
         } else {
             console.error('[RENDERER_INIT] uiManager module not found!');
         }
+
+        // 右侧工作区侧栏：通知 + 辅助对话
+        initWorkspaceSidePane({
+            document,
+            window,
+            elements: {
+                root: vcpSidePane,
+                resizerHandle: resizerRight,
+                tabList: sidePaneTabs,
+                contentContainer: sidePaneContentContainer,
+                toggleNotificationsBtn,
+                toggleChatBtn: toggleSidePaneChatBtn,
+                closeBtn: closeSidePaneBtn,
+                addBtn: addSidePaneChatBtn,
+            },
+            chatAPI,
+            chatRepository,
+            chatManager,
+            uiHelper: uiHelperFunctions,
+            createRenderer: createOwnedInternalChatRenderer,
+            settingsRef: mainChatSettingsOwner.ref,
+            selectedItemRef: currentSelectedItemRef,
+            topicIdRef: currentTopicIdRef,
+            historyRef: mainHistoryRef,
+            subscriptions: ownedRendererSubscriptions,
+        });
 
         // Initialize Filter Manager
         if (window.filterManager) {
