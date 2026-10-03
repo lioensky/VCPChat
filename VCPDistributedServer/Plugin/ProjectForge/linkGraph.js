@@ -10,8 +10,31 @@
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
+const { defaultRegistry: resolverRegistry } = require('./resolvers');
 
 const JS_EXT = ['.js', '.mjs', '.cjs', '.jsx', '.ts', '.mts', '.cts', '.tsx'];
+const CPP_MODULE_EXT = ['.cppm', '.ixx', '.mxx', '.cxxm'];
+const MULTI_EXT = [
+    ...JS_EXT,
+    '.c', '.h', '.cpp', '.cxx', '.cc', '.hpp', '.hxx', '.hh',
+    ...CPP_MODULE_EXT,
+    '.go', '.rs', '.py', '.java', '.cs', '.lua',
+];
+
+// 强类型语言扩展名亲和度优先寻道映射（Language Affinity Matrix）
+const LANG_AFFINITY = Object.freeze({
+    '.py': ['.py', '.pyi'],
+    '.rs': ['.rs'],
+    '.go': ['.go'],
+    '.java': ['.java'],
+    '.cs': ['.cs'],
+    '.js': ['.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx'],
+    '.ts': ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.d.ts'],
+    '.cpp': ['.cpp', '.hpp', '.cc', '.cxx', '.h', ...CPP_MODULE_EXT],
+    '.cppm': ['.cppm', '.cpp', '.hpp', '.ixx'],
+    '.c': ['.c', '.h'],
+    '.lua': ['.lua'],
+});
 const DEFAULT_ROLE_GLOBALS = Object.freeze({ chat: 'chatAPI', utility: 'utilityAPI', desktop: 'desktopAPI' });
 const COMPAT_GLOBAL = 'electronAPI';
 const LIMIT = 30;
@@ -83,7 +106,81 @@ function push(map, key, val) {
 function buildGraph(root, factsResult, decls = { status: 'absent', apis: [], roleGlobals: null }) {
     const files = new Map((factsResult?.files || []).map(f => [f.path, f]));
     const statCache = new Map();
+
+    // 性能大跃迁（Stage 3 空间哈希索引）：
+    // 1. files 集合中的文件天然真实存在，直接预热 statCache，避免百万次 fs.statSync 磁盘 I/O
+    const goDirs = new Map(); // dir -> first .go file
+    const javaDirs = new Map(); // dir -> first .java file
+    const javaClasses = new Map(); // simple class name -> file path (如 "DefaultPlugin" -> ".../DefaultPlugin.java")
+    const javaFqns = new Map(); // fully qualified class name -> file path (如 "com.vcp.plugins.impl.DefaultPlugin" -> ".../DefaultPlugin.java")
+    const virtualModules = new Map(); // ambient_module name -> defining file path (如 "vcp-virtual-kernel" -> "cataclysm/types.d.ts")
+    for (const [p, f] of files.entries()) {
+        statCache.set(p, true);
+        if (p.endsWith('.go')) {
+            const d = path.posix.dirname(p);
+            if (!goDirs.has(d)) goDirs.set(d, p);
+        } else if (p.endsWith('.java') && !p.endsWith('module-info.java')) {
+            const d = path.posix.dirname(p);
+            if (!javaDirs.has(d)) javaDirs.set(d, p);
+            const className = path.posix.basename(p, '.java');
+            if (!javaClasses.has(className)) javaClasses.set(className, p);
+            // 依据 package 路径特征智能匹配全限定类名
+            const parts = p.split('/');
+            for (let i = 0; i < parts.length - 1; i++) {
+                if (parts[i] === 'com' || parts[i] === 'org' || parts[i] === 'net' || parts[i] === 'io') {
+                    const fqn = parts.slice(i).join('.').replace(/\.java$/, '');
+                    javaFqns.set(fqn, p);
+                    break;
+                }
+            }
+        }
+        for (const g of f.globalsDefined || []) {
+            if (g.how === 'ambient_module' && g.name) {
+                virtualModules.set(g.name, p);
+            }
+        }
+    }
+
+    // 2. 高性能 go.mod 嗅探：仅检索已由索引器发现的 go.mod 或工程根目录，彻底消灭同步全盘深度扫描！
+    const goModules = new Map();
+    try {
+        const rootMod = path.join(root, 'go.mod');
+        if (fs.existsSync(rootMod)) {
+            const txt = fs.readFileSync(rootMod, 'utf8');
+            const m = /^\s*module\s+([^\s\r\n]+)/m.exec(txt);
+            if (m) goModules.set(m[1].trim(), '');
+        }
+        for (const p of files.keys()) {
+            if (p.endsWith('/go.mod') || p === 'go.mod') {
+                try {
+                    const txt = fs.readFileSync(path.join(root, ...p.split('/')), 'utf8');
+                    const m = /^\s*module\s+([^\s\r\n]+)/m.exec(txt);
+                    if (m) {
+                        const modDir = p === 'go.mod' ? '' : path.posix.dirname(p);
+                        goModules.set(m[1].trim(), modDir);
+                    }
+                } catch (_e) { /* ignore */ }
+            }
+        }
+    } catch (_e) { /* ignore */ }
+
+    // 建立已知工程文件的所有祖先目录集合（O(1) 瞬时剪枝）
+    const knownDirs = new Set(['', '.']);
+    for (const p of files.keys()) {
+        let cur = path.posix.dirname(p);
+        while (cur && cur !== '.' && !knownDirs.has(cur)) {
+            knownDirs.add(cur);
+            cur = path.posix.dirname(cur);
+        }
+    }
+
     const isFile = rel => {
+        // 纯内存 O(1) 极速短路：已知文件必为 true
+        if (files.has(rel)) return true;
+        // 剪枝 1：如果其父目录根本不在工程已知目录树中，绝不可能存在，直接 false！
+        const parentDir = path.posix.dirname(rel);
+        if (!knownDirs.has(parentDir)) return false;
+
         if (!statCache.has(rel)) {
             let ok = false;
             try { ok = fs.statSync(path.join(root, ...rel.split('/'))).isFile(); } catch (_e) { ok = false; }
@@ -91,10 +188,19 @@ function buildGraph(root, factsResult, decls = { status: 'absent', apis: [], rol
         }
         return statCache.get(rel);
     };
+    // OmniLink 架构跃迁：委托给统一的 LanguageResolver SPI 注册表进行语言自适应寻道
+    const resolverContext = {
+        isFile,
+        virtualModules,
+        javaFqns,
+        javaClasses,
+        javaDirs,
+        goDirs,
+        goModules,
+    };
+
     const resolveSpec = (fromRel, spec) => {
-        const base = path.posix.normalize(path.posix.join(path.posix.dirname(fromRel), spec));
-        if (base.startsWith('../')) return null;
-        return [base, ...JS_EXT.map(e => base + e), ...JS_EXT.map(e => `${base}/index${e}`)].find(isFile) || null;
+        return resolverRegistry.resolve(fromRel, spec, resolverContext);
     };
     const resolveSrc = (htmlRel, src) => {
         let s = String(src || '').trim().replace(/[?#].*$/, '');
@@ -105,20 +211,44 @@ function buildGraph(root, factsResult, decls = { status: 'absent', apis: [], rol
         return { rel, exists: isFile(rel), spec: src };
     };
 
-    // 模块图
+    // 模块图（Stage 4 边级自洽规范化与严格去重）
     const deps = new Map();
     const rdeps = new Map();
     const unresolvedModules = [];
+    const edgeSeen = new Set(); // 边唯一性哈希集合 `${from}->${to}:${line}:${kind}`
+
     for (const f of files.values()) {
         for (const [kind, list] of [['require', f.requires || []], ['import', f.imports || []]]) {
             for (const r of list) {
-                if (!/^\.\.?(\/|$)/.test(r.spec)) continue; // 包名 / electron 等外部依赖不入图
+                // 过滤标准库尖括号包含（如 <vector>、<iostream>）
+                if (r.spec.startsWith('<') && r.spec.endsWith('>')) continue;
                 const to = resolveSpec(f.path, r.spec);
                 if (to) {
-                    push(deps, f.path, { to, line: r.line, kind });
-                    push(rdeps, to, { path: f.path, line: r.line, kind });
+                    // 同一源文件到同一目标文件且在同一行的同类型引用，做严格边去重，彻底铲除循环依赖与多 spec 导致的多重边
+                    const edgeKey = `${f.path}->${to}:${r.line}:${kind}`;
+                    if (!edgeSeen.has(edgeKey)) {
+                        edgeSeen.add(edgeKey);
+                        push(deps, f.path, { to, line: r.line, kind });
+                        push(rdeps, to, { path: f.path, line: r.line, kind });
+                    }
                 } else {
-                    unresolvedModules.push({ path: f.path, line: r.line, spec: r.spec });
+                    // 对未在本地找到对应物理文件的相对路径引用、动态导入或虚拟模块，保留为 unresolved 边入图
+                    const isRelativeOrDynamic = /^\.\.?(\/|$)/.test(r.spec)
+                        || r.spec.endsWith('.h')
+                        || r.spec.endsWith('.hpp')
+                        || r.spec.startsWith('.')
+                        || r.spec.startsWith('virtual:')
+                        || r.spec.includes(':')
+                        || r.dynamic
+                        || f.path.endsWith('.lua');
+                    if (isRelativeOrDynamic) {
+                        unresolvedModules.push({ path: f.path, line: r.line, spec: r.spec });
+                        const unresKey = `${f.path}->unresolved:${r.spec}:${r.line}`;
+                        if (!edgeSeen.has(unresKey)) {
+                            edgeSeen.add(unresKey);
+                            push(deps, f.path, { to: r.spec, line: r.line, kind: r.dynamic ? 'dynamic_import' : `${kind} (unresolved)` });
+                        }
+                    }
                 }
             }
         }
@@ -170,6 +300,12 @@ function buildGraph(root, factsResult, decls = { status: 'absent', apis: [], rol
     const unknownBridge = [];
     const gdefs = new Map();
     const guses = new Map();
+    const ffiExports = new Map(); // name -> [{ path, line, lang }]
+    for (const f of files.values()) {
+        for (const exp of f.ffiExports || []) {
+            push(ffiExports, exp.name, { path: f.path, line: exp.line, lang: exp.lang });
+        }
+    }
     // 页面级桥接别名：经典 <script> / 内联脚本顶层的 `const api = window.utilityAPI || …`，同页其他经典脚本可直接使用
     const rootGlobals = new Set([...Object.values(roleGlobals), COMPAT_GLOBAL]);
     const pageAlias = new Map();
@@ -212,7 +348,7 @@ function buildGraph(root, factsResult, decls = { status: 'absent', apis: [], rol
     return {
         root, files, deps, rdeps, unresolvedModules, pages, membership, classic,
         registers, pushes, directCalls, dynamic, apisByName, apisByChannel, roleGlobals, roleByGlobal,
-        bridgeRefs, unknownBridge, gdefs, guses, decls: decls || { status: 'absent' },
+        bridgeRefs, unknownBridge, gdefs, guses, ffiExports, decls: decls || { status: 'absent' },
         stats: { scanned: factsResult?.scanned || 0, withFacts: files.size, pages: pages.size, truncated: Boolean(factsResult?.truncated) },
     };
 }
@@ -430,7 +566,23 @@ function tracePage(g, q) {
 
 function traceFile(g, rel) {
     const f = g.files.get(rel);
-    if (!f) return { found: false, text: `## Trace file:${rel}\n- 该文件没有可提取的链路事实（不是 JS/TS/HTML，或被忽略规则排除，或没有任何 require/IPC/全局）。`, details: { found: false } };
+    if (!f) {
+        // 兼容 go.mod 与 module-info.java 等纯模块顶层事实文件
+        try {
+            const rawAbs = path.join(g.root, ...rel.split('/'));
+            if (fs.existsSync(rawAbs)) {
+                const txt = fs.readFileSync(rawAbs, 'utf8');
+                if (txt.includes('module ')) {
+                    return {
+                        found: true,
+                        text: `## Trace file:${rel}\n### 模块声明\n- ${txt.split('\n').find(l => l.trim().startsWith('module ')) || txt.slice(0, 100)}`,
+                        details: { path: rel }
+                    };
+                }
+            }
+        } catch (_e) { /* ignore */ }
+        return { found: false, text: `## Trace file:${rel}\n- 该文件没有可提取的链路事实（或被忽略规则排除，或没有任何引用/导出/全局声明）。`, details: { found: false } };
+    }
     const ipc = f.ipc || [];
     const ch = i => i.channel ? `\`${i.channel}\`` : `⚠️ 动态 \`${i.expr}\``;
     const bridge = (f.bridge || []).map(b => {
@@ -443,24 +595,62 @@ function traceFile(g, rel) {
         `## Trace file:${rel}`,
         `### 被页面加载（${members.length}）`,
         members.join('\n') || '- 无（主进程文件、preload 或未被任何页面引用）',
-        `### 依赖（${(g.deps.get(rel) || []).length}） / 被依赖（${(g.rdeps.get(rel) || []).length}）`,
-        capped(g.deps.get(rel) || [], d => `- → \`${d.to}\` · L${d.line} · ${d.kind}`, 20),
-        capped(g.rdeps.get(rel) || [], d => `- ← \`${d.path}:${d.line}\` · ${d.kind}`, 20),
+        (() => {
+            const rawDeps = g.deps.get(rel) || [];
+            const rawRdeps = g.rdeps.get(rel) || [];
+            const normDeps = [];
+            const seenD = new Set();
+            for (const d of rawDeps) {
+                const k = `${d.to}:${d.line}:${d.kind}`;
+                if (!seenD.has(k)) { seenD.add(k); normDeps.push(d); }
+            }
+            const normRdeps = [];
+            const seenR = new Set();
+            for (const d of rawRdeps) {
+                const k = `${d.path}:${d.line}:${d.kind}`;
+                if (!seenR.has(k)) { seenR.add(k); normRdeps.push(d); }
+            }
+            return [
+                `### 依赖（${normDeps.length}） / 被依赖（${normRdeps.length}）`,
+                capped(normDeps, d => `- → \`${d.to}\` · L${d.line} · ${d.kind}`, 20),
+                capped(normRdeps, d => `- ← \`${d.path}:${d.line}\` · ${d.kind}`, 20),
+            ].join('\n');
+        })(),
         `### IPC 注册（${ipc.filter(i => i.side === 'register').length}）`,
         capped(ipc.filter(i => i.side === 'register'), i => `- ${ch(i)} · ipcMain.${i.method} · L${i.line}${i.symbol ? ` · in ${i.symbol}` : ''}`, 60),
         `### IPC 推送 / 直接调用（${ipc.filter(i => i.side !== 'register').length}）`,
         capped(ipc.filter(i => i.side !== 'register'), i => `- ${ch(i)} · ${i.side === 'push' ? i.method : `ipcRenderer.${i.method}`} · L${i.line}${i.symbol ? ` · in ${i.symbol}` : ''}`),
         `### preload 桥接调用（${bridge.length}）`,
         capped(bridge, x => x),
-        `### 全局 定义 ${(f.globalsDefined || []).filter(d => d.how === 'window' || f.kind === 'html' || g.classic.has(rel)).length} / 使用 ${(f.globalsUsed || []).length}`,
-        capped((f.globalsDefined || []).filter(d => d.how === 'window' || f.kind === 'html' || g.classic.has(rel)), d => `- 定义 \`${d.name}\` · ${d.how} · L${d.line}`, 20),
+        `### 全局 定义 ${(f.globalsDefined || []).filter(d => d.how === 'window' || d.how === 'module' || f.kind === 'html' || g.classic.has(rel)).length} / 使用 ${(f.globalsUsed || []).length}`,
+        capped((f.globalsDefined || []).filter(d => d.how === 'window' || d.how === 'module' || f.kind === 'html' || g.classic.has(rel)), d => `- 定义 \`${d.name}\` · ${d.how} · L${d.line}`, 20),
         capped(f.globalsUsed || [], u => `- 使用 \`window.${u.name}\` · L${u.line}`, 20),
         (f.exposes || []).length ? `### exposeInMainWorld\n${f.exposes.map(e => `- \`${e.name}\` · L${e.line} · 键：${e.keys.join('、') || '（非字面量对象）'}`).join('\n')}` : '',
+        (f.ffiExports || []).length ? `### FFI 导出符号声明（${f.ffiExports.length}）\n${f.ffiExports.map(e => `- \`${e.name}\` · L${e.line} · extern "C"`).join('\n')}` : '',
     ].filter(Boolean).join('\n');
     return { found: true, text, details: { path: rel, facts: f, pages: [...(g.membership.get(rel)?.keys() || [])] } };
 }
 
-const TRACE_KINDS = ['ipc', 'api', 'global', 'page', 'file'];
+function traceFfi(g, name) {
+    const hits = g.ffiExports.get(name) || [];
+    if (!hits.length) {
+        return {
+            found: false,
+            text: `## Trace ffi:${name}\n- 未找到导出名为 \`${name}\` 的 FFI 符号（需声明为 Rust \`extern "C"\` 或 C/C++ \`extern "C"\`）。`,
+            details: { found: false, name },
+        };
+    }
+    const lines = hits.map(h => `- \`${h.path}:${h.line}\` · \`${h.lang}\` · extern "C"`);
+    const text = [
+        `## Trace ffi:${name}`,
+        `### FFI 导出符号声明（${hits.length} 处）`,
+        lines.join('\n'),
+    ].join('\n');
+    return { found: true, text, details: { found: true, name, hits } };
+}
+
+const TRACE_KINDS = ['ipc', 'api', 'global', 'page', 'file', 'ffi'];
+exports.TRACE_KINDS = TRACE_KINDS;
 
 function parseTarget(raw) {
     const m = /^\s*([a-z]+)\s*:\s*(.+?)\s*$/i.exec(String(raw || ''));
@@ -473,6 +663,7 @@ function trace(g, kind, value) {
     if (kind === 'global') return traceGlobal(g, value.replace(/^window\./, ''));
     if (kind === 'page') return tracePage(g, value);
     if (kind === 'file') return traceFile(g, value);
+    if (kind === 'ffi') return traceFfi(g, value);
     throw new Error(`未知 Trace 类型：${kind}`);
 }
 

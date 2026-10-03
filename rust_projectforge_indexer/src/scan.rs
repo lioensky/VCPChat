@@ -19,8 +19,8 @@ use rayon::prelude::*;
 use serde::Serialize;
 use tree_sitter::Parser;
 
-use crate::facts::{html_facts, js_facts, FileFacts};
-use crate::lang::{Family, Lang};
+use crate::facts::{extract_facts, html_facts, FileFacts};
+use crate::lang::Lang;
 use crate::symbols::{outline, Outline, Symbol};
 
 pub const DEFAULT_IGNORED_DIRS: &[&str] = &[
@@ -72,20 +72,24 @@ pub struct Cache {
     facts: HashMap<PathBuf, FactsEntry>,
 }
 
-/// facts 扫描的文件类别：JS 族源码或 HTML 页面。
+/// facts 扫描的文件类别：源码文件或 HTML 页面。
 #[derive(Clone, Copy)]
 enum FactKind {
-    Js(Lang),
+    Source(Lang),
     Html,
 }
 
 fn fact_kind(path: &Path) -> Option<FactKind> {
+    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+        if name == "go.mod" {
+            return Some(FactKind::Source(Lang::Go));
+        }
+    }
     let ext = path.extension()?.to_str()?.to_ascii_lowercase();
     if ext == "html" || ext == "htm" {
         return Some(FactKind::Html);
     }
-    let lang = Lang::from_name(&ext)?;
-    (lang.family() == Family::Js).then_some(FactKind::Js(lang))
+    Lang::from_name(&ext).map(FactKind::Source)
 }
 
 #[derive(Debug, Serialize)]
@@ -270,7 +274,7 @@ impl Cache {
                 let bytes = fs::read(&path).ok()?;
                 let text = String::from_utf8_lossy(&bytes);
                 let facts = match kind {
-                    FactKind::Js(lang) => js_facts(lang, &text, parser, bridge).ok()?,
+                    FactKind::Source(lang) => extract_facts(lang, &text, parser, bridge, Some(&path)).ok()?,
                     FactKind::Html => html_facts(&text, parser, bridge),
                 };
                 Some((path, FactsEntry { mtime_ms: m, size: s, bridge_key: bridge_key.clone(), facts: Arc::new(facts) }))
@@ -285,10 +289,10 @@ impl Cache {
             fresh.push((path.clone(), entry.facts.clone()));
             self.facts.insert(path, entry);
         }
+        // 保留无出边孤立源文件作为合法图顶点（Vertex），确保反向被依赖能正确解析到目标文件
         let mut out: Vec<FactsFile> = fresh
             .into_iter()
-            .filter(|(_, f)| !f.is_empty())
-            .map(|(p, f)| FactsFile { path: to_posix(root, &p), facts: (*f).clone() })
+            .map(|(ref p, ref f)| FactsFile { path: to_posix(root, p.as_path()), facts: (**f).clone() })
             .collect();
         out.sort_by(|a, b| a.path.cmp(&b.path));
         Ok(FactsResult { files: out, scanned, parsed: parsed_count, truncated })

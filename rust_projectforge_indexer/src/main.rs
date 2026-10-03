@@ -106,7 +106,7 @@ fn handle(state: &mut State, method: &str, params: &Value) -> Result<Value, Fail
             let root = str_param(params, "root").ok_or_else(|| fail("INVALID_PARAMS", "facts 需要 root"))?;
             let mut bridge = str_list(params, "bridgeGlobals");
             if bridge.is_empty() {
-                bridge = facts::DEFAULT_BRIDGE_GLOBALS.iter().map(|s| s.to_string()).collect();
+                bridge = facts::DEFAULT_BRIDGE_GLOBALS.iter().map(|&s| s.to_string()).collect();
             }
             let r = state
                 .cache
