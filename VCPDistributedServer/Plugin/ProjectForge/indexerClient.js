@@ -27,6 +27,13 @@ const SUPPORTED_EXT = new Map([
     ['.js', 'javascript'], ['.mjs', 'javascript'], ['.cjs', 'javascript'], ['.jsx', 'javascript'],
     ['.ts', 'typescript'], ['.mts', 'typescript'], ['.cts', 'typescript'], ['.tsx', 'tsx'],
     ['.py', 'python'], ['.pyi', 'python'], ['.rs', 'rust'],
+    ['.c', 'c'],
+    ['.h', 'cpp'], ['.cpp', 'cpp'], ['.cxx', 'cpp'], ['.cc', 'cpp'], ['.cppm', 'cpp'], ['.ixx', 'cpp'],
+    ['.hpp', 'cpp'], ['.hxx', 'cpp'], ['.hh', 'cpp'],
+    ['.go', 'go'],
+    ['.java', 'java'],
+    ['.cs', 'csharp'],
+    ['.lua', 'lua'],
 ]);
 
 function langOf(filePath) {

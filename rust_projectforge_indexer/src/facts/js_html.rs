@@ -1,181 +1,13 @@
-//! 链路事实提取（P3）：对 JS/TS/TSX 文件与 HTML 页面提取"语言层面"的事实，不做任何跨文件推断。
-//!
-//! JS/TS/TSX：
-//! - `requires` / `imports`：`require('x')`、`import … from 'x'`、`export … from 'x'`、`import('x')`；
-//! - `ipc`：`ipcMain.handle|handleOnce|on|once`（register）、`ipcRenderer.invoke|send|sendSync|on|once|sendToHost|postMessage`（call）、
-//!   `*.webContents.send` / `*.sender.send` / `event.reply`（push）。通道参数按字面量 → 同文件常量（`const CH = {…}` / `Object.freeze`）→ dynamic 解析；
-//! - `bridge`：preload 桥接全局（默认 chatAPI / utilityAPI / desktopAPI / electronAPI，可由调用方传入）的成员访问，含 `window.chatAPI.x`；
-//! - `globalsDefined`：`window.X = …` / `globalThis.X = …`，以及顶层 function / class / var / let / const（是否真为全局由调用方按 script 类型判断）；
-//! - `globalsUsed`：`window.X` / `globalThis.X` 的读取（不含赋值左值）；
-//! - `exposes`：`contextBridge.exposeInMainWorld('name', { … })` 的名字与键。
-//!
-//! HTML：按出现顺序列出 `<script>`（src / module / inline），忽略 HTML 注释中的脚本；内联脚本按 JS 提取事实，行号换算为 HTML 文件行号。
-//!
-//! 行号 1 起算，基于去 BOM、LF 归一化后的文本（与 outline 口径一致）；`symbol` 为包含该行的最内层符号限定名。
-
 use std::collections::HashMap;
 
-use serde::Serialize;
 use tree_sitter::{Node, Parser};
 
+use crate::facts::types::{
+    dfs, BridgeAlias, Expose, FileFacts, GlobalDef, IpcFact, MemberRef, ModuleRef, ScriptTag,
+    MAX_EXPR_CHARS, WINDOW_NAMES,
+};
 use crate::lang::Lang;
 use crate::symbols::{normalize_source, outline_from_tree, parse, Symbol};
-
-pub const DEFAULT_BRIDGE_GLOBALS: &[&str] = &["chatAPI", "utilityAPI", "desktopAPI", "electronAPI"];
-const WINDOW_NAMES: &[&str] = &["window", "globalThis"];
-const MAX_EXPR_CHARS: usize = 80;
-
-fn is_false(b: &bool) -> bool {
-    !*b
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ModuleRef {
-    pub spec: String,
-    pub line: usize,
-    #[serde(skip_serializing_if = "is_false")]
-    pub dynamic: bool,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct IpcFact {
-    /// register / call / push
-    pub side: &'static str,
-    pub method: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub channel: Option<String>,
-    /// literal / const / dynamic
-    pub via: &'static str,
-    /// const 时为常量名，dynamic 时为参数表达式（截断）
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub expr: Option<String>,
-    pub line: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub symbol: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MemberRef {
-    pub object: String,
-    /// 经局部别名访问时的别名（`const api = window.utilityAPI || window.electronAPI` → `api`）
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub alias: Option<String>,
-    pub name: String,
-    pub line: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub symbol: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GlobalDef {
-    pub name: String,
-    /// window / function / class / var / let / const
-    pub how: &'static str,
-    pub line: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub symbol: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BridgeAlias {
-    pub name: String,
-    pub object: String,
-    pub line: usize,
-    /// 模块顶层声明（经典 <script> 中即为页面级全局别名，可被同页其他脚本使用）
-    #[serde(skip_serializing_if = "is_false")]
-    pub top_level: bool,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Expose {
-    pub name: String,
-    pub keys: Vec<String>,
-    pub line: usize,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ScriptTag {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub src: Option<String>,
-    #[serde(skip_serializing_if = "is_false")]
-    pub module: bool,
-    #[serde(skip_serializing_if = "is_false")]
-    pub inline: bool,
-    pub line: usize,
-}
-
-#[derive(Debug, Clone, Default, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FileFacts {
-    /// 语言名或 "html"
-    pub kind: &'static str,
-    #[serde(skip_serializing_if = "is_false")]
-    pub has_error: bool,
-    pub requires: Vec<ModuleRef>,
-    pub imports: Vec<ModuleRef>,
-    pub ipc: Vec<IpcFact>,
-    pub bridge: Vec<MemberRef>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub bridge_aliases: Vec<BridgeAlias>,
-    pub globals_defined: Vec<GlobalDef>,
-    pub globals_used: Vec<MemberRef>,
-    pub exposes: Vec<Expose>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub scripts: Vec<ScriptTag>,
-}
-
-impl FileFacts {
-    pub fn is_empty(&self) -> bool {
-        self.requires.is_empty()
-            && self.imports.is_empty()
-            && self.ipc.is_empty()
-            && self.bridge.is_empty()
-            && self.bridge_aliases.is_empty()
-            && self.globals_defined.is_empty()
-            && self.globals_used.is_empty()
-            && self.exposes.is_empty()
-            && self.scripts.is_empty()
-    }
-
-    fn merge(&mut self, o: FileFacts) {
-        self.has_error |= o.has_error;
-        self.requires.extend(o.requires);
-        self.imports.extend(o.imports);
-        self.ipc.extend(o.ipc);
-        self.bridge.extend(o.bridge);
-        self.bridge_aliases.extend(o.bridge_aliases);
-        self.globals_defined.extend(o.globals_defined);
-        self.globals_used.extend(o.globals_used);
-        self.exposes.extend(o.exposes);
-        self.scripts.extend(o.scripts);
-    }
-}
-
-/// 非递归先序遍历（TreeCursor），不受语法树深度影响。
-fn dfs<'t>(root: Node<'t>, mut f: impl FnMut(Node<'t>)) {
-    let mut cursor = root.walk();
-    loop {
-        f(cursor.node());
-        if cursor.goto_first_child() {
-            continue;
-        }
-        loop {
-            if cursor.goto_next_sibling() {
-                break;
-            }
-            if !cursor.goto_parent() {
-                return;
-            }
-        }
-    }
-}
 
 fn squeeze(s: &str) -> String {
     s.split_whitespace().collect::<String>().replace("?.", ".")
@@ -183,10 +15,9 @@ fn squeeze(s: &str) -> String {
 
 fn nth_arg<'t>(args: Node<'t>, n: usize) -> Option<Node<'t>> {
     let mut cursor = args.walk();
-    let found = args.named_children(&mut cursor).filter(|k| k.kind() != "comment").nth(n);
-    found
+    let res = args.named_children(&mut cursor).filter(|k| k.kind() != "comment").nth(n);
+    res
 }
-
 fn enclosing_fn(n: Node) -> Option<Node> {
     let mut cur = n.parent();
     while let Some(p) = cur {
@@ -206,11 +37,8 @@ struct Walker<'a> {
     bridge: &'a [String],
     symbols: &'a [Symbol],
     consts: HashMap<String, String>,
-    /// 别名 → 根桥接全局
     aliases: HashMap<String, String>,
-    /// 转发包装函数名 → (side, method, 通道参数下标)
     wrappers: HashMap<String, (&'static str, String, usize)>,
-    /// 包装函数内部的透传记录：(ipc 下标, 包装函数名, 参数表达式)；包装函数未被字面量调用时降级为 dynamic
     pending_params: Vec<(usize, String, String)>,
     offset: usize,
     out: FileFacts,
@@ -225,7 +53,6 @@ impl<'a> Walker<'a> {
         self.bridge.iter().any(|b| b == s)
     }
 
-    /// (文件行号, 包含该行的最内层符号限定名)
     fn at(&self, n: Node) -> (usize, Option<String>) {
         let local = n.start_position().row + 1;
         let symbol = self
@@ -269,7 +96,6 @@ impl<'a> Walker<'a> {
         value
     }
 
-    /// 桥接根：`chatAPI` / `window.chatAPI` / `a || b` / `a ?? b`（取第一个可识别的桥接全局）。
     fn bridge_root(&self, mut n: Node) -> Option<String> {
         while n.kind() == "parenthesized_expression" {
             let mut c = n.walk();
@@ -295,7 +121,6 @@ impl<'a> Walker<'a> {
         }
     }
 
-    /// 同文件字符串常量：`const CH = 'x'`、`const CHANNELS = { A: 'x' }`（含 Object.freeze）；同时收集桥接别名。
     fn collect_consts(&mut self, root: Node) {
         let mut consts = HashMap::new();
         let mut aliases = HashMap::new();
@@ -380,7 +205,6 @@ impl<'a> Walker<'a> {
             .map(|n| self.text(n).to_string())
     }
 
-    /// 通道参数是外层函数的形参：记为包装函数，返回其名字。
     fn forwarding(&self, call: Node, arg: Node) -> Option<(String, usize)> {
         if arg.kind() != "identifier" {
             return None;
@@ -390,7 +214,6 @@ impl<'a> Walker<'a> {
         Some((self.fn_name(f)?, idx))
     }
 
-    /// 同文件对包装函数的调用：`handle('git:status', fn)` → register。
     fn wrapper_calls(&mut self, root: Node) {
         if self.wrappers.is_empty() {
             return;
@@ -645,7 +468,51 @@ fn facts_from_tree(source: &str, root: Node, symbols: &[Symbol], bridge: &[Strin
     };
     w.collect_consts(root);
     w.top_level(root);
-    dfs(root, |n| w.visit(n));
+    dfs(root, |n| {
+        let k = n.kind();
+        if k == "comment" {
+            let txt = std::str::from_utf8(&source.as_bytes()[n.start_byte()..n.end_byte()]).unwrap_or("").trim();
+            if txt.starts_with("///") && txt.contains("<reference") && txt.contains("path=") {
+                if let Some(p_start) = txt.find("path=") {
+                    let after = &txt[p_start + 5..];
+                    let quote = after.chars().next().unwrap_or('"');
+                    if quote == '"' || quote == '\'' {
+                        let rem = &after[1..];
+                        if let Some(p_end) = rem.find(quote) {
+                            let ref_path = &rem[..p_end];
+                            if !ref_path.is_empty() {
+                                w.out.imports.push(ModuleRef {
+                                    spec: ref_path.to_string(),
+                                    line: n.start_position().row + 1 + offset,
+                                    dynamic: false,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        } else if k == "ambient_declaration" || k == "module" {
+            let txt = std::str::from_utf8(&source.as_bytes()[n.start_byte()..n.end_byte()]).unwrap_or("").trim();
+            if txt.starts_with("declare module") {
+                if let Some(first_quote) = txt.find('"').or_else(|| txt.find('\'')) {
+                    let quote_char = txt.chars().nth(first_quote).unwrap();
+                    let after = &txt[first_quote + 1..];
+                    if let Some(end_quote) = after.find(quote_char) {
+                        let vmod = &after[..end_quote];
+                        if !vmod.is_empty() {
+                            w.out.globals_defined.push(GlobalDef {
+                                name: vmod.to_string(),
+                                how: "ambient_module",
+                                line: n.start_position().row + 1 + offset,
+                                symbol: None,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        w.visit(n);
+    });
     w.wrapper_calls(root);
     w.out.has_error = root.has_error();
     w.out
@@ -662,8 +529,6 @@ pub fn js_facts(lang: Lang, raw: &str, parser: &mut Parser, bridge: &[String]) -
     Ok(facts)
 }
 
-// ---------------- HTML ----------------
-
 fn find(hay: &[u8], needle: &[u8]) -> Option<usize> {
     if needle.is_empty() || hay.len() < needle.len() {
         return None;
@@ -675,7 +540,6 @@ fn line_at(bytes: &[u8], idx: usize) -> usize {
     bytes[..idx.min(bytes.len())].iter().filter(|&&b| b == b'\n').count() + 1
 }
 
-/// 把 `<!-- … -->` 内容替换为空格（保留换行，字节长度不变）。
 fn mask_comments(bytes: &[u8]) -> Vec<u8> {
     let mut out = bytes.to_vec();
     let mut pos = 0;
@@ -782,126 +646,4 @@ pub fn html_facts(raw: &str, parser: &mut Parser, bridge: &[String]) -> FileFact
         pos = (close + 8).min(lower.len());
     }
     out
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn bridge() -> Vec<String> {
-        DEFAULT_BRIDGE_GLOBALS.iter().map(|s| s.to_string()).collect()
-    }
-
-    fn ipc<'f>(f: &'f FileFacts, side: &str) -> Vec<&'f IpcFact> {
-        f.ipc.iter().filter(|i| i.side == side).collect()
-    }
-
-    #[test]
-    fn js_ipc_modules_bridge_and_globals() {
-        let src = "const { ipcMain } = require('electron');
-const helper = require('./helper');
-import x from '../x.js';
-const CHANNELS = Object.freeze({ READY: 'window-ready' });
-function register(win) {
-    ipcMain.handle('save-settings', async () => 1);
-    ipcMain.on(CHANNELS.READY, () => {});
-    ipcMain.handle(`tpl-ch`, () => {});
-    ipcMain.handle(dyn, () => {});
-    win.webContents.send('settings-changed', 1);
-}
-async function renderer(ch) {
-    await window.chatAPI.saveSettings({});
-    electronAPI.onThemeUpdated(() => {});
-    window.messageRenderer = { init() {} };
-    window.messageRenderer.init();
-    ipcRenderer.invoke(ch);
-    const m = await import('./lazy.js');
-}
-contextBridge.exposeInMainWorld('myAPI', { a: 1, b() {}, c });
-";
-        let mut p = Parser::new();
-        let f = js_facts(Lang::JavaScript, src, &mut p, &bridge()).unwrap();
-        assert_eq!(f.requires.iter().map(|r| r.spec.as_str()).collect::<Vec<_>>(), ["electron", "./helper"]);
-        assert_eq!(f.imports.len(), 2);
-        assert!(f.imports.iter().any(|i| i.spec == "./lazy.js" && i.dynamic));
-
-        let reg = ipc(&f, "register");
-        assert_eq!(reg.len(), 4);
-        assert_eq!((reg[0].channel.as_deref(), reg[0].via, reg[0].line), (Some("save-settings"), "literal", 6));
-        assert_eq!(reg[0].symbol.as_deref(), Some("register"));
-        assert_eq!((reg[1].channel.as_deref(), reg[1].via, reg[1].expr.as_deref()), (Some("window-ready"), "const", Some("CHANNELS.READY")));
-        assert_eq!(reg[2].channel.as_deref(), Some("tpl-ch"));
-        assert_eq!((reg[3].channel.as_deref(), reg[3].via), (None, "dynamic"));
-        let push = ipc(&f, "push");
-        assert_eq!((push[0].channel.as_deref(), push[0].line), (Some("settings-changed"), 10));
-        let call = ipc(&f, "call");
-        assert_eq!((call[0].via, call[0].expr.as_deref()), ("dynamic", Some("ch")));
-
-        let names: Vec<_> = f.bridge.iter().map(|b| (b.object.as_str(), b.name.as_str())).collect();
-        assert_eq!(names, [("chatAPI", "saveSettings"), ("electronAPI", "onThemeUpdated")]);
-        assert!(f.globals_defined.iter().any(|g| g.name == "messageRenderer" && g.how == "window" && g.line == 15));
-        assert!(f.globals_defined.iter().any(|g| g.name == "register" && g.how == "function"));
-        assert!(f.globals_defined.iter().any(|g| g.name == "CHANNELS" && g.how == "const"));
-        assert_eq!(f.globals_used.iter().map(|g| (g.name.as_str(), g.line)).collect::<Vec<_>>(), [("messageRenderer", 16)]);
-        assert_eq!(f.exposes[0].name, "myAPI");
-        assert_eq!(f.exposes[0].keys, ["a", "b", "c"]);
-    }
-
-    #[test]
-    fn bridge_aliases_and_forwarding_wrappers() {
-        let src = "const api = window.utilityAPI || window.electronAPI;
-const electronAPI = window.chatAPI;
-const result = chatAPI.watcherBegin;
-function handle(channel, fn) {
-    ipcMain.handle(channel, async (event, ...args) => fn(...args));
-}
-const sendTo = (win, ch, data) => win.webContents.send(ch, data);
-function register() {
-    handle('git:status', () => 1);
-    sendTo(win, 'git:changed', 1);
-    handle(someVar, () => 1);
-}
-api.projectForgeListProjects({});
-electronAPI.saveSettings();
-result.x;
-";
-        let mut p = Parser::new();
-        let f = js_facts(Lang::JavaScript, src, &mut p, &bridge()).unwrap();
-        assert_eq!(
-            f.bridge_aliases.iter().map(|a| (a.name.as_str(), a.object.as_str(), a.top_level)).collect::<Vec<_>>(),
-            [("api", "utilityAPI", true), ("electronAPI", "chatAPI", true)]
-        );
-        let b: Vec<_> = f.bridge.iter().map(|b| (b.object.as_str(), b.alias.as_deref(), b.name.as_str())).collect();
-        assert_eq!(b, [
-            ("chatAPI", None, "watcherBegin"),
-            ("utilityAPI", Some("api"), "projectForgeListProjects"),
-            ("chatAPI", Some("electronAPI"), "saveSettings"),
-        ]);
-        let reg = ipc(&f, "register");
-        assert_eq!(reg.iter().map(|i| (i.channel.as_deref(), i.via)).collect::<Vec<_>>(), [
-            (None, "param"),
-            (Some("git:status"), "wrapper"),
-            (None, "dynamic"),
-        ]);
-        assert_eq!((reg[1].line, reg[1].method.as_str(), reg[1].symbol.as_deref()), (9, "handle", Some("register")));
-        let push = ipc(&f, "push");
-        assert!(push.iter().any(|i| i.channel.as_deref() == Some("git:changed") && i.via == "wrapper" && i.line == 10));
-    }
-
-    #[test]
-    fn html_scripts_in_order_with_inline_facts() {
-        let src = "\u{feff}<!doctype html>\r\n<html><head>\r\n<!-- <script src=\"old.js\"></script> -->\r\n<script src=\"a.js\"></script>\r\n<script type=\"module\" src='./b.mjs' defer></script>\r\n<script>\r\n  window.inlineGlobal = 1;\r\n  chatAPI.ping();\r\n</script>\r\n<script type=\"text/template\"><div></div></script>\r\n<SCRIPT SRC=c.js></SCRIPT>\r\n</head></html>\r\n";
-        let mut p = Parser::new();
-        let f = html_facts(src, &mut p, &bridge());
-        let order: Vec<_> = f.scripts.iter().map(|s| (s.src.as_deref(), s.module, s.inline, s.line)).collect();
-        assert_eq!(order, [
-            (Some("a.js"), false, false, 4),
-            (Some("./b.mjs"), true, false, 5),
-            (None, false, true, 6),
-            (Some("c.js"), false, false, 11),
-        ]);
-        assert_eq!(f.globals_defined[0].name, "inlineGlobal");
-        assert_eq!(f.globals_defined[0].line, 7);
-        assert_eq!((f.bridge[0].name.as_str(), f.bridge[0].line), ("ping", 8));
-    }
 }
