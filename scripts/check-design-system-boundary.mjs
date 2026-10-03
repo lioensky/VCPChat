@@ -196,6 +196,7 @@ const allowedSourceDifferences = new Set([
     'scripts/check-theme-provenance.mjs',
     'tests/message-regeneration-stream-animation.test.js',
     'tests/topic-summary-model.test.mjs',
+    'tests/ui-helper-chat-scroll-follow.test.js',
     'tests/ui-helpers-settings-close.test.js',
     'tests/vcpchat-installer-contract.test.mjs',
     'tests/visibility-optimizer-height-batch.test.mjs',
@@ -418,6 +419,9 @@ const allowedSourceDifferencePatterns = [
     /^modules\/ui-system\/vcp-icons(?:\.MIT)?\.(?:js|txt)$/,
     /^styles\/(?:base|messageRenderer)\.css$/,
     /^tests\/notification-menu-controller\.test\.js$/,
+    // Conversation navigation: turn navigator rail, back-to-bottom button, composer overlay.
+    /^modules\/ui-system\/(?:conversation-turn-navigator|chat-back-to-bottom|chat-composer-inset)\.js$/,
+    /^tests\/(?:conversation-turn-navigator|chat-back-to-bottom|chat-composer-inset)\.test\.mjs$/,
     /^docs\/(?:global-settings-section-ownership|settings-ui-pr-scope-2026-08-31)\.md$/,
     /^docs\/research\/settings-schema-render-plan\.md$/,
     /^docs\/archive\/2026-08-chat-kernel-and-ui-roadmaps\//,

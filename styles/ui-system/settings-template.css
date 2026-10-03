@@ -2433,11 +2433,13 @@
     }
 }
 
-/* Bubble-only options are appearance-owned rows, but their switch belongs in
-   the trailing control column like every other setting row.  The appearance
-   feature's vertical stack remains unchanged for its other rows. */
+/* Bubble-only options and the turn navigator toggle are appearance-owned
+   rows, but their switch belongs in the trailing control column like every
+   other setting row.  The appearance feature's vertical stack remains
+   unchanged for its other rows. */
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-appearance-row:has(#enableUserChatBubbleUi),
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-appearance-row:has(#showUserMetaInChatBubbleUi) {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-appearance-row:has(#showUserMetaInChatBubbleUi),
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-appearance-row:has(#enableTurnNavigator) {
     display: grid !important;
     grid-template-columns: minmax(0, 1fr) auto !important;
     align-items: center !important;
@@ -2446,14 +2448,16 @@
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-appearance-row:has(#enableUserChatBubbleUi) > div,
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-appearance-row:has(#showUserMetaInChatBubbleUi) > div {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-appearance-row:has(#showUserMetaInChatBubbleUi) > div,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-appearance-row:has(#enableTurnNavigator) > div {
     grid-column: 1;
     grid-row: 1;
     min-width: 0;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-appearance-row:has(#enableUserChatBubbleUi) > .switch,
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-appearance-row:has(#showUserMetaInChatBubbleUi) > .switch {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-appearance-row:has(#showUserMetaInChatBubbleUi) > .switch,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-appearance-row:has(#enableTurnNavigator) > .switch {
     grid-column: 2;
     grid-row: 1;
     justify-self: end;

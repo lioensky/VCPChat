@@ -326,9 +326,12 @@
     "modules/ui-system/appearance-studio.js",
     "modules/ui-system/ask-nova-modal.js",
     "modules/ui-system/avatar-picker.js",
+    "modules/ui-system/chat-back-to-bottom.js",
+    "modules/ui-system/chat-composer-inset.js",
     "modules/ui-system/component-manifest.js",
     "modules/ui-system/component-showcase.js",
     "modules/ui-system/contribution-registry.js",
+    "modules/ui-system/conversation-turn-navigator.js",
     "modules/ui-system/interactive-chat-app.js",
     "modules/ui-system/lifecycle-inspector.js",
     "modules/ui-system/lifecycle-scope.js",
@@ -3035,6 +3038,11 @@
       ],
       "consumers": [
         {
+          "file": "renderer.js",
+          "line": 662,
+          "kind": "custom-event-listener"
+        },
+        {
           "file": "modules/event-listeners.js",
           "line": 586,
           "kind": "custom-event-listener"
@@ -3061,6 +3069,12 @@
         }
       ],
       "evidence": [
+        {
+          "file": "renderer.js",
+          "line": 662,
+          "kind": "custom-event-listener",
+          "match": "addEventListener('global-settings-updated'"
+        },
         {
           "file": "modules/event-listeners.js",
           "line": 586,
@@ -4509,7 +4523,7 @@
       "producers": [
         {
           "file": "modules/ui-helpers.js",
-          "line": 599,
+          "line": 639,
           "kind": "custom-event-dispatch"
         }
       ],
@@ -4567,7 +4581,7 @@
         },
         {
           "file": "modules/ui-helpers.js",
-          "line": 599,
+          "line": 639,
           "kind": "custom-event-dispatch",
           "match": "dispatchEvent(new CustomEvent('modal-ready'"
         },
@@ -4584,12 +4598,12 @@
       "producers": [
         {
           "file": "modules/ui-helpers.js",
-          "line": 608,
+          "line": 648,
           "kind": "custom-event-dispatch"
         },
         {
           "file": "modules/ui-helpers.js",
-          "line": 630,
+          "line": 670,
           "kind": "custom-event-dispatch"
         }
       ],
@@ -4613,13 +4627,13 @@
       "evidence": [
         {
           "file": "modules/ui-helpers.js",
-          "line": 608,
+          "line": 648,
           "kind": "custom-event-dispatch",
           "match": "dispatchEvent(new CustomEvent('modal-visibility-changed'"
         },
         {
           "file": "modules/ui-helpers.js",
-          "line": 630,
+          "line": 670,
           "kind": "custom-event-dispatch",
           "match": "dispatchEvent(new CustomEvent('modal-visibility-changed'"
         },
@@ -5124,7 +5138,7 @@
       "consumers": [
         {
           "file": "renderer.js",
-          "line": 602,
+          "line": 606,
           "kind": "preload-subscription"
         },
         {
@@ -5136,7 +5150,7 @@
       "evidence": [
         {
           "file": "renderer.js",
-          "line": 602,
+          "line": 606,
           "kind": "preload-subscription",
           "match": "onStreamingEventConsumer("
         },
@@ -5914,14 +5928,14 @@
       "consumers": [
         {
           "file": "modules/ui-helpers.js",
-          "line": 347,
+          "line": 359,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-helpers.js",
-          "line": 347,
+          "line": 359,
           "kind": "custom-event-listener",
           "match": "addEventListener('pointercancel'"
         }
@@ -7476,14 +7490,14 @@
       "consumers": [
         {
           "file": "modules/ui-helpers.js",
-          "line": 335,
+          "line": 347,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-helpers.js",
-          "line": 335,
+          "line": 347,
           "kind": "custom-event-listener",
           "match": "addEventListener('touchcancel'"
         }
@@ -7635,7 +7649,7 @@
       "producers": [
         {
           "file": "renderer.js",
-          "line": 261,
+          "line": 265,
           "kind": "custom-event-dispatch"
         }
       ],
@@ -7649,7 +7663,7 @@
       "evidence": [
         {
           "file": "renderer.js",
-          "line": 261,
+          "line": 265,
           "kind": "custom-event-dispatch",
           "match": "dispatchEvent(new CustomEvent('vcp-appearance-studio-configure'"
         },
@@ -7666,7 +7680,7 @@
       "producers": [
         {
           "file": "renderer.js",
-          "line": 251,
+          "line": 255,
           "kind": "custom-event-dispatch"
         }
       ],
@@ -7680,7 +7694,7 @@
       "evidence": [
         {
           "file": "renderer.js",
-          "line": 251,
+          "line": 255,
           "kind": "custom-event-dispatch",
           "match": "dispatchEvent(new CustomEvent('vcp-appearance-studio-dispose'"
         },
@@ -7716,7 +7730,7 @@
       "producers": [
         {
           "file": "renderer.js",
-          "line": 571,
+          "line": 575,
           "kind": "custom-event-dispatch"
         }
       ],
@@ -7724,7 +7738,7 @@
       "evidence": [
         {
           "file": "renderer.js",
-          "line": 571,
+          "line": 575,
           "kind": "custom-event-dispatch",
           "match": "dispatchEvent(new CustomEvent('vcp-chat-stream-terminal'"
         }
@@ -8014,7 +8028,7 @@
       "producers": [
         {
           "file": "renderer.js",
-          "line": 802,
+          "line": 837,
           "kind": "custom-event-dispatch"
         }
       ],
@@ -8028,7 +8042,7 @@
       "evidence": [
         {
           "file": "renderer.js",
-          "line": 802,
+          "line": 837,
           "kind": "custom-event-dispatch",
           "match": "dispatchEvent(new CustomEvent('vcp-main-chat-commands-configure'"
         },
@@ -8045,7 +8059,7 @@
       "producers": [
         {
           "file": "renderer.js",
-          "line": 981,
+          "line": 1016,
           "kind": "custom-event-dispatch"
         }
       ],
@@ -8053,7 +8067,7 @@
       "evidence": [
         {
           "file": "renderer.js",
-          "line": 981,
+          "line": 1016,
           "kind": "custom-event-dispatch",
           "match": "dispatchEvent(new CustomEvent('vcp-renderer-ready'"
         }
