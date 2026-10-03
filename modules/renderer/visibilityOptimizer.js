@@ -400,21 +400,25 @@ function rememberMessageHeightLater(messageItem) {
 }
 
 function flushHeightMemory(generation) {
+    // 先取出本批次，测量或回写期间新登记的工作留到下一帧。
+    const pending = [...pendingHeightMemory];
+    pendingHeightMemory.clear();
     const measured = [];
-    for (const messageItem of pendingHeightMemory) {
+    for (const messageItem of pending) {
+        if (generation !== heightMemoryGeneration) break;
         if (!ownsHeightMemory(messageItem)) continue;
+        const registration = messageAnimationStates.get(messageItem);
         let height = 0;
         try {
             height = messageItem.offsetHeight;
         } catch (e) {
             height = 0;
         }
-        measured.push([messageItem, height]);
+        measured.push([messageItem, height, registration]);
     }
-    pendingHeightMemory.clear();
-    for (const [messageItem, height] of measured) {
+    for (const [messageItem, height, registration] of measured) {
         if (generation !== heightMemoryGeneration) break;
-        if (ownsHeightMemory(messageItem)) applyMessageHeight(messageItem, height);
+        if (ownsHeightMemory(messageItem) && messageAnimationStates.get(messageItem) === registration) applyMessageHeight(messageItem, height);
     }
 }
 
