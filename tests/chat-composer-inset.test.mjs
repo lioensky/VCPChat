@@ -91,3 +91,28 @@ test('leaves the layout alone without the chat shell', () => {
     control.dispose();
     dom.window.close();
 });
+
+
+test('fade background is a sibling, aligned to its source and cleaned up on dispose', () => {
+    const shell = makeShell();
+    shell.main.style.backgroundImage = 'linear-gradient(red, blue)';
+    shell.main.style.backgroundSize = 'cover';
+    shell.main.getBoundingClientRect = () => ({ left: 30, top: 40, width: 800, height: 600 });
+    const control = createChatComposerInset({ document: shell.doc, uiHelper: shell.uiHelper });
+    control.mount();
+    const fade = shell.main.querySelector('.vcp-chat-composer-backdrop-fade');
+    assert.equal(fade.parentElement, shell.scroller.parentElement);
+    assert.equal(fade.nextElementSibling, shell.dock);
+    assert.equal(fade.contains(shell.scroller), false);
+    assert.equal(fade.getAttribute('aria-hidden'), 'true');
+    const plane = fade.lastElementChild;
+    assert.equal(plane.style.backgroundImage, 'linear-gradient(red, blue)');
+    assert.equal(plane.style.width, '800px');
+    assert.equal(plane.style.left, '0px');
+    shell.main.style.backgroundImage = 'linear-gradient(black, white)';
+    shell.fire();
+    assert.equal(plane.style.backgroundImage, 'linear-gradient(black, white)');
+    control.dispose();
+    assert.equal(shell.main.querySelector('.vcp-chat-composer-backdrop-fade'), null);
+    shell.dom.window.close();
+});

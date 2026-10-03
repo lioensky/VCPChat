@@ -5,8 +5,14 @@ import fs from 'node:fs';
 test('all chat modes keep the composer overlay free of backdrop-breaking masks', () => {
     const css = fs.readFileSync('styles/chat.css', 'utf8');
     const insetCss = fs.readFileSync('styles/ui-system/chat-composer-inset.css', 'utf8');
-    assert.doesNotMatch(insetCss, /(?:-webkit-)?mask-(?:image|size|position|repeat)\s*:/,
-        'no presentation mode receives a composer gradient mask');
+    const scrollerRule = insetCss.match(/html \.vcp-chat-composer-overlay > \.chat-messages-container:where\([^{}]+\)\s*\{([^}]+)\}/);
+    assert.ok(scrollerRule);
+    assert.doesNotMatch(scrollerRule[1], /(?:-webkit-)?mask-(?:image|size|position|repeat)\s*:/,
+        'the message scroller must not receive a gradient mask');
+    assert.match(insetCss, /\.vcp-chat-composer-backdrop-fade:where\([^{}]+\)\s*\{[^}]*pointer-events:\s*none;[^}]*mask-image:/,
+        'only the sibling background copy receives the fade mask');
+    assert.match(insetCss, /body:not\(\.chat-presentation-panel\):not\(\.chat-presentation-immersive\)/,
+        'the background copy is enabled only in bubble mode');
     assert.match(css, /\.message-item\s*\{[^}]*content-visibility:\s*auto;/,
         'message offscreen optimization remains unchanged');
     assert.match(css, /\.message-item \.md-content\s*\{[^}]*backdrop-filter:\s*blur\(12px\);/,
