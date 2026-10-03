@@ -2,7 +2,7 @@
  * 主聊天左侧的提问定位导轨（modules/ui-system/conversation-turn-navigator.js）。
  * 版式与数值对照 ZCode 的 ConversationTurnNavigator（https://github.com/zai-org/ZCode ，Apache-2.0）：
  * 36×10px 的按钮里一根横条，悬停的那根按距离放大到约 31 / 20 / 15px（同 ZCode）；
- * 平时的横条比 ZCode 的 12px 短，只有 8px，聊天列不足 864px 时整条导轨隐藏（同 ZCode），
+ * 平时的横条比 ZCode 的 12px 短，只有 8px，聊天列不足 400px 时整条导轨隐藏，
  * 颜色取自 vcp-ui 令牌（定义在 .vcp-turn-nav 上），跟随浅色/深色主题。
  */
 
@@ -77,7 +77,7 @@ html .vcp-turn-nav-card:where(.vcp-ui-scope, .vcp-ui-scope *) {
     position: absolute;
     left: 48px;
     width: 320px;
-    max-width: calc(100vw - 96px);
+    max-width: min(var(--vcp-turn-nav-card-max-width, 320px), calc(100vw - 96px));
     transform: translateY(-50%);
     box-sizing: border-box;
     padding: 12px;

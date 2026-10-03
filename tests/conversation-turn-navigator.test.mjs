@@ -144,13 +144,21 @@ test('mounts a rail for two or more queries, reflects the active one and jumps o
 
 test('hides below the minimum width, follows streaming previews and topic switches, and disposes cleanly', async () => {
     const { doc, root, scroller } = makeChat([{ q: '问一', a: '答一' }, { q: '问二', a: '', streaming: true }]);
-    Object.defineProperty(scroller, 'clientWidth', { value: 863, configurable: true });
+    Object.defineProperty(scroller, 'clientWidth', { value: 399, configurable: true });
     const navigator = createConversationTurnNavigator({ document: doc, messagesRoot: root });
     const nav = navigator.mount();
     assert.equal(nav.classList.contains('is-wide'), false);
-    Object.defineProperty(scroller, 'clientWidth', { value: 864, configurable: true });
+    Object.defineProperty(scroller, 'clientWidth', { value: 400, configurable: true });
     navigator.refresh();
     assert.equal(nav.classList.contains('is-wide'), true);
+    assert.equal(nav.style.getPropertyValue('--vcp-turn-nav-card-max-width'), '336px');
+
+    // 通知栏展开将聊天区从宽屏压至 600px，不再触发旧的 864px 隐藏阈值。
+    doc.querySelector('main').classList.add('notifications-sidebar-active');
+    Object.defineProperty(scroller, 'clientWidth', { value: 600, configurable: true });
+    navigator.refresh();
+    assert.equal(nav.classList.contains('is-wide'), true);
+    assert.equal(nav.hidden, false);
 
     const buttons = [...nav.querySelectorAll('.vcp-turn-nav-item')];
     assert.equal(navigator.getItems()[1].assistantPreviewKind, 'running');

@@ -15,7 +15,7 @@
 import { bindChatNavigationIdle } from './chat-navigation-idle.js';
 
 
-export const TURN_NAVIGATOR_MIN_WIDTH_PX = 864; // 同 ZCode：聊天列不够宽就隐藏，不挤占消息
+export const TURN_NAVIGATOR_MIN_WIDTH_PX = 400; // 左侧导轨仅占 48px，通知栏展开后仍可使用；只在极窄聊天区隐藏
 const DEFAULT_MAX_PREVIEW_CHARS = 220;
 const DEFAULT_MAX_PREVIEW_PARAGRAPHS = 2;
 const HOVER_OPEN_DELAY_MS = 120;
@@ -404,6 +404,7 @@ export function createConversationTurnNavigator({
         if (!nav || !scroller) return;
         nav.style.top = `${scroller.offsetTop}px`;
         nav.style.height = `${visibleHeight()}px`;
+        nav.style.setProperty('--vcp-turn-nav-card-max-width', `${Math.max(0, scroller.clientWidth - 64)}px`);
         const wide = scroller.clientWidth >= minWidthPx;
         nav.classList.toggle('is-wide', wide);
         if (!wide) hideCard();
