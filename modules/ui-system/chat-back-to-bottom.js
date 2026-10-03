@@ -11,6 +11,8 @@
 
 'use strict';
 
+import { bindChatNavigationIdle } from './chat-navigation-idle.js';
+
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const DEFAULT_FOLLOW_CHANGE_EVENT = 'vcp-chat-follow-change';
 
@@ -46,10 +48,12 @@ export function createChatBackToBottom({
     let button = null;
     let messages = messagesRoot;
     let following = true;
+    let idleControl = null;
 
     function sync() {
         if (!button) return;
         button.hidden = following || !messages.querySelector(':scope > .message-item');
+        idleControl?.refresh();
     }
 
     function mount() {
@@ -73,6 +77,8 @@ export function createChatBackToBottom({
         button.addEventListener('click', onClick);
         cleanups.push(() => button.removeEventListener('click', onClick));
         dock.prepend(button);
+        idleControl = bindChatNavigationIdle({ element: button, scroller });
+        cleanups.push(() => { idleControl.dispose(); idleControl = null; });
 
         const eventName = uiHelper.CHAT_FOLLOW_CHANGE_EVENT || DEFAULT_FOLLOW_CHANGE_EVENT;
         const onFollowChange = (event) => {

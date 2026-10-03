@@ -23,9 +23,12 @@ html .vcp-back-to-bottom:where(.vcp-ui-scope, .vcp-ui-scope *) {
     box-shadow: var(--vcp-ui-shadow-sm);
     transform: translateX(-50%);
     cursor: pointer;
-    transition: background-color 150ms ease-out, border-color 150ms ease-out;
+    opacity: 1;
+    transition: opacity 150ms ease-out, background-color 150ms ease-out, border-color 150ms ease-out;
 }
 html .vcp-back-to-bottom[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }
+/* 仅淡化视觉，保留鼠标命中区域和键盘操作。 */
+html .vcp-back-to-bottom.is-idle:not(:hover):not(:focus-within):where(.vcp-ui-scope, .vcp-ui-scope *) { opacity: 0.1; }
 html .vcp-back-to-bottom:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
     border-color: var(--vcp-ui-border-strong);
     background: color-mix(in srgb, var(--vcp-ui-bg-1) 88%, var(--vcp-ui-text-0));
@@ -35,3 +38,7 @@ html .vcp-back-to-bottom:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *) {
     outline-offset: 2px;
 }
 html .vcp-back-to-bottom svg:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 16px; height: 16px; flex: 0 0 auto; }
+
+@media (prefers-reduced-motion: reduce) {
+    html .vcp-back-to-bottom:where(.vcp-ui-scope, .vcp-ui-scope *) { transition: none; }
+}

@@ -34,14 +34,6 @@
         box-shadow: none;
     }
 
-    /* Panel and immersive already frost the whole input area behind the card;
-       a second blur here would only stack another backdrop capture. */
-    html body:is(.chat-presentation-panel, .chat-presentation-immersive) .vcp-ui-scope .chat-input-card {
-        background: color-mix(in srgb, var(--vcp-ui-composer-input) 36%, transparent);
-        backdrop-filter: none;
-        -webkit-backdrop-filter: none;
-    }
-
     html .vcp-ui-scope .chat-input-card.drag-over {
         border-color: var(--vcp-ui-color-brand);
         box-shadow: 0 0 0 2px var(--vcp-ui-focus-ring);

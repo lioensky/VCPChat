@@ -1640,6 +1640,18 @@ body.chat-presentation-immersive .message-item.system.system-message-layout {
     background: color-mix(in srgb, var(--accent-bg) 52%, transparent);
 }
 
+/* 展示模式的正文不是独立气泡。覆盖主题的浅色背景和强制模糊，
+ * 避免在共享阅读底板上再次绘制矩形色块；内部工具卡片不受影响。 */
+html body:is(.chat-presentation-panel, .chat-presentation-immersive) .message-item .md-content,
+html body.light-theme:is(.chat-presentation-panel, .chat-presentation-immersive) .message-item .md-content {
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
 /* Mode shells are flat; internal structured content retains its own surfaces. */
 body.chat-presentation-panel .message-item .md-content > pre,
 body.chat-presentation-panel .message-item .md-content .vcp-tool-use-bubble,
@@ -1704,70 +1716,7 @@ text-align: center;
 
 
 
-/* Panel / immersive input composer: full-width, flat and continuous with the chat surface. */
-body.chat-presentation-panel .chat-input-area,
-body.chat-presentation-immersive .chat-input-area {
-    padding: 0;
-    background:
-        linear-gradient(
-            180deg,
-            color-mix(in srgb, var(--panel-bg-dark) 72%, transparent),
-            color-mix(in srgb, var(--panel-bg-dark) 84%, rgba(255, 255, 255, 0.04))
-        );
-    backdrop-filter: blur(16px) saturate(112%);
-    -webkit-backdrop-filter: blur(16px) saturate(112%);
-}
-
-body.light-theme.chat-presentation-panel .chat-input-area,
-body.light-theme.chat-presentation-immersive .chat-input-area {
-    background:
-        linear-gradient(
-            180deg,
-            color-mix(in srgb, var(--panel-bg-light) 74%, rgba(255, 255, 255, 0.18)),
-            color-mix(in srgb, var(--panel-bg-light) 88%, rgba(255, 255, 255, 0.5))
-        );
-}
-
-body.chat-presentation-panel .chat-input-card,
-body.chat-presentation-immersive .chat-input-card {
-    width: 100%;
-    padding: 13px clamp(12px, 1.8vw, 22px) 10px;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    transition: background-color 0.2s ease;
-}
-
-body.chat-presentation-panel .chat-input-card:hover:not(:focus-within):not(.drag-over),
-body.chat-presentation-immersive .chat-input-card:hover:not(:focus-within):not(.drag-over) {
-    border: 0;
-    background: color-mix(in srgb, var(--accent-bg) 12%, transparent);
-    box-shadow: none;
-}
-
-body.chat-presentation-panel .chat-input-card:focus-within,
-body.chat-presentation-immersive .chat-input-card:focus-within {
-    border: 0;
-    background: color-mix(in srgb, var(--accent-bg) 18%, transparent);
-    box-shadow: none;
-}
-
-body.chat-presentation-panel .chat-input-card.drag-over,
-body.chat-presentation-immersive .chat-input-card.drag-over {
-    border: 0;
-    background: color-mix(in srgb, var(--button-bg) 14%, transparent);
-    box-shadow: inset 0 3px 0 color-mix(in srgb, var(--button-bg) 68%, transparent);
-}
-
-@media (max-width: 768px) {
-    body.chat-presentation-panel .chat-input-card,
-    body.chat-presentation-immersive .chat-input-card {
-        padding: 11px 10px 8px;
-    }
-}
+/* 输入区与输入卡片共用基础外观，不随消息展示模式添加整块背景。 */
 
 /* Panel / immersive message editor: keep the editor wide and actions below it.
  * These rules intentionally follow the presentation-mode layout so editing

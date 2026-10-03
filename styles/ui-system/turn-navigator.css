@@ -25,6 +25,8 @@ html .vcp-turn-nav:where(.vcp-ui-scope, .vcp-ui-scope *) {
 }
 html .vcp-turn-nav[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }
 html .vcp-turn-nav.is-wide:where(.vcp-ui-scope, .vcp-ui-scope *) { visibility: visible; opacity: 1; transform: none; }
+/* 不关闭导轨和卡片的鼠标命中区域，划入即可恢复。 */
+html .vcp-turn-nav.is-wide.is-idle:not(:hover):not(:focus-within):where(.vcp-ui-scope, .vcp-ui-scope *) { opacity: 0.1; }
 
 html .vcp-turn-nav-scroll:where(.vcp-ui-scope, .vcp-ui-scope *) {
     position: absolute;
@@ -97,8 +99,8 @@ html .vcp-turn-nav-card p:where(.vcp-ui-scope, .vcp-ui-scope *) {
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
-html .vcp-turn-nav-card-user:where(.vcp-ui-scope, .vcp-ui-scope *) { font-weight: 500; -webkit-line-clamp: 2; }
-html .vcp-turn-nav-card .vcp-turn-nav-card-assistant:where(.vcp-ui-scope, .vcp-ui-scope *) { margin-top: 8px; color: color-mix(in srgb, var(--vcp-turn-nav-fg) 80%, transparent); -webkit-line-clamp: 3; }
+html .vcp-turn-nav-card-user:where(.vcp-ui-scope, .vcp-ui-scope *) { font-weight: 500; -webkit-line-clamp: 2; line-clamp: 2; }
+html .vcp-turn-nav-card .vcp-turn-nav-card-assistant:where(.vcp-ui-scope, .vcp-ui-scope *) { margin-top: 8px; color: color-mix(in srgb, var(--vcp-turn-nav-fg) 80%, transparent); -webkit-line-clamp: 3; line-clamp: 3; }
 html .vcp-turn-nav-card-assistant.is-muted:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--vcp-turn-nav-fg-subtle); }
 
 @media (prefers-reduced-motion: reduce) {

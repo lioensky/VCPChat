@@ -2,9 +2,9 @@
  * modules/ui-system/chat-composer-inset.js
  * 让主聊天的滚动区一直延伸到窗口底部，输入区浮在它的底部之上（滚动条也随之到底）。
  *
- * 做法照 ZCode 的 composer dock（https://github.com/zai-org/ZCode ，Apache-2.0，
- * packages/ui/src/v4/ConversationTimeline.tsx）：消息层在输入区所在的底部一段完全透明，
- * 其上淡出一小段，滚动条不受遮罩影响。这里不改 DOM 结构，只把输入区的实时高度写成
+ * 叠放布局参考 ZCode 的 composer dock（https://github.com/zai-org/ZCode ，Apache-2.0，
+ * packages/ui/src/v4/ConversationTimeline.tsx），不使用渐变遮罩，避免破坏各布局的背景模糊。
+ * 这里不改 DOM 结构，只把输入区的实时高度写成
  * <main> 上的 CSS 变量，由 styles/ui-system/chat-composer-inset.css 叠放和留白；
  * 脚本没有挂载时布局与原来完全一样。
  */

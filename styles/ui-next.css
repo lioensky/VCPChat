@@ -910,11 +910,9 @@ html .chat-messages-container {
     position: relative;
 }
 
-/* Bubble-mode input composer: inset it so its left edge lines up with the
-   assistant bubble column (24px message gutter + 36px avatar + 8px gap - 5px
-   wrapper offset), leaving matching blank space on the right. Panel/immersive
-   modes keep their deliberate full-width flat composer. */
-html body:not(.chat-presentation-panel):not(.chat-presentation-immersive) .chat-input-area {
+/* Shared input composer: keep the same horizontal inset in every presentation
+   mode so switching message layouts does not resize the input card. */
+html body .chat-input-area {
     padding-left: 52px;
     padding-right: 52px;
 }
