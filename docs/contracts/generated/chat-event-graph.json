@@ -328,6 +328,7 @@
     "modules/ui-system/avatar-picker.js",
     "modules/ui-system/chat-back-to-bottom.js",
     "modules/ui-system/chat-composer-inset.js",
+    "modules/ui-system/chat-navigation-idle.js",
     "modules/ui-system/component-manifest.js",
     "modules/ui-system/component-showcase.js",
     "modules/ui-system/contribution-registry.js",
