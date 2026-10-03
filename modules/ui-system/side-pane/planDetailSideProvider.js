@@ -21,8 +21,9 @@ const STATUS_ICON = Object.freeze({ completed: 'check_circle', inProgress: 'prog
 const KIND_LABEL = Object.freeze({ create: '创建', edit: '修改', delete: '删除', revert: '回退', rename: '重命名' });
 const KIND_ICON = Object.freeze({ create: 'add_circle', edit: 'edit', delete: 'delete', revert: 'undo', rename: 'drive_file_rename_outline' });
 
-export function planTabId(projectId) {
-    return `${TAB_PREFIX}${projectId}`;
+export function planTabId(projectId, parentRef = null) {
+    const owner = parentRef ? `@${parentRef.itemType || 'agent'}:${parentRef.itemId || ''}:${parentRef.topicId || ''}` : '';
+    return `${TAB_PREFIX}${projectId}${owner}`;
 }
 
 /**
@@ -80,6 +81,8 @@ export function createPlanDetailSideProvider({
     document: doc = document,
     api = (typeof window !== 'undefined' ? window.electronAPI : null),
     sidePaneController = null,
+    // 当前话题用过的 V工程（最近的在前）；不传时退回旧的默认工程选择
+    getConversationProjects = null,
     uiHelper = null,
     onOpenProjectForge = null
 } = {}) {
@@ -99,6 +102,17 @@ export function createPlanDetailSideProvider({
             if (!sidePaneController) return null;
             let id = projectId;
             let name = projectName;
+            // 计划跟着话题走：标签记在打开它的话题下，切到别的话题就收起
+            const parent = sidePaneController.getSnapshot?.()?.parent || null;
+            if (!id && parent && typeof getConversationProjects === 'function') {
+                const used = (await getConversationProjects()) || [];
+                if (!used.length) {
+                    toast('这个话题还没用过 V工程：让助手用 ProjectForge 建好工程后，这里会显示它的计划', 'info');
+                    return null;
+                }
+                id = used[0].id;
+                name = used[0].name;
+            }
             if (!id) {
                 const project = await resolveDefaultProject(api, storage);
                 if (!project) {
@@ -109,12 +123,13 @@ export function createPlanDetailSideProvider({
                 name = project.name;
             }
             const handle = await sidePaneController.openTab({
-                id: planTabId(id),
+                id: planTabId(id, parent),
                 kind,
                 title: name ? `计划 · ${name}` : '计划详情',
                 icon: 'checklist',
                 closable: true,
-                scopeMode: 'global',
+                scopeMode: parent ? 'topic' : 'global',
+                parent,
                 searchHint: name || '',
                 payload: { projectId: id, projectName: name }
             });
@@ -125,7 +140,7 @@ export function createPlanDetailSideProvider({
 
         async mountTab(tab, viewElement) {
             if (!viewElement) return null;
-            const projectId = tab?.payload?.projectId || String(tab?.id || '').slice(TAB_PREFIX.length);
+            const projectId = tab?.payload?.projectId || String(tab?.id || '').slice(TAB_PREFIX.length).split('@')[0];
             viewElement.innerHTML = '';
             viewElement.classList.add('side-plan-view');
 

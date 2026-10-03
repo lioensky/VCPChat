@@ -653,12 +653,36 @@
             <div class="side-pane-content-container">
                 <section class="side-pane-view active" id="sidePaneViewNotifications" role="tabpanel" aria-label="通知视图">
                   <aside class="notifications-sidebar vcp-ui-scope" id="notificationsSidebar">
-            <header class="notifications-header">
+            <!-- 连接状态显示在“通知”标签上；这里只留给读屏与旧代码引用 -->
+            <div class="notifications-status-host">
                 <div class="notifications-status" id="vcpLogConnectionStatus" data-status="unknown" role="status" aria-live="polite">
                     <span class="notifications-status-dot" aria-hidden="true"></span>
                     <span class="notifications-status-text">VCPLog: 未连接</span>
                 </div>
-
+            </div>
+            <div class="notification-pending-banner" id="notificationPendingBanner" role="region" aria-label="待审批" hidden>
+                <button type="button" class="notification-pending-summary" data-action="jump-next"
+                    title="定位到下一个待审批" aria-label="定位到下一个待审批">
+                    <span class="vcp-ui-icon" aria-hidden="true">gpp_maybe</span>
+                    <span class="notification-pending-text"><strong data-role="pending-count">0</strong> 项待审批</span>
+                    <span class="vcp-ui-icon notification-pending-jump" aria-hidden="true">keyboard_arrow_down</span>
+                </button>
+                <div class="notification-pending-actions">
+                    <button type="button" class="notification-pending-btn is-reject" data-action="reject-all"
+                        title="拒绝全部待审批（需再点一次确认）"><span data-role="label">全部拒绝</span></button>
+                    <button type="button" class="notification-pending-btn is-approve" data-action="approve-all"
+                        title="允许全部待审批（需再点一次确认；含内容变更的请求需逐条审计）"><span data-role="label">全部允许</span></button>
+                </div>
+            </div>
+            <div class="notification-toolbar" id="notificationToolbar" role="group" aria-label="筛选通知">
+                <button type="button" class="notification-chip" data-filter="all" aria-pressed="true">全部<span class="notification-chip-count"></span></button>
+                <button type="button" class="notification-chip" data-filter="pending" aria-pressed="false">待审批<span class="notification-chip-count"></span></button>
+                <button type="button" class="notification-chip" data-filter="error" aria-pressed="false">错误<span class="notification-chip-count"></span></button>
+                <button type="button" class="notification-chip" data-filter="resolved" aria-pressed="false">已处理<span class="notification-chip-count"></span></button>
+                <button id="nextUiNotificationClear" class="notification-toolbar-clear" type="button"
+                    title="清空通知（保留待审批）" aria-label="清空通知">
+                    <span class="vcp-ui-icon" aria-hidden="true">delete_sweep</span>
+                </button>
                 <div class="next-ui-notification-actions">
                     <button id="nextUiNotificationMenuBtn" class="next-ui-notification-menu-trigger" type="button"
                         title="通知选项" aria-label="通知选项" aria-haspopup="menu"
@@ -687,31 +711,6 @@
                         </button>
                     </div>
                 </div>
-                <span id="nextUiPanelNotificationHost" class="next-ui-notification-toggle-host"></span>
-            </header>
-            <div class="notification-pending-banner" id="notificationPendingBanner" role="region" aria-label="待审批" hidden>
-                <button type="button" class="notification-pending-summary" data-action="jump-next"
-                    title="定位到下一个待审批" aria-label="定位到下一个待审批">
-                    <span class="vcp-ui-icon" aria-hidden="true">gpp_maybe</span>
-                    <span class="notification-pending-text"><strong data-role="pending-count">0</strong> 项待审批</span>
-                    <span class="vcp-ui-icon notification-pending-jump" aria-hidden="true">keyboard_arrow_down</span>
-                </button>
-                <div class="notification-pending-actions">
-                    <button type="button" class="notification-pending-btn is-reject" data-action="reject-all"
-                        title="拒绝全部待审批（需再点一次确认）"><span data-role="label">全部拒绝</span></button>
-                    <button type="button" class="notification-pending-btn is-approve" data-action="approve-all"
-                        title="允许全部待审批（需再点一次确认；含内容变更的请求需逐条审计）"><span data-role="label">全部允许</span></button>
-                </div>
-            </div>
-            <div class="notification-toolbar" id="notificationToolbar" role="group" aria-label="筛选通知">
-                <button type="button" class="notification-chip" data-filter="all" aria-pressed="true">全部<span class="notification-chip-count"></span></button>
-                <button type="button" class="notification-chip" data-filter="pending" aria-pressed="false">待审批<span class="notification-chip-count"></span></button>
-                <button type="button" class="notification-chip" data-filter="error" aria-pressed="false">错误<span class="notification-chip-count"></span></button>
-                <button type="button" class="notification-chip" data-filter="resolved" aria-pressed="false">已处理<span class="notification-chip-count"></span></button>
-                <button id="nextUiNotificationClear" class="notification-toolbar-clear" type="button"
-                    title="清空通知（保留待审批）" aria-label="清空通知">
-                    <span class="vcp-ui-icon" aria-hidden="true">delete_sweep</span>
-                </button>
             </div>
             <ul class="notifications-list" id="notificationsList">
             </ul>

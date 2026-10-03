@@ -11,6 +11,7 @@ import { createGitSideProvider } from '../ui-system/side-pane/gitSideProvider.js
 import { createGitFileDiffResolver, toWorkspaceRelative } from '../ui-system/git-file-diff.js';
 import { createMessageFileChanges } from '../ui-system/message-file-changes.js';
 import { createConversationStatusPanel } from '../ui-system/conversation-status-panel.js';
+import { collectConversationScope } from '../ui-system/conversation-scope.js';
 import {
     createSideChatDescriptor,
     createChildTopicForAgent,
@@ -401,7 +402,15 @@ export function initWorkspaceSidePane({
         api: chatAPI || win.electronAPI,
         sidePaneController: controller,
         uiHelper,
-        onOpenProjectForge: openProjectForge
+        onOpenProjectForge: openProjectForge,
+        getConversationProjects: async () => {
+            const api = chatAPI || win.electronAPI;
+            const ids = collectConversationScope(historyRef.get() || []).projectIds;
+            if (!ids.length || !api?.projectForgeListProjects) return [];
+            const res = await api.projectForgeListProjects({});
+            const byId = new Map((res?.success ? res.data || [] : []).filter(p => !p.deleted_at).map(p => [p.id, p]));
+            return ids.map(id => byId.get(id)).filter(Boolean);
+        }
     });
     controller.registerProvider('plan-detail', planDetailProvider);
     controller.registerOpenTabEntry({ id: 'plan-detail', label: 'V工程计划', icon: 'checklist', order: 70, open: () => planDetailProvider.openPlanDetailTab() });
@@ -415,6 +424,7 @@ export function initWorkspaceSidePane({
         onOpenPlanDetail: (project) => planDetailProvider.openPlanDetailTab({ projectId: project?.id, projectName: project?.name }),
         onOpenToolOutput: (run) => toolOutputProvider.openToolOutputTab({ runId: run?.id }),
         onOpenProjectForge: openProjectForge,
+        onScopeWorkspace: (workspace) => gitProvider.followWorkspace?.(workspace.id),
         getHistory: () => historyRef.get() || [],
         messagesRoot: doc.getElementById('chatMessages'),
         onConversationChange: (callback) => chatManager?.onSelectionChange?.(callback)

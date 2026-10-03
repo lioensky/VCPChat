@@ -162,3 +162,20 @@ test('updateTab changes title and payload without activating the tab', () => {
     assert.equal(SidePaneState.updateTab(next, 'b1', { title: '' }), next, 'empty title is ignored');
     assert.equal(SidePaneState.updateTab(next, 'missing', { title: 'x' }), next);
 });
+
+test('a topic-scoped tab with a parent only shows under that conversation', () => {
+    const a = { itemType: 'agent', itemId: 'nova', topicId: 'a' };
+    const b = { itemType: 'agent', itemId: 'nova', topicId: 'b' };
+    let state = SidePaneState.createInitialSidePaneState();
+    state = SidePaneState.setParent(state, a);
+    state = SidePaneState.openTab(state, { id: 'plan-detail:p1@a', kind: 'plan-detail', title: '计划', scopeMode: 'topic', parent: a });
+    assert.equal(state.activeTabId, 'plan-detail:p1@a');
+
+    state = SidePaneState.setParent(state, b);
+    assert.deepEqual(SidePaneState.getVisibleTabs(state, b).map(t => t.id), ['notifications']);
+    assert.notEqual(state.activeTabId, 'plan-detail:p1@a');
+
+    state = SidePaneState.setParent(state, a);
+    assert.ok(SidePaneState.getVisibleTabs(state, a).some(t => t.id === 'plan-detail:p1@a'));
+    assert.equal(state.activeTabId, 'plan-detail:p1@a');
+});

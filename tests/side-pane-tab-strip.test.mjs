@@ -47,12 +47,12 @@ test('tab presentation helpers: type labels and search hints', () => {
 });
 
 test('resolveTabsOverflow uses the min-width budget and ignores where the add button lives', () => {
-    // 3 个标签 60*3 + 4*2 = 188，加 gap 4 与按钮 28 = 220
-    assert.equal(resolveTabsOverflow({ addButtonInside: true, addButtonWidth: 28, tabCount: 3, viewportWidth: 220 }), false);
-    assert.equal(resolveTabsOverflow({ addButtonInside: true, addButtonWidth: 28, tabCount: 3, viewportWidth: 200 }), true);
+    // 3 个标签 96 + 32*2 + 4*2 = 168，加 gap 4 与按钮 28 = 200
+    assert.equal(resolveTabsOverflow({ addButtonInside: true, addButtonWidth: 28, tabCount: 3, viewportWidth: 200 }), false);
+    assert.equal(resolveTabsOverflow({ addButtonInside: true, addButtonWidth: 28, tabCount: 3, viewportWidth: 198 }), true);
     // 按钮在外面时视口更窄，判定结果保持一致
-    assert.equal(resolveTabsOverflow({ addButtonInside: false, addButtonWidth: 28, tabCount: 3, viewportWidth: 192 }), false);
-    assert.equal(resolveTabsOverflow({ addButtonInside: false, addButtonWidth: 28, tabCount: 3, viewportWidth: 172 }), true);
+    assert.equal(resolveTabsOverflow({ addButtonInside: false, addButtonWidth: 28, tabCount: 3, viewportWidth: 172 }), false);
+    assert.equal(resolveTabsOverflow({ addButtonInside: false, addButtonWidth: 28, tabCount: 3, viewportWidth: 170 }), true);
 });
 
 test('drag helpers: closest center and arrayMove semantics', () => {
@@ -211,4 +211,40 @@ test('controller: the tab overview is keyboard driven like ZCode Command (arrows
     press('Escape');
     assert.equal(popover.hidden, true);
     controller.dispose();
+});
+
+test('controller: the 通知 tab mirrors the VCPLog connection status', async () => {
+    const dom = new JSDOM(`
+        <aside id="vcpSidePane">
+            <div class="side-pane-tabs"></div>
+            <div class="side-pane-content-container">
+                <section class="side-pane-view active" id="sidePaneViewNotifications">
+                    <div id="vcpLogConnectionStatus" data-status="connecting"><span class="notifications-status-text">VCPLog: 连接中...</span></div>
+                </section>
+            </div>
+        </aside>
+    `, { pretendToBeVisual: true });
+    const doc = dom.window.document;
+    const root = doc.getElementById('vcpSidePane');
+    const controller = createSidePaneController({
+        root,
+        tabListElement: root.querySelector('.side-pane-tabs'),
+        contentContainer: root.querySelector('.side-pane-content-container'),
+        providers: {}
+    });
+    controller.show?.();
+    const tab = () => root.querySelector('.side-pane-tab[data-tab-id="notifications"]');
+    assert.equal(tab().querySelector('.side-pane-tab-status').dataset.status, 'connecting');
+    assert.equal(tab().getAttribute('aria-label'), '通知，VCPLog: 连接中...');
+    assert.equal(tab().querySelector('.tab-title').textContent, 'VCPLog 连接中...');
+
+    const status = doc.getElementById('vcpLogConnectionStatus');
+    status.dataset.status = 'open';
+    status.querySelector('.notifications-status-text').textContent = 'VCPLog: 已连接';
+    await new Promise(r => setTimeout(r, 0));
+    assert.equal(tab().querySelector('.side-pane-tab-status').dataset.status, 'open');
+    assert.equal(tab().getAttribute('aria-label'), '通知，VCPLog: 已连接');
+    assert.equal(tab().querySelector('.tab-title').textContent, 'VCPLog 已连接');
+    controller.dispose();
+    dom.window.close();
 });

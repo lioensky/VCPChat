@@ -97,15 +97,17 @@ export function formatRelativeTime(timestamp, now = Date.now()) {
 // 标签条布局
 // ---------------------------------------------------------------------------
 
-export const TAB_MIN_WIDTH_PX = 60;
+export const TAB_MIN_WIDTH_PX = 32;
+export const TAB_ACTIVE_MIN_WIDTH_PX = 96;
 export const TAB_GAP_PX = 4;
 const TAB_OVERFLOW_TOLERANCE_PX = 1;
 
 /**
- * 只用"每个标签最小宽度之和"这个稳定预算判断溢出，避免"新增按钮在标签条里外来回搬"改变视口宽度后形成反馈环。
+ * 只用"激活标签与其余标签最小宽度之和"这个稳定预算判断溢出，避免"新增按钮在标签条里外来回搬"改变视口宽度后形成反馈环。
  */
 export function resolveTabsOverflow({ addButtonInside, addButtonWidth, tabCount, viewportWidth }) {
-    const tabsWidth = tabCount * TAB_MIN_WIDTH_PX + Math.max(0, tabCount - 1) * TAB_GAP_PX;
+    const tabsBaseWidth = tabCount > 0 ? TAB_ACTIVE_MIN_WIDTH_PX + (tabCount - 1) * TAB_MIN_WIDTH_PX : 0;
+    const tabsWidth = tabsBaseWidth + Math.max(0, tabCount - 1) * TAB_GAP_PX;
     const addButtonGap = tabCount > 0 ? TAB_GAP_PX : 0;
     const viewportWidthWithAddButtonInside = viewportWidth + (addButtonInside ? 0 : addButtonWidth);
     const contentWidthWithAddButtonInside = tabsWidth + addButtonGap + addButtonWidth;

@@ -28,94 +28,27 @@ html .vcp-ui-scope#notificationsSidebar {
     --nc-tone-muted: var(--vcp-ui-text-3);
 }
 
-/* ───────────── Header: floating status capsule ───────────── */
+/* ───────────── Connection status ─────────────
+ * The visible indicator is the dot on the 通知 tab; the status element stays
+ * in the panel for screen readers and the code that updates it. */
 
-html .vcp-ui-scope#notificationsSidebar > .notifications-header,
-html #vcpSidePane .vcp-ui-scope#notificationsSidebar > .notifications-header {
-    position: relative;
-    height: auto;
-    min-height: 0;
-    padding: var(--vcp-ui-space-2) var(--nc-gutter) var(--vcp-ui-space-1);
-    gap: var(--vcp-ui-space-2);
-    justify-content: space-between;
-    border-bottom: 0;
-    background: transparent;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-}
-
-html .vcp-ui-scope#notificationsSidebar .notifications-status {
-    min-width: 0;
-    min-height: 28px;
-    max-width: 100%;
-    padding: 0 var(--vcp-ui-space-3) 0 var(--vcp-ui-space-2);
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    box-sizing: border-box;
-    border: 0;
-    border-radius: var(--vcp-ui-radius-full);
-    color: var(--vcp-ui-text-2);
-    background: color-mix(in srgb, var(--vcp-ui-bg-1) 78%, var(--vcp-ui-text-primary) 9%);
-    box-shadow: var(--vcp-ui-shadow-sm), var(--vcp-ui-shadow-md);
-    font-size: var(--vcp-ui-font-caption);
-    font-weight: 500;
-    line-height: 1;
-    -webkit-backdrop-filter: blur(14px) saturate(1.2);
-    backdrop-filter: blur(14px) saturate(1.2);
-    user-select: none;
-}
-
-html .vcp-ui-scope#notificationsSidebar .notifications-status-dot {
-    position: relative;
-    flex: 0 0 auto;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--nc-tone-neutral);
-}
-
-html .vcp-ui-scope#notificationsSidebar .notifications-status-text {
-    min-width: 0;
-    line-height: 1.5; /* keep descenders (g, p) inside the ellipsis clip */
+html .vcp-ui-scope#notificationsSidebar > .notifications-status-host {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
     overflow: hidden;
-    text-overflow: ellipsis;
+    clip-path: inset(50%);
     white-space: nowrap;
-}
-
-/* The connection colour lives on the dot; the capsule itself stays neutral. */
-html .vcp-ui-scope#notificationsSidebar .notifications-status[data-status="open"] .notifications-status-dot {
-    background: var(--nc-tone-success);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--nc-tone-success) 24%, transparent);
-}
-
-html .vcp-ui-scope#notificationsSidebar .notifications-status[data-status="connecting"] .notifications-status-dot {
-    background: var(--nc-tone-warn);
-    animation: nc-status-pulse 1.4s ease-in-out infinite;
-}
-
-html .vcp-ui-scope#notificationsSidebar .notifications-status:is([data-status="closed"], [data-status="error"]) {
-    color: var(--vcp-ui-danger);
-}
-
-html .vcp-ui-scope#notificationsSidebar .notifications-status:is([data-status="closed"], [data-status="error"]) .notifications-status-dot {
-    background: var(--nc-tone-error);
-}
-
-@keyframes nc-status-pulse {
-    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--nc-tone-warn) 45%, transparent); }
-    50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--nc-tone-warn) 0%, transparent); }
-}
-
-html .vcp-ui-scope#notificationsSidebar .next-ui-notification-menu-trigger {
-    border-radius: var(--vcp-ui-radius-full);
+    border: 0;
 }
 
 /* ───────────── Pending-approval banner ───────────── */
 
 html .vcp-ui-scope#notificationsSidebar .notification-pending-banner {
     flex: 0 0 auto;
-    margin: var(--vcp-ui-space-1) var(--nc-gutter) 0;
+    margin: var(--vcp-ui-space-2) var(--nc-gutter) 0;
     padding: var(--vcp-ui-space-1);
     display: flex;
     align-items: center;
@@ -296,6 +229,19 @@ html .vcp-ui-scope#notificationsSidebar .notification-toolbar-clear:hover {
 
 html .vcp-ui-scope#notificationsSidebar .notification-toolbar-clear .vcp-ui-icon {
     --vcp-ui-icon-size: var(--vcp-ui-icon-sm);
+}
+
+/* 选项菜单与清空按钮同排，同尺寸 */
+html .vcp-ui-scope#notificationsSidebar .notification-toolbar .next-ui-notification-menu-trigger {
+    width: 26px;
+    height: 26px;
+    border-radius: var(--vcp-ui-radius-full);
+    color: var(--vcp-ui-text-3);
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-toolbar .next-ui-notification-menu-trigger svg {
+    width: var(--vcp-ui-icon-sm);
+    height: var(--vcp-ui-icon-sm);
 }
 
 html .vcp-ui-scope#notificationsSidebar :is(.notification-chip, .notification-toolbar-clear, .notification-pending-btn, .notification-pending-summary, .notification-dock-btn, .notification-section-title, .notification-section-clear, .notification-dismiss-btn):focus-visible {

@@ -159,3 +159,31 @@ test('a renamed project renames its tab, once', async () => {
     assert.equal(calls.updated.length, 1, 'an unchanged name does not touch the tab again');
     handle.dispose();
 });
+
+test('inside a topic the plan tab belongs to that topic and shows the project the topic used', async () => {
+    const dom = new JSDOM('<div></div>');
+    const opened = [];
+    const toasts = [];
+    const parent = { itemType: 'agent', itemId: 'nova', topicId: 't1' };
+    let used = [{ id: 'p2', name: '话题工程' }];
+    const provider = createPlanDetailSideProvider({
+        document: dom.window.document,
+        api: { projectForgeListProjects: async () => ({ success: true, data: [{ id: 'p1', name: '别的工程' }] }) },
+        sidePaneController: { getSnapshot: () => ({ parent }), openTab: async (tab) => { opened.push(tab); return null; }, setVisible() {} },
+        uiHelper: { showToastNotification: (m) => toasts.push(m) },
+        getConversationProjects: async () => used
+    });
+
+    await provider.openPlanDetailTab();
+    assert.equal(opened[0].payload.projectId, 'p2');
+    assert.equal(opened[0].scopeMode, 'topic');
+    assert.deepEqual(opened[0].parent, parent);
+    assert.equal(opened[0].id, planTabId('p2', parent));
+
+    // 话题没用过 V工程：不塞一个默认工程进来
+    used = [];
+    await provider.openPlanDetailTab();
+    assert.equal(opened.length, 1);
+    assert.equal(toasts.length, 1);
+    dom.window.close();
+});

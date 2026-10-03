@@ -22,6 +22,7 @@ import { placeMenuAt } from './menu-position.js';
 
 // 与 V工程 Git 页（ProjectForgemodules/projectforge-git.js）同一个 key，两处跟随同一个工作区选择。
 const STORAGE_KEY_WS = 'vcp-projectforge-git-workspace';
+const FOLLOW_WORKSPACE_EVENT = 'vcp:git-follow-workspace';
 const STORAGE_KEY_SOURCE = 'vcp-side-pane-git-source';
 const POLL_INTERVAL_MS = 8000;
 const CHANGE_EVENT = 'vcp:git-changed';
@@ -123,6 +124,13 @@ export function createGitSideProvider({
             // 已经挂载的标签不会再走 mountTab，用事件通知它去定位；新挂载的标签自己在加载完后取 pendingFocusPath
             if (focusPath && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('vcp:git-focus-path'));
             return handle;
+        },
+
+        /** 切话题时跟到该话题的工作区：已打开的标签马上切，没打开的下次打开时用它 */
+        followWorkspace(workspaceId) {
+            if (!workspaceId || typeof window === 'undefined') return;
+            try { window.localStorage?.setItem(STORAGE_KEY_WS, workspaceId); } catch (_e) { /* 存不了就只通知已打开的标签 */ }
+            window.dispatchEvent(new CustomEvent(FOLLOW_WORKSPACE_EVENT, { detail: { workspaceId } }));
         },
 
         async mountTab(tabDescriptor, viewElement) {
@@ -722,14 +730,24 @@ export function createGitSideProvider({
                 render();
             });
 
-            wsSelect.addEventListener('change', () => {
-                currentWorkspaceId = wsSelect.value;
+            const switchWorkspace = (workspaceId) => {
+                currentWorkspaceId = workspaceId;
+                wsSelect.value = workspaceId;
                 storage?.setItem(STORAGE_KEY_WS, currentWorkspaceId);
                 currentStatus = null;
                 resetForStatusChange();
                 aiBatchLoaded = false;
                 refreshStatus({ quiet: false });
-            });
+            };
+            wsSelect.addEventListener('change', () => switchWorkspace(wsSelect.value));
+
+            const onFollowWorkspace = (event) => {
+                const id = event.detail?.workspaceId;
+                if (isDisposed || !id || id === currentWorkspaceId) return;
+                if (!workspaces.some(ws => ws.id === id)) return;
+                switchWorkspace(id);
+            };
+            win.addEventListener(FOLLOW_WORKSPACE_EVENT, onFollowWorkspace);
 
             refreshBtn.addEventListener('click', () => refreshStatus({ quiet: false }));
 
@@ -765,6 +783,7 @@ export function createGitSideProvider({
                     closeContextMenu();
                     win.removeEventListener(CHANGE_EVENT, onExternalChange);
                     win.removeEventListener(FOCUS_EVENT, applyPendingFocus);
+                    win.removeEventListener(FOLLOW_WORKSPACE_EVENT, onFollowWorkspace);
                     try { if (typeof offForge === 'function') offForge(); } catch (_e) { /* 已取消 */ }
                     if (pollTimer) clearInterval(pollTimer);
                     pollTimer = null;

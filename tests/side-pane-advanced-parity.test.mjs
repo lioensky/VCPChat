@@ -342,5 +342,6 @@ test('Side pane divider and header hairlines', () => {
     assert.doesNotMatch(css, /\.main-content[^{]*:where\(\.vcp-ui-scope/);
 
     assert.match(css, /html \.side-pane-tab-bar[\s\S]*?border-bottom:\s*1px solid var\(--zcode-header-divider/);
-    assert.match(css, /html #vcpSidePane \.notifications-header[\s\S]*?border-bottom:\s*1px solid var\(--zcode-header-divider/);
+    // VCPLog status lives on the 通知 tab, so the panel has no second header row.
+    assert.doesNotMatch(css, /\.notifications-header/);
 });

@@ -4,7 +4,20 @@
  */
 
 html .side-plan-view:where(.vcp-ui-scope, .vcp-ui-scope *) { height: 100%; overflow: hidden; }
-html .side-plan-scope:where(.vcp-ui-scope, .vcp-ui-scope *) { height: 100%; }
+html .side-plan-scope:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    height: 100%;
+    --side-plan-card-bg: color-mix(in srgb, var(--vcp-ui-text-primary, #ffffff) 6%, var(--vcp-ui-bg-primary, rgba(20, 22, 28, 0.78)));
+    --side-plan-card-bg-hover: color-mix(in srgb, var(--vcp-ui-text-primary, #ffffff) 10%, var(--vcp-ui-bg-primary, rgba(20, 22, 28, 0.88)));
+    --side-plan-card-border: color-mix(in srgb, var(--vcp-ui-text-primary, #ffffff) 8%, transparent);
+    --side-plan-card-border-hover: color-mix(in srgb, var(--vcp-ui-text-primary, #ffffff) 14%, transparent);
+}
+
+html body:is(.light-theme, [data-vcp-theme="light"]) .side-plan-scope:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    --side-plan-card-bg: color-mix(in srgb, var(--vcp-ui-text-primary, #000000) 4%, var(--vcp-ui-bg-primary, rgba(255, 255, 255, 0.85)));
+    --side-plan-card-bg-hover: color-mix(in srgb, var(--vcp-ui-text-primary, #000000) 7%, var(--vcp-ui-bg-primary, rgba(255, 255, 255, 0.95)));
+    --side-plan-card-border: color-mix(in srgb, var(--vcp-ui-text-primary, #000000) 8%, transparent);
+    --side-plan-card-border-hover: color-mix(in srgb, var(--vcp-ui-text-primary, #000000) 14%, transparent);
+}
 
 html .side-plan-body:where(.vcp-ui-scope, .vcp-ui-scope *) {
     height: 100%;
@@ -13,16 +26,37 @@ html .side-plan-body:where(.vcp-ui-scope, .vcp-ui-scope *) {
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    gap: 16px;
 }
 
 html .side-plan-body > *:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 100%; max-width: 56rem; margin-inline: auto; box-sizing: border-box; flex: 0 0 auto; }
 
-html .side-plan-empty:where(.vcp-ui-scope, .vcp-ui-scope *) { padding: 32px 8px; text-align: center; color: var(--zc-fg-subtle); font-size: calc(var(--vcp-ui-font-size) - 1px); }
+html .side-plan-empty:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    padding: 32px 16px;
+    text-align: center;
+    color: var(--vcp-ui-text-2, var(--zc-fg-subtle));
+    font-size: calc(var(--vcp-ui-font-size) - 1px);
+    background: var(--side-plan-card-bg);
+    border: 1px solid var(--side-plan-card-border);
+    border-radius: var(--vcp-ui-radius-lg, 12px);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
 html .side-plan-error:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 
 /* ---- header ---- */
-html .side-plan-header:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; gap: 8px; }
+html .side-plan-header:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: var(--vcp-ui-radius-lg, 12px);
+    background: var(--side-plan-card-bg);
+    border: 1px solid var(--side-plan-card-border);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-sizing: border-box;
+}
 html .side-plan-title-row:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; align-items: center; gap: 8px; min-width: 0; }
 html .side-plan-title:where(.vcp-ui-scope, .vcp-ui-scope *) { margin: 0; font-size: calc(var(--vcp-ui-font-size) + 2px); font-weight: 600; line-height: 1.3; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--zc-fg); }
 html .side-plan-actions:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; gap: 2px; flex: 0 0 auto; }
@@ -51,13 +85,15 @@ html .side-plan-done:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-suc
 /* ---- sections ---- */
 html .side-plan-section:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; gap: 8px; }
 html .side-plan-section-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    display: flex; align-items: center; gap: 6px; width: 100%; padding: 2px 0; border: 0; background: transparent;
-    font: inherit; font-size: calc(var(--vcp-ui-font-size) - 2px); font-weight: 600; color: var(--zc-fg-subtle); text-align: left; cursor: pointer;
+    display: flex; align-items: center; gap: 6px; width: 100%; padding: 4px 10px; border: 1px solid var(--side-plan-card-border); border-radius: var(--vcp-ui-radius-md, 8px);
+    /* 分组标题也压在壁纸上：和卡片同一层磨砂底，否则文字和图案糊在一起 */
+    background: var(--side-plan-card-bg); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+    font: inherit; font-size: calc(var(--vcp-ui-font-size) - 2px); font-weight: 600; color: var(--vcp-ui-text-1, var(--zc-fg-subtle)); text-align: left; cursor: pointer;
 }
 html .side-plan-section-title.static:where(.vcp-ui-scope, .vcp-ui-scope *) { cursor: default; }
 html .side-plan-section-title:not(.static):hover:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-fg); }
 html .side-plan-section-title .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-section-title svg:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 14px; height: 14px; font-size: var(--vcp-ui-font-size); }
-html .side-plan-section-meta:where(.vcp-ui-scope, .vcp-ui-scope *) { margin-left: auto; font-weight: 400; color: var(--zc-fg-subtlest); font-variant-numeric: tabular-nums; }
+html .side-plan-section-meta:where(.vcp-ui-scope, .vcp-ui-scope *) { margin-left: auto; font-weight: 400; color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); font-variant-numeric: tabular-nums; }
 
 html .side-plan-diffstat:where(.vcp-ui-scope, .vcp-ui-scope *) { display: inline-flex; gap: 4px; font-size: calc(var(--vcp-ui-font-size) - 2px); font-variant-numeric: tabular-nums; }
 html .side-plan-added:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-added); }
@@ -65,53 +101,96 @@ html .side-plan-removed:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-
 
 /* ---- todos ---- */
 html .side-plan-todos:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-files:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-timeline:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-contributors:where(.vcp-ui-scope, .vcp-ui-scope *) { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-html .side-plan-todos:where(.vcp-ui-scope, .vcp-ui-scope *) { gap: 2px; }
-html .side-plan-todo:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; gap: 10px; padding: 8px 10px; border-radius: 8px; }
-html .side-plan-todo:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--zc-card-bg); }
-html .side-plan-todo-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 0 0 auto; padding-top: 1px; color: var(--zc-fg-subtlest); }
+html .side-plan-todos:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    gap: 6px;
+    padding: 6px;
+    border-radius: var(--vcp-ui-radius-lg, 12px);
+    background: var(--side-plan-card-bg);
+    border: 1px solid var(--side-plan-card-border);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+html .side-plan-todo:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: var(--vcp-ui-radius-md, 8px);
+    border: 1px solid transparent;
+    transition: background-color 150ms ease, border-color 150ms ease;
+}
+html .side-plan-todo:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--side-plan-card-bg-hover);
+    border-color: var(--side-plan-card-border-hover);
+}
+html .side-plan-todo-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 0 0 auto; padding-top: 1px; color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); }
 html .side-plan-todo-mark .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-todo-mark svg:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 16px; height: 16px; font-size: calc(var(--vcp-ui-font-size) + 2px); }
 html .side-plan-todo.status-completed .side-plan-todo-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-success); }
 html .side-plan-todo.status-inProgress .side-plan-todo-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-lane-descendant); }
 html .side-plan-todo.blocked .side-plan-todo-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-danger); }
-html .side-plan-todo-text:where(.vcp-ui-scope, .vcp-ui-scope *) { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 2px; }
-html .side-plan-todo-title:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; gap: 8px; font-size: calc(var(--vcp-ui-font-size) - 1px); color: var(--zc-fg); overflow-wrap: anywhere; }
-html .side-plan-todo.status-completed .side-plan-todo-title > span:last-child:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-fg-subtle); text-decoration: line-through; text-decoration-color: var(--zc-fg-subtlest); }
-html .side-plan-todo-seq:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 0 0 auto; color: var(--zc-fg-subtlest); font-variant-numeric: tabular-nums; }
-html .side-plan-todo-sub:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 3px); color: var(--zc-fg-subtlest); }
-html .side-plan-todo-note:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--zc-fg-subtle); padding: 4px 8px; border-radius: 6px; background: var(--zc-card-bg); overflow-wrap: anywhere; white-space: pre-wrap; }
+html .side-plan-todo-text:where(.vcp-ui-scope, .vcp-ui-scope *) { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 3px; }
+html .side-plan-todo-title:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; gap: 8px; font-size: calc(var(--vcp-ui-font-size) - 1px); font-weight: 500; color: var(--vcp-ui-text-0, var(--zc-fg)); overflow-wrap: anywhere; }
+html .side-plan-todo.status-completed .side-plan-todo-title > span:last-child:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); text-decoration: line-through; text-decoration-color: var(--vcp-ui-text-3, var(--zc-fg-subtlest)); }
+html .side-plan-todo-seq:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 0 0 auto; color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); font-weight: 600; font-variant-numeric: tabular-nums; }
+html .side-plan-todo-sub:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 3px); color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); }
+html .side-plan-todo-note:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--vcp-ui-text-1, var(--zc-fg-subtle)); padding: 6px 10px; border-radius: 6px; background: color-mix(in srgb, var(--vcp-ui-text-primary, #ffffff) 5%, transparent); border: 1px solid var(--side-plan-card-border); overflow-wrap: anywhere; white-space: pre-wrap; }
 
 @keyframes side-plan-spin { to { transform: rotate(360deg); } }
 html .side-plan-scope .side-plan-todo.status-inProgress:not(.blocked) .side-plan-todo-mark > *:where(.vcp-ui-scope, .vcp-ui-scope *) { animation: side-plan-spin 1.2s linear infinite; }
 
 /* ---- files ---- */
-html .side-plan-files:where(.vcp-ui-scope, .vcp-ui-scope *) { gap: 1px; }
-html .side-plan-file:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 6px; font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--zc-fg); }
-html .side-plan-file:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--zc-card-bg); }
-html .side-plan-file > .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-file > svg:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 14px; height: 14px; font-size: var(--vcp-ui-font-size); color: var(--zc-fg-subtlest); flex: 0 0 auto; }
+html .side-plan-files:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    gap: 2px;
+    padding: 6px;
+    border-radius: var(--vcp-ui-radius-lg, 12px);
+    background: var(--side-plan-card-bg);
+    border: 1px solid var(--side-plan-card-border);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+html .side-plan-file:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--vcp-ui-text-0, var(--zc-fg)); }
+html .side-plan-file:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--side-plan-card-bg-hover); }
+html .side-plan-file > .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-file > svg:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 14px; height: 14px; font-size: var(--vcp-ui-font-size); color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); flex: 0 0 auto; }
 html .side-plan-file-name:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
-html .side-plan-file-edits:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-fg-subtlest); flex: 0 0 auto; }
+html .side-plan-file-edits:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); flex: 0 0 auto; }
 
 /* ---- timeline ---- */
-html .side-plan-timeline:where(.vcp-ui-scope, .vcp-ui-scope *) { gap: 0; position: relative; }
+html .side-plan-timeline:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    gap: 0;
+    position: relative;
+    padding: 8px 10px;
+    border-radius: var(--vcp-ui-radius-lg, 12px);
+    background: var(--side-plan-card-bg);
+    border: 1px solid var(--side-plan-card-border);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
 html .side-plan-batch:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; gap: 10px; padding: 6px 8px 10px; position: relative; }
 html .side-plan-batch:not(:last-child):where(.vcp-ui-scope, .vcp-ui-scope *)::before { content: ""; position: absolute; left: 15px; top: 26px; bottom: -4px; width: 1px; background: var(--zc-border-strong); }
-html .side-plan-batch-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 0 0 auto; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; color: var(--zc-fg-subtle); background: var(--zc-popover); position: relative; }
+html .side-plan-batch-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 0 0 auto; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); background: var(--zc-popover); position: relative; }
 html .side-plan-batch-mark .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-batch-mark svg:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 15px; height: 15px; font-size: calc(var(--vcp-ui-font-size) + 1px); }
 html .side-plan-batch.kind-create .side-plan-batch-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-lane-added); }
 html .side-plan-batch.kind-edit .side-plan-batch-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-lane-modified); }
 html .side-plan-batch.kind-delete .side-plan-batch-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-danger); }
 html .side-plan-batch.kind-revert .side-plan-batch-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-lane-renamed); }
-html .side-plan-batch-text:where(.vcp-ui-scope, .vcp-ui-scope *) { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-html .side-plan-batch-reason:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 1px); color: var(--zc-fg); overflow-wrap: anywhere; }
-html .side-plan-batch-sub:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: calc(var(--vcp-ui-font-size) - 3px); color: var(--zc-fg-subtlest); }
-html .side-plan-batch-files:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 3px); color: var(--zc-fg-subtle); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html .side-plan-batch-text:where(.vcp-ui-scope, .vcp-ui-scope *) { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+html .side-plan-batch-reason:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 1px); font-weight: 500; color: var(--vcp-ui-text-0, var(--zc-fg)); overflow-wrap: anywhere; }
+html .side-plan-batch-sub:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: calc(var(--vcp-ui-font-size) - 3px); color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); }
+html .side-plan-batch-files:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 3px); color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---- contributors ---- */
-html .side-plan-contributors:where(.vcp-ui-scope, .vcp-ui-scope *) { gap: 1px; }
-html .side-plan-contributor:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; align-items: center; gap: 8px; padding: 5px 8px; font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--zc-fg); }
-html .side-plan-contributor > .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-contributor > svg:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 14px; height: 14px; font-size: var(--vcp-ui-font-size); color: var(--zc-fg-subtlest); }
+html .side-plan-contributors:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    gap: 2px;
+    padding: 6px;
+    border-radius: var(--vcp-ui-radius-lg, 12px);
+    background: var(--side-plan-card-bg);
+    border: 1px solid var(--side-plan-card-border);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+html .side-plan-contributor:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--vcp-ui-text-0, var(--zc-fg)); }
+html .side-plan-contributor > .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-contributor > svg:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 14px; height: 14px; font-size: var(--vcp-ui-font-size); color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); }
 html .side-plan-contributor-name:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 1 1 auto; }
-html .side-plan-contributor-batches:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-fg-subtlest); }
+html .side-plan-contributor-batches:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); }
 
 @media (prefers-reduced-motion: reduce) {
     html .side-plan-progress:where(.vcp-ui-scope, .vcp-ui-scope *)::-webkit-progress-value { transition: none; }

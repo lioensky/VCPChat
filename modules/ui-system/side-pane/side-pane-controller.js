@@ -169,6 +169,35 @@ export function createSidePaneController({
         }, TAB_TOOLTIP_DELAY_MS);
     }
 
+    // VCPLog 连接状态不再单独占一行：通知标签上一个小圆点，悬停/读屏给出全文
+    const connectionStatusEl = doc.getElementById('vcpLogConnectionStatus');
+    const connectionStatusText = () => connectionStatusEl?.querySelector('.notifications-status-text')?.textContent.trim() || '';
+
+    function tabTooltipText(tab) {
+        const status = tab.id === SidePaneState.NOTIFICATIONS_TAB_ID ? connectionStatusText() : '';
+        return status ? `${tab.title} · ${status}` : tab.title;
+    }
+
+    function syncNotificationTabStatus() {
+        if (!connectionStatusEl || !tabListElement) return;
+        const btn = tabListElement.querySelector(`.side-pane-tab[data-tab-id="${SidePaneState.NOTIFICATIONS_TAB_ID}"]`);
+        const dot = btn?.querySelector('.side-pane-tab-status');
+        if (!dot) return;
+        dot.dataset.status = connectionStatusEl.dataset.status || 'unknown';
+        const text = connectionStatusText();
+        // 标签上直接写连接状态（“VCPLog 已连接”），“通知”只留在标签名和概览里
+        const title = btn.querySelector('.tab-title');
+        if (title) title.textContent = text ? text.replace(/:\s*/, ' ') : '通知';
+        if (text) btn.setAttribute('aria-label', `通知，${text}`);
+        else btn.removeAttribute('aria-label');
+    }
+
+    if (connectionStatusEl && typeof win.MutationObserver === 'function') {
+        const statusObserver = new win.MutationObserver(syncNotificationTabStatus);
+        statusObserver.observe(connectionStatusEl, { attributes: true, attributeFilter: ['data-status'], childList: true, characterData: true, subtree: true });
+        cleanupListeners.push(() => statusObserver.disconnect());
+    }
+
     const addButtonHome = resolvedAddChatTabBtn?.parentElement || null;
     const addButtonHomeNext = resolvedAddChatTabBtn?.nextSibling || null;
     let tabLayoutRaf = 0;
@@ -261,6 +290,13 @@ export function createSidePaneController({
             titleSpan.textContent = tab.title;
 
             btn.append(iconSpan, titleSpan);
+            if (tab.id === SidePaneState.NOTIFICATIONS_TAB_ID) {
+                const statusDot = doc.createElement('span');
+                statusDot.className = 'side-pane-tab-status';
+                statusDot.setAttribute('aria-hidden', 'true');
+                btn.classList.add('has-status');
+                btn.appendChild(statusDot);
+            }
 
             btn.addEventListener('click', () => {
                 controller.activateTab(tab.id);
@@ -296,7 +332,7 @@ export function createSidePaneController({
             });
 
             // 标题悬停提示：1.5s 后出现，离开/按下/拖拽即消失
-            tabItem.addEventListener('mouseenter', () => scheduleTabTooltip(tabItem, tab.title));
+            tabItem.addEventListener('mouseenter', () => scheduleTabTooltip(tabItem, tabTooltipText(tab)));
             tabItem.addEventListener('mouseleave', hideTabTooltip);
             tabItem.addEventListener('pointerdown', hideTabTooltip);
 
@@ -310,6 +346,7 @@ export function createSidePaneController({
 
             tabListElement.insertBefore(tabItem, insertAnchor);
         });
+        syncNotificationTabStatus();
         renderTabOverviewPopover?.(searchInput?.value || '');
         layoutTabStrip();
         // 新开或切换到的标签在溢出区时滚进可见范围；激活项不变时不打扰用户手动滚动
@@ -702,7 +739,7 @@ export function createSidePaneController({
 
             state = SidePaneState.openTab(state, rawTab);
             const targetTabId = state.activeTabId;
-            if (rawTab.scopeMode === 'topic' && state.parent && rawTab.descriptor?.parent && SidePaneState.matchesConversation(rawTab.descriptor.parent, state.parent)) {
+            if (state.parent && SidePaneState.matchesConversation(SidePaneState.getTabParent(rawTab), state.parent)) {
                 const parentKey = SidePaneState.getParentKey(state.parent);
                 collapsedByParent.set(parentKey, false);
                 activeTabByParent.set(parentKey, targetTabId);

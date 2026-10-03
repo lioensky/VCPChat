@@ -30,6 +30,12 @@ export function matchesConversation(refA, refB) {
         && refA.topicId === refB.topicId;
 }
 
+/** 话题级标签所属的对话：辅助对话记在 descriptor.parent，其他话题级标签（如计划）记在 parent */
+export function getTabParent(tab) {
+    if (!tab || tab.scopeMode !== 'topic') return null;
+    return tab.descriptor?.parent || tab.parent || null;
+}
+
 export function getParentKey(parentRef) {
     if (!parentRef) return '';
     return `${parentRef.itemType || 'agent'}:${parentRef.itemId || ''}:${parentRef.topicId || ''}`;
@@ -129,7 +135,7 @@ export function setPreferredWidth(state, width, bounds = {}) {
 
 export function resolveSidePaneScopeState(state, parentRef, options = {}) {
     const parentChatTabs = parentRef
-        ? state.tabs.filter(t => t.kind === 'chat' && t.descriptor && matchesConversation(t.descriptor.parent, parentRef))
+        ? state.tabs.filter(t => matchesConversation(getTabParent(t), parentRef))
         : [];
 
     // Workspace/global tools survive topic changes, including their collapsed state.
@@ -259,9 +265,9 @@ export function openTab(state, rawTab) {
         nextTabs = Object.freeze([...state.tabs, newTab]);
     }
 
-    const isVisibleForCurrentParent = scopeMode === 'global' || !state.parent || (
-        rawTab.descriptor?.parent && matchesConversation(rawTab.descriptor.parent, state.parent)
-    );
+    const tabParent = getTabParent({ ...rawTab, scopeMode });
+    const isVisibleForCurrentParent = scopeMode === 'global' || !state.parent || !tabParent
+        || matchesConversation(tabParent, state.parent);
 
     return Object.freeze({
         ...state,
@@ -362,10 +368,8 @@ export function getVisibleTabs(state, parentRef = null) {
     return state.tabs.filter(tab => {
         if (tab.id === NOTIFICATIONS_TAB_ID) return true;
         if (tab.scopeMode === 'global') return true;
-        if (tab.kind === 'chat' && tab.descriptor) {
-            return matchesConversation(tab.descriptor.parent, parentRef);
-        }
-        return true;
+        const tabParent = getTabParent(tab);
+        return tabParent ? matchesConversation(tabParent, parentRef) : true;
     });
 }
 
@@ -394,7 +398,8 @@ const api = Object.freeze({
     closeTab,
     reorderTabs,
     getVisibleTabs,
-    getClosableVisibleTabs
+    getClosableVisibleTabs,
+    getTabParent
 });
 
 if (typeof globalThis !== 'undefined') {

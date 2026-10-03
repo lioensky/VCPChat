@@ -96,3 +96,29 @@ test('disposal drops a late workspace result without loading or mounting a plan'
     assert.equal(dom.window.document.querySelector('.zc-scope'), null);
     dom.window.close();
 });
+
+test('the topic workspace is announced once per change so the Git tab can follow it', async () => {
+    const dom = makeDom();
+    let current = historyUsing('A');
+    const announced = [];
+    const panel = createConversationStatusPanel({
+        document: dom.window.document,
+        getHistory: () => current,
+        onScopeWorkspace: (ws) => announced.push(ws.id),
+        api: {
+            projectForgeListProjects: async () => ({ success: true, data: ['A', 'B'].map(id => ({ id, name: id, workspace_id: `ws-${id}` })) }),
+            gitListWorkspaces: async () => ({ success: true, data: { workspaces: ['A', 'B'].map(id => ({ id: `ws-${id}`, alias: id, path: `/code/${id}` })) } }),
+            gitChangeSummary: async () => ({ success: true, data: { files: 0, added: 0, removed: 0 } }),
+            projectForgeGetProject: async () => ({ success: true, data: { todos: [] } })
+        }
+    });
+    panel.mount();
+    await panel.refresh();
+    await panel.refresh();
+    current = historyUsing('B');
+    await panel.refresh();
+    await settle();
+    assert.deepEqual(announced, ['ws-A', 'ws-B']);
+    panel.dispose();
+    dom.window.close();
+});
