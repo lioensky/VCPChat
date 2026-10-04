@@ -7,6 +7,7 @@ import path from 'node:path';
 import { JSDOM } from 'jsdom';
 
 import { createSidePaneController } from '../modules/ui-system/side-pane/side-pane-controller.js';
+import { defineChatTabType } from '../modules/ui-system/side-pane/tab-types/chat.js';
 import { mountSideChatSurface, createSideChatSurfaceOwner } from '../modules/renderer/sideChatSurfaceOwner.js';
 import { buildModelConfig } from '../modules/chat/singleChatRequestOrchestrator.js';
 import * as service from '../modules/chat/sideChatSessionService.js';
@@ -31,7 +32,7 @@ function createMockController(provider = { mountTab: async () => ({ dispose: asy
         root: doc.getElementById('pane'),
         tabListElement: doc.getElementById('tabs'),
         contentContainer: doc.getElementById('content'),
-        providers: { chat: provider }
+        tabTypes: [defineChatTabType({ provider: provider })]
     });
     return { dom, doc, ctrl };
 }
@@ -63,7 +64,7 @@ function createMockCapabilities(send = async () => ({ terminal: { event: { type:
 
 test('R01: Parent change deactivates old tab panel and hides non-visible tabs', async () => {
     const { dom, doc, ctrl } = createMockController();
-    await ctrl.openChat(createDescriptor());
+    await ctrl.openTab({ kind: 'chat', descriptor: createDescriptor() });
 
     ctrl.setParent({ itemType: 'agent', itemId: 'agent', topicId: 'other-parent' });
 
@@ -85,8 +86,8 @@ test('R02: Reopening same child activates existing view without duplicate panels
         }
     });
 
-    await ctrl.openChat(createDescriptor('s1'));
-    await ctrl.openChat(createDescriptor('s2'));
+    await ctrl.openTab({ kind: 'chat', descriptor: createDescriptor('s1') });
+    await ctrl.openTab({ kind: 'chat', descriptor: createDescriptor('s2') });
 
     const snapshot = ctrl.getSnapshot();
     const chatTabs = snapshot.tabs.filter(t => t.kind === 'chat');
@@ -108,7 +109,7 @@ test('R03: Tab close during async mount disposes handle and removes panel withou
         mountTab: () => new Promise(r => { resolveMount = r; })
     });
 
-    const pending = ctrl.openChat(createDescriptor());
+    const pending = ctrl.openTab({ kind: 'chat', descriptor: createDescriptor() });
     await ctrl.closeTab('s1');
     resolveMount({ dispose: async () => { disposed++; }, focus() {} });
     await pending;
@@ -448,7 +449,7 @@ test('R14: Draft and uncommitted references preserved across tab close and reope
     const { dom, ctrl } = createMockController(provider);
     const desc = createDescriptor('tab-draft', 'topic-draft');
 
-    const handle1 = await ctrl.openChat(desc);
+    const handle1 = await ctrl.openTab({ kind: 'chat', descriptor: desc });
     handle1.setDraft('preserved draft message');
     handle1.addReference({ id: 'r1', text: 'quoted draft ref' });
 
@@ -456,7 +457,7 @@ test('R14: Draft and uncommitted references preserved across tab close and reope
     await ctrl.closeTab(activeTabId);
 
     // Reopen same child
-    const handle2 = await ctrl.openChat(desc);
+    const handle2 = await ctrl.openTab({ kind: 'chat', descriptor: desc });
     assert.equal(handle2.getDraft(), 'preserved draft message');
     assert.equal(handle2.getReferences().length, 1);
     assert.equal(handle2.getReferences()[0].text, 'quoted draft ref');

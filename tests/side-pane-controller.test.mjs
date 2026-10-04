@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { createSidePaneController } from '../modules/ui-system/side-pane/side-pane-controller.js';
+import { defineChatTabType } from '../modules/ui-system/side-pane/tab-types/chat.js';
 
 test('SidePaneController initializes and renders tabs into tabListElement', () => {
     const dom = new JSDOM(`
@@ -80,7 +81,7 @@ test('SidePaneController showNotifications and openChat mount views and sync vis
         resizerHandle,
         tabListElement,
         contentContainer,
-        providers: { chat: mockChatProvider },
+        tabTypes: [defineChatTabType({ provider: mockChatProvider })],
     });
 
     controller.showNotifications();
@@ -94,7 +95,7 @@ test('SidePaneController showNotifications and openChat mount views and sync vis
         title: '测试侧聊',
     };
 
-    await controller.openChat(desc);
+    await controller.openTab({ kind: 'chat', descriptor: desc });
     assert.equal(controller.getSnapshot().activeTabId, 'side-chat-test');
     assert.equal(tabListElement.children.length, 2);
     assert.ok(mountedDescriptor);

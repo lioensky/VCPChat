@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { createSidePaneController } from '../modules/ui-system/side-pane/side-pane-controller.js';
+import { defineChatTabType } from '../modules/ui-system/side-pane/tab-types/chat.js';
 import { createSideChatSurfaceOwner } from '../modules/renderer/sideChatSurfaceOwner.js';
 import { createSideChatDescriptor, createChildTopicForAgent } from '../modules/chat/sideChatSessionService.js';
 
@@ -79,34 +80,32 @@ test('Full Side Chat lifecycle integration: open, refer, send, and close', async
         root: sidePane,
         tabListElement: tabsContainer,
         contentContainer,
-        toggleChatBtn,
-        addChatTabBtn: addChatBtn,
-        providers: {
-            chat: sideChatOwner
-        },
-        openTabEntries: [{ id: 'selection-side-conversation', label: '辅助对话', open: () => controller.openSideChat({ forceNew: true }) }],
-        onOpenSideChat: async (opts = {}) => {
-            const createRes = await createChildTopicForAgent({
-                electronAPI: mockElectronAPI,
-                agentId: currentItem.id,
-                topicTitle: opts.title || '侧聊 1'
-            });
-            assert.equal(createRes.ok, true);
-
-            const desc = createSideChatDescriptor({
-                parent: { itemId: currentItem.id, topicId: currentTopicId, name: currentItem.name },
-                childTopicId: createRes.topicId,
-                title: opts.title || '侧聊 1',
-                model: 'test-model'
-            });
-
-            const handle = await controller.openChat(desc);
-            if (opts.reference) {
-                handle.addReference(opts.reference);
-            }
-            return handle;
-        }
+        expandButton: toggleChatBtn,
+        addTabButton: addChatBtn,
+        tabTypes: [defineChatTabType({ provider: sideChatOwner, openSideChat })]
     });
+
+    async function openSideChat(opts = {}) {
+        const createRes = await createChildTopicForAgent({
+            electronAPI: mockElectronAPI,
+            agentId: currentItem.id,
+            topicTitle: opts.title || '侧聊 1'
+        });
+        assert.equal(createRes.ok, true);
+
+        const desc = createSideChatDescriptor({
+            parent: { itemId: currentItem.id, topicId: currentTopicId, name: currentItem.name },
+            childTopicId: createRes.topicId,
+            title: opts.title || '侧聊 1',
+            model: 'test-model'
+        });
+
+        const handle = await controller.openTab({ kind: 'chat', descriptor: desc });
+        if (opts.reference) {
+            handle.addReference(opts.reference);
+        }
+        return handle;
+    }
 
     // 1. 面板里没有标签、只登记了一个入口时，展开按钮直接打开它
     toggleChatBtn.click();

@@ -4,7 +4,11 @@ import fs from 'node:fs';
 import { JSDOM } from 'jsdom';
 
 import * as SidePaneState from '../modules/ui-system/side-pane/side-pane-state.js';
+import { sideChatTab } from '../modules/ui-system/side-pane/tab-types/chat.js';
+
+const openChat = (state, descriptor) => SidePaneState.openTab(state, sideChatTab(descriptor, state.tabs));
 import { createSidePaneController } from '../modules/ui-system/side-pane/side-pane-controller.js';
+import { defineChatTabType } from '../modules/ui-system/side-pane/tab-types/chat.js';
 import { mountSideChatSurface } from '../modules/renderer/sideChatSurfaceOwner.js';
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
@@ -79,9 +83,9 @@ function createController(dom, options = {}) {
         root,
         tabListElement: root.querySelector('.side-pane-tabs'),
         contentContainer: root.querySelector('.side-pane-content-container'),
-        toggleChatBtn: doc.getElementById('toggleSidePaneChatBtn'),
-        addChatTabBtn: doc.getElementById('addSidePaneChatBtn'),
-        providers: { chat: mockChatProvider(options.disposed) },
+        expandButton: doc.getElementById('toggleSidePaneChatBtn'),
+        addTabButton: doc.getElementById('addSidePaneChatBtn'),
+        tabTypes: [defineChatTabType({ provider: mockChatProvider(options.disposed) })],
         ...options.controller
     });
 }
@@ -89,8 +93,8 @@ function createController(dom, options = {}) {
 test('Parity: closing the last closable tab of the conversation collapses the pane', () => {
     const parent = { itemType: 'agent', itemId: 'agent-1', topicId: 'parent' };
     let s = SidePaneState.setParent(SidePaneState.createInitialSidePaneState({ visible: true }), parent);
-    s = SidePaneState.openChatTab(s, createDesc('s1', 'c1'));
-    s = SidePaneState.openChatTab(s, createDesc('other', 'c9', 'other-topic'));
+    s = openChat(s, createDesc('s1', 'c1'));
+    s = openChat(s, createDesc('other', 'c9', 'other-topic'));
     assert.deepEqual(SidePaneState.getClosableVisibleTabs(s).map(t => t.id), ['s1']);
 
     // 另一个话题的标签不算：关掉 s1 后当前对话已经没有可关的标签
@@ -113,11 +117,11 @@ test('Parity: close-others and close-all only touch the current conversation', a
     const ctrl = createController(dom, { disposed });
 
     ctrl.setParent({ itemType: 'agent', itemId: 'agent-1', topicId: 'other-topic' });
-    await ctrl.openChat(createDesc('other', 'c9', 'other-topic'));
+    await ctrl.openTab({ kind: 'chat', descriptor: createDesc('other', 'c9', 'other-topic') });
     ctrl.setParent({ itemType: 'agent', itemId: 'agent-1', topicId: 'parent' });
-    await ctrl.openChat(createDesc('s1', 'c1'));
-    await ctrl.openChat(createDesc('s2', 'c2'));
-    await ctrl.openChat(createDesc('s3', 'c3'));
+    await ctrl.openTab({ kind: 'chat', descriptor: createDesc('s1', 'c1') });
+    await ctrl.openTab({ kind: 'chat', descriptor: createDesc('s2', 'c2') });
+    await ctrl.openTab({ kind: 'chat', descriptor: createDesc('s3', 'c3') });
 
     await ctrl.closeOtherTabs('s2');
     assert.deepEqual(ctrl.getSnapshot().tabs.map(t => t.id).sort(), ['notifications', 'other', 's2']);
@@ -449,7 +453,7 @@ test('Parity: notifications live in the new tab page instead of the tab strip', 
     assert.equal(tools.hidden, false);
     assert.equal(notifications.hidden, true);
     ctrl.setParent({ itemType: 'agent', itemId: 'agent-1', topicId: 'parent' });
-    await ctrl.openChat(createDesc('s1', 'c1'));
+    await ctrl.openTab({ kind: 'chat', descriptor: createDesc('s1', 'c1') });
     assert.deepEqual(stripTabIds(), ['s1']);
     assert.equal(launcher.hidden, true);
     assert.deepEqual([...doc.querySelectorAll('#sidePaneOpenTabsList .side-pane-overview-item')].map(item => item.getAttribute('data-tab-id')), ['s1']);
@@ -533,7 +537,7 @@ test('Parity: tab context menu is scoped, keyboard friendly and closes on Escape
     const ctrl = createController(dom);
 
     ctrl.setParent({ itemType: 'agent', itemId: 'agent-1', topicId: 'parent' });
-    await ctrl.openChat(createDesc('s1', 'c1'));
+    await ctrl.openTab({ kind: 'chat', descriptor: createDesc('s1', 'c1') });
 
     const openMenuOn = (tabId) => tabList.querySelector(`[data-tab-id="${tabId}"]`).dispatchEvent(
         new dom.window.MouseEvent('contextmenu', { clientX: 200, clientY: 100, bubbles: true, cancelable: true }));
@@ -559,7 +563,7 @@ test('Parity: tab context menu is scoped, keyboard friendly and closes on Escape
     assert.equal(isDisabled('close-tab'), true);
     assert.equal(isDisabled('close-others'), false);
 
-    await ctrl.openChat(createDesc('s2', 'c2'));
+    await ctrl.openTab({ kind: 'chat', descriptor: createDesc('s2', 'c2') });
     openMenuOn('s1');
     contextMenu.querySelector('[data-action="close-others"]').click();
     await tick();

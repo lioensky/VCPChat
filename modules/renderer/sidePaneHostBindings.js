@@ -1,4 +1,4 @@
-export function createSidePaneHostBindings({ win, chatAPI, uiHelper, chatManager, selectedItemRef, topicIdRef, toggleChatBtn, controller }) {
+export function createSidePaneHostBindings({ win, chatAPI, uiHelper, chatManager, selectedItemRef, topicIdRef, toggleChatBtn, controller, restoreSessions }) {
     const notify = (message, type) => uiHelper?.showToastNotification?.(message, type);
     const owners = [];
     const subscriptions = { add: owner => owners.push(owner) };
@@ -23,7 +23,7 @@ export function createSidePaneHostBindings({ win, chatAPI, uiHelper, chatManager
             return;
         }
         controller.setParent({ itemType: 'agent', itemId: item.id, topicId: topicId || '' });
-        if (topicId) await controller.restoreSessions(item.id, topicId);
+        if (topicId) await restoreSessions?.(item.id, topicId);
     };
     const unbindSelection = chatManager?.onSelectionChange?.(syncSidePaneParent);
     if (unbindSelection) subscriptions.add({ dispose: unbindSelection });

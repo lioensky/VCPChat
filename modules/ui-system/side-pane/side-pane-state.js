@@ -1,4 +1,4 @@
-/* Pure state transitions and validation for the Workspace Side Pane and Side Chat. */
+/* Pure state transitions for the Workspace Side Pane. Knows no tab kind except the built-in notifications tab. */
 'use strict';
 
 import { getTabIconName } from './side-pane-tab-utils.js';
@@ -10,8 +10,7 @@ export const MAX_WIDTH = 800;
 export const NOTIFICATIONS_TAB_ID = 'notifications';
 
 export const TAB_KINDS = Object.freeze({
-    NOTIFICATIONS: 'notifications',
-    CHAT: 'chat'
+    NOTIFICATIONS: 'notifications'
 });
 
 export const NOTIFICATIONS_TAB = Object.freeze({
@@ -30,54 +29,15 @@ export function matchesConversation(refA, refB) {
         && refA.topicId === refB.topicId;
 }
 
-/** 话题级标签所属的对话：辅助对话记在 descriptor.parent，其他话题级标签（如计划）记在 parent */
+/** 话题级标签所属的对话记在 tab.parent */
 export function getTabParent(tab) {
     if (!tab || tab.scopeMode !== 'topic') return null;
-    return tab.descriptor?.parent || tab.parent || null;
+    return tab.parent || null;
 }
 
 export function getParentKey(parentRef) {
     if (!parentRef) return '';
     return `${parentRef.itemType || 'agent'}:${parentRef.itemId || ''}:${parentRef.topicId || ''}`;
-}
-
-export function freezeDescriptor(descriptor) {
-    if (!descriptor || typeof descriptor !== 'object') {
-        throw new TypeError('SideChatDescriptor must be an object');
-    }
-    if (!descriptor.id || typeof descriptor.id !== 'string') {
-        throw new TypeError('SideChatDescriptor requires a string id');
-    }
-    if (!descriptor.parent || typeof descriptor.parent !== 'object') {
-        throw new TypeError('SideChatDescriptor requires a parent conversation reference');
-    }
-    if (!descriptor.child || typeof descriptor.child !== 'object') {
-        throw new TypeError('SideChatDescriptor requires a child conversation reference');
-    }
-    if (descriptor.parent.topicId === descriptor.child.topicId) {
-        throw new Error('Child topicId must differ from parent topicId');
-    }
-
-    return Object.freeze({
-        schemaVersion: SCHEMA_VERSION,
-        id: descriptor.id,
-        parent: Object.freeze({
-            itemType: descriptor.parent.itemType || 'agent',
-            itemId: String(descriptor.parent.itemId || ''),
-            topicId: String(descriptor.parent.topicId || '')
-        }),
-        child: Object.freeze({
-            itemType: descriptor.child.itemType || 'agent',
-            itemId: String(descriptor.child.itemId || ''),
-            topicId: String(descriptor.child.topicId || '')
-        }),
-        title: String(descriptor.title || '辅助对话'),
-        createdAt: Number.isFinite(descriptor.createdAt) ? descriptor.createdAt : Date.now(),
-        contextMode: descriptor.contextMode === 'parent-snapshot' ? 'parent-snapshot' : 'references-only',
-        snapshotId: descriptor.snapshotId ? String(descriptor.snapshotId) : undefined,
-        model: descriptor.model ? String(descriptor.model) : undefined,
-        parentSnapshot: Array.isArray(descriptor.parentSnapshot) ? descriptor.parentSnapshot : []
-    });
 }
 
 export function createInitialSidePaneState(options = {}) {
@@ -86,18 +46,6 @@ export function createInitialSidePaneState(options = {}) {
         : DEFAULT_WIDTH;
 
     const initialTabs = [NOTIFICATIONS_TAB];
-    if (Array.isArray(options.tabs)) {
-        options.tabs.forEach(tab => {
-            if (tab && tab.id !== NOTIFICATIONS_TAB_ID && tab.kind === 'chat' && tab.descriptor) {
-                initialTabs.push(Object.freeze({
-                    id: tab.id,
-                    kind: 'chat',
-                    title: tab.title || tab.descriptor.title || '辅助对话',
-                    descriptor: freezeDescriptor(tab.descriptor)
-                }));
-            }
-        });
-    }
 
     const activeTabId = options.activeTabId && initialTabs.some(t => t.id === options.activeTabId)
         ? options.activeTabId
@@ -222,16 +170,24 @@ export function showLauncher(state) {
     });
 }
 
-export function openTab(state, rawTab) {
+function normalizeTabFields(rawTab) {
     if (!rawTab || typeof rawTab !== 'object' || !rawTab.id) {
         throw new TypeError('SidePaneTab requires an object with a valid id');
     }
-    const kind = rawTab.kind || 'chat';
+    const kind = String(rawTab.kind || 'tab');
     const id = String(rawTab.id);
-    const title = String(rawTab.title || '标签页');
-    const icon = rawTab.icon ? String(rawTab.icon) : getTabIconName({ kind });
-    const scopeMode = rawTab.scopeMode || (kind === 'chat' ? 'topic' : 'global');
-    const closable = rawTab.closable !== undefined ? Boolean(rawTab.closable) : (id !== NOTIFICATIONS_TAB_ID);
+    return {
+        kind,
+        id,
+        title: String(rawTab.title || '标签页'),
+        icon: rawTab.icon ? String(rawTab.icon) : getTabIconName({ kind }),
+        scopeMode: rawTab.scopeMode === 'topic' ? 'topic' : 'global',
+        closable: rawTab.closable !== undefined ? Boolean(rawTab.closable) : (id !== NOTIFICATIONS_TAB_ID)
+    };
+}
+
+export function openTab(state, rawTab) {
+    const { kind, id, title, icon, scopeMode, closable } = normalizeTabFields(rawTab);
 
     const existingIndex = state.tabs.findIndex(t => t.id === id);
     let nextTabs = state.tabs;
@@ -277,25 +233,26 @@ export function openTab(state, rawTab) {
     });
 }
 
-export function openChatTab(state, rawDescriptor) {
-    const descriptor = freezeDescriptor(rawDescriptor);
-    const existingIndex = state.tabs.findIndex(tab => tab.id === descriptor.id || (
-        tab.kind === 'chat' && tab.descriptor && tab.descriptor.child.topicId === descriptor.child.topicId
-    ));
-
-    const targetTabId = existingIndex >= 0 ? state.tabs[existingIndex].id : descriptor.id;
-
-    return openTab(state, {
-        id: targetTabId,
-        kind: 'chat',
-        type: 'selection-side-chat',
-        ephemeral: true,
-        title: descriptor.title,
-        icon: 'chat_bubble',
-        closable: true,
-        scopeMode: 'topic',
-        descriptor
-    });
+/**
+ * 把恢复出来的标签放回状态里：不激活、不展开，已有同 id 的跳过。
+ * 只放当前没有的标签；挂载留给第一次激活。
+ */
+export function restoreTabs(state, rawTabs = []) {
+    const known = new Set(state.tabs.map(tab => tab.id));
+    const added = [];
+    for (const rawTab of rawTabs) {
+        let fields;
+        try { fields = normalizeTabFields(rawTab); } catch { continue; }
+        if (known.has(fields.id) || fields.id === NOTIFICATIONS_TAB_ID) continue;
+        known.add(fields.id);
+        added.push(Object.freeze({
+            ...rawTab,
+            ...fields,
+            openedAt: Number.isFinite(rawTab.openedAt) ? rawTab.openedAt : Date.now()
+        }));
+    }
+    if (added.length === 0) return state;
+    return Object.freeze({ ...state, tabs: Object.freeze([...state.tabs, ...added]) });
 }
 
 function isClosable(tab) {
@@ -384,7 +341,6 @@ const api = Object.freeze({
     LAUNCHER_TAB_ID,
     matchesConversation,
     getParentKey,
-    freezeDescriptor,
     createInitialSidePaneState,
     setVisible,
     setPreferredWidth,
@@ -394,7 +350,7 @@ const api = Object.freeze({
     showNotifications,
     showLauncher,
     openTab,
-    openChatTab,
+    restoreTabs,
     closeTab,
     reorderTabs,
     getVisibleTabs,

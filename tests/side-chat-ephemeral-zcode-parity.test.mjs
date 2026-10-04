@@ -4,6 +4,7 @@ import { JSDOM } from 'jsdom';
 
 import * as SidePaneState from '../modules/ui-system/side-pane/side-pane-state.js';
 import { createSidePaneController } from '../modules/ui-system/side-pane/side-pane-controller.js';
+import { defineChatTabType } from '../modules/ui-system/side-pane/tab-types/chat.js';
 import { createSideChatDescriptor } from '../modules/chat/sideChatSessionService.js';
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
@@ -68,10 +69,12 @@ test('ZCode Parity: Closing selection-side-chat destroys runtime and is explicit
         root,
         tabListElement: tabList,
         contentContainer: content,
-        providers: { chat: mockChatProvider },
-        onTabClosed: async (desc) => {
-            closedDescriptors.push(desc);
-        }
+        tabTypes: [defineChatTabType({
+            provider: mockChatProvider,
+            onClosed: async (desc) => {
+                closedDescriptors.push(desc);
+            }
+        })]
     });
 
     const desc = createSideChatDescriptor({
@@ -80,7 +83,7 @@ test('ZCode Parity: Closing selection-side-chat destroys runtime and is explicit
         title: 'Ephemeral Side Chat'
     });
 
-    await ctrl.openChat(desc);
+    await ctrl.openTab({ kind: 'chat', descriptor: desc });
     assert.equal(ctrl.getSnapshot().tabs.length, 2); // notifications + side chat
     assert.equal(ctrl.getSnapshot().activeTabId, desc.id);
 
@@ -94,7 +97,7 @@ test('ZCode Parity: Closing selection-side-chat destroys runtime and is explicit
     const views = content.querySelectorAll(`.side-pane-view[data-tab-id="${desc.id}"]`);
     assert.equal(views.length, 0, 'View element must be removed from DOM');
 
-    // 3. onTabClosed must be notified with the descriptor for logical tab cleanup
+    // 3. the chat tab type's onClosed must be notified with the descriptor for logical tab cleanup
     assert.equal(closedDescriptors.length, 1);
     assert.equal(closedDescriptors[0].id, desc.id);
 

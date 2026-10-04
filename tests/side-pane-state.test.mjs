@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as SidePaneState from '../modules/ui-system/side-pane/side-pane-state.js';
+import { sideChatTab } from '../modules/ui-system/side-pane/tab-types/chat.js';
+
+const openChat = (state, descriptor) => SidePaneState.openTab(state, sideChatTab(descriptor, state.tabs));
 
 test('createInitialSidePaneState provides immutable defaults with notifications tab', () => {
     const state = SidePaneState.createInitialSidePaneState();
@@ -39,15 +42,15 @@ test('setPreferredWidth clamps to bounds', () => {
     assert.equal(sCustom.preferredWidth, 500);
 });
 
-test('openChatTab validates descriptor and avoids duplicate child topics', () => {
+test('chat tab type validates the descriptor and reuses the tab of an open child topic', () => {
     const s0 = SidePaneState.createInitialSidePaneState();
 
     assert.throws(() => {
-        SidePaneState.openChatTab(s0, { id: 'invalid' });
+        openChat(s0, { id: 'invalid' });
     }, /SideChatDescriptor requires a parent conversation reference/);
 
     assert.throws(() => {
-        SidePaneState.openChatTab(s0, {
+        openChat(s0, {
             id: 'invalid-same',
             parent: { itemType: 'agent', itemId: 'a', topicId: 'same' },
             child: { itemType: 'agent', itemId: 'a', topicId: 'same' },
@@ -61,7 +64,7 @@ test('openChatTab validates descriptor and avoids duplicate child topics', () =>
         title: '侧聊 1',
     };
 
-    const s1 = SidePaneState.openChatTab(s0, desc1);
+    const s1 = openChat(s0, desc1);
     assert.equal(s1.visible, true);
     assert.equal(s1.activeTabId, 'side-1');
     assert.equal(s1.tabs.length, 2);
@@ -69,7 +72,7 @@ test('openChatTab validates descriptor and avoids duplicate child topics', () =>
     assert.equal(s1.tabs[1].kind, 'chat');
 
     // Opening with same id or child topicId activates existing tab without adding new one
-    const s2 = SidePaneState.openChatTab(s1, { ...desc1, id: 'side-1-duplicate' });
+    const s2 = openChat(s1, { ...desc1, id: 'side-1-duplicate' });
     assert.equal(s2.tabs.length, 2);
     assert.equal(s2.activeTabId, 'side-1');
 });
@@ -94,8 +97,8 @@ test('closeTab handles fallback and protects notifications tab', () => {
         title: '侧聊 2',
     };
 
-    let state = SidePaneState.openChatTab(s0, desc1);
-    state = SidePaneState.openChatTab(state, desc2);
+    let state = openChat(s0, desc1);
+    state = openChat(state, desc2);
     assert.equal(state.tabs.length, 3);
     assert.equal(state.activeTabId, 'side-2');
 
@@ -115,13 +118,13 @@ test('getVisibleTabs filters chat tabs by parent conversation reference', () => 
     const parentB = { itemType: 'agent', itemId: 'agent-b', topicId: 'topic-b' };
 
     let state = SidePaneState.createInitialSidePaneState();
-    state = SidePaneState.openChatTab(state, {
+    state = openChat(state, {
         id: 'side-a1',
         parent: parentA,
         child: { itemType: 'agent', itemId: 'agent-a', topicId: 'child-a1' },
         title: 'A1',
     });
-    state = SidePaneState.openChatTab(state, {
+    state = openChat(state, {
         id: 'side-b1',
         parent: parentB,
         child: { itemType: 'agent', itemId: 'agent-b', topicId: 'child-b1' },
@@ -178,4 +181,25 @@ test('a topic-scoped tab with a parent only shows under that conversation', () =
     state = SidePaneState.setParent(state, a);
     assert.ok(SidePaneState.getVisibleTabs(state, a).some(t => t.id === 'plan-detail:p1@a'));
     assert.equal(state.activeTabId, 'plan-detail:p1@a');
+});
+
+test('restoreTabs appends missing tabs without changing the active tab or visibility', () => {
+    let state = SidePaneState.createInitialSidePaneState();
+    state = SidePaneState.openTab(state, { id: 'notes', kind: 'notes', title: '笔记' });
+    state = SidePaneState.setVisible(state, false);
+
+    const restored = SidePaneState.restoreTabs(state, [
+        { id: 'notes', kind: 'notes', title: '旧标题' },
+        { id: 'git', kind: 'git', title: 'Git', closable: true },
+        { id: 'notifications', kind: 'notifications' },
+        null
+    ]);
+    assert.deepEqual(restored.tabs.map(t => t.id), ['notifications', 'notes', 'git']);
+    assert.equal(restored.tabs[1].title, '笔记');
+    assert.equal(restored.activeTabId, 'notes');
+    assert.equal(restored.visible, false);
+    assert.ok(Object.isFrozen(restored.tabs[2]));
+    assert.equal(restored.tabs[2].scopeMode, 'global');
+
+    assert.equal(SidePaneState.restoreTabs(restored, []), restored);
 });

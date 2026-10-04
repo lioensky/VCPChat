@@ -149,7 +149,7 @@ export function createSideChatWiring({
             return null;
         }
 
-        const handle = await getController().openChat(descriptor);
+        const handle = await getController().openTab({ kind: 'chat', descriptor });
         if (options?.reference && handle?.addReference) {
             handle.addReference(options.reference);
         }
@@ -162,7 +162,7 @@ export function createSideChatWiring({
             const reopenDesc = { ...options, open: true, status: 'ready' };
             saveSideChatMetadata({ electronAPI: chatAPI, metadata: reopenDesc })
                 .catch(err => console.warn('[SideChat] Failed to persist reopened metadata:', err));
-            const existingHandle = await getController().openChat(reopenDesc);
+            const existingHandle = await getController().openTab({ kind: 'chat', descriptor: reopenDesc });
             if (existingHandle) {
                 getController().setVisible(true);
                 existingHandle.focus?.();
@@ -222,7 +222,7 @@ export function createSideChatWiring({
                     }
                 }
 
-                await getController().openChat(createSideChatDescriptor({
+                await getController().openTab({ kind: 'chat', descriptor: createSideChatDescriptor({
                     parent: item.parent,
                     childTopicId,
                     title: item.title,
@@ -234,7 +234,7 @@ export function createSideChatWiring({
                     status: 'ready',
                     draft: item.draft || '',
                     references: Array.isArray(item.references) ? item.references : []
-                }));
+                }) });
             } catch (e) {
                 console.warn('[SideChat] Failed to restore side chat tab:', e);
             }
@@ -275,7 +275,7 @@ export function createSideChatWiring({
             const selRes = captureSelectionReference(win);
             if (selRes.ok) reference = selRes.reference;
         }
-        await getController().openSideChat(reference ? { reference } : {});
+        await openSideChat(reference ? { reference } : {});
     };
 
 

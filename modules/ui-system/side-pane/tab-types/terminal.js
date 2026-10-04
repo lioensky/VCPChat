@@ -4,6 +4,8 @@ export function defineTerminalTabType({ document: doc, window: win, chatAPI, sid
     const provider = createTerminalSideProvider({ document: doc, api: chatAPI || win.electronAPI, sidePaneController, onOpenUrl });
     return Object.freeze({
         kind: 'terminal', label: '终端', icon: 'terminal', searchHint: '终端',
+        // 重启后不自动拉起新的 shell
+        persist: false,
         entry: { id: 'terminal', order: 50, open: () => provider.openTerminalTab() },
         provider
     });

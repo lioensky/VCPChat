@@ -437,14 +437,18 @@
     "modules/ui-system/side-pane/selection-reference.js",
     "modules/ui-system/side-pane/side-pane-controller.js",
     "modules/ui-system/side-pane/side-pane-entries.js",
+    "modules/ui-system/side-pane/side-pane-focus.js",
     "modules/ui-system/side-pane/side-pane-launcher.js",
+    "modules/ui-system/side-pane/side-pane-persistence.js",
     "modules/ui-system/side-pane/side-pane-resizer-owner.js",
+    "modules/ui-system/side-pane/side-pane-shortcuts.js",
     "modules/ui-system/side-pane/side-pane-state.js",
     "modules/ui-system/side-pane/side-pane-tab-dnd.js",
     "modules/ui-system/side-pane/side-pane-tab-menu.js",
     "modules/ui-system/side-pane/side-pane-tab-overview.js",
     "modules/ui-system/side-pane/side-pane-tab-strip.js",
     "modules/ui-system/side-pane/side-pane-tab-utils.js",
+    "modules/ui-system/side-pane/side-pane-types.js",
     "modules/ui-system/side-pane/side-pane-visibility.js",
     "modules/ui-system/side-pane/tab-types/browser.js",
     "modules/ui-system/side-pane/tab-types/chat.js",
@@ -5092,25 +5096,6 @@
           "line": 43,
           "kind": "preload-subscription",
           "match": "onMessageItem("
-        }
-      ]
-    },
-    {
-      "name": "onOpenSideChat(",
-      "producers": [],
-      "consumers": [
-        {
-          "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 639,
-          "kind": "preload-subscription"
-        }
-      ],
-      "evidence": [
-        {
-          "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 639,
-          "kind": "preload-subscription",
-          "match": "onOpenSideChat("
         }
       ]
     },

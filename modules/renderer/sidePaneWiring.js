@@ -40,14 +40,12 @@ export function initWorkspaceSidePane({
         tabListElement: tabList,
         contentContainer,
         toggleNotificationsBtn,
-        toggleChatBtn,
+        expandButton: toggleChatBtn,
         closeSidePaneBtn: closeBtn,
-        addChatTabBtn: addBtn,
+        addTabButton: addBtn,
         settingsRef,
         electronAPI: chatAPI,
-        onOpenSideChat: sideChat.openSideChat,
-        onTabClosed: sideChat.onTabClosed,
-        onRestoreSessions: sideChat.restoreSessions
+        persistence: { storage: win.localStorage }
     });
     win.vcpSidePaneController = controller;
     subscriptions.add(controller);
@@ -66,13 +64,15 @@ export function initWorkspaceSidePane({
     const toolOutput = defineToolOutputTabType(deps);
     const planDetail = definePlanDetailTabType({ ...deps, historyRef, openProjectForge });
     const terminal = defineTerminalTabType({ ...deps, onOpenUrl: url => browser.provider.openBrowserTab({ url, forceNew: true }) });
-    for (const definition of [defineNotificationsTabType(), defineChatTabType({ provider: sideChat.provider, sidePaneController: controller }), defineNotesTabType(deps), codeViewer, git, browser, terminal, toolOutput, planDetail]) {
+    for (const definition of [defineNotificationsTabType(), defineChatTabType({ provider: sideChat.provider, openSideChat: sideChat.openSideChat, onClosed: sideChat.onTabClosed }), defineNotesTabType(deps), codeViewer, git, browser, terminal, toolOutput, planDetail]) {
         controller.registerTabType(definition);
     }
+    // 标签类型都登记完才能认出存档里的标签
+    controller.restoreLayout();
     controller.setLauncherAddressHandler(browser.addressHandler);
     subscriptions.add(createSidePaneWorkspaceServices({ doc, win, chatAPI, chatManager, uiHelper, historyRef, codeViewerProvider: codeViewer.provider, gitProvider: git.provider, toolOutputProvider: toolOutput.provider, planDetailProvider: planDetail.provider, openProjectForge }));
     subscriptions.add(createSidePaneLauncherWiring({ doc, win, chatAPI, chatManager, uiHelper, selectedItemRef, controller }));
-    subscriptions.add(createSidePaneHostBindings({ win, chatAPI, uiHelper, chatManager, selectedItemRef, topicIdRef, toggleChatBtn, controller }));
+    subscriptions.add(createSidePaneHostBindings({ win, chatAPI, uiHelper, chatManager, selectedItemRef, topicIdRef, toggleChatBtn, controller, restoreSessions: sideChat.restoreSessions }));
     subscriptions.add(createFloatingSelectionButton({ doc, win, notify: (message, type) => uiHelper?.showToastNotification?.(message, type) }));
     return controller;
 }

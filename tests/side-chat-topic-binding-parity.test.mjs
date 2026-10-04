@@ -4,6 +4,7 @@ import { JSDOM } from 'jsdom';
 
 import * as SidePaneState from '../modules/ui-system/side-pane/side-pane-state.js';
 import { createSidePaneController } from '../modules/ui-system/side-pane/side-pane-controller.js';
+import { defineChatTabType } from '../modules/ui-system/side-pane/tab-types/chat.js';
 
 function createTopicBindingTestDOM() {
     return new JSDOM(`
@@ -47,16 +48,16 @@ test('ZCode Parity: Switching to a topic with no side chats automatically collap
         root,
         tabListElement: tabList,
         contentContainer: content,
-        toggleChatBtn: toggleBtn,
-        providers: {
-            chat: { mountTab: async () => ({ focus() {}, async requestClose() { return { closed: true }; }, async dispose() {} }) }
-        }
+        expandButton: toggleBtn,
+        tabTypes: [defineChatTabType({
+            provider: { mountTab: async () => ({ focus() {}, async requestClose() { return { closed: true }; }, async dispose() {} }) }
+        })]
     });
 
     // 1. Topic A has a side chat open
     const parentA = { itemType: 'agent', itemId: 'agent-1', topicId: 'topic-a' };
     ctrl.setParent(parentA);
-    await ctrl.openChat(createDesc('side-a1', 'topic-a', 'child-a1'));
+    await ctrl.openTab({ kind: 'chat', descriptor: createDesc('side-a1', 'topic-a', 'child-a1') });
 
     assert.equal(ctrl.getSnapshot().visible, true, 'Side pane should be visible for Topic A');
     assert.equal(ctrl.getSnapshot().activeTabId, 'side-a1');
@@ -92,10 +93,10 @@ test('ZCode Parity: Switching back to a topic with side chats restores tabs and 
         root,
         tabListElement: tabList,
         contentContainer: content,
-        toggleChatBtn: toggleBtn,
-        providers: {
-            chat: { mountTab: async () => ({ focus() {}, async requestClose() { return { closed: true }; }, async dispose() {} }) }
-        }
+        expandButton: toggleBtn,
+        tabTypes: [defineChatTabType({
+            provider: { mountTab: async () => ({ focus() {}, async requestClose() { return { closed: true }; }, async dispose() {} }) }
+        })]
     });
 
     const parentA = { itemType: 'agent', itemId: 'agent-1', topicId: 'topic-a' };
@@ -103,7 +104,7 @@ test('ZCode Parity: Switching back to a topic with side chats restores tabs and 
 
     // Topic A opens side-a1
     ctrl.setParent(parentA);
-    await ctrl.openChat(createDesc('side-a1', 'topic-a', 'child-a1'));
+    await ctrl.openTab({ kind: 'chat', descriptor: createDesc('side-a1', 'topic-a', 'child-a1') });
 
     // Switch to Topic B (empty -> collapses)
     ctrl.setParent(parentB);
@@ -133,18 +134,18 @@ test('ZCode Parity: Explicit collapse preference is remembered per topic (sidePa
         root,
         tabListElement: tabList,
         contentContainer: content,
-        toggleChatBtn: toggleBtn,
+        expandButton: toggleBtn,
         closeSidePaneBtn: closeBtn,
-        providers: {
-            chat: { mountTab: async () => ({ focus() {}, async requestClose() { return { closed: true }; }, async dispose() {} }) }
-        }
+        tabTypes: [defineChatTabType({
+            provider: { mountTab: async () => ({ focus() {}, async requestClose() { return { closed: true }; }, async dispose() {} }) }
+        })]
     });
 
     const parentA = { itemType: 'agent', itemId: 'agent-1', topicId: 'topic-a' };
     const parentB = { itemType: 'agent', itemId: 'agent-1', topicId: 'topic-b' };
 
     ctrl.setParent(parentA);
-    await ctrl.openChat(createDesc('side-a1', 'topic-a', 'child-a1'));
+    await ctrl.openTab({ kind: 'chat', descriptor: createDesc('side-a1', 'topic-a', 'child-a1') });
     assert.equal(ctrl.getSnapshot().visible, true);
 
     // User explicitly clicks close button on Topic A
@@ -180,17 +181,17 @@ test('ZCode Parity: Per-topic active tab is remembered (activeTabByOwner)', asyn
         root,
         tabListElement: tabList,
         contentContainer: content,
-        providers: {
-            chat: { mountTab: async () => ({ focus() {}, async requestClose() { return { closed: true }; }, async dispose() {} }) }
-        }
+        tabTypes: [defineChatTabType({
+            provider: { mountTab: async () => ({ focus() {}, async requestClose() { return { closed: true }; }, async dispose() {} }) }
+        })]
     });
 
     const parentA = { itemType: 'agent', itemId: 'agent-1', topicId: 'topic-a' };
     const parentB = { itemType: 'agent', itemId: 'agent-1', topicId: 'topic-b' };
 
     ctrl.setParent(parentA);
-    await ctrl.openChat(createDesc('side-a1', 'topic-a', 'child-a1'));
-    await ctrl.openChat(createDesc('side-a2', 'topic-a', 'child-a2'));
+    await ctrl.openTab({ kind: 'chat', descriptor: createDesc('side-a1', 'topic-a', 'child-a1') });
+    await ctrl.openTab({ kind: 'chat', descriptor: createDesc('side-a2', 'topic-a', 'child-a2') });
     assert.equal(ctrl.getSnapshot().activeTabId, 'side-a2');
 
     // User switches active tab to side-a1
@@ -199,7 +200,7 @@ test('ZCode Parity: Per-topic active tab is remembered (activeTabByOwner)', asyn
 
     // Switch to Topic B and open side-b1
     ctrl.setParent(parentB);
-    await ctrl.openChat(createDesc('side-b1', 'topic-b', 'child-b1'));
+    await ctrl.openTab({ kind: 'chat', descriptor: createDesc('side-b1', 'topic-b', 'child-b1') });
     assert.equal(ctrl.getSnapshot().activeTabId, 'side-b1');
 
     // Switch back to Topic A -> restores side-a1 (the tab user was viewing on Topic A)
@@ -225,14 +226,14 @@ test('ZCode Parity: Closing the last side chat tab automatically collapses side 
         root,
         tabListElement: tabList,
         contentContainer: content,
-        providers: {
-            chat: { mountTab: async () => ({ focus() {}, async requestClose() { return { closed: true }; }, async dispose() {} }) }
-        }
+        tabTypes: [defineChatTabType({
+            provider: { mountTab: async () => ({ focus() {}, async requestClose() { return { closed: true }; }, async dispose() {} }) }
+        })]
     });
 
     const parentA = { itemType: 'agent', itemId: 'agent-1', topicId: 'topic-a' };
     ctrl.setParent(parentA);
-    await ctrl.openChat(createDesc('side-a1', 'topic-a', 'child-a1'));
+    await ctrl.openTab({ kind: 'chat', descriptor: createDesc('side-a1', 'topic-a', 'child-a1') });
     assert.equal(ctrl.getSnapshot().visible, true);
 
     // Close the only side chat tab for Topic A
@@ -258,14 +259,13 @@ test('ZCode Parity: toggleChatBtn only operates on current parent chat tabs', as
         root,
         tabListElement: tabList,
         contentContainer: content,
-        toggleChatBtn: toggleBtn,
-        providers: {
-            chat: { mountTab: async () => ({ focus() {}, async requestClose() { return { closed: true }; }, async dispose() {} }) }
-        },
-        openTabEntries: [{ id: 'selection-side-conversation', label: '辅助对话', open: () => ctrl.openSideChat({ forceNew: true }) }],
-        onOpenSideChat: async () => {
-            openedForTopic = ctrl.getSnapshot().parent?.topicId;
-        }
+        expandButton: toggleBtn,
+        tabTypes: [defineChatTabType({
+            provider: { mountTab: async () => ({ focus() {}, async requestClose() { return { closed: true }; }, async dispose() {} }) },
+            openSideChat: async () => {
+                openedForTopic = ctrl.getSnapshot().parent?.topicId;
+            }
+        })]
     });
 
     const parentA = { itemType: 'agent', itemId: 'agent-1', topicId: 'topic-a' };
@@ -273,7 +273,7 @@ test('ZCode Parity: toggleChatBtn only operates on current parent chat tabs', as
 
     // Topic A has side-a1
     ctrl.setParent(parentA);
-    await ctrl.openChat(createDesc('side-a1', 'topic-a', 'child-a1'));
+    await ctrl.openTab({ kind: 'chat', descriptor: createDesc('side-a1', 'topic-a', 'child-a1') });
 
     // Switch to Topic B (0 tabs)
     ctrl.setParent(parentB);
@@ -282,7 +282,7 @@ test('ZCode Parity: toggleChatBtn only operates on current parent chat tabs', as
     // Clicking toggle button on Topic B MUST NOT activate side-a1 from Topic A!
     toggleBtn.click();
     await new Promise(r => setTimeout(r, 0));
-    assert.equal(openedForTopic, 'topic-b', 'Should trigger onOpenSideChat for Topic B, NOT activate Topic A tab');
+    assert.equal(openedForTopic, 'topic-b', 'Should open a side chat for Topic B, NOT activate Topic A tab');
 
     await ctrl.dispose();
     dom.window.close();

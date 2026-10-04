@@ -97,8 +97,12 @@ export function createBrowserSideProvider({
                 }
             }
         }
+        // 重启后恢复的浏览器标签也占着 browser:N，跳过已有的编号
+        const openIds = new Set(sidePaneController.getSnapshot?.().tabs.map(tab => tab.id) || []);
+        let id;
+        do { id = `browser:${++sequence}`; } while (openIds.has(id));
         const handle = await sidePaneController.openTab({
-            id: `browser:${++sequence}`,
+            id,
             kind,
             title: '浏览器',
             icon: 'public',
