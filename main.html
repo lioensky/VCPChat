@@ -650,9 +650,47 @@
                 </div>
             </header>
             <div class="side-pane-content-container">
-                <section class="side-pane-view active" id="sidePaneViewNotifications" role="tabpanel" aria-label="通知视图">
+                <section class="side-pane-view active" id="sidePaneViewLauncher" data-tab-id="launcher" role="tabpanel" aria-label="新标签页">
+                    <form class="side-pane-launcher-address" role="search" hidden>
+                        <span class="vcp-ui-icon" aria-hidden="true">search</span>
+                        <input type="text" class="side-pane-launcher-address-input" placeholder="搜索或输入网址" aria-label="搜索或输入网址" autocomplete="off" spellcheck="false">
+                    </form>
+                    <p class="side-pane-launcher-address-error" role="alert" hidden></p>
+                    <div class="side-pane-open-tab-shell">
+                        <div class="side-pane-open-tab-content">
+                            <div class="side-pane-launcher-profile" hidden>
+                                <button type="button" class="side-pane-launcher-avatar">
+                                    <img alt="" draggable="false">
+                                    <span class="side-pane-launcher-avatar-edit vcp-ui-icon" aria-hidden="true">edit</span>
+                                </button>
+                                <input type="text" class="side-pane-launcher-name" aria-label="名称" autocomplete="off" spellcheck="false" readonly>
+                            </div>
+                            <div class="side-pane-launcher-tabs" role="tablist" aria-label="新标签页分类" hidden>
+                                <button type="button" class="side-pane-launcher-tab" role="tab" data-launcher-tab="tools" aria-selected="true">工具</button>
+                                <button type="button" class="side-pane-launcher-tab" role="tab" data-launcher-tab="apps" aria-selected="false">应用</button>
+                                <button type="button" class="side-pane-launcher-tab" role="tab" data-launcher-tab="notifications" aria-selected="false">通知<span class="side-pane-launcher-tab-status" data-status="unknown" aria-hidden="true"></span></button>
+                            </div>
+                            <section class="side-pane-launcher-section" data-launcher-section="tools" role="tabpanel" aria-label="工具">
+                                <div class="side-pane-launcher-group" data-launcher-group="tools">
+                                    <h3 class="side-pane-launcher-group-title">工具</h3>
+                                    <div class="side-pane-open-tab-list"></div>
+                                </div>
+                                <div class="side-pane-launcher-group" data-launcher-group="recommended" hidden>
+                                    <div class="side-pane-launcher-group-header">
+                                        <h3 class="side-pane-launcher-group-title">推荐</h3>
+                                        <button type="button" class="side-pane-launcher-group-action" title="选择推荐的应用" aria-label="选择推荐的应用" hidden>
+                                            <span class="vcp-ui-icon" aria-hidden="true">settings</span>
+                                        </button>
+                                    </div>
+                                    <div class="side-pane-launcher-recommended-row"></div>
+                                </div>
+                            </section>
+                            <section class="side-pane-launcher-section" data-launcher-section="apps" role="tabpanel" aria-label="应用" hidden>
+                                <div class="side-pane-launcher-app-grid"></div>
+                            </section>
+                            <section class="side-pane-launcher-section" data-launcher-section="notifications" role="tabpanel" aria-label="通知" hidden>
                   <aside class="notifications-sidebar vcp-ui-scope" id="notificationsSidebar">
-            <!-- 连接状态显示在“通知”标签上；这里只留给读屏与旧代码引用 -->
+            <!-- 连接状态显示在新标签页的“通知”分类上；这里只留给读屏与旧代码引用 -->
             <div class="notifications-status-host">
                 <div class="notifications-status" id="vcpLogConnectionStatus" data-status="unknown" role="status" aria-live="polite">
                     <span class="notifications-status-dot" aria-hidden="true"></span>
@@ -759,31 +797,6 @@
                 </div>
             </div>
           </aside>
-                </section>
-                <section class="side-pane-view" id="sidePaneViewLauncher" data-tab-id="launcher" role="tabpanel" aria-label="新标签页" hidden>
-                    <form class="side-pane-launcher-address" role="search" hidden>
-                        <span class="vcp-ui-icon" aria-hidden="true">search</span>
-                        <input type="text" class="side-pane-launcher-address-input" placeholder="搜索或输入网址" aria-label="搜索或输入网址" autocomplete="off" spellcheck="false">
-                    </form>
-                    <p class="side-pane-launcher-address-error" role="alert" hidden></p>
-                    <div class="side-pane-open-tab-shell">
-                        <div class="side-pane-open-tab-content">
-                            <div class="side-pane-launcher-profile" hidden>
-                                <button type="button" class="side-pane-launcher-avatar">
-                                    <img alt="" draggable="false">
-                                    <span class="side-pane-launcher-avatar-edit vcp-ui-icon" aria-hidden="true">edit</span>
-                                </button>
-                                <input type="text" class="side-pane-launcher-name" aria-label="名称" autocomplete="off" spellcheck="false" readonly>
-                            </div>
-                            <div class="side-pane-launcher-tabs" role="tablist" aria-label="新标签页分类" hidden>
-                                <button type="button" class="side-pane-launcher-tab" role="tab" data-launcher-tab="tools" aria-selected="true">工具</button>
-                                <button type="button" class="side-pane-launcher-tab" role="tab" data-launcher-tab="apps" aria-selected="false">应用</button>
-                            </div>
-                            <section class="side-pane-launcher-section" data-launcher-section="tools" role="tabpanel" aria-label="工具">
-                                <div class="side-pane-open-tab-list"></div>
-                            </section>
-                            <section class="side-pane-launcher-section" data-launcher-section="apps" role="tabpanel" aria-label="应用" hidden>
-                                <div class="side-pane-launcher-app-grid"></div>
                             </section>
                         </div>
                     </div>

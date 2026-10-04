@@ -172,6 +172,13 @@ export function createSidePaneController({
     // VCPLog 连接状态不再单独占一行：通知标签上一个小圆点，悬停/读屏给出全文
     const connectionStatusEl = doc.getElementById('vcpLogConnectionStatus');
     const connectionStatusText = () => connectionStatusEl?.querySelector('.notifications-status-text')?.textContent.trim() || '';
+    // 通知放进新标签页的“通知”分类时，状态里的通知页仍是首页/兜底，只是不再占标签条上的位置
+    const notificationsSegmentBtn = contentContainer?.querySelector?.('#sidePaneViewLauncher [data-launcher-tab="notifications"]') || null;
+    const notificationsInLauncher = Boolean(contentContainer?.querySelector?.('#sidePaneViewLauncher [data-launcher-section="notifications"]'));
+    const getStripTabs = () => {
+        const tabs = SidePaneState.getVisibleTabs(state, state.parent);
+        return notificationsInLauncher ? tabs.filter(tab => tab.id !== SidePaneState.NOTIFICATIONS_TAB_ID) : tabs;
+    };
 
     function tabTooltipText(tab) {
         const status = tab.id === SidePaneState.NOTIFICATIONS_TAB_ID ? connectionStatusText() : '';
@@ -179,7 +186,16 @@ export function createSidePaneController({
     }
 
     function syncNotificationTabStatus() {
-        if (!connectionStatusEl || !tabListElement) return;
+        if (!connectionStatusEl) return;
+        if (notificationsSegmentBtn) {
+            const segmentDot = notificationsSegmentBtn.querySelector('.side-pane-launcher-tab-status');
+            if (segmentDot) segmentDot.dataset.status = connectionStatusEl.dataset.status || 'unknown';
+            const label = connectionStatusText().replace(/:\s*/, ' ');
+            notificationsSegmentBtn.title = label;
+            if (label) notificationsSegmentBtn.setAttribute('aria-label', `通知，${label}`);
+            else notificationsSegmentBtn.removeAttribute('aria-label');
+        }
+        if (!tabListElement) return;
         const btn = tabListElement.querySelector(`.side-pane-tab[data-tab-id="${SidePaneState.NOTIFICATIONS_TAB_ID}"]`);
         const dot = btn?.querySelector('.side-pane-tab-status');
         if (!dot) return;
@@ -262,7 +278,7 @@ export function createSidePaneController({
         tabListElement.setAttribute('role', 'tablist');
         tabListElement.setAttribute('aria-label', '工作区侧栏标签页');
 
-        const visibleTabs = SidePaneState.getVisibleTabs(state, state.parent);
+        const visibleTabs = getStripTabs();
         const insertAnchor = resolvedAddChatTabBtn?.parentElement === tabListElement ? resolvedAddChatTabBtn : null;
 
         visibleTabs.forEach(tab => {
@@ -409,14 +425,18 @@ export function createSidePaneController({
         if (!contentContainer) return;
         const visibleTabIds = new Set(SidePaneState.getVisibleTabs(state, state.parent).map(t => t.id));
         visibleTabIds.add(SidePaneState.LAUNCHER_TAB_ID);
+        const activeViewId = notificationsInLauncher && state.activeTabId === SidePaneState.NOTIFICATIONS_TAB_ID
+            ? SidePaneState.LAUNCHER_TAB_ID
+            : state.activeTabId;
         contentContainer.querySelectorAll('.side-pane-view').forEach(view => {
             const viewTabId = view.getAttribute('data-tab-id') || (
                 view.id === 'sidePaneViewNotifications' ? SidePaneState.NOTIFICATIONS_TAB_ID : null
             );
-            const isActive = visibleTabIds.has(viewTabId) && viewTabId === state.activeTabId;
+            const isActive = visibleTabIds.has(viewTabId) && viewTabId === activeViewId;
             view.classList.toggle('active', isActive);
             view.hidden = !isActive;
         });
+        if (notificationsInLauncher) syncLauncherSections();
     }
 
     const isJSDOM = (typeof navigator !== 'undefined' && navigator.userAgent && navigator.userAgent.includes('jsdom'))
@@ -656,6 +676,7 @@ export function createSidePaneController({
         showNotifications() {
             if (isDisposed) return;
             state = SidePaneState.showNotifications(state);
+            if (notificationsInLauncher) renderLauncherProfile();
             renderTabList();
             syncViewPanels();
             syncDomVisibility();
@@ -666,6 +687,7 @@ export function createSidePaneController({
             state = SidePaneState.showLauncher(state);
             renderLauncherProfile();
             if (launcherTab === 'apps') renderLauncherApps();
+            else renderLauncherRecommended();
             renderTabList();
             syncViewPanels();
             syncDomVisibility();
@@ -934,6 +956,17 @@ export function createSidePaneController({
             if (launcherTab === 'apps') renderLauncherApps();
         },
 
+        /** 工具页下方「推荐」：provider() 同应用页的条目；onSettings 时标题旁出现设置按钮 */
+        setLauncherRecommendedProvider(provider, { onSettings = null } = {}) {
+            launcherRecommendedProvider = typeof provider === 'function' ? provider : null;
+            launcherRecommendedSettings = typeof onSettings === 'function' ? onSettings : null;
+            renderLauncherRecommended();
+        },
+
+        refreshLauncherRecommended() {
+            renderLauncherRecommended();
+        },
+
         registerProvider(name, provider) {
             if (isDisposed) return;
             providers[name] = provider;
@@ -1182,7 +1215,7 @@ export function createSidePaneController({
         if (!listEl) return;
         listEl.innerHTML = '';
         const queryParts = normalizeSearchQuery(filterQuery);
-        const visibleTabs = SidePaneState.getVisibleTabs(state, state.parent);
+        const visibleTabs = getStripTabs();
         const now = Date.now();
 
         const openItems = filterAndRankSearchItems(visibleTabs.map(tab => ({
@@ -1475,6 +1508,11 @@ export function createSidePaneController({
     const launcherTabs = launcherView?.querySelector?.('.side-pane-launcher-tabs') || null;
     const launcherAppsSection = launcherView?.querySelector?.('[data-launcher-section="apps"]') || null;
     const launcherAppGrid = launcherAppsSection?.querySelector?.('.side-pane-launcher-app-grid') || null;
+    const launcherNotificationsSection = launcherView?.querySelector?.('[data-launcher-section="notifications"]') || null;
+    const launcherToolsGroup = launcherToolsSection?.querySelector?.('[data-launcher-group="tools"]') || null;
+    const launcherRecommendedGroup = launcherToolsSection?.querySelector?.('[data-launcher-group="recommended"]') || null;
+    const launcherRecommendedRow = launcherRecommendedGroup?.querySelector?.('.side-pane-launcher-recommended-row') || null;
+    const launcherRecommendedAction = launcherRecommendedGroup?.querySelector?.('.side-pane-launcher-group-action') || null;
     let launcherProfileProvider = null;
     let launcherProfileEdit = null;
     let launcherProfileRename = null;
@@ -1482,6 +1520,9 @@ export function createSidePaneController({
     let launcherNameEdit = null;
     let launcherAppsProvider = null;
     let launcherApps = new Map();
+    let launcherRecommendedProvider = null;
+    let launcherRecommendedSettings = null;
+    let launcherRecommended = new Map();
     let launcherTab = 'tools';
 
     // 当前助手的头像和名字；每次打开新标签页时现取，改了头像或名字也能跟上
@@ -1570,43 +1611,70 @@ export function createSidePaneController({
         });
     }
 
-    // 工具 / 应用 两页；没有应用来源时不显示切换条
+    // 工具 / 应用 / 通知 三页。通知页就是状态里的通知标签（铃铛、关完标签后的兜底都落在这里），
+    // 工具和应用记在 launcherTab 里；没有应用来源也没有通知页时不显示切换条
+    function currentLauncherSegment() {
+        return launcherNotificationsSection && state.activeTabId === SidePaneState.NOTIFICATIONS_TAB_ID
+            ? 'notifications'
+            : launcherTab;
+    }
+
     function syncLauncherSections() {
         if (!launcherAppsProvider) launcherTab = 'tools';
+        const segment = currentLauncherSegment();
         if (launcherTabs) {
-            launcherTabs.hidden = !launcherAppsProvider;
+            launcherTabs.hidden = !launcherAppsProvider && !launcherNotificationsSection;
             launcherTabs.querySelectorAll('[data-launcher-tab]').forEach(btn => {
-                const selected = btn.getAttribute('data-launcher-tab') === launcherTab;
+                const key = btn.getAttribute('data-launcher-tab');
+                btn.hidden = key === 'apps' && !launcherAppsProvider;
+                const selected = key === segment;
                 btn.setAttribute('aria-selected', String(selected));
                 btn.tabIndex = selected ? 0 : -1;
             });
         }
+        if (launcherView) launcherView.dataset.launcherSegment = segment;
+        const hasEntries = getAvailableOpenTabEntries().length > 0;
+        if (launcherToolsGroup) launcherToolsGroup.hidden = !hasEntries;
         if (launcherToolsSection) {
-            launcherToolsSection.hidden = launcherTab !== 'tools' || getAvailableOpenTabEntries().length === 0;
+            launcherToolsSection.hidden = segment !== 'tools' || (!hasEntries && launcherRecommended.size === 0);
         }
-        if (launcherAppsSection) launcherAppsSection.hidden = launcherTab !== 'apps';
+        if (launcherAppsSection) launcherAppsSection.hidden = segment !== 'apps';
+        if (launcherNotificationsSection) launcherNotificationsSection.hidden = segment !== 'notifications';
     }
 
     function selectLauncherTab(tab) {
+        if (tab === 'notifications' && launcherNotificationsSection) {
+            controller.showNotifications();
+            return;
+        }
         const next = tab === 'apps' && launcherAppsProvider ? 'apps' : 'tools';
+        if (state.activeTabId === SidePaneState.NOTIFICATIONS_TAB_ID) {
+            launcherTab = next;
+            controller.showLauncher();
+            return;
+        }
         if (next === launcherTab) return;
         launcherTab = next;
-        syncLauncherSections();
         if (launcherTab === 'apps') renderLauncherApps();
+        else renderLauncherRecommended();
+        syncLauncherSections();
     }
 
-    function renderLauncherApps() {
-        if (!launcherAppGrid) return;
-        let apps = [];
+    function readLauncherItems(provider, what) {
         try {
-            apps = launcherAppsProvider?.() || [];
+            return provider?.() || [];
         } catch (error) {
-            console.warn('[SidePaneController] Failed to read launcher apps:', error);
+            console.warn(`[SidePaneController] Failed to read launcher ${what}:`, error);
+            return [];
         }
-        launcherApps = new Map();
+    }
+
+    // 应用页和推荐共用的大图标卡片；返回 id -> 条目，点击时按所在区域查表
+    function renderLauncherCards(container, apps) {
+        const registry = new Map();
         const mounts = [];
-        launcherAppGrid.replaceChildren(...apps.filter(app => app?.id && !launcherApps.has(app.id)).map(app => {
-            launcherApps.set(app.id, app);
+        container.replaceChildren(...apps.filter(app => app?.id && !registry.has(app.id)).map(app => {
+            registry.set(app.id, app);
             const btn = doc.createElement('button');
             btn.type = 'button';
             btn.className = 'side-pane-launcher-app';
@@ -1629,10 +1697,26 @@ export function createSidePaneController({
                 console.warn('[SidePaneController] Failed to draw launcher app icon:', error);
             }
         });
+        return registry;
     }
 
-    async function runLauncherApp(appId) {
-        const app = launcherApps.get(appId);
+    function renderLauncherApps() {
+        if (!launcherAppGrid) return;
+        launcherApps = renderLauncherCards(launcherAppGrid, readLauncherItems(launcherAppsProvider, 'apps'));
+    }
+
+    function renderLauncherRecommended() {
+        if (launcherRecommendedRow) {
+            const items = launcherRecommendedProvider ? readLauncherItems(launcherRecommendedProvider, 'recommendations') : [];
+            launcherRecommended = renderLauncherCards(launcherRecommendedRow, items);
+        }
+        if (launcherRecommendedGroup) launcherRecommendedGroup.hidden = launcherRecommended.size === 0;
+        if (launcherRecommendedAction) launcherRecommendedAction.hidden = !launcherRecommendedSettings;
+        syncLauncherSections();
+    }
+
+    async function runLauncherApp(appId, registry = launcherApps) {
+        const app = registry.get(appId);
         if (!app || isDisposed) return;
         try {
             await app.open();
@@ -1644,8 +1728,8 @@ export function createSidePaneController({
     if (launcherTabs) {
         const onTabsKeydown = (e) => {
             if (!['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
-            const tabs = [...launcherTabs.querySelectorAll('[data-launcher-tab]')];
-            const index = tabs.findIndex(btn => btn.getAttribute('data-launcher-tab') === launcherTab);
+            const tabs = [...launcherTabs.querySelectorAll('[data-launcher-tab]:not([hidden])')];
+            const index = tabs.findIndex(btn => btn.getAttribute('data-launcher-tab') === currentLauncherSegment());
             const next = tabs[(index + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
             if (!next) return;
             e.preventDefault();
@@ -1750,7 +1834,18 @@ export function createSidePaneController({
                 return;
             }
             const appBtn = e.target.closest('[data-launcher-app]');
-            if (appBtn) runLauncherApp(appBtn.getAttribute('data-launcher-app'));
+            if (appBtn) {
+                const registry = launcherRecommendedRow?.contains(appBtn) ? launcherRecommended : launcherApps;
+                runLauncherApp(appBtn.getAttribute('data-launcher-app'), registry);
+                return;
+            }
+            if (launcherRecommendedAction?.contains(e.target)) {
+                try {
+                    launcherRecommendedSettings?.();
+                } catch (error) {
+                    console.error('[SidePaneController] Failed to open recommendation settings:', error);
+                }
+            }
         };
         launcherView.addEventListener('click', onLauncherClick);
         cleanupListeners.push(() => launcherView.removeEventListener('click', onLauncherClick));

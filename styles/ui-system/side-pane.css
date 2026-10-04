@@ -1004,7 +1004,10 @@ html .side-pane-launcher-address:where(.vcp-ui-scope, .vcp-ui-scope *) {
 html .side-pane-launcher-address[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *),
 html .side-pane-launcher-address-error[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *),
 html .side-pane-launcher-section[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *),
-html .side-pane-launcher-tabs[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) {
+html .side-pane-launcher-group[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-pane-launcher-group-action[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-pane-launcher-tabs[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-pane-launcher-tab[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: none;
 }
 
@@ -1163,6 +1166,9 @@ html .side-pane-launcher-tabs:where(.vcp-ui-scope, .vcp-ui-scope *) {
 }
 
 html .side-pane-launcher-tab:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     height: 28px;
     padding: 0 12px;
     border: none;
@@ -1203,6 +1209,119 @@ html .side-pane-launcher-section:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: flex;
     flex-direction: column;
     gap: 4px;
+}
+
+/* 工具页：上面「工具」入口，下面「推荐」一排四个大图标 */
+html .side-pane-launcher-section[data-launcher-section="tools"]:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    gap: 20px;
+}
+
+html .side-pane-launcher-group:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+html .side-pane-launcher-group-header:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+html .side-pane-launcher-group-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    margin: 0;
+    padding: 0 4px;
+    font-size: calc(var(--vcp-ui-font-size) - 1px);
+    font-weight: 600;
+    color: var(--primary-text, var(--vcp-ui-port-color-f1f5f9));
+}
+
+html body[data-vcp-theme="light"] .side-pane-launcher-group-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--primary-text, var(--vcp-ui-port-color-0f172a));
+}
+
+html .side-pane-launcher-group-action:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--sub-text, var(--vcp-ui-port-color-rgba-255-255-255-0-6));
+    cursor: pointer;
+    --vcp-ui-icon-size: 15px;
+}
+
+html .side-pane-launcher-group-action:hover:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-pane-launcher-group-action:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-port-color-rgba-255-255-255-0-06);
+    outline: none;
+}
+
+html body[data-vcp-theme="light"] .side-pane-launcher-group-action:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--sub-text, var(--vcp-ui-port-color-rgba-0-0-0-0-55));
+}
+
+html body[data-vcp-theme="light"] .side-pane-launcher-group-action:hover:where(.vcp-ui-scope, .vcp-ui-scope *),
+html body[data-vcp-theme="light"] .side-pane-launcher-group-action:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-port-color-rgba-0-0-0-0-05);
+}
+
+html .side-pane-launcher-recommended-row:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+}
+
+/* 通知页底部那排快捷入口挪进了新标签页的「推荐」，侧栏里不再重复显示 */
+html #vcpSidePane #notificationsSidebar #vchatAppTray:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: none;
+}
+
+/* “通知”分类上的 VCPLog 连接圆点，颜色同原来通知标签上的那颗 */
+html .side-pane-launcher-tab-status:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 0 0 auto;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--vcp-ui-text-3);
+}
+
+html .side-pane-launcher-tab-status[data-status="open"]:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-success);
+}
+
+html .side-pane-launcher-tab-status[data-status="connecting"]:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-warning);
+    animation: side-pane-tab-status-pulse 1.4s ease-in-out infinite;
+}
+
+html .side-pane-launcher-tab-status:is([data-status="closed"], [data-status="error"]):where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-danger);
+}
+
+/* 通知页：头像和分类留在上面，通知列表占满剩下的高度并自己滚动 */
+html #sidePaneViewLauncher[data-launcher-segment="notifications"] .side-pane-open-tab-shell:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding-bottom: 0;
+}
+
+html #sidePaneViewLauncher[data-launcher-segment="notifications"] .side-pane-open-tab-content:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 1;
+    min-height: 0;
+}
+
+html .side-pane-launcher-section[data-launcher-section="notifications"]:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 1;
+    min-height: 0;
+    margin: 0 -12px;
 }
 
 html .side-pane-launcher-app-grid:where(.vcp-ui-scope, .vcp-ui-scope *) {

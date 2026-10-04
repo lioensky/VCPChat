@@ -14,6 +14,7 @@ const trayManager = (function () {
 
     // 常用应用 ID 列表（默认 4 个）
     let pinnedAppIds = ['vchat-app-translator', 'vchat-app-notes', 'vchat-app-music', 'vchat-app-canvas'];
+    const pinnedListeners = new Set();
     let outsideClickListenerBound = false;
     let outsideClickBindTimer = null;
     let drawerKeydownListenerBound = false;
@@ -446,6 +447,13 @@ const trayManager = (function () {
             saveSettings();
             renderPinnedApps();
             renderDrawerGrid();
+            pinnedListeners.forEach(listener => {
+                try {
+                    listener(pinnedAppIds.slice());
+                } catch (err) {
+                    console.warn('[TrayManager] Pinned apps listener failed:', err);
+                }
+            });
             closeModal();
             if (window.uiHelperFunctions?.showToastNotification) {
                 window.uiHelperFunctions.showToastNotification('常用应用设置已保存', 'success');
@@ -460,7 +468,14 @@ const trayManager = (function () {
             embed: window.VCPEmbeddedAppAllowlist?.isEmbeddable?.(app.action) === true,
         })),
         getIcon: (iconName) => SVG_ICONS[iconName] || '',
-        launchApp: launchApp
+        launchApp: launchApp,
+        // 常用应用也显示在 Next 侧栏新标签页的「推荐」里
+        getPinnedAppIds: () => pinnedAppIds.slice(),
+        openSettings: () => showSettingsModal(),
+        onPinnedChange: (listener) => {
+            pinnedListeners.add(listener);
+            return () => pinnedListeners.delete(listener);
+        }
     };
 })();
 
