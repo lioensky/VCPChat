@@ -1,0 +1,17 @@
+{
+  "petitplanet.exe": {
+    "method": "dxgi",
+    "learned_at": "2026-10-02 22:32:14",
+    "reason": "GDI 截到黑屏，DXGI 成功"
+  },
+  "code.exe": {
+    "method": "gdi",
+    "learned_at": "2026-10-03 18:21:58",
+    "reason": "GDI 截图正常"
+  },
+  "starrail.exe": {
+    "method": "dxgi",
+    "learned_at": "2026-10-04 10:02:04",
+    "reason": "GDI 截到黑屏，DXGI 成功"
+  }
+}

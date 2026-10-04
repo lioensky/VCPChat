@@ -1,77 +1,75 @@
 /*
- * styles/themes/themes纸墨与机芯.css
- * VCP Official Visual Theme
+ * styles/themes/themes赤与白昼.css
+ * VCP Theme: 赤与白昼 (Red Cross & Azure Daylight)
  * Designed by Coco for Professor Ryan
  *
- * Dark  : Industrial Core / 工业核心
- * Light : Editorial Ink / 编辑墨色
- *
- * Visual language:
- * graphite bulkheads, mechanical halo, industrial typography;
- * warm editorial paper, vermilion marks, turquoise status signals.
+ * Dark  : Sacred Cross / 赤十字与终焉 (Graphite, Sacred Crimson, Moonlight Blue)
+ * Light : LCL Horizon / 冰蓝发丝与白昼 (Pure White, Azure Crystal, Vermilion Accent)
  */
 
 /* =========================================================
-   Dark Theme (Default) · Industrial Core
-   工业石墨 / 骨白 / 警示黄 / 铜绿
+   Dark Theme (Default) · Sacred Cross
+   墨黑玄武 / 赤十字深红 / 冷月发丝蓝 / 骨白
    ========================================================= */
 :root {
     color-scheme: dark;
 
-    /* --- Wallpaper Interface ---
-       AI/theme authors may recommend `panel` or `global`; the user's
-       appearance preference can explicitly override this recommendation. */
+    /* --- Wallpaper Interface --- */
     --vcp-theme-wallpaper-scope: panel;
-    --chat-wallpaper-dark: url('../assets/wallpaper/vcp_industrial_core_dark.jpg');
+    --chat-wallpaper-dark: url('../assets/wallpaper/ayanami_dark.png');
+
+    /* --- Design Tokens & Contrast --- */
+    --vcp-ui-theme-on-accent: #FFFFFF;
+    --vcp-ui-on-accent: #FFFFFF;
 
     /* --- Base Colors --- */
-    --primary-bg: #171A1D;
-    --secondary-bg: #20252A;
-    --tertiary-bg: #171A1D;
-    --accent-bg: #2A3035;
-    --border-color: #3B4449;
-    --input-bg: rgba(32, 37, 42, 0.92);
-    --panel-bg-dark: rgba(32, 37, 42, 0.86);
+    --primary-bg: #101316;
+    --secondary-bg: #171B20;
+    --tertiary-bg: #101316;
+    --accent-bg: #222930;
+    --border-color: #2F3942;
+    --input-bg: rgba(23, 27, 32, 0.85);
+    --panel-bg-dark: rgba(18, 22, 26, 0.78);
 
     /* --- Text Colors --- */
-    --primary-text: #F2F0E9;
-    --secondary-text: #A7AFB1;
-    --highlight-text: #F2A900;
-    --text-on-accent: #171A1D;
-    --placeholder-text: #788185;
-    --quoted-text: #76BFAE;
-    --user-text: #F2F0E9;
-    --agent-text: #F2F0E9;
+    --primary-text: #F1F5F9;
+    --secondary-text: #94A3B8;
+    --highlight-text: #EF5350;
+    --text-on-accent: #FFFFFF;
+    --placeholder-text: #64748B;
+    --quoted-text: #90CAF9;
+    --user-text: #F8FAFC;
+    --agent-text: #F1F5F9;
 
-    /* --- Chat Bubbles --- */
-    --user-bubble-bg: rgba(242, 169, 0, 0.105);
-    --assistant-bubble-bg: rgba(32, 37, 42, 0.78);
+    /* --- Chat Bubbles (Increased Translucency) --- */
+    --user-bubble-bg: rgba(229, 57, 53, 0.15);
+    --assistant-bubble-bg: rgba(20, 25, 30, 0.68);
 
     /* --- Controls & Semantic Colors --- */
-    --button-bg: #F2A900;
-    --button-hover-bg: #FFC247;
-    --danger-color: #E06C5F;
-    --danger-hover-bg: #F07B6E;
-    --success-color: #76BFAE;
+    --button-bg: #E53935;
+    --button-hover-bg: #EF5350;
+    --danger-color: #E53935;
+    --danger-hover-bg: #D32F2F;
+    --success-color: #4CAF50;
 
     /* --- Notifications & Tools --- */
-    --notification-bg: rgba(32, 37, 42, 0.92);
-    --notification-header-bg: rgba(42, 48, 53, 0.94);
-    --notification-border: #3B4449;
-    --tool-bubble-bg: rgba(36, 61, 57, 0.42);
-    --tool-bubble-border: rgba(118, 191, 174, 0.66);
+    --notification-bg: rgba(23, 27, 32, 0.90);
+    --notification-header-bg: rgba(30, 36, 43, 0.92);
+    --notification-border: #2F3942;
+    --tool-bubble-bg: rgba(20, 26, 33, 0.60);
+    --tool-bubble-border: rgba(144, 202, 249, 0.65);
 
     /* --- Scrollbar --- */
-    --scrollbar-track: rgba(23, 26, 29, 0.55);
-    --scrollbar-thumb: rgba(242, 169, 0, 0.52);
-    --scrollbar-thumb-hover: rgba(242, 169, 0, 0.78);
+    --scrollbar-track: rgba(16, 19, 22, 0.50);
+    --scrollbar-thumb: rgba(229, 57, 53, 0.55);
+    --scrollbar-thumb-hover: rgba(229, 57, 53, 0.85);
 
     /* --- Streaming Shimmer --- */
-    --shimmer-color-transparent: rgba(242, 169, 0, 0.08);
-    --shimmer-color-highlight: rgba(242, 169, 0, 0.48);
+    --shimmer-color-transparent: rgba(229, 57, 53, 0.08);
+    --shimmer-color-highlight: rgba(229, 57, 53, 0.45);
 
     /* --- Frosted Panel Readability --- */
-    --panel-text-shadow: 0 1px 3px rgba(0, 0, 0, 0.72);
+    --panel-text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
     --panel-bg: var(--panel-bg-dark);
 }
 
@@ -83,121 +81,138 @@ body {
 }
 
 /* =========================================================
-   Light Theme · Editorial Ink
-   暖白纸张 / 炭墨 / 朱砂 / 松石
+   Light Theme · LCL Horizon
+   冷白陶瓷 / 冰蓝发丝 / 朱砂红点睛 / 炭墨
    ========================================================= */
 body.light-theme {
     color-scheme: light;
 
     /* --- Wallpaper Interface --- */
-    --chat-wallpaper-light: url('../assets/wallpaper/vcp_editorial_ink_light.jpg');
+    --chat-wallpaper-light: url('../assets/wallpaper/ayanami_light.png');
     background-image: var(--chat-wallpaper-light);
     background-size: cover;
     background-position: center;
     background-attachment: fixed;
 
+    /* --- Design Tokens & Contrast --- */
+    --vcp-ui-theme-on-accent: #FFFFFF;
+    --vcp-ui-on-accent: #FFFFFF;
+
     /* --- Base Colors --- */
-    --primary-bg: #F2EFE7;
-    --secondary-bg: #FCFAF4;
-    --tertiary-bg: #F2EFE7;
-    --accent-bg: #E7E1D5;
-    --border-color: #D2CBC0;
-    --input-bg: rgba(252, 250, 244, 0.94);
-    --panel-bg-light: rgba(252, 250, 244, 0.88);
+    --primary-bg: #F8FAFC;
+    --secondary-bg: #FFFFFF;
+    --tertiary-bg: #F1F5F9;
+    --accent-bg: #E2E8F0;
+    --border-color: #CBD5E1;
+    --input-bg: rgba(255, 255, 255, 0.88);
+    --panel-bg-light: rgba(255, 255, 255, 0.80);
 
     /* --- Text Colors --- */
-    --primary-text: #1B211F;
-    --secondary-text: #626A66;
-    --highlight-text: #B94832;
-    --text-on-accent: #FFFAF3;
-    --placeholder-text: #8A918D;
-    --quoted-text: #21675C;
-    --user-text: #1B211F;
-    --agent-text: #1B211F;
+    --primary-text: #0F172A;
+    --secondary-text: #475569;
+    --highlight-text: #2563EB;
+    --text-on-accent: #FFFFFF;
+    --placeholder-text: #94A3B8;
+    --quoted-text: #0284C7;
+    --user-text: #0F172A;
+    --agent-text: #0F172A;
 
-    /* --- Chat Bubbles --- */
-    --user-bubble-bg: rgba(185, 72, 50, 0.105);
-    --assistant-bubble-bg: rgba(252, 250, 244, 0.84);
+    /* --- Chat Bubbles (Increased Translucency) --- */
+    --user-bubble-bg: rgba(37, 99, 235, 0.08);
+    --assistant-bubble-bg: rgba(255, 255, 255, 0.74);
 
     /* --- Controls & Semantic Colors --- */
-    --button-bg: #B94832;
-    --button-hover-bg: #A43D2A;
-    --danger-color: #B94832;
-    --danger-hover-bg: #963622;
-    --success-color: #21675C;
+    --button-bg: #2563EB;
+    --button-hover-bg: #1D4ED8;
+    --danger-color: #DC2626;
+    --danger-hover-bg: #B91C1C;
+    --success-color: #059669;
 
     /* --- Notifications & Tools --- */
-    --notification-bg: rgba(252, 250, 244, 0.94);
-    --notification-header-bg: rgba(231, 225, 213, 0.94);
-    --notification-border: #D2CBC0;
-    --tool-bubble-bg: rgba(217, 231, 225, 0.72);
-    --tool-bubble-border: rgba(33, 103, 92, 0.58);
+    --notification-bg: rgba(255, 255, 255, 0.90);
+    --notification-header-bg: rgba(241, 245, 249, 0.92);
+    --notification-border: #CBD5E1;
+    --tool-bubble-bg: rgba(238, 242, 255, 0.65);
+    --tool-bubble-border: rgba(37, 99, 235, 0.55);
 
     /* --- Scrollbar --- */
-    --scrollbar-track: rgba(210, 203, 192, 0.48);
-    --scrollbar-thumb: rgba(185, 72, 50, 0.50);
-    --scrollbar-thumb-hover: rgba(185, 72, 50, 0.76);
+    --scrollbar-track: rgba(226, 232, 240, 0.45);
+    --scrollbar-thumb: rgba(37, 99, 235, 0.45);
+    --scrollbar-thumb-hover: rgba(37, 99, 235, 0.75);
 
     /* --- Streaming Shimmer --- */
-    --shimmer-color-transparent: rgba(185, 72, 50, 0.06);
-    --shimmer-color-highlight: rgba(185, 72, 50, 0.34);
+    --shimmer-color-transparent: rgba(37, 99, 235, 0.06);
+    --shimmer-color-highlight: rgba(37, 99, 235, 0.35);
 
     /* --- Frosted Panel Readability --- */
-    --panel-text-shadow: 0 1px 0 rgba(255, 255, 255, 0.52);
+    --panel-text-shadow: 0 1px 0 rgba(255, 255, 255, 0.65);
     --panel-bg: var(--panel-bg-light);
 }
 
 /* =========================================================
-   Shared Material System
+   Shared Material & Bubble System
    ========================================================= */
 
-/* Frosted panels: substantial enough for an official default theme. */
-.tool-bubble {
-    backdrop-filter: blur(14px) saturate(112%) !important;
-    -webkit-backdrop-filter: blur(14px) saturate(112%) !important;
+/* Frosted glass blur applied to message bubbles for optimal translucency */
+.message-item .md-content {
+    backdrop-filter: blur(12px) saturate(110%) !important;
+    -webkit-backdrop-filter: blur(12px) saturate(110%) !important;
 }
 
-/* Industrial panel separation. */
+.tool-bubble {
+    backdrop-filter: blur(14px) saturate(115%) !important;
+    -webkit-backdrop-filter: blur(14px) saturate(115%) !important;
+}
+
+/* Panel edge separation */
 .sidebar {
-    box-shadow: 10px 0 34px rgba(0, 0, 0, 0.12);
+    box-shadow: 10px 0 32px rgba(0, 0, 0, 0.18);
 }
 
 .notifications-sidebar {
-    box-shadow: -10px 0 34px rgba(0, 0, 0, 0.12);
+    box-shadow: -10px 0 32px rgba(0, 0, 0, 0.18);
 }
 
-/* The Next shell owns .chat-header geometry, surface and divider. */
-
-/* Dark user bubble: warning yellow is a structural signal, not a fill. */
+/* Dark Mode: User Bubble with Sacred Red Spine & Translucent Glow */
 .message-item.user .md-content {
     box-sizing: border-box;
-    border: 1px solid rgba(242, 169, 0, 0.24) !important;
-    border-right: 3px solid rgba(242, 169, 0, 0.82) !important;
+    background: linear-gradient(
+        145deg,
+        rgba(229, 57, 53, 0.18),
+        rgba(20, 25, 30, 0.60)
+    ) !important;
+    border: 1px solid rgba(229, 57, 53, 0.32) !important;
+    border-right: 3px solid #E53935 !important;
     border-radius: 14px 4px 14px 14px !important;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035) !important;
+    box-shadow:
+        0 6px 20px rgba(0, 0, 0, 0.22),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
 }
 
-/* Dark assistant bubble: graphite equipment plate with status edge. */
+/* Dark Mode: AI Bubble with Moonlight Blue Edge & Subtle Translucency */
 .message-item.agent .md-content,
 .message-item.assistant .md-content {
     box-sizing: border-box;
-    border: 1px solid rgba(59, 68, 73, 0.76) !important;
-    border-left: 3px solid rgba(118, 191, 174, 0.68) !important;
+    background: rgba(20, 25, 30, 0.68) !important;
+    border: 1px solid rgba(47, 57, 66, 0.65) !important;
+    border-left: 3px solid rgba(144, 202, 249, 0.72) !important;
     border-radius: 4px 14px 14px 14px !important;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035) !important;
+    box-shadow:
+        0 8px 24px rgba(0, 0, 0, 0.25),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
 }
 
-/* Tool output behaves like a compact operational status plate. */
+/* Dark Mode: Tool Bubble */
 .tool-bubble {
     border-left: 3px solid var(--tool-bubble-border) !important;
     border-radius: 4px 10px 10px 10px !important;
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.20);
 }
 
-/* Header controls retain contrast over wallpaper and frosted header. */
+/* Header & Title Bar Controls */
 .header-button,
 .title-bar-button {
-    color: #D9DDDA !important;
+    color: #CBD5E1 !important;
     transition:
         color 0.18s ease,
         background-color 0.18s ease,
@@ -207,100 +222,111 @@ body.light-theme {
 
 .header-button:hover,
 .title-bar-button:hover {
-    color: #F2A900 !important;
-    background-color: rgba(242, 169, 0, 0.10) !important;
-    box-shadow: inset 0 -2px 0 rgba(242, 169, 0, 0.72);
+    color: #EF5350 !important;
+    background-color: rgba(229, 57, 53, 0.12) !important;
+    box-shadow: inset 0 -2px 0 #E53935;
     transform: translateY(-1px);
 }
 
 /* =========================================================
-   Light Material Translation · Editorial Cards
+   Light Material Translation · Airy Translucent Cards
    ========================================================= */
 body.light-theme .sidebar {
-    box-shadow: 10px 0 30px rgba(27, 33, 31, 0.055);
+    box-shadow: 10px 0 28px rgba(15, 23, 42, 0.05);
 }
 
 body.light-theme .notifications-sidebar {
-    box-shadow: -10px 0 30px rgba(27, 33, 31, 0.055);
+    box-shadow: -10px 0 28px rgba(15, 23, 42, 0.05);
 }
 
-/* The Next shell also owns the light-mode chat-header divider. */
-
-/* Vermilion editorial annotation card. */
+/* Light Mode: User Bubble with Airy Translucent Gradient & Vermilion Edge */
 body.light-theme .message-item.user .md-content {
     background: linear-gradient(
         145deg,
-        rgba(252, 250, 244, 0.90),
-        rgba(185, 72, 50, 0.115)
+        rgba(255, 255, 255, 0.80),
+        rgba(37, 99, 235, 0.08)
     ) !important;
-    border: 1px solid rgba(185, 72, 50, 0.22) !important;
-    border-right: 3px solid rgba(185, 72, 50, 0.82) !important;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78) !important;
+    border: 1px solid rgba(37, 99, 235, 0.22) !important;
+    border-right: 3px solid #DC2626 !important;
+    box-shadow:
+        0 6px 20px rgba(15, 23, 42, 0.05),
+        inset 0 1px 0 rgba(255, 255, 255, 0.85) !important;
 }
 
-/* Warm paper assistant card with strong long-reading stability. */
+/* Light Mode: AI Bubble with Translucent Azure Frost */
 body.light-theme .message-item.agent .md-content,
 body.light-theme .message-item.assistant .md-content {
     background: linear-gradient(
         180deg,
-        rgba(252, 250, 244, 0.88) 0%,
-        rgba(247, 243, 234, 0.84) 100%
+        rgba(255, 255, 255, 0.78) 0%,
+        rgba(248, 250, 252, 0.70) 100%
     ) !important;
-    border: 1px solid rgba(210, 203, 192, 0.88) !important;
-    border-left: 3px solid rgba(33, 103, 92, 0.72) !important;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82) !important;
+    border: 1px solid rgba(203, 213, 225, 0.75) !important;
+    border-left: 3px solid #2563EB !important;
+    box-shadow:
+        0 8px 24px rgba(15, 23, 42, 0.06),
+        inset 0 1px 0 rgba(255, 255, 255, 0.88) !important;
 }
 
 body.light-theme .tool-bubble {
-    box-shadow: 0 6px 18px rgba(27, 33, 31, 0.075);
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05);
 }
 
 body.light-theme .header-button,
 body.light-theme .title-bar-button {
-    color: #4F5854 !important;
+    color: #475569 !important;
 }
 
 body.light-theme .header-button:hover,
 body.light-theme .title-bar-button:hover {
-    color: #B94832 !important;
-    background-color: rgba(185, 72, 50, 0.075) !important;
-    box-shadow: inset 0 -2px 0 rgba(185, 72, 50, 0.62);
+    color: #2563EB !important;
+    background-color: rgba(37, 99, 235, 0.08) !important;
+    box-shadow: inset 0 -2px 0 #2563EB;
 }
 
 /* =========================================================
-   Brand Motion · restrained operational feedback
+   Brand Motion · Eva Pulse Feedback
    ========================================================= */
-@keyframes vcpOperationalPulse {
+@keyframes sacredCrossPulse {
     0%, 100% {
-        border-left-color: rgba(118, 191, 174, 0.56);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+        border-left-color: rgba(144, 202, 249, 0.65);
+        box-shadow:
+            0 8px 24px rgba(0, 0, 0, 0.25),
+            inset 0 1px 0 rgba(255, 255, 255, 0.04);
     }
     50% {
-        border-left-color: rgba(118, 191, 174, 0.82);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+        border-left-color: rgba(229, 57, 53, 0.90);
+        box-shadow:
+            0 8px 28px rgba(0, 0, 0, 0.32),
+            -3px 0 14px rgba(229, 57, 53, 0.22),
+            inset 0 1px 0 rgba(255, 255, 255, 0.06);
     }
 }
 
 .message-item.streaming.agent .md-content,
 .message-item.streaming.assistant .md-content {
-    animation: vcpOperationalPulse 2.8s ease-in-out infinite;
+    animation: sacredCrossPulse 2.6s ease-in-out infinite;
 }
 
-@keyframes editorialProofPulse {
+@keyframes ayanamiHairPulse {
     0%, 100% {
-        border-left-color: rgba(33, 103, 92, 0.60);
+        border-left-color: rgba(37, 99, 235, 0.65);
     }
     50% {
-        border-left-color: rgba(33, 103, 92, 0.88);
+        border-left-color: rgba(56, 189, 248, 0.95);
+        box-shadow:
+            0 8px 24px rgba(15, 23, 42, 0.06),
+            -3px 0 14px rgba(56, 189, 248, 0.20),
+            inset 0 1px 0 rgba(255, 255, 255, 0.88);
     }
 }
 
 body.light-theme .message-item.streaming.agent .md-content,
 body.light-theme .message-item.streaming.assistant .md-content {
-    animation: editorialProofPulse 3.2s ease-in-out infinite;
+    animation: ayanamiHairPulse 2.8s ease-in-out infinite;
 }
 
-/* Fine official-theme scrollbar. */
+/* Scrollbar styling */
 ::-webkit-scrollbar {
     width: 6px !important;
     height: 6px !important;
@@ -319,13 +345,13 @@ body.light-theme .message-item.streaming.assistant .md-content {
     background: var(--scrollbar-thumb-hover) !important;
 }
 
-/* Keyboard focus remains visible in both modes. */
+/* Keyboard accessibility */
 :focus-visible:not(#messageInput):not(.chat-message-input):not(.vcp-ui-scope *) {
     outline: 2px solid var(--highlight-text);
     outline-offset: 2px;
 }
 
-/* Respect users who prefer low-motion interfaces. */
+/* Prefers-reduced-motion fallback */
 @media (prefers-reduced-motion: reduce) {
     .message-item.streaming.agent .md-content,
     .message-item.streaming.assistant .md-content,

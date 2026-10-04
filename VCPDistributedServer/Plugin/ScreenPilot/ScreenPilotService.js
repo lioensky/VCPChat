@@ -61,8 +61,10 @@ function buildWorkerEnv() {
 }
 
 function workerCommand() {
+    const fileConfig = parseEnvFile(path.join(PLUGIN_DIR, 'config.env'));
     const configured = String(
         runtime.config?.SCREENPILOT_PYTHON
+        || fileConfig.SCREENPILOT_PYTHON
         || process.env.SCREENPILOT_PYTHON
         || 'python'
     ).trim();

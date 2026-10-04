@@ -1,0 +1,275 @@
+/* ============================================================
+   VChat 侧边栏美学增强 (Sidebar Aesthetic Overlay)
+   独立无层样式：级联上覆盖 vcp-ui.* 各 layer
+   设计语言：
+     - 底色沉降 1~1.5 明度阶，侧边栏退居背光景深层
+     - 明度(灰阶)传状态，色相(--vcp-ui-accent)只点睛辨身份
+     - 180ms 弹性动效，边缘 mask 渐隐，空气悬浮留白
+   ============================================================ */
+
+:root {
+  /* 女仆共鸣光：默认跟随 ui-system 强调色，可被主题/运行时覆盖 */
+  --vcp-sb-aura: var(--vcp-ui-accent, #38bdf8);
+  --vcp-sb-aura-soft: color-mix(in srgb, var(--vcp-sb-aura) 32%, transparent);
+  --vcp-sb-aura-glow: color-mix(in srgb, var(--vcp-sb-aura) 42%, transparent);
+  
+  /* 深色主题材质（默认深空近不透明） */
+  --vcp-sb-bg-top: #14171e;
+  --vcp-sb-bg-bottom: #0d0f14;
+  --vcp-sb-hairline: rgba(255, 255, 255, 0.055);
+  --vcp-sb-inset-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.45);
+  --vcp-sb-drop-shadow: 6px 0 24px -18px rgba(0, 0, 0, 0.6);
+  --vcp-sb-fill-hover: rgba(255, 255, 255, 0.045);
+  --vcp-sb-fill-active: rgba(255, 255, 255, 0.075);
+  
+  /* 文字与次级文字 */
+  --vcp-sb-text-title: #e6ebf2;
+  --vcp-sb-text-sub: #717f94;
+  --vcp-sb-text-muted: #aeb8c6;
+  
+  /* 动效常数 */
+  --vcp-sb-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --vcp-sb-dur: 180ms;
+}
+
+/* ---------- 白天模式变量覆盖 (Light Theme Adaptation) ---------- */
+:is(body.light-theme, body[data-vcp-theme="light"]) {
+  /* 露米娅：背光面景深沉降——白天中央聊天区是纯白/高光，侧边栏沉降为温润微冷的陶瓷灰 (#f1f5f9 -> #e8edf3) */
+  --vcp-sb-bg-top: #f4f6fa;
+  --vcp-sb-bg-bottom: #eaeff5;
+  --vcp-sb-hairline: rgba(15, 23, 42, 0.08);
+  --vcp-sb-inset-shadow: inset -1px 0 0 rgba(15, 23, 42, 0.04);
+  --vcp-sb-drop-shadow: 8px 0 24px -16px rgba(15, 23, 42, 0.08);
+  --vcp-sb-fill-hover: rgba(15, 23, 42, 0.045);
+  --vcp-sb-fill-active: rgba(15, 23, 42, 0.08);
+  
+  /* 炭墨文字与次级阶调 */
+  --vcp-sb-text-title: #0f172a;
+  --vcp-sb-text-sub: #64748b;
+  --vcp-sb-text-muted: #475569;
+}
+
+/* ---------- 1. 容器：深空/冷白双模态材质（零 GPU 合成负担） ---------- */
+.sidebar {
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--vcp-sb-bg-top) 96%, transparent) 0%,
+      color-mix(in srgb, var(--vcp-sb-bg-bottom) 98%, transparent) 100%) !important;
+  border-right: 1px solid var(--vcp-sb-hairline) !important;
+  box-shadow:
+    var(--vcp-sb-inset-shadow),
+    var(--vcp-sb-drop-shadow) !important;
+  /* 撤下常驻毛玻璃，零重绘负担 */
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  padding: 12px 10px;
+  width: var(--sidebar-width);
+  transition:
+    background 220ms ease,
+    border-color 220ms ease,
+    width var(--vcp-sb-dur) var(--vcp-sb-ease),
+    padding var(--vcp-sb-dur) var(--vcp-sb-ease);
+}
+
+/* ---------- 2. 列表面板：空气留白与边缘渐隐 ---------- */
+.sidebar-panel {
+  padding: 4px 0 8px;
+}
+
+#topicList,
+#agentList {
+  /* 上下两端柔和消隐，告别生硬截断 */
+  -webkit-mask-image: linear-gradient(180deg,
+    transparent 0,
+    #000 8px,
+    #000 calc(100% - 10px),
+    transparent 100%);
+  mask-image: linear-gradient(180deg,
+    transparent 0,
+    #000 8px,
+    #000 calc(100% - 10px),
+    transparent 100%);
+}
+
+/* ---------- 3. 列表项：明度传态，无框悬浮 ---------- */
+.topic-item,
+#topicList li,
+#agentList li,
+#agents-management-list li,
+.sidebar-list-item {
+  position: relative;
+  border-radius: var(--vcp-ui-sidebar-item-radius, 10px);
+  transition:
+    background-color var(--vcp-sb-dur) var(--vcp-sb-ease),
+    color var(--vcp-sb-dur) var(--vcp-sb-ease),
+    transform var(--vcp-sb-dur) var(--vcp-sb-ease);
+}
+
+.topic-item:hover,
+#topicList li:hover,
+#agentList li:hover,
+#agents-management-list li:hover,
+.sidebar-list-item:hover {
+  background-color: var(--vcp-sb-fill-hover);
+}
+
+.topic-item.active,
+#topicList li.active,
+#agentList li.active,
+#agents-management-list li.active,
+.sidebar-list-item.active {
+  background-color: var(--vcp-sb-fill-active);
+}
+
+/* 光标掠过时图标极轻微上浮，赋予轻盈触感 */
+.topic-item:hover img.avatar,
+#agentList li:hover img.avatar,
+#agents-management-list li:hover img.avatar {
+  transform: translateY(-1px);
+  transition: transform var(--vcp-sb-dur) var(--vcp-sb-ease);
+}
+
+/* ---------- 4. 女仆色锚线：色相只在此处点睛 ---------- */
+.topic-item.active::before,
+#topicList li.active::before,
+#agentList li.active::before,
+#agents-management-list li.active::before,
+.sidebar-list-item.active::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  width: 3px;
+  height: 14px;
+  border-radius: 3px;
+  transform: translateY(-50%);
+  background: var(--vcp-sb-aura);
+  box-shadow: 0 0 8px var(--vcp-sb-aura-glow);
+  transition: height var(--vcp-sb-dur) var(--vcp-sb-ease);
+}
+
+.topic-item.active:active::before,
+#topicList li.active:active::before,
+#agentList li.active:active::before,
+#agents-management-list li.active:active::before,
+.sidebar-list-item.active:active::before {
+  height: 18px; /* 按压时锚线轻微伸长，模拟质量惯性 */
+}
+
+/* ---------- 5. 文字阶调：主标题清亮/炭墨，摘要沉降 ---------- */
+.topic-item .topic-name,
+.topic-item .name,
+.topic-item .title {
+  color: var(--vcp-sb-text-title) !important;
+  letter-spacing: 0.01em;
+}
+
+.topic-item .topic-preview,
+.topic-item .preview,
+.topic-item .last-message,
+.topic-item .timestamp {
+  color: var(--vcp-sb-text-sub) !important;
+  font-size: 12px;
+}
+
+#agentList li:not(.active),
+#agents-management-list li:not(.active) {
+  color: var(--vcp-sb-text-muted) !important;
+}
+
+#agentList li.active,
+#agents-management-list li.active {
+  color: var(--vcp-sb-text-title) !important;
+}
+
+/* 顶部标签页按钮与创建助手按钮的明度与字色适配 */
+.sidebar-tab-button {
+  color: var(--vcp-sb-text-muted) !important;
+}
+
+.sidebar-tab-button.active {
+  color: var(--vcp-sb-text-title) !important;
+}
+
+.sidebar-search-container input,
+.sidebar-header input {
+  color: var(--vcp-sb-text-title) !important;
+}
+
+/* 未读角标：收束为低饱和光点语义，而非刺眼红块 */
+.unread-badge {
+  background: var(--vcp-sb-aura) !important;
+  color: #0b0d12 !important;
+  font-weight: 600;
+  box-shadow: 0 0 10px var(--vcp-sb-aura-soft) !important;
+}
+
+/* ---------- 6. tab 指示：保留下划线，仅统一动效时长 ---------- */
+.sidebar-tab-button {
+  transition:
+    color var(--vcp-sb-dur) var(--vcp-sb-ease),
+    background-color var(--vcp-sb-dur) var(--vcp-sb-ease);
+}
+
+/* ---------- 7. 底部基石：设置/主题/折叠按钮整合为悬浮坞 ---------- */
+#sidebarSettingsPanel .sidebar-bottom-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  transition:
+    background-color var(--vcp-sb-dur) var(--vcp-sb-ease),
+    border-color var(--vcp-sb-dur) var(--vcp-sb-ease),
+    color var(--vcp-sb-dur) var(--vcp-sb-ease),
+    transform var(--vcp-sb-dur) var(--vcp-sb-ease);
+}
+
+#sidebarSettingsPanel .sidebar-bottom-btn:hover {
+  background: var(--vcp-sb-fill-hover);
+  border-color: var(--vcp-sb-hairline);
+  transform: translateY(-1px);
+}
+
+#settingsBtn:hover i,
+#settingsBtn:hover svg {
+  color: var(--vcp-sb-aura);
+}
+
+/* ---------- 8. 折叠态：180ms 精密闭合，图标几何居中 ---------- */
+.sidebar.avatar-only {
+  padding: 12px 6px;
+}
+
+.sidebar.avatar-only .topic-item,
+.sidebar.avatar-only #agentList li {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* 折叠态隐藏锚线，避免纯图标模式下的视觉噪声 */
+.sidebar.avatar-only .topic-item.active::before,
+.sidebar.avatar-only #agentList li.active::before {
+  display: none;
+}
+
+/* 折叠态以头像外的微光环替代 active 底色 */
+.sidebar.avatar-only .topic-item.active,
+.sidebar.avatar-only #agentList li.active {
+  background: transparent;
+}
+
+.sidebar.avatar-only .topic-item.active img.avatar,
+.sidebar.avatar-only #agentList li.active img.avatar {
+  box-shadow: 0 0 0 2px var(--vcp-sb-aura-soft);
+}
+
+/* ---------- 9. 尊重系统减弱动效偏好 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .topic-item,
+  #agentList li,
+  .sidebar-tab-button,
+  #sidebarSettingsPanel .sidebar-bottom-btn,
+  .topic-item img.avatar {
+    transition-duration: 1ms;
+  }
+}

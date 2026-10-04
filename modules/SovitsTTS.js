@@ -53,6 +53,10 @@ class SovitsTTS {
         // value 中保存文件签名，用户替换同名文件后不会继续使用旧数据。
         this.cloneAudioMemory = new Map();
         this.initCacheDir();
+        // 调试探针：导出 TTS 各阶段文本（渲染端原文→正则分段→最终切块），定位内容被哪一环删除
+        this._debugDir = path.join(APP_DATA_ROOT_IN_PROJECT, 'tts_debug');
+        fs.mkdir(this._debugDir, { recursive: true }).catch(() => {});
+        this._debugSeq = 0;
     }
 
     async getRuntimeConfig() {
@@ -539,51 +543,44 @@ class SovitsTTS {
             return [];
         }
 
-        // 1. 找到第一个换行符的位置，以此划分第一段和其余段落
-        const firstNewlineIndex = trimmedText.indexOf('\n');
-        const firstParagraph = (firstNewlineIndex === -1) ? trimmedText : trimmedText.substring(0, firstNewlineIndex);
-        const otherParagraphs = (firstNewlineIndex === -1) ? '' : trimmedText.substring(firstNewlineIndex + 1);
+        // GPT-SoVITS v2Pro 音色对 chunk 长度极其敏感：
+        //   <15 字：AR 高概率首步 EOS，整段静音；
+        //   >45 字：长上下文 AR 会随机提前 EOS，吞掉中间整句；
+        //   20~40 字：稳定区。
+        // 因此先把全文按句末标点逐句切开，再贪心装包：每包达到 MIN_CHUNK_LEN
+        // 即封口；下一句并入会超过 MAX_CHUNK_LEN 时也封口，保证每块落在稳定区间。
+        const MIN_CHUNK_LEN = 18;
+        const MAX_CHUNK_LEN = 42;
+
+        const sentences = [];
+        const sentenceRegex = /[^。！？.!?\n]+[。！？.!?]?/g;
+        let match;
+        while ((match = sentenceRegex.exec(trimmedText)) !== null) {
+            const sentence = match[0].trim();
+            if (sentence) sentences.push(sentence);
+        }
 
         const chunks = [];
-
-        // 2. 处理第一段：分离出第一句
-        // 正则表达式：匹配直到第一个中/英文句号、问号或感叹号。非贪婪匹配。
-        const sentenceEndRegex = /.+?[。！？.!?]/;
-        const match = firstParagraph.match(sentenceEndRegex);
-
-        if (match) {
-            let firstChunk = match[0];
-            let restOfFirstParagraph = firstParagraph.substring(firstChunk.length).trim();
-
-            // 新增逻辑：如果第一句以感叹号结尾，并且后面还有内容，则尝试合并下一句
-            if (/[!！]$/.test(firstChunk) && restOfFirstParagraph) {
-                const nextSentenceMatch = restOfFirstParagraph.match(sentenceEndRegex);
-                if (nextSentenceMatch) {
-                    const nextSentence = nextSentenceMatch[0];
-                    firstChunk += nextSentence; // 合并
-                    restOfFirstParagraph = restOfFirstParagraph.substring(nextSentence.length).trim();
-                }
-            }
-
-            chunks.push(firstChunk);
-
-            if (restOfFirstParagraph) {
-                chunks.push(restOfFirstParagraph);
-            }
-        } else {
-            // 如果第一段没有标点，则将整个第一段作为一个块
-            if (firstParagraph.trim()) {
-                chunks.push(firstParagraph.trim());
+        let current = '';
+        for (const sentence of sentences) {
+            if (current && current.length >= MIN_CHUNK_LEN
+                && current.length + sentence.length > MAX_CHUNK_LEN) {
+                chunks.push(current);
+                current = sentence;
+            } else {
+                // current 不足下限必须继续吞并（短块会静音）；
+                // 单句本身超长时无法再拆，只能独占一块。
+                current += sentence;
             }
         }
+        if (current) chunks.push(current);
 
-        // 3. 处理其余段落
-        if (otherParagraphs.trim()) {
-            const restChunks = otherParagraphs.split('\n').filter(line => line.trim() !== '');
-            chunks.push(...restChunks);
+        // 末尾若仍是短块（如全文只有一句短句），并入前一块。
+        while (chunks.length > 1 && chunks[chunks.length - 1].length < MIN_CHUNK_LEN) {
+            chunks[chunks.length - 2] += chunks[chunks.length - 1];
+            chunks.pop();
         }
-
-        return chunks.filter(c => c.length > 0);
+        return chunks;
     }
 
     /**
@@ -648,6 +645,51 @@ class SovitsTTS {
     }
 
     /**
+     * 调试探针：把一次朗读的三个阶段文本落盘
+     * 渲染端原文(extractText 产物) → ttsRegex 分段后 → splitText 最终切块
+     * 文件：AppData/tts_debug/speak_时间戳_序号.txt
+     */
+    async _dumpSpeakPipeline(stage) {
+        try {
+            this._debugSeq += 1;
+            const d = new Date();
+            const p2 = (n) => String(n).padStart(2, '0');
+            const p3 = (n) => String(n).padStart(3, '0');
+            const stamp = `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}_${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}_${p3(d.getMilliseconds())}`;
+            const file = path.join(this._debugDir, `speak_${stamp}_${this._debugSeq}.txt`);
+            const out = [];
+            out.push('# meta');
+            out.push(JSON.stringify({
+                voice: stage.voice,
+                voiceSecondary: stage.voiceSecondary || null,
+                ttsRegex: stage.regex || null,
+                ttsRegexSecondary: stage.regexSecondary || null,
+                originalLen: stage.originalText.length,
+                segmentCount: stage.segments.length,
+                taskCount: stage.tasks.length
+            }, null, 2));
+            out.push('');
+            out.push(`# original from renderer (len=${stage.originalText.length}) >>>`);
+            out.push(stage.originalText);
+            out.push('');
+            out.push('# after _segmentTextForBilingualTTS (ttsRegex applied) >>>');
+            stage.segments.forEach((seg, i) => {
+                out.push(`--- segment[${i}] lang=${seg.lang} len=${seg.text.length} ---`);
+                out.push(seg.text);
+            });
+            out.push('');
+            out.push('# final chunks posted to GPT-SoVITS >>>');
+            stage.tasks.forEach((t, i) => {
+                out.push(`--- chunk[${i}] voice=${t.voice} len=${t.text.length} ---`);
+                out.push(t.text);
+            });
+            await fs.writeFile(file, out.join('\n') + '\n', 'utf-8');
+            console.log(`[TTS] 调试快照已导出: ${file}`);
+        } catch (error) {
+            console.warn('[TTS] 调试快照导出失败:', error.message);
+        }
+    }
+    /**
      * 开始双语朗读任务
      * @param {object} options 包含所有朗读参数
      */
@@ -690,6 +732,16 @@ class SovitsTTS {
                 sender // Pass sender to each task
             }));
         }).flat(); // Flatten the array of arrays
+
+        this._dumpSpeakPipeline({
+            originalText: text,
+            voice,
+            voiceSecondary,
+            regex: ttsRegex,
+            regexSecondary: ttsRegexSecondary,
+            segments,
+            tasks
+        });
 
         this.speechQueue.push(...tasks);
         

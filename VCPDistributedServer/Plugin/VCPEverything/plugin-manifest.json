@@ -17,7 +17,7 @@
     "EVERYTHING_ES_PATH": {
       "type": "string",
       "description": "Everything 命令行工具 (es.exe) 的绝对路径。",
-      "default": "C:\\Program Files (x86)\\Everything\\es.exe"
+      "default": "E:\\everything\\app\\Everything\\es.exe"
     },
     "DEBUG_MODE": {
       "type": "boolean",

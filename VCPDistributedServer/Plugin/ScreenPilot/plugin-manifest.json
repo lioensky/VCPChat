@@ -20,6 +20,11 @@
             "description": "截图持久化保存目录的绝对路径。留空则默认保存到插件目录下的 screenshots/ 子文件夹。",
             "default": ""
         },
+        "SCREENPILOT_PYTHON": {
+            "type": "string",
+            "description": "Python解释器绝对路径（支持指定Conda虚拟环境，如 D:\\anaconda\\app\\envs\\vcp_screenshot\\python.exe）。留空则默认使用系统PATH中的python。",
+            "default": ""
+        },
         "VISION_API_FORMAT": {
             "type": "string",
             "description": "API格式: chat (Gemini/OpenAI的/v1/chat/completions) 或 images (SiliconFlow/Qwen的/images/generations)。",

@@ -7,7 +7,7 @@ require('dotenv').config({ path: path.join(__dirname, '.env'), quiet: true });
 
 // --- 配置 ---
 // 新增：Everything HTTP服务器的端口配置
-const EVERYTHING_PORT = parseInt(process.env.EVERYTHING_PORT || '80');
+const EVERYTHING_PORT = parseInt(process.env.EVERYTHING_PORT || '8025');
 const DEBUG_MODE = process.env.DEBUG_MODE === 'true';
 
 // --- 工具函数 ---
