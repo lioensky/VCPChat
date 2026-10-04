@@ -1,6 +1,6 @@
 // 聊天标题栏的两种样式（外观与样式 → 标题栏）：
 //   classic  原版：左侧"与 X 聊天中"，右侧整排按钮
-//   capsule  胶囊：居中的头像 + 名字，点击打开当前助手 / 群组设置；语音通话和新建话题按钮不显示
+//   capsule  胶囊：居中的头像 + 名字，点击展开 / 收起侧栏；语音通话和新建话题按钮不显示
 // 样式由 body.chat-header-capsule 切换；标题文字两种写法都存在 h3 的 data 上，切换时直接重写。
 (function () {
     'use strict';
@@ -24,7 +24,7 @@
         if (isCapsule) {
             pill.setAttribute('role', 'button');
             pill.tabIndex = 0;
-            pill.title = hasItem ? `${title.dataset.capsuleTitle} - 点击查看详情与设置` : '';
+            pill.title = hasItem ? `${title.dataset.capsuleTitle} - 点击展开 / 收起侧栏` : '';
         } else {
             pill.removeAttribute('role');
             pill.removeAttribute('tabindex');

@@ -4767,14 +4767,14 @@
       "consumers": [
         {
           "file": "modules/event-listeners.js",
-          "line": 1144,
+          "line": 1135,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/event-listeners.js",
-          "line": 1144,
+          "line": 1135,
           "kind": "custom-event-listener",
           "match": "addEventListener('notification-filter-changed'"
         },
@@ -4841,14 +4841,14 @@
       "consumers": [
         {
           "file": "modules/event-listeners.js",
-          "line": 1519,
+          "line": 1510,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/event-listeners.js",
-          "line": 1519,
+          "line": 1510,
           "kind": "preload-subscription",
           "match": "onCreateUnlockedTopic("
         }
@@ -4879,14 +4879,14 @@
       "consumers": [
         {
           "file": "modules/event-listeners.js",
-          "line": 1226,
+          "line": 1217,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/event-listeners.js",
-          "line": 1226,
+          "line": 1217,
           "kind": "preload-subscription",
           "match": "onDoToggleNotificationsSidebar("
         }

@@ -1022,7 +1022,7 @@ html body.chat-header-capsule .chat-agent-pill-name {
     line-height: 1;
 }
 
-/* 悬停时才展开的朝右箭头，点击展开侧栏；平时宽度为 0（抵消 gap），侧栏已展开时不出现 */
+/* 悬停时才出现的朝右箭头，提示点击胶囊可展开侧栏；平时宽度为 0（抵消 gap），侧栏已展开时不出现 */
 html body.chat-header-capsule .chat-agent-pill-pane-btn {
     width: 0;
     height: 22px;
@@ -1039,7 +1039,6 @@ html body.chat-header-capsule .chat-agent-pill-pane-btn {
     background: transparent;
     opacity: 0;
     pointer-events: none;
-    cursor: pointer;
     transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1),
                 margin 0.2s cubic-bezier(0.4, 0, 0.2, 1),
                 opacity 0.15s ease,
@@ -1057,19 +1056,12 @@ html body.chat-header-capsule .chat-agent-pill:is(:hover, :focus-visible) .chat-
     width: 22px;
     margin: 0 -8px 0 -3px;
     opacity: 1;
-    pointer-events: auto;
-}
-
-html body.chat-header-capsule .chat-agent-pill .chat-agent-pill-pane-btn:hover {
-    color: var(--next-text, currentColor);
-    background: var(--next-hover, rgba(0, 0, 0, 0.06));
 }
 
 html body.chat-header-capsule .chat-header:has(#toggleSidePaneChatBtn[hidden]) .chat-agent-pill .chat-agent-pill-pane-btn {
     width: 0;
     margin: 0 0 0 -9px;
     opacity: 0;
-    pointer-events: none;
 }
 
 /* 未选中助手时不显示胶囊 */

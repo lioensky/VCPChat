@@ -902,12 +902,10 @@ export function setupEventListeners(deps) {
     const chatAgentPill = document.getElementById('chatAgentPill');
     if (chatAgentPill) {
         chatAgentPill.addEventListener('click', () => {
-            // 原版标题栏里这只是一行标题，只有胶囊样式才可点击
+            // 原版标题栏里这只是一行标题，只有胶囊样式才可点击。
+            // 胶囊点一下就展开 / 收起侧栏：复用标题栏右侧的展开按钮，它在侧栏已展开时会收起侧栏。
             if (!window.vcpChatHeader?.isCapsule?.()) return;
-            const currentSelectedItem = refs.currentSelectedItem?.get?.();
-            if (currentSelectedItem?.id && mainRendererFunctions.displaySettingsForItem) {
-                mainRendererFunctions.displaySettingsForItem();
-            }
+            document.getElementById('toggleSidePaneChatBtn')?.click();
         });
         chatAgentPill.addEventListener('keydown', (e) => {
             if (e.target !== chatAgentPill) return;
@@ -915,13 +913,6 @@ export function setupEventListeners(deps) {
                 e.preventDefault();
                 chatAgentPill.click();
             }
-        });
-
-        // 悬停时出现的箭头展开侧栏，和标题栏右侧的展开按钮是同一个动作；侧栏已展开时箭头不出现。
-        document.getElementById('chatAgentPillPaneBtn')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const expandBtn = document.getElementById('toggleSidePaneChatBtn');
-            if (expandBtn && !expandBtn.hidden) expandBtn.click();
         });
     }
 
