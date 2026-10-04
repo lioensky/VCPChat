@@ -187,3 +187,10 @@ provider 只能修改自己的视图，跨模块动作通过组合者注入的�
 `sideChatSurfaceOwner.js` 组合独立渲染器、操作与输入提交，并提供原有 handle API。`side-chat/` 下的 `shell`、`composer-state`、`model-picker`、`references`、`message-actions`、`scrolling`、`persistence` 和 `draft-cache` 分别负责视图、状态投影、模型选择、引用卡片、回答动作、贴底、历史/输入持久化和跨卸载缓存。各模块通过组合者的 store、读取函数与回调连接，不互相引用；计时器、观察者和宿主监听由所属 owner 清理。
 
 组合入口保留发送/取消操作的结算顺序与原 handle 方法，当前约 560 行，因此保留在一个文件内；其余新模块均低于 500 行。
+
+
+## 11. Git 与代码查看器 provider
+
+`gitSideProvider.js` 保留工作区、来源、轮询、状态读取和指定路径定位。`git/diff-model.js` 导出原有纯函数；`git/cards.js` 自己持有展开状态、diff 缓存及数量预取队列；`git/context-menu.js` 负责复制、定位和菜单监听器。入口通过实时读取函数、纯函数依赖及菜单回调连接它们，销毁时统一清理。Git 直接使用 `line-diff.js`，不再依赖代码查看器 provider。
+
+`codeViewerSideProvider.js` 保留工具栏、模式切换及原有 API，组合 `code-viewer/picker.js`、`editor.js` 和 `diff-view.js`。文件选择器保持工作区/路径竞态保护，正文与 diff 通过回调连接；类型检测在 `helpers.js`。HTML 转义共用 `text-escape.js`，两个适配器分别保留代码查看器严格字符串输入和辅助对话原有值转换语义。原入口继续导出 `detectLanguage`、`escapeHtml` 和 `computeLineDiff`。

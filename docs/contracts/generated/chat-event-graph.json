@@ -422,7 +422,14 @@
     "modules/ui-system/settings/settings-sidebar-surface.js",
     "modules/ui-system/settlement.js",
     "modules/ui-system/side-pane/browserSideProvider.js",
+    "modules/ui-system/side-pane/code-viewer/diff-view.js",
+    "modules/ui-system/side-pane/code-viewer/editor.js",
+    "modules/ui-system/side-pane/code-viewer/helpers.js",
+    "modules/ui-system/side-pane/code-viewer/picker.js",
     "modules/ui-system/side-pane/codeViewerSideProvider.js",
+    "modules/ui-system/side-pane/git/cards.js",
+    "modules/ui-system/side-pane/git/context-menu.js",
+    "modules/ui-system/side-pane/git/diff-model.js",
     "modules/ui-system/side-pane/gitSideProvider.js",
     "modules/ui-system/side-pane/menu-position.js",
     "modules/ui-system/side-pane/notesSideProvider.js",
@@ -458,6 +465,7 @@
     "modules/ui-system/state-channel.js",
     "modules/ui-system/surface-controller.js",
     "modules/ui-system/task-handle.js",
+    "modules/ui-system/text-escape.js",
     "modules/ui-system/theme-runtime.js",
     "modules/ui-system/typed-field-owners.js",
     "modules/ui-system/ui-surface-policy.js",
@@ -4829,14 +4837,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/codeViewerSideProvider.js",
-          "line": 600,
+          "line": 294,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/codeViewerSideProvider.js",
-          "line": 600,
+          "line": 294,
           "kind": "preload-subscription",
           "match": "onAttachmentInTextEditor("
         }
@@ -9120,7 +9128,7 @@
       "producers": [
         {
           "file": "modules/ui-system/side-pane/gitSideProvider.js",
-          "line": 125,
+          "line": 73,
           "kind": "custom-event-dispatch"
         }
       ],
@@ -9128,7 +9136,7 @@
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/gitSideProvider.js",
-          "line": 125,
+          "line": 73,
           "kind": "custom-event-dispatch",
           "match": "dispatchEvent(new CustomEvent('vcp:git-focus-path'"
         }
@@ -10003,7 +10011,7 @@
   "undiscovered": [
     {
       "file": "modules/ui-system/side-pane/gitSideProvider.js",
-      "line": 133,
+      "line": 81,
       "reason": "dynamic CustomEvent name: FOLLOW_WORKSPACE_EVENT"
     }
   ]

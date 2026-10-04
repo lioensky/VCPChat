@@ -14,11 +14,15 @@
  */
 
 'use strict';
+import { createGitContextMenu } from './git/context-menu.js';
+import { createGitCards } from './git/cards.js';
 
-import { computeLineDiff } from './codeViewerSideProvider.js';
+import { computeLineDiff } from '../line-diff.js';
 import { pickProjectsForWorkspace } from '../project-plan-model.js';
 import { toWorkspaceRelative, findStatusItem } from '../git-file-diff.js';
 import { placeMenuAt } from './menu-position.js';
+import { filterAiTouched, latestAiBatch, buildHunkRows } from './git/diff-model.js';
+export { filterAiTouched, latestAiBatch, buildHunkRows } from './git/diff-model.js';
 
 // 与 V工程 Git 页（ProjectForgemodules/projectforge-git.js）同一个 key，两处跟随同一个工作区选择。
 const STORAGE_KEY_WS = 'vcp-projectforge-git-workspace';
@@ -28,62 +32,6 @@ const POLL_INTERVAL_MS = 8000;
 const CHANGE_EVENT = 'vcp:git-changed';
 const FOCUS_EVENT = 'vcp:git-focus-path';
 const AI_SOURCE = 'ai-last';
-const COUNT_PREFETCH_LIMIT = 80;
-const COUNT_PREFETCH_CONCURRENCY = 3;
-const DIFF_CONTEXT_LINES = 3;
-const DIFF_MAX_ROWS = 600;
-
-const normalizePath = (p) => String(p || '').replace(/\\/g, '/').replace(/^\.?\//, '').toLowerCase();
-
-/**
- * 「上一轮」来源：V工程最近一批施工触碰过的文件里，仍有未提交改动的那些。
- * V工程记的路径可能是绝对路径也可能是相对路径，Git 状态里是相对仓库根的路径，所以按路径后缀对齐。
- */
-export function filterAiTouched(items, batchFiles) {
-    const wanted = (batchFiles || []).map(normalizePath).filter(Boolean);
-    if (!wanted.length) return [];
-    return (items || []).filter((item) => {
-        const path = normalizePath(item.path);
-        return wanted.some((file) => file === path || file.endsWith('/' + path) || path.endsWith('/' + file));
-    });
-}
-
-/** 从 project-forge:get-project 的返回取最近一批施工（时间线已按新到旧排列）。 */
-export function latestAiBatch(detail) {
-    const timeline = Array.isArray(detail?.timeline) ? detail.timeline : [];
-    const batch = timeline.reduce((best, row) => (!best || Number(row.id) > Number(best.id) ? row : best), null);
-    if (!batch) return null;
-    return {
-        id: batch.id,
-        kind: batch.kind,
-        reason: batch.reason || '',
-        maid: batch.maid || '',
-        createdAt: batch.created_at || '',
-        files: Array.isArray(batch.files) ? batch.files : [],
-        projectName: detail?.project?.name || ''
-    };
-}
-
-/** 把整文件对比的行裁成带 3 行上下文的 hunk 列表，跳过的部分用 hunk 分隔行表示。 */
-export function buildHunkRows(rows, contextLines = DIFF_CONTEXT_LINES) {
-    const keep = new Array(rows.length).fill(false);
-    rows.forEach((row, index) => {
-        if (row.type === 'same') return;
-        for (let i = Math.max(0, index - contextLines); i <= Math.min(rows.length - 1, index + contextLines); i++) keep[i] = true;
-    });
-    const out = [];
-    let skipped = false;
-    rows.forEach((row, index) => {
-        if (!keep[index]) {
-            skipped = true;
-            return;
-        }
-        if (skipped && out.length) out.push({ type: 'hunk', text: '···' });
-        skipped = false;
-        out.push(row);
-    });
-    return out;
-}
 
 function getStorage(doc) {
     try {
@@ -157,11 +105,6 @@ export function createGitSideProvider({
             let pollTimer = null;
             let isDisposed = false;
             let lastStatusKey = null;
-            const expanded = new Set();          // `${staged}:${path}`，最多一个
-            const diffCache = new Map();         // key -> { state:'loading'|'ready'|'unavailable', ... }
-            let countQueue = [];
-            let countWorkers = 0;
-            let contextMenu = null;
 
             // ── 骨架：顶栏 + 列表 ────────────────────────────────────
             const root = doc.createElement('section');
@@ -219,6 +162,34 @@ export function createGitSideProvider({
             const workspaceOf = (id) => workspaces.find(ws => ws.id === id) || null;
             const keyOf = (item) => `${item.staged ? 1 : 0}:${item.path}`;
 
+            const store = Object.freeze({
+                get currentWorkspaceId() { return currentWorkspaceId; },
+                get isDisposed() { return isDisposed; }
+            });
+
+            const contextMenuOwner = createGitContextMenu({
+                store,
+                api,
+                doc,
+                placeMenuAt,
+                toast,
+                win,
+                workspaceOf
+            });
+            const { openContextMenu } = contextMenuOwner;
+
+            const cardsOwner = createGitCards({
+                store,
+                api,
+                buildHunkRows,
+                computeLineDiff,
+                doc,
+                keyOf,
+                list,
+                openContextMenu: (...args) => openContextMenu(...args)
+            });
+            const { cardFor, buildCard } = cardsOwner;
+
             function visibleItems() {
                 if (!currentStatus?.isRepo) return [];
                 const staged = (currentStatus.staged || []).map(i => ({ ...i, staged: true }));
@@ -265,282 +236,10 @@ export function createGitSideProvider({
             }
 
             // ── 复制 / 定位 ─────────────────────────────────────────
-            async function copyText(text, label) {
-                try {
-                    if (win.navigator?.clipboard?.writeText) await win.navigator.clipboard.writeText(text);
-                    else if (api?.writeTextToClipboard) await api.writeTextToClipboard(text);
-                    else throw new Error('当前环境不支持写入剪贴板');
-                    toast(`已复制${label}`, 'success');
-                } catch (err) {
-                    toast(`复制失败：${err.message}`, 'error');
-                }
-            }
-
-            function absolutePathOf(item) {
-                const ws = workspaceOf(currentWorkspaceId);
-                if (!ws) return item.path;
-                const sep = ws.path.includes('\\') ? '\\' : '/';
-                return ws.path.replace(/[\\/]+$/, '') + sep + item.path.split('/').join(sep);
-            }
-
-            async function revealInFileManager(item) {
-                try {
-                    const res = await api.gitRevealPath(currentWorkspaceId, item.path);
-                    if (!res?.success) throw new Error(res?.error || '无法在文件管理器中打开');
-                } catch (err) {
-                    toast(err.message, 'error');
-                }
-            }
-
-            function closeContextMenu() {
-                if (!contextMenu) return;
-                contextMenu.remove();
-                contextMenu = null;
-                doc.removeEventListener('pointerdown', onOutsidePointer, true);
-                doc.removeEventListener('keydown', onMenuKey, true);
-                win.removeEventListener('blur', closeContextMenu);
-            }
-            function onOutsidePointer(event) { if (contextMenu && !contextMenu.contains(event.target)) closeContextMenu(); }
-            function onMenuKey(event) { if (event.key === 'Escape') closeContextMenu(); }
-
-            function openContextMenu(event, item) {
-                event.preventDefault();
-                closeContextMenu();
-                const menu = doc.createElement('div');
-                menu.className = 'side-git-context-menu vcp-ui-scope';
-                menu.setAttribute('role', 'menu');
-                const entries = [
-                    { icon: 'folder_open', label: '在文件管理器中打开', disabled: typeof api?.gitRevealPath !== 'function' || item.status === 'D', run: () => revealInFileManager(item) },
-                    { icon: 'content_copy', label: '复制绝对路径', run: () => copyText(absolutePathOf(item), '绝对路径') },
-                    { icon: 'content_copy', label: '复制相对路径', run: () => copyText(item.path, '相对路径') }
-                ];
-                entries.forEach((entry) => {
-                    const btn = doc.createElement('button');
-                    btn.type = 'button';
-                    btn.className = 'side-git-context-item';
-                    btn.setAttribute('role', 'menuitem');
-                    btn.disabled = Boolean(entry.disabled);
-                    btn.innerHTML = `<span class="vcp-ui-icon">${entry.icon}</span><span class="side-git-context-label"></span>`;
-                    btn.lastElementChild.textContent = entry.label;
-                    btn.addEventListener('click', () => { closeContextMenu(); entry.run(); });
-                    menu.appendChild(btn);
-                });
-                doc.body.appendChild(menu);
-                placeMenuAt(menu, event.clientX, event.clientY, win);
-                contextMenu = menu;
-                doc.addEventListener('pointerdown', onOutsidePointer, true);
-                doc.addEventListener('keydown', onMenuKey, true);
-                win.addEventListener('blur', closeContextMenu);
-            }
 
             // ── diff 读取（行上的 +N -N 和展开内容共用一份缓存）──────────
-            async function fetchDiff(item) {
-                const key = keyOf(item);
-                const cached = diffCache.get(key);
-                if (cached && cached.state !== 'loading') return cached;
-                if (cached?.promise) return cached.promise;
-                const requestedWorkspace = currentWorkspaceId;
-                const promise = (async () => {
-                    let result;
-                    try {
-                        const res = await api.gitDiff(requestedWorkspace, item.path, { staged: item.staged, origPath: item.origPath || undefined });
-                        if (!res?.success) throw new Error(res?.error || '获取差异失败');
-                        const { before, after } = res.data || {};
-                        if ([before, after].some(side => side?.binary)) {
-                            const tooLarge = [before, after].some(side => side?.tooLarge);
-                            result = { state: 'unavailable', message: tooLarge ? '文件过大，无法预览这个 Diff。' : '二进制文件，无法预览文本 Diff。' };
-                        } else {
-                            const lcs = computeLineDiff(before?.text || '', after?.text || '');
-                            result = {
-                                state: 'ready',
-                                rows: buildHunkRows(lcs.rows),
-                                added: lcs.addedCount,
-                                removed: lcs.deletedCount,
-                                approximate: lcs.approximate,
-                                truncated: Boolean(before?.truncated || after?.truncated)
-                            };
-                        }
-                    } catch (err) {
-                        result = { state: 'unavailable', message: err.message || '暂时无法预览这个 Diff。' };
-                    }
-                    if (requestedWorkspace === currentWorkspaceId && !isDisposed) diffCache.set(key, result);
-                    return result;
-                })();
-                diffCache.set(key, { state: 'loading', promise });
-                return promise;
-            }
-
-            function paintCounts(item, card) {
-                const cached = diffCache.get(keyOf(item));
-                const countsEl = card.querySelector('.side-git-counts');
-                if (!countsEl || cached?.state !== 'ready') return;
-                countsEl.innerHTML = '';
-                const add = doc.createElement('span');
-                add.className = 'text-diff-added';
-                add.textContent = `${cached.approximate ? '~' : ''}+${cached.added}`;
-                const del = doc.createElement('span');
-                del.className = 'text-diff-removed';
-                del.textContent = `${cached.approximate ? '~' : ''}-${cached.removed}`;
-                countsEl.append(add, del);
-            }
-
-            function cardFor(item) {
-                return [...list.querySelectorAll('.side-git-card')].find(el => el.dataset.key === keyOf(item)) || null;
-            }
-
-            function pumpCountQueue() {
-                while (countWorkers < COUNT_PREFETCH_CONCURRENCY && countQueue.length) {
-                    const item = countQueue.shift();
-                    countWorkers += 1;
-                    fetchDiff(item).then(() => {
-                        if (isDisposed) return;
-                        const card = cardFor(item);
-                        if (card) paintCounts(item, card);
-                    }).finally(() => {
-                        countWorkers -= 1;
-                        pumpCountQueue();
-                    });
-                }
-            }
 
             // ── 卡片 ────────────────────────────────────────────────
-            function renderDiffBody(item, container) {
-                const cached = diffCache.get(keyOf(item));
-                container.innerHTML = '';
-                if (!cached || cached.state === 'loading') {
-                    container.innerHTML = '<div class="side-git-diff-loading">加载中…</div>';
-                    return;
-                }
-                if (cached.state !== 'ready') {
-                    const msg = doc.createElement('div');
-                    msg.className = 'side-git-diff-message';
-                    msg.textContent = cached.message;
-                    container.appendChild(msg);
-                    return;
-                }
-                if (!cached.rows.length) {
-                    const msg = doc.createElement('div');
-                    msg.className = 'side-git-diff-message';
-                    msg.textContent = '这个文件没有文本层面的改动。';
-                    container.appendChild(msg);
-                    return;
-                }
-                const table = doc.createElement('table');
-                table.className = 'side-git-diff-table';
-                cached.rows.slice(0, DIFF_MAX_ROWS).forEach((row) => {
-                    const tr = doc.createElement('tr');
-                    if (row.type === 'hunk') {
-                        tr.className = 'diff-line hunk';
-                        const cell = doc.createElement('td');
-                        cell.colSpan = 3;
-                        cell.className = 'diff-content';
-                        cell.textContent = row.text;
-                        tr.appendChild(cell);
-                    } else {
-                        tr.className = `diff-line ${row.type}`;
-                        const oldNum = doc.createElement('td');
-                        oldNum.className = 'diff-num';
-                        oldNum.textContent = row.oldLine !== null ? String(row.oldLine) : '';
-                        const newNum = doc.createElement('td');
-                        newNum.className = 'diff-num';
-                        newNum.textContent = row.newLine !== null ? String(row.newLine) : '';
-                        const content = doc.createElement('td');
-                        content.className = 'diff-content';
-                        content.textContent = `${row.type === 'add' ? '+' : row.type === 'del' ? '-' : ' '}${row.text}`;
-                        tr.append(oldNum, newNum, content);
-                    }
-                    table.appendChild(tr);
-                });
-                container.appendChild(table);
-                const notes = [];
-                if (cached.rows.length > DIFF_MAX_ROWS) notes.push(`还有 ${cached.rows.length - DIFF_MAX_ROWS} 行未显示`);
-                if (cached.truncated) notes.push('文件较大，只对比了前面一部分');
-                if (notes.length) {
-                    const note = doc.createElement('div');
-                    note.className = 'side-git-diff-message';
-                    note.textContent = notes.join('；');
-                    container.appendChild(note);
-                }
-            }
-
-            function buildCard(item) {
-                const key = keyOf(item);
-                const card = doc.createElement('div');
-                card.className = 'side-git-card';
-                card.dataset.key = key;
-                card.dataset.path = item.path;
-
-                const row = doc.createElement('button');
-                row.type = 'button';
-                row.className = 'side-git-row';
-                const isOpen = expanded.has(key);
-                row.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-                row.classList.toggle('is-expanded', isOpen);
-
-                const slash = item.path.lastIndexOf('/');
-                const name = doc.createElement('span');
-                name.className = 'side-git-file-name';
-                name.textContent = slash >= 0 ? item.path.slice(slash + 1) : item.path;
-                const label = doc.createElement('span');
-                label.className = 'side-git-file-label';
-                label.title = item.path;
-                label.appendChild(name);
-                if (slash > 0) {
-                    const dir = doc.createElement('span');
-                    dir.className = 'side-git-file-dir';
-                    dir.textContent = item.path.slice(0, slash);
-                    label.appendChild(dir);
-                }
-
-                const meta = doc.createElement('span');
-                meta.className = 'side-git-row-meta';
-                const counts = doc.createElement('span');
-                counts.className = 'side-git-counts';
-                const chevron = doc.createElement('span');
-                chevron.className = 'vcp-ui-icon side-git-chevron';
-                chevron.textContent = 'expand_more';
-                meta.append(counts, chevron);
-                row.append(label, meta);
-                card.appendChild(row);
-
-                const diffBox = doc.createElement('div');
-                diffBox.className = 'side-git-diff';
-                diffBox.hidden = !isOpen;
-                card.appendChild(diffBox);
-
-                const open = () => {
-                    renderDiffBody(item, diffBox);
-                    fetchDiff(item).then(() => {
-                        if (isDisposed || !expanded.has(key)) return;
-                        renderDiffBody(item, diffBox);
-                        paintCounts(item, card);
-                    });
-                };
-
-                row.addEventListener('click', () => {
-                    const nowOpen = !expanded.has(key);
-                    // 同一时间只展开一个文件（ZCode expandedPath），打开新的就收起旧的
-                    expanded.forEach((otherKey) => {
-                        if (otherKey === key) return;
-                        const other = [...list.querySelectorAll('.side-git-card')].find(el => el.dataset.key === otherKey);
-                        other?.querySelector('.side-git-row')?.setAttribute('aria-expanded', 'false');
-                        other?.querySelector('.side-git-row')?.classList.remove('is-expanded');
-                        const otherDiff = other?.querySelector('.side-git-diff');
-                        if (otherDiff) otherDiff.hidden = true;
-                    });
-                    expanded.clear();
-                    if (nowOpen) expanded.add(key);
-                    row.setAttribute('aria-expanded', nowOpen ? 'true' : 'false');
-                    row.classList.toggle('is-expanded', nowOpen);
-                    diffBox.hidden = !nowOpen;
-                    if (nowOpen) open();
-                });
-                row.addEventListener('contextmenu', (event) => openContextMenu(event, item));
-
-                paintCounts(item, card);
-                if (isOpen) open();
-                return card;
-            }
 
             // ── 渲染 ────────────────────────────────────────────────
             function render() {
@@ -576,15 +275,12 @@ export function createGitSideProvider({
                 empty.hidden = true;
                 list.innerHTML = '';
                 items.forEach(item => list.appendChild(buildCard(item)));
-                countQueue = items.slice(0, COUNT_PREFETCH_LIMIT).filter(item => !diffCache.has(keyOf(item)));
-                pumpCountQueue();
+                cardsOwner.prefetch(items);
             }
 
             // ── 数据 ────────────────────────────────────────────────
             function resetForStatusChange() {
-                expanded.clear();
-                diffCache.clear();
-                countQueue = [];
+                cardsOwner.reset();
                 lastStatusKey = null;
             }
 
@@ -622,8 +318,8 @@ export function createGitSideProvider({
                     if (isDisposed || requestedId !== currentWorkspaceId) return;
                     // 后台轮询：状态没变就不重绘（避免闪烁、丢 hover），有展开的 diff 时照常重绘。
                     const statusKey = JSON.stringify(res.data);
-                    if (quiet && statusKey === lastStatusKey && expanded.size === 0) { skipRender = true; return; }
-                    if (statusKey !== lastStatusKey) { expanded.clear(); diffCache.clear(); }
+                    if (quiet && statusKey === lastStatusKey && !cardsOwner.hasExpanded()) { skipRender = true; return; }
+                    if (statusKey !== lastStatusKey) { cardsOwner.clearDiff(); }
                     lastStatusKey = statusKey;
                 } catch (err) {
                     if (quiet) return;
@@ -711,8 +407,7 @@ export function createGitSideProvider({
                 currentSource = found.staged ? 'staged' : 'unstaged';
                 sourceSelect.value = currentSource;
                 storage?.setItem(STORAGE_KEY_SOURCE, currentSource);
-                expanded.clear();
-                expanded.add(keyOf(found));
+                cardsOwner.expand(found);
                 render();
                 cardFor(found)?.scrollIntoView?.({ block: 'nearest' });
             }
@@ -722,7 +417,7 @@ export function createGitSideProvider({
             sourceSelect.addEventListener('change', async () => {
                 currentSource = sourceSelect.value;
                 storage?.setItem(STORAGE_KEY_SOURCE, currentSource);
-                expanded.clear();
+                cardsOwner.clearExpanded();
                 if (currentSource === AI_SOURCE) {
                     aiBatchLoaded = false;
                     await loadAiBatch();
@@ -780,7 +475,8 @@ export function createGitSideProvider({
                 },
                 async dispose() {
                     isDisposed = true;
-                    closeContextMenu();
+                    contextMenuOwner.dispose();
+                    cardsOwner.dispose();
                     win.removeEventListener(CHANGE_EVENT, onExternalChange);
                     win.removeEventListener(FOCUS_EVENT, applyPendingFocus);
                     win.removeEventListener(FOLLOW_WORKSPACE_EVENT, onFollowWorkspace);

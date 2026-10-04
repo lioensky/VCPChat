@@ -10,70 +10,16 @@
  */
 
 'use strict';
+import { createCodeViewerPicker } from './code-viewer/picker.js';
+import { createCodeViewerEditor } from './code-viewer/editor.js';
+import { createCodeViewerDiffView } from './code-viewer/diff-view.js';
 import { computeLineDiff } from '../line-diff.js';
+import { detectLanguage } from './code-viewer/helpers.js';
+import { escapeHtml } from '../text-escape.js';
+export { detectLanguage } from './code-viewer/helpers.js';
+export { escapeHtml } from '../text-escape.js';
 
 // Same key as the V工程 源码 tab (ProjectForgemodules/projectforge-source.js), so both follow the same workspace choice.
-const SOURCE_WORKSPACE_KEY = 'vcp-projectforge-source-workspace';
-
-/**
- * Maps common file extensions to language identifiers for highlight.js and display tags.
- */
-const EXTENSION_MAP = Object.freeze({
-    js: { lang: 'javascript', tag: 'JS' },
-    mjs: { lang: 'javascript', tag: 'JS' },
-    cjs: { lang: 'javascript', tag: 'JS' },
-    ts: { lang: 'typescript', tag: 'TS' },
-    tsx: { lang: 'typescript', tag: 'TSX' },
-    jsx: { lang: 'javascript', tag: 'JSX' },
-    py: { lang: 'python', tag: 'PY' },
-    rs: { lang: 'rust', tag: 'RUST' },
-    go: { lang: 'go', tag: 'GO' },
-    java: { lang: 'java', tag: 'JAVA' },
-    c: { lang: 'c', tag: 'C' },
-    cpp: { lang: 'cpp', tag: 'C++' },
-    h: { lang: 'c', tag: 'H' },
-    hpp: { lang: 'cpp', tag: 'H++' },
-    html: { lang: 'html', tag: 'HTML' },
-    htm: { lang: 'html', tag: 'HTML' },
-    css: { lang: 'css', tag: 'CSS' },
-    scss: { lang: 'scss', tag: 'SCSS' },
-    json: { lang: 'json', tag: 'JSON' },
-    xml: { lang: 'xml', tag: 'XML' },
-    md: { lang: 'markdown', tag: 'MD' },
-    sh: { lang: 'bash', tag: 'SH' },
-    bash: { lang: 'bash', tag: 'BASH' },
-    zsh: { lang: 'bash', tag: 'ZSH' },
-    ps1: { lang: 'powershell', tag: 'PS1' },
-    sql: { lang: 'sql', tag: 'SQL' },
-    yaml: { lang: 'yaml', tag: 'YAML' },
-    yml: { lang: 'yaml', tag: 'YAML' },
-    toml: { lang: 'toml', tag: 'TOML' },
-    ini: { lang: 'ini', tag: 'INI' },
-    diff: { lang: 'diff', tag: 'DIFF' },
-    patch: { lang: 'diff', tag: 'PATCH' }
-});
-
-export function detectLanguage(filePathOrName, fallback = 'plaintext') {
-    if (!filePathOrName || typeof filePathOrName !== 'string') {
-        return { lang: fallback, tag: fallback.toUpperCase() };
-    }
-    const dotIndex = filePathOrName.lastIndexOf('.');
-    if (dotIndex === -1) {
-        return { lang: fallback, tag: fallback.toUpperCase() };
-    }
-    const ext = filePathOrName.slice(dotIndex + 1).toLowerCase();
-    return EXTENSION_MAP[ext] || { lang: ext, tag: ext.toUpperCase() };
-}
-
-export function escapeHtml(str) {
-    if (typeof str !== 'string') return '';
-    return str
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
-}
 
 /**
  * Computes an ordered line-by-line diff between two text strings using Longest Common Subsequence (LCS).
@@ -236,307 +182,55 @@ export function createCodeViewerSideProvider({
             viewElement.appendChild(container);
 
             // ---- Workspace file picker ----
-            function setBodyMessage(text, isError = false) {
-                body.innerHTML = '';
-                const msg = doc.createElement('div');
-                msg.className = isError ? 'side-code-error' : 'side-code-empty';
-                msg.textContent = text;
-                body.appendChild(msg);
-            }
+            const store = Object.freeze({
+                get isDisposed() { return isDisposed; },
+                get isWrapped() { return isWrapped; },
+                set isWrapped(value) { isWrapped = value; },
+                get currentCode() { return currentCode; },
+                set currentCode(value) { currentCode = value; },
+                get currentMode() { return currentMode; },
+                set currentMode(value) { currentMode = value; },
+                get currentLang() { return currentLang; },
+                set currentLang(value) { currentLang = value; },
+                get currentTag() { return currentTag; },
+                set currentTag(value) { currentTag = value; }
+            });
 
-            async function setupPicker() {
-                const wsSelect = doc.createElement('select');
-                wsSelect.className = 'side-code-picker-select';
-                wsSelect.setAttribute('aria-label', '工作区');
-                const filterInput = doc.createElement('input');
-                filterInput.type = 'search';
-                filterInput.className = 'side-code-picker-filter';
-                filterInput.placeholder = '搜索文件名...';
-                const list = doc.createElement('div');
-                list.className = 'side-code-picker-list';
-                list.setAttribute('role', 'listbox');
-                const note = doc.createElement('div');
-                note.className = 'side-code-picker-note';
-                picker.append(wsSelect, filterInput, list, note);
+            const pickerOwner = createCodeViewerPicker({
+                store,
+                api,
+                detectLanguage,
+                doc,
+                getStorage,
+                langTag,
+                picker,
+                pickerToggleBtn,
+                renderCodeView: (...args) => renderCodeView(...args),
+                setBodyMessage: (...args) => setBodyMessage(...args),
+                titleLabel
+            });
+            const { setupPicker } = pickerOwner;
 
-                let files = [];
-                let activeWorkspaceId = '';
-                let activePath = '';
-                let listToken = 0;
+            const editorOwner = createCodeViewerEditor({
+                store,
+                api,
+                body,
+                doc,
+                escapeHtml,
+                filePath,
+                renderDiffView: (...args) => renderDiffView(...args)
+            });
+            const { setBodyMessage, renderCodeView, refreshView } = editorOwner;
 
-                function renderList() {
-                    list.innerHTML = '';
-                    const keyword = filterInput.value.trim().toLowerCase();
-                    const matched = keyword ? files.filter((f) => f.toLowerCase().includes(keyword)) : files;
-                    const shown = matched.slice(0, 300);
-                    for (const rel of shown) {
-                        const item = doc.createElement('button');
-                        item.type = 'button';
-                        item.className = 'side-code-picker-item';
-                        item.dataset.path = rel;
-                        if (rel === activePath) item.classList.add('active');
-                        const slash = rel.lastIndexOf('/');
-                        const name = doc.createElement('span');
-                        name.className = 'side-code-picker-name';
-                        name.textContent = slash === -1 ? rel : rel.slice(slash + 1);
-                        const dir = doc.createElement('span');
-                        dir.className = 'side-code-picker-dir';
-                        dir.textContent = slash === -1 ? '' : rel.slice(0, slash);
-                        item.append(name, dir);
-                        item.addEventListener('click', () => openFile(rel));
-                        list.appendChild(item);
-                    }
-                    note.textContent = matched.length > shown.length
-                        ? `仅显示前 ${shown.length} 项，共 ${matched.length} 项匹配，请输入关键字缩小范围`
-                        : `${matched.length} 个文件`;
-                }
-
-                async function loadFiles() {
-                    const token = ++listToken;
-                    files = [];
-                    list.innerHTML = '';
-                    if (!activeWorkspaceId) {
-                        note.textContent = '';
-                        return;
-                    }
-                    note.textContent = '正在读取文件列表...';
-                    try {
-                        const res = await api.sourceListFiles(activeWorkspaceId);
-                        if (isDisposed || token !== listToken) return;
-                        if (!res?.success) {
-                            note.textContent = res?.error || '读取文件列表失败';
-                            return;
-                        }
-                        files = res.data?.files || [];
-                        renderList();
-                        if (res.data?.truncated) {
-                            note.textContent += `（文件过多，仅索引前 ${res.data.limit} 个）`;
-                        }
-                    } catch (err) {
-                        if (isDisposed || token !== listToken) return;
-                        note.textContent = `读取文件列表失败: ${err?.message || err}`;
-                    }
-                }
-
-                async function openFile(rel) {
-                    const workspaceId = activeWorkspaceId;
-                    activePath = rel;
-                    list.querySelectorAll('.side-code-picker-item').forEach((el) => {
-                        el.classList.toggle('active', el.dataset.path === rel);
-                    });
-                    setBodyMessage('加载文件中...');
-                    try {
-                        const res = await api.sourceReadFile(workspaceId, rel);
-                        if (isDisposed || rel !== activePath || workspaceId !== activeWorkspaceId) return;
-                        if (!res?.success) {
-                            setBodyMessage(res?.error || '读取文件失败', true);
-                            return;
-                        }
-                        const file = res.data || {};
-                        const name = rel.slice(rel.lastIndexOf('/') + 1);
-                        const meta = detectLanguage(name, 'plaintext');
-                        currentLang = meta.lang;
-                        currentTag = meta.tag;
-                        titleLabel.textContent = name;
-                        titleLabel.title = rel;
-                        langTag.textContent = currentTag;
-                        currentCode = '';
-                        if (file.binary) {
-                            setBodyMessage('二进制文件，无法预览');
-                        } else if (file.tooLarge) {
-                            setBodyMessage(`文件过大（${Math.round((file.size || 0) / 1024)} KB），无法预览`);
-                        } else if (file.encodingError) {
-                            setBodyMessage('文件编码无法识别为 UTF-8，无法预览', true);
-                        } else {
-                            currentCode = file.text || '';
-                            renderCodeView();
-                            picker.classList.add('is-collapsed');
-                        }
-                    } catch (err) {
-                        if (isDisposed) return;
-                        setBodyMessage(`读取文件失败: ${err?.message || err}`, true);
-                    }
-                }
-
-                wsSelect.addEventListener('change', () => {
-                    activeWorkspaceId = wsSelect.value;
-                    getStorage()?.setItem(SOURCE_WORKSPACE_KEY, activeWorkspaceId);
-                    activePath = '';
-                    currentCode = '';
-                    setBodyMessage('请选择要查看的文件');
-                    loadFiles();
-                });
-                filterInput.addEventListener('input', renderList);
-                pickerToggleBtn.addEventListener('click', () => {
-                    picker.classList.toggle('is-collapsed');
-                    if (!picker.classList.contains('is-collapsed')) filterInput.focus();
-                });
-
-                setBodyMessage('请选择要查看的文件');
-                if (typeof api?.gitListWorkspaces !== 'function' || typeof api?.sourceListFiles !== 'function') {
-                    note.textContent = '当前窗口不支持浏览工作区文件';
-                    return;
-                }
-                try {
-                    const res = await api.gitListWorkspaces();
-                    if (isDisposed) return;
-                    const workspaces = res?.data?.workspaces || [];
-                    if (!res?.success || workspaces.length === 0) {
-                        wsSelect.disabled = true;
-                        filterInput.disabled = true;
-                        note.textContent = '还没有工作区，请先在 Git 标签页或设置中添加工作区';
-                        return;
-                    }
-                    for (const ws of workspaces) {
-                        const opt = doc.createElement('option');
-                        opt.value = ws.id;
-                        opt.textContent = ws.alias || ws.path;
-                        opt.title = ws.path;
-                        wsSelect.appendChild(opt);
-                    }
-                    const valid = (id) => workspaces.some((w) => w.id === id);
-                    const saved = getStorage()?.getItem(SOURCE_WORKSPACE_KEY);
-                    const preferred = valid(saved) ? saved : res.data.activeWorkspaceId;
-                    wsSelect.value = valid(preferred) ? preferred : workspaces[0].id;
-                    activeWorkspaceId = wsSelect.value;
-                    await loadFiles();
-                } catch (err) {
-                    if (isDisposed) return;
-                    note.textContent = `读取工作区失败: ${err?.message || err}`;
-                }
-            }
-
-            // Fetch File Content if needed
-            async function loadFileContent() {
-                if (currentCode || !filePath) return;
-                body.innerHTML = '<div class="side-code-loading"><span class="vcp-ui-icon spin">sync</span> 加载文件中...</div>';
-                try {
-                    let content = null;
-                    if (api?.getTextContent) {
-                        const res = await api.getTextContent(filePath);
-                        content = (typeof res === 'object' && res !== null) ? (res.data || res.text || '') : res;
-                    }
-                    if (isDisposed) return;
-                    currentCode = content || '';
-                } catch (err) {
-                    if (isDisposed) return;
-                    body.innerHTML = `<div class="side-code-error">读取文件失败: ${escapeHtml(err.message || String(err))}</div>`;
-                    return false;
-                }
-                return true;
-            }
-
-            // Render Functions
-            function renderCodeView() {
-                body.innerHTML = '';
-                const editorShell = doc.createElement('div');
-                editorShell.className = 'side-code-editor-shell';
-                if (isWrapped) editorShell.classList.add('is-wrapped');
-
-                // 文件末尾的换行只是行结束符，不算多出来的一行
-                const lines = currentCode ? currentCode.replace(/\r?\n$/, '').split(/\r?\n/) : [''];
-                const gutter = doc.createElement('div');
-                gutter.className = 'side-code-gutter';
-                gutter.setAttribute('aria-hidden', 'true');
-
-                for (let idx = 1; idx <= lines.length; idx++) {
-                    const lineNum = doc.createElement('div');
-                    lineNum.className = 'side-code-line-number';
-                    lineNum.textContent = String(idx);
-                    gutter.appendChild(lineNum);
-                }
-
-                const pre = doc.createElement('pre');
-                pre.className = 'side-code-pre';
-                const code = doc.createElement('code');
-                code.className = `side-code-highlighted language-${currentLang}`;
-
-                const win = doc.defaultView || (typeof window !== 'undefined' ? window : null);
-                if (win?.hljs?.highlight) {
-                    try {
-                        const highlighted = win.hljs.highlight(currentCode || '', { language: currentLang, ignoreIllegals: true });
-                        code.innerHTML = highlighted.value;
-                    } catch {
-                        code.textContent = currentCode;
-                    }
-                } else {
-                    code.textContent = currentCode;
-                }
-
-                pre.appendChild(code);
-                editorShell.append(gutter, pre);
-                body.appendChild(editorShell);
-            }
-
-            function renderDiffView() {
-                body.innerHTML = '';
-                const diffShell = doc.createElement('div');
-                diffShell.className = 'side-diff-shell';
-                if (isWrapped) diffShell.classList.add('is-wrapped');
-
-                let diffResult;
-                try { diffResult = computeLineDiff(oldCode, newCode ?? currentCode); }
-                catch (error) { body.textContent = error.message; return; }
-                const statsBar = doc.createElement('div');
-                statsBar.className = 'side-diff-stats-bar';
-                statsBar.innerHTML = `
-                    <span class="side-diff-badge add">+${diffResult.addedCount}</span>
-                    <span class="side-diff-badge del">-${diffResult.deletedCount}</span>
-                    <span class="side-diff-meta">总计 ${diffResult.rows.length} 行对比${diffResult.approximate ? '（大段内容按区块比较，增删数为估算）' : ''}</span>
-                `;
-                diffShell.appendChild(statsBar);
-
-                const table = doc.createElement('div');
-                table.className = 'side-diff-table';
-
-                const appendRow = row => {
-                    const rowDiv = doc.createElement('div');
-                    rowDiv.className = `side-diff-row is-${row.type}`;
-
-                    const oldNum = doc.createElement('span');
-                    oldNum.className = 'side-diff-cell side-diff-num old';
-                    oldNum.textContent = row.oldLine !== null ? String(row.oldLine) : '';
-
-                    const newNum = doc.createElement('span');
-                    newNum.className = 'side-diff-cell side-diff-num new';
-                    newNum.textContent = row.newLine !== null ? String(row.newLine) : '';
-
-                    const sign = doc.createElement('span');
-                    sign.className = 'side-diff-cell side-diff-sign';
-                    sign.textContent = row.type === 'add' ? '+' : row.type === 'del' ? '-' : ' ';
-
-                    const text = doc.createElement('span');
-                    text.className = 'side-diff-cell side-diff-text';
-                    text.textContent = row.text;
-
-                    rowDiv.append(oldNum, newNum, sign, text);
-                    table.appendChild(rowDiv);
-                };
-                let displayed = 0;
-                const more = doc.createElement('button');
-                more.type = 'button';
-                more.className = 'side-code-action-btn';
-                function appendPage() {
-                    const end = Math.min(displayed + 500, diffResult.rows.length);
-                    while (displayed < end) appendRow(diffResult.rows[displayed++]);
-                    more.textContent = '显示更多行（剩余 ' + (diffResult.rows.length - displayed) + ' 行）';
-                    more.hidden = displayed >= diffResult.rows.length;
-                }
-                more.addEventListener('click', appendPage);
-                appendPage();
-                diffShell.append(table, more);
-                body.appendChild(diffShell);
-            }
-
-            async function refreshView() {
-                const loaded = await loadFileContent();
-                if (loaded === false) return;
-                if (currentMode === 'diff') {
-                    renderDiffView();
-                } else {
-                    renderCodeView();
-                }
-            }
+            const diffViewOwner = createCodeViewerDiffView({
+                store,
+                body,
+                computeLineDiff,
+                doc,
+                newCode,
+                oldCode
+            });
+            const { renderDiffView } = diffViewOwner;
 
             // Event Listeners
             wrapBtn.addEventListener('click', () => {
@@ -624,6 +318,9 @@ export function createCodeViewerSideProvider({
                 },
                 dispose() {
                     isDisposed = true;
+                    pickerOwner.dispose();
+                    editorOwner.dispose();
+                    diffViewOwner.dispose();
                     viewElement.innerHTML = '';
                 }
             };

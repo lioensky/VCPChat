@@ -4,6 +4,7 @@
  */
 'use strict';
 
+import { escapeHtmlValue as escapeHtml } from '../ui-system/text-escape.js';
 import { createSideChatShell } from './side-chat/shell.js';
 import { createSideChatComposerState } from './side-chat/composer-state.js';
 import { createSideChatScrolling } from './side-chat/scrolling.js';
@@ -558,14 +559,4 @@ export function createSideChatSurfaceOwner({
         },
         dispose() { drafts.dispose(); }
     });
-}
-
-function escapeHtml(str) {
-    if (!str) return '';
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
 }
