@@ -182,3 +182,20 @@ handle 的方法都是可选的：
 原有 `side-pane-tabs.css`、`side-pane-plan.css`、`side-pane-tool-output.css`、`side-pane-git-extras.css` 和 `side-pane-side-chat-extras.css` 是后加载的扩展层，继续保留各自的位置。调整这些扩展层时也必须保持它们相对于其他样式的顺序。
 
 通知中心按 status → list → cards → dock 四段加载。两套样式拆分时只切分原文件，按引用顺序拼接后与原文件逐字节一致。
+
+## 9. 会话状态面板
+
+`conversation-status-panel.js` 保留会话范围、工作区与计划加载、投影、挂载和销毁，并原样导出纯函数与对外 API。它创建带 getter / setter 的 store，把实时数据交给各模块，避免切换话题后读到旧闭包快照。
+
+| 模块（`modules/ui-system/conversation-status-panel/`） | 职责 |
+| :--- | :--- |
+| `helpers.js` | 分支过滤、进程窗口、迷你指标、提交信息与格式化纯函数 |
+| `dom.js` | DOM 小工具和监听器清理 |
+| `floating.js` | 浮层定位、popover 与 modal 生命周期及浮层栈 |
+| `git-actions.js` | 分支加载、忙碌状态、切换、新建、推送、暂存 |
+| `branch-dialogs.js` | 分支浮层、新建、切换受阻和切换前提交 |
+| `commit-dialog.js` / `push-dialog.js` | 提交与推送对话框 |
+| `git-graph.js` | Git 图表、分页与刷新 |
+| `sections.js` | Git、命令、进程分区与迷你胶囊 |
+
+各子模块不互相 import。入口把 DOM 工具、浮层操作、Git 操作及跨对话框跳转作为依赖和回调注入，并统一调用每个 owner 的 `dispose()`。分区开合通过组合者回调更新；共享数据通过 store 访问。Apache-2.0 来源说明保留在拆出的模块中。

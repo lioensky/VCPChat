@@ -146,7 +146,9 @@ const inlineStyleCompatibilityAllowlist = new Set([
     path.join(moduleDir, 'side-pane', 'side-pane-resizer-owner.js'), // Dragged pane width follows the pointer, same as the left sidebar resizer.
     path.join(moduleDir, 'side-pane', 'side-pane-tab-dnd.js'), // Tab reorder offsets follow the pointer.
     path.join(moduleDir, 'side-pane', 'menu-position.js'), // Pointer-anchored context menus are placed at measured coordinates.
-    path.join(moduleDir, 'conversation-status-panel.js'), // Popovers follow their anchor, the overlay sits below the measured chat header and the commit graph is sized from its layout.
+    path.join(moduleDir, 'conversation-status-panel.js'), // Overlay follows the measured chat header.
+    path.join(moduleDir, 'conversation-status-panel', 'floating.js'), // Popovers follow the measured anchor.
+    path.join(moduleDir, 'conversation-status-panel', 'git-graph.js'), // The commit graph is sized from its layout.
 ]);
 
 for (const file of filesIn(moduleDir, '.js')) {
