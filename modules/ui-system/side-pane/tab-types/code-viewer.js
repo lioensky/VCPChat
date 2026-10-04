@@ -5,10 +5,7 @@ export function defineCodeViewerTabType({ document: doc, window: win, chatAPI, s
     const label = '代码查看';
     const icon = 'code';
     return Object.freeze({
-        kind: 'code-viewer', label, icon, searchHint: '代码', provider,
-        entry: { id: 'code-viewer', order: 30, open: async () => {
-            await sidePaneController.openTab({ id: 'code-viewer:browse', kind: 'code-viewer', title: label, icon, closable: true, scopeMode: 'global', payload: {} });
-            sidePaneController.setVisible(true);
-        } }
+        // 不进启动器：代码查看总是从消息里的文件名、Git 改动等具体文件点进来
+        kind: 'code-viewer', label, icon, searchHint: '代码', provider
     });
 }

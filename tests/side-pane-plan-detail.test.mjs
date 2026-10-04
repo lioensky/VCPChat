@@ -120,6 +120,45 @@ test('mountTab renders plan, files, timeline and reloads on matching change even
     assert.equal(view.innerHTML, '');
 });
 
+test('plan pages navigate by keyboard and retain their scroll positions across refreshes', async () => {
+    const { provider, view, dom, fire } = makeEnv();
+    const handle = await provider.mountTab({ id: planTabId('p1'), payload: { projectId: 'p1' } }, view);
+    const body = view.querySelector('.side-plan-body');
+    const selected = () => view.querySelector('[role="tab"][aria-selected="true"]');
+    const panel = () => view.querySelector('[role="tabpanel"]:not([hidden])');
+    assert.equal(selected().dataset.planPage, 'plan');
+    assert.equal(panel().dataset.planPagePanel, 'plan');
+    assert.equal(view.querySelector('.side-plan-header .side-plan-progress'), null);
+    assert.equal(view.querySelector('.side-plan-header .side-plan-stats'), null);
+    assert.equal(view.querySelector('.side-plan-header').textContent.includes('C:\\w'), false);
+    body.scrollTop = 120;
+    selected().dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    assert.equal(panel().dataset.planPagePanel, 'timeline');
+    assert.equal(dom.window.document.activeElement, selected());
+    assert.equal(selected().getAttribute('aria-controls'), panel().id);
+    body.scrollTop = 60;
+    selected().dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    assert.equal(body.scrollTop, 120);
+    selected().click();
+    assert.equal(body.scrollTop, 120);
+    selected().dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    assert.equal(panel().dataset.planPagePanel, 'details');
+    assert.match(panel().textContent, /创建者.*Nova/);
+    body.scrollTop = 30;
+    fire({ projectId: 'p1' });
+    await new Promise(resolve => setTimeout(resolve, 320));
+    assert.equal(panel().dataset.planPagePanel, 'details');
+    assert.equal(body.scrollTop, 30);
+    view.querySelector('[data-plan-page="timeline"]').click();
+    assert.equal(body.scrollTop, 60);
+    handle.reveal({ focus: { todoId: 2 } });
+    assert.equal(panel().dataset.planPagePanel, 'plan');
+    handle.reveal({ focus: { section: 'files' } });
+    assert.equal(panel().dataset.planPagePanel, 'files');
+    handle.dispose();
+    dom.window.close();
+});
+
 test('mountTab shows a retryable empty state when the project cannot be read', async () => {
     const { provider, view } = makeEnv({ projectForgeGetProject: async () => ({ success: false, error: '工程不存在' }) });
     const handle = await provider.mountTab({ id: planTabId('zz'), payload: { projectId: 'zz' } }, view);

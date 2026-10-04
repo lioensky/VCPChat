@@ -22,6 +22,7 @@ import {
     locateTopicBatches, buildTopicActivity, hasFilters, searchParams, narrowSearchRows
 } from './plan-detail/topic-activity.js';
 import { createPlanNodeView } from './plan-detail/node-view.js';
+import { createPlanPageNavigation } from './plan-detail/page-navigation.js';
 
 const STORAGE_KEY_WS = 'vcp-projectforge-git-workspace';
 const TAB_PREFIX = 'plan-detail:';
@@ -30,7 +31,7 @@ const REFRESH_DEBOUNCE_MS = 200;
 const FILTER_DEBOUNCE_MS = 300;
 
 const STATUS_LABEL = Object.freeze({ completed: '已完成', inProgress: '进行中', pending: '待处理' });
-const STATUS_ICON = Object.freeze({ completed: 'check_circle', inProgress: 'progress_activity', pending: 'radio_button_unchecked' });
+const STATUS_ICON = Object.freeze({ completed: 'check_circle', inProgress: 'arrow_forward', pending: 'radio_button_unchecked' });
 
 /** 话题里一个话题一个计划标签（工程在标签里切换）；不在话题里时一个工程一个标签。 */
 export function planTabId(projectId, parentRef = null) {
@@ -203,8 +204,9 @@ export function createPlanDetailSideProvider({
             };
 
             const scope = h('div', 'zc-scope vcp-ui-scope side-plan-scope');
+            const chrome = h('div', 'side-plan-chrome');
             const body = h('div', 'side-plan-body');
-            scope.appendChild(body);
+            scope.append(chrome, body);
             viewElement.appendChild(scope);
 
             let isDisposed = false;
@@ -229,6 +231,15 @@ export function createPlanDetailSideProvider({
             let filterSeq = 0;
             let filterTimer = null;
             let nodeView = null;
+            const navigation = createPlanPageNavigation({ h, button, id: tab.id, onChange: selectPage });
+
+            function selectPage(key) {
+                if (navigation.selected === key) return;
+                navigation.select(key, body.scrollTop);
+                render();
+                body.scrollTop = navigation.scrollTop;
+                chrome.querySelector(`[data-plan-page="${key}"]`)?.focus();
+            }
 
             const isCurrentTopic = () => {
                 if (!topicMode) return true;
@@ -299,7 +310,7 @@ export function createPlanDetailSideProvider({
             const who = (maid, batchKind) => (maid ? `@${maid}` : (batchKind === 'external' ? '外部修改' : '未署名'));
 
             function renderHeader() {
-                const { project, counts } = model;
+                const { project } = model;
                 const head = h('header', 'side-plan-header');
                 const titleRow = h('div', 'side-plan-title-row');
                 if (topicMode && topicProjects.length > 1) {
@@ -320,7 +331,7 @@ export function createPlanDetailSideProvider({
                 }
                 // 软删除的工程 GetProject 仍然成功、status 也不变，只多了 deleted_at
                 const status = project.deleted_at ? 'deleted' : project.status;
-                const statusText = status === 'deleted' ? '已删除' : status === 'active' ? '进行中' : status === 'closed' ? '已收尾' : (status || '');
+                const statusText = status === 'deleted' ? '已删除' : status === 'active' ? '进行中' : status === 'closed' ? '已收尾' : status === 'review' ? '待验收' : (status || '');
                 if (statusText) titleRow.appendChild(h('span', `side-plan-chip status-${status || 'unknown'}`, statusText));
                 const actions = h('div', 'side-plan-actions');
                 const refreshBtn = button('side-plan-icon-btn', null, '刷新');
@@ -337,15 +348,10 @@ export function createPlanDetailSideProvider({
                 head.appendChild(titleRow);
 
                 const meta = h('div', 'side-plan-meta');
-                if (project.created_by) meta.appendChild(h('span', '', `创建：${project.created_by}`));
+                meta.appendChild(h('span', 'side-plan-context', activity ? '本话题' : '工程全览'));
+                if (project.workspace_alias) meta.appendChild(h('span', '', project.workspace_alias));
                 if (project.updated_at) meta.appendChild(h('span', '', `更新 ${when(project.updated_at)}`));
-                if (project.workspace_alias) meta.appendChild(h('span', '', `工作区 ${project.workspace_alias}`));
                 head.appendChild(meta);
-                if (project.root) {
-                    const root = h('div', 'side-plan-root', project.root);
-                    root.title = project.root;
-                    head.appendChild(root);
-                }
                 if (project.deleted_at) {
                     const by = project.deleted_by ? ` ${project.deleted_by} ` : '';
                     head.appendChild(h('div', 'side-plan-warning side-plan-deleted', `这个工程已被${by}删除（${when(project.deleted_at)}），下面是删除前的计划；需要时让助手用 RestoreProjects 恢复`));
@@ -354,21 +360,40 @@ export function createPlanDetailSideProvider({
                     head.appendChild(h('div', 'side-plan-warning', project.rootInfo.blockedReason));
                 }
 
+                return head;
+            }
+
+            function renderProjectDetails() {
+                const { project } = model;
+                const details = h('dl', 'side-plan-project-details');
+                [['创建者', project.created_by], ['工作区', project.workspace_alias],
+                    ['更新', when(project.updated_at)], ['根目录', project.root]].forEach(([label, value]) => {
+                    if (!value) return;
+                    details.append(h('dt', '', label), h('dd', '', value));
+                });
+                return section('工程信息', '', null, details);
+            }
+
+            function renderProgress() {
+                const { counts } = model;
+                const summary = h('div', 'side-plan-progress-text');
                 if (counts.total > 0) {
                     const pct = Math.round((counts.completed / counts.total) * 100);
                     const progress = h('progress', 'side-plan-progress');
                     progress.max = counts.total;
                     progress.value = counts.completed;
                     progress.setAttribute('aria-label', `计划进度 ${pct}%`);
-                    const summary = h('div', 'side-plan-progress-text');
                     summary.append(
                         h('span', counts.completed >= counts.total ? 'side-plan-done' : '', `${counts.completed}/${counts.total} 已完成`),
-                        h('span', '', counts.inProgress ? `${counts.inProgress} 进行中` : ''),
-                        h('span', 'side-plan-pct', `${pct}%`)
+                        progress
                     );
-                    head.append(progress, summary);
+                    if (counts.inProgress) summary.appendChild(h('span', '', `${counts.inProgress} 进行中`));
                 }
+                return summary;
+            }
 
+            function renderStats() {
+                const { project } = model;
                 const stats = h('div', 'side-plan-stats');
                 if (activity) {
                     const s = activity.stats;
@@ -389,8 +414,7 @@ export function createPlanDetailSideProvider({
                     );
                     if (s.lastAt) stats.appendChild(h('span', '', `最近 ${when(s.lastAt)}`));
                 }
-                head.appendChild(stats);
-                return head;
+                return stats;
             }
 
             function renderTodos() {
@@ -398,16 +422,15 @@ export function createPlanDetailSideProvider({
                     return section('计划', '', null, h('div', 'side-plan-empty', '这个工程还没有计划条目'));
                 }
                 const list = h('ol', 'side-plan-todos');
-                model.items.forEach((item, index) => {
+                model.items.forEach(item => {
                     const row = h('li', `side-plan-todo status-${item.status}${item.blocked ? ' blocked' : ''}`);
                     row.dataset.todoStatus = item.status;
                     row.dataset.todoId = item.id;
                     const mark = h('span', 'side-plan-todo-mark');
-                    mark.appendChild(icon(item.blocked ? 'cancel' : STATUS_ICON[item.status], item.status === 'inProgress' && !item.blocked ? 'spin' : ''));
+                    mark.appendChild(icon(item.blocked ? 'cancel' : STATUS_ICON[item.status]));
                     const text = h('div', 'side-plan-todo-text');
-                    const title = h('div', 'side-plan-todo-title');
-                    title.append(h('span', 'side-plan-todo-seq', String(index + 1)), h('span', '', item.content));
-                    text.appendChild(title);
+                    // Preserve the task text and ordered-list semantics without adding a second visible number.
+                    text.appendChild(h('div', 'side-plan-todo-title', item.content));
                     const sub = [item.blocked ? '已阻塞' : STATUS_LABEL[item.status], item.updatedBy, when(item.updatedAt)]
                         .filter(Boolean).join(' · ');
                     text.appendChild(h('div', 'side-plan-todo-sub', sub));
@@ -415,7 +438,9 @@ export function createPlanDetailSideProvider({
                     row.append(mark, text);
                     list.appendChild(row);
                 });
-                return section('计划', `${model.counts.completed}/${model.counts.total}`, null, list);
+                const content = h('div', 'side-plan-task-list');
+                content.append(renderProgress(), list);
+                return section('计划', '', null, content);
             }
 
             function nodeRow(node, { batchKind = null, maid = undefined, showBatch = false } = {}) {
@@ -557,7 +582,7 @@ export function createPlanDetailSideProvider({
 
             function renderFiles() {
                 const files = activity ? activity.files : model.files;
-                if (!files.length) return null;
+                if (!files.length) return section('变更文件', '', 'files', h('div', 'side-plan-empty', activity ? '这个话题还没有变更文件' : '这个工程还没有变更文件'));
                 const list = h('ul', 'side-plan-files');
                 files.forEach(file => {
                     const row = h('li', 'side-plan-file');
@@ -614,9 +639,12 @@ export function createPlanDetailSideProvider({
                 // 输入框随整页重绘，记下焦点和光标位置
                 const active = doc.activeElement;
                 const focusKey = active && body.contains(active) ? active.dataset?.filter : null;
+                const pageFocus = active && chrome.contains(active) ? active.dataset?.planPage : null;
                 const caret = focusKey && typeof active.selectionStart === 'number' ? [active.selectionStart, active.selectionEnd] : null;
                 const scrollTop = body.scrollTop;
                 body.innerHTML = '';
+                chrome.innerHTML = '';
+                chrome.hidden = false;
                 if (loading && !model) {
                     body.appendChild(h('div', 'side-plan-empty', '正在读取 V工程 计划…'));
                     return;
@@ -638,15 +666,22 @@ export function createPlanDetailSideProvider({
                     banner.append(h('span', '', `刷新失败，显示的是上一次的内容：${staleError}`), retry);
                     body.appendChild(banner);
                 }
-                body.appendChild(renderHeader());
-                body.appendChild(renderTodos());
-                [renderTimeline(), renderFiles(), renderContributors(), renderReport(), renderOtherHint()].forEach(node => { if (node) body.appendChild(node); });
+                if (pendingFocus) navigation.select(navigation.pageForFocus(pendingFocus), scrollTop);
+                const pages = navigation.render([
+                    { key: 'plan', label: '计划', count: model.counts.total, content: [renderTodos()] },
+                    { key: 'timeline', label: '施工线', count: timelineRows().length, content: [renderStats(), renderTimeline(), renderOtherHint()] },
+                    { key: 'files', label: '文件', count: (activity ? activity.files : model.files).length, content: [renderFiles()] },
+                    { key: 'details', label: '详情', content: [renderProjectDetails(), renderContributors(), renderReport()] }
+                ]);
+                chrome.append(renderHeader(), pages.tabs);
+                body.appendChild(pages.panels);
                 body.scrollTop = scrollTop;
                 if (focusKey) {
                     const again = body.querySelector(`[data-filter="${focusKey}"]`);
                     again?.focus?.();
                     if (caret && again?.setSelectionRange) { try { again.setSelectionRange(caret[0], caret[1]); } catch (_e) { /* select 没有光标 */ } }
                 }
+                if (pageFocus) chrome.querySelector(`[data-plan-page="${navigation.selected}"]`)?.focus();
                 applyFocus();
             }
 
@@ -697,8 +732,10 @@ export function createPlanDetailSideProvider({
 
             function applyFilter(patch) {
                 filters = { ...filters, ...patch };
+                navigation.select('timeline', body.scrollTop);
                 collapsed.timeline = false;
                 runSearch();
+                body.scrollTop = 0;
                 body.querySelector('[data-plan-section="timeline"]')?.scrollIntoView?.({ block: 'start' });
             }
 
@@ -745,6 +782,7 @@ export function createPlanDetailSideProvider({
                 const scrollTop = body.scrollTop;
                 nodeView.returnScroll = scrollTop;
                 body.innerHTML = '';
+                chrome.hidden = true;
                 body.appendChild(nodeView.element);
                 body.scrollTop = 0;
                 nodeView.load();

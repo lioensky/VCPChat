@@ -4,43 +4,40 @@
  */
 
 html .side-plan-view:where(.vcp-ui-scope, .vcp-ui-scope *) { height: 100%; overflow: hidden; }
+/*
+ * 侧栏本身已经是磨砂玻璃，计划页不再一层层叠卡片：分区、列表都直接落在玻璃上（ZCode 侧栏和
+ * 工作流详情的做法），只有报告、diff、回退这种成块的内容才垫一层很淡的半透明底。
+ * 辅助底色从当前分区文字色混透明得来，保持与浅色、深色文字一致。
+ */
 html .side-plan-scope:where(.vcp-ui-scope, .vcp-ui-scope *) {
     height: 100%;
-    --side-plan-card-bg: color-mix(in srgb, var(--vcp-ui-text-primary, #ffffff) 6%, var(--vcp-ui-bg-primary, rgba(20, 22, 28, 0.78)));
-    --side-plan-card-bg-hover: color-mix(in srgb, var(--vcp-ui-text-primary, #ffffff) 10%, var(--vcp-ui-bg-primary, rgba(20, 22, 28, 0.88)));
-    --side-plan-card-border: color-mix(in srgb, var(--vcp-ui-text-primary, #ffffff) 8%, transparent);
-    --side-plan-card-border-hover: color-mix(in srgb, var(--vcp-ui-text-primary, #ffffff) 14%, transparent);
+    display: flex;
+    flex-direction: column;
+    --side-plan-surface: color-mix(in srgb, var(--zc-fg) 5%, transparent);
+    --side-plan-hover: color-mix(in srgb, var(--zc-fg) 7%, transparent);
+    --side-plan-rule: color-mix(in srgb, var(--zc-fg) 10%, transparent);
+    --side-plan-card-border: color-mix(in srgb, var(--zc-fg) 9%, transparent);
 }
 
-html body:is(.light-theme, [data-vcp-theme="light"]) .side-plan-scope:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    --side-plan-card-bg: color-mix(in srgb, var(--vcp-ui-text-primary, #000000) 4%, var(--vcp-ui-bg-primary, rgba(255, 255, 255, 0.85)));
-    --side-plan-card-bg-hover: color-mix(in srgb, var(--vcp-ui-text-primary, #000000) 7%, var(--vcp-ui-bg-primary, rgba(255, 255, 255, 0.95)));
-    --side-plan-card-border: color-mix(in srgb, var(--vcp-ui-text-primary, #000000) 8%, transparent);
-    --side-plan-card-border-hover: color-mix(in srgb, var(--vcp-ui-text-primary, #000000) 14%, transparent);
-}
 
 html .side-plan-body:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    height: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
-    padding: 16px;
+    padding: 12px 14px 24px;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 14px;
 }
 
 html .side-plan-body > *:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 100%; max-width: 56rem; margin-inline: auto; box-sizing: border-box; flex: 0 0 auto; }
 
 html .side-plan-empty:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    padding: 32px 16px;
+    padding: 20px 8px;
     text-align: center;
-    color: var(--vcp-ui-text-2, var(--zc-fg-subtle));
-    font-size: calc(var(--vcp-ui-font-size) - 1px);
-    background: var(--side-plan-card-bg);
-    border: 1px solid var(--side-plan-card-border);
-    border-radius: var(--vcp-ui-radius-lg, 12px);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    color: var(--zc-fg-subtle);
+    font-size: calc(var(--vcp-ui-font-size) - 2px);
 }
 html .side-plan-error:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 
@@ -48,131 +45,111 @@ html .side-plan-error:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; fle
 html .side-plan-header:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    padding: 12px 14px;
-    border-radius: var(--vcp-ui-radius-lg, 12px);
-    background: var(--side-plan-card-bg);
-    border: 1px solid var(--side-plan-card-border);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    gap: 4px;
+    padding: 0 6px 10px;
     box-sizing: border-box;
 }
 html .side-plan-title-row:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; align-items: center; gap: 8px; min-width: 0; }
-html .side-plan-title:where(.vcp-ui-scope, .vcp-ui-scope *) { margin: 0; font-size: calc(var(--vcp-ui-font-size) + 2px); font-weight: 600; line-height: 1.3; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--zc-fg); }
-html .side-plan-actions:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; gap: 2px; flex: 0 0 auto; }
+html .side-plan-title:where(.vcp-ui-scope, .vcp-ui-scope *) { margin: 0; font-size: calc(var(--vcp-ui-font-size) + 1px); font-weight: 600; line-height: 1.3; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--zc-fg); }
+html .side-plan-actions:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; gap: 2px; flex: 0 0 auto; margin-right: -4px; }
 html .side-plan-icon-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: inline-flex; align-items: center; justify-content: center;
-    width: 26px; height: 26px; padding: 0; border: 0; border-radius: 6px;
+    width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px;
     background: transparent; color: var(--zc-fg-subtle); cursor: pointer;
 }
-html .side-plan-icon-btn:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--zc-menu-hover); color: var(--zc-fg); }
+html .side-plan-icon-btn:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--side-plan-hover); color: var(--zc-fg); }
 html .side-plan-icon-btn .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-icon-btn svg:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 15px; height: 15px; font-size: calc(var(--vcp-ui-font-size) + 1px); }
 
-html .side-plan-chip:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 0 0 auto; padding: 1px 8px; border-radius: 999px; font-size: calc(var(--vcp-ui-font-size) - 3px); background: var(--zc-secondary); color: var(--zc-fg-subtle); }
+html .side-plan-chip:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 0 0 auto; padding: 0; font-size: calc(var(--vcp-ui-font-size) - 3px); color: var(--zc-fg-subtle); }
 html .side-plan-chip.status-active:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-success); }
 html .side-plan-chip.status-deleted:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-danger); }
 
-html .side-plan-meta:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--zc-fg-subtle); }
-html .side-plan-root:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--zc-fg-subtlest); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+html .side-plan-meta:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: calc(var(--vcp-ui-font-size) - 3px); color: var(--zc-fg-subtle); }
+html .side-plan-meta > span + span:where(.vcp-ui-scope, .vcp-ui-scope *)::before { content: '·'; margin-right: 10px; color: var(--zc-fg-subtle); }
+html .side-plan-root:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 3px); color: var(--zc-fg-subtle); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
 html .side-plan-warning:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 2px); padding: 6px 10px; border-radius: 6px; background: var(--vcp-ui-port-color-rgba-217-119-6-0-12); color: var(--zc-warning); }
 
-html .side-plan-progress:where(.vcp-ui-scope, .vcp-ui-scope *) { display: block; width: 100%; height: 4px; border: 0; border-radius: 999px; background: var(--zc-secondary); color: var(--zc-success); overflow: hidden; appearance: none; }
-html .side-plan-progress:where(.vcp-ui-scope, .vcp-ui-scope *)::-webkit-progress-bar { border-radius: inherit; background: var(--zc-secondary); }
+html .side-plan-progress:where(.vcp-ui-scope, .vcp-ui-scope *) { display: block; flex: 0 0 64px; width: 64px; height: 3px; border: 0; border-radius: 999px; background: var(--side-plan-rule); color: var(--zc-success); overflow: hidden; appearance: none; }
+html .side-plan-progress:where(.vcp-ui-scope, .vcp-ui-scope *)::-webkit-progress-bar { border-radius: inherit; background: var(--side-plan-rule); }
 html .side-plan-progress:where(.vcp-ui-scope, .vcp-ui-scope *)::-webkit-progress-value { border-radius: inherit; background: var(--zc-success); transition: width 240ms ease; }
-html .side-plan-progress-text:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; gap: 10px; font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--zc-fg-subtle); font-variant-numeric: tabular-nums; }
+html .side-plan-progress-text:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 4px 6px 10px; font-size: calc(var(--vcp-ui-font-size) - 3px); color: var(--zc-fg-subtle); font-variant-numeric: tabular-nums; }
 html .side-plan-progress-text .side-plan-pct:where(.vcp-ui-scope, .vcp-ui-scope *) { margin-left: auto; }
 html .side-plan-done:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-success); }
 
-/* ---- sections ---- */
-html .side-plan-section:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; gap: 8px; }
+/* Compact project chrome stays above the resident page scrollport. */
+html .side-plan-chrome:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 0 0 auto; padding: 12px 14px 0; }
+html .side-plan-chrome[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-plan-page[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }
+html .side-plan-pages:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; gap: 4px; border-bottom: 1px solid var(--side-plan-rule); }
+html .side-plan-page-tab:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 1 1 0; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 4px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--zc-fg-subtle); font: inherit; font-size: calc(var(--vcp-ui-font-size) - 2px); cursor: pointer; }
+html .side-plan-page-tab:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-fg); background: var(--side-plan-hover); }
+html .side-plan-page-tab[aria-selected="true"]:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-fg); border-bottom-color: var(--zc-fg); font-weight: 600; }
+html .side-plan-page-count:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-fg-subtle); font-size: calc(var(--vcp-ui-font-size) - 3px); font-weight: 400; font-variant-numeric: tabular-nums; }
+html .side-plan-page:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; gap: 14px; }
+html .side-plan-page[data-plan-page-panel="plan"] > .side-plan-section > .side-plan-section-title:where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }
+html .side-plan-project-details:where(.vcp-ui-scope, .vcp-ui-scope *) { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px 16px; margin: 6px; font-size: calc(var(--vcp-ui-font-size) - 2px); line-height: 1.5; }
+html .side-plan-project-details dt:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-fg-subtle); }
+html .side-plan-project-details dd:where(.vcp-ui-scope, .vcp-ui-scope *) { margin: 0; color: var(--zc-fg); overflow-wrap: anywhere; }
+
+/* ---- sections：表头是一行小字，不是一块按钮 ---- */
+html .side-plan-section:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; gap: 2px; }
 html .side-plan-section-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    display: flex; align-items: center; gap: 6px; width: 100%; padding: 4px 10px; border: 1px solid var(--side-plan-card-border); border-radius: var(--vcp-ui-radius-md, 8px);
-    /* 分组标题也压在壁纸上：和卡片同一层磨砂底，否则文字和图案糊在一起 */
-    background: var(--side-plan-card-bg); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
-    font: inherit; font-size: calc(var(--vcp-ui-font-size) - 2px); font-weight: 600; color: var(--vcp-ui-text-1, var(--zc-fg-subtle)); text-align: left; cursor: pointer;
+    display: flex; align-items: center; gap: 6px; width: 100%; min-height: 30px; padding: 0 6px; box-sizing: border-box;
+    border: 0; border-radius: 6px; background: transparent;
+    font: inherit; font-size: calc(var(--vcp-ui-font-size) - 2px); font-weight: 500; color: var(--zc-fg-subtle); text-align: left; cursor: pointer;
 }
 html .side-plan-section-title.static:where(.vcp-ui-scope, .vcp-ui-scope *) { cursor: default; }
-html .side-plan-section-title:not(.static):hover:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-fg); }
-html .side-plan-section-title .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-section-title svg:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 14px; height: 14px; font-size: var(--vcp-ui-font-size); }
-html .side-plan-section-meta:where(.vcp-ui-scope, .vcp-ui-scope *) { margin-left: auto; font-weight: 400; color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); font-variant-numeric: tabular-nums; }
+html .side-plan-section-title:not(.static):hover:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--side-plan-hover); color: var(--zc-fg); }
+html .side-plan-section-title .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-section-title svg:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 14px; height: 14px; font-size: var(--vcp-ui-font-size); opacity: 0.75; }
+html .side-plan-section-meta:where(.vcp-ui-scope, .vcp-ui-scope *) { margin-left: auto; font-weight: 400; color: var(--zc-fg-subtle); font-variant-numeric: tabular-nums; }
 
 html .side-plan-diffstat:where(.vcp-ui-scope, .vcp-ui-scope *) { display: inline-flex; gap: 4px; font-size: calc(var(--vcp-ui-font-size) - 2px); font-variant-numeric: tabular-nums; }
 html .side-plan-added:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-added); }
 html .side-plan-removed:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-removed); }
 
-/* ---- todos ---- */
-html .side-plan-todos:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-files:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-timeline:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-contributors:where(.vcp-ui-scope, .vcp-ui-scope *) { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-html .side-plan-todos:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    gap: 6px;
-    padding: 6px;
-    border-radius: var(--vcp-ui-radius-lg, 12px);
-    background: var(--side-plan-card-bg);
-    border: 1px solid var(--side-plan-card-border);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-}
+/* ---- todos: compact rows; icons and status labels retain each task state ---- */
+html .side-plan-todos:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-files:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-timeline:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-contributors:where(.vcp-ui-scope, .vcp-ui-scope *) { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
 html .side-plan-todo:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: flex;
     gap: 10px;
-    padding: 8px 10px;
-    border-radius: var(--vcp-ui-radius-md, 8px);
-    border: 1px solid transparent;
-    transition: background-color 150ms ease, border-color 150ms ease;
+    align-items: flex-start;
+    padding: 6px;
+    border-radius: 6px;
+    transition: background-color 150ms ease;
 }
-html .side-plan-todo:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    background: var(--side-plan-card-bg-hover);
-    border-color: var(--side-plan-card-border-hover);
-}
-html .side-plan-todo-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 0 0 auto; padding-top: 1px; color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); }
-html .side-plan-todo-mark .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-todo-mark svg:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 16px; height: 16px; font-size: calc(var(--vcp-ui-font-size) + 2px); }
+html .side-plan-todo:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--side-plan-hover); }
+html .side-plan-todo-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 0 0 auto; display: inline-flex; height: 1.5em; align-items: center; font-size: calc(var(--vcp-ui-font-size) - 1px); color: var(--zc-fg-subtle); }
+html .side-plan-todo-mark .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-todo-mark svg:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 14px; height: 14px; font-size: var(--vcp-ui-font-size); }
 html .side-plan-todo.status-completed .side-plan-todo-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-success); }
 html .side-plan-todo.status-inProgress .side-plan-todo-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-lane-descendant); }
+html .side-plan-todo-mark > *:where(.vcp-ui-scope, .vcp-ui-scope *) { animation: none; }
 html .side-plan-todo.blocked .side-plan-todo-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-danger); }
-html .side-plan-todo-text:where(.vcp-ui-scope, .vcp-ui-scope *) { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 3px; }
-html .side-plan-todo-title:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; gap: 8px; font-size: calc(var(--vcp-ui-font-size) - 1px); font-weight: 500; color: var(--vcp-ui-text-0, var(--zc-fg)); overflow-wrap: anywhere; }
-html .side-plan-todo.status-completed .side-plan-todo-title > span:last-child:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); text-decoration: line-through; text-decoration-color: var(--vcp-ui-text-3, var(--zc-fg-subtlest)); }
-html .side-plan-todo-seq:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 0 0 auto; color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); font-weight: 600; font-variant-numeric: tabular-nums; }
-html .side-plan-todo-sub:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 3px); color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); }
-html .side-plan-todo-note:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--vcp-ui-text-1, var(--zc-fg-subtle)); padding: 6px 10px; border-radius: 6px; background: color-mix(in srgb, var(--vcp-ui-text-primary, #ffffff) 5%, transparent); border: 1px solid var(--side-plan-card-border); overflow-wrap: anywhere; white-space: pre-wrap; }
+html .side-plan-todo-text:where(.vcp-ui-scope, .vcp-ui-scope *) { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 1px; }
+html .side-plan-todo-title:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 1px); line-height: 1.5; color: var(--zc-fg); overflow-wrap: anywhere; }
+html .side-plan-todo.status-pending .side-plan-todo-title:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-fg); }
+html .side-plan-todo.status-inProgress .side-plan-todo-title:where(.vcp-ui-scope, .vcp-ui-scope *) { font-weight: 500; }
+/* 做完的不划线，只退成次要色：一串删除线比内容还抢眼 */
+html .side-plan-todo.status-completed .side-plan-todo-title:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-fg-subtle); }
+html .side-plan-todo-sub:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 3px); color: var(--zc-fg-subtle); line-height: 1.5; }
+html .side-plan-todo-note:where(.vcp-ui-scope, .vcp-ui-scope *) { margin-top: 3px; font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--zc-fg-subtle); padding: 2px 0 2px 8px; border-left: 2px solid var(--side-plan-rule); overflow-wrap: anywhere; white-space: pre-wrap; }
 
-@keyframes side-plan-spin { to { transform: rotate(360deg); } }
-html .side-plan-scope .side-plan-todo.status-inProgress:not(.blocked) .side-plan-todo-mark > *:where(.vcp-ui-scope, .vcp-ui-scope *) { animation: side-plan-spin 1.2s linear infinite; }
 
 /* ---- files ---- */
-html .side-plan-files:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    gap: 2px;
-    padding: 6px;
-    border-radius: var(--vcp-ui-radius-lg, 12px);
-    background: var(--side-plan-card-bg);
-    border: 1px solid var(--side-plan-card-border);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-}
-html .side-plan-file-btn:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 100%; box-sizing: border-box; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--vcp-ui-text-0, var(--zc-fg)); }
-html .side-plan-file-btn:hover:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-file-btn.is-active:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--side-plan-card-bg-hover); }
+html .side-plan-file-btn:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 100%; box-sizing: border-box; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 6px; font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--vcp-ui-text-0, var(--zc-fg)); }
+html .side-plan-file-btn:hover:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-file-btn.is-active:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--side-plan-hover); }
 html .side-plan-file-btn.is-active:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-contributor-btn.is-active:where(.vcp-ui-scope, .vcp-ui-scope *) { box-shadow: inset 2px 0 0 var(--zc-lane-modified); }
 html .side-plan-file-btn > .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-file-btn > svg:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 14px; height: 14px; font-size: var(--vcp-ui-font-size); color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); flex: 0 0 auto; }
 html .side-plan-file-name:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
 html .side-plan-file-edits:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); flex: 0 0 auto; }
 
 /* ---- timeline ---- */
-html .side-plan-timeline:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    gap: 0;
-    position: relative;
-    padding: 8px 10px;
-    border-radius: var(--vcp-ui-radius-lg, 12px);
-    background: var(--side-plan-card-bg);
-    border: 1px solid var(--side-plan-card-border);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-}
 html .side-plan-batch:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; gap: 2px; padding: 0 0 4px; position: relative; }
-html .side-plan-batch-head:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 100%; box-sizing: border-box; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; display: flex; gap: 10px; padding: 6px 8px; border-radius: 6px; color: inherit; }
-html .side-plan-batch-head:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--side-plan-card-bg-hover); }
+html .side-plan-batch-head:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 100%; box-sizing: border-box; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; display: flex; gap: 8px; padding: 5px 6px; border-radius: 6px; color: inherit; }
+html .side-plan-batch-head:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--side-plan-hover); }
 html .side-plan-batch-chevron:where(.vcp-ui-scope, .vcp-ui-scope *) { margin-left: auto; flex: 0 0 auto; width: 14px; height: 14px; font-size: var(--vcp-ui-font-size); color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); }
-html .side-plan-batch:not(:last-child):where(.vcp-ui-scope, .vcp-ui-scope *)::before { content: ""; position: absolute; left: 15px; top: 26px; bottom: -4px; width: 1px; background: var(--zc-border-strong); }
-html .side-plan-batch-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 0 0 auto; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); background: var(--zc-popover); position: relative; }
-html .side-plan-batch-mark .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-batch-mark svg:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 15px; height: 15px; font-size: calc(var(--vcp-ui-font-size) + 1px); }
+html .side-plan-batch:not(:last-child):where(.vcp-ui-scope, .vcp-ui-scope *)::before { content: ""; position: absolute; left: 13px; top: 25px; bottom: -4px; width: 1px; background: var(--side-plan-rule); }
+html .side-plan-batch-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 0 0 auto; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); position: relative; }
+html .side-plan-batch-mark .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-batch-mark svg:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 14px; height: 14px; font-size: var(--vcp-ui-font-size); }
 html .side-plan-batch.kind-create .side-plan-batch-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-lane-added); }
 html .side-plan-batch.kind-edit .side-plan-batch-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-lane-modified); }
 html .side-plan-batch.kind-remove .side-plan-batch-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-danger); }
@@ -180,32 +157,23 @@ html .side-plan-batch.kind-rollback .side-plan-batch-mark:where(.vcp-ui-scope, .
 html .side-plan-batch.kind-move .side-plan-batch-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-lane-renamed); }
 html .side-plan-batch.kind-external .side-plan-batch-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-warning); }
 html .side-plan-batch-text:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-html .side-plan-batch-reason:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 1px); font-weight: 500; color: var(--vcp-ui-text-0, var(--zc-fg)); overflow-wrap: anywhere; }
+html .side-plan-batch-reason:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 1px); font-weight: 400; color: var(--vcp-ui-text-0, var(--zc-fg)); overflow-wrap: anywhere; }
 html .side-plan-batch-sub:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: calc(var(--vcp-ui-font-size) - 3px); color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); }
 html .side-plan-batch-files:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 3px); color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---- contributors ---- */
-html .side-plan-contributors:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    gap: 2px;
-    padding: 6px;
-    border-radius: var(--vcp-ui-radius-lg, 12px);
-    background: var(--side-plan-card-bg);
-    border: 1px solid var(--side-plan-card-border);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-}
-html .side-plan-contributor-btn:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 100%; box-sizing: border-box; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--vcp-ui-text-0, var(--zc-fg)); }
+html .side-plan-contributor-btn:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 100%; box-sizing: border-box; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 6px; font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--vcp-ui-text-0, var(--zc-fg)); }
 html .side-plan-contributor-btn > .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-contributor-btn > svg:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 14px; height: 14px; font-size: var(--vcp-ui-font-size); color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); }
-html .side-plan-contributor-btn:not(:disabled):hover:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-contributor-btn.is-active:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--side-plan-card-bg-hover); }
+html .side-plan-contributor-btn:not(:disabled):hover:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-contributor-btn.is-active:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--side-plan-hover); }
 html .side-plan-contributor-btn:disabled:where(.vcp-ui-scope, .vcp-ui-scope *) { cursor: default; opacity: 1; }
 html .side-plan-contributor-name:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 1 1 auto; }
 html .side-plan-contributor-batches:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); }
 
 /* ---- header: project switch and topic stats ---- */
-html .side-plan-project-select:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 1 1 auto; min-width: 0; height: 28px; padding: 0 6px; border: 1px solid var(--side-plan-card-border); border-radius: 6px; background: transparent; color: var(--zc-fg); font: inherit; font-size: calc(var(--vcp-ui-font-size) + 1px); font-weight: 600; }
+html .side-plan-project-select:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 1 1 auto; min-width: 0; height: 28px; padding: 0 6px; border: 1px solid var(--side-plan-card-border); border-radius: 6px; background: transparent; color: var(--zc-fg); font: inherit; font-size: var(--vcp-ui-font-size); font-weight: 600; }
 html .side-plan-project-select option:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-select option:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--zc-popover); color: var(--zc-fg); }
 html .side-plan-stats:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); font-variant-numeric: tabular-nums; }
-html .side-plan-stats-scope:where(.vcp-ui-scope, .vcp-ui-scope *) { padding: 0 6px; border-radius: 999px; background: var(--zc-secondary); color: var(--zc-fg); }
+html .side-plan-stats-scope:where(.vcp-ui-scope, .vcp-ui-scope *) { padding: 0 6px; border-radius: 999px; background: var(--side-plan-surface); color: var(--zc-fg); }
 
 /* ---- history: filters, expanded batches and node rows ---- */
 html .side-plan-history:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; gap: 8px; }
@@ -218,7 +186,7 @@ html .side-plan-input:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-sel
     box-sizing: border-box;
     border: 1px solid var(--side-plan-card-border);
     border-radius: 6px;
-    background: var(--side-plan-card-bg);
+    background: var(--side-plan-surface);
     color: var(--zc-fg);
     font: inherit;
     font-size: calc(var(--vcp-ui-font-size) - 2px);
@@ -229,16 +197,12 @@ html .side-plan-filter-results:where(.vcp-ui-scope, .vcp-ui-scope *) { display: 
 html .side-plan-node-list:where(.vcp-ui-scope, .vcp-ui-scope *) { list-style: none; margin: 0 0 0 26px; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 html .side-plan-filter-results .side-plan-node-list:where(.vcp-ui-scope, .vcp-ui-scope *) {
     margin-left: 0;
-    padding: 6px;
-    border-radius: var(--vcp-ui-radius-lg, 12px);
-    background: var(--side-plan-card-bg);
-    border: 1px solid var(--side-plan-card-border);
 }
-html .side-plan-node-row:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 100%; box-sizing: border-box; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; padding: 5px 8px; border-radius: 6px; font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--vcp-ui-text-0, var(--zc-fg)); }
-html .side-plan-node-row:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--side-plan-card-bg-hover); }
+html .side-plan-node-row:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 100%; box-sizing: border-box; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; padding: 5px 6px; border-radius: 6px; font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--vcp-ui-text-0, var(--zc-fg)); }
+html .side-plan-node-row:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--side-plan-hover); }
 html .side-plan-node-path:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
 html .side-plan-node-sub:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-node-row .side-plan-node-reason:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 1 0 100%; font-size: calc(var(--vcp-ui-font-size) - 3px); color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-html .side-plan-op:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 0 0 auto; padding: 0 6px; border-radius: 4px; font-size: calc(var(--vcp-ui-font-size) - 3px); background: var(--zc-secondary); color: var(--vcp-ui-text-1, var(--zc-fg-subtle)); }
+html .side-plan-op:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 0 0 auto; padding: 0 6px; border-radius: 4px; font-size: calc(var(--vcp-ui-font-size) - 3px); background: var(--side-plan-surface); color: var(--vcp-ui-text-1, var(--zc-fg-subtle)); }
 html .side-plan-op.op-create:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-lane-added); }
 html .side-plan-op.op-edit:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-lane-modified); }
 html .side-plan-op.op-delete:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-danger); }
@@ -250,7 +214,7 @@ html .side-plan-node-message:where(.vcp-ui-scope, .vcp-ui-scope *) { padding: 6p
 html .side-plan-report:where(.vcp-ui-scope, .vcp-ui-scope *) {
     padding: 10px 12px;
     border-radius: var(--vcp-ui-radius-lg, 12px);
-    background: var(--side-plan-card-bg);
+    background: var(--side-plan-surface);
     border: 1px solid var(--side-plan-card-border);
     font-size: calc(var(--vcp-ui-font-size) - 1px);
     color: var(--vcp-ui-text-0, var(--zc-fg));
@@ -260,26 +224,26 @@ html .side-plan-report:where(.vcp-ui-scope, .vcp-ui-scope *) {
 html .side-plan-other-hint:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); }
 html .side-plan-link:where(.vcp-ui-scope, .vcp-ui-scope *) { padding: 0; border: 0; background: transparent; font: inherit; color: var(--zc-lane-descendant); cursor: pointer; }
 html .side-plan-link:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { text-decoration: underline; }
-html .side-plan-todo.is-flash:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--side-plan-card-bg-hover); border-color: var(--zc-lane-descendant); }
+html .side-plan-todo.is-flash:where(.vcp-ui-scope, .vcp-ui-scope *) { background: color-mix(in srgb, var(--zc-lane-descendant) 16%, transparent); }
 html .side-plan-section.is-flash:where(.vcp-ui-scope, .vcp-ui-scope *) { outline: 1px solid var(--zc-lane-descendant); outline-offset: 4px; border-radius: 8px; }
 
 /* ---- node detail ---- */
 html .side-plan-node:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; gap: 10px; }
 html .side-plan-back:where(.vcp-ui-scope, .vcp-ui-scope *) { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px 2px 4px; border: 0; border-radius: 6px; background: transparent; font: inherit; font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); cursor: pointer; }
-html .side-plan-back:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--zc-menu-hover); color: var(--zc-fg); }
+html .side-plan-back:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--side-plan-hover); color: var(--zc-fg); }
 html .side-plan-back .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-back svg:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 14px; height: 14px; font-size: var(--vcp-ui-font-size); }
 html .side-plan-node-body:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; gap: 8px; }
 html .side-plan-node-title:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: var(--vcp-ui-font-size); font-weight: 600; color: var(--vcp-ui-text-0, var(--zc-fg)); }
 html .side-plan-node-body > .side-plan-node-reason:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 1px); color: var(--vcp-ui-text-0, var(--zc-fg)); overflow-wrap: anywhere; white-space: pre-wrap; }
 html .side-plan-node-todo:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); }
-html .side-plan-diff:where(.vcp-ui-scope, .vcp-ui-scope *) { overflow: auto; max-height: 60vh; border-radius: var(--vcp-ui-radius-md, 8px); border: 1px solid var(--side-plan-card-border); background: var(--side-plan-card-bg); }
+html .side-plan-diff:where(.vcp-ui-scope, .vcp-ui-scope *) { overflow: auto; max-height: 60vh; border-radius: var(--vcp-ui-radius-md, 8px); border: 1px solid var(--side-plan-card-border); background: var(--side-plan-surface); }
 html .side-plan-revert:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: flex;
     flex-direction: column;
     gap: 8px;
     padding: 10px 12px;
     border-radius: var(--vcp-ui-radius-lg, 12px);
-    background: var(--side-plan-card-bg);
+    background: var(--side-plan-surface);
     border: 1px solid var(--side-plan-card-border);
 }
 html .side-plan-revert-title:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 2px); font-weight: 600; color: var(--vcp-ui-text-1, var(--zc-fg-subtle)); }
@@ -291,5 +255,17 @@ html .side-plan-revert-conflicts:where(.vcp-ui-scope, .vcp-ui-scope *) { margin:
 
 @media (prefers-reduced-motion: reduce) {
     html .side-plan-progress:where(.vcp-ui-scope, .vcp-ui-scope *)::-webkit-progress-value { transition: none; }
-    html .side-plan-scope .side-plan-todo.status-inProgress:not(.blocked) .side-plan-todo-mark > *:where(.vcp-ui-scope, .vcp-ui-scope *) { animation: none; }
+}
+
+/* Preserve a clear keyboard focus target on the transparent rows and headers. */
+html .side-plan-icon-btn:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-plan-page-tab:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-plan-page:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-plan-section-title:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-plan-file-btn:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-plan-batch-head:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-plan-node-row:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-plan-contributor-btn:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    outline: 2px solid var(--zc-lane-descendant);
+    outline-offset: 2px;
 }

@@ -6,7 +6,7 @@ export function defineToolOutputTabType({ document: doc, window: win, chatAPI, s
         kind: 'tool-output', label: '命令输出', icon: 'description', searchHint: '命令输出',
         // 命令记录只在内存里，重启后没有可看的
         persist: false,
-        entry: { id: 'tool-output', order: 60, open: () => provider.openToolOutputTab() },
+        // 不进启动器：命令输出从状态面板的命令行点进来，单独打开一个空的列表没有意义
         provider
     });
 }

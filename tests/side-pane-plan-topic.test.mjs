@@ -145,6 +145,8 @@ test('clicking a file filters the timeline to that exact file within this topic'
     const handle = await provider.mountTab(tab, view);
     [...view.querySelectorAll('.side-plan-file-btn')].find(b => b.querySelector('.side-plan-file-name').textContent === 'a.py').click();
     await tick();
+    assert.equal(view.querySelector('[role="tab"][aria-selected="true"]').dataset.planPage, 'timeline');
+    assert.equal(view.querySelector('[role="tabpanel"]:not([hidden])').dataset.planPagePanel, 'timeline');
     assert.equal(calls.search.at(-1).file, 'a.py');
     // 只剩本话题批次里、路径完全一致的那一条
     assert.deepEqual([...view.querySelectorAll('.side-plan-filter-results .side-plan-node-row')].map(b => b.dataset.nodeId), ['3']);

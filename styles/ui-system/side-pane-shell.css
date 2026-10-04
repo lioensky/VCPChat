@@ -14,16 +14,17 @@ html body:has(#vcpSidePane) #toggleNotificationsBtn:where(.vcp-ui-scope, .vcp-ui
     display: none;
 }
 
-/* 侧栏实色面：页底和卡片都从主题自己的底色调出来，换主题跟着变，不写死灰白。
+/* 侧栏底色：页底和卡片都从主题自己的底色调出来，换主题跟着变，不写死灰白。
+ * 页底只盖一层薄色，透出 #vcpSidePane 自带的磨砂（背后的壁纸模糊后隐约可见）；卡片保持实色才立得住。
  * 卡片总比页底"浮"一层：浅色是白卡压在略深的页底上，深色是略亮的卡片放在深底上。 */
 html #vcpSidePane:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    --side-pane-page-bg: var(--vcp-ui-bg-primary);
+    --side-pane-page-bg: color-mix(in srgb, var(--vcp-ui-bg-primary) 25%, transparent);
     --side-pane-card-bg: color-mix(in srgb, var(--vcp-ui-text-primary) 5%, var(--vcp-ui-bg-secondary));
     --side-pane-card-hover-bg: color-mix(in srgb, var(--vcp-ui-text-primary) 9%, var(--vcp-ui-bg-secondary));
 }
 
 html body[data-vcp-theme="light"] #vcpSidePane:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    --side-pane-page-bg: color-mix(in srgb, var(--vcp-ui-text-primary) 3%, var(--vcp-ui-bg-primary));
+    --side-pane-page-bg: color-mix(in srgb, color-mix(in srgb, var(--vcp-ui-text-primary) 3%, var(--vcp-ui-bg-primary)) 25%, transparent);
     --side-pane-card-bg: var(--vcp-ui-bg-secondary);
     --side-pane-card-hover-bg: color-mix(in srgb, var(--vcp-ui-text-primary) 4%, var(--vcp-ui-bg-secondary));
 }

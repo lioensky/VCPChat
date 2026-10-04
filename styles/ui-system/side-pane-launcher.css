@@ -14,7 +14,7 @@ html .side-pane-open-tab-shell:where(.vcp-ui-scope, .vcp-ui-scope *) {
     overflow-y: auto;
     padding: 16px 12px;
     box-sizing: border-box;
-    /* 实色底，卡片才立得住；颜色跟主题走，见 side-pane-shell.css */
+    /* 薄色底透出侧栏磨砂，卡片保持实色；颜色跟主题走，见 side-pane-shell.css */
     background: var(--side-pane-page-bg);
 }
 
