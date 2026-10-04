@@ -18,6 +18,7 @@ export function createSidePaneTabStrip({
     tabListElement,
     addButton = null,
     getTabs,
+    getTabType = () => null,
     getActiveTabId,
     isClosable,
     statusTabId = null,
@@ -159,7 +160,7 @@ export function createSidePaneTabStrip({
         const iconSpan = doc.createElement('span');
         iconSpan.className = 'tab-icon vcp-ui-icon';
         iconSpan.setAttribute('aria-hidden', 'true');
-        iconSpan.textContent = getTabIconName(tab);
+        iconSpan.textContent = getTabIconName(tab, getTabType);
 
         const titleSpan = doc.createElement('span');
         titleSpan.className = 'tab-title';

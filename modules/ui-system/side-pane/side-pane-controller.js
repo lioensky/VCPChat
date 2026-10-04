@@ -56,9 +56,10 @@ export function createSidePaneController({
     const mountedTabMap = new Map(); // tabId -> { tab | descriptor, viewElement, handle }
     const pendingTabMounts = new Map(); // tabId -> Promise<entry | null>
     const pendingChatOpens = new Map(); // childKey -> Promise<handle>
-    const childDraftsMap = new Map(); // childKey -> { draft: string, references: Array }
     const cleanupListeners = [];
     const recentlyClosedTabs = [];
+    const tabTypes = new Map();
+    const getTabType = kind => tabTypes.get(kind) || null;
     const collapsedByParent = new Map(); // parentKey -> boolean
     const activeTabByParent = new Map(); // parentKey -> tabId
     let isDisposed = false;
@@ -170,6 +171,7 @@ export function createSidePaneController({
             tabListElement,
             addButton: resolvedAddChatTabBtn,
             getTabs: getStripTabs,
+            getTabType,
             getActiveTabId: () => state.activeTabId,
             isClosable: isClosableTab,
             statusTabId: SidePaneState.NOTIFICATIONS_TAB_ID,
@@ -188,6 +190,7 @@ export function createSidePaneController({
             button: resolvedOverviewBtn,
             popover: resolvedOverviewPopover,
             getTabs: getStripTabs,
+            getTabType,
             getActiveTabId: () => state.activeTabId,
             getRecentlyClosed: () => recentlyClosedTabs,
             isClosable: isClosableTab,
@@ -306,32 +309,6 @@ export function createSidePaneController({
         return entry?.handle || null;
     }
 
-    // ---- 辅助对话：关掉时留下草稿、引用和模型，重新打开同一个子话题时还原 ----
-    const childKeyOf = (descriptor, fallbackId = '') =>
-        `${descriptor?.child?.itemId || ''}:${descriptor?.child?.topicId || descriptor?.id || fallbackId}`;
-
-    function restoreChatInput(handle, descriptor) {
-        const childKey = childKeyOf(descriptor);
-        const cached = childDraftsMap.get(childKey);
-        childDraftsMap.delete(childKey);
-        const source = cached || descriptor;
-        if (source.draft && typeof handle.setDraft === 'function') handle.setDraft(source.draft);
-        if (Array.isArray(source.references) && typeof handle.addReference === 'function') {
-            source.references.forEach(r => handle.addReference(r));
-        }
-        if (descriptor.model && typeof handle.setModel === 'function' && handle.getModel?.() !== descriptor.model) {
-            handle.setModel(descriptor.model);
-        }
-    }
-
-    function captureChatInput(entry, tabDesc, tabId) {
-        const draft = entry.handle?.getDraft?.() || '';
-        const references = entry.handle?.getReferences?.() || [];
-        const latestModel = entry.handle?.getModel?.();
-        if (draft || references.length > 0) childDraftsMap.set(childKeyOf(tabDesc, tabId), { draft, references });
-        return { ...tabDesc, ...(latestModel ? { model: latestModel } : {}), draft, references };
-    }
-
     // ZCode parity (useAppPanels.ts:1334): 临时的辅助对话不进“最近关闭”，其他标签都能重新打开
     function rememberClosed(tabObj, tabDesc) {
         const isEphemeralChat = tabObj.kind === 'chat' || tabObj.type === 'selection-side-chat' || tabDesc?.ephemeral;
@@ -446,7 +423,11 @@ export function createSidePaneController({
                 return await this.openChat(rawTab.descriptor);
             }
 
-            state = SidePaneState.openTab(state, rawTab);
+            const definition = getTabType(rawTab.kind);
+            state = SidePaneState.openTab(state, definition ? {
+                icon: definition.icon, typeLabel: definition.label, searchHint: definition.searchHint,
+                ...rawTab
+            } : rawTab);
             const targetTabId = state.activeTabId;
             rememberOpened(SidePaneState.getTabParent(rawTab), targetTabId);
             renderTabList();
@@ -463,7 +444,7 @@ export function createSidePaneController({
         async openChat(descriptor) {
             if (isDisposed || !descriptor) return null;
             // 同一个子话题正在打开时直接等它，不重复建标签
-            const childKey = childKeyOf(descriptor);
+            const childKey = `${descriptor.child?.itemId || ''}:${descriptor.child?.topicId || descriptor.id}`;
             if (pendingChatOpens.has(childKey)) {
                 return await pendingChatOpens.get(childKey);
             }
@@ -477,8 +458,7 @@ export function createSidePaneController({
                 const entry = await ensureTabMounted(targetTabId, {
                     provider: providers.chat,
                     payload: descriptor,
-                    fields: { descriptor },
-                    onMounted: (handle) => restoreChatInput(handle, descriptor)
+                    fields: { descriptor }
                 });
                 return finishOpen(entry);
             })();
@@ -551,13 +531,38 @@ export function createSidePaneController({
             providers[name] = provider;
         },
 
+        /** One declaration owns a tab kind's provider, launcher entry and presentation. */
+        registerTabType(definition) {
+            if (isDisposed) return () => {};
+            if (!definition || typeof definition.kind !== 'string' || !definition.kind
+                || typeof definition.label !== 'string' || !definition.label) {
+                throw new TypeError('registerTabType requires { kind, label, provider?, entry? }');
+            }
+            const stored = Object.freeze({ ...definition });
+            const unregisterEntry = stored.entry ? launcher.registerEntry({
+                id: stored.kind, label: stored.label, icon: stored.icon, ...stored.entry
+            }) : () => {};
+            tabTypes.set(stored.kind, stored);
+            if (stored.provider) providers[stored.kind] = stored.provider;
+            renderTabList();
+            overview?.refresh();
+            return () => {
+                unregisterEntry();
+                if (tabTypes.get(stored.kind) !== stored) return;
+                tabTypes.delete(stored.kind);
+                if (providers[stored.kind] === stored.provider) delete providers[stored.kind];
+                if (!isDisposed) { renderTabList(); overview?.refresh(); }
+            };
+        },
+
+        getTabType,
+
         async closeTab(tabId, options = {}) {
             if (isDisposed || !tabId || isNotificationsTab(tabId)) return;
             const entry = mountedTabMap.get(tabId);
             const tabDesc = entry?.descriptor || state.tabs.find(t => t.id === tabId)?.descriptor || null;
             let updatedTabDesc = tabDesc ? { ...tabDesc } : null;
             if (entry) {
-                if (tabDesc) updatedTabDesc = captureChatInput(entry, tabDesc, tabId);
                 const closeResult = await entry.handle?.requestClose?.();
                 if (closeResult && closeResult.closed === false) {
                     return; // 用户或进行中的操作拦下了关闭
@@ -660,6 +665,7 @@ export function createSidePaneController({
                 entry.viewElement?.remove?.();
             });
             mountedTabMap.clear();
+            tabTypes.clear();
             await Promise.allSettled(disposePromises);
         }
     });

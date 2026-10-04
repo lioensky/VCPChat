@@ -725,3 +725,54 @@ test('Side pane divider and header hairlines', () => {
     // VCPLog status lives on the 通知 tab, so the panel has no second header row.
     assert.doesNotMatch(css, /\.notifications-header/);
 });
+
+
+test('tab type registration connects presentation, launcher availability and provider mounting', async () => {
+    const dom = createParityTestDOM();
+    const ctrl = createController(dom);
+    const doc = dom.window.document;
+    let available = false;
+    const mounted = [];
+    const unregister = ctrl.registerTabType({
+        kind: 'custom-notes', label: 'Custom notes', icon: 'edit_note', searchHint: 'memo',
+        provider: { mountTab: async tab => { mounted.push(tab.id); return { dispose() {} }; } },
+        entry: { id: 'custom-notes', order: 2, isAvailable: () => available,
+            open: () => ctrl.openTab({ id: 'custom-notes:1', kind: 'custom-notes', title: 'One' }) }
+    });
+    assert.equal(doc.querySelector('[data-open-tab-entry="custom-notes"]'), null);
+    available = true;
+    ctrl.refreshOpenTabEntries();
+    const entry = doc.querySelector('[data-open-tab-entry="custom-notes"]');
+    assert.match(entry.textContent, /Custom notes/);
+    entry.click();
+    await tick();
+    assert.deepEqual(mounted, ['custom-notes:1']);
+    const tab = ctrl.getSnapshot().tabs.find(tab => tab.id === 'custom-notes:1');
+    assert.equal(tab.icon, 'edit_note');
+    assert.equal(tab.typeLabel, 'Custom notes');
+    assert.equal(tab.searchHint, 'memo');
+    assert.equal(doc.querySelector('[data-tab-id="custom-notes:1"] .vcp-side-pane-icon-base').textContent, 'edit_note');
+    unregister();
+    assert.equal(ctrl.getTabType('custom-notes'), null);
+    assert.equal(doc.querySelector('[data-open-tab-entry="custom-notes"]'), null);
+    await ctrl.dispose();
+    dom.window.close();
+});
+
+test('tab type registrations stay local and stale unregistration cannot remove a replacement', async () => {
+    const firstDOM = createParityTestDOM();
+    const secondDOM = createParityTestDOM();
+    const first = createController(firstDOM);
+    const second = createController(secondDOM);
+    const stale = first.registerTabType({ kind: 'custom', label: 'Old', entry: { open() {} } });
+    first.registerTabType({ kind: 'custom', label: 'New', entry: { open() {} } });
+    stale();
+    assert.equal(first.getTabType('custom').label, 'New');
+    assert.equal(second.getTabType('custom'), null);
+    assert.match(firstDOM.window.document.querySelector('[data-open-tab-entry="custom"]').textContent, /New/);
+    assert.throws(() => first.registerTabType({ kind: 'invalid', label: 'Invalid', entry: {} }), TypeError);
+    assert.equal(first.getTabType('invalid'), null);
+    await Promise.all([first.dispose(), second.dispose()]);
+    firstDOM.window.close();
+    secondDOM.window.close();
+});

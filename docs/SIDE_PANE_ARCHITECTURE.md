@@ -20,17 +20,19 @@
 | 模块 | 职责 | 是否碰 DOM |
 | :--- | :--- | :--- |
 | `side-pane-state.js` | 纯状态转换：打开 / 激活 / 关闭 / 排序标签、可见性、所属对话（parent）、宽度。所有函数返回新的冻结对象 | 否 |
-| `side-pane-controller.js` | 组合下面的模块；维护挂载表、辅助对话草稿缓存、最近关闭、按对话记住的激活标签与展开状态；对外暴露控制器 API | 是 |
+| `side-pane-controller.js` | 组合下面的模块；维护挂载表、最近关闭、按对话记住的激活标签与展开状态；对外暴露控制器 API | 是 |
 | `side-pane-visibility.js` | 宽度比例（默认 45%，20%–65%）、开合动画、动画期间锁定内容宽度 | 是（写 `style.width`） |
 | `side-pane-tab-strip.js` | 标签条渲染、悬停提示、溢出布局与边缘渐隐、拖拽排序、方向键 / 中键关闭、通知标签上的连接状态点 | 是 |
 | `side-pane-tab-overview.js` | 标签页概览浮层：搜索打开中和最近关闭的标签 | 是 |
 | `side-pane-tab-menu.js` | 标签右键菜单：关闭 / 关闭其他 / 全部关闭 | 是 |
-| `side-pane-launcher.js` | 新标签页：入口登记表、个人资料、工具 / 应用 / 通知分段、推荐、地址栏、「+」按钮 | 是 |
+| `side-pane-launcher.js` | 新标签页：个人资料、工具 / 应用 / 通知分段、推荐、地址栏、「+」按钮 | 是 |
+| `side-pane-entries.js` | 入口登记、顺序、可用性与执行；由 launcher 通过回调接到展示层 | 是 |
 | `side-pane-resizer-owner.js` | 左边缘拖拽调宽 | 是 |
 | `side-pane-tab-dnd.js` / `side-pane-tab-utils.js` / `menu-position.js` | 拖拽排序、标签图标与搜索、菜单定位等工具函数 | — |
+| `tab-types/*.js` | 每种标签的名称、图标、搜索提示、可选入口和 provider 定义 | 否（创建 provider） |
 | `*SideProvider.js` | 各标签类型的 provider（见第 4 节） | 是（只在自己的视图里） |
 
-装配在 `modules/renderer/sidePaneWiring.js`：查找 DOM、创建控制器、登记 provider 和新标签页入口、把辅助对话接到聊天会话服务。
+装配在 `modules/renderer/sidePaneWiring.js`：查找 DOM、创建控制器、调用 `registerTabType` 登记标签类型，并装配下列独立 owner：`sideChatWiring`（辅助对话能力和会话）、`floatingSelectionButton`（选区按钮）、`sidePaneLauncherWiring`（助手资料与应用源）、`sidePaneWorkspaceServices`（文件改动和状态面板）、`sidePaneHostBindings`（宿主事件和跟随对话）。
 
 ### 依赖方向
 
@@ -43,7 +45,7 @@ sidePaneWiring
         ├─ side-pane-tab-strip ─ side-pane-tab-dnd / tab-utils
         ├─ side-pane-tab-overview ─ tab-utils
         ├─ side-pane-tab-menu ─ menu-position
-        └─ side-pane-launcher
+        └─ side-pane-launcher ─ side-pane-entries
 ```
 
 子模块之间不互相引用，彼此的联动（比如打开概览时收起右键菜单）都通过控制器传进去的回调完成。子模块也不读写标签状态，只通过 `getTabs()` / `getActiveTabId()` 之类的读取函数拿数据，通过 `onActivate` / `onClose` 之类的回调把操作交回控制器。
@@ -105,8 +107,8 @@ handle 的方法都是可选的：
 | `focus()` | 标签被激活或刚打开时 |
 | `requestClose()` | 关闭前；返回 `{ closed: false }` 时取消关闭（比如有未保存内容且用户选择留下） |
 | `dispose()` | 关闭或控制器销毁时；可以是异步的。抛错时控制器记日志并照常关闭标签 |
-| `getDraft()` / `getReferences()` / `getModel()` | 辅助对话关闭前，控制器读取草稿、引用和模型留待重新打开 |
-| `setDraft()` / `addReference()` / `setModel()` | 辅助对话重新挂载后，控制器写回上面这些 |
+
+辅助对话 handle 仍向自己的调用方提供草稿、引用和模型方法；控制器只使用上表的通用生命周期方法。输入缓存由辅助对话 provider 的 `side-chat/draft-cache.js` 持有，卸载前保存、再次挂载后恢复；拒绝关闭时不卸载。
 
 挂载规则：
 
@@ -118,43 +120,25 @@ handle 的方法都是可选的：
 
 ## 5. 新增一种标签
 
-以「随手笔记」为例：
-
-1. **写 provider**（`notesSideProvider.js`）：实现 `mountTab`，并提供一个打开函数：
+1. 写 provider，实现 `mountTab`，并通过控制器 API 打开和更新标签。
+2. 在 `tab-types/<kind>.js` 定义一个 `defineXxxTabType(deps)`，把该类型的展示信息、可选入口（含 `order` 和 `isAvailable`）与 provider 放在一起：
 
    ```js
-   async openNotesTab(options = {}) {
-       const handle = await sidePaneController.openTab({
-           id: 'side-pane-notes',
-           kind: 'notes',
-           title: '随手笔记',
-           icon: 'edit_note',
-           closable: true,
-           scopeMode: 'global',
-           ...options
+   export function defineNotesTabType(deps) {
+       const provider = createNotesSideProvider(deps);
+       return Object.freeze({
+           kind: 'notes', label: '随手笔记', icon: 'edit_note', searchHint: '笔记',
+           entry: { id: 'notes', order: 20, open: () => provider.openNotesTab() },
+           provider
        });
-       sidePaneController.setVisible(true);
-       return handle;
    }
    ```
 
-2. **在 `sidePaneWiring.js` 登记**：
+3. 由 `sidePaneWiring` 调用 `controller.registerTabType(definition)`。一次登记完成 provider、入口和展示信息登记，返回注销函数；登记表属于当前控制器，不跨窗口共享。入口可用性变化后仍调用 `refreshOpenTabEntries()`。
+4. 标签可以带每个实例独有的标题、图标和搜索提示（如 diff 图标或文件路径）；缺少这些值时使用类型定义，未登记时保留原有默认值。标签条和概览都通过组合者注入的读取函数访问登记表，不需要在 `tab-utils` 加类型分支。旧的 `registerProvider` 和 `registerOpenTabEntry` 继续兼容。
+5. 用 JSDOM 验证入口可用性、挂载、关闭与拦截，并验证两个控制器的登记互不影响。
 
-   ```js
-   controller.registerProvider('notes', notesProvider);
-   controller.registerOpenTabEntry({
-       id: 'notes', label: '随手笔记', icon: 'edit_note', order: 20,
-       open: () => notesProvider.openNotesTab()
-   });
-   ```
-
-   `order` 决定在新标签页里的顺序；`isAvailable()` 返回 `false` 时入口隐藏，状态变化后调用 `controller.refreshOpenTabEntries()`。
-
-3. **图标与搜索**：标签图标默认来自 `side-pane-tab-utils.js` 的 `getTabIconName`；概览搜索里显示的类型名和提示来自同文件的 `getTabTypeLabel` / `getTabSearchHint`，新类型需要在那里补一项。
-
-4. **测试**：参照 `tests/side-pane-*.test.mjs`，用 JSDOM 创建控制器，注入假的 provider 验证挂载、关闭和 `requestClose` 拦截。
-
-不要在 provider 里直接改标签条或其他标签的视图；需要切换标签、关闭自己时调用控制器 API。
+provider 只能修改自己的视图，跨模块动作通过组合者注入的回调完成。
 
 ---
 
@@ -170,9 +154,7 @@ handle 的方法都是可选的：
 ## 7. 已知限制
 
 1. **标签不跨重启保留**：除宽度外，打开的标签、顺序、按对话记住的激活标签都只在内存里。辅助对话例外，宿主通过 `restoreSessions` 从会话服务恢复。
-2. **入口和 provider 分开登记**：一种标签要分别调用 `registerProvider` 和 `registerOpenTabEntry`，图标、类型名、搜索提示又散在 `side-pane-tab-utils.js`。后续可以合成一个标签类型定义（kind、标题、图标、入口、mountTab 一处声明）。
-3. **辅助对话的草稿缓存在控制器里**：`getDraft` / `setDraft` 这一组只有辅助对话用到，严格说应该归辅助对话的 provider 自己管理。
-4. **没有键盘快捷键层**：切换 / 关闭标签只能用鼠标或标签条内的方向键，还没有全局快捷键。
+2. **没有键盘快捷键层**：切换 / 关闭标签只能用鼠标或标签条内的方向键，还没有全局快捷键。
 
 
 ## 8. 样式加载顺序
@@ -199,3 +181,9 @@ handle 的方法都是可选的：
 | `sections.js` | Git、命令、进程分区与迷你胶囊 |
 
 各子模块不互相 import。入口把 DOM 工具、浮层操作、Git 操作及跨对话框跳转作为依赖和回调注入，并统一调用每个 owner 的 `dispose()`。分区开合通过组合者回调更新；共享数据通过 store 访问。Apache-2.0 来源说明保留在拆出的模块中。
+
+## 10. 辅助对话 owner
+
+`sideChatSurfaceOwner.js` 组合独立渲染器、操作与输入提交，并提供原有 handle API。`side-chat/` 下的 `shell`、`composer-state`、`model-picker`、`references`、`message-actions`、`scrolling`、`persistence` 和 `draft-cache` 分别负责视图、状态投影、模型选择、引用卡片、回答动作、贴底、历史/输入持久化和跨卸载缓存。各模块通过组合者的 store、读取函数与回调连接，不互相引用；计时器、观察者和宿主监听由所属 owner 清理。
+
+组合入口保留发送/取消操作的结算顺序与原 handle 方法，当前约 560 行，因此保留在一个文件内；其余新模块均低于 500 行。

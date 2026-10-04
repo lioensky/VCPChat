@@ -1,5 +1,6 @@
 /* Side pane new tab page: address bar, assistant profile, tool / app / notification sections and the open-tab entry registry. */
 'use strict';
+import { createSidePaneEntries } from './side-pane-entries.js';
 
 /**
  * 新标签页（引导页）：上面地址栏，下面工具入口。工具入口由各模块通过 registerEntry 自己登记，
@@ -56,83 +57,8 @@ export function createSidePaneLauncher({
     let recommended = new Map();
     let segment = 'tools';
 
-    // ---- 打开标签页入口：{ id, label, icon?, order?, open(), isAvailable?() } ----
-    const entryMap = new Map();
-    let entrySeq = 0;
-
-    function availableEntries() {
-        return Array.from(entryMap.values())
-            .filter(entry => {
-                try { return entry.isAvailable?.() !== false; } catch { return false; }
-            })
-            .sort((a, b) => a.order - b.order || a.seq - b.seq);
-    }
-
-    function createEntryRow({ icon, label }) {
-        const btn = doc.createElement('button');
-        btn.type = 'button';
-        btn.className = 'side-pane-open-tab-button';
-        const iconEl = doc.createElement('span');
-        iconEl.className = 'vcp-ui-icon';
-        iconEl.setAttribute('aria-hidden', 'true');
-        iconEl.textContent = icon || 'tab';
-        const labelEl = doc.createElement('span');
-        labelEl.className = 'side-pane-open-tab-button-label';
-        labelEl.textContent = label;
-        btn.append(iconEl, labelEl);
-        return btn;
-    }
-
-    function renderEntries() {
-        const entries = availableEntries();
-        list?.replaceChildren(...entries.map(entry => {
-            const row = createEntryRow(entry);
-            row.setAttribute('data-open-tab-entry', entry.id);
-            return row;
-        }));
-        syncSections();
-        if (addButton) {
-            addButton.hidden = entries.length === 0;
-            const label = entries.length === 1 ? entries[0].label : '新标签页';
-            addButton.title = label;
-            addButton.setAttribute('aria-label', label);
-        }
-        onEntriesChanged();
-    }
-
-    async function runEntry(entryId) {
-        const entry = entryMap.get(entryId);
-        hideMenus();
-        if (!entry || disposed) return;
-        try {
-            await entry.open();
-        } catch (error) {
-            console.error(`[SidePaneLauncher] Failed to open "${entryId}":`, error);
-        }
-    }
-
-    function registerEntry(entry) {
-        if (disposed) return () => {};
-        if (!entry || typeof entry.id !== 'string' || !entry.id || typeof entry.label !== 'string' || typeof entry.open !== 'function') {
-            throw new TypeError('registerOpenTabEntry requires { id, label, open }');
-        }
-        const stored = Object.freeze({
-            id: entry.id,
-            label: entry.label,
-            icon: entry.icon ? String(entry.icon) : 'tab',
-            order: Number.isFinite(entry.order) ? entry.order : 100,
-            seq: entrySeq++,
-            open: entry.open,
-            isAvailable: typeof entry.isAvailable === 'function' ? entry.isAvailable : null
-        });
-        entryMap.set(stored.id, stored);
-        renderEntries();
-        return () => {
-            if (entryMap.get(stored.id) !== stored) return;
-            entryMap.delete(stored.id);
-            if (!disposed) renderEntries();
-        };
-    }
+    const entriesOwner = createSidePaneEntries({ doc, list, addButton, hideMenus, syncSections, onEntriesChanged });
+    const { availableEntries, registerEntry, renderEntries, runEntry } = entriesOwner;
 
     // ---- 当前助手的头像和名字；每次打开新标签页时现取，改了头像或名字也能跟上 ----
     function renderProfile() {
@@ -491,6 +417,7 @@ export function createSidePaneLauncher({
 
         dispose() {
             disposed = true;
+            entriesOwner.dispose();
             cleanups.forEach(cleanup => cleanup());
             cleanups.length = 0;
         }

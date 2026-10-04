@@ -24,6 +24,7 @@ export function createSidePaneTabOverview({
     button,
     popover,
     getTabs,
+    getTabType = () => null,
     getActiveTabId,
     getRecentlyClosed,
     isClosable,
@@ -85,11 +86,11 @@ export function createSidePaneTabOverview({
 
         const openItems = filterAndRankSearchItems(getTabs().map(tab => ({
             tab,
-            searchFields: buildSearchFields(tab.title, getTabSearchHint(tab), getTabTypeLabel(tab))
+            searchFields: buildSearchFields(tab.title, getTabSearchHint(tab, getTabType), getTabTypeLabel(tab, getTabType))
         })), queryParts);
         const closedItems = filterAndRankSearchItems(getRecentlyClosed().map(closed => ({
             closed,
-            searchFields: buildSearchFields(closed.title, getTabSearchHint(closed.tab), getTabTypeLabel(closed.tab))
+            searchFields: buildSearchFields(closed.title, getTabSearchHint(closed.tab, getTabType), getTabTypeLabel(closed.tab, getTabType))
         })), queryParts);
 
         if (openItems.length === 0 && closedItems.length === 0) {
@@ -106,7 +107,7 @@ export function createSidePaneTabOverview({
                 const item = doc.createElement('div');
                 item.className = `side-pane-overview-item${tab.id === activeTabId ? ' active' : ''}`;
                 item.setAttribute('data-tab-id', tab.id);
-                item.appendChild(createItemTitle(getTabIconName(tab), tab.title));
+                item.appendChild(createItemTitle(getTabIconName(tab, getTabType), tab.title));
                 if (tab.openedAt) item.appendChild(createTime(formatRelativeTime(tab.openedAt, now)));
 
                 if (isClosable(tab)) {
@@ -138,7 +139,7 @@ export function createSidePaneTabOverview({
                 const item = doc.createElement('div');
                 item.className = 'side-pane-overview-item recently-closed';
                 item.setAttribute('data-closed-tab-id', closed.id);
-                item.append(createItemTitle(getTabIconName(closed.tab), closed.title), createTime(formatRelativeTime(closed.closedAt, now)));
+                item.append(createItemTitle(getTabIconName(closed.tab, getTabType), closed.title), createTime(formatRelativeTime(closed.closedAt, now)));
                 item.addEventListener('click', async () => {
                     hide();
                     await onReopen(closed.id);

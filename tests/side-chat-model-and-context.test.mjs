@@ -145,7 +145,7 @@ test('no hard-coded fallback model remains in the side chat stack', () => {
 });
 
 test('new side chats are named by the lowest free ordinal under the same parent', () => {
-    const source = fs.readFileSync(new URL('../modules/renderer/sidePaneWiring.js', import.meta.url), 'utf8');
+    const source = fs.readFileSync(new URL('../modules/renderer/sideChatWiring.js', import.meta.url), 'utf8');
     assert.ok(source.includes(String.raw`/^辅助对话 (\d+)$/`));
     assert.ok(source.includes('`辅助对话 ${ordinal}`'));
 });

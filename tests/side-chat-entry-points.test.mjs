@@ -5,7 +5,7 @@ import { JSDOM } from 'jsdom';
 
 const html = fs.readFileSync(new URL('../main.html', import.meta.url), 'utf8');
 const renderer = fs.readFileSync(new URL('../renderer.js', import.meta.url), 'utf8');
-const wiring = fs.readFileSync(new URL('../modules/renderer/sidePaneWiring.js', import.meta.url), 'utf8');
+const wiring = fs.readFileSync(new URL('../modules/renderer/sideChatWiring.js', import.meta.url), 'utf8');
 
 test('the selection "ask in side pane" button survives message-list re-renders', () => {
     const { document } = new JSDOM(html).window;

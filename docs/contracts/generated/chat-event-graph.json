@@ -237,6 +237,7 @@
     "modules/renderer/domListenerOwner.js",
     "modules/renderer/emoticonUrlFixer.js",
     "modules/renderer/enhancedColorUtils.js",
+    "modules/renderer/floatingSelectionButton.js",
     "modules/renderer/forwardMessageOwner.js",
     "modules/renderer/imageHandler.js",
     "modules/renderer/jevToolUse.js",
@@ -264,8 +265,20 @@
     "modules/renderer/pretext.esm.js",
     "modules/renderer/renderDependencies.js",
     "modules/renderer/renderSessionAuthority.js",
+    "modules/renderer/side-chat/composer-state.js",
+    "modules/renderer/side-chat/draft-cache.js",
+    "modules/renderer/side-chat/message-actions.js",
+    "modules/renderer/side-chat/model-picker.js",
+    "modules/renderer/side-chat/persistence.js",
+    "modules/renderer/side-chat/references.js",
+    "modules/renderer/side-chat/scrolling.js",
+    "modules/renderer/side-chat/shell.js",
     "modules/renderer/sideChatSurfaceOwner.js",
+    "modules/renderer/sideChatWiring.js",
+    "modules/renderer/sidePaneHostBindings.js",
+    "modules/renderer/sidePaneLauncherWiring.js",
     "modules/renderer/sidePaneWiring.js",
+    "modules/renderer/sidePaneWorkspaceServices.js",
     "modules/renderer/streamManager.js",
     "modules/renderer/streamProjectionRuntime.js",
     "modules/renderer/surfaceTaskOwner.js",
@@ -416,6 +429,7 @@
     "modules/ui-system/side-pane/planDetailSideProvider.js",
     "modules/ui-system/side-pane/selection-reference.js",
     "modules/ui-system/side-pane/side-pane-controller.js",
+    "modules/ui-system/side-pane/side-pane-entries.js",
     "modules/ui-system/side-pane/side-pane-launcher.js",
     "modules/ui-system/side-pane/side-pane-resizer-owner.js",
     "modules/ui-system/side-pane/side-pane-state.js",
@@ -425,6 +439,15 @@
     "modules/ui-system/side-pane/side-pane-tab-strip.js",
     "modules/ui-system/side-pane/side-pane-tab-utils.js",
     "modules/ui-system/side-pane/side-pane-visibility.js",
+    "modules/ui-system/side-pane/tab-types/browser.js",
+    "modules/ui-system/side-pane/tab-types/chat.js",
+    "modules/ui-system/side-pane/tab-types/code-viewer.js",
+    "modules/ui-system/side-pane/tab-types/git.js",
+    "modules/ui-system/side-pane/tab-types/notes.js",
+    "modules/ui-system/side-pane/tab-types/notifications.js",
+    "modules/ui-system/side-pane/tab-types/plan-detail.js",
+    "modules/ui-system/side-pane/tab-types/terminal.js",
+    "modules/ui-system/side-pane/tab-types/tool-output.js",
     "modules/ui-system/side-pane/terminalLinks.js",
     "modules/ui-system/side-pane/terminalSideProvider.js",
     "modules/ui-system/side-pane/terminalTheme.js",
@@ -5039,26 +5062,26 @@
       "producers": [],
       "consumers": [
         {
-          "file": "modules/renderer/sidePaneWiring.js",
-          "line": 654,
+          "file": "modules/renderer/floatingSelectionButton.js",
+          "line": 18,
           "kind": "preload-subscription"
         },
         {
-          "file": "modules/renderer/sidePaneWiring.js",
-          "line": 679,
+          "file": "modules/renderer/floatingSelectionButton.js",
+          "line": 43,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
-          "file": "modules/renderer/sidePaneWiring.js",
-          "line": 654,
+          "file": "modules/renderer/floatingSelectionButton.js",
+          "line": 18,
           "kind": "preload-subscription",
           "match": "onMessageItem("
         },
         {
-          "file": "modules/renderer/sidePaneWiring.js",
-          "line": 679,
+          "file": "modules/renderer/floatingSelectionButton.js",
+          "line": 43,
           "kind": "preload-subscription",
           "match": "onMessageItem("
         }
@@ -5070,14 +5093,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 634,
+          "line": 639,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 634,
+          "line": 639,
           "kind": "preload-subscription",
           "match": "onOpenSideChat("
         }
@@ -6664,15 +6687,15 @@
       "producers": [],
       "consumers": [
         {
-          "file": "modules/renderer/sidePaneWiring.js",
-          "line": 684,
+          "file": "modules/renderer/floatingSelectionButton.js",
+          "line": 48,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
-          "file": "modules/renderer/sidePaneWiring.js",
-          "line": 684,
+          "file": "modules/renderer/floatingSelectionButton.js",
+          "line": 48,
           "kind": "custom-event-listener",
           "match": "addEventListener('selectionchange'"
         }

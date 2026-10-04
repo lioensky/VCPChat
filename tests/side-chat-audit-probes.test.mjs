@@ -7,7 +7,7 @@ import path from 'node:path';
 import { JSDOM } from 'jsdom';
 
 import { createSidePaneController } from '../modules/ui-system/side-pane/side-pane-controller.js';
-import { mountSideChatSurface } from '../modules/renderer/sideChatSurfaceOwner.js';
+import { mountSideChatSurface, createSideChatSurfaceOwner } from '../modules/renderer/sideChatSurfaceOwner.js';
 import { buildModelConfig } from '../modules/chat/singleChatRequestOrchestrator.js';
 import * as service from '../modules/chat/sideChatSessionService.js';
 import { captureSelectionReference } from '../modules/ui-system/side-pane/selection-reference.js';
@@ -429,8 +429,9 @@ test('R13: Persistence retry and explicit discard restore ready state', async ()
 });
 
 test('R14: Draft and uncommitted references preserved across tab close and reopen', async () => {
-    const provider = {
-        mountTab: async (desc, view) => {
+    const provider = createSideChatSurfaceOwner({
+        chatCapabilities: {},
+        mountSurface: async (view, { descriptor: desc }) => {
             let draft = '';
             const refs = [];
             return {
@@ -443,7 +444,7 @@ test('R14: Draft and uncommitted references preserved across tab close and reope
                 dispose: async () => {}
             };
         }
-    };
+    });
     const { dom, ctrl } = createMockController(provider);
     const desc = createDescriptor('tab-draft', 'topic-draft');
 

@@ -69,18 +69,18 @@ const DEFAULT_ICONS = Object.freeze({
     chat: 'chat_bubble'
 });
 
-export function getTabTypeLabel(tab) {
+export function getTabTypeLabel(tab, getTabType = () => null) {
     if (typeof tab?.typeLabel === 'string' && tab.typeLabel) return tab.typeLabel;
-    return TYPE_LABELS[tab?.kind] || '标签页';
+    return getTabType(tab?.kind)?.label || TYPE_LABELS[tab?.kind] || '标签页';
 }
 
-export function getTabIconName(tab) {
-    return tab?.icon || DEFAULT_ICONS[tab?.kind] || 'tab';
+export function getTabIconName(tab, getTabType = () => null) {
+    return tab?.icon || getTabType(tab?.kind)?.icon || DEFAULT_ICONS[tab?.kind] || 'tab';
 }
 
 /** 搜索提示：标题里没有、但用户可能记得的内容（URL、文件路径等），由打开标签的模块提供 */
-export function getTabSearchHint(tab) {
-    return typeof tab?.searchHint === 'string' ? tab.searchHint : '';
+export function getTabSearchHint(tab, getTabType = () => null) {
+    return typeof tab?.searchHint === 'string' ? tab.searchHint : getTabType(tab?.kind)?.searchHint || '';
 }
 
 export function formatRelativeTime(timestamp, now = Date.now()) {
