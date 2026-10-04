@@ -6,6 +6,8 @@
 
 当前状态：**进行中，尚未完成全工程审查。** 本记录随后续审查更新，候选问题和已复现问题分开记录。
 
+已完成且不重复执行：**计划页 banner 调整与计划/施工线/变更文件分栏已在 `ecb9067a` 完成。** 用户明确要求不要在记忆压缩后重新做这一块；恢复工作时先核对提交、工作区和本账本，从未完成项继续。
+
 约定：在当前分支增加提交，不推送、不拆 PR；保留用户已有 `styles/themes.css` 改动。每个实现提交跑全量测试和检查，窗口验证后保留原标签、草稿和主题。新增回归测试必须能证明具体故障，不能只匹配源码字符串或复述实现。
 
 开始时的项目提交：`ecb9067a`。参考代码只读：
@@ -32,7 +34,7 @@
 | DSH | `packages/client/ui-dockkit/src/engine/controller.ts` 的控制器和意图提交前段 | 宿主内容通过工厂注入，kind 不被布局层解释；planner 决定操作，controller 记录并通知，空操作不通知。快照引用在布局变化前稳定。该设计支持外部状态持有者复用同一决策。 |
 | DSH | `packages/client/ui-dockkit/tests/controller.client.spec.ts` 的开合、布局与分栏用例 | 验证冗余操作不新增历史、显式复制独立内容、浮动时目标 pane 选择与分栏上限。测试面向用户意图和状态约束，未把全部实现私有步骤当契约。 |
 | DSH | `packages/client/ui-sidebar-right/src/client/tab-domain.ts` 的 occurrence 与同步、导航逻辑 | 内容 ID 和每次打开的 occurrence 身份分开；关闭或撤销打开时 abort；重新打开同 ID 是新生命周期。资源 pin 跟随 occurrence，隐藏视图不会直接释放内容。导航 revision 独立变化。 |
-| DSH | `packages/client/ui-sidebar-right/src/client/tab-registry.ts` 的登记契约 | 静态类型声明与运行时 body 分阶段，guide/title copy 可延迟读取。扩展覆盖 builtin 有显式排序和注销规则。keepMounted 是类型能力，并非所有内容统一常驻。其解析器全部碰撞路径仍待审查。 |
+| DSH | `packages/client/ui-sidebar-right/src/client/tab-registry.ts` 全部运行时实现 | 静态类型声明与运行时 body 分阶段；登记随 fiber effect 注销，具体 definition 身份保护 shadow/unregister；guide 缓存保持引用稳定。路由按 extension/builtin/fallback、pattern specificity、登记次序匹配，显式 kind 仍受 canOpen 限制。keepMounted 是类型能力，并非所有内容统一常驻；对应测试中段尚未全部读完。 |
 | DSH | `packages/client/ui-sidebar-right/src/client/persistence.ts` | 保存当前布局，不保存运行期 undo；schema 校验后还验证节点引用、身份计数、tab 唯一归属和 split 比例。损坏存档只清理对应 Session。 |
 | DSH | `packages/client/ui-sidebar-right/src/client/shell/close-focus.ts` | 先提交 DOM 移除，再仅在焦点属于关闭 pane 且未转移时恢复；从别处关闭不抢焦点。 |
 | DSH | `packages/client/ui-deliverables/src/client/host-read-store.ts` | lifetime 与 connection generation 各有 AbortController；reset 取消旧代次，dispose 等待 pending reads，发布前检查 signal。失败、missing、loading 与缓存重读策略由 policy 明确区分。 |
@@ -52,6 +54,7 @@
 | DSH | `packages/client/ui-sidebar-right/tests/session-views.client.spec.ts` | 多根 mount 退役最后才释放 Session reference；retainTab abort/unmount 释放幂等，失败 ready 会报告且销毁仍释放，已释放 reference 不允许重新 mount。 |
 | DSH | `packages/session/session-persistence/src/handle.ts` 全部接口契约 | append 的 accepted/visible 与 flush 的 crash durability 不相等；close 幂等、异步且不可取消，写 handle 要先完成 durability 再释放 ownership。对应具体后端实现尚未审查。旧交接引用的 src/write-behind.ts 已不在当前源码，只有 lib 残留，不把它视作当前权威。 |
 | DSH | `packages/settings/settings/src/index.ts` 的 descriptor、path ops、cloneJsonShaped 前段 | redacted settings 的不完整视图只能提交字段路径，完整 replace 会删除未返回的 secret；array path 单独校验下标、unset splice；JSON 输入拒绝非 plain、非有限数、循环，避免 YAML round trip 失真。settings-file/src 已不在当前源码，不读取遗留 bundle 来推断现状。 |
+| DSH | 同文件的 configure/invalidate、legacy import、update/replace/mutate/write | 页面 policy 随实例 effect 注销，失效刷新不在停用 fiber 上运行；设置写入通过 configEditor.edit 的回调取得当前 raw/inherited 后校验 revision，限制可编辑 volatile 路径，并保留普通配置/未显示字段。具体 configEditor 序列化与持久化锁还需读下一层，不能只凭该调用推断跨进程正确性。 |
 
 先前 UI 调整还读过两者的 Todo/计划样式与 DSH `SegmentedTabs`。它们支撑布局参考，但不能作为生命周期、性能或后端正确性的证明。
 
@@ -129,11 +132,77 @@
 - **R11 等待期间转移焦点仍被抢回**：旧 ownedFocus 在授权前取得。现在在同步提交关闭时读取当前位置，移到主输入框后不聚焦标签条；onClosed 完成不再重做当前 UI 提交。
 - **R12 不可关闭标签仍被清理**：旧入口只保护通知标签，其他 closable=false 仍会被 dispose/onClosed，而纯状态又拒绝移除，留下没有视图的标签。现在保护发生在授权与资源操作之前。
 
-聚焦测试 35/35、相关 227/227、UI 121/121、七项检查通过；全量仍为 248 个测试文件通过、9 个原有失败、0 超时，失败列表与第二轮一致。新增 owner 65 行；事件图仅新增该文件清单，样式未改。实际窗口隔离临时预览的旧/新对比：旧新标签丢失、授权/dispose 各两次、主输入框丢焦；修复后新页保留、各一次、光标保留。原标签、草稿、主题不变，窗口未 reload。
+聚焦测试 35/35、相关 227/227、UI 121/121、七项检查通过；全量仍为 248 个测试文件通过、9 个原有失败、0 超时，失败列表与第二轮一致。新增 owner 66 行；事件图仅新增该文件清单，样式未改。实际窗口隔离临时预览的旧/新对比：旧新标签丢失、授权/dispose 各两次、主输入框丢焦；修复后新页保留、各一次、光标保留。原标签、草稿、主题不变，窗口未 reload。
 
 设置 close 的两项基线失败已定位到 **过期测试契约**：`44fc546c` 明确撤掉关闭 barrier，改为立即隐藏、后台 flush。bridge refresh 保留连接的 canonical form；destroy/teardown 仍等待 durable barrier 并保留 error/conflict 草稿。因此不能为了旧测试变绿恢复阻塞关闭；下一步要改为验证关闭后保存与 draft owner 保活、迟到结果不改变重新打开的页面，另验证真实 coordinator 的失败/重试。
 
 仍需核实具体 provider 是否在 dispose 中完成所有资源清理、后台旧 onClosed 的业务删除与新开资源的身份边界，以及批量关闭等后续 UI 意图。此轮不外推为所有资源 owner 都已正确。
+
+## 第四轮：纠正设置关闭测试契约
+
+这轮没有恢复阻塞关闭，也没有修改保存协议。删除 ui-helpers 的遗留 modalClosePromises（从 `44fc546c` 起再无写入），补充隐藏与 owner teardown 的职责注释；更新设置交接/验收记录，避免当前代码、文档与测试各说一套。
+
+`ui-helpers-settings-close.test.js` 的旧两项 barrier 测试改为四个当前交互用例：立即隐藏且重复关闭只触发一次后台 flush；旧 error/conflict/rejection 完成不关闭新一代已重开的表单、不丢新输入，rejection 被记录而非未处理。用 `eaa6a8fd` 的旧阻塞实现重跑，这四项全部失败，证明不是对两种相反契约都能通过的弱断言。
+
+`settings-close-stress.test.mjs` 原有 30/50 次同构循环和固定 20/40ms 等待改为两个受控真实 coordinator 组件场景：隐藏表单接收失败 terminal 后保留 durable base、draft、pending ops，随后成功写入结果推进 revision 并清空 pending；隐藏时真正 dispose 要等待 terminal result 后才释放 coordinator/结果通道。移除无关的 globalThis DOM 覆盖，并在 finally 关闭 JSDOM。
+
+6/6 设置关闭用例通过；全量 **249 个测试文件通过、8 个失败、0 超时**，唯一失败清单变化是原 ui-helpers 过期测试修复，其余逐条相同。相关 227/227、UI 121/121、七项检查和 UIUX 四项生成产物检查通过。第一次 event gate 检出行号变化，重新生成后只有 ui-helpers 的位置证据更新，复验通过；不是忽略失败。原有 CRLF 保留，diff 检查使用 cr-at-eol 并保留其他空白检查。
+
+实际窗口隔离临时 iframe 加载当前 helper 与真实 coordinator、仅使用受控内存 transport：立即关闭返回 true，form/owner 仍连接；重开编辑 Newer 后旧保存失败，窗口仍打开、draft=Newer、durable=Initial、status=error。没有写入用户设置，原窗口状态保持一致。该验证和组件测试 **不证明完整 SettingsBridge/typed/legacy owner 或 IPC 文件持久化端到端都已正确**；这些层仍需沿调用链检查，不能扩大证据范围。
+
+## 第五轮：输入生命周期与插件目标身份
+
+继续整体审查；已完成的计划侧栏分栏（`ecb9067a`）没有重新修改。先核实当前 HEAD 与工作区，保留用户原有 `styles/themes.css` 改动。
+
+本轮深入读取 DSH 的 `ui-attachment/src/client/index.ts`、`ComposerAttachments.tsx`、`drop-events.ts` 以及 plugin/drop/composer 测试：展示插件只登记槽位，附件接收回调由 conversation owner 提供；document/window 拖拽监听由每次 effect 安装并返回精确 cleanup，disabled 时禁止转交文件，非文件拖拽保持原生行为。plugin 测试验证 fiber 注销后四个槽位消失；composer 测试覆盖目录识别、嵌套拖拽、退出窗口、blocked drop、移除与重试，而不是只数事件监听器。
+
+ZCode 的 `v4/composer/useComposerAttachments.ts` 已读接口与 scope 构造、上传执行、runtime 失效/重建、附件入队和全局白板引用门控分支（未读完整大 hook）：scope 含 workspace identity 与 scopeId，上传还按具体 controller 身份检查进度、成功与失败；更换 runtime 时撤销旧 controller，等待新 session 后才重排队。全局 add-to-chat 只由聚焦 composer 消费且匹配 workspace，effect 返回对应取消订阅。`mentions/providers/fileMentionProvider.ts` 与 `activePromptInputToken.ts` 完整读取：结果按 service/workspace/connection/query/limit 校验，effect cleanup 使旧读取失效；光标移动仍在同一未改 token 内时保持候选查询。这里的启示是输入资源归实例、异步结果归 scope 和 occurrence；这些参考逻辑不直接证明我们的实现正确。
+
+### R13：实例退役必须释放自己的订阅
+
+`inputEnhancer.js` 原先仅把 preload 文件订阅交给可选 renderer listener owner，实例自己的 dispose 不释放；初始化替换实例时旧订阅一直保留到整个 renderer 销毁。DOM 监听交给外部 owner 后同样没有局部清理。修复为实例和 renderer 都能清理对应资源：DOM remove 对同一 handler 幂等，preload unsubscribe 使用一次释放包装，避免两个 owner 重复调用底层取消函数。没有把同步 DOM owner 的 dispose 擅自解释为等待全部异步工作；生产 renderer 仍显式调用 input enhancer 的 dispose。
+
+### R14：重复销毁必须等待同一个在途工作屏障
+
+旧实现第一次 dispose 标记 inactive 并等待任务，第二次直接返回，可能让第二个 teardown 调用者在文件处理结束前继续释放后续资源。现在保存并复用 disposal Promise；标记 inactive 与资源撤销仍立即发生，迟到结果不投影到附件/预览。主窗口的 renderer 组合和 preload `on()` 实现已核实，后者返回精确 removeListener 函数。
+
+原 `input-enhancer-owner.test.mjs` 缺少 document，且第二项依赖第一项的全局 window/import 状态，因此不能证明上述生命周期。改为每项独立 JSDOM realm、真实 DOM、明确进入 IPC 与完成的受控 Promise，并在 teardown 关闭窗口。测试验证真实拖拽在 owner dispose 后不再生效、所有 dispose 调用者均等待、单实例释放订阅、重初始化只保留一个订阅、旧回调不投影、与 renderer 同时退役只取消一次。没有依赖固定睡眠或替换 globalThis。
+
+### R15：同级名称歧义不能按目录枚举顺序选写入目标
+
+`pluginAgentOperationService.findAgent()` 在 `62b936a7` 引入 ID > 精确全名 > 前缀 > 双向包含的优先级；旧测试把“唯一精确名 + 一个前缀名”当成歧义，确实已过期。但改动同时删掉了同级多候选的拒绝逻辑，两个精确名或两个同级模糊名会取目录枚举的首项。修复只拒绝最高匹配层级的多个候选，提示使用 Agent ID；唯一精确名优先与显式 ID 规则保留。
+
+通过真正的 `CreateTopic` 命令验证精确/前缀/包含三种同级歧义在任何写入前拒绝、双方配置未变；另验证唯一精确名成功写入正确目标，以及同名情况下显式 ID 仍能写入指定目标。没有将合法的新匹配规则回退为旧的全包含拒绝。
+
+修复前受控测试 **8 通过 / 5 失败**：三种歧义均缺少预期拒绝，两个输入生命周期场景分别提前结束或未释放旧订阅。修复后输入、笔记键盘、工作区提及、插件服务 **20/20**；相关 **227/227**、UI **121/121**；全量 **251 个测试文件通过、6 个失败、0 超时**。减少的两个失败文件就是输入 owner 与插件服务；剩余六项全部是 Scriptorium Electron 入口被 Node 运行的问题，仍待正确运行器验证。事件检查首次准确检出陈旧行号，生成后只更新输入工作区事件的位置，复验通过。
+
+实际工作区窗口的隔离 iframe 对比旧/新源码：重复 dispose 等待 false→true，单实例/重初始化取消订阅 0→1，保留订阅 3→1，迟到附件与预览均为 0。仅使用受控内存 API；截图后移除 iframe，原标签、草稿与主题快照一致，未 reload 主窗口。此验证不覆盖主进程文件持久化、话题切换中的附件归属或生产 composer 的所有入口；这些仍需沿调用链审查。
+
+本轮还扩大运行完整 `npm run check:ui-system`，不能继续用七项局部门禁代替它。聚合命令在第一项 `guard:design-subtraction` 停止；随后把其余 30 项逐项运行，27 项通过、3 项失败：`guard:next-delta` 读取已不存在的 `preloads/shared/catalog.js`；stylelint 指出 chat-input 与 side-pane-shell 各一个重复选择器；appearance-engine 的全局壁纸 sidebar backdrop-filter 字符串契约不匹配。相关脚本和 CSS 在本轮未改动，这些是新增发现的审查待办，不宣称产品行为已经有回归或门禁已经通过。
+
+design boundary 默认以 HEAD 与 origin/main 的 merge-base（`3bb5266b`）审查整条分支。375 个报告路径中，374 个在本轮开始的 HEAD 已与基准不同（按 `core.quotepath=false` 核对中文路径）；剩余一个是本轮增强的插件服务测试，处于这份历史“设计减法 PR”白名单之外。当前用户要求审查整个工程，该测试改动符合任务，但并不满足旧 PR 文件范围合同。没有扩张白名单、偷偷改基准或绕过失败。后续应区分一般工程质量检查与某个历史 PR 的范围检查，并核实缺失目录、重复规则的层叠语义与壁纸实际行为后修正适用契约。
+
+## 第六轮：真实 Electron 运行与失败信号
+
+本轮未修改计划页或生产编辑器。六个 Scriptorium 入口此前被统一用 Node 运行，失败发生在加载 Electron app/BrowserWindow，不能当成六个产品回归，也不能永久豁免。首先使用隔离 Electron profile 实跑旧入口：CDN、本地导出、网络字体和 VPPTX 四项通过；Markdown 输入与标题边界两项失败，均无超时。
+
+新增 `tests/helpers/electron-test-entry.cjs` 与 bootstrap：普通 `node --test` 注册一个真实集成用例，再启动仓库安装的 Electron；每次使用新建的 userData/session/logs 目录、隐藏 BrowserWindow，等待真实退出状态。截止或取消时只终止自己启动的进程树；结束后核对路径并删除自己的临时 profile。直接在未隔离的 Electron 入口运行会被拒绝。辅助文件不增加测试文件数量，没有绕过网络字体请求或用本地 stub 冒充通过。
+
+### R16：断言失败被提前退出吞掉
+
+旧 CDN 入口在 finally 调用 app.quit，catch 再设置不受支持的 app.exitCode；导出和网络字体也先 quit 再到失败处理。实际内核的受控失败探针表明，同一断言失败走旧退出路径返回 **0**，把 quit 移出 finally、成功/失败显式 app.exit(0/1) 后返回 **1**。修复后的父运行器检查真实退出码；失败输出随断言提供，不能再以普通进程成功结束判定测试通过。
+
+### 两项过期编辑契约
+
+Markdown 测试只派发 synthetic beforeinput 并要求 preventDefault，但生产在 `51d519c4` 已改为由浏览器执行普通文字 DOM 编辑，再在 input 中同步文档。synthetic beforeinput 自身不会执行该默认编辑。改用仅本测试窗口可调用的 preload/IPC 与 Chromium webContents.insertText，验证中文、emoji、ASCII 的真实输入、占位行替换、正文同步、焦点与光标。24 次相同循环收敛为三种有区别的输入；等待以源码条件和有界截止为准。原有受控 IME 用例保留，但不声称覆盖物理输入法的全部平台行为。
+
+标题边界测试仍期待 U+200B；当前 compiler 与局部编辑路径在 `70827d40` 已采用可见占位符 ↵。只更新该过期断言，保留边界编辑器、二次 Enter、DOM 几何和选区存活验证，没有为旧断言改变生产语义。
+
+六个真实 Electron 入口 **6/6**，全量 **257 个测试文件通过、0 失败、0 超时**；相关 **227/227**、UI **121/121**，七项常用检查通过。截图来自本轮创建的隐藏真实 Scriptorium 窗口：原生文字和边界 fixture 能渲染；这不证明所有远程媒体成功加载、全部生产 IPC/保存路径或全面视觉评审。原主窗口未 reload，临时窗口与 profile 已清理。
+
+扩展 UI 检查仍不全绿：聚合命令被历史 design boundary 拒绝，其余 30 项逐条运行 **27 通过、3 失败**，仍是缺失的 legacy preload catalog、两个重复 CSS 选择器、appearance-engine 全局壁纸断言。本轮未修改这些脚本或 CSS，也未扩张旧 PR 白名单。全量 Node 测试通过不等于这些工程检查通过，更不等于全工程审查完成。
+
+参考研究继续读完 DSH tab-registry 的运行时登记、guide 缓存、路由匹配与扩展/builtin 覆盖：登记与 fiber effect 绑定，注销比较具体 definition 身份；优先级分层后按 pattern specificity 与登记次序匹配，显式 kind 仍需 canOpen 许可。对应测试已读唯一性、shadow/unregister、显式 kind veto、fiber 注销与缓存稳定分支（中段尚未全部读完）。我们的 registerTabType 覆盖时可选 provider/launcher entry 是否留存旧登记仍是候选问题，尚未复现，不能写成已修复；不引入参考实现的扩展优先级机制来扩大产品范围。
 
 ## 验证与局限
 
@@ -143,12 +212,12 @@
 - 实际主窗口后来已有其他用户标签，未执行 reload；临时预览层使用当前工作区源码副本与真实渲染环境核验，并比较前后标签快照、草稿、主题，均保持一致。因此本轮不能声称主窗口既有控制器实例已热更新。
 - 本轮没有新模块或样式文件；事件图和样式检查均无需改动且检查通过。
 
-9 项失败不能成为永久豁免：
+开始时 9 项失败不能成为永久豁免；第四、第五轮解决三个失败文件，第六轮按真实 Electron 环境处理剩余六项，当前全量无失败。以下保留原问题与证据边界：
 
-1. `input-enhancer-owner.test.mjs`：两项在 `inputEnhancer.js:518` 访问未装配的 document 时失败，尚未测试到目标 owner 行为。需要核实 DOM 依赖契约并改善装配。
-2. 六个 `scriptorium-*-electron.test.js`：源码直接使用 Electron app/BrowserWindow，既有隔离脚本却统一用 Node；尚不能据此判断产品失败。需要正确运行入口、隔离窗口与导出产物验证。
-3. `ui-helpers-settings-close.test.js`：第三轮已确认 `44fc546c` 主动切换为立即隐藏、后台保存，旧测试仍断言旧 barrier；正在更新行为测试。modalClosePromises 是遗留死状态，可清理。真实保存成功、失败、冲突、重试与 owner 销毁仍需分开验证。
-4. `plugin-agent-operation-service.test.cjs`：全量中的单项失败还需诊断。一次额外沙箱诊断触发临时文件 rename EPERM、错误恢复超时，已核实并结束仅由该诊断创建的父/子测试进程；不能把这次环境失败算成产品回归或替代全量结果。
+1. `input-enhancer-owner.test.mjs`：第五轮已修正 DOM 装配并修复实例订阅释放、重复销毁屏障；当前三个受控场景通过。话题切换与完整文件 IPC 未据此宣称完成。
+2. 六个 `scriptorium-*-electron.test.js`：第六轮已使用隔离真实 Electron 运行，修正两项过期编辑断言和退出码误报；六项均通过。字体仍是外网集成，最小 IPC fixture 不覆盖全部生产处理器。
+3. `ui-helpers-settings-close.test.js`：第四轮已解决过期契约，删除遗留死状态；当前交互测试及 coordinator 组件证据通过。完整生产 owner、SettingsBridge、IPC 与发布环境的保存行为仍未据此宣称完成。
+4. `plugin-agent-operation-service.test.cjs`：第五轮确认一个过期歧义断言与真实同级目标选择缺陷；已修复并通过 10 个服务测试。之前沙箱诊断的临时文件 rename EPERM 不能计为产品缺陷；本轮隔离实际文件写入没有该错误。
 
 ## 全范围覆盖账本与后续路径
 
@@ -161,9 +230,9 @@ Git 清单有 2384 个跟踪文件。按代码扩展名排除常见 vendor/asset
 | 聊天和辅助对话 | 尚无本轮深入结论 | 主聊天/辅助对话所有者、流/取消/重试/编辑、草稿、会话与工作区隔离，对照 reference lease/occurrence |
 | Git、ProjectForge、源码后端 | 本轮只追到 provider 读取与已有测试 | IPC/preload 契约、读写根目录约束、真实 Git 与回退竞态、并发快照、索引、错误分类、批次缓存、隐藏面板 I/O |
 | 主进程、其他服务与 Rust | 清单定位到 IPC/services、chat data/audio/assistant/indexer 等模块 | 主进程资源生命周期、异常恢复与服务装配、Rust 测试与接口、插件/工具调用、升级/打包运行闭包 |
-| 测试体系 | 六个有效新故障用例，现有门禁全跑；9 项基线开始定位 | 修复失效装配与运行器、核实断言覆盖、消除随意等待/源码字符串自证、区分单元/真实后端/窗口验证、检查“门禁通过”是否覆盖新分支 |
+| 测试体系 | 生命周期与同级名称回归先在旧实现失败；设置、输入 DOM、匹配契约过期装配已修正；六个入口已正确运行真实 Electron，当前全量 257/0 | 核实其余断言和生产 IPC/持久化覆盖、继续消除随意等待/源码字符串自证、区分单元/真实后端/窗口验证、检查门禁新分支覆盖 |
 | UI/UX | 前两轮计划分栏有实际窗口证据；本轮正文错误归属修复 | 全入口、焦点、键盘、读屏、浅/深/磨砂、窄窗口、空/加载/错误/权限/断连、性能与隐藏页面行为；不能仅评估计划页 |
 | 可维护性与 AI 可读性 | 此记录包含参考路径、身份约束、故障证据和未覆盖范围；picker 的误导性复制文件头已纠正 | 入口/数据/生命周期图与实际依赖一致性、其余复制文件头、重复真相、隐式全局/魔法 key、生成规则、文档过期、合理模块边界与契约 |
 | 完成审计 | 未通过：上表仍有明确未覆盖范围 | 每个要求都需具体当前证据；不能用本轮修复或已有绿灯宣称全工程完成 |
 
-下一轮继续补齐参考的资源、状态和生命周期链，核查异步关闭候选及设置 close/flush 契约，修正测试装配与运行分类。随后沿实际依赖进入聊天、IPC、服务、Rust、独立应用与发布链。检查边界要随证据扩展，不限制在新建的侧栏文件。
+下一轮继续补齐参考的资源、状态和生命周期链，沿具体 provider 的 cleanup 与设置生产 owner/IPC 路径验证，核实注册覆盖/注销以及剩余四项扩展检查的适用契约。随后沿实际依赖进入聊天、服务、Rust、独立应用与发布链。检查边界要随证据扩展，不限制在新建的侧栏文件。

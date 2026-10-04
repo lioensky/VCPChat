@@ -1,5 +1,7 @@
 'use strict';
 
+if (require('./helpers/electron-test-entry.cjs').runFromNode(__filename)) return;
+
 const assert = require('assert');
 const { app, BrowserWindow, ipcMain, nativeTheme } = require('electron');
 const path = require('path');
@@ -247,12 +249,10 @@ async function run() {
         console.log('[ScriptoriumCDNLocalization] PASSED');
     } finally {
         if (!windowRef.isDestroyed()) windowRef.destroy();
-        app.quit();
     }
 }
 
-run().catch((error) => {
+run().then(() => app.exit(0)).catch((error) => {
     console.error('[ScriptoriumCDNLocalization] FAILED:', error);
-    app.exitCode = 1;
-    app.quit();
+    app.exit(1);
 });

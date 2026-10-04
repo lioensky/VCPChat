@@ -29,7 +29,9 @@ VCPChat 是一个 Electron 桌面端 AI 聊天客户端。本次工作聚焦 Glo
 
 `SettingsSaveCoordinator` 是 Global Settings 的单一保存 owner，维护 durable base、local draft、path-level pending operations、revision、operation identity、失败重试和 conflict 状态。typed 字段提交 `set/unset` 路径操作，不再用旧的完整快照重建设置。
 
-主进程在独占锁内重新读取文件，执行 expected-revision CAS 和 read-modify-write，通过临时文件校验后原子替换。返回值区分 `success`、`failed`、`cancelled`、`stale` 和 `conflict`，旧 operation 的迟到结果不能污染当前 draft/status。`flush()` 和 `dispose()` 都是 durable barrier；关闭设置页只有在 barrier 成功后才释放 owner。
+主进程在独占锁内重新读取文件，执行 expected-revision CAS 和 read-modify-write，通过临时文件校验后原子替换。返回值区分 `success`、`failed`、`cancelled`、`stale` 和 `conflict`，旧 operation 的迟到结果不能污染当前 draft/status。`flush()` 和 `dispose()` 都是 durable barrier；释放 owner 仍须等待 barrier 成功。
+
+2026-10-04 当前分支复核：`44fc546c` 已将窗口关闭改为立即隐藏并启动后台 flush，连接的 canonical form 与 owner 保留，不等待保存才收起。真正的 destroy/teardown 仍先 drain，再释放 owner；error/conflict 时保留草稿。隐藏窗口和销毁保存 owner 是两个契约，旧的阻塞关闭测试已更新。对应证据和范围限制见 `ADVERSARIAL-ENGINEERING-REVIEW.md` 第四轮；本交接中的历史平台验证范围保持原样。
 
 外部文件变化或 revision 不一致会保留本地草稿并暂停自动提交。界面提供“重新加载外部设置”和“保留草稿并重试”；无重叠 patch 可以在新 base 上重放，重叠字段保持冲突。
 

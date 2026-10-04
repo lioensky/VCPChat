@@ -4646,7 +4646,7 @@
       "producers": [
         {
           "file": "modules/ui-helpers.js",
-          "line": 639,
+          "line": 638,
           "kind": "custom-event-dispatch"
         }
       ],
@@ -4704,7 +4704,7 @@
         },
         {
           "file": "modules/ui-helpers.js",
-          "line": 639,
+          "line": 638,
           "kind": "custom-event-dispatch",
           "match": "dispatchEvent(new CustomEvent('modal-ready'"
         },
@@ -4721,12 +4721,12 @@
       "producers": [
         {
           "file": "modules/ui-helpers.js",
-          "line": 648,
+          "line": 647,
           "kind": "custom-event-dispatch"
         },
         {
           "file": "modules/ui-helpers.js",
-          "line": 670,
+          "line": 667,
           "kind": "custom-event-dispatch"
         }
       ],
@@ -4750,13 +4750,13 @@
       "evidence": [
         {
           "file": "modules/ui-helpers.js",
-          "line": 648,
+          "line": 647,
           "kind": "custom-event-dispatch",
           "match": "dispatchEvent(new CustomEvent('modal-visibility-changed'"
         },
         {
           "file": "modules/ui-helpers.js",
-          "line": 670,
+          "line": 667,
           "kind": "custom-event-dispatch",
           "match": "dispatchEvent(new CustomEvent('modal-visibility-changed'"
         },
@@ -6138,7 +6138,7 @@
       "consumers": [
         {
           "file": "modules/ui-helpers.js",
-          "line": 359,
+          "line": 358,
           "kind": "custom-event-listener"
         },
         {
@@ -6150,7 +6150,7 @@
       "evidence": [
         {
           "file": "modules/ui-helpers.js",
-          "line": 359,
+          "line": 358,
           "kind": "custom-event-listener",
           "match": "addEventListener('pointercancel'"
         },
@@ -8120,14 +8120,14 @@
       "consumers": [
         {
           "file": "modules/ui-helpers.js",
-          "line": 347,
+          "line": 346,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-helpers.js",
-          "line": 347,
+          "line": 346,
           "kind": "custom-event-listener",
           "match": "addEventListener('touchcancel'"
         }
@@ -8241,7 +8241,7 @@
       "producers": [
         {
           "file": "modules/inputEnhancer.js",
-          "line": 573,
+          "line": 583,
           "kind": "custom-event-dispatch"
         }
       ],
@@ -8249,7 +8249,7 @@
       "evidence": [
         {
           "file": "modules/inputEnhancer.js",
-          "line": 573,
+          "line": 583,
           "kind": "custom-event-dispatch",
           "match": "dispatchEvent(new CustomEvent('vcp-active-workspace-changed'"
         }

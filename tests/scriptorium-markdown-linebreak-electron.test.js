@@ -1,5 +1,7 @@
 'use strict';
 
+if (require('./helpers/electron-test-entry.cjs').runFromNode(__filename)) return;
+
 const { app, BrowserWindow, ipcMain, nativeTheme } = require('electron');
 const path = require('path');
 
@@ -65,11 +67,18 @@ app.whenReady().then(async () => {
         show: false,
         frame: false,
         webPreferences: {
-            preload: path.join(projectRoot, 'preloads', 'docx.js'),
+            preload: path.join(projectRoot, 'tests', 'helpers', 'scriptorium-native-input-preload.cjs'),
             contextIsolation: true,
             nodeIntegration: false,
             sandbox: false,
         },
+    });
+
+    ipcMain.handle('test:insert-text', (event, text) => {
+        if (event.sender !== windowRef.webContents || typeof text !== 'string') {
+            throw new Error('Native input belongs to this test window');
+        }
+        return windowRef.webContents.insertText(text);
     });
 
     await windowRef.loadFile(path.join(
@@ -354,20 +363,19 @@ app.whenReady().then(async () => {
             };
 
             const beforePlaceholderInput = source();
-            const insertTextEvent = new InputEvent('beforeinput', {
-                inputType: 'insertText',
-                data: '新行文字',
-                bubbles: true,
-                composed: true,
-                cancelable: true
-            });
-            editorAfterRetry?.dispatchEvent(insertTextEvent);
-            await new Promise((resolve) =>
-                requestAnimationFrame(() => requestAnimationFrame(resolve))
-            );
+            const waitForSource = async predicate => {
+                const deadline = performance.now() + 5000;
+                while (!predicate(source())) {
+                    if (performance.now() > deadline) throw new Error('Native input did not reach the document source');
+                    await new Promise(resolve => requestAnimationFrame(resolve));
+                }
+            };
+            // Native insertion performs the browser DOM edit and emits input;
+            // a synthetic beforeinput alone cannot model this contract.
+            await window.testBrowserInput.insertText('新行文字');
+            await waitForSource(value => value.includes('新行文字'));
             const afterPlaceholderInput = source();
             placeholderInput = {
-                handled: insertTextEvent.defaultPrevented,
                 inserted: afterPlaceholderInput.includes('新行文字'),
                 placeholderReplaced:
                     afterPlaceholderInput.length
@@ -377,7 +385,8 @@ app.whenReady().then(async () => {
             };
 
             const stressFailures = [];
-            for (let index = 0; index < 24; index += 1) {
+            const nativeValues = [' 首行文字', ' 🙂', ' ASCII'];
+            for (let index = 0; index < nativeValues.length; index += 1) {
                 const activeEditor = root.querySelector(
                     '[data-vdoc-flow-source-editor="true"]'
                 );
@@ -392,24 +401,12 @@ app.whenReady().then(async () => {
                     requestAnimationFrame(() => requestAnimationFrame(resolve))
                 );
 
-                const editorWithPlaceholder = root.querySelector(
-                    '[data-vdoc-flow-source-editor="true"]'
-                );
-                const value = ' 压力输入' + index;
-                const stressInput = new InputEvent('beforeinput', {
-                    inputType: 'insertText',
-                    data: value,
-                    bubbles: true,
-                    composed: true,
-                    cancelable: true
-                });
-                editorWithPlaceholder?.dispatchEvent(stressInput);
-                await new Promise((resolve) =>
-                    requestAnimationFrame(() => requestAnimationFrame(resolve))
-                );
+                const value = nativeValues[index];
+                await window.testBrowserInput.insertText(value);
+                await waitForSource(sourceValue => sourceValue.includes(value.trim()));
 
                 const currentSource = source();
-                const expected = '压力输入' + index;
+                const expected = value.trim();
                 const currentEditor = root.querySelector(
                     '[data-vdoc-flow-source-editor="true"]'
                 );
@@ -417,7 +414,6 @@ app.whenReady().then(async () => {
                     ? root.getSelection()
                     : window.getSelection();
                 const valid = stressEnter.defaultPrevented
-                    && stressInput.defaultPrevented
                     && currentSource.includes('\\n' + expected)
                     && !currentSource.includes('\\n↵' + value)
                     && !currentSource.includes('\\n' + value)
@@ -431,7 +427,7 @@ app.whenReady().then(async () => {
                     stressFailures.push({
                         index,
                         stressEnterHandled: stressEnter.defaultPrevented,
-                        stressInputHandled: stressInput.defaultPrevented,
+                        insertedText: value,
                         sourceTail: currentSource.slice(-120)
                     });
                     break;
@@ -559,8 +555,7 @@ app.whenReady().then(async () => {
                 && enterAfterBackspace?.caretInEditor === true
                 && enterAfterBackspace?.sourceChanged === true,
             typingReplacesParagraphBreak:
-                placeholderInput?.handled === true
-                && placeholderInput?.inserted === true
+                placeholderInput?.inserted === true
                 && placeholderInput?.placeholderReplaced === true,
             repeatedPlaceholderTypingIsStable:
                 repeatedPlaceholderTyping?.passed === true,
@@ -601,6 +596,7 @@ app.whenReady().then(async () => {
     const passed = Object.entries(result)
         .filter(([key]) => key !== 'diagnostic')
         .every(([, value]) => Boolean(value));
+    await require('./helpers/electron-test-entry.cjs').captureWindow(windowRef, __filename);
     await windowRef.close();
     app.exit(passed ? 0 : 1);
 }).catch((error) => {

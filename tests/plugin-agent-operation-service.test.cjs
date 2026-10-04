@@ -184,7 +184,7 @@ test('MobileSync 与后台 TopicSponsor 并发时通过中央配置桥保留双�
     assert.equal(topicIds.has('must-not-replace'), false);
 });
 
-test('未知命令、非法目标和非唯一名称在写入前被拒绝', async t => {
+test('未知命令和非法目标在写入前被拒绝', async t => {
     const { service, agentConfigManager } = await fixture(t);
 
     await assert.rejects(
@@ -196,12 +196,38 @@ test('未知命令、非法目标和非唯一名称在写入前被拒绝', async
         /非法/
     );
 
-    await agentConfigManager.writeAgentConfig('agent-b', {
-        name: '小娜副本',
-        topics: [],
+});
+
+for (const [tier, names, query] of [
+    ['exact', ['小娜', '小娜'], '小娜'],
+    ['prefix', ['小娜一号', '小娜二号'], '小娜'],
+    ['contains', ['甲小娜', '乙小娜'], '小娜'],
+]) {
+    test(`equal ${tier} name matches reject a topic write without mutating either agent`, async t => {
+        const { service, agentConfigManager } = await fixture(t);
+        await agentConfigManager.updateAgentConfig('agent-a', config => ({ ...config, name: names[0] }));
+        await agentConfigManager.writeAgentConfig('agent-b', { name: names[1], topics: [] });
+        const before = await Promise.all(['agent-a', 'agent-b'].map(id => agentConfigManager.readAgentConfig(id)));
+        await assert.rejects(service.processTopicCommand({
+            command: 'CreateTopic', maid: query, topic_name: 'must not exist', initial_message: 'must not be written',
+        }, { requestId: `ambiguous-${tier}` }), /不唯一/);
+        const after = await Promise.all(['agent-a', 'agent-b'].map(id => agentConfigManager.readAgentConfig(id)));
+        assert.deepEqual(after, before);
     });
-    await assert.rejects(
-        service.processTopicCommand({ command: 'ListUnlockedTopics', maid: '小娜' }),
-        /不唯一/
-    );
+}
+
+test('unique exact name outranks fuzzy matches and an explicit ID disambiguates duplicate names', async t => {
+    const { service, agentConfigManager } = await fixture(t);
+    await agentConfigManager.writeAgentConfig('agent-b', { name: '小娜副本', topics: [] });
+    const created = await service.processTopicCommand({
+        command: 'CreateTopic', maid: '小娜', topic_name: 'exact match', initial_message: 'hello',
+    }, { requestId: 'exact-priority' });
+    assert.equal((await agentConfigManager.readAgentConfig('agent-a')).topics.some(topic => topic.id === created.topic_id), true);
+    assert.deepEqual((await agentConfigManager.readAgentConfig('agent-b')).topics, []);
+    await agentConfigManager.updateAgentConfig('agent-b', config => ({ ...config, name: '小娜' }));
+    const byId = await service.processTopicCommand({
+        command: 'CreateTopic', maid: 'agent-b', topic_name: 'explicit ID', initial_message: 'hello',
+    }, { requestId: 'id-priority' });
+    assert.deepEqual((await agentConfigManager.readAgentConfig('agent-b')).topics.map(topic => topic.id), [byId.topic_id]);
+    assert.equal((await agentConfigManager.readAgentConfig('agent-a')).topics.length, 2);
 });

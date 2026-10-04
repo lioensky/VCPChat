@@ -1,5 +1,7 @@
 'use strict';
 
+if (require('./helpers/electron-test-entry.cjs').runFromNode(__filename)) return;
+
 const assert = require('assert');
 const { app, BrowserWindow } = require('electron');
 const fs = require('fs');
@@ -137,11 +139,10 @@ async function run() {
         console.log('[ScriptoriumExportResources] PASSED');
     } finally {
         if (!windowRef.isDestroyed()) windowRef.destroy();
-        app.quit();
     }
 }
 
-run().catch((error) => {
+run().then(() => app.exit(0)).catch((error) => {
     console.error('[ScriptoriumExportResources] FAILED:', error);
     app.exit(1);
 });
