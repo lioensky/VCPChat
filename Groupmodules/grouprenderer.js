@@ -420,7 +420,16 @@ window.GroupRenderer = (() => {
 
 
         if (mainRendererElements.currentChatNameH3) {
-            mainRendererElements.currentChatNameH3.textContent = `与群组 ${groupName} 聊天中`;
+            mainRendererElements.currentChatNameH3.textContent = `${groupName} (群组)`;
+        }
+        const chatAgentAvatar = document.getElementById('chatAgentAvatar');
+        if (chatAgentAvatar) {
+            chatAgentAvatar.src = groupAvatarUrl || 'assets/icon.png';
+            chatAgentAvatar.alt = groupName || '';
+        }
+        const chatAgentPill = document.getElementById('chatAgentPill');
+        if (chatAgentPill) {
+            chatAgentPill.title = `${groupName} (群组) - 点击查看群组详情与设置`;
         }
         if (mainRendererElements.currentItemActionBtn) {
             setCurrentItemActionButtonText(mainRendererElements.currentItemActionBtn, '新建群聊话题');
@@ -967,7 +976,11 @@ window.GroupRenderer = (() => {
                     });
                     const chatHeaderEl = mainRendererElements?.currentChatNameH3 || mainRendererElements?.currentChatAgentNameH3;
                     if (chatHeaderEl) {
-                        chatHeaderEl.textContent = `与群组 ${result.agentGroup.name} 聊天中`;
+                        chatHeaderEl.textContent = `${result.agentGroup.name} (群组)`;
+                    }
+                    const chatAgentAvatar = document.getElementById('chatAgentAvatar');
+                    if (chatAgentAvatar && result.agentGroup.avatarUrl) {
+                        chatAgentAvatar.src = result.agentGroup.avatarUrl;
                     }
                     messageRenderer.setCurrentItemAvatar(result.agentGroup.avatarUrl);
                     messageRenderer.setCurrentItemAvatarColor(result.agentGroup.avatarCalculatedColor); // Update avatar color

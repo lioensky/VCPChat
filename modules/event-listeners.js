@@ -899,6 +899,22 @@ export function setupEventListeners(deps) {
         showNewTopicButtonMenu(e, currentSelectedItem);
     });
 
+    const chatAgentPill = document.getElementById('chatAgentPill');
+    if (chatAgentPill) {
+        chatAgentPill.addEventListener('click', () => {
+            const currentSelectedItem = refs.currentSelectedItem?.get?.();
+            if (currentSelectedItem?.id && mainRendererFunctions.displaySettingsForItem) {
+                mainRendererFunctions.displaySettingsForItem();
+            }
+        });
+        chatAgentPill.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                chatAgentPill.click();
+            }
+        });
+    }
+
     /**
      * 显示【新建话题】按钮的右键菜单
      */

@@ -516,6 +516,11 @@ export const chatManager = (() => {
         const voiceChatBtn = document.getElementById('voiceChatBtn');
         currentChatNameH3.textContent = '选择一个 Agent 或群组开始聊天';
         messageRenderer?.clearChat();
+        const chatAgentAvatar = document.getElementById('chatAgentAvatar');
+        if (chatAgentAvatar) {
+            chatAgentAvatar.src = 'assets/icon.png';
+            chatAgentAvatar.alt = '';
+        }
         chatMessagesDiv.innerHTML = `<div class="message-item system welcome-bubble"><p>欢迎，请从左侧选择 AI 助手或群组，或创建新的对话。</p></div>`;
         currentItemActionBtn.style.display = 'none';
         if (voiceChatBtn) voiceChatBtn.style.display = 'none';
@@ -617,7 +622,16 @@ export const chatManager = (() => {
         const voiceChatBtn = document.getElementById('voiceChatBtn');
 
         const itemTypeLabel = itemType === 'group' ? ' (群组)' : '';
-        currentChatNameH3.textContent = `与 ${itemName}${itemTypeLabel} 聊天中`;
+        currentChatNameH3.textContent = `${itemName}${itemTypeLabel}`;
+        const chatAgentPill = document.getElementById('chatAgentPill');
+        const chatAgentAvatar = document.getElementById('chatAgentAvatar');
+        if (chatAgentAvatar) {
+            chatAgentAvatar.src = itemAvatarUrl || 'assets/icon.png';
+            chatAgentAvatar.alt = itemName || '';
+        }
+        if (chatAgentPill) {
+            chatAgentPill.title = `${itemName}${itemTypeLabel} - 点击查看详情与设置`;
+        }
         window.flowlockManager?.syncCurrentHeaderIndicator?.();
         setCurrentItemActionButtonText(currentItemActionBtn, itemType === 'group' ? '新建群聊话题' : '新建聊天话题');
         currentItemActionBtn.title = `为 ${itemName} 新建${itemType === 'group' ? '群聊话题' : '聊天话题'}`;

@@ -768,19 +768,184 @@ html .main-content {
 }
 
 html .chat-header {
-    padding: 7px 20px;
-    /* A faint 5% hairline under the title instead of the full panel border. */
-    border-bottom: 1px solid var(--zcode-header-divider, var(--next-border));
-    background: var(--next-header-bg);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 48px;
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: transparent !important;
+    border-bottom: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: none !important;
+    pointer-events: none;
+    z-index: 10;
 }
 
 html body.chat-presentation-panel .chat-header,
 html body.chat-presentation-immersive .chat-header {
-    background: var(--chat-presentation-surface);
-    backdrop-filter: var(--chat-presentation-surface-filter);
-    -webkit-backdrop-filter: var(--chat-presentation-surface-filter);
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+html .chat-header > * {
+    pointer-events: auto;
+}
+
+html .chat-header-spacer {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+/* Floating Agent Capsule Pill */
+html .chat-agent-pill {
+    flex: 0 0 auto;
+    margin: 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 34px;
+    padding: 3px 12px 3px 6px;
+    border-radius: 9999px;
+    background: var(--next-surface-card, rgba(255, 255, 255, 0.85));
+    border: 1px solid var(--next-border, rgba(0, 0, 0, 0.08));
+    box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.03);
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+    cursor: pointer;
+    user-select: none;
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+                background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+                border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html:not(.light-theme):not([data-vcp-theme="light"]) .chat-agent-pill {
+    background: rgba(30, 31, 35, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+html .chat-agent-pill:hover {
+    background: var(--next-surface-hover, rgba(255, 255, 255, 0.96));
+    border-color: var(--next-border-hover, rgba(0, 0, 0, 0.15));
+    box-shadow: 0 4px 14px -2px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.04);
+    transform: translateY(-0.5px);
+}
+
+html:not(.light-theme):not([data-vcp-theme="light"]) .chat-agent-pill:hover {
+    background: rgba(40, 42, 48, 0.95);
+    border-color: rgba(255, 255, 255, 0.18);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+
+html .chat-agent-pill:active {
+    transform: translateY(0) scale(0.99);
+}
+
+html .chat-agent-pill-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+html .chat-agent-pill-name {
+    margin: 0;
+    padding: 0;
+    font-size: 13.5px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    color: var(--next-text, currentColor);
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1;
+}
+
+html .chat-agent-pill-chevron {
+    width: 12px;
+    height: 12px;
+    opacity: 0.5;
+    flex-shrink: 0;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+html .chat-agent-pill:hover .chat-agent-pill-chevron {
+    opacity: 0.85;
+    transform: translateY(1px);
+}
+
+/* Hide pill in empty state (when no agent selected) */
+html .main-content.next-ui-empty-state-active[data-chat-empty="true"][data-chat-empty-reason="no-selection"] .chat-agent-pill {
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(0.95);
+}
+
+/* Actions in the chat canvas (top-right floating) */
+html .chat-header .chat-actions {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 6px;
+}
+
+html .chat-header .chat-actions .chat-action-pill-btn {
+    height: 30px;
+    padding: 0 10px;
+    border-radius: 9999px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    font-weight: 500;
+    background: var(--next-surface-card, rgba(255, 255, 255, 0.82));
+    border: 1px solid var(--next-border, rgba(0, 0, 0, 0.08));
+    color: var(--next-text, currentColor);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+html:not(.light-theme):not([data-vcp-theme="light"]) .chat-header .chat-actions .chat-action-pill-btn {
+    background: rgba(30, 31, 35, 0.82);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
+}
+
+html .chat-header .chat-actions .chat-action-pill-btn:hover {
+    background: var(--next-surface-hover, rgba(255, 255, 255, 0.95));
+    border-color: rgba(0, 0, 0, 0.15);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+html:not(.light-theme):not([data-vcp-theme="light"]) .chat-header .chat-actions .chat-action-pill-btn:hover {
+    background: rgba(45, 47, 54, 0.95);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+html .chat-header .chat-actions .chat-action-pill-btn svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+}
+
+html .chat-header .chat-actions .chat-action-pill-btn .button-label {
+    display: inline-block;
+    white-space: nowrap;
 }
 
 html .chat-actions .header-button {
@@ -910,8 +1075,28 @@ html .chat-actions .header-button > svg {
     flex: 0 0 auto;
 }
 
+html .next-ui-topbar-actions #toggleAssistantBtn,
+html .next-ui-topbar-actions #toggleNotificationsBtn {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    min-height: 28px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+html .next-ui-topbar-actions #toggleAssistantBtn svg,
+html .next-ui-topbar-actions #toggleNotificationsBtn svg {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+}
+
 html .chat-messages-container {
     position: relative;
+    padding-top: 48px;
 }
 
 /* Shared input composer: keep the same horizontal inset in every presentation

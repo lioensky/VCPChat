@@ -121,6 +121,41 @@
             </button>
         </nav>
         <div class="next-ui-topbar-actions">
+            <button id="toggleAssistantBtn" class="next-ui-icon-button header-button" type="button"
+                title="点击：开关划词助手｜长按：直接呼出" aria-label="划词助手开关与呼出">
+                <svg class="assistant-control-icon-classic" xmlns="http://www.w3.org/2000/svg" width="16"
+                    height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 20h-1a2 2 0 0 1-2-2 2 2 0 0 1-2 2H6"></path>
+                    <path d="M13 8h7a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-7"></path>
+                    <path d="M5 16H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h1"></path>
+                    <path d="M6 4h1a2 2 0 0 1 2 2 2 2 0 0 1 2-2h1"></path>
+                    <path d="M9 6v12"></path>
+                </svg>
+                <svg class="assistant-control-icon-next lucide lucide-scan-text" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
+                    <path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
+                    <path d="M21 17v2a2 2 0 0 1-2 2h-2"></path>
+                    <path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
+                    <path d="M7 8h8"></path>
+                    <path d="M7 12h10"></path>
+                    <path d="M7 16h6"></path>
+                </svg>
+            </button>
+            <span id="nextUiChatNotificationHost" class="next-ui-notification-toggle-host">
+                <button id="toggleNotificationsBtn" class="next-ui-icon-button header-button" type="button" title="左键打开通知面板/右键监控面板"
+                    aria-label="打开通知面板" aria-controls="notificationsSidebar" aria-expanded="false">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                        aria-hidden="true">
+                        <path d="M10.268 21a2 2 0 0 0 3.464 0"></path>
+                        <path
+                            d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326">
+                        </path>
+                    </svg>
+                </button>
+            </span>
             <div class="next-ui-presentation-switcher">
                 <button id="nextUiPresentationBtn" class="next-ui-icon-button" type="button"
                     aria-label="聊天显示模式；悬停可快速切换，点击打开主题样式编辑器"
@@ -461,28 +496,39 @@
         <section id="nextUiMainPanel" class="next-ui-main-panel" role="tabpanel" aria-labelledby="nextUiHomeTab">
           <main class="main-content">
             <header class="chat-header vcp-ui-scope">
-                <h3 id="currentChatAgentName">选择一个Agent开始聊天</h3>
+                <div class="chat-header-spacer"></div>
+                <div class="chat-agent-pill" id="chatAgentPill" role="button" tabindex="0" title="点击查看助手信息及设置">
+                    <img id="chatAgentAvatar" class="chat-agent-pill-avatar" src="assets/icon.png" alt="" />
+                    <h3 id="currentChatAgentName" class="chat-agent-pill-name">选择一个Agent开始聊天</h3>
+                    <svg class="chat-agent-pill-chevron" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
                 <div class="chat-actions">
-                    <button id="toggleAssistantBtn" class="header-button" type="button"
-                        title="点击：开关划词助手｜长按：直接呼出" aria-label="划词助手开关与呼出">
-                        <svg class="assistant-control-icon-classic" xmlns="http://www.w3.org/2000/svg" width="18"
-                            height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <path d="M12 20h-1a2 2 0 0 1-2-2 2 2 0 0 1-2 2H6"></path>
-                            <path d="M13 8h7a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-7"></path>
-                            <path d="M5 16H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h1"></path>
-                            <path d="M6 4h1a2 2 0 0 1 2 2 2 2 0 0 1 2-2h1"></path>
-                            <path d="M9 6v12"></path>
+                    <button id="voiceChatBtn" class="header-button chat-action-pill-btn" type="button" title="语音聊天"
+                        style="display: none;">
+                        <svg class="lucide lucide-mic" viewBox="0 0 24 24" width="14" height="14" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                            <line x1="12" x2="12" y1="19" y2="22"></line>
                         </svg>
-                        <svg class="assistant-control-icon-next lucide lucide-scan-text" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
-                            <path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
-                            <path d="M21 17v2a2 2 0 0 1-2 2h-2"></path>
-                            <path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
-                            <path d="M7 8h8"></path>
-                            <path d="M7 12h10"></path>
-                            <path d="M7 16h6"></path>
+                        <span class="button-label">语音通话</span>
+                    </button>
+                    <button id="currentAgentSettingsBtn" class="header-button chat-action-pill-btn" type="button" title="当前Agent设置" style="display: none;">
+                        <svg class="lucide lucide-message-square-plus" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                            <line x1="12" x2="12" y1="7" y2="13"></line>
+                            <line x1="9" x2="15" y1="10" y2="10"></line>
+                        </svg>
+                        <span class="button-label">新建话题</span>
+                    </button>
+                    <button id="toggleSidePaneChatBtn" class="header-button" type="button" title="左键展开侧栏/右键监控面板"
+                        aria-label="展开侧栏" aria-controls="vcpSidePane" aria-expanded="false">
+                        <svg class="lucide lucide-panel-right" viewBox="0 0 24 24" width="20" height="20" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect width="18" height="18" x="3" y="3" rx="2"></rect>
+                            <path d="M15 3v18"></path>
                         </svg>
                     </button>
                     <button id="voiceChatBtn" class="header-button" type="button" title="语音聊天"

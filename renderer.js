@@ -906,7 +906,14 @@ mainChatSettingsPresentationOwner.configureStartup({
             mainRendererFunctions: {
                 setCroppedFile: uiHelperFunctions.setCroppedFile,
                 getCroppedFile: uiHelperFunctions.getCroppedFile,
-                updateChatHeader: (text) => { if (currentChatNameH3) currentChatNameH3.textContent = text; },
+                updateChatHeader: (text) => {
+                    if (currentChatNameH3) {
+                        const cleanText = typeof text === 'string'
+                            ? text.replace(/^与\s*/, '').replace(/\s*聊天中$/, '')
+                            : text;
+                        currentChatNameH3.textContent = cleanText;
+                    }
+                },
                 onItemDeleted: async () => {
                     chatManager.displayNoItemSelected();
                     await window.itemListManager.loadItems();
