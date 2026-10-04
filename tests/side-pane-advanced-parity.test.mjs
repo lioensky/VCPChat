@@ -40,8 +40,6 @@ function createParityTestDOM() {
             <div class="side-pane-content-container">
                 <section class="side-pane-view active" id="sidePaneViewNotifications" data-tab-id="notifications"></section>
                 <section class="side-pane-view" id="sidePaneViewLauncher" data-tab-id="launcher" hidden>
-                    <form class="side-pane-launcher-address" hidden><input type="text"></form>
-                    <p class="side-pane-launcher-address-error" hidden></p>
                     <div class="side-pane-launcher-profile" hidden>
                         <button type="button" class="side-pane-launcher-avatar"><img alt=""></button>
                         <input type="text" class="side-pane-launcher-name" readonly>
@@ -180,62 +178,6 @@ test('Parity: the add button opens the new tab page with tool rows', async () =>
     disposeChat();
     assert.equal(addBtn.getAttribute('aria-label'), '浏览器');
     assert.equal(launcherView.querySelectorAll('[data-open-tab-entry]').length, 1);
-
-    await ctrl.dispose();
-    dom.window.close();
-});
-
-test('Parity: the new tab page address bar hands the text to the handler', async () => {
-    const dom = createParityTestDOM();
-    const doc = dom.window.document;
-    const form = doc.querySelector('.side-pane-launcher-address');
-    const input = form.querySelector('input');
-    const error = doc.querySelector('.side-pane-launcher-address-error');
-    const submitted = [];
-    const ctrl = createController(dom, {
-        controller: {
-            openTabEntries: [
-                { id: 'chat', label: '辅助对话', open() {} },
-                { id: 'browser', label: '浏览器', open() {} }
-            ]
-        }
-    });
-
-    // 没有处理函数时不显示地址栏
-    assert.equal(form.hidden, true);
-    ctrl.setLauncherAddressHandler(async (text) => {
-        submitted.push(text);
-        return text.startsWith('javascript:') ? { error: '不支持' } : { url: text };
-    });
-    assert.equal(form.hidden, false);
-
-    doc.getElementById('addSidePaneChatBtn').click();
-    await tick();
-    assert.equal(doc.activeElement, input, '打开新标签页后焦点在地址栏');
-
-    const submit = async (value) => {
-        input.value = value;
-        form.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
-        await tick();
-    };
-
-    await submit('   ');
-    assert.deepEqual(submitted, [], '空白不提交');
-
-    await submit('javascript:alert(1)');
-    assert.equal(error.hidden, false);
-    assert.equal(error.textContent, '不支持');
-    assert.equal(input.value, 'javascript:alert(1)', '出错时保留输入');
-
-    input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
-    assert.equal(error.hidden, true, '继续输入就清掉错误');
-
-    await submit(' example.com ');
-    assert.deepEqual(submitted, ['javascript:alert(1)', 'example.com']);
-    assert.equal(input.value, '', '打开后清空');
-
-    ctrl.setLauncherAddressHandler(null);
-    assert.equal(form.hidden, true);
 
     await ctrl.dispose();
     dom.window.close();

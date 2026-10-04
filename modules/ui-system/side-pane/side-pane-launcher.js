@@ -1,4 +1,4 @@
-/* Side pane new tab page: address bar, assistant profile, tool / app / notification sections and the open-tab entry registry. */
+/* Side pane new tab page: assistant profile, tool / app / notification sections and the open-tab entry registry. */
 'use strict';
 import { createSidePaneEntries } from './side-pane-entries.js';
 
@@ -12,7 +12,6 @@ import { createSidePaneEntries } from './side-pane-entries.js';
 export function createSidePaneLauncher({
     contentContainer,
     addButton = null,
-    onLauncherAddress = null,
     isNotificationsActive,
     showNotifications,
     showLauncher,
@@ -27,9 +26,6 @@ export function createSidePaneLauncher({
     const find = (parent, selector) => parent?.querySelector?.(selector) || null;
     const list = find(view, '.side-pane-open-tab-list');
     const toolsSection = find(view, '[data-launcher-section="tools"]');
-    const addressForm = find(view, '.side-pane-launcher-address');
-    const addressInput = find(addressForm, 'input');
-    const addressError = find(view, '.side-pane-launcher-address-error');
     const profile = find(view, '.side-pane-launcher-profile');
     const profileAvatar = find(profile, '.side-pane-launcher-avatar');
     const profileImage = find(profileAvatar, 'img');
@@ -44,7 +40,6 @@ export function createSidePaneLauncher({
     const recommendedRow = find(recommendedGroup, '.side-pane-launcher-recommended-row');
     const recommendedAction = find(recommendedGroup, '.side-pane-launcher-group-action');
 
-    let addressHandler = typeof onLauncherAddress === 'function' ? onLauncherAddress : null;
     let profileProvider = null;
     let profileEdit = null;
     let profileRename = null;
@@ -86,7 +81,6 @@ export function createSidePaneLauncher({
         }
         if (profileAvatar) {
             profileAvatar.disabled = !profileEdit;
-            profileAvatar.title = profileEdit ? '编辑头像' : '';
             profileAvatar.setAttribute('aria-label', profileEdit ? '编辑头像' : (current.name || '头像'));
         }
     }
@@ -275,45 +269,6 @@ export function createSidePaneLauncher({
         cleanups.push(() => segmentTabs.removeEventListener('keydown', onTabsKeydown));
     }
 
-    // ---- 地址栏 ----
-    function syncAddress() {
-        if (addressForm) addressForm.hidden = !addressHandler;
-    }
-
-    function showAddressError(message) {
-        if (!addressError) return;
-        addressError.textContent = message || '';
-        addressError.hidden = !message;
-    }
-
-    if (addressForm && addressInput) {
-        const onAddressSubmit = async (e) => {
-            e.preventDefault();
-            const text = addressInput.value.trim();
-            if (!text || !addressHandler) return;
-            try {
-                const result = await addressHandler(text);
-                if (result?.error) {
-                    showAddressError(result.error);
-                    return;
-                }
-                addressInput.value = '';
-                showAddressError('');
-            } catch (error) {
-                console.error('[SidePaneLauncher] Failed to open address:', error);
-                showAddressError('打开失败');
-            }
-        };
-        const onAddressInput = () => showAddressError('');
-        addressForm.addEventListener('submit', onAddressSubmit);
-        addressInput.addEventListener('input', onAddressInput);
-        cleanups.push(() => {
-            addressForm.removeEventListener('submit', onAddressSubmit);
-            addressInput.removeEventListener('input', onAddressInput);
-        });
-    }
-    syncAddress();
-
     if (view) {
         const onViewClick = (e) => {
             const entryBtn = e.target.closest('[data-open-tab-entry]');
@@ -355,7 +310,6 @@ export function createSidePaneLauncher({
             }
             hideMenus();
             showLauncher();
-            addressInput?.focus?.();
         };
         addButton.addEventListener('click', onAddClick);
         cleanups.push(() => addButton.removeEventListener('click', onAddClick));
@@ -386,11 +340,6 @@ export function createSidePaneLauncher({
             notificationsSegmentBtn.title = label;
             if (label) notificationsSegmentBtn.setAttribute('aria-label', `通知，${label}`);
             else notificationsSegmentBtn.removeAttribute('aria-label');
-        },
-
-        setAddressHandler(handler) {
-            addressHandler = typeof handler === 'function' ? handler : null;
-            syncAddress();
         },
 
         setProfileProvider(provider) {

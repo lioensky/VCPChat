@@ -1,61 +1,10 @@
-/* --- New Tab Launcher: address bar on top, tool rows below --- */
-html .side-pane-launcher-address:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    height: 34px;
-    min-height: 34px;
-    margin: 0;
-    padding: 0 8px;
-    border-bottom: 1px solid var(--zcode-header-divider, var(--vcp-ui-port-color-rgba-255-255-255-0-06));
-    box-sizing: border-box;
-}
-
-html .side-pane-launcher-address[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *),
-html .side-pane-launcher-address-error[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *),
+/* --- New Tab Launcher: assistant profile on top, tool cards below --- */
 html .side-pane-launcher-section[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *),
 html .side-pane-launcher-group[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *),
 html .side-pane-launcher-group-action[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *),
 html .side-pane-launcher-tabs[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *),
 html .side-pane-launcher-tab[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: none;
-}
-
-html .side-pane-launcher-address > .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    --vcp-ui-icon-size: 15px;
-    width: 15px;
-    height: 15px;
-    margin-left: 6px;
-    flex-shrink: 0;
-    opacity: 0.5;
-}
-
-html .side-pane-launcher-address-input:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    flex: 1;
-    min-width: 0;
-    height: 24px;
-    padding: 0 10px;
-    border-radius: 12px;
-    border: 1px solid var(--border-color, var(--vcp-ui-port-color-rgba-255-255-255-0-08));
-    background: var(--vcp-ui-port-color-rgba-255-255-255-0-04);
-    color: var(--primary-text, inherit);
-    font-size: calc(var(--vcp-ui-font-size) - 2px);
-    outline: none;
-}
-
-html .side-pane-launcher-address-input:focus:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    border-color: var(--highlight-text, var(--vcp-ui-port-color-rgba-255-255-255-0-3));
-}
-
-html body[data-vcp-theme="light"] .side-pane-launcher-address-input:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    background: var(--vcp-ui-port-color-rgba-0-0-0-0-04);
-    border-color: var(--vcp-ui-port-color-rgba-0-0-0-0-08);
-}
-
-html .side-pane-launcher-address-error:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    margin: 6px 16px 0;
-    font-size: calc(var(--vcp-ui-font-size) - 2px);
-    color: var(--vcp-ui-port-color-ef4444);
 }
 
 html .side-pane-open-tab-shell:where(.vcp-ui-scope, .vcp-ui-scope *) {
@@ -65,7 +14,12 @@ html .side-pane-open-tab-shell:where(.vcp-ui-scope, .vcp-ui-scope *) {
     overflow-y: auto;
     padding: 16px 12px;
     box-sizing: border-box;
-    background: transparent;
+    background: var(--vcp-ui-port-color-1a1a1a);
+}
+
+/* 新标签页铺实色底，白卡片才立得住 */
+html body[data-vcp-theme="light"] .side-pane-open-tab-shell:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-port-color-f7f7f7);
 }
 
 html .side-pane-open-tab-content:where(.vcp-ui-scope, .vcp-ui-scope *) {
@@ -119,11 +73,18 @@ html .side-pane-launcher-avatar-edit:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: flex;
     align-items: center;
     justify-content: center;
-    --vcp-ui-icon-size: 22px;
+    border-radius: 50%;
     color: var(--vcp-ui-port-color-ffffff);
     background: var(--vcp-ui-port-color-rgba-0-0-0-0-5);
     opacity: 0;
+    pointer-events: none;
     transition: opacity 0.12s ease;
+}
+
+html .side-pane-launcher-avatar-edit .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    --vcp-ui-icon-size: 24px;
+    width: 24px;
+    height: 24px;
 }
 
 html .side-pane-launcher-avatar:not(:disabled):hover .side-pane-launcher-avatar-edit:where(.vcp-ui-scope, .vcp-ui-scope *),
@@ -402,42 +363,46 @@ html .side-pane-launcher-app-label:where(.vcp-ui-scope, .vcp-ui-scope *) {
     white-space: nowrap;
 }
 
+/* 工具入口做成实色卡片，不透出背后的壁纸 */
 html .side-pane-open-tab-list:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: flex;
     flex-direction: column;
-    gap: 1px;
+    gap: 4px;
 }
 
 html .side-pane-open-tab-button:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: flex;
     align-items: center;
     gap: 10px;
-    height: 34px;
+    height: 36px;
     width: 100%;
-    padding: 0 10px;
-    border-radius: 8px;
-    border: none;
-    background: transparent;
+    padding: 0 14px;
+    border-radius: 10px;
+    border: 1px solid var(--vcp-ui-port-color-rgba-255-255-255-0-06);
+    background: var(--vcp-ui-port-color-26262b);
     color: var(--primary-text, var(--vcp-ui-port-color-f1f5f9));
     font-size: calc(var(--vcp-ui-font-size) - 1px);
     cursor: pointer;
     box-sizing: border-box;
-    transition: background 0.12s ease;
+    transition: background 0.12s ease, border-color 0.12s ease;
 }
 
 html body[data-vcp-theme="light"] .side-pane-open-tab-button:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    border-color: transparent;
+    background: var(--vcp-ui-port-color-ffffff);
     color: var(--primary-text, var(--vcp-ui-port-color-0f172a));
 }
 
 html .side-pane-open-tab-button:hover:where(.vcp-ui-scope, .vcp-ui-scope *),
 html .side-pane-open-tab-button:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    background: var(--vcp-ui-port-color-rgba-255-255-255-0-06);
+    background: var(--vcp-ui-port-color-2b2b2b);
+    border-color: var(--vcp-ui-port-color-rgba-255-255-255-0-1);
     outline: none;
 }
 
 html body[data-vcp-theme="light"] .side-pane-open-tab-button:hover:where(.vcp-ui-scope, .vcp-ui-scope *),
 html body[data-vcp-theme="light"] .side-pane-open-tab-button:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    background: var(--vcp-ui-port-color-rgba-0-0-0-0-05);
+    background: var(--vcp-ui-port-color-f0f0f0);
 }
 
 html .side-pane-open-tab-button-label:where(.vcp-ui-scope, .vcp-ui-scope *) {

@@ -69,7 +69,6 @@ export function initWorkspaceSidePane({
     }
     // 标签类型都登记完才能认出存档里的标签
     controller.restoreLayout();
-    controller.setLauncherAddressHandler(browser.addressHandler);
     // 焦点在侧栏网页里时按键到不了这个窗口，主进程截下副屏快捷键转过来
     const unsubscribeBrowserShortcut = chatAPI?.onBrowserSidePaneShortcut?.((shortcut) => {
         if (shortcut?.action === 'toggle') controller.toggleFromUser();

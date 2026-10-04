@@ -38,7 +38,6 @@ export function createSidePaneController({
     providers = {},
     tabTypes: initialTabTypes = [],
     openTabEntries = [],
-    onLauncherAddress = null,
     // { storage, key? }：传了才持久化布局；控制器调用 restoreLayout() 之前不会写入，免得空布局盖掉存档
     persistence = null
 }) {
@@ -177,7 +176,6 @@ export function createSidePaneController({
     const launcher = createSidePaneLauncher({
         contentContainer,
         addButton: resolvedAddTabButton,
-        onLauncherAddress,
         isNotificationsActive: () => isNotificationsTab(state.activeTabId),
         showNotifications: () => controller.showNotifications(),
         showLauncher: () => controller.showLauncher(),
@@ -447,7 +445,8 @@ export function createSidePaneController({
             syncDomVisibility();
         },
 
-        activateTab(tabId) {
+        /** options.focus 为 false 时只切换，不把焦点挪进标签（后台恢复时用） */
+        activateTab(tabId, { focus: moveFocus = true } = {}) {
             if (isDisposed || !tabId) return;
             state = SidePaneState.activateTab(state, tabId);
             if (state.parent && !isNotificationsTab(tabId) && tabId !== SidePaneState.LAUNCHER_TAB_ID) {
@@ -459,7 +458,7 @@ export function createSidePaneController({
             strip?.scrollActiveIntoView();
             syncViewPanels();
             syncDomVisibility();
-            mountedTabMap.get(tabId)?.handle?.focus?.();
+            if (moveFocus) mountedTabMap.get(tabId)?.handle?.focus?.();
         },
 
         reorderTab(activeId, overId) {
@@ -563,10 +562,6 @@ export function createSidePaneController({
         /** 入口的可用状态变了（比如当前窗口不支持某能力）时调用，重新渲染菜单和引导页 */
         refreshOpenTabEntries() {
             if (!isDisposed) launcher.renderEntries();
-        },
-
-        setLauncherAddressHandler(handler) {
-            launcher.setAddressHandler(handler);
         },
 
         /** provider() 返回 { name, avatarUrl, onEditAvatar?, onRename?(name) } 或 null（不显示） */

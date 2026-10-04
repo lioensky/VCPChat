@@ -203,6 +203,8 @@ export function createSideChatWiring({
         if (!isSameParent(getController().getSnapshot().parent, agentId, parentTopicId)) return [];
         if (!listRes.ok || !Array.isArray(listRes.items)) return [];
 
+        // openTab 会激活恢复出来的侧聊，恢复完切回用户原来看的标签
+        const activeBefore = getController().getSnapshot().activeTabId;
         for (const item of listRes.items) {
             try {
                 if (!isSameParent(getController().getSnapshot().parent, agentId, parentTopicId)) break;
@@ -238,6 +240,11 @@ export function createSideChatWiring({
             } catch (e) {
                 console.warn('[SideChat] Failed to restore side chat tab:', e);
             }
+        }
+        const snapshot = getController().getSnapshot();
+        if (activeBefore && activeBefore !== snapshot.activeTabId && isSameParent(snapshot.parent, agentId, parentTopicId)
+            && snapshot.tabs.some(t => t.id === activeBefore)) {
+            getController().activateTab(activeBefore, { focus: false });
         }
         return listRes.items;
     }
