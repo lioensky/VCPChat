@@ -11,7 +11,7 @@
  * 所以回答原文本身没有增删行数，也不提供回退。执行状态不是成功的调用不计入。
  * 增删行数在展开时才去查（getDiffStats，见 git-file-diff.js）：文件在已登记的 Git 工作区里时显示它当前未提交的 +N -N，
  * 点数字在右侧栏 Git 标签里展开这个文件的 diff（openDiff）；查不到就不显示，不影响原有列表。
- * ProjectForge（工程化编辑工具：CreateFile / EditCode / RemoveFile / MoveFile / MoveCode / CopyCode）同样识别：
+ * ProjectForge（工程化编辑工具：CreateFile / EditCode / RemoveFile / MoveFile / MoveCode / CopyCode / Rollback）同样识别：
  * 它的路径相对工程根（根目录从建工程的结果里还原），结果里带每次调用的精确 Diff (+N -M)，直接显示，不必再问 Git。
  * 只观察消息 DOM，不改渲染管线；原文从历史记录里按消息 id 取。
  */
@@ -115,6 +115,10 @@ const FORGE_WRITE_HEADER = /^## ✅ (已新建|已覆盖|已写入) · `([^`\n]+
 const FORGE_MOVE_HEADER = /^## ✅ 已移动 · `([^`\n]+)` → `([^`\n]+)`/u;
 const FORGE_CODE_MOVE_HEADER = /^## ✅ 已(?:剪切|复制) · /u;
 const FORGE_REMOVE_HEADER = /^## ✅ RemoveFile/u;
+const FORGE_ROLLBACK_HEADER = /^## ✅ 已回退/u;
+// 回退结果逐个文件列出「- `路径`：动作（节点 `nX`）」；没有 Diff，只知道动作
+const FORGE_ROLLBACK_ITEM = /^- `([^`\n]+)`：(恢复内容|重建文件|移到回收站)（节点/gmu;
+const FORGE_ROLLBACK_OP = { 恢复内容: 'edit', 重建文件: 'create', 移到回收站: 'delete' };
 const FORGE_DIFF_COUNTS = /### Diff \(\+(\d+) -(\d+)\)/u;
 
 const diffCounts = (text) => {
@@ -161,6 +165,9 @@ function forgeOperationsOfResult(body, projectId) {
         const line = /已移到系统回收站：([^\n]+)/u.exec(text)?.[1] || '';
         return [...line.matchAll(/`([^`\n]+)`（节点/gu)].map(item => make({ op: 'delete', path: item[1] }));
     }
+    if (FORGE_ROLLBACK_HEADER.test(text)) {
+        return [...text.matchAll(FORGE_ROLLBACK_ITEM)].map(item => make({ op: FORGE_ROLLBACK_OP[item[2]], path: item[1] }));
+    }
     if (FORGE_CODE_MOVE_HEADER.test(text)) {
         const parts = text.split(/^### `([^`\n]+)`[ \t]*$/mu);
         const operations = [];
@@ -199,17 +206,24 @@ const PROJECT_ROOT_PATTERNS = [
 ];
 
 /** 从 ProjectForge 的结果文本里还原 projectId → 工程根目录；后出现的覆盖先出现的。 */
+/** 一段文本里的工程根目录，按出现位置排序：[{ id, root, index }]。 */
+export function projectRootMentions(text) {
+    if (typeof text !== 'string' || !text.includes('根目录：')) return [];
+    const mentions = [];
+    for (const pattern of PROJECT_ROOT_PATTERNS) {
+        pattern.lastIndex = 0;
+        for (const match of text.matchAll(pattern)) {
+            const root = match[2].replace(/（[^）]*）.*$/u, '').trim();
+            if (root) mentions.push({ id: match[1], root, index: match.index });
+        }
+    }
+    return mentions.sort((a, b) => a.index - b.index);
+}
+
 export function findProjectRoots(texts) {
     const roots = new Map();
     for (const text of texts) {
-        if (typeof text !== 'string' || !text.includes('根目录：')) continue;
-        for (const pattern of PROJECT_ROOT_PATTERNS) {
-            pattern.lastIndex = 0;
-            for (const match of text.matchAll(pattern)) {
-                const root = match[2].replace(/（[^）]*）.*$/u, '').trim();
-                if (root) roots.set(match[1], root);
-            }
-        }
+        for (const { id, root } of projectRootMentions(text)) roots.set(id, root);
     }
     return roots;
 }

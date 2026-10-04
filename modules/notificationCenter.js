@@ -35,6 +35,7 @@
 
         const banner = options.banner || doc.getElementById('notificationPendingBanner');
         const toolbar = options.toolbar || doc.getElementById('notificationToolbar');
+        const bellButton = options.bellButton !== undefined ? options.bellButton : doc.getElementById('toggleNotificationsBtn');
         const storage = options.storage || globalThis.localStorage;
         const raf = options.requestFrame || (cb => setTimeout(cb, 16));
         const timers = new Set();
@@ -106,7 +107,8 @@
         const stateOf = item => item.dataset.notificationState || 'info';
         const settledItems = state => items().filter(item => stateOf(item) === state);
         const pendingItems = () => items().filter(item => stateOf(item) === 'pending' && !item.classList.contains('is-busy'));
-        const approvableItems = () => pendingItems().filter(item => !item.querySelector('.vcp-btn-audit'));
+        // 需要内容审计的、会删除代码的请求都必须逐条看过再允许，批量允许时跳过
+        const approvableItems = () => pendingItems().filter(item => !item.querySelector('.vcp-btn-audit, .notification-approval-preview-section.is-deletion'));
 
         function counts() {
             const all = items();
@@ -155,7 +157,17 @@
                 if (c.pending === 0) resetConfirm();
                 // 只剩需逐条审计的请求时，批量允许没有可做的事
                 const approve = banner.querySelector('[data-action="approve-all"]');
-                if (approve) approve.disabled = c.pending > 0 && approvableItems().length === 0;
+                if (approve) {
+                    const approvable = approvableItems().length;
+                    approve.disabled = c.pending > 0 && approvable === 0;
+                    // 被跳过的请求要说清楚原因，否则按钮灰掉 / 只处理一部分会让人困惑
+                    const skipped = c.pending - approvable;
+                    const hint = skipped > 0 ? `${skipped} 项会删除代码或需要审计，请逐条处理` : '';
+                    if ((approve.getAttribute('title') || '') !== hint) {
+                        if (hint) approve.setAttribute('title', hint);
+                        else approve.removeAttribute('title');
+                    }
+                }
             }
             if (toolbar) {
                 toolbar.querySelectorAll('[data-filter]').forEach(chip => {
@@ -164,6 +176,36 @@
                     if (chip.getAttribute('aria-pressed') !== pressed) chip.setAttribute('aria-pressed', pressed);
                     setText(chip.querySelector('.notification-chip-count'), key === 'all' || !c[key] ? '' : String(c[key]));
                 });
+            }
+
+            if (bellButton) {
+                let badge = bellButton.querySelector('.notification-bell-badge');
+                if (c.pending > 0) {
+                    if (!badge) {
+                        badge = doc.createElement('span');
+                        badge.className = 'notification-bell-badge';
+                        badge.setAttribute('aria-hidden', 'true');
+                        bellButton.appendChild(badge);
+                    }
+                    const text = c.pending > 99 ? '99+' : String(c.pending);
+                    setText(badge, text);
+                    setHidden(badge, false);
+                    bellButton.setAttribute('data-pending-count', String(c.pending));
+
+                    const isPanelActive = bellButton.classList.contains('notification-panel-active') || bellButton.getAttribute('aria-expanded') === 'true';
+                    const baseLabel = (bellButton.getAttribute('aria-label') || (isPanelActive ? '关闭通知面板' : '打开通知面板'))
+                        .replace(/（[^）]*待审批）/, '').trim();
+                    bellButton.setAttribute('aria-label', `${baseLabel}（${text} 项待审批）`);
+                } else {
+                    if (badge) {
+                        setHidden(badge, true);
+                    }
+                    bellButton.removeAttribute('data-pending-count');
+                    const isPanelActive = bellButton.classList.contains('notification-panel-active') || bellButton.getAttribute('aria-expanded') === 'true';
+                    const baseLabel = (bellButton.getAttribute('aria-label') || (isPanelActive ? '关闭通知面板' : '打开通知面板'))
+                        .replace(/（[^）]*待审批）/, '').trim();
+                    bellButton.setAttribute('aria-label', baseLabel);
+                }
             }
         }
 
@@ -293,6 +335,15 @@
                 timers.clear();
                 sectionHeaders.forEach(({ li }) => li.remove());
                 empty.remove();
+                if (bellButton) {
+                    bellButton.querySelector('.notification-bell-badge')?.remove();
+                    bellButton.removeAttribute('data-pending-count');
+                    const currentLabel = bellButton.getAttribute('aria-label');
+                    if (currentLabel) {
+                        const cleaned = currentLabel.replace(/（[^）]*待审批）/, '').trim();
+                        bellButton.setAttribute('aria-label', cleaned);
+                    }
+                }
             },
         };
     }

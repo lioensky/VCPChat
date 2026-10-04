@@ -41,8 +41,10 @@ function createAuditDom() {
     return { dom, window, sentMessages };
 }
 
-test('main-window tool approval exposes change audit and submits modal reason', async () => {
+test('main-window tool approval exposes change audit and submits modal reason', async (t) => {
     const { dom, window, sentMessages } = createAuditDom();
+    // 断言失败时也要关窗口，否则 JSDOM 计时器会把测试进程挂住
+    t.after(() => dom.window.close());
     const longBefore = Array.from({ length: 420 }, (_, index) => `const before_${index} = ${index};`).join('\n');
     const longAfter = `${longBefore}\nconst acceptedChange = true;`;
     const request = {
@@ -90,7 +92,7 @@ test('main-window tool approval exposes change audit and submits modal reason', 
     window.document.getElementById('toolChangeAuditReason').value = '已核对新增代码，可以执行。';
     window.document.getElementById('approveToolChangeAudit').click();
 
-    assert.deepEqual(sentMessages, [{
+    assert.deepEqual(JSON.parse(JSON.stringify(sentMessages)), [{
         type: 'tool_approval_response',
         data: {
             requestId: 'approve-change-audit-test',
@@ -99,12 +101,11 @@ test('main-window tool approval exposes change audit and submits modal reason', 
         }
     }]);
     assert.equal(modal.classList.contains('active'), false);
-
-    dom.window.close();
 });
 
-test('ordinary tool approval does not expose change audit', () => {
+test('ordinary tool approval does not expose change audit', (t) => {
     const { dom, window } = createAuditDom();
+    t.after(() => dom.window.close());
     const request = {
         type: 'tool_approval_request',
         data: {
@@ -127,6 +128,4 @@ test('ordinary tool approval does not expose change audit', () => {
         button => button.textContent
     );
     assert.deepEqual(actionLabels, ['允许', '拒绝']);
-
-    dom.window.close();
 });

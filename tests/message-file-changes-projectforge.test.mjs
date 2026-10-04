@@ -176,3 +176,28 @@ test('ProjectForge rows whose project root is unknown still list the file but ca
     assert.equal(row.querySelector('.text-diff-added').textContent, '+2');
     controller.dispose();
 });
+
+test('ProjectForge: Rollback lists the files it restored, recreated or trashed', () => {
+    const rollback = [
+        forge('command:「始」Rollback「末」,\nprojectId:「始」pqug7「末」,\nbatch:「始」b38「末」'),
+        RESULT('ProjectForge', OK, [
+            '## ✅ 已回退：回退批次 b38（验证回退）',
+            '- 回退批次 `b39`（回退本身也可再回退：Rollback batch=b39）',
+            '- `tests/a.test.js`：恢复内容（节点 `n39`）',
+            '- `src/new.js`：移到回收站（节点 `n40`）',
+            '- `src/old.js`：重建文件（节点 `n41`）'
+        ].join('\n'))
+    ].join('\n');
+    assert.deepEqual(extractFileChanges(rollback), [
+        { path: 'tests/a.test.js', projectId: 'pqug7', op: 'edit' },
+        { path: 'src/new.js', projectId: 'pqug7', op: 'delete' },
+        { path: 'src/old.js', projectId: 'pqug7', op: 'create' }
+    ]);
+
+    // 预演和有冲突未执行的回退都不算改动
+    const dryRun = [
+        forge('command:「始」Rollback「末」,\nprojectId:「始」pqug7「末」,\nbatch:「始」last「末」,\ndryRun:「始」true「末」'),
+        RESULT('ProjectForge', OK, '## 🔍 回退预演（dryRun）：回退批次 b38\n| 文件 | 动作 | 冲突 |\n|---|---|---|\n| `tests/a.test.js` | 恢复内容 | - |')
+    ].join('\n');
+    assert.deepEqual(extractFileChanges(dryRun), []);
+});

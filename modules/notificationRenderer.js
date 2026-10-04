@@ -56,7 +56,12 @@ function updateVCPLogStatus(statusUpdate, vcpLogConnectionStatusDiv) {
 }
 
 const handledToolApprovalRequestIds = new Set();
+const toolApprovalTimers = new Map();
 const TOOL_CHANGE_DIFF_MATRIX_LIMIT = 120000;
+const TOOL_APPROVAL_DIFF_PREVIEW_LINES = 8;
+// AI 常把 EditCode 的 replace 写成这些名字；末尾数字对应编号步骤
+const TOOL_APPROVAL_REPLACE_TYPO = /^(replacement|replace[_-]?(?:with|text|content|code)|new[_-]?(?:content|text|code|string))(\d*)$/i;
+const TOOL_APPROVAL_TARGET_TYPO = /^(old[_-]?(?:code|string|text|content)|search|find|original)\d*$/i;
 
 function formatToolChangePreviewValue(value) {
     if (typeof value === 'string') return value;
@@ -67,6 +72,16 @@ function formatToolChangePreviewValue(value) {
     } catch (error) {
         return String(value ?? '');
     }
+}
+
+function truncatePreviewLines(value, maxLines = 6) {
+    if (value === null || typeof value === 'undefined') return '';
+    const text = formatToolChangePreviewValue(value);
+    const lines = text.split('\n');
+    if (lines.length <= maxLines) {
+        return text;
+    }
+    return lines.slice(0, maxLines).join('\n') + '\n…';
 }
 
 function buildToolChangeDiff(beforeValue, afterValue) {
@@ -275,6 +290,18 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
 
             console.log('[NotificationRenderer] 工具调用已按规则自动允许:', autoApprovalLog.data);
             return;
+        }
+
+        const requestId = logData.data.requestId;
+        if (requestId) {
+            if (handledToolApprovalRequestIds.has(requestId)) {
+                return;
+            }
+            const existingElement = typeof document !== 'undefined'
+                && document.querySelector?.(`.notification-tool-approval[data-tool-approval-request-id="${CSS.escape(String(requestId))}"]`);
+            if (existingElement) {
+                return;
+            }
         }
     }
 
@@ -490,6 +517,308 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
                 contentDiv.appendChild(p);
             }
         }
+        if (isToolApprovalRequest && logData.data) {
+            const approvalDetails = document.createElement('div');
+            approvalDetails.classList.add('notification-approval-details');
+
+            const filePath = logData.data.filePath || logData.data.path || logData.data.args?.filePath || logData.data.args?.path;
+            if (filePath) {
+                const pathRow = document.createElement('div');
+                pathRow.classList.add('notification-approval-row', 'notification-approval-path');
+                const pathLabel = document.createElement('span');
+                pathLabel.classList.add('notification-approval-label');
+                pathLabel.textContent = '文件: ';
+                const pathValue = document.createElement('span');
+                pathValue.classList.add('notification-approval-value');
+                pathValue.textContent = String(filePath);
+                pathRow.append(pathLabel, pathValue);
+                approvalDetails.appendChild(pathRow);
+            }
+
+            const reasonText = logData.data.reason || logData.data.args?.reason;
+            if (reasonText) {
+                const reasonRow = document.createElement('div');
+                reasonRow.classList.add('notification-approval-row', 'notification-approval-ai-reason');
+                const reasonLabel = document.createElement('span');
+                reasonLabel.classList.add('notification-approval-label');
+                reasonLabel.textContent = '理由: ';
+                const reasonValue = document.createElement('span');
+                reasonValue.classList.add('notification-approval-value');
+                reasonValue.textContent = String(reasonText);
+                reasonRow.append(reasonLabel, reasonValue);
+                approvalDetails.appendChild(reasonRow);
+            }
+
+            const approvalArgs = logData.data.args || {};
+            const changePreview = logData.data.changePreview || approvalArgs.changePreview;
+            const previewSections = [];
+
+            const parseLinesRange = (step) => {
+                let start = step.start;
+                let end = step.end;
+                if (start === undefined && end === undefined && step.lines !== undefined) {
+                    const linesStr = String(step.lines).trim();
+                    const match = linesStr.match(/^(\d+)\s*[-~,:]\s*(\d+)$/);
+                    if (match) {
+                        start = Number(match[1]);
+                        end = Number(match[2]);
+                    } else if (/^\d+$/.test(linesStr)) {
+                        start = Number(linesStr);
+                        end = start;
+                    }
+                }
+                if (start !== undefined && end !== undefined) {
+                    return Number(start) === Number(end) ? `${start}` : `${start}-${end}`;
+                }
+                if (start !== undefined) return `${start}`;
+                if (end !== undefined) return `${end}`;
+                return '';
+            };
+
+            // rawArgs/suffix 用来找写错名字的 replace：编号步骤只收已知字段，错名要回原始参数里找
+            const formatStepSection = (step, rawArgs = step, suffix = '') => {
+                const op = String(step.op || '').trim().toLowerCase();
+                const stepTarget = step.target;
+                const stepReplace = step.replace;
+                const hasTarget = typeof stepTarget !== 'undefined' && stepTarget !== '';
+                const replaceText = formatToolChangePreviewValue(stepReplace);
+                const lineRange = parseLinesRange(step);
+
+                if (hasTarget && (op === 'delete' || !replaceText)) {
+                    // EditCode 缺 replace（或为空）时 ProjectForge 会把整段删掉；
+                    // AI 常把 replace 写成 replacement 之类，这时多半不是真想删，要点名提醒
+                    const misnamedReplace = op !== 'delete' && typeof stepReplace === 'undefined'
+                        ? Object.keys(rawArgs).find(key => {
+                            const match = key.match(TOOL_APPROVAL_REPLACE_TYPO);
+                            return match && match[2] === suffix;
+                        })
+                        : undefined;
+                    return {
+                        label: misnamedReplace
+                            ? `将删除这段代码（参数写成了 ${misnamedReplace}，ProjectForge 只认 replace${suffix}）`
+                            : '将删除这段代码',
+                        deletion: true,
+                        text: truncatePreviewLines(stepTarget, 6)
+                    };
+                }
+                if (hasTarget) {
+                    const changed = buildToolChangeDiff(stepTarget, stepReplace).filter(line => line.type !== 'context');
+                    const visible = changed.slice(0, TOOL_APPROVAL_DIFF_PREVIEW_LINES);
+                    const indents = visible.filter(line => line.text.trim()).map(line => line.text.match(/^[ \t]*/)[0].length);
+                    const commonIndent = indents.length ? Math.min(...indents) : 0;
+                    const shown = visible.map(line => ({ ...line, text: line.text.slice(Math.min(commonIndent, line.text.match(/^[ \t]*/)[0].length)) }));
+                    return {
+                        label: changed.length ? '改动' : '改动（无实际变化）',
+                        diffLines: shown,
+                        more: changed.length - shown.length
+                    };
+                }
+
+                if (op === 'delete') {
+                    if (lineRange) {
+                        return { label: `将删除第 ${lineRange} 行`, deletion: true, text: '' };
+                    }
+                    if (step.symbol !== undefined) {
+                        return { label: `将删除符号 ${step.symbol}`, deletion: true, text: '' };
+                    }
+                    return { label: '将删除代码', deletion: true, text: '' };
+                }
+
+                if (op === 'insert' || step.after !== undefined || step.before !== undefined) {
+                    let label = '插入代码';
+                    if (step.after !== undefined) label = `在第 ${step.after} 行后插入`;
+                    else if (step.before !== undefined) label = `在第 ${step.before} 行前插入`;
+                    const text = step.content !== undefined ? truncatePreviewLines(step.content, 6) : (replaceText || '');
+                    return { label, text };
+                }
+
+                if (step.symbol !== undefined) {
+                    const label = `替换符号 ${step.symbol}`;
+                    const text = step.content !== undefined ? truncatePreviewLines(step.content, 6) : (replaceText || '');
+                    return { label, text };
+                }
+
+                if (lineRange) {
+                    // 按行替换缺 content：新版 ProjectForge 拒绝执行，旧版会把这些行删掉，按删除提示并排除出批量允许
+                    if (step.content === undefined) {
+                        return { label: `第 ${lineRange} 行缺少 content${suffix}，可能会被删掉`, deletion: true, text: replaceText ? truncatePreviewLines(replaceText, 6) : '' };
+                    }
+                    return { label: `第 ${lineRange} 行 → 新内容`, text: truncatePreviewLines(step.content, 6) };
+                }
+
+                if (step.content !== undefined) {
+                    return { label: '新内容', text: truncatePreviewLines(step.content, 6) };
+                }
+                if (replaceText) {
+                    return { label: '新内容', text: truncatePreviewLines(replaceText, 6) };
+                }
+
+                return null;
+            };
+
+            const argsSource = (approvalArgs && Object.keys(approvalArgs).length > 0) ? approvalArgs : (logData.data || {});
+            let editSteps = [];
+            if (Array.isArray(argsSource.edits)) {
+                editSteps = argsSource.edits.filter(step => step && typeof step === 'object');
+            } else if (typeof argsSource.edits === 'string') {
+                try {
+                    const parsed = JSON.parse(argsSource.edits);
+                    if (Array.isArray(parsed)) editSteps = parsed.filter(step => step && typeof step === 'object');
+                } catch {}
+            }
+            if (!editSteps.length) {
+                const numbered = new Map();
+                const stepRegex = /^(op|start|end|lines|after|before|content|target|replace|expect|line|pick|symbol|range)(\d+)$/i;
+                for (const [key, value] of Object.entries(argsSource)) {
+                    const match = key.match(stepRegex);
+                    if (!match) continue;
+                    const field = match[1].toLowerCase();
+                    const num = Number(match[2]);
+                    if (!numbered.has(num)) numbered.set(num, {});
+                    numbered.get(num)[field] = value;
+                }
+                if (numbered.size) {
+                    editSteps = [...numbered.keys()].sort((a, b) => a - b).map(n => ({ step: n, ...numbered.get(n) }));
+                }
+            }
+
+            const MAX_EDIT_STEPS_PREVIEW = 5;
+            if (editSteps.length > 0) {
+                const visibleSteps = editSteps.slice(0, MAX_EDIT_STEPS_PREVIEW);
+                visibleSteps.forEach(step => {
+                    // 编号步骤带 step 序号，错名参数在原始参数里以同一序号结尾
+                    const sec = step.step !== undefined ? formatStepSection(step, argsSource, String(step.step)) : formatStepSection(step);
+                    // 多步时标上序号，几步内容相近也能分清
+                    if (sec && editSteps.length > 1) sec.label = `步骤 ${step.step ?? editSteps.indexOf(step) + 1} · ${sec.label}`;
+                    if (sec) previewSections.push(sec);
+                });
+                if (editSteps.length > MAX_EDIT_STEPS_PREVIEW) {
+                    const remaining = editSteps.length - MAX_EDIT_STEPS_PREVIEW;
+                    previewSections.push({
+                        label: `… 还有 ${remaining} 步`,
+                        text: ''
+                    });
+                }
+            } else {
+                const singleStep = {
+                    op: approvalArgs.op,
+                    target: changePreview?.target ?? logData.data.target ?? approvalArgs.target,
+                    replace: changePreview?.replace ?? logData.data.replace ?? approvalArgs.replace,
+                    start: approvalArgs.start,
+                    end: approvalArgs.end,
+                    lines: approvalArgs.lines,
+                    symbol: approvalArgs.symbol,
+                    after: approvalArgs.after,
+                    before: approvalArgs.before,
+                    content: approvalArgs.content
+                };
+                const hasAnyStepField = singleStep.op !== undefined
+                    || singleStep.target !== undefined
+                    || (singleStep.replace !== undefined && singleStep.replace !== '')
+                    || singleStep.start !== undefined
+                    || singleStep.end !== undefined
+                    || singleStep.lines !== undefined
+                    || singleStep.symbol !== undefined
+                    || singleStep.after !== undefined
+                    || singleStep.before !== undefined;
+
+                if (hasAnyStepField) {
+                    const sec = formatStepSection(singleStep, approvalArgs);
+                    if (sec) previewSections.push(sec);
+                } else if (typeof approvalArgs.content === 'string') {
+                    previewSections.push({ label: '文件内容', text: truncatePreviewLines(approvalArgs.content, 6) });
+                }
+            }
+
+            // EditCode 一个能认出的编辑字段都没有：批准了 ProjectForge 也会拒绝，别让用户对着空卡片白等白批
+            if (String(approvalArgs.command || '') === 'EditCode' && !previewSections.length) {
+                const misnamed = Object.keys(approvalArgs).filter(key => TOOL_APPROVAL_TARGET_TYPO.test(key) || TOOL_APPROVAL_REPLACE_TYPO.test(key));
+                previewSections.push({
+                    label: misnamed.length
+                        ? `参数写成了 ${misnamed.join(' / ')}，ProjectForge 只认 target / replace，批准了也不会执行`
+                        : '没有可识别的编辑内容，ProjectForge 会拒绝执行',
+                    deletion: true,
+                    text: ''
+                });
+            }
+
+            // 回退、删文件、删工程这类命令的作用对象不在 path/content 里，卡片上要写明，
+            // 否则只能信 AI 自己写的理由
+            const pickArg = (...names) => {
+                for (const name of names) {
+                    const key = Object.keys(approvalArgs).find(k => k.toLowerCase() === name.toLowerCase());
+                    if (key && approvalArgs[key] !== undefined && approvalArgs[key] !== '') return String(approvalArgs[key]);
+                }
+                return undefined;
+            };
+            const isTrue = value => /^(true|1|yes)$/i.test(String(value ?? '').trim());
+            const command = String(approvalArgs.command || '');
+            if (command === 'Rollback') {
+                const batchRef = pickArg('batch', 'batchId');
+                const nodeRef = pickArg('toNode', 'node', 'nodeId');
+                const scope = pickArg('path', 'file');
+                let label = '回退目标未写明，ProjectForge 会拒绝执行';
+                if (batchRef) label = /^last$/i.test(batchRef) ? '撤销最近一次批次' : `撤销批次 ${batchRef}`;
+                else if (nodeRef) label = `把${scope ? ` ${scope} ` : '整个工程'}恢复到节点 ${nodeRef} 时的状态`;
+                if (isTrue(pickArg('dryRun'))) label += '（仅预演，不写盘）';
+                previewSections.push({ label, text: '' });
+                if (isTrue(pickArg('force'))) {
+                    previewSections.push({ label: 'force=true：磁盘上不是 ProjectForge 写入的改动也会被覆盖', deletion: true, text: '' });
+                }
+            } else if (command === 'RemoveFile') {
+                const paths = pickArg('paths');
+                if (paths) previewSections.push({ label: '将移到回收站（可用 Rollback 恢复）', text: truncatePreviewLines(paths.split(/[,\n]/).map(p => p.trim()).filter(Boolean).join('\n'), 6) });
+            } else if (command === 'MoveFile') {
+                const from = pickArg('from');
+                const to = pickArg('to');
+                if (from || to) previewSections.push({ label: '移动 / 重命名', text: `${from || '?'} → ${to || '?'}` });
+            } else if (command === 'DeleteProjects' || command === 'RestoreProjects' || command === 'PurgeProjects') {
+                const ids = pickArg('projectIds', 'projectId') || '';
+                const label = {
+                    DeleteProjects: '删除工程（软删，可恢复，不动磁盘文件）',
+                    RestoreProjects: '恢复工程',
+                    PurgeProjects: '永久清除工程记录和全部历史快照，之后无法回退'
+                }[command];
+                previewSections.push({ label, deletion: command === 'PurgeProjects', text: ids.split(/[,\n]/).map(p => p.trim()).filter(Boolean).join('\n') });
+            }
+
+            if (previewSections.length) {
+                const previewBlock = document.createElement('div');
+                previewBlock.classList.add('notification-approval-preview');
+                previewSections.forEach(({ label, text, deletion, diffLines, more }) => {
+                    const section = document.createElement('div');
+                    section.classList.add('notification-approval-preview-section');
+                    if (deletion) section.classList.add('is-deletion');
+                    const labelElement = document.createElement('div');
+                    labelElement.classList.add('notification-approval-preview-label');
+                    labelElement.textContent = label;
+                    const pre = document.createElement('pre');
+                    pre.classList.add('notification-approval-preview-code');
+                    if (diffLines) {
+                        diffLines.forEach(line => {
+                            const row = document.createElement('span');
+                            row.classList.add('notification-approval-diff-line', line.type === 'add' ? 'is-add' : 'is-delete');
+                            row.textContent = `${line.type === 'add' ? '+' : '-'} ${line.text}\n`;
+                            pre.appendChild(row);
+                        });
+                        if (more > 0) pre.appendChild(document.createTextNode(`… 还有 ${more} 行改动`));
+                    } else if (typeof text === 'string' && text !== '') {
+                        pre.textContent = text;
+                    }
+                    if (diffLines || (typeof text === 'string' && text !== '')) {
+                        section.append(labelElement, pre);
+                    } else {
+                        section.append(labelElement);
+                    }
+                    previewBlock.appendChild(section);
+                });
+                approvalDetails.appendChild(previewBlock);
+            }
+
+            if (approvalDetails.hasChildNodes()) {
+                contentDiv.appendChild(approvalDetails);
+            }
+        }
         element.appendChild(contentDiv);
 
         // Special handling for approval requests - Moved here to be before timestamp
@@ -653,18 +982,20 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
     };
 
     const settleApprovalListItem = (approvalElement, decision) => {
+        if (approvalElement.dataset.notificationState === 'resolved') return;
+        const isExpired = decision?.expired === true;
         const approved = decision?.approved === true;
         const reason = typeof decision?.reason === 'string' ? decision.reason.trim() : '';
         approvalElement.querySelectorAll('.notification-approval-reason, .notification-actions').forEach(node => node.remove());
         delete approvalElement.dataset.protectedNotification;
         approvalElement.classList.remove('notification-protected');
-        approvalElement.dataset.notificationTone = approved ? 'success' : 'muted';
+        approvalElement.dataset.notificationTone = isExpired ? 'muted' : (approved ? 'success' : 'muted');
 
         const result = document.createElement('div');
-        result.classList.add('notification-result', approved ? 'is-approved' : 'is-rejected');
+        result.classList.add('notification-result', isExpired ? 'is-expired' : (approved ? 'is-approved' : 'is-rejected'));
         const verdict = document.createElement('span');
         verdict.classList.add('notification-result-verdict');
-        verdict.textContent = approved ? '已允许' : '已拒绝';
+        verdict.textContent = isExpired ? '已过期' : (approved ? '已允许' : '已拒绝');
         result.appendChild(verdict);
         if (reason) {
             const reasonText = document.createElement('span');
@@ -680,6 +1011,16 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
 
     const dismissToolApprovalNotifications = (requestId, decision = null) => {
         if (!requestId) return;
+
+        const cancelTimer = toolApprovalTimers.get(requestId);
+        if (cancelTimer) {
+            if (typeof cancelTimer === 'function') {
+                cancelTimer();
+            } else {
+                clearTimeout(cancelTimer);
+            }
+            toolApprovalTimers.delete(requestId);
+        }
 
         const escapedRequestId = CSS.escape(String(requestId));
         const approvalElements = document.querySelectorAll(`.notification-tool-approval[data-tool-approval-request-id="${escapedRequestId}"]`);
@@ -705,6 +1046,12 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
         });
     };
 
+    const expireToolApprovalNotification = (requestId) => {
+        if (!requestId || handledToolApprovalRequestIds.has(requestId)) return;
+        handledToolApprovalRequestIds.add(requestId);
+        dismissToolApprovalNotifications(requestId, { expired: true });
+    };
+
     // 初始化焦点清理机制
     initializeFocusCleanup();
 
@@ -714,8 +1061,8 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
     // Check if message should be filtered
     const filterResult = checkMessageFilter(titleText);
 
-    // 如果过滤总开关未启用，或者明确匹配白名单规则，则显示通知
-    const shouldShowNotification = !filterResult || (filterResult.action === 'show');
+    // 如果过滤总开关未启用，或者明确匹配白名单规则，则显示通知；审批请求（tool_approval_request）必须有人回应，免受黑名单规则拦截
+    const shouldShowNotification = isToolApprovalRequest || !filterResult || (filterResult.action === 'show');
 
     if (toastContainer && (!notificationsSidebarElement || !notificationsSidebarElement.classList.contains('active')) && shouldShowNotification) {
         const toastBubble = document.createElement('div');
@@ -774,6 +1121,32 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
         scheduleNotificationTimeout(() => listItemBubble.classList.add('visible'), 50);
     } else {
         console.warn('Notifications sidebar UL not found. Persistent notification not added.');
+    }
+
+    if (isToolApprovalRequest && logData.data?.requestId) {
+        const reqId = logData.data.requestId;
+        const ttlMs = logData.data.approvalTtlMs;
+        if (typeof ttlMs === 'number' && ttlMs > 0) {
+            let remainingMs = ttlMs;
+            // 实时请求从收到时起算，避免服务器与本机时钟不一致；只有断线重放的旧请求才按服务器时间扣掉已过去的部分
+            if (logData._vcpReplay === true && logData.data.timestamp) {
+                const parsedTime = Date.parse(logData.data.timestamp);
+                if (!Number.isNaN(parsedTime)) {
+                    const elapsedMs = Date.now() - parsedTime;
+                    remainingMs = Math.min(ttlMs, ttlMs - elapsedMs);
+                }
+            }
+
+            if (remainingMs <= 0) {
+                expireToolApprovalNotification(reqId);
+            } else {
+                const rawTimer = scheduleNotificationTimeout(() => {
+                    expireToolApprovalNotification(reqId);
+                }, remainingMs);
+                const cancelTimer = typeof rawTimer === 'function' ? rawTimer : () => clearTimeout(rawTimer);
+                toolApprovalTimers.set(reqId, cancelTimer);
+            }
+        }
     }
 }
 

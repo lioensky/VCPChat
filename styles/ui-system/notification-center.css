@@ -538,6 +538,67 @@ html .vcp-ui-scope#notificationsSidebar .notification-item[data-notification-sta
     max-height: 132px;
 }
 
+/* Approval details: file, the AI's reason and a before/after preview */
+html .vcp-ui-scope#notificationsSidebar .notification-approval-details {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+    gap: 4px;
+    margin-top: 6px;
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-approval-row {
+    font-size: var(--vcp-ui-font-caption);
+    line-height: 1.45;
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-approval-label {
+    color: var(--vcp-ui-text-3);
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-approval-path .notification-approval-value {
+    color: var(--vcp-ui-text-1);
+    font-family: var(--vcp-ui-font-family-mono, ui-monospace, "Cascadia Mono", Consolas, monospace);
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-approval-preview {
+    display: grid;
+    gap: 4px;
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-approval-preview-label {
+    color: var(--vcp-ui-text-3);
+    font-size: var(--vcp-ui-font-caption);
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-item .notification-content .notification-approval-preview-code {
+    margin: 2px 0 0;
+    padding: 4px 8px;
+    border-left: 2px solid var(--vcp-ui-border);
+    background: var(--vcp-ui-fill-1);
+    white-space: pre;
+    overflow-x: auto;
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-approval-diff-line.is-add {
+    color: var(--nc-tone-success);
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-approval-diff-line.is-delete {
+    color: var(--nc-tone-error);
+}
+
+/* 没有 replace 的 EditCode 等于删除整段，必须一眼看出来 */
+html .vcp-ui-scope#notificationsSidebar .notification-approval-preview-section.is-deletion .notification-approval-preview-label {
+    color: var(--nc-tone-error);
+    font-weight: 600;
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-item .notification-content .is-deletion .notification-approval-preview-code {
+    border-left-color: var(--nc-tone-error);
+    text-decoration: line-through;
+}
+
 /* Hover actions (copy / dismiss) */
 html .vcp-ui-scope#notificationsSidebar .notification-card-actions {
     position: absolute;
@@ -686,6 +747,7 @@ html .vcp-ui-scope#notificationsSidebar .notification-result-verdict {
 
 html .vcp-ui-scope#notificationsSidebar .notification-result.is-approved .notification-result-verdict { color: var(--nc-tone-success); }
 html .vcp-ui-scope#notificationsSidebar .notification-result.is-rejected .notification-result-verdict { color: var(--nc-tone-error); }
+html .vcp-ui-scope#notificationsSidebar .notification-result.is-expired .notification-result-verdict { color: var(--vcp-ui-text-3); }
 
 html .vcp-ui-scope#notificationsSidebar .notification-result-reason {
     min-width: 0;

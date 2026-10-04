@@ -25,6 +25,10 @@ import {
     setToolResultHidden,
 } from './renderer/toolResultRegions.js';
 import { parseJevToolUse } from './renderer/jevToolUse.js';
+import {
+    findMalformedToolFields,
+    describeToolRequestMarkerProblem
+} from './renderer/toolRequestMarkers.js';
 
 import { createContentProcessor } from './renderer/contentProcessor.js';
 import { createMessageContextMenu } from './renderer/messageContextMenu.js';
@@ -1181,7 +1185,7 @@ function transformSpecialBlocks(text, codeBlockMap, thoughtChainMap = null) {
             // --- It's a regular tool call, render it normally ---
             const xmlToolNameMatch = content.match(/<tool_name>([\s\S]*?)<\/tool_name>/i);
 
-            let toolName = 'Processing...';
+            let toolName = '';
             let extractedName = (xmlToolNameMatch?.[1] || detectedToolName || '').trim();
             if (extractedName) {
                 extractedName = extractedName.replace(/[「{](?:始|末)(?:[Ee][Ss][Cc][Aa][Pp][Ee])?[」}]/gi, '').replace(/,$/, '').trim();
@@ -1189,6 +1193,14 @@ function transformSpecialBlocks(text, codeBlockMap, thoughtChainMap = null) {
             if (extractedName) {
                 toolName = extractedName;
             }
+
+            const malformedFields = findMalformedToolFields(content);
+            const markerProblem = describeToolRequestMarkerProblem({ toolName, malformedFields });
+            toolName = markerProblem.displayName;
+            const malformedClass = markerProblem.isMalformed ? ' is-malformed' : '';
+            const malformedHintHtml = markerProblem.hint
+                ? ` <span class="vcp-tool-malformed-hint">${escapeHtml(markerProblem.hint)}</span>`
+                : '';
 
             // 工具气泡会在外层继续经过 marked.parse()。如果把参数中的真实换行直接放进
             // <pre>，空行会终止 CommonMark raw HTML block，导致后续 Markdown 被浏览器
@@ -1204,10 +1216,11 @@ function transformSpecialBlocks(text, codeBlockMap, thoughtChainMap = null) {
              * <template> 的 DocumentFragment 不参与样式、布局、绘制与合成；
              * 点击展开时才将其克隆到 .vcp-tool-details，收起时再次释放。
              */
-            return `\n\n<div class="vcp-tool-use-bubble" data-vcp-block-type="tool-use" data-vcp-preserve-children="true">` +
+            return `\n\n<div class="vcp-tool-use-bubble${malformedClass}" data-vcp-block-type="tool-use" data-vcp-preserve-children="true">` +
                 `<div class="vcp-tool-summary">` +
                 `<span class="vcp-tool-label">VCP-ToolUse:</span> ` +
                 `<span class="vcp-tool-name-highlight">${escapeHtml(toolName)}</span>` +
+                malformedHintHtml +
                 `</div>` +
                 `<div class="vcp-tool-details"></div>` +
                 `<template class="vcp-tool-details-template"><pre>${escapedFullContent}</pre></template>` +

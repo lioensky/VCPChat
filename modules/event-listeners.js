@@ -1180,7 +1180,12 @@ export function setupEventListeners(deps) {
 
             toggleNotificationsBtn.classList.toggle('notification-panel-active', isActive);
             toggleNotificationsBtn.setAttribute('aria-expanded', String(isActive));
-            toggleNotificationsBtn.setAttribute('aria-label', isActive ? '关闭通知面板' : '打开通知面板');
+            // 待审批角标由 notificationCenter 维护，这里切换面板时别把「N 项待审批」覆盖掉
+            const pendingCount = Number(toggleNotificationsBtn.dataset.pendingCount) || 0;
+            const baseLabel = isActive ? '关闭通知面板' : '打开通知面板';
+            toggleNotificationsBtn.setAttribute('aria-label', pendingCount > 0
+                ? `${baseLabel}（${pendingCount > 99 ? '99+' : pendingCount} 项待审批）`
+                : baseLabel);
             toggleNotificationsBtn.title = `${isActive ? '左键关闭通知面板' : '左键打开通知面板'}/右键监控面板`;
         };
 

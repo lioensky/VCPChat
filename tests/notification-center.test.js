@@ -321,6 +321,25 @@ test('bulk approve skips requests that need an audit and reports them', () => {
     env.center.dispose();
 });
 
+test('bulk approve leaves requests that would delete code for one-by-one review', () => {
+    const env = mountFixture();
+    const plain = addCard(env, { state: 'pending', tone: 'warn' });
+    const deletion = addCard(env, { state: 'pending', tone: 'warn' });
+    const section = env.document.createElement('div');
+    section.className = 'notification-approval-preview-section is-deletion';
+    deletion.appendChild(section);
+    env.center.update();
+
+    const button = env.banner.querySelector('[data-action="approve-all"]');
+    assert.equal(button.getAttribute('title'), '1 项会删除代码或需要审计，请逐条处理');
+    assert.deepEqual({ ...env.center.decideAll('approve') }, { handled: 1, skipped: 1 });
+    assert.equal(plain.dataset.decision, 'approved');
+    assert.equal(deletion.dataset.notificationState, 'pending');
+    env.center.update();
+    assert.equal(button.disabled, true);
+    env.center.dispose();
+});
+
 test('settled cards are capped while pending approvals are never trimmed', () => {
     const env = mountFixture();
     const pending = addCard(env, { state: 'pending', tone: 'warn' });
@@ -362,4 +381,86 @@ test('mount without a list is a harmless no-op', () => {
     assert.doesNotThrow(() => center.update());
     assert.doesNotThrow(() => center.dispose());
     assert.deepEqual({ ...center.getCounts() }, {});
+});
+
+test('bell button badge tracks pending approvals from 0 to 2 to 0 and updates aria-label', () => {
+    const env = fixture();
+    const bellButton = env.document.createElement('button');
+    bellButton.id = 'toggleNotificationsBtn';
+    bellButton.setAttribute('aria-label', '打开通知面板');
+    env.document.body.appendChild(bellButton);
+    const mounted = mountFixture(env);
+
+    // 初始 0
+    let badge = bellButton.querySelector('.notification-bell-badge');
+    assert.ok(!badge || badge.hidden);
+    assert.equal(bellButton.hasAttribute('data-pending-count'), false);
+    assert.equal(bellButton.getAttribute('aria-label'), '打开通知面板');
+
+    // 0 -> 2
+    addCard(mounted, { state: 'pending', tone: 'warn' });
+    addCard(mounted, { state: 'pending', tone: 'warn' });
+    mounted.center.update();
+
+    badge = bellButton.querySelector('.notification-bell-badge');
+    assert.ok(badge);
+    assert.equal(badge.hidden, false);
+    assert.equal(badge.textContent, '2');
+    assert.equal(bellButton.getAttribute('data-pending-count'), '2');
+    assert.equal(bellButton.getAttribute('aria-label'), '打开通知面板（2 项待审批）');
+
+    // 2 -> 0
+    mounted.center.decideAll('approve');
+    mounted.center.update();
+
+    assert.equal(badge.hidden, true);
+    assert.equal(bellButton.hasAttribute('data-pending-count'), false);
+    assert.equal(bellButton.getAttribute('aria-label'), '打开通知面板');
+
+    mounted.center.dispose();
+});
+
+test('bell button badge displays 99+ when pending approvals exceed 99', () => {
+    const env = fixture();
+    const bellButton = env.document.createElement('button');
+    bellButton.id = 'toggleNotificationsBtn';
+    bellButton.setAttribute('aria-label', '打开通知面板');
+    env.document.body.appendChild(bellButton);
+    const mounted = mountFixture(env);
+
+    for (let index = 0; index < 105; index += 1) {
+        addCard(mounted, { state: 'pending', tone: 'warn' });
+    }
+    mounted.center.update();
+
+    const badge = bellButton.querySelector('.notification-bell-badge');
+    assert.ok(badge);
+    assert.equal(badge.hidden, false);
+    assert.equal(badge.textContent, '99+');
+    assert.equal(bellButton.getAttribute('data-pending-count'), '105');
+    assert.equal(bellButton.getAttribute('aria-label'), '打开通知面板（99+ 项待审批）');
+
+    mounted.center.dispose();
+});
+
+test('bell button badge and pending attributes are cleaned up on dispose', () => {
+    const env = fixture();
+    const bellButton = env.document.createElement('button');
+    bellButton.id = 'toggleNotificationsBtn';
+    bellButton.setAttribute('aria-label', '打开通知面板');
+    env.document.body.appendChild(bellButton);
+    const mounted = mountFixture(env);
+
+    addCard(mounted, { state: 'pending', tone: 'warn' });
+    mounted.center.update();
+
+    assert.ok(bellButton.querySelector('.notification-bell-badge'));
+    assert.equal(bellButton.getAttribute('data-pending-count'), '1');
+    assert.equal(bellButton.getAttribute('aria-label'), '打开通知面板（1 项待审批）');
+
+    mounted.center.dispose();
+
+    assert.equal(bellButton.querySelector('.notification-bell-badge'), null);
+    assert.equal(bellButton.hasAttribute('data-pending-count'), false);
+    assert.equal(bellButton.getAttribute('aria-label'), '打开通知面板');
 });
