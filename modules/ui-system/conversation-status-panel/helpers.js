@@ -1,6 +1,6 @@
 /**
  * modules/ui-system/conversation-status-panel/helpers.js
- * 会话右上角浮动的「状态」面板：Git 工具（更改 / 分支 / 提交或推送）与 V工程 进程（todo），
+ * 会话右上角浮动的「状态」面板：Git 变更（更改 / 分支 / 提交或推送）与 V工程 计划（todo），
  * 也可以收起成一颗迷你胶囊。
  *
  * 结构、交互和样式对照 ZCode 的 ConversationStatusPanel / GitBranchSwitcher / GitActionMenu
@@ -16,7 +16,8 @@ const COMPACT_TODO_THRESHOLD = 6;
 
 const TODO_FOCUS_WINDOW_SIZE = 3;
 
-const AUTO_PANEL_MIN_WIDTH = 640;
+// 和 ZCode 一致：聊天区够 1280 才自动展开，窄了（包括侧栏打开挤窄时）自动收成胶囊
+const AUTO_PANEL_MIN_WIDTH = 1280;
 
 export function filterBranches(branches, query) {
     const q = String(query || '').trim().toLowerCase();
@@ -51,16 +52,16 @@ export function pickMiniMetric({ items = [], git = null } = {}) {
     if (completed) return { kind: 'completed', icon: 'circle-check-big', text: completed.content, success: true };
     if (items.length) {
         const done = items.filter(item => item.status === 'completed').length;
-        return { kind: 'todo', icon: 'list-checks', text: '进程', count: `${done}/${items.length}` };
+        return { kind: 'todo', icon: 'list-checks', text: '计划', count: `${done}/${items.length}` };
     }
-    // 干净的仓库、没有进程：胶囊仍然显示当前分支，点开就是 Git 工具（ZCode 此时会整块隐藏，这里保留入口）
-    if (git?.branch) return { kind: 'branch', icon: 'git-branch', text: git.branch.head || (git.branch.detached ? '游离 HEAD' : 'Git 工具') };
+    // 干净的仓库、没有计划：胶囊仍然显示当前分支，点开就是 Git 变更（ZCode 此时会整块隐藏，这里保留入口）
+    if (git?.branch) return { kind: 'branch', icon: 'git-branch', text: git.branch.head || (git.branch.detached ? '游离 HEAD' : 'Git 变更') };
     return null;
 }
 
 export function pickEntryMetric({ workspaceCount = 0, hasWorkspace = false } = {}) {
     if (!workspaceCount || !hasWorkspace) return { icon: 'git-branch', text: '添加工作区', hint: '还没有工作区，点击去添加并查看 Git 改动' };
-    return { icon: 'git-branch', text: 'Git 工具', hint: '当前工作区不是 Git 仓库，点击查看' };
+    return { icon: 'git-branch', text: 'Git 变更', hint: '当前工作区不是 Git 仓库，点击查看' };
 }
 
 export function resolveVariant({ override = null, width = 0 } = {}) {

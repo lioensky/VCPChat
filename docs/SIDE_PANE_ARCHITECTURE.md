@@ -220,14 +220,14 @@ provider 只能修改自己的视图，跨模块动作通过组合者注入的�
 
 | 模块（`modules/ui-system/conversation-status-panel/`） | 职责 |
 | :--- | :--- |
-| `helpers.js` | 分支过滤、进程窗口、迷你指标、提交信息与格式化纯函数 |
+| `helpers.js` | 分支过滤、计划窗口、迷你指标、提交信息与格式化纯函数 |
 | `dom.js` | DOM 小工具和监听器清理 |
 | `floating.js` | 浮层定位、popover 与 modal 生命周期及浮层栈 |
 | `git-actions.js` | 分支加载、忙碌状态、切换、新建、推送、暂存 |
 | `branch-dialogs.js` | 分支浮层、新建、切换受阻和切换前提交 |
 | `commit-dialog.js` / `push-dialog.js` | 提交与推送对话框 |
 | `git-graph.js` | Git 图表、分页与刷新 |
-| `sections.js` | Git、命令、进程分区与迷你胶囊 |
+| `sections.js` | Git 变更、命令输出、计划分区与迷你胶囊 |
 
 各子模块不互相 import。入口把 DOM 工具、浮层操作、Git 操作及跨对话框跳转作为依赖和回调注入，并统一调用每个 owner 的 `dispose()`。分区开合通过组合者回调更新；共享数据通过 store 访问。Apache-2.0 来源说明保留在拆出的模块中。
 

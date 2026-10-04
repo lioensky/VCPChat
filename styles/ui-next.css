@@ -976,6 +976,14 @@ html body.chat-header-capsule .chat-agent-pill {
                 border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* 连续曲率的胶囊：两端从直边上提前开始弯，直边接圆弧处不再有一下突变；端头仍是圆的 */
+@supports (corner-shape: superellipse(1.1)) {
+    html body.chat-header-capsule .chat-agent-pill {
+        border-radius: 23px / 50%;
+        corner-shape: superellipse(1.1);
+    }
+}
+
 html:not(.light-theme):not([data-vcp-theme="light"]) body.chat-header-capsule .chat-agent-pill {
     background: rgba(30, 31, 35, 0.85);
     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -1088,6 +1096,11 @@ html body.chat-header-capsule .chat-header #currentAgentSettingsBtn {
 
 html body.chat-header-capsule .chat-messages-container {
     padding-top: 56px;
+}
+
+/* 状态面板展开时消息列右侧让位（各种消息布局的右边距都要让），宽度由面板按实际位置算好写进变量 */
+html body #chatMessages.zc-status-reserve {
+    padding-right: var(--zc-status-reserve) !important;
 }
 
 /* Shared input composer: keep the same horizontal inset in every presentation

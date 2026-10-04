@@ -1,6 +1,6 @@
 /**
  * modules/ui-system/conversation-status-panel/git-graph.js
- * 会话右上角浮动的「状态」面板：Git 工具（更改 / 分支 / 提交或推送）与 V工程 进程（todo），
+ * 会话右上角浮动的「状态」面板：Git 变更（更改 / 分支 / 提交或推送）与 V工程 计划（todo），
  * 也可以收起成一颗迷你胶囊。
  *
  * 结构、交互和样式对照 ZCode 的 ConversationStatusPanel / GitBranchSwitcher / GitActionMenu

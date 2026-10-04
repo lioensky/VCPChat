@@ -3,7 +3,7 @@
  * VCPChat Universal Sub-screen - V工程 计划详情 Provider
  *
  * 对应 ZCode 的 PlanDetailSidePane（在侧栏里整页阅读一份计划），数据来自 VCPChat 自己的 V工程（ProjectForge）：
- * 进程（todo）、变更文件、施工时间线、参与者。工程变更时经 onProjectForgeChanged 实时刷新。
+ * 计划（todo）、变更文件、施工时间线、参与者。工程变更时经 onProjectForgeChanged 实时刷新。
  * 面板样式沿用 status-panel 的 zc-* 变量，保持与状态面板一致。
  */
 
@@ -267,7 +267,7 @@ export function createPlanDetailSideProvider({
 
             function renderTodos() {
                 if (!model.items.length) {
-                    return section('计划', '', null, h('div', 'side-plan-empty', '这个工程还没有进程条目'));
+                    return section('计划', '', null, h('div', 'side-plan-empty', '这个工程还没有计划条目'));
                 }
                 const list = h('ol', 'side-plan-todos');
                 model.items.forEach((item, index) => {

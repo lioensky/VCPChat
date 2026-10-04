@@ -1,6 +1,6 @@
 /**
  * modules/ui-system/conversation-status-panel/sections.js
- * 会话右上角浮动的「状态」面板：Git 工具（更改 / 分支 / 提交或推送）与 V工程 进程（todo），
+ * 会话右上角浮动的「状态」面板：Git 变更（更改 / 分支 / 提交或推送）与 V工程 计划（todo），
  * 也可以收起成一颗迷你胶囊。
  *
  * 结构、交互和样式对照 ZCode 的 ConversationStatusPanel / GitBranchSwitcher / GitActionMenu
@@ -87,7 +87,7 @@ export function createStatusPanelSections({
             }));
         const section = h('section', 'zc-section');
         section.dataset.statusSection = 'environment';
-        section.appendChild(sectionHeader('git', 'Git 工具', open => (open ? null : h('span', 'zc-diff-inline',
+        section.appendChild(sectionHeader('git', 'Git 变更', open => (open ? null : h('span', 'zc-diff-inline',
             h('span', `zc-added${hasChanges ? '' : ' is-dim'}`, `+${git.added || 0}`), ' ',
             h('span', `zc-removed${hasChanges ? '' : ' is-dim'}`, `-${git.removed || 0}`)))));
         if (store.sectionOpen.git) section.appendChild(body);
@@ -122,8 +122,11 @@ export function createStatusPanelSections({
         }
         const section = h('section', 'zc-section');
         section.dataset.statusSection = 'runs';
-        section.appendChild(sectionHeader('runs', '命令（文本关联）',
-            () => h('span', 'zc-tabular zc-subtle', running ? `${running} 运行中` : `${runs.length}`)));
+        // 名字与侧栏「命令输出」标签一致；关联方式写进提示里
+        const header = sectionHeader('runs', '命令输出',
+            () => h('span', 'zc-tabular zc-subtle', running ? `${running} 运行中` : `${runs.length}`));
+        header.firstChild.title = '按命令文本关联，可能包含其他话题发起的同名命令';
+        section.appendChild(header);
         if (store.sectionOpen.runs) section.appendChild(body);
         return section;
     }
@@ -207,7 +210,7 @@ export function createStatusPanelSections({
 
         const section = h('section', 'zc-section');
         section.dataset.statusSection = 'plan';
-        section.appendChild(sectionHeader('plan', '进程',
+        section.appendChild(sectionHeader('plan', '计划',
             () => h('span', `zc-tabular${isCompleted ? ' zc-success' : ' zc-subtle'}`, `${completed}/${items.length}`), sectionExtra));
         if (store.sectionOpen.plan) section.appendChild(h('div', 'zc-section-body zc-scroll-plan', list));
         return section;
