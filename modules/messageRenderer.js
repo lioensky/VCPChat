@@ -1,5 +1,6 @@
 import { avatarColorCache, getDominantAvatarColor } from './renderer/colorUtils.js';
 import { createImageHandler } from './renderer/imageHandler.js';
+import { prepareChatMediaHtml, cleanupChatMedia } from './renderer/mediaLifecycle.js';
 import { processAnimationsInContent, cleanupAnimationsInContent } from './renderer/animation.js';
 import { createVisibilityOptimizer } from './renderer/visibilityOptimizer.js';
 import { createMessageSkeleton, formatMessageTimestamp } from './renderer/domBuilder.js';
@@ -2649,14 +2650,7 @@ function cleanupMessageDomResources(messageItem, messageId = null) {
             node._vcpAttachmentCleanup?.();
             delete node._vcpAttachmentCleanup;
         });
-        contentDiv.querySelectorAll('.vcp-audio-player').forEach(player => player._vcpAudioCleanup?.());
-        contentDiv.querySelectorAll('video, audio').forEach(media => {
-            if (media.closest('.vcp-audio-player')) return;
-            try { media.pause?.(); } catch { /* detached media may already be closed */ }
-            media.removeAttribute('src');
-            media.querySelectorAll?.('source').forEach(source => source.removeAttribute('src'));
-            try { media.load?.(); } catch { /* detached media may already be closed */ }
-        });
+        cleanupChatMedia(contentDiv);
     }
 
     cleanupScopedStylesForMessage(messageItem, messageId || messageItem.dataset?.messageId || null);
@@ -3256,7 +3250,11 @@ function enhanceAudioPlayers(container) {
         let progressAnimationFrame = null;
         const stopSmoothProgress = () => {
             if (progressAnimationFrame !== null) {
-                ownerDocument.defaultView?.cancelAnimationFrame?.(progressAnimationFrame);
+                if (ownerDocument.defaultView?.cancelAnimationFrame) {
+                    ownerDocument.defaultView.cancelAnimationFrame(progressAnimationFrame);
+                } else {
+                    ownerDocument.defaultView?.clearTimeout?.(progressAnimationFrame);
+                }
                 progressAnimationFrame = null;
             }
         };
@@ -3539,6 +3537,7 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
     if (typeof rawHtml === 'string') {
         // 替换 innerHTML 前必须释放旧子树上的预览 iframe、window message 监听器、
         // 动画/WebGL 资源及大工具结果完整文本。
+        cleanupChatMedia(contentDiv);
         cleanupToolResultFullContentForRoot(contentDiv);
         contentProcessor.cleanupPreviewsInContent(contentDiv);
         cleanupAnimationsInContent(contentDiv);
@@ -3549,7 +3548,14 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
 
     if (includeAttachments && message) {
         const existingAttachments = contentDiv.querySelector('.message-attachments');
-        if (existingAttachments) existingAttachments.remove();
+        if (existingAttachments) {
+            cleanupChatMedia(existingAttachments);
+            existingAttachments.querySelectorAll('*').forEach(node => {
+                node._vcpAttachmentCleanup?.();
+                delete node._vcpAttachmentCleanup;
+            });
+            existingAttachments.remove();
+        }
         await renderAttachments(message, contentDiv);
         // 不在旧任务中扫描删除附件：同一节点可能已被新 revision 重新挂载。
         // 新渲染开始时的统一 DOM 资源清理负责释放旧附件。
@@ -3839,7 +3845,7 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
         rawHtml = rawHtml.replace(/viewBox="0 "/g, 'viewBox="0 0 24 24"');
 
         // Synchronously set the base HTML content
-        const finalHtml = rawHtml;
+        const finalHtml = prepareChatMediaHtml(rawHtml, contentDiv.ownerDocument);
         contentDiv.innerHTML = finalHtml;
 
         // [Pretext集成] 延后填充文本高度缓存，避免阻塞首屏与批量历史渲染。

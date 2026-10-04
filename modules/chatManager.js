@@ -505,6 +505,7 @@ export const chatManager = (() => {
         const { currentChatNameH3, chatMessagesDiv, currentItemActionBtn, messageInput, sendMessageBtn, attachFileBtn } = elements;
         const voiceChatBtn = document.getElementById('voiceChatBtn');
         currentChatNameH3.textContent = '选择一个 Agent 或群组开始聊天';
+        messageRenderer?.clearChat();
         chatMessagesDiv.innerHTML = `<div class="message-item system welcome-bubble"><p>欢迎，请从左侧选择 AI 助手或群组，或创建新的对话。</p></div>`;
         currentItemActionBtn.style.display = 'none';
         if (voiceChatBtn) voiceChatBtn.style.display = 'none';
@@ -550,6 +551,9 @@ export const chatManager = (() => {
             await _saveLastOpenState();
             return;
         }
+
+        // Stop old media immediately, before asynchronous watcher/topic loading.
+        messageRenderer?.clearChat();
 
         // Flowlock 只绑定目标 Agent 的 Topic，不再阻止用户切换到其他 Agent。
         // 当重新进入已锁 Agent 时，下面会优先恢复它的锁定 Topic。
@@ -778,7 +782,11 @@ export const chatManager = (() => {
 
         try {
             currentTopicIdRef.set(topicId);
-            if (messageRenderer) messageRenderer.setCurrentTopicId(topicId);
+            if (messageRenderer) {
+                messageRenderer.setCurrentTopicId(topicId);
+                // Navigation intent ends the old media lease before any IPC await.
+                messageRenderer.clearChat();
+            }
             // Persist the selection intent before watcher/history work. A
             // renderer reload or crash during that work must restore the
             // topic the user actually selected, not the previous durable one.

@@ -1,4 +1,5 @@
 // modules/renderer/imageHandler.js
+import { prepareChatMediaHtml, cleanupChatMedia } from './mediaLifecycle.js';
 /** Creates one image interaction owner for one MessageRenderer instance. */
 export function createImageHandler({ fixUrl = value => value } = {}) {
     let imageHandlerRefs = null;
@@ -32,8 +33,9 @@ export function createImageHandler({ fixUrl = value => value } = {}) {
     function setContentAndProcessImages(contentDiv, rawHtml, messageId) {
     if (!imageHandlerRefs) throw new Error('ImageHandler is not initialized');
     cleanupContent(contentDiv);
-    // 🟢 直接设置 HTML，不做替换
-    contentDiv.innerHTML = rawHtml;
+    cleanupChatMedia(contentDiv);
+    // Parse in an inert template before any autoplay attribute reaches live DOM.
+    contentDiv.innerHTML = prepareChatMediaHtml(rawHtml, contentDiv.ownerDocument);
     const transport = imageHandlerRefs.electronAPI;
     const listenerDisposers = [];
 
