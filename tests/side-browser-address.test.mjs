@@ -22,3 +22,21 @@ test('unsupported schemes stay errors rather than searches', () => {
         assert.ok(resolveBrowserAddress(text).error, text);
     }
 });
+
+test('a typed address is written back to the tab payload so a restored tab reopens it', async () => {
+    const { JSDOM } = await import('jsdom');
+    const { createBrowserSideProvider } = await import('../modules/ui-system/side-pane/browserSideProvider.js');
+    const dom = new JSDOM('<div id="view"></div>');
+    const updates = [];
+    const provider = createBrowserSideProvider({
+        document: dom.window.document,
+        api: null,
+        sidePaneController: { updateTab: (id, patch) => updates.push({ id, ...patch }) },
+        notify: () => {}
+    });
+    const handle = await provider.mountTab({ id: 'browser:1', kind: 'browser', payload: {} }, dom.window.document.getElementById('view'));
+    handle.navigate('https://example.com/');
+    assert.deepEqual(updates, [{ id: 'browser:1', payload: { url: 'https://example.com/' } }]);
+    handle.dispose();
+    dom.window.close();
+});

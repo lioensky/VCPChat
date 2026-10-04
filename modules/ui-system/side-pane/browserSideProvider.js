@@ -347,7 +347,6 @@ export function createBrowserSideProvider({
                 hideNotice();
                 const created = !webview;
                 const guest = ensureWebview(url);
-                currentUrl = url;
                 setAddress(url);
                 if (!created) {
                     if (domReady) {

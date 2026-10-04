@@ -4,7 +4,8 @@
 // - 只放行 http / https / file / about / data 地址，其它协议（vcp:// 等自定义协议）一律拦截；
 // - 网页里的 window.open / target=_blank 转成「在侧栏新开一个浏览器标签」；
 // - 页面权限请求（摄像头、定位、通知等）默认拒绝，下载交给系统默认浏览器处理；
-// - 「在默认浏览器中打开」「清除浏览数据」两个命令只接受主窗口页面调用。
+// - 「在默认浏览器中打开」「清除浏览数据」两个命令只接受主窗口页面调用；
+// - 焦点在网页里时按键到不了主窗口，副屏快捷键在这里截下转给主窗口。
 'use strict';
 
 const { ipcMain, session, shell } = require('electron');
@@ -35,6 +36,24 @@ function isAllowedGuestUrl(raw) {
 function isExternalUrl(raw) {
     const url = parseUrl(raw);
     return Boolean(url && EXTERNAL_PROTOCOLS.has(url.protocol));
+}
+
+/**
+ * 和渲染进程 side-pane-shortcuts.js 同一套按键：Ctrl/Cmd+Alt+B 展开或收起副屏，Ctrl+PageUp / PageDown 切标签。
+ * input 是 before-input-event 的 Electron Input；返回要转发的动作，不是快捷键就返回 null。
+ */
+function matchSidePaneShortcut(input, { mac = process.platform === 'darwin' } = {}) {
+    if (!input || input.type !== 'keyDown' || input.isComposing) return null;
+    const primary = mac ? input.meta && !input.control : input.control && !input.meta;
+    const altGraph = Array.isArray(input.modifiers) && input.modifiers.some(m => String(m).toLowerCase() === 'altgraph');
+    if (primary && input.alt && !input.shift && !altGraph && !input.isAutoRepeat && input.code === 'KeyB') {
+        return { action: 'toggle' };
+    }
+    if (input.control && !input.alt && !input.shift && !input.meta) {
+        if (input.key === 'PageDown') return { action: 'cycle', delta: 1 };
+        if (input.key === 'PageUp') return { action: 'cycle', delta: -1 };
+    }
+    return null;
 }
 
 const isAllowedSender = createApplicationSenderGuard({ getMainWebContents: () => mainWindowRef?.webContents });
@@ -88,6 +107,12 @@ function attachToWindow(mainWindow) {
         };
         guest.on('will-navigate', blockForeignProtocol);
         guest.on('will-redirect', blockForeignProtocol);
+        guest.on('before-input-event', (event, input) => {
+            const shortcut = matchSidePaneShortcut(input);
+            if (!shortcut || host.isDestroyed()) return;
+            event.preventDefault();
+            host.send('browser:side-pane-shortcut', shortcut);
+        });
     });
 }
 
@@ -130,4 +155,5 @@ module.exports = {
     initialize,
     dispose,
     isAllowedGuestUrl,
+    matchSidePaneShortcut,
 };

@@ -8,7 +8,7 @@
 
 1. **状态和 DOM 分开**：标签列表、激活标签、是否展开都在一个纯函数状态模块里，可以单独测试；DOM 只是状态的投影。
 2. **控制器只做组合**：标签条、概览、右键菜单、新标签页、开合动画各自是一个模块，控制器把它们接起来，并负责标签视图的挂载和卸载。
-3. **标签类型可插拔**：新增一种标签只要写一个 provider 并登记一个入口，不改控制器。
+3. **标签类型可插拔**：新增一种标签只要写一个 provider 并登记一个标签类型，不改控制器。控制器不认识任何具体的标签类型（包括辅助对话），只通过类型声明里的钩子和它们打交道。
 4. **跟随对话**：话题级标签只在所属对话里出现，切换对话时恢复该对话上次的激活标签和展开状态。
 
 ---
@@ -21,6 +21,10 @@
 | :--- | :--- | :--- |
 | `side-pane-state.js` | 纯状态转换：打开 / 激活 / 关闭 / 排序标签、可见性、所属对话（parent）、宽度。所有函数返回新的冻结对象 | 否 |
 | `side-pane-controller.js` | 组合下面的模块；维护挂载表、最近关闭、按对话记住的激活标签与展开状态；对外暴露控制器 API | 是 |
+| `side-pane-types.js` | 只有 JSDoc 类型：`SidePaneTab`、`SidePaneTabType`、`SidePaneProvider`、`SidePaneTabHandle` 等契约 | 否 |
+| `side-pane-persistence.js` | 布局存档的序列化、带版本号的校验读取、防抖保存；按对话的记忆最多 50 条（LRU） | 否（只碰 storage） |
+| `side-pane-focus.js` | 焦点归属：记下打开副屏前的焦点，收起时送回；焦点不在副屏里时不挪 | 是（只调 `focus()`） |
+| `side-pane-shortcuts.js` | 键盘快捷键：Ctrl/Cmd+Alt+B 开合，副屏内 Ctrl+PageUp/PageDown 切标签 | 是（window keydown） |
 | `side-pane-visibility.js` | 宽度比例（默认 45%，20%–65%）、开合动画、动画期间锁定内容宽度 | 是（写 `style.width`） |
 | `side-pane-tab-strip.js` | 标签条渲染、悬停提示、溢出布局与边缘渐隐、拖拽排序、方向键 / 中键关闭、通知标签上的连接状态点 | 是 |
 | `side-pane-tab-overview.js` | 标签页概览浮层：搜索打开中和最近关闭的标签 | 是 |
@@ -40,6 +44,9 @@
 sidePaneWiring
    └─ side-pane-controller
         ├─ side-pane-state            （纯函数）
+        ├─ side-pane-persistence      （纯函数 + storage）
+        ├─ side-pane-focus
+        ├─ side-pane-shortcuts
         ├─ side-pane-visibility
         ├─ side-pane-resizer-owner
         ├─ side-pane-tab-strip ─ side-pane-tab-dnd / tab-utils
@@ -78,26 +85,43 @@ sidePaneWiring
 标签有两种作用域：
 
 - `scopeMode: 'global'`：在所有对话里都可见（笔记、浏览器、终端……）。
-- `scopeMode: 'topic'`：只在所属对话里可见（辅助对话、计划详情）。所属对话记在 `descriptor.parent` 或 `parent`。
+- `scopeMode: 'topic'`：只在所属对话里可见（辅助对话、计划详情）。所属对话记在标签的 `parent` 上。
 
-切换对话时宿主调用 `controller.setParent(parentRef)`。控制器先记下旧对话的激活标签和展开状态，再按新对话的记录恢复。这两张表只在内存里，重启后不保留。
+切换对话时宿主调用 `controller.setParent(parentRef)`。控制器先记下旧对话的激活标签和展开状态，再按新对话的记录恢复。这两张表只保留最近 50 个对话，并随布局一起持久化（见第 7 节）。
+
+### 焦点
+
+焦点只在本来就在副屏里（或者随着被拆掉的视图丢到 `body` 上）时才由副屏安排：
+
+- 打开标签、展开副屏前，记下焦点在副屏外的位置。
+- 副屏收起（手动、关掉最后一个标签、切换对话、窄窗口自动收起）时，焦点回到记下的位置；那个元素已经不在了就回到展开按钮。
+- 关掉一个标签后，焦点移到新的激活标签上；焦点在主输入框等别处时不动。
+
+### 快捷键
+
+| 按键 | 作用 |
+| :--- | :--- |
+| Ctrl+Alt+B（macOS 上 Cmd+Alt+B） | 开合副屏。展开时和点展开按钮一样：有待审批先看通知，没有标签时打开新标签页，否则回到这个对话上次的标签。AltGr 组合不触发 |
+| Ctrl+PageUp / Ctrl+PageDown | 焦点在副屏里时按标签条顺序切到上一个 / 下一个标签，首尾相接 |
+
+焦点在浏览器标签的网页里时，按键不会到主窗口。主进程在 `browserHandlers.js` 里用 `before-input-event` 截下这几个组合，经 `browser:side-pane-shortcut` 转给主窗口，由 `sidePaneWiring.js` 执行同样的动作。
 
 ---
 
 ## 4. Provider 契约
 
-一个 provider 负责一种 `kind` 的标签：
+一个 provider 负责一种 `kind` 的标签，通过标签类型的 `provider` 字段登记：
 
 ```js
-controller.registerProvider('notes', {
+const provider = {
     async mountTab(tab, viewElement) {
         // 在 viewElement 里渲染，返回 handle
         return handle;
     }
-});
+};
 ```
 
-- `tab`：普通标签是 `openTab()` 传入的对象；辅助对话是 side chat descriptor。
+- `tab`：`openTab()` 传入的对象；从存档恢复出来的标签是存下来的标签对象（`payload` 原样带回）。辅助对话类型的 provider 适配层把 `descriptor` 取出来交给辅助对话 owner。
 - `viewElement`：控制器创建的 `<section class="side-pane-view" role="tabpanel">`，provider 只能在它里面渲染。
 
 handle 的方法都是可选的：
@@ -114,7 +138,8 @@ handle 的方法都是可选的：
 
 - 同一个标签 id 只挂载一次。并发两次 `openTab` 同一个标签时，第二次等待第一次的挂载结果。
 - 挂载期间标签被关掉或控制器被销毁时，控制器会立刻 `dispose` 刚挂好的 handle 并移除视图。
-- 再次 `openTab` 已挂载的标签只会激活它，不会重新挂载。需要改标题或 payload 时用 `controller.updateTab(id, patch)`。
+- 再次 `openTab` 已挂载的标签只会激活它，不会重新挂载。需要改标题或 payload 时用 `controller.updateTab(id, patch)`；payload 改了也会进存档，比如浏览器把当前网址写回去，重启后打开的是最后看的页面。
+- 从存档恢复的标签不在启动时挂载，第一次显示（成为激活标签且副屏展开）时才挂载。
 
 ---
 
@@ -135,8 +160,17 @@ handle 的方法都是可选的：
    ```
 
 3. 由 `sidePaneWiring` 调用 `controller.registerTabType(definition)`。一次登记完成 provider、入口和展示信息登记，返回注销函数；登记表属于当前控制器，不跨窗口共享。入口可用性变化后仍调用 `refreshOpenTabEntries()`。
-4. 标签可以带每个实例独有的标题、图标和搜索提示（如 diff 图标或文件路径）；缺少这些值时使用类型定义，未登记时保留原有默认值。标签条和概览都通过组合者注入的读取函数访问登记表，不需要在 `tab-utils` 加类型分支。旧的 `registerProvider` 和 `registerOpenTabEntry` 继续兼容。
-5. 用 JSDOM 验证入口可用性、挂载、关闭与拦截，并验证两个控制器的登记互不影响。
+4. 类型声明里还有几个可选钩子（完整定义见 `side-pane-types.js` 的 `SidePaneTabType`）：
+
+   | 字段 | 作用 |
+   | :--- | :--- |
+   | `toTab(payload, tabs)` | `openTab(payload)` 先经过它变成标签。辅助对话用它校验描述符，并让同一个子话题重复打开时落到已有标签上，所以调用方写 `openTab({ kind: 'chat', descriptor })` |
+   | `onClosed(tab)` | 标签关掉、视图拆掉后调用。辅助对话用它删掉子话题；抛错只记日志 |
+   | `persist: false` | 不随布局持久化。辅助对话（由会话服务恢复）、终端（重启后不自动拉起 shell）、命令输出（记录只在内存里）用它 |
+   | `reopenable: false` | 关掉后不进"最近关闭"。标签自己带 `ephemeral: true` 也一样 |
+
+5. 标签可以带每个实例独有的标题、图标和搜索提示（如 diff 图标或文件路径）；缺少这些值时使用类型定义，未登记时保留原有默认值。标签条和概览都通过组合者注入的读取函数访问登记表，不需要在 `tab-utils` 加类型分支。旧的 `registerProvider` 和 `registerOpenTabEntry` 继续兼容。
+6. 用 JSDOM 验证入口可用性、挂载、关闭与拦截，并验证两个控制器的登记互不影响。
 
 provider 只能修改自己的视图，跨模块动作通过组合者注入的回调完成。
 
@@ -151,10 +185,17 @@ provider 只能修改自己的视图，跨模块动作通过组合者注入的�
 
 ---
 
-## 7. 已知限制
+## 7. 布局持久化
 
-1. **标签不跨重启保留**：除宽度外，打开的标签、顺序、按对话记住的激活标签都只在内存里。辅助对话例外，宿主通过 `restoreSessions` 从会话服务恢复。
-2. **没有键盘快捷键层**：切换 / 关闭标签只能用鼠标或标签条内的方向键，还没有全局快捷键。
+控制器传了 `persistence: { storage, key? }` 才持久化，主窗口用 `localStorage`，键是 `vcp.sidePane.layout.v1`。存的内容：
+
+- 允许持久化的标签（id、类型、标题、图标、作用域、所属对话、payload），最多 30 个；单个标签序列化后超过 64KB（比如很大的 diff）就不存。
+- 当前标签和展开状态（当前标签没存下来时不记）。
+- 每个对话的激活标签和收起状态，各最多 50 条。
+
+读取时先看版本号，再逐项校验：坏 JSON、别的版本、不认识或不允许持久化的标签类型都直接丢掉。`sidePaneWiring` 登记完所有标签类型后调用 `controller.restoreLayout()`；在这之前控制器不会写存档，免得启动时的空布局把存档盖掉。保存做了 400ms 防抖，页面隐藏、卸载或控制器销毁时立刻写一次。
+
+辅助对话不走这套存档：宿主切换对话时调用辅助对话 owner 的 `restoreSessions`，从会话服务恢复。
 
 
 ## 8. 样式加载顺序

@@ -79,6 +79,21 @@ test('attachToWindow locks the partition and strips privileged web preferences',
     guest.emit('will-navigate', { preventDefault: () => { blocked += 1; } }, 'vcp://x');
     guest.emit('will-redirect', { preventDefault: () => { blocked += 1; } }, 'https://ok.example');
     assert.equal(blocked, 1);
+
+    // 焦点在网页里时，副屏快捷键被截下转给主窗口，其他按键照常交给网页
+    host.sent.length = 0;
+    let swallowed = 0;
+    const keyEvent = { preventDefault: () => { swallowed += 1; } };
+    const ctrl = process.platform === 'darwin' ? { meta: true } : { control: true };
+    guest.emit('before-input-event', keyEvent, { type: 'keyDown', ...ctrl, alt: true, code: 'KeyB', key: 'b' });
+    guest.emit('before-input-event', keyEvent, { type: 'keyDown', control: true, key: 'PageDown', code: 'PageDown' });
+    guest.emit('before-input-event', keyEvent, { type: 'keyDown', control: true, key: 'c', code: 'KeyC' });
+    guest.emit('before-input-event', keyEvent, { type: 'keyUp', ...ctrl, alt: true, code: 'KeyB', key: 'b' });
+    assert.equal(swallowed, 2);
+    assert.deepEqual(host.sent, [
+        ['browser:side-pane-shortcut', { action: 'toggle' }],
+        ['browser:side-pane-shortcut', { action: 'cycle', delta: 1 }]
+    ]);
 });
 
 test('initialize denies guest permissions and only serves the main window', async () => {
@@ -103,4 +118,17 @@ test('initialize denies guest permissions and only serves the main window', asyn
 
     browserHandlers.dispose();
     assert.equal(handlers.size, 0);
+});
+
+test('side pane shortcut matcher ignores AltGr, repeats and extra modifiers', () => {
+    const match = browserHandlers.matchSidePaneShortcut;
+    const toggle = { type: 'keyDown', control: true, alt: true, code: 'KeyB', key: 'b' };
+    assert.deepEqual(match(toggle, { mac: false }), { action: 'toggle' });
+    assert.equal(match({ ...toggle, control: false, meta: true }, { mac: false }), null);
+    assert.deepEqual(match({ ...toggle, control: false, meta: true }, { mac: true }), { action: 'toggle' });
+    assert.equal(match({ ...toggle, modifiers: ['control', 'alt', 'altgraph'] }, { mac: false }), null);
+    assert.equal(match({ ...toggle, isAutoRepeat: true }, { mac: false }), null);
+    assert.equal(match({ ...toggle, shift: true }, { mac: false }), null);
+    assert.deepEqual(match({ type: 'keyDown', control: true, key: 'PageUp' }, { mac: false }), { action: 'cycle', delta: -1 });
+    assert.equal(match({ type: 'keyDown', control: true, shift: true, key: 'PageUp' }, { mac: false }), null);
 });
