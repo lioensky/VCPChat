@@ -47,6 +47,22 @@ export function normalizeBrowserInput(input) {
     }
 }
 
+const SEARCH_URL = 'https://www.bing.com/search?q=';
+
+/**
+ * Like normalizeBrowserInput, but text that is not an address becomes a web search.
+ * An unsupported scheme (javascript:, chrome:, ...) is still an error rather than a search.
+ * @returns {{ url: string } | { error: string } | null} null for empty input
+ */
+export function resolveBrowserAddress(input) {
+    const result = normalizeBrowserInput(input);
+    if (!result?.error) return result;
+    const text = String(input).trim();
+    const hasPort = /^[^\s/@]+:\d+(?:[/?#]|$)/.test(text);
+    if (/^[a-z][a-z0-9+.-]*:\S/i.test(text) && !hasPort) return result;
+    return { url: `${SEARCH_URL}${encodeURIComponent(text)}` };
+}
+
 // Chromium net error codes -200..-299 are certificate problems
 const isCertificateError = (code) => code <= -200 && code > -300;
 
@@ -142,7 +158,7 @@ export function createBrowserSideProvider({
                 type: 'text',
                 spellcheck: 'false',
                 autocomplete: 'off',
-                placeholder: '输入网址后回车',
+                placeholder: '搜索或输入网址',
                 'aria-label': '地址栏'
             });
             const moreBtn = iconButton('more_horiz', '更多浏览器操作');
@@ -359,7 +375,7 @@ export function createBrowserSideProvider({
             }
 
             const submitAddress = () => {
-                const result = normalizeBrowserInput(address.value);
+                const result = resolveBrowserAddress(address.value);
                 if (!result) return;
                 if (result.error) {
                     toast(result.error, 'warning');

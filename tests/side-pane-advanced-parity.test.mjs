@@ -27,7 +27,6 @@ function createParityTestDOM() {
                 <div id="sidePaneTabOverviewPopover" class="side-pane-tab-overview-popover" role="dialog" hidden>
                     <div id="sidePaneOpenTabsList"></div>
                 </div>
-                <div id="sidePaneAddMenuPopover" class="side-pane-add-menu-popover" role="menu" hidden></div>
                 <div id="sidePaneTabContextMenu" class="side-pane-context-menu" role="menu" hidden>
                     <button type="button" role="menuitem" data-action="close-tab">关闭当前标签页</button>
                     <button type="button" role="menuitem" data-action="close-others">关闭其他标签页</button>
@@ -37,7 +36,18 @@ function createParityTestDOM() {
             <div class="side-pane-content-container">
                 <section class="side-pane-view active" id="sidePaneViewNotifications" data-tab-id="notifications"></section>
                 <section class="side-pane-view" id="sidePaneViewLauncher" data-tab-id="launcher" hidden>
-                    <div class="side-pane-open-tab-list"></div>
+                    <form class="side-pane-launcher-address" hidden><input type="text"></form>
+                    <p class="side-pane-launcher-address-error" hidden></p>
+                    <div class="side-pane-launcher-profile" hidden>
+                        <button type="button" class="side-pane-launcher-avatar"><img alt=""></button>
+                        <input type="text" class="side-pane-launcher-name" readonly>
+                    </div>
+                    <div class="side-pane-launcher-tabs" hidden>
+                        <button type="button" data-launcher-tab="tools" aria-selected="true">工具</button>
+                        <button type="button" data-launcher-tab="apps" aria-selected="false">应用</button>
+                    </div>
+                    <section data-launcher-section="tools"><div class="side-pane-open-tab-list"></div></section>
+                    <section data-launcher-section="apps" hidden><div class="side-pane-launcher-app-grid"></div></section>
                 </section>
             </div>
         </aside>
@@ -124,58 +134,253 @@ test('Parity: close-others and close-all only touch the current conversation', a
     dom.window.close();
 });
 
-test('Parity: the add button follows the registered entries', async () => {
+test('Parity: the add button opens the new tab page with tool rows', async () => {
     const dom = createParityTestDOM();
     const doc = dom.window.document;
     const addBtn = doc.getElementById('addSidePaneChatBtn');
-    const addMenu = doc.getElementById('sidePaneAddMenuPopover');
+    const launcherView = doc.getElementById('sidePaneViewLauncher');
+    const toolsSection = launcherView.querySelector('[data-launcher-section="tools"]');
     const opened = [];
     const ctrl = createController(dom);
 
-    // 没有入口：按钮隐藏
+    // 没有入口：按钮和工具区都隐藏
     assert.equal(addBtn.hidden, true);
+    assert.equal(toolsSection.hidden, true);
 
-    // 一个入口：直接打开，不弹菜单
+    // 一个入口：直接打开，不进新标签页
     const disposeChat = ctrl.registerOpenTabEntry({ id: 'chat', label: '辅助对话', icon: 'chat_bubble', open: () => opened.push('chat') });
     assert.equal(addBtn.hidden, false);
     assert.equal(addBtn.getAttribute('aria-label'), '辅助对话');
-    assert.equal(addBtn.hasAttribute('aria-haspopup'), false);
     addBtn.click();
     await tick();
     assert.deepEqual(opened, ['chat']);
-    assert.equal(addMenu.hidden, true);
+    assert.notEqual(ctrl.getSnapshot().activeTabId, 'launcher');
 
-    // 两个入口：弹出菜单，按 order 排序
+    // 两个入口：打开新标签页，工具按 order 排成列表
     ctrl.registerOpenTabEntry({ id: 'browser', label: '浏览器', order: 50, open: () => opened.push('browser') });
-    assert.equal(addBtn.getAttribute('aria-haspopup'), 'menu');
+    assert.equal(addBtn.getAttribute('aria-label'), '新标签页');
+    assert.equal(addBtn.hasAttribute('aria-haspopup'), false);
     addBtn.click();
-    assert.equal(addMenu.hidden, false);
-    assert.equal(addBtn.getAttribute('aria-expanded'), 'true');
-    const items = [...addMenu.querySelectorAll('[role="menuitem"]')];
-    assert.deepEqual(items.map(i => i.querySelector('.side-pane-menu-item-label').textContent), ['浏览器', '辅助对话']);
-    assert.equal(doc.activeElement, items[0], '打开菜单后焦点落在第一项');
+    await tick();
+    assert.equal(ctrl.getSnapshot().activeTabId, 'launcher');
+    assert.equal(launcherView.hidden, false);
+    assert.equal(toolsSection.hidden, false);
+    const rows = [...launcherView.querySelectorAll('[data-open-tab-entry]')];
+    assert.deepEqual(rows.map(r => r.querySelector('.side-pane-open-tab-button-label').textContent), ['浏览器', '辅助对话']);
 
-    items[1].click();
+    rows[1].click();
     await tick();
     assert.deepEqual(opened, ['chat', 'chat']);
-    assert.equal(addMenu.hidden, true);
-
-    // Esc 关闭并把焦点还给按钮
-    addBtn.click();
-    assert.equal(addMenu.hidden, false);
-    doc.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    assert.equal(addMenu.hidden, true);
-    assert.equal(doc.activeElement, addBtn);
-
-    // 点外面关闭
-    addBtn.click();
-    doc.getElementById('chatMessages').dispatchEvent(new dom.window.Event('pointerdown', { bubbles: true }));
-    assert.equal(addMenu.hidden, true);
 
     // 注销后回到单入口
     disposeChat();
     assert.equal(addBtn.getAttribute('aria-label'), '浏览器');
-    assert.equal(addMenu.querySelectorAll('[role="menuitem"]').length, 1);
+    assert.equal(launcherView.querySelectorAll('[data-open-tab-entry]').length, 1);
+
+    await ctrl.dispose();
+    dom.window.close();
+});
+
+test('Parity: the new tab page address bar hands the text to the handler', async () => {
+    const dom = createParityTestDOM();
+    const doc = dom.window.document;
+    const form = doc.querySelector('.side-pane-launcher-address');
+    const input = form.querySelector('input');
+    const error = doc.querySelector('.side-pane-launcher-address-error');
+    const submitted = [];
+    const ctrl = createController(dom, {
+        controller: {
+            openTabEntries: [
+                { id: 'chat', label: '辅助对话', open() {} },
+                { id: 'browser', label: '浏览器', open() {} }
+            ]
+        }
+    });
+
+    // 没有处理函数时不显示地址栏
+    assert.equal(form.hidden, true);
+    ctrl.setLauncherAddressHandler(async (text) => {
+        submitted.push(text);
+        return text.startsWith('javascript:') ? { error: '不支持' } : { url: text };
+    });
+    assert.equal(form.hidden, false);
+
+    doc.getElementById('addSidePaneChatBtn').click();
+    await tick();
+    assert.equal(doc.activeElement, input, '打开新标签页后焦点在地址栏');
+
+    const submit = async (value) => {
+        input.value = value;
+        form.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
+        await tick();
+    };
+
+    await submit('   ');
+    assert.deepEqual(submitted, [], '空白不提交');
+
+    await submit('javascript:alert(1)');
+    assert.equal(error.hidden, false);
+    assert.equal(error.textContent, '不支持');
+    assert.equal(input.value, 'javascript:alert(1)', '出错时保留输入');
+
+    input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    assert.equal(error.hidden, true, '继续输入就清掉错误');
+
+    await submit(' example.com ');
+    assert.deepEqual(submitted, ['javascript:alert(1)', 'example.com']);
+    assert.equal(input.value, '', '打开后清空');
+
+    ctrl.setLauncherAddressHandler(null);
+    assert.equal(form.hidden, true);
+
+    await ctrl.dispose();
+    dom.window.close();
+});
+
+test('Parity: the new tab page shows the current assistant and its avatar edit entry', async () => {
+    const dom = createParityTestDOM();
+    const doc = dom.window.document;
+    const profile = doc.querySelector('.side-pane-launcher-profile');
+    const avatar = profile.querySelector('.side-pane-launcher-avatar');
+    const edits = [];
+    let current = { name: 'Nova', avatarUrl: 'nova.png', onEditAvatar: () => edits.push('Nova') };
+    const ctrl = createController(dom, {
+        controller: { openTabEntries: [{ id: 'a', label: 'A', open() {} }, { id: 'b', label: 'B', open() {} }] }
+    });
+
+    assert.equal(profile.hidden, true, '没有提供者时不显示');
+    ctrl.setLauncherProfileProvider(() => current);
+    assert.equal(profile.hidden, false);
+    assert.equal(profile.querySelector('.side-pane-launcher-name').value, 'Nova');
+    assert.equal(profile.querySelector('img').getAttribute('src'), 'nova.png');
+    assert.equal(avatar.getAttribute('aria-label'), '编辑头像');
+    avatar.click();
+    assert.deepEqual(edits, ['Nova']);
+
+    // 每次打开新标签页现取：换了助手（群组不能编辑、没有头像用默认图）
+    current = { name: '群组', avatarUrl: '', onEditAvatar: null };
+    doc.getElementById('addSidePaneChatBtn').click();
+    await tick();
+    assert.equal(profile.querySelector('.side-pane-launcher-name').value, '群组');
+    assert.equal(profile.querySelector('img').getAttribute('src'), 'assets/default_avatar.png');
+    assert.equal(avatar.disabled, true);
+    avatar.click();
+    assert.deepEqual(edits, ['Nova']);
+
+    current = null;
+    ctrl.showLauncher();
+    assert.equal(profile.hidden, true);
+
+    await ctrl.dispose();
+    dom.window.close();
+});
+
+test('Parity: the new tab page name can be edited in place', async () => {
+    const dom = createParityTestDOM();
+    const doc = dom.window.document;
+    const name = doc.querySelector('.side-pane-launcher-name');
+    const renames = [];
+    let result = { success: true };
+    const current = { name: 'Nova', avatarUrl: '', onRename: (value) => { renames.push(value); return result; } };
+    const ctrl = createController(dom, {
+        controller: { openTabEntries: [{ id: 'a', label: 'A', open() {} }, { id: 'b', label: 'B', open() {} }] }
+    });
+    ctrl.setLauncherProfileProvider(() => current);
+    assert.equal(name.readOnly, false);
+
+    const key = (value) => name.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: value, bubbles: true }));
+
+    // Esc 放弃
+    name.focus();
+    name.value = '临时';
+    key('Escape');
+    await tick();
+    assert.equal(name.value, 'Nova');
+    assert.deepEqual(renames, []);
+
+    // 空名字不保存
+    name.focus();
+    name.value = '   ';
+    key('Enter');
+    await tick();
+    assert.equal(name.value, 'Nova');
+    assert.deepEqual(renames, []);
+
+    // 回车保存，去掉首尾空格
+    name.focus();
+    name.value = ' Nova 2 ';
+    key('Enter');
+    await tick();
+    assert.deepEqual(renames, ['Nova 2']);
+    assert.equal(name.value, 'Nova 2');
+
+    // 保存失败时恢复原名
+    result = { error: 'disk' };
+    name.focus();
+    name.value = 'Nova 3';
+    key('Enter');
+    await tick();
+    assert.deepEqual(renames, ['Nova 2', 'Nova 3']);
+    assert.equal(name.value, 'Nova 2');
+
+    // 没有改名入口时只读
+    ctrl.setLauncherProfileProvider(() => ({ name: '群组', avatarUrl: '' }));
+    assert.equal(name.readOnly, true);
+
+    await ctrl.dispose();
+    dom.window.close();
+});
+
+test('Parity: the new tab page switches between tools and apps', async () => {
+    const dom = createParityTestDOM();
+    const doc = dom.window.document;
+    const launcher = doc.getElementById('sidePaneViewLauncher');
+    const tabs = launcher.querySelector('.side-pane-launcher-tabs');
+    const tools = launcher.querySelector('[data-launcher-section="tools"]');
+    const apps = launcher.querySelector('[data-launcher-section="apps"]');
+    const opened = [];
+    const mounted = [];
+    const ctrl = createController(dom, {
+        controller: { openTabEntries: [{ id: 'a', label: 'A', open() {} }, { id: 'b', label: 'B', open() {} }] }
+    });
+
+    assert.equal(tabs.hidden, true, '没有应用来源时只有工具页');
+    let providerCalls = 0;
+    ctrl.setLauncherAppsProvider(() => {
+        providerCalls += 1;
+        return [
+            { id: 'notes', label: '笔记', open: () => opened.push('notes'), mountIcon: (btn, host) => mounted.push([btn.getAttribute('data-launcher-app'), host.className]) },
+            { id: 'dice', label: '骰子', open: () => opened.push('dice') }
+        ];
+    });
+    assert.equal(tabs.hidden, false);
+    assert.equal(tools.hidden, false);
+    assert.equal(apps.hidden, true);
+    assert.equal(providerCalls, 0, '应用页没打开前不画图标');
+
+    doc.getElementById('addSidePaneChatBtn').click();
+    tabs.querySelector('[data-launcher-tab="apps"]').click();
+    assert.equal(tools.hidden, true);
+    assert.equal(apps.hidden, false);
+    assert.equal(tabs.querySelector('[data-launcher-tab="apps"]').getAttribute('aria-selected'), 'true');
+    const cards = [...apps.querySelectorAll('[data-launcher-app]')];
+    assert.deepEqual(cards.map(card => card.textContent), ['笔记', '骰子']);
+    assert.deepEqual(mounted, [['notes', 'side-pane-launcher-app-icon']]);
+
+    cards[1].click();
+    await tick();
+    assert.deepEqual(opened, ['dice']);
+
+    // 再次打开新标签页停在应用页并刷新列表
+    ctrl.showLauncher();
+    assert.equal(providerCalls, 2);
+    assert.equal(apps.hidden, false);
+
+    // 撤掉应用来源后回到工具页
+    ctrl.setLauncherAppsProvider(null);
+    assert.equal(tabs.hidden, true);
+    assert.equal(tools.hidden, false);
+    assert.equal(apps.hidden, true);
 
     await ctrl.dispose();
     dom.window.close();

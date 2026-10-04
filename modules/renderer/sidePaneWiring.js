@@ -3,7 +3,7 @@ import { captureSelectionReference } from '../ui-system/side-pane/selection-refe
 import { createSideChatSurfaceOwner } from './sideChatSurfaceOwner.js';
 import { createNotesSideProvider } from '../ui-system/side-pane/notesSideProvider.js';
 import { createCodeViewerSideProvider } from '../ui-system/side-pane/codeViewerSideProvider.js';
-import { createBrowserSideProvider } from '../ui-system/side-pane/browserSideProvider.js';
+import { createBrowserSideProvider, resolveBrowserAddress } from '../ui-system/side-pane/browserSideProvider.js';
 import { createTerminalSideProvider } from '../ui-system/side-pane/terminalSideProvider.js';
 import { createToolOutputSideProvider } from '../ui-system/side-pane/toolOutputSideProvider.js';
 import { createPlanDetailSideProvider } from '../ui-system/side-pane/planDetailSideProvider.js';
@@ -374,6 +374,12 @@ export function initWorkspaceSidePane({
         .finally(() => messageFileChanges.mount());
     subscriptions.add({ dispose: () => messageFileChanges.dispose() });
     controller.registerOpenTabEntry({ id: 'browser', label: '浏览器', icon: 'public', order: 40, open: () => browserProvider.openBrowserTab() });
+    controller.setLauncherAddressHandler(async (text) => {
+        const result = resolveBrowserAddress(text);
+        if (!result || result.error) return result;
+        await browserProvider.openBrowserTab({ url: result.url, forceNew: true });
+        return result;
+    });
     // 终端与命令输出共用 PowerShellExecutor 的同一个会话；终端里的链接交给浏览器标签打开
     const terminalProvider = createTerminalSideProvider({
         document: doc,
@@ -441,6 +447,99 @@ export function initWorkspaceSidePane({
         controller.setParent({ itemType: 'agent', itemId: item.id, topicId: topicId || '' });
         if (topicId) await controller.restoreSessions(item.id, topicId);
     };
+    // 新标签页顶部显示当前助手：点头像去设置页换头像（群组只显示），点名字直接改名
+    const renameSelectedItem = async (item, name) => {
+        const api = chatAPI || win.electronAPI;
+        const save = item.type === 'group' ? api?.saveAgentGroupConfig : api?.saveAgentConfig;
+        if (typeof save !== 'function') return { error: 'unsupported' };
+        const result = await save.call(api, item.id, { name });
+        if (!result?.success) {
+            uiHelper?.showToastNotification?.(`改名失败: ${result?.error || '未知错误'}`, 'error');
+            return { error: result?.error || 'save-failed' };
+        }
+        const latest = selectedItemRef.get();
+        if (latest?.id === item.id) {
+            const next = { ...latest, name };
+            if (latest.config) next.config = { ...latest.config, name };
+            selectedItemRef.set(next);
+            const header = doc.getElementById('currentChatAgentName');
+            if (header && item.name && header.textContent.includes(item.name)) {
+                header.textContent = header.textContent.replace(item.name, name);
+            }
+        }
+        // 设置页正开着这一项时同步名称框，免得之后保存设置又把旧名字写回去
+        const [idField, nameField] = item.type === 'group'
+            ? ['editingGroupId', 'groupNameInput']
+            : ['editingAgentId', 'agentNameInput'];
+        if (doc.getElementById(idField)?.value === item.id) {
+            const input = doc.getElementById(nameField);
+            if (input) input.value = name;
+        }
+        await win.itemListManager?.loadItems?.();
+        controller.setLauncherProfileProvider(getLauncherProfile);
+        return result;
+    };
+    const getLauncherProfile = () => {
+        const item = selectedItemRef.get();
+        if (!item?.id) return null;
+        return {
+            name: item.name || '',
+            avatarUrl: item.avatarUrl || '',
+            onEditAvatar: item.type === 'agent' ? () => {
+                win.uiManager?.switchToTab?.('settings');
+                doc.getElementById('agentAvatarInput')?.click();
+            } : null,
+            onRename: item.type === 'agent' || item.type === 'group' ? (name) => renameSelectedItem(item, name) : null
+        };
+    };
+    controller.setLauncherProfileProvider(getLauncherProfile);
+    const unbindLauncherProfile = chatManager?.onSelectionChange?.(() => controller.setLauncherProfileProvider(getLauncherProfile));
+    if (unbindLauncherProfile) subscriptions.add({ dispose: unbindLauncherProfile });
+
+    // 新标签页的「应用」页：和顶部「+」启动台是同一批应用、同一套图标和打开方式
+    let launcherIcons = null;
+    const disposeLauncherIcons = () => {
+        launcherIcons?.dispose?.();
+        launcherIcons = null;
+    };
+    const getLauncherApps = () => {
+        const shell = win.VCPNextShellController;
+        const tray = win.trayManager;
+        disposeLauncherIcons();
+        const Icons = win.VCPNextShell?.LaunchpadIcons;
+        if (Icons) {
+            try {
+                launcherIcons = new Icons({ document: doc });
+                launcherIcons.setActive(true);
+            } catch (error) {
+                console.warn('[SidePane] Failed to create launcher icons:', error);
+                launcherIcons = null;
+            }
+        }
+        const mountIcon = (key, fallbackSvg) => (button, host) => {
+            if (fallbackSvg) host.innerHTML = fallbackSvg;
+            launcherIcons?.attach?.(button, host, key);
+        };
+        const external = (tray?.getApps?.() || []).filter(app => app.id !== 'vchat-app-main').map(app => ({
+            id: app.id,
+            label: app.name,
+            title: app.embed ? `${app.name}（在标签页中打开）` : `${app.name}（在独立窗口中打开）`,
+            mountIcon: mountIcon(app.icon, tray?.getIcon?.(app.icon) || ''),
+            open: () => (app.embed && shell?.openEmbeddedApp ? shell.openEmbeddedApp(app) : tray?.launchApp?.(app)),
+        }));
+        const internal = (win.nextUiApps?.list?.() || []).filter(app => app.discoverable !== false).map(app => ({
+            id: `internal:${app.id}`,
+            label: app.title,
+            title: app.title,
+            mountIcon: mountIcon(app.id === 'ui-component-library' ? 'widgets' : app.launchpadIcon, ''),
+            open: () => shell?.openInternalApp?.(app.id),
+        }));
+        return [...external, ...internal];
+    };
+    if (win.trayManager?.getApps) {
+        controller.setLauncherAppsProvider(getLauncherApps);
+        subscriptions.add({ dispose: disposeLauncherIcons });
+    }
     const unbindSelection = chatManager?.onSelectionChange?.(syncSidePaneParent);
     if (unbindSelection) subscriptions.add({ dispose: unbindSelection });
     const initialItem = selectedItemRef.get();

@@ -629,7 +629,7 @@
                 </button>
                 <div class="side-pane-tabs" role="tablist" aria-label="侧边栏标签页"></div>
                 <div class="side-pane-tab-actions">
-                    <button id="addSidePaneChatBtn" class="side-pane-action-btn" type="button" title="打开标签页" aria-label="打开标签页">
+                    <button id="addSidePaneChatBtn" class="side-pane-action-btn" type="button" title="新标签页" aria-label="新标签页">
                         <svg class="lucide lucide-plus" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
                     </button>
                     <button id="closeSidePaneBtn" class="side-pane-action-btn" type="button" title="收起侧边栏" aria-label="收起侧边栏">
@@ -643,7 +643,6 @@
                     </div>
                     <div class="side-pane-overview-list" id="sidePaneOpenTabsList"></div>
                 </div>
-                <div id="sidePaneAddMenuPopover" class="side-pane-add-menu-popover" role="menu" aria-label="打开标签页" hidden></div>
                 <div id="sidePaneTabContextMenu" class="side-pane-context-menu" role="menu" aria-label="标签页操作" hidden>
                     <button type="button" class="side-pane-menu-item" role="menuitem" data-action="close-tab">关闭当前标签页</button>
                     <button type="button" class="side-pane-menu-item" role="menuitem" data-action="close-others">关闭其他标签页</button>
@@ -761,14 +760,31 @@
             </div>
           </aside>
                 </section>
-                <section class="side-pane-view" id="sidePaneViewLauncher" data-tab-id="launcher" role="tabpanel" aria-label="打开标签页" hidden>
+                <section class="side-pane-view" id="sidePaneViewLauncher" data-tab-id="launcher" role="tabpanel" aria-label="新标签页" hidden>
+                    <form class="side-pane-launcher-address" role="search" hidden>
+                        <span class="vcp-ui-icon" aria-hidden="true">search</span>
+                        <input type="text" class="side-pane-launcher-address-input" placeholder="搜索或输入网址" aria-label="搜索或输入网址" autocomplete="off" spellcheck="false">
+                    </form>
+                    <p class="side-pane-launcher-address-error" role="alert" hidden></p>
                     <div class="side-pane-open-tab-shell">
                         <div class="side-pane-open-tab-content">
-                            <div class="side-pane-open-tab-header">
-                                <h2 class="side-pane-open-tab-title">打开标签页</h2>
-                                <p class="side-pane-open-tab-desc">选择要在侧栏中打开的内容</p>
+                            <div class="side-pane-launcher-profile" hidden>
+                                <button type="button" class="side-pane-launcher-avatar">
+                                    <img alt="" draggable="false">
+                                    <span class="side-pane-launcher-avatar-edit vcp-ui-icon" aria-hidden="true">edit</span>
+                                </button>
+                                <input type="text" class="side-pane-launcher-name" aria-label="名称" autocomplete="off" spellcheck="false" readonly>
                             </div>
-                            <div class="side-pane-open-tab-list"></div>
+                            <div class="side-pane-launcher-tabs" role="tablist" aria-label="新标签页分类" hidden>
+                                <button type="button" class="side-pane-launcher-tab" role="tab" data-launcher-tab="tools" aria-selected="true">工具</button>
+                                <button type="button" class="side-pane-launcher-tab" role="tab" data-launcher-tab="apps" aria-selected="false">应用</button>
+                            </div>
+                            <section class="side-pane-launcher-section" data-launcher-section="tools" role="tabpanel" aria-label="工具">
+                                <div class="side-pane-open-tab-list"></div>
+                            </section>
+                            <section class="side-pane-launcher-section" data-launcher-section="apps" role="tabpanel" aria-label="应用" hidden>
+                                <div class="side-pane-launcher-app-grid"></div>
+                            </section>
                         </div>
                     </div>
                 </section>

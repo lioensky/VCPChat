@@ -33,7 +33,8 @@ export function createSidePaneController({
     openTabEntries = [],
     onOpenSideChat = null,
     onTabClosed = null,
-    onRestoreSessions = null
+    onRestoreSessions = null,
+    onLauncherAddress = null
 }) {
     if (!root) {
         throw new TypeError('SidePaneController requires a root element');
@@ -44,7 +45,6 @@ export function createSidePaneController({
     const resolvedAddChatTabBtn = addChatTabBtn || doc.getElementById?.('addSidePaneChatBtn');
     const resolvedOverviewBtn = overviewBtn || doc.getElementById?.('sidePaneTabOverviewBtn');
     const resolvedOverviewPopover = overviewPopover || doc.getElementById?.('sidePaneTabOverviewPopover');
-    const resolvedAddMenuPopover = doc.getElementById?.('sidePaneAddMenuPopover');
     const resolvedTabContextMenu = doc.getElementById?.('sidePaneTabContextMenu');
 
     // ZCode parity: Proportional width ratio (sidePaneLayout.ts: SIDE_PANE_DEFAULT_EXPANDED_RATIO = 0.45)
@@ -339,7 +339,6 @@ export function createSidePaneController({
             tabItem.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                hideAddMenu();
                 hideTabTooltip();
                 showTabContextMenu(tab.id, e.clientX, e.clientY);
             });
@@ -665,6 +664,8 @@ export function createSidePaneController({
         showLauncher() {
             if (isDisposed) return;
             state = SidePaneState.showLauncher(state);
+            renderLauncherProfile();
+            if (launcherTab === 'apps') renderLauncherApps();
             renderTabList();
             syncViewPanels();
             syncDomVisibility();
@@ -912,6 +913,25 @@ export function createSidePaneController({
         /** 入口的可用状态变了（比如当前窗口不支持某能力）时调用，重新渲染菜单和引导页 */
         refreshOpenTabEntries() {
             if (!isDisposed) renderOpenTabEntries();
+        },
+
+        setLauncherAddressHandler(handler) {
+            launcherAddressHandler = typeof handler === 'function' ? handler : null;
+            syncLauncherAddress();
+        },
+
+        /** provider() 返回 { name, avatarUrl, onEditAvatar?, onRename?(name) } 或 null（不显示） */
+        setLauncherProfileProvider(provider) {
+            launcherProfileProvider = typeof provider === 'function' ? provider : null;
+            renderLauncherProfile();
+        },
+
+        /** provider() 返回 [{ id, label, title?, open(), mountIcon?(button, iconHost) }]；不设置时只有工具页 */
+        setLauncherAppsProvider(provider) {
+            launcherAppsProvider = typeof provider === 'function' ? provider : null;
+            if (!launcherAppsProvider) launcherTab = 'tools';
+            syncLauncherSections();
+            if (launcherTab === 'apps') renderLauncherApps();
         },
 
         registerProvider(name, provider) {
@@ -1309,13 +1329,6 @@ export function createSidePaneController({
         resolvedOverviewBtn?.setAttribute('aria-expanded', 'false');
     }
 
-    function hideAddMenu() {
-        if (resolvedAddMenuPopover) resolvedAddMenuPopover.hidden = true;
-        if (resolvedAddChatTabBtn?.hasAttribute('aria-haspopup')) {
-            resolvedAddChatTabBtn.setAttribute('aria-expanded', 'false');
-        }
-    }
-
     function hideTabContextMenu() {
         if (resolvedTabContextMenu) resolvedTabContextMenu.hidden = true;
         contextTargetTabId = null;
@@ -1323,7 +1336,6 @@ export function createSidePaneController({
 
     function hideAllMenus() {
         hideOverview();
-        hideAddMenu();
         hideTabContextMenu();
     }
 
@@ -1336,7 +1348,6 @@ export function createSidePaneController({
                 hideOverview();
                 return;
             }
-            hideAddMenu();
             hideTabContextMenu();
             resolvedOverviewPopover.hidden = false;
             resolvedOverviewBtn.setAttribute('aria-expanded', 'true');
@@ -1353,9 +1364,6 @@ export function createSidePaneController({
         if (isOpen(resolvedOverviewPopover) && !resolvedOverviewPopover.contains(target) && !resolvedOverviewBtn?.contains?.(target)) {
             hideOverview();
         }
-        if (isOpen(resolvedAddMenuPopover) && !resolvedAddMenuPopover.contains(target) && !resolvedAddChatTabBtn?.contains?.(target)) {
-            hideAddMenu();
-        }
         if (isOpen(resolvedTabContextMenu) && !resolvedTabContextMenu.contains(target)) {
             hideTabContextMenu();
         }
@@ -1370,10 +1378,6 @@ export function createSidePaneController({
             const returnTo = tabListElement?.querySelector?.(`[role="tab"][data-tab-id="${contextTargetTabId}"]`);
             hideTabContextMenu();
             returnTo?.focus?.();
-        } else if (isOpen(resolvedAddMenuPopover)) {
-            e.preventDefault();
-            hideAddMenu();
-            resolvedAddChatTabBtn?.focus?.();
         } else if (isOpen(resolvedOverviewPopover)) {
             e.preventDefault();
             hideOverview();
@@ -1421,7 +1425,6 @@ export function createSidePaneController({
     function showTabContextMenu(tabId, x, y) {
         if (!resolvedTabContextMenu) return;
         hideOverview();
-        hideAddMenu();
         contextTargetTabId = tabId;
         const closableVisible = SidePaneState.getClosableVisibleTabs(state);
         const setDisabled = (action, disabled) => {
@@ -1457,45 +1460,240 @@ export function createSidePaneController({
         cleanupListeners.push(() => resolvedTabContextMenu.removeEventListener('click', onContextMenuClick));
     }
 
-    // ---- 打开标签页的入口：新增菜单和引导页都从这里渲染，各模块自己登记 ----
-    const launcherList = contentContainer?.querySelector?.('#sidePaneViewLauncher .side-pane-open-tab-list') || null;
+    // ---- 新标签页（引导页）：上面地址栏，下面工具入口。工具入口由各模块自己登记 ----
+    const launcherView = contentContainer?.querySelector?.('#sidePaneViewLauncher') || null;
+    const launcherList = launcherView?.querySelector?.('.side-pane-open-tab-list') || null;
+    const launcherToolsSection = launcherView?.querySelector?.('[data-launcher-section="tools"]') || null;
+    const launcherAddressForm = launcherView?.querySelector?.('.side-pane-launcher-address') || null;
+    const launcherAddressInput = launcherAddressForm?.querySelector?.('input') || null;
+    const launcherAddressError = launcherView?.querySelector?.('.side-pane-launcher-address-error') || null;
+    let launcherAddressHandler = typeof onLauncherAddress === 'function' ? onLauncherAddress : null;
+    const launcherProfile = launcherView?.querySelector?.('.side-pane-launcher-profile') || null;
+    const launcherProfileAvatar = launcherProfile?.querySelector?.('.side-pane-launcher-avatar') || null;
+    const launcherProfileImage = launcherProfileAvatar?.querySelector?.('img') || null;
+    const launcherProfileName = launcherProfile?.querySelector?.('.side-pane-launcher-name') || null;
+    const launcherTabs = launcherView?.querySelector?.('.side-pane-launcher-tabs') || null;
+    const launcherAppsSection = launcherView?.querySelector?.('[data-launcher-section="apps"]') || null;
+    const launcherAppGrid = launcherAppsSection?.querySelector?.('.side-pane-launcher-app-grid') || null;
+    let launcherProfileProvider = null;
+    let launcherProfileEdit = null;
+    let launcherProfileRename = null;
+    let launcherProfileNameValue = '';
+    let launcherNameEdit = null;
+    let launcherAppsProvider = null;
+    let launcherApps = new Map();
+    let launcherTab = 'tools';
 
-    function createEntryButton(entry, className, labelClassName, role) {
+    // 当前助手的头像和名字；每次打开新标签页时现取，改了头像或名字也能跟上
+    function renderLauncherProfile() {
+        if (!launcherProfile) return;
+        let profile = null;
+        try {
+            profile = launcherProfileProvider?.() || null;
+        } catch (error) {
+            console.warn('[SidePaneController] Failed to read launcher profile:', error);
+        }
+        launcherProfile.hidden = !profile;
+        launcherProfileEdit = typeof profile?.onEditAvatar === 'function' ? profile.onEditAvatar : null;
+        launcherProfileRename = typeof profile?.onRename === 'function' ? profile.onRename : null;
+        if (!profile) return;
+        launcherProfileNameValue = profile.name || '';
+        if (launcherProfileName) {
+            // 正在改名时不覆盖输入框
+            if (!launcherNameEdit) launcherProfileName.value = launcherProfileNameValue;
+            launcherProfileName.readOnly = !launcherProfileRename;
+            launcherProfileName.title = launcherProfileRename ? '编辑名称' : '';
+        }
+        if (launcherProfileImage) {
+            const src = profile.avatarUrl || 'assets/default_avatar.png';
+            if (launcherProfileImage.getAttribute('src') !== src) launcherProfileImage.setAttribute('src', src);
+        }
+        if (launcherProfileAvatar) {
+            launcherProfileAvatar.disabled = !launcherProfileEdit;
+            launcherProfileAvatar.title = launcherProfileEdit ? '编辑头像' : '';
+            launcherProfileAvatar.setAttribute('aria-label', launcherProfileEdit ? '编辑头像' : (profile.name || '头像'));
+        }
+    }
+
+    if (launcherProfileAvatar) {
+        const onAvatarClick = () => {
+            if (launcherProfileEdit) launcherProfileEdit();
+        };
+        launcherProfileAvatar.addEventListener('click', onAvatarClick);
+        cleanupListeners.push(() => launcherProfileAvatar.removeEventListener('click', onAvatarClick));
+    }
+
+    // 名字点一下就能改：回车或点别处保存，Esc 放弃；空名字不保存
+    if (launcherProfileName) {
+        const onNameFocus = () => {
+            if (launcherProfileName.readOnly || !launcherProfileRename) return;
+            launcherNameEdit = { rename: launcherProfileRename, original: launcherProfileNameValue };
+        };
+        const onNameKeydown = (e) => {
+            if (!launcherNameEdit) return;
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                launcherProfileName.blur();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                launcherProfileName.value = launcherNameEdit.original;
+                launcherProfileName.blur();
+            }
+        };
+        const onNameBlur = async () => {
+            const edit = launcherNameEdit;
+            launcherNameEdit = null;
+            if (!edit) return;
+            const next = launcherProfileName.value.trim();
+            if (!next || next === edit.original) {
+                launcherProfileName.value = edit.original;
+                return;
+            }
+            launcherProfileName.value = next;
+            try {
+                const result = await edit.rename(next);
+                if (result === false || result?.error) throw new Error(result?.error || 'rename-failed');
+                if (launcherProfileNameValue === edit.original) launcherProfileNameValue = next;
+            } catch (error) {
+                console.warn('[SidePaneController] Failed to rename:', error);
+                if (!launcherNameEdit && launcherProfileName.value === next) launcherProfileName.value = edit.original;
+            }
+        };
+        launcherProfileName.addEventListener('focus', onNameFocus);
+        launcherProfileName.addEventListener('keydown', onNameKeydown);
+        launcherProfileName.addEventListener('blur', onNameBlur);
+        cleanupListeners.push(() => {
+            launcherProfileName.removeEventListener('focus', onNameFocus);
+            launcherProfileName.removeEventListener('keydown', onNameKeydown);
+            launcherProfileName.removeEventListener('blur', onNameBlur);
+        });
+    }
+
+    // 工具 / 应用 两页；没有应用来源时不显示切换条
+    function syncLauncherSections() {
+        if (!launcherAppsProvider) launcherTab = 'tools';
+        if (launcherTabs) {
+            launcherTabs.hidden = !launcherAppsProvider;
+            launcherTabs.querySelectorAll('[data-launcher-tab]').forEach(btn => {
+                const selected = btn.getAttribute('data-launcher-tab') === launcherTab;
+                btn.setAttribute('aria-selected', String(selected));
+                btn.tabIndex = selected ? 0 : -1;
+            });
+        }
+        if (launcherToolsSection) {
+            launcherToolsSection.hidden = launcherTab !== 'tools' || getAvailableOpenTabEntries().length === 0;
+        }
+        if (launcherAppsSection) launcherAppsSection.hidden = launcherTab !== 'apps';
+    }
+
+    function selectLauncherTab(tab) {
+        const next = tab === 'apps' && launcherAppsProvider ? 'apps' : 'tools';
+        if (next === launcherTab) return;
+        launcherTab = next;
+        syncLauncherSections();
+        if (launcherTab === 'apps') renderLauncherApps();
+    }
+
+    function renderLauncherApps() {
+        if (!launcherAppGrid) return;
+        let apps = [];
+        try {
+            apps = launcherAppsProvider?.() || [];
+        } catch (error) {
+            console.warn('[SidePaneController] Failed to read launcher apps:', error);
+        }
+        launcherApps = new Map();
+        const mounts = [];
+        launcherAppGrid.replaceChildren(...apps.filter(app => app?.id && !launcherApps.has(app.id)).map(app => {
+            launcherApps.set(app.id, app);
+            const btn = doc.createElement('button');
+            btn.type = 'button';
+            btn.className = 'side-pane-launcher-app';
+            btn.setAttribute('data-launcher-app', app.id);
+            if (app.title) btn.title = app.title;
+            const iconEl = doc.createElement('span');
+            iconEl.className = 'side-pane-launcher-app-icon';
+            iconEl.setAttribute('aria-hidden', 'true');
+            const labelEl = doc.createElement('span');
+            labelEl.className = 'side-pane-launcher-app-label';
+            labelEl.textContent = app.label || app.id;
+            btn.append(iconEl, labelEl);
+            if (typeof app.mountIcon === 'function') mounts.push(() => app.mountIcon(btn, iconEl));
+            return btn;
+        }));
+        mounts.forEach(mount => {
+            try {
+                mount();
+            } catch (error) {
+                console.warn('[SidePaneController] Failed to draw launcher app icon:', error);
+            }
+        });
+    }
+
+    async function runLauncherApp(appId) {
+        const app = launcherApps.get(appId);
+        if (!app || isDisposed) return;
+        try {
+            await app.open();
+        } catch (error) {
+            console.error(`[SidePaneController] Failed to open app "${appId}":`, error);
+        }
+    }
+
+    if (launcherTabs) {
+        const onTabsKeydown = (e) => {
+            if (!['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+            const tabs = [...launcherTabs.querySelectorAll('[data-launcher-tab]')];
+            const index = tabs.findIndex(btn => btn.getAttribute('data-launcher-tab') === launcherTab);
+            const next = tabs[(index + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+            if (!next) return;
+            e.preventDefault();
+            selectLauncherTab(next.getAttribute('data-launcher-tab'));
+            next.focus();
+        };
+        launcherTabs.addEventListener('keydown', onTabsKeydown);
+        cleanupListeners.push(() => launcherTabs.removeEventListener('keydown', onTabsKeydown));
+    }
+
+    function createLauncherRow({ icon, label }) {
         const btn = doc.createElement('button');
         btn.type = 'button';
-        btn.className = className;
-        if (role) btn.setAttribute('role', role);
-        btn.setAttribute('data-open-tab-entry', entry.id);
-        const icon = doc.createElement('span');
-        icon.className = 'vcp-ui-icon';
-        icon.setAttribute('aria-hidden', 'true');
-        icon.textContent = entry.icon || 'tab';
-        const label = doc.createElement('span');
-        label.className = labelClassName;
-        label.textContent = entry.label;
-        btn.append(icon, label);
+        btn.className = 'side-pane-open-tab-button';
+        const iconEl = doc.createElement('span');
+        iconEl.className = 'vcp-ui-icon';
+        iconEl.setAttribute('aria-hidden', 'true');
+        iconEl.textContent = icon || 'tab';
+        const labelEl = doc.createElement('span');
+        labelEl.className = 'side-pane-open-tab-button-label';
+        labelEl.textContent = label;
+        btn.append(iconEl, labelEl);
         return btn;
+    }
+
+    function syncLauncherAddress() {
+        if (launcherAddressForm) launcherAddressForm.hidden = !launcherAddressHandler;
+    }
+
+    function showLauncherAddressError(message) {
+        if (!launcherAddressError) return;
+        launcherAddressError.textContent = message || '';
+        launcherAddressError.hidden = !message;
     }
 
     function renderOpenTabEntries() {
         const entries = getAvailableOpenTabEntries();
-        if (resolvedAddMenuPopover) {
-            resolvedAddMenuPopover.replaceChildren(...entries.map(entry => createEntryButton(entry, 'side-pane-menu-item', 'side-pane-menu-item-label', 'menuitem')));
-        }
-        launcherList?.replaceChildren(...entries.map(entry => createEntryButton(entry, 'side-pane-open-tab-button', 'side-pane-open-tab-button-label')));
+        launcherList?.replaceChildren(...entries.map(entry => {
+            const row = createLauncherRow({ icon: entry.icon, label: entry.label });
+            row.setAttribute('data-open-tab-entry', entry.id);
+            return row;
+        }));
+        syncLauncherSections();
         if (resolvedAddChatTabBtn) {
             resolvedAddChatTabBtn.hidden = entries.length === 0;
-            const label = entries.length === 1 ? entries[0].label : '打开标签页';
+            const label = entries.length === 1 ? entries[0].label : '新标签页';
             resolvedAddChatTabBtn.title = label;
             resolvedAddChatTabBtn.setAttribute('aria-label', label);
-            if (entries.length > 1) {
-                resolvedAddChatTabBtn.setAttribute('aria-haspopup', 'menu');
-                resolvedAddChatTabBtn.setAttribute('aria-expanded', String(isOpen(resolvedAddMenuPopover)));
-            } else {
-                hideAddMenu();
-                resolvedAddChatTabBtn.removeAttribute('aria-haspopup');
-                resolvedAddChatTabBtn.removeAttribute('aria-expanded');
-            }
         }
         scheduleTabLayout();
     }
@@ -1511,7 +1709,7 @@ export function createSidePaneController({
         }
     }
 
-    // 面板里没有可关的标签时展开：只有一个入口就直接打开它，否则显示引导页
+    // 面板里没有可关的标签时展开：只有一个入口就直接打开它，否则显示新标签页
     async function expandFromEmpty() {
         const entries = getAvailableOpenTabEntries();
         if (entries.length === 1) {
@@ -1522,38 +1720,69 @@ export function createSidePaneController({
     }
 
     if (resolvedAddChatTabBtn) {
+        // 和浏览器一样，「+」打开新标签页；只登记了一个入口时直接打开它
         const onAddClick = (e) => {
             e.stopPropagation();
             const entries = getAvailableOpenTabEntries();
+            if (entries.length === 0) return;
             if (entries.length === 1) {
                 runOpenTabEntry(entries[0].id);
                 return;
             }
-            if (!resolvedAddMenuPopover || entries.length === 0) return;
-            if (isOpen(resolvedAddMenuPopover)) {
-                hideAddMenu();
-                return;
-            }
-            hideOverview();
-            hideTabContextMenu();
-            resolvedAddMenuPopover.hidden = false;
-            resolvedAddChatTabBtn.setAttribute('aria-expanded', 'true');
-            focusFirstMenuItem(resolvedAddMenuPopover);
+            hideAllMenus();
+            controller.showLauncher();
+            launcherAddressInput?.focus?.();
         };
         resolvedAddChatTabBtn.addEventListener('click', onAddClick);
         cleanupListeners.push(() => resolvedAddChatTabBtn.removeEventListener('click', onAddClick));
     }
 
-    for (const host of [resolvedAddMenuPopover, launcherList]) {
-        if (!host) continue;
-        const onEntryClick = (e) => {
-            const btn = e.target.closest('[data-open-tab-entry]');
-            if (btn) runOpenTabEntry(btn.getAttribute('data-open-tab-entry'));
+    if (launcherView) {
+        const onLauncherClick = (e) => {
+            const entryBtn = e.target.closest('[data-open-tab-entry]');
+            if (entryBtn) {
+                runOpenTabEntry(entryBtn.getAttribute('data-open-tab-entry'));
+                return;
+            }
+            const tabBtn = e.target.closest('[data-launcher-tab]');
+            if (tabBtn) {
+                selectLauncherTab(tabBtn.getAttribute('data-launcher-tab'));
+                return;
+            }
+            const appBtn = e.target.closest('[data-launcher-app]');
+            if (appBtn) runLauncherApp(appBtn.getAttribute('data-launcher-app'));
         };
-        host.addEventListener('click', onEntryClick);
-        cleanupListeners.push(() => host.removeEventListener('click', onEntryClick));
+        launcherView.addEventListener('click', onLauncherClick);
+        cleanupListeners.push(() => launcherView.removeEventListener('click', onLauncherClick));
     }
-    wireMenuKeyboard(resolvedAddMenuPopover);
+
+    if (launcherAddressForm && launcherAddressInput) {
+        const onAddressSubmit = async (e) => {
+            e.preventDefault();
+            const text = launcherAddressInput.value.trim();
+            if (!text || !launcherAddressHandler) return;
+            try {
+                const result = await launcherAddressHandler(text);
+                if (result?.error) {
+                    showLauncherAddressError(result.error);
+                    return;
+                }
+                launcherAddressInput.value = '';
+                showLauncherAddressError('');
+            } catch (error) {
+                console.error('[SidePaneController] Failed to open address:', error);
+                showLauncherAddressError('打开失败');
+            }
+        };
+        const onAddressInput = () => showLauncherAddressError('');
+        launcherAddressForm.addEventListener('submit', onAddressSubmit);
+        launcherAddressInput.addEventListener('input', onAddressInput);
+        cleanupListeners.push(() => {
+            launcherAddressForm.removeEventListener('submit', onAddressSubmit);
+            launcherAddressInput.removeEventListener('input', onAddressInput);
+        });
+    }
+    syncLauncherAddress();
 
     openTabEntries.forEach(entry => controller.registerOpenTabEntry(entry));
 
