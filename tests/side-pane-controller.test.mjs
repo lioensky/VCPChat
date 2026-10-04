@@ -117,3 +117,84 @@ test('SidePaneController showNotifications and openChat mount views and sync vis
 
     controller.dispose();
 });
+
+function createPaneDom() {
+    const dom = new JSDOM(`
+        <div class="main-content"></div>
+        <div class="resizer" id="resizerRight"></div>
+        <aside id="vcpSidePane" class="vcp-side-pane">
+            <header class="side-pane-tab-bar"><div class="side-pane-tabs"></div></header>
+            <div class="side-pane-content-container"></div>
+        </aside>
+    `);
+    const doc = dom.window.document;
+    const root = doc.getElementById('vcpSidePane');
+    return {
+        dom,
+        root,
+        options: {
+            root,
+            resizerHandle: doc.getElementById('resizerRight'),
+            tabListElement: root.querySelector('.side-pane-tabs'),
+            contentContainer: root.querySelector('.side-pane-content-container')
+        }
+    };
+}
+
+test('SidePaneController mounts a tab once when it is opened twice concurrently', async () => {
+    const { dom, root, options } = createPaneDom();
+    let mounts = 0;
+    let disposes = 0;
+    const controller = createSidePaneController({
+        ...options,
+        providers: {
+            git: {
+                async mountTab() {
+                    mounts++;
+                    await new Promise(resolve => setTimeout(resolve, 10));
+                    return { dispose() { disposes++; } };
+                }
+            }
+        }
+    });
+    const tab = { id: 'git', kind: 'git', title: 'Git', closable: true, scopeMode: 'global' };
+
+    const [first, second] = await Promise.all([controller.openTab(tab), controller.openTab(tab)]);
+    assert.equal(mounts, 1);
+    assert.equal(first, second);
+    assert.equal(root.querySelectorAll('.side-pane-view[data-tab-id="git"]').length, 1);
+
+    await controller.closeTab('git');
+    assert.equal(disposes, 1);
+
+    await controller.dispose();
+    dom.window.close();
+});
+
+test('SidePaneController still closes a tab whose dispose throws', async () => {
+    const { dom, root, options } = createPaneDom();
+    const controller = createSidePaneController({
+        ...options,
+        providers: {
+            broken: {
+                async mountTab() {
+                    return { dispose() { throw new Error('dispose failed'); } };
+                }
+            }
+        }
+    });
+    const originalError = console.error;
+    console.error = () => {};
+    try {
+        await controller.openTab({ id: 'broken', kind: 'broken', title: 'Broken', closable: true, scopeMode: 'global' });
+        await controller.closeTab('broken');
+    } finally {
+        console.error = originalError;
+    }
+
+    assert.equal(controller.getSnapshot().tabs.some(tab => tab.id === 'broken'), false);
+    assert.equal(root.querySelector('.side-pane-view[data-tab-id="broken"]'), null);
+
+    await controller.dispose();
+    dom.window.close();
+});

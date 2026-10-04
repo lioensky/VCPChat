@@ -139,7 +139,8 @@ const inlineStyleCompatibilityAllowlist = new Set([
     path.join(moduleDir, 'typed-field-owners.js'), // Settings snapshot projection updates canonical dependent rows.
     path.join(moduleDir, 'conversation-turn-navigator.js'), // Rail bars magnify by pointer distance; rail and card follow the measured chat scroller.
     path.join(moduleDir, 'chat-composer-inset.js'), // Publishes the measured composer height and scrollbar width as CSS variables.
-    path.join(moduleDir, 'side-pane', 'side-pane-controller.js'), // Pane width animation and pointer-anchored menu/tooltip coordinates are measured at runtime.
+    path.join(moduleDir, 'side-pane', 'side-pane-visibility.js'), // Pane width ratio and the open/close animation are measured at runtime.
+    path.join(moduleDir, 'side-pane', 'side-pane-tab-strip.js'), // Tab title tooltips are placed at the measured tab position.
     path.join(moduleDir, 'side-pane', 'side-pane-resizer-owner.js'), // Dragged pane width follows the pointer, same as the left sidebar resizer.
     path.join(moduleDir, 'side-pane', 'side-pane-tab-dnd.js'), // Tab reorder offsets follow the pointer.
     path.join(moduleDir, 'side-pane', 'menu-position.js'), // Pointer-anchored context menus are placed at measured coordinates.

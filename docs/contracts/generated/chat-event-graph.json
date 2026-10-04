@@ -407,10 +407,15 @@
     "modules/ui-system/side-pane/planDetailSideProvider.js",
     "modules/ui-system/side-pane/selection-reference.js",
     "modules/ui-system/side-pane/side-pane-controller.js",
+    "modules/ui-system/side-pane/side-pane-launcher.js",
     "modules/ui-system/side-pane/side-pane-resizer-owner.js",
     "modules/ui-system/side-pane/side-pane-state.js",
     "modules/ui-system/side-pane/side-pane-tab-dnd.js",
+    "modules/ui-system/side-pane/side-pane-tab-menu.js",
+    "modules/ui-system/side-pane/side-pane-tab-overview.js",
+    "modules/ui-system/side-pane/side-pane-tab-strip.js",
     "modules/ui-system/side-pane/side-pane-tab-utils.js",
+    "modules/ui-system/side-pane/side-pane-visibility.js",
     "modules/ui-system/side-pane/terminalLinks.js",
     "modules/ui-system/side-pane/terminalSideProvider.js",
     "modules/ui-system/side-pane/terminalTheme.js",
@@ -5056,14 +5061,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1096,
+          "line": 634,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1096,
+          "line": 634,
           "kind": "preload-subscription",
           "match": "onOpenSideChat("
         }
