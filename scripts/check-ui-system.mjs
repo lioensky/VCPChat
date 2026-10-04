@@ -38,6 +38,7 @@ const importantFiles = new Set([
     path.join(styleDir, 'settings-stream-animation.css'),
 ]);
 const literalColorFiles = new Set([
+    path.join(styleDir, 'side-pane-plan.css'), // Existing light/dark fallbacks for plan cards retain the original presentation.
     path.join(styleDir, 'appearance-studio.css'),
     path.join(styleDir, 'settings-primitives.css'),
     path.join(styleDir, 'settings-shell.css'),
@@ -129,6 +130,7 @@ const componentCss = fs.readFileSync(path.join(styleDir, 'components.css'), 'utf
 if (!componentCss.includes(':focus-visible')) report(path.join(styleDir, 'components.css'), 'missing focus-visible rules');
 
 const inlineStyleCompatibilityAllowlist = new Set([
+    path.join(moduleDir, 'settings', 'group-slots.js'), // Legacy group-order icons retain their fixed flex sizing until the settings migration.
     path.join(moduleDir, 'vcp-ui.js'), // Per-instance Range progress cannot be expressed as a static token.
     path.join(moduleDir, 'next-shell', 'next-shell-controller.js'), // Measured native-view bounds require a runtime sidebar width token.
     path.join(moduleDir, 'settings', 'settings-sidebar-slots.js'), // Dynamic editor height follows measured content.

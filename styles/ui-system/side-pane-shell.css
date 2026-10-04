@@ -1,0 +1,151 @@
+/* ==========================================================================
+   Workspace side pane and side chat
+   ========================================================================== */
+
+/* 侧栏里的视图、菜单、按钮都用 hidden 属性开关，压过各自的 display */
+html body #vcpSidePane [hidden]:where(.vcp-ui-scope, .vcp-ui-scope *),
+html body #toggleSidePaneChatBtn[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *),
+html body #floatingSelectionSideChatBtn[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: none;
+}
+
+/* 侧栏按钮取代铃铛：通知在新标签页里，右键监控面板和待审批角标都挪到侧栏按钮上 */
+html body:has(#vcpSidePane) #toggleNotificationsBtn:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: none;
+}
+
+html body #toggleSidePaneChatBtn:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: relative;
+    overflow: visible;
+}
+
+/* --- Resize handle ---
+   ui-next.css already gives #resizerRight its 4px gutter. Here it only gains
+   the hover pill: 2px wide, inset from the card's rounded corners so it never
+   pokes past the radius. */
+html #resizerRight.resizer:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    cursor: col-resize;
+    flex-shrink: 0;
+    z-index: 50;
+    user-select: none;
+}
+
+html #resizerRight.resizer:where(.vcp-ui-scope, .vcp-ui-scope *)::before {
+    content: '';
+    position: absolute;
+    inset: 0 -3px;
+    z-index: 1;
+}
+
+html #resizerRight.resizer:where(.vcp-ui-scope, .vcp-ui-scope *)::after {
+    content: '';
+    position: absolute;
+    top: var(--vcp-ui-shell-radius, 12px);
+    bottom: var(--vcp-ui-shell-radius, 12px);
+    left: 50%;
+    width: 2px;
+    transform: translateX(-50%);
+    border-radius: 9999px;
+    background-color: var(--vcp-ui-color-foreground-subtlest);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+html #resizerRight.resizer:hover:where(.vcp-ui-scope, .vcp-ui-scope *)::after,
+html #resizerRight.resizer.active:where(.vcp-ui-scope, .vcp-ui-scope *)::after {
+    opacity: 0.5;
+}
+
+html #resizerRight.resizer.active:where(.vcp-ui-scope, .vcp-ui-scope *)::after {
+    opacity: 1;
+    background-color: var(--vcp-ui-accent);
+}
+
+/* Without an open (or animating) side pane the handle has nothing to resize. */
+html body:not(:has(#vcpSidePane.active)):not(:has(#vcpSidePane.is-animating)) #resizerRight:not(.is-animating):where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: none;
+}
+
+html #resizerRight.resizer.is-animating:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    pointer-events: none;
+    transition: opacity 0.18s ease-out;
+}
+
+html #resizerRight.resizer.is-animating-closing:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    opacity: 0;
+}
+
+/* --- Side pane host ---
+   The pane lives inside the workspace card, so it draws no card of its own:
+   a single hairline on its left edge separates it from the conversation. */
+html #vcpSidePane:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    flex-shrink: 0;
+    position: relative;
+    overflow: hidden;
+    background-color: transparent;
+    border: none;
+    border-left: 1px solid var(--next-panel-edge, var(--vcp-ui-border));
+    box-sizing: border-box;
+    z-index: 40;
+}
+
+/* Width and opacity only animate during an explicit open/close, never while
+   dragging the handle. */
+html #vcpSidePane.is-animating:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    transition: width 0.22s cubic-bezier(0.2, 0, 0, 1), opacity 0.2s ease-out;
+    will-change: width, opacity;
+    pointer-events: none;
+}
+
+/* Content keeps its expanded width while the pane animates; the pane clips it. */
+html #vcpSidePane.is-animating > *:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    min-width: var(--side-pane-locked-width, 0);
+}
+
+html #vcpSidePane.active:not(.is-animating):where(.vcp-ui-scope, .vcp-ui-scope *) {
+    width: var(--side-pane-width, 45%);
+    min-width: 240px;
+    max-width: 65%;
+}
+
+/* 磨砂底：壁纸透过来会让侧栏的字看不清，用面板色压一层再模糊，和导航栏材质一致 */
+html #vcpSidePane.active:where(.vcp-ui-scope, .vcp-ui-scope *),
+html #vcpSidePane.is-animating:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background-color: color-mix(in srgb, var(--vcp-ui-color-panel, var(--vcp-ui-bg-primary)) 72%, transparent);
+    backdrop-filter: var(--next-backdrop-filter, blur(18px) saturate(1.28));
+    -webkit-backdrop-filter: var(--next-backdrop-filter, blur(18px) saturate(1.28));
+}
+
+html #vcpSidePane:not(.active):not(.is-animating):where(.vcp-ui-scope, .vcp-ui-scope *) {
+    width: 0;
+    min-width: 0;
+    max-width: 0;
+    border: none;
+    opacity: 0;
+    pointer-events: none;
+    visibility: hidden;
+}
+
+/* --- Notifications hosted as a tab --- */
+html #vcpSidePane .notifications-sidebar:where(.vcp-ui-scope, .vcp-ui-scope *),
+html #vcpSidePane .notifications-sidebar.active:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    height: 100%;
+    flex: 1;
+    border-left: none;
+    box-shadow: none;
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    opacity: 1;
+    transition: none;
+}
+
+

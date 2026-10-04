@@ -1,0 +1,87 @@
+/* --- Terminal tab (terminalSideProvider.js) --- */
+html .side-terminal-container:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+}
+
+html .side-terminal-toolbar:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 34px;
+    min-height: 34px;
+    padding: 0 8px;
+    border-bottom: 1px solid var(--zcode-header-divider, var(--vcp-ui-port-color-rgba-255-255-255-0-06));
+    box-sizing: border-box;
+}
+
+html .side-terminal-ws-select:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    height: 24px;
+    max-width: 45%;
+    padding: 0 6px;
+    border-radius: 4px;
+    border: 1px solid var(--border-color, var(--vcp-ui-port-color-rgba-255-255-255-0-08));
+    background: var(--vcp-ui-port-color-rgba-255-255-255-0-03);
+    color: var(--secondary-text, var(--vcp-ui-port-color-rgba-255-255-255-0-8));
+    font-size: calc(var(--vcp-ui-font-size) - 3px);
+    outline: none;
+}
+
+html body[data-vcp-theme="light"] .side-terminal-ws-select:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-port-color-rgba-0-0-0-0-03);
+    border-color: var(--vcp-ui-port-color-rgba-0-0-0-0-08);
+    color: var(--secondary-text, var(--vcp-ui-port-color-334155));
+}
+
+html .side-terminal-status:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: calc(var(--vcp-ui-font-size) - 3px);
+    opacity: 0.6;
+}
+
+html .side-terminal-status.is-error:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--danger-color, var(--vcp-ui-port-color-ef4444));
+    opacity: 1;
+}
+
+html .side-terminal-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    opacity: 0.7;
+}
+
+html .side-terminal-btn:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    opacity: 1;
+    background: var(--vcp-ui-port-color-rgba-127-127-127-0-16);
+}
+
+html .side-terminal-screen:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 1;
+    min-height: 0;
+    padding: 6px 4px 4px 8px;
+    box-sizing: border-box;
+    overflow: hidden;
+    /* xterm 从这里读底色和前景（terminalTheme.js），外框与画布始终同色 */
+    background: var(--vcp-ui-color-background, var(--vcp-ui-port-color-14161a));
+    color: var(--vcp-ui-color-foreground);
+}
+
+html .side-terminal-screen .xterm:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    height: 100%;
+}

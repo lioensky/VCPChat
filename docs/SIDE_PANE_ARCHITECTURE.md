@@ -173,3 +173,12 @@ handle 的方法都是可选的：
 2. **入口和 provider 分开登记**：一种标签要分别调用 `registerProvider` 和 `registerOpenTabEntry`，图标、类型名、搜索提示又散在 `side-pane-tab-utils.js`。后续可以合成一个标签类型定义（kind、标题、图标、入口、mountTab 一处声明）。
 3. **辅助对话的草稿缓存在控制器里**：`getDraft` / `setDraft` 这一组只有辅助对话用到，严格说应该归辅助对话的 provider 自己管理。
 4. **没有键盘快捷键层**：切换 / 关闭标签只能用鼠标或标签条内的方向键，还没有全局快捷键。
+
+
+## 8. 样式加载顺序
+
+`main.html` 按原连续片段加载侧栏样式：shell → tab-bar → side-chat → tab-overview → launcher → tab-overlays → notes → code-viewer → browser → terminal。标签概览、可访问性、右键菜单、浮动提问按钮和窄视口规则保留原位置，因此使用 10 个文件，避免按区域归并时改变层叠顺序；每个文件不超过 459 行。
+
+原有 `side-pane-tabs.css`、`side-pane-plan.css`、`side-pane-tool-output.css`、`side-pane-git-extras.css` 和 `side-pane-side-chat-extras.css` 是后加载的扩展层，继续保留各自的位置。调整这些扩展层时也必须保持它们相对于其他样式的顺序。
+
+通知中心按 status → list → cards → dock 四段加载。两套样式拆分时只切分原文件，按引用顺序拼接后与原文件逐字节一致。

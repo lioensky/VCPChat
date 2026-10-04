@@ -1,0 +1,323 @@
+/* --- Side Pane Tab Bar --- */
+html .side-pane-tab-bar:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    height: 48px;
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 8px;
+    border-bottom: 1px solid var(--zcode-header-divider, var(--vcp-ui-port-color-rgba-255-255-255-0-08));
+    border-radius: 0;
+    background: transparent;
+    user-select: none;
+    box-sizing: border-box;
+}
+
+html body[data-vcp-theme="light"] .side-pane-tab-bar:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    border-bottom-color: var(--zcode-header-divider, var(--vcp-ui-port-color-rgba-0-0-0-0-08));
+}
+
+html .side-pane-tabs:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    flex: 1;
+    min-width: 0;
+    padding: 0 2px;
+}
+
+html .side-pane-tabs:where(.vcp-ui-scope, .vcp-ui-scope *)::-webkit-scrollbar {
+    display: none;
+}
+
+html .side-pane-tab-item:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex;
+    align-items: center;
+    position: relative;
+    height: 28px;
+    border-radius: 8px;
+    background: transparent;
+    border: 1px solid transparent;
+    transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    /* 挤的时候先收非激活标签（权重 100），收到 32px 后才轮到激活标签收到 96px */
+    flex: 1 100 9.75rem;
+    min-width: 32px;
+    max-width: 156px;
+    overflow: hidden;
+    box-sizing: border-box;
+    container: side-pane-tab / inline-size;
+}
+
+html .side-pane-tab-item:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background-color: var(--vcp-ui-port-color-rgba-255-255-255-0-05);
+}
+
+html body:is(.light-theme, [data-vcp-theme="light"]) .side-pane-tab-item:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background-color: var(--vcp-ui-port-color-rgba-0-0-0-0-05);
+}
+
+html .side-pane-tab-item.active:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background-color: var(--vcp-ui-port-color-rgba-255-255-255-0-10);
+    border-color: transparent;
+    flex-shrink: 1;
+    min-width: 96px;
+}
+
+html body[data-vcp-theme="light"] .side-pane-tab-item.active:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background-color: var(--vcp-ui-port-color-rgba-0-0-0-0-08);
+}
+
+html .side-pane-tab:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 100%;
+    width: 100%;
+    min-width: 0;
+    padding: 0 24px 0 8px;
+    font-size: calc(var(--vcp-ui-font-size) - 1px);
+    font-weight: 500;
+    line-height: 1.2;
+    color: var(--secondary-text, var(--vcp-ui-port-color-rgba-255-255-255-0-65));
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    white-space: nowrap;
+    text-align: left;
+    outline: none;
+    transition: color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    box-sizing: border-box;
+}
+
+html body[data-vcp-theme="light"] .side-pane-tab:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--secondary-text, var(--vcp-ui-port-color-475569));
+}
+
+html .side-pane-tab:hover:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-pane-tab-item:hover .side-pane-tab:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--primary-text, var(--vcp-ui-port-color-ffffff));
+}
+
+html body[data-vcp-theme="light"] .side-pane-tab:hover:where(.vcp-ui-scope, .vcp-ui-scope *),
+html body[data-vcp-theme="light"] .side-pane-tab-item:hover .side-pane-tab:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--primary-text, var(--vcp-ui-port-color-0f172a));
+}
+
+html .side-pane-tab.active:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-pane-tab-item.active .side-pane-tab:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--primary-text, var(--vcp-ui-port-color-ffffff));
+    font-weight: 500;
+}
+
+html body[data-vcp-theme="light"] .side-pane-tab.active:where(.vcp-ui-scope, .vcp-ui-scope *),
+html body[data-vcp-theme="light"] .side-pane-tab-item.active .side-pane-tab:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--primary-text, var(--vcp-ui-port-color-0f172a));
+}
+
+html .side-pane-tab .tab-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 通知标签上的 VCPLog 连接点：紧跟标题，颜色随 data-status */
+html .side-pane-tab.has-status .tab-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 0 1 auto;
+}
+
+/* 标签挤窄时放不下“VCPLog 已连接”，只留铃铛和圆点；全文仍在悬停提示与读屏名称里 */
+html .side-pane-tab-item:has(> .side-pane-tab.has-status):where(.vcp-ui-scope, .vcp-ui-scope *) {
+    /* 也保留通用的 side-pane-tab 名字：收成图标时和其他标签一样居中 */
+    container: side-pane-tab side-pane-status-tab / inline-size;
+}
+
+@container side-pane-status-tab (max-width: 140px) {
+    html .side-pane-tab.has-status .tab-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
+        display: none;
+    }
+}
+
+@container side-pane-tab (max-width: 64px) {
+    html .side-pane-tab:where(.vcp-ui-scope, .vcp-ui-scope *) {
+        padding: 0;
+        justify-content: center;
+    }
+    html .side-pane-tab .tab-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
+        display: none;
+    }
+    html .side-pane-tab-close:where(.vcp-ui-scope, .vcp-ui-scope *) {
+        display: none;
+    }
+    /* 只剩铃铛时，连接点改成右上角的角标，不再和图标抢宽度 */
+    html .side-pane-tab-status:where(.vcp-ui-scope, .vcp-ui-scope *) {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        margin: 0;
+    }
+}
+
+html .side-pane-tab-status:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 0 0 auto;
+    width: 6px;
+    height: 6px;
+    margin-left: 2px;
+    border-radius: 50%;
+    background: var(--vcp-ui-text-3);
+}
+
+html .side-pane-tab-status[data-status="open"]:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-success);
+}
+
+html .side-pane-tab-status[data-status="connecting"]:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-warning);
+    animation: side-pane-tab-status-pulse 1.4s ease-in-out infinite;
+}
+
+html .side-pane-tab-status:is([data-status="closed"], [data-status="error"]):where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-danger);
+}
+
+@keyframes side-pane-tab-status-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html .side-pane-tab-status:where(.vcp-ui-scope, .vcp-ui-scope *) {
+        animation: none;
+    }
+}
+
+html .side-pane-tab .tab-icon:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-pane-tab .tab-icon.vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-pane-tab .tab-icon svg:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    --vcp-ui-icon-size: 14px;
+    width: 16px;
+    height: 16px;
+    min-width: 16px;
+    min-height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 16px;
+    font-size: var(--vcp-ui-font-size);
+    line-height: 1;
+    opacity: 0.85;
+}
+
+html .side-pane-tab-close:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    min-width: 18px;
+    min-height: 18px;
+    padding: 0;
+    margin: 0;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    opacity: 0;
+    pointer-events: none;
+    cursor: pointer;
+    transition: opacity 150ms cubic-bezier(0.4, 0, 0.2, 1), background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html .side-pane-tab-item:hover .side-pane-tab-close:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-pane-tab-item.active .side-pane-tab-close:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-pane-tab-item:focus-within .side-pane-tab-close:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    opacity: 0.65;
+    pointer-events: auto;
+}
+
+html .side-pane-tab-close:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    opacity: 1;
+    color: var(--primary-text, var(--vcp-ui-port-color-ffffff));
+    background-color: var(--vcp-ui-port-color-rgba-255-255-255-0-12);
+}
+
+html body[data-vcp-theme="light"] .side-pane-tab-close:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--primary-text, var(--vcp-ui-port-color-0f172a));
+    background-color: var(--vcp-ui-port-color-rgba-0-0-0-0-08);
+}
+
+html .side-pane-tab-close .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-pane-tab-close svg:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    --vcp-ui-icon-size: 12px;
+    width: 12px;
+    height: 12px;
+    font-size: calc(var(--vcp-ui-font-size) - 2px);
+    line-height: 1;
+}
+
+html .side-pane-tab-actions:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+html .side-pane-action-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    min-height: 28px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--secondary-text, var(--vcp-ui-port-color-rgba-255-255-255-0-65));
+    cursor: pointer;
+    outline: none;
+    transition: color 150ms cubic-bezier(0.4, 0, 0.2, 1), background-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html body[data-vcp-theme="light"] .side-pane-action-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--secondary-text, var(--vcp-ui-port-color-475569));
+}
+
+html .side-pane-action-btn:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--primary-text, var(--vcp-ui-port-color-ffffff));
+    background-color: var(--vcp-ui-port-color-rgba-255-255-255-0-05);
+}
+
+html body[data-vcp-theme="light"] .side-pane-action-btn:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--primary-text, var(--vcp-ui-port-color-0f172a));
+    background-color: var(--vcp-ui-port-color-rgba-0-0-0-0-05);
+}
+
+html .side-pane-action-btn:is(.active, [aria-expanded="true"]):where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--primary-text, var(--vcp-ui-port-color-ffffff));
+    background-color: var(--vcp-ui-port-color-rgba-255-255-255-0-10);
+}
+
+html body[data-vcp-theme="light"] .side-pane-action-btn:is(.active, [aria-expanded="true"]):where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--primary-text, var(--vcp-ui-port-color-0f172a));
+    background-color: var(--vcp-ui-port-color-rgba-0-0-0-0-08);
+}
+
+html .side-pane-action-btn .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-pane-action-btn svg:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    --vcp-ui-icon-size: 16px;
+    width: 16px;
+    height: 16px;
+    font-size: calc(var(--vcp-ui-font-size) + 2px);
+    line-height: 1;
+}
+

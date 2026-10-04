@@ -1,0 +1,397 @@
+/* --- Content Views Container --- */
+html .side-pane-content-container:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+html .side-pane-view:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: none;
+    position: absolute;
+    inset: 0;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+html .side-pane-view.active:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+}
+
+/* --- Side Chat Specific Presentation --- */
+html .side-chat-surface:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+}
+
+html .side-chat-topic-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    font-weight: 500;
+    color: var(--primary-text, var(--vcp-ui-port-color-f1f5f9));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+html body[data-vcp-theme="light"] .side-chat-topic-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--primary-text, var(--vcp-ui-port-color-0f172a));
+}
+
+html .side-chat-topic-title.sr-only:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+}
+
+html .side-chat-messages-container:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+html .side-chat-messages-container .message-item:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    font-size: calc(var(--vcp-ui-font-size) - 1px);
+    line-height: 1.5;
+}
+
+html .side-chat-empty-state:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 20px 16px;
+    margin: auto;
+    max-width: 280px;
+    color: var(--secondary-text, var(--vcp-ui-port-color-rgba-241-245-249-0-6));
+}
+
+html body[data-vcp-theme="light"] .side-chat-empty-state:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--secondary-text, var(--vcp-ui-port-color-64748b));
+}
+
+html .side-chat-empty-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    font-size: calc(var(--vcp-ui-font-size) - 1px);
+    font-weight: 500;
+    color: var(--primary-text, var(--vcp-ui-port-color-f1f5f9));
+    margin-bottom: 4px;
+}
+
+html body[data-vcp-theme="light"] .side-chat-empty-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--primary-text, var(--vcp-ui-port-color-0f172a));
+}
+
+html .side-chat-empty-desc:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    font-size: calc(var(--vcp-ui-font-size) - 3px);
+    line-height: 1.5;
+}
+
+html .side-chat-composer:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    flex-direction: column;
+    padding: 0 12px 12px 12px;
+    border-top: none;
+    background: transparent;
+}
+
+html body[data-vcp-theme="light"] .side-chat-composer:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: transparent;
+    border-top: none;
+}
+
+html .side-chat-reference-list:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+html .side-chat-reference-box:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 6px 8px;
+    margin-bottom: 6px;
+    background: var(--vcp-ui-port-color-rgba-255-255-255-0-05);
+    border-left: 2px solid var(--accent-bg, var(--vcp-ui-port-color-3b82f6));
+    border-radius: 4px;
+    font-size: calc(var(--vcp-ui-font-size) - 3px);
+    color: var(--secondary-text, var(--vcp-ui-port-color-rgba-241-245-249-0-7));
+}
+
+html body[data-vcp-theme="light"] .side-chat-reference-box:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-port-color-rgba-0-0-0-0-04);
+    color: var(--secondary-text, var(--vcp-ui-port-color-475569));
+}
+
+html .side-chat-ref-text:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+/* 引用卡片自己的移除按钮：标签页关闭按钮默认透明且不接收点击，不能复用 */
+html .side-chat-reference-remove:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    margin: -1px -2px 0 6px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    opacity: 0.65;
+    cursor: pointer;
+    transition: opacity 150ms ease, background-color 150ms ease;
+}
+
+html .side-chat-reference-remove:hover:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-chat-reference-remove:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    opacity: 1;
+    background-color: var(--vcp-ui-port-color-rgba-255-255-255-0-12);
+}
+
+html body[data-vcp-theme="light"] .side-chat-reference-remove:hover:where(.vcp-ui-scope, .vcp-ui-scope *),
+html body[data-vcp-theme="light"] .side-chat-reference-remove:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background-color: var(--vcp-ui-port-color-rgba-0-0-0-0-08);
+}
+
+html .side-chat-input-card:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 14px 14px 8px;
+    box-sizing: border-box;
+    border: 1px solid color-mix(in srgb, var(--border-color, var(--vcp-ui-port-color-rgba-255-255-255-0-1)) 48%, transparent);
+    border-radius: var(--vcp-ui-composer-radius, 24px);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--input-bg, var(--vcp-ui-port-color-rgba-255-255-255-0-05)) 85%, var(--vcp-ui-port-color-rgba-255-255-255-0-08)),
+        color-mix(in srgb, var(--input-bg, var(--vcp-ui-port-color-rgba-255-255-255-0-05)) 75%, transparent)
+    );
+    backdrop-filter: blur(10px) saturate(112%);
+    -webkit-backdrop-filter: blur(10px) saturate(112%);
+    box-shadow:
+        inset 0 1px 0 var(--vcp-ui-port-color-rgba-255-255-255-0-08),
+        inset 0 0 0 1px color-mix(in srgb, var(--border-color, var(--vcp-ui-port-color-rgba-255-255-255-0-1)) 10%, transparent),
+        0 4px 14px var(--vcp-ui-port-color-rgba-0-0-0-0-08);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+    position: relative;
+}
+
+html body[data-vcp-theme="light"] .side-chat-input-card:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    border-color: var(--vcp-ui-port-color-rgba-0-0-0-0-12);
+    background: var(--vcp-ui-port-color-ffffff);
+    box-shadow:
+        inset 0 1px 0 var(--vcp-ui-port-color-rgba-255-255-255-0-9),
+        0 2px 8px var(--vcp-ui-port-color-rgba-0-0-0-0-06);
+}
+
+html .side-chat-input-card:hover:not(:focus-within):where(.vcp-ui-scope, .vcp-ui-scope *) {
+    border-color: color-mix(in srgb, var(--border-color, var(--vcp-ui-port-color-rgba-255-255-255-0-1)) 68%, transparent);
+    box-shadow:
+        inset 0 1px 0 var(--vcp-ui-port-color-rgba-255-255-255-0-1),
+        0 4px 14px var(--vcp-ui-port-color-rgba-0-0-0-0-1);
+}
+
+html body[data-vcp-theme="light"] .side-chat-input-card:hover:not(:focus-within):where(.vcp-ui-scope, .vcp-ui-scope *) {
+    border-color: var(--vcp-ui-port-color-rgba-0-0-0-0-2);
+}
+
+html .side-chat-input-card:focus-within:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    border-color: var(--accent-bg, var(--vcp-ui-port-color-3b82f6));
+    box-shadow:
+        0 0 0 1px var(--accent-bg, var(--vcp-ui-port-color-3b82f6)),
+        0 4px 16px var(--vcp-ui-port-color-rgba-0-0-0-0-12);
+}
+
+html body[data-vcp-theme="light"] .side-chat-input-card:focus-within:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    border-color: var(--accent-color, var(--vcp-ui-port-color-2563eb));
+    box-shadow:
+        0 0 0 1px var(--accent-color, var(--vcp-ui-port-color-2563eb)),
+        0 3px 12px var(--vcp-ui-port-color-rgba-37-99-235-0-12);
+}
+
+html .side-chat-textarea:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    width: 100%;
+    background: transparent;
+    border: none;
+    outline: none;
+    box-shadow: none;
+    color: var(--primary-text, var(--vcp-ui-port-color-f1f5f9));
+    font-family: inherit;
+    font-size: calc(var(--vcp-ui-font-size) - 1px);
+    line-height: 1.4;
+    resize: none;
+    max-height: 120px;
+    min-height: 24px;
+    padding: 0 0 0 4px;
+    box-sizing: border-box;
+}
+
+/* 窄侧栏下提示语保持一行，超出用省略号，不被输入框高度截断 */
+html .side-chat-textarea:where(.vcp-ui-scope, .vcp-ui-scope *)::placeholder {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+html body[data-vcp-theme="light"] .side-chat-textarea:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--primary-text, var(--vcp-ui-port-color-0f172a));
+}
+
+html .side-chat-send-btn:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-chat-stop-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--vcp-ui-send-button-size, 36px);
+    height: var(--vcp-ui-send-button-size, 36px);
+    margin-left: auto;
+    border: none;
+    border-radius: var(--vcp-ui-radius-full, 9999px);
+    background: var(--vcp-ui-accent, var(--vcp-ui-port-color-2563eb));
+    color: var(--vcp-ui-on-accent, var(--vcp-ui-port-color-ffffff));
+    cursor: pointer;
+    flex-shrink: 0;
+    box-shadow: var(--vcp-ui-send-button-shadow, 0 2px 6px var(--vcp-ui-port-color-rgba-37-99-235-0-25));
+    transition: opacity 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
+}
+
+html .side-chat-send-btn svg:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    width: var(--vcp-ui-send-icon-size, 20px);
+    height: var(--vcp-ui-send-icon-size, 20px);
+    stroke: currentColor;
+    stroke-width: 2;
+    fill: none;
+    flex: 0 0 auto;
+}
+
+html body[data-vcp-theme="light"] .side-chat-send-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-accent, var(--vcp-ui-port-color-2563eb));
+    color: var(--vcp-ui-on-accent, var(--vcp-ui-port-color-ffffff));
+    box-shadow: var(--vcp-ui-send-button-shadow, 0 2px 6px var(--vcp-ui-port-color-rgba-37-99-235-0-25));
+}
+
+html .side-chat-send-btn:hover:not(:disabled):where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-accent-hover, var(--vcp-ui-port-color-1d4ed8));
+    transform: translateY(-1px);
+}
+
+html body[data-vcp-theme="light"] .side-chat-send-btn:hover:not(:disabled):where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-accent-hover, var(--vcp-ui-port-color-1d4ed8));
+}
+
+html .side-chat-send-btn:disabled:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    opacity: 0.55;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+html .side-chat-stop-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-port-color-ef4444);
+}
+
+html body[data-vcp-theme="light"] .side-chat-stop-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-port-color-dc2626);
+}
+
+html .side-chat-persistence-badge:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: calc(var(--vcp-ui-font-size) - 4px);
+    font-weight: 500;
+    line-height: 1.3;
+}
+
+html .side-chat-status-error:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--vcp-ui-port-color-ef4444);
+}
+
+html body[data-vcp-theme="light"] .side-chat-status-error:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--vcp-ui-port-color-dc2626);
+}
+
+html .side-chat-status-unsaved:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--vcp-ui-port-color-f59e0b);
+    background: var(--vcp-ui-port-color-rgba-245-158-11-0-12);
+    border: 1px solid var(--vcp-ui-port-color-rgba-245-158-11-0-3);
+}
+
+html body[data-vcp-theme="light"] .side-chat-status-unsaved:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--vcp-ui-port-color-b45309);
+    background: var(--vcp-ui-port-color-rgba-245-158-11-0-15);
+    border: 1px solid var(--vcp-ui-port-color-rgba-245-158-11-0-35);
+}
+
+/* --- Message actions ("填入主聊") --- */
+html .side-chat-message-actions:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    justify-content: flex-start;
+    margin-top: 4px;
+}
+
+/* 流式生成或思考中的回答还不完整，不提供填入主聊 */
+html .message-item.streaming .side-chat-message-actions:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .message-item.thinking .side-chat-message-actions:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: none;
+}
+
+html .side-chat-send-to-main-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border-color, var(--vcp-ui-port-color-rgba-255-255-255-0-1));
+    background: var(--vcp-ui-port-color-rgba-255-255-255-0-06);
+    color: var(--secondary-text, var(--vcp-ui-port-color-rgba-241-245-249-0-75));
+    font-size: calc(var(--vcp-ui-font-size) - 3px);
+    white-space: nowrap;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+html .side-chat-send-to-main-btn .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-chat-reference-box .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    --vcp-ui-icon-size: 12px;
+}
+
+html .side-chat-stop-btn .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    --vcp-ui-icon-size: 16px;
+}
+
+html body[data-vcp-theme="light"] .side-chat-send-to-main-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-port-color-rgba-0-0-0-0-04);
+    border: 1px solid var(--border-color, var(--vcp-ui-port-color-rgba-0-0-0-0-12));
+    color: var(--secondary-text, var(--vcp-ui-port-color-475569));
+}
+
+html .side-chat-send-to-main-btn:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--accent-bg, var(--vcp-ui-port-color-3b82f6));
+    color: var(--vcp-ui-port-color-ffffff);
+    border-color: var(--accent-bg, var(--vcp-ui-port-color-3b82f6));
+}
+

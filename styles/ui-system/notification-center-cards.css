@@ -1,0 +1,379 @@
+/* ───────────── Cards ───────────── */
+
+html .vcp-ui-scope#notificationsSidebar #notificationsList > .notification-item {
+    position: relative;
+    width: auto;
+    max-width: 100%;
+    margin: 0;
+    padding: 10px 12px;
+    box-sizing: border-box;
+    display: block;
+    border: 0;
+    border-radius: var(--vcp-ui-radius-lg);
+    color: var(--vcp-ui-text-1);
+    background: var(--nc-card-bg);
+    background-image: none;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    font-size: var(--vcp-ui-font-helper);
+    line-height: var(--vcp-ui-line-compact);
+    overflow: hidden;
+    cursor: default;
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 180ms ease, transform 180ms ease, background-color 120ms ease;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 72px;
+}
+
+html .vcp-ui-scope#notificationsSidebar #notificationsList > .notification-item.visible {
+    opacity: 1;
+    transform: none;
+}
+
+html .vcp-ui-scope#notificationsSidebar #notificationsList > .notification-item:hover {
+    background: var(--nc-card-bg-hover);
+}
+
+html .vcp-ui-scope#notificationsSidebar #notificationsList > .notification-item[data-notification-state="pending"] {
+    order: 11;
+    background: color-mix(in srgb, var(--nc-tone-warn) 9%, var(--nc-card-bg));
+}
+
+html .vcp-ui-scope#notificationsSidebar #notificationsList > .notification-item[data-notification-state="resolved"] {
+    order: 51;
+    color: var(--vcp-ui-text-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html .vcp-ui-scope#notificationsSidebar #notificationsList > .notification-item {
+        transform: none;
+        transition: none;
+    }
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-head {
+    min-width: 0;
+    min-height: 22px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    /* leave room for the hover actions that overlay the top-right corner */
+    padding-right: 0;
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-tone-dot {
+    flex: 0 0 auto;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--nc-tone-neutral);
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-item[data-notification-tone="success"] .notification-tone-dot { background: var(--nc-tone-success); }
+html .vcp-ui-scope#notificationsSidebar .notification-item[data-notification-tone="warn"] .notification-tone-dot { background: var(--nc-tone-warn); }
+html .vcp-ui-scope#notificationsSidebar .notification-item[data-notification-tone="error"] .notification-tone-dot { background: var(--nc-tone-error); }
+html .vcp-ui-scope#notificationsSidebar .notification-item[data-notification-tone="muted"] .notification-tone-dot { background: var(--nc-tone-muted); }
+
+html .vcp-ui-scope#notificationsSidebar .notification-item .notification-head strong {
+    min-width: 0;
+    margin: 0;
+    flex: 1 1 auto;
+    display: block;
+    overflow: hidden;
+    color: var(--vcp-ui-text-0);
+    font-size: var(--vcp-ui-font-helper);
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    word-break: normal;
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-item[data-notification-state="resolved"] .notification-head strong {
+    color: var(--vcp-ui-text-1);
+    font-weight: 500;
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-item .notification-timestamp {
+    flex: 0 0 auto;
+    margin: 0;
+    /* legacy rules make the timestamp `relative; z-index: 1`, which paints it over the hover actions */
+    position: static;
+    z-index: auto;
+    color: var(--vcp-ui-text-3);
+    font-size: var(--vcp-ui-font-micro);
+    font-variant-numeric: tabular-nums;
+    opacity: 1;
+    text-align: right;
+    transition: opacity 120ms ease;
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-item .notification-content {
+    margin-top: 4px;
+    padding-left: 15px; /* align under the title, past the tone dot */
+    color: var(--vcp-ui-text-2);
+    overflow-wrap: anywhere;
+    word-break: normal;
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-item .notification-content p {
+    margin: 0;
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-item .notification-content pre {
+    max-height: 96px;
+    margin: 6px 0 0;
+    padding: 0;
+    border-radius: var(--vcp-ui-radius-md);
+    color: var(--vcp-ui-text-2);
+    background: transparent;
+    font-family: var(--vcp-ui-font-family-mono, ui-monospace, "Cascadia Mono", Consolas, monospace);
+    font-size: var(--vcp-ui-font-caption);
+    font-weight: 400;
+    line-height: 1.45;
+    overflow-y: auto;
+    scrollbar-width: thin;
+}
+
+/* The pending cards keep the full context readable. */
+html .vcp-ui-scope#notificationsSidebar .notification-item[data-notification-state="pending"] .notification-content pre {
+    max-height: 132px;
+}
+
+/* Approval details: file, the AI's reason and a before/after preview */
+html .vcp-ui-scope#notificationsSidebar .notification-approval-details {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+    gap: 4px;
+    margin-top: 6px;
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-approval-row {
+    font-size: var(--vcp-ui-font-caption);
+    line-height: 1.45;
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-approval-label {
+    color: var(--vcp-ui-text-3);
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-approval-path .notification-approval-value {
+    color: var(--vcp-ui-text-1);
+    font-family: var(--vcp-ui-font-family-mono, ui-monospace, "Cascadia Mono", Consolas, monospace);
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-approval-preview {
+    display: grid;
+    gap: 4px;
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-approval-preview-label {
+    color: var(--vcp-ui-text-3);
+    font-size: var(--vcp-ui-font-caption);
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-item .notification-content .notification-approval-preview-code {
+    margin: 2px 0 0;
+    padding: 4px 8px;
+    border-left: 2px solid var(--vcp-ui-border);
+    background: var(--vcp-ui-fill-1);
+    white-space: pre;
+    overflow-x: auto;
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-approval-diff-line.is-add {
+    color: var(--nc-tone-success);
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-approval-diff-line.is-delete {
+    color: var(--nc-tone-error);
+}
+
+/* 没有 replace 的 EditCode 等于删除整段，必须一眼看出来 */
+html .vcp-ui-scope#notificationsSidebar .notification-approval-preview-section.is-deletion .notification-approval-preview-label {
+    color: var(--nc-tone-error);
+    font-weight: 600;
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-item .notification-content .is-deletion .notification-approval-preview-code {
+    border-left-color: var(--nc-tone-error);
+    text-decoration: line-through;
+}
+
+/* Hover actions (copy / dismiss) */
+html .vcp-ui-scope#notificationsSidebar .notification-card-actions {
+    position: absolute;
+    top: 7px;
+    right: 8px;
+    z-index: 3; /* stay above the (faded) timestamp so the whole button is hit-testable */
+    display: flex;
+    gap: 2px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 120ms ease;
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-item:hover .notification-card-actions,
+html .vcp-ui-scope#notificationsSidebar .notification-card-actions:focus-within {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* The actions take over the timestamp's slot while they are visible. */
+html .vcp-ui-scope#notificationsSidebar .notification-item:hover .notification-timestamp,
+html .vcp-ui-scope#notificationsSidebar .notification-item:has(.notification-card-actions:focus-within) .notification-timestamp {
+    opacity: 0;
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-card-actions > button {
+    position: static;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: var(--vcp-ui-radius-sm);
+    color: var(--vcp-ui-text-2);
+    background: transparent;
+    opacity: 1;
+    cursor: pointer;
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-card-actions > button:hover {
+    color: var(--vcp-ui-text-0);
+    background: var(--vcp-ui-fill-2);
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-card-actions > button svg {
+    width: 13px;
+    height: 13px;
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-item[data-notification-state="pending"] .notification-dismiss-btn {
+    display: none;
+}
+
+/* Approval reason + actions */
+html .vcp-ui-scope#notificationsSidebar .notification-approval-reason {
+    margin-top: 8px;
+    padding-left: 15px;
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-approval-reason-input {
+    width: 100%;
+    min-height: 0;
+    max-height: 120px;
+    padding: 6px 10px;
+    border: 0;
+    border-radius: var(--vcp-ui-radius-md);
+    color: var(--vcp-ui-text-0);
+    background: var(--nc-card-bg-hover);
+    font-size: var(--vcp-ui-font-caption);
+    line-height: 1.4;
+    resize: none;
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-approval-reason-input:focus {
+    border: 0;
+    box-shadow: 0 0 0 2px var(--vcp-ui-focus-ring);
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-approval-reason-hint {
+    display: none;
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-actions {
+    margin-top: 8px;
+    padding-left: 15px;
+    gap: 6px;
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-actions .vcp-btn {
+    height: 26px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: var(--vcp-ui-radius-md);
+    box-shadow: none;
+    font-size: var(--vcp-ui-font-caption);
+    font-weight: 600;
+    transform: none;
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-actions .vcp-btn:hover:not(:disabled) {
+    transform: none;
+    box-shadow: none;
+    filter: brightness(1.08);
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-actions .vcp-btn-success {
+    color: var(--vcp-ui-on-accent);
+    background: var(--nc-tone-success);
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-actions .vcp-btn-danger {
+    color: var(--nc-tone-error);
+    background: color-mix(in srgb, var(--nc-tone-error) 16%, transparent);
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-actions .vcp-btn-danger:hover:not(:disabled) {
+    color: var(--vcp-ui-on-accent);
+    background: var(--nc-tone-error);
+    filter: none;
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-actions .vcp-btn-audit {
+    color: var(--vcp-ui-text-1);
+    background: var(--vcp-ui-fill-2);
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-actions .vcp-btn-audit:hover:not(:disabled) {
+    color: var(--vcp-ui-text-0);
+    background: var(--vcp-ui-fill-2);
+}
+
+/* Settled approval verdict */
+html .vcp-ui-scope#notificationsSidebar .notification-result {
+    margin-top: 4px;
+    padding-left: 15px;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: var(--vcp-ui-font-caption);
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-result-verdict {
+    font-weight: 600;
+}
+
+html .vcp-ui-scope#notificationsSidebar .notification-result.is-approved .notification-result-verdict { color: var(--nc-tone-success); }
+html .vcp-ui-scope#notificationsSidebar .notification-result.is-rejected .notification-result-verdict { color: var(--nc-tone-error); }
+html .vcp-ui-scope#notificationsSidebar .notification-result.is-expired .notification-result-verdict { color: var(--vcp-ui-text-3); }
+
+html .vcp-ui-scope#notificationsSidebar .notification-result-reason {
+    min-width: 0;
+    color: var(--vcp-ui-text-3);
+    overflow-wrap: anywhere;
+}
+
+/* Jump highlight from the pending banner */
+html .vcp-ui-scope#notificationsSidebar .notification-item.notification-flash {
+    animation: nc-card-flash 1.2s ease-out;
+}
+
+@keyframes nc-card-flash {
+    0%, 35% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--nc-tone-warn) 70%, transparent); }
+    100% { box-shadow: 0 0 0 2px transparent; }
+}
+
+/* Weather widget injected by weatherService lives in the same list. */
+html .vcp-ui-scope#notificationsSidebar #notificationsList > .weather-card {
+    order: 90;
+    margin: 0;
+    border: 0;
+    border-radius: var(--vcp-ui-radius-lg);
+    background: var(--nc-card-bg);
+}
+

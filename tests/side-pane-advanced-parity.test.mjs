@@ -709,7 +709,9 @@ test('Parity: Side Chat Model Picker supports interactive switching', async () =
 });
 
 test('Side pane divider and header hairlines', () => {
-    const css = fs.readFileSync(new URL('../styles/ui-system/side-pane.css', import.meta.url), 'utf8');
+    const html = fs.readFileSync(new URL('../main.html', import.meta.url), 'utf8');
+    const css = [...html.matchAll(/href="(styles\/ui-system\/side-pane-[^"]+\.css)"/g)]
+        .map(([, href]) => fs.readFileSync(new URL(`../${href}`, import.meta.url), 'utf8')).join('');
 
     // The pane sits inside the workspace card, so its only edge is a hairline
     // on the left, drawn with the same token as the card border.
