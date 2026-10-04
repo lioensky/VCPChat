@@ -145,7 +145,7 @@ export const LAUNCHER_TAB_ID = 'launcher';
 
 export function activateTab(state, tabId) {
     if (!tabId || state.activeTabId === tabId) return state;
-    if (tabId !== LAUNCHER_TAB_ID && !state.tabs.some(tab => tab.id === tabId)) return state;
+    if (tabId !== LAUNCHER_TAB_ID && !getVisibleTabs(state, state.parent).some(tab => tab.id === tabId)) return state;
     return Object.freeze({
         ...state,
         activeTabId: tabId

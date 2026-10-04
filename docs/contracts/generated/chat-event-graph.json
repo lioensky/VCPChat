@@ -445,6 +445,7 @@
     "modules/ui-system/side-pane/side-pane-resizer-owner.js",
     "modules/ui-system/side-pane/side-pane-shortcuts.js",
     "modules/ui-system/side-pane/side-pane-state.js",
+    "modules/ui-system/side-pane/side-pane-tab-close-owner.js",
     "modules/ui-system/side-pane/side-pane-tab-dnd.js",
     "modules/ui-system/side-pane/side-pane-tab-menu.js",
     "modules/ui-system/side-pane/side-pane-tab-overview.js",

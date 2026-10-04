@@ -172,6 +172,125 @@ test('SidePaneController mounts a tab once when it is opened twice concurrently'
     dom.window.close();
 });
 
+test('closing and reopening a pending tab creates a fresh mount even with the same id', async () => {
+    const { dom, root, options } = createPaneDom();
+    const mounts = [];
+    const disposed = [];
+    const controller = createSidePaneController({ ...options, providers: {
+        probe: { mountTab(tab, view) {
+            const pending = Promise.withResolvers();
+            view.textContent = tab.payload.version;
+            mounts.push({ version: tab.payload.version, view, ...pending });
+            return pending.promise;
+        } }
+    } });
+    const tab = { id: 'probe', kind: 'probe', title: 'Probe', closable: true, scopeMode: 'global' };
+    const first = controller.openTab({ ...tab, payload: { version: 'old' } });
+    try {
+        await controller.closeTab(tab.id);
+        const reopened = controller.openTab({ ...tab, payload: { version: 'new' } });
+        assert.equal(mounts.length, 2);
+        mounts[0].resolve({ dispose() { disposed.push('old'); } });
+        assert.equal(await first, null);
+        assert.deepEqual(disposed, ['old']);
+        const concurrent = controller.openTab({ ...tab, payload: { version: 'new' } });
+        assert.equal(mounts.length, 2, 'retiring the old occurrence must not remove the new pending mount');
+        const newest = { dispose() { disposed.push('new'); } };
+        mounts[1].resolve(newest);
+        assert.equal(await reopened, newest);
+        assert.equal(await concurrent, newest);
+        assert.equal(controller.getTabHandle(tab.id), newest);
+        assert.equal(root.querySelectorAll('[data-tab-id="probe"].side-pane-view').length, 1);
+        assert.equal(root.querySelector('[data-tab-id="probe"].side-pane-view').textContent, 'new');
+        await controller.closeTab(tab.id);
+        assert.deepEqual(disposed, ['old', 'new']);
+    } finally {
+        mounts.forEach(mount => mount.resolve({ dispose() {} }));
+        await first;
+        await controller.dispose();
+        dom.window.close();
+    }
+});
+
+test('opening a background conversation mounts its own tab without replacing the foreground handle', async () => {
+    const { dom, root, options } = createPaneDom();
+    const mounted = [];
+    const focused = [];
+    const handles = new Map();
+    const controller = createSidePaneController({ ...options, providers: {
+        probe: { async mountTab(tab, view) {
+            mounted.push(tab.id);
+            view.textContent = tab.title;
+            const handle = { focus() { focused.push(tab.id); }, dispose() {} };
+            handles.set(tab.id, handle);
+            return handle;
+        } }
+    } });
+    const a = { itemType: 'agent', itemId: 'nova', topicId: 'a' };
+    const b = { ...a, topicId: 'b' };
+    const tab = { kind: 'probe', closable: true, scopeMode: 'topic' };
+    try {
+        controller.setParent(a);
+        const foreground = await controller.openTab({ ...tab, id: 'a', title: 'A', parent: a });
+        const background = await controller.openTab({ ...tab, id: 'b', title: 'B', parent: b });
+        assert.deepEqual(mounted, ['a', 'b']);
+        assert.equal(background, handles.get('b'));
+        assert.notEqual(background, foreground);
+        assert.equal(controller.getTabHandle('a'), foreground);
+        assert.equal(controller.getSnapshot().activeTabId, 'a');
+        assert.deepEqual(focused, ['a']);
+        controller.activateTab('b');
+        assert.equal(controller.getSnapshot().activeTabId, 'a', 'a hidden conversation tab cannot be activated');
+        assert.equal(root.querySelector('.side-pane-view[data-tab-id="a"]').classList.contains('active'), true);
+        assert.equal(root.querySelector('.side-pane-view[data-tab-id="b"]').classList.contains('active'), false);
+        controller.setParent(b);
+        assert.equal(controller.getSnapshot().activeTabId, 'b');
+        assert.equal(root.querySelector('.side-pane-view[data-tab-id="b"]').classList.contains('active'), true);
+        assert.deepEqual(mounted, ['a', 'b'], 'switching to the owning conversation reuses its handle');
+    } finally {
+        await controller.dispose();
+        dom.window.close();
+    }
+});
+
+for (const action of ['select another tab', 'hide the pane', 'focus the main input', 'switch conversation']) {
+    test(`a late open does not steal focus after ${action}`, async () => {
+        const { dom, root, options } = createPaneDom();
+        const doc = dom.window.document;
+        const input = doc.createElement('input');
+        doc.body.append(input);
+        const pending = Promise.withResolvers();
+        let focused = 0;
+        const handle = { focus() { focused++; }, dispose() {} };
+        const controller = createSidePaneController({ ...options, providers: {
+            probe: { mountTab(tab, view) { view.textContent = tab.title; return pending.promise; } }
+        } });
+        const parent = { itemType: 'agent', itemId: 'nova', topicId: 'a' };
+        controller.setParent(parent);
+        const opened = controller.openTab({ id: 'slow', kind: 'probe', title: 'Slow', scopeMode: 'topic', parent });
+        try {
+            if (action === 'select another tab') controller.showNotifications();
+            else if (action === 'hide the pane') controller.setVisible(false);
+            else if (action === 'focus the main input') input.focus();
+            else controller.setParent({ ...parent, topicId: 'b' });
+            const before = controller.getSnapshot();
+            pending.resolve(handle);
+            assert.equal(await opened, handle, 'the caller still receives its own mounted handle');
+            assert.equal(focused, 0);
+            assert.equal(controller.getSnapshot().activeTabId, before.activeTabId);
+            assert.equal(controller.getSnapshot().visible, before.visible);
+            if (action === 'focus the main input') assert.equal(doc.activeElement, input);
+            if (action === 'hide the pane') assert.equal(root.classList.contains('active'), false);
+            else if (action !== 'focus the main input') assert.equal(root.querySelector('.side-pane-view[data-tab-id="slow"]').classList.contains('active'), false);
+        } finally {
+            pending.resolve(handle);
+            await opened;
+            await controller.dispose();
+            dom.window.close();
+        }
+    });
+}
+
 test('SidePaneController does not leave an empty view behind when a mount fails', async () => {
     const { dom, root, options } = createPaneDom();
     const controller = createSidePaneController({
@@ -221,4 +340,122 @@ test('SidePaneController still closes a tab whose dispose throws', async () => {
 
     await controller.dispose();
     dom.window.close();
+});
+
+for (const admitted of [true, false]) {
+    test(`concurrent closes share authorization and cleanup, including refusal=${!admitted}`, async () => {
+        const { dom, options } = createPaneDom();
+        const barrier = Promise.withResolvers();
+        let requests = 0, disposes = 0, closed = 0;
+        const controller = createSidePaneController({ ...options, tabTypes: [{
+            kind: 'probe', label: 'Probe', onClosed() { closed++; },
+            provider: { mountTab() { return {
+                requestClose() { requests++; return requests === 1 ? barrier.promise : { closed: true }; },
+                dispose() { disposes++; }
+            }; } }
+        }] });
+        try {
+            await controller.openTab({ id: 'probe', kind: 'probe' });
+            const first = controller.closeTab('probe');
+            const second = controller.closeTab('probe');
+            assert.equal(requests, 1);
+            barrier.resolve({ closed: admitted });
+            await Promise.all([first, second]);
+            assert.equal(disposes, admitted ? 1 : 0);
+            assert.equal(closed, admitted ? 1 : 0);
+            assert.equal(controller.getSnapshot().tabs.some(tab => tab.id === 'probe'), !admitted);
+            if (!admitted) {
+                await controller.closeTab('probe');
+                assert.equal(requests, 2, 'refusal releases the operation so a later close can retry');
+                assert.equal(disposes, 1);
+                assert.equal(closed, 1);
+            }
+        } finally {
+            barrier.resolve({ closed: true });
+            await controller.dispose();
+            dom.window.close();
+        }
+    });
+}
+
+test('reopening during the old onClosed hook retains the new tab and handle', async () => {
+    const { dom, root, options } = createPaneDom();
+    const entered = Promise.withResolvers(), release = Promise.withResolvers();
+    const closed = [], disposed = [];
+    const controller = createSidePaneController({ ...options, tabTypes: [{
+        kind: 'probe', label: 'Probe',
+        async onClosed(tab) { closed.push(tab.payload.version); entered.resolve(); await release.promise; },
+        provider: { mountTab(tab, view) {
+            view.textContent = tab.payload.version;
+            return { version: tab.payload.version, dispose() { disposed.push(tab.payload.version); } };
+        } }
+    }] });
+    const tab = { id: 'probe', kind: 'probe', scopeMode: 'global' };
+    try {
+        await controller.openTab({ ...tab, payload: { version: 'old' } });
+        const closing = controller.closeTab('probe');
+        await entered.promise;
+        const newest = await controller.openTab({ ...tab, payload: { version: 'new' } });
+        release.resolve();
+        await closing;
+        assert.equal(newest.version, 'new');
+        assert.equal(controller.getTabHandle('probe'), newest);
+        assert.equal(controller.getSnapshot().tabs.find(tab => tab.id === 'probe')?.payload.version, 'new');
+        assert.equal(root.querySelector('.side-pane-view[data-tab-id="probe"]').textContent, 'new');
+        assert.deepEqual(closed, ['old']);
+        assert.deepEqual(disposed, ['old']);
+        await controller.closeTab('probe');
+        assert.deepEqual(closed, ['old', 'new']);
+        assert.deepEqual(disposed, ['old', 'new']);
+    } finally {
+        release.resolve();
+        await controller.dispose();
+        dom.window.close();
+    }
+});
+
+test('controller disposal during close authorization releases the handle only once and skips onClosed', async () => {
+    const { dom, options } = createPaneDom();
+    const barrier = Promise.withResolvers();
+    let disposes = 0, closed = 0;
+    const controller = createSidePaneController({ ...options, tabTypes: [{
+        kind: 'probe', label: 'Probe', onClosed() { closed++; },
+        provider: { mountTab() { return {
+            requestClose: () => barrier.promise, dispose() { disposes++; }
+        }; } }
+    }] });
+    try {
+        await controller.openTab({ id: 'probe', kind: 'probe' });
+        const closing = controller.closeTab('probe');
+        await controller.dispose();
+        assert.equal(disposes, 1);
+        barrier.resolve({ closed: true });
+        await closing;
+        assert.equal(disposes, 1);
+        assert.equal(closed, 0, 'shutdown alone does not delete the business resource');
+    } finally {
+        barrier.resolve({ closed: true });
+        await controller.dispose();
+        dom.window.close();
+    }
+});
+
+test('a nonclosable tab cannot run provider disposal or business cleanup', async () => {
+    const { dom, options } = createPaneDom();
+    let disposes = 0, closed = 0;
+    const controller = createSidePaneController({ ...options, tabTypes: [{
+        kind: 'probe', label: 'Probe', onClosed() { closed++; },
+        provider: { mountTab() { return { dispose() { disposes++; } }; } }
+    }] });
+    try {
+        const handle = await controller.openTab({ id: 'fixed', kind: 'probe', closable: false });
+        await controller.closeTab('fixed');
+        assert.equal(disposes, 0);
+        assert.equal(closed, 0);
+        assert.equal(controller.getTabHandle('fixed'), handle);
+        assert.ok(controller.getSnapshot().tabs.some(tab => tab.id === 'fixed'));
+    } finally {
+        await controller.dispose();
+        dom.window.close();
+    }
 });

@@ -177,6 +177,7 @@ test('a topic-scoped tab with a parent only shows under that conversation', () =
     state = SidePaneState.setParent(state, b);
     assert.deepEqual(SidePaneState.getVisibleTabs(state, b).map(t => t.id), ['notifications']);
     assert.notEqual(state.activeTabId, 'plan-detail:p1@a');
+    assert.equal(SidePaneState.activateTab(state, 'plan-detail:p1@a'), state, 'activation cannot select another conversation');
 
     state = SidePaneState.setParent(state, a);
     assert.ok(SidePaneState.getVisibleTabs(state, a).some(t => t.id === 'plan-detail:p1@a'));

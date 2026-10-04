@@ -469,8 +469,13 @@ export function createPlanDetailSideProvider({
                     el.value = key === 'file' ? (filters.exactFile || filters.file) : filters[key];
                     el.addEventListener('input', () => {
                         if (key === 'file') { filters.file = el.value.trim(); filters.exactFile = ''; } else filters[key] = el.value.trim();
+                        // Invalidate on intent, before the debounce allows an old read to settle.
+                        ++filterSeq;
+                        filterRows = null;
+                        filterError = '';
                         win.clearTimeout(filterTimer);
                         filterTimer = win.setTimeout(() => runSearch(), FILTER_DEBOUNCE_MS);
+                        render();
                     });
                     return el;
                 };
@@ -501,7 +506,7 @@ export function createPlanDetailSideProvider({
                 );
                 if (hasFilters(filters)) {
                     const clear = button('zc-btn zc-btn-ghost zc-btn-sm side-plan-filter-clear', '清除筛选');
-                    clear.addEventListener('click', () => { filters = { ...EMPTY_FILTERS }; filterRows = null; filterError = ''; render(); });
+                    clear.addEventListener('click', () => { filters = { ...EMPTY_FILTERS }; runSearch(); });
                     bar.appendChild(clear);
                 }
                 return bar;

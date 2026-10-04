@@ -163,6 +163,46 @@ test('clicking a file filters the timeline to that exact file within this topic'
     dom.window.close();
 });
 
+for (const settlement of ['resolve', 'reject']) {
+    test(`editing a history filter immediately invalidates an older ${settlement} before debounce`, async () => {
+        const requests = [];
+        const { provider, tab, view, dom } = makeTopicEnv({ api: {
+            projectForgeSearchHistory(params) {
+                const request = Promise.withResolvers();
+                requests.push({ params, ...request });
+                return request.promise;
+            }
+        } });
+        const handle = await provider.mountTab(tab, view);
+        try {
+            [...view.querySelectorAll('.side-plan-file-btn')].find(button => button.querySelector('.side-plan-file-name').textContent === 'a.py').click();
+            const input = view.querySelector('[data-filter="keyword"]');
+            input.focus();
+            input.value = 'new criterion';
+            input.dispatchEvent(new dom.window.Event('input'));
+            if (settlement === 'resolve') requests[0].resolve({ success: true, data: [node(777, 2, 'a.py')] });
+            else requests[0].reject(new Error('old filter failed'));
+            await new Promise(resolve => setImmediate(resolve));
+            assert.equal(requests.length, 1, 'the new debounced read has not started');
+            assert.equal(view.querySelector('[data-node-id="777"]'), null);
+            assert.doesNotMatch(view.querySelector('.side-plan-filter-results').textContent, /old filter failed/);
+            assert.match(view.querySelector('.side-plan-filter-results').textContent, /正在筛选/);
+            assert.equal(dom.window.document.activeElement.dataset.filter, 'keyword');
+            const operation = view.querySelector('[data-filter="op"]');
+            operation.value = 'edit';
+            operation.dispatchEvent(new dom.window.Event('change'));
+            assert.equal(requests[1].params.keyword, 'new criterion');
+            requests[1].resolve({ success: true, data: [node(888, 2, 'a.py')] });
+            await new Promise(resolve => setImmediate(resolve));
+            assert.ok(view.querySelector('[data-node-id="888"]'));
+            assert.equal(view.querySelector('[data-node-id="777"]'), null);
+        } finally {
+            handle.dispose();
+            dom.window.close();
+        }
+    });
+}
+
 test('a node opens its diff and can be reverted with a remembered signature; the revert joins the topic', async () => {
     const { provider, calls, tab, view, dom, storage } = makeTopicEnv();
     const handle = await provider.mountTab(tab, view);

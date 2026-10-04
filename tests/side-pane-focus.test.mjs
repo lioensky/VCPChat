@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { createSidePaneController } from '../modules/ui-system/side-pane/side-pane-controller.js';
 
-function setup() {
+function setup(requestClose) {
     const dom = new JSDOM(`
         <div class="main-content"><textarea id="messageInput"></textarea><button id="expand">展开</button></div>
         <aside id="vcpSidePane" class="vcp-side-pane">
@@ -26,7 +26,7 @@ function setup() {
                     const input = doc.createElement('input');
                     input.className = 'notes-input';
                     view.appendChild(input);
-                    return { focus: () => input.focus(), dispose() {} };
+                    return { focus: () => input.focus(), requestClose, dispose() {} };
                 }
             }
         }]
@@ -104,4 +104,23 @@ test('closing the last tab collapses the pane and returns focus to its origin', 
 
     await controller.dispose();
     dom.window.close();
+});
+
+test('close authorization finishing after focus moved to the main input does not take the caret back', async () => {
+    const barrier = Promise.withResolvers();
+    const { dom, doc, controller, input } = setup(() => barrier.promise);
+    try {
+        await controller.openTab(notesTab('n1'));
+        await controller.openTab(notesTab('n2'));
+        const closing = controller.closeTab('n2');
+        input.focus();
+        barrier.resolve({ closed: true });
+        await closing;
+        assert.equal(doc.activeElement, input);
+        assert.equal(controller.getSnapshot().activeTabId, 'n1');
+    } finally {
+        barrier.resolve({ closed: true });
+        await controller.dispose();
+        dom.window.close();
+    }
 });

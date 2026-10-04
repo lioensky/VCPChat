@@ -1,13 +1,4 @@
-/**
- * modules/ui-system/side-pane/codeViewerSideProvider.js
- * VCPChat Universal Sub-screen - Code & Diff Viewer Provider
- *
- * Implements the universal sub-screen Code & Diff Viewer supporting:
- * 1. Single file / snippet viewing with line numbers and syntax highlighting
- * 2. Side-by-side or unified line diff comparison (additions, deletions, stats)
- * 3. Deep integration with chat: Copy code, wrap lines, insert into chat composer,
- *    and open in external editor / IDE.
- */
+/** Workspace file selection. The latest read owns both content and failure messages. */
 
 'use strict';
 
@@ -27,6 +18,8 @@ export function createCodeViewerPicker({
     titleLabel
 }) {
     const cleanups = [];
+    let disposed = false;
+    let readToken = 0;
     function on(node, event, listener) {
         node.addEventListener(event, listener);
         cleanups.push(() => node.removeEventListener(event, listener));
@@ -71,7 +64,6 @@ export function createCodeViewerPicker({
                 dir.className = 'side-code-picker-dir';
                 dir.textContent = slash === -1 ? '' : rel.slice(0, slash);
                 item.append(name, dir);
-                on(item, 'click', () => openFile(rel));
                 list.appendChild(item);
             }
             note.textContent = matched.length > shown.length
@@ -107,15 +99,18 @@ export function createCodeViewerPicker({
         }
 
         async function openFile(rel) {
+            const token = ++readToken;
             const workspaceId = activeWorkspaceId;
+            const isCurrent = () => !disposed && !store.isDisposed && token === readToken;
             activePath = rel;
+            store.currentCode = '';
             list.querySelectorAll('.side-code-picker-item').forEach((el) => {
                 el.classList.toggle('active', el.dataset.path === rel);
             });
             setBodyMessage('加载文件中...');
             try {
                 const res = await api.sourceReadFile(workspaceId, rel);
-                if (store.isDisposed || rel !== activePath || workspaceId !== activeWorkspaceId) return;
+                if (!isCurrent()) return;
                 if (!res?.success) {
                     setBodyMessage(res?.error || '读取文件失败', true);
                     return;
@@ -141,14 +136,20 @@ export function createCodeViewerPicker({
                     picker.classList.add('is-collapsed');
                 }
             } catch (err) {
-                if (store.isDisposed) return;
+                if (!isCurrent()) return;
                 setBodyMessage(`读取文件失败: ${err?.message || err}`, true);
             }
         }
 
+        // One owner for resident rows; replacing the list releases every retired row.
+        on(list, 'click', event => {
+            const item = event.target?.closest?.('.side-code-picker-item');
+            if (item && list.contains(item)) openFile(item.dataset.path);
+        });
         on(wsSelect, 'change', () => {
+            ++readToken;
             activeWorkspaceId = wsSelect.value;
-            getStorage()?.setItem(SOURCE_WORKSPACE_KEY, activeWorkspaceId);
+            try { getStorage()?.setItem(SOURCE_WORKSPACE_KEY, activeWorkspaceId); } catch (_error) { /* Storage is optional. */ }
             activePath = '';
             store.currentCode = '';
             setBodyMessage('请选择要查看的文件');
@@ -194,5 +195,5 @@ export function createCodeViewerPicker({
         }
     }
 
-    return Object.freeze({ setupPicker, dispose() { cleanups.splice(0).forEach(cleanup => cleanup()); } });
+    return Object.freeze({ setupPicker, dispose() { disposed = true; ++readToken; cleanups.splice(0).forEach(cleanup => cleanup()); } });
 }
