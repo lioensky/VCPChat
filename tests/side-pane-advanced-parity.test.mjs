@@ -635,6 +635,26 @@ test('Parity: the expand button opens notifications while approvals are pending'
     dom.window.close();
 });
 
+test('Parity: the pane width ratio ignores the stale key and never measures against the window', async () => {
+    const widthAfterOpen = async (settings) => {
+        const dom = createParityTestDOM();
+        const root = dom.window.document.getElementById('vcpSidePane');
+        const ctrl = createController(dom, { controller: { settingsRef: { get: () => settings, set() {} } } });
+        ctrl.setVisible(true, { animate: false });
+        await tick();
+        // JSDOM 没有布局：父元素宽度为 0，拖动换算不能退回窗口宽度
+        ctrl.setPreferredWidth(451);
+        const width = root.style.width;
+        await ctrl.dispose();
+        dom.window.close();
+        return width;
+    };
+
+    // 旧键曾按整窗宽度存了偏小的比例，弃用后回到默认 45%
+    assert.equal(await widthAfterOpen({ notificationsSidebarRatio: 0.2435 }), '45%');
+    assert.equal(await widthAfterOpen({ sidePaneWidthRatio: 0.3 }), '30%');
+});
+
 test('Parity: Side Chat Model Picker supports interactive switching', async () => {
     const dom = new JSDOM('<div id="mount"></div>');
     const doc = dom.window.document;

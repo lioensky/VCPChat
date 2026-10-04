@@ -5054,14 +5054,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1091,
+          "line": 1096,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1091,
+          "line": 1096,
           "kind": "preload-subscription",
           "match": "onOpenSideChat("
         }

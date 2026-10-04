@@ -52,7 +52,8 @@ export function createSidePaneController({
     const MIN_RATIO = 0.20;
     const MAX_RATIO = 0.65;
 
-    const savedRatio = Number(settingsRef?.get?.()?.notificationsSidebarRatio);
+    // 旧键 notificationsSidebarRatio 曾按整个窗口宽度算（父元素 display: contents 时测出 0），存下的值偏小，直接弃用
+    const savedRatio = Number(settingsRef?.get?.()?.sidePaneWidthRatio);
     let currentRatio = (Number.isFinite(savedRatio) && savedRatio >= MIN_RATIO && savedRatio <= MAX_RATIO)
         ? savedRatio
         : ZCODE_DEFAULT_EXPANDED_RATIO;
@@ -62,6 +63,15 @@ export function createSidePaneController({
 
     function getFormattedPercent() {
         return `${(currentRatio * 100).toFixed(1)}%`;
+    }
+
+    // 百分比宽度相对父元素内容区，比例也必须按它算；测不到（父元素没有盒子）时返回 0，不更新比例
+    function readHostContentWidth() {
+        const host = root.parentElement;
+        if (!host) return 0;
+        const style = win?.getComputedStyle?.(host);
+        const width = host.clientWidth - (parseFloat(style?.paddingLeft) || 0) - (parseFloat(style?.paddingRight) || 0);
+        return width > 0 ? width : 0;
     }
 
     let state = SidePaneState.createInitialSidePaneState({
@@ -101,10 +111,9 @@ export function createSidePaneController({
             },
             onWidthCommit: async (width) => {
                 state = SidePaneState.setPreferredWidth(state, width);
-                const parent = root.parentElement || doc.querySelector('#nextUiMainPanel, .container') || doc.body;
-                const parentWidth = parent?.getBoundingClientRect?.()?.width || win?.innerWidth || 1200;
-                if (parentWidth > 0) {
-                    currentRatio = Math.max(MIN_RATIO, Math.min(MAX_RATIO, width / parentWidth));
+                const hostWidth = readHostContentWidth();
+                if (hostWidth > 0) {
+                    currentRatio = Math.max(MIN_RATIO, Math.min(MAX_RATIO, width / hostWidth));
                     root.style.width = getFormattedPercent();
                 }
                 if (settingsRef?.set) {
@@ -112,14 +121,14 @@ export function createSidePaneController({
                     settingsRef.set({
                         ...current,
                         notificationsSidebarWidth: width,
-                        notificationsSidebarRatio: currentRatio
+                        sidePaneWidthRatio: currentRatio
                     });
                 }
                 if (electronAPI?.saveSettings) {
                     try {
                         const ops = [
                             { op: 'set', path: ['notificationsSidebarWidth'], value: width },
-                            { op: 'set', path: ['notificationsSidebarRatio'], value: currentRatio }
+                            { op: 'set', path: ['sidePaneWidthRatio'], value: currentRatio }
                         ];
                         await electronAPI.saveSettings({ __vcpSettingsOps: ops });
                     } catch (err) {
@@ -472,10 +481,7 @@ export function createSidePaneController({
 
     // 展开后的宽度：百分比相对父元素内容区，再按 min 240px / max 65% 夹住
     function readExpandedWidthPx() {
-        const host = root.parentElement;
-        if (!host) return 0;
-        const style = win?.getComputedStyle?.(host);
-        const hostWidth = host.clientWidth - (parseFloat(style?.paddingLeft) || 0) - (parseFloat(style?.paddingRight) || 0);
+        const hostWidth = readHostContentWidth();
         if (!(hostWidth > 0)) return 0;
         return Math.min(hostWidth * 0.65, Math.max(240, hostWidth * currentRatio));
     }
@@ -1072,10 +1078,9 @@ export function createSidePaneController({
                 if (width > 0 && width <= 1) {
                     currentRatio = Math.max(MIN_RATIO, Math.min(MAX_RATIO, width));
                 } else if (width > 1) {
-                    const parent = root.parentElement || doc.querySelector('#nextUiMainPanel, .container') || doc.body;
-                    const parentWidth = parent?.getBoundingClientRect?.()?.width || win?.innerWidth || 1200;
-                    if (parentWidth > 0) {
-                        currentRatio = Math.max(MIN_RATIO, Math.min(MAX_RATIO, width / parentWidth));
+                    const hostWidth = readHostContentWidth();
+                    if (hostWidth > 0) {
+                        currentRatio = Math.max(MIN_RATIO, Math.min(MAX_RATIO, width / hostWidth));
                     }
                 }
             }
