@@ -267,6 +267,7 @@
     "modules/renderer/streamManager.js",
     "modules/renderer/streamProjectionRuntime.js",
     "modules/renderer/surfaceTaskOwner.js",
+    "modules/renderer/toolRequestMarkers.js",
     "modules/renderer/toolRequestScanner.js",
     "modules/renderer/toolResultRegions.js",
     "modules/renderer/topicSelectionReadiness.js",
@@ -1224,7 +1225,7 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 2016,
+          "line": 2017,
           "kind": "ipc-send"
         },
         {
@@ -1236,20 +1237,20 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 2016,
+          "line": 2017,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 2016,
+          "line": 2017,
           "kind": "custom-event-listener",
           "match": "on('connect-vcplog'"
         },
         {
           "file": "main.js",
-          "line": 2016,
+          "line": 2017,
           "kind": "ipc-send",
           "match": "on('connect-vcplog'"
         },
@@ -2359,7 +2360,7 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 2027,
+          "line": 2028,
           "kind": "ipc-send"
         },
         {
@@ -2371,20 +2372,20 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 2027,
+          "line": 2028,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 2027,
+          "line": 2028,
           "kind": "custom-event-listener",
           "match": "on('disconnect-vcplog'"
         },
         {
           "file": "main.js",
-          "line": 2027,
+          "line": 2028,
           "kind": "ipc-send",
           "match": "on('disconnect-vcplog'"
         },
@@ -3077,7 +3078,7 @@
       "consumers": [
         {
           "file": "renderer.js",
-          "line": 671,
+          "line": 672,
           "kind": "custom-event-listener"
         },
         {
@@ -3109,7 +3110,7 @@
       "evidence": [
         {
           "file": "renderer.js",
-          "line": 671,
+          "line": 672,
           "kind": "custom-event-listener",
           "match": "addEventListener('global-settings-updated'"
         },
@@ -4838,14 +4839,14 @@
       "consumers": [
         {
           "file": "modules/event-listeners.js",
-          "line": 1488,
+          "line": 1493,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/event-listeners.js",
-          "line": 1488,
+          "line": 1493,
           "kind": "preload-subscription",
           "match": "onCreateUnlockedTopic("
         }
@@ -4876,14 +4877,14 @@
       "consumers": [
         {
           "file": "modules/event-listeners.js",
-          "line": 1195,
+          "line": 1200,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/event-listeners.js",
-          "line": 1195,
+          "line": 1200,
           "kind": "preload-subscription",
           "match": "onDoToggleNotificationsSidebar("
         }
@@ -5023,25 +5024,25 @@
       "consumers": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 496,
+          "line": 653,
           "kind": "preload-subscription"
         },
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 521,
+          "line": 678,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 496,
+          "line": 653,
           "kind": "preload-subscription",
           "match": "onMessageItem("
         },
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 521,
+          "line": 678,
           "kind": "preload-subscription",
           "match": "onMessageItem("
         }
@@ -5053,14 +5054,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1001,
+          "line": 1091,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1001,
+          "line": 1091,
           "kind": "preload-subscription",
           "match": "onOpenSideChat("
         }
@@ -5282,7 +5283,7 @@
       "consumers": [
         {
           "file": "renderer.js",
-          "line": 615,
+          "line": 616,
           "kind": "preload-subscription"
         },
         {
@@ -5294,7 +5295,7 @@
       "evidence": [
         {
           "file": "renderer.js",
-          "line": 615,
+          "line": 616,
           "kind": "preload-subscription",
           "match": "onStreamingEventConsumer("
         },
@@ -6648,14 +6649,14 @@
       "consumers": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 526,
+          "line": 683,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 526,
+          "line": 683,
           "kind": "custom-event-listener",
           "match": "addEventListener('selectionchange'"
         }
@@ -6704,7 +6705,7 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 2039,
+          "line": 2040,
           "kind": "ipc-send"
         },
         {
@@ -6716,20 +6717,20 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 2039,
+          "line": 2040,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 2039,
+          "line": 2040,
           "kind": "custom-event-listener",
           "match": "on('send-vcplog-message'"
         },
         {
           "file": "main.js",
-          "line": 2039,
+          "line": 2040,
           "kind": "ipc-send",
           "match": "on('send-vcplog-message'"
         },
@@ -8294,7 +8295,7 @@
       "producers": [
         {
           "file": "renderer.js",
-          "line": 584,
+          "line": 585,
           "kind": "custom-event-dispatch"
         }
       ],
@@ -8302,7 +8303,7 @@
       "evidence": [
         {
           "file": "renderer.js",
-          "line": 584,
+          "line": 585,
           "kind": "custom-event-dispatch",
           "match": "dispatchEvent(new CustomEvent('vcp-chat-stream-terminal'"
         }
@@ -8425,12 +8426,12 @@
         },
         {
           "file": "main.js",
-          "line": 1987,
+          "line": 1988,
           "kind": "ipc-send"
         },
         {
           "file": "main.js",
-          "line": 1990,
+          "line": 1991,
           "kind": "ipc-send"
         },
         {
@@ -8460,13 +8461,13 @@
         },
         {
           "file": "main.js",
-          "line": 1987,
+          "line": 1988,
           "kind": "ipc-send",
           "match": "send('vcp-log-message'"
         },
         {
           "file": "main.js",
-          "line": 1990,
+          "line": 1991,
           "kind": "ipc-send",
           "match": "send('vcp-log-message'"
         },
@@ -8510,17 +8511,17 @@
         },
         {
           "file": "main.js",
-          "line": 1996,
+          "line": 1997,
           "kind": "ipc-send"
         },
         {
           "file": "main.js",
-          "line": 2009,
+          "line": 2010,
           "kind": "ipc-send"
         },
         {
           "file": "main.js",
-          "line": 2035,
+          "line": 2036,
           "kind": "ipc-send"
         },
         {
@@ -8557,19 +8558,19 @@
         },
         {
           "file": "main.js",
-          "line": 1996,
+          "line": 1997,
           "kind": "ipc-send",
           "match": "send('vcp-log-status'"
         },
         {
           "file": "main.js",
-          "line": 2009,
+          "line": 2010,
           "kind": "ipc-send",
           "match": "send('vcp-log-status'"
         },
         {
           "file": "main.js",
-          "line": 2035,
+          "line": 2036,
           "kind": "ipc-send",
           "match": "send('vcp-log-status'"
         },
@@ -8592,7 +8593,7 @@
       "producers": [
         {
           "file": "renderer.js",
-          "line": 846,
+          "line": 847,
           "kind": "custom-event-dispatch"
         }
       ],
@@ -8606,7 +8607,7 @@
       "evidence": [
         {
           "file": "renderer.js",
-          "line": 846,
+          "line": 847,
           "kind": "custom-event-dispatch",
           "match": "dispatchEvent(new CustomEvent('vcp-main-chat-commands-configure'"
         },
@@ -8623,7 +8624,7 @@
       "producers": [
         {
           "file": "renderer.js",
-          "line": 1052,
+          "line": 1053,
           "kind": "custom-event-dispatch"
         }
       ],
@@ -8631,7 +8632,7 @@
       "evidence": [
         {
           "file": "renderer.js",
-          "line": 1052,
+          "line": 1053,
           "kind": "custom-event-dispatch",
           "match": "dispatchEvent(new CustomEvent('vcp-renderer-ready'"
         }
@@ -9080,7 +9081,7 @@
       "producers": [
         {
           "file": "modules/ui-system/side-pane/gitSideProvider.js",
-          "line": 124,
+          "line": 125,
           "kind": "custom-event-dispatch"
         }
       ],
@@ -9088,7 +9089,7 @@
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/gitSideProvider.js",
-          "line": 124,
+          "line": 125,
           "kind": "custom-event-dispatch",
           "match": "dispatchEvent(new CustomEvent('vcp:git-focus-path'"
         }
@@ -9960,5 +9961,11 @@
       "contractId": "ui.webawesome.dynamic-event-adapter"
     }
   ],
-  "undiscovered": []
+  "undiscovered": [
+    {
+      "file": "modules/ui-system/side-pane/gitSideProvider.js",
+      "line": 133,
+      "reason": "dynamic CustomEvent name: FOLLOW_WORKSPACE_EVENT"
+    }
+  ]
 }

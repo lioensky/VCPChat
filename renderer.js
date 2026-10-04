@@ -423,7 +423,8 @@ mainChatSettingsPresentationOwner.configureStartup({
     }
 
     // 通知面板分组、待审批横幅与筛选（卡片仍由 notificationRenderer 生成）
-    window.notificationCenter?.mount?.({ document });
+    // 有工作区侧栏时铃铛隐藏，待审批角标挂到侧栏按钮上
+    window.notificationCenter?.mount?.({ document, bellButton: document.getElementById('toggleSidePaneChatBtn') || undefined });
 
     if (window.topTabManager) {
         window.topTabManager.init();

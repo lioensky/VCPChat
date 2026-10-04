@@ -605,6 +605,36 @@ test('Parity: the expand button shows the launcher when several entries exist', 
     dom.window.close();
 });
 
+test('Parity: the expand button opens notifications while approvals are pending', async () => {
+    const dom = createParityTestDOM();
+    const doc = dom.window.document;
+    const toggleBtn = doc.getElementById('toggleSidePaneChatBtn');
+    const opened = [];
+    const ctrl = createController(dom, {
+        controller: {
+            openTabEntries: [
+                { id: 'chat', label: '辅助对话', open: () => opened.push('chat') },
+                { id: 'browser', label: '浏览器', open: () => opened.push('browser') }
+            ]
+        }
+    });
+
+    // 角标由 notificationCenter 写在侧栏按钮上
+    toggleBtn.dataset.pendingCount = '2';
+    toggleBtn.click();
+    await tick();
+    assert.equal(ctrl.getSnapshot().visible, true);
+    assert.equal(ctrl.getSnapshot().activeTabId, 'notifications');
+    assert.deepEqual(opened, []);
+
+    toggleBtn.click();
+    await tick();
+    assert.equal(ctrl.getSnapshot().visible, false, '展开时再点仍是收起');
+
+    await ctrl.dispose();
+    dom.window.close();
+});
+
 test('Parity: Side Chat Model Picker supports interactive switching', async () => {
     const dom = new JSDOM('<div id="mount"></div>');
     const doc = dom.window.document;

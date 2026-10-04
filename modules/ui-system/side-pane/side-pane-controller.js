@@ -1145,6 +1145,11 @@ export function createSidePaneController({
                 controller.setVisible(false);
                 return;
             }
+            // 有待审批时直接打开通知，免得审批被标签页挡住
+            if (Number(toggleChatBtn.dataset.pendingCount) > 0) {
+                controller.showNotifications();
+                return;
+            }
             const closable = SidePaneState.getClosableVisibleTabs(state);
             if (closable.length === 0) {
                 expandFromEmpty();

@@ -9,6 +9,16 @@ html body #floatingSelectionSideChatBtn[hidden]:where(.vcp-ui-scope, .vcp-ui-sco
     display: none;
 }
 
+/* 侧栏按钮取代铃铛：通知在新标签页里，右键监控面板和待审批角标都挪到侧栏按钮上 */
+html body:has(#vcpSidePane) #toggleNotificationsBtn:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: none;
+}
+
+html body #toggleSidePaneChatBtn:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: relative;
+    overflow: visible;
+}
+
 /* --- Resize handle ---
    ui-next.css already gives #resizerRight its 4px gutter. Here it only gains
    the hover pill: 2px wide, inset from the card's rounded corners so it never
@@ -101,6 +111,14 @@ html #vcpSidePane.active:not(.is-animating):where(.vcp-ui-scope, .vcp-ui-scope *
     width: var(--side-pane-width, 45%);
     min-width: 240px;
     max-width: 65%;
+}
+
+/* 磨砂底：壁纸透过来会让侧栏的字看不清，用面板色压一层再模糊，和导航栏材质一致 */
+html #vcpSidePane.active:where(.vcp-ui-scope, .vcp-ui-scope *),
+html #vcpSidePane.is-animating:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background-color: color-mix(in srgb, var(--vcp-ui-color-panel, var(--vcp-ui-bg-primary)) 72%, transparent);
+    backdrop-filter: var(--next-backdrop-filter, blur(18px) saturate(1.28));
+    -webkit-backdrop-filter: var(--next-backdrop-filter, blur(18px) saturate(1.28));
 }
 
 html #vcpSidePane:not(.active):not(.is-animating):where(.vcp-ui-scope, .vcp-ui-scope *) {
@@ -1449,7 +1467,7 @@ html .side-pane-open-tab-button .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope 
 
 /* --- Side Pane Tab Context Menu --- */
 html .side-pane-context-menu:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    position: absolute;
+    position: fixed;
     min-width: 170px;
     padding: 4px;
     border-radius: 12px;
@@ -1458,15 +1476,10 @@ html .side-pane-context-menu:where(.vcp-ui-scope, .vcp-ui-scope *) {
     box-shadow: 0 10px 25px -5px var(--vcp-ui-port-color-rgba-0-0-0-0-5), 0 8px 10px -6px var(--vcp-ui-port-color-rgba-0-0-0-0-3);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    z-index: 100;
+    z-index: var(--vcp-ui-z-dropdown, 1300);
     display: flex;
     flex-direction: column;
     gap: 2px;
-}
-
-html .side-pane-context-menu:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    position: fixed;
-    z-index: var(--vcp-ui-z-dropdown, 1300);
 }
 
 html body[data-vcp-theme="light"] .side-pane-context-menu:where(.vcp-ui-scope, .vcp-ui-scope *) {

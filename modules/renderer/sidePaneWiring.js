@@ -305,6 +305,20 @@ export function initWorkspaceSidePane({
     win.vcpSidePaneController = controller;
     subscriptions.add(controller);
 
+    // 侧栏按钮取代了铃铛，右键照旧打开监控面板
+    if (toggleChatBtn) {
+        const onToggleContextMenu = (e) => {
+            e.preventDefault();
+            if (chatAPI?.openRAGObserverWindow) {
+                chatAPI.openRAGObserverWindow();
+            } else {
+                notify('功能缺失: preload.js需要更新。', 'error');
+            }
+        };
+        toggleChatBtn.addEventListener('contextmenu', onToggleContextMenu);
+        subscriptions.add({ dispose: () => toggleChatBtn.removeEventListener('contextmenu', onToggleContextMenu) });
+    }
+
     // 笔记和代码查看是全局标签，不随话题切换
     const notesProvider = createNotesSideProvider({
         electronAPI: chatAPI,
