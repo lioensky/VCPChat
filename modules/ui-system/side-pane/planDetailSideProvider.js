@@ -419,10 +419,7 @@ export function createPlanDetailSideProvider({
                 if (!payload?.projectId || payload.projectId === projectId) scheduleLoad();
             });
 
-            render();
-            await load();
-
-            return {
+            const handle = {
                 focus() { scheduleLoad(); },
                 dispose() {
                     isDisposed = true;
@@ -432,6 +429,16 @@ export function createPlanDetailSideProvider({
                     viewElement.classList.remove('side-plan-view');
                 }
             };
+
+            render();
+            // 已经订阅了工程变化；首次加载出错时先退订再往外抛
+            try {
+                await load();
+            } catch (error) {
+                handle.dispose();
+                throw error;
+            }
+            return handle;
         }
     };
 }

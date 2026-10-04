@@ -462,11 +462,7 @@ export function createGitSideProvider({
                 if (!isDisposed && viewElement.offsetParent !== null) refreshStatus({ quiet: true });
             }, POLL_INTERVAL_MS);
 
-            render();
-            await loadWorkspaces();
-            if (pendingFocusPath) await applyPendingFocus();
-
-            return {
+            const handle = {
                 focus() {
                     sourceSelect.focus();
                 },
@@ -485,6 +481,17 @@ export function createGitSideProvider({
                     pollTimer = null;
                 }
             };
+
+            render();
+            // 上面已经挂了监听和轮询；首次加载出错时要先拆掉再往外抛，不然没有句柄可以释放
+            try {
+                await loadWorkspaces();
+                if (pendingFocusPath) await applyPendingFocus();
+            } catch (error) {
+                await handle.dispose();
+                throw error;
+            }
+            return handle;
         }
     });
 }

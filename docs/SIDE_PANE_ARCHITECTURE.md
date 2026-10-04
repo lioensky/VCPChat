@@ -106,6 +106,14 @@ sidePaneWiring
 
 焦点在浏览器标签的网页里时，按键不会到主窗口。主进程在 `browserHandlers.js` 里用 `before-input-event` 截下这几个组合，经 `browser:side-pane-shortcut` 转给主窗口，由 `sidePaneWiring.js` 执行同样的动作。
 
+### 浏览器标签的弹窗
+
+网页里的 `window.open` / `target=_blank` 一律被主进程拒绝，再按条件转成侧栏里的新浏览器标签：
+
+- 必须紧跟网页里的一次真实点击或按键（3 秒内），一次输入只换一个标签，网页自己连开弹窗不会刷出标签；
+- 弹窗只能开 http / https，本地 file 页面还可以开 file 页面；`data:` 不在任何允许列表里，防止顶层 data 钓鱼页；
+- 浏览器标签已有 12 个时，网页新开的窗口只提示不打开。
+
 ---
 
 ## 4. Provider 契约

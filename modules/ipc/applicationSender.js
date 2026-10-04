@@ -14,6 +14,13 @@ function isApplicationPageUrl(raw, pages = ['main.html'], projectRoot = PROJECT_
     } catch { return false; }
 }
 
+// 主窗口可能被关掉后重建（macOS 点 Dock 图标），每次都现取，不认初始化时记下的旧窗口
+function resolveWindowWebContents(getWindow) {
+    const win = typeof getWindow === 'function' ? getWindow() : null;
+    if (!win || win.isDestroyed?.()) return null;
+    return win.webContents || null;
+}
+
 function createApplicationSenderGuard({ pages = ['main.html'], projectRoot = PROJECT_ROOT, getWebContents = null, getMainWebContents = null } = {}) {
     return event => {
         try {
@@ -32,4 +39,4 @@ function createApplicationSenderGuard({ pages = ['main.html'], projectRoot = PRO
     };
 }
 
-module.exports = { isApplicationPageUrl, createApplicationSenderGuard };
+module.exports = { isApplicationPageUrl, createApplicationSenderGuard, resolveWindowWebContents };

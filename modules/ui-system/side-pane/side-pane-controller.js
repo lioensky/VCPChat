@@ -308,7 +308,14 @@ export function createSidePaneController({
             }
             if (!view) return null;
 
-            const handle = provider?.mountTab ? await provider.mountTab(payload, view) : null;
+            let handle = null;
+            try {
+                handle = provider?.mountTab ? await provider.mountTab(payload, view) : null;
+            } catch (error) {
+                // 挂载失败不留空的视图壳，下次显示时重新挂
+                view.remove?.();
+                throw error;
+            }
             if (isDisposed || !state.tabs.some(t => t.id === tabId)) {
                 await handle?.dispose?.();
                 view.remove?.();

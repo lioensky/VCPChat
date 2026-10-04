@@ -8,7 +8,7 @@
 const path = require('path');
 const { ipcMain, shell } = require('electron');
 const gitService = require('../services/gitService');
-const { createApplicationSenderGuard, isApplicationPageUrl } = require('./applicationSender');
+const { createApplicationSenderGuard, isApplicationPageUrl, resolveWindowWebContents } = require('./applicationSender');
 
 const CHANNELS = [
     'git:list-workspaces',
@@ -30,8 +30,8 @@ const CHANNELS = [
 const ALLOWED_PAGES = ['ProjectForgemodules/projectforge.html', 'main.html'];
 const MAX_PATHS = 5000;
 let workspaceServiceRef = null;
-let mainWindowRef = null;
-const isAllowedSender = createApplicationSenderGuard({ pages: ALLOWED_PAGES, getMainWebContents: () => mainWindowRef?.webContents });
+let getMainWindow = () => null;
+const isAllowedSender = createApplicationSenderGuard({ pages: ALLOWED_PAGES, getMainWebContents: () => resolveWindowWebContents(getMainWindow) });
 function isAllowedSenderUrl(raw) { return isApplicationPageUrl(raw, ALLOWED_PAGES); }
 
 function listEnabledWorkspaces() {
@@ -73,8 +73,8 @@ function handle(channel, fn) {
     });
 }
 
-function initialize({ workspaceService = null, mainWindow = null } = {}) {
-    mainWindowRef = mainWindow;
+function initialize({ workspaceService = null, mainWindow = null, getMainWindow: getWindow = null } = {}) {
+    getMainWindow = typeof getWindow === 'function' ? getWindow : () => mainWindow;
     workspaceServiceRef = workspaceService;
     CHANNELS.forEach(channel => ipcMain.removeHandler(channel));
 

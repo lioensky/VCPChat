@@ -1508,10 +1508,10 @@ if (!gotTheLock) {
         // 工作区索引在后台预热，不阻塞首屏。
         workspaceHandlers.initialize({ settingsManager: appSettingsManager, logger: console });
         projectForgeHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService });
-        gitHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService, mainWindow });
+        gitHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService, getMainWindow: () => mainWindow });
         sourceHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService });
-        terminalHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService, mainWindow });
-        browserHandlers.initialize({ mainWindow });
+        terminalHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService, getMainWindow: () => mainWindow });
+        browserHandlers.initialize({ getMainWindow: () => mainWindow });
 
         translatorHandlers.initialize({
             mainWindow,
@@ -1575,7 +1575,7 @@ if (!gotTheLock) {
             settingsManager: appSettingsManager,
             historyMutationQueue
         });
-        sideChatHandlers.initialize({ USER_DATA_DIR, AGENT_DIR, historyMutationQueue, mainWindow });
+        sideChatHandlers.initialize({ USER_DATA_DIR, AGENT_DIR, historyMutationQueue, getMainWindow: () => mainWindow });
 
         // A renderer claims a lease before beginning asynchronous selection.
         // Late start/stop completions from older selections are rejected in

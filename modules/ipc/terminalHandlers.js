@@ -10,8 +10,8 @@
 const fs = require('fs');
 const path = require('path');
 const { ipcMain } = require('electron');
-const { createApplicationSenderGuard } = require('./applicationSender');
-let mainWindowRef = null;
+const { createApplicationSenderGuard, resolveWindowWebContents } = require('./applicationSender');
+let getMainWindow = () => null;
 
 const CHANNELS = [
     'terminal:create',
@@ -43,7 +43,7 @@ const trackedSenders = new WeakSet();
 /** @type {Map<Electron.WebContents, { unsubscribe: Function, pending: Map<string, object>, timer: NodeJS.Timeout|null }>} */
 const runWatchers = new Map();
 
-const isAllowedSender = createApplicationSenderGuard({ getMainWebContents: () => mainWindowRef?.webContents });
+const isAllowedSender = createApplicationSenderGuard({ getMainWebContents: () => resolveWindowWebContents(getMainWindow) });
 
 function clampInt(value, min, max, fallback) {
     const n = Math.floor(Number(value));
@@ -177,8 +177,8 @@ function createView(event, options = {}) {
     return { id, pid: state.pid, shared: true };
 }
 
-function initialize({ workspaceService = null, executorLoader = null, mainWindow = null } = {}) {
-    mainWindowRef = mainWindow;
+function initialize({ workspaceService = null, executorLoader = null, mainWindow = null, getMainWindow: getWindow = null } = {}) {
+    getMainWindow = typeof getWindow === 'function' ? getWindow : () => mainWindow;
     workspaceServiceRef = workspaceService;
     if (typeof executorLoader === 'function') loadExecutor = executorLoader;
     CHANNELS.forEach((channel) => ipcMain.removeHandler(channel));

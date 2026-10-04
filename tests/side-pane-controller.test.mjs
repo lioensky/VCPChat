@@ -172,6 +172,29 @@ test('SidePaneController mounts a tab once when it is opened twice concurrently'
     dom.window.close();
 });
 
+test('SidePaneController does not leave an empty view behind when a mount fails', async () => {
+    const { dom, root, options } = createPaneDom();
+    const controller = createSidePaneController({
+        ...options,
+        providers: {
+            broken: {
+                async mountTab() { throw new Error('mount failed'); }
+            }
+        }
+    });
+    const originalError = console.error;
+    console.error = () => {};
+    try {
+        await controller.openTab({ id: 'broken', kind: 'broken', title: 'Broken', closable: true, scopeMode: 'global' }).catch(() => {});
+    } finally {
+        console.error = originalError;
+    }
+    assert.equal(root.querySelector('.side-pane-view[data-tab-id="broken"]'), null);
+
+    await controller.dispose();
+    dom.window.close();
+});
+
 test('SidePaneController still closes a tab whose dispose throws', async () => {
     const { dom, root, options } = createPaneDom();
     const controller = createSidePaneController({

@@ -11,9 +11,11 @@
 'use strict';
 
 export const BROWSER_PARTITION = 'persist:vcp-side-browser';
-const ALLOWED_PROTOCOLS = new Set(['http:', 'https:', 'file:', 'about:', 'data:']);
+const ALLOWED_PROTOCOLS = new Set(['http:', 'https:', 'file:', 'about:']);
 const BLOCKED_ERROR_CODES = new Set([-3]); // ERR_ABORTED: a navigation replaced by another one
-const INVALID_URL_MESSAGE = '仅支持 http、https、file、about、data 地址';
+const INVALID_URL_MESSAGE = '仅支持 http、https、file、about 地址';
+// 网页弹窗最多把浏览器标签开到这么多，再多就只提示不开
+export const MAX_POPUP_BROWSER_TABS = 12;
 
 /**
  * Turns whatever the user typed into an address the browser can open.
@@ -119,7 +121,15 @@ export function createBrowserSideProvider({
     const subscribeOpenTab = () => {
         if (unsubscribeOpenTab || typeof api?.onBrowserOpenTab !== 'function') return;
         unsubscribeOpenTab = api.onBrowserOpenTab((payload) => {
-            if (payload && typeof payload.url === 'string') openBrowserTab({ url: payload.url, forceNew: true });
+            if (!payload || typeof payload.url !== 'string') return;
+            const result = normalizeBrowserInput(payload.url);
+            if (!result?.url) return;
+            const browserTabs = sidePaneController?.getSnapshot?.().tabs.filter(tab => tab.kind === kind).length || 0;
+            if (browserTabs >= MAX_POPUP_BROWSER_TABS) {
+                toast(`浏览器标签已有 ${browserTabs} 个，网页新开的窗口没有打开`, 'warning');
+                return;
+            }
+            openBrowserTab({ url: result.url, forceNew: true });
         });
     };
 

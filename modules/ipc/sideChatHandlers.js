@@ -11,7 +11,7 @@ try {
 const fs = require('fs-extra');
 const path = require('path');
 const crypto = require('crypto');
-const { createApplicationSenderGuard } = require('./applicationSender');
+const { createApplicationSenderGuard, resolveWindowWebContents } = require('./applicationSender');
 
 function filterStableHistory(history = []) {
     if (!Array.isArray(history)) return [];
@@ -72,6 +72,29 @@ const CHANNELS = [
 
 // 侧聊子会话目录标记：仅带此标记的目录才允许被 delete-child 整体删除
 const CHILD_MARKER_FILE = 'sidechat-child.json';
+const CHILD_ID_PATTERN = /^sidechat_\d+_[0-9a-f]+$/;
+// Windows 上目录可能被文件监听或杀毒软件短暂占着，删除失败时重试几次
+const REMOVE_OPTIONS = { recursive: true, force: true, maxRetries: 5, retryDelay: 100 };
+
+// 标记文件最后删：中途失败时目录里还留着标记，下次还认得出来、还能接着删
+async function removeChildDir(topicDir) {
+    for (const name of await fs.readdir(topicDir)) {
+        if (name !== CHILD_MARKER_FILE) await fs.promises.rm(path.join(topicDir, name), REMOVE_OPTIONS);
+    }
+    await fs.promises.rm(path.join(topicDir, CHILD_MARKER_FILE), REMOVE_OPTIONS);
+    await fs.promises.rm(topicDir, REMOVE_OPTIONS);
+}
+
+// 以前删到一半留下的空侧聊目录：已经没有标记，只在名字是侧聊格式且确实为空时才删
+async function removeEmptyChildDir(topicDir, topicId) {
+    if (!CHILD_ID_PATTERN.test(topicId)) return false;
+    try {
+        const stat = await fs.lstat(topicDir);
+        if (!stat.isDirectory() || stat.isSymbolicLink()) return false;
+        await fs.promises.rmdir(topicDir);
+        return true;
+    } catch { return false; }
+}
 
 /**
  * Initializes Side Chat IPC handlers.
@@ -95,7 +118,8 @@ function initialize(paths) {
         } catch {}
     }
 
-    const isAllowedSender = createApplicationSenderGuard({ getWebContents: () => paths.mainWindow?.webContents });
+    const getMainWindow = typeof paths.getMainWindow === 'function' ? paths.getMainWindow : () => paths.mainWindow;
+    const isAllowedSender = createApplicationSenderGuard({ getWebContents: () => resolveWindowWebContents(getMainWindow) });
     const register = (channel, handler) => ipc.handle(channel, async (event, ...args) => {
         if (!isAllowedSender(event)) return { success: false, error: 'UNAUTHORIZED_SENDER' };
         return handler(event, ...args);
@@ -303,9 +327,10 @@ function initialize(paths) {
             if (!await fs.pathExists(topicDir)) return { success: true, removed: false };
             // 拒绝删除没有侧聊标记的目录，避免误删真实话题
             if (!await requireChild(topicDir, agentId, childTopicId)) {
+                if (await removeEmptyChildDir(topicDir, childTopicId)) return { success: true, removed: true };
                 return { success: false, error: 'NOT_A_SIDE_CHAT_CHILD' };
             }
-            await fs.remove(topicDir);
+            await removeChildDir(topicDir);
             return { success: true, removed: true };
         } catch (error) {
             console.error('[SideChatHandlers] delete-child error:', error);
@@ -390,12 +415,19 @@ async function removeSideChatChildrenOfParent({ USER_DATA_DIR, agentId, parentTo
     for (const entry of entries) {
         if (!entry.isDirectory() || !validateSegment(entry.name)) continue;
         const entryDir = path.join(topicsDir, entry.name);
+        let marker = null;
         try {
-            const marker = await fs.readJson(path.join(entryDir, CHILD_MARKER_FILE));
+            marker = await fs.readJson(path.join(entryDir, CHILD_MARKER_FILE));
+        } catch {
+            // 没有标记的空侧聊目录顺手清掉；非空的一律不碰
+            if (await removeEmptyChildDir(entryDir, entry.name)) removed += 1;
+            continue;
+        }
+        try {
             if (marker?.schemaVersion !== 1 || marker.ephemeral !== true ||
                 marker.agentId !== safeAgentId || marker.topicId !== entry.name ||
                 marker.parentTopicId !== safeParentId) continue;
-            await fs.remove(entryDir);
+            await removeChildDir(entryDir);
             removed += 1;
         } catch {}
     }

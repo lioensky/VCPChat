@@ -17,9 +17,10 @@
 
 html .vcp-ui-scope#notificationsSidebar {
     /* Opaque on purpose: the side pane shows the wallpaper through its own
-     * surface, and translucent fills let it bleed into the card text. */
-    --nc-card-bg: color-mix(in srgb, var(--vcp-ui-text-primary) 6%, var(--vcp-ui-bg-primary));
-    --nc-card-bg-hover: color-mix(in srgb, var(--vcp-ui-text-primary) 10%, var(--vcp-ui-bg-primary));
+     * surface, and translucent fills let it bleed into the card text. Inside
+     * the side pane the cards share its theme-derived card colors. */
+    --nc-card-bg: var(--side-pane-card-bg, color-mix(in srgb, var(--vcp-ui-text-primary) 6%, var(--vcp-ui-bg-primary)));
+    --nc-card-bg-hover: var(--side-pane-card-hover-bg, color-mix(in srgb, var(--vcp-ui-text-primary) 10%, var(--vcp-ui-bg-primary)));
     --nc-gutter: var(--vcp-ui-space-3);
     --nc-tone-neutral: var(--vcp-ui-text-3);
     --nc-tone-success: var(--vcp-ui-success);
