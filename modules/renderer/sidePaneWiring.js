@@ -6,7 +6,6 @@ import { createSidePaneWorkspaceServices } from './sidePaneWorkspaceServices.js'
 import { createSidePaneHostBindings } from './sidePaneHostBindings.js';
 import { defineNotificationsTabType } from '../ui-system/side-pane/tab-types/notifications.js';
 import { defineChatTabType } from '../ui-system/side-pane/tab-types/chat.js';
-import { defineNotesTabType } from '../ui-system/side-pane/tab-types/notes.js';
 import { defineCodeViewerTabType } from '../ui-system/side-pane/tab-types/code-viewer.js';
 import { defineGitTabType } from '../ui-system/side-pane/tab-types/git.js';
 import { defineBrowserTabType } from '../ui-system/side-pane/tab-types/browser.js';
@@ -64,7 +63,7 @@ export function initWorkspaceSidePane({
     const toolOutput = defineToolOutputTabType(deps);
     const planDetail = definePlanDetailTabType({ ...deps, historyRef, openProjectForge });
     const terminal = defineTerminalTabType({ ...deps, onOpenUrl: url => browser.provider.openBrowserTab({ url, forceNew: true }) });
-    for (const definition of [defineNotificationsTabType(), defineChatTabType({ provider: sideChat.provider, openSideChat: sideChat.openSideChat, onClosed: sideChat.onTabClosed }), defineNotesTabType(deps), codeViewer, git, browser, terminal, toolOutput, planDetail]) {
+    for (const definition of [defineNotificationsTabType(), defineChatTabType({ provider: sideChat.provider, openSideChat: sideChat.openSideChat, onClosed: sideChat.onTabClosed }), codeViewer, git, browser, terminal, toolOutput, planDetail]) {
         controller.registerTabType(definition);
     }
     // 标签类型都登记完才能认出存档里的标签

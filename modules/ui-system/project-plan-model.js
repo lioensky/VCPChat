@@ -6,6 +6,15 @@ export function pickProjectsForWorkspace(projects, workspace) {
         .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
 }
 
+/**
+ * 话题用过多个 V工程 时，状态面板和侧栏计划显示同一个：最近用过、有计划条目的那个，都没有计划就取最近用过的。
+ * @param {object[]} projects 工程摘要（project-forge:list-projects，带 progress），最近的在前
+ */
+export function pickTopicProject(projects) {
+    const list = (projects || []).filter(Boolean);
+    return list.find(p => Number(p.progress?.total) > 0) || list[0] || null;
+}
+
 const TODO_STATUS = Object.freeze({ done: 'completed', doing: 'inProgress', pending: 'pending', blocked: 'pending' });
 
 export function mapTodoItems(todos) {

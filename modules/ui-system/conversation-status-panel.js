@@ -23,7 +23,7 @@ import { createStatusPanelSections } from './conversation-status-panel/sections.
 import { filterBranches, getTodoFocusWindow, pickMiniMetric, pickEntryMetric, resolveVariant, buildCommitMessage, parseSwitchBlockedFiles, formatShortcutLabel, uniquePaths, formatCommitTime } from './conversation-status-panel/helpers.js';
 export { filterBranches, getTodoFocusWindow, pickMiniMetric, pickEntryMetric, resolveVariant, buildCommitMessage, parseSwitchBlockedFiles, formatShortcutLabel } from './conversation-status-panel/helpers.js';
 import { layoutGitGraph, parseGraphRefs } from './git-graph-layout.js';
-import { pickProjectsForWorkspace, mapTodoItems } from './project-plan-model.js';
+import { pickProjectsForWorkspace, pickTopicProject, mapTodoItems } from './project-plan-model.js';
 import { collectConversationScope, normalizeCommand, scopeSignature } from './conversation-scope.js';
 
 const STORAGE_KEY_WS = 'vcp-projectforge-git-workspace';
@@ -242,11 +242,12 @@ export function createConversationStatusPanel({
                 const res = await api.projectForgeListProjects({});
                 candidates = res?.success ? pickProjectsForWorkspace(res.data, nextWorkspace) : [];
             }
-            for (const project of candidates) {
-                const detail = await api.projectForgeGetProject?.(project.id);
-                const items = mapTodoItems(detail?.success ? detail.data?.todos : []);
-                if (items.length) return { items, project };
-            }
+            // 和侧栏计划同一条规则选工程，两边永远显示同一个
+            const project = pickTopicProject(candidates);
+            if (!project) return null;
+            const detail = await api.projectForgeGetProject?.(project.id);
+            const items = mapTodoItems(detail?.success ? detail.data?.todos : []);
+            if (items.length) return { items, project };
         } catch { /* 进程信息缺失不影响 Git 部分 */ }
         return null;
     }

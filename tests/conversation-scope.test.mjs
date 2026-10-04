@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { collectConversationScope, normalizeCommand, scopeSignature } from '../modules/ui-system/conversation-scope.js';
+import { collectConversationScope, normalizeCommand, scopeSignature, readRevertBatches, recordRevertBatch } from '../modules/ui-system/conversation-scope.js';
+import { pickTopicProject } from '../modules/ui-system/project-plan-model.js';
 
 // 请求 / 结果格式取自真实聊天记录里的 ProjectForge 与 PowerShellExecutor 调用（内容做了删减）。
 const REQ = (body) => `<<<[TOOL_REQUEST]>>>\n${body}\n<<<[END_TOOL_REQUEST]>>>`;
@@ -75,3 +76,43 @@ test('quoted whitespace and equal-size command sets have different identities',(
 assert.notEqual(normalizeCommand('echo "a  b"'),normalizeCommand('echo "a b"'));
 assert.notEqual(scopeSignature({projectIds:[],commands:new Set(['a'])}),scopeSignature({projectIds:[],commands:new Set(['b'])}));
 });
+
+test('batch ids come from construction results, not from timeline or history listings', () => {
+    const edit = [
+        forge('command:「始」EditCode「末」,\nprojectId:「始」pzi2e「末」,\npath:「始」a.py「末」'),
+        RESULT('ProjectForge', '## ✅ EditCode · `a.py`\n- 节点 `n11` · 批次 `b11` · 工程 `pzi2e` · @Nova')
+    ].join('\n');
+    const rollback = RESULT('ProjectForge', '## ✅ Rollback\n- 回退批次 `b14`（回退本身也可再回退：Rollback batch=b14）');
+    const timeline = RESULT('ProjectForge', '## 开发脉络\n- `b3` · 编辑 · @Nova · 10:00 · 初版\n  - a.py (+3/-0)\n- `n2` · `b2` · @Nova · edit · `a.py`');
+    const scope = collectConversationScope([
+        { role: 'assistant', content: edit },
+        { role: 'assistant', content: rollback },
+        { role: 'assistant', content: timeline }
+    ]);
+    assert.deepEqual([...scope.batchIds].sort((a, b) => a - b), [11, 14]);
+    const without = collectConversationScope([{ role: 'assistant', content: edit }]);
+    assert.notEqual(scopeSignature(without), scopeSignature(scope));
+});
+
+test('reverts made from the side pane are remembered per topic', () => {
+    const data = new Map();
+    const storage = { getItem: k => (data.has(k) ? data.get(k) : null), setItem: (k, v) => data.set(k, String(v)) };
+    recordRevertBatch(storage, 'agent:a:t1', 20);
+    recordRevertBatch(storage, 'agent:a:t1', 21);
+    recordRevertBatch(storage, 'agent:a:t1', 20);
+    recordRevertBatch(storage, 'agent:a:t2', 30);
+    assert.deepEqual(readRevertBatches(storage, 'agent:a:t1'), [21, 20]);
+    assert.deepEqual(readRevertBatches(storage, 'agent:a:t2'), [30]);
+    assert.deepEqual(readRevertBatches(storage, ''), []);
+    assert.deepEqual(readRevertBatches({ getItem: () => '{bad' }, 'x'), []);
+});
+
+test('status panel and side pane pick the same project: most recent with a plan, else the most recent', () => {
+    const a = { id: 'a', progress: { total: 0 } };
+    const b = { id: 'b', progress: { total: 3 } };
+    const c = { id: 'c', progress: { total: 1 } };
+    assert.equal(pickTopicProject([a, b, c]).id, 'b');
+    assert.equal(pickTopicProject([a, { id: 'd' }]).id, 'a');
+    assert.equal(pickTopicProject([]), null);
+});
+

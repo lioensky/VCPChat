@@ -2,7 +2,7 @@
 
 ## 1. 概述
 
-侧栏是主聊天窗口右侧的一列标签页容器，用来放和当前对话并排使用的工具：通知、辅助对话、随手笔记、代码查看、Git 变更、浏览器、终端、命令输出、V工程计划等。
+侧栏是主聊天窗口右侧的一列标签页容器，用来放和当前对话并排使用的工具：通知、辅助对话、代码查看、Git 变更、浏览器、终端、命令输出、V工程计划等。
 
 设计目标：
 
@@ -157,11 +157,12 @@ handle 的方法都是可选的：
 2. 在 `tab-types/<kind>.js` 定义一个 `defineXxxTabType(deps)`，把该类型的展示信息、可选入口（含 `order` 和 `isAvailable`）与 provider 放在一起：
 
    ```js
-   export function defineNotesTabType(deps) {
-       const provider = createNotesSideProvider(deps);
+   export function defineTerminalTabType(deps) {
+       const provider = createTerminalSideProvider(deps);
        return Object.freeze({
-           kind: 'notes', label: '随手笔记', icon: 'edit_note', searchHint: '笔记',
-           entry: { id: 'notes', order: 20, open: () => provider.openNotesTab() },
+           kind: 'terminal', label: '终端', icon: 'terminal', searchHint: '终端',
+           persist: false,
+           entry: { id: 'terminal', order: 50, open: () => provider.openTerminalTab() },
            provider
        });
    }
@@ -208,7 +209,7 @@ provider 只能修改自己的视图，跨模块动作通过组合者注入的�
 
 ## 8. 样式加载顺序
 
-`main.html` 按原连续片段加载侧栏样式：shell → tab-bar → side-chat → tab-overview → launcher → tab-overlays → notes → code-viewer → browser → terminal。标签概览、可访问性、右键菜单、浮动提问按钮和窄视口规则保留原位置，因此使用 10 个文件，避免按区域归并时改变层叠顺序；每个文件不超过 459 行。
+`main.html` 按原连续片段加载侧栏样式：shell → tab-bar → side-chat → tab-overview → launcher → tab-overlays → code-viewer → browser → terminal。标签概览、可访问性、右键菜单、浮动提问按钮和窄视口规则保留原位置，因此使用 9 个文件，避免按区域归并时改变层叠顺序；每个文件不超过 459 行。
 
 原有 `side-pane-tabs.css`、`side-pane-plan.css`、`side-pane-tool-output.css`、`side-pane-git-extras.css` 和 `side-pane-side-chat-extras.css` 是后加载的扩展层，继续保留各自的位置。调整这些扩展层时也必须保持它们相对于其他样式的顺序。
 
