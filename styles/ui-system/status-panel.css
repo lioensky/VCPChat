@@ -75,6 +75,8 @@ html .zc-status-layer:where(.vcp-ui-scope, .vcp-ui-scope *) {
     padding: 16px 16px 0;
     pointer-events: none;
 }
+/* display:flex 会盖掉 hidden 属性；会话没有可显示的状态时整层要真的消失，否则留下一条空边框 */
+html .zc-status-layer[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }
 
 html .zc-status:where(.vcp-ui-scope, .vcp-ui-scope *) {
     position: relative;

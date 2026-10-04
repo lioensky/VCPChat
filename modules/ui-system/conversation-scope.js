@@ -9,7 +9,7 @@
 
 'use strict';
 
-import { findProjectRoots, parseToolFields } from './message-file-changes.js';
+import { projectRootMentions, parseToolFields } from './message-file-changes.js';
 
 const TOOL_REQUEST = /<<<\[TOOL_REQUEST\]>>>([\s\S]*?)<<<\[END_TOOL_REQUEST\]>>>/g;
 
@@ -44,20 +44,22 @@ export function collectConversationScope(history) {
     for (const message of Array.isArray(history) ? history : []) {
         const text = textOf(message);
         if (!text) continue;
+        // 同一条消息里请求和结果交错出现，按文本位置依次记，最后出现的才算最近
+        const seen = projectRootMentions(text).map(({ id, index }) => ({ id, index }));
         TOOL_REQUEST.lastIndex = 0;
         for (const block of text.matchAll(TOOL_REQUEST)) {
             const fields = parseToolFields(block[1]);
             const tool = fieldOf(fields, 'tool_name').replace(/["'「」]/gu, '').trim().toLowerCase();
             if (tool === 'projectforge') {
                 const id = fieldOf(fields, 'projectId', 'project', 'id');
-                if (id) mention(id);
+                if (id) seen.push({ id, index: block.index });
             } else if (tool === 'powershellexecutor') {
                 for (const [key, value] of Object.entries(fields)) {
                     if (/^command\d*$/i.test(key) && value) commands.add(normalizeCommand(value));
                 }
             }
         }
-        for (const id of findProjectRoots([text]).keys()) mention(id);
+        for (const { id } of seen.sort((a, b) => a.index - b.index)) mention(id);
     }
     return { projectIds: [...projects.keys()].reverse(), commands };
 }

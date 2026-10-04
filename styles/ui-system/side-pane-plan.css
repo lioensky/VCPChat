@@ -70,6 +70,7 @@ html .side-plan-icon-btn .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *), htm
 
 html .side-plan-chip:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 0 0 auto; padding: 1px 8px; border-radius: 999px; font-size: calc(var(--vcp-ui-font-size) - 3px); background: var(--zc-secondary); color: var(--zc-fg-subtle); }
 html .side-plan-chip.status-active:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-success); }
+html .side-plan-chip.status-deleted:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-danger); }
 
 html .side-plan-meta:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--zc-fg-subtle); }
 html .side-plan-root:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--zc-fg-subtlest); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }

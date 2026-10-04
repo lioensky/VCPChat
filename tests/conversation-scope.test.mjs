@@ -33,6 +33,23 @@ test('project ids come from CreateProject results and later requests, most recen
     assert.deepEqual(collectConversationScope(history).projectIds, ['pqug7', 'zz99a']);
 });
 
+test('inside one message the project mentioned last wins, even when an older one shows up in an earlier result', () => {
+    // 真实场景：一条回答里先 GetProject 旧工程（结果带根目录），后面再 CreateProject / 操作新工程
+    const getOld = [
+        forge('command:「始」GetProject「末」,\nprojectId:「始」pold1「末」'),
+        RESULT('ProjectForge', '## 工程概况\n- 工程：旧工程（`pold1`）· 进行中\n- 根目录：D:\\old')
+    ].join('\n');
+    const createNew = [
+        forge('command:「始」CreateProject「末」,\nworkspace:「始」w「末」,\nname:「始」新工程「末」'),
+        RESULT('ProjectForge', '## ✅ 工程已创建：新工程\n- projectId：`pnew2`\n- 根目录：D:\\new')
+    ].join('\n');
+    const history = [{ role: 'assistant', content: [getOld, createNew, forge('command:「始」UpdatePlan「末」,\nprojectId:「始」pnew2「末」')].join('\n') }];
+    assert.deepEqual(collectConversationScope(history).projectIds, ['pnew2', 'pold1']);
+    // 结果里的根目录不能压过后面的请求：先建 pnew2、再看一眼 pold1、最后继续改 pnew2
+    const back = [createNew, getOld, forge('command:「始」UpdatePlan「末」,\nprojectId:「始」pnew2「末」')].join('\n');
+    assert.deepEqual(collectConversationScope([{ role: 'assistant', content: back }]).projectIds, ['pnew2', 'pold1']);
+});
+
 test('PowerShellExecutor commands preserve shell whitespace, other tools are ignored', () => {
     const history = [
         { role: 'assistant', content: ps('Get-ChildItem -Path "../../Plugin"   -Recurse') },

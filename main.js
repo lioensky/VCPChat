@@ -2012,6 +2012,7 @@ if (!gotTheLock) {
             console.log('VCPLog 收到消息:', event.data);
             try {
                 const data = JSON.parse(event.data.toString());
+                groupChat.noteToolApprovalMessage?.(data); // 群聊看门狗在审批挂着时不熔断
                 if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('vcp-log-message', data);
             } catch (e) {
                 console.error('VCPLog 解析消息失败:', e);
@@ -2068,6 +2069,7 @@ if (!gotTheLock) {
         if (vcpLogWebSocket && vcpLogWebSocket.readyState === 1) { // 1 is WebSocket.OPEN
             console.log('VCPLog 发送消息:', data);
             vcpLogWebSocket.send(JSON.stringify(data));
+            groupChat.noteToolApprovalMessage?.(data);
         } else {
             console.warn('VCPLog WebSocket 未连接或未就绪，无法发送消息:', data);
         }

@@ -149,6 +149,26 @@ test('a failed refresh keeps the last plan on screen with a retry banner (ZCode 
     handle.dispose();
 });
 
+test('a project soft-deleted while its tab is open is marked deleted, not 进行中', async () => {
+    // 真实返回：软删除后 GetProject 仍然成功，status 还是 active，只多了 deleted_at / deleted_by
+    let deleted = false;
+    const { provider, view, fire } = makeEnv({
+        projectForgeGetProject: async () => ({ success: true, data: deleted ? { ...DETAIL, project: { ...DETAIL.project, deleted_at: '2026-09-30T02:00:00.000Z', deleted_by: 'Nova' } } : DETAIL })
+    });
+    const handle = await provider.mountTab({ id: planTabId('p1'), payload: { projectId: 'p1' } }, view);
+    assert.equal(view.querySelector('.side-plan-chip').textContent, '进行中');
+    assert.equal(view.querySelector('.side-plan-deleted'), null);
+
+    deleted = true;
+    fire({ projectId: 'p1' });
+    await new Promise(r => setTimeout(r, 300));
+    assert.equal(view.querySelector('.side-plan-chip').textContent, '已删除');
+    assert.ok(view.querySelector('.side-plan-chip.status-deleted'));
+    assert.match(view.querySelector('.side-plan-deleted').textContent, /已被 Nova 删除.*RestoreProjects/);
+    assert.equal(view.querySelectorAll('.side-plan-todo').length, 3, 'the plan stays readable');
+    handle.dispose();
+});
+
 test('a renamed project renames its tab, once', async () => {
     const { provider, calls, view, fire } = makeEnv();
     const handle = await provider.mountTab({ id: planTabId('p1'), payload: { projectId: 'p1', projectName: '旧名字' } }, view);

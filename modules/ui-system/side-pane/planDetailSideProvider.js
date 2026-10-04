@@ -206,8 +206,10 @@ export function createPlanDetailSideProvider({
                 const head = h('header', 'side-plan-header');
                 const titleRow = h('div', 'side-plan-title-row');
                 titleRow.appendChild(h('h2', 'side-plan-title', project.name || '未命名工程'));
-                const statusText = project.status === 'active' ? '进行中' : project.status === 'closed' ? '已收尾' : (project.status || '');
-                if (statusText) titleRow.appendChild(h('span', `side-plan-chip status-${project.status || 'unknown'}`, statusText));
+                // 软删除的工程 GetProject 仍然成功、status 也不变，只多了 deleted_at
+                const status = project.deleted_at ? 'deleted' : project.status;
+                const statusText = status === 'deleted' ? '已删除' : status === 'active' ? '进行中' : status === 'closed' ? '已收尾' : (status || '');
+                if (statusText) titleRow.appendChild(h('span', `side-plan-chip status-${status || 'unknown'}`, statusText));
                 const actions = h('div', 'side-plan-actions');
                 const refreshBtn = h('button', 'side-plan-icon-btn');
                 refreshBtn.type = 'button';
@@ -237,6 +239,10 @@ export function createPlanDetailSideProvider({
                     const root = h('div', 'side-plan-root', project.root);
                     root.title = project.root;
                     head.appendChild(root);
+                }
+                if (project.deleted_at) {
+                    const by = project.deleted_by ? ` ${project.deleted_by} ` : '';
+                    head.appendChild(h('div', 'side-plan-warning side-plan-deleted', `这个工程已被${by}删除（${formatRelativeTime(Date.parse(project.deleted_at))}），下面是删除前的计划；需要时让助手用 RestoreProjects 恢复`));
                 }
                 if (project.rootInfo && project.rootInfo.writable === false && project.rootInfo.blockedReason) {
                     head.appendChild(h('div', 'side-plan-warning', project.rootInfo.blockedReason));
