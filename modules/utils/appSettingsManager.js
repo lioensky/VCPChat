@@ -36,11 +36,16 @@ class SettingsValidator {
             hasIssues = true;
         }
 
-        const allowedChatPresentationModes = new Set(['bubble', 'panel', 'immersive']);
+        const allowedChatPresentationModes = new Set(['bubble', 'panel', 'immersive', 'messenger']);
         if (!allowedChatPresentationModes.has(validated.chatPresentationMode)) {
             validated.chatPresentationMode = 'bubble';
             hasIssues = true;
             console.log('Fixed invalid chatPresentationMode');
+        }
+
+        if (validated.chatHeaderStyle !== 'classic' && validated.chatHeaderStyle !== 'capsule') {
+            validated.chatHeaderStyle = 'classic';
+            hasIssues = true;
         }
 
         if (!['auto', 'zh', 'en', 'yue', 'ja', 'ko'].includes(validated.localSttLanguage)) {
@@ -300,6 +305,7 @@ class SettingsManager extends EventEmitter {
                 cardRadius: 'tuned'
             },
             enableWideChatLayout: false,
+            chatHeaderStyle: 'classic',
             chatPresentationMode: 'bubble',
             chatBubbleMaxWidthDefault: 82,
             chatBubbleMaxWidthNotifications: 90,

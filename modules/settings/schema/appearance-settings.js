@@ -92,11 +92,13 @@ export const appearanceSettingsSection = section('appearance-settings', '界面�
         'chatPresentationModeBubble',
         'chatPresentationModePanel',
         'chatPresentationModeImmersive',
+        'chatPresentationModeMessenger',
     ], {
         saveMap: {
             chatPresentationModeBubble: { valuePath: 'chatPresentationMode', checkedValue: 'bubble', collect: false },
             chatPresentationModePanel: { valuePath: 'chatPresentationMode', checkedValue: 'panel', collect: false },
             chatPresentationModeImmersive: { valuePath: 'chatPresentationMode', checkedValue: 'immersive', collect: false },
+            chatPresentationModeMessenger: { valuePath: 'chatPresentationMode', checkedValue: 'messenger', collect: false },
         },
     }),
     custom('fontScenarioPreviewGrid', buildFontScenarioPreviewRow, [

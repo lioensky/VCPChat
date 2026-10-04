@@ -703,6 +703,7 @@ transform-origin: center bottom;`;
 
         if (document.body) {
             document.body.classList.toggle('chat-wide-layout', resolvedSettings.enableWideChatLayout === true);
+            windowRef?.vcpChatHeader?.apply?.(resolvedSettings.chatHeaderStyle);
         }
         applyChatPresentationMode(resolvedSettings.chatPresentationMode, {
             persist: false,

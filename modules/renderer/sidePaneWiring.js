@@ -477,7 +477,8 @@ export function initWorkspaceSidePane({
             if (latest.config) next.config = { ...latest.config, name };
             selectedItemRef.set(next);
             const header = doc.getElementById('currentChatAgentName');
-            if (header && item.name && header.textContent.includes(item.name)) {
+            if (header && item.name && !window.vcpChatHeader?.renameItem?.(item.name, name)
+                && header.textContent.includes(item.name)) {
                 header.textContent = header.textContent.replace(item.name, name);
             }
         }

@@ -1,4 +1,4 @@
-const MODES = Object.freeze(['bubble', 'panel', 'immersive']);
+const MODES = Object.freeze(['bubble', 'panel', 'immersive', 'messenger']);
 
 /** Owns main-chat theme and presentation transitions, persistence and rollback. */
 export function createMainChatThemeOwner({ settingsOwner, documentRef, presentationState, getUiManager, matchMedia, saveSettings, pretextBridge, refreshLayout, syncControls, captureAnchor, restoreAnchor, scheduleFrame, notify } = {}) {

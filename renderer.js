@@ -62,6 +62,7 @@ const mainChatSettingsOwner = createMainChatSettingsOwner({ initial: {
     enableThoughtChainInjection: false, // 元思考注入上下文开关
     fileKey: '',
     enableWideChatLayout: false,
+    chatHeaderStyle: 'classic',
     chatPresentationMode: 'bubble',
     chatBubbleMaxWidthDefault: 82,
     chatBubbleMaxWidthNotifications: 90,
@@ -907,12 +908,9 @@ mainChatSettingsPresentationOwner.configureStartup({
                 setCroppedFile: uiHelperFunctions.setCroppedFile,
                 getCroppedFile: uiHelperFunctions.getCroppedFile,
                 updateChatHeader: (text) => {
-                    if (currentChatNameH3) {
-                        const cleanText = typeof text === 'string'
-                            ? text.replace(/^与\s*/, '').replace(/\s*聊天中$/, '')
-                            : text;
-                        currentChatNameH3.textContent = cleanText;
-                    }
+                    if (!currentChatNameH3) return;
+                    if (window.vcpChatHeader && typeof text === 'string') window.vcpChatHeader.setTitle({ classic: text });
+                    else currentChatNameH3.textContent = text;
                 },
                 onItemDeleted: async () => {
                     chatManager.displayNoItemSelected();

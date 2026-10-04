@@ -26,8 +26,9 @@ if (typeof prepare !== 'function' || typeof layout !== 'function') {
     const textSnapshot = new Map();
 
     let currentPresentationMode = 'bubble';
-    const PRESENTATION_MODES = new Set(['bubble', 'panel', 'immersive']);
+    const PRESENTATION_MODES = new Set(['bubble', 'panel', 'immersive', 'messenger']);
     const IMMERSIVE_MAX_WIDTH = 880;
+    const MESSENGER_MAX_WIDTH = 560;
 
     // ─── 字体常量（VChat 实际使用的字体） ───
 
@@ -80,6 +81,8 @@ if (typeof prepare !== 'function' || typeof layout !== 'function') {
             maxWidth = containerWidth;
         } else if (currentPresentationMode === 'immersive') {
             maxWidth = Math.min(containerWidth, IMMERSIVE_MAX_WIDTH);
+        } else if (currentPresentationMode === 'messenger') {
+            maxWidth = Math.min(containerWidth, MESSENGER_MAX_WIDTH);
         } else {
             maxWidth = Math.floor(containerWidth * 0.8);
         }

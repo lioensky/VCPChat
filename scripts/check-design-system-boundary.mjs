@@ -155,6 +155,7 @@ const allowedSourceDifferences = new Set([
     'modules/notificationRenderer.js',
     'modules/renderer/messageContextMenu.js',
     'modules/renderer/streamManager.js',
+    'modules/renderer/pretext-bridge.js',
     'modules/searchManager.js',
     'modules/settingsManager.js',
     'modules/services/deepWikiService.js',

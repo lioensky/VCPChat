@@ -172,6 +172,7 @@
         themeFileName: null,
         presentation: 'bubble',
         messageWidth: 'normal',
+        chatHeader: 'classic',
         homeVisual: 'shown',
         homeTagline: 'shown',
         homeTaglineText: DEFAULT_HOME_TAGLINE,
@@ -220,7 +221,7 @@
             tuned: '原设计', follow: '跟随全局', square: '直角',
             small: '小圆角', medium: '中圆角', round: '大圆角', custom: '自定义'
         }),
-        presentation: Object.freeze({ bubble: '气泡', panel: '面板', immersive: '沉浸' }),
+        presentation: Object.freeze({ bubble: '气泡', panel: '面板', immersive: '沉浸', messenger: '对话' }),
         themeMode: Object.freeze({ light: '浅色', dark: '深色', system: '跟随系统' })
     });
     const DETAIL_RADIUS_FIELDS = Object.freeze([
@@ -346,6 +347,7 @@
                 || clone(PRESETS.balanced.profile),
             presentation: getPresentationMode(settings.chatPresentationMode) || 'bubble',
             messageWidth: settings.enableWideChatLayout === true ? 'wide' : 'normal',
+            chatHeader: settings.chatHeaderStyle === 'capsule' ? 'capsule' : 'classic',
             homeVisual: settings.showHomeVisualBrand === false ? 'hidden' : 'shown',
             homeTagline: settings.showHomeVisualTagline === false ? 'hidden' : 'shown',
             homeTaglineText: normalizeHomeTaglineText(settings.homeVisualTagline),
@@ -369,6 +371,9 @@
             messageWidth: source.messageWidth === 'wide' || source.messageWidth === 'normal'
                 ? source.messageWidth
                 : (base.messageWidth === 'wide' ? 'wide' : 'normal'),
+            chatHeader: source.chatHeader === 'capsule' || source.chatHeader === 'classic'
+                ? source.chatHeader
+                : (base.chatHeader === 'capsule' ? 'capsule' : 'classic'),
             homeVisual: source.homeVisual === 'hidden' || source.homeVisual === 'shown'
                 ? source.homeVisual
                 : (base.homeVisual === 'hidden' ? 'hidden' : 'shown'),
@@ -396,6 +401,7 @@
             presentation: document.querySelector('input[name="chatPresentationMode"]:checked')?.value
                 || base.presentation,
             messageWidth: document.getElementById('chatLayoutModeWide')?.checked ? 'wide' : 'normal',
+            chatHeader: base.chatHeader,
             homeVisual: document.getElementById('showHomeVisualBrand')?.checked === false ? 'hidden' : 'shown',
             homeTagline: document.getElementById('showHomeVisualTagline')?.checked === false ? 'hidden' : 'shown',
             homeTaglineText: normalizeHomeTaglineText(document.getElementById('homeVisualTagline')?.value, base.homeTaglineText),
@@ -624,6 +630,7 @@
                             <div class="vcp-appearance-mini-item"><h4>阅读区布局</h4><div class="vcp-appearance-segmented"><button type="button" data-appearance-key="contentWidth" data-appearance-value="full">全宽画布</button><button type="button" data-appearance-key="contentWidth" data-appearance-value="centered">居中阅读</button></div><p class="vcp-appearance-mini-helper">控制整个聊天阅读区</p></div>
                             <div class="vcp-appearance-mini-item"><h4>壁纸范围</h4><div class="vcp-appearance-segmented"><button type="button" data-appearance-key="wallpaperScope" data-appearance-value="theme">主题</button><button type="button" data-appearance-key="wallpaperScope" data-appearance-value="panel">内容区</button><button type="button" data-appearance-key="wallpaperScope" data-appearance-value="global">全局</button></div><p class="vcp-appearance-mini-helper">主题可声明建议范围，用户也可强制覆盖</p></div>
                             <div class="vcp-appearance-mini-item"><h4>消息宽度</h4><div class="vcp-appearance-segmented"><button type="button" data-appearance-key="messageWidth" data-appearance-value="normal">标准</button><button type="button" data-appearance-key="messageWidth" data-appearance-value="wide">宽屏</button></div><p class="vcp-appearance-mini-helper">控制单条消息的最大宽度</p></div>
+                            <div class="vcp-appearance-mini-item"><h4>标题栏</h4><div class="vcp-appearance-segmented"><button type="button" data-appearance-key="chatHeader" data-appearance-value="classic">原版</button><button type="button" data-appearance-key="chatHeader" data-appearance-value="capsule">胶囊</button></div><p class="vcp-appearance-mini-helper">胶囊样式居中显示头像与名字，不显示语音通话和新建话题</p></div>
                             <div class="vcp-appearance-mini-item vcp-appearance-mini-item-wide"><h4>主页视觉文字</h4><div class="vcp-appearance-segmented"><button type="button" data-appearance-key="homeVisual" data-appearance-value="shown">显示</button><button type="button" data-appearance-key="homeVisual" data-appearance-value="hidden">隐藏</button></div><p class="vcp-appearance-mini-helper">控制空会话中的 VCPCHAT 标识</p></div>
                         </div>
                         <div class="vcp-appearance-tagline-editor">
@@ -697,6 +704,9 @@
                             </button>
                             <button type="button" data-appearance-key="presentation" data-appearance-value="immersive">
                                 <span class="vcp-appearance-chat-preview immersive" aria-hidden="true"><i></i></span><span class="vcp-appearance-tile-label">沉浸</span>
+                            </button>
+                            <button type="button" data-appearance-key="presentation" data-appearance-value="messenger">
+                                <span class="vcp-appearance-chat-preview messenger" aria-hidden="true"><i></i><i></i><i></i></span><span class="vcp-appearance-tile-label">对话</span>
                             </button>
                         </div>
                         </div>
@@ -1029,6 +1039,7 @@
             draft.profile.contentWidth = defaults.profile.contentWidth;
             draft.profile.wallpaperScope = defaults.profile.wallpaperScope;
             draft.messageWidth = defaults.messageWidth;
+            draft.chatHeader = defaults.chatHeader;
             draft.homeVisual = defaults.homeVisual;
             draft.homeTagline = defaults.homeTagline;
             draft.homeTaglineText = defaults.homeTaglineText;
@@ -1059,6 +1070,7 @@
             source: 'appearance-studio-preview'
         });
         document.body.classList.toggle('chat-wide-layout', draft.messageWidth === 'wide');
+        window.vcpChatHeader?.apply?.(draft.chatHeader);
         applyHomeVisual(draft.homeVisual);
         applyHomeTagline(draft.homeTagline, draft.homeTaglineText);
         if (!options.appearanceOnly) {
@@ -1088,6 +1100,7 @@
             source: 'appearance-studio-rollback'
         });
         document.body.classList.toggle('chat-wide-layout', snapshot.messageWidth === 'wide');
+        window.vcpChatHeader?.apply?.(snapshot.chatHeader);
         applyHomeVisual(snapshot.homeVisual);
         applyHomeTagline(snapshot.homeTagline, snapshot.homeTaglineText);
         getUiManager()?.applyTheme?.(effectiveThemeForMode(snapshot.themeMode));
@@ -1140,6 +1153,7 @@
             appearanceProfile: snapshot.profile,
             chatPresentationMode: snapshot.presentation,
             enableWideChatLayout: snapshot.messageWidth === 'wide',
+            chatHeaderStyle: snapshot.chatHeader,
             showHomeVisualBrand: snapshot.homeVisual !== 'hidden',
             showHomeVisualTagline: snapshot.homeTagline !== 'hidden',
             homeVisualTagline: snapshot.homeTaglineText,
@@ -1151,6 +1165,7 @@
                 appearanceProfile: nextState.profile,
                 chatPresentationMode: nextState.presentation,
                 enableWideChatLayout: nextState.messageWidth === 'wide',
+                chatHeaderStyle: nextState.chatHeader,
                 showHomeVisualBrand: nextState.homeVisual !== 'hidden',
                 showHomeVisualTagline: nextState.homeTagline !== 'hidden',
                 homeVisualTagline: nextState.homeTaglineText,
@@ -1163,6 +1178,7 @@
                 appearanceProfile: nextState.profile,
                 chatPresentationMode: nextState.presentation,
                 enableWideChatLayout: nextState.messageWidth === 'wide',
+                chatHeaderStyle: nextState.chatHeader,
                 showHomeVisualBrand: nextState.homeVisual !== 'hidden',
                 showHomeVisualTagline: nextState.homeTagline !== 'hidden',
                 homeVisualTagline: nextState.homeTaglineText,
@@ -1418,6 +1434,7 @@
                 },
                 presentation: preset.presentation,
                 messageWidth: draft.messageWidth,
+                chatHeader: draft.chatHeader,
                 homeVisual: draft.homeVisual,
                 homeTagline: draft.homeTagline,
                 homeTaglineText: draft.homeTaglineText,

@@ -514,7 +514,8 @@ export const chatManager = (() => {
 
         const { currentChatNameH3, chatMessagesDiv, currentItemActionBtn, messageInput, sendMessageBtn, attachFileBtn } = elements;
         const voiceChatBtn = document.getElementById('voiceChatBtn');
-        currentChatNameH3.textContent = '选择一个 Agent 或群组开始聊天';
+        if (window.vcpChatHeader) window.vcpChatHeader.clear('选择一个 Agent 或群组开始聊天');
+        else currentChatNameH3.textContent = '选择一个 Agent 或群组开始聊天';
         messageRenderer?.clearChat();
         const chatAgentAvatar = document.getElementById('chatAgentAvatar');
         if (chatAgentAvatar) {
@@ -622,15 +623,13 @@ export const chatManager = (() => {
         const voiceChatBtn = document.getElementById('voiceChatBtn');
 
         const itemTypeLabel = itemType === 'group' ? ' (群组)' : '';
-        currentChatNameH3.textContent = `${itemName}${itemTypeLabel}`;
-        const chatAgentPill = document.getElementById('chatAgentPill');
+        const classicTitle = `与 ${itemName}${itemTypeLabel} 聊天中`;
+        if (window.vcpChatHeader) window.vcpChatHeader.setTitle({ classic: classicTitle, capsule: `${itemName}${itemTypeLabel}` });
+        else currentChatNameH3.textContent = classicTitle;
         const chatAgentAvatar = document.getElementById('chatAgentAvatar');
         if (chatAgentAvatar) {
             chatAgentAvatar.src = itemAvatarUrl || 'assets/icon.png';
             chatAgentAvatar.alt = itemName || '';
-        }
-        if (chatAgentPill) {
-            chatAgentPill.title = `${itemName}${itemTypeLabel} - 点击查看详情与设置`;
         }
         window.flowlockManager?.syncCurrentHeaderIndicator?.();
         setCurrentItemActionButtonText(currentItemActionBtn, itemType === 'group' ? '新建群聊话题' : '新建聊天话题');

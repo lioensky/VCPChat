@@ -420,16 +420,13 @@ window.GroupRenderer = (() => {
 
 
         if (mainRendererElements.currentChatNameH3) {
-            mainRendererElements.currentChatNameH3.textContent = `${groupName} (群组)`;
+            if (window.vcpChatHeader) window.vcpChatHeader.setTitle({ classic: `与群组 ${groupName} 聊天中`, capsule: `${groupName} (群组)` });
+            else mainRendererElements.currentChatNameH3.textContent = `与群组 ${groupName} 聊天中`;
         }
         const chatAgentAvatar = document.getElementById('chatAgentAvatar');
         if (chatAgentAvatar) {
             chatAgentAvatar.src = groupAvatarUrl || 'assets/icon.png';
             chatAgentAvatar.alt = groupName || '';
-        }
-        const chatAgentPill = document.getElementById('chatAgentPill');
-        if (chatAgentPill) {
-            chatAgentPill.title = `${groupName} (群组) - 点击查看群组详情与设置`;
         }
         if (mainRendererElements.currentItemActionBtn) {
             setCurrentItemActionButtonText(mainRendererElements.currentItemActionBtn, '新建群聊话题');
@@ -976,7 +973,9 @@ window.GroupRenderer = (() => {
                     });
                     const chatHeaderEl = mainRendererElements?.currentChatNameH3 || mainRendererElements?.currentChatAgentNameH3;
                     if (chatHeaderEl) {
-                        chatHeaderEl.textContent = `${result.agentGroup.name} (群组)`;
+                        const groupTitle = { classic: `与群组 ${result.agentGroup.name} 聊天中`, capsule: `${result.agentGroup.name} (群组)` };
+                        if (window.vcpChatHeader) window.vcpChatHeader.setTitle(groupTitle);
+                        else chatHeaderEl.textContent = groupTitle.classic;
                     }
                     const chatAgentAvatar = document.getElementById('chatAgentAvatar');
                     if (chatAgentAvatar && result.agentGroup.avatarUrl) {
@@ -1056,7 +1055,8 @@ window.GroupRenderer = (() => {
                         currentTopicIdRef.set(null);
                         const chatHeaderEl = mainRendererElements?.currentChatNameH3 || mainRendererElements?.currentChatAgentNameH3;
                         if (chatHeaderEl) {
-                            chatHeaderEl.textContent = '选择一个Agent或群组开始聊天';
+                            if (window.vcpChatHeader) window.vcpChatHeader.clear('选择一个Agent或群组开始聊天');
+                            else chatHeaderEl.textContent = '选择一个Agent或群组开始聊天';
                         }
                         if (messageRenderer) messageRenderer.clearChat();
                         if (mainRendererElements && mainRendererElements.currentAgentSettingsBtn) mainRendererElements.currentAgentSettingsBtn.style.display = 'none';
