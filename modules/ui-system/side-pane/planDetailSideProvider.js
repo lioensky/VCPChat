@@ -655,16 +655,31 @@ export function createPlanDetailSideProvider({
                 if (!pendingFocus || !model) return;
                 const { todoId, section: sectionKey } = pendingFocus;
                 pendingFocus = null;
-                let target = null;
-                if (todoId !== undefined && todoId !== null) target = body.querySelector(`.side-plan-todo[data-todo-id="${String(todoId).replace(/"/g, '')}"]`);
-                if (!target && sectionKey) {
-                    if (collapsed[sectionKey]) { collapsed[sectionKey] = false; render(); }
-                    target = body.querySelector(`[data-plan-section="${sectionKey}"]`);
+                const todoSelector = todoId !== undefined && todoId !== null ? `.side-plan-todo[data-todo-id="${String(todoId).replace(/"/g, '')}"]` : '';
+                if (!(todoSelector && body.querySelector(todoSelector)) && sectionKey && collapsed[sectionKey]) {
+                    collapsed[sectionKey] = false;
+                    render();
                 }
-                if (!target) return;
-                target.scrollIntoView?.({ block: 'center' });
-                target.classList.add('is-flash');
-                win.setTimeout(() => target.classList.remove('is-flash'), 1600);
+                const find = () => (todoSelector && body.querySelector(todoSelector))
+                    || (sectionKey ? body.querySelector(`[data-plan-section="${sectionKey}"]`) : null);
+                if (!find()) return;
+                // 新开的标签先渲染后显示，看不见时滚动不起作用，等它排好版再定位（最多等约 1.5 秒）；
+                // 期间可能重新渲染过，每次都重新找目标
+                let tries = 0;
+                const reveal = () => {
+                    if (isDisposed) return;
+                    const target = find();
+                    if (!target) return;
+                    if (!target.getClientRects?.().length && tries++ < 30) {
+                        win.setTimeout(reveal, 50);
+                        return;
+                    }
+                    // 区块（时间线等）往往比视口高，对齐顶部才能看到标题；单条计划放在中间
+                    target.scrollIntoView?.({ block: target.matches('[data-plan-section]') ? 'start' : 'center' });
+                    target.classList.add('is-flash');
+                    win.setTimeout(() => target.classList.remove('is-flash'), 1600);
+                };
+                reveal();
             }
 
             // ---------------------------------------------------------------- 交互

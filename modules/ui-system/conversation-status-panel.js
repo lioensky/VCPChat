@@ -23,8 +23,8 @@ import { createStatusPanelSections } from './conversation-status-panel/sections.
 import { filterBranches, getTodoFocusWindow, pickMiniMetric, pickEntryMetric, resolveVariant, buildCommitMessage, parseSwitchBlockedFiles, formatShortcutLabel, uniquePaths, formatCommitTime } from './conversation-status-panel/helpers.js';
 export { filterBranches, getTodoFocusWindow, pickMiniMetric, pickEntryMetric, resolveVariant, buildCommitMessage, parseSwitchBlockedFiles, formatShortcutLabel } from './conversation-status-panel/helpers.js';
 import { layoutGitGraph, parseGraphRefs } from './git-graph-layout.js';
-import { pickProjectsForWorkspace, pickTopicProject, mapTodoItems } from './project-plan-model.js';
-import { collectConversationScope, normalizeCommand, scopeSignature } from './conversation-scope.js';
+import { pickProjectsForWorkspace, pickTopicProject, mapTodoItems, summarizeTopicBatches } from './project-plan-model.js';
+import { collectConversationScope, normalizeCommand, readRevertBatches, scopeSignature } from './conversation-scope.js';
 
 const STORAGE_KEY_WS = 'vcp-projectforge-git-workspace';
 const STORAGE_KEY_VARIANT = 'vcp-status-panel-variant';
@@ -44,7 +44,8 @@ export function createConversationStatusPanel({
     onOpenGitTab = null,
     onOpenPlanDetail = null,
     onOpenToolOutput = null,
-    onOpenProjectForge = null,
+    // 当前话题在侧栏里的键（getParentKey），用来读侧栏记下的回退批次，让计划概要和侧栏时间线一致
+    getTopicKey = null,
     // 话题的工作区换了（切话题，或话题新用上某个 V工程）时通知外面，Git 标签据此跟过去
     onScopeWorkspace = null,
     // 给了 getHistory，面板就跟着当前会话走（和 ZCode 的面板跟着 session 一样）：
@@ -64,7 +65,7 @@ export function createConversationStatusPanel({
     let workspace = null;
     let summary = null;
     let branchList = null;
-    let plan = null; // { items, project }
+    let plan = null; // { items, project, activity }
     let commandRuns = []; // AI 命令运行记录（新的在前），来自自带终端
     const scoped = typeof getHistory === 'function';
     let scope = { projectIds: [], commands: new Set() };
@@ -188,7 +189,7 @@ export function createConversationStatusPanel({
         canPush, closePopover, diffCounts,
         getTodoFocusWindow, h, icon,
         normalizeCommand, onOpenGitTab, onOpenPlanDetail,
-        onOpenProjectForge, onOpenToolOutput, openCommitDialog,
+        onOpenToolOutput, openCommitDialog,
         openPopover, openPushDialog: (...args) => openPushDialog(...args), pickMiniMetric,
         render, onToggleSection: key => { sectionOpen[key] = !sectionOpen[key]; render(true); }, scoped,
         setVariant, win
@@ -234,7 +235,7 @@ export function createConversationStatusPanel({
         return { workspace: selected || null, workspaces: list };
     }
 
-    async function loadPlan(nextWorkspace, projects) {
+    async function loadPlan(nextWorkspace, projects, batchIds) {
         try {
             let candidates = projects;
             if (!scoped) {
@@ -247,7 +248,14 @@ export function createConversationStatusPanel({
             if (!project) return null;
             const detail = await api.projectForgeGetProject?.(project.id);
             const items = mapTodoItems(detail?.success ? detail.data?.todos : []);
-            if (items.length) return { items, project };
+            if (!items.length) return null;
+            let activity = null;
+            if (scoped) {
+                let topicKey = '';
+                try { topicKey = getTopicKey?.() || ''; } catch (_e) { /* 没有侧栏就只看聊天记录 */ }
+                activity = summarizeTopicBatches(detail.data?.timeline, [...(batchIds || []), ...readRevertBatches(storage, topicKey)]);
+            }
+            return { items, project, activity };
         } catch { /* 进程信息缺失不影响 Git 部分 */ }
         return null;
     }
@@ -256,7 +264,7 @@ export function createConversationStatusPanel({
         if (disposed) return;
         const seq = ++refreshSeq;
         readScope();
-        const nextScope = { projectIds: [...scope.projectIds], commands: new Set(scope.commands) };
+        const nextScope = { projectIds: [...scope.projectIds], commands: new Set(scope.commands), batchIds: new Set(scope.batchIds || []) };
         let projects = [], nextWorkspace = null, nextWorkspaces = [], nextSummary = null, nextPlan = null;
         try {
             projects = await loadScopedProjects(nextScope);
@@ -270,7 +278,7 @@ export function createConversationStatusPanel({
                 nextSummary = res?.success ? res.data : null;
             }
             if (disposed || seq !== refreshSeq) return;
-            nextPlan = await loadPlan(nextWorkspace, projects);
+            nextPlan = await loadPlan(nextWorkspace, projects, nextScope.batchIds);
         } catch { /* 所有失败结果也只能由当前 generation 提交 */ }
         if (disposed || seq !== refreshSeq) return;
         // 对照 ZCode workspaceKey 的归属规则：异步 helper 只返回局部结果，当前会话一次提交。

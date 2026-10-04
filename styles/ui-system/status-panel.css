@@ -139,7 +139,6 @@ html .zc-section-header:hover .zc-chevron:where(.vcp-ui-scope, .vcp-ui-scope *),
 html .zc-section-trigger:focus-visible .zc-chevron:where(.vcp-ui-scope, .vcp-ui-scope *) { opacity: 1; }
 html .zc-section-trailing:where(.vcp-ui-scope, .vcp-ui-scope *) { margin-left: auto; font-size: calc(var(--vcp-ui-font-size) - 2px); }
 html .zc-section-header:has(.zc-section-action) .zc-section-trailing:where(.vcp-ui-scope, .vcp-ui-scope *) { margin-right: 0; }
-html .zc-section-actions:where(.vcp-ui-scope, .vcp-ui-scope *) { display: inline-flex; align-items: center; }
 html .zc-section-action:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-fg-subtle); opacity: 0; }
 html .zc-section-header:hover .zc-section-action:where(.vcp-ui-scope, .vcp-ui-scope *),
 html .zc-section-action:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *) { opacity: 1; }
@@ -182,6 +181,30 @@ html .zc-plan-item:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; align-
 html .zc-plan-item .zc-plan-icon:where(.vcp-ui-scope, .vcp-ui-scope *) { margin-top: 2px; }
 html .zc-plan-text:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 1; min-width: 0; word-break: break-word; }
 html .zc-plan-text.is-done:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-fg-subtle); text-decoration: line-through; }
+html .zc-scope .zc-plan-item.is-link:where(.vcp-ui-scope, .vcp-ui-scope *) { border-radius: 8px; cursor: pointer; }
+html .zc-scope .zc-plan-item.is-link:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--zc-menu-hover); }
+html .zc-scope .zc-plan-item.is-link:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    outline: 2px solid color-mix(in srgb, var(--zc-fg) 40%, transparent);
+    outline-offset: -1px;
+}
+html .zc-scope .zc-plan-activity:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    min-height: 26px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--zc-fg-subtle);
+    font: inherit;
+    font-size: calc(var(--vcp-ui-font-size) - 2px);
+    text-align: left;
+}
+html .zc-scope button.zc-plan-activity:where(.vcp-ui-scope, .vcp-ui-scope *) { cursor: pointer; }
+html .zc-scope button.zc-plan-activity:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--zc-menu-hover); color: var(--zc-fg); }
+html .zc-plan-activity-text:where(.vcp-ui-scope, .vcp-ui-scope *) { white-space: nowrap; }
 html .zc-todo-fold:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: flex;
     align-items: center;

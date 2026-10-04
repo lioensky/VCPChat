@@ -3264,6 +3264,37 @@
       ]
     },
     {
+      "name": "history",
+      "producers": [
+        {
+          "file": "modules/ui-system/conversation-status-panel/sections.js",
+          "line": 172,
+          "kind": "ipc-send"
+        }
+      ],
+      "consumers": [
+        {
+          "file": "modules/ui-system/conversation-status-panel/sections.js",
+          "line": 172,
+          "kind": "custom-event-listener"
+        }
+      ],
+      "evidence": [
+        {
+          "file": "modules/ui-system/conversation-status-panel/sections.js",
+          "line": 172,
+          "kind": "custom-event-listener",
+          "match": "on('history'"
+        },
+        {
+          "file": "modules/ui-system/conversation-status-panel/sections.js",
+          "line": 172,
+          "kind": "ipc-send",
+          "match": "on('history'"
+        }
+      ]
+    },
+    {
       "name": "history-file-updated",
       "producers": [
         {

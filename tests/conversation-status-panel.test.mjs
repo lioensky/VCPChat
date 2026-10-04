@@ -64,7 +64,7 @@ function setup({ variant = 'panel', api: overrides = {}, todos, panelOptions = {
         document: doc,
         api,
         onOpenGitTab: () => opened.push('git'),
-        onOpenProjectForge: () => opened.push('forge'),
+        onOpenPlanDetail: (project, focus) => opened.push(['plan', project?.id, focus ?? null]),
         onOpenToolOutput: run => opened.push(['run', run.id]),
         uiHelper: { showToastNotification: (message, type) => calls.push(['toast', type, message]) },
         ...panelOptions
@@ -171,8 +171,12 @@ test('panel renders Git 变更 rows and 计划 from V工程 todos, with mini cap
 
     click(dom, [...layer.querySelectorAll('.zc-row')].find(r => r.textContent.includes('更改')));
     assert.deepEqual(opened, ['git']);
-    click(dom, q(layer, '.zc-section-action'));
-    assert.deepEqual(opened, ['git', 'forge']);
+    const detail = q(layer, '.zc-section-action');
+    assert.equal(detail.getAttribute('aria-label'), '打开计划详情');
+    assert.equal(layer.querySelectorAll('[data-status-section="plan"] .zc-section-action').length, 1, '计划只留一个入口，不再直接开 V工程 页');
+    click(dom, detail);
+    assert.deepEqual(opened, ['git', ['plan', 'p1', null]]);
+    assert.equal(q(layer, '.zc-plan-activity'), null, '不跟话题的面板没有话题批次');
 
     // 分区折叠
     click(dom, q(layer, '[data-status-section-trigger="git"]'));
@@ -433,11 +437,12 @@ projectId:「始」${projectId}「末」`);
 const psCall = command => REQ(`tool_name:「始」PowerShellExecutor「末」,
 command:「始」${command}「末」`);
 
-function scopedSetup({ history, api = {} }) {
+function scopedSetup({ history, api = {}, panelOptions = {} }) {
     const conversation = { history, switchListeners: new Set() };
     const made = setup({
         api,
         panelOptions: {
+            ...panelOptions,
             getHistory: () => conversation.history,
             onConversationChange: cb => { conversation.switchListeners.add(cb); return () => conversation.switchListeners.delete(cb); }
         }
@@ -485,6 +490,57 @@ test('scoped panel: switching conversation swaps the plan, the Git workspace and
     assert.deepEqual([...doc.querySelectorAll('[data-run-id]')].map(row => row.dataset.runId), ['theirs']);
     assert.equal(doc.querySelectorAll('[data-status-section="plan"]').length, 0);
     assert.equal(doc.querySelectorAll('[data-status-section="environment"]').length, 0);
+    panel.dispose();
+});
+
+test('scoped panel: the plan sums up this topic\'s batches and opens the side pane at the timeline or a todo', async () => {
+    const timeline = [
+        { id: 12, kind: 'edit', node_count: 2, added: 7, removed: 3, created_at: '2026-09-30 10:05:00' },
+        { id: 11, kind: 'edit', node_count: 1, added: 4, removed: 0, created_at: '2026-09-30 09:00:00' },
+        { id: 10, kind: 'edit', node_count: 0, added: 0, removed: 0, created_at: '2026-09-30 08:00:00' },
+        { id: 9, kind: 'rollback', node_count: 1, added: 1, removed: 2, created_at: '2026-09-30 10:30:00' }
+    ];
+    const { dom, doc, panel, opened } = scopedSetup({
+        history: [{ role: 'assistant', content: `${forgeCall('p1')}\n已施工，批次 \`b12\`。\n批次 \`b10\` 失败。\n批次 \`b77\` 是别的工程的` }],
+        api: {
+            projectForgeGetProject: async () => ({ success: true, data: {
+                todos: [{ id: 't1', title: '写测试', status: 'done' }, { id: 't2', title: '收尾', status: 'doing' }],
+                timeline
+            } })
+        },
+        panelOptions: { getTopicKey: () => 'agent:a1:topic1' }
+    });
+    // 侧栏里回退产生的批次记在话题下，概要也要算上
+    dom.window.localStorage.setItem('vcp-projectforge-topic-batches', JSON.stringify({ 'agent:a1:topic1': [9], other: [11] }));
+    panel.mount();
+    await flush();
+    const activity = q(doc, '.zc-plan-activity');
+    assert.ok(activity, '计划下有话题批次概要');
+    assert.match(activity.textContent, /本话题 2 批/, 'b12 和回退的 b9；没有节点的 b10、别的话题的 b11、不在这个工程的 b77 都不算');
+    assert.match(activity.textContent, /\+8/);
+    assert.match(activity.textContent, /−5/);
+    click(dom, activity);
+    assert.deepEqual(opened.at(-1), ['plan', 'p1', { section: 'timeline' }]);
+
+    const todo = [...doc.querySelectorAll('.zc-plan-item')].find(row => row.textContent.includes('收尾'));
+    assert.equal(todo.getAttribute('role'), 'button');
+    click(dom, todo);
+    assert.deepEqual(opened.at(-1), ['plan', 'p1', { todoId: 't2' }]);
+    todo.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    assert.deepEqual(opened.at(-1), ['plan', 'p1', { todoId: 't2' }]);
+    assert.equal(opened.filter(entry => entry[0] === 'plan').length, 3);
+    panel.dispose();
+});
+
+test('scoped panel: a topic with no batches of its own shows the plan without a summary line', async () => {
+    const { doc, panel } = scopedSetup({
+        history: [{ role: 'assistant', content: forgeCall('p1') }],
+        api: { projectForgeGetProject: async () => ({ success: true, data: { todos: [{ id: 't1', title: '写测试', status: 'doing' }], timeline: [{ id: 3, node_count: 1, added: 1, removed: 0 }] } }) }
+    });
+    panel.mount();
+    await flush();
+    assert.equal(doc.querySelectorAll('[data-status-section="plan"]').length, 1);
+    assert.equal(q(doc, '.zc-plan-activity'), null);
     panel.dispose();
 });
 

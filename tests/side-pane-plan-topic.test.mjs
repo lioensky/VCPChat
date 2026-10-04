@@ -198,8 +198,14 @@ test('a node opens its diff and can be reverted with a remembered signature; the
 
 test('reveal focuses a todo or a section, opening it when collapsed', async () => {
     const { provider, tab, view, dom } = makeTopicEnv();
+    // JSDOM 没有排版：用 getClientRects 模拟标签还没显示 / 已显示
+    let shown = false;
+    dom.window.Element.prototype.getClientRects = function getClientRects() { return shown ? [{}] : []; };
     const handle = await provider.mountTab({ ...tab, payload: { focus: { todoId: 8 } } }, view);
-    assert.ok(view.querySelector('.side-plan-todo[data-todo-id="8"]').classList.contains('is-flash'));
+    assert.equal(view.querySelector('.side-plan-todo[data-todo-id="8"]').classList.contains('is-flash'), false, '新开的标签还没显示，先不定位');
+    shown = true;
+    await new Promise(resolve => setTimeout(resolve, 80));
+    assert.ok(view.querySelector('.side-plan-todo[data-todo-id="8"]').classList.contains('is-flash'), '显示出来后再滚过去');
     handle.reveal({ focus: { section: 'report' } });
     assert.ok(view.querySelector('[data-plan-section="report"]').classList.contains('is-flash'));
     assert.ok(view.querySelector('.side-plan-report'));

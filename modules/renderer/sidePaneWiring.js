@@ -50,7 +50,11 @@ export function initWorkspaceSidePane({
     subscriptions.add(controller);
 
     subscriptions.add(sideChat);
-    const openProjectForge = () => {
+    // 带工程号时让 V工程 页打开后直接定位到这个工程（projectforge.js 读同一个本地键）
+    const openProjectForge = (projectId) => {
+        if (typeof projectId === 'string' && projectId) {
+            try { win.localStorage.setItem('vcp-projectforge-focus', JSON.stringify({ id: projectId, at: Date.now() })); } catch (_e) { /* 打开窗口不受影响 */ }
+        }
         const launcher = doc.querySelector('[data-action="open-project-forge-window"]');
         if (launcher) launcher.click();
         else chatAPI?.desktopCreateEmbeddedVchatApp?.('open-project-forge-window');
@@ -74,7 +78,7 @@ export function initWorkspaceSidePane({
         else if (shortcut?.action === 'cycle') controller.cycleTab(shortcut.delta);
     });
     if (typeof unsubscribeBrowserShortcut === 'function') subscriptions.add({ dispose: unsubscribeBrowserShortcut });
-    subscriptions.add(createSidePaneWorkspaceServices({ doc, win, chatAPI, chatManager, uiHelper, historyRef, codeViewerProvider: codeViewer.provider, gitProvider: git.provider, toolOutputProvider: toolOutput.provider, planDetailProvider: planDetail.provider, openProjectForge }));
+    subscriptions.add(createSidePaneWorkspaceServices({ doc, win, chatAPI, chatManager, uiHelper, historyRef, codeViewerProvider: codeViewer.provider, gitProvider: git.provider, toolOutputProvider: toolOutput.provider, planDetailProvider: planDetail.provider }));
     subscriptions.add(createSidePaneLauncherWiring({ doc, win, chatAPI, chatManager, uiHelper, selectedItemRef, controller }));
     subscriptions.add(createSidePaneHostBindings({ win, chatAPI, uiHelper, chatManager, selectedItemRef, topicIdRef, toggleChatBtn, controller, restoreSessions: sideChat.restoreSessions }));
     subscriptions.add(createFloatingSelectionButton({ doc, win, notify: (message, type) => uiHelper?.showToastNotification?.(message, type) }));

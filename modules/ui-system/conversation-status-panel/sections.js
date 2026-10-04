@@ -12,6 +12,8 @@
 
 'use strict';
 
+import { formatRelativeTime } from '../side-pane/side-pane-tab-utils.js';
+
 const RECENT_RUN_WINDOW_MS = 30 * 60 * 1000;
 const MAX_RUN_ROWS = 4;
 
@@ -28,7 +30,6 @@ export function createStatusPanelSections({
     normalizeCommand,
     onOpenGitTab,
     onOpenPlanDetail,
-    onOpenProjectForge,
     onOpenToolOutput,
     openCommitDialog,
     openPopover,
@@ -137,6 +138,7 @@ export function createStatusPanelSections({
         return icon(item.blocked ? 'circle-alert' : 'circle', 'zc-plan-icon zc-subtlest');
     }
 
+    // 点计划条目在侧栏计划里定位到这一条
     function planItemRows(items) {
         return items.map(item => {
             const row = h('li', 'zc-plan-item',
@@ -144,8 +146,39 @@ export function createStatusPanelSections({
                 h('span', `zc-plan-text${item.status === 'completed' ? ' is-done' : ''}`, item.content));
             row.dataset.planStatus = item.status;
             row.title = item.blocked ? `${item.content}（受阻）` : item.content;
+            if (onOpenPlanDetail) {
+                const open = () => onOpenPlanDetail(store.plan?.project, { todoId: item.id });
+                row.classList.add('is-link');
+                row.tabIndex = 0;
+                row.setAttribute('role', 'button');
+                row.title = `${row.title} · 在侧栏计划中查看`;
+                row.addEventListener('click', open);
+                row.addEventListener('keydown', (event) => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.preventDefault();
+                    open();
+                });
+            }
             return row;
         });
+    }
+
+    // 计划下的一行：这个话题施工了几批，点开侧栏时间线
+    function planActivityRow(activity) {
+        if (!activity) return null;
+        // 和侧栏计划同样的相对时间
+        const time = activity.lastAt ? formatRelativeTime(Date.parse(activity.lastAt)) : '';
+        const content = [
+            icon('history', 'zc-plan-icon zc-subtlest'),
+            h('span', 'zc-plan-activity-text', `本话题 ${activity.count} 批`),
+            h('span', 'zc-added zc-tabular', `+${activity.added}`),
+            h('span', 'zc-removed zc-tabular', `−${activity.removed}`),
+            time ? h('span', 'zc-subtle zc-tabular', time) : null
+        ];
+        if (!onOpenPlanDetail) return h('div', 'zc-plan-activity', ...content);
+        const row = button('zc-plan-activity', { label: '在侧栏查看本话题的改动时间线', onClick: () => onOpenPlanDetail(store.plan?.project, { section: 'timeline' }) }, ...content);
+        row.title = '在侧栏查看本话题的改动时间线';
+        return row;
     }
 
     function hiddenGroup(group, items) {
@@ -193,26 +226,16 @@ export function createStatusPanelSections({
         planItemRows(focus.focusItems).forEach(row => list.appendChild(row));
         if (focus.compact && focus.followingItems.length) list.appendChild(hiddenGroup('following', focus.followingItems));
 
-        const openForge = onOpenProjectForge
-            ? button('zc-btn zc-btn-ghost zc-btn-icon-sm zc-section-action', { label: '在 V工程 中查看与回退', onClick: () => onOpenProjectForge() }, icon('folder-open'))
-            : null;
-        if (openForge) openForge.title = `${store.plan.project?.name || 'V工程'} · 在 V工程 中查看与回退`;
         const openDetail = onOpenPlanDetail
-            ? button('zc-btn zc-btn-ghost zc-btn-icon-sm zc-section-action', { label: '在侧栏中查看计划详情', onClick: () => onOpenPlanDetail(store.plan.project) }, icon('checklist'))
+            ? button('zc-btn zc-btn-ghost zc-btn-icon-sm zc-section-action', { label: '打开计划详情', onClick: () => onOpenPlanDetail(store.plan.project) }, icon('checklist'))
             : null;
-        if (openDetail) openDetail.title = `${store.plan.project?.name || 'V工程'} · 在侧栏中查看计划详情`;
-        let sectionExtra = openForge;
-        if (openDetail && openForge) {
-            sectionExtra = h('div', 'zc-section-actions', openDetail, openForge);
-        } else if (openDetail) {
-            sectionExtra = openDetail;
-        }
+        if (openDetail) openDetail.title = `${store.plan.project?.name || 'V工程'} · 打开计划详情`;
 
         const section = h('section', 'zc-section');
         section.dataset.statusSection = 'plan';
         section.appendChild(sectionHeader('plan', '计划',
-            () => h('span', `zc-tabular${isCompleted ? ' zc-success' : ' zc-subtle'}`, `${completed}/${items.length}`), sectionExtra));
-        if (store.sectionOpen.plan) section.appendChild(h('div', 'zc-section-body zc-scroll-plan', list));
+            () => h('span', `zc-tabular${isCompleted ? ' zc-success' : ' zc-subtle'}`, `${completed}/${items.length}`), openDetail));
+        if (store.sectionOpen.plan) section.appendChild(h('div', 'zc-section-body zc-scroll-plan', planActivityRow(store.plan.activity), list));
         return section;
     }
 
