@@ -11,7 +11,7 @@ const RES = (name, status, content) => `[[VCP调用结果信息汇总:- 工具�
 const msg = (role, text) => ({ role, parts: [{ kind: 'text', text }] });
 const record = (id, messages, response = null, extra = {}) => ({ id, requestId: id, startedAt: 1000, durationMs: 1500, source: { kind: 'main' }, model: { modelId: 'm1' }, request: { messages }, response, ...extra });
 
-test('duration and labels follow ZCode formatting', () => {
+test('duration and labels follow the trajectory formatting', () => {
     assert.equal(formatDuration(850), '850ms');
     assert.equal(formatDuration(8540), '8.54s');
     assert.equal(formatDuration(12340), '12.3s');

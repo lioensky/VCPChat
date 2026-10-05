@@ -18,7 +18,7 @@ import { createSidePaneLayoutStore, parseLayout, rememberBounded, serializeLayou
 /** @typedef {import('./side-pane-types.js').SidePaneTabType} SidePaneTabType */
 /** @typedef {import('./side-pane-types.js').SidePaneTabHandle} SidePaneTabHandle */
 
-// 对话区窄于这个宽度时自动收起面板（ZCode WorkspaceShellLayout.tsx:481-525）
+// 对话区窄于这个宽度时自动收起面板
 const CONVERSATION_AUTO_COLLAPSE_SIDE_PANE_WIDTH_PX = 480;
 const CONVERSATION_AUTO_COLLAPSE_RESIZE_IDLE_MS = 300;
 const RECENTLY_CLOSED_LIMIT = 10;
@@ -415,7 +415,7 @@ export function createSidePaneController({
         return entry?.handle || null;
     }
 
-    // ZCode parity (useAppPanels.ts:1334): 临时标签（如辅助对话）不进“最近关闭”，其他标签都能重新打开
+    // 临时标签（如辅助对话）不进“最近关闭”，其他标签都能重新打开
     function rememberClosed(tabObj) {
         if (tabObj.ephemeral || tabObj.reopenable === false || getTabType(tabObj.kind)?.reopenable === false) return;
         const { openedAt, ...reopenable } = tabObj;

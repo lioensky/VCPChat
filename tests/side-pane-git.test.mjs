@@ -4,7 +4,7 @@ import { JSDOM } from 'jsdom';
 
 import { mountGitView } from '../modules/ui-system/side-pane/git/git-view.js';
 
-test('the Git view mirrors the ZCode GitPane — source select, flat change cards, expandable diff, context menu', async () => {
+test('the Git view has source select, flat change cards, expandable diff, context menu', async () => {
     const dom = new JSDOM(`
         <div id="sideGitHost"></div>
     `, { pretendToBeVisual: true });

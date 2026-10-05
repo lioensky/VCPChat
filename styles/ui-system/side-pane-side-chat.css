@@ -94,7 +94,7 @@ html .side-chat-empty-state:where(.vcp-ui-scope, .vcp-ui-scope *) {
     color: var(--secondary-text, var(--vcp-ui-port-color-rgba-241-245-249-0-6));
 }
 
-/* 对照 ZCode 侧边聊天空页：中号图标，下面标题、一行说明 */
+/* 侧边聊天空页：中号图标，下面标题、一行说明 */
 html .side-chat-empty-icon:where(.vcp-ui-scope, .vcp-ui-scope *) {
     --vcp-ui-icon-size: 28px;
     margin-bottom: 20px;

@@ -1,7 +1,7 @@
 /*
  * 副屏布局的持久化：打开的标签、当前标签和展开状态，以及每个对话最后激活的标签和收起状态。
  * 存储格式带版本号，读出来逐项校验，坏数据和不认识的标签类型直接丢掉，不会把副屏带崩。
- * 每个对话的记忆只留最近 PARENT_MEMORY_LIMIT 个（ZCode taskSidePaneMemory.ts 同款上限）。
+ * 每个对话的记忆只留最近 PARENT_MEMORY_LIMIT 个。
  */
 
 export const SIDE_PANE_LAYOUT_KEY = 'vcp.sidePane.layout.v1';

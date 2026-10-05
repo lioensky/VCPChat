@@ -9,7 +9,7 @@
  * 每次调用一张卡片（序号、来源、结束原因、IN / OUT / 耗时 / 时间），卡片里是输入（只列新增的）、输出（思考 / 回答 / 工具调用）和错误块，
  * 每条消息可折叠、可复制，超长内容裁到 256px 并给「展开」。
  * 数据来自主进程的调用轨迹记录器（modules/modelTrajectory.js），跟随主聊天当前的话题；调用开始 / 结束时实时刷新。
- * 与 ZCode 不同的地方：没有用虚拟列表库，而是卡片懒构建——每张卡片先只有标题栏和占位高度，
+ * 与原实现不同的地方：没有用虚拟列表库，而是卡片懒构建——每张卡片先只有标题栏和占位高度，
  * 滚到可视区附近（IntersectionObserver）、被搜索命中或被定位时才生成里面的消息行，屏外绘制再由 content-visibility 跳过；
  * 数据整理见 modelTrajectoryModel.js（工具调用 / 结果从 VCP 文本协议里还原）。
  */
@@ -207,7 +207,7 @@ export function createModelTrajectorySideProvider({
                 stickToBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= FOLLOW_THRESHOLD_PX;
             }, { passive: true });
 
-            // ---------------------------------------------------------------- 展开状态（照 ZCode 的 command / override 版本号）
+            // ---------------------------------------------------------------- 展开状态（command / override 版本号）
             const rowOpen = (visualRole, expansionKey) => {
                 const command = commands[visualRole];
                 const override = overrides.get(expansionKey) || { open: true, commandVersion: 0 };

@@ -1,11 +1,11 @@
 /*
  * V工程「计划详情」侧栏标签（modules/ui-system/side-pane/planDetailSideProvider.js）。
- * 对应 ZCode PlanDetailSidePane 的整页阅读版式；颜色变量沿用 status-panel.css 的 zc-*。
+ * 计划详情的整页阅读版式；颜色变量沿用 status-panel.css 的 zc-*。
  */
 
 html .side-plan-view:where(.vcp-ui-scope, .vcp-ui-scope *) { height: 100%; overflow: hidden; }
 /*
- * 侧栏本身已经是磨砂玻璃，计划页不再一层层叠卡片：分区、列表都直接落在玻璃上（ZCode 侧栏和
+ * 侧栏本身已经是磨砂玻璃，计划页不再一层层叠卡片：分区、列表都直接落在玻璃上（侧栏和
  * 工作流详情的做法），只有报告、diff、回退这种成块的内容才垫一层很淡的半透明底。
  * 辅助底色从当前分区文字色混透明得来，保持与浅色、深色文字一致。
  */
@@ -61,7 +61,7 @@ html .side-plan-header:where(.vcp-ui-scope, .vcp-ui-scope *) {
     --side-plan-pill-shadow: none;
 }
 html body:is(.light-theme, [data-vcp-theme="light"]) .side-plan-header:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    /* 浅色主题照 ZCode：顶栏一条比内容区略深的底，胶囊近白浮在上面；两者都从当前主题的
+    /* 浅色主题：顶栏一条比内容区略深的底，胶囊近白浮在上面；两者都从当前主题的
        底色、文字色混出来，再掺一点主题色，换主题跟着变 */
     --side-plan-pill-bg: color-mix(in srgb, var(--highlight-text, var(--vcp-ui-accent, currentColor)) 2%, color-mix(in srgb, var(--secondary-bg, Canvas) 30%, white));
     --side-plan-pill-border: color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 9%, transparent);
@@ -278,7 +278,7 @@ html .side-plan-stats > .side-plan-stats-time:where(.vcp-ui-scope, .vcp-ui-scope
 
 /* ---- history: filters, expanded batches and node rows ---- */
 html .side-plan-history:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; gap: 8px; }
-/* 照 ZCode / DSH 的列表工具条：一行搜索 + 「筛选」图标按钮，其余条件展开后两列排 */
+/* 列表工具条：一行搜索 + 「筛选」图标按钮，其余条件展开后两列排 */
 html .side-plan-filters:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; gap: 6px; }
 html .side-plan-filter-row:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; align-items: center; gap: 4px; }
 html .side-plan-search:where(.vcp-ui-scope, .vcp-ui-scope *) {

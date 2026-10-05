@@ -1,6 +1,6 @@
 /*
  * 「调用轨迹」侧栏标签（modules/ui-system/side-pane/modelTrajectorySideProvider.js）。
- * 版式参考 ZCode 的 ModelTrajectoryPane；颜色变量沿用 status-panel.css 的 zc-*。
+ * 模型调用轨迹标签；颜色变量沿用 status-panel.css 的 zc-*。
  */
 
 html .side-traj-view:where(.vcp-ui-scope, .vcp-ui-scope *) { height: 100%; overflow: hidden; }

@@ -1,7 +1,6 @@
 /*
  * styles/ui-system/side-pane-tabs.css
- * 侧栏标签条的 ZCode 对齐细节：标题末尾渐隐、拖拽排序、溢出边缘渐隐、悬停提示。
- * 对应 ZCode packages/ui/src/app-shell/SidePaneTabTrigger.tsx / AnimatedSidePanePanel.tsx / SidePaneTabTitleTooltip.tsx。
+ * 侧栏标签条的细节：标题末尾渐隐、拖拽排序、溢出边缘渐隐、悬停提示。
  */
 
 /* ---- 标题：不再用省略号，改为末尾渐隐；关闭按钮出现时预留 1.25rem ---- */
@@ -73,7 +72,7 @@ html .side-pane-tabs > .side-pane-action-btn:where(.vcp-ui-scope, .vcp-ui-scope 
     flex: 0 0 auto;
 }
 
-/* ---- 标题悬停提示（ZCode ControlHintTooltip 的 bottom 形态） ---- */
+/* ---- 标题悬停提示（显示在标签下方） ---- */
 html .side-pane-tab-tooltip:where(.vcp-ui-scope, .vcp-ui-scope *) {
     position: fixed;
     z-index: 10050;

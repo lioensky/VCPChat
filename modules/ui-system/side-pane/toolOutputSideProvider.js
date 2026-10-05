@@ -2,7 +2,7 @@
  * modules/ui-system/side-pane/toolOutputSideProvider.js
  * VCPChat Universal Sub-screen - 命令输出 Provider
  *
- * 对应 ZCode 的 bash-output 后台输出标签：在侧栏里看一条命令跑到哪了、输出什么。
+ * 后台命令输出标签：在侧栏里看一条命令跑到哪了、输出什么。
  * 数据来自 VCPChat 自己的终端（PowerShellExecutor 记录的 AI 短命令运行），
  * 与状态面板「终端」章节、侧栏终端标签共用同一个会话，不另起进程。
  */
@@ -121,7 +121,7 @@ export function createToolOutputSideProvider({
             const output = h('pre', 'side-tool-output-text');
             output.tabIndex = 0;
             outputWrap.appendChild(output);
-            // 悬浮的圆形「回到底部」箭头，位置和样式照 ZCode 的 background-bash-resume。
+            // 悬浮的圆形「回到底部」箭头。
             const followBtn = h('button', 'side-tool-output-follow');
             followBtn.type = 'button';
             followBtn.hidden = true;
@@ -170,7 +170,7 @@ export function createToolOutputSideProvider({
                 renderOutput();
                 scrollToEnd();
             }
-            // 跟 ZCode 一样：只有「用户向上滚」才暂停跟随，暂停期间输出冻结（不再被新内容顶得乱跳、选中的文字也不会丢）；
+            // 只有「用户向上滚」才暂停跟随，暂停期间输出冻结（不再被新内容顶得乱跳、选中的文字也不会丢）；
             // 手动滚回底部或点箭头才恢复，并一次性补上最新内容。
             outputWrap.addEventListener('scroll', () => {
                 const top = outputWrap.scrollTop;
@@ -295,7 +295,7 @@ export function createToolOutputSideProvider({
                 const index = runs.findIndex(run => run.id === summary.id);
                 if (index >= 0) runs[index] = { ...runs[index], ...summary };
                 else runs = [summary, ...runs];
-                // 没有手动选过时，新命令一开始就自动跟过去（跟 ZCode 一样默认盯最新的）
+                // 没有手动选过时，新命令一开始就自动跟过去（默认盯最新的）
                 if (!manual && index < 0 && summary.id !== selectedId) {
                     selectedId = summary.id;
                     detail = null;

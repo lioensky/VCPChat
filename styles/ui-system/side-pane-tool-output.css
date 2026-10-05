@@ -1,6 +1,6 @@
 /*
  * 「命令输出」侧栏标签（modules/ui-system/side-pane/toolOutputSideProvider.js）。
- * 对应 ZCode 的 bash-output 标签；颜色变量沿用 status-panel.css 的 zc-*。
+ * 后台命令输出标签；颜色变量沿用 status-panel.css 的 zc-*。
  */
 
 html .side-tool-output-view:where(.vcp-ui-scope, .vcp-ui-scope *) { height: 100%; overflow: hidden; }

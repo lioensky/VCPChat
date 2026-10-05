@@ -181,7 +181,7 @@ test('controller: tabs marked reopenable:false are not remembered; list is cappe
     controller.dispose();
 });
 
-test('controller: the tab overview is keyboard driven like ZCode Command (arrows, Enter, Escape)', async () => {
+test('controller: the tab overview is keyboard driven (arrows, Enter, Escape)', async () => {
     const { controller, doc, dom } = setup({ notes: notesProvider });
     await controller.openTab({ id: 'n1', kind: 'notes', title: 'N1', scopeMode: 'global' });
     await controller.openTab({ id: 'n2', kind: 'notes', title: 'N2', scopeMode: 'global' });

@@ -65,7 +65,7 @@ export function computeLineDiff(oldText = '', newText = '') {
             }
             for (const row of reverse.reverse()) emit(...row);
         } else {
-            // ZCode 用唯一行锚点拆大区间；补上总预算与深度边界，避免只限制单块仍反复计算。
+            // 用唯一行锚点拆大区间；补上总预算与深度边界，避免只限制单块仍反复计算。
             linesLeft -= n + m;
             const chain = depth < 32 && linesLeft >= 0 ? anchors(a, endA, b, endB) : [];
             if (!chain.length) block(a, endA, b, endB);

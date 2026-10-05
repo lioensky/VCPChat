@@ -307,7 +307,7 @@ export function createBrowserSideProvider({
                 });
                 on('page-title-updated', (event) => {
                     address.setAttribute('aria-description', event.title || '');
-                    // 标签标题跟着页面标题走（ZCode 同样以页面标题作为浏览器标签名）
+                    // 标签标题跟着页面标题走
                     sidePaneController?.updateTab?.(tab.id, { title: event.title || '浏览器' });
                 });
                 on('did-fail-load', (event) => {

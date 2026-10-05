@@ -4,7 +4,7 @@
 import { createTabSortable } from './side-pane-tab-dnd.js';
 import { getTabIconName, resolveTabsOverflow } from './side-pane-tab-utils.js';
 
-// 对齐 ZCode SidePaneTabTitleTooltip、AnimatedSidePanePanel、SortableSidePaneTabTrigger
+// 标签标题悬停提示、面板切换动画、可拖拽排序的标签
 const TAB_TOOLTIP_DELAY_MS = 1500;
 
 /**
@@ -193,7 +193,7 @@ export function createSidePaneTabStrip({
             tabItem.appendChild(closeBtn);
         }
 
-        // 中键关闭（ZCode SidePaneTabTrigger：mousedown 拦截浏览器自动滚动，auxclick 关闭且不激活）
+        // 中键关闭（mousedown 拦截浏览器自动滚动，auxclick 关闭且不激活）
         tabItem.addEventListener('mousedown', (e) => {
             if (e.button === 1) e.preventDefault();
         });

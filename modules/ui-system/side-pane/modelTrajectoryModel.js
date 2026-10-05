@@ -8,8 +8,8 @@
  * - 主会话的调用只展示相对上一次调用新增的输入消息（首条展示完整上下文，后续把 assistant 消息交给上一条的输出展示）；
  *   标题生成等辅助请求有独立 prompt，永远完整展示。
  * - 搜索按「折叠空白 + 不区分大小写」匹配，并能命中工具名 / 工具 ID，命中位置映射回原文偏移。
- * VCPChat 与 ZCode 不同的地方：工具调用不是 OpenAI tool_calls，而是写在助手回答原文里的 TOOL_REQUEST 块，
- * 工具结果则是下一轮 user 消息里的「VCP调用结果」块，所以这里先把它们从文本里还原成 tool-call / tool-result 分段，再套用 ZCode 的展示模型。
+ * VCPChat 与原实现不同的地方：工具调用不是 OpenAI tool_calls，而是写在助手回答原文里的 TOOL_REQUEST 块，
+ * 工具结果则是下一轮 user 消息里的「VCP调用结果」块，所以这里先把它们从文本里还原成 tool-call / tool-result 分段，再套用原实现的展示模型。
  */
 
 'use strict';
@@ -217,7 +217,7 @@ const usesConversationDelta = record => {
 };
 
 /**
- * 每条调用要展示的输入消息。照 ZCode：主会话首条完整、后续只展示相对上一条新增的非 assistant 消息；
+ * 每条调用要展示的输入消息。主会话首条完整、后续只展示相对上一条新增的非 assistant 消息；
  * 标题生成等辅助请求完整展示。消息数变少（历史被截断 / 删除）时回退为完整展示。
  */
 export function buildTimeline(records) {

@@ -1533,7 +1533,7 @@
           "file": "VCPDistributedServer/Plugin/BladeGame/blade-service.js",
           "line": 292,
           "kind": "event-send",
-          "match": "bladeWindow.webContents.send(\n            'blade-game:window:maximized-changed'"
+          "match": "bladeWindow.webContents.send(\r\n            'blade-game:window:maximized-changed'"
         },
         {
           "file": "VCPDistributedServer/Plugin/BladeGame/blade-service.js",
@@ -21711,7 +21711,7 @@
       "consumers": [
         {
           "file": "modules/ui-system/conversation-status-panel.js",
-          "line": 463,
+          "line": 427,
           "kind": "preload-subscription"
         },
         {
@@ -21728,7 +21728,7 @@
       "evidence": [
         {
           "file": "modules/ui-system/conversation-status-panel.js",
-          "line": 463,
+          "line": 427,
           "kind": "preload-subscription",
           "match": "api?.onProjectForgeChanged("
         },
@@ -21820,7 +21820,7 @@
       "consumers": [
         {
           "file": "modules/ui-system/conversation-status-panel.js",
-          "line": 526,
+          "line": 490,
           "kind": "preload-subscription"
         },
         {
@@ -21832,7 +21832,7 @@
       "evidence": [
         {
           "file": "modules/ui-system/conversation-status-panel.js",
-          "line": 526,
+          "line": 490,
           "kind": "preload-subscription",
           "match": "api.onTerminalCommandRunChanged("
         },
@@ -26352,7 +26352,7 @@
           "file": "modules/ipc/docxHandlers.js",
           "line": 1334,
           "kind": "event-listener",
-          "match": "ipcMain.handle(\n        'scriptorium:resolve-font-stylesheet'"
+          "match": "ipcMain.handle(\r\n        'scriptorium:resolve-font-stylesheet'"
         },
         {
           "file": "preloads/docx.js",
@@ -26383,7 +26383,7 @@
           "file": "modules/ipc/docxHandlers.js",
           "line": 1339,
           "kind": "event-listener",
-          "match": "ipcMain.handle(\n        'scriptorium:resolve-font-url'"
+          "match": "ipcMain.handle(\r\n        'scriptorium:resolve-font-url'"
         },
         {
           "file": "preloads/docx.js",
@@ -32588,7 +32588,7 @@
     },
     {
       "file": "modules/ui-system/conversation-status-panel.js",
-      "line": 200,
+      "line": 196,
       "reason": "dynamic CustomEvent name: changeEvent"
     },
     {

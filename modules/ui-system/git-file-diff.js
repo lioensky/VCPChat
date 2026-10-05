@@ -4,7 +4,7 @@
  *
  * 给回答下面的「本轮改动 N 个文件」补 ZCode ConversationFileSummaryPanel 里的 `+N -N`
  * （https://github.com/zai-org/ZCode ，Apache-2.0，packages/ui/src/v4/ConversationFileSummaryPanel.tsx）。
- * ZCode 的数字来自 agent 自己的文件改动记录；VCPChat 没有这份记录，但 FileOperator 改的文件落在工作区里，
+ * 原实现的数字来自 agent 自己的文件改动记录；VCPChat 没有这份记录，但 FileOperator 改的文件落在工作区里，
  * 工作区是 Git 仓库时 `git:status` / `git:diff` 就能给出准确数字。
  * 注意这是「该文件当前未提交的全部改动」，不是「只算这一轮」；文件已提交、不在任何工作区或不是 Git 仓库时返回 null / clean。
  * 全部走已有的 git IPC（gitListWorkspaces / gitStatus / gitDiff），只读。

@@ -61,7 +61,7 @@ html .side-chat-model-picker-wrapper:where(.vcp-ui-scope, .vcp-ui-scope *) {
 }
 
 /* Narrow composer, so the model picker is an icon-only 28px button the way
-   ZCode's toolbar collapses it; the model name moves to the tooltip. */
+   a narrow toolbar collapses it; the model name moves to the tooltip. */
 html .side-chat-model-picker-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: inline-flex;
     align-items: center;

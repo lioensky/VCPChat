@@ -12,14 +12,14 @@ const forge = (fields) => REQ(`maid:「始」Nova「末」,\ntool_name:「始」
 const OK = '✅ SUCCESS';
 const wait = (ms = 20) => new Promise(resolve => setTimeout(resolve, ms));
 
-const UVA_ROOT = 'C:\\Users\\CHENXI\\Documents\\UvA\\Algorithms and Data Structures in Python';
+const PROJECT_ROOT = 'C:\\Projects\\algorithms-demo';
 const createProjectCall = [
-    forge('command:「始」CreateProject「末」,\nworkspace:「始」uva「末」,\nname:「始」UvA算法考点工程「末」'),
+    forge('command:「始」CreateProject「末」,\nworkspace:「始」demo「末」,\nname:「始」算法演示工程「末」'),
     RESULT('ProjectForge', OK, [
-        '## ✅ 工程已创建：UvA算法考点工程',
+        '## ✅ 工程已创建：算法演示工程',
         '- projectId：`pqug7`（后续所有施工命令只需传这个 ID）',
         '- 创建者：@Nova',
-        `- 根目录：${UVA_ROOT}（工作区 \`uva\`）`,
+        `- 根目录：${PROJECT_ROOT}（工作区 \`demo\`）`,
         '- 文件路径请相对根目录书写，例如 `src/index.js`'
     ].join('\n'))
 ].join('\n');
@@ -102,7 +102,7 @@ test('ProjectForge: RemoveFile, MoveFile and MoveCode are read from their result
 test('ProjectForge: read-only commands are ignored; unconfirmed requests are not claimed as changes', () => {
     const readOnly = [
         forge('command:「始」ListWorkspaces「末」'),
-        RESULT('ProjectForge', OK, '## 工作区\n- `uva`'),
+        RESULT('ProjectForge', OK, '## 工作区\n- `demo`'),
         forge('command:「始」ReadCode「末」,\nprojectId:「始」pqug7「末」,\npath:「始」a.py「末」'),
         RESULT('ProjectForge', OK, '```python\nprint(1)\n```')
     ].join('\n');
@@ -115,9 +115,9 @@ test('ProjectForge: read-only commands are ignored; unconfirmed requests are not
 });
 
 test('findProjectRoots reads CreateProject and GetProject results; a later one replaces an earlier one', () => {
-    const getProject = RESULT('ProjectForge', OK, '## 工程详情\n- 工程：UvA算法考点工程（`pqug7`）· 状态 active\n- 根目录：D:\\moved\\uva（工作区 `uva`）');
-    assert.equal(findProjectRoots([createProjectCall, null, '没有根目录的文本', getProject]).get('pqug7'), 'D:\\moved\\uva');
-    assert.equal(findProjectRoots([createProjectCall]).get('pqug7'), UVA_ROOT);
+    const getProject = RESULT('ProjectForge', OK, '## 工程详情\n- 工程：算法演示工程（`pqug7`）· 状态 active\n- 根目录：D:\\moved\\demo（工作区 `demo`）');
+    assert.equal(findProjectRoots([createProjectCall, null, '没有根目录的文本', getProject]).get('pqug7'), 'D:\\moved\\demo');
+    assert.equal(findProjectRoots([createProjectCall]).get('pqug7'), PROJECT_ROOT);
     assert.equal(findProjectRoots([]).size, 0);
 });
 
@@ -157,7 +157,7 @@ test('ProjectForge rows show exact counts at once and open the file through the 
     assert.equal(row.querySelector('.text-diff-added').textContent, '+46');
     assert.equal(row.querySelector('.text-diff-removed').textContent, '-0');
     row.querySelector('button.vcp-file-changes-path').click();
-    assert.deepEqual(opened, [`${UVA_ROOT}\\src\\exam.py`]);
+    assert.deepEqual(opened, [`${PROJECT_ROOT}\\src\\exam.py`]);
     row.querySelector('.vcp-file-changes-counts').click();
     assert.deepEqual(diffs, opened);
     panel.open = true;

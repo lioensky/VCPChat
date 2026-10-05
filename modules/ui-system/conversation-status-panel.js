@@ -30,9 +30,6 @@ const STORAGE_KEY_WS = 'vcp-projectforge-git-workspace';
 const STORAGE_KEY_VARIANT = 'vcp-status-panel-variant';
 const POLL_INTERVAL_MS = 15000;
 const RESCOPE_DEBOUNCE_MS = 700;
-const RESERVE_CLASS = 'zc-status-reserve';
-const RESERVE_VAR = '--zc-status-reserve';
-const RESERVE_GAP_PX = 16;
 
 // ------------------------------------------------------------------ component
 
@@ -48,7 +45,7 @@ export function createConversationStatusPanel({
     getTopicKey = null,
     // 话题的工作区换了（切话题，或话题新用上某个 V工程）时通知外面，Git 标签据此跟过去
     onScopeWorkspace = null,
-    // 给了 getHistory，面板就跟着当前会话走（和 ZCode 的面板跟着 session 一样）：
+    // 给了 getHistory，面板就跟着当前会话走：
     // 只显示这个话题的聊天记录里碰过的 V工程（进程 + 它所在工作区的 Git）和它发起过的命令。
     // 不给就保持旧行为：整个应用共用一份。
     getHistory = null,
@@ -83,7 +80,6 @@ export function createConversationStatusPanel({
     let pollTimer = null;
     let resizeObserver = null;
     let mounted = false;
-    let reserveBase = null; // 让位前消息列自己的右内边距
 
 
 
@@ -281,7 +277,7 @@ export function createConversationStatusPanel({
             nextPlan = await loadPlan(nextWorkspace, projects, nextScope.batchIds);
         } catch { /* 所有失败结果也只能由当前 generation 提交 */ }
         if (disposed || seq !== refreshSeq) return;
-        // 对照 ZCode workspaceKey 的归属规则：异步 helper 只返回局部结果，当前会话一次提交。
+        // 工作区归属规则：异步 helper 只返回局部结果，当前会话一次提交。
         scopedProjects = projects;
         const workspaceChanged = workspace?.id !== nextWorkspace?.id;
         if (workspaceChanged) { closeAllPopovers(); for (const modal of [...modals]) modal.close(); }
@@ -332,7 +328,6 @@ export function createConversationStatusPanel({
 
     function render(force = false) {
         renderPanel(force);
-        syncReserve();
     }
 
     function renderPanel(force) {
@@ -393,35 +388,6 @@ export function createConversationStatusPanel({
         aside.appendChild(body);
     }
 
-    // 面板展开时消息列给它让出右侧（ZCode 同样让正文列让位），收成胶囊或隐藏时还回去。
-    // 消息列本来留的边距已经够（比如居中窄列）就不动。
-    function syncReserve() {
-        const root = messagesRoot || doc.getElementById('chatMessages');
-        if (!root) return;
-        const reserving = mounted && !disposed && !layer.hidden && aside.dataset.displayMode === 'panel';
-        const applied = root.classList.contains(RESERVE_CLASS);
-        let next = null;
-        if (reserving) {
-            const base = applied && reserveBase !== null ? reserveBase : (parseFloat(win.getComputedStyle(root).paddingRight) || 0);
-            if (!applied) reserveBase = base;
-            const needed = Math.ceil(root.getBoundingClientRect().right - aside.getBoundingClientRect().left + RESERVE_GAP_PX);
-            if (needed > base) next = `${needed}px`;
-        }
-        if (next === (applied ? root.style.getPropertyValue(RESERVE_VAR) : null)) return;
-        // 让位会改变消息高度：原本停在底部的保持在底部
-        const scroller = root.closest('.chat-messages-container') || root.parentElement;
-        const atBottom = scroller ? scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 4 : false;
-        if (next) {
-            root.style.setProperty(RESERVE_VAR, next);
-            root.classList.add(RESERVE_CLASS);
-        } else {
-            root.classList.remove(RESERVE_CLASS);
-            root.style.removeProperty(RESERVE_VAR);
-            reserveBase = null;
-        }
-        if (atBottom && scroller) scroller.scrollTop = scroller.scrollHeight;
-    }
-
     // ------------------------------------------------------------------ mount / dispose
 
     function measureHost() {
@@ -432,8 +398,6 @@ export function createConversationStatusPanel({
         if (width !== hostWidth) {
             hostWidth = width;
             render();
-        } else {
-            syncReserve();
         }
     }
 
@@ -542,7 +506,6 @@ export function createConversationStatusPanel({
         pushDialogOwner.dispose();
         gitGraphOwner.dispose();
         sectionsOwner.dispose();
-        syncReserve();
         layer.remove();
         portal.remove();
     }

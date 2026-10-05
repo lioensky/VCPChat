@@ -1,4 +1,4 @@
-/* --- Tab Overview Popover (ZCode style) --- */
+/* --- Tab Overview Popover --- */
 html .side-pane-tab-overview-popover:where(.vcp-ui-scope, .vcp-ui-scope *) {
     position: absolute;
     top: 38px;

@@ -273,7 +273,7 @@ function initialize(paths) {
         }
     });
 
-    // 侧聊是临时会话（对应 ZCode 的隐藏子会话）：只在磁盘上创建历史目录，
+    // 侧聊是临时会话（隐藏的子会话）：只在磁盘上创建历史目录，
     // 不写入 agent config.topics，因此不会出现在话题列表里。
     register('side-chat:create-child', async (event, agentId) => {
         try {

@@ -195,7 +195,7 @@ test('panel renders Git 变更 rows and 计划 from V工程 todos, with mini cap
     assert.equal(q(doc, '.zc-status-layer'), null);
 });
 
-test('the message column makes room for the expanded panel and gets it back as a capsule', async () => {
+test('the expanded panel floats over the message column without pushing it aside', async () => {
     const { doc, dom, panel } = setup();
     const messages = doc.createElement('div');
     messages.id = 'chatMessages';
@@ -204,17 +204,13 @@ test('the message column makes room for the expanded panel and gets it back as a
     panel.mount();
     await flush();
     assert.equal(q(doc, '.zc-status').dataset.displayMode, 'panel');
-    assert.equal(messages.classList.contains('zc-status-reserve'), true);
-    assert.match(messages.style.getPropertyValue('--zc-status-reserve'), /^\d+px$/);
+    assert.equal(messages.className, 'chat-messages');
+    assert.equal(messages.getAttribute('style'), null);
 
     click(dom, q(doc, '.zc-status-collapse'));
-    assert.equal(messages.classList.contains('zc-status-reserve'), false);
-    assert.equal(messages.style.getPropertyValue('--zc-status-reserve'), '');
-
     click(dom, q(doc, '.zc-mini'));
-    assert.equal(messages.classList.contains('zc-status-reserve'), true);
+    assert.equal(messages.getAttribute('style'), null);
     panel.dispose();
-    assert.equal(messages.classList.contains('zc-status-reserve'), false);
     dom.window.close();
 });
 

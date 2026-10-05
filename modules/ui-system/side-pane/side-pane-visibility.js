@@ -1,7 +1,7 @@
 /* Side pane open / close: width ratio, the open and close animation, and the content width lock while it runs. */
 'use strict';
 
-// 宽度按父元素内容区的比例记（ZCode sidePaneLayout.ts: SIDE_PANE_DEFAULT_EXPANDED_RATIO = 0.45）
+// 宽度按父元素内容区的比例记（默认 0.45）
 export const DEFAULT_EXPANDED_RATIO = 0.45;
 export const MIN_RATIO = 0.20;
 export const MAX_RATIO = 0.65;
@@ -52,7 +52,7 @@ export function createSidePaneVisibility({ root, resizerHandle = null, initialRa
         }
     }
 
-    // 开合动画期间把内容宽度锁在展开宽度，避免正文随面板宽度逐帧重排（同 ZCode lockedContentWidthPx）
+    // 开合动画期间把内容宽度锁在展开宽度，避免正文随面板宽度逐帧重排
     function lockContentWidth(widthPx) {
         const style = win?.getComputedStyle?.(root);
         const borderPx = (parseFloat(style?.borderLeftWidth) || 0) + (parseFloat(style?.borderRightWidth) || 0);
@@ -116,7 +116,7 @@ export function createSidePaneVisibility({ root, resizerHandle = null, initialRa
         const targetPercent = formattedPercent();
         lockContentWidth(readExpandedWidthPx());
 
-        // 起始帧：先显示并压到 0 宽，下一帧再放开（ZCode next-frame pattern）
+        // 起始帧：先显示并压到 0 宽，下一帧再放开
         root.classList.remove('collapsed');
         root.removeAttribute('aria-hidden');
         root.classList.add('is-animating', 'active');

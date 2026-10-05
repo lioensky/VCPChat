@@ -1,5 +1,5 @@
 /*
- * 副屏键盘快捷键（ZCode shortcutCommands.ts 的 toggleSidePane 同款按键）：
+ * 副屏键盘快捷键：
  *   Ctrl/Cmd+Alt+B          展开或收起副屏，展开时和点展开按钮一样选标签
  *   Ctrl+PageUp / PageDown  焦点在副屏里时切到上一个 / 下一个标签
  */

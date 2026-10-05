@@ -33,7 +33,7 @@ function createTestDOM() {
     `);
 }
 
-test('ZCode Parity: createSideChatDescriptor defines ephemeral: true and type: selection-side-chat', () => {
+test('Parity: createSideChatDescriptor defines ephemeral: true and type: selection-side-chat', () => {
     const desc = createSideChatDescriptor({
         parent: { itemId: 'agent-alpha', topicId: 'main-topic' },
         childTopicId: 'child-topic-1',
@@ -45,7 +45,7 @@ test('ZCode Parity: createSideChatDescriptor defines ephemeral: true and type: s
     assert.equal(desc.child.topicId, 'child-topic-1');
 });
 
-test('ZCode Parity: Closing selection-side-chat destroys runtime and is explicitly excluded from recentlyClosedTabs', async () => {
+test('Parity: Closing selection-side-chat destroys runtime and is explicitly excluded from recentlyClosedTabs', async () => {
     const dom = createTestDOM();
     const doc = dom.window.document;
     const root = doc.getElementById('vcpSidePane');
@@ -101,7 +101,7 @@ test('ZCode Parity: Closing selection-side-chat destroys runtime and is explicit
     assert.equal(closedDescriptors.length, 1);
     assert.equal(closedDescriptors[0].id, desc.id);
 
-    // 4. Tab must NOT appear in Tab Overview as a recently closed tab (ZCode useAppPanels.ts:1334)
+    // 4. Tab must NOT appear in Tab Overview as a recently closed tab
     const overviewBtn = doc.getElementById('sidePaneTabOverviewBtn');
     overviewBtn.click();
     await tick();

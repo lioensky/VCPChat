@@ -26,7 +26,7 @@ html .vcp-file-changes > summary:where(.vcp-ui-scope, .vcp-ui-scope *) {
 }
 html .vcp-file-changes > summary:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--primary-text, inherit); }
 html .vcp-file-changes > summary:where(.vcp-ui-scope, .vcp-ui-scope *)::-webkit-details-marker { display: none; }
-/* 折叠箭头：向右，展开时转向下（ZCode 的 ChevronRight rotate-90） */
+/* 折叠箭头：向右，展开时转向下 */
 html .vcp-file-changes > summary:where(.vcp-ui-scope, .vcp-ui-scope *)::before {
     content: '';
     flex-shrink: 0;

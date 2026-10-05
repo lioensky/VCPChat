@@ -42,7 +42,7 @@ html .side-pane-tab-item:where(.vcp-ui-scope, .vcp-ui-scope *) {
     background: transparent;
     border: 1px solid transparent;
     transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), color 150ms cubic-bezier(0.4, 0, 0.2, 1);
-    /* 和 ZCode 一样：156px 等宽，挤的时候所有标签一起收到 60px，再挤就整条横向滚动；
+    /* 156px 等宽，挤的时候所有标签一起收到 60px，再挤就整条横向滚动；
        不收成只剩图标，图标始终靠左，标题末尾渐隐 */
     flex: 1 1 9.75rem;
     min-width: 60px;

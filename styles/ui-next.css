@@ -1098,11 +1098,6 @@ html body.chat-header-capsule .chat-messages-container {
     padding-top: 56px;
 }
 
-/* 状态面板展开时消息列右侧让位（各种消息布局的右边距都要让），宽度由面板按实际位置算好写进变量 */
-html body #chatMessages.zc-status-reserve {
-    padding-right: var(--zc-status-reserve) !important;
-}
-
 /* Shared input composer: keep the same horizontal inset in every presentation
    mode so switching message layouts does not resize the input card. */
 html body .chat-input-area {

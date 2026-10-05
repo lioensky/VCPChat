@@ -1,6 +1,6 @@
 /* --- Side pane motion ---
  * 侧栏里的弹层统一用一套进出场：淡入 + 从 96% 放大 + 朝触发点方向挪 2px，120ms。
- * 和 ZCode 的 dropdown/popover（fade-in-0 zoom-in-95 slide-in-from-*-2）同一语法，
+ * 和常见的 dropdown/popover 进场（fade-in + zoom-in-95 + 2px slide）同一语法，
  * 时长和曲线取自 tokens.css。
  *
  * 弹层仍然只靠 hidden 开关：@starting-style 给出场起点，display 用 allow-discrete
@@ -59,6 +59,8 @@ html .side-chat-model-popover[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) {
 @media (prefers-reduced-motion: reduce) {
     html :is(.side-pane-tab-overview-popover, .side-pane-context-menu, .side-chat-model-popover):where(.vcp-ui-scope, .vcp-ui-scope *),
     html .side-pane-launcher-tabs:where(.vcp-ui-scope, .vcp-ui-scope *)::before,
+    html .side-pane-launcher-profile:where(.vcp-ui-scope, .vcp-ui-scope *),
+    html #sidePaneViewLauncher[data-launcher-segment="notifications"] .side-pane-launcher-profile:where(.vcp-ui-scope, .vcp-ui-scope *),
     html :is(.side-pane-launcher-tab, .side-pane-launcher-notice, .side-traj-chevron, .side-traj-switch, .side-git-chevron, .side-plan-crumb-caret):where(.vcp-ui-scope, .vcp-ui-scope *),
     html .side-traj-switch:where(.vcp-ui-scope, .vcp-ui-scope *)::after,
     html #floatingSelectionSideChatBtn.floating-selection-side-chat-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {

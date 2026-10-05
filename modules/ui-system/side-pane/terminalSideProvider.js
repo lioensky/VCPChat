@@ -50,7 +50,7 @@ export function createTerminalSideProvider({
     api = (typeof window !== 'undefined' ? window.electronAPI : null),
     sidePaneController = null,
     xtermLoader = loadXterm,
-    onOpenUrl = null // 点击终端里的 http(s) 链接：交给自带浏览器标签打开（ZCode 的 onOpenBrowserUrl）
+    onOpenUrl = null // 点击终端里的 http(s) 链接：交给自带浏览器标签打开
 } = {}) {
     const kind = 'terminal';
 

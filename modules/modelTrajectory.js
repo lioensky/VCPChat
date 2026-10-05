@@ -7,10 +7,10 @@
  * （https://github.com/zai-org/ZCode ，Apache-2.0，packages/services/src/zcode-agent/modelTrajectory.ts）：
  * 一条记录 = 一次模型调用，请求侧是规范化后的消息分段，响应侧是 文本 / 思考过程 / 工具调用 / 结束原因 / token 用量，
  * 读取时只取尾部最近的若干条并标明是否被截断。
- * 存储同样照 ZCode：同一话题里后一次调用只存相对上一条记录新增的消息（messagesKind: 'delta' + messageOffset），
+ * 存储同样照原实现：同一话题里后一次调用只存相对上一条记录新增的消息（messagesKind: 'delta' + messageOffset），
  * 读出时按文件顺序拼回完整上下文；每隔若干条写一次完整基线，尾部读取丢掉开头时最多只有几条拼不全（标 omittedMessages）。
  * 读取从文件尾部异步读固定上限，读过的话题在内存里缓存（消息对象在相邻记录间共享），之后只追加不重读。
- * VCPChat 与 ZCode 不同的地方：
+ * VCPChat 与原实现不同的地方：
  * - 请求来自渲染进程的 IPC（主聊天）或群聊主进程模块，没有统一的 agent 层，所以由调用方 begin() / chunk() / finish()；
  * - 工具调用写在回答原文里（TOOL_REQUEST 块），不是 OpenAI tool_calls，原文原样记下，由界面解析；
  * - 服务端不一定回报 token 用量，缺失时按字符数粗估并标记 estimated；
@@ -53,7 +53,7 @@ function describeImage(url) {
     return { kind: 'image', url: truncateText(text, 500) };
 }
 
-/** 一条 OpenAI 风格的消息 → { role, name?, parts: [...] }，和 ZCode 的轨迹消息形状一致。 */
+/** 一条 OpenAI 风格的消息 → { role, name?, parts: [...] }，和轨迹消息的通用形状一致。 */
 function normalizeMessage(message, maxChars) {
     const role = typeof message?.role === 'string' ? message.role : 'user';
     const parts = [];

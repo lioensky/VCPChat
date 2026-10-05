@@ -9,7 +9,7 @@
  * 4. 展开后显示 diff（加载中 / 文本 diff / 无法预览的说明）。
  * 5. 空状态：居中图标 + 标题 + 描述。
  *
- * 和 ZCode 的差别只有数据来源：「上一轮」在 VCPChat 里是 V工程 最近一批施工触碰过的文件。
+ * 和原实现的差别只有数据来源：「上一轮」在 VCPChat 里是 V工程 最近一批施工触碰过的文件。
  * 暂存、提交、推送、分支切换、提交图都留在 ProjectForge 和对话状态面板里，这里不重复做。
  */
 
@@ -219,7 +219,7 @@ export function createGitCards({
 
         row.addEventListener('click', () => {
             const nowOpen = !expanded.has(key);
-            // 同一时间只展开一个文件（ZCode expandedPath），打开新的就收起旧的
+            // 同一时间只展开一个文件，打开新的就收起旧的
             expanded.forEach((otherKey) => {
                 if (otherKey === key) return;
                 const other = [...list.querySelectorAll('.side-git-card')].find(el => el.dataset.key === otherKey);

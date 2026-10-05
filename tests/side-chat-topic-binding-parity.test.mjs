@@ -36,7 +36,7 @@ const createDesc = (id, parentTopic, childTopic) => ({
     contextMode: 'references-only'
 });
 
-test('ZCode Parity: Switching to a topic with no side chats automatically collapses the side pane', async () => {
+test('Parity: Switching to a topic with no side chats automatically collapses the side pane', async () => {
     const dom = createTopicBindingTestDOM();
     const doc = dom.window.document;
     const root = doc.getElementById('vcpSidePane');
@@ -81,7 +81,7 @@ test('ZCode Parity: Switching to a topic with no side chats automatically collap
     dom.window.close();
 });
 
-test('ZCode Parity: Switching back to a topic with side chats restores tabs and auto-expands', async () => {
+test('Parity: Switching back to a topic with side chats restores tabs and auto-expands', async () => {
     const dom = createTopicBindingTestDOM();
     const doc = dom.window.document;
     const root = doc.getElementById('vcpSidePane');
@@ -121,7 +121,7 @@ test('ZCode Parity: Switching back to a topic with side chats restores tabs and 
     dom.window.close();
 });
 
-test('ZCode Parity: Explicit collapse preference is remembered per topic (sidePaneCollapsedByOwner)', async () => {
+test('Parity: Explicit collapse preference is remembered per topic (sidePaneCollapsedByOwner)', async () => {
     const dom = createTopicBindingTestDOM();
     const doc = dom.window.document;
     const root = doc.getElementById('vcpSidePane');
@@ -170,7 +170,7 @@ test('ZCode Parity: Explicit collapse preference is remembered per topic (sidePa
     dom.window.close();
 });
 
-test('ZCode Parity: Per-topic active tab is remembered (activeTabByOwner)', async () => {
+test('Parity: Per-topic active tab is remembered (activeTabByOwner)', async () => {
     const dom = createTopicBindingTestDOM();
     const doc = dom.window.document;
     const root = doc.getElementById('vcpSidePane');
@@ -215,7 +215,7 @@ test('ZCode Parity: Per-topic active tab is remembered (activeTabByOwner)', asyn
     dom.window.close();
 });
 
-test('ZCode Parity: Closing the last side chat tab automatically collapses side pane', async () => {
+test('Parity: Closing the last side chat tab automatically collapses side pane', async () => {
     const dom = createTopicBindingTestDOM();
     const doc = dom.window.document;
     const root = doc.getElementById('vcpSidePane');
@@ -246,7 +246,7 @@ test('ZCode Parity: Closing the last side chat tab automatically collapses side 
     dom.window.close();
 });
 
-test('ZCode Parity: toggleChatBtn only operates on current parent chat tabs', async () => {
+test('Parity: toggleChatBtn only operates on current parent chat tabs', async () => {
     const dom = createTopicBindingTestDOM();
     const doc = dom.window.document;
     const root = doc.getElementById('vcpSidePane');

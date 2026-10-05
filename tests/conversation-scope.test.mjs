@@ -10,8 +10,8 @@ const forge = (fields) => REQ(`maid:「始」Nova「末」,\ntool_name:「始」
 const ps = (command) => REQ(`tool_name:「始」PowerShellExecutor「末」,\ncommand:「始」${command}「末」,\nexecutionType:「始」blocking「末」`);
 
 const createProject = [
-    forge('command:「始」CreateProject「末」,\nworkspace:「始」uva「末」,\nname:「始」UvA算法考点工程「末」'),
-    RESULT('ProjectForge', '## ✅ 工程已创建：UvA算法考点工程\n- projectId：`pqug7`（后续所有施工命令只需传这个 ID）\n- 根目录：C:\Users\CHENXI\Documents\UvA（工作区 `uva`）')
+    forge('command:「始」CreateProject「末」,\nworkspace:「始」demo「末」,\nname:「始」算法演示工程「末」'),
+    RESULT('ProjectForge', '## ✅ 工程已创建：算法演示工程\n- projectId：`pqug7`（后续所有施工命令只需传这个 ID）\n- 根目录：C:\Projects\algorithms-demo（工作区 `demo`）')
 ].join('\n');
 
 test('a conversation that never touched ProjectForge or the terminal has an empty scope', () => {

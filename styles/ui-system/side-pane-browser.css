@@ -28,7 +28,7 @@ html .side-browser-toolbar:where(.vcp-ui-scope, .vcp-ui-scope *) {
 }
 
 html body:is(.light-theme, [data-vcp-theme="light"]) .side-browser-toolbar:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    /* 浅色主题照 ZCode：顶栏一条比内容区略深的底，胶囊近白浮在上面；两者都从当前主题的
+    /* 浅色主题：顶栏一条比内容区略深的底，胶囊近白浮在上面；两者都从当前主题的
        底色、文字色混出来，再掺一点主题色，换主题跟着变 */
     --side-browser-pill-bg: color-mix(in srgb, var(--highlight-text, var(--vcp-ui-accent, currentColor)) 2%, color-mix(in srgb, var(--secondary-bg, Canvas) 30%, white));
     --side-browser-pill-border: color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 9%, transparent);
@@ -151,7 +151,7 @@ html .side-browser-empty:where(.vcp-ui-scope, .vcp-ui-scope *) {
     color: var(--secondary-text, var(--vcp-ui-port-color-94a3b8));
 }
 
-/* 对照 ZCode BrowserEmptyState：64px 的淡图标，下面一行标题、一行说明 */
+/* 空页：64px 的淡图标，下面一行标题、一行说明 */
 html .side-browser-empty .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *) {
     --vcp-ui-icon-size: 64px;
     margin-bottom: 24px;

@@ -2,7 +2,7 @@
  * modules/ui-system/side-pane/planDetailSideProvider.js
  * VCPChat Universal Sub-screen - V工程 计划详情 Provider
  *
- * 对应 ZCode 的 PlanDetailSidePane（在侧栏里整页阅读一份计划），数据来自 VCPChat 自己的 V工程（ProjectForge）。
+ * 在侧栏里整页阅读一份计划，数据来自 VCPChat 自己的 V工程（ProjectForge）。
  * 在话题里打开时，一个话题一个计划标签：
  * - 跟着工程走：名称、状态、根目录、计划（todo）与进度、验收报告；
  * - 跟着话题走：施工时间线、变更文件、参与者、统计和历史筛选，只算这个话题自己施工产生的批次；
@@ -230,7 +230,7 @@ export function createPlanDetailSideProvider({
             let other = { count: 0, more: false };
             let scopeKey = '';
             let errorText = '';
-            let staleError = ''; // 刷新失败但还留着上一次的内容（ZCode：lastMarkdown 保留，不因一次失败清空）
+            let staleError = ''; // 刷新失败但还留着上一次的内容（保留上次内容，不因一次失败清空）
             let loading = true;
             let refreshSeq = 0;
             let timer = null;
@@ -518,7 +518,7 @@ export function createPlanDetailSideProvider({
                 return row;
             }
 
-            // 照 ZCode / DSH 的列表工具条：一行搜索，其余条件收进「筛选」按钮
+            // 列表工具条：一行搜索，其余条件收进「筛选」按钮
             function renderFilterBar() {
                 const bar = h('div', 'side-plan-filters');
                 const input = (key, placeholder, className = 'side-plan-input') => {

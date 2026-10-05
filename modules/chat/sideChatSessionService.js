@@ -77,7 +77,7 @@ export function createSideChatDescriptor({
 
 /**
  * Creates the ephemeral child conversation backing a side chat.
- * Like ZCode's hidden `selection_side_chat` child session, it only exists on disk
+ * Like a hidden child session, it only exists on disk
  * and is never registered in the agent's topic list.
  * @param {Object} options
  * @param {Object} options.electronAPI
@@ -234,7 +234,7 @@ const pendingSideChatCreations = new Map();
 
 /**
  * Coalesces concurrent side chat creations for the same parent conversation
- * (ZCode: createSelectionSideChat / pendingCreations).
+ * (one pending creation per key).
  * @param {string} key - Dedup key, typically `${agentId}:${parentTopicId}`
  * @param {() => Promise<any>} factory
  */

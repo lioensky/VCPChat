@@ -96,7 +96,7 @@ export function resolveSidePaneScopeState(state, parentRef, options = {}) {
     if (parentChatTabs.length === 0) {
         const tool = state.tabs.find(tab => tab.scopeMode === 'global' && tab.id !== NOTIFICATIONS_TAB_ID);
         if (tool) return { activeTabId: tool.id, visible: state.visible };
-        // Auto-collapse per ZCode resolveSidePaneScopeState parity when owner has no tabs
+        // Auto-collapse when the owner has no tabs
         return {
             activeTabId: NOTIFICATIONS_TAB_ID,
             visible: false

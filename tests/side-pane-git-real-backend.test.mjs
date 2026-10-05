@@ -103,7 +103,7 @@ test('the Git view lists and diffs the changes of a real repository', async () =
         await waitFor(() => paths().join() === 'a.txt');
         assert.deepEqual(paths(), ['a.txt']);
 
-        // nothing staged after a commit -> ZCode-style empty state
+        // nothing staged after a commit -> empty state
         git(repo, 'commit', '-m', 'feat: update a');
         await handle.refresh();
         assert.equal(paths().length, 0);

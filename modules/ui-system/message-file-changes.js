@@ -6,7 +6,7 @@
  * 版面对照 ZCode 的 ConversationFileSummaryPanel
  * （https://github.com/zai-org/ZCode ，Apache-2.0，packages/ui/src/v4/ConversationFileSummaryPanel.tsx）：
  * 轮次末尾一个折叠的文件摘要，展开后逐个文件，点文件看内容。
- * ZCode 的数据来自 agent 自己的文件改动记录（带增删行数、可回退）；VCPChat 的文件改动发生在服务端的 FileOperator 插件里，
+ * 原实现的数据来自 agent 自己的文件改动记录（带增删行数、可回退）；VCPChat 的文件改动发生在服务端的 FileOperator 插件里，
  * 前端只能从回答原文中的 TOOL_REQUEST 块和紧随其后的「VCP调用结果」里还原出「改了哪些文件」，
  * 所以回答原文本身没有增删行数，也不提供回退。执行状态不是成功的调用不计入。
  * 增删行数在展开时才去查（getDiffStats，见 git-file-diff.js）：文件在已登记的 Git 工作区里时显示它当前未提交的 +N -N，
@@ -367,7 +367,7 @@ export function createMessageFileChanges({
             }
             const dir = doc.createElement('span');
             dir.className = 'vcp-file-changes-dir';
-            // 和 ZCode 一样，目录按工作区相对路径显示；在工作区根下的文件不显示目录
+            // 目录按工作区相对路径显示；在工作区根下的文件不显示目录
             const shown = (!change.projectId && !change.to && relativePath?.(change.path)) || change.path;
             dir.textContent = shown.slice(0, Math.max(0, shown.length - baseName(shown).length)).replace(/[\\/]+$/u, '');
             dir.title = target;

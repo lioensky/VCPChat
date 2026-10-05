@@ -154,7 +154,7 @@ export function createSidePaneTabOverview({
         searchInput.addEventListener('input', onSearchInput);
         cleanups.push(() => searchInput.removeEventListener('input', onSearchInput));
 
-        // 键盘操作照 ZCode 的 Command：上下键移动高亮，回车打开，Esc 关闭并回到触发按钮。
+        // 键盘操作：上下键移动高亮，回车打开，Esc 关闭并回到触发按钮。
         const onSearchKeydown = (event) => {
             const items = Array.from(popover.querySelectorAll('.side-pane-overview-item'));
             const current = items.findIndex(item => item.classList.contains('kbd-active'));

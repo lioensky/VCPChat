@@ -90,7 +90,7 @@ export function createSideChatWiring({
     });
 
     async function createSideChat(options, currentItem, currentTopicId) {
-        // 和 ZCode 一样按序号命名：取同一父话题下还没被占用的最小序号
+        // 按序号命名：取同一父话题下还没被占用的最小序号
         const usedOrdinals = new Set(getController().getSnapshot().tabs
             .filter(tab => isSameParent(tab.descriptor?.parent, currentItem.id, currentTopicId))
             .map(tab => /^辅助对话 (\d+)$/.exec(tab.title || '')?.[1])

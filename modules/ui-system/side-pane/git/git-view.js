@@ -9,7 +9,7 @@
  * 4. 展开后显示 diff（加载中 / 文本 diff / 无法预览的说明）。
  * 5. 空状态：居中图标 + 标题 + 描述。
  *
- * 和 ZCode 的差别只有数据来源：「上一轮」在 VCPChat 里是 V工程 最近一批施工触碰过的文件。
+ * 和原实现的差别只有数据来源：「上一轮」在 VCPChat 里是 V工程 最近一批施工触碰过的文件。
  * 暂存、提交、推送、分支切换、提交图都留在 ProjectForge 和对话状态面板里，这里不重复做。
  * 视图挂在调用方给的元素里，自己不开标签；计划标签第一次切到 Git 页时才挂载。
  */
@@ -99,7 +99,7 @@ export function mountGitView(host, {
         opt.textContent = label;
         sourceSelect.appendChild(opt);
     });
-    // ZCode 的「上一轮」：VCPChat 里一轮 = V工程 的一批施工
+    // 「上一轮」：VCPChat 里一轮 = V工程 的一批施工
     if (api?.projectForgeGetProject && api?.projectForgeListProjects) {
         const opt = doc.createElement('option');
         opt.value = AI_SOURCE;

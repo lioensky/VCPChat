@@ -16,7 +16,7 @@ const COMPACT_TODO_THRESHOLD = 6;
 
 const TODO_FOCUS_WINDOW_SIZE = 3;
 
-// 和 ZCode 一致：聊天区够 1280 才自动展开，窄了（包括侧栏打开挤窄时）自动收成胶囊
+// 聊天区够 1280 才自动展开，窄了（包括侧栏打开挤窄时）自动收成胶囊
 const AUTO_PANEL_MIN_WIDTH = 1280;
 
 export function filterBranches(branches, query) {
@@ -54,7 +54,7 @@ export function pickMiniMetric({ items = [], git = null } = {}) {
         const done = items.filter(item => item.status === 'completed').length;
         return { kind: 'todo', icon: 'list-checks', text: '计划', count: `${done}/${items.length}` };
     }
-    // 干净的仓库、没有计划：胶囊仍然显示当前分支，点开就是 Git 变更（ZCode 此时会整块隐藏，这里保留入口）
+    // 干净的仓库、没有计划：胶囊仍然显示当前分支，点开就是 Git 变更（保留入口，不整块隐藏）
     if (git?.branch) return { kind: 'branch', icon: 'git-branch', text: git.branch.head || (git.branch.detached ? '游离 HEAD' : 'Git 变更') };
     return null;
 }

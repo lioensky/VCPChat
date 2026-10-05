@@ -1,6 +1,6 @@
 /**
  * modules/ui-system/side-pane/side-pane-tab-dnd.js
- * 标签条的横向拖拽排序（指针事件实现，行为对齐 ZCode 用 dnd-kit 做的 horizontalListSortingStrategy）：
+ * 标签条的横向拖拽排序（指针事件实现，横向列表排序）：
  * 拖动超过 4px 才算拖拽；被拖标签跟随指针，途经的标签让位；松手后按最近中心点落位；Esc 取消。
  */
 

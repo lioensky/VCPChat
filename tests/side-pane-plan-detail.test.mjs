@@ -205,7 +205,7 @@ test('mountTab shows a retryable empty state when the project cannot be read', a
     handle.dispose();
 });
 
-test('a failed refresh keeps the last plan on screen with a retry banner (ZCode keeps the last markdown)', async () => {
+test('a failed refresh keeps the last plan on screen with a retry banner', async () => {
     let fail = false;
     const { provider, view, fire } = makeEnv({
         projectForgeGetProject: async () => (fail ? { success: false, error: '网络断开' } : { success: true, data: DETAIL })

@@ -69,7 +69,7 @@ test('the 上一轮 source narrows changes to the newest V工程 batch and follo
         select.dispatchEvent(new win.Event('change'));
         await wait();
         assert.deepEqual(files(view), ['src/a.js']);
-        assert.equal(view.querySelector('.side-git-ai-banner'), null, 'no extra banner, like ZCode');
+        assert.equal(view.querySelector('.side-git-ai-banner'), null, 'no extra banner');
 
         // V工程 记了新一批：不用手动刷新
         setTimeline([{ id: 3, kind: 'edit', reason: '改文档', files: ['docs/b.md', 'notes.txt'] }]);
