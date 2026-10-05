@@ -76,3 +76,85 @@ test('web page popups stop opening tabs once there are already many browser tabs
     handle.dispose();
     dom.window.close();
 });
+
+
+async function browserFixture() {
+    const { JSDOM } = await import('jsdom');
+    const { createBrowserSideProvider } = await import('../modules/ui-system/side-pane/browserSideProvider.js');
+    const { createSidePaneController } = await import('../modules/ui-system/side-pane/side-pane-controller.js');
+    const dom = new JSDOM('<input id="mainInput"><aside><div class="side-pane-tabs"></div><div class="side-pane-content-container"></div></aside>');
+    const doc = dom.window.document, root = doc.querySelector('aside');
+    const controller = createSidePaneController({ root, tabListElement: root.querySelector('.side-pane-tabs'),
+        contentContainer: root.querySelector('.side-pane-content-container') });
+    let listener = null, subscriptions = 0, unsubscriptions = 0;
+    const provider = createBrowserSideProvider({ document: doc, sidePaneController: controller,
+        api: { onBrowserOpenTab(fn) {
+            subscriptions++; listener = fn;
+            return () => { unsubscriptions++; if (listener === fn) listener = null; };
+        } } });
+    controller.registerProvider('browser', provider);
+    const tab = { id: 'browser:1', kind: 'browser', title: 'Browser', closable: true, scopeMode: 'global', payload: {} };
+    return { controller, provider, doc, tab,
+        get subscriptionCounts() { return { subscriptions, unsubscriptions, listening: Boolean(listener) }; },
+        async cleanup() { await controller.dispose(); dom.window.close(); } };
+}
+
+test('a cancelled real browser mount cannot unregister its same-ID replacement', async () => {
+    const h = await browserFixture();
+    try {
+        const first = h.controller.openTab(h.tab);
+        const closing = h.controller.closeTab(h.tab.id);
+        const replacement = h.controller.openTab(h.tab);
+        const [oldHandle, , newHandle] = await Promise.all([first, closing, replacement]);
+        assert.equal(oldHandle, null);
+        assert.ok(newHandle);
+        assert.deepEqual(h.subscriptionCounts, { subscriptions: 1, unsubscriptions: 0, listening: true });
+        assert.equal(await h.provider.openBrowserTab(), newHandle, 'reuse the surviving blank page');
+        assert.deepEqual(h.controller.getSnapshot().tabs.filter(tab => tab.kind === 'browser').map(tab => tab.id), ['browser:1']);
+        await h.controller.closeTab(h.tab.id);
+        assert.deepEqual(h.subscriptionCounts, { subscriptions: 1, unsubscriptions: 1, listening: false });
+    } finally { await h.cleanup(); }
+});
+
+test('repeated disposal of an old browser handle preserves a fresh popup subscription', async () => {
+    const h = await browserFixture();
+    try {
+        const oldHandle = await h.controller.openTab(h.tab);
+        await h.controller.closeTab(h.tab.id);
+        const newHandle = await h.controller.openTab(h.tab);
+        oldHandle.dispose();
+        assert.deepEqual(h.subscriptionCounts, { subscriptions: 2, unsubscriptions: 1, listening: true });
+        assert.equal(await h.provider.openBrowserTab(), newHandle);
+        await h.controller.closeTab(h.tab.id);
+        assert.deepEqual(h.subscriptionCounts, { subscriptions: 2, unsubscriptions: 2, listening: false });
+    } finally { await h.cleanup(); }
+});
+
+test('closing one of two distinct browser pages retains popup handling until the last closes', async () => {
+    const h = await browserFixture();
+    try {
+        await h.controller.openTab(h.tab);
+        const second = await h.controller.openTab({ ...h.tab, id: 'browser:2' });
+        await h.controller.closeTab(h.tab.id);
+        assert.deepEqual(h.subscriptionCounts, { subscriptions: 1, unsubscriptions: 0, listening: true });
+        assert.equal(await h.provider.openBrowserTab(), second);
+        await h.controller.closeTab('browser:2');
+        assert.deepEqual(h.subscriptionCounts, { subscriptions: 1, unsubscriptions: 1, listening: false });
+    } finally { await h.cleanup(); }
+});
+
+for (const reuse of [false, true]) {
+    test('browser launcher completion preserves a later collapse and main-input focus (reuse=' + reuse + ')', async () => {
+        const h = await browserFixture();
+        try {
+            if (reuse) await h.provider.openBrowserTab();
+            const opening = h.provider.openBrowserTab();
+            h.controller.setVisible(false);
+            const input = h.doc.getElementById('mainInput'); input.focus();
+            const handle = await opening;
+            assert.ok(handle);
+            assert.equal(h.controller.getSnapshot().visible, false);
+            assert.equal(h.doc.activeElement, input);
+        } finally { await h.cleanup(); }
+    });
+}

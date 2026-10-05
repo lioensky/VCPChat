@@ -92,10 +92,8 @@ export function createBrowserSideProvider({
         if (!url && !forceNew) {
             for (const [id, entry] of mounted) {
                 if (entry.isBlank()) {
-                    const handle = await sidePaneController.openTab({ id, kind, title: '浏览器', icon: 'public', closable: true, scopeMode: 'global' });
-                    sidePaneController.setVisible?.(true);
-                    handle?.focus?.();
-                    return handle;
+                    // The controller owns visibility and focus, including late mount completion.
+                    return sidePaneController.openTab({ id, kind, title: '浏览器', icon: 'public', closable: true, scopeMode: 'global' });
                 }
             }
         }
@@ -103,7 +101,7 @@ export function createBrowserSideProvider({
         const openIds = new Set(sidePaneController.getSnapshot?.().tabs.map(tab => tab.id) || []);
         let id;
         do { id = `browser:${++sequence}`; } while (openIds.has(id));
-        const handle = await sidePaneController.openTab({
+        return sidePaneController.openTab({
             id,
             kind,
             title: '浏览器',
@@ -112,9 +110,6 @@ export function createBrowserSideProvider({
             scopeMode: 'global',
             payload: url ? { url } : {}
         });
-        sidePaneController.setVisible?.(true);
-        handle?.focus?.();
-        return handle;
     }
 
     let unsubscribeOpenTab = null;
@@ -472,8 +467,10 @@ export function createBrowserSideProvider({
                     return result;
                 },
                 dispose() {
+                    if (isDisposed) return;
                     isDisposed = true;
-                    mounted.delete(tab.id);
+                    // A canceled mount may finish after a new page has reused its id.
+                    if (mounted.get(tab.id) === entry) mounted.delete(tab.id);
                     doc.removeEventListener('pointerdown', onDocumentPointerDown, true);
                     if (webview) {
                         webview.remove();

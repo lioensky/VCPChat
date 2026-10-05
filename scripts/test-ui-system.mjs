@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { webcrypto } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { JSDOM } from 'jsdom';
+import { assertSharedComposerIcons } from './helpers/shared-composer-icons.mjs';
 
 await import('./test-ask-nova-service.mjs');
 
@@ -22,12 +23,7 @@ if (activeThemeSource.includes(':focus-visible')) {
     assert.match(activeThemeSource, composerSafeFocusSelector, 'the active theme must preserve the composer focus contract');
 }
 const mainHtmlSource = fs.readFileSync('main.html', 'utf8');
-const mainDomForComposer = new JSDOM(mainHtmlSource);
-['quickNewTopicBtn', 'attachFileBtn', 'emoticonTriggerBtn'].forEach(id => {
-    const button = mainDomForComposer.window.document.getElementById(id);
-    assert.ok(button?.querySelector('svg'), `${id} must use an inline SVG icon in both UI modes`);
-    assert.equal(button?.querySelector('.material-symbols-outlined'), null, `${id} must not depend on a mode-specific icon font`);
-});
+await assertSharedComposerIcons(mainHtmlSource, 'next');
 assert.match(
     componentStyles,
     /\.vcp-ui-toast > :is\(button, wa-button\)\s*\{\s*pointer-events:\s*auto/s,
