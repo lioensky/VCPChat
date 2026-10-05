@@ -10,7 +10,7 @@ const {
     rememberAttachmentDirectory
 } = require('../services/attachmentDialogState');
 const topicTitleManager = require('../../Groupmodules/topicTitleManager');
-const { beginTrajectoryCall, sessionKeyFromContext, sourceFromContext } = require('../modelTrajectory');
+const { beginTrajectoryCall, sessionKeyFromContext, sourceFromContext, withStreamUsage } = require('../modelTrajectory');
 const { HistoryMutationQueue } = require('../services/historyMutationQueue');
 const workspaceHandlers = require('./workspaceHandlers');
 const { removeSideChatChildrenOfParent } = require('./sideChatHandlers');
@@ -1290,6 +1290,8 @@ function initialize(mainWindow, context) {
             if (vcpchatExtensions) {
                 requestBody.vcpchatExtensions = vcpchatExtensions;
             }
+            // 流式时请服务端在最后一块带上 token 用量，调用轨迹才有真实数字而不是估算
+            withStreamUsage(requestBody);
             trajectoryCall = beginTrajectoryCall({
                 sessionKey: sessionKeyFromContext(context),
                 requestId: messageId,

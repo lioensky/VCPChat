@@ -466,6 +466,18 @@ function showContextMenu(event, messageItem, message) {
             menu.appendChild(redoGroupOption);
         }
 
+        // 这条回复对应的模型调用：在侧栏「调用轨迹」里定位到发出它的那次请求
+        if (message.role === 'assistant' && message.id && typeof ownerWindow?.openModelTrajectory === 'function') {
+            const trajectoryOption = ownerDocument.createElement('div');
+            trajectoryOption.classList.add('context-menu-item');
+            trajectoryOption.innerHTML = `<i class="fas fa-route"></i> 查看调用轨迹`;
+            trajectoryOption.onclick = () => {
+                closeContextMenu();
+                ownerWindow?.openModelTrajectory?.({ requestId: message.id });
+            };
+            menu.appendChild(trajectoryOption);
+        }
+
         const interruptGroupQueueOption = createInterruptGroupQueueOption();
         if (interruptGroupQueueOption) {
             menu.appendChild(interruptGroupQueueOption);

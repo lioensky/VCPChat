@@ -7,6 +7,9 @@
  * （https://github.com/zai-org/ZCode ，Apache-2.0，packages/services/src/zcode-agent/modelTrajectory.ts）：
  * 一条记录 = 一次模型调用，请求侧是规范化后的消息分段，响应侧是 文本 / 思考过程 / 工具调用 / 结束原因 / token 用量，
  * 读取时只取尾部最近的若干条并标明是否被截断。
+ * 存储同样照 ZCode：同一话题里后一次调用只存相对上一条记录新增的消息（messagesKind: 'delta' + messageOffset），
+ * 读出时按文件顺序拼回完整上下文；每隔若干条写一次完整基线，尾部读取丢掉开头时最多只有几条拼不全（标 omittedMessages）。
+ * 读取从文件尾部异步读固定上限，读过的话题在内存里缓存（消息对象在相邻记录间共享），之后只追加不重读。
  * VCPChat 与 ZCode 不同的地方：
  * - 请求来自渲染进程的 IPC（主聊天）或群聊主进程模块，没有统一的 agent 层，所以由调用方 begin() / chunk() / finish()；
  * - 工具调用写在回答原文里（TOOL_REQUEST 块），不是 OpenAI tool_calls，原文原样记下，由界面解析；
@@ -23,6 +26,9 @@ const path = require('path');
 const DEFAULT_MAX_RECORDS = 200;
 const DEFAULT_MAX_FIELD_CHARS = 200000;
 const DEFAULT_MAX_FILE_BYTES = 16 * 1024 * 1024;
+const MAX_TAIL_READ_BYTES = 32 * 1024 * 1024;
+const BASELINE_EVERY = 25;
+const MAX_CACHED_SESSIONS = 16;
 const SECRET_KEY = /(api[-_]?key|secret|authorization|password|bearer)/i;
 
 function truncateText(value, max) {
@@ -101,17 +107,125 @@ function messageText(message) {
     return (message.parts || []).map(part => (part.kind === 'text' ? part.text : part.kind === 'tool-result' ? part.output : part.kind === 'tool-call' ? `${part.toolName}${part.input}` : '')).join('\n');
 }
 
+const finiteOrUndefined = value => (value === undefined || value === null || !Number.isFinite(Number(value)) ? undefined : Number(value));
+
+/** OpenAI / Anthropic / DeepSeek 几种用量写法 → { inputTokens, outputTokens, totalTokens, cachedInputTokens?, reasoningTokens? }。 */
 function normalizeUsage(raw) {
     if (!raw || typeof raw !== 'object') return null;
-    const input = Number(raw.prompt_tokens ?? raw.input_tokens);
-    const output = Number(raw.completion_tokens ?? raw.output_tokens);
-    const total = Number(raw.total_tokens);
-    if (![input, output, total].some(Number.isFinite)) return null;
+    const input = finiteOrUndefined(raw.prompt_tokens ?? raw.input_tokens);
+    const output = finiteOrUndefined(raw.completion_tokens ?? raw.output_tokens);
+    const total = finiteOrUndefined(raw.total_tokens);
+    if ([input, output, total].every(value => value === undefined)) return null;
+    const cached = finiteOrUndefined(raw.prompt_tokens_details?.cached_tokens ?? raw.input_tokens_details?.cached_tokens
+        ?? raw.cache_read_input_tokens ?? raw.prompt_cache_hit_tokens);
+    const reasoning = finiteOrUndefined(raw.completion_tokens_details?.reasoning_tokens ?? raw.output_tokens_details?.reasoning_tokens);
     return {
-        inputTokens: Number.isFinite(input) ? input : undefined,
-        outputTokens: Number.isFinite(output) ? output : undefined,
-        totalTokens: Number.isFinite(total) ? total : (Number.isFinite(input) ? input : 0) + (Number.isFinite(output) ? output : 0)
+        inputTokens: input,
+        outputTokens: output,
+        totalTokens: total ?? (input ?? 0) + (output ?? 0),
+        ...(cached ? { cachedInputTokens: cached } : {}),
+        ...(reasoning ? { reasoningTokens: reasoning } : {})
     };
+}
+
+/** 流式请求要求服务端在最后一个数据块里带上 token 用量（OpenAI 的 stream_options.include_usage）；调用方已指定时不覆盖。 */
+function withStreamUsage(body) {
+    if (!body || typeof body !== 'object' || body.stream !== true || body.stream_options !== undefined) return body;
+    body.stream_options = { include_usage: true };
+    return body;
+}
+
+const nonNegativeInteger = value => (Number.isInteger(value) && value >= 0 ? value : undefined);
+
+/** 消息的比较键；同一个对象只序列化一次。 */
+const messageKeys = new WeakMap();
+function messageKey(message) {
+    if (!message || typeof message !== 'object') return String(message);
+    let key = messageKeys.get(message);
+    if (key === undefined) {
+        key = JSON.stringify(message);
+        messageKeys.set(message, key);
+    }
+    return key;
+}
+
+/** 两段上下文的公共前缀长度。 */
+function commonPrefixLength(previous, next) {
+    const limit = Math.min(previous.length, next.length);
+    let offset = 0;
+    while (offset < limit && (previous[offset] === next[offset] || messageKey(previous[offset]) === messageKey(next[offset]))) offset += 1;
+    return offset;
+}
+
+/** 落盘形状：有公共前缀且不强制基线时只存新增部分。 */
+function encodeRecord(record, previousMessages, baseline) {
+    const messages = record.request?.messages || [];
+    if (baseline || !previousMessages) return record;
+    const offset = commonPrefixLength(previousMessages, messages);
+    if (offset === 0) return record;
+    return { ...record, request: { ...record.request, messagesKind: 'delta', messageOffset: offset, messages: messages.slice(offset) } };
+}
+
+/**
+ * 按文件顺序把增量记录拼回完整上下文；拼出的消息数组和上一条共享消息对象。
+ * 增量的基线不在读到的范围里（尾部读取丢了开头）时保留已有部分，标 omittedMessages，直到下一条基线。
+ */
+function expandRecords(rawRecords) {
+    const expanded = [];
+    let previous = null;
+    for (const raw of rawRecords) {
+        if (!raw || typeof raw !== 'object') continue;
+        const { messagesKind, messageOffset, ...request } = raw.request && typeof raw.request === 'object' ? raw.request : {};
+        let messages = Array.isArray(request.messages) ? request.messages : [];
+        if (messagesKind === 'delta') {
+            const offset = nonNegativeInteger(messageOffset);
+            if (previous && offset !== undefined && offset <= previous.length) messages = [...previous.slice(0, offset), ...messages];
+            else request.omittedMessages = offset || 0;
+        }
+        expanded.push({ ...raw, request: { ...request, messages } });
+        previous = request.omittedMessages ? null : messages;
+    }
+    return expanded;
+}
+
+/** 从文件尾部异步读最多 maxBytes；从行中间开始时丢掉不完整的第一行。 */
+async function readFileTail(file, maxBytes) {
+    let handle;
+    try {
+        handle = await fs.promises.open(file, 'r');
+    } catch (error) {
+        if (error?.code === 'ENOENT') return { text: '', size: 0, truncated: false };
+        throw error;
+    }
+    try {
+        const { size } = await handle.stat();
+        const start = Math.max(0, size - maxBytes);
+        const length = size - start;
+        const buffer = Buffer.allocUnsafe(length);
+        let bytesRead = 0;
+        while (bytesRead < length) {
+            const result = await handle.read(buffer, bytesRead, length - bytesRead, start + bytesRead);
+            if (result.bytesRead === 0) break;
+            bytesRead += result.bytesRead;
+        }
+        let text = buffer.subarray(0, bytesRead).toString('utf8');
+        if (start > 0) {
+            const firstNewline = text.indexOf('\n');
+            text = firstNewline === -1 ? '' : text.slice(firstNewline + 1);
+        }
+        return { text, size, truncated: start > 0 };
+    } finally {
+        await handle.close();
+    }
+}
+
+function parseLines(text) {
+    const records = [];
+    for (const line of text.split('\n')) {
+        if (!line.trim()) continue;
+        try { records.push(JSON.parse(line)); } catch (_error) { /* 半行 / 坏行跳过 */ }
+    }
+    return records;
 }
 
 function sanitizeFileKey(sessionKey) {
@@ -124,12 +238,21 @@ function createModelTrajectoryRecorder({
     now = () => Date.now(),
     maxRecords = DEFAULT_MAX_RECORDS,
     maxFieldChars = DEFAULT_MAX_FIELD_CHARS,
-    maxFileBytes = DEFAULT_MAX_FILE_BYTES
+    maxFileBytes = DEFAULT_MAX_FILE_BYTES,
+    maxReadBytes = MAX_TAIL_READ_BYTES,
+    baselineEvery = BASELINE_EVERY
 } = {}) {
     /** @type {Map<string, Map<string, object>>} sessionKey → 进行中的调用 */
     const pending = new Map();
     const listeners = new Set();
     const writeChains = new Map();
+    /**
+     * 文件 → 读写状态（最近用过的若干个话题）：
+     * records 是读出并拼好的最近记录（未读过时为 null），lastMessages 是最后一条的完整上下文，
+     * sinceBaseline 是最后一条基线之后的增量条数，size / count 是文件当前的字节数和记录数（未知时为 null），
+     * trimAt 是下一次压缩的字节阈值。被挤出缓存只意味着下次要重读、下一条写基线。
+     */
+    const sessions = new Map();
     let counter = 0;
 
     const fileOf = sessionKey => path.join(rootDir, `${sanitizeFileKey(sessionKey)}.jsonl`);
@@ -147,32 +270,119 @@ function createModelTrajectoryRecorder({
         return chain;
     }
 
-    function readRecordsFromFile(file) {
-        let text;
-        try {
-            text = fs.readFileSync(file, 'utf8');
-        } catch (_error) {
-            return [];
+    function stateOf(file) {
+        let state = sessions.get(file);
+        if (state) {
+            sessions.delete(file);
+        } else {
+            state = { records: null, truncated: false, lastMessages: null, sinceBaseline: 0, size: null, count: null, trimAt: maxFileBytes };
         }
-        const records = [];
-        for (const line of text.split('\n')) {
-            if (!line.trim()) continue;
-            try { records.push(JSON.parse(line)); } catch (_error) { /* 半行 / 坏行跳过 */ }
-        }
-        return records;
+        sessions.set(file, state);
+        while (sessions.size > MAX_CACHED_SESSIONS) sessions.delete(sessions.keys().next().value);
+        return state;
     }
 
-    async function persist(sessionKey, record) {
-        await enqueueWrite(sessionKey, async () => {
-            const file = fileOf(sessionKey);
-            await fs.promises.mkdir(rootDir, { recursive: true });
-            await fs.promises.appendFile(file, `${JSON.stringify(record)}\n`, 'utf8');
-            const { size } = await fs.promises.stat(file);
-            if (size > maxFileBytes) {
-                const kept = readRecordsFromFile(file).slice(-maxRecords);
-                await fs.promises.writeFile(file, kept.map(item => `${JSON.stringify(item)}\n`).join(''), 'utf8');
+    /** 写链上的任务出错时丢掉这个文件的状态，下次重读、写基线，避免内存和文件对不上。 */
+    function guarded(file, task) {
+        return async () => {
+            try {
+                await task();
+            } catch (error) {
+                sessions.delete(file);
+                throw error;
             }
-        });
+        };
+    }
+
+    /** 读文件尾部、拼回完整上下文，填进状态（只在写链上调用）。 */
+    async function loadState(file, state) {
+        if (state.records) return;
+        const tail = await readFileTail(file, maxReadBytes);
+        const raw = parseLines(tail.text);
+        const records = expandRecords(raw);
+        let sinceBaseline = 0;
+        for (let i = raw.length - 1; i >= 0 && raw[i]?.request?.messagesKind === 'delta'; i -= 1) sinceBaseline += 1;
+        const last = records.at(-1);
+        state.records = records.slice(-maxRecords);
+        state.truncated = tail.truncated || records.length > maxRecords;
+        state.count = records.length;
+        state.size = tail.size;
+        state.lastMessages = last && !last.request.omittedMessages ? last.request.messages : null;
+        state.sinceBaseline = state.lastMessages ? sinceBaseline : 0;
+    }
+
+    /**
+     * 压缩：只留最近 maxRecords 条里、增量编码后不超过一半上限的那些，第一条重写成基线，先写临时文件再替换。
+     * 下一次压缩至少要等文件再长半个上限，单条记录本身就很大时也不会每次追加都重写。
+     */
+    async function compact(file, state) {
+        const tail = await readFileTail(file, maxReadBytes);
+        const records = expandRecords(parseLines(tail.text)).slice(-maxRecords);
+        const encode = (list) => {
+            let previous = null;
+            return list.map((record, index) => {
+                const line = `${JSON.stringify(encodeRecord(record, previous, index % baselineEvery === 0))}\n`;
+                previous = record.request.omittedMessages ? null : record.request.messages;
+                return line;
+            });
+        };
+        const target = Math.floor(maxFileBytes / 2);
+        let lines = encode(records);
+        let start = records.length;
+        let bytes = 0;
+        while (start > 0) {
+            const next = bytes + Buffer.byteLength(lines[start - 1]);
+            if (next > target && start < records.length) break;
+            bytes = next;
+            start -= 1;
+        }
+        const kept = records.slice(start);
+        if (start > 0) lines = encode(kept);
+        const text = lines.join('');
+        const temp = `${file}.${process.pid}.tmp`;
+        await fs.promises.writeFile(temp, text, 'utf8');
+        await fs.promises.rename(temp, file);
+        const size = Buffer.byteLength(text);
+        const last = kept.at(-1);
+        state.records = kept;
+        state.truncated = false;
+        state.count = kept.length;
+        state.size = size;
+        state.lastMessages = last && !last.request.omittedMessages ? last.request.messages : null;
+        state.sinceBaseline = state.lastMessages ? (kept.length - 1) % baselineEvery : 0;
+        state.trimAt = Math.max(maxFileBytes, size + Math.floor(maxFileBytes / 2));
+    }
+
+    const needsCompaction = state => state.size > state.trimAt || (state.count !== null && state.count > maxRecords * 2);
+
+    async function persist(sessionKey, record) {
+        const file = fileOf(sessionKey);
+        await enqueueWrite(sessionKey, guarded(file, async () => {
+            const state = stateOf(file);
+            await fs.promises.mkdir(rootDir, { recursive: true });
+            if (state.size === null) {
+                try { state.size = (await fs.promises.stat(file)).size; } catch (_error) { state.size = 0; }
+            }
+            const messages = record.request.messages;
+            const baseline = !state.lastMessages || state.sinceBaseline >= baselineEvery - 1;
+            const line = `${JSON.stringify(encodeRecord(record, state.lastMessages, baseline))}\n`;
+            await fs.promises.appendFile(file, line, 'utf8');
+            // 内存里也和上一条共享相同的消息对象，缓存的最近记录不会各自持有一份完整上下文
+            const offset = state.lastMessages ? commonPrefixLength(state.lastMessages, messages) : 0;
+            const shared = offset > 0 ? [...state.lastMessages.slice(0, offset), ...messages.slice(offset)] : messages;
+            state.lastMessages = shared;
+            state.sinceBaseline = baseline ? 0 : state.sinceBaseline + 1;
+            state.size += Buffer.byteLength(line);
+            if (state.count !== null) state.count += 1;
+            if (state.records) {
+                state.records.push({ ...record, request: { ...record.request, messages: shared } });
+                if (state.records.length > maxRecords) {
+                    state.records.splice(0, state.records.length - maxRecords);
+                    state.truncated = true;
+                }
+            }
+            if (needsCompaction(state)) await compact(file, state);
+        }));
     }
 
     function snapshotOf(call, status) {
@@ -312,16 +522,26 @@ function createModelTrajectoryRecorder({
     /** 某话题最近的调用（落盘的 + 进行中的），按开始时间从旧到新；truncated 表示还有更早的没返回。 */
     async function list(sessionKey, { limit = DEFAULT_MAX_RECORDS } = {}) {
         const cap = Math.max(1, Math.min(maxRecords, Math.floor(Number(limit)) || maxRecords));
-        await (writeChains.get(fileOf(sessionKey)) || Promise.resolve());
-        const stored = readRecordsFromFile(fileOf(sessionKey));
+        const file = fileOf(sessionKey);
+        let snapshot = { records: [], truncated: false, count: 0 };
+        await enqueueWrite(sessionKey, guarded(file, async () => {
+            const state = stateOf(file);
+            await loadState(file, state);
+            // 旧版本每条都存整份上下文，文件可能早已超限，第一次读到时顺手压缩
+            if (needsCompaction(state)) await compact(file, state);
+            snapshot = { records: state.records.slice(), truncated: state.truncated, count: state.count };
+        }));
         const running = [...(pending.get(sessionKey)?.values() || [])].map(call => snapshotOf(call, 'running'));
-        const all = [...stored, ...running].sort((a, b) => a.startedAt - b.startedAt);
-        return { records: all.slice(-cap), truncated: all.length > cap, total: all.length };
+        const all = [...snapshot.records, ...running].sort((a, b) => a.startedAt - b.startedAt);
+        const total = Math.max(snapshot.count, snapshot.records.length) + running.length;
+        return { records: all.slice(-cap), truncated: snapshot.truncated || all.length > cap, total };
     }
 
     async function clear(sessionKey) {
+        const file = fileOf(sessionKey);
         await enqueueWrite(sessionKey, async () => {
-            await fs.promises.rm(fileOf(sessionKey), { force: true });
+            sessions.delete(file);
+            await fs.promises.rm(file, { force: true });
         });
         emit({ sessionKey, id: null, status: 'cleared' });
     }
@@ -381,6 +601,9 @@ module.exports = {
     sessionKeyFromContext,
     sourceFromContext,
     normalizeMessage,
+    normalizeUsage,
     estimateTokens,
-    sanitizeFileKey
+    sanitizeFileKey,
+    withStreamUsage,
+    expandRecords
 };

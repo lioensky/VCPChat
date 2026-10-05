@@ -199,3 +199,99 @@ test('topic title generation is recorded as a title call when it knows its topic
         fs.rmSync(rootDir, { recursive: true, force: true });
     }
 });
+
+const readLines = file => fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line));
+const conversation = turns => {
+    const messages = [{ role: 'system', content: 'S'.repeat(400) }];
+    for (let i = 0; i < turns; i += 1) messages.push({ role: 'user', content: `问题 ${i}` }, { role: 'assistant', content: `回答 ${i}` });
+    return [...messages, { role: 'user', content: `问题 ${turns}` }];
+};
+
+test('later calls only store the new messages, and reading puts the full context back (also from a fresh recorder)', async () => {
+    const { recorder, rootDir, cleanup } = tempRecorder({ baselineEvery: 4 });
+    try {
+        for (let turn = 0; turn < 6; turn += 1) recorder.begin({ sessionKey: 'd', requestId: `r${turn}`, messages: conversation(turn) }).finish();
+        const { records } = await recorder.list('d');
+        records.forEach((record, turn) => assert.equal(record.request.messages.length, conversation(turn).length));
+        assert.equal(records[5].request.messages[0], records[4].request.messages[0], 'cached records share message objects');
+        const lines = readLines(path.join(rootDir, 'd.jsonl'));
+        assert.deepEqual(lines.map(line => line.request.messagesKind || 'full'), ['full', 'delta', 'delta', 'delta', 'full', 'delta']);
+        assert.equal(lines[1].request.messageOffset, 2);
+        assert.deepEqual(lines[1].request.messages.map(message => message.role), ['assistant', 'user']);
+        assert.equal(JSON.stringify(lines[3]).includes('SSSS'), false, 'the system prompt is not repeated in deltas');
+
+        const fresh = createModelTrajectoryRecorder({ rootDir, baselineEvery: 4 });
+        const reread = await fresh.list('d');
+        assert.deepEqual(reread.records.map(record => record.request.messages), records.map(record => record.request.messages));
+        assert.equal(reread.records[3].request.messages[0], reread.records[2].request.messages[0]);
+        fresh.begin({ sessionKey: 'd', requestId: 'r6', messages: conversation(6) }).finish();
+        assert.equal((await fresh.list('d')).records.at(-1).request.messages.length, conversation(6).length);
+        assert.equal(readLines(path.join(rootDir, 'd.jsonl')).at(-1).request.messagesKind, 'delta', 'a reloaded topic continues the delta chain');
+    } finally { cleanup(); }
+});
+
+test('a tail read that starts inside a delta chain marks the unrecoverable records instead of guessing', async () => {
+    const { recorder, rootDir, cleanup } = tempRecorder({ baselineEvery: 3 });
+    try {
+        for (let turn = 0; turn < 5; turn += 1) recorder.begin({ sessionKey: 't', requestId: `r${turn}`, messages: conversation(turn) }).finish();
+        await recorder.list('t');
+        const file = path.join(rootDir, 't.jsonl');
+        const lines = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean);
+        // 最后两行（基线 r3 + 增量 r4）再加 r2 的后半行：只能拼出 r3、r4
+        const tailBytes = Buffer.byteLength(lines.slice(-2).join('\n') + '\n') + 20;
+        const tailRecorder = createModelTrajectoryRecorder({ rootDir, maxReadBytes: tailBytes, baselineEvery: 3 });
+        const { records, truncated } = await tailRecorder.list('t');
+        assert.equal(truncated, true);
+        assert.deepEqual(records.map(record => record.requestId), ['r3', 'r4']);
+        assert.equal(records[1].request.messages.length, conversation(4).length);
+
+        const deltaOnly = createModelTrajectoryRecorder({ rootDir, maxReadBytes: Buffer.byteLength(lines.at(-1) + '\n') + 1 });
+        const partial = (await deltaOnly.list('t')).records;
+        assert.equal(partial.length, 1);
+        assert.equal(partial[0].request.omittedMessages, conversation(3).length);
+        assert.deepEqual(partial[0].request.messages.map(message => message.role), ['assistant', 'user']);
+    } finally { cleanup(); }
+});
+
+test('records written before delta storage still read; an oversized old file is compacted once, not on every append', async () => {
+    const { rootDir, cleanup } = tempRecorder();
+    try {
+        const file = path.join(rootDir, 'old.jsonl');
+        const old = turn => ({ id: `o${turn}`, requestId: `o${turn}`, startedAt: turn, status: 'completed', request: { messages: conversation(turn).map(message => normalizeMessage(message, 1e6)) }, response: null });
+        fs.writeFileSync(file, Array.from({ length: 8 }, (_, turn) => `${JSON.stringify(old(turn))}\n`).join(''));
+        const before = fs.statSync(file).size;
+        const recorder = createModelTrajectoryRecorder({ rootDir, maxFileBytes: Math.floor(before / 2) });
+        const { records } = await recorder.list('old');
+        assert.equal(records.at(-1).request.messages.length, conversation(7).length);
+        assert.ok(fs.statSync(file).size < before, 'compacted into delta form');
+        const written = readLines(file);
+        assert.equal(written[0].request.messagesKind, undefined, 'the first kept record is a full baseline');
+        assert.ok(written.slice(1).every(line => line.request.messagesKind === 'delta'));
+
+        // 单条记录本身就超过上限：压缩之后不会每追加一条就重写整份文件
+        const huge = createModelTrajectoryRecorder({ rootDir, maxFileBytes: 2000 });
+        const big = [{ role: 'system', content: 'B'.repeat(3000) }];
+        let rewrites = 0;
+        const realRename = fs.promises.rename;
+        fs.promises.rename = async (...args) => { rewrites += 1; return realRename(...args); };
+        try {
+            for (let i = 0; i < 6; i += 1) huge.begin({ sessionKey: 'huge', messages: [...big, { role: 'user', content: `q${i}` }] }).finish();
+            await huge.list('huge');
+        } finally { fs.promises.rename = realRename; }
+        assert.ok(rewrites <= 2, `rewrote ${rewrites} times`);
+        assert.equal((await huge.list('huge')).records.at(-1).request.messages[1].parts[0].text, 'q5');
+    } finally { cleanup(); }
+});
+
+test('usage keeps cached and reasoning tokens; streamed requests ask for usage without overriding the caller', () => {
+    const { normalizeUsage, withStreamUsage } = require('../modules/modelTrajectory');
+    assert.deepEqual(normalizeUsage({ prompt_tokens: 100, completion_tokens: 30, total_tokens: 130, prompt_tokens_details: { cached_tokens: 64 }, completion_tokens_details: { reasoning_tokens: 12 } }),
+        { inputTokens: 100, outputTokens: 30, totalTokens: 130, cachedInputTokens: 64, reasoningTokens: 12 });
+    assert.equal(normalizeUsage({ input_tokens: 10, output_tokens: 2, cache_read_input_tokens: 8 }).cachedInputTokens, 8);
+    assert.equal(normalizeUsage({ prompt_tokens: 10, completion_tokens: 2, prompt_cache_hit_tokens: 6 }).cachedInputTokens, 6);
+    assert.deepEqual(normalizeUsage({ prompt_tokens: 5 }), { inputTokens: 5, outputTokens: undefined, totalTokens: 5 });
+    assert.equal(normalizeUsage({}), null);
+    assert.deepEqual(withStreamUsage({ stream: true }).stream_options, { include_usage: true });
+    assert.deepEqual(withStreamUsage({ stream: true, stream_options: { include_usage: false } }).stream_options, { include_usage: false });
+    assert.equal(withStreamUsage({ stream: false }).stream_options, undefined);
+});

@@ -5,7 +5,7 @@ const path = require('path');
 const { ipcMain } = require('electron');
 const crypto = require('crypto');
 const contextSanitizer = require('../modules/contextSanitizer');
-const { beginTrajectoryCall, sessionKeyFromContext, sourceFromContext } = require('../modules/modelTrajectory');
+const { beginTrajectoryCall, sessionKeyFromContext, sourceFromContext, withStreamUsage } = require('../modules/modelTrajectory');
 const fileManager = require('../modules/fileManager');
 const canvasHandlers = require('../modules/ipc/canvasHandlers');
 const tavernHandlers = require('../modules/ipc/tavernHandlers');
@@ -215,7 +215,8 @@ function buildGroupRequestBody(messagesForAI, modelConfig, messageId) {
     if (vcpchatExtensions) {
         requestBody.vcpchatExtensions = vcpchatExtensions;
     }
-    return requestBody;
+    // 流式时请服务端在最后一块带上 token 用量，调用轨迹才有真实数字而不是估算
+    return withStreamUsage(requestBody);
 }
 
 /**
