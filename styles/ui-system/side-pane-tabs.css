@@ -25,15 +25,6 @@ html .side-pane-tab-item .side-pane-tab .tab-title:where(.vcp-ui-scope, .vcp-ui-
     text-overflow: clip;
 }
 
-/* 挤成只剩图标时没有标题可渐隐：去掉渐隐和右侧留白，否则图标偏左、悬停时被渐隐吃掉一半 */
-@container side-pane-tab (max-width: 64px) {
-    html .side-pane-tab-item .side-pane-tab:where(.vcp-ui-scope, .vcp-ui-scope *) {
-        padding-right: 0;
-        -webkit-mask-image: none;
-        mask-image: none;
-    }
-}
-
 /* ---- 拖拽排序 ---- */
 html .side-pane-tabs.is-sorting:where(.vcp-ui-scope, .vcp-ui-scope *) {
     user-select: none;

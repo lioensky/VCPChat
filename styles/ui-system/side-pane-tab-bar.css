@@ -41,13 +41,13 @@ html .side-pane-tab-item:where(.vcp-ui-scope, .vcp-ui-scope *) {
     background: transparent;
     border: 1px solid transparent;
     transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), color 150ms cubic-bezier(0.4, 0, 0.2, 1);
-    /* 挤的时候先收非激活标签（权重 100），收到 32px 后才轮到激活标签收到 96px */
-    flex: 1 100 9.75rem;
-    min-width: 32px;
+    /* 和 ZCode 一样：156px 等宽，挤的时候所有标签一起收到 60px，再挤就整条横向滚动；
+       不收成只剩图标，图标始终靠左，标题末尾渐隐 */
+    flex: 1 1 9.75rem;
+    min-width: 60px;
     max-width: 156px;
     overflow: hidden;
     box-sizing: border-box;
-    container: side-pane-tab / inline-size;
 }
 
 html .side-pane-tab-item:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
@@ -61,8 +61,6 @@ html body:is(.light-theme, [data-vcp-theme="light"]) .side-pane-tab-item:hover:w
 html .side-pane-tab-item.active:where(.vcp-ui-scope, .vcp-ui-scope *) {
     background-color: var(--vcp-ui-port-color-rgba-255-255-255-0-10);
     border-color: transparent;
-    flex-shrink: 1;
-    min-width: 96px;
 }
 
 html body[data-vcp-theme="light"] .side-pane-tab-item.active:where(.vcp-ui-scope, .vcp-ui-scope *) {
@@ -72,11 +70,11 @@ html body[data-vcp-theme="light"] .side-pane-tab-item.active:where(.vcp-ui-scope
 html .side-pane-tab:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
     height: 100%;
     width: 100%;
     min-width: 0;
-    padding: 0 24px 0 8px;
+    padding: 0 8px 0 6px;
     font-size: calc(var(--vcp-ui-font-size) - 1px);
     font-weight: 500;
     line-height: 1.2;
@@ -132,33 +130,12 @@ html .side-pane-tab.has-status .tab-title:where(.vcp-ui-scope, .vcp-ui-scope *) 
 
 /* 标签挤窄时放不下“VCPLog 已连接”，只留铃铛和圆点；全文仍在悬停提示与读屏名称里 */
 html .side-pane-tab-item:has(> .side-pane-tab.has-status):where(.vcp-ui-scope, .vcp-ui-scope *) {
-    /* 也保留通用的 side-pane-tab 名字：收成图标时和其他标签一样居中 */
-    container: side-pane-tab side-pane-status-tab / inline-size;
+    container: side-pane-status-tab / inline-size;
 }
 
 @container side-pane-status-tab (max-width: 140px) {
     html .side-pane-tab.has-status .tab-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
         display: none;
-    }
-}
-
-@container side-pane-tab (max-width: 64px) {
-    html .side-pane-tab:where(.vcp-ui-scope, .vcp-ui-scope *) {
-        padding: 0;
-        justify-content: center;
-    }
-    html .side-pane-tab .tab-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
-        display: none;
-    }
-    html .side-pane-tab-close:where(.vcp-ui-scope, .vcp-ui-scope *) {
-        display: none;
-    }
-    /* 只剩铃铛时，连接点改成右上角的角标，不再和图标抢宽度 */
-    html .side-pane-tab-status:where(.vcp-ui-scope, .vcp-ui-scope *) {
-        position: absolute;
-        top: 5px;
-        right: 5px;
-        margin: 0;
     }
 }
 
@@ -212,6 +189,7 @@ html .side-pane-tab .tab-icon svg:where(.vcp-ui-scope, .vcp-ui-scope *) {
     opacity: 0.85;
 }
 
+/* 关闭按钮叠在标签右端：激活标签一直在，其它标签悬停 / 聚焦时出现，出现时标题渐隐让出 1.25rem */
 html .side-pane-tab-close:where(.vcp-ui-scope, .vcp-ui-scope *) {
     position: absolute;
     right: 4px;
@@ -220,14 +198,14 @@ html .side-pane-tab-close:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 18px;
-    height: 18px;
-    min-width: 18px;
-    min-height: 18px;
+    width: 20px;
+    height: 20px;
+    min-width: 20px;
+    min-height: 20px;
     padding: 0;
     margin: 0;
     border: none;
-    border-radius: 4px;
+    border-radius: 6px;
     background: transparent;
     color: inherit;
     opacity: 0;

@@ -32,7 +32,7 @@
 | `side-pane-tab-strip.js` | 标签条渲染、悬停提示、溢出布局与边缘渐隐、拖拽排序、方向键 / 中键关闭、通知标签上的连接状态点 | 是 |
 | `side-pane-tab-overview.js` | 标签页概览浮层：搜索打开中和最近关闭的标签 | 是 |
 | `side-pane-tab-menu.js` | 标签右键菜单：关闭 / 关闭其他 / 全部关闭 | 是 |
-| `side-pane-launcher.js` | 新标签页：个人资料、工具 / 应用 / 通知分段、推荐、「+」按钮 | 是 |
+| `side-pane-launcher.js` | 新标签页：个人资料、工具 / 应用 / 通知分段、推荐、「+」按钮、标签条左边的小房子（总是回到新标签页） | 是 |
 | `side-pane-entries.js` | 入口登记、顺序、可用性与执行；由 launcher 通过回调接到展示层 | 是 |
 | `side-pane-resizer-owner.js` | 左边缘拖拽调宽 | 是 |
 | `side-pane-tab-dnd.js` / `side-pane-tab-utils.js` / `menu-position.js` | 拖拽排序、标签图标与搜索、菜单定位等工具函数 | — |

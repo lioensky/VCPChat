@@ -32,6 +32,7 @@ export function createSidePaneController({
     expandButton = null,
     closeSidePaneBtn = null,
     addTabButton = null,
+    homeButton = null,
     overviewBtn = null,
     overviewPopover = null,
     settingsRef = null,
@@ -50,6 +51,7 @@ export function createSidePaneController({
     const doc = root.ownerDocument || globalThis.document;
     const win = doc?.defaultView || globalThis.window;
     const resolvedAddTabButton = addTabButton || doc.getElementById?.('addSidePaneChatBtn');
+    const resolvedHomeButton = homeButton || doc.getElementById?.('sidePaneHomeBtn') || null;
     const resolvedOverviewBtn = overviewBtn || doc.getElementById?.('sidePaneTabOverviewBtn');
     const resolvedOverviewPopover = overviewPopover || doc.getElementById?.('sidePaneTabOverviewPopover');
     const resolvedTabContextMenu = doc.getElementById?.('sidePaneTabContextMenu');
@@ -184,6 +186,7 @@ export function createSidePaneController({
     const launcher = createSidePaneLauncher({
         contentContainer,
         addButton: resolvedAddTabButton,
+        homeButton: resolvedHomeButton,
         isNotificationsActive: () => isNotificationsTab(state.activeTabId),
         showNotifications: () => controller.showNotifications(),
         showLauncher: () => controller.showLauncher(),
@@ -295,6 +298,7 @@ export function createSidePaneController({
             view.hidden = !isActive;
         });
         if (launcher.hostsNotifications) launcher.syncSections();
+        launcher.syncHome(activeViewId === SidePaneState.LAUNCHER_TAB_ID);
     }
 
     // ---- 标签视图挂载 ----

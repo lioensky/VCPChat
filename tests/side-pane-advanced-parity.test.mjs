@@ -23,6 +23,7 @@ function createParityTestDOM() {
         <aside id="vcpSidePane" class="vcp-side-pane">
             <header class="side-pane-tab-bar">
                 <button id="sidePaneTabOverviewBtn" class="side-pane-action-btn" type="button"></button>
+                <button id="sidePaneHomeBtn" class="side-pane-action-btn side-pane-home-btn" type="button" aria-pressed="false"></button>
                 <div class="side-pane-tabs" role="tablist"></div>
                 <div class="side-pane-tab-actions">
                     <button id="addSidePaneChatBtn" class="side-pane-action-btn" type="button"></button>
@@ -178,6 +179,40 @@ test('Parity: the add button opens the new tab page with tool rows', async () =>
     disposeChat();
     assert.equal(addBtn.getAttribute('aria-label'), '浏览器');
     assert.equal(launcherView.querySelectorAll('[data-open-tab-entry]').length, 1);
+
+    await ctrl.dispose();
+    dom.window.close();
+});
+
+test('Parity: the home button always returns to the new tab page', async () => {
+    const dom = createParityTestDOM();
+    const doc = dom.window.document;
+    const homeBtn = doc.getElementById('sidePaneHomeBtn');
+    const launcherView = doc.getElementById('sidePaneViewLauncher');
+    const opened = [];
+    const ctrl = createController(dom);
+    ctrl.setParent({ itemType: 'agent', itemId: 'agent-1', topicId: 'parent' });
+
+    // 只有一个入口时「+」直接打开它，小房子仍然进新标签页
+    ctrl.registerOpenTabEntry({ id: 'chat', label: '辅助对话', open: () => opened.push('chat') });
+    homeBtn.click();
+    await tick();
+    assert.deepEqual(opened, []);
+    assert.equal(ctrl.getSnapshot().activeTabId, 'launcher');
+    assert.equal(launcherView.hidden, false);
+    assert.equal(homeBtn.getAttribute('aria-pressed'), 'true');
+    assert.equal(homeBtn.classList.contains('active'), true);
+
+    // 切到别的标签后不再按下，点小房子回到新标签页
+    await ctrl.openTab({ kind: 'chat', descriptor: createDesc('s1', 'c1') });
+    assert.equal(ctrl.getSnapshot().activeTabId, 's1');
+    assert.equal(homeBtn.getAttribute('aria-pressed'), 'false');
+    assert.equal(homeBtn.classList.contains('active'), false);
+    homeBtn.click();
+    await tick();
+    assert.equal(ctrl.getSnapshot().activeTabId, 'launcher');
+    assert.equal(homeBtn.getAttribute('aria-pressed'), 'true');
+    assert.ok(ctrl.getSnapshot().tabs.some(tab => tab.id === 's1'));
 
     await ctrl.dispose();
     dom.window.close();

@@ -8,10 +8,12 @@ import { createSidePaneEntries } from './side-pane-entries.js';
  *   isNotificationsActive()   通知标签是不是当前标签（通知页是新标签页里的一个分类）
  *   showNotifications() / showLauncher() / hideMenus()
  *   onEntriesChanged()        入口变化后标签条要重新排（「+」按钮可能出现或消失）
+ *   homeButton                标签条左边的小房子：总是回到新标签页，新标签页显示时保持按下
  */
 export function createSidePaneLauncher({
     contentContainer,
     addButton = null,
+    homeButton = null,
     isNotificationsActive,
     showNotifications,
     showLauncher,
@@ -315,6 +317,18 @@ export function createSidePaneLauncher({
         cleanups.push(() => addButton.removeEventListener('click', onAddClick));
     }
 
+    if (homeButton) {
+        // 小房子和「+」打开的是同一个新标签页，只是不走「只有一个入口就直接打开」的捷径，
+        // 切到别的标签以后点它总能回来
+        const onHomeClick = (e) => {
+            e.stopPropagation();
+            hideMenus();
+            showLauncher();
+        };
+        homeButton.addEventListener('click', onHomeClick);
+        cleanups.push(() => homeButton.removeEventListener('click', onHomeClick));
+    }
+
     return Object.freeze({
         // 通知放进新标签页的“通知”分类时，通知页仍是首页/兜底，只是不再占标签条上的位置
         hostsNotifications: Boolean(notificationsSection),
@@ -324,6 +338,12 @@ export function createSidePaneLauncher({
         renderProfile,
         renderSegment,
         syncSections,
+
+        syncHome(active) {
+            if (!homeButton) return;
+            homeButton.classList.toggle('active', Boolean(active));
+            homeButton.setAttribute('aria-pressed', active ? 'true' : 'false');
+        },
 
         // 面板里没有可关的标签时展开：只有一个入口就直接打开它，否则显示新标签页
         async expandFromEmpty() {
