@@ -9,7 +9,8 @@
  * 每次调用一张卡片（序号、来源、结束原因、IN / OUT / 耗时 / 时间），卡片里是输入（只列新增的）、输出（思考 / 回答 / 工具调用）和错误块，
  * 每条消息可折叠、可复制，超长内容裁到 256px 并给「展开」。
  * 数据来自主进程的调用轨迹记录器（modules/modelTrajectory.js），跟随主聊天当前的话题；调用开始 / 结束时实时刷新。
- * 与 ZCode 不同的地方：没有虚拟列表（一个话题最多保留最近 200 次调用，每张卡片用 content-visibility 跳过屏外绘制），
+ * 与 ZCode 不同的地方：没有用虚拟列表库，而是卡片懒构建——每张卡片先只有标题栏和占位高度，
+ * 滚到可视区附近（IntersectionObserver）、被搜索命中或被定位时才生成里面的消息行，屏外绘制再由 content-visibility 跳过；
  * 数据整理见 modelTrajectoryModel.js（工具调用 / 结果从 VCP 文本协议里还原）。
  */
 
@@ -27,6 +28,10 @@ const FOLLOW_THRESHOLD_PX = 40;
 const FOLLOW_POLL_MS = 3000;
 const RELOAD_DEBOUNCE_MS = 80;
 const SEARCH_DEBOUNCE_MS = 120;
+/** 卡片进入可视区上下这么远时就提前构建，滚动时不露出占位。 */
+const BUILD_MARGIN = '600px 0px';
+/** 打开 / 刷新时同步构建的末尾卡片数，滚到底部时看到的就是完整内容。 */
+const EAGER_TAIL_CARDS = 3;
 const HIGHLIGHT = 'vcp-trajectory-find';
 const HIGHLIGHT_ACTIVE = 'vcp-trajectory-find-active';
 
@@ -131,8 +136,9 @@ export function createModelTrajectorySideProvider({
             let commands = Object.fromEntries(EXPANSION_KINDS.map(name => [name, { expanded: true, version: 0 }]));
             /** @type {Map<string, {open: boolean, commandVersion: number}>} 用户手动展开 / 收起过的行 */
             let overrides = new Map();
-            /** @type {Map<string, {el: HTMLElement, sig: string, rows: Array<{key: string, update: () => void}>}>} */
+            /** @type {Map<string, {el: HTMLElement, sig: string, rows: Array<{key: string, update: () => void}>, built: boolean, ensure: () => boolean}>} */
             let cardCache = new Map();
+            let stickToBottom = true;
             /** @type {Map<string, {update: () => void}>} */
             let rowRegistry = new Map();
             const hasHighlights = Boolean(win.CSS?.highlights && win.Highlight);
@@ -181,6 +187,25 @@ export function createModelTrajectorySideProvider({
             scroller.append(state, timeline, truncatedNotice);
             scope.append(header, menu, scroller);
             viewElement.appendChild(scope);
+
+            // 卡片懒构建：没有 IntersectionObserver（比如测试环境）时退回一次全部构建
+            const buildObserver = typeof win.IntersectionObserver === 'function'
+                ? new win.IntersectionObserver((entries) => {
+                    let builtAny = false;
+                    for (const entry of entries) {
+                        if (!entry.isIntersecting) continue;
+                        buildObserver.unobserve(entry.target);
+                        const card = cardCache.get(entry.target.dataset.trajectoryCall);
+                        if (card?.ensure()) builtAny = true;
+                    }
+                    if (!builtAny) return;
+                    if (stickToBottom && !doc.hidden) scroller.scrollTop = scroller.scrollHeight;
+                    if (searchIndex.query) scheduleHighlights();
+                }, { root: scroller, rootMargin: BUILD_MARGIN })
+                : null;
+            scroller.addEventListener('scroll', () => {
+                stickToBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= FOLLOW_THRESHOLD_PX;
+            }, { passive: true });
 
             // ---------------------------------------------------------------- 展开状态（照 ZCode 的 command / override 版本号）
             const rowOpen = (visualRole, expansionKey) => {
@@ -350,6 +375,7 @@ export function createModelTrajectorySideProvider({
             function buildCard(item, index) {
                 const { record } = item;
                 const rows = [];
+                const entry = { el: null, sig: '', rows, built: false, ensure: () => false };
                 const card = h('li', 'side-traj-call');
                 card.dataset.trajectoryCall = item.key;
                 if (record.requestId) card.dataset.requestId = record.requestId;
@@ -378,9 +404,14 @@ export function createModelTrajectorySideProvider({
                 bar.appendChild(sourceWrap);
                 const usage = record.response?.usage;
                 const approx = usage?.estimated ? '≈' : '';
+                const estimatedTitle = usage?.estimated ? '服务端没有返回用量，按字符数估算' : '';
                 const metaParts = [];
-                if (typeof usage?.inputTokens === 'number') metaParts.push({ text: `IN ${approx}${usage.inputTokens.toLocaleString()}`, title: usage.estimated ? '服务端没有返回用量，按字符数估算' : '' });
-                if (typeof usage?.outputTokens === 'number') metaParts.push({ text: `OUT ${approx}${usage.outputTokens.toLocaleString()}`, title: usage.estimated ? '服务端没有返回用量，按字符数估算' : '' });
+                if (typeof usage?.inputTokens === 'number') metaParts.push({ text: `IN ${approx}${usage.inputTokens.toLocaleString()}`, title: estimatedTitle });
+                if (typeof usage?.cachedInputTokens === 'number') metaParts.push({ text: `缓存 ${usage.cachedInputTokens.toLocaleString()}`, title: '输入里命中服务端提示词缓存的 token 数' });
+                if (typeof usage?.outputTokens === 'number') {
+                    const reasoning = typeof usage.reasoningTokens === 'number' ? `其中思考 ${usage.reasoningTokens.toLocaleString()} token` : '';
+                    metaParts.push({ text: `OUT ${approx}${usage.outputTokens.toLocaleString()}`, title: [estimatedTitle, reasoning].filter(Boolean).join('；') });
+                }
                 if (typeof record.durationMs === 'number') metaParts.push({ text: formatDuration(record.durationMs) });
                 metaParts.push({ text: formatClockTime(record.startedAt), title: formatDateTime(record.startedAt) });
                 const meta = h('span', 'side-traj-call-meta');
@@ -392,7 +423,23 @@ export function createModelTrajectorySideProvider({
                 bar.appendChild(meta);
                 card.appendChild(bar);
 
-                const body = h('div', 'side-traj-call-body');
+                const body = h('div', 'side-traj-call-body pending');
+                card.appendChild(body);
+                entry.el = card;
+                entry.ensure = () => {
+                    if (entry.built) return false;
+                    entry.built = true;
+                    body.classList.remove('pending');
+                    buildBody(item, record, status, body, rows);
+                    for (const row of rows) rowRegistry.set(row.key, row);
+                    return true;
+                };
+                return entry;
+            }
+
+            function buildBody(item, record, status, body, rows) {
+                const omitted = record.request?.omittedMessages;
+                if (omitted) body.appendChild(h('div', 'side-traj-call-note', `记录文件只读到了尾部，这次调用更早的 ${omitted} 条上下文没能还原`));
                 if (item.inputMessages.length) {
                     const box = section('输入', 'input');
                     item.inputMessages.forEach((message, i) => {
@@ -431,9 +478,15 @@ export function createModelTrajectorySideProvider({
                     body.appendChild(block);
                 }
                 if (!body.childNodes.length) body.appendChild(h('div', 'side-traj-call-empty', status === 'running' ? '等待模型响应…' : '这次调用没有记录到内容'));
-                card.appendChild(body);
-                return { el: card, rows };
             }
+
+            /** 构建某次调用的卡片内容（已构建时什么也不做）。 */
+            const ensureCard = (callKey) => {
+                const card = cardCache.get(callKey);
+                if (!card || !card.ensure()) return card || null;
+                buildObserver?.unobserve(card.el);
+                return card;
+            };
 
             const signature = (item, index) => {
                 const { record } = item;
@@ -497,24 +550,31 @@ export function createModelTrajectorySideProvider({
                 const previousTop = scroller.scrollTop;
                 const nextCache = new Map();
                 const fragment = doc.createDocumentFragment();
-                const registry = new Map();
+                buildObserver?.disconnect();
                 items.forEach((item, index) => {
                     const sig = signature(item, index);
                     let entry = cardCache.get(item.key);
                     if (!entry || entry.sig !== sig) {
-                        const built = buildCard(item, index);
-                        entry = { el: built.el, sig, rows: built.rows };
+                        entry = buildCard(item, index);
+                        entry.sig = sig;
                     }
                     nextCache.set(item.key, entry);
-                    for (const row of entry.rows) registry.set(row.key, row);
                     fragment.appendChild(entry.el);
                 });
                 cardCache = nextCache;
-                rowRegistry = registry;
+                rowRegistry = new Map();
+                for (const entry of cardCache.values()) for (const row of entry.rows) rowRegistry.set(row.key, row);
                 timeline.replaceChildren(fragment);
+                const entries = [...cardCache.values()];
+                entries.forEach((entry, index) => {
+                    if (entry.built) return;
+                    if (!buildObserver || index >= entries.length - EAGER_TAIL_CARDS) entry.ensure();
+                    else buildObserver.observe(entry.el);
+                });
                 updateAllRows();
                 if (!doc.hidden) {
-                    if (wasAtBottom || previousTop === 0) scroller.scrollTop = scroller.scrollHeight;
+                    stickToBottom = wasAtBottom || previousTop === 0;
+                    if (stickToBottom) scroller.scrollTop = scroller.scrollHeight;
                     else scroller.scrollTop = previousTop;
                 }
             }
@@ -524,7 +584,10 @@ export function createModelTrajectorySideProvider({
                 renderState();
                 renderTimeline();
                 recomputeSearch(false);
-                if (focusRequestId) focusCall(focusRequestId);
+                if (focusRequestId && !loading && !focusCall(focusRequestId)) {
+                    focusRequestId = null;
+                    if (sessionKey && !loadError) toast('这条回复没有对应的调用记录（可能发送于启用调用轨迹之前，或已被清空）', 'info');
+                }
             }
 
             // ---------------------------------------------------------------- 搜索
@@ -592,9 +655,15 @@ export function createModelTrajectorySideProvider({
                 searchPrev.disabled = searchNext.disabled = count === 0;
             }
 
+            const ensureActiveMatchBuilt = () => {
+                const active = searchIndex.matches[clampActive()];
+                if (active) ensureCard(active.callKey);
+            };
+
             function recomputeSearch(resetActive = true) {
                 searchIndex = searchOpen ? buildSearchIndex(items, searchQuery) : { query: '', matches: [] };
                 if (resetActive) searchActive = 0;
+                ensureActiveMatchBuilt();
                 renderSearchBar();
                 updateAllRows();
                 scheduleHighlights();
@@ -622,6 +691,7 @@ export function createModelTrajectorySideProvider({
                 const count = searchIndex.matches.length;
                 if (count === 0) return;
                 searchActive = (clampActive() + direction + count) % count;
+                ensureActiveMatchBuilt();
                 renderSearchBar();
                 updateAllRows();
                 const card = timeline.querySelector(`[data-trajectory-call="${CSS_escape(searchIndex.matches[clampActive()].callKey)}"]`);
@@ -690,11 +760,12 @@ export function createModelTrajectorySideProvider({
 
             // ---------------------------------------------------------------- 定位到某次调用（来自消息的「查看调用轨迹」）
             function focusCall(requestId) {
-                const entry = items.find(item => item.record.requestId === requestId);
+                const entry = items.findLast(item => item.record.requestId === requestId);
                 if (!entry) return false;
                 focusRequestId = null;
-                const card = cardCache.get(entry.key)?.el;
+                const card = ensureCard(entry.key)?.el;
                 if (!card) return false;
+                stickToBottom = false;
                 card.scrollIntoView?.({ block: 'start' });
                 card.classList.add('flash');
                 win.setTimeout(() => card.classList.remove('flash'), 1600);
@@ -768,7 +839,7 @@ export function createModelTrajectorySideProvider({
                 if (change.sessionKey === sessionKey || change.sessionKey === currentKey()) scheduleReload();
             };
 
-            const instance = { focusCall: requestId => { focusRequestId = requestId; focusCall(requestId); } };
+            const instance = { focusCall: requestId => { focusRequestId = requestId; if (!loading) renderAll(); } };
             instances.add(instance);
             requestedRequestId = null;
 
@@ -792,6 +863,7 @@ export function createModelTrajectorySideProvider({
                     if (reloadTimer) win.clearTimeout(reloadTimer);
                     if (searchTimer) win.clearTimeout(searchTimer);
                     if (highlightFrame && typeof win.cancelAnimationFrame === 'function') win.cancelAnimationFrame(highlightFrame);
+                    buildObserver?.disconnect();
                     clearHighlights();
                     doc.removeEventListener('click', onDocumentClick);
                     try { unsubscribe?.(); } catch (_error) { /* 已取消 */ }

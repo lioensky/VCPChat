@@ -79,6 +79,8 @@ html .side-traj-pill[data-finish-reason="content-filter"]:where(.vcp-ui-scope, .
 html .side-traj-pill .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-traj-pill svg:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 11px; height: 11px; font-size: calc(var(--vcp-ui-font-size) - 3px); }
 html .side-traj-pill .spin:where(.vcp-ui-scope, .vcp-ui-scope *) { animation: side-traj-spin 1s linear infinite; }
 html .side-traj-call-body:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; }
+html .side-traj-call-body.pending:where(.vcp-ui-scope, .vcp-ui-scope *) { min-height: 240px; }
+html .side-traj-call-note:where(.vcp-ui-scope, .vcp-ui-scope *) { padding: 6px 10px; font-size: calc(var(--vcp-ui-font-size) - 3px); color: var(--zc-fg-subtlest); border-bottom: 1px dashed var(--zc-border); }
 html .side-traj-call-empty:where(.vcp-ui-scope, .vcp-ui-scope *) { padding: 10px 12px; font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--zc-fg-subtlest); }
 
 html .side-traj-section-title:where(.vcp-ui-scope, .vcp-ui-scope *) { padding: 6px 10px 2px; font-size: calc(var(--vcp-ui-font-size) - 3px); font-weight: 600; letter-spacing: 0.04em; color: var(--zc-fg-subtlest); }

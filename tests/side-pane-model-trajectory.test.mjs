@@ -224,3 +224,73 @@ test('truncated notice and dispose cleanup', async () => {
     assert.ok(wasUnsubscribed());
     assert.equal(view.innerHTML, '');
 });
+
+function manyRecords(count) {
+    return Array.from({ length: count }, (_, i) => ({
+        id: `call_${i}`, requestId: `m${i}`, startedAt: 1700000000000 + i * 1000, endedAt: 1700000000500 + i * 1000, durationMs: 500, status: 'completed',
+        source: { kind: 'main' }, model: { modelId: 'm' },
+        request: { messages: [msg('system', 'sys'), msg('user', `问题 ${i}`)] },
+        response: { text: `回答 ${i}${i === 1 ? ' 独有词' : ''}`, finishReason: 'stop', usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 } }
+    }));
+}
+
+/** 记下被观察的卡片，测试里手动触发「进入可视区」。 */
+function installObserver(win) {
+    const observers = [];
+    win.IntersectionObserver = class {
+        constructor(callback) { this.callback = callback; this.targets = new Set(); observers.push(this); }
+        observe(el) { this.targets.add(el); }
+        unobserve(el) { this.targets.delete(el); }
+        disconnect() { this.targets.clear(); }
+        reveal(el) { this.callback([{ target: el, isIntersecting: true }]); }
+    };
+    return observers;
+}
+
+test('cards are built lazily: the newest ones at once, the rest when scrolled near, searched or focused', async () => {
+    const env = makeEnv({ recs: manyRecords(8) });
+    const observers = installObserver(env.dom.window);
+    const handle = await env.provider.mountTab({ id: 'x' }, env.view);
+    const cards = [...env.view.querySelectorAll('.side-traj-call')];
+    assert.equal(cards.length, 8);
+    const pending = () => cards.filter(card => card.querySelector('.side-traj-call-body.pending')).map(card => card.dataset.trajectoryCall.split(':')[0]);
+    assert.deepEqual(pending(), ['call_0', 'call_1', 'call_2', 'call_3', 'call_4']);
+    assert.equal(cards[0].querySelector('.side-traj-row'), null, 'an unbuilt card has no message rows');
+    assert.equal(observers[0].targets.size, 5);
+
+    observers[0].reveal(cards[3]);
+    assert.ok(cards[3].querySelector('.side-traj-row'));
+    assert.equal(observers[0].targets.has(cards[3]), false);
+
+    // 搜索命中的卡片（call_1）会先构建出来
+    env.view.querySelector('.side-traj-icon-btn[title="搜索调用轨迹"]').click();
+    typeInto(env.view.querySelector('.side-traj-search-input'), '独有词');
+    await wait(200);
+    assert.equal(env.view.querySelector('.side-traj-search-count').textContent, '1/1');
+    assert.equal(pending().includes('call_1'), false);
+
+    // 消息右键「查看调用轨迹」：定位到 m0，卡片构建并闪烁
+    await env.provider.openModelTrajectoryTab({ requestId: 'm0' });
+    assert.equal(pending().includes('call_0'), false);
+    assert.ok(cards[0].classList.contains('flash'));
+    handle.dispose();
+});
+
+test('focusing a reply without a recorded call says so once; cached tokens and omitted context are shown', async () => {
+    const recs = manyRecords(2);
+    recs[1].response.usage = { inputTokens: 900, outputTokens: 50, totalTokens: 950, cachedInputTokens: 640, reasoningTokens: 30 };
+    recs[1].request.omittedMessages = 7;
+    const env = makeEnv({ recs });
+    const handle = await env.provider.mountTab({ id: 'x' }, env.view);
+    const card = env.view.querySelectorAll('.side-traj-call')[1];
+    assert.match(card.querySelector('.side-traj-call-meta').textContent, /缓存 640/);
+    assert.match([...card.querySelectorAll('.side-traj-call-meta span')].find(el => /OUT/.test(el.textContent)).title, /思考 30/);
+    assert.match(card.querySelector('.side-traj-call-note').textContent, /更早的 7 条/);
+
+    await env.provider.openModelTrajectoryTab({ requestId: 'no-such-message' });
+    assert.equal(env.state.toasts.filter(text => /没有对应的调用记录/.test(text)).length, 1);
+    env.fire({ sessionKey: 'agent1__t1', id: 'call_1', status: 'completed' });
+    await wait(150);
+    assert.equal(env.state.toasts.filter(text => /没有对应的调用记录/.test(text)).length, 1, 'a later reload does not repeat the notice');
+    handle.dispose();
+});

@@ -679,3 +679,56 @@ DOM/EventEmitter 监听归 consumer，IPC send/invoke 归 producer；preload API
 现有窗口截图前后已检查，标签/草稿/主题/焦点/滚动一致，没有重载、导航、输入或关闭。隐藏 IPC 验证窗口属独立进程，完成后销毁。聊天工作区 `outputs/engineering-review/round-16/` 保存最终全量与43项检查、原版失败、两种 Node runtime、真实 IPC 日志/结果、源码稳定性、参考阅读范围、R41 公开模块复现及窗口截图。
 
 本轮关掉 R40，下一步优先 R41 的实际列表竞态，再继续共享业务基线、其他资源/生产 IPC、Rust 与发布链。主进程 stream shutdown 全链、跨模块包装与扫描根范围、全工程 UIUX 和所有权覆盖均未完成，目标保持 ACTIVE。
+
+## 第十七轮：修复助手列表在排序设置晚到时的发布竞态
+
+本轮接着 `d10bbc62` 的 R41 复现修复实际状态错误。完成的计划页、分栏、导航和流 reader 释放未重做。共享分支随后加入其他任务的模型轨迹、浮层与图标更新；保留它们，并在发现 37 个源码路径漂移后重跑最终全量与全部检查。第一次 263 文件 / 1581 案例结果只属于较早源码，不能代表最后提交；后续共享全量又出现 9 个路径漂移。最终使用独立本机副本，固定已提交 HEAD 加本轮两个源码文件，覆盖本轮实际提交候选，保留原工作树中的其他任务改动。
+
+### R41 已修复：最后一次异步等待之后才决定发布
+
+`itemListManager.loadItems()` 原本在 Agent/群组返回后核对 token，但随后还要等待 `loadSettings()`。旧请求 A 在这段等待期间已经失去所有权，新请求 B 已显示当前列表；A 恢复后仍会发布旧缓存、空列表或错误提示。现在保留已有的早期检查，并在排序设置的成功/异常路径合流后再次核对 token，再进入同步的排序、缓存和 DOM 发布。旧请求也不再启动后续 persona / 未读刷新。生产代码新增 7 行，沿用原有加载所有者，没有添加第二个状态源或测试专用接口。
+
+当前请求仍按设置顺序排列；读取排序设置失败时，仍使用原有群组优先和名称排序。旧请求的丢弃规则包含空结果和错误回退，不将空列表当作较新事实。
+
+### 回归测试验证公开列表、缓存和选中行
+
+在既有 `state-authority.test.js` 追加 5 个场景，直接执行未改写的公开模块源码和 `init/loadItems/getLoadedItems`。用受控设置 promise 确认 A 已通过目录检查且正在等待设置，再让 B 发布当前 Agent/群组与设置排序，最后释放 A。四种旧结果分别是旧 Agent、空列表、目录错误、设置拒绝；验证当前 HTML、选中行对象、公开缓存与顺序保留，旧请求不再次查询未读。另一个场景验证当前设置失败仍正常回退。
+
+原实现 **6 通过 / 4 失败**；修复后 **10/10**，其中原有 5 个场景保留。测试不匹配 guard 源码字符串，不增加 mock 全局状态通道；每个新夹具都在 finally 关闭 JSDOM timer。最初一次命令在聊天目录运行导致 ENOENT；正式负向结果从实际仓库 cwd 重新执行并完整保存，不把路径错误算作产品缺陷。
+
+第二次共享工作树全量另有 `voice-input-engine.test.js` 的一个失败：原生 hook 的 `HOOK_KEY_PRESSED` 状态使 common single keys 测试得到“请先松开当前语音快捷键，再更改配置”。这个运行同时有 9 个源码路径漂移，完整日志另存，不当作最终候选验证，也不推断输入来自用户、其他测试或引擎自身。固定副本继续运行同一测试；桌面输入对现有 native hotkey 测试的影响仍需单独审查，未用重试、释放真实按键或跳过测试掩盖它。
+
+### 本机参考实现：结果的发布权与远端工作分开管理
+
+| 参考源码与实际阅读范围 | 实现细节及本轮采用的原则 |
+| --- | --- |
+| ZCode `v4/SessionsIndexStore.ts` 本轮复核 218–343、593–695 行；此前已读完整文件 | `connect` 在订阅 ACK 后同时核对 generation / closed，旧 ACK 精确退订；catch 也先拒绝过期失败。recovery timer 捕获 transport 和 generation，不能把旧失败发布到新订阅；换 transport 时保留稳定 store 与最后投影。这里借鉴的是异步结果发布前确认当前所有者，不复制其整个 transport 架构。 |
+| DSH `api/gateway/src/client/journal-stream.ts` 完整文件 | `readPageWhileFollowing` 一边等 page 一边继续消费 follow，`Promise.race` 的 page-error 被显式观察；新代际开场帧可以使旧 page superseded，page 成功后还检查 signal。修复窗口达到 cursor 后才 publish 一份 replacement，期间缓存实时 entry / notification，保留旧投影。单独的历史 prepend 使用逻辑 stream signal；不是所有分页都套同一代际规则。dispose 先标记并等待 stream 与 consumer，抑制清理期间的失败通知。 |
+| DSH `api/gateway/src/client/remote-stream.ts`、`snapshot-stream.ts` 完整文件 | 物理 generation 带独立 signal，restart 增 revision 并取消当前代际；旧 yield、accept、catch、retry 都检查当前身份。snapshot 在 domain replace 成功后才 accept；旧 snapshot 在重连时保留。它们将连接重试、快照应用和资源释放职责分开，避免把 UI 加载状态当作远端事实。 |
+| DSH `api/gateway/tests/journal-stream.client.spec.ts` 439–523、588–645、843–885 行 | 受控 promise 覆盖 carrier 换代、第二次 repair 被替代、dispose 后故障被抑制；断言最终 changes、cursor 和失败回调，而非实现中某行代码。本轮测试也控制真实 await 边界，再观察当前视图。参考测试未运行，没有声称整个参考测试文件或整仓库覆盖。 |
+
+参考仅只读；哈希和逐文件阅读范围在证据中保存。DSH 的逻辑 stream lifetime 与物理 generation 不等于本仓库每次目录请求 token，不引入不适用的全局 cancellation / pagination 语义。
+
+### 实际渲染与验证边界
+
+独立临时 Electron 进程用实际 `itemListManager.js`、实际样式入口和受控目录/设置响应，在原生 Chromium 中执行四种竞态。当前行、选中状态、缓存、DOM 身份和可见行保持；最终 CDP 合成截图显示实际列表，四组前后 bitmap 一致并已查看。夹具补齐 `.sidebar.active`、资源 base 与桌面容器；普通隐藏 capture/首个 paint 帧不作为视觉通过证据。探针只销毁自身窗口；未接入生产 preload / backend，因此证明范围为真实 renderer 模块与受控接口，不能推广为全生产链路验证。
+
+现有实际窗口另做只读截图和状态比较，未重载、导航或输入；标签、草稿、主题、焦点和滚动保持原样。
+
+### R42 已复现，尚未修复：旧未读计数改写新徽章
+
+`refreshUnreadCounts()` 的多个调用没有响应发布所有权检查。通过公开模块，旧刷新 A 等待，刷新 B 返回 `nova:1` 并显示 “1”；随后 A 返回 `nova:9` 会改成 “9”，A 返回空 counts 会移除新徽章。两个场景已受控复现，源码哈希、前后徽章值、夹具在证据中保存；没有触碰用户窗口或数据。
+
+还找到第二个真实查询入口：`uiManager.refreshUnreadCounts` 也直接调用 `getUnreadTopicCounts`，再通过公开 `itemListManager.updateUnreadBadges` 发布。它核对的是 UIManager 的生命周期 generation，不能凭此证明同一生命周期内并发请求或跨两个发布者的顺序正确。下一步需沿这两个调用者核对目录换代、读取消息后的更新、显式刷新及错误路径，建立未读响应的当前发布权，并用实际徽章回归证明。persona 缓存/定时器、双击/中键延时和共享业务八个摘要的语义审查仍未完成；本轮不盲目刷新 hash 来消掉 guard。
+
+为下一轮复核了 ZCode `unreadTaskCount.ts`、`taskStatusUnreadSync.ts`、`taskListRowActivity.ts` 三个完整文件：窗口角标按任务身份去重，并与列表 meta.unreadAt 取同源事实；后台终态先写精确 entity 的字段 overlay，持久化回包只对账未读字段，失败回滚并标脏，不以整份 meta 覆盖实时活动或排序。DSH `ui-session/src/client/index.ts` 仅阅读状态接口、构造/释放、状态协调与 binding 部分（49–72、263–354、473–658 行），及 workspace tree 的 1–54、389–423、589–621 行：completionUnread 属 UI session 状态投影，主视图 retained 清除提醒，初始停止态不随意标新完成，基线 ready 后才清理不存在的记录；树读取同一 status source。这些实现帮助确认字段与发布责任，不把任务完成提醒等同于本仓库话题未读数量；参考测试未运行。
+
+### 最终验证
+
+最终全量 **268 个测试文件 / 1618 个案例通过，0 失败、0 跳过、0 取消、0 超时**；1453 个源码文件的运行前后哈希不变，并再次确认验证副本字节一致；副本的 HEAD 和本轮两个源码文件也与实际提交候选一致。列表状态 **10/10**、Electron Node **10/10**、真实 Chromium 四种竞态及可见截图对照通过；专用 preload **3/3**、事件/注册表聚焦 **33/33**。所有 **43 项检查**已执行，常规七项通过，扩展 **28/30**。UI **126/126**、bootstrap **46/46**；固定副本语音测试 **12/12**，此前原生热键拒绝配置的失败仍作为待调查记录保留。
+
+契约仍因 **86 个未登记入口**失败；边界 **403 个当前 HEAD 已有差异路径**逐一分类。共享业务八个摘要仍待语义审查，guard 首个失败在 chatManager；计划页两个重复 selector 未改。事件图最终 **745 事件 / 583 文件 / 6 登记 / 86 未登记**；事件图与该提交候选一致；本轮没有事件声明变化，未添加端点或提升 core manual_required。没有新增白名单、刷新共享 hash、push 或 PR。
+
+聊天工作区 `outputs/engineering-review/round-17/` 保存最后全量、43项检查、6/4负向与10/10修复结果、源码稳定性、两种 runtime、原生 renderer / 可见截图、只读实际窗口、参考范围及下一轮未读竞态证据。第一次全量所对应的源码漂移另存，不能充作最终验证。
+
+本轮关闭 R41，下一步优先 R42，再继续整个工程的资源、生产接口、共享边界、Rust/发布与 UIUX 审查。目标仍为 ACTIVE / INCOMPLETE；原先完成的计划页设计不再重复。

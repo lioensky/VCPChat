@@ -1053,6 +1053,13 @@ window.itemListManager = (() => {
             console.warn("[ItemListManager] Could not load combinedItemOrder from settings:", e);
         }
 
+        // 读取排序设置时也可能已有新一轮加载完成；最后一次 await 后再确认发布权，
+        // 防止旧成功、空列表或错误回退覆盖当前缓存和 DOM。
+        if (loadToken !== activeLoadItemsToken) {
+            console.debug('[ItemListManager] Ignoring stale loadItems result after settings.');
+            return;
+        }
+
         if (combinedOrderFromSettings.length > 0 && items.length > 0) {
             const itemMap = new Map(items.map(item => [`${item.type}_${item.id}`, item]));
             const orderedItems = [];
