@@ -57,14 +57,18 @@ test('mounted terminal: xterm theme follows the frame and switches with the ligh
     });
     const view = doc.getElementById('view');
     let handle;
-    try { handle = await provider.mountTab({ id: 'terminal:main' }, view); } catch (_e) { /* the fake api is minimal */ }
-    const screen = view.querySelector('.side-terminal-screen');
-    assert.ok(screen && terminals[0], "terminal mounted");
-    assert.equal(screen.getAttribute('style'), null, 'no inline style: the frame color comes from CSS');
-    assert.equal(terminals[0].options.theme.background, '#14161a');
-    doc.body.setAttribute('data-vcp-theme', 'light');
-    await new Promise(r => setTimeout(r, 20));
-    assert.equal(terminals[0].options.theme.red, LIGHT_PALETTE.red);
-    assert.equal(terminals[0].options.theme.background, '#fafafa');
-    await handle?.dispose?.();
+    try {
+        handle = await provider.mountTab({ id: 'terminal:main' }, view);
+        const screen = view.querySelector('.side-terminal-screen');
+        assert.ok(screen && terminals[0], "terminal mounted");
+        assert.equal(screen.getAttribute('style'), null, 'no inline style: the frame color comes from CSS');
+        assert.equal(terminals[0].options.theme.background, '#14161a');
+        doc.body.setAttribute('data-vcp-theme', 'light');
+        await new Promise(resolve => dom.window.queueMicrotask(resolve));
+        assert.equal(terminals[0].options.theme.red, LIGHT_PALETTE.red);
+        assert.equal(terminals[0].options.theme.background, '#fafafa');
+    } finally {
+        await handle?.dispose?.();
+        dom.window.close();
+    }
 });

@@ -62,7 +62,7 @@ export function createTerminalSideProvider({
          */
         async openTerminalTab(options = {}) {
             if (!sidePaneController) return null;
-            const handle = await sidePaneController.openTab({
+            return sidePaneController.openTab({
                 id: SINGLETON_TAB_ID,
                 kind,
                 title: '终端',
@@ -71,9 +71,6 @@ export function createTerminalSideProvider({
                 scopeMode: 'global',
                 ...options
             });
-            sidePaneController.setVisible?.(true);
-            handle?.focus?.();
-            return handle;
         },
 
         async mountTab(tab, viewElement) {
@@ -86,6 +83,7 @@ export function createTerminalSideProvider({
             let fitAddon = null;
             let sessionId = null;
             let generation = 0; // guards against a late create result after dispose / re-attach
+            let connectionOperation = null;
             let exited = false;
             let unsubscribeData = null;
             let unsubscribeClear = null;
@@ -266,42 +264,63 @@ export function createTerminalSideProvider({
                 setStatus('终端已退出', 'exited');
             });
 
-            // Attaches this view to the shared terminal session (starting it when none is running).
-            async function attachSession() {
-                const myGeneration = ++generation;
-                fit();
-                setStatus('连接中...');
-                // 在屏上打开时带上自己的尺寸，让新会话一开始就按这个宽度排版
-                const res = await api.terminalCreate(screen.offsetWidth ? { cols: term.cols, rows: term.rows } : {});
-                if (isDisposed || myGeneration !== generation) {
-                    if (res?.success) api.terminalKill?.(res.data.id);
-                    return;
-                }
-                if (!res?.success) {
-                    setStatus(res?.error || '终端启动失败', 'error');
-                    term.write(`\x1b[31m${res?.error || '终端启动失败'}\x1b[0m\r\n`);
-                    return;
-                }
-                sessionId = res.data.id;
-                exited = false;
-                setStatus('已连接终端', 'connected');
-                wsSelect.title = `已连接终端 · 与终端窗口 / AI 命令共用同一个会话${res.data.pid ? ` · PID ${res.data.pid}` : ''}`;
-                if (screen.offsetWidth) claimSize(); // opened on screen: take over the size
+            // One admitted create/restart at a time; transport rejection remains retryable.
+            function runConnection(action) {
+                if (isDisposed) return Promise.resolve();
+                if (connectionOperation) return connectionOperation;
+                connectionOperation = Promise.resolve().then(() => {
+                    if (!isDisposed) return action();
+                }).catch(error => {
+                    if (isDisposed) return;
+                    const message = error?.message || String(error);
+                    setStatus(message, 'error');
+                    term.write(`\x1b[31m${message}\x1b[0m\r\n`);
+                }).finally(() => { connectionOperation = null; });
+                return connectionOperation;
             }
 
-            async function restartSession() {
+            // Attaches this view to the shared terminal session (starting it when none is running).
+            function attachSession() {
+                return runConnection(async () => {
+                    const myGeneration = ++generation;
+                    fit();
+                    setStatus('连接中...');
+                    // 在屏上打开时带上自己的尺寸，让新会话一开始就按这个宽度排版
+                    const res = await api.terminalCreate(screen.offsetWidth ? { cols: term.cols, rows: term.rows } : {});
+                    if (isDisposed || myGeneration !== generation) {
+                        if (res?.success) api.terminalKill?.(res.data.id);
+                        return;
+                    }
+                    if (!res?.success) {
+                        setStatus(res?.error || '终端启动失败', 'error');
+                        term.write(`\x1b[31m${res?.error || '终端启动失败'}\x1b[0m\r\n`);
+                        return;
+                    }
+                    sessionId = res.data.id;
+                    exited = false;
+                    setStatus('已连接终端', 'connected');
+                    wsSelect.title = `已连接终端 · 与终端窗口 / AI 命令共用同一个会话${res.data.pid ? ` · PID ${res.data.pid}` : ''}`;
+                    if (screen.offsetWidth) claimSize(); // opened on screen: take over the size
+                });
+            }
+
+            function restartSession() {
+                if (isDisposed) return Promise.resolve();
+                if (connectionOperation) return connectionOperation;
                 if (sessionId && !doc.defaultView.confirm('重新启动共享终端？AI 工具、终端窗口和所有侧栏视图的当前命令都会中止。')) return;
                 if (!sessionId) return attachSession();
-                setStatus('重启中...');
-                const res = await api.terminalRestart(sessionId);
-                if (isDisposed) return;
-                if (!res?.success) {
-                    setStatus(res?.error || '终端重启失败', 'error');
-                    return;
-                }
-                exited = false;
-                setStatus('已连接终端', 'connected');
-                claimSize();
+                return runConnection(async () => {
+                    setStatus('重启中...');
+                    const res = await api.terminalRestart(sessionId);
+                    if (isDisposed) return;
+                    if (!res?.success) {
+                        setStatus(res?.error || '终端重启失败', 'error');
+                        return;
+                    }
+                    exited = false;
+                    setStatus('已连接终端', 'connected');
+                    claimSize();
+                });
             }
 
             wsSelect.addEventListener('change', async () => {
@@ -351,6 +370,7 @@ export function createTerminalSideProvider({
                     return sessionId;
                 },
                 dispose() {
+                    if (isDisposed) return;
                     isDisposed = true;
                     generation += 1;
                     clearTimeout(resizeTimer);

@@ -5239,14 +5239,14 @@
       "consumers": [
         {
           "file": "modules/chatManager.js",
-          "line": 2335,
+          "line": 2336,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/chatManager.js",
-          "line": 2335,
+          "line": 2336,
           "kind": "preload-subscription",
           "match": "onSelectionChange("
         }

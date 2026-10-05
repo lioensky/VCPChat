@@ -374,16 +374,18 @@ export function createBrowserSideProvider({
                     if (target) navigate(target);
                     return;
                 }
+                // Preserve the failed target before clearing the notice. navigate also
+                // queues it when the error arrives before the guest's first dom-ready.
+                if (lastFailure?.validatedURL) {
+                    navigate(lastFailure.validatedURL);
+                    return;
+                }
                 if (!canUseGuest()) {
                     if (pendingUrl) navigate(pendingUrl);
                     return;
                 }
                 hideNotice();
-                if (lastFailure?.validatedURL) {
-                    webview.loadURL(lastFailure.validatedURL).catch(() => { /* reported through did-fail-load */ });
-                } else {
-                    webview.reload();
-                }
+                webview.reload();
             }
 
             const submitAddress = () => {

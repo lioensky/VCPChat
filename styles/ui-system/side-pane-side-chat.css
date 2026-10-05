@@ -74,10 +74,17 @@ html .side-chat-empty-state:where(.vcp-ui-scope, .vcp-ui-scope *) {
     align-items: center;
     justify-content: center;
     text-align: center;
-    padding: 20px 16px;
+    padding: 0 24px 40px;
     margin: auto;
-    max-width: 280px;
+    max-width: 24rem;
     color: var(--secondary-text, var(--vcp-ui-port-color-rgba-241-245-249-0-6));
+}
+
+/* 对照 ZCode 侧边聊天空页：中号图标，下面标题、一行说明 */
+html .side-chat-empty-icon:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    --vcp-ui-icon-size: 28px;
+    margin-bottom: 20px;
+    opacity: 0.85;
 }
 
 html body[data-vcp-theme="light"] .side-chat-empty-state:where(.vcp-ui-scope, .vcp-ui-scope *) {
@@ -85,10 +92,10 @@ html body[data-vcp-theme="light"] .side-chat-empty-state:where(.vcp-ui-scope, .v
 }
 
 html .side-chat-empty-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    font-size: calc(var(--vcp-ui-font-size) - 1px);
+    font-size: var(--vcp-ui-font-size);
     font-weight: 500;
     color: var(--primary-text, var(--vcp-ui-port-color-f1f5f9));
-    margin-bottom: 4px;
+    margin-bottom: 8px;
 }
 
 html body[data-vcp-theme="light"] .side-chat-empty-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
@@ -96,7 +103,7 @@ html body[data-vcp-theme="light"] .side-chat-empty-title:where(.vcp-ui-scope, .v
 }
 
 html .side-chat-empty-desc:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    font-size: calc(var(--vcp-ui-font-size) - 3px);
+    font-size: calc(var(--vcp-ui-font-size) - 1px);
     line-height: 1.5;
 }
 

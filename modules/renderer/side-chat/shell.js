@@ -19,11 +19,12 @@ export function createSideChatShell({
         <span class="side-chat-topic-title sr-only" title="${escapeHtml(descriptor.title)}">${escapeHtml(descriptor.title)}</span>
         <div class="side-chat-messages-container" tabindex="-1" aria-label="辅助对话消息">
           <div class="side-chat-empty-state" aria-hidden="true">
+            <span class="vcp-ui-icon side-chat-empty-icon">chat_bubble</span>
             <div class="side-chat-empty-title">辅助对话</div>
             <div class="side-chat-empty-desc">
               ${isSnapshot
-                ? '发送第一条消息时会带上来源话题的历史快照。在下方输入提问，或在主聊中划选文字追问。'
-                : '当前为仅引用模式。选区引用会作为上下文随问题一同发送。'}
+                ? '带着来源话题的快照提问，也可划选主聊文字追问。'
+                : '仅引用模式：选区引用会随问题一同发送。'}
             </div>
           </div>
         </div>

@@ -314,9 +314,64 @@ ZCode 的 BrowserTabRecoveryStore 全文已读：mutationQueue 串行化、whenI
 | 聊天和辅助对话 | 尚无本轮深入结论 | 主聊天/辅助对话所有者、流/取消/重试/编辑、草稿、会话与工作区隔离，对照 reference lease/occurrence |
 | Git、ProjectForge、源码后端 | 本轮只追到 provider 读取与已有测试 | IPC/preload 契约、读写根目录约束、真实 Git 与回退竞态、并发快照、索引、错误分类、批次缓存、隐藏面板 I/O |
 | 主进程、其他服务与 Rust | 清单定位到 IPC/services、chat data/audio/assistant/indexer 等模块 | 主进程资源生命周期、异常恢复与服务装配、Rust 测试与接口、插件/工具调用、升级/打包运行闭包 |
-| 测试体系 | 生命周期/批量/同级名称回归在旧源码失败；过期装配已修正；六个入口真实 Electron；图标检查执行真实启动；当前全量 258/0 | 核实其余断言和生产 IPC/持久化覆盖、继续消除随意等待/源码字符串自证、区分单元/真实后端/窗口验证、检查门禁新分支覆盖 |
+| 测试体系 | 生命周期/批量/同级名称回归在旧源码失败；过期装配已修正；六个入口真实 Electron；图标检查执行真实启动；最新第十轮全量 260/0 | 核实其余断言和生产 IPC/持久化覆盖、继续消除随意等待/源码字符串自证、区分单元/真实后端/窗口验证、检查门禁新分支覆盖 |
 | UI/UX | 前两轮计划分栏有实际窗口证据；本轮正文错误归属修复 | 全入口、焦点、键盘、读屏、浅/深/磨砂、窄窗口、空/加载/错误/权限/断连、性能与隐藏页面行为；不能仅评估计划页 |
 | 可维护性与 AI 可读性 | 此记录包含参考路径、身份约束、故障证据和未覆盖范围；picker 的误导性复制文件头已纠正 | 入口/数据/生命周期图与实际依赖一致性、其余复制文件头、重复真相、隐式全局/魔法 key、生成规则、文档过期、合理模块边界与契约 |
 | 完成审计 | 未通过：上表仍有明确未覆盖范围 | 每个要求都需具体当前证据；不能用本轮修复或已有绿灯宣称全工程完成 |
 
 下一轮继续补齐参考的资源、状态和生命周期链，沿具体 provider 的 cleanup 与设置生产 owner/IPC 路径验证，核实注册覆盖/注销以及剩余四项扩展检查的适用契约。随后沿实际依赖进入聊天、服务、Rust、独立应用与发布链。检查边界要随证据扩展，不限制在新建的侧栏文件。
+
+## 第十轮：终端请求与清理、浏览器错误页重试
+
+计划页维持已完成状态。本轮沿终端 view → typed preload → terminalHandlers → 共享 PowerShellExecutor PTY 追踪，并深入比较 DSH 的 Client/Host 分层及 ZCode 的常驻终端分支。没有把参考源码中的说明当成操作指令。
+
+### R25：终端创建 RPC 拒绝后，资源失去清理入口
+
+terminalCreate 的传输拒绝原先直接使 mountTab 拒绝。控制器移除标签后无法取得 handle，已经创建的 xterm、主题/尺寸 observer、三个输出订阅失去 dispose 入口；用户也无法在原视图重试。现在 create/restart 的拒绝进入当前视图错误状态，输出错误原因并保留 handle，重试成功后由正常关闭路径注销订阅、销毁 xterm、释放自己的 view ID。
+
+### R26：连续重试创建重复 view，连续重启重复中止共享 PTY
+
+原先两个点击分别发出 terminalCreate 或 terminalRestart。前者重复占用受限 view 配额并发起 IPC 分配；已有 generation 会注销较旧的成功结果，不能把这条路径误报为必然泄漏。后者属于真正重置 AI、终端窗口和侧栏共同使用的进程。现在以每个 mounted view 的一个 connectionOperation 合并正在进行的 create/restart；操作结束或拒绝后清除，允许用户明确重试。重启确认在合并检查之后，重复点击也不会重复确认。保留 generation/disposed 检查：关闭之后迟到的 create 成功只注销其返回的 view，不结束共享 PTY。
+
+### R27：旧 handle 重复清理和入口迟到抢焦点
+
+terminal handle.dispose 增加同一生命周期的幂等保护，三个 unsubscribe 和 xterm.dispose 只执行一次。openTerminalTab 直接返回控制器 openTab，避免其 await 后另一次 setVisible/focus 覆盖用户后续收起面板、继续在主输入框打字的意图。这是终端自己的入口修复，未重新实现已修复的 browser 入口。
+
+新增 terminal-lifecycle 文件使用真实 provider、真实控制器和受控 IPC Promise，七个不同的生命周期场景在旧源码上 **1 通过 / 6 失败**，修复后 **7/7**。主题测试不再吞掉 mount 异常，以 MutationObserver 的微任务结算代替固定 20ms 猜测，并在 finally 释放 handle、关闭 JSDOM。现有四项主题测试通过。
+
+实际主窗口临时 iframe 对比六项：RPC 拒绝后可重试、创建去重、重启去重、重复清理一次、后续收起保留、主输入焦点保留，全部 **false→true**。采用受控 API 和替代终端输入元素，不据此宣称真实 xterm 的 IME/复制粘贴/ANSI 或共享进程故障全部验证完毕。截图后 iframe 移除，窗口标签/草稿/主题保留，没有 reload。
+
+### R28：浏览器错误面板出现时，重试可能尚无可用 guest
+
+最初的真实 Electron 两种失败重试均恢复成功，不能仅凭死分支就下结论。随后全量测试捕获更早的时序：首个 did-fail-load 先于 dom-ready，错误面板可点击但 canUseGuest 为 false，pendingUrl 又为空，reload 直接返回；服务器只有首次失败请求，10 秒后仍为错误文档。另一个受控路径确认：hideNotice 清空 lastFailure 后，validatedURL 分支永远不执行，guest 保留上一成功地址时会刷新错误目标。
+
+修复在清除错误状态前交给 navigate(lastFailure.validatedURL)。guest 已就绪时加载该失败地址，未就绪时由现有 pendingUrl 排队，在 dom-ready 后加载。保留普通刷新和 crash 重建路径，没有再造一套 guest 状态机。
+
+已有 browser-address 文件增加两种事件顺序，旧源码 **10 通过 / 2 失败**，修复后 **12/12**。真实 Electron 集成测试使用本机临时 HTTP 服务，覆盖首次失败及成功页后导航失败：立即点击错误页重试，必须产生同一失败路径的新请求、提交唯一的新响应标题、隐藏 notice；dispose 后等待主进程真实 guest 的 destroyed，两个 guest 均退出。单项入口遵循已有隔离 profile 和异常退出协议，成功不会仅取决于 Electron 启动退出码。隐藏窗口使用软件 compositor；硬件截图的 UnknownVizError 日志保留，不混成产品重试失败。集成截图仅是最小宿主 fixture，不作为实际产品视觉一致性的证据。
+
+主窗口另一个不启动 guest 的事件 fixture 验证“未就绪重试排队”“已就绪使用失败目标” **false→true**，截图后恢复原窗口。最初一次完整测试 **259 文件通过 / 1 文件失败**（上述真实 browser 早期重试），最终修复后重新完整运行，结果见下文；失败运行原样保留。
+
+### 本轮深入研究的参考细节与取舍
+
+| 参考源码 | 已核实的具体设计 | 对本工程的判断 |
+| --- | --- | --- |
+| DSH `packages/api/terminal-controller/src/client/model.ts`、`client/index.ts` | model 的创建/关闭 Promise 合并；停止后不再分配；attachment 和 carrier generation 防迟到错误覆盖；输入/resize 串行并按 UTF-8 限额；快照/输出序号验证；render ACK 与 xterm 回调相接。service 按 Session + occurrence 找 view，contentId 保存 Host identity；关闭意图先持久化再移除 binding/view，后台清理失败可重试，不能删除重开后的 view。 | 采用请求合并与明确生命周期归属。全局共享 PTY 与 DSH 的 Session terminal 不同，不能按 tab 直接复制 remote.close。我们的输出背压、屏幕恢复和输入归属仍需独立核实。 |
+| DSH `client/retention.ts`、`client/bindings.ts`、`client/close-requests.ts` | window hold 的物理流 ACK 先于输出 follow；释放拒绝未就绪 waiters 并等待 stream.dispose。每个 terminal 的 cleanup 单独 storage key，减少跨窗口覆盖；storage 失败有内存降级，不能等同持久化一定成功。 | 不把 DOM unmount、窗口断连和进程终止混为一事。我们的本地 IPC view 不需要凭空加入远程 hold/storage 协议，但 sender 销毁/导航后清理必须验证。 |
+| DSH `packages/client/ui-sidebar-terminal/src/client/terminal.tsx`、`LazyTerminalBody.tsx`、`TerminalCleanup.tsx`、`TerminalRecovery.tsx` | xterm 在 body 真正挂载后 lazy 加载；screen 的 write 回调 ACK render revision，只有 visible + writable 才抢尺寸/焦点，只读视图跟随 Host 尺寸。后台清理错误显示在独立 root overlay 的 role=alert 并调用 model.retryClose，不复活原标签。恢复按钮只拥有错误与尝试状态，effect 退出后不写回本地状态。 | UI 展示错误和调用命令，资源/重试决策由 owner 持有。没有为了本轮错误处理另建常驻通知机制；后续应核实我们所有入口的错误提示、焦点和可访问性。 |
+| DSH Host `src/index.ts`、`src/terminal.ts`、`src/retention.ts`、`src/stream.ts`（本轮完整读完） | pending allocation 计入容量并按 caller ID 去重；closedIds 在异步清理前封闭 identity；分配后构造失败保留 allocation cleanup，失败清理能重试；owner dispose 等待 pending 和进程清理并聚合错误。headless xterm + serialize 保存有界屏幕，统一队列排序 output/resize/snapshot；最新 follower 独占输入，旧 follower 退出核对具体身份。UTF-8 流式解码；每 follower 按编码 frame 字节限制，溢出明确失败而非静默丢字。close 等待 terminate 和最终输出 drainage 再结束 followers。retention 只在无人持有且连续确认 idle 达到阈值时回收，unknown/busy 保守保留，epoch 使迟到观察无效，cleanup 与活动观察各自不重叠。 | 资源归属、错误恢复、容量与背压均有明确 owner。不能用“页面不可见”推断没有任务，也不能认为一次 kill 调用返回就证明整个进程树结束。尚未深入完成 DSH subprocess provider 的进程范围终止、部署配置与其他 provider 的进程清理测试。 |
+| ZCode `packages/ui/src/terminal/sidePaneTerminalSessionRegistry.ts`（完整）和 `TerminalSession.tsx` persistentKey 分支 | registry 的 hostEl/xterm/PTY 和订阅常驻，detachDom 只搬入 stash；release 删除登记并调用 disposer。未完成 create 的 placeholder 在失败/卸载时释放，create reject 比较具体 entry，迟到成功仅清理自己得到的 ID。data、exit、onData 和 Windows composition fallback 属于 registry；resize/theme observer 属于每次 mount。profileTheme 保存到 entry，避免重挂丢主题。Ctrl+V 明确取消原生 paste 后手工粘贴一次；HTTP/OSC8 链接拒绝其他 scheme。 | 同样区分常驻资源和当前 DOM 的订阅。我们的 xterm 随 view 关闭而释放，PTY 属于全局 executor；不能迁移成每 tab 创建 PTY。其普通非 persistent 分支、IME helpers 和对应测试仍未完整读完。 |
+| ZCode `packages/services/src/terminal/terminalService.ts` 的 lazy import、CWD 与 create/write/resize/dispose/disposeAll 分支 | node-pty import 失败清缓存允许重试；启动目录在传入目录、HOME、home、根目录中找可用值；每 create 分配独立 ID/PTY，exit 注销 emitter/记录，显式 dispose kill 该 PTY，应用退出 disposeAll 逐项清理。 | 与我们的 shared PTY 模型不同。源码读到 cleanupTerminal，不能据此宣称其 kill 失败、子进程树和跨平台行为都已实测。 |
+
+DSH shells.ts 及对应 controller 测试也已读完：默认 shell 来自目标 execution provider；只有 provider 没声明默认值时才采用保守平台兜底，已声明但无法解析不会静默换 shell。可选候选只跳过明确的 executable-not-found，传输错误和取消继续抛出；按 executable 名忽略大小写/扩展名去重。恢复已有 terminal 不要求重新发现当前默认 shell，进程存在时保留原配置；新建缺失 shell 则明确失败。参考中的真实 bash/TERM/尺寸/补全测试在 Windows 被 skip，本轮没有运行它。
+
+DSH 的 controller、retention、stream、terminal 行为测试本轮读完，包括独立窗口 hold、迟到活动观察、双阶段 dispose barrier、终止失败重试、UTF-8 分片、独占输入转交、序号/字节容量、退出前输出 drainage。model/recovery 测试已深入读多个区段，尚未逐项完成覆盖核对；UI cleanup/recovery 测试已读完，验证只重试选中的失败 identity、旧 Session 的迟到成功/失败不覆盖当前提示；只读参考测试，未在参考仓运行。借鉴的是可控时序和实际结果验证，不是把参考测试数量搬过来。
+
+我们的主进程 `terminalHandlers` 已读 create/所有权、sender 导航销毁、write/resize/kill/restart/cd、command-run 与 disposeAll。`terminal:kill` 实际只 detach 当前 sender 的 view，`restart` 才重置 PTY。PowerShellExecutor 已读 replay/mirror、真实 spawn/startup handshake、旧 onExit 身份核对和 cleanup；仍未完整核实命令中断、启动失败/资源 barrier、全部交互工具路径。已有 terminal-handlers 测试执行真实 node-pty/PowerShell，验证共享 PID、迟到 replay、不同 sender 拒绝访问、关闭 view 不杀 shell、shell 退出重启及 AI command-run；不能把 FakeSender 当成真实 Electron IPC 集成。
+
+### 验证与剩余范围
+
+修复后全量 **260 个测试文件通过，0 失败、0 超时**；在并行聊天改动提交并同步事件图后，提交前再次全量运行仍为 **260/0**。三次运行分别保存：最初 259/1 的真实故障、修复后 260/0、当前提交基线 260/0。
+
+七项常规 guard 全部通过，UI **121/121**，最终侧栏相关 **255/255**，浏览器/终端本轮聚焦 **24/24**。扩展检查另有 **27/30** 通过；历史 design boundary 报告 390 个路径，均在当时 HEAD 已有差异，另三类仍是缺失 `preloads/shared/catalog.js`、chat-input/side-pane-shell 重复 CSS 选择器、appearance-engine wallpaper 源码断言。未放宽白名单或豁免这些检查。没有新增生产模块或 CSS。本轮七项检查运行时事件图通过；随后并行任务提交 `5b39d738` 的聊天修改，事件图只因 chatManager 的两处行号变成过期，已生成并审查这两处定位更新，检查恢复通过。该新基线另行补跑提交前全量及检查，前两次运行日志保留。
+
+覆盖账本继续有效，全工程目标仍未完成。下一步补齐具体 provider 的其余错误路径、主进程关闭和真实 guest/PTY 契约，核实上述扩展检查与现行生产实现；继续参考布局/state/planner 及聊天、Git/源码/服务、Rust 和发布链审查。不能用这轮终端和 browser 修复宣称整个工程已完成。

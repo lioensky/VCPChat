@@ -59,16 +59,17 @@ html body:is(.light-theme, [data-vcp-theme="light"]) .side-pane-tab-item:hover:w
     background-color: var(--vcp-ui-port-color-rgba-0-0-0-0-05);
 }
 
-/* 选中的标签是一张浮起来的卡片（底色 + 细边框 + 很淡的阴影），而不是把底色压深 */
+/* 选中的标签是一张浮起来的卡片（底色 + 细边框 + 很淡的阴影），而不是把底色压深。
+ * 卡片颜色取自当前主题：主题的浅底色里调进一点主题色，边框同理，换主题会跟着变 */
 html .side-pane-tab-item.active:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    background-color: var(--vcp-ui-port-color-rgba-255-255-255-0-10);
-    border-color: var(--vcp-ui-port-color-rgba-255-255-255-0-12);
+    background-color: color-mix(in srgb, var(--highlight-text, var(--vcp-ui-accent)) 10%, var(--secondary-bg, var(--vcp-ui-port-color-rgba-255-255-255-0-10)));
+    border-color: color-mix(in srgb, var(--highlight-text, var(--vcp-ui-accent)) 22%, var(--border-color, var(--vcp-ui-border)));
     box-shadow: var(--vcp-ui-shadow-sm);
 }
 
 html body[data-vcp-theme="light"] .side-pane-tab-item.active:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    background-color: var(--vcp-ui-port-color-ffffff);
-    border-color: var(--vcp-ui-border);
+    background-color: color-mix(in srgb, var(--highlight-text, var(--vcp-ui-accent)) 5%, var(--secondary-bg, var(--vcp-ui-port-color-ffffff)));
+    border-color: color-mix(in srgb, var(--highlight-text, var(--vcp-ui-accent)) 12%, var(--border-color, var(--vcp-ui-border)));
     box-shadow: var(--vcp-ui-shadow-elevation-hairline);
 }
 

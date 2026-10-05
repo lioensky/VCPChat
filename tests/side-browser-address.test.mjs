@@ -158,3 +158,29 @@ for (const reuse of [false, true]) {
         } finally { await h.cleanup(); }
     });
 }
+
+for (const readyBeforeFailure of [false, true]) {
+    test(`failed-page retry retains its target across guest readiness (ready=${readyBeforeFailure})`, async () => {
+        const h = await browserFixture();
+        try {
+            await h.controller.openTab({ ...h.tab, payload: { url: 'https://previous.test/' } });
+            const guest = h.doc.querySelector('webview'), loaded = [];
+            guest.getURL = () => 'https://previous.test/';
+            guest.canGoBack = guest.canGoForward = () => false;
+            guest.loadURL = url => { loaded.push(url); return Promise.resolve(); };
+            guest.reload = () => { loaded.push('reload-previous-page'); };
+            const emit = (type, detail = {}) => guest.dispatchEvent(Object.assign(new h.doc.defaultView.Event(type), detail));
+            if (readyBeforeFailure) emit('dom-ready');
+            emit('did-fail-load', { isMainFrame: true, errorCode: -324,
+                errorDescription: 'ERR_EMPTY_RESPONSE', validatedURL: 'https://failed.test/target' });
+            assert.equal(h.doc.querySelector('.side-browser-notice').hidden, false);
+            h.doc.querySelector('.side-browser-notice-retry').click();
+            if (!readyBeforeFailure) {
+                assert.deepEqual(loaded, [], 'navigation waits until the guest can accept it');
+                emit('dom-ready');
+            }
+            assert.deepEqual(loaded, ['https://failed.test/target']);
+            assert.equal(h.doc.querySelector('.side-browser-notice').hidden, true);
+        } finally { await h.cleanup(); }
+    });
+}
