@@ -120,6 +120,41 @@ test('mountTab renders plan, files, timeline and reloads on matching change even
     assert.equal(view.innerHTML, '');
 });
 
+test('the breadcrumb pill switches to any project, filters a long list and closes on Escape', async () => {
+    const projects = Array.from({ length: 8 }, (_, i) => ({ id: `p${i + 1}`, name: i ? `工程${i + 1}` : '算法工程', workspace_alias: i === 4 ? 'lab' : undefined, updated_at: `2026-09-${String(10 + i).padStart(2, '0')}` }));
+    projects.push({ id: 'gone', name: '已删工程', deleted_at: '2026-09-30' });
+    const { provider, calls, view, doc } = makeEnv({
+        projectForgeListProjects: async () => ({ success: true, data: projects }),
+        projectForgeGetProject: async (id) => { calls.get += 1; return { success: true, data: { ...DETAIL, project: { ...DETAIL.project, id, name: projects.find(p => p.id === id).name } } }; }
+    });
+    const handle = await provider.mountTab({ id: planTabId('p1'), payload: { projectId: 'p1' } }, view);
+    const tick = () => new Promise(r => setTimeout(r, 20));
+
+    view.querySelector('.side-plan-crumbs').click();
+    await tick();
+    // 全局标签没有「本话题用过」分组；删掉的工程不列，最近更新的在前
+    assert.equal(view.querySelectorAll('.side-plan-picker-label').length, 0);
+    const ids = [...view.querySelectorAll('.side-plan-picker-item')].map(b => b.dataset.projectId);
+    assert.deepEqual(ids, ['p8', 'p7', 'p6', 'p5', 'p4', 'p3', 'p2', 'p1']);
+    const filter = view.querySelector('.side-plan-picker-filter');
+    assert.equal(doc.activeElement, filter);
+    filter.value = 'lab';
+    filter.dispatchEvent(new doc.defaultView.Event('input'));
+    assert.deepEqual([...view.querySelectorAll('.side-plan-picker-item')].map(b => b.dataset.projectId), ['p5']);
+    view.querySelector('.side-plan-picker').dispatchEvent(new doc.defaultView.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(view.querySelector('.side-plan-picker'), null);
+    assert.equal(doc.activeElement, view.querySelector('.side-plan-crumbs'));
+
+    view.querySelector('.side-plan-crumbs').click();
+    await tick();
+    view.querySelector('.side-plan-picker-item[data-project-id="p3"]').click();
+    await tick();
+    assert.equal(view.querySelector('.side-plan-title').textContent, '工程3');
+    assert.equal(calls.updated.at(-1).title, '计划 · 工程3');
+    assert.equal(calls.updated.at(-1).payload.pinned, true);
+    handle.dispose();
+});
+
 test('plan pages navigate by keyboard and retain their scroll positions across refreshes', async () => {
     const { provider, view, dom, fire } = makeEnv();
     const handle = await provider.mountTab({ id: planTabId('p1'), payload: { projectId: 'p1' } }, view);

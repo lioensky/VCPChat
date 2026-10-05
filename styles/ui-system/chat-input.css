@@ -228,7 +228,11 @@
    popover gets the same treatment in appearance.css (it mounts on body, outside
    any .vcp-ui-scope). Unlayered on purpose: the picker's injected sheet is
    unlayered, so a layered rule would lose to it. */
+/* ComposerModelSelect measures the card and positions the menu 4px above it.
+   Keep it absolute: backdrop-filter on the card creates a containing block
+   for fixed descendants, which makes viewport-based anchor offsets unsafe. */
 html .vcp-ui-scope .vcp-model-select-menu {
+    position: absolute;
     border: 1px solid var(--vcp-ui-composer-border);
     border-radius: 16px;
     background: var(--vcp-ui-composer-input);
@@ -241,11 +245,4 @@ html .vcp-ui-scope .vcp-model-select-menu :is(.vcp-model-select-item, .vcp-model
 
 html .vcp-ui-scope .vcp-model-select-menu .vcp-model-select-search {
     border-color: var(--vcp-ui-composer-border);
-}
-
-/* ComposerModelSelect measures the card and positions the menu 4px above it.
-   Keep it absolute: backdrop-filter on the card creates a containing block
-   for fixed descendants, which makes viewport-based anchor offsets unsafe. */
-html .vcp-ui-scope .vcp-model-select-menu {
-    position: absolute;
 }

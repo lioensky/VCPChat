@@ -375,3 +375,48 @@ DSH 的 controller、retention、stream、terminal 行为测试本轮读完，�
 七项常规 guard 全部通过，UI **121/121**，最终侧栏相关 **255/255**，浏览器/终端本轮聚焦 **24/24**。扩展检查另有 **27/30** 通过；历史 design boundary 报告 390 个路径，均在当时 HEAD 已有差异，另三类仍是缺失 `preloads/shared/catalog.js`、chat-input/side-pane-shell 重复 CSS 选择器、appearance-engine wallpaper 源码断言。未放宽白名单或豁免这些检查。没有新增生产模块或 CSS。本轮七项检查运行时事件图通过；随后并行任务提交 `5b39d738` 的聊天修改，事件图只因 chatManager 的两处行号变成过期，已生成并审查这两处定位更新，检查恢复通过。该新基线另行补跑提交前全量及检查，前两次运行日志保留。
 
 覆盖账本继续有效，全工程目标仍未完成。下一步补齐具体 provider 的其余错误路径、主进程关闭和真实 guest/PTY 契约，核实上述扩展检查与现行生产实现；继续参考布局/state/planner 及聊天、Git/源码/服务、Rust 和发布链审查。不能用这轮终端和 browser 修复宣称整个工程已完成。
+
+## 第十一轮：让检查跟随真实生产契约，保留尚未审查的报警
+
+本轮不重做已完成的计划页。并行聊天在本轮期间提交了计划页胶囊样式（`483d3374`、`ff2a57f1`）；这些文件不属于本轮修改或提交范围。参考仓库仍只读。
+
+### R29：Next delta 检查引用了已删除的 preload catalog
+
+`check-next-delta-contract.mjs` 原先读取 `preloads/shared/catalog.js`，在文件不存在时直接中断，后续真实结构和业务边界检查全部无法运行。现行 preload 通过 `core/registry.js` 加载 `api/*.js`，验证名字唯一、ApiEntry、角色，并提供纯 Node 的 `describeApis()`。
+
+检查改为查询这一真实注册表，同时拒绝退役的 `onUiModeUpdated` 名称与 `ui-mode-updated` 通道；新架构中的角色覆盖也来自实际条目。两个受控负例分别只注入退役名称或通道，原检查会因 ENOENT 而无关失败，更新后的检查按指定的契约拒绝它们。负例只改独立 Node 进程里的 Map，未改 API 文件或实际窗口。
+
+恢复执行后，所有现行结构断言通过，最后的共享文件审查哈希检查仍报警。额外枚举确认 8 个文件尚未与记录一致：chatManager、messageRenderer、streamManager、topicListManager、itemListManager、grouprenderer、settingsManager、notificationRenderer。没有直接刷新这些哈希，也没有宣称该 guard 已全部通过；这些业务差异仍需要逐项对照审查理由。
+
+### R30：外观测试仍要求 sidebar 独立模糊，违背共享材质层
+
+当前 global wallpaper 用 `.container::before` 的单个材质面覆盖导航栏、右/下 gutter 和四个外部圆角露出区。七块 mask 让聊天主体保留清晰壁纸，sidebar 显式透明且不再单独模糊。旧测试却要求 sidebar 自己应用 backdrop-filter。
+
+更新已有测试，检查 sidebar 禁止重复过滤、共享面应用主题过滤，以及 mask 尺寸、禁止重复和合并规则；保留 topbar 局部过滤、全屏 material plane 关闭、主聊天无模糊的原断言。没有把生产 CSS 改回旧实现来迁就测试。
+
+实际 Chromium 临时 iframe 加载生产样式链，验证共享面有过滤、七个 mask 尺寸按 sidebar/gutter/radius 解析、不能抢指针，sidebar 无重复底色/过滤，主聊天保持清晰。内联注入 sidebar 双重模糊和全屏 mask 两种故障，验证器均准确拒绝。此临时对照不等于全工程视觉验收，也不声称已验证全部主题或 OS 原生振动材质。
+
+### R31：两处重复 CSS 选择器可以无行为变化地合并
+
+`chat-input.css` 中模型菜单的定位与外观声明合并；`side-pane-shell.css` 中 host 的主题派生变量与结构声明合并。浅色规则的优先级更高，顺序移动仍覆盖默认变量；中间规则不竞争 host 的结构属性。没有新增 CSS 文件、变量值、UI 入口或事件，因此无需添加白名单或改事件图。
+
+真实窗口的临时 iframe 对照 HEAD/工作树样式，在明暗主题 × global/panel 壁纸 × 侧栏开关的 8 组状态下，10 个目标/伪元素的全部计算声明及几何完全一致。明暗模式同时设置生产主题 class 和属性，并确认解析出的主题色不同；对照等待字体完成、禁用过渡，避免把时间采样当作结构差异。截图检查前后版式一致。临时内容 finally 移除，主窗口未重载，最终标签、草稿、主题属性保持原样。初始对照捕获了合并脚本误命中 @supports 里的分组选项；已纠正，最终差异仅为上面两处声明合并。
+
+### 进一步读到的参考约束
+
+- DSH `ui-layout/src/client/stores.ts`、`columns.ts`、`AppFrame.tsx`、`AppFrame.module.css` 与 layout-store/columns/app-frame 三个测试文件已完整读完，本轮没有运行参考测试。root-scoped store 独立；panelInfo 与 layoutInfo 的引用变化分离。右栏保留拖拽像素偏好；宽屏左栏手动收起会写 0，重开恢复默认 280px，窄屏的独立 override 则保留原宽屏偏好。右栏 shown/track/fullscreen 是 occupant 报告。列求解保护 400px 中心，右栏先收缩到 300px、再失去 track，保存的偏好不因此被改写。
+- DSH 测量实际 frame 而非 window，只接受正宽度，ResizeObserver 用 RAF 合并并在卸载时断开和取消。CSS Grid 原生处理连续收缩，JS 主要决定离散 track/折叠状态，避免延后两帧的尺寸修正。拖拽从实际渲染宽度建立冻结基准，匹配 pointer identity，pointerup 提交最后坐标，cancel/lost-capture/卸载取消排队更新并释放 capture。只在显式开合时 easing，拖拽、窗口缩放、fullscreen 退出即时落定；transitionend 只接收 frame 自己的 grid-template-columns，另有 600ms 兜底与 reduced-motion 规则。
+- ZCode `sidePaneLayout.ts` 与 `animatedSidePanePanelModel.ts` 已完整读完。标签溢出按 60px 最小宽、间隙和新增按钮的统一假想布局计算，1px 容差避免按钮搬入/搬出造成 ResizeObserver 反馈；默认 45%、最大 65%、最小 240px 是产品尺寸选择。重预览按可见交集至少 96px 加载，resize settling 保留 media 以避免退出 fullscreen。
+- ZCode `AnimatedSidePanePanel.tsx` 读至约 794 行：在 collapse 时锁当前像素宽、首次 expand 估算 Group 的 45% 并在 200ms 后解锁；scroll mask 只提示仍能滚动的一侧，激活旧 tab 后按真实 DOM 边界滚入视口；observer/listener/RAF/timer 均有 cleanup。后续所有 provider 的渲染与浏览器分支仍未读完，不能据此宣称全文件覆盖。
+- ZCode `SidePaneTabTrigger.tsx` 与 `SidePaneTabTitleTooltip.tsx` 已完整读完：拖拽 suppress 一次激活，中键只关闭，原生 close button 与触发器不嵌套；tooltip 延迟且拖拽关闭，标题 fade 给可见关闭钮留空间；browser-use 在无 source 时必须提前分派。类型图标的稳定性和元数据补全分开，diff 文件名按 source/path/header/title 逐层回退。这些不是要求我们复制其分散的大型类型分派。
+- 我们的 resizer owner 目前有键盘 separator/ARIA 和拖拽 adapter；visibility 保存父内容宽度的比例，controller 在窗口缩放停顿后按主聊天宽度收起。与 DSH 的保留 shown/track、像素偏好是不同产品决策，本轮没有把这一差异直接认定为缺陷或擅自改交互。底层 resizer 的取消与 pointer 生命周期仍需后续精确对照。
+
+### 验证与未完成项
+
+全量 **260 个测试文件通过，0 失败、0 超时**。7 项常规 guard 全部通过，UI **121/121**，正常权限下侧栏专项 **255/255**，bootstrap **46/46**；已有 appearance-engine 检查通过，两个本轮修改的 CSS 文件通过 stylelint。全量测试在并行计划页提交期间运行；本轮四个修改文件没有被其他聊天改写，提交前再次核对事件图与修改范围。
+
+扩展 30 项检查经正常权限验证 bootstrap 后为 **28/30**；余下为共享文件审查哈希不一致和计划页 CSS 重复选择器。整体 check:ui-system 还会先被历史 design-boundary 阻断，当前实际输出 392 个路径，均已在当时 HEAD 存在差异。并行 `ff2a57f1` 后全局 stylelint 在 side-pane-plan.css 的 54、98 行报告两个重复 header 选择器；本轮不触碰计划页。没有扩展白名单、豁免失败或刷新未经逐项审查的业务哈希。
+
+沙箱初次测试在受限 Temp 内遇到原子重命名/realpath/junction 的 EPERM；停掉该轮后使用正常本机权限、隔离测试数据重新验证，保留原失败与正常运行日志。证据位于聊天工作区 `outputs/engineering-review/round-11/`，包括全量摘要与逐文件日志、实际窗口 8 组对照、截图、负例与剩余基线分类。当前窗口最终无临时 iframe，未重载，标签/草稿/主题保持原样。
+
+全工程审查目标仍在进行。已修复的 guard 引用问题不能替代未审查的共享业务差异；历史 PR 范围检查也不能通过批量放宽白名单来消除。下一步优先针对这些实际差异和底层布局/关闭生命周期补齐证据，并继续主进程、聊天、Git/源码与发布链审查；完成的计划页不再重做。

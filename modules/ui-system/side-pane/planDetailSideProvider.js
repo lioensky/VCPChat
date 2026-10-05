@@ -23,6 +23,7 @@ import {
 } from './plan-detail/topic-activity.js';
 import { createPlanNodeView } from './plan-detail/node-view.js';
 import { createPlanPageNavigation } from './plan-detail/page-navigation.js';
+import { createProjectPicker } from './plan-detail/project-picker.js';
 
 const STORAGE_KEY_WS = 'vcp-projectforge-git-workspace';
 const TAB_PREFIX = 'plan-detail:';
@@ -232,6 +233,7 @@ export function createPlanDetailSideProvider({
             let filterTimer = null;
             let nodeView = null;
             const navigation = createPlanPageNavigation({ h, button, id: tab.id, onChange: selectPage });
+            const picker = createProjectPicker({ h, icon, doc, win, host: scope, api, onPick: switchProject });
 
             function selectPage(key) {
                 if (navigation.selected === key) return;
@@ -313,30 +315,23 @@ export function createPlanDetailSideProvider({
                 const { project } = model;
                 const head = h('header', 'side-plan-header');
                 const titleRow = h('div', 'side-plan-title-row');
-                // 一行胶囊：面包屑（范围 › 工作区 › 工程名）、状态和更新时间、刷新/打开
-                const crumbs = h('div', 'side-plan-crumbs');
+                // 一行胶囊：面包屑（范围 › 工作区 › 工程名）、状态和更新时间、刷新/打开。
+                // 面包屑本身就是工程切换按钮，任何工程都能从这里换过去
+                const crumbs = button('side-plan-crumbs', null, '切换工程');
+                crumbs.setAttribute('aria-haspopup', 'listbox');
+                crumbs.setAttribute('aria-expanded', String(picker.isOpen()));
+                crumbs.addEventListener('click', () => {
+                    if (picker.isOpen()) picker.close();
+                    else picker.open({ currentId: project.id, topicIds: topicMode ? topicProjects.map(p => p.id) : [] });
+                });
                 const addCrumb = (node) => {
                     if (crumbs.childElementCount) crumbs.appendChild(icon('chevron_right', 'side-plan-crumb-sep'));
                     crumbs.appendChild(node);
                 };
                 addCrumb(h('span', 'side-plan-crumb side-plan-context', activity ? '本话题' : '工程全览'));
                 if (project.workspace_alias) addCrumb(h('span', 'side-plan-crumb', project.workspace_alias));
-                if (topicMode && topicProjects.length > 1) {
-                    // 只列这个话题用过的工程
-                    const select = h('select', 'side-plan-project-select');
-                    select.setAttribute('aria-label', '切换工程');
-                    const options = topicProjects.some(p => p.id === project.id) ? topicProjects : [project, ...topicProjects];
-                    options.forEach(p => {
-                        const option = h('option', '', p.name || p.id);
-                        option.value = p.id;
-                        select.appendChild(option);
-                    });
-                    select.value = project.id;
-                    select.addEventListener('change', () => switchProject(select.value));
-                    addCrumb(select);
-                } else {
-                    addCrumb(h('h2', 'side-plan-title', project.name || '未命名工程'));
-                }
+                addCrumb(h('span', 'side-plan-title', project.name || '未命名工程'));
+                crumbs.appendChild(icon('expand_more', 'side-plan-crumb-caret'));
                 titleRow.appendChild(crumbs);
                 // 软删除的工程 GetProject 仍然成功、status 也不变，只多了 deleted_at
                 const status = project.deleted_at ? 'deleted' : project.status;
@@ -788,6 +783,7 @@ export function createPlanDetailSideProvider({
             function openNode(nodeId) {
                 const project = model.project;
                 nodeView?.dispose();
+                picker.close();
                 nodeView = createPlanNodeView({
                     doc, api, storage, h, icon, toast,
                     projectId: project.id,
@@ -818,14 +814,14 @@ export function createPlanDetailSideProvider({
                 body.scrollTop = scrollTop;
             }
 
-            function switchProject(nextId) {
+            function switchProject(nextId, nextName = '') {
                 if (!nextId || nextId === model?.project?.id) return;
                 projectId = nextId;
                 pinned = true;
                 expanded.clear();
                 filters = { ...EMPTY_FILTERS };
                 filterRows = null;
-                const name = topicProjects.find(p => p.id === nextId)?.name || '';
+                const name = nextName || topicProjects.find(p => p.id === nextId)?.name || '';
                 sidePaneController?.updateTab?.(tab.id, { payload: { ...(tab.payload || {}), projectId: nextId, projectName: name, pinned: true, focus: null } });
                 load();
             }
@@ -927,6 +923,7 @@ export function createPlanDetailSideProvider({
                     isDisposed = true;
                     win.clearTimeout(timer);
                     win.clearTimeout(filterTimer);
+                    picker.dispose();
                     nodeView?.dispose();
                     if (typeof off === 'function') off();
                     if (typeof offTopic === 'function') offTopic();

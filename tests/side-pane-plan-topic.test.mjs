@@ -113,7 +113,7 @@ test('a topic tab shows only the topic\'s batches, its stats, the project switch
     assert.deepEqual([...view.querySelectorAll('.side-plan-batch')].map(li => li.dataset.batchId), ['2']);
     assert.match(view.querySelector('.side-plan-stats').textContent, /本话题.*1 批.*2 次改动.*2 个文件/);
     assert.match(view.querySelector('[data-plan-section="timeline"] .side-plan-section-meta').textContent, /本话题 1 批/);
-    assert.equal(view.querySelectorAll('.side-plan-project-select option').length, 2);
+    assert.equal(view.querySelector('.side-plan-crumbs').getAttribute('aria-haspopup'), 'listbox');
     assert.match(view.querySelector('.side-plan-other-hint').textContent, /还有 1 批来自其他话题/);
     view.querySelector('.side-plan-other-hint .side-plan-link').click();
     view.querySelector('.side-plan-forge').click();
@@ -128,12 +128,19 @@ test('a topic tab shows only the topic\'s batches, its stats, the project switch
     view.querySelector('[data-plan-section="report"] .side-plan-section-title').click();
     assert.equal(view.querySelector('.side-plan-report').textContent, '验收：全部通过');
 
-    // 切换到话题用过的另一个工程
-    const select = view.querySelector('.side-plan-project-select');
-    select.value = 'p2';
-    select.dispatchEvent(new dom.window.Event('change'));
+    // 面包屑胶囊打开工程菜单：话题用过的工程排在前面，当前工程打勾
+    view.querySelector('.side-plan-crumbs').click();
     await tick();
-    assert.equal(view.querySelector('.side-plan-project-select').value, 'p2');
+    assert.equal(view.querySelector('.side-plan-crumbs').getAttribute('aria-expanded'), 'true');
+    assert.deepEqual([...view.querySelectorAll('.side-plan-picker-label')].map(n => n.textContent), ['本话题用过']);
+    assert.deepEqual([...view.querySelectorAll('.side-plan-picker-item')].map(b => b.dataset.projectId), ['p1', 'p2']);
+    assert.equal(view.querySelector('.side-plan-picker-item[aria-selected="true"]').dataset.projectId, 'p1');
+    // 切换到话题用过的另一个工程
+    view.querySelector('.side-plan-picker-item[data-project-id="p2"]').click();
+    assert.equal(view.querySelector('.side-plan-picker'), null);
+    await tick();
+    assert.equal(view.querySelector('.side-plan-title').textContent, '旁支工程');
+    assert.equal(calls.updated.at(-1).payload.projectId, 'p2');
     assert.equal(calls.updated.at(-1).payload.pinned, true);
     assert.match(view.querySelector('[data-plan-section="timeline"]').textContent, /这个话题还没有在这个工程里施工/);
     handle.dispose();
