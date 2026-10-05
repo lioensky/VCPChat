@@ -392,3 +392,89 @@ test('side chat message context menu offers per-role actions and deletes through
     assert.equal(doc.getElementById('chatContextMenu'), null, 'Dispose closes an open side menu');
     dom.window.close();
 });
+
+test('side chat edits a message in place and regenerates an answer with the side model', async () => {
+    const dom = new JSDOM('<div id="sideContainer"></div>');
+    const doc = dom.window.document;
+    const container = doc.getElementById('sideContainer');
+    const removed = [];
+    const saved = [];
+    const rerendered = [];
+    const base = createMockChatCapabilities();
+    base.setHistory([
+        { id: 'u1', role: 'user', content: 'first question', attachments: [{ name: 'a.txt', type: 'text/plain', size: 3, src: 'file:///a.txt' }] },
+        { id: 'a1', role: 'assistant', content: 'first answer' }
+    ]);
+    const caps = {
+        ...base,
+        repository: {
+            getHistory: async () => [
+                { id: 'u1', role: 'user', content: 'first question', attachments: [{ name: 'a.txt', type: 'text/plain', size: 3, src: 'file:///a.txt' }] },
+                { id: 'a1', role: 'assistant', content: 'first answer' }
+            ],
+            async saveHistory(itemId, itemType, topicId, history) {
+                saved.push([topicId, history.map(m => m.id)]);
+                return { success: true };
+            }
+        },
+        createRenderer(options) {
+            const owned = base.createRenderer(options);
+            owned.renderer.removeMessageById = (id, save) => removed.push([id, save]);
+            owned.renderer.updateMessageContent = (id, text) => rerendered.push([id, text]);
+            return owned;
+        },
+        uiHelper: { showToastNotification() {} }
+    };
+    const descriptor = {
+        id: 'chat-edit',
+        title: 'Edit',
+        parent: { itemId: 'agent-1', topicId: 'topic-parent' },
+        child: { itemId: 'agent-1', topicId: 'topic-child-edit' },
+        contextMode: 'blank',
+        model: 'test-model'
+    };
+    const handle = await mountSideChatSurface(container, { descriptor, chatCapabilities: caps });
+    await new Promise(r => setTimeout(r, 20));
+
+    const list = container.querySelector('.side-chat-messages-container');
+    list.insertAdjacentHTML('beforeend',
+        '<div class="message-item user" data-message-id="u1"><div class="details-and-bubble-wrapper"><div class="md-content">first question</div></div></div>'
+        + '<div class="message-item assistant" data-message-id="a1"><div class="details-and-bubble-wrapper"><div class="md-content">first answer</div></div></div>');
+    const menuAction = (sel, action) => {
+        list.querySelector(`${sel} .md-content`).dispatchEvent(new dom.window.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
+        return doc.querySelector(`#chatContextMenu [data-side-chat-action="${action}"]`);
+    };
+
+    // Edit: textarea replaces the bubble, Escape cancels, save writes the side topic and re-renders
+    menuAction('.message-item.assistant', 'edit').click();
+    const item = list.querySelector('.message-item.assistant');
+    assert.ok(item.classList.contains('side-chat-editing'));
+    let input = item.querySelector('.message-edit-textarea');
+    assert.equal(input.value, 'first answer');
+    input.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(item.querySelector('.message-edit-textarea'), null);
+    assert.equal(saved.length, 0, 'Cancel does not save');
+
+    menuAction('.message-item.assistant', 'edit').click();
+    input = item.querySelector('.message-edit-textarea');
+    input.value = 'edited answer';
+    item.querySelector('[data-side-chat-edit="save"]').click();
+    await new Promise(r => setTimeout(r, 0));
+    assert.deepEqual(saved.at(-1), ['topic-child-edit', ['u1', 'a1']]);
+    assert.deepEqual(rerendered, [['a1', 'edited answer']]);
+    assert.equal(item.classList.contains('side-chat-editing'), false);
+
+    // Regenerate: drops the question and answer, then resends the question with its attachments
+    assert.equal(menuAction('.message-item.user', 'regenerate'), null, 'Questions have no regenerate');
+    menuAction('.message-item.assistant', 'regenerate').click();
+    await new Promise(r => setTimeout(r, 20));
+    assert.deepEqual(saved.at(-1), ['topic-child-edit', []]);
+    assert.deepEqual(removed, [['u1', false], ['a1', false]]);
+    const sent = caps.getSentRequest();
+    assert.equal(sent.content, 'first question');
+    assert.equal(sent.attachments.length, 1);
+    assert.equal(sent.attachments[0].localPath, 'file:///a.txt');
+
+    await handle.dispose();
+    dom.window.close();
+});

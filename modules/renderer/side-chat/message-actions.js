@@ -1,6 +1,7 @@
 /* side-chat/message-actions.js
- * Right-click menu for side chat messages: copy, fill into the main composer,
- * put a question back into the side composer, read mode, trajectory and delete.
+ * Right-click menu for side chat messages: edit, copy, fill into the main
+ * composer, put a question back into the side composer, read mode, regenerate,
+ * trajectory and delete.
  * It reuses the main chat menu element (#chatContextMenu), so only one message
  * menu is open at a time and it looks the same.
  */
@@ -19,6 +20,8 @@ export function createSideChatMessageActions({
     removeMessage,
     isBusy,
     onComposerFilled,
+    editMessage,
+    regenerate,
     updateEmptyState,
     pinToBottomIfSticky
 }) {
@@ -132,8 +135,14 @@ export function createSideChatMessageActions({
         const contentDiv = messageItem.querySelector('.md-content');
         const renderedText = () => extractTextFromContentDiv(contentDiv);
         const selected = selectionIn(messageItem);
+        const busy = Boolean(isBusy?.());
         const items = [];
         const add = (action, icon, label, run, className) => items.push({ action, icon, label, run, className });
+
+        // 生成中不改历史：流结束时会把整段历史写回，改动会被覆盖
+        if (message.id && typeof editMessage === 'function' && !unfinished && !busy) {
+            add('edit', 'fa-edit', '编辑消息', () => editMessage(messageItem, message));
+        }
 
         if (selected) add('copy-selection', 'fa-i-cursor', '复制选中', () => copyText(selected, '已复制选中的文字。'));
         add('copy', 'fa-copy', '复制文本', () => copyText(renderedText(), '已复制渲染后的文本。'));
@@ -161,12 +170,15 @@ export function createSideChatMessageActions({
             }, 'info-item');
         }
 
+        if (isAssistant && message.id && typeof regenerate === 'function' && !unfinished && !busy) {
+            add('regenerate', 'fa-sync-alt', '重新回复', () => regenerate(message.id), 'regenerate-text');
+        }
+
         if (isAssistant && message.id && typeof win?.openModelTrajectory === 'function') {
             add('trajectory', 'fa-route', '查看调用轨迹', () => win.openModelTrajectory({ requestId: message.id }));
         }
 
-        // 生成中不删：流结束时会把整段历史写回，删掉的消息会被覆盖回来
-        if (message.id && typeof removeMessage === 'function' && !unfinished && !isBusy?.()) {
+        if (message.id && typeof removeMessage === 'function' && !unfinished && !busy) {
             add('delete', 'fa-trash-alt', '删除消息', async () => {
                 const preview = (rawText(message) || renderedText() || '[消息内容无法预览]');
                 const confirmed = typeof uiHelper?.showConfirmDialog === 'function'

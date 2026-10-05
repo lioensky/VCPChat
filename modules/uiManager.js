@@ -569,14 +569,10 @@ const uiManager = (() => {
      */
     async function refreshUnreadCounts() {
         const token = generation;
+        if (!isCurrent(token)) return;
         try {
-            const result = await electronAPI.getUnreadTopicCounts();
-            if (!isCurrent(token)) return;
-            if (result && result.success) {
-                if ((itemListManagerCapability || window.itemListManager)?.updateUnreadBadges) {
-                    (itemListManagerCapability || window.itemListManager).updateUnreadBadges(result.counts);
-                }
-            }
+            const manager = itemListManagerCapability || window.itemListManager;
+            await manager?.refreshUnreadCounts?.({ isCurrent: () => isCurrent(token) });
         } catch (error) {
             console.error('[UIManager][refreshUnreadCounts] Error:', error);
         }

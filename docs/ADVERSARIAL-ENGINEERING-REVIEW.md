@@ -732,3 +732,23 @@ DOM/EventEmitter 监听归 consumer，IPC send/invoke 归 producer；preload API
 聊天工作区 `outputs/engineering-review/round-17/` 保存最后全量、43项检查、6/4负向与10/10修复结果、源码稳定性、两种 runtime、原生 renderer / 可见截图、只读实际窗口、参考范围及下一轮未读竞态证据。第一次全量所对应的源码漂移另存，不能充作最终验证。
 
 本轮关闭 R41，下一步优先 R42，再继续整个工程的资源、生产接口、共享边界、Rust/发布与 UIUX 审查。目标仍为 ACTIVE / INCOMPLETE；原先完成的计划页设计不再重复。
+
+## 第十八轮：未读徽章的跨入口发布顺序（R42）
+
+已完成的计划页设计（ecb9067a）、R40 读取器关闭、R41 列表/排序设置竞态保持完成状态，不因压缩记忆重复实现。本轮仅处理未读徽章，不改产品 CSS、计划布局或 preload。
+
+itemListManager 的目录/已读刷新与 uiManager 的导航刷新原来分别查询、分别写同一个徽章。UI 的 generation 检查只挡住销毁后的响应，不能挡住同生命周期的旧请求，或另一个入口的迟到结果。真实公共模块显示新计数 1 后，旧 9 会覆盖它，旧空对象会移除它。新增回归在原源码上3通过/12失败；修复后15/15，合并原有目录状态和 UI 生命周期为27/27。测试观察真实 DOM/节点，不检查私有变量或源码字符串。15个用例并入既有 state-authority.test.js，总文件438行，无需增加范围白名单。
+
+现在 itemListManager 统一请求和发布序号，有效 init 作废旧 API 请求；成功写回前核对请求序号与调用者 isCurrent 回调。uiManager 委托注入 facade（兼容现有 window facade），以回调传入自己的 generation/disposed 条件。最新失败保留现有展示，同时作废旧请求；0 仍为圆点，空 counts 仍移除徽章。公共刷新返回 Promise 并捕获错误，现有 fire-and-forget 调用继续使用。此修复约束 renderer 写回，不声称物理取消 IPC 或提供跨进程事务一致性。
+
+深入参考本机 ZCode：taskQueryCacheStore 的批量写入在 entity/overlay/fresh 变更之前检查 expectedInvalidationVersion；标 stale 保留旧列表并增版本。useWorkspaceTaskLists 在 await 后检查 requestId、query signature、activity revision、membership version；single flight 内的失效通过 rerunRequested 再查一次。unread overlay 用 null 表示清除，只覆盖该字段，RPC 确认后仍保留，直到 membership 读回同值。set/reconcile/rollback 自身没有 mutation 序号，不能据此证明任意重叠 mutation 都安全。读取 store1-95、209-350、351-602、746-822、868-915、916-1023；hook463-603，均为部分阅读。
+
+DSH ui-session status-controller.client.spec.ts 完整阅读：真实 catalog/status 的未列出子会话运行态不被父元数据更新清除；mainView retain 确认 completionUnread，release 后保持已读。这个共享状态源/可观察边界值得借鉴，完成提醒与我们的 topic counts 语义不同。参考仓库只读，未执行其测试；范围/SHA 在聊天工作区证据中登记。
+
+提交前验证：Node22 新回归15/15、组合27/27；Electron44 Node24 新回归15/15。原生 Chromium 用原公共模块/样式验证11/11，迟到响应前后 HTML、节点、截图像素一致，徽章/圆点/空状态代表截图已查看，隔离窗口已销毁。实际原窗口只有只读 CDP 状态/截图检查，不重载、输入或切页。fixture 不调用生产 backend/preload。
+
+共享分支持续推进：974fccb8 的固定候选全量269文件通过；其后包含18a5b818、c8e44d0a 的中间验证已保留。本轮代码预验证的43检查39通过/4既有失败，契约86未登记、边界历史差异、共享8业务摘要待语义审查、计划样式2重复 selector 均保留，未扩大白名单或刷新摘要。事件图的既有监听位置随本轮代码移动；并发任务已经把这些行号同步进共享提交，本提交无需再修改生成文件。最终固定提交仍执行图的新鲜度检查。
+
+为避免并发提交导致全量验证无限重启，本轮先落独立、可回退的当前分支提交，再把这个提交固定为完整测试/全部检查/原生验证的最终对象；后续共享 HEAD 推进不改变这个验证对象。**该提交的最终验证在提交后执行，结果以聊天工作区 outputs/engineering-review/round-18/verification-summary.json 与 REVIEW.md 为准；提交时尚未宣称最终全量通过。** 不推送、不拆 PR。
+
+R42 实现完成。整体审查 ACTIVE / INCOMPLETE：R43 native common-key/HOOK_KEY_PRESSED 的输入来源仍待诊断，persona 缓存/计时器、共享业务基线语义、关闭/生产 API 覆盖与 Rust/发布/UIUX 仍有待办。不会把通过的复跑当作 R43 已诊断。

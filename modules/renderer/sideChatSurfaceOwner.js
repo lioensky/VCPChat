@@ -9,6 +9,7 @@ import { createSideChatShell } from './side-chat/shell.js';
 import { createSideChatComposerState } from './side-chat/composer-state.js';
 import { createSideChatScrolling } from './side-chat/scrolling.js';
 import { createSideChatMessageActions } from './side-chat/message-actions.js';
+import { createSideChatMessageEditor } from './side-chat/message-edit.js';
 import { createSideChatReferences } from './side-chat/references.js';
 import { createSideChatPersistence } from './side-chat/persistence.js';
 import { createSideChatModelPicker } from './side-chat/model-picker.js';
@@ -104,6 +105,7 @@ export async function mountSideChatSurface(container, {
     // 渲染器和会话在聊天能力就绪后才创建；右键菜单通过这里取用
     let liveRenderer = null;
     let liveConversation = null;
+    let liveRegenerate = null;
     const references = []; // { id, text, sourceMessageId }
 
     const store = Object.freeze({
@@ -155,6 +157,17 @@ export async function mountSideChatSurface(container, {
     });
     const { pinToBottomIfSticky } = scrollingOwner;
 
+    const liveRegenerateProxy = (id) => liveRegenerate?.(id);
+    const messageEditor = createSideChatMessageEditor({
+        doc,
+        getHistory: () => liveConversation?.historyRef?.get?.() || [],
+        setHistory: (history) => liveConversation?.historyRef?.set?.(history),
+        saveHistory: (history) => repository.saveHistory(descriptor.child.itemId, 'agent', descriptor.child.topicId, history),
+        rerender: (messageId, text) => liveRenderer?.updateMessageContent?.(messageId, text),
+        isBusy: () => form.hasAttribute('aria-busy'),
+        toast: (message, type) => chatCapabilities?.uiHelper?.showToastNotification?.(message, type)
+    });
+
     const messageActionsOwner = createSideChatMessageActions({
         store,
         chatCapabilities,
@@ -166,6 +179,8 @@ export async function mountSideChatSurface(container, {
         removeMessage: (messageId) => liveRenderer?.removeMessageById?.(messageId, true),
         isBusy: () => form.hasAttribute('aria-busy'),
         onComposerFilled: () => scheduleInputSave(),
+        editMessage: (messageItem, message) => messageEditor.start(messageItem, message),
+        regenerate: liveRegenerateProxy,
         updateEmptyState: (...args) => updateEmptyState(...args),
         pinToBottomIfSticky
     });
@@ -222,6 +237,7 @@ export async function mountSideChatSurface(container, {
                 composerStateOwner.dispose();
                 scrollingOwner.dispose();
                 messageActionsOwner.dispose();
+                messageEditor.dispose();
                 referencesOwner.dispose();
                 persistenceOwner.dispose();
                 modelPickerOwner.dispose();
@@ -255,6 +271,7 @@ export async function mountSideChatSurface(container, {
         getContextHistory: () => (currentDescriptor.contextMode === 'parent-snapshot' ? [...snapshotMessages] : [])
     });
     liveConversation = enhancedConversation;
+    liveRegenerate = (id) => regenerate(id);
 
     const operations = createChatOperations({
         send: async (request) => {
@@ -350,6 +367,20 @@ export async function mountSideChatSurface(container, {
         renderReferences();
         scheduleInputSave();
 
+        // 用户消息被撤回（未发出/发送失败）时才把草稿和引用放回输入框
+        await runSend(payload, submittedAttachments, () => {
+            if (!textarea.value && submittedText) textarea.value = submittedText;
+            for (const ref of submittedReferences) {
+                if (!references.some(r => r.id === ref.id)) references.unshift(ref);
+            }
+            attachmentsOwner.restore(submittedAttachments);
+            renderReferences();
+            scheduleInputSave();
+        });
+    };
+
+    async function runSend(payload, submittedAttachments, restoreDraft) {
+        messageEditor.close();
         form.setAttribute('aria-busy', 'true');
         textarea.disabled = true;
         attachmentsOwner.setDisabled(true);
@@ -360,18 +391,11 @@ export async function mountSideChatSurface(container, {
         scrollingOwner.resume();
         pinToBottomIfSticky();
 
-        // 用户消息被撤回（未发出/发送失败）时才把草稿和引用放回输入框；
         // 已经进入历史的一轮（例如中途停止）不再回填，避免重复发送
         const restoreDraftIfRetracted = () => {
             const history = enhancedConversation?.historyRef?.get?.() || [];
             if (history.some(msg => msg?.role === 'user' && msg.content === payload)) return;
-            if (!textarea.value && submittedText) textarea.value = submittedText;
-            for (const ref of submittedReferences) {
-                if (!references.some(r => r.id === ref.id)) references.unshift(ref);
-            }
-            attachmentsOwner.restore(submittedAttachments);
-            renderReferences();
-            scheduleInputSave();
+            restoreDraft();
         };
 
         try {
@@ -427,7 +451,53 @@ export async function mountSideChatSurface(container, {
                 pinToBottomIfSticky();
             }
         }
-    };
+    }
+
+    // 重新回复：截掉这条回答对应的提问及其后的所有消息，再用侧栏自己的模型和上下文把提问重新发出
+    async function regenerate(assistantId) {
+        if (isDisposed || !isHistoryLoaded || form.hasAttribute('aria-busy')) return;
+        if (!currentModel) {
+            updateStatus('请先选择模型', 'error');
+            return;
+        }
+        const history = enhancedConversation.historyRef.get() || [];
+        const answerIndex = history.findIndex(m => m?.id === assistantId);
+        let questionIndex = answerIndex - 1;
+        while (questionIndex >= 0 && history[questionIndex]?.role !== 'user') questionIndex--;
+        if (answerIndex === -1 || questionIndex < 0) {
+            updateStatus('找不到这条回答对应的提问', 'error');
+            return;
+        }
+        const question = history[questionIndex];
+        const text = typeof question.content === 'string' ? question.content : (question.content?.text || '');
+        const attachments = (Array.isArray(question.attachments) ? question.attachments : []).map(att => ({
+            file: { name: att.name, type: att.type, size: att.size },
+            localPath: att.src,
+            originalName: att.name,
+            _fileManagerData: att._fileManagerData || {}
+        }));
+        const kept = history.slice(0, questionIndex);
+        let saved;
+        try {
+            saved = await repository.saveHistory(descriptor.child.itemId, 'agent', descriptor.child.topicId, kept);
+        } catch (error) {
+            saved = { error: error?.message || String(error) };
+        }
+        if (saved && (saved.success === false || saved.error)) {
+            updateStatus(`重新回复失败：${saved.error || '保存历史出错'}`, 'error');
+            return;
+        }
+        if (isDisposed) return;
+        for (const msg of history.slice(questionIndex)) renderer.removeMessageById(msg.id, false);
+        enhancedConversation.historyRef.set(kept);
+        updateEmptyState();
+        await runSend(text, attachments, () => {
+            if (!textarea.value) textarea.value = text;
+            attachmentsOwner.restore(attachments);
+            updateComposerState();
+            scheduleInputSave();
+        });
+    }
 
     submitInteractiveContent = (text) => {
         if (isDisposed) return;
@@ -549,6 +619,7 @@ export async function mountSideChatSurface(container, {
             composerStateOwner.dispose();
             scrollingOwner.dispose();
             messageActionsOwner.dispose();
+            messageEditor.dispose();
             referencesOwner.dispose();
             persistenceOwner.dispose();
             modelPickerOwner.dispose();

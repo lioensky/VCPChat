@@ -9,6 +9,7 @@ window.itemListManager = (() => {
     let wasSelectionListenerActive = false; // To store the state of the selection listener before dragging
     let uiHelper;
     let activeLoadItemsToken = 0;
+    let activeUnreadCountsToken = 0;
 
     const OPENHER_PERSONA_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
     const OPENHER_PERSONA_CACHE_TTL_MS = 11 * 60 * 1000;
@@ -96,6 +97,7 @@ window.itemListManager = (() => {
             return;
         }
 
+        activeUnreadCountsToken += 1; // Revoke requests from the previous API or list.
         itemListUl = config.elements.itemListUl;
         electronAPI = config.electronAPI;
         currentSelectedItemRef = config.refs.currentSelectedItemRef;
@@ -1102,13 +1104,18 @@ window.itemListManager = (() => {
     /**
      * 仅刷新未读计数，而不重新加载整个列表
      */
-    function refreshUnreadCounts() {
-        if (!electronAPI) return;
-        electronAPI.getUnreadTopicCounts().then(result => {
-            if (result && result.success) {
-                updateUnreadBadges(result.counts);
-            }
-        }).catch(err => console.error('[ItemListManager] Failed to fetch unread counts:', err));
+    async function refreshUnreadCounts({ isCurrent = () => true } = {}) {
+        if (!electronAPI || !isCurrent()) return;
+        const token = ++activeUnreadCountsToken;
+        try {
+            const result = await electronAPI.getUnreadTopicCounts();
+            // Navigation and catalog refresh share one publication order. The
+            // caller can also revoke its own lifecycle while the request waits.
+            if (token !== activeUnreadCountsToken || !isCurrent()) return;
+            if (result && result.success) updateUnreadBadges(result.counts);
+        } catch (err) {
+            console.error('[ItemListManager] Failed to fetch unread counts:', err);
+        }
     }
 
     /**

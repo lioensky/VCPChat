@@ -126,3 +126,20 @@ html body .side-chat-messages-container .message-item .md-content .vcp-thought-c
     box-sizing: border-box;
     border-radius: 10px;
 }
+
+/* 原地编辑：编辑框替换气泡，宽度跟随这一列 */
+html body .side-chat-messages-container .message-item.side-chat-editing .md-content {
+    display: none;
+}
+
+html body .side-chat-messages-container .side-chat-message-editor {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+html body .side-chat-messages-container .side-chat-message-editor .message-edit-textarea {
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+}

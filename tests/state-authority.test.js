@@ -265,3 +265,173 @@ test('current assistant catalog keeps its normal fallback when ordering settings
         assert.deepEqual(Array.from(window.document.querySelectorAll('li[data-item-id]'), row => row.dataset.itemType + ':' + row.dataset.itemId), expected);
     } finally { dom.window.close(); }
 });
+
+const settle = () => new Promise(resolve => setImmediate(resolve));
+
+async function fixture() {
+    const dom = new JSDOM(`<!doctype html><body class="light-theme">
+        <aside class="sidebar"><div id="tabContentAgents"><ul id="agentList"></ul></div>
+        <div id="tabContentTopics"></div></aside></body>`, {
+        url: 'https://vcpchat.local/main.html', runScripts: 'outside-only'
+    });
+    const { window } = dom;
+    const pending = [];
+    const errors = [];
+    let deferred = false;
+    window.console = { log() {}, warn() {}, debug() {}, error: (...args) => errors.push(args) };
+    const api = {
+        getAgents: async () => [{ id: 'nova', name: 'Nova' }],
+        getAgentGroups: async () => [],
+        loadSettings: async () => ({ vcpServerUrl: '' }),
+        setTheme() {},
+        getUnreadTopicCounts: () => deferred ? new Promise((resolve, reject) => {
+            pending.push({ resolve, reject });
+        }) : Promise.resolve({ success: true, counts: { nova: 3 } })
+    };
+    window.eval(fs.readFileSync('modules/itemListManager.js', 'utf8'));
+    window.eval(fs.readFileSync('modules/uiManager.js', 'utf8'));
+    const listConfig = {
+        elements: { itemListUl: window.document.getElementById('agentList') },
+        electronAPI: api,
+        refs: { currentSelectedItemRef: { get: () => null } },
+        mainRendererFunctions: { selectItem() {} }, uiHelper: { showToastNotification() {} }
+    };
+    const uiConfig = {
+        electronAPI: api, itemListManager: window.itemListManager,
+        refs: { globalSettingsRef: { get: () => ({ currentThemeMode: 'light' }) } },
+        listenerOwner: { capture: () => () => {} },
+        elements: {
+            leftSidebar: window.document.querySelector('.sidebar'),
+            sidebarTabButtons: [],
+            sidebarTabContents: [...window.document.querySelectorAll('[id^="tabContent"]')]
+        }
+    };
+    window.itemListManager.init(listConfig);
+    await window.itemListManager.loadItems();
+    await window.uiManager.init(uiConfig);
+    await settle();
+    deferred = true;
+    return {
+        window, pending, errors, listConfig, uiConfig,
+        refresh: owner => owner === 'ui' ? window.uiManager.switchToTab('agents') : window.itemListManager.refreshUnreadCounts(),
+        badge: () => window.document.querySelector('[data-item-id="nova"] .unread-badge'),
+        async close() {
+            for (const request of pending) request.resolve({ success: false });
+            await settle();
+            await window.uiManager.dispose();
+            dom.window.close();
+        }
+    };
+}
+
+for (const [olderOwner, newerOwner] of [['list', 'list'], ['ui', 'list'], ['list', 'ui'], ['ui', 'ui']]) {
+    for (const oldCounts of [{ nova: 9 }, {}]) {
+        test(`${olderOwner} -> ${newerOwner}: late ${oldCounts.nova ? 'count' : 'empty'} cannot overwrite current badge`, async () => {
+            const f = await fixture();
+            try {
+                f.refresh(olderOwner);
+                f.refresh(newerOwner);
+                assert.equal(f.pending.length, 2);
+                f.pending[1].resolve({ success: true, counts: { nova: 1 } });
+                await settle();
+                const currentBadge = f.badge();
+                assert.equal(currentBadge.textContent, '1');
+                f.pending[0].resolve({ success: true, counts: oldCounts });
+                await settle();
+                assert.equal(f.badge(), currentBadge, 'preserve the current badge node');
+                assert.equal(f.badge().textContent, '1');
+            } finally { await f.close(); }
+        });
+    }
+}
+
+for (const failure of ['unsuccessful', 'rejection']) {
+    test(`latest ${failure} keeps displayed badge and still supersedes an older response`, async () => {
+        const f = await fixture();
+        try {
+            f.refresh('ui');
+            const latest = f.refresh('list');
+            if (failure === 'rejection') f.pending[1].reject(new Error('unread request failed'));
+            else f.pending[1].resolve({ success: false });
+            await latest;
+            await settle();
+            assert.equal(f.badge().textContent, '3');
+            f.pending[0].resolve({ success: true, counts: { nova: 9 } });
+            await settle();
+            assert.equal(f.badge().textContent, '3');
+            if (failure === 'rejection') {
+                assert.equal(f.errors.filter(args => args.some(value => value?.message === 'unread request failed')).length, 1);
+            }
+        } finally { await f.close(); }
+    });
+}
+
+test('current zero displays a dot and current empty counts remove it', async () => {
+    const f = await fixture();
+    try {
+        f.refresh('ui');
+        f.pending[0].resolve({ success: true, counts: { nova: 0 } });
+        await settle();
+        assert.equal(f.badge().textContent, '');
+        assert.ok(f.badge().classList.contains('unread-badge-dot-only'));
+        const latest = f.refresh('list');
+        f.pending[1].resolve({ success: true, counts: {} });
+        await latest;
+        await settle();
+        assert.equal(f.badge(), null);
+    } finally { await f.close(); }
+});
+
+test('catalog rerender with the same agent ID supersedes counts for the previous rows', async () => {
+    const f = await fixture();
+    try {
+        f.refresh('ui');
+        const previousRow = f.badge().closest('li');
+        await f.window.itemListManager.loadItems();
+        f.pending[1].resolve({ success: true, counts: { nova: 1 } });
+        await settle();
+        assert.notEqual(f.badge().closest('li'), previousRow);
+        f.pending[0].resolve({ success: true, counts: { nova: 9 } });
+        await settle();
+        assert.equal(f.badge().textContent, '1');
+    } finally { await f.close(); }
+});
+
+test('UI disposal revokes its pending count publication without revoking a later list refresh', async () => {
+    const f = await fixture();
+    try {
+        f.refresh('ui');
+        await f.window.uiManager.dispose();
+        f.pending[0].resolve({ success: true, counts: { nova: 9 } });
+        await settle();
+        assert.equal(f.badge().textContent, '3');
+        const latest = f.refresh('list');
+        f.pending[1].resolve({ success: true, counts: { nova: 1 } });
+        await latest;
+        await settle();
+        assert.equal(f.badge().textContent, '1');
+    } finally { await f.close(); }
+});
+
+test('UI reinitialization revokes its previous pending request even if the new lifecycle starts no refresh', async () => {
+    const f = await fixture();
+    try {
+        f.refresh('ui');
+        await f.window.uiManager.init({ ...f.uiConfig, elements: { ...f.uiConfig.elements, sidebarTabContents: [] } });
+        assert.equal(f.pending.length, 1);
+        f.pending[0].resolve({ success: true, counts: { nova: 9 } });
+        await settle();
+        assert.equal(f.badge().textContent, '3');
+    } finally { await f.close(); }
+});
+
+test('list reinitialization revokes count requests from the previous API', async () => {
+    const f = await fixture();
+    try {
+        f.refresh('list');
+        f.window.itemListManager.init(f.listConfig);
+        f.pending[0].resolve({ success: true, counts: { nova: 9 } });
+        await settle();
+        assert.equal(f.badge().textContent, '3');
+    } finally { await f.close(); }
+});
