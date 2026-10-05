@@ -65,7 +65,7 @@ export function initWorkspaceSidePane({
     const browser = defineBrowserTabType(deps);
     const toolOutput = defineToolOutputTabType(deps);
     const planDetail = definePlanDetailTabType({ ...deps, historyRef, openProjectForge });
-    const modelTrajectory = defineModelTrajectoryTabType({ ...deps, selectedItemRef, topicIdRef });
+    const modelTrajectory = defineModelTrajectoryTabType({ ...deps, selectedItemRef, topicIdRef, chatManager });
     const terminal = defineTerminalTabType({ ...deps, onOpenUrl: url => browser.provider.openBrowserTab({ url, forceNew: true }) });
     for (const definition of [defineNotificationsTabType(), defineChatTabType({ provider: sideChat.provider, openSideChat: sideChat.openSideChat, onClosed: sideChat.onTabClosed }), codeViewer, browser, terminal, toolOutput, planDetail, modelTrajectory]) {
         controller.registerTabType(definition);

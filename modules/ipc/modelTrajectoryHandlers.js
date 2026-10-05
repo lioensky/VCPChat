@@ -1,14 +1,14 @@
 // modules/ipc/modelTrajectoryHandlers.js
 // 侧栏「调用轨迹」标签的主进程桥：把 modules/modelTrajectory.js 记录下来的每次模型调用交给渲染端展示。
 // 对照 ZCode 的 model-io 轨迹（packages/services/src，Apache-2.0）：按会话（话题）读取、清空、打开记录目录、实时变更通知。
-// - 仅放行主窗口页面（与 Git / 终端侧栏同样按调用页面 URL 校验）。
+// - 仅放行主窗口（与终端侧栏同样校验：应用自己的 main.html 顶层页面，且就是当前主窗口）。
 // - 渲染端只传 sessionKey，文件路径永远由主进程按净化后的 key 解析。
 // - 变更通知按 (会话, 调用) 合并，100ms 一发，渲染端只需要知道「这条调用变了」。
 'use strict';
 
 const fs = require('fs');
 const { ipcMain, shell } = require('electron');
-const { isAllowedSenderUrl } = require('./gitHandlers');
+const { createApplicationSenderGuard, resolveWindowWebContents } = require('./applicationSender');
 const { configureSharedRecorder, getSharedRecorder } = require('../modelTrajectory');
 
 const CHANNELS = [
@@ -24,15 +24,13 @@ const MAX_LIST_LIMIT = 500;
 const watchers = new Map();
 const trackedSenders = new WeakSet();
 
-function isAllowedSender(event) {
-    const raw = event?.senderFrame?.url || event?.sender?.getURL?.() || '';
-    return isAllowedSenderUrl(raw);
-}
+let getMainWindow = () => null;
+const isAllowedSender = createApplicationSenderGuard({ getMainWebContents: () => resolveWindowWebContents(getMainWindow) });
 
-function safeSend(sender, channel, payload) {
+function sendChange(sender, payload) {
     if (!sender || sender.isDestroyed?.()) return;
     try {
-        sender.send(channel, payload);
+        sender.send('model-trajectory:changed', payload);
     } catch (_error) {
         // 窗口正在销毁，忽略
     }
@@ -66,7 +64,7 @@ function startWatcher(sender) {
     const watcher = { unsubscribe: () => {}, pending: new Map(), timer: null };
     const flush = () => {
         watcher.timer = null;
-        for (const change of watcher.pending.values()) safeSend(sender, 'model-trajectory:changed', change);
+        for (const change of watcher.pending.values()) sendChange(sender, change);
         watcher.pending.clear();
     };
     watcher.unsubscribe = recorder.subscribe((change) => {
@@ -77,7 +75,8 @@ function startWatcher(sender) {
     trackSender(sender);
 }
 
-function initialize({ rootDir } = {}) {
+function initialize({ rootDir, getMainWindow: getWindow = null } = {}) {
+    getMainWindow = typeof getWindow === 'function' ? getWindow : () => null;
     CHANNELS.forEach((channel) => ipcMain.removeHandler(channel));
     if (rootDir) configureSharedRecorder({ rootDir });
 

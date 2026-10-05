@@ -27,13 +27,17 @@ const trajectoryHandlers = require('../modules/ipc/modelTrajectoryHandlers');
 const { beginTrajectoryCall } = require('../modules/modelTrajectory');
 Module._load = originalLoad;
 
+const { createTrustedMainSender } = require('./helpers/trusted-main-sender.cjs');
+const MAIN_URL = createTrustedMainSender().sender.getURL();
+
 class FakeSender extends EventEmitter {
-    constructor(url = 'file:///C:/app/main.html') { super(); this.url = url; this.destroyed = false; this.sent = []; }
+    constructor(url = MAIN_URL) { super(); this.url = url; this.mainFrame = { url, detached: false }; this.destroyed = false; this.sent = []; }
+    getType() { return 'window'; }
     isDestroyed() { return this.destroyed; }
     send(channel, payload) { this.sent.push({ channel, payload }); }
     getURL() { return this.url; }
 }
-const call = (channel, sender, ...args) => handlers.get(channel)({ sender, senderFrame: { url: sender.getURL() } }, ...args);
+const call = (channel, sender, ...args) => handlers.get(channel)({ sender, senderFrame: sender.mainFrame }, ...args);
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 test('lists, clears and watches trajectory records for the main window only', async () => {

@@ -1513,7 +1513,7 @@ if (!gotTheLock) {
         sourceHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService });
         terminalHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService, getMainWindow: () => mainWindow });
         // 必须早于 chatHandlers.initialize：聊天请求一发出就要有记录器
-        modelTrajectoryHandlers.initialize({ rootDir: path.join(APP_DATA_ROOT_IN_PROJECT, 'ModelTrajectory') });
+        modelTrajectoryHandlers.initialize({ rootDir: path.join(APP_DATA_ROOT_IN_PROJECT, 'ModelTrajectory'), getMainWindow: () => mainWindow });
         browserHandlers.initialize({ getMainWindow: () => mainWindow });
 
         translatorHandlers.initialize({

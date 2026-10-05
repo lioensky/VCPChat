@@ -1,9 +1,10 @@
 import { createModelTrajectorySideProvider } from '../modelTrajectorySideProvider.js';
 
-export function defineModelTrajectoryTabType({ document: doc, window: win, chatAPI, sidePaneController, uiHelper, selectedItemRef, topicIdRef }) {
+export function defineModelTrajectoryTabType({ document: doc, window: win, chatAPI, sidePaneController, uiHelper, selectedItemRef, topicIdRef, chatManager }) {
     const provider = createModelTrajectorySideProvider({
         document: doc, api: chatAPI || win.electronAPI, sidePaneController, uiHelper,
-        getConversation: () => ({ item: selectedItemRef.get(), topicId: topicIdRef.get() })
+        getConversation: () => ({ item: selectedItemRef.get(), topicId: topicIdRef.get() }),
+        onConversationChange: (callback) => chatManager?.onSelectionChange?.(callback)
     });
     return Object.freeze({
         kind: 'model-trajectory', label: '调用轨迹', icon: 'monitoring', searchHint: '模型调用 请求 响应 token 轨迹',

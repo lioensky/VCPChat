@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { createModelTrajectorySideProvider, trajectoryKeyFor, EXPANSION_KINDS } from '../modules/ui-system/side-pane/modelTrajectorySideProvider.js';
@@ -24,8 +24,13 @@ function records() {
     ];
 }
 
+// 提供者带一个跟随会话的轮询定时器；不关掉 JSDOM 窗口，测试跑完进程也退不出去。
+const openWindows = [];
+after(() => { openWindows.forEach(win => win.close()); });
+
 function makeEnv({ conversation = { item: { id: 'agent1', name: '小助手' }, topicId: 't1' }, recs = records(), result } = {}) {
     const dom = new JSDOM('<div id="view"></div>', { pretendToBeVisual: true });
+    openWindows.push(dom.window);
     const doc = dom.window.document;
     const state = { lists: [], opened: [], toasts: [], watch: 0, copied: [], cleared: [], recs, conversation, conversationListeners: [], conversationUnsubscribed: false };
     let changed = null;

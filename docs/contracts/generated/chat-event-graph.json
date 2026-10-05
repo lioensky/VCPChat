@@ -4232,27 +4232,27 @@
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 105,
+          "line": 106,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 309,
+          "line": 311,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 333,
+          "line": 335,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 675,
+          "line": 678,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 686,
+          "line": 689,
           "kind": "custom-event-listener"
         },
         {
@@ -5838,31 +5838,31 @@
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 105,
+          "line": 106,
           "kind": "custom-event-listener",
           "match": "btn.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 309,
+          "line": 311,
           "kind": "custom-event-listener",
           "match": "more.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 333,
+          "line": 335,
           "kind": "custom-event-listener",
           "match": "head.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 675,
+          "line": 678,
           "kind": "custom-event-listener",
           "match": "item.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 686,
+          "line": 689,
           "kind": "custom-event-listener",
           "match": "doc.addEventListener('click'"
         },
@@ -9933,7 +9933,7 @@
         },
         {
           "file": "modules/ipc/modelTrajectoryHandlers.js",
-          "line": 56,
+          "line": 54,
           "kind": "event-listener"
         },
         {
@@ -9989,7 +9989,7 @@
         },
         {
           "file": "modules/ipc/modelTrajectoryHandlers.js",
-          "line": 56,
+          "line": 54,
           "kind": "event-listener",
           "match": "sender.on('destroyed'"
         },
@@ -10385,7 +10385,7 @@
       "consumers": [
         {
           "file": "modules/ipc/modelTrajectoryHandlers.js",
-          "line": 57,
+          "line": 55,
           "kind": "event-listener"
         },
         {
@@ -10402,7 +10402,7 @@
       "evidence": [
         {
           "file": "modules/ipc/modelTrajectoryHandlers.js",
-          "line": 57,
+          "line": 55,
           "kind": "event-listener",
           "match": "sender.on('did-start-navigation'"
         },
@@ -14910,7 +14910,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 628,
+          "line": 631,
           "kind": "custom-event-listener"
         },
         {
@@ -15100,7 +15100,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 628,
+          "line": 631,
           "kind": "custom-event-listener",
           "match": "searchInput.addEventListener('input'"
         },
@@ -15566,17 +15566,17 @@
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 334,
+          "line": 336,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 633,
+          "line": 636,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 647,
+          "line": 650,
           "kind": "custom-event-listener"
         },
         {
@@ -15928,19 +15928,19 @@
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 334,
+          "line": 336,
           "kind": "custom-event-listener",
           "match": "head.addEventListener('keydown'"
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 633,
+          "line": 636,
           "kind": "custom-event-listener",
           "match": "searchInput.addEventListener('keydown'"
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 647,
+          "line": 650,
           "kind": "custom-event-listener",
           "match": "scope.addEventListener('keydown'"
         },
@@ -18570,7 +18570,13 @@
     },
     {
       "name": "model-trajectory:changed",
-      "producers": [],
+      "producers": [
+        {
+          "file": "modules/ipc/modelTrajectoryHandlers.js",
+          "line": 33,
+          "kind": "event-send"
+        }
+      ],
       "consumers": [
         {
           "file": "preloads/api/modelTrajectory.js",
@@ -18579,6 +18585,12 @@
         }
       ],
       "evidence": [
+        {
+          "file": "modules/ipc/modelTrajectoryHandlers.js",
+          "line": 33,
+          "kind": "event-send",
+          "match": "sender.send('model-trajectory:changed'"
+        },
         {
           "file": "preloads/api/modelTrajectory.js",
           "line": 15,
@@ -18599,14 +18611,14 @@
       "consumers": [
         {
           "file": "modules/ipc/modelTrajectoryHandlers.js",
-          "line": 104,
+          "line": 103,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/modelTrajectoryHandlers.js",
-          "line": 104,
+          "line": 103,
           "kind": "event-listener",
           "match": "ipcMain.handle('model-trajectory:clear'"
         },
@@ -18630,14 +18642,14 @@
       "consumers": [
         {
           "file": "modules/ipc/modelTrajectoryHandlers.js",
-          "line": 93,
+          "line": 92,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/modelTrajectoryHandlers.js",
-          "line": 93,
+          "line": 92,
           "kind": "event-listener",
           "match": "ipcMain.handle('model-trajectory:list'"
         },
@@ -18661,14 +18673,14 @@
       "consumers": [
         {
           "file": "modules/ipc/modelTrajectoryHandlers.js",
-          "line": 115,
+          "line": 114,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/modelTrajectoryHandlers.js",
-          "line": 115,
+          "line": 114,
           "kind": "event-listener",
           "match": "ipcMain.handle('model-trajectory:open-directory'"
         },
@@ -18692,14 +18704,14 @@
       "consumers": [
         {
           "file": "modules/ipc/modelTrajectoryHandlers.js",
-          "line": 127,
+          "line": 126,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/modelTrajectoryHandlers.js",
-          "line": 127,
+          "line": 126,
           "kind": "event-listener",
           "match": "ipcMain.handle('model-trajectory:watch'"
         },
@@ -21560,14 +21572,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 768,
+          "line": 771,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 768,
+          "line": 771,
           "kind": "preload-subscription",
           "match": "api?.onModelTrajectoryChanged("
         }
@@ -32316,11 +32328,6 @@
       "file": "modules/ipc/gitHandlers.js",
       "line": 60,
       "reason": "dynamic event listener name: channel"
-    },
-    {
-      "file": "modules/ipc/modelTrajectoryHandlers.js",
-      "line": 35,
-      "reason": "dynamic event name: channel"
     },
     {
       "file": "modules/ipc/musicHandlers.js",
