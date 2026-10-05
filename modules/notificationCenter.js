@@ -18,7 +18,8 @@
         { id: 'info', title: '通知' },
         { id: 'resolved', title: '已处理', collapsible: true, clearable: true },
     ];
-    const FILTERS = ['all', 'pending', 'error', 'resolved'];
+    // info 只看普通通知：不含待审批和已处理的审批卡
+    const FILTERS = ['all', 'pending', 'info', 'error', 'resolved'];
 
     function setText(element, value) {
         if (element && element.textContent !== value) element.textContent = value;

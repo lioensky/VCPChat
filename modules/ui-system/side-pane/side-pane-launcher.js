@@ -8,7 +8,8 @@ import { createSidePaneEntries } from './side-pane-entries.js';
  *   isNotificationsActive()   通知标签是不是当前标签（通知页是新标签页里的一个分类）
  *   showNotifications() / showLauncher() / hideMenus()
  *   onEntriesChanged()        入口变化后标签条要重新排（「+」按钮可能出现或消失）
- *   homeButton                标签条左边的小房子：总是回到新标签页，新标签页显示时保持按下
+ *   homeButton                标签条左边的小房子：总是回到新标签页（上次停在通知分类就回到通知），
+ *                             新标签页显示时保持按下
  */
 export function createSidePaneLauncher({
     contentContainer,
@@ -59,6 +60,8 @@ export function createSidePaneLauncher({
     let recommendedSettings = null;
     let recommended = new Map();
     let segment = 'tools';
+    // 新标签页最后停在通知分类上：切到别的标签再点小房子回来时还停在通知
+    let homeOnNotifications = false;
 
     const entriesOwner = createSidePaneEntries({ doc, list, addButton, hideMenus, syncSections, onEntriesChanged });
     const { availableEntries, registerEntry, renderEntries, runEntry } = entriesOwner;
@@ -364,7 +367,8 @@ export function createSidePaneLauncher({
         const onHomeClick = (e) => {
             e.stopPropagation();
             hideMenus();
-            showLauncher();
+            if (homeOnNotifications && notificationsSection) showNotifications();
+            else showLauncher();
         };
         homeButton.addEventListener('click', onHomeClick);
         cleanups.push(() => homeButton.removeEventListener('click', onHomeClick));
@@ -381,6 +385,7 @@ export function createSidePaneLauncher({
         syncSections,
 
         syncHome(active) {
+            if (active) homeOnNotifications = Boolean(notificationsSection) && isNotificationsActive();
             if (!homeButton) return;
             homeButton.classList.toggle('active', Boolean(active));
             homeButton.setAttribute('aria-pressed', active ? 'true' : 'false');

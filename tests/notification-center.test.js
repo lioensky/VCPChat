@@ -16,6 +16,7 @@ function fixture() {
         <div id="notificationToolbar">
             <button data-filter="all" aria-pressed="true">全部<span class="notification-chip-count"></span></button>
             <button data-filter="pending" aria-pressed="false">待审批<span class="notification-chip-count"></span></button>
+            <button data-filter="info" aria-pressed="false">通知<span class="notification-chip-count"></span></button>
             <button data-filter="error" aria-pressed="false">错误<span class="notification-chip-count"></span></button>
             <button data-filter="resolved" aria-pressed="false">已处理<span class="notification-chip-count"></span></button>
         </div>
@@ -148,6 +149,12 @@ test('filter chips drive list.dataset.filter and aria-pressed', () => {
     // 筛选状态下不显示分组标题
     ['pending', 'info', 'resolved'].forEach(id => assert.equal(sectionHeader(env, id).hidden, true, id));
     assert.equal(env.list.querySelector('.notification-empty').hidden, true);
+
+    // 「通知」只留普通通知，计数不含待审批和已处理
+    chip(env, 'info').click();
+    assert.equal(env.list.dataset.filter, 'info');
+    assert.equal(chip(env, 'info').getAttribute('aria-pressed'), 'true');
+    assert.equal(chip(env, 'info').querySelector('.notification-chip-count').textContent, '1');
 
     env.center.setFilter('bogus');
     assert.equal(env.center.getFilter(), 'all');

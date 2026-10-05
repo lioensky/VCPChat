@@ -435,6 +435,24 @@ test('Parity: notifications live in the new tab page instead of the tab strip', 
     assert.equal(launcher.hidden, true);
     assert.deepEqual([...doc.querySelectorAll('#sidePaneOpenTabsList .side-pane-overview-item')].map(item => item.getAttribute('data-tab-id')), ['s1']);
 
+    // 小房子回到新标签页上次停的分类：停在工具就回工具，停在通知就回通知
+    const homeBtn = doc.getElementById('sidePaneHomeBtn');
+    homeBtn.click();
+    assert.equal(tools.hidden, false);
+    assert.equal(notifications.hidden, true);
+    segment.click();
+    ctrl.activateTab('s1');
+    assert.equal(launcher.hidden, true);
+    homeBtn.click();
+    assert.equal(ctrl.getSnapshot().activeTabId, SidePaneState.NOTIFICATIONS_TAB_ID);
+    assert.equal(notifications.hidden, false);
+    assert.equal(segment.getAttribute('aria-selected'), 'true');
+    tabs.querySelector('[data-launcher-tab="tools"]').click();
+    ctrl.activateTab('s1');
+    homeBtn.click();
+    assert.equal(ctrl.getSnapshot().activeTabId, SidePaneState.LAUNCHER_TAB_ID);
+    assert.equal(tools.hidden, false);
+
     await ctrl.dispose();
     dom.window.close();
 });

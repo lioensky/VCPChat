@@ -354,7 +354,13 @@ html #sidePaneViewLauncher[data-launcher-segment="notifications"] .side-pane-ope
 html .side-pane-launcher-section[data-launcher-section="notifications"]:where(.vcp-ui-scope, .vcp-ui-scope *) {
     flex: 1;
     min-height: 0;
-    margin: 0 -12px;
+    margin: -6px -12px 0;
+}
+
+/* 待审批横幅在独立通知栏里自带 8px 上边距；放进新标签页后分类和横幅之间
+ * 只留 10px，有没有横幅时分类下面的间距都一样 */
+html .side-pane-launcher-section[data-launcher-section="notifications"] #notificationsSidebar .notification-pending-banner:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    margin-top: 0;
 }
 
 html .side-pane-launcher-app-grid:where(.vcp-ui-scope, .vcp-ui-scope *) {

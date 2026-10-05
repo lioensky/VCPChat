@@ -118,6 +118,7 @@ html .vcp-ui-scope#notificationsSidebar #notificationsList > .notification-empty
 
 /* Filters (list[data-filter] is set by notificationCenter). */
 html .vcp-ui-scope#notificationsSidebar #notificationsList[data-filter="pending"] > .notification-item:not([data-notification-state="pending"]),
+html .vcp-ui-scope#notificationsSidebar #notificationsList[data-filter="info"] > .notification-item:not([data-notification-state="info"]),
 html .vcp-ui-scope#notificationsSidebar #notificationsList[data-filter="resolved"] > .notification-item:not([data-notification-state="resolved"]),
 html .vcp-ui-scope#notificationsSidebar #notificationsList[data-filter="error"] > .notification-item:not([data-notification-tone="error"]),
 html .vcp-ui-scope#notificationsSidebar #notificationsList.resolved-collapsed > .notification-item[data-notification-state="resolved"],
