@@ -1,18 +1,8 @@
 /*
- * Git 变更标签（.side-git-*）。
+ * V工程 计划标签里的 Git 页（.side-git-*，原先是单独的 Git 变更标签）。
  * 布局照 ZCode GitPane / GitPaneChangeCard：顶栏 = 来源下拉 + 幽灵刷新按钮；
  * 列表 = 平铺的 32px 卡片行（文件名 + 暗色目录 / +N -N / 翻转箭头）；空状态居中。
  */
-
-html .side-git-view:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    width: 100%;
-    box-sizing: border-box;
-    overflow: hidden;
-    background: transparent;
-}
 
 html .side-git-container:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: flex;
@@ -125,6 +115,16 @@ html .side-git-body:where(.vcp-ui-scope, .vcp-ui-scope *) {
     min-height: 0;
     overflow: auto;
 }
+
+/* 嵌在 V工程 计划标签的 Git 页里：页签下面直接是胶囊，不要单独的顶栏底条；滚动交给计划页 */
+html body .side-plan-git .side-git-container:where(.vcp-ui-scope, .vcp-ui-scope *) { overflow: visible; }
+html body .side-plan-git .side-git-header:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    padding: 0 0 8px;
+    border-bottom: 0;
+    background: transparent;
+}
+html body .side-plan-git .side-git-body:where(.vcp-ui-scope, .vcp-ui-scope *) { overflow: visible; }
+html body .side-plan-git .side-git-empty:where(.vcp-ui-scope, .vcp-ui-scope *) { height: auto; padding: 40px 24px; }
 
 /* ── 变更卡片 ─────────────────────────────────────────── */
 html .side-git-card:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 100%; min-width: 0; }

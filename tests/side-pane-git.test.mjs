@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 
-import { createGitSideProvider } from '../modules/ui-system/side-pane/gitSideProvider.js';
+import { mountGitView } from '../modules/ui-system/side-pane/git/git-view.js';
 
-test('GitSideProvider: mirrors the ZCode GitPane — source select, flat change cards, expandable diff, context menu', async () => {
+test('the Git view mirrors the ZCode GitPane — source select, flat change cards, expandable diff, context menu', async () => {
     const dom = new JSDOM(`
         <div id="sideGitHost"></div>
     `, { pretendToBeVisual: true });
@@ -42,12 +42,11 @@ test('GitSideProvider: mirrors the ZCode GitPane — source select, flat change 
         }
     };
 
-    const provider = createGitSideProvider({
-        electronAPI: mockAPI,
+    const handle = mountGitView(viewElement, {
+        api: mockAPI,
         uiHelper: { showToastNotification(msg, type) { toasts.push({ msg, type }); } }
     });
-
-    const handle = await provider.mountTab({ id: 'side-pane-git', kind: 'git', title: 'Git 变更' }, viewElement);
+    await handle.ready;
     assert.ok(handle);
 
     // header: one source select + one refresh button, nothing else (single workspace => no workspace picker)

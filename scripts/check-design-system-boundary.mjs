@@ -185,6 +185,10 @@ const allowedSourceDifferences = new Set([
     'modules/ui-system/state-channel.js',
     'modules/ui-system/settlement.js',
     'modules/ui-system/surface-controller.js',
+    // Reviewed sidebar gesture lifecycle: pointer identity/final release,
+    // cancellation without persistence, and deferred-begin disposal safety.
+    'modules/ui-system/sidebar-resizer.js',
+    'tests/sidebar-resizer-lifecycle.test.mjs',
     'modules/ui-system/next-shell/overlay-coordinator.js',
     'modules/ui-system/next-shell/embedded-app-controller.js',
     'modules/ui-system/next-shell/app-tab-host.js',
@@ -260,6 +264,9 @@ const allowedSourceDifferences = new Set([
     'rust_chat_data_service/src/sync.rs',
     'rust_chat_data_service/src/watcher.rs',
     'scripts/check-design-system-boundary.mjs',
+    // Reviewed AST event inventory helper; source facts and unresolved sites,
+    // without invoking renderer/IPC endpoints or exempting dynamic contracts.
+    'scripts/chat-event-source.mjs',
     'scripts/check-classic-parity.mjs',
     'scripts/check-classic-retirement-boundary.mjs',
     'scripts/check-next-delta-contract.mjs',

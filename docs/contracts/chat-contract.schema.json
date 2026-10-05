@@ -22,7 +22,7 @@
     "retirement": { "type": "string" }
     ,"dynamicSmoke": { "type": "string" }
     ,"facadeName": { "type": "string" }
-    ,"dynamicSites": { "type": "array", "items": { "type": "object", "required": ["file", "line"], "properties": { "file": { "type": "string" }, "line": { "type": "integer", "minimum": 1 } }, "additionalProperties": false } }
+    ,"dynamicSites": { "type": "array", "items": { "type": "object", "required": ["file", "line"], "properties": { "file": { "type": "string" }, "line": { "type": "integer", "minimum": 1 }, "kind": { "enum": ["custom-event-create", "custom-event-listener", "event-listener", "event-send", "preload-channel-definition"] } }, "additionalProperties": false } }
   },
   "additionalProperties": true
 }

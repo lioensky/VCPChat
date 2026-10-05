@@ -52,6 +52,19 @@ export function createSidePaneResizerOwner({
         : { down: 'mousedown', move: 'mousemove', up: 'mouseup', cancel: 'mouseleave' };
 
     let isDisposed = false;
+    let dragStyles = null;
+
+    function restoreDragStyles() {
+        if (!dragStyles) return;
+        const previous = dragStyles;
+        dragStyles = null;
+        for (const [style, property, value, priority] of previous.declarations) {
+            if (value) style.setProperty(property, value, priority);
+            else style.removeProperty(property);
+        }
+        previous.body.classList.toggle('vcp-sidebar-resizing', previous.bodyResizing);
+        handle.classList.toggle('active', previous.handleActive);
+    }
 
     const initialBounds = getBounds();
     const currentWidth = paneElement?.getBoundingClientRect ? paneElement.getBoundingClientRect().width : minWidth;
@@ -76,13 +89,24 @@ export function createSidePaneResizerOwner({
         },
         onActiveChange: (active) => {
             if (isDisposed || !doc?.body) return;
-            doc.body.style.cursor = active ? 'col-resize' : '';
-            doc.body.style.userSelect = active ? 'none' : '';
-            doc.body.classList.toggle('vcp-sidebar-resizing', active);
-            if (paneElement?.style) {
-                paneElement.style.transition = active ? 'none' : '';
+            if (!active) {
+                restoreDragStyles();
+                return;
             }
-            handle?.classList?.toggle?.('active', active);
+            dragStyles = {
+                body: doc.body,
+                declarations: [[doc.body.style, 'cursor'], [doc.body.style, 'user-select'], [paneElement.style, 'transition']]
+                    .map(([style, property]) => [style, property, style.getPropertyValue(property), style.getPropertyPriority(property)]),
+                bodyResizing: doc.body.classList.contains('vcp-sidebar-resizing'),
+                handleActive: handle.classList.contains('active')
+            };
+            doc.body.style.cursor = 'col-resize';
+            doc.body.style.userSelect = 'none';
+            doc.body.classList.add('vcp-sidebar-resizing');
+            if (paneElement?.style) {
+                paneElement.style.transition = 'none';
+            }
+            handle.classList.add('active');
         },
         onCommit: (width) => {
             if (isDisposed) return;
@@ -119,6 +143,14 @@ export function createSidePaneResizerOwner({
     handle?.addEventListener?.('keydown', onKeydown);
 
     const owner = Object.freeze({
+        cancel() {
+            if (isDisposed) return;
+            try {
+                resizer?.cancel?.();
+            } finally {
+                restoreDragStyles();
+            }
+        },
         refresh() {
             if (!isDisposed) resizer?.refresh?.();
         },
@@ -126,7 +158,11 @@ export function createSidePaneResizerOwner({
             if (isDisposed) return;
             isDisposed = true;
             handle?.removeEventListener?.('keydown', onKeydown);
-            resizer?.dispose?.();
+            try {
+                resizer?.dispose?.();
+            } finally {
+                restoreDragStyles();
+            }
         }
     });
 

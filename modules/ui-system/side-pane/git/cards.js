@@ -1,6 +1,6 @@
 /**
- * modules/ui-system/side-pane/gitSideProvider.js
- * VCPChat Universal Sub-screen - Git 变更 Provider
+ * modules/ui-system/side-pane/git/cards.js
+ * V工程 计划标签里的 Git 页（git-view.js）的一部分
  *
  * 照 ZCode `GitPane` / `GitPaneChangeCard`（zai-org/ZCode，Apache-2.0）复刻，只保留它有的东西：
  * 1. 顶栏：来源下拉（未暂存 / 已暂存 / 上一轮）+ 幽灵「刷新」按钮。

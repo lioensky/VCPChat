@@ -120,6 +120,7 @@ export function createSidePaneController({
         onSync: syncHeaderButtons
     });
     const syncDomVisibility = (options = {}) => {
+        if (!state.visible) resizerOwner?.cancel?.();
         visibility.sync(state.visible, options);
         mountActiveIfNeeded();
     };

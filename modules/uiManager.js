@@ -25,6 +25,11 @@ const uiManager = (() => {
     let themeDisposer = null;
     const tasks = new Set();
     const fallbackTimers = new Set();
+    const resizers = new Set();
+    const disposeResizers = () => {
+        for (const resizer of resizers) resizer.dispose();
+        resizers.clear();
+    };
     const isCurrent = token => !disposed && token === generation;
     const track = value => {
         const task = Promise.resolve(value);
@@ -49,6 +54,7 @@ const uiManager = (() => {
      * Initializes the resizable sidebars.
      */
     function initializeResizers() {
+        disposeResizers();
         const getWidthConstraints = (element, fallbackMin) => {
             const computed = getComputedStyle(element);
             return {
@@ -58,7 +64,8 @@ const uiManager = (() => {
         };
         const createResizer = (handle, element, fallbackMin, direction, settingKey, beforeBegin) => {
             if (!handle || !element || !window.VCPSidebarResizer) return null;
-            return window.VCPSidebarResizer.create({
+            let dragStyles = null;
+            const resizer = window.VCPSidebarResizer.create({
                 handle,
                 getValue: () => element.getBoundingClientRect().width,
                 getBounds: () => getWidthConstraints(element, fallbackMin),
@@ -67,25 +74,44 @@ const uiManager = (() => {
                 step: 1,
                 beforeBegin,
                 onActiveChange: (active) => {
-                    document.body.style.cursor = active ? 'col-resize' : '';
-                    document.body.style.userSelect = active ? 'none' : '';
-                    document.body.classList.toggle('vcp-sidebar-resizing', active);
-                    element.style.transition = active ? 'none' : '';
+                    if (active) {
+                        const body = document.body;
+                        dragStyles = {
+                            body,
+                            resizing: body.classList.contains('vcp-sidebar-resizing'),
+                            declarations: [[body.style, 'cursor'], [body.style, 'user-select'], [element.style, 'transition']]
+                                .map(([style, property]) => [style, property, style.getPropertyValue(property), style.getPropertyPriority(property)])
+                        };
+                        body.style.cursor = 'col-resize';
+                        body.style.userSelect = 'none';
+                        body.classList.add('vcp-sidebar-resizing');
+                        element.style.transition = 'none';
+                    } else if (dragStyles) {
+                        for (const [style, property, value, priority] of dragStyles.declarations) {
+                            if (value) style.setProperty(property, value, priority);
+                            else style.removeProperty(property);
+                        }
+                        dragStyles.body.classList.toggle('vcp-sidebar-resizing', dragStyles.resizing);
+                        dragStyles = null;
+                    }
                 },
                 onCommit: async (width) => {
+                    if (disposed) return;
                     const currentSettings = globalSettingsRef.get();
                     const roundedWidth = Math.round(width);
                     if (currentSettings[settingKey] === roundedWidth) return;
                     const nextSettings = { ...currentSettings, [settingKey]: roundedWidth };
                     globalSettingsRef.set(nextSettings);
                     try {
-                        await saveSettingPatch({ [settingKey]: roundedWidth });
+                        await track(saveSettingPatch({ [settingKey]: roundedWidth }));
                         console.log('Sidebar width saved to settings.');
                     } catch (error) {
                         console.error('Failed to save sidebar width:', error);
                     }
                 },
             });
+            resizers.add(resizer);
+            return resizer;
         };
 
         createResizer(resizerLeft, leftSidebar, 180, 1, 'sidebarWidth');
@@ -607,6 +633,7 @@ const uiManager = (() => {
             if (disposed) return;
             disposed = true;
             generation += 1;
+            disposeResizers();
             themeDisposer?.();
             themeDisposer = null;
             for (const timer of fallbackTimers) clearTimeout(timer);

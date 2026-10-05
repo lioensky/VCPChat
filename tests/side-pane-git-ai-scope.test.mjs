@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { createGitSideProvider, filterAiTouched, latestAiBatch } from '../modules/ui-system/side-pane/gitSideProvider.js';
+import { mountGitView, filterAiTouched, latestAiBatch } from '../modules/ui-system/side-pane/git/git-view.js';
 
 const wait = (ms = 60) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -46,20 +46,20 @@ function makeEnv({ batches } = {}) {
         projectForgeGetProject: async () => ({ success: true, data: { project: { name: '算法工程' }, timeline } }),
         onProjectForgeChanged: (cb) => { state.forgeHandler = cb; return () => { state.forgeHandler = null; }; }
     };
-    const provider = createGitSideProvider({ electronAPI: api });
-    return { win, view, provider, state, api, setTimeline: (t) => { timeline = t; } };
+    const gitView = { mount: async () => { const handle = mountGitView(view, { api }); await handle.ready; return handle; } };
+    return { win, view, gitView, state, api, setTimeline: (t) => { timeline = t; } };
 }
 
 const files = (view) => [...view.querySelectorAll('.side-git-card')].map(card => card.dataset.path);
 
 test('the 上一轮 source narrows changes to the newest V工程 batch and follows V工程 updates', async () => {
-    const { win, view, provider, state, setTimeline } = makeEnv({
+    const { win, view, gitView, state, setTimeline } = makeEnv({
         batches: [
             { id: 2, kind: 'edit', reason: '重构 a', maid: 'Nova', created_at: '2026-09-30 01:00:00', files: ['C:\\repo\\src\\a.js'] },
             { id: 1, kind: 'create', reason: '较早', files: ['docs/b.md'] }
         ]
     });
-    const handle = await provider.mountTab({ id: 'git', kind: 'git' }, view);
+    const handle = await gitView.mount();
     try {
         assert.equal(files(view).length, 3, 'default source lists the unstaged changes');
         const select = view.querySelector('.side-git-source-select');
@@ -100,8 +100,8 @@ test('the 上一轮 source narrows changes to the newest V工程 batch and follo
 });
 
 test('a change announced by the status panel refreshes the tab, and the tab ignores its own announcements', async () => {
-    const { win, view, provider, state } = makeEnv({ batches: [] });
-    const handle = await provider.mountTab({ id: 'git', kind: 'git' }, view);
+    const { win, view, gitView, state } = makeEnv({ batches: [] });
+    const handle = await gitView.mount();
     try {
         const before = state.statusCalls;
         win.dispatchEvent(new win.CustomEvent('vcp:git-changed', { detail: { source: 'status-panel' } }));
@@ -118,9 +118,9 @@ test('a change announced by the status panel refreshes the tab, and the tab igno
 });
 
 test('a legacy stored "all" source falls back to unstaged', async () => {
-    const { win, view, provider } = makeEnv({ batches: [] });
+    const { win, view, gitView } = makeEnv({ batches: [] });
     win.localStorage.setItem('vcp-side-pane-git-source', 'all');
-    const handle = await provider.mountTab({ id: 'git', kind: 'git' }, view);
+    const handle = await gitView.mount();
     try {
         assert.equal(view.querySelector('.side-git-source-select').value, 'unstaged');
     } finally {

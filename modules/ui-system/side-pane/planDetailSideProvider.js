@@ -7,7 +7,8 @@
  * - 跟着工程走：名称、状态、根目录、计划（todo）与进度、验收报告；
  * - 跟着话题走：施工时间线、变更文件、参与者、统计和历史筛选，只算这个话题自己施工产生的批次；
  * - 节点可以展开看前后差异并署名回退，和 V工程 页同一套规则。
- * 跨工程浏览、删除工程、Git / 源码页留在 V工程 页。工程变更时经 onProjectForgeChanged 实时刷新，
+ * 「Git」页是当前工作区的未提交改动（原先单独的 Git 变更标签），没有工程时也能用。
+ * 删除工程、源码页留在 V工程 页。工程变更时经 onProjectForgeChanged 实时刷新，
  * 聊天记录变化（新的施工结果）时重新圈定话题批次。面板样式沿用 status-panel 的 zc-* 变量。
  */
 
@@ -24,10 +25,13 @@ import {
 import { createPlanNodeView } from './plan-detail/node-view.js';
 import { createPlanPageNavigation } from './plan-detail/page-navigation.js';
 import { createProjectPicker } from './plan-detail/project-picker.js';
+import { mountGitView } from './git/git-view.js';
 
 const STORAGE_KEY_WS = 'vcp-projectforge-git-workspace';
 const TAB_PREFIX = 'plan-detail:';
 const TOPIC_TAB = 'topic';
+const NO_PROJECT_TAB = 'none';
+const FOLLOW_SKIPPED = Symbol('follow-skipped');
 const REFRESH_DEBOUNCE_MS = 200;
 const FILTER_DEBOUNCE_MS = 300;
 
@@ -37,7 +41,7 @@ const STATUS_ICON = Object.freeze({ completed: 'check_circle', inProgress: 'arro
 /** 话题里一个话题一个计划标签（工程在标签里切换）；不在话题里时一个工程一个标签。 */
 export function planTabId(projectId, parentRef = null) {
     if (parentRef) return `${TAB_PREFIX}${TOPIC_TAB}@${getParentKey(parentRef)}`;
-    return `${TAB_PREFIX}${projectId}`;
+    return `${TAB_PREFIX}${projectId || NO_PROJECT_TAB}`;
 }
 
 /**
@@ -114,6 +118,8 @@ export function createPlanDetailSideProvider({
     const win = doc.defaultView || window;
     const storage = (() => { try { return win.localStorage; } catch (_e) { return null; } })();
     const toast = (message, type = 'info') => uiHelper?.showToastNotification?.(message, type);
+    // 打开时要切到的页 / 要定位的文件：标签还没挂载就留给 mountTab 取，不写进标签 payload（不该随布局恢复）
+    const pendingReveal = new Map();
 
     return {
         kind,
@@ -121,8 +127,9 @@ export function createPlanDetailSideProvider({
         /**
          * 打开（或聚焦）计划详情。话题里不传 projectId 时显示话题的工程（与状态面板同一条规则）；
          * focus 可以定位到某条计划（todoId）或某个区块（section）。没有任何工程时给出提示而不是开一个空标签。
+         * page 切到某一页；page 为 'git' 时没有工程也照样打开，focusPath 展开那个文件的 diff。
          */
-        async openPlanDetailTab({ projectId = null, projectName = '', focus = null } = {}) {
+        async openPlanDetailTab({ projectId = null, projectName = '', focus = null, page = null, focusPath = null } = {}) {
             if (!sidePaneController) return null;
             let id = projectId;
             let name = projectName;
@@ -131,23 +138,23 @@ export function createPlanDetailSideProvider({
             const parent = snapshot?.parent || null;
             if (!id && parent && typeof getConversationProjects === 'function') {
                 const used = (await getConversationProjects()) || [];
-                if (!used.length) {
+                if (!used.length && page !== 'git') {
                     toast('这个话题还没用过 V工程：让助手用 ProjectForge 建好工程后，这里会显示它的计划', 'info');
                     return null;
                 }
                 // 和状态面板同一条规则：最近用过、有计划的工程
                 const picked = pickTopicProject(used);
-                id = picked.id;
-                name = picked.name;
+                id = picked?.id || null;
+                name = picked?.name || '';
             }
-            if (!id) {
+            if (!id && !parent) {
                 const project = await resolveDefaultProject(api, storage);
-                if (!project) {
+                if (!project && page !== 'git') {
                     toast('还没有 V工程 工程：让管家用 ProjectForge 创建工程后，这里会显示它的计划', 'info');
                     return null;
                 }
-                id = project.id;
-                name = project.name;
+                id = project?.id || null;
+                name = project?.name || '';
             }
             const parentKey = parent ? getParentKey(parent) : '';
             // 这个话题已经有计划标签（包括旧版按工程开的）就用它
@@ -157,10 +164,12 @@ export function createPlanDetailSideProvider({
             const tabId = existing?.id || planTabId(id, parent);
             const pinned = Boolean(projectId);
             const payload = { ...(existing?.payload || {}), projectId: existing && !pinned ? (existing.payload?.projectId || id) : id, projectName: name, pinned: pinned || Boolean(existing?.payload?.pinned), focus };
+            const wasMounted = Boolean(sidePaneController.getTabHandle?.(tabId));
+            if (page || focusPath) pendingReveal.set(tabId, { page, focusPath });
             const handle = await sidePaneController.openTab({
                 id: tabId,
                 kind,
-                title: name ? `计划 · ${name}` : '计划详情',
+                title: name ? `计划 · ${name}` : (existing?.title || '计划详情'),
                 icon: 'checklist',
                 closable: true,
                 scopeMode: parent ? 'topic' : 'global',
@@ -170,7 +179,10 @@ export function createPlanDetailSideProvider({
             });
             sidePaneController.setVisible?.(true);
             const mounted = sidePaneController.getTabHandle?.(tabId) || handle;
-            if (existing) mounted?.reveal?.({ projectId: pinned ? id : null, focus });
+            if (existing || wasMounted) {
+                pendingReveal.delete(tabId);
+                mounted?.reveal?.({ projectId: pinned ? id : null, focus, page, focusPath });
+            }
             mounted?.focus?.();
             return mounted;
         },
@@ -178,7 +190,7 @@ export function createPlanDetailSideProvider({
         async mountTab(tab, viewElement) {
             if (!viewElement) return null;
             const legacyId = String(tab?.id || '').slice(TAB_PREFIX.length).split('@')[0];
-            let projectId = tab?.payload?.projectId || (legacyId && legacyId !== TOPIC_TAB ? legacyId : null);
+            let projectId = tab?.payload?.projectId || (legacyId && legacyId !== TOPIC_TAB && legacyId !== NO_PROJECT_TAB ? legacyId : null);
             let pinned = Boolean(tab?.payload?.pinned);
             let pendingFocus = tab?.payload?.focus || null;
             const topicMode = Boolean(tab?.parent);
@@ -234,10 +246,33 @@ export function createPlanDetailSideProvider({
             let nodeView = null;
             const navigation = createPlanPageNavigation({ h, button, id: tab.id, onChange: selectPage });
             const picker = createProjectPicker({ h, icon, doc, win, host: scope, api, onPick: switchProject });
+            // Git 页：元素常驻，每次重绘挂回去；第一次切到这一页才读 Git
+            const gitHost = h('div', 'side-plan-git');
+            let gitView = null;
+            let gitProjectId = null;
+            const workspaceOfProject = (project) => (project && (project.workspace_id || project.workspace_alias)
+                ? { id: project.workspace_id || null, alias: project.workspace_alias || null } : null);
+            function ensureGit() {
+                if (!gitView) {
+                    gitProjectId = model?.project?.id || null;
+                    gitView = mountGitView(gitHost, { api, uiHelper, preferWorkspace: workspaceOfProject(model?.project) });
+                }
+                return gitView;
+            }
+            /** 换了工程，Git 页跟到它的工作区 */
+            function followProjectWorkspace() {
+                const project = model?.project;
+                if (!gitView || !project || project.id === gitProjectId) return;
+                const skipped = gitProjectId === FOLLOW_SKIPPED;
+                gitProjectId = project.id;
+                if (skipped) return;
+                gitView.useWorkspace(workspaceOfProject(project));
+            }
 
             function selectPage(key) {
                 if (navigation.selected === key) return;
                 navigation.select(key, body.scrollTop);
+                if (key === 'git') ensureGit();
                 render();
                 body.scrollTop = navigation.scrollTop;
                 chrome.querySelector(`[data-plan-page="${key}"]`)?.focus();
@@ -312,7 +347,7 @@ export function createPlanDetailSideProvider({
             const who = (maid, batchKind) => (maid ? `@${maid}` : (batchKind === 'external' ? '外部修改' : '未署名'));
 
             function renderHeader() {
-                const { project } = model;
+                const project = model?.project || null;
                 const head = h('header', 'side-plan-header');
                 const titleRow = h('div', 'side-plan-title-row');
                 // 一行胶囊：面包屑（范围 › 工作区 › 工程名）、状态和更新时间、刷新/打开。
@@ -322,12 +357,19 @@ export function createPlanDetailSideProvider({
                 crumbs.setAttribute('aria-expanded', String(picker.isOpen()));
                 crumbs.addEventListener('click', () => {
                     if (picker.isOpen()) picker.close();
-                    else picker.open({ currentId: project.id, topicIds: topicMode ? topicProjects.map(p => p.id) : [] });
+                    else picker.open({ currentId: project?.id || null, topicIds: topicMode ? topicProjects.map(p => p.id) : [] });
                 });
                 const addCrumb = (node) => {
                     if (crumbs.childElementCount) crumbs.appendChild(icon('chevron_right', 'side-plan-crumb-sep'));
                     crumbs.appendChild(node);
                 };
+                if (!project) {
+                    addCrumb(h('span', 'side-plan-title', '选择工程'));
+                    crumbs.appendChild(icon('expand_more', 'side-plan-crumb-caret'));
+                    titleRow.appendChild(crumbs);
+                    head.appendChild(titleRow);
+                    return head;
+                }
                 addCrumb(h('span', 'side-plan-crumb side-plan-context', activity ? '本话题' : '工程全览'));
                 if (project.workspace_alias) addCrumb(h('span', 'side-plan-crumb', project.workspace_alias));
                 addCrumb(h('span', 'side-plan-title', project.name || '未命名工程'));
@@ -662,17 +704,25 @@ export function createPlanDetailSideProvider({
                 body.innerHTML = '';
                 chrome.innerHTML = '';
                 chrome.hidden = false;
-                if (loading && !model) {
+                if (loading && !model && navigation.selected !== 'git') {
                     body.appendChild(h('div', 'side-plan-empty', '正在读取 V工程 计划…'));
                     return;
                 }
+                const gitPage = { key: 'git', label: 'Git', content: [gitHost] };
                 if (!model) {
+                    // 没有工程：计划页给出原因，Git 页照常可用
                     const box = h('div', 'side-plan-empty side-plan-error');
-                    box.appendChild(h('div', '', errorText || '没有找到这个工程，可能已被删除'));
-                    const retry = button('zc-btn zc-btn-ghost', '重试');
-                    retry.addEventListener('click', () => load());
-                    box.appendChild(retry);
-                    body.appendChild(box);
+                    box.appendChild(h('div', '', loading ? '正在读取 V工程 计划…' : (errorText || '没有找到这个工程，可能已被删除')));
+                    if (!loading) {
+                        const retry = button('zc-btn zc-btn-ghost', '重试');
+                        retry.addEventListener('click', () => load());
+                        box.appendChild(retry);
+                    }
+                    const pages = navigation.render([{ key: 'plan', label: '计划', content: [box] }, gitPage]);
+                    chrome.append(renderHeader(), pages.tabs);
+                    body.appendChild(pages.panels);
+                    body.scrollTop = scrollTop;
+                    if (pageFocus) chrome.querySelector(`[data-plan-page="${navigation.selected}"]`)?.focus();
                     return;
                 }
                 if (staleError) {
@@ -688,7 +738,8 @@ export function createPlanDetailSideProvider({
                     { key: 'plan', label: '计划', count: model.counts.total, content: [renderTodos()] },
                     { key: 'timeline', label: '施工线', count: timelineRows().length, content: [renderStats(), renderTimeline(), renderOtherHint()] },
                     { key: 'files', label: '文件', count: (activity ? activity.files : model.files).length, content: [renderFiles()] },
-                    { key: 'details', label: '详情', content: [renderProjectDetails(), renderContributors(), renderReport()] }
+                    { key: 'details', label: '详情', content: [renderProjectDetails(), renderContributors(), renderReport()] },
+                    gitPage
                 ]);
                 chrome.append(renderHeader(), pages.tabs);
                 body.appendChild(pages.panels);
@@ -842,7 +893,7 @@ export function createPlanDetailSideProvider({
                     const chosen = (pinned && projectId) || pickTopicProject(projects)?.id || projectId;
                     if (!chosen) {
                         model = null;
-                        errorText = '这个话题还没用过 V工程';
+                        errorText = topicMode ? '这个话题还没用过 V工程，可以从上面选一个工程' : '还没有 V工程 工程';
                         loading = false;
                         render();
                         return;
@@ -893,6 +944,7 @@ export function createPlanDetailSideProvider({
                     }
                 }
                 loading = false;
+                followProjectWorkspace();
                 if (hasFilters(filters) && model) runSearch();
                 else render();
             }
@@ -912,10 +964,11 @@ export function createPlanDetailSideProvider({
 
             const handle = {
                 focus() { scheduleLoad(); },
-                /** 已打开的标签再次被打开：可以换工程，也可以定位到某条计划 / 某个区块。 */
-                reveal({ projectId: nextId = null, focus = null } = {}) {
+                /** 已打开的标签再次被打开：可以换工程、切页、定位到某条计划 / 某个区块，或展开 Git 页里的某个文件。 */
+                reveal({ projectId: nextId = null, focus = null, page = null, focusPath = null } = {}) {
                     if (focus) pendingFocus = focus;
-                    if (nodeView && (focus || nextId)) closeNode();
+                    if (nodeView && (focus || nextId || page || focusPath)) closeNode();
+                    if (page || focusPath) showGitOrPage(page || 'git', focusPath);
                     if (nextId && nextId !== projectId) { switchProject(nextId); return; }
                     if (focus) render();
                 },
@@ -924,6 +977,7 @@ export function createPlanDetailSideProvider({
                     win.clearTimeout(timer);
                     win.clearTimeout(filterTimer);
                     picker.dispose();
+                    gitView?.dispose();
                     nodeView?.dispose();
                     if (typeof off === 'function') off();
                     if (typeof offTopic === 'function') offTopic();
@@ -932,6 +986,23 @@ export function createPlanDetailSideProvider({
                 }
             };
 
+            function showGitOrPage(page, focusPath) {
+                if (page !== navigation.selected) {
+                    navigation.select(page, body.scrollTop);
+                    render();
+                    body.scrollTop = navigation.scrollTop;
+                }
+                if (page === 'git' || focusPath) ensureGit();
+                if (focusPath) {
+                    // 定位的文件决定工作区，刚读到的工程不要再把它拉回工程的工作区
+                    if (!gitProjectId) gitProjectId = FOLLOW_SKIPPED;
+                    gitView.focusPath(focusPath);
+                }
+            }
+
+            const opening = pendingReveal.get(tab.id);
+            pendingReveal.delete(tab.id);
+            if (opening) showGitOrPage(opening.page || 'git', opening.focusPath);
             render();
             // 已经订阅了工程变化；首次加载出错时先退订再往外抛
             try {

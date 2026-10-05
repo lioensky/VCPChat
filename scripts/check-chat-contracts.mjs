@@ -49,6 +49,9 @@ for (const contract of contracts) {
             } else if (!fs.existsSync(path.join(root, site.file))) {
                 fail(`${contract.id} dynamicSites file is missing: ${site.file}`);
             }
+            if (site?.kind !== undefined && !schema.properties.dynamicSites.items.properties.kind.enum.includes(site.kind)) {
+                fail(`${contract.id} dynamicSites has invalid operation kind: ${site.kind}`);
+            }
         }
     }
 }
@@ -63,7 +66,8 @@ if (graph.schemaVersion !== 1 || !Array.isArray(graph.events) || !Array.isArray(
 if (graph.undiscovered.length) fail(`graph contains ${graph.undiscovered.length} unregistered dynamic event site(s)`);
 for (const contract of contracts.filter(item => item.kind === 'event' && item.dynamic === true)) {
     for (const site of contract.dynamicSites || []) {
-        if (!graph.registeredDynamic.some(item => item.contractId === contract.id && item.file === site.file && item.line === site.line)) {
+        if (!graph.registeredDynamic.some(item => item.contractId === contract.id && item.file === site.file && item.line === site.line
+            && item.kind === (site.kind || 'custom-event-create'))) {
             fail(`${contract.id} dynamicSites entry is not observed by the generated graph: ${site.file}:${site.line}`);
         }
     }

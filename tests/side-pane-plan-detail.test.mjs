@@ -177,6 +177,9 @@ test('plan pages navigate by keyboard and retain their scroll positions across r
     selected().click();
     assert.equal(body.scrollTop, 120);
     selected().dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    assert.equal(panel().dataset.planPagePanel, 'git');
+    assert.ok(panel().querySelector('.side-git-container'), 'the Git page mounts when it is first shown');
+    selected().dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
     assert.equal(panel().dataset.planPagePanel, 'details');
     assert.match(panel().textContent, /创建者.*Nova/);
     body.scrollTop = 30;
@@ -279,5 +282,37 @@ test('inside a topic the plan tab belongs to that topic and shows the project th
     await provider.openPlanDetailTab();
     assert.equal(opened.length, 1);
     assert.equal(toasts.length, 1);
+    dom.window.close();
+});
+
+test('the Git page opens on the project workspace and follows a project switch', async () => {
+    const projects = [
+        { id: 'p1', name: '算法工程', workspace_id: 'ws1', updated_at: '2026-09-30' },
+        { id: 'p2', name: '旁支工程', workspace_id: 'ws2', updated_at: '2026-09-29' }
+    ];
+    const statusFor = [];
+    const { provider, view, dom } = makeEnv({
+        projectForgeListProjects: async () => ({ success: true, data: projects }),
+        projectForgeGetProject: async (id) => ({ success: true, data: { ...DETAIL, project: { ...DETAIL.project, ...projects.find(p => p.id === id) } } }),
+        gitListWorkspaces: async () => ({ success: true, data: { workspaces: [{ id: 'ws0', alias: 'zero', path: '/z' }, { id: 'ws1', alias: 'one', path: '/a' }, { id: 'ws2', alias: 'two', path: '/b' }], activeWorkspaceId: 'ws0' } }),
+        gitStatus: async (id) => { statusFor.push(id); return { success: true, data: { isRepo: true, staged: [], conflicts: [], changes: [] } }; }
+    });
+    const wait = (ms = 30) => new Promise(resolve => setTimeout(resolve, ms));
+    const handle = await provider.mountTab({ id: planTabId('p1'), payload: { projectId: 'p1' } }, view);
+    assert.deepEqual(statusFor, [], 'Git is not read until its page is shown');
+    view.querySelector('[data-plan-page="git"]').click();
+    await wait();
+    assert.equal(statusFor.at(-1), 'ws1');
+    assert.equal(view.querySelector('.side-git-ws-select').value, 'ws1');
+
+    view.querySelector('.side-plan-crumbs').click();
+    await wait();
+    view.querySelector('.side-plan-picker-item[data-project-id="p2"]').click();
+    await wait(60);
+    assert.equal(view.querySelector('.side-plan-title').textContent, '旁支工程');
+    assert.equal(view.querySelector('.side-git-ws-select').value, 'ws2');
+    assert.equal(statusFor.at(-1), 'ws2');
+    assert.equal(view.querySelector('.side-plan-page-tab[aria-selected="true"]').dataset.planPage, 'git');
+    handle.dispose();
     dom.window.close();
 });

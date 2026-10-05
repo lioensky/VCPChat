@@ -9,7 +9,7 @@ import { JSDOM } from 'jsdom';
 
 import { createGitFileDiffResolver, findStatusItem, normalizeFsPath, toWorkspaceRelative } from '../modules/ui-system/git-file-diff.js';
 import { createMessageFileChanges } from '../modules/ui-system/message-file-changes.js';
-import { createGitSideProvider } from '../modules/ui-system/side-pane/gitSideProvider.js';
+import { createPlanDetailSideProvider } from '../modules/ui-system/side-pane/planDetailSideProvider.js';
 
 const require = createRequire(import.meta.url);
 const gitService = require('../modules/services/gitService.js');
@@ -157,38 +157,47 @@ test('file summary fetches stats only when expanded and opens the diff from the 
     controller.dispose();
 });
 
-test('opening the git tab with a focus path expands that file, both for a new and an already-mounted tab', async () => {
+test('opening the plan tab on its Git page with a focus path expands that file, both for a new and an already-mounted tab', async () => {
     const { repo } = makeRepo();
     git(repo, 'add', 'fresh.js');
     const win = new JSDOM('<div id="host"></div>', { pretendToBeVisual: true }).window;
-    globalThis.window = win;
-    globalThis.CustomEvent = win.CustomEvent;
     const view = win.document.getElementById('host');
     const api = backedApi([{ id: 'ws1', alias: 'demo', path: repo }]);
     let mounted = null;
+    const opened = [];
     const sidePaneController = {
+        getSnapshot: () => ({ parent: null, tabs: [] }),
+        getTabHandle: () => mounted,
         openTab: async (descriptor) => {
+            opened.push(descriptor.id);
             if (!mounted) mounted = await provider.mountTab(descriptor, view);
-            return { focus() {} };
+            return mounted;
         },
+        updateTab() {},
         setVisible() {}
     };
-    const provider = createGitSideProvider({ electronAPI: api, sidePaneController });
+    const provider = createPlanDetailSideProvider({ document: win.document, api, sidePaneController });
     const expandedPaths = () => [...view.querySelectorAll('.side-git-row.is-expanded')].map(row => row.closest('.side-git-card').dataset.path);
+    const selectedPage = () => view.querySelector('.side-plan-page-tab[aria-selected="true"]')?.dataset.planPage;
     try {
-        // first open mounts the tab, which then picks up the pending focus (an unstaged file)
-        await provider.openGitTab({ focusPath: path.join(repo, 'src', 'a.js') });
+        // no V工程 project exists, the Git page still opens; the new tab picks up the focus (an unstaged file)
+        await provider.openPlanDetailTab({ page: 'git', focusPath: path.join(repo, 'src', 'a.js') });
+        assert.deepEqual(opened, ['plan-detail:none']);
         assert.ok(await waitFor(() => expandedPaths().join() === 'src/a.js'));
         assert.ok(await waitFor(() => view.querySelector('[data-path="src/a.js"] .side-git-diff-table')));
         assert.equal(view.querySelector('.side-git-source-select').value, 'unstaged');
+        assert.equal(selectedPage(), 'git');
+        assert.equal(view.querySelector('.side-plan-title').textContent, '选择工程');
 
-        // tab already mounted: a staged file switches the source and expands it
-        await provider.openGitTab({ focusPath: path.join(repo, 'fresh.js') });
+        // back on the plan page, then the already-mounted tab is asked for a staged file
+        view.querySelector('[data-plan-page="plan"]').click();
+        assert.equal(selectedPage(), 'plan');
+        await provider.openPlanDetailTab({ page: 'git', focusPath: path.join(repo, 'fresh.js') });
+        assert.equal(selectedPage(), 'git');
         assert.ok(await waitFor(() => expandedPaths().join() === 'fresh.js'));
         assert.equal(view.querySelector('.side-git-source-select').value, 'staged');
+        assert.equal(view.querySelectorAll('.side-git-container').length, 1, 'the Git view is mounted once');
     } finally {
-        await mounted?.dispose();
-        delete globalThis.window;
-        delete globalThis.CustomEvent;
+        mounted?.dispose();
     }
 });

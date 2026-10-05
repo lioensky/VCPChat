@@ -2,11 +2,12 @@ import { createGitFileDiffResolver, toWorkspaceRelative } from '../ui-system/git
 import { createMessageFileChanges } from '../ui-system/message-file-changes.js';
 import { createConversationStatusPanel } from '../ui-system/conversation-status-panel.js';
 import { getParentKey } from '../ui-system/side-pane/side-pane-state.js';
+import { followGitWorkspace } from '../ui-system/side-pane/git/git-view.js';
 
-export function createSidePaneWorkspaceServices({ doc, win, chatAPI, chatManager, uiHelper, historyRef, codeViewerProvider, gitProvider, toolOutputProvider, planDetailProvider }) {
+export function createSidePaneWorkspaceServices({ doc, win, chatAPI, chatManager, uiHelper, historyRef, codeViewerProvider, toolOutputProvider, planDetailProvider }) {
     const owners = [];
     const subscriptions = { add: owner => owners.push(owner) };
-    // 回答下方的「本轮改动」：文件名打开代码查看，+N -N 打开 Git 标签定位到该文件
+    // 回答下方的「本轮改动」：文件名打开代码查看，+N -N 打开计划标签的 Git 页定位到该文件
     const gitFileDiffResolver = createGitFileDiffResolver({ api: chatAPI || win.electronAPI });
     let knownWorkspaces = [];
     const messageFileChanges = createMessageFileChanges({
@@ -15,7 +16,7 @@ export function createSidePaneWorkspaceServices({ doc, win, chatAPI, chatManager
         getHistory: () => historyRef.get() || [],
         openFile: (filePath) => codeViewerProvider.openViewer({ filePath }),
         getDiffStats: (filePath) => gitFileDiffResolver.resolve(filePath),
-        openDiff: (filePath) => gitProvider.openGitTab({ focusPath: filePath }),
+        openDiff: (filePath) => planDetailProvider.openPlanDetailTab({ page: 'git', focusPath: filePath }),
         relativePath: (filePath) => toWorkspaceRelative(filePath, knownWorkspaces)?.relPath || null
     });
     // 先拿到工作区列表再挂载，已有消息的目录才能按工作区相对路径显示
@@ -29,7 +30,7 @@ export function createSidePaneWorkspaceServices({ doc, win, chatAPI, chatManager
         document: doc,
         api: chatAPI || win.electronAPI,
         uiHelper,
-        onOpenGitTab: () => gitProvider.openGitTab(),
+        onOpenGitTab: () => planDetailProvider.openPlanDetailTab({ page: 'git' }),
         // 不钉住工程：侧栏按同一条规则选，和面板显示的是同一个；focus 让侧栏定位到某条计划或时间线
         onOpenPlanDetail: (_project, focus = null) => planDetailProvider.openPlanDetailTab({ focus }),
         onOpenToolOutput: (run) => toolOutputProvider.openToolOutputTab({ runId: run?.id }),
@@ -37,7 +38,7 @@ export function createSidePaneWorkspaceServices({ doc, win, chatAPI, chatManager
             const parent = win.vcpSidePaneController?.getSnapshot?.()?.parent;
             return parent ? getParentKey(parent) : '';
         },
-        onScopeWorkspace: (workspace) => gitProvider.followWorkspace?.(workspace.id),
+        onScopeWorkspace: (workspace) => followGitWorkspace(win, workspace.id),
         getHistory: () => historyRef.get() || [],
         messagesRoot: doc.getElementById('chatMessages'),
         onConversationChange: (callback) => chatManager?.onSelectionChange?.(callback)

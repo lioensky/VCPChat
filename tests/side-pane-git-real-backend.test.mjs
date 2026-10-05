@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { JSDOM } from 'jsdom';
 
-import { createGitSideProvider } from '../modules/ui-system/side-pane/gitSideProvider.js';
+import { mountGitView } from '../modules/ui-system/side-pane/git/git-view.js';
 
 const require = createRequire(import.meta.url);
 const gitService = require('../modules/services/gitService.js');
@@ -50,7 +50,7 @@ async function waitFor(check, timeoutMs = 5000) {
     }
 }
 
-test('GitSideProvider lists and diffs the changes of a real repository', async () => {
+test('the Git view lists and diffs the changes of a real repository', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vcp-git-side-'));
     const repo = path.join(root, 'repo');
     const remote = path.join(root, 'remote.git');
@@ -71,8 +71,8 @@ test('GitSideProvider lists and diffs the changes of a real repository', async (
     const dom = new JSDOM('<div id="host"></div>', { pretendToBeVisual: true });
     const view = dom.window.document.getElementById('host');
     const api = createBackedApi([{ id: 'ws1', alias: 'demo', path: repo }], []);
-    const provider = createGitSideProvider({ electronAPI: api });
-    const handle = await provider.mountTab({ id: 'git', kind: 'git' }, view);
+    const handle = mountGitView(view, { api });
+    await handle.ready;
     const paths = () => [...view.querySelectorAll('.side-git-card')].map(card => card.dataset.path).sort();
     const pick = (source) => {
         const select = view.querySelector('.side-git-source-select');
@@ -119,15 +119,15 @@ test('GitSideProvider lists and diffs the changes of a real repository', async (
     }
 });
 
-test('GitSideProvider shows an add-workspace action when none are registered', async () => {
+test('the Git view shows an add-workspace action when none are registered', async () => {
     const dom = new JSDOM('<div id="host"></div>');
     const view = dom.window.document.getElementById('host');
-    const provider = createGitSideProvider({
-        electronAPI: {
+    const handle = mountGitView(view, {
+        api: {
             gitListWorkspaces: async () => ({ success: true, data: { workspaces: [], activeWorkspaceId: null } }),
         },
     });
-    const handle = await provider.mountTab({ id: 'git', kind: 'git' }, view);
+    await handle.ready;
     try {
         assert.ok(view.querySelector('.side-git-empty-add'));
         assert.equal(view.querySelector('.side-git-empty-title').textContent, '还没有工作区');
