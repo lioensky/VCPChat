@@ -322,21 +322,22 @@ async function processToolCall(args = {}, executionContext = {}) {
     if (!args || typeof args !== 'object' || Array.isArray(args)) {
         throw new Error('[ScreenPilot] 工具参数必须是对象。');
     }
-    if (typeof args.command !== 'string' || !args.command.trim()) {
-        throw new Error('[ScreenPilot] 缺少 command 参数。');
+    const hasSingleCommand = typeof args.command === 'string' && args.command.trim().length > 0;
+    const hasBatchCommand = Object.keys(args).some((k) => /^command\d+$/i.test(k));
+    if (!hasSingleCommand && !hasBatchCommand) {
+        throw new Error('[ScreenPilot] 缺少 command 或 command1 等批量参数。');
     }
-
     return enqueue(async () => {
         let restarted = false;
         try {
             return await sendRequest(args, executionContext);
         } catch (error) {
-            const normalizedCommand = String(args.command)
-                .toLowerCase()
-                .replace(/[_-]/g, '');
+            const cmdName = typeof args.command === 'string' ? args.command : '';
+            const normalizedCommand = cmdName.toLowerCase().replace(/[_-]/g, '');
+            const hasBatch = Object.keys(args).some((k) => /^command\d+$/i.test(k));
             const retryable = (
                 error.code !== 'SCREENPILOT_TIMEOUT'
-                && READ_ONLY_COMMANDS.has(normalizedCommand)
+                && (READ_ONLY_COMMANDS.has(normalizedCommand) || hasBatch)
             );
             if (!retryable) throw error;
 

@@ -13,8 +13,10 @@ import base64
 import time
 import re
 import traceback
+import threading
+from collections import deque
 from datetime import datetime
-
+from PIL import Image, ImageDraw, ImageFont
 from screenpilot_core.geometry import (
     Rect,
     get_virtual_screen_rect,
@@ -499,10 +501,55 @@ def image_to_base64(img, fmt="PNG", quality=85):
 # ScreenCapture 指令
 # ============================================================
 
+def capture_target_image(a):
+    """
+    统一的窗口或全屏捕获函数，供 cmd_screen_capture 与 TimeSequenceSampler 复用。
+    返回 (img, captured_title, window_rect)。
+    若查找失败返回 ({"status": "error", "error": msg}, None, None)。
+    """
+    hwnd = a.get("hwnd")
+    window_title = a.get("windowtitle") or a.get("window_title")
+    process_name_arg = a.get("processname") or a.get("process_name")
+
+    captured_title = None
+    img = None
+    window_rect = None
+
+    if hwnd:
+        hwnd = int(hwnd)
+        import win32gui
+        captured_title = win32gui.GetWindowText(hwnd) or f"HWND:{hwnd}"
+        left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+        window_rect = {"x": left, "y": top, "width": right - left, "height": bottom - top}
+        img = capture_window_smart(hwnd)
+    elif window_title:
+        found_hwnd, found_title = find_window_by_title(window_title)
+        if found_hwnd is None:
+            return {"status": "error", "error": f"未找到标题包含 '{window_title}' 的窗口。请检查窗口是否已打开。"}, None, None
+        captured_title = found_title
+        import win32gui
+        left, top, right, bottom = win32gui.GetWindowRect(found_hwnd)
+        window_rect = {"x": left, "y": top, "width": right - left, "height": bottom - top, "hwnd": found_hwnd}
+        img = capture_window_smart(found_hwnd)
+    elif process_name_arg:
+        found_hwnd, found_title, found_pname = find_window_by_process(process_name_arg)
+        if found_hwnd is None:
+            return {"status": "error", "error": f"未找到进程名包含 '{process_name_arg}' 的窗口。请检查程序是否正在运行。"}, None, None
+        captured_title = found_title
+        import win32gui
+        left, top, right, bottom = win32gui.GetWindowRect(found_hwnd)
+        window_rect = {"x": left, "y": top, "width": right - left, "height": bottom - top, "hwnd": found_hwnd}
+        img = capture_window_smart(found_hwnd)
+    else:
+        img = capture_fullscreen()
+        captured_title = "全屏截图"
+
+    return img, captured_title, window_rect
+
+
 def cmd_screen_capture(args):
     """执行 ScreenCapture 指令（支持 processName 按进程名查找游戏窗口）"""
     a = normalize_args(args)
-
     hwnd = a.get("hwnd")
     window_title = a.get("windowtitle") or a.get("window_title") or a.get("title")
     process_name_arg = a.get("processname") or a.get("process_name") or a.get("process")
@@ -529,39 +576,9 @@ def cmd_screen_capture(args):
     except (TypeError, ValueError):
         jpeg_quality = 85
 
-    captured_title = None
-    img = None
-    window_rect = None  # 窗口在屏幕上的位置，用于坐标换算
-
-    if hwnd:
-        hwnd = int(hwnd)
-        import win32gui
-        captured_title = win32gui.GetWindowText(hwnd) or f"HWND:{hwnd}"
-        left, top, right, bottom = win32gui.GetWindowRect(hwnd)
-        window_rect = {"x": left, "y": top, "width": right - left, "height": bottom - top}
-        img = capture_window_smart(hwnd)
-    elif window_title:
-        found_hwnd, found_title = find_window_by_title(window_title)
-        if found_hwnd is None:
-            return {"status": "error", "error": f"未找到标题包含 '{window_title}' 的窗口。请检查窗口是否已打开。"}
-        captured_title = found_title
-        import win32gui
-        left, top, right, bottom = win32gui.GetWindowRect(found_hwnd)
-        window_rect = {"x": left, "y": top, "width": right - left, "height": bottom - top, "hwnd": found_hwnd}
-        img = capture_window_smart(found_hwnd)
-    elif process_name_arg:
-        found_hwnd, found_title, found_pname = find_window_by_process(process_name_arg)
-        if found_hwnd is None:
-            return {"status": "error", "error": f"未找到进程名包含 '{process_name_arg}' 的窗口。请检查程序是否正在运行。"}
-        captured_title = found_title
-        import win32gui
-        left, top, right, bottom = win32gui.GetWindowRect(found_hwnd)
-        window_rect = {"x": left, "y": top, "width": right - left, "height": bottom - top, "hwnd": found_hwnd}
-        img = capture_window_smart(found_hwnd)
-    else:
-        img = capture_fullscreen()
-        captured_title = "全屏截图"
-
+    img, captured_title, window_rect = capture_target_image(a)
+    if isinstance(img, dict) and img.get("status") == "error":
+        return img
     capture_rect = _last_capture_info.get("capture_rect")
     width, height = img.size
     encoded_format = "PNG" if output_format == "png" else "JPEG"
@@ -653,6 +670,400 @@ def cmd_screen_capture(args):
     return {"status": "success", "result": result}
 
 
+# ============================================================
+# 时序采样器与 ContactSheet 双拼图合成逻辑 (Dual Contact Sheet)
+# ============================================================
+
+class TimeSequenceSampler:
+    """
+    后台轻量级时序采样器 (Ring Buffer)。
+    以指定周期(默认 2.0s)捕获目标窗口，支持轻量级 MSE 灰度差分过滤静止画面。
+    具备 HWND 遮挡与最小化主动挂起保护，杜绝捕获前台 VS Code 等非目标画面。
+    """
+    def __init__(self, max_frames=64):
+        self.max_frames = max_frames
+        self.buffer = deque(maxlen=max_frames)
+        self.lock = threading.Lock()
+        self.stop_event = threading.Event()
+        self.thread = None
+        self.target_args = {}
+        self.interval = 2.0
+        self.debug_trace = False
+        self.trace_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug_sampler_trace")
+        self.seq_counter = 0
+
+    def start(self, args, interval=2.0, flush=False):
+        with self.lock:
+            new_hwnd = args.get("hwnd")
+            old_hwnd = self.target_args.get("hwnd")
+            if flush or (new_hwnd and old_hwnd and str(new_hwnd) != str(old_hwnd)):
+                self.buffer.clear()
+                debug_log(f"TimeSequenceSampler: 目标窗口更替或显式 flush，历史缓冲区已清空")
+
+            self.target_args = dict(args)
+            self.interval = max(0.5, float(interval))
+            self.debug_trace = str(args.get("debug_trace", "")).lower() in ("true", "1")
+            if self.debug_trace and not os.path.exists(self.trace_dir):
+                try:
+                    os.makedirs(self.trace_dir, exist_ok=True)
+                except Exception:
+                    pass
+
+            if self.thread and self.thread.is_alive():
+                return
+            self.stop_event.clear()
+            self.thread = threading.Thread(target=self._worker_loop, daemon=True, name="ScreenPilot-Sampler")
+            self.thread.start()
+
+    def stop(self, clear=False):
+        """停止后台采样线程，默认保留现有缓冲区数据供消费"""
+        self.stop_event.set()
+        worker_th = None
+        with self.lock:
+            worker_th = self.thread
+            self.thread = None
+            if clear:
+                self.buffer.clear()
+        if worker_th and worker_th.is_alive():
+            try:
+                worker_th.join(timeout=1.5)
+            except Exception as e:
+                debug_log(f"TimeSequenceSampler 线程等待退出异常: {e}")
+        debug_log(f"TimeSequenceSampler 已停止 (缓冲区保留 {len(self.buffer)} 帧)")
+
+    def clear(self):
+        """清空缓冲区队列并返回被清空的帧数"""
+        with self.lock:
+            count = len(self.buffer)
+            self.buffer.clear()
+        debug_log(f"TimeSequenceSampler 缓冲区已清空 ({count} 帧)")
+        return count
+
+    def update_target(self, args):
+        with self.lock:
+            self.target_args = dict(args)
+            if "interval" in args:
+                try:
+                    self.interval = max(0.5, float(args["interval"]))
+                except Exception:
+                    pass
+            if "debug_trace" in args:
+                self.debug_trace = str(args.get("debug_trace", "")).lower() in ("true", "1")
+                if self.debug_trace and not os.path.exists(self.trace_dir):
+                    try:
+                        os.makedirs(self.trace_dir, exist_ok=True)
+                    except Exception:
+                        pass
+
+    def _log_trace(self, text):
+        if not self.debug_trace:
+            return
+        try:
+            log_file = os.path.join(self.trace_dir, "sampler_trace.log")
+            now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+            with open(log_file, "a", encoding="utf-8") as f:
+                f.write(f"[{now_str}] {text}\n")
+        except Exception:
+            pass
+
+    def _calc_diff(self, img1, img2):
+        """
+        分层智能差分：区分宏观转场、字幕/对话区变化与原地待机微动。
+        增强：字幕 ROI 增加抗闪烁与弱噪声阶梯滤波，杜绝翻页光标/呼吸伪动态。
+        返回 (is_meaningful_change, global_diff, subtitle_diff)。
+        """
+        try:
+            g1 = img1.convert("L").resize((64, 36))
+            g2 = img2.convert("L").resize((64, 36))
+            b1 = g1.tobytes()
+            b2 = g2.tobytes()
+            global_diff = sum(abs(a - b) for a, b in zip(b1, b2)) / (64 * 36)
+
+            w, h = img1.size
+            roi_box = (int(w * 0.12), int(h * 0.68), int(w * 0.88), int(h * 0.95))
+            sub1 = img1.crop(roi_box).convert("L").resize((64, 16))
+            sub2 = img2.crop(roi_box).convert("L").resize((64, 16))
+            sb1 = sub1.tobytes()
+            sb2 = sub2.tobytes()
+
+            diff_pixels = [abs(a - b) for a, b in zip(sb1, sb2) if abs(a - b) >= 12]
+            if len(diff_pixels) < 15:
+                subtitle_diff = 0.0
+            else:
+                subtitle_diff = sum(diff_pixels) / (64 * 16)
+
+            is_diff = (global_diff >= 12.0) or (subtitle_diff >= 3.5)
+            return is_diff, global_diff, subtitle_diff
+        except Exception:
+            return True, 99.0, 99.0
+
+    def _worker_loop(self):
+        last_thumb = None
+        while not self.stop_event.is_set():
+            t0 = time.time()
+            try:
+                with self.lock:
+                    cur_args = dict(self.target_args)
+                    current_interval = self.interval
+                    do_debug = self.debug_trace
+
+                target_hwnd = cur_args.get("hwnd")
+                if target_hwnd:
+                    try:
+                        target_hwnd = int(target_hwnd)
+                        import win32gui
+                        if not win32gui.IsWindow(target_hwnd) or win32gui.IsIconic(target_hwnd) or not win32gui.IsWindowVisible(target_hwnd):
+                            time.sleep(1.0)
+                            continue
+                    except Exception as e:
+                        debug_log(f"TimeSequenceSampler 窗口状态校验异常: {e}")
+
+                img, cap_title, _ = capture_target_image(cur_args)
+                if img and hasattr(img, "size"):
+                    self.seq_counter += 1
+                    seq = self.seq_counter
+                    is_diff = True
+                    g_diff, s_diff = 0.0, 0.0
+
+                    # 先把新帧压缩到与缓冲帧统一的 1280 宽，再做差分，
+                    # 杜绝用 1920 原始坐标裁 1280 旧帧造成的 ROI 错位假差分
+                    w0, h0 = img.size
+                    if w0 > 1280:
+                        norm_img = img.resize((1280, int(h0 * 1280.0 / w0)))
+                    else:
+                        norm_img = img.copy()
+
+                    if last_thumb is not None:
+                        is_diff, g_diff, s_diff = self._calc_diff(norm_img, last_thumb)
+
+                    # 锁内只碰共享内存，决定本帧去留；落盘与日志一律移到锁外
+                    trace_img = None
+                    trace_fn = None
+                    trace_msg = None
+                    with self.lock:
+                        cur_buf_len = len(self.buffer)
+                        if is_diff or not self.buffer:
+                            cached_img = norm_img
+
+                            self.buffer.append({
+                                "img": cached_img,
+                                "time": t0,
+                                "is_diff": is_diff
+                            })
+                            last_thumb = cached_img
+                            trace_msg = f"#%04d ENQUEUE: g_diff={g_diff:.2f}, sub_diff={s_diff:.2f} -> 入队 (buf={len(self.buffer)})" % seq
+                            if do_debug:
+                                trace_img = cached_img
+                                trace_fn = f"seq{seq:04d}_ENQUEUED_g{g_diff:.1f}_sub{s_diff:.1f}.png"
+                        else:
+                            if self.buffer:
+                                self.buffer[-1]["last_seen_time"] = t0
+                            trace_msg = f"#%04d FOLDED: g_diff={g_diff:.2f}, sub_diff={s_diff:.2f} -> 折叠 (buf={cur_buf_len})" % seq
+                            if do_debug:
+                                trace_img = norm_img
+                                trace_fn = f"seq{seq:04d}_FOLDED_g{g_diff:.1f}_sub{s_diff:.1f}.png"
+
+                    # 锁外执行磁盘 I/O，避免 PNG 编码/写盘阻塞 worker 入队与 drain
+                    if trace_msg:
+                        self._log_trace(trace_msg)
+                    if do_debug and trace_img is not None:
+                        try:
+                            t_tag = datetime.fromtimestamp(t0).strftime("%H%M%S_%f")[:-3]
+                            trace_img.save(os.path.join(self.trace_dir, f"{t_tag}_{trace_fn}"))
+                        except Exception as e:
+                            self._log_trace(f"ERROR: trace 图片落盘失败 {e}")
+                else:
+                    # 截图失败或返回 error dict：显式记录，区分“画面静止”与“抓不到帧”
+                    err_desc = img.get("error") if isinstance(img, dict) else "无图像返回"
+                    self._log_trace(f"CAPTURE_SKIP: 本轮未取得有效帧 ({err_desc})")
+                    debug_log(f"TimeSequenceSampler 本轮未取得有效帧: {err_desc}")
+            except Exception as e:
+                debug_log(f"TimeSequenceSampler 采样异常: {e}")
+                self._log_trace(f"ERROR: 采样异常 {e}")
+
+            elapsed = time.time() - t0
+            sleep_time = max(0.5, current_interval - elapsed)
+            self.stop_event.wait(timeout=sleep_time)
+
+    def drain_frames(self, max_consume=24, flush_remaining=False):
+        """
+        贪婪 FIFO 动态消费队列：
+        在出队流水线中即时执行相似度剪枝。只要有效帧未满 max_consume 且缓冲区仍有堆积，
+        便持续向后出队吞吐合并，彻底消灭历史堆积导致的滞后感。
+        """
+        with self.lock:
+            consumed = []
+            folded_count = 0
+            while self.buffer and len(consumed) < max_consume:
+                item = self.buffer.popleft()
+                if not consumed:
+                    consumed.append(item)
+                    continue
+
+                prev_item = consumed[-1]
+                try:
+                    is_diff, g_diff, s_diff = self._calc_diff(item["img"], prev_item["img"])
+                    if not is_diff:
+                        prev_item["time"] = item["time"]
+                        folded_count += 1
+                        self._log_trace(f"DRAIN_FOLD: 出队折叠 g={g_diff:.2f}, sub={s_diff:.2f}")
+                        continue
+                except Exception:
+                    pass
+                consumed.append(item)
+
+            if flush_remaining:
+                self.buffer.clear()
+            remaining = len(self.buffer)
+            self._log_trace(f"DRAIN_DONE: 消费 {len(consumed)} 帧, 折叠 {folded_count} 帧, 剩余 {remaining} 帧")
+            return consumed, remaining
+
+    def get_frames(self, count=12):
+        with self.lock:
+            return list(self.buffer)
+
+
+_global_sampler = TimeSequenceSampler(max_frames=64)
+
+
+def _render_sheet_grid(frames, now_time, cell_w=640, cell_h=360, cols=3, rows=2, title=""):
+    """把列表中的图像渲染为一张 rows x cols 的网格大图，并印上对比度极强的时间标签。"""
+    sheet_w = cell_w * cols
+    sheet_h = cell_h * rows
+    sheet = Image.new("RGB", (sheet_w, sheet_h), color=(15, 17, 26))
+    draw = ImageDraw.Draw(sheet)
+
+    for idx, item in enumerate(frames[: cols * rows]):
+        r = idx // cols
+        c = idx % cols
+        x_offset = c * cell_w
+        y_offset = r * cell_h
+
+        img = item["img"]
+        thumb = img.resize((cell_w, cell_h))
+        sheet.paste(thumb, (x_offset, y_offset))
+
+        dt = item["time"] - now_time
+        if abs(dt) < 1.0:
+            time_label = "NOW"
+        else:
+            time_label = f"{dt:.1f}s"
+
+        badge_w, badge_h = 76, 26
+        bx0 = x_offset + 8
+        by0 = y_offset + 8
+        draw.rectangle([bx0, by0, bx0 + badge_w, by0 + badge_h], fill=(0, 0, 0))
+        draw.rectangle([bx0, by0, bx0 + badge_w, by0 + badge_h], outline=(236, 72, 153), width=1)
+        draw.text((bx0 + 6, by0 + 4), time_label, fill=(255, 255, 255))
+        draw.rectangle([x_offset, y_offset, x_offset + cell_w, y_offset + cell_h], outline=(40, 44, 60), width=1)
+
+    return sheet
+
+
+def cmd_contact_sheet(args):
+    """
+    ContactSheet 指令：返回时间序列多宫格拼图。
+    支持按需 debug_trace 物理落盘与决策遥测日志。
+    """
+    global _global_sampler
+    interval = float(args.get("interval", 2.0))
+    flush = str(args.get("flush", "")).lower() in ("true", "1") or str(args.get("reset", "")).lower() in ("true", "1")
+    flush_remaining = str(args.get("flush_remaining", "")).lower() in ("true", "1") or str(args.get("drain_all", "")).lower() in ("true", "1")
+
+    _global_sampler.start(args, interval=interval, flush=flush)
+    _global_sampler.update_target(args)
+
+    now_time = time.time()
+    max_consume = int(args.get("max_frames", 24))
+    raw_frames, remaining_count = _global_sampler.drain_frames(
+        max_consume=max_consume,
+        flush_remaining=flush_remaining
+    )
+
+    # 彻底移除旧二次剪枝函数调用，消费出队即为准，绝不再做粗暴截杀
+    selected_frames = raw_frames
+
+    # 如果无缓冲，现场抓取一帧作为即时基准
+    if not selected_frames:
+        current_img, _, _ = capture_target_image(args)
+        if current_img:
+            selected_frames.append({"img": current_img, "time": now_time, "is_diff": True})
+
+    # 动态切块：每张卷轴容纳最多 6 帧 (2x3 布局)
+    chunk_size = 6
+    chunks = [selected_frames[i:i + chunk_size] for i in range(0, len(selected_frames), chunk_size)]
+    if not chunks:
+        chunks = [selected_frames]
+
+    quality = int(args.get("quality", 85))
+    content_list = []
+    desc_lines = []
+    span_seconds = 0
+    if selected_frames:
+        span_seconds = round(now_time - selected_frames[0]["time"], 1)
+
+    desc_lines.append(f"时序多宫格拼图已生成 (按时序消费 {len(selected_frames)} 处关键帧，时跨 ~{span_seconds} 秒)：")
+
+    for idx, chunk in enumerate(chunks):
+        part_num = idx + 1
+        sheet = _render_sheet_grid(chunk, now_time, title=f"Part {part_num}")
+        buf = io.BytesIO()
+        sheet.save(buf, format="JPEG", quality=quality)
+        uri = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+        content_list.append({"type": "image_url", "image_url": {"url": uri}})
+        desc_lines.append(f"• Part {part_num}: 时序卷轴 ({len(chunk)} 帧)")
+
+    if remaining_count > 0:
+        desc_lines.append(f"⚠️ [缓冲队列提示]: 后台尚有 {remaining_count} 帧堆积未消费，可在调用中传入 flush_remaining: true 追平或下一轮接续。")
+
+    desc = "\n".join(desc_lines)
+    content_list.insert(0, {"type": "text", "text": desc})
+
+    return {
+        "status": "success",
+        "result": {
+            "content": content_list,
+            "timeSpanSeconds": span_seconds,
+            "frameCount": len(selected_frames),
+            "remainingQueue": remaining_count,
+            "sheets": len(chunks)
+        }
+    }
+
+
+def cmd_stop_sampler(args):
+    """显式停止后台时序采样器，默认保留现有缓冲区数据供消费"""
+    global _global_sampler
+    clear_flag = str(args.get("clear", "")).lower() in ("true", "1")
+    _global_sampler.stop(clear=clear_flag)
+    retained_count = len(_global_sampler.buffer)
+    msg = (
+        "后台时序采样器已停止，历史缓冲区已清空。"
+        if clear_flag else
+        f"后台时序采样器已安全挂起并停止工作线程，当前缓冲区保留 {retained_count} 帧可供消费。"
+    )
+    return {
+        "status": "success",
+        "result": {
+            "content": [{"type": "text", "text": msg}],
+            "running": False,
+            "retainedFrames": retained_count
+        }
+    }
+
+
+def cmd_flush_sampler(args):
+    """显式清空时序采样器缓冲区，排空幽灵帧并追平当下"""
+    global _global_sampler
+    flushed_count = _global_sampler.clear()
+    msg = f"时序采样器缓冲区已清空，成功清除 {flushed_count} 帧历史数据。"
+    return {
+        "status": "success",
+        "result": {
+            "content": [{"type": "text", "text": msg}],
+            "flushedFrames": flushed_count
+        }
+    }
 # ============================================================
 # ClickAt 指令（双轨制：前台 pyautogui / 后台 PostMessage）
 # ============================================================
@@ -2041,6 +2452,11 @@ COMMAND_MAP = {
     "screencapture": cmd_screen_capture,
     "capture": cmd_screen_capture,
     "screenshot": cmd_screen_capture,
+    "contactsheet": cmd_contact_sheet,
+    "timesequence": cmd_contact_sheet,
+    "multicapture": cmd_contact_sheet,
+    "stopsampler": cmd_stop_sampler,
+    "flushsampler": cmd_flush_sampler,
     "clickat": cmd_click_at,
     "click": cmd_click_at,
     "inspectui": cmd_inspect_ui,
