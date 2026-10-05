@@ -158,7 +158,7 @@ VMusic 实现了从传统播放器到**全沉浸视听舞台**的全面进化，
 - **MoonASTSearch & RustCodeSearch 高性能代码感知引擎**：
   - **Tree-sitter C/Rust 双核 AST 索引**：引入基于 C 语言实现的 MoonASTSearch 系统与全面重构的 RustCodeSearch 插件，基于 `mtime + size + notify` 自动构建工作区全局 AST 索引，大幅降低检索延迟与 I/O 消耗。
   - **精准函数边界与无噪检索**：自动导出函数/类与 Codemap，精准锁定所有函数的起始行至结束行，配合 JEV 实现渐进语义级代码搜索，彻底摒弃传统正则检索与密集 rg 扫描带来的大量无效 Token 噪音与高消耗。
-  - **多语系拓展支持**：AST 解析原生覆盖 JavaScript/TypeScript，并进一步拓展至 C、C++、Go、C#、Java 等多语系代码库。
+  - **多语系拓展支持**：AST 解析原生覆盖 JavaScript/TypeScript、Rust、Python，并进一步拓展至 C、C++、Go、C#、Java 、Html等多语系代码库。
   - **全链路函数 Trace 与依赖漫游**：自动生成函数引用与依赖拓扑报告，支持手动屏蔽 `.test` 与 `.doc` 目录；自带 Electron 页面依赖加载解析器，改动原生追踪 Preload 到程序页面依赖，AI 编程时自动 Trace 完整函数实现链路以提示施工路线。
 - **意图级与结构级丰富编辑算子**：
   - 支持工作区感知的编辑器、智能目录过滤、渐进展开层级以及精细化 Token 预算管理。
