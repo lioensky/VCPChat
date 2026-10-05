@@ -3475,7 +3475,21 @@ async function renderAttachments(message, contentDiv) {
                 iconSpan.innerHTML = fileVisual.iconMarkup;
                 const nameSpan = ownerDocument.createElement('span');
                 nameSpan.className = 'message-attachment-file-name';
-                nameSpan.textContent = att.name;
+                let displayName = att.name;
+                const pdfMeta = att.pdfMeta || att._fileManagerData?.pdfMeta;
+                const isPdf = fileVisual.kind === 'pdf' || /\.pdf$/i.test(att.name || '');
+                const hasImageFrames = (Array.isArray(att.imageFrames) && att.imageFrames.length > 0)
+                    || (Array.isArray(att._fileManagerData?.imageFrames) && att._fileManagerData.imageFrames.length > 0);
+                const isScannedPdf = isPdf && (pdfMeta?.isScanned === true || hasImageFrames);
+
+                if (isScannedPdf) {
+                    const pages = pdfMeta?.totalPages || att.imageFrames?.length || att._fileManagerData?.imageFrames?.length;
+                    displayName += pages ? ` [扫描件·${pages}页]` : ` [扫描件]`;
+                    attachmentElement.title = `点击打开文件: ${att.name} (扫描版·已提供多模态图像)`;
+                } else if (isPdf && pdfMeta?.totalPages) {
+                    displayName += ` [${pdfMeta.totalPages}页]`;
+                }
+                nameSpan.textContent = displayName;
                 attachmentElement.appendChild(iconSpan);
                 attachmentElement.appendChild(nameSpan);
             }

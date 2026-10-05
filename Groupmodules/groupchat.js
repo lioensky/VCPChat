@@ -984,6 +984,7 @@ ${canvasData.errors || 'No errors'}
                         // @笔记实时引用：从笔记区真实文件重新读取最新内容。
                         const isLiveNote = fileManagerData.isLiveReference === true || att?.isLiveReference === true;
                         let effectiveExtractedText = fileManagerData.extractedText || att?.extractedText || '';
+                        const effectiveImageFrames = fileManagerData.imageFrames || att?.imageFrames;
                         if (isLiveNote) {
                             const liveText = await fileManager.readLiveReferenceText({ ...att, ...fileManagerData, isLiveReference: true });
                             if (typeof liveText === 'string') effectiveExtractedText = liveText;
@@ -997,6 +998,8 @@ ${canvasData.errors || 'No errors'}
                         if (isLiveNote) {
                             const liveLabel = fileManager.describeLiveReference({ ...att, ...fileManagerData });
                             textForAIContext += `\n\n[附加文件: ${filePathForContext} (${liveLabel})]\n${effectiveExtractedText}\n[/附加文件结束: ${att?.name || '未知文件'}]`;
+                        } else if (Array.isArray(effectiveImageFrames) && effectiveImageFrames.length > 0) {
+                            textForAIContext += `\n\n[附加文件: ${filePathForContext} (扫描版/图像型PDF，已内联 ${effectiveImageFrames.length} 页多模态图像)]\n${effectiveExtractedText || ''}`;
                         } else if (typeof effectiveExtractedText === 'string' && effectiveExtractedText.trim() !== '') {
                             textForAIContext += `\n\n[附加文件: ${filePathForContext}]\n${effectiveExtractedText}\n[/附加文件结束: ${att?.name || '未知文件'}]`;
                         } else if (effectiveType.startsWith('audio/')) {
@@ -1022,6 +1025,16 @@ ${canvasData.errors || 'No errors'}
             if (msg.attachments && msg.attachments.length > 0) {
                 for (const att of msg.attachments) {
                     const fileManagerData = att && att._fileManagerData ? att._fileManagerData : {};
+                    const effectiveImageFrames = fileManagerData.imageFrames || att?.imageFrames;
+                    if (Array.isArray(effectiveImageFrames) && effectiveImageFrames.length > 0) {
+                        for (const frame of effectiveImageFrames) {
+                            vcpMessageContent.push({
+                                type: 'image_url',
+                                image_url: { url: `data:image/jpeg;base64,${frame}` }
+                            });
+                        }
+                        continue;
+                    }
                     const effectiveType = fileManagerData.type || att?.type || '';
                     const effectiveInternalPath = fileManagerData.internalPath || att?.internalPath || att?.src || att?.localPath;
                     const isSupportedMediaType = effectiveType.startsWith('image/') || effectiveType.startsWith('audio/') || effectiveType.startsWith('video/');
@@ -1595,6 +1608,7 @@ ${canvasData.errors || 'No errors'}
                 // @笔记实时引用：从笔记区真实文件重新读取最新内容。
                 const isLiveNote = fileManagerData.isLiveReference === true || att?.isLiveReference === true;
                 let effectiveExtractedText = fileManagerData.extractedText || att?.extractedText || '';
+                const effectiveImageFrames = fileManagerData.imageFrames || att?.imageFrames;
                 if (isLiveNote) {
                     const liveText = await fileManager.readLiveReferenceText({ ...att, ...fileManagerData, isLiveReference: true });
                     if (typeof liveText === 'string') effectiveExtractedText = liveText;
@@ -1608,6 +1622,8 @@ ${canvasData.errors || 'No errors'}
                 if (isLiveNote) {
                     const liveLabel = fileManager.describeLiveReference({ ...att, ...fileManagerData });
                     textForAIContext += `\n\n[附加文件: ${filePathForContext} (${liveLabel})]\n${effectiveExtractedText}\n[/附加文件结束: ${att?.name || '未知文件'}]`;
+                } else if (Array.isArray(effectiveImageFrames) && effectiveImageFrames.length > 0) {
+                    textForAIContext += `\n\n[附加文件: ${filePathForContext} (扫描版/图像型PDF，已内联 ${effectiveImageFrames.length} 页多模态图像)]\n${effectiveExtractedText || ''}`;
                 } else if (typeof effectiveExtractedText === 'string' && effectiveExtractedText.trim() !== '') {
                     textForAIContext += `\n\n[附加文件: ${filePathForContext}]\n${effectiveExtractedText}\n[/附加文件结束: ${att?.name || '未知文件'}]`;
                 } else if (effectiveType.startsWith('audio/')) {
@@ -1630,6 +1646,16 @@ ${canvasData.errors || 'No errors'}
         if (msg.attachments && msg.attachments.length > 0) {
             for (const att of msg.attachments) {
                 const fileManagerData = att && att._fileManagerData ? att._fileManagerData : {};
+                const effectiveImageFrames = fileManagerData.imageFrames || att?.imageFrames;
+                if (Array.isArray(effectiveImageFrames) && effectiveImageFrames.length > 0) {
+                    for (const frame of effectiveImageFrames) {
+                        vcpMessageContent.push({
+                            type: 'image_url',
+                            image_url: { url: `data:image/jpeg;base64,${frame}` }
+                        });
+                    }
+                    continue;
+                }
                 const effectiveType = fileManagerData.type || att?.type || '';
                 const effectiveInternalPath = fileManagerData.internalPath || att?.internalPath || att?.src || att?.localPath;
                 const isSupportedMediaType = effectiveType.startsWith('image/') || effectiveType.startsWith('audio/') || effectiveType.startsWith('video/');

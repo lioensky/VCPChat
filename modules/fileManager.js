@@ -13,6 +13,7 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto'); // 引入 crypto 模块
 const iconv = require('iconv-lite');
+const pdfAttachmentService = require('./services/pdfAttachmentService');
 // const { exec } = require('child_process'); // For potential future use with textract or other CLI tools
 
 // Base directory for all user-specific data, including attachments.
@@ -125,19 +126,24 @@ async function storeFile(sourcePathOrBuffer, originalName, agentId, topicId, fil
         createdAt: Date.now(),
         extractedText: null,
         imageFrames: null, // 新增：用于存储PDF转换后的图片
+        pdfMeta: null,     // 新增：PDF 结构化元数据（扫描件判定、页数、文本统计等）
     };
 
     // 6. Attempt to extract text content or convert to images
     try {
-        const textContentResult = await getTextContent(internalFilePath, attachmentData.type);
+        const textContentResult = await getTextContent(internalFilePath, attachmentData.type, originalName);
         if (textContentResult && textContentResult.text) {
             attachmentData.extractedText = textContentResult.text;
             console.log(`[FileManager] Successfully extracted text for ${attachmentData.name}, length: ${textContentResult.text.length}`);
-        } else if (textContentResult && textContentResult.imageFrames) {
+        }
+        if (textContentResult && Array.isArray(textContentResult.imageFrames) && textContentResult.imageFrames.length > 0) {
             attachmentData.imageFrames = textContentResult.imageFrames;
-            attachmentData.extractedText = `[VChat Auto-summary: This is a scanned PDF named "${attachmentData.name}". The content is displayed as images.]`;
             console.log(`[FileManager] PDF ${attachmentData.name} was converted to ${textContentResult.imageFrames.length} images.`);
-        } else {
+        }
+        if (textContentResult && textContentResult.pdfMeta) {
+            attachmentData.pdfMeta = textContentResult.pdfMeta;
+        }
+        if (!attachmentData.extractedText && !attachmentData.imageFrames) {
             console.log(`[FileManager] No text content extracted or supported for ${attachmentData.name} (type: ${attachmentData.type}).`);
         }
     } catch (error) {
@@ -395,7 +401,7 @@ function decodeTextBuffer(buffer) {
     }
 }
 
-async function getTextContent(internalFilePath, fileType) {
+async function getTextContent(internalFilePath, fileType, originalName = '') {
     let effectiveFileType = fileType;
     const cleanPath = internalFilePath.startsWith('file://') ? internalFilePath.substring(7) : internalFilePath;
 
@@ -432,44 +438,10 @@ async function getTextContent(internalFilePath, fileType) {
         }
     } else if (effectiveFileType === 'application/pdf') {
         try {
-            const dataBuffer = await fs.readFile(cleanPath);
-            const pdf = require('pdf-parse'); // Lazy load
-            const data = await pdf(dataBuffer);
-            // To determine if a PDF is scanned, we check not just the length of the extracted text,
-            // but also the number of alphabetic characters. This helps filter out OCR noise or PDFs
-            // that contain only symbols or formatting characters.
-            const text = data.text || '';
-            const trimmedText = text.trim();
-            const letterCount = (trimmedText.match(/[a-zA-Z]/g) || []).length;
-
-            // A document is considered text-based if it has a decent amount of trimmed text
-            // AND a minimum number of alphabetic characters.
-            if (trimmedText.length > 20 && letterCount > 10) {
-                console.log(`[FileManager] Successfully extracted text from PDF ${cleanPath}, length: ${trimmedText.length}, letterCount: ${letterCount}`);
-                return { text: text };
-            } else {
-                // If text is very short or lacks letters, treat as scanned PDF
-                const textLength = trimmedText.length;
-                console.log(`[FileManager] PDF ${cleanPath} has little or no extractable text (length: ${textLength}, letterCount: ${letterCount}). Attempting image conversion.`);
-                try {
-                    const imageFrames = await _convertPdfToImages(cleanPath);
-                    return { imageFrames };
-                } catch (conversionError) {
-                    console.error(`[FileManager] Failed to convert PDF to images: ${conversionError.message}`);
-                    // Return the minimal text if conversion fails, better than nothing.
-                    return { text: text || null, imageFrames: null };
-                }
-            }
-        } catch (pdfParseError) {
-            // This catches errors from the initial pdf-parse call itself
-            console.warn(`[FileManager] Failed to parse PDF text, treating as scanned: ${pdfParseError.message}`);
-            try {
-                const imageFrames = await _convertPdfToImages(cleanPath);
-                return { imageFrames };
-            } catch (conversionError) {
-                console.error(`[FileManager] Failed to convert PDF to images after parsing failed: ${conversionError.message}`);
-                return { text: null, imageFrames: null };
-            }
+            return await pdfAttachmentService.processPdfAttachment(cleanPath, originalName);
+        } catch (pdfProcessError) {
+            console.error(`[FileManager] pdfAttachmentService 处理 PDF 异常: ${cleanPath}`, pdfProcessError);
+            return { text: null, imageFrames: null, pdfMeta: { error: pdfProcessError.message } };
         }
     } else if (effectiveFileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
         try {

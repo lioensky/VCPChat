@@ -963,7 +963,11 @@ async function handleRegenerateResponse(originalAssistantMessage) {
                         const liveLabel = describeLiveReferenceForContext({ ...att, ...fileManagerData });
                         historicalAppendedText += `\n\n[附加文件: ${filePathForContext} (${liveLabel})]\n${effectiveExtractedText || ''}\n[/附加文件结束: ${att.name || '未知文件'}]`;
                     } else if (effectiveImageFrames && effectiveImageFrames.length > 0) {
-                         historicalAppendedText += `\n\n[附加文件: ${filePathForContext} (扫描版PDF，已转换为图片)]`;
+                        const totalPages = fileManagerData?.pdfMeta?.totalPages;
+                        const pageHint = totalPages
+                            ? `(扫描版/图像型PDF，已内联 ${effectiveImageFrames.length} 页高清多模态图像/共 ${totalPages} 页)`
+                            : `(扫描版/图像型PDF，已提供 ${effectiveImageFrames.length} 页多模态图像)`;
+                        historicalAppendedText += `\n\n[附加文件: ${filePathForContext} ${pageHint}]\n${effectiveExtractedText || ''}`;
                     } else if (effectiveExtractedText) {
                         historicalAppendedText += `\n\n[附加文件: ${filePathForContext}]\n${effectiveExtractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
                     } else {

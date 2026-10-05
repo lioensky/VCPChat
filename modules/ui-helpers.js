@@ -976,11 +976,23 @@
         attachedFiles.forEach((af, index) => {
             const prevDiv = document.createElement('div');
             prevDiv.className = 'attachment-preview-item';
-            prevDiv.title = af.originalName || af.file.name;
     
             const fileType = af.file.type;
             const fileName = af.originalName || af.file.name || '';
             const fileVisual = uiHelperFunctions.resolveAttachmentFileVisual(fileName, fileType);
+            const isPdf = fileVisual.kind === 'pdf' || /\.pdf$/i.test(fileName);
+            const pdfMeta = af._fileManagerData?.pdfMeta || af.pdfMeta;
+            const hasImageFrames = (af._fileManagerData?.imageFrames?.length > 0) || (af.imageFrames?.length > 0);
+            const isScannedPdf = isPdf && (pdfMeta?.isScanned === true || hasImageFrames);
+
+            let previewTitle = af.originalName || af.file.name;
+            if (isScannedPdf) {
+                const pages = pdfMeta?.totalPages || af._fileManagerData?.imageFrames?.length || af.imageFrames?.length;
+                previewTitle += pages ? ` (扫描版PDF·共${pages}页已转图像)` : ` (扫描版PDF·已转图像)`;
+            } else if (isPdf && pdfMeta?.totalPages) {
+                previewTitle += ` (PDF·共${pdfMeta.totalPages}页)`;
+            }
+            prevDiv.title = previewTitle;
     
             if (fileType.startsWith('image/')) {
                 const thumbnailImg = document.createElement('img');
@@ -1004,8 +1016,14 @@
     
             const nameSpan = document.createElement('span');
             nameSpan.className = 'file-preview-name';
-            const displayName = af.originalName || af.file.name;
-            nameSpan.textContent = displayName.length > 20 ? displayName.substring(0, 17) + '...' : displayName;
+            let displayName = af.originalName || af.file.name;
+            if (isScannedPdf) {
+                const badge = pdfMeta?.totalPages ? ` [扫描件·${pdfMeta.totalPages}页]` : ` [扫描件]`;
+                displayName = (displayName.length > 15 ? displayName.substring(0, 12) + '...' : displayName) + badge;
+            } else {
+                displayName = displayName.length > 20 ? displayName.substring(0, 17) + '...' : displayName;
+            }
+            nameSpan.textContent = displayName;
             prevDiv.appendChild(nameSpan);
     
             const removeBtn = document.createElement('button');
