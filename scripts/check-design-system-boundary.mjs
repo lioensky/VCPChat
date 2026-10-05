@@ -340,6 +340,9 @@ const allowedSourceDifferences = new Set([
     'tests/surface-task-owner.test.mjs',
     'tests/visibility-optimizer-owner.test.mjs',
     'tests/main-chat-sequence-model.test.js',
+    // Reviewed real send-to-vcp route with native response bodies and local
+    // HTTP fixtures: early DONE, EOF/errors, cancellation and sender ownership.
+    'tests/main-chat-response-body.test.mjs',
     'tests/main-chat-event-bridge.test.mjs',
     'tests/main-chat-dom-bindings.test.mjs',
     'tests/main-chat-state-authority.test.mjs',

@@ -626,3 +626,56 @@ DOM/EventEmitter 监听归 consumer，IPC send/invoke 归 producer；preload API
 现有 Electron 窗口只读截图前后已查看，标签快照、草稿、主题、焦点、滚动一致，没有导航、重载或输入。测试窗口在另外的隔离进程中销毁。这只证明操作保持原窗口，不证明当前聊天或服务器健康。证据在聊天工作区 `outputs/engineering-review/round-15/`，含各项检查、全量明细、源码稳定性、graph delta、Electron 日志/结果、参考哈希、实际路由 body 复现与窗口截图。
 
 全工程目标保持 ACTIVE。下一步优先修复 R40 的真实释放缺口，再继续八个共享业务 diff 的语义审查、其余所有权与资源行为、生产 IPC、Rust/发布链；其他未知入口与扫描根覆盖仍待审查。本轮完成的 R38 调用端点和三专用窗口集成验证写入续接记录，后续不因压缩而重复实现。
+
+## 第十六轮：修复主进程在 DONE 后保留响应 body 的释放缺口
+
+上一轮 `6ca8095` 已完成。本轮把 R40 从受控复现推进到真实路由修复；没有重做计划页、preload 端点分析或既有界面，也没有修改参考源码和共享业务审查摘要。
+
+### R40 已修复：取消尚未到 EOF 的 reader，清理失败不改写终态
+
+`send-to-vcp` 在 SSE 的 [DONE] 处发 end 并退出，但 releaseLock 只放弃 reader 的锁，不结束响应 body。现在独立记录 read 的 EOF；提前 DONE 或读取失败时先发起 reader.cancel，再同步 releaseLock。已到 EOF 的 body 不再额外取消。task 的原有 finish 与 sender listener 释放仍先完成，不等待可能一直 pending 的远端取消；取消 promise 的拒绝被观察并记录，同步异常与非 Error 拒绝也不会阻断 releaseLock 或制造第二个终态。
+
+成功结束仍是一个 end，读取故障仍是原始 error；cancel 的失败只是清理日志。旧取消晚到不调用 task finish，不会清掉复用同 message ID 的新任务。顺便删除“需要 await”却实际后台运行的误导注释，锁释放成功的日志只在 releaseLock 成功后打印。生产改动集中在原有 reader finally，没有拆上游文件或改 IPC 返回结构。
+
+### 测试证明实际行为，而非匹配源码字符串
+
+新增一个 500 行以内的 `tests/main-chat-response-body.test.mjs`，完整加载真实 chatHandlers CommonJS 源码，通过公开 initialize 注册并调用 send-to-vcp。使用真实 SenderTaskRegistry、原生 ReadableStream 与明确枚举的受控依赖，不改写函数、不导出私有测试入口；新增依赖若没登记会直接失败。测试边界之外的其他 IPC 业务没有执行。
+
+最初八个用例在原版得到 **3 通过、5 失败**，修复并补充两个边界后 **10/10**：
+
+- DONE 先于 EOF 时取消 body，late enqueue 被拒绝，end 恰好一个，sender listener 与锁释放。
+- 正常 EOF 保留最后没有换行的 SSE 数据，再发 end；已结束 body 不多取消。
+- read error 与 cancel reject 并存时保留原始错误；取消拒绝、同步抛错、拒绝 null 均被观察，不多发 error。
+- 旧取消永久 pending 时立即放锁并允许同 message ID 新任务；随后旧取消拒绝不会 finish 新任务，operation ID 区分两代。
+- 本机真实 HTTP 服务器写 DONE 后故意不 end：原版未观察到响应关闭，修复后服务端观察到 close。实际断线在收到 data 后受控触发，避免固定延时导致假失败；只产生 data/error，任务释放。
+- sender 导航时真实 fetch 中止，本机响应关闭，后续终态不投递到下一个页面，任务与 sender listener 清空。
+
+正常 Node **22.17.1** 与仓库 Electron **44.0.0** 所带 Node **24.18.1** 的纯 Node 模式均 **10/10**。后者仍用受控 IPC sender，不当作真实 Electron ipcMain 分发验证；实际 HTTP 与 native fetch 已在两种 runtime 执行。三专用 preload 的既有 Electron 集成另跑通过，但不证明本次 send-to-vcp 的完整界面链。
+
+另补一轮真实 Electron IPC：独立隐藏窗口加载原有 chat 角色 preload，页面 chatAPI.sendToVCP/onVCPStreamEvent 经真实 ipcMain 与原生 WebContents sender 执行原路由，受控本机 HTTP 发 data/DONE 而不 end。验证 streamingStarted、data/end 顺序与同 operation ID、原 context、服务端 close、任务归零均通过；窗口、服务器与测试进程随后销毁。这一轮确认了实际 preload/IPC 分发，但业务依赖仍受控，不代表生产聊天 UI、产品数据或所有 IPC 通过。
+
+首次沙箱运行本机网络用例失败，不作为产品负例；原版负例采用正常本机权限重新运行。测试编写时修正了故意 pending 的取消在 fixture finally 中挂住，以及取消失败掩盖原断言的问题。Electron Node24 的默认 reporter 是另一种文本，记录脚本明确选择 TAP 后读取计数。这些中间观察不冒充最终测试通过。
+
+### 本轮新读参考实现：区分正常换代与根作用域排空
+
+- ZCode `replaceableConversationTransport.ts` 全文件：稳定 transport 对象持有 consumer listener，replace 先解绑旧底层监听并从 subscription-owner map 撤销旧项，再 best-effort 退订，换新代理不等旧 RPC；subscribe 的迟到 ACK 只退订旧 owner 并抛 transportReplaced，不能写回新 map。按 subscriptionId 路由 activate/resync/unsubscribe，常规命令交给 current。新增 workflow/附件/文件接口也必须在这个稳定面显式转发，接口存在不证明组合者已接通。参考测试未找到直接同名文件，也没有执行其他参考测试。
+- DSH `sessions/service.ts` 的 waitForOpen/ClientSessionReference、root effect、retireScope 与 start/drop/drain 段定点阅读：取消一个等待者只释放自己的引用，不取消共享 opening；release 先撤销本地 record 与释放回调，ready 的拒绝被观察。scope 退役先使 live=false，并按 record 身份从当前 map 删除，再开始异步清理。根 effect 关闭分配、撤销所有 scope 后，明确等待 scopeDrops 与 manager disposal；正常撤权快不等于最终根 shutdown 可以放任后台任务。
+- DSH `sessions-service.client.spec.ts` 中 retain/drop、root close gate 与 child 两份引用的相关段：一个引用释放后另一个继续可用；scope 退出关闭真实的受控 journal 并拒绝旧通知；根 dispose 的 promise 直到受控 close gate 解开才完成。24 份引用负载测试让已开始撤权的清理也被根 dispose join，只要一个 gate 未解开就不完成。这些是所读片段的测试意图，本轮未执行参考测试，不宣称整份 spec 已审完。
+
+借鉴的是本地撤权与异步远端清理之间的明确边界；本轮 message reader 释放不阻塞重试，也不据此宣称全应用 shutdown 已排空。源码路径、哈希和真实阅读范围保留在证据。
+
+### R41 已复现，尚未修复：列表设置晚到会覆盖新一代结果
+
+继续对 itemListManager 的当前全文件分段补读与旧 pin 差异审查，发现 loadItems 只在取完 Agent/Group 后检查 token，随后又 await loadSettings，发布 loadedItemsCache 与 DOM 前没有再核对代次。用原样公开模块、JSDOM 与受控 preload 返回值复现：A 先拿到旧目录并等设置，B 完成且 DOM 显示 current-b；A 的设置随后返回，DOM 与 getLoadedItems 都退回 old-a。这个结果不是搜索猜测，也不是现有只测 getAgents 晚到的用例覆盖。
+
+探针未操作原窗口或产品数据，并在 finally 关闭 JSDOM timer。下一步应在每次异步依赖返回后的发布边界验证最新所有权，补测试覆盖这段 await 及错误/空结果，避免只加源码断言。persona 请求、未读计数、双击/中键延时等旧代码的其他所有权边界仍需审查；八个共享业务摘要未刷新。当前记录已能定位具体差异与缺陷，不把“读完”当作整体批准。
+
+### 验证与剩余工作
+
+全量 **263 个测试文件、1576 个案例通过，0 失败、0 跳过、0 超时**。新增真实路由测试 **10/10**，既有图/注册表聚焦 **33/33**；Electron Node 模式 **10/10**、真实 chat IPC/响应关闭探针通过、专用 preload **3/3**。UI **121/121**、bootstrap **46/46**。所有 **43 项检查**执行完毕，七项常规检查通过，扩展仍 **28/30**。运行前后 1441 个源码文件（含新增测试）的字节哈希无变化。
+
+契约门禁仍因 **86 个未登记入口**失败；总体边界仍有 **391 个历史差异路径**，逐一分类确认均在当前 HEAD 已存在。仅新增真实响应路由测试的精确白名单，chatHandlers 已在允许范围内。共享业务八个摘要待审，guard 首先在 chatManager 报错；计划页两个重复 CSS selector 保留。事件图只更新改动引起的行号，规模保持 **739 事件 / 577 文件 / 6 登记 / 86 未登记**；没有升级契约状态、刷新摘要或改计划页。
+
+现有窗口截图前后已检查，标签/草稿/主题/焦点/滚动一致，没有重载、导航、输入或关闭。隐藏 IPC 验证窗口属独立进程，完成后销毁。聊天工作区 `outputs/engineering-review/round-16/` 保存最终全量与43项检查、原版失败、两种 Node runtime、真实 IPC 日志/结果、源码稳定性、参考阅读范围、R41 公开模块复现及窗口截图。
+
+本轮关掉 R40，下一步优先 R41 的实际列表竞态，再继续共享业务基线、其他资源/生产 IPC、Rust 与发布链。主进程 stream shutdown 全链、跨模块包装与扫描根范围、全工程 UIUX 和所有权覆盖均未完成，目标保持 ACTIVE。

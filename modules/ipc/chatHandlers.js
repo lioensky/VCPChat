@@ -1384,14 +1384,14 @@ function initialize(mainWindow, context) {
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
 
-                // 【全新的、修正后的 processStream 函数】
-                // 它现在接收 reader 和 decoder 作为参数
                 async function processStream(reader, decoder) {
                     let buffer = '';
+                    let bodyReachedEOF = false;
 
                     try {
                         while (true) {
                             const { done, value } = await reader.read();
+                            bodyReachedEOF = done;
                             if (value) {
                                 buffer += decoder.decode(value, { stream: true });
                             }
@@ -1444,17 +1444,30 @@ function initialize(mainWindow, context) {
                         sendStreamPayload(streamErrPayload);
                     } finally {
                         finishStreamTask();
+                        if (!bodyReachedEOF) {
+                            const reportCancelError = error => console.warn(
+                                `[Main - sendToVCP] Failed to cancel stream reader for ${messageId}:`, error?.message || String(error)
+                            );
+                            try {
+                                // Cancel closes the local body immediately. A pending
+                                // remote cleanup must not retain the reader or block
+                                // another task using this message ID.
+                                void Promise.resolve(reader.cancel()).catch(reportCancelError);
+                            } catch (cancelError) {
+                                reportCancelError(cancelError);
+                            }
+                        }
                         try {
                             reader.releaseLock();
+                            console.log(`ReadableStream's lock released for messageId: ${messageId}`);
                         } catch (releaseError) {
                             console.warn(`[Main - sendToVCP] Failed to release stream reader for ${messageId}:`, releaseError.message);
                         }
-                        console.log(`ReadableStream's lock released for messageId: ${messageId}`);
                     }
                 }
 
-                // 将 reader 和 decoder 作为参数传递给 processStream
-                // 并且我们依然需要 await 来等待流处理完成
+                // IPC returns when streaming starts; the detached reader owns
+                // terminal delivery and response cleanup.
                 streamTaskDetached = true;
                 processStream(reader, decoder).then(() => {
                     console.log(`[Main - sendToVCP] 流处理函数 processStream 已正常结束 for ${messageId}`);
