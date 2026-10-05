@@ -51,15 +51,13 @@ html .side-plan-header:where(.vcp-ui-scope, .vcp-ui-scope *) {
     padding: 7px 10px;
     border-bottom: 1px solid var(--zcode-header-divider, var(--vcp-ui-port-color-rgba-255-255-255-0-06));
     box-sizing: border-box;
-}
-html .side-plan-title-row:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; align-items: center; gap: 6px; min-width: 0; }
-/* 标题行右侧的状态和按钮做成浏览器工具栏那样的胶囊：淡底、细边框、全圆角 */
-html .side-plan-header:where(.vcp-ui-scope, .vcp-ui-scope *) {
     --side-plan-pill-bg: color-mix(in srgb, var(--zc-fg) 6%, transparent);
     --side-plan-pill-border: color-mix(in srgb, var(--zc-fg) 10%, transparent);
     --side-plan-pill-divider: color-mix(in srgb, var(--zc-fg) 22%, transparent);
-    --side-plan-pill-shadow: none;
+    --side-plan-pill-shadow: none; container: side-plan-header / inline-size;
 }
+html .side-plan-title-row:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; align-items: center; gap: 6px; min-width: 0; }
+/* 标题行右侧的状态和按钮做成浏览器工具栏那样的胶囊：淡底、细边框、全圆角 */
 html body:is(.light-theme, [data-vcp-theme="light"]) .side-plan-header:where(.vcp-ui-scope, .vcp-ui-scope *) {
     /* 浅色主题：顶栏一条比内容区略深的底，胶囊近白浮在上面；两者都从当前主题的
        底色、文字色混出来，再掺一点主题色，换主题跟着变 */
@@ -138,7 +136,6 @@ html .side-plan-updated:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-
 html .side-plan-chip + .side-plan-updated:where(.vcp-ui-scope, .vcp-ui-scope *)::before { content: '·'; margin-right: 6px; }
 
 /* 窄侧栏：面包屑只留工程名，状态胶囊只留状态字，免得每段都缩成省略号 */
-html .side-plan-header:where(.vcp-ui-scope, .vcp-ui-scope *) { container: side-plan-header / inline-size; }
 @container side-plan-header (max-width: 440px) {
     html .side-plan-crumbs > :not(.side-plan-title, .side-plan-crumb-caret):where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }
     html .side-plan-chip ~ .side-plan-updated:where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }

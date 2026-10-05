@@ -7,6 +7,43 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { buildChatEventGraph } from '../scripts/build-chat-event-graph.mjs';
 
+test('reviewed dynamic calls require the same operation and source expression, with stable Windows line endings', () => {
+    const file = 'modules/reviewed.js';
+    const source = 'function bind(name) {\nwindow.addEventListener(name, handler);\n}';
+    const f = fixture({ [file]: source }, [{ id: 'fixture.reviewed', dynamicSites: [
+        { file, line: 2, kind: 'custom-event-listener', match: 'window.addEventListener(name' }
+    ] }]);
+    try {
+        const original = f.graph();
+        assert.equal(original.registeredDynamic.length, 1);
+        assert.deepEqual(original.undiscovered, []);
+        f.write(file, source.replace(/\n/g, '\r\n'));
+        assert.deepEqual(f.graph(), original, 'Git checkout line endings must not stale the graph');
+        f.write(file, source.replace('addEventListener(name', 'addEventListener(otherName'));
+        assert.equal(f.graph().registeredDynamic.length, 0);
+        assert.equal(f.graph().undiscovered.length, 1, 'a changed call needs a new source review');
+        f.write(file, source.replace('addEventListener', 'removeEventListener'));
+        assert.equal(f.graph().registeredDynamic.length, 0, 'a different operation cannot borrow registration');
+    } finally { f.close(); }
+});
+
+test('source reviews cannot silently retire calls no longer observed in the graph', () => {
+    const repo = fileURLToPath(new URL('..', import.meta.url));
+    const contract = JSON.parse(fs.readFileSync(path.join(repo, 'docs/contracts/chat-contracts.json')))
+        .find(item => item.kind === 'source-review');
+    const f = fixture({}, [contract]);
+    try {
+        f.write('graph.json', JSON.stringify({ schemaVersion: 1, events: [], registeredDynamic: [], undiscovered: [] }));
+        const result = spawnSync(process.execPath, ['scripts/check-chat-contracts.mjs'], {
+            cwd: repo, encoding: 'utf8', windowsHide: true,
+            env: { ...process.env, VCPCHAT_CONTRACTS_INPUT: path.join(f.root, 'docs/contracts/chat-contracts.json'),
+                VCPCHAT_GRAPH_INPUT: path.join(f.root, 'graph.json'), VCPCHAT_CONSUMER_REPORT_INPUT: path.join(f.root, 'absent.json') }
+        });
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /not observed by the generated graph/);
+    } finally { f.close(); }
+});
+
 function fixture(files, contracts = []) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vcp-event-inventory-'));
     const write = (file, content) => {

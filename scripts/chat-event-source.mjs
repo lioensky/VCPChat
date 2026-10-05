@@ -166,15 +166,17 @@ export function scanChatEventSource({ file, source, dynamicRegistrations = [], s
     function record(node, argument, role, kind, reason, domainOnly = false) {
         const { values, complete } = stringValues(argument, scopes.get(node));
         const line = node.loc.start.line;
+        const match = source.slice(node.start, argument?.end ?? node.end).replace(/\r\n/g, '\n');
         const registration = dynamicRegistrations.find(site => site.file === file && site.line === line
-            && (site.kind || 'custom-event-create') === kind);
+            && (site.kind || 'custom-event-create') === kind
+            && (site.match === undefined || site.match === match));
         for (const name of values) {
-            if (!domainOnly || isChatEventName(name)) events.push({ name, role, file, line, kind, match: source.slice(node.start, argument?.end ?? node.end) });
+            if (!domainOnly || isChatEventName(name)) events.push({ name, role, file, line, kind, match });
         }
         const entry = { file, line, reason: complete ? reason : `${reason}: ${argument ? source.slice(argument.start, argument.end) : '<missing>'}` };
         // A known branch never excuses an unknown sibling or a truncated set.
         // Reviewed sites remain observed when their complete value becomes known.
-        if (registration) registeredDynamic.push({ ...entry, kind, contractId: registration.contractId });
+        if (registration) registeredDynamic.push({ ...entry, kind, match, contractId: registration.contractId });
         else if (!complete) undiscovered.push(entry);
     }
     for (const node of nodes) {

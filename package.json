@@ -89,7 +89,9 @@
     "test:mobile-sync": "node --test tests/mobile-sync-protocol.test.js tests/mobile-sync-error-contract.test.js tests/mobile-sync-central-adapter.test.js tests/mobile-sync-canonical.test.js tests/mobile-sync-failure-contract.test.js tests/mobile-sync-sqlite-delete.test.js tests/mobile-sync-streaming.test.js tests/mobile-sync-degraded-mode.test.js tests/mobile-sync-package.test.js",
     "test:cds": "cargo test --manifest-path rust_chat_data_service/Cargo.toml --locked",
     "check:cds:fmt": "cargo fmt --manifest-path rust_chat_data_service/Cargo.toml -- --check",
-    "check:cds:clippy": "cargo clippy --manifest-path rust_chat_data_service/Cargo.toml --locked --all-targets -- -D warnings"
+    "check:cds:clippy": "cargo clippy --manifest-path rust_chat_data_service/Cargo.toml --locked --all-targets -- -D warnings",
+    "test": "node scripts/run-all-tests.mjs",
+    "verify:development": "npm test && npm run check:ui-system && npm run check:chat-evidence && npm run check:settings-ownership && npm run check:uiux:artifacts && npm run check:release-surface && npm run guard:chat-kernel-consumers && npm run test:dedicated-preload && npm run test:voice-input-parser"
   },
   "keywords": [
     "VCP",

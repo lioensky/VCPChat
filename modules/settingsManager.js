@@ -196,31 +196,32 @@ const settingsManager = (() => {
             currentSelectedItem = refs.currentSelectedItemRef?.get?.() || {};
         }
 
+        // Settings rendering owns a local snapshot, never the borrowed selection.
+        currentSelectedItem = { ...currentSelectedItem, type: currentSelectedItem.type || type || 'agent' };
         const settingsSurface = window.VCPSettingsSidebar;
 
         const agentSettingsExists = agentSettingsContainer && typeof agentSettingsContainer.style !== 'undefined';
         const groupSettingsExists = groupSettingsContainer && typeof groupSettingsContainer.style !== 'undefined';
 
         if (currentSelectedItem.id) {
-            if (!currentSelectedItem.type) {
-                currentSelectedItem.type = type || 'agent';
-            }
             if (selectedItemNameForSettingsSpan) {
                 selectedItemNameForSettingsSpan.textContent = currentSelectedItem.name || currentSelectedItem.id;
             }
 
             if (currentSelectedItem.type === 'agent') {
-                if (!currentSelectedItem.config && electronAPI?.getAgentConfig) {
+                let agentConfig = currentSelectedItem.config;
+                if (!agentConfig && electronAPI?.getAgentConfig) {
                     try {
-                        currentSelectedItem.config = await electronAPI.getAgentConfig(currentSelectedItem.id);
+                        agentConfig = await electronAPI.getAgentConfig(currentSelectedItem.id);
                     } catch (err) {
                         console.warn(`[SettingsManager] Failed to fetch agent config for ${currentSelectedItem.id}:`, err);
                     }
                 }
+                if (displayToken !== settingsDisplayToken) return;
                 const viewToken = settingsSurface?.show?.('agent', { id: currentSelectedItem.id });
                 if (itemSettingsContainerTitle) itemSettingsContainerTitle.textContent = 'Agent 设置: ';
                 if (deleteItemBtn) deleteItemBtn.textContent = '删除此 Agent';
-                await populateAgentSettingsForm(currentSelectedItem.id, (currentSelectedItem.config || currentSelectedItem), viewToken);
+                await populateAgentSettingsForm(currentSelectedItem.id, (agentConfig || currentSelectedItem), viewToken);
             } else if (currentSelectedItem.type === 'group') {
                 settingsSurface?.show?.('group', { id: currentSelectedItem.id });
                 if (itemSettingsContainerTitle) itemSettingsContainerTitle.textContent = '群组设置: ';

@@ -1,39 +1,39 @@
 {
   "modules/chatManager.js": {
-    "sha256": "c419c32dd4f83389c6bfb8b5509f14478db518dd879ed8697fea6fe20d508bd0",
-    "reason": "upstream chat core plus exact Surface stream routing, independent conversation capability, initiating-Surface cleanup, injected send-state capability, durable history authority, and no direct IPC fallback; deletion and topic-summary completion replace immutable selection snapshots through their authority; outgoing attachment draft identity changes on append so a file added during durable persistence is preserved; selection intent persists before watcher/history work and restore waits for topic projection before reporting completion; named ChatManager lifecycle retracts canvas subscriptions, observer, forward timers and selection authority before draining persistence queues; file-history sync now captures selection/topic generations and revalidates the active conversation after its read, protects stream ids captured before the read from terminal/delete races, reconciles active StreamProjection snapshots after history/DOM replacement without taking over durable persistence, and routes last-open settings updates through operation-aware path patches to avoid complete-snapshot overwrite; voice chat button uses inline-flex to match the header button layout"
+    "sha256": "5d6b2044d449a7441d2b263af210d6e42bcc5b4e5d19b8ba39121e3386d0d8e8",
+    "reason": "Integrated chat behavior: selection subscriptions for topic side panes; clear old media before navigation; per-conversation side chat context/unread policy; explicit cancellation and non-streaming terminal settlement; one error notice per failed request. Existing Surface routing and history authority remain in place."
   },
   "modules/messageRenderer.js": {
-    "sha256": "9172101e6ac05bd9c4dfec5186cfeb7ba2c65d724dbfc65ace79188d21e00700",
-    "reason": "upstream message semantics plus explicit Surface-owned renderer factory, root-aware renderer operations, per-Surface style namespace and owned style cleanup, Surface-scoped dynamic style/audio isolation, injected realm/services/capabilities, per-Surface StreamProjection attachment API, coordinator-owned stream-start/context-menu callbacks, owner-scoped middle-click callbacks, copy-before-mutate history projection, and avatar-color completion guarded by live selection identity before authority replacement"
+    "sha256": "e730df84a2ab3cc96a629716b293ec92ee524c1a60c714c6ce6597f3773f0944",
+    "reason": "Integrated renderer behavior: nested tool result data isolation; lazy tool payload DOM; safe approval diagnostics; confirmed tool-result removal through historyMutationAuthority; owned media cleanup; cross-agent avatar projection; message-local pretext estimates. This records the integrated source boundary, not a guarantee of all data-write scenarios."
   },
   "modules/renderer/streamManager.js": {
-    "sha256": "5a33bd295be60afc1e1bfbe88fe9dceb530f1ca808324d6e1d56b10434a69518",
-    "reason": "per-Surface stream projection factory with an explicit StreamProjectionRuntime provider, owning document/window capabilities, attachStreamProjection lifecycle API, injected view authority, transient message models delegated to StreamTransientHistory, owned animation-frame scheduling and pending operation disposal, no repository or durable commit authority, no exported singleton or hidden root side channel, ContentRuntime render models, and owned Desktop push subscription/timer consumer; producer streamOperationId carried into projection and terminal validation; operation-scoped runtime map adapter, retry retirement, display-id projection index, and renderer-local conversation snapshot/reconcile so an active stream can be reprojected after topic history/DOM replacement without becoming durable authority"
+    "sha256": "f4cb0dfc44a7e870725fad479a718d010ec10238fadedd7808ce9bd958385b13",
+    "reason": "Integrated projection behavior: media cleanup before subtree replacement; nested tool-result ranges shield protocol markers; incremental smooth-stream burst handling preserves text order; durable persistence remains outside this projection."
   },
   "modules/topicListManager.js": {
-    "sha256": "3097222a98c6eff07acce3eb51c3c330e212125ae74daced615647347b3cfd04",
-    "reason": "shared topic authority with canonical presentation projection, mandatory repository access without a direct IPC fallback, explicit injected topic-selection readiness, lifecycle listener owner, ui manager and item-list service capabilities, render-scoped listener cleanup, and disposal of observers, sortable state, context menus, dynamic topic resources, and topic regeneration support"
+    "sha256": "a06e63547574acb218ae131b1539ccc5fc6ac798d0cd0e2e0a0adb34677c8c16",
+    "reason": "Integrated topic behavior: configuration/unread loads validate the selected item; sort/title/menu operations capture their original topic target; completed deletion changes the active view only for the same item and topic. Repository, readiness and render listener ownership remain unchanged."
   },
   "modules/itemListManager.js": {
-    "sha256": "1a227093cc438de479c1ca8dc9c1abf7acd4dace1bd773c4d4256f10be1bd162",
-    "reason": "shared Agent/group catalog authority with stale-load commit protection"
+    "sha256": "6fb3f38f57edda8c4a9632d04fba6e1239c85e11064fc5214b58700e035850ae",
+    "reason": "Integrated catalog behavior: operation-counted speaking indicators survive list refreshes; catalog publication validates the final settings read; unread publication is ordered across navigation and catalog refreshes. Persona WIP is excluded."
   },
   "Groupmodules/grouprenderer.js": {
-    "sha256": "22f41ebba1266aaaec778bc79c58fdf3389ab31e4278dcbad600d4df40ae3e11",
-    "reason": "upstream group business surface delegates settings attachment to schema sidebar Surface while resolving controls safely during detachment, protecting group deletion fallback identity, aligning group deletion confirmation with risk modal, and preserving persistence and chat behavior"
+    "sha256": "31f0d3defe8ba31ef1f9b6c41f9655b23fa02991671483b6ab658a3e3f8450eb",
+    "reason": "Integrated group behavior: JEV mode/context-window fields and invitations; explicit group queue interrupt; optimistic user message IDs survive file sync; settings read/save snapshots preserve the original group and mode data; chat header delegates to its presentation owner."
   },
   "modules/settingsManager.js": {
-    "sha256": "6c430349ae8965aebfd534d469e35d8d14360e8af34cf23156dfb1c3c213cf9f",
-    "reason": "reviewed Agent settings behavior after moving Agent form rendering to schema and Surface lifecycle ownership; delete action implements active risk confirmation gate with managed scope; save pipeline coordinates full custom style, color, and collapse state fields with async submit and robust error handling; dirty edits are flushed before prompt context switch with dirty retention and warning on failure; autosave deduplicates error toasts and sequences revision tokens against in-flight writes; programmatic collapse controller synchronizes aria-expanded attributes; saved projection, collapse state, prompt context and stale reload protection remain manager-owned; scoped form control lookup protects against detachment data loss and intercepts IPC failure results; model input resolution is safely guarded against fallback tampering"
+    "sha256": "ab7f07e0a7ef558b3c5ac8a04ff7d715912414d6cd8f0799f38160ac7e46c550",
+    "reason": "Integrated manual-save policy: Agent/prompt edits remain drafts until Save; context changes and collapse no longer implicitly persist; submit captures draft and display identity; regex import merges into the draft; Lucide renders action icons. Replaces the obsolete autosave rationale. Settings display uses a local selection snapshot; a delayed config read cannot overwrite a newer settings view (frozen-selection and A-to-B display regression tests)."
   },
   "modules/filterManager.js": {
     "sha256": "2390116ff961f18cdf2d3defd02d5559de9381f891be7e5eb33ef99f98337225",
     "reason": "shared filter authority; canonical menu calls its public API; filter persistence now uses operation-aware path patches to avoid complete-snapshot overwrite"
   },
   "modules/notificationRenderer.js": {
-    "sha256": "357b81ceb8469de7d2db68743592817ae22630bcbc18f4559b2317c1dc6c2aeb",
-    "reason": "reviewed notification rendering after injected filtering and owner-scoped toast timers and transition listeners replaced ambient lifecycle effects; cards carry tone/state metadata and an explicit dismiss control, and settled tool approvals stay listed as resolved for the notification center"
+    "sha256": "d81752e7c8a94f7e938ac842cdf9dbb1c9c6e9828823ba0a31b61de2bb417daa",
+    "reason": "Integrated approval behavior: escaped text/diff previews describe ProjectForge edits and destructive targets; duplicate request cards are rejected; TTL/replay expiry removes actions; settlement cancels its timer; approval requests bypass display filtering. Review uses source at the registration commit f7596f9c because the recorded historical digest has no matching committed blob."
   },
   "VCPDistributedServer/frontend-plugin-loader.js": {
     "sha256": "0987ee41ed76c8b4f0963353c4b387f0b46a6202b9e8516aa02cce27568862ca",

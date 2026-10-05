@@ -786,13 +786,13 @@
           "file": "VCPDistributedServer/VCPDistributedServer.js",
           "line": 494,
           "kind": "event-listener",
-          "match": "this.musicPlaylistWatcher\r\n            .on('add'"
+          "match": "this.musicPlaylistWatcher\n            .on('add'"
         },
         {
           "file": "modules/ipc/notesHandlers.js",
           "line": 199,
           "kind": "event-listener",
-          "match": "localNotesWatcher\r\n            .on('add'"
+          "match": "localNotesWatcher\n            .on('add'"
         }
       ]
     },
@@ -842,7 +842,7 @@
           "file": "modules/ipc/notesHandlers.js",
           "line": 199,
           "kind": "event-listener",
-          "match": "localNotesWatcher\r\n            .on('add', async (changedPath) => {\r\n                await ensureNewItemNearTop(changedPath);\r\n                notifyLocalNotesChanged();\r\n            })\r\n            .on('unlink', notifyLocalNotesChanged)\r\n            .on('addDir'"
+          "match": "localNotesWatcher\n            .on('add', async (changedPath) => {\n                await ensureNewItemNearTop(changedPath);\n                notifyLocalNotesChanged();\n            })\n            .on('unlink', notifyLocalNotesChanged)\n            .on('addDir'"
         }
       ]
     },
@@ -1206,7 +1206,7 @@
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 999,
+          "line": 1000,
           "kind": "custom-event-listener"
         },
         {
@@ -1224,7 +1224,7 @@
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 999,
+          "line": 1000,
           "kind": "custom-event-listener",
           "match": "settingsContainer.addEventListener('auxclick'"
         },
@@ -1533,7 +1533,7 @@
           "file": "VCPDistributedServer/Plugin/BladeGame/blade-service.js",
           "line": 292,
           "kind": "event-send",
-          "match": "bladeWindow.webContents.send(\r\n            'blade-game:window:maximized-changed'"
+          "match": "bladeWindow.webContents.send(\n            'blade-game:window:maximized-changed'"
         },
         {
           "file": "VCPDistributedServer/Plugin/BladeGame/blade-service.js",
@@ -1637,7 +1637,7 @@
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1350,
+          "line": 1351,
           "kind": "custom-event-listener"
         },
         {
@@ -1733,7 +1733,7 @@
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1350,
+          "line": 1351,
           "kind": "custom-event-listener",
           "match": "vcpServerUrlInput.addEventListener('blur'"
         },
@@ -2334,7 +2334,7 @@
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1159,
+          "line": 1160,
           "kind": "custom-event-listener"
         },
         {
@@ -2455,7 +2455,7 @@
           "file": "VCPDistributedServer/VCPDistributedServer.js",
           "line": 494,
           "kind": "event-listener",
-          "match": "this.musicPlaylistWatcher\r\n            .on('add', () => schedulePush('file_added'))\r\n            .on('change'"
+          "match": "this.musicPlaylistWatcher\n            .on('add', () => schedulePush('file_added'))\n            .on('change'"
         },
         {
           "file": "modules/event-listeners.js",
@@ -2525,7 +2525,7 @@
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1159,
+          "line": 1160,
           "kind": "custom-event-listener",
           "match": "agentSettingsForm.addEventListener('change'"
         },
@@ -3794,12 +3794,7 @@
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1063,
-          "kind": "custom-event-listener"
-        },
-        {
-          "file": "modules/settingsManager.js",
-          "line": 1078,
+          "line": 1064,
           "kind": "custom-event-listener"
         },
         {
@@ -3809,62 +3804,67 @@
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1081,
+          "line": 1080,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1091,
+          "line": 1082,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1098,
+          "line": 1092,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1162,
+          "line": 1099,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1237,
+          "line": 1163,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1243,
+          "line": 1238,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1270,
+          "line": 1244,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1299,
+          "line": 1271,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1626,
+          "line": 1300,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1639,
+          "line": 1627,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1813,
+          "line": 1640,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1821,
+          "line": 1814,
+          "kind": "custom-event-listener"
+        },
+        {
+          "file": "modules/settingsManager.js",
+          "line": 1822,
           "kind": "custom-event-listener"
         },
         {
@@ -5342,91 +5342,91 @@
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1063,
+          "line": 1064,
           "kind": "custom-event-listener",
           "match": "refreshModelsBtn.addEventListener('click'"
-        },
-        {
-          "file": "modules/settingsManager.js",
-          "line": 1078,
-          "kind": "custom-event-listener",
-          "match": "cancelRegexRuleBtn.addEventListener('click'"
         },
         {
           "file": "modules/settingsManager.js",
           "line": 1079,
           "kind": "custom-event-listener",
+          "match": "cancelRegexRuleBtn.addEventListener('click'"
+        },
+        {
+          "file": "modules/settingsManager.js",
+          "line": 1080,
+          "kind": "custom-event-listener",
           "match": "closeRegexRuleModalBtn.addEventListener('click'"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1081,
+          "line": 1082,
           "kind": "custom-event-listener",
           "match": "regexRuleModal.addEventListener('click'"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1091,
+          "line": 1092,
           "kind": "custom-event-listener",
           "match": "openTopicSummaryModelSelectBtn.addEventListener('click'"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1098,
+          "line": 1099,
           "kind": "custom-event-listener",
           "match": "document.addEventListener('click'"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1162,
+          "line": 1163,
           "kind": "custom-event-listener",
           "match": "deleteItemBtn.addEventListener('click'"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1237,
+          "line": 1238,
           "kind": "custom-event-listener",
           "match": "openModelSelectBtn.addEventListener('click'"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1243,
+          "line": 1244,
           "kind": "custom-event-listener",
           "match": "refreshModelsBtn.addEventListener('click'"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1270,
+          "line": 1271,
           "kind": "custom-event-listener",
           "match": "refreshTtsModelsBtn.addEventListener('click'"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1299,
+          "line": 1300,
           "kind": "custom-event-listener",
           "match": "resetAvatarColorsBtn.addEventListener('click'"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1626,
+          "line": 1627,
           "kind": "custom-event-listener",
           "match": "starSpan.addEventListener('click'"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1639,
+          "line": 1640,
           "kind": "custom-event-listener",
           "match": "li.addEventListener('click'"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1813,
+          "line": 1814,
           "kind": "custom-event-listener",
           "match": "editBtn.addEventListener('click'"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1821,
+          "line": 1822,
           "kind": "custom-event-listener",
           "match": "deleteBtn.addEventListener('click'"
         },
@@ -7454,7 +7454,7 @@
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 974,
+          "line": 975,
           "kind": "custom-event-listener"
         },
         {
@@ -7582,7 +7582,7 @@
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 974,
+          "line": 975,
           "kind": "custom-event-listener",
           "match": "settingsContainer.addEventListener('contextmenu'"
         },
@@ -12179,7 +12179,7 @@
           "file": "VCPDistributedServer/VCPDistributedServer.js",
           "line": 494,
           "kind": "event-listener",
-          "match": "this.musicPlaylistWatcher\r\n            .on('add', () => schedulePush('file_added'))\r\n            .on('change', () => schedulePush('file_changed'))\r\n            .on('unlink', () => schedulePush('file_removed'))\r\n            .on('error'"
+          "match": "this.musicPlaylistWatcher\n            .on('add', () => schedulePush('file_added'))\n            .on('change', () => schedulePush('file_changed'))\n            .on('unlink', () => schedulePush('file_removed'))\n            .on('error'"
         },
         {
           "file": "main.js",
@@ -12239,7 +12239,7 @@
           "file": "modules/ipc/diceHandlers.js",
           "line": 86,
           "kind": "event-listener",
-          "match": "app.listen(port, () => {\r\n            console.log(`Dice server started on http://localhost:${port}`);\r\n            resolve();\r\n        }).on('error'"
+          "match": "app.listen(port, () => {\n            console.log(`Dice server started on http://localhost:${port}`);\n            resolve();\n        }).on('error'"
         },
         {
           "file": "modules/ipc/docxHandlers.js",
@@ -12275,7 +12275,7 @@
           "file": "modules/ipc/notesHandlers.js",
           "line": 199,
           "kind": "event-listener",
-          "match": "localNotesWatcher\r\n            .on('add', async (changedPath) => {\r\n                await ensureNewItemNearTop(changedPath);\r\n                notifyLocalNotesChanged();\r\n            })\r\n            .on('unlink', notifyLocalNotesChanged)\r\n            .on('addDir', notifyLocalNotesChanged)\r\n            .on('unlinkDir', notifyLocalNotesChanged)\r\n            .on('error'"
+          "match": "localNotesWatcher\n            .on('add', async (changedPath) => {\n                await ensureNewItemNearTop(changedPath);\n                notifyLocalNotesChanged();\n            })\n            .on('unlink', notifyLocalNotesChanged)\n            .on('addDir', notifyLocalNotesChanged)\n            .on('unlinkDir', notifyLocalNotesChanged)\n            .on('error'"
         },
         {
           "file": "modules/services/chatDataService/lifecycle.js",
@@ -14847,7 +14847,7 @@
       "producers": [
         {
           "file": "modules/settingsManager.js",
-          "line": 1960,
+          "line": 1961,
           "kind": "custom-event-create"
         }
       ],
@@ -14929,32 +14929,32 @@
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1062,
+          "line": 1063,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1158,
+          "line": 1159,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1240,
+          "line": 1241,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1305,
+          "line": 1306,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1309,
+          "line": 1310,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1337,
+          "line": 1338,
           "kind": "custom-event-listener"
         },
         {
@@ -15101,43 +15101,43 @@
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1062,
+          "line": 1063,
           "kind": "custom-event-listener",
           "match": "modelSearchInput.addEventListener('input'"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1158,
+          "line": 1159,
           "kind": "custom-event-listener",
           "match": "agentSettingsForm.addEventListener('input'"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1240,
+          "line": 1241,
           "kind": "custom-event-listener",
           "match": "modelSearchInput.addEventListener('input'"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1305,
+          "line": 1306,
           "kind": "custom-event-listener",
           "match": "picker.addEventListener('input'"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1309,
+          "line": 1310,
           "kind": "custom-event-listener",
           "match": "textInput.addEventListener('input'"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1337,
+          "line": 1338,
           "kind": "custom-event-listener",
           "match": "agentCardCssInput.addEventListener('input'"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1960,
+          "line": 1961,
           "kind": "custom-event-create",
           "match": "new CustomEvent('input'"
         },
@@ -18557,7 +18557,7 @@
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1054,
+          "line": 1055,
           "kind": "custom-event-listener"
         },
         {
@@ -18587,7 +18587,7 @@
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1054,
+          "line": 1055,
           "kind": "custom-event-listener",
           "match": "document.addEventListener('modal-ready'"
         },
@@ -18942,7 +18942,7 @@
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1015,
+          "line": 1016,
           "kind": "custom-event-listener"
         },
         {
@@ -19062,7 +19062,7 @@
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1015,
+          "line": 1016,
           "kind": "custom-event-listener",
           "match": "settingsContainer.addEventListener('mousedown'"
         },
@@ -21643,7 +21643,7 @@
       "consumers": [
         {
           "file": "modules/settingsManager.js",
-          "line": 1246,
+          "line": 1247,
           "kind": "preload-subscription"
         },
         {
@@ -21655,7 +21655,7 @@
       "evidence": [
         {
           "file": "modules/settingsManager.js",
-          "line": 1246,
+          "line": 1247,
           "kind": "preload-subscription",
           "match": "electronAPI.onModelsUpdated("
         },
@@ -22720,7 +22720,7 @@
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1262,
+          "line": 1263,
           "kind": "custom-event-listener"
         },
         {
@@ -22738,7 +22738,7 @@
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1262,
+          "line": 1263,
           "kind": "custom-event-listener",
           "match": "window.addEventListener('pagehide'"
         },
@@ -26352,7 +26352,7 @@
           "file": "modules/ipc/docxHandlers.js",
           "line": 1334,
           "kind": "event-listener",
-          "match": "ipcMain.handle(\r\n        'scriptorium:resolve-font-stylesheet'"
+          "match": "ipcMain.handle(\n        'scriptorium:resolve-font-stylesheet'"
         },
         {
           "file": "preloads/docx.js",
@@ -26383,7 +26383,7 @@
           "file": "modules/ipc/docxHandlers.js",
           "line": 1339,
           "kind": "event-listener",
-          "match": "ipcMain.handle(\r\n        'scriptorium:resolve-font-url'"
+          "match": "ipcMain.handle(\n        'scriptorium:resolve-font-url'"
         },
         {
           "file": "preloads/docx.js",
@@ -26538,7 +26538,7 @@
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 2013,
+          "line": 2014,
           "kind": "custom-event-listener"
         },
         {
@@ -26608,7 +26608,7 @@
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 2013,
+          "line": 2014,
           "kind": "custom-event-listener",
           "match": "settingsTab.addEventListener('scroll'"
         },
@@ -28101,12 +28101,12 @@
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1077,
+          "line": 1078,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1131,
+          "line": 1132,
           "kind": "custom-event-listener"
         },
         {
@@ -28162,13 +28162,13 @@
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1077,
+          "line": 1078,
           "kind": "custom-event-listener",
           "match": "regexRuleForm.addEventListener('submit'"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1131,
+          "line": 1132,
           "kind": "custom-event-listener",
           "match": "agentSettingsForm.addEventListener('submit'"
         },
@@ -29382,13 +29382,13 @@
           "file": "VCPDistributedServer/VCPDistributedServer.js",
           "line": 494,
           "kind": "event-listener",
-          "match": "this.musicPlaylistWatcher\r\n            .on('add', () => schedulePush('file_added'))\r\n            .on('change', () => schedulePush('file_changed'))\r\n            .on('unlink'"
+          "match": "this.musicPlaylistWatcher\n            .on('add', () => schedulePush('file_added'))\n            .on('change', () => schedulePush('file_changed'))\n            .on('unlink'"
         },
         {
           "file": "modules/ipc/notesHandlers.js",
           "line": 199,
           "kind": "event-listener",
-          "match": "localNotesWatcher\r\n            .on('add', async (changedPath) => {\r\n                await ensureNewItemNearTop(changedPath);\r\n                notifyLocalNotesChanged();\r\n            })\r\n            .on('unlink'"
+          "match": "localNotesWatcher\n            .on('add', async (changedPath) => {\n                await ensureNewItemNearTop(changedPath);\n                notifyLocalNotesChanged();\n            })\n            .on('unlink'"
         }
       ]
     },
@@ -29407,7 +29407,7 @@
           "file": "modules/ipc/notesHandlers.js",
           "line": 199,
           "kind": "event-listener",
-          "match": "localNotesWatcher\r\n            .on('add', async (changedPath) => {\r\n                await ensureNewItemNearTop(changedPath);\r\n                notifyLocalNotesChanged();\r\n            })\r\n            .on('unlink', notifyLocalNotesChanged)\r\n            .on('addDir', notifyLocalNotesChanged)\r\n            .on('unlinkDir'"
+          "match": "localNotesWatcher\n            .on('add', async (changedPath) => {\n                await ensureNewItemNearTop(changedPath);\n                notifyLocalNotesChanged();\n            })\n            .on('unlink', notifyLocalNotesChanged)\n            .on('addDir', notifyLocalNotesChanged)\n            .on('unlinkDir'"
         }
       ]
     },
@@ -30302,12 +30302,12 @@
       "producers": [
         {
           "file": "modules/settingsManager.js",
-          "line": 460,
+          "line": 461,
           "kind": "custom-event-create"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1343,
+          "line": 1344,
           "kind": "custom-event-create"
         }
       ],
@@ -30321,13 +30321,13 @@
       "evidence": [
         {
           "file": "modules/settingsManager.js",
-          "line": 460,
+          "line": 461,
           "kind": "custom-event-create",
           "match": "new CustomEvent('vcp-settings-surface-updated'"
         },
         {
           "file": "modules/settingsManager.js",
-          "line": 1343,
+          "line": 1344,
           "kind": "custom-event-create",
           "match": "new CustomEvent('vcp-settings-surface-updated'"
         },
@@ -32333,10 +32333,179 @@
   ],
   "registeredDynamic": [
     {
+      "file": "VCPDistributedServer/Plugin/PTYShellExecutor/ShellOutputPipeline.js",
+      "line": 122,
+      "reason": "dynamic event name: this.channel",
+      "kind": "event-send",
+      "match": "activeTarget.webContents.send(this.channel",
+      "contractId": "source.dynamic.vcpdistributedserver.plugin.ptyshellexecutor.shelloutputpipeline"
+    },
+    {
+      "file": "VCPDistributedServer/Plugin/PTYShellExecutor/gui/preload.js",
+      "line": 14,
+      "reason": "dynamic event listener name: channel",
+      "kind": "event-listener",
+      "match": "ipcRenderer.on(channel",
+      "contractId": "source.dynamic.vcpdistributedserver.plugin.ptyshellexecutor.gui.preload"
+    },
+    {
+      "file": "VCPDistributedServer/Plugin/PTYShellExecutor/gui/preload.js",
+      "line": 28,
+      "reason": "dynamic event name: channel",
+      "kind": "event-send",
+      "match": "ipcRenderer.send(channel",
+      "contractId": "source.dynamic.vcpdistributedserver.plugin.ptyshellexecutor.gui.preload"
+    },
+    {
+      "file": "VCPDistributedServer/Plugin/PowerShellExecutor/gui/preload.js",
+      "line": 18,
+      "reason": "dynamic event listener name: channel",
+      "kind": "event-listener",
+      "match": "ipcRenderer.on(channel",
+      "contractId": "source.dynamic.vcpdistributedserver.plugin.powershellexecutor.gui.preload"
+    },
+    {
+      "file": "VCPDistributedServer/Plugin/PowerShellExecutor/gui/preload.js",
+      "line": 32,
+      "reason": "dynamic event name: channel",
+      "kind": "event-send",
+      "match": "ipcRenderer.send(channel",
+      "contractId": "source.dynamic.vcpdistributedserver.plugin.powershellexecutor.gui.preload"
+    },
+    {
+      "file": "VCPDistributedServer/Plugin/PowerShellExecutor/gui/preload.js",
+      "line": 44,
+      "reason": "dynamic event name: channel",
+      "kind": "event-send",
+      "match": "ipcRenderer.invoke(channel",
+      "contractId": "source.dynamic.vcpdistributedserver.plugin.powershellexecutor.gui.preload"
+    },
+    {
+      "file": "modules/event-listeners.js",
+      "line": 36,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target?.addEventListener?.(type",
+      "contractId": "source.dynamic.modules.event-listeners"
+    },
+    {
+      "file": "modules/inputEnhancer.js",
+      "line": 60,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target?.addEventListener?.(type",
+      "contractId": "source.dynamic.modules.inputenhancer"
+    },
+    {
+      "file": "modules/ipc/chartHandlers.js",
+      "line": 44,
+      "reason": "dynamic event name: channel",
+      "kind": "event-send",
+      "match": "win.webContents.send(channel",
+      "contractId": "source.dynamic.modules.ipc.charthandlers"
+    },
+    {
+      "file": "modules/ipc/desktopRemoteHandlers.js",
+      "line": 47,
+      "reason": "dynamic event listener name: CHANNELS.DESKTOP_REMOTE_RESPONSE",
+      "kind": "event-listener",
+      "match": "ipcMain.on(CHANNELS.DESKTOP_REMOTE_RESPONSE",
+      "contractId": "source.dynamic.modules.ipc.desktopremotehandlers"
+    },
+    {
+      "file": "modules/ipc/desktopRemoteHandlers.js",
+      "line": 51,
+      "reason": "dynamic event listener name: CHANNELS.FLOWLOCK_RESPONSE",
+      "kind": "event-listener",
+      "match": "ipcMain.on(CHANNELS.FLOWLOCK_RESPONSE",
+      "contractId": "source.dynamic.modules.ipc.desktopremotehandlers"
+    },
+    {
+      "file": "modules/ipc/desktopRemoteHandlers.js",
+      "line": 83,
+      "reason": "dynamic event name: channel",
+      "kind": "event-send",
+      "match": "targetWindow.webContents.send(channel",
+      "contractId": "source.dynamic.modules.ipc.desktopremotehandlers"
+    },
+    {
+      "file": "modules/ipc/gitHandlers.js",
+      "line": 60,
+      "reason": "dynamic event listener name: channel",
+      "kind": "event-listener",
+      "match": "ipcMain.handle(channel",
+      "contractId": "source.dynamic.modules.ipc.githandlers"
+    },
+    {
+      "file": "modules/ipc/musicHandlers.js",
+      "line": 647,
+      "reason": "dynamic event name: channel",
+      "kind": "event-send",
+      "match": "event.sender.send(channel",
+      "contractId": "source.dynamic.modules.ipc.musichandlers"
+    },
+    {
+      "file": "modules/ipc/sourceHandlers.js",
+      "line": 36,
+      "reason": "dynamic event listener name: channel",
+      "kind": "event-listener",
+      "match": "ipcMain.handle(channel",
+      "contractId": "source.dynamic.modules.ipc.sourcehandlers"
+    },
+    {
+      "file": "modules/ipc/terminalHandlers.js",
+      "line": 57,
+      "reason": "dynamic event name: channel",
+      "kind": "event-send",
+      "match": "sender.send(channel",
+      "contractId": "source.dynamic.modules.ipc.terminalhandlers"
+    },
+    {
+      "file": "modules/loom/VCPLoomManager.js",
+      "line": 1350,
+      "reason": "dynamic event listener name: protocol.addedEvent",
+      "kind": "event-listener",
+      "match": "persistentSession.on(protocol.addedEvent",
+      "contractId": "source.dynamic.modules.loom.vcploommanager"
+    },
+    {
+      "file": "modules/loom/VCPLoomManager.js",
+      "line": 1351,
+      "reason": "dynamic event listener name: protocol.removedEvent",
+      "kind": "event-listener",
+      "match": "persistentSession.on(protocol.removedEvent",
+      "contractId": "source.dynamic.modules.loom.vcploommanager"
+    },
+    {
+      "file": "modules/loom/VCPLoomManager.js",
+      "line": 1368,
+      "reason": "dynamic event listener name: protocol.selectEvent",
+      "kind": "event-listener",
+      "match": "persistentSession.on(protocol.selectEvent",
+      "contractId": "source.dynamic.modules.loom.vcploommanager"
+    },
+    {
+      "file": "modules/loom/VCPLoomManager.js",
+      "line": 1369,
+      "reason": "dynamic event listener name: protocol.revokedEvent",
+      "kind": "event-listener",
+      "match": "persistentSession.on(protocol.revokedEvent",
+      "contractId": "source.dynamic.modules.loom.vcploommanager"
+    },
+    {
+      "file": "modules/loom/VCPLoomManager.js",
+      "line": 2308,
+      "reason": "dynamic event listener name: channel",
+      "kind": "event-listener",
+      "match": "ipcMain.handle(channel",
+      "contractId": "source.dynamic.modules.loom.vcploommanager"
+    },
+    {
       "file": "modules/loom/webcore/comfyui-main-world-bridge.js",
       "line": 271,
       "reason": "dynamic CustomEvent name",
       "kind": "custom-event-create",
+      "match": "new CustomEvent(RESPONSE_EVENT",
       "contractId": "loom.comfyui.agent-response-bridge"
     },
     {
@@ -32344,20 +32513,519 @@
       "line": 276,
       "reason": "dynamic CustomEvent name",
       "kind": "custom-event-create",
+      "match": "new CustomEvent(RESPONSE_EVENT",
       "contractId": "loom.comfyui.agent-response-bridge"
+    },
+    {
+      "file": "modules/messageRenderer.js",
+      "line": 597,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.messagerenderer"
+    },
+    {
+      "file": "modules/messageRenderer.js",
+      "line": 2585,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.messagerenderer"
+    },
+    {
+      "file": "modules/messageRenderer.js",
+      "line": 3315,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.messagerenderer"
+    },
+    {
+      "file": "modules/notificationCenter.js",
+      "line": 289,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.notificationcenter"
+    },
+    {
+      "file": "modules/notificationRenderer.js",
+      "line": 19,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target?.addEventListener?.(type",
+      "contractId": "source.dynamic.modules.notificationrenderer"
+    },
+    {
+      "file": "modules/renderer/domListenerOwner.js",
+      "line": 9,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.renderer.domlistenerowner"
+    },
+    {
+      "file": "modules/services/windowService.js",
+      "line": 12,
+      "reason": "dynamic event listener name: CHANNELS.WINDOW_READY",
+      "kind": "event-listener",
+      "match": "ipcMain.on(CHANNELS.WINDOW_READY",
+      "contractId": "source.dynamic.modules.services.windowservice"
+    },
+    {
+      "file": "modules/services/windowService.js",
+      "line": 231,
+      "reason": "dynamic event name: channel",
+      "kind": "event-send",
+      "match": "win.webContents.send(channel",
+      "contractId": "source.dynamic.modules.services.windowservice"
+    },
+    {
+      "file": "modules/settings/schema/workspace-management.js",
+      "line": 153,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "row.addEventListener(type",
+      "contractId": "source.dynamic.modules.settings.schema.workspace-management"
+    },
+    {
+      "file": "modules/settingsManager.js",
+      "line": 711,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.settingsmanager"
+    },
+    {
+      "file": "modules/settingsManager.js",
+      "line": 2221,
+      "reason": "dynamic listener name: eventName",
+      "kind": "custom-event-listener",
+      "match": "element.addEventListener(eventName",
+      "contractId": "source.dynamic.modules.settingsmanager"
+    },
+    {
+      "file": "modules/settingsManager.js",
+      "line": 2250,
+      "reason": "dynamic listener name: eventName",
+      "kind": "custom-event-listener",
+      "match": "systemPromptContainer.addEventListener(eventName",
+      "contractId": "source.dynamic.modules.settingsmanager"
+    },
+    {
+      "file": "modules/topicListManager.js",
+      "line": 34,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target?.addEventListener?.(type",
+      "contractId": "source.dynamic.modules.topiclistmanager"
+    },
+    {
+      "file": "modules/topicListManager.js",
+      "line": 39,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target?.addEventListener?.(type",
+      "contractId": "source.dynamic.modules.topiclistmanager"
+    },
+    {
+      "file": "modules/ui-system/appearance-studio.js",
+      "line": 516,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.ui-system.appearance-studio"
+    },
+    {
+      "file": "modules/ui-system/appearance-studio.js",
+      "line": 792,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "root.addEventListener(type",
+      "contractId": "source.dynamic.modules.ui-system.appearance-studio"
+    },
+    {
+      "file": "modules/ui-system/appearance-studio.js",
+      "line": 1552,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.ui-system.appearance-studio"
+    },
+    {
+      "file": "modules/ui-system/ask-nova-modal.js",
+      "line": 545,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.ui-system.ask-nova-modal"
+    },
+    {
+      "file": "modules/ui-system/chat-back-to-bottom.js",
+      "line": 88,
+      "reason": "dynamic listener name: eventName",
+      "kind": "custom-event-listener",
+      "match": "scroller.addEventListener(eventName",
+      "contractId": "source.dynamic.modules.ui-system.chat-back-to-bottom"
+    },
+    {
+      "file": "modules/ui-system/chat-navigation-idle.js",
+      "line": 30,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.ui-system.chat-navigation-idle"
+    },
+    {
+      "file": "modules/ui-system/component-showcase.js",
+      "line": 29,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.ui-system.component-showcase"
+    },
+    {
+      "file": "modules/ui-system/conversation-status-panel.js",
+      "line": 196,
+      "reason": "dynamic CustomEvent name: changeEvent",
+      "kind": "custom-event-create",
+      "match": "new win.CustomEvent(changeEvent",
+      "contractId": "source.dynamic.modules.ui-system.conversation-status-panel"
+    },
+    {
+      "file": "modules/ui-system/conversation-status-panel/dom.js",
+      "line": 54,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.ui-system.conversation-status-panel.dom"
+    },
+    {
+      "file": "modules/ui-system/conversation-turn-navigator.js",
+      "line": 568,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.ui-system.conversation-turn-navigator"
+    },
+    {
+      "file": "modules/ui-system/lifecycle-scope.js",
+      "line": 125,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.ui-system.lifecycle-scope"
+    },
+    {
+      "file": "modules/ui-system/next-shell/account-menu-controller.js",
+      "line": 61,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.ui-system.next-shell.account-menu-controller"
+    },
+    {
+      "file": "modules/ui-system/next-shell/app-tab-host.js",
+      "line": 132,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "tab.addEventListener(type",
+      "contractId": "source.dynamic.modules.ui-system.next-shell.app-tab-host"
+    },
+    {
+      "file": "modules/ui-system/next-shell/assistant-search-controller.js",
+      "line": 40,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.ui-system.next-shell.assistant-search-controller"
+    },
+    {
+      "file": "modules/ui-system/next-shell/creation-controller.js",
+      "line": 262,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.ui-system.next-shell.creation-controller"
+    },
+    {
+      "file": "modules/ui-system/next-shell/launchpad-icons.js",
+      "line": 52,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.ui-system.next-shell.launchpad-icons"
+    },
+    {
+      "file": "modules/ui-system/next-shell/next-shell-controller.js",
+      "line": 96,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.ui-system.next-shell.next-shell-controller"
+    },
+    {
+      "file": "modules/ui-system/next-shell/next-shell-controller.js",
+      "line": 266,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.ui-system.next-shell.next-shell-controller"
+    },
+    {
+      "file": "modules/ui-system/next-shell/notification-menu-controller.js",
+      "line": 54,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.ui-system.next-shell.notification-menu-controller"
+    },
+    {
+      "file": "modules/ui-system/settings-bridge.js",
+      "line": 490,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.ui-system.settings-bridge"
+    },
+    {
+      "file": "modules/ui-system/settings-bridge.js",
+      "line": 773,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.ui-system.settings-bridge"
+    },
+    {
+      "file": "modules/ui-system/settings/autosave.js",
+      "line": 187,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.ui-system.settings.autosave"
+    },
+    {
+      "file": "modules/ui-system/side-pane/browserSideProvider.js",
+      "line": 274,
+      "reason": "dynamic listener name: name",
+      "kind": "custom-event-listener",
+      "match": "guest.addEventListener(name",
+      "contractId": "source.dynamic.modules.ui-system.side-pane.browsersideprovider"
+    },
+    {
+      "file": "modules/ui-system/side-pane/code-viewer/diff-view.js",
+      "line": 26,
+      "reason": "dynamic listener name: event",
+      "kind": "custom-event-listener",
+      "match": "node.addEventListener(event",
+      "contractId": "source.dynamic.modules.ui-system.side-pane.code-viewer.diff-view"
+    },
+    {
+      "file": "modules/ui-system/side-pane/code-viewer/picker.js",
+      "line": 24,
+      "reason": "dynamic listener name: event",
+      "kind": "custom-event-listener",
+      "match": "node.addEventListener(event",
+      "contractId": "source.dynamic.modules.ui-system.side-pane.code-viewer.picker"
+    },
+    {
+      "file": "modules/ui-system/sidebar-resizer.js",
+      "line": 110,
+      "reason": "dynamic listener name: eventNames.move",
+      "kind": "custom-event-listener",
+      "match": "documentRef.addEventListener(eventNames.move",
+      "contractId": "source.dynamic.modules.ui-system.sidebar-resizer"
+    },
+    {
+      "file": "modules/ui-system/sidebar-resizer.js",
+      "line": 111,
+      "reason": "dynamic listener name: eventNames.up",
+      "kind": "custom-event-listener",
+      "match": "documentRef.addEventListener(eventNames.up",
+      "contractId": "source.dynamic.modules.ui-system.sidebar-resizer"
+    },
+    {
+      "file": "modules/ui-system/sidebar-resizer.js",
+      "line": 112,
+      "reason": "dynamic listener name: eventNames.cancel",
+      "kind": "custom-event-listener",
+      "match": "documentRef.addEventListener(eventNames.cancel",
+      "contractId": "source.dynamic.modules.ui-system.sidebar-resizer"
+    },
+    {
+      "file": "modules/ui-system/sidebar-resizer.js",
+      "line": 132,
+      "reason": "dynamic listener name: eventNames.up",
+      "kind": "custom-event-listener",
+      "match": "documentRef.addEventListener(eventNames.up",
+      "contractId": "source.dynamic.modules.ui-system.sidebar-resizer"
+    },
+    {
+      "file": "modules/ui-system/sidebar-resizer.js",
+      "line": 133,
+      "reason": "dynamic listener name: eventNames.cancel",
+      "kind": "custom-event-listener",
+      "match": "documentRef.addEventListener(eventNames.cancel",
+      "contractId": "source.dynamic.modules.ui-system.sidebar-resizer"
+    },
+    {
+      "file": "modules/ui-system/sidebar-resizer.js",
+      "line": 167,
+      "reason": "dynamic listener name: eventNames.down",
+      "kind": "custom-event-listener",
+      "match": "handle.addEventListener(eventNames.down",
+      "contractId": "source.dynamic.modules.ui-system.sidebar-resizer"
+    },
+    {
+      "file": "modules/ui-system/typed-field-owners.js",
+      "line": 440,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "form.addEventListener(type",
+      "contractId": "source.dynamic.modules.ui-system.typed-field-owners"
+    },
+    {
+      "file": "modules/ui-system/vcp-ui.js",
+      "line": 44,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.ui-system.vcp-ui"
+    },
+    {
+      "file": "modules/ui-system/vcp-ui.js",
+      "line": 838,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "wa.addEventListener(type",
+      "contractId": "source.dynamic.modules.ui-system.vcp-ui"
+    },
+    {
+      "file": "modules/ui-system/webawesome-adapter.js",
+      "line": 114,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "element.addEventListener(type",
+      "contractId": "source.dynamic.modules.ui-system.webawesome-adapter"
     },
     {
       "file": "modules/ui-system/webawesome-adapter.js",
       "line": 150,
       "reason": "dynamic CustomEvent name: vcpEventName",
       "kind": "custom-event-create",
+      "match": "new CustomEvent(vcpEventName",
       "contractId": "ui.webawesome.dynamic-event-adapter"
+    },
+    {
+      "file": "modules/ui-system/webawesome-adapter.js",
+      "line": 155,
+      "reason": "dynamic listener name: waEventName",
+      "kind": "custom-event-listener",
+      "match": "element.addEventListener(waEventName",
+      "contractId": "source.dynamic.modules.ui-system.webawesome-adapter"
+    },
+    {
+      "file": "modules/uiux/generated/browser-entry.js",
+      "line": 105,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.uiux.generated.browser-entry"
+    },
+    {
+      "file": "modules/uiux/generated/runtime/dom-renderer.js",
+      "line": 21,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.uiux.generated.runtime.dom-renderer"
+    },
+    {
+      "file": "modules/vcpClient.js",
+      "line": 379,
+      "reason": "dynamic event name: streamChannel",
+      "kind": "event-send",
+      "match": "webContents.send(streamChannel",
+      "contractId": "source.dynamic.modules.vcpclient"
+    },
+    {
+      "file": "modules/vcpClient.js",
+      "line": 418,
+      "reason": "dynamic event name: streamChannel",
+      "kind": "event-send",
+      "match": "webContents.send(streamChannel",
+      "contractId": "source.dynamic.modules.vcpclient"
+    },
+    {
+      "file": "modules/vcpClient.js",
+      "line": 445,
+      "reason": "dynamic event name: streamChannel",
+      "kind": "event-send",
+      "match": "webContents.send(streamChannel",
+      "contractId": "source.dynamic.modules.vcpclient"
+    },
+    {
+      "file": "modules/vcpClient.js",
+      "line": 451,
+      "reason": "dynamic event name: streamChannel",
+      "kind": "event-send",
+      "match": "webContents.send(streamChannel",
+      "contractId": "source.dynamic.modules.vcpclient"
+    },
+    {
+      "file": "modules/vcpClient.js",
+      "line": 461,
+      "reason": "dynamic event name: streamChannel",
+      "kind": "event-send",
+      "match": "webContents.send(streamChannel",
+      "contractId": "source.dynamic.modules.vcpclient"
+    },
+    {
+      "file": "modules/vcpClient.js",
+      "line": 478,
+      "reason": "dynamic event name: streamChannel",
+      "kind": "event-send",
+      "match": "webContents.send(streamChannel",
+      "contractId": "source.dynamic.modules.vcpclient"
+    },
+    {
+      "file": "modules/vcpClient.js",
+      "line": 512,
+      "reason": "dynamic event name: streamChannel",
+      "kind": "event-send",
+      "match": "webContents.send(streamChannel",
+      "contractId": "source.dynamic.modules.vcpclient"
+    },
+    {
+      "file": "modules/vcpClient.js",
+      "line": 520,
+      "reason": "dynamic event name: streamChannel",
+      "kind": "event-send",
+      "match": "webContents.send(streamChannel",
+      "contractId": "source.dynamic.modules.vcpclient"
+    },
+    {
+      "file": "modules/voice/chatVoiceComposer.js",
+      "line": 154,
+      "reason": "dynamic event name: channel",
+      "kind": "event-send",
+      "match": "this.electronAPI.invoke(channel",
+      "contractId": "source.dynamic.modules.voice.chatvoicecomposer"
+    },
+    {
+      "file": "preloads/chart.js",
+      "line": 8,
+      "reason": "dynamic event listener name: channel",
+      "kind": "event-listener",
+      "match": "ipcRenderer.on(channel",
+      "contractId": "source.dynamic.preloads.chart"
     },
     {
       "file": "preloads/core/define.js",
       "line": 65,
       "reason": "dynamic event name: channel",
       "kind": "event-send",
+      "match": "ipcRenderer.invoke(channel",
       "contractId": "preload.registry.channel-adapters"
     },
     {
@@ -32365,6 +33033,7 @@
       "line": 72,
       "reason": "dynamic event name: channel",
       "kind": "event-send",
+      "match": "ipcRenderer.send(channel",
       "contractId": "preload.registry.channel-adapters"
     },
     {
@@ -32372,439 +33041,33 @@
       "line": 80,
       "reason": "dynamic event listener name: channel",
       "kind": "event-listener",
+      "match": "ipcRenderer.on(channel",
       "contractId": "preload.registry.channel-adapters"
-    }
-  ],
-  "undiscovered": [
-    {
-      "file": "VCPDistributedServer/Plugin/PTYShellExecutor/ShellOutputPipeline.js",
-      "line": 122,
-      "reason": "dynamic event name: this.channel"
-    },
-    {
-      "file": "VCPDistributedServer/Plugin/PTYShellExecutor/gui/preload.js",
-      "line": 14,
-      "reason": "dynamic event listener name: channel"
-    },
-    {
-      "file": "VCPDistributedServer/Plugin/PTYShellExecutor/gui/preload.js",
-      "line": 28,
-      "reason": "dynamic event name: channel"
-    },
-    {
-      "file": "VCPDistributedServer/Plugin/PowerShellExecutor/gui/preload.js",
-      "line": 18,
-      "reason": "dynamic event listener name: channel"
-    },
-    {
-      "file": "VCPDistributedServer/Plugin/PowerShellExecutor/gui/preload.js",
-      "line": 32,
-      "reason": "dynamic event name: channel"
-    },
-    {
-      "file": "VCPDistributedServer/Plugin/PowerShellExecutor/gui/preload.js",
-      "line": 44,
-      "reason": "dynamic event name: channel"
-    },
-    {
-      "file": "modules/event-listeners.js",
-      "line": 36,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/inputEnhancer.js",
-      "line": 60,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/ipc/chartHandlers.js",
-      "line": 44,
-      "reason": "dynamic event name: channel"
-    },
-    {
-      "file": "modules/ipc/desktopRemoteHandlers.js",
-      "line": 47,
-      "reason": "dynamic event listener name: CHANNELS.DESKTOP_REMOTE_RESPONSE"
-    },
-    {
-      "file": "modules/ipc/desktopRemoteHandlers.js",
-      "line": 51,
-      "reason": "dynamic event listener name: CHANNELS.FLOWLOCK_RESPONSE"
-    },
-    {
-      "file": "modules/ipc/desktopRemoteHandlers.js",
-      "line": 83,
-      "reason": "dynamic event name: channel"
-    },
-    {
-      "file": "modules/ipc/gitHandlers.js",
-      "line": 60,
-      "reason": "dynamic event listener name: channel"
-    },
-    {
-      "file": "modules/ipc/musicHandlers.js",
-      "line": 647,
-      "reason": "dynamic event name: channel"
-    },
-    {
-      "file": "modules/ipc/sourceHandlers.js",
-      "line": 36,
-      "reason": "dynamic event listener name: channel"
-    },
-    {
-      "file": "modules/ipc/terminalHandlers.js",
-      "line": 57,
-      "reason": "dynamic event name: channel"
-    },
-    {
-      "file": "modules/loom/VCPLoomManager.js",
-      "line": 1350,
-      "reason": "dynamic event listener name: protocol.addedEvent"
-    },
-    {
-      "file": "modules/loom/VCPLoomManager.js",
-      "line": 1351,
-      "reason": "dynamic event listener name: protocol.removedEvent"
-    },
-    {
-      "file": "modules/loom/VCPLoomManager.js",
-      "line": 1368,
-      "reason": "dynamic event listener name: protocol.selectEvent"
-    },
-    {
-      "file": "modules/loom/VCPLoomManager.js",
-      "line": 1369,
-      "reason": "dynamic event listener name: protocol.revokedEvent"
-    },
-    {
-      "file": "modules/loom/VCPLoomManager.js",
-      "line": 2308,
-      "reason": "dynamic event listener name: channel"
-    },
-    {
-      "file": "modules/messageRenderer.js",
-      "line": 597,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/messageRenderer.js",
-      "line": 2585,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/messageRenderer.js",
-      "line": 3315,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/notificationCenter.js",
-      "line": 289,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/notificationRenderer.js",
-      "line": 19,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/renderer/domListenerOwner.js",
-      "line": 9,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/services/windowService.js",
-      "line": 12,
-      "reason": "dynamic event listener name: CHANNELS.WINDOW_READY"
-    },
-    {
-      "file": "modules/services/windowService.js",
-      "line": 231,
-      "reason": "dynamic event name: channel"
-    },
-    {
-      "file": "modules/settings/schema/workspace-management.js",
-      "line": 153,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/settingsManager.js",
-      "line": 710,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/settingsManager.js",
-      "line": 2220,
-      "reason": "dynamic listener name: eventName"
-    },
-    {
-      "file": "modules/settingsManager.js",
-      "line": 2249,
-      "reason": "dynamic listener name: eventName"
-    },
-    {
-      "file": "modules/topicListManager.js",
-      "line": 34,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/topicListManager.js",
-      "line": 39,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/ui-system/appearance-studio.js",
-      "line": 516,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/ui-system/appearance-studio.js",
-      "line": 792,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/ui-system/appearance-studio.js",
-      "line": 1552,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/ui-system/ask-nova-modal.js",
-      "line": 545,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/ui-system/chat-back-to-bottom.js",
-      "line": 88,
-      "reason": "dynamic listener name: eventName"
-    },
-    {
-      "file": "modules/ui-system/chat-navigation-idle.js",
-      "line": 30,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/ui-system/component-showcase.js",
-      "line": 29,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/ui-system/conversation-status-panel.js",
-      "line": 196,
-      "reason": "dynamic CustomEvent name: changeEvent"
-    },
-    {
-      "file": "modules/ui-system/conversation-status-panel/dom.js",
-      "line": 54,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/ui-system/conversation-turn-navigator.js",
-      "line": 568,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/ui-system/lifecycle-scope.js",
-      "line": 125,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/ui-system/next-shell/account-menu-controller.js",
-      "line": 61,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/ui-system/next-shell/app-tab-host.js",
-      "line": 132,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/ui-system/next-shell/assistant-search-controller.js",
-      "line": 40,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/ui-system/next-shell/creation-controller.js",
-      "line": 262,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/ui-system/next-shell/launchpad-icons.js",
-      "line": 52,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/ui-system/next-shell/next-shell-controller.js",
-      "line": 96,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/ui-system/next-shell/next-shell-controller.js",
-      "line": 266,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/ui-system/next-shell/notification-menu-controller.js",
-      "line": 54,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/ui-system/settings-bridge.js",
-      "line": 490,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/ui-system/settings-bridge.js",
-      "line": 773,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/ui-system/settings/autosave.js",
-      "line": 187,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/ui-system/side-pane/browserSideProvider.js",
-      "line": 274,
-      "reason": "dynamic listener name: name"
-    },
-    {
-      "file": "modules/ui-system/side-pane/code-viewer/diff-view.js",
-      "line": 26,
-      "reason": "dynamic listener name: event"
-    },
-    {
-      "file": "modules/ui-system/side-pane/code-viewer/picker.js",
-      "line": 24,
-      "reason": "dynamic listener name: event"
-    },
-    {
-      "file": "modules/ui-system/sidebar-resizer.js",
-      "line": 110,
-      "reason": "dynamic listener name: eventNames.move"
-    },
-    {
-      "file": "modules/ui-system/sidebar-resizer.js",
-      "line": 111,
-      "reason": "dynamic listener name: eventNames.up"
-    },
-    {
-      "file": "modules/ui-system/sidebar-resizer.js",
-      "line": 112,
-      "reason": "dynamic listener name: eventNames.cancel"
-    },
-    {
-      "file": "modules/ui-system/sidebar-resizer.js",
-      "line": 132,
-      "reason": "dynamic listener name: eventNames.up"
-    },
-    {
-      "file": "modules/ui-system/sidebar-resizer.js",
-      "line": 133,
-      "reason": "dynamic listener name: eventNames.cancel"
-    },
-    {
-      "file": "modules/ui-system/sidebar-resizer.js",
-      "line": 167,
-      "reason": "dynamic listener name: eventNames.down"
-    },
-    {
-      "file": "modules/ui-system/typed-field-owners.js",
-      "line": 440,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/ui-system/vcp-ui.js",
-      "line": 44,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/ui-system/vcp-ui.js",
-      "line": 838,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/ui-system/webawesome-adapter.js",
-      "line": 114,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/ui-system/webawesome-adapter.js",
-      "line": 155,
-      "reason": "dynamic listener name: waEventName"
-    },
-    {
-      "file": "modules/uiux/generated/browser-entry.js",
-      "line": 105,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/uiux/generated/runtime/dom-renderer.js",
-      "line": 21,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/vcpClient.js",
-      "line": 379,
-      "reason": "dynamic event name: streamChannel"
-    },
-    {
-      "file": "modules/vcpClient.js",
-      "line": 418,
-      "reason": "dynamic event name: streamChannel"
-    },
-    {
-      "file": "modules/vcpClient.js",
-      "line": 445,
-      "reason": "dynamic event name: streamChannel"
-    },
-    {
-      "file": "modules/vcpClient.js",
-      "line": 451,
-      "reason": "dynamic event name: streamChannel"
-    },
-    {
-      "file": "modules/vcpClient.js",
-      "line": 461,
-      "reason": "dynamic event name: streamChannel"
-    },
-    {
-      "file": "modules/vcpClient.js",
-      "line": 478,
-      "reason": "dynamic event name: streamChannel"
-    },
-    {
-      "file": "modules/vcpClient.js",
-      "line": 512,
-      "reason": "dynamic event name: streamChannel"
-    },
-    {
-      "file": "modules/vcpClient.js",
-      "line": 520,
-      "reason": "dynamic event name: streamChannel"
-    },
-    {
-      "file": "modules/voice/chatVoiceComposer.js",
-      "line": 154,
-      "reason": "dynamic event name: channel"
-    },
-    {
-      "file": "preloads/chart.js",
-      "line": 8,
-      "reason": "dynamic event listener name: channel"
     },
     {
       "file": "preloads/docx.js",
       "line": 8,
-      "reason": "dynamic event listener name: channel"
+      "reason": "dynamic event listener name: channel",
+      "kind": "event-listener",
+      "match": "ipcRenderer.on(channel",
+      "contractId": "source.dynamic.preloads.docx"
     },
     {
       "file": "preloads/loom.js",
       "line": 6,
-      "reason": "dynamic event name: channel"
+      "reason": "dynamic event name: channel",
+      "kind": "event-send",
+      "match": "ipcRenderer.invoke(channel",
+      "contractId": "source.dynamic.preloads.loom"
     },
     {
       "file": "preloads/loom.js",
       "line": 14,
-      "reason": "dynamic event listener name: channel"
+      "reason": "dynamic event listener name: channel",
+      "kind": "event-listener",
+      "match": "ipcRenderer.on(channel",
+      "contractId": "source.dynamic.preloads.loom"
     }
-  ]
+  ],
+  "undiscovered": []
 }

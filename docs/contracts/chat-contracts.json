@@ -5,10 +5,16 @@
     "owner": "renderer.js",
     "facadeName": "VCPMainChatState",
     "status": "pass",
-    "consumers": ["Flowlockmodules/flowlock-integration.js", "modules/VChatAutoTTS/plugin.js"],
+    "consumers": [
+      "Flowlockmodules/flowlock-integration.js",
+      "modules/VChatAutoTTS/plugin.js"
+    ],
     "dynamicSmoke": "scripts/test-electron-main-chat-sequences.mjs",
     "retirement": "retain while Flowlock and AutoTTS plugin consumers use the main-chat state protocol",
-    "evidence": ["npm run guard:chat-kernel-consumers", "npm run test:electron-main-chat-sequences"]
+    "evidence": [
+      "npm run guard:chat-kernel-consumers",
+      "npm run test:electron-main-chat-sequences"
+    ]
   },
   {
     "id": "facade.main-chat-commands",
@@ -16,10 +22,16 @@
     "owner": "modules/mainChatCommands.js",
     "facadeName": "MainChatCommands",
     "status": "pass",
-    "consumers": ["modules/ui-system/next-shell/next-shell-controller.js", "modules/event-listeners.js"],
+    "consumers": [
+      "modules/ui-system/next-shell/next-shell-controller.js",
+      "modules/event-listeners.js"
+    ],
     "dynamicSmoke": "scripts/test-electron-ui-apps-smoke.mjs",
     "retirement": "retain while Next shell, Classic menus or plugin commands consume it",
-    "evidence": ["npm run guard:chat-kernel-consumers", "npm run test:electron-ui-apps"]
+    "evidence": [
+      "npm run guard:chat-kernel-consumers",
+      "npm run test:electron-ui-apps"
+    ]
   },
   {
     "id": "facade.vcp-appearance-studio",
@@ -27,37 +39,72 @@
     "owner": "modules/ui-system/appearance-studio.js",
     "facadeName": "VCPAppearanceStudio",
     "status": "pass",
-    "consumers": ["modules/ui-system/next-shell/next-shell-controller.js", "modules/settingsManager.js"],
+    "consumers": [
+      "modules/ui-system/next-shell/next-shell-controller.js",
+      "modules/settingsManager.js"
+    ],
     "dynamicSmoke": "scripts/test-appearance-studio.mjs",
     "retirement": "retain while Next shell and settings entrypoints consume it",
-    "evidence": ["npm run guard:chat-kernel-consumers", "npm run test:appearance-studio"]
+    "evidence": [
+      "npm run guard:chat-kernel-consumers",
+      "npm run test:appearance-studio"
+    ]
   },
   {
     "id": "chat.stream.lifecycle",
     "kind": "event",
     "owner": "modules/chat/streamSession.js",
     "status": "pass",
-    "producer": ["modules/chat/streamSession.js", "modules/chat/streamCoordinator.js"],
-    "consumers": ["modules/renderer/streamManager.js", "modules/chat/vcpStreamBridge.js"],
+    "producer": [
+      "modules/chat/streamSession.js",
+      "modules/chat/streamCoordinator.js"
+    ],
+    "consumers": [
+      "modules/renderer/streamManager.js",
+      "modules/chat/vcpStreamBridge.js"
+    ],
     "mode": "emit",
     "durable": false,
-    "terminal": { "kinds": ["completed", "failed", "cancelled", "discarded"], "single": true, "late": "discard" },
+    "terminal": {
+      "kinds": [
+        "completed",
+        "failed",
+        "cancelled",
+        "discarded"
+      ],
+      "single": true,
+      "late": "discard"
+    },
     "sourceEntry": "tests/stream-session.test.mjs",
     "invalidCase": "scripts/fixtures/chat-contract-invalid.mjs",
-    "evidence": ["npm run test:chat-kernel", "npm run test:chat-contract-invariants"]
+    "evidence": [
+      "npm run test:chat-kernel",
+      "npm run test:chat-contract-invariants"
+    ]
   },
   {
     "id": "chat.stream.completed.persistence",
     "kind": "event",
     "owner": "modules/chat/streamCoordinator.js",
     "status": "pass",
-    "producer": ["modules/chat/streamCoordinator.js"],
-    "consumers": ["modules/chat/chatHistoryPersistence.js"],
+    "producer": [
+      "modules/chat/streamCoordinator.js"
+    ],
+    "consumers": [
+      "modules/chat/chatHistoryPersistence.js"
+    ],
     "mode": "emit",
     "durable": true,
-    "terminal": { "kinds": ["completed"], "single": true },
+    "terminal": {
+      "kinds": [
+        "completed"
+      ],
+      "single": true
+    },
     "sourceEntry": "tests/stream-coordinator.test.mjs",
-    "evidence": ["npm run test:chat-kernel"]
+    "evidence": [
+      "npm run test:chat-kernel"
+    ]
   },
   {
     "id": "ui.webawesome.dynamic-event-adapter",
@@ -65,14 +112,28 @@
     "owner": "modules/ui-system/webawesome-adapter.js",
     "status": "pass",
     "dynamic": true,
-    "dynamicSites": [{ "file": "modules/ui-system/webawesome-adapter.js", "line": 150 }],
-    "producer": ["modules/ui-system/webawesome-adapter.js"],
-    "consumers": ["modules/ui-system/webawesome-adapter.js"],
+    "dynamicSites": [
+      {
+        "file": "modules/ui-system/webawesome-adapter.js",
+        "line": 150
+      }
+    ],
+    "producer": [
+      "modules/ui-system/webawesome-adapter.js"
+    ],
+    "consumers": [
+      "modules/ui-system/webawesome-adapter.js"
+    ],
     "mode": "emit",
     "durable": false,
-    "terminal": { "single": false, "late": "surface-scoped" },
+    "terminal": {
+      "single": false,
+      "late": "surface-scoped"
+    },
     "sourceEntry": "scripts/test-webawesome-adapter.mjs",
-    "evidence": ["npm run test:ui-system"]
+    "evidence": [
+      "npm run test:ui-system"
+    ]
   },
   {
     "id": "loom.comfyui.agent-response-bridge",
@@ -81,15 +142,30 @@
     "status": "manual_required",
     "dynamic": true,
     "dynamicSites": [
-      { "file": "modules/loom/webcore/comfyui-main-world-bridge.js", "line": 271 },
-      { "file": "modules/loom/webcore/comfyui-main-world-bridge.js", "line": 276 }
+      {
+        "file": "modules/loom/webcore/comfyui-main-world-bridge.js",
+        "line": 271
+      },
+      {
+        "file": "modules/loom/webcore/comfyui-main-world-bridge.js",
+        "line": 276
+      }
     ],
-    "producer": ["modules/loom/webcore/comfyui-main-world-bridge.js"],
-    "consumers": ["modules/loom/webcore/comfyui-page-adapter.js"],
+    "producer": [
+      "modules/loom/webcore/comfyui-main-world-bridge.js"
+    ],
+    "consumers": [
+      "modules/loom/webcore/comfyui-page-adapter.js"
+    ],
     "mode": "emit",
     "durable": false,
-    "terminal": { "single": true, "late": "request-scoped" },
-    "evidence": ["RESPONSE_EVENT is the constant 'vcp-comfyui-agent-response'; exactly one success or error reply per set-widget-value requestId; no automated test yet"]
+    "terminal": {
+      "single": true,
+      "late": "request-scoped"
+    },
+    "evidence": [
+      "RESPONSE_EVENT is the constant 'vcp-comfyui-agent-response'; exactly one success or error reply per set-widget-value requestId; no automated test yet"
+    ]
   },
   {
     "id": "snapshot.chat-stream.completed",
@@ -98,7 +174,9 @@
     "status": "pass",
     "snapshot": "docs/contracts/snapshots/chat-stream.json",
     "sourceEntry": "scripts/test-chat-transcript-snapshot.mjs",
-    "evidence": ["npm run test:chat-transcript-snapshot"]
+    "evidence": [
+      "npm run test:chat-transcript-snapshot"
+    ]
   },
   {
     "id": "snapshot.chat-stream.cancelled",
@@ -107,7 +185,9 @@
     "status": "pass",
     "snapshot": "docs/contracts/snapshots/chat-stream-cancel.json",
     "sourceEntry": "scripts/test-chat-transcript-snapshot.mjs",
-    "evidence": ["npm run test:chat-transcript-snapshot"]
+    "evidence": [
+      "npm run test:chat-transcript-snapshot"
+    ]
   },
   {
     "id": "snapshot.chat-stream.failed",
@@ -116,7 +196,9 @@
     "status": "pass",
     "snapshot": "docs/contracts/snapshots/chat-stream-failed.json",
     "sourceEntry": "scripts/test-chat-transcript-snapshot.mjs",
-    "evidence": ["npm run test:chat-transcript-snapshot"]
+    "evidence": [
+      "npm run test:chat-transcript-snapshot"
+    ]
   },
   {
     "id": "snapshot.chat-stream.discarded",
@@ -125,7 +207,9 @@
     "status": "pass",
     "snapshot": "docs/contracts/snapshots/chat-stream-discarded.json",
     "sourceEntry": "scripts/test-chat-transcript-snapshot.mjs",
-    "evidence": ["npm run test:chat-transcript-snapshot"]
+    "evidence": [
+      "npm run test:chat-transcript-snapshot"
+    ]
   },
   {
     "id": "preload.registry.channel-adapters",
@@ -173,5 +257,1197 @@
       "Electron role exposure and all main-process delivery paths still require separate integration evidence"
     ],
     "retirement": "remove this wrapper contract if core/define adapters are retired or their dynamic call sites move; review callers and operation kind before updating sites"
+  },
+  {
+    "id": "source.dynamic.vcpdistributedserver.plugin.ptyshellexecutor.shelloutputpipeline",
+    "kind": "source-review",
+    "owner": "VCPDistributedServer/Plugin/PTYShellExecutor/ShellOutputPipeline.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "The output channel is constructor configuration (default shell-data); envelopes target the current attached WebContents and carry generation/sequence. Pipeline tests cover backlog and target replacement.",
+    "dynamicSites": [
+      {
+        "file": "VCPDistributedServer/Plugin/PTYShellExecutor/ShellOutputPipeline.js",
+        "line": 122,
+        "kind": "event-send",
+        "match": "activeTarget.webContents.send(this.channel"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.vcpdistributedserver.plugin.ptyshellexecutor.gui.preload",
+    "kind": "source-review",
+    "owner": "VCPDistributedServer/Plugin/PTYShellExecutor/gui/preload.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "Legacy local ShellViewer preload forwards caller-supplied on/send channels; on returns exact-listener unsubscribe. These methods are generic and not channel-allowlisted. Registration records that existing boundary; it is not a security allowlist approval.",
+    "dynamicSites": [
+      {
+        "file": "VCPDistributedServer/Plugin/PTYShellExecutor/gui/preload.js",
+        "line": 14,
+        "kind": "event-listener",
+        "match": "ipcRenderer.on(channel"
+      },
+      {
+        "file": "VCPDistributedServer/Plugin/PTYShellExecutor/gui/preload.js",
+        "line": 28,
+        "kind": "event-send",
+        "match": "ipcRenderer.send(channel"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.vcpdistributedserver.plugin.powershellexecutor.gui.preload",
+    "kind": "source-review",
+    "owner": "VCPDistributedServer/Plugin/PowerShellExecutor/gui/preload.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "Legacy local GUI preload forwards on/send channels with unsubscribe; invoke is restricted to read-from-clipboard. Generic on/send are not channel-allowlisted. Registration is inventory review, not proof of renderer authorization.",
+    "dynamicSites": [
+      {
+        "file": "VCPDistributedServer/Plugin/PowerShellExecutor/gui/preload.js",
+        "line": 18,
+        "kind": "event-listener",
+        "match": "ipcRenderer.on(channel"
+      },
+      {
+        "file": "VCPDistributedServer/Plugin/PowerShellExecutor/gui/preload.js",
+        "line": 32,
+        "kind": "event-send",
+        "match": "ipcRenderer.send(channel"
+      },
+      {
+        "file": "VCPDistributedServer/Plugin/PowerShellExecutor/gui/preload.js",
+        "line": 44,
+        "kind": "event-send",
+        "match": "ipcRenderer.invoke(channel"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.event-listeners",
+    "kind": "source-review",
+    "owner": "modules/event-listeners.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "DOM listener adapter: event type is supplied by module-local UI bindings; it forwards to the specified target. Existing scope, abort signal or caller cleanup owns the listener. This registers the source site without claiming a long-session lifetime measurement.",
+    "dynamicSites": [
+      {
+        "file": "modules/event-listeners.js",
+        "line": 36,
+        "kind": "custom-event-listener",
+        "match": "target?.addEventListener?.(type"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.inputenhancer",
+    "kind": "source-review",
+    "owner": "modules/inputEnhancer.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "DOM listener adapter: event type is supplied by module-local UI bindings; it forwards to the specified target. Existing scope, abort signal or caller cleanup owns the listener. This registers the source site without claiming a long-session lifetime measurement.",
+    "dynamicSites": [
+      {
+        "file": "modules/inputEnhancer.js",
+        "line": 60,
+        "kind": "custom-event-listener",
+        "match": "target?.addEventListener?.(type"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ipc.charthandlers",
+    "kind": "source-review",
+    "owner": "modules/ipc/chartHandlers.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "safeSend forwards the module-local chart:* selection/diagnostic/runtime notifications; listeners use the chart preload subscription helper and its unsubscribe function.",
+    "dynamicSites": [
+      {
+        "file": "modules/ipc/chartHandlers.js",
+        "line": 44,
+        "kind": "event-send",
+        "match": "win.webContents.send(channel"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ipc.desktopremotehandlers",
+    "kind": "source-review",
+    "owner": "modules/ipc/desktopRemoteHandlers.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "Channel constants come from ipcContracts; requestRendererRpc forwards desktop/Flowlock requests with requestId and captured webContentsId; response settlement checks the sender and clears its timeout.",
+    "dynamicSites": [
+      {
+        "file": "modules/ipc/desktopRemoteHandlers.js",
+        "line": 47,
+        "kind": "event-listener",
+        "match": "ipcMain.on(CHANNELS.DESKTOP_REMOTE_RESPONSE"
+      },
+      {
+        "file": "modules/ipc/desktopRemoteHandlers.js",
+        "line": 51,
+        "kind": "event-listener",
+        "match": "ipcMain.on(CHANNELS.FLOWLOCK_RESPONSE"
+      },
+      {
+        "file": "modules/ipc/desktopRemoteHandlers.js",
+        "line": 83,
+        "kind": "event-send",
+        "match": "targetWindow.webContents.send(channel"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ipc.githandlers",
+    "kind": "source-review",
+    "owner": "modules/ipc/gitHandlers.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "handle wraps explicit git:* registrations; the handler checks application sender and resolves workspace roots in the main process. This is IPC inventory review; destructive Git correctness is a separate work item.",
+    "dynamicSites": [
+      {
+        "file": "modules/ipc/gitHandlers.js",
+        "line": 60,
+        "kind": "event-listener",
+        "match": "ipcMain.handle(channel"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ipc.musichandlers",
+    "kind": "source-review",
+    "owner": "modules/ipc/musicHandlers.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "sendToRequester forwards fixed music/playback notifications to the captured requesting sender only; the helper is not an arbitrary renderer-channel API.",
+    "dynamicSites": [
+      {
+        "file": "modules/ipc/musicHandlers.js",
+        "line": 647,
+        "kind": "event-send",
+        "match": "event.sender.send(channel"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ipc.sourcehandlers",
+    "kind": "source-review",
+    "owner": "modules/ipc/sourceHandlers.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "handle wraps explicit source:* registrations; caller authorization and workspace/file resolution remain main-process responsibilities.",
+    "dynamicSites": [
+      {
+        "file": "modules/ipc/sourceHandlers.js",
+        "line": 36,
+        "kind": "event-listener",
+        "match": "ipcMain.handle(channel"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ipc.terminalhandlers",
+    "kind": "source-review",
+    "owner": "modules/ipc/terminalHandlers.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "safeSend forwards terminal:* output/run notifications to the captured authorized sender; destroyed senders are ignored and run/view subscriptions are detached by their owner.",
+    "dynamicSites": [
+      {
+        "file": "modules/ipc/terminalHandlers.js",
+        "line": 57,
+        "kind": "event-send",
+        "match": "sender.send(channel"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.loom.vcploommanager",
+    "kind": "source-review",
+    "owner": "modules/loom/VCPLoomManager.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "Device event names come from the HID/USB/serial protocol table; finish/instance cleanup removes matching listeners. registerIpc wraps explicit loom:* handlers in the same class. Registration does not certify hardware/browser permissions.",
+    "dynamicSites": [
+      {
+        "file": "modules/loom/VCPLoomManager.js",
+        "line": 1350,
+        "kind": "event-listener",
+        "match": "persistentSession.on(protocol.addedEvent"
+      },
+      {
+        "file": "modules/loom/VCPLoomManager.js",
+        "line": 1351,
+        "kind": "event-listener",
+        "match": "persistentSession.on(protocol.removedEvent"
+      },
+      {
+        "file": "modules/loom/VCPLoomManager.js",
+        "line": 1368,
+        "kind": "event-listener",
+        "match": "persistentSession.on(protocol.selectEvent"
+      },
+      {
+        "file": "modules/loom/VCPLoomManager.js",
+        "line": 1369,
+        "kind": "event-listener",
+        "match": "persistentSession.on(protocol.revokedEvent"
+      },
+      {
+        "file": "modules/loom/VCPLoomManager.js",
+        "line": 2308,
+        "kind": "event-listener",
+        "match": "ipcMain.handle(channel"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.messagerenderer",
+    "kind": "source-review",
+    "owner": "modules/messageRenderer.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "DOM listener adapter: event type is supplied by module-local UI bindings; it forwards to the specified target. Existing scope, abort signal or caller cleanup owns the listener. This registers the source site without claiming a long-session lifetime measurement.",
+    "dynamicSites": [
+      {
+        "file": "modules/messageRenderer.js",
+        "line": 597,
+        "kind": "custom-event-listener",
+        "match": "target.addEventListener(type"
+      },
+      {
+        "file": "modules/messageRenderer.js",
+        "line": 2585,
+        "kind": "custom-event-listener",
+        "match": "target.addEventListener(type"
+      },
+      {
+        "file": "modules/messageRenderer.js",
+        "line": 3315,
+        "kind": "custom-event-listener",
+        "match": "target.addEventListener(type"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.notificationcenter",
+    "kind": "source-review",
+    "owner": "modules/notificationCenter.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "DOM listener adapter: event type is supplied by module-local UI bindings; it forwards to the specified target. Existing scope, abort signal or caller cleanup owns the listener. This registers the source site without claiming a long-session lifetime measurement.",
+    "dynamicSites": [
+      {
+        "file": "modules/notificationCenter.js",
+        "line": 289,
+        "kind": "custom-event-listener",
+        "match": "target.addEventListener(type"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.notificationrenderer",
+    "kind": "source-review",
+    "owner": "modules/notificationRenderer.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "DOM listener adapter: event type is supplied by module-local UI bindings; it forwards to the specified target. Existing scope, abort signal or caller cleanup owns the listener. This registers the source site without claiming a long-session lifetime measurement.",
+    "dynamicSites": [
+      {
+        "file": "modules/notificationRenderer.js",
+        "line": 19,
+        "kind": "custom-event-listener",
+        "match": "target?.addEventListener?.(type"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.renderer.domlistenerowner",
+    "kind": "source-review",
+    "owner": "modules/renderer/domListenerOwner.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "DOM listener adapter: event type is supplied by module-local UI bindings; it forwards to the specified target. Existing scope, abort signal or caller cleanup owns the listener. This registers the source site without claiming a long-session lifetime measurement.",
+    "dynamicSites": [
+      {
+        "file": "modules/renderer/domListenerOwner.js",
+        "line": 9,
+        "kind": "custom-event-listener",
+        "match": "target.addEventListener(type"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.services.windowservice",
+    "kind": "source-review",
+    "owner": "modules/services/windowService.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "WINDOW_READY is the shared lifecycle channel; send waits for the registered application window to become ready and sends its configured payload channel. The module owns one application-lifetime listener.",
+    "dynamicSites": [
+      {
+        "file": "modules/services/windowService.js",
+        "line": 12,
+        "kind": "event-listener",
+        "match": "ipcMain.on(CHANNELS.WINDOW_READY"
+      },
+      {
+        "file": "modules/services/windowService.js",
+        "line": 231,
+        "kind": "event-send",
+        "match": "win.webContents.send(channel"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.settings.schema.workspace-management",
+    "kind": "source-review",
+    "owner": "modules/settings/schema/workspace-management.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "Only input/change from the workspace row are stopped from propagating into global-form autosave; listeners belong to the row.",
+    "dynamicSites": [
+      {
+        "file": "modules/settings/schema/workspace-management.js",
+        "line": 153,
+        "kind": "custom-event-listener",
+        "match": "row.addEventListener(type"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.settingsmanager",
+    "kind": "source-review",
+    "owner": "modules/settingsManager.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "Surface listen delegates cleanup to scope; summary input/change/click loops bind existing form controls once via dataset guards. Registering these loops does not certify unrelated persistence.",
+    "dynamicSites": [
+      {
+        "file": "modules/settingsManager.js",
+        "line": 711,
+        "kind": "custom-event-listener",
+        "match": "target.addEventListener(type"
+      },
+      {
+        "file": "modules/settingsManager.js",
+        "line": 2221,
+        "kind": "custom-event-listener",
+        "match": "element.addEventListener(eventName"
+      },
+      {
+        "file": "modules/settingsManager.js",
+        "line": 2250,
+        "kind": "custom-event-listener",
+        "match": "systemPromptContainer.addEventListener(eventName"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.topiclistmanager",
+    "kind": "source-review",
+    "owner": "modules/topicListManager.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "DOM listener adapter: event type is supplied by module-local UI bindings; it forwards to the specified target. Existing scope, abort signal or caller cleanup owns the listener. This registers the source site without claiming a long-session lifetime measurement.",
+    "dynamicSites": [
+      {
+        "file": "modules/topicListManager.js",
+        "line": 34,
+        "kind": "custom-event-listener",
+        "match": "target?.addEventListener?.(type"
+      },
+      {
+        "file": "modules/topicListManager.js",
+        "line": 39,
+        "kind": "custom-event-listener",
+        "match": "target?.addEventListener?.(type"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ui-system.appearance-studio",
+    "kind": "source-review",
+    "owner": "modules/ui-system/appearance-studio.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "DOM listener adapter: event type is supplied by module-local UI bindings; it forwards to the specified target. Existing scope, abort signal or caller cleanup owns the listener. This registers the source site without claiming a long-session lifetime measurement.",
+    "dynamicSites": [
+      {
+        "file": "modules/ui-system/appearance-studio.js",
+        "line": 516,
+        "kind": "custom-event-listener",
+        "match": "target.addEventListener(type"
+      },
+      {
+        "file": "modules/ui-system/appearance-studio.js",
+        "line": 792,
+        "kind": "custom-event-listener",
+        "match": "root.addEventListener(type"
+      },
+      {
+        "file": "modules/ui-system/appearance-studio.js",
+        "line": 1552,
+        "kind": "custom-event-listener",
+        "match": "target.addEventListener(type"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ui-system.ask-nova-modal",
+    "kind": "source-review",
+    "owner": "modules/ui-system/ask-nova-modal.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "DOM listener adapter: event type is supplied by module-local UI bindings; it forwards to the specified target. Existing scope, abort signal or caller cleanup owns the listener. This registers the source site without claiming a long-session lifetime measurement.",
+    "dynamicSites": [
+      {
+        "file": "modules/ui-system/ask-nova-modal.js",
+        "line": 545,
+        "kind": "custom-event-listener",
+        "match": "target.addEventListener(type"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ui-system.chat-back-to-bottom",
+    "kind": "source-review",
+    "owner": "modules/ui-system/chat-back-to-bottom.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "The follow event comes from the injected UI helper or the fixed default; disposal executes the matching removeEventListener cleanup.",
+    "dynamicSites": [
+      {
+        "file": "modules/ui-system/chat-back-to-bottom.js",
+        "line": 88,
+        "kind": "custom-event-listener",
+        "match": "scroller.addEventListener(eventName"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ui-system.chat-navigation-idle",
+    "kind": "source-review",
+    "owner": "modules/ui-system/chat-navigation-idle.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "DOM listener adapter: event type is supplied by module-local UI bindings; it forwards to the specified target. Existing scope, abort signal or caller cleanup owns the listener. This registers the source site without claiming a long-session lifetime measurement.",
+    "dynamicSites": [
+      {
+        "file": "modules/ui-system/chat-navigation-idle.js",
+        "line": 30,
+        "kind": "custom-event-listener",
+        "match": "target.addEventListener(type"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ui-system.component-showcase",
+    "kind": "source-review",
+    "owner": "modules/ui-system/component-showcase.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "DOM listener adapter: event type is supplied by module-local UI bindings; it forwards to the specified target. Existing scope, abort signal or caller cleanup owns the listener. This registers the source site without claiming a long-session lifetime measurement.",
+    "dynamicSites": [
+      {
+        "file": "modules/ui-system/component-showcase.js",
+        "line": 29,
+        "kind": "custom-event-listener",
+        "match": "target.addEventListener(type"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ui-system.conversation-status-panel",
+    "kind": "source-review",
+    "owner": "modules/ui-system/conversation-status-panel.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "refreshAfterMutation dispatches the injected Git change event (default vcp:git-changed) after a mutation so the composed providers can refresh.",
+    "dynamicSites": [
+      {
+        "file": "modules/ui-system/conversation-status-panel.js",
+        "line": 196,
+        "kind": "custom-event-create",
+        "match": "new win.CustomEvent(changeEvent"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ui-system.conversation-status-panel.dom",
+    "kind": "source-review",
+    "owner": "modules/ui-system/conversation-status-panel/dom.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "DOM listener adapter: event type is supplied by module-local UI bindings; it forwards to the specified target. Existing scope, abort signal or caller cleanup owns the listener. This registers the source site without claiming a long-session lifetime measurement.",
+    "dynamicSites": [
+      {
+        "file": "modules/ui-system/conversation-status-panel/dom.js",
+        "line": 54,
+        "kind": "custom-event-listener",
+        "match": "target.addEventListener(type"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ui-system.conversation-turn-navigator",
+    "kind": "source-review",
+    "owner": "modules/ui-system/conversation-turn-navigator.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "DOM listener adapter: event type is supplied by module-local UI bindings; it forwards to the specified target. Existing scope, abort signal or caller cleanup owns the listener. This registers the source site without claiming a long-session lifetime measurement.",
+    "dynamicSites": [
+      {
+        "file": "modules/ui-system/conversation-turn-navigator.js",
+        "line": 568,
+        "kind": "custom-event-listener",
+        "match": "target.addEventListener(type"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ui-system.lifecycle-scope",
+    "kind": "source-review",
+    "owner": "modules/ui-system/lifecycle-scope.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "DOM listener adapter: event type is supplied by module-local UI bindings; it forwards to the specified target. Existing scope, abort signal or caller cleanup owns the listener. This registers the source site without claiming a long-session lifetime measurement.",
+    "dynamicSites": [
+      {
+        "file": "modules/ui-system/lifecycle-scope.js",
+        "line": 125,
+        "kind": "custom-event-listener",
+        "match": "target.addEventListener(type"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ui-system.next-shell.account-menu-controller",
+    "kind": "source-review",
+    "owner": "modules/ui-system/next-shell/account-menu-controller.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "DOM listener adapter: event type is supplied by module-local UI bindings; it forwards to the specified target. Existing scope, abort signal or caller cleanup owns the listener. This registers the source site without claiming a long-session lifetime measurement.",
+    "dynamicSites": [
+      {
+        "file": "modules/ui-system/next-shell/account-menu-controller.js",
+        "line": 61,
+        "kind": "custom-event-listener",
+        "match": "target.addEventListener(type"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ui-system.next-shell.app-tab-host",
+    "kind": "source-review",
+    "owner": "modules/ui-system/next-shell/app-tab-host.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "DOM listener adapter: event type is supplied by module-local UI bindings; it forwards to the specified target. Existing scope, abort signal or caller cleanup owns the listener. This registers the source site without claiming a long-session lifetime measurement.",
+    "dynamicSites": [
+      {
+        "file": "modules/ui-system/next-shell/app-tab-host.js",
+        "line": 132,
+        "kind": "custom-event-listener",
+        "match": "tab.addEventListener(type"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ui-system.next-shell.assistant-search-controller",
+    "kind": "source-review",
+    "owner": "modules/ui-system/next-shell/assistant-search-controller.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "DOM listener adapter: event type is supplied by module-local UI bindings; it forwards to the specified target. Existing scope, abort signal or caller cleanup owns the listener. This registers the source site without claiming a long-session lifetime measurement.",
+    "dynamicSites": [
+      {
+        "file": "modules/ui-system/next-shell/assistant-search-controller.js",
+        "line": 40,
+        "kind": "custom-event-listener",
+        "match": "target.addEventListener(type"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ui-system.next-shell.creation-controller",
+    "kind": "source-review",
+    "owner": "modules/ui-system/next-shell/creation-controller.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "DOM listener adapter: event type is supplied by module-local UI bindings; it forwards to the specified target. Existing scope, abort signal or caller cleanup owns the listener. This registers the source site without claiming a long-session lifetime measurement.",
+    "dynamicSites": [
+      {
+        "file": "modules/ui-system/next-shell/creation-controller.js",
+        "line": 262,
+        "kind": "custom-event-listener",
+        "match": "target.addEventListener(type"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ui-system.next-shell.launchpad-icons",
+    "kind": "source-review",
+    "owner": "modules/ui-system/next-shell/launchpad-icons.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "DOM listener adapter: event type is supplied by module-local UI bindings; it forwards to the specified target. Existing scope, abort signal or caller cleanup owns the listener. This registers the source site without claiming a long-session lifetime measurement.",
+    "dynamicSites": [
+      {
+        "file": "modules/ui-system/next-shell/launchpad-icons.js",
+        "line": 52,
+        "kind": "custom-event-listener",
+        "match": "target.addEventListener(type"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ui-system.next-shell.next-shell-controller",
+    "kind": "source-review",
+    "owner": "modules/ui-system/next-shell/next-shell-controller.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "DOM listener adapter: event type is supplied by module-local UI bindings; it forwards to the specified target. Existing scope, abort signal or caller cleanup owns the listener. This registers the source site without claiming a long-session lifetime measurement.",
+    "dynamicSites": [
+      {
+        "file": "modules/ui-system/next-shell/next-shell-controller.js",
+        "line": 96,
+        "kind": "custom-event-listener",
+        "match": "target.addEventListener(type"
+      },
+      {
+        "file": "modules/ui-system/next-shell/next-shell-controller.js",
+        "line": 266,
+        "kind": "custom-event-listener",
+        "match": "target.addEventListener(type"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ui-system.next-shell.notification-menu-controller",
+    "kind": "source-review",
+    "owner": "modules/ui-system/next-shell/notification-menu-controller.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "DOM listener adapter: event type is supplied by module-local UI bindings; it forwards to the specified target. Existing scope, abort signal or caller cleanup owns the listener. This registers the source site without claiming a long-session lifetime measurement.",
+    "dynamicSites": [
+      {
+        "file": "modules/ui-system/next-shell/notification-menu-controller.js",
+        "line": 54,
+        "kind": "custom-event-listener",
+        "match": "target.addEventListener(type"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ui-system.settings-bridge",
+    "kind": "source-review",
+    "owner": "modules/ui-system/settings-bridge.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "DOM listener adapter: event type is supplied by module-local UI bindings; it forwards to the specified target. Existing scope, abort signal or caller cleanup owns the listener. This registers the source site without claiming a long-session lifetime measurement.",
+    "dynamicSites": [
+      {
+        "file": "modules/ui-system/settings-bridge.js",
+        "line": 490,
+        "kind": "custom-event-listener",
+        "match": "target.addEventListener(type"
+      },
+      {
+        "file": "modules/ui-system/settings-bridge.js",
+        "line": 773,
+        "kind": "custom-event-listener",
+        "match": "target.addEventListener(type"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ui-system.settings.autosave",
+    "kind": "source-review",
+    "owner": "modules/ui-system/settings/autosave.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "DOM listener adapter: event type is supplied by module-local UI bindings; it forwards to the specified target. Existing scope, abort signal or caller cleanup owns the listener. This registers the source site without claiming a long-session lifetime measurement.",
+    "dynamicSites": [
+      {
+        "file": "modules/ui-system/settings/autosave.js",
+        "line": 187,
+        "kind": "custom-event-listener",
+        "match": "target.addEventListener(type"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ui-system.side-pane.browsersideprovider",
+    "kind": "source-review",
+    "owner": "modules/ui-system/side-pane/browserSideProvider.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "WebView event names are module-local literals; handlers check live guest ownership. Disposal removes the owned WebView. This is registration, not a measured long-session leak result.",
+    "dynamicSites": [
+      {
+        "file": "modules/ui-system/side-pane/browserSideProvider.js",
+        "line": 274,
+        "kind": "custom-event-listener",
+        "match": "guest.addEventListener(name"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ui-system.side-pane.code-viewer.diff-view",
+    "kind": "source-review",
+    "owner": "modules/ui-system/side-pane/code-viewer/diff-view.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "DOM listener adapter: event type is supplied by module-local UI bindings; it forwards to the specified target. Existing scope, abort signal or caller cleanup owns the listener. This registers the source site without claiming a long-session lifetime measurement.",
+    "dynamicSites": [
+      {
+        "file": "modules/ui-system/side-pane/code-viewer/diff-view.js",
+        "line": 26,
+        "kind": "custom-event-listener",
+        "match": "node.addEventListener(event"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ui-system.side-pane.code-viewer.picker",
+    "kind": "source-review",
+    "owner": "modules/ui-system/side-pane/code-viewer/picker.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "DOM listener adapter: event type is supplied by module-local UI bindings; it forwards to the specified target. Existing scope, abort signal or caller cleanup owns the listener. This registers the source site without claiming a long-session lifetime measurement.",
+    "dynamicSites": [
+      {
+        "file": "modules/ui-system/side-pane/code-viewer/picker.js",
+        "line": 24,
+        "kind": "custom-event-listener",
+        "match": "node.addEventListener(event"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ui-system.sidebar-resizer",
+    "kind": "source-review",
+    "owner": "modules/ui-system/sidebar-resizer.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "The supplied eventNames choose mouse or pointer gesture events; gesture finish/cancel/dispose removes the same listener names, including pending begin listeners.",
+    "dynamicSites": [
+      {
+        "file": "modules/ui-system/sidebar-resizer.js",
+        "line": 110,
+        "kind": "custom-event-listener",
+        "match": "documentRef.addEventListener(eventNames.move"
+      },
+      {
+        "file": "modules/ui-system/sidebar-resizer.js",
+        "line": 111,
+        "kind": "custom-event-listener",
+        "match": "documentRef.addEventListener(eventNames.up"
+      },
+      {
+        "file": "modules/ui-system/sidebar-resizer.js",
+        "line": 112,
+        "kind": "custom-event-listener",
+        "match": "documentRef.addEventListener(eventNames.cancel"
+      },
+      {
+        "file": "modules/ui-system/sidebar-resizer.js",
+        "line": 132,
+        "kind": "custom-event-listener",
+        "match": "documentRef.addEventListener(eventNames.up"
+      },
+      {
+        "file": "modules/ui-system/sidebar-resizer.js",
+        "line": 133,
+        "kind": "custom-event-listener",
+        "match": "documentRef.addEventListener(eventNames.cancel"
+      },
+      {
+        "file": "modules/ui-system/sidebar-resizer.js",
+        "line": 167,
+        "kind": "custom-event-listener",
+        "match": "handle.addEventListener(eventNames.down"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ui-system.typed-field-owners",
+    "kind": "source-review",
+    "owner": "modules/ui-system/typed-field-owners.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "The Rust settings form listens for fixed input/change events, through its scope when present; the fallback attaches to that form.",
+    "dynamicSites": [
+      {
+        "file": "modules/ui-system/typed-field-owners.js",
+        "line": 440,
+        "kind": "custom-event-listener",
+        "match": "form.addEventListener(type"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ui-system.vcp-ui",
+    "kind": "source-review",
+    "owner": "modules/ui-system/vcp-ui.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "Private listen records exact teardown; input/change forwarding on the Web Awesome control mirrors its shim and is owned by the control lifetime.",
+    "dynamicSites": [
+      {
+        "file": "modules/ui-system/vcp-ui.js",
+        "line": 44,
+        "kind": "custom-event-listener",
+        "match": "target.addEventListener(type"
+      },
+      {
+        "file": "modules/ui-system/vcp-ui.js",
+        "line": 838,
+        "kind": "custom-event-listener",
+        "match": "wa.addEventListener(type"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ui-system.webawesome-adapter",
+    "kind": "source-review",
+    "owner": "modules/ui-system/webawesome-adapter.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "Private on returns exact-listener unsubscribe; translateEvent forwards caller-supplied WA/VCP event pairs and returns the matching removal function.",
+    "dynamicSites": [
+      {
+        "file": "modules/ui-system/webawesome-adapter.js",
+        "line": 114,
+        "kind": "custom-event-listener",
+        "match": "element.addEventListener(type"
+      },
+      {
+        "file": "modules/ui-system/webawesome-adapter.js",
+        "line": 155,
+        "kind": "custom-event-listener",
+        "match": "element.addEventListener(waEventName"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.uiux.generated.browser-entry",
+    "kind": "source-review",
+    "owner": "modules/uiux/generated/browser-entry.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "DOM listener adapter: event type is supplied by module-local UI bindings; it forwards to the specified target. Existing scope, abort signal or caller cleanup owns the listener. This registers the source site without claiming a long-session lifetime measurement.",
+    "dynamicSites": [
+      {
+        "file": "modules/uiux/generated/browser-entry.js",
+        "line": 105,
+        "kind": "custom-event-listener",
+        "match": "target.addEventListener(type"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.uiux.generated.runtime.dom-renderer",
+    "kind": "source-review",
+    "owner": "modules/uiux/generated/runtime/dom-renderer.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "DOM listener adapter: event type is supplied by module-local UI bindings; it forwards to the specified target. Existing scope, abort signal or caller cleanup owns the listener. This registers the source site without claiming a long-session lifetime measurement.",
+    "dynamicSites": [
+      {
+        "file": "modules/uiux/generated/runtime/dom-renderer.js",
+        "line": 21,
+        "kind": "custom-event-listener",
+        "match": "target.addEventListener(type"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.vcpclient",
+    "kind": "source-review",
+    "owner": "modules/vcpClient.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "Stream sends use the request-injected streamChannel (default vcp-stream-event), messageId and context; error/data/end are payload types on that channel. This registers the adapter, not transport terminal reliability.",
+    "dynamicSites": [
+      {
+        "file": "modules/vcpClient.js",
+        "line": 379,
+        "kind": "event-send",
+        "match": "webContents.send(streamChannel"
+      },
+      {
+        "file": "modules/vcpClient.js",
+        "line": 418,
+        "kind": "event-send",
+        "match": "webContents.send(streamChannel"
+      },
+      {
+        "file": "modules/vcpClient.js",
+        "line": 445,
+        "kind": "event-send",
+        "match": "webContents.send(streamChannel"
+      },
+      {
+        "file": "modules/vcpClient.js",
+        "line": 451,
+        "kind": "event-send",
+        "match": "webContents.send(streamChannel"
+      },
+      {
+        "file": "modules/vcpClient.js",
+        "line": 461,
+        "kind": "event-send",
+        "match": "webContents.send(streamChannel"
+      },
+      {
+        "file": "modules/vcpClient.js",
+        "line": 478,
+        "kind": "event-send",
+        "match": "webContents.send(streamChannel"
+      },
+      {
+        "file": "modules/vcpClient.js",
+        "line": 512,
+        "kind": "event-send",
+        "match": "webContents.send(streamChannel"
+      },
+      {
+        "file": "modules/vcpClient.js",
+        "line": 520,
+        "kind": "event-send",
+        "match": "webContents.send(streamChannel"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.voice.chatvoicecomposer",
+    "kind": "source-review",
+    "owner": "modules/voice/chatVoiceComposer.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "callIpc prefers the named preload method; legacy fallback channel strings are supplied by this composer for voice/platform/STT/drop operations. Registration does not extend the preload role.",
+    "dynamicSites": [
+      {
+        "file": "modules/voice/chatVoiceComposer.js",
+        "line": 154,
+        "kind": "event-send",
+        "match": "this.electronAPI.invoke(channel"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.preloads.chart",
+    "kind": "source-review",
+    "owner": "preloads/chart.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "Private subscribe helper is called by fixed chart preload methods; callback receives payload only and returns exact-listener unsubscribe.",
+    "dynamicSites": [
+      {
+        "file": "preloads/chart.js",
+        "line": 8,
+        "kind": "event-listener",
+        "match": "ipcRenderer.on(channel"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.preloads.docx",
+    "kind": "source-review",
+    "owner": "preloads/docx.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "Private subscribe helper is called by fixed document preload methods; callback receives payload only and returns exact-listener unsubscribe.",
+    "dynamicSites": [
+      {
+        "file": "preloads/docx.js",
+        "line": 8,
+        "kind": "event-listener",
+        "match": "ipcRenderer.on(channel"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.preloads.loom",
+    "kind": "source-review",
+    "owner": "preloads/loom.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "Private invoke/subscribe helpers are reached by explicit loomAPI methods with fixed channels; callbacks strip Electron events and unsubscribe removes the exact listener.",
+    "dynamicSites": [
+      {
+        "file": "preloads/loom.js",
+        "line": 6,
+        "kind": "event-send",
+        "match": "ipcRenderer.invoke(channel"
+      },
+      {
+        "file": "preloads/loom.js",
+        "line": 14,
+        "kind": "event-listener",
+        "match": "ipcRenderer.on(channel"
+      }
+    ],
+    "evidence": [
+      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
   }
 ]

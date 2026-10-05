@@ -40,8 +40,16 @@ for (const contract of contracts) {
         else if (!fs.existsSync(path.join(root, contract.snapshot))) fail(`${contract.id} snapshot fixture is missing: ${contract.snapshot}`);
         if (typeof contract.sourceEntry !== 'string' || !fs.existsSync(path.join(root, contract.sourceEntry))) fail(`${contract.id} source entry is missing`);
     }
+    if (contract.kind === 'source-review') {
+        if (contract.status !== 'reviewed' || typeof contract.review !== 'string' || contract.review.length < 20) {
+            fail(contract.id + ' requires an explicit reviewed source rationale');
+        }
+        if (!contract.dynamicSites?.length || contract.dynamicSites.some(site => !site.kind || typeof site.match !== 'string' || !site.match)) {
+            fail(contract.id + ' requires exact operation and source match for every reviewed site');
+        }
+    }
     if (contract.dynamicSites !== undefined) {
-        if (contract.kind !== 'event' || contract.dynamic !== true) fail(`${contract.id} dynamicSites requires a dynamic event contract`);
+        if (!['event', 'source-review'].includes(contract.kind) || contract.dynamic !== true) fail(`${contract.id} dynamicSites requires a dynamic event contract`);
         if (!Array.isArray(contract.dynamicSites) || contract.dynamicSites.length === 0) fail(`${contract.id} dynamicSites must not be empty`);
         for (const site of contract.dynamicSites) {
             if (!site || typeof site.file !== 'string' || !Number.isInteger(site.line) || site.line < 1) {
@@ -64,10 +72,11 @@ if (!fs.existsSync(graphPath)) fail('generated chat-event graph is missing');
 const graph = JSON.parse(fs.readFileSync(graphPath, 'utf8'));
 if (graph.schemaVersion !== 1 || !Array.isArray(graph.events) || !Array.isArray(graph.registeredDynamic) || !Array.isArray(graph.undiscovered)) fail('generated graph has invalid shape');
 if (graph.undiscovered.length) fail(`graph contains ${graph.undiscovered.length} unregistered dynamic event site(s)`);
-for (const contract of contracts.filter(item => item.kind === 'event' && item.dynamic === true)) {
+for (const contract of contracts.filter(item => ['event', 'source-review'].includes(item.kind) && item.dynamic === true)) {
     for (const site of contract.dynamicSites || []) {
         if (!graph.registeredDynamic.some(item => item.contractId === contract.id && item.file === site.file && item.line === site.line
-            && item.kind === (site.kind || 'custom-event-create'))) {
+            && item.kind === (site.kind || 'custom-event-create')
+            && (site.match === undefined || item.match === site.match))) {
             fail(`${contract.id} dynamicSites entry is not observed by the generated graph: ${site.file}:${site.line}`);
         }
     }

@@ -31,7 +31,7 @@ export function buildChatEventGraph({ root = defaultRoot, subscriptionNames = de
     for (const file of files.sort()) {
         let scanned;
         try {
-            scanned = scanChatEventSource({ file, source: fs.readFileSync(path.join(root, file), 'utf8'), dynamicRegistrations, subscriptionNames });
+            scanned = scanChatEventSource({ file, source: fs.readFileSync(path.join(root, file), 'utf8').replace(/\r\n/g, '\n'), dynamicRegistrations, subscriptionNames });
         } catch (error) {
             throw new Error(`Cannot inventory event source ${file}: ${error.message}`, { cause: error });
         }
