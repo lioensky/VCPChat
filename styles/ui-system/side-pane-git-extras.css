@@ -40,11 +40,14 @@ html .side-git-header:where(.vcp-ui-scope, .vcp-ui-scope *) {
 }
 
 html body:is(.light-theme, [data-vcp-theme="light"]) .side-git-header:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    --side-git-pill-bg: color-mix(in srgb, var(--vcp-ui-bg-primary, Canvas) 88%, transparent);
-    --side-git-pill-hover: color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 5%, var(--vcp-ui-bg-primary, Canvas));
-    --side-git-pill-border: color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 8%, transparent);
+    /* 浅色主题照 ZCode：顶栏一条比内容区略深的底，胶囊近白浮在上面；两者都从当前主题的
+       底色、文字色混出来，再掺一点主题色，换主题跟着变 */
+    --side-git-pill-bg: color-mix(in srgb, var(--highlight-text, var(--vcp-ui-accent, currentColor)) 2%, color-mix(in srgb, var(--secondary-bg, Canvas) 30%, white));
+    --side-git-pill-hover: color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 5%, var(--side-git-pill-bg));
+    --side-git-pill-border: color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 9%, transparent);
     --side-git-pill-border-strong: color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 22%, transparent);
-    --side-git-pill-shadow: 0 1px 2px color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 6%, transparent);
+    --side-git-pill-shadow: 0 1px 2px color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 8%, transparent);
+    background: color-mix(in srgb, var(--highlight-text, var(--vcp-ui-accent, currentColor)) 1%, color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 1%, var(--secondary-bg, Canvas)));
 }
 
 html .side-git-select-pill:where(.vcp-ui-scope, .vcp-ui-scope *) {

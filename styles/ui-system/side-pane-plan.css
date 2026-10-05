@@ -61,9 +61,12 @@ html .side-plan-header:where(.vcp-ui-scope, .vcp-ui-scope *) {
     --side-plan-pill-shadow: none;
 }
 html body:is(.light-theme, [data-vcp-theme="light"]) .side-plan-header:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    --side-plan-pill-bg: color-mix(in srgb, var(--vcp-ui-bg-primary, Canvas) 88%, transparent);
-    --side-plan-pill-border: color-mix(in srgb, var(--zc-fg) 8%, transparent);
-    --side-plan-pill-shadow: 0 1px 2px color-mix(in srgb, var(--zc-fg) 6%, transparent);
+    /* 浅色主题照 ZCode：顶栏一条比内容区略深的底，胶囊近白浮在上面；两者都从当前主题的
+       底色、文字色混出来，再掺一点主题色，换主题跟着变 */
+    --side-plan-pill-bg: color-mix(in srgb, var(--highlight-text, var(--vcp-ui-accent, currentColor)) 2%, color-mix(in srgb, var(--secondary-bg, Canvas) 30%, white));
+    --side-plan-pill-border: color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 9%, transparent);
+    --side-plan-pill-shadow: 0 1px 2px color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 8%, transparent);
+    background: color-mix(in srgb, var(--highlight-text, var(--vcp-ui-accent, currentColor)) 1%, color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 1%, var(--secondary-bg, Canvas)));
 }
 /* 面包屑胶囊（也是工程切换按钮）：前面的段先缩成省略号，工程名尽量留全 */
 html .side-plan-crumbs:where(.vcp-ui-scope, .vcp-ui-scope *) {
