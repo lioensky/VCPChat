@@ -1,0 +1,242 @@
+/* --- Side pane home: the pinned home tab, the home page (assistant on top, notifications below) and the "+" menu --- */
+
+/* 首页标签：固定在最左，只占一个图标的宽度，不收缩 */
+html .side-pane-tab-item.is-home:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-pane-tab-item.is-home.active:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 0 0 32px;
+    width: 32px;
+    min-width: 32px;
+    max-width: 32px;
+    overflow: visible;
+}
+
+html .side-pane-tab-item.is-home .side-pane-tab:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: relative;
+    justify-content: center;
+    padding: 0;
+}
+
+html .side-pane-tab-item.is-home .tab-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: none;
+}
+
+/* VCPLog 断开或出错时首页图标变红，详情在悬停提示与读屏名称里 */
+html .side-pane-tab-item.is-home .side-pane-tab:is([data-status="closed"], [data-status="error"]) .tab-icon:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--vcp-ui-danger);
+}
+
+/* 右上角：待审批数字，或没看过的新通知圆点 */
+html .side-pane-home-badge:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: absolute;
+    top: 1px;
+    right: 1px;
+    display: none;
+    pointer-events: none;
+    box-sizing: border-box;
+}
+
+html .side-pane-home-badge[data-kind="unseen"]:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: block;
+    top: 4px;
+    right: 5px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--vcp-ui-accent, var(--accent-bg, var(--vcp-ui-port-color-3b82f6)));
+}
+
+html .side-pane-home-badge[data-kind="pending"]:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    top: -3px;
+    right: -4px;
+    min-width: 15px;
+    height: 15px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--vcp-ui-warning);
+    color: var(--vcp-ui-port-color-0f172a);
+    font-size: calc(var(--vcp-ui-font-size) - 4px);
+    font-weight: 600;
+    line-height: 1;
+}
+
+/* 首页：上面一行头像和名字，下面通知列表占满剩下的高度并自己滚动 */
+html #sidePaneViewHome:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--side-pane-page-bg);
+}
+
+html #sidePaneViewHome[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: none;
+}
+
+html #sidePaneViewHome > #notificationsSidebar:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 1;
+    min-height: 0;
+}
+
+html .side-pane-home-profile:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+    padding: 12px 14px 4px;
+}
+
+html .side-pane-home-profile[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: none;
+}
+
+html .side-pane-home-avatar:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: relative;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    overflow: hidden;
+    background: var(--vcp-ui-port-color-rgba-127-127-127-0-16);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+html .side-pane-home-avatar:disabled:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    cursor: default;
+}
+
+html .side-pane-home-avatar img:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+html .side-pane-home-avatar-edit:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    color: var(--vcp-ui-port-color-ffffff);
+    background: var(--vcp-ui-port-color-rgba-0-0-0-0-5);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease;
+}
+
+html .side-pane-home-avatar-edit .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    --vcp-ui-icon-size: 16px;
+    width: 16px;
+    height: 16px;
+}
+
+html .side-pane-home-avatar:not(:disabled):hover .side-pane-home-avatar-edit:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-pane-home-avatar:not(:disabled):focus-visible .side-pane-home-avatar-edit:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    opacity: 1;
+}
+
+html .side-pane-home-name:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 0 1 auto;
+    field-sizing: content;
+    min-width: 3em;
+    max-width: 100%;
+    margin: 0;
+    padding: 2px 6px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    font: inherit;
+    font-size: calc(var(--vcp-ui-font-size) + 1px);
+    font-weight: 600;
+    line-height: 1.4;
+    text-overflow: ellipsis;
+    color: var(--primary-text, var(--vcp-ui-port-color-f1f5f9));
+    outline: none;
+    cursor: text;
+    box-sizing: border-box;
+    transition: background 0.12s ease;
+}
+
+html .side-pane-home-name[readonly]:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    cursor: default;
+}
+
+html .side-pane-home-name:not([readonly]):not(:focus):hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-port-color-rgba-255-255-255-0-06);
+}
+
+html body[data-vcp-theme="light"] .side-pane-home-name:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--primary-text, var(--vcp-ui-port-color-0f172a));
+}
+
+html body[data-vcp-theme="light"] .side-pane-home-name:not([readonly]):not(:focus):hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-port-color-rgba-0-0-0-0-05);
+}
+
+/* 「+」菜单：上面登记的入口，下面应用；应用多时菜单自己滚动 */
+html .side-pane-add-menu:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    width: 224px;
+    max-height: min(480px, calc(100vh - 80px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+}
+
+/* 菜单比标签右键菜单高得多，会盖在首页的文字上；半透明底会透出下面的字，这里用实色。
+ * 右键菜单的样式表排在后面、浅色主题还有一条更具体的规则，所以用 id。 */
+html #sidePaneAddMenu:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-color-popover, var(--panel-bg-dark, var(--vcp-ui-port-color-18181b)));
+}
+
+html .side-pane-add-menu[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-pane-add-menu [hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: none;
+}
+
+html .side-pane-add-menu-group:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+html .side-pane-add-menu-separator:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex-shrink: 0;
+    height: 1px;
+    margin: 4px 6px;
+    background: var(--border-color, var(--vcp-ui-port-color-rgba-255-255-255-0-12));
+}
+
+html body[data-vcp-theme="light"] .side-pane-add-menu-separator:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-port-color-rgba-0-0-0-0-08);
+}
+
+html .side-pane-add-menu-heading:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex-shrink: 0;
+    padding: 4px 10px 2px;
+    font-size: calc(var(--vcp-ui-font-size) - 2px);
+    font-weight: 500;
+    color: var(--sub-text, var(--vcp-ui-port-color-rgba-255-255-255-0-6));
+}
+
+html body[data-vcp-theme="light"] .side-pane-add-menu-heading:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--sub-text, var(--vcp-ui-port-color-rgba-0-0-0-0-55));
+}
+
+html .side-pane-add-menu .side-pane-menu-item:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex-shrink: 0;
+}
+
+html .side-pane-add-menu-app-icon:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}

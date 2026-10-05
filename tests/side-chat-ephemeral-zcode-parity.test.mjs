@@ -26,8 +26,7 @@ function createTestDOM() {
                 </div>
             </header>
             <div class="side-pane-content-container">
-                <section class="side-pane-view active" id="sidePaneViewNotifications" data-tab-id="notifications"></section>
-                <section class="side-pane-view" id="sidePaneViewLauncher" data-tab-id="launcher" hidden></section>
+                <section class="side-pane-view active" id="sidePaneViewHome" data-tab-id="notifications"></section>
             </div>
         </aside>
     `);

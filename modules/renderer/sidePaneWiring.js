@@ -1,7 +1,7 @@
 import { createSidePaneController } from '../ui-system/side-pane/side-pane-controller.js';
 import { createSideChatWiring } from './sideChatWiring.js';
 import { createFloatingSelectionButton } from './floatingSelectionButton.js';
-import { createSidePaneLauncherWiring } from './sidePaneLauncherWiring.js';
+import { createSidePaneHomeWiring } from './sidePaneHomeWiring.js';
 import { createSidePaneWorkspaceServices } from './sidePaneWorkspaceServices.js';
 import { createSidePaneHostBindings } from './sidePaneHostBindings.js';
 import { defineNotificationsTabType } from '../ui-system/side-pane/tab-types/notifications.js';
@@ -79,7 +79,7 @@ export function initWorkspaceSidePane({
     });
     if (typeof unsubscribeBrowserShortcut === 'function') subscriptions.add({ dispose: unsubscribeBrowserShortcut });
     subscriptions.add(createSidePaneWorkspaceServices({ doc, win, chatAPI, chatManager, uiHelper, historyRef, codeViewerProvider: codeViewer.provider, gitProvider: git.provider, toolOutputProvider: toolOutput.provider, planDetailProvider: planDetail.provider }));
-    subscriptions.add(createSidePaneLauncherWiring({ doc, win, chatAPI, chatManager, uiHelper, selectedItemRef, controller }));
+    subscriptions.add(createSidePaneHomeWiring({ doc, win, chatAPI, chatManager, uiHelper, selectedItemRef, controller }));
     subscriptions.add(createSidePaneHostBindings({ win, chatAPI, uiHelper, chatManager, selectedItemRef, topicIdRef, toggleChatBtn, controller, restoreSessions: sideChat.restoreSessions }));
     subscriptions.add(createFloatingSelectionButton({ doc, win, notify: (message, type) => uiHelper?.showToastNotification?.(message, type) }));
     return controller;

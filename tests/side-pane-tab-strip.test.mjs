@@ -213,38 +213,65 @@ test('controller: the tab overview is keyboard driven like ZCode Command (arrows
     controller.dispose();
 });
 
-test('controller: the 通知 tab mirrors the VCPLog connection status', async () => {
+test('controller: the home tab carries the pending count, an unseen dot and the VCPLog status', async () => {
     const dom = new JSDOM(`
+        <button id="toggleSidePaneChatBtn"></button>
         <aside id="vcpSidePane">
             <div class="side-pane-tabs"></div>
             <div class="side-pane-content-container">
-                <section class="side-pane-view active" id="sidePaneViewNotifications">
+                <section class="side-pane-view active" id="sidePaneViewHome" data-tab-id="notifications">
                     <div id="vcpLogConnectionStatus" data-status="connecting"><span class="notifications-status-text">VCPLog: 连接中...</span></div>
+                    <ul id="notificationsList"></ul>
                 </section>
             </div>
         </aside>
     `, { pretendToBeVisual: true });
     const doc = dom.window.document;
     const root = doc.getElementById('vcpSidePane');
+    const expandButton = doc.getElementById('toggleSidePaneChatBtn');
     const controller = createSidePaneController({
         root,
         tabListElement: root.querySelector('.side-pane-tabs'),
         contentContainer: root.querySelector('.side-pane-content-container'),
+        expandButton,
         providers: {}
     });
-    controller.show?.();
+    const flush = () => new Promise(r => setTimeout(r, 0));
     const tab = () => root.querySelector('.side-pane-tab[data-tab-id="notifications"]');
-    assert.equal(tab().querySelector('.side-pane-tab-status').dataset.status, 'connecting');
-    assert.equal(tab().getAttribute('aria-label'), '通知，VCPLog: 连接中...');
-    assert.equal(tab().querySelector('.tab-title').textContent, 'VCPLog 连接中...');
+    const badge = () => tab().querySelector('.side-pane-home-badge');
+    assert.equal(tab().closest('.side-pane-tab-item').classList.contains('is-home'), true);
+    assert.equal(root.querySelector('.side-pane-tab-item[data-tab-id="notifications"] .side-pane-tab-close'), null);
+    assert.equal(tab().dataset.status, 'connecting');
+    assert.equal(tab().getAttribute('aria-label'), '首页，VCPLog 连接中...');
+    assert.equal(badge().dataset.kind, 'none');
 
     const status = doc.getElementById('vcpLogConnectionStatus');
-    status.dataset.status = 'open';
-    status.querySelector('.notifications-status-text').textContent = 'VCPLog: 已连接';
-    await new Promise(r => setTimeout(r, 0));
-    assert.equal(tab().querySelector('.side-pane-tab-status').dataset.status, 'open');
-    assert.equal(tab().getAttribute('aria-label'), '通知，VCPLog: 已连接');
-    assert.equal(tab().querySelector('.tab-title').textContent, 'VCPLog 已连接');
+    status.dataset.status = 'closed';
+    status.querySelector('.notifications-status-text').textContent = 'VCPLog: 已断开';
+    await flush();
+    assert.equal(tab().dataset.status, 'closed');
+    assert.equal(tab().getAttribute('aria-label'), '首页，VCPLog 已断开');
+
+    // 首页不在眼前时来了新通知：亮圆点；回到首页就消掉
+    controller.hide?.();
+    const item = doc.createElement('li');
+    item.className = 'notification-item';
+    doc.getElementById('notificationsList').prepend(item);
+    await flush();
+    assert.equal(badge().dataset.kind, 'unseen');
+    assert.equal(tab().getAttribute('aria-label'), '首页，有新通知，VCPLog 已断开');
+    controller.showNotifications();
+    await flush();
+    assert.equal(badge().dataset.kind, 'none');
+
+    // 待审批数优先于圆点
+    expandButton.dataset.pendingCount = '3';
+    await flush();
+    assert.equal(badge().dataset.kind, 'pending');
+    assert.equal(badge().textContent, '3');
+    expandButton.dataset.pendingCount = '120';
+    await flush();
+    assert.equal(badge().textContent, '99+');
     controller.dispose();
     dom.window.close();
 });

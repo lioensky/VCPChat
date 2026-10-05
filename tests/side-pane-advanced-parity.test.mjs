@@ -36,20 +36,23 @@ function createParityTestDOM() {
                     <button type="button" role="menuitem" data-action="close-others">关闭其他标签页</button>
                     <button type="button" role="menuitem" data-action="close-all">关闭所有标签页</button>
                 </div>
+                <div id="sidePaneAddMenu" class="side-pane-context-menu" role="menu" hidden>
+                    <div data-add-menu-group="tools"></div>
+                    <div class="side-pane-add-menu-separator" hidden></div>
+                    <div class="side-pane-add-menu-heading" hidden>应用</div>
+                    <div data-add-menu-group="apps" hidden></div>
+                </div>
             </header>
             <div class="side-pane-content-container">
-                <section class="side-pane-view active" id="sidePaneViewNotifications" data-tab-id="notifications"></section>
-                <section class="side-pane-view" id="sidePaneViewLauncher" data-tab-id="launcher" hidden>
-                    <div class="side-pane-launcher-profile" hidden>
-                        <button type="button" class="side-pane-launcher-avatar"><img alt=""></button>
-                        <input type="text" class="side-pane-launcher-name" readonly>
+                <section class="side-pane-view active" id="sidePaneViewHome" data-tab-id="notifications">
+                    <div class="side-pane-home-profile" hidden>
+                        <button type="button" class="side-pane-home-avatar"><img alt=""></button>
+                        <input type="text" class="side-pane-home-name" readonly>
                     </div>
-                    <div class="side-pane-launcher-tabs" hidden>
-                        <button type="button" data-launcher-tab="tools" aria-selected="true">工具</button>
-                        <button type="button" data-launcher-tab="apps" aria-selected="false">应用</button>
-                    </div>
-                    <section data-launcher-section="tools"><div class="side-pane-open-tab-list"></div></section>
-                    <section data-launcher-section="apps" hidden><div class="side-pane-launcher-app-grid"></div></section>
+                    <aside id="notificationsSidebar">
+                        <div id="vcpLogConnectionStatus" data-status="unknown"><span class="notifications-status-text">VCPLog: 未连接</span></div>
+                        <ul id="notificationsList"></ul>
+                    </aside>
                 </section>
             </div>
         </aside>
@@ -136,102 +139,184 @@ test('Parity: close-others and close-all only touch the current conversation', a
     dom.window.close();
 });
 
-test('Parity: the add button opens the new tab page with tool rows', async () => {
+test('Parity: the add button opens a small menu of tool entries', async () => {
     const dom = createParityTestDOM();
     const doc = dom.window.document;
     const addBtn = doc.getElementById('addSidePaneChatBtn');
-    const launcherView = doc.getElementById('sidePaneViewLauncher');
-    const toolsSection = launcherView.querySelector('[data-launcher-section="tools"]');
+    const menu = doc.getElementById('sidePaneAddMenu');
     const opened = [];
     const ctrl = createController(dom);
+    const labels = () => [...menu.querySelectorAll('[data-open-tab-entry] .side-pane-menu-item-label')].map(el => el.textContent);
 
-    // 没有入口：按钮和工具区都隐藏
+    // 没有入口：按钮隐藏
     assert.equal(addBtn.hidden, true);
-    assert.equal(toolsSection.hidden, true);
 
-    // 一个入口：直接打开，不进新标签页
+    // 一个入口、没有应用：直接打开，不弹菜单
     const disposeChat = ctrl.registerOpenTabEntry({ id: 'chat', label: '辅助对话', icon: 'chat_bubble', open: () => opened.push('chat') });
     assert.equal(addBtn.hidden, false);
     assert.equal(addBtn.getAttribute('aria-label'), '辅助对话');
-    addBtn.click();
-    await tick();
-    assert.deepEqual(opened, ['chat']);
-    assert.notEqual(ctrl.getSnapshot().activeTabId, 'launcher');
-
-    // 两个入口：打开新标签页，工具按 order 排成列表
-    ctrl.registerOpenTabEntry({ id: 'browser', label: '浏览器', order: 50, open: () => opened.push('browser') });
-    assert.equal(addBtn.getAttribute('aria-label'), '新标签页');
     assert.equal(addBtn.hasAttribute('aria-haspopup'), false);
     addBtn.click();
     await tick();
-    assert.equal(ctrl.getSnapshot().activeTabId, 'launcher');
-    assert.equal(launcherView.hidden, false);
-    assert.equal(toolsSection.hidden, false);
-    const rows = [...launcherView.querySelectorAll('[data-open-tab-entry]')];
-    assert.deepEqual(rows.map(r => r.querySelector('.side-pane-open-tab-button-label').textContent), ['浏览器', '辅助对话']);
+    assert.deepEqual(opened, ['chat']);
+    assert.equal(menu.hidden, true);
 
-    rows[1].click();
+    // 两个入口：弹菜单，按 order 排；菜单不改变当前标签
+    ctrl.registerOpenTabEntry({ id: 'browser', label: '浏览器', order: 50, open: () => opened.push('browser') });
+    assert.equal(addBtn.getAttribute('aria-label'), '新标签页');
+    assert.equal(addBtn.getAttribute('aria-haspopup'), 'menu');
+    const before = ctrl.getSnapshot();
+    addBtn.click();
+    assert.equal(menu.hidden, false);
+    assert.equal(addBtn.getAttribute('aria-expanded'), 'true');
+    assert.deepEqual(labels(), ['浏览器', '辅助对话']);
+    assert.equal(doc.activeElement, menu.querySelector('[data-open-tab-entry="browser"]'));
+    assert.equal(ctrl.getSnapshot().activeTabId, before.activeTabId);
+    assert.equal(ctrl.getSnapshot().visible, before.visible);
+    assert.equal(menu.querySelector('.side-pane-add-menu-separator').hidden, true, '没有应用时不画分隔线');
+
+    // 方向键移动，Esc 收起并把焦点还给「+」
+    menu.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    assert.equal(doc.activeElement, menu.querySelector('[data-open-tab-entry="chat"]'));
+    doc.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(menu.hidden, true);
+    assert.equal(addBtn.getAttribute('aria-expanded'), 'false');
+    assert.equal(doc.activeElement, addBtn);
+
+    // 点一项：打开并收起菜单
+    addBtn.click();
+    menu.querySelector('[data-open-tab-entry="chat"]').click();
     await tick();
     assert.deepEqual(opened, ['chat', 'chat']);
+    assert.equal(menu.hidden, true);
+
+    // 点外面收起
+    addBtn.click();
+    doc.getElementById('chatMessages').dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }));
+    assert.equal(menu.hidden, true);
 
     // 注销后回到单入口
     disposeChat();
     assert.equal(addBtn.getAttribute('aria-label'), '浏览器');
-    assert.equal(launcherView.querySelectorAll('[data-open-tab-entry]').length, 1);
+    assert.deepEqual(labels(), ['浏览器']);
 
     await ctrl.dispose();
     dom.window.close();
 });
 
-test('Parity: the new tab page shows the current assistant and its avatar edit entry', async () => {
+test('Parity: the add menu lists apps under the tool entries', async () => {
     const dom = createParityTestDOM();
     const doc = dom.window.document;
-    const profile = doc.querySelector('.side-pane-launcher-profile');
-    const avatar = profile.querySelector('.side-pane-launcher-avatar');
-    const edits = [];
-    let current = { name: 'Nova', avatarUrl: 'nova.png', onEditAvatar: () => edits.push('Nova') };
+    const addBtn = doc.getElementById('addSidePaneChatBtn');
+    const menu = doc.getElementById('sidePaneAddMenu');
+    const apps = menu.querySelector('[data-add-menu-group="apps"]');
+    const heading = menu.querySelector('.side-pane-add-menu-heading');
+    const separator = menu.querySelector('.side-pane-add-menu-separator');
+    const opened = [];
     const ctrl = createController(dom, {
-        controller: { openTabEntries: [{ id: 'a', label: 'A', open() {} }, { id: 'b', label: 'B', open() {} }] }
+        controller: { openTabEntries: [{ id: 'chat', label: '辅助对话', open: () => opened.push('chat') }] }
     });
 
+    let providerCalls = 0;
+    let list = [
+        { id: 'notes', label: '笔记', title: '笔记（在独立窗口中打开）', iconSvg: '<svg class="tray-notes"></svg>', open: () => opened.push('notes') },
+        { id: 'dice', label: '骰子', open: () => opened.push('dice') }
+    ];
+    ctrl.setAddMenuAppsProvider(() => {
+        providerCalls += 1;
+        return list;
+    });
+    // 有应用来源时，就算只有一个入口也弹菜单
+    assert.equal(addBtn.getAttribute('aria-label'), '新标签页');
+    assert.equal(providerCalls, 0, '菜单没打开前不读应用');
+
+    addBtn.click();
+    assert.equal(menu.hidden, false);
+    assert.equal(providerCalls, 1);
+    assert.equal(apps.hidden, false);
+    assert.equal(heading.hidden, false);
+    assert.equal(separator.hidden, false);
+    const rows = [...apps.querySelectorAll('[data-add-menu-app]')];
+    assert.deepEqual(rows.map(row => row.querySelector('.side-pane-menu-item-label').textContent), ['笔记', '骰子']);
+    assert.equal(rows[0].title, '笔记（在独立窗口中打开）');
+    assert.ok(rows[0].querySelector('.side-pane-add-menu-app-icon svg.tray-notes'));
+    assert.equal(rows[1].querySelector('.side-pane-add-menu-app-icon .vcp-ui-icon').textContent, 'app-window', '没有图标时用默认图标');
+
+    // 方向键从入口走到应用
+    menu.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    assert.equal(doc.activeElement, rows[1]);
+
+    rows[1].click();
+    await tick();
+    assert.deepEqual(opened, ['dice']);
+    assert.equal(menu.hidden, true);
+
+    // 每次打开现取
+    list = [];
+    addBtn.click();
+    assert.equal(providerCalls, 2);
+    assert.equal(apps.hidden, true);
+    assert.equal(heading.hidden, true);
+    assert.equal(separator.hidden, true);
+    addBtn.click();
+    assert.equal(menu.hidden, true, '再点「+」收起');
+
+    // 撤掉应用来源后回到单入口直接打开
+    ctrl.setAddMenuAppsProvider(null);
+    assert.equal(addBtn.getAttribute('aria-label'), '辅助对话');
+    addBtn.click();
+    await tick();
+    assert.deepEqual(opened, ['dice', 'chat']);
+    assert.equal(menu.hidden, true);
+
+    await ctrl.dispose();
+    dom.window.close();
+});
+
+test('Parity: the home page shows the current assistant and its avatar edit entry', async () => {
+    const dom = createParityTestDOM();
+    const doc = dom.window.document;
+    const profile = doc.querySelector('.side-pane-home-profile');
+    const avatar = profile.querySelector('.side-pane-home-avatar');
+    const edits = [];
+    let current = { name: 'Nova', avatarUrl: 'nova.png', onEditAvatar: () => edits.push('Nova') };
+    const ctrl = createController(dom);
+
     assert.equal(profile.hidden, true, '没有提供者时不显示');
-    ctrl.setLauncherProfileProvider(() => current);
+    ctrl.setHomeProfileProvider(() => current);
     assert.equal(profile.hidden, false);
-    assert.equal(profile.querySelector('.side-pane-launcher-name').value, 'Nova');
+    assert.equal(profile.querySelector('.side-pane-home-name').value, 'Nova');
     assert.equal(profile.querySelector('img').getAttribute('src'), 'nova.png');
     assert.equal(avatar.getAttribute('aria-label'), '编辑头像');
     avatar.click();
     assert.deepEqual(edits, ['Nova']);
 
-    // 每次打开新标签页现取：换了助手（群组不能编辑、没有头像用默认图）
+    // 每次回到首页现取：换了助手（群组不能编辑、没有头像用默认图）
     current = { name: '群组', avatarUrl: '', onEditAvatar: null };
-    doc.getElementById('addSidePaneChatBtn').click();
-    await tick();
-    assert.equal(profile.querySelector('.side-pane-launcher-name').value, '群组');
+    ctrl.showNotifications();
+    assert.equal(profile.querySelector('.side-pane-home-name').value, '群组');
     assert.equal(profile.querySelector('img').getAttribute('src'), 'assets/default_avatar.png');
     assert.equal(avatar.disabled, true);
     avatar.click();
     assert.deepEqual(edits, ['Nova']);
 
     current = null;
-    ctrl.showLauncher();
+    ctrl.activateTab(SidePaneState.NOTIFICATIONS_TAB_ID);
     assert.equal(profile.hidden, true);
 
     await ctrl.dispose();
     dom.window.close();
 });
 
-test('Parity: the new tab page name can be edited in place', async () => {
+test('Parity: the home page name can be edited in place', async () => {
     const dom = createParityTestDOM();
     const doc = dom.window.document;
-    const name = doc.querySelector('.side-pane-launcher-name');
+    const name = doc.querySelector('.side-pane-home-name');
     const renames = [];
     let result = { success: true };
     const current = { name: 'Nova', avatarUrl: '', onRename: (value) => { renames.push(value); return result; } };
-    const ctrl = createController(dom, {
-        controller: { openTabEntries: [{ id: 'a', label: 'A', open() {} }, { id: 'b', label: 'B', open() {} }] }
-    });
-    ctrl.setLauncherProfileProvider(() => current);
+    const ctrl = createController(dom);
+    ctrl.setHomeProfileProvider(() => current);
     assert.equal(name.readOnly, false);
 
     const key = (value) => name.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: value, bubbles: true }));
@@ -270,186 +355,41 @@ test('Parity: the new tab page name can be edited in place', async () => {
     assert.equal(name.value, 'Nova 2');
 
     // 没有改名入口时只读
-    ctrl.setLauncherProfileProvider(() => ({ name: '群组', avatarUrl: '' }));
+    ctrl.setHomeProfileProvider(() => ({ name: '群组', avatarUrl: '' }));
     assert.equal(name.readOnly, true);
 
     await ctrl.dispose();
     dom.window.close();
 });
 
-test('Parity: the new tab page switches between tools and apps', async () => {
+test('Parity: the home tab is pinned first in the strip and hosts the notifications', async () => {
     const dom = createParityTestDOM();
     const doc = dom.window.document;
-    const launcher = doc.getElementById('sidePaneViewLauncher');
-    const tabs = launcher.querySelector('.side-pane-launcher-tabs');
-    const tools = launcher.querySelector('[data-launcher-section="tools"]');
-    const apps = launcher.querySelector('[data-launcher-section="apps"]');
-    const opened = [];
-    const mounted = [];
-    const ctrl = createController(dom, {
-        controller: { openTabEntries: [{ id: 'a', label: 'A', open() {} }, { id: 'b', label: 'B', open() {} }] }
-    });
-
-    assert.equal(tabs.hidden, true, '没有应用来源时只有工具页');
-    let providerCalls = 0;
-    ctrl.setLauncherAppsProvider(() => {
-        providerCalls += 1;
-        return [
-            { id: 'notes', label: '笔记', open: () => opened.push('notes'), mountIcon: (btn, host) => mounted.push([btn.getAttribute('data-launcher-app'), host.className]) },
-            { id: 'dice', label: '骰子', open: () => opened.push('dice') }
-        ];
-    });
-    assert.equal(tabs.hidden, false);
-    assert.equal(tools.hidden, false);
-    assert.equal(apps.hidden, true);
-    assert.equal(providerCalls, 0, '应用页没打开前不画图标');
-
-    doc.getElementById('addSidePaneChatBtn').click();
-    tabs.querySelector('[data-launcher-tab="apps"]').click();
-    assert.equal(tools.hidden, true);
-    assert.equal(apps.hidden, false);
-    assert.equal(tabs.querySelector('[data-launcher-tab="apps"]').getAttribute('aria-selected'), 'true');
-    const cards = [...apps.querySelectorAll('[data-launcher-app]')];
-    assert.deepEqual(cards.map(card => card.textContent), ['笔记', '骰子']);
-    assert.deepEqual(mounted, [['notes', 'side-pane-launcher-app-icon']]);
-
-    cards[1].click();
-    await tick();
-    assert.deepEqual(opened, ['dice']);
-
-    // 再次打开新标签页停在应用页并刷新列表
-    ctrl.showLauncher();
-    assert.equal(providerCalls, 2);
-    assert.equal(apps.hidden, false);
-
-    // 撤掉应用来源后回到工具页
-    ctrl.setLauncherAppsProvider(null);
-    assert.equal(tabs.hidden, true);
-    assert.equal(tools.hidden, false);
-    assert.equal(apps.hidden, true);
-
-    await ctrl.dispose();
-    dom.window.close();
-});
-
-// 现在的页面：通知不再单独一个视图，而是新标签页里的“通知”分类
-function hostNotificationsInLauncher(doc) {
-    doc.getElementById('sidePaneViewNotifications').remove();
-    const launcher = doc.getElementById('sidePaneViewLauncher');
-    launcher.querySelector('.side-pane-launcher-tabs').insertAdjacentHTML('beforeend',
-        '<button type="button" data-launcher-tab="notifications" aria-selected="false">通知<span class="side-pane-launcher-tab-status" data-status="unknown"></span></button>');
-    launcher.insertAdjacentHTML('beforeend', `
-        <section data-launcher-section="notifications" hidden>
-            <aside id="notificationsSidebar">
-                <div id="vcpLogConnectionStatus" data-status="unknown"><span class="notifications-status-text">VCPLog: 未连接</span></div>
-            </aside>
-        </section>`);
-}
-
-test('Parity: notifications live in the new tab page instead of the tab strip', async () => {
-    const dom = createParityTestDOM();
-    const doc = dom.window.document;
-    hostNotificationsInLauncher(doc);
-    const launcher = doc.getElementById('sidePaneViewLauncher');
-    const tabs = launcher.querySelector('.side-pane-launcher-tabs');
-    const tools = launcher.querySelector('[data-launcher-section="tools"]');
-    const notifications = launcher.querySelector('[data-launcher-section="notifications"]');
-    const segment = tabs.querySelector('[data-launcher-tab="notifications"]');
-    const ctrl = createController(dom, {
-        controller: { openTabEntries: [{ id: 'a', label: 'A', open() {} }, { id: 'b', label: 'B', open() {} }] }
-    });
+    const home = doc.getElementById('sidePaneViewHome');
+    const ctrl = createController(dom);
     const stripTabIds = () => [...doc.querySelectorAll('.side-pane-tabs .side-pane-tab')].map(btn => btn.getAttribute('data-tab-id'));
+    const homeTab = () => doc.querySelector('.side-pane-tabs .side-pane-tab-item.is-home');
 
-    // 首页就是新标签页的通知分类；标签条上不再有通知标签，没有应用来源时也有切换条
     ctrl.setVisible(true, { animate: false });
-    assert.deepEqual(stripTabIds(), []);
-    assert.equal(launcher.hidden, false);
-    assert.equal(tabs.hidden, false);
-    assert.equal(tabs.querySelector('[data-launcher-tab="apps"]').hidden, true);
-    assert.equal(segment.getAttribute('aria-selected'), 'true');
-    assert.equal(notifications.hidden, false);
-    assert.equal(tools.hidden, true);
-    assert.equal(doc.getElementById('notificationsSidebar').classList.contains('active'), true);
-    assert.equal(launcher.dataset.launcherSegment, 'notifications');
+    assert.deepEqual(stripTabIds(), ['notifications']);
+    assert.equal(homeTab().querySelector('.side-pane-tab-close'), null, '首页不能关');
+    assert.equal(homeTab().querySelector('.tab-icon').textContent, 'house');
+    assert.equal(homeTab().draggable, false);
+    assert.equal(home.hidden, false);
+    assert.ok(home.contains(doc.getElementById('notificationsSidebar')));
 
-    // 连接状态挂在通知分类上
-    const status = doc.getElementById('vcpLogConnectionStatus');
-    status.dataset.status = 'open';
-    status.querySelector('.notifications-status-text').textContent = 'VCPLog: 已连接';
-    await tick();
-    assert.equal(segment.querySelector('.side-pane-launcher-tab-status').dataset.status, 'open');
-    assert.equal(segment.getAttribute('aria-label'), '通知，VCPLog 已连接');
-
-    // 切到工具：离开通知页；再点通知回来
-    tabs.querySelector('[data-launcher-tab="tools"]').click();
-    assert.equal(ctrl.getSnapshot().activeTabId, SidePaneState.LAUNCHER_TAB_ID);
-    assert.equal(tools.hidden, false);
-    assert.equal(notifications.hidden, true);
-    assert.equal(doc.getElementById('notificationsSidebar').classList.contains('active'), false);
-    segment.click();
-    assert.equal(ctrl.getSnapshot().activeTabId, SidePaneState.NOTIFICATIONS_TAB_ID);
-    assert.equal(notifications.hidden, false);
-
-    // 「+」打开的是工具页；打开的标签在标签条上，概览里也没有通知
-    doc.getElementById('addSidePaneChatBtn').click();
-    assert.equal(tools.hidden, false);
-    assert.equal(notifications.hidden, true);
+    // 打开的标签排在首页后面；切过去首页隐藏，点首页回来
     ctrl.setParent({ itemType: 'agent', itemId: 'agent-1', topicId: 'parent' });
     await ctrl.openTab({ kind: 'chat', descriptor: createDesc('s1', 'c1') });
-    assert.deepEqual(stripTabIds(), ['s1']);
-    assert.equal(launcher.hidden, true);
-    assert.deepEqual([...doc.querySelectorAll('#sidePaneOpenTabsList .side-pane-overview-item')].map(item => item.getAttribute('data-tab-id')), ['s1']);
+    assert.deepEqual(stripTabIds(), ['notifications', 's1']);
+    assert.equal(home.hidden, true);
+    homeTab().querySelector('.side-pane-tab').click();
+    assert.equal(ctrl.getSnapshot().activeTabId, SidePaneState.NOTIFICATIONS_TAB_ID);
+    assert.equal(home.hidden, false);
 
-    await ctrl.dispose();
-    dom.window.close();
-});
-
-test('Parity: the tools page lists recommended apps under the tool rows', async () => {
-    const dom = createParityTestDOM();
-    const doc = dom.window.document;
-    const tools = doc.querySelector('#sidePaneViewLauncher [data-launcher-section="tools"]');
-    tools.innerHTML = `
-        <div data-launcher-group="tools"><div class="side-pane-open-tab-list"></div></div>
-        <div data-launcher-group="recommended" hidden>
-            <button type="button" class="side-pane-launcher-group-action" hidden></button>
-            <div class="side-pane-launcher-recommended-row"></div>
-        </div>`;
-    const recommended = tools.querySelector('[data-launcher-group="recommended"]');
-    const settings = recommended.querySelector('.side-pane-launcher-group-action');
-    const opened = [];
-    let settingsOpened = 0;
-    const ctrl = createController(dom, {
-        controller: { openTabEntries: [{ id: 'a', label: 'A', open() {} }, { id: 'b', label: 'B', open() {} }] }
-    });
-    ctrl.setLauncherAppsProvider(() => [{ id: 'forum', label: '论坛（全部）', open: () => opened.push('apps:forum') }]);
-
-    assert.equal(recommended.hidden, true, '没有推荐来源时不显示');
-    let pinned = ['forum', 'notes'];
-    ctrl.setLauncherRecommendedProvider(
-        () => pinned.map(id => ({ id, label: id, open: () => opened.push(`rec:${id}`) })),
-        { onSettings: () => { settingsOpened += 1; } }
-    );
-    ctrl.showLauncher();
-    assert.equal(recommended.hidden, false);
-    assert.equal(settings.hidden, false);
-    assert.deepEqual([...recommended.querySelectorAll('[data-launcher-app]')].map(card => card.textContent), ['forum', 'notes']);
-
-    // 推荐里的卡片和应用页同 id 也各开各的
-    recommended.querySelector('[data-launcher-app="forum"]').click();
-    await tick();
-    assert.deepEqual(opened, ['rec:forum']);
-
-    settings.click();
-    assert.equal(settingsOpened, 1);
-
-    // 常用应用改了以后刷新
-    pinned = ['music'];
-    ctrl.refreshLauncherRecommended();
-    assert.deepEqual([...recommended.querySelectorAll('[data-launcher-app]')].map(card => card.textContent), ['music']);
-
-    // 撤掉推荐来源后隐藏
-    ctrl.setLauncherRecommendedProvider(null);
-    assert.equal(recommended.hidden, true);
+    // 换话题：首页留着，别的话题的标签不显示
+    ctrl.setParent({ itemType: 'agent', itemId: 'agent-1', topicId: 'other' });
+    assert.deepEqual(stripTabIds(), ['notifications']);
 
     await ctrl.dispose();
     dom.window.close();
@@ -517,17 +457,15 @@ test('Parity: tab context menu is scoped, keyboard friendly and closes on Escape
     dom.window.close();
 });
 
-test('Parity: the expand button shows the launcher when several entries exist', async () => {
+test('Parity: the expand button opens the home page when the conversation has no tabs', async () => {
     const dom = createParityTestDOM();
     const doc = dom.window.document;
     const toggleBtn = doc.getElementById('toggleSidePaneChatBtn');
-    const launcherView = doc.getElementById('sidePaneViewLauncher');
-    const opened = [];
     const ctrl = createController(dom, {
         controller: {
             openTabEntries: [
-                { id: 'chat', label: '辅助对话', open: () => opened.push('chat') },
-                { id: 'browser', label: '浏览器', open: () => opened.push('browser') }
+                { id: 'chat', label: '辅助对话', open() {} },
+                { id: 'browser', label: '浏览器', open() {} }
             ]
         }
     });
@@ -536,16 +474,10 @@ test('Parity: the expand button shows the launcher when several entries exist', 
     toggleBtn.click();
     await tick();
     assert.equal(ctrl.getSnapshot().visible, true);
-    assert.equal(ctrl.getSnapshot().activeTabId, 'launcher');
-    assert.equal(launcherView.hidden, false);
-    assert.equal(doc.getElementById('sidePaneViewNotifications').hidden, true);
+    assert.equal(ctrl.getSnapshot().activeTabId, SidePaneState.NOTIFICATIONS_TAB_ID);
+    assert.equal(doc.getElementById('sidePaneViewHome').hidden, false);
+    assert.equal(doc.getElementById('sidePaneAddMenu').hidden, true, '展开侧栏不弹「+」菜单');
     assert.equal(toggleBtn.hidden, true, '面板展开后标题栏按钮隐藏');
-
-    const buttons = launcherView.querySelectorAll('[data-open-tab-entry]');
-    assert.equal(buttons.length, 2);
-    buttons[1].click();
-    await tick();
-    assert.deepEqual(opened, ['browser']);
 
     await ctrl.dispose();
     dom.window.close();
@@ -668,12 +600,12 @@ test('Side pane divider and header hairlines', () => {
     assert.doesNotMatch(css, /\.main-content[^{]*:where\(\.vcp-ui-scope/);
 
     assert.match(css, /html \.side-pane-tab-bar[\s\S]*?border-bottom:\s*1px solid var\(--zcode-header-divider/);
-    // VCPLog status lives on the 通知 tab, so the panel has no second header row.
+    // VCPLog status lives on the home tab, so the panel has no second header row.
     assert.doesNotMatch(css, /\.notifications-header/);
 });
 
 
-test('tab type registration connects presentation, launcher availability and provider mounting', async () => {
+test('tab type registration connects presentation, add-menu availability and provider mounting', async () => {
     const dom = createParityTestDOM();
     const ctrl = createController(dom);
     const doc = dom.window.document;
@@ -723,7 +655,7 @@ test('tab type registrations stay local and stale unregistration cannot remove a
     secondDOM.window.close();
 });
 
-test('replacing a tab type without an entry removes its previous launcher action', async () => {
+test('replacing a tab type without an entry removes its previous add-menu action', async () => {
     const dom = createParityTestDOM();
     const ctrl = createController(dom);
     let opened = 0;
@@ -732,7 +664,7 @@ test('replacing a tab type without an entry removes its previous launcher action
         const unregister = ctrl.registerTabType({ kind: 'custom', label: 'Placeholder' });
         const oldAction = dom.window.document.querySelector('[data-open-tab-entry="old-action"]');
         oldAction?.click();
-        assert.equal(oldAction, null, 'the removed declaration must not leave a live launcher action');
+        assert.equal(oldAction, null, 'the removed declaration must not leave a live add-menu action');
         assert.equal(opened, 0);
         stale();
         assert.equal(ctrl.getTabType('custom').label, 'Placeholder');

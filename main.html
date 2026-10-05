@@ -44,7 +44,7 @@
     <link rel="stylesheet" href="styles/ui-system/side-pane-tab-bar.css">
     <link rel="stylesheet" href="styles/ui-system/side-pane-side-chat.css">
     <link rel="stylesheet" href="styles/ui-system/side-pane-tab-overview.css">
-    <link rel="stylesheet" href="styles/ui-system/side-pane-launcher.css">
+    <link rel="stylesheet" href="styles/ui-system/side-pane-home.css">
     <link rel="stylesheet" href="styles/ui-system/side-pane-tab-overlays.css">
     <link rel="stylesheet" href="styles/ui-system/side-pane-code-viewer.css">
     <link rel="stylesheet" href="styles/ui-system/side-pane-browser.css">
@@ -551,7 +551,8 @@
                 </button>
                 <div class="side-pane-tabs" role="tablist" aria-label="侧边栏标签页"></div>
                 <div class="side-pane-tab-actions">
-                    <button id="addSidePaneChatBtn" class="side-pane-action-btn" type="button" title="新标签页" aria-label="新标签页">
+                    <button id="addSidePaneChatBtn" class="side-pane-action-btn" type="button" title="新标签页" aria-label="新标签页"
+                        aria-haspopup="menu" aria-controls="sidePaneAddMenu" aria-expanded="false">
                         <svg class="lucide lucide-plus" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
                     </button>
                     <button id="closeSidePaneBtn" class="side-pane-action-btn" type="button" title="收起侧边栏" aria-label="收起侧边栏">
@@ -570,44 +571,24 @@
                     <button type="button" class="side-pane-menu-item" role="menuitem" data-action="close-others">关闭其他标签页</button>
                     <button type="button" class="side-pane-menu-item" role="menuitem" data-action="close-all">关闭所有标签页</button>
                 </div>
+                <div id="sidePaneAddMenu" class="side-pane-context-menu side-pane-add-menu" role="menu" aria-label="打开新标签页" hidden>
+                    <div class="side-pane-add-menu-group" data-add-menu-group="tools"></div>
+                    <div class="side-pane-add-menu-separator" role="separator" hidden></div>
+                    <div class="side-pane-add-menu-heading" hidden>应用</div>
+                    <div class="side-pane-add-menu-group" data-add-menu-group="apps" hidden></div>
+                </div>
             </header>
             <div class="side-pane-content-container">
-                <section class="side-pane-view active" id="sidePaneViewLauncher" data-tab-id="launcher" role="tabpanel" aria-label="新标签页">
-                    <div class="side-pane-open-tab-shell">
-                        <div class="side-pane-open-tab-content">
-                            <div class="side-pane-launcher-profile" hidden>
-                                <button type="button" class="side-pane-launcher-avatar">
-                                    <img alt="" draggable="false">
-                                    <span class="side-pane-launcher-avatar-edit" aria-hidden="true"><span class="vcp-ui-icon">edit</span></span>
-                                </button>
-                                <input type="text" class="side-pane-launcher-name" aria-label="名称" autocomplete="off" spellcheck="false" readonly>
-                            </div>
-                            <div class="side-pane-launcher-tabs" role="tablist" aria-label="新标签页分类" hidden>
-                                <button type="button" class="side-pane-launcher-tab" role="tab" data-launcher-tab="tools" aria-selected="true">工具</button>
-                                <button type="button" class="side-pane-launcher-tab" role="tab" data-launcher-tab="apps" aria-selected="false">应用</button>
-                                <button type="button" class="side-pane-launcher-tab" role="tab" data-launcher-tab="notifications" aria-selected="false">通知<span class="side-pane-launcher-tab-status" data-status="unknown" aria-hidden="true"></span></button>
-                            </div>
-                            <section class="side-pane-launcher-section" data-launcher-section="tools" role="tabpanel" aria-label="工具">
-                                <div class="side-pane-launcher-group" data-launcher-group="tools">
-                                    <h3 class="side-pane-launcher-group-title">工具</h3>
-                                    <div class="side-pane-open-tab-list"></div>
-                                </div>
-                                <div class="side-pane-launcher-group" data-launcher-group="recommended" hidden>
-                                    <div class="side-pane-launcher-group-header">
-                                        <h3 class="side-pane-launcher-group-title">推荐</h3>
-                                        <button type="button" class="side-pane-launcher-group-action" title="选择推荐的应用" aria-label="选择推荐的应用" hidden>
-                                            <span class="vcp-ui-icon" aria-hidden="true">settings</span>
-                                        </button>
-                                    </div>
-                                    <div class="side-pane-launcher-recommended-row"></div>
-                                </div>
-                            </section>
-                            <section class="side-pane-launcher-section" data-launcher-section="apps" role="tabpanel" aria-label="应用" hidden>
-                                <div class="side-pane-launcher-app-grid"></div>
-                            </section>
-                            <section class="side-pane-launcher-section" data-launcher-section="notifications" role="tabpanel" aria-label="通知" hidden>
+                <section class="side-pane-view active" id="sidePaneViewHome" data-tab-id="notifications" role="tabpanel" aria-label="首页">
+                    <div class="side-pane-home-profile" hidden>
+                        <button type="button" class="side-pane-home-avatar">
+                            <img alt="" draggable="false">
+                            <span class="side-pane-home-avatar-edit" aria-hidden="true"><span class="vcp-ui-icon">edit</span></span>
+                        </button>
+                        <input type="text" class="side-pane-home-name" aria-label="名称" autocomplete="off" spellcheck="false" readonly>
+                    </div>
                   <aside class="notifications-sidebar vcp-ui-scope" id="notificationsSidebar">
-            <!-- 连接状态显示在新标签页的“通知”分类上；这里只留给读屏与旧代码引用 -->
+            <!-- 连接状态显示在标签条的首页图标上；这里只留给读屏与旧代码引用 -->
             <div class="notifications-status-host">
                 <div class="notifications-status" id="vcpLogConnectionStatus" data-status="unknown" role="status" aria-live="polite">
                     <span class="notifications-status-dot" aria-hidden="true"></span>
@@ -707,9 +688,6 @@
                 </div>
             </div>
           </aside>
-                            </section>
-                        </div>
-                    </div>
                 </section>
             </div>
           </aside>
