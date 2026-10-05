@@ -49,20 +49,74 @@ html .side-plan-header:where(.vcp-ui-scope, .vcp-ui-scope *) {
     padding: 0 6px 10px;
     box-sizing: border-box;
 }
-html .side-plan-title-row:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; align-items: center; gap: 8px; min-width: 0; }
-html .side-plan-title:where(.vcp-ui-scope, .vcp-ui-scope *) { margin: 0; font-size: calc(var(--vcp-ui-font-size) + 1px); font-weight: 600; line-height: 1.3; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--zc-fg); }
-html .side-plan-actions:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; gap: 2px; flex: 0 0 auto; margin-right: -4px; }
+html .side-plan-title-row:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; align-items: center; gap: 6px; min-width: 0; }
+/* 标题行右侧的状态和按钮做成浏览器工具栏那样的胶囊：淡底、细边框、全圆角 */
+html .side-plan-header:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    --side-plan-pill-bg: color-mix(in srgb, var(--zc-fg) 6%, transparent);
+    --side-plan-pill-border: color-mix(in srgb, var(--zc-fg) 10%, transparent);
+    --side-plan-pill-divider: color-mix(in srgb, var(--zc-fg) 22%, transparent);
+    --side-plan-pill-shadow: none;
+}
+html body:is(.light-theme, [data-vcp-theme="light"]) .side-plan-header:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    --side-plan-pill-bg: color-mix(in srgb, var(--vcp-ui-bg-primary, Canvas) 88%, transparent);
+    --side-plan-pill-border: color-mix(in srgb, var(--zc-fg) 8%, transparent);
+    --side-plan-pill-shadow: 0 1px 2px color-mix(in srgb, var(--zc-fg) 6%, transparent);
+}
+/* 面包屑胶囊：前面的段先缩成省略号，工程名尽量留全 */
+html .side-plan-crumbs:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex; align-items: center; gap: 2px;
+    flex: 0 1 auto; min-width: 0; height: 32px; padding: 0 12px; margin-right: auto;
+    border: 1px solid var(--side-plan-pill-border); border-radius: 999px;
+    background: var(--side-plan-pill-bg); box-shadow: var(--side-plan-pill-shadow);
+    font-size: calc(var(--vcp-ui-font-size) - 1px); color: var(--zc-fg-subtle);
+    white-space: nowrap; box-sizing: border-box;
+}
+html .side-plan-crumb:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 0 100 auto; min-width: 1.5em; overflow: hidden; text-overflow: ellipsis; }
+html .side-plan-crumb-sep:where(.vcp-ui-scope, .vcp-ui-scope *) { --vcp-ui-icon-size: 14px; flex: none; opacity: 0.6; }
+html .side-plan-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 0 1 auto; min-width: 2em; margin: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: calc(var(--vcp-ui-font-size) - 1px); font-weight: 600; line-height: 1.3; color: var(--zc-fg);
+}
+
+/* 状态胶囊：状态字按状态着色，后面跟一段淡色的更新时间 */
+html .side-plan-status:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex; align-items: center; gap: 6px;
+    flex: none; height: 32px; padding: 0 12px;
+    border: 1px solid var(--side-plan-pill-border); border-radius: 999px;
+    background: var(--side-plan-pill-bg); box-shadow: var(--side-plan-pill-shadow);
+    font-size: calc(var(--vcp-ui-font-size) - 1px); white-space: nowrap; box-sizing: border-box;
+}
+html .side-plan-chip:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-fg); font-weight: 500; }
+html .side-plan-chip.status-review:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-warning); }
+html .side-plan-chip.status-active:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-success); }
+html .side-plan-chip.status-deleted:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-danger); }
+html .side-plan-updated:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-fg-subtle); }
+html .side-plan-chip + .side-plan-updated:where(.vcp-ui-scope, .vcp-ui-scope *)::before { content: '·'; margin-right: 6px; }
+
+/* 窄侧栏：面包屑只留工程名，状态胶囊只留状态字，免得每段都缩成省略号 */
+html .side-plan-header:where(.vcp-ui-scope, .vcp-ui-scope *) { container: side-plan-header / inline-size; }
+@container side-plan-header (max-width: 440px) {
+    html .side-plan-crumbs > :not(:last-child):where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }
+    html .side-plan-chip ~ .side-plan-updated:where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }
+}
+
+html .side-plan-actions:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex; align-items: center; gap: 2px; flex: 0 0 auto;
+    height: 32px; padding: 0 3px;
+    border: 1px solid var(--side-plan-pill-border); border-radius: 999px;
+    background: var(--side-plan-pill-bg); box-shadow: var(--side-plan-pill-shadow);
+    box-sizing: border-box;
+}
+html .side-plan-actions-divider:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: none; width: 1px; height: 16px; margin: 0 3px; background: var(--side-plan-pill-divider); }
 html .side-plan-icon-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: inline-flex; align-items: center; justify-content: center;
-    width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px;
+    width: 26px; height: 26px; padding: 0; border: 0; border-radius: 999px;
     background: transparent; color: var(--zc-fg-subtle); cursor: pointer;
 }
 html .side-plan-icon-btn:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--side-plan-hover); color: var(--zc-fg); }
 html .side-plan-icon-btn .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-icon-btn svg:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 15px; height: 15px; font-size: calc(var(--vcp-ui-font-size) + 1px); }
 
-html .side-plan-chip:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 0 0 auto; padding: 0; font-size: calc(var(--vcp-ui-font-size) - 3px); color: var(--zc-fg-subtle); }
-html .side-plan-chip.status-active:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-success); }
-html .side-plan-chip.status-deleted:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-danger); }
 
 html .side-plan-meta:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: calc(var(--vcp-ui-font-size) - 3px); color: var(--zc-fg-subtle); }
 html .side-plan-meta > span + span:where(.vcp-ui-scope, .vcp-ui-scope *)::before { content: '·'; margin-right: 10px; color: var(--zc-fg-subtle); }
@@ -170,7 +224,7 @@ html .side-plan-contributor-name:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 1
 html .side-plan-contributor-batches:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); }
 
 /* ---- header: project switch and topic stats ---- */
-html .side-plan-project-select:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 1 1 auto; min-width: 0; height: 28px; padding: 0 6px; border: 1px solid var(--side-plan-card-border); border-radius: 6px; background: transparent; color: var(--zc-fg); font: inherit; font-size: var(--vcp-ui-font-size); font-weight: 600; }
+html .side-plan-project-select:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 0 1 auto; min-width: 4em; height: 24px; padding: 0 2px; border: 0; border-radius: 6px; background: transparent; color: var(--zc-fg); font: inherit; font-size: calc(var(--vcp-ui-font-size) - 1px); font-weight: 600; cursor: pointer; }
 html .side-plan-project-select option:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-select option:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--zc-popover); color: var(--zc-fg); }
 html .side-plan-stats:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); font-variant-numeric: tabular-nums; }
 html .side-plan-stats-scope:where(.vcp-ui-scope, .vcp-ui-scope *) { padding: 0 6px; border-radius: 999px; background: var(--side-plan-surface); color: var(--zc-fg); }

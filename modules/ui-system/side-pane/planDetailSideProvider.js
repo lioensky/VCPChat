@@ -313,6 +313,14 @@ export function createPlanDetailSideProvider({
                 const { project } = model;
                 const head = h('header', 'side-plan-header');
                 const titleRow = h('div', 'side-plan-title-row');
+                // 一行胶囊：面包屑（范围 › 工作区 › 工程名）、状态和更新时间、刷新/打开
+                const crumbs = h('div', 'side-plan-crumbs');
+                const addCrumb = (node) => {
+                    if (crumbs.childElementCount) crumbs.appendChild(icon('chevron_right', 'side-plan-crumb-sep'));
+                    crumbs.appendChild(node);
+                };
+                addCrumb(h('span', 'side-plan-crumb side-plan-context', activity ? '本话题' : '工程全览'));
+                if (project.workspace_alias) addCrumb(h('span', 'side-plan-crumb', project.workspace_alias));
                 if (topicMode && topicProjects.length > 1) {
                     // 只列这个话题用过的工程
                     const select = h('select', 'side-plan-project-select');
@@ -325,20 +333,35 @@ export function createPlanDetailSideProvider({
                     });
                     select.value = project.id;
                     select.addEventListener('change', () => switchProject(select.value));
-                    titleRow.appendChild(select);
+                    addCrumb(select);
                 } else {
-                    titleRow.appendChild(h('h2', 'side-plan-title', project.name || '未命名工程'));
+                    addCrumb(h('h2', 'side-plan-title', project.name || '未命名工程'));
                 }
+                titleRow.appendChild(crumbs);
                 // 软删除的工程 GetProject 仍然成功、status 也不变，只多了 deleted_at
                 const status = project.deleted_at ? 'deleted' : project.status;
                 const statusText = status === 'deleted' ? '已删除' : status === 'active' ? '进行中' : status === 'closed' ? '已收尾' : status === 'review' ? '待验收' : (status || '');
-                if (statusText) titleRow.appendChild(h('span', `side-plan-chip status-${status || 'unknown'}`, statusText));
+                const updated = when(project.updated_at);
+                if (statusText || updated) {
+                    const statusPill = h('div', `side-plan-status status-${status || 'unknown'}`);
+                    if (statusText) statusPill.appendChild(h('span', `side-plan-chip status-${status || 'unknown'}`, statusText));
+                    if (updated) {
+                        statusPill.appendChild(h('span', 'side-plan-updated', updated));
+                        // 窄侧栏里时间段会藏起来，悬停状态胶囊仍能看到
+                        statusPill.title = `更新于 ${updated}`;
+                    }
+                    titleRow.appendChild(statusPill);
+                }
                 const actions = h('div', 'side-plan-actions');
                 const refreshBtn = button('side-plan-icon-btn', null, '刷新');
                 refreshBtn.appendChild(icon('refresh'));
                 refreshBtn.addEventListener('click', () => load());
                 actions.appendChild(refreshBtn);
                 if (onOpenProjectForge) {
+                    // 和浏览器工具栏的前进后退胶囊一样：两颗按钮之间一根细竖线
+                    const divider = h('span', 'side-plan-actions-divider');
+                    divider.setAttribute('aria-hidden', 'true');
+                    actions.appendChild(divider);
                     const forgeBtn = button('side-plan-icon-btn side-plan-forge', null, '完整记录与回退（V工程 页）');
                     forgeBtn.appendChild(icon('open_in_new'));
                     forgeBtn.addEventListener('click', () => onOpenProjectForge(project.id));
@@ -346,12 +369,6 @@ export function createPlanDetailSideProvider({
                 }
                 titleRow.appendChild(actions);
                 head.appendChild(titleRow);
-
-                const meta = h('div', 'side-plan-meta');
-                meta.appendChild(h('span', 'side-plan-context', activity ? '本话题' : '工程全览'));
-                if (project.workspace_alias) meta.appendChild(h('span', '', project.workspace_alias));
-                if (project.updated_at) meta.appendChild(h('span', '', `更新 ${when(project.updated_at)}`));
-                head.appendChild(meta);
                 if (project.deleted_at) {
                     const by = project.deleted_by ? ` ${project.deleted_by} ` : '';
                     head.appendChild(h('div', 'side-plan-warning side-plan-deleted', `这个工程已被${by}删除（${when(project.deleted_at)}），下面是删除前的计划；需要时让助手用 RestoreProjects 恢复`));
