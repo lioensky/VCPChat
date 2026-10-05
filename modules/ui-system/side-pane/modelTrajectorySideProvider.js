@@ -723,7 +723,15 @@ export function createModelTrajectorySideProvider({
                 loading = true;
                 renderHeader();
                 renderState();
-                const res = await api?.modelTrajectoryList?.(sessionKey, { limit: 200 });
+                let res;
+                try {
+                    res = await api?.modelTrajectoryList?.(sessionKey, { limit: 200 });
+                } catch (error) {
+                    // 主进程没有这组接口（只刷新了页面、主进程还是旧的）时 invoke 会直接抛错，
+                    // 不能让它冒出 mountTab，否则整页被移除、只剩空白
+                    const missing = /No handler registered/i.test(String(error?.message || error));
+                    res = { success: false, error: missing ? '调用轨迹服务未启动，请完全退出并重新打开 VCPChat' : (error?.message || '读取调用轨迹失败') };
+                }
                 if (disposed || seq !== loadSeq) return;
                 loading = false;
                 if (res?.success) {

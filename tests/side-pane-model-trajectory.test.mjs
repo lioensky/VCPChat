@@ -186,6 +186,17 @@ test('empty and no-conversation states, list errors, clear', async () => {
     await env.provider.mountTab({ id: 'x' }, env.view);
     assert.match(env.view.querySelector('.side-traj-state').textContent, /boom/);
 
+    // 主进程还是旧的（没注册这组接口）：invoke 抛错，页面要留着并提示重启，而不是让 mountTab 抛出
+    env = makeEnv();
+    const missingHandler = new Error("Error invoking remote method 'model-trajectory:list': Error: No handler registered for 'model-trajectory:list'");
+    const failing = createModelTrajectorySideProvider({
+        document: env.doc, api: { modelTrajectoryList: async () => { throw missingHandler; } }, sidePaneController: {},
+        getConversation: () => env.state.conversation
+    });
+    const handle = await failing.mountTab({ id: 'x' }, env.view);
+    assert.match(env.view.querySelector('.side-traj-state').textContent, /完全退出并重新打开/);
+    handle.dispose();
+
     env = makeEnv();
     await env.provider.mountTab({ id: 'x' }, env.view);
     env.view.querySelector('[aria-label="清空这个话题的调用轨迹"]').click();

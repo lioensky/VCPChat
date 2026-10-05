@@ -28,6 +28,8 @@ function route(fetchResponse) {
         ['path', require('node:path')], ['crypto', require('node:crypto')],
         ['../services/senderTaskRegistry', require('../modules/services/senderTaskRegistry.js')],
         ['../contextSanitizer', require('../modules/contextSanitizer.js')],
+        // 真实的调用轨迹模块：没有配置记录目录时只返回空操作，不写盘
+        ['../modelTrajectory', require('../modules/modelTrajectory.js')],
         ['../services/attachmentDialogState', {}], ['../../Groupmodules/topicTitleManager', {}],
         ['../services/historyMutationQueue', {}], ['./workspaceHandlers', {}], ['./sideChatHandlers', {}],
     ]);
