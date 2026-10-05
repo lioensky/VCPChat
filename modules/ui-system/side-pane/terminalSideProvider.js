@@ -125,7 +125,23 @@ export function createTerminalSideProvider({
             clearBtn.setAttribute('aria-label', '清屏');
             clearBtn.innerHTML = '<span class="vcp-ui-icon">delete_sweep</span>';
 
-            toolbar.append(wsSelect, statusEl, clearBtn, restartBtn);
+            // 和浏览器 / Git 顶栏同一套胶囊：工作区下拉一个胶囊，清屏 + 重启合成一个胶囊
+            const wsPill = doc.createElement('span');
+            wsPill.className = 'side-terminal-select-pill';
+            const chevron = doc.createElement('span');
+            chevron.className = 'vcp-ui-icon side-terminal-select-chevron';
+            chevron.setAttribute('aria-hidden', 'true');
+            chevron.textContent = 'expand_more';
+            wsPill.append(wsSelect, chevron);
+
+            const actions = doc.createElement('div');
+            actions.className = 'side-terminal-actions';
+            const divider = doc.createElement('span');
+            divider.className = 'side-terminal-actions-divider';
+            divider.setAttribute('aria-hidden', 'true');
+            actions.append(clearBtn, divider, restartBtn);
+
+            toolbar.append(wsPill, statusEl, actions);
 
             const screen = doc.createElement('div');
             screen.className = 'side-terminal-screen';

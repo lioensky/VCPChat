@@ -68,6 +68,7 @@ export function createSidePaneController({
     const collapsedByParent = new Map(); // parentKey -> boolean，最近 50 个对话
     const activeTabByParent = new Map(); // parentKey -> tabId，最近 50 个对话
     let isDisposed = false;
+    let navigationRevision = 0;
     let controller = null;
     const tabRegistry = createSidePaneTabRegistry({
         providers,
@@ -414,7 +415,7 @@ export function createSidePaneController({
             return occurrence ? occurrence.onClosed : getTabType(tab.kind)?.onClosed;
         },
         cancelPendingMount,
-        retireTab(tab, entry, options) {
+        retireTab(tab, entry, options, onFocusMoved) {
             // Read current focus after authorization; the user may have moved elsewhere while it waited.
             const ownedFocus = focus.ownsFocus();
             const origin = doc.activeElement;
@@ -426,6 +427,7 @@ export function createSidePaneController({
             rememberClosed(tab);
             const wasVisible = state.visible;
             state = SidePaneState.closeTab(state, tab.id, options);
+            tabCloseOwner.forgetLifetime(tab.id);
             if (state.parent) {
                 const parentKey = parentKeyOf();
                 if (wasVisible && !state.visible) {
@@ -440,6 +442,7 @@ export function createSidePaneController({
             syncDomVisibility();
             if (!state.visible) focus.restoreAfterHide(ownedFocus);
             else if (ownedFocus && closingFocusedTab) strip?.focusTab(state.activeTabId);
+            onFocusMoved?.(origin, doc.activeElement);
         }
     });
 
@@ -450,6 +453,7 @@ export function createSidePaneController({
 
         setVisible(visible, options = {}) {
             if (isDisposed) return;
+            if (Boolean(visible) !== state.visible) navigationRevision++;
             const ownedFocus = focus.ownsFocus();
             if (visible) focus.rememberOrigin();
             state = SidePaneState.setVisible(state, visible);
@@ -503,6 +507,7 @@ export function createSidePaneController({
 
         showNotifications() {
             if (isDisposed) return;
+            navigationRevision++;
             focus.rememberOrigin();
             state = SidePaneState.showNotifications(state);
             if (launcher.hostsNotifications) launcher.renderProfile();
@@ -513,6 +518,7 @@ export function createSidePaneController({
 
         showLauncher() {
             if (isDisposed) return;
+            navigationRevision++;
             focus.rememberOrigin();
             state = SidePaneState.showLauncher(state);
             launcher.renderProfile();
@@ -527,6 +533,7 @@ export function createSidePaneController({
             if (isDisposed || !tabId) return;
             if (tabId !== SidePaneState.LAUNCHER_TAB_ID
                 && !SidePaneState.getVisibleTabs(state, state.parent).some(tab => tab.id === tabId)) return;
+            navigationRevision++;
             state = SidePaneState.activateTab(state, tabId);
             if (state.parent && !isNotificationsTab(tabId) && tabId !== SidePaneState.LAUNCHER_TAB_ID) {
                 const parentKey = parentKeyOf();
@@ -568,18 +575,23 @@ export function createSidePaneController({
             if (isDisposed || !tabId) return;
             if (!SidePaneState.getVisibleTabs(state, state.parent).some(t => t.id === tabId)) return;
             const closing = SidePaneState.getClosableVisibleTabs(state).filter(t => t.id !== tabId);
-            for (const tab of closing) {
-                await this.closeTab(tab.id, { collapseWhenEmpty: false });
+            const revision = ++navigationRevision;
+            const keptLifetime = tabCloseOwner.getLifetime(tabId);
+            let expectedFocus = doc.activeElement;
+            await tabCloseOwner.closeTabs(closing, { collapseWhenEmpty: false }, (before, after) => {
+                // Follow our synchronous close handoffs, not an unrelated focus change.
+                if (before === expectedFocus) expectedFocus = after;
+            });
+            if (!isDisposed && navigationRevision === revision && tabCloseOwner.getLifetime(tabId) === keptLifetime) {
+                this.activateTab(tabId, { focus: doc.activeElement === expectedFocus });
             }
-            this.activateTab(tabId);
         },
 
         /** 关掉当前对话里所有可关的标签，最后一个关掉时面板收起 */
         async closeAllTabs() {
             if (isDisposed) return;
-            for (const tab of SidePaneState.getClosableVisibleTabs(state)) {
-                await this.closeTab(tab.id);
-            }
+            navigationRevision++;
+            await tabCloseOwner.closeTabs(SidePaneState.getClosableVisibleTabs(state));
         },
 
         /**
@@ -598,6 +610,7 @@ export function createSidePaneController({
                 icon: definition.icon, typeLabel: definition.label, searchHint: definition.searchHint,
                 ...resolved
             } : resolved);
+            navigationRevision++;
             const targetTabId = String(resolved.id);
             const openedTab = state.tabs.find(t => t.id === targetTabId);
             rememberOpened(SidePaneState.getTabParent(openedTab), targetTabId);
@@ -715,11 +728,13 @@ export function createSidePaneController({
         },
 
         closeTab(tabId, options = {}) {
+            if (state.tabs.some(tab => tab.id === tabId && tab.closable !== false)) navigationRevision++;
             return tabCloseOwner.closeTab(tabId, options);
         },
 
         setParent(parentRef) {
             if (isDisposed) return;
+            const previousParent = state.parent;
             // 切走前记下当前对话的激活标签和展开状态
             if (state.parent) {
                 const prevKey = parentKeyOf();
@@ -736,6 +751,7 @@ export function createSidePaneController({
                 preferredTabId: activeTabByParent.get(nextKey),
                 collapsedPreference: collapsedByParent.get(nextKey)
             });
+            if (state.parent !== previousParent) navigationRevision++;
             renderTabList();
             syncViewPanels();
             syncDomVisibility();

@@ -7,33 +7,76 @@ html .side-terminal-container:where(.vcp-ui-scope, .vcp-ui-scope *) {
     overflow: hidden;
 }
 
+/* 顶栏和浏览器 / Git 顶栏同一套：等高圆角胶囊，底色描边从主题文字色 / 背景色混出来，聚焦只加深描边 */
 html .side-terminal-toolbar:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    --side-terminal-pill-h: 32px;
+    --side-terminal-pill-bg: color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 6%, transparent);
+    --side-terminal-pill-hover: color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 10%, transparent);
+    --side-terminal-pill-border: color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 10%, transparent);
+    --side-terminal-pill-border-strong: color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 24%, transparent);
+    --side-terminal-pill-shadow: none;
     display: flex;
     align-items: center;
-    gap: 6px;
-    height: 34px;
-    min-height: 34px;
-    padding: 0 8px;
+    gap: 8px;
+    padding: 7px 10px;
     border-bottom: 1px solid var(--zcode-header-divider, var(--vcp-ui-port-color-rgba-255-255-255-0-06));
     box-sizing: border-box;
+    flex-shrink: 0;
+}
+
+html body:is(.light-theme, [data-vcp-theme="light"]) .side-terminal-toolbar:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    --side-terminal-pill-bg: color-mix(in srgb, var(--vcp-ui-bg-primary, Canvas) 88%, transparent);
+    --side-terminal-pill-hover: color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 5%, var(--vcp-ui-bg-primary, Canvas));
+    --side-terminal-pill-border: color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 8%, transparent);
+    --side-terminal-pill-border-strong: color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 22%, transparent);
+    --side-terminal-pill-shadow: 0 1px 2px color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 6%, transparent);
+}
+
+html .side-terminal-select-pill:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 55%;
+}
+
+html .side-terminal-ws-select:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-terminal-actions:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    height: var(--side-terminal-pill-h);
+    border: 1px solid var(--side-terminal-pill-border);
+    border-radius: 999px;
+    background: var(--side-terminal-pill-bg);
+    box-shadow: var(--side-terminal-pill-shadow);
+    box-sizing: border-box;
+    transition: border-color 150ms ease, background-color 150ms ease;
 }
 
 html .side-terminal-ws-select:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    height: 24px;
-    max-width: 45%;
-    padding: 0 6px;
-    border-radius: 4px;
-    border: 1px solid var(--border-color, var(--vcp-ui-port-color-rgba-255-255-255-0-08));
-    background: var(--vcp-ui-port-color-rgba-255-255-255-0-03);
-    color: var(--secondary-text, var(--vcp-ui-port-color-rgba-255-255-255-0-8));
-    font-size: calc(var(--vcp-ui-font-size) - 3px);
+    width: 100%;
+    min-width: 0;
+    padding: 0 30px 0 14px;
+    appearance: none;
+    -webkit-appearance: none;
+    font: inherit;
+    font-size: calc(var(--vcp-ui-font-size) - 1px);
+    color: var(--vcp-ui-text-primary, inherit);
+    text-overflow: ellipsis;
     outline: none;
+    cursor: pointer;
 }
+html .side-terminal-ws-select:hover:not(:disabled):where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--side-terminal-pill-hover); }
+html .side-terminal-ws-select:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *) { border-color: var(--side-terminal-pill-border-strong); }
+html .side-terminal-ws-select:disabled:where(.vcp-ui-scope, .vcp-ui-scope *) { cursor: default; opacity: 0.6; }
+html .side-terminal-ws-select option:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--vcp-ui-color-background, var(--vcp-ui-port-color-18181b)); color: var(--vcp-ui-text-primary, inherit); }
 
-html body[data-vcp-theme="light"] .side-terminal-ws-select:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    background: var(--vcp-ui-port-color-rgba-0-0-0-0-03);
-    border-color: var(--vcp-ui-port-color-rgba-0-0-0-0-08);
-    color: var(--secondary-text, var(--vcp-ui-port-color-334155));
+html .side-terminal-select-chevron:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    --vcp-ui-icon-size: 14px;
+    position: absolute;
+    right: 10px;
+    color: var(--vcp-ui-text-primary, currentColor);
+    opacity: 0.55;
+    pointer-events: none;
 }
 
 html .side-terminal-status:where(.vcp-ui-scope, .vcp-ui-scope *) {
@@ -42,7 +85,7 @@ html .side-terminal-status:where(.vcp-ui-scope, .vcp-ui-scope *) {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: calc(var(--vcp-ui-font-size) - 3px);
+    font-size: calc(var(--vcp-ui-font-size) - 2px);
     opacity: 0.6;
 }
 
@@ -51,24 +94,47 @@ html .side-terminal-status.is-error:where(.vcp-ui-scope, .vcp-ui-scope *) {
     opacity: 1;
 }
 
+html .side-terminal-actions:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 0 2px;
+    flex-shrink: 0;
+}
+
+html .side-terminal-actions-divider:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    width: 1px;
+    height: 16px;
+    background: var(--side-terminal-pill-border);
+}
+
 html .side-terminal-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 24px;
-    height: 24px;
+    width: 26px;
+    height: 26px;
     padding: 0;
     border: 0;
-    border-radius: 4px;
+    border-radius: 999px;
     background: transparent;
-    color: inherit;
+    color: color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 72%, transparent);
     cursor: pointer;
-    opacity: 0.7;
+    transition: background-color 150ms ease, color 150ms ease;
 }
 
 html .side-terminal-btn:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    opacity: 1;
-    background: var(--vcp-ui-port-color-rgba-127-127-127-0-16);
+    background: var(--side-terminal-pill-hover);
+    color: var(--vcp-ui-text-primary, inherit);
+}
+
+html .side-terminal-btn:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    outline: 1px solid var(--side-terminal-pill-border-strong);
+    outline-offset: -1px;
+}
+
+html .side-terminal-btn .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    --vcp-ui-icon-size: 16px;
 }
 
 html .side-terminal-screen:where(.vcp-ui-scope, .vcp-ui-scope *) {

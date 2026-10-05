@@ -226,6 +226,36 @@ ZCode 进一步读了 `workspaceSidePane.ts` 的 parent 可见性、活动 fallb
 
 另已用受控实际控制器复现下一项待修复缺陷：closeAllTabs 等待 A 授权时，另行关闭并以同 ID 重开 B；批量循环随后按旧 ID 把 `B:new` 销毁。探针结果已记录，**此缺陷尚未修复**。需要让批量意图绑定原始生命周期，并验证 metadata 更新/迟到挂载不会被误当成重开，以及关闭后激活不会覆盖后续用户意图。
 
+## 第八轮：批量关闭、后续意图与资源语义
+
+继续处理第七轮已复现的批量关闭问题，没有重新修改已完成的计划页。DSH occurrence 测试进一步验证同 ID undo 恢复产生新 signal、pin 每次生命周期仅一次、其他 session 同步不 abort 当前资源、未提交 occurrence 读取会抛错而不是创建状态。我们的标签声明/handle 会在标题更新或延迟挂载时改变，不能简单以这两个对象的引用作为整次页面生命周期。
+
+### R19：批量意图必须绑定原始页面生命周期
+
+closeAll/closeOther 旧循环只保存 ID，再逐个等待授权；A 等待时 B 关闭并同 ID 重开，循环会销毁 B:new。close owner 现在捕获独立 token，状态关闭提交时才释放；标题更新、pending→mounted、恢复页首次挂载保留 token，关闭后同 ID 重开取得新 token。调用下一次授权前和授权返回后都核对原 token；重叠操作仍共享原关闭 Promise，不再次授权或 dispose。
+
+### R20：旧完成不能覆盖后续导航或外部焦点
+
+旧 closeOther 最后无条件 activateTab。现在记录导航意图版本：打开/激活、显示通知/新标签页、收起、真正换 parent 和新的关闭意图会撤销旧批次的最终激活资格；重复同步相同 parent 不算新意图。保留页也核对原 token。焦点跟踪仅接受本批次同步 DOM 关闭产生的明确交接，外部输入框焦点不会被跟着改写；共享授权的多个批次各自观察交接，只有最新意图最终聚焦一次。普通/veto 场景仍选择保留页，没有用一律取消聚焦来让断言通过。
+
+### R21：授权返回后还要核对可关闭性
+
+已有标签可通过 openTab 更新声明而继续使用同一 handle；等待期间改为 closable=false 时，旧实现仍拆视图/资源，但纯状态拒绝移除，留下没有正文的标签。现在提交前重新核对 closable。updateTab 仍只修改标题/payload，没有扩大其 API。
+
+新增独立批量测试文件，15 个场景涵盖 all/other 重开、metadata、pending/lazy 挂载、六类后续导航/可见性意图、外部焦点、普通关闭/veto、等待中不可关闭和重叠批次。旧源码 **4 通过 / 11 失败**，最终控制器/批量/登记/持久化 **59/59**、相关 **247/247**、UI **121/121**；最终全量 **258 个测试文件通过、0 失败、0 超时**。多出的一个文件组织独立批量契约，不用增加重复循环充计数。七项常用检查通过；事件图与样式白名单没有需要变更的内容。
+
+实际窗口的隔离 iframe 对照：B:new、后续选择、主输入框、改为不可关闭的页面均从丢失变为保留；重叠批次完成聚焦 **2→1**。截图后临时 iframe 已清理，主窗口原标签、草稿与主题快照一致，未 reload。验证用真实控制器/DOM 与受控授权，不据此宣称生产 PTY、webview 或所有后台资源都已正确释放。
+
+验证期间工作区有并行更新：`e934a9cf` 浏览器工具栏、`05bdfaa5` Git 标题栏，以及后续未提交的 lucide/browser 样式改动。首次 UI guard 曾读到过渡中的 browser 字面颜色，保留该失败日志；完成该提交后的实际源码与最终七项检查通过。最终实现补齐共享焦点交接后重新跑全量，保留外部改动，不将它们归入本提交。扩展检查的历史 design boundary、缺失 legacy preload catalog、两处重复 CSS 选择器及 wallpaper 断言仍未解决；其余 27 项通过，全量测试不能替代这些检查。
+
+### 深入参考资源回收链与下一步
+
+ZCode 从 renderer bridge/preload 追到 `desktopBrowserViewIpc.ts` 的关闭入口，再读 `BrowserGuestManager.closeTabFromRenderer`、`requireRendererOwnedTab`、`closeTabDurably` 和核心关闭回收：windowId 来自 IPC sender；存活 tab 校验 window/workspace/session，close 特意不沿用 attach 的 remote-session 校验；缺失/已关闭 tab 幂等补 tombstone，阻止迟到恢复；先 await 恢复存档删除，失败保留逻辑 tab 供重试，再回收 guest、waiter、下载、活动记录和 residency。通知 helper 携带 owner scope 路由后台工作区。尚未完整审查其 recovery store、全部 guest/CDP 路径及错误测试，不把这几段读完写成整个 BrowserGuestManager 已覆盖。
+
+我们的资源所有权不同：已沿 terminal provider 的 attach/dispose、typed preload 到 terminalHandlers create/kill 分支确认 `terminal:kill` 只 detach renderer 所属 view ID，不结束共享 PTY。已有真实 executor 的多视图测试验证相同 PID、不同 view 归属和关闭一页后继续输出；不能仅凭函数名改成物理杀进程，也不能把 ZCode 的 per-tab PTY 策略直接搬来。terminal provider 的全部初始化/失败/重试与 executor 后端仍待继续核实。
+
+下一项候选是 browser provider 的 `mounted.delete(tab.id)` 和最后页面取消订阅：旧挂载 handle 退役时可能清掉同 ID 的新登记，影响空白页复用与 popup 订阅。已读该入口、挂载与 dispose 分支，**尚未用真实 provider 复现**，不列作已修复缺陷。随后继续资源 provider、主进程/IPC、聊天/设置生产链及全范围账本，修正四项扩展检查的当前契约。
+
 ## 验证与局限
 
 - 修改前新增 6 个故障用例：文件旧成功/旧失败、旧行触发、筛选旧成功/旧失败、关闭重开。全部能在原实现上失败。
@@ -243,16 +273,16 @@ ZCode 进一步读了 `workspaceSidePane.ts` 的 parent 可见性、活动 fallb
 
 ## 全范围覆盖账本与后续路径
 
-Git 清单有 2384 个跟踪文件。按代码扩展名排除常见 vendor/assets 后得到 1457 个候选，仍含部分生成 bundle；清单只用于导航，**不证明这些文件已审查**。后续必须区分手写、生成、第三方和测试资源。
+审查开始时的清单记录了 2384 个跟踪文件。按代码扩展名排除常见 vendor/assets 后得到 1457 个候选，仍含部分生成 bundle；清单只用于导航，**不证明这些文件已审查**。后续必须区分手写、生成、第三方和测试资源，并随工作区更新刷新清单。
 
 | 范围 | 当前证据 | 仍需完成 |
 | --- | --- | --- |
 | 参考侧栏实现细节 | 上表列出已读逻辑；DSH occurrence/资源 policy、ZCode request/workspace 边界已落到复现修复 | 继续读完整 state/planner、资源 provider、browser/terminal/subagent、布局/持久化与对应错误路径测试；记录取舍，不能只数文件 |
-| 我们的侧栏架构和生命周期 | 挂载 occurrence、picker/计划筛选、跨话题 open/activate、迟到 focus、异步关闭/销毁、不可关闭保护、声明完整替换和旧页面 onClosed 归属已复现修复 | 批量关闭同 ID 重开已复现待修复；具体 provider 的业务清理、还原与后台驻留、动态缓存容量、订阅归属 |
+| 我们的侧栏架构和生命周期 | 挂载 occurrence、picker/计划筛选、话题归属、迟到 focus、异步关闭/销毁、声明替换、旧页面清理、批量原始生命周期与后续意图已复现修复 | browser 内部同 ID 退役为下一候选；具体 provider 的业务清理、还原与后台驻留、动态缓存容量、订阅归属 |
 | 聊天和辅助对话 | 尚无本轮深入结论 | 主聊天/辅助对话所有者、流/取消/重试/编辑、草稿、会话与工作区隔离，对照 reference lease/occurrence |
 | Git、ProjectForge、源码后端 | 本轮只追到 provider 读取与已有测试 | IPC/preload 契约、读写根目录约束、真实 Git 与回退竞态、并发快照、索引、错误分类、批次缓存、隐藏面板 I/O |
 | 主进程、其他服务与 Rust | 清单定位到 IPC/services、chat data/audio/assistant/indexer 等模块 | 主进程资源生命周期、异常恢复与服务装配、Rust 测试与接口、插件/工具调用、升级/打包运行闭包 |
-| 测试体系 | 生命周期与同级名称回归先在旧实现失败；设置、输入 DOM、匹配契约过期装配已修正；六个入口已正确运行真实 Electron，当前全量 257/0 | 核实其余断言和生产 IPC/持久化覆盖、继续消除随意等待/源码字符串自证、区分单元/真实后端/窗口验证、检查门禁新分支覆盖 |
+| 测试体系 | 生命周期/批量/同级名称回归在旧源码失败；过期装配已修正；六个入口真实 Electron；当前全量 258/0 | 核实其余断言和生产 IPC/持久化覆盖、继续消除随意等待/源码字符串自证、区分单元/真实后端/窗口验证、检查门禁新分支覆盖 |
 | UI/UX | 前两轮计划分栏有实际窗口证据；本轮正文错误归属修复 | 全入口、焦点、键盘、读屏、浅/深/磨砂、窄窗口、空/加载/错误/权限/断连、性能与隐藏页面行为；不能仅评估计划页 |
 | 可维护性与 AI 可读性 | 此记录包含参考路径、身份约束、故障证据和未覆盖范围；picker 的误导性复制文件头已纠正 | 入口/数据/生命周期图与实际依赖一致性、其余复制文件头、重复真相、隐式全局/魔法 key、生成规则、文档过期、合理模块边界与契约 |
 | 完成审计 | 未通过：上表仍有明确未覆盖范围 | 每个要求都需具体当前证据；不能用本轮修复或已有绿灯宣称全工程完成 |
