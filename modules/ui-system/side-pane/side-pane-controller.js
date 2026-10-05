@@ -212,6 +212,14 @@ export function createSidePaneController({
         text: connectionStatusEl.querySelector('.notifications-status-text')?.textContent.trim() || ''
     } : null);
 
+    // 新标签页的通知卡片还要带上待审批/错误数，直接读通知中心渲染好的筛选条计数
+    const notificationToolbarEl = doc.getElementById('notificationToolbar');
+    const readChipCount = (filter) => Number(notificationToolbarEl?.querySelector(`[data-filter="${filter}"] .notification-chip-count`)?.textContent.trim()) || 0;
+    const readLauncherStatus = () => {
+        const current = readConnectionStatus();
+        return current ? { ...current, pending: readChipCount('pending'), errors: readChipCount('error') } : null;
+    };
+
     if (tabListElement) {
         strip = createSidePaneTabStrip({
             tabListElement,
@@ -267,7 +275,7 @@ export function createSidePaneController({
     }
 
     function syncConnectionStatus() {
-        launcher.syncStatus(readConnectionStatus());
+        launcher.syncStatus(readLauncherStatus());
         strip?.syncStatus();
     }
 
@@ -277,10 +285,16 @@ export function createSidePaneController({
         cleanupListeners.push(() => statusObserver.disconnect());
     }
 
+    if (connectionStatusEl && notificationToolbarEl && typeof win.MutationObserver === 'function') {
+        const countObserver = new win.MutationObserver(() => launcher.syncStatus(readLauncherStatus()));
+        countObserver.observe(notificationToolbarEl, { childList: true, characterData: true, subtree: true });
+        cleanupListeners.push(() => countObserver.disconnect());
+    }
+
     function renderTabList() {
         persistSoon();
         strip?.render();
-        launcher.syncStatus(readConnectionStatus());
+        launcher.syncStatus(readLauncherStatus());
     }
 
     function syncViewPanels() {

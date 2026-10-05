@@ -143,3 +143,35 @@ html body .side-chat-messages-container .side-chat-message-editor .message-edit-
     min-width: 0;
     margin: 0;
 }
+
+/* 右键菜单：从指针那一角淡入放大，120ms。菜单每次新建，用一次性动画即可；
+   message-actions.js 在菜单翻到上方/左边时标上 data-open-up / data-open-left。 */
+#chatContextMenu[data-side-chat-menu="true"] {
+    transform-origin: top left;
+    animation: side-chat-menu-in 120ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#chatContextMenu[data-side-chat-menu="true"][data-open-up="true"] {
+    transform-origin: bottom left;
+}
+
+#chatContextMenu[data-side-chat-menu="true"][data-open-left="true"] {
+    transform-origin: top right;
+}
+
+#chatContextMenu[data-side-chat-menu="true"][data-open-up="true"][data-open-left="true"] {
+    transform-origin: bottom right;
+}
+
+@keyframes side-chat-menu-in {
+    from {
+        opacity: 0;
+        transform: scale(0.96);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #chatContextMenu[data-side-chat-menu="true"] {
+        animation: none;
+    }
+}

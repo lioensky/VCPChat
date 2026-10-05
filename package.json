@@ -26,6 +26,8 @@
     "start:rag-observer": "electron . --rag-observer-only",
     "build": "node rust_chat_data_service/build-runtime.js && node rust_voice_input_engine/build-runtime.js && node rust_projectforge_indexer/build-runtime.js",
     "build:pf-indexer": "node rust_projectforge_indexer/build-runtime.js",
+    "test:voice-input-parser": "cargo test --manifest-path rust_voice_input_engine/Cargo.toml --locked",
+    "test:voice-input": "npm run test:voice-input-parser && node --test tests/voice-input-engine.test.js",
     "test:pf-indexer": "cargo test --manifest-path rust_projectforge_indexer/Cargo.toml --locked",
     "check:pf-indexer:clippy": "cargo clippy --manifest-path rust_projectforge_indexer/Cargo.toml --locked --all-targets -- -D warnings",
     "check:uiux:artifacts": "node scripts/check-uiux-artifacts.mjs",

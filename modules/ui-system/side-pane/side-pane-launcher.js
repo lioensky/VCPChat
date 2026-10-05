@@ -41,6 +41,12 @@ export function createSidePaneLauncher({
     const recommendedGroup = find(toolsSection, '[data-launcher-group="recommended"]');
     const recommendedRow = find(recommendedGroup, '.side-pane-launcher-recommended-row');
     const recommendedAction = find(recommendedGroup, '.side-pane-launcher-group-action');
+    // 工具分类里的通知卡片：只有通知归在新标签页时才有意义，点它就是切到通知分类
+    const noticeGroup = notificationsSection ? find(toolsSection, '[data-launcher-group="notifications"]') : null;
+    const noticeCard = find(noticeGroup, '.side-pane-launcher-notice');
+    const noticeIcon = find(noticeCard, '.side-pane-launcher-notice-icon .vcp-ui-icon');
+    const noticeTitle = find(noticeCard, '.side-pane-launcher-notice-title');
+    const noticeMeta = find(noticeCard, '.side-pane-launcher-notice-meta');
 
     let profileProvider = null;
     let profileEdit = null;
@@ -165,7 +171,8 @@ export function createSidePaneLauncher({
         if (view) view.dataset.launcherSegment = shown;
         const hasEntries = availableEntries().length > 0;
         if (toolsGroup) toolsGroup.hidden = !hasEntries;
-        if (toolsSection) toolsSection.hidden = shown !== 'tools' || (!hasEntries && recommended.size === 0);
+        if (noticeGroup) noticeGroup.hidden = !noticeCard;
+        if (toolsSection) toolsSection.hidden = shown !== 'tools' || (!hasEntries && recommended.size === 0 && !noticeCard);
         if (appsSection) appsSection.hidden = shown !== 'apps';
         if (notificationsSection) notificationsSection.hidden = shown !== 'notifications';
     }
@@ -300,6 +307,40 @@ export function createSidePaneLauncher({
         cleanups.push(() => view.removeEventListener('click', onViewClick));
     }
 
+    if (noticeCard) {
+        const onNoticeClick = (e) => {
+            e.stopPropagation();
+            hideMenus();
+            showNotifications();
+        };
+        noticeCard.addEventListener('click', onNoticeClick);
+        cleanups.push(() => noticeCard.removeEventListener('click', onNoticeClick));
+    }
+
+    const NOTICE_TITLES = { open: 'VCPLog 已连接', connecting: 'VCPLog 连接中' };
+
+    // 卡片标题只说连没连上；没连上时把原因（未配置、断开码等）和待办数一起放在第二行
+    function renderNotice(current) {
+        if (!noticeCard) return;
+        const status = current.status || 'unknown';
+        noticeCard.dataset.status = status;
+        const title = NOTICE_TITLES[status] || 'VCPLog 未连接';
+        if (noticeTitle) noticeTitle.textContent = title;
+        if (noticeIcon) noticeIcon.textContent = status === 'open' || status === 'connecting' ? 'notifications' : 'notifications_off';
+        const detail = (current.text || '').replace(/^VCPLog\s*[:：]?\s*/i, '').trim();
+        const pending = Number(current.pending) || 0;
+        const errors = Number(current.errors) || 0;
+        const parts = [];
+        if (!NOTICE_TITLES[status] && detail) parts.push(detail);
+        if (pending > 0) parts.push(`${pending} 项待审批`);
+        if (errors > 0) parts.push(`${errors} 条错误`);
+        if (parts.length === 0) parts.push(status === 'open' ? '暂无待处理' : '点击查看通知');
+        const meta = parts.join(' · ');
+        if (noticeMeta) noticeMeta.textContent = meta;
+        noticeCard.dataset.attention = pending > 0 ? 'pending' : errors > 0 ? 'error' : '';
+        noticeCard.setAttribute('aria-label', `${title}，${meta}，打开通知`);
+    }
+
     if (addButton) {
         // 和浏览器一样，「+」打开新标签页；只登记了一个入口时直接打开它
         const onAddClick = (e) => {
@@ -353,7 +394,9 @@ export function createSidePaneLauncher({
         },
 
         syncStatus(current) {
-            if (!notificationsSegmentBtn || !current) return;
+            if (!current) return;
+            renderNotice(current);
+            if (!notificationsSegmentBtn) return;
             const segmentDot = notificationsSegmentBtn.querySelector('.side-pane-launcher-tab-status');
             if (segmentDot) segmentDot.dataset.status = current.status || 'unknown';
             const label = (current.text || '').replace(/:\s*/, ' ');

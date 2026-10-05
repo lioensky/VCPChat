@@ -1,0 +1,73 @@
+/* --- Side pane motion ---
+ * 侧栏里的弹层统一用一套进出场：淡入 + 从 96% 放大 + 朝触发点方向挪 2px，120ms。
+ * 和 ZCode 的 dropdown/popover（fade-in-0 zoom-in-95 slide-in-from-*-2）同一语法，
+ * 时长和曲线取自 tokens.css。
+ *
+ * 弹层仍然只靠 hidden 开关：@starting-style 给出场起点，display 用 allow-discrete
+ * 跟着过渡晚一步切到 none，所以收起时也能淡出，脚本不用等动画。
+ */
+
+html :is(.side-pane-tab-overview-popover, .side-pane-context-menu, .side-chat-model-popover):where(.vcp-ui-scope, .vcp-ui-scope *) {
+    transition:
+        opacity var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard),
+        transform var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard),
+        display var(--vcp-motion-duration-fast) allow-discrete;
+}
+
+/* 标签概览从左上角的按钮往下展开 */
+html .side-pane-tab-overview-popover:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    transform-origin: top left;
+}
+
+/* 标签右键菜单从指针处展开 */
+html .side-pane-context-menu:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    transform-origin: top left;
+}
+
+/* 侧聊模型选择在按钮上方、右对齐，往上展开 */
+html .side-chat-model-popover:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    transform-origin: bottom right;
+}
+
+html .side-pane-tab-overview-popover[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-pane-context-menu[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    opacity: 0;
+    transform: translateY(-2px) scale(0.96);
+    pointer-events: none;
+}
+
+html .side-chat-model-popover[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    opacity: 0;
+    transform: translateY(2px) scale(0.96);
+    pointer-events: none;
+}
+
+@starting-style {
+    html :is(.side-pane-tab-overview-popover, .side-pane-context-menu):not([hidden]):where(.vcp-ui-scope, .vcp-ui-scope *) {
+        opacity: 0;
+        transform: translateY(-2px) scale(0.96);
+    }
+
+    html .side-chat-model-popover:not([hidden]):where(.vcp-ui-scope, .vcp-ui-scope *) {
+        opacity: 0;
+        transform: translateY(2px) scale(0.96);
+    }
+}
+
+/* 减少动态效果：弹层直接出现，滑块直接到位，状态点不再呼吸，转圈的图标停住。
+ * 这个文件排在侧栏样式最后，选择器写到和原规则一样具体就能盖住。 */
+@media (prefers-reduced-motion: reduce) {
+    html :is(.side-pane-tab-overview-popover, .side-pane-context-menu, .side-chat-model-popover):where(.vcp-ui-scope, .vcp-ui-scope *),
+    html .side-pane-launcher-tabs:where(.vcp-ui-scope, .vcp-ui-scope *)::before,
+    html :is(.side-pane-launcher-tab, .side-pane-launcher-notice, .side-traj-chevron, .side-traj-switch, .side-git-chevron, .side-plan-crumb-caret):where(.vcp-ui-scope, .vcp-ui-scope *),
+    html .side-traj-switch:where(.vcp-ui-scope, .vcp-ui-scope *)::after,
+    html #floatingSelectionSideChatBtn.floating-selection-side-chat-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
+        transition: none;
+    }
+
+    html .side-pane-launcher-tab-status[data-status]:where(.vcp-ui-scope, .vcp-ui-scope *),
+    html .side-pane-launcher-notice[data-status] .side-pane-launcher-notice-dot:where(.vcp-ui-scope, .vcp-ui-scope *),
+    html :is(.side-traj-call.flash, .side-traj-pill .spin, .side-traj-icon-btn.loading .vcp-ui-icon, .side-traj-icon-btn.loading svg, .side-git-refresh-btn.spinning svg):where(.vcp-ui-scope, .vcp-ui-scope *) {
+        animation: none;
+    }
+}

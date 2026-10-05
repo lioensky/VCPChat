@@ -752,3 +752,29 @@ DSH ui-session status-controller.client.spec.ts 完整阅读：真实 catalog/st
 为避免并发提交导致全量验证无限重启，本轮先落独立、可回退的当前分支提交，再把这个提交固定为完整测试/全部检查/原生验证的最终对象；后续共享 HEAD 推进不改变这个验证对象。**该提交的最终验证在提交后执行，结果以聊天工作区 outputs/engineering-review/round-18/verification-summary.json 与 REVIEW.md 为准；提交时尚未宣称最终全量通过。** 不推送、不拆 PR。
 
 R42 实现完成。整体审查 ACTIVE / INCOMPLETE：R43 native common-key/HOOK_KEY_PRESSED 的输入来源仍待诊断，persona 缓存/计时器、共享业务基线语义、关闭/生产 API 覆盖与 Rust/发布/UIUX 仍有待办。不会把通过的复跑当作 R43 已诊断。
+
+## 第十九轮：隔离语音快捷键的解析测试与真实全局钩子（R43）
+
+已完成的计划 banner、分栏与导航保持完成状态，不因上下文压缩再次设计或实现；本轮不修改产品 UI。R40/R41/R42 也保持完成。
+
+### 已确认的测试边界问题
+
+第十七轮真实日志中，common single keys 用例收到“请先松开当前语音快捷键，再更改配置”。那次输入来源仍然未知，不归因于用户、其他测试或某个原生竞态；后来的通过也不是诊断。源码能独立确认：旧用例在真实 sidecar 上顺序注册 21 个键，包括 A、空格、回车、退格等；WH_KEYBOARD_LL 对配置键的真实按下/释放更新 HOOK_KEY_PRESSED 并吞掉输入，configure_hotkey 在按住时拒绝更改。因此，这个主要检查字符串到 VK 映射的用例会临时接管桌面普通输入。该测试耦合不需要修改正确的运行时保护来解决。
+
+Rust 已有四个纯函数测试，覆盖 F1–F24、字母/数字、常用命名键、标点、数字键盘、别名，以及非法组合键/修饰键、模式和窗口句柄。Cargo test harness 不执行应用 main，也不安装键盘钩子。新增 test:voice-input-parser 命令明确运行这些已有测试；test:voice-input 聚合 Rust 单测和 Node 集成。原生用例使用 F24 检查真实 configure IPC、VK 与原快捷键返回值，拒绝七种非法输入后再 ping，确认 sidecar 继续响应且模式、按键/焦点状态未被错误请求改变。真实启动/关闭和 local_hold 等既有用例保留，没有跳过或合成释放键。
+
+### 参考实现的职责分界
+
+DSH shortcuts/binding.ts 将 physical code、修饰键、canonical binding 与展示分开；web admission policy 也独立，不能把合法 binding 等同于 OS 必然送达。native.ts 是结构化桌面输入到真实 registry 的薄适配层：核对配置 revision、当前 focus/iframe marker/frameName，保留 unsubscribe。native.client.spec.ts 在 keyboard.subscribe 入口受控投递，断言 dispatch 次数、焦点上下文、revision/repeat、dispose 和 iframe 身份；没有为了验证解析而抢占宿主的普通键。
+
+ZCode keyboardShortcuts.ts 把平台主修饰键、匹配和展示放在独立函数；useAppKeyboard.ts 将 capture listener、最新 handler ref、repeat/composition/recording 与可编辑区域策略集中在接入层，无 handler 不吞输入，销毁时退订。bindings.ts 的已读部分把 parsing/matching/recording 分开，明确区分录制时 physical code 与正常匹配时的 IME 过滤；序列化前再次拒绝被平台归一丢失的主修饰键，避免意外产出裸字符绑定。这些边界帮助决定测试层次，不把它们的 chord/DOM/IME 语义移植到我们的全局单键 hold 协议。
+
+上述参考仓库只读，未运行其测试。逐文件 SHA 与确切阅读范围保存于聊天工作区 work/audit-round-19/reference-sources.json；bindings.ts 后续 sections 未宣称完整阅读。
+
+### 验证与限制
+
+提交前新聚合命令 **Rust 4/4 + Node/native 12/12** 通过；改变的是两个测试命令和一个既有测试，未新建重复案例。生产 Rust、adapter、部署二进制未修改，哈希已记录。保留文件原本的 LF；未刷新共享业务摘要、扩大白名单或触碰计划样式。实际窗口只读核对，不能把截图作为键盘运行时行为的证明。
+
+本轮先提交可回退的独立变更，再在该提交的固定本地快照运行完整测试与全部检查。**提交时最终全量尚待执行；最终结果以聊天工作区 outputs/engineering-review/round-19/verification-summary.json 和 FINAL-VALIDATION.md 为准。** 后续其他任务的共享分支更新不改变本轮验证对象，不因此重复已完成工作。不推送、不建 PR。
+
+R43 的测试隔离已实现；历史输入来源和任何独立原生运行时问题仍未诊断。当前测试证明源代码的解析与部署 sidecar 的 F24 配置/错误恢复边界，不证明部署二进制的每个别名或实际物理按下/释放事件。整个语音测试中仍有源码字符串断言，不能把本轮称为完整的有效行为覆盖。整体审查 ACTIVE / INCOMPLETE，persona 生命周期、共享业务基线、资源关闭/生产 API、发布与其他工程项仍待推进。

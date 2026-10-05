@@ -222,8 +222,15 @@ export function createSideChatMessageActions({
         const viewHeight = win?.innerHeight || 0;
         let top = event.clientY;
         let left = event.clientX;
-        if (top + height > viewHeight) top = Math.max(5, event.clientY - height);
-        if (left + width > viewWidth) left = Math.max(5, event.clientX - width);
+        // 放不下就翻到指针上方/左边，展开动画也从指针那一角开始
+        if (top + height > viewHeight) {
+            top = Math.max(5, event.clientY - height);
+            menu.dataset.openUp = 'true';
+        }
+        if (left + width > viewWidth) {
+            left = Math.max(5, event.clientX - width);
+            menu.dataset.openLeft = 'true';
+        }
         menu.style.top = `${top}px`;
         menu.style.left = `${left}px`;
         menu.style.visibility = 'visible';

@@ -57,6 +57,7 @@
     <link rel="stylesheet" href="styles/ui-system/status-panel.css">
     <link rel="stylesheet" href="styles/ui-system/message-file-changes.css">
     <link rel="stylesheet" href="styles/ui-system/side-pane-side-chat-extras.css">
+    <link rel="stylesheet" href="styles/ui-system/side-pane-motion.css">
     <link rel="stylesheet" href="styles/ui-system/notification-center-status.css">
     <link rel="stylesheet" href="styles/ui-system/notification-center-list.css">
     <link rel="stylesheet" href="styles/ui-system/notification-center-cards.css">
@@ -599,6 +600,20 @@
                                 <div class="side-pane-launcher-group" data-launcher-group="tools">
                                     <h3 class="side-pane-launcher-group-title">工具</h3>
                                     <div class="side-pane-open-tab-list"></div>
+                                </div>
+                                <div class="side-pane-launcher-group" data-launcher-group="notifications" hidden>
+                                    <h3 class="side-pane-launcher-group-title">通知</h3>
+                                    <button type="button" class="side-pane-launcher-notice" data-status="unknown">
+                                        <span class="side-pane-launcher-notice-icon" aria-hidden="true">
+                                            <span class="vcp-ui-icon">notifications</span>
+                                            <span class="side-pane-launcher-notice-dot"></span>
+                                        </span>
+                                        <span class="side-pane-launcher-notice-body">
+                                            <span class="side-pane-launcher-notice-title">VCPLog 未连接</span>
+                                            <span class="side-pane-launcher-notice-meta">暂无待处理</span>
+                                        </span>
+                                        <span class="vcp-ui-icon side-pane-launcher-notice-chevron" aria-hidden="true">chevron_right</span>
+                                    </button>
                                 </div>
                                 <div class="side-pane-launcher-group" data-launcher-group="recommended" hidden>
                                     <div class="side-pane-launcher-group-header">
