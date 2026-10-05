@@ -126,5 +126,52 @@
     "snapshot": "docs/contracts/snapshots/chat-stream-discarded.json",
     "sourceEntry": "scripts/test-chat-transcript-snapshot.mjs",
     "evidence": ["npm run test:chat-transcript-snapshot"]
+  },
+  {
+    "id": "preload.registry.channel-adapters",
+    "kind": "event",
+    "owner": "preloads/core/define.js",
+    "status": "manual_required",
+    "dynamic": true,
+    "dynamicSites": [
+      {
+        "file": "preloads/core/define.js",
+        "line": 65,
+        "kind": "event-send"
+      },
+      {
+        "file": "preloads/core/define.js",
+        "line": 72,
+        "kind": "event-send"
+      },
+      {
+        "file": "preloads/core/define.js",
+        "line": 80,
+        "kind": "event-listener"
+      }
+    ],
+    "producer": [
+      "preloads/core/define.js"
+    ],
+    "consumers": [
+      "preloads/core/expose.js",
+      "preloads/api/chat.js",
+      "preloads/api/projectForge.js",
+      "preloads/api/dice.js",
+      "preloads/api/voice.js"
+    ],
+    "mode": "command",
+    "durable": false,
+    "terminal": {
+      "single": false,
+      "late": "caller-owned subscriptions; unsubscribe removes only its own listener"
+    },
+    "sourceEntry": "tests/preload-registry.test.js",
+    "evidence": [
+      "node --test tests/preload-registry.test.js: real registry entries built with controlled IPC; query/command argument forwarding and subscription payload shapes/cleanup",
+      "node --test tests/chat-event-graph.test.mjs: declaration evidence for all 434 static registry channels",
+      "Electron role exposure and all main-process delivery paths still require separate integration evidence"
+    ],
+    "retirement": "remove this wrapper contract if core/define adapters are retired or their dynamic call sites move; review callers and operation kind before updating sites"
   }
 ]

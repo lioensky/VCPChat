@@ -224,3 +224,121 @@ test('every real preload channel has a source declaration in its own API domain'
         && event.evidence.some(site => site.file === 'preloads/api/' + api.domain + '.js' && site.kind === 'preload-channel-definition')));
     assert.deepEqual(missing.map(api => ({ name: api.name, channel: api.channel, domain: api.domain })), []);
 });
+
+
+test('conditional channel aliases and concatenation inventory every finite source branch', () => {
+    const f = fixture({ 'modules/finite.js': "function route(embedded) { const choice = embedded ? 'child' : 'host'; const channel = 'vcp:' + choice; ipcRenderer.send(channel); window.addEventListener(channel, listener); }" });
+    try {
+        const g = f.graph();
+        assert.deepEqual(g.events.map(event => event.name), ['vcp:child', 'vcp:host']);
+        assert.ok(g.events.every(event => event.producers.length === 1 && event.consumers.length === 1));
+        assert.deepEqual(g.undiscovered, []);
+    } finally { f.close(); }
+});
+
+test('a known conditional branch cannot conceal its unresolved sibling', () => {
+    const f = fixture({ 'modules/partial.js': "function route(channel) { ipcRenderer.send(flag ? 'known-close' : channel); }" });
+    try {
+        const g = f.graph();
+        assert.deepEqual(g.events.map(event => event.name), ['known-close']);
+        assert.equal(g.undiscovered.length, 1);
+        assert.match(g.undiscovered[0].reason, /channel/);
+    } finally { f.close(); }
+});
+
+test('large finite branch products retain evidence while remaining explicitly incomplete', () => {
+    const expression = Array.from({ length: 7 }, (_, i) => "(flag" + i + " ? 'a' : 'b')").join(' + ');
+    const f = fixture({ 'modules/product.js': 'ipcRenderer.invoke(' + expression + ');' });
+    try {
+        const g = f.graph();
+        assert.ok(g.events.length > 0 && g.events.length < 128);
+        assert.ok(g.events.every(event => /^[ab]{7}$/.test(event.name)));
+        assert.equal(g.undiscovered.length, 1, 'bounded analysis must not certify exhaustive coverage');
+    } finally { f.close(); }
+});
+
+test('both actual closeWindow runtime channels have a source producer without changing the window', async () => {
+    const { createRequire } = await import('node:module');
+    const entry = createRequire(import.meta.url)('../preloads/core/registry.js').loadRegistry().get('closeWindow').entry;
+    const sent = [];
+    for (const isEmbeddedSurface of [false, true]) entry.build({ isEmbeddedSurface, ipcRenderer: { send: channel => sent.push(channel) } })();
+    assert.deepEqual(sent, ['close-window', 'embedded-vchat-app:request-close']);
+    const g = buildChatEventGraph();
+    for (const name of sent) assert.ok(g.events.find(event => event.name === name)?.producers.some(site => site.file === 'preloads/api/window.js' && site.kind === 'event-send'));
+    assert.ok(!g.undiscovered.some(site => site.file === 'preloads/api/window.js'));
+});
+
+test('local IPC wrappers connect the caller channel through its parameter position and alias', () => {
+    const f = fixture({ 'preloads/local.js': `const { ipcRenderer: ipc } = require('electron');
+function listen(callback, channel) { ipc.on(channel, callback); }
+const query = (payload, channel) => ipc.invoke(channel, payload);
+const alias = listen;
+alias(handler, 'chart:changed'); query(payload, 'loom:get-app');` });
+    try {
+        const g = f.graph();
+        assert.ok(g.events.find(event => event.name === 'chart:changed')?.consumers.some(site => site.line === 5));
+        assert.ok(g.events.find(event => event.name === 'loom:get-app')?.producers.some(site => site.line === 5));
+    } finally { f.close(); }
+});
+
+test('wrapper discovery rejects unrelated, shadowed, rebound and deferred protocol helpers', () => {
+    const f = fixture({ 'preloads/shadowed.js': `const { ipcRenderer } = require('electron');
+function subscribe(channel, callback) { ipcRenderer.on(channel, callback); }
+function unrelated() { return 'value'; } unrelated('chart:unrelated');
+function scoped(subscribe) { subscribe('chart:shadowed', handler); }
+let changed = subscribe; changed = unrelated; changed('chart:rebound');
+function deferred(channel) { return () => ipcRenderer.on(channel, handler); } deferred('chart:deferred');
+function rewritten(channel) { channel = 'chart:replacement'; ipcRenderer.on(channel, handler); } rewritten('chart:rewritten');
+function fakeReceiver(ipcRenderer, channel) { ipcRenderer.on(channel, handler); } fakeReceiver({}, 'chart:fake');
+function nested(channel) { function dead() { ipcRenderer.on(channel, handler); } } nested('chart:dead');
+subscribe(dynamicChannel, handler);` });
+    try {
+        const g = f.graph();
+        for (const name of ['unrelated', 'shadowed', 'rebound', 'deferred', 'rewritten', 'fake', 'dead']) {
+            assert.ok(!g.events.some(event => event.name === 'chart:' + name), name);
+        }
+        assert.ok(g.undiscovered.some(site => site.line === 10 && /dynamicChannel/.test(site.reason)));
+    } finally { f.close(); }
+});
+
+test('actual dedicated preload wrappers retain their own source endpoints', () => {
+    const g = buildChatEventGraph();
+    for (const [file, name, role] of [
+        ['preloads/chart.js', 'chart:changed', 'consumers'],
+        ['preloads/chart.js', 'chart:select', 'consumers'],
+        ['preloads/docx.js', 'docx:open-path-request', 'consumers'],
+        ['preloads/loom.js', 'loom:registry-changed', 'consumers'],
+        ['preloads/loom.js', 'loom:get-app', 'producers'],
+    ]) assert.ok(g.events.find(event => event.name === name)?.[role].some(site => site.file === file), file + ': ' + name);
+});
+
+test('wrapper protocol origin must be Electron and survive lexical shadowing and mutation', () => {
+    const f = fixture({ 'modules/origins.js': `import { ipcRenderer as wire } from 'electron';
+function valid(channel) { wire.send(channel); } valid('chart:valid');
+{ const { ipcRenderer } = require('other'); function unrelated(channel) { ipcRenderer.send(channel); } unrelated('chart:other-module'); }
+function factory(require) { const { ipcRenderer } = require('electron'); function fake(channel) { ipcRenderer.send(channel); } fake('chart:fake-require'); }
+{ const { ipcRenderer } = require('electron'); ipcRenderer = replacement; function changed(channel) { ipcRenderer.send(channel); } changed('chart:changed-receiver'); }
+function shadowed(channel) { { const channel = 'chart:local'; wire.send(channel); } } shadowed('chart:outer');
+const cycleA = cycleB; const cycleB = cycleA; cycleA('chart:cycle');` });
+    try {
+        const g = f.graph();
+        assert.ok(g.events.find(event => event.name === 'chart:valid')?.producers.some(site => site.line === 2));
+        for (const name of ['other-module', 'fake-require', 'changed-receiver', 'outer', 'cycle']) {
+            assert.ok(!g.events.some(event => event.name === 'chart:' + name), name);
+        }
+    } finally { f.close(); }
+});
+
+test('wrapper finite and missing call arguments preserve partial evidence without retiring its implementation site', () => {
+    const file = 'preloads/partial-wrapper.js';
+    const f = fixture({ [file]: `const { ipcRenderer } = require('electron');
+function query(channel) { return ipcRenderer.invoke(channel); }
+query(flag ? 'loom:known' : runtimeValue);
+query();` });
+    try {
+        const g = f.graph();
+        assert.ok(g.events.find(event => event.name === 'loom:known')?.producers.some(site => site.line === 3));
+        assert.deepEqual(g.undiscovered.map(site => site.line), [2, 3, 4]);
+        assert.match(g.undiscovered[2].reason, /<missing>/);
+    } finally { f.close(); }
+});

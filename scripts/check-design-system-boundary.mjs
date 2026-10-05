@@ -267,6 +267,13 @@ const allowedSourceDifferences = new Set([
     // Reviewed AST event inventory helper; source facts and unresolved sites,
     // without invoking renderer/IPC endpoints or exempting dynamic contracts.
     'scripts/chat-event-source.mjs',
+    // Reviewed real preload entries: argument/payload forwarding and
+    // independent subscription teardown with controlled IPC endpoints.
+    'tests/preload-registry.test.js',
+    // Reviewed isolated Electron integration: dedicated preload exposure,
+    // actual IPC payload/argument forwarding and per-subscription cleanup.
+    'scripts/test-dedicated-preload-electron.mjs',
+    'tests/helpers/dedicated-preload-electron.cjs',
     'scripts/check-classic-parity.mjs',
     'scripts/check-classic-retirement-boundary.mjs',
     'scripts/check-next-delta-contract.mjs',

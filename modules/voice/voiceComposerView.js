@@ -30,8 +30,31 @@ function createVoiceIcon(name, size) {
     return span;
 }
 
+// 麦克风保留原先的细线手绘图形，Lucide 的 mic 偏粗
 function createMicrophoneSvg(size = 18) {
-    return createVoiceIcon('mic', size);
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', String(size));
+    svg.setAttribute('height', String(size));
+    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '1');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    svg.setAttribute('aria-hidden', 'true');
+
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('x', '5');
+    rect.setAttribute('y', '1.5');
+    rect.setAttribute('width', '6');
+    rect.setAttribute('height', '9');
+    rect.setAttribute('rx', '3');
+
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', 'M2.35 8.675C3.075 11.3 5.2 13.125 8 13.125C10.8 13.125 12.925 11.3 13.65 8.675M8 13.125V15');
+
+    svg.append(rect, path);
+    return svg;
 }
 
 function createCloseSvg(size = 14) {
@@ -108,7 +131,7 @@ html .vcp-ui-scope .chat-input-actions #mainVoiceInputBtn + :is(#sendMessageBtn,
     height: 18px;
     fill: none;
     stroke: currentColor;
-    stroke-width: 2;
+    stroke-width: 1;
     stroke-linecap: round;
     stroke-linejoin: round;
     transition: transform 0.2s ease;
