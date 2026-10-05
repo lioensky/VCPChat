@@ -111,7 +111,8 @@ test('a topic tab shows only the topic\'s batches, its stats, the project switch
     // b99 不在这个工程的时间线范围内，不去查
     assert.deepEqual(calls.getBatch, [['p1', 2]]);
     assert.deepEqual([...view.querySelectorAll('.side-plan-batch')].map(li => li.dataset.batchId), ['2']);
-    assert.match(view.querySelector('.side-plan-stats').textContent, /本话题.*1 批.*2 次改动.*2 个文件/);
+    assert.match(view.querySelector('.side-plan-stats').textContent, /1 批.*2 次改动.*2 个文件/);
+    assert.equal(view.querySelector('.side-plan-context').textContent, '本话题', 'the scope lives in the breadcrumb, not the stats row');
     assert.match(view.querySelector('[data-plan-section="timeline"] .side-plan-section-meta').textContent, /本话题 1 批/);
     assert.equal(view.querySelector('.side-plan-crumbs').getAttribute('aria-haspopup'), 'listbox');
     assert.match(view.querySelector('.side-plan-other-hint').textContent, /还有 1 批来自其他话题/);

@@ -48,6 +48,15 @@ export function createPlanPageNavigation({ h, button, id, onChange }) {
             page.content.filter(Boolean).forEach(node => panel.appendChild(node));
             panels.appendChild(panel);
         });
+        // 窄面板里页签横向滑动；每次重画都从头开始，所以把选中的页签滑进可见范围
+        const current = tabs.querySelector('[aria-selected="true"]');
+        tabs.ownerDocument.defaultView?.requestAnimationFrame?.(() => {
+            if (!current || !tabs.isConnected || tabs.scrollWidth <= tabs.clientWidth) return;
+            const strip = tabs.getBoundingClientRect();
+            const box = current.getBoundingClientRect();
+            if (box.left < strip.left) tabs.scrollLeft -= strip.left - box.left;
+            else if (box.right > strip.right) tabs.scrollLeft += box.right - strip.right;
+        });
         return { tabs, panels };
     }
     return { render, select, pageForFocus, get selected() { return selected; },

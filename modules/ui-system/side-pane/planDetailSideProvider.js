@@ -239,6 +239,7 @@ export function createPlanDetailSideProvider({
             const expanded = new Set();
             const batchCache = new Map(); // `${projectId}:${batchId}` → { batch, nodes } | null（不在这个工程）
             let filters = { ...EMPTY_FILTERS };
+            let filtersOpen = false; // 「筛选」里的文件、内容、人员、操作是否展开
             let filterRows = null;
             let filterError = '';
             let filterSeq = 0;
@@ -446,19 +447,24 @@ export function createPlanDetailSideProvider({
                 return summary;
             }
 
+            // 一行放下：「本话题」已在上面的路径里，时间靠右、最先被挤成省略号
             function renderStats() {
                 const { project } = model;
                 const stats = h('div', 'side-plan-stats');
+                const lastAt = (iso) => {
+                    const el = h('span', 'side-plan-stats-time', when(iso));
+                    el.title = `最近施工 ${when(iso)}`;
+                    return el;
+                };
                 if (activity) {
                     const s = activity.stats;
                     stats.append(
-                        h('span', 'side-plan-stats-scope', '本话题'),
                         h('span', '', `${s.batchCount} 批`),
                         h('span', '', `${s.nodeCount} 次改动`),
                         h('span', '', `${s.fileCount} 个文件`),
                         diffStat(s.added, s.removed)
                     );
-                    if (s.lastAt) stats.appendChild(h('span', '', `最近 ${when(s.lastAt)}`));
+                    if (s.lastAt) stats.appendChild(lastAt(s.lastAt));
                 } else {
                     const s = project.stats || {};
                     stats.append(
@@ -466,7 +472,7 @@ export function createPlanDetailSideProvider({
                         h('span', '', `${s.fileCount || 0} 个文件`),
                         diffStat(s.added, s.removed)
                     );
-                    if (s.lastAt) stats.appendChild(h('span', '', `最近 ${when(s.lastAt)}`));
+                    if (s.lastAt) stats.appendChild(lastAt(s.lastAt));
                 }
                 return stats;
             }
@@ -512,10 +518,11 @@ export function createPlanDetailSideProvider({
                 return row;
             }
 
+            // 照 ZCode / DSH 的列表工具条：一行搜索，其余条件收进「筛选」按钮
             function renderFilterBar() {
                 const bar = h('div', 'side-plan-filters');
-                const input = (key, placeholder) => {
-                    const el = h('input', 'side-plan-input');
+                const input = (key, placeholder, className = 'side-plan-input') => {
+                    const el = h('input', className);
                     el.type = 'search';
                     el.placeholder = placeholder;
                     el.setAttribute('aria-label', placeholder);
@@ -551,18 +558,33 @@ export function createPlanDetailSideProvider({
                 };
                 const people = (activity ? activity.contributors : model.contributors).filter(c => c.maid).map(c => [c.maid, `@${c.maid}`]);
                 if (filters.maid && !people.some(([value]) => value === filters.maid)) people.unshift([filters.maid, `@${filters.maid}`]);
-                bar.append(
-                    input('keyword', '关键词（原因、摘要、路径）'),
-                    input('file', '文件'),
+
+                const row = h('div', 'side-plan-filter-row');
+                const search = h('label', 'side-plan-search');
+                search.append(icon('search'), input('keyword', '搜索原因、摘要、路径', 'side-plan-search-input'));
+                const advancedCount = [filters.exactFile || filters.file, filters.content, filters.maid, filters.op].filter(Boolean).length;
+                const open = filtersOpen || advancedCount > 0;
+                const toggle = button(`side-plan-filter-toggle${advancedCount ? ' is-active' : ''}`, null, '筛选');
+                toggle.setAttribute('aria-expanded', String(open));
+                toggle.appendChild(icon('filter_list'));
+                if (advancedCount) toggle.appendChild(h('span', 'side-plan-filter-count', String(advancedCount)));
+                toggle.addEventListener('click', () => { filtersOpen = !open; render(); });
+                row.append(search, toggle);
+                if (hasFilters(filters)) {
+                    const clear = button('side-plan-filter-clear', '清除', '清除筛选');
+                    clear.addEventListener('click', () => { filters = { ...EMPTY_FILTERS }; filtersOpen = false; runSearch(); });
+                    row.appendChild(clear);
+                }
+
+                const more = h('div', 'side-plan-filter-more');
+                more.hidden = !open;
+                more.append(
+                    input('file', '文件路径'),
                     input('content', '改动后内容包含'),
                     select('maid', '全部人员', people),
                     select('op', '全部操作', Object.entries(OP_LABEL))
                 );
-                if (hasFilters(filters)) {
-                    const clear = button('zc-btn zc-btn-ghost zc-btn-sm side-plan-filter-clear', '清除筛选');
-                    clear.addEventListener('click', () => { filters = { ...EMPTY_FILTERS }; runSearch(); });
-                    bar.appendChild(clear);
-                }
+                bar.append(row, more);
                 return bar;
             }
 

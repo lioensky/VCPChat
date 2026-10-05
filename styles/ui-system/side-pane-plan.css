@@ -177,13 +177,17 @@ html .side-plan-done:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-suc
 html .side-plan-chrome:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 0 0 auto; }
 html .side-plan-chrome[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *),
 html .side-plan-page[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }
-html .side-plan-pages:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; gap: 4px; margin: 4px 14px 0; border-bottom: 1px solid var(--side-plan-rule); }
-html .side-plan-page-tab:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 1 1 0; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 4px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--zc-fg-subtle); font: inherit; font-size: calc(var(--vcp-ui-font-size) - 2px); cursor: pointer; }
+html .side-plan-pages:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; gap: 4px; margin: 4px 14px 0; border-bottom: 1px solid var(--side-plan-rule); overflow-x: auto; scrollbar-width: none; container-type: inline-size; }
+html .side-plan-page-tab:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 1 0 auto; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 6px; white-space: nowrap; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--zc-fg-subtle); font: inherit; font-size: calc(var(--vcp-ui-font-size) - 2px); cursor: pointer; }
 html .side-plan-page-tab:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-fg); background: var(--side-plan-hover); }
 html .side-plan-page-tab[aria-selected="true"]:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-fg); border-bottom-color: var(--zc-fg); font-weight: 600; }
 html .side-plan-page-count:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-fg-subtle); font-size: calc(var(--vcp-ui-font-size) - 3px); font-weight: 400; font-variant-numeric: tabular-nums; }
+/* 窄的时候页签只留名字不换行，再窄就横向滑动 */
+@container (max-width: 360px) { html .side-plan-page-count:where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; } }
 html .side-plan-page:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; gap: 14px; }
 html .side-plan-page[data-plan-page-panel="plan"] > .side-plan-section > .side-plan-section-title:where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }
+/* 施工线页本身就是时间线，批数已在上面的统计里，不再重复一条可折叠标题 */
+html .side-plan-page[data-plan-page-panel="timeline"] > .side-plan-section[data-plan-section="timeline"] > .side-plan-section-title:where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }
 html .side-plan-project-details:where(.vcp-ui-scope, .vcp-ui-scope *) { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px 16px; margin: 6px; font-size: calc(var(--vcp-ui-font-size) - 2px); line-height: 1.5; }
 html .side-plan-project-details dt:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-fg-subtle); }
 html .side-plan-project-details dd:where(.vcp-ui-scope, .vcp-ui-scope *) { margin: 0; color: var(--zc-fg); overflow-wrap: anywhere; }
@@ -268,26 +272,89 @@ html .side-plan-contributor-batches:where(.vcp-ui-scope, .vcp-ui-scope *) { colo
 
 /* ---- header: project switch and topic stats ---- */
 html .side-plan-select option:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--zc-popover); color: var(--zc-fg); }
-html .side-plan-stats:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); font-variant-numeric: tabular-nums; }
-html .side-plan-stats-scope:where(.vcp-ui-scope, .vcp-ui-scope *) { padding: 0 6px; border-radius: 999px; background: var(--side-plan-surface); color: var(--zc-fg); }
+html .side-plan-stats:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; min-width: 0; overflow: hidden; white-space: nowrap; font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); font-variant-numeric: tabular-nums; }
+html .side-plan-stats > *:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: none; }
+html .side-plan-stats > .side-plan-stats-time:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 0 1 auto; min-width: 0; margin-left: auto; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---- history: filters, expanded batches and node rows ---- */
 html .side-plan-history:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; gap: 8px; }
-html .side-plan-filters:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-wrap: wrap; gap: 6px; }
+/* 照 ZCode / DSH 的列表工具条：一行搜索 + 「筛选」图标按钮，其余条件展开后两列排 */
+html .side-plan-filters:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; gap: 6px; }
+html .side-plan-filter-row:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; align-items: center; gap: 4px; }
+html .side-plan-search:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 8px;
+    box-sizing: border-box;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: var(--side-plan-surface);
+    color: var(--vcp-ui-text-2, var(--zc-fg-subtle));
+    cursor: text;
+    transition: border-color 120ms ease, background-color 120ms ease;
+}
+html .side-plan-search:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { border-color: var(--side-plan-card-border); }
+html .side-plan-search:focus-within:where(.vcp-ui-scope, .vcp-ui-scope *) { border-color: var(--zc-border-strong); background: transparent; }
+html .side-plan-search > .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *) { --vcp-ui-icon-size: 14px; flex: none; opacity: 0.8; }
+html .side-plan-search-input:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--zc-fg);
+    font: inherit;
+    font-size: calc(var(--vcp-ui-font-size) - 2px);
+}
+html .side-plan-search-input:where(.vcp-ui-scope, .vcp-ui-scope *)::placeholder { color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); }
+html .side-plan-filter-toggle:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-plan-filter-clear:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    height: 28px;
+    min-width: 28px;
+    padding: 0 6px;
+    box-sizing: border-box;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--vcp-ui-text-2, var(--zc-fg-subtle));
+    font: inherit;
+    font-size: calc(var(--vcp-ui-font-size) - 2px);
+    cursor: pointer;
+}
+html .side-plan-filter-toggle > .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *) { --vcp-ui-icon-size: 14px; }
+html .side-plan-filter-toggle:hover:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-plan-filter-clear:hover:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-plan-filter-toggle[aria-expanded="true"]:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--side-plan-hover); color: var(--zc-fg); }
+html .side-plan-filter-toggle.is-active:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-fg); }
+html .side-plan-filter-count:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 3px); font-variant-numeric: tabular-nums; }
+html .side-plan-filter-more:where(.vcp-ui-scope, .vcp-ui-scope *) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+html .side-plan-filter-more[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }
 html .side-plan-input:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-select:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    flex: 1 1 140px;
     min-width: 0;
     height: 28px;
     padding: 0 8px;
     box-sizing: border-box;
-    border: 1px solid var(--side-plan-card-border);
-    border-radius: 6px;
+    border: 1px solid transparent;
+    border-radius: 8px;
     background: var(--side-plan-surface);
     color: var(--zc-fg);
     font: inherit;
     font-size: calc(var(--vcp-ui-font-size) - 2px);
 }
-html .side-plan-select:where(.vcp-ui-scope, .vcp-ui-scope *) { flex-basis: 100px; }
+html .side-plan-input:where(.vcp-ui-scope, .vcp-ui-scope *)::placeholder { color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); }
+html .side-plan-input:hover:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-select:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { border-color: var(--side-plan-card-border); }
+html .side-plan-input:focus:where(.vcp-ui-scope, .vcp-ui-scope *) { outline: 0; border-color: var(--zc-border-strong); background: transparent; }
 html .side-plan-input:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-select:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *) { outline: 1px solid var(--zc-border-strong); outline-offset: 0; }
 html .side-plan-filter-results:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; gap: 6px; }
 html .side-plan-node-list:where(.vcp-ui-scope, .vcp-ui-scope *) { list-style: none; margin: 0 0 0 26px; padding: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -344,6 +411,7 @@ html .side-plan-revert:where(.vcp-ui-scope, .vcp-ui-scope *) {
 }
 html .side-plan-revert-title:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 2px); font-weight: 600; color: var(--vcp-ui-text-1, var(--zc-fg-subtle)); }
 html .side-plan-revert-fields:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-revert-actions:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-wrap: wrap; gap: 6px; }
+html .side-plan-revert-fields > .side-plan-input:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 1 1 140px; }
 html .side-plan-revert-confirm:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; gap: 6px; padding-top: 8px; border-top: 1px solid var(--side-plan-card-border); font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--vcp-ui-text-0, var(--zc-fg)); overflow-wrap: anywhere; }
 html .side-plan-revert-confirm[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }
 html .side-plan-revert-label:where(.vcp-ui-scope, .vcp-ui-scope *) { font-weight: 600; }
