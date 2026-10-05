@@ -211,11 +211,16 @@ export function createSidePaneTabOverview({
         hide();
         button?.focus?.();
     };
+    // 点进浏览器标签的 webview 或别的窗口时主页面只会失焦
+    const win = doc.defaultView;
+    const onWindowBlur = () => { if (isOpen()) hide(); };
     doc.addEventListener('pointerdown', onDocPointerDown, true);
     doc.addEventListener('keydown', onDocKeydown);
+    win?.addEventListener('blur', onWindowBlur);
     cleanups.push(() => {
         doc.removeEventListener('pointerdown', onDocPointerDown, true);
         doc.removeEventListener('keydown', onDocKeydown);
+        win?.removeEventListener('blur', onWindowBlur);
     });
 
     return Object.freeze({

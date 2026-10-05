@@ -69,8 +69,14 @@ export function createStatusPanelFloating({
             const onDown = event => {
                 if (!node.contains(event.target) && !anchor.contains(event.target)) closePopover(entry);
             };
+            // 点进侧栏浏览器的 webview 或别的窗口时只会失焦
+            const onBlur = () => closePopover(entry);
             doc.addEventListener('mousedown', onDown, true);
-            entry.cleanup = () => doc.removeEventListener('mousedown', onDown, true);
+            win.addEventListener('blur', onBlur);
+            entry.cleanup = () => {
+                doc.removeEventListener('mousedown', onDown, true);
+                win.removeEventListener('blur', onBlur);
+            };
         }
         return entry;
     }

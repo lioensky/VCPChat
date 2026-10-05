@@ -854,11 +854,15 @@ html .vcp-ui-scope .chat-input-actions.vcp-voice-expanded > :not(#vcpVoiceActivi
         this.micMenu = menu;
         const onDown = event => { if (!menu.contains(event.target)) this.closeMicMenu(); };
         const onKey = event => { if (event.key === 'Escape') { this.closeMicMenu(); event.stopPropagation(); } };
+        // 点进侧栏浏览器的 webview 或别的窗口时只会失焦
+        const onBlur = () => this.closeMicMenu();
         document.addEventListener('mousedown', onDown, true);
         document.addEventListener('keydown', onKey, true);
+        window.addEventListener('blur', onBlur);
         this.micMenuCleanup = () => {
             document.removeEventListener('mousedown', onDown, true);
             document.removeEventListener('keydown', onKey, true);
+            window.removeEventListener('blur', onBlur);
         };
     }
 

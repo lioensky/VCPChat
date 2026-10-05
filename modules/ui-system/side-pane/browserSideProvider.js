@@ -403,7 +403,10 @@ export function createBrowserSideProvider({
             const onDocumentPointerDown = (event) => {
                 if (!menu.hidden && !menu.contains(event.target) && !moreBtn.contains(event.target)) closeMenu();
             };
+            // 菜单就在 webview 上方：点进网页时主页面收不到 pointerdown，只会失焦
+            const onWindowBlur = () => { if (!menu.hidden) closeMenu(); };
             doc.addEventListener('pointerdown', onDocumentPointerDown, true);
+            doc.defaultView?.addEventListener('blur', onWindowBlur);
 
             address.addEventListener('keydown', (event) => {
                 if (event.key === 'Enter') {
@@ -474,6 +477,7 @@ export function createBrowserSideProvider({
                     // A canceled mount may finish after a new page has reused its id.
                     if (mounted.get(tab.id) === entry) mounted.delete(tab.id);
                     doc.removeEventListener('pointerdown', onDocumentPointerDown, true);
+                    doc.defaultView?.removeEventListener('blur', onWindowBlur);
                     if (webview) {
                         webview.remove();
                         webview = null;

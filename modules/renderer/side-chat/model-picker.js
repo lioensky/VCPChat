@@ -135,8 +135,15 @@ export function createSideChatModelPicker({
         const onDocClick = (e) => {
             if (!modelPickerBtn.contains?.(e.target) && !modelPopover.contains?.(e.target)) closePopover();
         };
+        // 点进侧栏浏览器的 webview 或别的窗口时只会失焦
+        const win = doc.defaultView;
+        const onWindowBlur = () => { if (!modelPopover.hidden) closePopover(); };
         doc.addEventListener('click', onDocClick);
-        disposeCleanups.push(() => doc.removeEventListener('click', onDocClick));
+        win?.addEventListener('blur', onWindowBlur);
+        disposeCleanups.push(() => {
+            doc.removeEventListener('click', onDocClick);
+            win?.removeEventListener('blur', onWindowBlur);
+        });
     }
 
     return Object.freeze({ updateModel, dispose() { disposeCleanups.splice(0).forEach(fn => { try { fn(); } catch {} }); } });

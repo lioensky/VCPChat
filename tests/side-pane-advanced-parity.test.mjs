@@ -513,6 +513,10 @@ test('Parity: tab context menu is scoped, keyboard friendly and closes on Escape
     const contextMenu = doc.getElementById('sidePaneTabContextMenu');
     const ctrl = createController(dom);
 
+    // 外壳的 backdrop-filter 会把 fixed 菜单的定位和背后内容都带偏，所以菜单挂在 body 下
+    assert.equal(contextMenu.parentNode, doc.body);
+    assert.ok(contextMenu.classList.contains('vcp-ui-scope'));
+
     ctrl.setParent({ itemType: 'agent', itemId: 'agent-1', topicId: 'parent' });
     await ctrl.openTab({ kind: 'chat', descriptor: createDesc('s1', 'c1') });
 
@@ -535,6 +539,19 @@ test('Parity: tab context menu is scoped, keyboard friendly and closes on Escape
     doc.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     assert.equal(contextMenu.hidden, true);
 
+    // 点进浏览器标签的 webview 时主页面只会失焦，菜单也要收起
+    openMenuOn('s1');
+    assert.equal(contextMenu.hidden, false);
+    dom.window.dispatchEvent(new dom.window.Event('blur'));
+    assert.equal(contextMenu.hidden, true);
+
+    // 标签总览同理
+    const overview = doc.getElementById('sidePaneTabOverviewPopover');
+    doc.getElementById('sidePaneTabOverviewBtn').click();
+    assert.equal(overview.hidden, false);
+    dom.window.dispatchEvent(new dom.window.Event('blur'));
+    assert.equal(overview.hidden, true);
+
     // 通知页不能关，但能关掉其他
     openMenuOn('notifications');
     assert.equal(isDisabled('close-tab'), true);
@@ -549,6 +566,7 @@ test('Parity: tab context menu is scoped, keyboard friendly and closes on Escape
     assert.equal(ctrl.getSnapshot().activeTabId, 's1');
 
     await ctrl.dispose();
+    assert.notEqual(contextMenu.parentNode, doc.body, 'dispose puts the menu back');
     dom.window.close();
 });
 
@@ -678,6 +696,13 @@ test('Parity: Side Chat Model Picker supports interactive switching', async () =
 
     assert.equal(handle.getModel(), 'claude-3-5-sonnet');
     assert.equal(doc.querySelector('.side-chat-model-name').textContent, 'claude-3-5-sonnet');
+    assert.equal(popover.hidden, true);
+
+    // 点进侧栏浏览器的 webview 时主页面只会失焦，弹层也要收起
+    pickerBtn.click();
+    await tick();
+    assert.equal(popover.hidden, false);
+    dom.window.dispatchEvent(new dom.window.Event('blur'));
     assert.equal(popover.hidden, true);
 
     // Direct setModel via handle

@@ -464,10 +464,13 @@
         const onKey = event => {
             if (event.key === 'Escape' && menu) { closeMenu(); event.stopPropagation(); }
         };
+        // 点进侧栏浏览器的 webview 或别的窗口时只会失焦
+        const onWindowBlur = () => { if (menu) closeMenu(); };
         trigger.addEventListener('click', onTrigger);
         trigger.addEventListener('contextmenu', onContextMenu);
         document.addEventListener('mousedown', onDocDown, true);
         document.addEventListener('keydown', onKey, true);
+        window.addEventListener('blur', onWindowBlur);
 
         // 切换 Agent / 保存设置后会刷新标题，借此同步显示
         let observer = null;
@@ -486,6 +489,7 @@
                 trigger.removeEventListener('contextmenu', onContextMenu);
                 document.removeEventListener('mousedown', onDocDown, true);
                 document.removeEventListener('keydown', onKey, true);
+                window.removeEventListener('blur', onWindowBlur);
                 window.removeEventListener('focus', refresh);
                 observer?.disconnect();
                 wrap.remove();
