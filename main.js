@@ -53,6 +53,12 @@ require = function (id) {
 };
 
 const { app, BrowserWindow, ipcMain, nativeTheme, globalShortcut, screen, clipboard, shell, dialog, protocol, Tray, Menu, powerMonitor } = require('electron'); // Added screen, clipboard, and shell
+
+// 🛡️ 长连接/流式回复不能依赖后台页面的定时器节流，否则切回窗口时会出现恢复延迟。
+app.commandLine.appendSwitch('disable-hang-monitor');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs-extra'); // Using fs-extra for convenience
@@ -746,6 +752,8 @@ function createWindow({ deferLoad = false } = {}) {
             sandbox: false, // preloads/* 需要 require 本地模块，沙箱内不可用，见 preloads/README.md
             contextIsolation: true,    // 恢复: 开启上下文隔离
             nodeIntegration: false,  // 恢复: 关闭Node.js集成在渲染进程
+            // 主聊天窗口需要在切到其他窗口时继续接收流式事件并推进恢复队列。
+            backgroundThrottling: false,
             spellcheck: true, // Enable spellcheck for input fields
         },
         icon: path.join(__dirname, 'assets', 'icon.png'), // Add an icon
@@ -823,6 +831,20 @@ function createWindow({ deferLoad = false } = {}) {
     });
 
     mainWindow.webContents.on('did-finish-load', markMainRendererStable);
+
+    // 🛡️ 静默吸收并记录未响应误判，保证窗口在慢网络或后台任务下持续保持稳定交互
+    mainWindow.on('unresponsive', () => {
+        console.warn('[Main] MainWindow marked unresponsive by OS/Chromium (usually due to slow network/API waiting). Keeping alive.');
+    });
+    mainWindow.on('responsive', () => {
+        console.log('[Main] MainWindow recovered responsiveness.');
+    });
+    mainWindow.webContents.on('unresponsive', () => {
+        console.warn('[Main] Main webContents unresponsive event triggered. Ignored to avoid intrusive crash dialogs.');
+    });
+    mainWindow.webContents.on('responsive', () => {
+        console.log('[Main] Main webContents recovered responsiveness.');
+    });
 
     // mainWindow.setMenu(null); // 移除应用程序菜单栏 - 注释掉以启用macOS的标准菜单
 

@@ -90,3 +90,46 @@ test('desktop push inside a nested tool result is data, even when split char by 
     assert.equal(after, '\n');
     consumer.dispose();
 });
+
+test('tool result hidden state detection, toggling, and context stripping', async () => {
+    const {
+        isToolResultHidden,
+        setToolResultHidden,
+        stripHiddenToolResults,
+        collectClosedToolResultRanges
+    } = await loadRegions();
+
+    const normalBlock = `${START}\n- 工具名称: TestTool\n- 返回内容: normal output\n${END}`;
+    const hiddenBlock1 = `${START} [HIDDEN]\n- 工具名称: TestTool\n- 返回内容: hidden output\n${END}`;
+    const hiddenBlock2 = `${START}\n- 注入上下文: 隐藏\n- 工具名称: TestTool\n- 返回内容: hidden output\n${END}`;
+
+    assert.equal(isToolResultHidden(normalBlock), false);
+    assert.equal(isToolResultHidden(hiddenBlock1), true);
+    assert.equal(isToolResultHidden(hiddenBlock2), true);
+
+    // 测试将正常块切换为隐藏
+    const toggledToHidden = setToolResultHidden(normalBlock, true);
+    assert.equal(isToolResultHidden(toggledToHidden), true);
+    assert.ok(toggledToHidden.startsWith(`${START} [HIDDEN]`));
+
+    // 测试将隐藏块恢复为正常
+    const restoredNormal = setToolResultHidden(toggledToHidden, false);
+    assert.equal(isToolResultHidden(restoredNormal), false);
+    assert.ok(!restoredNormal.includes('[HIDDEN]'));
+
+    // 测试隐藏块在 collectClosedToolResultRanges 下依然被正常识别为闭合块
+    const fullText = `前文\n\n${hiddenBlock1}\n\n后文`;
+    const ranges = collectClosedToolResultRanges(fullText);
+    assert.equal(ranges.length, 1);
+    assert.equal(ranges[0].closed, true);
+
+    // 测试 stripHiddenToolResults 能够把隐藏块从上下文中完全剥离，效果等同于原删除操作
+    const stripped = stripHiddenToolResults(fullText);
+    assert.equal(stripped.trim(), '前文\n\n后文');
+
+    // 正常块不应该被剥离
+    const mixedText = `前文\n\n${normalBlock}\n\n中间\n\n${hiddenBlock1}\n\n后文`;
+    const strippedMixed = stripHiddenToolResults(mixedText);
+    assert.ok(strippedMixed.includes('normal output'));
+    assert.ok(!strippedMixed.includes('hidden output'));
+});

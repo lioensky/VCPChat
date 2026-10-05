@@ -151,3 +151,67 @@ export function collectClosedToolResultRanges(text) {
 export function collectCodeDomainsOutsideToolResults(text, ranges, options = {}) {
     return collectMarkdownCodeDomains(maskToolResults(text, ranges), options);
 }
+const HIDDEN_START_REGEX = /^\[\[VCP调用结果信息汇总:\s*(?:\[HIDDEN\]|<!--HIDDEN-->|\(HIDDEN\))/i;
+
+/**
+ * 判断一个工具结果块是否被标记为隐藏（不注入上下文）。
+ * 支持起始标记后标注 [HIDDEN] 或首部包含 "- 注入上下文: 隐藏" 等元数据。
+ * @param {string} raw
+ * @returns {boolean}
+ */
+export function isToolResultHidden(raw) {
+    if (typeof raw !== 'string') return false;
+    if (HIDDEN_START_REGEX.test(raw)) return true;
+    // 兼容元数据行形式
+    const firstFewLines = raw.slice(0, 300);
+    return /^[ \t]*-[ \t]*(?:注入上下文|上下文注入|上下文状态|Context):\s*(?:隐藏|hidden|false|否)/im.test(firstFewLines);
+}
+
+/**
+ * 设置工具结果块的隐藏状态。
+ * @param {string} raw - 原始工具结果文本（包含完整的起止标记）
+ * @param {boolean} hidden - 是否隐藏
+ * @returns {string} - 更新后的文本
+ */
+export function setToolResultHidden(raw, hidden = true) {
+    if (typeof raw !== 'string' || !raw.startsWith(TOOL_RESULT_START_MARKER)) return raw;
+    const currentlyHidden = isToolResultHidden(raw);
+    if (hidden === currentlyHidden) return raw;
+
+    if (hidden) {
+        // 标记为隐藏：在起始标记后附加 [HIDDEN]
+        return raw.replace(/^\[\[VCP调用结果信息汇总:(?:\s*\[HIDDEN\])?/, `${TOOL_RESULT_START_MARKER} [HIDDEN]`);
+    }
+
+    // 恢复为正常显示（注入上下文）：移除 [HIDDEN] 及相关隐藏元数据
+    let restored = raw.replace(/^\[\[VCP调用结果信息汇总:\s*(?:\[HIDDEN\]|<!--HIDDEN-->|\(HIDDEN\))[ \t]*/i, TOOL_RESULT_START_MARKER);
+    restored = restored.replace(/\r?\n[ \t]*-[ \t]*(?:注入上下文|上下文注入|上下文状态|Context):\s*(?:隐藏|hidden|false|否)/i, '');
+    return restored;
+}
+
+/**
+ * 剥离文本中所有被标记为隐藏的工具结果块，收拢多余空行。
+ * 在构建提交给 AI 的上下文时调用，实现与物理删除完全一致的 Token 节省与上下文净化效果。
+ * @param {string} text
+ * @returns {string}
+ */
+export function stripHiddenToolResults(text) {
+    if (typeof text !== 'string' || !text.includes(TOOL_RESULT_START_MARKER)) return text;
+    const ranges = collectClosedToolResultRanges(text);
+    if (ranges.length === 0) return text;
+
+    const hiddenRanges = ranges.filter(range => isToolResultHidden(text.slice(range.start, range.end)));
+    if (hiddenRanges.length === 0) return text;
+
+    let result = '';
+    let cursor = 0;
+    for (const range of hiddenRanges) {
+        const before = text.slice(cursor, range.start);
+        result += before;
+        cursor = range.end;
+    }
+    result += text.slice(cursor);
+
+    // 收拢因剔除块可能留下的连续3个及以上换行
+    return result.replace(/\n{3,}/g, '\n\n');
+}

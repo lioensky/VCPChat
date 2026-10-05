@@ -21,6 +21,8 @@ import { replaceMarkdownCodeDomains } from './renderer/markdownCodeDomainScanner
 import {
     collectToolResultRanges,
     collectClosedToolResultRanges,
+    isToolResultHidden,
+    setToolResultHidden,
 } from './renderer/toolResultRegions.js';
 import { parseJevToolUse } from './renderer/jevToolUse.js';
 
@@ -2239,15 +2241,21 @@ function renderToolResultBlock(fullMatch, ordinal = -1) {
 
     // 序号 + 原文哈希用于在消息原始内容中精确定位该工具结果块（删除功能使用）。
     const toolResultHash = hashStringFNV1a(fullMatch);
-    let html = `<div class="vcp-tool-result-bubble collapsible" data-vcp-block-type="tool-result" data-vcp-preserve-children="true" data-vcp-tool-result-index="${Number.isInteger(ordinal) ? ordinal : -1}" data-vcp-tool-result-hash="${toolResultHash}">`;
+    const isHidden = isToolResultHidden(fullMatch);
+    let html = `<div class="vcp-tool-result-bubble collapsible${isHidden ? ' vcp-tool-result-bubble--hidden' : ''}" data-vcp-block-type="tool-result" data-vcp-preserve-children="true" data-vcp-tool-result-index="${Number.isInteger(ordinal) ? ordinal : -1}" data-vcp-tool-result-hash="${toolResultHash}">`;
     html += `<div class="vcp-tool-result-header">`;
     html += `<span class="vcp-tool-result-label">VCP-ToolResult</span>`;
     html += `<span class="vcp-tool-result-name">${escapeHtml(toolName)}</span>`;
     html += `<span class="vcp-tool-result-status">${escapeHtml(status)}</span>`;
+    if (isHidden) {
+        html += `<span class="vcp-tool-result-hidden-badge" title="当前工具结果已排除，后续对话不会注入到AI上下文中">已隐藏</span>`;
+    }
     html += `<span class="vcp-result-toggle-icon"></span>`;
-    html += `<button type="button" class="vcp-tool-result-delete-btn" title="从上下文中删除此工具结果" aria-label="从上下文中删除此工具结果">${TOOL_RESULT_DELETE_ICON}</button>`;
+    const btnTitle = isHidden ? '当前已从上下文中隐藏（点击恢复注入）' : '当前已注入上下文（点击在上下文中隐藏）';
+    // 视觉语义：可见时为单纯睁眼图标；不可见时为带斜杠划掉的眼睛图标
+    const btnIcon = isHidden ? TOOL_RESULT_HIDE_ICON : TOOL_RESULT_SHOW_ICON;
+    html += `<button type="button" class="vcp-tool-result-delete-btn vcp-tool-result-toggle-btn${isHidden ? ' is-hidden' : ''}" data-vcp-hidden="${isHidden ? 'true' : 'false'}" title="${btnTitle}" aria-label="${btnTitle}">${btnIcon}</button>`;
     html += `</div>`;
-
     html += `<div class="vcp-tool-result-collapsible-content">`;
     html += `<div class="vcp-tool-result-details">`;
 
@@ -2345,54 +2353,40 @@ function restoreRenderedToolResults(html, toolResultMap) {
     });
 }
 
-const TOOL_RESULT_DELETE_ICON = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>`;
-const TOOL_RESULT_DELETE_CONFIRM_MS = 3000;
+// 隐藏图标（Eye-Off：当前正常注入，点击后在上下文中隐藏）
+const TOOL_RESULT_HIDE_ICON = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`;
 
-function resetToolResultDeleteButton(button) {
-    if (!button) return;
-    const ownerWindow = button.ownerDocument?.defaultView;
-    if (button._vcpConfirmTimer) ownerWindow?.clearTimeout?.(button._vcpConfirmTimer);
-    delete button._vcpConfirmTimer;
-    delete button.dataset.confirming;
-    button.classList.remove('confirming');
-    button.innerHTML = TOOL_RESULT_DELETE_ICON;
-    button.title = '从上下文中删除此工具结果';
-    button.setAttribute('aria-label', '从上下文中删除此工具结果');
-}
+// 显示/恢复图标（Eye：当前已被隐藏，点击后恢复注入上下文）
+const TOOL_RESULT_SHOW_ICON = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
+
+const TOOL_RESULT_DELETE_ICON = TOOL_RESULT_HIDE_ICON; // 兼容旧引用
 
 /**
- * 两段式确认：第一次点击进入确认态，3 秒内再次点击才真正删除，避免误触。
+ * 切换工具结果的显隐状态（从上下文中隐藏或恢复）。
  */
 function handleToolResultDeleteClick(button) {
     const bubble = button.closest('.vcp-tool-result-bubble');
     const messageItem = button.closest('.message-item');
     if (!bubble || !messageItem) return;
 
-    if (button.dataset.confirming !== 'true') {
-        button.dataset.confirming = 'true';
-        button.classList.add('confirming');
-        button.textContent = '确认删除?';
-        button.title = '再次点击确认从上下文中删除';
-        button.setAttribute('aria-label', '再次点击确认从上下文中删除此工具结果');
-        const ownerWindow = button.ownerDocument?.defaultView;
-        button._vcpConfirmTimer = ownerWindow?.setTimeout?.(() => resetToolResultDeleteButton(button), TOOL_RESULT_DELETE_CONFIRM_MS);
-        return;
-    }
-
-    resetToolResultDeleteButton(button);
     const ordinal = Number.parseInt(bubble.dataset.vcpToolResultIndex, 10);
-    removeToolResultFromMessage(
+    const isCurrentlyHidden = button.dataset.vcpHidden === 'true';
+    const targetHidden = !isCurrentlyHidden;
+
+    toggleToolResultVisibilityInMessage(
         messageItem,
         Number.isInteger(ordinal) ? ordinal : -1,
-        bubble.dataset.vcpToolResultHash || ''
+        bubble.dataset.vcpToolResultHash || '',
+        targetHidden
     );
 }
 
 /**
- * 从消息原始内容（上下文历史）中删除一个工具结果块，持久化并重新渲染该消息。
- * 定位策略：优先按原文哈希匹配（多个同哈希时取序号最接近者），否则回退到序号。
+ * 在消息原始内容中切换工具结果的隐藏状态并持久化。
+ * 隐藏后其效果与原先垃圾桶删除一致（在发给 AI 的上下文中完全剔除，节省 Token 且不干扰对话），
+ * 且具备完全无损性，用户随时可以再次点击恢复注入。
  */
-function removeToolResultFromMessage(messageItem, ordinal, hash) {
+function toggleToolResultVisibilityInMessage(messageItem, ordinal, hash, targetHidden) {
     const notify = (text, type = 'info') => mainRendererReferences.uiHelper?.showToastNotification?.(text, type);
     const messageId = messageItem?.dataset?.messageId;
     if (!messageId) return false;
@@ -2402,7 +2396,7 @@ function removeToolResultFromMessage(messageItem, ordinal, hash) {
         || messageItem.classList.contains('thinking')
         || streamManager.isMessageActive?.(messageId)
     ) {
-        notify('消息仍在生成中，暂时无法删除工具结果', 'warning');
+        notify('消息仍在生成中，暂时无法修改工具结果状态', 'warning');
         return false;
     }
 
@@ -2417,19 +2411,18 @@ function removeToolResultFromMessage(messageItem, ordinal, hash) {
     const isTextObject = !!message.content && typeof message.content === 'object' && typeof message.content.text === 'string';
     const content = typeof message.content === 'string' ? message.content : (isTextObject ? message.content.text : null);
     if (typeof content !== 'string') {
-        notify('消息内容格式异常，无法删除工具结果', 'error');
+        notify('消息内容格式异常，无法修改工具结果状态', 'error');
         return false;
     }
 
-    // 与渲染占位符（contentPipeline.protectToolResults）使用同一嵌套感知配对，
-    // 保证气泡上的序号/哈希能精确对应原文中的最外层工具结果块。
     const matches = collectClosedToolResultRanges(content).map((range, index) => {
         const raw = content.slice(range.start, range.end);
         return {
             start: range.start,
             end: range.end,
             ordinal: index,
-            hash: hashStringFNV1a(raw)
+            hash: hashStringFNV1a(raw),
+            raw
         };
     });
 
@@ -2447,10 +2440,8 @@ function removeToolResultFromMessage(messageItem, ordinal, hash) {
         return false;
     }
 
-    // 删除块本身，并收拢两侧多余空白，避免留下大段空行。
-    const before = content.slice(0, target.start).replace(/\s+$/, '');
-    const after = content.slice(target.end).replace(/^\s+/, '');
-    const newText = before && after ? `${before}\n\n${after}` : before + after;
+    const updatedRawBlock = setToolResultHidden(target.raw, targetHidden);
+    const newText = content.slice(0, target.start) + updatedRawBlock + content.slice(target.end);
 
     const updatedMessage = {
         ...message,
@@ -2467,16 +2458,25 @@ function removeToolResultFromMessage(messageItem, ordinal, hash) {
             itemId: selectedItem.id,
             itemType: selectedItem.type,
             topicId,
-            category: 'tool-result-remove',
+            category: targetHidden ? 'tool-result-hide' : 'tool-result-show',
         }, history).catch(error => {
-            console.error('[MessageRenderer] Failed to persist tool result removal:', error);
-            notify('工具结果已从界面移除，但保存历史失败', 'error');
+            console.error('[MessageRenderer] Failed to persist tool result visibility state:', error);
+            notify('工具结果状态已更新，但保存历史失败', 'error');
         });
     }
 
     updateMessageContent(messageId, updatedMessage.content);
-    notify('已从上下文中删除该工具结果', 'success');
+    if (targetHidden) {
+        notify('已在上下文中隐藏此工具结果（不会注入给后续AI）', 'success');
+    } else {
+        notify('已恢复此工具结果，后续对话将重新包含此上下文', 'success');
+    }
     return true;
+}
+
+// 保留旧函数名作为兼容别名
+function removeToolResultFromMessage(messageItem, ordinal, hash) {
+    return toggleToolResultVisibilityInMessage(messageItem, ordinal, hash, true);
 }
 
 /**

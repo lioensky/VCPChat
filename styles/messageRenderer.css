@@ -1484,8 +1484,9 @@ body[data-vcp-theme="light"] {
     transform: translate(-50%, -50%) rotateZ(90deg);
 }
 
-/* 工具结果删除按钮：从上下文历史中移除该结果块 */
-.vcp-tool-result-delete-btn {
+/* 工具结果显隐切换按钮：在上下文中隐藏或恢复该结果块 */
+.vcp-tool-result-delete-btn,
+.vcp-tool-result-toggle-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1497,41 +1498,79 @@ body[data-vcp-theme="light"] {
     border: 1px solid transparent;
     border-radius: 6px;
     background: transparent;
-    color: var(--tool-result-item-key-color);
+    color: var(--tool-result-item-key-color, #94a3b8);
     font-size: 0.8em;
     font-weight: 600;
     line-height: 1;
     cursor: pointer;
-    opacity: 0.55;
-    transition: opacity 0.18s ease, color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+    opacity: 1;
+    transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
     user-select: none;
 }
 
-.vcp-tool-result-header:hover .vcp-tool-result-delete-btn,
-.vcp-tool-result-delete-btn:focus-visible {
-    opacity: 1;
-}
-
 .vcp-tool-result-delete-btn:hover,
-.vcp-tool-result-delete-btn.confirming {
-    opacity: 1;
-    color: #ef4444;
-    background: rgba(239, 68, 68, 0.12);
-    border-color: rgba(239, 68, 68, 0.35);
+.vcp-tool-result-toggle-btn:hover {
+    color: var(--accent-color, #38bdf8);
+    background: rgba(56, 189, 248, 0.12);
+    border-color: rgba(56, 189, 248, 0.35);
 }
 
-.vcp-tool-result-delete-btn:focus-visible {
-    outline: 2px solid rgba(239, 68, 68, 0.6);
+.vcp-tool-result-toggle-btn.is-hidden {
+    color: var(--tool-result-item-key-color, #94a3b8);
+}
+
+.vcp-tool-result-toggle-btn.is-hidden:hover {
+    color: #22c55e;
+    background: rgba(34, 197, 94, 0.12);
+    border-color: rgba(34, 197, 94, 0.35);
+}
+
+.vcp-tool-result-delete-btn:focus-visible,
+.vcp-tool-result-toggle-btn:focus-visible {
+    outline: 2px solid rgba(56, 189, 248, 0.6);
     outline-offset: 1px;
 }
 
-body[data-vcp-theme="light"] .vcp-tool-result-delete-btn:hover,
-body[data-vcp-theme="light"] .vcp-tool-result-delete-btn.confirming {
-    color: #dc2626;
-    background: rgba(220, 38, 38, 0.08);
-    border-color: rgba(220, 38, 38, 0.3);
+/* 隐藏态工具结果气泡视觉表现：30%低透明度、低饱和度虚线与徽章 */
+.vcp-tool-result-bubble--hidden {
+    opacity: 0.3;
+    border-style: dashed !important;
+    border-color: rgba(148, 163, 184, 0.35) !important;
+    transition: opacity 0.2s ease, border-color 0.2s ease;
 }
 
+.vcp-tool-result-bubble--hidden:hover {
+    opacity: 0.8;
+    border-color: rgba(148, 163, 184, 0.6) !important;
+}
+
+.vcp-tool-result-hidden-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 6px;
+    font-size: 0.72em;
+    font-weight: 600;
+    line-height: 1.4;
+    border-radius: 4px;
+    background: rgba(148, 163, 184, 0.18);
+    color: #94a3b8;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    margin-left: 6px;
+    user-select: none;
+}
+
+body[data-vcp-theme="light"] .vcp-tool-result-delete-btn:hover,
+body[data-vcp-theme="light"] .vcp-tool-result-toggle-btn:hover {
+    color: #0284c7;
+    background: rgba(2, 132, 199, 0.08);
+    border-color: rgba(2, 132, 199, 0.3);
+}
+
+body[data-vcp-theme="light"] .vcp-tool-result-toggle-btn.is-hidden:hover {
+    color: #16a34a;
+    background: rgba(22, 163, 74, 0.08);
+    border-color: rgba(22, 163, 74, 0.3);
+}
 .vcp-tool-result-status:containing("SUCCESS") {
     /* This is a pseudo-selector, might not work directly in CSS */
     color: #c8e6c9;

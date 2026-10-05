@@ -1215,6 +1215,27 @@ function initialize(mainWindow, context) {
             } catch (e) {
                 console.error('[ThoughtChain] Failed to strip thought chains:', e);
             }
+            // --- VCP Hidden Tool Results Stripping ---
+            try {
+                messages = messages.map(msg => {
+                    if (typeof msg.content === 'string') {
+                        return { ...msg, content: contextSanitizer.stripHiddenToolResults(msg.content) };
+                    } else if (Array.isArray(msg.content)) {
+                        return {
+                            ...msg,
+                            content: msg.content.map(part => {
+                                if (part.type === 'text' && typeof part.text === 'string') {
+                                    return { ...part, text: contextSanitizer.stripHiddenToolResults(part.text) };
+                                }
+                                return part;
+                            })
+                        };
+                    }
+                    return msg;
+                });
+            } catch (e) {
+                console.error('[HiddenToolResult] Failed to strip hidden tool results:', e);
+            }
 
             // --- Context Sanitizer Integration ---
             try {

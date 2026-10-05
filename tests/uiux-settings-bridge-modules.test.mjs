@@ -124,6 +124,14 @@ test('single-concern modules import cleanly and expose their contract', async ()
     owners.teardownTypedOwners();
     owners.disposeTypedSettings();
 });
+test('identity name display follows typed snapshot projection', () => {
+    const entry = read(bridgeEntry);
+    assert.match(
+        entry,
+        /listenIdentity\(nameInput,\s*['"]vcp-uiux-sync['"],\s*syncName,\s*['"]identity-name-sync['"]\)/,
+        'programmatic userName projection must refresh the visible identity name',
+    );
+});
 
 test('Agent ModelPicker directory stays an injected short-lived capability', async () => {
     const { normalizeAgentModels, createAgentModelPickerDirectory } = await import(
