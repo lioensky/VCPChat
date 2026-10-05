@@ -258,7 +258,7 @@ JEV:「始」在[1分钟后]设置闹钟，提醒我【检查烤箱里的点心�
 ### 推荐运行入口
 
 1. **普通用户（一键图形启动器）**：
-   - **Windows**：双击运行 [`launchers/VCPChat-Launcher.vbs`](launchers/VCPChat-Launcher.vbs) 或 `启动Vchat.vbs`（后台静默，无黑框）；
+   - **Windows**：双击运行 [`launchers/StartVCPchat.exe`](launchers/StartVCPchat.exe)（官方Rust启动器，其它平台可自行编译）；
    - **macOS**：运行 [`launchers/VCPChat-Launcher.command`](launchers/VCPChat-Launcher.command)；
    - **Linux**：运行 [`launchers/VCPChat-Launcher.sh`](launchers/VCPChat-Launcher.sh)。
 2. **开发者与诊断**：
