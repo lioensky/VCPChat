@@ -1,3 +1,3 @@
 export function defineNotificationsTabType() {
-    return Object.freeze({ kind: 'notifications', label: '首页', icon: 'house', searchHint: '首页 通知' });
+    return Object.freeze({ kind: 'notifications', label: '通知', icon: 'notifications', searchHint: '通知' });
 }

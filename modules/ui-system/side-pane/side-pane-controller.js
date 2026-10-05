@@ -7,8 +7,7 @@ import { createSidePaneVisibility } from './side-pane-visibility.js';
 import { createSidePaneTabStrip } from './side-pane-tab-strip.js';
 import { createSidePaneTabOverview } from './side-pane-tab-overview.js';
 import { createSidePaneTabMenu } from './side-pane-tab-menu.js';
-import { createSidePaneHome } from './side-pane-home.js';
-import { createSidePaneAddMenu } from './side-pane-add-menu.js';
+import { createSidePaneLauncher } from './side-pane-launcher.js';
 import { createSidePaneFocus } from './side-pane-focus.js';
 import { createSidePaneTabCloseOwner } from './side-pane-tab-close-owner.js';
 import { createSidePaneTabRegistry } from './side-pane-tab-registry.js';
@@ -54,7 +53,6 @@ export function createSidePaneController({
     const resolvedOverviewBtn = overviewBtn || doc.getElementById?.('sidePaneTabOverviewBtn');
     const resolvedOverviewPopover = overviewPopover || doc.getElementById?.('sidePaneTabOverviewPopover');
     const resolvedTabContextMenu = doc.getElementById?.('sidePaneTabContextMenu');
-    const resolvedAddMenu = doc.getElementById?.('sidePaneAddMenu');
 
     const initialWidth = Number(settingsRef?.get?.()?.notificationsSidebarWidth) || SidePaneState.DEFAULT_WIDTH;
 
@@ -74,7 +72,7 @@ export function createSidePaneController({
     let controller = null;
     const tabRegistry = createSidePaneTabRegistry({
         providers,
-        registerEntry: entry => addMenu.registerEntry(entry),
+        registerEntry: entry => launcher.registerEntry(entry),
         onChanged: () => { renderTabList(); overview?.refresh(); },
         isDisposed: () => isDisposed
     });
@@ -122,7 +120,6 @@ export function createSidePaneController({
     const syncDomVisibility = (options = {}) => {
         visibility.sync(state.visible, options);
         mountActiveIfNeeded();
-        syncHomeSeen();
     };
 
     // ---- 布局持久化 ----
@@ -179,37 +176,37 @@ export function createSidePaneController({
         });
     }
 
-    // ---- 首页、「+」菜单、标签条、概览、右键菜单 ----
+    // ---- 新标签页、标签条、概览、右键菜单 ----
     let strip = null;
     let overview = null;
     let tabMenu = null;
 
-    const home = createSidePaneHome({ contentContainer });
-    cleanupListeners.push(() => home.dispose());
-
-    const addMenu = createSidePaneAddMenu({
+    const launcher = createSidePaneLauncher({
+        contentContainer,
         addButton: resolvedAddTabButton,
-        menu: resolvedAddMenu,
-        onShow: () => {
+        isNotificationsActive: () => isNotificationsTab(state.activeTabId),
+        showNotifications: () => controller.showNotifications(),
+        showLauncher: () => controller.showLauncher(),
+        hideMenus: () => {
             overview?.hide();
             tabMenu?.hide();
         },
         onEntriesChanged: () => strip?.scheduleLayout()
     });
-    cleanupListeners.push(() => addMenu.dispose());
+    cleanupListeners.push(() => launcher.dispose());
 
-    const getStripTabs = () => SidePaneState.getVisibleTabs(state, state.parent);
+    // 通知在新标签页里有自己的分类时，不再占标签条上的位置
+    const getStripTabs = () => {
+        const tabs = SidePaneState.getVisibleTabs(state, state.parent);
+        return launcher.hostsNotifications ? tabs.filter(tab => !isNotificationsTab(tab.id)) : tabs;
+    };
 
-    // 首页图标上的提示：待审批数（notificationCenter 写在侧栏按钮上）、没看过的新通知、VCPLog 连接状态
-    const connectionStatusEl = doc?.getElementById?.('vcpLogConnectionStatus');
-    let homeUnseen = false;
-    const isHomeShown = () => state.visible && isNotificationsTab(state.activeTabId);
-    const readHome = () => ({
-        status: connectionStatusEl?.dataset.status || 'unknown',
-        statusText: connectionStatusEl?.querySelector('.notifications-status-text')?.textContent.trim() || '',
-        pending: Number(expandButton?.dataset.pendingCount) || 0,
-        unseen: homeUnseen
-    });
+    // VCPLog 连接状态不单独占一行：通知标签和新标签页的通知分类上各一个小圆点，悬停/读屏给出全文
+    const connectionStatusEl = doc.getElementById('vcpLogConnectionStatus');
+    const readConnectionStatus = () => (connectionStatusEl ? {
+        status: connectionStatusEl.dataset.status || 'unknown',
+        text: connectionStatusEl.querySelector('.notifications-status-text')?.textContent.trim() || ''
+    } : null);
 
     if (tabListElement) {
         strip = createSidePaneTabStrip({
@@ -219,8 +216,8 @@ export function createSidePaneController({
             getTabType,
             getActiveTabId: () => state.activeTabId,
             isClosable: isClosableTab,
-            homeTabId: SidePaneState.NOTIFICATIONS_TAB_ID,
-            getHome: readHome,
+            statusTabId: SidePaneState.NOTIFICATIONS_TAB_ID,
+            getStatus: readConnectionStatus,
             onActivate: (tabId) => controller.activateTab(tabId),
             onClose: (tabId) => controller.closeTab(tabId),
             onReorder: (activeId, overId) => controller.reorderTab(activeId, overId),
@@ -245,10 +242,7 @@ export function createSidePaneController({
             },
             onClose: (tabId) => controller.closeTab(tabId),
             onReopen: (closedId) => controller.reopenClosedTab(closedId),
-            onShow: () => {
-                tabMenu?.hide();
-                addMenu.hide();
-            }
+            onShow: () => tabMenu?.hide()
         });
         cleanupListeners.push(() => overview.dispose());
     }
@@ -257,10 +251,7 @@ export function createSidePaneController({
         tabMenu = createSidePaneTabMenu({
             menu: resolvedTabContextMenu,
             getClosableTabs: () => SidePaneState.getClosableVisibleTabs(state),
-            onShow: () => {
-                overview?.hide();
-                addMenu.hide();
-            },
+            onShow: () => overview?.hide(),
             focusTab: (tabId) => strip?.focusTab(tabId),
             onAction: async (action, tabId) => {
                 if (action === 'close-tab' && tabId) await controller.closeTab(tabId);
@@ -271,51 +262,39 @@ export function createSidePaneController({
         cleanupListeners.push(() => tabMenu.dispose());
     }
 
-    const observe = (target, options) => {
-        if (!target || typeof win?.MutationObserver !== 'function') return;
-        const observer = new win.MutationObserver(() => strip?.syncHome());
-        observer.observe(target, options);
-        cleanupListeners.push(() => observer.disconnect());
-    };
-    observe(connectionStatusEl, { attributes: true, attributeFilter: ['data-status'], childList: true, characterData: true, subtree: true });
-    observe(expandButton, { attributes: true, attributeFilter: ['data-pending-count'] });
-
-    // 首页没在眼前时来了新通知，首页图标上亮一个圆点，回到首页就消掉
-    const notificationsList = doc?.getElementById?.('notificationsList');
-    if (notificationsList && typeof win?.MutationObserver === 'function') {
-        const listObserver = new win.MutationObserver((mutations) => {
-            if (isHomeShown() || homeUnseen) return;
-            const added = mutations.some(mutation => [...mutation.addedNodes].some(node => node.classList?.contains('notification-item')));
-            if (!added) return;
-            homeUnseen = true;
-            strip?.syncHome();
-        });
-        listObserver.observe(notificationsList, { childList: true });
-        cleanupListeners.push(() => listObserver.disconnect());
+    function syncConnectionStatus() {
+        launcher.syncStatus(readConnectionStatus());
+        strip?.syncStatus();
     }
 
-    function syncHomeSeen() {
-        if (!homeUnseen || !isHomeShown()) return;
-        homeUnseen = false;
-        strip?.syncHome();
+    if (connectionStatusEl && typeof win.MutationObserver === 'function') {
+        const statusObserver = new win.MutationObserver(syncConnectionStatus);
+        statusObserver.observe(connectionStatusEl, { attributes: true, attributeFilter: ['data-status'], childList: true, characterData: true, subtree: true });
+        cleanupListeners.push(() => statusObserver.disconnect());
     }
 
     function renderTabList() {
         persistSoon();
         strip?.render();
+        launcher.syncStatus(readConnectionStatus());
     }
 
     function syncViewPanels() {
         if (!contentContainer) return;
         const visibleTabIds = new Set(SidePaneState.getVisibleTabs(state, state.parent).map(t => t.id));
+        visibleTabIds.add(SidePaneState.LAUNCHER_TAB_ID);
+        const activeViewId = launcher.hostsNotifications && isNotificationsTab(state.activeTabId)
+            ? SidePaneState.LAUNCHER_TAB_ID
+            : state.activeTabId;
         contentContainer.querySelectorAll('.side-pane-view').forEach(view => {
             const viewTabId = view.getAttribute('data-tab-id') || (
-                view.id === 'sidePaneViewHome' || view.id === 'sidePaneViewNotifications' ? SidePaneState.NOTIFICATIONS_TAB_ID : null
+                view.id === 'sidePaneViewNotifications' ? SidePaneState.NOTIFICATIONS_TAB_ID : null
             );
-            const isActive = visibleTabIds.has(viewTabId) && viewTabId === state.activeTabId;
+            const isActive = visibleTabIds.has(viewTabId) && viewTabId === activeViewId;
             view.classList.toggle('active', isActive);
             view.hidden = !isActive;
         });
+        if (launcher.hostsNotifications) launcher.syncSections();
     }
 
     // ---- 标签视图挂载 ----
@@ -490,9 +469,8 @@ export function createSidePaneController({
         },
 
         /**
-         * 展开按钮和 Ctrl/Cmd+Alt+B 共用：已展开就收起；收起时有待审批先看首页的通知，
-         * 当前对话没有标签时也是首页（只登记了一个入口又没有应用时直接打开那个入口），
-         * 否则回到这个对话上次的标签。
+         * 展开按钮和 Ctrl/Cmd+Alt+B 共用：已展开就收起；收起时有待审批先看通知，
+         * 当前对话没有标签时走新标签页的空状态，否则回到这个对话上次的标签。
          */
         toggleFromUser() {
             if (isDisposed) return;
@@ -500,16 +478,14 @@ export function createSidePaneController({
                 this.setVisible(false);
                 return;
             }
-            const closable = SidePaneState.getClosableVisibleTabs(state);
-            const pending = Number(expandButton?.dataset.pendingCount) > 0;
-            const direct = !pending && closable.length === 0 ? addMenu.directEntry() : null;
-            if (direct) {
-                focus.rememberOrigin();
-                addMenu.runEntry(direct.id);
+            if (Number(expandButton?.dataset.pendingCount) > 0) {
+                this.showNotifications();
                 return;
             }
-            if (pending || closable.length === 0) {
-                this.showNotifications();
+            const closable = SidePaneState.getClosableVisibleTabs(state);
+            if (closable.length === 0) {
+                focus.rememberOrigin();
+                launcher.expandFromEmpty();
                 return;
             }
             const preferred = state.parent ? activeTabByParent.get(parentKeyOf()) : null;
@@ -534,7 +510,19 @@ export function createSidePaneController({
             navigationRevision++;
             focus.rememberOrigin();
             state = SidePaneState.showNotifications(state);
-            home.renderProfile();
+            if (launcher.hostsNotifications) launcher.renderProfile();
+            renderTabList();
+            syncViewPanels();
+            syncDomVisibility();
+        },
+
+        showLauncher() {
+            if (isDisposed) return;
+            navigationRevision++;
+            focus.rememberOrigin();
+            state = SidePaneState.showLauncher(state);
+            launcher.renderProfile();
+            launcher.renderSegment();
             renderTabList();
             syncViewPanels();
             syncDomVisibility();
@@ -543,11 +531,11 @@ export function createSidePaneController({
         /** options.focus 为 false 时只切换，不把焦点挪进标签（后台恢复时用） */
         activateTab(tabId, { focus: moveFocus = true } = {}) {
             if (isDisposed || !tabId) return;
-            if (!SidePaneState.getVisibleTabs(state, state.parent).some(tab => tab.id === tabId)) return;
+            if (tabId !== SidePaneState.LAUNCHER_TAB_ID
+                && !SidePaneState.getVisibleTabs(state, state.parent).some(tab => tab.id === tabId)) return;
             navigationRevision++;
             state = SidePaneState.activateTab(state, tabId);
-            if (isNotificationsTab(tabId)) home.renderProfile();
-            if (state.parent && !isNotificationsTab(tabId)) {
+            if (state.parent && !isNotificationsTab(tabId) && tabId !== SidePaneState.LAUNCHER_TAB_ID) {
                 const parentKey = parentKeyOf();
                 rememberBounded(activeTabByParent, parentKey, tabId);
                 if (state.visible) rememberBounded(collapsedByParent, parentKey, false);
@@ -657,27 +645,36 @@ export function createSidePaneController({
         },
 
         /**
-         * 登记一个"打开标签页"入口，「+」菜单会列出它。返回注销函数。
+         * 登记一个"打开标签页"入口，新增菜单和引导页都会列出它。返回注销函数。
          * entry: { id, label, icon?, order?, open(), isAvailable?() }
          */
         registerOpenTabEntry(entry) {
             if (isDisposed) return () => {};
-            return addMenu.registerEntry(entry);
+            return launcher.registerEntry(entry);
         },
 
-        /** 入口的可用状态变了（比如当前窗口不支持某能力）时调用，重新渲染「+」菜单 */
+        /** 入口的可用状态变了（比如当前窗口不支持某能力）时调用，重新渲染菜单和引导页 */
         refreshOpenTabEntries() {
-            if (!isDisposed) addMenu.renderEntries();
+            if (!isDisposed) launcher.renderEntries();
         },
 
-        /** 首页顶部的助手：provider() 返回 { name, avatarUrl, onEditAvatar?, onRename?(name) } 或 null（不显示） */
-        setHomeProfileProvider(provider) {
-            home.setProfileProvider(provider);
+        /** provider() 返回 { name, avatarUrl, onEditAvatar?, onRename?(name) } 或 null（不显示） */
+        setLauncherProfileProvider(provider) {
+            launcher.setProfileProvider(provider);
         },
 
-        /** 「+」菜单下半部分的应用：provider() 返回 [{ id, label, title?, iconSvg?, open() }]，每次打开菜单现取 */
-        setAddMenuAppsProvider(provider) {
-            addMenu.setAppsProvider(provider);
+        /** provider() 返回 [{ id, label, title?, open(), mountIcon?(button, iconHost) }]；不设置时只有工具页 */
+        setLauncherAppsProvider(provider) {
+            launcher.setAppsProvider(provider);
+        },
+
+        /** 工具页下方「推荐」：provider() 同应用页的条目；onSettings 时标题旁出现设置按钮 */
+        setLauncherRecommendedProvider(provider, options) {
+            launcher.setRecommendedProvider(provider, options);
+        },
+
+        refreshLauncherRecommended() {
+            launcher.refreshRecommended();
         },
 
         registerProvider(name, provider) {
@@ -686,7 +683,7 @@ export function createSidePaneController({
         },
 
         /**
-         * One declaration owns a tab kind's provider, "+" menu entry and presentation.
+         * One declaration owns a tab kind's provider, launcher entry and presentation.
          * @param {SidePaneTabType} definition
          * @returns {() => void} unregister
          */
@@ -741,7 +738,7 @@ export function createSidePaneController({
             // 切走前记下当前对话的激活标签和展开状态
             if (state.parent) {
                 const prevKey = parentKeyOf();
-                if (state.activeTabId && !isNotificationsTab(state.activeTabId)) {
+                if (state.activeTabId && !isNotificationsTab(state.activeTabId) && state.activeTabId !== SidePaneState.LAUNCHER_TAB_ID) {
                     rememberBounded(activeTabByParent, prevKey, state.activeTabId);
                 }
                 rememberBounded(collapsedByParent, prevKey, !state.visible);
@@ -850,7 +847,7 @@ export function createSidePaneController({
     initialTabTypes.forEach(definition => controller.registerTabType(definition));
 
     // Initial render
-    addMenu.renderEntries();
+    launcher.renderEntries();
     renderTabList();
     overview?.render();
     syncViewPanels();

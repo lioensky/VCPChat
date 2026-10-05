@@ -11,8 +11,7 @@ const TAB_TOOLTIP_DELAY_MS = 1500;
  * 标签条只管画和交互，标签数据和动作都从外面来：
  *   getTabs() / getActiveTabId()   当前要显示的标签
  *   isClosable(tab)                是否画关闭按钮
- *   homeTabId / getHome()          钉在最左边、只占一个图标的首页标签，和它的
- *                                  { status, statusText, pending, unseen }：待审批数字角标、新通知圆点、连接状态
+ *   statusTabId / getStatus()      带状态圆点的标签（通知）和它的 { status, text }
  *   onActivate / onClose / onReorder / onContextMenu / onRendered
  */
 export function createSidePaneTabStrip({
@@ -22,8 +21,8 @@ export function createSidePaneTabStrip({
     getTabType = () => null,
     getActiveTabId,
     isClosable,
-    homeTabId = null,
-    getHome = () => null,
+    statusTabId = null,
+    getStatus = () => null,
     onActivate,
     onClose,
     onReorder,
@@ -76,17 +75,9 @@ export function createSidePaneTabStrip({
         }, TAB_TOOLTIP_DELAY_MS);
     }
 
-    function homeDetails(home) {
-        const parts = [];
-        if (home?.pending > 0) parts.push(`${home.pending} 项待审批`);
-        else if (home?.unseen) parts.push('有新通知');
-        if (home?.statusText) parts.push(home.statusText.replace(/:\s*/, ' '));
-        return parts;
-    }
-
     function tooltipText(tab) {
-        if (tab.id !== homeTabId) return tab.title;
-        return [tab.title, ...homeDetails(getHome())].join(' · ');
+        const status = tab.id === statusTabId ? getStatus()?.text || '' : '';
+        return status ? `${tab.title} · ${status}` : tab.title;
     }
 
     function layout() {
@@ -138,19 +129,19 @@ export function createSidePaneTabStrip({
         }
     }
 
-    // 首页图标右上角：有待审批时显示数字，否则有没看过的新通知时显示一个圆点；VCPLog 断开时图标变红
-    function syncHome() {
-        if (!homeTabId) return;
-        const btn = tabListElement.querySelector(`.side-pane-tab[data-tab-id="${homeTabId}"]`);
-        const badge = btn?.querySelector('.side-pane-home-badge');
-        if (!badge) return;
-        const home = getHome() || {};
-        const pending = Number(home.pending) || 0;
-        badge.textContent = pending > 0 ? (pending > 99 ? '99+' : String(pending)) : '';
-        badge.dataset.kind = pending > 0 ? 'pending' : (home.unseen ? 'unseen' : 'none');
-        btn.dataset.status = home.status || 'unknown';
-        const title = btn.querySelector('.tab-title')?.textContent || '首页';
-        btn.setAttribute('aria-label', [title, ...homeDetails(home)].join('，'));
+    // 标签上直接写连接状态（“VCPLog 已连接”），“通知”只留在标签名和概览里
+    function syncStatus() {
+        const current = statusTabId ? getStatus() : null;
+        if (!current) return;
+        const btn = tabListElement.querySelector(`.side-pane-tab[data-tab-id="${statusTabId}"]`);
+        const dot = btn?.querySelector('.side-pane-tab-status');
+        if (!dot) return;
+        const { status = 'unknown', text = '' } = current;
+        dot.dataset.status = status;
+        const title = btn.querySelector('.tab-title');
+        if (title) title.textContent = text ? text.replace(/:\s*/, ' ') : '通知';
+        if (text) btn.setAttribute('aria-label', `通知，${text}`);
+        else btn.removeAttribute('aria-label');
     }
 
     function createTabItem(tab, isActive) {
@@ -176,12 +167,12 @@ export function createSidePaneTabStrip({
         titleSpan.textContent = tab.title;
 
         btn.append(iconSpan, titleSpan);
-        if (tab.id === homeTabId) {
-            tabItem.classList.add('is-home');
-            const badge = doc.createElement('span');
-            badge.className = 'side-pane-home-badge';
-            badge.setAttribute('aria-hidden', 'true');
-            btn.appendChild(badge);
+        if (tab.id === statusTabId) {
+            const statusDot = doc.createElement('span');
+            statusDot.className = 'side-pane-tab-status';
+            statusDot.setAttribute('aria-hidden', 'true');
+            btn.classList.add('has-status');
+            btn.appendChild(statusDot);
         }
         btn.addEventListener('click', () => onActivate(tab.id));
         tabItem.appendChild(btn);
@@ -239,7 +230,7 @@ export function createSidePaneTabStrip({
         getTabs().forEach(tab => {
             tabListElement.insertBefore(createTabItem(tab, tab.id === activeTabId), insertAnchor);
         });
-        syncHome();
+        syncStatus();
         onRendered();
         layout();
         // 新开或切换到的标签在溢出区时滚进可见范围；激活项不变时不打扰用户手动滚动
@@ -251,7 +242,7 @@ export function createSidePaneTabStrip({
 
     const sortable = createTabSortable({
         container: tabListElement,
-        isDraggable: (item) => item.getAttribute('data-tab-id') !== homeTabId,
+        isDraggable: (item) => item.getAttribute('data-tab-id') !== statusTabId,
         onReorder: (activeId, overId) => onReorder(activeId, overId),
         onDragStateChange: (isDragging) => {
             dragging = isDragging;
@@ -300,7 +291,7 @@ export function createSidePaneTabStrip({
         layout,
         scheduleLayout,
         scrollActiveIntoView,
-        syncHome,
+        syncStatus,
         hideTooltip,
         focusTab(tabId) {
             tabListElement.querySelector(`[role="tab"][data-tab-id="${tabId}"]`)?.focus?.();

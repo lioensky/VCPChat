@@ -125,6 +125,23 @@ html .side-pane-tab .tab-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
     white-space: nowrap;
 }
 
+/* 通知标签上的 VCPLog 连接点：紧跟标题，颜色随 data-status */
+html .side-pane-tab.has-status .tab-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 0 1 auto;
+}
+
+/* 标签挤窄时放不下“VCPLog 已连接”，只留铃铛和圆点；全文仍在悬停提示与读屏名称里 */
+html .side-pane-tab-item:has(> .side-pane-tab.has-status):where(.vcp-ui-scope, .vcp-ui-scope *) {
+    /* 也保留通用的 side-pane-tab 名字：收成图标时和其他标签一样居中 */
+    container: side-pane-tab side-pane-status-tab / inline-size;
+}
+
+@container side-pane-status-tab (max-width: 140px) {
+    html .side-pane-tab.has-status .tab-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
+        display: none;
+    }
+}
+
 @container side-pane-tab (max-width: 64px) {
     html .side-pane-tab:where(.vcp-ui-scope, .vcp-ui-scope *) {
         padding: 0;
@@ -135,6 +152,46 @@ html .side-pane-tab .tab-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
     }
     html .side-pane-tab-close:where(.vcp-ui-scope, .vcp-ui-scope *) {
         display: none;
+    }
+    /* 只剩铃铛时，连接点改成右上角的角标，不再和图标抢宽度 */
+    html .side-pane-tab-status:where(.vcp-ui-scope, .vcp-ui-scope *) {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        margin: 0;
+    }
+}
+
+html .side-pane-tab-status:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 0 0 auto;
+    width: 6px;
+    height: 6px;
+    margin-left: 2px;
+    border-radius: 50%;
+    background: var(--vcp-ui-text-3);
+}
+
+html .side-pane-tab-status[data-status="open"]:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-success);
+}
+
+html .side-pane-tab-status[data-status="connecting"]:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-warning);
+    animation: side-pane-tab-status-pulse 1.4s ease-in-out infinite;
+}
+
+html .side-pane-tab-status:is([data-status="closed"], [data-status="error"]):where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-danger);
+}
+
+@keyframes side-pane-tab-status-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html .side-pane-tab-status:where(.vcp-ui-scope, .vcp-ui-scope *) {
+        animation: none;
     }
 }
 

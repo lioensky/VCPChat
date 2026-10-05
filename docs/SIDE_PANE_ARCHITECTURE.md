@@ -7,7 +7,7 @@
 设计目标：
 
 1. **状态和 DOM 分开**：标签列表、激活标签、是否展开都在一个纯函数状态模块里，可以单独测试；DOM 只是状态的投影。
-2. **控制器只做组合**：标签条、概览、右键菜单、首页、「+」菜单、开合动画各自是一个模块，控制器把它们接起来，并负责标签视图的挂载和卸载。
+2. **控制器只做组合**：标签条、概览、右键菜单、新标签页、开合动画各自是一个模块，控制器把它们接起来，并负责标签视图的挂载和卸载。
 3. **标签类型可插拔**：新增一种标签只要写一个 provider 并登记一个标签类型，不改控制器。控制器不认识任何具体的标签类型（包括辅助对话），只通过类型声明里的钩子和它们打交道。
 4. **跟随对话**：话题级标签只在所属对话里出现，切换对话时恢复该对话上次的激活标签和展开状态。
 
@@ -29,18 +29,17 @@
 | `side-pane-tab-close-owner.js` | 按挂载 occurrence 合并关闭授权、提交关闭后等待清理、与控制器销毁共用一次 dispose | 否（通过组合者回调提交视图和状态变化） |
 | `side-pane-shortcuts.js` | 键盘快捷键：Ctrl/Cmd+Alt+B 开合，副屏内 Ctrl+PageUp/PageDown 切标签 | 是（window keydown） |
 | `side-pane-visibility.js` | 宽度比例（默认 45%，20%–65%）、开合动画、动画期间锁定内容宽度 | 是（写 `style.width`） |
-| `side-pane-tab-strip.js` | 标签条渲染、悬停提示、溢出布局与边缘渐隐、拖拽排序、方向键 / 中键关闭、首页图标上的待审批数 / 新通知圆点 / 连接状态 | 是 |
+| `side-pane-tab-strip.js` | 标签条渲染、悬停提示、溢出布局与边缘渐隐、拖拽排序、方向键 / 中键关闭、通知标签上的连接状态点 | 是 |
 | `side-pane-tab-overview.js` | 标签页概览浮层：搜索打开中和最近关闭的标签 | 是 |
 | `side-pane-tab-menu.js` | 标签右键菜单：关闭 / 关闭其他 / 全部关闭 | 是 |
-| `side-pane-home.js` | 首页顶部的当前助手：头像（点击去换）和名字（就地改名） | 是 |
-| `side-pane-add-menu.js` | 「+」菜单：登记的入口在上、应用在下；只有一个入口又没有应用时「+」直接打开它 | 是 |
-| `side-pane-entries.js` | 入口登记、顺序、可用性与执行；由「+」菜单通过回调接到展示层 | 是 |
+| `side-pane-launcher.js` | 新标签页：个人资料、工具 / 应用 / 通知分段、推荐、「+」按钮 | 是 |
+| `side-pane-entries.js` | 入口登记、顺序、可用性与执行；由 launcher 通过回调接到展示层 | 是 |
 | `side-pane-resizer-owner.js` | 左边缘拖拽调宽 | 是 |
 | `side-pane-tab-dnd.js` / `side-pane-tab-utils.js` / `menu-position.js` | 拖拽排序、标签图标与搜索、菜单定位等工具函数 | — |
 | `tab-types/*.js` | 每种标签的名称、图标、搜索提示、可选入口和 provider 定义 | 否（创建 provider） |
 | `*SideProvider.js` | 各标签类型的 provider（见第 4 节） | 是（只在自己的视图里） |
 
-装配在 `modules/renderer/sidePaneWiring.js`：查找 DOM、创建控制器、调用 `registerTabType` 登记标签类型，并装配下列独立 owner：`sideChatWiring`（辅助对话能力和会话）、`floatingSelectionButton`（选区按钮）、`sidePaneHomeWiring`（首页的助手资料与「+」菜单的应用源）、`sidePaneWorkspaceServices`（文件改动和状态面板）、`sidePaneHostBindings`（宿主事件和跟随对话）。
+装配在 `modules/renderer/sidePaneWiring.js`：查找 DOM、创建控制器、调用 `registerTabType` 登记标签类型，并装配下列独立 owner：`sideChatWiring`（辅助对话能力和会话）、`floatingSelectionButton`（选区按钮）、`sidePaneLauncherWiring`（助手资料与应用源）、`sidePaneWorkspaceServices`（文件改动和状态面板）、`sidePaneHostBindings`（宿主事件和跟随对话）。
 
 ### 依赖方向
 
@@ -57,8 +56,7 @@ sidePaneWiring
         ├─ side-pane-tab-strip ─ side-pane-tab-dnd / tab-utils
         ├─ side-pane-tab-overview ─ tab-utils
         ├─ side-pane-tab-menu ─ menu-position
-        ├─ side-pane-home
-        └─ side-pane-add-menu ─ side-pane-entries / menu-position
+        └─ side-pane-launcher ─ side-pane-entries
 ```
 
 子模块之间不互相引用，彼此的联动（比如打开概览时收起右键菜单）都通过控制器传进去的回调完成。子模块也不读写标签状态，只通过 `getTabs()` / `getActiveTabId()` 之类的读取函数拿数据，通过 `onActivate` / `onClose` 之类的回调把操作交回控制器。
@@ -68,7 +66,7 @@ sidePaneWiring
 ## 3. 数据流
 
 ```
-用户操作（点标签 / 右键关闭 / 「+」菜单入口 / provider 调 openTab）
+用户操作（点标签 / 右键关闭 / 新标签页入口 / provider 调 openTab）
         │
         ▼
 控制器方法（activateTab / closeTab / openTab ...）
@@ -82,13 +80,9 @@ sidePaneWiring
 
 每个改状态的方法都按这个顺序收尾，DOM 不会领先或落后于状态。
 
-### 首页标签
+### 通知标签
 
-首页就是原来的通知标签（`NOTIFICATIONS_TAB_ID`）：全局、不跟随话题、不能关闭，固定在标签条最左边，只显示一个图标。页面上面是当前助手的头像和名字，下面是通知列表，最底下是常用应用那一排。当前对话没有别的标签时展开侧栏就是首页。
-
-首页图标右上角有待审批时显示数字（`notificationCenter` 写在展开按钮的 `data-pending-count` 上），否则首页不在眼前时来了新通知显示一个圆点，回到首页就消掉；VCPLog 断开或出错时图标变红，连接状态的文字在悬停提示和读屏名称里。
-
-「+」只负责开新标签：弹出一个小菜单，上面是登记的入口（浏览器、终端、Git 变更……），下面是应用，每次打开现取。
+通知是固定的全局标签（`NOTIFICATIONS_TAB_ID`），不能关闭。新标签页里有「通知」分段时（`launcher.hostsNotifications`），通知不再占标签条上的位置，激活通知时显示的是新标签页的通知分段。VCPLog 的连接状态以小圆点的形式出现在通知标签和通知分段上。
 
 ### 跟随对话
 
@@ -111,7 +105,7 @@ sidePaneWiring
 
 | 按键 | 作用 |
 | :--- | :--- |
-| Ctrl+Alt+B（macOS 上 Cmd+Alt+B） | 开合副屏。展开时和点展开按钮一样：有待审批或没有标签时打开首页，否则回到这个对话上次的标签。AltGr 组合不触发 |
+| Ctrl+Alt+B（macOS 上 Cmd+Alt+B） | 开合副屏。展开时和点展开按钮一样：有待审批先看通知，没有标签时打开新标签页，否则回到这个对话上次的标签。AltGr 组合不触发 |
 | Ctrl+PageUp / Ctrl+PageDown | 焦点在副屏里时按标签条顺序切到上一个 / 下一个标签，首尾相接 |
 
 焦点在浏览器标签的网页里时，按键不会到主窗口。主进程在 `browserHandlers.js` 里用 `before-input-event` 截下这几个组合，经 `browser:side-pane-shortcut` 转给主窗口，由 `sidePaneWiring.js` 执行同样的动作。
@@ -222,7 +216,7 @@ provider 只能修改自己的视图，跨模块动作通过组合者注入的�
 
 ## 8. 样式加载顺序
 
-`main.html` 按原连续片段加载侧栏样式：shell → tab-bar → side-chat → tab-overview → home → tab-overlays → code-viewer → browser → terminal。标签概览、可访问性、右键菜单、浮动提问按钮和窄视口规则保留原位置，因此使用 9 个文件，避免按区域归并时改变层叠顺序；每个文件不超过 459 行。
+`main.html` 按原连续片段加载侧栏样式：shell → tab-bar → side-chat → tab-overview → launcher → tab-overlays → code-viewer → browser → terminal。标签概览、可访问性、右键菜单、浮动提问按钮和窄视口规则保留原位置，因此使用 9 个文件，避免按区域归并时改变层叠顺序；每个文件不超过 459 行。
 
 原有 `side-pane-tabs.css`、`side-pane-plan.css`、`side-pane-tool-output.css`、`side-pane-git-extras.css` 和 `side-pane-side-chat-extras.css` 是后加载的扩展层，继续保留各自的位置。调整这些扩展层时也必须保持它们相对于其他样式的顺序。
 

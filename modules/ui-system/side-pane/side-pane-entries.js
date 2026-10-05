@@ -1,7 +1,7 @@
-/* Open-tab entry ordering, availability and execution. */
+/* Launcher entry ordering, availability and execution. */
 'use strict';
 
-export function createSidePaneEntries({ doc, list, hideMenus, onEntriesChanged }) {
+export function createSidePaneEntries({ doc, list, addButton, hideMenus, syncSections, onEntriesChanged }) {
     let disposed = false;
     // ---- 打开标签页入口：{ id, label, icon?, order?, open(), isAvailable?() } ----
     const entryMap = new Map();
@@ -18,14 +18,13 @@ export function createSidePaneEntries({ doc, list, hideMenus, onEntriesChanged }
     function createEntryRow({ icon, label }) {
         const btn = doc.createElement('button');
         btn.type = 'button';
-        btn.className = 'side-pane-menu-item';
-        btn.setAttribute('role', 'menuitem');
+        btn.className = 'side-pane-open-tab-button';
         const iconEl = doc.createElement('span');
         iconEl.className = 'vcp-ui-icon';
         iconEl.setAttribute('aria-hidden', 'true');
         iconEl.textContent = icon || 'tab';
         const labelEl = doc.createElement('span');
-        labelEl.className = 'side-pane-menu-item-label';
+        labelEl.className = 'side-pane-open-tab-button-label';
         labelEl.textContent = label;
         btn.append(iconEl, labelEl);
         return btn;
@@ -38,7 +37,14 @@ export function createSidePaneEntries({ doc, list, hideMenus, onEntriesChanged }
             row.setAttribute('data-open-tab-entry', entry.id);
             return row;
         }));
-        onEntriesChanged(entries);
+        syncSections();
+        if (addButton) {
+            addButton.hidden = entries.length === 0;
+            const label = entries.length === 1 ? entries[0].label : '新标签页';
+            addButton.title = label;
+            addButton.setAttribute('aria-label', label);
+        }
+        onEntriesChanged();
     }
 
     async function runEntry(entryId) {
@@ -48,7 +54,7 @@ export function createSidePaneEntries({ doc, list, hideMenus, onEntriesChanged }
         try {
             await entry.open();
         } catch (error) {
-            console.error(`[SidePaneEntries] Failed to open "${entryId}":`, error);
+            console.error(`[SidePaneLauncher] Failed to open "${entryId}":`, error);
         }
     }
 
@@ -74,6 +80,7 @@ export function createSidePaneEntries({ doc, list, hideMenus, onEntriesChanged }
             if (!disposed) renderEntries();
         };
     }
+
 
     return Object.freeze({ availableEntries, registerEntry, renderEntries, runEntry,
         dispose() { disposed = true; entryMap.clear(); }

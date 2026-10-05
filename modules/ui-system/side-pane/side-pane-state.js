@@ -16,8 +16,8 @@ export const TAB_KINDS = Object.freeze({
 export const NOTIFICATIONS_TAB = Object.freeze({
     id: NOTIFICATIONS_TAB_ID,
     kind: 'notifications',
-    title: '首页',
-    icon: 'house',
+    title: '通知',
+    icon: 'notifications',
     closable: false,
     scopeMode: 'global'
 });
@@ -91,6 +91,7 @@ export function resolveSidePaneScopeState(state, parentRef, options = {}) {
     if (active?.scopeMode === 'global' && active.id !== NOTIFICATIONS_TAB_ID) {
         return { activeTabId: active.id, visible: state.visible };
     }
+    if (state.activeTabId === LAUNCHER_TAB_ID) return { activeTabId: LAUNCHER_TAB_ID, visible: state.visible };
 
     if (parentChatTabs.length === 0) {
         const tool = state.tabs.find(tab => tab.scopeMode === 'global' && tab.id !== NOTIFICATIONS_TAB_ID);
@@ -140,9 +141,11 @@ export function setParent(state, parentRef, options = {}) {
     });
 }
 
+export const LAUNCHER_TAB_ID = 'launcher';
+
 export function activateTab(state, tabId) {
     if (!tabId || state.activeTabId === tabId) return state;
-    if (!getVisibleTabs(state, state.parent).some(tab => tab.id === tabId)) return state;
+    if (tabId !== LAUNCHER_TAB_ID && !getVisibleTabs(state, state.parent).some(tab => tab.id === tabId)) return state;
     return Object.freeze({
         ...state,
         activeTabId: tabId
@@ -155,6 +158,15 @@ export function showNotifications(state) {
         ...state,
         visible: true,
         activeTabId: NOTIFICATIONS_TAB_ID
+    });
+}
+
+export function showLauncher(state) {
+    if (state.activeTabId === LAUNCHER_TAB_ID && state.visible) return state;
+    return Object.freeze({
+        ...state,
+        visible: true,
+        activeTabId: LAUNCHER_TAB_ID
     });
 }
 
@@ -326,6 +338,7 @@ const api = Object.freeze({
     NOTIFICATIONS_TAB_ID,
     NOTIFICATIONS_TAB,
     TAB_KINDS,
+    LAUNCHER_TAB_ID,
     matchesConversation,
     getParentKey,
     createInitialSidePaneState,
@@ -335,6 +348,7 @@ const api = Object.freeze({
     setParent,
     activateTab,
     showNotifications,
+    showLauncher,
     openTab,
     restoreTabs,
     closeTab,

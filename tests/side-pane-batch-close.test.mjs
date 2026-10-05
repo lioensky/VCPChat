@@ -99,7 +99,7 @@ test('mounting a restored lazy tab does not turn it into a new batch lifetime', 
     } finally { await h.cleanup(); }
 });
 
-for (const laterAction of ['openTab', 'showNotifications', 'setVisible']) {
+for (const laterAction of ['openTab', 'showNotifications', 'showLauncher', 'setVisible']) {
     test(`closeOtherTabs cannot override a later ${laterAction} intent`, async () => {
         const h = fixture(), ctrl = h.controller;
         try {
