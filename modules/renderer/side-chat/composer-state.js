@@ -10,7 +10,8 @@ export function createSideChatComposerState({
     root,
     sendBtn,
     statusText,
-    textarea
+    textarea,
+    toolButtons = []
 }) {
     function updateStatus(text, type = 'normal') {
         if (store.isDisposed) return;
@@ -35,6 +36,9 @@ export function createSideChatComposerState({
         const hasText = Boolean(textarea.value.trim());
         const hasRefs = store.references.length > 0;
         sendBtn.disabled = !store.isHistoryLoaded || !store.currentModel;
+        for (const button of toolButtons) {
+            if (button) button.disabled = !store.isHistoryLoaded || textarea.disabled;
+        }
         sendBtn.title = store.currentModel ? '发送 (Enter)' : '请先选择模型';
         if (!hasText && hasRefs && store.currentDescriptor.contextMode !== 'parent-snapshot') {
             textarea.placeholder = '输入针对引用的问题... (直接回车可发送引用)';

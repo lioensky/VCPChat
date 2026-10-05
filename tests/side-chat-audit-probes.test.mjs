@@ -384,13 +384,19 @@ test('R12: Send-to-main blocks cross-topic contamination', async () => {
     doc.querySelector('.side-chat-messages-container').append(item);
     await tick();
 
-    doc.querySelector('.side-chat-send-to-main-btn').click();
+    sendToMainFromMenu(doc);
 
     assert.equal(doc.getElementById('messageInput').value, 'unrelated draft', 'Should not overwrite draft in unrelated topic');
 
     await handle.dispose();
     dom.window.close();
 });
+
+function sendToMainFromMenu(doc) {
+    const content = doc.querySelector('.side-chat-messages-container .message-item.assistant .md-content');
+    content.dispatchEvent(new doc.defaultView.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }));
+    doc.querySelector('#chatContextMenu [data-side-chat-action="send-to-main"]').click();
+}
 
 test('R13: Persistence retry and explicit discard restore ready state', async () => {
     const dom = new JSDOM('<div id="mount"></div>');
@@ -488,12 +494,12 @@ test('R15: Send-to-main validates both item ID and topic ID provenance', async (
     await tick();
 
     // 1. Same topic name but wrong agent -> blocked
-    doc.querySelector('.side-chat-send-to-main-btn').click();
+    sendToMainFromMenu(doc);
     assert.equal(doc.getElementById('messageInput').value, 'existing main draft');
 
     // 2. Correct agent and correct topic -> allowed
     currentItemMock = { id: 'agent-correct', type: 'agent' };
-    doc.querySelector('.side-chat-send-to-main-btn').click();
+    sendToMainFromMenu(doc);
     assert.equal(doc.getElementById('messageInput').value, 'existing main draft\n\nside answer');
 
     await handle.dispose();

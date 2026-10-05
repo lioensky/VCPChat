@@ -6,7 +6,7 @@
  *   - 960px 居中消息列；助手气泡最宽 560px，浅灰底，四角同为 15px 圆角；
  *   - 单行气泡高约 34px：14px 字号、22px 行高、6px × 12px 内边距；
  *   - 连续气泡间距 5px，换人发言间距 16px；
- *   - 用户：无头像、无名字，右侧黑色全圆角胶囊；
+ *   - 用户：无头像、无名字，右侧全圆角胶囊，底色沿用普通气泡模式的磨砂色；
  *   - 助手头像平时不显示。只在助手工作中时，于最底部显示"头像 + 名字 正在工作"，
  *     发送后立刻出现（回复气泡还没出现时也在），完成后消失；
  *   - 悬停时气泡外侧出现一排无底色的灰色图标（复制 / 更多），垂直居中。
@@ -25,9 +25,6 @@ body.chat-presentation-messenger {
     --messenger-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 
     /* 深色是默认主题 */
-    --messenger-user-bg: #f2f2f2;
-    --messenger-user-text: #0d0d0d;
-    --messenger-user-code-bg: rgba(0, 0, 0, 0.08);
     --messenger-agent-bg: #262626;
     --messenger-agent-text: #ececec;
     --messenger-agent-code-bg: rgba(255, 255, 255, 0.08);
@@ -39,9 +36,6 @@ body.chat-presentation-messenger {
 }
 
 body.light-theme.chat-presentation-messenger {
-    --messenger-user-bg: #000000;
-    --messenger-user-text: #ffffff;
-    --messenger-user-code-bg: rgba(255, 255, 255, 0.16);
     --messenger-agent-bg: #efefef;
     --messenger-agent-text: #111111;
     --messenger-agent-code-bg: rgba(0, 0, 0, 0.05);
@@ -152,8 +146,9 @@ body.chat-presentation-messenger #chatMessages .message-item.user .md-content {
     max-width: min(80%, var(--messenger-agent-max));
     padding: 7px 14px;
     border-radius: 18px !important;
-    background: var(--messenger-user-bg) !important;
-    color: var(--messenger-user-text) !important;
+    /* 底色和文字色交给主题的普通用户气泡（磨砂渐变），这里只改形状 */
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     transform-origin: bottom right;
 }
 
@@ -198,11 +193,6 @@ body.chat-presentation-messenger #chatMessages .message-item .md-content :not(pr
     font-size: 0.86em;
     background: var(--messenger-agent-code-bg);
     color: var(--messenger-agent-code-text);
-}
-
-body.chat-presentation-messenger #chatMessages .message-item.user .md-content :not(pre) > code {
-    background: var(--messenger-user-code-bg);
-    color: inherit;
 }
 
 body.chat-presentation-messenger #chatMessages .message-item .md-content > pre,

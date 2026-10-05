@@ -1,4 +1,4 @@
-const INTERRUPT_BUTTON_HTML = '<span class="vcp-ui-icon" aria-hidden="true">square</span>';
+const INTERRUPT_BUTTON_HTML = '<svg class="chat-stop-glyph" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="3" y="3" width="10" height="10" rx="3" fill="currentColor"></rect></svg>';
 
 /** Owns main-chat send/interrupt policy and its button projection. */
 export function createMainChatSendOwner({

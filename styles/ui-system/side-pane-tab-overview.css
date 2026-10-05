@@ -129,8 +129,7 @@ html #resizerRight.resizer:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *) {
 @media (prefers-reduced-motion: reduce) {
     html #vcpSidePane:where(.vcp-ui-scope, .vcp-ui-scope *),
     html .side-pane-tab:where(.vcp-ui-scope, .vcp-ui-scope *),
-    html .side-pane-action-btn:where(.vcp-ui-scope, .vcp-ui-scope *),
-    html .side-chat-send-to-main-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    html .side-pane-action-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
         transition: none;
     }
 }

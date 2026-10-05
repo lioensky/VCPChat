@@ -154,14 +154,23 @@
         transform: none;
     }
 
+    /* Stop is the send button with a filled rounded square in place of the
+       arrow: same circle, same fill, same hover. */
     html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button).interrupt-mode {
         color: var(--vcp-ui-on-accent);
-        background: color-mix(in srgb, var(--vcp-ui-accent) 84%, var(--vcp-ui-bg-0));
+        background: var(--vcp-ui-accent);
         background-image: none;
     }
 
     html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button).interrupt-mode:hover:not(:disabled) {
-        background: color-mix(in srgb, var(--vcp-ui-accent) 76%, var(--vcp-ui-bg-0));
+        background: var(--vcp-ui-accent-hover);
+    }
+
+    html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button) svg.chat-stop-glyph {
+        width: 16px;
+        height: 16px;
+        fill: currentColor;
+        stroke: none;
     }
 
     html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button):disabled, html .vcp-ui-scope :is(#attachFileBtn, .chat-attach-button):disabled, html .vcp-ui-scope :is(#quickNewTopicBtn, .chat-quick-new-button):disabled, html .vcp-ui-scope :is(#emoticonTriggerBtn, .chat-emoticon-button):disabled {

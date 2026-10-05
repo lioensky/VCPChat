@@ -236,11 +236,14 @@ test('mountSideChatSurface keeps a minimal composer and offers send-to-main on a
     });
 
     // 1. The composer stays like the main one: no parent link / context button / drawer / 引用 button
-    for (const sel of ['.side-chat-parent-link', '.side-chat-context-toggle-btn', '.side-chat-snapshot-drawer', '.side-chat-mode-badge', '.side-chat-attach-btn', '.side-chat-ref-modal-backdrop']) {
+    for (const sel of ['.side-chat-parent-link', '.side-chat-context-toggle-btn', '.side-chat-snapshot-drawer', '.side-chat-mode-badge', '.side-chat-ref-modal-backdrop']) {
         assert.equal(container.querySelector(sel), null, `${sel} must not exist`);
     }
     assert.ok(container.querySelector('.side-chat-model-picker-btn'));
     assert.ok(container.querySelector('.side-chat-send-btn'));
+    // Same tool row as the main composer: + (attach) and emoticons on the left
+    assert.ok(container.querySelector('.side-chat-attach-btn.chat-quick-new-button'));
+    assert.ok(container.querySelector('.side-chat-emoticon-btn.chat-emoticon-button'));
 
     // 2. The inherited snapshot still feeds the model
     assert.equal(handle.descriptor.parentSnapshot.length, 2);
@@ -258,14 +261,134 @@ test('mountSideChatSurface keeps a minimal composer and offers send-to-main on a
     // Give MutationObserver a tick to run or trigger observer
     await new Promise(r => setTimeout(r, 20));
 
-    const sendBtn = assistantMsg.querySelector('.side-chat-send-to-main-btn');
-    assert.ok(sendBtn, 'Assistant message should have send-to-main button');
+    assert.equal(assistantMsg.querySelector('.side-chat-send-to-main-btn'), null, 'Fill-to-main lives in the context menu, not under the bubble');
+    contentDiv.dispatchEvent(new dom.window.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }));
+    const sendBtn = doc.querySelector('#chatContextMenu [data-side-chat-action="send-to-main"]');
+    assert.ok(sendBtn, 'Assistant context menu should offer send-to-main');
 
     sendBtn.click();
+    assert.equal(doc.getElementById('chatContextMenu'), null, 'Menu closes after an action');
     assert.equal(mainInput.value, 'Here is the recommended algorithm solution.');
     assert.equal(autoResized, true, 'autoResizeTextarea should be called on mainInput');
     assert.ok(toastMessage && toastMessage.includes('已填入主聊天输入框'));
 
     await handle.dispose();
+    dom.window.close();
+});
+
+test('side chat attaches picked files to the next send and clears them', async () => {
+    const dom = new JSDOM('<div id="sideContainer"></div>');
+    const container = dom.window.document.getElementById('sideContainer');
+    const picks = [];
+    let previewed = null;
+    const caps = {
+        ...createMockChatCapabilities(),
+        electronAPI: {
+            async selectFilesToSend(agentId, topicId) {
+                picks.push([agentId, topicId]);
+                return {
+                    success: true,
+                    attachments: [
+                        { name: 'a.txt', type: 'text/plain', size: 3, internalPath: 'file:///a.txt' },
+                        { name: 'bad.bin', error: 'too large' }
+                    ]
+                };
+            }
+        },
+        uiHelper: {
+            showToastNotification() {},
+            updateAttachmentPreview(files) { previewed = files.map(f => f.originalName); }
+        }
+    };
+    const descriptor = {
+        id: 'chat-attach',
+        title: 'Attach',
+        parent: { itemId: 'agent-1', topicId: 'topic-parent', name: 'Agent' },
+        child: { itemId: 'agent-1', topicId: 'topic-child-attach' },
+        contextMode: 'references-only',
+        model: 'test-model'
+    };
+    const handle = await mountSideChatSurface(container, { descriptor, chatCapabilities: caps });
+    await new Promise(r => setTimeout(r, 10));
+
+    const attachBtn = container.querySelector('.side-chat-attach-btn');
+    assert.equal(attachBtn.disabled, false, 'enabled once history is loaded');
+    attachBtn.click();
+    await new Promise(r => setTimeout(r, 10));
+    assert.deepEqual(picks, [['agent-1', 'topic-child-attach']]);
+    assert.deepEqual(previewed, ['a.txt']);
+    assert.equal(container.querySelector('.side-chat-attachment-preview').hidden, false);
+
+    // A file alone is enough to send
+    container.querySelector('.side-chat-composer').requestSubmit();
+    await new Promise(r => setTimeout(r, 20));
+    const sent = caps.getSentRequest();
+    assert.equal(sent.attachments.length, 1);
+    assert.equal(sent.attachments[0].localPath, 'file:///a.txt');
+    assert.deepEqual(previewed, []);
+    assert.equal(container.querySelector('.side-chat-attachment-preview').hidden, true);
+
+    await handle.dispose();
+    dom.window.close();
+});
+
+test('side chat message context menu offers per-role actions and deletes through the side renderer', async () => {
+    const dom = new JSDOM('<div id="sideContainer"></div>');
+    const doc = dom.window.document;
+    const container = doc.getElementById('sideContainer');
+    const removed = [];
+    const base = createMockChatCapabilities();
+    base.setHistory([
+        { id: 'u1', role: 'user', content: 'raw question' },
+        { id: 'a1', role: 'assistant', content: 'raw answer' }
+    ]);
+    const caps = {
+        ...base,
+        createRenderer(options) {
+            const owned = base.createRenderer(options);
+            owned.renderer.removeMessageById = (id, save) => removed.push([id, save]);
+            return owned;
+        },
+        uiHelper: {
+            showToastNotification() {},
+            showConfirmDialog: async () => true
+        }
+    };
+    const descriptor = {
+        id: 'chat-menu',
+        title: 'Menu',
+        parent: { itemId: 'agent-1', topicId: 'topic-parent' },
+        child: { itemId: 'agent-1', topicId: 'topic-child-menu' },
+        contextMode: 'blank',
+        model: 'test-model'
+    };
+    const handle = await mountSideChatSurface(container, { descriptor, chatCapabilities: caps });
+    await new Promise(r => setTimeout(r, 20));
+
+    const list = container.querySelector('.side-chat-messages-container');
+    list.insertAdjacentHTML('beforeend',
+        '<div class="message-item user" data-message-id="u1"><div class="md-content">rendered question</div></div>'
+        + '<div class="message-item assistant" data-message-id="a1"><div class="md-content">rendered answer</div></div>');
+    const openMenu = (sel) => {
+        list.querySelector(`${sel} .md-content`).dispatchEvent(new dom.window.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
+        return [...doc.querySelectorAll('#chatContextMenu [data-side-chat-action]')].map(el => el.dataset.sideChatAction);
+    };
+
+    const userActions = openMenu('.message-item.user');
+    assert.ok(userActions.includes('copy') && userActions.includes('edit-again') && userActions.includes('delete'));
+    assert.ok(!userActions.includes('send-to-main'), 'Questions are not filled into the main chat');
+    doc.querySelector('[data-side-chat-action="edit-again"]').click();
+    assert.equal(container.querySelector('.side-chat-textarea').value, 'raw question', 'Edit-again uses the raw text');
+
+    const assistantActions = openMenu('.message-item.assistant');
+    assert.ok(assistantActions.includes('send-to-main') && assistantActions.includes('delete'));
+    assert.ok(!assistantActions.includes('edit-again'));
+    doc.querySelector('[data-side-chat-action="delete"]').click();
+    await new Promise(r => setTimeout(r, 0));
+    assert.deepEqual(removed, [['a1', true]]);
+
+    openMenu('.message-item.assistant');
+    await handle.dispose();
+    assert.equal(doc.getElementById('chatContextMenu'), null, 'Dispose closes an open side menu');
     dom.window.close();
 });
