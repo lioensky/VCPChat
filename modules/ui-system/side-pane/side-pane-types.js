@@ -55,7 +55,8 @@
  */
 
 /**
- * 一种标签的完整声明，交给 controller.registerTabType()。控制器只通过这些钩子认识具体的标签类型。
+ * 一种标签的完整声明，交给 controller.registerTabType()。同 kind 替换整个声明，不继承旧入口/provider。
+ * 替换或注销影响后续挂载；已挂载/正在挂载的页面保留自己的 onClosed，直到该次生命周期关闭。
  * @typedef {object} SidePaneTabType
  * @property {string} kind
  * @property {string} label 标签类型名，标签条和总览里显示

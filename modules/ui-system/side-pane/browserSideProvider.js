@@ -188,7 +188,11 @@ export function createBrowserSideProvider({
             const devtoolsItem = menuItem('bug_report', '打开调试工具', 'devtools');
             const clearDataItem = menuItem('delete', '清除浏览数据', 'clear-data');
             menu.append(openExternalItem, devtoolsItem, clearDataItem);
-            toolbar.append(backBtn, forwardBtn, reloadBtn, address, moreBtn);
+            // 前进后退和刷新收进一个胶囊，地址栏、更多各自一颗：三块等高的圆角件
+            const nav = el('div', 'side-browser-nav');
+            nav.append(backBtn, forwardBtn, el('span', 'side-browser-nav-divider', { 'aria-hidden': 'true' }), reloadBtn);
+            moreBtn.classList.add('side-browser-more');
+            toolbar.append(nav, address, moreBtn);
 
             const body = el('div', 'side-browser-body');
             const empty = el('div', 'side-browser-empty');

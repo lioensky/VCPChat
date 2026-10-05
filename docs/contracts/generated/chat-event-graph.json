@@ -449,6 +449,7 @@
     "modules/ui-system/side-pane/side-pane-tab-dnd.js",
     "modules/ui-system/side-pane/side-pane-tab-menu.js",
     "modules/ui-system/side-pane/side-pane-tab-overview.js",
+    "modules/ui-system/side-pane/side-pane-tab-registry.js",
     "modules/ui-system/side-pane/side-pane-tab-strip.js",
     "modules/ui-system/side-pane/side-pane-tab-utils.js",
     "modules/ui-system/side-pane/side-pane-types.js",

@@ -459,3 +459,55 @@ test('a nonclosable tab cannot run provider disposal or business cleanup', async
         dom.window.close();
     }
 });
+
+test('mounted tabs retain their cleanup definition through replacement and unregistration', async () => {
+    const { dom, options } = createPaneDom();
+    const closed = [], disposed = [];
+    const controller = createSidePaneController(options);
+    const definition = version => ({
+        kind: 'probe', label: version,
+        onClosed(tab) { closed.push(`${version}:${tab.id}`); },
+        provider: { mountTab(tab) { return { version, dispose() { disposed.push(`${version}:${tab.id}`); } }; } }
+    });
+    try {
+        controller.registerTabType(definition('old'));
+        const oldHandle = await controller.openTab({ id: 'old', kind: 'probe' });
+        const unregister = controller.registerTabType(definition('new'));
+        const newHandle = await controller.openTab({ id: 'new', kind: 'probe' });
+        assert.equal(oldHandle.version, 'old');
+        assert.equal(newHandle.version, 'new');
+        await controller.closeTab('old');
+        assert.deepEqual(closed, ['old:old']);
+        unregister();
+        await controller.closeTab('new');
+        assert.deepEqual(closed, ['old:old', 'new:new']);
+        assert.deepEqual(disposed, ['old:old', 'new:new']);
+    } finally {
+        await controller.dispose();
+        dom.window.close();
+    }
+});
+
+test('a canceled pending mount keeps its original business cleanup after type replacement', async () => {
+    const { dom, options } = createPaneDom();
+    const mounting = Promise.withResolvers();
+    const closed = [];
+    let disposes = 0;
+    const controller = createSidePaneController(options);
+    try {
+        controller.registerTabType({ kind: 'probe', label: 'Old', onClosed() { closed.push('old'); },
+            provider: { mountTab() { return mounting.promise; } } });
+        const opening = controller.openTab({ id: 'pending', kind: 'probe' });
+        controller.registerTabType({ kind: 'probe', label: 'New', onClosed() { closed.push('new'); } });
+        await controller.closeTab('pending');
+        mounting.resolve({ dispose() { disposes++; } });
+        assert.equal(await opening, null);
+        assert.deepEqual(closed, ['old']);
+        assert.equal(disposes, 1);
+        assert.equal(controller.getSnapshot().tabs.some(tab => tab.id === 'pending'), false);
+    } finally {
+        mounting.resolve(null);
+        await controller.dispose();
+        dom.window.close();
+    }
+});

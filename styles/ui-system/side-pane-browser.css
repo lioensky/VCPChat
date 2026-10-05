@@ -8,15 +8,57 @@ html .side-browser-container:where(.vcp-ui-scope, .vcp-ui-scope *) {
     overflow: hidden;
 }
 
+/*
+ * 工具栏是三块等高的圆角件：导航胶囊（后退 / 前进 | 刷新）、地址栏、更多。
+ * 底色和描边都从主题文字色 / 背景色混出来，聚焦也只加深描边，不借用高亮色。
+ */
 html .side-browser-toolbar:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    --side-browser-pill-h: 32px;
+    --side-browser-pill-bg: color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 6%, transparent);
+    --side-browser-pill-border: color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 10%, transparent);
+    --side-browser-pill-border-strong: color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 24%, transparent);
+    --side-browser-pill-shadow: none;
     display: flex;
     align-items: center;
-    gap: 4px;
-    height: 34px;
-    min-height: 34px;
-    padding: 0 8px;
+    gap: 8px;
+    min-height: calc(var(--side-browser-pill-h) + 14px);
+    padding: 7px 10px;
     border-bottom: 1px solid var(--zcode-header-divider, var(--vcp-ui-port-color-rgba-255-255-255-0-06));
     box-sizing: border-box;
+}
+
+html body:is(.light-theme, [data-vcp-theme="light"]) .side-browser-toolbar:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    --side-browser-pill-bg: color-mix(in srgb, var(--vcp-ui-bg-primary, Canvas) 88%, transparent);
+    --side-browser-pill-border: color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 8%, transparent);
+    --side-browser-pill-border-strong: color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 22%, transparent);
+    --side-browser-pill-shadow: 0 1px 2px color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 6%, transparent);
+}
+
+html .side-browser-nav:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-browser-address:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-browser-btn.side-browser-more:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    height: var(--side-browser-pill-h);
+    border: 1px solid var(--side-browser-pill-border);
+    border-radius: 999px;
+    background: var(--side-browser-pill-bg);
+    box-shadow: var(--side-browser-pill-shadow);
+    box-sizing: border-box;
+}
+
+html .side-browser-nav:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex;
+    align-items: center;
+    flex: none;
+    gap: 2px;
+    padding: 0 3px;
+}
+
+html .side-browser-nav-divider:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: none;
+    width: 1px;
+    height: 16px;
+    margin: 0 3px;
+    background: var(--side-browser-pill-border-strong);
 }
 
 html .side-browser-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
@@ -24,20 +66,30 @@ html .side-browser-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
     align-items: center;
     justify-content: center;
     flex: none;
-    width: 24px;
-    height: 24px;
+    width: 26px;
+    height: 26px;
     padding: 0;
     border: 0;
-    border-radius: 4px;
+    border-radius: 999px;
     background: transparent;
     color: inherit;
     cursor: pointer;
-    opacity: 0.7;
+    opacity: 0.75;
 }
+
+html .side-browser-btn.side-browser-more:where(.vcp-ui-scope, .vcp-ui-scope *) { width: var(--side-browser-pill-h); }
+
+html .side-browser-btn .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) + 2px); }
 
 html .side-browser-btn:hover:not(:disabled):where(.vcp-ui-scope, .vcp-ui-scope *) {
     opacity: 1;
-    background: var(--vcp-ui-port-color-rgba-127-127-127-0-16);
+    background: color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 8%, transparent);
+}
+
+html .side-browser-btn:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    opacity: 1;
+    outline: 2px solid var(--side-browser-pill-border-strong);
+    outline-offset: 1px;
 }
 
 html .side-browser-btn:disabled:where(.vcp-ui-scope, .vcp-ui-scope *) {
@@ -48,24 +100,24 @@ html .side-browser-btn:disabled:where(.vcp-ui-scope, .vcp-ui-scope *) {
 html .side-browser-address:where(.vcp-ui-scope, .vcp-ui-scope *) {
     flex: 1;
     min-width: 0;
-    height: 24px;
-    padding: 0 10px;
-    border-radius: 12px;
-    border: 1px solid var(--border-color, var(--vcp-ui-port-color-rgba-255-255-255-0-08));
-    background: var(--vcp-ui-port-color-rgba-255-255-255-0-04);
-    color: var(--primary-text, inherit);
-    font-size: calc(var(--vcp-ui-font-size) - 2px);
+    padding: 0 14px;
+    color: var(--vcp-ui-text-primary, inherit);
+    font: inherit;
+    font-size: calc(var(--vcp-ui-font-size) - 1px);
     outline: none;
+    transition: border-color 150ms ease;
+}
+
+html .side-browser-address:where(.vcp-ui-scope, .vcp-ui-scope *)::placeholder {
+    text-align: center;
+    color: color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 45%, transparent);
 }
 
 html .side-browser-address:focus:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    border-color: var(--highlight-text, var(--vcp-ui-port-color-rgba-255-255-255-0-3));
+    border-color: var(--side-browser-pill-border-strong);
 }
 
-html body[data-vcp-theme="light"] .side-browser-address:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    background: var(--vcp-ui-port-color-rgba-0-0-0-0-04);
-    border-color: var(--vcp-ui-port-color-rgba-0-0-0-0-08);
-}
+html .side-browser-address:focus:where(.vcp-ui-scope, .vcp-ui-scope *)::placeholder { text-align: left; }
 
 html .side-browser-body:where(.vcp-ui-scope, .vcp-ui-scope *) {
     position: relative;
@@ -146,8 +198,8 @@ html .side-browser-notice-retry:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
 html .side-browser-menu:where(.vcp-ui-scope, .vcp-ui-scope *) {
     position: absolute;
     display: flex;
-    top: 36px;
-    right: 8px;
+    top: 50px;
+    right: 10px;
     z-index: 5;
     min-width: 176px;
     flex-direction: column;

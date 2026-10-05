@@ -10,6 +10,7 @@ import { createSidePaneTabMenu } from './side-pane-tab-menu.js';
 import { createSidePaneLauncher } from './side-pane-launcher.js';
 import { createSidePaneFocus } from './side-pane-focus.js';
 import { createSidePaneTabCloseOwner } from './side-pane-tab-close-owner.js';
+import { createSidePaneTabRegistry } from './side-pane-tab-registry.js';
 import { createSidePaneShortcuts } from './side-pane-shortcuts.js';
 import { createSidePaneLayoutStore, parseLayout, rememberBounded, serializeLayout } from './side-pane-persistence.js';
 
@@ -64,12 +65,17 @@ export function createSidePaneController({
     const pendingTabMounts = new Map(); // tabId -> mount occurrence; reopening the same id starts a new lifetime
     const cleanupListeners = [];
     const recentlyClosedTabs = [];
-    const tabTypes = new Map();
-    const getTabType = kind => tabTypes.get(kind) || null;
     const collapsedByParent = new Map(); // parentKey -> boolean，最近 50 个对话
     const activeTabByParent = new Map(); // parentKey -> tabId，最近 50 个对话
     let isDisposed = false;
     let controller = null;
+    const tabRegistry = createSidePaneTabRegistry({
+        providers,
+        registerEntry: entry => launcher.registerEntry(entry),
+        onChanged: () => { renderTabList(); overview?.refresh(); },
+        isDisposed: () => isDisposed
+    });
+    const { getTabType } = tabRegistry;
     const focus = createSidePaneFocus({
         doc,
         root,
@@ -300,12 +306,12 @@ export function createSidePaneController({
         pendingTabMounts.delete(tabId);
     }
 
-    function ensureTabMounted(tabId, { provider, payload, ariaLabel = null }) {
+    function ensureTabMounted(tabId, { provider, payload, ariaLabel = null, onClosed = null }) {
         const mounted = mountedTabMap.get(tabId);
         if (mounted) return Promise.resolve(mounted);
         if (pendingTabMounts.has(tabId)) return pendingTabMounts.get(tabId).promise;
 
-        const pending = { promise: null, viewElement: null, canceled: false };
+        const pending = { promise: null, viewElement: null, canceled: false, onClosed };
         const mounting = (async () => {
             let view = contentContainer?.querySelector(`[data-tab-id="${tabId}"]`);
             if (!view && contentContainer) {
@@ -337,7 +343,7 @@ export function createSidePaneController({
                 }
                 return null;
             }
-            const entry = { payload, viewElement: view, handle };
+            const entry = { payload, viewElement: view, handle, onClosed };
             mountedTabMap.set(tabId, entry);
             return entry;
         })();
@@ -362,7 +368,7 @@ export function createSidePaneController({
         const tab = state.tabs.find(t => t.id === tabId);
         const provider = tab && providers[tab.kind];
         if (!provider?.mountTab) return;
-        ensureTabMounted(tabId, { provider, payload: tab, ariaLabel: tab.title || '副屏视图' })
+        ensureTabMounted(tabId, { provider, payload: tab, ariaLabel: tab.title || '副屏视图', onClosed: getTabType(tab.kind)?.onClosed })
             .then(entry => { if (entry && !isDisposed) syncViewPanels(); })
             .catch(error => console.error(`[SidePaneController] Failed to mount restored tab "${tabId}":`, error));
     }
@@ -403,7 +409,10 @@ export function createSidePaneController({
         isDisposed: () => isDisposed,
         getTab: tabId => state.tabs.find(tab => tab.id === tabId),
         getEntry: tabId => mountedTabMap.get(tabId),
-        getOnClosed: tab => getTabType(tab.kind)?.onClosed,
+        getOnClosed: tab => {
+            const occurrence = mountedTabMap.get(tab.id) || pendingTabMounts.get(tab.id);
+            return occurrence ? occurrence.onClosed : getTabType(tab.kind)?.onClosed;
+        },
         cancelPendingMount,
         retireTab(tab, entry, options) {
             // Read current focus after authorization; the user may have moved elsewhere while it waited.
@@ -597,6 +606,7 @@ export function createSidePaneController({
             const entry = await ensureTabMounted(targetTabId, {
                 provider: providers[rawTab.kind],
                 payload: rawTab,
+                onClosed: definition?.onClosed,
                 ariaLabel: resolved.title || '副屏视图'
             });
             return finishOpen(targetTabId, entry, origin);
@@ -664,28 +674,7 @@ export function createSidePaneController({
          * @param {SidePaneTabType} definition
          * @returns {() => void} unregister
          */
-        registerTabType(definition) {
-            if (isDisposed) return () => {};
-            if (!definition || typeof definition.kind !== 'string' || !definition.kind
-                || typeof definition.label !== 'string' || !definition.label) {
-                throw new TypeError('registerTabType requires { kind, label, provider?, entry? }');
-            }
-            const stored = Object.freeze({ ...definition });
-            const unregisterEntry = stored.entry ? launcher.registerEntry({
-                id: stored.kind, label: stored.label, icon: stored.icon, ...stored.entry
-            }) : () => {};
-            tabTypes.set(stored.kind, stored);
-            if (stored.provider) providers[stored.kind] = stored.provider;
-            renderTabList();
-            overview?.refresh();
-            return () => {
-                unregisterEntry();
-                if (tabTypes.get(stored.kind) !== stored) return;
-                tabTypes.delete(stored.kind);
-                if (providers[stored.kind] === stored.provider) delete providers[stored.kind];
-                if (!isDisposed) { renderTabList(); overview?.refresh(); }
-            };
-        },
+        registerTabType: tabRegistry.registerTabType,
 
         getTabType,
 
@@ -781,7 +770,7 @@ export function createSidePaneController({
             });
             mountedTabMap.clear();
             for (const tabId of pendingTabMounts.keys()) cancelPendingMount(tabId);
-            tabTypes.clear();
+            tabRegistry.dispose();
             await Promise.allSettled([...disposePromises, tabCloseOwner.dispose()]);
         }
     });

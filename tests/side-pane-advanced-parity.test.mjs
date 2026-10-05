@@ -722,3 +722,61 @@ test('tab type registrations stay local and stale unregistration cannot remove a
     firstDOM.window.close();
     secondDOM.window.close();
 });
+
+test('replacing a tab type without an entry removes its previous launcher action', async () => {
+    const dom = createParityTestDOM();
+    const ctrl = createController(dom);
+    let opened = 0;
+    try {
+        const stale = ctrl.registerTabType({ kind: 'custom', label: 'Old', entry: { id: 'old-action', open() { opened++; } } });
+        const unregister = ctrl.registerTabType({ kind: 'custom', label: 'Placeholder' });
+        const oldAction = dom.window.document.querySelector('[data-open-tab-entry="old-action"]');
+        oldAction?.click();
+        assert.equal(oldAction, null, 'the removed declaration must not leave a live launcher action');
+        assert.equal(opened, 0);
+        stale();
+        assert.equal(ctrl.getTabType('custom').label, 'Placeholder');
+        unregister();
+        assert.equal(ctrl.getTabType('custom'), null);
+    } finally {
+        await ctrl.dispose();
+        dom.window.close();
+    }
+});
+
+test('replacing a tab type without a provider cannot mount through the retired provider', async () => {
+    const dom = createParityTestDOM();
+    const ctrl = createController(dom);
+    let mounts = 0;
+    try {
+        ctrl.registerTabType({ kind: 'custom', label: 'Old', provider: { mountTab() { mounts++; return {}; } } });
+        ctrl.registerTabType({ kind: 'custom', label: 'Placeholder' });
+        assert.equal(await ctrl.openTab({ id: 'placeholder', kind: 'custom' }), null);
+        assert.equal(mounts, 0, 'no provider on the replacement means a placeholder');
+    } finally {
+        await ctrl.dispose();
+        dom.window.close();
+    }
+});
+
+test('entry identity changes replace the whole declaration, while invalid replacements keep the old one', async () => {
+    const dom = createParityTestDOM();
+    const ctrl = createController(dom);
+    const opened = [];
+    try {
+        const stale = ctrl.registerTabType({ kind: 'custom', label: 'Old', entry: { id: 'old-action', open() { opened.push('old'); } } });
+        assert.throws(() => ctrl.registerTabType({ kind: 'custom', label: 'Invalid', entry: {} }), TypeError);
+        assert.equal(ctrl.getTabType('custom').label, 'Old');
+        dom.window.document.querySelector('[data-open-tab-entry="old-action"]').click();
+        const unregister = ctrl.registerTabType({ kind: 'custom', label: 'New', entry: { id: 'new-action', open() { opened.push('new'); } } });
+        assert.equal(dom.window.document.querySelector('[data-open-tab-entry="old-action"]'), null);
+        stale();
+        dom.window.document.querySelector('[data-open-tab-entry="new-action"]').click();
+        assert.deepEqual(opened, ['old', 'new']);
+        unregister();
+        assert.equal(dom.window.document.querySelector('[data-open-tab-entry="new-action"]'), null);
+    } finally {
+        await ctrl.dispose();
+        dom.window.close();
+    }
+});

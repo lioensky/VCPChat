@@ -204,6 +204,28 @@ Markdown 测试只派发 synthetic beforeinput 并要求 preventDefault，但生
 
 参考研究继续读完 DSH tab-registry 的运行时登记、guide 缓存、路由匹配与扩展/builtin 覆盖：登记与 fiber effect 绑定，注销比较具体 definition 身份；优先级分层后按 pattern specificity 与登记次序匹配，显式 kind 仍需 canOpen 许可。对应测试已读唯一性、shadow/unregister、显式 kind veto、fiber 注销与缓存稳定分支（中段尚未全部读完）。我们的 registerTabType 覆盖时可选 provider/launcher entry 是否留存旧登记仍是候选问题，尚未复现，不能写成已修复；不引入参考实现的扩展优先级机制来扩大产品范围。
 
+## 第七轮：登记替换与清理归属
+
+继续深入对照 DSH `tab-registry.ts`，补齐此前遗漏的测试中段：标题随语言即时读取、纯页面无需 patterns、guide 携带当前 provider id、同 band 重复登记拒绝、扩展退役后恢复 builtin、fiber 卸载释放 kind。读完 `tab-domain.ts` 的 occurrence/commands/actions：每次记录生命周期有独立 AbortController，layout commit 后按 session 同步 pin/abort，commands 的注销比较具体对象身份；旧 occurrence 不因同 ID 恢复而重新使用。参考资源动作自身的全部迟到调用路径仍未验证，不把它当作正确性保证。
+
+ZCode 进一步读了 `workspaceSidePane.ts` 的 parent 可见性、活动 fallback、单标签和 visible/all/other 关闭转换，以及 `useAppPanels.ts` 的授权后批量关闭和 reopen。纯状态不负责释放 PTY/browser，runtime 显式回收；关闭后的 browser 重开使用新 UUID 并清掉 residency 字段。授权前取得的资源列表和授权后取得的当前状态仍是不同快照，不能仅凭这些代码推断异步重开一定安全。
+
+### R17：省略字段仍继承旧登记
+
+本工程已有测试明确允许同 kind 替换，所以保留该契约，没有照搬 DSH 的 band/插件覆盖机制。旧 registerTabType 只在新 entry/provider 存在时写入，省略时旧入口和旧 provider 继续生效；entry.id 改变时还同时留下两个入口。
+
+提取无子模块依赖的 `createSidePaneTabRegistry`，由组合者提供 registerEntry/render 回调。成功替换释放旧登记持有的入口和 provider，再登记新声明；不合法 entry 验证失败保留旧声明。旧注销函数以登记身份核对，不移除新登记或独立替换的 provider。新工厂 51 行，控制器整体减少代码；已有运行器和静态类型 API 保留。
+
+### R18：旧页面清理误用新类型钩子
+
+旧 close 通过 kind 查询当前 definition.onClosed。页面用旧 provider 挂载后替换类型，会调用新业务删除回调；注销类型后则完全丢失原回调。现在挂载开始就捕获 onClosed，并由 pending/mounted occurrence 保留，替换仅影响后续挂载，旧页面在自己的生命周期关闭时使用原回调；普通 controller.dispose 仍不触发业务删除。
+
+五项新行为验证在旧代码 **33 通过 / 5 失败**；修复后控制器、登记、持久化 **44/44**，相关 **232/232**、UI **121/121**，全量 **257 个测试文件通过、0 失败、0 超时**。七项常用检查通过：首次 events 正确报陈旧清单，生成后只新增 registry 文件清单一行，再检查通过。没有 CSS 改动，因此样式白名单无需调整。扩展检查仍是历史 design boundary 加三项既有失败，其他 27 项通过，没有改变旧 PR 白名单。
+
+实际工作区窗口临时 iframe 的旧/新源码对比：旧入口/旧 provider 调用 **1/1 → 0/0**；旧页面关闭从 `new:old` 纠正到 `old:old`，注销后新页面仍执行 `new:new`，待挂载旧页面执行 `pending-old`。截图后清理 iframe，主窗口原标签、草稿、主题快照一致，未 reload。这个验证使用真实控制器与 DOM、受控 provider，不覆盖生产 provider 的全部文件/进程清理。
+
+另已用受控实际控制器复现下一项待修复缺陷：closeAllTabs 等待 A 授权时，另行关闭并以同 ID 重开 B；批量循环随后按旧 ID 把 `B:new` 销毁。探针结果已记录，**此缺陷尚未修复**。需要让批量意图绑定原始生命周期，并验证 metadata 更新/迟到挂载不会被误当成重开，以及关闭后激活不会覆盖后续用户意图。
+
 ## 验证与局限
 
 - 修改前新增 6 个故障用例：文件旧成功/旧失败、旧行触发、筛选旧成功/旧失败、关闭重开。全部能在原实现上失败。
@@ -226,7 +248,7 @@ Git 清单有 2384 个跟踪文件。按代码扩展名排除常见 vendor/asset
 | 范围 | 当前证据 | 仍需完成 |
 | --- | --- | --- |
 | 参考侧栏实现细节 | 上表列出已读逻辑；DSH occurrence/资源 policy、ZCode request/workspace 边界已落到复现修复 | 继续读完整 state/planner、资源 provider、browser/terminal/subagent、布局/持久化与对应错误路径测试；记录取舍，不能只数文件 |
-| 我们的侧栏架构和生命周期 | 挂载 occurrence、picker/计划筛选、跨话题 open/activate、迟到 focus、异步 requestClose/onClosed、关闭与销毁并发、不可关闭标签保护已复现修复 | 具体 provider 的业务清理、注册覆盖/注销、批量关闭与后续意图、还原与后台驻留、动态缓存容量、订阅归属 |
+| 我们的侧栏架构和生命周期 | 挂载 occurrence、picker/计划筛选、跨话题 open/activate、迟到 focus、异步关闭/销毁、不可关闭保护、声明完整替换和旧页面 onClosed 归属已复现修复 | 批量关闭同 ID 重开已复现待修复；具体 provider 的业务清理、还原与后台驻留、动态缓存容量、订阅归属 |
 | 聊天和辅助对话 | 尚无本轮深入结论 | 主聊天/辅助对话所有者、流/取消/重试/编辑、草稿、会话与工作区隔离，对照 reference lease/occurrence |
 | Git、ProjectForge、源码后端 | 本轮只追到 provider 读取与已有测试 | IPC/preload 契约、读写根目录约束、真实 Git 与回退竞态、并发快照、索引、错误分类、批次缓存、隐藏面板 I/O |
 | 主进程、其他服务与 Rust | 清单定位到 IPC/services、chat data/audio/assistant/indexer 等模块 | 主进程资源生命周期、异常恢复与服务装配、Rust 测试与接口、插件/工具调用、升级/打包运行闭包 |
