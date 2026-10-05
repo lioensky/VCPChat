@@ -86,7 +86,7 @@ function createStreamCapabilities(root, services) {
                 paragraph.appendChild(strong);
                 errorContent.appendChild(paragraph);
             } else {
-                services.messageRenderer.renderMessage({ role: 'system', content: `流处理错误 (ID: ${event.messageId}): ${error}`, timestamp: Date.now(), id: `err_${event.messageId}` });
+                services.messageRenderer.renderMessage({ role: 'system', notice: 'error', content: `流处理错误 (ID: ${event.messageId}): ${error}`, timestamp: Date.now(), id: `err_${event.messageId}` });
             }
         },
     });

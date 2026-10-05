@@ -24,7 +24,8 @@ export function createSideChatMessageActions({
 
     function attachMessageActions(messageItem) {
         if (!messageItem || messageItem.hasAttribute?.('data-has-side-action')) return;
-        if (messageItem.classList?.contains('user')) return;
+        // 只有回答能填入主聊；系统提示（含错误）不是回答
+        if (messageItem.classList?.contains('user') || messageItem.classList?.contains('system')) return;
         messageItem.setAttribute('data-has-side-action', 'true');
 
         const actionsDiv = doc.createElement('div');

@@ -676,7 +676,7 @@ export const chatManager = (() => {
             } else if (topics && topics.error) {
                 if (!isSelectionCurrent()) return;
                 console.error(`加载 ${itemType} ${itemId} 的话题列表失败`, topics.error);
-                if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载话题列表失败: ${topics.error}`, timestamp: Date.now() });
+                if (messageRenderer) messageRenderer.renderMessage({ role: 'system', notice: 'error', content: `加载话题列表失败: ${topics.error}`, timestamp: Date.now() });
                 await loadOwnedHistory(null);
             } else {
                 if (itemType === 'agent') {
@@ -685,7 +685,7 @@ export const chatManager = (() => {
                     // ⚠️ 检查是否返回错误对象
                     if (agentConfig && agentConfig.error) {
                         console.error(`[ChatManager] Failed to get agent config for ${itemId}:`, agentConfig.error);
-                        if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载助手配置失败: ${agentConfig.error}`, timestamp: Date.now() });
+                        if (messageRenderer) messageRenderer.renderMessage({ role: 'system', notice: 'error', content: `加载助手配置失败: ${agentConfig.error}`, timestamp: Date.now() });
                         await loadOwnedHistory(null);
                     } else if (agentConfig && (!agentConfig.topics || agentConfig.topics.length === 0)) {
                         const defaultTopicResult = await electronAPI.createNewTopicForAgent(itemId, "主要对话");
@@ -695,7 +695,7 @@ export const chatManager = (() => {
                             if (messageRenderer) messageRenderer.setCurrentTopicId(defaultTopicResult.topicId);
                             await loadOwnedHistory(defaultTopicResult.topicId);
                         } else {
-                            if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `创建默认话题失败: ${defaultTopicResult.error}`, timestamp: Date.now() });
+                            if (messageRenderer) messageRenderer.renderMessage({ role: 'system', notice: 'error', content: `创建默认话题失败: ${defaultTopicResult.error}`, timestamp: Date.now() });
                             await loadOwnedHistory(null);
                         }
                     } else {
@@ -709,7 +709,7 @@ export const chatManager = (() => {
                         if (messageRenderer) messageRenderer.setCurrentTopicId(defaultTopicResult.topicId);
                         await loadOwnedHistory(defaultTopicResult.topicId);
                     } else {
-                        if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `创建默认群聊话题失败: ${defaultTopicResult.error}`, timestamp: Date.now() });
+                        if (messageRenderer) messageRenderer.renderMessage({ role: 'system', notice: 'error', content: `创建默认群聊话题失败: ${defaultTopicResult.error}`, timestamp: Date.now() });
                         await loadOwnedHistory(null);
                     }
                 }
@@ -717,7 +717,7 @@ export const chatManager = (() => {
         } catch (e) {
             if (!isSelectionCurrent()) return;
             console.error(`选择 ${itemType} ${itemId} 时发生错误: `, e);
-            if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `选择${itemType === 'group' ? '群组' : '助手'}时出错: ${e.message}`, timestamp: Date.now() });
+            if (messageRenderer) messageRenderer.renderMessage({ role: 'system', notice: 'error', content: `选择${itemType === 'group' ? '群组' : '助手'}时出错: ${e.message}`, timestamp: Date.now() });
         }
 
         if (!isSelectionCurrent()) return;
@@ -935,7 +935,7 @@ export const chatManager = (() => {
         if (!itemId) {
             const errorMsg = `错误：无法加载聊天记录，${itemType === 'group' ? '群组' : '助手'}ID (${itemId}) 缺失。`;
             console.error(errorMsg);
-            if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: errorMsg, timestamp: Date.now() });
+            if (messageRenderer) messageRenderer.renderMessage({ role: 'system', notice: 'error', content: errorMsg, timestamp: Date.now() });
             await displayTopicTimestampBubble(null, null, null);
             return;
         }
@@ -1022,7 +1022,7 @@ export const chatManager = (() => {
         }
     
         if (historyResult && historyResult.error) {
-            if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载话题 "${topicId}" 的聊天记录失败: ${historyResult.error}`, timestamp: Date.now() });
+            if (messageRenderer) messageRenderer.renderMessage({ role: 'system', notice: 'error', content: `加载话题 "${topicId}" 的聊天记录失败: ${historyResult.error}`, timestamp: Date.now() });
         } else if (Array.isArray(historyForProjection) && historyForProjection.length > 0) {
             currentChatHistoryRef.set(historyForProjection);
             notifySendStateChanged();
@@ -1052,7 +1052,7 @@ export const chatManager = (() => {
                 setNextUiEmptyStateActive(true, 'empty-topic');
             }
         } else {
-            if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载话题 "${topicId}" 的聊天记录时返回了无效数据。`, timestamp: Date.now() });
+            if (messageRenderer) messageRenderer.renderMessage({ role: 'system', notice: 'error', content: `加载话题 "${topicId}" 的聊天记录时返回了无效数据。`, timestamp: Date.now() });
         }
 
         if (abortIfStale()) return;
@@ -1813,10 +1813,10 @@ export const chatManager = (() => {
                     await removeThinkingFromSource();
                     settleOwnedStreamOperation?.({ event: { type: 'failed', outcome: { transport: { error: response.error } } } });
                     if (isForActiveChat && renderTarget) {
-                        renderTarget.renderMessage({ role: 'system', content: `VCP错误: ${response.error}`, timestamp: Date.now() });
+                        renderTarget.renderMessage({ role: 'system', notice: 'error', content: `VCP错误: ${response.error}`, timestamp: Date.now() });
                     }
                     console.error(`[ChatManager] VCP Error for background message:`, response.error);
-                    if (request?.propagateError) throw new Error(String(response.error));
+                    if (request?.propagateError) throw Object.assign(new Error(String(response.error)), { shownInChat: true });
                 } else if (response.choices && response.choices.length > 0) {
                     const assistantMessageContent = response.choices[0].message.content;
                     const assistantMessage = {
@@ -1856,7 +1856,7 @@ export const chatManager = (() => {
                     await removeThinkingFromSource();
                     settleOwnedStreamOperation?.({ event: { type: 'failed', outcome: { transport: { error: 'Unknown response format' } } } });
                     if (isForActiveChat && renderTarget) {
-                        renderTarget.renderMessage({ role: 'system', content: 'VCP 返回了未知格式的响应。', timestamp: Date.now() });
+                        renderTarget.renderMessage({ role: 'system', notice: 'error', content: 'VCP 返回了未知格式的响应。', timestamp: Date.now() });
                     }
                 }
             } else {
@@ -1865,17 +1865,17 @@ export const chatManager = (() => {
                     await removeThinkingFromSource();
                     settleOwnedStreamOperation?.({ event: { type: 'failed', outcome: { transport: { error: vcpResponse.error } } } });
                     if (isSendContextCurrent() && renderTarget) {
-                        renderTarget.renderMessage({ role: 'system', content: `请求流式回复失败: ${vcpResponse.error || '未知错误'}`, timestamp: Date.now() });
+                        renderTarget.renderMessage({ role: 'system', notice: 'error', content: `请求流式回复失败: ${vcpResponse.error || '未知错误'}`, timestamp: Date.now() });
                     }
-                    if (request?.propagateError) throw new Error(String(vcpResponse.error || '流式回复失败'));
+                    if (request?.propagateError) throw Object.assign(new Error(String(vcpResponse.error || '流式回复失败')), { shownInChat: true });
                 } else if (vcpResponse && !vcpResponse.streamingStarted && !vcpResponse.streamError) {
                     console.warn("Expected streaming to start, but main process returned non-streaming or error:", vcpResponse);
                     await removeThinkingFromSource();
                     settleOwnedStreamOperation?.({ event: { type: 'failed', outcome: { transport: { error: 'Expected streaming to start' } } } });
                     if (isSendContextCurrent() && renderTarget) {
-                        renderTarget.renderMessage({ role: 'system', content: '请求流式回复失败，收到非流式响应或错误。', timestamp: Date.now() });
+                        renderTarget.renderMessage({ role: 'system', notice: 'error', content: '请求流式回复失败，收到非流式响应或错误。', timestamp: Date.now() });
                     }
-                    if (request?.propagateError) throw new Error('请求流式回复失败，收到非流式响应或错误');
+                    if (request?.propagateError) throw Object.assign(new Error('请求流式回复失败，收到非流式响应或错误'), { shownInChat: true });
                 }
             }
 
@@ -1887,8 +1887,9 @@ export const chatManager = (() => {
             console.error('发送消息或处理VCP响应时出错', error);
             settleOwnedStreamOperation?.({ event: { type: 'failed', outcome: { transport: { error } } } });
             await removeThinkingFromSource();
-            if (isSendContextCurrent() && renderTarget) {
-                renderTarget.renderMessage({ role: 'system', content: `错误: ${error.message}`, timestamp: Date.now() });
+            // 上面已经在对话里报过的错误（shownInChat）只是继续往调用方抛，不再补一条“错误: …”
+            if (isSendContextCurrent() && renderTarget && !error?.shownInChat) {
+                renderTarget.renderMessage({ role: 'system', notice: 'error', content: `错误: ${error.message}`, timestamp: Date.now() });
             }
             if (request?.propagateError) throw error;
         }

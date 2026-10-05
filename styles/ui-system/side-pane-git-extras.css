@@ -242,19 +242,22 @@ html .side-git-empty:where(.vcp-ui-scope, .vcp-ui-scope *) {
     align-items: center;
     justify-content: center;
     height: 100%;
-    padding: 0 24px;
+    padding: 0 24px 40px;
+    box-sizing: border-box;
     text-align: center;
 }
 html .side-git-empty[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }
+/* 对照 ZCode 浏览器空页：64px 淡图标，标题和说明之间 8px */
 html .side-git-empty-icon:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    width: 32px;
-    height: 32px;
-    font-size: calc(var(--vcp-ui-font-size) + 18px);
-    color: var(--secondary-text, var(--vcp-ui-port-color-rgba-255-255-255-0-35));
+    --vcp-ui-icon-size: 64px;
+    margin-bottom: 24px;
+    color: var(--primary-text, var(--vcp-ui-port-color-f1f5f9));
+    opacity: 0.3;
 }
-html .side-git-empty-title:where(.vcp-ui-scope, .vcp-ui-scope *) { margin: 12px 0 0; font-size: calc(var(--vcp-ui-font-size) - 1px); font-weight: 500; color: var(--primary-text, var(--vcp-ui-port-color-f1f5f9)); }
+html body[data-vcp-theme="light"] .side-git-empty-icon:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--primary-text, var(--vcp-ui-port-color-0f172a)); }
+html .side-git-empty-title:where(.vcp-ui-scope, .vcp-ui-scope *) { margin: 0; font-size: calc(var(--vcp-ui-font-size) - 1px); font-weight: 500; color: var(--primary-text, var(--vcp-ui-port-color-f1f5f9)); }
 html body[data-vcp-theme="light"] .side-git-empty-title:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--primary-text, var(--vcp-ui-port-color-0f172a)); }
-html .side-git-empty-desc:where(.vcp-ui-scope, .vcp-ui-scope *) { margin: 4px 0 0; font-size: calc(var(--vcp-ui-font-size) - 1px); color: var(--secondary-text, var(--vcp-ui-port-color-94a3b8)); }
+html .side-git-empty-desc:where(.vcp-ui-scope, .vcp-ui-scope *) { margin: 8px 0 0; font-size: calc(var(--vcp-ui-font-size) - 1px); color: var(--secondary-text, var(--vcp-ui-port-color-94a3b8)); }
 html .side-git-empty-add:where(.vcp-ui-scope, .vcp-ui-scope *) {
     margin-top: 12px;
     height: 32px;

@@ -25,7 +25,8 @@ html .side-pane-tabs:where(.vcp-ui-scope, .vcp-ui-scope *) {
     scrollbar-width: none;
     flex: 1;
     min-width: 0;
-    padding: 0 2px;
+    /* 上下留几像素，选中卡片的阴影不会被横向滚动容器裁掉 */
+    padding: 4px 2px;
 }
 
 html .side-pane-tabs:where(.vcp-ui-scope, .vcp-ui-scope *)::-webkit-scrollbar {
@@ -58,13 +59,38 @@ html body:is(.light-theme, [data-vcp-theme="light"]) .side-pane-tab-item:hover:w
     background-color: var(--vcp-ui-port-color-rgba-0-0-0-0-05);
 }
 
+/* 选中的标签是一张浮起来的卡片（底色 + 细边框 + 很淡的阴影），而不是把底色压深 */
 html .side-pane-tab-item.active:where(.vcp-ui-scope, .vcp-ui-scope *) {
     background-color: var(--vcp-ui-port-color-rgba-255-255-255-0-10);
-    border-color: transparent;
+    border-color: var(--vcp-ui-port-color-rgba-255-255-255-0-12);
+    box-shadow: var(--vcp-ui-shadow-sm);
 }
 
 html body[data-vcp-theme="light"] .side-pane-tab-item.active:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    background-color: var(--vcp-ui-port-color-rgba-0-0-0-0-08);
+    background-color: var(--vcp-ui-port-color-ffffff);
+    border-color: var(--vcp-ui-border);
+    box-shadow: var(--vcp-ui-shadow-elevation-hairline);
+}
+
+/* 没选中的标签之间一根短竖线；挨着选中卡片或悬停的标签时藏起来，免得和卡片边缘叠在一起 */
+html .side-pane-tab-item + .side-pane-tab-item:where(.vcp-ui-scope, .vcp-ui-scope *)::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 8px;
+    bottom: 8px;
+    width: 1px;
+    background: var(--vcp-ui-border);
+    pointer-events: none;
+    transition: opacity 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html .side-pane-tab-item.active:where(.vcp-ui-scope, .vcp-ui-scope *)::before,
+html .side-pane-tab-item.active + .side-pane-tab-item:where(.vcp-ui-scope, .vcp-ui-scope *)::before,
+html .side-pane-tab-item:hover:where(.vcp-ui-scope, .vcp-ui-scope *)::before,
+html .side-pane-tab-item:hover + .side-pane-tab-item:where(.vcp-ui-scope, .vcp-ui-scope *)::before,
+html .side-pane-tabs.is-sorting .side-pane-tab-item:where(.vcp-ui-scope, .vcp-ui-scope *)::before {
+    opacity: 0;
 }
 
 html .side-pane-tab:where(.vcp-ui-scope, .vcp-ui-scope *) {

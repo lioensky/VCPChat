@@ -1251,7 +1251,7 @@ async function handleRegenerateResponse(originalAssistantMessage) {
 
             if (response.error) {
                 if (isForActiveChat) {
-                    contextMenuDependencies.renderMessage({ role: 'system', content: `VCP错误 (重新生成): ${response.error}`, timestamp: Date.now() });
+                    contextMenuDependencies.renderMessage({ role: 'system', notice: 'error', content: `VCP错误 (重新生成): ${response.error}`, timestamp: Date.now() });
                 }
             } else if (response.choices && response.choices.length > 0) {
                 const assistantMessageContent = response.choices[0].message.content;

@@ -142,15 +142,32 @@ html .side-browser-empty:where(.vcp-ui-scope, .vcp-ui-scope *) {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 10px;
-    padding: 24px;
+    padding: 0 24px 40px;
     text-align: center;
-    font-size: calc(var(--vcp-ui-font-size) - 2px);
-    opacity: 0.55;
+    font-size: calc(var(--vcp-ui-font-size) - 1px);
+    color: var(--secondary-text, var(--vcp-ui-port-color-94a3b8));
 }
 
+/* 对照 ZCode BrowserEmptyState：64px 的淡图标，下面一行标题、一行说明 */
 html .side-browser-empty .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    --vcp-ui-icon-size: 32px;
+    --vcp-ui-icon-size: 64px;
+    margin-bottom: 24px;
+    color: var(--primary-text, var(--vcp-ui-port-color-f1f5f9));
+    opacity: 0.3;
+}
+
+/* 标题由样式补上：这块空状态的结构在 browserSideProvider 里只有图标和说明 */
+html .side-browser-empty-text:where(.vcp-ui-scope, .vcp-ui-scope *)::before {
+    content: "浏览器";
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+    color: var(--primary-text, var(--vcp-ui-port-color-f1f5f9));
+}
+
+html body[data-vcp-theme="light"] .side-browser-empty .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *),
+html body[data-vcp-theme="light"] .side-browser-empty-text:where(.vcp-ui-scope, .vcp-ui-scope *)::before {
+    color: var(--primary-text, var(--vcp-ui-port-color-0f172a));
 }
 
 html .side-browser-notice:where(.vcp-ui-scope, .vcp-ui-scope *) {

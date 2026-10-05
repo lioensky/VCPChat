@@ -327,7 +327,7 @@ export function setupEventListeners(deps) {
 
                 if (response.error) {
                     if (isForActiveChat && messageRenderer) {
-                        messageRenderer.renderMessage({ role: 'system', content: `VCP错误: ${response.error}`, timestamp: Date.now() });
+                        messageRenderer.renderMessage({ role: 'system', notice: 'error', content: `VCP错误: ${response.error}`, timestamp: Date.now() });
                     }
                     console.error(`[ContinueWriting] VCP Error:`, response.error);
                 } else if (response.choices && response.choices.length > 0) {
@@ -371,7 +371,7 @@ export function setupEventListeners(deps) {
         } catch (error) {
             console.error('[ContinueWriting] 续写时出错:', error);
             messageRenderer?.removeMessageById(thinkingMessage.id);
-            messageRenderer?.renderMessage({ role: 'system', content: `错误: ${error.message}`, timestamp: Date.now() });
+            messageRenderer?.renderMessage({ role: 'system', notice: 'error', content: `错误: ${error.message}`, timestamp: Date.now() });
             if (currentSelectedItem.id && currentTopicId) {
                 await historyMutationAuthority.replace({
                     itemId: currentSelectedItem.id, itemType: currentSelectedItem.type, topicId: currentTopicId,
