@@ -55,7 +55,7 @@ html .side-terminal-actions:where(.vcp-ui-scope, .vcp-ui-scope *) {
 html .side-terminal-ws-select:where(.vcp-ui-scope, .vcp-ui-scope *) {
     width: 100%;
     min-width: 0;
-    padding: 0 30px 0 14px;
+    padding: 0 30px 0 26px;
     appearance: none;
     -webkit-appearance: none;
     font: inherit;
@@ -69,6 +69,21 @@ html .side-terminal-ws-select:hover:not(:disabled):where(.vcp-ui-scope, .vcp-ui-
 html .side-terminal-ws-select:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *) { border-color: var(--side-terminal-pill-border-strong); }
 html .side-terminal-ws-select:disabled:where(.vcp-ui-scope, .vcp-ui-scope *) { cursor: default; opacity: 0.6; }
 html .side-terminal-ws-select option:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--vcp-ui-color-background, var(--vcp-ui-port-color-18181b)); color: var(--vcp-ui-text-primary, inherit); }
+
+/* 连接状态点：已连接绿、过渡中琥珀、已退出灰、出错红 */
+html .side-terminal-status-dot:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: absolute;
+    left: 12px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--warning-color, var(--vcp-ui-palette-amber));
+    pointer-events: none;
+    transition: background-color 150ms ease;
+}
+html .side-terminal-status-dot[data-state="connected"]:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--success-color, var(--vcp-ui-palette-green)); }
+html .side-terminal-status-dot[data-state="exited"]:where(.vcp-ui-scope, .vcp-ui-scope *) { background: color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 35%, transparent); }
+html .side-terminal-status-dot[data-state="error"]:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--danger-color, var(--vcp-ui-port-color-ef4444)); }
 
 html .side-terminal-select-chevron:where(.vcp-ui-scope, .vcp-ui-scope *) {
     --vcp-ui-icon-size: 14px;

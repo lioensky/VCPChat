@@ -113,73 +113,33 @@
         onChanged?.();
     }
 
+    // Lucide icons from the shared adapter, built in the caller's document.
+    function buildLucideIcon(doc, name, size, className = '') {
+        const icons = doc.defaultView?.VCPIcons || globalThis.VCPIcons;
+        const markup = icons?.markup?.(name, { size, className });
+        if (markup) {
+            const holder = doc.createElement('template');
+            holder.innerHTML = markup;
+            return holder.content.firstElementChild;
+        }
+        const span = doc.createElement('span');
+        span.className = `vcp-ui-icon${className ? ` ${className}` : ''}`;
+        span.setAttribute('aria-hidden', 'true');
+        span.style.setProperty('--vcp-ui-icon-size', `${size}px`);
+        span.textContent = name;
+        return span;
+    }
+
     function buildChevronIcon(doc, direction = 'up') {
-        const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        svg.setAttribute('viewBox', '0 0 16 16');
-        svg.setAttribute('width', '10');
-        svg.setAttribute('height', '10');
-        svg.setAttribute('fill', 'none');
-        svg.setAttribute('stroke', 'currentColor');
-        svg.setAttribute('stroke-width', '1.6');
-        svg.setAttribute('stroke-linecap', 'round');
-        svg.setAttribute('stroke-linejoin', 'round');
-        svg.setAttribute('aria-hidden', 'true');
-        const path = doc.createElementNS('http://www.w3.org/2000/svg', 'path');
-        path.setAttribute('d', direction === 'up' ? 'M3.5 10L8 5.5L12.5 10' : 'M3.5 6L8 10.5L12.5 6');
-        svg.append(path);
-        return svg;
+        return buildLucideIcon(doc, direction === 'up' ? 'chevron-up' : 'chevron-down', 12);
     }
 
     function buildJevControlIcon(doc, type) {
-        const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        svg.classList.add('jev-group-control-icon');
-        svg.setAttribute('viewBox', '0 0 20 20');
-        svg.setAttribute('width', '16');
-        svg.setAttribute('height', '16');
-        svg.setAttribute('fill', 'none');
-        svg.setAttribute('stroke', 'currentColor');
-        svg.setAttribute('stroke-width', '1.7');
-        svg.setAttribute('stroke-linecap', 'round');
-        svg.setAttribute('stroke-linejoin', 'round');
-        svg.setAttribute('aria-hidden', 'true');
-        svg.setAttribute('focusable', 'false');
-        svg.style.flex = '0 0 auto';
-
-        const paths = type === 'start'
-            ? [
-                'M3.25 4.25h9.5a2.5 2.5 0 0 1 2.5 2.5v4.5a2.5 2.5 0 0 1-2.5 2.5H8l-3.75 2.5v-2.9a2.5 2.5 0 0 1-1-2V6.75a2.5 2.5 0 0 1 2.5-2.5Z',
-                'M7 8.9h4.5',
-                'M16.25 6.75h.25a2.25 2.25 0 0 1 2.25 2.25v3.25a2.25 2.25 0 0 1-1.25 2l.15 2.25-2.8-1.85'
-            ]
-            : [
-                'M16.4 7.1A7 7 0 0 0 4.2 5.25L2.5 7',
-                'M2.5 3.5V7H6',
-                'M3.6 12.9a7 7 0 0 0 12.2 1.85L17.5 13',
-                'M17.5 16.5V13H14'
-            ];
-        paths.forEach(data => {
-            const path = doc.createElementNS('http://www.w3.org/2000/svg', 'path');
-            path.setAttribute('d', data);
-            svg.append(path);
-        });
-        return svg;
+        return buildLucideIcon(doc, type === 'start' ? 'messages-square' : 'refresh-cw', 16, 'jev-group-control-icon');
     }
 
     function buildGripVerticalIcon(doc) {
-        const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        svg.setAttribute('viewBox', '0 0 16 16');
-        svg.setAttribute('width', '12');
-        svg.setAttribute('height', '12');
-        svg.setAttribute('fill', 'currentColor');
-        svg.setAttribute('aria-hidden', 'true');
-        for (const [cx, cy] of [[5.5, 3.5], [5.5, 8], [5.5, 12.5], [10.5, 3.5], [10.5, 8], [10.5, 12.5]]) {
-            const circle = doc.createElementNS('http://www.w3.org/2000/svg', 'circle');
-            circle.setAttribute('cx', String(cx));
-            circle.setAttribute('cy', String(cy));
-            circle.setAttribute('r', '1.25');
-            svg.append(circle);
-        }
-        return svg;
+        return buildLucideIcon(doc, 'grip-vertical', 12);
     }
 
     function createSequentialItem({ list, agent, onChanged }) {

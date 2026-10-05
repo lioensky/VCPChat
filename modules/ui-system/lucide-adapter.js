@@ -846,6 +846,41 @@
         return element ? render(element, name) : null;
     }
 
+    // 给 JS 里直接要图标节点的地方用（包括不在 .vcp-ui-scope 里的宿主）：直接产出 lucide SVG。
+    // lucide 还没加载时退回 vcp-ui-icon 占位，由观察器补渲染。
+    function create(name, { className = '', size } = {}) {
+        const resolved = resolveIcon(name);
+        const classes = ['vcp-ui-icon', ...String(className).split(/\s+/).filter(Boolean)];
+        let node;
+        if (resolved && window.lucide?.createElement) {
+            node = window.lucide.createElement(resolved.iconNode, {
+                'aria-hidden': 'true',
+                'data-lucide': resolved.lucideName,
+                'data-vcp-icon': name,
+                focusable: 'false'
+            });
+            node.setAttribute('class', [...classes, 'lucide', `lucide-${resolved.lucideName}`].join(' '));
+        } else {
+            node = document.createElement('span');
+            node.className = classes.join(' ');
+            node.setAttribute('aria-hidden', 'true');
+            node.textContent = name;
+        }
+        if (size) {
+            const px = typeof size === 'number' ? `${size}px` : String(size);
+            node.style.setProperty('--vcp-ui-icon-size', px);
+            if (node instanceof SVGElement) {
+                node.setAttribute('width', px.replace(/px$/, ''));
+                node.setAttribute('height', px.replace(/px$/, ''));
+            }
+        }
+        return node;
+    }
+
+    function markup(name, options) {
+        return create(name, options).outerHTML;
+    }
+
     const observer = new MutationObserver(mutations => {
         mutations.forEach(mutation => {
             if (mutation.target instanceof Element && mutation.target.matches('.vcp-ui-icon')) {
@@ -857,7 +892,7 @@
         });
     });
 
-    window.VCPIcons = Object.freeze({ refresh, set });
+    window.VCPIcons = Object.freeze({ create, markup, refresh, set });
     document.addEventListener('DOMContentLoaded', () => {
         refresh(document);
         observer.observe(document.body, { childList: true, subtree: true });

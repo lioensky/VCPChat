@@ -1360,7 +1360,7 @@
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .vcp-uiux-identity-name-edit svg {
     width: 13px !important;
     height: 13px !important;
-    stroke-width: 1.75 !important;
+    stroke-width: 2 !important;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .vcp-uiux-identity-name-edit { grid-column: 2; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .vcp-uiux-identity-name-cancel { grid-column: 3; }

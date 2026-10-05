@@ -132,7 +132,11 @@ export function createTerminalSideProvider({
             chevron.className = 'vcp-ui-icon side-terminal-select-chevron';
             chevron.setAttribute('aria-hidden', 'true');
             chevron.textContent = 'expand_more';
-            wsPill.append(wsSelect, chevron);
+            // 连接状态只用胶囊左侧一个小圆点表示，文字留给悬停提示；出错或过渡中才在旁边显示文字
+            const statusDot = doc.createElement('span');
+            statusDot.className = 'side-terminal-status-dot';
+            statusDot.setAttribute('aria-hidden', 'true');
+            wsPill.append(statusDot, wsSelect, chevron);
 
             const actions = doc.createElement('div');
             actions.className = 'side-terminal-actions';
@@ -149,13 +153,17 @@ export function createTerminalSideProvider({
             container.append(toolbar, screen);
             viewElement.appendChild(container);
 
-            const setStatus = (text, isError = false) => {
-                statusEl.textContent = text;
-                statusEl.classList.toggle('is-error', isError);
+            // state: connected | pending | exited | error
+            const setStatus = (text, state = 'pending') => {
+                statusEl.textContent = state === 'connected' ? '' : text;
+                statusEl.dataset.state = state;
+                statusEl.classList.toggle('is-error', state === 'error');
+                statusDot.dataset.state = state;
+                wsSelect.title = `${text} · 选择工作区，在终端里切到它的根目录`;
             };
 
             if (typeof api?.terminalCreate !== 'function') {
-                setStatus('当前窗口不支持终端', true);
+                setStatus('当前窗口不支持终端', 'error');
                 return { focus() {}, dispose() { viewElement.innerHTML = ''; } };
             }
 
@@ -179,7 +187,7 @@ export function createTerminalSideProvider({
             try {
                 xterm = await xtermLoader(doc);
             } catch (err) {
-                setStatus(`终端组件加载失败: ${err?.message || err}`, true);
+                setStatus(`终端组件加载失败: ${err?.message || err}`, 'error');
                 return { focus() {}, dispose() { viewElement.innerHTML = ''; } };
             }
             if (isDisposed) return null;
@@ -255,7 +263,7 @@ export function createTerminalSideProvider({
                 if (payload?.id !== sessionId) return;
                 exited = true;
                 term.write(`\r\n\x1b[2m[进程已退出，代码 ${payload.exitCode ?? '?'}，点击右上角刷新按钮重新启动]\x1b[0m\r\n`);
-                setStatus('已退出');
+                setStatus('终端已退出', 'exited');
             });
 
             // Attaches this view to the shared terminal session (starting it when none is running).
@@ -270,14 +278,14 @@ export function createTerminalSideProvider({
                     return;
                 }
                 if (!res?.success) {
-                    setStatus(res?.error || '终端启动失败', true);
+                    setStatus(res?.error || '终端启动失败', 'error');
                     term.write(`\x1b[31m${res?.error || '终端启动失败'}\x1b[0m\r\n`);
                     return;
                 }
                 sessionId = res.data.id;
                 exited = false;
-                setStatus('已连接终端');
-                statusEl.title = `与终端窗口 / AI 命令共用同一个会话${res.data.pid ? ` · PID ${res.data.pid}` : ''}`;
+                setStatus('已连接终端', 'connected');
+                wsSelect.title = `已连接终端 · 与终端窗口 / AI 命令共用同一个会话${res.data.pid ? ` · PID ${res.data.pid}` : ''}`;
                 if (screen.offsetWidth) claimSize(); // opened on screen: take over the size
             }
 
@@ -288,11 +296,11 @@ export function createTerminalSideProvider({
                 const res = await api.terminalRestart(sessionId);
                 if (isDisposed) return;
                 if (!res?.success) {
-                    setStatus(res?.error || '终端重启失败', true);
+                    setStatus(res?.error || '终端重启失败', 'error');
                     return;
                 }
                 exited = false;
-                setStatus('已连接终端');
+                setStatus('已连接终端', 'connected');
                 claimSize();
             }
 
@@ -301,16 +309,16 @@ export function createTerminalSideProvider({
                 wsSelect.value = GO_OPTION_VALUE;
                 if (!workspaceId || !sessionId) return;
                 if (exited) {
-                    setStatus('终端已退出，请先重新启动', true);
+                    setStatus('终端已退出，请先重新启动', 'error');
                     return;
                 }
                 const res = await api.terminalChangeDirectory(sessionId, workspaceId);
                 if (isDisposed) return;
                 if (!res?.success) {
-                    setStatus(res?.error || '切换目录失败', true);
+                    setStatus(res?.error || '切换目录失败', 'error');
                     return;
                 }
-                setStatus('已连接终端');
+                setStatus('已连接终端', 'connected');
                 term.focus();
             });
             restartBtn.addEventListener('click', () => {

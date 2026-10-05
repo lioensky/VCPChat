@@ -18,70 +18,31 @@ function getVoiceWaveformClass() {
 }
 
 // ============================================================================
-// 图标生成器（矢量几何）
+// 图标生成器（lucide，经 lucide-adapter 产出）
 // ============================================================================
+function createVoiceIcon(name, size) {
+    if (window.VCPIcons?.create) return window.VCPIcons.create(name, { size });
+    const span = document.createElement('span');
+    span.className = 'vcp-ui-icon';
+    span.setAttribute('aria-hidden', 'true');
+    span.style.setProperty('--vcp-ui-icon-size', `${size}px`);
+    span.textContent = name;
+    return span;
+}
+
 function createMicrophoneSvg(size = 18) {
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('width', String(size));
-    svg.setAttribute('height', String(size));
-    svg.setAttribute('viewBox', '0 0 16 16');
-    svg.setAttribute('fill', 'none');
-    svg.setAttribute('stroke', 'currentColor');
-    svg.setAttribute('stroke-width', '1');
-    svg.setAttribute('stroke-linecap', 'round');
-    svg.setAttribute('stroke-linejoin', 'round');
-    svg.setAttribute('aria-hidden', 'true');
-
-    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    rect.setAttribute('x', '5');
-    rect.setAttribute('y', '1.5');
-    rect.setAttribute('width', '6');
-    rect.setAttribute('height', '9');
-    rect.setAttribute('rx', '3');
-
-    // <path d="M2.35 8.675C3.075 11.3 5.2 13.125 8 13.125C10.8 13.125 12.925 11.3 13.65 8.675M8 13.125V15" />
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', 'M2.35 8.675C3.075 11.3 5.2 13.125 8 13.125C10.8 13.125 12.925 11.3 13.65 8.675M8 13.125V15');
-
-    svg.append(rect, path);
-    return svg;
+    return createVoiceIcon('mic', size);
 }
 
 function createCloseSvg(size = 14) {
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('width', String(size));
-    svg.setAttribute('height', String(size));
-    svg.setAttribute('viewBox', '0 0 16 16');
-    svg.setAttribute('fill', 'none');
-    svg.setAttribute('stroke', 'currentColor');
-    svg.setAttribute('stroke-width', '1');
-    svg.setAttribute('stroke-linecap', 'round');
-    svg.setAttribute('stroke-linejoin', 'round');
-    svg.setAttribute('aria-hidden', 'true');
-
-    const p1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    p1.setAttribute('d', 'M2.5 2.5L13.5 13.5');
-    const p2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    p2.setAttribute('d', 'M13.5 2.5L2.5 13.5');
-
-    svg.append(p1, p2);
-    return svg;
+    return createVoiceIcon('x', size);
 }
 
 function createStopSvg(size = 14) {
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('width', String(size));
-    svg.setAttribute('height', String(size));
-    svg.setAttribute('viewBox', '0 0 16 16');
-    svg.setAttribute('fill', 'none');
-    svg.setAttribute('aria-hidden', 'true');
-
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', 'M12.5 2.5H3.5C2.94772 2.5 2.5 2.94772 2.5 3.5V12.5C2.5 13.0523 2.94772 13.5 3.5 13.5H12.5C13.0523 13.5 13.5 13.0523 13.5 12.5V3.5C13.5 2.94772 13.0523 2.5 12.5 2.5Z');
-    path.setAttribute('fill', 'currentColor');
-
-    svg.appendChild(path);
-    return svg;
+    const icon = createVoiceIcon('square', size);
+    // 停止键保持实心方块
+    icon.setAttribute('fill', 'currentColor');
+    return icon;
 }
 
 class VoiceComposerView {
@@ -147,7 +108,7 @@ html .vcp-ui-scope .chat-input-actions #mainVoiceInputBtn + :is(#sendMessageBtn,
     height: 18px;
     fill: none;
     stroke: currentColor;
-    stroke-width: 1;
+    stroke-width: 2;
     stroke-linecap: round;
     stroke-linejoin: round;
     transition: transform 0.2s ease;

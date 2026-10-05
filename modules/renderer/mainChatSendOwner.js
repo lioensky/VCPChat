@@ -1,9 +1,4 @@
-const INTERRUPT_BUTTON_HTML = `
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <rect x="6" y="6" width="12" height="12" rx="1"></rect>
-    </svg>
-`;
+const INTERRUPT_BUTTON_HTML = '<span class="vcp-ui-icon" aria-hidden="true">square</span>';
 
 /** Owns main-chat send/interrupt policy and its button projection. */
 export function createMainChatSendOwner({

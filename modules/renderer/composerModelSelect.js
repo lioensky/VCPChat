@@ -85,14 +85,10 @@
         trigger.setAttribute('aria-expanded', 'false');
         const labelEl = document.createElement('span');
         labelEl.className = 'vcp-model-select-label';
-        const chevron = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        chevron.setAttribute('viewBox', '0 0 16 16');
-        chevron.setAttribute('fill', 'none');
-        chevron.setAttribute('stroke', 'currentColor');
-        chevron.setAttribute('stroke-width', '1.5');
-        const chevronPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        chevronPath.setAttribute('d', 'M4 6l4 4 4-4');
-        chevron.appendChild(chevronPath);
+        const chevron = document.createElement('span');
+        chevron.className = 'vcp-ui-icon';
+        chevron.setAttribute('aria-hidden', 'true');
+        chevron.textContent = 'chevron-down';
         trigger.append(labelEl, chevron);
         wrap.appendChild(trigger);
 

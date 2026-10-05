@@ -1809,7 +1809,7 @@ function resolveRegexSlots() {
         editBtn.className = 'btn-edit-regex';
         editBtn.title = '编辑规则';
         editBtn.setAttribute('aria-label', `编辑规则: ${rule.title || '未命名'}`);
-        editBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.5 2.5a1.8 1.8 0 0 1 2.5 2.5L5 14H2v-3L11.5 2.5z"/></svg>`;
+        editBtn.innerHTML = window.VCPIcons?.markup('pencil', { size: 15 }) || '<span class="vcp-ui-icon" aria-hidden="true">pencil</span>';
         editBtn.addEventListener('click', () => openRegexModal(rule));
 
         const deleteBtn = document.createElement('button');
@@ -1817,7 +1817,7 @@ function resolveRegexSlots() {
         deleteBtn.className = 'btn-delete-regex';
         deleteBtn.title = '删除规则';
         deleteBtn.setAttribute('aria-label', `删除规则: ${rule.title || '未命名'}`);
-        deleteBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4h11M6.5 4V2.5h3V4M4 4l.7 9a1 1 0 001 .9h4.6a1 1 0 001-.9L12 4M6.5 6.8v4.4M9.5 6.8v4.4"/></svg>`;
+        deleteBtn.innerHTML = window.VCPIcons?.markup('trash-2', { size: 15 }) || '<span class="vcp-ui-icon" aria-hidden="true">trash-2</span>';
         deleteBtn.addEventListener('click', async () => {
             if (await uiHelper.showConfirmDialog(`确定要删除规则 "${rule.title}" 吗？`, '删除确认', '删除', '取消', true)) {
                 currentAgentRegexes = currentAgentRegexes.filter(r => r.id !== rule.id);

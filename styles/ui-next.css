@@ -305,7 +305,7 @@ html #nextUiHomeTab > span:last-child {
     height: 14px;
     fill: none;
     stroke: currentColor;
-    stroke-width: 1.8;
+    stroke-width: 2;
     stroke-linecap: round;
     stroke-linejoin: round;
     flex: 0 0 auto;
@@ -319,7 +319,7 @@ html #nextUiHomeTab > span:last-child {
     height: 16px;
     fill: none;
     stroke: currentColor;
-    stroke-width: 1.8;
+    stroke-width: 2;
     stroke-linecap: round;
     stroke-linejoin: round;
     flex: 0 0 auto;
@@ -1605,7 +1605,7 @@ body[data-vcp-theme="light"] .next-ui-nova-panel::before {
 .next-ui-app-icon svg {
     width: 34px;
     height: 34px;
-    stroke-width: 1.8;
+    stroke-width: 2;
 }
 
 .next-ui-app-item:hover .next-ui-app-icon {

@@ -123,13 +123,12 @@
         bar.setAttribute('aria-label', '消息操作');
         bar.setAttribute('aria-hidden', 'true');
         bar.inert = true;
+        // 工具条挂在 body 上（不在 .vcp-ui-scope 里），图标直接由 lucide-adapter 产出
+        const icon = name => window.VCPIcons?.markup(name, { size: 15 })
+            || `<span class="vcp-ui-icon" aria-hidden="true">${name}</span>`;
         bar.innerHTML = `
-            <button type="button" data-messenger-action="copy" title="复制" aria-label="复制">
-                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2.5"></rect><path d="M5 15V6a2 2 0 0 1 2-2h9"></path></svg>
-            </button>
-            <button type="button" data-messenger-action="more" title="更多" aria-label="更多">
-                <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg>
-            </button>`;
+            <button type="button" data-messenger-action="copy" title="复制" aria-label="复制">${icon('copy')}</button>
+            <button type="button" data-messenger-action="more" title="更多" aria-label="更多">${icon('ellipsis')}</button>`;
         bar.addEventListener('mouseenter', () => clearTimeout(hideTimer));
         bar.addEventListener('mouseleave', () => scheduleHide());
         bar.addEventListener('click', onToolbarClick);

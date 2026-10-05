@@ -132,6 +132,7 @@ if (!componentCss.includes(':focus-visible')) report(path.join(styleDir, 'compon
 const inlineStyleCompatibilityAllowlist = new Set([
     path.join(moduleDir, 'settings', 'group-slots.js'), // Legacy group-order icons retain their fixed flex sizing until the settings migration.
     path.join(moduleDir, 'vcp-ui.js'), // Per-instance Range progress cannot be expressed as a static token.
+    path.join(moduleDir, 'lucide-adapter.js'), // A caller-requested icon size is carried as the --vcp-ui-icon-size token.
     path.join(moduleDir, 'next-shell', 'next-shell-controller.js'), // Measured native-view bounds require a runtime sidebar width token.
     path.join(moduleDir, 'settings', 'settings-sidebar-slots.js'), // Dynamic editor height follows measured content.
     path.join(moduleDir, 'settings', 'agent-model-picker.js'), // Model picker trigger retains canonical geometry and popup placement.

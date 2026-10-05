@@ -1954,8 +1954,8 @@ html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-item .tts-director
 }
 
 html .vcp-ui-scope .vcp-settings-schema-surface .tts-director-item .tts-director-action-button svg {
-    width: 10px;
-    height: 10px;
+    width: 12px;
+    height: 12px;
     display: block;
     flex-shrink: 0;
     pointer-events: none;
@@ -2389,8 +2389,8 @@ html .vcp-ui-scope .vcp-settings-schema-surface .sequential-order-move-btn:activ
 }
 
 html .vcp-ui-scope .vcp-settings-schema-surface .sequential-order-move-btn svg {
-    width: 10px;
-    height: 10px;
+    width: 12px;
+    height: 12px;
     display: block;
     flex-shrink: 0;
     pointer-events: none;

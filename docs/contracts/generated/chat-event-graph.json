@@ -476,7 +476,6 @@
     "modules/ui-system/theme-runtime.js",
     "modules/ui-system/typed-field-owners.js",
     "modules/ui-system/ui-surface-policy.js",
-    "modules/ui-system/vcp-icons.js",
     "modules/ui-system/vcp-main-ui-runtime.js",
     "modules/ui-system/vcp-ui.js",
     "modules/ui-system/webawesome-adapter.js",
@@ -1021,27 +1020,27 @@
       "producers": [
         {
           "file": "modules/services/windowPinService.js",
-          "line": 588,
+          "line": 595,
           "kind": "ipc-send"
         }
       ],
       "consumers": [
         {
           "file": "modules/services/windowPinService.js",
-          "line": 588,
+          "line": 595,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/services/windowPinService.js",
-          "line": 588,
+          "line": 595,
           "kind": "custom-event-listener",
           "match": "on(\"browser-window-created\""
         },
         {
           "file": "modules/services/windowPinService.js",
-          "line": 588,
+          "line": 595,
           "kind": "ipc-send",
           "match": "on(\"browser-window-created\""
         }
@@ -4674,7 +4673,7 @@
         },
         {
           "file": "modules/ui-system/settings-bridge.js",
-          "line": 944,
+          "line": 948,
           "kind": "custom-event-listener"
         }
       ],
@@ -4711,7 +4710,7 @@
         },
         {
           "file": "modules/ui-system/settings-bridge.js",
-          "line": 944,
+          "line": 948,
           "kind": "custom-event-listener",
           "match": "addEventListener('modal-ready'"
         }
@@ -4739,7 +4738,7 @@
         },
         {
           "file": "modules/ui-system/settings-bridge.js",
-          "line": 920,
+          "line": 924,
           "kind": "custom-event-listener"
         },
         {
@@ -4769,7 +4768,7 @@
         },
         {
           "file": "modules/ui-system/settings-bridge.js",
-          "line": 920,
+          "line": 924,
           "kind": "custom-event-listener",
           "match": "addEventListener('modal-visibility-changed'"
         },
@@ -8437,7 +8436,7 @@
       "producers": [
         {
           "file": "modules/ui-system/settings/group-slots.js",
-          "line": 495,
+          "line": 455,
           "kind": "custom-event-dispatch"
         }
       ],
@@ -8445,7 +8444,7 @@
       "evidence": [
         {
           "file": "modules/ui-system/settings/group-slots.js",
-          "line": 495,
+          "line": 455,
           "kind": "custom-event-dispatch",
           "match": "dispatchEvent(new CustomEvent('vcp-group-settings-slots-ready'"
         }
@@ -8889,7 +8888,7 @@
       "consumers": [
         {
           "file": "modules/ui-system/settings-bridge.js",
-          "line": 945,
+          "line": 949,
           "kind": "custom-event-listener"
         }
       ],
@@ -8908,7 +8907,7 @@
         },
         {
           "file": "modules/ui-system/settings-bridge.js",
-          "line": 945,
+          "line": 949,
           "kind": "custom-event-listener",
           "match": "addEventListener('vcp-settings-surface-updated'"
         }
@@ -8920,14 +8919,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/settings-bridge.js",
-          "line": 946,
+          "line": 950,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/settings-bridge.js",
-          "line": 946,
+          "line": 950,
           "kind": "custom-event-listener",
           "match": "addEventListener('vcp-settings-view-changed'"
         }

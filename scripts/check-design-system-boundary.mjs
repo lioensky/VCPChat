@@ -417,7 +417,6 @@ const allowedSourceDifferencePatterns = [
     /^tests\/(?:settings-|uiux-|group-settings-)/,
     /^scripts\/(?:check-global-settings-section-ownership|check-uiux-artifacts|audit-settings|compare-settings-schema-pixels|probe-avatar-persistence-electron|test-settings-wa|chaos-probe-settings|compare-dual-instance-parity|inspect-sidebar-margins|test-settings-sidebar-parity-electron)/,
     /^modules\/ui-system\/(?:appearance-profile-runtime|material-runtime|theme-runtime|next-shell\/notification-menu-controller)\.js$/,
-    /^modules\/ui-system\/vcp-icons(?:\.MIT)?\.(?:js|txt)$/,
     /^styles\/(?:base|messageRenderer)\.css$/,
     /^tests\/notification-menu-controller\.test\.js$/,
     // Conversation navigation: turn navigator rail, back-to-bottom button, composer overlay.
