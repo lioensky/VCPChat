@@ -79,7 +79,8 @@ html .side-browser-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
 
 html .side-browser-btn.side-browser-more:where(.vcp-ui-scope, .vcp-ui-scope *) { width: var(--side-browser-pill-h); }
 
-html .side-browser-btn .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) + 2px); }
+/* lucide 图标的尺寸只认 --vcp-ui-icon-size（fonts.css），光写 font-size 不生效 */
+html .side-browser-btn .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *) { --vcp-ui-icon-size: 16px; }
 
 html .side-browser-btn:hover:not(:disabled):where(.vcp-ui-scope, .vcp-ui-scope *) {
     opacity: 1;
@@ -149,7 +150,7 @@ html .side-browser-empty:where(.vcp-ui-scope, .vcp-ui-scope *) {
 }
 
 html .side-browser-empty .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    font-size: calc(var(--vcp-ui-font-size) + 14px);
+    --vcp-ui-icon-size: 32px;
 }
 
 html .side-browser-notice:where(.vcp-ui-scope, .vcp-ui-scope *) {
@@ -223,6 +224,8 @@ html .side-browser-menu-item:where(.vcp-ui-scope, .vcp-ui-scope *) {
     text-align: left;
     cursor: pointer;
 }
+
+html .side-browser-menu-item .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *) { --vcp-ui-icon-size: 16px; }
 
 html .side-browser-menu-item:hover:not(:disabled):where(.vcp-ui-scope, .vcp-ui-scope *) {
     background: var(--vcp-ui-port-color-rgba-127-127-127-0-16);

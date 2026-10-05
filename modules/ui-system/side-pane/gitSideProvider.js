@@ -3,7 +3,7 @@
  * VCPChat Universal Sub-screen - Git 变更 Provider
  *
  * 照 ZCode `GitPane` / `GitPaneChangeCard`（zai-org/ZCode，Apache-2.0）复刻，只保留它有的东西：
- * 1. 顶栏：来源下拉（未暂存 / 已暂存 / 上一轮）+ 幽灵「刷新」按钮。
+ * 1. 顶栏：来源下拉（未暂存 / 已暂存 / 上一轮）+ 工作区下拉 + 「刷新」，都是胶囊。
  * 2. 平铺的变更列表，每行一张卡片：文件名 + 暗色目录、`+N -N`、展开时翻转 180° 的箭头。
  * 3. 右键菜单：在文件管理器中打开 / 复制绝对路径 / 复制相对路径。
  * 4. 展开后显示 diff（加载中 / 文本 diff / 无法预览的说明）。
@@ -143,7 +143,18 @@ export function createGitSideProvider({
             refreshBtn.className = 'side-git-refresh-btn';
             refreshBtn.innerHTML = '<span class="vcp-ui-icon">refresh</span><span>刷新</span>';
 
-            header.append(sourceSelect, wsSelect, refreshBtn);
+            // 下拉做成胶囊（和浏览器工具栏一套）：select 本身去掉原生外观，箭头由外层补上
+            const pill = (select, extra) => {
+                const wrap = doc.createElement('span');
+                wrap.className = `side-git-select-pill ${extra}`;
+                const chevron = doc.createElement('span');
+                chevron.className = 'vcp-ui-icon side-git-select-chevron';
+                chevron.setAttribute('aria-hidden', 'true');
+                chevron.textContent = 'expand_more';
+                wrap.append(select, chevron);
+                return wrap;
+            };
+            header.append(pill(sourceSelect, 'is-source'), pill(wsSelect, 'is-workspace'), refreshBtn);
 
             const body = doc.createElement('div');
             body.className = 'side-git-body';
