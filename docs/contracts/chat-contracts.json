@@ -588,7 +588,7 @@
     "dynamicSites": [
       {
         "file": "modules/messageRenderer.js",
-        "line": 597,
+        "line": 599,
         "kind": "custom-event-listener",
         "match": "target.addEventListener(type"
       },
@@ -1041,7 +1041,7 @@
       },
       {
         "file": "modules/ui-system/next-shell/next-shell-controller.js",
-        "line": 266,
+        "line": 280,
         "kind": "custom-event-listener",
         "match": "target.addEventListener(type"
       }
@@ -1085,7 +1085,7 @@
       },
       {
         "file": "modules/ui-system/settings-bridge.js",
-        "line": 773,
+        "line": 774,
         "kind": "custom-event-listener",
         "match": "target.addEventListener(type"
       }

@@ -1500,17 +1500,15 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
 
             const escapedTempScriptPath = tempScriptPath.replace(/'/g, "''");
 
-            // 不能把 boundary 明文写进交互式命令行：
-            // PowerShell/PSReadLine 会先回显整行输入，若监听器在“输入回显”里提前匹配到 boundary，
-            // 就会把命令尚未执行的回显误判为真实输出，造成提前结束或卡死。
-            // 因此这里用 Base64 在 PowerShell 内部还原 boundary，让 GUI/AI 只匹配真实 Write-Host 输出。
-            const wrappedCommand = [
+            // 边界标记只写进包装脚本，不出现在交互式命令行里：
+            // PowerShell/PSReadLine 会先回显整行输入，若标记出现在回显里，就会被误判为真实输出。
+            // 终端里也只留下一行短的脚本调用，而不是整段包装代码。
+            const wrapperScript = [
+                // 关掉分页器和 Git 交互提示，否则 git log/help 等会停在分页界面，命令一直等不到结束标记。
                 `$env:PAGER = 'cat'`,
                 `$env:GIT_PAGER = 'cat'`,
                 `$env:GIT_TERMINAL_PROMPT = '0'`,
-                `$__vcpStart = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${encodedStartBoundary}'))`,
-                `$__vcpEnd = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${encodedEndBoundary}'))`,
-                `Write-Host $__vcpStart`,
+                `Write-Host '${startBoundary}'`,
                 // 即使临时脚本发生 ParserError / RuntimeException，也必须输出 end boundary，
                 // 否则 AI 调用会一直等待直到超时。终止性错误要在结束标记之前打印，
                 // 否则 PowerShell 会在命令行结束后才显示它，AI 拿到的输出就是空的。

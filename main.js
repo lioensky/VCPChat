@@ -776,6 +776,7 @@ function createWindow({ deferLoad = false } = {}) {
             sandbox: false, // preloads/* 需要 require 本地模块，沙箱内不可用，见 preloads/README.md
             contextIsolation: true,    // 恢复: 开启上下文隔离
             nodeIntegration: false,  // 恢复: 关闭Node.js集成在渲染进程
+            webviewTag: true, // 仅供侧栏浏览器的 <webview>；其创建参数由 browserHandlers.attachToWindow 强制收紧
             // 主聊天窗口需要在切到其他窗口时继续接收流式事件并推进恢复队列。
             backgroundThrottling: false,
             spellcheck: true, // Enable spellcheck for input fields
