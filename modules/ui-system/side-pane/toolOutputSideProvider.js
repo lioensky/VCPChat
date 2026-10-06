@@ -11,6 +11,7 @@
 
 import { formatRelativeTime } from './side-pane-tab-utils.js';
 import { getCommandRunsSource } from '../sources/terminal-command-runs.js';
+import { createSidePaneRootScope } from './side-pane-occurrence.js';
 
 const TAB_ID = 'tool-output:main';
 const FOLLOW_THRESHOLD_PX = 24;
@@ -86,6 +87,9 @@ export function createToolOutputSideProvider({
             if (!viewElement) return null;
             viewElement.innerHTML = '';
             viewElement.classList.add('side-tool-output-view');
+            // 这次挂载的监听、定时器、订阅都归 own：控制器释放 view 或调用 dispose 时一起拆掉
+            const own = createSidePaneRootScope(viewScope, 'tool-output');
+            const disposed = () => !own.active;
 
             const h = (tag, className, text) => {
                 const node = doc.createElement(tag);
@@ -104,7 +108,7 @@ export function createToolOutputSideProvider({
                 btn.title = label;
                 btn.setAttribute('aria-label', label);
                 btn.appendChild(icon(name));
-                btn.addEventListener('click', onClick);
+                own.listen(btn, 'click', onClick);
                 return btn;
             };
 
@@ -131,14 +135,14 @@ export function createToolOutputSideProvider({
             followBtn.title = '回到底部';
             followBtn.setAttribute('aria-label', '回到底部');
             followBtn.appendChild(icon('arrow_downward'));
-            followBtn.addEventListener('click', resumeFollow);
+            own.listen(followBtn, 'click', resumeFollow);
             const errorBar = h('div', 'side-tool-output-error');
             errorBar.setAttribute('role', 'alert');
             errorBar.hidden = true;
             const errorText = h('span', 'side-tool-output-error-text');
             const retryBtn = h('button', 'side-tool-output-error-retry', '重试');
             retryBtn.type = 'button';
-            retryBtn.addEventListener('click', () => { void loadSelected(); });
+            own.listen(retryBtn, 'click', () => { void loadSelected(); });
             errorBar.append(errorText, retryBtn);
             const notice = h('div', 'side-tool-output-notice');
             notice.hidden = true;
@@ -155,17 +159,15 @@ export function createToolOutputSideProvider({
             let loadError = '';
             let follow = true;
             let previousTop = 0;
-            let disposed = false;
             let loadSeq = 0;
-            let releaseRuns = null;
             let seeded = false;
             let seeding = null;
             // 控制器挂载前就给出了可见性：在后台挂载（比如恢复布局）时一开始就是暂停的
             let suspended = occurrence?.isVisible?.() === false;
             // 暂停期间只记下最新一份列表，重新显示时再渲染、再读输出
             let hiddenUpdate = null;
-            let ticker = null;
-            let reloadTimer = null;
+            let stopTicker = null;
+            let cancelReload = null;
 
             const selectedSummary = () => runs.find(run => run.id === selectedId) || null;
 
@@ -181,7 +183,7 @@ export function createToolOutputSideProvider({
             }
             // 只有「用户向上滚」才暂停跟随，暂停期间输出冻结（不再被新内容顶得乱跳、选中的文字也不会丢）；
             // 手动滚回底部或点箭头才恢复，并一次性补上最新内容。
-            outputWrap.addEventListener('scroll', () => {
+            own.listen(outputWrap, 'scroll', () => {
                 const top = outputWrap.scrollTop;
                 const atEnd = outputWrap.scrollHeight - top - outputWrap.clientHeight <= FOLLOW_THRESHOLD_PX;
                 if (follow && top < previousTop && !atEnd) {
@@ -246,16 +248,16 @@ export function createToolOutputSideProvider({
 
             const syncTicker = () => {
                 // 标签藏起来时不走秒，显示回来再补
-                const running = !suspended && (detail || selectedSummary())?.status === 'running';
-                if (running && !ticker) ticker = win.setInterval(renderStatus, TICK_MS);
-                if (!running && ticker) { win.clearInterval(ticker); ticker = null; }
+                const running = !disposed() && !suspended && (detail || selectedSummary())?.status === 'running';
+                if (running && !stopTicker) stopTicker = own.interval(renderStatus, TICK_MS, 'status-tick');
+                if (!running && stopTicker) { stopTicker(); stopTicker = null; }
             };
 
             const loadSelected = async () => {
                 if (!selectedId) { detail = null; renderAll(); return; }
                 const seq = ++loadSeq;
                 const res = await api?.terminalGetCommandRun?.(selectedId);
-                if (disposed || seq !== loadSeq) return;
+                if (disposed() || seq !== loadSeq) return;
                 if (res?.success) {
                     detail = res.data;
                     loadError = '';
@@ -287,7 +289,7 @@ export function createToolOutputSideProvider({
                 void loadSelected();
             };
 
-            picker.addEventListener('change', () => select(picker.value));
+            own.listen(picker, 'change', () => select(picker.value));
 
             async function copyOutput() {
                 if (!detail?.output) return;
@@ -301,7 +303,7 @@ export function createToolOutputSideProvider({
 
             // 数据源每次变化都给整份列表；变了的那条是新对象，其余保持原样，据此判断要不要重新读输出
             const onRuns = ({ status, data }) => {
-                if (disposed) return;
+                if (disposed()) return;
                 if (seeded && suspended) {
                     hiddenUpdate = { status, data };
                     return;
@@ -324,8 +326,8 @@ export function createToolOutputSideProvider({
                 renderPicker();
                 const before = previous.find(run => run.id === selectedId);
                 if (selectedSummary() !== before) {
-                    if (reloadTimer) win.clearTimeout(reloadTimer);
-                    reloadTimer = win.setTimeout(() => { reloadTimer = null; void loadSelected(); }, 60);
+                    cancelReload?.();
+                    cancelReload = own.timeout(() => { cancelReload = null; void loadSelected(); }, 60, 'reload-output');
                 } else {
                     renderStatus();
                 }
@@ -333,11 +335,12 @@ export function createToolOutputSideProvider({
 
             const instance = { select };
             instances.add(instance);
+            own.own(() => instances.delete(instance), 'open-request-target');
             requestedRunId = null;
 
             renderAll();
             if (commandRunsSource) {
-                releaseRuns = commandRunsSource.subscribe(onRuns, { scope: viewScope, visible: occurrence?.visible, label: 'tool-output' });
+                commandRunsSource.subscribe(onRuns, { scope: own, visible: occurrence?.visible, label: 'tool-output' });
                 await commandRunsSource.settled();
                 await seeding;
             } else {
@@ -352,20 +355,17 @@ export function createToolOutputSideProvider({
                 },
                 resume() {
                     suspended = false;
-                    if (disposed) return;
+                    if (disposed()) return;
                     const update = hiddenUpdate;
                     hiddenUpdate = null;
                     if (update) onRuns(update);
                     renderAll();
                 },
                 dispose() {
-                    disposed = true;
-                    instances.delete(instance);
-                    if (ticker) win.clearInterval(ticker);
-                    if (reloadTimer) win.clearTimeout(reloadTimer);
-                    releaseRuns?.();
+                    // DOM 同步清掉：scope 的释放是异步的，不能等它，免得把紧接着重新挂载的内容一起清掉
                     viewElement.innerHTML = '';
                     viewElement.classList.remove('side-tool-output-view');
+                    return own.dispose('tool-output-disposed');
                 }
             };
         }

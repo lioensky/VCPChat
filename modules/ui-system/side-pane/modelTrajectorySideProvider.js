@@ -16,7 +16,7 @@
 
 'use strict';
 
-import { pollWhileVisible } from './side-pane-occurrence.js';
+import { createSidePaneRootScope, pollWhileVisible } from './side-pane-occurrence.js';
 import {
     ROLE_LABELS, formatClockTime, formatDateTime, formatDuration, finishReasonLabel, effectiveFinishReason, sourceLabel,
     buildTimeline, summarizeRecords, buildSearchIndex, findTextMatches,
@@ -91,6 +91,10 @@ export function createModelTrajectorySideProvider({
             if (!viewElement) return null;
             viewElement.innerHTML = '';
             viewElement.classList.add('side-traj-view');
+            // 这次挂载里长期存在的监听、定时器、推送订阅都归 own，控制器释放 view 或调用 dispose 时一起拆掉。
+            // 卡片和菜单项每次渲染都重建，它们自己的监听跟着元素一起丢弃，不挂到 own 上，免得记录越积越多
+            const own = createSidePaneRootScope(viewScope, 'model-trajectory');
+            const disposed = () => !own.active;
 
             const h = (tag, className, text) => {
                 const node = doc.createElement(tag);
@@ -109,7 +113,7 @@ export function createModelTrajectorySideProvider({
                 btn.title = label;
                 btn.setAttribute('aria-label', label);
                 btn.appendChild(icon(name));
-                if (onClick) btn.addEventListener('click', onClick);
+                if (onClick) own.listen(btn, 'click', onClick);
                 return btn;
             };
 
@@ -120,14 +124,10 @@ export function createModelTrajectorySideProvider({
             let items = [];
             let loading = false;
             let loadError = '';
-            let disposed = false;
             let loadSeq = 0;
-            let reloadTimer = null;
-            let searchTimer = null;
-            let unsubscribe = null;
-            let unwatch = null; // 主进程那份推送的计数，dispose 时退掉
-            let unsubscribeConversation = null;
-            let poller = null;
+            let cancelReload = null;
+            let cancelSearch = null;
+            let followsConversation = false;
             let focusRequestId = requestedRequestId;
             let searchOpen = false;
             let searchQuery = '';
@@ -205,7 +205,8 @@ export function createModelTrajectorySideProvider({
                     if (searchIndex.query) scheduleHighlights();
                 }, { root: scroller, rootMargin: BUILD_MARGIN })
                 : null;
-            scroller.addEventListener('scroll', () => {
+            if (buildObserver) own.own(() => buildObserver.disconnect(), 'card-build-observer', 'observer');
+            own.listen(scroller, 'scroll', () => {
                 stickToBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= FOLLOW_THRESHOLD_PX;
             }, { passive: true });
 
@@ -700,16 +701,16 @@ export function createModelTrajectorySideProvider({
                 card?.scrollIntoView?.({ block: 'nearest' });
                 scheduleHighlights();
             }
-            searchInput.addEventListener('input', () => {
+            own.listen(searchInput, 'input', () => {
                 searchQuery = searchInput.value;
-                if (searchTimer) win.clearTimeout(searchTimer);
-                searchTimer = win.setTimeout(() => { searchTimer = null; recomputeSearch(true); }, SEARCH_DEBOUNCE_MS);
+                cancelSearch?.();
+                cancelSearch = own.timeout(() => { cancelSearch = null; recomputeSearch(true); }, SEARCH_DEBOUNCE_MS, 'search-debounce');
             });
-            searchInput.addEventListener('keydown', event => {
+            own.listen(searchInput, 'keydown', event => {
                 if (event.key === 'Escape') { event.preventDefault(); closeSearch(); }
                 else if (event.key === 'Enter') {
                     event.preventDefault();
-                    if (searchTimer) { win.clearTimeout(searchTimer); searchTimer = null; recomputeSearch(true); }
+                    if (cancelSearch) { cancelSearch(); cancelSearch = null; recomputeSearch(true); }
                     moveSearch(event.shiftKey ? -1 : 1);
                 }
             });
@@ -719,7 +720,7 @@ export function createModelTrajectorySideProvider({
                     openSearch();
                 }
             };
-            scope.addEventListener('keydown', onFindShortcut);
+            own.listen(scope, 'keydown', onFindShortcut);
 
             // ---------------------------------------------------------------- 展开 / 收起
             function toggleAll() {
@@ -758,7 +759,7 @@ export function createModelTrajectorySideProvider({
             const onDocumentClick = event => {
                 if (!menu.hidden && !menu.contains(event.target) && !menuBtn.contains(event.target)) menu.hidden = true;
             };
-            doc.addEventListener('click', onDocumentClick);
+            own.listen(doc, 'click', onDocumentClick);
 
             // ---------------------------------------------------------------- 定位到某次调用（来自消息的「查看调用轨迹」）
             function focusCall(requestId) {
@@ -770,7 +771,7 @@ export function createModelTrajectorySideProvider({
                 stickToBottom = false;
                 card.scrollIntoView?.({ block: 'start' });
                 card.classList.add('flash');
-                win.setTimeout(() => card.classList.remove('flash'), 1600);
+                if (!disposed()) own.timeout(() => card.classList.remove('flash'), 1600, 'focus-flash');
                 return true;
             }
 
@@ -805,7 +806,7 @@ export function createModelTrajectorySideProvider({
                     const missing = /No handler registered/i.test(String(error?.message || error));
                     res = { success: false, error: missing ? '调用轨迹服务未启动，请完全退出并重新打开 VCPChat' : (error?.message || '读取调用轨迹失败') };
                 }
-                if (disposed || seq !== loadSeq) return;
+                if (disposed() || seq !== loadSeq) return;
                 loading = false;
                 if (res?.success) {
                     data = res.data;
@@ -818,8 +819,8 @@ export function createModelTrajectorySideProvider({
             }
 
             function scheduleReload() {
-                if (reloadTimer) return;
-                reloadTimer = win.setTimeout(() => { reloadTimer = null; void load(); }, RELOAD_DEBOUNCE_MS);
+                if (cancelReload || disposed()) return;
+                cancelReload = own.timeout(() => { cancelReload = null; void load(); }, RELOAD_DEBOUNCE_MS, 'reload-debounce');
             }
 
             async function openDirectory() {
@@ -845,30 +846,46 @@ export function createModelTrajectorySideProvider({
             };
 
             const onChanged = change => {
-                if (disposed || !change) return;
+                if (disposed() || !change) return;
                 if (change.sessionKey === sessionKey || change.sessionKey === currentKey()) reloadWhenShown(scheduleReload);
             };
 
             const instance = { focusCall: requestId => { focusRequestId = requestId; if (!loading) renderAll(); } };
             instances.add(instance);
+            own.own(() => instances.delete(instance), 'focus-request-target');
+            own.own(() => {
+                if (highlightFrame && typeof win.cancelAnimationFrame === 'function') win.cancelAnimationFrame(highlightFrame);
+                clearHighlights();
+            }, 'search-highlights');
             requestedRequestId = null;
 
             renderHeader();
             renderState();
             try {
                 const watched = await api?.modelTrajectoryWatch?.();
-                if (watched?.success) unwatch = () => api?.modelTrajectoryUnwatch?.();
-                unsubscribe = api?.onModelTrajectoryChanged?.(onChanged) || null;
+                const unwatch = () => { void Promise.resolve(api?.modelTrajectoryUnwatch?.()).catch(() => {}); };
+                // 等主进程回话期间标签可能已经关了：这时直接退掉刚登记的推送，不再接监听
+                if (watched?.success) {
+                    if (disposed()) unwatch();
+                    else own.own(unwatch, 'trajectory-watch', 'subscription');
+                }
+                if (!disposed()) own.subscribe(() => api?.onModelTrajectoryChanged?.(onChanged), 'trajectory-changed');
             } catch (_error) { /* 订阅失败时仍可手动刷新 */ }
+            // 挂载途中被取消（关标签、重新挂载）：控制器会丢掉这个视图，这里只清掉自己画的内容
+            if (disposed()) { viewElement.innerHTML = ''; viewElement.classList.remove('side-traj-view'); return null; }
             // 切换智能体 / 话题（包括删掉当前助手）都由主聊天通知，接上了就不用轮询
-            unsubscribeConversation = onConversationChange?.(() => {
-                if (!disposed && currentKey() !== sessionKey) reloadWhenShown(() => void load());
-            }) || null;
-            if (!unsubscribeConversation) {
+            own.subscribe(() => {
+                const off = onConversationChange?.(() => {
+                    if (!disposed() && currentKey() !== sessionKey) reloadWhenShown(() => void load());
+                });
+                followsConversation = typeof off === 'function';
+                return followsConversation ? off : null;
+            }, 'conversation-follow');
+            if (!followsConversation) {
                 // 没有切换通知（单独挂载、没有主聊天）时才轮询兜底：有控制器下发可见性就只在标签可见时轮询，否则看窗口是否可见
-                const followTick = () => { if (!disposed && currentKey() !== sessionKey) return load(); return undefined; };
-                if (viewScope && occurrence) pollWhileVisible(viewScope, occurrence.visible, followTick, FOLLOW_POLL_MS, { label: 'trajectory-follow' });
-                else poller = win.setInterval(() => { if (!doc.hidden) void followTick(); }, FOLLOW_POLL_MS);
+                const followTick = () => { if (!disposed() && currentKey() !== sessionKey) return load(); return undefined; };
+                if (occurrence?.visible) pollWhileVisible(own, occurrence.visible, followTick, FOLLOW_POLL_MS, { label: 'trajectory-follow' });
+                else own.interval(() => { if (!doc.hidden) void followTick(); }, FOLLOW_POLL_MS, 'trajectory-follow');
             }
             await load();
 
@@ -876,32 +893,21 @@ export function createModelTrajectorySideProvider({
                 focus() { searchOpen ? searchInput.focus() : scroller.focus?.({ preventScroll: true }); },
                 suspend() {
                     // 还没到点的重读留到重新显示时再做
-                    if (!reloadTimer) return;
-                    win.clearTimeout(reloadTimer);
-                    reloadTimer = null;
+                    if (!cancelReload) return;
+                    cancelReload();
+                    cancelReload = null;
                     staleWhileHidden = true;
                 },
                 resume() {
-                    if (disposed || (!staleWhileHidden && currentKey() === sessionKey)) return;
+                    if (disposed() || (!staleWhileHidden && currentKey() === sessionKey)) return;
                     staleWhileHidden = false;
                     void load();
                 },
                 dispose() {
-                    disposed = true;
-                    instances.delete(instance);
-                    if (poller) win.clearInterval(poller);
-                    if (reloadTimer) win.clearTimeout(reloadTimer);
-                    if (searchTimer) win.clearTimeout(searchTimer);
-                    if (highlightFrame && typeof win.cancelAnimationFrame === 'function') win.cancelAnimationFrame(highlightFrame);
-                    buildObserver?.disconnect();
-                    clearHighlights();
-                    doc.removeEventListener('click', onDocumentClick);
-                    try { unsubscribe?.(); } catch (_error) { /* 已取消 */ }
-                    try { void Promise.resolve(unwatch?.()).catch(() => {}); } catch (_error) { /* 主进程不支持 */ }
-                    unwatch = null;
-                    try { unsubscribeConversation?.(); } catch (_error) { /* 已取消 */ }
+                    // DOM 同步清掉：scope 的释放是异步的，不能等它，免得把紧接着重新挂载的内容一起清掉
                     viewElement.innerHTML = '';
                     viewElement.classList.remove('side-traj-view');
+                    return own.dispose('model-trajectory-disposed');
                 }
             };
         }

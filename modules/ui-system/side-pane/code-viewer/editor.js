@@ -8,6 +8,13 @@
 // 整段高亮和逐行行号的成本随文件大小线性增长；超过这个字符数只预览开头，复制和插入仍用完整内容
 export const PREVIEW_CHAR_LIMIT = 256 * 1024;
 
+// 文件末尾的换行只是行结束符，不算多出来的一行
+function countLines(text) {
+    let count = 1;
+    for (let at = text.indexOf('\n'); at !== -1 && at < text.length - 1; at = text.indexOf('\n', at + 1)) count++;
+    return count;
+}
+
 export function createCodeViewerEditor({
     store,
     body,
@@ -65,7 +72,8 @@ export function createCodeViewerEditor({
             shownCode = fullCode.slice(0, cut > 0 ? cut : PREVIEW_CHAR_LIMIT);
             const note = doc.createElement('div');
             note.className = 'side-code-truncated-note';
-            note.textContent = `文件较大（${Math.round(fullCode.length / 1024)} KB），只预览前 ${PREVIEW_CHAR_LIMIT / 1024} KB；完整内容请在外部编辑器中查看。`;
+            // 按行数说明：字符数换算不成字节（中文一个字三字节），行数才是准的
+            note.textContent = `文件较大（共 ${countLines(fullCode)} 行），只预览前 ${countLines(shownCode)} 行；完整内容请在外部编辑器中查看。`;
             body.appendChild(note);
         }
 

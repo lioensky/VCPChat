@@ -95,7 +95,7 @@ test('mountTab follows the latest run, streams updates, and lets the user pick a
     await wait();
     assert.deepEqual(state.copied, ['On branch main\n']);
 
-    handle.dispose();
+    await handle.dispose();
     assert.equal(wasUnsubscribed(), true);
     assert.equal(view.innerHTML, '');
 });
@@ -106,7 +106,7 @@ test('openToolOutputTab with a runId selects that run in an already-mounted tab'
     await provider.openToolOutputTab({ runId: 'r1' });
     await wait();
     assert.equal(view.querySelector('.side-tool-output-command').textContent, 'git status');
-    handle.dispose();
+    await handle.dispose();
 });
 
 test('a run requested before the tab mounts is honoured', async () => {
@@ -114,7 +114,7 @@ test('a run requested before the tab mounts is honoured', async () => {
     await provider.openToolOutputTab({ runId: 'r1' });
     const handle = await provider.mountTab({ id: 'tool-output:main' }, view);
     assert.equal(view.querySelector('.side-tool-output-command').textContent, 'git status');
-    handle.dispose();
+    await handle.dispose();
 });
 
 test('shows a helpful empty state when no command has run', async () => {
@@ -123,7 +123,7 @@ test('shows a helpful empty state when no command has run', async () => {
     assert.equal(view.querySelector('.side-tool-output-empty').hidden, false);
     assert.match(view.querySelector('.side-tool-output-empty').textContent, /PowerShellExecutor/);
     assert.equal(view.querySelector('.side-tool-output-picker').disabled, true);
-    handle.dispose();
+    await handle.dispose();
 });
 
 test('scrolling up pauses following and freezes the output; returning to the bottom resumes with the latest', async () => {
@@ -163,7 +163,7 @@ test('scrolling up pauses following and freezes the output; returning to the bot
     assert.equal(text.textContent, 'third\n');
     assert.equal(top, 1000);
     assert.equal(follow.hidden, true);
-    handle.dispose();
+    await handle.dispose();
 });
 
 test('a failed output query shows an inline error with a retry instead of a toast', async () => {
@@ -179,7 +179,7 @@ test('a failed output query shows an inline error with a retry instead of a toas
     await wait();
     assert.equal(bar.hidden, true);
     assert.equal(view.querySelector('.side-tool-output-text').textContent, 'back\n');
-    handle.dispose();
+    await handle.dispose();
 });
 
 test('a hidden tab keeps only the latest update and catches up when shown again', async () => {
@@ -209,5 +209,5 @@ test('a hidden tab keeps only the latest update and catches up when shown again'
     assert.match(view.querySelector('.side-tool-output-chip').textContent, /已完成/);
     assert.equal(view.querySelector('.side-tool-output-text').textContent, 'hi\nbye\n');
     assert.deepEqual(state.gets, ['r2', 'r3']);
-    handle.dispose();
+    await handle.dispose();
 });

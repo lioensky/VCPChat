@@ -2,6 +2,7 @@ import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { createModelTrajectorySideProvider, trajectoryKeyFor, EXPANSION_KINDS } from '../modules/ui-system/side-pane/modelTrajectorySideProvider.js';
+import { createSidePaneRootScope } from '../modules/ui-system/side-pane/side-pane-occurrence.js';
 
 const wait = (ms = 30) => new Promise(resolve => setTimeout(resolve, ms));
 const msg = (role, text) => ({ role, parts: [{ kind: 'text', text }] });
@@ -32,7 +33,7 @@ function makeEnv({ conversation = { item: { id: 'agent1', name: '小助手' }, t
     const dom = new JSDOM('<div id="view"></div>', { pretendToBeVisual: true });
     openWindows.push(dom.window);
     const doc = dom.window.document;
-    const state = { lists: [], opened: [], toasts: [], watch: 0, copied: [], cleared: [], recs, conversation, conversationListeners: [], conversationUnsubscribed: false };
+    const state = { lists: [], opened: [], toasts: [], watch: 0, unwatch: 0, copied: [], cleared: [], recs, conversation, conversationListeners: [], conversationUnsubscribed: false };
     let changed = null;
     let unsubscribed = false;
     Object.defineProperty(dom.window.navigator, 'clipboard', { value: { writeText: async text => { state.copied.push(text); } } });
@@ -42,6 +43,7 @@ function makeEnv({ conversation = { item: { id: 'agent1', name: '小助手' }, t
         modelTrajectoryClear: async key => { state.cleared.push(key); state.recs = []; return { success: true }; },
         modelTrajectoryOpenDirectory: async () => ({ success: true }),
         modelTrajectoryWatch: async () => { state.watch += 1; return { success: true }; },
+        modelTrajectoryUnwatch: async () => { state.unwatch += 1; return { success: true }; },
         onModelTrajectoryChanged: cb => { changed = cb; return () => { unsubscribed = true; }; }
     };
     const sidePaneController = { openTab: async tab => { state.opened.push(tab); return { focus() {} }; }, setVisible() {} };
@@ -50,7 +52,7 @@ function makeEnv({ conversation = { item: { id: 'agent1', name: '小助手' }, t
         getConversation: () => state.conversation,
         onConversationChange: callback => { state.conversationListeners.push(callback); return () => { state.conversationUnsubscribed = true; }; }
     });
-    return { dom, doc, provider, state, view: doc.getElementById('view'), fire: c => changed?.(c), wasUnsubscribed: () => unsubscribed };
+    return { dom, doc, api, provider, state, view: doc.getElementById('view'), fire: c => changed?.(c), wasUnsubscribed: () => unsubscribed };
 }
 
 const typeInto = (input, value) => {
@@ -93,7 +95,7 @@ test('mountTab renders summary, call cards, deltas, and error block', async () =
     const outRoles = [...cards[0].querySelectorAll('.side-traj-section-output .side-traj-row')].map(row => row.dataset.trajectoryRole);
     assert.deepEqual(outRoles, ['reasoning', 'assistant', 'tool-call']);
     assert.match(cards[1].querySelector('.side-traj-error').textContent, /upstream 500/);
-    handle.dispose();
+    await handle.dispose();
 });
 
 test('rows toggle, expand-all and per-kind menu switches follow the command versions', async () => {
@@ -195,7 +197,7 @@ test('empty and no-conversation states, list errors, clear', async () => {
     });
     const handle = await failing.mountTab({ id: 'x' }, env.view);
     assert.match(env.view.querySelector('.side-traj-state').textContent, /完全退出并重新打开/);
-    handle.dispose();
+    await handle.dispose();
 
     env = makeEnv();
     await env.provider.mountTab({ id: 'x' }, env.view);
@@ -212,7 +214,7 @@ test('switching conversation reloads through the selection subscription, and dis
     state.conversationListeners[0]();
     await wait(80);
     assert.equal(state.lists.at(-1)[0], 'agent2__t9');
-    handle.dispose();
+    await handle.dispose();
     assert.ok(state.conversationUnsubscribed);
 });
 
@@ -220,7 +222,7 @@ test('truncated notice and dispose cleanup', async () => {
     const { provider, view, wasUnsubscribed } = makeEnv({ result: { success: true, data: { records: records(), truncated: true, total: 500 } } });
     const handle = await provider.mountTab({ id: 'x' }, view);
     assert.equal(view.querySelector('.side-traj-truncated').hidden, false);
-    handle.dispose();
+    await handle.dispose();
     assert.ok(wasUnsubscribed());
     assert.equal(view.innerHTML, '');
 });
@@ -273,7 +275,7 @@ test('cards are built lazily: the newest ones at once, the rest when scrolled ne
     await env.provider.openModelTrajectoryTab({ requestId: 'm0' });
     assert.equal(pending().includes('call_0'), false);
     assert.ok(cards[0].classList.contains('flash'));
-    handle.dispose();
+    await handle.dispose();
 });
 
 test('focusing a reply without a recorded call says so once; cached tokens and omitted context are shown', async () => {
@@ -292,7 +294,7 @@ test('focusing a reply without a recorded call says so once; cached tokens and o
     env.fire({ sessionKey: 'agent1__t1', id: 'call_1', status: 'completed' });
     await wait(150);
     assert.equal(env.state.toasts.filter(text => /没有对应的调用记录/.test(text)).length, 1, 'a later reload does not repeat the notice');
-    handle.dispose();
+    await handle.dispose();
 });
 
 test('a hidden tab defers change events and conversation switches until it is shown again', async () => {
@@ -337,5 +339,41 @@ test('a hidden tab defers change events and conversation switches until it is sh
     handle.resume();
     await wait(80);
     assert.equal(state.lists.length, settled);
-    handle.dispose();
+    await handle.dispose();
+});
+
+test('releasing only the view scope tears down every listener, timer and subscription of the trajectory tab', async () => {
+    const env = makeEnv();
+    const view = createSidePaneRootScope(null, 'test-view');
+    await env.provider.mountTab({ id: 'x' }, env.view, { scope: view });
+    const { diagnostics } = globalThis.VCPLifecycle;
+    const owned = diagnostics.snapshot().find(scope => scope.parentId === view.id);
+    const types = new Set(owned.resources.map(resource => resource.type));
+    assert.ok(types.has('listener') && types.has('subscription'), 'resources are held by the view scope');
+
+    // 控制器让标签休眠时只释放 view scope，不一定先调 handle.dispose
+    await view.dispose('dormant');
+    assert.equal(env.wasUnsubscribed(), true);
+    assert.equal(env.state.unwatch, 1);
+    assert.equal(env.state.conversationUnsubscribed, true);
+    assert.equal(diagnostics.snapshot().some(scope => scope.id === owned.id), false);
+});
+
+test('closing the trajectory tab while the push registration is pending leaves no subscription behind', async () => {
+    const env = makeEnv();
+    let finishWatch;
+    let subscribed = 0;
+    env.api.modelTrajectoryWatch = () => new Promise(resolve => { finishWatch = resolve; });
+    env.api.onModelTrajectoryChanged = () => { subscribed += 1; return () => {}; };
+    const view = createSidePaneRootScope(null, 'test-view');
+    const mounting = env.provider.mountTab({ id: 'x' }, env.view, { scope: view });
+    await wait(5);
+    await view.dispose('mount-canceled');
+    finishWatch({ success: true });
+    assert.equal(await mounting, null);
+    assert.equal(env.state.unwatch, 1, 'the main-process watch count is returned');
+    assert.equal(subscribed, 0);
+    assert.equal(env.state.conversationListeners.length, 0);
+    assert.equal(env.state.lists.length, 0);
+    assert.equal(env.view.innerHTML, '');
 });

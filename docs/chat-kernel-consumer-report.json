@@ -18184,8 +18184,8 @@
       "windowReferences": 3,
       "documentReferences": 2,
       "electronReferences": 1,
-      "timers": 9,
-      "listeners": 10,
+      "timers": 5,
+      "listeners": 4,
       "mutableMaps": 8
     },
     "modules/ui-system/side-pane/plan-detail/node-view.js": {
@@ -18488,8 +18488,8 @@
       "windowReferences": 3,
       "documentReferences": 2,
       "electronReferences": 1,
-      "timers": 2,
-      "listeners": 5,
+      "timers": 0,
+      "listeners": 0,
       "mutableMaps": 0
     },
     "modules/ui-system/sidebar-resizer.js": {

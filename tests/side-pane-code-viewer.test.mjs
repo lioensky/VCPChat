@@ -300,7 +300,7 @@ test('large files only render the first preview chunk, cut at a line end', async
         const shownLines = view.querySelectorAll('.side-code-line-number').length;
         assert.equal(shownLines, Math.floor(PREVIEW_CHAR_LIMIT / (line.length + 1)));
         assert.ok(view.querySelector('.side-code-pre').textContent.split('\n').every(row => row === line));
-        assert.match(view.querySelector('.side-code-truncated-note').textContent, /只预览前 256 KB/);
+        assert.equal(view.querySelector('.side-code-truncated-note').textContent, `文件较大（共 20000 行），只预览前 ${shownLines} 行；完整内容请在外部编辑器中查看。`);
         // 复制和插入用的仍是完整内容
         assert.equal(handle.getCode(), text);
     } finally {
