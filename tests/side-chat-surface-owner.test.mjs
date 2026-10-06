@@ -385,7 +385,7 @@ test('side chat message context menu offers per-role actions and deletes through
     assert.ok(!assistantActions.includes('edit-again'));
     doc.querySelector('[data-side-chat-action="delete"]').click();
     await new Promise(r => setTimeout(r, 0));
-    assert.deepEqual(removed, [['a1', true]]);
+    assert.deepEqual(removed, [['a1', false]], 'The side action saves first; renderer removal must not start another save');
 
     openMenu('.message-item.assistant');
     await handle.dispose();

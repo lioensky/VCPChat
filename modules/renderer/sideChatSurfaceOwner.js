@@ -94,6 +94,7 @@ export async function mountSideChatSurface(container, {
 
     let isDisposed = false;
     let isHistoryLoaded = false;
+    let isDeletingMessage = false;
     let isComposing = false;
     let activeOperation = null;
     let activeSendController = null;
@@ -118,6 +119,7 @@ export async function mountSideChatSurface(container, {
         set isDisposed(value) { isDisposed = value; },
         get isHistoryLoaded() { return isHistoryLoaded; },
         set isHistoryLoaded(value) { isHistoryLoaded = value; },
+        get isDeletingMessage() { return isDeletingMessage; },
         get references() { return references; },
         get hasUnsavedChanges() { return hasUnsavedChanges; },
         set hasUnsavedChanges(value) { hasUnsavedChanges = value; },
@@ -163,7 +165,7 @@ export async function mountSideChatSurface(container, {
         setHistory: (history) => liveConversation?.historyRef?.set?.(history),
         saveHistory: (history) => repository.saveHistory(descriptor.child.itemId, 'agent', descriptor.child.topicId, history),
         rerender: (messageId, text) => liveRenderer?.updateMessageContent?.(messageId, text),
-        isBusy: () => form.hasAttribute('aria-busy'),
+        isBusy: () => isDeletingMessage || form.hasAttribute('aria-busy'),
         toast: (message, type) => chatCapabilities?.uiHelper?.showToastNotification?.(message, type)
     });
 
@@ -175,8 +177,10 @@ export async function mountSideChatSurface(container, {
         root,
         textarea,
         getHistory: () => liveConversation?.historyRef?.get?.() || [],
-        removeMessage: (messageId) => liveRenderer?.removeMessageById?.(messageId, true),
-        isBusy: () => form.hasAttribute('aria-busy'),
+        saveHistory: (history) => repository.saveHistory(descriptor.child.itemId, 'agent', descriptor.child.topicId, history),
+        removeMessage: (messageId) => liveRenderer?.removeMessageById?.(messageId, false),
+        isBusy: () => isDeletingMessage || form.hasAttribute('aria-busy'),
+        onDeletingChange: (pending) => { isDeletingMessage = pending; updateComposerState(); },
         onComposerFilled: () => scheduleInputSave(),
         editMessage: (messageItem, message) => messageEditor.start(messageItem, message),
         regenerate: liveRegenerateProxy,
@@ -327,7 +331,7 @@ export async function mountSideChatSurface(container, {
 
     const onSubmit = async (event) => {
         event?.preventDefault?.();
-        if (isDisposed || !isHistoryLoaded) return;
+        if (isDisposed || !isHistoryLoaded || isDeletingMessage) return;
         if (!currentModel) {
             updateStatus('请先选择模型', 'error');
             return;
@@ -460,7 +464,7 @@ export async function mountSideChatSurface(container, {
 
     // 重新回复：截掉这条回答对应的提问及其后的所有消息，再用侧栏自己的模型和上下文把提问重新发出
     async function regenerate(assistantId) {
-        if (isDisposed || !isHistoryLoaded || form.hasAttribute('aria-busy')) return;
+        if (isDisposed || !isHistoryLoaded || isDeletingMessage || form.hasAttribute('aria-busy')) return;
         if (!currentModel) {
             updateStatus('请先选择模型', 'error');
             return;
@@ -601,6 +605,10 @@ export async function mountSideChatSurface(container, {
             return await loadHistoryFn();
         },
         async requestClose() {
+            if (isDeletingMessage) {
+                chatCapabilities?.uiHelper?.showToastNotification?.('正在保存删除，请稍后关闭标签页。', 'warning');
+                return { closed: false, reason: 'DELETE_PENDING' };
+            }
             if (hasUnsavedChanges) {
                 chatCapabilities?.uiHelper?.showToastNotification?.('无法关闭标签页：存在未保存的历史记录。请点击保存徽标重试，或右键点击徽标放弃更改。', 'warning');
                 return { closed: false, reason: 'UNSAVED_CHANGES' };

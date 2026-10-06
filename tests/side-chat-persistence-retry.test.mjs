@@ -21,7 +21,7 @@ async function fixture(t) {
     const target = { itemId: 'agent', itemType: 'agent', topicId: 'child' };
     const dom = new JSDOM('<div id="mount"></div>');
     const doc = dom.window.document;
-    let history = [], renderer, failNextSave = false;
+    let history = [], renderer, failNextSave = false, writeStarted = false;
     const repository = {
         getHistory: () => queue.read(target),
         saveHistory: async (_item, _type, _topic, next) => {
@@ -92,7 +92,22 @@ async function fixture(t) {
         assert.ok(button, `User must be able to ${name} after generation ends`);
         button.click();
     };
-    return { doc, handle, action, read: () => queue.read(target), failSave() { failNextSave = true; } };
+    return { doc, handle, action, read: () => queue.read(target), failSave() { failNextSave = true; },
+        get writeStarted() { return writeStarted; },
+        holdNextWrite() {
+            let release;
+            const held = new Promise(resolve => { release = resolve; });
+            const write = queue.write.bind(queue);
+            queue.write = async (...args) => {
+                queue.write = write;
+                writeStarted = true;
+                await held;
+                return write(...args);
+            };
+            t.after(() => release());
+            return release;
+        },
+    };
 }
 
 test('side retry preserves an in-place edit made after the answer failed to save', async t => {
@@ -131,4 +146,19 @@ test('another failed side retry keeps the unsaved badge and close protection', a
     assert.equal((await f.handle.retryPersistence()).ok, true);
     assert.deepEqual((await f.read()).map(message => message.id), ['question', 'answer']);
     assert.equal((await f.handle.requestClose()).closed, true);
+});
+
+test('retrying the failed-save badge during a pending deletion cannot restore the deleted answer', async t => {
+    const f = await fixture(t);
+    const release = f.holdNextWrite();
+    f.action('answer', 'delete');
+    await waitFor(() => f.writeStarted);
+    const retry = f.handle.retryPersistence();
+    release();
+    const result = await retry;
+    await waitFor(() => !f.doc.querySelector('[data-message-id="answer"]'));
+    assert.deepEqual((await f.read()).map(message => message.id), ['question'], 'The retry queued an old snapshot after deletion');
+    assert.equal(result.ok, false, 'A pending deletion must finish before retrying a failed save');
+    assert.equal((await f.handle.retryPersistence()).ok, true);
+    assert.deepEqual((await f.read()).map(message => message.id), ['question']);
 });

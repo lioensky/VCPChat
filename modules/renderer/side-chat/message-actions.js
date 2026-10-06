@@ -17,8 +17,10 @@ export function createSideChatMessageActions({
     root,
     textarea,
     getHistory,
+    saveHistory,
     removeMessage,
     isBusy,
+    onDeletingChange,
     onComposerFilled,
     editMessage,
     regenerate,
@@ -168,15 +170,30 @@ export function createSideChatMessageActions({
             add('trajectory', 'fa-route', '查看调用轨迹', () => commands.execute('sidepane.open-trajectory', { requestId: message.id }));
         }
 
-        if (message.id && typeof removeMessage === 'function' && !unfinished && !busy) {
+        if (message.id && typeof removeMessage === 'function' && typeof saveHistory === 'function' && !unfinished && !busy) {
             add('delete', 'fa-trash-alt', '删除消息', async () => {
                 const preview = (rawText(message) || renderedText() || '[消息内容无法预览]');
                 const confirmed = typeof uiHelper?.showConfirmDialog === 'function'
                     ? await uiHelper.showConfirmDialog(`确定要删除此消息吗？\n"${preview.substring(0, 50)}${preview.length > 50 ? '...' : ''}"`, '删除确认', '删除', '取消', true)
                     : true;
-                if (confirmed && !isBusy?.()) {
-                    removeMessage(message.id);
+                if (!confirmed || store.isDisposed || isBusy?.()) return;
+                const history = getHistory?.() || [];
+                if (!history.some(item => item?.id === message.id)) return;
+                onDeletingChange?.(true);
+                try {
+                    // Keep the visible message and live history until the child topic accepts the write.
+                    const saved = await saveHistory(history.filter(item => item?.id !== message.id));
+                    if (saved?.success === false || saved?.error) {
+                        throw new Error(saved.error || '保存历史出错');
+                    }
+                    if (store.isDisposed) return;
+                    await removeMessage(message.id);
                     updateEmptyState();
+                } catch (error) {
+                    console.error('[SideChat] Failed to delete message:', error);
+                    if (!store.isDisposed) toast('删除失败：历史记录未保存，消息已保留。请重试。', 'error');
+                } finally {
+                    onDeletingChange?.(false);
                 }
             }, 'danger-item');
         }

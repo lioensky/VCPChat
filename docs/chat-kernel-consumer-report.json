@@ -415,6 +415,7 @@
     "modules/ipc/desktopRemoteHandlers.js",
     "modules/ipc/diceHandlers.js",
     "modules/ipc/docxHandlers.js",
+    "modules/ipc/domainActivator.js",
     "modules/ipc/emoticonHandlers.js",
     "modules/ipc/fileDialogHandlers.js",
     "modules/ipc/forumHandlers.js",
@@ -432,10 +433,12 @@
     "modules/ipc/promptHandlers.js",
     "modules/ipc/ragHandlers.js",
     "modules/ipc/regexHandlers.js",
+    "modules/ipc/senderLifetime.js",
     "modules/ipc/settingsHandlers.js",
     "modules/ipc/sideChatHandlers.js",
     "modules/ipc/sourceHandlers.js",
     "modules/ipc/sovitsHandlers.js",
+    "modules/ipc/stateSubscriptions.js",
     "modules/ipc/tavernHandlers.js",
     "modules/ipc/terminalHandlers.js",
     "modules/ipc/themeHandlers.js",
@@ -471,6 +474,7 @@
     "modules/renderer/animation.js",
     "modules/renderer/chat-header-style.js",
     "modules/renderer/colorUtils.js",
+    "modules/renderer/composerCommands.js",
     "modules/renderer/composerModelSelect.js",
     "modules/renderer/contentPipeline.js",
     "modules/renderer/contentProcessor.js",
@@ -519,6 +523,7 @@
     "modules/renderer/side-chat/shell.js",
     "modules/renderer/sideChatSurfaceOwner.js",
     "modules/renderer/sideChatWiring.js",
+    "modules/renderer/sidePaneCommands.js",
     "modules/renderer/sidePaneHostBindings.js",
     "modules/renderer/sidePaneLauncherWiring.js",
     "modules/renderer/sidePaneWiring.js",
@@ -543,6 +548,7 @@
     "modules/services/deepWikiService.js",
     "modules/services/embeddedAppSessionManager.js",
     "modules/services/gitService.js",
+    "modules/services/gitWatcher.js",
     "modules/services/globalJevService.js",
     "modules/services/historyMutationQueue.js",
     "modules/services/historyWatcherLeaseManager.js",
@@ -666,6 +672,7 @@
     "modules/ui-system/settings/settings-sidebar-slots.js",
     "modules/ui-system/settings/settings-sidebar-surface.js",
     "modules/ui-system/settlement.js",
+    "modules/ui-system/shared-source.js",
     "modules/ui-system/side-pane/browserSideProvider.js",
     "modules/ui-system/side-pane/code-viewer/diff-view.js",
     "modules/ui-system/side-pane/code-viewer/editor.js",
@@ -686,9 +693,11 @@
     "modules/ui-system/side-pane/planDetailSideProvider.js",
     "modules/ui-system/side-pane/selection-reference.js",
     "modules/ui-system/side-pane/side-pane-controller.js",
+    "modules/ui-system/side-pane/side-pane-dormancy.js",
     "modules/ui-system/side-pane/side-pane-entries.js",
     "modules/ui-system/side-pane/side-pane-focus.js",
     "modules/ui-system/side-pane/side-pane-launcher.js",
+    "modules/ui-system/side-pane/side-pane-occurrence.js",
     "modules/ui-system/side-pane/side-pane-persistence.js",
     "modules/ui-system/side-pane/side-pane-resizer-owner.js",
     "modules/ui-system/side-pane/side-pane-shortcuts.js",
@@ -705,6 +714,7 @@
     "modules/ui-system/side-pane/tab-types/browser.js",
     "modules/ui-system/side-pane/tab-types/chat.js",
     "modules/ui-system/side-pane/tab-types/code-viewer.js",
+    "modules/ui-system/side-pane/tab-types/lazy-provider.js",
     "modules/ui-system/side-pane/tab-types/model-trajectory.js",
     "modules/ui-system/side-pane/tab-types/notifications.js",
     "modules/ui-system/side-pane/tab-types/plan-detail.js",
@@ -715,6 +725,11 @@
     "modules/ui-system/side-pane/terminalTheme.js",
     "modules/ui-system/side-pane/toolOutputSideProvider.js",
     "modules/ui-system/sidebar-resizer.js",
+    "modules/ui-system/sources/conversation-current.js",
+    "modules/ui-system/sources/git-changes.js",
+    "modules/ui-system/sources/git-workspace.js",
+    "modules/ui-system/sources/projectforge-changes.js",
+    "modules/ui-system/sources/terminal-command-runs.js",
     "modules/ui-system/standalone-chat-app.js",
     "modules/ui-system/startup-theme-gate.js",
     "modules/ui-system/state-channel.js",
@@ -815,6 +830,7 @@
     "preloads/api/rag.js",
     "preloads/api/settings.js",
     "preloads/api/sideChat.js",
+    "preloads/api/state.js",
     "preloads/api/tavern.js",
     "preloads/api/terminal.js",
     "preloads/api/theme.js",
@@ -904,6 +920,7 @@
     "tests/side-chat-ephemeral-parity.test.mjs",
     "tests/side-chat-integration.test.mjs",
     "tests/side-chat-ipc-metadata.test.mjs",
+    "tests/side-chat-message-delete.test.mjs",
     "tests/side-chat-model-and-context.test.mjs",
     "tests/side-chat-persistence-retry.test.mjs",
     "tests/side-chat-preparation-cancel.test.mjs",
@@ -982,7 +999,7 @@
         },
         {
           "file": "modules/event-listeners.js",
-          "line": 1499,
+          "line": 1494,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "createNewTopicForItem",
@@ -990,7 +1007,7 @@
         },
         {
           "file": "modules/event-listeners.js",
-          "line": 1500,
+          "line": 1495,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "createNewTopicForItem",
@@ -1006,7 +1023,7 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 278,
+          "line": 282,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "sendMessage",
@@ -1038,7 +1055,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 28,
+          "line": 29,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "js",
@@ -1046,7 +1063,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 454,
+          "line": 459,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -1054,7 +1071,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 498,
+          "line": 503,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -1062,7 +1079,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 514,
+          "line": 519,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "displayTopicTimestampBubble",
@@ -1070,7 +1087,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 557,
+          "line": 562,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "processFilesData",
@@ -1078,7 +1095,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 558,
+          "line": 563,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "addAttachmentsToMessage",
@@ -1086,7 +1103,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 559,
+          "line": 564,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "removeAttachmentFromMessage",
@@ -1094,7 +1111,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 560,
+          "line": 565,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "syncNextUiEmptyStateWithMessages",
@@ -1102,7 +1119,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 561,
+          "line": 566,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "handleSendMessage",
@@ -1110,7 +1127,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 788,
+          "line": 800,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "handleTopicDeletion",
@@ -1118,7 +1135,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 795,
+          "line": 807,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "selectTopic",
@@ -1126,7 +1143,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 808,
+          "line": 820,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "init",
@@ -1134,7 +1151,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 916,
+          "line": 928,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "displayNoItemSelected",
@@ -1142,7 +1159,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 940,
+          "line": 952,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "restoreLastOpenState",
@@ -1150,7 +1167,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 1097,
+          "line": 1110,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "displayNoItemSelected",
@@ -1158,7 +1175,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 1133,
+          "line": 1146,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "selectTopic",
@@ -1166,7 +1183,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 1183,
+          "line": 1196,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "syncHistoryFromFile",
@@ -1174,7 +1191,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 1184,
+          "line": 1197,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "syncHistoryFromFile",
@@ -1192,7 +1209,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 228,
+          "line": 231,
           "surface": "test",
           "access": "compatibility-global",
           "member": "init",
@@ -1200,7 +1217,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 343,
+          "line": 352,
           "surface": "test",
           "access": "explicit-provider",
           "member": "isReady",
@@ -1208,7 +1225,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 348,
+          "line": 357,
           "surface": "test",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -1216,7 +1233,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 350,
+          "line": 359,
           "surface": "test",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -1224,7 +1241,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 368,
+          "line": 379,
           "surface": "test",
           "access": "explicit-provider",
           "member": "restoreLastOpenState",
@@ -1232,7 +1249,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 388,
+          "line": 399,
           "surface": "test",
           "access": "explicit-provider",
           "member": "restoreLastOpenState",
@@ -1240,7 +1257,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 408,
+          "line": 419,
           "surface": "test",
           "access": "explicit-provider",
           "member": "restoreLastOpenState",
@@ -1248,7 +1265,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 415,
+          "line": 426,
           "surface": "test",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -1256,7 +1273,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 437,
+          "line": 448,
           "surface": "test",
           "access": "explicit-provider",
           "member": "restoreLastOpenState",
@@ -1264,7 +1281,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 448,
+          "line": 459,
           "surface": "test",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -1272,7 +1289,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 454,
+          "line": 465,
           "surface": "test",
           "access": "explicit-provider",
           "member": "selectTopic",
@@ -1280,7 +1297,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 456,
+          "line": 467,
           "surface": "test",
           "access": "explicit-provider",
           "member": "selectTopic",
@@ -1288,7 +1305,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 475,
+          "line": 486,
           "surface": "test",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -1296,7 +1313,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 490,
+          "line": 501,
           "surface": "test",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -1304,7 +1321,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 497,
+          "line": 508,
           "surface": "test",
           "access": "explicit-provider",
           "member": "handleSendMessage",
@@ -1312,7 +1329,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 500,
+          "line": 511,
           "surface": "test",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -1320,7 +1337,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 523,
+          "line": 534,
           "surface": "test",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -1328,7 +1345,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 530,
+          "line": 541,
           "surface": "test",
           "access": "explicit-provider",
           "member": "handleSendMessage",
@@ -1336,7 +1353,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 542,
+          "line": 553,
           "surface": "test",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -1344,7 +1361,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 556,
+          "line": 567,
           "surface": "test",
           "access": "explicit-provider",
           "member": "handleSendMessage",
@@ -1352,7 +1369,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 572,
+          "line": 583,
           "surface": "test",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -1360,7 +1377,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 585,
+          "line": 596,
           "surface": "test",
           "access": "explicit-provider",
           "member": "handleSendMessage",
@@ -1368,7 +1385,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 604,
+          "line": 615,
           "surface": "test",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -1376,7 +1393,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 611,
+          "line": 622,
           "surface": "test",
           "access": "explicit-provider",
           "member": "handleSendMessage",
@@ -1384,7 +1401,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 631,
+          "line": 642,
           "surface": "test",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -1392,7 +1409,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 638,
+          "line": 649,
           "surface": "test",
           "access": "explicit-provider",
           "member": "handleSendMessage",
@@ -1400,7 +1417,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 649,
+          "line": 660,
           "surface": "test",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -1408,7 +1425,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 657,
+          "line": 668,
           "surface": "test",
           "access": "explicit-provider",
           "member": "handleSendMessage",
@@ -1416,7 +1433,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 661,
+          "line": 672,
           "surface": "test",
           "access": "explicit-provider",
           "member": "handleSendMessage",
@@ -1424,7 +1441,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 676,
+          "line": 687,
           "surface": "test",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -1432,7 +1449,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 683,
+          "line": 694,
           "surface": "test",
           "access": "explicit-provider",
           "member": "selectTopic",
@@ -1440,7 +1457,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 685,
+          "line": 696,
           "surface": "test",
           "access": "explicit-provider",
           "member": "selectTopic",
@@ -1448,7 +1465,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 700,
+          "line": 711,
           "surface": "test",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -1456,7 +1473,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 705,
+          "line": 716,
           "surface": "test",
           "access": "explicit-provider",
           "member": "createNewTopicForItem",
@@ -1464,7 +1481,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 707,
+          "line": 718,
           "surface": "test",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -1472,7 +1489,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 725,
+          "line": 736,
           "surface": "test",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -1480,7 +1497,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 730,
+          "line": 741,
           "surface": "test",
           "access": "explicit-provider",
           "member": "createNewTopicForItem",
@@ -1488,7 +1505,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 731,
+          "line": 742,
           "surface": "test",
           "access": "explicit-provider",
           "member": "createNewTopicForItem",
@@ -1496,7 +1513,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 747,
+          "line": 758,
           "surface": "test",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -1504,7 +1521,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 752,
+          "line": 763,
           "surface": "test",
           "access": "explicit-provider",
           "member": "handleTopicDeletion",
@@ -1512,7 +1529,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 772,
+          "line": 783,
           "surface": "test",
           "access": "explicit-provider",
           "member": "dispose",
@@ -1520,7 +1537,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 773,
+          "line": 784,
           "surface": "test",
           "access": "explicit-provider",
           "member": "dispose",
@@ -1528,7 +1545,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 779,
+          "line": 790,
           "surface": "test",
           "access": "explicit-provider",
           "member": "isReady",
@@ -1536,7 +1553,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 785,
+          "line": 796,
           "surface": "test",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -1544,7 +1561,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 794,
+          "line": 805,
           "surface": "test",
           "access": "explicit-provider",
           "member": "syncHistoryFromFile",
@@ -1552,7 +1569,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 797,
+          "line": 808,
           "surface": "test",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -1560,7 +1577,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 814,
+          "line": 825,
           "surface": "test",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -1568,7 +1585,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 823,
+          "line": 834,
           "surface": "test",
           "access": "explicit-provider",
           "member": "syncHistoryFromFile",
@@ -1576,7 +1593,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 826,
+          "line": 837,
           "surface": "test",
           "access": "explicit-provider",
           "member": "dispose",
@@ -1584,7 +1601,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 869,
+          "line": 880,
           "surface": "test",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -1592,7 +1609,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 895,
+          "line": 906,
           "surface": "test",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -1600,7 +1617,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 914,
+          "line": 925,
           "surface": "test",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -1608,7 +1625,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 923,
+          "line": 934,
           "surface": "test",
           "access": "explicit-provider",
           "member": "syncHistoryFromFile",
@@ -1616,7 +1633,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 942,
+          "line": 953,
           "surface": "test",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -1624,7 +1641,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 968,
+          "line": 979,
           "surface": "test",
           "access": "explicit-provider",
           "member": "syncHistoryFromFile",
@@ -1632,7 +1649,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 977,
+          "line": 988,
           "surface": "test",
           "access": "explicit-provider",
           "member": "syncHistoryFromFile",
@@ -1640,7 +1657,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 984,
+          "line": 995,
           "surface": "test",
           "access": "explicit-provider",
           "member": "syncHistoryFromFile",
@@ -1648,7 +1665,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 992,
+          "line": 1003,
           "surface": "test",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -1656,7 +1673,7 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 995,
+          "line": 1006,
           "surface": "test",
           "access": "explicit-provider",
           "member": "onSelectionChange",
@@ -1664,11 +1681,35 @@
         },
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "line": 996,
+          "line": 1007,
           "surface": "test",
           "access": "explicit-provider",
           "member": "createNewTopicForItem",
           "snippet": "const creating=fixture.chatManager.createNewTopicForItem('agent-a','agent');"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 1014,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "selectItem",
+          "snippet": "const selecting = fixture.chatManager.selectItem('agent-a', 'agent', 'Agent A', null, fixture.configs['agent-a']);"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 1019,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "onSelectionChange",
+          "snippet": "const unsubscribe = fixture.chatManager.onSelectionChange(event => events.push({ itemId: event.item?.id ?? null, topicId: event.topicId }));"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 1022,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "displayNoItemSelected",
+          "snippet": "assert.equal(fixture.chatManager.displayNoItemSelected(), true);"
         },
         {
           "file": "tests/group-chat-queue-interrupt.test.js",
@@ -1704,7 +1745,7 @@
         },
         {
           "file": "tests/side-chat-preparation-cancel.test.mjs",
-          "line": 89,
+          "line": 93,
           "surface": "test",
           "access": "explicit-provider",
           "member": "dispose",
@@ -1996,7 +2037,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 608,
+          "line": 612,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "setCurrentSelectedItem",
@@ -2004,7 +2045,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 609,
+          "line": 613,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "setCurrentTopicId",
@@ -2012,7 +2053,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 610,
+          "line": 614,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "setCurrentItemAvatar",
@@ -2020,7 +2061,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 611,
+          "line": 615,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "setCurrentItemAvatarColor",
@@ -2028,7 +2069,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 674,
+          "line": 678,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "setCurrentTopicId",
@@ -2036,7 +2077,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 679,
+          "line": 683,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -2044,7 +2085,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 688,
+          "line": 692,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -2052,7 +2093,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 695,
+          "line": 699,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "setCurrentTopicId",
@@ -2060,7 +2101,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 698,
+          "line": 702,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -2068,7 +2109,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 709,
+          "line": 713,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "setCurrentTopicId",
@@ -2076,7 +2117,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 712,
+          "line": 716,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -2084,7 +2125,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 720,
+          "line": 724,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -2092,7 +2133,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 811,
+          "line": 815,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "setCurrentTopicId",
@@ -2100,7 +2141,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 813,
+          "line": 817,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "clearChat",
@@ -2108,7 +2149,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 848,
+          "line": 852,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -2116,7 +2157,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 896,
+          "line": 900,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "setCurrentTopicId",
@@ -2124,7 +2165,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 897,
+          "line": 901,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "clearChat",
@@ -2132,7 +2173,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 898,
+          "line": 902,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -2140,7 +2181,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 921,
+          "line": 925,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "clearChat",
@@ -2148,7 +2189,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 932,
+          "line": 936,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "setCurrentTopicId",
@@ -2156,7 +2197,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 938,
+          "line": 942,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -2164,7 +2205,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 944,
+          "line": 948,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -2172,7 +2213,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 957,
+          "line": 961,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -2180,7 +2221,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 960,
+          "line": 964,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "removeMessageById",
@@ -2188,15 +2229,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 967,
-          "surface": "shared-renderer",
-          "access": "explicit-provider",
-          "member": "removeMessageById",
-          "snippet": "if (messageRenderer) messageRenderer.removeMessageById('loading_history');"
-        },
-        {
-          "file": "modules/chatManager.js",
-          "line": 980,
+          "line": 971,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "removeMessageById",
@@ -2212,7 +2245,15 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1025,
+          "line": 988,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "removeMessageById",
+          "snippet": "if (messageRenderer) messageRenderer.removeMessageById('loading_history');"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 1029,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -2220,7 +2261,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1055,
+          "line": 1059,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -2228,7 +2269,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1112,
+          "line": 1116,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "updateMessageUI",
@@ -2236,7 +2277,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1113,
+          "line": 1117,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "updateMessageUI",
@@ -2244,7 +2285,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1213,
+          "line": 1217,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "updateMessageUI",
@@ -2252,7 +2293,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1214,
+          "line": 1218,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "updateMessageUI",
@@ -2260,7 +2301,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1317,
+          "line": 1321,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "summarizeTopicFromMessages",
@@ -2268,7 +2309,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1318,
+          "line": 1322,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "summarizeTopicFromMessages",
@@ -2276,7 +2317,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1733,
+          "line": 1737,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "startStreamingMessage",
@@ -2284,7 +2325,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1960,
+          "line": 1970,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "setCurrentTopicId",
@@ -2292,7 +2333,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1961,
+          "line": 1971,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "clearChat",
@@ -2300,7 +2341,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 2074,
+          "line": 2084,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "setCurrentTopicId",
@@ -2308,7 +2349,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 2245,
+          "line": 2255,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "removeMessageById",
@@ -2316,7 +2357,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 2256,
+          "line": 2266,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "updateMessageContent",
@@ -2324,7 +2365,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 2257,
+          "line": 2267,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "updateMessageContent",
@@ -2332,7 +2373,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 2272,
+          "line": 2282,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -2650,7 +2691,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 30,
+          "line": 31,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "getDiagnostics",
@@ -3755,13 +3796,13 @@
       "production": [
         {
           "file": "renderer.js",
-          "line": 645,
+          "line": 650,
           "surface": "main-window",
           "snippet": "if (window.ComposerModelSelect) {"
         },
         {
           "file": "renderer.js",
-          "line": 646,
+          "line": 651,
           "surface": "main-window",
           "snippet": "const composerModelSelect = window.ComposerModelSelect.init({"
         }
@@ -3957,25 +3998,25 @@
         },
         {
           "file": "renderer.js",
-          "line": 410,
+          "line": 415,
           "surface": "main-window",
           "snippet": "if (window.emoticonManager) {"
         },
         {
           "file": "renderer.js",
-          "line": 411,
+          "line": 416,
           "surface": "main-window",
           "snippet": "window.emoticonManager.initialize({"
         },
         {
           "file": "renderer.js",
-          "line": 1061,
+          "line": 1074,
           "surface": "main-window",
           "snippet": "if (attachFileBtn && emoticonTriggerBtn && window.emoticonManager) {"
         },
         {
           "file": "renderer.js",
-          "line": 1069,
+          "line": 1082,
           "surface": "main-window",
           "snippet": "window.emoticonManager.togglePanel(emoticonTriggerBtn);"
         }
@@ -4007,7 +4048,7 @@
         },
         {
           "file": "modules/notificationRenderer.js",
-          "line": 272,
+          "line": 274,
           "surface": "shared-renderer",
           "snippet": "const autoApprovalResult = (filterManagerCapability || window.filterManager)?.checkToolAutoApproval?.(logData.data);"
         },
@@ -4019,31 +4060,31 @@
         },
         {
           "file": "renderer.js",
-          "line": 265,
+          "line": 270,
           "surface": "main-window",
           "snippet": "filterManager: window.filterManager,"
         },
         {
           "file": "renderer.js",
-          "line": 406,
+          "line": 411,
           "surface": "main-window",
           "snippet": "filterManager: window.filterManager,"
         },
         {
           "file": "renderer.js",
-          "line": 854,
+          "line": 866,
           "surface": "main-window",
           "snippet": "filterManager: window.filterManager,"
         },
         {
           "file": "renderer.js",
-          "line": 998,
+          "line": 1011,
           "surface": "main-window",
           "snippet": "if (window.filterManager) {"
         },
         {
           "file": "renderer.js",
-          "line": 999,
+          "line": 1012,
           "surface": "main-window",
           "snippet": "window.filterManager.init({"
         }
@@ -4171,31 +4212,31 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 634,
+          "line": 638,
           "surface": "shared-renderer",
           "snippet": "window.flowlockManager?.syncCurrentHeaderIndicator?.();"
         },
         {
           "file": "modules/chatManager.js",
-          "line": 658,
+          "line": 662,
           "surface": "shared-renderer",
           "snippet": "? window.flowlockManager?.getLockedTopicId?.(itemId)"
         },
         {
           "file": "modules/chatManager.js",
-          "line": 769,
+          "line": 773,
           "surface": "shared-renderer",
           "snippet": "? window.flowlockManager?.getLockedTopicId?.(selectedItemForLock.id)"
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1919,
+          "line": 1929,
           "surface": "shared-renderer",
           "snippet": "if (itemType === 'agent' && window.flowlockManager?.isAgentLocked?.(itemId)) {"
         },
         {
           "file": "modules/chatManager.js",
-          "line": 2002,
+          "line": 2012,
           "surface": "shared-renderer",
           "snippet": "if (currentSelectedItem?.type === 'agent' && window.flowlockManager?.isAgentLocked?.(currentSelectedItem.id)) {"
         },
@@ -4207,7 +4248,7 @@
         },
         {
           "file": "modules/event-listeners.js",
-          "line": 1464,
+          "line": 1459,
           "surface": "main-window",
           "snippet": "if (window.flowlockManager?.isAgentLocked?.(refs.currentSelectedItem.get()?.id)) {"
         },
@@ -4231,13 +4272,13 @@
         },
         {
           "file": "renderer.js",
-          "line": 581,
+          "line": 586,
           "surface": "main-window",
           "snippet": "flowlockManager: window.flowlockManager,"
         },
         {
           "file": "renderer.js",
-          "line": 1208,
+          "line": 1221,
           "surface": "main-window",
           "snippet": "flowlockManager: window.flowlockManager,"
         }
@@ -4367,25 +4408,25 @@
         },
         {
           "file": "renderer.js",
-          "line": 467,
+          "line": 472,
           "surface": "main-window",
           "snippet": "if (window.GroupRenderer) {"
         },
         {
           "file": "renderer.js",
-          "line": 485,
+          "line": 490,
           "surface": "main-window",
           "snippet": "window.GroupRenderer.init({"
         },
         {
           "file": "renderer.js",
-          "line": 524,
+          "line": 529,
           "surface": "main-window",
           "snippet": "console.log('[Renderer POST-INIT GroupRenderer] window.GroupRenderer.init has been called.');"
         },
         {
           "file": "renderer.js",
-          "line": 819,
+          "line": 831,
           "surface": "main-window",
           "snippet": "groupRenderer: window.GroupRenderer,"
         }
@@ -4438,13 +4479,13 @@
       "production": [
         {
           "file": "renderer.js",
-          "line": 1191,
+          "line": 1204,
           "surface": "main-window",
           "snippet": "if (window.initializeFlowlockIntegration) {"
         },
         {
           "file": "renderer.js",
-          "line": 1192,
+          "line": 1205,
           "surface": "main-window",
           "snippet": "window.initializeFlowlockIntegration({"
         }
@@ -4464,19 +4505,19 @@
       "production": [
         {
           "file": "renderer.js",
-          "line": 628,
+          "line": 633,
           "surface": "main-window",
           "snippet": "if (window.inputEnhancer) {"
         },
         {
           "file": "renderer.js",
-          "line": 629,
+          "line": 634,
           "surface": "main-window",
           "snippet": "window.inputEnhancer.initializeInputEnhancer({"
         },
         {
           "file": "renderer.js",
-          "line": 640,
+          "line": 645,
           "surface": "main-window",
           "snippet": "ownedRendererSubscriptions.add({ dispose: () => window.inputEnhancer.dispose?.() });"
         }
@@ -4588,85 +4629,85 @@
         },
         {
           "file": "renderer.js",
-          "line": 441,
+          "line": 446,
           "surface": "main-window",
           "snippet": "if (window.itemListManager) {"
         },
         {
           "file": "renderer.js",
-          "line": 442,
+          "line": 447,
           "surface": "main-window",
           "snippet": "window.itemListManager.init({"
         },
         {
           "file": "renderer.js",
-          "line": 495,
+          "line": 500,
           "surface": "main-window",
           "snippet": "loadItems: () => window.itemListManager ? window.itemListManager.loadItems() : console.error('[GroupRenderer] itemListManager not available'),"
         },
         {
           "file": "renderer.js",
-          "line": 495,
+          "line": 500,
           "surface": "main-window",
           "snippet": "loadItems: () => window.itemListManager ? window.itemListManager.loadItems() : console.error('[GroupRenderer] itemListManager not available'),"
         },
         {
           "file": "renderer.js",
-          "line": 503,
+          "line": 508,
           "surface": "main-window",
           "snippet": "highlightActiveItem: (itemId, itemType) => window.itemListManager ? window.itemListManager.highlightActiveItem(itemId, itemType) : console.error('[GroupRenderer] itemListManager not available'),"
         },
         {
           "file": "renderer.js",
-          "line": 503,
+          "line": 508,
           "surface": "main-window",
           "snippet": "highlightActiveItem: (itemId, itemType) => window.itemListManager ? window.itemListManager.highlightActiveItem(itemId, itemType) : console.error('[GroupRenderer] itemListManager not available'),"
         },
         {
           "file": "renderer.js",
-          "line": 756,
+          "line": 768,
           "surface": "main-window",
           "snippet": "window.itemListManager?.consumeStreamActivityEvent?.(eventData);"
         },
         {
           "file": "renderer.js",
-          "line": 777,
+          "line": 789,
           "surface": "main-window",
           "snippet": "itemListManager: window.itemListManager,"
         },
         {
           "file": "renderer.js",
-          "line": 817,
+          "line": 829,
           "surface": "main-window",
           "snippet": "itemListManager: window.itemListManager,"
         },
         {
           "file": "renderer.js",
-          "line": 853,
+          "line": 865,
           "surface": "main-window",
           "snippet": "itemListManager: window.itemListManager,"
         },
         {
           "file": "renderer.js",
-          "line": 917,
+          "line": 929,
           "surface": "main-window",
           "snippet": "await window.itemListManager.loadItems();"
         },
         {
           "file": "renderer.js",
-          "line": 939,
+          "line": 951,
           "surface": "main-window",
           "snippet": "await window.itemListManager.loadItems(); // Load both agents and groups"
         },
         {
           "file": "renderer.js",
-          "line": 952,
+          "line": 964,
           "surface": "main-window",
           "snippet": "itemListManager: window.itemListManager,"
         },
         {
           "file": "renderer.js",
-          "line": 1035,
+          "line": 1048,
           "surface": "main-window",
           "snippet": "itemListManager: window.itemListManager,"
         }
@@ -4816,7 +4857,7 @@
       "definitions": [
         {
           "file": "modules/notificationRenderer.js",
-          "line": 1219,
+          "line": 1221,
           "syntax": "dot-assignment",
           "snippet": "window.notificationRenderer = {"
         }
@@ -4842,43 +4883,43 @@
         },
         {
           "file": "renderer.js",
-          "line": 244,
+          "line": 249,
           "surface": "main-window",
           "snippet": "notificationRenderer: window.notificationRenderer,"
         },
         {
           "file": "renderer.js",
-          "line": 264,
+          "line": 269,
           "surface": "main-window",
           "snippet": "window.notificationRenderer?.configureCapabilities?.({"
         },
         {
           "file": "renderer.js",
-          "line": 405,
+          "line": 410,
           "surface": "main-window",
           "snippet": "window.notificationRenderer?.configureCapabilities?.({"
         },
         {
           "file": "renderer.js",
-          "line": 708,
+          "line": 720,
           "surface": "main-window",
           "snippet": "consumeLogStatus: statusUpdate => window.notificationRenderer?.updateVCPLogStatus(statusUpdate, vcpLogConnectionStatusDiv),"
         },
         {
           "file": "renderer.js",
-          "line": 710,
+          "line": 722,
           "surface": "main-window",
           "snippet": "if (!window.notificationRenderer) return;"
         },
         {
           "file": "renderer.js",
-          "line": 721,
+          "line": 733,
           "surface": "main-window",
           "snippet": "window.notificationRenderer.renderVCPLogNotification(logData, null, notificationsListUl, themeColors);"
         },
         {
           "file": "renderer.js",
-          "line": 855,
+          "line": 867,
           "surface": "main-window",
           "snippet": "notificationRenderer: window.notificationRenderer,"
         }
@@ -4890,7 +4931,7 @@
       "definitions": [
         {
           "file": "modules/renderer/contentProcessor.js",
-          "line": 901,
+          "line": 900,
           "syntax": "dot-assignment",
           "snippet": "window.onload = () => {"
         }
@@ -5398,25 +5439,25 @@
         },
         {
           "file": "renderer.js",
-          "line": 249,
+          "line": 254,
           "surface": "main-window",
           "snippet": "getPretextBridge: () => window.pretextBridge,"
         },
         {
           "file": "renderer.js",
-          "line": 283,
+          "line": 288,
           "surface": "main-window",
           "snippet": "pretextBridge: window.pretextBridge,"
         },
         {
           "file": "renderer.js",
-          "line": 329,
+          "line": 334,
           "surface": "main-window",
           "snippet": "const surfacePretextBridge = createSurfacePretextBridge(window.pretextBridge);"
         },
         {
           "file": "renderer.js",
-          "line": 550,
+          "line": 555,
           "surface": "main-window",
           "snippet": "pretextBridge: window.pretextBridge,"
         },
@@ -5442,13 +5483,13 @@
       "production": [
         {
           "file": "ProjectForgemodules/projectforge-git.js",
-          "line": 672,
+          "line": 701,
           "surface": "shared-renderer",
           "snippet": "window.ProjectForgeSideTabs?.register('git', { onEnter: onEnterGitTab, onLeave: onLeaveGitTab });"
         },
         {
           "file": "ProjectForgemodules/projectforge-git.js",
-          "line": 675,
+          "line": 709,
           "surface": "shared-renderer",
           "snippet": "if (window.ProjectForgeSideTabs?.savedTab !== 'git') loadWorkspaces({ quiet: true });"
         },
@@ -6743,85 +6784,85 @@
         },
         {
           "file": "renderer.js",
-          "line": 247,
+          "line": 252,
           "surface": "main-window",
           "snippet": "getSettingsManager: () => window.settingsManager,"
         },
         {
           "file": "renderer.js",
-          "line": 268,
+          "line": 273,
           "surface": "main-window",
           "snippet": "window.settingsManager?.configureCapabilities?.({ settings: mainChatSettingsOwner });"
         },
         {
           "file": "renderer.js",
-          "line": 504,
+          "line": 509,
           "surface": "main-window",
           "snippet": "displaySettingsForItem: () => window.settingsManager ? window.settingsManager.displaySettingsForItem() : console.error('[GroupRenderer] settingsManager not available'),"
         },
         {
           "file": "renderer.js",
-          "line": 504,
+          "line": 509,
           "surface": "main-window",
           "snippet": "displaySettingsForItem: () => window.settingsManager ? window.settingsManager.displaySettingsForItem() : console.error('[GroupRenderer] settingsManager not available'),"
         },
         {
           "file": "renderer.js",
-          "line": 840,
+          "line": 852,
           "surface": "main-window",
           "snippet": "displaySettingsForItem: () => window.settingsManager.displaySettingsForItem(),"
         },
         {
           "file": "renderer.js",
-          "line": 866,
+          "line": 878,
           "surface": "main-window",
           "snippet": "if (window.settingsManager) {"
         },
         {
           "file": "renderer.js",
-          "line": 867,
+          "line": 879,
           "surface": "main-window",
           "snippet": "window.settingsManager.init({"
         },
         {
           "file": "renderer.js",
-          "line": 923,
+          "line": 935,
           "surface": "main-window",
           "snippet": "if (window.settingsManager.prewarmPromptManager) {"
         },
         {
           "file": "renderer.js",
-          "line": 924,
+          "line": 936,
           "surface": "main-window",
           "snippet": "window.settingsManager.prewarmPromptManager();"
         },
         {
           "file": "renderer.js",
-          "line": 951,
+          "line": 963,
           "surface": "main-window",
           "snippet": "settingsManager: window.settingsManager,"
         },
         {
           "file": "renderer.js",
-          "line": 1036,
+          "line": 1049,
           "surface": "main-window",
           "snippet": "settingsManager: window.settingsManager,"
         },
         {
           "file": "renderer.js",
-          "line": 1156,
+          "line": 1169,
           "surface": "main-window",
           "snippet": "if (window.settingsManager && typeof window.settingsManager.reloadAgentSettings === 'function') {"
         },
         {
           "file": "renderer.js",
-          "line": 1156,
+          "line": 1169,
           "surface": "main-window",
           "snippet": "if (window.settingsManager && typeof window.settingsManager.reloadAgentSettings === 'function') {"
         },
         {
           "file": "renderer.js",
-          "line": 1157,
+          "line": 1170,
           "surface": "main-window",
           "snippet": "const result = await window.settingsManager.reloadAgentSettings(agentId);"
         }
@@ -6981,13 +7022,13 @@
         },
         {
           "file": "renderer.js",
-          "line": 565,
+          "line": 570,
           "surface": "main-window",
           "snippet": "if (typeof window.summarizeTopicFromMessages === 'function') return window.summarizeTopicFromMessages(messages, agentName);"
         },
         {
           "file": "renderer.js",
-          "line": 565,
+          "line": 570,
           "surface": "main-window",
           "snippet": "if (typeof window.summarizeTopicFromMessages === 'function') return window.summarizeTopicFromMessages(messages, agentName);"
         },
@@ -7056,13 +7097,13 @@
         },
         {
           "file": "renderer.js",
-          "line": 1089,
+          "line": 1102,
           "surface": "main-window",
           "snippet": "if (window.TavernManager?.togglePopover) {"
         },
         {
           "file": "renderer.js",
-          "line": 1090,
+          "line": 1103,
           "surface": "main-window",
           "snippet": "window.TavernManager.togglePopover(quickNewTopicBtn);"
         }
@@ -7248,55 +7289,55 @@
         },
         {
           "file": "renderer.js",
-          "line": 505,
+          "line": 510,
           "surface": "main-window",
           "snippet": "loadTopicList: () => window.topicListManager ? window.topicListManager.loadTopicList() : console.error('[GroupRenderer] topicListManager not available'),"
         },
         {
           "file": "renderer.js",
-          "line": 505,
+          "line": 510,
           "surface": "main-window",
           "snippet": "loadTopicList: () => window.topicListManager ? window.topicListManager.loadTopicList() : console.error('[GroupRenderer] topicListManager not available'),"
         },
         {
           "file": "renderer.js",
-          "line": 744,
+          "line": 756,
           "surface": "main-window",
           "snippet": "await window.topicListManager.loadTopicList();"
         },
         {
           "file": "renderer.js",
-          "line": 763,
+          "line": 775,
           "surface": "main-window",
           "snippet": "if (window.topicListManager) {"
         },
         {
           "file": "renderer.js",
-          "line": 764,
+          "line": 776,
           "surface": "main-window",
           "snippet": "window.topicListManager.init({"
         },
         {
           "file": "renderer.js",
-          "line": 818,
+          "line": 830,
           "surface": "main-window",
           "snippet": "topicListManager: window.topicListManager,"
         },
         {
           "file": "renderer.js",
-          "line": 847,
+          "line": 859,
           "surface": "main-window",
           "snippet": "ownedRendererSubscriptions.add({ dispose: () => window.topicListManager.dispose?.() });"
         },
         {
           "file": "renderer.js",
-          "line": 1038,
+          "line": 1051,
           "surface": "main-window",
           "snippet": "topicListManager: window.topicListManager,"
         },
         {
           "file": "renderer.js",
-          "line": 1084,
+          "line": 1097,
           "surface": "main-window",
           "snippet": "window.topicListManager.setupTopicSearch(); // Ensure this is called after DOM for topic search input is ready"
         }
@@ -7431,19 +7472,19 @@
         },
         {
           "file": "renderer.js",
-          "line": 430,
+          "line": 435,
           "surface": "main-window",
           "snippet": "if (window.topTabManager) {"
         },
         {
           "file": "renderer.js",
-          "line": 431,
+          "line": 436,
           "surface": "main-window",
           "snippet": "window.topTabManager.init();"
         },
         {
           "file": "renderer.js",
-          "line": 857,
+          "line": 869,
           "surface": "main-window",
           "snippet": "topTabManager: window.topTabManager,"
         }
@@ -7505,13 +7546,13 @@
         },
         {
           "file": "renderer.js",
-          "line": 420,
+          "line": 425,
           "surface": "main-window",
           "snippet": "if (window.trayManager) {"
         },
         {
           "file": "renderer.js",
-          "line": 421,
+          "line": 426,
           "surface": "main-window",
           "snippet": "window.trayManager.init();"
         }
@@ -7736,25 +7777,25 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 213,
+          "line": 215,
           "surface": "shared-renderer",
           "snippet": "if (window.uiHelperFunctions?.getCompiledRegex) {"
         },
         {
           "file": "modules/chatManager.js",
-          "line": 214,
+          "line": 216,
           "surface": "shared-renderer",
           "snippet": "const compiled = window.uiHelperFunctions.getCompiledRegex(rule.findPattern);"
         },
         {
           "file": "modules/chatManager.js",
-          "line": 218,
+          "line": 220,
           "surface": "shared-renderer",
           "snippet": "if (window.uiHelperFunctions?.regexFromString) {"
         },
         {
           "file": "modules/chatManager.js",
-          "line": 219,
+          "line": 221,
           "surface": "shared-renderer",
           "snippet": "return window.uiHelperFunctions.regexFromString(rule.findPattern);"
         },
@@ -7772,13 +7813,13 @@
         },
         {
           "file": "modules/notificationRenderer.js",
-          "line": 141,
+          "line": 143,
           "surface": "shared-renderer",
           "snippet": "const uiHelper = window.uiHelperFunctions;"
         },
         {
           "file": "modules/notificationRenderer.js",
-          "line": 1036,
+          "line": 1038,
           "surface": "shared-renderer",
           "snippet": "window.uiHelperFunctions?.closeModal?.('toolChangeAuditModal');"
         },
@@ -7934,13 +7975,13 @@
         },
         {
           "file": "renderer.js",
-          "line": 168,
+          "line": 172,
           "surface": "main-window",
           "snippet": "const uiHelperFunctions = window.uiHelperFunctions;"
         },
         {
           "file": "renderer.js",
-          "line": 1211,
+          "line": 1224,
           "surface": "main-window",
           "snippet": "uiHelperFunctions: window.uiHelperFunctions,"
         },
@@ -8105,61 +8146,61 @@
         },
         {
           "file": "renderer.js",
-          "line": 273,
+          "line": 278,
           "surface": "main-window",
           "snippet": "uiManager: window.uiManager,"
         },
         {
           "file": "renderer.js",
-          "line": 280,
+          "line": 285,
           "surface": "main-window",
           "snippet": "getUiManager: () => window.uiManager,"
         },
         {
           "file": "renderer.js",
-          "line": 519,
+          "line": 524,
           "surface": "main-window",
           "snippet": "switchToTab: (tab) => window.uiManager ? window.uiManager.switchToTab(tab) : console.error('[GroupRenderer] uiManager not available'),"
         },
         {
           "file": "renderer.js",
-          "line": 519,
+          "line": 524,
           "surface": "main-window",
           "snippet": "switchToTab: (tab) => window.uiManager ? window.uiManager.switchToTab(tab) : console.error('[GroupRenderer] uiManager not available'),"
         },
         {
           "file": "renderer.js",
-          "line": 776,
+          "line": 788,
           "surface": "main-window",
           "snippet": "uiManager: window.uiManager,"
         },
         {
           "file": "renderer.js",
-          "line": 852,
+          "line": 864,
           "surface": "main-window",
           "snippet": "uiManager: window.uiManager,"
         },
         {
           "file": "renderer.js",
-          "line": 943,
+          "line": 955,
           "surface": "main-window",
           "snippet": "if (window.uiManager) {"
         },
         {
           "file": "renderer.js",
-          "line": 944,
+          "line": 956,
           "surface": "main-window",
           "snippet": "ownedRendererSubscriptions.add({ dispose: () => window.uiManager.dispose?.() });"
         },
         {
           "file": "renderer.js",
-          "line": 945,
+          "line": 957,
           "surface": "main-window",
           "snippet": "await window.uiManager.init({"
         },
         {
           "file": "renderer.js",
-          "line": 1037,
+          "line": 1050,
           "surface": "main-window",
           "snippet": "uiManager: window.uiManager,"
         }
@@ -8262,19 +8303,19 @@
         },
         {
           "file": "renderer.js",
-          "line": 248,
+          "line": 253,
           "surface": "main-window",
           "snippet": "getAppearance: () => window.VCPAppearance,"
         },
         {
           "file": "renderer.js",
-          "line": 272,
+          "line": 277,
           "surface": "main-window",
           "snippet": "appearance: window.VCPAppearance,"
         },
         {
           "file": "renderer.js",
-          "line": 1049,
+          "line": 1062,
           "surface": "main-window",
           "snippet": "getAppearance: () => window.VCPAppearance,"
         }
@@ -8318,7 +8359,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 856,
+          "line": 868,
           "surface": "main-window",
           "snippet": "appearanceStudio: window.VCPAppearanceStudio,"
         }
@@ -8400,25 +8441,25 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 517,
+          "line": 519,
           "surface": "shared-renderer",
           "snippet": "if (window.vcpChatHeader) window.vcpChatHeader.clear('选择一个 Agent 或群组开始聊天');"
         },
         {
           "file": "modules/chatManager.js",
-          "line": 517,
+          "line": 519,
           "surface": "shared-renderer",
           "snippet": "if (window.vcpChatHeader) window.vcpChatHeader.clear('选择一个 Agent 或群组开始聊天');"
         },
         {
           "file": "modules/chatManager.js",
-          "line": 627,
+          "line": 631,
           "surface": "shared-renderer",
           "snippet": "if (window.vcpChatHeader) window.vcpChatHeader.setTitle({ classic: classicTitle, capsule: `${itemName}${itemTypeLabel}` });"
         },
         {
           "file": "modules/chatManager.js",
-          "line": 627,
+          "line": 631,
           "surface": "shared-renderer",
           "snippet": "if (window.vcpChatHeader) window.vcpChatHeader.setTitle({ classic: classicTitle, capsule: `${itemName}${itemTypeLabel}` });"
         },
@@ -8448,13 +8489,13 @@
         },
         {
           "file": "renderer.js",
-          "line": 912,
+          "line": 924,
           "surface": "main-window",
           "snippet": "if (window.vcpChatHeader && typeof text === 'string') window.vcpChatHeader.setTitle({ classic: text });"
         },
         {
           "file": "renderer.js",
-          "line": 912,
+          "line": 924,
           "surface": "main-window",
           "snippet": "if (window.vcpChatHeader && typeof text === 'string') window.vcpChatHeader.setTitle({ classic: text });"
         }
@@ -10814,7 +10855,7 @@
       "definitions": [
         {
           "file": "renderer.js",
-          "line": 112,
+          "line": 116,
           "syntax": "define-property",
           "snippet": "Object.defineProperty(window, 'VCPMainChatState', {"
         }
@@ -10884,7 +10925,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 589,
+          "line": 594,
           "surface": "main-window",
           "snippet": "provideCapabilities: window.VCPNextShellController?.provideChatCapabilities,"
         }
@@ -11522,7 +11563,7 @@
       "production": [
         {
           "file": "renderer.js",
-          "line": 269,
+          "line": 274,
           "surface": "main-window",
           "snippet": "window.weatherService?.configureCapabilities?.({ settings: mainChatSettingsOwner });"
         }
@@ -13679,11 +13720,11 @@
       "mutableMaps": 1
     },
     "ProjectForgemodules/projectforge-git.js": {
-      "windowReferences": 4,
-      "documentReferences": 4,
+      "windowReferences": 6,
+      "documentReferences": 6,
       "electronReferences": 0,
-      "timers": 2,
-      "listeners": 10,
+      "timers": 1,
+      "listeners": 13,
       "mutableMaps": 1
     },
     "ProjectForgemodules/projectforge-sidetabs.js": {
@@ -15950,6 +15991,14 @@
       "listeners": 2,
       "mutableMaps": 1
     },
+    "modules/ipc/domainActivator.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 3
+    },
     "modules/ipc/emoticonHandlers.js": {
       "windowReferences": 0,
       "documentReferences": 0,
@@ -16086,6 +16135,14 @@
       "listeners": 0,
       "mutableMaps": 0
     },
+    "modules/ipc/senderLifetime.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
     "modules/ipc/settingsHandlers.js": {
       "windowReferences": 0,
       "documentReferences": 0,
@@ -16117,6 +16174,14 @@
       "timers": 0,
       "listeners": 0,
       "mutableMaps": 0
+    },
+    "modules/ipc/stateSubscriptions.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 4
     },
     "modules/ipc/tavernHandlers.js": {
       "windowReferences": 0,
@@ -16398,6 +16463,14 @@
       "listeners": 0,
       "mutableMaps": 1
     },
+    "modules/renderer/composerCommands.js": {
+      "windowReferences": 0,
+      "documentReferences": 1,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
     "modules/renderer/composerModelSelect.js": {
       "windowReferences": 8,
       "documentReferences": 25,
@@ -16415,7 +16488,7 @@
       "mutableMaps": 4
     },
     "modules/renderer/contentProcessor.js": {
-      "windowReferences": 4,
+      "windowReferences": 2,
       "documentReferences": 9,
       "electronReferences": 0,
       "timers": 4,
@@ -16782,6 +16855,14 @@
       "listeners": 0,
       "mutableMaps": 0
     },
+    "modules/renderer/sidePaneCommands.js": {
+      "windowReferences": 2,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
     "modules/renderer/sidePaneHostBindings.js": {
       "windowReferences": 0,
       "documentReferences": 0,
@@ -16799,7 +16880,7 @@
       "mutableMaps": 1
     },
     "modules/renderer/sidePaneWiring.js": {
-      "windowReferences": 4,
+      "windowReferences": 2,
       "documentReferences": 2,
       "electronReferences": 1,
       "timers": 0,
@@ -16971,6 +17052,14 @@
       "documentReferences": 0,
       "electronReferences": 0,
       "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "modules/services/gitWatcher.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 1,
       "listeners": 0,
       "mutableMaps": 1
     },
@@ -17474,7 +17563,7 @@
       "windowReferences": 1,
       "documentReferences": 2,
       "electronReferences": 0,
-      "timers": 2,
+      "timers": 1,
       "listeners": 0,
       "mutableMaps": 1
     },
@@ -17958,6 +18047,14 @@
       "listeners": 1,
       "mutableMaps": 0
     },
+    "modules/ui-system/shared-source.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 2,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
     "modules/ui-system/side-pane/browserSideProvider.js": {
       "windowReferences": 5,
       "documentReferences": 2,
@@ -18034,7 +18131,7 @@
       "windowReferences": 1,
       "documentReferences": 1,
       "electronReferences": 1,
-      "timers": 1,
+      "timers": 0,
       "listeners": 6,
       "mutableMaps": 0
     },
@@ -18112,11 +18209,19 @@
     },
     "modules/ui-system/side-pane/side-pane-controller.js": {
       "windowReferences": 3,
-      "documentReferences": 1,
+      "documentReferences": 2,
       "electronReferences": 4,
       "timers": 1,
       "listeners": 3,
-      "mutableMaps": 4
+      "mutableMaps": 7
+    },
+    "modules/ui-system/side-pane/side-pane-dormancy.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
     },
     "modules/ui-system/side-pane/side-pane-entries.js": {
       "windowReferences": 0,
@@ -18141,6 +18246,14 @@
       "timers": 0,
       "listeners": 9,
       "mutableMaps": 3
+    },
+    "modules/ui-system/side-pane/side-pane-occurrence.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
     },
     "modules/ui-system/side-pane/side-pane-persistence.js": {
       "windowReferences": 0,
@@ -18270,6 +18383,14 @@
       "listeners": 0,
       "mutableMaps": 0
     },
+    "modules/ui-system/side-pane/tab-types/lazy-provider.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
     "modules/ui-system/side-pane/tab-types/model-trajectory.js": {
       "windowReferences": 1,
       "documentReferences": 2,
@@ -18323,7 +18444,7 @@
       "documentReferences": 2,
       "electronReferences": 1,
       "timers": 1,
-      "listeners": 4,
+      "listeners": 5,
       "mutableMaps": 0
     },
     "modules/ui-system/side-pane/terminalTheme.js": {
@@ -18348,6 +18469,46 @@
       "electronReferences": 0,
       "timers": 1,
       "listeners": 8,
+      "mutableMaps": 0
+    },
+    "modules/ui-system/sources/conversation-current.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/ui-system/sources/git-changes.js": {
+      "windowReferences": 1,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 1,
+      "mutableMaps": 1
+    },
+    "modules/ui-system/sources/git-workspace.js": {
+      "windowReferences": 5,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 1,
+      "mutableMaps": 0
+    },
+    "modules/ui-system/sources/projectforge-changes.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 1,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/ui-system/sources/terminal-command-runs.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 1,
+      "timers": 0,
+      "listeners": 0,
       "mutableMaps": 0
     },
     "modules/ui-system/standalone-chat-app.js": {
@@ -19150,6 +19311,14 @@
       "listeners": 0,
       "mutableMaps": 0
     },
+    "preloads/api/state.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
     "preloads/api/tavern.js": {
       "windowReferences": 0,
       "documentReferences": 0,
@@ -19311,7 +19480,7 @@
       "mutableMaps": 0
     },
     "renderer.js": {
-      "windowReferences": 128,
+      "windowReferences": 129,
       "documentReferences": 57,
       "electronReferences": 14,
       "timers": 1,

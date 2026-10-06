@@ -1456,7 +1456,7 @@ function initialize(mainWindow, context) {
                         }
                     } catch (streamError) {
                         console.error(`VCP流读取错误 for messageId: ${messageId}:`, streamError);
-                        trajectoryCall.finish({ error: streamError, aborted: streamError?.name === 'AbortError' });
+                        trajectoryCall.finish({ error: streamError, aborted: streamError?.name === 'AbortError' || streamTask?.controller.signal.aborted === true });
                         const streamErrPayload = { type: 'error', error: `VCP流读取错误: ${streamError.message}`, messageId: messageId };
                         if (context) streamErrPayload.context = context;
                         sendStreamPayload(streamErrPayload);
@@ -1505,7 +1505,7 @@ function initialize(mainWindow, context) {
 
         } catch (error) {
             console.error('VCP请求错误 (catch block):', error);
-            trajectoryCall?.finish({ error, aborted: error?.name === 'AbortError' });
+            trajectoryCall?.finish({ error, aborted: error?.name === 'AbortError' || streamTask?.controller.signal.aborted === true });
             if (modelConfig.stream === true && event && event.sender && !event.sender.isDestroyed()) {
                 const catchErrorPayload = { type: 'error', error: `VCP请求错误: ${error.message}`, messageId: messageId, context };
                 sendStreamPayload(catchErrorPayload);
@@ -1519,6 +1519,7 @@ function initialize(mainWindow, context) {
 
 
     ipcMain.handle('interrupt-vcp-request', async (event, { messageId }) => {
+        let upstreamAccepted = false;
         try {
             const settingsPath = path.join(APP_DATA_ROOT_IN_PROJECT, 'settings.json');
             if (!await fs.pathExists(settingsPath)) {
@@ -1557,11 +1558,16 @@ function initialize(mainWindow, context) {
             }
 
             console.log(`[Main - interrupt] Interrupt signal sent successfully for ${messageId}. Response:`, result.message);
+            upstreamAccepted = true;
             return { success: true, message: result.message };
 
         } catch (error) {
             console.error(`[Main - interrupt] Error sending interrupt request for messageId ${messageId}:`, error);
             return { success: false, error: error.message };
+        } finally {
+            // 上游拒绝中止时，侧栏走本地流收尾；同时关闭本 IPC 调用者自己的
+            // HTTP 读取。成功中止仍由上游发送终态，保留已接收内容的正常收尾路径。
+            if (!upstreamAccepted) vcpStreamTasks.cancel(event.sender, messageId, 'interrupt-local-fallback');
         }
     });
 

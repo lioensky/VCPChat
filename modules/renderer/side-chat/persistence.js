@@ -86,6 +86,11 @@ export function createSideChatPersistence({
 
     async function retryPersistence() {
         if (!store.hasUnsavedChanges) return { ok: true, message: '无未保存的历史' };
+        if (store.isDeletingMessage) {
+            const error = '正在保存删除，请稍后重试。';
+            updateStatus(error, 'error');
+            return { ok: false, error };
+        }
         updateStatus('正在重试保存...');
         try {
             // The side conversation remains editable after a failed save. Its

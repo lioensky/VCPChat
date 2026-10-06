@@ -3681,12 +3681,12 @@
         },
         {
           "file": "modules/renderer/side-chat/message-actions.js",
-          "line": 195,
+          "line": 212,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/renderer/side-chat/message-actions.js",
-          "line": 244,
+          "line": 261,
           "kind": "custom-event-listener"
         },
         {
@@ -3716,7 +3716,7 @@
         },
         {
           "file": "modules/renderer/side-chat/persistence.js",
-          "line": 159,
+          "line": 164,
           "kind": "custom-event-listener"
         },
         {
@@ -3726,12 +3726,12 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 520,
+          "line": 524,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 523,
+          "line": 527,
           "kind": "custom-event-listener"
         },
         {
@@ -5201,13 +5201,13 @@
         },
         {
           "file": "modules/renderer/side-chat/message-actions.js",
-          "line": 195,
+          "line": 212,
           "kind": "custom-event-listener",
           "match": "el.addEventListener('click'"
         },
         {
           "file": "modules/renderer/side-chat/message-actions.js",
-          "line": 244,
+          "line": 261,
           "kind": "custom-event-listener",
           "match": "doc.addEventListener('click'"
         },
@@ -5243,7 +5243,7 @@
         },
         {
           "file": "modules/renderer/side-chat/persistence.js",
-          "line": 159,
+          "line": 164,
           "kind": "custom-event-listener",
           "match": "statusText.addEventListener('click'"
         },
@@ -5255,13 +5255,13 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 520,
+          "line": 524,
           "kind": "custom-event-listener",
           "match": "stopBtn.addEventListener('click'"
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 523,
+          "line": 527,
           "kind": "custom-event-listener",
           "match": "persistenceBadge.addEventListener('click'"
         },
@@ -7294,14 +7294,14 @@
       "consumers": [
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 313,
+          "line": 317,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 313,
+          "line": 317,
           "kind": "custom-event-listener",
           "match": "textarea.addEventListener('compositionend'"
         }
@@ -7313,14 +7313,14 @@
       "consumers": [
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 312,
+          "line": 316,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 312,
+          "line": 316,
           "kind": "custom-event-listener",
           "match": "textarea.addEventListener('compositionstart'"
         }
@@ -7466,12 +7466,12 @@
         },
         {
           "file": "modules/renderer/side-chat/message-actions.js",
-          "line": 243,
+          "line": 260,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 527,
+          "line": 531,
           "kind": "custom-event-listener"
         },
         {
@@ -7591,13 +7591,13 @@
         },
         {
           "file": "modules/renderer/side-chat/message-actions.js",
-          "line": 243,
+          "line": 260,
           "kind": "custom-event-listener",
           "match": "root?.addEventListener('contextmenu'"
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 527,
+          "line": 531,
           "kind": "custom-event-listener",
           "match": "persistenceBadge.addEventListener('contextmenu'"
         },
@@ -13976,14 +13976,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 1602,
+          "line": 1608,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 1602,
+          "line": 1608,
           "kind": "event-listener",
           "match": "ipcMain.handle('get-unread-topic-counts'"
         },
@@ -14984,7 +14984,7 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 315,
+          "line": 319,
           "kind": "custom-event-listener"
         },
         {
@@ -15154,7 +15154,7 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 315,
+          "line": 319,
           "kind": "custom-event-listener",
           "match": "textarea.addEventListener('input'"
         },
@@ -15575,7 +15575,7 @@
         },
         {
           "file": "modules/renderer/side-chat/message-actions.js",
-          "line": 245,
+          "line": 262,
           "kind": "custom-event-listener"
         },
         {
@@ -15590,7 +15590,7 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 321,
+          "line": 325,
           "kind": "custom-event-listener"
         },
         {
@@ -15920,7 +15920,7 @@
         },
         {
           "file": "modules/renderer/side-chat/message-actions.js",
-          "line": 245,
+          "line": 262,
           "kind": "custom-event-listener",
           "match": "doc.addEventListener('keydown'"
         },
@@ -15938,7 +15938,7 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 321,
+          "line": 325,
           "kind": "custom-event-listener",
           "match": "textarea.addEventListener('keydown'"
         },
@@ -27182,14 +27182,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 1697,
+          "line": 1703,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 1697,
+          "line": 1703,
           "kind": "event-listener",
           "match": "ipcMain.handle('set-topic-unread'"
         },
@@ -28281,7 +28281,7 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 519,
+          "line": 523,
           "kind": "custom-event-listener"
         },
         {
@@ -28341,7 +28341,7 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 519,
+          "line": 523,
           "kind": "custom-event-listener",
           "match": "form.addEventListener('submit'"
         },
@@ -29325,14 +29325,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 1653,
+          "line": 1659,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 1653,
+          "line": 1659,
           "kind": "event-listener",
           "match": "ipcMain.handle('toggle-topic-lock'"
         },

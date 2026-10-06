@@ -20,11 +20,11 @@ async function waitFor(predicate) {
 
 // Execute the real module and public IPC route, with isolated dependencies.
 // No source rewriting or test-only access to its private stream function.
-function route(fetchResponse) {
+function route(fetchResponse, { settings = null } = {}) {
     const handlers = new Map(), module = { exports: {} }, sent = [], warnings = [];
     const dependencies = new Map([
         ['electron', { ipcMain: { handle: (name, fn) => handlers.set(name, fn), on() {} }, dialog: {}, BrowserWindow: {} }],
-        ['fs-extra', { pathExists: async () => false }],
+        ['fs-extra', { pathExists: async () => settings !== null, readJson: async () => settings }],
         ['path', require('node:path')], ['crypto', require('node:crypto')],
         ['../services/senderTaskRegistry', require('../modules/services/senderTaskRegistry.js')],
         ['../contextSanitizer', require('../modules/contextSanitizer.js')],
@@ -43,9 +43,75 @@ function route(fetchResponse) {
     const context = { agentId: 'fixture-agent', topicId: 'fixture-topic' };
     return { sent, warnings, sender, context, tasks: () => module.exports.getVcpStreamTaskSnapshot(),
         start: (url = 'http://controlled.invalid/v1/chat/completions') => handlers.get('send-to-vcp')({ sender }, url, '', [], { stream: true }, 'same-message', false, context),
+        interrupt: (caller = sender) => handlers.get('interrupt-vcp-request')({ sender: caller }, { messageId: 'same-message' }),
         close: () => sender.emit('destroyed'),
     };
 }
+
+for (const failure of ['rejected', 'transport-error', 'missing-settings']) {
+    test(`failed interruption (${failure}) releases the caller's HTTP reader without a duplicate terminal`, async () => {
+        let controller, aborted = false;
+        const body = new ReadableStream({ start(value) { controller = value; } });
+        const f = route(async (url, options) => {
+            if (url.endsWith('/v1/interrupt')) {
+                if (failure === 'transport-error') throw new Error('interrupt disconnected');
+                return { ok: false, status: 404, json: async () => ({ message: 'request not found' }) };
+            }
+            options.signal.addEventListener('abort', () => {
+                aborted = true; controller.error(new DOMException('locally interrupted', 'AbortError'));
+            }, { once: true });
+            return { ok: true, body };
+        }, { settings: failure === 'missing-settings' ? null : { vcpServerUrl: 'http://controlled.invalid/v1/chat/completions' } });
+        try {
+            controller.enqueue(encode('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n'));
+            await f.start(); await waitFor(() => f.sent.length === 1);
+            assert.equal((await f.interrupt()).success, false);
+            await waitFor(() => !f.tasks().length);
+            assert.equal(aborted, true); assert.equal(body.locked, false);
+            assert.deepEqual(f.sent.map(item => item.event.type), ['data']);
+            assert.equal(f.sent[0].event.chunk.choices[0].delta.content, 'partial');
+            assert.equal(f.sender.eventNames().length, 0);
+        } finally { f.close(); if (!body.locked) await body.cancel().catch(() => {}); }
+    });
+}
+
+test('accepted interruption retains producer terminal delivery and its received content', async () => {
+    let controller, aborted = false;
+    const body = new ReadableStream({ start(value) { controller = value; } });
+    const f = route(async (url, options) => {
+        if (url.endsWith('/v1/interrupt')) return { ok: true, json: async () => ({ message: 'accepted' }) };
+        options.signal.addEventListener('abort', () => { aborted = true; }, { once: true });
+        return { ok: true, body };
+    }, { settings: { vcpServerUrl: 'http://controlled.invalid/v1/chat/completions' } });
+    try {
+        controller.enqueue(encode('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n'));
+        await f.start(); await waitFor(() => f.sent.length === 1);
+        assert.equal((await f.interrupt()).success, true);
+        assert.equal(aborted, false); assert.equal(f.tasks().length, 1);
+        controller.enqueue(encode('data: [DONE]\n\n'));
+        await waitFor(() => !f.tasks().length);
+        assert.deepEqual(f.sent.map(item => item.event.type), ['data', 'end']);
+        assert.equal(body.locked, false); assert.equal(f.sender.eventNames().length, 0);
+    } finally { f.close(); if (!body.locked) await body.cancel().catch(() => {}); }
+});
+
+test('failed interruption from another IPC window cannot abort the original HTTP reader', async () => {
+    let controller, aborted = false;
+    const body = new ReadableStream({ start(value) { controller = value; } });
+    const f = route(async (url, options) => {
+        if (url.endsWith('/v1/interrupt')) return { ok: false, status: 404, json: async () => ({ message: 'not found' }) };
+        options.signal.addEventListener('abort', () => { aborted = true; controller.error(new DOMException('local stop', 'AbortError')); }, { once: true });
+        return { ok: true, body };
+    }, { settings: { vcpServerUrl: 'http://controlled.invalid/v1/chat/completions' } });
+    try {
+        await f.start();
+        const foreignSender = Object.assign(new EventEmitter(), { id: 502, isDestroyed: () => false });
+        assert.equal((await f.interrupt(foreignSender)).success, false);
+        assert.equal(aborted, false); assert.equal(f.tasks().length, 1);
+        await f.interrupt(); await waitFor(() => !f.tasks().length);
+        assert.equal(aborted, true); assert.equal(body.locked, false);
+    } finally { f.close(); if (!body.locked) await body.cancel().catch(() => {}); }
+});
 
 test('DONE before EOF cancels the actual response body and retains a single end event', async () => {
     let controller, cancelled = 0;

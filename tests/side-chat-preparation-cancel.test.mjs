@@ -76,6 +76,10 @@ async function fixture(t, { stage = null, error = null, stream = false } = {}) {
             async getLatestCanvasContent() { await waitStage('prepare'); return { content: 'canvas' }; },
             async sendToVCP(...args) {
                 requests.push(args);
+                if (stage === 'transport') {
+                    await waitStage('transport');
+                    return { streamError: true, error: 'request locally aborted' };
+                }
                 if (stream) { bridge.accept({ type: 'data', messageId: args[4], context: args[6], chunk: 'retained partial answer' }); return { streamingStarted: true }; }
                 return error ? { error } : { choices: [{ message: { content: 'answer' } }] };
             },
@@ -151,6 +155,18 @@ test('a failed upstream interrupt waits for local terminal persistence and retai
     assert.equal(f.getHistory()[1].finishReason, 'cancelled');
     assert.match(f.doc.getElementById('mount').textContent, /retained partial answer/);
     assert.equal(f.statuses.at(-1).text, '已取消');
+});
+
+test('stopping before the first HTTP response settles as cancellation rather than a service error', async t => {
+    const f = await fixture(t, { stream: true, stage: 'transport' });
+    f.submit('stop while waiting for response');
+    await f.entered.promise;
+    f.stop(); f.gate.resolve();
+    await f.untilIdle();
+    assert.equal(f.statuses.at(-1).text, '已取消');
+    assert.equal(f.doc.querySelector('.side-chat-status-error'), null);
+    assert.deepEqual(f.getHistory().map(message => message.content), ['stop while waiting for response']);
+    assert.doesNotMatch(f.doc.getElementById('mount').textContent, /发送失败|请求流式回复失败/);
 });
 
 test('a service error exits auxiliary busy state and is shown as an error', async t => {

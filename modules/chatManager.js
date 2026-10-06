@@ -1805,6 +1805,12 @@ export const chatManager = (() => {
                 globalSettings
             );
 
+            // 主动停止可使尚未收到首字的 IPC 请求以错误返回；已有取消操作负责
+            // 收尾，不把这次本地 Abort 再渲染成服务端失败。
+            if (vcpResponse?.streamError && request?.signal?.aborted && ownedStreamTerminal) {
+                return Object.freeze({ messageId: thinkingMessage.id, terminal: await ownedStreamTerminal });
+            }
+
             if (!useStreaming) {
                 const response = vcpResponse?.response ?? vcpResponse;
                 const responseContext = vcpResponse?.context ?? context;

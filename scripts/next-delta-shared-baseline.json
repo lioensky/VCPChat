@@ -1,7 +1,7 @@
 {
   "modules/chatManager.js": {
-    "sha256": "1533d745ed131f66b242c8c6d345fae81aa1324eb25f53065b547d96fa1c52dd",
-    "reason": "Integrated chat behavior: selection subscriptions for topic side panes; clear old media before navigation; per-conversation side chat context/unread policy; explicit cancellation and non-streaming terminal settlement; one error notice per failed request. Reviewed auxiliary-side-chat reproduction: Stop during delayed history save or request preparation previously still sent generation; renderer-local AbortSignal checks now prevent that send. When upstream interrupt fails, await the existing local stream terminal before placeholder cleanup so accepted partial content is saved instead of deleted. Actual native side owner, internal renderer, manager, preload/IPC/disk and local HTTP before/after evidence; side preparation and partial-cancel regressions. Existing Surface routing and history authority remain in place. Main/group sending without the optional signal keeps its preparation path."
+    "sha256": "bfab4ad8c512129b679fdc7b9d87d94b6a0ed5daf63c9c77b5dcfdfcc3510941",
+    "reason": "Integrated chat behavior: selection subscriptions for topic side panes; clear old media before navigation; per-conversation side chat context/unread policy; explicit cancellation and non-streaming terminal settlement; one error notice per failed request. Reviewed auxiliary-side-chat reproduction: Stop during delayed history save or request preparation previously still sent generation; renderer-local AbortSignal checks now prevent that send. When upstream interrupt fails, await the existing local stream terminal before placeholder cleanup so accepted partial content is saved instead of deleted. Actual native side owner, internal renderer, manager, preload/IPC/disk and local HTTP before/after evidence; side preparation and partial-cancel regressions. Existing Surface routing and history authority remain in place. Main/group sending without the optional signal keeps its preparation path. Stop while awaiting the first HTTP headers: a locally aborted stream IPC return now awaits the already-owned cancellation terminal instead of showing a service-error notice; the regression keeps the submitted question and leaves the busy state."
   },
   "modules/messageRenderer.js": {
     "sha256": "e730df84a2ab3cc96a629716b293ec92ee524c1a60c714c6ce6597f3773f0944",
@@ -32,8 +32,8 @@
     "reason": "shared filter authority; canonical menu calls its public API; filter persistence now uses operation-aware path patches to avoid complete-snapshot overwrite"
   },
   "modules/notificationRenderer.js": {
-    "sha256": "d81752e7c8a94f7e938ac842cdf9dbb1c9c6e9828823ba0a31b61de2bb417daa",
-    "reason": "Integrated approval behavior: escaped text/diff previews describe ProjectForge edits and destructive targets; duplicate request cards are rejected; TTL/replay expiry removes actions; settlement cancels its timer; approval requests bypass display filtering. Review uses source at the registration commit f7596f9c because the recorded historical digest has no matching committed blob."
+    "sha256": "3dbdb6e1f01d3d39efff97c271672e1cf0f1ce88977d42fd22ab04f442caa8d8",
+    "reason": "Integrated approval behavior: escaped text/diff previews describe ProjectForge edits and destructive targets; duplicate request cards are rejected; TTL/replay expiry removes actions; settlement cancels its timer; approval requests bypass display filtering. Review uses source at the registration commit f7596f9c because the recorded historical digest has no matching committed blob. The VCPLog connection status is also reported to the side-pane notification center before the optional status element is updated, so the center shows it when the classic status element is absent."
   },
   "VCPDistributedServer/frontend-plugin-loader.js": {
     "sha256": "0987ee41ed76c8b4f0963353c4b387f0b46a6202b9e8516aa02cce27568862ca",
