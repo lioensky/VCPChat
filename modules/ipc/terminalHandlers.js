@@ -9,8 +9,10 @@
 
 const fs = require('fs');
 const path = require('path');
-const { ipcMain } = require('electron');
+const { ipcMain: defaultIpcMain } = require('electron');
 const { createApplicationSenderGuard, resolveWindowWebContents } = require('./applicationSender');
+// initialize 可以传入领域激活器给的 ipcMain（见 domainActivator.js），不传就用 Electron 的
+let ipcMain = defaultIpcMain;
 let getMainWindow = () => null;
 
 const CHANNELS = [
@@ -23,6 +25,7 @@ const CHANNELS = [
     'terminal:command-runs',
     'terminal:command-run',
     'terminal:watch-command-runs',
+    'terminal:unwatch-command-runs',
 ];
 
 const EXECUTOR_PATH = path.join(__dirname, '..', '..', 'VCPDistributedServer', 'Plugin', 'PowerShellExecutor', 'PowerShellExecutor.js');
@@ -40,7 +43,7 @@ let sequence = 0;
 /** @type {Map<string, { id: string, sender: Electron.WebContents, detach: Function }>} */
 const views = new Map();
 const trackedSenders = new WeakSet();
-/** @type {Map<Electron.WebContents, { unsubscribe: Function, pending: Map<string, object>, timer: NodeJS.Timeout|null }>} */
+/** @type {Map<Electron.WebContents, { refs: number, unsubscribe: Function, pending: Map<string, object>, timer: NodeJS.Timeout|null }>} */
 const runWatchers = new Map();
 
 const isAllowedSender = createApplicationSenderGuard({ getMainWebContents: () => resolveWindowWebContents(getMainWindow) });
@@ -88,9 +91,14 @@ function stopRunWatcher(sender) {
     }
 }
 
+// 同一页面里可能有几处各自 watch，按次数计：最后一次 unwatch 才真正停止推送
 function startRunWatcher(sender) {
-    if (runWatchers.has(sender)) return;
-    const watcher = { unsubscribe: () => {}, pending: new Map(), timer: null };
+    const existing = runWatchers.get(sender);
+    if (existing) {
+        existing.refs += 1;
+        return;
+    }
+    const watcher = { refs: 1, unsubscribe: () => {}, pending: new Map(), timer: null };
     const flush = () => {
         watcher.timer = null;
         for (const summary of watcher.pending.values()) safeSend(sender, 'terminal:command-run-changed', summary);
@@ -103,6 +111,13 @@ function startRunWatcher(sender) {
     });
     runWatchers.set(sender, watcher);
     trackSender(sender);
+}
+
+function releaseRunWatcher(sender) {
+    const watcher = runWatchers.get(sender);
+    if (!watcher) return;
+    watcher.refs -= 1;
+    if (watcher.refs <= 0) stopRunWatcher(sender);
 }
 
 function trackSender(sender) {
@@ -177,7 +192,8 @@ function createView(event, options = {}) {
     return { id, pid: state.pid, shared: true };
 }
 
-function initialize({ workspaceService = null, executorLoader = null, mainWindow = null, getMainWindow: getWindow = null } = {}) {
+function initialize({ workspaceService = null, executorLoader = null, mainWindow = null, getMainWindow: getWindow = null, ipcMain: injectedIpcMain = null } = {}) {
+    ipcMain = injectedIpcMain || defaultIpcMain;
     getMainWindow = typeof getWindow === 'function' ? getWindow : () => mainWindow;
     workspaceServiceRef = workspaceService;
     if (typeof executorLoader === 'function') loadExecutor = executorLoader;
@@ -269,6 +285,13 @@ function initialize({ workspaceService = null, executorLoader = null, mainWindow
         }
     });
 
+    // 渲染端的命令记录源没人用了（宽限期过后）就取消推送；只减自己页面的计数
+    ipcMain.handle('terminal:unwatch-command-runs', (event) => {
+        if (!isAllowedSender(event)) return denied;
+        releaseRunWatcher(event.sender);
+        return { success: true };
+    });
+
     ipcMain.handle('terminal:cd', (event, id, workspaceId) => {
         if (!isAllowedSender(event)) return denied;
         if (!getOwnedView(event, id)) return missing;
@@ -291,4 +314,4 @@ function disposeAll() {
     for (const sender of [...runWatchers.keys()]) stopRunWatcher(sender);
 }
 
-module.exports = { initialize, disposeAll };
+module.exports = { CHANNELS, initialize, disposeAll };

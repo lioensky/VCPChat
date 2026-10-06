@@ -479,6 +479,25 @@
     ]
   },
   {
+    "id": "source.dynamic.modules.ipc.domainactivator",
+    "kind": "source-review",
+    "owner": "modules/ipc/domainActivator.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "Registers one forwarding invoke handler per channel listed in preloads/api for the terminal, modelTrajectory, browser and sideChat domains; the first call loads the domain module, which registers its real handlers on a registrar restricted to that domain's own channels. Sender checks stay inside each domain's handlers.",
+    "dynamicSites": [
+      {
+        "file": "modules/ipc/domainActivator.js",
+        "line": 131,
+        "kind": "event-listener",
+        "match": "ipcMain.handle(channel"
+      }
+    ],
+    "evidence": [
+      "Channel parity between preloads/api and each handler module's CHANNELS is asserted by tests/domain-activator.test.js."
+    ]
+  },
+  {
     "id": "source.dynamic.modules.ipc.terminalhandlers",
     "kind": "source-review",
     "owner": "modules/ipc/terminalHandlers.js",
@@ -488,7 +507,7 @@
     "dynamicSites": [
       {
         "file": "modules/ipc/terminalHandlers.js",
-        "line": 57,
+        "line": 60,
         "kind": "event-send",
         "match": "sender.send(channel"
       }
@@ -845,7 +864,7 @@
     "dynamicSites": [
       {
         "file": "modules/ui-system/conversation-status-panel.js",
-        "line": 196,
+        "line": 200,
         "kind": "custom-event-create",
         "match": "new win.CustomEvent(changeEvent"
       }
@@ -902,7 +921,7 @@
     "dynamicSites": [
       {
         "file": "modules/ui-system/lifecycle-scope.js",
-        "line": 125,
+        "line": 129,
         "kind": "custom-event-listener",
         "match": "target.addEventListener(type"
       }

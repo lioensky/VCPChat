@@ -83,9 +83,12 @@ const workspaceHandlers = require('./modules/ipc/workspaceHandlers'); // 工作�
 const projectForgeHandlers = require('./modules/ipc/projectForgeHandlers'); // ProjectForge 施工图 GUI（只读 + 署名回退）
 const gitHandlers = require('./modules/ipc/gitHandlers'); // ProjectForge Git 源代码管理侧栏
 const sourceHandlers = require('./modules/ipc/sourceHandlers'); // ProjectForge 源码浏览 / 轻量编辑侧栏
-const terminalHandlers = require('./modules/ipc/terminalHandlers'); // 侧栏终端（镜像自带终端会话）
-const modelTrajectoryHandlers = require('./modules/ipc/modelTrajectoryHandlers'); // 侧栏调用轨迹（模型请求 / 响应记录）
+// 侧栏终端、调用轨迹、旁聊的 IPC 由领域激活器按需加载（见下方 domainActivator.register），这里不预先 require
 const browserHandlers = require('./modules/ipc/browserHandlers'); // 侧栏浏览器（<webview> 的安全围栏）
+const { createDomainActivator, channelsForDomain } = require('./modules/ipc/domainActivator');
+const { describeApis } = require('./preloads/core/registry');
+const { configureSharedRecorder } = require('./modules/modelTrajectory');
+const domainActivator = createDomainActivator({ ipcMain });
 const assistantHandlers = require('./modules/ipc/assistantHandlers'); // Import assistant handlers
 const musicHandlers = require('./modules/ipc/musicHandlers'); // Import music handlers
 const diceHandlers = require('./modules/ipc/diceHandlers'); // Import dice handlers
@@ -103,7 +106,6 @@ const chartHandlers = require('./modules/ipc/chartHandlers'); // Agent 图表工
 const desktopHandlers = require('./modules/ipc/desktopHandlers'); // Import VCPdesktop handlers
 const desktopRemoteHandlers = require('./modules/ipc/desktopRemoteHandlers'); // Import desktop remote control handlers
 const tavernHandlers = require('./modules/ipc/tavernHandlers'); // Import VCPChatTarven (advanced reply) handlers
-const sideChatHandlers = require('./modules/ipc/sideChatHandlers'); // Workspace Side Chat handlers
 const { ScriptoriumAgentControlService } = require('./modules/services/scriptoriumAgentControlService');
 const { GlobalJevService } = require('./modules/services/globalJevService');
 // docxHandlers 依赖链较重（mammoth/cheerio/marked/jszip 等），冷启动不加载。
@@ -1511,10 +1513,30 @@ if (!gotTheLock) {
         projectForgeHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService });
         gitHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService, getMainWindow: () => mainWindow });
         sourceHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService });
-        terminalHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService, getMainWindow: () => mainWindow });
-        // 必须早于 chatHandlers.initialize：聊天请求一发出就要有记录器
-        modelTrajectoryHandlers.initialize({ rootDir: path.join(APP_DATA_ROOT_IN_PROJECT, 'ModelTrajectory'), getMainWindow: () => mainWindow });
-        browserHandlers.initialize({ getMainWindow: () => mainWindow });
+        const preloadApis = describeApis();
+        // 侧栏几个领域启动时只登记通道，第一次调用才 require 并 initialize（状态见 lifecycle:get-main-snapshot 的 domains）
+        domainActivator.register('terminal', {
+            channels: channelsForDomain(preloadApis, 'terminal'),
+            load: () => require('./modules/ipc/terminalHandlers'), // 侧栏终端（镜像自带终端会话）
+            init: (mod, { ipcMain: domainIpc }) => mod.initialize({ ipcMain: domainIpc, workspaceService: workspaceHandlers.workspaceService, getMainWindow: () => mainWindow }),
+            dispose: mod => mod.disposeAll(),
+        });
+        // 记录器必须早于 chatHandlers.initialize：聊天请求一发出就要有记录器；查看轨迹的 IPC 才按需激活
+        configureSharedRecorder({ rootDir: path.join(APP_DATA_ROOT_IN_PROJECT, 'ModelTrajectory') });
+        domainActivator.register('modelTrajectory', {
+            channels: channelsForDomain(preloadApis, 'modelTrajectory'),
+            load: () => require('./modules/ipc/modelTrajectoryHandlers'), // 侧栏调用轨迹（模型请求 / 响应记录）
+            init: (mod, { ipcMain: domainIpc }) => mod.initialize({ ipcMain: domainIpc, getMainWindow: () => mainWindow }),
+            dispose: mod => mod.disposeAll(),
+        });
+        // 浏览器访客会话的权限和协议限制要在任何 <webview> 出现之前就位，所以登记时就激活
+        domainActivator.register('browser', {
+            channels: channelsForDomain(preloadApis, 'browser'),
+            load: () => browserHandlers,
+            init: (mod, { ipcMain: domainIpc }) => mod.initialize({ ipcMain: domainIpc, getMainWindow: () => mainWindow }),
+            dispose: mod => mod.dispose(),
+            eager: true,
+        });
 
         translatorHandlers.initialize({
             mainWindow,
@@ -1578,7 +1600,11 @@ if (!gotTheLock) {
             settingsManager: appSettingsManager,
             historyMutationQueue
         });
-        sideChatHandlers.initialize({ USER_DATA_DIR, AGENT_DIR, historyMutationQueue, getMainWindow: () => mainWindow });
+        domainActivator.register('sideChat', {
+            channels: channelsForDomain(preloadApis, 'sideChat'),
+            load: () => require('./modules/ipc/sideChatHandlers'), // Workspace Side Chat handlers
+            init: (mod, { ipcMain: domainIpc }) => mod.initialize({ ipcMain: domainIpc, USER_DATA_DIR, AGENT_DIR, historyMutationQueue, getMainWindow: () => mainWindow }),
+        });
 
         // A renderer claims a lease before beginning asynchronous selection.
         // Late start/stop completions from older selections are rejected in
@@ -1744,6 +1770,7 @@ if (!gotTheLock) {
                 activeEmbeddedAction: embedded.activeAction,
                 tasks: embeddedAppTasks.snapshot(),
                 chatTasks: chatHandlers.getVcpStreamTaskSnapshot(),
+                domains: domainActivator.snapshot(),
             };
         });
         ipcMain.handle('embedded-vchat-app:close-all', async event => {
@@ -1914,9 +1941,8 @@ if (!gotTheLock) {
             fs.unlinkSync(readyFile);
         }
 
-        terminalHandlers.disposeAll();
-        modelTrajectoryHandlers.disposeAll();
-        browserHandlers.dispose();
+        // 只释放用过的侧栏领域，没激活过的不会为了退出而加载
+        domainActivator.disposeAll();
 
         // 1. 停止所有底层监听器
         console.log('[Main] App is quitting. Stopping all listeners...');

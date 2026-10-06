@@ -16,6 +16,7 @@ import {
     resolveVariant
 } from '../modules/ui-system/conversation-status-panel.js';
 import { layoutGitGraph, parseGraphRefs } from '../modules/ui-system/git-graph-layout.js';
+import { getCommandRunsSource } from '../modules/ui-system/sources/terminal-command-runs.js';
 
 const WS = { id: 'ws1', alias: 'core', path: '/code/core' };
 
@@ -58,6 +59,7 @@ function setup({ variant = 'panel', api: overrides = {}, todos, panelOptions = {
         onProjectForgeChanged: () => () => {},
         ...overrides
     };
+    getCommandRunsSource(api, { graceMs: 0 });
     const doc = dom.window.document;
     const opened = [];
     const panel = createConversationStatusPanel({
@@ -456,6 +458,30 @@ test('scoped panel: a conversation that never used a V工程 shows no status at 
     panel.mount();
     await flush();
     assert.equal(q(doc, '.zc-status-layer').hidden, true, '没有 V工程 / 命令的会话不该显示别的会话的 Git 和进程');
+    panel.dispose();
+});
+
+test('scoped panel: a topic without commands or V工程 reads neither the command runs nor Git', async () => {
+    const calls = [];
+    const { panel, switchTo } = scopedSetup({
+        history: [{ role: 'user', content: '你好' }],
+        api: {
+            gitListWorkspaces: async () => { calls.push('git'); return { success: true, data: { workspaces: [WS], activeWorkspaceId: null } }; },
+            terminalListCommandRuns: async () => { calls.push('list'); return { success: true, data: [] }; },
+            terminalWatchCommandRuns: async () => { calls.push('watch'); return { success: true }; },
+            terminalUnwatchCommandRuns: async () => { calls.push('unwatch'); return { success: true }; },
+            onTerminalCommandRunChanged: () => () => {}
+        }
+    });
+    panel.mount();
+    await flush();
+    assert.deepEqual(calls, [], 'the terminal (and its pty) is not touched for a plain chat');
+
+    await switchTo([{ role: 'assistant', content: psCall('npm test') }]);
+    assert.deepEqual(calls, ['watch', 'list'], 'a topic that ran a command starts following the runs, still no Git');
+
+    await switchTo([{ role: 'user', content: '随便聊聊' }]);
+    assert.deepEqual(calls, ['watch', 'list', 'unwatch'], 'leaving it releases the runs again');
     panel.dispose();
 });
 

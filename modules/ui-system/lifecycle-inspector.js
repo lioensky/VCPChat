@@ -30,6 +30,7 @@
             tasks: Object.freeze(globalObject.VCPTasks?.diagnostics?.snapshot?.() || []),
             contributions: globalObject.VCPContributions?.diagnostics?.snapshot?.() || null,
             states: Object.freeze(globalObject.VCPStateChannels?.diagnostics?.() || []),
+            sources: Object.freeze(globalObject.VCPSharedSources?.diagnostics?.() || []),
             shell: globalObject.VCPNextShellController?.getDiagnostics?.() || null,
             streams: streamDiagnosticsProvider?.() || null,
             performance: Object.freeze(globalObject.VCPPerformance?.snapshot?.() || []),
@@ -45,6 +46,8 @@
             activeEmbeddedAction: result?.activeEmbeddedAction || null,
             tasks: Object.freeze(result?.tasks || []),
             chatTasks: Object.freeze(result?.chatTasks || []),
+            // 主进程各领域的激活状态：declared / loading / active / failed
+            domains: Object.freeze(result?.domains || []),
         });
     }
 

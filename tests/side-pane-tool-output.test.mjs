@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { commandRunStatusLabel, createToolOutputSideProvider, formatRunDuration } from '../modules/ui-system/side-pane/toolOutputSideProvider.js';
+import { getCommandRunsSource } from '../modules/ui-system/sources/terminal-command-runs.js';
 
 const wait = (ms = 30) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -29,6 +30,8 @@ function makeEnv({ runs, details }) {
         terminalWatchCommandRuns: async () => { state.watch += 1; return { success: true }; },
         onTerminalCommandRunChanged: (cb) => { changed = cb; return () => { unsubscribed = true; }; }
     };
+    // 没有宽限期：最后一个持有者离开就立即取消订阅，方便断言
+    getCommandRunsSource(api, { graceMs: 0 });
     const sidePaneController = {
         openTab: async (tab) => { state.opened.push(tab); return { focus() {} }; },
         setVisible() {}

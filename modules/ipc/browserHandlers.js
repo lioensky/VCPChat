@@ -10,9 +10,11 @@
 // - 焦点在网页里时按键到不了主窗口，副屏快捷键在这里截下转给主窗口。
 'use strict';
 
-const { ipcMain, session, shell } = require('electron');
+const { ipcMain: defaultIpcMain, session, shell } = require('electron');
 const { createApplicationSenderGuard, resolveWindowWebContents } = require('./applicationSender');
 let getMainWindow = () => null;
+// initialize 可以传入领域激活器给的 ipcMain（见 domainActivator.js），不传就用 Electron 的
+let ipcMain = defaultIpcMain;
 
 const BROWSER_PARTITION = 'persist:vcp-side-browser';
 const ALLOWED_GUEST_PROTOCOLS = new Set(['http:', 'https:', 'file:', 'about:']);
@@ -143,7 +145,8 @@ function attachToWindow(mainWindow) {
     });
 }
 
-function initialize({ mainWindow = null, getMainWindow: getWindow = null } = {}) {
+function initialize({ mainWindow = null, getMainWindow: getWindow = null, ipcMain: injectedIpcMain = null } = {}) {
+    ipcMain = injectedIpcMain || defaultIpcMain;
     getMainWindow = typeof getWindow === 'function' ? getWindow : () => mainWindow;
     dispose();
     configureGuestSession(getGuestSession());
@@ -178,6 +181,7 @@ function dispose() {
 
 module.exports = {
     BROWSER_PARTITION,
+    CHANNELS,
     attachToWindow,
     initialize,
     dispose,

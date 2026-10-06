@@ -10,6 +10,7 @@
 'use strict';
 
 import { formatRelativeTime } from './side-pane-tab-utils.js';
+import { getCommandRunsSource } from '../sources/terminal-command-runs.js';
 
 const TAB_ID = 'tool-output:main';
 const FOLLOW_THRESHOLD_PX = 24;
@@ -48,7 +49,9 @@ export function createToolOutputSideProvider({
     document: doc = document,
     api = (typeof window !== 'undefined' ? window.electronAPI : null),
     sidePaneController = null,
-    uiHelper = null
+    uiHelper = null,
+    // 和状态面板共用的命令运行记录源
+    commandRunsSource = getCommandRunsSource(api)
 } = {}) {
     const kind = 'tool-output';
     const win = doc.defaultView || window;
@@ -79,7 +82,7 @@ export function createToolOutputSideProvider({
             return handle;
         },
 
-        async mountTab(tab, viewElement) {
+        async mountTab(tab, viewElement, { scope: viewScope = null, occurrence = null } = {}) {
             if (!viewElement) return null;
             viewElement.innerHTML = '';
             viewElement.classList.add('side-tool-output-view');
@@ -154,7 +157,10 @@ export function createToolOutputSideProvider({
             let previousTop = 0;
             let disposed = false;
             let loadSeq = 0;
-            let unsubscribe = null;
+            let releaseRuns = null;
+            let seeded = false;
+            let seeding = null;
+            let suspended = false;
             let ticker = null;
             let reloadTimer = null;
 
@@ -236,7 +242,8 @@ export function createToolOutputSideProvider({
             };
 
             const syncTicker = () => {
-                const running = (detail || selectedSummary())?.status === 'running';
+                // 标签藏起来时不走秒，显示回来再补
+                const running = !suspended && (detail || selectedSummary())?.status === 'running';
                 if (running && !ticker) ticker = win.setInterval(renderStatus, TICK_MS);
                 if (!running && ticker) { win.clearInterval(ticker); ticker = null; }
             };
@@ -256,15 +263,14 @@ export function createToolOutputSideProvider({
                 renderAll();
             };
 
-            const loadRuns = async () => {
-                const res = await api?.terminalListCommandRuns?.();
-                if (disposed) return;
-                runs = res?.success ? res.data : [];
+            // 第一次拿到列表：默认盯最新的一条（打开时指定了 runId 就用它）
+            const seed = () => {
+                seeded = true;
                 if (!selectedSummary()) {
                     selectedId = runs[0]?.id || null;
                     manual = false;
                 }
-                await loadSelected();
+                return loadSelected();
             };
 
             const select = (id, isManual = true) => {
@@ -290,19 +296,27 @@ export function createToolOutputSideProvider({
                 }
             }
 
-            const onChanged = (summary) => {
-                if (disposed || !summary?.id) return;
-                const index = runs.findIndex(run => run.id === summary.id);
-                if (index >= 0) runs[index] = { ...runs[index], ...summary };
-                else runs = [summary, ...runs];
+            // 数据源每次变化都给整份列表；变了的那条是新对象，其余保持原样，据此判断要不要重新读输出
+            const onRuns = ({ status, data }) => {
+                if (disposed) return;
+                const previous = runs;
+                runs = Array.isArray(data) ? data : [];
+                if (!seeded) {
+                    if (status === 'ready' || status === 'error') seeding = seed();
+                    else renderPicker();
+                    return;
+                }
+                const known = new Set(previous.map(run => run.id));
+                const added = runs.find(run => !known.has(run.id));
                 // 没有手动选过时，新命令一开始就自动跟过去（默认盯最新的）
-                if (!manual && index < 0 && summary.id !== selectedId) {
-                    selectedId = summary.id;
+                if (!manual && added && added.id !== selectedId) {
+                    selectedId = added.id;
                     detail = null;
                     follow = true;
                 }
                 renderPicker();
-                if (summary.id === selectedId) {
+                const before = previous.find(run => run.id === selectedId);
+                if (selectedSummary() !== before) {
                     if (reloadTimer) win.clearTimeout(reloadTimer);
                     reloadTimer = win.setTimeout(() => { reloadTimer = null; void loadSelected(); }, 60);
                 } else {
@@ -315,20 +329,30 @@ export function createToolOutputSideProvider({
             requestedRunId = null;
 
             renderAll();
-            try {
-                await api?.terminalWatchCommandRuns?.();
-                unsubscribe = api?.onTerminalCommandRunChanged?.(onChanged) || null;
-            } catch (_e) { /* 订阅失败时仍可手动刷新 */ }
-            await loadRuns();
+            if (commandRunsSource) {
+                releaseRuns = commandRunsSource.subscribe(onRuns, { scope: viewScope, visible: occurrence?.visible, label: 'tool-output' });
+                await commandRunsSource.settled();
+                await seeding;
+            } else {
+                await seed();
+            }
 
             return {
                 focus() { output.focus?.({ preventScroll: true }); },
+                suspend() {
+                    suspended = true;
+                    syncTicker();
+                },
+                resume() {
+                    suspended = false;
+                    if (!disposed) renderAll();
+                },
                 dispose() {
                     disposed = true;
                     instances.delete(instance);
                     if (ticker) win.clearInterval(ticker);
                     if (reloadTimer) win.clearTimeout(reloadTimer);
-                    try { unsubscribe?.(); } catch (_e) { /* 已取消 */ }
+                    releaseRuns?.();
                     viewElement.innerHTML = '';
                     viewElement.classList.remove('side-tool-output-view');
                 }

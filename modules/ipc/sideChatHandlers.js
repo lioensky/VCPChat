@@ -435,6 +435,7 @@ async function removeSideChatChildrenOfParent({ USER_DATA_DIR, agentId, parentTo
 }
 
 module.exports = {
+    CHANNELS,
     initialize,
     filterStableHistory,
     removeSideChatChildrenOfParent

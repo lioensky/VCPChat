@@ -25,6 +25,7 @@ export { filterBranches, getTodoFocusWindow, pickMiniMetric, pickEntryMetric, re
 import { layoutGitGraph, parseGraphRefs } from './git-graph-layout.js';
 import { pickProjectsForWorkspace, pickTopicProject, mapTodoItems, summarizeTopicBatches } from './project-plan-model.js';
 import { collectConversationScope, normalizeCommand, readRevertBatches, scopeSignature } from './conversation-scope.js';
+import { getCommandRunsSource } from './sources/terminal-command-runs.js';
 
 const STORAGE_KEY_WS = 'vcp-projectforge-git-workspace';
 const STORAGE_KEY_VARIANT = 'vcp-status-panel-variant';
@@ -51,7 +52,9 @@ export function createConversationStatusPanel({
     getHistory = null,
     messagesRoot = null,
     onConversationChange = null,
-    changeEvent = 'vcp:git-changed'
+    changeEvent = 'vcp:git-changed',
+    // 命令运行记录源；默认按 api 取窗口里共用的那一份
+    commandRunsSource = getCommandRunsSource(api)
 } = {}) {
     const win = doc.defaultView || window;
     const storage = (() => { try { return win.localStorage; } catch (_e) { return null; } })();
@@ -80,6 +83,7 @@ export function createConversationStatusPanel({
     let pollTimer = null;
     let resizeObserver = null;
     let mounted = false;
+    let releaseCommandRuns = null;
 
 
 
@@ -206,6 +210,9 @@ export function createConversationStatusPanel({
     // 会话里碰过的 V工程：先看它挂在哪个工作区，Git 区就读那个工作区
     let scopedProjects = []; // 最近提到的在前
 
+    // 跟随会话时，这个会话没碰过 V工程 就不用去读工作区和 Git
+    const hasNoProjects = nextScope => scoped && !nextScope.projectIds.length;
+
     async function loadScopedProjects(nextScope) {
         if (!nextScope.projectIds.length || !api?.projectForgeListProjects) return [];
         try {
@@ -260,12 +267,13 @@ export function createConversationStatusPanel({
         if (disposed) return;
         const seq = ++refreshSeq;
         readScope();
+        syncCommandRunsHold();
         const nextScope = { projectIds: [...scope.projectIds], commands: new Set(scope.commands), batchIds: new Set(scope.batchIds || []) };
         let projects = [], nextWorkspace = null, nextWorkspaces = [], nextSummary = null, nextPlan = null;
         try {
             projects = await loadScopedProjects(nextScope);
             if (disposed || seq !== refreshSeq) return;
-            const selected = await pickWorkspace(projects);
+            const selected = hasNoProjects(nextScope) ? { workspace: null, workspaces: [] } : await pickWorkspace(projects);
             nextWorkspace = selected.workspace;
             nextWorkspaces = selected.workspaces;
             if (disposed || seq !== refreshSeq) return;
@@ -426,7 +434,7 @@ export function createConversationStatusPanel({
         }
         const offForge = api?.onProjectForgeChanged?.(() => { refresh(); });
         if (typeof offForge === 'function') cleanups.push(offForge);
-        watchCommandRuns();
+        syncCommandRunsHold();
         if (scoped) watchConversation();
         pollTimer = win.setInterval(() => { if (!doc.hidden && !busy) refresh(); }, POLL_INTERVAL_MS);
 
@@ -470,32 +478,29 @@ export function createConversationStatusPanel({
         }
     }
 
-    async function loadCommandRuns() {
-        const res = await api?.terminalListCommandRuns?.();
-        if (disposed || !res?.success) return;
-        commandRuns = res.data || [];
-        render();
-    }
-
-    function watchCommandRuns() {
-        if (typeof api?.terminalListCommandRuns !== 'function') return;
-        const onRunChanged = summary => {
-            if (disposed || !summary?.id) return;
-            const index = commandRuns.findIndex(run => run.id === summary.id);
-            if (index >= 0) commandRuns[index] = { ...commandRuns[index], ...summary };
-            else commandRuns = [summary, ...commandRuns];
-            render();
-        };
-        Promise.resolve(api.terminalWatchCommandRuns?.()).catch(() => {});
-        const off = api.onTerminalCommandRunChanged?.(onRunChanged);
-        if (typeof off === 'function') cleanups.push(off);
-        void loadCommandRuns();
+    // 命令记录只在用得上时才占住：不跟随会话时一直要；跟随会话时只有这个会话发起过命令才要。
+    // 没人占住，主进程就不推送，也不会为了读记录去加载终端。
+    function syncCommandRunsHold() {
+        if (!commandRunsSource || disposed || !mounted) return;
+        const wanted = !scoped || scope.commands.size > 0;
+        if (wanted && !releaseCommandRuns) {
+            releaseCommandRuns = commandRunsSource.subscribe(({ data }) => {
+                if (disposed) return;
+                commandRuns = Array.isArray(data) ? data : [];
+                render();
+            }, { label: 'status-panel' });
+        } else if (!wanted && releaseCommandRuns) {
+            releaseCommandRuns();
+            releaseCommandRuns = null;
+        }
     }
 
     function dispose() {
         disposed = true;
         ++refreshSeq;
         if (pollTimer) win.clearInterval(pollTimer);
+        releaseCommandRuns?.();
+        releaseCommandRuns = null;
         resizeObserver?.disconnect();
         cleanups.splice(0).forEach(fn => { try { fn(); } catch (_e) { /* ignore */ } });
         domOwner.dispose();

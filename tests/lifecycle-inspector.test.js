@@ -16,6 +16,7 @@ test('lifecycle inspector reports ownership metadata without payload content', a
         embeddedSessions: [{ action: 'open-notes-window' }], activeEmbeddedAction: null,
         tasks: [{ requestId: 'request-1', operation: 'embedded:create', state: 'running', ageMs: 2 }],
         chatTasks: [{ requestId: 'message-1', operation: 'chat:stream', state: 'running', ageMs: 1 }],
+        domains: [{ name: 'terminal', state: 'declared', channels: 11, calls: 0 }],
     }) };
     window.eval(fs.readFileSync('modules/ui-system/lifecycle-inspector.js', 'utf8'));
     const streamProvider = () => ({ activeMessageId: 'safe-stream', activeMessageIds: ['safe-stream'] });
@@ -34,6 +35,7 @@ test('lifecycle inspector reports ownership metadata without payload content', a
     assert.equal(renderer.streams.activeMessageId, 'safe-stream');
     assert.equal(main.tasks[0].operation, 'embedded:create');
     assert.equal(main.chatTasks[0].operation, 'chat:stream');
+    assert.equal(main.domains[0].state, 'declared');
     const serialized = JSON.stringify({ renderer, main });
     assert.doesNotMatch(serialized, /apiKey|chatHistory|fileContent|secret/i);
     const originalSnapshot = window.VCPLifecycleInspector.snapshot;

@@ -1,4 +1,8 @@
-const pty = require('node-pty');
+// node-pty 是原生模块：只读命令记录、不开终端时不加载它，真正创建会话时才 require
+let ptyModule = null;
+function loadPty() {
+    return ptyModule || (ptyModule = require('node-pty'));
+}
 const os = require('os');
 const { spawn } = require('child_process');
 const path = require('path');
@@ -1051,7 +1055,7 @@ function createNewPtySession() {
         args = ['-NoLogo'];
     }
 
-    ptyProcess = pty.spawn(shell, args, {
+    ptyProcess = loadPty().spawn(shell, args, {
         name: 'xterm-color',
         cols: lastKnownSize.cols,
         rows: lastKnownSize.rows,
