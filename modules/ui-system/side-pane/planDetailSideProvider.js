@@ -437,15 +437,16 @@ export function createPlanDetailSideProvider({
                 const summary = h('div', 'side-plan-progress-text');
                 if (counts.total > 0) {
                     const pct = Math.round((counts.completed / counts.total) * 100);
+                    // 上面一行是计数（百分比靠右），下面一条进度条占满整行宽
+                    const line = h('div', 'side-plan-progress-line');
+                    line.appendChild(h('span', counts.completed >= counts.total ? 'side-plan-done' : '', `${counts.completed}/${counts.total} 已完成`));
+                    if (counts.inProgress) line.appendChild(h('span', '', `${counts.inProgress} 进行中`));
+                    line.appendChild(h('span', 'side-plan-pct', `${pct}%`));
                     const progress = h('progress', 'side-plan-progress');
                     progress.max = counts.total;
                     progress.value = counts.completed;
                     progress.setAttribute('aria-label', `计划进度 ${pct}%`);
-                    summary.append(
-                        h('span', counts.completed >= counts.total ? 'side-plan-done' : '', `${counts.completed}/${counts.total} 已完成`),
-                        progress
-                    );
-                    if (counts.inProgress) summary.appendChild(h('span', '', `${counts.inProgress} 进行中`));
+                    summary.append(line, progress);
                 }
                 return summary;
             }

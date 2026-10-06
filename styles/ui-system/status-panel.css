@@ -6,6 +6,16 @@
 
 /* 颜色令牌在 status-tokens.css。 */
 
+/* 标题栏上的开关：面板没东西可显示时整个按钮藏起来，压过 .header-button 的 display */
+html body #toggleStatusPanelBtn[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: none;
+}
+
+/* 面板开着时按钮用正文色，和关着时的弱化色区分开 */
+html body #toggleStatusPanelBtn[aria-pressed="true"]:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--next-text, var(--primary-text));
+}
+
 /* ---------- 图标 ---------- */
 html .zc-scope .zc-i:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: inline-block;

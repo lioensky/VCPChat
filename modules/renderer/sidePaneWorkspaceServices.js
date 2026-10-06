@@ -42,7 +42,8 @@ export function createSidePaneWorkspaceServices({ doc, win, chatAPI, chatManager
         onScopeWorkspace: (workspace) => followGitWorkspace(win, workspace.id),
         getHistory: () => historyRef.get() || [],
         onHistoryChange: (callback) => watchConversationHistory(callback),
-        onConversationChange: (callback) => chatManager?.onSelectionChange?.(callback)
+        onConversationChange: (callback) => chatManager?.onSelectionChange?.(callback),
+        toggleButton: doc.getElementById('toggleStatusPanelBtn')
     });
     conversationStatusPanel.mount();
     subscriptions.add({ dispose: () => conversationStatusPanel.dispose() });

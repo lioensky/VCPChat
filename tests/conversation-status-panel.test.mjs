@@ -457,6 +457,66 @@ function scopedSetup({ history, api = {}, panelOptions = {} }) {
     return { ...made, switchTo, conversation };
 }
 
+test('the title bar button shows only when the panel has something to show and hides or reopens it', async () => {
+    const addToggle = doc => {
+        const btn = doc.createElement('button');
+        btn.id = 'toggleStatusPanelBtn';
+        btn.hidden = true;
+        q(doc, 'header').appendChild(btn);
+        return btn;
+    };
+    const first = setup();
+    const btn = addToggle(first.doc);
+    const panel = createConversationStatusPanel({ document: first.doc, api: first.api, onOpenGitTab: () => {}, toggleButton: btn });
+    panel.mount();
+    await flush();
+    const layer = q(first.doc, '.zc-status-layer');
+    assert.equal(btn.hidden, false);
+    assert.equal(btn.getAttribute('aria-pressed'), 'true');
+    assert.equal(layer.hidden, false);
+
+    click(first.dom, btn);
+    assert.equal(layer.hidden, true, '点按钮把面板藏起来');
+    assert.equal(btn.hidden, false, '按钮还在，用来再打开');
+    assert.equal(btn.getAttribute('aria-pressed'), 'false');
+    assert.equal(btn.getAttribute('aria-label'), '显示状态面板');
+    assert.equal(first.dom.window.localStorage.getItem('vcp-status-panel-hidden'), '1');
+
+    // 数据刷新不会把用户关掉的面板又弹出来
+    await panel.refresh();
+    assert.equal(layer.hidden, true);
+    panel.dispose();
+    assert.equal(btn.hidden, true, '面板卸下后按钮跟着藏起来');
+
+    // 关掉的状态记住了：下次挂载仍然是关的
+    const again = createConversationStatusPanel({ document: first.doc, api: first.api, onOpenGitTab: () => {}, toggleButton: btn });
+    again.mount();
+    await flush();
+    assert.equal(btn.hidden, false);
+    assert.equal(q(first.doc, '.zc-status-layer').hidden, true);
+    click(first.dom, btn);
+    assert.equal(q(first.doc, '.zc-status-layer').hidden, false);
+    assert.equal(first.dom.window.localStorage.getItem('vcp-status-panel-hidden'), null);
+    again.dispose();
+    first.panel.dispose();
+    first.dom.window.close();
+
+    // 跟随会话、这个会话没有任何状态：按钮不出现
+    const scoped = scopedSetup({ history: [{ role: 'user', content: '你好' }] });
+    const scopedBtn = addToggle(scoped.doc);
+    const scopedPanel = createConversationStatusPanel({
+        document: scoped.doc, api: scoped.api, toggleButton: scopedBtn,
+        getHistory: () => [{ role: 'user', content: '你好' }]
+    });
+    scopedPanel.mount();
+    await flush();
+    assert.equal(scopedBtn.hidden, true);
+    assert.equal(q(scoped.doc, '.zc-status-layer').hidden, true);
+    scopedPanel.dispose();
+    scoped.panel.dispose();
+    scoped.dom.window.close();
+});
+
 test('scoped panel: a conversation that never used a V工程 shows no status at all', async () => {
     const { doc, panel } = scopedSetup({ history: [{ role: 'user', content: '你好' }] });
     panel.mount();

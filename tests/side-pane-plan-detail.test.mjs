@@ -100,6 +100,8 @@ test('mountTab renders plan, files, timeline and reloads on matching change even
     assert.equal(view.querySelectorAll('.side-plan-file').length, 1);
     assert.equal(view.querySelector('.side-plan-progress').value, 1);
     assert.equal(view.querySelector('.side-plan-progress').max, 3);
+    assert.equal(view.querySelector('.side-plan-progress-line .side-plan-pct').textContent, '33%', '计数行靠右给出百分比');
+    assert.equal(view.querySelector('.side-plan-progress-line + .side-plan-progress') !== null, true, '进度条单独占一行，在计数下面');
 
     // 折叠章节
     view.querySelector('[data-plan-section="files"] .side-plan-section-title').click();

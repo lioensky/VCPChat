@@ -31,6 +31,7 @@ import { createGitChangesFollower } from './sources/git-changes.js';
 import { readSelectedGitWorkspace, watchSelectedGitWorkspace } from './sources/git-workspace.js';
 
 const STORAGE_KEY_VARIANT = 'vcp-status-panel-variant';
+const STORAGE_KEY_HIDDEN = 'vcp-status-panel-hidden';
 const RESCOPE_DEBOUNCE_MS = 700;
 
 // ------------------------------------------------------------------ component
@@ -57,7 +58,9 @@ export function createConversationStatusPanel({
     // 命令运行记录源；默认按 api 取窗口里共用的那一份
     commandRunsSource = getCommandRunsSource(api),
     // V工程 变更推送源；同上
-    projectChangesSource = getProjectForgeChangesSource(api)
+    projectChangesSource = getProjectForgeChangesSource(api),
+    // 标题栏上的开关按钮：面板有东西可显示时才露出来，点它显示 / 隐藏整个面板（记在 localStorage）
+    toggleButton = null
 } = {}) {
     const win = doc.defaultView || window;
     const storage = (() => { try { return win.localStorage; } catch (_e) { return null; } })();
@@ -78,6 +81,9 @@ export function createConversationStatusPanel({
         return stored === 'panel' || stored === 'mini' ? stored : null;
     })();
     let hostWidth = 0;
+    // available：当前会话有没有可显示的状态；userHidden：用户在标题栏按钮上把面板关了
+    let available = false;
+    let userHidden = Boolean(toggleButton) && storage?.getItem(STORAGE_KEY_HIDDEN) === '1';
     const sectionOpen = { git: true, plan: true, runs: true };
     let busy = false;
     let disposed = false;
@@ -352,6 +358,32 @@ export function createConversationStatusPanel({
         renderPanel(force);
     }
 
+    function setAvailable(next) {
+        available = next;
+        applyVisibility();
+    }
+
+    function applyVisibility() {
+        layer.hidden = !available || userHidden;
+        if (!toggleButton) return;
+        toggleButton.hidden = !available;
+        const shown = available && !userHidden;
+        const label = shown ? '隐藏状态面板' : '显示状态面板';
+        toggleButton.title = label;
+        toggleButton.setAttribute('aria-label', label);
+        toggleButton.setAttribute('aria-pressed', String(shown));
+    }
+
+    function toggleHidden() {
+        userHidden = !userHidden;
+        try {
+            if (userHidden) storage?.setItem(STORAGE_KEY_HIDDEN, '1');
+            else storage?.removeItem(STORAGE_KEY_HIDDEN);
+        } catch (_e) { /* ignore */ }
+        if (userHidden) closeAllPopovers();
+        applyVisibility();
+    }
+
     function renderPanel(force) {
         if (disposed) return;
         const hasGit = Boolean(summary?.branch);
@@ -372,9 +404,9 @@ export function createConversationStatusPanel({
             closeAllPopovers();
             aside.textContent = '';
             // 跟随会话时，这个会话没有 V工程 / 命令就没有可显示的状态：整块隐藏，不拿别的会话的内容占位
-            if (!onOpenGitTab || scoped) { layer.hidden = true; return; }
+            if (!onOpenGitTab || scoped) { setAvailable(false); return; }
             const entry = pickEntryMetric({ workspaceCount: workspaces.length, hasWorkspace: Boolean(workspace) });
-            layer.hidden = false;
+            setAvailable(true);
             aside.dataset.displayMode = 'mini';
             aside.dataset.state = 'entry';
             const btn = button('zc-mini zc-mini-entry', { label: entry.hint, onClick: () => onOpenGitTab() },
@@ -384,14 +416,14 @@ export function createConversationStatusPanel({
             return;
         }
         closeAllPopovers();
-        layer.hidden = false;
+        setAvailable(true);
         aside.textContent = '';
         aside.dataset.displayMode = variant;
         aside.dataset.state = variant === 'mini' ? 'collapsed' : 'expanded';
 
         if (variant === 'mini') {
             const mini = renderMini();
-            if (!mini) { layer.hidden = true; return; }
+            if (!mini) { setAvailable(false); return; }
             aside.appendChild(mini);
             return;
         }
@@ -431,6 +463,8 @@ export function createConversationStatusPanel({
         host.appendChild(layer);
         doc.body.appendChild(portal);
         mounted = true;
+        applyVisibility();
+        if (toggleButton) on(toggleButton, 'click', toggleHidden);
 
         on(doc, 'keydown', event => {
             if (event.key !== 'Escape') return;
@@ -533,6 +567,7 @@ export function createConversationStatusPanel({
         pushDialogOwner.dispose();
         gitGraphOwner.dispose();
         sectionsOwner.dispose();
+        if (toggleButton) toggleButton.hidden = true;
         layer.remove();
         portal.remove();
     }

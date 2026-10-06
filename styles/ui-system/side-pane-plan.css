@@ -163,10 +163,11 @@ html .side-plan-meta > span + span:where(.vcp-ui-scope, .vcp-ui-scope *)::before
 html .side-plan-root:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 3px); color: var(--zc-fg-subtle); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
 html .side-plan-warning:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 2px); padding: 6px 10px; border-radius: 6px; background: var(--vcp-ui-port-color-rgba-217-119-6-0-12); color: var(--zc-warning); }
 
-html .side-plan-progress:where(.vcp-ui-scope, .vcp-ui-scope *) { display: block; flex: 0 0 64px; width: 64px; height: 3px; border: 0; border-radius: 999px; background: var(--side-plan-rule); color: var(--zc-success); overflow: hidden; appearance: none; }
+html .side-plan-progress:where(.vcp-ui-scope, .vcp-ui-scope *) { display: block; width: 100%; height: 4px; border: 0; border-radius: 999px; background: var(--side-plan-rule); color: var(--zc-success); overflow: hidden; appearance: none; }
 html .side-plan-progress:where(.vcp-ui-scope, .vcp-ui-scope *)::-webkit-progress-bar { border-radius: inherit; background: var(--side-plan-rule); }
 html .side-plan-progress:where(.vcp-ui-scope, .vcp-ui-scope *)::-webkit-progress-value { border-radius: inherit; background: var(--zc-success); transition: width 240ms ease; }
-html .side-plan-progress-text:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 4px 6px 10px; font-size: calc(var(--vcp-ui-font-size) - 3px); color: var(--zc-fg-subtle); font-variant-numeric: tabular-nums; }
+html .side-plan-progress-text:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; gap: 6px; padding: 4px 6px 10px; font-size: calc(var(--vcp-ui-font-size) - 3px); color: var(--zc-fg-subtle); font-variant-numeric: tabular-nums; }
+html .side-plan-progress-line:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 html .side-plan-progress-text .side-plan-pct:where(.vcp-ui-scope, .vcp-ui-scope *) { margin-left: auto; }
 html .side-plan-done:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-success); }
 
