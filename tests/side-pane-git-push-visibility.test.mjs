@@ -62,3 +62,59 @@ test('the Git page reads on pushes only while it is shown, catches up when shown
     await push();
     assert.equal(reads, 4);
 });
+
+test('the Git page catches up when it gets a size again after the whole chat was covered by another app tab', async t => {
+    const dom = new JSDOM('<section id="view"></section>', { pretendToBeVisual: true });
+    t.after(() => dom.window.close());
+    // JSDOM has no ResizeObserver; this stand-in lets the test fire the callback the way layout would
+    const observers = [];
+    dom.window.ResizeObserver = class {
+        constructor(cb) { this.cb = cb; this.targets = new Set(); observers.push(this); }
+        observe(target) { this.targets.add(target); }
+        disconnect() { this.targets.clear(); }
+        fire() { if (this.targets.size) this.cb([...this.targets].map(target => ({ target }))); }
+    };
+    const doc = dom.window.document;
+    const host = doc.getElementById('view');
+    let reads = 0;
+    const listeners = new Set();
+    const api = {
+        async gitListWorkspaces() {
+            return { success: true, data: { workspaces: [{ id: 'covered', path: '/covered' }] } };
+        },
+        async gitStatus() {
+            reads++;
+            return { success: true, data: { isRepo: true, staged: [], changes: [], conflicts: [] } };
+        },
+        onGitChanged(cb) { listeners.add(cb); return () => listeners.delete(cb); },
+        async subscribeMainState() { return { success: true }; },
+        async unsubscribeMainState() { return { success: true }; },
+    };
+    getGitChangesSource(api, 'covered', { graceMs: 0 });
+    const handle = mountGitView(host, { api });
+    t.after(() => handle.dispose());
+    let covered = false;
+    Object.defineProperty(handle.element, 'offsetParent', { get: () => covered ? null : doc.body });
+    await handle.ready;
+    const settle = () => new Promise(resolve => setImmediate(resolve));
+    const push = async () => { listeners.forEach(cb => cb({ workspaceId: 'covered', reason: 'files' })); await settle(); };
+    const resized = async () => { observers.forEach(o => o.fire()); await settle(); };
+    assert.equal(observers.length, 1);
+    assert.equal(reads, 1);
+
+    await resized();
+    assert.equal(reads, 1, 'a resize with nothing missed does not read Git');
+
+    covered = true;
+    await push();
+    await resized();
+    assert.equal(reads, 1, 'a covered page neither reads on the push nor when it collapses to zero size');
+    covered = false;
+    await resized();
+    assert.equal(reads, 2, 'getting a size again catches up without a pointer or window focus');
+    await resized();
+    assert.equal(reads, 2, 'it catches up only once');
+
+    await handle.dispose();
+    assert.equal(observers[0].targets.size, 0, 'closing disconnects the observer');
+});

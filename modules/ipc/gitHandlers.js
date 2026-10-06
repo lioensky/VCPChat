@@ -35,6 +35,8 @@ const CHANNELS = [
 const ALLOWED_PAGES = ['ProjectForgemodules/projectforge.html', 'main.html'];
 const STATUS_TOPIC = 'git.status';
 const MAX_PATHS = 5000;
+// 主进程经领域激活器注册时传进来的是只认本领域通道的 ipcMain；没有就直接注册到 electron 的
+let domainIpc = null;
 let workspaceServiceRef = null;
 let getMainWindow = () => null;
 let subscriptionsRef = null;
@@ -71,7 +73,7 @@ function notifyChanged(workspaceId, reason, extra = null) {
 
 /** mutates：改了仓库的操作，成功后推给其它窗口（发起操作的界面自己会刷新，推送到了也只是多读一次） */
 function handle(channel, fn, { mutates = false } = {}) {
-    ipcMain.handle(channel, async (event, ...args) => {
+    const invoke = async (event, ...args) => {
         if (!isAllowedSender(event)) {
             return { success: false, error: '当前窗口无权调用 Git 接口。' };
         }
@@ -89,18 +91,23 @@ function handle(channel, fn, { mutates = false } = {}) {
                 code: typeof error?.code === 'string' ? error.code : null,
             };
         }
-    });
+    };
+    // 两个分支分开写：契约扫描按 ipcMain.handle(channel) 认出本模块处理哪些 git: 通道
+    if (domainIpc) domainIpc.handle(channel, invoke);
+    else ipcMain.handle(channel, invoke);
 }
 
 /**
  * @param {object} [options]
  * @param {object} [options.subscriptions] stateSubscriptions.js 的订阅表；有窗口订阅某个工作区时才监听它的仓库
  * @param {Function} [options.watch] 测试注入 fs.watch
+ * @param {object} [options.ipcMain] 领域激活器给的 ipcMain；不传用 electron 的
  */
-function initialize({ workspaceService = null, mainWindow = null, getMainWindow: getWindow = null, subscriptions = null, watch = undefined } = {}) {
+function initialize({ workspaceService = null, mainWindow = null, getMainWindow: getWindow = null, subscriptions = null, watch = undefined, ipcMain: injectedIpcMain = null } = {}) {
+    domainIpc = injectedIpcMain;
     getMainWindow = typeof getWindow === 'function' ? getWindow : () => mainWindow;
     workspaceServiceRef = workspaceService;
-    CHANNELS.forEach(channel => ipcMain.removeHandler(channel));
+    CHANNELS.forEach(channel => (domainIpc || ipcMain).removeHandler(channel));
     if (subscriptions && subscriptions !== subscriptionsRef) {
         watcher?.dispose();
         subscriptionsRef = subscriptions;

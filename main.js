@@ -1520,7 +1520,15 @@ if (!gotTheLock) {
             getMainWebContents: () => resolveWindowWebContents(() => mainWindow),
         }));
         projectForgeHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService, subscriptions: stateSubscriptions });
-        gitHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService, getMainWindow: () => mainWindow, subscriptions: stateSubscriptions });
+        // Git 也进领域表，但登记时就激活：模块只有 execFile 调用，没什么可省的，
+        // 而状态面板首帧就会读工作区列表；仓库监听仍然等到第一个窗口订阅才开始
+        domainActivator.register('git', {
+            channels: gitHandlers.CHANNELS,
+            load: () => gitHandlers,
+            init: (mod, { ipcMain: domainIpc }) => mod.initialize({ ipcMain: domainIpc, workspaceService: workspaceHandlers.workspaceService, getMainWindow: () => mainWindow, subscriptions: stateSubscriptions }),
+            dispose: mod => mod.dispose(),
+            eager: true,
+        });
         sourceHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService });
         const preloadApis = describeApis();
         // 侧栏几个领域启动时只登记通道，第一次调用才 require 并 initialize（状态见 lifecycle:get-main-snapshot 的 domains）
@@ -1955,7 +1963,6 @@ if (!gotTheLock) {
         // 只释放用过的侧栏领域，没激活过的不会为了退出而加载
         domainActivator.disposeAll();
         stateSubscriptions.dispose();
-        gitHandlers.dispose();
 
         // 1. 停止所有底层监听器
         console.log('[Main] App is quitting. Stopping all listeners...');

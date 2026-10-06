@@ -468,6 +468,11 @@ export function mountGitView(host, {
     };
     own.listen(win, 'focus', onWindowFocus, undefined, 'window-focus');
     own.listen(root, 'pointerenter', refreshIfStale);
+    // 被别的应用标签整个挡住（祖先 display:none）再切回来时，上面几个事件都不触发；
+    // 尺寸从 0 恢复会回调这里，没积压的变化就什么也不做
+    if (typeof win.ResizeObserver === 'function') {
+        own.observe(new win.ResizeObserver(refreshIfStale), root, undefined, 'reveal-observer');
+    }
     // V工程 记下新一批施工时刷新「上一轮」
     own.subscribe(() => watchProjectForgeChanges(api, () => {
         aiBatchLoaded = false;

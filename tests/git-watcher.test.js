@@ -283,6 +283,42 @@ test('a workspace is watched only while some window subscribed to it; a folder t
     assert.deepEqual(gitHandlers.watchSnapshot(), [], 'the last window closing stops watching');
 });
 
+test('Git registered through the domain activator is active from the start, answers on every channel, and watches nothing yet', async t => {
+    const { createDomainActivator } = require('../modules/ipc/domainActivator');
+    const { gitHandlers, handlers: electronHandlers } = loadGitHandlers();
+    const outer = new Map();
+    const activator = createDomainActivator({
+        ipcMain: { handle: (ch, fn) => outer.set(ch, fn), removeHandler: ch => outer.delete(ch) },
+        logger: quiet,
+    });
+    const subscriptions = createStateSubscriptions({ logger: quiet });
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vcp-git-domain-'));
+    t.after(() => { activator.disposeAll(); subscriptions.dispose(); fs.rmSync(tmp, { recursive: true, force: true }); });
+    const workspaceService = { list: () => [{ id: 'ws1', alias: 'demo', path: tmp, enabled: true }] };
+    activator.register('git', {
+        channels: gitHandlers.CHANNELS,
+        load: () => gitHandlers,
+        init: (mod, { ipcMain }) => mod.initialize({ ipcMain, workspaceService, subscriptions, watch: fakeWatch().watch }),
+        dispose: mod => mod.dispose(),
+        eager: true,
+    });
+
+    const [git] = activator.snapshot();
+    assert.deepEqual([git.name, git.state, git.channels], ['git', 'active', gitHandlers.CHANNELS.length]);
+    assert.equal(electronHandlers.size, 0, 'nothing is registered on electron ipcMain directly');
+    assert.deepEqual([...outer.keys()].sort(), [...gitHandlers.CHANNELS].sort());
+    // Git 通道在 preload 里和 V工程 的接口放在一起，所以对的是 git: 前缀而不是 preload 的领域名
+    const { describeApis } = require('../preloads/core/registry');
+    const declared = [...new Set(describeApis().filter(api => String(api.channel).startsWith('git:') && api.kind !== 'subscription').map(api => api.channel))];
+    assert.deepEqual(declared.sort(), [...gitHandlers.CHANNELS].sort(), 'every git: channel the preload exposes is forwarded');
+    assert.deepEqual(gitHandlers.watchSnapshot(), [], 'activating does not start watching');
+
+    const { event } = fakeWindow();
+    const res = await outer.get('git:list-workspaces')(event);
+    assert.deepEqual(res, { success: true, data: { workspaces: [{ id: 'ws1', alias: 'demo', path: tmp }], activeWorkspaceId: null } });
+    assert.equal(activator.snapshot()[0].calls, 1);
+});
+
 const gitAvailable = (() => { try { execFileSync('git', ['--version'], { stdio: 'ignore' }); return true; } catch { return false; } })();
 
 test('a real repository: a subscribed window hears about an edited file and a new commit', { skip: gitAvailable ? false : 'git 不可用', timeout: 20_000 }, async t => {

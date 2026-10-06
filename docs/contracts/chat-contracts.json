@@ -427,11 +427,11 @@
     "owner": "modules/ipc/gitHandlers.js",
     "status": "reviewed",
     "dynamic": true,
-    "review": "handle wraps explicit git:* registrations; the handler checks application sender and resolves workspace roots in the main process. Successful mutating calls publish git:changed through the state subscription table, so only windows subscribed to that workspace receive it. A degraded repository watch is announced the same way, once per watch. This is IPC inventory review; destructive Git correctness is a separate work item.",
+    "review": "handle wraps explicit git:* registrations (on the domain activator's ipcMain when main.js registers the git domain, otherwise Electron's); the handler checks application sender and resolves workspace roots in the main process. Successful mutating calls publish git:changed through the state subscription table, so only windows subscribed to that workspace receive it. A degraded repository watch is announced the same way, once per watch. This is IPC inventory review; destructive Git correctness is a separate work item.",
     "dynamicSites": [
       {
         "file": "modules/ipc/gitHandlers.js",
-        "line": 74,
+        "line": 97,
         "kind": "event-listener",
         "match": "ipcMain.handle(channel"
       }
