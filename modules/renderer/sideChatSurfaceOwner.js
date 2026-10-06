@@ -96,8 +96,7 @@ export async function mountSideChatSurface(container, {
     let isHistoryLoaded = false;
     let isComposing = false;
     let activeOperation = null;
-    let operationReady = Promise.resolve(null);
-    let publishOperation = null;
+    let activeSendController = null;
     let submitInteractiveContent = null;
     let hasUnsavedChanges = false;
     let lastPersistenceError = null;
@@ -275,7 +274,6 @@ export async function mountSideChatSurface(container, {
 
     const operations = createChatOperations({
         send: async (request) => {
-            operationReady = new Promise((resolve) => { publishOperation = resolve; });
             try {
                 return await chatManager.sendMessage({
                     ...request,
@@ -283,22 +281,19 @@ export async function mountSideChatSurface(container, {
                     awaitTerminal: true,
                     onOperation(operation) {
                         activeOperation = operation;
-                        publishOperation?.(operation);
-                        publishOperation = null;
                     },
                 });
             } finally {
-                publishOperation?.(null);
-                publishOperation = null;
                 activeOperation = null;
             }
         },
         cancel: async () => {
+            activeSendController?.abort('side-chat-user-cancel');
             const operation = activeOperation;
             if (operation && typeof operation.cancel === 'function') {
                 return await operation.cancel('side-chat-user-cancel');
             }
-            return false;
+            return Boolean(activeSendController);
         }
     });
 
@@ -380,6 +375,9 @@ export async function mountSideChatSurface(container, {
     };
 
     async function runSend(payload, submittedAttachments, restoreDraft) {
+        // 停止按钮从准备阶段就可用：父快照、落盘和请求组装也属于这一轮。
+        const sendController = new (doc.defaultView?.AbortController || AbortController)();
+        activeSendController = sendController;
         messageEditor.close();
         form.setAttribute('aria-busy', 'true');
         textarea.disabled = true;
@@ -400,11 +398,17 @@ export async function mountSideChatSurface(container, {
 
         try {
             if (needsSnapshotRefresh()) await refreshSnapshot();
+            if (sendController.signal.aborted) {
+                restoreDraftIfRetracted();
+                updateStatus('已取消');
+                return;
+            }
             const result = await surface.sendMessage({
                 content: payload,
                 attachments: submittedAttachments,
                 input: textarea,
                 domRenderer: surface.renderer,
+                signal: sendController.signal,
                 propagateError: true
             });
 
@@ -441,6 +445,7 @@ export async function mountSideChatSurface(container, {
             restoreDraftIfRetracted();
             updateStatus(`发送失败：${error.message}`, 'error');
         } finally {
+            if (activeSendController === sendController) activeSendController = null;
             if (!isDisposed) {
                 form.removeAttribute('aria-busy');
                 textarea.disabled = false;
@@ -506,6 +511,7 @@ export async function mountSideChatSurface(container, {
     };
 
     const onStop = async () => {
+        activeSendController?.abort('side-chat-user-cancel');
         updateStatus('正在停止...');
         await surface.cancelMessage();
     };
@@ -600,7 +606,8 @@ export async function mountSideChatSurface(container, {
                 return { closed: false, reason: 'UNSAVED_CHANGES' };
             }
             // Cancel active operation and wait for settlement
-            if (activeOperation) {
+            if (activeSendController) {
+                activeSendController.abort('side-chat-closed');
                 try {
                     await surface.cancelMessage();
                 } catch {}
@@ -611,7 +618,8 @@ export async function mountSideChatSurface(container, {
             if (isDisposed) return;
             flushInputSave();
             isDisposed = true;
-            if (activeOperation) {
+            if (activeSendController) {
+                activeSendController.abort('side-chat-unmounted');
                 try {
                     await surface.cancelMessage();
                 } catch {}

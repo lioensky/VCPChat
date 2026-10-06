@@ -1,7 +1,7 @@
 {
   "modules/chatManager.js": {
-    "sha256": "5d6b2044d449a7441d2b263af210d6e42bcc5b4e5d19b8ba39121e3386d0d8e8",
-    "reason": "Integrated chat behavior: selection subscriptions for topic side panes; clear old media before navigation; per-conversation side chat context/unread policy; explicit cancellation and non-streaming terminal settlement; one error notice per failed request. Existing Surface routing and history authority remain in place."
+    "sha256": "1533d745ed131f66b242c8c6d345fae81aa1324eb25f53065b547d96fa1c52dd",
+    "reason": "Integrated chat behavior: selection subscriptions for topic side panes; clear old media before navigation; per-conversation side chat context/unread policy; explicit cancellation and non-streaming terminal settlement; one error notice per failed request. Reviewed auxiliary-side-chat reproduction: Stop during delayed history save or request preparation previously still sent generation; renderer-local AbortSignal checks now prevent that send. When upstream interrupt fails, await the existing local stream terminal before placeholder cleanup so accepted partial content is saved instead of deleted. Actual native side owner, internal renderer, manager, preload/IPC/disk and local HTTP before/after evidence; side preparation and partial-cancel regressions. Existing Surface routing and history authority remain in place. Main/group sending without the optional signal keeps its preparation path."
   },
   "modules/messageRenderer.js": {
     "sha256": "e730df84a2ab3cc96a629716b293ec92ee524c1a60c714c6ce6597f3773f0944",

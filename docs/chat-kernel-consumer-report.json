@@ -906,6 +906,7 @@
     "tests/side-chat-ipc-metadata.test.mjs",
     "tests/side-chat-model-and-context.test.mjs",
     "tests/side-chat-persistence-retry.test.mjs",
+    "tests/side-chat-preparation-cancel.test.mjs",
     "tests/side-chat-session-service.test.mjs",
     "tests/side-chat-surface-owner.test.mjs",
     "tests/side-chat-topic-binding-parity.test.mjs",
@@ -1005,7 +1006,7 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 280,
+          "line": 278,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "sendMessage",
@@ -1684,6 +1685,30 @@
           "access": "explicit-provider",
           "member": "js",
           "snippet": "const source = fs.readFileSync(new URL('../modules/chatManager.js', import.meta.url), 'utf8');"
+        },
+        {
+          "file": "tests/side-chat-preparation-cancel.test.mjs",
+          "line": 19,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "js",
+          "snippet": "const { chatManager } = await import(`../modules/chatManager.js?side-cancel=${++fixtureId}`);"
+        },
+        {
+          "file": "tests/side-chat-preparation-cancel.test.mjs",
+          "line": 69,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "init",
+          "snippet": "chatManager.init({ chatRepository: repository,"
+        },
+        {
+          "file": "tests/side-chat-preparation-cancel.test.mjs",
+          "line": 89,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "dispose",
+          "snippet": "t.after(async () => { gate.resolve(); await handle.dispose(); await chatManager.dispose(); await bridge.dispose(); routes.dispose(); dom.window.close(); globalThis.window = oldWindow; });"
         }
       ]
     },
@@ -2251,7 +2276,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1723,
+          "line": 1733,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "startStreamingMessage",
@@ -2259,7 +2284,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1948,
+          "line": 1960,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "setCurrentTopicId",
@@ -2267,7 +2292,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1949,
+          "line": 1961,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "clearChat",
@@ -2275,7 +2300,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 2062,
+          "line": 2074,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "setCurrentTopicId",
@@ -2283,7 +2308,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 2233,
+          "line": 2245,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "removeMessageById",
@@ -2291,7 +2316,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 2244,
+          "line": 2256,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "updateMessageContent",
@@ -2299,7 +2324,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 2245,
+          "line": 2257,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "updateMessageContent",
@@ -2307,7 +2332,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 2260,
+          "line": 2272,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -4164,13 +4189,13 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1907,
+          "line": 1919,
           "surface": "shared-renderer",
           "snippet": "if (itemType === 'agent' && window.flowlockManager?.isAgentLocked?.(itemId)) {"
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1990,
+          "line": 2002,
           "surface": "shared-renderer",
           "snippet": "if (currentSelectedItem?.type === 'agent' && window.flowlockManager?.isAgentLocked?.(currentSelectedItem.id)) {"
         },

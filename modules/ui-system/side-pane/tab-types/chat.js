@@ -75,6 +75,8 @@ export function defineChatTabType({ provider, openSideChat = null, onClosed = nu
     return Object.freeze({
         kind: 'chat', label: '辅助对话', icon: 'chat_bubble', searchHint: '辅助对话',
         persist: false,
+        // 输入框里可能有还没发出去的内容，隐藏再久也不休眠
+        dormancy: 'keep',
         entry: typeof openSideChat === 'function'
             ? { id: 'selection-side-conversation', order: 0, open: () => openSideChat({ forceNew: true }) }
             : null,

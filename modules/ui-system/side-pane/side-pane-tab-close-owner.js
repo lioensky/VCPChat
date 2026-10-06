@@ -21,6 +21,9 @@ export function createSidePaneTabCloseOwner({
         if (!promise) {
             promise = Promise.resolve().then(() => entry.handle?.dispose?.()).catch(error => {
                 console.error(`[SidePaneController] Failed to dispose tab "${tabId}":`, error);
+            }).then(() => entry.occurrence?.dispose?.('tab-closed')).catch(error => {
+                // provider 的 dispose 抛错也要释放 scope，挂在上面的监听和定时器才不会漏
+                console.error(`[SidePaneController] Failed to release tab "${tabId}":`, error);
             });
             disposals.set(entry, promise);
         }

@@ -13,6 +13,7 @@ import { createSidePaneTabCloseOwner } from './side-pane-tab-close-owner.js';
 import { createSidePaneTabRegistry } from './side-pane-tab-registry.js';
 import { createSidePaneShortcuts } from './side-pane-shortcuts.js';
 import { createSidePaneLayoutStore, parseLayout, rememberBounded, serializeLayout } from './side-pane-persistence.js';
+import { createSidePaneRootScope, createTabOccurrence } from './side-pane-occurrence.js';
 
 /** @typedef {import('./side-pane-types.js').SidePaneTab} SidePaneTab */
 /** @typedef {import('./side-pane-types.js').SidePaneTabType} SidePaneTabType */
@@ -63,8 +64,11 @@ export function createSidePaneController({
         visible: root.classList.contains('active') || root.getAttribute('aria-hidden') === 'false'
     });
 
-    const mountedTabMap = new Map(); // tabId -> { payload, viewElement, handle }
+    const mountedTabMap = new Map(); // tabId -> { payload, viewElement, handle, occurrence }
     const pendingTabMounts = new Map(); // tabId -> mount occurrence; reopening the same id starts a new lifetime
+    // 标签打开期间的 scope：第一次挂载时建，关标签才释放；视图休眠只释放它下面的 view scope
+    const rootScope = createSidePaneRootScope(scope);
+    const occurrences = new Map(); // tabId -> createTabOccurrence()
     const cleanupListeners = [];
     const recentlyClosedTabs = [];
     const collapsedByParent = new Map(); // parentKey -> boolean，最近 50 个对话
@@ -123,6 +127,7 @@ export function createSidePaneController({
         if (!state.visible) resizerOwner?.cancel?.();
         visibility.sync(state.visible, options);
         mountActiveIfNeeded();
+        syncOccurrenceVisibility();
     };
 
     // ---- 布局持久化 ----
@@ -297,13 +302,58 @@ export function createSidePaneController({
         launcher.syncStatus(readLauncherStatus());
     }
 
-    function syncViewPanels() {
-        if (!contentContainer) return;
+    function getActiveView() {
         const visibleTabIds = new Set(SidePaneState.getVisibleTabs(state, state.parent).map(t => t.id));
         visibleTabIds.add(SidePaneState.LAUNCHER_TAB_ID);
         const activeViewId = launcher.hostsNotifications && isNotificationsTab(state.activeTabId)
             ? SidePaneState.LAUNCHER_TAB_ID
             : state.activeTabId;
+        return { visibleTabIds, activeViewId };
+    }
+
+    // 面板展开、是当前标签、窗口没有最小化或被切走，三者都满足才算可见
+    function isTabShown(tabId, { visibleTabIds, activeViewId } = getActiveView()) {
+        return !isDisposed && state.visible && doc.visibilityState !== 'hidden' && tabId === activeViewId && visibleTabIds.has(tabId);
+    }
+
+    // 可见性由容器下发：provider 不用自己探测 DOM；隐藏时 suspend，重新可见时 resume
+    function syncOccurrenceVisibility() {
+        if (isDisposed) return;
+        const active = getActiveView();
+        occurrences.forEach((tabOccurrence, tabId) => {
+            const shown = isTabShown(tabId, active);
+            if (!tabOccurrence.setVisible(shown)) return;
+            const handle = mountedTabMap.get(tabId)?.handle;
+            try {
+                if (shown) handle?.resume?.();
+                else handle?.suspend?.();
+            } catch (error) {
+                console.error(`[SidePaneController] Failed to ${shown ? 'resume' : 'suspend'} tab "${tabId}":`, error);
+            }
+        });
+    }
+
+    function obtainOccurrence(tabId, kind) {
+        const existing = occurrences.get(tabId);
+        if (existing?.active) return existing;
+        const created = createTabOccurrence(rootScope, { tabId, kind });
+        occurrences.set(tabId, created);
+        return created;
+    }
+
+    function releaseOccurrence(tabOccurrence, reason) {
+        if (!tabOccurrence) return Promise.resolve();
+        for (const [tabId, current] of occurrences) {
+            if (current === tabOccurrence) occurrences.delete(tabId);
+        }
+        return tabOccurrence.dispose(reason).catch(error => {
+            console.error(`[SidePaneController] Failed to release tab "${tabOccurrence.occurrence.id}":`, error);
+        });
+    }
+
+    function syncViewPanels() {
+        if (!contentContainer) return;
+        const { visibleTabIds, activeViewId } = getActiveView();
         contentContainer.querySelectorAll('.side-pane-view').forEach(view => {
             const viewTabId = view.getAttribute('data-tab-id') || (
                 view.id === 'sidePaneViewNotifications' ? SidePaneState.NOTIFICATIONS_TAB_ID : null
@@ -314,6 +364,7 @@ export function createSidePaneController({
         });
         if (launcher.hostsNotifications) launcher.syncSections();
         launcher.syncHome(activeViewId === SidePaneState.LAUNCHER_TAB_ID);
+        syncOccurrenceVisibility();
     }
 
     // ---- 标签视图挂载 ----
@@ -326,7 +377,7 @@ export function createSidePaneController({
         pendingTabMounts.delete(tabId);
     }
 
-    function ensureTabMounted(tabId, { provider, payload, ariaLabel = null, onClosed = null }) {
+    function ensureTabMounted(tabId, { provider, payload, kind = payload?.kind, ariaLabel = null, onClosed = null }) {
         const mounted = mountedTabMap.get(tabId);
         if (mounted) return Promise.resolve(mounted);
         if (pendingTabMounts.has(tabId)) return pendingTabMounts.get(tabId).promise;
@@ -344,12 +395,19 @@ export function createSidePaneController({
             }
             if (!view) return null;
             pending.viewElement = view;
+            const tabOccurrence = obtainOccurrence(tabId, kind);
+            const viewScope = tabOccurrence.openView();
+            // 挂载前先给出可见性，provider 一开始就知道要不要起轮询
+            tabOccurrence.setVisible(isTabShown(tabId));
 
             let handle = null;
             try {
-                handle = provider?.mountTab ? await provider.mountTab(payload, view) : null;
+                handle = provider?.mountTab
+                    ? await provider.mountTab(payload, view, { scope: viewScope, occurrence: tabOccurrence.occurrence })
+                    : null;
             } catch (error) {
                 // 挂载失败不留空的视图壳，下次显示时重新挂
+                await tabOccurrence.closeView('mount-failed').catch(() => {});
                 view.remove?.();
                 throw error;
             }
@@ -359,11 +417,12 @@ export function createSidePaneController({
                 } catch (error) {
                     console.error(`[SidePaneController] Failed to dispose canceled mount "${tabId}":`, error);
                 } finally {
+                    await tabOccurrence.closeView('mount-canceled').catch(() => {});
                     view.remove?.();
                 }
                 return null;
             }
-            const entry = { payload, viewElement: view, handle, onClosed };
+            const entry = { payload, viewElement: view, handle, onClosed, occurrence: tabOccurrence };
             mountedTabMap.set(tabId, entry);
             return entry;
         })();
@@ -443,6 +502,10 @@ export function createSidePaneController({
                 || origin?.closest?.('[data-tab-id]')?.getAttribute('data-tab-id') === tab.id;
             entry?.viewElement?.remove();
             if (mountedTabMap.get(tab.id) === entry) mountedTabMap.delete(tab.id);
+            // 挂着的标签由 disposeEntry 先调 handle.dispose 再释放 scope；没挂上（或挂到一半）的这里直接释放
+            const tabOccurrence = entry?.occurrence || occurrences.get(tab.id);
+            if (entry) occurrences.delete(tab.id);
+            else void releaseOccurrence(tabOccurrence, 'tab-closed');
             rememberClosed(tab);
             const wasVisible = state.visible;
             state = SidePaneState.closeTab(state, tab.id, options);
@@ -807,6 +870,10 @@ export function createSidePaneController({
             for (const tabId of pendingTabMounts.keys()) cancelPendingMount(tabId);
             tabRegistry.dispose();
             await Promise.allSettled([...disposePromises, tabCloseOwner.dispose()]);
+            occurrences.clear();
+            await rootScope.dispose('side-pane-disposed').catch(error => {
+                console.error('[SidePaneController] Failed to release side pane scope:', error);
+            });
         }
     });
 
@@ -857,6 +924,8 @@ export function createSidePaneController({
         }, CONVERSATION_AUTO_COLLAPSE_RESIZE_IDLE_MS);
     };
     win?.addEventListener?.('resize', onWindowResize, { passive: true });
+    // 窗口最小化或切到别处时，当前标签也算不可见，跟着它的轮询一起停
+    if (doc?.addEventListener) rootScope.listen(doc, 'visibilitychange', syncOccurrenceVisibility, undefined, 'document-visibility');
     cleanupListeners.push(() => {
         if (windowResizeTimer) clearTimeout(windowResizeTimer);
         win?.removeEventListener?.('resize', onWindowResize);

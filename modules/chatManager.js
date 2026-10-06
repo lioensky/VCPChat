@@ -1628,7 +1628,16 @@ export const chatManager = (() => {
             }
         };
 
+        const cancelPreparedSend = async () => {
+            await removeThinkingFromSource();
+            const terminal = { event: { type: 'cancelled', reason: request.signal.reason || 'surface-operation-cancelled' } };
+            settleOwnedStreamOperation?.(terminal);
+            return Object.freeze({ messageId: thinkingMessage.id, terminal });
+        };
+
         try {
+            // 独立 Surface 可在历史落盘或请求准备期间取消，尚未发出的请求不再交给上游。
+            if (request?.signal?.aborted) return await cancelPreparedSend();
             const agentConfig = currentSelectedItem.config || currentSelectedItem;
             const extraContextHistory = typeof request?.conversation?.getContextHistory === 'function'
                 ? (request.conversation.getContextHistory() || [])
@@ -1716,6 +1725,7 @@ export const chatManager = (() => {
                 },
             });
             const useStreaming = orchestrated.modelConfig.stream === true;
+            if (request?.signal?.aborted) return await cancelPreparedSend();
 
             if (useStreaming) {
                 if (messageRenderer) {
@@ -1742,13 +1752,14 @@ export const chatManager = (() => {
                         messageId: thinkingMessage.id,
                         done: ownedStreamTerminal,
                         async cancel(reason) {
-                            // 与主聊天一致：上游接受中止时由流自己收尾并保留已生成内容；
-                            // 只有中止请求失败时才在本地断开并清掉占位消息
+                            // 上游接受中止时由流自己收尾；失败时也先等待本地流
+                            // 保存已接收内容，不能把正在收尾的回答当占位消息删掉。
                             let interrupted = null;
                             try { interrupted = await interruptCapability?.interrupt?.(thinkingMessage.id); }
                             catch (error) { console.warn('[ChatManager] Surface interrupt request failed; cancelling locally:', error); }
                             if (interrupted?.success === true) return true;
-                            const res = releaseStreamConsumerRoute?.cancel?.(reason || 'surface-operation-cancelled');
+                            const res = await releaseStreamConsumerRoute?.cancel?.(reason || 'surface-operation-cancelled');
+                            if (res?.kind) return true;
                             settleOwnedStreamOperation?.({ event: { type: 'cancelled', reason: reason || 'surface-operation-cancelled' } });
                             await removeThinkingFromSource();
                             return res !== false;
@@ -1784,6 +1795,7 @@ export const chatManager = (() => {
             }
 
             const context = orchestrated.context;
+            if (request?.signal?.aborted) return await cancelPreparedSend();
             const vcpResponse = await singleChatRequestOrchestrator.sendPrepared(
                 orchestrated,
                 globalSettings

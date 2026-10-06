@@ -7,8 +7,12 @@
  * disposed owner cannot be revived by late asynchronous work.
  */
 (function installLifecycleScope(globalObject, factory) {
+    const isCommonJs = typeof module === 'object' && module.exports;
+    // The page loads this file as a classic script first; an ES module that
+    // imports it again must share that registry instead of starting a second one.
+    if (!isCommonJs && globalObject?.VCPLifecycle) return;
     const api = factory();
-    if (typeof module === 'object' && module.exports) module.exports = api;
+    if (isCommonJs) module.exports = api;
     if (globalObject) {
         globalObject.VCPLifecycle = Object.freeze(api);
         globalObject.dispatchEvent?.(new globalObject.CustomEvent('vcp-lifecycle-ready'));

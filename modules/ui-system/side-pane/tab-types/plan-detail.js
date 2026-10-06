@@ -1,10 +1,10 @@
-import { createPlanDetailSideProvider } from '../planDetailSideProvider.js';
+import { createLazyProvider } from './lazy-provider.js';
 import { collectConversationScope } from '../../conversation-scope.js';
 
 const RESCOPE_DEBOUNCE_MS = 700;
 
 export function definePlanDetailTabType({ document: doc, window: win, chatAPI, sidePaneController, uiHelper, historyRef, openProjectForge }) {
-    const provider = createPlanDetailSideProvider({
+    const provider = createLazyProvider(async () => (await import('../planDetailSideProvider.js')).createPlanDetailSideProvider({
         document: doc, api: chatAPI || win.electronAPI, sidePaneController, uiHelper,
         onOpenProjectForge: openProjectForge,
         getConversationProjects: async () => {
@@ -28,7 +28,7 @@ export function definePlanDetailTabType({ document: doc, window: win, chatAPI, s
             observer.observe(root, { childList: true, subtree: true });
             return () => { win.clearTimeout(timer); observer.disconnect(); };
         }
-    });
+    }), ['openPlanDetailTab']);
     return Object.freeze({
         kind: 'plan-detail', label: 'V工程计划', icon: 'checklist', searchHint: '计划', provider,
         entry: { id: 'plan-detail', order: 70, open: () => provider.openPlanDetailTab() }
