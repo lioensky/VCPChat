@@ -948,7 +948,16 @@ function createNewPtySession() {
         cols: lastKnownSize.cols,
         rows: lastKnownSize.rows,
         cwd: process.env.USERPROFILE || process.env.HOME,
-        env: process.env
+        env: {
+            ...process.env,
+            PAGER: 'cat',
+            GIT_PAGER: 'cat',
+            GIT_TERMINAL_PROMPT: '0',
+            GH_PAGER: '',
+            SYSTEMD_PAGER: 'cat',
+            AWS_PAGER: '',
+            MANPAGER: 'cat'
+        }
     });
     childProcesses.add(ptyProcess);
     const currentPtyProcess = ptyProcess;
@@ -1017,6 +1026,15 @@ function createNewPtySession() {
 
         const initializationCommand = [
             '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8',
+            '$env:PAGER = "cat"',
+            '$env:GIT_PAGER = "cat"',
+            '$env:GIT_TERMINAL_PROMPT = "0"',
+            '$env:GH_PAGER = ""',
+            '$env:SYSTEMD_PAGER = "cat"',
+            '$env:AWS_PAGER = ""',
+            '$env:MANPAGER = "cat"',
+            'function global:more { param([string[]]$paths) if ($paths) { foreach ($file in $paths) { Get-Content $file } } else { $input } }',
+            'function global:help { Get-Help @args }',
             `$__vcpReady = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${encodedReadyBoundary}'))`,
             'Write-Host $__vcpReady'
         ].join('; ');
@@ -1260,6 +1278,9 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
             // 就会把命令尚未执行的回显误判为真实输出，造成提前结束或卡死。
             // 因此这里用 Base64 在 PowerShell 内部还原 boundary，让 GUI/AI 只匹配真实 Write-Host 输出。
             const wrappedCommand = [
+                `$env:PAGER = 'cat'`,
+                `$env:GIT_PAGER = 'cat'`,
+                `$env:GIT_TERMINAL_PROMPT = '0'`,
                 `$__vcpStart = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${encodedStartBoundary}'))`,
                 `$__vcpEnd = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${encodedEndBoundary}'))`,
                 `Write-Host $__vcpStart`,
@@ -1750,7 +1771,7 @@ async function processToolCall(args) {
             ptyProcess = null;
         }
         const command = commandEntries[0].value;
-        const fullCommand = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; ${command}`;
+        const fullCommand = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $env:PAGER = 'cat'; $env:GIT_PAGER = 'cat'; $env:GIT_TERMINAL_PROMPT = '0'; function global:more { param([string[]]$paths) if ($paths) { foreach ($file in $paths) { Get-Content $file } } else { $input } }; function global:help { Get-Help @args }; ${command}`;
         const output = await executeAdminCommand(fullCommand);
         if (output && typeof output === 'object' && Array.isArray(output.content)) {
             return output;
