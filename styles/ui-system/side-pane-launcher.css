@@ -27,21 +27,14 @@ html .side-pane-open-tab-content:where(.vcp-ui-scope, .vcp-ui-scope *) {
     gap: 16px;
 }
 
+/* 通知页把头像和名字向上收起，分类和通知列表跟着顶上去；切回工具/应用时再展开。
+ * max-height 给的是上限，不是实际高度；负的 margin-bottom 抵掉父级 16px 的 gap。 */
 html .side-pane-launcher-profile:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 10px;
     padding: 12px 0 4px;
-}
-
-html .side-pane-launcher-profile[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    display: none;
-}
-
-/* 通知页把头像和名字向上收起，分类和通知列表跟着顶上去；切回工具/应用时再展开。
- * max-height 给的是上限，不是实际高度；负的 margin-bottom 抵掉父级 16px 的 gap。 */
-html .side-pane-launcher-profile:where(.vcp-ui-scope, .vcp-ui-scope *) {
     max-height: 148px;
     overflow: clip;
     overflow-clip-margin: 4px;
@@ -52,6 +45,10 @@ html .side-pane-launcher-profile:where(.vcp-ui-scope, .vcp-ui-scope *) {
         opacity var(--vcp-motion-duration-standard) var(--vcp-motion-ease-standard),
         transform var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
         visibility 0s linear 0s;
+}
+
+html .side-pane-launcher-profile[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: none;
 }
 
 html #sidePaneViewLauncher[data-launcher-segment="notifications"] .side-pane-launcher-profile:where(.vcp-ui-scope, .vcp-ui-scope *) {

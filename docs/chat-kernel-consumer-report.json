@@ -905,6 +905,7 @@
     "tests/side-chat-integration.test.mjs",
     "tests/side-chat-ipc-metadata.test.mjs",
     "tests/side-chat-model-and-context.test.mjs",
+    "tests/side-chat-persistence-retry.test.mjs",
     "tests/side-chat-session-service.test.mjs",
     "tests/side-chat-surface-owner.test.mjs",
     "tests/side-chat-topic-binding-parity.test.mjs",

@@ -1,6 +1,6 @@
-/* sideChatSurfaceOwner.js
- * Surface owner for Workspace Side Chat, supporting independent conversation,
- * concurrent streaming, cancellation, selection references, and lifecycle disposal.
+/* side-chat/persistence.js
+ * Owns side-chat metadata, composer drafts, history loading and save retries.
+ * The mounted conversation is the source for edits made after a failed save.
  */
 'use strict';
 
@@ -88,13 +88,15 @@ export function createSideChatPersistence({
         if (!store.hasUnsavedChanges) return { ok: true, message: '无未保存的历史' };
         updateStatus('正在重试保存...');
         try {
-            const inMem = (store.pendingSaveHistory && store.pendingSaveHistory.length > 0)
-                ? store.pendingSaveHistory
-                : (getConversation()?.historyRef?.get?.() || []);
-            let targetHistory = inMem;
-            if (!Array.isArray(targetHistory) || targetHistory.length === 0) {
+            // The side conversation remains editable after a failed save. Its
+            // live history owns later edits/deletions, including deletion of all
+            // messages; the failure snapshot is only a fallback without a view.
+            const liveHistory = getConversation()?.historyRef?.get?.();
+            let targetHistory = Array.isArray(liveHistory) ? liveHistory : store.pendingSaveHistory;
+            if (!Array.isArray(targetHistory)) {
                 const histRes = await repository.getHistory(descriptor.child.itemId, 'agent', descriptor.child.topicId);
-                targetHistory = Array.isArray(histRes) ? histRes : (histRes?.history || []);
+                targetHistory = Array.isArray(histRes) ? histRes : histRes?.history;
+                if (!Array.isArray(targetHistory)) throw new Error(histRes?.error || '读取辅助对话历史失败');
             }
             const saveRes = await repository.saveHistory(
                 descriptor.child.itemId,

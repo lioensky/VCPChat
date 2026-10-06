@@ -3689,7 +3689,7 @@
         },
         {
           "file": "modules/renderer/side-chat/persistence.js",
-          "line": 157,
+          "line": 159,
           "kind": "custom-event-listener"
         },
         {
@@ -5216,7 +5216,7 @@
         },
         {
           "file": "modules/renderer/side-chat/persistence.js",
-          "line": 157,
+          "line": 159,
           "kind": "custom-event-listener",
           "match": "statusText.addEventListener('click'"
         },
