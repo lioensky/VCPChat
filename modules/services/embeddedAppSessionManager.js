@@ -183,7 +183,19 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, powerMo
         // native child view transparent lets the parent navigation material
         // continue behind the embedded sidebar without color approximation.
         view.setBackgroundColor?.('#00000000');
-        const session = { action: appAction, view, bounds: { x: 0, y: 44, width: 1, height: 1 }, insets: null };
+        const initialParentBounds = mainWindow.getContentBounds();
+        const defaultBounds = {
+            x: 0,
+            y: 44,
+            width: Math.max(1, initialParentBounds.width),
+            height: Math.max(1, initialParentBounds.height - 44),
+        };
+        const session = {
+            action: appAction,
+            view,
+            bounds: defaultBounds,
+            insets: getBoundsInsets(defaultBounds, initialParentBounds),
+        };
         sessions.set(appAction, session);
         mainWindow.contentView.addChildView(view);
         view.setVisible(false);
@@ -239,9 +251,31 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, powerMo
         if (!session || session.view.webContents.isDestroyed()) {
             return { success: false, error: '内嵌应用会话不存在。' };
         }
-        session.view.setBounds(normalizeBounds(session.bounds, mainWindow.getContentBounds()));
+        const parentBounds = mainWindow.getContentBounds();
+        if (session.insets) {
+            session.bounds = boundsFromInsets(session.insets, parentBounds);
+        } else if ((session.bounds.width || 0) <= 1 || (session.bounds.height || 0) <= 1) {
+            session.bounds = {
+                x: 0,
+                y: 44,
+                width: parentBounds.width,
+                height: Math.max(1, parentBounds.height - 44),
+            };
+            session.insets = getBoundsInsets(session.bounds, parentBounds);
+        }
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            try {
+                mainWindow.contentView.removeChildView(session.view);
+                mainWindow.contentView.addChildView(session.view);
+            } catch { /* ignored */ }
+        }
+        session.view.setBounds(normalizeBounds(session.bounds, parentBounds));
         session.view.setVisible(true);
         activeAction = appAction;
+        try {
+            session.view.webContents?.focus?.();
+            session.view.webContents?.invalidate?.();
+        } catch { /* ignored */ }
         return { success: true };
     }
 
@@ -251,6 +285,9 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, powerMo
         const session = sessions.get(appAction);
         if (!session || session.view.webContents.isDestroyed()) {
             return { success: false, error: '内嵌应用会话不存在。' };
+        }
+        if ((Number(bounds?.width) || 0) <= 1 || (Number(bounds?.height) || 0) <= 1) {
+            return { success: true, ignored: true };
         }
         const parentBounds = mainWindow.getContentBounds();
         const zoomFactor = mainWindow.webContents?.getZoomFactor?.() || 1;
