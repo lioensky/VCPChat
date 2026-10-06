@@ -4,6 +4,8 @@
 //   - 同一个窗口里多次订阅按次数计，归零才算离开；窗口关闭或主框架导航时它的订阅全部清掉；
 //   - 某个 topic+key 第一个窗口订阅时调用 onFirst(key)，最后一个窗口离开时调用 onLast(key)，
 //     主进程侧的文件监听之类的资源跟着它启停；
+//   - describe(key) 可选：订阅成功时把它的返回值作为 state 一起回给这个窗口，
+//     后来的窗口也能知道已经发生过的状态（比如这个仓库的监听已经降级）；
 //   - snapshot() 给 lifecycle:get-main-snapshot 用，只有 topic、key 和窗口数，没有数据内容。
 'use strict';
 
@@ -14,16 +16,16 @@ const TOPIC_PATTERN = /^[a-z][a-z0-9.-]{1,63}$/;
 const MAX_KEY_LENGTH = 300;
 
 function createStateSubscriptions({ logger = console } = {}) {
-    const topics = new Map(); // name → { keyed, onFirst, onLast, windows: Map<key, number> }
+    const topics = new Map(); // name → { keyed, onFirst, onLast, describe, windows: Map<key, number> }
     const bySender = new Map(); // sender → { entries: Map<id, { name, key, refs }>, forget }
     let ipcRef = null;
 
     const entryId = (name, key) => `${name}\u0000${key}`;
 
-    function declare(name, { keyed = false, onFirst = null, onLast = null } = {}) {
+    function declare(name, { keyed = false, onFirst = null, onLast = null, describe = null } = {}) {
         if (!TOPIC_PATTERN.test(String(name))) throw new TypeError(`[StateSubscriptions] invalid topic name: ${name}`);
         if (topics.has(name)) throw new Error(`[StateSubscriptions] topic declared twice: ${name}`);
-        topics.set(name, { keyed: Boolean(keyed), onFirst, onLast, windows: new Map() });
+        topics.set(name, { keyed: Boolean(keyed), onFirst, onLast, describe, windows: new Map() });
     }
 
     function normalize(name, key) {
@@ -89,7 +91,13 @@ function createStateSubscriptions({ logger = console } = {}) {
             record.entries.set(id, { name, key: target.key, refs: 1 });
             windowJoined(name, target.topic, target.key);
         }
-        return { success: true };
+        if (typeof target.topic.describe !== 'function') return { success: true };
+        try {
+            return { success: true, state: target.topic.describe(target.key) ?? null };
+        } catch (error) {
+            logger?.error?.(`[StateSubscriptions] ${name} describe failed:`, error);
+            return { success: true, state: null };
+        }
     }
 
     function unsubscribe(sender, name, key) {

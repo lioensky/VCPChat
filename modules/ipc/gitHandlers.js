@@ -5,6 +5,8 @@
 // - 放弃未跟踪文件时使用 shell.trashItem，文件进入系统回收站而不是硬删。
 // - 仓库变化推送：窗口订阅 git.status（key 为工作区 id）时才监听那个仓库，最后一个窗口离开就停；
 //   监听到变化、或任何窗口通过这里改了仓库（暂存、提交、推送、切分支……），都推 git:changed 给订阅了的窗口。
+//   这里改了仓库时监听会把同一件事吞掉，不再晚几百毫秒重复推一次；
+//   监听降级（只看得到 .git 或挂不上）时推一次 degraded，订阅回执里也带着，渲染端退回到窗口获得焦点时补读。
 'use strict';
 
 const path = require('path');
@@ -62,9 +64,9 @@ function asPathList(value) {
     return list;
 }
 
-function notifyChanged(workspaceId, reason) {
+function notifyChanged(workspaceId, reason, extra = null) {
     if (typeof workspaceId !== 'string' || !workspaceId) return;
-    subscriptionsRef?.publish(STATUS_TOPIC, workspaceId, 'git:changed', { workspaceId, reason });
+    subscriptionsRef?.publish(STATUS_TOPIC, workspaceId, 'git:changed', { workspaceId, reason, ...extra });
 }
 
 /** mutates：改了仓库的操作，成功后推给其它窗口（发起操作的界面自己会刷新，推送到了也只是多读一次） */
@@ -75,7 +77,10 @@ function handle(channel, fn, { mutates = false } = {}) {
         }
         try {
             const data = await fn(...args);
-            if (mutates) notifyChanged(args[0], channel.slice('git:'.length));
+            if (mutates) {
+                watcher?.absorb(args[0]);
+                notifyChanged(args[0], channel.slice('git:'.length));
+            }
             return { success: true, data };
         } catch (error) {
             return {
@@ -102,12 +107,14 @@ function initialize({ workspaceService = null, mainWindow = null, getMainWindow:
         watcher = createGitWatcher({
             getTargets: workspaceId => gitService.getWatchTargets(resolveWorkspaceRoot(workspaceId)),
             onChange: workspaceId => notifyChanged(workspaceId, 'files'),
+            onDegraded: workspaceId => notifyChanged(workspaceId, 'watch-degraded', { degraded: true }),
             ...(watch ? { watch } : {}),
         });
         subscriptions.declare(STATUS_TOPIC, {
             keyed: true,
             onFirst: workspaceId => { void watcher.start(workspaceId); },
             onLast: workspaceId => watcher.stop(workspaceId),
+            describe: workspaceId => ({ degraded: watcher.isDegraded(workspaceId) }),
         });
     }
 

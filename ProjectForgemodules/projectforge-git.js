@@ -39,6 +39,7 @@
         diffView: null,
         // 主进程正在给这个窗口推哪个工作区的变化；看不见时收到的推送先记成 stale
         subscribedId: null,
+        watchDegraded: false,
         stale: false,
     };
 
@@ -113,15 +114,22 @@
 
     // 不再定时轮询：向主进程订阅当前工作区，仓库一变（这里或别的窗口提交、暂存、切分支，
     // 或者文件被改了）主进程推 git:changed 过来。换工作区就换订阅，窗口关掉主进程自己清掉。
+    // 主进程看不全这个仓库（只看得到 .git 或监听挂不上）时会说一声，之后窗口获得焦点时补读一次。
     function followWorkspaceChanges(nextId) {
         if (git.subscribedId === nextId) return;
         if (git.subscribedId) Promise.resolve(api.unsubscribeMainState?.(GIT_STATUS_TOPIC, git.subscribedId)).catch(() => {});
         git.subscribedId = nextId || null;
-        if (nextId) Promise.resolve(api.subscribeMainState?.(GIT_STATUS_TOPIC, nextId)).catch(() => {});
+        git.watchDegraded = false;
+        if (nextId) {
+            Promise.resolve(api.subscribeMainState?.(GIT_STATUS_TOPIC, nextId))
+                .then(result => { if (result?.state?.degraded && git.subscribedId === nextId) git.watchDegraded = true; })
+                .catch(() => {});
+        }
     }
 
     function onGitChanged(payload) {
         if (!git.enabled || !payload || payload.workspaceId !== git.workspaceId) return;
+        if (payload.degraded) git.watchDegraded = true;
         if (document.visibilityState !== 'visible' || git.busy || git.loading || !isGitTab()) {
             git.stale = true;
             return;
@@ -580,6 +588,15 @@
             refreshStatus();
         });
 
+        // 主窗口的 Git 标签换了工作区：存储变了，这边跟着换。storage 事件只发给别的窗口，自己 setItem 不会收到
+        window.addEventListener('storage', e => {
+            if (e.key !== GIT_WS_KEY || !e.newValue || e.newValue === git.workspaceId) return;
+            if (!git.workspaces.some(ws => ws.id === e.newValue)) return;
+            resetWorkspaceView(e.newValue);
+            renderWorkspaceSelect();
+            refreshStatus({ quiet: true });
+        });
+
         $('git-refresh-btn').addEventListener('click', () => refreshStatus());
 
         $('git-commit-message').addEventListener('input', syncActionButtons);
@@ -684,6 +701,9 @@
         window.ProjectForgeSideTabs?.register('git', { onEnter: onEnterGitTab, onLeave: onLeaveGitTab });
         api.onGitChanged?.(onGitChanged);
         document.addEventListener('visibilitychange', refreshIfStale);
+        window.addEventListener('focus', () => {
+            if (git.watchDegraded) onGitChanged({ workspaceId: git.workspaceId, reason: 'focus' });
+        });
 
         // 不在 Git 分页时也静默加载一次，用于分页角标
         if (window.ProjectForgeSideTabs?.savedTab !== 'git') loadWorkspaces({ quiet: true });

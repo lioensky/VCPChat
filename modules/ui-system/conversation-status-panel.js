@@ -28,8 +28,8 @@ import { collectConversationScope, normalizeCommand, readRevertBatches, scopeSig
 import { getCommandRunsSource } from './sources/terminal-command-runs.js';
 import { getProjectForgeChangesSource } from './sources/projectforge-changes.js';
 import { createGitChangesFollower } from './sources/git-changes.js';
+import { readSelectedGitWorkspace, watchSelectedGitWorkspace } from './sources/git-workspace.js';
 
-const STORAGE_KEY_WS = 'vcp-projectforge-git-workspace';
 const STORAGE_KEY_VARIANT = 'vcp-status-panel-variant';
 const RESCOPE_DEBOUNCE_MS = 700;
 
@@ -243,7 +243,7 @@ export function createConversationStatusPanel({
         if (!api?.gitListWorkspaces) return { workspace: null, workspaces: [] };
         const res = await api.gitListWorkspaces();
         const list = res?.success ? res.data?.workspaces || [] : [];
-        const stored = storage?.getItem(STORAGE_KEY_WS);
+        const stored = scoped ? null : readSelectedGitWorkspace(win);
         const selected = scoped
             ? projects.map(project => workspaceOfProject(project, list)).find(Boolean)
             : list.find(w => w.id === stored) || list.find(w => w.id === res.data?.activeWorkspaceId) || list[0];
@@ -438,7 +438,6 @@ export function createConversationStatusPanel({
             if (modals.length) modals[modals.length - 1].close();
        });
         on(win, 'resize', () => { measureHost(); closeAllPopovers(); });
-        on(win, 'focus', () => refresh());
         on(doc, 'visibilitychange', () => { if (!doc.hidden && gitStale) refresh(); });
         if (typeof win.ResizeObserver === 'function') {
             resizeObserver = new win.ResizeObserver(() => measureHost());
@@ -448,6 +447,8 @@ export function createConversationStatusPanel({
         }
         syncSourceHolds();
         if (scoped) watchConversation();
+        // 不跟随会话时显示的是 Git 标签选中的工作区：那边（或 V工程 窗口）换了，这里跟着换
+        else cleanups.push(watchSelectedGitWorkspace(win, ({ id }) => { if (!disposed && id !== workspace?.id) refresh(); }));
 
         measureHost();
         refresh();

@@ -17,6 +17,7 @@ import {
 } from '../modules/ui-system/conversation-status-panel.js';
 import { getProjectForgeChangesSource } from '../modules/ui-system/sources/projectforge-changes.js';
 import { getGitChangesSource } from '../modules/ui-system/sources/git-changes.js';
+import { selectGitWorkspace } from '../modules/ui-system/sources/git-workspace.js';
 import { layoutGitGraph, parseGraphRefs } from '../modules/ui-system/git-graph-layout.js';
 import { getCommandRunsSource } from '../modules/ui-system/sources/terminal-command-runs.js';
 
@@ -550,6 +551,10 @@ test('scoped panel: Git pushes follow the shown workspace and refresh it instead
     dom.window.document.dispatchEvent(new dom.window.Event('visibilitychange'));
     await flush();
     assert.equal(summaryCalls, before + 2);
+    // 切回窗口本身不再重读：变化都由推送带来
+    dom.window.dispatchEvent(new dom.window.Event('focus'));
+    await flush();
+    assert.equal(summaryCalls, before + 2, 'focusing the window does not re-read');
 
     panel.dispose();
     await flush();
@@ -699,4 +704,32 @@ test('switching workspace while staging cannot commit or push the new workspace'
         panel.dispose();
         dom.window.close();
     }
+});
+
+test('a panel that does not follow the conversation shows the workspace picked in the Git tab, also when another window picks one', async () => {
+    const WS2 = { id: 'ws2', alias: 'docs', path: '/code/docs' };
+    const reads = [];
+    const { dom, panel } = setup({ api: {
+        gitListWorkspaces: async () => ({ success: true, data: { workspaces: [WS, WS2], activeWorkspaceId: null } }),
+        gitChangeSummary: async id => { reads.push(id); return { success: true, data: { files: 1, added: 1, removed: 0, branch: { head: 'main' }, remotes: [] } }; }
+    } });
+    const win = dom.window;
+    panel.mount();
+    await flush();
+    assert.deepEqual(reads, ['ws1']);
+
+    selectGitWorkspace(win, 'ws2', { origin: 'git-tab' });
+    await flush();
+    assert.deepEqual(reads, ['ws1', 'ws2'], 'the Git tab in this window switched');
+
+    // V工程 窗口写了存储：这个窗口只收到 storage 事件
+    win.localStorage.setItem('vcp-projectforge-git-workspace', 'ws1');
+    win.dispatchEvent(new win.StorageEvent('storage', { key: 'vcp-projectforge-git-workspace', newValue: 'ws1', oldValue: 'ws2' }));
+    await flush();
+    assert.deepEqual(reads, ['ws1', 'ws2', 'ws1'], 'another window switched');
+
+    win.dispatchEvent(new win.StorageEvent('storage', { key: 'unrelated', newValue: 'x' }));
+    await flush();
+    assert.equal(reads.length, 3);
+    panel.dispose();
 });

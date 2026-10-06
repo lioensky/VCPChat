@@ -27,8 +27,8 @@ import { createPlanPageNavigation } from './plan-detail/page-navigation.js';
 import { createProjectPicker } from './plan-detail/project-picker.js';
 import { mountGitView } from './git/git-view.js';
 import { watchProjectForgeChanges } from '../sources/projectforge-changes.js';
+import { GIT_WORKSPACE_STORAGE_KEY } from '../sources/git-workspace.js';
 
-const STORAGE_KEY_WS = 'vcp-projectforge-git-workspace';
 const TAB_PREFIX = 'plan-detail:';
 const TOPIC_TAB = 'topic';
 const NO_PROJECT_TAB = 'none';
@@ -85,7 +85,7 @@ export async function resolveDefaultProject(api, storage = null) {
         const wsRes = await api.gitListWorkspaces?.();
         if (wsRes?.success) {
             const workspaces = wsRes.data?.workspaces || [];
-            const stored = storage?.getItem?.(STORAGE_KEY_WS);
+            const stored = storage?.getItem?.(GIT_WORKSPACE_STORAGE_KEY);
             const workspace = workspaces.find(w => w.id === stored)
                 || workspaces.find(w => w.id === wsRes.data?.activeWorkspaceId)
                 || workspaces[0];

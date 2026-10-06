@@ -50,7 +50,7 @@ test('outermostDirs drops directories already covered by a recursive parent', ()
     assert.deepEqual(outermostDirs([main, other]), [main, other]);
 });
 
-test('a burst of changes is reported once: metadata quickly, file edits after a pause, never later than maxWait', async t => {
+test('a burst of changes is reported once: metadata quickly, file edits after a pause, never later than their max wait', async t => {
     t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
     const { watch, opened, emit } = fakeWatch();
     const changes = [];
@@ -66,7 +66,7 @@ test('a burst of changes is reported once: metadata quickly, file edits after a 
     await watcher.start('ws1');
     assert.deepEqual(opened.map(item => [item.dir, item.options.recursive]), [[gitDir, true], [root, true]]);
     assert.equal(opened.every(item => item.options.persistent === false), true, 'watchers do not keep the app alive');
-    assert.deepEqual(watcher.snapshot(), [{ workspaceId: 'ws1', mode: 'files', watchers: 2, changes: 0, error: null }]);
+    assert.deepEqual(watcher.snapshot(), [{ workspaceId: 'ws1', mode: 'files', watchers: 2, changes: 0, absorbed: 0, error: null }]);
 
     emit(gitDir, 'index');
     emit(gitDir, 'HEAD');
@@ -81,27 +81,82 @@ test('a burst of changes is reported once: metadata quickly, file edits after a 
     t.mock.timers.tick(10_000);
     assert.equal(changes.length, 1, 'ignored paths never trigger');
 
-    // 编辑器一直在写：每秒一个事件，最迟 5 秒也要报一次
-    for (let i = 0; i < 5; i++) {
+    // 编辑器一直在写：每秒一个事件，文件内容最迟 20 秒报一次，不是每几秒就读一遍状态
+    for (let i = 0; i < 19; i++) {
         emit(root, path.join('src', 'a.js'));
         t.mock.timers.tick(1000);
     }
-    assert.equal(changes.length, 2, 'continuous edits are reported by maxWait');
+    assert.equal(changes.length, 1, 'continuous edits wait longer than metadata');
+    emit(root, path.join('src', 'a.js'));
+    t.mock.timers.tick(1000);
+    assert.equal(changes.length, 2, 'continuous edits are reported by the content max wait');
     t.mock.timers.tick(10_000);
     assert.equal(changes.length, 2);
+
+    // 文件一直在写的途中仓库也变了：元数据按自己的 300ms 报，顺带把这批文件改动一起报掉
+    emit(root, path.join('src', 'a.js'));
+    t.mock.timers.tick(1000);
+    emit(gitDir, 'index');
+    emit(root, path.join('src', 'a.js'));
+    t.mock.timers.tick(300);
+    assert.equal(changes.length, 3, 'a later file event does not push back a pending metadata report');
+    t.mock.timers.tick(10_000);
+    assert.equal(changes.length, 3);
 
     watcher.stop('ws1');
     assert.equal(opened.every(item => item.watcher.closed), true);
     assert.deepEqual(watcher.snapshot(), []);
 });
 
-test('on Linux only the git directories are watched', async () => {
+test('on Linux only the git directories are watched, and that is reported as degraded once', async () => {
     const { watch, opened } = fakeWatch();
     const root = path.resolve('/repo');
-    const watcher = createGitWatcher({ getTargets: async () => ({ root, gitDirs: [path.join(root, '.git')] }), onChange: () => {}, watch, platform: 'linux', logger: quiet });
+    const degraded = [];
+    const watcher = createGitWatcher({
+        getTargets: async () => ({ root, gitDirs: [path.join(root, '.git')] }),
+        onChange: () => {},
+        onDegraded: (id, info) => degraded.push([id, info.mode]),
+        watch, platform: 'linux', logger: quiet,
+    });
     await watcher.start('ws1');
     assert.deepEqual(opened.map(item => item.dir), [path.join(root, '.git')]);
     assert.equal(watcher.snapshot()[0].mode, 'metadata');
+    assert.deepEqual(degraded, [['ws1', 'metadata']]);
+    assert.equal(watcher.isDegraded('ws1'), true);
+    opened[0].watcher.emit('error', new Error('ENOENT'));
+    assert.equal(degraded.length, 1, 'reported once per watch');
+    assert.equal(watcher.snapshot()[0].mode, 'failed');
+    watcher.dispose();
+});
+
+test('a change the app made itself and already announced is not reported again by the watcher', async t => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+    const { watch, emit } = fakeWatch();
+    const changes = [];
+    const root = path.resolve('/repo');
+    const gitDir = path.join(root, '.git');
+    const watcher = createGitWatcher({ getTargets: async () => ({ root, gitDirs: [gitDir] }), onChange: id => changes.push(id), watch, platform: 'win32', logger: quiet });
+    await watcher.start('ws1');
+    assert.equal(watcher.isDegraded('ws1'), false);
+
+    // git commit 写 index、refs 的途中就有事件，通知之后还可能晚到几个
+    emit(gitDir, 'index');
+    emit(root, 'b.txt');
+    watcher.absorb('ws1');
+    emit(gitDir, path.join('refs', 'heads', 'main'));
+    t.mock.timers.tick(900);
+    emit(gitDir, 'HEAD');
+    t.mock.timers.tick(5000);
+    assert.deepEqual(changes, [], 'the pending batch and late metadata events are dropped');
+    assert.equal(watcher.snapshot()[0].absorbed, 1);
+
+    emit(root, 'c.txt');
+    t.mock.timers.tick(1500);
+    assert.deepEqual(changes, ['ws1'], 'a file edit right after is still reported');
+    emit(gitDir, 'HEAD');
+    t.mock.timers.tick(300);
+    assert.deepEqual(changes, ['ws1', 'ws1'], 'metadata is reported again once the window passes');
+    watcher.absorb('missing');
     watcher.dispose();
 });
 
@@ -132,8 +187,26 @@ test('stopping before the targets resolve opens nothing; a non-repo and a failed
     assert.equal(modes.plain.mode, 'not-repo');
     assert.equal(modes.broken.mode, 'failed');
     assert.equal(modes.broken.error, 'EACCES');
+    assert.equal(watcher.isDegraded('broken'), true);
+    assert.equal(watcher.isDegraded('plain'), false, 'a folder that is not a repo is not a degraded watch');
     watcher.dispose();
     assert.deepEqual(watcher.snapshot(), []);
+});
+
+test('a repository whose .git cannot be watched counts as partly watched', async () => {
+    const { watch } = fakeWatch();
+    const root = path.resolve('/repo');
+    const degraded = [];
+    const watcher = createGitWatcher({
+        getTargets: async () => ({ root, gitDirs: [path.join(root, '.git')] }),
+        onChange: () => {},
+        onDegraded: (id, info) => degraded.push([id, info.mode]),
+        watch: (dir, options, listener) => { if (dir.endsWith('.git')) throw new Error('EPERM'); return watch(dir, options, listener); },
+        platform: 'win32', logger: quiet,
+    });
+    await watcher.start('ws1');
+    assert.deepEqual(degraded, [['ws1', 'partial']]);
+    watcher.dispose();
 });
 
 test('a watcher that errors (directory removed) is closed and the others keep working', async t => {
@@ -146,6 +219,8 @@ test('a watcher that errors (directory removed) is closed and the others keep wo
     opened[1].watcher.emit('error', new Error('EPERM'));
     assert.equal(opened[1].watcher.closed, true);
     assert.equal(watcher.snapshot()[0].watchers, 1);
+    assert.equal(watcher.snapshot()[0].mode, 'metadata');
+    assert.equal(watcher.isDegraded('ws1'), true, 'losing the file watch counts as degraded');
     emit(path.join(root, '.git'), 'HEAD');
     t.mock.timers.tick(300);
     assert.deepEqual(changes, ['ws1']);
@@ -255,4 +330,31 @@ test('a real repository: a subscribed window hears about an edited file and a ne
     const staged = await handlers.get('git:stage')(event, 'ws1', ['b.txt']);
     assert.equal(staged.success, true, staged.error);
     assert.deepEqual(sender.sent[beforeStage], ['git:changed', { workspaceId: 'ws1', reason: 'stage' }]);
+    // stage 写 index 的事件不会在 300ms 后再推一次（b.txt 的写入发生在通知之前，也已包含）
+    await new Promise(resolve => setTimeout(resolve, 2500));
+    assert.deepEqual(sender.sent.slice(beforeStage).map(([, payload]) => payload.reason), ['stage']);
+});
+
+test('a repository the app can only partly watch tells subscribed windows, and later windows learn it on subscribing', { skip: gitAvailable ? false : 'git 不可用', timeout: 20_000 }, async t => {
+    const { gitHandlers } = loadGitHandlers();
+    const { watch } = fakeWatch();
+    const subscriptions = createStateSubscriptions({ logger: quiet });
+    const repo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'vcp-git-watch-degraded-')));
+    t.after(() => { gitHandlers.dispose(); subscriptions.dispose(); fs.rmSync(repo, { recursive: true, force: true }); });
+    execFileSync('git', ['init', '-q'], { cwd: repo, stdio: 'ignore' });
+    const workspaceService = { list: () => [{ id: 'ws1', alias: 'demo', path: repo, enabled: true }] };
+    // 工作区目录挂不上，只剩 .git
+    const partialWatch = (dir, options, listener) => {
+        if (path.resolve(dir) === repo) throw new Error('EMFILE');
+        return watch(dir, options, listener);
+    };
+    gitHandlers.initialize({ workspaceService, subscriptions, watch: partialWatch });
+
+    const a = fakeWindow();
+    assert.deepEqual(subscriptions.subscribe(a.sender, gitHandlers.STATUS_TOPIC, 'ws1'), { success: true, state: { degraded: false } });
+    for (let i = 0; i < 50 && !a.sender.sent.length; i++) await new Promise(resolve => setTimeout(resolve, 20));
+    assert.deepEqual(a.sender.sent, [['git:changed', { workspaceId: 'ws1', reason: 'watch-degraded', degraded: true }]]);
+
+    const b = fakeWindow();
+    assert.deepEqual(subscriptions.subscribe(b.sender, gitHandlers.STATUS_TOPIC, 'ws1'), { success: true, state: { degraded: true } });
 });

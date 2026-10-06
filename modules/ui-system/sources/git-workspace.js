@@ -1,7 +1,8 @@
 /*
  * git.selected-workspace：Git 标签、状态面板和 V工程 Git 页共用的「当前工作区」。
  * 选择仍存在 localStorage 里（下次打开、V工程 窗口都从这里读），
- * 同一个窗口里的变化走这个 StateChannel，不再派发 window 事件。
+ * 同一个窗口里的变化走这个 StateChannel，不再派发 window 事件；
+ * 别的窗口（V工程 窗口、另一个主窗口）改了存储，浏览器发来 storage 事件，也转成这个通道上的变化，origin 为 'other-window'。
  * 值形如 { id, origin }：origin 标出是谁改的，自己发的变化自己可以忽略。
  */
 import '../state-channel.js';
@@ -22,8 +23,19 @@ function channelFor(win) {
         try { stored = storageOf(win)?.getItem(GIT_WORKSPACE_STORAGE_KEY) || null; } catch (_e) { stored = null; }
         channel = new StateChannel('git.selected-workspace', Object.freeze({ id: stored, origin: 'storage' }));
         channels.set(win, channel);
+        followOtherWindows(win, channel);
     }
     return channel;
+}
+
+// storage 事件只发给别的窗口，自己 setItem 不会收到；通道跟窗口同生共死，监听也就不用摘
+function followOtherWindows(win, channel) {
+    if (typeof win.addEventListener !== 'function') return;
+    win.addEventListener('storage', event => {
+        if (event.key !== GIT_WORKSPACE_STORAGE_KEY || !event.newValue) return;
+        if (channel.disposed || channel.get()?.id === event.newValue) return;
+        channel.publish(Object.freeze({ id: event.newValue, origin: 'other-window' }), { source: 'other-window' });
+    });
 }
 
 /** 当前选中的工作区 id（没有就是 null）。先读存储：V工程 窗口改过的选择这里也认 */

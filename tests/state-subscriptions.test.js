@@ -121,6 +121,19 @@ test('topics and keys are validated', () => {
     assert.deepEqual(subs.snapshot(), []);
 });
 
+test('describe(key) is returned to every subscribing window, also ones that come later', () => {
+    const subs = createStateSubscriptions({ logger: quiet });
+    const state = { ws1: { degraded: false } };
+    subs.declare('keyed', { keyed: true, describe: key => state[key] });
+    subs.declare('broken', { describe: () => { throw new Error('boom'); } });
+    assert.deepEqual(subs.subscribe(fakeSender(), 'keyed', 'ws1'), { success: true, state: { degraded: false } });
+    state.ws1 = { degraded: true };
+    assert.deepEqual(subs.subscribe(fakeSender(), 'keyed', 'ws1'), { success: true, state: { degraded: true } });
+    assert.deepEqual(subs.subscribe(fakeSender(), 'keyed', 'other'), { success: true, state: null });
+    assert.deepEqual(subs.subscribe(fakeSender(), 'broken'), { success: true, state: null }, 'a throwing describe still subscribes');
+    assert.equal(subs.windowsFor('broken'), 1);
+});
+
 test('a hook that throws does not break the table', () => {
     const errors = [];
     const subs = createStateSubscriptions({ logger: { error: (...args) => errors.push(args) } });

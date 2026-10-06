@@ -64,3 +64,39 @@ test('a follower moves its subscription with the shown workspace', async () => {
     assert.equal(follower.workspaceId, null);
     follower.release();
 });
+
+test('when the main process cannot see file edits, getting window focus counts as a change until the source stops', async () => {
+    const { api, push } = fakeApi();
+    const win = new EventTarget();
+    const focus = () => win.dispatchEvent(new Event('focus'));
+    getGitChangesSource(api, 'ws1', { graceMs: 0, win });
+    const seen = [];
+    const off = watchGitChanges(api, 'ws1', change => seen.push(change.reason));
+    await tick();
+    focus();
+    assert.deepEqual(seen, [], 'a fully watched repository ignores focus');
+
+    push({ workspaceId: 'ws1', reason: 'watch-degraded', degraded: true });
+    focus();
+    push({ workspaceId: 'ws1', reason: 'watch-degraded', degraded: true });
+    focus();
+    assert.deepEqual(seen, ['watch-degraded', 'focus', 'watch-degraded', 'focus'], 'one focus listener however often it is told');
+
+    off();
+    await tick();
+    focus();
+    assert.equal(seen.length, 4, 'released with the source');
+});
+
+test('a window that subscribes after the watch degraded learns it from the subscribe reply', async () => {
+    const { api } = fakeApi();
+    api.subscribeMainState = async () => ({ success: true, state: { degraded: true } });
+    const win = new EventTarget();
+    getGitChangesSource(api, 'late', { graceMs: 0, win });
+    const seen = [];
+    const off = watchGitChanges(api, 'late', change => seen.push(change.reason));
+    await tick();
+    win.dispatchEvent(new Event('focus'));
+    assert.deepEqual(seen, ['focus']);
+    off();
+});
