@@ -454,7 +454,9 @@ export function mountGitView(host, {
     });
 
     pollTimer = setInterval(() => {
-        if (!isDisposed && root.offsetParent !== null) refreshStatus({ quiet: true });
+        // 收起侧栏只把宽度压成 0 并设 visibility:hidden，offsetParent 仍存在。
+        if (!isDisposed && root.offsetParent !== null
+            && !root.closest('.vcp-side-pane[aria-hidden="true"]')) refreshStatus({ quiet: true });
     }, POLL_INTERVAL_MS);
 
     render();

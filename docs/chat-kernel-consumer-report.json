@@ -901,7 +901,7 @@
     "tests/side-chat-authorization.test.mjs",
     "tests/side-chat-delete-leftovers.test.mjs",
     "tests/side-chat-entry-points.test.mjs",
-    "tests/side-chat-ephemeral-zcode-parity.test.mjs",
+    "tests/side-chat-ephemeral-parity.test.mjs",
     "tests/side-chat-integration.test.mjs",
     "tests/side-chat-ipc-metadata.test.mjs",
     "tests/side-chat-model-and-context.test.mjs",
