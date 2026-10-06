@@ -24,6 +24,7 @@ import {
     isToolResultHidden,
     setToolResultHidden,
 } from './renderer/toolResultRegions.js';
+import { createToolPresentation } from './renderer/toolPresentation.js';
 import { parseJevToolUse } from './renderer/jevToolUse.js';
 import {
     findMalformedToolFields,
@@ -2559,7 +2560,10 @@ let mainRendererReferences = null;
 let contentPipeline = null;
 let contentRuntime = null;
 let rendererListenerDisposers = [];
+let toolPresentation = null;
 function disposeRendererListeners() {
+    toolPresentation?.dispose();
+    toolPresentation = null;
     rendererListenerDisposers.splice(0).reverse().forEach(dispose => { try { dispose(); } catch (error) { console.warn('[MessageRenderer] listener dispose failed:', error); } });
 }
 function disposeRendererResources() {
@@ -2789,6 +2793,15 @@ function initializeMessageRenderer(refs) {
     // 🟢 关键修复：IntersectionObserver 的 root 必须是产生滚动条的那个父容器
     const scrollContainer = mainRendererReferences.chatMessagesDiv.closest('.chat-messages-container');
     visibilityOptimizer.initializeVisibilityOptimizer(scrollContainer || mainRendererReferences.chatMessagesDiv);
+
+    toolPresentation = createToolPresentation({
+        root: mainRendererReferences.chatMessagesDiv,
+        getProfile: () => {
+            const appearance = mainRendererReferences.realm?.VCPAppearance;
+            return appearance?.getCurrent?.()
+                || appearance?.normalize?.(mainRendererReferences.globalSettingsRef.get().appearanceProfile, 'next');
+        }
+    });
 
     // --- Event Delegation ---
     ownRendererListener(mainRendererReferences.chatMessagesDiv, 'click', (e) => {
@@ -3562,6 +3575,7 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
     };
 
     if (typeof rawHtml === 'string') {
+        toolPresentation?.capture(contentDiv);
         // 替换 innerHTML 前必须释放旧子树上的预览 iframe、window message 监听器、
         // 动画/WebGL 资源及大工具结果完整文本。
         cleanupChatMedia(contentDiv);
@@ -3590,6 +3604,8 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
     }
 
     if (!isStillValid()) return;
+
+    toolPresentation?.apply(contentDiv);
 
     // 原生 audio 负责媒体播放，自定义控件层负责一致的主题与交互。
     // 放在附件渲染之后，可同时覆盖 Markdown HTML 音频和消息附件音频。

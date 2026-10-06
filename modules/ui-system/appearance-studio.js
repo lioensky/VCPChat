@@ -77,6 +77,8 @@
     });
     const PROFILE_FIELDS = Object.freeze([
         'density',
+        'toolPresentation',
+        'toolExpansion',
         'radius',
         'typography',
         'fontScale',
@@ -107,7 +109,8 @@
                 fontScale: 'normal',
                 contentWidth: 'full',
                 wallpaperScope: 'theme',
-                sidebarRowHeight: 46,
+                toolPresentation: 'legacy', toolExpansion: 'attention',
+            sidebarRowHeight: 46,
                 sidebarAvatarSize: 32,
                 customRadius: 10,
                 surface: 'translucent',
@@ -130,6 +133,7 @@
                 fontScale: 'small',
                 contentWidth: 'centered',
                 wallpaperScope: 'theme',
+                toolPresentation: 'legacy', toolExpansion: 'attention',
                 sidebarRowHeight: 40,
                 sidebarAvatarSize: 26,
                 customRadius: 6,
@@ -153,6 +157,7 @@
                 fontScale: 'large',
                 contentWidth: 'centered',
                 wallpaperScope: 'theme',
+                toolPresentation: 'legacy', toolExpansion: 'attention',
                 sidebarRowHeight: 52,
                 sidebarAvatarSize: 38,
                 customRadius: 14,
@@ -183,7 +188,8 @@
             fontScale: 'normal',
             contentWidth: 'full',
             wallpaperScope: 'theme',
-            sidebarRowHeight: 46,
+            toolPresentation: 'legacy', toolExpansion: 'attention',
+                sidebarRowHeight: 46,
             sidebarAvatarSize: 32,
             customRadius: 10,
             surface: 'translucent',
@@ -197,6 +203,8 @@
     });
     const PROFILE_CONTROL_IDS = Object.freeze({
         density: 'appearanceDensity',
+        toolPresentation: 'appearanceToolPresentation',
+        toolExpansion: 'appearanceToolExpansion',
         radius: 'appearanceRadius',
         typography: 'appearanceTypography',
         fontScale: 'appearanceFontScale',
@@ -711,6 +719,21 @@
                         </div>
                         </div>
                     </section>
+                    <section class="vcp-appearance-studio-section" aria-labelledby="vcpAppearanceToolsTitle">
+                        <div class="vcp-appearance-studio-section-heading"><div><h3 id="vcpAppearanceToolsTitle">工具呈现</h3><p>独立调整工具过程，保留完整参数、结果和上下文</p></div><button type="button" class="vcp-appearance-studio-reset" data-reset-section="tools" aria-label="重置工具呈现" title="重置本节"><span class="vcp-ui-icon">refresh</span></button></div>
+                        <div class="vcp-appearance-segmented" role="group" aria-label="工具展示样式">
+                            <button type="button" data-appearance-key="toolPresentation" data-appearance-value="legacy">原有卡片</button>
+                            <button type="button" data-appearance-key="toolPresentation" data-appearance-value="compact">紧凑单行</button>
+                            <button type="button" data-appearance-key="toolPresentation" data-appearance-value="grouped">分组折叠</button>
+                            <button type="button" data-appearance-key="toolPresentation" data-appearance-value="inline">单行合并</button>
+                            <button type="button" data-appearance-key="toolPresentation" data-appearance-value="process">整轮折叠</button>
+                        </div>
+                        <div class="vcp-appearance-subsection"><h4>默认展开</h4><div class="vcp-appearance-segmented" role="group" aria-label="工具默认展开规则">
+                            <button type="button" data-appearance-key="toolExpansion" data-appearance-value="attention">失败与待确认</button>
+                            <button type="button" data-appearance-key="toolExpansion" data-appearance-value="none">全部收起</button>
+                            <button type="button" data-appearance-key="toolExpansion" data-appearance-value="all">全部展开</button>
+                        </div><p class="vcp-appearance-mini-helper">使用当前界面密度和工具字体。请求与结果各自保留；单行合并与整轮折叠只把紧跟在请求后的同名结果显示在同一行；图片与媒体结果保留查看入口。</p></div>
+                    </section>
                     <section class="vcp-appearance-studio-section vcp-appearance-material-section" aria-labelledby="vcpAppearanceMaterialTitle">
                         <div class="vcp-appearance-studio-section-heading">
                             <div><h3 id="vcpAppearanceMaterialTitle">导航材质</h3><p>控制左侧栏与顶栏的表面效果</p></div>
@@ -1052,6 +1075,8 @@
                 draft.profile[field] = defaults.profile[field];
             });
             draft.presentation = defaults.presentation;
+        } else if (section === 'tools') {
+            ['toolPresentation', 'toolExpansion'].forEach(field => { draft.profile[field] = defaults.profile[field]; });
         } else if (section === 'material') {
             ['surface', 'surfaceEffect', ...MATERIAL_FIELDS].forEach(field => {
                 draft.profile[field] = defaults.profile[field];
@@ -1430,6 +1455,8 @@
             draft = {
                 profile: {
                     ...clone(preset.profile),
+                    toolPresentation: draft.profile.toolPresentation,
+                    toolExpansion: draft.profile.toolExpansion,
                     wallpaperScope: draft.profile.wallpaperScope
                 },
                 presentation: preset.presentation,

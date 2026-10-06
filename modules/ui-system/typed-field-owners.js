@@ -657,6 +657,8 @@ const TYPED_FIELD_DEFINITIONS = Object.freeze({
     chatToolFontPreset: { path: 'chatToolFontPreset', kind: 'string' },
     chatToolFontCustom: { path: 'chatToolFontCustom', kind: 'string' },
     appearanceDensity: { path: 'appearanceProfile.density', kind: 'string' },
+    appearanceToolPresentation: { path: 'appearanceProfile.toolPresentation', kind: 'string' },
+    appearanceToolExpansion: { path: 'appearanceProfile.toolExpansion', kind: 'string' },
     appearanceRadius: { path: 'appearanceProfile.radius', kind: 'string' },
     appearanceTypography: { path: 'appearanceProfile.typography', kind: 'string' },
     appearanceFontScale: { path: 'appearanceProfile.fontScale', kind: 'string' },

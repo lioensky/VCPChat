@@ -64,7 +64,7 @@ const resolved = appearance.apply({
     fontScale: 'large', contentWidth: 'centered', wallpaperScope: 'theme', surface: 'solid'
 }, { uiMode: 'next', cache: true, source: 'test' });
 assert.equal(JSON.stringify(resolved), JSON.stringify({
-    density: 'compact', radius: 'square', typography: 'serif',
+    density: 'compact', toolPresentation: 'legacy', toolExpansion: 'attention', radius: 'square', typography: 'serif',
     fontScale: 'large', contentWidth: 'centered', wallpaperScope: 'theme', surface: 'solid',
     surfaceEffect: 'vibrancy',
     shellRadius: 'tuned', composerRadius: 'tuned', sidebarRadius: 'tuned', cardRadius: 'tuned',
@@ -82,6 +82,15 @@ assert.equal(document.documentElement.dataset.vcpWallpaperScopePreference, 'them
 assert.equal(document.documentElement.dataset.vcpWallpaperScope, 'global', 'theme preference consumes the theme recommendation');
 assert.equal(document.querySelector('.vcp-ui-scope').dataset.density, 'compact');
 assert.equal(appearance.readCache('next').contentWidth, 'centered');
+assert.equal(appearance.normalize({}, 'next').toolPresentation, 'legacy', 'existing profiles retain legacy cards');
+assert.equal(appearance.normalize({toolPresentation:'bad',toolExpansion:'bad'}, 'next').toolPresentation, 'legacy');
+appearance.commit({...appearance.getCurrent(),toolPresentation:'grouped',toolExpansion:'none'},{uiMode:'next'});
+assert.equal(appearance.readCache('next').toolPresentation, 'grouped');
+assert.equal(appearance.readCache('next').toolExpansion, 'none');
+appearance.apply({...appearance.getCurrent(),toolPresentation:'compact'},{uiMode:'next',cache:false});
+assert.equal(appearance.getCurrent().toolPresentation, 'compact');
+assert.equal(appearance.readCache('next').toolPresentation, 'grouped', 'draft preview must not overwrite persisted mode');
+
 assert.equal(document.getElementById('vcpAppearanceMaterialVariables').textContent.includes('--vcp-material-blur:24px'), true);
 
 const material = appearance.apply({
