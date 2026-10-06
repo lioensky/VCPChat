@@ -152,7 +152,11 @@ test('a page that navigates away or is destroyed only drops its views', async ()
     const r = await call('terminal:create', sender, {});
     assert.equal(r.success, true, r.error);
 
-    sender.emit('did-start-navigation', {}, 'file:///x', false, true);
+    sender.emit('did-start-navigation', {}, 'https://example.com', false, true);
+    // 用原尺寸 resize 来确认视图还在：往共用的 shell 里打字会留在它的输入行上，影响后面的用例
+    const { cols, rows } = executor.getSessionState();
+    assert.equal((await call('terminal:resize', sender, r.data.id, cols, rows)).success, true, 'a navigation that only started keeps the view');
+    sender.emit('did-navigate', {}, 'file:///x', 200, 'OK');
     assert.equal((await call('terminal:write', sender, r.data.id, 'x')).success, false);
     assert.equal(executor.getSessionState().running, true, 'the shared session keeps running');
 
@@ -231,7 +235,7 @@ test('records AI commands as runs: listed, readable and pushed to watching pages
 
     // 页面刷新后不再推送
     const before = sender.sent.length;
-    sender.emit('did-start-navigation', {}, 'file:///x', false, true);
+    sender.emit('did-navigate', {}, 'file:///x', 200, 'OK');
     await executor._runCommandForTest(`echo ${marker}-2`);
     await new Promise((resolve) => setTimeout(resolve, 300));
     assert.equal(sender.sent.length, before);

@@ -60,7 +60,7 @@ test('publish only reaches subscribed windows, per key', () => {
     assert.equal(subs.publish('git.status', 'ws3', 'git:changed', {}), 0);
 });
 
-test('a closed or navigated window loses its subscriptions; in-page navigation does not', () => {
+test('a closed, navigated or crashed window loses its subscriptions; in-page and unfinished navigation do not', () => {
     const subs = createStateSubscriptions({ logger: quiet });
     const hooks = [];
     subs.declare('demo', { onLast: () => hooks.push('last') });
@@ -70,10 +70,13 @@ test('a closed or navigated window loses its subscriptions; in-page navigation d
     subs.subscribe(closed, 'demo');
     subs.subscribe(navigated, 'demo');
 
-    navigated.emit('did-start-navigation', {}, 'file:///x.html#a', true, true);
-    navigated.emit('did-start-navigation', {}, 'https://frame', false, false);
+    navigated.emit('did-navigate-in-page', {}, 'file:///x.html#a', true);
+    navigated.emit('did-frame-navigate', {}, 'https://frame', 200, 'OK', false);
     assert.equal(subs.windowsFor('demo'), 2, 'hash change and subframe navigation keep the subscription');
-    navigated.emit('did-start-navigation', {}, 'file:///other.html', false, true);
+    // 点开 http 链接：导航开始了，随后被 will-navigate 拦下改用外部浏览器打开，页面还是原来那个
+    navigated.emit('did-start-navigation', {}, 'https://example.com', false, true);
+    assert.equal(subs.windowsFor('demo'), 2, 'a navigation that only started does not drop the page');
+    navigated.emit('did-navigate', {}, 'file:///other.html', 200, 'OK');
     assert.equal(subs.windowsFor('demo'), 1);
 
     closed.destroy();
@@ -84,9 +87,14 @@ test('a closed or navigated window loses its subscriptions; in-page navigation d
     // 同一个页面重新订阅后照常工作，旧的离开监听不会重复触发
     subs.subscribe(navigated, 'demo');
     assert.equal(subs.windowsFor('demo'), 1);
-    navigated.emit('did-start-navigation', {}, 'file:///again.html', false, true);
+    navigated.emit('did-navigate', {}, 'file:///again.html', 200, 'OK');
     assert.equal(subs.windowsFor('demo'), 0);
     assert.deepEqual(hooks, ['last', 'last']);
+
+    // 渲染进程崩溃也算离开
+    subs.subscribe(navigated, 'demo');
+    navigated.emit('render-process-gone', {}, { reason: 'crashed' });
+    assert.equal(subs.windowsFor('demo'), 0);
 });
 
 test('a destroyed window found during publish is dropped without throwing', () => {

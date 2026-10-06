@@ -11,6 +11,7 @@ const fs = require('fs');
 const path = require('path');
 const { ipcMain: defaultIpcMain } = require('electron');
 const { createApplicationSenderGuard, resolveWindowWebContents } = require('./applicationSender');
+const { onSenderGone } = require('./senderLifetime');
 // initialize 可以传入领域激活器给的 ipcMain（见 domainActivator.js），不传就用 Electron 的
 let ipcMain = defaultIpcMain;
 let getMainWindow = () => null;
@@ -42,7 +43,7 @@ let loadExecutor = () => require(EXECUTOR_PATH);
 let sequence = 0;
 /** @type {Map<string, { id: string, sender: Electron.WebContents, detach: Function }>} */
 const views = new Map();
-const trackedSenders = new WeakSet();
+const trackedSenders = new WeakMap(); // sender → 取消离开登记
 /** @type {Map<Electron.WebContents, { refs: number, unsubscribe: Function, pending: Map<string, object>, timer: NodeJS.Timeout|null }>} */
 const runWatchers = new Map();
 
@@ -122,16 +123,13 @@ function releaseRunWatcher(sender) {
 
 function trackSender(sender) {
     if (trackedSenders.has(sender)) return;
-    trackedSenders.add(sender);
-    // 刷新页面或关闭窗口都会让渲染端丢失 xterm，镜像必须一并取消，否则主进程会一直往已销毁的页面推数据
-    const release = () => {
+    // 刷新页面或关闭窗口都会让渲染端丢失 xterm，镜像必须一并取消，否则主进程会一直往已销毁的页面推数据。
+    // 离开登记是一次性的：触发后从表里删掉，页面重新创建镜像时再登记
+    trackedSenders.set(sender, onSenderGone(sender, () => {
+        trackedSenders.delete(sender);
         detachViewsOf(sender);
         stopRunWatcher(sender);
-    };
-    sender.on('destroyed', release);
-    sender.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {
-        if (isMainFrame && !isInPlace) release();
-    });
+    }));
 }
 
 function getOwnedView(event, id) {

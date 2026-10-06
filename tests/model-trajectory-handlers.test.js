@@ -108,3 +108,36 @@ test('pushes stop once every tab of a page has unwatched', async () => {
         fs.rmSync(path.dirname(rootDir), { recursive: true, force: true });
     }
 });
+
+test('pushes stop when the page loads another document, and resume after it watches again', async () => {
+    const rootDir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'vcp-trajectory-navigate-')), 'ModelTrajectory');
+    trajectoryHandlers.initialize({ rootDir });
+    const record = (requestId) => beginTrajectoryCall({ sessionKey: 'a__t', requestId, source: { kind: 'main' }, model: 'm', params: {}, messages: [] }).finish();
+    const pushes = (sender) => sender.sent.filter((entry) => entry.channel === 'model-trajectory:changed').length;
+    try {
+        const sender = new FakeSender();
+        await call('model-trajectory:watch', sender);
+        // 只是开始导航（例如点开外部链接被拦下）不算离开
+        sender.emit('did-start-navigation', {}, 'https://example.com', false, true);
+        record('m1');
+        await wait(200);
+        assert.equal(pushes(sender), 1);
+
+        sender.emit('did-navigate', {}, MAIN_URL, 200, 'OK');
+        record('m2');
+        await wait(200);
+        assert.equal(pushes(sender), 1, 'the reloaded page did not ask for pushes');
+
+        await call('model-trajectory:watch', sender);
+        record('m3');
+        await wait(200);
+        assert.equal(pushes(sender), 2);
+        sender.emit('did-navigate', {}, MAIN_URL, 200, 'OK');
+        record('m4');
+        await wait(200);
+        assert.equal(pushes(sender), 2, 'leaving is noticed again after the page watched again');
+    } finally {
+        trajectoryHandlers.disposeAll();
+        fs.rmSync(path.dirname(rootDir), { recursive: true, force: true });
+    }
+});

@@ -45,6 +45,14 @@ test('the first holder starts the source and fetches once; the last one stops it
     assert.equal(source.running, false);
     assert.equal(calls.stops, 1);
     assert.equal(source.data, 1, 'the last snapshot stays readable after stopping');
+    assert.equal(source.get().status, 'idle', 'but it is no longer kept up to date, so it is not ready');
+
+    // 下一个持有者先看到旧数据加 loading，新结果回来才是 ready
+    const states = [];
+    const releaseC = source.subscribe(({ status, data }) => states.push([status, data]));
+    await source.settled();
+    assert.deepEqual(states, [['loading', 1], ['ready', 2]]);
+    releaseC();
     source.dispose();
 });
 
@@ -136,6 +144,12 @@ test('a failed fetch is reported and the next invalidate retries', async () => {
     assert.equal(source.get().status, 'ready');
     assert.equal(source.data, 'ok');
     release();
+    fail = true;
+    const again = source.retain();
+    await source.settled();
+    again();
+    assert.equal(source.get().status, 'idle', 'an error is not kept once the source stops');
+    assert.equal(source.get().error, null);
     source.dispose();
 });
 

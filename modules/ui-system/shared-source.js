@@ -6,6 +6,8 @@
  *   - 有 pollMs 时整个源只有一个轮询，而且只在至少一个持有者可见时运行；
  *   - invalidate() 让所有消费者一起刷新，进行中的请求会合并，不会叠加。
  * 快照形如 { status: 'idle' | 'loading' | 'ready' | 'error', data, error, updatedAt }。
+ * 停下以后回到 'idle'：data 留着当占位，但它已经没人维护了，不能再算 'ready'；
+ * 下一个持有者来时先看到 'loading' 加上旧数据，等新结果回来才是 'ready'。
  */
 import './state-channel.js';
 
@@ -164,6 +166,8 @@ export function createSharedSource(name, {
         syncPoll();
         current.abort.abort('released');
         try { current.cleanup?.(); } catch (error) { console.error(`[SharedSource] ${name} stop failed:`, error); }
+        // 停下以后不再有推送，留下的数据随时会过时；出错状态也不留，下次重新取
+        if (!disposed && envelope().status !== 'idle') commit({ status: 'idle', error: null });
     }
 
     function addHolder({ scope = null, visible = null, label = 'holder', listener = null, immediate = true } = {}) {
@@ -177,9 +181,10 @@ export function createSharedSource(name, {
         };
         holders.add(holder);
         if (graceTimer) { clearTimeout(graceTimer); graceTimer = null; }
+        // 先启动再订阅：第一次拿到的就是 'loading'，不会先闪一下 'idle'
+        if (holders.size === 1) startRunning();
         if (listener) holder.offListener = channel.subscribe(listener, { immediate });
         if (visible?.subscribe) holder.offVisible = visible.subscribe(() => syncPoll(), { immediate: false });
-        if (holders.size === 1) startRunning();
         syncPoll();
 
         let released = false;

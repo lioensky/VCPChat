@@ -9,6 +9,7 @@
 const fs = require('fs');
 const { ipcMain: defaultIpcMain, shell } = require('electron');
 const { createApplicationSenderGuard, resolveWindowWebContents } = require('./applicationSender');
+const { onSenderGone } = require('./senderLifetime');
 const { configureSharedRecorder, getSharedRecorder } = require('../modelTrajectory');
 // initialize 可以传入领域激活器给的 ipcMain（见 domainActivator.js），不传就用 Electron 的
 let ipcMain = defaultIpcMain;
@@ -25,7 +26,7 @@ const MAX_LIST_LIMIT = 500;
 
 /** @type {Map<Electron.WebContents, { refs: number, unsubscribe: Function, pending: Map<string, object>, timer: NodeJS.Timeout|null }>} */
 const watchers = new Map();
-const trackedSenders = new WeakSet();
+const trackedSenders = new WeakMap(); // sender → 取消离开登记
 
 let getMainWindow = () => null;
 const isAllowedSender = createApplicationSenderGuard({ getMainWebContents: () => resolveWindowWebContents(getMainWindow) });
@@ -53,11 +54,10 @@ function stopWatcher(sender) {
 
 function trackSender(sender) {
     if (trackedSenders.has(sender)) return;
-    trackedSenders.add(sender);
-    sender.on('destroyed', () => stopWatcher(sender));
-    sender.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {
-        if (isMainFrame && !isInPlace) stopWatcher(sender);
-    });
+    trackedSenders.set(sender, onSenderGone(sender, () => {
+        trackedSenders.delete(sender);
+        stopWatcher(sender);
+    }));
 }
 
 // 同一页面里可能开着几个轨迹标签，按次数计：最后一个 unwatch 才停止推送
