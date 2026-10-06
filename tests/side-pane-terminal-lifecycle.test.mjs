@@ -12,11 +12,11 @@ async function until(predicate) {
     }
 }
 
-function fixture({ create = async () => ({ success: true, data: { id: 'view:1', pid: 42 } }), restart } = {}) {
+function fixture({ create = async () => ({ success: true, data: { id: 'view:1', pid: 42 } }), restart, dormancy } = {}) {
     const dom = new JSDOM('<input id="mainInput"><aside><div class="side-pane-tabs"></div><div class="side-pane-content-container"></div></aside>');
     const doc = dom.window.document, root = doc.querySelector('aside');
     const controller = createSidePaneController({ root, tabListElement: root.querySelector('.side-pane-tabs'),
-        contentContainer: root.querySelector('.side-pane-content-container') });
+        contentContainer: root.querySelector('.side-pane-content-container'), dormancy });
     const terminals = [], killed = [], creates = [], restarts = [], listeners = new Map();
     let unsubscriptions = 0, confirmations = 0;
     dom.window.confirm = () => { confirmations++; return true; };
@@ -47,6 +47,8 @@ function fixture({ create = async () => ({ success: true, data: { id: 'view:1', 
         get unsubscriptions() { return unsubscriptions; }, get confirmations() { return confirmations; },
         status: () => root.querySelector('.side-terminal-status'),
         retry: () => root.querySelector('[aria-label="重新启动终端"]'),
+        screen: () => doc.querySelector('.side-terminal-screen'),
+        stash: () => doc.querySelector('[data-side-terminal-stash]'),
         async cleanup() { await controller.dispose(); dom.window.close(); } };
 }
 
@@ -153,3 +155,51 @@ for (const reuse of [false, true]) {
         } finally { await h.cleanup(); }
     });
 }
+
+test('a sleeping terminal keeps its shell: the screen waits in the stash and comes back to the same session', async () => {
+    const h = fixture({ dormancy: { hiddenMs: 20 } });
+    try {
+        const handle = await h.provider.openTerminalTab();
+        await until(() => handle.getSessionId() === 'view:1');
+        h.controller.setVisible(false);
+        await new Promise(resolve => setTimeout(resolve, 60));
+        await until(() => h.controller.getViewResidency().dormant.length === 1);
+
+        assert.equal(h.stash()?.contains(h.screen()), true, 'the screen is parked, not destroyed');
+        assert.deepEqual(h.killed, []);
+        assert.equal(h.terminals[0].disposals, 0);
+        assert.equal(h.unsubscriptions, 0, 'output keeps flowing into the parked terminal');
+        h.listeners.get('data')?.({ id: 'view:1', data: 'while asleep' });
+
+        h.controller.setVisible(true);
+        await until(() => h.controller.getViewResidency().live.includes('terminal:main'));
+        const view = h.controller.getTabHandle('terminal:main');
+        assert.equal(view.getSessionId(), 'view:1');
+        assert.equal(h.terminals.length, 1, 'no second xterm');
+        assert.equal(h.creates.length, 1, 'no second shell');
+        assert.equal(h.stash(), null, 'the empty stash is removed');
+        assert.ok(h.terminals[0].output.includes('while asleep'));
+        assert.equal(h.screen().closest('.side-pane-content-container') !== null, true);
+
+        await h.controller.closeTab('terminal:main');
+        assert.deepEqual(h.killed, ['view:1']);
+        assert.equal(h.terminals[0].disposals, 1);
+        assert.equal(h.unsubscriptions, 3);
+    } finally { await h.cleanup(); }
+});
+
+test('closing a terminal tab while it sleeps ends the parked session', async () => {
+    const h = fixture({ dormancy: { hiddenMs: 20 } });
+    try {
+        await h.provider.openTerminalTab();
+        await until(() => h.status().dataset.state === 'connected');
+        h.controller.setVisible(false);
+        await new Promise(resolve => setTimeout(resolve, 60));
+        await until(() => h.stash()?.contains(h.screen()) === true);
+        await h.controller.closeTab('terminal:main');
+        await until(() => h.killed.length === 1);
+        assert.equal(h.terminals[0].disposals, 1);
+        assert.equal(h.stash(), null);
+        assert.equal(h.screen(), null);
+    } finally { await h.cleanup(); }
+});

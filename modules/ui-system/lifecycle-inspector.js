@@ -4,6 +4,7 @@
     if (!globalObject || globalObject.VCPLifecycleInspector) return;
     const transitionHistory = [];
     let streamDiagnosticsProvider = null;
+    let sidePaneDiagnosticsProvider = null;
     const MAX_HISTORY = 30;
     const record = event => {
         const detail = event.detail || {};
@@ -33,6 +34,7 @@
             sources: Object.freeze(globalObject.VCPSharedSources?.diagnostics?.() || []),
             shell: globalObject.VCPNextShellController?.getDiagnostics?.() || null,
             streams: streamDiagnosticsProvider?.() || null,
+            sidePane: sidePaneDiagnosticsProvider?.() || null,
             performance: Object.freeze(globalObject.VCPPerformance?.snapshot?.() || []),
             transitions: Object.freeze([...transitionHistory]),
         });
@@ -62,5 +64,14 @@
         streamDiagnosticsProvider = provider;
     }
 
-    globalObject.VCPLifecycleInspector = Object.freeze({ snapshot, snapshotMain, setStreamDiagnosticsProvider });
+    /** 副屏控制器随界面重建，返回的函数用来在它销毁时注销 */
+    function setSidePaneDiagnosticsProvider(provider) {
+        if (typeof provider !== 'function') throw new TypeError('Side pane diagnostics provider must be a function.');
+        sidePaneDiagnosticsProvider = provider;
+        return () => {
+            if (sidePaneDiagnosticsProvider === provider) sidePaneDiagnosticsProvider = null;
+        };
+    }
+
+    globalObject.VCPLifecycleInspector = Object.freeze({ snapshot, snapshotMain, setStreamDiagnosticsProvider, setSidePaneDiagnosticsProvider });
 })(typeof window !== 'undefined' ? window : null);

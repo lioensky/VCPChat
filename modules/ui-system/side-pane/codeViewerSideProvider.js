@@ -261,18 +261,11 @@ export function createCodeViewerSideProvider({
             });
 
             insertBtn.addEventListener('click', () => {
-                const messageInput = doc.getElementById('messageInput');
-                if (!messageInput) return;
+                const commands = (doc.defaultView || globalThis).VCPContributions?.commands;
+                if (!commands?.get('composer.insert-text')) return;
                 const formatted = `\`\`\`${currentLang}\n${currentCode}\n\`\`\`\n`;
-                const currentValue = messageInput.value || '';
-                const separator = (currentValue.length > 0 && !currentValue.endsWith('\n')) ? '\n' : '';
-                messageInput.value = currentValue + separator + formatted;
-                const EventCtor = doc.defaultView?.Event || (typeof Event !== 'undefined' ? Event : null);
-                if (EventCtor) {
-                    messageInput.dispatchEvent(new EventCtor('input', { bubbles: true }));
-                }
-                messageInput.focus();
-                uiHelper?.showToastNotification?.('代码片段已插入主输入框', 'success');
+                const result = commands.execute('composer.insert-text', formatted, { gap: 'line' });
+                if (result?.inserted) uiHelper?.showToastNotification?.('代码片段已插入主输入框', 'success');
             });
 
             if (modeToggleBtn) {

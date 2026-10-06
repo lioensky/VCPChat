@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { JSDOM } = require('jsdom');
+require('../modules/ui-system/state-channel.js');
 const notificationCenter = require('../modules/notificationCenter.js');
 
 const COLLAPSE_KEY = 'vcp-notification-resolved-collapsed';
@@ -470,4 +471,32 @@ test('bell button badge and pending attributes are cleaned up on dispose', () =>
     assert.equal(bellButton.querySelector('.notification-bell-badge'), null);
     assert.equal(bellButton.hasAttribute('data-pending-count'), false);
     assert.equal(bellButton.getAttribute('aria-label'), '打开通知面板');
+});
+
+test('counts and the VCPLog connection are published on the notification-center channel', () => {
+    const channel = notificationCenter.getStateChannel();
+    assert.equal(channel, globalThis.VCPStateChannels.get('notification-center'));
+    const seen = [];
+    const off = channel.subscribe(value => seen.push(value), { immediate: false });
+
+    const env = mountFixture();
+    addCard(env, { state: 'pending', tone: 'warn' });
+    addCard(env, { state: 'error', tone: 'danger' });
+    env.center.update();
+    assert.deepEqual({ ...channel.get().counts }, { ...env.center.getCounts() });
+    assert.equal(channel.get().counts.pending, 1);
+
+    // 计数没变就不再发
+    const published = seen.length;
+    env.center.update();
+    assert.equal(seen.length, published);
+
+    notificationCenter.setConnection({ status: 'open', text: 'VCPLog: 已连接' });
+    assert.deepEqual({ ...channel.get().connection }, { status: 'open', text: 'VCPLog: 已连接' });
+    assert.equal(channel.get().counts.pending, 1, '连接状态变化不影响计数');
+    notificationCenter.setConnection({ status: 'open', text: 'VCPLog: 已连接' });
+    assert.equal(seen.length, published + 1);
+
+    off();
+    env.center.dispose();
 });

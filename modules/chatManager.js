@@ -4,6 +4,7 @@ import {
     createSingleChatRequestOrchestrator,
     updateFirstTextPart,
 } from './chat/singleChatRequestOrchestrator.js';
+import { publishConversationSelection } from './ui-system/sources/conversation-current.js';
 
 export const chatManager = (() => {
     // --- Private Variables ---
@@ -78,6 +79,7 @@ export const chatManager = (() => {
     function notifySelectionCommitted() {
         const item = currentSelectedItemRef?.get?.();
         const topicId = currentTopicIdRef?.get?.();
+        publishConversationSelection({ itemId: item?.id, itemType: item?.type, topicId });
         selectionListeners.forEach(listener => {
             try { listener({ item, topicId }); }
             catch (e) { console.error('[ChatManager] selection listener failed:', e); }

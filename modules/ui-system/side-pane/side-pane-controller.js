@@ -14,6 +14,7 @@ import { createSidePaneTabRegistry } from './side-pane-tab-registry.js';
 import { createSidePaneShortcuts } from './side-pane-shortcuts.js';
 import { createSidePaneLayoutStore, parseLayout, rememberBounded, serializeLayout } from './side-pane-persistence.js';
 import { createSidePaneRootScope, createTabOccurrence } from './side-pane-occurrence.js';
+import { selectDormantViews } from './side-pane-dormancy.js';
 
 /** @typedef {import('./side-pane-types.js').SidePaneTab} SidePaneTab */
 /** @typedef {import('./side-pane-types.js').SidePaneTabType} SidePaneTabType */
@@ -30,6 +31,10 @@ export function createSidePaneController({
     tabListElement,
     contentContainer,
     toggleNotificationsBtn = null,
+    // 通知面板本体：通知页签展开时加 active
+    notificationsPanel = null,
+    // notification-center 状态 { counts, connection }；不传就用页面里登记的那一份
+    notificationState = null,
     expandButton = null,
     closeSidePaneBtn = null,
     addTabButton = null,
@@ -43,7 +48,9 @@ export function createSidePaneController({
     tabTypes: initialTabTypes = [],
     openTabEntries = [],
     // { storage, key? }：传了才持久化布局；控制器调用 restoreLayout() 之前不会写入，免得空布局盖掉存档
-    persistence = null
+    persistence = null,
+    // 休眠策略的阈值（见 side-pane-dormancy.js），测试可以连 now 一起换掉
+    dormancy = null
 }) {
     if (!root) {
         throw new TypeError('SidePaneController requires a root element');
@@ -69,6 +76,11 @@ export function createSidePaneController({
     // 标签打开期间的 scope：第一次挂载时建，关标签才释放；视图休眠只释放它下面的 view scope
     const rootScope = createSidePaneRootScope(scope);
     const occurrences = new Map(); // tabId -> createTabOccurrence()
+    // 休眠：视图释放了、标签还在的记在 dormantTabs，再显示时重新挂载并拿回 captureState 存下的内容
+    const viewTimes = new Map(); // tabId -> { hiddenSince, lastShownAt }，只记挂着视图的标签
+    const dormantTabs = new Map(); // tabId -> { reason, since, state }
+    const now = typeof dormancy?.now === 'function' ? dormancy.now : () => Date.now();
+    let cancelDormancyCheck = null;
     const cleanupListeners = [];
     const recentlyClosedTabs = [];
     const collapsedByParent = new Map(); // parentKey -> boolean，最近 50 个对话
@@ -107,7 +119,7 @@ export function createSidePaneController({
                 targetHost.append(toggleNotificationsBtn);
             }
         }
-        doc.getElementById('notificationsSidebar')?.classList.toggle('active', isNotifActive);
+        notificationsPanel?.classList.toggle('active', isNotifActive);
 
         // 展开按钮只在面板收起时出现；面板里有自己的收起按钮
         if (expandButton) {
@@ -210,19 +222,17 @@ export function createSidePaneController({
         return launcher.hostsNotifications ? tabs.filter(tab => !isNotificationsTab(tab.id)) : tabs;
     };
 
-    // VCPLog 连接状态不单独占一行：通知标签和新标签页的通知分类上各一个小圆点，悬停/读屏给出全文
-    const connectionStatusEl = doc.getElementById('vcpLogConnectionStatus');
-    const readConnectionStatus = () => (connectionStatusEl ? {
-        status: connectionStatusEl.dataset.status || 'unknown',
-        text: connectionStatusEl.querySelector('.notifications-status-text')?.textContent.trim() || ''
-    } : null);
-
-    // 新标签页的通知卡片还要带上待审批/错误数，直接读通知中心渲染好的筛选条计数
-    const notificationToolbarEl = doc.getElementById('notificationToolbar');
-    const readChipCount = (filter) => Number(notificationToolbarEl?.querySelector(`[data-filter="${filter}"] .notification-chip-count`)?.textContent.trim()) || 0;
+    // VCPLog 连接状态不单独占一行：通知标签和新标签页的通知分类上各一个小圆点，悬停/读屏给出全文。
+    // 新标签页的通知卡片还要带上待审批/错误数。两样都从通知中心发布的状态里读。
+    const notificationChannel = notificationState || win?.VCPStateChannels?.get?.('notification-center') || null;
+    const readConnectionStatus = () => {
+        const connection = notificationChannel?.get?.()?.connection;
+        return connection ? { status: connection.status || 'unknown', text: String(connection.text || '').trim() } : null;
+    };
     const readLauncherStatus = () => {
         const current = readConnectionStatus();
-        return current ? { ...current, pending: readChipCount('pending'), errors: readChipCount('error') } : null;
+        const counts = notificationChannel?.get?.()?.counts || {};
+        return current ? { ...current, pending: Number(counts.pending) || 0, errors: Number(counts.error) || 0 } : null;
     };
 
     if (tabListElement) {
@@ -284,16 +294,9 @@ export function createSidePaneController({
         strip?.syncStatus();
     }
 
-    if (connectionStatusEl && typeof win.MutationObserver === 'function') {
-        const statusObserver = new win.MutationObserver(syncConnectionStatus);
-        statusObserver.observe(connectionStatusEl, { attributes: true, attributeFilter: ['data-status'], childList: true, characterData: true, subtree: true });
-        cleanupListeners.push(() => statusObserver.disconnect());
-    }
-
-    if (connectionStatusEl && notificationToolbarEl && typeof win.MutationObserver === 'function') {
-        const countObserver = new win.MutationObserver(() => launcher.syncStatus(readLauncherStatus()));
-        countObserver.observe(notificationToolbarEl, { childList: true, characterData: true, subtree: true });
-        cleanupListeners.push(() => countObserver.disconnect());
+    if (typeof notificationChannel?.subscribe === 'function') {
+        const offNotificationState = notificationChannel.subscribe(syncConnectionStatus, { immediate: false });
+        cleanupListeners.push(() => offNotificationState());
     }
 
     function renderTabList() {
@@ -331,6 +334,96 @@ export function createSidePaneController({
                 console.error(`[SidePaneController] Failed to ${shown ? 'resume' : 'suspend'} tab "${tabId}":`, error);
             }
         });
+        noteViewPresence(active);
+        evaluateDormancy();
+    }
+
+    // ---- 休眠 ----
+    // 计时看的是"在面板里是不是当前标签"，不看窗口有没有最小化：用户回来时看到的还是它，不该被换掉
+    function isTabPresented(tabId, { visibleTabIds, activeViewId } = getActiveView()) {
+        return !isDisposed && state.visible && tabId === activeViewId && visibleTabIds.has(tabId);
+    }
+
+    function noteViewPresence(active = getActiveView()) {
+        const at = now();
+        mountedTabMap.forEach((_entry, tabId) => {
+            const presented = isTabPresented(tabId, active);
+            const times = viewTimes.get(tabId) || { hiddenSince: at, lastShownAt: 0 };
+            if (presented) {
+                times.hiddenSince = null;
+                times.lastShownAt = at;
+            } else if (times.hiddenSince === null) {
+                times.hiddenSince = at;
+            }
+            viewTimes.set(tabId, times);
+        });
+    }
+
+    function isOtherTopicTab(tab) {
+        const parent = SidePaneState.getTabParent(tab);
+        return Boolean(parent && state.parent && !SidePaneState.matchesConversation(parent, state.parent));
+    }
+
+    function evaluateDormancy() {
+        if (isDisposed) return;
+        cancelDormancyCheck?.();
+        cancelDormancyCheck = null;
+        const active = getActiveView();
+        const candidates = [];
+        mountedTabMap.forEach((entry, tabId) => {
+            const tab = state.tabs.find(t => t.id === tabId);
+            if (!tab) return;
+            let busy = false;
+            try {
+                busy = entry.handle?.isBusy?.() === true;
+            } catch (error) {
+                console.error(`[SidePaneController] Failed to ask tab "${tabId}" whether it is busy:`, error);
+                busy = true;
+            }
+            const times = viewTimes.get(tabId) || { hiddenSince: null, lastShownAt: 0 };
+            candidates.push({
+                tabId,
+                shown: isTabPresented(tabId, active),
+                dormancy: getTabType(tab.kind)?.dormancy || 'none',
+                busy,
+                otherTopic: isOtherTopicTab(tab),
+                hiddenSince: times.hiddenSince,
+                lastShownAt: times.lastShownAt,
+                openedAt: Number(tab.openedAt) || 0
+            });
+        });
+        const at = now();
+        const { release, nextCheckAt } = selectDormantViews(candidates, { ...dormancy, now: at });
+        release.forEach(({ tabId, reason }) => putViewToSleep(tabId, reason));
+        if (nextCheckAt !== null) {
+            cancelDormancyCheck = rootScope.timeout(evaluateDormancy, Math.max(0, nextCheckAt - at), 'dormancy-check');
+        }
+    }
+
+    /**
+     * 只释放视图：provider 的 dispose 和 view scope 照常收掉，标签、occurrence（以及挂在它上面的会话）留着。
+     * 再显示时由 mountActiveIfNeeded 重新挂载，captureState 存下的内容作为 restoredState 交回去。
+     */
+    function putViewToSleep(tabId, reason) {
+        const entry = mountedTabMap.get(tabId);
+        if (!entry || isDisposed) return;
+        let saved;
+        try {
+            saved = entry.handle?.captureState?.();
+        } catch (error) {
+            console.error(`[SidePaneController] Failed to save tab "${tabId}" before it sleeps:`, error);
+        }
+        // 先同步摘掉：马上又显示的话，重新挂载拿到的是一个新的视图容器
+        mountedTabMap.delete(tabId);
+        viewTimes.delete(tabId);
+        dormantTabs.set(tabId, { reason, since: now(), state: saved });
+        entry.viewElement?.remove?.();
+        const sleepingView = entry.occurrence?.view || null;
+        void Promise.resolve()
+            .then(() => entry.handle?.dispose?.())
+            .catch(error => console.error(`[SidePaneController] Failed to release the view of tab "${tabId}":`, error))
+            .then(() => sleepingView && entry.occurrence?.closeView?.(`dormant:${reason}`, sleepingView))
+            .catch(error => console.error(`[SidePaneController] Failed to release the view scope of tab "${tabId}":`, error));
     }
 
     function obtainOccurrence(tabId, kind) {
@@ -400,10 +493,15 @@ export function createSidePaneController({
             // 挂载前先给出可见性，provider 一开始就知道要不要起轮询
             tabOccurrence.setVisible(isTabShown(tabId));
 
+            const dormant = dormantTabs.get(tabId);
             let handle = null;
             try {
                 handle = provider?.mountTab
-                    ? await provider.mountTab(payload, view, { scope: viewScope, occurrence: tabOccurrence.occurrence })
+                    ? await provider.mountTab(payload, view, {
+                        scope: viewScope,
+                        occurrence: tabOccurrence.occurrence,
+                        restoredState: dormant?.state
+                    })
                     : null;
             } catch (error) {
                 // 挂载失败不留空的视图壳，下次显示时重新挂
@@ -424,6 +522,7 @@ export function createSidePaneController({
             }
             const entry = { payload, viewElement: view, handle, onClosed, occurrence: tabOccurrence };
             mountedTabMap.set(tabId, entry);
+            if (dormantTabs.get(tabId) === dormant) dormantTabs.delete(tabId);
             return entry;
         })();
 
@@ -502,6 +601,8 @@ export function createSidePaneController({
                 || origin?.closest?.('[data-tab-id]')?.getAttribute('data-tab-id') === tab.id;
             entry?.viewElement?.remove();
             if (mountedTabMap.get(tab.id) === entry) mountedTabMap.delete(tab.id);
+            viewTimes.delete(tab.id);
+            dormantTabs.delete(tab.id);
             // 挂着的标签由 disposeEntry 先调 handle.dispose 再释放 scope；没挂上（或挂到一半）的这里直接释放
             const tabOccurrence = entry?.occurrence || occurrences.get(tab.id);
             if (entry) occurrences.delete(tab.id);
@@ -726,6 +827,34 @@ export function createSidePaneController({
             return mountedTabMap.get(tabId)?.handle || null;
         },
 
+        /** 诊断用：哪些标签挂着视图，哪些在休眠（为什么、从什么时候） */
+        getViewResidency() {
+            return {
+                live: [...mountedTabMap.keys()],
+                dormant: [...dormantTabs].map(([tabId, { reason, since }]) => ({ tabId, reason, since }))
+            };
+        },
+
+        /** 给 VCPLifecycleInspector：每个标签的视图在不在、是否可见、隐藏了多久；不含标题和内容 */
+        getDiagnostics() {
+            const at = now();
+            return {
+                visible: state.visible,
+                tabs: state.tabs.map(tab => {
+                    const dormant = dormantTabs.get(tab.id);
+                    const times = viewTimes.get(tab.id);
+                    return {
+                        id: tab.id,
+                        kind: tab.kind,
+                        view: mountedTabMap.has(tab.id) ? 'live' : (dormant ? 'dormant' : (pendingTabMounts.has(tab.id) ? 'mounting' : 'unmounted')),
+                        visible: occurrences.get(tab.id)?.occurrence.isVisible() === true,
+                        hiddenMs: times?.hiddenSince != null ? at - times.hiddenSince : null,
+                        dormantReason: dormant?.reason || null
+                    };
+                })
+            };
+        },
+
         /**
          * 登记一个"打开标签页"入口，新增菜单和引导页都会列出它。返回注销函数。
          * entry: { id, label, icon?, order?, open(), isAvailable?() }
@@ -854,6 +983,9 @@ export function createSidePaneController({
         async dispose() {
             if (isDisposed) return;
             isDisposed = true;
+            cancelDormancyCheck?.();
+            viewTimes.clear();
+            dormantTabs.clear();
             visibility.dispose();
             cleanupListeners.forEach(cleanup => cleanup());
             cleanupListeners.length = 0;

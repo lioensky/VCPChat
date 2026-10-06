@@ -17,12 +17,13 @@ const CHANNELS = [
     'model-trajectory:list',
     'model-trajectory:clear',
     'model-trajectory:open-directory',
-    'model-trajectory:watch'
+    'model-trajectory:watch',
+    'model-trajectory:unwatch'
 ];
 const NOTIFY_INTERVAL_MS = 100;
 const MAX_LIST_LIMIT = 500;
 
-/** @type {Map<Electron.WebContents, { unsubscribe: Function, pending: Map<string, object>, timer: NodeJS.Timeout|null }>} */
+/** @type {Map<Electron.WebContents, { refs: number, unsubscribe: Function, pending: Map<string, object>, timer: NodeJS.Timeout|null }>} */
 const watchers = new Map();
 const trackedSenders = new WeakSet();
 
@@ -59,11 +60,16 @@ function trackSender(sender) {
     });
 }
 
+// 同一页面里可能开着几个轨迹标签，按次数计：最后一个 unwatch 才停止推送
 function startWatcher(sender) {
-    if (watchers.has(sender)) return;
+    const existing = watchers.get(sender);
+    if (existing) {
+        existing.refs += 1;
+        return;
+    }
     const recorder = getSharedRecorder();
     if (!recorder) throw new Error('调用轨迹尚未启用。');
-    const watcher = { unsubscribe: () => {}, pending: new Map(), timer: null };
+    const watcher = { refs: 1, unsubscribe: () => {}, pending: new Map(), timer: null };
     const flush = () => {
         watcher.timer = null;
         for (const change of watcher.pending.values()) sendChange(sender, change);
@@ -75,6 +81,13 @@ function startWatcher(sender) {
     });
     watchers.set(sender, watcher);
     trackSender(sender);
+}
+
+function releaseWatcher(sender) {
+    const watcher = watchers.get(sender);
+    if (!watcher) return;
+    watcher.refs -= 1;
+    if (watcher.refs <= 0) stopWatcher(sender);
 }
 
 function initialize({ rootDir, getMainWindow: getWindow = null, ipcMain: injectedIpcMain = null } = {}) {
@@ -134,6 +147,13 @@ function initialize({ rootDir, getMainWindow: getWindow = null, ipcMain: injecte
         } catch (error) {
             return failure(error);
         }
+    });
+
+    // 轨迹标签关掉（或视图休眠）就退掉自己那一份；只减本页面的计数
+    ipcMain.handle('model-trajectory:unwatch', (event) => {
+        if (!isAllowedSender(event)) return denied;
+        releaseWatcher(event.sender);
+        return { success: true };
     });
 }
 

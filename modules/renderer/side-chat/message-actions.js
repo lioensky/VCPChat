@@ -54,31 +54,20 @@ export function createSideChatMessageActions({
     }
 
     function fillMainComposer(text) {
-        const mainInput = doc.querySelector('#messageInput');
-        if (!mainInput) {
+        const commands = win?.VCPContributions?.commands;
+        if (!commands?.get('composer.insert-text')) {
             toast('未找到主聊天输入框', 'error');
             return;
         }
-        const curItem = typeof chatCapabilities?.getCurrentItem === 'function' ? chatCapabilities.getCurrentItem() : null;
-        const parentItemId = descriptor.parent?.itemId;
-        if (curItem && parentItemId && curItem.id !== parentItemId) {
-            toast(`主聊天当前不在来源助手（${descriptor.parent?.name || parentItemId}），已阻止填入`, 'warning');
-            return;
-        }
-        const inputTopic = mainInput.getAttribute('data-current-topic')
-            || (typeof chatCapabilities?.getCurrentTopic === 'function' ? chatCapabilities.getCurrentTopic() : null);
-        const parentTopic = descriptor.parent?.topicId;
-        if (inputTopic && parentTopic && inputTopic !== parentTopic) {
-            toast(`主聊天当前不在来源话题（${parentTopic}），已阻止填入`, 'warning');
-            return;
-        }
-        const currentVal = mainInput.value ? mainInput.value.trim() : '';
-        mainInput.value = currentVal ? `${currentVal}\n\n${text}` : text;
-        uiHelper?.autoResizeTextarea?.(mainInput);
-        const EventClass = win?.Event || globalThis.Event;
-        mainInput.dispatchEvent(new EventClass('input', { bubbles: true }));
-        mainInput.focus();
-        toast('已填入主聊天输入框', 'success');
+        const parent = descriptor.parent || {};
+        const result = commands.execute('composer.insert-text', text, {
+            gap: 'paragraph',
+            expect: { itemId: parent.itemId, topicId: parent.topicId }
+        });
+        if (result?.inserted) toast('已填入主聊天输入框', 'success');
+        else if (result?.reason === 'item-mismatch') toast(`主聊天当前不在来源助手（${parent.name || parent.itemId}），已阻止填入`, 'warning');
+        else if (result?.reason === 'topic-mismatch') toast(`主聊天当前不在来源话题（${parent.topicId}），已阻止填入`, 'warning');
+        else toast('未找到主聊天输入框', 'error');
     }
 
     function fillSideComposer(text) {
@@ -174,8 +163,9 @@ export function createSideChatMessageActions({
             add('regenerate', 'fa-sync-alt', '重新回复', () => regenerate(message.id), 'regenerate-text');
         }
 
-        if (isAssistant && message.id && typeof win?.openModelTrajectory === 'function') {
-            add('trajectory', 'fa-route', '查看调用轨迹', () => win.openModelTrajectory({ requestId: message.id }));
+        const commands = win?.VCPContributions?.commands;
+        if (isAssistant && message.id && commands?.get('sidepane.open-trajectory')) {
+            add('trajectory', 'fa-route', '查看调用轨迹', () => commands.execute('sidepane.open-trajectory', { requestId: message.id }));
         }
 
         if (message.id && typeof removeMessage === 'function' && !unfinished && !busy) {

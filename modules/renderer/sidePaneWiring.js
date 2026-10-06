@@ -4,6 +4,7 @@ import { createFloatingSelectionButton } from './floatingSelectionButton.js';
 import { createSidePaneLauncherWiring } from './sidePaneLauncherWiring.js';
 import { createSidePaneWorkspaceServices } from './sidePaneWorkspaceServices.js';
 import { createSidePaneHostBindings } from './sidePaneHostBindings.js';
+import { registerSidePaneCommands } from './sidePaneCommands.js';
 import { defineNotificationsTabType } from '../ui-system/side-pane/tab-types/notifications.js';
 import { defineChatTabType } from '../ui-system/side-pane/tab-types/chat.js';
 import { defineCodeViewerTabType } from '../ui-system/side-pane/tab-types/code-viewer.js';
@@ -28,7 +29,7 @@ export function initWorkspaceSidePane({
     historyRef,
     subscriptions,
 }) {
-    const { root, resizerHandle, tabList, contentContainer, toggleNotificationsBtn, toggleChatBtn, closeBtn, addBtn } = elements;
+    const { root, resizerHandle, tabList, contentContainer, toggleNotificationsBtn, notificationsPanel, toggleChatBtn, closeBtn, addBtn } = elements;
     if (!root) return null;
 
 
@@ -39,6 +40,8 @@ export function initWorkspaceSidePane({
         tabListElement: tabList,
         contentContainer,
         toggleNotificationsBtn,
+        notificationsPanel,
+        notificationState: win.notificationCenter?.getStateChannel?.() || null,
         expandButton: toggleChatBtn,
         closeSidePaneBtn: closeBtn,
         addTabButton: addBtn,
@@ -46,19 +49,13 @@ export function initWorkspaceSidePane({
         electronAPI: chatAPI,
         persistence: { storage: win.localStorage }
     });
-    win.vcpSidePaneController = controller;
     subscriptions.add(controller);
+    const releaseDiagnostics = win.VCPLifecycleInspector?.setSidePaneDiagnosticsProvider?.(() => controller.getDiagnostics());
+    if (typeof releaseDiagnostics === 'function') subscriptions.add({ dispose: releaseDiagnostics });
 
     subscriptions.add(sideChat);
-    // 带工程号时让 V工程 页打开后直接定位到这个工程（projectforge.js 读同一个本地键）
-    const openProjectForge = (projectId) => {
-        if (typeof projectId === 'string' && projectId) {
-            try { win.localStorage.setItem('vcp-projectforge-focus', JSON.stringify({ id: projectId, at: Date.now() })); } catch (_e) { /* 打开窗口不受影响 */ }
-        }
-        const launcher = doc.querySelector('[data-action="open-project-forge-window"]');
-        if (launcher) launcher.click();
-        else chatAPI?.desktopCreateEmbeddedVchatApp?.('open-project-forge-window');
-    };
+    // 带工程号时让 V工程 页打开后直接定位到这个工程
+    const openProjectForge = (projectId) => win.VCPContributions?.commands?.execute?.('projectforge.open', { projectId });
 
     const deps = { document: doc, window: win, chatAPI, sidePaneController: controller, uiHelper };
     const codeViewer = defineCodeViewerTabType(deps);
@@ -66,10 +63,13 @@ export function initWorkspaceSidePane({
     const toolOutput = defineToolOutputTabType(deps);
     const planDetail = definePlanDetailTabType({ ...deps, historyRef, openProjectForge });
     const modelTrajectory = defineModelTrajectoryTabType({ ...deps, selectedItemRef, topicIdRef, chatManager });
-    // 消息右键「查看调用轨迹」从这里打开侧栏并定位到那次调用
-    const openModelTrajectory = (options = {}) => modelTrajectory.provider.openModelTrajectoryTab(options);
-    win.openModelTrajectory = openModelTrajectory;
-    subscriptions.add({ dispose: () => { if (win.openModelTrajectory === openModelTrajectory) delete win.openModelTrajectory; } });
+    // 消息右键「查看调用轨迹」、代码块「副屏」、通知开关、打开 V工程 都走命令（sidePaneCommands.js）
+    subscriptions.add(registerSidePaneCommands({
+        win,
+        chatAPI,
+        controller,
+        openModelTrajectory: (options = {}) => modelTrajectory.provider.openModelTrajectoryTab(options)
+    }));
     const terminal = defineTerminalTabType({ ...deps, onOpenUrl: url => browser.provider.openBrowserTab({ url, forceNew: true }) });
     for (const definition of [defineNotificationsTabType(), defineChatTabType({ provider: sideChat.provider, openSideChat: sideChat.openSideChat, onClosed: sideChat.onTabClosed }), codeViewer, browser, terminal, toolOutput, planDetail, modelTrajectory]) {
         controller.registerTabType(definition);
@@ -82,7 +82,7 @@ export function initWorkspaceSidePane({
         else if (shortcut?.action === 'cycle') controller.cycleTab(shortcut.delta);
     });
     if (typeof unsubscribeBrowserShortcut === 'function') subscriptions.add({ dispose: unsubscribeBrowserShortcut });
-    subscriptions.add(createSidePaneWorkspaceServices({ doc, win, chatAPI, chatManager, uiHelper, historyRef, codeViewerProvider: codeViewer.provider, toolOutputProvider: toolOutput.provider, planDetailProvider: planDetail.provider }));
+    subscriptions.add(createSidePaneWorkspaceServices({ doc, win, chatAPI, chatManager, uiHelper, historyRef, controller, codeViewerProvider: codeViewer.provider, toolOutputProvider: toolOutput.provider, planDetailProvider: planDetail.provider }));
     subscriptions.add(createSidePaneLauncherWiring({ doc, win, chatAPI, chatManager, uiHelper, selectedItemRef, controller }));
     subscriptions.add(createSidePaneHostBindings({ win, chatAPI, uiHelper, chatManager, selectedItemRef, topicIdRef, toggleChatBtn, controller, restoreSessions: sideChat.restoreSessions }));
     subscriptions.add(createFloatingSelectionButton({ doc, win, notify: (message, type) => uiHelper?.showToastNotification?.(message, type) }));

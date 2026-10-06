@@ -35,8 +35,11 @@ function createFixture(options = {}) {
     };
     const chatManagerSource = fs.readFileSync('modules/chatManager.js', 'utf8')
         .replace(/import\s*\{[\s\S]*?\}\s*from\s*['"]\.\/chat\/singleChatRequestOrchestrator\.js['"];\s*/, '')
+        .replace(/import\s*\{\s*publishConversationSelection\s*\}\s*from\s*['"][^'"]+['"];\s*/, '')
         .replace(/\bexport\s+(?=const\s+chatManager\b)/, '');
-    window.eval(`${chatManagerSource}\nwindow.__testChatManager = chatManager;`);
+    // 切换完成时发出去的会话，记下来给断言用
+    window.__publishedSelections = [];
+    window.eval(`const publishConversationSelection = selection => window.__publishedSelections.push(selection);\n${chatManagerSource}\nwindow.__testChatManager = chatManager;`);
     window.chatManager = window.__testChatManager;
 
     let selected = Object.freeze({ id: null, type: null, name: null, avatarUrl: null, config: null });
@@ -271,6 +274,7 @@ function createFixture(options = {}) {
         dom,
         window,
         chatManager: window.chatManager,
+        publishedSelections: window.__publishedSelections,
         initError,
         topicRequests,
         createTopicRequests,
@@ -360,6 +364,8 @@ test('a late assistant selection cannot overwrite the newer assistant topic and 
     assert.equal(state.rememberedTopicId, 'topic-b');
     assert.deepEqual(state.history.map(message => message.id), ['b-message']);
     assert.deepEqual(state.visibleMessageIds.filter(id => id?.endsWith('-message')), ['b-message']);
+    // 对外发布的当前会话也停在后选的那个
+    assert.deepEqual({ ...fixture.publishedSelections.at(-1) }, { itemId: 'agent-b', itemType: 'agent', topicId: 'topic-b' });
     fixture.dom.window.close();
 });
 

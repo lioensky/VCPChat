@@ -45,6 +45,27 @@ export async function loadXterm(doc) {
     return { Terminal: win.Terminal, FitAddon: win.FitAddon?.FitAddon };
 }
 
+// 休眠时终端画面（xterm 的宿主节点）先收进这里，会话和回滚记录不动；重新挂载时移回去
+function stashFor(doc) {
+    let stash = doc.querySelector('[data-side-terminal-stash]');
+    if (!stash && doc.body) {
+        stash = doc.createElement('div');
+        stash.hidden = true;
+        stash.setAttribute('data-side-terminal-stash', '');
+        stash.setAttribute('aria-hidden', 'true');
+        doc.body.appendChild(stash);
+    }
+    return stash;
+}
+
+/** 把终端画面从暂存处移到 parent；暂存处空了就一起拿掉 */
+function placeScreen(screen, parent) {
+    const previous = screen.parentElement;
+    if (parent) parent.append(screen);
+    else screen.remove();
+    if (previous !== parent && previous?.hasAttribute?.('data-side-terminal-stash') && !previous.firstChild) previous.remove();
+}
+
 export function createTerminalSideProvider({
     document: doc = document,
     api = (typeof window !== 'undefined' ? window.electronAPI : null),
@@ -53,6 +74,175 @@ export function createTerminalSideProvider({
     onOpenUrl = null // 点击终端里的 http(s) 链接：交给自带浏览器标签打开
 } = {}) {
     const kind = 'terminal';
+    // 标签打开期间的终端会话：xterm、对共享终端的连接、输出订阅都在这里，视图休眠不动它们，关标签才释放
+    const sessions = new WeakMap(); // occurrence -> session
+
+    /**
+     * @param {AbortSignal | null} signal 标签关掉时 abort；没有时（旧的两参数挂载）由视图的 dispose 一起释放
+     */
+    function createSession(xterm, signal) {
+        const screen = doc.createElement('div');
+        screen.className = 'side-terminal-screen';
+
+        const session = {
+            screen,
+            term: null,
+            fitAddon: null,
+            sessionId: null,
+            exited: false,
+            disposed: false,
+            generation: 0, // guards against a late create result after dispose / re-attach
+            connectionOperation: null,
+            status: { text: '连接中...', state: 'pending', title: '' },
+            view: null, // 当前挂着的视图：{ render() }
+            dispose: null
+        };
+
+        const initialTheme = buildTerminalTheme(doc, screen);
+        const term = new xterm.Terminal({
+            cursorBlink: true,
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+            fontSize: 13,
+            scrollback: 5000,
+            allowProposedApi: false,
+            theme: initialTheme
+        });
+        session.term = term;
+        // 外框底色由 CSS 给出，xterm 从外框读取同一颜色，明暗主题切换时跟着换调色板。
+        const applyTheme = () => {
+            const theme = buildTerminalTheme(doc, screen);
+            if (term?.options) term.options.theme = theme;
+        };
+        const ThemeObserver = doc.defaultView?.MutationObserver;
+        const themeObserver = ThemeObserver && doc.body ? new ThemeObserver(applyTheme) : null;
+        themeObserver?.observe(doc.body, { attributes: true, attributeFilter: ['class', 'data-vcp-theme'] });
+        if (xterm.FitAddon) {
+            session.fitAddon = new xterm.FitAddon();
+            term.loadAddon(session.fitAddon);
+        }
+
+        const setStatus = (text, state = 'pending', title = '') => {
+            session.status = { text, state, title };
+            session.view?.render();
+        };
+        session.setStatus = setStatus;
+
+        session.fit = () => {
+            if (session.disposed || !session.fitAddon || !screen.offsetWidth || !screen.offsetHeight) return;
+            try {
+                session.fitAddon.fit();
+            } catch (_error) {
+                // hidden or zero-size container
+            }
+        };
+
+        term.onData((data) => {
+            if (session.sessionId) api.terminalWrite?.(session.sessionId, data);
+        });
+        // The PTY has a single size shared by every view of it (this tab and the terminal window), so a view
+        // only pushes its size while it has focus, and claims it again whenever it gets focus.
+        const hasFocus = () => screen.contains(doc.activeElement);
+        session.claimSize = () => {
+            if (session.sessionId && !session.disposed) api.terminalResize?.(session.sessionId, term.cols, term.rows);
+        };
+        term.onResize(() => {
+            if (hasFocus()) session.claimSize();
+        });
+        screen.addEventListener('focusin', session.claimSize);
+
+        const unsubscribeData = api.onTerminalData?.((payload) => {
+            if (payload?.id === session.sessionId && typeof payload.data === 'string') term.write(payload.data);
+        });
+        const unsubscribeClear = api.onTerminalClear?.((payload) => {
+            if (payload?.id === session.sessionId) term.reset();
+        });
+        const unsubscribeExit = api.onTerminalExit?.((payload) => {
+            if (payload?.id !== session.sessionId) return;
+            session.exited = true;
+            term.write(`\r\n\x1b[2m[进程已退出，代码 ${payload.exitCode ?? '?'}，点击右上角刷新按钮重新启动]\x1b[0m\r\n`);
+            setStatus('终端已退出', 'exited');
+        });
+
+        // One admitted create/restart at a time; transport rejection remains retryable.
+        function runConnection(action) {
+            if (session.disposed) return Promise.resolve();
+            if (session.connectionOperation) return session.connectionOperation;
+            session.connectionOperation = Promise.resolve().then(() => {
+                if (!session.disposed) return action();
+            }).catch(error => {
+                if (session.disposed) return;
+                const message = error?.message || String(error);
+                setStatus(message, 'error');
+                term.write(`\x1b[31m${message}\x1b[0m\r\n`);
+            }).finally(() => { session.connectionOperation = null; });
+            return session.connectionOperation;
+        }
+
+        // Attaches this view to the shared terminal session (starting it when none is running).
+        session.attach = () => runConnection(async () => {
+            const myGeneration = ++session.generation;
+            session.fit();
+            setStatus('连接中...');
+            // 在屏上打开时带上自己的尺寸，让新会话一开始就按这个宽度排版
+            const res = await api.terminalCreate(screen.offsetWidth ? { cols: term.cols, rows: term.rows } : {});
+            if (session.disposed || myGeneration !== session.generation) {
+                if (res?.success) api.terminalKill?.(res.data.id);
+                return;
+            }
+            if (!res?.success) {
+                setStatus(res?.error || '终端启动失败', 'error');
+                term.write(`\x1b[31m${res?.error || '终端启动失败'}\x1b[0m\r\n`);
+                return;
+            }
+            session.sessionId = res.data.id;
+            session.exited = false;
+            setStatus('已连接终端', 'connected',
+                `已连接终端 · 与终端窗口 / AI 命令共用同一个会话${res.data.pid ? ` · PID ${res.data.pid}` : ''}`);
+            if (screen.offsetWidth) session.claimSize(); // opened on screen: take over the size
+        });
+
+        session.restart = () => {
+            if (session.disposed) return Promise.resolve();
+            if (session.connectionOperation) return session.connectionOperation;
+            if (session.sessionId && !doc.defaultView.confirm('重新启动共享终端？AI 工具、终端窗口和所有侧栏视图的当前命令都会中止。')) return;
+            if (!session.sessionId) return session.attach();
+            return runConnection(async () => {
+                setStatus('重启中...');
+                const res = await api.terminalRestart(session.sessionId);
+                if (session.disposed) return;
+                if (!res?.success) {
+                    setStatus(res?.error || '终端重启失败', 'error');
+                    return;
+                }
+                session.exited = false;
+                setStatus('已连接终端', 'connected');
+                session.claimSize();
+            });
+        };
+
+        session.dispose = () => {
+            if (session.disposed) return;
+            session.disposed = true;
+            session.generation += 1;
+            session.view = null;
+            themeObserver?.disconnect();
+            unsubscribeData?.();
+            unsubscribeClear?.();
+            unsubscribeExit?.();
+            // Only closes this view; the terminal session belongs to VCPChat's terminal.
+            if (session.sessionId) api.terminalKill?.(session.sessionId);
+            session.sessionId = null;
+            try {
+                term.dispose();
+            } catch (_error) {
+                // already disposed
+            }
+            placeScreen(screen, null);
+        };
+        signal?.addEventListener('abort', session.dispose, { once: true });
+
+        return session;
+    }
 
     return {
         kind,
@@ -73,23 +263,10 @@ export function createTerminalSideProvider({
             });
         },
 
-        async mountTab(tab, viewElement) {
+        async mountTab(tab, viewElement, { occurrence = null } = {}) {
             if (!viewElement) return null;
             viewElement.innerHTML = '';
             viewElement.classList.add('side-terminal-view');
-
-            let isDisposed = false;
-            let term = null;
-            let fitAddon = null;
-            let sessionId = null;
-            let generation = 0; // guards against a late create result after dispose / re-attach
-            let connectionOperation = null;
-            let exited = false;
-            let unsubscribeData = null;
-            let unsubscribeClear = null;
-            let unsubscribeExit = null;
-            let resizeObserver = null;
-            let resizeTimer = null;
 
             const container = doc.createElement('div');
             container.className = 'side-terminal-container';
@@ -144,24 +321,20 @@ export function createTerminalSideProvider({
             actions.append(clearBtn, divider, restartBtn);
 
             toolbar.append(wsPill, statusEl, actions);
-
-            const screen = doc.createElement('div');
-            screen.className = 'side-terminal-screen';
-
-            container.append(toolbar, screen);
+            container.append(toolbar);
             viewElement.appendChild(container);
 
             // state: connected | pending | exited | error
-            const setStatus = (text, state = 'pending') => {
+            const renderStatus = ({ text, state = 'pending', title = '' }) => {
                 statusEl.textContent = state === 'connected' ? '' : text;
                 statusEl.dataset.state = state;
                 statusEl.classList.toggle('is-error', state === 'error');
                 statusDot.dataset.state = state;
-                wsSelect.title = `${text} · 选择工作区，在终端里切到它的根目录`;
+                wsSelect.title = title || `${text} · 选择工作区，在终端里切到它的根目录`;
             };
 
             if (typeof api?.terminalCreate !== 'function') {
-                setStatus('当前窗口不支持终端', 'error');
+                renderStatus({ text: '当前窗口不支持终端', state: 'error' });
                 return { focus() {}, dispose() { viewElement.innerHTML = ''; } };
             }
 
@@ -181,167 +354,69 @@ export function createTerminalSideProvider({
             }
             wsSelect.disabled = wsSelect.options.length <= 1;
 
-            let xterm;
-            try {
-                xterm = await xtermLoader(doc);
-            } catch (err) {
-                setStatus(`终端组件加载失败: ${err?.message || err}`, 'error');
-                return { focus() {}, dispose() { viewElement.innerHTML = ''; } };
-            }
-            if (isDisposed) return null;
-
-            const initialTheme = buildTerminalTheme(doc, screen);
-            term = new xterm.Terminal({
-                cursorBlink: true,
-                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-                fontSize: 13,
-                scrollback: 5000,
-                allowProposedApi: false,
-                theme: initialTheme
-            });
-            // 外框底色由 CSS 给出，xterm 从外框读取同一颜色，明暗主题切换时跟着换调色板。
-            const applyTheme = () => {
-                const theme = buildTerminalTheme(doc, screen);
-                if (term?.options) term.options.theme = theme;
-            };
-            const ThemeObserver = doc.defaultView?.MutationObserver;
-            const themeObserver = ThemeObserver && doc.body ? new ThemeObserver(applyTheme) : null;
-            themeObserver?.observe(doc.body, { attributes: true, attributeFilter: ['class', 'data-vcp-theme'] });
-            if (xterm.FitAddon) {
-                fitAddon = new xterm.FitAddon();
-                term.loadAddon(fitAddon);
-            }
-            term.open(screen);
-
-            if (onOpenUrl && typeof term.registerLinkProvider === 'function') {
-                term.registerLinkProvider({
-                    provideLinks(bufferLineNumber, callback) {
-                        const links = getHttpLinksForTerminalBufferLine(term.buffer.active, bufferLineNumber, term.cols);
-                        callback(links?.map(link => ({
-                            ...link,
-                            activate(event, text) {
-                                event?.preventDefault?.();
-                                onOpenUrl(text);
-                            }
-                        })));
-                    }
-                });
-            }
-
-            const fit = () => {
-                if (isDisposed || !fitAddon || !screen.offsetWidth || !screen.offsetHeight) return;
+            // 休眠后重新挂载：接回同一个会话，画面和回滚记录都还在
+            let session = occurrence ? sessions.get(occurrence) : null;
+            if (session?.disposed) session = null;
+            const resumed = Boolean(session);
+            if (!session) {
+                let xterm;
                 try {
-                    fitAddon.fit();
-                } catch (_error) {
-                    // hidden or zero-size container
+                    xterm = await xtermLoader(doc);
+                } catch (err) {
+                    renderStatus({ text: `终端组件加载失败: ${err?.message || err}`, state: 'error' });
+                    return { focus() {}, dispose() { viewElement.innerHTML = ''; } };
                 }
-            };
-
-            term.onData((data) => {
-                if (sessionId) api.terminalWrite?.(sessionId, data);
-            });
-            // The PTY has a single size shared by every view of it (this tab and the terminal window), so a view
-            // only pushes its size while it has focus, and claims it again whenever it gets focus.
-            const hasFocus = () => screen.contains(doc.activeElement);
-            const claimSize = () => {
-                if (sessionId && !isDisposed) api.terminalResize?.(sessionId, term.cols, term.rows);
-            };
-            term.onResize(() => {
-                if (hasFocus()) claimSize();
-            });
-            screen.addEventListener('focusin', claimSize);
-
-            unsubscribeData = api.onTerminalData?.((payload) => {
-                if (payload?.id === sessionId && typeof payload.data === 'string') term.write(payload.data);
-            });
-            unsubscribeClear = api.onTerminalClear?.((payload) => {
-                if (payload?.id === sessionId) term.reset();
-            });
-            unsubscribeExit = api.onTerminalExit?.((payload) => {
-                if (payload?.id !== sessionId) return;
-                exited = true;
-                term.write(`\r\n\x1b[2m[进程已退出，代码 ${payload.exitCode ?? '?'}，点击右上角刷新按钮重新启动]\x1b[0m\r\n`);
-                setStatus('终端已退出', 'exited');
-            });
-
-            // One admitted create/restart at a time; transport rejection remains retryable.
-            function runConnection(action) {
-                if (isDisposed) return Promise.resolve();
-                if (connectionOperation) return connectionOperation;
-                connectionOperation = Promise.resolve().then(() => {
-                    if (!isDisposed) return action();
-                }).catch(error => {
-                    if (isDisposed) return;
-                    const message = error?.message || String(error);
-                    setStatus(message, 'error');
-                    term.write(`\x1b[31m${message}\x1b[0m\r\n`);
-                }).finally(() => { connectionOperation = null; });
-                return connectionOperation;
+                if (occurrence?.signal?.aborted) return null;
+                session = createSession(xterm, occurrence?.signal || null);
+                if (occurrence) sessions.set(occurrence, session);
             }
+            const { term, screen } = session;
+            placeScreen(screen, container);
 
-            // Attaches this view to the shared terminal session (starting it when none is running).
-            function attachSession() {
-                return runConnection(async () => {
-                    const myGeneration = ++generation;
-                    fit();
-                    setStatus('连接中...');
-                    // 在屏上打开时带上自己的尺寸，让新会话一开始就按这个宽度排版
-                    const res = await api.terminalCreate(screen.offsetWidth ? { cols: term.cols, rows: term.rows } : {});
-                    if (isDisposed || myGeneration !== generation) {
-                        if (res?.success) api.terminalKill?.(res.data.id);
-                        return;
-                    }
-                    if (!res?.success) {
-                        setStatus(res?.error || '终端启动失败', 'error');
-                        term.write(`\x1b[31m${res?.error || '终端启动失败'}\x1b[0m\r\n`);
-                        return;
-                    }
-                    sessionId = res.data.id;
-                    exited = false;
-                    setStatus('已连接终端', 'connected');
-                    wsSelect.title = `已连接终端 · 与终端窗口 / AI 命令共用同一个会话${res.data.pid ? ` · PID ${res.data.pid}` : ''}`;
-                    if (screen.offsetWidth) claimSize(); // opened on screen: take over the size
-                });
-            }
+            let viewReleased = false;
+            let resizeObserver = null;
+            let resizeTimer = null;
+            const view = { render: () => renderStatus(session.status) };
+            session.view = view;
+            view.render();
 
-            function restartSession() {
-                if (isDisposed) return Promise.resolve();
-                if (connectionOperation) return connectionOperation;
-                if (sessionId && !doc.defaultView.confirm('重新启动共享终端？AI 工具、终端窗口和所有侧栏视图的当前命令都会中止。')) return;
-                if (!sessionId) return attachSession();
-                return runConnection(async () => {
-                    setStatus('重启中...');
-                    const res = await api.terminalRestart(sessionId);
-                    if (isDisposed) return;
-                    if (!res?.success) {
-                        setStatus(res?.error || '终端重启失败', 'error');
-                        return;
-                    }
-                    exited = false;
-                    setStatus('已连接终端', 'connected');
-                    claimSize();
-                });
+            if (!resumed) {
+                term.open(screen);
+                if (onOpenUrl && typeof term.registerLinkProvider === 'function') {
+                    term.registerLinkProvider({
+                        provideLinks(bufferLineNumber, callback) {
+                            const links = getHttpLinksForTerminalBufferLine(term.buffer.active, bufferLineNumber, term.cols);
+                            callback(links?.map(link => ({
+                                ...link,
+                                activate(event, text) {
+                                    event?.preventDefault?.();
+                                    onOpenUrl(text);
+                                }
+                            })));
+                        }
+                    });
+                }
             }
 
             wsSelect.addEventListener('change', async () => {
                 const workspaceId = wsSelect.value;
                 wsSelect.value = GO_OPTION_VALUE;
-                if (!workspaceId || !sessionId) return;
-                if (exited) {
-                    setStatus('终端已退出，请先重新启动', 'error');
+                if (!workspaceId || !session.sessionId) return;
+                if (session.exited) {
+                    session.setStatus('终端已退出，请先重新启动', 'error');
                     return;
                 }
-                const res = await api.terminalChangeDirectory(sessionId, workspaceId);
-                if (isDisposed) return;
+                const res = await api.terminalChangeDirectory(session.sessionId, workspaceId);
+                if (session.disposed) return;
                 if (!res?.success) {
-                    setStatus(res?.error || '切换目录失败', 'error');
+                    session.setStatus(res?.error || '切换目录失败', 'error');
                     return;
                 }
-                setStatus('已连接终端', 'connected');
+                session.setStatus('已连接终端', 'connected', session.status.title);
                 term.focus();
             });
             restartBtn.addEventListener('click', () => {
-                restartSession();
+                session.restart();
                 term.focus();
             });
             clearBtn.addEventListener('click', () => {
@@ -352,43 +427,39 @@ export function createTerminalSideProvider({
             if (typeof doc.defaultView.ResizeObserver === 'function') {
                 resizeObserver = new doc.defaultView.ResizeObserver(() => {
                     clearTimeout(resizeTimer);
-                    resizeTimer = setTimeout(fit, 30);
+                    resizeTimer = setTimeout(session.fit, 30);
                 });
                 resizeObserver.observe(screen);
             }
 
-            fit();
-            await attachSession();
+            session.fit();
+            if (!resumed) await session.attach();
+
+            const releaseView = () => {
+                if (viewReleased) return;
+                viewReleased = true;
+                clearTimeout(resizeTimer);
+                resizeObserver?.disconnect();
+                if (session.view === view) session.view = null;
+                if (!session.disposed && occurrence && !occurrence.signal?.aborted) {
+                    stashFor(doc)?.appendChild(screen);
+                } else {
+                    session.dispose();
+                }
+                viewElement.innerHTML = '';
+            };
 
             return {
                 focus() {
-                    fit();
+                    session.fit();
                     term?.focus();
-                    claimSize();
+                    session.claimSize();
                 },
                 getSessionId() {
-                    return sessionId;
+                    return session.sessionId;
                 },
-                dispose() {
-                    if (isDisposed) return;
-                    isDisposed = true;
-                    generation += 1;
-                    clearTimeout(resizeTimer);
-                    resizeObserver?.disconnect();
-                    themeObserver?.disconnect();
-                    unsubscribeData?.();
-                    unsubscribeClear?.();
-                    unsubscribeExit?.();
-                    // Only closes this view; the terminal session belongs to VCPChat's terminal.
-                    if (sessionId) api.terminalKill?.(sessionId);
-                    sessionId = null;
-                    try {
-                        term?.dispose();
-                    } catch (_error) {
-                        // already disposed
-                    }
-                    viewElement.innerHTML = '';
-                }
+                // 视图释放（休眠或关标签）：画面收进暂存区；标签关掉时 occurrence 的 signal 再把会话释放
+                dispose: releaseView
             };
         }
     };

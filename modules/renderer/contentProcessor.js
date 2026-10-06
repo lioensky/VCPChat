@@ -625,9 +625,8 @@ function setupSingleCodeCopyButton(preElement, rawText) {
         event.stopPropagation();
         event.stopImmediatePropagation();
 
-        const sideCtrl = (typeof window !== 'undefined' ? window.vcpSidePaneController : null)
-            || (typeof globalThis !== 'undefined' ? globalThis.vcpSidePaneController : null);
-        if (sideCtrl?.openTab) {
+        const commands = globalThis.VCPContributions?.commands;
+        if (commands?.get('sidepane.open-tab')) {
             const codeEl = preElement.querySelector('code');
             const classList = codeEl ? Array.from(codeEl.classList) : [];
             const langClass = classList.find(c => c.startsWith('language-'));
@@ -635,7 +634,7 @@ function setupSingleCodeCopyButton(preElement, rawText) {
             // 同一段代码重复点击回到已有标签，不再堆出重复标签
             let hash = 5381;
             for (let i = 0; i < codeText.length; i++) hash = ((hash * 33) ^ codeText.charCodeAt(i)) >>> 0;
-            sideCtrl.openTab({
+            commands.execute('sidepane.open-tab', {
                 id: `code-viewer:snippet-${hash.toString(36)}-${codeText.length}`,
                 kind: 'code-viewer',
                 title: `${language.toUpperCase()} 代码片段`,

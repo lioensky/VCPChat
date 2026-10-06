@@ -438,13 +438,14 @@ const psCall = command => REQ(`tool_name:「始」PowerShellExecutor「末」,
 command:「始」${command}「末」`);
 
 function scopedSetup({ history, api = {}, panelOptions = {} }) {
-    const conversation = { history, switchListeners: new Set() };
+    const conversation = { history, switchListeners: new Set(), historyListeners: new Set() };
     const made = setup({
         api,
         panelOptions: {
             ...panelOptions,
             getHistory: () => conversation.history,
-            onConversationChange: cb => { conversation.switchListeners.add(cb); return () => conversation.switchListeners.delete(cb); }
+            onConversationChange: cb => { conversation.switchListeners.add(cb); return () => conversation.switchListeners.delete(cb); },
+            onHistoryChange: cb => { conversation.historyListeners.add(cb); return () => conversation.historyListeners.delete(cb); }
         }
     });
     const switchTo = async history => {
@@ -646,21 +647,20 @@ test('scoped panel: a project from another workspace brings its own plan but no 
 });
 
 test('scoped panel: a project mentioned after the history loaded appears without switching', async () => {
-    const { doc, dom, panel, conversation } = scopedSetup({ history: [{ role: 'user', content: '开始吧' }] });
-    const messages = doc.createElement('div');
-    messages.id = 'chatMessages';
-    doc.body.appendChild(messages);
+    const { doc, panel, conversation } = scopedSetup({ history: [{ role: 'user', content: '开始吧' }] });
     panel.mount();
     await flush();
     assert.equal(q(doc, '.zc-status-layer').hidden, true);
 
     conversation.history = [...conversation.history, { role: 'assistant', content: forgeCall('p1') }];
-    messages.appendChild(doc.createElement('div')); // 聊天区多了一条消息
+    conversation.historyListeners.forEach(cb => cb()); // 当前会话的记录写了一次
     await new Promise(resolve => setTimeout(resolve, 900));
     assert.equal(q(doc, '.zc-status-layer').hidden, false);
     assert.equal(doc.querySelectorAll('[data-status-section="plan"]').length, 1);
+
+    // 卸载后不再挂着记录变化的订阅
     panel.dispose();
-    void dom;
+    assert.equal(conversation.historyListeners.size, 0);
 });
 
 test('switching workspace while staging cannot commit or push the new workspace', async () => {

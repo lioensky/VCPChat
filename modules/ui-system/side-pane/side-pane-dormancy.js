@@ -1,0 +1,75 @@
+/*
+ * 副屏标签的休眠策略：决定哪些已挂载的视图该释放（标签本身留着，再显示时重新挂载）。
+ *   - 隐藏超过 hiddenMs（默认 5 分钟）；
+ *   - 属于别的对话的标签（scopeMode 'topic'）离开当前对话超过 otherTopicMs，来回切换时不会马上重建；
+ *   - 同时挂着的视图超过 maxLiveViews 时，最久没显示的先休眠。
+ * 不休眠：正在显示的、类型声明 dormancy 'keep' 的、视图报告自己正忙的（加载中、在放声音、命令还在跑……），
+ * 忙的到期后隔 busyRetryMs 再看一次。
+ * 这里只做判断，不碰 DOM 和定时器，控制器负责执行和定时。
+ */
+
+export const DORMANCY_DEFAULTS = Object.freeze({
+    hiddenMs: 5 * 60_000,
+    otherTopicMs: 30_000,
+    maxLiveViews: 8,
+    busyRetryMs: 60_000
+});
+
+/**
+ * @typedef {object} DormancyCandidate
+ * @property {string} tabId
+ * @property {boolean} shown 正在显示
+ * @property {'none' | 'detach' | 'keep'} dormancy
+ * @property {boolean} busy
+ * @property {boolean} otherTopic 属于别的对话
+ * @property {number | null} hiddenSince 从什么时候开始不显示；一直没显示过的用挂载时间
+ * @property {number} lastShownAt 最近一次显示的时间，没显示过为 0
+ * @property {number} openedAt
+ */
+
+const byLeastRecentlyShown = (a, b) => (a.lastShownAt - b.lastShownAt)
+    || (a.openedAt - b.openedAt)
+    || a.tabId.localeCompare(b.tabId);
+
+/**
+ * @param {DormancyCandidate[]} candidates 当前挂着的视图
+ * @param {{ now: number } & Partial<typeof DORMANCY_DEFAULTS>} options
+ * @returns {{ release: Array<{ tabId: string, reason: 'hidden' | 'other-topic' | 'view-limit' }>, nextCheckAt: number | null }}
+ */
+export function selectDormantViews(candidates, options) {
+    const { now, hiddenMs, otherTopicMs, maxLiveViews, busyRetryMs } = { ...DORMANCY_DEFAULTS, ...options };
+    const release = [];
+    const released = new Set();
+    let nextCheckAt = null;
+    const later = at => { nextCheckAt = nextCheckAt === null ? at : Math.min(nextCheckAt, at); };
+    const sleepable = candidate => !candidate.shown && candidate.dormancy !== 'keep';
+
+    for (const candidate of candidates) {
+        if (!sleepable(candidate)) continue;
+        const reason = candidate.otherTopic ? 'other-topic' : 'hidden';
+        const due = (candidate.hiddenSince ?? now) + (candidate.otherTopic ? otherTopicMs : hiddenMs);
+        if (due > now) {
+            later(due);
+        } else if (candidate.busy) {
+            later(now + busyRetryMs);
+        } else {
+            release.push({ tabId: candidate.tabId, reason });
+            released.add(candidate.tabId);
+        }
+    }
+
+    let live = candidates.length - released.size;
+    if (live > maxLiveViews) {
+        const victims = candidates
+            .filter(candidate => sleepable(candidate) && !candidate.busy && !released.has(candidate.tabId))
+            .sort(byLeastRecentlyShown);
+        for (const victim of victims) {
+            if (live <= maxLiveViews) break;
+            release.push({ tabId: victim.tabId, reason: 'view-limit' });
+            live -= 1;
+        }
+        // 超出上限但剩下的都在忙：过一会儿再看
+        if (live > maxLiveViews && candidates.some(candidate => sleepable(candidate) && candidate.busy)) later(now + busyRetryMs);
+    }
+    return { release, nextCheckAt };
+}

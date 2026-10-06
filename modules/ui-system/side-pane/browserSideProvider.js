@@ -471,6 +471,15 @@ export function createBrowserSideProvider({
                     if (result?.url) navigate(result.url);
                     return result;
                 },
+                // 还在加载或者在放声音的页面不休眠，休眠了再显示会从当前地址重新打开
+                isBusy() {
+                    if (loading) return true;
+                    try {
+                        return domReady && webview?.isCurrentlyAudible?.() === true;
+                    } catch (_error) {
+                        return false;
+                    }
+                },
                 dispose() {
                     if (isDisposed) return;
                     isDisposed = true;

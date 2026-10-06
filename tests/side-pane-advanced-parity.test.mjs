@@ -7,6 +7,7 @@ import * as SidePaneState from '../modules/ui-system/side-pane/side-pane-state.j
 import { sideChatTab } from '../modules/ui-system/side-pane/tab-types/chat.js';
 
 const openChat = (state, descriptor) => SidePaneState.openTab(state, sideChatTab(descriptor, state.tabs));
+import '../modules/ui-system/state-channel.js';
 import { createSidePaneController } from '../modules/ui-system/side-pane/side-pane-controller.js';
 import { defineChatTabType } from '../modules/ui-system/side-pane/tab-types/chat.js';
 import { mountSideChatSurface } from '../modules/renderer/sideChatSurfaceOwner.js';
@@ -375,10 +376,21 @@ function hostNotificationsInLauncher(doc) {
         '<button type="button" data-launcher-tab="notifications" aria-selected="false">通知<span class="side-pane-launcher-tab-status" data-status="unknown"></span></button>');
     launcher.insertAdjacentHTML('beforeend', `
         <section data-launcher-section="notifications" hidden>
-            <aside id="notificationsSidebar">
-                <div id="vcpLogConnectionStatus" data-status="unknown"><span class="notifications-status-text">VCPLog: 未连接</span></div>
-            </aside>
+            <aside id="notificationsSidebar"></aside>
         </section>`);
+}
+
+// 通知中心发布的状态（连接 + 各类计数），侧栏只读这个
+function createNotificationState() {
+    const channel = new globalThis.VCPStateChannels.StateChannel('notification-center', {
+        counts: { all: 0, pending: 0, info: 0, error: 0, resolved: 0 },
+        connection: { status: 'unknown', text: 'VCPLog: 未连接' }
+    });
+    return {
+        channel,
+        setConnection: (status, text) => channel.publish({ ...channel.get(), connection: { status, text } }),
+        setCounts: counts => channel.publish({ ...channel.get(), counts: { ...channel.get().counts, ...counts } })
+    };
 }
 
 test('Parity: notifications live in the new tab page instead of the tab strip', async () => {
@@ -390,8 +402,13 @@ test('Parity: notifications live in the new tab page instead of the tab strip', 
     const tools = launcher.querySelector('[data-launcher-section="tools"]');
     const notifications = launcher.querySelector('[data-launcher-section="notifications"]');
     const segment = tabs.querySelector('[data-launcher-tab="notifications"]');
+    const notificationState = createNotificationState();
     const ctrl = createController(dom, {
-        controller: { openTabEntries: [{ id: 'a', label: 'A', open() {} }, { id: 'b', label: 'B', open() {} }] }
+        controller: {
+            openTabEntries: [{ id: 'a', label: 'A', open() {} }, { id: 'b', label: 'B', open() {} }],
+            notificationsPanel: doc.getElementById('notificationsSidebar'),
+            notificationState: notificationState.channel
+        }
     });
     const stripTabIds = () => [...doc.querySelectorAll('.side-pane-tabs .side-pane-tab')].map(btn => btn.getAttribute('data-tab-id'));
 
@@ -408,10 +425,7 @@ test('Parity: notifications live in the new tab page instead of the tab strip', 
     assert.equal(launcher.dataset.launcherSegment, 'notifications');
 
     // 连接状态挂在通知分类上
-    const status = doc.getElementById('vcpLogConnectionStatus');
-    status.dataset.status = 'open';
-    status.querySelector('.notifications-status-text').textContent = 'VCPLog: 已连接';
-    await tick();
+    notificationState.setConnection('open', 'VCPLog: 已连接');
     assert.equal(segment.querySelector('.side-pane-launcher-tab-status').dataset.status, 'open');
     assert.equal(segment.getAttribute('aria-label'), '通知，VCPLog 已连接');
 
@@ -473,17 +487,15 @@ test('Parity: the tools page shows a VCPLog card that opens the notifications', 
                 </span>
             </button>
         </div>`);
-    doc.getElementById('notificationsSidebar').insertAdjacentHTML('beforeend', `
-        <div id="notificationToolbar">
-            <button data-filter="pending">待审批<span class="notification-chip-count"></span></button>
-            <button data-filter="error">错误<span class="notification-chip-count"></span></button>
-        </div>`);
     const group = tools.querySelector('[data-launcher-group="notifications"]');
     const card = group.querySelector('.side-pane-launcher-notice');
     const title = card.querySelector('.side-pane-launcher-notice-title');
     const meta = card.querySelector('.side-pane-launcher-notice-meta');
     const icon = card.querySelector('.vcp-ui-icon');
-    const ctrl = createController(dom);
+    const notificationState = createNotificationState();
+    const ctrl = createController(dom, {
+        controller: { notificationsPanel: doc.getElementById('notificationsSidebar'), notificationState: notificationState.channel }
+    });
 
     // 没有工具入口也显示工具页，卡片在里面
     ctrl.setVisible(true, { animate: false });
@@ -496,26 +508,19 @@ test('Parity: the tools page shows a VCPLog card that opens the notifications', 
     assert.equal(meta.textContent, '未连接');
     assert.equal(icon.textContent, 'notifications_off');
 
-    const status = doc.getElementById('vcpLogConnectionStatus');
-    status.dataset.status = 'open';
-    status.querySelector('.notifications-status-text').textContent = 'VCPLog: 已连接';
-    await tick();
+    notificationState.setConnection('open', 'VCPLog: 已连接');
     assert.equal(card.dataset.status, 'open');
     assert.equal(title.textContent, 'VCPLog 已连接');
     assert.equal(meta.textContent, '暂无待处理');
     assert.equal(icon.textContent, 'notifications');
 
     // 通知中心更新计数后卡片跟着变
-    doc.querySelector('#notificationToolbar [data-filter="pending"] .notification-chip-count').textContent = '2';
-    doc.querySelector('#notificationToolbar [data-filter="error"] .notification-chip-count').textContent = '1';
-    await tick();
+    notificationState.setCounts({ pending: 2, error: 1 });
     assert.equal(meta.textContent, '2 项待审批 · 1 条错误');
     assert.equal(card.dataset.attention, 'pending');
 
     // 断开时把原因放在第二行
-    status.dataset.status = 'closed';
-    status.querySelector('.notifications-status-text').textContent = 'VCPLog: 连接已断开 (1006)';
-    await tick();
+    notificationState.setConnection('closed', 'VCPLog: 连接已断开 (1006)');
     assert.equal(title.textContent, 'VCPLog 未连接');
     assert.equal(meta.textContent, '连接已断开 (1006) · 2 项待审批 · 1 条错误');
     assert.match(card.getAttribute('aria-label'), /打开通知$/);

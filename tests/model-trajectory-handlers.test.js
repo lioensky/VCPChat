@@ -82,3 +82,29 @@ test('lists, clears and watches trajectory records for the main window only', as
         fs.rmSync(path.dirname(rootDir), { recursive: true, force: true });
     }
 });
+
+test('pushes stop once every tab of a page has unwatched', async () => {
+    const rootDir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'vcp-trajectory-unwatch-')), 'ModelTrajectory');
+    trajectoryHandlers.initialize({ rootDir });
+    const record = (requestId) => beginTrajectoryCall({ sessionKey: 'a__t', requestId, source: { kind: 'main' }, model: 'm', params: {}, messages: [] }).finish();
+    const pushes = (sender) => sender.sent.filter((entry) => entry.channel === 'model-trajectory:changed').length;
+    try {
+        const sender = new FakeSender();
+        await call('model-trajectory:watch', sender);
+        await call('model-trajectory:watch', sender);
+        assert.equal((await call('model-trajectory:unwatch', sender)).success, true);
+        record('m1');
+        await wait(200);
+        assert.equal(pushes(sender), 1, 'one tab still watching');
+
+        await call('model-trajectory:unwatch', sender);
+        record('m2');
+        await wait(200);
+        assert.equal(pushes(sender), 1, 'nobody watching: nothing is pushed');
+        assert.equal((await call('model-trajectory:unwatch', sender)).success, true, 'an extra unwatch is harmless');
+        assert.equal((await call('model-trajectory:unwatch', new FakeSender('https://evil.example/x.html'))).success, false);
+    } finally {
+        trajectoryHandlers.disposeAll();
+        fs.rmSync(path.dirname(rootDir), { recursive: true, force: true });
+    }
+});

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
+import '../modules/ui-system/state-channel.js';
 import { createSidePaneController } from '../modules/ui-system/side-pane/side-pane-controller.js';
 import * as SidePaneState from '../modules/ui-system/side-pane/side-pane-state.js';
 import {
@@ -218,19 +219,23 @@ test('controller: the 通知 tab mirrors the VCPLog connection status', async ()
         <aside id="vcpSidePane">
             <div class="side-pane-tabs"></div>
             <div class="side-pane-content-container">
-                <section class="side-pane-view active" id="sidePaneViewNotifications">
-                    <div id="vcpLogConnectionStatus" data-status="connecting"><span class="notifications-status-text">VCPLog: 连接中...</span></div>
-                </section>
+                <section class="side-pane-view active" id="sidePaneViewNotifications"></section>
             </div>
         </aside>
     `, { pretendToBeVisual: true });
     const doc = dom.window.document;
     const root = doc.getElementById('vcpSidePane');
+    // 通知中心发布的状态：连接状态从这里读，不再看通知面板的 DOM
+    const notificationState = new globalThis.VCPStateChannels.StateChannel('notification-center', {
+        counts: { all: 0, pending: 0, info: 0, error: 0, resolved: 0 },
+        connection: { status: 'connecting', text: 'VCPLog: 连接中...' }
+    });
     const controller = createSidePaneController({
         root,
         tabListElement: root.querySelector('.side-pane-tabs'),
         contentContainer: root.querySelector('.side-pane-content-container'),
-        providers: {}
+        providers: {},
+        notificationState
     });
     controller.show?.();
     const tab = () => root.querySelector('.side-pane-tab[data-tab-id="notifications"]');
@@ -238,10 +243,7 @@ test('controller: the 通知 tab mirrors the VCPLog connection status', async ()
     assert.equal(tab().getAttribute('aria-label'), '通知，VCPLog: 连接中...');
     assert.equal(tab().querySelector('.tab-title').textContent, 'VCPLog 连接中...');
 
-    const status = doc.getElementById('vcpLogConnectionStatus');
-    status.dataset.status = 'open';
-    status.querySelector('.notifications-status-text').textContent = 'VCPLog: 已连接';
-    await new Promise(r => setTimeout(r, 0));
+    notificationState.publish({ ...notificationState.get(), connection: { status: 'open', text: 'VCPLog: 已连接' } });
     assert.equal(tab().querySelector('.side-pane-tab-status').dataset.status, 'open');
     assert.equal(tab().getAttribute('aria-label'), '通知，VCPLog: 已连接');
     assert.equal(tab().querySelector('.tab-title').textContent, 'VCPLog 已连接');

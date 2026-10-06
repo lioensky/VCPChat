@@ -5,6 +5,7 @@ import {
     mountSideChatSurface,
     createSideChatSurfaceOwner
 } from '../modules/renderer/sideChatSurfaceOwner.js';
+import { installMainComposer } from './helpers/main-composer.mjs';
 
 function createMockChatCapabilities() {
     let sentRequest = null;
@@ -207,13 +208,12 @@ test('mountSideChatSurface keeps a minimal composer and offers send-to-main on a
     const mainInput = doc.getElementById('messageInput');
 
     let toastMessage = null;
-    const caps = {
-        ...createMockChatCapabilities(),
-        uiHelper: {
-            showToastNotification: (msg) => { toastMessage = msg; },
-            autoResizeTextarea: (el) => { if (el === mainInput) autoResized = true; }
-        }
+    const uiHelper = {
+        showToastNotification: (msg) => { toastMessage = msg; },
+        autoResizeTextarea: (el) => { if (el === mainInput) autoResized = true; }
     };
+    const caps = { ...createMockChatCapabilities(), uiHelper };
+    installMainComposer(dom.window, { uiHelper });
 
     const parentSnapshot = [
         { id: 'p1', role: 'user', content: 'What is Python?' },

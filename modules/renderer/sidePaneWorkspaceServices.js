@@ -3,8 +3,9 @@ import { createMessageFileChanges } from '../ui-system/message-file-changes.js';
 import { createConversationStatusPanel } from '../ui-system/conversation-status-panel.js';
 import { getParentKey } from '../ui-system/side-pane/side-pane-state.js';
 import { followGitWorkspace } from '../ui-system/side-pane/git/git-view.js';
+import { watchConversationHistory } from '../ui-system/sources/conversation-current.js';
 
-export function createSidePaneWorkspaceServices({ doc, win, chatAPI, chatManager, uiHelper, historyRef, codeViewerProvider, toolOutputProvider, planDetailProvider }) {
+export function createSidePaneWorkspaceServices({ doc, win, chatAPI, chatManager, uiHelper, historyRef, controller, codeViewerProvider, toolOutputProvider, planDetailProvider }) {
     const owners = [];
     const subscriptions = { add: owner => owners.push(owner) };
     // 回答下方的「本轮改动」：文件名打开代码查看，+N -N 打开计划标签的 Git 页定位到该文件
@@ -35,12 +36,12 @@ export function createSidePaneWorkspaceServices({ doc, win, chatAPI, chatManager
         onOpenPlanDetail: (_project, focus = null) => planDetailProvider.openPlanDetailTab({ focus }),
         onOpenToolOutput: (run) => toolOutputProvider.openToolOutputTab({ runId: run?.id }),
         getTopicKey: () => {
-            const parent = win.vcpSidePaneController?.getSnapshot?.()?.parent;
+            const parent = controller?.getSnapshot?.()?.parent;
             return parent ? getParentKey(parent) : '';
         },
         onScopeWorkspace: (workspace) => followGitWorkspace(win, workspace.id),
         getHistory: () => historyRef.get() || [],
-        messagesRoot: doc.getElementById('chatMessages'),
+        onHistoryChange: (callback) => watchConversationHistory(callback),
         onConversationChange: (callback) => chatManager?.onSelectionChange?.(callback)
     });
     conversationStatusPanel.mount();

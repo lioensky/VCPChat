@@ -39,7 +39,7 @@ function listenNotification(target, type, handler, options) {
  * @param {HTMLElement} vcpLogConnectionStatusDiv - The DOM element for status display.
  */
 function updateVCPLogStatus(statusUpdate, vcpLogConnectionStatusDiv) {
-    if (!vcpLogConnectionStatusDiv || !statusUpdate) return; // 增加对 statusUpdate 自身的检查
+    if (!statusUpdate) return; // 增加对 statusUpdate 自身的检查
 
     // 安全地从 statusUpdate 对象中提取数据，无论其内部结构如何
     const source = statusUpdate.source;
@@ -48,6 +48,8 @@ function updateVCPLogStatus(statusUpdate, vcpLogConnectionStatusDiv) {
 
     const prefix = source || 'VCPLog';
     const statusText = `${prefix}: ${message || '状态未知'}`;
+    globalThis.notificationCenter?.setConnection?.({ status: status || 'unknown', text: statusText });
+    if (!vcpLogConnectionStatusDiv) return;
     const textElement = vcpLogConnectionStatusDiv.querySelector?.('.notifications-status-text');
     if (textElement) textElement.textContent = statusText;
     else vcpLogConnectionStatusDiv.textContent = statusText;

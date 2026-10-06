@@ -22,6 +22,7 @@ import { createConversationTurnNavigator } from './modules/ui-system/conversatio
 import { createChatBackToBottom } from './modules/ui-system/chat-back-to-bottom.js';
 import { createChatComposerInset } from './modules/ui-system/chat-composer-inset.js';
 import { initWorkspaceSidePane } from './modules/renderer/sidePaneWiring.js';
+import { registerComposerCommands } from './modules/renderer/composerCommands.js';
 
 const streamManager = createStreamProjection();
 const messageRenderer = createMessageRenderer({ streamManager });
@@ -100,7 +101,10 @@ const initialSelectedItem = {
     avatarUrl: null,
     config: null // Store full config object for the selected item
 };
-const mainChatStateAuthority = createMainChatStateAuthority({ selectedItem: initialSelectedItem, topicId: null, history: [] });
+const mainChatStateAuthority = createMainChatStateAuthority(
+    { selectedItem: initialSelectedItem, topicId: null, history: [] },
+    { onHistoryChange: bumpConversationHistory }
+);
 const currentSelectedItemRef = mainChatStateAuthority.selectedItemRef;
 const currentTopicIdRef = mainChatStateAuthority.topicIdRef;
 const mainHistoryRef = mainChatStateAuthority.historyRef;
@@ -178,6 +182,7 @@ import { createChatRepository } from './modules/chat/chatRepository.js';
 import { createMainChatComposition } from './modules/renderer/mainChatComposition.js';
 import { createMainChatDomBindings } from './modules/renderer/mainChatDomBindings.js';
 import { createMainChatStateAuthority } from './modules/chat/mainChatStateAuthority.js';
+import { bumpConversationHistory } from './modules/ui-system/sources/conversation-current.js';
 import { createNonStreamingEventConsumer } from './modules/renderer/nonStreamingEventConsumer.js';
 import { createChatPresentationState } from './modules/chat/chatPresentationState.js';
 
@@ -682,6 +687,13 @@ mainChatSettingsPresentationOwner.configureStartup({
     const chatComposerInset = createChatComposerInset({ document, uiHelper: uiHelperFunctions });
     chatComposerInset.mount();
     ownedRendererSubscriptions.add({ dispose: () => chatComposerInset.dispose() });
+    ownedRendererSubscriptions.add(registerComposerCommands({
+        win: window,
+        messageInput,
+        selectedItemRef: currentSelectedItemRef,
+        topicIdRef: currentTopicIdRef,
+        uiHelper: uiHelperFunctions,
+    }));
 
     const auxiliaryEventOwner = createMainChatAuxiliaryEventOwner({
         subscriptions: {
@@ -978,6 +990,7 @@ mainChatSettingsPresentationOwner.configureStartup({
                 tabList: sidePaneTabs,
                 contentContainer: sidePaneContentContainer,
                 toggleNotificationsBtn,
+                notificationsPanel: notificationsSidebar,
                 toggleChatBtn: toggleSidePaneChatBtn,
                 closeBtn: closeSidePaneBtn,
                 addBtn: addSidePaneChatBtn,

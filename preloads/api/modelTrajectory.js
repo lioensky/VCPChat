@@ -12,6 +12,7 @@ module.exports = {
         modelTrajectoryClear: invoke('model-trajectory:clear', 'sessionKey'),
         modelTrajectoryOpenDirectory: invoke('model-trajectory:open-directory'),
         modelTrajectoryWatch: invoke('model-trajectory:watch'),
+        modelTrajectoryUnwatch: invoke('model-trajectory:unwatch'),
         onModelTrajectoryChanged: on('model-trajectory:changed'),
     },
 };

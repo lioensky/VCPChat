@@ -4,6 +4,7 @@ import { JSDOM } from 'jsdom';
 
 import { createCodeViewerSideProvider } from '../modules/ui-system/side-pane/codeViewerSideProvider.js';
 import * as SidePaneState from '../modules/ui-system/side-pane/side-pane-state.js';
+import { installMainComposer } from './helpers/main-composer.mjs';
 
 test('openViewer opens a workspace-wide tab that becomes active even while a conversation is the parent', async () => {
     const dom = new JSDOM('<div></div>');
@@ -30,6 +31,7 @@ test('openViewer opens a workspace-wide tab that becomes active even while a con
 test('mounted viewer preserves code insertion, wrap state and paged diff mode switching', async () => {
     const dom = new JSDOM('<textarea id="messageInput">existing</textarea><section id="view"></section>');
     const doc = dom.window.document;
+    const composer = installMainComposer(dom.window);
     const provider = createCodeViewerSideProvider({ document: doc, api: null, uiHelper: null });
     const view = doc.getElementById('view');
     const current = 'const value = 2;\nexport { value };\n';
@@ -56,6 +58,11 @@ test('mounted viewer preserves code insertion, wrap state and paged diff mode sw
         assert.equal(doc.getElementById('messageInput').value, `existing\n\`\`\`javascript\n${current}\n\`\`\`\n`);
         assert.equal(inputs, 1);
         assert.equal(handle.getCode(), current);
+
+        // 主输入框不在了（命令已注销）：按钮什么也不做，不报错
+        await composer.dispose();
+        view.querySelector('[data-action="insert-chat"]').click();
+        assert.equal(inputs, 1);
     } finally {
         handle.dispose();
         assert.equal(view.children.length, 0);

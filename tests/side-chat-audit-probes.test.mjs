@@ -13,6 +13,7 @@ import { buildModelConfig } from '../modules/chat/singleChatRequestOrchestrator.
 import * as service from '../modules/chat/sideChatSessionService.js';
 import { captureSelectionReference } from '../modules/ui-system/side-pane/selection-reference.js';
 import * as ipcModule from '../modules/ipc/sideChatHandlers.js';
+import { installMainComposer } from './helpers/main-composer.mjs';
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
@@ -473,13 +474,15 @@ test('R14: Draft and uncommitted references preserved across tab close and reope
 });
 
 test('R15: Send-to-main validates both item ID and topic ID provenance', async () => {
-    const dom = new JSDOM('<textarea id="messageInput" data-current-topic="parent"></textarea><div id="mount"></div>');
+    const dom = new JSDOM('<textarea id="messageInput"></textarea><div id="mount"></div>');
     const doc = dom.window.document;
     doc.getElementById('messageInput').value = 'existing main draft';
 
+    // 主聊天当前的助手 / 话题由主输入框那边的命令判断，侧聊不再自己去读
     let currentItemMock = { id: 'other-agent', type: 'agent' };
+    let currentTopicMock = 'parent';
+    installMainComposer(dom.window, { selectedItem: () => currentItemMock, topicId: () => currentTopicMock });
     const caps = createMockCapabilities();
-    caps.getCurrentItem = () => currentItemMock;
 
     const handle = await mountSideChatSurface(doc.getElementById('mount'), {
         descriptor: createDescriptor('s1', 'c1', 'agent-correct'),
@@ -497,8 +500,14 @@ test('R15: Send-to-main validates both item ID and topic ID provenance', async (
     sendToMainFromMenu(doc);
     assert.equal(doc.getElementById('messageInput').value, 'existing main draft');
 
-    // 2. Correct agent and correct topic -> allowed
+    // 2. Correct agent but another topic -> blocked
     currentItemMock = { id: 'agent-correct', type: 'agent' };
+    currentTopicMock = 'another-topic';
+    sendToMainFromMenu(doc);
+    assert.equal(doc.getElementById('messageInput').value, 'existing main draft');
+
+    // 3. Correct agent and correct topic -> allowed
+    currentTopicMock = 'parent';
     sendToMainFromMenu(doc);
     assert.equal(doc.getElementById('messageInput').value, 'existing main draft\n\nside answer');
 

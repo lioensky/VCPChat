@@ -51,7 +51,8 @@ export function createConversationStatusPanel({
     // 只显示这个话题的聊天记录里碰过的 V工程（进程 + 它所在工作区的 Git）和它发起过的命令。
     // 不给就保持旧行为：整个应用共用一份。
     getHistory = null,
-    messagesRoot = null,
+    // onHistoryChange(cb) => off：当前会话的记录改了（新消息、回复写完……），用来重新圈定话题范围
+    onHistoryChange = null,
     onConversationChange = null,
     // 命令运行记录源；默认按 api 取窗口里共用的那一份
     commandRunsSource = getCommandRunsSource(api),
@@ -454,7 +455,7 @@ export function createConversationStatusPanel({
     }
 
     // 切换助手 / 话题：先清空上一个会话的内容，再按新会话的聊天记录重新取；
-    // 历史是异步载入的，之后聊天区的消息变化（载入、新工具调用）会重新圈定范围。
+    // 历史是异步载入的，之后记录的每次写入（载入、新工具调用）都会重新圈定范围。
     function watchConversation() {
         const onSwitched = () => {
             if (disposed) return;
@@ -478,14 +479,13 @@ export function createConversationStatusPanel({
             try { next = scopeSignature(collectConversationScope(getHistory())); } catch (_e) { return; }
             if (next !== scopeKey) refresh();
         };
-        const root = messagesRoot || doc.getElementById('chatMessages');
-        if (root && typeof win.MutationObserver === 'function') {
-            const observer = new win.MutationObserver(() => {
-                if (timer === null) timer = win.setTimeout(rescope, RESCOPE_DEBOUNCE_MS);
-           });
-            observer.observe(root, { childList: true, subtree: true });
-            cleanups.push(() => { observer.disconnect(); if (timer !== null) win.clearTimeout(timer); });
-        }
+        const offHistory = onHistoryChange?.(() => {
+            if (timer === null && !disposed) timer = win.setTimeout(rescope, RESCOPE_DEBOUNCE_MS);
+        });
+        cleanups.push(() => {
+            if (typeof offHistory === 'function') offHistory();
+            if (timer !== null) win.clearTimeout(timer);
+        });
     }
 
     // 数据源只在用得上时才占住：不跟随会话时一直要；跟随会话时只有这个会话发起过命令才要命令记录，

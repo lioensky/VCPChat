@@ -125,6 +125,7 @@ export function createModelTrajectorySideProvider({
             let reloadTimer = null;
             let searchTimer = null;
             let unsubscribe = null;
+            let unwatch = null; // 主进程那份推送的计数，dispose 时退掉
             let unsubscribeConversation = null;
             let poller = null;
             let focusRequestId = requestedRequestId;
@@ -847,7 +848,8 @@ export function createModelTrajectorySideProvider({
             renderHeader();
             renderState();
             try {
-                await api?.modelTrajectoryWatch?.();
+                const watched = await api?.modelTrajectoryWatch?.();
+                if (watched?.success) unwatch = () => api?.modelTrajectoryUnwatch?.();
                 unsubscribe = api?.onModelTrajectoryChanged?.(onChanged) || null;
             } catch (_error) { /* 订阅失败时仍可手动刷新 */ }
             // 切换智能体 / 话题时由主聊天通知；轮询只是兜底（比如话题被外部流程切换）
@@ -871,6 +873,8 @@ export function createModelTrajectorySideProvider({
                     clearHighlights();
                     doc.removeEventListener('click', onDocumentClick);
                     try { unsubscribe?.(); } catch (_error) { /* 已取消 */ }
+                    try { void Promise.resolve(unwatch?.()).catch(() => {}); } catch (_error) { /* 主进程不支持 */ }
+                    unwatch = null;
                     try { unsubscribeConversation?.(); } catch (_error) { /* 已取消 */ }
                     viewElement.innerHTML = '';
                     viewElement.classList.remove('side-traj-view');

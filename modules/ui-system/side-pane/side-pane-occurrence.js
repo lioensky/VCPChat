@@ -58,7 +58,11 @@ export function createTabOccurrence(parentScope, { tabId, kind = '' }) {
             view = scope.child('view');
             return view;
         },
-        closeView(reason = 'view-released') {
+        /**
+         * expected 是调用方当初拿到的那个 view：它已经被新的挂载换掉时只释放它自己，不动新的
+         */
+        closeView(reason = 'view-released', expected = null) {
+            if (expected && expected !== view) return expected.active ? expected.dispose(reason) : Promise.resolve();
             const current = view;
             view = null;
             return current ? current.dispose(reason) : Promise.resolve();

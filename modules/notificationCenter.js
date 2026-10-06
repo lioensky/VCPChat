@@ -21,6 +21,39 @@
     // info 只看普通通知：不含待审批和已处理的审批卡
     const FILTERS = ['all', 'pending', 'info', 'error', 'resolved'];
 
+    // notification-center：计数和 VCPLog 连接状态，给侧栏标签、新标签页的通知卡片读，
+    // 它们不再去数筛选条上的数字、盯连接状态那一行的 DOM。
+    const STATE_CHANNEL = 'notification-center';
+    const COUNT_KEYS = ['all', 'pending', 'info', 'error', 'resolved'];
+    const INITIAL_STATE = Object.freeze({
+        counts: Object.freeze({ all: 0, pending: 0, info: 0, error: 0, resolved: 0 }),
+        connection: Object.freeze({ status: 'unknown', text: 'VCPLog: 未连接' }),
+    });
+
+    function getStateChannel() {
+        const channels = globalThis.VCPStateChannels;
+        if (!channels) return null;
+        return channels.get(STATE_CHANNEL) || channels.create(STATE_CHANNEL, INITIAL_STATE);
+    }
+
+    function publishCounts(counts) {
+        const channel = getStateChannel();
+        if (!channel) return;
+        const next = Object.freeze(Object.fromEntries(COUNT_KEYS.map(key => [key, Number(counts?.[key]) || 0])));
+        const prev = channel.get() || INITIAL_STATE;
+        if (COUNT_KEYS.every(key => prev.counts?.[key] === next[key])) return;
+        channel.publish(Object.freeze({ ...prev, counts: next }), { source: 'notification-counts' });
+    }
+
+    /** VCPLog 连接状态变了（notificationRenderer.updateVCPLogStatus 调） */
+    function setConnection({ status = 'unknown', text = '' } = {}) {
+        const channel = getStateChannel();
+        if (!channel) return;
+        const prev = channel.get() || INITIAL_STATE;
+        if (prev.connection?.status === status && prev.connection?.text === text) return;
+        channel.publish(Object.freeze({ ...prev, connection: Object.freeze({ status, text }) }), { source: 'vcplog-status' });
+    }
+
     function setText(element, value) {
         if (element && element.textContent !== value) element.textContent = value;
     }
@@ -133,6 +166,7 @@
             if (disposed) return;
             trim();
             const c = counts();
+            publishCounts(c);
 
             if (list.dataset.filter !== filter) list.dataset.filter = filter;
             const collapsed = filter === 'all' && resolvedCollapsed;
@@ -349,5 +383,5 @@
         };
     }
 
-    return { mount, MAX_SETTLED_ITEMS };
+    return { mount, getStateChannel, setConnection, MAX_SETTLED_ITEMS };
 });

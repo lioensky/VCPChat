@@ -1221,15 +1221,10 @@ export function setupEventListeners(deps) {
         });
 
         listenerOwner?.own(chatAPI.onDoToggleNotificationsSidebar(() => {
-            // 有工作区侧栏时由它负责开合与通知按钮的位置
-            if (globalThis.vcpSidePaneController) {
-                const snap = globalThis.vcpSidePaneController.getSnapshot();
-                const isNotifOpen = snap.visible && snap.activeTabId === 'notifications';
-                if (isNotifOpen) {
-                    globalThis.vcpSidePaneController.setVisible(false);
-                } else {
-                    globalThis.vcpSidePaneController.showNotifications();
-                }
+            // 有工作区侧栏时由它负责开合与通知按钮的位置（它登记了 notifications.toggle）
+            const commands = globalThis.VCPContributions?.commands;
+            if (commands?.get('notifications.toggle')) {
+                commands.execute('notifications.toggle');
             } else {
                 const isActive = notificationsSidebar.classList.toggle('active');
                 const mainContent = document.querySelector('.main-content');

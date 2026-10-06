@@ -1,5 +1,6 @@
 import { createLazyProvider } from './lazy-provider.js';
 import { collectConversationScope } from '../../conversation-scope.js';
+import { watchConversationHistory } from '../../sources/conversation-current.js';
 
 const RESCOPE_DEBOUNCE_MS = 700;
 
@@ -16,17 +17,14 @@ export function definePlanDetailTabType({ document: doc, window: win, chatAPI, s
             return ids.map(id => byId.get(id)).filter(Boolean);
         },
         getTopicScope: () => collectConversationScope(historyRef.get() || []),
-        // 和状态面板一样看聊天区的变化：新的施工结果写进记录后重新圈定话题批次
+        // 和状态面板一样跟着当前会话的记录：新的施工结果写进记录后重新圈定话题批次
         watchTopic: (callback) => {
-            const root = doc.getElementById('chatMessages');
-            if (!root || typeof win.MutationObserver !== 'function') return () => {};
             let timer = null;
-            const observer = new win.MutationObserver(() => {
+            const off = watchConversationHistory(() => {
                 win.clearTimeout(timer);
                 timer = win.setTimeout(callback, RESCOPE_DEBOUNCE_MS);
             });
-            observer.observe(root, { childList: true, subtree: true });
-            return () => { win.clearTimeout(timer); observer.disconnect(); };
+            return () => { win.clearTimeout(timer); off(); };
         }
     }), ['openPlanDetailTab']);
     return Object.freeze({

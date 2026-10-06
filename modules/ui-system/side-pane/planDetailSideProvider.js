@@ -188,7 +188,7 @@ export function createPlanDetailSideProvider({
             return mounted;
         },
 
-        async mountTab(tab, viewElement) {
+        async mountTab(tab, viewElement, { restoredState = null } = {}) {
             if (!viewElement) return null;
             const legacyId = String(tab?.id || '').slice(TAB_PREFIX.length).split('@')[0];
             let projectId = tab?.payload?.projectId || (legacyId && legacyId !== TOPIC_TAB && legacyId !== NO_PROJECT_TAB ? legacyId : null);
@@ -997,6 +997,10 @@ export function createPlanDetailSideProvider({
                     if (nextId && nextId !== projectId) { switchProject(nextId); return; }
                     if (focus) render();
                 },
+                /** 休眠前记下当前页和滚动位置，重新挂载时回到原处 */
+                captureState() {
+                    return { page: navigation.selected, scrollTop: body.scrollTop };
+                },
                 dispose() {
                     isDisposed = true;
                     win.clearTimeout(timer);
@@ -1028,6 +1032,7 @@ export function createPlanDetailSideProvider({
             const opening = pendingReveal.get(tab.id);
             pendingReveal.delete(tab.id);
             if (opening) showGitOrPage(opening.page || 'git', opening.focusPath);
+            else if (restoredState?.page && restoredState.page !== navigation.selected) showGitOrPage(restoredState.page, null);
             render();
             // 已经订阅了工程变化；首次加载出错时先退订再往外抛
             try {
@@ -1036,6 +1041,8 @@ export function createPlanDetailSideProvider({
                 handle.dispose();
                 throw error;
             }
+            // 从休眠里醒来：内容读完再回到原来的滚动位置
+            if (!opening && Number.isFinite(restoredState?.scrollTop)) body.scrollTop = restoredState.scrollTop;
             return handle;
         }
     };

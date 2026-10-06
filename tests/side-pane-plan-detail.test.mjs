@@ -199,6 +199,22 @@ test('plan pages navigate by keyboard and retain their scroll positions across r
     dom.window.close();
 });
 
+test('a plan view put to sleep comes back on the same page and scroll position', async () => {
+    const { provider, view, dom } = makeEnv();
+    const first = await provider.mountTab({ id: planTabId('p1'), payload: { projectId: 'p1' } }, view);
+    view.querySelector('[data-plan-page="timeline"]').click();
+    view.querySelector('.side-plan-body').scrollTop = 80;
+    const saved = first.captureState();
+    assert.deepEqual(saved, { page: 'timeline', scrollTop: 80 });
+    first.dispose();
+
+    const again = await provider.mountTab({ id: planTabId('p1'), payload: { projectId: 'p1' } }, view, { restoredState: saved });
+    assert.equal(view.querySelector('[role="tabpanel"]:not([hidden])').dataset.planPagePanel, 'timeline');
+    assert.equal(view.querySelector('.side-plan-body').scrollTop, 80);
+    again.dispose();
+    dom.window.close();
+});
+
 test('mountTab shows a retryable empty state when the project cannot be read', async () => {
     const { provider, view } = makeEnv({ projectForgeGetProject: async () => ({ success: false, error: '工程不存在' }) });
     const handle = await provider.mountTab({ id: planTabId('zz'), payload: { projectId: 'zz' } }, view);
