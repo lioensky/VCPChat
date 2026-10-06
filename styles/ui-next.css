@@ -424,6 +424,10 @@ html .next-ui-embedded-app-status {
     font-size: 14px;
 }
 
+html .next-ui-embedded-app-view[data-state="ready"] .next-ui-embedded-app-status {
+    display: none;
+}
+
 html .next-ui-embedded-app-status .vcp-ui-icon {
     animation: next-ui-embedded-spin var(--vcp-motion-duration-spinner) var(--vcp-motion-ease-linear) infinite;
 }

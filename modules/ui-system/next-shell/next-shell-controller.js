@@ -158,20 +158,34 @@
 
     function syncEmbeddedBounds(view) {
         if (view?.kind !== 'embedded' || !view.container.isConnected) return;
-        embeddedAppController?.setBounds(view.action, getEmbeddedBounds(view.container))?.catch(error => {
+        const bounds = getEmbeddedBounds(view.container);
+        if (bounds.width <= 1 || bounds.height <= 1) return;
+        embeddedAppController?.setBounds(view.action, bounds)?.catch(error => {
             console.warn(`[NextUI] Failed to resize embedded app ${view.action}:`, error);
         });
     }
 
     function syncEmbeddedActivation() {
-        const activeView = appTabHost.views.get(appTabHost.activeViewId);
+        const activeViewId = appTabHost.activeViewId;
+        const activeView = appTabHost.views.get(activeViewId);
         const action = mounted && !restoringTabs && !overlayCoordinator?.active && activeView?.kind === 'embedded'
             ? activeView.action
             : null;
         const activation = embeddedAppController?.activate(action);
         if (!activation) return;
         trackTabPromise(`activate:${action || 'home'}`, activation).then(result => {
-            if (result?.success && activeView?.kind === 'embedded') syncEmbeddedBounds(activeView);
+            if (!mounted || appTabHost.activeViewId !== activeViewId) return;
+            if (result?.success && activeView?.kind === 'embedded') {
+                syncEmbeddedBounds(activeView);
+                const scheduleFrame = typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function'
+                    ? window.requestAnimationFrame
+                    : (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : fn => setTimeout(fn, 16));
+                scheduleFrame(() => {
+                    if (mounted && appTabHost.activeViewId === activeViewId) {
+                        syncEmbeddedBounds(activeView);
+                    }
+                });
+            }
         }).catch(error => console.warn('[NextUI] Failed to activate embedded app:', error));
     }
 
@@ -378,6 +392,8 @@
             }
             if (!result?.success) throw new Error(result?.error || '应用无法内嵌打开。');
             container.dataset.state = 'ready';
+            const statusNode = container.querySelector('.next-ui-embedded-app-status');
+            if (statusNode) statusNode.remove();
             if (appTabHost.activeViewId === viewId && !restoringTabs) {
                 syncEmbeddedBounds(view);
                 await embeddedAppController.activate(app.action);
