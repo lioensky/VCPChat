@@ -59,7 +59,6 @@ class WorkspaceResolver {
     describeAvailable() {
         const list = this.enabled();
         const lines = list.map(ws => `- \`${ws.alias}\` → ${ws.path}`);
-        if (this.extraAllowed.length) lines.push(...this.extraAllowed.map(dir => `- （配置目录）${dir}`));
         return lines.length ? lines.join('\n') : '- （无）请先在“全局设置 → 工作区管理”中登记工作区。';
     }
 

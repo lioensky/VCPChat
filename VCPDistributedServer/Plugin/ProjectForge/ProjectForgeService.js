@@ -366,7 +366,6 @@ async function listWorkspaces() {
     const list = runtime.resolver.list();
     const activeId = runtime.resolver.active()?.id;
     const lines = list.map(ws => `- \`${ws.alias}\`${ws.id === activeId ? '（当前）' : ''} · ${ws.enabled ? '启用' : '停用'} · ${ws.path}`);
-    if (runtime.resolver.extraAllowed.length) lines.push(...runtime.resolver.extraAllowed.map(d => `- （配置目录）${d}`));
     return textResult(`## 工作区\n${lines.join('\n') || '- （无）请先在“全局设置 → 工作区管理”中登记工作区。'}`, { command: 'ListWorkspaces', workspaces: list });
 }
 

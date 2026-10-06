@@ -55,6 +55,7 @@ test('send owner projects interrupt mode and dispatches the matching agent reque
     owner.update();
     assert.equal(sendButton.dataset.mode, 'interrupt');
     assert.equal(sendButton.classList.contains('interrupt-mode'), true);
+    assert.match(sendButton.innerHTML, /<rect\b[^>]*width="12"[^>]*height="12"/);
     assert.equal(sendButton.title, '中止回复');
     assert.equal(sendButton.attributes['aria-label'], '中止回复');
     assert.equal(sendButton.attributes['aria-busy'], 'true');

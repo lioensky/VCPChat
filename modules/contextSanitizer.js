@@ -212,6 +212,74 @@ class ContextSanitizer {
     }
 
     /**
+     * 清理隐藏的工具结果块（不在提交给 AI 的上下文中注入）。
+     * 与原先垃圾桶删除的效果一致，从上下文中彻底剥离该块以节省 Token。
+     * @param {string} content - 原始内容
+     * @returns {string} - 清理后的内容
+     */
+    stripHiddenToolResults(content) {
+        if (typeof content !== 'string' || !content.includes('[[VCP调用结果信息汇总:')) return content;
+
+        const startMarker = '[[VCP调用结果信息汇总:';
+        const endMarker = 'VCP调用结果结束]]';
+        let result = '';
+        let cursor = 0;
+
+        while (cursor < content.length) {
+            const start = content.indexOf(startMarker, cursor);
+            if (start === -1) {
+                result += content.slice(cursor);
+                break;
+            }
+
+            // 检查起始标记行是否带有隐藏标记，或首部包含注入状态隐藏
+            let depth = 1;
+            let scanCursor = start + startMarker.length;
+            let blockEnd = -1;
+
+            while (scanCursor <= content.length) {
+                const nextEnd = content.indexOf(endMarker, scanCursor);
+                if (nextEnd === -1) break;
+
+                const nextStart = content.indexOf(startMarker, scanCursor);
+                if (nextStart !== -1 && nextStart < nextEnd) {
+                    depth += 1;
+                    scanCursor = nextStart + startMarker.length;
+                    continue;
+                }
+
+                depth -= 1;
+                scanCursor = nextEnd + endMarker.length;
+                if (depth === 0) {
+                    blockEnd = scanCursor;
+                    break;
+                }
+            }
+
+            if (blockEnd === -1) {
+                // 未闭合，原样保留
+                result += content.slice(cursor, start + startMarker.length);
+                cursor = start + startMarker.length;
+                continue;
+            }
+
+            const rawBlock = content.slice(start, blockEnd);
+            const isHidden = /^\[\[VCP调用结果信息汇总:\s*(?:\[HIDDEN\]|<!--HIDDEN-->|\(HIDDEN\))/i.test(rawBlock)
+                || /^[ \t]*-[ \t]*(?:注入上下文|上下文注入|上下文状态|Context):\s*(?:隐藏|hidden|false|否)/im.test(rawBlock.slice(0, 300));
+
+            if (isHidden) {
+                // 隐藏块：将起始位置之前的内容追加，跳过此块
+                result += content.slice(cursor, start);
+                cursor = blockEnd;
+            } else {
+                result += content.slice(cursor, blockEnd);
+                cursor = blockEnd;
+            }
+        }
+
+        return result.replace(/\n{3,}/g, '\n\n');
+    }
+    /**
      * 生成缓存键
      * @param {string} content - 原始内容
      * @returns {string} - 缓存键（使用简单的哈希）

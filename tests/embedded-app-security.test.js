@@ -48,7 +48,7 @@ test('embedded session manager enforces a bounded native view pool', async () =>
         constructor() { this.webContents = new FakeWebContents(); this.visible = false; FakeView.instances.push(this); }
         setBackgroundColor() {}
         setVisible(value) { this.visible = value; }
-        setBounds() {}
+        setBounds(bounds) { this.bounds = { ...bounds }; }
     }
     Module._load = function loadWithElectronMock(request, parent, isMain) {
         if (request === 'electron') return {
@@ -64,10 +64,12 @@ test('embedded session manager enforces a bounded native view pool', async () =>
     let manager;
     let mainWindow;
     try {
+        let contentBounds = { width: 1200, height: 900 };
         mainWindow = new EventEmitter();
         mainWindow.isDestroyed = () => false;
-        mainWindow.getContentBounds = () => ({ width: 1200, height: 900 });
+        mainWindow.getContentBounds = () => ({ ...contentBounds });
         mainWindow.webContents = new FakeWebContents();
+        mainWindow.webContents.getZoomFactor = () => 1.25;
         mainWindow.contentView = { addChildView() {}, removeChildView() {} };
         const { createEmbeddedAppSessionManager, MAX_EMBEDDED_SESSIONS } = require(modulePath);
         const powerMonitor = new EventEmitter();
@@ -90,6 +92,11 @@ test('embedded session manager enforces a bounded native view pool', async () =>
         assert.equal((await manager.create(actions[0])).reused, true);
         assert.equal(manager.activate(actions[0]).success, true);
         assert.equal(FakeView.instances[0].visible, true);
+        assert.equal(manager.setBounds(actions[0], { x: 0, y: 35.2, width: 960, height: 684.8 }).success, true);
+        assert.deepEqual(FakeView.instances[0].bounds, { x: 0, y: 44, width: 1200, height: 856 });
+        contentBounds = { width: 1600, height: 1000 };
+        mainWindow.emit('resize');
+        assert.deepEqual(FakeView.instances[0].bounds, { x: 0, y: 44, width: 1600, height: 956 });
         powerMonitor.emit('suspend');
         assert.equal(FakeView.instances[0].visible, false);
         powerMonitor.emit('resume');

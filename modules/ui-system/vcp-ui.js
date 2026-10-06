@@ -1918,6 +1918,7 @@ function toastFactory(options = {}) {
             element.append(close.element);
         }
     });
+    controller._listen(element, 'click', () => controller.destroy());
     return controller;
 }
 

@@ -31,7 +31,7 @@ export function setupEventListeners(deps) {
         // Modules and helper functions
         uiHelperFunctions, chatManager, messageRenderer, historyMutationAuthority, itemListManager, settingsManager, uiManager, topicListManager,
         getCroppedFile, setCroppedFile, updateAttachmentPreview, filterAgentList,
-        addNetworkPathInput, sendButtonAction, listenerOwner, syncSettingsToUI
+        addNetworkPathInput, sendButtonAction, notifySendStateChanged, listenerOwner, syncSettingsToUI
     } = deps;
     const addListener = (target, type, handler, options) => listenerOwner?.add(target, type, handler, options) || target?.addEventListener?.(type, handler, options);
     const setOwnedTimeout = (callback, delay) => listenerOwner?.timeout?.(callback, delay) ?? setTimeout(callback, delay);
@@ -233,6 +233,8 @@ export function setupEventListeners(deps) {
         };
 
         currentChatHistory.push(thinkingMessage);
+        await messageRenderer?.renderMessage(thinkingMessage, false);
+        notifySendStateChanged?.();
 
         try {
             const agentConfig = currentSelectedItem.config || currentSelectedItem;
@@ -363,6 +365,9 @@ export function setupEventListeners(deps) {
                 }
             }
 
+            if (!useStreaming) {
+                notifySendStateChanged?.();
+            }
         } catch (error) {
             console.error('[ContinueWriting] 续写时出错:', error);
             messageRenderer?.removeMessageById(thinkingMessage.id);
@@ -373,6 +378,7 @@ export function setupEventListeners(deps) {
                     category: 'flowlock-failure-cleanup',
                 }, currentChatHistory.filter(msg => !msg.isThinking));
             }
+            notifySendStateChanged?.();
         }
     }
 
@@ -1236,6 +1242,9 @@ export function setupEventListeners(deps) {
             const target = leftSidebar;
             if (!target) return false;
 
+            if (enabled && !document.getElementById('tabContentAgents')?.classList.contains('active')) {
+                uiManager?.switchToTab?.('agents');
+            }
             const agentsTabIsActive = document.getElementById('tabContentAgents')?.classList.contains('active');
             if (enabled && !agentsTabIsActive) return false;
 
@@ -1358,11 +1367,7 @@ export function setupEventListeners(deps) {
                 }
                 clearSidebarLongPress();
 
-                const agentsTabIsActive = document.getElementById('tabContentAgents')?.classList.contains('active');
-                if (!leftSidebar || !agentsTabIsActive) {
-                    uiHelperFunctions.showToastNotification('请先切换到助手列表。', 'info');
-                    return;
-                }
+                if (!leftSidebar) return;
 
                 const enableAvatarOnly = !leftSidebar.classList.contains('avatar-only');
                 if (setAvatarOnlyMode(enableAvatarOnly)) {

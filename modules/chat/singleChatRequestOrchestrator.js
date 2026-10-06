@@ -1,4 +1,5 @@
 import '../tavernRulesEngine.js';
+import { stripHiddenToolResults } from '../renderer/toolResultRegions.js';
 
 function requireDependency(value, name) {
     if (!value) throw new Error(`SingleChatRequestOrchestrator requires ${name}`);
@@ -181,7 +182,7 @@ async function readAttachmentFrames(electronAPI, attachment, data) {
 }
 
 async function buildDefaultMessageContent({ message, electronAPI }) {
-    let text = normalizeText(message?.content);
+    let text = stripHiddenToolResults(normalizeText(message?.content));
     const attachments = Array.isArray(message?.attachments) ? message.attachments : [];
     const mediaParts = [];
 
