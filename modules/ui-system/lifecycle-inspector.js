@@ -48,6 +48,9 @@
             chatTasks: Object.freeze(result?.chatTasks || []),
             // 主进程各领域的激活状态：declared / loading / active / failed
             domains: Object.freeze(result?.domains || []),
+            // 主进程按窗口的推送订阅：主题、key、订阅窗口数
+            subscriptions: Object.freeze(result?.subscriptions || []),
+            gitWatchers: Object.freeze(result?.gitWatchers || []),
         });
     }
 

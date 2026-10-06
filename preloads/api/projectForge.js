@@ -34,6 +34,8 @@ module.exports = {
         gitCommitGraph: invoke('git:commit-graph', 'workspaceId', 'options'),
         gitChangeSummary: invoke('git:change-summary', 'workspaceId'),
         gitRevealPath: invoke('git:reveal-path', 'workspaceId', 'relPath'),
+        // 仓库变了（文件改动、暂存、提交、切分支……）；只推给用 subscribeMainState('git.status', workspaceId) 订阅了的窗口
+        onGitChanged: on('git:changed'),
 
         // 源码侧栏（工作区列表复用 gitListWorkspaces）
         sourceListFiles: invoke('source:list-files', 'workspaceId'),

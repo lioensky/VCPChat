@@ -89,6 +89,10 @@ const { createDomainActivator, channelsForDomain } = require('./modules/ipc/doma
 const { describeApis } = require('./preloads/core/registry');
 const { configureSharedRecorder } = require('./modules/modelTrajectory');
 const domainActivator = createDomainActivator({ ipcMain });
+// 主进程推送按窗口订阅：只发给订阅了某个主题的窗口（V工程窗口、主窗口的状态面板和侧栏）
+const { createStateSubscriptions } = require('./modules/ipc/stateSubscriptions');
+const { createApplicationSenderGuard, resolveWindowWebContents } = require('./modules/ipc/applicationSender');
+const stateSubscriptions = createStateSubscriptions();
 const assistantHandlers = require('./modules/ipc/assistantHandlers'); // Import assistant handlers
 const musicHandlers = require('./modules/ipc/musicHandlers'); // Import music handlers
 const diceHandlers = require('./modules/ipc/diceHandlers'); // Import dice handlers
@@ -1510,8 +1514,12 @@ if (!gotTheLock) {
         });
         // 工作区索引在后台预热，不阻塞首屏。
         workspaceHandlers.initialize({ settingsManager: appSettingsManager, logger: console });
-        projectForgeHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService });
-        gitHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService, getMainWindow: () => mainWindow });
+        stateSubscriptions.registerIpc(ipcMain, createApplicationSenderGuard({
+            pages: ['main.html', 'ProjectForgemodules/projectforge.html'],
+            getMainWebContents: () => resolveWindowWebContents(() => mainWindow),
+        }));
+        projectForgeHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService, subscriptions: stateSubscriptions });
+        gitHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService, getMainWindow: () => mainWindow, subscriptions: stateSubscriptions });
         sourceHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService });
         const preloadApis = describeApis();
         // 侧栏几个领域启动时只登记通道，第一次调用才 require 并 initialize（状态见 lifecycle:get-main-snapshot 的 domains）
@@ -1771,6 +1779,8 @@ if (!gotTheLock) {
                 tasks: embeddedAppTasks.snapshot(),
                 chatTasks: chatHandlers.getVcpStreamTaskSnapshot(),
                 domains: domainActivator.snapshot(),
+                subscriptions: stateSubscriptions.snapshot(),
+                gitWatchers: gitHandlers.watchSnapshot(),
             };
         });
         ipcMain.handle('embedded-vchat-app:close-all', async event => {
@@ -1943,6 +1953,8 @@ if (!gotTheLock) {
 
         // 只释放用过的侧栏领域，没激活过的不会为了退出而加载
         domainActivator.disposeAll();
+        stateSubscriptions.dispose();
+        gitHandlers.dispose();
 
         // 1. 停止所有底层监听器
         console.log('[Main] App is quitting. Stopping all listeners...');

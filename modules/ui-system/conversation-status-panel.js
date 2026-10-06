@@ -26,10 +26,11 @@ import { layoutGitGraph, parseGraphRefs } from './git-graph-layout.js';
 import { pickProjectsForWorkspace, pickTopicProject, mapTodoItems, summarizeTopicBatches } from './project-plan-model.js';
 import { collectConversationScope, normalizeCommand, readRevertBatches, scopeSignature } from './conversation-scope.js';
 import { getCommandRunsSource } from './sources/terminal-command-runs.js';
+import { getProjectForgeChangesSource } from './sources/projectforge-changes.js';
+import { createGitChangesFollower } from './sources/git-changes.js';
 
 const STORAGE_KEY_WS = 'vcp-projectforge-git-workspace';
 const STORAGE_KEY_VARIANT = 'vcp-status-panel-variant';
-const POLL_INTERVAL_MS = 15000;
 const RESCOPE_DEBOUNCE_MS = 700;
 
 // ------------------------------------------------------------------ component
@@ -52,9 +53,10 @@ export function createConversationStatusPanel({
     getHistory = null,
     messagesRoot = null,
     onConversationChange = null,
-    changeEvent = 'vcp:git-changed',
     // 命令运行记录源；默认按 api 取窗口里共用的那一份
-    commandRunsSource = getCommandRunsSource(api)
+    commandRunsSource = getCommandRunsSource(api),
+    // V工程 变更推送源；同上
+    projectChangesSource = getProjectForgeChangesSource(api)
 } = {}) {
     const win = doc.defaultView || window;
     const storage = (() => { try { return win.localStorage; } catch (_e) { return null; } })();
@@ -80,10 +82,12 @@ export function createConversationStatusPanel({
     let disposed = false;
     let refreshSeq = 0;
     let renderKey = '';
-    let pollTimer = null;
     let resizeObserver = null;
+    // 页面藏着时收到的 Git 变化先记着，回到前台再读
+    let gitStale = false;
     let mounted = false;
     let releaseCommandRuns = null;
+    let releaseProjectChanges = null;
 
 
 
@@ -196,10 +200,17 @@ export function createConversationStatusPanel({
     });
     const { sectionHeader, rowButton, renderGitSection, recentCommandRuns, renderRunsSection, planStatusIcon, planItemRows, hiddenGroup, renderPlanSection, renderMini } = sectionsOwner;
 
+    // 提交 / 推送 / 切分支后自己马上重读；别的界面由主进程的 Git 变更推送通知
     function refreshAfterMutation() {
-        try { win.dispatchEvent(new win.CustomEvent(changeEvent, { detail: { source: 'status-panel' } })); } catch (_e) { /* ignore */ }
         return refresh();
     }
+
+    // 当前工作区的仓库一变（不管哪个窗口改的，还是文件被改了），主进程推过来；不再定时轮询
+    const gitChanges = createGitChangesFollower(api, () => {
+        if (disposed) return;
+        if (doc.hidden || busy) { gitStale = true; return; }
+        refresh();
+    }, { label: 'status-panel' });
 
     function readScope() {
         if (!scoped) return;
@@ -265,9 +276,10 @@ export function createConversationStatusPanel({
 
     async function refresh() {
         if (disposed) return;
+        gitStale = false;
         const seq = ++refreshSeq;
         readScope();
-        syncCommandRunsHold();
+        syncSourceHolds();
         const nextScope = { projectIds: [...scope.projectIds], commands: new Set(scope.commands), batchIds: new Set(scope.batchIds || []) };
         let projects = [], nextWorkspace = null, nextWorkspaces = [], nextSummary = null, nextPlan = null;
         try {
@@ -290,6 +302,7 @@ export function createConversationStatusPanel({
         const workspaceChanged = workspace?.id !== nextWorkspace?.id;
         if (workspaceChanged) { closeAllPopovers(); for (const modal of [...modals]) modal.close(); }
         workspace = nextWorkspace;
+        syncSourceHolds();
         if (workspaceChanged && scoped && nextWorkspace) {
             try { onScopeWorkspace?.(nextWorkspace); } catch (_e) { /* 外部跟随失败不影响面板 */ }
         }
@@ -425,18 +438,15 @@ export function createConversationStatusPanel({
        });
         on(win, 'resize', () => { measureHost(); closeAllPopovers(); });
         on(win, 'focus', () => refresh());
-        on(win, changeEvent, event => { if (event.detail?.source !== 'status-panel') refresh(); });
+        on(doc, 'visibilitychange', () => { if (!doc.hidden && gitStale) refresh(); });
         if (typeof win.ResizeObserver === 'function') {
             resizeObserver = new win.ResizeObserver(() => measureHost());
             resizeObserver.observe(host);
             const header = host.querySelector(':scope > header');
             if (header) resizeObserver.observe(header);
         }
-        const offForge = api?.onProjectForgeChanged?.(() => { refresh(); });
-        if (typeof offForge === 'function') cleanups.push(offForge);
-        syncCommandRunsHold();
+        syncSourceHolds();
         if (scoped) watchConversation();
-        pollTimer = win.setInterval(() => { if (!doc.hidden && !busy) refresh(); }, POLL_INTERVAL_MS);
 
         measureHost();
         refresh();
@@ -478,29 +488,40 @@ export function createConversationStatusPanel({
         }
     }
 
-    // 命令记录只在用得上时才占住：不跟随会话时一直要；跟随会话时只有这个会话发起过命令才要。
-    // 没人占住，主进程就不推送，也不会为了读记录去加载终端。
-    function syncCommandRunsHold() {
-        if (!commandRunsSource || disposed || !mounted) return;
-        const wanted = !scoped || scope.commands.size > 0;
-        if (wanted && !releaseCommandRuns) {
+    // 数据源只在用得上时才占住：不跟随会话时一直要；跟随会话时只有这个会话发起过命令才要命令记录，
+    // 碰过 V工程 才要工程变更推送；Git 变更推送只跟着当前显示的工作区。
+    // 没人占住，主进程就不推送，也不会为了读记录去加载终端或 V工程 插件、不会去监听仓库。
+    function syncSourceHolds() {
+        if (disposed || !mounted) return;
+        gitChanges.follow(workspace?.id || null);
+        const wantRuns = Boolean(commandRunsSource) && (!scoped || scope.commands.size > 0);
+        if (wantRuns && !releaseCommandRuns) {
             releaseCommandRuns = commandRunsSource.subscribe(({ data }) => {
                 if (disposed) return;
                 commandRuns = Array.isArray(data) ? data : [];
                 render();
             }, { label: 'status-panel' });
-        } else if (!wanted && releaseCommandRuns) {
+        } else if (!wantRuns && releaseCommandRuns) {
             releaseCommandRuns();
             releaseCommandRuns = null;
+        }
+        const wantChanges = Boolean(projectChangesSource) && (!scoped || scope.projectIds.length > 0);
+        if (wantChanges && !releaseProjectChanges) {
+            releaseProjectChanges = projectChangesSource.subscribe(() => { if (!disposed) refresh(); }, { label: 'status-panel', immediate: false });
+        } else if (!wantChanges && releaseProjectChanges) {
+            releaseProjectChanges();
+            releaseProjectChanges = null;
         }
     }
 
     function dispose() {
         disposed = true;
         ++refreshSeq;
-        if (pollTimer) win.clearInterval(pollTimer);
+        gitChanges.release();
         releaseCommandRuns?.();
         releaseCommandRuns = null;
+        releaseProjectChanges?.();
+        releaseProjectChanges = null;
         resizeObserver?.disconnect();
         cleanups.splice(0).forEach(fn => { try { fn(); } catch (_e) { /* ignore */ } });
         domOwner.dispose();

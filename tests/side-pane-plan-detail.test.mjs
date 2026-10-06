@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { buildPlanModel, createPlanDetailSideProvider, planTabId, resolveDefaultProject } from '../modules/ui-system/side-pane/planDetailSideProvider.js';
+import { getProjectForgeChangesSource } from '../modules/ui-system/sources/projectforge-changes.js';
 
 const DETAIL = {
     project: { id: 'p1', name: '算法工程', status: 'active', created_by: 'Nova', updated_at: '2026-09-30T01:00:00.000Z', root: 'C:\\w', stats: { added: 83, removed: 10 } },
@@ -56,6 +57,7 @@ function makeEnv(overrides = {}) {
         onProjectForgeChanged: (cb) => { changed = cb; return () => { unsubscribed = true; }; },
         ...overrides
     };
+    getProjectForgeChangesSource(api, { graceMs: 0 });
     const sidePaneController = {
         openTab: async (tab) => { calls.opened.push(tab); return { focus() {} }; },
         setVisible() {},

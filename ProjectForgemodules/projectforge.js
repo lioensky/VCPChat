@@ -713,7 +713,7 @@ function bindEvents() {
         lastFocusRefresh = Date.now();
         loadProjects();
     });
-    // 监听主进程广播的工程变动（反向 IPC 推送，防抖 160ms）
+    // 监听主进程推送的工程变动（防抖 160ms）。主进程只推给订阅了 project-forge 的窗口，窗口关闭时订阅自动清掉
     const scheduleAutoRefresh = debounce(async payload => {
         if (!$('node-modal').hidden) return;
         await loadProjects();
@@ -728,6 +728,7 @@ function bindEvents() {
         api.onProjectForgeChanged(payload => {
             scheduleAutoRefresh(payload);
         });
+        Promise.resolve(api.subscribeMainState?.('project-forge')).catch(() => {});
     }
 }
 

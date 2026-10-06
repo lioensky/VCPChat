@@ -427,11 +427,11 @@
     "owner": "modules/ipc/gitHandlers.js",
     "status": "reviewed",
     "dynamic": true,
-    "review": "handle wraps explicit git:* registrations; the handler checks application sender and resolves workspace roots in the main process. This is IPC inventory review; destructive Git correctness is a separate work item.",
+    "review": "handle wraps explicit git:* registrations; the handler checks application sender and resolves workspace roots in the main process. Successful mutating calls publish git:changed through the state subscription table, so only windows subscribed to that workspace receive it. This is IPC inventory review; destructive Git correctness is a separate work item.",
     "dynamicSites": [
       {
         "file": "modules/ipc/gitHandlers.js",
-        "line": 60,
+        "line": 72,
         "kind": "event-listener",
         "match": "ipcMain.handle(channel"
       }
@@ -476,6 +476,25 @@
     ],
     "evidence": [
       "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ipc.statesubscriptions",
+    "kind": "source-review",
+    "owner": "modules/ipc/stateSubscriptions.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "publish(name, key, channel, payload) forwards a main-process push on the channel named by the publishing module (project-forge:changed and git:changed) to the windows that subscribed to that topic and key; senders that are destroyed or navigated away are dropped.",
+    "dynamicSites": [
+      {
+        "file": "modules/ipc/stateSubscriptions.js",
+        "line": 124,
+        "kind": "event-send",
+        "match": "sender.send(channel"
+      }
+    ],
+    "evidence": [
+      "Source review of the per-window subscription table; publishers pass fixed channel names declared in preloads/api."
     ]
   },
   {
@@ -848,25 +867,6 @@
         "line": 29,
         "kind": "custom-event-listener",
         "match": "target.addEventListener(type"
-      }
-    ],
-    "evidence": [
-      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
-    ]
-  },
-  {
-    "id": "source.dynamic.modules.ui-system.conversation-status-panel",
-    "kind": "source-review",
-    "owner": "modules/ui-system/conversation-status-panel.js",
-    "status": "reviewed",
-    "dynamic": true,
-    "review": "refreshAfterMutation dispatches the injected Git change event (default vcp:git-changed) after a mutation so the composed providers can refresh.",
-    "dynamicSites": [
-      {
-        "file": "modules/ui-system/conversation-status-panel.js",
-        "line": 200,
-        "kind": "custom-event-create",
-        "match": "new win.CustomEvent(changeEvent"
       }
     ],
     "evidence": [

@@ -4,7 +4,7 @@
 // GUI 只读；唯一的写操作是带署名的单文件回退。
 'use strict';
 
-const { ipcMain, webContents } = require('electron');
+const { ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -19,30 +19,20 @@ const CHANNELS = [
     'project-forge:delete-project',
 ];
 
+// 工程变更推送的订阅主题：V工程窗口、主窗口的状态面板和侧栏有人在看时才订阅，推送只发给订阅了的窗口
+const CHANGED_TOPIC = 'project-forge';
+
 let workspaceServiceRef = null;
+let subscriptionsRef = null;
 let forgeModule = null;
 let listeningEvents = false;
-
-function broadcastToProjectForge(channel, payload) {
-    if (!webContents || typeof webContents.getAllWebContents !== 'function') return;
-    for (const wc of webContents.getAllWebContents()) {
-        try {
-            if (wc.isDestroyed()) continue;
-            const url = (wc.getURL() || '').toLowerCase();
-            // 施工图窗口之外，主窗口的状态面板与计划详情侧栏也要实时收到变更
-            if (url.includes('projectforge.html') || url.includes('main.html')) {
-                wc.send(channel, payload);
-            }
-        } catch (_e) { /* ignore */ }
-    }
-}
 
 function setupEventListener() {
     if (listeningEvents) return;
     if (!forgeModule) forgeModule = require(path.join(PLUGIN_DIR, 'ProjectForgeService.js'));
     if (forgeModule?.events) {
         forgeModule.events.on('changed', payload => {
-            broadcastToProjectForge('project-forge:changed', payload);
+            subscriptionsRef?.publish(CHANGED_TOPIC, '', 'project-forge:changed', payload);
         });
         listeningEvents = true;
     }
@@ -80,10 +70,18 @@ function wrap(fn) {
     };
 }
 
-function initialize({ workspaceService = null } = {}) {
+/**
+ * @param {object} [options]
+ * @param {object} [options.workspaceService]
+ * @param {object} [options.subscriptions] stateSubscriptions.js 的订阅表；第一个窗口订阅时才加载插件、挂上变更监听
+ */
+function initialize({ workspaceService = null, subscriptions = null } = {}) {
     workspaceServiceRef = workspaceService;
     CHANNELS.forEach(channel => ipcMain.removeHandler(channel));
-    setupEventListener();
+    if (subscriptions && subscriptions !== subscriptionsRef) {
+        subscriptionsRef = subscriptions;
+        subscriptions.declare(CHANGED_TOPIC, { onFirst: () => setupEventListener() });
+    }
 
     ipcMain.handle('project-forge:list-projects', wrap((options = {}) => forge().listProjects(options)));
     ipcMain.handle('project-forge:get-project', wrap(projectId => forge().getProject(String(projectId || ''))));
@@ -105,4 +103,4 @@ function initialize({ workspaceService = null } = {}) {
     ipcMain.handle('project-forge:delete-project', wrap((projectId, signature) => forge().deleteProject(projectId, signature)));
 }
 
-module.exports = { initialize };
+module.exports = { CHANGED_TOPIC, initialize };

@@ -15,6 +15,8 @@ import {
     pickEntryMetric,
     resolveVariant
 } from '../modules/ui-system/conversation-status-panel.js';
+import { getProjectForgeChangesSource } from '../modules/ui-system/sources/projectforge-changes.js';
+import { getGitChangesSource } from '../modules/ui-system/sources/git-changes.js';
 import { layoutGitGraph, parseGraphRefs } from '../modules/ui-system/git-graph-layout.js';
 import { getCommandRunsSource } from '../modules/ui-system/sources/terminal-command-runs.js';
 
@@ -483,6 +485,74 @@ test('scoped panel: a topic without commands or V工程 reads neither the comman
     await switchTo([{ role: 'user', content: '随便聊聊' }]);
     assert.deepEqual(calls, ['watch', 'list', 'unwatch'], 'leaving it releases the runs again');
     panel.dispose();
+});
+
+test('scoped panel: only a topic that used a V工程 subscribes to V工程 change pushes', async () => {
+    const calls = [];
+    const forgeApi = {
+        onProjectForgeChanged: () => { calls.push('listen'); return () => calls.push('unlisten'); },
+        subscribeMainState: async topic => { calls.push(['subscribe', topic]); },
+        unsubscribeMainState: async topic => { calls.push(['unsubscribe', topic]); }
+    };
+    const { panel, switchTo } = scopedSetup({
+        history: [{ role: 'user', content: '你好' }],
+        panelOptions: { projectChangesSource: getProjectForgeChangesSource(forgeApi, { graceMs: 0 }) }
+    });
+    panel.mount();
+    await flush();
+    assert.deepEqual(calls, [], 'a plain chat does not ask the main process for V工程 pushes');
+
+    await switchTo([{ role: 'assistant', content: forgeCall('p1') }]);
+    assert.deepEqual(calls, ['listen', ['subscribe', 'project-forge']]);
+
+    await switchTo([{ role: 'user', content: '随便聊聊' }]);
+    assert.deepEqual(calls.slice(2), ['unlisten', ['unsubscribe', 'project-forge']]);
+    panel.dispose();
+});
+
+test('scoped panel: Git pushes follow the shown workspace and refresh it instead of polling', async () => {
+    const subs = [];
+    const handlers = new Set();
+    let summaryCalls = 0;
+    const api = {
+        gitChangeSummary: async () => { summaryCalls += 1; return { success: true, data: { files: 1, added: 1, removed: 0, branch: { head: 'main' }, remotes: [] } }; },
+        onGitChanged: cb => { handlers.add(cb); return () => handlers.delete(cb); },
+        subscribeMainState: async (topic, key) => { subs.push(['+', topic, key]); },
+        unsubscribeMainState: async (topic, key) => { subs.push(['-', topic, key]); }
+    };
+    const { panel, switchTo, dom, api: panelApi } = scopedSetup({ history: [{ role: 'user', content: '你好' }], api });
+    getGitChangesSource(panelApi, 'ws1', { graceMs: 0 }); // 不留宽限期，dispose 后马上放掉
+    const gitSubs = () => subs.filter(entry => entry[1] === 'git.status');
+    // JSDOM 默认把文档当作藏着的
+    const setHidden = hidden => Object.defineProperty(dom.window.document, 'hidden', { configurable: true, get: () => hidden });
+    setHidden(false);
+    panel.mount();
+    await flush();
+    assert.deepEqual(gitSubs(), [], 'a plain chat does not watch any repository');
+
+    await switchTo([{ role: 'assistant', content: forgeCall('p1') }]);
+    assert.deepEqual(gitSubs(), [['+', 'git.status', 'ws1']]);
+    const before = summaryCalls;
+    handlers.forEach(cb => cb({ workspaceId: 'ws1', reason: 'files' }));
+    await flush();
+    assert.equal(summaryCalls, before + 1, 'a push re-reads the summary');
+    handlers.forEach(cb => cb({ workspaceId: 'other', reason: 'files' }));
+    await flush();
+    assert.equal(summaryCalls, before + 1, 'pushes for other workspaces are ignored');
+
+    // 页面藏着：先记下，回到前台再读
+    setHidden(true);
+    handlers.forEach(cb => cb({ workspaceId: 'ws1', reason: 'files' }));
+    await flush();
+    assert.equal(summaryCalls, before + 1);
+    setHidden(false);
+    dom.window.document.dispatchEvent(new dom.window.Event('visibilitychange'));
+    await flush();
+    assert.equal(summaryCalls, before + 2);
+
+    panel.dispose();
+    await flush();
+    assert.equal(handlers.size, 0, 'disposing stops listening');
 });
 
 test('scoped panel: switching conversation swaps the plan, the Git workspace and the command list', async () => {

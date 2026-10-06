@@ -26,6 +26,7 @@ import { createPlanNodeView } from './plan-detail/node-view.js';
 import { createPlanPageNavigation } from './plan-detail/page-navigation.js';
 import { createProjectPicker } from './plan-detail/project-picker.js';
 import { mountGitView } from './git/git-view.js';
+import { watchProjectForgeChanges } from '../sources/projectforge-changes.js';
 
 const STORAGE_KEY_WS = 'vcp-projectforge-git-workspace';
 const TAB_PREFIX = 'plan-detail:';
@@ -275,6 +276,8 @@ export function createPlanDetailSideProvider({
                 navigation.select(key, body.scrollTop);
                 if (key === 'git') ensureGit();
                 render();
+                // 切回 Git 页：藏着的时候仓库变过就补读一次
+                if (key === 'git') gitView?.refreshIfStale?.();
                 body.scrollTop = navigation.scrollTop;
                 chrome.querySelector(`[data-plan-page="${key}"]`)?.focus();
             }
@@ -975,9 +978,9 @@ export function createPlanDetailSideProvider({
                 win.clearTimeout(timer);
                 timer = win.setTimeout(() => { if (!isDisposed) load(); }, REFRESH_DEBOUNCE_MS);
             };
-            const off = api?.onProjectForgeChanged?.((payload) => {
+            const off = watchProjectForgeChanges(api, (payload) => {
                 if (!payload?.projectId || payload.projectId === projectId) scheduleLoad();
-            });
+            }, { label: 'plan-detail' });
             // 新的施工结果进了聊天记录（可能晚于工程变更事件）：话题范围变了才重读
             const offTopic = topicMode ? watchTopic?.(() => {
                 if (isDisposed || !isCurrentTopic()) return;

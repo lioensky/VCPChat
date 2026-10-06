@@ -23,15 +23,15 @@ import { pickProjectsForWorkspace } from '../../project-plan-model.js';
 import { toWorkspaceRelative, findStatusItem } from '../../git-file-diff.js';
 import { placeMenuAt } from '../menu-position.js';
 import { filterAiTouched, latestAiBatch, buildHunkRows } from './diff-model.js';
+import { watchProjectForgeChanges } from '../../sources/projectforge-changes.js';
+import { createGitChangesFollower } from '../../sources/git-changes.js';
+import { readSelectedGitWorkspace, selectGitWorkspace, watchSelectedGitWorkspace } from '../../sources/git-workspace.js';
 export { filterAiTouched, latestAiBatch, buildHunkRows } from './diff-model.js';
 
-// 与 V工程 Git 页（ProjectForgemodules/projectforge-git.js）同一个 key，两处跟随同一个工作区选择。
-const STORAGE_KEY_WS = 'vcp-projectforge-git-workspace';
-const FOLLOW_WORKSPACE_EVENT = 'vcp:git-follow-workspace';
+// 工作区选择和 V工程 Git 页（ProjectForgemodules/projectforge-git.js）共用，见 sources/git-workspace.js。
 const STORAGE_KEY_SOURCE = 'vcp-side-pane-git-source';
-const POLL_INTERVAL_MS = 8000;
-const CHANGE_EVENT = 'vcp:git-changed';
 const AI_SOURCE = 'ai-last';
+const SELECTION_ORIGIN = 'git-view';
 
 function getStorage(doc) {
     try {
@@ -43,9 +43,7 @@ function getStorage(doc) {
 
 /** 切话题时跟到该话题的工作区：已挂载的 Git 页马上切，没挂载的下次挂载时用它 */
 export function followGitWorkspace(win, workspaceId) {
-    if (!workspaceId || !win) return;
-    try { win.localStorage?.setItem(STORAGE_KEY_WS, workspaceId); } catch (_e) { /* 存不了就只通知已挂载的页 */ }
-    win.dispatchEvent(new win.CustomEvent(FOLLOW_WORKSPACE_EVENT, { detail: { workspaceId } }));
+    selectGitWorkspace(win, workspaceId, { origin: 'topic' });
 }
 
 /**
@@ -67,7 +65,7 @@ export function mountGitView(host, {
 
     // ── 状态 ────────────────────────────────────────────────
     let workspaces = [];
-    let currentWorkspaceId = storage?.getItem(STORAGE_KEY_WS) || null;
+    let currentWorkspaceId = readSelectedGitWorkspace(win);
     let currentSource = storage?.getItem(STORAGE_KEY_SOURCE) || 'unstaged';
     if (currentSource === 'all') currentSource = 'unstaged'; // 旧版本的「全部更改」
     let aiBatch = null;
@@ -76,8 +74,9 @@ export function mountGitView(host, {
     let currentStatus = null;
     let loadError = null;
     let loading = false;
-    let pollTimer = null;
     let isDisposed = false;
+    // 看不见时收到的变化先记着，重新露出来再读
+    let stale = false;
     let lastStatusKey = null;
     // 回答里「本轮改动」点 +N -N 时要定位的文件；首次加载完之前先存着
     let pendingFocusPath = null;
@@ -292,7 +291,10 @@ export function mountGitView(host, {
     }
 
     async function refreshStatus({ quiet = false } = {}) {
+        // 每次读都对准当前工作区的变更推送（换了工作区就换订阅）
+        changes.follow(currentWorkspaceId);
         if (!api?.gitStatus || !currentWorkspaceId || isDisposed) return;
+        stale = false;
         if (!quiet) { loading = true; render(); }
         let skipRender = false;
         try {
@@ -304,7 +306,7 @@ export function mountGitView(host, {
             currentStatus = res.data;
             if (currentSource === AI_SOURCE && !aiBatchLoaded) await loadAiBatch();
             if (isDisposed || requestedId !== currentWorkspaceId) return;
-            // 后台轮询：状态没变就不重绘（避免闪烁、丢 hover），有展开的 diff 时照常重绘。
+            // 推送触发的静默刷新：状态没变就不重绘（避免闪烁、丢 hover），有展开的 diff 时照常重绘。
             const statusKey = JSON.stringify(res.data);
             if (quiet && statusKey === lastStatusKey && !cardsOwner.hasExpanded()) { skipRender = true; return; }
             if (statusKey !== lastStatusKey) { cardsOwner.clearDiff(); }
@@ -357,7 +359,7 @@ export function mountGitView(host, {
             }
             if (currentWorkspaceId) {
                 wsSelect.value = currentWorkspaceId;
-                storage?.setItem(STORAGE_KEY_WS, currentWorkspaceId);
+                selectGitWorkspace(win, currentWorkspaceId, { origin: SELECTION_ORIGIN });
             } else {
                 currentStatus = null;
                 render();
@@ -388,7 +390,7 @@ export function mountGitView(host, {
         if (located && located.workspace.id !== currentWorkspaceId) {
             currentWorkspaceId = located.workspace.id;
             wsSelect.value = currentWorkspaceId;
-            storage?.setItem(STORAGE_KEY_WS, currentWorkspaceId);
+            selectGitWorkspace(win, currentWorkspaceId, { origin: SELECTION_ORIGIN });
             currentStatus = null;
             resetForStatusChange();
             aiBatchLoaded = false;
@@ -423,7 +425,7 @@ export function mountGitView(host, {
     const switchWorkspace = (workspaceId) => {
         currentWorkspaceId = workspaceId;
         wsSelect.value = workspaceId;
-        storage?.setItem(STORAGE_KEY_WS, currentWorkspaceId);
+        selectGitWorkspace(win, currentWorkspaceId, { origin: SELECTION_ORIGIN });
         currentStatus = null;
         resetForStatusChange();
         aiBatchLoaded = false;
@@ -431,33 +433,36 @@ export function mountGitView(host, {
     };
     wsSelect.addEventListener('change', () => switchWorkspace(wsSelect.value));
 
-    const onFollowWorkspace = (event) => {
-        const id = event.detail?.workspaceId;
-        if (isDisposed || !id || id === currentWorkspaceId) return;
+    const offSelection = watchSelectedGitWorkspace(win, ({ id, origin }) => {
+        if (isDisposed || origin === SELECTION_ORIGIN || !id || id === currentWorkspaceId) return;
         if (!workspaces.some(ws => ws.id === id)) return;
         switchWorkspace(id);
-    };
-    win.addEventListener(FOLLOW_WORKSPACE_EVENT, onFollowWorkspace);
+    });
 
     refreshBtn.addEventListener('click', () => refreshStatus({ quiet: false }));
 
-    // 状态面板里提交 / 推送 / 切分支后，这里马上跟上；V工程 记下新一批施工时刷新「上一轮」
-    const onExternalChange = (event) => {
-        if (event.detail?.source === 'git-tab' || isDisposed) return;
-        resetForStatusChange();
-        refreshStatus({ quiet: true });
+    // 收起侧栏只把宽度压成 0 并设 visibility:hidden，offsetParent 仍存在。
+    const isShown = () => root.offsetParent !== null && !root.closest('.vcp-side-pane[aria-hidden="true"]');
+    const refreshIfStale = () => {
+        if (stale && !isDisposed && isShown()) refreshStatus({ quiet: true });
     };
-    win.addEventListener(CHANGE_EVENT, onExternalChange);
-    const offForge = api?.onProjectForgeChanged?.(() => {
+    // 仓库变了（这个或别的窗口提交 / 暂存 / 切分支，或者文件改了）主进程推过来，不再定时轮询。
+    // Linux 上主进程只看 .git，文件内容的改动靠窗口回到前台时补一次。
+    const changes = createGitChangesFollower(api, () => {
+        if (isDisposed) return;
+        if (isShown()) refreshStatus({ quiet: true });
+        else stale = true;
+    }, { label: 'git-view' });
+    const onWindowFocus = () => {
+        if (!isDisposed && isShown()) refreshStatus({ quiet: true });
+    };
+    win.addEventListener('focus', onWindowFocus);
+    root.addEventListener('pointerenter', refreshIfStale);
+    // V工程 记下新一批施工时刷新「上一轮」
+    const offForge = watchProjectForgeChanges(api, () => {
         aiBatchLoaded = false;
         if (currentSource === AI_SOURCE && !isDisposed) { lastStatusKey = null; refreshStatus({ quiet: true }); }
-    });
-
-    pollTimer = setInterval(() => {
-        // 收起侧栏只把宽度压成 0 并设 visibility:hidden，offsetParent 仍存在。
-        if (!isDisposed && root.offsetParent !== null
-            && !root.closest('.vcp-side-pane[aria-hidden="true"]')) refreshStatus({ quiet: true });
-    }, POLL_INTERVAL_MS);
+    }, { label: 'git-view' });
 
     render();
     // 首次加载：读工作区，再按需定位到某个文件。出错画在空状态里，不往外抛
@@ -474,6 +479,8 @@ export function mountGitView(host, {
         refresh() {
             return refreshStatus({ quiet: false });
         },
+        /** 重新露出来时调：看不见期间仓库变过就静默重读一次 */
+        refreshIfStale,
         /** 展开某个文件的 diff（绝对路径或工作区内的相对路径） */
         async focusPath(target) {
             if (!target || isDisposed) return;
@@ -493,11 +500,11 @@ export function mountGitView(host, {
             isDisposed = true;
             contextMenuOwner.dispose();
             cardsOwner.dispose();
-            win.removeEventListener(CHANGE_EVENT, onExternalChange);
-            win.removeEventListener(FOLLOW_WORKSPACE_EVENT, onFollowWorkspace);
+            win.removeEventListener('focus', onWindowFocus);
+            root.removeEventListener('pointerenter', refreshIfStale);
+            offSelection();
+            changes.release();
             try { if (typeof offForge === 'function') offForge(); } catch (_e) { /* 已取消 */ }
-            if (pollTimer) clearInterval(pollTimer);
-            pollTimer = null;
             host.innerHTML = '';
         }
     });

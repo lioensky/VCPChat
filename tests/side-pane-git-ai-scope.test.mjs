@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { mountGitView, filterAiTouched, latestAiBatch } from '../modules/ui-system/side-pane/git/git-view.js';
+import { mountGitView, filterAiTouched, latestAiBatch, followGitWorkspace } from '../modules/ui-system/side-pane/git/git-view.js';
+import { getProjectForgeChangesSource } from '../modules/ui-system/sources/projectforge-changes.js';
+import { getGitChangesSource } from '../modules/ui-system/sources/git-changes.js';
 
 const wait = (ms = 60) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -30,11 +32,13 @@ test('latestAiBatch picks the newest batch', () => {
 function makeEnv({ batches } = {}) {
     const dom = new JSDOM('<div id="host"></div>', { pretendToBeVisual: true, url: 'http://localhost/' });
     const win = dom.window;
+    // JSDOM 不做布局，offsetParent 总是 null；这里当作挂在文档里就看得见
+    Object.defineProperty(win.HTMLElement.prototype, 'offsetParent', { configurable: true, get() { return this.isConnected ? this.parentNode : null; } });
     const view = win.document.getElementById('host');
-    const state = { forgeHandler: null, statusCalls: 0 };
+    const state = { forgeHandler: null, gitHandlers: new Set(), statusCalls: 0, subscriptions: [] };
     let timeline = batches;
     const api = {
-        gitListWorkspaces: async () => ({ success: true, data: { workspaces: [{ id: 'ws1', alias: 'demo', path: '/repo' }], activeWorkspaceId: 'ws1' } }),
+        gitListWorkspaces: async () => ({ success: true, data: { workspaces: [{ id: 'ws1', alias: 'demo', path: '/repo' }, { id: 'ws2', alias: 'other', path: '/other' }], activeWorkspaceId: 'ws1' } }),
         gitStatus: async () => {
             state.statusCalls += 1;
             return { success: true, data: { isRepo: true, branch: { head: 'main' }, remotes: [], staged: [], conflicts: [], changes: [
@@ -44,12 +48,21 @@ function makeEnv({ batches } = {}) {
         gitDiff: async () => ({ success: true, data: { before: { exists: true, text: '' }, after: { exists: true, text: 'x' } } }),
         projectForgeListProjects: async () => ({ success: true, data: [{ id: 'p1', name: '算法工程', workspace_id: 'ws1', updated_at: '2026-09-30' }] }),
         projectForgeGetProject: async () => ({ success: true, data: { project: { name: '算法工程' }, timeline } }),
-        onProjectForgeChanged: (cb) => { state.forgeHandler = cb; return () => { state.forgeHandler = null; }; }
+        onProjectForgeChanged: (cb) => { state.forgeHandler = cb; return () => { state.forgeHandler = null; }; },
+        onGitChanged: (cb) => { state.gitHandlers.add(cb); return () => state.gitHandlers.delete(cb); },
+        subscribeMainState: async (topic, key) => { state.subscriptions.push(['+', topic, key]); return { success: true }; },
+        unsubscribeMainState: async (topic, key) => { state.subscriptions.push(['-', topic, key]); return { success: true }; }
     };
+    // 不留宽限期：视图一释放，变更源就取消对 V工程 / Git 推送的监听
+    getProjectForgeChangesSource(api, { graceMs: 0 });
+    getGitChangesSource(api, 'ws1', { graceMs: 0 });
+    getGitChangesSource(api, 'ws2', { graceMs: 0 });
+    state.pushGit = (payload) => [...state.gitHandlers].forEach(cb => cb(payload));
     const gitView = { mount: async () => { const handle = mountGitView(view, { api }); await handle.ready; return handle; } };
     return { win, view, gitView, state, api, setTimeline: (t) => { timeline = t; } };
 }
 
+const gitSubs = (state) => state.subscriptions.filter(entry => entry[1] === 'git.status');
 const files = (view) => [...view.querySelectorAll('.side-git-card')].map(card => card.dataset.path);
 
 test('the 上一轮 source narrows changes to the newest V工程 batch and follows V工程 updates', async () => {
@@ -99,19 +112,61 @@ test('the 上一轮 source narrows changes to the newest V工程 batch and follo
     }
 });
 
-test('a change announced by the status panel refreshes the tab, and the tab ignores its own announcements', async () => {
+test('a pushed repository change refreshes the tab; only the shown workspace is subscribed', async () => {
+    const { gitView, state } = makeEnv({ batches: [] });
+    const handle = await gitView.mount();
+    try {
+        assert.deepEqual(gitSubs(state), [['+', 'git.status', 'ws1']]);
+        const before = state.statusCalls;
+        state.pushGit({ workspaceId: 'ws1', reason: 'commit' });
+        await wait();
+        assert.equal(state.statusCalls, before + 1);
+
+        state.pushGit({ workspaceId: 'ws2', reason: 'files' });
+        await wait();
+        assert.equal(state.statusCalls, before + 1, 'other workspaces are ignored');
+    } finally {
+        await handle.dispose();
+    }
+    assert.deepEqual(gitSubs(state).at(-1), ['-', 'git.status', 'ws1'], 'disposing releases the subscription');
+    assert.equal(state.gitHandlers.size, 0);
+});
+
+test('a change while the side pane is collapsed is read when the tab is shown again', async () => {
+    const { win, view, gitView, state } = makeEnv({ batches: [] });
+    const handle = await gitView.mount();
+    const pane = win.document.createElement('div');
+    pane.className = 'vcp-side-pane';
+    win.document.body.appendChild(pane);
+    pane.appendChild(view);
+    try {
+        pane.setAttribute('aria-hidden', 'true');
+        const before = state.statusCalls;
+        state.pushGit({ workspaceId: 'ws1', reason: 'files' });
+        await wait();
+        assert.equal(state.statusCalls, before, 'nothing is read while hidden');
+
+        pane.setAttribute('aria-hidden', 'false');
+        handle.refreshIfStale();
+        await wait();
+        assert.equal(state.statusCalls, before + 1);
+        handle.refreshIfStale();
+        await wait();
+        assert.equal(state.statusCalls, before + 1, 'read once, then up to date');
+    } finally {
+        await handle.dispose();
+    }
+});
+
+test('following a topic workspace switches the mounted tab and moves the subscription', async () => {
     const { win, view, gitView, state } = makeEnv({ batches: [] });
     const handle = await gitView.mount();
     try {
-        const before = state.statusCalls;
-        win.dispatchEvent(new win.CustomEvent('vcp:git-changed', { detail: { source: 'status-panel' } }));
+        followGitWorkspace(win, 'ws2');
         await wait();
-        assert.equal(state.statusCalls > before, true);
-
-        const own = state.statusCalls;
-        win.dispatchEvent(new win.CustomEvent('vcp:git-changed', { detail: { source: 'git-tab' } }));
-        await wait();
-        assert.equal(state.statusCalls, own, 'its own events are ignored');
+        assert.equal(view.querySelector('.side-git-ws-select, select:not(.side-git-source-select)')?.value, 'ws2');
+        assert.deepEqual(gitSubs(state).slice(-2), [['-', 'git.status', 'ws1'], ['+', 'git.status', 'ws2']]);
+        assert.equal(win.localStorage.getItem('vcp-projectforge-git-workspace'), 'ws2');
     } finally {
         await handle.dispose();
     }

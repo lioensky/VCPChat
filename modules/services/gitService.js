@@ -216,6 +216,28 @@ async function openRepository(workspaceRoot) {
     return { root, toplevel, prefix: toPosix(path.relative(toplevel, root)) };
 }
 
+/**
+ * 自动刷新要监听的目录：工作区本身，加上 Git 自己解析出的元数据目录。
+ * linked worktree / 独立 git-dir 时元数据不在工作区里，不能按 `<root>/.git` 去猜。
+ * 不是 Git 仓库时返回 null。
+ */
+async function getWatchTargets(workspaceRoot) {
+    if (typeof workspaceRoot !== 'string' || !workspaceRoot.trim()) throw new Error('缺少工作区根目录。');
+    const root = realpathSafe(path.resolve(workspaceRoot));
+    let stdout;
+    try {
+        ({ stdout } = await runGit(root, ['rev-parse', '--absolute-git-dir', '--git-common-dir']));
+    } catch (error) {
+        if (/not a git repository|不是\s*git\s*仓库/i.test(error.message)) return null;
+        throw error;
+    }
+    const [gitDir, commonDir] = stdout.toString('utf8').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    if (!gitDir) return null;
+    // --git-common-dir 的相对结果以命令 cwd 为基准
+    const dirs = [gitDir, commonDir ? path.resolve(root, commonDir) : gitDir].map(dir => realpathSafe(path.resolve(dir)));
+    return { root, gitDirs: [...new Set(dirs)] };
+}
+
 async function requireRepository(workspaceRoot) {
     const repo = await openRepository(workspaceRoot);
     if (!repo) throw new Error('该工作区不是 Git 仓库。');
@@ -695,6 +717,7 @@ async function getChangeSummary(workspaceRoot) {
 }
 module.exports = {
     getStatus,
+    getWatchTargets,
 
     getDiff,
     stage,
