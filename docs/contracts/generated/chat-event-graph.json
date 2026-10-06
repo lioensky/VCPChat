@@ -294,6 +294,7 @@
     "modules/renderer/streamManager.js",
     "modules/renderer/streamProjectionRuntime.js",
     "modules/renderer/surfaceTaskOwner.js",
+    "modules/renderer/toolPresentation.js",
     "modules/renderer/toolRequestMarkers.js",
     "modules/renderer/toolRequestScanner.js",
     "modules/renderer/toolResultRegions.js",
@@ -663,7 +664,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 242,
+          "line": 243,
           "kind": "custom-event-listener"
         },
         {
@@ -728,7 +729,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 242,
+          "line": 243,
           "kind": "custom-event-listener",
           "match": "signal?.addEventListener('abort'"
         },
@@ -752,14 +753,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 1821,
+          "line": 1829,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1821,
+          "line": 1829,
           "kind": "event-listener",
           "match": "app.on('activate'"
         }
@@ -1293,14 +1294,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 1927,
+          "line": 1935,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1927,
+          "line": 1935,
           "kind": "event-listener",
           "match": "app.on('before-quit'"
         }
@@ -2388,11 +2389,6 @@
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
           "line": 567,
           "kind": "custom-event-listener"
-        },
-        {
-          "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 401,
-          "kind": "custom-event-listener"
         }
       ],
       "evidence": [
@@ -2569,12 +2565,6 @@
           "line": 567,
           "kind": "custom-event-listener",
           "match": "el.addEventListener('change'"
-        },
-        {
-          "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 401,
-          "kind": "custom-event-listener",
-          "match": "wsSelect.addEventListener('change'"
         }
       ]
     },
@@ -3144,14 +3134,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 1665,
+          "line": 1673,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1665,
+          "line": 1673,
           "kind": "event-listener",
           "match": "ipcMain.handle('chat-data-service-reconcile'"
         }
@@ -3163,14 +3153,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 1658,
+          "line": 1666,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1658,
+          "line": 1666,
           "kind": "event-listener",
           "match": "ipcMain.handle('chat-data-service-status'"
         }
@@ -3563,17 +3553,17 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3425,
+          "line": 3438,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3484,
+          "line": 3497,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3522,
+          "line": 3535,
           "kind": "custom-event-listener"
         },
         {
@@ -3709,6 +3699,11 @@
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
           "line": 554,
+          "kind": "custom-event-listener"
+        },
+        {
+          "file": "modules/renderer/toolPresentation.js",
+          "line": 499,
           "kind": "custom-event-listener"
         },
         {
@@ -4407,16 +4402,6 @@
           "kind": "custom-event-listener"
         },
         {
-          "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 418,
-          "kind": "custom-event-listener"
-        },
-        {
-          "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 422,
-          "kind": "custom-event-listener"
-        },
-        {
           "file": "modules/ui-system/standalone-chat-app.js",
           "line": 47,
           "kind": "custom-event-listener"
@@ -4995,19 +4980,19 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3425,
+          "line": 3438,
           "kind": "custom-event-listener",
           "match": "attachmentElement.addEventListener('click'"
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3484,
+          "line": 3497,
           "kind": "custom-event-listener",
           "match": "attachmentElement.addEventListener('click'"
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3522,
+          "line": 3535,
           "kind": "custom-event-listener",
           "match": "removeBtn.addEventListener('click'"
         },
@@ -5172,6 +5157,12 @@
           "line": 554,
           "kind": "custom-event-listener",
           "match": "persistenceBadge.addEventListener('click'"
+        },
+        {
+          "file": "modules/renderer/toolPresentation.js",
+          "line": 499,
+          "kind": "custom-event-listener",
+          "match": "root.addEventListener('click'"
         },
         {
           "file": "modules/searchManager.js",
@@ -6008,18 +5999,6 @@
           "match": "closeBtn.addEventListener('click'"
         },
         {
-          "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 418,
-          "kind": "custom-event-listener",
-          "match": "restartBtn.addEventListener('click'"
-        },
-        {
-          "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 422,
-          "kind": "custom-event-listener",
-          "match": "clearBtn.addEventListener('click'"
-        },
-        {
           "file": "modules/ui-system/standalone-chat-app.js",
           "line": 47,
           "kind": "custom-event-listener",
@@ -6273,7 +6252,7 @@
         },
         {
           "file": "main.js",
-          "line": 1902,
+          "line": 1910,
           "kind": "event-listener"
         },
         {
@@ -6417,7 +6396,7 @@
         },
         {
           "file": "main.js",
-          "line": 1902,
+          "line": 1910,
           "kind": "event-listener",
           "match": "pythonProcess.on('close'"
         },
@@ -7156,14 +7135,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 2088,
+          "line": 2095,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 2088,
+          "line": 2095,
           "kind": "event-listener",
           "match": "ipcMain.on('connect-vcplog'"
         },
@@ -7274,7 +7253,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3426,
+          "line": 3439,
           "kind": "custom-event-listener"
         },
         {
@@ -7402,7 +7381,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3426,
+          "line": 3439,
           "kind": "custom-event-listener",
           "match": "attachmentElement.addEventListener('contextmenu'"
         },
@@ -8007,12 +7986,12 @@
         },
         {
           "file": "main.js",
-          "line": 1894,
+          "line": 1902,
           "kind": "event-listener"
         },
         {
           "file": "main.js",
-          "line": 1898,
+          "line": 1906,
           "kind": "event-listener"
         },
         {
@@ -8294,13 +8273,13 @@
         },
         {
           "file": "main.js",
-          "line": 1894,
+          "line": 1902,
           "kind": "event-listener",
           "match": "pythonProcess.stdout.on('data'"
         },
         {
           "file": "main.js",
-          "line": 1898,
+          "line": 1906,
           "kind": "event-listener",
           "match": "pythonProcess.stderr.on('data'"
         },
@@ -10421,14 +10400,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 2099,
+          "line": 2106,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 2099,
+          "line": 2106,
           "kind": "event-listener",
           "match": "ipcMain.on('disconnect-vcplog'"
         },
@@ -10825,7 +10804,7 @@
         },
         {
           "file": "modules/ui-system/appearance-engine.js",
-          "line": 181,
+          "line": 185,
           "kind": "custom-event-listener"
         },
         {
@@ -10900,7 +10879,7 @@
         },
         {
           "file": "modules/ui-system/appearance-engine.js",
-          "line": 181,
+          "line": 185,
           "kind": "custom-event-listener",
           "match": "document.addEventListener('DOMContentLoaded'"
         },
@@ -11087,14 +11066,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 1750,
+          "line": 1758,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1750,
+          "line": 1758,
           "kind": "event-listener",
           "match": "ipcMain.handle('embedded-vchat-app:activate'"
         },
@@ -11118,14 +11097,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 1770,
+          "line": 1778,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1770,
+          "line": 1778,
           "kind": "event-listener",
           "match": "ipcMain.handle('embedded-vchat-app:cancel'"
         },
@@ -11149,14 +11128,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 1758,
+          "line": 1766,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1758,
+          "line": 1766,
           "kind": "event-listener",
           "match": "ipcMain.handle('embedded-vchat-app:close'"
         },
@@ -11180,14 +11159,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 1787,
+          "line": 1795,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1787,
+          "line": 1795,
           "kind": "event-listener",
           "match": "ipcMain.handle('embedded-vchat-app:close-all'"
         },
@@ -11211,14 +11190,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 1739,
+          "line": 1747,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1739,
+          "line": 1747,
           "kind": "event-listener",
           "match": "ipcMain.handle('embedded-vchat-app:create'"
         },
@@ -11242,14 +11221,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 1763,
+          "line": 1771,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1763,
+          "line": 1771,
           "kind": "event-listener",
           "match": "ipcMain.handle('embedded-vchat-app:detach'"
         },
@@ -11273,14 +11252,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 1746,
+          "line": 1754,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1746,
+          "line": 1754,
           "kind": "event-listener",
           "match": "ipcMain.handle('embedded-vchat-app:list'"
         },
@@ -11304,14 +11283,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 1793,
+          "line": 1801,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1793,
+          "line": 1801,
           "kind": "event-listener",
           "match": "ipcMain.on('embedded-vchat-app:request-close'"
         },
@@ -11335,14 +11314,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 1754,
+          "line": 1762,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1754,
+          "line": 1762,
           "kind": "event-listener",
           "match": "ipcMain.handle('embedded-vchat-app:set-bounds'"
         },
@@ -11736,7 +11715,7 @@
         },
         {
           "file": "main.js",
-          "line": 1909,
+          "line": 1917,
           "kind": "event-listener"
         },
         {
@@ -12048,7 +12027,7 @@
         },
         {
           "file": "main.js",
-          "line": 1909,
+          "line": 1917,
           "kind": "event-listener",
           "match": "pythonProcess.on('error'"
         },
@@ -12180,14 +12159,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 1883,
+          "line": 1891,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1883,
+          "line": 1891,
           "kind": "event-listener",
           "match": "ipcMain.handle('execute-python-code'"
         },
@@ -12417,14 +12396,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 2122,
+          "line": 2129,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 2122,
+          "line": 2129,
           "kind": "event-listener",
           "match": "ipcMain.handle('export-topic-as-markdown'"
         },
@@ -12703,14 +12682,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 151,
+          "line": 152,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 151,
+          "line": 152,
           "kind": "custom-event-listener",
           "match": "screen.addEventListener('focusin'"
         }
@@ -13633,7 +13612,7 @@
         },
         {
           "file": "main.js",
-          "line": 1858,
+          "line": 1866,
           "kind": "event-listener"
         }
       ],
@@ -13646,7 +13625,7 @@
         },
         {
           "file": "main.js",
-          "line": 1858,
+          "line": 1866,
           "kind": "event-listener",
           "match": "ipcMain.handle('get-platform'"
         },
@@ -13856,14 +13835,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 184,
+          "line": 191,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 184,
+          "line": 191,
           "kind": "event-listener",
           "match": "handle('git:change-summary'"
         },
@@ -13906,14 +13885,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 147,
+          "line": 154,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 147,
+          "line": 154,
           "kind": "event-listener",
           "match": "handle('git:commit'"
         },
@@ -13937,14 +13916,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 179,
+          "line": 186,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 179,
+          "line": 186,
           "kind": "event-listener",
           "match": "handle('git:commit-graph'"
         },
@@ -13968,14 +13947,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 173,
+          "line": 180,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 173,
+          "line": 180,
           "kind": "event-listener",
           "match": "handle('git:create-branch'"
         },
@@ -13999,14 +13978,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 128,
+          "line": 135,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 128,
+          "line": 135,
           "kind": "event-listener",
           "match": "handle('git:diff'"
         },
@@ -14030,14 +14009,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 141,
+          "line": 148,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 141,
+          "line": 148,
           "kind": "event-listener",
           "match": "handle('git:discard'"
         },
@@ -14061,14 +14040,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 166,
+          "line": 173,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 166,
+          "line": 173,
           "kind": "event-listener",
           "match": "handle('git:list-branches'"
         },
@@ -14092,14 +14071,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 121,
+          "line": 128,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 121,
+          "line": 128,
           "kind": "event-listener",
           "match": "handle('git:list-workspaces'"
         },
@@ -14123,14 +14102,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 152,
+          "line": 159,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 152,
+          "line": 159,
           "kind": "event-listener",
           "match": "handle('git:push'"
         },
@@ -14154,14 +14133,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 158,
+          "line": 165,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 158,
+          "line": 165,
           "kind": "event-listener",
           "match": "handle('git:reveal-path'"
         },
@@ -14185,14 +14164,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 137,
+          "line": 144,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 137,
+          "line": 144,
           "kind": "event-listener",
           "match": "handle('git:stage'"
         },
@@ -14216,14 +14195,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 126,
+          "line": 133,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 126,
+          "line": 133,
           "kind": "event-listener",
           "match": "handle('git:status'"
         },
@@ -14247,14 +14226,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 168,
+          "line": 175,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 168,
+          "line": 175,
           "kind": "event-listener",
           "match": "handle('git:switch-branch'"
         },
@@ -14278,14 +14257,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 139,
+          "line": 146,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 139,
+          "line": 146,
           "kind": "event-listener",
           "match": "handle('git:unstage'"
         },
@@ -14312,12 +14291,12 @@
         },
         {
           "file": "modules/ui-system/appearance-studio.js",
-          "line": 334,
+          "line": 342,
           "kind": "custom-event-create"
         },
         {
           "file": "modules/ui-system/appearance-studio.js",
-          "line": 1214,
+          "line": 1239,
           "kind": "custom-event-create"
         },
         {
@@ -14379,13 +14358,13 @@
         },
         {
           "file": "modules/ui-system/appearance-studio.js",
-          "line": 334,
+          "line": 342,
           "kind": "custom-event-create",
           "match": "new CustomEvent('global-settings-updated'"
         },
         {
           "file": "modules/ui-system/appearance-studio.js",
-          "line": 1214,
+          "line": 1239,
           "kind": "custom-event-create",
           "match": "new CustomEvent('global-settings-updated'"
         },
@@ -14575,7 +14554,7 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 1642,
+          "line": 1650,
           "kind": "event-send"
         }
       ],
@@ -14589,7 +14568,7 @@
       "evidence": [
         {
           "file": "main.js",
-          "line": 1642,
+          "line": 1650,
           "kind": "event-send",
           "match": "sender.send('history-file-updated'"
         },
@@ -15148,14 +15127,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 2157,
+          "line": 2164,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 2157,
+          "line": 2164,
           "kind": "event-listener",
           "match": "ipcMain.handle('interrupt-group-request'"
         },
@@ -16065,14 +16044,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 1774,
+          "line": 1782,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1774,
+          "line": 1782,
           "kind": "event-listener",
           "match": "ipcMain.handle('lifecycle:get-main-snapshot'"
         },
@@ -16254,7 +16233,7 @@
         },
         {
           "file": "modules/ui-system/appearance-studio.js",
-          "line": 911,
+          "line": 934,
           "kind": "custom-event-listener"
         },
         {
@@ -16295,7 +16274,7 @@
         },
         {
           "file": "modules/ui-system/appearance-studio.js",
-          "line": 911,
+          "line": 934,
           "kind": "custom-event-listener",
           "match": "link.addEventListener('load'"
         },
@@ -18286,14 +18265,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 1812,
+          "line": 1820,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1812,
+          "line": 1820,
           "kind": "event-listener",
           "match": "ipcMain.on('minimize-to-tray'"
         },
@@ -21690,14 +21669,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 156,
+          "line": 157,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 156,
+          "line": 157,
           "kind": "preload-subscription",
           "match": "api.onTerminalClear("
         }
@@ -21728,14 +21707,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 153,
+          "line": 154,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 153,
+          "line": 154,
           "kind": "preload-subscription",
           "match": "api.onTerminalData("
         }
@@ -21747,14 +21726,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 159,
+          "line": 160,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 159,
+          "line": 160,
           "kind": "preload-subscription",
           "match": "api.onTerminalExit("
         }
@@ -26893,14 +26872,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 2111,
+          "line": 2118,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 2111,
+          "line": 2118,
           "kind": "event-listener",
           "match": "ipcMain.on('send-vcplog-message'"
         },
@@ -27052,7 +27031,7 @@
       "producers": [
         {
           "file": "modules/utils/appSettingsManager.js",
-          "line": 683,
+          "line": 687,
           "kind": "event-send"
         }
       ],
@@ -27060,7 +27039,7 @@
       "evidence": [
         {
           "file": "modules/utils/appSettingsManager.js",
-          "line": 683,
+          "line": 687,
           "kind": "event-send",
           "match": "this.emit('settings-external-error'"
         }
@@ -27076,7 +27055,7 @@
         },
         {
           "file": "modules/utils/appSettingsManager.js",
-          "line": 681,
+          "line": 685,
           "kind": "event-send"
         }
       ],
@@ -27118,7 +27097,7 @@
         },
         {
           "file": "modules/utils/appSettingsManager.js",
-          "line": 681,
+          "line": 685,
           "kind": "event-send",
           "match": "this.emit('settings-external-updated'"
         },
@@ -27154,7 +27133,7 @@
       "producers": [
         {
           "file": "modules/utils/appSettingsManager.js",
-          "line": 507,
+          "line": 511,
           "kind": "event-send"
         }
       ],
@@ -27185,7 +27164,7 @@
         },
         {
           "file": "modules/utils/appSettingsManager.js",
-          "line": 507,
+          "line": 511,
           "kind": "event-send",
           "match": "this.emit('settings-updated'"
         }
@@ -29271,7 +29250,7 @@
       "consumers": [
         {
           "file": "modules/ui-system/appearance-engine.js",
-          "line": 284,
+          "line": 288,
           "kind": "custom-event-listener"
         },
         {
@@ -29283,7 +29262,7 @@
       "evidence": [
         {
           "file": "modules/ui-system/appearance-engine.js",
-          "line": 284,
+          "line": 288,
           "kind": "custom-event-listener",
           "match": "window.addEventListener('ui-mode-changed'"
         },
@@ -29640,15 +29619,27 @@
       "producers": [
         {
           "file": "modules/ui-system/appearance-engine.js",
-          "line": 253,
+          "line": 257,
           "kind": "custom-event-create"
         }
       ],
-      "consumers": [],
+      "consumers": [
+        {
+          "file": "modules/renderer/toolPresentation.js",
+          "line": 500,
+          "kind": "custom-event-listener"
+        }
+      ],
       "evidence": [
         {
+          "file": "modules/renderer/toolPresentation.js",
+          "line": 500,
+          "kind": "custom-event-listener",
+          "match": "win.addEventListener('vcp-appearance-changed'"
+        },
+        {
           "file": "modules/ui-system/appearance-engine.js",
-          "line": 253,
+          "line": 257,
           "kind": "custom-event-create",
           "match": "new CustomEvent('vcp-appearance-changed'"
         }
@@ -29721,7 +29712,7 @@
       "producers": [
         {
           "file": "modules/ui-system/appearance-studio.js",
-          "line": 1087,
+          "line": 1112,
           "kind": "custom-event-create"
         }
       ],
@@ -29729,7 +29720,7 @@
       "evidence": [
         {
           "file": "modules/ui-system/appearance-studio.js",
-          "line": 1087,
+          "line": 1112,
           "kind": "custom-event-create",
           "match": "new CustomEvent('vcp-appearance-studio-preview'"
         }
@@ -29989,17 +29980,17 @@
         },
         {
           "file": "main.js",
-          "line": 2044,
+          "line": 2051,
           "kind": "event-send"
         },
         {
           "file": "main.js",
-          "line": 2059,
+          "line": 2066,
           "kind": "event-send"
         },
         {
           "file": "main.js",
-          "line": 2062,
+          "line": 2069,
           "kind": "event-send"
         }
       ],
@@ -30019,19 +30010,19 @@
         },
         {
           "file": "main.js",
-          "line": 2044,
+          "line": 2051,
           "kind": "event-send",
           "match": "mainWindow.webContents.send('vcp-log-message'"
         },
         {
           "file": "main.js",
-          "line": 2059,
+          "line": 2066,
           "kind": "event-send",
           "match": "mainWindow.webContents.send('vcp-log-message'"
         },
         {
           "file": "main.js",
-          "line": 2062,
+          "line": 2069,
           "kind": "event-send",
           "match": "mainWindow.webContents.send('vcp-log-message'"
         },
@@ -30048,32 +30039,32 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 2021,
+          "line": 2028,
           "kind": "event-send"
         },
         {
           "file": "main.js",
-          "line": 2034,
+          "line": 2041,
           "kind": "event-send"
         },
         {
           "file": "main.js",
-          "line": 2042,
+          "line": 2049,
           "kind": "event-send"
         },
         {
           "file": "main.js",
-          "line": 2068,
+          "line": 2075,
           "kind": "event-send"
         },
         {
           "file": "main.js",
-          "line": 2081,
+          "line": 2088,
           "kind": "event-send"
         },
         {
           "file": "main.js",
-          "line": 2107,
+          "line": 2114,
           "kind": "event-send"
         }
       ],
@@ -30087,37 +30078,37 @@
       "evidence": [
         {
           "file": "main.js",
-          "line": 2021,
+          "line": 2028,
           "kind": "event-send",
           "match": "mainWindow.webContents.send('vcp-log-status'"
         },
         {
           "file": "main.js",
-          "line": 2034,
+          "line": 2041,
           "kind": "event-send",
           "match": "mainWindow.webContents.send('vcp-log-status'"
         },
         {
           "file": "main.js",
-          "line": 2042,
+          "line": 2049,
           "kind": "event-send",
           "match": "mainWindow.webContents.send('vcp-log-status'"
         },
         {
           "file": "main.js",
-          "line": 2068,
+          "line": 2075,
           "kind": "event-send",
           "match": "mainWindow.webContents.send('vcp-log-status'"
         },
         {
           "file": "main.js",
-          "line": 2081,
+          "line": 2088,
           "kind": "event-send",
           "match": "mainWindow.webContents.send('vcp-log-status'"
         },
         {
           "file": "main.js",
-          "line": 2107,
+          "line": 2114,
           "kind": "event-send",
           "match": "mainWindow.webContents.send('vcp-log-status'"
         },
@@ -30262,7 +30253,7 @@
         },
         {
           "file": "modules/ui-system/typed-field-owners.js",
-          "line": 830,
+          "line": 832,
           "kind": "custom-event-create"
         }
       ],
@@ -30341,7 +30332,7 @@
         },
         {
           "file": "modules/ui-system/typed-field-owners.js",
-          "line": 830,
+          "line": 832,
           "kind": "custom-event-create",
           "match": "new CustomEvent('vcp-settings-save-result'"
         }
@@ -30572,7 +30563,7 @@
       "producers": [
         {
           "file": "modules/ui-system/appearance-engine.js",
-          "line": 217,
+          "line": 221,
           "kind": "custom-event-create"
         }
       ],
@@ -30580,7 +30571,7 @@
       "evidence": [
         {
           "file": "modules/ui-system/appearance-engine.js",
-          "line": 217,
+          "line": 221,
           "kind": "custom-event-create",
           "match": "new CustomEvent('vcp-wallpaper-scope-changed'"
         }
@@ -31186,14 +31177,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 1622,
+          "line": 1630,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1622,
+          "line": 1630,
           "kind": "event-listener",
           "match": "ipcMain.handle('watcher:begin'"
         },
@@ -31217,14 +31208,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 1629,
+          "line": 1637,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1629,
+          "line": 1637,
           "kind": "event-listener",
           "match": "ipcMain.handle('watcher:start'"
         },
@@ -31248,14 +31239,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 1649,
+          "line": 1657,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1649,
+          "line": 1657,
           "kind": "event-listener",
           "match": "ipcMain.handle('watcher:stop'"
         },
@@ -31721,7 +31712,7 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 1948,
+          "line": 1956,
           "kind": "event-listener"
         },
         {
@@ -31733,7 +31724,7 @@
       "evidence": [
         {
           "file": "main.js",
-          "line": 1948,
+          "line": 1956,
           "kind": "event-listener",
           "match": "app.on('will-quit'"
         },
@@ -31770,14 +31761,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 1921,
+          "line": 1929,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1921,
+          "line": 1929,
           "kind": "event-listener",
           "match": "app.on('window-all-closed'"
         }
@@ -32438,7 +32429,7 @@
     },
     {
       "file": "modules/ipc/gitHandlers.js",
-      "line": 74,
+      "line": 97,
       "reason": "dynamic event listener name: channel",
       "kind": "event-listener",
       "match": "ipcMain.handle(channel",
@@ -32533,30 +32524,6 @@
       "contractId": "loom.comfyui.agent-response-bridge"
     },
     {
-      "file": "modules/messageRenderer.js",
-      "line": 599,
-      "reason": "dynamic listener name: type",
-      "kind": "custom-event-listener",
-      "match": "target.addEventListener(type",
-      "contractId": "source.dynamic.modules.messagerenderer"
-    },
-    {
-      "file": "modules/messageRenderer.js",
-      "line": 2585,
-      "reason": "dynamic listener name: type",
-      "kind": "custom-event-listener",
-      "match": "target.addEventListener(type",
-      "contractId": "source.dynamic.modules.messagerenderer"
-    },
-    {
-      "file": "modules/messageRenderer.js",
-      "line": 3315,
-      "reason": "dynamic listener name: type",
-      "kind": "custom-event-listener",
-      "match": "target.addEventListener(type",
-      "contractId": "source.dynamic.modules.messagerenderer"
-    },
-    {
       "file": "modules/notificationCenter.js",
       "line": 324,
       "reason": "dynamic listener name: type",
@@ -32643,30 +32610,6 @@
       "kind": "custom-event-listener",
       "match": "target?.addEventListener?.(type",
       "contractId": "source.dynamic.modules.topiclistmanager"
-    },
-    {
-      "file": "modules/ui-system/appearance-studio.js",
-      "line": 516,
-      "reason": "dynamic listener name: type",
-      "kind": "custom-event-listener",
-      "match": "target.addEventListener(type",
-      "contractId": "source.dynamic.modules.ui-system.appearance-studio"
-    },
-    {
-      "file": "modules/ui-system/appearance-studio.js",
-      "line": 792,
-      "reason": "dynamic listener name: type",
-      "kind": "custom-event-listener",
-      "match": "root.addEventListener(type",
-      "contractId": "source.dynamic.modules.ui-system.appearance-studio"
-    },
-    {
-      "file": "modules/ui-system/appearance-studio.js",
-      "line": 1552,
-      "reason": "dynamic listener name: type",
-      "kind": "custom-event-listener",
-      "match": "target.addEventListener(type",
-      "contractId": "source.dynamic.modules.ui-system.appearance-studio"
     },
     {
       "file": "modules/ui-system/ask-nova-modal.js",
@@ -33061,5 +33004,36 @@
       "contractId": "source.dynamic.preloads.loom"
     }
   ],
-  "undiscovered": []
+  "undiscovered": [
+    {
+      "file": "modules/messageRenderer.js",
+      "line": 600,
+      "reason": "dynamic listener name: type"
+    },
+    {
+      "file": "modules/messageRenderer.js",
+      "line": 2589,
+      "reason": "dynamic listener name: type"
+    },
+    {
+      "file": "modules/messageRenderer.js",
+      "line": 3328,
+      "reason": "dynamic listener name: type"
+    },
+    {
+      "file": "modules/ui-system/appearance-studio.js",
+      "line": 524,
+      "reason": "dynamic listener name: type"
+    },
+    {
+      "file": "modules/ui-system/appearance-studio.js",
+      "line": 815,
+      "reason": "dynamic listener name: type"
+    },
+    {
+      "file": "modules/ui-system/appearance-studio.js",
+      "line": 1579,
+      "reason": "dynamic listener name: type"
+    }
+  ]
 }

@@ -11,6 +11,7 @@
 
 import { getHttpLinksForTerminalBufferLine } from './terminalLinks.js';
 import { buildTerminalTheme } from './terminalTheme.js';
+import { createSidePaneRootScope } from './side-pane-occurrence.js';
 
 const GO_OPTION_VALUE = '';
 const SINGLETON_TAB_ID = 'terminal:main';
@@ -263,7 +264,7 @@ export function createTerminalSideProvider({
             });
         },
 
-        async mountTab(tab, viewElement, { occurrence = null } = {}) {
+        async mountTab(tab, viewElement, { scope: viewScope = null, occurrence = null } = {}) {
             if (!viewElement) return null;
             viewElement.innerHTML = '';
             viewElement.classList.add('side-terminal-view');
@@ -374,8 +375,10 @@ export function createTerminalSideProvider({
             placeScreen(screen, container);
 
             let viewReleased = false;
-            let resizeObserver = null;
-            let resizeTimer = null;
+            // 这一次挂载的按钮监听、尺寸观察和防抖定时器都挂在视图 scope 下，休眠或关标签时一起拆；
+            // 会话本身跟着 occurrence 走，不放进来
+            const own = createSidePaneRootScope(viewScope, 'terminal');
+            let cancelFit = null;
             const view = { render: () => renderStatus(session.status) };
             session.view = view;
             view.render();
@@ -398,7 +401,7 @@ export function createTerminalSideProvider({
                 }
             }
 
-            wsSelect.addEventListener('change', async () => {
+            own.listen(wsSelect, 'change', async () => {
                 const workspaceId = wsSelect.value;
                 wsSelect.value = GO_OPTION_VALUE;
                 if (!workspaceId || !session.sessionId) return;
@@ -415,21 +418,22 @@ export function createTerminalSideProvider({
                 session.setStatus('已连接终端', 'connected', session.status.title);
                 term.focus();
             });
-            restartBtn.addEventListener('click', () => {
+            own.listen(restartBtn, 'click', () => {
                 session.restart();
                 term.focus();
             });
-            clearBtn.addEventListener('click', () => {
+            own.listen(clearBtn, 'click', () => {
                 term.clear();
                 term.focus();
             });
 
             if (typeof doc.defaultView.ResizeObserver === 'function') {
-                resizeObserver = new doc.defaultView.ResizeObserver(() => {
-                    clearTimeout(resizeTimer);
-                    resizeTimer = setTimeout(session.fit, 30);
-                });
-                resizeObserver.observe(screen);
+                own.observe(new doc.defaultView.ResizeObserver(() => {
+                    // 释放是异步逐条进行的，这期间画面挪进暂存区引起的尺寸变化不再排 fit
+                    if (!own.active) return;
+                    cancelFit?.();
+                    cancelFit = own.timeout(session.fit, 30, 'fit-debounce');
+                }), screen, undefined, 'screen-resize');
             }
 
             session.fit();
@@ -438,8 +442,7 @@ export function createTerminalSideProvider({
             const releaseView = () => {
                 if (viewReleased) return;
                 viewReleased = true;
-                clearTimeout(resizeTimer);
-                resizeObserver?.disconnect();
+                void own.dispose('terminal-view-released');
                 if (session.view === view) session.view = null;
                 if (!session.disposed && occurrence && !occurrence.signal?.aborted) {
                     stashFor(doc)?.appendChild(screen);

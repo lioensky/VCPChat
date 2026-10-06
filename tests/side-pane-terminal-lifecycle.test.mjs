@@ -203,3 +203,30 @@ test('closing a terminal tab while it sleeps ends the parked session', async () 
         assert.equal(h.screen(), null);
     } finally { await h.cleanup(); }
 });
+
+test('a live terminal view holds its buttons and size observer through the view scope and drops them when it sleeps', async () => {
+    const h = fixture({ dormancy: { hiddenMs: 20 } });
+    // JSDOM 没有 ResizeObserver，这里记下谁还在观察
+    const observers = [];
+    h.doc.defaultView.ResizeObserver = class {
+        constructor(cb) { this.cb = cb; this.targets = new Set(); observers.push(this); }
+        observe(target) { this.targets.add(target); }
+        disconnect() { this.targets.clear(); }
+    };
+    const terminalTab = () => h.controller.getDiagnostics().tabs.find(tab => tab.id === 'terminal:main');
+    try {
+        const handle = await h.provider.openTerminalTab();
+        await until(() => handle.getSessionId() === 'view:1');
+        const live = terminalTab().resources;
+        assert.equal(live.byType.listener, 3, 'workspace jump, clear and restart listen through the view scope');
+        assert.equal(live.byType.observer, 1);
+        assert.equal(observers[0].targets.size, 1);
+
+        h.controller.setVisible(false);
+        await new Promise(resolve => setTimeout(resolve, 60));
+        await until(() => terminalTab().view === 'dormant');
+        assert.equal(terminalTab().resources, null);
+        assert.equal(observers[0].targets.size, 0, 'the parked screen is no longer observed');
+        assert.deepEqual(h.killed, [], 'the shell itself keeps running');
+    } finally { await h.cleanup(); }
+});
