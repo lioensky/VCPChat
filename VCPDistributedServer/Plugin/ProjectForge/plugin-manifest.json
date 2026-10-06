@@ -2,7 +2,7 @@
   "name": "ProjectForge",
   "displayName": "工程施工台",
   "version": "1.0.0",
-  "description": "面向 Agent 的工程化代码施工插件。创建工程获得 projectId，在工作区内做行级编辑（串语法、原始快照行号、歧义票据）、自动代码审查、每次改动自动存快照并记录 reason，可按批次/节点回退，支持 todo 进度与验收报告。写入白名单自动取自已启用的工作区。删除文件移到系统回收站；删除工程只动数据库。支持 AST 符号寻址（Outline / FindSymbol / symbol=，JS/TS/TSX/Python/Rust），按“文件#限定名”读改函数无需行号；索引器不可用时自动退回 lines / target。",
+  "description": "面向 Agent 的工程化代码施工插件。创建工程获得 projectId，在工作区内做行级编辑（串语法、原始快照行号、歧义票据）、自动代码审查、每次改动自动存快照并记录 reason，可按批次/节点回退，支持 todo 进度与验收报告。写入白名单自动取自已启用的工作区。删除文件移到系统回收站；删除工程只动数据库。支持全域 AST 符号寻址（Outline / FindSymbol / symbol=，覆盖 C/C++、Go、Java、Rust、Python、C#、Lua、JS/TS 等 11 门主流语言，支持跨头文件宏展开、Java 同包隐式级联与 FFI 符号穿透），按“文件#限定名”读改函数无需行号；索引器不可用时自动退回 lines / target。",
   "author": "VCPToolBox",
   "license": "CC BY-NC-SA 4.0",
   "pluginType": "hybridservice",
@@ -80,12 +80,12 @@
       },
       {
         "command": "ReadCode",
-        "description": "读取工程文件，默认带行号（showLine=false 关闭）。path：单个文件，可写成 src/a.js:40-80 指定行范围；lines：行范围（head:N、tail:N、M-N、N）；paths：多个文件（换行或逗号分隔，每项都可带 :M-N）；glob：通配批量读取（如 shots/*.png）。图片/音视频以多模态 image_url 返回，PDF/Word/Excel 自动提取文本。find：在所选文件中查找文本，返回每处命中的行号、所在函数和上下文（用于同名代码消歧）。\n按符号读取（JS/TS/TSX/Python/Rust）：path=src/a.js#Store.putBlob，或 path + symbol=Store.putBlob（Rust 可写 Store::put_blob）；paths 中每项也可写 文件#符号。默认读取含紧邻前置注释 / JSDoc / 装饰器的完整定义；range=body 从签名行起；context=N 前后各多读 N 行。同名多处时列出候选，加 pick=序号 或 line=近似行号 消歧。",
+        "description": "读取工程文件，默认带行号（showLine=false 关闭）。path：单个文件，可写成 src/a.js:40-80 指定行范围；lines：行范围（head:N、tail:N、M-N、N）；paths：多个文件（换行或逗号分隔，每项都可带 :M-N）；glob：通配批量读取（如 shots/*.png）。图片/音视频以多模态 image_url 返回，PDF/Word/Excel 自动提取文本。find：在所选文件中查找文本，返回每处命中的行号、所在函数和上下文（用于同名代码消歧）。\n按符号读取（覆盖 C/C++、Go、Java、Rust、Python、C#、Lua、JS/TS 等 11 门主流语言）：path=src/a.js#Store.putBlob，或 path + symbol=Store.putBlob（Rust 可写 Store::put_blob）；paths 中每项也可写 文件#符号。默认读取含紧邻前置注释 / JSDoc / 装饰器的完整定义；range=body 从签名行起；context=N 前后各多读 N 行。同名多处时列出候选，加 pick=序号 或 line=近似行号 消歧。",
         "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」ReadCode「末」,\nprojectId:「始」p1a2b「末」,\npaths:「始」src/login.js:1-60\nsrc/validate.js「末」\n<<<[END_TOOL_REQUEST]>>>\n\n批量读截图:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」ReadCode「末」,\nprojectId:「始」p1a2b「末」,\nglob:「始」artifacts/shots/*.png「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
         "command": "Outline",
-        "description": "列出文件的符号大纲（函数 / 类 / 方法 / 对象 / 接口 / 类型…，按层级缩进）。每项给出签名行到结束行 L起-止，以及含前置注释的起点（注释自 L），比读全文省大量 token。projectId 必需；path 或 paths（多个，换行或逗号分隔）。可选 depth=N（只显示前 N 层）、kind（按类别过滤，如 function,method）。支持 JS/TS/TSX/Python/Rust，其他语言请用 ReadCode + lines / find。结果中的 `文件#限定名` 可直接回填 ReadCode / EditCode / MoveCode / CopyCode。",
+        "description": "列出文件的符号大纲（函数 / 类 / 方法 / 对象 / 接口 / 类型…，按层级缩进）。每项给出签名行到结束行 L起-止，以及含前置注释的起点（注释自 L），比读全文省大量 token。projectId 必需；path 或 paths（多个，换行或逗号分隔）。可选 depth=N（只显示前 N 层）、kind（按类别过滤，如 function,method）。支持全量 11 门主流语言（含 C/C++ 类内纯方法原型声明与 Go 包变量/接口方法），其他文件请用 ReadCode + lines / find。结果中的 `文件#限定名` 可直接回填 ReadCode / EditCode / MoveCode / CopyCode。",
         "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」Outline「末」,\nprojectId:「始」p1a2b「末」,\npath:「始」src/store.js「末」,\ndepth:「始」2「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
@@ -100,7 +100,7 @@
       },
       {
         "command": "EditCode",
-        "description": "行级编辑单个文件，写入前后自动做代码审查（只报告本次新增的问题）并返回 diff。projectId、path、reason 必需。\n单步：start/end/content 替换行（或 lines=M-N）；op=insert + after=N（0 为文件开头，end 为末尾）或 before=N + content；op=delete + start/end；target/replace 精确文本替换。\n串语法：op1/start1/end1/content1、op2/target2/replace2 …，projectId 和 path 只写一次，所有行号都以编辑前的原始文件为准，不必自己计算偏移；区间重叠会报错。\n首尾锚定（替换大段代码时省 token）：target 只写首行、一行 `...`、尾行，即匹配首行到尾行之间的整段（整行），replace 为新内容（留空即删除该段）。首尾行可直接粘贴 ReadCode 的 `N | 代码`，按行号 ±20 行定位并校验内容；不带行号时按内容配对，尾行优先匹配与首行缩进相同的那一处。字面能匹配时不启用此语法。\n容错：expect=该行原文，行号有偏差时在 ±20 行内自动校正；粘贴带 `N | ` 前缀的内容会自动剥除；target 缩进不一致时自动匹配并对齐缩进。\ntarget 多处命中时不写入，返回候选（行号、所在函数、上下文）和 ticketId，再用 ResolveEdit 选择；也可预先给 line=近似行号 或 pick=候选序号。\n按符号（JS/TS/TSX/Python/Rust，无需行号）：path=文件#限定名 或 symbol=限定名 + content，替换整个定义；op=delete + symbol 删除。默认区间含紧邻的前置注释 / JSDoc / 装饰器，替换或删除不会留下孤立注释；range=body 从签名行起，保留原注释。op=insert + after=symbol:名称（插到该定义之后）或 before=symbol:名称（插到其前置注释之前）。串语法写 symbol1/content1、op2=delete + symbol2 …，与行号步骤共用原始快照。同名多处时返回候选和 ticketId，用 ResolveEdit pick 选择，也可预先给 pick 或 line。\n可选：mode=bestEffort（跳过失败步骤，默认 atomic 全部成功才写）、todo=序号、reasonN=单步原因、revertOnSyntaxError=true（引入语法错误时不写入）。",
+        "description": "行级编辑单个文件，写入前后自动做代码审查（只报告本次新增的问题）并返回 diff。projectId、path、reason 必需。\n单步：start/end/content 替换行（或 lines=M-N）；op=insert + after=N（0 为文件开头，end 为末尾）或 before=N + content；op=delete + start/end；target/replace 精确文本替换。\n串语法：op1/start1/end1/content1、op2/target2/replace2 …，projectId 和 path 只写一次，所有行号都以编辑前的原始文件为准，不必自己计算偏移；区间重叠会报错。\n首尾锚定（替换大段代码时省 token）：target 只写首行、一行 `...`、尾行，即匹配首行到尾行之间的整段（整行），replace 为新内容（留空即删除该段）。首尾行可直接粘贴 ReadCode 的 `N | 代码`，按行号 ±20 行定位并校验内容；不带行号时按内容配对，尾行优先匹配与首行缩进相同的那一处。字面能匹配时不启用此语法。\n容错：expect=该行原文，行号有偏差时在 ±20 行内自动校正；粘贴带 `N | ` 前缀的内容会自动剥除；target 缩进不一致时自动匹配并对齐缩进。\ntarget 多处命中时不写入，返回候选（行号、所在函数、上下文）和 ticketId，再用 ResolveEdit 选择；也可预先给 line=近似行号 或 pick=候选序号。\n按符号（覆盖 11 门主流语言，无需行号）：path=文件#限定名 或 symbol=限定名 + content，替换整个定义；op=delete + symbol 删除。默认区间含紧邻的前置注释 / JSDoc / 装饰器，替换或删除不会留下孤立注释；range=body 从签名行起，保留原注释。op=insert + after=symbol:名称（插到该定义之后）或 before=symbol:名称（插到其前置注释之前）。串语法写 symbol1/content1、op2=delete + symbol2 …，与行号步骤共用原始快照。同名多处时返回候选和 ticketId，用 ResolveEdit pick 选择，也可预先给 pick 或 line。\n可选：mode=bestEffort（跳过失败步骤，默认 atomic 全部成功才写）、todo=序号、reasonN=单步原因、revertOnSyntaxError=true（引入语法错误时不写入）。",
         "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」EditCode「末」,\nprojectId:「始」p1a2b「末」,\npath:「始」src/login.js「末」,\nreason:「始」提交前校验邮箱格式，并修正按钮文案「末」,\ntodo:「始」2「末」,\nop1:「始」replace「末」,\nstart1:「始」12「末」,\nend1:「始」14「末」,\nexpect1:「始」function submit(form) {「末」,\ncontent1:「始ESCAPE」function submit(form) {\n  if (!isEmail(form.email)) return showError('邮箱格式不正确');\n  return api.login(form);「末ESCAPE」,\nop2:「始」target「末」,\ntarget2:「始」'登陆'「末」,\nreplace2:「始」'登录'「末」\n<<<[END_TOOL_REQUEST]>>>\n\n首尾锚定替换整个函数:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」EditCode「末」,\nprojectId:「始」p1a2b「末」,\npath:「始」src/login.js「末」,\nreason:「始」重写 render，改用模板渲染「末」,\ntarget:「始ESCAPE」40 | function render(state) {\n...\n88 | }「末ESCAPE」,\nreplace:「始ESCAPE」function render(state) {\n  return template(state);\n}「末ESCAPE」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {

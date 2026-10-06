@@ -122,6 +122,7 @@ pub struct FileFacts {
 }
 
 impl FileFacts {
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.requires.is_empty()
             && self.imports.is_empty()
