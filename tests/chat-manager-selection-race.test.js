@@ -282,6 +282,11 @@ function createFixture(options = {}) {
         sentRequests,
         attachmentRef,
         configs,
+        // 设置页删掉当前助手时直接改这两个 ref，再调 displayNoItemSelected
+        clearSelectionRefs() {
+            selected = Object.freeze({ id: null, type: null, name: null, avatarUrl: null, config: null });
+            topicId = null;
+        },
         holdNextHistorySave() {
             const gate = { started: deferred(), release: deferred() };
             nextHistorySaveGate = gate;
@@ -1002,4 +1007,21 @@ test('creating a topic commits a selection event after the empty history identit
  const creating=fixture.chatManager.createNewTopicForItem('agent-a','agent');
  fixture.createTopicRequests.get('agent-a')[0].resolve({success:true,topicId:'topic-a-created',topicName:'Created'});
  await creating;assert.deepEqual(events,[{topicId:'topic-a-created',history:[]}]);unsubscribe();fixture.dom.window.close();
+});
+
+test('deleting the current assistant tells selection followers that nothing is selected', async () => {
+    const fixture = createFixture();
+    const selecting = fixture.chatManager.selectItem('agent-a', 'agent', 'Agent A', null, fixture.configs['agent-a']);
+    await new Promise(resolve => setImmediate(resolve));
+    fixture.topicRequests.get('agent-a').resolve(fixture.configs['agent-a'].topics);
+    await selecting;
+    const events = [];
+    const unsubscribe = fixture.chatManager.onSelectionChange(event => events.push({ itemId: event.item?.id ?? null, topicId: event.topicId }));
+
+    fixture.clearSelectionRefs();
+    assert.equal(fixture.chatManager.displayNoItemSelected(), true);
+    assert.deepEqual(events, [{ itemId: null, topicId: null }]);
+    assert.deepEqual({ ...fixture.publishedSelections.at(-1) }, { itemId: null, itemType: null, topicId: null });
+    unsubscribe();
+    fixture.dom.window.close();
 });

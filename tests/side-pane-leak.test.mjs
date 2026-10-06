@@ -163,3 +163,107 @@ test(`views put to sleep and woken ${CYCLES} times leave nothing behind`, async 
         assert.deepEqual(h.controller.getViewResidency(), { live: [], dormant: [] });
     } finally { await h.cleanup(); }
 });
+
+// 挂载途中出事的两种情况：标签在 provider 还没挂完时被关掉；provider 挂到一半抛错
+function probeFixture() {
+    const dom = new JSDOM(`<body>
+        <aside id="vcpSidePane" class="vcp-side-pane">
+            <div class="side-pane-tabs"></div>
+            <div class="side-pane-content-container"></div>
+        </aside></body>`);
+    const doc = dom.window.document;
+    const root = doc.getElementById('vcpSidePane');
+    const controller = createSidePaneController({
+        root,
+        tabListElement: root.querySelector('.side-pane-tabs'),
+        contentContainer: root.querySelector('.side-pane-content-container')
+    });
+    const mounts = [];
+    let gate = null;
+    let failNext = false;
+    const provider = {
+        async mountTab(payload, view, { scope }) {
+            const record = { id: payload.id, disposed: 0, released: 0, aborted: false };
+            mounts.push(record);
+            // provider 在 await 之前已经往 view scope 上挂了东西
+            scope.own(() => { record.released++; }, 'probe-resource');
+            scope.listen(doc, 'keydown', () => {});
+            view.append(doc.createElement('div'));
+            if (gate) await gate.promise;
+            if (failNext) { failNext = false; throw new Error('mount exploded'); }
+            return { dispose() { record.disposed++; } };
+        }
+    };
+    controller.registerTabType({ kind: 'probe', label: 'Probe', provider });
+    const { diagnostics } = globalThis.VCPLifecycle;
+    const measure = () => ({
+        scopes: diagnostics.summary().activeScopes,
+        resources: diagnostics.summary().activeResources,
+        views: root.querySelectorAll('.side-pane-view[data-tab-id^="probe:"]').length,
+        residency: controller.getViewResidency()
+    });
+    return {
+        controller, mounts, measure,
+        hold() {
+            let open;
+            gate = { promise: new Promise(resolve => { open = resolve; }) };
+            return () => { gate = null; open(); };
+        },
+        failOnce() { failNext = true; },
+        async cleanup() { await controller.dispose(); dom.window.close(); }
+    };
+}
+
+const probeTab = id => ({ id, kind: 'probe', title: id, closable: true, scopeMode: 'global' });
+
+test('a tab closed while its view is still mounting leaves nothing behind', async () => {
+    const h = probeFixture();
+    try {
+        await h.controller.openTab(probeTab('probe:warm'));
+        await h.controller.closeTab('probe:warm');
+        await settle();
+        const baseline = h.measure();
+
+        for (let i = 0; i < CYCLES; i++) {
+            const release = h.hold();
+            const opening = h.controller.openTab(probeTab(`probe:${i}`));
+            await settle();
+            await h.controller.closeTab(`probe:${i}`);
+            release();
+            assert.equal(await opening, null, 'the open reports that nothing was mounted');
+            await settle();
+        }
+        assert.deepEqual(h.measure(), baseline);
+        const late = h.mounts.slice(1);
+        assert.equal(late.length, CYCLES);
+        assert.ok(late.every(m => m.disposed === 1 && m.released === 1), 'each late handle was disposed and its scope released once');
+    } finally { await h.cleanup(); }
+});
+
+test('a view whose mount throws releases what it had set up, and the tab can mount again', async () => {
+    const h = probeFixture();
+    try {
+        await h.controller.openTab(probeTab('probe:warm'));
+        await h.controller.closeTab('probe:warm');
+        await settle();
+        const baseline = h.measure();
+
+        for (let i = 0; i < CYCLES; i++) {
+            const id = `probe:${i}`;
+            h.failOnce();
+            await assert.rejects(h.controller.openTab(probeTab(id)), /mount exploded/);
+            await settle();
+            const failed = h.mounts.at(-1);
+            assert.equal(failed.released, 1, 'what the provider put on the view scope is released');
+            assert.equal(h.measure().views, 0, 'no empty view shell is left');
+
+            // 标签还在：再显示一次就重新挂上
+            h.controller.activateTab(id);
+            await settle();
+            assert.deepEqual(h.controller.getViewResidency().live, [id]);
+            await h.controller.closeTab(id);
+            await settle();
+        }
+        assert.deepEqual(h.measure(), baseline);
+    } finally { await h.cleanup(); }
+});

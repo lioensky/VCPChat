@@ -535,6 +535,8 @@ export const chatManager = (() => {
             mainRendererFunctions.displaySettingsForItem(); 
         }
         if (topicListManager) topicListManager.loadTopicList();
+        // 当前助手被删掉时走到这里：跟着主聊天的侧栏、状态面板、调用轨迹都要知道现在没有会话了
+        notifySelectionCommitted();
         return true;
     }
 

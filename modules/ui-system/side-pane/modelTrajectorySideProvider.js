@@ -852,12 +852,14 @@ export function createModelTrajectorySideProvider({
                 if (watched?.success) unwatch = () => api?.modelTrajectoryUnwatch?.();
                 unsubscribe = api?.onModelTrajectoryChanged?.(onChanged) || null;
             } catch (_error) { /* 订阅失败时仍可手动刷新 */ }
-            // 切换智能体 / 话题时由主聊天通知；轮询只是兜底（比如话题被外部流程切换）
+            // 切换智能体 / 话题（包括删掉当前助手）都由主聊天通知，接上了就不用轮询
             unsubscribeConversation = onConversationChange?.(() => { if (!disposed && currentKey() !== sessionKey) void load(); }) || null;
-            const followTick = () => { if (!disposed && currentKey() !== sessionKey) return load(); return undefined; };
-            // 由控制器下发可见性时只在标签可见时轮询；直接调用（没有 scope）时退回到看窗口是否可见
-            if (viewScope && occurrence) pollWhileVisible(viewScope, occurrence.visible, followTick, FOLLOW_POLL_MS, { label: 'trajectory-follow' });
-            else poller = win.setInterval(() => { if (!doc.hidden) void followTick(); }, FOLLOW_POLL_MS);
+            if (!unsubscribeConversation) {
+                // 没有切换通知（单独挂载、没有主聊天）时才轮询兜底：有控制器下发可见性就只在标签可见时轮询，否则看窗口是否可见
+                const followTick = () => { if (!disposed && currentKey() !== sessionKey) return load(); return undefined; };
+                if (viewScope && occurrence) pollWhileVisible(viewScope, occurrence.visible, followTick, FOLLOW_POLL_MS, { label: 'trajectory-follow' });
+                else poller = win.setInterval(() => { if (!doc.hidden) void followTick(); }, FOLLOW_POLL_MS);
+            }
             await load();
 
             return {
