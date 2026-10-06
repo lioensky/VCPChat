@@ -120,12 +120,14 @@
             this.assertActive();
             let record;
             const once = Boolean(options && typeof options === 'object' && options.once);
+            // 和定时器一样只在 scope 活着时回调：dispose 是异步逐条释放的，这期间来的事件不再交给已经在拆的界面
+            const invoke = args => (typeof handler === 'function' ? handler.apply(target, args) : handler?.handleEvent?.(...args));
             const ownedHandler = once
                 ? (...args) => {
                     void this._release(record, false);
-                    return handler.apply(target, args);
+                    return this.active ? invoke(args) : undefined;
                 }
-                : handler;
+                : (...args) => (this.active ? invoke(args) : undefined);
             target.addEventListener(type, ownedHandler, options);
             record = this._register(() => target.removeEventListener(type, ownedHandler, options), label, 'listener');
             let releasePromise = null;
@@ -239,6 +241,29 @@
                 resourceCount: resources.length,
                 resources,
             });
+        }
+
+        /**
+         * 这个 scope 连同所有还活着的子孙 scope 里挂着的资源，按类型计数。
+         * 子 scope 自己的那条登记（child-scope）不算，只数真正的监听、定时器、Observer 等；不含任何内容。
+         */
+        resourceSummary() {
+            const scopes = [...activeScopes.values()].filter(scope => {
+                for (let current = scope; current; current = current.parent) {
+                    if (current === this) return true;
+                }
+                return false;
+            });
+            const byType = {};
+            let total = 0;
+            for (const scope of scopes) {
+                for (const record of scope._records) {
+                    if (!record.active || record.type === 'child-scope') continue;
+                    byType[record.type] = (byType[record.type] || 0) + 1;
+                    total += 1;
+                }
+            }
+            return Object.freeze({ scopes: scopes.length, resources: total, byType: Object.freeze(byType) });
         }
 
         dispose(reason = 'disposed') {

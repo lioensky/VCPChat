@@ -188,3 +188,34 @@ test('animation frames are owned and suppressed after disposal', async () => {
     await new Promise(resolve => setTimeout(resolve, 30));
     assert.equal(fired, 0);
 });
+
+test('resource summary counts a scope and its live descendants by type', async () => {
+    const scope = new LifecycleScope('summary-root');
+    const target = new EventTarget();
+    scope.listen(target, 'ping', () => {});
+    const child = scope.child('summary-child');
+    child.interval(() => {}, 60_000);
+    child.own(() => {}, 'custom-thing', 'subscription');
+    assert.deepEqual(scope.resourceSummary(), { scopes: 2, resources: 3, byType: { listener: 1, interval: 1, subscription: 1 } });
+    assert.deepEqual(child.resourceSummary().byType, { interval: 1, subscription: 1 });
+    await child.dispose();
+    assert.deepEqual(scope.resourceSummary(), { scopes: 1, resources: 1, byType: { listener: 1 } });
+    await scope.dispose();
+});
+
+test('a listener stops receiving events as soon as its scope starts disposing', async () => {
+    const scope = new LifecycleScope('listener-gate');
+    const target = new EventTarget();
+    let calls = 0;
+    let objectCalls = 0;
+    scope.listen(target, 'ping', () => { calls += 1; });
+    scope.listen(target, 'ping', { handleEvent: () => { objectCalls += 1; } });
+    target.dispatchEvent(new Event('ping'));
+    assert.equal(calls, 1);
+    assert.equal(objectCalls, 1);
+    const disposing = scope.dispose('test');
+    target.dispatchEvent(new Event('ping'));
+    assert.equal(calls, 1, 'not delivered while the scope is tearing down');
+    assert.equal(objectCalls, 1);
+    await disposing;
+});

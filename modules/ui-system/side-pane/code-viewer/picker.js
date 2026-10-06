@@ -6,6 +6,7 @@ const SOURCE_WORKSPACE_KEY = 'vcp-projectforge-source-workspace';
 
 export function createCodeViewerPicker({
     store,
+    scope,
     api,
     detectLanguage,
     doc,
@@ -17,13 +18,9 @@ export function createCodeViewerPicker({
     setBodyMessage,
     titleLabel
 }) {
-    const cleanups = [];
-    let disposed = false;
     let readToken = 0;
-    function on(node, event, listener) {
-        node.addEventListener(event, listener);
-        cleanups.push(() => node.removeEventListener(event, listener));
-    }
+    // 监听挂在查看器这次挂载的 scope 上，标签释放时一起拆
+    const on = (node, event, listener) => scope.listen(node, event, listener, undefined, `picker:${event}`);
 
     async function setupPicker() {
         const wsSelect = doc.createElement('select');
@@ -101,7 +98,7 @@ export function createCodeViewerPicker({
         async function openFile(rel) {
             const token = ++readToken;
             const workspaceId = activeWorkspaceId;
-            const isCurrent = () => !disposed && !store.isDisposed && token === readToken;
+            const isCurrent = () => !store.isDisposed && token === readToken;
             activePath = rel;
             store.currentCode = '';
             list.querySelectorAll('.side-code-picker-item').forEach((el) => {
@@ -195,5 +192,5 @@ export function createCodeViewerPicker({
         }
     }
 
-    return Object.freeze({ setupPicker, dispose() { disposed = true; ++readToken; cleanups.splice(0).forEach(cleanup => cleanup()); } });
+    return Object.freeze({ setupPicker });
 }

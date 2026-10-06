@@ -28,6 +28,7 @@ import { createProjectPicker } from './plan-detail/project-picker.js';
 import { mountGitView } from './git/git-view.js';
 import { watchProjectForgeChanges } from '../sources/projectforge-changes.js';
 import { GIT_WORKSPACE_STORAGE_KEY } from '../sources/git-workspace.js';
+import { createSidePaneRootScope } from './side-pane-occurrence.js';
 
 const TAB_PREFIX = 'plan-detail:';
 const TOPIC_TAB = 'topic';
@@ -188,7 +189,7 @@ export function createPlanDetailSideProvider({
             return mounted;
         },
 
-        async mountTab(tab, viewElement, { restoredState = null, occurrence = null } = {}) {
+        async mountTab(tab, viewElement, { scope: viewScope = null, restoredState = null, occurrence = null } = {}) {
             if (!viewElement) return null;
             const legacyId = String(tab?.id || '').slice(TAB_PREFIX.length).split('@')[0];
             let projectId = tab?.payload?.projectId || (legacyId && legacyId !== TOPIC_TAB && legacyId !== NO_PROJECT_TAB ? legacyId : null);
@@ -223,7 +224,10 @@ export function createPlanDetailSideProvider({
             scope.append(chrome, body);
             viewElement.appendChild(scope);
 
-            let isDisposed = false;
+            // 这次挂载里长期存在的订阅、定时器、子视图都归 own，控制器释放 view 或调用 dispose 时一起拆掉。
+            // 区块、卡片、按钮每次渲染都重建，它们自己的监听跟着元素一起丢弃，不挂到 own 上
+            const own = createSidePaneRootScope(viewScope, 'plan-detail');
+            const disposed = () => !own.active;
             let model = null;
             let activity = null; // 话题模式下本话题的施工；全局标签为 null
             let topicProjects = [];
@@ -234,7 +238,7 @@ export function createPlanDetailSideProvider({
             let staleError = ''; // 刷新失败但还留着上一次的内容（保留上次内容，不因一次失败清空）
             let loading = true;
             let refreshSeq = 0;
-            let timer = null;
+            let cancelLoad = null;
             let shownName = tab?.payload?.projectName || '';
             const collapsed = { files: false, timeline: false, contributors: false, report: true };
             const expanded = new Set();
@@ -244,10 +248,12 @@ export function createPlanDetailSideProvider({
             let filterRows = null;
             let filterError = '';
             let filterSeq = 0;
-            let filterTimer = null;
+            let cancelFilter = null;
             let nodeView = null;
             const navigation = createPlanPageNavigation({ h, button, id: tab.id, onChange: selectPage });
             const picker = createProjectPicker({ h, icon, doc, win, host: scope, api, onPick: switchProject });
+            own.own(() => picker.dispose(), 'project-picker');
+            own.own(() => { nodeView?.dispose(); nodeView = null; }, 'node-view');
             // Git 页：元素常驻，每次重绘挂回去；第一次切到这一页才读 Git
             const gitHost = h('div', 'side-plan-git');
             let gitView = null;
@@ -257,7 +263,8 @@ export function createPlanDetailSideProvider({
             function ensureGit() {
                 if (!gitView) {
                     gitProjectId = model?.project?.id || null;
-                    gitView = mountGitView(gitHost, { api, uiHelper, preferWorkspace: workspaceOfProject(model?.project) });
+                    // Git 页挂成这次挂载的子 scope，跟着标签一起释放
+                    gitView = mountGitView(gitHost, { api, uiHelper, preferWorkspace: workspaceOfProject(model?.project), scope: own });
                 }
                 return gitView;
             }
@@ -538,8 +545,8 @@ export function createPlanDetailSideProvider({
                         ++filterSeq;
                         filterRows = null;
                         filterError = '';
-                        win.clearTimeout(filterTimer);
-                        filterTimer = win.setTimeout(() => runSearch(), FILTER_DEBOUNCE_MS);
+                        cancelFilter?.();
+                        cancelFilter = disposed() ? null : own.timeout(() => { cancelFilter = null; runSearch(); }, FILTER_DEBOUNCE_MS, 'filter-debounce');
                         render();
                     });
                     return el;
@@ -720,7 +727,7 @@ export function createPlanDetailSideProvider({
             }
 
             function render() {
-                if (isDisposed || nodeView) return;
+                if (disposed() || nodeView) return;
                 // 输入框随整页重绘，记下焦点和光标位置
                 const active = doc.activeElement;
                 const focusKey = active && body.contains(active) ? active.dataset?.filter : null;
@@ -796,17 +803,17 @@ export function createPlanDetailSideProvider({
                 // 期间可能重新渲染过，每次都重新找目标
                 let tries = 0;
                 const reveal = () => {
-                    if (isDisposed) return;
+                    if (disposed()) return;
                     const target = find();
                     if (!target) return;
                     if (!target.getClientRects?.().length && tries++ < 30) {
-                        win.setTimeout(reveal, 50);
+                        own.timeout(reveal, 50, 'reveal-retry');
                         return;
                     }
                     // 区块（时间线等）往往比视口高，对齐顶部才能看到标题；单条计划放在中间
                     target.scrollIntoView?.({ block: target.matches('[data-plan-section]') ? 'start' : 'center' });
                     target.classList.add('is-flash');
-                    win.setTimeout(() => target.classList.remove('is-flash'), 1600);
+                    own.timeout(() => target.classList.remove('is-flash'), 1600, 'reveal-flash');
                 };
                 reveal();
             }
@@ -820,7 +827,7 @@ export function createPlanDetailSideProvider({
                 const row = timelineRows().find(b => b.id === batchId);
                 if (expanded.has(batchId) && row && !row.nodes) {
                     const pid = model.project.id;
-                    fetchBatch(pid, batchId).then(() => { if (!isDisposed && model?.project.id === pid) render(); });
+                    fetchBatch(pid, batchId).then(() => { if (!disposed() && model?.project.id === pid) render(); });
                 }
             }
 
@@ -834,7 +841,8 @@ export function createPlanDetailSideProvider({
             }
 
             async function runSearch() {
-                win.clearTimeout(filterTimer);
+                cancelFilter?.();
+                cancelFilter = null;
                 const seq = ++filterSeq;
                 if (!hasFilters(filters) || !model) {
                     filterRows = null;
@@ -848,10 +856,10 @@ export function createPlanDetailSideProvider({
                 const pid = model.project.id;
                 try {
                     const rows = await call(api.projectForgeSearchHistory(searchParams(pid, filters)));
-                    if (isDisposed || seq !== filterSeq) return;
+                    if (disposed() || seq !== filterSeq) return;
                     filterRows = narrowSearchRows(rows, { topicBatchIds: activity ? topicBatchIds : null, exactFile: filters.exactFile });
                 } catch (error) {
-                    if (isDisposed || seq !== filterSeq) return;
+                    if (disposed() || seq !== filterSeq) return;
                     filterError = error?.message || '读取失败';
                 }
                 render();
@@ -914,7 +922,7 @@ export function createPlanDetailSideProvider({
                     if (topicMode && isCurrentTopic()) lastScope = readScope();
                     const scoped = lastScope;
                     const projects = topicMode ? await listTopicProjects(scoped.projectIds) : [];
-                    if (isDisposed || seq !== refreshSeq) return;
+                    if (disposed() || seq !== refreshSeq) return;
                     // 没手动选过工程就和状态面板走同一条规则
                     const chosen = (pinned && projectId) || pickTopicProject(projects)?.id || projectId;
                     if (!chosen) {
@@ -925,7 +933,7 @@ export function createPlanDetailSideProvider({
                         return;
                     }
                     const res = await api?.projectForgeGetProject?.(chosen);
-                    if (isDisposed || seq !== refreshSeq) return;
+                    if (disposed() || seq !== refreshSeq) return;
                     if (res?.success && res.data?.project) {
                         const nextModel = buildPlanModel(res.data);
                         let nextActivity = null;
@@ -933,7 +941,7 @@ export function createPlanDetailSideProvider({
                         if (topicMode) {
                             const { inTimeline, older } = locateTopicBatches(nextModel.timeline, scoped.batchIds);
                             const entries = await Promise.all([...inTimeline, ...older].map(id => fetchBatch(chosen, id)));
-                            if (isDisposed || seq !== refreshSeq) return;
+                            if (disposed() || seq !== refreshSeq) return;
                             nextActivity = buildTopicActivity(entries);
                             const mine = new Set(nextActivity.batches.map(b => b.id));
                             nextOther = { count: nextModel.timeline.filter(r => !mine.has(Number(r.id))).length, more: nextModel.timeline.length >= TIMELINE_LIMIT };
@@ -962,7 +970,7 @@ export function createPlanDetailSideProvider({
                         errorText = res?.error || '';
                     }
                 } catch (error) {
-                    if (isDisposed || seq !== refreshSeq) return;
+                    if (disposed() || seq !== refreshSeq) return;
                     if (model) {
                         staleError = error?.message || '读取失败';
                     } else {
@@ -976,8 +984,8 @@ export function createPlanDetailSideProvider({
             }
 
             const scheduleLoad = () => {
-                win.clearTimeout(timer);
-                timer = win.setTimeout(() => { timer = null; if (!isDisposed) load(); }, REFRESH_DEBOUNCE_MS);
+                cancelLoad?.();
+                cancelLoad = disposed() ? null : own.timeout(() => { cancelLoad = null; load(); }, REFRESH_DEBOUNCE_MS, 'reload-debounce');
             };
             // 标签藏着时收到的变更只记一笔，重新显示时读一次，不在后台反复读工程
             let staleWhileHidden = false;
@@ -985,26 +993,26 @@ export function createPlanDetailSideProvider({
                 if (occurrence?.isVisible?.() === false) staleWhileHidden = true;
                 else scheduleLoad();
             };
-            const off = watchProjectForgeChanges(api, (payload) => {
+            own.subscribe(() => watchProjectForgeChanges(api, (payload) => {
                 if (!payload?.projectId || payload.projectId === projectId) loadWhenShown();
-            }, { label: 'plan-detail' });
+            }, { label: 'plan-detail' }), 'projectforge-changes');
             // 新的施工结果进了聊天记录（可能晚于工程变更事件）：话题范围变了才重读
-            const offTopic = topicMode ? watchTopic?.(() => {
-                if (isDisposed || !isCurrentTopic()) return;
+            if (topicMode) own.subscribe(() => watchTopic?.(() => {
+                if (disposed() || !isCurrentTopic()) return;
                 if (readScope().key !== scopeKey) loadWhenShown();
-            }) : null;
+            }), 'topic-history');
 
             const handle = {
                 focus() { scheduleLoad(); },
                 suspend() {
                     // 还没到点的重读留到重新显示时再做
-                    if (!timer) return;
-                    win.clearTimeout(timer);
-                    timer = null;
+                    if (!cancelLoad) return;
+                    cancelLoad();
+                    cancelLoad = null;
                     staleWhileHidden = true;
                 },
                 resume() {
-                    if (isDisposed || !staleWhileHidden) return;
+                    if (disposed() || !staleWhileHidden) return;
                     staleWhileHidden = false;
                     scheduleLoad();
                 },
@@ -1021,16 +1029,12 @@ export function createPlanDetailSideProvider({
                     return { page: navigation.selected, scrollTop: body.scrollTop };
                 },
                 dispose() {
-                    isDisposed = true;
-                    win.clearTimeout(timer);
-                    win.clearTimeout(filterTimer);
-                    picker.dispose();
-                    gitView?.dispose();
-                    nodeView?.dispose();
-                    if (typeof off === 'function') off();
-                    if (typeof offTopic === 'function') offTopic();
-                    viewElement.innerHTML = '';
-                    viewElement.classList.remove('side-plan-view');
+                    // DOM 同步清掉：scope 的释放是异步的，不能等它，免得把紧接着重新挂载的内容一起清掉
+                    if (!disposed()) {
+                        viewElement.innerHTML = '';
+                        viewElement.classList.remove('side-plan-view');
+                    }
+                    return own.dispose('plan-detail-disposed');
                 }
             };
 
@@ -1057,8 +1061,14 @@ export function createPlanDetailSideProvider({
             try {
                 await load();
             } catch (error) {
-                handle.dispose();
+                await handle.dispose().catch(() => {});
                 throw error;
+            }
+            // 挂载途中被取消（关标签、重新挂载）：控制器会丢掉这个视图，这里只清掉自己画的内容
+            if (disposed()) {
+                viewElement.innerHTML = '';
+                viewElement.classList.remove('side-plan-view');
+                return null;
             }
             // 从休眠里醒来：内容读完再回到原来的滚动位置
             if (!opening && Number.isFinite(restoredState?.scrollTop)) body.scrollTop = restoredState.scrollTop;

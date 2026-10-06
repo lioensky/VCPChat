@@ -233,6 +233,8 @@ export function createSharedSource(name, {
                 name: channel.name,
                 status: envelope().status,
                 holders: holders.size,
+                // 谁还占着这个数据源：只有登记时给的 label，泄漏时一眼看出是哪个面板没放手
+                holderLabels: [...holders].map(holder => holder.label),
                 visibleHolders: [...holders].filter(holder => holder.isVisible()).length,
                 running: Boolean(running),
                 polling: Boolean(pollTimer),

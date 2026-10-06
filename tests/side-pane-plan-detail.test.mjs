@@ -119,7 +119,7 @@ test('mountTab renders plan, files, timeline and reloads on matching change even
     view.querySelector('.side-plan-actions .side-plan-icon-btn:last-child').click();
     assert.equal(calls.forge, true);
 
-    handle.dispose();
+    await handle.dispose();
     assert.equal(wasUnsubscribed(), true);
     assert.equal(view.innerHTML, '');
 });

@@ -205,3 +205,30 @@ test('closing a sleeping tab releases its occurrence without mounting it again',
         assert.equal(h.mounts.filter(m => m.id === 'probe:x').length, 1);
     } finally { await h.cleanup(); }
 });
+
+test('diagnostics count what each live view still holds, including what its provider hung below it', async () => {
+    const h = fixture({ hiddenMs: 30 });
+    try {
+        await h.controller.openTab(tab('probe:a'));
+        await h.controller.openTab(tab('probe:b'));
+        const [first, second] = h.mounts;
+        const { scope } = second.context;
+        scope.listen(second.view, 'click', () => {}, undefined, 'probe-click');
+        scope.interval(() => {}, 60_000, 'probe-poll');
+        // provider 自己的子 scope 里挂的也算到这个视图头上
+        scope.child('probe-provider').listen(second.view, 'keydown', () => {}, undefined, 'probe-key');
+        first.context.scope.listen(first.view, 'click', () => {}, undefined, 'probe-click');
+
+        const live = h.controller.getDiagnostics().tabs.find(t => t.id === 'probe:b');
+        assert.deepEqual(live.resources, { scopes: 2, resources: 3, byType: { listener: 2, interval: 1 } });
+
+        await sleep(80);
+        await settle();
+        const dormant = h.controller.getDiagnostics().tabs.find(t => t.id === 'probe:a');
+        assert.equal(dormant.view, 'dormant');
+        assert.equal(dormant.resources, null, 'a sleeping view holds nothing');
+        assert.doesNotMatch(JSON.stringify(h.controller.getDiagnostics()), /probe-click|probe-key/, 'only counts, no labels or content');
+    } finally {
+        await h.cleanup();
+    }
+});

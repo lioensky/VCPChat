@@ -193,9 +193,10 @@ test('the poll runs once per source and only while some holder is visible', asyn
 test('diagnostics list live sources and forget disposed ones', () => {
     const source = createSharedSource('Test Diag', { key: 'WS/1', graceMs: 0 });
     assert.equal(source.name, 'test-diag.ws-1', 'names are made safe for StateChannel');
-    const release = source.retain();
+    const release = source.retain(null, { label: 'git-view' });
     const entry = sharedSourceDiagnostics().find(item => item.name === source.name);
     assert.equal(entry.holders, 1);
+    assert.deepEqual(entry.holderLabels, ['git-view'], 'who still holds the source is visible by label');
     assert.equal(globalThis.VCPSharedSources.diagnostics().some(item => item.name === source.name), true);
     release();
     source.dispose();

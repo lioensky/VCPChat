@@ -10,6 +10,8 @@
 
 'use strict';
 
+import { createSidePaneRootScope } from './side-pane-occurrence.js';
+
 export const BROWSER_PARTITION = 'persist:vcp-side-browser';
 const ALLOWED_PROTOCOLS = new Set(['http:', 'https:', 'file:', 'about:']);
 const BLOCKED_ERROR_CODES = new Set([-3]); // ERR_ABORTED: a navigation replaced by another one
@@ -132,13 +134,15 @@ export function createBrowserSideProvider({
         kind,
         openBrowserTab,
 
-        async mountTab(tab, viewElement) {
+        async mountTab(tab, viewElement, { scope: viewScope = null } = {}) {
             if (!viewElement) return null;
             subscribeOpenTab();
             viewElement.innerHTML = '';
             viewElement.classList.add('side-browser-view');
 
-            let isDisposed = false;
+            // 这次挂载的监听、网页视图和登记都归 own：控制器释放 view 或调用 dispose 时一起拆掉
+            const own = createSidePaneRootScope(viewScope, 'browser');
+            const disposed = () => !own.active;
             let webview = null;
             let domReady = false;
             let currentUrl = '';
@@ -206,7 +210,7 @@ export function createBrowserSideProvider({
             viewElement.appendChild(container);
 
             const hasPage = () => Boolean(webview);
-            const canUseGuest = () => Boolean(webview && domReady && !isDisposed);
+            const canUseGuest = () => Boolean(webview && domReady && !disposed());
 
             const hideNotice = () => {
                 notice.hidden = true;
@@ -271,8 +275,9 @@ export function createBrowserSideProvider({
             };
 
             function wireWebview(guest) {
+                // 网页视图在释放时整个移除，它上面的监听跟着元素一起丢弃，不必登记
                 const on = (name, handler) => guest.addEventListener(name, (event) => {
-                    if (!isDisposed && guest === webview) handler(event);
+                    if (!disposed() && guest === webview) handler(event);
                 });
                 on('dom-ready', () => {
                     domReady = true;
@@ -405,10 +410,10 @@ export function createBrowserSideProvider({
             };
             // 菜单就在 webview 上方：点进网页时主页面收不到 pointerdown，只会失焦
             const onWindowBlur = () => { if (!menu.hidden) closeMenu(); };
-            doc.addEventListener('pointerdown', onDocumentPointerDown, true);
-            doc.defaultView?.addEventListener('blur', onWindowBlur);
+            own.listen(doc, 'pointerdown', onDocumentPointerDown, true, 'menu-outside-pointerdown');
+            if (doc.defaultView) own.listen(doc.defaultView, 'blur', onWindowBlur, undefined, 'menu-window-blur');
 
-            address.addEventListener('keydown', (event) => {
+            own.listen(address, 'keydown', (event) => {
                 if (event.key === 'Enter') {
                     event.preventDefault();
                     submitAddress();
@@ -417,18 +422,18 @@ export function createBrowserSideProvider({
                     address.blur();
                 }
             });
-            address.addEventListener('focus', () => address.select());
-            backBtn.addEventListener('click', () => { if (canUseGuest() && webview.canGoBack()) webview.goBack(); });
-            forwardBtn.addEventListener('click', () => { if (canUseGuest() && webview.canGoForward()) webview.goForward(); });
-            reloadBtn.addEventListener('click', () => {
+            own.listen(address, 'focus', () => address.select());
+            own.listen(backBtn, 'click', () => { if (canUseGuest() && webview.canGoBack()) webview.goBack(); });
+            own.listen(forwardBtn, 'click', () => { if (canUseGuest() && webview.canGoForward()) webview.goForward(); });
+            own.listen(reloadBtn, 'click', () => {
                 if (loading && canUseGuest()) webview.stop();
                 else reload();
             });
-            moreBtn.addEventListener('click', () => {
+            own.listen(moreBtn, 'click', () => {
                 syncControls();
                 menu.hidden = !menu.hidden;
             });
-            menu.addEventListener('click', async (event) => {
+            own.listen(menu, 'click', async (event) => {
                 const item = event.target.closest('[data-action]');
                 if (!item || item.disabled) return;
                 closeMenu();
@@ -458,6 +463,22 @@ export function createBrowserSideProvider({
 
             const entry = { isBlank: () => !hasPage() && !pendingUrl };
             mounted.set(tab.id, entry);
+            own.own(() => {
+                // A canceled mount may finish after a new page has reused its id.
+                if (mounted.get(tab.id) === entry) mounted.delete(tab.id);
+                // 最后一个浏览器标签没了才退掉"网页新开窗口"的推送
+                if (mounted.size === 0) {
+                    unsubscribeOpenTab?.();
+                    unsubscribeOpenTab = null;
+                }
+            }, 'browser-tab-entry', 'subscription');
+            // 网页视图最先拆：后登记的先释放，监听和登记在它之后
+            own.own(() => {
+                if (webview) {
+                    webview.remove();
+                    webview = null;
+                }
+            }, 'webview', 'dom');
 
             return {
                 focus() {
@@ -481,21 +502,12 @@ export function createBrowserSideProvider({
                     }
                 },
                 dispose() {
-                    if (isDisposed) return;
-                    isDisposed = true;
-                    // A canceled mount may finish after a new page has reused its id.
-                    if (mounted.get(tab.id) === entry) mounted.delete(tab.id);
-                    doc.removeEventListener('pointerdown', onDocumentPointerDown, true);
-                    doc.defaultView?.removeEventListener('blur', onWindowBlur);
-                    if (webview) {
-                        webview.remove();
+                    // DOM 同步清掉：scope 的释放是异步的，不能等它，免得把紧接着重新挂载的内容一起清掉
+                    if (!disposed()) {
                         webview = null;
+                        viewElement.innerHTML = '';
                     }
-                    viewElement.innerHTML = '';
-                    if (mounted.size === 0) {
-                        unsubscribeOpenTab?.();
-                        unsubscribeOpenTab = null;
-                    }
+                    return own.dispose('browser-disposed');
                 }
             };
         }

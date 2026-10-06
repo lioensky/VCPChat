@@ -26,6 +26,7 @@ import { filterAiTouched, latestAiBatch, buildHunkRows } from './diff-model.js';
 import { watchProjectForgeChanges } from '../../sources/projectforge-changes.js';
 import { createGitChangesFollower } from '../../sources/git-changes.js';
 import { readSelectedGitWorkspace, selectGitWorkspace, watchSelectedGitWorkspace } from '../../sources/git-workspace.js';
+import { createSidePaneRootScope } from '../side-pane-occurrence.js';
 export { filterAiTouched, latestAiBatch, buildHunkRows } from './diff-model.js';
 
 // 工作区选择和 V工程 Git 页（ProjectForgemodules/projectforge-git.js）共用，见 sources/git-workspace.js。
@@ -49,11 +50,13 @@ export function followGitWorkspace(win, workspaceId) {
 /**
  * 把 Git 页挂到 host 里。返回的 ready 在第一次读完工作区和状态后完成。
  * preferWorkspace：优先用哪个工作区（计划页传当前工程的 { id, alias }），找不到再用上次的选择。
+ * scope：宿主的 scope（计划页这次挂载的 scope）；给了就挂成它的子 scope，宿主释放时 Git 页跟着拆。
  */
 export function mountGitView(host, {
     api = null,
     uiHelper = null,
-    preferWorkspace = null
+    preferWorkspace = null,
+    scope = null
 } = {}) {
     if (!host) return null;
     const doc = host.ownerDocument || document;
@@ -74,7 +77,9 @@ export function mountGitView(host, {
     let currentStatus = null;
     let loadError = null;
     let loading = false;
-    let isDisposed = false;
+    // 监听、推送订阅、右键菜单都归 own；宿主释放 scope 或调用 dispose 时一起拆掉
+    const own = createSidePaneRootScope(scope, 'git-view');
+    const disposed = () => !own.active;
     // 看不见时收到的变化先记着，重新露出来再读
     let stale = false;
     let lastStatusKey = null;
@@ -151,7 +156,7 @@ export function mountGitView(host, {
 
     const store = Object.freeze({
         get currentWorkspaceId() { return currentWorkspaceId; },
-        get isDisposed() { return isDisposed; }
+        get isDisposed() { return disposed(); }
     });
 
     const contextMenuOwner = createGitContextMenu({
@@ -208,6 +213,7 @@ export function mountGitView(host, {
             btn.type = 'button';
             btn.className = 'side-git-empty-add';
             btn.textContent = action.label;
+            // 空状态每次重画都重建按钮，监听跟着旧按钮一起丢弃
             btn.addEventListener('click', action.run);
             empty.appendChild(btn);
         }
@@ -230,7 +236,7 @@ export function mountGitView(host, {
 
     // ── 渲染 ────────────────────────────────────────────────
     function render() {
-        if (isDisposed) return;
+        if (disposed()) return;
         refreshBtn.disabled = loading;
         refreshBtn.classList.toggle('spinning', loading);
         if (!workspaces.length) {
@@ -285,27 +291,29 @@ export function mountGitView(host, {
                 if (batch) break;
             }
         } catch (_e) { batch = null; }
-        if (seq !== aiLoadSeq || isDisposed) return;
+        if (seq !== aiLoadSeq || disposed()) return;
         aiBatch = batch;
         aiBatchLoaded = true;
     }
 
     async function refreshStatus({ quiet = false } = {}) {
+        // 已经拆掉就不再跟：否则迟到的刷新会把刚退掉的推送重新订上
+        if (disposed()) return;
         // 每次读都对准当前工作区的变更推送（换了工作区就换订阅）
         changes.follow(currentWorkspaceId);
-        if (!api?.gitStatus || !currentWorkspaceId || isDisposed) return;
+        if (!api?.gitStatus || !currentWorkspaceId || disposed()) return;
         stale = false;
         if (!quiet) { loading = true; render(); }
         let skipRender = false;
         try {
             const requestedId = currentWorkspaceId;
             const res = await api.gitStatus(requestedId);
-            if (isDisposed || requestedId !== currentWorkspaceId) return;
+            if (disposed() || requestedId !== currentWorkspaceId) return;
             if (!res?.success) throw new Error(res?.error || '获取 Git 状态失败');
             loadError = null;
             currentStatus = res.data;
             if (currentSource === AI_SOURCE && !aiBatchLoaded) await loadAiBatch();
-            if (isDisposed || requestedId !== currentWorkspaceId) return;
+            if (disposed() || requestedId !== currentWorkspaceId) return;
             // 推送触发的静默刷新：状态没变就不重绘（避免闪烁、丢 hover），有展开的 diff 时照常重绘。
             const statusKey = JSON.stringify(res.data);
             if (quiet && statusKey === lastStatusKey && !cardsOwner.hasExpanded()) { skipRender = true; return; }
@@ -315,7 +323,7 @@ export function mountGitView(host, {
             if (quiet) return;
             loadError = err.message;
         } finally {
-            if (!isDisposed) { loading = false; if (!skipRender || !quiet) render(); }
+            if (!disposed()) { loading = false; if (!skipRender || !quiet) render(); }
         }
     }
 
@@ -384,7 +392,7 @@ export function mountGitView(host, {
     // ── 定位到某个文件：切到有它的工作区 / 来源，展开它的 diff，滚到可见 ──
     async function applyPendingFocus() {
         const target = pendingFocusPath;
-        if (!target || isDisposed) return;
+        if (!target || disposed()) return;
         pendingFocusPath = null;
         const located = toWorkspaceRelative(target, workspaces);
         if (located && located.workspace.id !== currentWorkspaceId) {
@@ -396,7 +404,7 @@ export function mountGitView(host, {
             aiBatchLoaded = false;
         }
         await refreshStatus({ quiet: false });
-        if (isDisposed) return;
+        if (disposed()) return;
         const found = findStatusItem(currentStatus, located ? located.relPath : target);
         if (!found) {
             toast('这个文件在当前工作区里已经没有未提交的改动。', 'info');
@@ -411,13 +419,14 @@ export function mountGitView(host, {
     }
 
     // ── 事件 ────────────────────────────────────────────────
-    sourceSelect.addEventListener('change', async () => {
+    own.listen(sourceSelect, 'change', async () => {
         currentSource = sourceSelect.value;
         storage?.setItem(STORAGE_KEY_SOURCE, currentSource);
         cardsOwner.clearExpanded();
         if (currentSource === AI_SOURCE) {
             aiBatchLoaded = false;
             await loadAiBatch();
+            if (disposed()) return;
         }
         render();
     });
@@ -431,38 +440,42 @@ export function mountGitView(host, {
         aiBatchLoaded = false;
         refreshStatus({ quiet: false });
     };
-    wsSelect.addEventListener('change', () => switchWorkspace(wsSelect.value));
+    own.listen(wsSelect, 'change', () => switchWorkspace(wsSelect.value));
 
-    const offSelection = watchSelectedGitWorkspace(win, ({ id, origin }) => {
-        if (isDisposed || origin === SELECTION_ORIGIN || !id || id === currentWorkspaceId) return;
+    own.subscribe(() => watchSelectedGitWorkspace(win, ({ id, origin }) => {
+        if (disposed() || origin === SELECTION_ORIGIN || !id || id === currentWorkspaceId) return;
         if (!workspaces.some(ws => ws.id === id)) return;
         switchWorkspace(id);
-    });
+    }), 'selected-workspace');
 
-    refreshBtn.addEventListener('click', () => refreshStatus({ quiet: false }));
+    own.listen(refreshBtn, 'click', () => refreshStatus({ quiet: false }));
 
     // 收起侧栏只把宽度压成 0 并设 visibility:hidden，offsetParent 仍存在。
     const isShown = () => root.offsetParent !== null && !root.closest('.vcp-side-pane[aria-hidden="true"]');
     const refreshIfStale = () => {
-        if (stale && !isDisposed && isShown()) refreshStatus({ quiet: true });
+        if (stale && !disposed() && isShown()) refreshStatus({ quiet: true });
     };
     // 仓库变了（这个或别的窗口提交 / 暂存 / 切分支，或者文件改了）主进程推过来，不再定时轮询。
     // Linux 上主进程只看 .git，文件内容的改动靠窗口回到前台时补一次。
     const changes = createGitChangesFollower(api, () => {
-        if (isDisposed) return;
+        if (disposed()) return;
         if (isShown()) refreshStatus({ quiet: true });
         else stale = true;
     }, { label: 'git-view' });
+    own.own(() => changes.release(), 'git-changes', 'subscription');
     const onWindowFocus = () => {
-        if (!isDisposed && isShown()) refreshStatus({ quiet: true });
+        if (!disposed() && isShown()) refreshStatus({ quiet: true });
     };
-    win.addEventListener('focus', onWindowFocus);
-    root.addEventListener('pointerenter', refreshIfStale);
+    own.listen(win, 'focus', onWindowFocus, undefined, 'window-focus');
+    own.listen(root, 'pointerenter', refreshIfStale);
     // V工程 记下新一批施工时刷新「上一轮」
-    const offForge = watchProjectForgeChanges(api, () => {
+    own.subscribe(() => watchProjectForgeChanges(api, () => {
         aiBatchLoaded = false;
-        if (currentSource === AI_SOURCE && !isDisposed) { lastStatusKey = null; refreshStatus({ quiet: true }); }
-    }, { label: 'git-view' });
+        if (currentSource === AI_SOURCE && !disposed()) { lastStatusKey = null; refreshStatus({ quiet: true }); }
+    }, { label: 'git-view' }), 'projectforge-changes');
+    // 右键菜单挂在 body 上；先登记的后释放，所以卡片缓存最后清
+    own.own(() => cardsOwner.dispose(), 'cards');
+    own.own(() => contextMenuOwner.dispose(), 'context-menu');
 
     render();
     // 首次加载：读工作区，再按需定位到某个文件。出错画在空状态里，不往外抛
@@ -483,29 +496,22 @@ export function mountGitView(host, {
         refreshIfStale,
         /** 展开某个文件的 diff（绝对路径或工作区内的相对路径） */
         async focusPath(target) {
-            if (!target || isDisposed) return;
+            if (!target || disposed()) return;
             pendingFocusPath = target;
             await ready;
             await applyPendingFocus();
         },
         /** 换到工程所在的工作区（{ id, alias }）；没登记这个工作区就不动 */
         async useWorkspace(want) {
-            if (isDisposed || !want) return;
+            if (disposed() || !want) return;
             await ready;
             const match = matchWorkspace(want);
-            if (!isDisposed && match && match.id !== currentWorkspaceId) switchWorkspace(match.id);
+            if (!disposed() && match && match.id !== currentWorkspaceId) switchWorkspace(match.id);
         },
         dispose() {
-            if (isDisposed) return;
-            isDisposed = true;
-            contextMenuOwner.dispose();
-            cardsOwner.dispose();
-            win.removeEventListener('focus', onWindowFocus);
-            root.removeEventListener('pointerenter', refreshIfStale);
-            offSelection();
-            changes.release();
-            try { if (typeof offForge === 'function') offForge(); } catch (_e) { /* 已取消 */ }
-            host.innerHTML = '';
+            // DOM 同步清掉：scope 的释放是异步的，不能等它
+            if (!disposed()) host.innerHTML = '';
+            return own.dispose('git-view-disposed');
         }
     });
 }

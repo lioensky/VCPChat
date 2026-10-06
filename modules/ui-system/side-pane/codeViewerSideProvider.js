@@ -16,6 +16,7 @@ import { readFileForViewer } from './code-viewer/file-read.js';
 import { createCodeViewerDiffView } from './code-viewer/diff-view.js';
 import { computeLineDiff } from '../line-diff.js';
 import { detectLanguage } from './code-viewer/helpers.js';
+import { createSidePaneRootScope } from './side-pane-occurrence.js';
 export { detectLanguage } from './code-viewer/helpers.js';
 export { escapeHtml } from '../text-escape.js';
 
@@ -54,11 +55,14 @@ export function createCodeViewerSideProvider({
          * Mounts the Code & Diff Viewer into the tab's container.
          * @param {Object} tab - SidePaneTab descriptor
          * @param {HTMLElement} viewElement - DOM element container for this tab
+         * @param {{ scope?: object }} [context] 控制器给的挂载上下文；scope 是这次挂载的 view scope
          * @returns {Promise<Object>} Tab lifecycle handle
          */
-        async mountTab(tab, viewElement) {
+        async mountTab(tab, viewElement, { scope: viewScope = null } = {}) {
             viewElement.innerHTML = '';
-            let isDisposed = false;
+            // 这次挂载的监听和定时器都归 own：控制器释放 view 或调用 dispose 时一起拆掉
+            const own = createSidePaneRootScope(viewScope, 'code-viewer');
+            const disposed = () => !own.active;
             let isWrapped = false;
 
             const payload = tab.payload || {};
@@ -198,7 +202,7 @@ export function createCodeViewerSideProvider({
 
             // ---- Workspace file picker ----
             const store = Object.freeze({
-                get isDisposed() { return isDisposed; },
+                get isDisposed() { return disposed(); },
                 get isWrapped() { return isWrapped; },
                 set isWrapped(value) { isWrapped = value; },
                 get currentCode() { return currentCode; },
@@ -213,6 +217,7 @@ export function createCodeViewerSideProvider({
 
             const pickerOwner = createCodeViewerPicker({
                 store,
+                scope: own,
                 api,
                 detectLanguage,
                 doc,
@@ -246,14 +251,14 @@ export function createCodeViewerSideProvider({
             const { renderDiffView } = diffViewOwner;
 
             // Event Listeners
-            wrapBtn.addEventListener('click', () => {
+            own.listen(wrapBtn, 'click', () => {
                 isWrapped = !isWrapped;
                 wrapBtn.classList.toggle('active', isWrapped);
                 const shell = body.querySelector('.side-code-editor-shell, .side-diff-shell');
                 shell?.classList.toggle('is-wrapped', isWrapped);
             });
 
-            copyBtn.addEventListener('click', async () => {
+            own.listen(copyBtn, 'click', async () => {
                 const textToCopy = currentMode === 'diff'
                     ? (newCode || currentCode)
                     : currentCode;
@@ -264,16 +269,17 @@ export function createCodeViewerSideProvider({
                     } else if (api?.writeTextToClipboard) {
                         await api.writeTextToClipboard(textToCopy);
                     }
+                    if (disposed()) return;
                     copyBtn.classList.add('copied');
                     uiHelper?.showToastNotification?.('代码已复制到剪贴板', 'success');
-                    setTimeout(() => copyBtn.classList.remove('copied'), 1500);
+                    own.timeout(() => copyBtn.classList.remove('copied'), 1500, 'copied-flash');
                 } catch (err) {
                     console.error('[CodeViewerSideProvider] Copy failed:', err);
                     uiHelper?.showToastNotification?.('复制代码失败', 'error');
                 }
             });
 
-            insertBtn.addEventListener('click', () => {
+            own.listen(insertBtn, 'click', () => {
                 const commands = (doc.defaultView || globalThis).VCPContributions?.commands;
                 if (!commands?.get('composer.insert-text')) return;
                 const formatted = `\`\`\`${currentLang}\n${currentCode}\n\`\`\`\n`;
@@ -282,7 +288,7 @@ export function createCodeViewerSideProvider({
             });
 
             if (modeToggleBtn) {
-                modeToggleBtn.addEventListener('click', () => {
+                own.listen(modeToggleBtn, 'click', () => {
                     currentMode = currentMode === 'diff' ? 'view' : 'diff';
                     fileIcon.textContent = currentMode === 'diff' ? 'difference' : 'code';
                     langTag.textContent = currentMode === 'diff' ? 'DIFF' : currentTag;
@@ -294,10 +300,10 @@ export function createCodeViewerSideProvider({
                 });
             }
 
-            reloadBtn?.addEventListener('click', () => reload());
+            if (reloadBtn) own.listen(reloadBtn, 'click', () => reload());
 
             if (externalBtn && filePath) {
-                externalBtn.addEventListener('click', () => {
+                own.listen(externalBtn, 'click', () => {
                     if (api?.openPythonAttachmentInTextEditor) {
                         api.openPythonAttachmentInTextEditor(filePath);
                     } else if (api?.sendOpenExternalLink) {
@@ -313,6 +319,11 @@ export function createCodeViewerSideProvider({
             } else {
                 await refreshView();
             }
+            // 挂载途中被取消：控制器会丢掉这个视图，这里只清掉自己画的内容
+            if (disposed()) {
+                viewElement.innerHTML = '';
+                return null;
+            }
 
             return {
                 focus() {
@@ -326,14 +337,13 @@ export function createCodeViewerSideProvider({
                 },
                 /** 文件标签重新读盘；片段和差异是快照，不受影响 */
                 reload() {
-                    return isFileBacked && !isDisposed ? reload() : Promise.resolve();
+                    return isFileBacked && !disposed() ? reload() : Promise.resolve();
                 },
                 dispose() {
-                    isDisposed = true;
-                    pickerOwner.dispose();
                     editorOwner.dispose();
-                    diffViewOwner.dispose();
+                    // DOM 同步清掉：scope 的释放是异步的，不能等它，免得把紧接着重新挂载的内容一起清掉
                     viewElement.innerHTML = '';
+                    return own.dispose('code-viewer-disposed');
                 }
             };
         },

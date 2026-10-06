@@ -7950,7 +7950,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/codeViewerSideProvider.js",
-          "line": 38,
+          "line": 39,
           "surface": "internal-app",
           "snippet": "uiHelper = (typeof window !== 'undefined' ? window.uiHelperFunctions : null),"
         },
@@ -18077,11 +18077,11 @@
       "mutableMaps": 0
     },
     "modules/ui-system/side-pane/browserSideProvider.js": {
-      "windowReferences": 5,
+      "windowReferences": 6,
       "documentReferences": 2,
       "electronReferences": 1,
       "timers": 0,
-      "listeners": 10,
+      "listeners": 1,
       "mutableMaps": 1
     },
     "modules/ui-system/side-pane/code-viewer/diff-view.js": {
@@ -18121,15 +18121,15 @@
       "documentReferences": 0,
       "electronReferences": 0,
       "timers": 0,
-      "listeners": 1,
+      "listeners": 0,
       "mutableMaps": 0
     },
     "modules/ui-system/side-pane/codeViewerSideProvider.js": {
       "windowReferences": 7,
       "documentReferences": 2,
       "electronReferences": 1,
-      "timers": 1,
-      "listeners": 6,
+      "timers": 0,
+      "listeners": 0,
       "mutableMaps": 0
     },
     "modules/ui-system/side-pane/git/cards.js": {
@@ -18157,11 +18157,11 @@
       "mutableMaps": 0
     },
     "modules/ui-system/side-pane/git/git-view.js": {
-      "windowReferences": 1,
+      "windowReferences": 2,
       "documentReferences": 1,
       "electronReferences": 1,
       "timers": 0,
-      "listeners": 6,
+      "listeners": 1,
       "mutableMaps": 0
     },
     "modules/ui-system/side-pane/menu-position.js": {
@@ -18224,7 +18224,7 @@
       "windowReferences": 3,
       "documentReferences": 2,
       "electronReferences": 1,
-      "timers": 4,
+      "timers": 0,
       "listeners": 15,
       "mutableMaps": 3
     },

@@ -21,12 +21,6 @@ export function createCodeViewerDiffView({
     newCode,
     oldCode
 }) {
-    const cleanups = [];
-    function on(node, event, listener) {
-        node.addEventListener(event, listener);
-        cleanups.push(() => node.removeEventListener(event, listener));
-    }
-
     function renderDiffView() {
         body.innerHTML = '';
         const diffShell = doc.createElement('div');
@@ -81,11 +75,12 @@ export function createCodeViewerDiffView({
             more.textContent = '显示更多行（剩余 ' + (diffResult.rows.length - displayed) + ' 行）';
             more.hidden = displayed >= diffResult.rows.length;
         }
-        on(more, 'click', appendPage);
+        // 按钮每次渲染都重建，监听跟着旧按钮一起丢弃，不必登记
+        more.addEventListener('click', appendPage);
         appendPage();
         diffShell.append(table, more);
         body.appendChild(diffShell);
     }
 
-    return Object.freeze({ renderDiffView, dispose() { cleanups.splice(0).forEach(cleanup => cleanup()); } });
+    return Object.freeze({ renderDiffView });
 }

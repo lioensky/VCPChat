@@ -835,7 +835,10 @@ export function createSidePaneController({
             };
         },
 
-        /** 给 VCPLifecycleInspector：每个标签的视图在不在、是否可见、隐藏了多久；不含标题和内容 */
+        /**
+         * 给 VCPLifecycleInspector：每个标签的视图在不在、是否可见、隐藏了多久，
+         * 以及它的 view scope（含 provider 挂在下面的子 scope）还挂着多少监听、定时器、Observer；不含标题和内容
+         */
         getDiagnostics() {
             const at = now();
             return {
@@ -849,7 +852,9 @@ export function createSidePaneController({
                         view: mountedTabMap.has(tab.id) ? 'live' : (dormant ? 'dormant' : (pendingTabMounts.has(tab.id) ? 'mounting' : 'unmounted')),
                         visible: occurrences.get(tab.id)?.occurrence.isVisible() === true,
                         hiddenMs: times?.hiddenSince != null ? at - times.hiddenSince : null,
-                        dormantReason: dormant?.reason || null
+                        dormantReason: dormant?.reason || null,
+                        // 视图没挂着（休眠或未挂载）时为 null；挂着时按资源类型计数
+                        resources: occurrences.get(tab.id)?.view?.resourceSummary?.() || null
                     };
                 })
             };

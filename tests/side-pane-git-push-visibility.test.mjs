@@ -57,7 +57,7 @@ test('the Git page reads on pushes only while it is shown, catches up when shown
     await settle();
     assert.equal(reads, 4, 'pointing at the page again catches up');
 
-    handle.dispose();
+    await handle.dispose();
     assert.equal(listeners.size, 0, 'closing stops listening for pushes');
     await push();
     assert.equal(reads, 4);
