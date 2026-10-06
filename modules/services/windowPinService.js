@@ -73,41 +73,50 @@ function safeGetBounds(win) {
 }
 
 /**
- * 原生置顶提升：
- * Windows 下采用 setAlwaysOnTop(false -> true) 打破 Chromium 内部缓存，强制向 DWM 发送 HWND_TOPMOST。
+ * 平台置顶驱动层契约（WindowPinDriver）：
+ * 抽象适配 Windows 原生置顶特性，解耦调度逻辑；非 Win32 系统通过 Null 实现零开销。
  */
-function bringWindowToTopmost(win) {
-	if (!win) return;
-	try {
-		if (typeof win.isDestroyed === "function" && win.isDestroyed()) return;
-		win._pinBypass = true;
-		win.setAlwaysOnTop(false);
-		win.setAlwaysOnTop(true);
-	} catch (_) {
-	} finally {
-		if (win) win._pinBypass = false;
-	}
-}
-
-function applyWindowTopmost(win, isTop) {
-	if (!win) return;
-	try {
-		if (typeof win.isDestroyed === "function" && win.isDestroyed()) return;
-		if (isTop) {
-			bringWindowToTopmost(win);
-		} else {
+const WindowPinDriver = {
+	isSupported() {
+		return process.platform === 'win32';
+	},
+	applyTopmost(win, isTop) {
+		if (!win) return;
+		try {
+			if (typeof win.isDestroyed === 'function' && win.isDestroyed()) return;
 			win._pinBypass = true;
 			try {
-				win.setAlwaysOnTop(false);
+				if (isTop) {
+					win.setAlwaysOnTop(false);
+					// 采用 pop-up-menu 权级，配合 moveTop() 稳固 Z 序
+					win.setAlwaysOnTop(true, 'pop-up-menu', 1);
+					if (typeof win.moveTop === 'function') {
+						win.moveTop();
+					}
+				} else {
+					win.setAlwaysOnTop(false, 'normal');
+				}
 			} finally {
 				win._pinBypass = false;
 			}
-		}
-	} catch (_) {}
+		} catch (_) {}
+	}
+};
+
+/**
+ * 原生置顶提升：
+ * 采用 Driver 层进行受控提升
+ */
+function bringWindowToTopmost(win) {
+	WindowPinDriver.applyTopmost(win, true);
+}
+
+function applyWindowTopmost(win, isTop) {
+	WindowPinDriver.applyTopmost(win, isTop);
 }
 
 /**
- * 向窗口通知置顶状态变更事件（双向同步）。
+ * 向窗口广播置顶状态变更（单向 IPC，避免阻滞 V8 微任务队列）。
  */
 function notifyPinnedChanged(win, isPinnedState) {
 	if (!win) return;
@@ -115,19 +124,7 @@ function notifyPinnedChanged(win, isPinnedState) {
 		if (typeof win.isDestroyed === "function" && win.isDestroyed()) return;
 		const wc = win.webContents;
 		if (wc && !wc.isDestroyed?.()) {
-			wc.send("window-pinned-changed", isPinnedState);
-			const pinned = Boolean(isPinnedState);
-			wc.executeJavaScript(`
-				(() => {
-					const pinned = ${pinned};
-					document.querySelectorAll('.vcp-universal-pin-btn').forEach(pinBtn => {
-						pinBtn.classList.toggle('is-pinned', pinned);
-						pinBtn.setAttribute('aria-pressed', String(pinned));
-						pinBtn.title = pinned ? '取消置顶' : '置顶窗口';
-						pinBtn.setAttribute('aria-label', pinned ? '取消置顶' : '置顶窗口');
-					});
-				})()
-			`).catch(() => {});
+			wc.send("window-pinned-changed", Boolean(isPinnedState));
 		}
 	} catch (_) {}
 }
@@ -250,7 +247,8 @@ function pin(win) {
 
 	bringWindowToTopmost(win);
 
-	// 拖拽或缩放移动中：插队提升到最前，并保持活跃拖拽状态
+	// 拖拽节流：拖拽期间首帧提升，期间节流避免向 DWM 发送冗余命令
+	let dragThrottleTimer = null;
 	const onMoveOrResize = () => {
 		if (activeDraggingWinId !== winId) {
 			activeDraggingWinId = winId;
@@ -261,10 +259,20 @@ function pin(win) {
 			clearTimeout(settleTimer);
 			settleTimer = null;
 		}
+
+		if (!dragThrottleTimer) {
+			dragThrottleTimer = setTimeout(() => {
+				dragThrottleTimer = null;
+			}, 100);
+		}
 	};
 
 	// 拖拽或缩放结束（松手）/ 窗口失焦 / 最小化：防抖 120ms 后重新排定层级
 	const onMotionEnd = () => {
+		if (dragThrottleTimer) {
+			clearTimeout(dragThrottleTimer);
+			dragThrottleTimer = null;
+		}
 		if (activeDraggingWinId !== winId) return;
 
 		if (settleTimer) {
@@ -295,6 +303,10 @@ function pin(win) {
 	win.once("closed", onClosed);
 
 	const cleanup = () => {
+		if (dragThrottleTimer) {
+			clearTimeout(dragThrottleTimer);
+			dragThrottleTimer = null;
+		}
 		try {
 			win.removeListener("move", onMoveOrResize);
 			win.removeListener("resize", onMoveOrResize);
@@ -397,8 +409,6 @@ const settleWindow = () => reorderPinnedWindows();
 const resettleAllIntersectingGroups = () => reorderPinnedWindows();
 const assertAllPinnedWindowsAbove = () => reorderPinnedWindows();
 
-let globalObserverInitialized = false;
-
 function isExcludedWindow(win, mainWindow) {
 	if (!win) return true;
 	try {
@@ -433,170 +443,8 @@ function isExcludedWindow(win, mainWindow) {
  * 为各受管子窗口装配置顶图钉及快捷调用。
  * 平台门禁：专注于 Windows 平台。
  */
-function setupGlobalWindowPinObserver(app, mainWindow) {
-	if (!app || globalObserverInitialized) return;
-	globalObserverInitialized = true;
-
-	// 平台门禁：非 Windows 环境优雅跳过
-	if (process.platform !== "win32") return;
-
-	const attachToWindow = (win) => {
-		if (!win || win._pinObserverAttached) return;
-		win._pinObserverAttached = true;
-
-		// 通过 console-message 接收免 Preload 依赖的通用图钉点击兜底
-		const wc = win.webContents;
-		if (wc) {
-			wc.on("console-message", (_event, _level, message) => {
-				if (message === "__VCP_PIN_TOGGLE__") {
-					if (!isExcludedWindow(win, mainWindow)) {
-						togglePin(win);
-					}
-				}
-			});
-
-			const tryInjectPinButton = () => {
-				if (isExcludedWindow(win, mainWindow)) return;
-				const injectScript = `
-					(() => {
-						// 契约分流：若窗口已有标准 Preload 接管，则由 utility.js 自行装配，避免主进程重复扫描
-						if (window.utilityAPI?.togglePinWindow) return;
-
-						const candidateSelectors = [
-							'.blade-window-controls',
-							'.window-controls-win',
-							'.window-controls:not(.window-controls-mac)',
-							'.mini-window-controls',
-							'.vcp-ui-window-controls',
-							'.titlebar-actions'
-						];
-						let container = null;
-						for (const sel of candidateSelectors) {
-							const el = document.querySelector(sel);
-							if (el) {
-								if (el.classList.contains('window-controls-mac')) continue;
-								container = el;
-								break;
-							}
-						}
-						if (!container) {
-							const minOrClose = document.querySelector(
-								'button#blade-minimize-btn, button#win-minimize-btn, button#minimize-btn, button.btn-minimize, button.blade-window-control-close, button.vcp-ui-window-control-close, button[title*="最小化"], button[aria-label*="最小化"]'
-							);
-							if (minOrClose) container = minOrClose.parentElement;
-						}
-						if (!container) return;
-
-						// 检查是否已有置顶按钮，避免重复注入
-						const existingPin = container.querySelector(
-							'.vcp-universal-pin-btn, .vcp-ui-window-control-pin, [aria-label*="置顶"], [title*="置顶"], [aria-label*="pin" i], [title*="pin" i], [id*="pin" i], [class*="pin-btn" i]'
-						);
-						if (existingPin) return;
-
-						const sampleBtn = container.querySelector('button');
-						const sampleClass = sampleBtn ? sampleBtn.className : 'window-control-btn';
-
-						const pinBtn = document.createElement('button');
-						pinBtn.type = 'button';
-						pinBtn.className = (sampleClass + ' vcp-universal-pin-btn').trim();
-						pinBtn.title = '置顶窗口';
-						pinBtn.setAttribute('aria-label', '置顶窗口');
-						pinBtn.setAttribute('aria-pressed', 'false');
-
-						const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-						svg.setAttribute('width', '11');
-						svg.setAttribute('height', '11');
-						svg.setAttribute('viewBox', '0 0 16 16');
-						svg.setAttribute('fill', 'currentColor');
-						svg.setAttribute('aria-hidden', 'true');
-						svg.style.pointerEvents = 'none';
-
-						const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-						path.setAttribute('d', 'M4.5 1.5 L11.5 1.5 L10.5 4.5 L12.5 8.5 L9 8.5 L9 14.5 L7 14.5 L7 8.5 L3.5 8.5 L5.5 4.5 Z');
-						svg.appendChild(path);
-						pinBtn.appendChild(svg);
-
-						const syncPinVisual = (pinned) => {
-							const isTop = Boolean(pinned);
-							document.querySelectorAll('.vcp-universal-pin-btn').forEach(btn => {
-								btn.classList.toggle('is-pinned', isTop);
-								btn.setAttribute('aria-pressed', String(isTop));
-								btn.title = isTop ? '取消置顶' : '置顶窗口';
-								btn.setAttribute('aria-label', isTop ? '取消置顶' : '置顶窗口');
-							});
-						};
-
-						pinBtn.addEventListener('click', async (e) => {
-							e.preventDefault();
-							e.stopPropagation();
-							if (window.utilityAPI?.togglePinWindow) {
-								try {
-									const isPinned = await window.utilityAPI.togglePinWindow();
-									syncPinVisual(isPinned);
-								} catch (_) {}
-							} else {
-								console.log('__VCP_PIN_TOGGLE__');
-							}
-						});
-
-						if (window.utilityAPI?.isWindowPinned) {
-							window.utilityAPI.isWindowPinned().then(syncPinVisual).catch(() => {});
-						}
-
-						const minBtn = container.querySelector(
-							'#blade-minimize-btn, #win-minimize-btn, #minimize-btn, #minimize-notes-btn, #minimize-music-btn, #minimize-theme-btn, #minimize-translator-btn, #minimize-viewer-btn, .btn-minimize, .vcp-ui-window-control-button, [aria-label*="最小化"]'
-						);
-						const trayBtn = container.querySelector('#win-tray-btn');
-						const insertTarget = trayBtn || minBtn;
-
-						if (insertTarget && insertTarget.parentNode === container) {
-							container.insertBefore(pinBtn, insertTarget);
-						} else {
-							container.prepend(pinBtn);
-						}
-
-						if (!document.getElementById('vcp-universal-pin-style')) {
-							const style = document.createElement('style');
-							style.id = 'vcp-universal-pin-style';
-							style.textContent = \`
-								.vcp-universal-pin-btn.is-pinned {
-									color: var(--vcp-ui-primary, #6366f1) !important;
-									background: var(--vcp-ui-primary-bg, rgba(99, 102, 241, 0.16)) !important;
-								}
-								.vcp-universal-pin-btn.is-pinned svg {
-									transform: rotate(-15deg);
-								}
-							\`;
-							(document.head || document.documentElement).appendChild(style);
-						}
-					})();
-				`;
-				wc.executeJavaScript(injectScript)
-					.then(() => {
-						if (isPinned(win)) {
-							notifyPinnedChanged(win, true);
-						}
-					})
-					.catch(() => {});
-			};
-
-			wc.on("did-finish-load", tryInjectPinButton);
-			wc.on("dom-ready", tryInjectPinButton);
-		}
-	};
-
-	app.on("browser-window-created", (_event, win) => {
-		attachToWindow(win);
-	});
-
-	try {
-		const { BrowserWindow } = require("electron");
-		if (BrowserWindow?.getAllWindows) {
-			BrowserWindow.getAllWindows().forEach((win) => {
-				attachToWindow(win);
-			});
-		}
-	} catch (_) {}
+function setupGlobalWindowPinObserver(_app, _mainWindow) {
+	// 现代 VCP 窗口统一由 WindowControls 与 utility 装配接管，废弃全局注入。
 }
 
 module.exports = {
@@ -616,4 +464,6 @@ module.exports = {
 	reorderPinnedWindows,
 	cleanupAll,
 	setupGlobalWindowPinObserver,
+	WindowPinDriver,
+	isExcludedWindow,
 };

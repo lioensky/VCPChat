@@ -1,4 +1,4 @@
-'use strict';
+
 
 // 窗口外壳：最小化/最大化/关闭、置顶、托盘、窗口生命周期、平台信息。
 // 主进程：modules/ipc/windowHandlers.js、modules/services/windowPinService.js、main.js
@@ -24,11 +24,20 @@ module.exports = {
         onWindowUnmaximized: onSignal('window-unmaximized').roles('chat', 'utility'),
         onWindowOccluded: on('window-occluded').roles('desktop'),
 
-        // 窗口置顶（utility 子窗口标题栏的置顶按钮，见 behaviors/pinButton.js）
+        // 窗口置顶（utility 子窗口标题栏的置顶按钮，见 behaviors/pinButton.js 与 modules/ui-system/vcp-ui.js）
+        // 同步能力门禁：仅 Windows 平台且非嵌入式标签页支持置顶，首帧 0 开销同步返回，根除异步探测带来的 CLS 布局跳变
+        canPin: custom('query', null, ({ isEmbeddedSurface }) => () => {
+            return process.platform === 'win32' && !isEmbeddedSurface;
+        }).roles('utility'),
+        supportsPin: custom('query', 'supports-pin-window', ({ ipcRenderer, isEmbeddedSurface }) => {
+            return async () => {
+                if (process.platform !== 'win32' || isEmbeddedSurface) return false;
+                return ipcRenderer.invoke('supports-pin-window');
+            };
+        }).roles('utility'),
         togglePinWindow: invoke('toggle-pin-window').roles('utility'),
         isWindowPinned: invoke('is-window-pinned').roles('utility'),
         onWindowPinnedChanged: on('window-pinned-changed').roles('utility'),
-
         minimizeToTray: send('minimize-to-tray').roles('chat', 'utility'),
         closeApp: send('close-app').roles('chat'),
         windowReady: send('window-lifecycle:ready', (appId, payload = {}) => [{ appId, ...payload }]).roles('utility'),
