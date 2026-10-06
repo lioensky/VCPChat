@@ -51,7 +51,22 @@ export async function mountSideChatSurface(container, {
     const repository = chatCapabilities?.repository;
     const createRenderer = chatCapabilities?.createRenderer;
     const chatManager = chatCapabilities?.manager;
-    const childScope = scope?.child?.(`side-chat-${descriptor.id}`) || null;
+    // 挂在这次挂载的 view scope 下：view 被释放时，整个对话面板跟着拆（见下方 ownTeardown）
+    const childScope = scope?.active !== false && typeof scope?.child === 'function'
+        ? scope.child(`side-chat-${descriptor.id}`)
+        : null;
+    // 拆卸只跑一次：handle.dispose 和 scope 释放谁先到都走同一份
+    function ownTeardown(teardown) {
+        let pending = null;
+        // 同步部分立刻执行（比如先存输入框），和原来直接调 dispose 的时序一致
+        const run = () => (pending ||= (async () => teardown())());
+        // 挂载途中 scope 已被释放时不再登记，控制器随后会直接调 handle.dispose
+        if (childScope?.active) childScope.own(run, 'side-chat-surface');
+        return async (reason) => {
+            await run();
+            await childScope?.dispose?.(reason);
+        };
+    }
 
     // Resolve agent config from descriptor or capability or fallback
     const agentConfig = descriptor.child?.config
@@ -242,23 +257,24 @@ export async function mountSideChatSurface(container, {
 
     if (!repository || typeof createRenderer !== 'function' || !chatManager) {
         updateStatus('聊天能力尚未就绪', 'error');
+        const release = ownTeardown(() => {
+            composerStateOwner.dispose();
+            scrollingOwner.dispose();
+            messageActionsOwner.dispose();
+            messageEditor.dispose();
+            referencesOwner.dispose();
+            persistenceOwner.dispose();
+            modelPickerOwner.dispose();
+            attachmentsOwner.dispose();
+            container.replaceChildren();
+        });
+        const unavailableDispose = () => release('side-chat-unavailable');
         return {
             descriptor,
             setVisible() {},
             focus() {},
             async requestClose() { return { closed: true }; },
-            async dispose() {
-                composerStateOwner.dispose();
-                scrollingOwner.dispose();
-                messageActionsOwner.dispose();
-                messageEditor.dispose();
-                referencesOwner.dispose();
-                persistenceOwner.dispose();
-                modelPickerOwner.dispose();
-                attachmentsOwner.dispose();
-                childScope?.dispose?.('side-chat-unavailable');
-                container.replaceChildren();
-            },
+            dispose: unavailableDispose,
             addReference() {},
             removeReference() {},
         };
@@ -633,32 +649,34 @@ export async function mountSideChatSurface(container, {
             }
             return { closed: true };
         },
-        async dispose() {
-            if (isDisposed) return;
-            flushInputSave();
-            isDisposed = true;
-            if (activeSendController) {
-                activeSendController.abort('side-chat-unmounted');
-                try {
-                    await surface.cancelMessage();
-                } catch {}
-            }
-            composerStateOwner.dispose();
-            scrollingOwner.dispose();
-            messageActionsOwner.dispose();
-            messageEditor.dispose();
-            referencesOwner.dispose();
-            persistenceOwner.dispose();
-            modelPickerOwner.dispose();
-            attachmentsOwner.dispose();
-            submitInteractiveContent = null;
-            form.removeEventListener('submit', onSubmit);
-            stopBtn.removeEventListener('click', onStop);
-            await surface.dispose();
-            childScope?.dispose?.('side-chat-unmounted');
-            container.replaceChildren();
-        }
+        dispose: () => releaseSurface('side-chat-unmounted')
     });
+
+    async function teardownSurface() {
+        if (isDisposed) return;
+        flushInputSave();
+        isDisposed = true;
+        if (activeSendController) {
+            activeSendController.abort('side-chat-unmounted');
+            try {
+                await surface.cancelMessage();
+            } catch {}
+        }
+        composerStateOwner.dispose();
+        scrollingOwner.dispose();
+        messageActionsOwner.dispose();
+        messageEditor.dispose();
+        referencesOwner.dispose();
+        persistenceOwner.dispose();
+        modelPickerOwner.dispose();
+        attachmentsOwner.dispose();
+        submitInteractiveContent = null;
+        form.removeEventListener('submit', onSubmit);
+        stopBtn.removeEventListener('click', onStop);
+        await surface.dispose();
+        container.replaceChildren();
+    }
+    const releaseSurface = ownTeardown(teardownSurface);
 
     return handle;
 }
@@ -668,7 +686,7 @@ export async function mountSideChatSurface(container, {
  * @param {Object} options
  * @param {Object} options.chatCapabilities
  * @param {Object} [options.scope]
- * @returns {Object} { mountTab(descriptor, container) }
+ * @returns {Object} { mountTab(descriptor, container, ctx) }
  */
 export function createSideChatSurfaceOwner({
     chatCapabilities,
@@ -680,11 +698,12 @@ export function createSideChatSurfaceOwner({
     let ownerDocument = doc;
     const draftStore = createSideChatDraftStore({ getStorage: () => ownerDocument?.defaultView?.localStorage });
     return Object.freeze({
-        async mountTab(descriptor, container) {
+        async mountTab(descriptor, container, { scope: viewScope = null } = {}) {
             ownerDocument ||= container.ownerDocument;
             const storedInput = draftStore.read(descriptor).input;
             if (storedInput) descriptor = { ...descriptor, ...storedInput };
-            const handle = await mountSurface(container, { descriptor, chatCapabilities, scope, draftStore });
+            // 控制器给了 view scope 就挂在它下面，否则退回 provider 自己的 scope
+            const handle = await mountSurface(container, { descriptor, chatCapabilities, scope: viewScope || scope, draftStore });
             return drafts.ownHandle(handle, descriptor);
         },
         readDraft: descriptor => draftStore.read(descriptor),

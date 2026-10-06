@@ -70,7 +70,7 @@ export function sideChatTab(rawDescriptor, tabs = []) {
 
 /**
  * @returns {import('../side-pane-types.js').SidePaneTabType}
- * provider：mountTab(descriptor, view)，返回辅助对话 handle。
+ * provider：mountTab(descriptor, view, ctx)，返回辅助对话 handle；ctx 原样转交控制器给的挂载上下文（含 view scope）。
  * openSideChat：新标签页入口；不传时不出现在新标签页里。
  * onClosed(descriptor)：标签关掉后调用，用来删掉子话题。
  */
@@ -86,7 +86,7 @@ export function defineChatTabType({ provider, openSideChat = null, onClosed = nu
         // openTab({ kind: 'chat', descriptor }) 走这里
         toTab: (payload, tabs) => sideChatTab(payload.descriptor, tabs),
         provider: provider ? {
-            mountTab: (payload, view) => provider.mountTab(payload.descriptor, view)
+            mountTab: (payload, view, ctx) => provider.mountTab(payload.descriptor, view, ctx)
         } : null,
         onClosed: typeof onClosed === 'function' ? tab => onClosed({ ...tab.descriptor }) : null
     });

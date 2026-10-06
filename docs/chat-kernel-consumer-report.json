@@ -227,10 +227,12 @@
     "VCPDistributedServer/Plugin/PluginSourceViewer/PluginSourceViewer.js",
     "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
     "VCPDistributedServer/Plugin/PowerShellExecutor/command-output-parser.js",
+    "VCPDistributedServer/Plugin/PowerShellExecutor/commandRunStore.js",
     "VCPDistributedServer/Plugin/PowerShellExecutor/gui/PowerShellViewer.html",
     "VCPDistributedServer/Plugin/PowerShellExecutor/gui/PowerShellViewer.js",
     "VCPDistributedServer/Plugin/PowerShellExecutor/gui/preload.js",
     "VCPDistributedServer/Plugin/PowerShellExecutor/nativeHelperPath.js",
+    "VCPDistributedServer/Plugin/PowerShellExecutor/terminalOutputSanitizer.js",
     "VCPDistributedServer/Plugin/PowerShellExecutor/test_interactive_sequence.js",
     "VCPDistributedServer/Plugin/PowerShellExecutor/test_security_check.js",
     "VCPDistributedServer/Plugin/ProjectForge/ProjectForgeService.js",
@@ -1028,7 +1030,7 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 293,
+          "line": 309,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "sendMessage",
@@ -14492,6 +14494,14 @@
       "listeners": 0,
       "mutableMaps": 0
     },
+    "VCPDistributedServer/Plugin/PowerShellExecutor/commandRunStore.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
     "VCPDistributedServer/Plugin/PowerShellExecutor/gui/PowerShellViewer.html": {
       "windowReferences": 5,
       "documentReferences": 0,
@@ -14517,6 +14527,14 @@
       "mutableMaps": 0
     },
     "VCPDistributedServer/Plugin/PowerShellExecutor/nativeHelperPath.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/PowerShellExecutor/terminalOutputSanitizer.js": {
       "windowReferences": 0,
       "documentReferences": 0,
       "electronReferences": 0,

@@ -30,6 +30,8 @@ const CHANNELS = [
 ];
 
 const EXECUTOR_PATH = path.join(__dirname, '..', '..', 'VCPDistributedServer', 'Plugin', 'PowerShellExecutor', 'PowerShellExecutor.js');
+// 命令运行记录单独成模块、加载无副作用：只读记录（状态面板、命令输出标签）不会把整个执行器拉起来
+const COMMAND_RUN_STORE_PATH = path.join(__dirname, '..', '..', 'VCPDistributedServer', 'Plugin', 'PowerShellExecutor', 'commandRunStore.js');
 const MAX_VIEWS = 8;
 const MAX_WRITE_CHARS = 1024 * 1024;
 const MIN_COLS = 2;
@@ -40,6 +42,7 @@ const RUN_NOTIFY_INTERVAL_MS = 120;
 
 let workspaceServiceRef = null;
 let loadExecutor = () => require(EXECUTOR_PATH);
+let loadCommandRuns = () => require(COMMAND_RUN_STORE_PATH);
 let sequence = 0;
 /** @type {Map<string, { id: string, sender: Electron.WebContents, detach: Function }>} */
 const views = new Map();
@@ -106,7 +109,7 @@ function startRunWatcher(sender) {
         watcher.pending.clear();
     };
     // 输出很碎，按运行记录合并后再通知，渲染端只需要知道「这条变了」
-    watcher.unsubscribe = loadExecutor().subscribeCommandRuns((summary) => {
+    watcher.unsubscribe = loadCommandRuns().subscribeCommandRuns((summary) => {
         watcher.pending.set(summary.id, summary);
         if (!watcher.timer) watcher.timer = setTimeout(flush, RUN_NOTIFY_INTERVAL_MS);
     });
@@ -190,11 +193,12 @@ function createView(event, options = {}) {
     return { id, pid: state.pid, shared: true };
 }
 
-function initialize({ workspaceService = null, executorLoader = null, mainWindow = null, getMainWindow: getWindow = null, ipcMain: injectedIpcMain = null } = {}) {
+function initialize({ workspaceService = null, executorLoader = null, commandRunStoreLoader = null, mainWindow = null, getMainWindow: getWindow = null, ipcMain: injectedIpcMain = null } = {}) {
     ipcMain = injectedIpcMain || defaultIpcMain;
     getMainWindow = typeof getWindow === 'function' ? getWindow : () => mainWindow;
     workspaceServiceRef = workspaceService;
     if (typeof executorLoader === 'function') loadExecutor = executorLoader;
+    if (typeof commandRunStoreLoader === 'function') loadCommandRuns = commandRunStoreLoader;
     CHANNELS.forEach((channel) => ipcMain.removeHandler(channel));
 
     const denied = { success: false, error: '当前窗口无权使用终端。' };
@@ -256,7 +260,7 @@ function initialize({ workspaceService = null, executorLoader = null, mainWindow
     ipcMain.handle('terminal:command-runs', (event) => {
         if (!isAllowedSender(event)) return denied;
         try {
-            return { success: true, data: loadExecutor().listCommandRuns() };
+            return { success: true, data: loadCommandRuns().listCommandRuns() };
         } catch (error) {
             return failure(error);
         }
@@ -266,7 +270,7 @@ function initialize({ workspaceService = null, executorLoader = null, mainWindow
         if (!isAllowedSender(event)) return denied;
         if (typeof id !== 'string' || !id) return { success: false, error: '命令记录参数无效。' };
         try {
-            const run = loadExecutor().getCommandRun(id, { maxChars: options?.maxChars });
+            const run = loadCommandRuns().getCommandRun(id, { maxChars: options?.maxChars });
             return run ? { success: true, data: run } : { success: false, error: '这条命令记录已被清理。' };
         } catch (error) {
             return failure(error);

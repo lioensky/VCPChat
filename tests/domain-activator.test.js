@@ -164,6 +164,7 @@ test('the terminal domain does not load the executor until a terminal channel is
     const ipc = fakeIpcMain();
     const activator = createDomainActivator({ ipcMain: ipc, logger: quiet });
     let executorLoads = 0;
+    let storeLoads = 0;
     activator.register('terminal', {
         channels: channelsForDomain(describeApis(), 'terminal'),
         load: () => terminal,
@@ -171,6 +172,10 @@ test('the terminal domain does not load the executor until a terminal channel is
             ipcMain,
             executorLoader: () => {
                 executorLoads += 1;
+                return {};
+            },
+            commandRunStoreLoader: () => {
+                storeLoads += 1;
                 return { listCommandRuns: () => [{ id: 'r1' }], subscribeCommandRuns: () => () => {} };
             },
         }),
@@ -178,12 +183,14 @@ test('the terminal domain does not load the executor until a terminal channel is
     });
     try {
         assert.equal(activator.stateOf('terminal'), 'declared');
-        assert.equal(executorLoads, 0);
+        assert.equal(storeLoads, 0);
         const { event } = createTrustedMainSender();
         const result = await ipc.handlers.get('terminal:command-runs')(event);
         assert.deepEqual(result, { success: true, data: [{ id: 'r1' }] });
         assert.equal(activator.stateOf('terminal'), 'active');
-        assert.equal(executorLoads, 1);
+        assert.equal(storeLoads, 1);
+        // 只读命令记录：执行器（注册 IPC、主题监视、读配置）一直不加载
+        assert.equal(executorLoads, 0);
     } finally {
         activator.unregisterAll();
     }

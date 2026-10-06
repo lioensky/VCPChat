@@ -1,7 +1,7 @@
 'use strict';
 
 // 命令记录的推送按页面计数：每次 watch 加一，unwatch 减一，归零才真正取消；
-// 注册 IPC 时不加载终端执行器，第一次用到才加载。
+// 命令记录从无副作用的记录模块读，列出、读取、订阅记录都不会加载终端执行器。
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
@@ -23,6 +23,8 @@ Module._load = function loadWithElectronMock(request, parent, isMain) {
 };
 const terminalHandlers = require('../modules/ipc/terminalHandlers');
 Module._load = originalLoad;
+const path = require('node:path');
+const PLUGIN_DIR = path.join(__dirname, '..', 'VCPDistributedServer', 'Plugin', 'PowerShellExecutor');
 
 class FakeSender extends EventEmitter {
     constructor() {
@@ -37,7 +39,7 @@ class FakeSender extends EventEmitter {
     getURL() { return require('./helpers/trusted-main-sender.cjs').createTrustedMainSender().sender.getURL(); }
 }
 
-function createFakeExecutor() {
+function createFakeRunStore() {
     const listeners = new Set();
     return {
         loads: 0,
@@ -54,31 +56,58 @@ function createFakeExecutor() {
 const call = (channel, sender, ...args) => handlers.get(channel)({ sender, senderFrame: sender.mainFrame }, ...args);
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-test('registering the IPC does not load the executor; watch and unwatch are counted per page', async () => {
-    const executor = createFakeExecutor();
-    terminalHandlers.initialize({ executorLoader: () => { executor.loads += 1; return executor; } });
+// 要放在第一个：之后的用例会注入假的加载器，这里验证的是默认路径
+test('reading command runs goes through the run store and never loads the executor', async () => {
+    const executorPath = path.join(PLUGIN_DIR, 'PowerShellExecutor.js');
+    const store = require(path.join(PLUGIN_DIR, 'commandRunStore.js'));
+    terminalHandlers.initialize();
     try {
-        assert.equal(executor.loads, 0, 'initialize only registers handlers');
+        const run = store.beginCommandRun('git status');
+        store.appendCommandRunOutput(run, 'On branch main\r\n');
+        store.finishCommandRun(run, 'completed');
+        const page = new FakeSender();
+        const list = await call('terminal:command-runs', page);
+        assert.equal(list.success, true);
+        assert.equal(list.data[0].id, run.id);
+        const detail = await call('terminal:command-run', page, run.id);
+        assert.equal(detail.data.output, 'On branch main\n');
+        assert.equal((await call('terminal:watch-command-runs', page)).success, true);
+        await call('terminal:unwatch-command-runs', page);
+        assert.equal(require.cache[executorPath], undefined, 'the executor (IPC, theme watcher, config) stays unloaded');
+    } finally {
+        terminalHandlers.disposeAll();
+    }
+});
+
+test('registering the IPC loads nothing; watch and unwatch are counted per page', async () => {
+    const runStore = createFakeRunStore();
+    let executorLoads = 0;
+    terminalHandlers.initialize({
+        executorLoader: () => { executorLoads += 1; return {}; },
+        commandRunStoreLoader: () => { runStore.loads += 1; return runStore; }
+    });
+    try {
+        assert.equal(runStore.loads, 0, 'initialize only registers handlers');
 
         const page = new FakeSender();
         const other = new FakeSender();
         assert.equal((await call('terminal:watch-command-runs', page)).success, true);
         assert.equal((await call('terminal:watch-command-runs', page)).success, true);
         assert.equal((await call('terminal:watch-command-runs', other)).success, true);
-        assert.equal(executor.listeners.size, 2, 'one executor subscription per page');
+        assert.equal(runStore.listeners.size, 2, 'one store subscription per page');
 
         await call('terminal:unwatch-command-runs', page);
-        assert.equal(executor.listeners.size, 2, 'the page still has one watcher left');
-        executor.emit({ id: 'r1', status: 'running' });
+        assert.equal(runStore.listeners.size, 2, 'the page still has one watcher left');
+        runStore.emit({ id: 'r1', status: 'running' });
         await wait(200);
         assert.equal(page.sent.filter(m => m.channel === 'terminal:command-run-changed').length, 1);
 
         await call('terminal:unwatch-command-runs', page);
-        assert.equal(executor.listeners.size, 1, 'last unwatch stops pushing to that page');
+        assert.equal(runStore.listeners.size, 1, 'last unwatch stops pushing to that page');
         await call('terminal:unwatch-command-runs', page);
-        assert.equal(executor.listeners.size, 1, 'extra unwatch calls are ignored');
+        assert.equal(runStore.listeners.size, 1, 'extra unwatch calls are ignored');
 
-        executor.emit({ id: 'r1', status: 'completed' });
+        runStore.emit({ id: 'r1', status: 'completed' });
         await wait(200);
         assert.equal(page.sent.filter(m => m.channel === 'terminal:command-run-changed').length, 1);
         assert.equal(other.sent.filter(m => m.channel === 'terminal:command-run-changed').length, 2);
@@ -89,7 +118,8 @@ test('registering the IPC does not load the executor; watch and unwatch are coun
         assert.equal((await call('terminal:unwatch-command-runs', foreign)).success, false);
 
         other.emit('destroyed');
-        assert.equal(executor.listeners.size, 0, 'a destroyed page drops its watcher regardless of the count');
+        assert.equal(runStore.listeners.size, 0, 'a destroyed page drops its watcher regardless of the count');
+        assert.equal(executorLoads, 0, 'following command runs never loads the executor');
     } finally {
         terminalHandlers.disposeAll();
     }

@@ -478,3 +478,45 @@ test('side chat edits a message in place and regenerates an answer with the side
     await handle.dispose();
     dom.window.close();
 });
+
+test('the side chat surface hangs under the view scope the controller passes and is torn down with it', async () => {
+    const { createSidePaneRootScope } = await import('../modules/ui-system/side-pane/side-pane-occurrence.js');
+    const { defineChatTabType } = await import('../modules/ui-system/side-pane/tab-types/chat.js');
+    const dom = new JSDOM('<div id="tabContainer"></div>');
+    const container = dom.window.document.getElementById('tabContainer');
+    const caps = createMockChatCapabilities();
+    let rendererDisposed = 0;
+    const createRenderer = caps.createRenderer;
+    caps.createRenderer = options => {
+        const owned = createRenderer(options);
+        return { ...owned, dispose: async () => { rendererDisposed += 1; await owned.dispose(); } };
+    };
+    const owner = createSideChatSurfaceOwner({ chatCapabilities: caps });
+    // 标签类型把控制器给的挂载上下文原样交给 provider
+    const tabType = defineChatTabType({ provider: owner });
+    const view = createSidePaneRootScope(null, 'test-view');
+    const descriptor = {
+        id: 'chat-scope-1',
+        title: 'Scope Test',
+        parent: { itemId: 'agent-1', topicId: 'topic-p' },
+        child: { itemId: 'agent-1', topicId: 'topic-scope' },
+        contextMode: 'references-only',
+        model: 'test-model'
+    };
+    const handle = await tabType.provider.mountTab({ descriptor }, container, { scope: view });
+    const { diagnostics } = globalThis.VCPLifecycle;
+    const surfaceScope = diagnostics.snapshot().find(scope => scope.parentId === view.id);
+    assert.equal(surfaceScope.label, 'side-chat-chat-scope-1');
+    assert.ok(surfaceScope.resources.some(resource => resource.label === 'side-chat-surface'));
+
+    // 控制器只释放 view scope：对话面板一样被拆掉
+    await view.dispose('dormant');
+    assert.equal(container.children.length, 0);
+    assert.equal(rendererDisposed, 1);
+    assert.equal(diagnostics.snapshot().some(scope => scope.id === surfaceScope.id), false);
+
+    // 之后再调 dispose 不会重复拆
+    await handle.dispose();
+    assert.equal(rendererDisposed, 1);
+    dom.window.close();
+});

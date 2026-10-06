@@ -12,6 +12,17 @@ const { BrowserWindow, ipcMain, clipboard } = require('electron');
 const tmp = require('tmp');
 const chokidar = require('chokidar');
 const { CommandOutputParser } = require('./command-output-parser');
+const { sanitizeTerminalOutput } = require('./terminalOutputSanitizer');
+// 命令运行记录放在无副作用的独立模块里：主进程只读记录时不必加载整个执行器
+const {
+    COMMAND_RUN_RAW_LIMIT,
+    beginCommandRun,
+    appendCommandRunOutput,
+    finishCommandRun,
+    listCommandRuns,
+    getCommandRun,
+    subscribeCommandRuns,
+} = require('./commandRunStore');
 const { resolveConfirmationScript } = require('./nativeHelperPath.js');
 
 // --- GUI Window Management ---
@@ -310,156 +321,7 @@ ipcMain.on('powershell-window:close', (event) => {
 });
 
 // --- ANSI / terminal control projection for AI text summaries ---
-/**
- * 按“安全的一维日志投影语义”清理输出，用于 AI 工具返回的 Markdown 摘要。
- *
- * 注意：GUI 路径必须继续接收原始 PTY 数据，由 xterm.js 处理完整 ANSI/VT 状态机。
- * 摘要层刻意不做跨行光标寻址模拟：PowerShell/PSReadLine 在长行、自动换行、
- * CJK 宽字符场景下会发出光标定位序列，半模拟很容易把正常 JSON/路径投影成
- * 大片空行或错位文本。这里仅处理最常见且低风险的日志语义：
- * - CR 原地刷新当前逻辑行
- * - LF/CRLF 稳定换行
- * - BS 退格
- * - CSI K 行内擦除
- * - SGR 颜色与其它 CSI/OSC 控制序列忽略
- *
- * @param {string} str - 原始终端输出。
- * @returns {string} - 适合放入 Markdown codeblock 的纯文本快照。
- */
-function sanitizeTerminalOutput(str) {
-    if (!str) {
-        return '';
-    }
-
-    const normalized = String(str)
-        .replace(/\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g, '') // OSC 序列
-        .replace(/\x00/g, '')                                  // null
-        .replace(/\x07/g, '');                                 // bell
-
-    const lines = [[]];
-    let row = 0;
-    let col = 0;
-
-    const ensureRow = (targetRow) => {
-        while (lines.length <= targetRow) {
-            lines.push([]);
-        }
-    };
-
-    const putChar = (char) => {
-        ensureRow(row);
-        lines[row][col] = char;
-        col += 1;
-    };
-
-    const eraseInLine = (mode) => {
-        ensureRow(row);
-        if (mode === 1) {
-            for (let i = 0; i <= col; i += 1) {
-                lines[row][i] = undefined;
-            }
-            return;
-        }
-
-        if (mode === 2) {
-            lines[row] = [];
-            col = 0;
-            return;
-        }
-
-        lines[row].length = col;
-    };
-
-    const parseFirstParam = (rawParams) => {
-        const cleanedParams = (rawParams || '').replace(/[?>=]/g, '');
-        const firstValue = cleanedParams.split(';')[0];
-        const parsed = Number.parseInt(firstValue, 10);
-        return Number.isFinite(parsed) ? parsed : 0;
-    };
-
-    for (let i = 0; i < normalized.length; i += 1) {
-        const char = normalized[i];
-
-        if (char === '\u001b' || char === '\u009b') {
-            const isC1Csi = char === '\u009b';
-            const nextChar = normalized[i + 1];
-
-            if (isC1Csi || nextChar === '[') {
-                let cursor = i + (isC1Csi ? 1 : 2);
-                let params = '';
-
-                while (cursor < normalized.length && !/[\x40-\x7e]/.test(normalized[cursor])) {
-                    params += normalized[cursor];
-                    cursor += 1;
-                }
-
-                if (cursor >= normalized.length) {
-                    break;
-                }
-
-                const finalByte = normalized[cursor];
-
-                if (finalByte === 'K') {
-                    eraseInLine(parseFirstParam(params));
-                } else if (finalByte === 'G') {
-                    const column = parseFirstParam(params) || 1;
-                    col = Math.max(0, column - 1);
-                }
-                // 其它 CSI（含 SGR m、跨行 A/B/H/J、私有模式 h/l）在摘要层只剥离不应用，
-                // 避免半终端状态机破坏普通长输出。真实 GUI 仍由 xterm.js 完整处理。
-
-                i = cursor;
-                continue;
-            }
-
-            // 非 CSI ESC 序列：跳过 ESC 和紧随的最终字节，避免污染摘要。
-            if (nextChar) {
-                i += 1;
-            }
-            continue;
-        }
-
-        if (char === '\r') {
-            col = 0;
-            if (normalized[i + 1] === '\n') {
-                row += 1;
-                ensureRow(row);
-                i += 1;
-            }
-            continue;
-        }
-
-        if (char === '\n') {
-            row += 1;
-            ensureRow(row);
-            continue;
-        }
-
-        if (char === '\b') {
-            col = Math.max(0, col - 1);
-            ensureRow(row);
-            lines[row][col] = undefined;
-            continue;
-        }
-
-        if (char === '\t') {
-            const nextTabStop = col + (8 - (col % 8));
-            while (col < nextTabStop) {
-                putChar(' ');
-            }
-            continue;
-        }
-
-        if (char >= ' ' || char === '\u3000') {
-            putChar(char);
-        }
-    }
-
-    return lines
-        .map((line) => line.map((cell) => cell || ' ').join('').replace(/[ \t]+$/g, ''))
-        .join('\n');
-}
-
+// 清洗逻辑在 terminalOutputSanitizer.js（纯函数，命令运行记录也用它）
 
 // --- 模块级状态 ---
 // 用于保存持久化的伪终端（PowerShell）进程
@@ -1307,97 +1169,6 @@ function openGuiTerminal() {
  * @param {string} singleCommand - 要执行的单条命令。
  * @returns {Promise<string>} - 该命令的增量输出。
  */
-// --- AI 命令运行记录 ---
-// 侧栏「命令输出」标签读取这里：每条 AI 短命令一条记录（命令、状态、输出），只保留最近若干条与有限输出。
-const COMMAND_RUN_LIMIT = 30;
-const COMMAND_RUN_RAW_LIMIT = 512 * 1024;
-const COMMAND_RUN_READ_LIMIT = 64 * 1024;
-const commandRuns = [];
-const commandRunListeners = new Set();
-let commandRunSequence = 0;
-
-function summarizeCommandRun(run) {
-    return {
-        id: run.id,
-        command: run.command,
-        status: run.status,
-        startedAt: run.startedAt,
-        endedAt: run.endedAt,
-    };
-}
-
-function emitCommandRunChanged(run) {
-    const summary = summarizeCommandRun(run);
-    for (const listener of commandRunListeners) {
-        try {
-            listener(summary);
-        } catch (e) {
-            console.error('[PowerShellExecutor] Command run listener failed:', e);
-        }
-    }
-}
-
-function beginCommandRun(command) {
-    commandRunSequence += 1;
-    const run = {
-        id: `run-${Date.now().toString(36)}-${commandRunSequence}`,
-        command: String(command),
-        status: 'running',
-        startedAt: Date.now(),
-        endedAt: null,
-        raw: '',
-        rawTruncated: false,
-    };
-    commandRuns.push(run);
-    if (commandRuns.length > COMMAND_RUN_LIMIT) {
-        commandRuns.splice(0, commandRuns.length - COMMAND_RUN_LIMIT);
-    }
-    emitCommandRunChanged(run);
-    return run;
-}
-
-function appendCommandRunOutput(run, chunk) {
-    if (!chunk) return;
-    run.raw += chunk;
-    if (run.raw.length > COMMAND_RUN_RAW_LIMIT) {
-        run.raw = run.raw.slice(-COMMAND_RUN_RAW_LIMIT);
-        run.rawTruncated = true;
-    }
-    emitCommandRunChanged(run);
-}
-
-function finishCommandRun(run, status) {
-    if (run.status !== 'running') return;
-    run.status = status;
-    run.endedAt = Date.now();
-    emitCommandRunChanged(run);
-}
-
-/** 最近的命令运行记录（新的在前），不含输出正文。 */
-function listCommandRuns() {
-    return commandRuns.map(summarizeCommandRun).reverse();
-}
-
-/** 读取一条记录，输出为清洗后的纯文本，只保留末尾 maxChars 个字符。 */
-function getCommandRun(id, { maxChars = COMMAND_RUN_READ_LIMIT } = {}) {
-    const run = commandRuns.find(item => item.id === id);
-    if (!run) return null;
-    const limit = Math.max(1, Math.min(COMMAND_RUN_READ_LIMIT, Math.floor(Number(maxChars)) || COMMAND_RUN_READ_LIMIT));
-    // 起始标记那一行留下的换行不算输出
-    const clean = sanitizeTerminalOutput(run.raw).replace(/\r\n/g, '\n').replace(/\r/g, '').replace(/^\n/, '');
-    const truncated = run.rawTruncated || clean.length > limit;
-    return {
-        ...summarizeCommandRun(run),
-        output: truncated ? clean.slice(-limit) : clean,
-        truncated,
-    };
-}
-
-function subscribeCommandRuns(listener) {
-    commandRunListeners.add(listener);
-    return () => commandRunListeners.delete(listener);
-}
-
 function executeSingleCommandInPty(ptyProcess, singleCommand) {
     return new Promise((resolve, reject) => {
         if (!ptyProcess) {

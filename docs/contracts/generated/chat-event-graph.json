@@ -40,9 +40,11 @@
     "VCPDistributedServer/Plugin/PluginSourceViewer/PluginSourceViewer.js",
     "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
     "VCPDistributedServer/Plugin/PowerShellExecutor/command-output-parser.js",
+    "VCPDistributedServer/Plugin/PowerShellExecutor/commandRunStore.js",
     "VCPDistributedServer/Plugin/PowerShellExecutor/gui/PowerShellViewer.js",
     "VCPDistributedServer/Plugin/PowerShellExecutor/gui/preload.js",
     "VCPDistributedServer/Plugin/PowerShellExecutor/nativeHelperPath.js",
+    "VCPDistributedServer/Plugin/PowerShellExecutor/terminalOutputSanitizer.js",
     "VCPDistributedServer/Plugin/PowerShellExecutor/test_interactive_sequence.js",
     "VCPDistributedServer/Plugin/PowerShellExecutor/test_security_check.js",
     "VCPDistributedServer/Plugin/ProjectForge/ProjectForgeService.js",
@@ -2279,7 +2281,7 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 153,
+          "line": 164,
           "kind": "event-listener"
         },
         {
@@ -2438,7 +2440,7 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 153,
+          "line": 164,
           "kind": "event-listener",
           "match": "settingsWatcher.on('change'"
         },
@@ -3701,12 +3703,12 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 535,
+          "line": 551,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 538,
+          "line": 554,
           "kind": "custom-event-listener"
         },
         {
@@ -5161,13 +5163,13 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 535,
+          "line": 551,
           "kind": "custom-event-listener",
           "match": "stopBtn.addEventListener('click'"
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 538,
+          "line": 554,
           "kind": "custom-event-listener",
           "match": "persistenceBadge.addEventListener('click'"
         },
@@ -6226,12 +6228,12 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 711,
+          "line": 573,
           "kind": "event-listener"
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 823,
+          "line": 685,
           "kind": "event-listener"
         },
         {
@@ -6361,13 +6363,13 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 711,
+          "line": 573,
           "kind": "event-listener",
           "match": "child.on('close'"
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 823,
+          "line": 685,
           "kind": "event-listener",
           "match": "child.on('close'"
         },
@@ -6674,7 +6676,7 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 88,
+          "line": 99,
           "kind": "event-listener"
         },
         {
@@ -6863,7 +6865,7 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 88,
+          "line": 99,
           "kind": "event-listener",
           "match": "guiWindow.on('closed'"
         },
@@ -7110,14 +7112,14 @@
       "consumers": [
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 328,
+          "line": 344,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 328,
+          "line": 344,
           "kind": "custom-event-listener",
           "match": "textarea.addEventListener('compositionend'"
         }
@@ -7129,14 +7131,14 @@
       "consumers": [
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 327,
+          "line": 343,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 327,
+          "line": 343,
           "kind": "custom-event-listener",
           "match": "textarea.addEventListener('compositionstart'"
         }
@@ -7292,7 +7294,7 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 542,
+          "line": 558,
           "kind": "custom-event-listener"
         },
         {
@@ -7424,7 +7426,7 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 542,
+          "line": 558,
           "kind": "custom-event-listener",
           "match": "persistenceBadge.addEventListener('contextmenu'"
         },
@@ -7582,7 +7584,7 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 190,
+          "line": 201,
           "kind": "event-listener"
         }
       ],
@@ -7601,7 +7603,7 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 190,
+          "line": 201,
           "kind": "event-listener",
           "match": "ipcMain.on('copy-to-clipboard'"
         }
@@ -7935,12 +7937,12 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 698,
+          "line": 560,
           "kind": "event-listener"
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 813,
+          "line": 675,
           "kind": "event-listener"
         },
         {
@@ -8208,13 +8210,13 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 698,
+          "line": 560,
           "kind": "event-listener",
           "match": "child.stderr.on('data'"
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 813,
+          "line": 675,
           "kind": "event-listener",
           "match": "child.stderr.on('data'"
         },
@@ -11634,12 +11636,12 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 702,
+          "line": 564,
           "kind": "event-listener"
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 817,
+          "line": 679,
           "kind": "event-listener"
         },
         {
@@ -11926,13 +11928,13 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 702,
+          "line": 564,
           "kind": "event-listener",
           "match": "child.on('error'"
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 817,
+          "line": 679,
           "kind": "event-listener",
           "match": "child.on('error'"
         },
@@ -14805,7 +14807,7 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 330,
+          "line": 346,
           "kind": "custom-event-listener"
         },
         {
@@ -14976,7 +14978,7 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 330,
+          "line": 346,
           "kind": "custom-event-listener",
           "match": "textarea.addEventListener('input'"
         },
@@ -15411,7 +15413,7 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 336,
+          "line": 352,
           "kind": "custom-event-listener"
         },
         {
@@ -15750,7 +15752,7 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 336,
+          "line": 352,
           "kind": "custom-event-listener",
           "match": "textarea.addEventListener('keydown'"
         },
@@ -23238,7 +23240,7 @@
       "producers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 1024,
+          "line": 886,
           "kind": "event-send"
         }
       ],
@@ -23252,7 +23254,7 @@
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 1024,
+          "line": 886,
           "kind": "event-send",
           "match": "guiWindow.webContents.send('powershell-clear'"
         },
@@ -23270,14 +23272,14 @@
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 182,
+          "line": 193,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 182,
+          "line": 193,
           "kind": "event-listener",
           "match": "ipcMain.on('powershell-command'"
         }
@@ -23288,7 +23290,7 @@
       "producers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 872,
+          "line": 734,
           "kind": "event-send"
         }
       ],
@@ -23302,7 +23304,7 @@
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 872,
+          "line": 734,
           "kind": "event-send",
           "match": "guiWindow.webContents.send('powershell-data'"
         },
@@ -23320,14 +23322,14 @@
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 167,
+          "line": 178,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 167,
+          "line": 178,
           "kind": "event-listener",
           "match": "ipcMain.on('powershell-gui-ready'"
         }
@@ -23339,14 +23341,14 @@
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 226,
+          "line": 237,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 226,
+          "line": 237,
           "kind": "event-listener",
           "match": "ipcMain.on('powershell-input'"
         }
@@ -23358,14 +23360,14 @@
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 219,
+          "line": 230,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 219,
+          "line": 230,
           "kind": "event-listener",
           "match": "ipcMain.on('powershell-resize'"
         }
@@ -23383,14 +23385,14 @@
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 306,
+          "line": 317,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 306,
+          "line": 317,
           "kind": "event-listener",
           "match": "ipcMain.on('powershell-window:close'"
         },
@@ -23414,14 +23416,14 @@
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 288,
+          "line": 299,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 288,
+          "line": 299,
           "kind": "event-listener",
           "match": "ipcMain.on('powershell-window:minimize'"
         },
@@ -23445,14 +23447,14 @@
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 294,
+          "line": 305,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 294,
+          "line": 305,
           "kind": "event-listener",
           "match": "ipcMain.on('powershell-window:toggle-maximize'"
         },
@@ -23769,7 +23771,7 @@
       "producers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 1704,
+          "line": 1475,
           "kind": "event-send"
         }
       ],
@@ -23783,7 +23785,7 @@
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 1704,
+          "line": 1475,
           "kind": "event-send",
           "match": "guiWindow.webContents.send('query-visible-text'"
         },
@@ -24223,14 +24225,14 @@
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 197,
+          "line": 208,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 197,
+          "line": 208,
           "kind": "event-listener",
           "match": "ipcMain.handle('read-from-clipboard'"
         },
@@ -28083,7 +28085,7 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 534,
+          "line": 550,
           "kind": "custom-event-listener"
         },
         {
@@ -28143,7 +28145,7 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 534,
+          "line": 550,
           "kind": "custom-event-listener",
           "match": "form.addEventListener('submit'"
         },
@@ -28315,14 +28317,14 @@
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 260,
+          "line": 271,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 260,
+          "line": 271,
           "kind": "event-listener",
           "match": "ipcMain.on('terminal-paste-complete'"
         },
@@ -28339,7 +28341,7 @@
       "producers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 1725,
+          "line": 1496,
           "kind": "event-send"
         }
       ],
@@ -28353,7 +28355,7 @@
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 1725,
+          "line": 1496,
           "kind": "event-send",
           "match": "guiWindow.webContents.send('terminal-paste-request'"
         },
@@ -28377,14 +28379,14 @@
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 293,
+          "line": 297,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 293,
+          "line": 297,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:cd'"
         },
@@ -28401,7 +28403,7 @@
       "producers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 180,
+          "line": 183,
           "kind": "event-send"
         }
       ],
@@ -28415,7 +28417,7 @@
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 180,
+          "line": 183,
           "kind": "event-send",
           "match": "emit('terminal:clear'"
         },
@@ -28439,14 +28441,14 @@
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 265,
+          "line": 269,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 265,
+          "line": 269,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:command-run'"
         },
@@ -28489,14 +28491,14 @@
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 256,
+          "line": 260,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 256,
+          "line": 260,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:command-runs'"
         },
@@ -28520,14 +28522,14 @@
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 204,
+          "line": 208,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 204,
+          "line": 208,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:create'"
         },
@@ -28544,7 +28546,7 @@
       "producers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 179,
+          "line": 182,
           "kind": "event-send"
         }
       ],
@@ -28558,7 +28560,7 @@
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 179,
+          "line": 182,
           "kind": "event-send",
           "match": "emit('terminal:data'"
         },
@@ -28575,7 +28577,7 @@
       "producers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 181,
+          "line": 184,
           "kind": "event-send"
         }
       ],
@@ -28589,7 +28591,7 @@
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 181,
+          "line": 184,
           "kind": "event-send",
           "match": "emit('terminal:exit'"
         },
@@ -28613,14 +28615,14 @@
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 238,
+          "line": 242,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 238,
+          "line": 242,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:kill'"
         },
@@ -28644,14 +28646,14 @@
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 226,
+          "line": 230,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 226,
+          "line": 230,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:resize'"
         },
@@ -28675,14 +28677,14 @@
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 244,
+          "line": 248,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 244,
+          "line": 248,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:restart'"
         },
@@ -28706,14 +28708,14 @@
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 287,
+          "line": 291,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 287,
+          "line": 291,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:unwatch-command-runs'"
         },
@@ -28737,14 +28739,14 @@
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 276,
+          "line": 280,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 276,
+          "line": 280,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:watch-command-runs'"
         },
@@ -28768,14 +28770,14 @@
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 213,
+          "line": 217,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 213,
+          "line": 217,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:write'"
         },
@@ -28792,7 +28794,7 @@
       "producers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 134,
+          "line": 145,
           "kind": "event-send"
         }
       ],
@@ -28806,7 +28808,7 @@
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 134,
+          "line": 145,
           "kind": "event-send",
           "match": "targetWebContents.send('theme-init'"
         },
@@ -30677,14 +30679,14 @@
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 236,
+          "line": 247,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 236,
+          "line": 247,
           "kind": "event-listener",
           "match": "ipcMain.on('visible-text-response'"
         }
@@ -32468,7 +32470,7 @@
     },
     {
       "file": "modules/ipc/terminalHandlers.js",
-      "line": 61,
+      "line": 64,
       "reason": "dynamic event name: channel",
       "kind": "event-send",
       "match": "sender.send(channel",

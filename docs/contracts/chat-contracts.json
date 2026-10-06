@@ -526,7 +526,7 @@
     "dynamicSites": [
       {
         "file": "modules/ipc/terminalHandlers.js",
-        "line": 61,
+        "line": 64,
         "kind": "event-send",
         "match": "sender.send(channel"
       }
