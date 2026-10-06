@@ -23723,14 +23723,14 @@
       "consumers": [
         {
           "file": "modules/ipc/projectForgeHandlers.js",
-          "line": 103,
+          "line": 104,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/projectForgeHandlers.js",
-          "line": 103,
+          "line": 104,
           "kind": "event-listener",
           "match": "ipcMain.handle('project-forge:delete-project'"
         },

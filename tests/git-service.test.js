@@ -51,6 +51,85 @@ function createRepo(t) {
 
 const pairs = list => list.map(item => [item.status, item.path]);
 
+function createBareRepo(t) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vcp-push-remote-'));
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    git(root, ['init', '--bare', '-q']);
+    git(root, ['config', 'core.hooksPath', '.vcp-test-no-hooks']);
+    return root;
+}
+
+function createPushFixture(t, target = 'main') {
+    const root = createRepo(t), remote = createBareRepo(t);
+    git(root, ['config', 'push.default', 'simple']);
+    git(root, ['remote', 'add', 'origin', remote]);
+    git(root, ['branch', 'other']);
+    git(root, ['push', '-u', 'origin', `main:refs/heads/${target}`, 'other:refs/heads/other']);
+    const beforeMain = git(remote, ['rev-parse', `refs/heads/${target}`]);
+    const beforeOther = git(remote, ['rev-parse', 'refs/heads/other']);
+    git(root, ['checkout', '-q', 'other']);
+    write(root, 'other.txt', 'private work on another branch\n');
+    git(root, ['add', 'other.txt']); git(root, ['commit', '-qm', 'other private work']);
+    git(root, ['checkout', '-q', 'main']);
+    write(root, 'src/app.js', 'current branch update\n');
+    git(root, ['add', 'src/app.js']); git(root, ['commit', '-qm', 'main update']);
+    return { root, remote, target, beforeMain, beforeOther };
+}
+
+for (const setting of ['push.default=matching', 'remote.origin.push=refs/heads/*:refs/heads/*']) {
+    test(`push publishes only the current branch despite ${setting}`, { skip: SKIP_GIT }, async t => {
+        const f = createPushFixture(t);
+        const separator = setting.indexOf('=');
+        git(f.root, ['config', setting.slice(0, separator), setting.slice(separator + 1)]);
+        const result = await gitService.push(f.root);
+        assert.equal(git(f.remote, ['rev-parse', 'refs/heads/main']), git(f.root, ['rev-parse', 'HEAD']));
+        assert.equal(git(f.remote, ['rev-parse', 'refs/heads/other']), f.beforeOther);
+        assert.equal(result.status.branch.ahead, 0);
+    });
+}
+
+test('push uses the displayed upstream remote and its differently named branch', { skip: SKIP_GIT }, async t => {
+    const f = createPushFixture(t, 'published/main');
+    const alternate = createBareRepo(t);
+    git(f.root, ['remote', 'add', 'review', alternate]);
+    git(f.root, ['push', 'review', `${f.beforeMain}:refs/heads/main`]);
+    git(f.root, ['config', 'branch.main.pushRemote', 'review']);
+    git(f.root, ['config', 'push.default', 'current']);
+    const result = await gitService.push(f.root);
+    assert.equal(git(f.remote, ['rev-parse', 'refs/heads/published/main']), git(f.root, ['rev-parse', 'HEAD']));
+    assert.equal(git(alternate, ['rev-parse', 'refs/heads/main']), f.beforeMain);
+    assert.equal(git(f.remote, ['rev-parse', 'refs/heads/other']), f.beforeOther);
+    assert.equal(result.status.branch.upstream, 'origin/published/main');
+});
+
+test('first push requires confirmation and publishes only the current branch', { skip: SKIP_GIT }, async t => {
+    const root = createRepo(t), remote = createBareRepo(t);
+    git(root, ['branch', 'other']);
+    git(root, ['remote', 'add', 'origin', remote]);
+    git(root, ['config', 'remote.origin.push', 'refs/heads/*:refs/heads/*']);
+    await assert.rejects(gitService.push(root), error => error.code === 'NO_UPSTREAM');
+    const result = await gitService.push(root, { setUpstream: true });
+    assert.equal(git(remote, ['for-each-ref', '--format=%(refname)', 'refs/heads']), 'refs/heads/main');
+    assert.equal(git(remote, ['rev-parse', 'refs/heads/main']), git(root, ['rev-parse', 'HEAD']));
+    assert.equal(result.status.branch.upstream, 'origin/main');
+});
+
+test('a rejected current-branch push leaves other remote branches unchanged', { skip: SKIP_GIT }, async t => {
+    const f = createPushFixture(t);
+    const peer = fs.mkdtempSync(path.join(os.tmpdir(), 'vcp-push-peer-'));
+    t.after(() => fs.rmSync(peer, { recursive: true, force: true }));
+    git(peer, ['clone', '-q', '--branch', 'main', f.remote, '.']);
+    for (const [key, value] of [['user.name', 'Peer'], ['user.email', 'peer@example.invalid'], ['commit.gpgsign', 'false'], ['core.hooksPath', '.vcp-test-no-hooks']]) git(peer, ['config', key, value]);
+    write(peer, 'server.txt', 'someone else updated the remote\n');
+    git(peer, ['add', 'server.txt']); git(peer, ['commit', '-qm', 'server update']);
+    git(peer, ['push', 'origin', 'main:refs/heads/main']);
+    const remoteMain = git(f.remote, ['rev-parse', 'refs/heads/main']);
+    git(f.root, ['config', 'push.default', 'matching']);
+    await assert.rejects(gitService.push(f.root), /rejected|non-fast-forward|fetch first/);
+    assert.equal(git(f.remote, ['rev-parse', 'refs/heads/main']), remoteMain);
+    assert.equal(git(f.remote, ['rev-parse', 'refs/heads/other']), f.beforeOther);
+});
+
 test('parsePorcelainV2 handles branch headers, spaces, renames, conflicts and untracked files', () => {
     const raw = [
         '# branch.oid 1234abcd',
@@ -178,6 +257,31 @@ test('sub-directory workspace: status is scoped, outside paths are rejected, com
     await gitService.stage(workspace, ['pkg/sub/keep.txt']);
     await assert.rejects(gitService.commit(workspace, { message: 'scoped' }), /工作区之外/);
     assert.equal(git(root, ['rev-list', '--count', 'HEAD']), '1');
+});
+
+for (const [from, to] of [['README.md', 'pkg/移入 文件.md'], ['pkg/sub/keep.txt', '移出 文件.txt']]) {
+    test(`sub-directory commit rejects a staged rename crossing its boundary: ${from} → ${to}`, { skip: SKIP_GIT }, async t => {
+        const root = createRepo(t);
+        git(root, ['mv', from, to]);
+        const head = git(root, ['rev-parse', 'HEAD']);
+        const index = fs.readFileSync(path.join(root, '.git', 'index'));
+        const content = fs.readFileSync(path.join(root, to));
+        await assert.rejects(gitService.commit(path.join(root, 'pkg'), { message: 'workspace only' }), /工作区之外/);
+        assert.equal(git(root, ['rev-parse', 'HEAD']), head);
+        assert.deepEqual(fs.readFileSync(path.join(root, '.git', 'index')), index);
+        assert.deepEqual(fs.readFileSync(path.join(root, to)), content);
+        assert.equal(fs.existsSync(path.join(root, from)), false);
+    });
+}
+
+test('sub-directory commit still accepts a rename wholly within the workspace', { skip: SKIP_GIT }, async t => {
+    const root = createRepo(t);
+    git(root, ['mv', 'pkg/sub/keep.txt', 'pkg/改名 文件.txt']);
+    const result = await gitService.commit(path.join(root, 'pkg'), { message: 'rename within workspace' });
+    assert.match(result.commit, /^[0-9a-f]{7,}$/);
+    assert.deepEqual(result.status.staged, []);
+    assert.equal(git(root, ['show', 'HEAD:pkg/改名 文件.txt']), 'keep');
+    assert.equal(git(root, ['show', 'HEAD:src/app.js']), 'const a = 1;');
 });
 
 test('branches: list, create, switch and refuse unsafe cases', { skip: SKIP_GIT }, async t => {

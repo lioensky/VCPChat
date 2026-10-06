@@ -436,8 +436,9 @@ function commit(workspaceRoot, { message } = {}) {
     if (text.length > MAX_MESSAGE_CHARS) return Promise.reject(new Error(`提交信息过长（上限 ${MAX_MESSAGE_CHARS} 字符）。`));
 
     return mutate(workspaceRoot, async repo => {
-        // git commit 提交的是整个索引，所以检查全仓库的暂存内容，而不只是工作区子树
-        const { stdout } = await runGit(repo.toplevel, ['diff', '--cached', '--name-only', '-z']);
+        // git commit 提交整个索引。禁用重命名合并，让旧路径的删除也参加
+        // 全仓库边界检查，避免移入工作区的文件顺带提交工作区外的删除。
+        const { stdout } = await runGit(repo.toplevel, ['diff', '--cached', '--no-renames', '--name-only', '-z']);
         const stagedAll = stdout.toString('utf8').split('\0').filter(Boolean);
         if (!stagedAll.length) throw new Error('没有已暂存的更改。请先暂存要提交的文件。');
         const outside = stagedAll.filter(item => !withinPrefix(item, repo.prefix));
@@ -464,7 +465,15 @@ async function push(workspaceRoot, { setUpstream = false } = {}) {
         let args;
         let remote = null;
         if (branch.upstream) {
-            args = ['push'];
+            const tracking = await runGit(repo.toplevel, [
+                'for-each-ref', '--format=%(upstream:remotename)%00%(upstream:remoteref)', '--', `refs/heads/${branch.head}`,
+            ]);
+            const [upstreamRemote, upstreamRef] = tracking.stdout.toString('utf8').trim().split('\0');
+            if (!upstreamRemote || !upstreamRef) throw new Error('无法解析当前分支的上游推送目标，请检查分支配置。');
+            remote = upstreamRemote;
+            // 只发布当前分支到界面显示的上游，不让 matching、remote.push
+            // 或 branch.pushRemote 配置扩大范围或悄悄改变推送目标。
+            args = ['push', '--', remote, `refs/heads/${branch.head}:${upstreamRef}`];
         } else {
             if (!remotes.length) throw new Error('仓库没有配置任何远端。');
             if (!setUpstream) {
@@ -473,7 +482,7 @@ async function push(workspaceRoot, { setUpstream = false } = {}) {
                 throw error;
             }
             remote = remotes.includes('origin') ? 'origin' : remotes[0];
-            args = ['push', '-u', remote, 'HEAD'];
+            args = ['push', '-u', '--', remote, `refs/heads/${branch.head}:refs/heads/${branch.head}`];
         }
         const result = await runGit(repo.toplevel, args, { timeout: PUSH_TIMEOUT });
         const output = `${result.stderr.toString('utf8')}${result.stdout.toString('utf8')}`.trim();

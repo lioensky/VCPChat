@@ -167,7 +167,7 @@ export function createPlanNodeView({ doc, api, storage, h, icon, toast, projectI
             confirmBox.hidden = true;
             setBusy(true);
             try {
-                const result = await call(api.projectForgeRevertFile({ ...base, force: (plan.conflicts?.length || 0) > 0 }));
+                const result = await call(api.projectForgeRevertFile({ ...base, expectedHash: plan.expectedHash, force: (plan.conflicts?.length || 0) > 0 }));
                 if (result.status === 'conflict') {
                     toast('文件在确认期间发生变化，请重新操作', 'error');
                 } else if (result.status === 'noop') {

@@ -98,6 +98,7 @@ function initialize({ workspaceService = null, subscriptions = null } = {}) {
             reason: typeof p.reason === 'string' ? p.reason : '',
             dryRun: p.dryRun === true,
             force: p.force === true,
+            ...(Object.prototype.hasOwnProperty.call(p, 'expectedHash') ? { expectedHash: p.expectedHash } : {}),
         });
     }));
     ipcMain.handle('project-forge:delete-project', wrap((projectId, signature) => forge().deleteProject(projectId, signature)));
