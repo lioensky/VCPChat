@@ -1,6 +1,5 @@
 use tree_sitter::Node;
 
-use crate::facts::c_cpp::unquote;
 use crate::facts::types::{dfs, FileFacts, ModuleRef};
 
 /// 纯净 C# 与 Lua 语言事实提取器（微内核解耦）

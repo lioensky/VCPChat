@@ -10,10 +10,7 @@ pub mod types;
 use tree_sitter::Parser;
 
 pub use js_html::{html_facts, js_facts};
-pub use types::{
-    BridgeAlias, Expose, FfiExport, FileFacts, GlobalDef, IpcFact, MemberRef, ModuleRef,
-    ScriptTag, DEFAULT_BRIDGE_GLOBALS,
-};
+pub use types::{FileFacts, DEFAULT_BRIDGE_GLOBALS};
 
 use crate::lang::{Family, Lang};
 use crate::symbols::{normalize_source, parse};
@@ -69,6 +66,7 @@ pub fn extract_facts(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::types::IpcFact;
 
     fn bridge() -> Vec<String> {
         DEFAULT_BRIDGE_GLOBALS
