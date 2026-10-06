@@ -102,7 +102,10 @@ const desktopRemoteHandlers = require('./modules/ipc/desktopRemoteHandlers'); //
 const tavernHandlers = require('./modules/ipc/tavernHandlers'); // Import VCPChatTarven (advanced reply) handlers
 const { ScriptoriumAgentControlService } = require('./modules/services/scriptoriumAgentControlService');
 const { GlobalJevService } = require('./modules/services/globalJevService');
-// docxHandlers 体积较大，在主窗口开始加载后异步预热；首次调用也会按需等待同一加载任务。
+// docxHandlers 依赖链较重（mammoth/cheerio/marked/jszip 等），冷启动不加载。
+// 仅在首次真正使用文坊时（IPC 打开、V 桌面图标、Agent 调用）按需加载。
+const windowService = require('./modules/services/windowService');
+const WINDOW_APP_IDS = require('./modules/services/windowAppIds');
 let docxHandlersModule = null;
 let docxHandlersLoadPromise = null;
 let docxHandlersInitializeOptions = null;
@@ -153,6 +156,17 @@ function registerDocxOpenBootstrap() {
 function configureDocxHandlers(options) {
     docxHandlersInitializeOptions = options;
     registerDocxOpenBootstrap();
+    // V 桌面等入口通过 windowService 打开文坊，不经过 open-docx-window IPC。
+    // 预先登记轻量占位；真实模块 initialize() 时会以同一 appId 覆盖 open/getWindow。
+    windowService.register(WINDOW_APP_IDS.DOCX, {
+        owner: 'main:docx-lazy',
+        getWindow: () => docxHandlersModule?.getDocxWindow() || null,
+        open: async (openOptions = {}) => {
+            const handlers = await loadDocxHandlers();
+            return handlers.openDocxWindow(openOptions);
+        },
+        readyTimeoutMs: 20000,
+    });
 }
 
 // 提供稳定对象给控制服务；异步方法在真实模块就绪前自动等待。
@@ -1795,18 +1809,11 @@ if (!gotTheLock) {
             return process.platform;
         });
 
-        // 主窗口页面完成加载、触发展示后再后台预热 Scriptorium。
-        // 不 await：重型 CommonJS 解析不会延迟主窗口首屏；若用户更早打开
-        // 文坊，临时 IPC 桥接会立即启动并等待同一个单例加载 Promise。
+        // Scriptorium 不再预热，由 loadDocxHandlers() 在首次使用时按需加载。
         reportLauncherProgress('renderer-loading', 0.9, '正在绘制聊天界面');
-        void loadMainWindow()
-            .then(() => loadDocxHandlers())
-            .catch((error) => {
-                // 模块加载错误已由 loadDocxHandlers 记录；这里只记录页面加载错误。
-                if (!docxHandlersLoadPromise) {
-                    console.error('[Main] Main window load failed before docx prewarm:', error);
-                }
-            });
+        void loadMainWindow().catch((error) => {
+            console.error('[Main] Main window load failed:', error);
+        });
 
         // --- 自动打开桌面窗口 ---
 
