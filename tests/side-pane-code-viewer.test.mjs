@@ -165,3 +165,146 @@ test('replaced picker rows no longer trigger reads after filtering', async () =>
         dom.window.close();
     }
 });
+
+function fileTab(filePath) {
+    return { id: `code-viewer:${filePath}`, title: filePath.split('/').pop(), payload: { filePath } };
+}
+
+test('a failed file read shows an error instead of an empty file, and a real empty file still renders', async () => {
+    const dom = new JSDOM('<section id="missing"></section><section id="empty"></section>');
+    const doc = dom.window.document;
+    const files = { 'C:/proj/empty.txt': '' };
+    // 附件读取对不存在的文件返回 { text: null }
+    const provider = createCodeViewerSideProvider({ document: doc, uiHelper: null, api: {
+        async getTextContent(filePath) { return { text: files[filePath] ?? null }; }
+    } });
+    const missing = await provider.mountTab(fileTab('C:/proj/gone.js'), doc.getElementById('missing'));
+    const empty = await provider.mountTab(fileTab('C:/proj/empty.txt'), doc.getElementById('empty'));
+    try {
+        const missingView = doc.getElementById('missing');
+        assert.match(missingView.querySelector('.side-code-error')?.textContent || '', /读取文件失败/);
+        assert.equal(missingView.querySelector('.side-code-editor-shell'), null);
+        assert.equal(missing.getCode(), '');
+
+        const emptyView = doc.getElementById('empty');
+        assert.equal(emptyView.querySelector('.side-code-error'), null);
+        assert.equal(emptyView.querySelectorAll('.side-code-line-number').length, 1);
+    } finally {
+        missing.dispose();
+        empty.dispose();
+        dom.window.close();
+    }
+});
+
+test('workspace files are read through the source service and report binary, too-large and missing files', async () => {
+    const dom = new JSDOM('<section id="view"></section>');
+    const doc = dom.window.document;
+    const results = {
+        'bin.dat': { success: true, data: { binary: true } },
+        'big.log': { success: true, data: { tooLarge: true, size: 6 * 1024 * 1024 } },
+        'gone.js': { success: false, error: '文件不存在（可能已被移动或删除）: gone.js' },
+        'ok.js': { success: true, data: { text: 'const ok = 1;\n' } }
+    };
+    const reads = [];
+    const provider = createCodeViewerSideProvider({ document: doc, uiHelper: null, api: {
+        async gitListWorkspaces() { return { success: true, data: { workspaces: [{ id: 'w', path: 'C:\\repo' }] } }; },
+        async sourceReadFile(workspaceId, relPath) { reads.push([workspaceId, relPath]); return results[relPath.slice('src/'.length)]; },
+        async getTextContent() { throw new Error('workspace files must not use the attachment reader'); }
+    } });
+    const view = doc.getElementById('view');
+    const expectations = [
+        ['bin.dat', '.side-code-empty', /二进制文件/],
+        ['big.log', '.side-code-empty', /文件过大（6144 KB）/],
+        ['gone.js', '.side-code-error', /文件不存在/],
+        ['ok.js', '.side-code-pre', /const ok = 1;/]
+    ];
+    for (const [name, selector, pattern] of expectations) {
+        const handle = await provider.mountTab(fileTab(`C:/repo/src/${name}`), view);
+        try {
+            assert.match(view.querySelector(selector)?.textContent || '', pattern, name);
+        } finally {
+            handle.dispose();
+        }
+    }
+    assert.deepEqual(reads.map(([, relPath]) => relPath), ['src/bin.dat', 'src/big.log', 'src/gone.js', 'src/ok.js']);
+    assert.ok(reads.every(([workspaceId]) => workspaceId === 'w'));
+    dom.window.close();
+});
+
+test('reopening an already open file re-reads it from disk, while snippets keep their snapshot', async () => {
+    const dom = new JSDOM('<section id="view"></section>');
+    const doc = dom.window.document;
+    let disk = 'version 1';
+    let reads = 0;
+    const handles = new Map();
+    const view = doc.getElementById('view');
+    let provider;
+    // 和真实控制器一样：已挂载的标签再次 openTab 只切换过去，返回同一个句柄
+    const controller = {
+        getTabHandle: (id) => handles.get(id) || null,
+        async openTab(tab) {
+            if (!handles.has(tab.id)) handles.set(tab.id, await provider.mountTab(tab, view));
+            return handles.get(tab.id);
+        }
+    };
+    provider = createCodeViewerSideProvider({ document: doc, uiHelper: null, sidePaneController: controller, api: {
+        async getTextContent() { reads++; return { text: disk }; }
+    } });
+    try {
+        const first = await provider.openViewer({ filePath: 'C:/proj/notes.txt' });
+        assert.equal(first.getCode(), 'version 1');
+        disk = 'version 2';
+        const second = await provider.openViewer({ filePath: 'C:/proj/notes.txt' });
+        assert.equal(second, first);
+        assert.equal(second.getCode(), 'version 2');
+        assert.match(view.querySelector('.side-code-pre').textContent, /version 2/);
+        assert.equal(reads, 2);
+
+        disk = 'version 3';
+        view.querySelector('[data-action="reload-file"]').click();
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(first.getCode(), 'version 3');
+        assert.equal(reads, 3);
+
+        // 删除后重新读取：显示错误，不再保留旧内容
+        disk = null;
+        await first.reload();
+        assert.match(view.querySelector('.side-code-error').textContent, /读取文件失败/);
+        assert.equal(first.getCode(), '');
+
+        const snippetView = doc.createElement('section');
+        const snippet = await provider.mountTab({ title: 'a.js', payload: { filePath: 'C:/proj/a.js', code: 'snapshot' } }, snippetView);
+        assert.equal(snippetView.querySelector('[data-action="reload-file"]'), null);
+        await snippet.reload();
+        assert.equal(snippet.getCode(), 'snapshot');
+        assert.equal(reads, 4);
+        snippet.dispose();
+    } finally {
+        for (const handle of handles.values()) handle.dispose();
+        dom.window.close();
+    }
+});
+
+test('large files only render the first preview chunk, cut at a line end', async () => {
+    const { PREVIEW_CHAR_LIMIT } = await import('../modules/ui-system/side-pane/code-viewer/editor.js');
+    const dom = new JSDOM('<section id="view"></section>');
+    const doc = dom.window.document;
+    const line = 'x'.repeat(99);
+    const text = Array.from({ length: 20000 }, () => line).join('\n');
+    const provider = createCodeViewerSideProvider({ document: doc, uiHelper: null, api: {
+        async getTextContent() { return { text }; }
+    } });
+    const view = doc.getElementById('view');
+    const handle = await provider.mountTab(fileTab('C:/proj/big.txt'), view);
+    try {
+        const shownLines = view.querySelectorAll('.side-code-line-number').length;
+        assert.equal(shownLines, Math.floor(PREVIEW_CHAR_LIMIT / (line.length + 1)));
+        assert.ok(view.querySelector('.side-code-pre').textContent.split('\n').every(row => row === line));
+        assert.match(view.querySelector('.side-code-truncated-note').textContent, /只预览前 256 KB/);
+        // 复制和插入用的仍是完整内容
+        assert.equal(handle.getCode(), text);
+    } finally {
+        handle.dispose();
+        dom.window.close();
+    }
+});

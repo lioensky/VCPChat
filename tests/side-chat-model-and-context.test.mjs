@@ -5,6 +5,7 @@ import { JSDOM } from 'jsdom';
 
 import { mountSideChatSurface } from '../modules/renderer/sideChatSurfaceOwner.js';
 import { createSideChatDraftStore } from '../modules/renderer/side-chat/draft-store.js';
+import { listSideChatModels } from '../modules/renderer/sideChatWiring.js';
 
 const tick = () => new Promise(resolve => setTimeout(resolve, 5));
 
@@ -178,4 +179,28 @@ test('composer autosaves go to browser storage; metadata only migrates once', as
     assert.equal(drafts.read(handle.descriptor).input.draft, '');
     assert.deepEqual(drafts.read(handle.descriptor).input.references, []);
     await handle.dispose();
+});
+
+test('an empty model cache waits for the real refresh result instead of a fixed delay', async () => {
+    let finishRefresh;
+    const calls = [];
+    const api = {
+        getCachedModels: async () => { calls.push('cache'); return []; },
+        getFavoriteModels: async () => ['b'],
+        refreshModels: () => { calls.push('refresh'); return new Promise(resolve => { finishRefresh = resolve; }); }
+    };
+    let settled = false;
+    const pending = listSideChatModels(api).then(value => { settled = true; return value; });
+    await tick();
+    assert.deepEqual(calls, ['cache', 'refresh']);
+    assert.equal(settled, false, 'still waiting for the refresh, however long it takes');
+    finishRefresh({ success: true, models: [{ id: 'a' }, 'b'] });
+    const result = await pending;
+    assert.deepEqual(result.ids, ['a', 'b']);
+    assert.deepEqual([...result.favorites], ['b']);
+    assert.deepEqual(calls, ['cache', 'refresh'], 'the refresh result is used directly, no second cache read');
+
+    // 缓存里已经有模型时不触发刷新
+    const warm = await listSideChatModels({ getCachedModels: async () => ['x'], refreshModels: () => assert.fail('no refresh') });
+    assert.deepEqual(warm.ids, ['x']);
 });

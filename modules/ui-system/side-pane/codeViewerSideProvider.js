@@ -12,10 +12,10 @@
 'use strict';
 import { createCodeViewerPicker } from './code-viewer/picker.js';
 import { createCodeViewerEditor } from './code-viewer/editor.js';
+import { readFileForViewer } from './code-viewer/file-read.js';
 import { createCodeViewerDiffView } from './code-viewer/diff-view.js';
 import { computeLineDiff } from '../line-diff.js';
 import { detectLanguage } from './code-viewer/helpers.js';
-import { escapeHtml } from '../text-escape.js';
 export { detectLanguage } from './code-viewer/helpers.js';
 export { escapeHtml } from '../text-escape.js';
 
@@ -72,6 +72,8 @@ export function createCodeViewerSideProvider({
             let currentTag = langMeta.tag;
             // Opened from the "+" menu / launcher without any content: let the user browse a workspace instead of showing nothing.
             const isPickerMode = !filePath && !currentCode && !oldCode && !payload.mode;
+            // 只带路径打开的是文件标签：内容从磁盘读，重新打开或刷新时重读；带了代码的是快照，不读盘
+            const isFileBacked = Boolean(filePath) && !currentCode;
 
             // 1. Root Container
             const container = doc.createElement('div');
@@ -155,6 +157,19 @@ export function createCodeViewerSideProvider({
                 externalBtn.innerHTML = '<span class="vcp-ui-icon">open_in_new</span>';
             }
 
+            // Reload Button（文件可能已在外部被修改或删除）
+            let reloadBtn = null;
+            if (isFileBacked) {
+                reloadBtn = doc.createElement('button');
+                reloadBtn.type = 'button';
+                reloadBtn.className = 'side-code-action-btn';
+                reloadBtn.setAttribute('data-action', 'reload-file');
+                reloadBtn.title = '重新读取文件';
+                reloadBtn.setAttribute('aria-label', '重新读取');
+                reloadBtn.innerHTML = '<span class="vcp-ui-icon">refresh</span>';
+                actionsWrapper.appendChild(reloadBtn);
+            }
+
             actionsWrapper.append(wrapBtn, copyBtn, insertBtn);
             if (externalBtn) actionsWrapper.appendChild(externalBtn);
             toolbar.append(infoWrapper, actionsWrapper);
@@ -213,14 +228,12 @@ export function createCodeViewerSideProvider({
 
             const editorOwner = createCodeViewerEditor({
                 store,
-                api,
                 body,
                 doc,
-                escapeHtml,
-                filePath,
+                readFile: isFileBacked ? () => readFileForViewer(api, filePath) : null,
                 renderDiffView: (...args) => renderDiffView(...args)
             });
-            const { setBodyMessage, renderCodeView, refreshView } = editorOwner;
+            const { setBodyMessage, renderCodeView, refreshView, reload } = editorOwner;
 
             const diffViewOwner = createCodeViewerDiffView({
                 store,
@@ -281,6 +294,8 @@ export function createCodeViewerSideProvider({
                 });
             }
 
+            reloadBtn?.addEventListener('click', () => reload());
+
             if (externalBtn && filePath) {
                 externalBtn.addEventListener('click', () => {
                     if (api?.openPythonAttachmentInTextEditor) {
@@ -308,6 +323,10 @@ export function createCodeViewerSideProvider({
                 },
                 getMode() {
                     return currentMode;
+                },
+                /** 文件标签重新读盘；片段和差异是快照，不受影响 */
+                reload() {
+                    return isFileBacked && !isDisposed ? reload() : Promise.resolve();
                 },
                 dispose() {
                     isDisposed = true;
@@ -339,8 +358,10 @@ export function createCodeViewerSideProvider({
             const langMeta = detectLanguage(filePath || title || language, language);
             const resolvedTitle = title || (filePath ? filePath.split(/[/\\]/).pop() : '代码查看器');
             const tabId = filePath ? `code-viewer:${filePath}` : `code-viewer:${Date.now()}`;
+            // 同一个文件已经有视图时，openTab 只会切过去；这里补一次重读，免得显示外部修改前的旧内容
+            const existing = filePath && !code ? sidePaneController.getTabHandle?.(tabId) : null;
 
-            return await sidePaneController.openTab({
+            const handle = await sidePaneController.openTab({
                 id: tabId,
                 kind,
                 title: resolvedTitle,
@@ -356,6 +377,8 @@ export function createCodeViewerSideProvider({
                     newCode
                 }
             });
+            if (existing && handle === existing) await handle.reload?.();
+            return handle;
         }
     };
 }

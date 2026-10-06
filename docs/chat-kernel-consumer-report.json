@@ -678,6 +678,7 @@
     "modules/ui-system/side-pane/browserSideProvider.js",
     "modules/ui-system/side-pane/code-viewer/diff-view.js",
     "modules/ui-system/side-pane/code-viewer/editor.js",
+    "modules/ui-system/side-pane/code-viewer/file-read.js",
     "modules/ui-system/side-pane/code-viewer/helpers.js",
     "modules/ui-system/side-pane/code-viewer/picker.js",
     "modules/ui-system/side-pane/codeViewerSideProvider.js",
@@ -1725,7 +1726,7 @@
         },
         {
           "file": "tests/side-chat-model-and-context.test.mjs",
-          "line": 137,
+          "line": 138,
           "surface": "test",
           "access": "explicit-provider",
           "member": "js",
@@ -16863,7 +16864,7 @@
       "windowReferences": 0,
       "documentReferences": 1,
       "electronReferences": 12,
-      "timers": 1,
+      "timers": 0,
       "listeners": 0,
       "mutableMaps": 0
     },
@@ -18099,6 +18100,14 @@
       "listeners": 0,
       "mutableMaps": 0
     },
+    "modules/ui-system/side-pane/code-viewer/file-read.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
     "modules/ui-system/side-pane/code-viewer/helpers.js": {
       "windowReferences": 0,
       "documentReferences": 0,
@@ -18120,7 +18129,7 @@
       "documentReferences": 2,
       "electronReferences": 1,
       "timers": 1,
-      "listeners": 5,
+      "listeners": 6,
       "mutableMaps": 0
     },
     "modules/ui-system/side-pane/git/cards.js": {

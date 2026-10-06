@@ -23,6 +23,20 @@ function normalizeModelIds(models) {
     return list.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
 }
 
+/** 与输入框模型选择器同源：服务器缓存的模型 + 收藏 */
+export async function listSideChatModels(api) {
+    let [models, favorites] = await Promise.all([
+        api?.getCachedModels?.() ?? [],
+        api?.getFavoriteModels?.() ?? [],
+    ]);
+    if (!normalizeModelIds(models).length && api?.refreshModels) {
+        // refresh-models 拉取完成后才返回结果，不再固定等 1.5 秒猜它好了没有
+        const refreshed = await api.refreshModels();
+        models = Array.isArray(refreshed?.models) ? refreshed.models : await api.getCachedModels?.();
+    }
+    return { ids: normalizeModelIds(models), favorites: new Set(Array.isArray(favorites) ? favorites : []) };
+}
+
 export function createSideChatWiring({
     doc, win, chatAPI, chatRepository, chatManager, uiHelper, createRenderer,
     selectedItemRef, topicIdRef, historyRef, getController
@@ -55,20 +69,7 @@ export function createSideChatWiring({
                 }
                 return rawConfig ? structuredClone(rawConfig) : null;
             },
-            listModels: async () => {
-                // 与输入框模型选择器同源：服务器缓存的模型 + 收藏
-                const api = win.electronAPI || chatAPI;
-                let [models, favorites] = await Promise.all([
-                    api?.getCachedModels?.() ?? [],
-                    api?.getFavoriteModels?.() ?? [],
-                ]);
-                if (!normalizeModelIds(models).length && api?.refreshModels) {
-                    api.refreshModels();
-                    await new Promise(resolve => setTimeout(resolve, 1500));
-                    models = await api.getCachedModels();
-                }
-                return { ids: normalizeModelIds(models), favorites: new Set(Array.isArray(favorites) ? favorites : []) };
-            },
+            listModels: () => listSideChatModels(win.electronAPI || chatAPI),
             refreshParentSnapshot: (descriptor) => createParentSnapshot({
                 electronAPI: chatAPI,
                 agentId: descriptor.parent.itemId,

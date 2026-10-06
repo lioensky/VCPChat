@@ -316,6 +316,15 @@ html .side-code-error:where(.vcp-ui-scope, .vcp-ui-scope *) {
     color: var(--vcp-ui-port-color-f87171);
 }
 
+/* 大文件只预览开头一段时的提示条 */
+html .side-code-truncated-note:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex-shrink: 0;
+    padding: 6px 12px;
+    font-size: calc(var(--vcp-ui-font-size) - 3px);
+    opacity: 0.7;
+    border-bottom: 1px solid var(--zcode-header-divider, var(--vcp-ui-port-color-rgba-255-255-255-0-06));
+}
+
 /* Code viewer: workspace file picker */
 html .side-code-picker:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: flex;

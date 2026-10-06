@@ -1,27 +1,24 @@
 /**
- * modules/ui-system/side-pane/codeViewerSideProvider.js
- * VCPChat Universal Sub-screen - Code & Diff Viewer Provider
- *
- * Implements the universal sub-screen Code & Diff Viewer supporting:
- * 1. Single file / snippet viewing with line numbers and syntax highlighting
- * 2. Side-by-side or unified line diff comparison (additions, deletions, stats)
- * 3. Deep integration with chat: Copy code, wrap lines, insert into chat composer,
- *    and open in external editor / IDE.
+ * modules/ui-system/side-pane/code-viewer/editor.js
+ * 代码查看器的单文件视图：读取文件、渲染带行号的代码，以及读取失败/过大时的提示。
  */
 
 'use strict';
 
-
+// 整段高亮和逐行行号的成本随文件大小线性增长；超过这个字符数只预览开头，复制和插入仍用完整内容
+export const PREVIEW_CHAR_LIMIT = 256 * 1024;
 
 export function createCodeViewerEditor({
     store,
-    api,
     body,
     doc,
-    escapeHtml,
-    filePath,
+    readFile = null,
     renderDiffView
 }) {
+    // 只有按路径打开的文件标签才有 readFile；代码片段和差异是打开时的快照，不重新读取
+    let fileLoaded = false;
+    let readToken = 0;
+
     function setBodyMessage(text, isError = false) {
         body.innerHTML = '';
         const msg = doc.createElement('div');
@@ -30,33 +27,54 @@ export function createCodeViewerEditor({
         body.appendChild(msg);
     }
 
-    async function loadFileContent() {
-        if (store.currentCode || !filePath) return;
+    /**
+     * 读取文件内容到 store。返回 true 表示可以渲染；false 表示已显示错误/提示，或者被更新的读取取代。
+     * force 用于重新打开或手动刷新：文件可能已在外部被修改或删除。
+     */
+    async function loadFileContent({ force = false } = {}) {
+        if (!readFile || (fileLoaded && !force)) return true;
+        const token = ++readToken;
         body.innerHTML = '<div class="side-code-loading"><span class="vcp-ui-icon spin">sync</span> 加载文件中...</div>';
+        let result;
         try {
-            let content = null;
-            if (api?.getTextContent) {
-                const res = await api.getTextContent(filePath);
-                content = (typeof res === 'object' && res !== null) ? (res.data || res.text || '') : res;
-            }
-            if (store.isDisposed) return;
-            store.currentCode = content || '';
+            result = await readFile();
         } catch (err) {
-            if (store.isDisposed) return;
-            body.innerHTML = `<div class="side-code-error">读取文件失败: ${escapeHtml(err.message || String(err))}</div>`;
+            result = { ok: false, error: `读取文件失败: ${err?.message || err}` };
+        }
+        if (store.isDisposed || token !== readToken) return false;
+        if (!result?.ok) {
+            // 失败时不保留旧内容，免得复制/插入拿到已经不存在的文件内容
+            store.currentCode = '';
+            fileLoaded = false;
+            if (result?.notice) setBodyMessage(result.notice);
+            else setBodyMessage(result?.error || '读取文件失败', true);
             return false;
         }
+        store.currentCode = result.text;
+        fileLoaded = true;
         return true;
     }
 
     function renderCodeView() {
         body.innerHTML = '';
+        const fullCode = store.currentCode || '';
+        let shownCode = fullCode;
+        if (fullCode.length > PREVIEW_CHAR_LIMIT) {
+            // 在行尾截断，最后一行不显示半截
+            const cut = fullCode.lastIndexOf('\n', PREVIEW_CHAR_LIMIT);
+            shownCode = fullCode.slice(0, cut > 0 ? cut : PREVIEW_CHAR_LIMIT);
+            const note = doc.createElement('div');
+            note.className = 'side-code-truncated-note';
+            note.textContent = `文件较大（${Math.round(fullCode.length / 1024)} KB），只预览前 ${PREVIEW_CHAR_LIMIT / 1024} KB；完整内容请在外部编辑器中查看。`;
+            body.appendChild(note);
+        }
+
         const editorShell = doc.createElement('div');
         editorShell.className = 'side-code-editor-shell';
         if (store.isWrapped) editorShell.classList.add('is-wrapped');
 
         // 文件末尾的换行只是行结束符，不算多出来的一行
-        const lines = store.currentCode ? store.currentCode.replace(/\r?\n$/, '').split(/\r?\n/) : [''];
+        const lines = shownCode ? shownCode.replace(/\r?\n$/, '').split(/\r?\n/) : [''];
         const gutter = doc.createElement('div');
         gutter.className = 'side-code-gutter';
         gutter.setAttribute('aria-hidden', 'true');
@@ -76,13 +94,13 @@ export function createCodeViewerEditor({
         const win = doc.defaultView || (typeof window !== 'undefined' ? window : null);
         if (win?.hljs?.highlight) {
             try {
-                const highlighted = win.hljs.highlight(store.currentCode || '', { language: store.currentLang, ignoreIllegals: true });
+                const highlighted = win.hljs.highlight(shownCode, { language: store.currentLang, ignoreIllegals: true });
                 code.innerHTML = highlighted.value;
             } catch {
-                code.textContent = store.currentCode;
+                code.textContent = shownCode;
             }
         } else {
-            code.textContent = store.currentCode;
+            code.textContent = shownCode;
         }
 
         pre.appendChild(code);
@@ -90,8 +108,8 @@ export function createCodeViewerEditor({
         body.appendChild(editorShell);
     }
 
-    async function refreshView() {
-        const loaded = await loadFileContent();
+    async function refreshView({ force = false } = {}) {
+        const loaded = await loadFileContent({ force });
         if (loaded === false) return;
         if (store.currentMode === 'diff') {
             renderDiffView();
@@ -100,5 +118,13 @@ export function createCodeViewerEditor({
         }
     }
 
-    return Object.freeze({ setBodyMessage, loadFileContent, renderCodeView, refreshView, dispose() {  } });
+    return Object.freeze({
+        setBodyMessage,
+        loadFileContent,
+        renderCodeView,
+        refreshView,
+        // 文件标签被重新打开或点了刷新：重新读盘
+        reload: () => refreshView({ force: true }),
+        dispose() { readToken++; }
+    });
 }

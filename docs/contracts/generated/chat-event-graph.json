@@ -437,6 +437,7 @@
     "modules/ui-system/side-pane/browserSideProvider.js",
     "modules/ui-system/side-pane/code-viewer/diff-view.js",
     "modules/ui-system/side-pane/code-viewer/editor.js",
+    "modules/ui-system/side-pane/code-viewer/file-read.js",
     "modules/ui-system/side-pane/code-viewer/helpers.js",
     "modules/ui-system/side-pane/code-viewer/picker.js",
     "modules/ui-system/side-pane/codeViewerSideProvider.js",
@@ -4259,27 +4260,32 @@
         },
         {
           "file": "modules/ui-system/side-pane/codeViewerSideProvider.js",
-          "line": 236,
+          "line": 249,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/codeViewerSideProvider.js",
-          "line": 243,
+          "line": 256,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/codeViewerSideProvider.js",
-          "line": 263,
-          "kind": "custom-event-listener"
-        },
-        {
-          "file": "modules/ui-system/side-pane/codeViewerSideProvider.js",
-          "line": 272,
+          "line": 276,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/codeViewerSideProvider.js",
           "line": 285,
+          "kind": "custom-event-listener"
+        },
+        {
+          "file": "modules/ui-system/side-pane/codeViewerSideProvider.js",
+          "line": 297,
+          "kind": "custom-event-listener"
+        },
+        {
+          "file": "modules/ui-system/side-pane/codeViewerSideProvider.js",
+          "line": 300,
           "kind": "custom-event-listener"
         },
         {
@@ -5897,31 +5903,37 @@
         },
         {
           "file": "modules/ui-system/side-pane/codeViewerSideProvider.js",
-          "line": 236,
+          "line": 249,
           "kind": "custom-event-listener",
           "match": "wrapBtn.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/codeViewerSideProvider.js",
-          "line": 243,
+          "line": 256,
           "kind": "custom-event-listener",
           "match": "copyBtn.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/codeViewerSideProvider.js",
-          "line": 263,
+          "line": 276,
           "kind": "custom-event-listener",
           "match": "insertBtn.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/codeViewerSideProvider.js",
-          "line": 272,
+          "line": 285,
           "kind": "custom-event-listener",
           "match": "modeToggleBtn.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/codeViewerSideProvider.js",
-          "line": 285,
+          "line": 297,
+          "kind": "custom-event-listener",
+          "match": "reloadBtn?.addEventListener('click'"
+        },
+        {
+          "file": "modules/ui-system/side-pane/codeViewerSideProvider.js",
+          "line": 300,
           "kind": "custom-event-listener",
           "match": "externalBtn.addEventListener('click'"
         },

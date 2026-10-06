@@ -12,7 +12,7 @@
 
 'use strict';
 
-import { computeLineDiff } from './side-pane/codeViewerSideProvider.js';
+import { computeLineDiff } from './line-diff.js';
 
 const DEFAULT_TTL_MS = 4000;
 
