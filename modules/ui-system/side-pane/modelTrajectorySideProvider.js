@@ -836,9 +836,17 @@ export function createModelTrajectorySideProvider({
                 else toast(res?.error || '清空失败', 'error');
             }
 
+            // 标签藏着时收到的轨迹更新和话题切换只记一笔，重新显示时读一次，不在后台反复重读
+            let staleWhileHidden = false;
+            const isHidden = () => occurrence?.isVisible?.() === false;
+            const reloadWhenShown = (reload) => {
+                if (isHidden()) staleWhileHidden = true;
+                else reload();
+            };
+
             const onChanged = change => {
                 if (disposed || !change) return;
-                if (change.sessionKey === sessionKey || change.sessionKey === currentKey()) scheduleReload();
+                if (change.sessionKey === sessionKey || change.sessionKey === currentKey()) reloadWhenShown(scheduleReload);
             };
 
             const instance = { focusCall: requestId => { focusRequestId = requestId; if (!loading) renderAll(); } };
@@ -853,7 +861,9 @@ export function createModelTrajectorySideProvider({
                 unsubscribe = api?.onModelTrajectoryChanged?.(onChanged) || null;
             } catch (_error) { /* 订阅失败时仍可手动刷新 */ }
             // 切换智能体 / 话题（包括删掉当前助手）都由主聊天通知，接上了就不用轮询
-            unsubscribeConversation = onConversationChange?.(() => { if (!disposed && currentKey() !== sessionKey) void load(); }) || null;
+            unsubscribeConversation = onConversationChange?.(() => {
+                if (!disposed && currentKey() !== sessionKey) reloadWhenShown(() => void load());
+            }) || null;
             if (!unsubscribeConversation) {
                 // 没有切换通知（单独挂载、没有主聊天）时才轮询兜底：有控制器下发可见性就只在标签可见时轮询，否则看窗口是否可见
                 const followTick = () => { if (!disposed && currentKey() !== sessionKey) return load(); return undefined; };
@@ -864,6 +874,18 @@ export function createModelTrajectorySideProvider({
 
             return {
                 focus() { searchOpen ? searchInput.focus() : scroller.focus?.({ preventScroll: true }); },
+                suspend() {
+                    // 还没到点的重读留到重新显示时再做
+                    if (!reloadTimer) return;
+                    win.clearTimeout(reloadTimer);
+                    reloadTimer = null;
+                    staleWhileHidden = true;
+                },
+                resume() {
+                    if (disposed || (!staleWhileHidden && currentKey() === sessionKey)) return;
+                    staleWhileHidden = false;
+                    void load();
+                },
                 dispose() {
                     disposed = true;
                     instances.delete(instance);

@@ -23,15 +23,39 @@ function normalizeModelIds(models) {
     return list.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
 }
 
+// 主进程拉模型列表没有超时；服务器挂住时最多等这么久，之后按缓存显示
+const MODEL_REFRESH_TIMEOUT_MS = 10000;
+// 连续打开模型菜单时共用同一次刷新，不并发重复拉取
+const pendingModelRefresh = new WeakMap();
+
+function refreshModelsOnce(api) {
+    let pending = pendingModelRefresh.get(api);
+    if (!pending) {
+        pending = Promise.resolve()
+            .then(() => api.refreshModels())
+            .catch(error => {
+                console.warn('[SideChat] Failed to refresh models:', error);
+                return null;
+            })
+            .finally(() => pendingModelRefresh.delete(api));
+        pendingModelRefresh.set(api, pending);
+    }
+    return pending;
+}
+
 /** 与输入框模型选择器同源：服务器缓存的模型 + 收藏 */
-export async function listSideChatModels(api) {
+export async function listSideChatModels(api, { timeoutMs = MODEL_REFRESH_TIMEOUT_MS } = {}) {
     let [models, favorites] = await Promise.all([
         api?.getCachedModels?.() ?? [],
         api?.getFavoriteModels?.() ?? [],
     ]);
     if (!normalizeModelIds(models).length && api?.refreshModels) {
         // refresh-models 拉取完成后才返回结果，不再固定等 1.5 秒猜它好了没有
-        const refreshed = await api.refreshModels();
+        let timer = null;
+        const timedOut = new Promise(resolve => { timer = setTimeout(() => resolve(null), timeoutMs); });
+        const refreshed = await Promise.race([refreshModelsOnce(api), timedOut]);
+        clearTimeout(timer);
+        // 刷新失败或超时：再看一眼缓存（可能已被别的窗口刷新过）
         models = Array.isArray(refreshed?.models) ? refreshed.models : await api.getCachedModels?.();
     }
     return { ids: normalizeModelIds(models), favorites: new Set(Array.isArray(favorites) ? favorites : []) };

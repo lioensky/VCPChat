@@ -45,9 +45,19 @@ export function createSideChatPersistence({
     }
 
     async function persistMetadata() {
-        persistComposerInput();
+        // 浏览器草稿写不进去（比如存储满了）也照常保存会话信息：换模型、刷新快照不能因此丢失
+        let composerSaved = true;
+        try {
+            persistComposerInput();
+        } catch (error) {
+            composerSaved = false;
+            console.warn('[SideChat] Failed to persist draft:', error);
+        }
         const { draft, references, model, ...metadata } = store.currentDescriptor;
-        const metaToPersist = { ...metadata, composerStorage: 'local' };
+        // 浏览器里没存上时，输入继续留在文件里，不让迁移删掉唯一的一份
+        const metaToPersist = composerSaved
+            ? { ...metadata, composerStorage: 'local' }
+            : { ...store.currentDescriptor, composerStorage: undefined };
         const save = chatCapabilities?.saveSideChatMetadata
             || chatCapabilities?.repository?.saveSideChatMetadata
             || globalThis.chatAPI?.saveSideChatMetadata;
@@ -58,8 +68,10 @@ export function createSideChatPersistence({
             if (result?.ok === false || result?.success === false || result?.error) {
                 throw new Error(result.message || result.error || '保存辅助对话信息失败');
             }
-            composerMigrated = true;
             fileMetadataFailed = false;
+            // 草稿这次没存上：保留"草稿未保存"的提示和重试，等草稿写成功再清
+            if (!composerSaved) return result;
+            composerMigrated = true;
             const wasFailed = metadataSaveFailed;
             metadataSaveFailed = false;
             if (wasFailed && !store.isDisposed) {

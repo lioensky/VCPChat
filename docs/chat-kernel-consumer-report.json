@@ -16864,7 +16864,7 @@
       "windowReferences": 0,
       "documentReferences": 1,
       "electronReferences": 12,
-      "timers": 0,
+      "timers": 1,
       "listeners": 0,
       "mutableMaps": 0
     },

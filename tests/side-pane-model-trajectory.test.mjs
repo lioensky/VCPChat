@@ -294,3 +294,48 @@ test('focusing a reply without a recorded call says so once; cached tokens and o
     assert.equal(env.state.toasts.filter(text => /没有对应的调用记录/.test(text)).length, 1, 'a later reload does not repeat the notice');
     handle.dispose();
 });
+
+test('a hidden tab defers change events and conversation switches until it is shown again', async () => {
+    const { provider, view, state, fire } = makeEnv();
+    let visible = true;
+    const handle = await provider.mountTab({ id: 'x' }, view, { occurrence: { isVisible: () => visible } });
+    const mounted = state.lists.length;
+
+    // 已经排上的重读在藏起来时取消，留到重新显示
+    fire({ sessionKey: 'agent1__t1', id: 'call_a', status: 'completed' });
+    visible = false;
+    handle.suspend();
+    state.recs = [...state.recs, { ...records()[0], id: 'call_c', startedAt: 1700000009000 }];
+    fire({ sessionKey: 'agent1__t1', id: 'call_c', status: 'completed' });
+    fire({ sessionKey: 'agent1__t1', id: 'call_c', status: 'completed' });
+    await wait(150);
+    assert.equal(state.lists.length, mounted);
+
+    visible = true;
+    handle.resume();
+    await wait(80);
+    assert.equal(state.lists.length, mounted + 1);
+    assert.equal(view.querySelectorAll('.side-traj-call').length, 3);
+
+    // 藏着时切换话题：显示时读新话题
+    visible = false;
+    handle.suspend();
+    state.conversation = { item: { id: 'agent2', name: '另一个' }, topicId: 't9' };
+    state.conversationListeners[0]();
+    await wait(80);
+    assert.equal(state.lists.length, mounted + 1);
+    visible = true;
+    handle.resume();
+    await wait(80);
+    assert.equal(state.lists.at(-1)[0], 'agent2__t9');
+
+    // 期间没有变化就不重读
+    const settled = state.lists.length;
+    visible = false;
+    handle.suspend();
+    visible = true;
+    handle.resume();
+    await wait(80);
+    assert.equal(state.lists.length, settled);
+    handle.dispose();
+});

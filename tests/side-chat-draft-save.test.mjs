@@ -165,3 +165,18 @@ test('browser draft scopes distinguish parents and children and preserve an expl
     assert.equal(f.drafts.read(a).input, null);
     assert.equal(f.drafts.read(b).input.draft, 'child B');
 });
+
+test('a model switch or snapshot refresh still saves session info when browser storage is full, keeping the input in the file', async t => {
+    const f = await fixture(t);
+    f.type('x'.repeat(4096));
+    f.store.currentModel = 'switched-model';
+    f.store.currentDescriptor = { ...f.store.currentDescriptor, snapshotId: 'snap-2' };
+    await f.owner.persistMetadata();
+    const persisted = await f.read();
+    assert.equal(persisted.snapshotId, 'snap-2');
+    assert.equal(persisted.model, 'switched-model');
+    assert.equal(persisted.draft.length, 4096, 'The file keeps the only copy of the input');
+    assert.equal(persisted.composerStorage, undefined);
+    assert.match(f.status.textContent, /草稿未保存.*重试/, 'The draft failure stays visible after the session info saved');
+    assert.equal(f.drafts.read(f.descriptor).input, null);
+});

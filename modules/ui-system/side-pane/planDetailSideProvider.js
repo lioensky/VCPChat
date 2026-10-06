@@ -188,7 +188,7 @@ export function createPlanDetailSideProvider({
             return mounted;
         },
 
-        async mountTab(tab, viewElement, { restoredState = null } = {}) {
+        async mountTab(tab, viewElement, { restoredState = null, occurrence = null } = {}) {
             if (!viewElement) return null;
             const legacyId = String(tab?.id || '').slice(TAB_PREFIX.length).split('@')[0];
             let projectId = tab?.payload?.projectId || (legacyId && legacyId !== TOPIC_TAB && legacyId !== NO_PROJECT_TAB ? legacyId : null);
@@ -976,19 +976,37 @@ export function createPlanDetailSideProvider({
 
             const scheduleLoad = () => {
                 win.clearTimeout(timer);
-                timer = win.setTimeout(() => { if (!isDisposed) load(); }, REFRESH_DEBOUNCE_MS);
+                timer = win.setTimeout(() => { timer = null; if (!isDisposed) load(); }, REFRESH_DEBOUNCE_MS);
+            };
+            // 标签藏着时收到的变更只记一笔，重新显示时读一次，不在后台反复读工程
+            let staleWhileHidden = false;
+            const loadWhenShown = () => {
+                if (occurrence?.isVisible?.() === false) staleWhileHidden = true;
+                else scheduleLoad();
             };
             const off = watchProjectForgeChanges(api, (payload) => {
-                if (!payload?.projectId || payload.projectId === projectId) scheduleLoad();
+                if (!payload?.projectId || payload.projectId === projectId) loadWhenShown();
             }, { label: 'plan-detail' });
             // 新的施工结果进了聊天记录（可能晚于工程变更事件）：话题范围变了才重读
             const offTopic = topicMode ? watchTopic?.(() => {
                 if (isDisposed || !isCurrentTopic()) return;
-                if (readScope().key !== scopeKey) scheduleLoad();
+                if (readScope().key !== scopeKey) loadWhenShown();
             }) : null;
 
             const handle = {
                 focus() { scheduleLoad(); },
+                suspend() {
+                    // 还没到点的重读留到重新显示时再做
+                    if (!timer) return;
+                    win.clearTimeout(timer);
+                    timer = null;
+                    staleWhileHidden = true;
+                },
+                resume() {
+                    if (isDisposed || !staleWhileHidden) return;
+                    staleWhileHidden = false;
+                    scheduleLoad();
+                },
                 /** 已打开的标签再次被打开：可以换工程、切页、定位到某条计划 / 某个区块，或展开 Git 页里的某个文件。 */
                 reveal({ projectId: nextId = null, focus = null, page = null, focusPath = null } = {}) {
                     if (focus) pendingFocus = focus;

@@ -181,3 +181,33 @@ test('a failed output query shows an inline error with a retry instead of a toas
     assert.equal(view.querySelector('.side-tool-output-text').textContent, 'back\n');
     handle.dispose();
 });
+
+test('a hidden tab keeps only the latest update and catches up when shown again', async () => {
+    const { provider, state, view, fire } = makeEnv({ runs: RUNS, details: DETAILS });
+    let visible = true;
+    const handle = await provider.mountTab({ id: 'tool-output:main' }, view, { occurrence: { isVisible: () => visible } });
+    assert.deepEqual(state.gets, ['r2']);
+
+    visible = false;
+    handle.suspend();
+    const startedAt = Date.now();
+    state.details.r3 = { id: 'r3', command: 'echo hi', status: 'running', startedAt, endedAt: null, output: 'hi\n', truncated: false };
+    fire({ id: 'r3', command: 'echo hi', status: 'running', startedAt, endedAt: null });
+    await wait(150);
+    state.details.r3 = { ...state.details.r3, status: 'completed', endedAt: Date.now(), output: 'hi\nbye\n' };
+    fire({ id: 'r3', command: 'echo hi', status: 'completed', startedAt, endedAt: Date.now() });
+    await wait(150);
+    // 藏着的时候不读输出、不重画
+    assert.deepEqual(state.gets, ['r2']);
+    assert.equal(view.querySelector('.side-tool-output-command').textContent, 'npm test');
+
+    visible = true;
+    handle.resume();
+    await wait(150);
+    // 重新显示时按最新一份列表跟到新命令，只读一次输出
+    assert.equal(view.querySelector('.side-tool-output-command').textContent, 'echo hi');
+    assert.match(view.querySelector('.side-tool-output-chip').textContent, /已完成/);
+    assert.equal(view.querySelector('.side-tool-output-text').textContent, 'hi\nbye\n');
+    assert.deepEqual(state.gets, ['r2', 'r3']);
+    handle.dispose();
+});

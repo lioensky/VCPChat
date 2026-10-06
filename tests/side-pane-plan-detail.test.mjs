@@ -334,3 +334,33 @@ test('the Git page opens on the project workspace and follows a project switch',
     handle.dispose();
     dom.window.close();
 });
+
+test('a hidden plan tab reads the project once when shown again, not on every change', async () => {
+    const { provider, calls, view, fire } = makeEnv();
+    let visible = true;
+    const handle = await provider.mountTab({ id: planTabId('p1'), payload: { projectId: 'p1' } }, view, { occurrence: { isVisible: () => visible } });
+    assert.equal(calls.get, 1);
+
+    // 已经排上的重读在藏起来时取消
+    fire({ projectId: 'p1' });
+    visible = false;
+    handle.suspend();
+    fire({ projectId: 'p1' });
+    fire({ projectId: 'p1' });
+    await new Promise(r => setTimeout(r, 300));
+    assert.equal(calls.get, 1);
+
+    visible = true;
+    handle.resume();
+    await new Promise(r => setTimeout(r, 300));
+    assert.equal(calls.get, 2);
+
+    // 期间没有变化就不重读
+    visible = false;
+    handle.suspend();
+    visible = true;
+    handle.resume();
+    await new Promise(r => setTimeout(r, 300));
+    assert.equal(calls.get, 2);
+    handle.dispose();
+});

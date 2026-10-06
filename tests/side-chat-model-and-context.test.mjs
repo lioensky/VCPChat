@@ -191,16 +191,34 @@ test('an empty model cache waits for the real refresh result instead of a fixed 
     };
     let settled = false;
     const pending = listSideChatModels(api).then(value => { settled = true; return value; });
+    // 再次打开模型菜单时共用同一次刷新
+    const second = listSideChatModels(api);
     await tick();
-    assert.deepEqual(calls, ['cache', 'refresh']);
-    assert.equal(settled, false, 'still waiting for the refresh, however long it takes');
+    assert.deepEqual(calls, ['cache', 'cache', 'refresh']);
+    assert.equal(settled, false, 'still waiting for the refresh');
     finishRefresh({ success: true, models: [{ id: 'a' }, 'b'] });
     const result = await pending;
     assert.deepEqual(result.ids, ['a', 'b']);
     assert.deepEqual([...result.favorites], ['b']);
-    assert.deepEqual(calls, ['cache', 'refresh'], 'the refresh result is used directly, no second cache read');
+    assert.deepEqual((await second).ids, ['a', 'b']);
+    assert.deepEqual(calls, ['cache', 'cache', 'refresh'], 'the refresh result is used directly, no second cache read');
 
     // 缓存里已经有模型时不触发刷新
     const warm = await listSideChatModels({ getCachedModels: async () => ['x'], refreshModels: () => assert.fail('no refresh') });
     assert.deepEqual(warm.ids, ['x']);
+});
+
+test('a failed or hung model refresh falls back to the cache instead of failing or spinning forever', async () => {
+    let cache = [];
+    const failing = await listSideChatModels({
+        getCachedModels: async () => cache,
+        refreshModels: async () => { cache = ['late']; throw new Error('server unreachable'); }
+    });
+    assert.deepEqual(failing.ids, ['late']);
+
+    const hung = await listSideChatModels({
+        getCachedModels: async () => [],
+        refreshModels: () => new Promise(() => {})
+    }, { timeoutMs: 20 });
+    assert.deepEqual(hung.ids, []);
 });

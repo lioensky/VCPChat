@@ -160,7 +160,10 @@ export function createToolOutputSideProvider({
             let releaseRuns = null;
             let seeded = false;
             let seeding = null;
-            let suspended = false;
+            // 控制器挂载前就给出了可见性：在后台挂载（比如恢复布局）时一开始就是暂停的
+            let suspended = occurrence?.isVisible?.() === false;
+            // 暂停期间只记下最新一份列表，重新显示时再渲染、再读输出
+            let hiddenUpdate = null;
             let ticker = null;
             let reloadTimer = null;
 
@@ -299,6 +302,10 @@ export function createToolOutputSideProvider({
             // 数据源每次变化都给整份列表；变了的那条是新对象，其余保持原样，据此判断要不要重新读输出
             const onRuns = ({ status, data }) => {
                 if (disposed) return;
+                if (seeded && suspended) {
+                    hiddenUpdate = { status, data };
+                    return;
+                }
                 const previous = runs;
                 runs = Array.isArray(data) ? data : [];
                 if (!seeded) {
@@ -345,7 +352,11 @@ export function createToolOutputSideProvider({
                 },
                 resume() {
                     suspended = false;
-                    if (!disposed) renderAll();
+                    if (disposed) return;
+                    const update = hiddenUpdate;
+                    hiddenUpdate = null;
+                    if (update) onRuns(update);
+                    renderAll();
                 },
                 dispose() {
                     disposed = true;
