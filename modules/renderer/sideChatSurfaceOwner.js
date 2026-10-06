@@ -15,6 +15,7 @@ import { createSideChatPersistence } from './side-chat/persistence.js';
 import { createSideChatModelPicker } from './side-chat/model-picker.js';
 import { createSideChatAttachments } from './side-chat/attachments.js';
 import { createSideChatDraftCache } from './side-chat/draft-cache.js';
+import { createSideChatDraftStore } from './side-chat/draft-store.js';
 import { createChatSurface } from '../chat/chatSurface.js';
 import { createChatOperations } from '../chat/chatOperation.js';
 import { validateReferenceList } from '../ui-system/side-pane/selection-reference.js';
@@ -33,7 +34,8 @@ export async function mountSideChatSurface(container, {
     descriptor,
     chatCapabilities,
     scope = null,
-    onStatusChange = null
+    onStatusChange = null,
+    draftStore = null
 } = {}) {
     if (!container || !container.ownerDocument) {
         throw new TypeError('mountSideChatSurface requires a valid container element');
@@ -43,6 +45,9 @@ export async function mountSideChatSurface(container, {
     }
 
     const doc = container.ownerDocument;
+    const composerDrafts = draftStore || createSideChatDraftStore({ getStorage: () => doc.defaultView?.localStorage });
+    const storedInput = composerDrafts.read(descriptor).input;
+    if (storedInput) descriptor = { ...descriptor, ...storedInput };
     const repository = chatCapabilities?.repository;
     const createRenderer = chatCapabilities?.createRenderer;
     const chatManager = chatCapabilities?.manager;
@@ -80,6 +85,7 @@ export async function mountSideChatSurface(container, {
         escapeHtml
     });
     const { root, form, textarea, sendBtn, stopBtn, statusText, persistenceBadge, referenceList, modelPickerBtn, modelPopover, modelNameSpan, attachBtn, emoticonBtn, attachmentPreview } = shellOwner;
+    textarea.value = descriptor.draft || '';
 
     let currentDescriptor = {
         ...descriptor,
@@ -107,6 +113,9 @@ export async function mountSideChatSurface(container, {
     let liveConversation = null;
     let liveRegenerate = null;
     const references = []; // { id, text, sourceMessageId }
+    for (const ref of descriptor.references || []) {
+        if (validateReferenceList(references, ref).ok) references.push(ref);
+    }
 
     const store = Object.freeze({
         get currentModel() { return currentModel; },
@@ -195,6 +204,7 @@ export async function mountSideChatSurface(container, {
         getHandle: () => handle
     });
     const { renderReferences } = referencesOwner;
+    renderReferences();
 
     const persistenceOwner = createSideChatPersistence({
         store,
@@ -209,9 +219,10 @@ export async function mountSideChatSurface(container, {
         updateEmptyState: (...args) => updateEmptyState(...args),
         updateStatus: (...args) => updateStatus(...args),
         getConversation: () => enhancedConversation,
-        getSurface: () => surface
+        getSurface: () => surface,
+        saveDraft: (metadata, input) => composerDrafts.save(metadata, input)
     });
-    const { needsSnapshotRefresh, refreshSnapshot, persistMetadata, scheduleInputSave, flushInputSave, retryPersistence, discardUnsaved, loadHistoryFn } = persistenceOwner;
+    const { needsSnapshotRefresh, refreshSnapshot, scheduleInputSave, flushInputSave, retryPersistence, discardUnsaved, loadHistoryFn } = persistenceOwner;
 
     const modelPickerOwner = createSideChatModelPicker({
         store,
@@ -220,7 +231,7 @@ export async function mountSideChatSurface(container, {
         modelNameSpan,
         modelPickerBtn,
         modelPopover,
-        persistMetadata: (...args) => persistMetadata(...args),
+        persistMetadata: () => persistenceOwner.saveComposerInput(),
         onModelChange: model => { selectedItem.model = model; if (selectedItem.config) selectedItem.config.model = model; },
         updateComposerState: (...args) => updateComposerState(...args)
     });
@@ -662,13 +673,24 @@ export async function mountSideChatSurface(container, {
 export function createSideChatSurfaceOwner({
     chatCapabilities,
     scope = null,
-    mountSurface = mountSideChatSurface
+    mountSurface = mountSideChatSurface,
+    document: doc = globalThis.document
 }) {
     const drafts = createSideChatDraftCache();
+    let ownerDocument = doc;
+    const draftStore = createSideChatDraftStore({ getStorage: () => ownerDocument?.defaultView?.localStorage });
     return Object.freeze({
         async mountTab(descriptor, container) {
-            const handle = await mountSurface(container, { descriptor, chatCapabilities, scope });
+            ownerDocument ||= container.ownerDocument;
+            const storedInput = draftStore.read(descriptor).input;
+            if (storedInput) descriptor = { ...descriptor, ...storedInput };
+            const handle = await mountSurface(container, { descriptor, chatCapabilities, scope, draftStore });
             return drafts.ownHandle(handle, descriptor);
+        },
+        readDraft: descriptor => draftStore.read(descriptor),
+        forgetDraft(descriptor) {
+            drafts.forget(descriptor);
+            return draftStore.remove(descriptor);
         },
         dispose() { drafts.dispose(); }
     });

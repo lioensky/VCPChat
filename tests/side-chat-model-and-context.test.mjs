@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { JSDOM } from 'jsdom';
 
 import { mountSideChatSurface } from '../modules/renderer/sideChatSurfaceOwner.js';
+import { createSideChatDraftStore } from '../modules/renderer/side-chat/draft-store.js';
 
 const tick = () => new Promise(resolve => setTimeout(resolve, 5));
 
@@ -44,7 +45,7 @@ function capabilities(overrides = {}) {
 }
 
 async function mount(desc, caps) {
-    const dom = new JSDOM('<div id="mount"></div>');
+    const dom = new JSDOM('<div id="mount"></div>', { url: 'https://side-chat.test' });
     const doc = dom.window.document;
     const handle = await mountSideChatSurface(doc.getElementById('mount'), { descriptor: desc, chatCapabilities: caps });
     await tick();
@@ -150,11 +151,12 @@ test('new side chats are named by the lowest free ordinal under the same parent'
     assert.ok(source.includes('`辅助对话 ${ordinal}`'));
 });
 
-test('draft and references are written to the side chat metadata so a reload can restore them', async () => {
+test('composer autosaves go to browser storage; metadata only migrates once', async () => {
     const saved = [];
     const caps = capabilities({ saveSideChatMetadata: async (meta) => { saved.push(meta); return { success: true }; } });
     const { dom, doc, handle } = await mount(descriptor({ model: 'm' }), caps);
     const textarea = doc.querySelector('textarea');
+    const drafts = createSideChatDraftStore({ getStorage: () => dom.window.localStorage });
 
     textarea.value = '草稿';
     textarea.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
@@ -162,15 +164,18 @@ test('draft and references are written to the side chat metadata so a reload can
     assert.equal(saved.length, 0, 'typing is debounced');
     await new Promise(resolve => setTimeout(resolve, 450));
     assert.equal(saved.length, 1);
-    assert.equal(saved[0].draft, '草稿');
-    assert.deepEqual(saved[0].references, [{ id: 'r1', text: '引用原文', sourceMessageId: 'msg-1' }]);
+    assert.equal(saved[0].draft, undefined);
+    assert.equal(saved[0].references, undefined);
+    assert.equal(saved[0].composerStorage, 'local');
+    assert.equal(drafts.read(handle.descriptor).input.draft, '草稿');
+    assert.deepEqual(drafts.read(handle.descriptor).input.references, [{ id: 'r1', text: '引用原文', sourceMessageId: 'msg-1' }]);
 
     // 页面卸载前未到时间的改动立即写入
     handle.removeReference('r1');
     textarea.value = '';
     dom.window.dispatchEvent(new dom.window.Event('pagehide'));
-    assert.equal(saved.length, 2);
-    assert.equal(saved[1].draft, '');
-    assert.deepEqual(saved[1].references, []);
+    assert.equal(saved.length, 1);
+    assert.equal(drafts.read(handle.descriptor).input.draft, '');
+    assert.deepEqual(drafts.read(handle.descriptor).input.references, []);
     await handle.dispose();
 });

@@ -13,9 +13,11 @@ export function createSideChatDraftCache() {
         const cached = drafts.get(key);
         drafts.delete(key);
         const source = cached || descriptor;
-        if (source.draft && typeof handle.setDraft === 'function') handle.setDraft(source.draft);
+        if (typeof source.draft === 'string' && typeof handle.setDraft === 'function' && handle.getDraft?.() !== source.draft) handle.setDraft(source.draft);
         if (Array.isArray(source.references) && typeof handle.addReference === 'function') {
-            source.references.forEach(ref => handle.addReference(ref));
+            source.references.forEach(ref => {
+                if (!handle.getReferences?.().some(current => current.id === ref.id)) handle.addReference(ref);
+            });
         }
         if (descriptor.model && typeof handle.setModel === 'function' && handle.getModel?.() !== descriptor.model) {
             handle.setModel(descriptor.model);
@@ -25,7 +27,7 @@ export function createSideChatDraftCache() {
     function capture(handle, descriptor) {
         const draft = handle.getDraft?.() || '';
         const references = handle.getReferences?.() || [];
-        if (draft || references.length) drafts.set(childKeyOf(descriptor), { draft, references });
+        drafts.set(childKeyOf(descriptor), { draft, references });
     }
 
     function ownHandle(handle, descriptor) {
@@ -45,5 +47,5 @@ export function createSideChatDraftCache() {
         return Object.freeze(Object.defineProperties({}, properties));
     }
 
-    return Object.freeze({ ownHandle, dispose() { drafts.clear(); } });
+    return Object.freeze({ ownHandle, forget: descriptor => drafts.delete(childKeyOf(descriptor)), dispose() { drafts.clear(); } });
 }

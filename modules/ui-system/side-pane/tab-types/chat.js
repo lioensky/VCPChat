@@ -37,6 +37,9 @@ export function freezeSideChatDescriptor(descriptor) {
         contextMode: descriptor.contextMode === 'parent-snapshot' ? 'parent-snapshot' : 'references-only',
         snapshotId: descriptor.snapshotId ? String(descriptor.snapshotId) : undefined,
         model: descriptor.model ? String(descriptor.model) : undefined,
+        composerStorage: descriptor.composerStorage === 'local' ? 'local' : undefined,
+        draft: typeof descriptor.draft === 'string' ? descriptor.draft : '',
+        references: Array.isArray(descriptor.references) ? descriptor.references : [],
         parentSnapshot: Array.isArray(descriptor.parentSnapshot) ? descriptor.parentSnapshot : []
     });
 }

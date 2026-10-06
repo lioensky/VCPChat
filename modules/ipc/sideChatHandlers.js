@@ -211,6 +211,12 @@ function initialize(paths) {
                 createdAt: metadata.createdAt || Date.now(),
                 updatedAt: Date.now()
             };
+            if (metadata.composerStorage === 'local') {
+                payload.composerStorage = 'local';
+                delete payload.draft;
+                delete payload.references;
+                delete payload.model;
+            }
 
             await fs.writeJson(metadataPath, payload, { spaces: 2 });
             return { success: true, metadata: payload };

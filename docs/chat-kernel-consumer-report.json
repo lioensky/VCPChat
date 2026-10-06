@@ -514,6 +514,7 @@
     "modules/renderer/side-chat/attachments.js",
     "modules/renderer/side-chat/composer-state.js",
     "modules/renderer/side-chat/draft-cache.js",
+    "modules/renderer/side-chat/draft-store.js",
     "modules/renderer/side-chat/message-actions.js",
     "modules/renderer/side-chat/message-edit.js",
     "modules/renderer/side-chat/model-picker.js",
@@ -917,6 +918,8 @@
     "tests/side-chat-audit-probes.test.mjs",
     "tests/side-chat-authorization.test.mjs",
     "tests/side-chat-delete-leftovers.test.mjs",
+    "tests/side-chat-draft-restore.test.mjs",
+    "tests/side-chat-draft-save.test.mjs",
     "tests/side-chat-entry-points.test.mjs",
     "tests/side-chat-ephemeral-parity.test.mjs",
     "tests/side-chat-integration.test.mjs",
@@ -1024,7 +1027,7 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 282,
+          "line": 293,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "sendMessage",
@@ -1722,7 +1725,7 @@
         },
         {
           "file": "tests/side-chat-model-and-context.test.mjs",
-          "line": 136,
+          "line": 137,
           "surface": "test",
           "access": "explicit-provider",
           "member": "js",
@@ -16784,6 +16787,14 @@
       "listeners": 0,
       "mutableMaps": 1
     },
+    "modules/renderer/side-chat/draft-store.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
     "modules/renderer/side-chat/message-actions.js": {
       "windowReferences": 0,
       "documentReferences": 0,
@@ -16813,7 +16824,7 @@
       "documentReferences": 0,
       "electronReferences": 0,
       "timers": 1,
-      "listeners": 2,
+      "listeners": 3,
       "mutableMaps": 0
     },
     "modules/renderer/side-chat/references.js": {
@@ -16842,7 +16853,7 @@
     },
     "modules/renderer/sideChatSurfaceOwner.js": {
       "windowReferences": 0,
-      "documentReferences": 0,
+      "documentReferences": 2,
       "electronReferences": 0,
       "timers": 0,
       "listeners": 8,
@@ -16850,7 +16861,7 @@
     },
     "modules/renderer/sideChatWiring.js": {
       "windowReferences": 0,
-      "documentReferences": 0,
+      "documentReferences": 1,
       "electronReferences": 12,
       "timers": 1,
       "listeners": 0,

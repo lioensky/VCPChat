@@ -33,6 +33,7 @@ export function createSideChatWiring({
         || (parent.itemId === agentId && (!topicId || parent.topicId === topicId));
 
     const sideChatOwner = createSideChatSurfaceOwner({
+        document: doc,
         chatCapabilities: {
             repository: chatRepository,
             createRenderer,
@@ -123,7 +124,7 @@ export function createSideChatWiring({
             }
         }
 
-        const descriptor = createSideChatDescriptor({
+        const descriptor = { ...createSideChatDescriptor({
             parent: {
                 itemId: currentItem.id,
                 topicId: currentTopicId,
@@ -139,7 +140,7 @@ export function createSideChatWiring({
             model: currentItem.config?.model || null,
             open: true,
             status: 'ready'
-        });
+        }), composerStorage: 'local' };
 
         // 元数据落盘成功后才挂载，失败就把刚建的子话题删掉
         const saveMetaRes = await saveSideChatMetadata({ electronAPI: chatAPI, metadata: descriptor });
@@ -214,29 +215,32 @@ export function createSideChatWiring({
 
                 // 从未发过消息、也没有草稿和引用的空侧聊不再恢复，直接清理
                 const childAgentId = item.child.itemId || agentId;
-                const hasPendingInput = !!item.draft || (Array.isArray(item.references) && item.references.length > 0);
-                if (!hasPendingInput && typeof chatAPI?.getChatHistory === 'function') {
+                const storedDraft = sideChatOwner.readDraft(item);
+                const input = storedDraft.input || item;
+                const hasPendingInput = !!input.draft || (Array.isArray(input.references) && input.references.length > 0);
+                if (storedDraft.ok && !hasPendingInput && typeof chatAPI?.getChatHistory === 'function') {
                     const childHistory = await chatAPI.getChatHistory(childAgentId, childTopicId);
                     if (Array.isArray(childHistory) && childHistory.length === 0) {
-                        deleteSideChatChild({ electronAPI: chatAPI, agentId: childAgentId, childTopicId })
-                            .catch(err => console.warn('[SideChat] Failed to clean up empty side chat:', err));
+                        const removed = await deleteSideChatChild({ electronAPI: chatAPI, agentId: childAgentId, childTopicId });
+                        if (removed.ok) sideChatOwner.forgetDraft(item);
+                        else console.warn('[SideChat] Failed to clean up empty side chat:', removed.message);
                         continue;
                     }
                 }
 
-                await getController().openTab({ kind: 'chat', descriptor: createSideChatDescriptor({
+                await getController().openTab({ kind: 'chat', descriptor: { ...createSideChatDescriptor({
                     parent: item.parent,
                     childTopicId,
                     title: item.title,
                     contextMode: item.contextMode,
                     snapshotId: item.snapshotId,
                     parentSnapshot: item.parentSnapshot || [],
-                    model: item.model || item.descriptor?.model || null,
+                    model: input.model || item.descriptor?.model || null,
                     open: true,
                     status: 'ready',
-                    draft: item.draft || '',
-                    references: Array.isArray(item.references) ? item.references : []
-                }) });
+                    draft: input.draft || '',
+                    references: Array.isArray(input.references) ? input.references : []
+                }), composerStorage: item.composerStorage } });
             } catch (e) {
                 console.warn('[SideChat] Failed to restore side chat tab:', e);
             }
@@ -291,8 +295,9 @@ export function createSideChatWiring({
         const agentId = descriptor?.child?.itemId || descriptor?.parent?.itemId;
         const childTopicId = descriptor?.child?.topicId;
         if (!agentId || !childTopicId) return;
-        deleteSideChatChild({ electronAPI: chatAPI, agentId, childTopicId })
-            .catch(err => console.warn('[SideChat] Failed to delete closed side chat:', err));
+        const result = await deleteSideChatChild({ electronAPI: chatAPI, agentId, childTopicId });
+        if (result.ok) sideChatOwner.forgetDraft(descriptor);
+        else console.warn('[SideChat] Failed to delete closed side chat:', result.message);
     }
     return Object.freeze({
         provider: sideChatOwner, openSideChat, restoreSessions, onTabClosed,

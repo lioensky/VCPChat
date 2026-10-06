@@ -17,9 +17,15 @@ export function createSideChatPersistence({
     updateEmptyState,
     updateStatus,
     getConversation,
-    getSurface
+    getSurface,
+    saveDraft
 }) {
     const disposeCleanups = [];
+    const metadataErrorText = '信息未保存 · 点击重试';
+    const draftErrorText = '草稿未保存 · 点击重试';
+    let metadataSaveFailed = false;
+    let fileMetadataFailed = false;
+    let composerMigrated = descriptor.composerStorage === 'local';
     function needsSnapshotRefresh() {
         return store.currentDescriptor.contextMode === 'parent-snapshot'
             && typeof chatCapabilities?.refreshParentSnapshot === 'function'
@@ -38,12 +44,41 @@ export function createSideChatPersistence({
         }
     }
 
-    function persistMetadata() {
-        const metaToPersist = { ...store.currentDescriptor, model: store.currentModel || null };
+    async function persistMetadata() {
+        persistComposerInput();
+        const { draft, references, model, ...metadata } = store.currentDescriptor;
+        const metaToPersist = { ...metadata, composerStorage: 'local' };
         const save = chatCapabilities?.saveSideChatMetadata
             || chatCapabilities?.repository?.saveSideChatMetadata
             || globalThis.chatAPI?.saveSideChatMetadata;
-        return typeof save === 'function' ? Promise.resolve(save(metaToPersist)) : Promise.resolve(null);
+        if (typeof save !== 'function') return null;
+        try {
+            const result = await save(metaToPersist);
+            // The side session service reports failure as { ok: false }, not a rejected promise.
+            if (result?.ok === false || result?.success === false || result?.error) {
+                throw new Error(result.message || result.error || '保存辅助对话信息失败');
+            }
+            composerMigrated = true;
+            fileMetadataFailed = false;
+            const wasFailed = metadataSaveFailed;
+            metadataSaveFailed = false;
+            if (wasFailed && !store.isDisposed) {
+                statusText.removeAttribute('role');
+                statusText.removeAttribute('tabindex');
+            }
+            if (wasFailed && !store.isDisposed && [metadataErrorText, draftErrorText].includes(statusText.textContent)) updateStatus('就绪');
+            return result;
+        } catch (error) {
+            fileMetadataFailed = true;
+            if (!store.isDisposed) {
+                if (!metadataSaveFailed) chatCapabilities?.uiHelper?.showToastNotification?.('草稿已保留，对话信息未保存。点击底部提示重试。', 'error');
+                metadataSaveFailed = true;
+                updateStatus(metadataErrorText, 'error');
+                statusText.setAttribute('role', 'button');
+                statusText.tabIndex = 0;
+            }
+            throw error;
+        }
     }
 
     let inputSaveTimer = null;
@@ -51,10 +86,36 @@ export function createSideChatPersistence({
     function persistComposerInput() {
         store.currentDescriptor = {
             ...store.currentDescriptor,
+            model: store.currentModel || null,
             draft: textarea.value,
             references: store.references.map(({ id, text, sourceMessageId }) => ({ id, text, sourceMessageId: sourceMessageId ?? null }))
         };
-        persistMetadata().catch(e => console.warn('[SideChat] Failed to persist draft:', e));
+        const result = saveDraft(store.currentDescriptor, store.currentDescriptor);
+        if (!result.ok) {
+            if (!metadataSaveFailed) chatCapabilities?.uiHelper?.showToastNotification?.('草稿和设置未保存，当前输入已保留。点击底部提示重试。', 'error');
+            metadataSaveFailed = true;
+            updateStatus(draftErrorText, 'error');
+            statusText.setAttribute('role', 'button');
+            statusText.tabIndex = 0;
+            throw result.error;
+        }
+        if (metadataSaveFailed && !fileMetadataFailed) {
+            metadataSaveFailed = false;
+            statusText.removeAttribute('role');
+            statusText.removeAttribute('tabindex');
+            if ([metadataErrorText, draftErrorText].includes(statusText.textContent)) updateStatus('就绪');
+        }
+        return result;
+    }
+
+    async function saveComposerInput() {
+        try {
+            persistComposerInput();
+            // Old file drafts are removed only after the browser write succeeds.
+            if (!composerMigrated) await persistMetadata();
+        } catch (error) {
+            console.warn('[SideChat] Failed to persist draft:', error);
+        }
     }
 
     function scheduleInputSave() {
@@ -62,7 +123,7 @@ export function createSideChatPersistence({
         clearTimeout(inputSaveTimer);
         inputSaveTimer = setTimeout(() => {
             inputSaveTimer = null;
-            if (!store.isDisposed) persistComposerInput();
+            if (!store.isDisposed) saveComposerInput();
         }, 400);
     }
 
@@ -70,7 +131,7 @@ export function createSideChatPersistence({
         if (inputSaveTimer === null) return;
         clearTimeout(inputSaveTimer);
         inputSaveTimer = null;
-        persistComposerInput();
+        return saveComposerInput();
     }
 
     textarea.addEventListener('input', scheduleInputSave);
@@ -78,10 +139,12 @@ export function createSideChatPersistence({
     const win = doc.defaultView;
 
     win?.addEventListener?.('pagehide', flushInputSave);
+    win?.addEventListener?.('blur', flushInputSave);
 
     disposeCleanups.push(() => {
         textarea.removeEventListener('input', scheduleInputSave);
         win?.removeEventListener?.('pagehide', flushInputSave);
+        win?.removeEventListener?.('blur', flushInputSave);
     });
 
     async function retryPersistence() {
@@ -162,10 +225,23 @@ export function createSideChatPersistence({
     }
 
     statusText.addEventListener('click', () => {
+        if (metadataSaveFailed && !store.isDisposed) {
+            saveComposerInput();
+            return;
+        }
         if (!store.isHistoryLoaded && !store.isDisposed) {
             loadHistoryFn().catch(() => {});
         }
     });
 
-    return Object.freeze({ needsSnapshotRefresh, refreshSnapshot, persistMetadata, scheduleInputSave, flushInputSave, retryPersistence, discardUnsaved, loadHistoryFn, dispose() { flushInputSave(); disposeCleanups.splice(0).forEach(fn => { try { fn(); } catch {} }); } });
+    const onStatusKeydown = (event) => {
+        if (metadataSaveFailed && (event.key === 'Enter' || event.key === ' ')) {
+            event.preventDefault();
+            statusText.click();
+        }
+    };
+    statusText.addEventListener('keydown', onStatusKeydown);
+    disposeCleanups.push(() => statusText.removeEventListener('keydown', onStatusKeydown));
+
+    return Object.freeze({ needsSnapshotRefresh, refreshSnapshot, persistMetadata, saveComposerInput, scheduleInputSave, flushInputSave, retryPersistence, discardUnsaved, loadHistoryFn, dispose() { flushInputSave(); disposeCleanups.splice(0).forEach(fn => { try { fn(); } catch {} }); } });
 }
