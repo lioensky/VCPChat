@@ -540,6 +540,16 @@
         -webkit-app-region: no-drag;
     }
 
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .vcp-ui-window-control-pin.is-pinned {
+        color: var(--vcp-ui-primary, #6366f1);
+        background: var(--vcp-ui-primary-bg, rgba(99, 102, 241, 0.16));
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .vcp-ui-window-control-pin.is-pinned .vcp-ui-icon,
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .vcp-ui-window-control-pin.is-pinned svg {
+        transform: rotate(-15deg);
+    }
+
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope .vcp-ui-window-control-close:hover {
         color: var(--vcp-ui-danger);
         background: var(--vcp-ui-danger-bg);

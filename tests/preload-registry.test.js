@@ -1,4 +1,4 @@
-'use strict';
+
 
 // preloads/api/*.js 的契约测试：注册表可加载、角色可见性、以及使用这些 preload 的窗口都关闭了沙箱。
 const test = require('node:test');
@@ -24,7 +24,7 @@ test('注册表加载成功，每个角色都有可见 API', () => {
 });
 
 test('除本地 API 外，每个条目都声明了 IPC 通道', () => {
-    const localOnly = new Set(['getPathForFile']);
+    const localOnly = new Set(['getPathForFile', 'canPin']);
     for (const api of apis) {
         if (localOnly.has(api.name)) continue;
         assert.equal(typeof api.channel, 'string', `${api.name} 缺少 channel`);
@@ -59,7 +59,7 @@ test('主聊天语音 API 对 chat 可见，且不存在私自存盘的录音通
 });
 
 test('置顶 API 只对 utility 可见', () => {
-    for (const name of ['togglePinWindow', 'isWindowPinned', 'onWindowPinnedChanged']) {
+    for (const name of ['canPin', 'supportsPin', 'togglePinWindow', 'isWindowPinned', 'onWindowPinnedChanged']) {
         assert.deepEqual(byName.get(name).roles, ['utility']);
     }
 });
