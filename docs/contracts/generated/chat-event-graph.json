@@ -4234,17 +4234,17 @@
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 354,
+          "line": 375,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 378,
+          "line": 399,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 780,
+          "line": 801,
           "kind": "custom-event-listener"
         },
         {
@@ -4349,22 +4349,22 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 514,
+          "line": 516,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1207,
+          "line": 1210,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1213,
+          "line": 1216,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1227,
+          "line": 1230,
           "kind": "custom-event-listener"
         },
         {
@@ -5821,19 +5821,19 @@
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 354,
+          "line": 375,
           "kind": "custom-event-listener",
           "match": "more.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 378,
+          "line": 399,
           "kind": "custom-event-listener",
           "match": "head.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 780,
+          "line": 801,
           "kind": "custom-event-listener",
           "match": "item.addEventListener('click'"
         },
@@ -5959,25 +5959,25 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 514,
+          "line": 516,
           "kind": "custom-event-listener",
           "match": "retry.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1207,
+          "line": 1210,
           "kind": "custom-event-listener",
           "match": "toggleNotificationsBtn.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1213,
+          "line": 1216,
           "kind": "custom-event-listener",
           "match": "expandButton.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1227,
+          "line": 1230,
           "kind": "custom-event-listener",
           "match": "closeSidePaneBtn.addEventListener('click'"
         },
@@ -15633,7 +15633,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 379,
+          "line": 400,
           "kind": "custom-event-listener"
         },
         {
@@ -16033,7 +16033,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 379,
+          "line": 400,
           "kind": "custom-event-listener",
           "match": "head.addEventListener('keydown'"
         },
@@ -21704,14 +21704,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 937,
+          "line": 958,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 937,
+          "line": 958,
           "kind": "preload-subscription",
           "match": "api?.onModelTrajectoryChanged("
         }
@@ -25169,7 +25169,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1247,
+          "line": 1250,
           "kind": "custom-event-listener"
         },
         {
@@ -25269,7 +25269,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1247,
+          "line": 1250,
           "kind": "custom-event-listener",
           "match": "win?.addEventListener?.('resize'"
         },
@@ -29530,7 +29530,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-visibility.js",
-          "line": 122,
+          "line": 128,
           "kind": "custom-event-listener"
         },
         {
@@ -29554,7 +29554,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-visibility.js",
-          "line": 122,
+          "line": 128,
           "kind": "custom-event-listener",
           "match": "root.addEventListener('transitionend'"
         },

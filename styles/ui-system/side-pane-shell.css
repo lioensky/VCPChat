@@ -72,9 +72,9 @@ html #resizerRight.resizer.active:where(.vcp-ui-scope, .vcp-ui-scope *)::after {
 }
 
 /* Without an open (or animating) side pane the handle has nothing to resize.
-   The pane is the handle's next sibling, so ask the sibling instead of body:has(): a body-level :has()
-   makes every node insertion anywhere invalidate the whole page's styles. */
-html body #resizerRight:not(.is-animating):has(+ #vcpSidePane:not(.active):not(.is-animating)):where(.vcp-ui-scope, .vcp-ui-scope *) {
+   The visibility controller marks the handle with .is-pane-shown; no :has() here, because any
+   :has() keyed on the pane makes node insertions re-run selector matching on every style recalc. */
+html body #resizerRight:not(.is-animating):not(.is-pane-shown):where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: none;
 }
 

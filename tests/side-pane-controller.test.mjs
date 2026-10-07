@@ -40,6 +40,52 @@ test('SidePaneController initializes and renders tabs into tabListElement', () =
     controller.dispose();
 });
 
+test('open and closed state reaches the resize handle and body as classes, not through :has()', async () => {
+    const dom = new JSDOM(`
+        <div class="chat-header"><button id="toggleSidePaneChatBtn"></button></div>
+        <div class="main-content"></div>
+        <div class="resizer" id="resizerRight"></div>
+        <aside id="vcpSidePane" class="vcp-side-pane">
+            <header class="side-pane-tab-bar"><div class="side-pane-tabs"></div></header>
+            <div class="side-pane-content-container"></div>
+        </aside>
+    `);
+    const doc = dom.window.document;
+    const root = doc.getElementById('vcpSidePane');
+    const resizerHandle = doc.getElementById('resizerRight');
+    const expandButton = doc.getElementById('toggleSidePaneChatBtn');
+    const controller = createSidePaneController({
+        root,
+        resizerHandle,
+        expandButton,
+        tabListElement: root.querySelector('.side-pane-tabs'),
+        contentContainer: root.querySelector('.side-pane-content-container'),
+    });
+    const shown = () => ({
+        handle: resizerHandle.classList.contains('is-pane-shown'),
+        body: doc.body.classList.contains('vcp-side-pane-open'),
+        expandHidden: expandButton.hidden
+    });
+    try {
+        assert.deepEqual(shown(), { handle: false, body: false, expandHidden: false });
+        controller.setVisible(true);
+        assert.deepEqual(shown(), { handle: true, body: true, expandHidden: true });
+        controller.setVisible(false);
+        assert.deepEqual(shown(), { handle: false, body: false, expandHidden: false });
+        controller.setVisible(true);
+    } finally {
+        await controller.dispose();
+    }
+    assert.equal(doc.body.classList.contains('vcp-side-pane-open'), false, 'a disposed pane leaves no open class on body');
+
+    // 这两条规则曾用 :has() 反查面板/按钮状态，每次节点增删都让整页重跑选择器
+    const fs = await import('node:fs');
+    const css = ['styles/ui-system/side-pane-shell.css', 'styles/ui-next.css']
+        .map(file => fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8')).join('\n')
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+    assert.doesNotMatch(css, /:has\([^)]*#(vcpSidePane|toggleSidePaneChatBtn)/);
+});
+
 test('SidePaneController showNotifications and openChat mount views and sync visibility', async () => {
     const dom = new JSDOM(`
         <div class="main-content"></div>

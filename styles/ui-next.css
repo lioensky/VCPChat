@@ -1066,7 +1066,7 @@ html body.chat-header-capsule .chat-agent-pill:is(:hover, :focus-visible) .chat-
     opacity: 1;
 }
 
-html body.chat-header-capsule .chat-header:has(#toggleSidePaneChatBtn[hidden]) .chat-agent-pill .chat-agent-pill-pane-btn {
+html body.chat-header-capsule.vcp-side-pane-open .chat-header .chat-agent-pill .chat-agent-pill-pane-btn {
     width: 0;
     margin: 0 0 0 -9px;
     opacity: 0;

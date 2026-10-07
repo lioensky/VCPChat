@@ -136,6 +136,8 @@ export function createSidePaneController({
             expandButton.hidden = isVisible;
             expandButton.setAttribute('aria-expanded', String(isVisible));
         }
+        // 标题栏样式靠 body 类判断面板开合，不用 :has() 反查按钮（:has() 会让每次节点增删都重跑整页选择器）
+        doc.body?.classList.toggle('vcp-side-pane-open', isVisible);
     }
 
     // 旧键 notificationsSidebarRatio 曾按整个窗口宽度算（父元素 display: contents 时测出 0），存下的值偏小，直接弃用
@@ -1175,6 +1177,7 @@ export function createSidePaneController({
             viewTimes.clear();
             dormantTabs.clear();
             visibility.dispose();
+            doc.body?.classList.remove('vcp-side-pane-open');
             cleanupListeners.forEach(cleanup => cleanup());
             cleanupListeners.length = 0;
             resizerOwner?.dispose?.();

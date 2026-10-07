@@ -237,7 +237,8 @@ export function createModelTrajectorySideProvider({
 
             const updateAllRows = () => { for (const row of rowRegistry.values()) row.update(); };
 
-            // 行内容是否溢出按帧合批测：先把所有待测行读完，再统一改样式。逐行读写交错时每行都会强制一次整页布局，上百行就是秒级卡顿
+            // 行高测量所有行共用一帧：先把每行的高度都读完，再统一改 class。
+            // 逐行“读一次写一次”的话每行都强制一次布局，一百多行的轨迹打开要卡好几秒
             const pendingMeasures = new Set();
             let measureFrame = 0;
             const flushMeasures = () => {
@@ -245,9 +246,9 @@ export function createModelTrajectorySideProvider({
                 const jobs = [...pendingMeasures];
                 pendingMeasures.clear();
                 const results = jobs.map(job => job.read());
-                jobs.forEach((job, i) => job.write(results[i]));
+                jobs.forEach((job, index) => job.write(results[index]));
             };
-            const scheduleRowMeasure = (job) => {
+            const scheduleMeasure = (job) => {
                 if (typeof win.requestAnimationFrame !== 'function') return;
                 pendingMeasures.add(job);
                 if (!measureFrame) measureFrame = win.requestAnimationFrame(flushMeasures);
@@ -359,17 +360,17 @@ export function createModelTrajectorySideProvider({
                     if (!content.childNodes.length) content.appendChild(h('span', 'side-traj-empty-part', '—'));
                 };
 
+                // read 只读布局，write 只改 DOM：同一帧里先跑完所有行的 read 再跑 write
                 const measureJob = {
-                    // 只读布局；行已收起或已全部展开时不用测
                     read: () => (row.classList.contains('open') && !showAll
                         ? content.scrollHeight > content.clientHeight + 2
                         : null),
-                    write: overflowing => {
-                        if (overflowing === null || !row.classList.contains('open') || showAll) return;
+                    write: (overflowing) => {
+                        if (overflowing === null) return;
                         shell.classList.toggle('overflowing', overflowing);
                         more.hidden = !overflowing || row.classList.contains('revealed');
                         more.textContent = '展开';
-                    }
+                    },
                 };
                 const scheduleMeasure = () => scheduleRowMeasure(measureJob);
                 more.addEventListener('click', () => {
@@ -386,7 +387,7 @@ export function createModelTrajectorySideProvider({
                     row.classList.toggle('revealed', revealed);
                     head.setAttribute('aria-expanded', String(open));
                     if (!open) { showAll = false; shell.classList.remove('show-all', 'overflowing'); more.hidden = true; }
-                    else scheduleMeasure();
+                    else scheduleMeasure(measureJob);
                     shell.classList.toggle('show-all', showAll || revealed);
                 };
                 const toggle = () => {

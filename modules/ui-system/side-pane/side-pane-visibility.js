@@ -44,6 +44,11 @@ export function createSidePaneVisibility({ root, resizerHandle = null, initialRa
         return width > 0 ? width : 0;
     }
 
+    // 拖拽柄跟着面板显隐，类名由这里切，CSS 不再用 :has() 反查面板状态
+    function markHandle(shown) {
+        resizerHandle?.classList.toggle('is-pane-shown', shown);
+    }
+
     function clearPendingAnimation() {
         if (cancelTransition) {
             const cancel = cancelTransition;
@@ -88,6 +93,7 @@ export function createSidePaneVisibility({ root, resizerHandle = null, initialRa
         root.classList.toggle('active', isVisible);
         root.classList.toggle('collapsed', !isVisible);
         root.setAttribute('aria-hidden', String(!isVisible));
+        markHandle(isVisible);
 
         resizerHandle?.classList.remove('is-animating', 'is-animating-closing');
         unlockContentWidth();
@@ -142,6 +148,7 @@ export function createSidePaneVisibility({ root, resizerHandle = null, initialRa
         root.classList.remove('collapsed');
         root.removeAttribute('aria-hidden');
         root.classList.add('is-animating', 'active');
+        markHandle(true);
         if (!reversing) {
             root.style.width = '0%';
             root.style.opacity = '0';
@@ -176,6 +183,7 @@ export function createSidePaneVisibility({ root, resizerHandle = null, initialRa
         runTransition(() => {
             root.classList.remove('is-animating', 'active');
             root.classList.add('collapsed');
+            markHandle(false);
             root.setAttribute('aria-hidden', 'true');
             root.style.width = '';
             root.style.opacity = '';
