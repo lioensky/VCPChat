@@ -18,9 +18,16 @@ const settle = async () => {
     for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve));
     await new Promise(resolve => setTimeout(resolve, 0));
 };
+// 侧栏开合动画会排一帧：jsdom 的 rAF 靠一个 16ms 的 setInterval 驱动，有帧排队时它就在，
+// 机器一忙 intervals 就时有时无。量之前等排着的帧跑完；一直有新帧（停不下来的动画循环）就不等了，
+// 由 animationFrames 报出来
+const drainFrames = async h => {
+    for (let i = 0; i < 20 && h.pendingFrames() > 0; i++) await new Promise(resolve => setTimeout(resolve, 20));
+};
 
 /**
- * 不经过 own.* 的资源也要数到：document / window 上的活监听、没清掉的 setInterval、没 disconnect 的 MutationObserver。
+ * 不经过 own.* 的资源也要数到：document / window 上的活监听、没清掉的 setInterval、还排着的 requestAnimationFrame、
+ * 没 disconnect 的 MutationObserver。
  * 只数这些长寿目标：挂在已移除视图节点上的监听随节点一起丢弃，不算泄漏。
  */
 function instrument(win) {
@@ -54,6 +61,15 @@ function instrument(win) {
         host.clearInterval = id => { intervals.delete(id); return clearI.call(host, id); };
     }
 
+    const frames = new Set();
+    const raf = win.requestAnimationFrame, caf = win.cancelAnimationFrame;
+    win.requestAnimationFrame = callback => {
+        const id = raf.call(win, time => { frames.delete(id); callback(time); });
+        frames.add(id);
+        return id;
+    };
+    win.cancelAnimationFrame = id => { frames.delete(id); return caf.call(win, id); };
+
     const observers = new Set();
     const NativeObserver = win.MutationObserver;
     win.MutationObserver = class extends NativeObserver {
@@ -61,7 +77,9 @@ function instrument(win) {
         disconnect() { observers.delete(this); return super.disconnect(); }
     };
 
-    return () => ({ globalListeners: live.size, intervals: intervals.size, mutationObservers: observers.size });
+    const counts = () => ({ globalListeners: live.size, intervals: intervals.size, animationFrames: frames.size, mutationObservers: observers.size });
+    counts.pendingFrames = () => frames.size;
+    return counts;
 }
 
 const PROJECT = {
@@ -156,7 +174,7 @@ function fixture() {
         ...unmanaged(),
         views: controller.getViewResidency()
     });
-    return { dom, controller, opens, calls, measure,
+    return { dom, controller, opens, calls, measure, pendingFrames: unmanaged.pendingFrames,
         async cleanup() { await controller.dispose(); dom.window.close(); } };
 }
 
@@ -173,6 +191,7 @@ test(`opening and closing every tab type ${CYCLES} times returns to where it sta
             for (const id of openTabIds(h.controller)) await h.controller.closeTab(id);
             await settle();
         }
+        await drainFrames(h);
         const baseline = h.measure();
 
         for (let i = 0; i < CYCLES; i++) {
@@ -183,6 +202,7 @@ test(`opening and closing every tab type ${CYCLES} times returns to where it sta
                 await settle();
             }
         }
+        await drainFrames(h);
         assert.deepEqual(h.measure(), baseline);
         assert.equal(h.calls.kills, h.calls.creates, 'every shell that was started was ended');
         assert.equal(h.calls.watches, h.calls.unwatches, 'every trajectory watch was released');
@@ -198,6 +218,7 @@ test(`views put to sleep and woken ${CYCLES} times leave nothing behind`, async 
         assert.equal(ids.length, Object.keys(h.opens).length, 'every tab type opened');
         // 只能有一个视图挂着：切到哪个标签，别的都休眠
         for (const id of ids) { h.controller.activateTab(id); await settle(); }
+        await drainFrames(h);
         const baseline = h.measure();
         assert.equal(baseline.views.live.length, 1);
         assert.equal(baseline.views.dormant.length, ids.length - 1);
@@ -206,6 +227,7 @@ test(`views put to sleep and woken ${CYCLES} times leave nothing behind`, async 
         for (let i = 0; i < CYCLES; i++) {
             for (const id of ids) { h.controller.activateTab(id); await settle(); }
         }
+        await drainFrames(h);
         const after = h.measure();
         assert.deepEqual({ ...after, views: null }, { ...baseline, views: null });
         assert.equal(after.views.live.length, 1);

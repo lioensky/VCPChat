@@ -272,6 +272,12 @@ async function sendSideChat(page, text) {
     }, marker, `streamed reply ${marker}`);
 }
 const chatItems = page => page.evaluate(() => document.querySelectorAll('.side-pane-view.active .message-item').length);
+// 唤醒后记录按批次渲染，忙的时候半秒内可能还没渲染完：最多等 4 秒到预期条数，少了照样算失败
+async function settledChatItems(page, expected) {
+    let n = await chatItems(page);
+    for (let i = 0; i < 20 && n < expected; i++) { await wait(200); n = await chatItems(page); }
+    return n;
+}
 const activeTabId = page => page.evaluate(() => document.querySelector('.side-pane-tab.active, .side-pane-tab[aria-selected="true"]')?.dataset.tabId || null);
 async function activate(page, id) {
     await page.evaluate(id => document.querySelector(`.side-pane-tab[data-tab-id="${CSS.escape(id)}"]`)?.click(), id);
@@ -427,7 +433,7 @@ try {
         const counts = [];
         let first = null;
         for (let round = 0; round < 3; round++) {
-            for (const id of ids) { await activate(page, id); if (id === historyChat) counts.push(await chatItems(page)); }
+            for (const id of ids) { await activate(page, id); if (id === historyChat) counts.push(await settledChatItems(page, expected)); }
             const m = await measure(session);
             const dormant = m.tabs.filter(t => t.view === 'dormant');
             assert.ok(dormant.length >= 1, 'nothing went dormant over the live-view limit');
