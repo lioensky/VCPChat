@@ -13,9 +13,9 @@
 import { createSidePaneRootScope } from './side-pane-occurrence.js';
 
 export const BROWSER_PARTITION = 'persist:vcp-side-browser';
-const ALLOWED_PROTOCOLS = new Set(['http:', 'https:', 'file:', 'about:']);
+const ALLOWED_PROTOCOLS = new Set(['http:', 'https:', 'about:']); // 同 browserHandlers.js：不开 file: 本地页
 const BLOCKED_ERROR_CODES = new Set([-3]); // ERR_ABORTED: a navigation replaced by another one
-const INVALID_URL_MESSAGE = '仅支持 http、https、file、about 地址';
+const INVALID_URL_MESSAGE = '仅支持 http、https、about 地址';
 // 网页弹窗最多把浏览器标签开到这么多，再多就只提示不开
 export const MAX_POPUP_BROWSER_TABS = 12;
 
@@ -257,7 +257,7 @@ export function createBrowserSideProvider({
                 const changed = Boolean(url) && url !== currentUrl;
                 currentUrl = url || '';
                 // 关掉后从「最近关闭」重新打开时回到最后看的页面
-                if (changed && /^https?:|^file:/i.test(currentUrl)) sidePaneController?.updateTab?.(tab.id, { payload: { url: currentUrl } });
+                if (changed && /^https?:/i.test(currentUrl)) sidePaneController?.updateTab?.(tab.id, { payload: { url: currentUrl } });
                 if (doc.activeElement !== address) address.value = currentUrl === 'about:blank' ? '' : currentUrl;
                 address.title = currentUrl;
             };

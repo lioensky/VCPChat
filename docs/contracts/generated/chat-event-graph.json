@@ -1276,14 +1276,14 @@
       "consumers": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 139,
+          "line": 158,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 139,
+          "line": 158,
           "kind": "event-listener",
           "match": "guest.on('before-input-event'"
         }
@@ -1863,14 +1863,14 @@
       "consumers": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 165,
+          "line": 184,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 165,
+          "line": 184,
           "kind": "event-listener",
           "match": "ipcMain.handle('browser:clear-data'"
         },
@@ -1894,14 +1894,14 @@
       "consumers": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 154,
+          "line": 173,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 154,
+          "line": 173,
           "kind": "event-listener",
           "match": "ipcMain.handle('browser:open-external'"
         },
@@ -10010,14 +10010,14 @@
       "consumers": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 119,
+          "line": 142,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 119,
+          "line": 142,
           "kind": "event-listener",
           "match": "host.on('did-attach-webview'"
         }
@@ -15056,14 +15056,14 @@
       "consumers": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 122,
+          "line": 144,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 122,
+          "line": 144,
           "kind": "event-listener",
           "match": "guest.on('input-event'"
         }
@@ -30202,7 +30202,7 @@
       "producers": [
         {
           "file": "renderer.js",
-          "line": 1072,
+          "line": 1078,
           "kind": "custom-event-create"
         }
       ],
@@ -30210,7 +30210,7 @@
       "evidence": [
         {
           "file": "renderer.js",
-          "line": 1072,
+          "line": 1078,
           "kind": "custom-event-create",
           "match": "new CustomEvent('vcp-renderer-ready'"
         }
@@ -31679,14 +31679,14 @@
       "consumers": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 102,
+          "line": 125,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 102,
+          "line": 125,
           "kind": "event-listener",
           "match": "host.on('will-attach-webview'"
         }
@@ -31698,14 +31698,14 @@
       "consumers": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 88,
+          "line": 109,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 88,
+          "line": 109,
           "kind": "event-listener",
           "match": "ses.on('will-download'"
         }
@@ -31722,7 +31722,7 @@
         },
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 137,
+          "line": 156,
           "kind": "event-listener"
         },
         {
@@ -31740,7 +31740,7 @@
         },
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 137,
+          "line": 156,
           "kind": "event-listener",
           "match": "guest.on('will-navigate'"
         },
@@ -31788,14 +31788,14 @@
       "consumers": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 138,
+          "line": 157,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 138,
+          "line": 157,
           "kind": "event-listener",
           "match": "guest.on('will-redirect'"
         }

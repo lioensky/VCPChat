@@ -1,11 +1,14 @@
 // modules/ipc/browserHandlers.js
 // 侧栏「浏览器」标签的主进程部分。页面本身由渲染进程里的 <webview> 承载，这里只负责把它关进笼子：
 // - 只允许固定的 persist 分区，并强制去掉 preload / Node 集成，开启沙箱与上下文隔离；
-// - 只放行 http / https / file / about 地址，其它协议（data: 钓鱼页、vcp:// 等自定义协议）一律拦截；
+// - 只放行 http / https / about 地址，其它协议（file: 本地页、data: 钓鱼页、vcp:// 等自定义协议）一律拦截；
+//   子资源请求同样拦掉 file:——本地页面在 Electron 默认的 file 特权下能 fetch 任意本地文件再发出去
+//   （和 DeepSeek Harness browser-guests.ts 的 onBeforeRequest、ZCode isAllowedBrowserUrl 一致），本地文件用代码查看器看；
 // - 网页里的 window.open / target=_blank 转成「在侧栏新开一个浏览器标签」，但必须紧跟一次真实点击或按键，
 //   一次输入只换一个标签，网页自己连开弹窗刷不出标签；
-// - 弹窗只能开 http / https，本地 file 页面还可以开 file 页面；
-// - 页面权限请求（摄像头、定位、通知等）默认拒绝，下载交给系统默认浏览器处理；
+// - 弹窗只能开 http / https；
+// - 页面权限请求（摄像头、定位、通知等）默认拒绝；下载交给系统默认浏览器处理，但和弹窗一样要紧跟一次真实输入，
+//   网页不能自己连发下载把用户一次次弹到系统浏览器；
 // - 「在默认浏览器中打开」「清除浏览数据」两个命令只接受主窗口页面调用；
 // - 焦点在网页里时按键到不了主窗口，副屏快捷键在这里截下转给主窗口。
 'use strict';
@@ -17,7 +20,9 @@ let getMainWindow = () => null;
 let ipcMain = defaultIpcMain;
 
 const BROWSER_PARTITION = 'persist:vcp-side-browser';
-const ALLOWED_GUEST_PROTOCOLS = new Set(['http:', 'https:', 'file:', 'about:']);
+const ALLOWED_GUEST_PROTOCOLS = new Set(['http:', 'https:', 'about:']);
+// 网页里的子资源请求只放行网络和页面自己生成的内容，file: 等本地协议一律取消
+const ALLOWED_REQUEST_PROTOCOLS = new Set(['http:', 'https:', 'ws:', 'wss:', 'about:', 'data:', 'blob:']);
 const POPUP_PROTOCOLS = new Set(['http:', 'https:']);
 // 点击或按键之后这么久内允许开一个弹窗，和 Chromium 的瞬时用户激活差不多
 const POPUP_ACTIVATION_MS = 3000;
@@ -47,12 +52,25 @@ function isExternalUrl(raw) {
     return Boolean(url && EXTERNAL_PROTOCOLS.has(url.protocol));
 }
 
-// 弹窗地址：只认 http / https；本地 file 页面里的链接可以开另一个 file 页面
-function isAllowedPopupUrl(raw, openerUrl = '') {
+// 弹窗地址：只认 http / https
+function isAllowedPopupUrl(raw) {
     const url = parseUrl(raw);
-    if (!url) return false;
-    if (POPUP_PROTOCOLS.has(url.protocol)) return true;
-    return url.protocol === 'file:' && parseUrl(openerUrl)?.protocol === 'file:';
+    return Boolean(url && POPUP_PROTOCOLS.has(url.protocol));
+}
+
+function isAllowedGuestRequest(raw) {
+    const url = parseUrl(raw);
+    return Boolean(url && ALLOWED_REQUEST_PROTOCOLS.has(url.protocol));
+}
+
+// 每个网页最近一次真实输入的时间：弹窗和下载各凭一次输入放行一次
+const lastActivation = new WeakMap();
+
+function consumeActivation(guest) {
+    const activatedAt = guest ? lastActivation.get(guest) || 0 : 0;
+    if (!activatedAt || Date.now() - activatedAt > POPUP_ACTIVATION_MS) return false;
+    lastActivation.delete(guest);
+    return true;
 }
 
 /**
@@ -85,10 +103,15 @@ function configureGuestSession(ses) {
     configuredSessions.add(ses);
     ses.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
     ses.setPermissionCheckHandler(() => false);
-    ses.on('will-download', (event, item) => {
+    ses.webRequest?.onBeforeRequest?.((details, callback) => {
+        callback({ cancel: !isAllowedGuestRequest(details?.url) });
+    });
+    ses.on('will-download', (event, item, guest) => {
         const url = item.getURL();
         event.preventDefault();
-        if (isExternalUrl(url)) shell.openExternal(url);
+        if (isExternalUrl(url) && consumeActivation(guest)) {
+            Promise.resolve(shell.openExternal(url)).catch(() => {});
+        }
     });
 }
 
@@ -117,16 +140,12 @@ function attachToWindow(mainWindow) {
     });
 
     host.on('did-attach-webview', (_event, guest) => {
-        // 最近一次真实输入的时间；开过一个弹窗就作废，下一个弹窗要等下一次输入
-        let activatedAt = 0;
+        // 最近一次真实输入；开过一个弹窗或交出一次下载就作废，下一个要等下一次输入
         guest.on('input-event', (_event, input) => {
-            if (ACTIVATION_INPUTS.has(input?.type)) activatedAt = Date.now();
+            if (ACTIVATION_INPUTS.has(input?.type)) lastActivation.set(guest, Date.now());
         });
         guest.setWindowOpenHandler(({ url }) => {
-            const activated = activatedAt > 0 && Date.now() - activatedAt <= POPUP_ACTIVATION_MS;
-            const openerUrl = typeof guest.getURL === 'function' ? guest.getURL() : '';
-            if (activated && isAllowedPopupUrl(url, openerUrl) && !host.isDestroyed()) {
-                activatedAt = 0;
+            if (isAllowedPopupUrl(url) && !host.isDestroyed() && consumeActivation(guest)) {
                 host.send('browser:open-tab', { url });
             }
             return { action: 'deny' };
@@ -185,6 +204,7 @@ module.exports = {
     attachToWindow,
     initialize,
     dispose,
+    isAllowedGuestRequest,
     isAllowedGuestUrl,
     isAllowedPopupUrl,
     matchSidePaneShortcut,

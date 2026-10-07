@@ -14,6 +14,7 @@ guestSession.setPermissionRequestHandler = (fn) => { guestSession.requestHandler
 guestSession.setPermissionCheckHandler = (fn) => { guestSession.checkHandler = fn; };
 guestSession.clearStorageData = async () => { guestSession.cleared += 1; };
 guestSession.clearCache = async () => { guestSession.cleared += 1; };
+guestSession.webRequest = { onBeforeRequest: (fn) => { guestSession.beforeRequest = fn; } };
 
 const originalLoad = Module._load;
 Module._load = function loadWithElectronMock(request, parent, isMain) {
@@ -38,19 +39,19 @@ const mainPage = require('./helpers/trusted-main-sender.cjs').createTrustedMainS
 const foreignPage = { senderFrame: { url: 'https://evil.example/' } };
 
 test('guest URL allowlist keeps custom protocols out', () => {
-    for (const ok of ['http://localhost:3000/', 'https://example.com', 'file:///tmp/a.html', 'about:blank']) {
+    for (const ok of ['http://localhost:3000/', 'https://example.com', 'about:blank']) {
         assert.equal(browserHandlers.isAllowedGuestUrl(ok), true, ok);
     }
-    for (const bad of ['data:text/html,hi', 'javascript:alert(1)', 'vcp://x', 'chrome://gpu', 'ftp://host/a', '', null, 'not a url']) {
+    for (const bad of ['file:///tmp/a.html', 'file:///C:/Users/me/.ssh/id_rsa', 'data:text/html,hi', 'javascript:alert(1)', 'vcp://x', 'chrome://gpu', 'ftp://host/a', '', null, 'not a url']) {
         assert.equal(browserHandlers.isAllowedGuestUrl(bad), false, String(bad));
     }
 });
 
-test('popups only open web pages, and file pages only from a file page', () => {
+test('popups only open web pages', () => {
     const allowed = browserHandlers.isAllowedPopupUrl;
     assert.equal(allowed('https://a.example/', 'https://b.example/'), true);
-    assert.equal(allowed('http://localhost:3000/', 'file:///tmp/a.html'), true);
-    assert.equal(allowed('file:///tmp/b.html', 'file:///tmp/a.html'), true);
+    assert.equal(allowed('http://localhost:3000/'), true);
+    assert.equal(allowed('file:///tmp/b.html', 'file:///tmp/a.html'), false);
     assert.equal(allowed('file:///C:/Windows/win.ini', 'https://evil.example/'), false);
     assert.equal(allowed('about:blank', 'https://a.example/'), false);
     assert.equal(allowed('data:text/html,<h1>login</h1>', 'https://a.example/'), false);
@@ -184,4 +185,42 @@ test('side pane shortcut matcher ignores AltGr, repeats and extra modifiers', ()
     assert.equal(match({ ...toggle, shift: true }, { mac: false }), null);
     assert.deepEqual(match({ type: 'keyDown', control: true, key: 'PageUp' }, { mac: false }), { action: 'cycle', delta: -1 });
     assert.equal(match({ type: 'keyDown', control: true, shift: true, key: 'PageUp' }, { mac: false }), null);
+});
+
+test('guest requests for local files are canceled, web and inline resources pass', () => {
+    browserHandlers.initialize();
+    const decide = (url) => {
+        let result = null;
+        guestSession.beforeRequest({ url }, (value) => { result = value; });
+        return result.cancel;
+    };
+    for (const url of ['file:///etc/passwd', 'file:///C:/Users/me/AppData/Roaming/VCPChat/settings.json', 'vcp://x', 'chrome://gpu']) {
+        assert.equal(decide(url), true, url);
+    }
+    for (const url of ['https://a.example/app.js', 'http://localhost:3000/', 'wss://a.example/ws', 'data:image/png;base64,AA==', 'blob:https://a.example/1', 'about:blank']) {
+        assert.equal(decide(url), false, url);
+    }
+});
+
+test('downloads only reach the system browser right after a real input on that page', () => {
+    browserHandlers.initialize();
+    const host = new EventEmitter();
+    host.isDestroyed = () => false;
+    host.send = () => {};
+    browserHandlers.attachToWindow({ webContents: host });
+    const guest = new EventEmitter();
+    guest.setWindowOpenHandler = () => {};
+    host.emit('did-attach-webview', {}, guest);
+    const download = (url) => {
+        let prevented = false;
+        guestSession.emit('will-download', { preventDefault: () => { prevented = true; } }, { getURL: () => url }, guest);
+        assert.equal(prevented, true);
+    };
+    opened.length = 0;
+    download('https://evil.example/a.exe');
+    assert.deepEqual(opened, [], 'a download the page started by itself is dropped');
+    guest.emit('input-event', {}, { type: 'mouseDown' });
+    download('https://ok.example/file.zip');
+    download('https://evil.example/b.exe');
+    assert.deepEqual(opened, ['https://ok.example/file.zip'], 'one click hands over one download');
 });
