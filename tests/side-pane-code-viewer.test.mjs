@@ -387,3 +387,40 @@ test('highlighted html is split per line with spans that cross lines closed and 
     ]);
     assert.deepEqual(splitHighlightedLines(''), ['']);
 });
+
+test('a file tab keeps its place on reload and its wrap, mode and consent after sleeping', async () => {
+    const dom = new JSDOM('<section id="view"></section>');
+    const doc = dom.window.document;
+    const view = doc.getElementById('view');
+    const text = Array.from({ length: 3000 }, (_, i) => `line ${i}`).join('\n');
+    const provider = createCodeViewerSideProvider({ document: doc, uiHelper: null, api: {
+        async gitListWorkspaces() { return { success: true, data: { workspaces: [{ id: 'w', path: 'C:/proj' }] } }; },
+        async sourceReadFile() { return { success: false, error: 'unused' }; },
+        async getTextContent() { return { text }; }
+    } });
+    const tab = { id: 'code-viewer:D:/logs/app.log', title: 'app.log', payload: { filePath: 'D:/logs/app.log' } };
+    let handle = await provider.mountTab(tab, view);
+    const body = () => view.querySelector('.side-code-body');
+    assert.match(body().textContent, /不在任何已登记的工作区/, 'outside the workspace it asks first');
+    [...view.querySelectorAll('button')].find(button => button.textContent.includes('读取'))?.click();
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(handle.getCode(), text);
+
+    body().scrollTop = 1200;
+    await handle.reload();
+    assert.equal(body().scrollTop, 1200, 'reloading the same file stays at the same line');
+
+    view.querySelector('[data-action="toggle-wrap"]').click();
+    const saved = handle.captureState();
+    await handle.dispose();
+    handle = await provider.mountTab(tab, view, { restoredState: saved });
+    try {
+        assert.equal(handle.getCode(), text, 'the consent given before sleeping still holds');
+        assert.equal(view.querySelector('[data-action="toggle-wrap"]').classList.contains('active'), true);
+        assert.equal(view.querySelector('.side-code-editor-shell').classList.contains('is-wrapped'), true);
+        assert.equal(body().scrollTop, 1200);
+    } finally {
+        await handle.dispose();
+        dom.window.close();
+    }
+});

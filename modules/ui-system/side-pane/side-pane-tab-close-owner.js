@@ -1,6 +1,6 @@
 /** Single and batch closes retain their original page lifetimes through authorization and cleanup. */
 export function createSidePaneTabCloseOwner({
-    isDisposed, getTab, getEntry, getOnClosed, cancelPendingMount, retireTab
+    isDisposed, getTab, getEntry, getOnClosed, cancelPendingMount, retireTab, getRequestClose = () => null
 }) {
     const closing = new Map();
     const disposals = new WeakMap();
@@ -54,6 +54,15 @@ export function createSidePaneTabCloseOwner({
                 const result = await entry.handle?.requestClose?.();
                 if (result?.closed === false) return;
                 if (isDisposed() || getEntry(tabId) !== entry) return;
+            } else if (!entry && !options.discard) {
+                // 没挂载过的标签（恢复后还没显示的辅助对话）没有 handle 可问，由类型自己确认：
+                // 否则在「关闭其他 / 全部」里它们会不经确认就被删掉
+                const requestClose = getRequestClose(tab);
+                if (requestClose) {
+                    const result = await requestClose(tab);
+                    if (result?.closed === false) return;
+                    if (isDisposed() || getEntry(tabId)) return;
+                }
             }
             if (isDisposed()) return;
             const current = getTab(tabId);

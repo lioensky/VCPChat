@@ -225,6 +225,11 @@ html .side-code-editor-shell.is-wrapped .side-code-pre:where(.vcp-ui-scope, .vcp
     word-break: break-all;
 }
 
+/* 换行后一行代码会占好几行高，而行号固定一行一个：继续显示会越往下越对不上，换行时收起行号 */
+html .side-code-editor-shell.is-wrapped .side-code-gutter:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: none;
+}
+
 html .side-code-highlighted:where(.vcp-ui-scope, .vcp-ui-scope *) {
     font-family: inherit;
     font-size: inherit;

@@ -8,6 +8,8 @@
  * 'limit-only' 的类型（浏览器）不按隐藏时长休眠，只在超过上限时参与淘汰：销毁网页会丢掉表单、登录和后退栈，
  * 代价远高于重建其他视图（对照 ZCode browserTabResidencyPolicy.ts 只按数量淘汰）。
  * 'keep' 的视图不占 maxLiveViews 的名额，否则它们攒多了会把其他标签一切走就挤去休眠。
+ * 'limit-only' 的视图也不占 maxLiveViews，而是有自己的 maxLivePages：连开几个代码查看、终端不能把登录着的网页挤掉
+ * （ZCode 的浏览器驻留上限同样单独计数，其他标签类型不算在里面）。
  * 这里只做判断，不碰 DOM 和定时器，控制器负责执行和定时。
  */
 
@@ -15,6 +17,7 @@ export const DORMANCY_DEFAULTS = Object.freeze({
     hiddenMs: 5 * 60_000,
     otherTopicMs: 30_000,
     maxLiveViews: 8,
+    maxLivePages: 12,
     busyRetryMs: 60_000
 });
 
@@ -40,7 +43,7 @@ const byLeastRecentlyShown = (a, b) => (a.lastShownAt - b.lastShownAt)
  * @returns {{ release: Array<{ tabId: string, reason: 'hidden' | 'other-topic' | 'view-limit' }>, nextCheckAt: number | null }}
  */
 export function selectDormantViews(candidates, options) {
-    const { now, hiddenMs, otherTopicMs, maxLiveViews, busyRetryMs } = { ...DORMANCY_DEFAULTS, ...options };
+    const { now, hiddenMs, otherTopicMs, maxLiveViews, maxLivePages, busyRetryMs } = { ...DORMANCY_DEFAULTS, ...options };
     const release = [];
     const released = new Set();
     let nextCheckAt = null;
@@ -61,18 +64,22 @@ export function selectDormantViews(candidates, options) {
         }
     }
 
-    let live = candidates.filter(candidate => candidate.dormancy !== 'keep').length - released.size;
-    if (live > maxLiveViews) {
-        const victims = candidates
+    const evictOver = (pool, limit) => {
+        let live = pool.filter(candidate => !released.has(candidate.tabId)).length;
+        if (live <= limit) return;
+        const victims = pool
             .filter(candidate => sleepable(candidate) && !candidate.busy && !released.has(candidate.tabId))
             .sort(byLeastRecentlyShown);
         for (const victim of victims) {
-            if (live <= maxLiveViews) break;
+            if (live <= limit) break;
             release.push({ tabId: victim.tabId, reason: 'view-limit' });
+            released.add(victim.tabId);
             live -= 1;
         }
         // 超出上限但剩下的都在忙：过一会儿再看
-        if (live > maxLiveViews && candidates.some(candidate => sleepable(candidate) && candidate.busy)) later(now + busyRetryMs);
-    }
+        if (live > limit && pool.some(candidate => sleepable(candidate) && candidate.busy)) later(now + busyRetryMs);
+    };
+    evictOver(candidates.filter(candidate => candidate.dormancy !== 'keep' && candidate.dormancy !== 'limit-only'), maxLiveViews);
+    evictOver(candidates.filter(candidate => candidate.dormancy === 'limit-only'), maxLivePages);
     return { release, nextCheckAt };
 }

@@ -244,7 +244,7 @@ test('policy: keep views do not take places under the live-view limit', () => {
     assert.deepEqual(release, []);
 });
 
-test('policy: limit-only views never sleep for being hidden, only for the live-view limit', () => {
+test('policy: limit-only views never sleep for being hidden, only for their own page limit', () => {
     const now = 60 * 60_000;
     const hiddenLong = selectDormantViews([
         candidate('browser', { dormancy: 'limit-only', hiddenSince: 0 })
@@ -255,8 +255,19 @@ test('policy: limit-only views never sleep for being hidden, only for the live-v
         candidate('browser-old', { dormancy: 'limit-only', lastShownAt: 1 }),
         candidate('browser-new', { dormancy: 'limit-only', lastShownAt: 2 }),
         candidate('shown', { shown: true, hiddenSince: null, lastShownAt: 3 })
-    ], { now, maxLiveViews: 2 });
+    ], { now, maxLivePages: 1 });
     assert.deepEqual(overLimit.release, [{ tabId: 'browser-old', reason: 'view-limit' }]);
+});
+
+test('policy: opening many code and terminal tabs never pushes a live web page out', () => {
+    const now = 60_000;
+    const views = Array.from({ length: 10 }, (_, i) => candidate(`code-${i}`, { lastShownAt: 10 + i, hiddenSince: now }));
+    const result = selectDormantViews([
+        candidate('browser', { dormancy: 'limit-only', lastShownAt: 1 }),
+        ...views
+    ], { now, maxLiveViews: 8 });
+    assert.equal(result.release.some(entry => entry.tabId === 'browser'), false, 'the oldest view is a page, but it is not evicted');
+    assert.deepEqual(result.release.map(entry => entry.tabId), ['code-0', 'code-1']);
 });
 
 test('collapsing the pane does not put the current tab to sleep', async () => {

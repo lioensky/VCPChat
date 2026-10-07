@@ -142,3 +142,30 @@ test('close others mounts only the tab that stays', async t => {
     assert.deepEqual(mounted, ['keep']);
     assert.equal(ctrl.getSnapshot().activeTabId, 'keep');
 });
+
+test('closing a restored side chat that was never shown still asks first, and a cancel keeps it', async t => {
+    const dom = new JSDOM('<main class="main-content"></main><aside id="pane"><div id="tabs"></div><div id="content"><section class="side-pane-view" id="sidePaneViewNotifications"></section></div></aside>');
+    const doc = dom.window.document;
+    const asked = [];
+    const deleted = [];
+    const ctrl = createSidePaneController({
+        root: doc.getElementById('pane'),
+        tabListElement: doc.getElementById('tabs'),
+        contentContainer: doc.getElementById('content'),
+        tabTypes: [defineChatTabType({
+            provider: { mountTab: async () => ({ dispose: async () => {}, focus() {}, requestClose: async () => ({ closed: true }) }) },
+            requestClose: async descriptor => { asked.push(descriptor.id); return { closed: descriptor.id !== 'keep-me' }; },
+            onClosed: descriptor => { deleted.push(descriptor.id); }
+        })]
+    });
+    t.after(() => { ctrl.dispose?.(); dom.window.close(); });
+    ctrl.setParent(parentOf('a'));
+    await ctrl.openTab(sideChat('shown', 'a'));
+    await ctrl.restoreTabs([sideChat('keep-me', 'a'), sideChat('drop-me', 'a')]);
+
+    await ctrl.closeAllTabs();
+
+    assert.deepEqual(asked.sort(), ['drop-me', 'keep-me'], 'unmounted side chats are asked through the type');
+    assert.deepEqual(deleted.sort(), ['drop-me', 'shown']);
+    assert.ok(ctrl.getSnapshot().tabs.some(tab => tab.id === 'keep-me'), 'cancelling keeps the tab and its history');
+});

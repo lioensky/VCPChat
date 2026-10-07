@@ -175,11 +175,7 @@ export function createSideChatWiring({
             return null;
         }
 
-        const handle = await getController().openTab({ kind: 'chat', descriptor });
-        if (options?.reference && handle?.addReference) {
-            handle.addReference(options.reference);
-        }
-        return handle;
+        return getController().openTab({ kind: 'chat', descriptor });
     }
 
     async function openSideChat(options = {}) {
@@ -219,9 +215,12 @@ export function createSideChatWiring({
             }
         }
 
-        // 同一父会话下并发的创建请求合并为一次，避免连点产生多个子会话
-        return dedupeSideChatCreation(`${currentItem.id}:${currentTopicId}`,
+        // 同一父会话下并发的创建请求合并为一次，避免连点产生多个子会话。
+        // 引用由每个调用方在创建完成后各自加上：合并进来的第二次「在侧栏提问」不能把自己的引用丢掉（同 ZCode SessionPane）
+        const handle = await dedupeSideChatCreation(`${currentItem.id}:${currentTopicId}`,
             () => createSideChat(options, currentItem, currentTopicId));
+        if (options?.reference && handle?.addReference) handle.addReference(options.reference);
+        return handle;
     }
 
     async function restoreSessions(agentId, parentTopicId) {
@@ -246,7 +245,9 @@ export function createSideChatWiring({
                 const hasPendingInput = !!input.draft || (Array.isArray(input.references) && input.references.length > 0);
                 if (storedDraft.ok && !hasPendingInput && typeof chatAPI?.getChatHistory === 'function') {
                     const childHistory = await chatAPI.getChatHistory(childAgentId, childTopicId);
-                    if (Array.isArray(childHistory) && childHistory.length === 0) {
+                    // 读历史期间这个子话题可能刚被新建或打开（来回切话题时并发的恢复），那就不是"空的旧侧聊"
+                    const openedMeanwhile = getController().getSnapshot().tabs.some(t => t.descriptor?.child?.topicId === childTopicId);
+                    if (!openedMeanwhile && Array.isArray(childHistory) && childHistory.length === 0) {
                         const removed = await deleteSideChatChild({ electronAPI: chatAPI, agentId: childAgentId, childTopicId });
                         if (removed.ok) sideChatOwner.forgetDraft(item);
                         else console.warn('[SideChat] Failed to clean up empty side chat:', removed.message);
@@ -315,6 +316,30 @@ export function createSideChatWiring({
 
 
     const selectionEntry = win.openSideChatWithSelection;
+    // 还没显示过的辅助对话（恢复出来、没挂载）关闭前同样确认：有记录或草稿就问一句，和挂载后的 requestClose 一致
+    async function requestTabClose(descriptor) {
+        if (typeof uiHelper?.showConfirmDialog !== 'function') return { closed: true };
+        const agentId = descriptor?.child?.itemId || descriptor?.parent?.itemId;
+        const childTopicId = descriptor?.child?.topicId;
+        if (!agentId || !childTopicId) return { closed: true };
+        const stored = sideChatOwner.readDraft(descriptor);
+        const input = stored?.input || {};
+        let hasContent = !!input.draft || (Array.isArray(input.references) && input.references.length > 0);
+        if (!hasContent && typeof chatAPI?.getChatHistory === 'function') {
+            try {
+                const history = await chatAPI.getChatHistory(agentId, childTopicId);
+                // 读不出来时按有记录处理：宁可多问一句
+                hasContent = !Array.isArray(history) || history.length > 0;
+            } catch {
+                hasContent = true;
+            }
+        }
+        if (!hasContent) return { closed: true };
+        const confirmed = await uiHelper.showConfirmDialog(
+            `关闭「${descriptor.title || '辅助对话'}」会删除这段辅助对话的全部记录，无法恢复。`,
+            '关闭辅助对话', '关闭并删除', '取消', true);
+        return confirmed ? { closed: true } : { closed: false, reason: 'USER_CANCELED' };
+    }
     async function onTabClosed(descriptor) {
         const agentId = descriptor?.child?.itemId || descriptor?.parent?.itemId;
         const childTopicId = descriptor?.child?.topicId;
@@ -324,7 +349,7 @@ export function createSideChatWiring({
         else console.warn('[SideChat] Failed to delete closed side chat:', result.message);
     }
     return Object.freeze({
-        provider: sideChatOwner, openSideChat, restoreSessions, onTabClosed,
+        provider: sideChatOwner, openSideChat, restoreSessions, onTabClosed, requestTabClose,
         dispose() {
             sideChatOwner.dispose();
             if (win.openSideChatWithSelection === selectionEntry) {

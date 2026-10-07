@@ -116,6 +116,8 @@ export async function mountSideChatSurface(container, {
     let isDisposed = false;
     let isHistoryLoaded = false;
     let isDeletingMessage = false;
+    // 重新回复先存截短的历史再发送：这段 await 期间还没有 activeSendController，另起的发送会和它撞车
+    let isRegenerating = false;
     let isComposing = false;
     let activeOperation = null;
     let activeSendController = null;
@@ -359,7 +361,7 @@ export async function mountSideChatSurface(container, {
     const onSubmit = async (event) => {
         event?.preventDefault?.();
         // 还在生成时不再起第二次发送：它失败后的清理会清掉正在进行的那次，停止按钮随之消失
-        if (isDisposed || !isHistoryLoaded || isDeletingMessage || activeSendController) return;
+        if (isDisposed || !isHistoryLoaded || isDeletingMessage || isRegenerating || activeSendController) return;
         if (!currentModel) {
             updateStatus('请先选择模型', 'error');
             return;
@@ -495,7 +497,16 @@ export async function mountSideChatSurface(container, {
 
     // 重新回复：截掉这条回答对应的提问及其后的所有消息，再用侧栏自己的模型和上下文把提问重新发出
     async function regenerate(assistantId) {
-        if (isDisposed || !isHistoryLoaded || isDeletingMessage || form.hasAttribute('aria-busy')) return;
+        if (isDisposed || !isHistoryLoaded || isDeletingMessage || isRegenerating || activeSendController || form.hasAttribute('aria-busy')) return;
+        isRegenerating = true;
+        try {
+            await regenerateNow(assistantId);
+        } finally {
+            isRegenerating = false;
+        }
+    }
+
+    async function regenerateNow(assistantId) {
         if (!currentModel) {
             updateStatus('请先选择模型', 'error');
             return;
@@ -543,7 +554,7 @@ export async function mountSideChatSurface(container, {
     submitInteractiveContent = (text) => {
         if (isDisposed) return;
         const notify = (message) => chatCapabilities?.uiHelper?.showToastNotification?.(message, 'warning');
-        if (activeSendController || isDeletingMessage || !isHistoryLoaded) {
+        if (activeSendController || isRegenerating || isDeletingMessage || !isHistoryLoaded) {
             notify('辅助对话正在处理上一条消息，请稍后再点。');
             return;
         }

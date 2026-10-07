@@ -87,3 +87,31 @@ test('startup restores the saved layout against the current conversation: a pane
         win.close();
     }
 });
+
+test('a never-shown side chat asks before its history is deleted, and an empty one closes quietly', async () => {
+    const { JSDOM } = await import('jsdom');
+    const { createSideChatWiring } = await import('../modules/renderer/sideChatWiring.js');
+    const dom = new JSDOM('<!doctype html><body></body>', { url: 'http://localhost/' });
+    const confirms = [];
+    let answer = false;
+    const histories = { full: [{ id: 'm1', role: 'user', content: 'hi' }], empty: [] };
+    const chatAPI = { getChatHistory: async (_agentId, topicId) => histories[topicId] };
+    const uiHelper = { showConfirmDialog: async message => { confirms.push(message); return answer; }, showToastNotification() {} };
+    const wiring = createSideChatWiring({
+        doc: dom.window.document, win: dom.window, chatAPI, chatRepository: null, chatManager: null, uiHelper,
+        createRenderer: () => null, selectedItemRef: { get: () => null }, topicIdRef: { get: () => 'topic-1' },
+        historyRef: { get: () => [] }, getController: () => ({ getSnapshot: () => ({ tabs: [] }) })
+    });
+    try {
+        const descriptor = topicId => ({ id: `side-${topicId}`, title: '辅助对话 1', parent: { itemId: 'agent-1', topicId: 'topic-1' }, child: { itemId: 'agent-1', topicId } });
+        assert.deepEqual(await wiring.requestTabClose(descriptor('full')), { closed: false, reason: 'USER_CANCELED' });
+        assert.equal(confirms.length, 1);
+        answer = true;
+        assert.deepEqual(await wiring.requestTabClose(descriptor('full')), { closed: true });
+        assert.deepEqual(await wiring.requestTabClose(descriptor('empty')), { closed: true });
+        assert.equal(confirms.length, 2, 'an empty side chat closes without a question');
+    } finally {
+        wiring.dispose?.();
+        dom.window.close();
+    }
+});

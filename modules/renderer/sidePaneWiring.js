@@ -71,7 +71,7 @@ export function initWorkspaceSidePane({
         openModelTrajectory: (options = {}) => modelTrajectory.provider.openModelTrajectoryTab(options)
     }));
     const terminal = defineTerminalTabType({ ...deps, onOpenUrl: url => browser.provider.openBrowserTab({ url, forceNew: true }) });
-    for (const definition of [defineNotificationsTabType(), defineChatTabType({ provider: sideChat.provider, openSideChat: sideChat.openSideChat, onClosed: sideChat.onTabClosed }), codeViewer, browser, terminal, toolOutput, planDetail, modelTrajectory]) {
+    for (const definition of [defineNotificationsTabType(), defineChatTabType({ provider: sideChat.provider, openSideChat: sideChat.openSideChat, onClosed: sideChat.onTabClosed, requestClose: sideChat.requestTabClose }), codeViewer, browser, terminal, toolOutput, planDetail, modelTrajectory]) {
         controller.registerTabType(definition);
     }
     // 焦点在侧栏网页里时按键到不了这个窗口，主进程截下副屏快捷键转过来

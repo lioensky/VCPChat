@@ -657,6 +657,7 @@ export function createSidePaneController({
             return occurrence ? occurrence.onClosed : getTabType(tab.kind)?.onClosed;
         },
         cancelPendingMount,
+        getRequestClose: tab => getTabType(tab.kind)?.requestClose || null,
         retireTab(tab, entry, options, onFocusMoved) {
             // Read current focus after authorization; the user may have moved elsewhere while it waited.
             const ownedFocus = focus.ownsFocus();

@@ -237,3 +237,41 @@ test('a failed or hung model refresh falls back to the cache instead of failing 
     }, { timeoutMs: 20 });
     assert.deepEqual(hung.ids, []);
 });
+
+test('a second ask made while the first side chat is still being created keeps its own reference', async () => {
+    const { createSideChatWiring } = await import('../modules/renderer/sideChatWiring.js');
+    const dom = new JSDOM('<!doctype html><body></body>');
+    const parent = { itemType: 'agent', itemId: 'agent', topicId: 'parent' };
+    const added = [];
+    const handle = { addReference: reference => added.push(reference.text), focus() {} };
+    let releaseChild;
+    let created = 0;
+    const controller = {
+        getSnapshot: () => ({ parent, activeTabId: null, tabs: [] }),
+        async openTab() { return handle; },
+        getTabHandle: () => null,
+        setVisible() {}
+    };
+    const chatAPI = {
+        createSideChatChild: () => { created += 1; return new Promise(resolve => { releaseChild = () => resolve({ success: true, topicId: 'child-1' }); }); },
+        saveSideChatMetadata: async metadata => ({ success: true, metadata })
+    };
+    const wiring = createSideChatWiring({
+        doc: dom.window.document, win: dom.window, chatAPI, chatRepository: null, chatManager: null, uiHelper: null,
+        createRenderer: () => null,
+        selectedItemRef: { get: () => ({ id: 'agent', type: 'agent', name: 'Agent', config: { model: 'm' } }) },
+        topicIdRef: { get: () => 'parent' }, historyRef: { get: () => [] }, getController: () => controller
+    });
+    try {
+        const first = dom.window.openSideChatWithSelection({ selectedText: '引用 A' });
+        const second = dom.window.openSideChatWithSelection({ selectedText: '引用 B' });
+        await new Promise(resolve => setTimeout(resolve, 0));
+        releaseChild();
+        await Promise.all([first, second]);
+        assert.equal(created, 1, 'the two asks share one side chat');
+        assert.deepEqual(added.sort(), ['引用 A', '引用 B']);
+    } finally {
+        wiring.dispose?.();
+        dom.window.close();
+    }
+});

@@ -59,19 +59,21 @@ export function createCodeViewerSideProvider({
          * @param {{ scope?: object }} [context] 控制器给的挂载上下文；scope 是这次挂载的 view scope
          * @returns {Promise<Object>} Tab lifecycle handle
          */
-        async mountTab(tab, viewElement, { scope: viewScope = null } = {}) {
+        async mountTab(tab, viewElement, { scope: viewScope = null, restoredState = null } = {}) {
             viewElement.innerHTML = '';
             // 这次挂载的监听和定时器都归 own：控制器释放 view 或调用 dispose 时一起拆掉
             const own = createSidePaneRootScope(viewScope, 'code-viewer');
             const disposed = () => !own.active;
-            let isWrapped = false;
+            // 休眠后重新挂载：换行、视图模式、工作区外读取的确认和滚动位置都照原样回来
+            let isWrapped = restoredState?.isWrapped === true;
 
             const payload = tab.payload || {};
-            let currentMode = payload.mode === 'diff' ? 'diff' : 'view';
+            const openedMode = payload.mode === 'diff' ? 'diff' : 'view';
+            let currentMode = restoredState?.mode === 'diff' || restoredState?.mode === 'view' ? restoredState.mode : openedMode;
             let currentCode = payload.code || '';
             const filePath = payload.filePath || '';
             const oldCode = payload.oldCode || '';
-            const newCode = payload.newCode ?? (currentMode === 'diff' ? currentCode : null);
+            const newCode = payload.newCode ?? (openedMode === 'diff' ? currentCode : null);
             const langMeta = detectLanguage(filePath || tab.title || payload.language, payload.language || 'plaintext');
             let currentLang = langMeta.lang;
             let currentTag = langMeta.tag;
@@ -131,6 +133,7 @@ export function createCodeViewerSideProvider({
             wrapBtn.title = '切换自动换行';
             wrapBtn.setAttribute('aria-label', '自动换行');
             wrapBtn.innerHTML = '<span class="vcp-ui-icon">wrap_text</span>';
+            wrapBtn.classList.toggle('active', isWrapped);
 
             // Copy Code Button
             const copyBtn = doc.createElement('button');
@@ -240,6 +243,7 @@ export function createCodeViewerSideProvider({
                 renderDiffView: (...args) => renderDiffView(...args)
             });
             const { setBodyMessage, renderCodeView, refreshView, reload } = editorOwner;
+            if (restoredState?.outsideWorkspaceAllowed === true) editorOwner.allowOutsideWorkspace();
 
             const diffViewOwner = createCodeViewerDiffView({
                 store,
@@ -327,6 +331,8 @@ export function createCodeViewerSideProvider({
                 await setupPicker();
             } else {
                 await refreshView();
+                if (Number.isFinite(restoredState?.scrollTop)) body.scrollTop = restoredState.scrollTop;
+                if (Number.isFinite(restoredState?.scrollLeft)) body.scrollLeft = restoredState.scrollLeft;
             }
             // 挂载途中被取消：控制器会丢掉这个视图，这里只清掉自己画的内容
             if (disposed()) {
@@ -343,6 +349,15 @@ export function createCodeViewerSideProvider({
                 },
                 getMode() {
                     return currentMode;
+                },
+                captureState() {
+                    return {
+                        isWrapped,
+                        mode: currentMode,
+                        outsideWorkspaceAllowed: editorOwner.outsideWorkspaceAllowed,
+                        scrollTop: body.scrollTop,
+                        scrollLeft: body.scrollLeft
+                    };
                 },
                 /** 文件标签重新读盘；片段和差异是快照，不受影响 */
                 reload() {

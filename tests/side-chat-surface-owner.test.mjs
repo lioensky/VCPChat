@@ -520,3 +520,51 @@ test('the side chat surface hangs under the view scope the controller passes and
     assert.equal(rendererDisposed, 1);
     dom.window.close();
 });
+
+test('a send started while regenerate is still saving the trimmed history is refused', async () => {
+    const dom = new JSDOM('<div id="sideContainer"></div>');
+    const doc = dom.window.document;
+    const container = doc.getElementById('sideContainer');
+    const base = createMockChatCapabilities();
+    const initial = [{ id: 'u1', role: 'user', content: 'question' }, { id: 'a1', role: 'assistant', content: 'answer' }];
+    base.setHistory(initial);
+    let releaseSave;
+    let saves = 0;
+    const caps = {
+        ...base,
+        repository: {
+            getHistory: async () => initial,
+            saveHistory: () => { saves += 1; return saves === 1 ? new Promise(resolve => { releaseSave = () => resolve({ success: true }); }) : Promise.resolve({ success: true }); }
+        },
+        createRenderer(options) {
+            const owned = base.createRenderer(options);
+            owned.renderer.removeMessageById = () => {};
+            return owned;
+        },
+        uiHelper: { showToastNotification() {} }
+    };
+    const descriptor = {
+        id: 'chat-regen', title: 'R', parent: { itemId: 'agent-1', topicId: 'p' },
+        child: { itemId: 'agent-1', topicId: 'c-regen' }, contextMode: 'blank', model: 'test-model'
+    };
+    const handle = await mountSideChatSurface(container, { descriptor, chatCapabilities: caps });
+    await new Promise(r => setTimeout(r, 20));
+    const list = container.querySelector('.side-chat-messages-container');
+    list.insertAdjacentHTML('beforeend', '<div class="message-item assistant" data-message-id="a1"><div class="details-and-bubble-wrapper"><div class="md-content">answer</div></div></div>');
+    list.querySelector('.message-item.assistant .md-content').dispatchEvent(new dom.window.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
+    doc.querySelector('#chatContextMenu [data-side-chat-action="regenerate"]').click();
+    await new Promise(r => setTimeout(r, 0));
+    assert.equal(saves, 1, 'regenerate is waiting on the save');
+
+    const textarea = container.querySelector('textarea');
+    textarea.value = 'typed meanwhile';
+    container.querySelector('form').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
+    await new Promise(r => setTimeout(r, 0));
+    releaseSave();
+    await new Promise(r => setTimeout(r, 20));
+    assert.equal(textarea.value, 'typed meanwhile', 'the typed text stays in the composer');
+    assert.equal(caps.getSentRequest()?.content, 'question', 'only the regenerated question was sent');
+
+    await handle.dispose();
+    dom.window.close();
+});

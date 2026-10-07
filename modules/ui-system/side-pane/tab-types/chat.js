@@ -73,8 +73,9 @@ export function sideChatTab(rawDescriptor, tabs = []) {
  * provider：mountTab(descriptor, view, ctx)，返回辅助对话 handle；ctx 原样转交控制器给的挂载上下文（含 view scope）。
  * openSideChat：新标签页入口；不传时不出现在新标签页里。
  * onClosed(descriptor)：标签关掉后调用，用来删掉子话题。
+ * requestClose(descriptor)：还没挂载的标签关闭前确认（挂着的由 handle.requestClose 确认），返回 { closed: false } 取消。
  */
-export function defineChatTabType({ provider, openSideChat = null, onClosed = null }) {
+export function defineChatTabType({ provider, openSideChat = null, onClosed = null, requestClose = null }) {
     return Object.freeze({
         kind: 'chat', label: '辅助对话', icon: 'chat_bubble', searchHint: '辅助对话',
         persist: false,
@@ -88,6 +89,7 @@ export function defineChatTabType({ provider, openSideChat = null, onClosed = nu
         provider: provider ? {
             mountTab: (payload, view, ctx) => provider.mountTab(payload.descriptor, view, ctx)
         } : null,
-        onClosed: typeof onClosed === 'function' ? tab => onClosed({ ...tab.descriptor }) : null
+        onClosed: typeof onClosed === 'function' ? tab => onClosed({ ...tab.descriptor }) : null,
+        requestClose: typeof requestClose === 'function' ? tab => requestClose({ ...tab.descriptor }) : null
     });
 }

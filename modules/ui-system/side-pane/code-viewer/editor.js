@@ -192,13 +192,20 @@ export function createCodeViewerEditor({
         body.appendChild(editorShell);
     }
 
-    async function refreshView({ force = false } = {}) {
+    async function refreshView({ force = false, keepScroll = false } = {}) {
+        // 重读同一个文件（再点一次文件名、点刷新）时停在原来的位置，不跳回第一行
+        const top = body.scrollTop;
+        const left = body.scrollLeft;
         const loaded = await loadFileContent({ force });
         if (loaded === false) return;
         if (store.currentMode === 'diff') {
             renderDiffView();
         } else {
             renderCodeView();
+        }
+        if (keepScroll) {
+            body.scrollTop = top;
+            body.scrollLeft = left;
         }
     }
 
@@ -208,7 +215,9 @@ export function createCodeViewerEditor({
         renderCodeView,
         refreshView,
         // 文件标签被重新打开或点了刷新：重新读盘
-        reload: () => refreshView({ force: true }),
+        reload: () => refreshView({ force: true, keepScroll: true }),
+        get outsideWorkspaceAllowed() { return outsideWorkspaceAllowed; },
+        allowOutsideWorkspace() { outsideWorkspaceAllowed = true; },
         dispose() { readToken++; }
     });
 }
