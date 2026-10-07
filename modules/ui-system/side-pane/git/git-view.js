@@ -77,6 +77,8 @@ export function mountGitView(host, {
     let aiLoadSeq = 0;
     let currentStatus = null;
     let loadError = null;
+    // 工作区列表读回来之前不能说「还没有工作区」：那是加载中
+    let workspacesLoaded = false;
     let loading = false;
     // 监听、推送订阅、右键菜单都归 own；宿主释放 scope 或调用 dispose 时一起拆掉
     const own = createSidePaneRootScope(scope, 'git-view');
@@ -285,6 +287,16 @@ export function mountGitView(host, {
         if (disposed()) return;
         refreshBtn.disabled = loading;
         refreshBtn.classList.toggle('spinning', loading);
+        // 先错误、再加载中、最后才是空（对照 ZCode GitPane）：读失败不能显示成「还没有工作区」叫用户去添加
+        if (loadError) {
+            showEmpty({ icon: 'error', title: '无法加载 Git 改动', description: `Git 返回错误：${loadError}`,
+                action: { label: '重试', run: retryLoad } });
+            return;
+        }
+        if (!workspacesLoaded) {
+            showEmpty({ title: '加载中', description: '正在读取当前工作区的 Git 状态和文件改动。' });
+            return;
+        }
         if (!workspaces.length) {
             showEmpty({
                 reason: 'no-workspace',
@@ -293,10 +305,6 @@ export function mountGitView(host, {
                 description: '添加一个 Git 项目目录后，就能在这里查看它的改动。',
                 action: { label: '添加工作区', run: () => addWorkspaceFlow() }
             });
-            return;
-        }
-        if (loadError) {
-            showEmpty({ reason: 'load-error', icon: 'error', title: '无法加载 Git 改动', description: `Git 返回错误：${loadError}` });
             return;
         }
         if (!currentStatus) {
@@ -424,12 +432,21 @@ export function mountGitView(host, {
         }
     }
 
+    function retryLoad() {
+        loadError = null;
+        if (workspacesLoaded && currentWorkspaceId) void refreshStatus({ quiet: false });
+        else { render(); void loadWorkspaces(); }
+    }
+
     async function loadWorkspaces({ preferPath = null } = {}) {
-        if (!api?.gitListWorkspaces) return;
+        if (!api?.gitListWorkspaces) { workspacesLoaded = true; render(); return; }
         try {
             const res = await api.gitListWorkspaces();
+            if (disposed()) return;
             if (!res?.success) throw new Error(res?.error || '加载工作区失败');
             workspaces = Array.isArray(res.data?.workspaces) ? res.data.workspaces : [];
+            workspacesLoaded = true;
+            loadError = null;
             const activeId = res.data?.activeWorkspaceId || null;
             wsSelect.innerHTML = '';
             workspaces.forEach(ws => {

@@ -44,7 +44,7 @@ function makeEnv({ runs, details, runningReloadMs = 60 }) {
     let unsubscribed = false;
     Object.defineProperty(dom.window.navigator, 'clipboard', { value: { writeText: async (text) => { state.copied.push(text); } } });
     const api = {
-        terminalListCommandRuns: async () => ({ success: true, data: state.runs }),
+        terminalListCommandRuns: async () => (state.listError ? { success: false, error: state.listError } : { success: true, data: state.runs }),
         terminalGetCommandRun: async (id) => {
             state.gets.push(id);
             return state.details[id] ? { success: true, data: state.details[id] } : { success: false, error: '这条命令记录已被清理。' };
@@ -294,5 +294,33 @@ test('a command that keeps printing is re-read at most once per interval, with o
     mock.timers.tick(800);
     await settle();
     assert.equal(state.gets.length, before + 1, 'no further reads without new output');
+    await handle.dispose();
+});
+
+test('a failed command list shows an error with a retry, not "no commands yet"', async () => {
+    const { provider, state, view } = makeEnv({ runs: RUNS, details: DETAILS });
+    state.listError = '终端服务未启动';
+    const handle = await provider.mountTab({ id: 'tool-output:main' }, view);
+    assert.equal(view.querySelector('.side-tool-output-empty').hidden, true);
+    const bar = view.querySelector('.side-tool-output-error');
+    assert.equal(bar.hidden, false);
+    assert.match(bar.textContent, /终端服务未启动/);
+
+    state.listError = '';
+    view.querySelector('.side-tool-output-error-retry').click();
+    await waitFor(() => bar.hidden && /^running tests…/.test(view.querySelector('.side-tool-output-text').textContent), { message: 'retry never loaded the command list' });
+    assert.match(view.querySelector('.side-tool-output-text').textContent, /^running tests…/);
+    await handle.dispose();
+});
+
+test('a failed reload while a command runs keeps the output on screen', async () => {
+    const { provider, state, view, fire } = makeEnv({ runs: RUNS, details: { ...DETAILS } });
+    const handle = await provider.mountTab({ id: 'tool-output:main' }, view);
+    const shown = view.querySelector('.side-tool-output-text').textContent;
+    assert.match(shown, /^running tests…/);
+    delete state.details.r2;
+    fire({ ...RUNS[0], updatedAt: Date.now() });
+    await waitFor(() => !view.querySelector('.side-tool-output-error').hidden, { message: 'the failed reload never surfaced' });
+    assert.equal(view.querySelector('.side-tool-output-text').textContent, shown, 'the last output stays');
     await handle.dispose();
 });

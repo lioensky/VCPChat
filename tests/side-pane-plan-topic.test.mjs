@@ -302,3 +302,33 @@ test('reveal focuses a todo or a section, opening it when collapsed', async () =
     handle.dispose();
     dom.window.close();
 });
+
+test('a background refresh with a filter on swaps the results in place instead of flashing "正在筛选…"', async () => {
+    const requests = [];
+    const { provider, tab, view, dom } = makeTopicEnv({ api: {
+        projectForgeSearchHistory(params) {
+            const request = Promise.withResolvers();
+            requests.push({ params, ...request });
+            return request.promise;
+        }
+    } });
+    const handle = await provider.mountTab(tab, view);
+    try {
+        [...view.querySelectorAll('.side-plan-file-btn')].find(button => button.querySelector('.side-plan-file-name').textContent === 'a.py').click();
+        requests[0].resolve({ success: true, data: [node(777, 2, 'a.py')] });
+        await new Promise(resolve => setTimeout(resolve, 20));
+        assert.ok(view.querySelector('[data-node-id="777"]'));
+
+        handle.focus(); // 切回标签：后台重读一次，筛选也跟着重跑
+        for (let i = 0; i < 100 && requests.length < 2; i++) await new Promise(resolve => setTimeout(resolve, 20));
+        assert.equal(requests.length, 2);
+        assert.doesNotMatch(view.querySelector('.side-plan-filter-results').textContent, /正在筛选/);
+        assert.ok(view.querySelector('[data-node-id="777"]'), 'the previous results stay while the new ones load');
+        requests[1].resolve({ success: true, data: [node(888, 2, 'a.py')] });
+        await new Promise(resolve => setTimeout(resolve, 20));
+        assert.ok(view.querySelector('[data-node-id="888"]'));
+    } finally {
+        handle.dispose();
+        dom.window.close();
+    }
+});

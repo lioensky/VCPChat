@@ -246,7 +246,11 @@ test('mountTab shows a retryable empty state when the project cannot be read', a
     const { provider, view } = makeEnv({ projectForgeGetProject: async () => ({ success: false, error: '工程不存在' }) });
     const handle = await provider.mountTab({ id: planTabId('zz'), payload: { projectId: 'zz' } }, view);
     assert.match(view.textContent, /工程不存在/);
-    assert.ok(view.querySelector('.side-plan-error button'));
+    const retry = view.querySelector('.side-plan-error button');
+    assert.ok(retry);
+    retry.click();
+    assert.equal(retry.disabled, true, 'the click shows right away that a retry is running');
+    assert.equal(retry.textContent, '正在重试…');
     handle.dispose();
 });
 

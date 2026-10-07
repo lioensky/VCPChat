@@ -214,6 +214,7 @@ export function createSideChatPersistence({
 
     async function loadHistoryFn() {
         updateStatus('正在加载历史...');
+        updateEmptyState({ historyPending: true });
         try {
             const res = await getSurface().loadHistory(
                 descriptor.child.itemId,
@@ -223,6 +224,10 @@ export function createSideChatPersistence({
             );
             if (store.isDisposed) return res;
             store.isHistoryLoaded = true;
+            if (!metadataSaveFailed) {
+                statusText.removeAttribute('tabindex');
+                statusText.removeAttribute('role');
+            }
             textarea.disabled = false;
             updateComposerState();
             updateEmptyState();
@@ -231,7 +236,10 @@ export function createSideChatPersistence({
         } catch (err) {
             if (store.isDisposed) return;
             store.isHistoryLoaded = false;
-            updateStatus(`加载历史失败：${err.message} (点击重试)`, 'error');
+            updateStatus(`加载历史失败：${err.message}（点击重试）`, 'error');
+            // 键盘也能重试：状态文字这时当按钮用
+            statusText.tabIndex = 0;
+            statusText.setAttribute('role', 'button');
             throw err;
         }
     }
@@ -247,7 +255,7 @@ export function createSideChatPersistence({
     });
 
     const onStatusKeydown = (event) => {
-        if (metadataSaveFailed && (event.key === 'Enter' || event.key === ' ')) {
+        if ((metadataSaveFailed || !store.isHistoryLoaded) && (event.key === 'Enter' || event.key === ' ')) {
             event.preventDefault();
             statusText.click();
         }

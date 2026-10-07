@@ -91,7 +91,7 @@ export function createCodeViewerPicker({
                 const res = await api.sourceListFiles(activeWorkspaceId);
                 if (store.isDisposed || token !== listToken) return;
                 if (!res?.success) {
-                    note.textContent = res?.error || '读取文件列表失败';
+                    showListError(res?.error || '读取文件列表失败');
                     return;
                 }
                 files = res.data?.files || [];
@@ -101,8 +101,19 @@ export function createCodeViewerPicker({
                 }
             } catch (err) {
                 if (store.isDisposed || token !== listToken) return;
-                note.textContent = `读取文件列表失败: ${err?.message || err}`;
+                showListError(`读取文件列表失败：${err?.message || err}`);
             }
+        }
+
+        // 换个工作区再换回来才会重读，太绕：出错时就地给一个重试
+        function showListError(message) {
+            note.textContent = message;
+            const retry = doc.createElement('button');
+            retry.type = 'button';
+            retry.className = 'side-code-picker-retry';
+            retry.textContent = '重试';
+            retry.addEventListener('click', () => { void loadFiles(); });
+            note.append(' ', retry);
         }
 
         async function openFile(rel) {
@@ -116,7 +127,7 @@ export function createCodeViewerPicker({
                 if (el.dataset.path === rel) el.setAttribute('aria-current', 'true');
                 else el.removeAttribute('aria-current');
             });
-            setBodyMessage('加载文件中...');
+            setBodyMessage('加载文件中…');
             try {
                 const res = await api.sourceReadFile(workspaceId, rel);
                 if (!isCurrent()) return;
@@ -150,7 +161,7 @@ export function createCodeViewerPicker({
                 }
             } catch (err) {
                 if (!isCurrent()) return;
-                setBodyMessage(`读取文件失败: ${err?.message || err}`, true);
+                setBodyMessage(`读取文件失败：${err?.message || err}`, true);
             }
         }
 
@@ -208,7 +219,8 @@ export function createCodeViewerPicker({
             if (!res?.success || workspaces.length === 0) {
                 wsSelect.disabled = true;
                 filterInput.disabled = true;
-                note.textContent = '还没有工作区，请先在 Git 标签页或设置中添加工作区';
+                // 读失败不能说成「还没有工作区」，那会让用户去添加一个已经有的工作区
+                note.textContent = res?.success ? '还没有工作区，请先在 Git 标签页或设置中添加工作区' : `读取工作区失败：${res?.error || '未知错误'}`;
                 return;
             }
             for (const ws of workspaces) {

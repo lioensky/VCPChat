@@ -3688,7 +3688,7 @@
         },
         {
           "file": "modules/renderer/side-chat/persistence.js",
-          "line": 239,
+          "line": 247,
           "kind": "custom-event-listener"
         },
         {
@@ -4202,8 +4202,18 @@
           "kind": "custom-event-listener"
         },
         {
+          "file": "modules/ui-system/side-pane/code-viewer/picker.js",
+          "line": 115,
+          "kind": "custom-event-listener"
+        },
+        {
           "file": "modules/ui-system/side-pane/git/cards.js",
-          "line": 230,
+          "line": 141,
+          "kind": "custom-event-listener"
+        },
+        {
+          "file": "modules/ui-system/side-pane/git/cards.js",
+          "line": 256,
           "kind": "custom-event-listener"
         },
         {
@@ -4213,7 +4223,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/git-view.js",
-          "line": 263,
+          "line": 265,
           "kind": "custom-event-listener"
         },
         {
@@ -4223,17 +4233,17 @@
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 355,
+          "line": 354,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 379,
+          "line": 378,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 781,
+          "line": 780,
           "kind": "custom-event-listener"
         },
         {
@@ -4308,32 +4318,32 @@
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 686,
+          "line": 635,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 713,
+          "line": 692,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 732,
+          "line": 719,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 753,
+          "line": 738,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 784,
+          "line": 759,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 799,
+          "line": 968,
           "kind": "custom-event-listener"
         },
         {
@@ -5156,7 +5166,7 @@
         },
         {
           "file": "modules/renderer/side-chat/persistence.js",
-          "line": 239,
+          "line": 247,
           "kind": "custom-event-listener",
           "match": "statusText.addEventListener('click'"
         },
@@ -5773,8 +5783,20 @@
           "match": "read.addEventListener('click'"
         },
         {
+          "file": "modules/ui-system/side-pane/code-viewer/picker.js",
+          "line": 115,
+          "kind": "custom-event-listener",
+          "match": "retry.addEventListener('click'"
+        },
+        {
           "file": "modules/ui-system/side-pane/git/cards.js",
-          "line": 230,
+          "line": 141,
+          "kind": "custom-event-listener",
+          "match": "retry.addEventListener('click'"
+        },
+        {
+          "file": "modules/ui-system/side-pane/git/cards.js",
+          "line": 256,
           "kind": "custom-event-listener",
           "match": "row.addEventListener('click'"
         },
@@ -5786,7 +5808,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/git-view.js",
-          "line": 263,
+          "line": 265,
           "kind": "custom-event-listener",
           "match": "btn.addEventListener('click'"
         },
@@ -5798,19 +5820,19 @@
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 355,
+          "line": 354,
           "kind": "custom-event-listener",
           "match": "more.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 379,
+          "line": 378,
           "kind": "custom-event-listener",
           "match": "head.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 781,
+          "line": 780,
           "kind": "custom-event-listener",
           "match": "item.addEventListener('click'"
         },
@@ -5900,37 +5922,37 @@
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 686,
-          "kind": "custom-event-listener",
-          "match": "headBtn.addEventListener('click'"
-        },
-        {
-          "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 713,
-          "kind": "custom-event-listener",
-          "match": "pick.addEventListener('click'"
-        },
-        {
-          "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 732,
-          "kind": "custom-event-listener",
-          "match": "pick.addEventListener('click'"
-        },
-        {
-          "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 753,
-          "kind": "custom-event-listener",
-          "match": "link.addEventListener('click'"
-        },
-        {
-          "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 784,
+          "line": 635,
           "kind": "custom-event-listener",
           "match": "retry.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 799,
+          "line": 692,
+          "kind": "custom-event-listener",
+          "match": "headBtn.addEventListener('click'"
+        },
+        {
+          "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
+          "line": 719,
+          "kind": "custom-event-listener",
+          "match": "pick.addEventListener('click'"
+        },
+        {
+          "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
+          "line": 738,
+          "kind": "custom-event-listener",
+          "match": "pick.addEventListener('click'"
+        },
+        {
+          "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
+          "line": 759,
+          "kind": "custom-event-listener",
+          "match": "link.addEventListener('click'"
+        },
+        {
+          "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
+          "line": 968,
           "kind": "custom-event-listener",
           "match": "retry.addEventListener('click'"
         },
@@ -7339,7 +7361,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/cards.js",
-          "line": 248,
+          "line": 274,
           "kind": "custom-event-listener"
         },
         {
@@ -7476,7 +7498,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/cards.js",
-          "line": 248,
+          "line": 274,
           "kind": "custom-event-listener",
           "match": "row.addEventListener('contextmenu'"
         },
@@ -15443,7 +15465,7 @@
         },
         {
           "file": "modules/renderer/side-chat/persistence.js",
-          "line": 255,
+          "line": 263,
           "kind": "custom-event-listener"
         },
         {
@@ -15588,7 +15610,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 380,
+          "line": 379,
           "kind": "custom-event-listener"
         },
         {
@@ -15814,7 +15836,7 @@
         },
         {
           "file": "modules/renderer/side-chat/persistence.js",
-          "line": 255,
+          "line": 263,
           "kind": "custom-event-listener",
           "match": "statusText.addEventListener('keydown'"
         },
@@ -15988,7 +16010,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 380,
+          "line": 379,
           "kind": "custom-event-listener",
           "match": "head.addEventListener('keydown'"
         },
@@ -21659,14 +21681,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 947,
+          "line": 937,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 947,
+          "line": 937,
           "kind": "preload-subscription",
           "match": "api?.onModelTrajectoryChanged("
         }

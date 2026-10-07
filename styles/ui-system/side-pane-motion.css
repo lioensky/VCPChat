@@ -54,6 +54,9 @@ html .side-chat-model-popover[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) {
     }
 }
 
+/* 代码查看「加载文件中」前面的同步图标：原来没有对应的转动规则，图标是静止的 */
+html .side-code-loading .vcp-ui-icon.spin:where(.vcp-ui-scope, .vcp-ui-scope *) { animation: vcp-ui-spin 900ms linear infinite; }
+
 /* 减少动态效果：弹层直接出现，滑块直接到位，状态点不再呼吸，转圈的图标停住。
  * 这个文件排在侧栏样式最后，选择器写到和原规则一样具体就能盖住。 */
 @media (prefers-reduced-motion: reduce) {
@@ -69,7 +72,7 @@ html .side-chat-model-popover[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) {
 
     html .side-pane-launcher-tab-status[data-status]:where(.vcp-ui-scope, .vcp-ui-scope *),
     html .side-pane-launcher-notice[data-status] .side-pane-launcher-notice-dot:where(.vcp-ui-scope, .vcp-ui-scope *),
-    html :is(.side-traj-call.flash, .side-traj-pill .spin, .side-traj-icon-btn.loading .vcp-ui-icon, .side-traj-icon-btn.loading svg, .side-git-refresh-btn.spinning svg):where(.vcp-ui-scope, .vcp-ui-scope *) {
+    html :is(.side-traj-call.flash, .side-traj-pill .spin, .side-code-loading .vcp-ui-icon.spin, .side-traj-icon-btn.loading .vcp-ui-icon, .side-traj-icon-btn.loading svg, .side-git-refresh-btn.spinning svg):where(.vcp-ui-scope, .vcp-ui-scope *) {
         animation: none;
     }
 }

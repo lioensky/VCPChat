@@ -101,14 +101,18 @@ export function createCodeViewerEditor({
     async function loadFileContent({ force = false } = {}) {
         if (!readFile || (fileLoaded && !force)) return true;
         const token = ++readToken;
-        body.innerHTML = '<div class="side-code-loading"><span class="vcp-ui-icon spin" aria-hidden="true">sync</span> 加载文件中...</div>';
+        // 重读已经显示着的文件：内容留在原处，读完原地换掉；先清成一行「加载文件中」会让整页缩下去再撑开、滚动跳回去
+        const refreshingShown = fileLoaded;
+        if (refreshingShown) body.setAttribute('aria-busy', 'true');
+        else body.innerHTML = '<div class="side-code-loading"><span class="vcp-ui-icon spin" aria-hidden="true">sync</span> 加载文件中…</div>';
         let result;
         try {
             result = await readFile({ allowOutsideWorkspace: outsideWorkspaceAllowed });
         } catch (err) {
-            result = { ok: false, error: `读取文件失败: ${err?.message || err}` };
+            result = { ok: false, error: `读取文件失败：${err?.message || err}` };
         }
         if (store.isDisposed || token !== readToken) return false;
+        if (refreshingShown) body.removeAttribute('aria-busy');
         if (!result?.ok) {
             // 失败时不保留旧内容，免得复制/插入拿到已经不存在的文件内容
             store.currentCode = '';

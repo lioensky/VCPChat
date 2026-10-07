@@ -499,3 +499,29 @@ test('a file tab keeps its place on reload and its wrap, mode and consent after 
         dom.window.close();
     }
 });
+
+test('reloading a file that is on screen keeps it visible until the new text arrives', async () => {
+    const dom = new JSDOM('<section id="view"></section>');
+    const doc = dom.window.document;
+    const view = doc.getElementById('view');
+    let gate = null;
+    const provider = createCodeViewerSideProvider({ document: doc, uiHelper: null, sidePaneController: null, api: {
+        async getTextContent() { if (gate) await gate; return { text: 'line one' }; }
+    } });
+    const handle = await provider.mountTab({ title: 'notes.txt', payload: { filePath: 'C:/proj/notes.txt' } }, view);
+    try {
+        assert.match(view.querySelector('.side-code-pre').textContent, /line one/);
+        const pending = Promise.withResolvers();
+        gate = pending.promise;
+        const reloading = handle.reload();
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(view.querySelector('.side-code-loading'), null, 'no one-line loading row in place of the file');
+        assert.ok(view.querySelector('.side-code-pre'), 'the file stays up while it is re-read');
+        pending.resolve();
+        await reloading;
+        assert.match(view.querySelector('.side-code-pre').textContent, /line one/);
+    } finally {
+        handle.dispose();
+        dom.window.close();
+    }
+});

@@ -449,4 +449,7 @@ html .side-code-empty:where(.vcp-ui-scope, .vcp-ui-scope *) {
     text-align: center;
 }
 
-
+/* 文件列表读失败时的「重试」：和备注文字同一行，链接样式 */
+html .side-code-picker-retry:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    border: 0; padding: 0; background: none; color: var(--vcp-ui-accent, currentColor); font: inherit; text-decoration: underline; cursor: pointer;
+}

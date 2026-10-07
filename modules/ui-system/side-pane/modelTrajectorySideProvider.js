@@ -129,7 +129,8 @@ export function createModelTrajectorySideProvider({
             let conversationLabel = '';
             let data = { records: [], truncated: false, total: 0 };
             let items = [];
-            let loading = false;
+            // 挂载时还没确定话题，先算加载中：否则订阅推送的那一下会闪出「请先选择智能体和话题」
+            let loading = true;
             let loadError = '';
             let loadErrorCode = '';
             let loadSeq = 0;
@@ -553,14 +554,13 @@ export function createModelTrajectorySideProvider({
                     state.classList.add('error');
                     state.textContent = '';
                     state.append(h('p', '', '读取调用轨迹失败'), h('p', 'side-traj-state-detail', loadError));
-                } else if (!sessionKey) {
-                    stateKey = 'no-conversation';
-                    state.hidden = false;
-                    state.textContent = '请先在主聊天里选择一个智能体和话题。';
                 } else if (loading && records.length === 0) {
                     stateKey = 'loading';
                     state.hidden = false;
                     state.textContent = '正在加载调用轨迹…';
+                } else if (!sessionKey) {
+                    state.hidden = false;
+                    state.textContent = '请先在主聊天里选择一个智能体和话题。';
                 } else if (records.length === 0) {
                     stateKey = 'empty';
                     state.hidden = false;

@@ -27,12 +27,13 @@ export function createSideChatComposerState({
         onStatusChange?.({ text, type, code });
     }
 
-    function updateEmptyState() {
+    // 历史还没读回来（或读失败）时不显示「辅助对话」引导：那时不是空对话，消息随后才出来
+    function updateEmptyState({ historyPending = false } = {}) {
         if (!root) return;
         const emptyState = root.querySelector('.side-chat-empty-state');
         if (!emptyState) return;
         const messageItems = root.querySelectorAll('.message-item');
-        emptyState.hidden = messageItems.length > 0;
+        emptyState.hidden = historyPending || messageItems.length > 0;
     }
 
     function updateComposerState() {

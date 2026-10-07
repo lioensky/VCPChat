@@ -145,7 +145,10 @@ export function createToolOutputSideProvider({
             const errorText = h('span', 'side-tool-output-error-text');
             const retryBtn = h('button', 'side-tool-output-error-retry', '重试');
             retryBtn.type = 'button';
-            own.listen(retryBtn, 'click', () => { void loadSelected(); });
+            own.listen(retryBtn, 'click', () => {
+                if (listError) { listError = ''; renderOutput(); commandRunsSource?.invalidate?.(); }
+                else void loadSelected();
+            });
             errorBar.append(errorText, retryBtn);
             const notice = h('div', 'side-tool-output-notice');
             notice.hidden = true;
@@ -160,6 +163,8 @@ export function createToolOutputSideProvider({
             let manual = Boolean(requestedRunId);
             let detail = null;
             let loadError = '';
+            // 命令列表本身读失败（不是某条输出读失败）：不能显示成「还没有命令记录」
+            let listError = '';
             let follow = true;
             let previousTop = 0;
             let loadSeq = 0;
@@ -229,14 +234,16 @@ export function createToolOutputSideProvider({
 
             const renderOutput = () => {
                 const hasRuns = runs.length > 0;
-                empty.hidden = hasRuns;
-                empty.textContent = hasRuns ? '' : '还没有命令记录。让管家用 PowerShellExecutor 跑一条命令，输出会显示在这里。';
+                // 先错误、再加载中、最后才是空：列表还没回来或者读失败时都不是「没有命令」
+                empty.hidden = hasRuns || Boolean(listError);
+                empty.textContent = hasRuns ? '' : (seeded ? '还没有命令记录。让管家用 PowerShellExecutor 跑一条命令，输出会显示在这里。' : '加载中…');
                 outputWrap.hidden = !hasRuns;
                 notice.hidden = !detail?.truncated;
                 if (detail?.truncated) notice.textContent = '输出过长，只显示最后一部分。完整内容请在终端里查看。';
                 copyBtn.disabled = !detail?.output;
-                errorBar.hidden = !loadError;
-                errorText.textContent = loadError;
+                const shownError = hasRuns ? loadError : listError;
+                errorBar.hidden = !shownError;
+                errorText.textContent = shownError;
                 if (!detail) { output.textContent = hasRuns ? (loadError ? '' : '加载中…') : ''; return; }
                 if (!follow) return; // 用户在翻看上面的内容：冻结输出，回到底部时再补上
                 output.textContent = detail.output || (detail.status === 'running' ? '（暂无输出）' : '（没有输出）');
@@ -269,6 +276,9 @@ export function createToolOutputSideProvider({
                 let res;
                 try {
                     res = await api?.terminalGetCommandRun?.(selectedId);
+                } catch (error) {
+                    // IPC 直接抛错也要落到错误条上，不能停在「加载中…」
+                    res = { success: false, error: error?.message || String(error) };
                 } finally {
                     loadInFlight = false;
                 }
@@ -278,7 +288,7 @@ export function createToolOutputSideProvider({
                     detail = res.data;
                     loadError = '';
                 } else {
-                    detail = null;
+                    // 读失败不清掉已经显示的输出（命令还在跑时每秒都在读，偶尔一次失败不该把整屏输出换成错误）
                     loadError = res?.error || '读取命令输出失败';
                 }
                 renderAll();
@@ -318,14 +328,15 @@ export function createToolOutputSideProvider({
             }
 
             // 数据源每次变化都给整份列表；变了的那条是新对象，其余保持原样，据此判断要不要重新读输出
-            const onRuns = ({ status, data }) => {
+            const onRuns = ({ status, data, error }) => {
                 if (disposed()) return;
                 if (seeded && suspended) {
-                    hiddenUpdate = { status, data };
+                    hiddenUpdate = { status, data, error };
                     return;
                 }
                 const previous = runs;
                 runs = Array.isArray(data) ? data : [];
+                listError = status === 'error' ? (error || '读取命令记录失败') : '';
                 if (!seeded) {
                     if (status === 'ready' || status === 'error') seeding = seed();
                     else renderPicker();

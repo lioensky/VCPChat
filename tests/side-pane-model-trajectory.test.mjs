@@ -523,3 +523,16 @@ test('clearing asks through the app dialog, not window.confirm, and clears the c
     await waitFor(() => env.state.cleared.length > 0, { message: 'nothing cleared' });
     assert.deepEqual(env.state.cleared, ['agent1__t1'], 'only the conversation shown when Clear was clicked is cleared');
 });
+
+test('while the tab is still subscribing it says it is loading, not that no conversation is selected', async () => {
+    const { provider, view, api } = makeEnv();
+    const watch = Promise.withResolvers();
+    api.modelTrajectoryWatch = () => watch.promise;
+    const mounting = provider.mountTab({ id: 'model-trajectory:main' }, view);
+    await Promise.resolve();
+    assert.equal(view.querySelector('.side-traj-state').textContent, '正在加载调用轨迹…');
+    watch.resolve({ success: true });
+    const handle = await mounting;
+    assert.notEqual(view.querySelector('.side-traj-state').textContent, '请先在主聊天里选择一个智能体和话题。');
+    handle.dispose();
+});

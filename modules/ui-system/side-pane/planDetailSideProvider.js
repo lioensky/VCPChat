@@ -630,7 +630,11 @@ export function createPlanDetailSideProvider({
             function renderFilterResults() {
                 const box = h('div', 'side-plan-filter-results');
                 if (filterError) {
-                    box.appendChild(h('div', 'side-plan-warning', `筛选失败：${filterError}`));
+                    const warning = h('div', 'side-plan-warning', `筛选失败：${filterError}`);
+                    const retry = button('zc-btn zc-btn-ghost side-plan-retry', '重试');
+                    retry.addEventListener('click', () => { void runSearch(); });
+                    warning.appendChild(retry);
+                    box.appendChild(warning);
                     return box;
                 }
                 if (!filterRows) {
@@ -781,11 +785,7 @@ export function createPlanDetailSideProvider({
                     // 没有工程：计划页给出原因，Git 页照常可用
                     const box = h('div', 'side-plan-empty side-plan-error');
                     box.appendChild(h('div', '', loading ? '正在读取 V工程 计划…' : (errorText || '没有找到这个工程，可能已被删除')));
-                    if (!loading) {
-                        const retry = button('zc-btn zc-btn-ghost', '重试');
-                        retry.addEventListener('click', () => load());
-                        box.appendChild(retry);
-                    }
+                    if (!loading) box.appendChild(retryButton());
                     const pages = navigation.render([{ key: 'plan', label: '计划', content: [box] }, gitPage]);
                     chrome.append(renderHeader(), pages.tabs);
                     body.appendChild(pages.panels);
@@ -797,9 +797,7 @@ export function createPlanDetailSideProvider({
                 if (staleError) {
                     const banner = h('div', 'side-plan-warning side-plan-stale');
                     banner.setAttribute('role', 'alert');
-                    const retry = button('zc-btn zc-btn-ghost', '重试');
-                    retry.addEventListener('click', () => load());
-                    banner.append(h('span', '', `刷新失败，显示的是上一次的内容：${staleError}`), retry);
+                    banner.append(h('span', '', `刷新失败，显示的是上一次的内容：${staleError}`), retryButton());
                     body.appendChild(banner);
                 }
                 if (pendingFocus) navigation.select(navigation.pageForFocus(pendingFocus), scrollTop);
@@ -886,7 +884,8 @@ export function createPlanDetailSideProvider({
                 body.querySelector('[data-plan-section="timeline"]')?.scrollIntoView?.({ block: 'start' });
             }
 
-            async function runSearch() {
+            /** @param {{ background?: boolean }} [options] 后台刷新时结果原地换掉，不先清空成「正在筛选…」再撑开 */
+            async function runSearch({ background = false } = {}) {
                 cancelFilter?.();
                 cancelFilter = null;
                 const seq = ++filterSeq;
@@ -896,9 +895,11 @@ export function createPlanDetailSideProvider({
                     render();
                     return;
                 }
-                filterRows = null;
-                filterError = '';
-                render();
+                if (!background || filterError) {
+                    filterRows = null;
+                    filterError = '';
+                    render();
+                }
                 const pid = model.project.id;
                 try {
                     const rows = await call(api.projectForgeSearchHistory(searchParams(pid, filters)));
@@ -960,6 +961,17 @@ export function createPlanDetailSideProvider({
             // ---------------------------------------------------------------- 数据
 
             let lastScope = { projectIds: [], batchIds: new Set(), key: '' };
+
+            // 点了重试马上有反应：按钮变成「正在重试…」并禁用，读完由 render() 换掉；再失败也看得出确实重试过
+            function retryButton() {
+                const retry = button('zc-btn zc-btn-ghost side-plan-retry', '重试');
+                retry.addEventListener('click', () => {
+                    retry.disabled = true;
+                    retry.textContent = '正在重试…';
+                    void load();
+                });
+                return retry;
+            }
 
             async function load() {
                 const seq = ++refreshSeq;
@@ -1025,7 +1037,7 @@ export function createPlanDetailSideProvider({
                 }
                 loading = false;
                 followProjectWorkspace();
-                if (hasFilters(filters) && model) runSearch();
+                if (hasFilters(filters) && model) runSearch({ background: true });
                 else render();
             }
 
