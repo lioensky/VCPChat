@@ -95,6 +95,7 @@ export function createCodeViewerSideProvider({
 
             const fileIcon = doc.createElement('span');
             fileIcon.className = 'vcp-ui-icon side-code-file-icon';
+            fileIcon.setAttribute('aria-hidden', 'true');
             fileIcon.textContent = currentMode === 'diff' ? 'difference' : 'code';
 
             const titleLabel = doc.createElement('span');
@@ -120,8 +121,8 @@ export function createCodeViewerSideProvider({
                 modeToggleBtn.title = currentMode === 'diff' ? '切换为纯代码视图' : '切换为差异对比视图';
                 modeToggleBtn.setAttribute('aria-label', '切换视图');
                 modeToggleBtn.innerHTML = currentMode === 'diff'
-                    ? '<span class="vcp-ui-icon">code</span>'
-                    : '<span class="vcp-ui-icon">difference</span>';
+                    ? '<span class="vcp-ui-icon" aria-hidden="true">code</span>'
+                    : '<span class="vcp-ui-icon" aria-hidden="true">difference</span>';
                 actionsWrapper.appendChild(modeToggleBtn);
             }
 
@@ -132,7 +133,7 @@ export function createCodeViewerSideProvider({
             wrapBtn.setAttribute('data-action', 'toggle-wrap');
             wrapBtn.title = '切换自动换行';
             wrapBtn.setAttribute('aria-label', '自动换行');
-            wrapBtn.innerHTML = '<span class="vcp-ui-icon">wrap_text</span>';
+            wrapBtn.innerHTML = '<span class="vcp-ui-icon" aria-hidden="true">wrap_text</span>';
             wrapBtn.classList.toggle('active', isWrapped);
 
             // Copy Code Button
@@ -142,7 +143,7 @@ export function createCodeViewerSideProvider({
             copyBtn.setAttribute('data-action', 'copy-code');
             copyBtn.title = '复制代码内容';
             copyBtn.setAttribute('aria-label', '复制代码');
-            copyBtn.innerHTML = '<span class="vcp-ui-icon">content_copy</span>';
+            copyBtn.innerHTML = '<span class="vcp-ui-icon" aria-hidden="true">content_copy</span>';
 
             // Insert to Chat Button
             const insertBtn = doc.createElement('button');
@@ -151,7 +152,7 @@ export function createCodeViewerSideProvider({
             insertBtn.setAttribute('data-action', 'insert-chat');
             insertBtn.title = '插入到主聊天输入框';
             insertBtn.setAttribute('aria-label', '插入聊天');
-            insertBtn.innerHTML = '<span class="vcp-ui-icon">format_quote</span>';
+            insertBtn.innerHTML = '<span class="vcp-ui-icon" aria-hidden="true">format_quote</span>';
 
             // External Open Button
             let externalBtn = null;
@@ -174,7 +175,7 @@ export function createCodeViewerSideProvider({
                 reloadBtn.setAttribute('data-action', 'reload-file');
                 reloadBtn.title = '重新读取文件';
                 reloadBtn.setAttribute('aria-label', '重新读取');
-                reloadBtn.innerHTML = '<span class="vcp-ui-icon">refresh</span>';
+                reloadBtn.innerHTML = '<span class="vcp-ui-icon" aria-hidden="true">refresh</span>';
                 actionsWrapper.appendChild(reloadBtn);
             }
 
@@ -196,7 +197,7 @@ export function createCodeViewerSideProvider({
                 pickerToggleBtn.className = 'side-code-action-btn';
                 pickerToggleBtn.title = '选择文件';
                 pickerToggleBtn.setAttribute('aria-label', '选择文件');
-                pickerToggleBtn.innerHTML = '<span class="vcp-ui-icon">folder_open</span>';
+                pickerToggleBtn.innerHTML = '<span class="vcp-ui-icon" aria-hidden="true">folder_open</span>';
                 actionsWrapper.prepend(pickerToggleBtn);
                 container.append(toolbar, picker, body);
             } else {
@@ -299,8 +300,8 @@ export function createCodeViewerSideProvider({
                     langTag.textContent = currentMode === 'diff' ? 'DIFF' : currentTag;
                     modeToggleBtn.title = currentMode === 'diff' ? '切换为纯代码视图' : '切换为差异对比视图';
                     modeToggleBtn.innerHTML = currentMode === 'diff'
-                        ? '<span class="vcp-ui-icon">code</span>'
-                        : '<span class="vcp-ui-icon">difference</span>';
+                        ? '<span class="vcp-ui-icon" aria-hidden="true">code</span>'
+                        : '<span class="vcp-ui-icon" aria-hidden="true">difference</span>';
                     refreshView();
                 });
             }
@@ -339,6 +340,11 @@ export function createCodeViewerSideProvider({
                 viewElement.innerHTML = '';
                 return null;
             }
+            // 休眠只发生在隐藏时，那时 display:none 的 body 读出来的滚动都是 0：位置在可见时就记下
+            let lastScroll = { top: Number(restoredState?.scrollTop) || 0, left: Number(restoredState?.scrollLeft) || 0 };
+            own.listen(body, 'scroll', () => {
+                if (body.clientHeight > 0) lastScroll = { top: body.scrollTop, left: body.scrollLeft };
+            }, { passive: true });
 
             return {
                 focus() {
@@ -355,8 +361,8 @@ export function createCodeViewerSideProvider({
                         isWrapped,
                         mode: currentMode,
                         outsideWorkspaceAllowed: editorOwner.outsideWorkspaceAllowed,
-                        scrollTop: body.scrollTop,
-                        scrollLeft: body.scrollLeft
+                        scrollTop: body.clientHeight > 0 ? body.scrollTop : lastScroll.top,
+                        scrollLeft: body.clientHeight > 0 ? body.scrollLeft : lastScroll.left
                     };
                 },
                 /** 文件标签重新读盘；片段和差异是快照，不受影响 */

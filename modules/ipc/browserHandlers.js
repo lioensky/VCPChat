@@ -129,14 +129,19 @@ function attachToWindow(mainWindow) {
         }
         // 白名单而不是黑名单：页面 webpreferences 属性里带进来的其他键（experimentalFeatures 之类）一律去掉，
         // 只留 allowpopups 对应的 disablePopups（弹窗仍由 setWindowOpenHandler 拒掉后转成侧栏标签）。同 DSH browser-guests
+        // 分区要放回去（Electron 把 params.partition 抄进了 webPreferences），否则网页落到应用默认会话，
+        // 上面给分区装的权限拒绝、请求过滤和下载拦截全都不生效；缩放跟随应用也保留
+        const zoomFactor = webPreferences.zoomFactor;
         for (const key of Object.keys(webPreferences)) {
             if (key !== 'disablePopups') delete webPreferences[key];
         }
+        if (Number.isFinite(zoomFactor)) webPreferences.zoomFactor = zoomFactor;
         delete params.disablewebsecurity;
         delete params.plugins;
         delete params.blinkfeatures;
         delete params.disableblinkfeatures;
         Object.assign(webPreferences, {
+            partition: BROWSER_PARTITION,
             nodeIntegration: false,
             nodeIntegrationInWorker: false,
             nodeIntegrationInSubFrames: false,

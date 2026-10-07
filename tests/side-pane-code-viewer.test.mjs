@@ -406,11 +406,17 @@ test('a file tab keeps its place on reload and its wrap, mode and consent after 
     await new Promise(resolve => setTimeout(resolve, 20));
     assert.equal(handle.getCode(), text);
 
+    let shown = true;
+    Object.defineProperty(body(), 'clientHeight', { configurable: true, get: () => (shown ? 400 : 0) });
     body().scrollTop = 1200;
+    body().dispatchEvent(new dom.window.Event('scroll'));
     await handle.reload();
     assert.equal(body().scrollTop, 1200, 'reloading the same file stays at the same line');
 
     view.querySelector('[data-action="toggle-wrap"]').click();
+    // 休眠时标签是隐藏的：display:none 的 body 读出来滚动是 0
+    shown = false;
+    body().scrollTop = 0;
     const saved = handle.captureState();
     await handle.dispose();
     handle = await provider.mountTab(tab, view, { restoredState: saved });

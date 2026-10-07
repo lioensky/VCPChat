@@ -169,3 +169,37 @@ test('closing a restored side chat that was never shown still asks first, and a 
     assert.deepEqual(deleted.sort(), ['drop-me', 'shown']);
     assert.ok(ctrl.getSnapshot().tabs.some(tab => tab.id === 'keep-me'), 'cancelling keeps the tab and its history');
 });
+
+test('a side chat whose mount lands while its close is being confirmed still closes once confirmed', async t => {
+    const dom = new JSDOM('<main class="main-content"></main><aside id="pane"><div id="tabs"></div><div id="content"><section class="side-pane-view" id="sidePaneViewNotifications"></section></div></aside>');
+    const doc = dom.window.document;
+    const confirm = Promise.withResolvers();
+    const mount = Promise.withResolvers();
+    const deleted = [];
+    let disposed = 0;
+    const ctrl = createSidePaneController({
+        root: doc.getElementById('pane'),
+        tabListElement: doc.getElementById('tabs'),
+        contentContainer: doc.getElementById('content'),
+        tabTypes: [defineChatTabType({
+            provider: { mountTab: async () => { await mount.promise; return { dispose: async () => { disposed += 1; }, focus() {} }; } },
+            requestClose: () => confirm.promise,
+            onClosed: descriptor => { deleted.push(descriptor.id); }
+        })]
+    });
+    t.after(() => { ctrl.dispose?.(); dom.window.close(); });
+    ctrl.setParent(parentOf('a'));
+    // 补回后面板按这个话题的样子展开并挂载它；挂载还在路上时用户就点了关闭
+    const restoring = ctrl.restoreTabs([sideChat('later', 'a')]);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(ctrl.getTabHandle('later'), null);
+    const closing = ctrl.closeTab('later'); // 挂载还在路上：没有 handle，由类型确认
+    mount.resolve();
+    await restoring;
+    await new Promise(resolve => setTimeout(resolve, 10));
+    confirm.resolve({ closed: true });
+    await closing;
+    assert.equal(ctrl.getSnapshot().tabs.some(tab => tab.id === 'later'), false);
+    assert.deepEqual(deleted, ['later']);
+    assert.equal(disposed, 1, 'the view that mounted meanwhile is released');
+});

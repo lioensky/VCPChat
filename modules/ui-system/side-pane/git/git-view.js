@@ -123,7 +123,7 @@ export function mountGitView(host, {
     const refreshBtn = doc.createElement('button');
     refreshBtn.type = 'button';
     refreshBtn.className = 'side-git-refresh-btn';
-    refreshBtn.innerHTML = '<span class="vcp-ui-icon">refresh</span><span>刷新</span>';
+    refreshBtn.innerHTML = '<span class="vcp-ui-icon" aria-hidden="true">refresh</span><span>刷新</span>';
 
     // 下拉做成胶囊（和浏览器工具栏一套）：select 本身去掉原生外观，箭头由外层补上
     const pill = (select, extra) => {
@@ -243,6 +243,7 @@ export function mountGitView(host, {
         empty.innerHTML = '';
         const iconEl = doc.createElement('span');
         iconEl.className = 'vcp-ui-icon side-git-empty-icon';
+        iconEl.setAttribute('aria-hidden', 'true');
         iconEl.textContent = icon;
         const titleEl = doc.createElement('p');
         titleEl.className = 'side-git-empty-title';

@@ -79,6 +79,7 @@ export function createSidePaneTabOverview({
         const icon = doc.createElement('span');
         icon.className = 'vcp-ui-icon';
         icon.classList.add('vcp-side-pane-icon-base');
+        icon.setAttribute('aria-hidden', 'true');
         icon.textContent = name;
         return icon;
     }
@@ -148,7 +149,7 @@ export function createSidePaneTabOverview({
                     closeBtn.className = 'side-pane-tab-close';
                     closeBtn.title = '关闭';
                     closeBtn.setAttribute('aria-label', `关闭 ${tab.title}`);
-                    closeBtn.innerHTML = '<span class="vcp-ui-icon vcp-side-pane-icon-caption">close</span>';
+                    closeBtn.innerHTML = '<span class="vcp-ui-icon vcp-side-pane-icon-caption" aria-hidden="true">close</span>';
                     closeBtn.addEventListener('click', async (e) => {
                         e.stopPropagation();
                         await onClose(tab.id);

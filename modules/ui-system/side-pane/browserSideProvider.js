@@ -160,7 +160,7 @@ export function createBrowserSideProvider({
             };
             const iconButton = (icon, label) => {
                 const btn = el('button', 'side-browser-btn', { type: 'button', 'aria-label': label, title: label });
-                btn.innerHTML = `<span class="vcp-ui-icon">${icon}</span>`;
+                btn.innerHTML = `<span class="vcp-ui-icon" aria-hidden="true">${icon}</span>`;
                 return btn;
             };
 
@@ -181,7 +181,7 @@ export function createBrowserSideProvider({
             menu.hidden = true;
             const menuItem = (icon, label, action) => {
                 const item = el('button', 'side-browser-menu-item', { type: 'button', role: 'menuitem', 'data-action': action });
-                item.innerHTML = `<span class="vcp-ui-icon">${icon}</span><span></span>`;
+                item.innerHTML = `<span class="vcp-ui-icon" aria-hidden="true">${icon}</span><span></span>`;
                 item.lastElementChild.textContent = label;
                 return item;
             };
@@ -197,7 +197,7 @@ export function createBrowserSideProvider({
 
             const body = el('div', 'side-browser-body');
             const empty = el('div', 'side-browser-empty');
-            empty.innerHTML = '<span class="vcp-ui-icon">public</span><span class="side-browser-empty-text"></span>';
+            empty.innerHTML = '<span class="vcp-ui-icon" aria-hidden="true">public</span><span class="side-browser-empty-text"></span>';
             empty.querySelector('.side-browser-empty-text').textContent = '粘贴或输入 URL 以打开网页。';
             const notice = el('div', 'side-browser-notice');
             notice.hidden = true;

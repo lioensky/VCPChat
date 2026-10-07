@@ -99,7 +99,7 @@ export function createCodeViewerEditor({
     async function loadFileContent({ force = false } = {}) {
         if (!readFile || (fileLoaded && !force)) return true;
         const token = ++readToken;
-        body.innerHTML = '<div class="side-code-loading"><span class="vcp-ui-icon spin">sync</span> 加载文件中...</div>';
+        body.innerHTML = '<div class="side-code-loading"><span class="vcp-ui-icon spin" aria-hidden="true">sync</span> 加载文件中...</div>';
         let result;
         try {
             result = await readFile({ allowOutsideWorkspace: outsideWorkspaceAllowed });

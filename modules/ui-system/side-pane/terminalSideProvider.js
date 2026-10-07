@@ -346,14 +346,14 @@ export function createTerminalSideProvider({
             restartBtn.className = 'side-terminal-btn';
             restartBtn.title = '重新启动终端（终端窗口和 AI 共用同一个会话，会一并重置）';
             restartBtn.setAttribute('aria-label', '重新启动终端');
-            restartBtn.innerHTML = '<span class="vcp-ui-icon">refresh</span>';
+            restartBtn.innerHTML = '<span class="vcp-ui-icon" aria-hidden="true">refresh</span>';
 
             const clearBtn = doc.createElement('button');
             clearBtn.type = 'button';
             clearBtn.className = 'side-terminal-btn';
             clearBtn.title = '清屏';
             clearBtn.setAttribute('aria-label', '清屏');
-            clearBtn.innerHTML = '<span class="vcp-ui-icon">delete_sweep</span>';
+            clearBtn.innerHTML = '<span class="vcp-ui-icon" aria-hidden="true">delete_sweep</span>';
 
             // 和浏览器 / Git 顶栏同一套胶囊：工作区下拉一个胶囊，清屏 + 重启合成一个胶囊
             const wsPill = doc.createElement('span');

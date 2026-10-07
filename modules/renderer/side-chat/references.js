@@ -29,7 +29,7 @@ export function createSideChatReferences({
             removeBtn.className = 'side-chat-reference-remove';
             removeBtn.title = '移除引用';
             removeBtn.setAttribute('aria-label', '移除引用');
-            removeBtn.innerHTML = '<span class="vcp-ui-icon">close</span>';
+            removeBtn.innerHTML = '<span class="vcp-ui-icon" aria-hidden="true">close</span>';
             removeBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 getHandle().removeReference(ref.id);

@@ -33,7 +33,7 @@ export function createSidePaneTabCloseOwner({
     function closeTab(tabId, options = {}, expectedLifetime = null, onFocusMoved = null) {
         if (isDisposed() || !tabId) return Promise.resolve();
         const tab = getTab(tabId);
-        const entry = getEntry(tabId);
+        let entry = getEntry(tabId);
         const previous = closing.get(tabId);
         const lifetime = getLifetime(tabId);
         if (expectedLifetime && lifetime !== expectedLifetime) {
@@ -61,7 +61,8 @@ export function createSidePaneTabCloseOwner({
                 if (requestClose) {
                     const result = await requestClose(tab);
                     if (result?.closed === false) return;
-                    if (isDisposed() || getEntry(tabId)) return;
+                    // 确认期间它被挂上了（批量关闭时兜底激活到它）：用户已经同意关闭，连同刚挂上的视图一起关
+                    entry = getEntry(tabId) || null;
                 }
             }
             if (isDisposed()) return;

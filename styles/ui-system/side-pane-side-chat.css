@@ -242,3 +242,9 @@ html .side-chat-reference-box .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *)
     --vcp-ui-icon-size: 12px;
 }
 
+
+/* 消息可用方向键逐条聚焦（见 side-chat/message-actions.js），焦点环与左侧列表一致 */
+html .side-chat-messages-container .message-item:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    outline: 2px solid var(--vcp-ui-focus-ring);
+    outline-offset: 2px;
+}

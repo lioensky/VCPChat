@@ -207,6 +207,7 @@ export function createGitCards({
         counts.className = 'side-git-counts';
         const chevron = doc.createElement('span');
         chevron.className = 'vcp-ui-icon side-git-chevron';
+        chevron.setAttribute('aria-hidden', 'true');
         chevron.textContent = 'expand_more';
         meta.append(counts, chevron);
         row.append(label, meta);

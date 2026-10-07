@@ -71,12 +71,15 @@ test('attachToWindow locks the partition and strips privileged web preferences',
     host.emit('will-attach-webview', event, {}, { partition: browserHandlers.BROWSER_PARTITION, src: 'vcp://x' });
     assert.equal(prevented, 2);
 
-    const prefs = { preload: 'x.js', preloadURL: 'file:///x.js', nodeIntegration: true, sandbox: false, experimentalFeatures: true, disablePopups: false };
+    const prefs = { preload: 'x.js', preloadURL: 'file:///x.js', nodeIntegration: true, sandbox: false, experimentalFeatures: true, disablePopups: false,
+        partition: browserHandlers.BROWSER_PARTITION, zoomFactor: 1.25 };
     const params = { partition: browserHandlers.BROWSER_PARTITION, src: 'https://a.example', disablewebsecurity: '', plugins: '', blinkfeatures: 'X' };
     host.emit('will-attach-webview', event, prefs, params);
     assert.equal(prevented, 2);
     assert.equal('experimentalFeatures' in prefs, false, 'unknown preferences from the page are dropped');
     assert.equal(prefs.disablePopups, false, 'allowpopups still reaches the window-open handler');
+    assert.equal(prefs.partition, browserHandlers.BROWSER_PARTITION, 'the guest stays in the locked-down side browser session');
+    assert.equal(prefs.zoomFactor, 1.25);
     assert.equal(prefs.webviewTag, false);
     assert.equal(prefs.plugins, false);
     assert.deepEqual(Object.keys(params).sort(), ['partition', 'src']);

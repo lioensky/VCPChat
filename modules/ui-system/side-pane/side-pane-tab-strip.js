@@ -159,7 +159,7 @@ export function createSidePaneTabStrip({
         btn.setAttribute('aria-selected', String(isActive));
         btn.setAttribute('tabindex', isActive ? '0' : '-1');
         btn.setAttribute('data-tab-id', tab.id);
-        if (isClosable(tab)) btn.setAttribute('aria-keyshortcuts', 'Delete');
+        btn.setAttribute('aria-keyshortcuts', isClosable(tab) ? 'Delete Shift+F10' : 'Shift+F10');
 
         const iconSpan = doc.createElement('span');
         iconSpan.className = 'tab-icon vcp-ui-icon';
@@ -189,7 +189,7 @@ export function createSidePaneTabStrip({
             closeBtn.className = 'side-pane-tab-close';
             closeBtn.setAttribute('aria-label', `关闭 ${tab.title}`);
             closeBtn.setAttribute('tabindex', '-1');
-            closeBtn.innerHTML = '<span class="vcp-ui-icon vcp-side-pane-icon-caption">close</span>';
+            closeBtn.innerHTML = '<span class="vcp-ui-icon vcp-side-pane-icon-caption" aria-hidden="true">close</span>';
             closeBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 onClose(tab.id);
@@ -217,7 +217,14 @@ export function createSidePaneTabStrip({
             e.preventDefault();
             e.stopPropagation();
             hideTooltip();
-            onContextMenu(tab.id, e.clientX, e.clientY);
+            // 键盘（Shift+F10 / 菜单键）打开时没有指针坐标，贴着标签下沿出菜单
+            let { clientX: x, clientY: y } = e;
+            if (!x && !y) {
+                const rect = tabItem.getBoundingClientRect();
+                x = rect.left + 8;
+                y = rect.bottom + 4;
+            }
+            onContextMenu(tab.id, x, y);
         });
         return tabItem;
     }
