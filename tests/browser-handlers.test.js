@@ -78,6 +78,7 @@ test('attachToWindow locks the partition and strips privileged web preferences',
     assert.equal('preloadURL' in prefs, false);
     assert.equal(prefs.nodeIntegration, false);
     assert.equal(prefs.sandbox, true);
+    assert.equal(prefs.disableDialogs, true, 'pages cannot raise native dialogs titled as the app');
     assert.equal(prefs.contextIsolation, true);
 
     const guest = new EventEmitter();

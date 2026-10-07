@@ -1073,7 +1073,8 @@ export function createSidePaneController({
             }
             renderTabList();
             syncViewPanels();
-            syncDomVisibility();
+            // 启动时直接落到存档的开合状态，不播动画
+            syncDomVisibility({ animate: false });
             return true;
         },
 

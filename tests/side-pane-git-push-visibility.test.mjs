@@ -118,3 +118,45 @@ test('the Git page catches up when it gets a size again after the whole chat was
     await handle.dispose();
     assert.equal(observers[0].targets.size, 0, 'closing disconnects the observer');
 });
+
+test('a slow earlier Git read that lands after a newer one does not paint back a deleted file', async t => {
+    const dom = new JSDOM('<aside class="vcp-side-pane" aria-hidden="false"><section id="view"></section></aside>', { pretendToBeVisual: true });
+    t.after(() => dom.window.close());
+    const doc = dom.window.document;
+    const host = doc.getElementById('view');
+    const pending = [];
+    const listeners = new Set();
+    const status = changes => ({ success: true, data: { isRepo: true, staged: [], changes, conflicts: [] } });
+    const api = {
+        async gitListWorkspaces() { return { success: true, data: { workspaces: [{ id: 'race', path: '/race' }] } }; },
+        gitStatus() {
+            if (!pending.length && !listeners.size) return Promise.resolve(status([]));
+            return new Promise(resolve => pending.push(resolve));
+        },
+        onGitChanged(cb) { listeners.add(cb); return () => listeners.delete(cb); },
+        async subscribeMainState() { return { success: true }; },
+        async unsubscribeMainState() { return { success: true }; },
+    };
+    getGitChangesSource(api, 'race', { graceMs: 0 });
+    const handle = mountGitView(host, { api });
+    t.after(() => handle.dispose());
+    Object.defineProperty(handle.element, 'offsetParent', { get: () => doc.body });
+    const settle = () => new Promise(resolve => setImmediate(resolve));
+    while (pending.length === 0) await settle();
+    pending.shift()(status([]));
+    await handle.ready;
+    await settle();
+
+    listeners.forEach(cb => cb({ workspaceId: 'race', reason: 'files' })); // agent 建了 ghost.js
+    await settle();
+    listeners.forEach(cb => cb({ workspaceId: 'race', reason: 'files' })); // 又删掉了
+    await settle();
+    assert.equal(pending.length, 2);
+    const [older, newer] = pending.splice(0);
+    newer(status([]));
+    await settle();
+    older(status([{ path: 'ghost.js', status: 'A', added: 1, removed: 0 }]));
+    await settle();
+    await settle();
+    assert.doesNotMatch(handle.element.textContent, /ghost\.js/);
+});

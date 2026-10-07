@@ -1276,14 +1276,14 @@
       "consumers": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 158,
+          "line": 160,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 158,
+          "line": 160,
           "kind": "event-listener",
           "match": "guest.on('before-input-event'"
         }
@@ -1874,14 +1874,14 @@
       "consumers": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 184,
+          "line": 186,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 184,
+          "line": 186,
           "kind": "event-listener",
           "match": "ipcMain.handle('browser:clear-data'"
         },
@@ -1905,14 +1905,14 @@
       "consumers": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 173,
+          "line": 175,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 173,
+          "line": 175,
           "kind": "event-listener",
           "match": "ipcMain.handle('browser:open-external'"
         },
@@ -4106,12 +4106,12 @@
         },
         {
           "file": "modules/ui-system/message-file-changes.js",
-          "line": 366,
+          "line": 380,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/message-file-changes.js",
-          "line": 403,
+          "line": 417,
           "kind": "custom-event-listener"
         },
         {
@@ -4326,17 +4326,17 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1158,
+          "line": 1159,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1164,
+          "line": 1165,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1178,
+          "line": 1179,
           "kind": "custom-event-listener"
         },
         {
@@ -5655,13 +5655,13 @@
         },
         {
           "file": "modules/ui-system/message-file-changes.js",
-          "line": 366,
+          "line": 380,
           "kind": "custom-event-listener",
           "match": "label.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/message-file-changes.js",
-          "line": 403,
+          "line": 417,
           "kind": "custom-event-listener",
           "match": "button.addEventListener('click'"
         },
@@ -5919,19 +5919,19 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1158,
+          "line": 1159,
           "kind": "custom-event-listener",
           "match": "toggleNotificationsBtn.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1164,
+          "line": 1165,
           "kind": "custom-event-listener",
           "match": "expandButton.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1178,
+          "line": 1179,
           "kind": "custom-event-listener",
           "match": "closeSidePaneBtn.addEventListener('click'"
         },
@@ -10021,14 +10021,14 @@
       "consumers": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 142,
+          "line": 144,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 142,
+          "line": 144,
           "kind": "event-listener",
           "match": "host.on('did-attach-webview'"
         }
@@ -15067,14 +15067,14 @@
       "consumers": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 144,
+          "line": 146,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 144,
+          "line": 146,
           "kind": "event-listener",
           "match": "guest.on('input-event'"
         }
@@ -21331,14 +21331,14 @@
       "consumers": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 80,
+          "line": 78,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 80,
+          "line": 78,
           "kind": "preload-subscription",
           "match": "chatAPI?.onBrowserSidePaneShortcut("
         }
@@ -24997,7 +24997,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1198,
+          "line": 1199,
           "kind": "custom-event-listener"
         },
         {
@@ -25097,7 +25097,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1198,
+          "line": 1199,
           "kind": "custom-event-listener",
           "match": "win?.addEventListener?.('resize'"
         },
@@ -29041,14 +29041,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/message-file-changes.js",
-          "line": 389,
+          "line": 403,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/message-file-changes.js",
-          "line": 389,
+          "line": 403,
           "kind": "custom-event-listener",
           "match": "details.addEventListener('toggle'"
         }
@@ -31818,7 +31818,7 @@
         },
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 156,
+          "line": 158,
           "kind": "event-listener"
         },
         {
@@ -31836,7 +31836,7 @@
         },
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 156,
+          "line": 158,
           "kind": "event-listener",
           "match": "guest.on('will-navigate'"
         },
@@ -31884,14 +31884,14 @@
       "consumers": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 157,
+          "line": 159,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 157,
+          "line": 159,
           "kind": "event-listener",
           "match": "guest.on('will-redirect'"
         }

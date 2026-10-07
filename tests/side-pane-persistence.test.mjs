@@ -148,3 +148,36 @@ test('nothing is written before restoreLayout runs, so an early render cannot wi
     pane.dom.window.close();
     assert.deepEqual(JSON.parse(storage.data.get('vcp.sidePane.layout.v1')).tabs.map(t => t.id), ['notes']);
 });
+
+test('restoring after the host picked the conversation mounts nothing from another topic and does not animate', async () => {
+    const storage = createStorage();
+    const topicA = { itemType: 'agent', itemId: 'agent-1', topicId: 'topic-a' };
+    const topicB = { itemType: 'agent', itemId: 'agent-1', topicId: 'topic-b' };
+
+    const first = createPane(storage, []);
+    first.controller.restoreLayout();
+    first.controller.setParent(topicA);
+    await first.controller.openTab({ id: 'notes:a', kind: 'notes', title: '笔记', closable: true, scopeMode: 'topic', parent: topicA });
+    first.controller.setParent(topicB);
+    first.controller.setVisible(false);
+    first.controller.setParent(topicA);
+    await first.controller.dispose();
+    first.dom.window.close();
+
+    const mounts = [];
+    const second = createPane(storage, mounts);
+    // 宿主先同步当前对话（话题 B），再恢复存档
+    second.controller.setParent(topicB);
+    assert.equal(second.controller.restoreLayout(), true);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const root = second.dom.window.document.getElementById('vcpSidePane');
+    assert.deepEqual(mounts, [], 'the topic A tab is not mounted while topic B is shown');
+    assert.equal(root.classList.contains('is-animating'), false);
+    assert.equal(second.controller.getSnapshot().visible, false, 'topic B was left collapsed');
+
+    second.controller.setParent(topicA);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.deepEqual(mounts.map(m => m.id), ['notes:a']);
+    await second.controller.dispose();
+    second.dom.window.close();
+});

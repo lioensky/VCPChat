@@ -156,3 +156,31 @@ test('results preceding a request do not confirm it; later sequential requests r
     const text=[write('C:/ambiguous1.js'),write('C:/ambiguous2.js'),RES('SUCCESS'),RES('ERROR'),write('C:/known.js'),RES('SUCCESS')].join('\n');
     assert.deepEqual(extractFileChanges(text),[{path:'C:/known.js',op:'write'}]);
 });
+
+test('loading a long history reads the history once per batch, not once per message', async () => {
+    const dom = new JSDOM('<div id="chatMessages"></div>', { pretendToBeVisual: true });
+    const doc = dom.window.document;
+    const root = doc.getElementById('chatMessages');
+    const history = Array.from({ length: 200 }, (_, i) => ({ id: `m${i}`, role: 'assistant', content: i === 199 ? confirmed(write('C:/proj/a.js')) : `回复 ${i}` }));
+    let reads = 0;
+    const controller = createMessageFileChanges({ document: doc, messagesRoot: root, getHistory: () => { reads++; return history; } });
+    controller.mount();
+    const fragment = doc.createDocumentFragment();
+    for (const message of history) {
+        const item = doc.createElement('div');
+        item.className = 'message-item assistant';
+        item.dataset.messageId = message.id;
+        item.innerHTML = '<div class="details-and-bubble-wrapper"><div class="md-content">x</div></div>';
+        fragment.appendChild(item);
+    }
+    root.appendChild(fragment);
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(reads, 1);
+    assert.equal(root.querySelectorAll('.vcp-file-changes').length, 1);
+    // 之后的 class 变化（hover、选中）不再为没有改动的消息重新提取
+    reads = 0;
+    root.querySelectorAll('.message-item').forEach(item => item.classList.add('is-hovered'));
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.ok(reads <= 1);
+    controller.dispose();
+});

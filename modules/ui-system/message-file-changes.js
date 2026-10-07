@@ -325,21 +325,35 @@ export function createMessageFileChanges({
     const win = doc.defaultView;
     let observer = null;
     let disposed = false;
+    // 没有文件改动的消息记下 id 和内容长度：class 再变（hover、展开等）不用重新提取
+    const noChanges = new Map();
 
-    function render(item) {
+    // 一批 mutation 共用一份历史索引和工程根：长历史加载时不再每条消息线性 find、再扫一遍全历史
+    function createBatch() {
+        let history = null;
+        let byId = null;
+        let roots = null;
+        const getAll = () => (history ??= getHistory() || []);
+        return {
+            find: id => (byId ??= new Map(getAll().map(message => [message?.id, message]))).get(id),
+            roots: () => (roots ??= findProjectRoots(getAll().map(message => message?.content)))
+        };
+    }
+
+    function render(item, batch = createBatch()) {
         if (!item.classList?.contains('message-item') || !item.classList.contains('assistant') || item.classList.contains('streaming')) return;
         const wrapper = item.querySelector(':scope > .details-and-bubble-wrapper');
         if (!wrapper || wrapper.querySelector(':scope > .vcp-file-changes')) return;
         const id = item.dataset.messageId;
         if (!id) return;
-        const record = (getHistory() || []).find(message => message?.id === id);
+        const record = batch.find(id);
         const raw = typeof record?.content === 'string' ? record.content : '';
+        if (noChanges.get(id) === raw.length) return;
         const changes = extractFileChanges(raw);
-        if (changes.length === 0) return;
+        if (changes.length === 0) { noChanges.set(id, raw.length); return; }
+        noChanges.delete(id);
         // ProjectForge 的路径相对工程根；根目录写在建工程（CreateProject / GetProject）的结果里，可能在更早的消息中
-        const roots = changes.some(change => change.projectId)
-            ? findProjectRoots((getHistory() || []).map(message => message?.content))
-            : new Map();
+        const roots = changes.some(change => change.projectId) ? batch.roots() : new Map();
 
         const details = doc.createElement('details');
         details.className = 'vcp-file-changes';
@@ -430,15 +444,16 @@ export function createMessageFileChanges({
     }
 
     function onMutations(records) {
+        const batch = createBatch();
         for (const record of records) {
             if (record.type === 'attributes') {
-                render(record.target);
+                render(record.target, batch);
                 continue;
             }
             for (const node of record.addedNodes) {
                 if (node.nodeType !== 1) continue;
-                if (node.classList.contains('message-item')) render(node);
-                else node.querySelectorAll?.('.message-item').forEach(render);
+                if (node.classList.contains('message-item')) render(node, batch);
+                else node.querySelectorAll?.('.message-item').forEach(item => render(item, batch));
             }
         }
     }
@@ -448,7 +463,8 @@ export function createMessageFileChanges({
         if (!messagesRoot || observer || disposed || typeof win?.MutationObserver !== 'function') return null;
         observer = new win.MutationObserver(onMutations);
         observer.observe(messagesRoot, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
-        messagesRoot.querySelectorAll('.message-item').forEach(render);
+        const batch = createBatch();
+        messagesRoot.querySelectorAll('.message-item').forEach(item => render(item, batch));
         return observer;
     }
 

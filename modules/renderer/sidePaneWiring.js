@@ -74,8 +74,6 @@ export function initWorkspaceSidePane({
     for (const definition of [defineNotificationsTabType(), defineChatTabType({ provider: sideChat.provider, openSideChat: sideChat.openSideChat, onClosed: sideChat.onTabClosed }), codeViewer, browser, terminal, toolOutput, planDetail, modelTrajectory]) {
         controller.registerTabType(definition);
     }
-    // 标签类型都登记完才能认出存档里的标签
-    controller.restoreLayout();
     // 焦点在侧栏网页里时按键到不了这个窗口，主进程截下副屏快捷键转过来
     const unsubscribeBrowserShortcut = chatAPI?.onBrowserSidePaneShortcut?.((shortcut) => {
         if (shortcut?.action === 'toggle') controller.toggleFromUser();
@@ -85,6 +83,9 @@ export function initWorkspaceSidePane({
     subscriptions.add(createSidePaneWorkspaceServices({ doc, win, chatAPI, chatManager, uiHelper, historyRef, controller, codeViewerProvider: codeViewer.provider, toolOutputProvider: toolOutput.provider, planDetailProvider: planDetail.provider }));
     subscriptions.add(createSidePaneLauncherWiring({ doc, win, chatAPI, chatManager, uiHelper, selectedItemRef, controller }));
     subscriptions.add(createSidePaneHostBindings({ win, chatAPI, uiHelper, chatManager, selectedItemRef, topicIdRef, toggleChatBtn, controller, restoreSessions: sideChat.restoreSessions }));
+    // 标签类型都登记完才能认出存档里的标签；放在宿主同步 setParent 之后，存档直接按当前对话投影，
+    // 不会先展开、挂上上次话题的激活标签，再被 setParent 收起
+    controller.restoreLayout();
     subscriptions.add(createFloatingSelectionButton({ doc, win, notify: (message, type) => uiHelper?.showToastNotification?.(message, type) }));
     return controller;
 }

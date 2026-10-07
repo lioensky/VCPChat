@@ -136,6 +136,8 @@ function attachToWindow(mainWindow) {
             sandbox: true,
             webSecurity: true,
             allowRunningInsecureContent: false,
+            // 网页的 alert/confirm/prompt 会以应用窗口名义弹原生模态框（可仿冒应用提示）并卡住主窗口；同 DSH browser-guests 直接禁用
+            disableDialogs: true,
         });
     });
 

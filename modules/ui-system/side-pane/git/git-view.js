@@ -308,24 +308,29 @@ export function mountGitView(host, {
         aiBatchLoaded = true;
     }
 
+    // 每次读都编号，只认最新那次：推送和窗口 focus 同时触发、大仓库 status 上秒级时，
+    // 先发的请求可能后到，把已经删掉的文件又画回来（同 ZCode useGitRepository 的 requestVersionRef）
+    let statusSeq = 0;
     async function refreshStatus({ quiet = false } = {}) {
         // 已经拆掉就不再跟：否则迟到的刷新会把刚退掉的推送重新订上
         if (disposed()) return;
         // 每次读都对准当前工作区的变更推送（换了工作区就换订阅）
         changes.follow(currentWorkspaceId);
         if (!api?.gitStatus || !currentWorkspaceId || disposed()) return;
+        const seq = ++statusSeq;
+        const superseded = () => disposed() || seq !== statusSeq;
         stale = false;
         if (!quiet) { loading = true; render(); }
         let skipRender = false;
         try {
             const requestedId = currentWorkspaceId;
             const res = await api.gitStatus(requestedId);
-            if (disposed() || requestedId !== currentWorkspaceId) return;
+            if (superseded() || requestedId !== currentWorkspaceId) return;
             if (!res?.success) throw new Error(res?.error || '获取 Git 状态失败');
             loadError = null;
             currentStatus = res.data;
             if (currentSource === AI_SOURCE && !aiBatchLoaded) await loadAiBatch();
-            if (disposed() || requestedId !== currentWorkspaceId) return;
+            if (superseded() || requestedId !== currentWorkspaceId) return;
             // 推送触发的静默刷新：状态没变就不重绘（避免闪烁、丢 hover），有展开的 diff 时照常重绘。
             // 状态里带着每个文件的增删行数，内容变了 key 也会变；变了就让缓存的 diff 作废（展开的那个保持展开，重新取）
             const statusKey = JSON.stringify(res.data);
@@ -333,10 +338,15 @@ export function mountGitView(host, {
             if (statusKey !== lastStatusKey) { cardsOwner.invalidate(); }
             lastStatusKey = statusKey;
         } catch (err) {
-            if (quiet) return;
+            if (quiet || superseded()) return;
             loadError = err.message;
         } finally {
-            if (!disposed()) { loading = false; if (!skipRender || !quiet) render(); }
+            // 旋转图标只由最新的请求停下；被它盖过的旧请求什么都不动
+            if (!superseded()) {
+                const wasLoading = loading;
+                loading = false;
+                if (!skipRender || !quiet || wasLoading) render();
+            }
         }
     }
 
