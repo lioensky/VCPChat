@@ -751,13 +751,13 @@
     "dynamicSites": [
       {
         "file": "modules/topicListManager.js",
-        "line": 40,
+        "line": 39,
         "kind": "custom-event-listener",
         "match": "target?.addEventListener?.(type"
       },
       {
         "file": "modules/topicListManager.js",
-        "line": 45,
+        "line": 44,
         "kind": "custom-event-listener",
         "match": "target?.addEventListener?.(type"
       }

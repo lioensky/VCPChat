@@ -12,11 +12,11 @@
     "reason": "Integrated projection behavior: media cleanup before subtree replacement; nested tool-result ranges shield protocol markers; incremental smooth-stream burst handling preserves text order; durable persistence remains outside this projection."
   },
   "modules/topicListManager.js": {
-    "sha256": "c0ef202dcef4c05d9fbe24216fc7cc8e9c5b41f5abf76902833df23d2f0bb9d2",
+    "sha256": "37dcedc455a897056a2e244765e84480506962aba3d8e34e118a08768830ec83",
     "reason": "Integrated topic behavior: configuration/unread loads validate the selected item; sort/title/menu operations capture their original topic target; completed deletion changes the active view only for the same item and topic. Repository, readiness and render listener ownership remain unchanged. Topic search waits 200ms after typing before reloading (Enter is immediate); a rejected config IPC shows an error row instead of a permanent spinner; names and IPC errors render as text. Successful single and batch deletions report the deleted topic ids through mainRendererFunctions.onTopicsDeleted so the side pane drops tabs owned by those topics. Keyboard: topics are one roving tab stop (arrows/Home/End move, Enter/Space open, Shift+F10 or the menu key opens the context menu); the context menu is a role=menu with arrow navigation, Escape/Tab closing it back onto the topic."
   },
   "modules/itemListManager.js": {
-    "sha256": "0e1ef864be8f412e87baac33f446c541417e4d3a4c41801c4ee5d05d45f6e164",
+    "sha256": "516ed1371e993a40669d311a215803bd9ef0129ceef36281716eb6ef2dcddffe",
     "reason": "Integrated catalog behavior: operation-counted speaking indicators survive list refreshes; catalog publication validates the final settings read; unread publication is ordered across navigation and catalog refreshes. Persona WIP is excluded. Load error rows are HTML-escaped. Keyboard: the list is one roving tab stop (active item, else first); arrows/Home/End move it over visible items, Enter/Space select. Re-applies the active assistant search after a rebuild. Agent and group reads run together and a rejected read shows an error row. Avatar URLs come versioned from the main process and are used as is."
   },
   "Groupmodules/grouprenderer.js": {
@@ -24,7 +24,7 @@
     "reason": "Integrated group behavior: JEV mode/context-window fields and invitations; explicit group queue interrupt; optimistic user message IDs survive file sync; settings read/save snapshots preserve the original group and mode data; chat header delegates to its presentation owner. Group form tracks unsaved edits (including speaker reorder) and shows the same 未保存更改 indicator as Agent settings; a successful save clears it, loading a group resets it."
   },
   "modules/settingsManager.js": {
-    "sha256": "55420e21e6dce6bd574331abb369795604a2003951707746c2276da20cdc230c",
+    "sha256": "f68a67fd49b2613302b46a720657c57e047fd53ff48b38102283390d1aab872a",
     "reason": "Integrated manual-save policy: Agent/prompt edits remain drafts until Save; context changes and collapse no longer implicitly persist; submit captures draft and display identity; regex import merges into the draft; Lucide renders action icons. Replaces the obsolete autosave rationale. Settings display uses a local selection snapshot; a delayed config read cannot overwrite a newer settings view (frozen-selection and A-to-B display regression tests). Regex rule add/edit/delete and MiMo director prompt add/remove mark the draft unsaved like ordinary field edits. Unsaved Agent drafts (including after a failed save) are kept per Agent while the form shows another one and restored with a notice when it is shown again; Save or delete clears them. A draft whose name field was cleared keeps no name, so restoring it cannot save the Agent under the next Agent's name."
   },
   "modules/filterManager.js": {

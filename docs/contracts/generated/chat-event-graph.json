@@ -668,7 +668,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 377,
+          "line": 376,
           "kind": "custom-event-listener"
         },
         {
@@ -733,7 +733,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 377,
+          "line": 376,
           "kind": "custom-event-listener",
           "match": "signal?.addEventListener('abort'"
         },
@@ -3645,12 +3645,12 @@
         },
         {
           "file": "modules/renderer/side-chat/attachments.js",
-          "line": 156,
+          "line": 155,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/renderer/side-chat/attachments.js",
-          "line": 157,
+          "line": 156,
           "kind": "custom-event-listener"
         },
         {
@@ -3985,7 +3985,7 @@
         },
         {
           "file": "modules/topicListManager.js",
-          "line": 1414,
+          "line": 1413,
           "kind": "custom-event-listener"
         },
         {
@@ -4225,7 +4225,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/git-view.js",
-          "line": 265,
+          "line": 264,
           "kind": "custom-event-listener"
         },
         {
@@ -5114,13 +5114,13 @@
         },
         {
           "file": "modules/renderer/side-chat/attachments.js",
-          "line": 156,
+          "line": 155,
           "kind": "custom-event-listener",
           "match": "attachBtn?.addEventListener('click'"
         },
         {
           "file": "modules/renderer/side-chat/attachments.js",
-          "line": 157,
+          "line": 156,
           "kind": "custom-event-listener",
           "match": "emoticonBtn?.addEventListener('click'"
         },
@@ -5522,7 +5522,7 @@
         },
         {
           "file": "modules/topicListManager.js",
-          "line": 1414,
+          "line": 1413,
           "kind": "custom-event-listener",
           "match": "document.addEventListener('click'"
         },
@@ -5810,7 +5810,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/git-view.js",
-          "line": 265,
+          "line": 264,
           "kind": "custom-event-listener",
           "match": "btn.addEventListener('click'"
         },
@@ -10996,7 +10996,7 @@
       "consumers": [
         {
           "file": "modules/renderer/side-chat/attachments.js",
-          "line": 159,
+          "line": 158,
           "kind": "custom-event-listener"
         },
         {
@@ -11008,7 +11008,7 @@
       "evidence": [
         {
           "file": "modules/renderer/side-chat/attachments.js",
-          "line": 159,
+          "line": 158,
           "kind": "custom-event-listener",
           "match": "dropTarget?.addEventListener('dragover'"
         },
@@ -11064,7 +11064,7 @@
       "consumers": [
         {
           "file": "modules/renderer/side-chat/attachments.js",
-          "line": 160,
+          "line": 159,
           "kind": "custom-event-listener"
         },
         {
@@ -11076,7 +11076,7 @@
       "evidence": [
         {
           "file": "modules/renderer/side-chat/attachments.js",
-          "line": 160,
+          "line": 159,
           "kind": "custom-event-listener",
           "match": "dropTarget?.addEventListener('drop'"
         },
@@ -12757,7 +12757,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 244,
+          "line": 243,
           "kind": "custom-event-listener"
         }
       ],
@@ -12776,7 +12776,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 244,
+          "line": 243,
           "kind": "custom-event-listener",
           "match": "screen.addEventListener('focusin'"
         }
@@ -15544,12 +15544,12 @@
         },
         {
           "file": "modules/topicListManager.js",
-          "line": 632,
+          "line": 631,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/topicListManager.js",
-          "line": 1213,
+          "line": 1212,
           "kind": "custom-event-listener"
         },
         {
@@ -15926,13 +15926,13 @@
         },
         {
           "file": "modules/topicListManager.js",
-          "line": 632,
+          "line": 631,
           "kind": "custom-event-listener",
           "match": "menu.addEventListener('keydown'"
         },
         {
           "file": "modules/topicListManager.js",
-          "line": 1213,
+          "line": 1212,
           "kind": "custom-event-listener",
           "match": "inputField.addEventListener('keydown'"
         },
@@ -21811,14 +21811,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 255,
+          "line": 254,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 255,
+          "line": 254,
           "kind": "preload-subscription",
           "match": "api.onTerminalClear("
         }
@@ -21849,14 +21849,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 249,
+          "line": 248,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 249,
+          "line": 248,
           "kind": "preload-subscription",
           "match": "api.onTerminalData("
         }
@@ -21868,14 +21868,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 269,
+          "line": 268,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 269,
+          "line": 268,
           "kind": "preload-subscription",
           "match": "api.onTerminalExit("
         }
@@ -21887,14 +21887,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 264,
+          "line": 263,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 264,
+          "line": 263,
           "kind": "preload-subscription",
           "match": "api.onTerminalResized("
         }
@@ -22785,14 +22785,14 @@
       "consumers": [
         {
           "file": "modules/renderer/side-chat/attachments.js",
-          "line": 158,
+          "line": 157,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/renderer/side-chat/attachments.js",
-          "line": 158,
+          "line": 157,
           "kind": "custom-event-listener",
           "match": "textarea?.addEventListener('paste'"
         }
@@ -26659,7 +26659,7 @@
         },
         {
           "file": "modules/topicListManager.js",
-          "line": 567,
+          "line": 566,
           "kind": "custom-event-listener"
         },
         {
@@ -26731,7 +26731,7 @@
         },
         {
           "file": "modules/topicListManager.js",
-          "line": 567,
+          "line": 566,
           "kind": "custom-event-listener",
           "match": "scrollContainer.addEventListener('scroll'"
         },
@@ -33016,7 +33016,7 @@
     },
     {
       "file": "modules/topicListManager.js",
-      "line": 40,
+      "line": 39,
       "reason": "dynamic listener name: type",
       "kind": "custom-event-listener",
       "match": "target?.addEventListener?.(type",
@@ -33024,7 +33024,7 @@
     },
     {
       "file": "modules/topicListManager.js",
-      "line": 45,
+      "line": 44,
       "reason": "dynamic listener name: type",
       "kind": "custom-event-listener",
       "match": "target?.addEventListener?.(type",
