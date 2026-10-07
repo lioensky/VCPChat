@@ -4049,17 +4049,17 @@
         },
         {
           "file": "modules/ui-system/conversation-status-panel/git-graph.js",
-          "line": 71,
+          "line": 77,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/conversation-status-panel/git-graph.js",
-          "line": 126,
+          "line": 140,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/conversation-status-panel/git-graph.js",
-          "line": 135,
+          "line": 149,
           "kind": "custom-event-listener"
         },
         {
@@ -5579,19 +5579,19 @@
         },
         {
           "file": "modules/ui-system/conversation-status-panel/git-graph.js",
-          "line": 71,
+          "line": 77,
           "kind": "custom-event-listener",
           "match": "refreshBtn.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/conversation-status-panel/git-graph.js",
-          "line": 126,
+          "line": 140,
           "kind": "custom-event-listener",
           "match": "line.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/conversation-status-panel/git-graph.js",
-          "line": 135,
+          "line": 149,
           "kind": "custom-event-listener",
           "match": "more.addEventListener('click'"
         },

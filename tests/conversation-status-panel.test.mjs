@@ -380,6 +380,47 @@ test('git graph dialog draws commits and lanes', async () => {
     panel.dispose();
 });
 
+test('git graph keeps its scroll position on select and load more; a refresh drops a load more already in flight', async () => {
+    const page = (from, count) => Array.from({ length: count }, (_, i) => {
+        const n = from + i;
+        return { hash: `h${String(n).padStart(6, '0')}`, parents: [`h${String(n + 1).padStart(6, '0')}`], author: 'Roxy', time: 1790000000 - n, subject: `提交 ${n}`, refs: [] };
+    });
+    let gate = null;
+    const { doc, panel, dom } = setup({ api: {
+        gitCommitGraph: async (_id, { skip }) => {
+            if (gate) await gate.promise;
+            return { success: true, data: { commits: page(skip, 50), hasMore: true } };
+        }
+    } });
+    panel.mount();
+    await flush();
+    await panel.openGitGraphDialog();
+    const dialog = q(doc, '.zc-graph-dialog');
+    q(dialog, '.zc-graph-scroll').scrollTop = 900;
+
+    click(dom, dialog.querySelectorAll('.zc-graph-row')[30]);
+    assert.equal(q(dialog, '.zc-graph-scroll').scrollTop, 900, 'opening a commit detail keeps the list where it was');
+    assert.match(q(doc, '.zc-graph-detail').textContent, /h000030/);
+
+    click(dom, q(dialog, '.zc-graph-load-more'));
+    await flush();
+    assert.equal(dialog.querySelectorAll('.zc-graph-row').length, 100);
+    assert.equal(q(dialog, '.zc-graph-scroll').scrollTop, 900, 'loading more keeps the list where it was');
+
+    // 加载更多还没回来时刷新：旧的那页回来后不能追加到刷新后的列表上
+    let release;
+    gate = { promise: new Promise(resolve => { release = resolve; }) };
+    click(dom, q(dialog, '.zc-graph-load-more'));
+    click(dom, q(dialog, '.zc-graph-refresh'));
+    gate = null;
+    release();
+    await flush();
+    await flush();
+    assert.equal(dialog.querySelectorAll('.zc-graph-row').length, 50);
+    assert.equal(new Set([...dialog.querySelectorAll('.zc-graph-row')].map(row => row.dataset.hash)).size, 50);
+    panel.dispose();
+});
+
 test('panel lists recent AI commands from the built-in terminal and opens their output', async () => {
     let push = null;
     let watching = false;

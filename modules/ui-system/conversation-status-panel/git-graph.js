@@ -52,6 +52,8 @@ export function createStatusPanelGitGraph({
         let expandedHash = null;
         let loadingMore = false;
         let refreshing = false;
+        // 刷新换掉整份列表；在那之前发出的「加载更多」回来时作废
+        let generation = 0;
         const closeBtn = button('zc-btn zc-btn-ghost zc-btn-icon-sm zc-graph-close', { label: '关闭', onClick: modal.close }, icon('x'));
 
         const fetchPage = async skip => {
@@ -60,7 +62,11 @@ export function createStatusPanelGitGraph({
             return res.data;
         };
 
-        const paint = () => {
+        // 重画时保住滚动位置和焦点所在的行：点一行看详情、加载更多都不该把人送回顶部
+        const paint = ({ keepScroll = true } = {}) => {
+            const previousScroll = keepScroll ? (modal.dialog.querySelector('.zc-graph-scroll')?.scrollTop || 0) : 0;
+            const focusedHash = modal.dialog.contains(doc.activeElement) ? doc.activeElement?.dataset?.hash || null : null;
+            const focusLoadMore = modal.dialog.contains(doc.activeElement) && doc.activeElement?.classList?.contains('zc-graph-load-more');
             modal.dialog.textContent = '';
             const layout = layoutGitGraph(commits);
             const graphWidth = Math.max(56, layout.width + 12);
@@ -71,17 +77,24 @@ export function createStatusPanelGitGraph({
             refreshBtn.addEventListener('click', async () => {
                 if (refreshing) return;
                 refreshing = true;
+                const current = ++generation;
+                loadingMore = false;
                 paint();
+                let refreshed = false;
                 try {
                     const page = await fetchPage(0);
+                    if (current !== generation || modal.closed) return;
                     commits = page.commits;
                     hasMore = page.hasMore;
                     selectedHash = commits[0]?.hash ?? null;
+                    expandedHash = null;
+                    refreshed = true;
                 } catch (e) {
+                    if (current !== generation || modal.closed) return;
                     toast(`刷新 Git 图谱失败：${e?.message || e}`, 'error');
                 }
                 refreshing = false;
-                paint();
+                paint({ keepScroll: !refreshed });
             });
             head.appendChild(refreshBtn);
             modal.dialog.append(closeBtn, head);
@@ -121,6 +134,7 @@ export function createStatusPanelGitGraph({
                     h('span', 'zc-graph-cell zc-graph-date', formatCommitTime(commit.time)),
                     h('span', 'zc-graph-cell zc-graph-author', commit.author),
                     h('span', 'zc-graph-cell zc-graph-hash', commit.hash.slice(0, 7)));
+                line.dataset.hash = commit.hash;
                 line.style.gridTemplateColumns = columns;
                 line.style.height = `${layout.rowHeight}px`;
                 line.addEventListener('click', () => {
@@ -131,16 +145,21 @@ export function createStatusPanelGitGraph({
                 rows.appendChild(line);
             }
             if (hasMore) {
-                const more = button('zc-graph-load-more', { disabled: loadingMore }, loadingMore ? '正在加载...' : '加载更多提交');
+                const more = button('zc-graph-load-more', { disabled: loadingMore || refreshing }, loadingMore ? '正在加载...' : '加载更多提交');
                 more.addEventListener('click', async () => {
-                    if (loadingMore) return;
+                    if (loadingMore || refreshing) return;
                     loadingMore = true;
+                    const current = generation;
                     paint();
                     try {
                         const page = await fetchPage(commits.length);
-                        commits = [...commits, ...page.commits];
+                        if (current !== generation || modal.closed) return;
+                        // 两页之间有新提交时分页会错开，已有的提交不再追加一遍
+                        const known = new Set(commits.map(commit => commit.hash));
+                        commits = [...commits, ...page.commits.filter(commit => !known.has(commit.hash))];
                         hasMore = page.hasMore;
                     } catch (e) {
+                        if (current !== generation || modal.closed) return;
                         toast(`Git 图谱加载失败：${e?.message || e}`, 'error');
                     }
                     loadingMore = false;
@@ -157,7 +176,11 @@ export function createStatusPanelGitGraph({
             const graphCol = h('div', 'zc-graph-lane-col', graphSvg);
             graphCol.style.height = `${svgHeight}px`;
             table.append(h('div', 'zc-graph-col zc-graph-col-first', '图'), headCells, graphCol, rows);
-            modal.dialog.appendChild(h('div', 'zc-graph-scroll', table));
+            const scroll = h('div', 'zc-graph-scroll', table);
+            modal.dialog.appendChild(scroll);
+            scroll.scrollTop = previousScroll;
+            const refocus = focusedHash ? rows.querySelector(`[data-hash="${focusedHash}"]`) : focusLoadMore ? rows.querySelector('.zc-graph-load-more') : null;
+            refocus?.focus({ preventScroll: true });
 
             const expanded = commits.find(commit => commit.hash === expandedHash);
             if (expanded) {
