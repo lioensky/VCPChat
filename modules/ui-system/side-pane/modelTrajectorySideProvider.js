@@ -237,6 +237,27 @@ export function createModelTrajectorySideProvider({
 
             const updateAllRows = () => { for (const row of rowRegistry.values()) row.update(); };
 
+            // 行内容是否溢出按帧合批测：先把所有待测行读完，再统一改样式。逐行读写交错时每行都会强制一次整页布局，上百行就是秒级卡顿
+            const pendingMeasures = new Set();
+            let measureFrame = 0;
+            const flushMeasures = () => {
+                measureFrame = 0;
+                const jobs = [...pendingMeasures];
+                pendingMeasures.clear();
+                const results = jobs.map(job => job.read());
+                jobs.forEach((job, i) => job.write(results[i]));
+            };
+            const scheduleRowMeasure = (job) => {
+                if (typeof win.requestAnimationFrame !== 'function') return;
+                pendingMeasures.add(job);
+                if (!measureFrame) measureFrame = win.requestAnimationFrame(flushMeasures);
+            };
+            own.own(() => {
+                if (measureFrame && typeof win.cancelAnimationFrame === 'function') win.cancelAnimationFrame(measureFrame);
+                measureFrame = 0;
+                pendingMeasures.clear();
+            }, 'row-measure-frame');
+
             // ---------------------------------------------------------------- 行
             function createRow({ expansionKey, message, role, visualRole: forcedRole, roleLabel, record, alt }) {
                 const visualRole = visualRoleOf(message, forcedRole);
@@ -301,7 +322,6 @@ export function createModelTrajectorySideProvider({
 
                 let built = false;
                 let showAll = false;
-                let measureFrame = 0;
 
                 const build = () => {
                     built = true;
@@ -339,18 +359,19 @@ export function createModelTrajectorySideProvider({
                     if (!content.childNodes.length) content.appendChild(h('span', 'side-traj-empty-part', '—'));
                 };
 
-                const measure = () => {
-                    measureFrame = 0;
-                    if (!row.classList.contains('open') || showAll) return;
-                    const overflowing = content.scrollHeight > content.clientHeight + 2;
-                    shell.classList.toggle('overflowing', overflowing);
-                    more.hidden = !overflowing || row.classList.contains('revealed');
-                    more.textContent = '展开';
+                const measureJob = {
+                    // 只读布局；行已收起或已全部展开时不用测
+                    read: () => (row.classList.contains('open') && !showAll
+                        ? content.scrollHeight > content.clientHeight + 2
+                        : null),
+                    write: overflowing => {
+                        if (overflowing === null || !row.classList.contains('open') || showAll) return;
+                        shell.classList.toggle('overflowing', overflowing);
+                        more.hidden = !overflowing || row.classList.contains('revealed');
+                        more.textContent = '展开';
+                    }
                 };
-                const scheduleMeasure = () => {
-                    if (measureFrame || typeof win.requestAnimationFrame !== 'function') return;
-                    measureFrame = win.requestAnimationFrame(measure);
-                };
+                const scheduleMeasure = () => scheduleRowMeasure(measureJob);
                 more.addEventListener('click', () => {
                     showAll = !showAll;
                     shell.classList.toggle('show-all', showAll);

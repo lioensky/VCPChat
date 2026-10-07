@@ -324,6 +324,69 @@ test('side chat attaches picked files to the next send and clears them', async (
     dom.window.close();
 });
 
+test('side chat takes pasted and dropped files as attachments and leaves text paste alone', async () => {
+    const dom = new JSDOM('<div id="sideContainer"></div>');
+    const container = dom.window.document.getElementById('sideContainer');
+    const drops = [];
+    let previewed = null;
+    const caps = {
+        ...createMockChatCapabilities(),
+        electronAPI: {
+            async handleFileDrop(agentId, topicId, files) {
+                drops.push([agentId, topicId, files.map(f => [f.name, f.type, f.data.length])]);
+                return files.map(f => ({ success: true, attachment: { name: f.name, type: f.type, size: f.size, internalPath: `file:///${f.name}` } }));
+            }
+        },
+        uiHelper: {
+            showToastNotification() {},
+            updateAttachmentPreview(files) { previewed = files.map(f => f.originalName); }
+        }
+    };
+    const descriptor = {
+        id: 'chat-paste',
+        title: 'Paste',
+        parent: { itemId: 'agent-1', topicId: 'topic-parent', name: 'Agent' },
+        child: { itemId: 'agent-1', topicId: 'topic-child-paste' },
+        contextMode: 'references-only',
+        model: 'test-model'
+    };
+    const handle = await mountSideChatSurface(container, { descriptor, chatCapabilities: caps });
+    await waitFor(() => !container.querySelector('.side-chat-attach-btn').disabled, { message: 'enabled once history is loaded' });
+    const file = (name, type) => ({ name, type, size: 2, arrayBuffer: async () => new Uint8Array([1, 2]).buffer });
+    const fire = (target, type, key, data) => {
+        const event = new dom.window.Event(type, { bubbles: true, cancelable: true });
+        Object.defineProperty(event, key, { value: data });
+        target.dispatchEvent(event);
+        return event;
+    };
+
+    // a screenshot in the clipboard becomes an attachment of the side topic
+    const textarea = container.querySelector('.side-chat-textarea');
+    const pasted = fire(textarea, 'paste', 'clipboardData', { items: [{ kind: 'file', getAsFile: () => file('image.png', 'image/png') }] });
+    assert.equal(pasted.defaultPrevented, true);
+    await waitFor(() => previewed?.length === 1, { message: 'pasted image is previewed' });
+    assert.deepEqual(drops, [['agent-1', 'topic-child-paste', [['image.png', 'image/png', 2]]]]);
+
+    // plain text keeps the browser's own paste
+    const text = fire(textarea, 'paste', 'clipboardData', { items: [{ kind: 'string', type: 'text/plain' }] });
+    assert.equal(text.defaultPrevented, false);
+
+    // a file dropped anywhere on the side chat is attached too
+    const area = container.querySelector('.side-chat-messages-container') || container.firstElementChild;
+    const transfer = { types: ['Files'], files: [file('notes.txt', 'text/plain')], dropEffect: 'none' };
+    assert.equal(fire(area, 'dragover', 'dataTransfer', transfer).defaultPrevented, true);
+    assert.equal(fire(area, 'drop', 'dataTransfer', transfer).defaultPrevented, true);
+    await waitFor(() => previewed?.length === 2, { message: 'dropped file is previewed' });
+    assert.deepEqual(previewed, ['image.png', 'notes.txt']);
+
+    container.querySelector('.side-chat-composer').requestSubmit();
+    const sent = await waitFor(() => caps.getSentRequest());
+    assert.deepEqual(sent.attachments.map(a => a.localPath), ['file:///image.png', 'file:///notes.txt']);
+
+    await handle.dispose();
+    dom.window.close();
+});
+
 test('side chat message context menu offers per-role actions and deletes through the side renderer', async () => {
     const dom = new JSDOM('<div id="sideContainer"></div>');
     const doc = dom.window.document;

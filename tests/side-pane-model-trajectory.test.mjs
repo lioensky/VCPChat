@@ -563,3 +563,45 @@ test('a trajectory tab woken from dormancy keeps the rows the reader collapsed a
     assert.equal(head(other, 'user').getAttribute('aria-expanded'), 'true');
     await switched.dispose();
 });
+
+test('opening the trajectory measures every open row in one frame: all layout reads before any style write', async () => {
+    const env = makeEnv();
+    const win = env.dom.window;
+    const frames = new Map();
+    let nextFrame = 1;
+    win.requestAnimationFrame = callback => { const id = nextFrame++; frames.set(id, callback); return id; };
+    win.cancelAnimationFrame = id => { frames.delete(id); };
+    const log = [];
+    const scrollHeight = Object.getOwnPropertyDescriptor(win.Element.prototype, 'scrollHeight');
+    Object.defineProperty(win.Element.prototype, 'scrollHeight', {
+        configurable: true,
+        get() { if (this.classList.contains('side-traj-content')) log.push('read'); return 0; }
+    });
+    const toggle = win.DOMTokenList.prototype.toggle;
+    win.DOMTokenList.prototype.toggle = function (token, force) {
+        if (token === 'overflowing' && force !== undefined) log.push('write');
+        return toggle.call(this, token, force);
+    };
+    try {
+        const handle = await env.provider.mountTab({ id: 'model-trajectory:main' }, env.view);
+        const openRows = env.view.querySelectorAll('.side-traj-row.open').length;
+        assert.ok(openRows > 2, 'the fixture opens several rows');
+        const pending = [...frames.values()];
+        frames.clear();
+        pending.forEach(callback => callback(0));
+        assert.equal(log.filter(entry => entry === 'read').length, openRows);
+        assert.equal(log.filter(entry => entry === 'write').length, openRows);
+        assert.equal(log.indexOf('write'), openRows, 'no row writes its styles before every row has been read');
+
+        // 关掉标签时还没跑的测量帧要一起撤掉
+        env.view.querySelector('.side-traj-row.open .side-traj-row-head').click();
+        env.view.querySelector('.side-traj-row:not(.open) .side-traj-row-head').click();
+        assert.ok(frames.size > 0);
+        await handle.dispose();
+        assert.equal(frames.size, 0);
+    } finally {
+        win.DOMTokenList.prototype.toggle = toggle;
+        if (scrollHeight) Object.defineProperty(win.Element.prototype, 'scrollHeight', scrollHeight);
+        else delete win.Element.prototype.scrollHeight;
+    }
+});
