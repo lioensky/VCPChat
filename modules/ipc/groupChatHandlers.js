@@ -5,6 +5,7 @@ const fs = require('fs-extra');
 const { pathToFileURL } = require('url');
 const groupChat = require('../../Groupmodules/groupchat');
 const { HistoryMutationQueue } = require('../services/historyMutationQueue');
+const { clearTrajectoryOf } = require('../modelTrajectory');
 
 /**
  * Initializes group chat related IPC handlers.
@@ -118,7 +119,9 @@ function initialize(mainWindow, context) {
     });
 
     ipcMain.handle('delete-group-topic', async (event, groupId, topicId) => {
-        return await groupChat.deleteGroupTopic(groupId, topicId);
+        const result = await groupChat.deleteGroupTopic(groupId, topicId);
+        if (result?.success) await clearTrajectoryOf({ groupId, topicId });
+        return result;
     });
 
     ipcMain.handle('save-group-topic-title', async (event, groupId, topicId, newTitle) => {

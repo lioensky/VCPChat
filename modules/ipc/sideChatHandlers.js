@@ -12,6 +12,7 @@ const fs = require('fs-extra');
 const path = require('path');
 const crypto = require('crypto');
 const { createApplicationSenderGuard, resolveWindowWebContents } = require('./applicationSender');
+const { clearTrajectoryOf } = require('../modelTrajectory');
 
 function filterStableHistory(history = []) {
     if (!Array.isArray(history)) return [];
@@ -346,6 +347,7 @@ function initialize(paths) {
                 return { success: false, error: 'NOT_A_SIDE_CHAT_CHILD' };
             }
             await removeChildDir(topicDir);
+            await clearTrajectoryOf({ agentId, topicId: childTopicId });
             return { success: true, removed: true };
         } catch (error) {
             console.error('[SideChatHandlers] delete-child error:', error);
@@ -443,6 +445,7 @@ async function removeSideChatChildrenOfParent({ USER_DATA_DIR, agentId, parentTo
                 marker.agentId !== safeAgentId || marker.topicId !== entry.name ||
                 marker.parentTopicId !== safeParentId) continue;
             await removeChildDir(entryDir);
+            await clearTrajectoryOf({ agentId: safeAgentId, topicId: entry.name });
             removed += 1;
         } catch {}
     }

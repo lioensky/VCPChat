@@ -13,8 +13,14 @@ export function createFloatingSelectionButton({ doc, win, notify }) {
     };
 
     const hide = () => { floatingBtn.hidden = true; };
-    // 按钮是 fixed 定位在选区视口坐标上；任何滚动或尺寸变化都会让坐标失效（ZCode MarkdownSelectionTooltip 同样在滚动时收起）
-    const onViewportChange = () => { if (!floatingBtn.hidden) hide(); };
+    // 按钮是 fixed 定位在选区视口坐标上；任何滚动或尺寸变化都会让坐标失效（ZCode MarkdownSelectionTooltip 同样在滚动时收起）。
+    // 停下来后按选区的新位置再放一次：拖选到边缘时列表会自己滚，滚完不一定还有 selectionchange
+    let settleTimer = null;
+    const onViewportChange = () => {
+        if (!floatingBtn.hidden) hide();
+        win.clearTimeout(settleTimer);
+        settleTimer = win.setTimeout(onSelectionChange, 150);
+    };
 
     const onSelectionChange = () => {
         const sel = win.getSelection();
@@ -25,6 +31,11 @@ export function createFloatingSelectionButton({ doc, win, notify }) {
             return;
         }
         const rect = range.getBoundingClientRect();
+        // 选区已经滚出视口：不把按钮钉在边上
+        if (rect.bottom < 0 || rect.top > win.innerHeight) {
+            hide();
+            return;
+        }
         floatingBtn.hidden = false;
         const btnWidth = floatingBtn.offsetWidth || 110;
         const left = Math.max(10, Math.min(win.innerWidth - btnWidth - 10, rect.left + rect.width / 2 - btnWidth / 2));
@@ -60,6 +71,7 @@ export function createFloatingSelectionButton({ doc, win, notify }) {
             doc.removeEventListener('selectionchange', onSelectionChange);
             doc.removeEventListener('scroll', onViewportChange, true);
             win.removeEventListener('resize', onViewportChange);
+            win.clearTimeout(settleTimer);
             floatingBtn.removeEventListener('mousedown', onMouseDown);
             floatingBtn.removeEventListener('click', onClick);
         }

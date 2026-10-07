@@ -10,7 +10,7 @@ const {
     rememberAttachmentDirectory
 } = require('../services/attachmentDialogState');
 const topicTitleManager = require('../../Groupmodules/topicTitleManager');
-const { beginTrajectoryCall, sessionKeyFromContext, sourceFromContext, withStreamUsage } = require('../modelTrajectory');
+const { beginTrajectoryCall, clearTrajectoryOf, sessionKeyFromContext, sourceFromContext, withStreamUsage } = require('../modelTrajectory');
 const { HistoryMutationQueue } = require('../services/historyMutationQueue');
 const workspaceHandlers = require('./workspaceHandlers');
 const { removeSideChatChildrenOfParent } = require('./sideChatHandlers');
@@ -762,6 +762,7 @@ function initialize(mainWindow, context) {
 
                 const topicDataDir = path.join(USER_DATA_DIR, agentId, 'topics', topicIdToDelete);
                 if (await fs.pathExists(topicDataDir)) await fs.remove(topicDataDir);
+                await clearTrajectoryOf({ agentId, topicId: topicIdToDelete });
                 await removeSideChatChildrenOfParent({ USER_DATA_DIR, agentId, parentTopicId: topicIdToDelete })
                     .catch(err => console.warn('[delete-topic] Failed to remove side chats:', err));
 

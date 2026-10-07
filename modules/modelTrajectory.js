@@ -585,6 +585,13 @@ function getSharedRecorder() {
     return sharedRecorder;
 }
 
+/** 话题（含辅助对话子话题）删掉时一并删掉它的轨迹文件，否则每个删过的话题都在磁盘上留一份；没配置或键不完整时什么也不做。 */
+function clearTrajectoryOf(context) {
+    const sessionKey = sessionKeyFromContext(context);
+    if (!sharedRecorder || sessionKey === 'unscoped') return Promise.resolve();
+    return sharedRecorder.clear(sessionKey).catch(() => {});
+}
+
 function beginTrajectoryCall(args) {
     try {
         return sharedRecorder && args ? sharedRecorder.begin(args) : NOOP_CALL;
@@ -598,6 +605,7 @@ module.exports = {
     configureSharedRecorder,
     getSharedRecorder,
     beginTrajectoryCall,
+    clearTrajectoryOf,
     sessionKeyFromContext,
     sourceFromContext,
     normalizeMessage,
