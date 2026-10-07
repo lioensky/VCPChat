@@ -166,6 +166,49 @@ test('replaced picker rows no longer trigger reads after filtering', async () =>
     }
 });
 
+test('workspace picker is keyboard usable and returns focus to its toggle after opening a file', async () => {
+    const dom = new JSDOM('<section id="view"></section>', { url: 'https://vcpchat.local/' });
+    const doc = dom.window.document;
+    const provider = createCodeViewerSideProvider({ document: doc, uiHelper: null, api: {
+        async gitListWorkspaces() { return { success: true, data: { workspaces: [{ id: 'w', path: '/repo' }], activeWorkspaceId: 'w' } }; },
+        async sourceListFiles() { return { success: true, data: { files: ['a.js', 'b.js'] } }; },
+        async sourceReadFile(_workspace, path) { return { success: true, data: { text: path } }; }
+    } });
+    const view = doc.getElementById('view');
+    doc.body.appendChild(view);
+    const handle = await provider.mountTab({ title: '代码', payload: {} }, view);
+    try {
+        const filter = view.querySelector('.side-code-picker-filter');
+        const list = view.querySelector('.side-code-picker-list');
+        const toggle = view.querySelector('[aria-label="选择文件"]');
+        assert.equal(filter.getAttribute('aria-label'), '搜索文件名');
+        assert.notEqual(list.getAttribute('role'), 'listbox', 'rows are buttons, not options');
+        assert.equal(toggle.getAttribute('aria-expanded'), 'true');
+
+        const key = (target, k) => target.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+        filter.focus();
+        key(filter, 'ArrowDown');
+        assert.equal(doc.activeElement?.dataset.path, 'a.js');
+        key(doc.activeElement, 'ArrowDown');
+        assert.equal(doc.activeElement?.dataset.path, 'b.js');
+        key(doc.activeElement, 'Home');
+        key(doc.activeElement, 'ArrowUp');
+        assert.equal(doc.activeElement, filter);
+
+        key(filter, 'ArrowDown');
+        doc.activeElement.click();
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(handle.getCode(), 'a.js');
+        assert.equal(view.querySelector('.side-code-picker').classList.contains('is-collapsed'), true);
+        assert.equal(toggle.getAttribute('aria-expanded'), 'false');
+        assert.equal(doc.activeElement, toggle, 'focus does not fall to body when the picker collapses');
+        assert.equal(view.querySelector('[data-path="a.js"]').getAttribute('aria-current'), 'true');
+    } finally {
+        handle.dispose();
+        dom.window.close();
+    }
+});
+
 function fileTab(filePath) {
     return { id: `code-viewer:${filePath}`, title: filePath.split('/').pop(), payload: { filePath } };
 }

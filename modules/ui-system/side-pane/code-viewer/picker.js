@@ -22,6 +22,11 @@ export function createCodeViewerPicker({
     // 监听挂在查看器这次挂载的 scope 上，标签释放时一起拆
     const on = (node, event, listener) => scope.listen(node, event, listener, undefined, `picker:${event}`);
 
+    function setCollapsed(collapsed) {
+        picker.classList.toggle('is-collapsed', collapsed);
+        pickerToggleBtn?.setAttribute('aria-expanded', String(!collapsed));
+    }
+
     async function setupPicker() {
         const wsSelect = doc.createElement('select');
         wsSelect.className = 'side-code-picker-select';
@@ -30,9 +35,11 @@ export function createCodeViewerPicker({
         filterInput.type = 'search';
         filterInput.className = 'side-code-picker-filter';
         filterInput.placeholder = '搜索文件名...';
+        filterInput.setAttribute('aria-label', '搜索文件名');
+        // 行是普通按钮，不是 option，所以不标 listbox；方向键导航见下面的 onListKeydown
         const list = doc.createElement('div');
         list.className = 'side-code-picker-list';
-        list.setAttribute('role', 'listbox');
+        list.setAttribute('aria-label', '文件');
         const note = doc.createElement('div');
         note.className = 'side-code-picker-note';
         picker.append(wsSelect, filterInput, list, note);
@@ -52,7 +59,10 @@ export function createCodeViewerPicker({
                 item.type = 'button';
                 item.className = 'side-code-picker-item';
                 item.dataset.path = rel;
-                if (rel === activePath) item.classList.add('active');
+                if (rel === activePath) {
+                    item.classList.add('active');
+                    item.setAttribute('aria-current', 'true');
+                }
                 const slash = rel.lastIndexOf('/');
                 const name = doc.createElement('span');
                 name.className = 'side-code-picker-name';
@@ -103,6 +113,8 @@ export function createCodeViewerPicker({
             store.currentCode = '';
             list.querySelectorAll('.side-code-picker-item').forEach((el) => {
                 el.classList.toggle('active', el.dataset.path === rel);
+                if (el.dataset.path === rel) el.setAttribute('aria-current', 'true');
+                else el.removeAttribute('aria-current');
             });
             setBodyMessage('加载文件中...');
             try {
@@ -130,7 +142,10 @@ export function createCodeViewerPicker({
                 } else {
                     store.currentCode = file.text || '';
                     renderCodeView();
-                    picker.classList.add('is-collapsed');
+                    // 收起会把焦点所在的行藏掉，焦点交给能再打开选择器的按钮（Radix Popover 关闭时也回到触发器）
+                    const hadFocus = picker.contains(doc.activeElement);
+                    setCollapsed(true);
+                    if (hadFocus) pickerToggleBtn?.focus?.();
                 }
             } catch (err) {
                 if (!isCurrent()) return;
@@ -153,10 +168,32 @@ export function createCodeViewerPicker({
             loadFiles();
         });
         on(filterInput, 'input', renderList);
+        // 搜索框 ↓ 进列表，列表里 ↑↓/Home/End 移动，第一行再按 ↑ 回搜索框（同 ZCode/cmdk 的文件选择）
+        const rows = () => Array.from(list.querySelectorAll('.side-code-picker-item'));
+        on(filterInput, 'keydown', (event) => {
+            if (event.key !== 'ArrowDown') return;
+            const first = rows()[0];
+            if (!first) return;
+            event.preventDefault();
+            first.focus();
+        });
+        on(list, 'keydown', (event) => {
+            if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+            const items = rows();
+            const index = items.indexOf(event.target);
+            if (index < 0) return;
+            event.preventDefault();
+            if (event.key === 'ArrowUp' && index === 0) { filterInput.focus(); return; }
+            const next = event.key === 'Home' ? 0
+                : event.key === 'End' ? items.length - 1
+                    : Math.min(items.length - 1, Math.max(0, index + (event.key === 'ArrowDown' ? 1 : -1)));
+            items[next].focus();
+        });
         on(pickerToggleBtn, 'click', () => {
-            picker.classList.toggle('is-collapsed');
+            setCollapsed(!picker.classList.contains('is-collapsed'));
             if (!picker.classList.contains('is-collapsed')) filterInput.focus();
         });
+        setCollapsed(picker.classList.contains('is-collapsed'));
 
         setBodyMessage('请选择要查看的文件');
         if (typeof api?.gitListWorkspaces !== 'function' || typeof api?.sourceListFiles !== 'function') {
@@ -181,7 +218,8 @@ export function createCodeViewerPicker({
                 wsSelect.appendChild(opt);
             }
             const valid = (id) => workspaces.some((w) => w.id === id);
-            const saved = getStorage()?.getItem(SOURCE_WORKSPACE_KEY);
+            let saved = null;
+            try { saved = getStorage()?.getItem(SOURCE_WORKSPACE_KEY); } catch (_error) { /* Storage is optional. */ }
             const preferred = valid(saved) ? saved : res.data.activeWorkspaceId;
             wsSelect.value = valid(preferred) ? preferred : workspaces[0].id;
             activeWorkspaceId = wsSelect.value;
