@@ -615,11 +615,6 @@ export async function mountSideChatSurface(container, {
                 || hasUnsavedChanges || attachmentsOwner.count > 0 || messageEditor.isEditing()
                 || form.hasAttribute('aria-busy'));
         },
-        setVisible(visible) {
-            if (visible && !isDisposed && isHistoryLoaded) {
-                textarea.focus();
-            }
-        },
         focus() {
             if (!isDisposed && isHistoryLoaded) {
                 textarea.focus();

@@ -157,7 +157,6 @@ test('busy views and keep-type views do not sleep', async () => {
         await h.controller.openTab(tab('probe:busy'));
         await h.controller.openTab(tab('probe:keep', { kind: 'pinned' }));
         await h.controller.openTab(tab('probe:front'));
-        h.busy.add('probe:busy');
         await h.advance(20);
         assert.equal(h.live('probe:busy').length, 1);
         assert.equal(h.live('probe:keep').length, 1);

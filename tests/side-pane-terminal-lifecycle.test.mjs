@@ -155,6 +155,24 @@ test('restart asks with the app confirm dialog when there is one, and a second c
     } finally { answer.resolve(false); await g.cleanup(); }
 });
 
+test('the restart confirm dialog keeps focus instead of the terminal behind it', async () => {
+    const answer = Promise.withResolvers();
+    let dialogButton = null;
+    const g = fixture({ uiHelper: { showConfirmDialog: () => {
+        dialogButton = g.doc.createElement('button');
+        g.doc.body.appendChild(dialogButton);
+        dialogButton.focus(); // 应用确认框同步聚焦自己的按钮
+        return answer.promise;
+    } } });
+    try {
+        await g.provider.openTerminalTab();
+        await until(() => g.status().dataset.state === 'connected');
+        g.retry().click();
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(g.doc.activeElement, dialogButton, 'typing goes to the dialog, not the shell');
+    } finally { answer.resolve(false); await g.cleanup(); }
+});
+
 test('restarting a shell that already exited does not ask about aborting commands', async () => {
     const h = fixture();
     try {
@@ -273,7 +291,7 @@ test('a live terminal view holds its buttons and size observer through the view 
         const handle = await h.provider.openTerminalTab();
         await until(() => handle.getSessionId() === 'view:1');
         const live = terminalTab().resources;
-        assert.ok(live.byType.listener > 0, 'toolbar controls listen through the view scope');
+        assert.equal(live.byType.listener, 3, 'workspace jump, clear and restart listen through the view scope');
         assert.equal(live.byType.observer, 1);
         assert.equal(observers[0].targets.size, 1);
 

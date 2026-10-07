@@ -3,7 +3,7 @@
  *   - 隐藏超过 hiddenMs（默认 5 分钟）；
  *   - 属于别的对话的标签（scopeMode 'topic'）离开当前对话超过 otherTopicMs，来回切换时不会马上重建；
  *   - 同时挂着的视图超过 maxLiveViews 时，最久没显示的先休眠。
- * 不休眠：正在显示的、类型声明 dormancy 'keep' 的、视图报告自己正忙的（网页在加载或放声音、辅助对话在发送……），
+ * 不休眠：正在显示的、类型声明 dormancy 'keep' 的、视图报告自己正忙的（网页在加载或放声音……），
  * 忙的到期后隔 busyRetryMs 再看一次。
  * 'limit-only' 的类型（浏览器）不按隐藏时长休眠，只在超过上限时参与淘汰：销毁网页会丢掉表单、登录和后退栈，
  * 代价远高于重建其他视图（对照 ZCode browserTabResidencyPolicy.ts 只按数量淘汰）。

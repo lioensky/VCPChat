@@ -192,7 +192,7 @@ openTab ─ 创建 occurrence ─ openView(scope) ─ 发布可见性 ─ mountT
    export function defineTerminalTabType(deps) {
        // 实现第一次用到时才加载；openTerminalTab 是要转发的方法
        const provider = createLazyProvider(async () => (await import('../terminalSideProvider.js'))
-           .createTerminalSideProvider(deps), ['openTerminalTab'], { label: '终端', notify: deps.notify });
+           .createTerminalSideProvider(deps), ['openTerminalTab'], { label: '终端', notify: (message, type) => deps.uiHelper?.showToastNotification?.(message, type) });
        return Object.freeze({
            kind: 'terminal', label: '终端', icon: 'terminal', searchHint: '终端',
            persist: false,
@@ -276,7 +276,7 @@ provider 只能修改自己的视图，跨模块动作通过组合者注入的�
 
 `sideChatSurfaceOwner.js` 组合独立渲染器、操作与输入提交，并提供原有 handle API。`side-chat/` 下的 `shell`、`composer-state`、`model-picker`、`references`、`message-actions`、`scrolling`、`persistence` 和 `draft-cache` 分别负责视图、状态投影、模型选择、引用卡片、回答动作、贴底、历史/输入持久化和跨卸载缓存。各模块通过组合者的 store、读取函数与回调连接，不互相引用；计时器、观察者和宿主监听由所属 owner 清理。
 
-组合入口保留发送/取消操作的结算顺序与原 handle 方法，当前约 560 行，因此保留在一个文件内；其余新模块均低于 500 行。
+组合入口保留发送/取消操作的结算顺序与原 handle 方法，当前约 770 行，因此保留在一个文件内；其余新模块均低于 500 行。
 
 
 ## 11. Git 与代码查看器 provider

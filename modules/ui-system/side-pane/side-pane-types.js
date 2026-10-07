@@ -60,7 +60,7 @@
  * @property {() => void} [resume] 重新可见时调用
  * @property {() => Promise<void> | void} [dispose] 视图释放时调用，在 view scope 释放之前；
  *   资源都挂在 scope 上的 provider 可以不提供。视图休眠也会调它，要跨休眠保留的东西挂在 occurrence.signal 上
- * @property {() => boolean} [isBusy] 返回 true 时不休眠（网页在加载或放声音、辅助对话在发送或有没保存的编辑）
+ * @property {() => boolean} [isBusy] 返回 true 时不休眠（网页在加载或放声音、命令还在跑）
  * @property {() => unknown} [captureState] 休眠前调用，返回值（滚动位置之类）在重新挂载时作为 restoredState 交回
  */
 
@@ -97,7 +97,7 @@
  *   none（默认）释放视图、保留标签，再显示时重新挂载；detach 对控制器来说和 none 一样，只是声明
  *   provider 自己把会话和画面挂在 occurrence 上、休眠时收进暂存区、重新挂载时接回去（终端），会话不动；
  *   limit-only 不按隐藏时长休眠，只在挂着的视图超过上限时参与淘汰（浏览器）；
- *   keep 不休眠，也不占视图上限的名额。只是暂时不能拆（有没发出去的输入）的用 handle.isBusy()，不用 keep
+ *   keep 不休眠，也不占视图上限的名额（辅助对话：输入框、引用和滚动位置一直留在视图里）。只是偶尔忙一阵的用 handle.isBusy()
  * @property {SidePaneOpenTabEntry | null} [entry] 有时出现在新标签页里
  * @property {(payload: object, tabs: readonly SidePaneTab[]) => SidePaneTab} [toTab]
  *   openTab(payload) 先经过它变成标签；可以返回已有标签的 id 让重复打开落到同一个标签上
