@@ -151,13 +151,13 @@ function resolveWorkspacePath(workspaceId) {
     return ws.path;
 }
 
-// 终端窗口用的是 PowerShell（Windows）/ bash（其它平台）
-// PowerShell 把弯引号 ‘ ’ ‚ ‛（U+2018–U+201B）也当单引号：只双写 ' 的话 `Bob’s repo` 会提前闭合字符串。
-// 换行会直接提交半条命令，这种路径不往终端里写
+// 终端窗口用的是 PowerShell（Windows）/ bash（其它平台）。
+// 只把命令打到输入行、不替用户按回车：前台可能是 vim、python、ssh 或密码提示（busy 只认 AI 跑的命令），
+// 回车会把这串字当成那个程序的输入；提示符后有半截命令时也会拼成别的命令。用户看一眼再回车。
+// PowerShell 把 ‘ ’ ‚ ‛ 也当单引号，只转义 ASCII ' 的话，带弯引号的目录名会提前结束字符串。
 function buildChangeDirectoryCommand(dir, platform = process.platform) {
-    if (/[\r\n]/.test(dir)) throw new Error('工作区路径包含换行，无法在终端里切换。');
-    if (platform === 'win32') return `Set-Location -LiteralPath '${dir.replace(/['\u2018-\u201B]/g, quote => quote + quote)}'\r`;
-    return `cd '${dir.replace(/'/g, "'\\''")}'\r`;
+    if (platform === 'win32') return `Set-Location -LiteralPath '${dir.replace(/['\u2018\u2019\u201A\u201B]/g, '$&$&')}'`;
+    return `cd '${dir.replace(/'/g, "'\\''")}'`;
 }
 
 function createView(event, options = {}) {

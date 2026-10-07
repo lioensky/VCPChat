@@ -127,7 +127,8 @@ html body .side-plan-git .side-git-body:where(.vcp-ui-scope, .vcp-ui-scope *) { 
 html body .side-plan-git .side-git-empty:where(.vcp-ui-scope, .vcp-ui-scope *) { height: auto; padding: 40px 24px; }
 
 /* ── 变更卡片 ─────────────────────────────────────────── */
-html .side-git-card:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 100%; min-width: 0; }
+html .side-git-card:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 100%; min-width: 0; content-visibility: auto; contain-intrinsic-block-size: auto 34px; }
+html .side-git-list-more:where(.vcp-ui-scope, .vcp-ui-scope *) { height: 1px; }
 
 html .side-git-row:where(.vcp-ui-scope, .vcp-ui-scope *) {
     position: sticky;

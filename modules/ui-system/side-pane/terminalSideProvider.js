@@ -196,8 +196,14 @@ export function createTerminalSideProvider({
                 term.write(normalizePowerShellReadlineRedraw(payload.data, session.powershell));
             }
         });
+        // 主进程只在起了新 PTY 时清屏（AI 跑命令或托盘终端重启了共享会话）：这时已经活过来了，别再显示已退出
         const unsubscribeClear = api.onTerminalClear?.((payload) => {
-            if (payload?.id === session.sessionId) term.reset();
+            if (payload?.id !== session.sessionId) return;
+            term.reset();
+            if (session.exited) {
+                session.exited = false;
+                setStatus('已连接终端', 'connected');
+            }
         });
         const unsubscribeExit = api.onTerminalExit?.((payload) => {
             if (payload?.id !== session.sessionId) return;

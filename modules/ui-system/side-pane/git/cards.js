@@ -261,6 +261,7 @@ export function createGitCards({
     function reset() { clearDiff(); countQueue = []; }
     function expand(item) { expanded.clear(); expanded.add(keyOf(item)); }
     function hasExpanded() { return expanded.size > 0; }
+    function isExpanded(item) { return expanded.has(keyOf(item)); }
 
-    return Object.freeze({ buildCard, cardFor, prefetch, reset, clearDiff, invalidate, clearExpanded, expand, hasExpanded, dispose() { disposed = true; countQueue = []; expanded.clear(); diffCache.clear(); } });
+    return Object.freeze({ buildCard, cardFor, prefetch, reset, clearDiff, invalidate, clearExpanded, expand, hasExpanded, isExpanded, dispose() { disposed = true; countQueue = []; expanded.clear(); diffCache.clear(); } });
 }
