@@ -145,13 +145,3 @@ export function moveIdBefore(ids, activeId, overId) {
     next.splice(to, 0, activeId);
     return next;
 }
-
-// 按 data-tab-id 找元素，不把 id 拼进选择器：文件标签的 id 带 Windows 路径（反斜杠会被当成转义）或引号
-export function findByTabId(container, selector, tabId) {
-    if (!container || tabId == null) return null;
-    const id = String(tabId);
-    for (const element of container.querySelectorAll(selector)) {
-        if (element.getAttribute('data-tab-id') === id) return element;
-    }
-    return null;
-}

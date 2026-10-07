@@ -106,9 +106,36 @@ export function createTerminalSideProvider({
             fontSize: 13,
             scrollback: 5000,
             allowProposedApi: false,
-            theme: initialTheme
+            theme: initialTheme,
+            // OSC 8 超链接：不走 xterm 默认的 confirm + window.open（会在主窗口外开一个默认 session 的窗口），
+            // 和普通链接一样只开 http(s)，交给侧栏浏览器（对照 ZCode TerminalSession.tsx linkHandler）
+            linkHandler: {
+                allowNonHttpProtocols: false,
+                activate(event, text) {
+                    event?.preventDefault?.();
+                    if (!onOpenUrl || !/^https?:\/\//i.test(String(text || ''))) return;
+                    onOpenUrl(text);
+                }
+            }
         });
         session.term = term;
+        // 有选区时 Ctrl/Cmd+C 复制选区，不给共享 PTY 发 ^C（会打断 AI 正在跑的命令）；
+        // 副屏自己的快捷键（Ctrl/Cmd+Alt+B、Ctrl+PageUp/PageDown）不写进 shell（对照 ZCode attachCustomKeyEventHandler）
+        term.attachCustomKeyEventHandler?.((event) => {
+            if (event.type !== 'keydown') return true;
+            const mod = event.ctrlKey || event.metaKey;
+            if (!mod) return true;
+            const key = String(event.key || '').toLowerCase();
+            if (key === 'c' && !event.altKey && !event.shiftKey && term.hasSelection?.()) {
+                const text = term.getSelection();
+                const clipboard = doc.defaultView?.navigator?.clipboard;
+                clipboard?.writeText?.(text)?.catch?.(error => console.warn('[SideTerminal] Copy failed:', error));
+                return false;
+            }
+            if (event.altKey && key === 'b') return false;
+            if (event.ctrlKey && (event.key === 'PageUp' || event.key === 'PageDown')) return false;
+            return true;
+        });
         // 外框底色由 CSS 给出，xterm 从外框读取同一颜色，明暗主题切换时跟着换调色板。
         const applyTheme = () => {
             const theme = buildTerminalTheme(doc, screen);

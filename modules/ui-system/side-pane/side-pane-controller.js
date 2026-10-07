@@ -15,7 +15,6 @@ import { createSidePaneShortcuts } from './side-pane-shortcuts.js';
 import { createSidePaneLayoutStore, parseLayout, rememberBounded, serializeLayout } from './side-pane-persistence.js';
 import { createSidePaneRootScope, createTabOccurrence } from './side-pane-occurrence.js';
 import { selectDormantViews } from './side-pane-dormancy.js';
-import { findByTabId } from './side-pane-tab-utils.js';
 
 /** @typedef {import('./side-pane-types.js').SidePaneTab} SidePaneTab */
 /** @typedef {import('./side-pane-types.js').SidePaneTabType} SidePaneTabType */
@@ -246,7 +245,7 @@ export function createSidePaneController({
             isClosable: isClosableTab,
             statusTabId: SidePaneState.NOTIFICATIONS_TAB_ID,
             getStatus: readConnectionStatus,
-            onActivate: (tabId, options) => controller.activateTab(tabId, options),
+            onActivate: (tabId) => controller.activateTab(tabId),
             onClose: (tabId) => controller.closeTab(tabId),
             onReorder: (activeId, overId) => controller.reorderTab(activeId, overId),
             onContextMenu: (tabId, x, y) => tabMenu?.show(tabId, x, y),
@@ -479,7 +478,7 @@ export function createSidePaneController({
 
         const pending = { promise: null, viewElement: null, canceled: false, onClosed };
         const mounting = (async () => {
-            let view = findByTabId(contentContainer, '[data-tab-id]', tabId);
+            let view = contentContainer?.querySelector(`[data-tab-id="${tabId}"]`);
             if (!view && contentContainer) {
                 view = doc.createElement('section');
                 view.className = 'side-pane-view';
