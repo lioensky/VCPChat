@@ -14,12 +14,6 @@ function scheduleNotificationTimeout(callback, delay) {
         : setTimeout(callback, delay);
 }
 
-function listenNotification(target, type, handler, options) {
-    if (notificationLifecycleOwner?.add) return notificationLifecycleOwner.add(target, type, handler, options);
-    target?.addEventListener?.(type, handler, options);
-    return true;
-}
-
 /**
  * @typedef {Object} VCPLogStatus
  * @property {'open'|'closed'|'error'|'connecting'} status
@@ -907,13 +901,8 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
                 // 审核请求防误触：悬浮通知本体点击不关闭，必须点“允许/拒绝”。
                 element.onclick = null;
             } else {
-                element.onclick = () => {
-                    // 清除自动消失的timeout（如果有的话）
-                    if (element.dataset.autoDismissTimeout) {
-                        clearTimeout(parseInt(element.dataset.autoDismissTimeout));
-                    }
-                    closeToastNotification(element);
-                }; // Click on bubble itself still closes it
+                // 自动消失的定时器不在这里清：它到点发现浮卡已经不在会直接返回，并从 owner 里注销自己
+                element.onclick = () => closeToastNotification(element); // Click on bubble itself still closes it
             }
         } else { // For persistent list item
             const copyButton = document.createElement('button');
@@ -966,21 +955,16 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
     };
 
     const closeToastNotification = (toastElement) => {
+        if (toastElement.classList.contains('exiting')) return;
         toastElement.classList.add('exiting');
-        
-        // 设置一个fallback timeout，确保元素一定会被移除
-        const fallbackTimeout = scheduleNotificationTimeout(() => {
-            if (toastElement.parentNode) {
-                toastElement.parentNode.removeChild(toastElement);
-            }
-        }, 500); // 500ms后强制移除，即使transition没有完成
-        
-        listenNotification(toastElement, 'transitionend', () => {
-            clearTimeout(fallbackTimeout); // 如果transition正常完成，清除fallback
-            if (toastElement.parentNode) {
-                toastElement.parentNode.removeChild(toastElement);
-            }
-        }, { once: true });
+        const removeToast = () => toastElement.parentNode?.removeChild(toastElement);
+
+        // 500ms 后强制移除，即使 transition 没有完成；触发后 owner 会自己删掉这条登记，不再单独 clearTimeout
+        scheduleNotificationTimeout(removeToast, 500);
+
+        // 监听挂在浮卡自己身上，随浮卡一起回收：交给窗口级 owner 的话，transition 没跑完就被
+        // 强制移除时 transitionend 永远不来，owner 会一直攥着这张浮卡
+        toastElement.addEventListener('transitionend', removeToast, { once: true });
     };
 
     const settleApprovalListItem = (approvalElement, decision) => {
@@ -1091,21 +1075,13 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
             }
         }
 
-        let autoDismissTimeout;
-        if (autoDismissDelay === Infinity) {
-            // 永久显示，不设置自动消失定时器
-            autoDismissTimeout = null;
-        } else {
-            autoDismissTimeout = scheduleNotificationTimeout(() => {
+        // 永久显示的不设定时器；到点时浮卡已被手动关掉或面板收走就什么也不做
+        if (autoDismissDelay !== Infinity) {
+            scheduleNotificationTimeout(() => {
                 if (toastBubble.parentNode && toastBubble.classList.contains('visible') && !toastBubble.classList.contains('exiting')) {
                     closeToastNotification(toastBubble);
                 }
             }, autoDismissDelay);
-        }
-        
-        // 保存timeout ID，以便在手动关闭时清除（如果有的话）
-        if (autoDismissTimeout) {
-            toastBubble.dataset.autoDismissTimeout = autoDismissTimeout.toString();
         }
     } else if (toastContainer && notificationsSidebarElement && notificationsSidebarElement.classList.contains('active')) {
         // console.log('Notification sidebar is active, suppressing floating toast.');
@@ -1159,10 +1135,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
 function dismissFloatingToasts() {
     const toastContainer = document.getElementById('floating-toast-notifications-container');
     if (!toastContainer) return;
-    toastContainer.querySelectorAll('.floating-toast-notification[data-notification-source="vcplog"]').forEach(toast => {
-        if (toast.dataset.autoDismissTimeout) clearTimeout(Number(toast.dataset.autoDismissTimeout));
-        toast.remove();
-    });
+    toastContainer.querySelectorAll('.floating-toast-notification[data-notification-source="vcplog"]').forEach(toast => toast.remove());
 }
 
 // 添加窗口焦点变化监听，清理残留的通知元素

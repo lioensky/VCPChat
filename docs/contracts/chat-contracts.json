@@ -648,25 +648,6 @@
     ]
   },
   {
-    "id": "source.dynamic.modules.notificationrenderer",
-    "kind": "source-review",
-    "owner": "modules/notificationRenderer.js",
-    "status": "reviewed",
-    "dynamic": true,
-    "review": "DOM listener adapter: event type is supplied by module-local UI bindings; it forwards to the specified target. Existing scope, abort signal or caller cleanup owns the listener. This registers the source site without claiming a long-session lifetime measurement.",
-    "dynamicSites": [
-      {
-        "file": "modules/notificationRenderer.js",
-        "line": 19,
-        "kind": "custom-event-listener",
-        "match": "target?.addEventListener?.(type"
-      }
-    ],
-    "evidence": [
-      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
-    ]
-  },
-  {
     "id": "source.dynamic.modules.renderer.domlistenerowner",
     "kind": "source-review",
     "owner": "modules/renderer/domListenerOwner.js",
@@ -676,7 +657,7 @@
     "dynamicSites": [
       {
         "file": "modules/renderer/domListenerOwner.js",
-        "line": 9,
+        "line": 15,
         "kind": "custom-event-listener",
         "match": "target.addEventListener(type"
       }
