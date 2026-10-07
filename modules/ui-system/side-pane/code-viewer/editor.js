@@ -8,6 +8,39 @@
 // 整段高亮和逐行行号的成本随文件大小线性增长；超过这个字符数只预览开头，复制和插入仍用完整内容
 export const PREVIEW_CHAR_LIMIT = 256 * 1024;
 
+// 每块的行数：块越小滚动时补排越勤，越大切回标签时要排的越多；200 行约 3600px，比侧栏高出几屏。
+// 样式表里块的占位高度按 200 × 18px 写死（side-pane-code-viewer.css 的 .side-code-chunk），改这里要一起改
+export const CODE_CHUNK_LINES = 200;
+
+/**
+ * 把 highlight.js 的整段输出按行切开：跨行的 <span>（多行注释、模板字符串）在行尾闭合、下一行重新打开，
+ * 这样每块都是合法的 HTML，又不必按块各自高亮（那样会丢掉跨块的语法状态）。
+ * highlight.js 只输出 <span class="…"> 和转义过的文本，所以按标签切分是安全的。
+ */
+export function splitHighlightedLines(html) {
+    const lines = [];
+    const open = [];
+    let current = '';
+    const token = /(<span[^>]*>)|(<\/span>)|(\r?\n)|([^<\r\n]+)/g;
+    let match;
+    while ((match = token.exec(html))) {
+        if (match[1]) {
+            open.push(match[1]);
+            current += match[1];
+        } else if (match[2]) {
+            open.pop();
+            current += match[2];
+        } else if (match[3]) {
+            lines.push(current + '</span>'.repeat(open.length));
+            current = open.join('');
+        } else {
+            current += match[4];
+        }
+    }
+    lines.push(current);
+    return lines;
+}
+
 // 文件末尾的换行只是行结束符，不算多出来的一行
 function countLines(text) {
     let count = 1;
@@ -108,33 +141,50 @@ export function createCodeViewerEditor({
         if (store.isWrapped) editorShell.classList.add('is-wrapped');
 
         // 文件末尾的换行只是行结束符，不算多出来的一行
-        const lines = shownCode ? shownCode.replace(/\r?\n$/, '').split(/\r?\n/) : [''];
+        const trimmed = shownCode.replace(/\r?\n$/, '');
+        const lineCount = shownCode ? trimmed.split(/\r?\n/).length : 1;
+        const win = doc.defaultView || (typeof window !== 'undefined' ? window : null);
+        let lineHtml = null;
+        if (win?.hljs?.highlight) {
+            try {
+                lineHtml = splitHighlightedLines(win.hljs.highlight(trimmed, { language: store.currentLang, ignoreIllegals: true }).value);
+            } catch {
+                lineHtml = null;
+            }
+        }
+        const lineText = lineHtml ? null : (shownCode ? trimmed.split(/\r?\n/) : ['']);
+
+        // 行号栏和代码各按 CODE_CHUNK_LINES 行分块，块用 content-visibility:auto：滚出视口的块不参与样式和布局。
+        // 大文件切回这个标签、聚焦时，浏览器只需要排视口里的那几块，开销不再随文件行数增长。
+        // 行高固定，两栏的块高度一致，行号仍然和代码对齐。最后一块不满 200 行，总是正常排版，不用占位高度。
         const gutter = doc.createElement('div');
         gutter.className = 'side-code-gutter';
         gutter.setAttribute('aria-hidden', 'true');
-
-        for (let idx = 1; idx <= lines.length; idx++) {
-            const lineNum = doc.createElement('div');
-            lineNum.className = 'side-code-line-number';
-            lineNum.textContent = String(idx);
-            gutter.appendChild(lineNum);
-        }
-
         const pre = doc.createElement('pre');
         pre.className = 'side-code-pre';
         const code = doc.createElement('code');
         code.className = `side-code-highlighted language-${store.currentLang}`;
 
-        const win = doc.defaultView || (typeof window !== 'undefined' ? window : null);
-        if (win?.hljs?.highlight) {
-            try {
-                const highlighted = win.hljs.highlight(shownCode, { language: store.currentLang, ignoreIllegals: true });
-                code.innerHTML = highlighted.value;
-            } catch {
-                code.textContent = shownCode;
+        for (let start = 0; start < lineCount; start += CODE_CHUNK_LINES) {
+            const end = Math.min(lineCount, start + CODE_CHUNK_LINES);
+
+            const numbers = doc.createElement('div');
+            numbers.className = 'side-code-chunk';
+            for (let idx = start + 1; idx <= end; idx++) {
+                const lineNum = doc.createElement('div');
+                lineNum.className = 'side-code-line-number';
+                lineNum.textContent = String(idx);
+                numbers.appendChild(lineNum);
             }
-        } else {
-            code.textContent = shownCode;
+            gutter.appendChild(numbers);
+
+            const text = doc.createElement('div');
+            text.className = 'side-code-chunk';
+            // 块末尾补一个换行：块尾的换行不会多画一行，但 textContent 和复制出来的文本保持原样
+            const tail = end < lineCount ? '\n' : '';
+            if (lineHtml) text.innerHTML = lineHtml.slice(start, end).join('\n') + tail;
+            else text.textContent = lineText.slice(start, end).join('\n') + tail;
+            code.appendChild(text);
         }
 
         pre.appendChild(code);

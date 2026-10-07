@@ -188,6 +188,18 @@ html body[data-vcp-theme="light"] .side-code-gutter:where(.vcp-ui-scope, .vcp-ui
     color: var(--secondary-text, var(--vcp-ui-port-color-rgba-0-0-0-0-35));
 }
 
+/* 行号栏和代码的分块（见 editor.js 的 CODE_CHUNK_LINES = 200）：滚出视口时浏览器跳过它的样式和布局，
+   占位高度 = 200 行 × 18px 行高。最后一块行数不定，照常排版。 */
+html .side-code-chunk:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: block;
+    content-visibility: auto;
+    contain-intrinsic-block-size: auto 3600px;
+}
+
+html .side-code-chunk:last-child:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    content-visibility: visible;
+}
+
 html .side-code-line-number:where(.vcp-ui-scope, .vcp-ui-scope *) {
     height: 18px;
     line-height: 18px;
