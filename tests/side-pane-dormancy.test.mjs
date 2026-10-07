@@ -306,7 +306,7 @@ test('a tab whose close is waiting on the confirm dialog does not sleep, and clo
         const answer = Promise.withResolvers();
         h.closeAnswers.set('probe:a', answer.promise);
         const closing = h.controller.closeTab('probe:a');
-        await sleep(80); // 隐藏到期的检查在确认框开着时到了
+        await h.advance(80); // 隐藏到期的检查在确认框开着时到了
         assert.deepEqual(h.residency().dormant, [], 'the tab being closed is not put to sleep');
         answer.resolve({ closed: true });
         await closing;

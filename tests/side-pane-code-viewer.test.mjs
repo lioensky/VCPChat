@@ -525,3 +525,28 @@ test('reloading a file that is on screen keeps it visible until the new text arr
         dom.window.close();
     }
 });
+
+test('the same Windows file written two ways opens one tab; differently cased POSIX paths stay separate', async () => {
+    const { createSidePaneController } = await import('../modules/ui-system/side-pane/side-pane-controller.js');
+    const dom = new JSDOM('<aside id="pane"><div id="tabs"></div><div id="content"><section class="side-pane-view" id="sidePaneViewNotifications"></section></div></aside>');
+    const doc = dom.window.document;
+    const controller = createSidePaneController({ root: doc.getElementById('pane'), tabListElement: doc.getElementById('tabs'),
+        contentContainer: doc.getElementById('content') });
+    const provider = createCodeViewerSideProvider({ document: doc, uiHelper: null, sidePaneController: controller,
+        api: { async getTextContent() { return { text: 'x' }; } } });
+    controller.registerProvider('code-viewer', provider);
+    const codeTabs = () => controller.getSnapshot().tabs.filter(tab => tab.kind === 'code-viewer').map(tab => tab.id);
+    try {
+        await provider.openViewer({ filePath: 'C:\\proj\\src\\App.js' });
+        await provider.openViewer({ filePath: 'c:/proj/src/app.js' });
+        assert.deepEqual(codeTabs(), ['code-viewer:C:\\proj\\src\\App.js']);
+        assert.equal(controller.getSnapshot().activeTabId, 'code-viewer:C:\\proj\\src\\App.js');
+
+        await provider.openViewer({ filePath: '/home/me/Readme.md' });
+        await provider.openViewer({ filePath: '/home/me/README.md' });
+        assert.equal(codeTabs().length, 3);
+    } finally {
+        await controller.dispose();
+        dom.window.close();
+    }
+});

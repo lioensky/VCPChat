@@ -371,7 +371,7 @@ export async function mountSideChatSurface(container, {
     const onSubmit = async (event) => {
         event?.preventDefault?.();
         // 还在生成时不再起第二次发送：它失败后的清理会清掉正在进行的那次，停止按钮随之消失
-        if (isDisposed || !isHistoryLoaded || isDeletingMessage || activeSendController || form.hasAttribute('aria-busy')) return;
+        if (isDisposed || !isHistoryLoaded || isDeletingMessage || isRegenerating || activeSendController || form.hasAttribute('aria-busy')) return;
         if (!currentModel) {
             updateStatus('请先选择模型', 'error');
             return;

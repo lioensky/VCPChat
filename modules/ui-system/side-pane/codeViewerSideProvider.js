@@ -34,6 +34,12 @@ export { computeLineDiff } from '../line-diff.js';
 /**
  * Creates the Code & Diff Viewer provider for the Universal Sub-screen.
  */
+// Windows 路径不分大小写、两种斜杠都认：比较时统一成小写正斜杠。其余路径原样比较
+function fileKey(filePath) {
+    if (typeof filePath !== 'string' || !filePath) return '';
+    return /^[a-zA-Z]:[\\/]|\\/.test(filePath) ? filePath.replace(/\\/g, '/').toLowerCase() : filePath;
+}
+
 export function createCodeViewerSideProvider({
     document: doc = document,
     api = (typeof window !== 'undefined' ? (window.utilityAPI || window.electronAPI) : null),
@@ -400,7 +406,12 @@ export function createCodeViewerSideProvider({
 
             const langMeta = detectLanguage(filePath || title || language, language);
             const resolvedTitle = title || (filePath ? filePath.split(/[/\\]/).pop() : '代码查看器');
-            const tabId = filePath ? `code-viewer:${filePath}` : `code-viewer:${Date.now()}`;
+            // 同一个文件换个写法（Windows 上 C:\ws\a.js 和 c:/ws/a.js）也落到已开的那个标签，不另开一个
+            const key = fileKey(filePath);
+            const sameFile = filePath
+                ? sidePaneController.getSnapshot?.()?.tabs?.find(tab => tab.kind === kind && fileKey(tab.payload?.filePath) === key)
+                : null;
+            const tabId = sameFile?.id || (filePath ? `code-viewer:${filePath}` : `code-viewer:${Date.now()}`);
             // 同一个文件已经有视图时，openTab 只会切过去；这里补一次重读，免得显示外部修改前的旧内容
             const existing = filePath && !code ? sidePaneController.getTabHandle?.(tabId) : null;
 

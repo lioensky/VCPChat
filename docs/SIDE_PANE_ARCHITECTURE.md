@@ -166,7 +166,7 @@ openTab ─ 创建 occurrence ─ openView(scope) ─ 发布可见性 ─ mountT
 
 1. **一个 id 同时只有一次挂载。** 并发打开等同一次挂载；挂载期间关掉或销毁，刚挂好的 handle 立刻 `dispose`，视图移除，结果不写回。
 2. **休眠后视图资源归零。** 视图的 DOM、view scope 上的监听、定时器和订阅全部释放，只留 `dormantTabs` 里的 `captureState` 结果。要跨休眠保留的东西（比如终端的 shell 会话和画面）只能挂在 `occurrence` 上，关标签时随 `occurrence.signal` 释放。
-3. **正在显示、`isBusy()` 为 true、关闭确认还开着的标签不休眠。** `limit-only`（浏览器）只按数量淘汰，`keep` 不休眠、也不占视图名额。阈值见 `side-pane-dormancy.js`。
+3. **正在显示、`isBusy()` 为 true、关闭确认还开着的标签不休眠。** `limit-only`（浏览器）只按数量淘汰，`keep`（辅助对话）不休眠、也不占视图名额。阈值见 `side-pane-dormancy.js`。
 4. **`suspend` / `resume` 与可见性一致。** provider 不用自己探测 DOM，`occurrence.visible` 和最后一次收到的 suspend/resume 总是一致。
 5. **挂载失败不留空白页。** `mountTab` 抛错时 view scope 释放，视图里换成出错提示和「重试」按钮（`.side-pane-mount-error`）。打开时焦点落在重试按钮上；重试会重新挂载，懒加载的 provider 也会重新加载实现。
 6. **懒加载失败要告诉用户。** `tab-types/lazy-provider.js` 的转发方法（入口、文件链接等调用的 `openXxx`）加载失败时弹出提示再抛错，下次调用重新加载；`mountTab` 的失败由第 5 条的出错页负责。
@@ -211,7 +211,7 @@ openTab ─ 创建 occurrence ─ openView(scope) ─ 发布可见性 ─ mountT
    | `toTab(payload, tabs)` | `openTab(payload)` 先经过它变成标签。辅助对话用它校验描述符，并让同一个子话题重复打开时落到已有标签上，所以调用方写 `openTab({ kind: 'chat', descriptor })` |
    | `onClosed(tab)` | 标签关掉、视图拆掉后调用。辅助对话用它删掉子话题；抛错只记日志 |
    | `requestClose(tab)` | 标签没挂载（从没显示过或在休眠）时关闭前的确认；挂着的由 handle 的 `requestClose` 确认。返回 `{ closed: false }` 取消 |
-   | `dormancy` | 休眠方式，见第 4 节和 `side-pane-dormancy.js`：`none`（默认）、`detach`（终端：控制器同 `none`，provider 自己跨休眠保留会话）、`limit-only`（浏览器）、`keep` |
+   | `dormancy` | 休眠方式，见第 4 节和 `side-pane-dormancy.js`：`none`（默认）、`detach`（终端：控制器同 `none`，provider 自己跨休眠保留会话）、`limit-only`（浏览器）、`keep`（辅助对话） |
    | `load()` | 没给 `provider` 时用它懒加载实现 |
    | `persist: false` | 不随布局持久化。辅助对话（由会话服务恢复）、终端（重启后不自动拉起 shell）、命令输出（记录只在内存里）用它 |
    | `reopenable: false` | 关掉后不进"最近关闭"。标签自己带 `ephemeral: true` 也一样 |

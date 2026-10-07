@@ -31,7 +31,6 @@ export function createSideChatScrolling({
             else if (movedUp) stickToBottom = false;
             else if (distance < 48 && root.scrollTop > lastScrollTop + 1) stickToBottom = true;
             lastScrollTop = root.scrollTop;
-            lastVisible = measure();
         };
         // 用户意图先于 scroll 事件生效：流式期间 ResizeObserver 可能在滚轮产生的 scroll 事件之前
         // 把视图拽回底部，只靠 scroll 判断就会和滚轮打架（ZCode use-stick-to-bottom 同样监听 wheel 立即脱离）

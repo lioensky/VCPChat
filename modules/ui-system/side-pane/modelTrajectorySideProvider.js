@@ -559,6 +559,7 @@ export function createModelTrajectorySideProvider({
                     state.hidden = false;
                     state.textContent = '正在加载调用轨迹…';
                 } else if (!sessionKey) {
+                    stateKey = 'no-conversation';
                     state.hidden = false;
                     state.textContent = '请先在主聊天里选择一个智能体和话题。';
                 } else if (records.length === 0) {

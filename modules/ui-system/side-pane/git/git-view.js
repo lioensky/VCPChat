@@ -289,12 +289,12 @@ export function mountGitView(host, {
         refreshBtn.classList.toggle('spinning', loading);
         // 先错误、再加载中、最后才是空（对照 ZCode GitPane）：读失败不能显示成「还没有工作区」叫用户去添加
         if (loadError) {
-            showEmpty({ icon: 'error', title: '无法加载 Git 改动', description: `Git 返回错误：${loadError}`,
+            showEmpty({ reason: 'load-error', icon: 'error', title: '无法加载 Git 改动', description: `Git 返回错误：${loadError}`,
                 action: { label: '重试', run: retryLoad } });
             return;
         }
         if (!workspacesLoaded) {
-            showEmpty({ title: '加载中', description: '正在读取当前工作区的 Git 状态和文件改动。' });
+            showEmpty({ reason: 'loading', title: '加载中', description: '正在读取当前工作区的 Git 状态和文件改动。' });
             return;
         }
         if (!workspaces.length) {

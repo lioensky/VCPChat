@@ -319,3 +319,48 @@ test('a shared shell restarted elsewhere brings the exited tab back to connected
         assert.equal(h.status().dataset.state, 'connected');
     } finally { await h.cleanup(); }
 });
+
+test('OSC 8 hyperlinks open http(s) in the side browser and nothing else', async () => {
+    const opened = [];
+    const h = fixture({ onOpenUrl: url => opened.push(url) });
+    try {
+        await h.provider.openTerminalTab();
+        const { linkHandler } = h.terminals[0].options;
+        assert.equal(linkHandler.allowNonHttpProtocols, false);
+        const event = { prevented: false, preventDefault() { this.prevented = true; } };
+        linkHandler.activate(event, 'https://example.com/a');
+        linkHandler.activate(event, 'file:///etc/passwd');
+        linkHandler.activate(event, 'javascript:alert(1)');
+        assert.deepEqual(opened, ['https://example.com/a']);
+        assert.equal(event.prevented, true, 'xterm\'s confirm + window.open default never runs');
+    } finally { await h.cleanup(); }
+});
+
+test('a Windows PTY backend reported by the main process is handed to xterm so resizes do not reflow twice', async () => {
+    const h = fixture({ create: async () => ({ success: true, data: { id: 'view:win', windowsPty: { backend: 'conpty', buildNumber: 22631 } } }) });
+    try {
+        const handle = await h.provider.openTerminalTab();
+        await until(() => handle.getSessionId() === 'view:win');
+        assert.deepEqual(h.terminals[0].options.windowsPty, { backend: 'conpty', buildNumber: 22631 });
+    } finally { await h.cleanup(); }
+});
+
+test('Ctrl+C with a selection copies instead of interrupting the shared shell; pane shortcuts stay out of the shell', async () => {
+    const h = fixture();
+    const copied = [];
+    Object.defineProperty(h.dom.window.navigator, 'clipboard', { configurable: true,
+        value: { writeText: async text => { copied.push(text); } } });
+    try {
+        await h.provider.openTerminalTab();
+        const term = h.terminals[0];
+        const key = (fields) => term.keyHandler({ type: 'keydown', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...fields });
+
+        assert.equal(key({ key: 'c', ctrlKey: true }), true, 'without a selection Ctrl+C still reaches the shell');
+        term.selection = 'npm test';
+        assert.equal(key({ key: 'c', ctrlKey: true }), false);
+        assert.deepEqual(copied, ['npm test']);
+        assert.equal(key({ key: 'b', ctrlKey: true, altKey: true }), false);
+        assert.equal(key({ key: 'PageDown', ctrlKey: true }), false);
+        assert.equal(key({ key: 'a' }), true);
+    } finally { await h.cleanup(); }
+});
