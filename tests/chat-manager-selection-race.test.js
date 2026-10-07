@@ -59,6 +59,8 @@ function createFixture(options = {}) {
     let nextVcpGate = null;
     let nextSettingsSaveGate = null;
     let historySaveCount = 0;
+    const unreadMarks = [];
+    let unreadRefreshes = 0;
     const savedSettings = [];
     const sentRequests = [];
     const topicRequests = new Map();
@@ -172,7 +174,7 @@ function createFixture(options = {}) {
             histories.set(`${itemId}:${requestedTopicId}`, JSON.parse(JSON.stringify(messages)));
             return { success: true };
         },
-        setTopicUnread: async () => ({ success: true }),
+        setTopicUnread: async (...args) => { unreadMarks.push(args); return { success: true }; },
         sendToVCP: async (...args) => {
             sentRequests.push(args);
             const gate = nextVcpGate;
@@ -241,7 +243,7 @@ function createFixture(options = {}) {
             streamManager: options.streamProjection || null,
             itemListManager: {
                 highlightActiveItem() {},
-                refreshUnreadCounts() {},
+                refreshUnreadCounts() { unreadRefreshes += 1; },
                 findItemById(itemId, itemType) {
                     const item = configs[itemId];
                     return item && itemType === 'agent' ? { ...item, type: 'agent' } : null;
@@ -318,6 +320,8 @@ function createFixture(options = {}) {
         },
         savedSettings,
         historySaveCount: () => historySaveCount,
+        unreadMarks,
+        unreadRefreshes: () => unreadRefreshes,
         canvas: {
             emitContent: value => canvasContentListener?.(value),
             emitClosed: () => canvasClosedListener?.(),
@@ -1024,4 +1028,34 @@ test('deleting the current assistant tells selection followers that nothing is s
     assert.deepEqual({ ...fixture.publishedSelections.at(-1) }, { itemId: null, itemType: null, topicId: null });
     unsubscribe();
     fixture.dom.window.close();
+});
+
+test('a side conversation send leaves the main topic unread state and item list alone', async () => {
+    const fixture = createFixture();
+    const selectedA = fixture.chatManager.selectItem('agent-a', 'agent', 'Agent A', null, fixture.configs['agent-a']);
+    await new Promise(resolve => setImmediate(resolve));
+    fixture.topicRequests.get('agent-a').resolve(fixture.configs['agent-a'].topics);
+    await selectedA;
+
+    let sideHistory = [];
+    const sideInput = fixture.window.document.createElement('textarea');
+    await fixture.chatManager.handleSendMessage({
+        content: 'side question',
+        attachments: [],
+        input: sideInput,
+        conversation: {
+            selectedItemRef: { get: () => ({ ...fixture.configs['agent-a'], type: 'agent', config: fixture.configs['agent-a'] }) },
+            topicIdRef: { get: () => 'topic-side' },
+            historyRef: { get: () => sideHistory, set: value => { sideHistory = value; } },
+        },
+    });
+    assert.equal(fixture.sentRequests.length, 1, 'the side message was sent');
+    assert.deepEqual(fixture.unreadMarks, []);
+    assert.equal(fixture.unreadRefreshes(), 0);
+
+    fixture.window.document.getElementById('messageInput').value = 'main question';
+    await fixture.chatManager.handleSendMessage();
+    assert.equal(fixture.sentRequests.length, 2);
+    assert.deepEqual(fixture.unreadMarks, [['agent-a', 'topic-a', false]]);
+    assert.equal(fixture.unreadRefreshes(), 1);
 });

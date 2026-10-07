@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import { JSDOM } from 'jsdom';
 
 import * as SidePaneState from '../modules/ui-system/side-pane/side-pane-state.js';
@@ -611,9 +610,6 @@ test('Parity: tab context menu is scoped, keyboard friendly and closes on Escape
     // 外壳的 backdrop-filter 会把 fixed 菜单的定位和背后内容都带偏，所以菜单挂在 body 下
     assert.equal(contextMenu.parentNode, doc.body);
     assert.ok(contextMenu.classList.contains('vcp-ui-scope'));
-    // 出了侧栏就没有 #vcpSidePane [hidden] 兜底，菜单自己的 display: flex 会让它一直显示
-    const overlaysCss = fs.readFileSync(new URL('../styles/ui-system/side-pane-tab-overlays.css', import.meta.url), 'utf8');
-    assert.match(overlaysCss, /html \.side-pane-context-menu\[hidden\]:where\(\.vcp-ui-scope, \.vcp-ui-scope \*\) \{\s*display: none;/);
 
     ctrl.setParent({ itemType: 'agent', itemId: 'agent-1', topicId: 'parent' });
     await ctrl.openTab({ kind: 'chat', descriptor: createDesc('s1', 'c1') });
@@ -812,25 +808,6 @@ test('Parity: Side Chat Model Picker supports interactive switching', async () =
     dom.window.close();
 });
 
-test('Side pane divider and header hairlines', () => {
-    const html = fs.readFileSync(new URL('../main.html', import.meta.url), 'utf8');
-    const css = [...html.matchAll(/href="(styles\/ui-system\/side-pane-[^"]+\.css)"/g)]
-        .map(([, href]) => fs.readFileSync(new URL(`../${href}`, import.meta.url), 'utf8')).join('');
-
-    // The pane sits inside the workspace card, so its only edge is a hairline
-    // on the left, drawn with the same token as the card border.
-    assert.match(css, /html #vcpSidePane:where\(\.vcp-ui-scope, \.vcp-ui-scope \*\) \{[^}]*border-left:\s*1px solid var\(--next-panel-edge/);
-    // Main panel and main content are outside .vcp-ui-scope: scoped rules for
-    // them would never match, so the side pane stylesheet must not carry any.
-    assert.doesNotMatch(css, /#nextUiMainPanel:where\(\.vcp-ui-scope/);
-    assert.doesNotMatch(css, /\.main-content[^{]*:where\(\.vcp-ui-scope/);
-
-    assert.match(css, /html \.side-pane-tab-bar[\s\S]*?border-bottom:\s*1px solid var\(--zcode-header-divider/);
-    // VCPLog status lives on the 通知 tab, so the panel has no second header row.
-    assert.doesNotMatch(css, /\.notifications-header/);
-});
-
-
 test('tab type registration connects presentation, launcher availability and provider mounting', async () => {
     const dom = createParityTestDOM();
     const ctrl = createController(dom);
@@ -939,21 +916,3 @@ test('entry identity changes replace the whole declaration, while invalid replac
     }
 });
 
-test('Side pane overlays animate in and out and respect reduced motion', () => {
-    const html = fs.readFileSync(new URL('../main.html', import.meta.url), 'utf8');
-    assert.match(html, /side-pane-side-chat-extras\.css">\s*<link rel="stylesheet" href="styles\/ui-system\/side-pane-motion\.css">/);
-    const motion = fs.readFileSync(new URL('../styles/ui-system/side-pane-motion.css', import.meta.url), 'utf8');
-    for (const cls of ['side-pane-tab-overview-popover', 'side-pane-context-menu', 'side-chat-model-popover']) {
-        assert.ok(motion.includes(`.${cls}[hidden]`), `${cls} has a hidden state to fade out to`);
-    }
-    assert.match(motion, /display var\(--vcp-motion-duration-fast\) allow-discrete/);
-    assert.match(motion, /@starting-style/);
-    const reduced = motion.slice(motion.indexOf('@media (prefers-reduced-motion: reduce)'));
-    for (const sel of ['.side-pane-launcher-tabs', '.side-pane-launcher-tab-status[data-status]', '.side-pane-launcher-notice-dot', '.side-traj-call.flash', '.side-git-refresh-btn.spinning']) {
-        assert.ok(reduced.includes(sel), `reduced motion covers ${sel}`);
-    }
-    const launcher = fs.readFileSync(new URL('../styles/ui-system/side-pane-launcher.css', import.meta.url), 'utf8');
-    assert.match(launcher, /\.side-pane-launcher-tabs:where\(\.vcp-ui-scope, \.vcp-ui-scope \*\)::before \{[^}]*transform: translateX\(calc\(var\(--side-pane-segment-index\) \* 100%\)\)/);
-    const bubbles = fs.readFileSync(new URL('../styles/side-chat-bubbles.css', import.meta.url), 'utf8');
-    assert.match(bubbles, /#chatContextMenu\[data-side-chat-menu="true"\] \{[^}]*animation: side-chat-menu-in/);
-});

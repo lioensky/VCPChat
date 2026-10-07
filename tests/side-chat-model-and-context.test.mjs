@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import { JSDOM } from 'jsdom';
 
 import { mountSideChatSurface } from '../modules/renderer/sideChatSurfaceOwner.js';
@@ -134,22 +133,38 @@ test('references-only mode never sends parent history and never refreshes the sn
     await handle.dispose();
 });
 
-test('a side conversation send does not touch the main topic unread state or item list', () => {
-    const source = fs.readFileSync(new URL('../modules/chatManager.js', import.meta.url), 'utf8');
-    assert.match(source, /const isSideConversation = !!request\?\.conversation;\s+if \(!isSideConversation\) try \{\s+const readResult = await electronAPI\.setTopicUnread\(/);
-    assert.match(source, /if \(isSideConversation\) \{[^}]*\} else if \(itemListManager && typeof itemListManager\.refreshUnreadCounts/);
-});
+// 侧聊发送不碰主话题未读：行为测试在 chat-manager-selection-race.test.js；没配置模型时拒绝发送见上面的测试
 
-test('no hard-coded fallback model remains in the side chat stack', () => {
-    for (const file of ['../modules/renderer/sideChatSurfaceOwner.js', '../modules/chat/sideChatSessionService.js']) {
-        assert.ok(!/gpt-4o/.test(fs.readFileSync(new URL(file, import.meta.url), 'utf8')), `${file} must not hard-code gpt-4o`);
+test('new side chats are named by the lowest free ordinal under the same parent', async () => {
+    const { createSideChatWiring } = await import('../modules/renderer/sideChatWiring.js');
+    const dom = new JSDOM('<!doctype html><body></body>');
+    const parent = { itemType: 'agent', itemId: 'agent', topicId: 'parent' };
+    const tab = (title, topicId = 'parent') => ({ id: title, kind: 'chat', title, descriptor: { parent: { ...parent, topicId } } });
+    const opened = [];
+    const controller = {
+        getSnapshot: () => ({ parent, activeTabId: null,
+            tabs: [tab('辅助对话 1'), tab('辅助对话 3'), tab('辅助对话 2', 'other-topic')] }),
+        async openTab(raw) { opened.push(raw.descriptor.title); return null; },
+        setVisible() {}
+    };
+    let children = 0;
+    const chatAPI = {
+        createSideChatChild: async () => ({ success: true, topicId: `child-${++children}` }),
+        saveSideChatMetadata: async metadata => ({ success: true, metadata })
+    };
+    const wiring = createSideChatWiring({
+        doc: dom.window.document, win: dom.window, chatAPI, chatRepository: null, chatManager: null, uiHelper: null,
+        createRenderer: () => null,
+        selectedItemRef: { get: () => ({ id: 'agent', type: 'agent', name: 'Agent', config: { model: 'm' } }) },
+        topicIdRef: { get: () => 'parent' }, historyRef: { get: () => [] }, getController: () => controller
+    });
+    try {
+        await dom.window.openSideChatWithSelection({ selectedText: '一段引用' });
+        assert.deepEqual(opened, ['辅助对话 2'], 'the menu entry opens a side chat with the first free number of this topic');
+    } finally {
+        wiring.dispose?.();
+        dom.window.close();
     }
-});
-
-test('new side chats are named by the lowest free ordinal under the same parent', () => {
-    const source = fs.readFileSync(new URL('../modules/renderer/sideChatWiring.js', import.meta.url), 'utf8');
-    assert.ok(source.includes(String.raw`/^辅助对话 (\d+)$/`));
-    assert.ok(source.includes('`辅助对话 ${ordinal}`'));
 });
 
 test('composer autosaves go to browser storage; metadata only migrates once', async () => {

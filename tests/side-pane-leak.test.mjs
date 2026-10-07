@@ -8,6 +8,8 @@ import { createTerminalSideProvider } from '../modules/ui-system/side-pane/termi
 import { createPlanDetailSideProvider } from '../modules/ui-system/side-pane/planDetailSideProvider.js';
 import { createModelTrajectorySideProvider } from '../modules/ui-system/side-pane/modelTrajectorySideProvider.js';
 import { createToolOutputSideProvider } from '../modules/ui-system/side-pane/toolOutputSideProvider.js';
+import { createBrowserSideProvider } from '../modules/ui-system/side-pane/browserSideProvider.js';
+import { createCodeViewerSideProvider } from '../modules/ui-system/side-pane/codeViewerSideProvider.js';
 import { getProjectForgeChangesSource } from '../modules/ui-system/sources/projectforge-changes.js';
 import { getCommandRunsSource } from '../modules/ui-system/sources/terminal-command-runs.js';
 
@@ -16,6 +18,51 @@ const settle = async () => {
     for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve));
     await new Promise(resolve => setTimeout(resolve, 0));
 };
+
+/**
+ * 不经过 own.* 的资源也要数到：document / window 上的活监听、没清掉的 setInterval、没 disconnect 的 MutationObserver。
+ * 只数这些长寿目标：挂在已移除视图节点上的监听随节点一起丢弃，不算泄漏。
+ */
+function instrument(win) {
+    const live = new Set();
+    const keyOf = (target, type, listener, options) => {
+        const capture = typeof options === 'boolean' ? options : Boolean(options?.capture);
+        return `${target === win ? 'window' : 'document'}|${type}|${capture}|${listenerIds.get(listener) ?? listenerIds.set(listener, listenerIds.size).get(listener)}`;
+    };
+    const listenerIds = new Map();
+    const proto = win.EventTarget.prototype;
+    const add = proto.addEventListener;
+    const remove = proto.removeEventListener;
+    const watched = target => target === win || target === win.document;
+    proto.addEventListener = function (type, listener, options) {
+        if (listener && watched(this)) {
+            const key = keyOf(this, type, listener, options);
+            live.add(key);
+            options?.signal?.addEventListener?.('abort', () => live.delete(key), { once: true });
+        }
+        return add.call(this, type, listener, options);
+    };
+    proto.removeEventListener = function (type, listener, options) {
+        if (listener && watched(this)) live.delete(keyOf(this, type, listener, options));
+        return remove.call(this, type, listener, options);
+    };
+
+    const intervals = new Set();
+    for (const host of new Set([globalThis, win])) {
+        const setI = host.setInterval, clearI = host.clearInterval;
+        host.setInterval = (...args) => { const id = setI.apply(host, args); intervals.add(id); return id; };
+        host.clearInterval = id => { intervals.delete(id); return clearI.call(host, id); };
+    }
+
+    const observers = new Set();
+    const NativeObserver = win.MutationObserver;
+    win.MutationObserver = class extends NativeObserver {
+        observe(...args) { observers.add(this); return super.observe(...args); }
+        disconnect() { observers.delete(this); return super.disconnect(); }
+    };
+
+    return () => ({ globalListeners: live.size, intervals: intervals.size, mutationObservers: observers.size });
+}
 
 const PROJECT = {
     project: { id: 'p1', name: '工程', status: 'active', updated_at: '2026-09-30T01:00:00.000Z', root: 'C:\\w' },
@@ -29,6 +76,7 @@ function fixture() {
             <div class="side-pane-tabs"></div>
             <div class="side-pane-content-container"></div>
         </aside></body>`, { pretendToBeVisual: true });
+    const unmanaged = instrument(dom.window);
     const doc = dom.window.document;
     const root = doc.getElementById('vcpSidePane');
     const listeners = new Map();
@@ -81,14 +129,19 @@ function fixture() {
         'plan-detail': createPlanDetailSideProvider({ document: doc, api, sidePaneController: controller, uiHelper: {} }),
         'model-trajectory': createModelTrajectorySideProvider({ document: doc, api, sidePaneController: controller, uiHelper: {},
             getConversation: () => ({ item: { id: 'agent1', name: 'A' }, topicId: 't1' }) }),
-        'tool-output': createToolOutputSideProvider({ document: doc, api, sidePaneController: controller, uiHelper: {} })
+        'tool-output': createToolOutputSideProvider({ document: doc, api, sidePaneController: controller, uiHelper: {} }),
+        browser: createBrowserSideProvider({ document: doc, api: null, sidePaneController: controller, notify: () => {} }),
+        'code-viewer': createCodeViewerSideProvider({ document: doc, api: null, uiHelper: null, sidePaneController: controller })
     };
     Object.entries(providers).forEach(([kind, provider]) => controller.registerProvider(kind, provider));
     const opens = {
         terminal: () => providers.terminal.openTerminalTab(),
         'plan-detail': () => providers['plan-detail'].openPlanDetailTab({ projectId: 'p1', projectName: '工程' }),
         'model-trajectory': () => providers['model-trajectory'].openModelTrajectoryTab(),
-        'tool-output': () => providers['tool-output'].openToolOutputTab()
+        'tool-output': () => providers['tool-output'].openToolOutputTab(),
+        browser: () => controller.openTab({ id: 'browser:leak', kind: 'browser', title: '浏览器', closable: true, scopeMode: 'global',
+            payload: { url: 'https://example.com/' } }),
+        'code-viewer': () => providers['code-viewer'].openViewer({ filePath: 'C:\\w\\a.js', code: 'const a = 1;\n' })
     };
 
     const { diagnostics } = globalThis.VCPLifecycle;
@@ -100,6 +153,7 @@ function fixture() {
         sourcesRunning: globalThis.VCPSharedSources.diagnostics().filter(s => s.running || s.polling).length,
         ipcListeners: [...listeners.values()].reduce((sum, n) => sum + n, 0),
         nodes: doc.body.querySelectorAll('*').length,
+        ...unmanaged(),
         views: controller.getViewResidency()
     });
     return { dom, controller, opens, calls, measure,
@@ -141,6 +195,7 @@ test(`views put to sleep and woken ${CYCLES} times leave nothing behind`, async 
         for (const open of Object.values(h.opens)) await open();
         await settle();
         const ids = openTabIds(h.controller);
+        assert.equal(ids.length, Object.keys(h.opens).length, 'every tab type opened');
         // 只能有一个视图挂着：切到哪个标签，别的都休眠
         for (const id of ids) { h.controller.activateTab(id); await settle(); }
         const baseline = h.measure();
