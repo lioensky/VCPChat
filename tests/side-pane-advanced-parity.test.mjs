@@ -658,6 +658,22 @@ test('Parity: tab context menu is scoped, keyboard friendly and closes on Escape
     assert.equal(contextMenu.hidden, true);
     assert.deepEqual(ctrl.getSnapshot().tabs.map(t => t.id), ['notifications', 's1']);
     assert.equal(ctrl.getSnapshot().activeTabId, 's1');
+    assert.equal(doc.activeElement, tabList.querySelector('[role="tab"][data-tab-id="s1"]'), 'focus goes back to the tab, not body');
+
+    // Tab 收起菜单，焦点回到标签
+    openMenuOn('s1');
+    contextMenu.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+    assert.equal(contextMenu.hidden, true);
+    assert.equal(doc.activeElement, tabList.querySelector('[role="tab"][data-tab-id="s1"]'));
+
+    // 关掉后台标签：那个标签没了，焦点落到当前标签
+    await ctrl.openTab({ kind: 'chat', descriptor: createDesc('s3', 'c3') });
+    await ctrl.activateTab('s1');
+    openMenuOn('s3');
+    contextMenu.querySelector('[data-action="close-tab"]').click();
+    await tick();
+    assert.deepEqual(ctrl.getSnapshot().tabs.map(t => t.id), ['notifications', 's1']);
+    assert.equal(doc.activeElement, tabList.querySelector('[role="tab"][data-tab-id="s1"]'));
 
     await ctrl.dispose();
     assert.notEqual(contextMenu.parentNode, doc.body, 'dispose puts the menu back');

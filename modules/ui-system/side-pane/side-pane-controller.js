@@ -280,7 +280,7 @@ export function createSidePaneController({
             menu: resolvedTabContextMenu,
             getClosableTabs: () => SidePaneState.getClosableVisibleTabs(state),
             onShow: () => overview?.hide(),
-            focusTab: (tabId) => strip?.focusTab(tabId),
+            focusTab: (tabId) => strip?.focusTab(state.tabs.some(t => t.id === tabId) ? tabId : state.activeTabId),
             onAction: async (action, tabId) => {
                 if (action === 'close-tab' && tabId) await controller.closeTab(tabId);
                 else if (action === 'close-others' && tabId) await controller.closeOtherTabs(tabId);
