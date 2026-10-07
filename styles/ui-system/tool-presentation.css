@@ -71,15 +71,18 @@ html[data-ui-mode="next"] :where(.vcp-ui-scope) .vcp-tool-result-header > .vcp-t
 }
 html[data-ui-mode="next"] :where(.vcp-ui-scope) .vcp-tool-row-toggle:hover, html[data-ui-mode="next"] :where(.vcp-ui-scope) .vcp-tool-process-toggle:hover { background: var(--vcp-ui-bg-2); }
 html[data-ui-mode="next"] :where(.vcp-ui-scope) .vcp-tool-row-toggle:focus-visible, html[data-ui-mode="next"] :where(.vcp-ui-scope) .vcp-tool-process-toggle:focus-visible, html[data-ui-mode="next"] :where(.vcp-ui-scope) .vcp-tool-process-artifact:focus-visible { outline: 2px solid var(--vcp-ui-accent); outline-offset: -2px; }
+/* 箭头是一枚向右的 SVG：收起朝右，展开转 90° 朝下。 */
 html[data-ui-mode="next"] :where(.vcp-ui-scope) .vcp-tool-row-chevron {
-    width: 7px;
-    height: 7px;
-    flex: 0 0 7px;
-    border-right: 1.5px solid currentColor;
-    border-bottom: 1.5px solid currentColor;
-    transform: rotate(-45deg);
+    display: inline-flex;
+    flex: none;
+    width: 14px;
+    height: 14px;
+    align-items: center;
+    justify-content: center;
+    transition: transform .2s ease, opacity .2s ease;
 }
-html[data-ui-mode="next"] :where(.vcp-ui-scope) [aria-expanded="true"] > .vcp-tool-row-chevron { transform: rotate(45deg); }
+html[data-ui-mode="next"] :where(.vcp-ui-scope) .vcp-tool-row-chevron svg { width: 100%; height: 100%; }
+html[data-ui-mode="next"] :where(.vcp-ui-scope) [aria-expanded="true"] > .vcp-tool-row-chevron { transform: rotate(90deg); }
 html[data-ui-mode="next"] :where(.vcp-ui-scope) .vcp-tool-row-title { overflow-wrap: anywhere; min-width: 0; color: var(--vcp-ui-text-primary); }
 html[data-ui-mode="next"] :where(.vcp-ui-scope) .vcp-tool-row-resource { overflow-wrap: anywhere; min-width: 0; font-size: var(--vcp-ui-text-sm, 12px); }
 html[data-ui-mode="next"] :where(.vcp-ui-scope) .vcp-tool-row-state { margin-left: auto; white-space: nowrap; font-size: var(--vcp-ui-text-sm, 12px); }
@@ -153,7 +156,7 @@ html[data-ui-mode="next"] :where(.vcp-ui-scope) :is([data-vcp-tool-presentation=
     --vcp-tool-call-color: var(--vcp-ui-text-3, var(--vcp-ui-text-secondary));
     --vcp-tool-call-hover: var(--vcp-ui-text-2, var(--vcp-ui-text-secondary));
 }
-html[data-ui-mode="next"] :where(.vcp-ui-scope) :is([data-vcp-tool-presentation="inline"], [data-vcp-tool-presentation="process"]) .vcp-role-divider { margin: 4px 0; font-size: calc(var(--vcp-ui-text-sm, 12px) - 1px); }
+html[data-ui-mode="next"] :where(.vcp-ui-scope) :is([data-vcp-tool-presentation="inline"], [data-vcp-tool-presentation="process"]) .vcp-role-divider { gap: 8px; margin: 4px 0; color: var(--vcp-tool-call-color); opacity: .75; font-size: calc(var(--vcp-ui-text-sm, 12px) - 1px); letter-spacing: 0; }
 html[data-ui-mode="next"] :where(.vcp-ui-scope) :is([data-vcp-tool-presentation="inline"], [data-vcp-tool-presentation="process"]) .vcp-tool-presented { margin: 2px 0; }
 html[data-ui-mode="next"] :where(.vcp-ui-scope) :is([data-vcp-tool-presentation="inline"], [data-vcp-tool-presentation="process"]) :is(.vcp-tool-row-toggle, .vcp-tool-process-toggle) {
     width: auto;
@@ -190,7 +193,44 @@ html[data-ui-mode="next"] :where(.vcp-ui-scope) :is([data-vcp-tool-presentation=
 html[data-ui-mode="next"] :where(.vcp-ui-scope) :is([data-vcp-tool-presentation="inline"], [data-vcp-tool-presentation="process"]) [data-vcp-tool-merged="true"]:not(.expanded) { margin: 0; }
 html[data-ui-mode="next"] :where(.vcp-ui-scope) :is([data-vcp-tool-presentation="inline"], [data-vcp-tool-presentation="process"]) [data-vcp-tool-merged="true"]:not(.expanded) > .vcp-tool-result-header { display: none; }
 html[data-ui-mode="next"] :where(.vcp-ui-scope) :is([data-vcp-tool-presentation="inline"], [data-vcp-tool-presentation="process"]) [data-vcp-tool-merged="true"] .vcp-tool-row-toggle { min-height: 20px; padding-left: 24px; font-size: var(--vcp-ui-text-sm, 12px); }
-html[data-ui-mode="next"] :where(.vcp-ui-scope) :is([data-vcp-tool-presentation="inline"], [data-vcp-tool-presentation="process"]) .vcp-tool-presented > :is(.vcp-tool-details, .vcp-tool-result-collapsible-content, .vcp-tool-call-summary-content) { padding: 8px 0 4px 24px; }
+/* 展开正文：标题列对齐的一张卡片，限高滚动；字段名是小号说明文字，失败时整卡染成错误色。 */
+html[data-ui-mode="next"] :where(.vcp-ui-scope) :is([data-vcp-tool-presentation="inline"], [data-vcp-tool-presentation="process"]) .vcp-tool-presented.expanded > :is(.vcp-tool-details, .vcp-tool-result-collapsible-content, .vcp-tool-call-summary-content) {
+    margin: 4px 0 6px 24px;
+    padding: 8px 12px;
+    max-height: 260px;
+    overflow: auto;
+    border: .5px solid var(--vcp-ui-border);
+    border-radius: var(--vcp-ui-radius-md, 8px);
+    background: var(--vcp-ui-bg-1);
+    color: var(--vcp-ui-text-secondary);
+    font-size: var(--vcp-ui-text-caption, 13px);
+    line-height: 1.6;
+}
+html[data-ui-mode="next"] :where(.vcp-ui-scope) :is([data-vcp-tool-presentation="inline"], [data-vcp-tool-presentation="process"]) .vcp-tool-presented .vcp-tool-result-details { padding: 0; gap: 8px; max-height: none; overflow: visible; }
+html[data-ui-mode="next"] :where(.vcp-ui-scope) :is([data-vcp-tool-presentation="inline"], [data-vcp-tool-presentation="process"]) .vcp-tool-presented .vcp-tool-result-item-key {
+    font-weight: 500;
+    font-size: var(--vcp-ui-text-sm, 12px);
+    color: var(--vcp-ui-text-3, var(--vcp-ui-text-secondary));
+}
+html[data-ui-mode="next"] :where(.vcp-ui-scope) :is([data-vcp-tool-presentation="inline"], [data-vcp-tool-presentation="process"]) .vcp-tool-presented .vcp-tool-result-item-value { color: inherit; }
+html[data-ui-mode="next"] :where(.vcp-ui-scope) :is([data-vcp-tool-presentation="inline"], [data-vcp-tool-presentation="process"]) .vcp-tool-presented :is(.vcp-tool-result-markdown-content, .vcp-tool-result-raw-content) { max-height: none; margin: 0; padding: 0; overflow: visible; background: transparent; color: inherit; }
+/* 卡片里是原样输出，引号不再单独着色（JSON 里每个字符串都会被染色）。 */
+html[data-ui-mode="next"] :where(.vcp-ui-scope) :is([data-vcp-tool-presentation="inline"], [data-vcp-tool-presentation="process"]) .vcp-tool-presented.expanded .highlighted-quote { color: inherit; }
+html[data-ui-mode="next"] :where(.vcp-ui-scope) :is([data-vcp-tool-presentation="inline"], [data-vcp-tool-presentation="process"]) .vcp-tool-presented > .vcp-tool-details pre { margin: 0; padding: 0; border: 0; background: transparent; max-height: none; }
+html[data-ui-mode="next"] :where(.vcp-ui-scope) :is([data-vcp-tool-presentation="inline"], [data-vcp-tool-presentation="process"]) .vcp-tool-presented.expanded[data-vcp-tool-state="failed"] > .vcp-tool-result-collapsible-content {
+    border-color: color-mix(in srgb, var(--vcp-ui-danger, var(--vcp-ui-palette-red)) 30%, transparent);
+    background: color-mix(in srgb, var(--vcp-ui-danger, var(--vcp-ui-palette-red)) 6%, transparent);
+    color: var(--vcp-ui-danger, var(--vcp-ui-palette-red));
+}
+/* 旧结果气泡允许在任意字符处断行（line-break: anywhere），英文单词会被拆开；这里只在空格处换行，过长的串才强制折断。 */
+html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation] .vcp-tool-presented :is(.vcp-tool-result-markdown-content, .vcp-tool-result-markdown-content *, .vcp-tool-result-raw-content, .vcp-tool-result-item-value, .highlighted-quote, th, td) {
+    line-break: auto;
+    word-break: normal;
+    overflow-wrap: anywhere;
+}
+/* 角色分界：过程里只是一条细线和小字，不再用彩色胶囊。 */
+html[data-ui-mode="next"] :where(.vcp-ui-scope) :is([data-vcp-tool-presentation="inline"], [data-vcp-tool-presentation="process"]) .vcp-role-divider::before { width: 16px; flex-basis: 16px; }
+html[data-ui-mode="next"] :where(.vcp-ui-scope) :is([data-vcp-tool-presentation="inline"], [data-vcp-tool-presentation="process"]) .vcp-role-divider .divider-text { padding: 0; border: 0; background: none; font-weight: 400; }
 /* 等待结果时动作词的微光，只在回复生成中出现。 */
 html[data-ui-mode="next"] :where(.vcp-ui-scope) .message-item.streaming :is([data-vcp-tool-presentation="inline"], [data-vcp-tool-presentation="process"]) [data-vcp-tool-pending="true"] .vcp-tool-row-title {
     background: linear-gradient(90deg, var(--vcp-tool-call-color) 0%, var(--vcp-ui-text-primary) 50%, var(--vcp-tool-call-color) 100%);
@@ -221,12 +261,17 @@ html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation="inl
 html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation="process"] .vcp-tool-row-toggle { gap: 0; font-size: var(--vcp-ui-text-caption, 13px); }
 html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation="process"] .vcp-tool-row-leading { position: relative; display: inline-flex; flex: none; width: 16px; height: 16px; margin-right: 6px; align-items: center; justify-content: center; }
 html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation="process"] .vcp-tool-row-leading .vcp-tool-row-icon { width: 14px; height: 14px; transition: opacity .1s; }
-html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation="process"] .vcp-tool-row-leading .vcp-tool-row-chevron { position: absolute; inset: 0; margin: auto; opacity: 0; }
+html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation="process"] .vcp-tool-row-leading .vcp-tool-row-chevron { position: absolute; inset: 0; margin: auto; opacity: 0; transform: rotate(90deg); }
+html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation="process"] .vcp-tool-row-toggle[aria-expanded="true"] .vcp-tool-row-leading .vcp-tool-row-chevron { transform: rotate(-90deg); }
 html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation="process"] .vcp-tool-row-toggle:is(:hover, [aria-expanded="true"]) .vcp-tool-row-leading .vcp-tool-row-icon { opacity: 0; }
 html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation="process"] .vcp-tool-row-toggle:is(:hover, [aria-expanded="true"]) .vcp-tool-row-leading .vcp-tool-row-chevron { opacity: 1; }
 html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation="process"] .vcp-tool-row-dot { flex: none; width: 2px; height: 2px; margin: 0 8px; border-radius: 1px; background: currentColor; opacity: .7; }
 html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation="process"] .vcp-tool-row-toggle :is(.vcp-tool-row-state, .vcp-tool-row-diff) { margin-left: 10px; }
 html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation="process"] [data-vcp-tool-call-state="failed"] .vcp-tool-row-toggle .vcp-tool-row-resource { color: var(--vcp-ui-danger, var(--vcp-ui-palette-red)); }
+/* 展开后正文就在下面，标题后的摘要不再重复。 */
+html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation="process"] .vcp-tool-row-toggle[aria-expanded="true"] > :is(.vcp-tool-row-dot, .vcp-tool-row-resource, .vcp-tool-row-diff) { display: none; }
+html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation="process"] .vcp-tool-presented.expanded > :is(.vcp-tool-details, .vcp-tool-result-collapsible-content, .vcp-tool-call-summary-content) { margin-left: 22px; }
+html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation="process"] [data-vcp-tool-merged="true"] .vcp-tool-row-toggle { padding-left: 22px; }
 html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation="process"] .vcp-tool-process[data-variant="turn"] { margin: 4px 0 10px; border: 0; border-radius: 0; background: transparent; overflow: visible; }
 html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation="process"] .vcp-tool-process[data-variant="turn"] > .vcp-tool-process-toggle {
     width: 100%;

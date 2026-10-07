@@ -33,6 +33,8 @@ const ICONS = {
     explore: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
     other: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/>',
 };
+// 向右的箭头；展开方向由样式旋转决定（行尾箭头转 90°，图标位的箭头悬停朝下、展开朝上）。
+const CHEVRON = '<path d="m9 6 6 6-6 6"/>';
 export function toolStatus(value) {
     const status = String(value || '').trim().replace(/^[✅❌⚠️\s]+/u, '').toLowerCase();
     if (['success', 'succeeded', '成功'].includes(status)) return 'success';
@@ -79,18 +81,20 @@ function nextBlock(node) {
     while (next && isBlank(next)) next = next.nextSibling;
     return next?.nodeType === 1 ? next : null;
 }
+function kindFromName(name) {
+    return /search/i.test(name) ? 'search' : /chrome|browser|web|fetch|url/i.test(name) ? 'web' : /flux|image|draw|comfy/i.test(name) ? 'media' : 'other';
+}
 function requestSummary(block, originalName) {
     const raw = readText(block);
     // Only protocol fields at line starts; executable snippets are never parsed.
     const field = key => raw.match(new RegExp('(?:^|\\n)\\s*'+key+'\\s*:\\s*「始」([\\s\\S]*?)「末」', 'i'))?.[1]?.trim();
     const name = originalName || block.querySelector('.vcp-tool-name-highlight')?.textContent?.trim() || '工具';
-    const command = field('command');
+    const command = field('command') || field('command1');
     const resource = field('path') || field('filePath');
     const knownAction = Object.hasOwn(COMMAND_LABELS, command) ? COMMAND_LABELS[command] : undefined;
-    const kind = Object.hasOwn(COMMAND_KINDS, command) ? COMMAND_KINDS[command]
-        : /search/i.test(name) ? 'search' : /chrome|browser|web|fetch|url/i.test(name) ? 'web' : /flux|image|draw|comfy/i.test(name) ? 'media' : 'other';
+    const kind = Object.hasOwn(COMMAND_KINDS, command) ? COMMAND_KINDS[command] : kindFromName(name);
     const target = firstLine(TARGET_FIELDS.map(field).find(Boolean) || '', 180);
-    return { name, action: knownAction || (command ? `${name} · ${command.slice(0, 120)}` : name), resource: resource || (knownAction ? name : ''), kind, target };
+    return { name, command: command?.slice(0, 120) || '', action: knownAction || (command ? `${name} · ${command.slice(0, 120)}` : name), resource: resource || (knownAction ? name : ''), kind, target };
 }
 export function createToolPresentation({ root, getProfile }) {
     const doc = root.ownerDocument;
@@ -169,9 +173,6 @@ export function createToolPresentation({ root, getProfile }) {
         const btn = doc.createElement('button');
         btn.type = 'button';
         btn.className = 'vcp-tool-row-toggle';
-        const chevron = doc.createElement('span');
-        chevron.className = 'vcp-tool-row-chevron';
-        chevron.setAttribute('aria-hidden', 'true');
         const title = doc.createElement('span');
         title.className = 'vcp-tool-row-title';
         const request = !result && !summary ? requestSummary(block, name) : null;
@@ -182,7 +183,7 @@ export function createToolPresentation({ root, getProfile }) {
         const stateLabel = doc.createElement('span');
         stateLabel.className = 'vcp-tool-row-state';
         stateLabel.textContent = LABELS[status];
-        btn.append(chevron, title, resource, stateLabel);
+        btn.append(chevronIcon(), title, resource, stateLabel);
         header.replaceChildren(btn);
         // Keep the real delete button, outside the disclosure button.
         original.extraActions.forEach(n => header.append(n));
@@ -224,6 +225,12 @@ export function createToolPresentation({ root, getProfile }) {
         node.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[kind] || ICONS.other}</svg>`;
         return node;
     }
+    function chevronIcon() {
+        const node = el('span', 'vcp-tool-row-chevron');
+        node.setAttribute('aria-hidden', 'true');
+        node.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${CHEVRON}</svg>`;
+        return node;
+    }
     function diffStat(text) {
         const m = String(text || '').match(/\+(\d+)\s*[−-]\s*(\d+)/);
         if (!m) return null;
@@ -237,20 +244,20 @@ export function createToolPresentation({ root, getProfile }) {
         const btn = owner.block.querySelector('.vcp-tool-row-toggle');
         if (!btn) return;
         const info = request ? requestSummary(request.block, request.name) : null;
-        const kind = info?.kind || 'other';
+        const kind = info?.kind || kindFromName(result.name);
         const status = result ? result.status : 'request';
         const streaming = !!owner.block.closest('.message-item.streaming');
         const words = KIND_WORDS[kind];
-        const verb = !request ? result.name : !words ? info.action : result ? words[2] : streaming ? words[1] : words[0];
+        // 没有动作词的工具（插件名本身就是标题）：标题只放名字，命令放进摘要。
+        const verb = !request ? result.name : !words ? info.name : result ? words[2] : streaming ? words[1] : words[0];
         const preview = result ? resultPreview(result.block) : '';
         const error = status === 'failed' ? preview : '';
-        const target = request ? info.target || info.resource : preview;
+        const target = request ? info.target || info.resource || (!words ? info.command : '') : preview;
         owner.block.dataset.vcpToolKind = kind;
         owner.block.dataset.vcpToolCallState = status;
         if (request && !result) owner.block.dataset.vcpToolPending = 'true';
         const diff = kind === 'edit' && status === 'success' ? diffStat(preview) : null;
-        const chevron = el('span', 'vcp-tool-row-chevron');
-        chevron.setAttribute('aria-hidden', 'true');
+        const chevron = chevronIcon();
         const parts = [];
         if (style === 'inline') {
             parts.push(icon(kind), el('span', 'vcp-tool-row-title', verb));
@@ -272,13 +279,43 @@ export function createToolPresentation({ root, getProfile }) {
             if (PROBLEM_LABELS[status] && !error) parts.push(el('span', 'vcp-tool-row-state', PROBLEM_LABELS[status]));
         }
         btn.replaceChildren(...parts);
-        btn.title = [info?.action, target, error].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join('\n');
+        btn.title = [info?.action, info?.action?.includes(target) ? '' : target, error].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join('\n');
+    }
+    // 本轮调用摘要：和调用行同一种行结构，摘要写成“N 个工具”加上未成功的状态计数。
+    function renderSummary(model, style) {
+        const btn = model.block.querySelector('.vcp-tool-row-toggle');
+        if (!btn) return;
+        const chips = [...model.block.querySelectorAll('.vcp-tool-call-summary-chip')];
+        const problems = new Map();
+        for (const chip of chips) {
+            if (chip.classList.contains('status-success')) continue;
+            const label = chip.querySelector('.vcp-tool-call-summary-status')?.textContent?.trim() || LABELS.unknown;
+            problems.set(label, (problems.get(label) || 0) + 1);
+        }
+        const text = chips.length
+            ? [`${chips.length} 个工具`, ...[...problems].map(([label, n]) => `${n} 个${label}`)].join('，')
+            : firstLine(model.block.querySelector('.vcp-tool-call-summary-content')?.textContent, 120);
+        if (chips.some(chip => /status-(failure|rejected|timeout)/.test(chip.className))) model.block.dataset.vcpToolCallState = 'failed';
+        const parts = [];
+        if (style === 'inline') {
+            parts.push(icon('plan'), el('span', 'vcp-tool-row-title', '调用摘要'));
+            if (text) parts.push(el('span', 'vcp-tool-row-resource', text));
+            parts.push(chevronIcon());
+        } else {
+            const leading = el('span', 'vcp-tool-row-leading');
+            leading.append(icon('plan'), chevronIcon());
+            parts.push(leading, el('span', 'vcp-tool-row-title', '调用摘要'));
+            if (text) parts.push(el('span', 'vcp-tool-row-dot'), el('span', 'vcp-tool-row-resource', text));
+        }
+        btn.replaceChildren(...parts);
+        btn.title = text;
     }
     function presentCalls(blocks, content, style) {
         const state = bucket(content);
         for (const block of blocks) {
             const model = models.get(block);
-            if (!model || model.merged || model.kind === 'tool-call-summary') continue;
+            if (!model || model.merged) continue;
+            if (model.kind === 'tool-call-summary') { renderSummary(model, style); continue; }
             if (model.kind === 'tool-result') { renderCall(null, model, style); continue; }
             const next = nextBlock(block);
             const result = next && models.get(next);
@@ -343,10 +380,7 @@ export function createToolPresentation({ root, getProfile }) {
         const badge = doc.createElement('span');
         badge.className = 'vcp-tool-process-stats';
         badge.textContent = stats.join(' · ') || '可展开查看';
-        const arrow = doc.createElement('span');
-        arrow.className = 'vcp-tool-row-chevron';
-        arrow.setAttribute('aria-hidden','true');
-        toggle.append(arrow, title, badge);
+        toggle.append(chevronIcon(), title, badge);
         if (options) {
             group.dataset.variant = options.variant;
             title.textContent = options.title;

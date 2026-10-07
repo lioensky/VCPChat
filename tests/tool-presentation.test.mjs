@@ -116,3 +116,27 @@ test('switching modes clears merge marks and legacy still restores the exact mar
  f.p.toolPresentation='process';f.apply();assert.ok(f.content.querySelector('.vcp-tool-process[data-variant="turn"]'));
  f.p.toolPresentation='legacy';f.apply();assert.equal(f.content.innerHTML,before);f.close();
 });
+const chip=(tool,key,label)=>`<span class="vcp-tool-call-summary-chip status-${key}"><span class="vcp-tool-call-summary-tool">${tool}</span><span class="vcp-tool-call-summary-status">${label}</span></span>`;
+const chipSummary=(...chips)=>`<div class="vcp-tool-call-summary-bubble" data-vcp-block-type="tool-call-summary"><div class="vcp-tool-call-summary-header"><span class="vcp-tool-call-summary-icon">图标</span><span class="vcp-tool-call-summary-title">本轮工具调用摘要</span></div><div class="vcp-tool-call-summary-list">${chips.join('')}</div></div>`;
+test('call summary renders as an ordinary row with a tool count and the problem counts',()=>{
+ for(const style of ['process','inline']){
+  const f=fixture(chipSummary(chip('FileOperator','success','成功'),chip('LocalSearchController','failure','失败')),{toolPresentation:style,toolExpansion:'none'});f.apply();
+  const block=f.content.querySelector('.vcp-tool-call-summary-bubble');const row=block.querySelector('.vcp-tool-row-toggle');
+  assert.equal(row.querySelector('.vcp-tool-row-title').textContent,'调用摘要');assert.equal(row.querySelector('.vcp-tool-row-resource').textContent,'2 个工具，1 个失败');
+  assert.equal(row.querySelector('.vcp-tool-row-state'),null);assert.equal(block.dataset.vcpToolCallState,'failed');assert.equal(row.querySelectorAll('.vcp-tool-row-chevron svg').length,1);
+  row.click();assert.ok(block.classList.contains('expanded'));assert.equal(block.querySelectorAll('.vcp-tool-call-summary-content .vcp-tool-call-summary-chip').length,2);f.close();
+ }
+ const f=fixture(chipSummary(chip('FileOperator','success','成功')),{toolPresentation:'process'});f.apply();
+ assert.equal(f.content.querySelector('.vcp-tool-call-summary-bubble').dataset.vcpToolCallState,undefined);assert.equal(f.content.querySelector('.vcp-tool-row-resource').textContent,'1 个工具');f.close();
+});
+test('rows without a known verb keep the tool name as title and the command as summary',()=>{
+ const list=req().replaceAll('ProjectForge','FileOperator').replace('GetCode','ListDirectory').replace('\npath:「始」demo/index.html「末」','');
+ const f=fixture(list,{toolPresentation:'process'});f.apply();const row=f.content.querySelector('.vcp-tool-row-toggle');
+ assert.equal(row.querySelector('.vcp-tool-row-title').textContent,'FileOperator');assert.equal(row.querySelector('.vcp-tool-row-resource').textContent,'ListDirectory');
+ assert.equal(row.title,'FileOperator · ListDirectory');f.close();
+});
+test('result-only rows take their kind from the tool name',()=>{
+ const f=fixture(res('ERROR','s','<p>refused</p>').replaceAll('ProjectForge','LocalSearchController'),{toolPresentation:'process'});f.apply();
+ const block=f.content.querySelector('.vcp-tool-presented');assert.equal(block.dataset.vcpToolKind,'search');assert.equal(block.querySelector('.vcp-tool-row-title').textContent,'LocalSearchController');
+ assert.equal(block.querySelector('.vcp-tool-row-resource').textContent,'refused');f.close();
+});

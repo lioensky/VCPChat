@@ -3605,22 +3605,22 @@
         },
         {
           "file": "modules/renderer/contentProcessor.js",
-          "line": 623,
+          "line": 624,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/renderer/contentProcessor.js",
-          "line": 653,
+          "line": 654,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/renderer/contentProcessor.js",
-          "line": 840,
+          "line": 841,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/renderer/contentProcessor.js",
-          "line": 1000,
+          "line": 1001,
           "kind": "custom-event-listener"
         },
         {
@@ -3710,7 +3710,7 @@
         },
         {
           "file": "modules/renderer/toolPresentation.js",
-          "line": 499,
+          "line": 533,
           "kind": "custom-event-listener"
         },
         {
@@ -5066,25 +5066,25 @@
         },
         {
           "file": "modules/renderer/contentProcessor.js",
-          "line": 623,
+          "line": 624,
           "kind": "custom-event-listener",
           "match": "sideViewBtn.addEventListener('click'"
         },
         {
           "file": "modules/renderer/contentProcessor.js",
-          "line": 653,
+          "line": 654,
           "kind": "custom-event-listener",
           "match": "copyButton.addEventListener('click'"
         },
         {
           "file": "modules/renderer/contentProcessor.js",
-          "line": 840,
+          "line": 841,
           "kind": "custom-event-listener",
           "match": "actionBtn.addEventListener('click'"
         },
         {
           "file": "modules/renderer/contentProcessor.js",
-          "line": 1000,
+          "line": 1001,
           "kind": "custom-event-listener",
           "match": "button.addEventListener('click'"
         },
@@ -5192,7 +5192,7 @@
         },
         {
           "file": "modules/renderer/toolPresentation.js",
-          "line": 499,
+          "line": 533,
           "kind": "custom-event-listener",
           "match": "root.addEventListener('click'"
         },
@@ -18311,7 +18311,7 @@
         },
         {
           "file": "modules/renderer/contentProcessor.js",
-          "line": 929,
+          "line": 930,
           "kind": "custom-event-listener"
         },
         {
@@ -18358,7 +18358,7 @@
         },
         {
           "file": "modules/renderer/contentProcessor.js",
-          "line": 929,
+          "line": 930,
           "kind": "custom-event-listener",
           "match": "ownerWindow.addEventListener('message'"
         },
@@ -29999,14 +29999,14 @@
       "consumers": [
         {
           "file": "modules/renderer/toolPresentation.js",
-          "line": 500,
+          "line": 534,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/renderer/toolPresentation.js",
-          "line": 500,
+          "line": 534,
           "kind": "custom-event-listener",
           "match": "win.addEventListener('vcp-appearance-changed'"
         },

@@ -455,7 +455,8 @@ function highlightAllPatternsInMessage(messageElement) {
             while (parent && parent !== messageElement) {
                 // 只跳过不应改写的技术内容和已高亮节点；不要跳过 STRONG/B。
                 // 这样 Markdown 先完成加粗后，引号高亮仍可进入加粗文本内部执行。
-                if (['PRE', 'CODE', 'STYLE', 'SCRIPT'].includes(parent.tagName) ||
+                // 按钮里是界面文字（如工具行的单行摘要），插入的高亮会打破它的单行省略。
+                if (['PRE', 'CODE', 'STYLE', 'SCRIPT', 'BUTTON'].includes(parent.tagName) ||
                     parent.classList.contains('highlighted-tag') ||
                     parent.classList.contains('highlighted-alert-tag') ||
                     parent.classList.contains('highlighted-quote')) {

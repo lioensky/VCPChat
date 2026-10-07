@@ -144,3 +144,11 @@ test('long code blocks keep the side view and copy buttons side by side in one t
     processor.dispose();
     dom.window.close();
 });
+
+test('quote highlighting leaves button labels untouched', () => {
+    const dom = new JSDOM('<body><div id="m"><p>说 "你好" 吧</p><button>工具 · "query"</button></div></body>');
+    const root = dom.window.document.getElementById('m');
+    createContentProcessor().highlightAllPatternsInMessage(root);
+    assert.equal(root.querySelectorAll('p .highlighted-quote').length, 1);
+    assert.equal(root.querySelector('button').innerHTML, '工具 · "query"');
+});
