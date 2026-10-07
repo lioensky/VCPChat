@@ -7,7 +7,8 @@
 
 const { ipcMain } = require('electron');
 const sourceService = require('../services/sourceService');
-const { isAllowedSenderUrl } = require('./gitHandlers');
+// 和 Git 侧栏共用同一个守卫：只认应用页面的真实顶层窗口，子 frame 或 webview 自报的 URL 不算
+const { isAllowedSender } = require('./gitHandlers');
 
 const CHANNELS = [
     'source:list-files',
@@ -17,11 +18,6 @@ const CHANNELS = [
 ];
 
 let workspaceServiceRef = null;
-
-function isAllowedSender(event) {
-    const raw = event?.senderFrame?.url || event?.sender?.getURL?.() || '';
-    return isAllowedSenderUrl(raw);
-}
 
 function resolveWorkspaceRoot(workspaceId) {
     if (!workspaceServiceRef) throw new Error('工作区服务未初始化。');

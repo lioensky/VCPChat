@@ -27623,14 +27623,14 @@
       "consumers": [
         {
           "file": "modules/ipc/sourceHandlers.js",
-          "line": 74,
+          "line": 70,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/sourceHandlers.js",
-          "line": 74,
+          "line": 70,
           "kind": "event-listener",
           "match": "handle('source:check'"
         },
@@ -27654,14 +27654,14 @@
       "consumers": [
         {
           "file": "modules/ipc/sourceHandlers.js",
-          "line": 56,
+          "line": 52,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/sourceHandlers.js",
-          "line": 56,
+          "line": 52,
           "kind": "event-listener",
           "match": "handle('source:list-files'"
         },
@@ -27685,14 +27685,14 @@
       "consumers": [
         {
           "file": "modules/ipc/sourceHandlers.js",
-          "line": 58,
+          "line": 54,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/sourceHandlers.js",
-          "line": 58,
+          "line": 54,
           "kind": "event-listener",
           "match": "handle('source:read-file'"
         },
@@ -27716,14 +27716,14 @@
       "consumers": [
         {
           "file": "modules/ipc/sourceHandlers.js",
-          "line": 63,
+          "line": 59,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/sourceHandlers.js",
-          "line": 63,
+          "line": 59,
           "kind": "event-listener",
           "match": "handle('source:write-file'"
         },
@@ -32513,7 +32513,7 @@
     },
     {
       "file": "modules/ipc/sourceHandlers.js",
-      "line": 36,
+      "line": 32,
       "reason": "dynamic event listener name: channel",
       "kind": "event-listener",
       "match": "ipcMain.handle(channel",

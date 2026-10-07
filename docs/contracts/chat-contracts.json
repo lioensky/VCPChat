@@ -469,7 +469,7 @@
     "dynamicSites": [
       {
         "file": "modules/ipc/sourceHandlers.js",
-        "line": 36,
+        "line": 32,
         "kind": "event-listener",
         "match": "ipcMain.handle(channel"
       }
