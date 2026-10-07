@@ -600,7 +600,7 @@
       },
       {
         "file": "modules/messageRenderer.js",
-        "line": 3328,
+        "line": 3319,
         "kind": "custom-event-listener",
         "match": "target.addEventListener(type"
       }
