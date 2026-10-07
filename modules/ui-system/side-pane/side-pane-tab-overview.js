@@ -38,6 +38,35 @@ export function createSidePaneTabOverview({
     const listEl = popover.querySelector('#sidePaneOpenTabsList');
     const searchInput = popover.querySelector('.side-pane-overview-input');
 
+    // 搜索框 + 列表按 combobox/listbox 标注（ZCode 的 cmdk 命令面板同一套）：焦点留在搜索框，
+    // 方向键选中的项通过 aria-activedescendant 读出来
+    let optionSeq = 0;
+    if (listEl) {
+        listEl.setAttribute('role', 'listbox');
+        listEl.setAttribute('aria-label', '标签页');
+    }
+    if (searchInput && listEl?.id) {
+        searchInput.setAttribute('role', 'combobox');
+        searchInput.setAttribute('aria-autocomplete', 'list');
+        searchInput.setAttribute('aria-expanded', 'true');
+        searchInput.setAttribute('aria-controls', listEl.id);
+    }
+
+    function markOption(item, selected = false) {
+        item.id ||= `side-pane-overview-option-${++optionSeq}`;
+        item.setAttribute('role', 'option');
+        item.setAttribute('aria-selected', String(selected));
+    }
+
+    function setKeyboardActive(items, index) {
+        items.forEach((item, i) => {
+            item.classList.toggle('kbd-active', i === index);
+            item.setAttribute('aria-selected', String(i === index));
+        });
+        if (items[index]) searchInput?.setAttribute('aria-activedescendant', items[index].id);
+        else searchInput?.removeAttribute('aria-activedescendant');
+    }
+
     const isOpen = () => !popover.hidden;
     const currentQuery = () => searchInput?.value || '';
 
@@ -66,6 +95,7 @@ export function createSidePaneTabOverview({
     function createSectionTitle(text) {
         const title = doc.createElement('div');
         title.className = 'side-pane-overview-section-title';
+        title.setAttribute('role', 'presentation');
         title.textContent = text;
         return title;
     }
@@ -80,6 +110,7 @@ export function createSidePaneTabOverview({
     function render(filterQuery = '') {
         if (!listEl) return;
         listEl.innerHTML = '';
+        searchInput?.removeAttribute('aria-activedescendant');
         const queryParts = normalizeSearchQuery(filterQuery);
         const activeTabId = getActiveTabId();
         const now = Date.now();
@@ -107,6 +138,7 @@ export function createSidePaneTabOverview({
                 const item = doc.createElement('div');
                 item.className = `side-pane-overview-item${tab.id === activeTabId ? ' active' : ''}`;
                 item.setAttribute('data-tab-id', tab.id);
+                markOption(item);
                 item.appendChild(createItemTitle(getTabIconName(tab, getTabType), tab.title));
                 if (tab.openedAt) item.appendChild(createTime(formatRelativeTime(tab.openedAt, now)));
 
@@ -121,6 +153,8 @@ export function createSidePaneTabOverview({
                         e.stopPropagation();
                         await onClose(tab.id);
                         render(currentQuery());
+                        // 被点的关闭按钮跟着整行重建没了，焦点回搜索框而不是掉到 body
+                        if (isOpen()) searchInput?.focus?.();
                     });
                     item.appendChild(closeBtn);
                 }
@@ -139,6 +173,7 @@ export function createSidePaneTabOverview({
                 const item = doc.createElement('div');
                 item.className = 'side-pane-overview-item recently-closed';
                 item.setAttribute('data-closed-tab-id', closed.id);
+                markOption(item);
                 item.append(createItemTitle(getTabIconName(closed.tab, getTabType), closed.title), createTime(formatRelativeTime(closed.closedAt, now)));
                 item.addEventListener('click', async () => {
                     hide();
@@ -163,7 +198,7 @@ export function createSidePaneTabOverview({
                 event.preventDefault();
                 const step = event.key === 'ArrowDown' ? 1 : -1;
                 const next = current < 0 ? (step > 0 ? 0 : items.length - 1) : (current + step + items.length) % items.length;
-                items.forEach((item, index) => item.classList.toggle('kbd-active', index === next));
+                setKeyboardActive(items, next);
                 items[next].scrollIntoView?.({ block: 'nearest' });
             } else if (event.key === 'Enter') {
                 const target = items[current] || items[0];

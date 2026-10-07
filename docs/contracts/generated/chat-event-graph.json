@@ -1721,7 +1721,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-overview.js",
-          "line": 219,
+          "line": 254,
           "kind": "custom-event-listener"
         },
         {
@@ -1832,7 +1832,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-overview.js",
-          "line": 219,
+          "line": 254,
           "kind": "custom-event-listener",
           "match": "win?.addEventListener('blur'"
         },
@@ -4376,22 +4376,22 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-overview.js",
-          "line": 120,
+          "line": 152,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-overview.js",
-          "line": 128,
+          "line": 162,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-overview.js",
-          "line": 143,
+          "line": 178,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-overview.js",
-          "line": 200,
+          "line": 235,
           "kind": "custom-event-listener"
         },
         {
@@ -5979,25 +5979,25 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-overview.js",
-          "line": 120,
+          "line": 152,
           "kind": "custom-event-listener",
           "match": "closeBtn.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-overview.js",
-          "line": 128,
+          "line": 162,
           "kind": "custom-event-listener",
           "match": "item.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-overview.js",
-          "line": 143,
+          "line": 178,
           "kind": "custom-event-listener",
           "match": "item.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-overview.js",
-          "line": 200,
+          "line": 235,
           "kind": "custom-event-listener",
           "match": "button.addEventListener('click'"
         },
@@ -14862,7 +14862,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-overview.js",
-          "line": 154,
+          "line": 189,
           "kind": "custom-event-listener"
         }
       ],
@@ -15055,7 +15055,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-overview.js",
-          "line": 154,
+          "line": 189,
           "kind": "custom-event-listener",
           "match": "searchInput.addEventListener('input'"
         }
@@ -15568,12 +15568,12 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-overview.js",
-          "line": 180,
+          "line": 215,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-overview.js",
-          "line": 218,
+          "line": 253,
           "kind": "custom-event-listener"
         },
         {
@@ -15943,13 +15943,13 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-overview.js",
-          "line": 180,
+          "line": 215,
           "kind": "custom-event-listener",
           "match": "searchInput.addEventListener('keydown'"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-overview.js",
-          "line": 218,
+          "line": 253,
           "kind": "custom-event-listener",
           "match": "doc.addEventListener('keydown'"
         },
@@ -23019,7 +23019,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-overview.js",
-          "line": 217,
+          "line": 252,
           "kind": "custom-event-listener"
         },
         {
@@ -23077,7 +23077,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-overview.js",
-          "line": 217,
+          "line": 252,
           "kind": "custom-event-listener",
           "match": "doc.addEventListener('pointerdown'"
         },

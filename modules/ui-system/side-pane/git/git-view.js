@@ -268,9 +268,19 @@ export function mountGitView(host, {
             return;
         }
         empty.hidden = true;
+        // 推送触发的重绘会换掉整张列表：记下焦点所在的行，重建后还给同一个文件（React 按 key 复用节点时焦点本来就不丢，
+        // ZCode/DSH 的列表都是这样）；那个文件没了就给同一位置的行
+        const focusedCard = list.contains(doc.activeElement) ? doc.activeElement.closest('.side-git-card') : null;
+        const focusKey = focusedCard?.dataset.key ?? null;
+        const focusIndex = focusedCard ? Array.prototype.indexOf.call(list.children, focusedCard) : -1;
         list.innerHTML = '';
         items.forEach(item => list.appendChild(buildCard(item)));
         cardsOwner.prefetch(items);
+        if (focusKey !== null) {
+            const cards = Array.from(list.querySelectorAll('.side-git-card'));
+            const target = cards.find(card => card.dataset.key === focusKey) || cards[Math.min(focusIndex, cards.length - 1)];
+            target?.querySelector('.side-git-row')?.focus?.({ preventScroll: true });
+        }
     }
 
     // ── 数据 ────────────────────────────────────────────────
