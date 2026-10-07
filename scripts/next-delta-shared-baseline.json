@@ -12,8 +12,8 @@
     "reason": "Integrated projection behavior: media cleanup before subtree replacement; nested tool-result ranges shield protocol markers; incremental smooth-stream burst handling preserves text order; durable persistence remains outside this projection."
   },
   "modules/topicListManager.js": {
-    "sha256": "50b2475f546cde9b601fb37dcc77562513f57b27823287a64061e85858653b74",
-    "reason": "Integrated topic behavior: configuration/unread loads validate the selected item; sort/title/menu operations capture their original topic target; completed deletion changes the active view only for the same item and topic. Repository, readiness and render listener ownership remain unchanged. Topic search waits 200ms after typing before reloading (Enter is immediate); a rejected config IPC shows an error row instead of a permanent spinner; names and IPC errors render as text."
+    "sha256": "6300f8f255f1df88c26d5608b48f21d29848ca0395e34695c1aa31d4146f3646",
+    "reason": "Integrated topic behavior: configuration/unread loads validate the selected item; sort/title/menu operations capture their original topic target; completed deletion changes the active view only for the same item and topic. Repository, readiness and render listener ownership remain unchanged. Topic search waits 200ms after typing before reloading (Enter is immediate); a rejected config IPC shows an error row instead of a permanent spinner; names and IPC errors render as text. Successful single and batch deletions report the deleted topic ids through mainRendererFunctions.onTopicsDeleted so the side pane drops tabs owned by those topics."
   },
   "modules/itemListManager.js": {
     "sha256": "ae5eca22dd19312f56d5c9d60b6a221c3a5be8cf2d34c1049407b45100cc5393",

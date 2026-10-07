@@ -165,6 +165,7 @@ let modelSelectModal = null;
 let modelList = null;
 let modelSearchInput = null;
 let refreshModelsBtn = null;
+let workspaceSidePaneController = null; // 话题删除时丢弃它的侧栏标签
 
 // UI Helper functions to be passed to modules
 // The main uiHelperFunctions object is now defined in modules/ui-helpers.js
@@ -802,6 +803,11 @@ mainChatSettingsPresentationOwner.configureStartup({
                         console.error('[TopicListManager] chatManager not available for handleTopicDeletion');
                     }
                 },
+                // 侧栏晚于话题列表初始化，删话题时再取
+                onTopicsDeleted: (deletion) => {
+                    void workspaceSidePaneController?.discardTabsOfDeletedTopics(deletion)
+                        .catch(error => console.error('[RENDERER] Failed to drop side pane tabs of deleted topics:', error));
+                },
                 selectTopic: (topicId) => {
                     if (chatManager) {
                         return chatManager.selectTopic(topicId);
@@ -983,7 +989,7 @@ mainChatSettingsPresentationOwner.configureStartup({
         // 右侧工作区侧栏：通知 + 辅助对话
         // 侧栏起不来只影响侧栏：后面的过滤器、事件绑定（发送按钮等）照常初始化
         try {
-            initWorkspaceSidePane({
+            workspaceSidePaneController = initWorkspaceSidePane({
                 document,
                 window,
                 elements: {

@@ -3971,7 +3971,7 @@
         },
         {
           "file": "modules/topicListManager.js",
-          "line": 1318,
+          "line": 1321,
           "kind": "custom-event-listener"
         },
         {
@@ -4326,17 +4326,17 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1144,
-          "kind": "custom-event-listener"
-        },
-        {
-          "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1150,
+          "line": 1158,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
           "line": 1164,
+          "kind": "custom-event-listener"
+        },
+        {
+          "file": "modules/ui-system/side-pane/side-pane-controller.js",
+          "line": 1178,
           "kind": "custom-event-listener"
         },
         {
@@ -5493,7 +5493,7 @@
         },
         {
           "file": "modules/topicListManager.js",
-          "line": 1318,
+          "line": 1321,
           "kind": "custom-event-listener",
           "match": "document.addEventListener('click'"
         },
@@ -5919,19 +5919,19 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1144,
+          "line": 1158,
           "kind": "custom-event-listener",
           "match": "toggleNotificationsBtn.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1150,
+          "line": 1164,
           "kind": "custom-event-listener",
           "match": "expandButton.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1164,
+          "line": 1178,
           "kind": "custom-event-listener",
           "match": "closeSidePaneBtn.addEventListener('click'"
         },
@@ -14329,7 +14329,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 678,
+          "line": 679,
           "kind": "custom-event-listener"
         }
       ],
@@ -14396,7 +14396,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 678,
+          "line": 679,
           "kind": "custom-event-listener",
           "match": "window.addEventListener('global-settings-updated'"
         }
@@ -15438,7 +15438,7 @@
         },
         {
           "file": "modules/topicListManager.js",
-          "line": 1119,
+          "line": 1121,
           "kind": "custom-event-listener"
         },
         {
@@ -15797,7 +15797,7 @@
         },
         {
           "file": "modules/topicListManager.js",
-          "line": 1119,
+          "line": 1121,
           "kind": "custom-event-listener",
           "match": "inputField.addEventListener('keydown'"
         },
@@ -21589,14 +21589,14 @@
       "consumers": [
         {
           "file": "renderer.js",
-          "line": 190,
+          "line": 191,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "renderer.js",
-          "line": 190,
+          "line": 191,
           "kind": "preload-subscription",
           "match": "chatAPI.onPlayTtsAudio("
         }
@@ -21657,14 +21657,14 @@
       "consumers": [
         {
           "file": "renderer.js",
-          "line": 191,
+          "line": 192,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "renderer.js",
-          "line": 191,
+          "line": 192,
           "kind": "preload-subscription",
           "match": "chatAPI.onStopTtsAudio("
         }
@@ -24997,7 +24997,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1184,
+          "line": 1198,
           "kind": "custom-event-listener"
         },
         {
@@ -25097,7 +25097,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1184,
+          "line": 1198,
           "kind": "custom-event-listener",
           "match": "win?.addEventListener?.('resize'"
         },
@@ -29781,7 +29781,7 @@
       "producers": [
         {
           "file": "renderer.js",
-          "line": 275,
+          "line": 276,
           "kind": "custom-event-create"
         }
       ],
@@ -29801,7 +29801,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 275,
+          "line": 276,
           "kind": "custom-event-create",
           "match": "new CustomEvent('vcp-appearance-studio-configure'"
         }
@@ -29812,7 +29812,7 @@
       "producers": [
         {
           "file": "renderer.js",
-          "line": 265,
+          "line": 266,
           "kind": "custom-event-create"
         }
       ],
@@ -29832,7 +29832,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 265,
+          "line": 266,
           "kind": "custom-event-create",
           "match": "new CustomEvent('vcp-appearance-studio-dispose'"
         }
@@ -29862,7 +29862,7 @@
       "producers": [
         {
           "file": "renderer.js",
-          "line": 591,
+          "line": 592,
           "kind": "custom-event-create"
         }
       ],
@@ -29870,7 +29870,7 @@
       "evidence": [
         {
           "file": "renderer.js",
-          "line": 591,
+          "line": 592,
           "kind": "custom-event-create",
           "match": "new CustomEvent('vcp-chat-stream-terminal'"
         }
@@ -30256,7 +30256,7 @@
       "producers": [
         {
           "file": "renderer.js",
-          "line": 860,
+          "line": 866,
           "kind": "custom-event-create"
         }
       ],
@@ -30276,7 +30276,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 860,
+          "line": 866,
           "kind": "custom-event-create",
           "match": "new CustomEvent('vcp-main-chat-commands-configure'"
         }
@@ -30287,7 +30287,7 @@
       "producers": [
         {
           "file": "renderer.js",
-          "line": 1078,
+          "line": 1084,
           "kind": "custom-event-create"
         }
       ],
@@ -30295,7 +30295,7 @@
       "evidence": [
         {
           "file": "renderer.js",
-          "line": 1078,
+          "line": 1084,
           "kind": "custom-event-create",
           "match": "new CustomEvent('vcp-renderer-ready'"
         }

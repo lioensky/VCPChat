@@ -919,6 +919,8 @@ window.topicListManager = (() => {
             }
         }
 
+        const deletedTopicIds = topicsToDelete.map(topic => topic.id).filter(id => !remainingTopics.some(item => item.id === id));
+        if (deletedTopicIds.length) mainRendererFunctions.onTopicsDeleted?.({ itemId: currentSelectedItem.id, itemType: currentSelectedItem.type, topicIds: deletedTopicIds });
         if (activeTopicDeleted) {
             mainRendererFunctions.handleTopicDeletion(remainingTopics, {
                 id: currentSelectedItem.id,
@@ -1244,6 +1246,7 @@ window.topicListManager = (() => {
                 }
 
                 if (result && result.success) {
+                    mainRendererFunctions.onTopicsDeleted?.({ itemId: targetItemId, itemType: targetItemType, topicIds: [targetTopicId] });
                     if (currentSelectedItemRef.get()?.id === targetItemId &&
                         currentSelectedItemRef.get()?.type === targetItemType &&
                         currentTopicIdRef.get() === targetTopicId) {

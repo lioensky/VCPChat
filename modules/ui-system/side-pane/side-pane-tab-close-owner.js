@@ -49,7 +49,8 @@ export function createSidePaneTabCloseOwner({
         closing.set(tabId, operation);
         const onClosed = getOnClosed(tab);
         const run = async () => {
-            if (entry) {
+            // discard：标签的归属已经不在了（父话题被删），不再询问、不再回调 onClosed
+            if (entry && !options.discard) {
                 const result = await entry.handle?.requestClose?.();
                 if (result?.closed === false) return;
                 if (isDisposed() || getEntry(tabId) !== entry) return;
@@ -64,7 +65,7 @@ export function createSidePaneTabCloseOwner({
             });
             const cleanup = (async () => {
                 await disposeEntry(tabId, entry);
-                try { await onClosed?.(current); }
+                try { if (!options.discard) await onClosed?.(current); }
                 catch (error) { console.error(`[SidePaneController] onClosed failed for tab "${tabId}":`, error); }
             })();
             retiring.add(cleanup);
