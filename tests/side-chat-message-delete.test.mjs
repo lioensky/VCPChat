@@ -183,3 +183,20 @@ test('closing a side chat that has messages asks first, and keeps it when declin
     assert.deepEqual(await f.handle.requestClose(), { closed: true });
     assert.equal(f.confirms.length, 2);
 });
+
+test('view trajectory from a side reply asks for the child topic, not the main chat', async t => {
+    const f = await fixture(t);
+    const executed = [];
+    f.doc.defaultView.VCPContributions = { commands: {
+        get: id => id === 'sidepane.open-trajectory',
+        execute: (id, options) => executed.push([id, options])
+    } };
+    f.menu('answer');
+    f.doc.querySelector('[data-side-chat-action="trajectory"]').click();
+    assert.equal(executed.length, 1);
+    const [id, options] = executed[0];
+    assert.equal(id, 'sidepane.open-trajectory');
+    assert.equal(options.requestId, 'answer');
+    assert.equal(options.conversation.item.id, 'agent');
+    assert.equal(options.conversation.topicId, 'child');
+});

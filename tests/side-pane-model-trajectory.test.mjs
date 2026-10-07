@@ -377,3 +377,28 @@ test('closing the trajectory tab while the push registration is pending leaves n
     assert.equal(env.state.lists.length, 0);
     assert.equal(env.view.innerHTML, '');
 });
+
+test('opening from a side chat reads the child topic and finds its reply; a main chat switch goes back to following', async () => {
+    const env = makeEnv({ recs: manyRecords(2) });
+    const handle = await env.provider.mountTab({ id: 'x' }, env.view);
+    assert.equal(env.state.lists.at(-1)[0], 'agent1__t1');
+
+    const child = { item: { id: 'agent1', name: '辅助对话 1' }, topicId: 'sidechat_1' };
+    await env.provider.openModelTrajectoryTab({ requestId: 'm1', conversation: child });
+    await wait(50);
+    assert.equal(env.state.lists.at(-1)[0], 'agent1__sidechat_1');
+    assert.ok(env.view.querySelectorAll('.side-traj-call')[1].classList.contains('flash'));
+    assert.equal(env.state.toasts.filter(text => /没有对应的调用记录/.test(text)).length, 0);
+
+    env.state.conversation = { item: { id: 'agent2', name: '另一个' }, topicId: 't9' };
+    env.state.conversationListeners[0]();
+    await wait(50);
+    assert.equal(env.state.lists.at(-1)[0], 'agent2__t9');
+
+    await env.provider.openModelTrajectoryTab({ requestId: 'm0', conversation: child });
+    await wait(50);
+    await env.provider.openModelTrajectoryTab();
+    await wait(50);
+    assert.equal(env.state.lists.at(-1)[0], 'agent2__t9', 'opening from the main chat follows the main chat again');
+    await handle.dispose();
+});

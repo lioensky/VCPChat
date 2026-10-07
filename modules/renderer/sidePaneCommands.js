@@ -1,7 +1,7 @@
 /*
  * 侧栏对外提供的动作，登记成命令：
  *   sidepane.open-tab          打开（或回到）一个标签，参数同 controller.openTab
- *   sidepane.open-trajectory   打开调用轨迹并定位到某次请求 { requestId }
+ *   sidepane.open-trajectory   打开调用轨迹并定位到某次请求 { requestId, conversation }（conversation 指定会话，辅助对话用）
  *   notifications.toggle       开 / 关通知页
  *   projectforge.open          打开 V工程，可带 { projectId } 直接定位到那个工程
  * 别的模块（消息右键、代码块按钮、主进程转来的快捷键）只认命令 id，不再碰侧栏控制器或 window 上的全局函数。

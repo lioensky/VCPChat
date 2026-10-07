@@ -167,7 +167,11 @@ export function createSideChatMessageActions({
 
         const commands = win?.VCPContributions?.commands;
         if (isAssistant && message.id && commands?.get('sidepane.open-trajectory')) {
-            add('trajectory', 'fa-route', '查看调用轨迹', () => commands.execute('sidepane.open-trajectory', { requestId: message.id }));
+            // 这条回复记在子话题下，轨迹要看子话题，不是主聊天当前的话题
+            const conversation = descriptor?.child?.itemId && descriptor.child.topicId
+                ? { item: { id: descriptor.child.itemId, name: descriptor.title || '辅助对话' }, topicId: descriptor.child.topicId }
+                : null;
+            add('trajectory', 'fa-route', '查看调用轨迹', () => commands.execute('sidepane.open-trajectory', { requestId: message.id, conversation }));
         }
 
         if (message.id && typeof removeMessage === 'function' && typeof saveHistory === 'function' && !unfinished && !busy) {

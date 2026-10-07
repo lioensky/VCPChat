@@ -61,17 +61,23 @@ export function createModelTrajectorySideProvider({
     const kind = 'model-trajectory';
     const win = doc.defaultView || window;
     const toast = (message, type = 'info') => uiHelper?.showToastNotification?.(message, type);
-    /** @type {Set<{focusCall: (requestId: string) => void}>} */
+    /** @type {Set<{show: (requestId: string | null) => void}>} */
     const instances = new Set();
     let requestedRequestId = null;
+    // 从辅助对话打开时看的是它的子话题（同 ZCode 打开时显式带上会话）；主聊天切换会话或从主聊天再打开时回到跟随主聊天
+    let pinnedConversation = null;
 
     return {
         kind,
 
-        /** 打开（或聚焦）调用轨迹标签；带 requestId（消息 id）时滚动到对应的那次调用。 */
-        async openModelTrajectoryTab({ requestId = null } = {}) {
+        /**
+         * 打开（或聚焦）调用轨迹标签；带 requestId（消息 id）时滚动到对应的那次调用。
+         * conversation（{ item: { id, name }, topicId }）指定要看的会话，不传就跟随主聊天当前会话。
+         */
+        async openModelTrajectoryTab({ requestId = null, conversation = null } = {}) {
             if (!sidePaneController) return null;
             requestedRequestId = requestId;
+            pinnedConversation = trajectoryKeyFor(conversation) ? conversation : null;
             const handle = await sidePaneController.openTab({
                 id: TAB_ID,
                 kind,
@@ -82,7 +88,7 @@ export function createModelTrajectorySideProvider({
                 searchHint: '模型调用 请求 响应 token 轨迹'
             });
             sidePaneController.setVisible?.(true);
-            if (requestId) for (const instance of instances) instance.focusCall(requestId);
+            for (const instance of instances) instance.show(requestId);
             handle?.focus?.();
             return handle;
         },
@@ -777,7 +783,7 @@ export function createModelTrajectorySideProvider({
 
             // ---------------------------------------------------------------- 数据
             const currentKey = () => {
-                const conversation = getConversation?.() || null;
+                const conversation = pinnedConversation || getConversation?.() || null;
                 conversationLabel = conversation?.item?.name || '';
                 return trajectoryKeyFor(conversation);
             };
@@ -850,7 +856,14 @@ export function createModelTrajectorySideProvider({
                 if (change.sessionKey === sessionKey || change.sessionKey === currentKey()) reloadWhenShown(scheduleReload);
             };
 
-            const instance = { focusCall: requestId => { focusRequestId = requestId; if (!loading) renderAll(); } };
+            const instance = {
+                show: requestId => {
+                    if (requestId) focusRequestId = requestId;
+                    // 换了要看的会话（比如从辅助对话打开）先读那个会话，读完再定位
+                    if (currentKey() !== sessionKey) void load();
+                    else if (!loading) renderAll();
+                }
+            };
             instances.add(instance);
             own.own(() => instances.delete(instance), 'focus-request-target');
             own.own(() => {
@@ -876,6 +889,7 @@ export function createModelTrajectorySideProvider({
             // 切换智能体 / 话题（包括删掉当前助手）都由主聊天通知，接上了就不用轮询
             own.subscribe(() => {
                 const off = onConversationChange?.(() => {
+                    pinnedConversation = null;
                     if (!disposed() && currentKey() !== sessionKey) reloadWhenShown(() => void load());
                 });
                 followsConversation = typeof off === 'function';
