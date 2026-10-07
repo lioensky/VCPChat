@@ -621,7 +621,7 @@ async function getAgentGroups() {
                 if (await fs.pathExists(configPath)) {
                     const config = normalizeGroupModeSettings(await fs.readJson(configPath));
                     if (config.avatar) {
-                        config.avatarUrl = `file://${path.join(groupPath, config.avatar)}?t=${Date.now()}`;
+                        config.avatarUrl = await versionedGroupAvatarUrl(groupPath, config.avatar);
                     } else {
                         config.avatarUrl = null;
                     }
@@ -639,6 +639,14 @@ async function getAgentGroups() {
     }
 }
 
+// Version the avatar URL by modification time so the agent list keeps its
+// cached image until the avatar file actually changes.
+async function versionedGroupAvatarUrl(groupDir, avatarFile) {
+    const avatarPath = path.join(groupDir, avatarFile);
+    const stat = await fs.stat(avatarPath).catch(() => null);
+    return `file://${avatarPath}?v=${stat ? Math.round(stat.mtimeMs) : Date.now()}`;
+}
+
 /**
  * 获取指定 AgentGroup 的配置
  * @param {string} groupId - 群组 ID
@@ -652,7 +660,7 @@ async function getAgentGroupConfig(groupId) {
         if (await fs.pathExists(configPath)) {
             const config = normalizeGroupModeSettings(await fs.readJson(configPath));
             if (config.avatar) {
-                config.avatarUrl = `file://${path.join(groupDir, config.avatar)}?t=${Date.now()}`;
+                config.avatarUrl = await versionedGroupAvatarUrl(groupDir, config.avatar);
             } else {
                 config.avatarUrl = null;
             }

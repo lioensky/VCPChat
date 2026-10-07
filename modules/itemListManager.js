@@ -897,7 +897,9 @@ window.itemListManager = (() => {
 
         const avatarImg = document.createElement('img');
         avatarImg.classList.add('avatar');
-        avatarImg.src = item.avatarUrl ? `${item.avatarUrl}${item.avatarUrl.includes('?') ? '&' : '?'}t=${Date.now()}` : (item.type === 'group' ? 'assets/default_group_avatar.png' : 'assets/default_avatar.png');
+        // The main process versions avatar URLs by file mtime, so the URL is
+        // stable until the avatar changes and the browser cache can serve it.
+        avatarImg.src = item.avatarUrl || (item.type === 'group' ? 'assets/default_group_avatar.png' : 'assets/default_avatar.png');
         avatarImg.alt = `${item.name} 头像`;
         avatarImg.onerror = () => { avatarImg.src = (item.type === 'group' ? 'assets/default_group_avatar.png' : 'assets/default_avatar.png'); };
 
@@ -1078,8 +1080,13 @@ window.itemListManager = (() => {
             itemListUl.innerHTML = '<li><div class="loading-spinner-small"></div>加载列表中...</li>';
         }
 
-        const agentsResult = await electronAPI.getAgents();
-        const groupsResult = await electronAPI.getAgentGroups();
+        // A rejected IPC call becomes an error row instead of leaving the
+        // first-load spinner up for good; both reads run together.
+        const asError = error => ({ error: error?.message || String(error) });
+        const [agentsResult, groupsResult] = await Promise.all([
+            Promise.resolve().then(() => electronAPI.getAgents()).catch(asError),
+            Promise.resolve().then(() => electronAPI.getAgentGroups()).catch(asError)
+        ]);
 
         if (loadToken !== activeLoadItemsToken) {
             console.debug('[ItemListManager] Ignoring stale loadItems result.');
