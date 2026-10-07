@@ -239,7 +239,10 @@ export function createSelectProjection({ ensurePresentationScope }) {
                     // (programmatic value/selected writes) re-sync the live
                     // projection through the primitive's vcp-uiux-sync hook.
                     if (mutations.some(record => record.type === 'childList')) {
-                        teardownUiuxSelects({ preserveForm: form });
+                        // Only this form's projections: the Agent and group
+                        // forms stay mounted side by side, and the remount
+                        // below restores this form alone.
+                        teardownUiuxSelects({ preserveForm: form, onlyForm: form });
                         // LifecycleScope releases settle their dispose in a
                         // microtask: the old projection must have fully restored
                         // the business DOM before the remount runs, otherwise the
@@ -272,12 +275,14 @@ export function createSelectProjection({ ensurePresentationScope }) {
         }
     }
 
-    function teardownUiuxSelects({ preserveForm = null } = {}) {
+    function teardownUiuxSelects({ preserveForm = null, onlyForm = null } = {}) {
         [...selectObserverStates.values()].forEach(state => {
+            if (onlyForm && state.form !== onlyForm) return;
             releaseObserverState(state, { preserveRebuilding: state.form === preserveForm });
             void state.release?.();
         });
         [...primitiveSelectStates.keys()].forEach(select => {
+            if (onlyForm && !onlyForm.contains(select)) return;
             // stateRelease retracts the keyboard glue, runs the primitive disposer
             // (which restores the original business DOM) and clears the marker.
             // The LifecycleScope release is idempotent and unregisters itself, so
