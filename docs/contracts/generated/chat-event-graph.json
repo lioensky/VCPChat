@@ -1670,7 +1670,7 @@
         },
         {
           "file": "modules/services/windowPinService.js",
-          "line": 293,
+          "line": 301,
           "kind": "event-listener"
         },
         {
@@ -1766,7 +1766,7 @@
         },
         {
           "file": "modules/services/windowPinService.js",
-          "line": 293,
+          "line": 301,
           "kind": "event-listener",
           "match": "win.on(\"blur\""
         },
@@ -1847,25 +1847,6 @@
           "line": 861,
           "kind": "custom-event-listener",
           "match": "window.addEventListener('blur'"
-        }
-      ]
-    },
-    {
-      "name": "browser-window-created",
-      "producers": [],
-      "consumers": [
-        {
-          "file": "modules/services/windowPinService.js",
-          "line": 595,
-          "kind": "event-listener"
-        }
-      ],
-      "evidence": [
-        {
-          "file": "modules/services/windowPinService.js",
-          "line": 595,
-          "kind": "event-listener",
-          "match": "app.on(\"browser-window-created\""
         }
       ]
     },
@@ -4418,37 +4399,42 @@
         },
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 1281,
+          "line": 1280,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 1381,
+          "line": 1380,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 1461,
+          "line": 1460,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 1617,
+          "line": 1616,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 1660,
+          "line": 1659,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 1859,
+          "line": 1858,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 1917,
+          "line": 1916,
+          "kind": "custom-event-listener"
+        },
+        {
+          "file": "modules/ui-system/vcp-ui.js",
+          "line": 1932,
           "kind": "custom-event-listener"
         },
         {
@@ -4458,32 +4444,27 @@
         },
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 1934,
+          "line": 1958,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 1959,
+          "line": 2065,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 1984,
+          "line": 2069,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 1988,
+          "line": 2073,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 1992,
-          "kind": "custom-event-listener"
-        },
-        {
-          "file": "modules/ui-system/vcp-ui.js",
-          "line": 2055,
+          "line": 2135,
           "kind": "custom-event-listener"
         },
         {
@@ -4553,7 +4534,7 @@
         },
         {
           "file": "preloads/behaviors/pinButton.js",
-          "line": 126,
+          "line": 153,
           "kind": "custom-event-listener"
         }
       ],
@@ -6018,85 +5999,85 @@
         },
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 1281,
+          "line": 1280,
           "kind": "custom-event-listener",
           "match": "close.element.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 1381,
+          "line": 1380,
           "kind": "custom-event-listener",
           "match": "button.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 1461,
+          "line": 1460,
           "kind": "custom-event-listener",
           "match": "row.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 1617,
+          "line": 1616,
           "kind": "custom-event-listener",
           "match": "button.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 1660,
+          "line": 1659,
           "kind": "custom-event-listener",
           "match": "button.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 1859,
+          "line": 1858,
           "kind": "custom-event-listener",
           "match": "closeButton.element.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 1917,
+          "line": 1916,
           "kind": "custom-event-listener",
           "match": "close.element.addEventListener('click'"
+        },
+        {
+          "file": "modules/ui-system/vcp-ui.js",
+          "line": 1932,
+          "kind": "custom-event-listener",
+          "match": "cancel.element.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/vcp-ui.js",
           "line": 1933,
           "kind": "custom-event-listener",
-          "match": "cancel.element.addEventListener('click'"
-        },
-        {
-          "file": "modules/ui-system/vcp-ui.js",
-          "line": 1934,
-          "kind": "custom-event-listener",
           "match": "confirm.element.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 1959,
+          "line": 1958,
           "kind": "custom-event-listener",
           "match": "cancel.element.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 1984,
+          "line": 2065,
           "kind": "custom-event-listener",
           "match": "minimize.element.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 1988,
+          "line": 2069,
           "kind": "custom-event-listener",
           "match": "maximize.element.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 1992,
+          "line": 2073,
           "kind": "custom-event-listener",
           "match": "close.element.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 2055,
+          "line": 2135,
           "kind": "custom-event-listener",
           "match": "retry.element.addEventListener('click'"
         },
@@ -6180,7 +6161,7 @@
         },
         {
           "file": "preloads/behaviors/pinButton.js",
-          "line": 126,
+          "line": 153,
           "kind": "custom-event-listener",
           "match": "pinBtn.addEventListener('click'"
         }
@@ -6485,7 +6466,7 @@
       "producers": [
         {
           "file": "preloads/api/window.js",
-          "line": 33,
+          "line": 42,
           "kind": "preload-channel-definition"
         }
       ],
@@ -6505,7 +6486,7 @@
         },
         {
           "file": "preloads/api/window.js",
-          "line": 33,
+          "line": 42,
           "kind": "preload-channel-definition",
           "match": "send('close-app'"
         }
@@ -6820,7 +6801,7 @@
         },
         {
           "file": "modules/services/windowPinService.js",
-          "line": 295,
+          "line": 303,
           "kind": "event-listener"
         },
         {
@@ -7042,7 +7023,7 @@
         },
         {
           "file": "modules/services/windowPinService.js",
-          "line": 295,
+          "line": 303,
           "kind": "event-listener",
           "match": "win.once(\"closed\""
         },
@@ -7170,25 +7151,6 @@
           "line": 132,
           "kind": "event-listener",
           "match": "server.on(\"connection\""
-        }
-      ]
-    },
-    {
-      "name": "console-message",
-      "producers": [],
-      "consumers": [
-        {
-          "file": "modules/services/windowPinService.js",
-          "line": 450,
-          "kind": "event-listener"
-        }
-      ],
-      "evidence": [
-        {
-          "file": "modules/services/windowPinService.js",
-          "line": 450,
-          "kind": "event-listener",
-          "match": "wc.on(\"console-message\""
         }
       ]
     },
@@ -10154,11 +10116,6 @@
           "file": "modules/loom/webcore/electron-adapter.js",
           "line": 595,
           "kind": "event-listener"
-        },
-        {
-          "file": "modules/services/windowPinService.js",
-          "line": 590,
-          "kind": "event-listener"
         }
       ],
       "evidence": [
@@ -10221,12 +10178,6 @@
           "line": 595,
           "kind": "event-listener",
           "match": "this.webContents.once('did-finish-load'"
-        },
-        {
-          "file": "modules/services/windowPinService.js",
-          "line": 590,
-          "kind": "event-listener",
-          "match": "wc.on(\"did-finish-load\""
         }
       ]
     },
@@ -10462,7 +10413,7 @@
       "consumers": [
         {
           "file": "preloads/api/window.js",
-          "line": 37,
+          "line": 46,
           "kind": "preload-channel-definition"
         }
       ],
@@ -10475,7 +10426,7 @@
         },
         {
           "file": "preloads/api/window.js",
-          "line": 37,
+          "line": 46,
           "kind": "preload-channel-definition",
           "match": "onSignal('do-toggle-notifications-sidebar'"
         }
@@ -10736,11 +10687,6 @@
           "file": "modules/ipc/translatorHandlers.js",
           "line": 68,
           "kind": "event-listener"
-        },
-        {
-          "file": "modules/services/windowPinService.js",
-          "line": 591,
-          "kind": "event-listener"
         }
       ],
       "evidence": [
@@ -10749,12 +10695,6 @@
           "line": 68,
           "kind": "event-listener",
           "match": "translatorWindow.webContents.on('dom-ready'"
-        },
-        {
-          "file": "modules/services/windowPinService.js",
-          "line": 591,
-          "kind": "event-listener",
-          "match": "wc.on(\"dom-ready\""
         }
       ]
     },
@@ -10824,7 +10764,7 @@
         },
         {
           "file": "preloads/behaviors/pinButton.js",
-          "line": 186,
+          "line": 328,
           "kind": "custom-event-listener"
         }
       ],
@@ -10903,7 +10843,7 @@
         },
         {
           "file": "preloads/behaviors/pinButton.js",
-          "line": 186,
+          "line": 328,
           "kind": "custom-event-listener",
           "match": "document.addEventListener('DOMContentLoaded'"
         }
@@ -15213,27 +15153,27 @@
       "producers": [
         {
           "file": "preloads/api/window.js",
-          "line": 29,
+          "line": 39,
           "kind": "preload-channel-definition"
         }
       ],
       "consumers": [
         {
           "file": "modules/ipc/windowHandlers.js",
-          "line": 80,
+          "line": 84,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/windowHandlers.js",
-          "line": 80,
+          "line": 84,
           "kind": "event-listener",
           "match": "ipcMain.handle('is-window-pinned'"
         },
         {
           "file": "preloads/api/window.js",
-          "line": 29,
+          "line": 39,
           "kind": "preload-channel-definition",
           "match": "invoke('is-window-pinned'"
         }
@@ -16240,11 +16180,6 @@
           "file": "modules/ui-system/chat-composer-inset.js",
           "line": 105,
           "kind": "custom-event-listener"
-        },
-        {
-          "file": "preloads/behaviors/pinButton.js",
-          "line": 205,
-          "kind": "custom-event-listener"
         }
       ],
       "evidence": [
@@ -16283,12 +16218,6 @@
           "line": 105,
           "kind": "custom-event-listener",
           "match": "doc.addEventListener('load'"
-        },
-        {
-          "file": "preloads/behaviors/pinButton.js",
-          "line": 205,
-          "kind": "custom-event-listener",
-          "match": "window.addEventListener('load'"
         }
       ]
     },
@@ -18089,7 +18018,7 @@
         },
         {
           "file": "modules/ipc/windowHandlers.js",
-          "line": 49,
+          "line": 48,
           "kind": "event-listener"
         }
       ],
@@ -18108,7 +18037,7 @@
         },
         {
           "file": "modules/ipc/windowHandlers.js",
-          "line": 49,
+          "line": 48,
           "kind": "event-listener",
           "match": "ipcMain.on('maximize-window'"
         },
@@ -18240,14 +18169,14 @@
       "consumers": [
         {
           "file": "modules/services/windowPinService.js",
-          "line": 294,
+          "line": 302,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/services/windowPinService.js",
-          "line": 294,
+          "line": 302,
           "kind": "event-listener",
           "match": "win.on(\"minimize\""
         }
@@ -18258,7 +18187,7 @@
       "producers": [
         {
           "file": "preloads/api/window.js",
-          "line": 32,
+          "line": 41,
           "kind": "preload-channel-definition"
         }
       ],
@@ -18278,7 +18207,7 @@
         },
         {
           "file": "preloads/api/window.js",
-          "line": 32,
+          "line": 41,
           "kind": "preload-channel-definition",
           "match": "send('minimize-to-tray'"
         }
@@ -18321,7 +18250,7 @@
         },
         {
           "file": "modules/ipc/windowHandlers.js",
-          "line": 42,
+          "line": 41,
           "kind": "event-listener"
         }
       ],
@@ -18340,7 +18269,7 @@
         },
         {
           "file": "modules/ipc/windowHandlers.js",
-          "line": 42,
+          "line": 41,
           "kind": "event-listener",
           "match": "ipcMain.on('minimize-window'"
         },
@@ -19488,7 +19417,7 @@
         },
         {
           "file": "modules/services/windowPinService.js",
-          "line": 289,
+          "line": 297,
           "kind": "event-listener"
         }
       ],
@@ -19507,7 +19436,7 @@
         },
         {
           "file": "modules/services/windowPinService.js",
-          "line": 289,
+          "line": 297,
           "kind": "event-listener",
           "match": "win.on(\"move\""
         }
@@ -19519,14 +19448,14 @@
       "consumers": [
         {
           "file": "modules/services/windowPinService.js",
-          "line": 291,
+          "line": 299,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/services/windowPinService.js",
-          "line": 291,
+          "line": 299,
           "kind": "event-listener",
           "match": "win.on(\"moved\""
         }
@@ -21804,15 +21733,26 @@
       "producers": [],
       "consumers": [
         {
+          "file": "modules/ui-system/vcp-ui.js",
+          "line": 2053,
+          "kind": "preload-subscription"
+        },
+        {
           "file": "preloads/behaviors/pinButton.js",
-          "line": 114,
+          "line": 131,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
+          "file": "modules/ui-system/vcp-ui.js",
+          "line": 2053,
+          "kind": "preload-subscription",
+          "match": "window.utilityAPI.onWindowPinnedChanged("
+        },
+        {
           "file": "preloads/behaviors/pinButton.js",
-          "line": 114,
+          "line": 131,
           "kind": "preload-subscription",
           "match": "roleApi.onWindowPinnedChanged("
         }
@@ -21842,7 +21782,7 @@
       "producers": [
         {
           "file": "preloads/api/window.js",
-          "line": 38,
+          "line": 47,
           "kind": "preload-channel-definition"
         }
       ],
@@ -21850,7 +21790,7 @@
       "evidence": [
         {
           "file": "preloads/api/window.js",
-          "line": 38,
+          "line": 47,
           "kind": "preload-channel-definition",
           "match": "invoke('open-admin-panel'"
         }
@@ -24959,7 +24899,7 @@
         },
         {
           "file": "modules/services/windowPinService.js",
-          "line": 290,
+          "line": 298,
           "kind": "event-listener"
         },
         {
@@ -25050,7 +24990,7 @@
         },
         {
           "file": "modules/services/windowPinService.js",
-          "line": 290,
+          "line": 298,
           "kind": "event-listener",
           "match": "win.on(\"resize\""
         },
@@ -25098,14 +25038,14 @@
       "consumers": [
         {
           "file": "modules/services/windowPinService.js",
-          "line": 292,
+          "line": 300,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/services/windowPinService.js",
-          "line": 292,
+          "line": 300,
           "kind": "event-listener",
           "match": "win.on(\"resized\""
         }
@@ -28099,7 +28039,7 @@
         },
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 1960,
+          "line": 1959,
           "kind": "custom-event-listener"
         }
       ],
@@ -28166,9 +28106,51 @@
         },
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 1960,
+          "line": 1959,
           "kind": "custom-event-listener",
           "match": "form.addEventListener('submit'"
+        }
+      ]
+    },
+    {
+      "name": "supports-pin-window",
+      "producers": [
+        {
+          "file": "preloads/api/window.js",
+          "line": 32,
+          "kind": "preload-channel-definition"
+        },
+        {
+          "file": "preloads/api/window.js",
+          "line": 35,
+          "kind": "event-send"
+        }
+      ],
+      "consumers": [
+        {
+          "file": "modules/ipc/windowHandlers.js",
+          "line": 66,
+          "kind": "event-listener"
+        }
+      ],
+      "evidence": [
+        {
+          "file": "modules/ipc/windowHandlers.js",
+          "line": 66,
+          "kind": "event-listener",
+          "match": "ipcMain.handle('supports-pin-window'"
+        },
+        {
+          "file": "preloads/api/window.js",
+          "line": 32,
+          "kind": "preload-channel-definition",
+          "match": "custom('query', 'supports-pin-window'"
+        },
+        {
+          "file": "preloads/api/window.js",
+          "line": 35,
+          "kind": "event-send",
+          "match": "ipcRenderer.invoke('supports-pin-window'"
         }
       ]
     },
@@ -29008,7 +28990,7 @@
       "producers": [
         {
           "file": "preloads/api/window.js",
-          "line": 36,
+          "line": 45,
           "kind": "preload-channel-definition"
         }
       ],
@@ -29028,7 +29010,7 @@
         },
         {
           "file": "preloads/api/window.js",
-          "line": 36,
+          "line": 45,
           "kind": "preload-channel-definition",
           "match": "send('toggle-notifications-sidebar'"
         }
@@ -29039,27 +29021,27 @@
       "producers": [
         {
           "file": "preloads/api/window.js",
-          "line": 28,
+          "line": 38,
           "kind": "preload-channel-definition"
         }
       ],
       "consumers": [
         {
           "file": "modules/ipc/windowHandlers.js",
-          "line": 67,
+          "line": 75,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/windowHandlers.js",
-          "line": 67,
+          "line": 75,
           "kind": "event-listener",
           "match": "ipcMain.handle('toggle-pin-window'"
         },
         {
           "file": "preloads/api/window.js",
-          "line": 28,
+          "line": 38,
           "kind": "preload-channel-definition",
           "match": "invoke('toggle-pin-window'"
         }
@@ -29411,6 +29393,25 @@
       ]
     },
     {
+      "name": "unload",
+      "producers": [],
+      "consumers": [
+        {
+          "file": "preloads/behaviors/pinButton.js",
+          "line": 336,
+          "kind": "custom-event-listener"
+        }
+      ],
+      "evidence": [
+        {
+          "file": "preloads/behaviors/pinButton.js",
+          "line": 336,
+          "kind": "custom-event-listener",
+          "match": "window.addEventListener('unload'"
+        }
+      ]
+    },
+    {
       "name": "unmaximize",
       "producers": [],
       "consumers": [
@@ -29479,14 +29480,14 @@
       "consumers": [
         {
           "file": "modules/ipc/windowHandlers.js",
-          "line": 60,
+          "line": 59,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/windowHandlers.js",
-          "line": 60,
+          "line": 59,
           "kind": "event-listener",
           "match": "ipcMain.on('unmaximize-window'"
         },
@@ -30487,7 +30488,7 @@
       "producers": [
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 2378,
+          "line": 2480,
           "kind": "custom-event-create"
         }
       ],
@@ -30495,7 +30496,7 @@
       "evidence": [
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 2378,
+          "line": 2480,
           "kind": "custom-event-create",
           "match": "new CustomEvent('vcp-ui-density-changed'"
         }
@@ -30525,7 +30526,7 @@
       "producers": [
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 2399,
+          "line": 2501,
           "kind": "custom-event-create"
         }
       ],
@@ -30533,7 +30534,7 @@
       "evidence": [
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 2399,
+          "line": 2501,
           "kind": "custom-event-create",
           "match": "new CustomEvent('vcp-ui-ready'"
         }
@@ -31779,7 +31780,7 @@
       "producers": [
         {
           "file": "preloads/api/window.js",
-          "line": 34,
+          "line": 43,
           "kind": "preload-channel-definition"
         },
         {
@@ -31797,7 +31798,7 @@
       "evidence": [
         {
           "file": "preloads/api/window.js",
-          "line": 34,
+          "line": 43,
           "kind": "preload-channel-definition",
           "match": "send('window-lifecycle:ready'"
         },
@@ -31881,27 +31882,27 @@
       "producers": [
         {
           "file": "modules/services/windowPinService.js",
-          "line": 118,
+          "line": 127,
           "kind": "event-send"
         }
       ],
       "consumers": [
         {
           "file": "preloads/api/window.js",
-          "line": 30,
+          "line": 40,
           "kind": "preload-channel-definition"
         }
       ],
       "evidence": [
         {
           "file": "modules/services/windowPinService.js",
-          "line": 118,
+          "line": 127,
           "kind": "event-send",
           "match": "wc.send(\"window-pinned-changed\""
         },
         {
           "file": "preloads/api/window.js",
-          "line": 30,
+          "line": 40,
           "kind": "preload-channel-definition",
           "match": "on('window-pinned-changed'"
         }
@@ -32821,7 +32822,7 @@
     },
     {
       "file": "modules/ui-system/vcp-ui.js",
-      "line": 44,
+      "line": 43,
       "reason": "dynamic listener name: type",
       "kind": "custom-event-listener",
       "match": "target.addEventListener(type",
@@ -32829,7 +32830,7 @@
     },
     {
       "file": "modules/ui-system/vcp-ui.js",
-      "line": 838,
+      "line": 837,
       "reason": "dynamic listener name: type",
       "kind": "custom-event-listener",
       "match": "wa.addEventListener(type",
