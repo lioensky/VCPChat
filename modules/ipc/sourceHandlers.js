@@ -5,7 +5,9 @@
 // - 工作区列表复用 git:list-workspaces。
 'use strict';
 
-const { ipcMain } = require('electron');
+const { ipcMain: defaultIpcMain } = require('electron');
+// main.js 传入经 sidePaneIpcPolicy 包装过的 ipcMain（先查调用方窗口）；不传就用 Electron 的
+let ipcMain = defaultIpcMain;
 const sourceService = require('../services/sourceService');
 // 和 Git 侧栏共用同一个守卫：只认应用页面的真实顶层窗口，子 frame 或 webview 自报的 URL 不算
 const { isAllowedSender } = require('./gitHandlers');
@@ -45,7 +47,8 @@ function handle(channel, fn) {
     });
 }
 
-function initialize({ workspaceService = null } = {}) {
+function initialize({ workspaceService = null, ipcMain: injectedIpcMain = null } = {}) {
+    ipcMain = injectedIpcMain || defaultIpcMain;
     workspaceServiceRef = workspaceService;
     CHANNELS.forEach(channel => ipcMain.removeHandler(channel));
 

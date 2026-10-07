@@ -4,7 +4,9 @@
 // GUI 只读；唯一的写操作是带署名的单文件回退。
 'use strict';
 
-const { ipcMain } = require('electron');
+const { ipcMain: defaultIpcMain } = require('electron');
+// main.js 传入经 sidePaneIpcPolicy 包装过的 ipcMain（先查调用方窗口）；不传就用 Electron 的
+let ipcMain = defaultIpcMain;
 const path = require('path');
 const fs = require('fs');
 
@@ -75,7 +77,8 @@ function wrap(fn) {
  * @param {object} [options.workspaceService]
  * @param {object} [options.subscriptions] stateSubscriptions.js 的订阅表；第一个窗口订阅时才加载插件、挂上变更监听
  */
-function initialize({ workspaceService = null, subscriptions = null } = {}) {
+function initialize({ workspaceService = null, subscriptions = null, ipcMain: injectedIpcMain = null } = {}) {
+    ipcMain = injectedIpcMain || defaultIpcMain;
     workspaceServiceRef = workspaceService;
     CHANNELS.forEach(channel => ipcMain.removeHandler(channel));
     if (subscriptions && subscriptions !== subscriptionsRef) {

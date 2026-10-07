@@ -43,3 +43,19 @@ test('a streaming side chat stays busy until the reply is on disk', async t => {
     assert.equal(f.handle.isBusy(), false);
     assert.ok(f.getHistory().some(m => m.role === 'assistant'), JSON.stringify(f.getHistory()));
 });
+
+// 服务卡住不回时点停止：非流式请求在主进程里中止不了，输入框不能跟着锁到请求超时；迟到的回答也不再写进停止的这一轮
+test('stopping a non-streaming reply from an unresponsive server unlocks at once and drops the late answer', async t => {
+    let answer;
+    const f = await fixture(t, { onSend: () => new Promise(resolve => { answer = resolve; }) });
+    f.submit('q');
+    for (let i = 0; i < 30; i++) await tick();
+    assert.equal(f.handle.isBusy(), true);
+    f.stop();
+    await f.untilIdle();
+    assert.equal(f.handle.isBusy(), false);
+    assert.equal(f.textarea.disabled, false);
+    answer({ choices: [{ message: { content: 'late answer' } }] });
+    for (let i = 0; i < 30; i++) await tick();
+    assert.equal(f.getHistory().some(m => m.role === 'assistant'), false, JSON.stringify(f.getHistory()));
+});

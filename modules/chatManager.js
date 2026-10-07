@@ -1804,10 +1804,13 @@ export const chatManager = (() => {
                     messageId: thinkingMessage.id,
                     done: ownedStreamTerminal,
                     async cancel(reason) {
-                        try { await interruptCapability?.interrupt?.(thinkingMessage.id); }
-                        catch (error) { console.warn('[ChatManager] Non-streaming interrupt failed; cancelling locally:', error); }
+                        // 非流式请求在主进程里没有本地中止，上游卡住时中止请求本身也会卡住：
+                        // 先在本地收尾、放开输入框，再尽力通知上游，不等它
                         await removeThinkingFromSource();
                         settleOwnedStreamOperation?.({ event: { type: 'cancelled', reason: reason || 'surface-operation-cancelled' } });
+                        Promise.resolve()
+                            .then(() => interruptCapability?.interrupt?.(thinkingMessage.id))
+                            .catch(error => console.warn('[ChatManager] Non-streaming interrupt failed; cancelled locally:', error));
                         return true;
                     },
                 }));
@@ -1815,10 +1818,20 @@ export const chatManager = (() => {
 
             const context = orchestrated.context;
             if (request?.signal?.aborted) return await cancelPreparedSend();
-            const vcpResponse = await singleChatRequestOrchestrator.sendPrepared(
+            const sending = singleChatRequestOrchestrator.sendPrepared(
                 orchestrated,
                 globalSettings
             );
+            // 非流式回答停止后就不再等：服务卡住时主进程的请求可能几分钟都不返回，输入框不能一直锁着；
+            // 迟到的回答直接丢掉，不再写进已经停止的这一轮
+            const settledFirst = !useStreaming && ownedStreamTerminal
+                ? await Promise.race([sending.then(() => false, () => false), ownedStreamTerminal.then(() => true)])
+                : false;
+            if (settledFirst) {
+                sending.catch(() => {});
+                return Object.freeze({ messageId: thinkingMessage.id, terminal: await ownedStreamTerminal });
+            }
+            const vcpResponse = await sending;
 
             // 主动停止可使尚未收到首字的 IPC 请求以错误返回；已有取消操作负责
             // 收尾，不把这次本地 Abort 再渲染成服务端失败。

@@ -469,7 +469,7 @@
     "dynamicSites": [
       {
         "file": "modules/ipc/sourceHandlers.js",
-        "line": 32,
+        "line": 34,
         "kind": "event-listener",
         "match": "ipcMain.handle(channel"
       }
@@ -498,16 +498,35 @@
     ]
   },
   {
+    "id": "source.dynamic.modules.ipc.sidepaneipcpolicy",
+    "kind": "source-review",
+    "owner": "modules/ipc/sidePaneIpcPolicy.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "guardIpcMain wraps the ipcMain handed to the directly registered side pane modules (workspaces, projectForge, source); each explicit registration first passes the caller-window check from SIDE_PANE_IPC_POLICY and otherwise returns a fixed denial without calling the handler.",
+    "dynamicSites": [
+      {
+        "file": "modules/ipc/sidePaneIpcPolicy.js",
+        "line": 53,
+        "kind": "event-listener",
+        "match": "ipcMain.handle(channel"
+      }
+    ],
+    "evidence": [
+      "tests/side-pane-ipc-sender.test.js invokes every channel of each policy domain from another app window, a webview and a subframe and asserts main.js wires every side pane domain through the policy."
+    ]
+  },
+  {
     "id": "source.dynamic.modules.ipc.domainactivator",
     "kind": "source-review",
     "owner": "modules/ipc/domainActivator.js",
     "status": "reviewed",
     "dynamic": true,
-    "review": "Registers one forwarding invoke handler per channel listed in preloads/api for the terminal, modelTrajectory, browser and sideChat domains; the first call loads the domain module, which registers its real handlers on a registrar restricted to that domain's own channels. Sender checks stay inside each domain's handlers.",
+    "review": "Registers one forwarding invoke handler per channel listed in preloads/api for the terminal, modelTrajectory, browser and sideChat domains; the first call loads the domain module, which registers its real handlers on a registrar restricted to that domain's own channels. The forwarder first applies the domain's allowSender caller check from modules/ipc/sidePaneIpcPolicy.js, so a rejected window neither reaches a handler nor loads the domain; each domain's own sender checks remain as a second layer.",
     "dynamicSites": [
       {
         "file": "modules/ipc/domainActivator.js",
-        "line": 136,
+        "line": 142,
         "kind": "event-listener",
         "match": "ipcMain.handle(channel"
       }

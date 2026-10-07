@@ -81,6 +81,7 @@ const promptHandlers = require('./modules/ipc/promptHandlers'); // Import prompt
 const notesHandlers = require('./modules/ipc/notesHandlers'); // Import notes handlers
 const workspaceHandlers = require('./modules/ipc/workspaceHandlers'); // 工作区索引与实时引用
 const projectForgeHandlers = require('./modules/ipc/projectForgeHandlers'); // ProjectForge 施工图 GUI（只读 + 署名回退）
+const { createSidePaneSenderGuard, guardIpcMain } = require('./modules/ipc/sidePaneIpcPolicy'); // 侧栏相关 IPC 的调用方窗口策略
 const gitHandlers = require('./modules/ipc/gitHandlers'); // ProjectForge Git 源代码管理侧栏
 const sourceHandlers = require('./modules/ipc/sourceHandlers'); // ProjectForge 源码浏览 / 轻量编辑侧栏
 // 侧栏终端、调用轨迹、旁聊的 IPC 由领域激活器按需加载（见下方 domainActivator.register），这里不预先 require
@@ -91,7 +92,6 @@ const { configureSharedRecorder } = require('./modules/modelTrajectory');
 const domainActivator = createDomainActivator({ ipcMain });
 // 主进程推送按窗口订阅：只发给订阅了某个主题的窗口（V工程窗口、主窗口的状态面板和侧栏）
 const { createStateSubscriptions } = require('./modules/ipc/stateSubscriptions');
-const { createApplicationSenderGuard, resolveWindowWebContents } = require('./modules/ipc/applicationSender');
 const stateSubscriptions = createStateSubscriptions();
 const assistantHandlers = require('./modules/ipc/assistantHandlers'); // Import assistant handlers
 const musicHandlers = require('./modules/ipc/musicHandlers'); // Import music handlers
@@ -1514,25 +1514,26 @@ if (!gotTheLock) {
             SETTINGS_FILE
         });
         // 工作区索引在后台预热，不阻塞首屏。
-        workspaceHandlers.initialize({ settingsManager: appSettingsManager, logger: console });
-        stateSubscriptions.registerIpc(ipcMain, createApplicationSenderGuard({
-            pages: ['main.html', 'ProjectForgemodules/projectforge.html'],
-            getMainWebContents: () => resolveWindowWebContents(() => mainWindow),
-        }));
-        projectForgeHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService, subscriptions: stateSubscriptions });
+        // 侧栏相关通道统一在注册层检查调用方窗口，策略表见 modules/ipc/sidePaneIpcPolicy.js
+        const sidePaneGuard = domain => createSidePaneSenderGuard(domain, () => mainWindow);
+        workspaceHandlers.initialize({ settingsManager: appSettingsManager, logger: console, ipcMain: guardIpcMain(ipcMain, sidePaneGuard('workspaces')) });
+        stateSubscriptions.registerIpc(ipcMain, sidePaneGuard('state'));
+        projectForgeHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService, subscriptions: stateSubscriptions, ipcMain: guardIpcMain(ipcMain, sidePaneGuard('projectForge')) });
         // Git 也进领域表，但登记时就激活：模块只有 execFile 调用，没什么可省的，
         // 而状态面板首帧就会读工作区列表；仓库监听仍然等到第一个窗口订阅才开始
         domainActivator.register('git', {
+            allowSender: sidePaneGuard('projectForge'),
             channels: gitHandlers.CHANNELS,
             load: () => gitHandlers,
             init: (mod, { ipcMain: domainIpc }) => mod.initialize({ ipcMain: domainIpc, workspaceService: workspaceHandlers.workspaceService, getMainWindow: () => mainWindow, subscriptions: stateSubscriptions }),
             dispose: mod => mod.dispose(),
             eager: true,
         });
-        sourceHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService });
+        sourceHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService, ipcMain: guardIpcMain(ipcMain, sidePaneGuard('projectForge')) });
         const preloadApis = describeApis();
         // 侧栏几个领域启动时只登记通道，第一次调用才 require 并 initialize（状态见 lifecycle:get-main-snapshot 的 domains）
         domainActivator.register('terminal', {
+            allowSender: sidePaneGuard('terminal'),
             channels: channelsForDomain(preloadApis, 'terminal'),
             load: () => require('./modules/ipc/terminalHandlers'), // 侧栏终端（镜像自带终端会话）
             init: (mod, { ipcMain: domainIpc }) => mod.initialize({ ipcMain: domainIpc, workspaceService: workspaceHandlers.workspaceService, getMainWindow: () => mainWindow }),
@@ -1541,6 +1542,7 @@ if (!gotTheLock) {
         // 记录器必须早于 chatHandlers.initialize：聊天请求一发出就要有记录器；查看轨迹的 IPC 才按需激活
         configureSharedRecorder({ rootDir: path.join(APP_DATA_ROOT_IN_PROJECT, 'ModelTrajectory') });
         domainActivator.register('modelTrajectory', {
+            allowSender: sidePaneGuard('modelTrajectory'),
             channels: channelsForDomain(preloadApis, 'modelTrajectory'),
             load: () => require('./modules/ipc/modelTrajectoryHandlers'), // 侧栏调用轨迹（模型请求 / 响应记录）
             init: (mod, { ipcMain: domainIpc }) => mod.initialize({ ipcMain: domainIpc, getMainWindow: () => mainWindow }),
@@ -1548,6 +1550,7 @@ if (!gotTheLock) {
         });
         // 浏览器访客会话的权限和协议限制要在任何 <webview> 出现之前就位，所以登记时就激活
         domainActivator.register('browser', {
+            allowSender: sidePaneGuard('browser'),
             channels: channelsForDomain(preloadApis, 'browser'),
             load: () => browserHandlers,
             init: (mod, { ipcMain: domainIpc }) => mod.initialize({ ipcMain: domainIpc, getMainWindow: () => mainWindow }),
@@ -1618,6 +1621,7 @@ if (!gotTheLock) {
             historyMutationQueue
         });
         domainActivator.register('sideChat', {
+            allowSender: sidePaneGuard('sideChat'),
             channels: channelsForDomain(preloadApis, 'sideChat'),
             load: () => require('./modules/ipc/sideChatHandlers'), // Workspace Side Chat handlers
             init: (mod, { ipcMain: domainIpc }) => mod.initialize({ ipcMain: domainIpc, USER_DATA_DIR, AGENT_DIR, historyMutationQueue, getMainWindow: () => mainWindow }),

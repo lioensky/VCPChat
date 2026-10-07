@@ -165,6 +165,7 @@ function omitUnsetOptionalModelParams(modelConfig = {}) {
 let ipcHandlersRegistered = false;
 const flowlockClaimLocks = new Map();
 const vcpStreamTasks = new SenderTaskRegistry({ label: 'vcp-stream-tasks' });
+const INTERRUPT_TIMEOUT_MS = 5000;
 
 function getVcpStreamTaskSnapshot() {
     return vcpStreamTasks.snapshot();
@@ -1548,7 +1549,9 @@ function initialize(mainWindow, context) {
                 },
                 body: JSON.stringify({
                     requestId: messageId // Corrected to requestId to match user's edit
-                })
+                }),
+                // 服务卡住时中止请求本身也会挂住，停止按钮跟着卡几分钟；超时就走下面的本地收尾
+                signal: AbortSignal.timeout(INTERRUPT_TIMEOUT_MS)
             });
 
             const result = await response.json();

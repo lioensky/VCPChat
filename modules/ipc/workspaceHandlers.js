@@ -4,7 +4,8 @@
 // 写入后通过 settings-updated 事件重新 configure 索引。
 'use strict';
 
-const { ipcMain, dialog, BrowserWindow } = require('electron');
+const { ipcMain: defaultIpcMain, dialog, BrowserWindow } = require('electron');
+let ipcMain = defaultIpcMain;
 const path = require('path');
 const fs = require('fs-extra');
 const fileManager = require('../fileManager');
@@ -90,7 +91,9 @@ async function mutateWorkspaces(mutator) {
     return workspaceIndex.list();
 }
 
-function initialize({ settingsManager, logger = console } = {}) {
+function initialize({ settingsManager, logger = console, ipcMain: injectedIpcMain = null } = {}) {
+    // 增删改只认主窗口，读取对带同一 preload 的语音、助手窗口开放：由 main.js 传入的包装 ipcMain 按 sidePaneIpcPolicy 执行
+    ipcMain = injectedIpcMain || defaultIpcMain;
     settingsManagerRef = settingsManager;
     workspaceIndex?.dispose();
     workspaceIndex = new WorkspaceIndex({ logger });
@@ -112,7 +115,7 @@ function initialize({ settingsManager, logger = console } = {}) {
 
     ipcMain.handle('workspaces:list', () => ({ success: true, ...snapshot() }));
 
-    ipcMain.handle('workspaces:set-active', async (_event, workspaceId = null) => {
+    ipcMain.handle('workspaces:set-active', async (event, workspaceId = null) => {
         try {
             const target = typeof workspaceId === 'string' && workspaceId ? workspaceId : null;
             if (target && !workspaceIndex.list().some(ws => ws.id === target && ws.enabled)) {
@@ -138,7 +141,7 @@ function initialize({ settingsManager, logger = console } = {}) {
         }
     });
 
-    ipcMain.handle('workspaces:rebuild', async (_event, workspaceId = null) => {
+    ipcMain.handle('workspaces:rebuild', async (event, workspaceId = null) => {
         try {
             return { success: true, workspaces: await workspaceIndex.rebuild(workspaceId || null) };
         } catch (error) {
@@ -146,7 +149,7 @@ function initialize({ settingsManager, logger = console } = {}) {
         }
     });
 
-    ipcMain.handle('workspaces:add', async (_event, rawPath, alias = '') => {
+    ipcMain.handle('workspaces:add', async (event, rawPath, alias = '') => {
         try {
             if (typeof rawPath !== 'string' || !rawPath.trim()) {
                 return { success: false, error: '请提供工作区目录路径。' };
@@ -167,7 +170,7 @@ function initialize({ settingsManager, logger = console } = {}) {
         }
     });
 
-    ipcMain.handle('workspaces:remove', async (_event, workspaceId) => {
+    ipcMain.handle('workspaces:remove', async (event, workspaceId) => {
         try {
             const workspaces = await mutateWorkspaces(list => list.filter(item => item.id !== workspaceId));
             return { success: true, workspaces };
@@ -176,7 +179,7 @@ function initialize({ settingsManager, logger = console } = {}) {
         }
     });
 
-    ipcMain.handle('workspaces:update', async (_event, workspaceId, patch = {}) => {
+    ipcMain.handle('workspaces:update', async (event, workspaceId, patch = {}) => {
         try {
             let conflict = null;
             const workspaces = await mutateWorkspaces(list => list.map(item => {
@@ -212,7 +215,7 @@ function initialize({ settingsManager, logger = console } = {}) {
 
     ipcMain.handle('workspaces:get-prompt-settings', () => ({ success: true, settings: getPromptSettings() }));
 
-    ipcMain.handle('workspaces:set-prompt-settings', async (_event, patch = {}) => {
+    ipcMain.handle('workspaces:set-prompt-settings', async (event, patch = {}) => {
         try {
             if (!settingsManagerRef) throw new Error('SettingsManager 未初始化。');
             const source = patch && typeof patch === 'object' && !Array.isArray(patch) ? patch : {};

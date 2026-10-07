@@ -71,6 +71,10 @@ function createDomainActivator({ ipcMain, logger = console } = {}) {
 
     function dispatch(domain, channel, event, args) {
         if (shutDown) return { success: false, error: 'shutting-down' };
+        // 调用方窗口不对就到此为止：既不进 handler，也不为它加载、初始化领域（见 sidePaneIpcPolicy.js）
+        if (domain.allowSender && !domain.allowSender(event, channel)) {
+            return { success: false, error: '当前窗口无权调用这个接口。' };
+        }
         if (domain.state !== 'active') {
             try {
                 activate(domain.name);
@@ -92,8 +96,9 @@ function createDomainActivator({ ipcMain, logger = console } = {}) {
      * @param {(mod: any, ctx: { ipcMain: object }) => void} spec.init 用 ctx.ipcMain 注册 handler
      * @param {(mod: any) => void} [spec.dispose]
      * @param {boolean} [spec.eager=false]
+     * @param {(event: any, channel: string) => boolean} [spec.allowSender] 调用方窗口检查，不通过的调用直接拒绝
      */
-    function register(name, { channels, load, init, dispose = null, eager = false } = {}) {
+    function register(name, { channels, load, init, dispose = null, eager = false, allowSender = null } = {}) {
         if (domains.has(name)) throw new Error(`[DomainActivator] 领域重复登记：${name}`);
         if (!Array.isArray(channels) || !channels.length) throw new TypeError(`[DomainActivator] ${name}: channels 不能为空`);
         if (typeof load !== 'function' || typeof init !== 'function') throw new TypeError(`[DomainActivator] ${name}: 需要 load 和 init`);
@@ -107,6 +112,7 @@ function createDomainActivator({ ipcMain, logger = console } = {}) {
             load,
             init,
             dispose,
+            allowSender: typeof allowSender === 'function' ? allowSender : null,
             state: 'declared',
             error: null,
             module: null,

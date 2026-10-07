@@ -20,7 +20,7 @@ async function waitFor(predicate) {
 
 // Execute the real module and public IPC route, with isolated dependencies.
 // No source rewriting or test-only access to its private stream function.
-function route(fetchResponse, { settings = null } = {}) {
+function route(fetchResponse, { settings = null, abortSignal = AbortSignal } = {}) {
     const handlers = new Map(), module = { exports: {} }, sent = [], warnings = [];
     const dependencies = new Map([
         ['electron', { ipcMain: { handle: (name, fn) => handlers.set(name, fn), on() {} }, dialog: {}, BrowserWindow: {} }],
@@ -36,7 +36,7 @@ function route(fetchResponse, { settings = null } = {}) {
     const load = name => { assert.ok(dependencies.has(name), 'unreviewed fixture dependency: ' + name); return dependencies.get(name); };
     vm.runInNewContext('(function(require,module,exports){' + source + '\n})', {
         console: { log() {}, warn: (...args) => warnings.push(args.join(' ')), error() {} },
-        TextDecoder, URL, fetch: fetchResponse,
+        TextDecoder, URL, fetch: fetchResponse, AbortSignal: abortSignal,
     })(load, module, module.exports);
     module.exports.initialize(null, { USER_DATA_DIR: 'unused-isolated-fixture', APP_DATA_ROOT_IN_PROJECT: 'unused-isolated-fixture', historyMutationQueue: {} });
     const sender = Object.assign(new EventEmitter(), { id: 501, isDestroyed: () => false, send: (channel, event) => sent.push({ channel, event }) });
@@ -48,24 +48,35 @@ function route(fetchResponse, { settings = null } = {}) {
     };
 }
 
-for (const failure of ['rejected', 'transport-error', 'missing-settings']) {
+// hung：服务卡住不回中止请求，超时后照样走本地收尾，停止按钮不跟着卡
+for (const failure of ['rejected', 'transport-error', 'missing-settings', 'hung']) {
     test(`failed interruption (${failure}) releases the caller's HTTP reader without a duplicate terminal`, async () => {
         let controller, aborted = false;
         const body = new ReadableStream({ start(value) { controller = value; } });
         const f = route(async (url, options) => {
             if (url.endsWith('/v1/interrupt')) {
                 if (failure === 'transport-error') throw new Error('interrupt disconnected');
+                if (failure === 'hung') {
+                    // 只有请求自己的超时能让它结束；没有超时就要等满 2 秒
+                    await new Promise((_resolve, reject) => {
+                        setTimeout(() => reject(new Error('interrupt never answered')), 2000);
+                        options.signal?.addEventListener('abort', () => reject(options.signal.reason), { once: true });
+                    });
+                }
                 return { ok: false, status: 404, json: async () => ({ message: 'request not found' }) };
             }
             options.signal.addEventListener('abort', () => {
                 aborted = true; controller.error(new DOMException('locally interrupted', 'AbortError'));
             }, { once: true });
             return { ok: true, body };
-        }, { settings: failure === 'missing-settings' ? null : { vcpServerUrl: 'http://controlled.invalid/v1/chat/completions' } });
+        }, { settings: failure === 'missing-settings' ? null : { vcpServerUrl: 'http://controlled.invalid/v1/chat/completions' },
+            abortSignal: { timeout: () => { const timeout = new AbortController(); setTimeout(() => timeout.abort(new Error('timeout')), 20); return timeout.signal; } } });
         try {
             controller.enqueue(encode('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n'));
             await f.start(); await waitFor(() => f.sent.length === 1);
+            const startedAt = Date.now();
             assert.equal((await f.interrupt()).success, false);
+            assert.ok(Date.now() - startedAt < 1000, 'stopping must not wait for an unresponsive server');
             await waitFor(() => !f.tasks().length);
             assert.equal(aborted, true); assert.equal(body.locked, false);
             assert.deepEqual(f.sent.map(item => item.event.type), ['data']);
