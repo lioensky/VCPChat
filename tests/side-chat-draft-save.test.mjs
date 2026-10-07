@@ -10,13 +10,10 @@ import { saveSideChatMetadata } from '../modules/chat/sideChatSessionService.js'
 import { createSideChatPersistence } from '../modules/renderer/side-chat/persistence.js';
 import { createSideChatDraftStore } from '../modules/renderer/side-chat/draft-store.js';
 
-async function waitFor(predicate) {
-    const deadline = Date.now() + 2000;
-    while (!await predicate()) {
-        if (Date.now() > deadline) throw new Error('Draft save did not settle');
-        await new Promise(resolve => setTimeout(resolve, 5));
-    }
-}
+import { waitFor } from './helpers/wait-for.mjs';
+
+// 失败时状态栏变成可点击重试的按钮
+const offersRetry = status => status.getAttribute('role') === 'button' && status.tabIndex === 0;
 
 async function fixture(t) {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'vcp-side-draft-'));
@@ -39,13 +36,13 @@ async function fixture(t) {
     const doc = dom.window.document, textarea = doc.querySelector('textarea'), status = doc.getElementById('status');
     textarea.value = descriptor.draft;
     const store = { currentDescriptor: descriptor, currentModel: 'model', references: [], isHistoryLoaded: true, isDisposed: false };
-    const toasts = [];
+    const toasts = [], statuses = [];
     let saveOverride, settled = 0;
     const owner = createSideChatPersistence({ store, descriptor, doc, textarea, statusText: status,
         persistenceBadge: doc.getElementById('badge'), repository: {}, getConversation: () => null,
         getSurface: () => { throw new Error('Metadata retry must not reload history'); },
         saveDraft: (metadata, input) => drafts.save(metadata, input),
-        updateStatus(text, type) { status.textContent = type === 'error' ? text : ''; },
+        updateStatus(text, type) { statuses.push({ text, type }); status.textContent = type === 'error' ? text : ''; },
         updateComposerState() {}, updateEmptyState() {},
         chatCapabilities: {
             uiHelper: { showToastNotification: (message, type) => toasts.push({ message, type }) },
@@ -68,7 +65,7 @@ async function fixture(t) {
         assert.ok(directory.startsWith(os.tmpdir() + path.sep));
         await fs.rm(directory, { recursive: true, force: true });
     });
-    return { owner, store, status, textarea, toasts, dom, repair, drafts, descriptor,
+    return { owner, store, status, statuses, textarea, toasts, dom, repair, drafts, descriptor,
         get settled() { return settled; },
         read: async () => JSON.parse(await fs.readFile(metadataPath, 'utf8')),
         setSave(fn) { saveOverride = fn; },
@@ -82,9 +79,8 @@ test('a real side metadata write failure is visible and retry saves the current 
     await f.block(); const before = f.settled;
     f.type('my unsent work'); await f.owner.flushInputSave();
     await waitFor(() => f.settled > before);
-    assert.match(f.status.textContent, /未保存.*重试/);
-    assert.equal(f.status.getAttribute('role'), 'button');
-    assert.equal(f.status.tabIndex, 0);
+    assert.ok(offersRetry(f.status));
+    assert.equal(f.statuses.at(-1).type, 'error');
     assert.equal(f.textarea.value, 'my unsent work');
     assert.equal(f.toasts.length, 1);
     assert.equal(f.toasts[0].type, 'error');
@@ -94,7 +90,8 @@ test('a real side metadata write failure is visible and retry saves the current 
     f.store.references = [{ id: 'ref', text: 'keep this selection', sourceMessageId: 'saved' }];
     f.store.currentModel = 'new-model';
     f.status.dispatchEvent(new f.dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
-    await waitFor(() => f.status.textContent === '' && f.settled >= 2);
+    await waitFor(() => f.status.getAttribute('role') === null && f.settled >= 2);
+    assert.notEqual(f.statuses.at(-1).type, 'error', 'a successful retry clears the failure');
     const persisted = await f.read();
     assert.equal(persisted.composerStorage, 'local');
     assert.equal(persisted.draft, undefined);
@@ -113,11 +110,12 @@ test('metadata failure results and thrown errors stay retryable without clearing
     f.setSave(() => { throw new Error('connection lost'); });
     await assert.rejects(f.owner.persistMetadata(), /connection lost/);
     assert.equal(f.toasts.length, 1, 'Repeated failed autosaves must not flood notifications');
-    assert.match(f.status.textContent, /重试/);
-    f.status.textContent = '发送失败：服务端拒绝';
+    assert.ok(offersRetry(f.status));
+    // 状态栏此时显示的是另一条与草稿无关的错误
+    f.status.textContent = 'independent error';
     f.setSave(() => ({ success: true }));
     await f.owner.persistMetadata();
-    assert.equal(f.status.textContent, '发送失败：服务端拒绝');
+    assert.equal(f.status.textContent, 'independent error');
     assert.equal(f.textarea.value, 'old draft');
 });
 
@@ -130,7 +128,7 @@ test('pagehide flush saves an intentionally empty side draft and removes old ref
     f.dom.window.dispatchEvent(new f.dom.window.Event('pagehide'));
     assert.equal(f.drafts.read(f.descriptor).input.draft, '');
     assert.deepEqual(f.drafts.read(f.descriptor).input.references, []);
-    assert.equal(f.status.textContent, '');
+    assert.equal(f.status.getAttribute('role'), null);
     assert.equal(f.toasts.length, 0);
 });
 
@@ -138,12 +136,12 @@ test('browser quota failure retains input and the old file draft; retry saves cu
     const f = await fixture(t);
     f.type('x'.repeat(4096)); await f.owner.flushInputSave();
     assert.equal(f.textarea.value.length, 4096);
-    assert.match(f.status.textContent, /未保存.*重试/);
+    assert.ok(offersRetry(f.status));
     assert.equal(f.toasts.length, 1);
     assert.equal(f.settled, 0, 'Do not clear the legacy file when browser storage failed');
     assert.equal((await f.read()).draft, 'old draft');
     f.type('new input that fits');
-    f.status.click(); await waitFor(() => f.status.textContent === '' && f.settled > 0);
+    f.status.click(); await waitFor(() => f.status.getAttribute('role') === null && f.settled > 0);
     assert.equal(f.drafts.read(f.descriptor).input.draft, 'new input that fits');
     const migrationCalls = f.settled;
     f.type('another edit'); await f.owner.flushInputSave();
@@ -177,6 +175,7 @@ test('a model switch or snapshot refresh still saves session info when browser s
     assert.equal(persisted.model, 'switched-model');
     assert.equal(persisted.draft.length, 4096, 'The file keeps the only copy of the input');
     assert.equal(persisted.composerStorage, undefined);
-    assert.match(f.status.textContent, /草稿未保存.*重试/, 'The draft failure stays visible after the session info saved');
+    assert.ok(offersRetry(f.status), 'The draft failure stays visible after the session info saved');
+    assert.equal(f.statuses.at(-1).type, 'error');
     assert.equal(f.drafts.read(f.descriptor).input, null);
 });

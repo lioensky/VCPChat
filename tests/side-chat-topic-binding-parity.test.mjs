@@ -36,7 +36,7 @@ const createDesc = (id, parentTopic, childTopic) => ({
     contextMode: 'references-only'
 });
 
-test('Parity: Switching to a topic with no side chats automatically collapses the side pane', async () => {
+test('Parity: Switching to a topic with no side chats collapses the side pane, and switching back re-expands it', async () => {
     const dom = createTopicBindingTestDOM();
     const doc = dom.window.document;
     const root = doc.getElementById('vcpSidePane');
@@ -61,8 +61,6 @@ test('Parity: Switching to a topic with no side chats automatically collapses th
 
     assert.equal(ctrl.getSnapshot().visible, true, 'Side pane should be visible for Topic A');
     assert.equal(ctrl.getSnapshot().activeTabId, 'side-a1');
-    assert.equal(root.classList.contains('active'), true);
-    assert.equal(root.classList.contains('collapsed'), false);
     // 面板展开时标题栏的展开按钮隐藏，由面板自己的收起按钮接手
     assert.equal(toggleBtn.hidden, true);
     assert.equal(toggleBtn.getAttribute('aria-expanded'), 'true');
@@ -72,50 +70,14 @@ test('Parity: Switching to a topic with no side chats automatically collapses th
     ctrl.setParent(parentB);
 
     assert.equal(ctrl.getSnapshot().visible, false, 'Side pane MUST automatically collapse for topic without side chats');
-    assert.equal(root.classList.contains('active'), false);
-    assert.equal(root.classList.contains('collapsed'), true);
     assert.equal(toggleBtn.hidden, false);
     assert.equal(toggleBtn.getAttribute('aria-expanded'), 'false');
 
-    await ctrl.dispose();
-    dom.window.close();
-});
-
-test('Parity: Switching back to a topic with side chats restores tabs and auto-expands', async () => {
-    const dom = createTopicBindingTestDOM();
-    const doc = dom.window.document;
-    const root = doc.getElementById('vcpSidePane');
-    const tabList = root.querySelector('.side-pane-tabs');
-    const content = root.querySelector('.side-pane-content-container');
-    const toggleBtn = doc.getElementById('toggleSidePaneChatBtn');
-
-    const ctrl = createSidePaneController({
-        root,
-        tabListElement: tabList,
-        contentContainer: content,
-        expandButton: toggleBtn,
-        tabTypes: [defineChatTabType({
-            provider: { mountTab: async () => ({ focus() {}, async requestClose() { return { closed: true }; }, async dispose() {} }) }
-        })]
-    });
-
-    const parentA = { itemType: 'agent', itemId: 'agent-1', topicId: 'topic-a' };
-    const parentB = { itemType: 'agent', itemId: 'agent-1', topicId: 'topic-b' };
-
-    // Topic A opens side-a1
-    ctrl.setParent(parentA);
-    await ctrl.openTab({ kind: 'chat', descriptor: createDesc('side-a1', 'topic-a', 'child-a1') });
-
-    // Switch to Topic B (empty -> collapses)
-    ctrl.setParent(parentB);
-    assert.equal(ctrl.getSnapshot().visible, false);
-
-    // Switch back to Topic A (has side-a1 -> auto-expands and restores side-a1)
+    // 3. Switching back to Topic A restores its tab and auto-expands
     ctrl.setParent(parentA);
     assert.equal(ctrl.getSnapshot().visible, true, 'Should auto-expand when returning to topic with side chats');
     assert.equal(ctrl.getSnapshot().activeTabId, 'side-a1');
-    assert.equal(root.classList.contains('active'), true);
-    assert.equal(root.classList.contains('collapsed'), false);
+    assert.equal(toggleBtn.getAttribute('aria-expanded'), 'true');
 
     await ctrl.dispose();
     dom.window.close();
@@ -240,7 +202,6 @@ test('Parity: Closing the last side chat tab automatically collapses side pane',
     await ctrl.closeTab('side-a1');
 
     assert.equal(ctrl.getSnapshot().visible, false, 'Side pane MUST automatically collapse when last chat tab is closed');
-    assert.equal(root.classList.contains('collapsed'), true);
 
     await ctrl.dispose();
     dom.window.close();

@@ -2,12 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 
-import * as SidePaneState from '../modules/ui-system/side-pane/side-pane-state.js';
 import { createSidePaneController } from '../modules/ui-system/side-pane/side-pane-controller.js';
 import { defineChatTabType } from '../modules/ui-system/side-pane/tab-types/chat.js';
 import { createSideChatDescriptor } from '../modules/chat/sideChatSessionService.js';
-
-const tick = () => new Promise(resolve => setImmediate(resolve));
 
 function createTestDOM() {
     return new JSDOM(`
@@ -32,18 +29,6 @@ function createTestDOM() {
         </aside>
     `);
 }
-
-test('Parity: createSideChatDescriptor defines ephemeral: true and type: selection-side-chat', () => {
-    const desc = createSideChatDescriptor({
-        parent: { itemId: 'agent-alpha', topicId: 'main-topic' },
-        childTopicId: 'child-topic-1',
-        title: '短暂型选区侧聊'
-    });
-
-    assert.equal(desc.type, 'selection-side-chat');
-    assert.equal(desc.ephemeral, true);
-    assert.equal(desc.child.topicId, 'child-topic-1');
-});
 
 test('Parity: Closing selection-side-chat destroys runtime and is explicitly excluded from recentlyClosedTabs', async () => {
     const dom = createTestDOM();
@@ -102,13 +87,11 @@ test('Parity: Closing selection-side-chat destroys runtime and is explicitly exc
     assert.equal(closedDescriptors.length, 1);
     assert.equal(closedDescriptors[0].id, desc.id);
 
-    // 4. Tab must NOT appear in Tab Overview as a recently closed tab
-    const overviewBtn = doc.getElementById('sidePaneTabOverviewBtn');
-    overviewBtn.click();
-    await tick();
-
-    const recentlyClosedItems = doc.querySelectorAll('.side-pane-overview-item.recently-closed');
-    assert.equal(recentlyClosedItems.length, 0, 'selection-side-chat must be explicitly excluded from recentlyClosedTabs');
+    // 4. Tab must NOT be offered for reopening as a recently closed tab
+    assert.equal(ctrl.getRecentlyClosedTabs().some(entry => entry.id === desc.id), false,
+        'selection-side-chat must be explicitly excluded from recentlyClosedTabs');
+    assert.equal(await ctrl.reopenClosedTab(desc.id), null);
+    assert.equal(ctrl.getSnapshot().tabs.some(tab => tab.id === desc.id), false);
 
     await ctrl.dispose();
     dom.window.close();

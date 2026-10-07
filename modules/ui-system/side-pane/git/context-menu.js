@@ -92,15 +92,16 @@ export function createGitContextMenu({
         menu.className = 'side-git-context-menu vcp-ui-scope';
         menu.setAttribute('role', 'menu');
         const entries = [
-            { icon: 'folder_open', label: '在文件管理器中打开', disabled: typeof api?.gitRevealPath !== 'function' || item.status === 'D', run: () => revealInFileManager(item) },
-            { icon: 'content_copy', label: '复制绝对路径', run: () => copyText(absolutePathOf(item), '绝对路径') },
-            { icon: 'content_copy', label: '复制相对路径', run: () => copyText(item.path, '相对路径') }
+            { action: 'reveal', icon: 'folder_open', label: '在文件管理器中打开', disabled: typeof api?.gitRevealPath !== 'function' || item.status === 'D', run: () => revealInFileManager(item) },
+            { action: 'copy-abs', icon: 'content_copy', label: '复制绝对路径', run: () => copyText(absolutePathOf(item), '绝对路径') },
+            { action: 'copy-rel', icon: 'content_copy', label: '复制相对路径', run: () => copyText(item.path, '相对路径') }
         ];
         entries.forEach((entry) => {
             const btn = doc.createElement('button');
             btn.type = 'button';
             btn.className = 'side-git-context-item';
             btn.setAttribute('role', 'menuitem');
+            btn.dataset.action = entry.action;
             btn.disabled = Boolean(entry.disabled);
             btn.innerHTML = `<span class="vcp-ui-icon" aria-hidden="true">${entry.icon}</span><span class="side-git-context-label"></span>`;
             btn.lastElementChild.textContent = entry.label;

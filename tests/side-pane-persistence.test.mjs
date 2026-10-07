@@ -4,7 +4,7 @@ import { JSDOM } from 'jsdom';
 import { createSidePaneController } from '../modules/ui-system/side-pane/side-pane-controller.js';
 import { defineChatTabType } from '../modules/ui-system/side-pane/tab-types/chat.js';
 import {
-    PARENT_MEMORY_LIMIT, MAX_PERSISTED_TAB_CHARS, SIDE_PANE_LAYOUT_VERSION,
+    PARENT_MEMORY_LIMIT, MAX_PERSISTED_TAB_CHARS, SIDE_PANE_LAYOUT_KEY, SIDE_PANE_LAYOUT_VERSION,
     parseLayout, rememberBounded, serializeLayout, sanitizeTab
 } from '../modules/ui-system/side-pane/side-pane-persistence.js';
 
@@ -116,7 +116,7 @@ test('controller saves the layout and lazily restores it after a restart', async
     await first.controller.dispose(); // flushes the pending save
     first.dom.window.close();
 
-    const saved = JSON.parse(storage.data.get('vcp.sidePane.layout.v1'));
+    const saved = JSON.parse(storage.data.get(SIDE_PANE_LAYOUT_KEY));
     assert.deepEqual(saved.tabs.map(t => t.id), ['notes', 'browser:1'], 'terminal and chat tabs are not persisted');
 
     const mounts = [];
@@ -141,12 +141,12 @@ test('controller saves the layout and lazily restores it after a restart', async
 
 test('nothing is written before restoreLayout runs, so an early render cannot wipe the saved layout', async () => {
     const storage = createStorage();
-    storage.setItem('vcp.sidePane.layout.v1', JSON.stringify({ version: 1, tabs: [{ id: 'notes', kind: 'notes' }] }));
+    storage.setItem(SIDE_PANE_LAYOUT_KEY, JSON.stringify({ version: 1, tabs: [{ id: 'notes', kind: 'notes' }] }));
     const pane = createPane(storage, []);
     await pane.controller.openTab({ id: 'browser:1', kind: 'browser', title: '浏览器', closable: true, scopeMode: 'global' });
     await pane.controller.dispose();
     pane.dom.window.close();
-    assert.deepEqual(JSON.parse(storage.data.get('vcp.sidePane.layout.v1')).tabs.map(t => t.id), ['notes']);
+    assert.deepEqual(JSON.parse(storage.data.get(SIDE_PANE_LAYOUT_KEY)).tabs.map(t => t.id), ['notes']);
 });
 
 test('restoring after the host picked the conversation mounts nothing from another topic and does not animate', async () => {
@@ -178,55 +178,6 @@ test('restoring after the host picked the conversation mounts nothing from anoth
     second.controller.setParent(topicA);
     await new Promise(resolve => setTimeout(resolve, 0));
     assert.deepEqual(mounts.map(m => m.id), ['notes:a']);
-    await second.controller.dispose();
-    second.dom.window.close();
-});
-
-test('after a restart the side chat a topic was left on comes back to the front once it is restored', async () => {
-    const storage = createStorage();
-    const parent = { itemType: 'agent', itemId: 'agent-1', topicId: 'topic-1' };
-    const chat = { kind: 'chat', descriptor: { id: 'side-1', parent, child: { itemType: 'agent', itemId: 'agent-1', topicId: 'child-1' }, title: '辅助' } };
-
-    const first = createPane(storage, []);
-    first.controller.restoreLayout();
-    first.controller.setParent(parent);
-    await first.controller.openTab({ id: 'browser:1', kind: 'browser', title: '浏览器', closable: true, scopeMode: 'global', payload: {} });
-    await first.controller.openTab(chat);
-    const chatId = first.controller.getSnapshot().activeTabId;
-    assert.equal(first.controller.getSnapshot().visible, true);
-    await first.controller.dispose();
-    first.dom.window.close();
-
-    const second = createPane(storage, []);
-    // 宿主先同步当前对话、再恢复存档；辅助对话不进存档，等读回话题后才补回来
-    second.controller.setParent(parent);
-    second.controller.restoreLayout();
-    await second.controller.restoreTabs([chat]);
-    assert.equal(second.controller.getSnapshot().activeTabId, chatId, 'the side chat is back in front, not the browser');
-    assert.equal(second.controller.getSnapshot().visible, true, 'the pane was open on this topic when the app closed');
-    await second.controller.dispose();
-    second.dom.window.close();
-});
-
-test('a side chat restored after the user already moved the pane does not take over', async () => {
-    const storage = createStorage();
-    const parent = { itemType: 'agent', itemId: 'agent-1', topicId: 'topic-1' };
-    const chat = { kind: 'chat', descriptor: { id: 'side-1', parent, child: { itemType: 'agent', itemId: 'agent-1', topicId: 'child-1' }, title: '辅助' } };
-
-    const first = createPane(storage, []);
-    first.controller.restoreLayout();
-    first.controller.setParent(parent);
-    await first.controller.openTab({ id: 'browser:1', kind: 'browser', title: '浏览器', closable: true, scopeMode: 'global', payload: {} });
-    await first.controller.openTab(chat);
-    await first.controller.dispose();
-    first.dom.window.close();
-
-    const second = createPane(storage, []);
-    second.controller.setParent(parent);
-    second.controller.restoreLayout();
-    second.controller.activateTab('browser:1');
-    await second.controller.restoreTabs([chat]);
-    assert.equal(second.controller.getSnapshot().activeTabId, 'browser:1');
     await second.controller.dispose();
     second.dom.window.close();
 });

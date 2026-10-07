@@ -14,14 +14,16 @@ test('Enter during regenerate\'s history save does not start a second send', asy
     f.doc.querySelector('[data-side-chat-action="regenerate"]').click();
     await tick();
     assert.equal(f.form.hasAttribute('aria-busy'), true, 'busy from the start of the regenerate');
+    assert.equal(f.handle.isBusy(), true, 'a regenerate in flight keeps the view awake');
     f.submit('new question');
     await tick(); await tick();
     release();
     for (let i = 0; i < 60; i++) await tick();
     assert.equal(f.requests.length, 1, 'only the regenerated question is sent');
+    assert.equal(f.textarea.value, 'new question', 'the typed text stays in the composer');
     assert.equal(f.form.hasAttribute('aria-busy'), true, 'still generating');
     assert.equal(f.doc.querySelector('.side-chat-stop-btn').hidden, false, 'stop stays available');
-    assert.doesNotMatch(f.statusText(), /发送失败/);
+    assert.notEqual(f.statuses.at(-1)?.type, 'error');
 });
 
 test('a failed regenerate save releases the composer', async t => {
@@ -30,7 +32,7 @@ test('a failed regenerate save releases the composer', async t => {
     f.doc.querySelector('[data-message-id="a1"]').dispatchEvent(new f.dom.window.MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
     f.doc.querySelector('[data-side-chat-action="regenerate"]').click();
     for (let i = 0; i < 10; i++) await tick();
-    assert.match(f.statusText(), /重新回复失败/);
+    assert.equal(f.statuses.at(-1)?.type, 'error');
     assert.equal(f.form.hasAttribute('aria-busy'), false);
     assert.equal(f.textarea.disabled, false);
 });
@@ -40,11 +42,12 @@ test('picking a model clears the "pick a model first" error', async t => {
     f.textarea.value = 'hi';
     f.textarea.dispatchEvent(new f.dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await tick();
-    assert.equal(f.statusText(), '请先选择模型');
+    assert.equal(f.requests.length, 0);
+    assert.equal(f.statuses.at(-1)?.type, 'error');
     f.doc.querySelector('.side-chat-model-picker-btn').click();
     for (let i = 0; i < 5; i++) await tick();
     f.doc.querySelector('.side-chat-model-item[data-model="gpt-x"]').click();
     for (let i = 0; i < 5; i++) await tick();
-    assert.notEqual(f.statusText(), '请先选择模型');
-    assert.equal(f.doc.querySelector('.side-chat-status-text').classList.contains('error'), false);
+    assert.equal(f.handle.getModel(), 'gpt-x');
+    assert.notEqual(f.statuses.at(-1)?.type, 'error');
 });

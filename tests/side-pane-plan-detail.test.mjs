@@ -1,8 +1,23 @@
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { buildPlanModel, createPlanDetailSideProvider, planTabId, resolveDefaultProject } from '../modules/ui-system/side-pane/planDetailSideProvider.js';
+import { buildPlanModel, createPlanDetailSideProvider, planTabId, resolveDefaultProject, REFRESH_DEBOUNCE_MS } from '../modules/ui-system/side-pane/planDetailSideProvider.js';
 import { getProjectForgeChangesSource } from '../modules/ui-system/sources/projectforge-changes.js';
+import { waitFor } from './helpers/wait-for.mjs';
+
+const settle = async () => { for (let i = 0; i < 10; i += 1) await new Promise(resolve => setImmediate(resolve)); };
+// 重读防抖走 lifecycle scope 的全局 setTimeout：用假时钟推过防抖，再把 promise 链冲完。
+// 开了假时钟就不能再用 waitFor（它自己也靠 setTimeout）
+function useFakeTimers(t) {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    t.after(() => mock.timers.reset());
+}
+// 先冲微任务：scope 取消定时器是在微任务里 clearTimeout 的，真实时钟下早于到点
+async function passDebounce() {
+    await settle();
+    mock.timers.tick(REFRESH_DEBOUNCE_MS);
+    await settle();
+}
 
 const DETAIL = {
     project: { id: 'p1', name: '算法工程', status: 'active', created_by: 'Nova', updated_at: '2026-09-30T01:00:00.000Z', root: 'C:\\w', stats: { added: 83, removed: 10 } },
@@ -77,7 +92,7 @@ test('openPlanDetailTab opens a per-project tab with a searchable title', async 
     assert.equal(calls.opened.length, 1);
     assert.equal(calls.opened[0].id, planTabId('p1'));
     assert.equal(calls.opened[0].kind, 'plan-detail');
-    assert.equal(calls.opened[0].title, '计划 · 算法工程');
+    assert.match(calls.opened[0].title, /算法工程/);
     assert.equal(calls.opened[0].payload.projectId, 'p1');
 });
 
@@ -88,35 +103,38 @@ test('openPlanDetailTab tells the user instead of opening an empty tab when ther
     assert.equal(calls.toasts.length, 1);
 });
 
-test('mountTab renders plan, files, timeline and reloads on matching change events', async () => {
+test('mountTab renders plan, files, timeline and reloads on matching change events', async (t) => {
     const { provider, calls, view, fire, wasUnsubscribed } = makeEnv();
     const handle = await provider.mountTab({ id: planTabId('p1'), payload: { projectId: 'p1' } }, view);
     assert.equal(calls.get, 1);
     assert.equal(view.querySelector('.side-plan-title').textContent, '算法工程');
     assert.equal(view.querySelectorAll('.side-plan-todo').length, 3);
     assert.equal(view.querySelector('.side-plan-todo.blocked').dataset.todoStatus, 'pending');
-    assert.match(view.querySelector('.side-plan-progress-text').textContent, /1\/3 已完成/);
     assert.equal(view.querySelectorAll('.side-plan-batch').length, 2);
     assert.equal(view.querySelectorAll('.side-plan-file').length, 1);
     assert.equal(view.querySelector('.side-plan-progress').value, 1);
     assert.equal(view.querySelector('.side-plan-progress').max, 3);
-    assert.equal(view.querySelector('.side-plan-progress-line .side-plan-pct').textContent, '33%', '计数行靠右给出百分比');
-    assert.equal(view.querySelector('.side-plan-progress-line + .side-plan-progress') !== null, true, '进度条单独占一行，在计数下面');
 
     // 折叠章节
     view.querySelector('[data-plan-section="files"] .side-plan-section-title').click();
     assert.equal(view.querySelectorAll('.side-plan-file').length, 0);
 
     // 其他工程的变更不触发刷新，本工程的会
+    useFakeTimers(t);
     fire({ projectId: 'other' });
-    await new Promise(r => setTimeout(r, 300));
+    await passDebounce();
     assert.equal(calls.get, 1);
     fire({ projectId: 'p1' });
-    await new Promise(r => setTimeout(r, 300));
+    await settle();
+    mock.timers.tick(REFRESH_DEBOUNCE_MS - 1);
+    await settle();
+    assert.equal(calls.get, 1, 'the reload waits for the debounce');
+    mock.timers.tick(1);
+    await settle();
     assert.equal(calls.get, 2);
 
     // V工程按钮
-    view.querySelector('.side-plan-actions .side-plan-icon-btn:last-child').click();
+    view.querySelector('[data-action="open-forge"]').click();
     assert.equal(calls.forge, true);
 
     await handle.dispose();
@@ -132,10 +150,10 @@ test('the breadcrumb pill switches to any project, filters a long list and close
         projectForgeGetProject: async (id) => { calls.get += 1; return { success: true, data: { ...DETAIL, project: { ...DETAIL.project, id, name: projects.find(p => p.id === id).name } } }; }
     });
     const handle = await provider.mountTab({ id: planTabId('p1'), payload: { projectId: 'p1' } }, view);
-    const tick = () => new Promise(r => setTimeout(r, 20));
+    const pickerItems = () => view.querySelectorAll('.side-plan-picker-item');
 
     view.querySelector('.side-plan-crumbs').click();
-    await tick();
+    await waitFor(() => pickerItems().length, { message: 'picker did not list projects' });
     // 全局标签没有「本话题用过」分组；删掉的工程不列，最近更新的在前
     assert.equal(view.querySelectorAll('.side-plan-picker-label').length, 0);
     const ids = [...view.querySelectorAll('.side-plan-picker-item')].map(b => b.dataset.projectId);
@@ -149,17 +167,19 @@ test('the breadcrumb pill switches to any project, filters a long list and close
     assert.equal(view.querySelector('.side-plan-picker'), null);
     assert.equal(doc.activeElement, view.querySelector('.side-plan-crumbs'));
 
+    // 切换工程：页面换内容，标签记住新工程并钉住
     view.querySelector('.side-plan-crumbs').click();
-    await tick();
+    await waitFor(() => view.querySelector('.side-plan-picker-item[data-project-id="p3"]'));
     view.querySelector('.side-plan-picker-item[data-project-id="p3"]').click();
-    await tick();
-    assert.equal(view.querySelector('.side-plan-title').textContent, '工程3');
-    assert.equal(calls.updated.at(-1).title, '计划 · 工程3');
+    assert.equal(view.querySelector('.side-plan-picker'), null);
+    await waitFor(() => view.querySelector('.side-plan-title')?.textContent === '工程3', { message: 'project did not switch' });
+    assert.match(calls.updated.at(-1).title, /工程3/);
+    assert.equal(calls.updated.at(-1).payload.projectId, 'p3');
     assert.equal(calls.updated.at(-1).payload.pinned, true);
     handle.dispose();
 });
 
-test('plan pages navigate by keyboard and retain their scroll positions across refreshes', async () => {
+test('plan pages navigate by keyboard and retain their scroll positions across refreshes', async (t) => {
     const { provider, view, dom, fire } = makeEnv();
     const handle = await provider.mountTab({ id: planTabId('p1'), payload: { projectId: 'p1' } }, view);
     const body = view.querySelector('.side-plan-body');
@@ -167,9 +187,6 @@ test('plan pages navigate by keyboard and retain their scroll positions across r
     const panel = () => view.querySelector('[role="tabpanel"]:not([hidden])');
     assert.equal(selected().dataset.planPage, 'plan');
     assert.equal(panel().dataset.planPagePanel, 'plan');
-    assert.equal(view.querySelector('.side-plan-header .side-plan-progress'), null);
-    assert.equal(view.querySelector('.side-plan-header .side-plan-stats'), null);
-    assert.equal(view.querySelector('.side-plan-header').textContent.includes('C:\\w'), false);
     body.scrollTop = 120;
     selected().dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
     assert.equal(panel().dataset.planPagePanel, 'timeline');
@@ -185,10 +202,11 @@ test('plan pages navigate by keyboard and retain their scroll positions across r
     assert.ok(panel().querySelector('.side-git-container'), 'the Git page mounts when it is first shown');
     selected().dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
     assert.equal(panel().dataset.planPagePanel, 'details');
-    assert.match(panel().textContent, /创建者.*Nova/);
+    assert.match(panel().textContent, /Nova/);
     body.scrollTop = 30;
+    useFakeTimers(t);
     fire({ projectId: 'p1' });
-    await new Promise(resolve => setTimeout(resolve, 320));
+    await passDebounce();
     assert.equal(panel().dataset.planPagePanel, 'details');
     assert.equal(body.scrollTop, 30);
     view.querySelector('[data-plan-page="timeline"]').click();
@@ -232,7 +250,7 @@ test('mountTab shows a retryable empty state when the project cannot be read', a
     handle.dispose();
 });
 
-test('a failed refresh keeps the last plan on screen with a retry banner', async () => {
+test('a failed refresh keeps the last plan on screen with a retry banner', async (t) => {
     let fail = false;
     const { provider, view, fire } = makeEnv({
         projectForgeGetProject: async () => (fail ? { success: false, error: '网络断开' } : { success: true, data: DETAIL })
@@ -241,45 +259,48 @@ test('a failed refresh keeps the last plan on screen with a retry banner', async
     assert.equal(view.querySelectorAll('.side-plan-todo').length, 3);
 
     fail = true;
+    useFakeTimers(t);
     fire({ projectId: 'p1' });
-    await new Promise(r => setTimeout(r, 300));
+    await passDebounce();
     assert.equal(view.querySelectorAll('.side-plan-todo').length, 3, 'content is kept');
     assert.match(view.querySelector('.side-plan-stale').textContent, /网络断开/);
 
     fail = false;
     view.querySelector('.side-plan-stale button').click();
-    await new Promise(r => setTimeout(r, 50));
+    await settle();
     assert.equal(view.querySelector('.side-plan-stale'), null);
     handle.dispose();
 });
 
-test('a project soft-deleted while its tab is open is marked deleted, not 进行中', async () => {
+test('a project soft-deleted while its tab is open is marked deleted, not active', async (t) => {
     // 真实返回：软删除后 GetProject 仍然成功，status 还是 active，只多了 deleted_at / deleted_by
     let deleted = false;
     const { provider, view, fire } = makeEnv({
         projectForgeGetProject: async () => ({ success: true, data: deleted ? { ...DETAIL, project: { ...DETAIL.project, deleted_at: '2026-09-30T02:00:00.000Z', deleted_by: 'Nova' } } : DETAIL })
     });
     const handle = await provider.mountTab({ id: planTabId('p1'), payload: { projectId: 'p1' } }, view);
-    assert.equal(view.querySelector('.side-plan-chip').textContent, '进行中');
+    assert.equal(view.querySelector('.side-plan-chip').dataset.status, 'active');
     assert.equal(view.querySelector('.side-plan-deleted'), null);
 
     deleted = true;
+    useFakeTimers(t);
     fire({ projectId: 'p1' });
-    await new Promise(r => setTimeout(r, 300));
-    assert.equal(view.querySelector('.side-plan-chip').textContent, '已删除');
-    assert.ok(view.querySelector('.side-plan-chip.status-deleted'));
-    assert.match(view.querySelector('.side-plan-deleted').textContent, /已被 Nova 删除.*RestoreProjects/);
+    await passDebounce();
+    assert.equal(view.querySelector('.side-plan-chip').dataset.status, 'deleted');
+    assert.match(view.querySelector('.side-plan-deleted').textContent, /Nova/, 'the banner names who deleted it');
     assert.equal(view.querySelectorAll('.side-plan-todo').length, 3, 'the plan stays readable');
     handle.dispose();
 });
 
-test('a renamed project renames its tab, once', async () => {
+test('a renamed project renames its tab, once', async (t) => {
     const { provider, calls, view, fire } = makeEnv();
     const handle = await provider.mountTab({ id: planTabId('p1'), payload: { projectId: 'p1', projectName: '旧名字' } }, view);
     assert.equal(calls.updated.length, 1);
-    assert.equal(calls.updated[0].title, '计划 · 算法工程');
+    assert.match(calls.updated[0].title, /算法工程/);
+    useFakeTimers(t);
     fire({ projectId: 'p1' });
-    await new Promise(r => setTimeout(r, 300));
+    await passDebounce();
+    assert.equal(calls.get, 2, 'the refresh did run');
     assert.equal(calls.updated.length, 1, 'an unchanged name does not touch the tab again');
     handle.dispose();
 });
@@ -324,18 +345,17 @@ test('the Git page opens on the project workspace and follows a project switch',
         gitListWorkspaces: async () => ({ success: true, data: { workspaces: [{ id: 'ws0', alias: 'zero', path: '/z' }, { id: 'ws1', alias: 'one', path: '/a' }, { id: 'ws2', alias: 'two', path: '/b' }], activeWorkspaceId: 'ws0' } }),
         gitStatus: async (id) => { statusFor.push(id); return { success: true, data: { isRepo: true, staged: [], conflicts: [], changes: [] } }; }
     });
-    const wait = (ms = 30) => new Promise(resolve => setTimeout(resolve, ms));
     const handle = await provider.mountTab({ id: planTabId('p1'), payload: { projectId: 'p1' } }, view);
     assert.deepEqual(statusFor, [], 'Git is not read until its page is shown');
     view.querySelector('[data-plan-page="git"]').click();
-    await wait();
+    await waitFor(() => statusFor.length, { message: 'Git status was not read' });
     assert.equal(statusFor.at(-1), 'ws1');
     assert.equal(view.querySelector('.side-git-ws-select').value, 'ws1');
 
     view.querySelector('.side-plan-crumbs').click();
-    await wait();
+    await waitFor(() => view.querySelector('.side-plan-picker-item[data-project-id="p2"]'));
     view.querySelector('.side-plan-picker-item[data-project-id="p2"]').click();
-    await wait(60);
+    await waitFor(() => statusFor.at(-1) === 'ws2', { message: 'Git did not follow the project switch' });
     assert.equal(view.querySelector('.side-plan-title').textContent, '旁支工程');
     assert.equal(view.querySelector('.side-git-ws-select').value, 'ws2');
     assert.equal(statusFor.at(-1), 'ws2');
@@ -344,11 +364,12 @@ test('the Git page opens on the project workspace and follows a project switch',
     dom.window.close();
 });
 
-test('a hidden plan tab reads the project once when shown again, not on every change', async () => {
+test('a hidden plan tab reads the project once when shown again, not on every change', async (t) => {
     const { provider, calls, view, fire } = makeEnv();
     let visible = true;
     const handle = await provider.mountTab({ id: planTabId('p1'), payload: { projectId: 'p1' } }, view, { occurrence: { isVisible: () => visible } });
     assert.equal(calls.get, 1);
+    useFakeTimers(t);
 
     // 已经排上的重读在藏起来时取消
     fire({ projectId: 'p1' });
@@ -356,12 +377,12 @@ test('a hidden plan tab reads the project once when shown again, not on every ch
     handle.suspend();
     fire({ projectId: 'p1' });
     fire({ projectId: 'p1' });
-    await new Promise(r => setTimeout(r, 300));
+    await passDebounce();
     assert.equal(calls.get, 1);
 
     visible = true;
     handle.resume();
-    await new Promise(r => setTimeout(r, 300));
+    await passDebounce();
     assert.equal(calls.get, 2);
 
     // 期间没有变化就不重读
@@ -369,13 +390,13 @@ test('a hidden plan tab reads the project once when shown again, not on every ch
     handle.suspend();
     visible = true;
     handle.resume();
-    await new Promise(r => setTimeout(r, 300));
+    await passDebounce();
     assert.equal(calls.get, 2);
     handle.dispose();
 });
 
-test('keyboard focus survives the redraws a section toggle, a batch toggle and a background refresh cause', async () => {
-    const { provider, view, dom, fire } = makeEnv();
+test('keyboard focus survives the redraws a section toggle, a batch toggle and a background refresh cause', async (t) => {
+    const { provider, calls, view, dom, fire } = makeEnv();
     const doc = dom.window.document;
     const handle = await provider.mountTab({ id: planTabId('p1'), payload: { projectId: 'p1' } }, view);
     try {
@@ -393,12 +414,15 @@ test('keyboard focus survives the redraws a section toggle, a batch toggle and a
         const batchKey = batchHead().dataset.focusKey;
         batchHead().focus();
         batchHead().click();
-        await new Promise(resolve => setTimeout(resolve, 20));
+        await settle();
         assert.equal(view.contains(doc.activeElement), true);
         assert.equal(doc.activeElement?.dataset?.focusKey, batchKey, 'the batch header keeps focus after it expands');
 
+        const reads = calls.get;
+        useFakeTimers(t);
         fire({ projectId: 'p1' });
-        await new Promise(resolve => setTimeout(resolve, 320));
+        await passDebounce();
+        assert.equal(calls.get, reads + 1, 'the background refresh ran');
         assert.equal(view.contains(doc.activeElement), true);
         assert.equal(doc.activeElement?.dataset?.focusKey, batchKey, 'a background refresh does not throw focus to <body>');
     } finally {

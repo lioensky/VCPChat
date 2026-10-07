@@ -119,6 +119,7 @@ export function createToolOutputSideProvider({
             const picker = h('select', 'side-tool-output-picker');
             picker.setAttribute('aria-label', '选择命令');
             const copyBtn = iconButton('content_copy', '复制输出', () => copyOutput());
+            copyBtn.dataset.action = 'copy';
             const refreshBtn = iconButton('refresh', '刷新', () => { void loadSelected(); });
             const actions = h('div', 'side-tool-output-actions');
             actions.append(copyBtn, refreshBtn);
@@ -218,6 +219,7 @@ export function createToolOutputSideProvider({
                 if (!summary) return;
                 const running = summary.status === 'running';
                 const chip = h('span', `side-tool-output-chip status-${summary.status}`);
+                chip.dataset.status = summary.status;
                 chip.append(icon(running ? 'progress_activity' : summary.status === 'completed' ? 'check_circle' : 'cancel', running ? 'spin' : ''), h('span', '', commandRunStatusLabel(summary.status)));
                 const meta = h('span', 'side-tool-output-meta', `${formatRunDuration(summary)} · ${formatRelativeTime(summary.startedAt)}`);
                 statusBar.append(chip, meta);

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { buildTerminalTheme, DARK_PALETTE, LIGHT_PALETTE, isLightTheme, normalizeCssColor } from '../modules/ui-system/side-pane/terminalTheme.js';
+import { buildTerminalTheme, DARK_PALETTE, LIGHT_PALETTE, isLightTheme, normalizeCssColor, LIGHT_FALLBACK_BG, DARK_FALLBACK_BG } from '../modules/ui-system/side-pane/terminalTheme.js';
 
 function makeDoc(bodyAttrs = '') {
     const dom = new JSDOM(`<body ${bodyAttrs}><div id="screen"></div></body>`, { pretendToBeVisual: true });
@@ -29,7 +29,7 @@ test('light theme (data attribute or class) gets the light palette', () => {
         const theme = buildTerminalTheme(doc, doc.getElementById('screen'));
         assert.equal(isLightTheme(doc), true, attrs);
         assert.equal(theme.yellow, LIGHT_PALETTE.yellow);
-        assert.equal(theme.background, '#fafafa', 'falls back when the frame has no background');
+        assert.equal(theme.background, LIGHT_FALLBACK_BG, 'falls back when the frame has no background');
     }
 });
 
@@ -62,11 +62,11 @@ test('mounted terminal: xterm theme follows the frame and switches with the ligh
         const screen = view.querySelector('.side-terminal-screen');
         assert.ok(screen && terminals[0], "terminal mounted");
         assert.equal(screen.getAttribute('style'), null, 'no inline style: the frame color comes from CSS');
-        assert.equal(terminals[0].options.theme.background, '#14161a');
+        assert.equal(terminals[0].options.theme.background, DARK_FALLBACK_BG);
         doc.body.setAttribute('data-vcp-theme', 'light');
         await new Promise(resolve => dom.window.queueMicrotask(resolve));
         assert.equal(terminals[0].options.theme.red, LIGHT_PALETTE.red);
-        assert.equal(terminals[0].options.theme.background, '#fafafa');
+        assert.equal(terminals[0].options.theme.background, LIGHT_FALLBACK_BG);
     } finally {
         await handle?.dispose?.();
         dom.window.close();

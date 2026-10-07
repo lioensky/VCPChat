@@ -5,6 +5,8 @@ import { createSidePaneController } from '../modules/ui-system/side-pane/side-pa
 import { defineChatTabType } from '../modules/ui-system/side-pane/tab-types/chat.js';
 import { createSideChatSurfaceOwner } from '../modules/renderer/sideChatSurfaceOwner.js';
 import { createSideChatDescriptor, createChildTopicForAgent } from '../modules/chat/sideChatSessionService.js';
+import { fixture } from './helpers/side-chat-surface-fixture.mjs';
+import { waitFor } from './helpers/wait-for.mjs';
 
 test('Full Side Chat lifecycle integration: open, refer, send, and close', async () => {
     const markup = `
@@ -110,10 +112,8 @@ test('Full Side Chat lifecycle integration: open, refer, send, and close', async
 
     // 1. 面板里没有标签、只登记了一个入口时，展开按钮直接打开它
     toggleChatBtn.click();
-    await new Promise(r => setTimeout(r, 20));
+    await waitFor(() => controller.getSnapshot().tabs.length === 2 && controller.getTabHandle(controller.getSnapshot().tabs[1].id));
 
-    // Verify side pane is active and visible
-    assert.equal(sidePane.classList.contains('active'), true);
     assert.equal(controller.getSnapshot().visible, true);
     assert.equal(controller.getSnapshot().tabs.length, 2); // notifications + 1 chat tab
 
@@ -124,7 +124,7 @@ test('Full Side Chat lifecycle integration: open, refer, send, and close', async
     // 2. Verify view was mounted
     const chatView = contentContainer.querySelector(`[data-tab-id="${activeTab.id}"]`);
     assert.ok(chatView);
-    assert.equal(chatView.classList.contains('active'), true);
+    assert.equal(chatView.hidden, false);
 
     const textarea = chatView.querySelector('.side-chat-textarea');
     assert.ok(textarea);
@@ -144,12 +144,8 @@ test('Full Side Chat lifecycle integration: open, refer, send, and close', async
     const form = chatView.querySelector('form');
     form.requestSubmit();
 
-    await new Promise(r => setTimeout(r, 20));
-
-    assert.ok(sentRequest);
-    assert.ok(sentRequest.content.includes('引用：「'));
-    assert.ok(sentRequest.content.includes('Important context line'));
-    assert.ok(sentRequest.content.includes('请分析该行内容'));
+    // 引用和问题的拼装见 side-chat-surface-owner.test.mjs；这里只看请求落在新建的子话题上
+    await waitFor(() => sentRequest && !form.hasAttribute('aria-busy'));
     assert.equal(sentRequest.conversation.topicIdRef.get(), 'topic-child-999');
 
     // 5. Close chat tab
@@ -164,158 +160,29 @@ test('Full Side Chat lifecycle integration: open, refer, send, and close', async
     dom.window.close();
 });
 
-test('Dual stream concurrency: cancelling side chat does not abort main chat stream', async () => {
-    const dom = new JSDOM('<div id="sideContainer"></div>');
-    const container = dom.window.document.getElementById('sideContainer');
+// 停止辅助对话只取消它自己的流：同一个 chatManager / 流桥上的主聊天流照常接收
+test('Dual stream concurrency: cancelling side chat does not abort main chat stream', async t => {
+    const f = await fixture(t, { stream: true });
+    const main = { chunks: [], settled: null };
+    f.streamRoutes.register('main-stream', { kind: 'main-chat', start() {},
+        append(_id, chunk) { main.chunks.push(chunk); }, settle(result) { main.settled = result; }, release() {} });
+    f.bridge.accept({ type: 'data', messageId: 'main-stream', context: {}, chunk: 'main-1' });
 
-    let mainCancelled = false;
-    let sideCancelled = false;
-
-    const mockMainOperation = {
-        cancel: async () => { mainCancelled = true; return true; }
-    };
-    const mockSideOperation = {
-        cancel: async () => { sideCancelled = true; return true; }
-    };
-
-    const mockCapabilities = {
-        repository: {
-            async getHistory() { return []; },
-            async saveHistory() { return { success: true }; }
-        },
-        createRenderer: ({ conversation }) => ({
-            renderer: { async renderHistory() {}, async dispose() {} },
-            conversation: {
-                selectedItemRef: { get: () => conversation.selectedItem },
-                topicIdRef: { get: () => conversation.topicId },
-                historyRef: { get: () => [], set: () => {} },
-                replaceHistory: () => [],
-                dispose: () => {}
-            },
-            dispose: async () => {}
-        }),
-        manager: {
-            async sendMessage(req) {
-                req.onOperation?.(mockSideOperation);
-                return new Promise((resolve) => {
-                    // Simulates ongoing stream
-                    setTimeout(() => {
-                        resolve({ terminal: { event: { type: sideCancelled ? 'cancelled' : 'completed' } } });
-                    }, 50);
-                });
-            }
-        }
-    };
-
-    const descriptor = {
-        id: 'chat-side-stream-1',
-        title: '并发流测试',
-        parent: { itemId: 'agent-1', topicId: 'topic-main' },
-        child: { itemId: 'agent-1', topicId: 'topic-side' },
-        contextMode: 'references-only',
-        model: 'test-model'
-    };
-
-    const sideChatOwner = createSideChatSurfaceOwner({
-        chatCapabilities: mockCapabilities
-    });
-
-    const handle = await sideChatOwner.mountTab(descriptor, container);
-    await new Promise(r => setTimeout(r, 10));
-
-    // Submit side chat message
-    const textarea = container.querySelector('.side-chat-textarea');
-    textarea.value = 'Side chat question';
-    const form = container.querySelector('form');
-    form.requestSubmit();
-
-    // Verify side chat is busy/generating
-    const stopBtn = container.querySelector('.side-chat-stop-btn');
+    f.submit('Side chat question');
+    await waitFor(() => f.requests.length === 1 && f.handle.isBusy());
+    await waitFor(() => main.chunks.length === 1);
+    const stopBtn = f.doc.querySelector('.side-chat-stop-btn');
     assert.equal(stopBtn.hidden, false);
 
-    // Click stop on side chat
-    stopBtn.click();
-    await new Promise(r => setTimeout(r, 60));
+    f.stop();
+    await f.untilIdle();
+    assert.equal(f.statuses.at(-1)?.code, 'cancelled');
+    assert.equal(stopBtn.hidden, true);
 
-    // Side chat was cancelled, main chat was untouched
-    assert.equal(sideCancelled, true);
-    assert.equal(mainCancelled, false);
-
-    await handle.dispose();
-    dom.window.close();
-});
-
-test('Parent context snapshot inheritance (P1): child sends frozen parent context without persisting it to child topic', async () => {
-    const dom = new JSDOM('<div id="sideContainer"></div>');
-    const container = dom.window.document.getElementById('sideContainer');
-
-    let sentRequest = null;
-    let savedTopicHistory = null;
-
-    const mockCapabilities = {
-        repository: {
-            async getHistory() { return []; },
-            async saveHistory(itemId, itemType, topicId, history) {
-                savedTopicHistory = history;
-                return { success: true };
-            }
-        },
-        createRenderer: ({ conversation }) => ({
-            renderer: { async renderHistory() {}, async dispose() {} },
-            conversation: {
-                selectedItemRef: { get: () => conversation.selectedItem },
-                topicIdRef: { get: () => conversation.topicId },
-                historyRef: { get: () => [], set: () => {} },
-                replaceHistory: () => [],
-                dispose: () => {}
-            },
-            dispose: async () => {}
-        }),
-        manager: {
-            async sendMessage(req) {
-                sentRequest = req;
-                return { terminal: { event: { type: 'completed' } } };
-            }
-        }
-    };
-
-    const parentHistory = [
-        { role: 'user', content: 'Parent question 1' },
-        { role: 'assistant', content: 'Parent answer 1' }
-    ];
-
-    const descriptor = {
-        id: 'chat-side-inheritance-1',
-        title: '上下文继承测试',
-        parent: { itemId: 'agent-1', topicId: 'topic-main' },
-        child: { itemId: 'agent-1', topicId: 'topic-side' },
-        contextMode: 'parent-snapshot',
-        model: 'test-model',
-        parentSnapshot: parentHistory
-    };
-
-    const sideChatOwner = createSideChatSurfaceOwner({
-        chatCapabilities: mockCapabilities
-    });
-
-    const handle = await sideChatOwner.mountTab(descriptor, container);
-    await new Promise(r => setTimeout(r, 10));
-
-    // Submit side chat message
-    const textarea = container.querySelector('.side-chat-textarea');
-    textarea.value = 'Child question 1';
-    const form = container.querySelector('form');
-    form.requestSubmit();
-
-    await new Promise(r => setTimeout(r, 20));
-
-    assert.ok(sentRequest);
-    assert.equal(typeof sentRequest.conversation.getContextHistory, 'function');
-    const inherited = sentRequest.conversation.getContextHistory();
-    assert.equal(inherited.length, 2);
-    assert.equal(inherited[0].content, 'Parent question 1');
-    assert.equal(inherited[1].content, 'Parent answer 1');
-
-    await handle.dispose();
-    dom.window.close();
+    // 主聊天的流还登记着、还在收数据，也没有被结算
+    assert.ok(f.streamRoutes.claim('main-stream'));
+    f.bridge.accept({ type: 'data', messageId: 'main-stream', context: {}, chunk: 'main-2' });
+    await waitFor(() => main.chunks.length === 2);
+    assert.deepEqual(main.chunks, ['main-1', 'main-2']);
+    assert.equal(main.settled, null);
 });

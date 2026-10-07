@@ -2,7 +2,7 @@
  * 代码查看器按路径读文件。结果统一成三种：
  *   { ok: true, text }      可以显示（空字符串是合法的空文件）
  *   { ok: false, error }    读取失败，按错误显示
- *   { ok: false, notice }   读到了但不适合预览（二进制、过大），按普通提示显示
+ *   { ok: false, notice }   读到了但不适合预览（二进制、过大），按普通提示显示；reason 标明是哪一种
  * 界面只看 ok，不再从各个接口的返回值里猜。
  */
 
@@ -22,7 +22,7 @@ export async function readFileForViewer(api, filePath, { allowOutsideWorkspace =
     if (fromWorkspace?.result) return fromWorkspace.result;
     // 没有工作区服务的窗口分不清内外，照旧读
     if (fromWorkspace && !fromWorkspace.inWorkspace && !allowOutsideWorkspace) {
-        return { ok: false, needsConsent: true, notice: `这个文件不在任何已登记的工作区里：\n${filePath}` };
+        return { ok: false, reason: 'outside-workspace', needsConsent: true, notice: `这个文件不在任何已登记的工作区里：\n${filePath}` };
     }
     if (typeof api?.getTextContent !== 'function') return { ok: false, error: '当前窗口不支持读取文件' };
     const res = await api.getTextContent(filePath);
@@ -49,9 +49,9 @@ async function readThroughWorkspace(api, filePath) {
     const res = await api.sourceReadFile(match.workspace.id, match.relPath);
     if (!res?.success) return { inWorkspace: true, result: { ok: false, error: res?.error || '读取文件失败' } };
     const file = res.data || {};
-    if (file.binary) return { inWorkspace: true, result: { ok: false, notice: '二进制文件，无法预览' } };
+    if (file.binary) return { inWorkspace: true, result: { ok: false, reason: 'binary', notice: '二进制文件，无法预览' } };
     if (file.tooLarge) {
-        return { inWorkspace: true, result: { ok: false, notice: `文件过大（${Math.round((file.size || 0) / 1024)} KB），无法预览，请在外部编辑器中打开` } };
+        return { inWorkspace: true, result: { ok: false, reason: 'too-large', notice: `文件过大（${Math.round((file.size || 0) / 1024)} KB），无法预览，请在外部编辑器中打开` } };
     }
     // 不是 UTF-8（比如 GBK）时交给附件读取，它会按 GB18030 解码
     if (file.encodingError) return { inWorkspace: true, result: null };

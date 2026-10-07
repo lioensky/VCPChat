@@ -48,6 +48,10 @@ export function normalizeCssColor(doc, raw, fallback) {
     }
 }
 
+// 外框没有底色时用的兜底色
+export const LIGHT_FALLBACK_BG = '#fafafa';
+export const DARK_FALLBACK_BG = '#14161a';
+
 const isTransparent = (value) => !value || value === 'transparent' || /^rgba\([^)]*,\s*0\)$/.test(value);
 
 export function buildTerminalTheme(doc, element) {
@@ -55,7 +59,7 @@ export function buildTerminalTheme(doc, element) {
     // 底色和前景由 CSS（.side-terminal-screen 的 background / color）决定，这里只读浏览器算好的结果，
     // 保证 xterm 画布和外框同色，主题切换时也跟着变。
     const computed = element ? doc.defaultView.getComputedStyle(element) : null;
-    const background = isTransparent(computed?.backgroundColor) ? (light ? '#fafafa' : '#14161a') : normalizeCssColor(doc, computed.backgroundColor, light ? '#fafafa' : '#14161a');
+    const background = isTransparent(computed?.backgroundColor) ? (light ? LIGHT_FALLBACK_BG : DARK_FALLBACK_BG) : normalizeCssColor(doc, computed.backgroundColor, light ? LIGHT_FALLBACK_BG : DARK_FALLBACK_BG);
     const foreground = computed?.color ? normalizeCssColor(doc, computed.color, light ? '#1f2937' : '#d4d4d8') : (light ? '#1f2937' : '#d4d4d8');
     return {
         ...(light ? LIGHT_PALETTE : DARK_PALETTE),

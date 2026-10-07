@@ -4,7 +4,9 @@ import { JSDOM } from 'jsdom';
 
 import { createCodeViewerSideProvider } from '../modules/ui-system/side-pane/codeViewerSideProvider.js';
 import * as SidePaneState from '../modules/ui-system/side-pane/side-pane-state.js';
+import { DIFF_PAGE_ROWS } from '../modules/ui-system/side-pane/code-viewer/diff-view.js';
 import { installMainComposer } from './helpers/main-composer.mjs';
+import { waitFor } from './helpers/wait-for.mjs';
 
 test('openViewer opens a workspace-wide tab that becomes active even while a conversation is the parent', async () => {
     const dom = new JSDOM('<div></div>');
@@ -40,8 +42,8 @@ test('mounted viewer preserves code insertion, wrap state and paged diff mode sw
     const handle = await provider.mountTab({ title: 'example.js', payload: { code: current, mode: 'diff', oldCode: before, newCode: after } }, view);
     try {
         assert.equal(handle.getMode(), 'diff');
-        assert.equal(view.querySelectorAll('.side-diff-row').length, 500);
-        const more = [...view.querySelectorAll('button')].find(button => button.textContent.includes('显示更多行'));
+        assert.equal(view.querySelectorAll('.side-diff-row').length, DIFF_PAGE_ROWS);
+        const more = view.querySelector('[data-action="diff-more"]');
         more.click();
         assert.equal(view.querySelectorAll('.side-diff-row').length, 601);
         assert.equal(more.hidden, true);
@@ -90,9 +92,9 @@ test('workspace picker ignores stale reads and detaches its controls on dispose'
         await new Promise(resolve => setImmediate(resolve));
         assert.equal(handle.getCode(), 'const newest: number = 2;\n');
         assert.equal(view.querySelector('.side-code-title').textContent, 'new.ts');
-        assert.equal(view.querySelector('.side-code-lang-tag').textContent, 'TS');
+        assert.equal(view.querySelector('[data-lang]').dataset.lang, 'typescript');
         const picker = view.querySelector('.side-code-picker');
-        const toggle = view.querySelector('[aria-label="选择文件"]');
+        const toggle = view.querySelector('[data-action="toggle-picker"]');
         const collapsed = picker.classList.contains('is-collapsed');
         handle.dispose();
         toggle.click();
@@ -180,8 +182,9 @@ test('workspace picker is keyboard usable and returns focus to its toggle after 
     try {
         const filter = view.querySelector('.side-code-picker-filter');
         const list = view.querySelector('.side-code-picker-list');
-        const toggle = view.querySelector('[aria-label="选择文件"]');
-        assert.equal(filter.getAttribute('aria-label'), '搜索文件名');
+        const toggle = view.querySelector('[data-action="toggle-picker"]');
+        assert.ok(toggle.getAttribute('aria-label'), 'the icon-only toggle has an accessible name');
+        assert.ok(filter.getAttribute('aria-label'), 'the filter has an accessible name');
         assert.notEqual(list.getAttribute('role'), 'listbox', 'rows are buttons, not options');
         assert.equal(toggle.getAttribute('aria-expanded'), 'true');
 
@@ -225,7 +228,7 @@ test('a failed file read shows an error instead of an empty file, and a real emp
     const empty = await provider.mountTab(fileTab('C:/proj/empty.txt'), doc.getElementById('empty'));
     try {
         const missingView = doc.getElementById('missing');
-        assert.match(missingView.querySelector('.side-code-error')?.textContent || '', /读取文件失败/);
+        assert.ok(missingView.querySelector('.side-code-error')?.textContent.trim(), 'the failure is shown as an error');
         assert.equal(missingView.querySelector('.side-code-editor-shell'), null);
         assert.equal(missing.getCode(), '');
 
@@ -256,15 +259,19 @@ test('workspace files are read through the source service and report binary, too
     } });
     const view = doc.getElementById('view');
     const expectations = [
-        ['bin.dat', '.side-code-empty', /二进制文件/],
-        ['big.log', '.side-code-empty', /文件过大（6144 KB）/],
-        ['gone.js', '.side-code-error', /文件不存在/],
+        ['bin.dat', '.side-code-empty[data-reason="binary"]', null],
+        ['big.log', '.side-code-empty[data-reason="too-large"]', /6144/],
+        // 后端给的错误原样显示
+        ['gone.js', '.side-code-error', /gone\.js/],
         ['ok.js', '.side-code-pre', /const ok = 1;/]
     ];
     for (const [name, selector, pattern] of expectations) {
         const handle = await provider.mountTab(fileTab(`C:/repo/src/${name}`), view);
         try {
-            assert.match(view.querySelector(selector)?.textContent || '', pattern, name);
+            const shown = view.querySelector(selector);
+            assert.ok(shown, name);
+            if (pattern) assert.match(shown.textContent, pattern, name);
+            if (name !== 'ok.js') assert.equal(handle.getCode(), '', name);
         } finally {
             handle.dispose();
         }
@@ -312,7 +319,8 @@ test('reopening an already open file re-reads it from disk, while snippets keep 
         // 删除后重新读取：显示错误，不再保留旧内容
         disk = null;
         await first.reload();
-        assert.match(view.querySelector('.side-code-error').textContent, /读取文件失败/);
+        assert.ok(view.querySelector('.side-code-error'));
+        assert.equal(view.querySelector('.side-code-pre'), null, 'the old content is gone');
         assert.equal(first.getCode(), '');
 
         const snippetView = doc.createElement('section');
@@ -343,9 +351,75 @@ test('large files only render the first preview chunk, cut at a line end', async
         const shownLines = view.querySelectorAll('.side-code-line-number').length;
         assert.equal(shownLines, Math.floor(PREVIEW_CHAR_LIMIT / (line.length + 1)));
         assert.ok(view.querySelector('.side-code-pre').textContent.split('\n').every(row => row === line));
-        assert.equal(view.querySelector('.side-code-truncated-note').textContent, `文件较大（共 20000 行），只预览前 ${shownLines} 行；完整内容请在外部编辑器中查看。`);
+        const note = view.querySelector('.side-code-truncated-note').textContent;
+        assert.ok(note.includes(String(20000)) && note.includes(String(shownLines)), 'the note gives the total and the previewed line count');
         // 复制和插入用的仍是完整内容
         assert.equal(handle.getCode(), text);
+    } finally {
+        handle.dispose();
+        dom.window.close();
+    }
+});
+
+test('the file button reveals a workspace file in the file manager and never opens it by association', async () => {
+    const dom = new JSDOM('<section id="view"></section>');
+    const doc = dom.window.document;
+    const revealed = [];
+    const toasts = [];
+    const opened = [];
+    const api = {
+        gitListWorkspaces: async () => ({ success: true, data: { workspaces: [{ id: 'ws1', path: 'C:\\proj' }] } }),
+        sourceReadFile: async () => ({ success: true, data: { content: 'x', encoding: 'utf8' } }),
+        gitRevealPath: async (wsId, rel) => { revealed.push([wsId, rel]); return { success: true }; },
+        openPythonAttachmentInTextEditor: (p) => opened.push(p),
+        sendOpenExternalLink: (p) => opened.push(p)
+    };
+    const provider = createCodeViewerSideProvider({ document: doc, api, uiHelper: { showToastNotification: (m, t) => toasts.push([m, t]) } });
+    const click = async (filePath) => {
+        const view = doc.createElement('section');
+        doc.body.append(view);
+        const handle = await provider.mountTab({ title: 'f', payload: { filePath } }, view);
+        const before = revealed.length + toasts.length;
+        view.querySelector('[data-action="open-external"]').click();
+        await waitFor(() => revealed.length + toasts.length > before, { message: 'the file button did nothing' });
+        await handle?.dispose?.();
+    };
+    await click('C:\\proj\\src\\a.js');
+    assert.deepEqual(revealed, [['ws1', 'src/a.js']]);
+    await click('C:\\Users\\me\\payload.bat');
+    assert.deepEqual(revealed.length, 1, 'a file outside the workspaces is not revealed');
+    assert.equal(toasts.at(-1)[0].includes('payload.bat'), true, 'its path is shown instead');
+    assert.deepEqual(opened, [], 'nothing is opened through a file association');
+    dom.window.close();
+});
+
+test('a path outside every workspace is only read after the user asks for it', async () => {
+    const dom = new JSDOM('<section id="view"></section>');
+    const doc = dom.window.document;
+    const reads = [];
+    const provider = createCodeViewerSideProvider({ document: doc, uiHelper: null, api: {
+        gitListWorkspaces: async () => ({ success: true, data: { workspaces: [{ id: 'ws1', path: 'C:\\proj' }] } }),
+        sourceReadFile: async () => ({ success: true, data: { text: 'in workspace' } }),
+        async getTextContent(filePath) { reads.push(filePath); return { text: 'PRIVATE KEY' }; }
+    } });
+    const view = doc.getElementById('view');
+    const handle = await provider.mountTab({ title: 'id_rsa', payload: { filePath: 'C:\\Users\\me\\.ssh\\id_rsa' } }, view);
+    try {
+        assert.deepEqual(reads, [], 'nothing is read before the user agrees');
+        assert.equal(handle.getCode(), '');
+        assert.match(view.textContent, /\.ssh/);
+        const consent = view.querySelector('[data-action="consent-read"]');
+        assert.ok(consent?.textContent.trim(), 'it asks with a named button');
+        consent.click();
+        await waitFor(() => handle.getCode() === 'PRIVATE KEY', { message: 'consent never read the file' });
+        assert.deepEqual(reads, ['C:\\Users\\me\\.ssh\\id_rsa']);
+
+        // 工作区里的文件照常直接读
+        const inside = doc.createElement('section');
+        doc.body.append(inside);
+        const insideHandle = await provider.mountTab({ title: 'a.js', payload: { filePath: 'C:\\proj\\a.js' } }, inside);
+        assert.equal(insideHandle.getCode(), 'in workspace');
+        insideHandle.dispose();
     } finally {
         handle.dispose();
         dom.window.close();
@@ -362,10 +436,6 @@ test('code is rendered in chunks whose text and line numbers stay continuous', a
     const view = doc.getElementById('view');
     const handle = await provider.mountTab({ title: 'chunks.txt', payload: { code, language: 'plaintext' } }, view);
     try {
-        const codeChunks = view.querySelectorAll('.side-code-pre .side-code-chunk');
-        const gutterChunks = view.querySelectorAll('.side-code-gutter .side-code-chunk');
-        assert.equal(codeChunks.length, 3);
-        assert.deepEqual([...gutterChunks].map(chunk => chunk.children.length), [CODE_CHUNK_LINES, CODE_CHUNK_LINES, 50]);
         assert.equal(view.querySelector('.side-code-pre').textContent, code);
         assert.equal(view.querySelectorAll('.side-code-line-number').length, lineCount);
         assert.equal([...view.querySelectorAll('.side-code-line-number')].at(-1).textContent, String(lineCount));
@@ -401,10 +471,9 @@ test('a file tab keeps its place on reload and its wrap, mode and consent after 
     const tab = { id: 'code-viewer:D:/logs/app.log', title: 'app.log', payload: { filePath: 'D:/logs/app.log' } };
     let handle = await provider.mountTab(tab, view);
     const body = () => view.querySelector('.side-code-body');
-    assert.match(body().textContent, /不在任何已登记的工作区/, 'outside the workspace it asks first');
-    [...view.querySelectorAll('button')].find(button => button.textContent.includes('读取'))?.click();
-    await new Promise(resolve => setTimeout(resolve, 20));
-    assert.equal(handle.getCode(), text);
+    assert.equal(handle.getCode(), '', 'outside the workspace it asks first');
+    view.querySelector('[data-action="consent-read"]').click();
+    await waitFor(() => handle.getCode() === text, { message: 'consent never read the file' });
 
     let shown = true;
     Object.defineProperty(body(), 'clientHeight', { configurable: true, get: () => (shown ? 400 : 0) });

@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 
@@ -86,7 +86,8 @@ test('without any configured model the side chat does not invent one and refuses
     assert.equal(doc.querySelector('.side-chat-send-btn').disabled, true);
     await submit(doc, 'hello');
     assert.equal(caps.sent.length, 0);
-    assert.match(doc.querySelector('.side-chat-status-text').textContent, /选择模型/);
+    assert.equal(doc.querySelector('.side-chat-send-btn').disabled, true);
+    assert.equal(doc.querySelector('.side-chat-status-text').dataset.statusType, 'error');
     await handle.dispose();
 });
 
@@ -160,25 +161,31 @@ test('new side chats are named by the lowest free ordinal under the same parent'
     });
     try {
         await dom.window.openSideChatWithSelection({ selectedText: '一段引用' });
-        assert.deepEqual(opened, ['辅助对话 2'], 'the menu entry opens a side chat with the first free number of this topic');
+        assert.equal(opened.length, 1);
+        assert.equal(Number(opened[0].match(/\d+$/)?.[0]), 2, 'the menu entry opens a side chat with the first free number of this topic');
     } finally {
         wiring.dispose?.();
         dom.window.close();
     }
 });
 
-test('composer autosaves go to browser storage; metadata only migrates once', async () => {
+test('composer autosaves go to browser storage; metadata only migrates once', async t => {
     const saved = [];
     const caps = capabilities({ saveSideChatMetadata: async (meta) => { saved.push(meta); return { success: true }; } });
     const { dom, doc, handle } = await mount(descriptor({ model: 'm' }), caps);
     const textarea = doc.querySelector('textarea');
     const drafts = createSideChatDraftStore({ getStorage: () => dom.window.localStorage });
 
+    mock.timers.enable({ apis: ['setTimeout'] });
+    t.after(() => mock.timers.reset());
     textarea.value = '草稿';
     textarea.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
     handle.addReference({ id: 'r1', text: '引用原文', sourceMessageId: 'msg-1' });
+    mock.timers.tick(399);
+    await new Promise(resolve => setImmediate(resolve));
     assert.equal(saved.length, 0, 'typing is debounced');
-    await new Promise(resolve => setTimeout(resolve, 450));
+    mock.timers.tick(1);
+    for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve));
     assert.equal(saved.length, 1);
     assert.equal(saved[0].draft, undefined);
     assert.equal(saved[0].references, undefined);
@@ -186,13 +193,13 @@ test('composer autosaves go to browser storage; metadata only migrates once', as
     assert.equal(drafts.read(handle.descriptor).input.draft, '草稿');
     assert.deepEqual(drafts.read(handle.descriptor).input.references, [{ id: 'r1', text: '引用原文', sourceMessageId: 'msg-1' }]);
 
-    // 页面卸载前未到时间的改动立即写入
-    handle.removeReference('r1');
-    textarea.value = '';
-    dom.window.dispatchEvent(new dom.window.Event('pagehide'));
+    // 迁移后继续输入只写浏览器存储（pagehide 立即写入见 side-chat-draft-save.test.mjs）
+    textarea.value = '再改一次';
+    textarea.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    mock.timers.tick(400);
+    for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve));
     assert.equal(saved.length, 1);
-    assert.equal(drafts.read(handle.descriptor).input.draft, '');
-    assert.deepEqual(drafts.read(handle.descriptor).input.references, []);
+    assert.equal(drafts.read(handle.descriptor).input.draft, '再改一次');
     await handle.dispose();
 });
 
@@ -209,14 +216,17 @@ test('an empty model cache waits for the real refresh result instead of a fixed 
     // 再次打开模型菜单时共用同一次刷新
     const second = listSideChatModels(api);
     await tick();
-    assert.deepEqual(calls, ['cache', 'cache', 'refresh']);
+    const count = name => calls.filter(call => call === name).length;
+    assert.equal(count('refresh'), 1, 'concurrent opens share one refresh');
+    const cacheReads = count('cache');
     assert.equal(settled, false, 'still waiting for the refresh');
     finishRefresh({ success: true, models: [{ id: 'a' }, 'b'] });
     const result = await pending;
     assert.deepEqual(result.ids, ['a', 'b']);
     assert.deepEqual([...result.favorites], ['b']);
     assert.deepEqual((await second).ids, ['a', 'b']);
-    assert.deepEqual(calls, ['cache', 'cache', 'refresh'], 'the refresh result is used directly, no second cache read');
+    assert.equal(count('refresh'), 1);
+    assert.equal(count('cache'), cacheReads, 'the refresh result is used directly, no second cache read');
 
     // 缓存里已经有模型时不触发刷新
     const warm = await listSideChatModels({ getCachedModels: async () => ['x'], refreshModels: () => assert.fail('no refresh') });

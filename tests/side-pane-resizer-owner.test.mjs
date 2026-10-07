@@ -2,46 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createSidePaneResizerOwner } from '../modules/ui-system/side-pane/side-pane-resizer-owner.js';
 
-test('createSidePaneResizerOwner initializes VCPSidebarResizer with direction -1 and pointer events', () => {
-    let capturedOptions = null;
-    const fakeHandle = {
-        ownerDocument: {
-            body: { style: {}, classList: { toggle() {} } },
-        },
-    };
-    const fakePane = {
-        style: { width: '360px' },
-        getBoundingClientRect: () => ({ width: 360 }),
-    };
-
-    const mockFactory = (options) => {
-        capturedOptions = options;
-        return {
-            refresh() {},
-            dispose() { capturedOptions = null; },
-        };
-    };
-
-    const owner = createSidePaneResizerOwner({
-        handle: fakeHandle,
-        paneElement: fakePane,
-        resizerFactory: mockFactory,
-        windowRef: { innerWidth: 1200, PointerEvent: function PointerEvent() {} },
-    });
-
-    assert.ok(capturedOptions);
-    assert.equal(capturedOptions.direction, -1);
-    assert.equal(capturedOptions.eventNames.down, 'pointerdown');
-
-    // Check bounds calculation: total 1200, maxRatio 0.65 -> 780, minRemainder 1200 - 420 -> 780
-    const bounds = capturedOptions.getBounds();
-    assert.equal(bounds.min, 240);
-    assert.equal(bounds.max, 780);
-
-    owner.dispose();
-    assert.equal(capturedOptions, null);
-});
-
 test('createSidePaneResizerOwner notifies width commit and binds lifecycle scope', () => {
     let appliedWidth = 0;
     let committedWidth = 0;
@@ -63,7 +23,7 @@ test('createSidePaneResizerOwner notifies width commit and binds lifecycle scope
         factoryOptions = options;
         return {
             refresh() {},
-            dispose() {},
+            dispose() { factoryOptions = null; },
         };
     };
 
@@ -74,7 +34,7 @@ test('createSidePaneResizerOwner notifies width commit and binds lifecycle scope
         },
     };
 
-    createSidePaneResizerOwner({
+    const owner = createSidePaneResizerOwner({
         handle: fakeHandle,
         paneElement: fakePane,
         resizerFactory: mockFactory,
@@ -90,6 +50,9 @@ test('createSidePaneResizerOwner notifies width commit and binds lifecycle scope
 
     factoryOptions.onCommit(400);
     assert.equal(committedWidth, 400);
+
+    owner.dispose();
+    assert.equal(factoryOptions, null, 'disposing the owner disposes the resizer');
 });
 
 test('one arrow key press moves the side pane once and commits once', async () => {
@@ -128,9 +91,12 @@ test('one arrow key press moves the side pane once and commits once', async () =
     assert.deepEqual(commits, [420]);
     press('ArrowRight');
     assert.equal(width, 400);
+    // 1200 宽的窗口：上限 780，下限 240
     press('End');
     assert.equal(width, 780);
-    assert.deepEqual(commits, [420, 400, 780]);
+    press('Home');
+    assert.equal(width, 240);
+    assert.deepEqual(commits, [420, 400, 780, 240]);
 });
 
 test('holding an arrow key resizes on every press but saves the width once, after the keys stop', async () => {
@@ -150,12 +116,14 @@ test('holding an arrow key resizes on every press but saves the width once, afte
     let width = 400;
     const pane = { style: {}, getBoundingClientRect: () => ({ width }) };
     const commits = [];
+    let pending = null;
     const owner = createSidePaneResizerOwner({
         handle,
         paneElement: pane,
         resizerFactory: win.VCPSidebarResizer.create,
         documentRef: { querySelector: () => null, addEventListener() {}, removeEventListener() {} },
-        windowRef: { innerWidth: 1200, setTimeout, clearTimeout },
+        // 手动调度保存的计时器：不用真的等
+        windowRef: { innerWidth: 1200, setTimeout: (fn) => { pending = fn; return 1; }, clearTimeout: () => { pending = null; } },
         keyboardCommitDelayMs: 30,
         onWidthChange: w => { width = w; },
         onWidthCommit: w => commits.push(w),
@@ -165,7 +133,8 @@ test('holding an arrow key resizes on every press but saves the width once, afte
     for (let i = 0; i < 5; i++) press('ArrowLeft');
     assert.equal(width, 500, 'every press resizes right away');
     assert.deepEqual(commits, [], 'nothing is saved while keys are still coming');
-    await new Promise(resolve => setTimeout(resolve, 60));
+    assert.ok(pending, 'a save is scheduled');
+    pending();
     assert.deepEqual(commits, [500]);
 
     press('End');

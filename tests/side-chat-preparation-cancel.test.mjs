@@ -114,7 +114,7 @@ test('stopping while auxiliary history is saving prevents a later generation req
     assert.deepEqual(f.getHistory().map(message => [message.role, message.content]), [['user', 'cancel while saving']]);
     assert.equal(f.doc.querySelector('.side-chat-stop-btn').hidden, true);
     assert.equal(f.doc.querySelector('.side-chat-send-btn').hidden, false);
-    assert.equal(f.statuses.at(-1).text, '已取消');
+    assert.equal(f.statuses.at(-1).code, 'cancelled');
 });
 
 test('stopping during parent snapshot refresh preserves the unsent auxiliary draft and reference', async t => {
@@ -128,7 +128,7 @@ test('stopping during parent snapshot refresh preserves the unsent auxiliary dra
     assert.deepEqual(f.getHistory(), []);
     assert.equal(f.textarea.value, 'unsent question');
     assert.deepEqual(f.handle.getReferences().map(reference => reference.id), ['reference']);
-    assert.equal(f.statuses.at(-1).text, '已取消');
+    assert.equal(f.statuses.at(-1).code, 'cancelled');
 });
 
 test('stopping during request context preparation prevents generation and retains the submitted question', async t => {
@@ -139,7 +139,7 @@ test('stopping during request context preparation prevents generation and retain
     await f.untilIdle();
     assert.equal(f.requests.length, 0);
     assert.deepEqual(f.getHistory().map(message => [message.role, message.content]), [['user', 'question {{VCPChatCanvas}}']]);
-    assert.equal(f.statuses.at(-1).text, '已取消');
+    assert.equal(f.statuses.at(-1).code, 'cancelled');
 });
 
 test('a failed upstream interrupt waits for local terminal persistence and retains the partial auxiliary answer', async t => {
@@ -154,7 +154,7 @@ test('a failed upstream interrupt waits for local terminal persistence and retai
     assert.deepEqual(f.getHistory().map(message => message.content), ['question with partial answer', 'retained partial answer']);
     assert.equal(f.getHistory()[1].finishReason, 'cancelled');
     assert.match(f.doc.getElementById('mount').textContent, /retained partial answer/);
-    assert.equal(f.statuses.at(-1).text, '已取消');
+    assert.equal(f.statuses.at(-1).code, 'cancelled');
 });
 
 test('stopping before the first HTTP response settles as cancellation rather than a service error', async t => {
@@ -163,10 +163,9 @@ test('stopping before the first HTTP response settles as cancellation rather tha
     await f.entered.promise;
     f.stop(); f.gate.resolve();
     await f.untilIdle();
-    assert.equal(f.statuses.at(-1).text, '已取消');
-    assert.equal(f.doc.querySelector('.side-chat-status-error'), null);
+    assert.equal(f.statuses.at(-1).code, 'cancelled');
+    assert.ok(f.statuses.every(status => status.type !== 'error'), JSON.stringify(f.statuses));
     assert.deepEqual(f.getHistory().map(message => message.content), ['stop while waiting for response']);
-    assert.doesNotMatch(f.doc.getElementById('mount').textContent, /发送失败|请求流式回复失败/);
 });
 
 test('a service error exits auxiliary busy state and is shown as an error', async t => {
@@ -174,7 +173,9 @@ test('a service error exits auxiliary busy state and is shown as an error', asyn
     f.submit('a retained question');
     await f.untilIdle();
     assert.equal(f.requests.length, 1);
-    assert.match(f.doc.querySelector('.side-chat-status-error').textContent, /502 fixture service unavailable/);
+    const status = f.doc.querySelector('.side-chat-status-text');
+    assert.equal(status.dataset.statusType, 'error');
+    assert.match(status.textContent, /502 fixture service unavailable/);
     assert.equal(f.doc.querySelector('.side-chat-stop-btn').hidden, true);
     assert.equal(f.textarea.disabled, false);
     assert.deepEqual(f.getHistory().map(message => message.content), ['a retained question']);

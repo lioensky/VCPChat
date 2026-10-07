@@ -89,11 +89,10 @@ export async function fixture(t, { stream = false, seed = [], onSave = null, onS
     for (let i = 0; i < 5; i++) await tick();
     const textarea = doc.querySelector('.side-chat-textarea'), form = doc.querySelector('form');
     const untilIdle = async () => { for (let n = 0; n < 200; n++) { await tick(); if (!form.hasAttribute('aria-busy')) return; } throw new Error('Side composer did not settle'); };
-    return { dom, doc, handle, requests, statuses, saves, toasts, textarea, form, untilIdle, bridge,
+    return { dom, doc, handle, requests, statuses, saves, toasts, textarea, form, untilIdle, bridge, streamRoutes: routes,
         getHistory: () => history, getConversation: () => conversation,
         submit(text) { textarea.value = text; form.requestSubmit(); },
         stop() { doc.querySelector('.side-chat-stop-btn').click(); },
-        statusText: () => doc.querySelector('.side-chat-status-text').textContent,
         badgeHidden: () => doc.querySelector('.side-chat-persistence-badge')?.hidden,
     };
 }

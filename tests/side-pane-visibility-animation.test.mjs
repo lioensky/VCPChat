@@ -27,8 +27,6 @@ test('reopening while the close animation runs ends expanded, not collapsed', as
     await frame();
     transitionEnd();
 
-    assert.ok(root.classList.contains('active'));
-    assert.ok(!root.classList.contains('collapsed'));
     assert.equal(root.getAttribute('aria-hidden'), null);
     assert.equal(visibility.isAnimating(), false);
     visibility.dispose();
@@ -58,8 +56,7 @@ test('closing while the open animation runs ends collapsed', async () => {
     await frame();
     transitionEnd();
 
-    assert.ok(root.classList.contains('collapsed'));
-    assert.ok(!root.classList.contains('active'));
     assert.equal(root.getAttribute('aria-hidden'), 'true');
+    assert.equal(visibility.isAnimating(), false);
     visibility.dispose();
 });

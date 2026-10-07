@@ -33,7 +33,9 @@ test('Git rows and the refresh button do not read icon ligature names', async ()
         assert.ok(row);
         assert.doesNotMatch(spokenText(row), /expand_more/);
         assert.match(spokenText(row), /app\.js/);
-        assert.equal(spokenText(host.querySelector('.side-git-refresh-btn')), '刷新');
+        const refreshName = spokenText(host.querySelector('.side-git-refresh-btn'));
+        assert.ok(refreshName, 'the refresh button has a spoken name');
+        assert.doesNotMatch(refreshName, /refresh|sync/);
     } finally {
         handle.dispose?.();
         dom.window.close();

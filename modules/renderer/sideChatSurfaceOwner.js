@@ -441,7 +441,7 @@ export async function mountSideChatSurface(container, {
             if (needsSnapshotRefresh()) await refreshSnapshot();
             if (sendController.signal.aborted) {
                 restoreDraftIfRetracted();
-                updateStatus('已取消');
+                updateStatus('已取消', 'normal', 'cancelled');
                 return;
             }
             const result = await surface.sendMessage({
@@ -456,7 +456,7 @@ export async function mountSideChatSurface(container, {
             const terminalType = result?.terminal?.event?.type;
             if (terminalType === 'cancelled' || terminalType === 'discarded') {
                 restoreDraftIfRetracted();
-                updateStatus('已取消');
+                updateStatus('已取消', 'normal', 'cancelled');
             } else if (terminalType === 'failed') {
                 const transportErr = result.terminal.event.outcome?.transport?.error;
                 const persistenceErr = result.terminal.event.outcome?.persistence?.error;

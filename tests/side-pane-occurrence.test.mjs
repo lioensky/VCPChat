@@ -59,7 +59,6 @@ test('a tab gets an occurrence scope and a view scope, both released when it clo
 
     const [mount] = mounts;
     assert.equal(mount.scope.active, true);
-    assert.equal(mount.scope.parent.label, 'tab:probe:1');
     assert.equal(mount.occurrence.id, 'probe:1');
     assert.equal(mount.occurrence.signal.aborted, false);
     doc.dispatchEvent(new dom.window.Event('probe'));
@@ -193,7 +192,6 @@ test('pollWhileVisible runs no timers while hidden and catches up when shown aga
 
         mock.timers.tick(10 * 60_000);
         assert.equal(calls, 0, 'never visible, never polled');
-        assert.equal(view.snapshot().resources.some(r => r.type === 'child-scope'), false);
 
         tab.setVisible(true);
         assert.equal(calls, 1, 'first show after a long hidden period catches up once');

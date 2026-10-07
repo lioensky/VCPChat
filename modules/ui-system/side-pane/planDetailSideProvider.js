@@ -34,8 +34,8 @@ const TAB_PREFIX = 'plan-detail:';
 const TOPIC_TAB = 'topic';
 const NO_PROJECT_TAB = 'none';
 const FOLLOW_SKIPPED = Symbol('follow-skipped');
-const REFRESH_DEBOUNCE_MS = 200;
-const FILTER_DEBOUNCE_MS = 300;
+export const REFRESH_DEBOUNCE_MS = 200;
+export const FILTER_DEBOUNCE_MS = 300;
 
 const STATUS_LABEL = Object.freeze({ completed: '已完成', inProgress: '进行中', pending: '待处理' });
 const STATUS_ICON = Object.freeze({ completed: 'check_circle', inProgress: 'arrow_forward', pending: 'radio_button_unchecked' });
@@ -390,7 +390,9 @@ export function createPlanDetailSideProvider({
                     head.appendChild(titleRow);
                     return head;
                 }
-                addCrumb(h('span', 'side-plan-crumb side-plan-context', activity ? '本话题' : '工程全览'));
+                const context = h('span', 'side-plan-crumb side-plan-context', activity ? '本话题' : '工程全览');
+                context.dataset.scope = activity ? 'topic' : 'project';
+                addCrumb(context);
                 if (project.workspace_alias) addCrumb(h('span', 'side-plan-crumb', project.workspace_alias));
                 addCrumb(h('span', 'side-plan-title', project.name || '未命名工程'));
                 crumbs.appendChild(icon('expand_more', 'side-plan-crumb-caret'));
@@ -401,7 +403,11 @@ export function createPlanDetailSideProvider({
                 const updated = when(project.updated_at);
                 if (statusText || updated) {
                     const statusPill = h('div', `side-plan-status status-${status || 'unknown'}`);
-                    if (statusText) statusPill.appendChild(h('span', `side-plan-chip status-${status || 'unknown'}`, statusText));
+                    if (statusText) {
+                        const chip = h('span', `side-plan-chip status-${status || 'unknown'}`, statusText);
+                        chip.dataset.status = status || 'unknown';
+                        statusPill.appendChild(chip);
+                    }
                     if (updated) {
                         statusPill.appendChild(h('span', 'side-plan-updated', updated));
                         // 窄侧栏里时间段会藏起来，悬停状态胶囊仍能看到
@@ -420,6 +426,7 @@ export function createPlanDetailSideProvider({
                     divider.setAttribute('aria-hidden', 'true');
                     actions.appendChild(divider);
                     const forgeBtn = button('side-plan-icon-btn side-plan-forge', null, '完整记录与回退（V工程 页）');
+                    forgeBtn.dataset.action = 'open-forge';
                     forgeBtn.appendChild(icon('open_in_new'));
                     forgeBtn.addEventListener('click', () => onOpenProjectForge(project.id));
                     actions.appendChild(forgeBtn);
@@ -478,6 +485,7 @@ export function createPlanDetailSideProvider({
                 };
                 if (activity) {
                     const s = activity.stats;
+                    Object.assign(stats.dataset, { batches: s.batchCount, nodes: s.nodeCount, files: s.fileCount });
                     stats.append(
                         h('span', '', `${s.batchCount} 批`),
                         h('span', '', `${s.nodeCount} 次改动`),
@@ -626,6 +634,7 @@ export function createPlanDetailSideProvider({
                     return box;
                 }
                 if (!filterRows) {
+                    box.setAttribute('aria-busy', 'true');
                     box.appendChild(h('div', 'side-plan-node-message', '正在筛选…'));
                     return box;
                 }
@@ -739,6 +748,7 @@ export function createPlanDetailSideProvider({
             function renderOtherHint() {
                 if (!activity || !other.count) return null;
                 const hint = h('div', 'side-plan-other-hint');
+                hint.dataset.count = String(other.count);
                 hint.appendChild(h('span', '', `这个工程还有 ${other.count}${other.more ? '+' : ''} 批来自其他话题的施工`));
                 if (onOpenProjectForge) {
                     const link = button('side-plan-link', '在 V工程 页查看');

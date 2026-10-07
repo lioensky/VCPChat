@@ -3,8 +3,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { mountSideChatSurface } from '../modules/renderer/sideChatSurfaceOwner.js';
+import { waitFor } from './helpers/wait-for.mjs';
 
-const settle = () => new Promise(resolve => setTimeout(resolve, 10));
+const tick = () => new Promise(resolve => setImmediate(resolve));
+const ready = doc => waitFor(() => !doc.querySelector('.side-chat-send-btn').disabled, { message: 'side chat did not load' });
 
 async function fixture() {
     const dom = new JSDOM('<div id="mount"></div>');
@@ -45,7 +47,7 @@ async function fixture() {
             }
         }
     });
-    await settle();
+    await ready(doc);
     const textarea = doc.querySelector('.side-chat-textarea');
     const stopBtn = doc.querySelector('.side-chat-stop-btn');
     return {
@@ -61,12 +63,12 @@ test('a message button clicked while a reply streams does not start a second sen
     const f = await fixture();
     try {
         f.typeAndSend('first question');
-        await settle();
-        assert.equal(f.sends.length, 1);
+        await waitFor(() => f.sends.length === 1);
         assert.equal(f.stopBtn.hidden, false);
 
         f.clickMessageButton('option A');
-        await settle();
+        await waitFor(() => f.toasts.length > 0);
+        await tick();
         assert.equal(f.sends.length, 1, 'no second send while the first one streams');
         assert.equal(f.stopBtn.hidden, false, 'the running reply can still be stopped');
         assert.ok(f.toasts.some(t => t.type === 'warning'));
@@ -78,29 +80,30 @@ test('a message button does not overwrite or send a typed draft', async () => {
     try {
         f.textarea.value = 'half-written thought';
         f.clickMessageButton('option A');
-        await settle();
+        for (let i = 0; i < 5; i++) await tick();
         assert.equal(f.sends.length, 0);
         assert.equal(f.textarea.value, 'half-written thought');
 
         f.textarea.value = '';
         f.clickMessageButton('option A');
-        await settle();
-        assert.equal(f.sends.length, 1);
+        await waitFor(() => f.sends.length === 1);
     } finally { await f.cleanup(); }
 });
 
-test('a failed send puts the draft back even when the same words were sent successfully before', async () => {
+test('a failed send puts the draft and references back even when the same words were sent successfully before', async () => {
     const dom = new JSDOM('<div id="mount"></div>');
     const doc = dom.window.document;
     let history = [
         { id: 'u-old', role: 'user', content: '继续' },
         { id: 'a-old', role: 'assistant', content: '好的' }
     ];
+    const statuses = [];
     const handle = await mountSideChatSurface(doc.getElementById('mount'), {
         descriptor: {
             id: 'side', title: '侧聊', model: 'model', contextMode: 'references-only',
             parent: { itemId: 'agent', topicId: 'parent' }, child: { itemId: 'agent', topicId: 'child' }
         },
+        onStatusChange: status => statuses.push(status),
         chatCapabilities: {
             repository: { getHistory: async () => history, saveHistory: async () => ({ success: true }) },
             uiHelper: { showToastNotification() {} },
@@ -121,13 +124,15 @@ test('a failed send puts the draft back even when the same words were sent succe
         }
     });
     try {
-        await settle();
+        await ready(doc);
         const textarea = doc.querySelector('.side-chat-textarea');
+        handle.addReference({ id: 'ref', text: 'essential quoted context' });
         textarea.value = '继续';
         doc.querySelector('form').requestSubmit();
-        await settle();
-        await settle();
+        await waitFor(() => !doc.querySelector('form').hasAttribute('aria-busy') && statuses.at(-1)?.type === 'error');
         assert.equal(textarea.value, '继续', 'the draft that failed to send is back in the composer');
+        assert.deepEqual(handle.getReferences().map(ref => ref.id), ['ref'], 'the references that failed to send are back');
+        assert.equal((await handle.requestClose()).closed, true, 'a restored transport failure does not block closing');
     } finally {
         await handle.dispose();
         dom.window.close();

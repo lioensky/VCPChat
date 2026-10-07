@@ -52,6 +52,11 @@ test('a global tool keeps the pane state when no topic tab is remembered', () =>
     assert.equal(backOnA.activeTabId, browser.id);
     // 全局工具不跟着话题的收起偏好走
     assert.equal(backOnA.visible, true);
+
+    // 用户自己收起后换话题：仍停在全局工具上，也不自己展开
+    const collapsed = SidePaneState.setParent(SidePaneState.setVisible(backOnA, false), topicB);
+    assert.equal(collapsed.activeTabId, browser.id);
+    assert.equal(collapsed.visible, false);
 });
 
 test('another topic\'s side chat is never restored as the preferred tab', () => {

@@ -1,10 +1,10 @@
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 
 import { createSidePaneRootScope } from '../modules/ui-system/side-pane/side-pane-occurrence.js';
 import { createCodeViewerSideProvider } from '../modules/ui-system/side-pane/codeViewerSideProvider.js';
-import { createPlanDetailSideProvider, planTabId } from '../modules/ui-system/side-pane/planDetailSideProvider.js';
+import { createPlanDetailSideProvider, planTabId, REFRESH_DEBOUNCE_MS } from '../modules/ui-system/side-pane/planDetailSideProvider.js';
 import { createBrowserSideProvider } from '../modules/ui-system/side-pane/browserSideProvider.js';
 import { getProjectForgeChangesSource } from '../modules/ui-system/sources/projectforge-changes.js';
 
@@ -25,18 +25,17 @@ test('releasing only the view scope detaches every control of the code viewer', 
     const element = doc.getElementById('view');
     const handle = await provider.mountTab({ title: '代码', payload: {} }, element, { scope: view });
     try {
-        const [owned] = scopesUnder(view);
-        assert.equal(owned.label, 'code-viewer');
-        assert.ok(owned.resources.some(resource => resource.label.startsWith('picker:')), 'the picker listens through the view scope');
-        assert.ok(view.resourceSummary().byType.listener > 0);
+        assert.ok(scopesUnder(view).length > 0, 'the viewer owns a scope under the view');
+        assert.ok(view.resourceSummary().byType.listener > 0, 'the controls listen through the view scope');
 
         const picker = element.querySelector('.side-code-picker');
-        const toggle = element.querySelector('[aria-label="选择文件"]');
+        const toggle = element.querySelector('[data-action="toggle-picker"]');
         const collapsed = picker.classList.contains('is-collapsed');
         await view.dispose('dormant');
         toggle.click();
         assert.equal(picker.classList.contains('is-collapsed'), collapsed, 'the toggle no longer reacts');
         assert.equal(scopesUnder(view).length, 0);
+        assert.equal(view.resourceSummary().byType.listener ?? 0, 0);
         assert.equal(view.resourceSummary().resources, 0);
     } finally {
         await handle.dispose();
@@ -64,7 +63,7 @@ test('a code viewer whose view is released while it is still loading gives up in
     dom.window.close();
 });
 
-test('releasing only the view scope stops the plan page following project changes', async () => {
+test('releasing only the view scope stops the plan page following project changes', async (t) => {
     const dom = new JSDOM('<div id="view"></div>', { pretendToBeVisual: true });
     const doc = dom.window.document;
     let changed = null;
@@ -85,12 +84,17 @@ test('releasing only the view scope stops the plan page following project change
     const handle = await provider.mountTab({ id: planTabId('p1'), payload: { projectId: 'p1' } }, doc.getElementById('view'), { scope: view });
     try {
         assert.equal(typeof changed, 'function');
-        assert.ok(view.resourceSummary().byType['shared-source'] > 0 || view.resourceSummary().byType.subscription > 0);
+        assert.ok(view.resourceSummary().resources > 0);
+        // 释放前已经排上一次防抖重读：释放后推过防抖也不能再读
+        mock.timers.enable({ apis: ['setTimeout'] });
+        t.after(() => mock.timers.reset());
+        const before = gets;
+        changed({ projectId: 'p1' });
         await view.dispose('dormant');
         assert.equal(changed, null, 'the push subscription is returned');
         assert.equal(scopesUnder(view).length, 0);
-        const before = gets;
-        await new Promise(resolve => setTimeout(resolve, 300));
+        mock.timers.tick(REFRESH_DEBOUNCE_MS);
+        for (let i = 0; i < 10; i += 1) await new Promise(resolve => setImmediate(resolve));
         assert.equal(gets, before, 'no debounced reload fires after the release');
     } finally {
         await handle.dispose();
@@ -113,8 +117,7 @@ test('releasing only the view scope removes the browser tab and its popup subscr
     const handle = await provider.mountTab({ id: 'browser:1', kind: 'browser', payload: {} }, element, { scope: view });
     try {
         assert.equal(typeof openTabListener, 'function');
-        const labels = scopesUnder(view)[0].resources.map(resource => resource.label);
-        assert.ok(labels.includes('menu-outside-pointerdown') && labels.includes('browser-tab-entry'));
+        assert.ok(view.resourceSummary().resources > 0);
         await view.dispose('dormant');
         assert.equal(openTabListener, null, 'the last browser tab gives the popup push back');
         assert.equal(scopesUnder(view).length, 0);

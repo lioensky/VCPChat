@@ -196,7 +196,8 @@ test('a side chat whose mount lands while its close is being confirmed still clo
     const closing = ctrl.closeTab('later'); // 挂载还在路上：没有 handle，由类型确认
     mount.resolve();
     await restoring;
-    await new Promise(resolve => setTimeout(resolve, 10));
+    for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve));
+    assert.ok(ctrl.getTabHandle('later'), 'the mount landed before the close was confirmed');
     confirm.resolve({ closed: true });
     await closing;
     assert.equal(ctrl.getSnapshot().tabs.some(tab => tab.id === 'later'), false);
@@ -234,5 +235,16 @@ test('after a restart the pane goes back to the side chat the topic was left on,
     assert.equal(second.getSnapshot().activeTabId, 'plan:a');
     await second.restoreTabs([sideChat('side-a', 'a')]);
     assert.equal(second.getSnapshot().activeTabId, 'side-a');
+    assert.equal(second.getSnapshot().visible, true, 'the pane was open on this topic when the app closed');
     await second.dispose();
+
+    // 补回之前用户自己切到了别的标签：补回的辅助对话留在后台，不把面板拽回去
+    const third = make();
+    t.after(() => third.dispose());
+    third.setParent(parentOf('a'));
+    third.restoreLayout();
+    third.showNotifications();
+    await third.restoreTabs([sideChat('side-a', 'a')]);
+    assert.equal(third.getSnapshot().activeTabId, 'notifications');
+    assert.ok(third.getSnapshot().tabs.some(tab => tab.id === 'side-a'));
 });

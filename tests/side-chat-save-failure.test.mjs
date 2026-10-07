@@ -9,7 +9,7 @@ for (const [label, failure] of [['IPC 的 { error } 形状', { error: 'EACCES: p
         f.submit('q1');
         await f.untilIdle();
         assert.equal(f.badgeHidden(), false, 'the unsaved badge shows');
-        assert.match(f.statusText(), /保存失败/);
+        assert.equal(f.statuses.at(-1)?.type, 'error');
         assert.deepEqual(f.handle.getUnsavedStatus(), { hasUnsavedChanges: true, error: 'EACCES: permission denied' });
         assert.deepEqual(await f.handle.requestClose(), { closed: false, reason: 'UNSAVED_CHANGES' });
     });

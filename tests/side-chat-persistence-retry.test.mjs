@@ -7,13 +7,7 @@ import { JSDOM } from 'jsdom';
 import queueModule from '../modules/services/historyMutationQueue.js';
 import { mountSideChatSurface } from '../modules/renderer/sideChatSurfaceOwner.js';
 
-async function waitFor(predicate) {
-    const deadline = Date.now() + 2000;
-    while (!predicate()) {
-        if (Date.now() > deadline) throw new Error('Side chat action did not settle');
-        await new Promise(resolve => setTimeout(resolve, 5));
-    }
-}
+import { waitFor } from './helpers/wait-for.mjs';
 
 async function fixture(t) {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vcp-side-retry-'));
@@ -21,10 +15,16 @@ async function fixture(t) {
     const target = { itemId: 'agent', itemType: 'agent', topicId: 'child' };
     const dom = new JSDOM('<div id="mount"></div>');
     const doc = dom.window.document;
-    let history = [], renderer, failNextSave = false, writeStarted = false;
+    let history = [], renderer, failNextSave = false, writeStarted = false, holdNext = null;
     const repository = {
         getHistory: () => queue.read(target),
         saveHistory: async (_item, _type, _topic, next) => {
+            if (holdNext) {
+                const held = holdNext;
+                holdNext = null;
+                writeStarted = true;
+                await held;
+            }
             if (failNextSave) {
                 failNextSave = false;
                 throw new Error('controlled disk write failure');
@@ -82,7 +82,7 @@ async function fixture(t) {
         chatCapabilities: capabilities,
     });
     t.after(async () => { await handle.dispose(); dom.window.close(); await queue.dispose(); await fs.rm(root, { recursive: true, force: true }); });
-    await waitFor(() => !doc.querySelector('.side-chat-textarea').disabled);
+    await waitFor(() => !doc.querySelector('.side-chat-send-btn').disabled);
     doc.querySelector('.side-chat-textarea').value = 'question';
     doc.querySelector('form').requestSubmit();
     await waitFor(() => handle.getUnsavedStatus().hasUnsavedChanges && !doc.querySelector('form').hasAttribute('aria-busy'));
@@ -94,16 +94,10 @@ async function fixture(t) {
     };
     return { doc, handle, action, read: () => queue.read(target), failSave() { failNextSave = true; },
         get writeStarted() { return writeStarted; },
+        // 卡住下一次仓库写入，模拟删除正在落盘
         holdNextWrite() {
             let release;
-            const held = new Promise(resolve => { release = resolve; });
-            const write = queue.write.bind(queue);
-            queue.write = async (...args) => {
-                queue.write = write;
-                writeStarted = true;
-                await held;
-                return write(...args);
-            };
+            holdNext = new Promise(resolve => { release = resolve; });
             t.after(() => release());
             return release;
         },
@@ -145,6 +139,8 @@ test('another failed side retry keeps the unsaved badge and close protection', a
     assert.equal((await f.handle.requestClose()).closed, false);
     assert.equal((await f.handle.retryPersistence()).ok, true);
     assert.deepEqual((await f.read()).map(message => message.id), ['question', 'answer']);
+    assert.equal(f.handle.getUnsavedStatus().hasUnsavedChanges, false);
+    assert.equal(f.doc.querySelector('.side-chat-persistence-badge').hidden, true);
     assert.equal((await f.handle.requestClose()).closed, true);
 });
 

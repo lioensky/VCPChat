@@ -5,7 +5,10 @@ import { mountGitView, filterAiTouched, latestAiBatch, followGitWorkspace } from
 import { getProjectForgeChangesSource } from '../modules/ui-system/sources/projectforge-changes.js';
 import { getGitChangesSource } from '../modules/ui-system/sources/git-changes.js';
 
-const wait = (ms = 60) => new Promise(resolve => setTimeout(resolve, ms));
+import { waitFor } from './helpers/wait-for.mjs';
+
+// 没有计时器参与（graceMs: 0）；「什么都没发生」只需把挂起的 promise 链走完
+const flush = async (rounds = 5) => { for (let i = 0; i < rounds; i++) await new Promise(resolve => setImmediate(resolve)); };
 
 test('filterAiTouched aligns absolute / relative / windows paths by suffix', () => {
     const items = [{ path: 'src/a.js' }, { path: 'docs/b.md' }, { path: 'README.md' }];
@@ -76,55 +79,54 @@ test('the 上一轮 source narrows changes to the newest V工程 batch and follo
     try {
         assert.equal(files(view).length, 3, 'default source lists the unstaged changes');
         const select = view.querySelector('.side-git-source-select');
-        assert.ok([...select.options].some(o => o.value === 'ai-last' && o.textContent === '上一轮'));
+        assert.ok([...select.options].some(o => o.value === 'ai-last' && o.textContent.trim()));
 
         select.value = 'ai-last';
         select.dispatchEvent(new win.Event('change'));
-        await wait();
-        assert.deepEqual(files(view), ['src/a.js']);
+        await waitFor(() => files(view).join() === 'src/a.js', { message: 'ai-last never narrowed the list' });
         assert.equal(view.querySelector('.side-git-ai-banner'), null, 'no extra banner');
 
         // V工程 记了新一批：不用手动刷新
         setTimeline([{ id: 3, kind: 'edit', reason: '改文档', files: ['docs/b.md', 'notes.txt'] }]);
         state.forgeHandler({ projectId: 'p1' });
-        await wait(200);
-        assert.deepEqual(files(view).sort(), ['docs/b.md', 'notes.txt']);
+        await waitFor(() => files(view).sort().join() === 'docs/b.md,notes.txt', { message: 'a new V工程 batch never re-narrowed the list' });
 
         // 批次里的文件都已提交
         setTimeline([{ id: 4, kind: 'edit', reason: '已提交的', files: ['gone.js'] }]);
         state.forgeHandler({ projectId: 'p1' });
-        await wait(200);
-        assert.equal(view.querySelector('.side-git-empty-title').textContent, '上一轮的改动已经没有未提交内容');
+        const empty = view.querySelector('.side-git-empty');
+        await waitFor(() => empty.dataset.emptyReason === 'ai-committed', { message: 'committed batch never showed its empty state' });
+        assert.equal(empty.hidden, false);
+        assert.equal(files(view).length, 0);
+        assert.ok(empty.textContent.trim());
 
         // 没有任何批次
         setTimeline([]);
         state.forgeHandler({ projectId: 'p1' });
-        await wait(200);
-        assert.equal(view.querySelector('.side-git-empty-title').textContent, '当前工作区还没有上一轮文件改动');
+        await waitFor(() => empty.dataset.emptyReason === 'ai-none', { message: 'no batch never showed its empty state' });
+        assert.equal(empty.hidden, false);
+        assert.equal(files(view).length, 0);
 
         select.value = 'unstaged';
         select.dispatchEvent(new win.Event('change'));
-        await wait();
-        assert.equal(files(view).length, 3);
+        await waitFor(() => files(view).length === 3, { message: 'switching back never relisted the changes' });
+        assert.equal(empty.hidden, true);
     } finally {
         await handle.dispose();
         assert.equal(state.forgeHandler, null, 'V工程 subscription released');
     }
 });
 
-test('a pushed repository change refreshes the tab; only the shown workspace is subscribed', async () => {
+// 当前工作区推送触发重读、看不见时不读、展开后补读一次，见 side-pane-git-push-visibility.test.mjs
+test('only the shown workspace is subscribed; pushes for another workspace are ignored', async () => {
     const { gitView, state } = makeEnv({ batches: [] });
     const handle = await gitView.mount();
     try {
         assert.deepEqual(gitSubs(state), [['+', 'git.status', 'ws1']]);
         const before = state.statusCalls;
-        state.pushGit({ workspaceId: 'ws1', reason: 'commit' });
-        await wait();
-        assert.equal(state.statusCalls, before + 1);
-
         state.pushGit({ workspaceId: 'ws2', reason: 'files' });
-        await wait();
-        assert.equal(state.statusCalls, before + 1, 'other workspaces are ignored');
+        await flush();
+        assert.equal(state.statusCalls, before, 'other workspaces are ignored');
     } finally {
         await handle.dispose();
     }
@@ -132,38 +134,12 @@ test('a pushed repository change refreshes the tab; only the shown workspace is 
     assert.equal(state.gitHandlers.size, 0);
 });
 
-test('a change while the side pane is collapsed is read when the tab is shown again', async () => {
-    const { win, view, gitView, state } = makeEnv({ batches: [] });
-    const handle = await gitView.mount();
-    const pane = win.document.createElement('div');
-    pane.className = 'vcp-side-pane';
-    win.document.body.appendChild(pane);
-    pane.appendChild(view);
-    try {
-        pane.setAttribute('aria-hidden', 'true');
-        const before = state.statusCalls;
-        state.pushGit({ workspaceId: 'ws1', reason: 'files' });
-        await wait();
-        assert.equal(state.statusCalls, before, 'nothing is read while hidden');
-
-        pane.setAttribute('aria-hidden', 'false');
-        handle.refreshIfStale();
-        await wait();
-        assert.equal(state.statusCalls, before + 1);
-        handle.refreshIfStale();
-        await wait();
-        assert.equal(state.statusCalls, before + 1, 'read once, then up to date');
-    } finally {
-        await handle.dispose();
-    }
-});
-
 test('following a topic workspace switches the mounted tab and moves the subscription', async () => {
     const { win, view, gitView, state } = makeEnv({ batches: [] });
     const handle = await gitView.mount();
     try {
         followGitWorkspace(win, 'ws2');
-        await wait();
+        await waitFor(() => gitSubs(state).at(-1)?.[2] === 'ws2', { message: 'subscription never moved to ws2' });
         assert.equal(view.querySelector('.side-git-ws-select, select:not(.side-git-source-select)')?.value, 'ws2');
         assert.deepEqual(gitSubs(state).slice(-2), [['-', 'git.status', 'ws1'], ['+', 'git.status', 'ws2']]);
         assert.equal(win.localStorage.getItem('vcp-projectforge-git-workspace'), 'ws2');

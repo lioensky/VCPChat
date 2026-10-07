@@ -1,11 +1,12 @@
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { createPlanDetailSideProvider, planTabId } from '../modules/ui-system/side-pane/planDetailSideProvider.js';
+import { createPlanDetailSideProvider, planTabId, FILTER_DEBOUNCE_MS } from '../modules/ui-system/side-pane/planDetailSideProvider.js';
 import { buildTopicActivity, locateTopicBatches, narrowSearchRows, searchParams, TIMELINE_LIMIT } from '../modules/ui-system/side-pane/plan-detail/topic-activity.js';
 import { readRevertBatches } from '../modules/ui-system/conversation-scope.js';
+import { waitFor } from './helpers/wait-for.mjs';
 
-const tick = (ms = 20) => new Promise(r => setTimeout(r, ms));
+const settle = async () => { for (let i = 0; i < 10; i += 1) await new Promise(resolve => setImmediate(resolve)); };
 
 const node = (id, batchId, file, op = 'edit', added = 1, removed = 0) => ({ id, batch_id: batchId, file_path: file, op, added, removed, created_at: '2026-10-01T01:00:00.000Z' });
 const BATCHES = {
@@ -111,13 +112,14 @@ test('a topic tab shows only the topic\'s batches, its stats, the project switch
     // b99 不在这个工程的时间线范围内，不去查
     assert.deepEqual(calls.getBatch, [['p1', 2]]);
     assert.deepEqual([...view.querySelectorAll('.side-plan-batch')].map(li => li.dataset.batchId), ['2']);
-    assert.match(view.querySelector('.side-plan-stats').textContent, /1 批.*2 次改动.*2 个文件/);
-    assert.equal(view.querySelector('.side-plan-context').textContent, '本话题', 'the scope lives in the breadcrumb, not the stats row');
-    assert.match(view.querySelector('[data-plan-section="timeline"] .side-plan-section-meta').textContent, /本话题 1 批/);
+    const stats = view.querySelector('.side-plan-stats').dataset;
+    assert.deepEqual([stats.batches, stats.nodes, stats.files], ['1', '2', '2'], 'stats count only this topic\'s batches');
+    assert.equal(view.querySelector('.side-plan-crumbs .side-plan-context').dataset.scope, 'topic', 'the scope lives in the breadcrumb');
     assert.equal(view.querySelector('.side-plan-crumbs').getAttribute('aria-haspopup'), 'listbox');
-    assert.match(view.querySelector('.side-plan-other-hint').textContent, /还有 1 批来自其他话题/);
+    // b1 在时间线里但不属于本话题
+    assert.equal(view.querySelector('.side-plan-other-hint').dataset.count, '1');
     view.querySelector('.side-plan-other-hint .side-plan-link').click();
-    view.querySelector('.side-plan-forge').click();
+    view.querySelector('[data-action="open-forge"]').click();
     assert.deepEqual(calls.forge, ['p1', 'p1']);
 
     // 展开批次 → 节点行
@@ -129,21 +131,19 @@ test('a topic tab shows only the topic\'s batches, its stats, the project switch
     view.querySelector('[data-plan-section="report"] .side-plan-section-title').click();
     assert.equal(view.querySelector('.side-plan-report').textContent, '验收：全部通过');
 
-    // 面包屑胶囊打开工程菜单：话题用过的工程排在前面，当前工程打勾
+    // 面包屑胶囊打开工程菜单：话题用过的工程单独一组排在前面，当前工程打勾
     view.querySelector('.side-plan-crumbs').click();
-    await tick();
+    await waitFor(() => view.querySelector('.side-plan-picker-item'), { message: 'picker did not list projects' });
     assert.equal(view.querySelector('.side-plan-crumbs').getAttribute('aria-expanded'), 'true');
-    assert.deepEqual([...view.querySelectorAll('.side-plan-picker-label')].map(n => n.textContent), ['本话题用过']);
+    assert.equal(view.querySelectorAll('.side-plan-picker-label').length, 1);
     assert.deepEqual([...view.querySelectorAll('.side-plan-picker-item')].map(b => b.dataset.projectId), ['p1', 'p2']);
     assert.equal(view.querySelector('.side-plan-picker-item[aria-selected="true"]').dataset.projectId, 'p1');
-    // 切换到话题用过的另一个工程
+    // 切换到话题用过的另一个工程（切换并钉住标签见 side-pane-plan-detail）：那里本话题没有施工
     view.querySelector('.side-plan-picker-item[data-project-id="p2"]').click();
-    assert.equal(view.querySelector('.side-plan-picker'), null);
-    await tick();
-    assert.equal(view.querySelector('.side-plan-title').textContent, '旁支工程');
-    assert.equal(calls.updated.at(-1).payload.projectId, 'p2');
-    assert.equal(calls.updated.at(-1).payload.pinned, true);
-    assert.match(view.querySelector('[data-plan-section="timeline"]').textContent, /这个话题还没有在这个工程里施工/);
+    await waitFor(() => view.querySelector('.side-plan-title')?.textContent === '旁支工程', { message: 'project did not switch' });
+    assert.ok(view.querySelector('[data-plan-section="timeline"]'));
+    assert.equal(view.querySelectorAll('.side-plan-batch').length, 0);
+    assert.equal(view.querySelector('.side-plan-other-hint'), null);
     handle.dispose();
     dom.window.close();
 });
@@ -152,7 +152,7 @@ test('clicking a file filters the timeline to that exact file within this topic'
     const { provider, calls, tab, view, dom } = makeTopicEnv();
     const handle = await provider.mountTab(tab, view);
     [...view.querySelectorAll('.side-plan-file-btn')].find(b => b.querySelector('.side-plan-file-name').textContent === 'a.py').click();
-    await tick();
+    await waitFor(() => view.querySelector('.side-plan-filter-results .side-plan-node-row'), { message: 'filter results did not render' });
     assert.equal(view.querySelector('[role="tab"][aria-selected="true"]').dataset.planPage, 'timeline');
     assert.equal(view.querySelector('[role="tabpanel"]:not([hidden])').dataset.planPagePanel, 'timeline');
     assert.equal(calls.search.at(-1).file, 'a.py');
@@ -165,7 +165,7 @@ test('clicking a file filters the timeline to that exact file within this topic'
 
     // 点参与者按人筛选
     view.querySelector('.side-plan-contributor-btn').click();
-    await tick();
+    await waitFor(() => calls.search.at(-1)?.byMaid, { message: 'contributor filter did not search' });
     assert.equal(calls.search.at(-1).byMaid, 'Nova');
     handle.dispose();
     dom.window.close();
@@ -194,7 +194,7 @@ for (const settlement of ['resolve', 'reject']) {
             assert.equal(requests.length, 1, 'the new debounced read has not started');
             assert.equal(view.querySelector('[data-node-id="777"]'), null);
             assert.doesNotMatch(view.querySelector('.side-plan-filter-results').textContent, /old filter failed/);
-            assert.match(view.querySelector('.side-plan-filter-results').textContent, /正在筛选/);
+            assert.equal(view.querySelector('.side-plan-filter-results').getAttribute('aria-busy'), 'true', 'shows the new filter as loading');
             assert.equal(dom.window.document.activeElement.dataset.filter, 'keyword');
             const operation = view.querySelector('[data-filter="op"]');
             operation.value = 'edit';
@@ -211,7 +211,7 @@ for (const settlement of ['resolve', 'reject']) {
     });
 }
 
-test('typing into the history filter with an input method keeps the same input element until composition ends', async () => {
+test('typing into the history filter with an input method keeps the same input element until composition ends', async (t) => {
     const requests = [];
     const { provider, tab, view, dom } = makeTopicEnv({ api: {
         projectForgeSearchHistory(params) {
@@ -220,19 +220,26 @@ test('typing into the history filter with an input method keeps the same input e
         }
     } });
     const handle = await provider.mountTab(tab, view);
+    // 筛选防抖走 lifecycle scope 的全局 setTimeout
+    mock.timers.enable({ apis: ['setTimeout'] });
+    t.after(() => mock.timers.reset());
     try {
         const input = view.querySelector('[data-filter="keyword"]');
         input.focus();
         input.dispatchEvent(new dom.window.CompositionEvent('compositionstart'));
         input.value = 'zhong';
         input.dispatchEvent(new dom.window.InputEvent('input', { isComposing: true }));
-        await new Promise(resolve => setTimeout(resolve, 400));
+        await settle();
+        mock.timers.tick(FILTER_DEBOUNCE_MS);
+        await settle();
         assert.equal(view.querySelector('[data-filter="keyword"]'), input, 'the composing input is not replaced');
         assert.equal(requests.length, 0, 'no search while composing');
 
         input.value = '中';
         input.dispatchEvent(new dom.window.CompositionEvent('compositionend'));
-        await new Promise(resolve => setTimeout(resolve, 400));
+        await settle();
+        mock.timers.tick(FILTER_DEBOUNCE_MS);
+        await settle();
         assert.equal(requests.length, 1);
         assert.equal(requests[0].keyword, '中');
         assert.equal(dom.window.document.activeElement.dataset.filter, 'keyword');
@@ -247,7 +254,7 @@ test('a node opens its diff and can be reverted with a remembered signature; the
     const handle = await provider.mountTab(tab, view);
     view.querySelector('.side-plan-batch-head').click();
     view.querySelector('.side-plan-node-row').click();
-    await tick();
+    await waitFor(() => view.querySelector('.side-plan-diff'), { message: 'node diff did not open' });
     assert.ok(view.querySelector('.side-plan-node'));
     assert.ok(view.querySelector('.side-plan-diff .diff-line.add'));
     assert.ok(view.querySelector('.side-plan-diff .diff-line.del'));
@@ -255,24 +262,27 @@ test('a node opens its diff and can be reverted with a remembered signature; the
 
     // 没署名不让回退
     view.querySelector('.side-plan-revert-before').click();
-    await tick();
+    await settle();
     assert.equal(calls.revert.length, 0);
     assert.equal(calls.toasts.at(-1)[1], 'error');
 
     view.querySelector('.side-plan-signature').value = '小明';
     view.querySelector('.side-plan-revert-before').click();
-    await tick();
+    await waitFor(() => calls.revert.length === 1, { message: 'dry run did not start' });
     assert.deepEqual(calls.revert[0], { projectId: 'p1', nodeId: 3, mode: 'before', signature: '小明', reason: '', dryRun: true });
     assert.equal(view.querySelector('.side-plan-revert-confirm').hidden, false);
     view.querySelector('.side-plan-revert-ok').click();
-    await tick();
+    await waitFor(() => !view.querySelector('.side-plan-node'), { message: 'revert did not return to the list' });
     assert.equal(calls.revert[1].force, false);
     assert.equal(calls.revert[1].dryRun, undefined);
-    assert.equal(storage.getItem('vcp-projectforge-signature'), '小明');
     assert.deepEqual(readRevertBatches(storage, 'agent:nova:t1'), [12]);
     // 回到列表
-    assert.equal(view.querySelector('.side-plan-node'), null);
     assert.ok(view.querySelector('.side-plan-timeline'));
+    // 再打开节点：署名记住了
+    if (!view.querySelector('.side-plan-node-row')) view.querySelector('.side-plan-batch-head').click();
+    view.querySelector('.side-plan-node-row').click();
+    await waitFor(() => view.querySelector('.side-plan-signature'), { message: 'node did not reopen' });
+    assert.equal(view.querySelector('.side-plan-signature').value, '小明');
     handle.dispose();
     dom.window.close();
 });
@@ -285,8 +295,7 @@ test('reveal focuses a todo or a section, opening it when collapsed', async () =
     const handle = await provider.mountTab({ ...tab, payload: { focus: { todoId: 8 } } }, view);
     assert.equal(view.querySelector('.side-plan-todo[data-todo-id="8"]').classList.contains('is-flash'), false, '新开的标签还没显示，先不定位');
     shown = true;
-    await new Promise(resolve => setTimeout(resolve, 80));
-    assert.ok(view.querySelector('.side-plan-todo[data-todo-id="8"]').classList.contains('is-flash'), '显示出来后再滚过去');
+    await waitFor(() => view.querySelector('.side-plan-todo[data-todo-id="8"]').classList.contains('is-flash'), { message: '显示出来后再滚过去' });
     handle.reveal({ focus: { section: 'report' } });
     assert.ok(view.querySelector('[data-plan-section="report"]').classList.contains('is-flash'));
     assert.ok(view.querySelector('.side-plan-report'));

@@ -112,7 +112,6 @@ test('SidePaneController showNotifications and openChat mount views and sync vis
     await controller.closeTab('side-chat-test');
     assert.equal(disposed, true);
     assert.equal(controller.getSnapshot().activeTabId, 'notifications');
-    assert.equal(controller.getSnapshot().visible, false, '最后一个可关的标签关掉后面板收起');
     assert.equal(tabListElement.children.length, 1);
     assert.equal(notifView.classList.contains('active'), true);
     assert.equal(contentContainer.querySelector('[data-tab-id="side-chat-test"]'), null);

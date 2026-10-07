@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 
 import { mountGitView } from '../modules/ui-system/side-pane/git/git-view.js';
+import { waitFor } from './helpers/wait-for.mjs';
 
 test('the Git view has source select, flat change cards, expandable diff, context menu', async () => {
     const dom = new JSDOM(`
@@ -52,10 +53,8 @@ test('the Git view has source select, flat change cards, expandable diff, contex
     // header: one source select + one refresh button, nothing else (single workspace => no workspace picker)
     assert.deepEqual([...viewElement.querySelectorAll('.side-git-source-select option')].map(o => o.value), ['unstaged', 'staged']);
     assert.equal(viewElement.querySelector('.side-git-ws-select').hidden, true);
-    assert.match(viewElement.querySelector('.side-git-refresh-btn').textContent, /刷新/);
-    for (const gone of ['.side-git-branch-badge', '.side-git-sync-badge', '.side-git-commit-input', '.side-git-group', '.side-git-row-action-btn', '.side-git-graph-btn']) {
-        assert.equal(viewElement.querySelector(gone), null, gone + ' must not exist');
-    }
+    const headerControls = [...viewElement.querySelector('.side-git-header').querySelectorAll('select, button, input, textarea')].filter(el => !el.hidden);
+    assert.deepEqual(headerControls.map(el => el.tagName), ['SELECT', 'BUTTON']);
 
     // flat list, default source = unstaged
     const cards = () => [...viewElement.querySelectorAll('.side-git-card')];
@@ -63,8 +62,8 @@ test('the Git view has source select, flat change cards, expandable diff, contex
     assert.equal(cards()[0].querySelector('.side-git-file-name').textContent, 'unstaged.js');
     assert.equal(cards()[0].querySelector('.side-git-file-dir').textContent, 'src');
 
-    // +N -N are filled in without expanding
-    await new Promise(resolve => setTimeout(resolve, 30));
+    // +N -N are filled in without expanding (no counts in the status => computed from the fetched diff)
+    await waitFor(() => cards()[0].querySelector('.text-diff-added'), { message: 'diff-stat counts never painted' });
     assert.equal(cards()[0].querySelector('.text-diff-added').textContent, '+3');
     assert.equal(cards()[0].querySelector('.text-diff-removed').textContent, '-1');
 
@@ -72,13 +71,12 @@ test('the Git view has source select, flat change cards, expandable diff, contex
     const row = cards()[0].querySelector('.side-git-row');
     assert.equal(row.getAttribute('aria-expanded'), 'false');
     row.click();
-    await new Promise(resolve => setTimeout(resolve, 20));
+    await waitFor(() => cards()[0].querySelector('.side-git-diff-table'), { message: 'expanded diff never rendered' });
     assert.equal(row.getAttribute('aria-expanded'), 'true');
     assert.equal(cards()[0].querySelector('.side-git-diff').hidden, false);
-    assert.ok(cards()[0].querySelector('.side-git-diff-table'));
     // only one file is open at a time: opening another closes the first
     cards()[1].querySelector('.side-git-row').click();
-    await new Promise(resolve => setTimeout(resolve, 20));
+    await waitFor(() => cards()[1].querySelector('.side-git-row').getAttribute('aria-expanded') === 'true', { message: 'second file never opened' });
     assert.equal(row.getAttribute('aria-expanded'), 'false');
     assert.equal(cards()[0].querySelector('.side-git-diff').hidden, true);
     assert.equal(cards()[1].querySelector('.side-git-row').getAttribute('aria-expanded'), 'true');
@@ -87,15 +85,14 @@ test('the Git view has source select, flat change cards, expandable diff, contex
 
     // a deleted file cannot be revealed in the file manager
     cards()[2].querySelector('.side-git-row').dispatchEvent(new dom.window.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }));
-    assert.equal(doc.querySelector('.side-git-context-item').disabled, true);
+    assert.equal(doc.querySelector('[data-action="reveal"]').disabled, true);
     doc.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape' }));
 
     // staged source
     const select = viewElement.querySelector('.side-git-source-select');
     select.value = 'staged';
     select.dispatchEvent(new dom.window.Event('change'));
-    await new Promise(resolve => setTimeout(resolve, 20));
-    assert.deepEqual(cards().map(c => c.dataset.path), ['src/staged.js']);
+    await waitFor(() => cards().map(c => c.dataset.path).join() === 'src/staged.js', { message: 'staged source never listed' });
 
     // keyboard: Shift+F10 on a row opens the menu with focus inside, arrows move, Escape returns focus to the row
     const kbRow = cards()[0].querySelector('.side-git-row');
@@ -115,21 +112,22 @@ test('the Git view has source select, flat change cards, expandable diff, contex
 
     // context menu: reveal / copy absolute / copy relative
     cards()[0].querySelector('.side-git-row').dispatchEvent(new dom.window.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }));
-    const items = [...doc.querySelectorAll('.side-git-context-item')];
-    assert.deepEqual(items.map(i => i.querySelector('.side-git-context-label').textContent), ['在文件管理器中打开', '复制绝对路径', '复制相对路径']);
-    items[2].click();
-    await new Promise(resolve => setTimeout(resolve, 5));
+    const items = [...doc.querySelectorAll('[role="menuitem"]')];
+    assert.deepEqual(items.map(i => i.dataset.action), ['reveal', 'copy-abs', 'copy-rel']);
+    assert.ok(items.every(i => i.textContent.trim()), 'every menu item has a visible name');
+    doc.querySelector('[data-action="copy-rel"]').click();
+    await waitFor(() => copied.length === 1, { message: 'relative path never copied' });
     assert.deepEqual(copied, ['src/staged.js']);
     assert.equal(doc.querySelector('.side-git-context-menu'), null, 'menu closes after choosing');
 
     cards()[0].querySelector('.side-git-row').dispatchEvent(new dom.window.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }));
-    [...doc.querySelectorAll('.side-git-context-item')][1].click();
-    await new Promise(resolve => setTimeout(resolve, 5));
+    doc.querySelector('[data-action="copy-abs"]').click();
+    await waitFor(() => copied.length === 2, { message: 'absolute path never copied' });
     assert.equal(copied[1], '/code/vcpchat/src/staged.js');
 
     cards()[0].querySelector('.side-git-row').dispatchEvent(new dom.window.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }));
-    [...doc.querySelectorAll('.side-git-context-item')][0].click();
-    await new Promise(resolve => setTimeout(resolve, 5));
+    doc.querySelector('[data-action="reveal"]').click();
+    await waitFor(() => revealed.length === 1, { message: 'reveal never requested' });
     assert.deepEqual(revealed, [['ws-demo', 'src/staged.js']]);
 
     await handle.dispose();
@@ -212,7 +210,7 @@ test('a status push while reading deep in a long list keeps the mounted cards an
 
     edits += 1;
     await handle.refresh();
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise(resolve => setImmediate(resolve));
     assert.equal(cards(), 240, 'the re-render mounts as many cards as were there');
     assert.equal(body.scrollTop, 5000, 'and stays where the reader was');
     handle.dispose();

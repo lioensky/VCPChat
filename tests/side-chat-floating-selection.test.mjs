@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { createFloatingSelectionButton } from '../modules/renderer/floatingSelectionButton.js';
@@ -37,16 +37,24 @@ test('floating ask button shows only for main chat selections, not side chat mes
     assert.equal(btn.hidden, true);
 });
 
-test('floating ask button hides while a container scrolls and comes back at the new position once it settles', async () => {
+test('floating ask button hides while a container scrolls and comes back at the new position once it settles', t => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    t.after(() => mock.timers.reset());
     const { window, btn, select, handle } = setup();
+    // 模块用的是 win.setTimeout：指向被接管的全局计时器
+    window.setTimeout = setTimeout;
+    window.clearTimeout = clearTimeout;
     select('main');
+    mock.timers.tick(0); // JSDOM 异步补发的 selectionchange
     window.document.getElementById('chatMessages').dispatchEvent(new window.Event('scroll'));
     assert.equal(btn.hidden, true);
-    await new Promise(resolve => setTimeout(resolve, 200));
+    mock.timers.tick(149);
+    assert.equal(btn.hidden, true, 'still scrolling');
+    mock.timers.tick(1);
     assert.equal(btn.hidden, false, 'the selection is still there after the scroll stops');
     window.Range.prototype.getBoundingClientRect = () => ({ left: 100, top: -400, bottom: -380, width: 50, height: 20 });
     window.document.getElementById('chatMessages').dispatchEvent(new window.Event('scroll'));
-    await new Promise(resolve => setTimeout(resolve, 200));
+    mock.timers.tick(150);
     assert.equal(btn.hidden, true, 'a selection scrolled out of view gets no button');
     handle.dispose();
 });

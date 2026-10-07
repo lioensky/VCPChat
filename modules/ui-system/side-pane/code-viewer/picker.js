@@ -132,6 +132,7 @@ export function createCodeViewerPicker({
                 titleLabel.textContent = name;
                 titleLabel.title = rel;
                 langTag.textContent = store.currentTag;
+                langTag.dataset.lang = store.currentLang;
                 store.currentCode = '';
                 if (file.binary) {
                     setBodyMessage('二进制文件，无法预览');

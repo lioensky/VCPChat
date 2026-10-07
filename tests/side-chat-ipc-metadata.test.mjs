@@ -33,6 +33,25 @@ test('filterStableHistory filters transient/streaming messages and extracts stab
     assert.equal(stable[3].isInherited, true);
 });
 
+test('filterStableHistory drops pending streams and orphan tools, keeps tool_calls and attachments as deep clones', () => {
+    const content = [{ type: 'text', text: 'initial' }];
+    const raw = [
+        { id: 'pending', role: 'assistant', content: 'partial', isPendingStream: true },
+        { id: 'a', role: 'assistant', content: 'tool call', tool_calls: [{ id: 't' }] },
+        { id: 't', role: 'tool', content: 'result', tool_call_id: 't' },
+        { id: 'orphan_tool', role: 'tool', content: 'orphan without id' },
+        { id: 'multi', role: 'user', content, attachments: [{ name: 'test.png' }] }
+    ];
+
+    const frozen = filterStableHistory(raw);
+    content[0].text = 'mutated';
+
+    assert.deepEqual(frozen.map(m => m.id), ['a', 't', 'multi'], 'Pending streams and orphan tools should be excluded');
+    assert.ok(frozen.find(m => m.id === 'a').tool_calls, 'tool_calls should be retained');
+    assert.equal(frozen.find(m => m.id === 'multi').content[0].text, 'initial', 'multimodal content should be deep-cloned');
+    assert.ok(frozen.find(m => m.id === 'multi').attachments, 'attachments should be retained');
+});
+
 test('sideChatHandlers handles metadata lifecycle and snapshot creation with isolated filesystem', async (t) => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vcpchat-sidechat-test-'));
 
@@ -107,6 +126,9 @@ test('sideChatHandlers handles metadata lifecycle and snapshot creation with iso
     assert.equal(listRes.items.length, 1);
     assert.equal(listRes.items[0].id, 'sidechat-test-1');
     assert.equal(listRes.items[0].title, '侧聊测试');
+    // 列表从快照文件补回父话题快照与边界
+    assert.equal(listRes.items[0].parentSnapshot.length, 2);
+    assert.equal(listRes.items[0].snapshotBoundary.messageCount, 2);
     assert.equal((await listMetadataHandler(agentId, 'another-parent')).items.length, 0);
 
     // 4. Adversarial: Path traversal attempts must be rejected

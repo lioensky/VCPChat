@@ -11,7 +11,8 @@
 
 'use strict';
 
-
+// 差异视图一次挂多少行，「显示更多行」再挂下一页
+export const DIFF_PAGE_ROWS = 500;
 
 export function createCodeViewerDiffView({
     store,
@@ -69,8 +70,9 @@ export function createCodeViewerDiffView({
         const more = doc.createElement('button');
         more.type = 'button';
         more.className = 'side-code-action-btn';
+        more.dataset.action = 'diff-more';
         function appendPage() {
-            const end = Math.min(displayed + 500, diffResult.rows.length);
+            const end = Math.min(displayed + DIFF_PAGE_ROWS, diffResult.rows.length);
             while (displayed < end) appendRow(diffResult.rows[displayed++]);
             more.textContent = '显示更多行（剩余 ' + (diffResult.rows.length - displayed) + ' 行）';
             more.hidden = displayed >= diffResult.rows.length;

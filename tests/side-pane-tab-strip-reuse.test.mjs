@@ -54,11 +54,11 @@ test('a title change or a switch updates tabs in place instead of rebuilding the
         assert.equal(env.item('a'), a, 'the untouched tab keeps its node');
         assert.equal(env.item('b'), b, 'the renamed tab keeps its node');
         assert.equal(b.querySelector('.tab-title').textContent, 'Example Domain');
-        assert.equal(b.querySelector('.side-pane-tab-close').getAttribute('aria-label'), '关闭 Example Domain');
+        assert.equal(b.querySelector('.side-pane-tab-close').getAttribute('aria-label').includes('Example Domain'), true);
         assert.equal(b.querySelector('[role="tab"]').getAttribute('aria-selected'), 'true');
         assert.equal(b.querySelector('[role="tab"]').tabIndex, 0);
         assert.equal(a.querySelector('[role="tab"]').tabIndex, -1);
-        assert.ok(!a.classList.contains('active') && b.classList.contains('active'));
+        assert.equal(a.querySelector('[role="tab"]').getAttribute('aria-selected'), 'false');
     } finally {
         env.strip.dispose();
         env.dom.window.close();

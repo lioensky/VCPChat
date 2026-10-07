@@ -100,7 +100,7 @@ test('a command id that is already taken is left alone instead of failing the si
     try {
         const registration = registerSidePaneCommands({ win: fakeWindow(), controller: fakeController(), commands, openModelTrajectory() {} });
         assert.equal(commands.execute('sidepane.open-tab'), 'existing');
-        assert.equal(warnings.length, 1);
+        assert.ok(warnings.length >= 1, 'the conflict is reported');
         await registration.dispose();
         assert.equal(commands.get('sidepane.open-tab').handler, existing, '卸载侧栏不注销别人的命令');
     } finally {

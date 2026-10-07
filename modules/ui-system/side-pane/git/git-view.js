@@ -236,11 +236,12 @@ export function mountGitView(host, {
         return unstaged;
     }
 
-    function showEmpty({ icon = 'description', title, description, action = null }) {
+    function showEmpty({ reason, icon = 'description', title, description, action = null }) {
         list.innerHTML = '';
         listItems = [];
         listMounted = 0;
         empty.hidden = false;
+        empty.dataset.emptyReason = reason;
         empty.innerHTML = '';
         const iconEl = doc.createElement('span');
         iconEl.className = 'vcp-ui-icon side-git-empty-icon';
@@ -267,10 +268,10 @@ export function mountGitView(host, {
     function emptyCopy() {
         if (currentSource === AI_SOURCE) {
             return aiBatch
-                ? { title: '上一轮的改动已经没有未提交内容', description: '这一批涉及的文件都已提交或还原。' }
-                : { title: '当前工作区还没有上一轮文件改动', description: '这个工作区没有 V工程 工程，或工程里还没有施工批次。' };
+                ? { reason: 'ai-committed', title: '上一轮的改动已经没有未提交内容', description: '这一批涉及的文件都已提交或还原。' }
+                : { reason: 'ai-none', title: '当前工作区还没有上一轮文件改动', description: '这个工作区没有 V工程 工程，或工程里还没有施工批次。' };
         }
-        return { title: '当前来源下没有可展示的改动', description: '可以切换其它来源，或等当前工作区产生新的 Git 改动后再查看。' };
+        return { reason: 'no-changes', title: '当前来源下没有可展示的改动', description: '可以切换其它来源，或等当前工作区产生新的 Git 改动后再查看。' };
     }
 
     // ── 复制 / 定位 ─────────────────────────────────────────
@@ -286,6 +287,7 @@ export function mountGitView(host, {
         refreshBtn.classList.toggle('spinning', loading);
         if (!workspaces.length) {
             showEmpty({
+                reason: 'no-workspace',
                 icon: 'folder_x',
                 title: '还没有工作区',
                 description: '添加一个 Git 项目目录后，就能在这里查看它的改动。',
@@ -294,15 +296,15 @@ export function mountGitView(host, {
             return;
         }
         if (loadError) {
-            showEmpty({ icon: 'error', title: '无法加载 Git 改动', description: `Git 返回错误：${loadError}` });
+            showEmpty({ reason: 'load-error', icon: 'error', title: '无法加载 Git 改动', description: `Git 返回错误：${loadError}` });
             return;
         }
         if (!currentStatus) {
-            showEmpty({ title: '加载中', description: '正在读取当前工作区的 Git 状态和文件改动。' });
+            showEmpty({ reason: 'loading', title: '加载中', description: '正在读取当前工作区的 Git 状态和文件改动。' });
             return;
         }
         if (currentStatus.isRepo === false) {
-            showEmpty({ icon: 'folder_x', title: '当前工作区不在 Git 仓库中', description: '请切换到包含 .git 的工作区目录，或先在该目录执行 git init。' });
+            showEmpty({ reason: 'not-repo', icon: 'folder_x', title: '当前工作区不在 Git 仓库中', description: '请切换到包含 .git 的工作区目录，或先在该目录执行 git init。' });
             return;
         }
         const items = visibleItems();
@@ -311,6 +313,7 @@ export function mountGitView(host, {
             return;
         }
         empty.hidden = true;
+        delete empty.dataset.emptyReason;
         // 推送触发的重绘会换掉整张列表：记下焦点所在的行，重建后还给同一个文件（React 按 key 复用节点时焦点本来就不丢，
         // ZCode/DSH 的列表都是这样）；那个文件没了就给同一位置的行
         const focusedCard = list.contains(doc.activeElement) ? doc.activeElement.closest('.side-git-card') : null;

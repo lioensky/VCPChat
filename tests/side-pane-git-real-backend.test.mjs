@@ -8,6 +8,7 @@ import path from 'node:path';
 import { JSDOM } from 'jsdom';
 
 import { mountGitView } from '../modules/ui-system/side-pane/git/git-view.js';
+import { waitFor } from './helpers/wait-for.mjs';
 
 const require = createRequire(import.meta.url);
 const gitService = require('../modules/services/gitService.js');
@@ -41,14 +42,8 @@ function createBackedApi(workspaces, calls) {
     };
 }
 
-const tick = (ms = 150) => new Promise(resolve => setTimeout(resolve, ms));
-async function waitFor(check, timeoutMs = 5000) {
-    const started = Date.now();
-    while (Date.now() - started < timeoutMs) {
-        if (check()) return;
-        await tick(50);
-    }
-}
+// 真实 git 子进程比 mock 慢，放宽等待上限
+const settles = (check, message) => waitFor(check, { timeout: 5000, interval: 20, message });
 
 test('the Git view lists and diffs the changes of a real repository', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vcp-git-side-'));
@@ -85,13 +80,13 @@ test('the Git view lists and diffs the changes of a real repository', async () =
         assert.deepEqual(paths(), ['a.txt', 'new.txt']);
 
         // +N/-N show up on the collapsed row, computed from the real diff
-        await waitFor(() => view.querySelector('[data-path="a.txt"] .text-diff-added'));
+        await settles(() => view.querySelector('[data-path="a.txt"] .text-diff-added'), 'counts never painted');
         assert.equal(view.querySelector('[data-path="a.txt"] .text-diff-added').textContent, '+1');
         assert.equal(view.querySelector('[data-path="a.txt"] .text-diff-removed').textContent, '-0');
 
         // expanding renders the real diff with the added line
         view.querySelector('[data-path="a.txt"] .side-git-row').click();
-        await waitFor(() => view.querySelector('[data-path="a.txt"] .side-git-diff-table'));
+        await settles(() => view.querySelector('[data-path="a.txt"] .side-git-diff-table'), 'expanded diff never rendered');
         const addedRows = [...view.querySelectorAll('[data-path="a.txt"] tr.diff-line.add .diff-content')].map(td => td.textContent);
         assert.deepEqual(addedRows, ['+three']);
 
@@ -100,15 +95,14 @@ test('the Git view lists and diffs the changes of a real repository', async () =
         await handle.refresh();
         assert.deepEqual(paths(), ['new.txt']);
         pick('staged');
-        await waitFor(() => paths().join() === 'a.txt');
-        assert.deepEqual(paths(), ['a.txt']);
+        await settles(() => paths().join() === 'a.txt', 'staged source never listed a.txt');
 
         // nothing staged after a commit -> empty state
         git(repo, 'commit', '-m', 'feat: update a');
         await handle.refresh();
         assert.equal(paths().length, 0);
         assert.equal(view.querySelector('.side-git-empty').hidden, false);
-        assert.equal(view.querySelector('.side-git-empty-title').textContent, '当前来源下没有可展示的改动');
+        assert.equal(view.querySelector('.side-git-empty').dataset.emptyReason, 'no-changes');
     } finally {
         await handle.dispose();
         try {
@@ -129,8 +123,11 @@ test('the Git view shows an add-workspace action when none are registered', asyn
     });
     await handle.ready;
     try {
-        assert.ok(view.querySelector('.side-git-empty-add'));
-        assert.equal(view.querySelector('.side-git-empty-title').textContent, '还没有工作区');
+        const empty = view.querySelector('.side-git-empty');
+        assert.equal(empty.hidden, false);
+        assert.equal(empty.dataset.emptyReason, 'no-workspace');
+        const add = empty.querySelector('button');
+        assert.ok(add && add.textContent.trim(), 'the empty state offers a named add-workspace action');
     } finally {
         await handle.dispose();
     }

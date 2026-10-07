@@ -363,6 +363,7 @@ export function createTerminalSideProvider({
             const restartBtn = doc.createElement('button');
             restartBtn.type = 'button';
             restartBtn.className = 'side-terminal-btn';
+            restartBtn.dataset.action = 'restart';
             restartBtn.title = '重新启动终端（终端窗口和 AI 共用同一个会话，会一并重置）';
             restartBtn.setAttribute('aria-label', '重新启动终端');
             restartBtn.innerHTML = '<span class="vcp-ui-icon" aria-hidden="true">refresh</span>';
@@ -370,6 +371,7 @@ export function createTerminalSideProvider({
             const clearBtn = doc.createElement('button');
             clearBtn.type = 'button';
             clearBtn.className = 'side-terminal-btn';
+            clearBtn.dataset.action = 'clear';
             clearBtn.title = '清屏';
             clearBtn.setAttribute('aria-label', '清屏');
             clearBtn.innerHTML = '<span class="vcp-ui-icon" aria-hidden="true">delete_sweep</span>';

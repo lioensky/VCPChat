@@ -131,6 +131,7 @@ export function createModelTrajectorySideProvider({
             let items = [];
             let loading = false;
             let loadError = '';
+            let loadErrorCode = '';
             let loadSeq = 0;
             let cancelReload = null;
             let cancelSearch = null;
@@ -182,6 +183,9 @@ export function createModelTrajectorySideProvider({
             const searchNext = iconButton('arrow_downward', '下一个匹配项', () => moveSearch(1));
             const searchClose = iconButton('close', '关闭搜索', () => closeSearch());
             searchBar.append(icon('search', 'side-traj-search-glyph'), searchInput, searchCount, searchPrev, searchNext, searchClose);
+            // data-action：与文案无关的稳定钩子
+            Object.entries({ search: searchBtn, 'expansion-menu': menuBtn, 'toggle-all': toggleAllBtn, 'open-directory': folderBtn, clear: clearBtn, refresh: refreshBtn, 'search-prev': searchPrev, 'search-next': searchNext, 'search-close': searchClose })
+                .forEach(([action, btn]) => { btn.dataset.action = action; });
             header.append(titleRow, summaryLine, searchBar);
 
             const menu = h('div', 'side-traj-menu');
@@ -518,6 +522,7 @@ export function createModelTrajectorySideProvider({
                 if (!has) { closeMenu(); closeSearch(); }
                 summaryLine.hidden = !has;
                 summaryLine.textContent = '';
+                summaryLine.dataset.callCount = String(records.length);
                 if (has) {
                     const summary = summarizeRecords(records);
                     summaryLine.appendChild(h('span', '', `${records.length} 次调用`));
@@ -540,21 +545,29 @@ export function createModelTrajectorySideProvider({
                 const records = data.records;
                 state.hidden = true;
                 state.className = 'side-traj-state';
+                // data-state：error / service-missing / no-conversation / loading / empty
+                let stateKey = '';
                 if (loadError) {
+                    stateKey = loadErrorCode || 'error';
                     state.hidden = false;
                     state.classList.add('error');
                     state.textContent = '';
                     state.append(h('p', '', '读取调用轨迹失败'), h('p', 'side-traj-state-detail', loadError));
                 } else if (!sessionKey) {
+                    stateKey = 'no-conversation';
                     state.hidden = false;
                     state.textContent = '请先在主聊天里选择一个智能体和话题。';
                 } else if (loading && records.length === 0) {
+                    stateKey = 'loading';
                     state.hidden = false;
                     state.textContent = '正在加载调用轨迹…';
                 } else if (records.length === 0) {
+                    stateKey = 'empty';
                     state.hidden = false;
                     state.textContent = '这个话题还没有模型调用记录。发一条消息后，每次发给模型的请求和它的回答都会记在这里。';
                 }
+                if (stateKey) state.dataset.state = stateKey;
+                else delete state.dataset.state;
                 truncatedNotice.hidden = !data.truncated;
             }
 
@@ -840,15 +853,17 @@ export function createModelTrajectorySideProvider({
                     // 主进程没有这组接口（只刷新了页面、主进程还是旧的）时 invoke 会直接抛错，
                     // 不能让它冒出 mountTab，否则整页被移除、只剩空白
                     const missing = /No handler registered/i.test(String(error?.message || error));
-                    res = { success: false, error: missing ? '调用轨迹服务未启动，请完全退出并重新打开 VCPChat' : (error?.message || '读取调用轨迹失败') };
+                    res = { success: false, error: missing ? '调用轨迹服务未启动，请完全退出并重新打开 VCPChat' : (error?.message || '读取调用轨迹失败'), code: missing ? 'service-missing' : '' };
                 }
                 if (disposed() || seq !== loadSeq) return;
                 loading = false;
                 if (res?.success) {
                     data = res.data;
                     loadError = '';
+                    loadErrorCode = '';
                 } else {
                     loadError = res?.error || '读取调用轨迹失败';
+                    loadErrorCode = res?.code || '';
                 }
                 items = buildTimeline(data.records);
                 renderAll();

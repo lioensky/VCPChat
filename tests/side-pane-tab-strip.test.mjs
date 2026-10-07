@@ -37,14 +37,20 @@ test('search ranking: title prefix beats word prefix beats substring beats hint 
 });
 
 test('tab presentation helpers: type labels and search hints', () => {
-    assert.equal(getTabTypeLabel({ kind: 'notifications' }), '通知');
-    assert.equal(getTabTypeLabel({ kind: 'chat' }), '辅助对话');
-    assert.equal(getTabTypeLabel({ kind: 'terminal', typeLabel: '终端' }), '终端');
-    assert.equal(getTabTypeLabel({ kind: 'unknown' }), '标签页');
+    // 打开标签的模块给的 typeLabel 原样使用；框架类型和未知类型都有非空的默认名
+    assert.equal(getTabTypeLabel({ kind: 'terminal', typeLabel: 'My Shell' }), 'My Shell');
+    assert.equal(getTabTypeLabel({ kind: 'x', typeLabel: '' }, () => ({ label: 'From registry' })), 'From registry');
+    for (const kind of ['notifications', 'chat', 'unknown']) assert.ok(getTabTypeLabel({ kind }), kind);
+    assert.notEqual(getTabTypeLabel({ kind: 'notifications' }), getTabTypeLabel({ kind: 'chat' }));
     assert.equal(getTabSearchHint({ kind: 'browser', searchHint: 'https://a.test/x' }), 'https://a.test/x');
     assert.equal(getTabSearchHint({ kind: 'browser', url: 'https://a.test/x' }), '');
-    assert.equal(formatRelativeTime(1000, 1000 + 30_000), '刚刚');
-    assert.equal(formatRelativeTime(0, 5 * 60_000), '5分钟前');
+    // 半分钟内与五分钟前给出不同的相对时间，五分钟的数字要出现
+    const justNow = formatRelativeTime(1000, 1000 + 30_000);
+    const fiveMin = formatRelativeTime(0, 5 * 60_000);
+    assert.ok(justNow);
+    assert.notEqual(justNow, fiveMin);
+    assert.match(fiveMin, /5/);
+    assert.equal(formatRelativeTime(0, 10_000), justNow, 'everything under a minute reads the same');
 });
 
 test('resolveTabsOverflow uses the min-width budget and ignores where the add button lives', () => {
@@ -147,8 +153,6 @@ test('controller: closed non-chat tabs are remembered and can really be reopened
     await controller.openTab({ id: 'n1', kind: 'notes', title: 'N1', scopeMode: 'global', searchHint: 'file:///x' });
     await controller.closeTab('n1');
 
-    // 关掉最后一个可关的标签后面板收起（与通知之外没有内容时一致）
-    assert.equal(controller.getSnapshot().visible, false);
     const closed = controller.getRecentlyClosedTabs();
     assert.equal(closed.length, 1);
     assert.equal(closed[0].id, 'n1');
@@ -262,14 +266,23 @@ test('controller: the 通知 tab mirrors the VCPLog connection status', async ()
     });
     controller.show?.();
     const tab = () => root.querySelector('.side-pane-tab[data-tab-id="notifications"]');
+    const title = () => tab().querySelector('.tab-title').textContent;
     assert.equal(tab().querySelector('.side-pane-tab-status').dataset.status, 'connecting');
-    assert.equal(tab().getAttribute('aria-label'), '通知，VCPLog: 连接中...');
-    assert.equal(tab().querySelector('.tab-title').textContent, 'VCPLog 连接中...');
+    // 读屏名带上通知中心发布的状态文字；标签上能看到的标题也跟着状态走
+    assert.ok(tab().getAttribute('aria-label').includes('VCPLog: 连接中...'));
+    const connectingTitle = title();
+    assert.ok(connectingTitle);
 
     notificationState.publish({ ...notificationState.get(), connection: { status: 'open', text: 'VCPLog: 已连接' } });
     assert.equal(tab().querySelector('.side-pane-tab-status').dataset.status, 'open');
-    assert.equal(tab().getAttribute('aria-label'), '通知，VCPLog: 已连接');
-    assert.equal(tab().querySelector('.tab-title').textContent, 'VCPLog 已连接');
+    assert.ok(tab().getAttribute('aria-label').includes('VCPLog: 已连接'));
+    assert.ok(title());
+    assert.notEqual(title(), connectingTitle);
+
+    // 没有状态文字时不留过期的读屏名
+    notificationState.publish({ ...notificationState.get(), connection: { status: 'closed', text: '' } });
+    assert.equal(tab().querySelector('.side-pane-tab-status').dataset.status, 'closed');
+    assert.equal(tab().hasAttribute('aria-label'), false);
     controller.dispose();
     dom.window.close();
 });

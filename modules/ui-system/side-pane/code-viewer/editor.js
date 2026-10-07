@@ -61,10 +61,11 @@ export function createCodeViewerEditor({
     // 用户点过「读取」后，工作区外的这个文件就不再问
     let outsideWorkspaceAllowed = false;
 
-    function setBodyMessage(text, isError = false) {
+    function setBodyMessage(text, isError = false, reason = null) {
         body.innerHTML = '';
         const msg = doc.createElement('div');
         msg.className = isError ? 'side-code-error' : 'side-code-empty';
+        if (reason) msg.dataset.reason = reason;
         msg.textContent = text;
         body.appendChild(msg);
     }
@@ -83,6 +84,7 @@ export function createCodeViewerEditor({
         const read = doc.createElement('button');
         read.type = 'button';
         read.className = 'side-pane-mount-error-retry';
+        read.dataset.action = 'consent-read';
         read.textContent = '读取这个文件';
         read.addEventListener('click', () => {
             outsideWorkspaceAllowed = true;
@@ -112,7 +114,7 @@ export function createCodeViewerEditor({
             store.currentCode = '';
             fileLoaded = false;
             if (result?.needsConsent) showConsent(result.notice);
-            else if (result?.notice) setBodyMessage(result.notice);
+            else if (result?.notice) setBodyMessage(result.notice, false, result.reason);
             else setBodyMessage(result?.error || '读取文件失败', true);
             return false;
         }

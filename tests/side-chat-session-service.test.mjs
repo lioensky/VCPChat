@@ -26,6 +26,8 @@ test('createSideChatDescriptor validates parent and childTopicId and enforces di
     assert.equal(desc.child.topicId, 'topic-side-1');
     assert.equal(desc.title, '测试侧聊');
     assert.equal(desc.contextMode, 'references-only');
+    assert.equal(desc.type, 'selection-side-chat');
+    assert.equal(desc.ephemeral, true);
     assert.ok(desc.id.startsWith('sidechat-'));
     assert.equal(Object.isFrozen(desc), true);
 });
@@ -182,4 +184,16 @@ test('saveSideChatMetadata, listSideChatsForParent and createParentSnapshot hand
     assert.equal(snapRes.ok, true);
     assert.equal(snapRes.snapshotId, 'snap-123');
     assert.equal(snapRes.messages.length, 1);
+
+    const snapFail = await createParentSnapshot({
+        electronAPI: { createSideChatSnapshot: async () => ({ success: false, error: 'disk failure' }) },
+        agentId: 'a', parentTopicId: 'p', fallbackHistory: []
+    });
+    assert.equal(snapFail.ok, false);
+    assert.equal(snapFail.code, 'SNAPSHOT_FAILED');
+    assert.equal(snapFail.error, 'disk failure');
+
+    const missingIpc = await saveSideChatMetadata({ electronAPI: {}, metadata: meta });
+    assert.equal(missingIpc.ok, false);
+    assert.equal(missingIpc.code, 'UNSUPPORTED');
 });

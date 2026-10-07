@@ -106,6 +106,7 @@ export function createCodeViewerSideProvider({
             const langTag = doc.createElement('span');
             langTag.className = 'side-code-lang-tag';
             langTag.textContent = currentMode === 'diff' ? 'DIFF' : currentTag;
+            langTag.dataset.lang = currentMode === 'diff' ? 'diff' : currentLang;
 
             infoWrapper.append(fileIcon, titleLabel, langTag);
 
@@ -197,6 +198,7 @@ export function createCodeViewerSideProvider({
                 pickerToggleBtn.className = 'side-code-action-btn';
                 pickerToggleBtn.title = '选择文件';
                 pickerToggleBtn.setAttribute('aria-label', '选择文件');
+                pickerToggleBtn.setAttribute('data-action', 'toggle-picker');
                 pickerToggleBtn.innerHTML = '<span class="vcp-ui-icon" aria-hidden="true">folder_open</span>';
                 actionsWrapper.prepend(pickerToggleBtn);
                 container.append(toolbar, picker, body);
@@ -298,6 +300,7 @@ export function createCodeViewerSideProvider({
                     currentMode = currentMode === 'diff' ? 'view' : 'diff';
                     fileIcon.textContent = currentMode === 'diff' ? 'difference' : 'code';
                     langTag.textContent = currentMode === 'diff' ? 'DIFF' : currentTag;
+                    langTag.dataset.lang = currentMode === 'diff' ? 'diff' : currentLang;
                     modeToggleBtn.title = currentMode === 'diff' ? '切换为纯代码视图' : '切换为差异对比视图';
                     modeToggleBtn.innerHTML = currentMode === 'diff'
                         ? '<span class="vcp-ui-icon" aria-hidden="true">code</span>'
