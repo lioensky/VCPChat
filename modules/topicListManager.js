@@ -391,6 +391,7 @@ window.topicListManager = (() => {
         li.classList.toggle('active', isCurrentActiveTopic);
         li.classList.toggle('active-topic-glowing', isCurrentActiveTopic);
         li.classList.toggle('has-unread-topic', isPersistentlyUnread);
+        li.tabIndex = isCurrentActiveTopic ? 0 : -1;
 
         const avatarImg = document.createElement('img');
         avatarImg.classList.add('avatar');
@@ -534,6 +535,10 @@ window.topicListManager = (() => {
                 } else {
                     topicListUl.appendChild(fragment);
                 }
+                if (!topicListUl.querySelector('.topic-item[tabindex="0"]')) {
+                    const firstItem = topicListUl.querySelector('.topic-item');
+                    if (firstItem) firstItem.tabIndex = 0;
+                }
 
                 allRendered = currentIndex >= totalCount;
                 isRendering = false;
@@ -562,8 +567,95 @@ window.topicListManager = (() => {
         scrollContainer.addEventListener('scroll', onScroll, { passive: true });
         topicListScrollCleanup = () => scrollContainer.removeEventListener('scroll', onScroll);
 
+        addRenderListener(topicListUl, 'keydown', onTopicListKeydown);
+        addRenderListener(topicListUl, 'focusin', onTopicListFocusIn);
+
         topicListUl.innerHTML = '';
         renderNextBatch(initialCount);
+    }
+
+    // Keyboard model of a Radix listbox with a ContextMenu trigger, as ZCode's
+    // lists use: one tab stop that follows focus, arrows/Home/End move it,
+    // Enter/Space open the topic, Shift+F10 or the menu key opens its menu.
+    function onTopicListFocusIn(event) {
+        const item = event.target;
+        if (!item?.classList?.contains('topic-item')) return;
+        item.parentElement?.querySelectorAll('.topic-item[tabindex="0"]').forEach(other => {
+            if (other !== item) other.tabIndex = -1;
+        });
+        item.tabIndex = 0;
+    }
+
+    function onTopicListKeydown(event) {
+        const item = event.target;
+        if (!item?.classList?.contains('topic-item')) return;
+        const items = [...item.parentElement.querySelectorAll('.topic-item')];
+        const index = items.indexOf(item);
+        let next = null;
+        if (event.key === 'ArrowDown') next = items[index + 1];
+        else if (event.key === 'ArrowUp') next = items[index - 1];
+        else if (event.key === 'Home') next = items[0];
+        else if (event.key === 'End') next = items[items.length - 1];
+        else if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            item.click();
+            return;
+        } else if (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)) {
+            event.preventDefault();
+            const rect = item.getBoundingClientRect();
+            item.dispatchEvent(new MouseEvent('contextmenu', {
+                bubbles: true,
+                cancelable: true,
+                clientX: rect.left + 16,
+                clientY: rect.bottom
+            }));
+            return;
+        } else {
+            return;
+        }
+        event.preventDefault();
+        if (next) next.focus();
+    }
+
+    function wireTopicMenuKeyboard(menu, topicItemElement) {
+        menu.setAttribute('role', 'menu');
+        menu.setAttribute('aria-label', '话题操作');
+        const items = [...menu.querySelectorAll('.context-menu-item')];
+        items.forEach(item => {
+            item.setAttribute('role', 'menuitem');
+            item.tabIndex = -1;
+        });
+        const enabledItems = () => items.filter(item => item.isConnected && !item.classList.contains('disabled'));
+        const returnFocus = () => {
+            if (topicItemElement?.isConnected) topicItemElement.focus();
+        };
+        menu.addEventListener('keydown', event => {
+            const current = enabledItems();
+            const index = current.indexOf(event.target);
+            let next = null;
+            if (event.key === 'ArrowDown') next = current[(index + 1) % current.length];
+            else if (event.key === 'ArrowUp') next = current[(index - 1 + current.length) % current.length];
+            else if (event.key === 'Home') next = current[0];
+            else if (event.key === 'End') next = current[current.length - 1];
+            else if ((event.key === 'Enter' || event.key === ' ') && index >= 0) {
+                event.preventDefault();
+                event.target.click();
+                // An action that moved focus (title editing) keeps it; otherwise
+                // focus goes back to the topic instead of being lost to <body>.
+                if (!document.activeElement || document.activeElement === document.body) returnFocus();
+                return;
+            } else if (event.key === 'Escape' || event.key === 'Tab') {
+                event.preventDefault();
+                closeTopicContextMenu();
+                returnFocus();
+                return;
+            } else {
+                return;
+            }
+            event.preventDefault();
+            next?.focus();
+        });
+        enabledItems()[0]?.focus({ preventScroll: true });
     }
 
     async function loadTopicList() {
@@ -1317,6 +1409,7 @@ window.topicListManager = (() => {
         menu.style.top = `${top}px`;
         menu.style.left = `${left}px`;
         menu.style.visibility = 'visible';
+        wireTopicMenuKeyboard(menu, topicItemElement);
 
         document.addEventListener('click', closeTopicContextMenuOnClickOutside, true);
     }

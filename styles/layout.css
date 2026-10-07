@@ -80,7 +80,8 @@ body.light-theme .title-bar {
 
 /* 悬停或拖拽时：显示高亮颜色 */
 .resizer:hover,
-.resizer:active {
+.resizer:active,
+.resizer:focus-visible {
     background-color: var(--accent-bg); /* 使用主题强调色 */
 }
 

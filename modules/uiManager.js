@@ -62,16 +62,56 @@ const uiManager = (() => {
                 max: parseFloat(computed.maxWidth) || 600
             };
         };
-        const createResizer = (handle, element, fallbackMin, direction, settingKey, beforeBegin) => {
+        const createResizer = (handle, element, fallbackMin, direction, settingKey, label, beforeBegin) => {
             if (!handle || !element || !window.VCPSidebarResizer) return null;
             let dragStyles = null;
+            // A focusable separator, like the side pane's handle and ZCode's
+            // resizable.tsx, so the keyboard handler below can actually run.
+            const syncAria = (width) => {
+                const bounds = getWidthConstraints(element, fallbackMin);
+                handle.setAttribute('aria-valuemin', String(Math.round(bounds.min)));
+                handle.setAttribute('aria-valuemax', String(Math.round(bounds.max)));
+                handle.setAttribute('aria-valuenow', String(Math.round(width)));
+            };
+            handle.setAttribute('role', 'separator');
+            handle.setAttribute('aria-orientation', 'vertical');
+            handle.setAttribute('aria-label', label);
+            if (!handle.hasAttribute('tabindex')) handle.setAttribute('tabindex', '0');
+            syncAria(element.getBoundingClientRect().width);
+            const persistWidth = async (width) => {
+                if (disposed) return;
+                const currentSettings = globalSettingsRef.get();
+                const roundedWidth = Math.round(width);
+                if (currentSettings[settingKey] === roundedWidth) return;
+                const nextSettings = { ...currentSettings, [settingKey]: roundedWidth };
+                globalSettingsRef.set(nextSettings);
+                try {
+                    await track(saveSettingPatch({ [settingKey]: roundedWidth }));
+                    console.log('Sidebar width saved to settings.');
+                } catch (error) {
+                    console.error('Failed to save sidebar width:', error);
+                }
+            };
+            // Arrow keys resize at once; the setting is written once the keys
+            // stop (or focus leaves), not once per key press.
+            let keyboardCommit = null;
+            const flushKeyboardCommit = () => {
+                if (!keyboardCommit) return;
+                const { timer, width } = keyboardCommit;
+                keyboardCommit = null;
+                clearTimeout(timer);
+                void persistWidth(width);
+            };
             const resizer = window.VCPSidebarResizer.create({
                 handle,
                 getValue: () => element.getBoundingClientRect().width,
                 getBounds: () => getWidthConstraints(element, fallbackMin),
-                applyValue: (width) => { element.style.width = `${width}px`; },
+                applyValue: (width) => {
+                    element.style.width = `${width}px`;
+                    syncAria(width);
+                },
                 direction,
-                step: 1,
+                step: 20,
                 beforeBegin,
                 onActiveChange: (active) => {
                     if (active) {
@@ -95,28 +135,34 @@ const uiManager = (() => {
                         dragStyles = null;
                     }
                 },
-                onCommit: async (width) => {
-                    if (disposed) return;
-                    const currentSettings = globalSettingsRef.get();
-                    const roundedWidth = Math.round(width);
-                    if (currentSettings[settingKey] === roundedWidth) return;
-                    const nextSettings = { ...currentSettings, [settingKey]: roundedWidth };
-                    globalSettingsRef.set(nextSettings);
-                    try {
-                        await track(saveSettingPatch({ [settingKey]: roundedWidth }));
-                        console.log('Sidebar width saved to settings.');
-                    } catch (error) {
-                        console.error('Failed to save sidebar width:', error);
+                onCommit: (width, event) => {
+                    if (event?.type !== 'keydown') {
+                        if (keyboardCommit) {
+                            clearTimeout(keyboardCommit.timer);
+                            keyboardCommit = null;
+                        }
+                        void persistWidth(width);
+                        return;
                     }
+                    if (keyboardCommit) clearTimeout(keyboardCommit.timer);
+                    keyboardCommit = { width, timer: setTimeout(flushKeyboardCommit, 400) };
                 },
             });
-            resizers.add(resizer);
-            return resizer;
+            handle.addEventListener('blur', flushKeyboardCommit);
+            const owner = {
+                dispose() {
+                    flushKeyboardCommit();
+                    handle.removeEventListener('blur', flushKeyboardCommit);
+                    resizer.dispose();
+                }
+            };
+            resizers.add(owner);
+            return owner;
         };
 
-        createResizer(resizerLeft, leftSidebar, 180, 1, 'sidebarWidth');
+        createResizer(resizerLeft, leftSidebar, 180, 1, 'sidebarWidth', '调节左侧栏宽度');
         if (!vcpSidePane && resizerRight && rightNotificationsSidebar) {
-            createResizer(resizerRight, rightNotificationsSidebar, 220, -1, 'notificationsSidebarWidth', (event, resume) => {
+            createResizer(resizerRight, rightNotificationsSidebar, 220, -1, 'notificationsSidebarWidth', '调节通知栏宽度', (event, resume) => {
                 if (rightNotificationsSidebar.classList.contains('active')) return true;
                 electronAPI?.sendToggleNotificationsSidebar?.();
                 requestAnimationFrame(resume);

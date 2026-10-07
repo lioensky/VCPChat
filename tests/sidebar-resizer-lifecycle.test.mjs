@@ -357,8 +357,36 @@ test('reinitializing uiManager replaces the old resizer instead of duplicating k
         await f.win.uiManager.init(options);
         const initialSaves = saved.length;
         f.handle.dispatchEvent(new f.win.KeyboardEvent('keydown', { key: 'ArrowRight' }));
+        f.handle.dispatchEvent(new f.win.FocusEvent('blur'));
         await Promise.resolve();
-        assert.equal(f.pane.style.width, '301px');
+        assert.equal(f.pane.style.width, '320px');
         assert.equal(saved.length - initialSaves, 1);
+    } finally { await f.win.uiManager?.dispose(); f.close(); }
+});
+
+test('the sidebar resizers are keyboard separators that save once the keys stop', async () => {
+    const f = fixture();
+    try {
+        f.handle.removeAttribute('tabindex');
+        f.pane.getBoundingClientRect = () => ({ width: parseFloat(f.pane.style.width) || 300 });
+        const saved = [];
+        await initManager(f, async patch => { saved.push(patch); return { success: true }; });
+        assert.equal(f.handle.getAttribute('tabindex'), '0', 'the handle must be reachable with Tab');
+        assert.equal(f.handle.getAttribute('role'), 'separator');
+        assert.equal(f.handle.getAttribute('aria-orientation'), 'vertical');
+        assert.ok(f.handle.getAttribute('aria-label'));
+        assert.equal(f.handle.getAttribute('aria-valuemin'), '100');
+        assert.equal(f.handle.getAttribute('aria-valuemax'), '800');
+        assert.equal(f.handle.getAttribute('aria-valuenow'), '300');
+
+        const before = saved.length;
+        for (let i = 0; i < 5; i++) {
+            f.handle.dispatchEvent(new f.win.KeyboardEvent('keydown', { key: 'ArrowRight' }));
+        }
+        assert.equal(f.pane.style.width, '400px', 'each press moves a visible step');
+        assert.equal(f.handle.getAttribute('aria-valuenow'), '400');
+        assert.equal(saved.length - before, 0, 'no settings write per key press');
+        await new Promise(resolve => setTimeout(resolve, 450));
+        assert.equal(saved.length - before, 1, 'one write after the keys stop');
     } finally { await f.win.uiManager?.dispose(); f.close(); }
 });
