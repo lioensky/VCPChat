@@ -19,6 +19,8 @@ const SINGLETON_TAB_ID = 'terminal:main';
 const XTERM_SCRIPT = 'vendor/xterm/xterm.js';
 const XTERM_FIT_SCRIPT = 'vendor/xterm/xterm-addon-fit.js';
 const XTERM_STYLE = 'vendor/xterm/xterm.css';
+// 连接建立前最多替用户攒这么多输入（敲键盘够用，大段粘贴不攒）
+const PENDING_INPUT_LIMIT = 4096;
 
 function loadScript(doc, src) {
     return new Promise((resolve, reject) => {
@@ -189,9 +191,18 @@ export function createTerminalSideProvider({
             }
         };
 
+        // 连接建立之前敲的字先攒着，连上后按顺序补发（打开标签就开始敲，不该丢字）；连不上就丢掉
+        let pendingInput = '';
         term.onData((data) => {
             if (session.sessionId) api.terminalWrite?.(session.sessionId, data);
+            else if (session.connectionOperation && pendingInput.length + data.length <= PENDING_INPUT_LIMIT) pendingInput += data;
         });
+        session.flushPendingInput = () => {
+            const data = pendingInput;
+            pendingInput = '';
+            if (data && session.sessionId) api.terminalWrite?.(session.sessionId, data);
+        };
+        session.dropPendingInput = () => { pendingInput = ''; };
         // The PTY has a single size shared by every view of it (this tab and the terminal window), so a view
         // only pushes its size while it has focus, and claims it again whenever it gets focus.
         // session.ptySize is the PTY's real size, from create and from resize notices; a view that does not
@@ -250,6 +261,7 @@ export function createTerminalSideProvider({
             session.connectionOperation = Promise.resolve().then(() => {
                 if (!session.disposed) return action();
             }).catch(error => {
+                session.dropPendingInput();
                 if (session.disposed) return;
                 const message = error?.message || String(error);
                 setStatus(message, 'error');
@@ -270,11 +282,13 @@ export function createTerminalSideProvider({
                 return;
             }
             if (!res?.success) {
+                session.dropPendingInput();
                 setStatus(res?.error || '终端启动失败', 'error');
                 term.write(`\x1b[31m${res?.error || '终端启动失败'}\x1b[0m\r\n`);
                 return;
             }
             session.sessionId = res.data.id;
+            session.flushPendingInput();
             session.exited = false;
             if (res.data.windowsPty && typeof res.data.windowsPty === 'object') term.options.windowsPty = res.data.windowsPty;
             // 共享终端在 Windows 上起的是 pwsh / powershell，其余平台是 bash

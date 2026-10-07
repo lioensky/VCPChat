@@ -23,6 +23,8 @@ import { findByTabId } from './side-pane-tab-utils.js';
 
 // 对话区窄于这个宽度时自动收起面板
 const CONVERSATION_AUTO_COLLAPSE_SIDE_PANE_WIDTH_PX = 480;
+// 与 side-pane-tab-overlays.css 的窄屏规则一致：这个宽度以下面板浮在对话上
+const OVERLAY_MEDIA_QUERY = '(max-width: 960px)';
 const CONVERSATION_AUTO_COLLAPSE_RESIZE_IDLE_MS = 300;
 const RECENTLY_CLOSED_LIMIT = 10;
 
@@ -1243,6 +1245,19 @@ export function createSidePaneController({
         }, CONVERSATION_AUTO_COLLAPSE_RESIZE_IDLE_MS);
     };
     win?.addEventListener?.('resize', onWindowResize, { passive: true });
+    // 窗口窄到面板只能浮在对话上（≤960px，见 side-pane-tab-overlays.css）时，点对话区收起面板，像抽屉一样，
+    // 不然浮层盖着发送按钮，只能找收起按钮。点的东西自己打开了标签（代码块「副屏」、在侧栏提问）就不收：
+    // 等这次点击处理完，面板状态没被动过才收
+    const mainContent = doc.querySelector('.main-content');
+    if (mainContent && !root.contains(mainContent)) {
+        rootScope.listen(mainContent, 'click', () => {
+            if (!state.visible || !win?.matchMedia?.(OVERLAY_MEDIA_QUERY)?.matches) return;
+            const revision = navigationRevision;
+            rootScope.timeout(() => {
+                if (!isDisposed && state.visible && navigationRevision === revision) controller.setVisible(false);
+            }, 0, 'overlay-dismiss');
+        }, true, 'overlay-dismiss');
+    }
     // 窗口最小化或切到别处时，当前标签也算不可见，跟着它的轮询一起停
     if (doc?.addEventListener) rootScope.listen(doc, 'visibilitychange', syncOccurrenceVisibility, undefined, 'document-visibility');
     cleanupListeners.push(() => {
