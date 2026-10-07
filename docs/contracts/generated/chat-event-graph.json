@@ -3612,12 +3612,12 @@
         },
         {
           "file": "modules/renderer/contentProcessor.js",
-          "line": 837,
+          "line": 840,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/renderer/contentProcessor.js",
-          "line": 997,
+          "line": 1000,
           "kind": "custom-event-listener"
         },
         {
@@ -5060,13 +5060,13 @@
         },
         {
           "file": "modules/renderer/contentProcessor.js",
-          "line": 837,
+          "line": 840,
           "kind": "custom-event-listener",
           "match": "actionBtn.addEventListener('click'"
         },
         {
           "file": "modules/renderer/contentProcessor.js",
-          "line": 997,
+          "line": 1000,
           "kind": "custom-event-listener",
           "match": "button.addEventListener('click'"
         },
@@ -18220,7 +18220,7 @@
         },
         {
           "file": "modules/renderer/contentProcessor.js",
-          "line": 926,
+          "line": 929,
           "kind": "custom-event-listener"
         },
         {
@@ -18267,7 +18267,7 @@
         },
         {
           "file": "modules/renderer/contentProcessor.js",
-          "line": 926,
+          "line": 929,
           "kind": "custom-event-listener",
           "match": "ownerWindow.addEventListener('message'"
         },

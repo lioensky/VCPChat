@@ -688,9 +688,12 @@ function setupSingleCodeCopyButton(preElement, rawText) {
         actions.insertBefore(copyButton, actions.firstChild);
         previewContainer.classList.add('has-code-copy');
     } else {
+        // 两个按钮放进同一行，各自绝对定位会叠在同一个角上，「复制」把「副屏」整个盖住
+        const actions = document.createElement('div');
+        actions.className = 'vcp-codeblock-actions';
+        actions.append(sideViewBtn, copyButton);
         preElement.classList.add('vcp-codeblock-with-copy');
-        preElement.appendChild(sideViewBtn);
-        preElement.appendChild(copyButton);
+        preElement.appendChild(actions);
     }
 
     preElement.dataset.vcpCodeCopy = 'true';

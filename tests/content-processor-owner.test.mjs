@@ -118,3 +118,29 @@ test('HTML code preview is sandboxed without same-origin authority', () => {
     processor.dispose();
     dom.window.close();
 });
+
+test('long code blocks keep the side view and copy buttons side by side in one toolbar', () => {
+    const lines = Array.from({ length: 8 }, (_, i) => `line ${i}`).join('\n');
+    const dom = new JSDOM(`<body><div id="chat"><div class="md-content"><pre><code class="language-js">${lines}</code></pre></div></div></body>`);
+    const root = dom.window.document.getElementById('chat');
+    const processor = createContentProcessor();
+    processor.initializeContentProcessor({ chatMessagesDiv: root, messageCommands: {}, uiHelper: {} });
+    const previousDocument = globalThis.document;
+    globalThis.document = dom.window.document;
+    try {
+        processor.processRenderedContent(root.querySelector('.md-content'), {});
+    } finally {
+        globalThis.document = previousDocument;
+    }
+
+    const pre = root.querySelector('pre');
+    const toolbars = pre.querySelectorAll(':scope > .vcp-codeblock-actions');
+    assert.equal(toolbars.length, 1);
+    assert.deepEqual(
+        [...toolbars[0].children].map(button => button.getAttribute('aria-label')),
+        ['侧边副屏查看', '复制代码'],
+        'each button pinned to the same corner on its own lets the copy button cover the side view button'
+    );
+    processor.dispose();
+    dom.window.close();
+});

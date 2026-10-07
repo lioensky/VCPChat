@@ -168,6 +168,9 @@ html .side-code-editor-shell:where(.vcp-ui-scope, .vcp-ui-scope *) {
     flex-shrink: 0;
     min-height: 100%;
     min-width: 100%;
+    /* 横向也由 .side-code-body 滚动：外壳按最长一行撑宽，横向滚动条贴在视口底部，
+       不会落在几千行代码的最下面 */
+    width: max-content;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: calc(var(--vcp-ui-font-size) - 2px);
     line-height: 1.5;
@@ -184,6 +187,11 @@ html .side-code-gutter:where(.vcp-ui-scope, .vcp-ui-scope *) {
     font-size: calc(var(--vcp-ui-font-size) - 3px);
     line-height: 1.5;
     box-sizing: border-box;
+    /* 横向滚动时行号停在左边，同 CodeMirror 的 .cm-gutters */
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--vcp-ui-bg-primary);
 }
 
 html body[data-vcp-theme="light"] .side-code-gutter:where(.vcp-ui-scope, .vcp-ui-scope *) {
@@ -211,9 +219,7 @@ html .side-code-line-number:where(.vcp-ui-scope, .vcp-ui-scope *) {
 html .side-code-pre:where(.vcp-ui-scope, .vcp-ui-scope *) {
     margin: 0;
     padding: 8px 12px;
-    flex: 1;
-    min-width: 0;
-    overflow-x: auto;
+    flex: 1 0 auto;
     white-space: pre;
     color: var(--primary-text, var(--vcp-ui-port-color-f1f5f9));
     line-height: 18px;
@@ -223,7 +229,19 @@ html body[data-vcp-theme="light"] .side-code-pre:where(.vcp-ui-scope, .vcp-ui-sc
     color: var(--primary-text, var(--vcp-ui-port-color-0f172a));
 }
 
+html .side-code-editor-shell.is-wrapped:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    width: auto;
+}
+
+/* 行号栏一行一个号，自动换行后一行代码占好几行高度，后面的行号全部错位。
+   代码按 200 行一块排版，做不到逐行对齐，换行时先不显示行号 */
+html .side-code-editor-shell.is-wrapped .side-code-gutter:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: none;
+}
+
 html .side-code-editor-shell.is-wrapped .side-code-pre:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 1;
+    min-width: 0;
     white-space: pre-wrap;
     word-break: break-all;
 }
