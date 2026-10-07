@@ -390,7 +390,42 @@ function withCounts(list, counts) {
     });
 }
 
-async function readStatus(repo) {
+// 同一仓库的 status 读取合并：agent 施工时一次 files 推送会让状态面板、Git 页、V工程页各自来读（每次 3 个 git 子进程，
+// Windows 上 spawn 很慢）。在飞时到达的请求不搭这次的车（它可能早于刚发生的改动），而是共享紧随其后的下一次读取，
+// 所以每个调用拿到的都是调用之后才开始的快照，N 个并发调用最多跑两轮（对照 ZCode gitCliRepo reuseInFlightRequest）。
+const statusReads = new Map(); // key -> { current, next }
+
+function readStatus(repo) {
+    const key = `${repo.toplevel}\0${repo.prefix || ''}`;
+    let slot = statusReads.get(key);
+    if (!slot) {
+        slot = { current: null, next: null };
+        statusReads.set(key, slot);
+    }
+    if (!slot.current) {
+        slot.current = readStatusNow(repo).finally(() => settleStatusRead(key, slot));
+        return slot.current;
+    }
+    if (!slot.next) {
+        const queued = Promise.withResolvers();
+        slot.next = { repo, ...queued };
+    }
+    return slot.next.promise;
+}
+
+function settleStatusRead(key, slot) {
+    const queued = slot.next;
+    slot.next = null;
+    if (!queued) {
+        slot.current = null;
+        statusReads.delete(key);
+        return;
+    }
+    slot.current = readStatusNow(queued.repo).finally(() => settleStatusRead(key, slot));
+    slot.current.then(queued.resolve, queued.reject);
+}
+
+async function readStatusNow(repo) {
     const args = ['status', '--porcelain=v2', '-z', '--branch', '--untracked-files=all'];
     if (repo.prefix) args.push('--', repo.prefix);
     const [{ stdout }, remotes, counts] = await Promise.all([runGit(repo.toplevel, args), listRemotes(repo), readDiffCounts(repo)]);
