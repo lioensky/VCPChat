@@ -1245,7 +1245,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 202,
+          "line": 204,
           "kind": "custom-event-listener"
         }
       ],
@@ -1264,7 +1264,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 202,
+          "line": 204,
           "kind": "custom-event-listener",
           "match": "tabItem.addEventListener('auxclick'"
         }
@@ -1696,7 +1696,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/context-menu.js",
-          "line": 132,
+          "line": 133,
           "kind": "custom-event-listener"
         },
         {
@@ -1802,7 +1802,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/context-menu.js",
-          "line": 132,
+          "line": 133,
           "kind": "custom-event-listener",
           "match": "win.addEventListener('blur'"
         },
@@ -4186,7 +4186,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/code-viewer/editor.js",
-          "line": 54,
+          "line": 87,
           "kind": "custom-event-listener"
         },
         {
@@ -4196,7 +4196,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/context-menu.js",
-          "line": 114,
+          "line": 115,
           "kind": "custom-event-listener"
         },
         {
@@ -4401,12 +4401,12 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 179,
+          "line": 181,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 191,
+          "line": 193,
           "kind": "custom-event-listener"
         },
         {
@@ -5756,7 +5756,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/code-viewer/editor.js",
-          "line": 54,
+          "line": 87,
           "kind": "custom-event-listener",
           "match": "read.addEventListener('click'"
         },
@@ -5768,7 +5768,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/context-menu.js",
-          "line": 114,
+          "line": 115,
           "kind": "custom-event-listener",
           "match": "btn.addEventListener('click'"
         },
@@ -6014,13 +6014,13 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 179,
+          "line": 181,
           "kind": "custom-event-listener",
           "match": "btn.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 191,
+          "line": 193,
           "kind": "custom-event-listener",
           "match": "closeBtn.addEventListener('click'"
         },
@@ -7332,7 +7332,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 214,
+          "line": 216,
           "kind": "custom-event-listener"
         },
         {
@@ -7470,7 +7470,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 214,
+          "line": 216,
           "kind": "custom-event-listener",
           "match": "tabItem.addEventListener('contextmenu'"
         },
@@ -15519,7 +15519,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/context-menu.js",
-          "line": 131,
+          "line": 132,
           "kind": "custom-event-listener"
         },
         {
@@ -15589,7 +15589,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 303,
+          "line": 305,
           "kind": "custom-event-listener"
         },
         {
@@ -15882,7 +15882,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/context-menu.js",
-          "line": 131,
+          "line": 132,
           "kind": "custom-event-listener",
           "match": "doc.addEventListener('keydown'"
         },
@@ -15966,7 +15966,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 303,
+          "line": 305,
           "kind": "custom-event-listener",
           "match": "tabListElement.addEventListener('keydown'"
         },
@@ -18829,7 +18829,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 199,
+          "line": 201,
           "kind": "custom-event-listener"
         },
         {
@@ -18953,7 +18953,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 199,
+          "line": 201,
           "kind": "custom-event-listener",
           "match": "tabItem.addEventListener('mousedown'"
         },
@@ -19044,7 +19044,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 210,
+          "line": 212,
           "kind": "custom-event-listener"
         },
         {
@@ -19086,7 +19086,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 210,
+          "line": 212,
           "kind": "custom-event-listener",
           "match": "tabItem.addEventListener('mouseenter'"
         },
@@ -19159,7 +19159,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 211,
+          "line": 213,
           "kind": "custom-event-listener"
         },
         {
@@ -19242,7 +19242,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 211,
+          "line": 213,
           "kind": "custom-event-listener",
           "match": "tabItem.addEventListener('mouseleave'"
         },
@@ -23010,7 +23010,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/context-menu.js",
-          "line": 130,
+          "line": 131,
           "kind": "custom-event-listener"
         },
         {
@@ -23035,7 +23035,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 212,
+          "line": 214,
           "kind": "custom-event-listener"
         },
         {
@@ -23064,7 +23064,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/context-menu.js",
-          "line": 130,
+          "line": 131,
           "kind": "custom-event-listener",
           "match": "doc.addEventListener('pointerdown'"
         },
@@ -23094,7 +23094,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 212,
+          "line": 214,
           "kind": "custom-event-listener",
           "match": "tabItem.addEventListener('pointerdown'"
         },
@@ -26474,7 +26474,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 260,
+          "line": 262,
           "kind": "custom-event-listener"
         },
         {
@@ -26538,7 +26538,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 260,
+          "line": 262,
           "kind": "custom-event-listener",
           "match": "tabListElement.addEventListener('scroll'"
         },

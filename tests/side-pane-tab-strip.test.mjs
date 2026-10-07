@@ -250,3 +250,34 @@ test('controller: the 通知 tab mirrors the VCPLog connection status', async ()
     controller.dispose();
     dom.window.close();
 });
+
+test('tab strip: a collapsed pane (only padding left) keeps the add button home instead of moving it back and forth', async () => {
+    const { createSidePaneTabStrip } = await import('../modules/ui-system/side-pane/side-pane-tab-strip.js');
+    const dom = new JSDOM('<div id="tabs"></div><div id="actions"><button id="add"></button></div>');
+    const doc = dom.window.document;
+    const tabList = doc.getElementById('tabs');
+    const addButton = doc.getElementById('add');
+    const home = doc.getElementById('actions');
+    // 收起的面板宽度为 0，标签条只剩左右内边距那几像素
+    Object.defineProperty(tabList, 'clientWidth', { configurable: true, get: () => 4 });
+    addButton.getBoundingClientRect = () => ({ width: 28 });
+    let moves = 0;
+    new dom.window.MutationObserver(records => { moves += records.length; }).observe(home, { childList: true });
+    const strip = createSidePaneTabStrip({
+        tabListElement: tabList,
+        addButton,
+        getTabs: () => [],
+        getActiveTabId: () => null,
+        isClosable: () => true,
+        onActivate() {}, onClose() {}, onReorder() {}, onContextMenu() {}
+    });
+    try {
+        for (let i = 0; i < 6; i++) strip.layout();
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(addButton.parentElement, home);
+        assert.equal(moves, 0);
+    } finally {
+        strip.dispose();
+        dom.window.close();
+    }
+});

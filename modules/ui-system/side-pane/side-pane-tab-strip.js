@@ -86,15 +86,17 @@ export function createSidePaneTabStrip({
         let overflowing = true;
         if (addButton && addButtonHome) {
             const addInside = addButton.parentElement === tabListElement;
-            const measured = addButton.getBoundingClientRect?.().width || 0;
+            const addButtonWidth = addButton.getBoundingClientRect?.().width || 28;
+            const viewportWidth = tabListElement.clientWidth || 0;
             const overflow = resolveTabsOverflow({
                 addButtonInside: addInside,
-                addButtonWidth: measured || 28,
+                addButtonWidth,
                 tabCount: items.length,
-                viewportWidth: tabListElement.clientWidth || 0
+                viewportWidth
             });
-            // 视口宽度未知（隐藏或无布局）时保持在右侧操作区，避免来回搬动
-            overflowing = tabListElement.clientWidth ? overflow : true;
+            // 视口放不下一个新增按钮（面板收起时只剩内边距那几像素，或没有布局）就当宽度未知，按钮留在右侧操作区。
+            // 否则收起状态下两种摆法互相判成对方，按钮每帧搬来搬去，每次搬动都让整页样式重算。
+            overflowing = viewportWidth > addButtonWidth ? overflow : true;
             if (!overflowing && !addInside) {
                 tabListElement.appendChild(addButton);
             } else if (overflowing && addInside) {

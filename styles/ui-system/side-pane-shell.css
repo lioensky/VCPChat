@@ -9,8 +9,11 @@ html body #floatingSelectionSideChatBtn[hidden]:where(.vcp-ui-scope, .vcp-ui-sco
     display: none;
 }
 
-/* 侧栏按钮取代铃铛：通知在新标签页里，右键监控面板和待审批角标都挪到侧栏按钮上 */
-html body:has(#vcpSidePane) #toggleNotificationsBtn:where(.vcp-ui-scope, .vcp-ui-scope *) {
+/* 侧栏按钮取代铃铛：通知在新标签页里，右键监控面板和待审批角标都挪到侧栏按钮上。
+   本样式只由带 #vcpSidePane 的 main.html 引入，不再用 body:has(#vcpSidePane) 判断：
+   挂在 body 上的 :has() 让页面里任何节点的增删都触发整页样式失效（切换助手时多出约 0.7s 的样式重算）。
+   :is(#vcpSidePane, *) 总能匹配 body，只为保留原来的优先级。 */
+html body:is(#vcpSidePane, *) #toggleNotificationsBtn:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: none;
 }
 
@@ -68,8 +71,10 @@ html #resizerRight.resizer.active:where(.vcp-ui-scope, .vcp-ui-scope *)::after {
     background-color: var(--vcp-ui-accent);
 }
 
-/* Without an open (or animating) side pane the handle has nothing to resize. */
-html body:not(:has(#vcpSidePane.active)):not(:has(#vcpSidePane.is-animating)) #resizerRight:not(.is-animating):where(.vcp-ui-scope, .vcp-ui-scope *) {
+/* Without an open (or animating) side pane the handle has nothing to resize.
+   The pane is the handle's next sibling, so ask the sibling instead of body:has(): a body-level :has()
+   makes every node insertion anywhere invalidate the whole page's styles. */
+html body #resizerRight:not(.is-animating):has(+ #vcpSidePane:not(.active):not(.is-animating)):where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: none;
 }
 
