@@ -91,7 +91,7 @@ export function createModelTrajectorySideProvider({
             return handle;
         },
 
-        async mountTab(tab, viewElement, { scope: viewScope = null, occurrence = null } = {}) {
+        async mountTab(tab, viewElement, { scope: viewScope = null, restoredState = null, occurrence = null } = {}) {
             if (!viewElement) return null;
             viewElement.innerHTML = '';
             viewElement.classList.add('side-traj-view');
@@ -953,9 +953,25 @@ export function createModelTrajectorySideProvider({
                 else own.interval(() => { if (!doc.hidden) void followTick(); }, FOLLOW_POLL_MS, 'trajectory-follow');
             }
             await load();
+            // 休眠前的阅读位置：还是同一个会话才接回展开 / 收起和滚动位置，否则藏了 5 分钟回来就被收回默认并拉到底
+            if (restoredState && !disposed() && restoredState.sessionKey === sessionKey && sessionKey) {
+                if (Array.isArray(restoredState.overrides)) overrides = new Map(restoredState.overrides);
+                if (restoredState.commands) commands = restoredState.commands;
+                if (Number.isFinite(restoredState.version)) version = restoredState.version;
+                renderHeader();
+                renderMenu();
+                updateAllRows();
+                if (restoredState.stickToBottom === false && Number.isFinite(restoredState.scrollTop)) {
+                    stickToBottom = false;
+                    scroller.scrollTop = restoredState.scrollTop;
+                }
+            }
 
             return {
                 focus() { searchOpen ? searchInput.focus() : scroller.focus?.({ preventScroll: true }); },
+                captureState() {
+                    return { sessionKey, overrides: [...overrides], commands, version, stickToBottom, scrollTop: scroller.scrollTop };
+                },
                 suspend() {
                     // 还没到点的重读留到重新显示时再做
                     if (!cancelReload) return;

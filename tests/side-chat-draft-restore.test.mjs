@@ -25,7 +25,7 @@ async function fixture(t, legacyInput = {}) {
     const childDir = path.join(directory, 'agent', 'topics', child.topicId);
     const dom = new JSDOM('<aside id="pane"><div id="tabs"></div><div id="content"></div></aside>', { url: 'https://side-chat.test' });
     const doc = dom.window.document, drafts = createSideChatDraftStore({ getStorage: () => dom.window.localStorage });
-    const deletions = [], sessions = [], metadataWrites = [];
+    const deletions = [], sessions = [], metadataWrites = [], toasts = [];
     const chatAPI = {
         listSideChatMetadata: (...args) => call('side-chat:list-metadata', ...args),
         saveSideChatMetadata: (...args) => {
@@ -40,7 +40,8 @@ async function fixture(t, legacyInput = {}) {
         let controller;
         const wiring = createSideChatWiring({ doc, win: dom.window, chatAPI,
             chatRepository: { getHistory: (agent, _type, topic) => chatAPI.getChatHistory(agent, topic), saveHistory: async () => ({ success: true }) },
-            chatManager: { sendMessage() { throw new Error('No generation during restoration'); } }, uiHelper: {},
+            chatManager: { sendMessage() { throw new Error('No generation during restoration'); } },
+            uiHelper: { showToastNotification: (message, type) => toasts.push({ message, type }) },
             selectedItemRef: { get: () => ({ id: 'agent', type: 'agent', config: { model: 'default-model' } }) },
             topicIdRef: { get: () => 'parent' }, historyRef: { get: () => [] }, getController: () => controller,
             createRenderer({ conversation }) {
@@ -65,7 +66,7 @@ async function fixture(t, legacyInput = {}) {
         assert.ok(directory.startsWith(os.tmpdir() + path.sep));
         await fs.rm(directory, { recursive: true, force: true });
     });
-    return { dom, doc, drafts, descriptor, childDir, deletions, mountController,
+    return { dom, doc, drafts, descriptor, childDir, deletions, toasts, mountController,
         settleMetadata: () => Promise.all(metadataWrites),
         metadata: async () => JSON.parse(await fs.readFile(path.join(childDir, 'sidechat-metadata.json'), 'utf8')) };
 }
@@ -96,6 +97,19 @@ test('a restored side chat keeps its saved id, so the pane can return to it afte
         const tab = controller.getSnapshot().tabs.find(item => item.kind === 'chat');
         assert.equal(tab.id, f.descriptor.id);
     }
+});
+
+test('a restored side chat keeps its saved creation time, so saving it after a restart does not reorder the list', async t => {
+    const f = await fixture(t, { composerStorage: 'local', createdAt: 1_000 });
+    f.drafts.save(f.descriptor, { draft: 'keep me', model: null, references: [] });
+    const { controller, wiring } = f.mountController();
+    await wiring.restoreSessions('agent', 'parent');
+    const tab = controller.getSnapshot().tabs.find(item => item.kind === 'chat');
+    assert.equal(tab.descriptor.createdAt, 1_000);
+    controller.getTabHandle(tab.id).setDraft('edited');
+    f.dom.window.dispatchEvent(new f.dom.window.Event('blur'));
+    await f.settleMetadata();
+    assert.equal((await f.metadata()).createdAt, 1_000);
 });
 
 test('legacy file input survives descriptor normalization and migrates only after the browser save; clearing it never revives old input', async t => {
@@ -132,6 +146,10 @@ test('unreadable browser drafts cannot authorize automatic deletion of an empty-
     assert.equal(f.deletions.length, 0);
     assert.ok(controller.getSnapshot().tabs.some(item => item.kind === 'chat'));
     assert.ok((await fs.stat(f.childDir)).isDirectory());
+    // 草稿只存本机，读坏了就是丢了：要告诉用户，而不是悄悄换成空白
+    assert.equal(f.toasts.length, 1);
+    assert.equal(f.toasts[0].type, 'warning');
+    assert.match(f.toasts[0].message, /草稿读不出来/);
 });
 
 test('automatic empty-child cleanup also removes its empty browser draft without reviving legacy file input', async t => {

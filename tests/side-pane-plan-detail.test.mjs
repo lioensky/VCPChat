@@ -76,6 +76,7 @@ function makeEnv(overrides = {}) {
     const sidePaneController = {
         openTab: async (tab) => { calls.opened.push(tab); return { focus() {} }; },
         setVisible() {},
+        getSnapshot: () => ({ tabs: calls.tabs || [] }),
         updateTab: (id, patch) => { calls.updated = [...(calls.updated || []), { id, ...patch }]; }
     };
     const provider = createPlanDetailSideProvider({
@@ -441,5 +442,18 @@ test('activating the plan tab puts keyboard focus inside it', async () => {
     try {
         handle.focus();
         assert.equal(view.contains(dom.window.document.activeElement), true);
+    } finally { handle.dispose(); }
+});
+
+test('a focus target from the status panel is applied once and then cleared from the saved tab', async () => {
+    const { provider, view, calls } = makeEnv();
+    const tab = { id: planTabId('p1'), payload: { projectId: 'p1', projectName: '算法工程', pinned: true, focus: { todoId: 2 } } };
+    calls.tabs = [tab];
+    const handle = await provider.mountTab(tab, view);
+    try {
+        for (let i = 0; i < 50 && !(calls.updated || []).length; i++) await new Promise(r => setTimeout(r, 10));
+        const cleared = (calls.updated || []).find(u => u.id === tab.id && u.payload && u.payload.focus === null);
+        assert.ok(cleared, 'the saved tab no longer carries the focus target, so a restart or wake does not jump back');
+        assert.equal(cleared.payload.projectId, 'p1', 'the rest of the payload is kept');
     } finally { handle.dispose(); }
 });

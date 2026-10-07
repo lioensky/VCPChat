@@ -835,6 +835,9 @@ export function createPlanDetailSideProvider({
                 if (!pendingFocus || !model) return;
                 const { todoId, section: sectionKey } = pendingFocus;
                 pendingFocus = null;
+                // 定位只做一次：从存档里也抹掉，否则重启或休眠后重新挂载会再跳回这条，盖掉用户后来停的页面
+                const current = sidePaneController?.getSnapshot?.()?.tabs?.find?.(t => t.id === tab.id);
+                if (current?.payload?.focus) sidePaneController?.updateTab?.(tab.id, { payload: { ...current.payload, focus: null } });
                 const todoSelector = todoId !== undefined && todoId !== null ? `.side-plan-todo[data-todo-id="${String(todoId).replace(/"/g, '')}"]` : '';
                 if (!(todoSelector && body.querySelector(todoSelector)) && sectionKey && collapsed[sectionKey]) {
                     collapsed[sectionKey] = false;

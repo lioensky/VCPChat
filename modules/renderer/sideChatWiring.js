@@ -244,6 +244,11 @@ export function createSideChatWiring({
                 const childAgentId = item.child.itemId || agentId;
                 const storedDraft = sideChatOwner.readDraft(item);
                 const input = storedDraft.input || item;
+                // 草稿只存在本机（composerStorage local）时这份就是唯一的一份：读坏了要告诉用户，不能悄悄变成空白
+                if (!storedDraft.ok && item.composerStorage === 'local') {
+                    console.warn('[SideChat] Failed to read side chat draft:', storedDraft.error);
+                    notify(`辅助对话「${item.title || '未命名'}」保存的草稿读不出来，已按空白恢复`, 'warning');
+                }
                 const hasPendingInput = !!input.draft || (Array.isArray(input.references) && input.references.length > 0);
                 if (storedDraft.ok && !hasPendingInput && typeof chatAPI?.getChatHistory === 'function') {
                     const childHistory = await chatAPI.getChatHistory(childAgentId, childTopicId);
@@ -264,7 +269,7 @@ export function createSideChatWiring({
                     contextMode: item.contextMode,
                     snapshotId: item.snapshotId,
                     parentSnapshot: item.parentSnapshot || [],
-                    model: input.model || item.descriptor?.model || null,
+                    model: input.model || null,
                     open: true,
                     status: 'ready',
                     draft: input.draft || '',
@@ -272,6 +277,8 @@ export function createSideChatWiring({
                 }),
                 // 沿用存档里的 id：标签 id 每次重启都一样，面板才能按对话记忆回到这个辅助对话
                 ...(typeof item.id === 'string' && item.id ? { id: item.id } : {}),
+                // 创建时间也沿用存档：辅助对话按它排序，换成重启时间的话改一次模型存一下档，顺序就乱了
+                ...(Number.isFinite(item.createdAt) ? { createdAt: item.createdAt } : {}),
                 composerStorage: item.composerStorage } });
             } catch (e) {
                 console.warn('[SideChat] Failed to restore side chat tab:', e);

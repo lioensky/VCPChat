@@ -536,3 +536,30 @@ test('while the tab is still subscribing it says it is loading, not that no conv
     assert.notEqual(view.querySelector('.side-traj-state').textContent, '请先在主聊天里选择一个智能体和话题。');
     handle.dispose();
 });
+
+test('a trajectory tab woken from dormancy keeps the rows the reader collapsed and where they were reading, for the same conversation only', async () => {
+    const env = makeEnv();
+    const head = (view, role) => view.querySelector(`.side-traj-row[data-trajectory-role="${role}"] .side-traj-row-head`);
+    const first = await env.provider.mountTab({ id: 'model-trajectory:main' }, env.view);
+    head(env.view, 'user').click();
+    env.view.querySelector('[data-action="expansion-menu"]').click();
+    env.view.querySelector('[data-trajectory-expansion-kind="system"]').click();
+    const saved = { ...first.captureState(), stickToBottom: false, scrollTop: 120 };
+    await first.dispose();
+
+    const view = env.doc.createElement('div');
+    env.doc.body.appendChild(view);
+    const woken = await env.provider.mountTab({ id: 'model-trajectory:main' }, view, { restoredState: saved });
+    assert.equal(head(view, 'user').getAttribute('aria-expanded'), 'false');
+    assert.equal(head(view, 'system').getAttribute('aria-expanded'), 'false');
+    assert.equal(view.querySelector('.side-traj-scroll').scrollTop, 120);
+    await woken.dispose();
+
+    // 换了会话就不接旧的展开状态
+    env.state.conversation = { item: { id: 'agent1', name: '小助手' }, topicId: 't2' };
+    const other = env.doc.createElement('div');
+    env.doc.body.appendChild(other);
+    const switched = await env.provider.mountTab({ id: 'model-trajectory:main' }, other, { restoredState: saved });
+    assert.equal(head(other, 'user').getAttribute('aria-expanded'), 'true');
+    await switched.dispose();
+});

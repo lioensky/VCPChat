@@ -189,12 +189,14 @@ export function createSidePaneController({
                 }
                 if (electronAPI?.saveSettings) {
                     try {
-                        await electronAPI.saveSettings({
+                        const result = await electronAPI.saveSettings({
                             __vcpSettingsOps: [
                                 { op: 'set', path: ['notificationsSidebarWidth'], value: width },
                                 { op: 'set', path: ['sidePaneWidthRatio'], value: ratio }
                             ]
                         });
+                        // 主进程写盘失败时不抛异常，只回 success:false；不记下来的话重启后宽度悄悄退回旧值，无从排查
+                        if (result?.success === false) console.error('[SidePaneController] Failed to persist width:', result.error || result.status);
                     } catch (err) {
                         console.error('[SidePaneController] Failed to persist width:', err);
                     }
