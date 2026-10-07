@@ -132,3 +132,48 @@ test('one arrow key press moves the side pane once and commits once', async () =
     assert.equal(width, 780);
     assert.deepEqual(commits, [420, 400, 780]);
 });
+
+test('holding an arrow key resizes on every press but saves the width once, after the keys stop', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const source = await readFile(new URL('../modules/ui-system/sidebar-resizer.js', import.meta.url), 'utf8');
+    const win = { requestAnimationFrame: fn => setTimeout(fn, 0), cancelAnimationFrame: clearTimeout };
+    new Function('window', source)(win);
+
+    const listeners = {};
+    const handle = {
+        setAttribute() {},
+        classList: { toggle() {} },
+        addEventListener(type, fn) { (listeners[type] ||= []).push(fn); },
+        removeEventListener() {},
+        ownerDocument: { body: { style: {}, classList: { toggle() {} } } },
+    };
+    let width = 400;
+    const pane = { style: {}, getBoundingClientRect: () => ({ width }) };
+    const commits = [];
+    const owner = createSidePaneResizerOwner({
+        handle,
+        paneElement: pane,
+        resizerFactory: win.VCPSidebarResizer.create,
+        documentRef: { querySelector: () => null, addEventListener() {}, removeEventListener() {} },
+        windowRef: { innerWidth: 1200, setTimeout, clearTimeout },
+        keyboardCommitDelayMs: 30,
+        onWidthChange: w => { width = w; },
+        onWidthCommit: w => commits.push(w),
+    });
+
+    const press = key => listeners.keydown.forEach(fn => fn({ type: 'keydown', key, preventDefault() {} }));
+    for (let i = 0; i < 5; i++) press('ArrowLeft');
+    assert.equal(width, 500, 'every press resizes right away');
+    assert.deepEqual(commits, [], 'nothing is saved while keys are still coming');
+    await new Promise(resolve => setTimeout(resolve, 60));
+    assert.deepEqual(commits, [500]);
+
+    press('End');
+    assert.equal(width, 780);
+    listeners.blur.forEach(fn => fn());
+    assert.deepEqual(commits, [500, 780], 'leaving the handle saves at once');
+
+    press('ArrowRight');
+    owner.dispose();
+    assert.deepEqual(commits, [500, 780, 760], 'disposing saves what is pending');
+});

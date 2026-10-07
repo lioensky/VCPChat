@@ -1710,6 +1710,11 @@
           "kind": "custom-event-listener"
         },
         {
+          "file": "modules/ui-system/side-pane/side-pane-resizer-owner.js",
+          "line": 168,
+          "kind": "custom-event-listener"
+        },
+        {
           "file": "modules/ui-system/side-pane/side-pane-tab-menu.js",
           "line": 95,
           "kind": "custom-event-listener"
@@ -1812,6 +1817,12 @@
           "line": 146,
           "kind": "custom-event-listener",
           "match": "profileName.addEventListener('blur'"
+        },
+        {
+          "file": "modules/ui-system/side-pane/side-pane-resizer-owner.js",
+          "line": 168,
+          "kind": "custom-event-listener",
+          "match": "handle?.addEventListener?.('blur'"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-menu.js",
@@ -4174,6 +4185,11 @@
           "kind": "custom-event-listener"
         },
         {
+          "file": "modules/ui-system/side-pane/code-viewer/editor.js",
+          "line": 54,
+          "kind": "custom-event-listener"
+        },
+        {
           "file": "modules/ui-system/side-pane/git/cards.js",
           "line": 229,
           "kind": "custom-event-listener"
@@ -5737,6 +5753,12 @@
           "line": 79,
           "kind": "custom-event-listener",
           "match": "more.addEventListener('click'"
+        },
+        {
+          "file": "modules/ui-system/side-pane/code-viewer/editor.js",
+          "line": 54,
+          "kind": "custom-event-listener",
+          "match": "read.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/git/cards.js",
@@ -15532,7 +15554,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-resizer-owner.js",
-          "line": 143,
+          "line": 167,
           "kind": "custom-event-listener"
         },
         {
@@ -15902,7 +15924,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-resizer-owner.js",
-          "line": 143,
+          "line": 167,
           "kind": "custom-event-listener",
           "match": "handle?.addEventListener?.('keydown'"
         },

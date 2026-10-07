@@ -339,3 +339,37 @@ test('the file button reveals a workspace file in the file manager and never ope
     assert.deepEqual(opened, [], 'nothing is opened through a file association');
     dom.window.close();
 });
+
+test('a path outside every workspace is only read after the user asks for it', async () => {
+    const dom = new JSDOM('<section id="view"></section>');
+    const doc = dom.window.document;
+    const reads = [];
+    const provider = createCodeViewerSideProvider({ document: doc, uiHelper: null, api: {
+        gitListWorkspaces: async () => ({ success: true, data: { workspaces: [{ id: 'ws1', path: 'C:\\proj' }] } }),
+        sourceReadFile: async () => ({ success: true, data: { text: 'in workspace' } }),
+        async getTextContent(filePath) { reads.push(filePath); return { text: 'PRIVATE KEY' }; }
+    } });
+    const view = doc.getElementById('view');
+    const handle = await provider.mountTab({ title: 'id_rsa', payload: { filePath: 'C:\\Users\\me\\.ssh\\id_rsa' } }, view);
+    try {
+        assert.deepEqual(reads, [], 'nothing is read before the user agrees');
+        assert.equal(handle.getCode(), '');
+        assert.match(view.textContent, /不在任何已登记的工作区里/);
+        assert.match(view.textContent, /\.ssh/);
+        const consent = [...view.querySelectorAll('button')].find(b => b.textContent === '读取这个文件');
+        consent.click();
+        await new Promise(resolve => setTimeout(resolve, 10));
+        assert.deepEqual(reads, ['C:\\Users\\me\\.ssh\\id_rsa']);
+        assert.equal(handle.getCode(), 'PRIVATE KEY');
+
+        // 工作区里的文件照常直接读
+        const inside = doc.createElement('section');
+        doc.body.append(inside);
+        const insideHandle = await provider.mountTab({ title: 'a.js', payload: { filePath: 'C:\\proj\\a.js' } }, inside);
+        assert.equal(insideHandle.getCode(), 'in workspace');
+        insideHandle.dispose();
+    } finally {
+        handle.dispose();
+        dom.window.close();
+    }
+});

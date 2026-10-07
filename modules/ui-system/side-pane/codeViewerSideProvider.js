@@ -236,7 +236,7 @@ export function createCodeViewerSideProvider({
                 store,
                 body,
                 doc,
-                readFile: isFileBacked ? () => readFileForViewer(api, filePath) : null,
+                readFile: isFileBacked ? (options) => readFileForViewer(api, filePath, options) : null,
                 renderDiffView: (...args) => renderDiffView(...args)
             });
             const { setBodyMessage, renderCodeView, refreshView, reload } = editorOwner;

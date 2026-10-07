@@ -12,7 +12,9 @@ export function createSidePaneResizerOwner({
     onWidthCommit = null,
     scope = null,
     documentRef = (typeof document !== 'undefined' ? document : null),
-    windowRef = (typeof window !== 'undefined' ? window : null)
+    windowRef = (typeof window !== 'undefined' ? window : null),
+    // 键盘调宽时按住方向键每秒几十次，宽度当场生效，写设置等停手后再写一次（同 ZCode resizable.tsx 走防抖的 onLayoutChange）
+    keyboardCommitDelayMs = 400
 }) {
     if (!handle || !paneElement) {
         throw new TypeError('SidePaneResizerOwner requires a handle and paneElement');
@@ -53,6 +55,27 @@ export function createSidePaneResizerOwner({
 
     let isDisposed = false;
     let dragStyles = null;
+    let keyboardCommit = null; // { timer, width }
+
+    function flushKeyboardCommit() {
+        if (!keyboardCommit) return;
+        const { timer, width } = keyboardCommit;
+        keyboardCommit = null;
+        win?.clearTimeout?.(timer);
+        onWidthCommit?.(width);
+    }
+
+    function commitWidth(width, fromKeyboard) {
+        if (!fromKeyboard) {
+            if (keyboardCommit) { win?.clearTimeout?.(keyboardCommit.timer); keyboardCommit = null; }
+            onWidthCommit?.(width);
+            return;
+        }
+        onWidthChange?.(width);
+        if (keyboardCommit) win?.clearTimeout?.(keyboardCommit.timer);
+        keyboardCommit = { width, timer: win?.setTimeout?.(flushKeyboardCommit, keyboardCommitDelayMs) };
+        if (!keyboardCommit.timer) flushKeyboardCommit();
+    }
 
     function restoreDragStyles() {
         if (!dragStyles) return;
@@ -108,11 +131,11 @@ export function createSidePaneResizerOwner({
             }
             handle.classList.add('active');
         },
-        onCommit: (width) => {
+        onCommit: (width, event) => {
             if (isDisposed) return;
             const finalWidth = Math.round(width);
             handle?.setAttribute?.('aria-valuenow', String(finalWidth));
-            onWidthCommit?.(finalWidth);
+            commitWidth(finalWidth, event?.type === 'keydown');
         }
     });
 
@@ -135,12 +158,14 @@ export function createSidePaneResizerOwner({
                 paneElement.style.width = `${finalWidth}px`;
             }
             handle?.setAttribute?.('aria-valuenow', String(finalWidth));
-            onWidthChange?.(finalWidth);
-            onWidthCommit?.(finalWidth);
+            commitWidth(finalWidth, true);
         }
     };
+    // 焦点离开分隔条时把没写的宽度写掉
+    const onBlur = () => flushKeyboardCommit();
 
     handle?.addEventListener?.('keydown', onKeydown);
+    handle?.addEventListener?.('blur', onBlur);
 
     const owner = Object.freeze({
         cancel() {
@@ -156,8 +181,10 @@ export function createSidePaneResizerOwner({
         },
         dispose() {
             if (isDisposed) return;
+            flushKeyboardCommit();
             isDisposed = true;
             handle?.removeEventListener?.('keydown', onKeydown);
+            handle?.removeEventListener?.('blur', onBlur);
             try {
                 resizer?.dispose?.();
             } finally {

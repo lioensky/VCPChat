@@ -25,6 +25,8 @@ export function createCodeViewerEditor({
     // 只有按路径打开的文件标签才有 readFile；代码片段和差异是打开时的快照，不重新读取
     let fileLoaded = false;
     let readToken = 0;
+    // 用户点过「读取」后，工作区外的这个文件就不再问
+    let outsideWorkspaceAllowed = false;
 
     function setBodyMessage(text, isError = false) {
         body.innerHTML = '';
@@ -32,6 +34,29 @@ export function createCodeViewerEditor({
         msg.className = isError ? 'side-code-error' : 'side-code-empty';
         msg.textContent = text;
         body.appendChild(msg);
+    }
+
+    function showConsent(notice) {
+        body.innerHTML = '';
+        const box = doc.createElement('div');
+        box.className = 'side-pane-mount-error side-code-consent';
+        const [title, ...rest] = String(notice || '').split('\n');
+        const titleEl = doc.createElement('div');
+        titleEl.className = 'side-pane-mount-error-title';
+        titleEl.textContent = title;
+        const detail = doc.createElement('div');
+        detail.className = 'side-pane-mount-error-detail';
+        detail.textContent = rest.join('\n');
+        const read = doc.createElement('button');
+        read.type = 'button';
+        read.className = 'side-pane-mount-error-retry';
+        read.textContent = '读取这个文件';
+        read.addEventListener('click', () => {
+            outsideWorkspaceAllowed = true;
+            void refreshView({ force: true });
+        });
+        box.append(titleEl, detail, read);
+        body.appendChild(box);
     }
 
     /**
@@ -44,7 +69,7 @@ export function createCodeViewerEditor({
         body.innerHTML = '<div class="side-code-loading"><span class="vcp-ui-icon spin">sync</span> 加载文件中...</div>';
         let result;
         try {
-            result = await readFile();
+            result = await readFile({ allowOutsideWorkspace: outsideWorkspaceAllowed });
         } catch (err) {
             result = { ok: false, error: `读取文件失败: ${err?.message || err}` };
         }
@@ -53,7 +78,8 @@ export function createCodeViewerEditor({
             // 失败时不保留旧内容，免得复制/插入拿到已经不存在的文件内容
             store.currentCode = '';
             fileLoaded = false;
-            if (result?.notice) setBodyMessage(result.notice);
+            if (result?.needsConsent) showConsent(result.notice);
+            else if (result?.notice) setBodyMessage(result.notice);
             else setBodyMessage(result?.error || '读取文件失败', true);
             return false;
         }
