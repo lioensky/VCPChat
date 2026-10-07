@@ -1,6 +1,7 @@
 const fs = require('fs').promises;
 const fsSync = require('fs');
 const path = require('path');
+const { AsyncLocalStorage } = require('async_hooks');
 const glob = require('glob');
 const { minimatch } = require('minimatch');
 const pdf = require('pdf-parse');
@@ -385,6 +386,116 @@ function getSourcePathParameter(parameters) {
 
 function getDestinationPathParameter(parameters) {
   return getParameterValue(parameters, 'destination', 'destinationPath');
+}
+
+/**
+ * 单文件异步可重入互斥队列 (Per-File Async Reentrant Mutex Queue)
+ * 彻底解决大模型或多 Agent 并发分发针对同一文件的操作导致的竞态条件 (Race Condition)。
+ */
+class KeyedLockQueue {
+  constructor() {
+    this.chains = new Map();
+    this.als = new AsyncLocalStorage();
+  }
+
+  normalizeKey(filePath) {
+    if (!filePath || typeof filePath !== 'string') return null;
+    try {
+      const resolved = resolveAndNormalizePath(filePath);
+      return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+    } catch (_e) {
+      return null;
+    }
+  }
+
+  async runExclusive(filePaths, task) {
+    const rawPaths = Array.isArray(filePaths) ? filePaths : [filePaths];
+    const keys = Array.from(new Set(rawPaths.map(p => this.normalizeKey(p)).filter(Boolean)));
+
+    if (keys.length === 0) {
+      return await task();
+    }
+
+    // 字典序排序，保证多路径加锁顺序一致，彻底杜绝 AB-BA 哲学家死锁
+    keys.sort();
+
+    const heldLocks = this.als.getStore() || new Set();
+
+    // 过滤出当前异步调用栈中尚未持有的锁
+    const neededKeys = keys.filter(k => !heldLocks.has(k));
+
+    if (neededKeys.length === 0) {
+      // 当前上下文已持有所有涉及的锁，安全重入
+      return await task();
+    }
+
+    // 递归获取所有需要的锁节点
+    const acquireChain = async (index, newHeld) => {
+      if (index >= neededKeys.length) {
+        return await this.als.run(newHeld, task);
+      }
+      const lockKey = neededKeys[index];
+      const prev = this.chains.get(lockKey);
+
+      let release;
+      const gate = new Promise(resolve => { release = resolve; });
+
+      const next = (prev ? prev : Promise.resolve())
+        .then(async () => {
+          newHeld.add(lockKey);
+          return await acquireChain(index + 1, newHeld);
+        })
+        .finally(() => {
+          release();
+        });
+
+      // 保证异常不打断等待链条
+      const safeTail = next.catch(() => {});
+      this.chains.set(lockKey, safeTail);
+
+      // 当队列全部执行完毕后自动从 Map 中清理，避免内存泄漏
+      safeTail.finally(() => {
+        if (this.chains.get(lockKey) === safeTail) {
+          this.chains.delete(lockKey);
+        }
+      });
+
+      return await next;
+    };
+
+    return await acquireChain(0, new Set(heldLocks));
+  }
+}
+
+const fileLockQueue = new KeyedLockQueue();
+
+function extractLockPaths(action, parameters) {
+  if (!parameters) return [];
+  switch (action) {
+    case 'ReadFile':
+    case 'WriteFile':
+    case 'AppendFile':
+    case 'EditFile':
+    case 'ApplyDiff':
+    case 'UpdateHistory':
+    case 'DeleteFile':
+    case 'FileInfo': {
+      const p = getPathParameter(parameters);
+      return p ? [p] : [];
+    }
+    case 'CopyFile':
+    case 'MoveFile':
+    case 'RenameFile': {
+      const s = getSourcePathParameter(parameters);
+      const d = getDestinationPathParameter(parameters);
+      const paths = [];
+      if (s) paths.push(s);
+      if (d) paths.push(d);
+      return paths;
+    }
+    default:
+      return [];
+  }
 }
 
 // Helper function to run validation and attach results
@@ -1673,9 +1784,12 @@ async function processRequest(request) {
   const { command, ...parameters } = request;
   const action = command;
 
-  debugLog('Processing request', { action, parameters });
+  const targetPaths = extractLockPaths(action, parameters);
 
-  switch (action) {
+  return await fileLockQueue.runExclusive(targetPaths, async () => {
+    debugLog('Processing request', { action, parameters });
+
+    switch (action) {
     case 'ListAllowedDirectories':
       return await listAllowedDirectories();
     case 'ReadFile':
@@ -1728,7 +1842,8 @@ async function processRequest(request) {
         success: false,
         error: `Unknown action: ${action}`,
       };
-  }
+    }
+  });
 }
 
 // Convert internal response format to VCP protocol format
@@ -1900,6 +2015,7 @@ module.exports = {
   processToolCall,
   processRequest,
   convertToVCPFormat,
+  fileLockQueue,
   readFile,
   writeFile,
   appendFile,
