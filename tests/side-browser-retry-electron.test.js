@@ -15,8 +15,10 @@ if (!runFromNode(__filename)) {
     const out = path.join(app.getPath('userData'), 'browser-retry');
     fs.mkdirSync(out, { recursive: true });
     const events = [], requests = [], results = [];
-    let server, windowRef, guestDestroyed, currentGuest;
+    let server, windowRef, guestDestroyed, currentGuest, currentGuestExit;
     let failing = true, title = 'Initial fixture';
+    let slowResponding = false, currentGuestReady = false;
+    const cancelledRequests = [];
     const finish = () => { windowRef?.destroy(); server?.close(); };
     const deadline = setTimeout(() => {
         console.error('Browser retry test exceeded its deadline');
@@ -44,6 +46,8 @@ if (!runFromNode(__filename)) {
     app.whenReady().then(async () => {
         server = http.createServer((req, res) => {
             requests.push(req.url);
+            res.on('close', () => { if (!res.writableEnded) cancelledRequests.push(req.url); });
+            if (req.url.startsWith('/slow-') && !slowResponding) return;
             if (req.url.includes('failure') && failing) { req.socket.destroy(); return; }
             res.setHeader('Content-Type', 'text/html; charset=utf-8');
             res.end(`<title>${title}</title><h1>Recovered ${req.url}</h1>`);
@@ -58,6 +62,10 @@ if (!runFromNode(__filename)) {
         require('../modules/ipc/browserHandlers.js').attachToWindow(windowRef);
         windowRef.webContents.on('did-attach-webview', (_event, guest) => {
             currentGuest = guest;
+            currentGuestReady = false;
+            currentGuestExit = null;
+            guest.once('dom-ready', () => { currentGuestReady = true; });
+            guest.once('render-process-gone', (_event, details) => { currentGuestExit = details; });
             guestDestroyed = new Promise(resolve => guest.once('destroyed', resolve));
             guest.on('did-fail-load', (_e, code, description, url) => {
                 events.push({ event: 'failure', code, description, url, current: guest.getURL() });
@@ -110,7 +118,87 @@ if (!runFromNode(__filename)) {
             await guestDestroyed;
             assert.equal(currentGuest.isDestroyed(), true, 'removing the view must destroy its real guest');
         }
-        assert.equal(events.filter(event => event.event === 'destroyed').length, 2);
+        for (const action of ['stop-reload', 'replace']) {
+            slowResponding = false;
+            const slowPath = '/slow-' + action;
+            const slowUrl = base + slowPath;
+            await windowRef.webContents.executeJavaScript(`(async () => {
+                const { createBrowserSideProvider } = await import(${JSON.stringify(moduleUrl)});
+                window.__handle = await createBrowserSideProvider({ document, api: null }).mountTab({
+                    id: 'browser:slow', payload: { url: ${JSON.stringify(slowUrl)} }
+                }, document.getElementById('view'));
+            })()`);
+            await poll('document.querySelector(".side-browser-nav button:last-child").getAttribute("aria-label") === "停止加载"');
+            const until = Date.now() + 10000;
+            while (!requests.includes(slowPath)) {
+                assert.ok(Date.now() < until, 'the initial slow request must reach the server');
+                await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            assert.equal(currentGuestReady, false, 'no document is ready while the server has not responded');
+            let target;
+            title = `Recovered-${action}`;
+            if (action === 'stop-reload') {
+                await windowRef.webContents.executeJavaScript('document.querySelector(".side-browser-nav button:last-child").click()');
+                await poll('document.querySelector(".side-browser-nav button:last-child").getAttribute("aria-label") === "刷新"');
+                assert.equal(await windowRef.webContents.executeJavaScript('document.querySelector(".side-browser-address").value'), slowUrl,
+                    'cancelling before the first commit retains the requested address');
+                const requestStart = requests.length;
+                slowResponding = true;
+                await windowRef.webContents.executeJavaScript('document.querySelector(".side-browser-nav button:last-child").click()');
+                target = slowUrl;
+                await poll(`document.querySelector('webview').getTitle() === ${JSON.stringify(title)}`);
+                assert.ok(requests.slice(requestStart).includes(slowPath), 'refresh must request the cancelled target again');
+            } else {
+                target = base + '/replacement';
+                await windowRef.webContents.executeJavaScript(`__handle.navigate(${JSON.stringify(target)})`);
+                await poll(`document.querySelector('webview').getTitle() === ${JSON.stringify(title)}`);
+            }
+            const cancelUntil = Date.now() + 10000;
+            while (!cancelledRequests.includes(slowPath)) {
+                assert.ok(Date.now() < cancelUntil, 'stop or replacement must cancel the initial HTTP request');
+                await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            const after = await windowRef.webContents.executeJavaScript(`({ current: document.querySelector('webview').getURL(),
+                address: document.querySelector('.side-browser-address').value, noticeHidden: document.querySelector('.side-browser-notice').hidden })`);
+            assert.equal(after.current, target);
+            assert.equal(after.address, target);
+            assert.equal(after.noticeHidden, true, 'intentional cancellation is not a page failure');
+            results.push({ action, after });
+            await capture(action);
+            await windowRef.webContents.executeJavaScript('__handle.dispose()');
+            await guestDestroyed;
+            assert.equal(currentGuest.isDestroyed(), true);
+        }
+        const crashUrl = base + '/crash-fixture';
+        title = 'Before guest crash';
+        await windowRef.webContents.executeJavaScript(`(async () => {
+            const { createBrowserSideProvider } = await import(${JSON.stringify(moduleUrl)});
+            window.__handle = await createBrowserSideProvider({ document, api: null }).mountTab({
+                id: 'browser:crash', payload: { url: ${JSON.stringify(crashUrl)} }
+            }, document.getElementById('view'));
+        })()`);
+        await poll(`document.querySelector('webview').getTitle() === ${JSON.stringify(title)}`);
+        const crashedGuest = currentGuest, crashedGuestDestroyed = guestDestroyed;
+        crashedGuest.forcefullyCrashRenderer();
+        await poll('!document.querySelector(".side-browser-notice").hidden');
+        assert.ok(currentGuestExit, 'a real guest exit must reach the main process');
+        const crashDetail = await windowRef.webContents.executeJavaScript('document.querySelector(".side-browser-notice-detail").textContent');
+        assert.ok(crashDetail.includes(currentGuestExit.reason), 'the notice must report the actual exit reason');
+        assert.ok(crashDetail.includes(`退出码 ${currentGuestExit.exitCode}`), 'the notice must report the actual exit code');
+        await capture('guest-crash');
+        title = 'Recovered guest crash';
+        await windowRef.webContents.executeJavaScript('document.querySelector(".side-browser-notice-retry").click()');
+        await poll(`document.querySelector('webview').getTitle() === ${JSON.stringify(title)} && document.querySelector('.side-browser-notice').hidden`);
+        assert.notEqual(currentGuest.id, crashedGuest.id, 'crash retry must replace the failed guest');
+        await crashedGuestDestroyed;
+        assert.equal(crashedGuest.isDestroyed(), true);
+        assert.equal(await windowRef.webContents.executeJavaScript('document.querySelector("webview").getURL()'), crashUrl);
+        results.push({ action: 'crash-retry', crashDetail, recoveredUrl: crashUrl });
+        await capture('guest-crash-recovered');
+        await windowRef.webContents.executeJavaScript('__handle.dispose()');
+        await guestDestroyed;
+        assert.equal(currentGuest.isDestroyed(), true);
+        assert.equal(events.filter(event => event.event === 'destroyed').length, 6);
         if (process.env.VCP_ELECTRON_TEST_OUTPUT) {
             fs.writeFileSync(path.join(process.env.VCP_ELECTRON_TEST_OUTPUT, 'browser-retry-verification.json'),
                 JSON.stringify({ electron: process.versions.electron, results, events, requests }, null, 2));

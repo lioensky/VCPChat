@@ -116,6 +116,55 @@ test('side retry preserves an in-place edit made after the answer failed to save
     assert.equal(f.doc.querySelector('[data-message-id="answer"] .md-content').textContent, 'my revised answer');
 });
 
+test('a pending edit retains the editor and next draft until the real history write settles', async t => {
+    const f = await fixture(t);
+    const release = f.holdNextWrite();
+    f.action('answer', 'edit');
+    const editor = f.doc.querySelector('.message-edit-textarea');
+    editor.value = 'my pending revision';
+    f.doc.querySelector('[data-side-chat-edit="save"]').click();
+    await waitFor(() => f.writeStarted);
+    f.handle.setDraft('my next question');
+    assert.equal(f.doc.querySelector('.side-chat-send-btn').disabled, true);
+    assert.equal(editor.disabled, true);
+    assert.equal(f.doc.querySelector('[data-side-chat-edit="cancel"]').disabled, true);
+    f.doc.querySelector('form').requestSubmit();
+    editor.dispatchEvent(new f.doc.defaultView.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(editor.isConnected, true);
+    assert.equal(f.handle.getDraft(), 'my next question');
+    assert.deepEqual(await f.handle.requestClose(), { closed: false, reason: 'EDIT_SAVE_PENDING' });
+    assert.equal((await f.handle.retryPersistence()).ok, false);
+    f.doc.querySelector('[data-message-id="question"] .md-content').dispatchEvent(
+        new f.doc.defaultView.MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    assert.equal(f.doc.querySelector('[data-side-chat-action="edit"]'), null);
+    assert.equal(f.doc.querySelector('[data-side-chat-action="delete"]'), null);
+    release();
+    await waitFor(() => !editor.isConnected);
+    assert.equal(f.doc.querySelector('.side-chat-send-btn').disabled, false);
+    assert.equal((await f.read())[1].content, 'my pending revision');
+    assert.equal((await f.handle.retryPersistence()).ok, true);
+    assert.equal((await f.read())[1].content, 'my pending revision', 'badge retry must use the acknowledged edit');
+    assert.equal(f.handle.getDraft(), 'my next question');
+});
+
+test('a failed edit keeps its text and restores controls for a successful retry', async t => {
+    const f = await fixture(t);
+    f.action('answer', 'edit');
+    const editor = f.doc.querySelector('.message-edit-textarea');
+    editor.value = 'keep this unsaved revision';
+    f.failSave();
+    f.doc.querySelector('[data-side-chat-edit="save"]').click();
+    await waitFor(() => !editor.disabled);
+    assert.equal(editor.isConnected, true);
+    assert.equal(editor.value, 'keep this unsaved revision');
+    assert.equal(f.doc.querySelector('.side-chat-send-btn').disabled, false);
+    assert.equal(f.doc.querySelector('[data-message-id="answer"] .md-content').textContent, 'generated answer');
+    assert.deepEqual(await f.read(), []);
+    f.doc.querySelector('[data-side-chat-edit="save"]').click();
+    await waitFor(() => !editor.isConnected);
+    assert.equal((await f.read())[1].content, 'keep this unsaved revision');
+});
+
 test('side retry respects deletions including an intentionally empty conversation', async t => {
     for (const deleted of [['answer'], ['answer', 'question']]) {
         const f = await fixture(t);

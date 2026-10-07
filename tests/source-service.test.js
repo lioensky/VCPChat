@@ -57,7 +57,7 @@ test('resolveWorkspacePath rejects NTFS aliases of .git and symlinks into .git',
         assert.throws(() => sourceService.resolveWorkspacePath(root, rel), /\.git/, rel);
     }
     // 工作区里的符号链接指向 .git：名字上看不出来，写进去就能改 core.fsmonitor 等配置
-    fs.symlinkSync(path.join(root, '.git'), path.join(root, 'meta'), 'dir');
+    fs.symlinkSync(path.join(root, '.git'), path.join(root, 'meta'), process.platform === 'win32' ? 'junction' : 'dir');
     assert.throws(() => sourceService.resolveWorkspacePath(root, 'meta/config'), /\.git/);
     await assert.rejects(sourceService.writeFile(root, 'meta/config', { content: '[core]\n\tfsmonitor = evil\n', force: true }), /\.git/);
     assert.equal(fs.readFileSync(path.join(root, '.git/config'), 'utf8'), '[core]\n');

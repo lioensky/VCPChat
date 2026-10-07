@@ -40,11 +40,12 @@ export function createSideChatComposerState({
         if (store.isDisposed) return;
         const hasText = Boolean(textarea.value.trim());
         const hasRefs = store.references.length > 0;
-        sendBtn.disabled = !store.isHistoryLoaded || !store.currentModel || store.isDeletingMessage;
+        sendBtn.disabled = !store.isHistoryLoaded || !store.currentModel || store.isDeletingMessage || store.isSavingMessageEdit;
         for (const button of toolButtons) {
             if (button) button.disabled = !store.isHistoryLoaded || textarea.disabled;
         }
-        sendBtn.title = store.isDeletingMessage ? '正在保存删除' : (store.currentModel ? '发送 (Enter)' : '请先选择模型');
+        sendBtn.title = store.isSavingMessageEdit ? '正在保存编辑'
+            : store.isDeletingMessage ? '正在保存删除' : (store.currentModel ? '发送 (Enter)' : '请先选择模型');
         if (!hasText && hasRefs && store.currentDescriptor.contextMode !== 'parent-snapshot') {
             textarea.placeholder = '输入针对引用的问题... (直接回车可发送引用)';
         } else {

@@ -145,6 +145,7 @@ export function createBrowserSideProvider({
             const own = createSidePaneRootScope(viewScope, 'browser');
             const disposed = () => !own.active;
             let webview = null;
+            let attached = false;
             let domReady = false;
             let currentUrl = '';
             let loading = false;
@@ -214,6 +215,8 @@ export function createBrowserSideProvider({
 
             const hasPage = () => Boolean(webview);
             const canUseGuest = () => Boolean(webview && domReady && !disposed());
+            // 首个页面可能一直没有响应；客体挂载后就能取消或替换导航，不必等文档就绪。
+            const canNavigateGuest = () => Boolean(webview && (attached || domReady) && !disposed());
 
             const hideNotice = () => {
                 notice.hidden = true;
@@ -282,14 +285,21 @@ export function createBrowserSideProvider({
                 const on = (name, handler) => guest.addEventListener(name, (event) => {
                     if (!disposed() && guest === webview) handler(event);
                 });
-                on('dom-ready', () => {
-                    domReady = true;
+                const flushPendingNavigation = () => {
                     if (pendingUrl) {
                         const target = pendingUrl;
                         pendingUrl = '';
                         guest.loadURL(target).catch(() => { /* reported through did-fail-load */ });
                     }
                     syncControls();
+                };
+                on('did-attach', () => {
+                    attached = true;
+                    flushPendingNavigation();
+                });
+                on('dom-ready', () => {
+                    domReady = true;
+                    flushPendingNavigation();
                 });
                 on('did-start-loading', () => {
                     loading = true;
@@ -299,7 +309,9 @@ export function createBrowserSideProvider({
                 on('did-stop-loading', () => {
                     loading = false;
                     try {
-                        setAddress(guest.getURL());
+                        const url = guest.getURL();
+                        // 取消首次导航时尚无已提交地址，保留目标以便再次加载。
+                        if (url) setAddress(url);
                     } catch (_error) {
                         // not attached yet
                     }
@@ -338,9 +350,10 @@ export function createBrowserSideProvider({
                     loading = false;
                     mediaPlaying = false;
                     lastFailure = { crashed: true };
+                    const { reason, exitCode } = event.details || {};
                     showNotice({
                         title: '页面已停止响应',
-                        detail: `页面进程已退出：${event.reason || 'unknown'}（退出码 ${event.exitCode ?? '?'}）`,
+                        detail: `页面进程已退出：${reason || 'unknown'}（退出码 ${exitCode ?? '?'}）`,
                         hint: '',
                         retryLabel: '重试浏览器',
                         onRetry: () => {
@@ -357,6 +370,7 @@ export function createBrowserSideProvider({
                 if (webview) {
                     const old = webview;
                     webview = null;
+                    attached = false;
                     domReady = false;
                     loading = false;
                     mediaPlaying = false;
@@ -372,7 +386,7 @@ export function createBrowserSideProvider({
                 const guest = ensureWebview(url);
                 setAddress(url);
                 if (!created) {
-                    if (domReady) {
+                    if (canNavigateGuest()) {
                         guest.loadURL(url).catch(() => { /* reported through did-fail-load */ });
                     } else {
                         pendingUrl = url;
@@ -395,7 +409,7 @@ export function createBrowserSideProvider({
                     return;
                 }
                 if (!canUseGuest()) {
-                    if (pendingUrl) navigate(pendingUrl);
+                    if (pendingUrl || currentUrl) navigate(pendingUrl || currentUrl);
                     return;
                 }
                 hideNotice();
@@ -463,7 +477,10 @@ export function createBrowserSideProvider({
             own.listen(backBtn, 'click', () => { if (canUseGuest() && webview.canGoBack()) webview.goBack(); });
             own.listen(forwardBtn, 'click', () => { if (canUseGuest() && webview.canGoForward()) webview.goForward(); });
             own.listen(reloadBtn, 'click', () => {
-                if (loading && canUseGuest()) webview.stop();
+                if (loading && canNavigateGuest()) {
+                    pendingUrl = '';
+                    webview.stop();
+                }
                 else reload();
             });
             own.listen(moreBtn, 'click', () => {

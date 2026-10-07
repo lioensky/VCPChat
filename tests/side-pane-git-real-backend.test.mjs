@@ -133,17 +133,22 @@ test('the Git view shows an add-workspace action when none are registered', asyn
     }
 });
 
-test('reading the status of a repo never runs the core.fsmonitor command its own config names', { skip: process.platform === 'win32' }, async () => {
+test('reading the status of a repo never runs the core.fsmonitor command its own config names', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vcp-fsmonitor-'));
     try {
         const marker = path.join(root, 'ran');
-        const monitor = path.join(root, 'monitor.sh');
-        fs.writeFileSync(monitor, `#!/bin/sh\ntouch "${marker}"\n`, { mode: 0o755 });
+        const monitor = path.join(root, 'monitor.cjs');
+        fs.writeFileSync(monitor, `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'ran');\n`);
         const repo = path.join(root, 'repo');
         fs.mkdirSync(repo);
         execFileSync('git', ['init', '-q'], { cwd: repo });
-        execFileSync('git', ['config', 'core.fsmonitor', monitor], { cwd: repo });
+        const command = `"${process.execPath.replaceAll('\\', '/')}" "${monitor.replaceAll('\\', '/')}"`;
+        execFileSync('git', ['config', 'core.fsmonitor', command], { cwd: repo });
         fs.writeFileSync(path.join(repo, 'a.txt'), 'x');
+        // Prove this fixture really executes through Git on this platform.
+        execFileSync('git', ['status', '--porcelain'], { cwd: repo, stdio: 'ignore' });
+        assert.equal(fs.existsSync(marker), true, 'the configured monitor must be executable');
+        fs.unlinkSync(marker);
         await gitService.getStatus(repo);
         assert.equal(fs.existsSync(marker), false, 'a prepared .git/config cannot run a command when the Git page opens');
     } finally {

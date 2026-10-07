@@ -11,6 +11,7 @@ export function createSideChatMessageEditor({
     saveHistory,
     rerender,
     isBusy,
+    onSavingChange,
     toast
 }) {
     let active = null;
@@ -21,12 +22,16 @@ export function createSideChatMessageEditor({
         return typeof content?.text === 'string' ? content.text : '';
     }
 
-    function close() {
+    function removeEditor() {
         if (!active) return;
         const { messageItem, editor } = active;
         editor.remove();
         messageItem.classList.remove('side-chat-editing');
         active = null;
+    }
+
+    function close() {
+        if (!active?.saving) removeEditor();
     }
 
     async function save() {
@@ -55,25 +60,44 @@ export function createSideChatMessageEditor({
         const next = history.slice();
         next[index] = { ...old, content };
 
-        active.saving = true;
-        let result;
+        const editing = active;
+        editing.saving = true;
+        editing.input.disabled = true;
+        editing.saveBtn.disabled = true;
+        editing.cancelBtn.disabled = true;
+        editing.editor.setAttribute('aria-busy', 'true');
+        onSavingChange?.(true);
         try {
-            result = await saveHistory(next);
+            const result = await saveHistory(next);
+            if (active !== editing) return;
+            if (result && (result.success === false || result.error)) {
+                throw new Error(result.error || '未知错误');
+            }
+            // Publish the acknowledged history before admitting another send.
+            setHistory(next);
+            editing.saving = false;
+            close();
+            rerender(messageId, newText);
         } catch (error) {
-            result = { error: error?.message || String(error) };
+            if (active === editing) {
+                console.warn('[SideChat] Failed to save edited message:', error);
+                const detail = error?.message || String(error);
+                const reason = /^(EPERM|EACCES)\b/.test(detail) ? '文件被占用或没有写入权限'
+                    : /^ENOSPC\b/.test(detail) ? '磁盘空间不足' : String(detail).slice(0, 80);
+                toast?.(`保存失败：${reason}。编辑内容已保留，请稍后重试。`, 'error');
+            }
+        } finally {
+            editing.saving = false;
+            editing.input.disabled = false;
+            editing.saveBtn.disabled = false;
+            editing.cancelBtn.disabled = false;
+            editing.editor.removeAttribute('aria-busy');
+            onSavingChange?.(false);
         }
-        if (!active || active.messageItem !== messageItem) return;
-        active.saving = false;
-        if (result && (result.success === false || result.error)) {
-            toast?.(`保存失败：${result.error || '未知错误'}`, 'error');
-            return;
-        }
-        setHistory(next);
-        close();
-        rerender(messageId, newText);
     }
 
     function start(messageItem, message) {
+        if (active?.saving || isBusy?.()) return;
         if (!messageItem || !message?.id) return;
         if (active?.messageItem === messageItem) {
             active.input.focus();
@@ -119,7 +143,7 @@ export function createSideChatMessageEditor({
         if (contentDiv?.nextSibling) column.insertBefore(editor, contentDiv.nextSibling);
         else column.appendChild(editor);
         messageItem.classList.add('side-chat-editing');
-        active = { messageItem, messageId: message.id, input, editor, saving: false };
+        active = { messageItem, messageId: message.id, input, editor, saveBtn, cancelBtn, saving: false };
         input.focus();
         input.setSelectionRange?.(input.value.length, input.value.length);
     }
@@ -128,6 +152,6 @@ export function createSideChatMessageEditor({
         start,
         close,
         isEditing: (messageId) => Boolean(active && (!messageId || active.messageId === messageId)),
-        dispose: close
+        dispose: removeEditor
     });
 }

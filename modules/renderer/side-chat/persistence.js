@@ -161,8 +161,8 @@ export function createSideChatPersistence({
 
     async function retryPersistence() {
         if (!store.hasUnsavedChanges) return { ok: true, message: '无未保存的历史' };
-        if (store.isDeletingMessage) {
-            const error = '正在保存删除，请稍后重试。';
+        if (store.isDeletingMessage || store.isSavingMessageEdit) {
+            const error = store.isSavingMessageEdit ? '正在保存编辑，请稍后重试。' : '正在保存删除，请稍后重试。';
             updateStatus(error, 'error');
             return { ok: false, error };
         }

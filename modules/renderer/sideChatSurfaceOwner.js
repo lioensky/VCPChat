@@ -116,6 +116,7 @@ export async function mountSideChatSurface(container, {
     let isDisposed = false;
     let isHistoryLoaded = false;
     let isDeletingMessage = false;
+    let isSavingMessageEdit = false;
     // 重新回复先存截短的历史再发送：这段 await 期间还没有 activeSendController，另起的发送会和它撞车
     let isRegenerating = false;
     let isComposing = false;
@@ -146,6 +147,7 @@ export async function mountSideChatSurface(container, {
         get isHistoryLoaded() { return isHistoryLoaded; },
         set isHistoryLoaded(value) { isHistoryLoaded = value; },
         get isDeletingMessage() { return isDeletingMessage; },
+        get isSavingMessageEdit() { return isSavingMessageEdit; },
         get references() { return references; },
         get hasUnsavedChanges() { return hasUnsavedChanges; },
         set hasUnsavedChanges(value) { hasUnsavedChanges = value; },
@@ -192,7 +194,8 @@ export async function mountSideChatSurface(container, {
         setHistory: (history) => liveConversation?.historyRef?.set?.(history),
         saveHistory: (history) => repository.saveHistory(descriptor.child.itemId, 'agent', descriptor.child.topicId, history),
         rerender: (messageId, text) => liveRenderer?.updateMessageContent?.(messageId, text),
-        isBusy: () => isDeletingMessage || form.hasAttribute('aria-busy'),
+        isBusy: () => isDeletingMessage || isSavingMessageEdit || form.hasAttribute('aria-busy'),
+        onSavingChange: (pending) => { isSavingMessageEdit = pending; updateComposerState(); },
         toast: (message, type) => chatCapabilities?.uiHelper?.showToastNotification?.(message, type)
     });
 
@@ -206,7 +209,7 @@ export async function mountSideChatSurface(container, {
         getHistory: () => liveConversation?.historyRef?.get?.() || [],
         saveHistory: (history) => repository.saveHistory(descriptor.child.itemId, 'agent', descriptor.child.topicId, history),
         removeMessage: (messageId) => liveRenderer?.removeMessageById?.(messageId, false),
-        isBusy: () => isDeletingMessage || form.hasAttribute('aria-busy'),
+        isBusy: () => isDeletingMessage || isSavingMessageEdit || form.hasAttribute('aria-busy'),
         onDeletingChange: (pending) => { isDeletingMessage = pending; updateComposerState(); },
         onComposerFilled: () => scheduleInputSave(),
         editMessage: (messageItem, message) => messageEditor.start(messageItem, message),
@@ -372,7 +375,7 @@ export async function mountSideChatSurface(container, {
     const onSubmit = async (event) => {
         event?.preventDefault?.();
         // 还在生成时不再起第二次发送：它失败后的清理会清掉正在进行的那次，停止按钮随之消失
-        if (isDisposed || !isHistoryLoaded || isDeletingMessage || isRegenerating || activeSendController || form.hasAttribute('aria-busy')) return;
+        if (isDisposed || !isHistoryLoaded || isDeletingMessage || isSavingMessageEdit || isRegenerating || activeSendController || form.hasAttribute('aria-busy')) return;
         if (!currentModel) {
             updateStatus('请先选择模型', 'error');
             return;
@@ -508,7 +511,7 @@ export async function mountSideChatSurface(container, {
 
     // 重新回复：截掉这条回答对应的提问及其后的所有消息，再用侧栏自己的模型和上下文把提问重新发出
     async function regenerate(assistantId) {
-        if (isDisposed || !isHistoryLoaded || isDeletingMessage || isRegenerating || activeSendController || form.hasAttribute('aria-busy')) return;
+        if (isDisposed || !isHistoryLoaded || isDeletingMessage || isSavingMessageEdit || isRegenerating || activeSendController || form.hasAttribute('aria-busy')) return;
         isRegenerating = true;
         try {
             await regenerateNow(assistantId);
@@ -573,7 +576,7 @@ export async function mountSideChatSurface(container, {
     submitInteractiveContent = (text) => {
         if (isDisposed) return;
         const notify = (message) => chatCapabilities?.uiHelper?.showToastNotification?.(message, 'warning');
-        if (activeSendController || isRegenerating || isDeletingMessage || !isHistoryLoaded) {
+        if (activeSendController || isRegenerating || isDeletingMessage || isSavingMessageEdit || !isHistoryLoaded) {
             notify('辅助对话正在处理上一条消息，请稍后再点。');
             return;
         }
@@ -679,6 +682,10 @@ export async function mountSideChatSurface(container, {
             return await loadHistoryFn();
         },
         async requestClose() {
+            if (isSavingMessageEdit) {
+                chatCapabilities?.uiHelper?.showToastNotification?.('正在保存编辑，请稍后关闭标签页。', 'warning');
+                return { closed: false, reason: 'EDIT_SAVE_PENDING' };
+            }
             if (isDeletingMessage) {
                 chatCapabilities?.uiHelper?.showToastNotification?.('正在保存删除，请稍后关闭标签页。', 'warning');
                 return { closed: false, reason: 'DELETE_PENDING' };
