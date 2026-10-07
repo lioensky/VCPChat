@@ -34,3 +34,17 @@ test('a failed regenerate save releases the composer', async t => {
     assert.equal(f.form.hasAttribute('aria-busy'), false);
     assert.equal(f.textarea.disabled, false);
 });
+
+test('picking a model clears the "pick a model first" error', async t => {
+    const f = await fixture(t, { model: '' });
+    f.textarea.value = 'hi';
+    f.textarea.dispatchEvent(new f.dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await tick();
+    assert.equal(f.statusText(), '请先选择模型');
+    f.doc.querySelector('.side-chat-model-picker-btn').click();
+    for (let i = 0; i < 5; i++) await tick();
+    f.doc.querySelector('.side-chat-model-item[data-model="gpt-x"]').click();
+    for (let i = 0; i < 5; i++) await tick();
+    assert.notEqual(f.statusText(), '请先选择模型');
+    assert.equal(f.doc.querySelector('.side-chat-status-text').classList.contains('error'), false);
+});

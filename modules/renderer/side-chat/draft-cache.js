@@ -14,20 +14,28 @@ export function createSideChatDraftCache() {
         drafts.delete(key);
         const source = cached || descriptor;
         if (typeof source.draft === 'string' && typeof handle.setDraft === 'function' && handle.getDraft?.() !== source.draft) handle.setDraft(source.draft);
+        // 休眠前的内存快照是最新的：它没有的引用是用户删掉的，不能因为 localStorage 没写进去就从旧存档里复活
+        if (cached && Array.isArray(cached.references) && typeof handle.removeReference === 'function') {
+            const keep = new Set(cached.references.map(ref => ref.id));
+            (handle.getReferences?.() || []).filter(ref => !keep.has(ref.id)).forEach(ref => handle.removeReference(ref.id));
+        }
         if (Array.isArray(source.references) && typeof handle.addReference === 'function') {
             source.references.forEach(ref => {
                 if (!handle.getReferences?.().some(current => current.id === ref.id)) handle.addReference(ref);
             });
         }
-        if (descriptor.model && typeof handle.setModel === 'function' && handle.getModel?.() !== descriptor.model) {
-            handle.setModel(descriptor.model);
+        // 模型同理：休眠前选的模型以内存快照为准
+        const model = cached?.model || descriptor.model;
+        if (model && typeof handle.setModel === 'function' && handle.getModel?.() !== model) {
+            handle.setModel(model);
         }
     }
 
     function capture(handle, descriptor) {
         const draft = handle.getDraft?.() || '';
         const references = handle.getReferences?.() || [];
-        drafts.set(childKeyOf(descriptor), { draft, references });
+        const model = handle.getModel?.() || null;
+        drafts.set(childKeyOf(descriptor), { draft, references, model });
     }
 
     function ownHandle(handle, descriptor) {

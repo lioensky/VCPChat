@@ -251,7 +251,12 @@ export async function mountSideChatSurface(container, {
         modelPickerBtn,
         modelPopover,
         persistMetadata: () => persistenceOwner.saveComposerInput(),
-        onModelChange: model => { selectedItem.model = model; if (selectedItem.config) selectedItem.config.model = model; },
+        onModelChange: model => {
+            selectedItem.model = model;
+            if (selectedItem.config) selectedItem.config.model = model;
+            // 发送时提示过「请先选择模型」，选好之后别让这条错误还挂着
+            if (statusText?.textContent === '请先选择模型') updateStatus('就绪');
+        },
         updateComposerState: (...args) => updateComposerState(...args)
     });
     const { updateModel } = modelPickerOwner;

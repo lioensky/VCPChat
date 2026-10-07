@@ -157,3 +157,78 @@ test('a side chat put to sleep behind another tab keeps its draft, and a referen
     assert.equal(handle.getDraft(), 'half typed, then more');
     assert.deepEqual(handle.getReferences().map(ref => ref.id), ['ref-1', 'ref-2']);
 });
+
+// 休眠场景：休眠/唤醒、切话题、退出都不能丢草稿、引用和模型
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function sleepableSideChat(t, opts = {}) {
+    const f = await fixture(t, { composerStorage: 'local' });
+    f.drafts.save(f.descriptor, { draft: 'start', references: [{ id: 'ref-1', text: 'first selection' }], model: 'm0' });
+    const s = f.mountController({ dormancy: { hiddenMs: 30, ...(opts.dormancy || {}) } });
+    s.controller.registerTabType({ kind: 'note', label: 'Note', provider: { mountTab: () => ({ dispose() {} }) } });
+    await s.wiring.restoreSessions('agent', 'parent');
+    const tab = s.controller.getSnapshot().tabs.find(item => item.kind === 'chat');
+    s.controller.activateTab(tab.id); s.controller.setVisible(true);
+    await sleep(20);
+    const hide = async () => { await s.controller.openTab({ id: 'note:' + Math.random(), kind: 'note', title: 'Note', closable: true, scopeMode: 'global' }); await sleep(120); };
+    const wake = async () => { s.controller.activateTab(tab.id); for (let i = 0; i < 50 && !s.controller.getTabHandle(tab.id); i++) await sleep(5); await sleep(20); return s.controller.getTabHandle(tab.id); };
+    return { f, s, tab, hide, wake, handle: () => s.controller.getTabHandle(tab.id) };
+}
+
+test('a model picked in a side chat survives sleep', async t => {
+    const p = await sleepableSideChat(t);
+    p.handle().setModel('m-new');
+    await p.hide();
+    assert.equal(p.handle(), null);
+    const h = await p.wake();
+    assert.equal(h.getModel(), 'm-new');
+});
+
+test('a draft typed inside the save debounce survives sleep and reaches storage', async t => {
+    const p = await sleepableSideChat(t);
+    const ta = p.f.doc.querySelector('.side-chat-textarea');
+    ta.value = 'typed fast'; ta.dispatchEvent(new p.f.dom.window.Event('input', { bubbles: true }));
+    await p.hide();
+    assert.equal(p.handle(), null);
+    assert.equal(p.f.drafts.read(p.f.descriptor).input.draft, 'typed fast');
+    const h = await p.wake();
+    assert.equal(h.getDraft(), 'typed fast');
+});
+
+test('sleep keeps the latest draft, removed references and model even when localStorage writes fail', async t => {
+    const p = await sleepableSideChat(t);
+    const proto = Object.getPrototypeOf(p.f.dom.window.localStorage);
+    const orig = proto.setItem; proto.setItem = function () { throw new Error('QuotaExceeded'); };
+    try {
+        p.handle().setDraft('new text'); p.handle().removeReference('ref-1'); p.handle().setModel('m-new');
+        await p.hide();
+        const h = await p.wake();
+        assert.equal(h.getDraft(), 'new text');
+        assert.deepEqual(h.getReferences(), [], 'removed reference must not come back');
+        assert.equal(h.getModel(), 'm-new');
+    } finally { proto.setItem = orig; }
+});
+
+test('quitting while a side chat is dormant restores its latest draft on relaunch', async t => {
+    const p = await sleepableSideChat(t);
+    p.handle().setDraft('before quit');
+    await p.hide();
+    p.f.dom.window.dispatchEvent(new p.f.dom.window.Event('pagehide'));
+    await p.s.controller.dispose(); p.s.wiring.dispose();
+    const s2 = p.f.mountController();
+    await s2.wiring.restoreSessions('agent', 'parent');
+    const tab = s2.controller.getSnapshot().tabs.find(item => item.kind === 'chat');
+    assert.equal(s2.controller.getTabHandle(tab.id).getDraft(), 'before quit');
+    assert.equal(s2.controller.getTabHandle(tab.id).getModel(), 'm0');
+});
+
+test('a side chat that sleeps after a topic switch keeps its draft when the topic comes back', async t => {
+    const p = await sleepableSideChat(t, { dormancy: { otherTopicMs: 30 } });
+    p.handle().setDraft('topic draft');
+    p.s.controller.setParent({ ...p.f.descriptor.parent, topicId: 'other' });
+    await sleep(150);
+    assert.equal(p.handle(), null, 'slept after leaving the topic');
+    p.s.controller.setParent(p.f.descriptor.parent);
+    for (let i = 0; i < 50 && !p.handle(); i++) await sleep(5);
+    await sleep(20);
+    assert.equal(p.handle()?.getDraft(), 'topic draft');
+});
