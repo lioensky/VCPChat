@@ -428,8 +428,12 @@ export function createBrowserSideProvider({
                 moreBtn.setAttribute('aria-expanded', 'true');
                 menu.querySelector('[role="menuitem"]:not([disabled])')?.focus();
             };
-            // 地址栏里打了一半就点走：回到当前页面的网址（setAddress 在聚焦时不改它，没有这一步会一直留着半截文字）
-            own.listen(address, 'blur', () => { address.value = currentUrl === 'about:blank' ? '' : currentUrl; });
+            // 地址栏里打了一半就点走：回到当前页面的网址（setAddress 在聚焦时不改它，没有这一步会一直留着半截文字）。
+            // 切到别的窗口（比如去复制网址）也会触发 blur，那时整个文档都没焦点，打了一半的字要留着
+            own.listen(address, 'blur', () => {
+                if (doc.hasFocus?.() === false) return;
+                address.value = currentUrl === 'about:blank' ? '' : currentUrl;
+            });
             own.listen(menu, 'keydown', (event) => {
                 if (event.key === 'Escape' || event.key === 'Tab') {
                     event.preventDefault();

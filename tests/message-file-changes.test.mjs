@@ -184,3 +184,25 @@ test('loading a long history reads the history once per batch, not once per mess
     assert.ok(reads <= 1);
     controller.dispose();
 });
+
+test('a message edited to the same length that now changes files gets its file list', async () => {
+    const dom = new JSDOM('<div id="chatMessages"></div>', { pretendToBeVisual: true });
+    const doc = dom.window.document;
+    const root = doc.getElementById('chatMessages');
+    const changed = confirmed(write('C:/proj/a.js'));
+    const history = [{ id: 'm0', role: 'assistant', content: 'y'.repeat(changed.length) }];
+    const controller = createMessageFileChanges({ document: doc, messagesRoot: root, getHistory: () => history });
+    controller.mount();
+    const item = doc.createElement('div');
+    item.className = 'message-item assistant';
+    item.dataset.messageId = 'm0';
+    item.innerHTML = '<div class="details-and-bubble-wrapper"><div class="md-content">x</div></div>';
+    root.appendChild(item);
+    await wait();
+    assert.equal(root.querySelectorAll('.vcp-file-changes').length, 0);
+    history[0] = { ...history[0], content: changed };
+    item.classList.add('is-hovered');
+    await wait();
+    assert.equal(root.querySelectorAll('.vcp-file-changes').length, 1);
+    controller.dispose();
+});

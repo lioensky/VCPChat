@@ -325,7 +325,8 @@ export function createMessageFileChanges({
     const win = doc.defaultView;
     let observer = null;
     let disposed = false;
-    // 没有文件改动的消息记下 id 和内容长度：class 再变（hover、展开等）不用重新提取
+    // 没有文件改动的消息记下 id 和当时的内容（引用历史里同一个字符串）：class 再变（hover、展开等）不用重新提取；
+    // 只记长度的话，编辑后长度没变、却多了文件改动的消息会被跳过
     const noChanges = new Map();
 
     // 一批 mutation 共用一份历史索引和工程根：长历史加载时不再每条消息线性 find、再扫一遍全历史
@@ -348,9 +349,9 @@ export function createMessageFileChanges({
         if (!id) return;
         const record = batch.find(id);
         const raw = typeof record?.content === 'string' ? record.content : '';
-        if (noChanges.get(id) === raw.length) return;
+        if (noChanges.get(id) === raw) return;
         const changes = extractFileChanges(raw);
-        if (changes.length === 0) { noChanges.set(id, raw.length); return; }
+        if (changes.length === 0) { noChanges.set(id, raw); return; }
         noChanges.delete(id);
         // ProjectForge 的路径相对工程根；根目录写在建工程（CreateProject / GetProject）的结果里，可能在更早的消息中
         const roots = changes.some(change => change.projectId) ? batch.roots() : new Map();

@@ -265,8 +265,28 @@ test('half-typed text in the address bar goes back to the page address when focu
     const address = view.querySelector('input');
     address.focus();
     address.value = 'foo';
+    dom.window.document.hasFocus = () => true; // 焦点在窗口里换了地方（jsdom 在 blur 时报 false，Chromium 报 true）
     address.blur();
     assert.equal(address.value, 'https://example.com/');
+    handle.dispose();
+    dom.window.close();
+});
+
+test('switching to another window keeps the half-typed address', async () => {
+    const { JSDOM } = await import('jsdom');
+    const { createBrowserSideProvider } = await import('../modules/ui-system/side-pane/browserSideProvider.js');
+    const dom = new JSDOM('<div id="view"></div>');
+    const doc = dom.window.document;
+    const provider = createBrowserSideProvider({ document: doc, api: null, sidePaneController: { updateTab() {} }, notify: () => {} });
+    const view = doc.getElementById('view');
+    const handle = await provider.mountTab({ id: 'browser:1', kind: 'browser', payload: {} }, view);
+    handle.navigate('https://example.com/');
+    const address = view.querySelector('input');
+    address.focus();
+    address.value = 'https://exa';
+    doc.hasFocus = () => false; // 整个窗口失焦（Alt-Tab）
+    address.blur();
+    assert.equal(address.value, 'https://exa');
     handle.dispose();
     dom.window.close();
 });
