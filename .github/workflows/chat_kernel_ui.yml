@@ -104,3 +104,45 @@ jobs:
 
       - name: Run complete UI system gate
         run: npm run check:ui-system
+
+  side-pane-e2e:
+    name: Side pane end-to-end smoke (real Electron)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Setup Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+
+      # 和 mobile_sync 打包任务一样：先装依赖不跑原生脚本，再按 Electron 的 ABI 重编原生模块，
+      # 按 Node ABI 编出来的原生模块（better-sqlite3 等）在 Electron 里加载不了
+      - name: Install package graph without native lifecycle scripts
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
+        run: npm ci --ignore-scripts
+
+      - name: Install Electron runtime
+        run: node node_modules/electron/install.js
+
+      - name: Rebuild Electron native modules used by the app
+        run: npx electron-rebuild -f -w better-sqlite3,node-pty,sharp
+
+      - name: Ensure a virtual display
+        run: command -v xvfb-run || (sudo apt-get update && sudo apt-get install -y xvfb)
+
+      - name: Run side pane smoke
+        env:
+          SIDE_PANE_SMOKE_DIR: ${{ runner.temp }}/side-pane-smoke
+        run: xvfb-run -a -s "-screen 0 1600x1000x24" npm run smoke:side-pane
+
+      - name: Upload smoke evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: side-pane-smoke-evidence
+          path: ${{ runner.temp }}/side-pane-smoke

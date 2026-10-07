@@ -75,6 +75,7 @@ export const chatManager = (() => {
     const forwardTimers = new Set();
     const outgoingPersistenceQueues = new Map();
     const selectionListeners = new Set();
+    const selectionIntentListeners = new Set();
 
     function notifySelectionCommitted() {
         const item = currentSelectedItemRef?.get?.();
@@ -83,6 +84,16 @@ export const chatManager = (() => {
         selectionListeners.forEach(listener => {
             try { listener({ item, topicId }); }
             catch (e) { console.error('[ChatManager] selection listener failed:', e); }
+        });
+    }
+    // 选中话题的那一刻就通知（历史还在分批渲染）。侧栏要立刻跟上：
+    // 等 notifySelectionCommitted 的话，几百条消息的话题要好几秒，期间还停在上一个话题的辅助对话上
+    function notifySelectionIntent() {
+        const item = currentSelectedItemRef?.get?.();
+        const topicId = currentTopicIdRef?.get?.();
+        selectionIntentListeners.forEach(listener => {
+            try { listener({ item, topicId }); }
+            catch (e) { console.error('[ChatManager] selection intent listener failed:', e); }
         });
     }
     const pendingSendContexts = new Set();
@@ -676,6 +687,7 @@ export const chatManager = (() => {
                 if (!isSelectionCurrent()) return;
                 currentTopicIdRef.set(topicToLoadId);
                 if (messageRenderer) messageRenderer.setCurrentTopicId(topicToLoadId);
+                notifySelectionIntent();
                 await loadOwnedHistory(topicToLoadId);
             } else if (topics && topics.error) {
                 if (!isSelectionCurrent()) return;
@@ -697,6 +709,7 @@ export const chatManager = (() => {
                         if (defaultTopicResult.success) {
                             currentTopicIdRef.set(defaultTopicResult.topicId);
                             if (messageRenderer) messageRenderer.setCurrentTopicId(defaultTopicResult.topicId);
+                            notifySelectionIntent();
                             await loadOwnedHistory(defaultTopicResult.topicId);
                         } else {
                             if (messageRenderer) messageRenderer.renderMessage({ role: 'system', notice: 'error', content: `创建默认话题失败: ${defaultTopicResult.error}`, timestamp: Date.now() });
@@ -711,6 +724,7 @@ export const chatManager = (() => {
                     if (defaultTopicResult.success) {
                         currentTopicIdRef.set(defaultTopicResult.topicId);
                         if (messageRenderer) messageRenderer.setCurrentTopicId(defaultTopicResult.topicId);
+                        notifySelectionIntent();
                         await loadOwnedHistory(defaultTopicResult.topicId);
                     } else {
                         if (messageRenderer) messageRenderer.renderMessage({ role: 'system', notice: 'error', content: `创建默认群聊话题失败: ${defaultTopicResult.error}`, timestamp: Date.now() });
@@ -816,6 +830,7 @@ export const chatManager = (() => {
                 // Navigation intent ends the old media lease before any IPC await.
                 messageRenderer.clearChat();
             }
+            notifySelectionIntent();
             // Persist the selection intent before watcher/history work. A
             // renderer reload or crash during that work must restore the
             // topic the user actually selected, not the previous durable one.
@@ -2331,6 +2346,7 @@ export const chatManager = (() => {
         for (const timer of forwardTimers) clearTimeout(timer);
         forwardTimers.clear();
         selectionListeners.clear();
+        selectionIntentListeners.clear();
         await Promise.allSettled([
             lastOpenSaveQueue,
             ...outgoingPersistenceQueues.values(),
@@ -2365,6 +2381,14 @@ export const chatManager = (() => {
             if (typeof callback === 'function') {
                 selectionListeners.add(callback);
                 return () => selectionListeners.delete(callback);
+            }
+            return () => {};
+        },
+        /** 选中话题时立刻回调（不等历史渲染完）；回调参数同 onSelectionChange */
+        onSelectionIntent(callback) {
+            if (typeof callback === 'function') {
+                selectionIntentListeners.add(callback);
+                return () => selectionIntentListeners.delete(callback);
             }
             return () => {};
         },

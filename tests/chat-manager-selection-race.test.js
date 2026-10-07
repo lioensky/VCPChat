@@ -1013,6 +1013,31 @@ test('creating a topic commits a selection event after the empty history identit
  await creating;assert.deepEqual(events,[{topicId:'topic-a-created',history:[]}]);unsubscribe();fixture.dom.window.close();
 });
 
+test('selection intent reaches followers as soon as a topic is picked, before its history has loaded', async () => {
+    const fixture = createFixture();
+    const selected = fixture.chatManager.selectItem('agent-b', 'agent', 'Agent B', null, fixture.configs['agent-b']);
+    await new Promise(resolve => setImmediate(resolve));
+    fixture.topicRequests.get('agent-b').resolve(fixture.configs['agent-b'].topics);
+    await selected;
+
+    const intents = [];
+    const commits = [];
+    const unbindIntent = fixture.chatManager.onSelectionIntent(event => intents.push(event.topicId));
+    const unbindCommit = fixture.chatManager.onSelectionChange(event => commits.push(event.topicId));
+    const save = fixture.holdNextSettingsSave();
+    const selecting = fixture.chatManager.selectTopic('topic-b-2');
+    await save.started.promise;
+    assert.deepEqual(intents, ['topic-b-2'], 'the side pane can follow while history is still loading');
+    assert.deepEqual(commits, []);
+
+    save.release.resolve();
+    await selecting;
+    assert.deepEqual(commits, ['topic-b-2']);
+    unbindIntent();
+    unbindCommit();
+    fixture.dom.window.close();
+});
+
 test('deleting the current assistant tells selection followers that nothing is selected', async () => {
     const fixture = createFixture();
     const selecting = fixture.chatManager.selectItem('agent-a', 'agent', 'Agent A', null, fixture.configs['agent-a']);

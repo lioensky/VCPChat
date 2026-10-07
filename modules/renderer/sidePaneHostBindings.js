@@ -27,6 +27,9 @@ export function createSidePaneHostBindings({ win, chatAPI, uiHelper, chatManager
     };
     const unbindSelection = chatManager?.onSelectionChange?.(syncSidePaneParent);
     if (unbindSelection) subscriptions.add({ dispose: unbindSelection });
+    // 选中话题当下就换：长话题的历史要渲染好几秒，等提交的话侧栏一直停在上一个话题的辅助对话上
+    const unbindIntent = chatManager?.onSelectionIntent?.(syncSidePaneParent);
+    if (unbindIntent) subscriptions.add({ dispose: unbindIntent });
     const initialItem = selectedItemRef.get();
     if (initialItem?.id) syncSidePaneParent({ item: initialItem, topicId: topicIdRef.get() });
 

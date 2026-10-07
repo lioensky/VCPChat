@@ -21443,14 +21443,14 @@
       "consumers": [
         {
           "file": "modules/chatManager.js",
-          "line": 378,
+          "line": 389,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/chatManager.js",
-          "line": 378,
+          "line": 389,
           "kind": "preload-subscription",
           "match": "electronAPI.onCanvasContentUpdate("
         }
@@ -21462,14 +21462,14 @@
       "consumers": [
         {
           "file": "modules/chatManager.js",
-          "line": 379,
+          "line": 390,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/chatManager.js",
-          "line": 379,
+          "line": 390,
           "kind": "preload-subscription",
           "match": "electronAPI.onCanvasWindowClosed("
         }
