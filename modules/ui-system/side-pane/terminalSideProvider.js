@@ -495,11 +495,10 @@ export function createTerminalSideProvider({
                 term.focus();
             });
             own.listen(restartBtn, 'click', () => {
-                // 要弹确认框时不抢焦点：应用确认框是异步的，这里聚焦终端会把焦点从确认框拉回来，
-                // 用户敲的字会进到背后的 shell。确认框关掉后它自己把焦点还给重启按钮
-                const asks = Boolean(session.restartConfirm || (session.sessionId && !session.exited));
+                // 先把焦点交给终端再重启：要确认时确认框接过焦点、关掉后还回终端。
+                // 反过来的话终端会从确认框手里抢回焦点，按 Esc 关框时 Esc 也进了 shell，吃掉下一个字符
+                term.focus();
                 session.restart();
-                if (!asks) term.focus();
             });
             own.listen(clearBtn, 'click', () => {
                 term.clear();

@@ -180,3 +180,32 @@ test('a service error exits auxiliary busy state and is shown as an error', asyn
     assert.equal(f.textarea.disabled, false);
     assert.deepEqual(f.getHistory().map(message => message.content), ['a retained question']);
 });
+
+test('the composer stays usable while a reply is generating, and Esc in it stops the reply', async t => {
+    const f = await fixture(t, { stage: 'save' });
+    f.textarea.focus();
+    f.submit('first question');
+    await f.entered.promise;
+    // like the main chat: focus stays in the box and the next question can be written meanwhile
+    assert.equal(f.textarea.disabled, false);
+    assert.equal(f.doc.activeElement, f.textarea);
+    f.textarea.value = 'next question';
+    f.form.requestSubmit();
+    assert.equal(f.requests.length, 0, 'Enter while busy does not start a second round');
+    f.textarea.dispatchEvent(new f.doc.defaultView.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    f.gate.resolve();
+    await f.untilIdle();
+    assert.equal(f.requests.length, 0, 'Esc stopped the round before it reached the model');
+    assert.equal(f.statuses.at(-1).code, 'cancelled');
+    assert.equal(f.textarea.value, 'next question', 'the draft written while waiting is kept');
+});
+
+test('a retracted question is put back in front of a draft written while it was pending', async t => {
+    const f = await fixture(t, { stage: 'snapshot' });
+    f.submit('unsent question');
+    await f.entered.promise;
+    f.textarea.value = 'written meanwhile';
+    f.stop(); f.gate.resolve();
+    await f.untilIdle();
+    assert.equal(f.textarea.value, 'unsent question\nwritten meanwhile');
+});

@@ -356,6 +356,12 @@ export async function mountSideChatSurface(container, {
     });
 
     textarea.addEventListener('keydown', (e) => {
+        // 生成中按 Esc 停止，同 ZCode 的 Esc → stop；只认输入框里的 Esc，不和侧栏里菜单、搜索的 Esc 抢
+        if (e.key === 'Escape' && !isComposing && !e.defaultPrevented && activeSendController) {
+            e.preventDefault();
+            onStop();
+            return;
+        }
         if (e.key === 'Enter' && !e.shiftKey && !isComposing && e.keyCode !== 229) {
             e.preventDefault();
             form.requestSubmit();
@@ -402,7 +408,8 @@ export async function mountSideChatSurface(container, {
 
         // 用户消息被撤回（未发出/发送失败）时才把草稿和引用放回输入框
         await runSend(payload, submittedAttachments, () => {
-            if (!textarea.value && submittedText) textarea.value = submittedText;
+            // 生成期间输入框可用，撤回时用户可能已经写了下一句：放回的提问接在前面，两段都不丢
+            if (submittedText) textarea.value = textarea.value ? `${submittedText}\n${textarea.value}` : submittedText;
             for (const ref of submittedReferences) {
                 if (!references.some(r => r.id === ref.id)) references.unshift(ref);
             }
@@ -417,8 +424,8 @@ export async function mountSideChatSurface(container, {
         const sendController = new (doc.defaultView?.AbortController || AbortController)();
         activeSendController = sendController;
         messageEditor.close();
+        // 输入框不禁用，和主聊一样：焦点留在原处，生成期间可以先写下一句（回车被上面的忙碌判断挡住），Esc 停止
         form.setAttribute('aria-busy', 'true');
-        textarea.disabled = true;
         attachmentsOwner.setDisabled(true);
         sendBtn.hidden = true;
         stopBtn.hidden = false;
@@ -489,7 +496,6 @@ export async function mountSideChatSurface(container, {
             if (activeSendController === sendController) activeSendController = null;
             if (!isDisposed) {
                 form.removeAttribute('aria-busy');
-                textarea.disabled = false;
                 sendBtn.hidden = false;
                 stopBtn.hidden = true;
                 updateComposerState();
@@ -534,11 +540,9 @@ export async function mountSideChatSurface(container, {
         const kept = history.slice(0, questionIndex);
         // 截断落盘期间就算这一轮在忙：否则这时按回车会另起一轮，两轮抢同一个停止按钮和内存里的历史
         form.setAttribute('aria-busy', 'true');
-        textarea.disabled = true;
         const releaseBusy = () => {
             if (isDisposed) return;
             form.removeAttribute('aria-busy');
-            textarea.disabled = false;
             updateComposerState();
         };
         let saved;
@@ -581,6 +585,8 @@ export async function mountSideChatSurface(container, {
     };
 
     const onStop = async () => {
+        // 点停止后按钮会藏起来，焦点不能丢在 body 上
+        if (doc.activeElement === stopBtn) textarea.focus();
         activeSendController?.abort('side-chat-user-cancel');
         updateStatus('正在停止...');
         await surface.cancelMessage();
