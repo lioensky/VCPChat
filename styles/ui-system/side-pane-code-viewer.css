@@ -163,6 +163,9 @@ html body[data-vcp-theme="light"] .side-code-body:where(.vcp-ui-scope, .vcp-ui-s
 
 html .side-code-editor-shell:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: flex;
+    /* 不能被外层的纵向 flex 压扁：压扁后代码栏（overflow-x: auto）会自己纵向滚动，
+       行号栏留在原地，滚到第 1000 行时左边还显示 1、2、3。整块交给 .side-code-body 滚动 */
+    flex-shrink: 0;
     min-height: 100%;
     min-width: 100%;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;

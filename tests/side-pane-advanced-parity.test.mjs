@@ -584,6 +584,31 @@ test('Parity: the tools page lists recommended apps under the tool rows', async 
     dom.window.close();
 });
 
+test('Parity: the side chat entry is not offered while a group is selected', () => {
+    const dom = createParityTestDOM();
+    const doc = dom.window.document;
+    let ctrl = null;
+    ctrl = createController(dom, {
+        controller: {
+            tabTypes: [defineChatTabType({
+                provider: mockChatProvider(),
+                openSideChat: () => {},
+                canOpen: () => ctrl?.getSnapshot().parent?.itemType === 'agent'
+            })]
+        }
+    });
+    const listed = () => [...doc.querySelectorAll('[data-open-tab-entry]')].map(row => row.getAttribute('data-open-tab-entry'));
+    ctrl.setParent({ itemType: 'agent', itemId: 'agent-1', topicId: 'parent' });
+    assert.deepEqual(listed(), ['selection-side-conversation']);
+    // 切到群聊：控制器的 parent 变成 null，入口跟着消失，而不是点了再弹「请先选择助手」
+    ctrl.setParent(null);
+    assert.deepEqual(listed(), []);
+    ctrl.setParent({ itemType: 'agent', itemId: 'agent-1', topicId: 'parent' });
+    assert.deepEqual(listed(), ['selection-side-conversation']);
+    ctrl.dispose();
+    dom.window.close();
+});
+
 test('Parity: entries can hide themselves with isAvailable', () => {
     const dom = createParityTestDOM();
     const doc = dom.window.document;

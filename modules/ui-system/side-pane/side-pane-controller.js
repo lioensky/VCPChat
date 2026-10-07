@@ -1104,7 +1104,11 @@ export function createSidePaneController({
                 preferredTabId: activeTabByParent.get(nextKey),
                 collapsedPreference: collapsedByParent.get(nextKey)
             });
-            if (state.parent !== previousParent) navigationRevision++;
+            if (state.parent !== previousParent) {
+                navigationRevision++;
+                // 入口是否可用可能取决于当前对话（群聊里不能开辅助对话），换对话时重新列一遍
+                launcher.renderEntries();
+            }
             renderTabList();
             syncViewPanels();
             syncDomVisibility();
