@@ -3,6 +3,14 @@
  */
 'use strict';
 
+// 与主进程 sideChatHandlers.js 的 CHILD_ID_PATTERN 一致
+const SIDE_CHAT_CHILD_ID = /^sidechat_\d+_[0-9a-f]+$/;
+
+/** 侧聊子会话的话题 id（只存在磁盘上，不在助手话题列表里）。 */
+export function isSideChatChildTopicId(topicId) {
+    return typeof topicId === 'string' && SIDE_CHAT_CHILD_ID.test(topicId);
+}
+
 /**
  * Creates a normalized SideChatDescriptor.
  * @param {Object} options

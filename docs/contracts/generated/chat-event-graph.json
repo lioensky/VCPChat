@@ -1352,7 +1352,7 @@
         },
         {
           "file": "modules/renderer/mainChatSurfaceAdapter.js",
-          "line": 135,
+          "line": 138,
           "kind": "custom-event-listener"
         },
         {
@@ -1416,7 +1416,7 @@
         },
         {
           "file": "modules/renderer/mainChatSurfaceAdapter.js",
-          "line": 135,
+          "line": 138,
           "kind": "custom-event-listener",
           "match": "ownerWindow?.addEventListener?.('beforeunload'"
         },
@@ -13860,14 +13860,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 1633,
+          "line": 1631,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 1633,
+          "line": 1631,
           "kind": "event-listener",
           "match": "ipcMain.handle('get-unread-topic-counts'"
         },
@@ -15245,14 +15245,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 1523,
+          "line": 1521,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 1523,
+          "line": 1521,
           "kind": "event-listener",
           "match": "ipcMain.handle('interrupt-vcp-request'"
         },
@@ -27189,14 +27189,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 1728,
+          "line": 1726,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 1728,
+          "line": 1726,
           "kind": "event-listener",
           "match": "ipcMain.handle('set-topic-unread'"
         },
@@ -29421,14 +29421,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 1684,
+          "line": 1682,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 1684,
+          "line": 1682,
           "kind": "event-listener",
           "match": "ipcMain.handle('toggle-topic-lock'"
         },

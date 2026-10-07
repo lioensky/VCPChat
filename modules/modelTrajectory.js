@@ -13,7 +13,8 @@
  * VCPChat 与原实现不同的地方：
  * - 请求来自渲染进程的 IPC（主聊天）或群聊主进程模块，没有统一的 agent 层，所以由调用方 begin() / chunk() / finish()；
  * - 工具调用写在回答原文里（TOOL_REQUEST 块），不是 OpenAI tool_calls，原文原样记下，由界面解析；
- * - 服务端不一定回报 token 用量，缺失时按字符数粗估并标记 estimated；
+ * - 服务端不一定回报 token 用量，缺失时按字符数粗估并标记 estimated；请求体不加 stream_options：
+ *   VCP 服务端把请求原样转给各家后端，不认这个字段的后端会直接 400，主聊天跟着发不出去；
  * - API Key 永远不进记录：begin() 根本不接收它，模型参数里疑似密钥的字段也会被剔除。
  * 记录器的任何方法都不会抛错、也不会阻塞聊天链路。
  */
@@ -126,13 +127,6 @@ function normalizeUsage(raw) {
         ...(cached ? { cachedInputTokens: cached } : {}),
         ...(reasoning ? { reasoningTokens: reasoning } : {})
     };
-}
-
-/** 流式请求要求服务端在最后一个数据块里带上 token 用量（OpenAI 的 stream_options.include_usage）；调用方已指定时不覆盖。 */
-function withStreamUsage(body) {
-    if (!body || typeof body !== 'object' || body.stream !== true || body.stream_options !== undefined) return body;
-    body.stream_options = { include_usage: true };
-    return body;
 }
 
 const nonNegativeInteger = value => (Number.isInteger(value) && value >= 0 ? value : undefined);
@@ -612,6 +606,5 @@ module.exports = {
     normalizeUsage,
     estimateTokens,
     sanitizeFileKey,
-    withStreamUsage,
     expandRecords
 };

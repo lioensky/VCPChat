@@ -107,3 +107,52 @@ test('main Surface send state follows the real stream terminal consumer', async 
     await adapter.dispose();
     dom.window.close();
 });
+
+// 心流锁按助手加锁；侧聊回复若进入心流锁，会把整个助手锁到隐藏的侧聊话题上，主聊天无法切换话题
+test('side chat replies never reach the Flowlock manager; main topic replies still do', async () => {
+    const dom = new JSDOM('<main><div id="root"></div><textarea></textarea>');
+    const root = dom.window.document.getElementById('root');
+    const renderer = { initializeMessageRenderer() {}, renderHistory() {}, renderMessage() {} };
+    const flowlockTopics = [];
+    const settledIds = [];
+    const adapter = createMainChatSurfaceAdapter({
+        root,
+        renderer,
+        repository: { getHistory: async () => [], saveHistory() {} },
+        focusTarget: dom.window.document.querySelector('textarea'),
+        operations: { dispose: async () => {} },
+        renderDependencies: {},
+        streamServices: {
+            streamProjection: {
+                startStreamingMessage() {},
+                appendStreamChunk() {},
+                projectStreamTerminal: async (messageId, finishReason, context, payload) => ({
+                    messageId, finishReason, context, content: payload.fullResponse, history: [],
+                }),
+            },
+            historyPersistence: { commit: projected => projected },
+            messageRenderer: renderer,
+            getSelection: () => ({ id: 'agent-a' }),
+            getTopicId: () => 'topic-a',
+            flowlockManager: { handleFinalizedMessage: async event => { flowlockTopics.push(event.context.topicId); } },
+            notifySendStateChanged: value => { if (value?.messageId) settledIds.push(value.messageId); },
+        },
+        disposeRenderer: async () => {},
+    });
+    const send = (messageId, topicId) => {
+        const context = { agentId: 'agent-a', topicId };
+        adapter.acceptStreamEvent({ type: 'start', messageId, streamOperationId: messageId, context });
+        adapter.acceptStreamEvent({ type: 'end', messageId, streamOperationId: messageId, context, fullResponse: '[[Flowlock::Start]]', finish_reason: 'completed' });
+    };
+    send('side-1', 'sidechat_1791000000000_abc123');
+    send('main-1', 'topic-a');
+    const deadline = Date.now() + 3000;
+    while (!(flowlockTopics.length && settledIds.includes('side-1'))) {
+        assert.ok(Date.now() < deadline, 'stream terminals did not settle');
+        await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.deepEqual(flowlockTopics, ['topic-a']);
+    await adapter.dispose();
+    dom.window.close();
+});

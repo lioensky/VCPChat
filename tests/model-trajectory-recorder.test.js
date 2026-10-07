@@ -283,15 +283,12 @@ test('records written before delta storage still read; an oversized old file is 
     } finally { cleanup(); }
 });
 
-test('usage keeps cached and reasoning tokens; streamed requests ask for usage without overriding the caller', () => {
-    const { normalizeUsage, withStreamUsage } = require('../modules/modelTrajectory');
+test('usage keeps cached and reasoning tokens', () => {
+    const { normalizeUsage } = require('../modules/modelTrajectory');
     assert.deepEqual(normalizeUsage({ prompt_tokens: 100, completion_tokens: 30, total_tokens: 130, prompt_tokens_details: { cached_tokens: 64 }, completion_tokens_details: { reasoning_tokens: 12 } }),
         { inputTokens: 100, outputTokens: 30, totalTokens: 130, cachedInputTokens: 64, reasoningTokens: 12 });
     assert.equal(normalizeUsage({ input_tokens: 10, output_tokens: 2, cache_read_input_tokens: 8 }).cachedInputTokens, 8);
     assert.equal(normalizeUsage({ prompt_tokens: 10, completion_tokens: 2, prompt_cache_hit_tokens: 6 }).cachedInputTokens, 6);
     assert.deepEqual(normalizeUsage({ prompt_tokens: 5 }), { inputTokens: 5, outputTokens: undefined, totalTokens: 5 });
     assert.equal(normalizeUsage({}), null);
-    assert.deepEqual(withStreamUsage({ stream: true }).stream_options, { include_usage: true });
-    assert.deepEqual(withStreamUsage({ stream: true, stream_options: { include_usage: false } }).stream_options, { include_usage: false });
-    assert.equal(withStreamUsage({ stream: false }).stream_options, undefined);
 });
