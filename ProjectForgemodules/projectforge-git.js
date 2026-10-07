@@ -110,6 +110,7 @@
         page.classList.toggle('busy', on);
         page.setAttribute('aria-busy', String(on));
         syncActionButtons();
+        if (!on) refreshIfStale();
     }
 
     // 不再定时轮询：向主进程订阅当前工作区，仓库一变（这里或别的窗口提交、暂存、切分支，
@@ -382,8 +383,9 @@
             else if (op === 'unstage') res = await gitCall(api.gitUnstage(git.workspaceId, paths));
             else if (op === 'discard') res = await gitCall(api.gitDiscard(git.workspaceId, paths));
             toast(`已${label} ${paths.length} 个文件`, 'success');
+            if (res?.warning) toast(res.warning, 'warning');
             if (res?.status) applyStatus(res.status);
-            else await refreshStatus({ quiet: true });
+            else git.stale = true;
         } catch (error) {
             toast(`${label}失败：${error.message}`, 'error');
             showOpOutput(`${label}失败`, error.message);
@@ -410,11 +412,12 @@
         hideOpOutput();
         try {
             const res = await gitCall(api.gitCommit(git.workspaceId, { message: msg }));
-            toast(`提交成功：${res.commit}`, 'success');
+            toast(res.commit ? `提交成功：${res.commit}` : '提交成功', 'success');
+            if (res.warning) toast(res.warning, 'warning');
             $('git-commit-message').value = '';
             git.drafts.delete(git.workspaceId);
             if (res?.status) applyStatus(res.status);
-            else await refreshStatus({ quiet: true });
+            else git.stale = true;
         } catch (error) {
             toast(`提交失败：${error.message}`, 'error');
             showOpOutput('提交失败', error.message);
@@ -439,9 +442,10 @@
         try {
             const res = await gitCall(api.gitPush(git.workspaceId, { setUpstream: !b?.upstream }));
             toast('推送成功', 'success');
+            if (res.warning) toast(res.warning, 'warning');
             if (res.output) showOpOutput('推送完成', res.output, 'success');
             if (res?.status) applyStatus(res.status);
-            else await refreshStatus({ quiet: true });
+            else git.stale = true;
         } catch (error) {
             toast(`推送失败：${error.message}`, 'error');
             showOpOutput('推送失败', error.message);

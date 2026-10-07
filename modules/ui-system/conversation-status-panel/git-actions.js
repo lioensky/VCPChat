@@ -23,7 +23,8 @@ export function createStatusPanelGitActions({
     refreshAfterMutation,
     render,
     toast,
-    uniquePaths
+    uniquePaths,
+    warnAfterMutation
 }) {
 
     // 只防分支列表请求之间互相覆盖；借用面板刷新的序号的话，agent 改文件触发一次刷新，点分支按钮就没反应
@@ -71,6 +72,7 @@ export function createStatusPanelGitActions({
             if (res?.success && data?.ok !== false) {
                 adoptBranch(data, targetWorkspace);
                 toast(`已切换到分支 ${name}`, 'success');
+                warnAfterMutation(data);
                 return true;
             }
             const message = data?.issues?.[0]?.message || res?.error || '';
@@ -93,6 +95,7 @@ export function createStatusPanelGitActions({
             }
             adoptBranch(data, targetWorkspace);
             toast(`已创建并切换到分支 ${name}`, 'success');
+            warnAfterMutation(data);
             return true;
         });
         // runBusy 在另一个 Git 操作进行中时直接返回 false；不抛错的话对话框会当成功关掉
@@ -106,6 +109,7 @@ export function createStatusPanelGitActions({
         let res = await api.gitPush(targetWorkspace.id, hasUpstream ? {} : { setUpstream: true });
         if (!res?.success && res?.code === 'NO_UPSTREAM') res = await api.gitPush(targetWorkspace.id, { setUpstream: true });
         if (!res?.success) throw new Error(describeIssue(res));
+        warnAfterMutation(res.data);
     }
 
     function canPush() {
@@ -119,6 +123,7 @@ export function createStatusPanelGitActions({
         if (!paths.length) return;
         const staged = await api.gitStage(targetWorkspace.id, paths);
         if (!staged?.success) throw new Error(describeIssue(staged));
+        warnAfterMutation(staged.data);
     }
 
     return Object.freeze({ loadBranches, runBusy, adoptBranch, switchBranch, createBranch, pushCurrent, canPush, stageAll, dispose() {  } });

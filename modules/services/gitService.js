@@ -453,13 +453,26 @@ async function getStatus(workspaceRoot) {
     return readStatus(repo, { counts: true });
 }
 
-/** 串行执行写操作，完成后附带最新状态返回，前端一次往返即可刷新。 */
+/** 写操作已确认成功；后续状态读取失败不能把已完成的操作重新报告为失败。 */
+async function readMutationStatus(repo, extra = {}) {
+    try {
+        return { ...extra, status: await readStatus(repo, { counts: true }) };
+    } catch (error) {
+        return {
+            ...extra,
+            status: null,
+            warning: [extra.warning, '操作已完成，但刷新 Git 状态失败，请手动刷新确认。'].filter(Boolean).join(' '),
+            statusError: error?.message || String(error),
+        };
+    }
+}
+
+/** 串行执行写操作，写入失败仍抛错；成功后尽力附带最新状态。 */
 async function mutate(workspaceRoot, fn) {
     const repo = await requireRepository(workspaceRoot);
     return withRepoLock(repo, async () => {
         const extra = await fn(repo);
-        const status = await readStatus(repo, { counts: true });
-        return { ...(extra || {}), status };
+        return readMutationStatus(repo, extra || {});
     });
 }
 
@@ -528,8 +541,12 @@ function commit(workspaceRoot, { message } = {}) {
             input: `${text}\n`,
             timeout: COMMIT_TIMEOUT,
         });
-        const head = await runGit(repo.toplevel, ['rev-parse', '--short', 'HEAD']);
-        return { commit: head.stdout.toString('utf8').trim() };
+        try {
+            const head = await runGit(repo.toplevel, ['rev-parse', '--short', 'HEAD']);
+            return { commit: head.stdout.toString('utf8').trim() };
+        } catch (error) {
+            return { commit: null, warning: '提交已完成，但提交编号读取失败，请刷新 Git 历史确认。', commitReadError: error?.message || String(error) };
+        }
     });
 }
 
@@ -564,7 +581,7 @@ async function push(workspaceRoot, { setUpstream = false } = {}) {
         }
         const result = await runGit(repo.toplevel, args, { timeout: PUSH_TIMEOUT });
         const output = `${result.stderr.toString('utf8')}${result.stdout.toString('utf8')}`.trim();
-        return { output, remote, status: await readStatus(repo, { counts: true }) };
+        return readMutationStatus(repo, { output, remote });
     });
 }
 
@@ -712,7 +729,7 @@ async function switchLike(workspaceRoot, action, name, buildArgs) {
         } catch (error) {
             return fail({ code: 'git-error', message: error.message });
         }
-        return { ok: true, action, branchName, changed: true, status: await readStatus(repo, { counts: true }) };
+        return readMutationStatus(repo, { ok: true, action, branchName, changed: true });
     });
 }
 

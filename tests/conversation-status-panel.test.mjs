@@ -384,6 +384,28 @@ test('commit dialog stages unique paths, commits with a generated message and pu
     panel.dispose();
 });
 
+for (const action of ['commit', 'commitAndPush']) {
+    test(`${action}: acknowledged write with a refresh warning closes the dialog without offering a commit retry`, async () => {
+        const { doc, panel, calls, dom } = setup({ api: {
+            gitCommit: async () => ({ success: true, data: { commit: 'abc1234', status: null, warning: '刷新 Git 状态失败，请手动刷新确认。' } }),
+            gitPush: async () => ({ success: true, data: { status: null, warning: '推送后的刷新 Git 状态失败，请手动刷新确认。' } })
+        } });
+        try {
+            panel.mount();
+            await flush();
+            await panel.openCommitDialog();
+            click(dom, q(doc, `[data-action="${action}"]`));
+            await flush();
+            await flush();
+            assert.equal(q(doc, '.zc-commit-dialog'), null);
+            assert.ok(calls.some(c => c[0] === 'toast' && c[1] === 'success' && /已提交/.test(c[2])));
+            assert.ok(calls.some(c => c[0] === 'toast' && c[1] === 'warning' && /刷新 Git 状态失败/.test(c[2])));
+            assert.equal(calls.some(c => c[0] === 'toast' && c[1] === 'error'), false);
+            if (action === 'commitAndPush') assert.ok(calls.some(c => c[0] === 'toast' && /推送后的刷新/.test(c[2])));
+        } finally { panel.dispose(); dom.window.close(); }
+    });
+}
+
 test('push dialog sets the upstream automatically for a branch without one', async () => {
     const { doc, panel, calls, dom } = setup({ api: {
         gitChangeSummary: async () => ({ success: true, data: { files: 0, added: 0, removed: 0, branch: { head: 'feat', ahead: 0, behind: 0, upstream: null }, remotes: ['origin'] } })

@@ -33,7 +33,8 @@ export function createStatusPanelCommitDialog({
     spinner,
     stageAll,
     toast,
-    uniquePaths
+    uniquePaths,
+    warnAfterMutation
 }) {
 
     async function openCommitDialog() {
@@ -156,6 +157,7 @@ export function createStatusPanelCommitDialog({
                 committed = true;
                 if (andPush) await pushCurrent(targetWorkspace);
                 toast(andPush ? '已提交并推送当前更改' : '已提交当前更改', 'success');
+                warnAfterMutation(res.data);
                 modal.close();
                 refreshAfterMutation();
             } catch (e) {

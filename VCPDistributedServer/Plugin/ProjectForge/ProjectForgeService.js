@@ -12,6 +12,7 @@ const fsp = fs.promises;
 const path = require('path');
 const EventEmitter = require('events');
 const { ProjectStore, sha256 } = require('./store');
+const { applyGuiRevert } = require('./gui-revert-file');
 const engine = require('./engine');
 const { WorkspaceResolver } = require('./workspace');
 const { TicketStore, parsePickSpec } = require('./tickets');
@@ -1960,18 +1961,17 @@ const gui = {
             let newNodeId;
             await assertDiskUnchanged(file.abs, disk.hash, node.file_path);
             if (disk.exists) s.putBlob(disk.buffer);
-            if (target === null) {
-                await moveToTrash(file.abs);
-            } else {
-                await fsp.mkdir(path.dirname(file.abs), { recursive: true });
-                await fsp.writeFile(file.abs, s.getBlob(target));
-            }
-            s.transaction(() => {
-                batchId = s.createBatch(ctx.project.id, 'rollback', String(reason || '').trim().slice(0, 500) || label, maid);
-                newNodeId = s.addNode({
-                    projectId: ctx.project.id, batchId, filePath: node.file_path, op: 'rollback',
-                    beforeHash: disk.hash, afterHash: target, summary: label,
-                });
+            await applyGuiRevert({
+                file: file.abs, disk, target, content: target === null ? null : s.getBlob(target),
+                recoveryDir: path.join(path.dirname(runtime.dbPath), 'recovery'),
+                readDisk, trash: moveToTrash, logger: runtime.logger,
+                record: () => s.transaction(() => {
+                    batchId = s.createBatch(ctx.project.id, 'rollback', String(reason || '').trim().slice(0, 500) || label, maid);
+                    newNodeId = s.addNode({
+                        projectId: ctx.project.id, batchId, filePath: node.file_path, op: 'rollback',
+                        beforeHash: disk.hash, afterHash: target, summary: label,
+                    });
+                }),
             });
             runtime.logger?.log?.(`${P} GUI 回退 n${node.id} by @${maid} → b${batchId}`);
             emitProjectChanged({ action: 'gui:revert', projectId: ctx.project.id, batchId, nodeId: newNodeId, maid });

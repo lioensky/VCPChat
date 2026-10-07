@@ -40,7 +40,8 @@ export function createStatusPanelBranchDialogs({
     stageAll,
     switchBranch,
     toast,
-    uniquePaths
+    uniquePaths,
+    warnAfterMutation
 }) {
 
     function branchTrigger({ className = '', popoverClass = '', side = 'bottom', footer = false, onAfterSwitch = null } = {}) {
@@ -262,11 +263,13 @@ export function createStatusPanelBranchDialogs({
                 if (store.disposed || store.workspace?.id !== targetWorkspace.id) { modal.close(); return; }
                 const commitRes = await api.gitCommit(targetWorkspace.id, { message: message.trim() || buildCommitMessage(paths) });
                 if (!commitRes?.success) throw new Error(describeIssue(commitRes));
+                warnAfterMutation(commitRes.data);
                 if (store.disposed || store.workspace?.id !== targetWorkspace.id) { modal.close(); refreshAfterMutation(); return; }
                 const res = await api.gitSwitchBranch(targetWorkspace.id, target);
                 if (!res?.success || res?.data?.ok === false) throw new Error(res?.data?.issues?.[0]?.message || res?.error || '切换分支失败');
                 adoptBranch(res.data, targetWorkspace);
                 toast(`已切换到分支 ${target}`, 'success');
+                warnAfterMutation(res.data);
                 modal.close();
                 refreshAfterMutation();
             } catch (e) {

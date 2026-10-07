@@ -66,6 +66,7 @@ export function createConversationStatusPanel({
     const storage = (() => { try { return win.localStorage; } catch (_e) { return null; } })();
     const isMac = /Mac|iPhone|iPad/.test(win.navigator?.platform || '') || /Mac/.test(win.navigator?.userAgent || '');
     const toast = (message, type = 'info') => uiHelper?.showToastNotification?.(message, type);
+    const warnAfterMutation = data => { if (data?.warning) toast(data.warning, 'warning'); };
 
     let workspaces = [];
     let workspace = null;
@@ -149,7 +150,7 @@ export function createConversationStatusPanel({
     const gitActionsOwner = createStatusPanelGitActions({
         store, api, describeIssue,
         openSwitchBlockedDialog: (...args) => openSwitchBlockedDialog(...args), parseSwitchBlockedFiles, refreshAfterMutation,
-        render, toast, uniquePaths
+        render, toast, uniquePaths, warnAfterMutation
     });
     const { loadBranches, runBusy, adoptBranch, switchBranch, createBranch, pushCurrent, canPush, stageAll } = gitActionsOwner;
 
@@ -162,7 +163,7 @@ export function createConversationStatusPanel({
         openGitGraphDialog: (...args) => openGitGraphDialog(...args), openModal, openPopover,
         popovers, refresh, refreshAfterMutation,
         spinner, stageAll, switchBranch,
-        toast, uniquePaths
+        toast, uniquePaths, warnAfterMutation
     });
     const { branchTrigger, openBranchSwitcher, openBranchPopover, openCreateBranchDialog, openSwitchBlockedDialog, openSwitchCommitDialog } = branchDialogsOwner;
 
@@ -173,7 +174,7 @@ export function createConversationStatusPanel({
         icon, isMac, openModal,
         openPushDialog: (...args) => openPushDialog(...args), pushCurrent, refreshAfterMutation,
         spinner, stageAll, toast,
-        uniquePaths
+        uniquePaths, warnAfterMutation
     });
     const { openCommitDialog } = commitDialogOwner;
 
