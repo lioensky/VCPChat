@@ -163,3 +163,15 @@ test('a clean Agent leaves no draft behind', () => withAgentSettings(async ({ sh
     assert.equal(state(), 'done');
     assert.equal(toasts.length, 0);
 }));
+
+test('a draft with the name cleared does not take the next Agent\'s name', () => withAgentSettings(async ({ show, edit, save, value, disk }) => {
+    await show('agent-a');
+    edit('agentCustomCss', '.alice {}');
+    edit('agentNameInput', '');
+    await show('agent-b');
+    await show('agent-a');
+    assert.equal(value('agentCustomCss'), '.alice {}', 'the draft came back');
+    assert.notEqual(value('agentNameInput'), 'Bob');
+    await save();
+    assert.notEqual(disk['agent-a'].name, 'Bob', 'saving the restored draft keeps Agent A\'s name');
+}));

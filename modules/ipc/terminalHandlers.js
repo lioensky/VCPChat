@@ -40,7 +40,7 @@ const MIN_ROWS = 1;
 const MAX_COLS = 500;
 const MAX_ROWS = 200;
 const RUN_NOTIFY_INTERVAL_MS = 120;
-// 输出按帧合并成一次 IPC：刷屏时每秒上千个小块各发一次，渲染端主线程会被消息排满
+// 刷屏时按帧合并成一次 IPC：每秒上千个小块各发一次，渲染端主线程会被消息排满。静默后的第一块不等（按键回显不加 16ms）
 const DATA_FLUSH_MS = 16;
 const DATA_FLUSH_CHARS = 64 * 1024;
 
@@ -199,11 +199,28 @@ function createView(event, options = {}) {
         dropData();
         if (data) emit('terminal:data', { id, data });
     };
+    // 静默之后的第一块（按键回显）立刻发；之后一个窗口内到的块攒成一次，窗口结束时有积压就发出并再开一个窗口
+    const endWindow = () => {
+        dataTimer = null;
+        if (!dataBuffer) return;
+        const data = dataBuffer;
+        dataBuffer = '';
+        emit('terminal:data', { id, data });
+        dataTimer = setTimeout(endWindow, DATA_FLUSH_MS);
+    };
     const detachMirror = executor.attachMirror({
         onData: (data) => {
+            if (!dataTimer) {
+                emit('terminal:data', { id, data });
+                dataTimer = setTimeout(endWindow, DATA_FLUSH_MS);
+                return;
+            }
             dataBuffer += data;
-            if (dataBuffer.length >= DATA_FLUSH_CHARS) flushData();
-            else if (!dataTimer) dataTimer = setTimeout(flushData, DATA_FLUSH_MS);
+            if (dataBuffer.length >= DATA_FLUSH_CHARS) {
+                const burst = dataBuffer;
+                dataBuffer = '';
+                emit('terminal:data', { id, data: burst });
+            }
         },
         // 清屏之前攒着的输出反正要被清掉；退出前先把剩下的发完，顺序不乱
         onClear: () => { dropData(); emit('terminal:clear', { id }); },

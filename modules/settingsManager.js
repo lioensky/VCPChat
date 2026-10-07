@@ -277,7 +277,11 @@ const settingsManager = (() => {
         const previousAgentId = editingAgentIdInput?.value;
         if (previousAgentId && previousAgentId === settledAgentId && isAgentSettingsDirty) {
             try {
-                unsavedAgentDrafts.set(previousAgentId, collectAgentDraftConfig(previousAgentId));
+                const draft = collectAgentDraftConfig(previousAgentId);
+                // 名称框清空时 collectAgentDraftConfig 会回退到 currentSelectedItemRef，切换途中它已经指向新的 Agent，
+                // 草稿里留着就会在恢复后把这个 Agent 存成别人的名字；不记名称，恢复时用磁盘上的
+                if (!agentNameInput?.value?.trim?.()) delete draft.name;
+                unsavedAgentDrafts.set(previousAgentId, draft);
             } catch (error) {
                 console.warn(`[SettingsManager] Could not keep the unsaved draft for ${previousAgentId}:`, error);
             }

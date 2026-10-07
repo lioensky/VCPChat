@@ -125,7 +125,7 @@ test('registering the IPC loads nothing; watch and unwatch are counted per page'
     }
 });
 
-test('mirror output is coalesced into one IPC per frame; exit flushes first and kill drops the rest', async () => {
+test('mirror output after the first chunk is coalesced per frame; exit flushes first and kill drops the rest', async () => {
     let sink = null;
     let detached = 0;
     terminalHandlers.initialize({
@@ -142,21 +142,26 @@ test('mirror output is coalesced into one IPC per frame; exit flushes first and 
     await wait(0);
     const dataMessages = () => page.sent.filter(m => m.channel === 'terminal:data').map(m => m.payload.data);
 
+    sink.onData('k');
+    assert.deepEqual(dataMessages(), ['k'], 'the first chunk after quiet (a key echo) goes out at once');
     for (let i = 0; i < 500; i++) sink.onData('x');
-    assert.deepEqual(dataMessages(), [], 'nothing is sent per chunk');
+    assert.equal(dataMessages().length, 1, 'chunks inside the window are not sent one by one');
     await wait(40);
-    assert.deepEqual(dataMessages(), ['x'.repeat(500)]);
+    assert.deepEqual(dataMessages(), ['k', 'x'.repeat(500)]);
+    await wait(40);
 
+    sink.onData('a');
     sink.onData('a'.repeat(70 * 1024));
-    assert.equal(dataMessages().length, 2, 'a large burst goes out without waiting for the frame');
+    assert.equal(dataMessages().length, 4, 'a large burst goes out without waiting for the window');
 
     sink.onData('bye');
     sink.onExit(0);
     assert.deepEqual(page.sent.slice(-2).map(m => m.channel), ['terminal:data', 'terminal:exit']);
 
+    sink.onData('more');
     sink.onData('late');
     await call('terminal:kill', page, id);
     await wait(40);
-    assert.equal(dataMessages().at(-1), 'bye', 'output buffered when the view closed is not sent');
+    assert.equal(dataMessages().at(-1), 'more', 'output buffered when the view closed is not sent');
     assert.equal(detached, 1);
 });

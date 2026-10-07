@@ -739,19 +739,19 @@
     "dynamicSites": [
       {
         "file": "modules/settingsManager.js",
-        "line": 753,
+        "line": 757,
         "kind": "custom-event-listener",
         "match": "target.addEventListener(type"
       },
       {
         "file": "modules/settingsManager.js",
-        "line": 2268,
+        "line": 2272,
         "kind": "custom-event-listener",
         "match": "element.addEventListener(eventName"
       },
       {
         "file": "modules/settingsManager.js",
-        "line": 2297,
+        "line": 2301,
         "kind": "custom-event-listener",
         "match": "systemPromptContainer.addEventListener(eventName"
       }
