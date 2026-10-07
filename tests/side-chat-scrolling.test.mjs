@@ -100,3 +100,38 @@ test('keyboard and touch scroll-up intents detach, but arrow keys inside the com
     assert.equal(scrolling.isSticky(), false);
     scrolling.dispose();
 });
+
+test('a remount after sleep keeps the reader the same distance from the bottom while older batches render above', async () => {
+    const before = setup();
+    before.root.scrollTop = 500;
+    before.root.dispatchEvent(new before.win.Event('scroll'));
+    before.root.scrollTop = 200;
+    before.root.dispatchEvent(new before.win.Event('scroll'));
+    const saved = before.scrolling.capture();
+    assert.deepEqual(saved, { stick: false, fromBottom: 800 });
+    before.scrolling.dispose();
+
+    const after = setup();
+    after.root.scrollTop = 0;
+    after.scrolling.restore(saved);
+    assert.equal(after.root.scrollTop, 200);
+    after.grow(400); // 较早的消息分批插到上面
+    after.ro.fire(after.root);
+    after.root.dispatchEvent(new after.win.Event('scroll'));
+    assert.equal(after.root.scrollTop, 600, 'still 800px from the bottom');
+    assert.equal(after.scrolling.isSticky(), false);
+
+    after.root.dispatchEvent(new after.win.WheelEvent('wheel', { deltaY: 40 }));
+    after.root.scrollTop = 650;
+    after.root.dispatchEvent(new after.win.Event('scroll'));
+    after.grow(100);
+    after.ro.fire(after.root);
+    assert.equal(after.root.scrollTop, 650, 'once the reader scrolls, growth no longer moves them');
+    after.scrolling.dispose();
+});
+
+test('a view that was following the bottom comes back following it', () => {
+    const { scrolling } = setup();
+    assert.deepEqual(scrolling.capture(), { stick: true });
+    scrolling.dispose();
+});

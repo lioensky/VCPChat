@@ -205,7 +205,9 @@ export function createSideChatWiring({
             const activeTab = state.tabs.find(t => t.id === state.activeTabId && t.kind === 'chat');
             const parent = activeTab?.descriptor?.parent;
             if (parent?.itemId === currentItem.id && parent?.topicId === currentTopicId) {
-                const handle = getController().getTabHandle(activeTab.id);
+                // 面板收着放久了这个侧聊可能已经休眠（视图拆了、标签还在）：重新挂上再加，不能另开一个新的
+                const handle = getController().getTabHandle(activeTab.id)
+                    || await getController().openTab({ kind: 'chat', descriptor: activeTab.descriptor });
                 if (handle?.addReference) {
                     handle.addReference(options.reference);
                     getController().setVisible(true);

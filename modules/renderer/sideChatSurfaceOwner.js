@@ -35,7 +35,8 @@ export async function mountSideChatSurface(container, {
     chatCapabilities,
     scope = null,
     onStatusChange = null,
-    draftStore = null
+    draftStore = null,
+    restoredState = null
 } = {}) {
     if (!container || !container.ownerDocument) {
         throw new TypeError('mountSideChatSurface requires a valid container element');
@@ -183,6 +184,7 @@ export async function mountSideChatSurface(container, {
         root
     });
     const { pinToBottomIfSticky } = scrollingOwner;
+    scrollingOwner.restore(restoredState?.scroll);
 
     const liveRegenerateProxy = (id) => liveRegenerate?.(id);
     const messageEditor = createSideChatMessageEditor({
@@ -595,6 +597,16 @@ export async function mountSideChatSurface(container, {
             return currentDescriptor;
         },
         surface,
+        // 隐藏久了控制器会让视图休眠（拆掉、再显示时重挂）；这些状态拆了会丢或会打断，期间不休眠。
+        // 输入框文字和引用不算：拆卸时由 draft-cache / draftStore 存下，重挂时还原
+        isBusy() {
+            return !isDisposed && (Boolean(activeSendController) || isRegenerating || isDeletingMessage
+                || hasUnsavedChanges || attachmentsOwner.count > 0 || messageEditor.isEditing()
+                || form.hasAttribute('aria-busy'));
+        },
+        captureState() {
+            return isDisposed ? null : { scroll: scrollingOwner.capture() };
+        },
         setVisible(visible) {
             if (visible && !isDisposed && isHistoryLoaded) {
                 textarea.focus();
@@ -732,12 +744,12 @@ export function createSideChatSurfaceOwner({
     let ownerDocument = doc;
     const draftStore = createSideChatDraftStore({ getStorage: () => ownerDocument?.defaultView?.localStorage });
     return Object.freeze({
-        async mountTab(descriptor, container, { scope: viewScope = null } = {}) {
+        async mountTab(descriptor, container, { scope: viewScope = null, restoredState = null } = {}) {
             ownerDocument ||= container.ownerDocument;
             const storedInput = draftStore.read(descriptor).input;
             if (storedInput) descriptor = { ...descriptor, ...storedInput };
             // 控制器给了 view scope 就挂在它下面，否则退回 provider 自己的 scope
-            const handle = await mountSurface(container, { descriptor, chatCapabilities, scope: viewScope || scope, draftStore });
+            const handle = await mountSurface(container, { descriptor, chatCapabilities, scope: viewScope || scope, draftStore, restoredState });
             return drafts.ownHandle(handle, descriptor);
         },
         readDraft: descriptor => draftStore.read(descriptor),

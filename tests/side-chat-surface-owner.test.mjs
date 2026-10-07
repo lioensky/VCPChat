@@ -313,8 +313,10 @@ test('side chat attaches picked files to the next send and clears them', async (
 
     const attachBtn = container.querySelector('.side-chat-attach-btn');
     assert.equal(attachBtn.disabled, false, 'enabled once history is loaded');
+    assert.equal(handle.isBusy(), false, 'an idle side chat may sleep');
     attachBtn.click();
     await new Promise(r => setTimeout(r, 10));
+    assert.equal(handle.isBusy(), true, 'picked files are not saved anywhere, so the view must not sleep with them');
     assert.deepEqual(picks, [['agent-1', 'topic-child-attach']]);
     assert.deepEqual(previewed, ['a.txt']);
     assert.equal(container.querySelector('.side-chat-attachment-preview').hidden, false);
@@ -555,6 +557,7 @@ test('a send started while regenerate is still saving the trimmed history is ref
     doc.querySelector('#chatContextMenu [data-side-chat-action="regenerate"]').click();
     await new Promise(r => setTimeout(r, 0));
     assert.equal(saves, 1, 'regenerate is waiting on the save');
+    assert.equal(handle.isBusy(), true, 'a regenerate in flight keeps the view awake');
 
     const textarea = container.querySelector('textarea');
     textarea.value = 'typed meanwhile';

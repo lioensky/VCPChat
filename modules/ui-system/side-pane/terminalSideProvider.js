@@ -102,7 +102,9 @@ export function createTerminalSideProvider({
 
         const initialTheme = buildTerminalTheme(doc, screen);
         const term = new xterm.Terminal({
-            cursorBlink: true,
+            // 光标不闪：xterm 的闪烁动画让侧栏里一个空闲终端每秒重算样式约 55 次（约 2.5% 单核）。
+            // ZCode TerminalSession.tsx 也用 xterm 默认的不闪烁光标。
+            cursorBlink: false,
             fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
             fontSize: 13,
             scrollback: 5000,

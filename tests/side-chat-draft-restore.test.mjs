@@ -35,7 +35,7 @@ async function fixture(t, legacyInput = {}) {
         async deleteSideChatChild(...args) { deletions.push(args); return call('side-chat:delete-child', ...args); },
         getChatHistory: async (_agent, topic) => JSON.parse(await fs.readFile(path.join(directory, 'agent', 'topics', topic, 'history.json'), 'utf8'))
     };
-    function mountController() {
+    function mountController({ dormancy = null } = {}) {
         let controller;
         const wiring = createSideChatWiring({ doc, win: dom.window, chatAPI,
             chatRepository: { getHistory: (agent, _type, topic) => chatAPI.getChatHistory(agent, topic), saveHistory: async () => ({ success: true }) },
@@ -50,7 +50,7 @@ async function fixture(t, legacyInput = {}) {
             }
         });
         controller = createSidePaneController({ root: doc.getElementById('pane'), tabListElement: doc.getElementById('tabs'),
-            contentContainer: doc.getElementById('content'),
+            contentContainer: doc.getElementById('content'), dormancy,
             tabTypes: [defineChatTabType({ provider: wiring.provider, onClosed: wiring.onTabClosed })] });
         controller.setParent(descriptor.parent);
         const session = { controller, wiring };
@@ -131,4 +131,29 @@ test('automatic empty-child cleanup also removes its empty browser draft without
     await assert.rejects(fs.stat(f.childDir), { code: 'ENOENT' });
     assert.equal(f.drafts.read(f.descriptor).input, null);
     assert.equal(f.deletions.length, 1);
+});
+
+test('a side chat put to sleep behind another tab keeps its draft, and a reference asked while it remounts lands in it', async t => {
+    const f = await fixture(t, { composerStorage: 'local' });
+    f.drafts.save(f.descriptor, { draft: 'half typed', references: [{ id: 'ref-1', text: 'first selection' }] });
+    const { controller, wiring } = f.mountController({ dormancy: { hiddenMs: 30 } });
+    controller.registerTabType({ kind: 'note', label: 'Note', provider: { mountTab: () => ({ dispose() {} }) } });
+    await wiring.restoreSessions('agent', 'parent');
+    const tab = controller.getSnapshot().tabs.find(item => item.kind === 'chat');
+    controller.activateTab(tab.id);
+    controller.setVisible(true);
+    await new Promise(r => setTimeout(r, 20));
+    controller.getTabHandle(tab.id).setDraft('half typed, then more');
+    await controller.openTab({ id: 'note:1', kind: 'note', title: 'Note', closable: true, scopeMode: 'global' });
+    await new Promise(r => setTimeout(r, 120));
+    assert.equal(controller.getTabHandle(tab.id), null, 'the hidden side chat view went to sleep');
+    assert.deepEqual(controller.getViewResidency().dormant.map(entry => entry.tabId), [tab.id]);
+
+    // 切回去的同一刻点「在侧栏提问」：视图还在重挂，引用要落进这个侧聊，不能另开一个
+    controller.activateTab(tab.id);
+    const handle = await wiring.openSideChat({ reference: { id: 'ref-2', text: 'second selection' } });
+    assert.deepEqual(controller.getSnapshot().tabs.filter(item => item.kind === 'chat').map(item => item.id), [tab.id], 'no second side chat');
+    assert.equal(handle, controller.getTabHandle(tab.id));
+    assert.equal(handle.getDraft(), 'half typed, then more');
+    assert.deepEqual(handle.getReferences().map(ref => ref.id), ['ref-1', 'ref-2']);
 });
