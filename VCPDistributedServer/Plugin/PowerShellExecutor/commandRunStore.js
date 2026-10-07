@@ -78,13 +78,24 @@ function listCommandRuns() {
     return commandRuns.map(summarizeCommandRun).reverse();
 }
 
+// 清洗是逐字符的屏幕模拟，几百 KB 要几十毫秒，而且在主进程里同步跑：输出没变时直接用上次的结果
+const cleanedOutput = new WeakMap(); // run -> { raw, clean }
+
+function cleanRunOutput(run) {
+    const cached = cleanedOutput.get(run);
+    if (cached && cached.raw === run.raw) return cached.clean;
+    // 起始标记那一行留下的换行不算输出
+    const clean = sanitizeTerminalOutput(run.raw).replace(/\r\n/g, '\n').replace(/\r/g, '').replace(/^\n/, '');
+    cleanedOutput.set(run, { raw: run.raw, clean });
+    return clean;
+}
+
 /** 读取一条记录，输出为清洗后的纯文本，只保留末尾 maxChars 个字符。 */
 function getCommandRun(id, { maxChars = COMMAND_RUN_READ_LIMIT } = {}) {
     const run = commandRuns.find(item => item.id === id);
     if (!run) return null;
     const limit = Math.max(1, Math.min(COMMAND_RUN_READ_LIMIT, Math.floor(Number(maxChars)) || COMMAND_RUN_READ_LIMIT));
-    // 起始标记那一行留下的换行不算输出
-    const clean = sanitizeTerminalOutput(run.raw).replace(/\r\n/g, '\n').replace(/\r/g, '').replace(/^\n/, '');
+    const clean = cleanRunOutput(run);
     const truncated = run.rawTruncated || clean.length > limit;
     return {
         ...summarizeCommandRun(run),

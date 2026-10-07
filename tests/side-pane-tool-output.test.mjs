@@ -14,7 +14,7 @@ test('formatRunDuration and status labels', () => {
     assert.equal(commandRunStatusLabel('timed_out'), '已超时');
 });
 
-function makeEnv({ runs, details }) {
+function makeEnv({ runs, details, runningReloadMs = 60 }) {
     const dom = new JSDOM('<div id="view"></div>', { pretendToBeVisual: true });
     const doc = dom.window.document;
     const state = { runs, details, gets: [], opened: [], toasts: [], watch: 0, copied: [] };
@@ -36,7 +36,7 @@ function makeEnv({ runs, details }) {
         openTab: async (tab) => { state.opened.push(tab); return { focus() {} }; },
         setVisible() {}
     };
-    const provider = createToolOutputSideProvider({ document: doc, api, sidePaneController, uiHelper: { showToastNotification: (m) => state.toasts.push(m) } });
+    const provider = createToolOutputSideProvider({ document: doc, api, sidePaneController, runningReloadMs, uiHelper: { showToastNotification: (m) => state.toasts.push(m) } });
     return { dom, doc, provider, state, view: doc.getElementById('view'), fire: (s) => changed?.(s), wasUnsubscribed: () => unsubscribed };
 }
 
@@ -209,5 +209,22 @@ test('a hidden tab keeps only the latest update and catches up when shown again'
     assert.match(view.querySelector('.side-tool-output-chip').textContent, /已完成/);
     assert.equal(view.querySelector('.side-tool-output-text').textContent, 'hi\nbye\n');
     assert.deepEqual(state.gets, ['r2', 'r3']);
+    await handle.dispose();
+});
+
+test('a command that keeps printing is re-read at most once per interval, with one read in flight', async () => {
+    const { provider, state, view, fire } = makeEnv({ runs: RUNS, details: { r2: { ...RUNS[0], output: 'a\n', truncated: false } }, runningReloadMs: 800 });
+    const handle = await provider.mountTab({ id: 'tool-output:main' }, view);
+    await wait(20);
+    const before = state.gets.length;
+    for (let i = 0; i < 6; i += 1) {
+        state.details.r2 = { ...RUNS[0], output: `line ${i}\n`, truncated: false };
+        fire({ id: 'r2', command: 'npm test', status: 'running', startedAt: RUNS[0].startedAt, endedAt: null });
+        await wait(100);
+    }
+    assert.equal(state.gets.length, before, 'no re-read inside the interval');
+    await wait(400);
+    assert.equal(state.gets.length, before + 1, 'one re-read after the interval');
+    assert.equal(view.querySelector('.side-tool-output-text').textContent, 'line 5\n', 'and it shows the latest output');
     await handle.dispose();
 });

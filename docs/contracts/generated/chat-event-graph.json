@@ -664,7 +664,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 243,
+          "line": 270,
           "kind": "custom-event-listener"
         },
         {
@@ -729,7 +729,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 243,
+          "line": 270,
           "kind": "custom-event-listener",
           "match": "signal?.addEventListener('abort'"
         },
@@ -1695,7 +1695,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/context-menu.js",
-          "line": 98,
+          "line": 99,
           "kind": "custom-event-listener"
         },
         {
@@ -1796,7 +1796,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/context-menu.js",
-          "line": 98,
+          "line": 99,
           "kind": "custom-event-listener",
           "match": "win.addEventListener('blur'"
         },
@@ -2368,7 +2368,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 567,
+          "line": 577,
           "kind": "custom-event-listener"
         }
       ],
@@ -2543,7 +2543,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 567,
+          "line": 577,
           "kind": "custom-event-listener",
           "match": "el.addEventListener('change'"
         }
@@ -3674,12 +3674,12 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 551,
+          "line": 562,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 554,
+          "line": 565,
           "kind": "custom-event-listener"
         },
         {
@@ -4174,17 +4174,17 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/cards.js",
-          "line": 220,
+          "line": 229,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/git/context-menu.js",
-          "line": 90,
+          "line": 91,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/git/git-view.js",
-          "line": 217,
+          "line": 219,
           "kind": "custom-event-listener"
         },
         {
@@ -4239,82 +4239,82 @@
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 334,
+          "line": 336,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 369,
+          "line": 371,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 406,
+          "line": 408,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 415,
+          "line": 417,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 528,
+          "line": 530,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 582,
+          "line": 592,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 586,
+          "line": 596,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 658,
+          "line": 668,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 685,
+          "line": 695,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 703,
+          "line": 713,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 723,
+          "line": 733,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 751,
+          "line": 762,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 765,
+          "line": 776,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1023,
+          "line": 1024,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1029,
+          "line": 1030,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1043,
+          "line": 1044,
           "kind": "custom-event-listener"
         },
         {
@@ -5129,13 +5129,13 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 551,
+          "line": 562,
           "kind": "custom-event-listener",
           "match": "stopBtn.addEventListener('click'"
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 554,
+          "line": 565,
           "kind": "custom-event-listener",
           "match": "persistenceBadge.addEventListener('click'"
         },
@@ -5729,19 +5729,19 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/cards.js",
-          "line": 220,
+          "line": 229,
           "kind": "custom-event-listener",
           "match": "row.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/git/context-menu.js",
-          "line": 90,
+          "line": 91,
           "kind": "custom-event-listener",
           "match": "btn.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/git/git-view.js",
-          "line": 217,
+          "line": 219,
           "kind": "custom-event-listener",
           "match": "btn.addEventListener('click'"
         },
@@ -5807,97 +5807,97 @@
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 334,
+          "line": 336,
           "kind": "custom-event-listener",
           "match": "btn.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 369,
+          "line": 371,
           "kind": "custom-event-listener",
           "match": "crumbs.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 406,
+          "line": 408,
           "kind": "custom-event-listener",
           "match": "refreshBtn.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 415,
+          "line": 417,
           "kind": "custom-event-listener",
           "match": "forgeBtn.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 528,
+          "line": 530,
           "kind": "custom-event-listener",
           "match": "row.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 582,
+          "line": 592,
           "kind": "custom-event-listener",
           "match": "toggle.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 586,
+          "line": 596,
           "kind": "custom-event-listener",
           "match": "clear.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 658,
+          "line": 668,
           "kind": "custom-event-listener",
           "match": "headBtn.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 685,
+          "line": 695,
           "kind": "custom-event-listener",
           "match": "pick.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 703,
+          "line": 713,
           "kind": "custom-event-listener",
           "match": "pick.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 723,
+          "line": 733,
           "kind": "custom-event-listener",
           "match": "link.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 751,
+          "line": 762,
           "kind": "custom-event-listener",
           "match": "retry.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 765,
+          "line": 776,
           "kind": "custom-event-listener",
           "match": "retry.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1023,
+          "line": 1024,
           "kind": "custom-event-listener",
           "match": "toggleNotificationsBtn.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1029,
+          "line": 1030,
           "kind": "custom-event-listener",
           "match": "expandButton.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1043,
+          "line": 1044,
           "kind": "custom-event-listener",
           "match": "closeSidePaneBtn.addEventListener('click'"
         },
@@ -7074,6 +7074,11 @@
           "file": "modules/renderer/sideChatSurfaceOwner.js",
           "line": 344,
           "kind": "custom-event-listener"
+        },
+        {
+          "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
+          "line": 558,
+          "kind": "custom-event-listener"
         }
       ],
       "evidence": [
@@ -7082,6 +7087,12 @@
           "line": 344,
           "kind": "custom-event-listener",
           "match": "textarea.addEventListener('compositionend'"
+        },
+        {
+          "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
+          "line": 558,
+          "kind": "custom-event-listener",
+          "match": "el.addEventListener('compositionend'"
         }
       ]
     },
@@ -7093,6 +7104,11 @@
           "file": "modules/renderer/sideChatSurfaceOwner.js",
           "line": 343,
           "kind": "custom-event-listener"
+        },
+        {
+          "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
+          "line": 557,
+          "kind": "custom-event-listener"
         }
       ],
       "evidence": [
@@ -7101,6 +7117,12 @@
           "line": 343,
           "kind": "custom-event-listener",
           "match": "textarea.addEventListener('compositionstart'"
+        },
+        {
+          "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
+          "line": 557,
+          "kind": "custom-event-listener",
+          "match": "el.addEventListener('compositionstart'"
         }
       ]
     },
@@ -7235,7 +7257,7 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 558,
+          "line": 569,
           "kind": "custom-event-listener"
         },
         {
@@ -7260,7 +7282,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/cards.js",
-          "line": 238,
+          "line": 247,
           "kind": "custom-event-listener"
         },
         {
@@ -7367,7 +7389,7 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 558,
+          "line": 569,
           "kind": "custom-event-listener",
           "match": "persistenceBadge.addEventListener('contextmenu'"
         },
@@ -7397,7 +7419,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/cards.js",
-          "line": 238,
+          "line": 247,
           "kind": "custom-event-listener",
           "match": "row.addEventListener('contextmenu'"
         },
@@ -11725,7 +11747,7 @@
         },
         {
           "file": "modules/services/gitWatcher.js",
-          "line": 62,
+          "line": 67,
           "kind": "event-listener"
         },
         {
@@ -12051,7 +12073,7 @@
         },
         {
           "file": "modules/services/gitWatcher.js",
-          "line": 62,
+          "line": 67,
           "kind": "event-listener",
           "match": "watcher.on?.('error'"
         },
@@ -12622,14 +12644,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 152,
+          "line": 179,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 152,
+          "line": 179,
           "kind": "custom-event-listener",
           "match": "screen.addEventListener('focusin'"
         }
@@ -13775,14 +13797,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 191,
+          "line": 188,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 191,
+          "line": 188,
           "kind": "event-listener",
           "match": "handle('git:change-summary'"
         },
@@ -13825,14 +13847,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 154,
+          "line": 153,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 154,
+          "line": 153,
           "kind": "event-listener",
           "match": "handle('git:commit'"
         },
@@ -13856,14 +13878,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 186,
+          "line": 183,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 186,
+          "line": 183,
           "kind": "event-listener",
           "match": "handle('git:commit-graph'"
         },
@@ -13887,14 +13909,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 180,
+          "line": 177,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 180,
+          "line": 177,
           "kind": "event-listener",
           "match": "handle('git:create-branch'"
         },
@@ -13918,14 +13940,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 135,
+          "line": 134,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 135,
+          "line": 134,
           "kind": "event-listener",
           "match": "handle('git:diff'"
         },
@@ -13949,14 +13971,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 148,
+          "line": 147,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 148,
+          "line": 147,
           "kind": "event-listener",
           "match": "handle('git:discard'"
         },
@@ -13980,14 +14002,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 173,
+          "line": 170,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 173,
+          "line": 170,
           "kind": "event-listener",
           "match": "handle('git:list-branches'"
         },
@@ -14011,14 +14033,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 128,
+          "line": 127,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 128,
+          "line": 127,
           "kind": "event-listener",
           "match": "handle('git:list-workspaces'"
         },
@@ -14042,14 +14064,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 159,
+          "line": 158,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 159,
+          "line": 158,
           "kind": "event-listener",
           "match": "handle('git:push'"
         },
@@ -14073,14 +14095,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 165,
+          "line": 164,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 165,
+          "line": 164,
           "kind": "event-listener",
           "match": "handle('git:reveal-path'"
         },
@@ -14104,14 +14126,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 144,
+          "line": 143,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 144,
+          "line": 143,
           "kind": "event-listener",
           "match": "handle('git:stage'"
         },
@@ -14135,14 +14157,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 133,
+          "line": 132,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 133,
+          "line": 132,
           "kind": "event-listener",
           "match": "handle('git:status'"
         },
@@ -14166,14 +14188,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 175,
+          "line": 172,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 175,
+          "line": 172,
           "kind": "event-listener",
           "match": "handle('git:switch-branch'"
         },
@@ -14197,14 +14219,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 146,
+          "line": 145,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gitHandlers.js",
-          "line": 146,
+          "line": 145,
           "kind": "event-listener",
           "match": "handle('git:unstage'"
         },
@@ -14801,7 +14823,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 542,
+          "line": 556,
           "kind": "custom-event-listener"
         },
         {
@@ -14993,7 +15015,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/planDetailSideProvider.js",
-          "line": 542,
+          "line": 556,
           "kind": "custom-event-listener",
           "match": "el.addEventListener('input'"
         },
@@ -15452,7 +15474,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/context-menu.js",
-          "line": 97,
+          "line": 98,
           "kind": "custom-event-listener"
         },
         {
@@ -15815,7 +15837,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/context-menu.js",
-          "line": 97,
+          "line": 98,
           "kind": "custom-event-listener",
           "match": "doc.addEventListener('keydown'"
         },
@@ -21598,14 +21620,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 157,
+          "line": 184,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 157,
+          "line": 184,
           "kind": "preload-subscription",
           "match": "api.onTerminalClear("
         }
@@ -21636,14 +21658,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 154,
+          "line": 181,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 154,
+          "line": 181,
           "kind": "preload-subscription",
           "match": "api.onTerminalData("
         }
@@ -21655,14 +21677,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 160,
+          "line": 187,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 160,
+          "line": 187,
           "kind": "preload-subscription",
           "match": "api.onTerminalExit("
         }
@@ -22943,7 +22965,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/context-menu.js",
-          "line": 96,
+          "line": 97,
           "kind": "custom-event-listener"
         },
         {
@@ -22997,7 +23019,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/context-menu.js",
-          "line": 96,
+          "line": 97,
           "kind": "custom-event-listener",
           "match": "doc.addEventListener('pointerdown'"
         },
@@ -24914,7 +24936,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1063,
+          "line": 1064,
           "kind": "custom-event-listener"
         },
         {
@@ -25008,7 +25030,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1063,
+          "line": 1064,
           "kind": "custom-event-listener",
           "match": "win?.addEventListener?.('resize'"
         },
@@ -28004,7 +28026,7 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 550,
+          "line": 561,
           "kind": "custom-event-listener"
         },
         {
@@ -28064,7 +28086,7 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 550,
+          "line": 561,
           "kind": "custom-event-listener",
           "match": "form.addEventListener('submit'"
         },
@@ -29196,7 +29218,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-visibility.js",
-          "line": 104,
+          "line": 122,
           "kind": "custom-event-listener"
         },
         {
@@ -29214,7 +29236,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-visibility.js",
-          "line": 104,
+          "line": 122,
           "kind": "custom-event-listener",
           "match": "root.addEventListener('transitionend'"
         },
@@ -32430,7 +32452,7 @@
     },
     {
       "file": "modules/ipc/gitHandlers.js",
-      "line": 97,
+      "line": 96,
       "reason": "dynamic event listener name: channel",
       "kind": "event-listener",
       "match": "ipcMain.handle(channel",

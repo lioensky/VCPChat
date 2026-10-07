@@ -13,6 +13,8 @@ import { formatRelativeTime } from './side-pane-tab-utils.js';
 import { getCommandRunsSource } from '../sources/terminal-command-runs.js';
 import { createSidePaneRootScope } from './side-pane-occurrence.js';
 
+// 运行中的命令持续出输出时，重读输出的最短间隔
+const RUNNING_RELOAD_MS = 1000;
 const TAB_ID = 'tool-output:main';
 const FOLLOW_THRESHOLD_PX = 24;
 const TICK_MS = 1000;
@@ -52,7 +54,8 @@ export function createToolOutputSideProvider({
     sidePaneController = null,
     uiHelper = null,
     // 和状态面板共用的命令运行记录源
-    commandRunsSource = getCommandRunsSource(api)
+    commandRunsSource = getCommandRunsSource(api),
+    runningReloadMs = RUNNING_RELOAD_MS
 } = {}) {
     const kind = 'tool-output';
     const win = doc.defaultView || window;
@@ -253,10 +256,22 @@ export function createToolOutputSideProvider({
                 if (!running && stopTicker) { stopTicker(); stopTicker = null; }
             };
 
+            // 同一时间只有一个读取在路上；读的时候又有新输出，读完再补一次（对照 ZCode useBackgroundBashOutput 的 inFlight）
+            let loadInFlight = false;
+            let loadAgain = false;
             const loadSelected = async () => {
                 if (!selectedId) { detail = null; renderAll(); return; }
+                if (loadInFlight) { loadAgain = true; return; }
+                loadInFlight = true;
+                loadAgain = false;
                 const seq = ++loadSeq;
-                const res = await api?.terminalGetCommandRun?.(selectedId);
+                let res;
+                try {
+                    res = await api?.terminalGetCommandRun?.(selectedId);
+                } finally {
+                    loadInFlight = false;
+                }
+                if (loadAgain && !disposed()) { loadAgain = false; void loadSelected(); }
                 if (disposed() || seq !== loadSeq) return;
                 if (res?.success) {
                     detail = res.data;
@@ -326,8 +341,11 @@ export function createToolOutputSideProvider({
                 renderPicker();
                 const before = previous.find(run => run.id === selectedId);
                 if (selectedSummary() !== before) {
+                    // 命令还在刷屏时最多一秒读一次：每次读都要主进程把整段输出清洗一遍
+                    const streaming = before && selectedSummary()?.status === 'running' && before.status === 'running';
+                    if (streaming && cancelReload) return;
                     cancelReload?.();
-                    cancelReload = own.timeout(() => { cancelReload = null; void loadSelected(); }, 60, 'reload-output');
+                    cancelReload = own.timeout(() => { cancelReload = null; void loadSelected(); }, streaming ? runningReloadMs : 60, 'reload-output');
                 } else {
                     renderStatus();
                 }

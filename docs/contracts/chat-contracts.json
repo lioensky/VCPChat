@@ -431,7 +431,7 @@
     "dynamicSites": [
       {
         "file": "modules/ipc/gitHandlers.js",
-        "line": 97,
+        "line": 96,
         "kind": "event-listener",
         "match": "ipcMain.handle(channel"
       }
