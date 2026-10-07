@@ -1099,10 +1099,13 @@ html body.chat-header-capsule .chat-messages-container {
 }
 
 /* Shared input composer: keep the same horizontal inset in every presentation
-   mode so switching message layouts does not resize the input card. */
+   mode so switching message layouts does not resize the input card. The inset
+   only gives way once the side pane squeezes the chat column below ~670px
+   (it can go down to 35% of the panel, ~360px), down to 12px at ~430px, so
+   the action row keeps the send button inside the card. */
 html body .chat-input-area {
-    padding-left: 52px;
-    padding-right: 52px;
+    padding-left: clamp(12px, calc((100% - 360px) / 6), 52px);
+    padding-right: clamp(12px, calc((100% - 360px) / 6), 52px);
 }
 
 .next-ui-empty-state {

@@ -877,9 +877,15 @@ export function createModelTrajectorySideProvider({
 
             async function clearAll() {
                 if (!sessionKey) return;
-                const confirmed = typeof win.confirm === 'function' ? win.confirm('清空这个话题的全部调用轨迹？此操作不可撤销。') : true;
-                if (!confirmed) return;
-                const res = await api?.modelTrajectoryClear?.(sessionKey);
+                // 记下点按钮时的话题：确认框开着时切了会话，也只清这一个
+                const key = sessionKey;
+                const message = '清空这个话题的全部调用轨迹？此操作不可撤销。';
+                // 用应用自己的确认框，不用原生 window.confirm（会以应用窗口名义弹系统模态框，卡住整个窗口）
+                const confirmed = typeof uiHelper?.showConfirmDialog === 'function'
+                    ? await uiHelper.showConfirmDialog(message, '清空调用轨迹', '清空', '取消', true)
+                    : (typeof win.confirm === 'function' ? win.confirm(message) : true);
+                if (!confirmed || disposed()) return;
+                const res = await api?.modelTrajectoryClear?.(key);
                 if (res?.success) toast('已清空调用轨迹', 'success');
                 else toast(res?.error || '清空失败', 'error');
             }

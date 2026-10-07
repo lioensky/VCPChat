@@ -1069,6 +1069,8 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
     if (toastContainer && (!notificationsSidebarElement || !notificationsSidebarElement.classList.contains('active')) && shouldShowNotification) {
         const toastBubble = document.createElement('div');
         toastBubble.classList.add('floating-toast-notification');
+        // 列表里有同一条；通知面板打开时按这个标记收走悬浮副本
+        toastBubble.dataset.notificationSource = 'vcplog';
         // 添加创建时间戳
         toastBubble.dataset.createdAt = Date.now().toString();
         populateNotificationElement(toastBubble, true);
@@ -1152,6 +1154,17 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
     }
 }
 
+// 通知面板打开后，悬浮的 VCPLog 通知（含待审批）在列表里都有一份，收走悬浮副本，
+// 免得它们叠在面板上挡住列表和「全部允许 / 全部拒绝」。其他来源的提示不在列表里，保留。
+function dismissFloatingToasts() {
+    const toastContainer = document.getElementById('floating-toast-notifications-container');
+    if (!toastContainer) return;
+    toastContainer.querySelectorAll('.floating-toast-notification[data-notification-source="vcplog"]').forEach(toast => {
+        if (toast.dataset.autoDismissTimeout) clearTimeout(Number(toast.dataset.autoDismissTimeout));
+        toast.remove();
+    });
+}
+
 // 添加窗口焦点变化监听，清理残留的通知元素
 let focusCleanupInitialized = false;
 
@@ -1221,6 +1234,7 @@ function initializeFocusCleanup(options = {}) {
 window.notificationRenderer = {
     updateVCPLogStatus,
     renderVCPLogNotification,
+    dismissFloatingToasts,
     initializeFocusCleanup,
     clearPersistentNotifications,
     buildToolChangeDiff,

@@ -402,11 +402,13 @@ test('Parity: notifications live in the new tab page instead of the tab strip', 
     const notifications = launcher.querySelector('[data-launcher-section="notifications"]');
     const segment = tabs.querySelector('[data-launcher-tab="notifications"]');
     const notificationState = createNotificationState();
+    let notificationsShown = 0;
     const ctrl = createController(dom, {
         controller: {
             openTabEntries: [{ id: 'a', label: 'A', open() {} }, { id: 'b', label: 'B', open() {} }],
             notificationsPanel: doc.getElementById('notificationsSidebar'),
-            notificationState: notificationState.channel
+            notificationState: notificationState.channel,
+            onNotificationsShown: () => { notificationsShown += 1; }
         }
     });
     const stripTabIds = () => [...doc.querySelectorAll('.side-pane-tabs .side-pane-tab')].map(btn => btn.getAttribute('data-tab-id'));
@@ -422,6 +424,8 @@ test('Parity: notifications live in the new tab page instead of the tab strip', 
     assert.equal(tools.hidden, true);
     assert.equal(doc.getElementById('notificationsSidebar').classList.contains('active'), true);
     assert.equal(launcher.dataset.launcherSegment, 'notifications');
+    // 通知页露出来时收走悬浮通知（宿主接的是 notificationRenderer.dismissFloatingToasts）
+    assert.equal(notificationsShown, 1);
 
     // 连接状态挂在通知分类上
     notificationState.setConnection('open', 'VCPLog: 已连接');
@@ -434,9 +438,11 @@ test('Parity: notifications live in the new tab page instead of the tab strip', 
     assert.equal(tools.hidden, false);
     assert.equal(notifications.hidden, true);
     assert.equal(doc.getElementById('notificationsSidebar').classList.contains('active'), false);
+    assert.equal(notificationsShown, 1);
     segment.click();
     assert.equal(ctrl.getSnapshot().activeTabId, SidePaneState.NOTIFICATIONS_TAB_ID);
     assert.equal(notifications.hidden, false);
+    assert.equal(notificationsShown, 2);
 
     // 「+」打开的是工具页；打开的标签在标签条上，概览里也没有通知
     doc.getElementById('addSidePaneChatBtn').click();
@@ -446,7 +452,10 @@ test('Parity: notifications live in the new tab page instead of the tab strip', 
     await ctrl.openTab({ kind: 'chat', descriptor: createDesc('s1', 'c1') });
     assert.deepEqual(stripTabIds(), ['s1']);
     assert.equal(launcher.hidden, true);
+    // 概览关着时不重建，打开后看它列了什么，再关上
+    doc.getElementById('sidePaneTabOverviewBtn').click();
     assert.deepEqual([...doc.querySelectorAll('#sidePaneOpenTabsList .side-pane-overview-item')].map(item => item.getAttribute('data-tab-id')), ['s1']);
+    doc.getElementById('sidePaneTabOverviewBtn').click();
 
     // 小房子回到新标签页上次停的分类：停在工具就回工具，停在通知就回通知
     const homeBtn = doc.getElementById('sidePaneHomeBtn');
@@ -873,7 +882,9 @@ test('tab type registration connects presentation, launcher availability and pro
     assert.equal(tab.icon, 'edit_note');
     assert.equal(tab.typeLabel, 'Custom notes');
     assert.equal(tab.searchHint, 'memo');
+    doc.getElementById('sidePaneTabOverviewBtn').click();
     assert.equal(doc.querySelector('[data-tab-id="custom-notes:1"] .vcp-side-pane-icon-base').textContent, 'edit_note');
+    doc.getElementById('sidePaneTabOverviewBtn').click();
     unregister();
     assert.equal(ctrl.getTabType('custom-notes'), null);
     assert.equal(doc.querySelector('[data-open-tab-entry="custom-notes"]'), null);

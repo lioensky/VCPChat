@@ -328,3 +328,15 @@ test('controller: the overview only offers recently closed tabs that would show 
     assert.equal(doc.querySelectorAll('.side-pane-overview-item.recently-closed').length, 2, 'back in topic A both come back');
     controller.dispose();
 });
+
+test('controller: a closed tab overview is not rebuilt on every tab change, and shows fresh titles when opened', async () => {
+    const { controller, doc } = setup({ notes: notesProvider });
+    await controller.openTab({ id: 'n1', kind: 'notes', title: 'N1', scopeMode: 'global' });
+    const list = doc.getElementById('sidePaneOpenTabsList');
+    const before = [...list.children];
+    controller.updateTab('n1', { title: 'Renamed' });
+    assert.ok(before.length > 0 && [...list.children].every((el, i) => el === before[i]), 'the hidden overview list was left alone');
+    doc.getElementById('sidePaneTabOverviewBtn').click();
+    assert.ok(list.textContent.includes('Renamed'), 'opening the overview renders the current titles');
+    await controller.dispose();
+});

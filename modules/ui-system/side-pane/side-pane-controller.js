@@ -36,6 +36,8 @@ export function createSidePaneController({
     notificationsPanel = null,
     // notification-center 状态 { counts, connection }；不传就用页面里登记的那一份
     notificationState = null,
+    // 通知页签从看不见变成看得见时调用（收走悬浮通知）
+    onNotificationsShown = null,
     expandButton = null,
     closeSidePaneBtn = null,
     addTabButton = null,
@@ -109,8 +111,11 @@ export function createSidePaneController({
     const parentKeyOf = () => (state.parent ? SidePaneState.getParentKey(state.parent) : '');
 
     // ---- 开合与宽度 ----
+    let notificationsShown = false;
     function syncHeaderButtons(isVisible) {
         const isNotifActive = isVisible && isNotificationsTab(state.activeTabId);
+        if (isNotifActive && !notificationsShown) onNotificationsShown?.();
+        notificationsShown = isNotifActive;
         if (toggleNotificationsBtn) {
             toggleNotificationsBtn.classList.toggle('notification-panel-active', isNotifActive);
             toggleNotificationsBtn.setAttribute('aria-expanded', String(isNotifActive));

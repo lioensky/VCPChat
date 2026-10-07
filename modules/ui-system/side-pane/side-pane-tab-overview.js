@@ -263,7 +263,8 @@ export function createSidePaneTabOverview({
         isOpen,
         hide,
         render,
-        refresh: () => render(currentQuery()),
+        // 关着的概览不重建：每次标签变化（浏览器每次导航改标题）都会调到这里，打开时 render 会重画
+        refresh: () => { if (isOpen()) render(currentQuery()); },
         dispose() {
             cleanups.forEach(cleanup => cleanup());
             cleanups.length = 0;

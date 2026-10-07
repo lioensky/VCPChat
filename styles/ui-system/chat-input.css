@@ -255,3 +255,24 @@ html .vcp-ui-scope .vcp-model-select-menu :is(.vcp-model-select-item, .vcp-model
 html .vcp-ui-scope .vcp-model-select-menu .vcp-model-select-search {
     border-color: var(--vcp-ui-composer-border);
 }
+
+/* A narrow chat column (side pane pulled wide) or a long model id: the picker
+   gives up width and ellipsizes its name before the send button is pushed
+   past the card edge, the way ZCode's composer toolbar lets its model trigger
+   shrink. Unlayered for the same reason as the menu above. */
+html .vcp-ui-scope .chat-input-actions .vcp-model-select {
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+html .vcp-ui-scope .chat-input-actions .vcp-model-select-trigger {
+    min-width: 0;
+    max-width: 100%;
+}
+
+html .vcp-ui-scope .chat-input-actions .vcp-model-select-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

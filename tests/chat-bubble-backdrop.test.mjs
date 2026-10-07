@@ -24,7 +24,7 @@ test('all chat modes keep the composer overlay free of backdrop-breaking masks',
 test('presentation modes share composer width and padding', () => {
     const css = fs.readFileSync('styles/chat.css', 'utf8');
     const shellCss = fs.readFileSync('styles/ui-next.css', 'utf8');
-    assert.match(shellCss, /html body \.chat-input-area\s*\{[^}]*padding-left:\s*52px;[^}]*padding-right:\s*52px;/);
+    assert.match(shellCss, /html body \.chat-input-area\s*\{[^}]*padding-left:\s*clamp\(12px, [^;]+, 52px\);[^}]*padding-right:\s*clamp\(12px, [^;]+, 52px\);/);
     for (const match of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
         const [, selectors, declarations] = match;
         if (!/chat-presentation-(?:panel|immersive)/.test(selectors)) continue;

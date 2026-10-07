@@ -29,7 +29,7 @@ function records() {
 const openWindows = [];
 after(() => { openWindows.forEach(win => win.close()); });
 
-function makeEnv({ conversation = { item: { id: 'agent1', name: '小助手' }, topicId: 't1' }, recs = records(), result } = {}) {
+function makeEnv({ conversation = { item: { id: 'agent1', name: '小助手' }, topicId: 't1' }, recs = records(), result, showConfirmDialog } = {}) {
     const dom = new JSDOM('<div id="view"></div>', { pretendToBeVisual: true });
     openWindows.push(dom.window);
     const doc = dom.window.document;
@@ -48,7 +48,7 @@ function makeEnv({ conversation = { item: { id: 'agent1', name: '小助手' }, t
     };
     const sidePaneController = { openTab: async tab => { state.opened.push(tab); return { focus() {} }; }, setVisible() {} };
     const provider = createModelTrajectorySideProvider({
-        document: doc, api, sidePaneController, uiHelper: { showToastNotification: m => state.toasts.push(m) },
+        document: doc, api, sidePaneController, uiHelper: { showToastNotification: m => state.toasts.push(m), ...(showConfirmDialog ? { showConfirmDialog } : {}) },
         getConversation: () => state.conversation,
         onConversationChange: callback => { state.conversationListeners.push(callback); return () => { state.conversationUnsubscribed = true; }; }
     });
@@ -464,4 +464,23 @@ test('the expansion menu works from the keyboard and keeps focus on the switch b
     assert.equal(menu.hidden, true);
     assert.equal(menuBtn.getAttribute('aria-expanded'), 'false');
     assert.equal(doc.activeElement, menuBtn, 'Escape returns focus to the menu button');
+});
+
+test('clearing asks through the app dialog, not window.confirm, and clears the conversation it was asked for', async () => {
+    let answer;
+    const asked = [];
+    const env = makeEnv({ showConfirmDialog: (...args) => { asked.push(args); return new Promise(resolve => { answer = resolve; }); } });
+    env.dom.window.confirm = () => { throw new Error('native confirm must not be used'); };
+    await env.provider.mountTab({ id: 'x' }, env.view);
+    env.view.querySelector('[aria-label="清空这个话题的调用轨迹"]').click();
+    await wait(5);
+    assert.equal(asked.length, 1, 'the app confirm dialog is shown');
+    assert.equal(asked[0][4], true, 'it is marked as a destructive action');
+    // The user switches conversation while the dialog is open, then confirms
+    env.state.conversation = { item: { id: 'agent2', name: '另一个' }, topicId: 't9' };
+    env.state.conversationListeners.forEach(listener => listener());
+    await wait();
+    answer(true);
+    await wait();
+    assert.deepEqual(env.state.cleared, ['agent1__t1'], 'only the conversation shown when Clear was clicked is cleared');
 });

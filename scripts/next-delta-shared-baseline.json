@@ -32,8 +32,8 @@
     "reason": "shared filter authority; canonical menu calls its public API; filter persistence now uses operation-aware path patches to avoid complete-snapshot overwrite"
   },
   "modules/notificationRenderer.js": {
-    "sha256": "3dbdb6e1f01d3d39efff97c271672e1cf0f1ce88977d42fd22ab04f442caa8d8",
-    "reason": "Integrated approval behavior: escaped text/diff previews describe ProjectForge edits and destructive targets; duplicate request cards are rejected; TTL/replay expiry removes actions; settlement cancels its timer; approval requests bypass display filtering. Review uses source at the registration commit f7596f9c because the recorded historical digest has no matching committed blob. The VCPLog connection status is also reported to the side-pane notification center before the optional status element is updated, so the center shows it when the classic status element is absent."
+    "sha256": "2a7d1757b6e4c71761825fb824a440a3614b34453383e843a248352588fdc85b",
+    "reason": "Integrated approval behavior: escaped text/diff previews describe ProjectForge edits and destructive targets; duplicate request cards are rejected; TTL/replay expiry removes actions; settlement cancels its timer; approval requests bypass display filtering. Review uses source at the registration commit f7596f9c because the recorded historical digest has no matching committed blob. The VCPLog connection status is also reported to the side-pane notification center before the optional status element is updated, so the center shows it when the classic status element is absent. VCPLog toasts are tagged and dismissFloatingToasts() takes them down when the side pane's notification page is shown, since the list already holds each of them (pending approvals stay answerable there); toasts from other sources are kept."
   },
   "VCPDistributedServer/frontend-plugin-loader.js": {
     "sha256": "0987ee41ed76c8b4f0963353c4b387f0b46a6202b9e8516aa02cce27568862ca",

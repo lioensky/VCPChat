@@ -42,6 +42,7 @@ export function initWorkspaceSidePane({
         toggleNotificationsBtn,
         notificationsPanel,
         notificationState: win.notificationCenter?.getStateChannel?.() || null,
+        onNotificationsShown: () => win.notificationRenderer?.dismissFloatingToasts?.(),
         expandButton: toggleChatBtn,
         closeSidePaneBtn: closeBtn,
         addTabButton: addBtn,
