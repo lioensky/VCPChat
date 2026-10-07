@@ -308,3 +308,34 @@ test('large files only render the first preview chunk, cut at a line end', async
         dom.window.close();
     }
 });
+
+test('the file button reveals a workspace file in the file manager and never opens it by association', async () => {
+    const dom = new JSDOM('<section id="view"></section>');
+    const doc = dom.window.document;
+    const revealed = [];
+    const toasts = [];
+    const opened = [];
+    const api = {
+        gitListWorkspaces: async () => ({ success: true, data: { workspaces: [{ id: 'ws1', path: 'C:\\proj' }] } }),
+        sourceReadFile: async () => ({ success: true, data: { content: 'x', encoding: 'utf8' } }),
+        gitRevealPath: async (wsId, rel) => { revealed.push([wsId, rel]); return { success: true }; },
+        openPythonAttachmentInTextEditor: (p) => opened.push(p),
+        sendOpenExternalLink: (p) => opened.push(p)
+    };
+    const provider = createCodeViewerSideProvider({ document: doc, api, uiHelper: { showToastNotification: (m, t) => toasts.push([m, t]) } });
+    const click = async (filePath) => {
+        const view = doc.createElement('section');
+        doc.body.append(view);
+        const handle = await provider.mountTab({ title: 'f', payload: { filePath } }, view);
+        view.querySelector('[data-action="open-external"]').click();
+        await new Promise(resolve => setTimeout(resolve, 10));
+        await handle?.dispose?.();
+    };
+    await click('C:\\proj\\src\\a.js');
+    assert.deepEqual(revealed, [['ws1', 'src/a.js']]);
+    await click('C:\\Users\\me\\payload.bat');
+    assert.deepEqual(revealed.length, 1, 'a file outside the workspaces is not revealed');
+    assert.equal(toasts.at(-1)[0].includes('payload.bat'), true, 'its path is shown instead');
+    assert.deepEqual(opened, [], 'nothing is opened through a file association');
+    dom.window.close();
+});

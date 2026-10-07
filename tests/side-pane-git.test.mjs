@@ -97,6 +97,22 @@ test('the Git view has source select, flat change cards, expandable diff, contex
     await new Promise(resolve => setTimeout(resolve, 20));
     assert.deepEqual(cards().map(c => c.dataset.path), ['src/staged.js']);
 
+    // keyboard: Shift+F10 on a row opens the menu with focus inside, arrows move, Escape returns focus to the row
+    const kbRow = cards()[0].querySelector('.side-git-row');
+    kbRow.focus();
+    kbRow.dispatchEvent(new dom.window.MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    const menuItems = () => [...doc.querySelectorAll('.side-git-context-item')];
+    assert.equal(doc.activeElement, menuItems()[0], 'focus moves into the menu');
+    assert.equal(menuItems()[0].querySelector('.vcp-ui-icon').getAttribute('aria-hidden'), 'true');
+    doc.activeElement.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    assert.equal(doc.activeElement, menuItems()[1]);
+    doc.activeElement.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+    doc.activeElement.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+    assert.equal(doc.activeElement, menuItems()[2], 'arrows wrap around');
+    doc.activeElement.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(doc.querySelector('.side-git-context-menu'), null);
+    assert.equal(doc.activeElement, kbRow, 'Escape hands focus back to the row');
+
     // context menu: reveal / copy absolute / copy relative
     cards()[0].querySelector('.side-git-row').dispatchEvent(new dom.window.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }));
     const items = [...doc.querySelectorAll('.side-git-context-item')];

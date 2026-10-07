@@ -1696,7 +1696,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/context-menu.js",
-          "line": 99,
+          "line": 132,
           "kind": "custom-event-listener"
         },
         {
@@ -1797,7 +1797,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/context-menu.js",
-          "line": 99,
+          "line": 132,
           "kind": "custom-event-listener",
           "match": "win.addEventListener('blur'"
         },
@@ -4180,7 +4180,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/context-menu.js",
-          "line": 91,
+          "line": 114,
           "kind": "custom-event-listener"
         },
         {
@@ -5746,7 +5746,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/context-menu.js",
-          "line": 91,
+          "line": 114,
           "kind": "custom-event-listener",
           "match": "btn.addEventListener('click'"
         },
@@ -15497,7 +15497,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/context-menu.js",
-          "line": 98,
+          "line": 131,
           "kind": "custom-event-listener"
         },
         {
@@ -15860,7 +15860,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/context-menu.js",
-          "line": 98,
+          "line": 131,
           "kind": "custom-event-listener",
           "match": "doc.addEventListener('keydown'"
         },
@@ -22988,7 +22988,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/context-menu.js",
-          "line": 97,
+          "line": 130,
           "kind": "custom-event-listener"
         },
         {
@@ -23042,7 +23042,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/git/context-menu.js",
-          "line": 97,
+          "line": 130,
           "kind": "custom-event-listener",
           "match": "doc.addEventListener('pointerdown'"
         },

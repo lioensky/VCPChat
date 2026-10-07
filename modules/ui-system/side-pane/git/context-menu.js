@@ -27,6 +27,8 @@ export function createGitContextMenu({
     workspaceOf
 }) {
     let contextMenu = null;
+    // 打开菜单的那一行：Esc、Tab 或执行完菜单项后焦点回到这里
+    let returnFocusTo = null;
 
     async function copyText(text, label) {
         try {
@@ -56,10 +58,13 @@ export function createGitContextMenu({
         }
     }
 
-    function closeContextMenu() {
+    function closeContextMenu({ restoreFocus = false } = {}) {
         if (!contextMenu) return;
         contextMenu.remove();
         contextMenu = null;
+        const target = returnFocusTo;
+        returnFocusTo = null;
+        if (restoreFocus && target?.isConnected) target.focus?.({ preventScroll: true });
         doc.removeEventListener('pointerdown', onOutsidePointer, true);
         doc.removeEventListener('keydown', onMenuKey, true);
         win.removeEventListener('blur', closeContextMenu);
@@ -67,7 +72,26 @@ export function createGitContextMenu({
 
     function onOutsidePointer(event) { if (contextMenu && !contextMenu.contains(event.target)) closeContextMenu(); }
 
-    function onMenuKey(event) { if (event.key === 'Escape') closeContextMenu(); }
+    // 和 ZCode GitPaneChangeCard 用的 Radix ContextMenu 一样：上下键 / Home / End 在菜单项间移动，Esc 或 Tab 收起并把焦点还给那一行
+    function onMenuKey(event) {
+        if (!contextMenu) return;
+        if (event.key === 'Escape' || event.key === 'Tab') {
+            event.preventDefault();
+            closeContextMenu({ restoreFocus: true });
+            return;
+        }
+        if (!contextMenu.contains(doc.activeElement)) return;
+        if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+        const items = [...contextMenu.querySelectorAll('[role="menuitem"]:not([disabled])')];
+        if (!items.length) return;
+        event.preventDefault();
+        const current = items.indexOf(doc.activeElement);
+        let next = 0;
+        if (event.key === 'End') next = items.length - 1;
+        else if (event.key === 'ArrowDown') next = current < 0 ? 0 : (current + 1) % items.length;
+        else if (event.key === 'ArrowUp') next = current < 0 ? items.length - 1 : (current - 1 + items.length) % items.length;
+        items[next].focus();
+    }
 
     function openContextMenu(event, item) {
         event.preventDefault();
@@ -86,14 +110,24 @@ export function createGitContextMenu({
             btn.className = 'side-git-context-item';
             btn.setAttribute('role', 'menuitem');
             btn.disabled = Boolean(entry.disabled);
-            btn.innerHTML = `<span class="vcp-ui-icon">${entry.icon}</span><span class="side-git-context-label"></span>`;
+            btn.innerHTML = `<span class="vcp-ui-icon" aria-hidden="true">${entry.icon}</span><span class="side-git-context-label"></span>`;
             btn.lastElementChild.textContent = entry.label;
-            btn.addEventListener('click', () => { closeContextMenu(); entry.run(); });
+            btn.addEventListener('click', () => { closeContextMenu({ restoreFocus: true }); entry.run(); });
             menu.appendChild(btn);
         });
         doc.body.appendChild(menu);
-        placeMenuAt(menu, event.clientX, event.clientY, win);
+        // 键盘（Shift+F10 / 菜单键）打开时没有指针坐标，贴着那一行出菜单
+        const anchor = typeof event.currentTarget?.getBoundingClientRect === 'function' ? event.currentTarget : null;
+        let { clientX: x, clientY: y } = event;
+        if (!x && !y && anchor?.getBoundingClientRect) {
+            const rect = anchor.getBoundingClientRect();
+            x = rect.left + 8;
+            y = rect.bottom;
+        }
+        placeMenuAt(menu, x, y, win);
         contextMenu = menu;
+        returnFocusTo = anchor || (doc.activeElement !== doc.body ? doc.activeElement : null);
+        menu.querySelector('[role="menuitem"]:not([disabled])')?.focus?.({ preventScroll: true });
         doc.addEventListener('pointerdown', onOutsidePointer, true);
         doc.addEventListener('keydown', onMenuKey, true);
         win.addEventListener('blur', closeContextMenu);

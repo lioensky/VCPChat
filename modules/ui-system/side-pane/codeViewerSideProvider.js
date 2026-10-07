@@ -16,6 +16,7 @@ import { readFileForViewer } from './code-viewer/file-read.js';
 import { createCodeViewerDiffView } from './code-viewer/diff-view.js';
 import { computeLineDiff } from '../line-diff.js';
 import { detectLanguage } from './code-viewer/helpers.js';
+import { toWorkspaceRelative } from '../git-file-diff.js';
 import { createSidePaneRootScope } from './side-pane-occurrence.js';
 export { detectLanguage } from './code-viewer/helpers.js';
 export { escapeHtml } from '../text-escape.js';
@@ -156,9 +157,9 @@ export function createCodeViewerSideProvider({
                 externalBtn.type = 'button';
                 externalBtn.className = 'side-code-action-btn';
                 externalBtn.setAttribute('data-action', 'open-external');
-                externalBtn.title = '在外部编辑器中打开';
-                externalBtn.setAttribute('aria-label', '外部打开');
-                externalBtn.innerHTML = '<span class="vcp-ui-icon">open_in_new</span>';
+                externalBtn.title = '在文件管理器中显示';
+                externalBtn.setAttribute('aria-label', '在文件管理器中显示');
+                externalBtn.innerHTML = '<span class="vcp-ui-icon" aria-hidden="true">folder_open</span>';
             }
 
             // Reload Button（文件可能已在外部被修改或删除）
@@ -303,13 +304,21 @@ export function createCodeViewerSideProvider({
             if (reloadBtn) own.listen(reloadBtn, 'click', () => reload());
 
             if (externalBtn && filePath) {
-                own.listen(externalBtn, 'click', () => {
-                    if (api?.openPythonAttachmentInTextEditor) {
-                        api.openPythonAttachmentInTextEditor(filePath);
-                    } else if (api?.sendOpenExternalLink) {
-                        api.sendOpenExternalLink(filePath);
-                    } else {
-                        uiHelper?.showToastNotification?.(`文件路径: ${filePath}`, 'info');
+                // 只在文件管理器里定位，不按文件关联打开：路径可能来自模型的工具调用，.bat / .lnk 按关联打开就是执行。
+                // 已登记工作区里的文件走 gitRevealPath（主进程校验在工作区内）；别处的文件只提示路径。
+                own.listen(externalBtn, 'click', async () => {
+                    const toast = (message, type) => uiHelper?.showToastNotification?.(message, type);
+                    try {
+                        const listed = typeof api?.gitRevealPath === 'function' ? await api.gitListWorkspaces?.() : null;
+                        const match = listed?.success ? toWorkspaceRelative(filePath, listed.data?.workspaces) : null;
+                        if (!match) {
+                            toast(`文件路径：${filePath}`, 'info');
+                            return;
+                        }
+                        const res = await api.gitRevealPath(match.workspace.id, match.relPath);
+                        if (!res?.success) throw new Error(res?.error || '无法在文件管理器中显示');
+                    } catch (error) {
+                        toast(error?.message || String(error), 'error');
                     }
                 });
             }
