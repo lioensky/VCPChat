@@ -15589,7 +15589,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 302,
+          "line": 303,
           "kind": "custom-event-listener"
         },
         {
@@ -15966,7 +15966,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 302,
+          "line": 303,
           "kind": "custom-event-listener",
           "match": "tabListElement.addEventListener('keydown'"
         },

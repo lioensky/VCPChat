@@ -134,7 +134,7 @@ export function createSidePaneTabStrip({
     function syncStatus() {
         const current = statusTabId ? getStatus() : null;
         if (!current) return;
-        const btn = findByTabId(tabListElement, statusTabId, '.side-pane-tab[data-tab-id]');
+        const btn = findByTabId(tabListElement, '.side-pane-tab[data-tab-id]', statusTabId);
         const dot = btn?.querySelector('.side-pane-tab-status');
         if (!dot) return;
         const { status = 'unknown', text = '' } = current;
@@ -283,7 +283,8 @@ export function createSidePaneTabStrip({
         if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
             targetIndex = (currentIndex + 1) % tabButtons.length;
         } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-            targetIndex = (currentIndex - 1 + tabButtons.length) % tabButtons.length;
+            // 当前是新标签页（不在标签条上）时，往左落到最后一个
+            targetIndex = currentIndex < 0 ? tabButtons.length - 1 : (currentIndex - 1 + tabButtons.length) % tabButtons.length;
         } else if (e.key === 'Home') {
             targetIndex = 0;
         } else if (e.key === 'End') {
@@ -293,10 +294,10 @@ export function createSidePaneTabStrip({
         }
         e.preventDefault();
         if (targetIndex !== currentIndex && targetIndex >= 0 && targetIndex < tabButtons.length) {
+            // 激活会重建标签条，旧按钮随之离开文档；焦点留在标签上（WAI-ARIA Tabs），按 id 找重建后的按钮
             const targetId = tabButtons[targetIndex].getAttribute('data-tab-id');
             onActivate(targetId, { focus: false });
-            // 激活会重画标签条，原来的按钮已经不在了，按 id 找新的
-            findByTabId(tabListElement, targetId, '[role="tab"][data-tab-id]')?.focus?.();
+            findByTabId(tabListElement, '[role="tab"][data-tab-id]', targetId)?.focus?.();
         }
     };
     tabListElement.addEventListener('keydown', onKeydown);
@@ -311,7 +312,7 @@ export function createSidePaneTabStrip({
         syncStatus,
         hideTooltip,
         focusTab(tabId) {
-            findByTabId(tabListElement, tabId, '[role="tab"][data-tab-id]')?.focus?.();
+            findByTabId(tabListElement, '[role="tab"][data-tab-id]', tabId)?.focus?.();
         },
         dispose() {
             disposed = true;

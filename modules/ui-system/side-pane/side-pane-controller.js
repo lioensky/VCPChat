@@ -525,7 +525,7 @@ export function createSidePaneController({
         const mounting = (async () => {
             // 上次挂载失败留下的提示页不复用，换一个干净的视图重新挂
             clearMountFailure(tabId);
-            let view = findByTabId(contentContainer, tabId);
+            let view = findByTabId(contentContainer, '[data-tab-id]', tabId);
             if (!view && contentContainer) {
                 view = doc.createElement('section');
                 view.className = 'side-pane-view';

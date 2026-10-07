@@ -135,3 +135,21 @@ test('the Git view shows an add-workspace action when none are registered', asyn
         await handle.dispose();
     }
 });
+
+test('reading the status of a repo never runs the core.fsmonitor command its own config names', { skip: process.platform === 'win32' }, async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vcp-fsmonitor-'));
+    try {
+        const marker = path.join(root, 'ran');
+        const monitor = path.join(root, 'monitor.sh');
+        fs.writeFileSync(monitor, `#!/bin/sh\ntouch "${marker}"\n`, { mode: 0o755 });
+        const repo = path.join(root, 'repo');
+        fs.mkdirSync(repo);
+        execFileSync('git', ['init', '-q'], { cwd: repo });
+        execFileSync('git', ['config', 'core.fsmonitor', monitor], { cwd: repo });
+        fs.writeFileSync(path.join(repo, 'a.txt'), 'x');
+        await gitService.getStatus(repo);
+        assert.equal(fs.existsSync(marker), false, 'a prepared .git/config cannot run a command when the Git page opens');
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});

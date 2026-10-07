@@ -79,6 +79,8 @@ function runGit(cwd, args, { timeout = DEFAULT_TIMEOUT, input = null, englishMes
         const child = execFile('git', [
             '-c', 'core.quotepath=false',
             '-c', 'color.ui=false',
+            // 仓库自带的 .git/config 可以把 core.fsmonitor 设成任意命令，只读的 status 也会执行它（同 DeepSeek Harness scripts/change-scope.ts）
+            '-c', 'core.fsmonitor=false',
             '--literal-pathspecs', // 路径按字面匹配，禁用 glob / 魔法前缀
             ...args,
         ], {

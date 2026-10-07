@@ -38,9 +38,9 @@ test('findByTabId matches ids with backslashes and quotes literally', () => {
         const el = doc.createElement('button');
         el.setAttribute('data-tab-id', id);
         doc.body.append(el);
-        assert.equal(findByTabId(doc.body, id), el);
+        assert.equal(findByTabId(doc.body, '[data-tab-id]', id), el);
     }
-    assert.equal(findByTabId(doc.body, 'code-viewer:C:Usersroxyproja.js'), null);
+    assert.equal(findByTabId(doc.body, '[data-tab-id]', 'code-viewer:C:Usersroxyproja.js'), null);
     dom.window.close();
 });
 
@@ -56,7 +56,7 @@ for (const id of [WINDOWS_ID, QUOTED_ID]) {
         try {
             await controller.openTab({ id: 'other', kind: 'probe', title: 'Other', closable: true, scopeMode: 'global' });
             await controller.openTab({ id, kind: 'probe', title: 'a.js', closable: true, scopeMode: 'global' });
-            assert.equal(findByTabId(root.querySelector('.side-pane-content-container'), id)?.textContent, 'a.js');
+            assert.equal(findByTabId(root.querySelector('.side-pane-content-container'), '[data-tab-id]', id)?.textContent, 'a.js');
 
             controller.activateTab('other');
             controller.cycleTab(1);
