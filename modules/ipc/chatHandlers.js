@@ -635,7 +635,7 @@ function initialize(mainWindow, context) {
             return { success: true };
         } catch (error) {
             console.error(`保存Agent ${agentId} 话题 ${topicId} 聊天历史失败:`, error);
-            return { error: error.message };
+            return { success: false, error: error.message }; // 同群组：调用方都按 success === false 判失败
         }
     });
 

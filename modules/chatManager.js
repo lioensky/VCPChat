@@ -1853,13 +1853,16 @@ export const chatManager = (() => {
 
                     // Fetch the correct history from the file, update it, and save it back.
                     const historyForSave = await getHistory(responseContext.agentId, responseContext.itemType || 'agent', responseContext.topicId);
+                    let persistenceError = null;
                     if (historyForSave && !historyForSave.error) {
                         // Remove any lingering 'thinking' message and add the new one
                         const finalHistory = historyForSave.filter(msg => msg.id !== thinkingMessage.id);
                         finalHistory.push(assistantMessage);
                         
                         // Save the final, complete history to the correct file
-                        await saveHistory(responseContext.agentId, responseContext.itemType || 'agent', responseContext.topicId, finalHistory);
+                        const finalSave = await saveHistory(responseContext.agentId, responseContext.itemType || 'agent', responseContext.topicId, finalHistory);
+                        // 和流式一样：没存下来就按保存失败收尾，侧栏辅助对话据此亮「保存失败」并拦住关闭，而不是当作已完成
+                        if (finalSave?.success === false || finalSave?.error) persistenceError = finalSave.error || '保存聊天记录失败';
 
                         if (isForActiveChat) {
                             // If it's the active chat, also update the UI and in-memory state
@@ -1871,9 +1874,12 @@ export const chatManager = (() => {
                             console.log(`[ChatManager] Saved non-streaming response for background chat: Agent ${responseContext.agentId}, Topic ${responseContext.topicId}`);
                         }
                     } else {
-                         console.error(`[ChatManager] Failed to get history for background save:`, historyForSave.error);
+                         console.error(`[ChatManager] Failed to get history for background save:`, historyForSave?.error);
+                         persistenceError = historyForSave?.error || '读取聊天记录失败';
                     }
-                    settleOwnedStreamOperation?.({ event: { type: 'completed' } });
+                    settleOwnedStreamOperation?.({ event: persistenceError
+                        ? { type: 'failed', outcome: { persistence: { error: persistenceError } } }
+                        : { type: 'completed' } });
                 } else {
                     await removeThinkingFromSource();
                     settleOwnedStreamOperation?.({ event: { type: 'failed', outcome: { transport: { error: 'Unknown response format' } } } });

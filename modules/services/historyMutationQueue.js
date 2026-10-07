@@ -2,6 +2,9 @@ const fs = require('fs-extra');
 const path = require('path');
 const { randomUUID } = require('crypto');
 
+// 同 sideChatHandlers.js 的 CHILD_ID_PATTERN
+const SIDE_CHAT_CHILD_ID = /^sidechat_\d+_[0-9a-f]+$/;
+
 function validateSegment(value) {
     if (typeof value !== 'string' || !value ||
         /[<>:"/\\|?*\x00-\x1f]/.test(value) ||
@@ -78,6 +81,12 @@ class HistoryMutationQueue {
         conversationKey(descriptor);
         const historyPath = this.getHistoryPath(descriptor.itemId, descriptor.topicId);
         const tempPath = `${historyPath}.${process.pid}.${randomUUID()}.tmp`;
+        // 辅助对话的子话题目录只由 side-chat:create-child 建（带标记文件）。目录没了说明它已被删除
+        // （父话题或助手被删时，流式回复被取消后还会存一次）；这时不能顺手把目录建回来，
+        // 否则会留下没有标记、谁也删不掉也列不出来的孤儿目录
+        if (SIDE_CHAT_CHILD_ID.test(descriptor.topicId) && !await fs.pathExists(path.dirname(historyPath))) {
+            throw new Error('SIDE_CHAT_CHILD_DELETED');
+        }
         await fs.ensureDir(path.dirname(historyPath));
         if (this.fileWatcher) this.fileWatcher.signalInternalSave?.();
         try {
