@@ -2,7 +2,7 @@
 'use strict';
 
 import { createTabSortable } from './side-pane-tab-dnd.js';
-import { getTabIconName, resolveTabsOverflow } from './side-pane-tab-utils.js';
+import { findByTabId, getTabIconName, resolveTabsOverflow } from './side-pane-tab-utils.js';
 
 // 标签标题悬停提示、面板切换动画、可拖拽排序的标签
 const TAB_TOOLTIP_DELAY_MS = 1500;
@@ -133,7 +133,7 @@ export function createSidePaneTabStrip({
     function syncStatus() {
         const current = statusTabId ? getStatus() : null;
         if (!current) return;
-        const btn = tabListElement.querySelector(`.side-pane-tab[data-tab-id="${statusTabId}"]`);
+        const btn = findByTabId(tabListElement, '.side-pane-tab[data-tab-id]', statusTabId);
         const dot = btn?.querySelector('.side-pane-tab-status');
         if (!dot) return;
         const { status = 'unknown', text = '' } = current;
@@ -268,7 +268,8 @@ export function createSidePaneTabStrip({
         if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
             targetIndex = (currentIndex + 1) % tabButtons.length;
         } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-            targetIndex = (currentIndex - 1 + tabButtons.length) % tabButtons.length;
+            // 当前是新标签页（不在标签条上）时，往左落到最后一个
+            targetIndex = currentIndex < 0 ? tabButtons.length - 1 : (currentIndex - 1 + tabButtons.length) % tabButtons.length;
         } else if (e.key === 'Home') {
             targetIndex = 0;
         } else if (e.key === 'End') {
@@ -278,8 +279,10 @@ export function createSidePaneTabStrip({
         }
         e.preventDefault();
         if (targetIndex !== currentIndex && targetIndex >= 0 && targetIndex < tabButtons.length) {
-            onActivate(tabButtons[targetIndex].getAttribute('data-tab-id'));
-            tabButtons[targetIndex].focus();
+            // 激活会重建标签条，旧按钮随之离开文档；焦点留在标签上（WAI-ARIA Tabs），按 id 找重建后的按钮
+            const targetId = tabButtons[targetIndex].getAttribute('data-tab-id');
+            onActivate(targetId, { focus: false });
+            findByTabId(tabListElement, '[role="tab"][data-tab-id]', targetId)?.focus?.();
         }
     };
     tabListElement.addEventListener('keydown', onKeydown);
@@ -294,7 +297,7 @@ export function createSidePaneTabStrip({
         syncStatus,
         hideTooltip,
         focusTab(tabId) {
-            tabListElement.querySelector(`[role="tab"][data-tab-id="${tabId}"]`)?.focus?.();
+            findByTabId(tabListElement, '[role="tab"][data-tab-id]', tabId)?.focus?.();
         },
         dispose() {
             disposed = true;

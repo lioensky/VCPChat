@@ -26,6 +26,9 @@ export function createSidePaneVisibility({ root, resizerHandle = null, initialRa
     let animating = false;
     let animationTimer = null;
     let animationRafId = null;
+    // 当前这轮动画的目标（true 展开 / false 收起）和它的收尾撤销函数；新一轮开始前必须撤掉旧一轮的 transitionend 监听
+    let animationTarget = null;
+    let cancelTransition = null;
 
     const isJSDOM = (typeof navigator !== 'undefined' && navigator.userAgent && navigator.userAgent.includes('jsdom'))
         || (typeof win !== 'undefined' && win.name === 'nodejs');
@@ -42,6 +45,11 @@ export function createSidePaneVisibility({ root, resizerHandle = null, initialRa
     }
 
     function clearPendingAnimation() {
+        if (cancelTransition) {
+            const cancel = cancelTransition;
+            cancelTransition = null;
+            cancel();
+        }
         if (animationTimer) {
             clearTimeout(animationTimer);
             animationTimer = null;
@@ -75,6 +83,7 @@ export function createSidePaneVisibility({ root, resizerHandle = null, initialRa
     function applySynchronous(isVisible) {
         clearPendingAnimation();
         animating = false;
+        animationTarget = null;
         root.classList.remove('is-animating');
         root.classList.toggle('active', isVisible);
         root.classList.toggle('collapsed', !isVisible);
@@ -93,15 +102,25 @@ export function createSidePaneVisibility({ root, resizerHandle = null, initialRa
         const onTransitionEnd = (e) => {
             if (e.target === root && e.propertyName === 'width') done();
         };
+        let settled = false;
+        const detach = () => {
+            if (settled) return false;
+            settled = true;
+            root.removeEventListener('transitionend', onTransitionEnd);
+            return true;
+        };
         const done = () => {
+            if (!detach()) return;
+            cancelTransition = null;
             clearPendingAnimation();
             animating = false;
-            root.removeEventListener('transitionend', onTransitionEnd);
+            animationTarget = null;
             finish();
             unlockContentWidth();
             resizerHandle?.classList.remove('is-animating', 'is-animating-closing');
         };
         root.addEventListener('transitionend', onTransitionEnd);
+        cancelTransition = detach;
         animationTimer = setTimeout(done, ANIMATION_FALLBACK_MS);
         animationRafId = win.requestAnimationFrame(() => {
             animationRafId = null;
@@ -110,8 +129,11 @@ export function createSidePaneVisibility({ root, resizerHandle = null, initialRa
     }
 
     function animateOpen() {
+        // 收起动画还没走完就反向展开：从当前宽度接着走，不先跳回 0
+        const reversing = animating && animationTarget === false;
         clearPendingAnimation();
         animating = true;
+        animationTarget = true;
 
         const targetPercent = formattedPercent();
         lockContentWidth(readExpandedWidthPx());
@@ -120,8 +142,10 @@ export function createSidePaneVisibility({ root, resizerHandle = null, initialRa
         root.classList.remove('collapsed');
         root.removeAttribute('aria-hidden');
         root.classList.add('is-animating', 'active');
-        root.style.width = '0%';
-        root.style.opacity = '0';
+        if (!reversing) {
+            root.style.width = '0%';
+            root.style.opacity = '0';
+        }
         resizerHandle?.classList.add('is-animating', 'is-animating-closing');
         onSync(true);
 
@@ -139,6 +163,7 @@ export function createSidePaneVisibility({ root, resizerHandle = null, initialRa
     function animateClose() {
         clearPendingAnimation();
         animating = true;
+        animationTarget = false;
 
         const startPercent = root.style.width || formattedPercent();
         lockContentWidth(root.getBoundingClientRect().width);
@@ -194,6 +219,12 @@ export function createSidePaneVisibility({ root, resizerHandle = null, initialRa
 
             if (!shouldAnimate) {
                 applySynchronous(isVisible);
+                return;
+            }
+
+            // 正朝同一个方向动画时不重启，否则展开到一半会跳回 0 宽
+            if (animating && animationTarget === isVisible) {
+                onSync(isVisible);
                 return;
             }
 

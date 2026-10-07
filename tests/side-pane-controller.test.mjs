@@ -95,6 +95,7 @@ test('SidePaneController showNotifications and openChat mount views and sync vis
         title: '测试侧聊',
     };
 
+    controller.setParent(desc.parent);
     await controller.openTab({ kind: 'chat', descriptor: desc });
     assert.equal(controller.getSnapshot().activeTabId, 'side-chat-test');
     assert.equal(tabListElement.children.length, 2);

@@ -83,6 +83,7 @@ test('Parity: Closing selection-side-chat destroys runtime and is explicitly exc
         title: 'Ephemeral Side Chat'
     });
 
+    ctrl.setParent(desc.parent);
     await ctrl.openTab({ kind: 'chat', descriptor: desc });
     assert.equal(ctrl.getSnapshot().tabs.length, 2); // notifications + side chat
     assert.equal(ctrl.getSnapshot().activeTabId, desc.id);

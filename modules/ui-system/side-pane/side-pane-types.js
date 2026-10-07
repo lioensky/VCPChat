@@ -93,10 +93,11 @@
  * @property {SidePaneProvider | null} [provider] 没有时只占位，不挂视图（比如通知）。
  *   可以是 tab-types/lazy-provider.js 的懒加载代理，第一次挂载或第一次调用 open 函数时才加载实现
  * @property {() => Promise<SidePaneProvider> | SidePaneProvider} [load] 没给 provider 时用它懒加载
- * @property {'none' | 'detach' | 'keep'} [dormancy] 隐藏太久时怎么休眠：
+ * @property {'none' | 'detach' | 'limit-only' | 'keep'} [dormancy] 隐藏太久时怎么休眠：
  *   none（默认）释放视图、保留标签，再显示时重新挂载；detach 同样释放视图，但 provider 把会话和画面
  *   挂在 occurrence 上，休眠时把画面收进暂存区，重新挂载时接回去（终端），会话不动；
- *   keep 不休眠（比如有没发出去的输入）
+ *   limit-only 不按隐藏时长休眠，只在挂着的视图超过上限时参与淘汰（浏览器）；
+ *   keep 不休眠，也不占视图上限的名额（比如有没发出去的输入）
  * @property {SidePaneOpenTabEntry | null} [entry] 有时出现在新标签页里
  * @property {(payload: object, tabs: readonly SidePaneTab[]) => SidePaneTab} [toTab]
  *   openTab(payload) 先经过它变成标签；可以返回已有标签的 id 让重复打开落到同一个标签上

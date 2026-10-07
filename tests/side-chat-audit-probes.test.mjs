@@ -87,6 +87,7 @@ test('R02: Reopening same child activates existing view without duplicate panels
         }
     });
 
+    ctrl.setParent(createDescriptor('s1').parent);
     await ctrl.openTab({ kind: 'chat', descriptor: createDescriptor('s1') });
     await ctrl.openTab({ kind: 'chat', descriptor: createDescriptor('s2') });
 

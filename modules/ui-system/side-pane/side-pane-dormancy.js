@@ -5,6 +5,9 @@
  *   - 同时挂着的视图超过 maxLiveViews 时，最久没显示的先休眠。
  * 不休眠：正在显示的、类型声明 dormancy 'keep' 的、视图报告自己正忙的（加载中、在放声音、命令还在跑……），
  * 忙的到期后隔 busyRetryMs 再看一次。
+ * 'limit-only' 的类型（浏览器）不按隐藏时长休眠，只在超过上限时参与淘汰：销毁网页会丢掉表单、登录和后退栈，
+ * 代价远高于重建其他视图（对照 ZCode browserTabResidencyPolicy.ts 只按数量淘汰）。
+ * 'keep' 的视图不占 maxLiveViews 的名额，否则它们攒多了会把其他标签一切走就挤去休眠。
  * 这里只做判断，不碰 DOM 和定时器，控制器负责执行和定时。
  */
 
@@ -19,7 +22,7 @@ export const DORMANCY_DEFAULTS = Object.freeze({
  * @typedef {object} DormancyCandidate
  * @property {string} tabId
  * @property {boolean} shown 正在显示
- * @property {'none' | 'detach' | 'keep'} dormancy
+ * @property {'none' | 'detach' | 'limit-only' | 'keep'} dormancy
  * @property {boolean} busy
  * @property {boolean} otherTopic 属于别的对话
  * @property {number | null} hiddenSince 从什么时候开始不显示；一直没显示过的用挂载时间
@@ -45,7 +48,7 @@ export function selectDormantViews(candidates, options) {
     const sleepable = candidate => !candidate.shown && candidate.dormancy !== 'keep';
 
     for (const candidate of candidates) {
-        if (!sleepable(candidate)) continue;
+        if (!sleepable(candidate) || candidate.dormancy === 'limit-only') continue;
         const reason = candidate.otherTopic ? 'other-topic' : 'hidden';
         const due = (candidate.hiddenSince ?? now) + (candidate.otherTopic ? otherTopicMs : hiddenMs);
         if (due > now) {
@@ -58,7 +61,7 @@ export function selectDormantViews(candidates, options) {
         }
     }
 
-    let live = candidates.length - released.size;
+    let live = candidates.filter(candidate => candidate.dormancy !== 'keep').length - released.size;
     if (live > maxLiveViews) {
         const victims = candidates
             .filter(candidate => sleepable(candidate) && !candidate.busy && !released.has(candidate.tabId))

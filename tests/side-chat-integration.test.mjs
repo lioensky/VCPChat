@@ -100,6 +100,7 @@ test('Full Side Chat lifecycle integration: open, refer, send, and close', async
             model: 'test-model'
         });
 
+        controller.setParent(desc.parent);
         const handle = await controller.openTab({ kind: 'chat', descriptor: desc });
         if (opts.reference) {
             handle.addReference(opts.reference);

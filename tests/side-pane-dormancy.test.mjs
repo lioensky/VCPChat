@@ -232,3 +232,45 @@ test('diagnostics count what each live view still holds, including what its prov
         await h.cleanup();
     }
 });
+
+test('policy: keep views do not take places under the live-view limit', () => {
+    const { release } = selectDormantViews([
+        candidate('chat-1', { dormancy: 'keep' }),
+        candidate('chat-2', { dormancy: 'keep' }),
+        candidate('chat-3', { dormancy: 'keep' }),
+        candidate('browser', { dormancy: 'limit-only', hiddenSince: 0, lastShownAt: 10 }),
+        candidate('plan', { shown: true, hiddenSince: null, lastShownAt: 20 })
+    ], { now: 0, maxLiveViews: 2 });
+    assert.deepEqual(release, []);
+});
+
+test('policy: limit-only views never sleep for being hidden, only for the live-view limit', () => {
+    const now = 60 * 60_000;
+    const hiddenLong = selectDormantViews([
+        candidate('browser', { dormancy: 'limit-only', hiddenSince: 0 })
+    ], { now });
+    assert.deepEqual(hiddenLong.release, []);
+
+    const overLimit = selectDormantViews([
+        candidate('browser-old', { dormancy: 'limit-only', lastShownAt: 1 }),
+        candidate('browser-new', { dormancy: 'limit-only', lastShownAt: 2 }),
+        candidate('shown', { shown: true, hiddenSince: null, lastShownAt: 3 })
+    ], { now, maxLiveViews: 2 });
+    assert.deepEqual(overLimit.release, [{ tabId: 'browser-old', reason: 'view-limit' }]);
+});
+
+test('collapsing the pane does not put the current tab to sleep', async () => {
+    const h = fixture({ hiddenMs: 30 });
+    try {
+        await h.controller.openTab(tab('probe:a'));
+        h.controller.setVisible(false);
+        await sleep(80);
+        await settle();
+
+        assert.deepEqual(h.residency().live, ['probe:a']);
+        assert.deepEqual(h.residency().dormant, []);
+        h.controller.setVisible(true);
+        await settle();
+        assert.equal(h.mounts.length, 1, 'expanding again shows the same view');
+    } finally { await h.cleanup(); }
+});

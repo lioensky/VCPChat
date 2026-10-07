@@ -161,7 +161,8 @@ test('a sleeping terminal keeps its shell: the screen waits in the stash and com
     try {
         const handle = await h.provider.openTerminalTab();
         await until(() => handle.getSessionId() === 'view:1');
-        h.controller.setVisible(false);
+        // 切到别的标签让终端隐藏；面板收起时当前标签不休眠
+        h.controller.showNotifications();
         await new Promise(resolve => setTimeout(resolve, 60));
         await until(() => h.controller.getViewResidency().dormant.length === 1);
 
@@ -171,7 +172,7 @@ test('a sleeping terminal keeps its shell: the screen waits in the stash and com
         assert.equal(h.unsubscriptions, 0, 'output keeps flowing into the parked terminal');
         h.listeners.get('data')?.({ id: 'view:1', data: 'while asleep' });
 
-        h.controller.setVisible(true);
+        h.controller.activateTab('terminal:main');
         await until(() => h.controller.getViewResidency().live.includes('terminal:main'));
         const view = h.controller.getTabHandle('terminal:main');
         assert.equal(view.getSessionId(), 'view:1');
@@ -193,7 +194,8 @@ test('closing a terminal tab while it sleeps ends the parked session', async () 
     try {
         await h.provider.openTerminalTab();
         await until(() => h.status().dataset.state === 'connected');
-        h.controller.setVisible(false);
+        // 切到别的标签让终端隐藏；面板收起时当前标签不休眠
+        h.controller.showNotifications();
         await new Promise(resolve => setTimeout(resolve, 60));
         await until(() => h.stash()?.contains(h.screen()) === true);
         await h.controller.closeTab('terminal:main');
@@ -222,7 +224,8 @@ test('a live terminal view holds its buttons and size observer through the view 
         assert.equal(live.byType.observer, 1);
         assert.equal(observers[0].targets.size, 1);
 
-        h.controller.setVisible(false);
+        // 切到别的标签让终端隐藏；面板收起时当前标签不休眠
+        h.controller.showNotifications();
         await new Promise(resolve => setTimeout(resolve, 60));
         await until(() => terminalTab().view === 'dormant');
         assert.equal(terminalTab().resources, null);

@@ -588,19 +588,19 @@
     "dynamicSites": [
       {
         "file": "modules/messageRenderer.js",
-        "line": 599,
+        "line": 600,
         "kind": "custom-event-listener",
         "match": "target.addEventListener(type"
       },
       {
         "file": "modules/messageRenderer.js",
-        "line": 2585,
+        "line": 2589,
         "kind": "custom-event-listener",
         "match": "target.addEventListener(type"
       },
       {
         "file": "modules/messageRenderer.js",
-        "line": 3315,
+        "line": 3328,
         "kind": "custom-event-listener",
         "match": "target.addEventListener(type"
       }
@@ -776,19 +776,19 @@
     "dynamicSites": [
       {
         "file": "modules/ui-system/appearance-studio.js",
-        "line": 516,
+        "line": 524,
         "kind": "custom-event-listener",
         "match": "target.addEventListener(type"
       },
       {
         "file": "modules/ui-system/appearance-studio.js",
-        "line": 792,
+        "line": 815,
         "kind": "custom-event-listener",
         "match": "root.addEventListener(type"
       },
       {
         "file": "modules/ui-system/appearance-studio.js",
-        "line": 1552,
+        "line": 1579,
         "kind": "custom-event-listener",
         "match": "target.addEventListener(type"
       }

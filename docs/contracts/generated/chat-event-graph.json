@@ -32525,6 +32525,30 @@
       "contractId": "loom.comfyui.agent-response-bridge"
     },
     {
+      "file": "modules/messageRenderer.js",
+      "line": 600,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.messagerenderer"
+    },
+    {
+      "file": "modules/messageRenderer.js",
+      "line": 2589,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.messagerenderer"
+    },
+    {
+      "file": "modules/messageRenderer.js",
+      "line": 3328,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.messagerenderer"
+    },
+    {
       "file": "modules/notificationCenter.js",
       "line": 324,
       "reason": "dynamic listener name: type",
@@ -32611,6 +32635,30 @@
       "kind": "custom-event-listener",
       "match": "target?.addEventListener?.(type",
       "contractId": "source.dynamic.modules.topiclistmanager"
+    },
+    {
+      "file": "modules/ui-system/appearance-studio.js",
+      "line": 524,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.ui-system.appearance-studio"
+    },
+    {
+      "file": "modules/ui-system/appearance-studio.js",
+      "line": 815,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "root.addEventListener(type",
+      "contractId": "source.dynamic.modules.ui-system.appearance-studio"
+    },
+    {
+      "file": "modules/ui-system/appearance-studio.js",
+      "line": 1579,
+      "reason": "dynamic listener name: type",
+      "kind": "custom-event-listener",
+      "match": "target.addEventListener(type",
+      "contractId": "source.dynamic.modules.ui-system.appearance-studio"
     },
     {
       "file": "modules/ui-system/ask-nova-modal.js",
@@ -33005,36 +33053,5 @@
       "contractId": "source.dynamic.preloads.loom"
     }
   ],
-  "undiscovered": [
-    {
-      "file": "modules/messageRenderer.js",
-      "line": 600,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/messageRenderer.js",
-      "line": 2589,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/messageRenderer.js",
-      "line": 3328,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/ui-system/appearance-studio.js",
-      "line": 524,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/ui-system/appearance-studio.js",
-      "line": 815,
-      "reason": "dynamic listener name: type"
-    },
-    {
-      "file": "modules/ui-system/appearance-studio.js",
-      "line": 1579,
-      "reason": "dynamic listener name: type"
-    }
-  ]
+  "undiscovered": []
 }

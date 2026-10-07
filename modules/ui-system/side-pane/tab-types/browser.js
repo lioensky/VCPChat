@@ -7,6 +7,7 @@ export function defineBrowserTabType({ document: doc, window: win, chatAPI, side
     }, ['openBrowserTab']);
     return Object.freeze({
         kind: 'browser', label: '浏览器', icon: 'public', searchHint: '浏览器', provider,
+        dormancy: 'limit-only',
         entry: { id: 'browser', order: 40, open: () => provider.openBrowserTab() }
     });
 }

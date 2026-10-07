@@ -222,8 +222,7 @@ export function openTab(state, rawTab) {
     }
 
     const tabParent = getTabParent({ ...rawTab, scopeMode });
-    const isVisibleForCurrentParent = scopeMode === 'global' || !state.parent || !tabParent
-        || matchesConversation(tabParent, state.parent);
+    const isVisibleForCurrentParent = isTabVisibleForParent({ ...rawTab, scopeMode }, state.parent);
 
     return Object.freeze({
         ...state,
@@ -320,14 +319,17 @@ export function reorderTabs(state, activeId, overId) {
     return Object.freeze({ ...state, tabs: Object.freeze(next) });
 }
 
+// 话题级标签只在所属对话里可见；没有当前对话（群组、启动早期）时一律不可见，
+// 否则「关闭所有」会关掉、进而删除别的对话的辅助对话（对照 ZCode workspaceSidePane.ts isSidePaneTabVisibleForParent）
+function isTabVisibleForParent(tab, parentRef) {
+    if (tab.id === NOTIFICATIONS_TAB_ID || tab.scopeMode === 'global') return true;
+    const tabParent = getTabParent(tab);
+    if (!tabParent) return true;
+    return matchesConversation(tabParent, parentRef);
+}
+
 export function getVisibleTabs(state, parentRef = null) {
-    if (!parentRef) return state.tabs;
-    return state.tabs.filter(tab => {
-        if (tab.id === NOTIFICATIONS_TAB_ID) return true;
-        if (tab.scopeMode === 'global') return true;
-        const tabParent = getTabParent(tab);
-        return tabParent ? matchesConversation(tabParent, parentRef) : true;
-    });
+    return state.tabs.filter(tab => isTabVisibleForParent(tab, parentRef));
 }
 
 const api = Object.freeze({

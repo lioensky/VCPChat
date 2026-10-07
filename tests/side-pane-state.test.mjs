@@ -64,7 +64,7 @@ test('chat tab type validates the descriptor and reuses the tab of an open child
         title: '侧聊 1',
     };
 
-    const s1 = openChat(s0, desc1);
+    const s1 = openChat(SidePaneState.setParent(s0, desc1.parent), desc1);
     assert.equal(s1.visible, true);
     assert.equal(s1.activeTabId, 'side-1');
     assert.equal(s1.tabs.length, 2);
@@ -97,7 +97,7 @@ test('closeTab handles fallback and protects notifications tab', () => {
         title: '侧聊 2',
     };
 
-    let state = openChat(s0, desc1);
+    let state = openChat(SidePaneState.setParent(s0, desc1.parent), desc1);
     state = openChat(state, desc2);
     assert.equal(state.tabs.length, 3);
     assert.equal(state.activeTabId, 'side-2');
@@ -139,8 +139,9 @@ test('getVisibleTabs filters chat tabs by parent conversation reference', () => 
     const visibleB = SidePaneState.getVisibleTabs(state, parentB);
     assert.deepEqual(visibleB.map(t => t.id), ['notifications', 'side-b1']);
 
-    const all = SidePaneState.getVisibleTabs(state, null);
-    assert.equal(all.length, 3);
+    const withoutParent = SidePaneState.getVisibleTabs(state, null);
+    assert.deepEqual(withoutParent.map(t => t.id), ['notifications']);
+    assert.deepEqual(SidePaneState.getClosableVisibleTabs(SidePaneState.setParent(state, null)), []);
 });
 
 test('global tools retain selection and visibility across topic changes', () => {
