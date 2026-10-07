@@ -262,7 +262,8 @@ export function createSidePaneController({
             getTabs: getStripTabs,
             getTabType,
             getActiveTabId: () => state.activeTabId,
-            getRecentlyClosed: () => recentlyClosedTabs,
+            // 只列当前对话能看到的：别的话题的标签重开后登记在那个话题下，这里看起来像点了没反应
+            getRecentlyClosed: () => recentlyClosedTabs.filter(entry => SidePaneState.isTabVisibleForParent(entry.tab, state.parent)),
             isClosable: isClosableTab,
             onActivate: (tabId) => {
                 controller.activateTab(tabId);

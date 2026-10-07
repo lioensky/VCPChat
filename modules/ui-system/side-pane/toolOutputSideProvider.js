@@ -82,6 +82,8 @@ export function createToolOutputSideProvider({
             });
             sidePaneController.setVisible?.(true);
             if (runId) for (const instance of instances) instance.select(runId);
+            // 已经挂着的实例直接定位了；不清掉的话，标签休眠后重新挂载会被这条旧命令"粘住"、不再跟随新命令
+            if (instances.size) requestedRunId = null;
             handle?.focus?.();
             return handle;
         },

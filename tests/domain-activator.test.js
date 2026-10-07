@@ -195,3 +195,24 @@ test('the terminal domain does not load the executor until a terminal channel is
         activator.unregisterAll();
     }
 });
+
+test('after the final dispose at quit, late calls do not bring a domain back', async () => {
+    const ipc = fakeIpcMain();
+    const activator = createDomainActivator({ ipcMain: ipc, logger: quiet });
+    let inits = 0;
+    const disposed = [];
+    activator.register('git', {
+        channels: ['git:status'],
+        load: () => ({}),
+        init: (_mod, { ipcMain }) => { inits += 1; ipcMain.handle('git:status', () => 'ok'); },
+        dispose: () => disposed.push('git'),
+    });
+    assert.equal(await ipc.invoke('git:status'), 'ok');
+    activator.disposeAll({ final: true });
+    assert.deepEqual(disposed, ['git']);
+    const late = await ipc.invoke('git:status'); // 窗口隐藏后渲染端的轮询还在调
+    assert.deepEqual(late, { success: false, error: 'shutting-down' });
+    assert.equal(inits, 1, 'the domain is not initialized again');
+    assert.equal(activator.stateOf('git'), 'declared');
+    activator.unregisterAll();
+});

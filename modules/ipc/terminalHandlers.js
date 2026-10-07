@@ -152,8 +152,11 @@ function resolveWorkspacePath(workspaceId) {
 }
 
 // 终端窗口用的是 PowerShell（Windows）/ bash（其它平台）
-function buildChangeDirectoryCommand(dir) {
-    if (process.platform === 'win32') return `Set-Location -LiteralPath '${dir.replace(/'/g, "''")}'\r`;
+// PowerShell 把弯引号 ‘ ’ ‚ ‛（U+2018–U+201B）也当单引号：只双写 ' 的话 `Bob’s repo` 会提前闭合字符串。
+// 换行会直接提交半条命令，这种路径不往终端里写
+function buildChangeDirectoryCommand(dir, platform = process.platform) {
+    if (/[\r\n]/.test(dir)) throw new Error('工作区路径包含换行，无法在终端里切换。');
+    if (platform === 'win32') return `Set-Location -LiteralPath '${dir.replace(/['\u2018-\u201B]/g, quote => quote + quote)}'\r`;
     return `cd '${dir.replace(/'/g, "'\\''")}'\r`;
 }
 
@@ -327,4 +330,4 @@ function disposeAll() {
     for (const sender of [...runWatchers.keys()]) stopRunWatcher(sender);
 }
 
-module.exports = { CHANNELS, initialize, disposeAll };
+module.exports = { CHANNELS, initialize, disposeAll, buildChangeDirectoryCommand };

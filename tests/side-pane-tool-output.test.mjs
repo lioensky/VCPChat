@@ -109,6 +109,17 @@ test('openToolOutputTab with a runId selects that run in an already-mounted tab'
     await handle.dispose();
 });
 
+test('a run picked in a mounted tab does not stick to the tab after it sleeps and remounts', async () => {
+    const { provider, view } = makeEnv({ runs: RUNS, details: DETAILS });
+    const first = await provider.mountTab({ id: 'tool-output:main' }, view);
+    await provider.openToolOutputTab({ runId: 'r1' });
+    await wait();
+    await first.dispose(); // 休眠
+    const again = await provider.mountTab({ id: 'tool-output:main' }, view);
+    assert.equal(view.querySelector('.side-tool-output-command').textContent, 'npm test', 'follows the latest run again');
+    await again.dispose();
+});
+
 test('a run requested before the tab mounts is honoured', async () => {
     const { provider, view } = makeEnv({ runs: RUNS, details: DETAILS });
     await provider.openToolOutputTab({ runId: 'r1' });

@@ -507,7 +507,7 @@
     "dynamicSites": [
       {
         "file": "modules/ipc/domainActivator.js",
-        "line": 131,
+        "line": 136,
         "kind": "event-listener",
         "match": "ipcMain.handle(channel"
       }

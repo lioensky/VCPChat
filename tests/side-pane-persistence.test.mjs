@@ -181,3 +181,38 @@ test('restoring after the host picked the conversation mounts nothing from anoth
     await second.controller.dispose();
     second.dom.window.close();
 });
+
+test('a layout over the total budget drops the oldest large tabs but keeps the active one', async () => {
+    const { MAX_PERSISTED_LAYOUT_CHARS } = await import('../modules/ui-system/side-pane/side-pane-persistence.js');
+    const big = i => ({ id: `diff:${i}`, kind: 'notes', title: `d${i}`, payload: { oldCode: 'x'.repeat(60 * 1024), n: i } });
+    const tabs = Array.from({ length: 20 }, (_, i) => big(i));
+    const data = serializeLayout({ tabs, activeTabId: 'diff:0' }, canPersist);
+    assert.ok(JSON.stringify(data).length <= MAX_PERSISTED_LAYOUT_CHARS + 1024);
+    assert.equal(data.activeTabId, 'diff:0', 'the active tab survives even though it is the oldest');
+    assert.ok(data.tabs.some(tab => tab.id === 'diff:19'), 'the newest tabs are kept');
+    assert.equal(data.tabs.some(tab => tab.id === 'diff:1'), false, 'older tabs are dropped first');
+});
+
+test('a quota error still saves the tab list and conversation memory without the large tabs', async () => {
+    const { createSidePaneLayoutStore } = await import('../modules/ui-system/side-pane/side-pane-persistence.js');
+    const data = new Map();
+    const storage = {
+        getItem: key => data.get(key) ?? null,
+        setItem(key, value) {
+            if (value.length > 8 * 1024) throw new Error('QuotaExceededError');
+            data.set(key, value);
+        }
+    };
+    const layout = serializeLayout({
+        tabs: [{ id: 'small', kind: 'notes', title: 's' }, { id: 'large', kind: 'notes', title: 'l', payload: { code: 'x'.repeat(20 * 1024) } }],
+        activeTabId: 'large',
+        collapsedByParent: new Map([['agent:a', true]])
+    }, canPersist);
+    const store = createSidePaneLayoutStore({ storage, getLayout: () => layout });
+    store.flush();
+    const saved = parseLayout(store.load(), canPersist);
+    assert.deepEqual(saved.tabs.map(tab => tab.id), ['small']);
+    assert.equal(saved.activeTabId, null);
+    assert.equal(saved.collapsedByParent.get('agent:a'), true);
+    store.dispose();
+});

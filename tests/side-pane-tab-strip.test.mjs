@@ -304,3 +304,27 @@ test('tab strip: a collapsed pane (only padding left) keeps the add button home 
         dom.window.close();
     }
 });
+
+test('controller: the overview only offers recently closed tabs that would show in the current conversation', async () => {
+    const { controller, doc } = setup({ notes: notesProvider });
+    const topicA = { itemType: 'agent', itemId: 'agent', topicId: 'a' };
+    const topicB = { itemType: 'agent', itemId: 'agent', topicId: 'b' };
+    controller.setParent(topicA);
+    await controller.openTab({ id: 'plan-a', kind: 'notes', title: 'Plan A', scopeMode: 'topic', parent: topicA });
+    await controller.openTab({ id: 'tool', kind: 'notes', title: 'Tool', scopeMode: 'global' });
+    await controller.closeTab('plan-a');
+    await controller.closeTab('tool');
+    controller.setParent(topicB);
+
+    const input = doc.querySelector('.side-pane-overview-input');
+    input.value = '';
+    input.dispatchEvent(new doc.defaultView.Event('input'));
+    const titles = [...doc.querySelectorAll('.side-pane-overview-item.recently-closed')].map(item => item.textContent);
+    assert.equal(titles.length, 1, titles.join(' | '));
+    assert.match(titles[0], /Tool/);
+
+    controller.setParent(topicA);
+    input.dispatchEvent(new doc.defaultView.Event('input'));
+    assert.equal(doc.querySelectorAll('.side-pane-overview-item.recently-closed').length, 2, 'back in topic A both come back');
+    controller.dispose();
+});

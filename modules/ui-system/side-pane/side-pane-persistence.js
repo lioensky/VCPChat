@@ -10,6 +10,11 @@ export const PARENT_MEMORY_LIMIT = 50;
 export const MAX_PERSISTED_TABS = 30;
 // 单个标签序列化后超过这个大小就不存（比如很大的 diff），重启后不恢复它
 export const MAX_PERSISTED_TAB_CHARS = 64 * 1024;
+// 整份布局的总预算：30 个带 diff 的代码查看标签能到 ~2MB，同步 setItem 会卡、超配额还会让整份布局停存。
+// 超出时从最早打开的标签丢起（当前标签保留），对照 DSH persistence.ts 按 Session 分 key、坏了就清
+export const MAX_PERSISTED_LAYOUT_CHARS = 512 * 1024;
+// 写入失败（配额满）时的退路：只留小标签再写一次，至少保住标签列表和对话记忆
+const FALLBACK_TAB_CHARS = 4 * 1024;
 
 const TAB_FIELDS = ['id', 'kind', 'title', 'icon', 'closable', 'scopeMode', 'searchHint', 'openedAt'];
 
@@ -78,7 +83,9 @@ function sanitizeEntries(entries, isValidValue) {
 export function serializeLayout({
     tabs = [], activeTabId = null, visible = false, activeByParent = new Map(), collapsedByParent = new Map()
 }, canPersist) {
-    const persistedTabs = tabs.map(tab => sanitizeTab(tab, canPersist)).filter(Boolean).slice(-MAX_PERSISTED_TABS);
+    const persistedTabs = fitBudget(
+        tabs.map(tab => sanitizeTab(tab, canPersist)).filter(Boolean).slice(-MAX_PERSISTED_TABS),
+        activeTabId, MAX_PERSISTED_LAYOUT_CHARS);
     return {
         version: SIDE_PANE_LAYOUT_VERSION,
         tabs: persistedTabs,
@@ -87,6 +94,30 @@ export function serializeLayout({
         visible: visible === true,
         activeByParent: [...activeByParent].slice(-PARENT_MEMORY_LIMIT),
         collapsedByParent: [...collapsedByParent].slice(-PARENT_MEMORY_LIMIT)
+    };
+}
+
+/** 从最新的标签往回累加体积，超出预算的较早标签不存；当前标签无论如何都留着 */
+function fitBudget(tabs, activeTabId, budget) {
+    const sizes = tabs.map(tab => JSON.stringify(tab).length);
+    let used = sizes[tabs.findIndex(tab => tab.id === activeTabId)] || 0;
+    const keep = new Set();
+    for (let i = tabs.length - 1; i >= 0; i--) {
+        if (tabs[i].id === activeTabId) { keep.add(i); continue; }
+        if (used + sizes[i] > budget) continue;
+        used += sizes[i];
+        keep.add(i);
+    }
+    return keep.size === tabs.length ? tabs : tabs.filter((_tab, i) => keep.has(i));
+}
+
+/** 写满配额时用：只留小标签，当前标签太大就不记它 */
+export function shrinkLayout(layout) {
+    const tabs = (layout?.tabs || []).filter(tab => JSON.stringify(tab).length <= FALLBACK_TAB_CHARS);
+    return {
+        ...layout,
+        tabs,
+        activeTabId: tabs.some(tab => tab.id === layout?.activeTabId) ? layout.activeTabId : null
     };
 }
 
@@ -122,10 +153,18 @@ export function createSidePaneLayoutStore({ storage, key = SIDE_PANE_LAYOUT_KEY,
     function writeNow() {
         if (timer) { clearTimeout(timer); timer = null; }
         if (!storage || typeof getLayout !== 'function') return;
+        let layout = null;
         try {
-            storage.setItem(key, JSON.stringify(getLayout()));
+            layout = getLayout();
+            storage.setItem(key, JSON.stringify(layout));
         } catch (error) {
-            console.warn('[SidePaneLayout] Failed to save layout:', error);
+            // 多半是配额满了：退一步只存小标签，别让整份布局（含每个对话的收起记忆）从此停存
+            try {
+                if (layout) storage.setItem(key, JSON.stringify(shrinkLayout(layout)));
+                console.warn('[SidePaneLayout] Layout too large to save in full; saved without large tabs:', error);
+            } catch (fallbackError) {
+                console.warn('[SidePaneLayout] Failed to save layout:', fallbackError);
+            }
         }
     }
 

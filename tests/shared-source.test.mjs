@@ -244,3 +244,12 @@ test('mergeCommandRun keeps untouched entries as the same objects', () => {
     assert.equal(merged[1], b);
     assert.deepEqual(mergeCommandRun([a], null), [a]);
 });
+
+test('mergeCommandRun keeps the same number of runs as the main process', async () => {
+    const { COMMAND_RUN_LIMIT } = await import('../modules/ui-system/sources/terminal-command-runs.js');
+    let runs = [];
+    for (let i = 0; i < COMMAND_RUN_LIMIT + 5; i++) runs = mergeCommandRun(runs, { id: `r${i}`, status: 'running' });
+    assert.equal(runs.length, COMMAND_RUN_LIMIT);
+    assert.equal(runs[0].id, `r${COMMAND_RUN_LIMIT + 4}`);
+    assert.equal(runs.some(run => run.id === 'r0'), false, 'runs the main process evicted are dropped');
+});

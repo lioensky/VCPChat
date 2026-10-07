@@ -1961,7 +1961,7 @@ if (!gotTheLock) {
         }
 
         // 只释放用过的侧栏领域，没激活过的不会为了退出而加载
-        domainActivator.disposeAll();
+        domainActivator.disposeAll({ final: true });
         stateSubscriptions.dispose();
 
         // 1. 停止所有底层监听器

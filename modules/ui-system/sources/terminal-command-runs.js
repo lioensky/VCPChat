@@ -6,13 +6,16 @@
 import { createSharedSource } from '../shared-source.js';
 
 const sources = new WeakMap();
+// 与主进程 commandRunStore 的 COMMAND_RUN_LIMIT 一致：主进程淘汰旧记录时不发通知，这边按同样的条数截掉，
+// 否则选择器里会一直列着已经读不到的命令
+export const COMMAND_RUN_LIMIT = 30;
 
 /** 推送来的是单条摘要：已有的就合并，新的放最前面。只替换变了的那一条，其余对象保持原样。 */
 export function mergeCommandRun(runs, summary) {
     const list = Array.isArray(runs) ? runs : [];
     if (!summary?.id) return list;
     const index = list.findIndex(run => run.id === summary.id);
-    if (index < 0) return [summary, ...list];
+    if (index < 0) return [summary, ...list].slice(0, COMMAND_RUN_LIMIT);
     const next = list.slice();
     next[index] = { ...list[index], ...summary };
     return next;
