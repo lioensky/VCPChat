@@ -283,15 +283,60 @@ test('records written before delta storage still read; an oversized old file is 
     } finally { cleanup(); }
 });
 
-test('usage keeps cached and reasoning tokens; streamed requests ask for usage without overriding the caller', () => {
-    const { normalizeUsage, withStreamUsage } = require('../modules/modelTrajectory');
+test('usage keeps cached and reasoning tokens', () => {
+    const { normalizeUsage } = require('../modules/modelTrajectory');
     assert.deepEqual(normalizeUsage({ prompt_tokens: 100, completion_tokens: 30, total_tokens: 130, prompt_tokens_details: { cached_tokens: 64 }, completion_tokens_details: { reasoning_tokens: 12 } }),
         { inputTokens: 100, outputTokens: 30, totalTokens: 130, cachedInputTokens: 64, reasoningTokens: 12 });
     assert.equal(normalizeUsage({ input_tokens: 10, output_tokens: 2, cache_read_input_tokens: 8 }).cachedInputTokens, 8);
     assert.equal(normalizeUsage({ prompt_tokens: 10, completion_tokens: 2, prompt_cache_hit_tokens: 6 }).cachedInputTokens, 6);
     assert.deepEqual(normalizeUsage({ prompt_tokens: 5 }), { inputTokens: 5, outputTokens: undefined, totalTokens: 5 });
     assert.equal(normalizeUsage({}), null);
-    assert.deepEqual(withStreamUsage({ stream: true }).stream_options, { include_usage: true });
-    assert.deepEqual(withStreamUsage({ stream: true, stream_options: { include_usage: false } }).stream_options, { include_usage: false });
-    assert.equal(withStreamUsage({ stream: false }).stream_options, undefined);
+});
+
+test('long agent ids keep one trajectory file per topic; short keys keep their old file names', () => {
+    const { sanitizeFileKey, sessionKeyFromContext } = require('../modules/modelTrajectory');
+    assert.equal(sanitizeFileKey('agent_a__topic_1'), 'agent_a__topic_1');
+    const agentId = `${'名'.repeat(100)}_1700000000000`;
+    const keys = ['topic_1', 'topic_2', 'sidechat_1791000000000_abcdef'].map(topicId => sanitizeFileKey(sessionKeyFromContext({ agentId, topicId })));
+    assert.equal(new Set(keys).size, 3);
+    for (const key of keys) assert.ok(key.length <= 120, key);
+    assert.notEqual(sanitizeFileKey(sessionKeyFromContext({ agentId: `${agentId}x`, topicId: 'topic_1' })), keys[0]);
+});
+
+test('clearOwner removes every topic file of that agent and nothing of other agents', async () => {
+    const { recorder, rootDir, cleanup } = tempRecorder();
+    try {
+        const longAgent = `${'长'.repeat(70)}_1700000000000`;
+        const sessions = ['agent_a__topic_1', 'agent_a__sidechat_1791000000000_abcdef', 'agent_ab__topic_1', 'agent_b__topic_1',
+            `${longAgent}__topic_1`, `${longAgent}__topic_2`];
+        for (const sessionKey of sessions) {
+            const call = recorder.begin({ sessionKey, model: 'm', messages: [{ role: 'user', content: 'q' }] });
+            call.finish({ response: { choices: [{ message: { content: 'a' } }] } });
+        }
+        await new Promise(resolve => setTimeout(resolve, 50));
+        assert.equal(fs.readdirSync(rootDir).length, 6);
+        assert.equal(await recorder.clearOwner('agent_a'), 2);
+        assert.equal(await recorder.clearOwner(longAgent), 2);
+        assert.deepEqual(fs.readdirSync(rootDir).sort(), ['agent_ab__topic_1.jsonl', 'agent_b__topic_1.jsonl']);
+        assert.equal((await recorder.list('agent_a__topic_1')).records.length, 0);
+    } finally { cleanup(); }
+});
+
+test('a call still running when its topic is cleared does not write the file back', async () => {
+    const { recorder, rootDir, cleanup } = tempRecorder();
+    try {
+        const running = recorder.begin({ sessionKey: 'agent_a__sidechat_1791000000000_abcdef', model: 'm', messages: [{ role: 'user', content: 'q' }] });
+        const ownerRunning = recorder.begin({ sessionKey: 'agent_b__topic_1', model: 'm', messages: [{ role: 'user', content: 'q' }] });
+        running.chunk(chunk({ content: 'partial' }));
+        await recorder.clear('agent_a__sidechat_1791000000000_abcdef');
+        await recorder.clearOwner('agent_b');
+        running.finish();
+        ownerRunning.finish({ response: { choices: [{ message: { content: 'a' } }] } });
+        await new Promise(resolve => setTimeout(resolve, 50));
+        assert.deepEqual(fs.readdirSync(rootDir), []);
+        const next = recorder.begin({ sessionKey: 'agent_a__topic_2', model: 'm', messages: [] });
+        next.finish({ response: { choices: [{ message: { content: 'a' } }] } });
+        await new Promise(resolve => setTimeout(resolve, 50));
+        assert.deepEqual(fs.readdirSync(rootDir), ['agent_a__topic_2.jsonl']);
+    } finally { cleanup(); }
 });

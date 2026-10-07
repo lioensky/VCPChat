@@ -13,13 +13,15 @@
  * VCPChat 与原实现不同的地方：
  * - 请求来自渲染进程的 IPC（主聊天）或群聊主进程模块，没有统一的 agent 层，所以由调用方 begin() / chunk() / finish()；
  * - 工具调用写在回答原文里（TOOL_REQUEST 块），不是 OpenAI tool_calls，原文原样记下，由界面解析；
- * - 服务端不一定回报 token 用量，缺失时按字符数粗估并标记 estimated；
+ * - 服务端不一定回报 token 用量，缺失时按字符数粗估并标记 estimated；请求体不加 stream_options：
+ *   VCP 服务端把请求原样转给各家后端，不认这个字段的后端会直接 400，主聊天跟着发不出去；
  * - API Key 永远不进记录：begin() 根本不接收它，模型参数里疑似密钥的字段也会被剔除。
  * 记录器的任何方法都不会抛错、也不会阻塞聊天链路。
  */
 
 'use strict';
 
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
@@ -128,13 +130,6 @@ function normalizeUsage(raw) {
     };
 }
 
-/** 流式请求要求服务端在最后一个数据块里带上 token 用量（OpenAI 的 stream_options.include_usage）；调用方已指定时不覆盖。 */
-function withStreamUsage(body) {
-    if (!body || typeof body !== 'object' || body.stream !== true || body.stream_options !== undefined) return body;
-    body.stream_options = { include_usage: true };
-    return body;
-}
-
 const nonNegativeInteger = value => (Number.isInteger(value) && value >= 0 ? value : undefined);
 
 /** 消息的比较键；同一个对象只序列化一次。 */
@@ -228,9 +223,32 @@ function parseLines(text) {
     return records;
 }
 
+const MAX_FILE_KEY_CHARS = 120;
+const MAX_KEY_SEGMENT_CHARS = 56;
+const cleanKeyPart = value => String(value).replace(/[^\w.\-一-鿿]+/gu, '_');
+// 过长的一段保留开头便于辨认，再接原值的摘要保证唯一
+const compactKeyPart = value => {
+    const clean = cleanKeyPart(value);
+    if (clean.length <= MAX_KEY_SEGMENT_CHARS) return clean;
+    return `${clean.slice(0, 40)}~${crypto.createHash('sha1').update(String(value)).digest('hex').slice(0, 12)}`;
+};
+
+/**
+ * 会话键 → 文件名。短键与以前完全一样；超长的键（助手名很长时）以前被直接截断，
+ * 同一助手的所有话题会落进同一个文件，删一个话题就清掉全部；现在按「所有者__话题」两段分别压缩。
+ */
 function sanitizeFileKey(sessionKey) {
-    const key = String(sessionKey || 'unscoped').replace(/[^\w.\-一-鿿]+/gu, '_').slice(0, 120);
-    return key || 'unscoped';
+    const raw = String(sessionKey || 'unscoped');
+    const key = cleanKeyPart(raw);
+    if (key.length <= MAX_FILE_KEY_CHARS) return key || 'unscoped';
+    const split = raw.lastIndexOf('__');
+    if (split <= 0) return compactKeyPart(raw);
+    return `${compactKeyPart(raw.slice(0, split))}__${compactKeyPart(raw.slice(split + 2))}`;
+}
+
+/** 某个助手或群组所有话题的轨迹文件名前缀（两种文件名形式都覆盖）。 */
+function ownerFilePrefixes(owner) {
+    return [...new Set([`${cleanKeyPart(owner)}__`, `${compactKeyPart(owner)}__`])];
 }
 
 function createModelTrajectoryRecorder({
@@ -509,7 +527,7 @@ function createModelTrajectoryRecorder({
                         pending.get(call.sessionKey)?.delete(call.id);
                         if (pending.get(call.sessionKey)?.size === 0) pending.delete(call.sessionKey);
                         emit({ sessionKey: call.sessionKey, id: call.id, status });
-                        void persist(call.sessionKey, record);
+                        if (!call.discarded) void persist(call.sessionKey, record);
                     } catch (_error) { /* 记录失败不影响聊天 */ }
                 }
             };
@@ -537,7 +555,14 @@ function createModelTrajectoryRecorder({
         return { records: all.slice(-cap), truncated: snapshot.truncated || all.length > cap, total };
     }
 
+    // 话题已被删掉：还在进行中的调用结束时不再落盘，否则会把刚删的轨迹文件又写出来
+    function discardPending(sessionKey) {
+        for (const call of pending.get(sessionKey)?.values() || []) call.discarded = true;
+        pending.delete(sessionKey);
+    }
+
     async function clear(sessionKey) {
+        discardPending(sessionKey);
         const file = fileOf(sessionKey);
         await enqueueWrite(sessionKey, async () => {
             sessions.delete(file);
@@ -546,12 +571,30 @@ function createModelTrajectoryRecorder({
         emit({ sessionKey, id: null, status: 'cleared' });
     }
 
+    /** 删掉某个助手 / 群组全部话题的轨迹文件（助手或群组被删除时）。 */
+    async function clearOwner(owner) {
+        const prefixes = ownerFilePrefixes(owner);
+        for (const sessionKey of [...pending.keys()]) {
+            if (prefixes.some(prefix => path.basename(fileOf(sessionKey)).startsWith(prefix))) discardPending(sessionKey);
+        }
+        let names = [];
+        try { names = await fs.promises.readdir(rootDir); } catch { return 0; }
+        let removed = 0;
+        for (const name of names) {
+            if (!name.endsWith('.jsonl') || !prefixes.some(prefix => name.startsWith(prefix))) continue;
+            const file = path.join(rootDir, name);
+            sessions.delete(file);
+            try { await fs.promises.rm(file, { force: true }); removed += 1; } catch {}
+        }
+        return removed;
+    }
+
     function subscribe(listener) {
         listeners.add(listener);
         return () => listeners.delete(listener);
     }
 
-    return { begin, list, clear, subscribe, getDirectory: () => rootDir, fileOf };
+    return { begin, list, clear, clearOwner, subscribe, getDirectory: () => rootDir, fileOf };
 }
 
 /** 话题的轨迹键：群聊按 群组 + 话题，单聊按 Agent + 话题；上下文不全时归到 unscoped。 */
@@ -592,6 +635,13 @@ function clearTrajectoryOf(context) {
     return sharedRecorder.clear(sessionKey).catch(() => {});
 }
 
+/** 助手或群组被删除时删掉它所有话题的轨迹文件；没配置或缺 id 时什么也不做。 */
+function clearTrajectoriesOfOwner({ agentId, groupId } = {}) {
+    const owner = groupId || agentId;
+    if (!sharedRecorder || !owner) return Promise.resolve(0);
+    return sharedRecorder.clearOwner(String(owner)).catch(() => 0);
+}
+
 function beginTrajectoryCall(args) {
     try {
         return sharedRecorder && args ? sharedRecorder.begin(args) : NOOP_CALL;
@@ -606,12 +656,12 @@ module.exports = {
     getSharedRecorder,
     beginTrajectoryCall,
     clearTrajectoryOf,
+    clearTrajectoriesOfOwner,
     sessionKeyFromContext,
     sourceFromContext,
     normalizeMessage,
     normalizeUsage,
     estimateTokens,
     sanitizeFileKey,
-    withStreamUsage,
     expandRecords
 };

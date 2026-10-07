@@ -416,6 +416,18 @@ function initialize(paths) {
     });
 }
 
+// 创建到一半就失败的侧聊：有标记但从没绑定父话题、没写元数据、记录为空，而且不是刚建的。
+// 它不会出现在任何列表里，也不属于任何父话题；顺带清掉，免得一直留在磁盘上
+const ABANDONED_CREATION_MS = 10 * 60 * 1000;
+async function isAbandonedCreation(entryDir, marker) {
+    if (marker.parentTopicId !== null || !(Date.now() - Number(marker.createdAt) > ABANDONED_CREATION_MS)) return false;
+    if (await fs.pathExists(path.join(entryDir, 'sidechat-metadata.json'))) return false;
+    try {
+        const history = await fs.readJson(path.join(entryDir, 'history.json'));
+        return Array.isArray(history) && history.length === 0;
+    } catch (error) { return error?.code === 'ENOENT'; }
+}
+
 // 删除父话题时一并删除挂在它下面的辅助对话；只认带侧聊标记且父话题匹配的目录
 async function removeSideChatChildrenOfParent({ USER_DATA_DIR, agentId, parentTopicId }) {
     const safeAgentId = validateSegment(String(agentId || ''));
@@ -442,8 +454,8 @@ async function removeSideChatChildrenOfParent({ USER_DATA_DIR, agentId, parentTo
         }
         try {
             if (marker?.schemaVersion !== 1 || marker.ephemeral !== true ||
-                marker.agentId !== safeAgentId || marker.topicId !== entry.name ||
-                marker.parentTopicId !== safeParentId) continue;
+                marker.agentId !== safeAgentId || marker.topicId !== entry.name) continue;
+            if (marker.parentTopicId !== safeParentId && !await isAbandonedCreation(entryDir, marker)) continue;
             await removeChildDir(entryDir);
             await clearTrajectoryOf({ agentId: safeAgentId, topicId: entry.name });
             removed += 1;

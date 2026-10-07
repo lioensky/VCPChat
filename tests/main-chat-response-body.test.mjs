@@ -286,3 +286,18 @@ test('sender navigation aborts the real HTTP stream without delivering into the 
         assert.equal(f.sender.eventNames().length, 0);
     } finally { f.close(); await server.close(); }
 });
+
+// VCP 服务端把请求体原样转给后端；不认识的字段（如 stream_options）会让部分后端直接 400，主聊天就发不出去了
+test('the streamed request body does not ask the server for stream usage', async () => {
+    let requestBody = null;
+    const f = route(async (url, options) => {
+        requestBody = JSON.parse(options.body);
+        return { ok: true, body: new ReadableStream({ start(controller) { controller.enqueue(encode('data: [DONE]\n\n')); controller.close(); } }) };
+    });
+    try {
+        await f.start(); await waitFor(() => f.sent.length === 1 && !f.tasks().length);
+        assert.equal(requestBody.stream, true);
+        assert.equal(requestBody.requestId, 'same-message');
+        assert.equal('stream_options' in requestBody, false);
+    } finally { f.close(); }
+});

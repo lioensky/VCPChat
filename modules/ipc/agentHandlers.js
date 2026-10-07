@@ -3,6 +3,7 @@ const { ipcMain } = require('electron');
 const fs = require('fs-extra');
 const path = require('path');
 const { pathToFileURL } = require('url');
+const { clearTrajectoriesOfOwner } = require('../modelTrajectory');
 
 let AGENT_DIR_CACHE; // Cache the agent directory path
 let USER_DATA_DIR_CACHE; // Cache the user data directory path
@@ -451,6 +452,7 @@ function initialize(context) {
             const userDataAgentDir = path.join(USER_DATA_DIR, agentId);
             if (await fs.pathExists(agentDir)) await fs.remove(agentDir);
             if (await fs.pathExists(userDataAgentDir)) await fs.remove(userDataAgentDir);
+            await clearTrajectoriesOfOwner({ agentId }); // 侧栏「调用轨迹」按话题落盘的请求记录，助手没了就一起删
             invalidateCaches();
             return { success: true, message: `Agent ${agentId} 已删除。` };
         } catch (error) {
