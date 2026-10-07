@@ -220,8 +220,13 @@ export function createConversationStatusPanel({
         refresh();
     }, { label: 'status-panel' });
 
+    // 点了新话题、还没收到它的记录前为 true
+    let historyPending = false;
+
     function readScope() {
         if (!scoped) return;
+        // 刚点了新话题、它的记录还没载入：手上的记录还是上一个话题的，不能拿来圈定
+        if (historyPending) { scope = { projectIds: [], commands: new Set() }; scopeKey = scopeSignature(scope); return; }
         try { scope = collectConversationScope(getHistory()); } catch (_e) { scope = { projectIds: [], commands: new Set() }; }
         scopeKey = scopeSignature(scope);
     }
@@ -507,11 +512,21 @@ export function createConversationStatusPanel({
         return layer;
     }
 
-    // 切换助手 / 话题：先清空上一个会话的内容，再按新会话的聊天记录重新取；
-    // 历史是异步载入的，之后记录的每次写入（载入、新工具调用）都会重新圈定范围。
+    // 切换助手 / 话题：点选当下就清空上一个会话的内容（settled: false），新话题的记录载入后
+    // （第一次记录写入或切换完成）再圈定；之后记录的每次写入（新工具调用）都会重新圈定范围。
     function watchConversation() {
-        const onSwitched = () => {
+        let followedKey = null;
+        const onSwitched = (event) => {
             if (disposed) return;
+            const key = event ? `${event.item?.type || ''}:${event.item?.id || ''}:${event.topicId || ''}` : null;
+            const settled = event?.settled !== false;
+            // 同一次切换的完成通知：记录已经是新话题的了，按它重新圈定，不再先清空
+            if (key !== null && key === followedKey) {
+                if (settled && historyPending) { historyPending = false; refresh(); }
+                return;
+            }
+            followedKey = key;
+            historyPending = !settled;
             scope = { projectIds: [], commands: new Set() };
             scopeKey = scopeSignature(scope);
             summary = null;
@@ -528,6 +543,7 @@ export function createConversationStatusPanel({
         const rescope = () => {
             timer = null;
             if (disposed) return;
+            if (historyPending) { historyPending = false; refresh(); return; }
             let next;
             try { next = scopeSignature(collectConversationScope(getHistory())); } catch (_e) { return; }
             if (next !== scopeKey) refresh();

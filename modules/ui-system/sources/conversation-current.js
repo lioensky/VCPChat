@@ -66,3 +66,18 @@ export function watchConversationHistory(listener) {
         listener(value);
     });
 }
+
+/**
+ * 跟随主聊天切换会话：点选的当下通知一次（settled: false，历史还在载入、渲染），载入完成再通知一次（settled: true）。
+ * 大话题的历史要渲染好几秒，只等完成事件的话这段时间侧栏一直显示上一个话题。
+ * @returns {(() => void) | null} 两个通知都接不上时返回 null
+ */
+export function followConversationSelection(chatManager, callback) {
+    const offIntent = chatManager?.onSelectionIntent?.(event => callback({ ...event, settled: false }));
+    const offCommit = chatManager?.onSelectionChange?.(event => callback({ ...event, settled: true }));
+    if (typeof offIntent !== 'function' && typeof offCommit !== 'function') return null;
+    return () => {
+        if (typeof offIntent === 'function') offIntent();
+        if (typeof offCommit === 'function') offCommit();
+    };
+}

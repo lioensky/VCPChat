@@ -4,6 +4,7 @@ import { JSDOM } from 'jsdom';
 import { createModelTrajectorySideProvider, trajectoryKeyFor, EXPANSION_KINDS } from '../modules/ui-system/side-pane/modelTrajectorySideProvider.js';
 import { createSidePaneRootScope } from '../modules/ui-system/side-pane/side-pane-occurrence.js';
 import { waitFor } from './helpers/wait-for.mjs';
+import { defineModelTrajectoryTabType } from '../modules/ui-system/side-pane/tab-types/model-trajectory.js';
 
 // 只冲掉 IPC stub 的 promise；setImmediate 不被 mock.timers 接管
 const settle = async () => { for (let i = 0; i < 5; i += 1) await new Promise(resolve => setImmediate(resolve)); };
@@ -635,4 +636,37 @@ test('opening the trajectory measures every open row in one frame: all heights a
         assert.equal(row.querySelector('.side-traj-more').hidden, false);
     }
     await handle.dispose();
+});
+
+test('picking a topic whose history renders slowly moves the trajectory tab at once, not when rendering finishes', async () => {
+    // 模拟主聊天：点选当下发 intent，历史渲染完（大话题要好几秒）才发 selection change
+    const intent = new Set();
+    const committed = new Set();
+    const chatManager = {
+        onSelectionIntent: cb => { intent.add(cb); return () => intent.delete(cb); },
+        onSelectionChange: cb => { committed.add(cb); return () => committed.delete(cb); }
+    };
+    const env = makeEnv();
+    let item = { id: 'agent1', name: '小助手' };
+    let topicId = 't1';
+    const tabType = defineModelTrajectoryTabType({
+        document: env.doc, window: env.dom.window, chatAPI: env.api, uiHelper: {},
+        sidePaneController: { openTab: async () => ({ focus() {} }), setVisible() {} },
+        selectedItemRef: { get: () => item }, topicIdRef: { get: () => topicId }, chatManager
+    });
+    const handle = await tabType.provider.mountTab({ id: 'model-trajectory:main' }, env.view);
+    assert.equal(env.state.lists.at(-1)[0], 'agent1__t1');
+
+    topicId = 't-big';
+    intent.forEach(cb => cb({ item, topicId }));
+    // 渲染还没完成，selection change 还没来
+    await waitFor(() => env.state.lists.at(-1)[0] === 'agent1__t-big', { message: 'the trajectory waited for the history render' });
+    const reads = env.state.lists.length;
+
+    committed.forEach(cb => cb({ item, topicId }));
+    await settle();
+    assert.equal(env.state.lists.length, reads, 'the finished render does not read the same conversation again');
+
+    await handle.dispose();
+    assert.equal(intent.size + committed.size, 0, 'both notices are released with the tab');
 });

@@ -412,12 +412,12 @@ test('reveal targets resolve against the repository root when the workspace is a
     assert.equal(item.path, 'pkg/sub/keep.txt');
 
     const target = await gitService.resolveRevealTarget(workspace, item.path);
-    assert.equal(fs.realpathSync(target), fs.realpathSync(path.join(root, 'pkg', 'sub', 'keep.txt')));
+    assert.equal(fs.realpathSync.native(target), fs.realpathSync.native(path.join(root, 'pkg', 'sub', 'keep.txt')));
     await assert.rejects(gitService.resolveRevealTarget(workspace, 'README.md'), /不在工作区内/);
 
     // 代码查看器给的是相对工作区的路径
     const fromViewer = await gitService.resolveRevealTarget(workspace, 'sub/keep.txt', { base: 'workspace' });
-    assert.equal(fs.realpathSync(fromViewer), fs.realpathSync(path.join(root, 'pkg', 'sub', 'keep.txt')));
+    assert.equal(fs.realpathSync.native(fromViewer), fs.realpathSync.native(path.join(root, 'pkg', 'sub', 'keep.txt')));
     await assert.rejects(gitService.resolveRevealTarget(workspace, '../README.md', { base: 'workspace' }), /不在工作区内/);
 });
 

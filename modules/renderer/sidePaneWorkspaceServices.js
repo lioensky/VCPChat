@@ -3,7 +3,7 @@ import { createMessageFileChanges } from '../ui-system/message-file-changes.js';
 import { createConversationStatusPanel } from '../ui-system/conversation-status-panel.js';
 import { getParentKey } from '../ui-system/side-pane/side-pane-state.js';
 import { followGitWorkspace } from '../ui-system/side-pane/git/git-view.js';
-import { watchConversationHistory } from '../ui-system/sources/conversation-current.js';
+import { followConversationSelection, watchConversationHistory } from '../ui-system/sources/conversation-current.js';
 
 export function createSidePaneWorkspaceServices({ doc, win, chatAPI, chatManager, uiHelper, historyRef, controller, codeViewerProvider, toolOutputProvider, planDetailProvider }) {
     const owners = [];
@@ -42,7 +42,7 @@ export function createSidePaneWorkspaceServices({ doc, win, chatAPI, chatManager
         onScopeWorkspace: (workspace) => followGitWorkspace(win, workspace.id),
         getHistory: () => historyRef.get() || [],
         onHistoryChange: (callback) => watchConversationHistory(callback),
-        onConversationChange: (callback) => chatManager?.onSelectionChange?.(callback),
+        onConversationChange: (callback) => followConversationSelection(chatManager, callback),
         toggleButton: doc.getElementById('toggleStatusPanelBtn')
     });
     conversationStatusPanel.mount();

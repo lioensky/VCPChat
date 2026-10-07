@@ -834,6 +834,43 @@ test('scoped panel: a project mentioned after the history loaded appears without
     assert.equal(conversation.historyListeners.size, 0);
 });
 
+test('scoped panel: a picked topic clears the old one at once and scopes the new one when its history lands, before the slow render finishes', async () => {
+    const now = Date.now();
+    const runs = [
+        { id: 'mine', command: 'git status', status: 'completed', startedAt: now - 2000, endedAt: now - 1000 },
+        { id: 'theirs', command: 'npm test', status: 'completed', startedAt: now - 2000, endedAt: now - 1000 }
+    ];
+    const { doc, panel, conversation } = scopedSetup({
+        history: [{ role: 'assistant', content: [forgeCall('p1'), psCall('git status')].join('\n') }],
+        api: { terminalListCommandRuns: async () => ({ success: true, data: runs }), onTerminalCommandRunChanged: () => () => {} }
+    });
+    const emit = event => conversation.switchListeners.forEach(cb => cb(event));
+    const shownRuns = () => [...doc.querySelectorAll('[data-run-id]')].map(row => row.dataset.runId);
+    panel.mount();
+    await flush();
+    assert.deepEqual(shownRuns(), ['mine']);
+
+    // 点了新话题：历史还是上一个话题的，面板不能拿它来显示
+    const next = { item: { type: 'agent', id: 'a1' }, topicId: 't-big' };
+    emit({ ...next, settled: false });
+    await flush();
+    assert.equal(q(doc, '.zc-status-layer').hidden, true, 'the previous topic\'s status is gone as soon as the new topic is picked');
+    assert.equal(doc.querySelectorAll('[data-status-section="plan"]').length, 0);
+
+    // 新话题的记录载入（渲染还要好几秒）：这时就按它圈定，不等切换完成
+    conversation.history = [{ role: 'assistant', content: psCall('npm test') }];
+    conversation.historyListeners.forEach(cb => cb());
+    await new Promise(resolve => setTimeout(resolve, 900));
+    assert.deepEqual(shownRuns(), ['theirs']);
+
+    // 渲染完成的通知：同一个话题，不再清空重来
+    emit({ ...next, settled: true });
+    assert.deepEqual(shownRuns(), ['theirs'], 'the settled notice for the same topic does not blank the panel');
+    await flush();
+    assert.deepEqual(shownRuns(), ['theirs']);
+    panel.dispose();
+});
+
 test('switching workspace while staging cannot commit or push the new workspace', async () => {
     let release;
     const gate = new Promise(resolve => { release = resolve; });

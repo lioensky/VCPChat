@@ -1,4 +1,5 @@
 import { createLazyProvider } from './lazy-provider.js';
+import { followConversationSelection } from '../../sources/conversation-current.js';
 
 export function defineModelTrajectoryTabType({ document: doc, window: win, chatAPI, sidePaneController, uiHelper, selectedItemRef, topicIdRef, chatManager }) {
     const provider = createLazyProvider(async () => {
@@ -6,7 +7,7 @@ export function defineModelTrajectoryTabType({ document: doc, window: win, chatA
         return createModelTrajectorySideProvider({
             document: doc, api: chatAPI || win.electronAPI, sidePaneController, uiHelper,
             getConversation: () => ({ item: selectedItemRef.get(), topicId: topicIdRef.get() }),
-            onConversationChange: (callback) => chatManager?.onSelectionChange?.(callback)
+            onConversationChange: (callback) => followConversationSelection(chatManager, callback)
         });
     }, ['openModelTrajectoryTab'], { label: '调用轨迹', notify: (message, type) => uiHelper?.showToastNotification?.(message, type) });
     return Object.freeze({

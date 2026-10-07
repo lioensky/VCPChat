@@ -324,7 +324,7 @@ const gitAvailable = (() => { try { execFileSync('git', ['--version'], { stdio: 
 test('a real repository: a subscribed window hears about an edited file and a new commit', { skip: gitAvailable ? false : 'git 不可用', timeout: 60_000 }, async t => {
     const { gitHandlers, handlers } = loadGitHandlers();
     const subscriptions = createStateSubscriptions({ logger: quiet });
-    const repo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'vcp-git-watch-repo-')));
+    const repo = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'vcp-git-watch-repo-')));
     t.after(() => { gitHandlers.dispose(); subscriptions.dispose(); fs.rmSync(repo, { recursive: true, force: true }); });
     const git = args => execFileSync('git', args, { cwd: repo, stdio: 'ignore' });
     git(['init', '-q']);
@@ -391,7 +391,7 @@ test('a repository the app can only partly watch tells subscribed windows, and l
     const { gitHandlers } = loadGitHandlers();
     const { watch } = fakeWatch();
     const subscriptions = createStateSubscriptions({ logger: quiet });
-    const repo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'vcp-git-watch-degraded-')));
+    const repo = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'vcp-git-watch-degraded-')));
     t.after(() => { gitHandlers.dispose(); subscriptions.dispose(); fs.rmSync(repo, { recursive: true, force: true }); });
     execFileSync('git', ['init', '-q'], { cwd: repo, stdio: 'ignore' });
     const workspaceService = { list: () => [{ id: 'ws1', alias: 'demo', path: repo, enabled: true }] };
