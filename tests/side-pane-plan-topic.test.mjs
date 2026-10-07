@@ -211,6 +211,37 @@ for (const settlement of ['resolve', 'reject']) {
     });
 }
 
+test('typing into the history filter with an input method keeps the same input element until composition ends', async () => {
+    const requests = [];
+    const { provider, tab, view, dom } = makeTopicEnv({ api: {
+        projectForgeSearchHistory(params) {
+            requests.push(params);
+            return Promise.resolve({ success: true, data: [] });
+        }
+    } });
+    const handle = await provider.mountTab(tab, view);
+    try {
+        const input = view.querySelector('[data-filter="keyword"]');
+        input.focus();
+        input.dispatchEvent(new dom.window.CompositionEvent('compositionstart'));
+        input.value = 'zhong';
+        input.dispatchEvent(new dom.window.InputEvent('input', { isComposing: true }));
+        await new Promise(resolve => setTimeout(resolve, 400));
+        assert.equal(view.querySelector('[data-filter="keyword"]'), input, 'the composing input is not replaced');
+        assert.equal(requests.length, 0, 'no search while composing');
+
+        input.value = '中';
+        input.dispatchEvent(new dom.window.CompositionEvent('compositionend'));
+        await new Promise(resolve => setTimeout(resolve, 400));
+        assert.equal(requests.length, 1);
+        assert.equal(requests[0].keyword, '中');
+        assert.equal(dom.window.document.activeElement.dataset.filter, 'keyword');
+    } finally {
+        handle.dispose();
+        dom.window.close();
+    }
+});
+
 test('a node opens its diff and can be reverted with a remembered signature; the revert joins the topic', async () => {
     const { provider, calls, tab, view, dom, storage } = makeTopicEnv();
     const handle = await provider.mountTab(tab, view);

@@ -54,6 +54,7 @@
     "check:artifact-plane": "node scripts/check-artifact-plane.mjs",
     "test:built-artifact-smoke": "node scripts/test-built-artifact-smoke.mjs",
     "test:chat-transcript-snapshot": "node scripts/test-chat-transcript-snapshot.mjs",
+    "test:side-pane": "node --test tests/side-pane-*.test.mjs tests/side-chat-*.test.mjs tests/side-browser-address.test.mjs tests/side-plan-revert-confirmation.test.mjs tests/sidebar-resizer-lifecycle.test.mjs tests/conversation-status-panel.test.mjs tests/domain-activator.test.js tests/browser-handlers.test.js tests/git-service.test.js tests/git-watcher.test.js tests/git-file-diff.test.mjs tests/git-changes-source.test.mjs tests/git-workspace-source.test.mjs",
     "check:chat-evidence": "node scripts/check-chat-evidence.mjs",
     "check:chat-release-evidence": "node scripts/check-chat-release-evidence.mjs",
     "write:chat-evidence-manifest": "node scripts/write-chat-evidence-manifest.mjs",

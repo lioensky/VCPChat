@@ -54,6 +54,9 @@ jobs:
       - name: Run Chat Kernel tests
         run: npm run test:chat-kernel
 
+      - name: Run side pane tests
+        run: npm run test:side-pane
+
       - name: Run Chat contract evidence gate
         env:
           VCPCHAT_PACKAGED_ARTIFACT_SMOKE_OUTPUT: ${{ runner.temp }}/packaged-artifact-smoke.json

@@ -28,7 +28,8 @@ async function fixture(t) {
     const historyPath = queue.getHistoryPath(child.itemId, child.topicId);
     const backup = historyPath + '.backup';
     let blocked = false, gate, saveResult, history = [], sends = 0;
-    const toasts = [], removals = [], writes = [];
+    const toasts = [], removals = [], writes = [], confirms = [];
+    let confirmAnswer = true;
     const dom = new JSDOM('<div id="mount"></div>');
     const doc = dom.window.document;
     const repository = {
@@ -45,7 +46,7 @@ async function fixture(t) {
             parent: { itemId: 'agent', topicId: 'parent' }, child: { itemId: 'agent', topicId: 'child' } },
         chatCapabilities: {
             repository,
-            uiHelper: { showConfirmDialog: async () => true,
+            uiHelper: { showConfirmDialog: async message => { confirms.push(message); return confirmAnswer; },
                 showToastNotification: (message, type) => toasts.push({ message, type }) },
             manager: { sendMessage() { sends++; throw new Error('Unexpected generation'); } },
             createRenderer({ root: list, conversation }) {
@@ -96,7 +97,8 @@ async function fixture(t) {
             new dom.window.MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
     }
     function remove(id) { menu(id); doc.querySelector('[data-side-chat-action="delete"]').click(); }
-    return { doc, handle, initial, toasts, writes, removals, menu, remove, repair,
+    return { doc, handle, initial, toasts, writes, removals, menu, remove, repair, confirms,
+        answerConfirm: answer => { confirmAnswer = answer; },
         history: () => history, read: () => queue.read(child), sends: () => sends,
         failWithResult(result) { saveResult = result; },
         holdSave(promise) { gate = promise; },
@@ -168,4 +170,16 @@ test('pending side deletion keeps typed drafts, blocks send and close, then pers
     assert.deepEqual(await f.handle.requestClose(), { closed: true });
     assert.deepEqual(f.removals, [{ id: 'answer', persist: false }, { id: 'question', persist: false }]);
     assert.equal(f.writes.length, 2, 'one acknowledged save per deletion, no hidden renderer write');
+});
+
+test('closing a side chat that has messages asks first, and keeps it when declined', async t => {
+    const f = await fixture(t);
+    f.answerConfirm(false);
+    assert.deepEqual(await f.handle.requestClose(), { closed: false, reason: 'USER_CANCELED' });
+    assert.equal(f.confirms.length, 1);
+    assert.deepEqual(await f.read(), f.initial);
+
+    f.answerConfirm(true);
+    assert.deepEqual(await f.handle.requestClose(), { closed: true });
+    assert.equal(f.confirms.length, 2);
 });

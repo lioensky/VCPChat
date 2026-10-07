@@ -248,6 +248,8 @@ export function createPlanDetailSideProvider({
             let filterRows = null;
             let filterError = '';
             let filterSeq = 0;
+            // 输入法组字期间整页重绘会替换输入框、打断组字：组字期间不画，组字结束按一次输入处理
+            let composingFilter = false;
             let cancelFilter = null;
             let nodeView = null;
             const navigation = createPlanPageNavigation({ h, button, id: tab.id, onChange: selectPage });
@@ -539,15 +541,23 @@ export function createPlanDetailSideProvider({
                     el.setAttribute('aria-label', placeholder);
                     el.dataset.filter = key;
                     el.value = key === 'file' ? (filters.exactFile || filters.file) : filters[key];
-                    el.addEventListener('input', () => {
+                    const onFilterInput = (event) => {
                         if (key === 'file') { filters.file = el.value.trim(); filters.exactFile = ''; } else filters[key] = el.value.trim();
                         // Invalidate on intent, before the debounce allows an old read to settle.
                         ++filterSeq;
                         filterRows = null;
                         filterError = '';
                         cancelFilter?.();
+                        cancelFilter = null;
+                        if (event?.isComposing || composingFilter) return;
                         cancelFilter = disposed() ? null : own.timeout(() => { cancelFilter = null; runSearch(); }, FILTER_DEBOUNCE_MS, 'filter-debounce');
                         render();
+                    };
+                    el.addEventListener('input', onFilterInput);
+                    el.addEventListener('compositionstart', () => { composingFilter = true; });
+                    el.addEventListener('compositionend', () => {
+                        composingFilter = false;
+                        onFilterInput(null);
                     });
                     return el;
                 };
@@ -728,6 +738,7 @@ export function createPlanDetailSideProvider({
 
             function render() {
                 if (disposed() || nodeView) return;
+                if (composingFilter) return;
                 // 输入框随整页重绘，记下焦点和光标位置
                 const active = doc.activeElement;
                 const focusKey = active && body.contains(active) ? active.dataset?.filter : null;

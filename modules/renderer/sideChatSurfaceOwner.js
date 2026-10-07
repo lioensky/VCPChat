@@ -358,7 +358,8 @@ export async function mountSideChatSurface(container, {
 
     const onSubmit = async (event) => {
         event?.preventDefault?.();
-        if (isDisposed || !isHistoryLoaded || isDeletingMessage) return;
+        // 还在生成时不再起第二次发送：它失败后的清理会清掉正在进行的那次，停止按钮随之消失
+        if (isDisposed || !isHistoryLoaded || isDeletingMessage || activeSendController) return;
         if (!currentModel) {
             updateStatus('请先选择模型', 'error');
             return;
@@ -535,8 +536,18 @@ export async function mountSideChatSurface(container, {
         });
     }
 
+    // 消息里的交互按钮：和主聊一样只发这段文本，不覆盖、也不带上输入框里还没发出去的草稿、引用和附件
     submitInteractiveContent = (text) => {
         if (isDisposed) return;
+        const notify = (message) => chatCapabilities?.uiHelper?.showToastNotification?.(message, 'warning');
+        if (activeSendController || isDeletingMessage || !isHistoryLoaded) {
+            notify('辅助对话正在处理上一条消息，请稍后再点。');
+            return;
+        }
+        if (textarea.value.trim() || references.length > 0 || attachmentsOwner.count > 0) {
+            notify('输入框里还有没发出的内容，请先发送或清空后再点。');
+            return;
+        }
         textarea.value = String(text || '');
         form.requestSubmit();
     };
@@ -639,6 +650,15 @@ export async function mountSideChatSurface(container, {
             if (hasUnsavedChanges) {
                 chatCapabilities?.uiHelper?.showToastNotification?.('无法关闭标签页：存在未保存的历史记录。请点击保存徽标重试，或右键点击徽标放弃更改。', 'warning');
                 return { closed: false, reason: 'UNSAVED_CHANGES' };
+            }
+            // 关闭会删掉子话题；有记录时先确认，免得误点（含「关闭其他 / 全部」）把对话永久删掉
+            const uiHelper = chatCapabilities?.uiHelper;
+            const history = liveConversation?.historyRef?.get?.() || [];
+            if (typeof uiHelper?.showConfirmDialog === 'function' && history.length > 0) {
+                const confirmed = await uiHelper.showConfirmDialog(
+                    `关闭「${descriptor.title || '辅助对话'}」会删除这段辅助对话的全部记录，无法恢复。`,
+                    '关闭辅助对话', '关闭并删除', '取消', true);
+                if (!confirmed) return { closed: false, reason: 'USER_CANCELED' };
             }
             // Cancel active operation and wait for settlement
             if (activeSendController) {
