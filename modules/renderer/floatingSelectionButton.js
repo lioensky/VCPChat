@@ -16,7 +16,14 @@ export function createFloatingSelectionButton({ doc, win, notify }) {
     // 按钮是 fixed 定位在选区视口坐标上；任何滚动或尺寸变化都会让坐标失效（ZCode MarkdownSelectionTooltip 同样在滚动时收起）。
     // 停下来后按选区的新位置再放一次：拖选到边缘时列表会自己滚，滚完不一定还有 selectionchange
     let settleTimer = null;
-    const onViewportChange = () => {
+    const onViewportChange = (event) => {
+        // 只管会移动选区的滚动：侧栏辅助对话流式贴底、终端输出这些别处的滚动一直在发，不能把按钮一直压着
+        const target = event?.type === 'scroll' ? event.target : null;
+        if (target && target.nodeType === 1) {
+            const sel = win.getSelection();
+            const anchor = sel?.rangeCount ? sel.getRangeAt(0).commonAncestorContainer : null;
+            if (!anchor || !target.contains(anchor)) return;
+        }
         if (!floatingBtn.hidden) hide();
         win.clearTimeout(settleTimer);
         settleTimer = win.setTimeout(onSelectionChange, 150);

@@ -33,7 +33,7 @@ module.exports = {
         gitCreateBranch: invoke('git:create-branch', 'workspaceId', 'name', 'startPoint'),
         gitCommitGraph: invoke('git:commit-graph', 'workspaceId', 'options'),
         gitChangeSummary: invoke('git:change-summary', 'workspaceId'),
-        gitRevealPath: invoke('git:reveal-path', 'workspaceId', 'relPath'),
+        gitRevealPath: invoke('git:reveal-path', 'workspaceId', 'relPath', 'base'),
         // 仓库变了（文件改动、暂存、提交、切分支……）；只推给用 subscribeMainState('git.status', workspaceId) 订阅了的窗口
         onGitChanged: on('git:changed'),
 

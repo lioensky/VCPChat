@@ -108,6 +108,8 @@ export function createSideChatMessageActions({
 
     // 打开菜单的那条消息：Esc、Tab 或执行菜单项后焦点回到这里
     let returnFocusTo = null;
+    // 这个辅助对话自己打开的菜单：几个辅助对话同时挂着时共用同一个 #chatContextMenu，每个都在 document 上听 Esc
+    let openedMenu = null;
 
     function closeMenu({ restoreFocus = false } = {}) {
         doc.getElementById(MENU_ID)?.remove();
@@ -190,8 +192,11 @@ export function createSideChatMessageActions({
 
     function onKeydown(event) {
         if (event.key !== 'Escape') return;
-        const ours = doc.getElementById(MENU_ID)?.dataset.sideChatMenu === 'true';
-        closeMenu({ restoreFocus: ours });
+        // 只关自己开的菜单：先跑到的别的辅助对话不能把菜单关掉、再让开菜单的那个丢了焦点去处
+        const menu = doc.getElementById(MENU_ID);
+        if (!menu || menu !== openedMenu) return;
+        openedMenu = null;
+        closeMenu({ restoreFocus: true });
     }
 
     function buildMenu(messageItem, message) {
@@ -346,6 +351,7 @@ export function createSideChatMessageActions({
         const menu = buildMenu(messageItem, message);
         placeMenu(menu, anchor);
         returnFocusTo = messageItem.tabIndex >= 0 || messageItem.hasAttribute('tabindex') ? messageItem : null;
+        openedMenu = menu;
         menu.querySelector('[role="menuitem"]')?.focus?.({ preventScroll: true });
     }
 
@@ -377,8 +383,8 @@ export function createSideChatMessageActions({
             root?.removeEventListener('focusin', onMessageFocusIn);
             doc.removeEventListener('click', onOutsidePointer, true);
             doc.removeEventListener('keydown', onKeydown, true);
-            const menu = doc.getElementById(MENU_ID);
-            if (menu?.dataset.sideChatMenu === 'true') menu.remove();
+            if (openedMenu?.isConnected) openedMenu.remove();
+            openedMenu = null;
         }
     });
 }

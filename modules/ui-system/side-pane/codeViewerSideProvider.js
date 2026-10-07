@@ -320,7 +320,7 @@ export function createCodeViewerSideProvider({
                             toast(`文件路径：${filePath}`, 'info');
                             return;
                         }
-                        const res = await api.gitRevealPath(match.workspace.id, match.relPath);
+                        const res = await api.gitRevealPath(match.workspace.id, match.relPath, 'workspace');
                         if (!res?.success) throw new Error(res?.error || '无法在文件管理器中显示');
                     } catch (error) {
                         toast(error?.message || String(error), 'error');

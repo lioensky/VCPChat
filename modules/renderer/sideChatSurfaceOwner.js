@@ -692,10 +692,12 @@ export async function mountSideChatSurface(container, {
                 chatCapabilities?.uiHelper?.showToastNotification?.('无法关闭标签页：存在未保存的历史记录。请点击保存徽标重试，或右键点击徽标放弃更改。', 'warning');
                 return { closed: false, reason: 'UNSAVED_CHANGES' };
             }
-            // 关闭会删掉子话题；有记录时先确认，免得误点（含「关闭其他 / 全部」）把对话永久删掉
+            // 关闭会删掉子话题；有记录或没发出去的输入时先确认，免得误点（含「关闭其他 / 全部」）把对话永久删掉。
+            // 和没挂载时的 requestTabClose 一样：草稿和引用也算
             const uiHelper = chatCapabilities?.uiHelper;
             const history = liveConversation?.historyRef?.get?.() || [];
-            if (typeof uiHelper?.showConfirmDialog === 'function' && history.length > 0) {
+            const hasInput = Boolean(textarea.value.trim()) || references.length > 0 || attachmentsOwner.count > 0;
+            if (typeof uiHelper?.showConfirmDialog === 'function' && (history.length > 0 || hasInput)) {
                 const confirmed = await uiHelper.showConfirmDialog(
                     `关闭「${descriptor.title || '辅助对话'}」会删除这段辅助对话的全部记录，无法恢复。`,
                     '关闭辅助对话', '关闭并删除', '取消', true);

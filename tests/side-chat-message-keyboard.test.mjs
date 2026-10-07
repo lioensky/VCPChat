@@ -100,3 +100,23 @@ test('Shift+F10 on a message opens a focusable menu that Escape closes back to t
         dom.window.close();
     }
 });
+
+test('with two side chats mounted, Esc on either one\'s message menu returns focus to that message', () => {
+    const dom = new JSDOM(`<div id="a"><div class="message-item assistant" data-message-id="a1">A</div></div><div id="b"><div class="message-item assistant" data-message-id="b1">B</div></div><textarea id="ta"></textarea>`);
+    const { window: win } = dom;
+    const doc = win.document;
+    const mount = id => createSideChatMessageActions({ store: { isDisposed: false }, chatCapabilities: {}, descriptor: {}, doc, root: doc.getElementById(id),
+        textarea: doc.getElementById('ta'), getHistory: () => [{ id: `${id}1`, role: 'assistant', content: 'x' }], isBusy: () => false, updateEmptyState() {}, pinToBottomIfSticky() {} });
+    const owners = [mount('a'), mount('b')];
+    for (const id of ['a', 'b']) {
+        const item = doc.querySelector(`#${id} .message-item`);
+        item.focus();
+        item.dispatchEvent(new win.MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+        assert.equal(doc.activeElement?.getAttribute('role'), 'menuitem');
+        doc.activeElement.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        assert.equal(doc.getElementById('chatContextMenu'), null);
+        assert.equal(doc.activeElement, item, `focus is back on ${id}'s message`);
+    }
+    owners.forEach(owner => owner.dispose());
+    dom.window.close();
+});

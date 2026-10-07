@@ -196,6 +196,7 @@ export function mountGitView(host, {
     // 1000 个改动时打开 Git 页从约 0.75s 降到 0.24s；3000 个时从 1.9s（最长任务 0.74s）降到 0.41s。
     let listItems = [];
     let listMounted = 0;
+    let renderedSource = null;
     const moreObserver = typeof win.IntersectionObserver === 'function'
         ? new win.IntersectionObserver((entries) => {
             if (entries.some(entry => entry.isIntersecting)) mountMoreCards(listMounted + GIT_LIST_BATCH);
@@ -315,13 +316,20 @@ export function mountGitView(host, {
         const focusedCard = list.contains(doc.activeElement) ? doc.activeElement.closest('.side-git-card') : null;
         const focusKey = focusedCard?.dataset.key ?? null;
         const focusIndex = focusedCard ? Array.prototype.indexOf.call(list.children, focusedCard) : -1;
+        // 同一个列表的重绘（agent 改文件时每次推送都会来）至少挂回原来那么多张，并留在原来的滚动位置：
+        // 只挂第一批的话列表变矮，滚动位置被夹回第一百多行
+        const sameList = renderedSource === currentSource && listItems.length > 0;
+        const previouslyMounted = sameList ? listMounted : 0;
+        const previousScrollTop = sameList ? body.scrollTop : null;
         list.innerHTML = '';
         listItems = items;
         listMounted = 0;
+        renderedSource = currentSource;
         // 展开着的文件和有焦点的文件所在批次一起挂上
         const expandedIndex = items.findIndex(item => cardsOwner.isExpanded(item));
         const focusItemIndex = focusKey !== null ? items.findIndex(item => keyOf(item) === focusKey) : -1;
-        mountMoreCards(Math.max(GIT_LIST_BATCH, expandedIndex + 1, focusItemIndex + 1, focusIndex + 1));
+        mountMoreCards(Math.max(GIT_LIST_BATCH, previouslyMounted, expandedIndex + 1, focusItemIndex + 1, focusIndex + 1));
+        if (previousScrollTop !== null) body.scrollTop = previousScrollTop;
         cardsOwner.prefetch(items);
         if (focusKey !== null) {
             const cards = Array.from(list.querySelectorAll('.side-git-card'));

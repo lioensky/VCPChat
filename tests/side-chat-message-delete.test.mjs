@@ -184,6 +184,20 @@ test('closing a side chat that has messages asks first, and keeps it when declin
     assert.equal(f.confirms.length, 2);
 });
 
+test('closing a side chat with no messages but an unsent draft still asks first', async t => {
+    const f = await fixture(t);
+    f.remove('answer');
+    await waitFor(() => !f.doc.querySelector('[data-message-id="answer"]'));
+    f.remove('question');
+    await waitFor(() => !f.doc.querySelector('.message-item'));
+    f.handle.setDraft('a long question I have not sent yet');
+    const before = f.confirms.length;
+    f.answerConfirm(false);
+    assert.deepEqual(await f.handle.requestClose(), { closed: false, reason: 'USER_CANCELED' });
+    assert.equal(f.confirms.length, before + 1, 'the draft alone is worth a confirmation');
+    assert.equal(f.handle.getDraft(), 'a long question I have not sent yet');
+});
+
 test('view trajectory from a side reply asks for the child topic, not the main chat', async t => {
     const f = await fixture(t);
     const executed = [];

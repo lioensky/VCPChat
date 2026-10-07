@@ -411,3 +411,25 @@ test('on Linux the git directory is watched shallowly and refs/ recursively, nev
     ]);
     watcher.dispose();
 });
+
+test('on Linux a linked worktree also watches its own git dir, where its index and HEAD live', async () => {
+    const { watch, opened, emit } = fakeWatch();
+    const common = path.resolve('/repo/.git');
+    const own = path.join(common, 'worktrees', 'feature');
+    const changes = [];
+    const watcher = createGitWatcher({
+        getTargets: async () => ({ root: path.resolve('/wt'), gitDirs: [own, common] }),
+        onChange: id => changes.push(id),
+        watch, platform: 'linux', logger: quiet, exists: dir => dir === path.join(common, 'refs'),
+    });
+    await watcher.start('ws1');
+    assert.deepEqual(opened.map(item => [item.dir, item.options?.recursive]), [
+        [own, false],
+        [common, false],
+        [path.join(common, 'refs'), true]
+    ]);
+    emit(own, 'index'); // git add 在 worktree 里
+    await new Promise(resolve => setTimeout(resolve, 400));
+    assert.deepEqual(changes, ['ws1']);
+    watcher.dispose();
+});

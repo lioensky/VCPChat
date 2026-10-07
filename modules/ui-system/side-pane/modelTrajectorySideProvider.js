@@ -189,6 +189,9 @@ export function createModelTrajectorySideProvider({
             const menu = h('div', 'side-traj-menu');
             menu.hidden = true;
             menu.setAttribute('role', 'menu');
+            menu.setAttribute('aria-label', '自定义展开');
+            menuBtn.setAttribute('aria-haspopup', 'menu');
+            menuBtn.setAttribute('aria-expanded', 'false');
 
             const scroller = h('div', 'side-traj-scroll');
             const state = h('div', 'side-traj-state');
@@ -514,7 +517,7 @@ export function createModelTrajectorySideProvider({
                 const records = data.records;
                 const has = records.length > 0;
                 for (const btn of [searchBtn, menuBtn, toggleAllBtn, clearBtn]) btn.hidden = !has;
-                if (!has) { menu.hidden = true; closeSearch(); }
+                if (!has) { closeMenu(); closeSearch(); }
                 summaryLine.hidden = !has;
                 summaryLine.textContent = '';
                 if (has) {
@@ -751,6 +754,8 @@ export function createModelTrajectorySideProvider({
                 updateAllRows();
             }
             function renderMenu() {
+                // 切换开关会重建菜单项：键盘用户的焦点留在同一项上，不掉到 body
+                const focusedKind = menu.contains(doc.activeElement) ? doc.activeElement.dataset?.trajectoryExpansionKind : null;
                 menu.innerHTML = '';
                 for (const name of EXPANSION_KINDS) {
                     const item = h('button', 'side-traj-menu-item');
@@ -759,18 +764,49 @@ export function createModelTrajectorySideProvider({
                     item.setAttribute('aria-checked', String(commands[name].expanded));
                     item.dataset.trajectoryExpansionKind = name;
                     item.append(h('span', '', EXPANSION_LABELS[name]), h('span', `side-traj-switch${commands[name].expanded ? ' on' : ''}`));
+                    item.tabIndex = -1;
                     item.addEventListener('click', event => { event.stopPropagation(); toggleKind(name); });
                     menu.appendChild(item);
                 }
+                if (focusedKind) menu.querySelector(`[data-trajectory-expansion-kind="${focusedKind}"]`)?.focus();
+            }
+            function closeMenu({ restoreFocus = false } = {}) {
+                if (menu.hidden) return;
+                const hadFocus = menu.contains(doc.activeElement);
+                menu.hidden = true;
+                menuBtn.setAttribute('aria-expanded', 'false');
+                if (restoreFocus || hadFocus) menuBtn.focus();
             }
             function toggleMenu() {
-                menu.hidden = !menu.hidden;
-                if (!menu.hidden) renderMenu();
+                if (!menu.hidden) { closeMenu(); return; }
+                menu.hidden = false;
+                menuBtn.setAttribute('aria-expanded', 'true');
+                renderMenu();
+                // 和 Radix DropdownMenu 一样：打开即把焦点放进菜单，方向键在开关间移动，Esc 或 Tab 收起回到按钮
+                menu.querySelector('[role="menuitemcheckbox"]')?.focus();
             }
             const onDocumentClick = event => {
-                if (!menu.hidden && !menu.contains(event.target) && !menuBtn.contains(event.target)) menu.hidden = true;
+                if (!menu.hidden && !menu.contains(event.target) && !menuBtn.contains(event.target)) closeMenu();
             };
             own.listen(doc, 'click', onDocumentClick);
+            own.listen(menu, 'keydown', event => {
+                if (event.key === 'Escape' || event.key === 'Tab') {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    closeMenu({ restoreFocus: true });
+                    return;
+                }
+                if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+                const items = [...menu.querySelectorAll('[role="menuitemcheckbox"]')];
+                if (!items.length) return;
+                event.preventDefault();
+                const current = items.indexOf(doc.activeElement);
+                let next = 0;
+                if (event.key === 'End') next = items.length - 1;
+                else if (event.key === 'ArrowDown') next = current < 0 ? 0 : (current + 1) % items.length;
+                else if (event.key === 'ArrowUp') next = current < 0 ? items.length - 1 : (current - 1 + items.length) % items.length;
+                items[next].focus();
+            });
 
             // ---------------------------------------------------------------- 定位到某次调用（来自消息的「查看调用轨迹」）
             function focusCall(requestId) {

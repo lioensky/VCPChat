@@ -205,7 +205,14 @@ test('a plan view put to sleep comes back on the same page and scroll position',
     const { provider, view, dom } = makeEnv();
     const first = await provider.mountTab({ id: planTabId('p1'), payload: { projectId: 'p1' } }, view);
     view.querySelector('[data-plan-page="timeline"]').click();
-    view.querySelector('.side-plan-body').scrollTop = 80;
+    const planBody = view.querySelector('.side-plan-body');
+    let shown = true;
+    Object.defineProperty(planBody, 'clientHeight', { configurable: true, get: () => (shown ? 400 : 0) });
+    planBody.scrollTop = 80;
+    planBody.dispatchEvent(new dom.window.Event('scroll'));
+    // 休眠时标签是隐藏的：display:none 的 body 读出来滚动是 0
+    shown = false;
+    planBody.scrollTop = 0;
     const saved = first.captureState();
     assert.deepEqual(saved, { page: 'timeline', scrollTop: 80 });
     first.dispose();

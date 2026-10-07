@@ -237,3 +237,32 @@ test('downloads only reach the system browser right after a real input on that p
     download('https://evil.example/b.exe');
     assert.deepEqual(opened, ['https://ok.example/file.zip'], 'one click hands over one download');
 });
+
+test('a download link opened in a new tab is handed over once, on the click that opened the tab', () => {
+    browserHandlers.initialize();
+    const host = new EventEmitter();
+    host.isDestroyed = () => false;
+    host.sent = [];
+    host.send = (channel, payload) => host.sent.push([channel, payload]);
+    browserHandlers.attachToWindow({ webContents: host });
+    const page = new EventEmitter();
+    page.setWindowOpenHandler = (fn) => { page.openHandler = fn; };
+    host.emit('did-attach-webview', {}, page);
+    const popup = new EventEmitter();
+    popup.setWindowOpenHandler = () => {};
+    host.emit('did-attach-webview', {}, popup);
+    const download = (guest, url, chain = [url]) => {
+        guestSession.emit('will-download', { preventDefault() {} }, { getURL: () => url, getURLChain: () => chain }, guest);
+    };
+    opened.length = 0;
+
+    page.emit('input-event', {}, { type: 'mouseDown' });
+    assert.deepEqual(page.openHandler({ url: 'https://files.example/get?id=1' }), { action: 'deny' });
+    assert.deepEqual(host.sent.at(-1), ['browser:open-tab', { url: 'https://files.example/get?id=1' }]);
+    // 新标签加载这个地址，服务器跳转到真正的文件
+    download(popup, 'https://cdn.example/report.pdf', ['https://files.example/get?id=1', 'https://cdn.example/report.pdf']);
+    download(popup, 'https://cdn.example/report.pdf', ['https://files.example/get?id=1', 'https://cdn.example/report.pdf']);
+    assert.deepEqual(opened, ['https://cdn.example/report.pdf'], 'one click, one download');
+    download(popup, 'https://evil.example/x.exe');
+    assert.deepEqual(opened, ['https://cdn.example/report.pdf']);
+});

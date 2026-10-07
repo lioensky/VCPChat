@@ -88,6 +88,8 @@ export function createSidePaneController({
     const activeTabByParent = new Map(); // parentKey -> tabId，最近 50 个对话
     let isDisposed = false;
     let navigationRevision = 0;
+    // 最近一次按对话定下面板时的 navigationRevision；之后没人动过面板，补回来的标签还可以重新定一次
+    let parentResolvedRevision = -1;
     let controller = null;
     const tabRegistry = createSidePaneTabRegistry({
         providers,
@@ -907,6 +909,9 @@ export function createSidePaneController({
                 : [];
             const untouchedFallback = state.parent && ownTabsBefore.length === 0 && !state.visible
                 && isNotificationsTab(state.activeTabId);
+            // 启动时布局先恢复、辅助对话后补回：这时面板落在全局工具或随布局恢复的本话题标签（比如计划）上，
+            // 但只要补回的是这个对话上次停的标签、期间没人动过面板，也照样回到它
+            const untouchedSinceParent = state.parent && navigationRevision === parentResolvedRevision;
             const added = [];
             for (const rawTab of rawTabs) {
                 if (!rawTab) continue;
@@ -928,14 +933,16 @@ export function createSidePaneController({
             }
             if (added.length === 0) return added;
             navigationRevision++;
-            if (untouchedFallback) {
-                const key = parentKeyOf();
+            const key = state.parent ? parentKeyOf() : '';
+            if (untouchedFallback || (untouchedSinceParent && added.includes(activeTabByParent.get(key)))) {
                 state = SidePaneState.setParent(state, state.parent, {
                     force: true,
                     preferredTabId: activeTabByParent.get(key),
                     collapsedPreference: collapsedByParent.get(key)
                 });
             }
+            // 后台补标签不算用户操作
+            if (untouchedSinceParent) parentResolvedRevision = navigationRevision;
             renderTabList();
             syncViewPanels();
             syncDomVisibility();
@@ -1058,12 +1065,12 @@ export function createSidePaneController({
                 state = SidePaneState.activateTab(state, layout.activeTabId);
                 if (layout.visible) state = SidePaneState.setVisible(state, true);
             }
-            const tabIds = new Set(state.tabs.map(tab => tab.id));
             layout.collapsedByParent.forEach((collapsed, key) => {
                 if (!collapsedByParent.has(key)) rememberBounded(collapsedByParent, key, collapsed);
             });
+            // 不按已恢复的标签过滤：辅助对话不进布局存档，要等读回话题后才补回来，到时还要回到它
             layout.activeByParent.forEach((tabId, key) => {
-                if (!activeTabByParent.has(key) && tabIds.has(tabId)) rememberBounded(activeTabByParent, key, tabId);
+                if (!activeTabByParent.has(key)) rememberBounded(activeTabByParent, key, tabId);
             });
             if (state.parent) {
                 const key = parentKeyOf();
@@ -1073,6 +1080,7 @@ export function createSidePaneController({
                     collapsedPreference: collapsedByParent.get(key)
                 });
             }
+            parentResolvedRevision = navigationRevision;
             renderTabList();
             syncViewPanels();
             // 启动时直接落到存档的开合状态，不播动画
@@ -1109,6 +1117,7 @@ export function createSidePaneController({
                 // 入口是否可用可能取决于当前对话（群聊里不能开辅助对话），换对话时重新列一遍
                 launcher.renderEntries();
             }
+            parentResolvedRevision = navigationRevision;
             renderTabList();
             syncViewPanels();
             syncDomVisibility();

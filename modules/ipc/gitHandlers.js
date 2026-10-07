@@ -161,8 +161,10 @@ function initialize({ workspaceService = null, mainWindow = null, getMainWindow:
     ), { mutates: true });
 
     // 在系统文件管理器中定位文件：只接受工作区内的相对路径，越界一律拒绝。
-    handle('git:reveal-path', async (workspaceId, relPath) => {
-        const target = await gitService.resolveRevealTarget(resolveWorkspaceRoot(workspaceId), relPath);
+    // base 'workspace'：路径相对工作区（代码查看器）；默认相对仓库根（Git 页的状态条目）
+    handle('git:reveal-path', async (workspaceId, relPath, base) => {
+        const target = await gitService.resolveRevealTarget(resolveWorkspaceRoot(workspaceId), relPath,
+            { base: base === 'workspace' ? 'workspace' : 'repo' });
         shell.showItemInFolder(target);
         return { revealed: true };
     });

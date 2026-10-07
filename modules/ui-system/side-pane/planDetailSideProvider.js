@@ -223,6 +223,9 @@ export function createPlanDetailSideProvider({
             const body = h('div', 'side-plan-body');
             scope.append(chrome, body);
             viewElement.appendChild(scope);
+            // 休眠只发生在隐藏时，那时 display:none 的 body 读出来滚动是 0：可见时就记下位置（body 随视图丢弃，监听不用登记）
+            let lastScrollTop = Number(restoredState?.scrollTop) || 0;
+            body.addEventListener('scroll', () => { if (body.clientHeight > 0) lastScrollTop = body.scrollTop; }, { passive: true });
 
             // 这次挂载里长期存在的订阅、定时器、子视图都归 own，控制器释放 view 或调用 dispose 时一起拆掉。
             // 区块、卡片、按钮每次渲染都重建，它们自己的监听跟着元素一起丢弃，不挂到 own 上
@@ -1057,7 +1060,7 @@ export function createPlanDetailSideProvider({
                 },
                 /** 休眠前记下当前页和滚动位置，重新挂载时回到原处 */
                 captureState() {
-                    return { page: navigation.selected, scrollTop: body.scrollTop };
+                    return { page: navigation.selected, scrollTop: body.clientHeight > 0 ? body.scrollTop : lastScrollTop };
                 },
                 dispose() {
                     // DOM 同步清掉：scope 的释放是异步的，不能等它，免得把紧接着重新挂载的内容一起清掉

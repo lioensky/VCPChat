@@ -145,14 +145,16 @@ function createGitWatcher({
                 if (entry.error) reportDegraded(entry);
                 return;
             }
-            for (const dir of outermostDirs(targets.gitDirs || [])) {
-                if (platform === 'linux') {
+            if (platform === 'linux') {
+                // 只浅监听，所以每个 gitDir 都要单独挂：linked worktree 的 index/HEAD 在 .git/worktrees/<名字>/ 下，
+                // 只挂外层的 .git 看不到 git add、切换已有分支
+                for (const dir of new Set((targets.gitDirs || []).map(item => path.resolve(item)))) {
                     open(entry, dir, 'metadata', { recursive: false });
                     const refs = path.join(dir, 'refs');
                     if (exists(refs)) open(entry, refs, 'metadata', { prefix: 'refs/' });
-                } else {
-                    open(entry, dir, 'metadata');
                 }
+            } else {
+                for (const dir of outermostDirs(targets.gitDirs || [])) open(entry, dir, 'metadata');
             }
             const watchContent = platform !== 'linux' && targets.root;
             if (watchContent) open(entry, targets.root, 'content');

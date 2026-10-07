@@ -86,6 +86,17 @@ test('empty-history side chats restore browser drafts, references and models thr
     await assert.rejects(fs.stat(f.childDir), { code: 'ENOENT' });
 });
 
+test('a restored side chat keeps its saved id, so the pane can return to it after every restart', async t => {
+    const f = await fixture(t, { composerStorage: 'local' });
+    f.drafts.save(f.descriptor, { draft: 'keep me', model: null, references: [] });
+    for (let restart = 0; restart < 2; restart++) {
+        const { controller, wiring } = f.mountController();
+        await wiring.restoreSessions('agent', 'parent');
+        const tab = controller.getSnapshot().tabs.find(item => item.kind === 'chat');
+        assert.equal(tab.id, f.descriptor.id);
+    }
+});
+
 test('legacy file input survives descriptor normalization and migrates only after the browser save; clearing it never revives old input', async t => {
     const f = await fixture(t, { draft: 'legacy draft', references: [{ id: 'legacy-ref', text: 'legacy selection' }], model: 'legacy-model' });
     let session = f.mountController();

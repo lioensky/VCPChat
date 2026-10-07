@@ -462,9 +462,15 @@ async function readStatusNow(repo) {
  * 「在文件管理器中打开」的目标：状态条目的路径相对仓库根，工作区可能只是仓库的子目录，
  * 所以按仓库根解析（对照 ZCode gitService.ts toAbsolutePath），再校验仍在工作区内。
  */
-async function resolveRevealTarget(workspaceRoot, relPath) {
+async function resolveRevealTarget(workspaceRoot, relPath, { base = 'repo' } = {}) {
     const repo = await openRepository(workspaceRoot);
-    if (repo) return absoluteInRepo(repo, resolveRepoPath(repo, relPath));
+    if (repo) {
+        // 相对工作区的路径（代码查看器给的）先拼上工作区在仓库里的前缀
+        const repoRel = base === 'workspace' && repo.prefix && typeof relPath === 'string'
+            ? `${repo.prefix}/${IS_WIN ? relPath.replace(/\\/g, '/') : relPath}`
+            : relPath;
+        return absoluteInRepo(repo, resolveRepoPath(repo, repoRel));
+    }
     const root = path.resolve(workspaceRoot);
     const target = path.resolve(root, typeof relPath === 'string' ? relPath : '');
     if (target !== root && !target.startsWith(root + path.sep)) throw new Error('路径不在工作区内。');

@@ -179,3 +179,41 @@ test('a long change list mounts in batches and still mounts the file being focus
     assert.equal(paths().length, 300);
     handle.dispose();
 });
+
+test('a status push while reading deep in a long list keeps the mounted cards and the scroll position', async () => {
+    const dom = new JSDOM('<div id="sideGitHost"></div>', { pretendToBeVisual: true });
+    const win = dom.window;
+    const observers = [];
+    win.IntersectionObserver = class {
+        constructor(callback) { this.callback = callback; this.targets = new Set(); observers.push(this); }
+        observe(target) { this.targets.add(target); }
+        unobserve(target) { this.targets.delete(target); }
+        disconnect() { this.targets.clear(); }
+        fire() { this.callback([...this.targets].map(target => ({ target, isIntersecting: true }))); }
+    };
+    let edits = 0;
+    const api = {
+        async gitListWorkspaces() { return { success: true, data: { workspaces: [{ id: 'ws', alias: 'ws', path: '/code/ws' }], activeWorkspaceId: 'ws' } }; },
+        // agent 每改一次文件，行数统计就变一次
+        async gitStatus() { return { success: true, data: { isRepo: true, staged: [], conflicts: [],
+            changes: Array.from({ length: 300 }, (_, i) => ({ path: `src/file_${i}.js`, status: 'M', added: i === 0 ? edits : 1, removed: 0 })) } }; },
+        async gitDiff(wsId, relPath) {
+            return { success: true, data: { path: relPath, before: { exists: true, binary: false, text: 'a\n' }, after: { exists: true, binary: false, text: 'b\n' } } };
+        }
+    };
+    const host = win.document.getElementById('sideGitHost');
+    const handle = mountGitView(host, { api });
+    await handle.ready;
+    const cards = () => host.querySelectorAll('.side-git-card').length;
+    observers.find(observer => observer.targets.size).fire();
+    assert.equal(cards(), 240);
+    const body = host.querySelector('.side-git-body');
+    body.scrollTop = 5000;
+
+    edits += 1;
+    await handle.refresh();
+    await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(cards(), 240, 'the re-render mounts as many cards as were there');
+    assert.equal(body.scrollTop, 5000, 'and stays where the reader was');
+    handle.dispose();
+});

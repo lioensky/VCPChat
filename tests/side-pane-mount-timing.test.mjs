@@ -203,3 +203,36 @@ test('a side chat whose mount lands while its close is being confirmed still clo
     assert.deepEqual(deleted, ['later']);
     assert.equal(disposed, 1, 'the view that mounted meanwhile is released');
 });
+
+test('after a restart the pane goes back to the side chat the topic was left on, even when a saved plan tab came back first', async t => {
+    const store = new Map();
+    const storage = { getItem: key => store.get(key) ?? null, setItem: (key, value) => store.set(key, value), removeItem: key => store.delete(key) };
+    const windows = [];
+    t.after(() => windows.forEach(win => win.close()));
+    const make = () => {
+        const dom = new JSDOM('<main class="main-content"></main><aside id="pane"><div id="tabs"></div><div id="content"><section class="side-pane-view" id="sidePaneViewNotifications"></section></div></aside>');
+        windows.push(dom.window);
+        const doc = dom.window.document;
+        const provider = { mountTab: async () => ({ dispose: async () => {}, focus() {} }) };
+        return createSidePaneController({
+            root: doc.getElementById('pane'), tabListElement: doc.getElementById('tabs'), contentContainer: doc.getElementById('content'),
+            persistence: { storage },
+            tabTypes: [defineChatTabType({ provider }), { kind: 'plan-detail', label: 'plan', icon: 'x', provider }]
+        });
+    };
+    const first = make();
+    first.restoreLayout();
+    first.setParent(parentOf('a'));
+    await first.openTab({ id: 'plan:a', kind: 'plan-detail', title: 'plan', scopeMode: 'topic', parent: parentOf('a'), payload: {} });
+    await first.openTab(sideChat('side-a', 'a'));
+    await first.dispose();
+
+    // 启动顺序同 sidePaneWiring：setParent → restoreLayout（只带回计划标签）→ 辅助对话读回来后 restoreTabs
+    const second = make();
+    second.setParent(parentOf('a'));
+    second.restoreLayout();
+    assert.equal(second.getSnapshot().activeTabId, 'plan:a');
+    await second.restoreTabs([sideChat('side-a', 'a')]);
+    assert.equal(second.getSnapshot().activeTabId, 'side-a');
+    await second.dispose();
+});

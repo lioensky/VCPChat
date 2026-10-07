@@ -73,6 +73,31 @@ function consumeActivation(guest) {
     return true;
 }
 
+// 用户点开的新标签链接（target=_blank）：那次点击已经被弹窗用掉了，新标签是另一个 guest、没有自己的输入。
+// 新标签加载这个地址直接变成下载时，凭这张一次性的票放行，不然下载链接点了什么都不发生
+const POPUP_GRANT_MS = 15000;
+const popupGrants = new Map();
+
+function normalizeGrantUrl(url) {
+    try { return new URL(url).href; } catch { return null; }
+}
+
+function grantPopup(url) {
+    const key = normalizeGrantUrl(url);
+    if (!key) return;
+    const now = Date.now();
+    for (const [grantUrl, expires] of popupGrants) if (expires <= now) popupGrants.delete(grantUrl);
+    popupGrants.set(key, now + POPUP_GRANT_MS);
+}
+
+function consumePopupGrant(url) {
+    const key = normalizeGrantUrl(url);
+    const expires = key ? popupGrants.get(key) : 0;
+    if (!expires) return false;
+    popupGrants.delete(key);
+    return expires > Date.now();
+}
+
 /**
  * 和渲染进程 side-pane-shortcuts.js 同一套按键：Ctrl/Cmd+Alt+B 展开或收起副屏，Ctrl+PageUp / PageDown 切标签。
  * input 是 before-input-event 的 Electron Input；返回要转发的动作，不是快捷键就返回 null。
@@ -109,7 +134,8 @@ function configureGuestSession(ses) {
     ses.on('will-download', (event, item, guest) => {
         const url = item.getURL();
         event.preventDefault();
-        if (isExternalUrl(url) && consumeActivation(guest)) {
+        const requested = typeof item.getURLChain === 'function' ? item.getURLChain()[0] || url : url;
+        if (isExternalUrl(url) && (consumeActivation(guest) || consumePopupGrant(requested))) {
             Promise.resolve(shell.openExternal(url)).catch(() => {});
         }
     });
@@ -165,6 +191,7 @@ function attachToWindow(mainWindow) {
         });
         guest.setWindowOpenHandler(({ url }) => {
             if (isAllowedPopupUrl(url) && !host.isDestroyed() && consumeActivation(guest)) {
+                grantPopup(url);
                 host.send('browser:open-tab', { url });
             }
             return { action: 'deny' };

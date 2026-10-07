@@ -269,7 +269,10 @@ export function createSideChatWiring({
                     status: 'ready',
                     draft: input.draft || '',
                     references: Array.isArray(input.references) ? input.references : []
-                }), composerStorage: item.composerStorage } });
+                }),
+                // 沿用存档里的 id：标签 id 每次重启都一样，面板才能按对话记忆回到这个辅助对话
+                ...(typeof item.id === 'string' && item.id ? { id: item.id } : {}),
+                composerStorage: item.composerStorage } });
             } catch (e) {
                 console.warn('[SideChat] Failed to restore side chat tab:', e);
             }

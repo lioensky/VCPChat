@@ -62,3 +62,15 @@ test('floating ask button hides when the window resizes', () => {
     window.dispatchEvent(new window.Event('resize'));
     assert.equal(btn.hidden, false);
 });
+
+test('scrolling somewhere else (a streaming side chat) does not hide the button over a main chat selection', () => {
+    const { window, btn, select, handle } = setup();
+    select('main');
+    assert.equal(btn.hidden, false);
+    const sideList = window.document.querySelector('.side-chat-surface');
+    for (let i = 0; i < 5; i++) sideList.dispatchEvent(new window.Event('scroll'));
+    assert.equal(btn.hidden, false);
+    window.document.getElementById('chatMessages').dispatchEvent(new window.Event('scroll'));
+    assert.equal(btn.hidden, true, 'the list holding the selection still hides it');
+    handle.dispose();
+});

@@ -441,3 +441,27 @@ test('a reader parked at the top of the trajectory stays there while new calls a
     assert.equal(scroller.scrollTop, 0);
     await handle.dispose();
 });
+
+test('the expansion menu works from the keyboard and keeps focus on the switch being toggled', async () => {
+    const { provider, view, doc, dom } = makeEnv();
+    await provider.mountTab({ id: 'model-trajectory:main' }, view);
+    const menuBtn = view.querySelector('[aria-label="自定义展开"]');
+    const menu = view.querySelector('.side-traj-menu');
+    const key = (target, name) => target.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }));
+    assert.equal(menuBtn.getAttribute('aria-haspopup'), 'menu');
+    menuBtn.focus();
+    menuBtn.click();
+    assert.equal(menuBtn.getAttribute('aria-expanded'), 'true');
+    const items = () => [...menu.querySelectorAll('[role="menuitemcheckbox"]')];
+    assert.equal(doc.activeElement, items()[0], 'opening moves focus into the menu');
+    key(doc.activeElement, 'ArrowDown');
+    assert.equal(doc.activeElement, items()[1]);
+    const kind = doc.activeElement.dataset.trajectoryExpansionKind;
+    doc.activeElement.click();
+    assert.equal(doc.activeElement?.dataset.trajectoryExpansionKind, kind, 'toggling a switch keeps focus on it');
+    assert.equal(doc.activeElement.getAttribute('aria-checked'), 'false');
+    key(doc.activeElement, 'Escape');
+    assert.equal(menu.hidden, true);
+    assert.equal(menuBtn.getAttribute('aria-expanded'), 'false');
+    assert.equal(doc.activeElement, menuBtn, 'Escape returns focus to the menu button');
+});
