@@ -21,6 +21,7 @@ const CHANNELS = [
     'terminal:create',
     'terminal:write',
     'terminal:resize',
+    'terminal:clear-screen',
     'terminal:kill',
     'terminal:restart',
     'terminal:cd',
@@ -293,6 +294,18 @@ function initialize({ workspaceService = null, executorLoader = null, commandRun
         try {
             loadExecutor().resizeSession(clampInt(cols, MIN_COLS, MAX_COLS, 80), clampInt(rows, MIN_ROWS, MAX_ROWS, 24));
             return { success: true };
+        } catch (error) {
+            return failure(error);
+        }
+    });
+
+    // 侧栏清屏：shell 也清一次，之后改尺寸时 Windows 的 ConPTY 不会把旧内容重绘回来。
+    // 会话被 AI 命令占着时 shellCleared 为 false，只清了视图
+    ipcMain.handle('terminal:clear-screen', (event, id) => {
+        if (!isAllowedSender(event)) return denied;
+        if (!getOwnedView(event, id)) return missing;
+        try {
+            return { success: true, data: { shellCleared: loadExecutor().clearSessionScreen() } };
         } catch (error) {
             return failure(error);
         }

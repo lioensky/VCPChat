@@ -861,6 +861,18 @@ function writeSessionInput(data) {
     return true;
 }
 
+// 侧栏清屏时让 shell 自己也清一次。Windows 的 ConPTY 记着整屏内容，PTY 一改尺寸就按它整屏重绘，
+// 只清前端的话旧内容马上又画回来；node-pty 的 clear() 只对随包的 conpty.dll 生效，系统自带的 ConPTY 上是空操作。
+// 所以发 Ctrl+L：PSReadLine / readline 的清屏键，输了一半的命令保留。
+// AI 命令或交互程序占着会话时不发，免得混进它们的输入；返回是否发出
+function clearSessionScreen() {
+    if (!ptyProcess || isExecutingCommand || interactiveMode) {
+        return false;
+    }
+    ptyProcess.write('\x0c');
+    return true;
+}
+
 /**
  * 等待指定 PTY 完成 PowerShell 初始化探针。
  * Promise 与具体 PTY 实例绑定，旧会话的迟到结果不能被新会话复用。
@@ -1988,6 +2000,7 @@ module.exports = {
     restartSession,
     getSessionState,
     writeSessionInput,
+    clearSessionScreen,
     resizeSession: applyPtyResize,
     cleanup,
     parseInteractiveSequence,

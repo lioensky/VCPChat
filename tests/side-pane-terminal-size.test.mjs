@@ -6,7 +6,7 @@ import { createSidePaneController } from '../modules/ui-system/side-pane/side-pa
 import { waitFor } from './helpers/wait-for.mjs';
 
 // 侧栏终端和共享 PTY 的配合。尺寸：PTY 只有一个尺寸（终端窗口、侧栏标签、AI 命令共用），只有拿着焦点的视图改它，
-// 其余视图跟着 PTY 的真实尺寸画（同 DSH 的可写 / 只读视图）。输入：连上之前敲的字连上后补发。
+// 其余视图跟着 PTY 的真实尺寸画。输入：连上之前敲的字连上后补发。
 function fixture(t, { pty = { cols: 120, rows: 30 }, create = null } = {}) {
     const dom = new JSDOM('<input id="mainInput"><aside><div class="side-pane-tabs"></div><div class="side-pane-content-container"></div></aside>');
     const win = dom.window, doc = win.document, root = doc.querySelector('aside');
@@ -15,7 +15,7 @@ function fixture(t, { pty = { cols: 120, rows: 30 }, create = null } = {}) {
     Object.defineProperty(win.HTMLElement.prototype, 'offsetHeight', { configurable: true, get() { return 400; } });
     const controller = createSidePaneController({ root, tabListElement: root.querySelector('.side-pane-tabs'),
         contentContainer: root.querySelector('.side-pane-content-container') });
-    const resizes = [], writes = [], listeners = new Map();
+    const resizes = [], writes = [], listeners = new Map(), ptyCalls = [];
     let observed = null, fits = 0;
     win.ResizeObserver = class { constructor(callback) { observed = callback; } observe() {} unobserve() {} disconnect() {} };
     let term = null;
@@ -32,7 +32,8 @@ function fixture(t, { pty = { cols: 120, rows: 30 }, create = null } = {}) {
             this.resizeHandlers.forEach(handler => handler({ cols, rows }));
         }
         focus() { this.input.focus(); }
-        write() {} clear() {} reset() {}
+        write() {} reset() {}
+        clear() { this.cleared = (this.cleared || 0) + 1; }
         dispose() { this.input.remove(); }
     }
     // fit 按容器排成 45×20
@@ -42,7 +43,8 @@ function fixture(t, { pty = { cols: 120, rows: 30 }, create = null } = {}) {
         gitListWorkspaces: async () => ({ success: true, data: { workspaces: [] } }),
         terminalCreate: create || (async () => ({ success: true, data: { id: 'view:1', pid: 42, ...pty } })),
         terminalWrite: async (id, data) => { writes.push([id, data]); return { success: true }; },
-        terminalResize: async (id, cols, rows) => { resizes.push([cols, rows]); return { success: true }; },
+        terminalResize: async (id, cols, rows) => { resizes.push([cols, rows]); ptyCalls.push('resize'); return { success: true }; },
+        terminalClearScreen: async id => { ptyCalls.push(`clear-screen:${id}`); return { success: true, data: { shellCleared: true } }; },
         terminalKill: async () => ({ success: true }),
         onTerminalData: subscribe('data'), onTerminalClear: subscribe('clear'), onTerminalExit: subscribe('exit'),
         onTerminalResized: subscribe('resized')
@@ -51,7 +53,7 @@ function fixture(t, { pty = { cols: 120, rows: 30 }, create = null } = {}) {
         xtermLoader: async () => ({ Terminal, FitAddon }) });
     controller.registerProvider('terminal', provider);
     t.after(async () => { await controller.dispose(); win.close(); });
-    return { doc, controller, provider, resizes, writes, listeners, term: () => term,
+    return { doc, controller, provider, resizes, writes, listeners, ptyCalls, term: () => term,
         containerResized: () => observed?.([]), get fits() { return fits; },
         mountInBackground: async () => {
             // 打开后、挂好之前用户已经回到主输入框打字：标签挂上了但没拿焦点
@@ -159,4 +161,16 @@ test('a paste too large for the terminal is not sent and the status says so for 
     assert.deepEqual(h.writes, [['view:1', 'ls\r']], 'normal typing still goes through');
     mock.timers.tick(4000);
     assert.equal(status.dataset.state, 'connected');
+});
+
+// Windows 的 ConPTY 自己也记着整屏内容，PTY 一改尺寸就整屏重绘。清屏按钮要先让 shell 也清掉，
+// 再让终端拿焦点（拿焦点时侧栏宽度变过的话会改 PTY 尺寸），不然清掉的内容马上被重绘回来
+test('clear has the shell clear its screen before focusing the terminal can resize the PTY', async t => {
+    const h = fixture(t);
+    await h.mountInBackground();
+    assert.deepEqual([h.term().cols, h.term().rows], [120, 30], 'drawn at the PTY size, not its own width');
+    h.doc.querySelector('[data-action="clear"]').click();
+    assert.equal(h.term().cleared, 1);
+    assert.deepEqual(h.ptyCalls, ['clear-screen:view:1', 'resize'], 'the shell is asked first, then the tab takes over the PTY size');
+    assert.equal(h.doc.activeElement, h.term().input);
 });

@@ -563,6 +563,9 @@ export function createTerminalSideProvider({
             });
             own.listen(clearBtn, 'click', () => {
                 term.clear();
+                // Windows 的 ConPTY 自己也记着整屏内容，改尺寸时会整屏重绘；只清 xterm 的话，
+                // 下面 focus 拿回尺寸（侧栏宽度变过）引起的重绘会把旧内容原样画回来。先让 shell 也清掉，再 focus
+                if (session.sessionId && !session.exited) void api.terminalClearScreen?.(session.sessionId);
                 term.focus();
             });
 

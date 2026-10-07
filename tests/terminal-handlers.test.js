@@ -100,6 +100,10 @@ test('mirrors the shared terminal session: input, output, resize, workspace jump
     assert.equal(viewOutput(sender, id).includes('__VCP_PTY_READY_'), false, 'the startup handshake stays out of the side pane');
     assert.equal((await call('terminal:resize', sender, id, 120, 40)).success, true);
     assert.equal(executor.getSessionState().cols, 120);
+    const cleared = await call('terminal:clear-screen', sender, id);
+    assert.equal(cleared.success, true, cleared.error);
+    assert.equal(cleared.data.shellCleared, true, 'an idle shell is asked to clear its screen');
+    assert.equal(executor.getSessionState().running, true, 'clearing the screen leaves the shell running');
 
     // unknown / disabled workspaces are refused; an enabled one is entered
     assert.equal((await call('terminal:cd', sender, id, 'ws-off')).success, false);
@@ -130,6 +134,7 @@ test('several views share one session; closing a view leaves the session running
     // one view cannot drive another window's view
     assert.equal((await call('terminal:write', b, ra.data.id, 'x')).success, false);
     assert.equal((await call('terminal:resize', b, ra.data.id, 80, 24)).success, false);
+    assert.equal((await call('terminal:clear-screen', b, ra.data.id)).success, false);
 
     const second = `vcp-second-${Date.now()}`;
     await call('terminal:write', b, rb.data.id, `echo ${second}\r`);

@@ -23409,7 +23409,7 @@
       "producers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 922,
+          "line": 934,
           "kind": "event-send"
         }
       ],
@@ -23423,7 +23423,7 @@
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 922,
+          "line": 934,
           "kind": "event-send",
           "match": "guiWindow.webContents.send('powershell-clear'"
         },
@@ -23940,7 +23940,7 @@
       "producers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 1521,
+          "line": 1533,
           "kind": "event-send"
         }
       ],
@@ -23954,7 +23954,7 @@
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 1521,
+          "line": 1533,
           "kind": "event-send",
           "match": "guiWindow.webContents.send('query-visible-text'"
         },
@@ -28537,7 +28537,7 @@
       "producers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 1542,
+          "line": 1554,
           "kind": "event-send"
         }
       ],
@@ -28551,7 +28551,7 @@
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 1542,
+          "line": 1554,
           "kind": "event-send",
           "match": "guiWindow.webContents.send('terminal-paste-request'"
         },
@@ -28568,27 +28568,27 @@
       "producers": [
         {
           "file": "preloads/api/terminal.js",
-          "line": 18,
+          "line": 19,
           "kind": "preload-channel-definition"
         }
       ],
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 357,
+          "line": 370,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 357,
+          "line": 370,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:cd'"
         },
         {
           "file": "preloads/api/terminal.js",
-          "line": 18,
+          "line": 19,
           "kind": "preload-channel-definition",
           "match": "invoke('terminal:cd'"
         }
@@ -28599,29 +28599,60 @@
       "producers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 227,
+          "line": 228,
           "kind": "event-send"
         }
       ],
       "consumers": [
         {
           "file": "preloads/api/terminal.js",
-          "line": 25,
+          "line": 26,
           "kind": "preload-channel-definition"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 227,
+          "line": 228,
           "kind": "event-send",
           "match": "emit('terminal:clear'"
         },
         {
           "file": "preloads/api/terminal.js",
-          "line": 25,
+          "line": 26,
           "kind": "preload-channel-definition",
           "match": "on('terminal:clear'"
+        }
+      ]
+    },
+    {
+      "name": "terminal:clear-screen",
+      "producers": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 16,
+          "kind": "preload-channel-definition"
+        }
+      ],
+      "consumers": [
+        {
+          "file": "modules/ipc/terminalHandlers.js",
+          "line": 304,
+          "kind": "event-listener"
+        }
+      ],
+      "evidence": [
+        {
+          "file": "modules/ipc/terminalHandlers.js",
+          "line": 304,
+          "kind": "event-listener",
+          "match": "ipcMain.handle('terminal:clear-screen'"
+        },
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 16,
+          "kind": "preload-channel-definition",
+          "match": "invoke('terminal:clear-screen'"
         }
       ]
     },
@@ -28630,27 +28661,27 @@
       "producers": [
         {
           "file": "preloads/api/terminal.js",
-          "line": 20,
+          "line": 21,
           "kind": "preload-channel-definition"
         }
       ],
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 329,
+          "line": 342,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 329,
+          "line": 342,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:command-run'"
         },
         {
           "file": "preloads/api/terminal.js",
-          "line": 20,
+          "line": 21,
           "kind": "preload-channel-definition",
           "match": "invoke('terminal:command-run'"
         }
@@ -28662,14 +28693,14 @@
       "consumers": [
         {
           "file": "preloads/api/terminal.js",
-          "line": 23,
+          "line": 24,
           "kind": "preload-channel-definition"
         }
       ],
       "evidence": [
         {
           "file": "preloads/api/terminal.js",
-          "line": 23,
+          "line": 24,
           "kind": "preload-channel-definition",
           "match": "on('terminal:command-run-changed'"
         }
@@ -28680,27 +28711,27 @@
       "producers": [
         {
           "file": "preloads/api/terminal.js",
-          "line": 19,
+          "line": 20,
           "kind": "preload-channel-definition"
         }
       ],
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 320,
+          "line": 333,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 320,
+          "line": 333,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:command-runs'"
         },
         {
           "file": "preloads/api/terminal.js",
-          "line": 19,
+          "line": 20,
           "kind": "preload-channel-definition",
           "match": "invoke('terminal:command-runs'"
         }
@@ -28718,14 +28749,14 @@
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 268,
+          "line": 269,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 268,
+          "line": 269,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:create'"
         },
@@ -28742,60 +28773,60 @@
       "producers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 201,
+          "line": 202,
           "kind": "event-send"
         },
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 209,
+          "line": 210,
           "kind": "event-send"
         },
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 215,
+          "line": 216,
           "kind": "event-send"
         },
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 223,
+          "line": 224,
           "kind": "event-send"
         }
       ],
       "consumers": [
         {
           "file": "preloads/api/terminal.js",
-          "line": 24,
+          "line": 25,
           "kind": "preload-channel-definition"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 201,
+          "line": 202,
           "kind": "event-send",
           "match": "emit('terminal:data'"
         },
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 209,
+          "line": 210,
           "kind": "event-send",
           "match": "emit('terminal:data'"
         },
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 215,
+          "line": 216,
           "kind": "event-send",
           "match": "emit('terminal:data'"
         },
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 223,
+          "line": 224,
           "kind": "event-send",
           "match": "emit('terminal:data'"
         },
         {
           "file": "preloads/api/terminal.js",
-          "line": 24,
+          "line": 25,
           "kind": "preload-channel-definition",
           "match": "on('terminal:data'"
         }
@@ -28806,27 +28837,27 @@
       "producers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 228,
+          "line": 229,
           "kind": "event-send"
         }
       ],
       "consumers": [
         {
           "file": "preloads/api/terminal.js",
-          "line": 26,
+          "line": 27,
           "kind": "preload-channel-definition"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 228,
+          "line": 229,
           "kind": "event-send",
           "match": "emit('terminal:exit'"
         },
         {
           "file": "preloads/api/terminal.js",
-          "line": 26,
+          "line": 27,
           "kind": "preload-channel-definition",
           "match": "on('terminal:exit'"
         }
@@ -28837,27 +28868,27 @@
       "producers": [
         {
           "file": "preloads/api/terminal.js",
-          "line": 16,
+          "line": 17,
           "kind": "preload-channel-definition"
         }
       ],
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 302,
+          "line": 315,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 302,
+          "line": 315,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:kill'"
         },
         {
           "file": "preloads/api/terminal.js",
-          "line": 16,
+          "line": 17,
           "kind": "preload-channel-definition",
           "match": "invoke('terminal:kill'"
         }
@@ -28875,14 +28906,14 @@
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 290,
+          "line": 291,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 290,
+          "line": 291,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:resize'"
         },
@@ -28899,27 +28930,27 @@
       "producers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 230,
+          "line": 231,
           "kind": "event-send"
         }
       ],
       "consumers": [
         {
           "file": "preloads/api/terminal.js",
-          "line": 27,
+          "line": 28,
           "kind": "preload-channel-definition"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 230,
+          "line": 231,
           "kind": "event-send",
           "match": "emit('terminal:resized'"
         },
         {
           "file": "preloads/api/terminal.js",
-          "line": 27,
+          "line": 28,
           "kind": "preload-channel-definition",
           "match": "on('terminal:resized'"
         }
@@ -28930,27 +28961,27 @@
       "producers": [
         {
           "file": "preloads/api/terminal.js",
-          "line": 17,
+          "line": 18,
           "kind": "preload-channel-definition"
         }
       ],
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 308,
+          "line": 321,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 308,
+          "line": 321,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:restart'"
         },
         {
           "file": "preloads/api/terminal.js",
-          "line": 17,
+          "line": 18,
           "kind": "preload-channel-definition",
           "match": "invoke('terminal:restart'"
         }
@@ -28961,27 +28992,27 @@
       "producers": [
         {
           "file": "preloads/api/terminal.js",
-          "line": 22,
+          "line": 23,
           "kind": "preload-channel-definition"
         }
       ],
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 351,
+          "line": 364,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 351,
+          "line": 364,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:unwatch-command-runs'"
         },
         {
           "file": "preloads/api/terminal.js",
-          "line": 22,
+          "line": 23,
           "kind": "preload-channel-definition",
           "match": "invoke('terminal:unwatch-command-runs'"
         }
@@ -28992,27 +29023,27 @@
       "producers": [
         {
           "file": "preloads/api/terminal.js",
-          "line": 21,
+          "line": 22,
           "kind": "preload-channel-definition"
         }
       ],
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 340,
+          "line": 353,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 340,
+          "line": 353,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:watch-command-runs'"
         },
         {
           "file": "preloads/api/terminal.js",
-          "line": 21,
+          "line": 22,
           "kind": "preload-channel-definition",
           "match": "invoke('terminal:watch-command-runs'"
         }
@@ -29030,14 +29061,14 @@
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 277,
+          "line": 278,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 277,
+          "line": 278,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:write'"
         },
@@ -32832,7 +32863,7 @@
     },
     {
       "file": "modules/ipc/terminalHandlers.js",
-      "line": 68,
+      "line": 69,
       "reason": "dynamic event name: channel",
       "kind": "event-send",
       "match": "sender.send(channel",
