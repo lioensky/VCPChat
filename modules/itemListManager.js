@@ -103,6 +103,7 @@ window.itemListManager = (() => {
         currentSelectedItemRef = config.refs.currentSelectedItemRef;
         mainRendererFunctions = config.mainRendererFunctions;
         uiHelper = config.uiHelper; // Store uiHelper
+        bindItemListKeyboard();
 
         ensureOpenHerPersonaAutoRefresh();
         console.log('[ItemListManager] Initialized successfully.');
@@ -115,8 +116,56 @@ window.itemListManager = (() => {
      */
     function highlightActiveItem(itemId, itemType) {
         if (!itemListUl) return;
+        const focusedItem = itemListUl.contains(document.activeElement) ? document.activeElement : null;
         document.querySelectorAll('#agentList li').forEach(item => {
-            item.classList.toggle('active', item.dataset.itemId === itemId && item.dataset.itemType === itemType);
+            const isActive = item.dataset.itemId === itemId && item.dataset.itemType === itemType;
+            item.classList.toggle('active', isActive);
+            if (item.dataset.itemId && !focusedItem) item.tabIndex = isActive ? 0 : -1;
+        });
+        ensureItemTabStop();
+    }
+
+    // Keyboard model of a Radix listbox, as ZCode's lists use: one tab stop
+    // (the active item, else the first) that follows focus; arrows, Home and
+    // End move it; Enter or Space selects the focused Agent or group.
+    function ensureItemTabStop() {
+        if (!itemListUl || itemListUl.querySelector('li[data-item-id][tabindex="0"]')) return;
+        const first = itemListUl.querySelector('li[data-item-id]');
+        if (first) first.tabIndex = 0;
+    }
+
+    function bindItemListKeyboard() {
+        if (!itemListUl || itemListUl.dataset.itemKeyboardBound === 'true') return;
+        itemListUl.dataset.itemKeyboardBound = 'true';
+        itemListUl.addEventListener('focusin', event => {
+            const item = event.target;
+            if (!item?.dataset?.itemId || item.parentElement !== itemListUl) return;
+            itemListUl.querySelectorAll('li[data-item-id][tabindex="0"]').forEach(other => {
+                if (other !== item) other.tabIndex = -1;
+            });
+            item.tabIndex = 0;
+        });
+        itemListUl.addEventListener('keydown', event => {
+            const item = event.target;
+            if (!item?.dataset?.itemId || item.parentElement !== itemListUl) return;
+            const items = [...itemListUl.querySelectorAll('li[data-item-id]')]
+                .filter(candidate => candidate.style.display !== 'none' && !candidate.hidden);
+            const index = items.indexOf(item);
+            let next = null;
+            if (event.key === 'ArrowDown') next = items[index + 1];
+            else if (event.key === 'ArrowUp') next = items[index - 1];
+            else if (event.key === 'Home') next = items[0];
+            else if (event.key === 'End') next = items[items.length - 1];
+            else if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                const data = item._itemData;
+                if (data) mainRendererFunctions.selectItem(data.id, data.type, data.name, data.avatarUrl, data.config || data);
+                return;
+            } else {
+                return;
+            }
+            event.preventDefault();
+            next?.focus();
         });
     }
 
@@ -839,6 +888,8 @@ window.itemListManager = (() => {
         const li = document.createElement('li');
         li.dataset.itemId = item.id;
         li.dataset.itemType = item.type;
+        li._itemData = item;
+        li.tabIndex = -1;
 
         // 创建头像包装器
         const avatarWrapper = document.createElement('div');
@@ -998,6 +1049,11 @@ window.itemListManager = (() => {
         if (currentSelectedItem && currentSelectedItem.id) {
             highlightActiveItem(currentSelectedItem.id, currentSelectedItem.type);
         }
+        // A rebuild (unread refresh, save, reorder) must not drop an active
+        // search: re-apply the term still in the search box.
+        const activeSearch = document.getElementById('agentSearchInput')?.value;
+        if (activeSearch && activeSearch.trim()) window.uiHelperFunctions?.filterAgentList?.(activeSearch);
+        ensureItemTabStop();
 
         if (typeof Sortable !== 'undefined') {
             initializeItemSortable();

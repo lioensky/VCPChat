@@ -199,20 +199,23 @@ function renderSection(doc, { kind, key, title, tooltip, summaryId, content, con
     const headerId = kind === 'agent'
         ? `${key}ToggleHeader`
         : `group${key[0].toUpperCase()}${key.slice(1)}ToggleHeader`;
+    // The header is a mouse target only. The chevron button is the one
+    // keyboard and screen-reader control, as with a Radix Accordion trigger;
+    // a role=button wrapper around a real button nested two controls.
     const header = el(doc, 'div', {
         class: `${prefix}-settings-section-header`,
         id: headerId,
-        role: 'button',
-        tabindex: '0',
         'aria-expanded': 'false',
     });
     const summary = el(doc, 'span', { class: `${prefix}-settings-section-summary`, id: summaryId }, '');
+    const resolvedContentId = contentId || (kind === 'agent' ? `${key}Content` : `group${key[0].toUpperCase()}${key.slice(1)}Content`);
     const toggle = el(doc, 'button', {
         type: 'button',
         id: kind === 'agent' ? `${key}ToggleBtn` : `group${key[0].toUpperCase()}${key.slice(1)}ToggleBtn`,
         class: `${prefix}-settings-toggle-btn ${prefix}-settings-section-toggle`,
         'aria-label': `切换${title}`,
         'aria-expanded': 'false',
+        'aria-controls': resolvedContentId,
     });
     toggle.innerHTML = SVG_TOGGLE;
     const iconHtml = sectionIconHtml(key);
@@ -230,7 +233,7 @@ function renderSection(doc, { kind, key, title, tooltip, summaryId, content, con
     header.append(titleRow, summary, toggle);
     const contentNode = el(doc, 'div', {
         class: `${prefix}-settings-section-content`,
-        id: contentId || (kind === 'agent' ? `${key}Content` : `group${key[0].toUpperCase()}${key.slice(1)}Content`)
+        id: resolvedContentId
     });
     contentNode.append(content(doc));
     section.append(header, contentNode);
@@ -432,20 +435,20 @@ function renderGroupSectionContent(doc, key) {
             el(doc, 'div', { class: 'agent-identity-main group-identity-main' },
                 el(doc, 'div', { class: 'agent-avatar-wrapper group-avatar-wrapper' }, el(doc, 'img', { id: 'groupAvatarPreview', src: 'assets/default_group_avatar.png', alt: '群组头像预览', class: 'agent-avatar-display group-avatar-display', width: 60, height: 60 }), el(doc, 'label', { for: 'groupAvatarInput', class: 'avatar-upload-overlay', 'aria-label': '更换群组头像' }, buildCameraIcon(doc)), el(doc, 'input', { id: 'groupAvatarInput', type: 'file', accept: 'image/*', hidden: true })),
                 renderField(doc, groupFields[0], 'agent-name-wrapper group-name-wrapper')),
-            el(doc, 'div', { class: 'group-settings-field-shell' }, el(doc, 'label', { for: 'groupMembersList' }, '群组成员', makeHelpBadge(doc, '勾选要加入此群聊的助手成员。')), el(doc, 'div', { id: 'groupMembersList', class: 'group-members-list-container' })));
+            el(doc, 'div', { class: 'group-settings-field-shell' }, el(doc, 'label', { id: 'groupMembersListLabel' }, '群组成员', makeHelpBadge(doc, '勾选要加入此群聊的助手成员。')), el(doc, 'div', { id: 'groupMembersList', class: 'group-members-list-container', role: 'group', 'aria-labelledby': 'groupMembersListLabel' })));
     }
     if (key === 'mode') {
         const mode = renderField(doc, groupFields[1], 'group-settings-field-shell');
         const tags = renderField(doc, groupFields[2], 'group-settings-field-shell');
-        tags.append(el(doc, 'div', { class: 'group-settings-field-shell group-member-tags-shell' }, el(doc, 'label', { class: 'group-settings-field-label', for: 'memberTagsInputs' }, '成员 Tags', makeHelpBadge(doc, '为成员配置触发标签（逗号分隔），在自然随机模式下匹配。')), el(doc, 'div', { id: 'memberTagsInputs' })));
-        const seqLabel = el(doc, 'label', { class: 'group-settings-field-label', for: 'sequentialSpeakerOrderList' }, '顺序发言次序', makeHelpBadge(doc, '拖拽成员或点击上下箭头调整发言顺序。新加入且尚未排序的成员会自动追加到末尾。'));
+        tags.append(el(doc, 'div', { class: 'group-settings-field-shell group-member-tags-shell' }, el(doc, 'label', { class: 'group-settings-field-label', id: 'memberTagsInputsLabel' }, '成员 Tags', makeHelpBadge(doc, '为成员配置触发标签（逗号分隔），在自然随机模式下匹配。')), el(doc, 'div', { id: 'memberTagsInputs', role: 'group', 'aria-labelledby': 'memberTagsInputsLabel' })));
+        const seqLabel = el(doc, 'label', { class: 'group-settings-field-label' }, '顺序发言次序', makeHelpBadge(doc, '拖拽成员或点击上下箭头调整发言顺序。新加入且尚未排序的成员会自动追加到末尾。'));
         const jevSettings = el(doc, 'div', { id: 'jevModeSettingsContainer', class: 'group-settings-field-shell', hidden: true },
             renderField(doc, groupFields[6], 'group-settings-field-shell'),
             el(doc, 'div', { class: 'group-settings-grid' },
                 ...groupFields.slice(7, 14).map(spec => renderField(doc, spec, 'group-settings-field-shell'))),
             el(doc, 'div', { class: 'group-settings-field-shell' },
-                el(doc, 'label', { class: 'group-settings-field-label', for: 'jevMemberStylesInputs' }, '成员发言触发事件风格', makeHelpBadge(doc, '为每位成员填写自然语言描述，告诉 JEV 在什么话题和情境下应提高其发言权重。')),
-                el(doc, 'div', { id: 'jevMemberStylesInputs' })));
+                el(doc, 'label', { class: 'group-settings-field-label', id: 'jevMemberStylesInputsLabel' }, '成员发言触发事件风格', makeHelpBadge(doc, '为每位成员填写自然语言描述，告诉 JEV 在什么话题和情境下应提高其发言权重。')),
+                el(doc, 'div', { id: 'jevMemberStylesInputs', role: 'group', 'aria-labelledby': 'jevMemberStylesInputsLabel' })));
         return el(doc, 'div', { class: 'group-settings-card-shell' }, mode, el(doc, 'div', { id: 'sequentialOrderContainer', class: 'group-settings-field-shell', hidden: true }, seqLabel, el(doc, 'div', { id: 'sequentialSpeakerOrderList', class: 'sequential-speaker-order-list', role: 'list', 'aria-label': '顺序发言次序' })), el(doc, 'div', { id: 'memberTagsContainer', class: 'group-settings-field-shell', hidden: true }, tags), jevSettings);
     }
     if (key === 'model') {

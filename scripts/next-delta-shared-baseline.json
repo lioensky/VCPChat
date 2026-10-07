@@ -16,8 +16,8 @@
     "reason": "Integrated topic behavior: configuration/unread loads validate the selected item; sort/title/menu operations capture their original topic target; completed deletion changes the active view only for the same item and topic. Repository, readiness and render listener ownership remain unchanged. Topic search waits 200ms after typing before reloading (Enter is immediate); a rejected config IPC shows an error row instead of a permanent spinner; names and IPC errors render as text. Keyboard: topics are one roving tab stop (arrows/Home/End move, Enter/Space open, Shift+F10 or the menu key opens the context menu); the context menu is a role=menu with arrow navigation, Escape/Tab closing it back onto the topic."
   },
   "modules/itemListManager.js": {
-    "sha256": "ae5eca22dd19312f56d5c9d60b6a221c3a5be8cf2d34c1049407b45100cc5393",
-    "reason": "Integrated catalog behavior: operation-counted speaking indicators survive list refreshes; catalog publication validates the final settings read; unread publication is ordered across navigation and catalog refreshes. Persona WIP is excluded. Load error rows are HTML-escaped."
+    "sha256": "efafc93c658df3f6bec3443a3add2da177d718a01057ef825cca1e1b560cfad2",
+    "reason": "Integrated catalog behavior: operation-counted speaking indicators survive list refreshes; catalog publication validates the final settings read; unread publication is ordered across navigation and catalog refreshes. Persona WIP is excluded. Load error rows are HTML-escaped. Keyboard: the list is one roving tab stop (active item, else first); arrows/Home/End move it over visible items, Enter/Space select. Re-applies the active assistant search after a rebuild."
   },
   "Groupmodules/grouprenderer.js": {
     "sha256": "a88a5e4972d9b3739a8da8f300876f066dd2841bcfa8f41f6ffac664cc36cac8",
