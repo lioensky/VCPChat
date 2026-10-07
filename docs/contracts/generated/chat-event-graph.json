@@ -311,6 +311,7 @@
     "modules/services/chatDataService/index.js",
     "modules/services/chatDataService/lifecycle.js",
     "modules/services/deepWikiService.js",
+    "modules/services/dotGitPath.js",
     "modules/services/embeddedAppSessionManager.js",
     "modules/services/gitService.js",
     "modules/services/gitWatcher.js",

@@ -10,6 +10,7 @@
 const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { isDotGitSegment } = require('./dotGitPath');
 
 const MAX_BUFFER = 64 * 1024 * 1024;
 const MAX_ENTRIES = 5000;
@@ -276,7 +277,7 @@ function resolveRepoPath(repo, relPath, { scope = 'workspace' } = {}) {
         throw new Error(`路径不在工作区内: ${relPath}`);
     }
     const rel = toPosix(path.relative(repo.toplevel, abs));
-    if (rel.split('/').some(segment => segment.toLowerCase() === '.git')) {
+    if (rel.split('/').some(isDotGitSegment)) {
         throw new Error(`不允许操作 .git 目录: ${relPath}`);
     }
     return rel;
@@ -441,7 +442,8 @@ async function resolveRevealTarget(workspaceRoot, relPath, { base = 'repo' } = {
     }
     const root = path.resolve(workspaceRoot);
     const target = path.resolve(root, typeof relPath === 'string' ? relPath : '');
-    if (target !== root && !target.startsWith(root + path.sep)) throw new Error('路径不在工作区内。');
+    // 前缀比较在 Windows 上区分大小写，盘符根目录还会多拼一个分隔符；统一走 path.relative
+    if (!isInside(root, target)) throw new Error('路径不在工作区内。');
     return target;
 }
 
