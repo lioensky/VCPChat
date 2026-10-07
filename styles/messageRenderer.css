@@ -1559,15 +1559,15 @@ body[data-vcp-theme="light"] {
     outline-offset: 1px;
 }
 
-/* 隐藏态工具结果气泡视觉表现：30%低透明度、低饱和度虚线与徽章 */
-.vcp-tool-result-bubble--hidden {
+/* 隐藏态工具结果气泡视觉表现：30%低透明度、低饱和度虚线与徽章（新界面的工具行另有样式） */
+.vcp-tool-result-bubble--hidden:not(.vcp-tool-presented) {
     opacity: 0.3;
     border-style: dashed !important;
     border-color: rgba(148, 163, 184, 0.35) !important;
     transition: opacity 0.2s ease, border-color 0.2s ease;
 }
 
-.vcp-tool-result-bubble--hidden:hover {
+.vcp-tool-result-bubble--hidden:not(.vcp-tool-presented):hover {
     opacity: 0.8;
     border-color: rgba(148, 163, 184, 0.6) !important;
 }

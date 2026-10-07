@@ -91,9 +91,31 @@ html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-state="failed"] .
 html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-state="waiting"] .vcp-tool-row-state,
 html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-state="stopped"] .vcp-tool-row-state { color: var(--vcp-ui-warning, var(--vcp-ui-palette-amber)); }
 html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-state="running"] .vcp-tool-row-state { color: var(--vcp-ui-accent); }
-html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation] .vcp-tool-presented .vcp-tool-result-delete-btn { flex: 0 0 24px; margin-right: 6px; opacity: 0; }
+/* 结果的“上下文显隐”按钮：无框方形图标按钮，图标居中，颜色跟行文字；悬停或聚焦这一行时才出现。 */
+html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation] .vcp-tool-presented .vcp-tool-result-delete-btn {
+    flex: none;
+    width: 24px;
+    min-width: 24px;
+    height: 24px;
+    margin: 0 0 0 4px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--vcp-ui-radius-sm, 4px);
+    background: transparent;
+    color: var(--vcp-ui-text-3, var(--vcp-ui-text-secondary));
+    opacity: 0;
+    transition: opacity .15s, background-color .15s, color .15s;
+}
+html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation] .vcp-tool-presented .vcp-tool-result-delete-btn svg { display: block; width: 14px; height: 14px; }
+html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation] .vcp-tool-presented .vcp-tool-result-delete-btn:hover { border-color: transparent; background: var(--vcp-ui-bg-3, var(--vcp-ui-bg-2)); color: var(--vcp-ui-text-primary); }
+html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation] .vcp-tool-presented .vcp-tool-result-delete-btn:focus-visible { outline: 2px solid var(--vcp-ui-accent); outline-offset: -2px; }
 html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation] .vcp-tool-presented .vcp-tool-result-header:hover .vcp-tool-result-delete-btn,
 html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation] .vcp-tool-presented .vcp-tool-result-header:focus-within .vcp-tool-result-delete-btn { opacity: 1; }
+/* 已从上下文隐藏：整行变淡，划掉的眼睛常驻，代替旧的虚线框和“已隐藏”徽章（按钮的提示里仍写明状态）。 */
+html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation] .vcp-tool-presented.vcp-tool-result-bubble--hidden { opacity: .55; transition: opacity .15s; }
+html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation] .vcp-tool-presented.vcp-tool-result-bubble--hidden:is(:hover, :focus-within) { opacity: .85; }
+html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation] .vcp-tool-presented.vcp-tool-result-bubble--hidden .vcp-tool-result-delete-btn { opacity: 1; }
+html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation] .vcp-tool-presented .vcp-tool-result-hidden-badge { display: none; }
 html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation] .vcp-tool-presented .vcp-tool-result-details { max-height: 360px; overflow: auto; }
 html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation] .vcp-tool-presented > .vcp-tool-details,
 html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation] .vcp-tool-presented > .vcp-tool-result-collapsible-content,
@@ -319,3 +341,9 @@ html[data-ui-mode="next"] :where(.vcp-ui-scope) :is([data-vcp-tool-presentation=
     font-size: var(--vcp-ui-text-caption, 13px);
     line-height: 1.6;
 }
+/* 整行宽的结果行：显隐按钮浮在行尾、与状态字对齐，不占位；出现时让出状态字的位置，所以各行的状态列始终对齐。 */
+html[data-ui-mode="next"] :where(.vcp-ui-scope) :is([data-vcp-tool-presentation="grouped"], [data-vcp-tool-presentation="compact"]) .vcp-tool-presented > .vcp-tool-result-header { position: relative; }
+html[data-ui-mode="next"] :where(.vcp-ui-scope) :is([data-vcp-tool-presentation="grouped"], [data-vcp-tool-presentation="compact"]) .vcp-tool-presented .vcp-tool-result-delete-btn { position: absolute; top: 50%; right: 3px; width: 28px; height: 28px; margin: 0; transform: translateY(-50%); }
+html[data-ui-mode="next"] :where(.vcp-ui-scope) .vcp-tool-process-body > .vcp-tool-presented .vcp-tool-result-delete-btn { right: 9px; }
+html[data-ui-mode="next"] :where(.vcp-ui-scope) :is([data-vcp-tool-presentation="grouped"], [data-vcp-tool-presentation="compact"]) .vcp-tool-presented > .vcp-tool-result-header:is(:hover, :focus-within) .vcp-tool-row-state,
+html[data-ui-mode="next"] :where(.vcp-ui-scope) :is([data-vcp-tool-presentation="grouped"], [data-vcp-tool-presentation="compact"]) .vcp-tool-presented.vcp-tool-result-bubble--hidden .vcp-tool-row-state { visibility: hidden; }
