@@ -406,3 +406,12 @@ test('keyboard focus survives the redraws a section toggle, a batch toggle and a
         dom.window.close();
     }
 });
+
+test('activating the plan tab puts keyboard focus inside it', async () => {
+    const { provider, view, dom } = makeEnv();
+    const handle = await provider.mountTab({ id: planTabId('p1'), payload: { projectId: 'p1' } }, view);
+    try {
+        handle.focus();
+        assert.equal(view.contains(dom.window.document.activeElement), true);
+    } finally { handle.dispose(); }
+});

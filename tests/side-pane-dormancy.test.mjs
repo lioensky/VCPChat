@@ -142,10 +142,11 @@ test('a view hidden too long sleeps; the tab stays and remounts with what it sav
 test('busy views and keep-type views do not sleep', async () => {
     const h = fixture({ hiddenMs: 20, busyRetryMs: 20 });
     try {
+        // 先标忙再开：20ms 的隐藏计时从第二个 openTab 起就在走，机器一忙后标的会先睡
+        h.busy.add('probe:busy');
         await h.controller.openTab(tab('probe:busy'));
         await h.controller.openTab(tab('probe:keep', { kind: 'pinned' }));
         await h.controller.openTab(tab('probe:front'));
-        h.busy.add('probe:busy');
         await sleep(60);
         await settle();
         assert.equal(h.live('probe:busy').length, 1);

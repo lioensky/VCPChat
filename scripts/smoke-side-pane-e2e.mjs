@@ -100,7 +100,7 @@ function seedWorkspace() {
     fs.mkdirSync(workspace);
     const git = (...args) => execFileSync('git', ['-c', 'user.name=smoke', '-c', 'user.email=smoke@example.com', ...args], { cwd: workspace, stdio: 'ignore' });
     git('init', '-q');
-    for (let i = 1; i <= 3; i++) fs.writeFileSync(path.join(workspace, `f${i}.txt`), Array.from({ length: 40 }, (_, j) => `file ${i} line ${j}`).join('\n') + '\n');
+    for (let i = 1; i <= 5; i++) fs.writeFileSync(path.join(workspace, `f${i}.txt`), Array.from({ length: 40 }, (_, j) => `file ${i} line ${j}`).join('\n') + '\n');
     git('add', '.');
     git('commit', '-q', '-m', 'init');
     fs.appendFileSync(path.join(workspace, 'f1.txt'), 'changed line\n');
@@ -415,7 +415,7 @@ try {
     });
 
     let historyChat = null;
-    await step('sleep and wake: 10 tabs over the live-view limit', async () => {
+    await step('sleep and wake: 12 tabs over the live-view limit', async () => {
         const { page } = session;
         await K.chat.open(page); await wait(1000);
         for (let i = 1; i <= 3; i++) await sendSideChat(page, `休眠前的问题 ${i}`);
@@ -423,13 +423,14 @@ try {
         const expected = await chatItems(page);
         await K.chat.open(page); await wait(800);
         for (const name of ['terminal', 'browser', 'plan-git', 'trajectory', 'tool-output']) { await K[name].open(page); await wait(900); if (name === 'plan-git') await K[name].use(page, session); }
-        for (const n of [1, 2, 3]) {
+        for (const n of [1, 2, 3, 4, 5]) {
             const f = path.join(workspace, `f${n}.txt`);
             await cmd(page, { id: 'code-viewer:' + f, kind: 'code-viewer', title: `f${n}.txt`, closable: true, scopeMode: 'global', payload: { filePath: f, mode: 'view', language: 'plaintext' } });
             await wait(500);
         }
         const ids = await page.evaluate(() => [...document.querySelectorAll('.side-pane-tab[data-tab-id]')].map(e => e.dataset.tabId).filter(id => id !== 'notifications'));
-        assert.ok(ids.length >= 10, `expected at least 10 tabs, got ${ids.length}`);
+        // 辅助对话按 keep 常驻、浏览器另有网页名额，其余 9 个视图（终端、计划、轨迹、命令输出、5 个代码）超出 8 个名额
+        assert.ok(ids.length >= 12, `expected at least 12 tabs, got ${ids.length}`);
         const counts = [];
         let first = null;
         for (let round = 0; round < 3; round++) {
