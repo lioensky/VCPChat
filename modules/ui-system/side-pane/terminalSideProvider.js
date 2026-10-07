@@ -224,6 +224,7 @@ export function createTerminalSideProvider({
             }
             session.sessionId = res.data.id;
             session.exited = false;
+            if (res.data.windowsPty && typeof res.data.windowsPty === 'object') term.options.windowsPty = res.data.windowsPty;
             setStatus('已连接终端', 'connected',
                 `已连接终端 · 与终端窗口 / AI 命令共用同一个会话${res.data.pid ? ` · PID ${res.data.pid}` : ''}`);
             if (screen.offsetWidth) session.claimSize(); // opened on screen: take over the size

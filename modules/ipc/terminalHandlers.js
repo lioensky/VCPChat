@@ -8,6 +8,7 @@
 'use strict';
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { ipcMain: defaultIpcMain } = require('electron');
 const { createApplicationSenderGuard, resolveWindowWebContents } = require('./applicationSender');
@@ -190,7 +191,17 @@ function createView(event, options = {}) {
     views.set(id, { id, sender, detach });
     trackSender(sender);
 
-    return { id, pid: state.pid, shared: true };
+    return { id, pid: state.pid, shared: true, windowsPty: windowsPtyInfo() };
+}
+
+/**
+ * Windows 上 PTY 后端自己会按新宽度重排可见区，xterm 得知道这点，不然 resize 时两边各排一次，
+ * 行会重复、提示符错位（对照 ZCode TerminalSession 的 windowsPty）。node-pty 在 build 18309 起用 ConPTY。
+ */
+function windowsPtyInfo() {
+    if (process.platform !== 'win32') return null;
+    const buildNumber = Number(os.release().split('.')[2]) || undefined;
+    return { backend: buildNumber && buildNumber < 18309 ? 'winpty' : 'conpty', ...(buildNumber ? { buildNumber } : {}) };
 }
 
 function initialize({ workspaceService = null, executorLoader = null, commandRunStoreLoader = null, mainWindow = null, getMainWindow: getWindow = null, ipcMain: injectedIpcMain = null } = {}) {

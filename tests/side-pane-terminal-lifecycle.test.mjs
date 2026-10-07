@@ -253,6 +253,15 @@ test('OSC 8 hyperlinks open http(s) in the side browser and nothing else', async
     } finally { await h.cleanup(); }
 });
 
+test('a Windows PTY backend reported by the main process is handed to xterm so resizes do not reflow twice', async () => {
+    const h = fixture({ create: async () => ({ success: true, data: { id: 'view:win', windowsPty: { backend: 'conpty', buildNumber: 22631 } } }) });
+    try {
+        const handle = await h.provider.openTerminalTab();
+        await until(() => handle.getSessionId() === 'view:win');
+        assert.deepEqual(h.terminals[0].options.windowsPty, { backend: 'conpty', buildNumber: 22631 });
+    } finally { await h.cleanup(); }
+});
+
 test('Ctrl+C with a selection copies instead of interrupting the shared shell; pane shortcuts stay out of the shell', async () => {
     const h = fixture();
     const copied = [];

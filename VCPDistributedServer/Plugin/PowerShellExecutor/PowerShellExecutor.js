@@ -1005,6 +1005,14 @@ function createNewPtySession() {
             reject(new Error('PowerShell did not complete its startup readiness probe within 15 seconds.'));
         }, 15000);
 
+        // macOS / Linux 起的是 bash：PowerShell 的初始化写进去只会报语法错误，边界永远等不到，
+        // 前 15 秒侧栏一片空白。环境变量 spawn 时已经给了，这里只打印边界：两段引号拼起来，
+        // 回显的命令行里是 '…''…'，不会提前命中
+        if (os.platform() !== 'win32') {
+            const split = Math.floor(readyBoundary.length / 2);
+            currentPtyProcess.write(`printf '%s\\n' '${readyBoundary.slice(0, split)}''${readyBoundary.slice(split)}'; clear\r`);
+            return;
+        }
         const initializationCommand = [
             '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8',
             '$env:PAGER = "cat"',
@@ -1024,6 +1032,8 @@ function createNewPtySession() {
         ].join('; ');
         currentPtyProcess.write(`${initializationCommand}\r`);
     });
+    // 只有 AI 命令会等它；没人等的时候超时也不能变成未处理的 rejection
+    ptyReadyPromise.catch(() => {});
 
     // 当 pty 进程意外退出时，清理资源。
     // 注意：newSession 会先 kill 旧 PTY 再创建新 PTY，旧 PTY 的异步 onExit 不能误清理新会话。
