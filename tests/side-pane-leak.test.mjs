@@ -258,7 +258,7 @@ function probeFixture() {
         residency: controller.getViewResidency()
     });
     return {
-        controller, mounts, measure,
+        controller, mounts, measure, root,
         hold() {
             let open;
             gate = { promise: new Promise(resolve => { open = resolve; }) };
@@ -310,7 +310,8 @@ test('a view whose mount throws releases what it had set up, and the tab can mou
             await settle();
             const failed = h.mounts.at(-1);
             assert.equal(failed.released, 1, 'what the provider put on the view scope is released');
-            assert.equal(h.measure().views, 0, 'no empty view shell is left');
+            assert.equal(h.measure().views, 1, 'only the error page is left, not an empty shell');
+            assert.ok(h.root.querySelector(`.side-pane-view[data-tab-id="${id}"] [role="alert"]`), 'the failed tab says it failed');
 
             // 标签还在：再显示一次就重新挂上
             h.controller.activateTab(id);

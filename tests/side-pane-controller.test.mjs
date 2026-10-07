@@ -292,25 +292,65 @@ for (const action of ['select another tab', 'hide the pane', 'focus the main inp
     });
 }
 
-test('SidePaneController does not leave an empty view behind when a mount fails', async () => {
+test('a failed mount shows an error with a retry instead of a blank pane', async () => {
     const { dom, root, options } = createPaneDom();
+    let attempts = 0;
     const controller = createSidePaneController({
         ...options,
         providers: {
-            broken: {
-                async mountTab() { throw new Error('mount failed'); }
+            flaky: {
+                async mountTab(tab, view) {
+                    attempts++;
+                    view.textContent = 'half drawn';
+                    if (attempts === 1) throw new Error('mount failed');
+                    view.textContent = 'ready';
+                    return { focus() {}, dispose() {} };
+                }
             }
         }
     });
     const originalError = console.error;
     console.error = () => {};
     try {
-        await controller.openTab({ id: 'broken', kind: 'broken', title: 'Broken', closable: true, scopeMode: 'global' }).catch(() => {});
+        await assert.rejects(controller.openTab({ id: 'flaky', kind: 'flaky', title: 'Flaky', closable: true, scopeMode: 'global' }), /mount failed/);
+        const views = root.querySelectorAll('.side-pane-view[data-tab-id="flaky"]');
+        assert.equal(views.length, 1);
+        assert.equal(views[0].hidden, false, 'the failed tab stays the visible one');
+        assert.equal(views[0].querySelector('[role="alert"]').textContent.includes('mount failed'), true);
+        assert.equal(views[0].textContent.includes('half drawn'), false, 'what the provider half drew is cleared');
+
+        views[0].querySelector('.side-pane-mount-error-retry').click();
+        await new Promise(resolve => setTimeout(resolve, 0));
+        assert.equal(attempts, 2);
+        const mounted = root.querySelectorAll('.side-pane-view[data-tab-id="flaky"]');
+        assert.equal(mounted.length, 1);
+        assert.equal(mounted[0].textContent, 'ready');
+        assert.equal(mounted[0].hidden, false);
+        assert.ok(controller.getTabHandle('flaky'));
     } finally {
         console.error = originalError;
     }
-    assert.equal(root.querySelector('.side-pane-view[data-tab-id="broken"]'), null);
 
+    await controller.dispose();
+    dom.window.close();
+});
+
+test('closing a tab whose mount failed removes its error view', async () => {
+    const { dom, root, options } = createPaneDom();
+    const controller = createSidePaneController({
+        ...options,
+        providers: { broken: { async mountTab() { throw new Error('mount failed'); } } }
+    });
+    const originalError = console.error;
+    console.error = () => {};
+    try {
+        await controller.openTab({ id: 'broken', kind: 'broken', title: 'Broken', closable: true, scopeMode: 'global' }).catch(() => {});
+        assert.ok(root.querySelector('.side-pane-view[data-tab-id="broken"]'));
+        await controller.closeTab('broken');
+        assert.equal(root.querySelector('.side-pane-view[data-tab-id="broken"]'), null);
+    } finally {
+        console.error = originalError;
+    }
     await controller.dispose();
     dom.window.close();
 });

@@ -2,7 +2,7 @@
 'use strict';
 
 import { createTabSortable } from './side-pane-tab-dnd.js';
-import { getTabIconName, resolveTabsOverflow } from './side-pane-tab-utils.js';
+import { findByTabId, getTabIconName, resolveTabsOverflow } from './side-pane-tab-utils.js';
 
 // 标签标题悬停提示、面板切换动画、可拖拽排序的标签
 const TAB_TOOLTIP_DELAY_MS = 1500;
@@ -133,7 +133,7 @@ export function createSidePaneTabStrip({
     function syncStatus() {
         const current = statusTabId ? getStatus() : null;
         if (!current) return;
-        const btn = tabListElement.querySelector(`.side-pane-tab[data-tab-id="${statusTabId}"]`);
+        const btn = findByTabId(tabListElement, statusTabId, '.side-pane-tab[data-tab-id]');
         const dot = btn?.querySelector('.side-pane-tab-status');
         if (!dot) return;
         const { status = 'unknown', text = '' } = current;
@@ -294,7 +294,7 @@ export function createSidePaneTabStrip({
         syncStatus,
         hideTooltip,
         focusTab(tabId) {
-            tabListElement.querySelector(`[role="tab"][data-tab-id="${tabId}"]`)?.focus?.();
+            findByTabId(tabListElement, tabId, '[role="tab"][data-tab-id]')?.focus?.();
         },
         dispose() {
             disposed = true;

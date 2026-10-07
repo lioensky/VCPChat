@@ -161,3 +161,43 @@ html #vcpSidePane .notifications-sidebar.active:where(.vcp-ui-scope, .vcp-ui-sco
 }
 
 
+
+/* 标签挂载失败：出错提示和重试按钮，代替空白页 */
+html .side-pane-mount-error:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 100%;
+    padding: 24px;
+    text-align: center;
+}
+
+html .side-pane-mount-error-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    font-size: var(--vcp-ui-font-size);
+    font-weight: 600;
+}
+
+html .side-pane-mount-error-detail:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    max-width: 90%;
+    font-size: calc(var(--vcp-ui-font-size) - 2px);
+    opacity: 0.65;
+    white-space: pre-line;
+    word-break: break-all;
+}
+
+html .side-pane-mount-error-retry:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    margin-top: 6px;
+    padding: 5px 14px;
+    border: 1px solid var(--border-color, var(--vcp-ui-port-color-rgba-255-255-255-0-16));
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font-size: calc(var(--vcp-ui-font-size) - 2px);
+    cursor: pointer;
+}
+
+html .side-pane-mount-error-retry:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-port-color-rgba-127-127-127-0-16);
+}

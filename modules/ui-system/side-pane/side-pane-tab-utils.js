@@ -145,3 +145,16 @@ export function moveIdBefore(ids, activeId, overId) {
     next.splice(to, 0, activeId);
     return next;
 }
+
+/**
+ * 按 data-tab-id 找元素。标签 id 里可能有 Windows 路径的反斜杠或引号（code-viewer:C:\proj\a.js），
+ * 拼进属性选择器会匹配不到甚至抛 SyntaxError，所以逐个比对属性值。
+ */
+export function findByTabId(container, tabId, selector = '[data-tab-id]') {
+    if (!container || tabId == null) return null;
+    const want = String(tabId);
+    for (const el of container.querySelectorAll(selector)) {
+        if (el.getAttribute('data-tab-id') === want) return el;
+    }
+    return null;
+}

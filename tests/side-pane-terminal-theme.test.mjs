@@ -72,3 +72,50 @@ test('mounted terminal: xterm theme follows the frame and switches with the ligh
         dom.window.close();
     }
 });
+
+test('the canvas takes the frame colour once the screen is in the pane, and unrelated body changes do not repaint it', async () => {
+    const { createTerminalSideProvider } = await import('../modules/ui-system/side-pane/terminalSideProvider.js');
+    const dom = new JSDOM('<body><div id="view"></div></body>', { pretendToBeVisual: true });
+    const doc = dom.window.document;
+    const sheet = doc.createElement('style');
+    sheet.textContent = '#view .side-terminal-screen { background-color: rgb(30, 40, 50); color: rgb(200, 210, 220); }';
+    doc.head.appendChild(sheet);
+    const terminals = [];
+    class FakeTerminal {
+        constructor(options) {
+            this.themeWrites = 0;
+            let theme = options.theme;
+            this.options = { ...options };
+            Object.defineProperty(this.options, 'theme', { get: () => theme, set: value => { theme = value; this.themeWrites++; } });
+            this.cols = 80; this.buffer = { active: {} }; terminals.push(this);
+        }
+        loadAddon() {} open() {} onData() { return { dispose() {} }; } onResize() { return { dispose() {} }; }
+        focus() {} write() {} dispose() {} reset() {} clear() {} registerLinkProvider() {}
+    }
+    const api = { terminalCreate: async () => ({ success: true, data: { id: 's1' } }), terminalKill() {} };
+    const provider = createTerminalSideProvider({ document: doc, api, sidePaneController: null,
+        xtermLoader: async () => ({ Terminal: FakeTerminal, FitAddon: null }) });
+    let handle;
+    try {
+        handle = await provider.mountTab({ id: 'terminal:main' }, doc.getElementById('view'));
+        assert.equal(terminals[0].options.theme.background, 'rgb(30, 40, 50)', 'not the hard-coded fallback');
+        assert.equal(terminals[0].options.theme.foreground, 'rgb(200, 210, 220)');
+        const writes = terminals[0].themeWrites;
+        doc.body.classList.add('side-pane-resizing');
+        await new Promise(resolve => dom.window.queueMicrotask(resolve));
+        assert.equal(terminals[0].themeWrites, writes, 'same colours: no reassignment, no full repaint');
+    } finally {
+        await handle?.dispose?.();
+        dom.window.close();
+    }
+});
+
+test('PSReadLine line redraws lose their black trailing background; command output keeps its colours', async () => {
+    const { normalizePowerShellReadlineRedraw } = await import('../modules/ui-system/side-pane/terminalDataTransform.js');
+    const ESC = '\x1b';
+    const redraw = `${ESC}[3;1H${ESC}[37mPS C:\\> ${ESC}[93mgit${ESC}[37;40m        ${ESC}[0m`;
+    assert.equal(normalizePowerShellReadlineRedraw(redraw, true), `${ESC}[3;1H${ESC}[37mPS C:\\> ${ESC}[93mgit${ESC}[37;49m        ${ESC}[0m`);
+    assert.equal(normalizePowerShellReadlineRedraw(redraw, false), redraw, 'bash sessions are left alone');
+    const output = `${ESC}[37;40mblack box from a program${ESC}[0m\r\n`;
+    assert.equal(normalizePowerShellReadlineRedraw(output, true), output, 'output with a newline is not a line redraw');
+});

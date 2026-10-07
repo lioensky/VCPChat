@@ -15,6 +15,7 @@ import { createSidePaneShortcuts } from './side-pane-shortcuts.js';
 import { createSidePaneLayoutStore, parseLayout, rememberBounded, serializeLayout } from './side-pane-persistence.js';
 import { createSidePaneRootScope, createTabOccurrence } from './side-pane-occurrence.js';
 import { selectDormantViews } from './side-pane-dormancy.js';
+import { findByTabId } from './side-pane-tab-utils.js';
 
 /** @typedef {import('./side-pane-types.js').SidePaneTab} SidePaneTab */
 /** @typedef {import('./side-pane-types.js').SidePaneTabType} SidePaneTabType */
@@ -471,6 +472,50 @@ export function createSidePaneController({
         pendingTabMounts.delete(tabId);
     }
 
+    // 挂载失败的标签：tabId -> 显示出错提示的视图
+    const failedMounts = new Map();
+
+    function clearMountFailure(tabId) {
+        failedMounts.get(tabId)?.remove?.();
+        failedMounts.delete(tabId);
+    }
+
+    function showMountFailure(tabId, view, error, mountOptions) {
+        view.replaceChildren();
+        const box = doc.createElement('div');
+        box.className = 'side-pane-mount-error';
+        box.setAttribute('role', 'alert');
+        const title = doc.createElement('div');
+        title.className = 'side-pane-mount-error-title';
+        title.textContent = '这个标签没能打开';
+        const detail = doc.createElement('div');
+        detail.className = 'side-pane-mount-error-detail';
+        detail.textContent = error?.message || String(error || '未知错误');
+        const retry = doc.createElement('button');
+        retry.type = 'button';
+        retry.className = 'side-pane-mount-error-retry';
+        retry.textContent = '重试';
+        retry.addEventListener('click', () => {
+            if (isDisposed || failedMounts.get(tabId) !== view) return;
+            const refocus = view.contains(doc.activeElement);
+            ensureTabMounted(tabId, mountOptions)
+                .then(entry => {
+                    if (!entry || isDisposed) return;
+                    syncViewPanels();
+                    if (refocus && state.activeTabId === tabId) entry.handle?.focus?.();
+                })
+                .catch(retryError => {
+                    console.error(`[SidePaneController] Retrying the mount of tab "${tabId}" failed:`, retryError);
+                    if (!isDisposed) syncViewPanels();
+                    if (refocus) failedMounts.get(tabId)?.querySelector?.('.side-pane-mount-error-retry')?.focus?.();
+                });
+        });
+        box.append(title, detail, retry);
+        view.append(box);
+        failedMounts.set(tabId, view);
+        syncViewPanels();
+    }
+
     function ensureTabMounted(tabId, { provider, payload, kind = payload?.kind, ariaLabel = null, onClosed = null }) {
         const mounted = mountedTabMap.get(tabId);
         if (mounted) return Promise.resolve(mounted);
@@ -478,7 +523,9 @@ export function createSidePaneController({
 
         const pending = { promise: null, viewElement: null, canceled: false, onClosed };
         const mounting = (async () => {
-            let view = contentContainer?.querySelector(`[data-tab-id="${tabId}"]`);
+            // 上次挂载失败留下的提示页不复用，换一个干净的视图重新挂
+            clearMountFailure(tabId);
+            let view = findByTabId(contentContainer, tabId);
             if (!view && contentContainer) {
                 view = doc.createElement('section');
                 view.className = 'side-pane-view';
@@ -505,9 +552,13 @@ export function createSidePaneController({
                     })
                     : null;
             } catch (error) {
-                // 挂载失败不留空的视图壳，下次显示时重新挂
                 await tabOccurrence.closeView('mount-failed').catch(() => {});
-                view.remove?.();
+                // 标签还在、侧栏没拆：留一页出错提示和重试按钮，不让用户对着空白页
+                if (!isDisposed && !pending.canceled && state.tabs.some(t => t.id === tabId)) {
+                    showMountFailure(tabId, view, error, { provider, payload, kind, ariaLabel, onClosed });
+                } else {
+                    view.remove?.();
+                }
                 throw error;
             }
             if (isDisposed || pending.canceled || !state.tabs.some(t => t.id === tabId)) {
@@ -613,6 +664,7 @@ export function createSidePaneController({
                 || entry?.viewElement?.contains(origin)
                 || origin?.closest?.('[data-tab-id]')?.getAttribute('data-tab-id') === tab.id;
             entry?.viewElement?.remove();
+            clearMountFailure(tab.id);
             if (mountedTabMap.get(tab.id) === entry) mountedTabMap.delete(tab.id);
             viewTimes.delete(tab.id);
             dormantTabs.delete(tab.id);
@@ -1072,6 +1124,7 @@ export function createSidePaneController({
                 entry.viewElement?.remove?.();
             });
             mountedTabMap.clear();
+            for (const tabId of [...failedMounts.keys()]) clearMountFailure(tabId);
             for (const tabId of pendingTabMounts.keys()) cancelPendingMount(tabId);
             tabRegistry.dispose();
             await Promise.allSettled([...disposePromises, tabCloseOwner.dispose()]);

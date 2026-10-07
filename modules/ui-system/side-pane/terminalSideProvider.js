@@ -11,6 +11,7 @@
 
 import { getHttpLinksForTerminalBufferLine } from './terminalLinks.js';
 import { buildTerminalTheme } from './terminalTheme.js';
+import { normalizePowerShellReadlineRedraw } from './terminalDataTransform.js';
 import { createSidePaneRootScope } from './side-pane-occurrence.js';
 
 const GO_OPTION_VALUE = '';
@@ -137,10 +138,22 @@ export function createTerminalSideProvider({
             return true;
         });
         // 外框底色由 CSS 给出，xterm 从外框读取同一颜色，明暗主题切换时跟着换调色板。
+        // 只有画面挂在侧栏里时 CSS 才算得出来（新建的节点和暂存区都读到回退色），所以挂上之后再算；
+        // 收着的时候只记一笔，下次挂上时重算。颜色没变就不赋值：每次赋值 xterm 都整屏重绘
+        // （拖动分隔条时 body 的 class 也会变）
+        let appliedTheme = JSON.stringify(initialTheme);
+        let themeStale = false;
         const applyTheme = () => {
+            if (!term?.options) return;
+            if (!screen.isConnected || screen.closest?.('[data-side-terminal-stash]')) { themeStale = true; return; }
+            themeStale = false;
             const theme = buildTerminalTheme(doc, screen);
-            if (term?.options) term.options.theme = theme;
+            const serialized = JSON.stringify(theme);
+            if (serialized === appliedTheme) return;
+            appliedTheme = serialized;
+            term.options.theme = theme;
         };
+        session.applyTheme = applyTheme;
         const ThemeObserver = doc.defaultView?.MutationObserver;
         const themeObserver = ThemeObserver && doc.body ? new ThemeObserver(applyTheme) : null;
         themeObserver?.observe(doc.body, { attributes: true, attributeFilter: ['class', 'data-vcp-theme'] });
@@ -179,7 +192,9 @@ export function createTerminalSideProvider({
         screen.addEventListener('focusin', session.claimSize);
 
         const unsubscribeData = api.onTerminalData?.((payload) => {
-            if (payload?.id === session.sessionId && typeof payload.data === 'string') term.write(payload.data);
+            if (payload?.id === session.sessionId && typeof payload.data === 'string') {
+                term.write(normalizePowerShellReadlineRedraw(payload.data, session.powershell));
+            }
         });
         const unsubscribeClear = api.onTerminalClear?.((payload) => {
             if (payload?.id === session.sessionId) term.reset();
@@ -225,6 +240,8 @@ export function createTerminalSideProvider({
             session.sessionId = res.data.id;
             session.exited = false;
             if (res.data.windowsPty && typeof res.data.windowsPty === 'object') term.options.windowsPty = res.data.windowsPty;
+            // 共享终端在 Windows 上起的是 pwsh / powershell，其余平台是 bash
+            session.powershell = Boolean(res.data.windowsPty);
             setStatus('已连接终端', 'connected',
                 `已连接终端 · 与终端窗口 / AI 命令共用同一个会话${res.data.pid ? ` · PID ${res.data.pid}` : ''}`);
             if (screen.offsetWidth) session.claimSize(); // opened on screen: take over the size
@@ -401,6 +418,7 @@ export function createTerminalSideProvider({
             }
             const { term, screen } = session;
             placeScreen(screen, container);
+            session.applyTheme();
 
             let viewReleased = false;
             // 这一次挂载的按钮监听、尺寸观察和防抖定时器都挂在视图 scope 下，休眠或关标签时一起拆；
