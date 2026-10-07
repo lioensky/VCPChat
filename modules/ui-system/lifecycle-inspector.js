@@ -53,6 +53,8 @@
             // 主进程按窗口的推送订阅：主题、key、订阅窗口数
             subscriptions: Object.freeze(result?.subscriptions || []),
             gitWatchers: Object.freeze(result?.gitWatchers || []),
+            // 终端执行器是否已加载（loaded），以及分布式服务器是否在跑（它的插件加载也会拉起执行器）
+            terminalExecutor: Object.freeze({ loaded: Boolean(result?.terminalExecutor?.loaded), distributedServer: Boolean(result?.terminalExecutor?.distributedServer) }),
         });
     }
 

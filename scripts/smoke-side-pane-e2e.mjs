@@ -465,6 +465,11 @@ try {
 
     const tabsBeforeRestart = await session.page.evaluate(() => [...document.querySelectorAll('.side-pane-tab[data-tab-id]')].map(e => e.dataset.tabId).filter(id => id !== 'notifications'));
     await step('restart and restore', async () => {
+        // 重启后关掉分布式服务器：它的插件加载会在启动时直接 require 终端执行器，开着就看不出侧栏终端是否按需加载
+        await session.page.evaluate(async () => {
+            const api = window.chatAPI || window.electronAPI;
+            await api.saveSettings({ ...(await api.loadSettings()), enableDistributedServer: false });
+        });
         await wait(1500); // 等布局写盘
         await quit(session);
         session = await launch();
@@ -485,7 +490,18 @@ try {
         }
         await activate(page, expected.find(id => id.startsWith('browser:')));
         await K.browser.use(page, session);
-        return { restored: restored.length, expected: expected.length };
+
+        // 终端执行器按需加载：恢复的标签都挂好了，还没开终端时主进程里没有它，开了才有
+        const executor = () => page.evaluate(async () => (await window.VCPLifecycleInspector.snapshotMain()).terminalExecutor);
+        const before = await executor();
+        assert.equal(before.distributedServer, false, 'distributed server still running after it was turned off');
+        assert.equal(before.loaded, false, 'terminal executor was loaded before any terminal tab opened');
+        await K.terminal.open(page); await wait(900);
+        await K.terminal.use(page, session);
+        const after = await executor();
+        assert.equal(after.loaded, true, 'terminal executor not loaded after the terminal tab opened');
+        await closeAll(page); await wait(400);
+        return { restored: restored.length, expected: expected.length, terminalExecutor: { before, after } };
     });
 
     await step('streaming after restart, then close everything', async () => {

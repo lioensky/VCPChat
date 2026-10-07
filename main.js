@@ -314,6 +314,7 @@ const NATIVE_SPLASH_READY_FILE = app.isPackaged
 const AGENT_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Agents');
 const USER_DATA_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'UserData'); // For chat histories and attachments
 const SETTINGS_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'settings.json');
+const TERMINAL_EXECUTOR_PATH = path.join(PROJECT_ROOT, 'VCPDistributedServer', 'Plugin', 'PowerShellExecutor', 'PowerShellExecutor.js');
 const USER_AVATAR_FILE = path.join(USER_DATA_DIR, 'user_avatar.png'); // Standardized user avatar file
 const MUSIC_PLAYLIST_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'songlist.json');
 const MUSIC_COVER_CACHE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'MusicCoverCache');
@@ -1794,6 +1795,11 @@ if (!gotTheLock) {
                 domains: domainActivator.snapshot(),
                 subscriptions: stateSubscriptions.snapshot(),
                 gitWatchers: gitHandlers.watchSnapshot(),
+                // 终端执行器是否已在主进程加载：侧栏终端第一次用到才 require；分布式服务器开着时它的插件加载也会拉起它
+                terminalExecutor: {
+                    loaded: Boolean(originalRequire.cache[TERMINAL_EXECUTOR_PATH]),
+                    distributedServer: Boolean(distributedServer),
+                },
             };
         });
         ipcMain.handle('embedded-vchat-app:close-all', async event => {
