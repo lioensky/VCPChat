@@ -34,6 +34,8 @@ export function createGitCards({
     const diffCache = new Map();
     let countQueue = [];
     let countWorkers = 0;
+    // 缓存作废一次加一；作废前发出的请求回来时不再写缓存（对照 ZCode GitPane diffGenerationRef）
+    let generation = 0;
 
     async function fetchDiff(item) {
         const key = keyOf(item);
@@ -41,6 +43,7 @@ export function createGitCards({
         if (cached && cached.state !== 'loading') return cached;
         if (cached?.promise) return cached.promise;
         const requestedWorkspace = store.currentWorkspaceId;
+        const requestedGeneration = generation;
         const promise = (async () => {
             let result;
             try {
@@ -64,17 +67,23 @@ export function createGitCards({
             } catch (err) {
                 result = { state: 'unavailable', message: err.message || '暂时无法预览这个 Diff。' };
             }
-            if (requestedWorkspace === store.currentWorkspaceId && !disposed && !store.isDisposed) diffCache.set(key, result);
+            if (requestedWorkspace === store.currentWorkspaceId && requestedGeneration === generation && !disposed && !store.isDisposed) diffCache.set(key, result);
             return result;
         })();
         diffCache.set(key, { state: 'loading', promise });
         return promise;
     }
 
+    // 已跟踪文件的行数随状态一起来（git diff --numstat）；未跟踪文件和二进制文件才靠拉 diff 算
+    const hasStatusCounts = item => Number.isFinite(item.added) && Number.isFinite(item.removed);
+
     function paintCounts(item, card) {
-        const cached = diffCache.get(keyOf(item));
         const countsEl = card.querySelector('.side-git-counts');
-        if (!countsEl || cached?.state !== 'ready') return;
+        if (!countsEl) return;
+        const cached = hasStatusCounts(item)
+            ? { state: 'ready', added: item.added, removed: item.removed, approximate: false }
+            : diffCache.get(keyOf(item));
+        if (cached?.state !== 'ready') return;
         countsEl.innerHTML = '';
         const add = doc.createElement('span');
         add.className = 'text-diff-added';
@@ -243,14 +252,15 @@ export function createGitCards({
     }
 
     function prefetch(items) {
-        countQueue = items.slice(0, COUNT_PREFETCH_LIMIT).filter(item => !diffCache.has(keyOf(item)));
+        countQueue = items.filter(item => !hasStatusCounts(item)).slice(0, COUNT_PREFETCH_LIMIT).filter(item => !diffCache.has(keyOf(item)));
         pumpCountQueue();
     }
     function clearExpanded() { expanded.clear(); }
-    function clearDiff() { expanded.clear(); diffCache.clear(); }
+    function clearDiff() { expanded.clear(); invalidate(); }
+    function invalidate() { generation += 1; diffCache.clear(); countQueue = []; }
     function reset() { clearDiff(); countQueue = []; }
     function expand(item) { expanded.clear(); expanded.add(keyOf(item)); }
     function hasExpanded() { return expanded.size > 0; }
 
-    return Object.freeze({ buildCard, cardFor, prefetch, reset, clearDiff, clearExpanded, expand, hasExpanded, dispose() { disposed = true; countQueue = []; expanded.clear(); diffCache.clear(); } });
+    return Object.freeze({ buildCard, cardFor, prefetch, reset, clearDiff, invalidate, clearExpanded, expand, hasExpanded, dispose() { disposed = true; countQueue = []; expanded.clear(); diffCache.clear(); } });
 }

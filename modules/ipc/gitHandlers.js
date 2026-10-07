@@ -9,7 +9,6 @@
 //   监听降级（只看得到 .git 或挂不上）时推一次 degraded，订阅回执里也带着，渲染端退回到窗口获得焦点时补读。
 'use strict';
 
-const path = require('path');
 const { ipcMain, shell } = require('electron');
 const gitService = require('../services/gitService');
 const { createGitWatcher } = require('../services/gitWatcher');
@@ -162,10 +161,8 @@ function initialize({ workspaceService = null, mainWindow = null, getMainWindow:
     ), { mutates: true });
 
     // 在系统文件管理器中定位文件：只接受工作区内的相对路径，越界一律拒绝。
-    handle('git:reveal-path', (workspaceId, relPath) => {
-        const root = path.resolve(resolveWorkspaceRoot(workspaceId));
-        const target = path.resolve(root, typeof relPath === 'string' ? relPath : '');
-        if (target !== root && !target.startsWith(root + path.sep)) throw new Error('路径不在工作区内。');
+    handle('git:reveal-path', async (workspaceId, relPath) => {
+        const target = await gitService.resolveRevealTarget(resolveWorkspaceRoot(workspaceId), relPath);
         shell.showItemInFolder(target);
         return { revealed: true };
     });

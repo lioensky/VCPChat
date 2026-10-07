@@ -341,13 +341,54 @@ async function listRemotes(repo) {
 
 // ============================ 状态 ============================
 
+/** 解析 `git diff --numstat -z --no-renames`：路径 → { added, removed }；二进制文件两项都是 null */
+function parseNumstat(buffer) {
+    const counts = new Map();
+    const text = Buffer.isBuffer(buffer) ? buffer.toString('utf8') : String(buffer || '');
+    for (const record of text.split('\0')) {
+        const match = /^(-|\d+)\t(-|\d+)\t(.+)$/s.exec(record);
+        if (!match) continue;
+        counts.set(match[3], {
+            added: match[1] === '-' ? null : Number(match[1]),
+            removed: match[2] === '-' ? null : Number(match[2]),
+        });
+    }
+    return counts;
+}
+
+/**
+ * 每个已跟踪文件的增删行数，和状态同一次读出（对照 ZCode gitCliRepo 的 diff --numstat）。
+ * 状态码不变、内容又被改了时，行数跟着变，渲染端据此知道哪些 diff 过期，也不用逐个拉 diff 来算行数。
+ */
+async function readDiffCounts(repo) {
+    const scope = repo.prefix ? ['--', repo.prefix] : [];
+    const base = ['diff', '--numstat', '-z', '--no-renames', '--no-ext-diff'];
+    const [unstaged, staged] = await Promise.all([
+        runGit(repo.toplevel, [...base, ...scope]).then(r => parseNumstat(r.stdout), () => new Map()),
+        runGit(repo.toplevel, [...base, '--cached', ...scope]).then(r => parseNumstat(r.stdout), () => new Map()),
+    ]);
+    return { unstaged, staged };
+}
+
+function withCounts(list, counts) {
+    return list.map(item => {
+        const count = item.untracked ? null : counts.get(item.path);
+        return count ? { ...item, added: count.added, removed: count.removed } : item;
+    });
+}
+
 async function readStatus(repo) {
     const args = ['status', '--porcelain=v2', '-z', '--branch', '--untracked-files=all'];
     if (repo.prefix) args.push('--', repo.prefix);
-    const [{ stdout }, remotes] = await Promise.all([runGit(repo.toplevel, args), listRemotes(repo)]);
+    const [{ stdout }, remotes, counts] = await Promise.all([runGit(repo.toplevel, args), listRemotes(repo), readDiffCounts(repo)]);
     const { branch, entries } = parsePorcelainV2(stdout);
     const truncated = entries.length > MAX_ENTRIES;
-    const groups = groupEntries(truncated ? entries.slice(0, MAX_ENTRIES) : entries);
+    const grouped = groupEntries(truncated ? entries.slice(0, MAX_ENTRIES) : entries);
+    const groups = {
+        staged: withCounts(grouped.staged, counts.staged),
+        changes: withCounts(grouped.changes, counts.unstaged),
+        conflicts: grouped.conflicts,
+    };
     return {
         isRepo: true,
         root: repo.root,
@@ -367,6 +408,19 @@ async function readStatus(repo) {
         total: entries.length,
         truncated,
     };
+}
+
+/**
+ * 「在文件管理器中打开」的目标：状态条目的路径相对仓库根，工作区可能只是仓库的子目录，
+ * 所以按仓库根解析（对照 ZCode gitService.ts toAbsolutePath），再校验仍在工作区内。
+ */
+async function resolveRevealTarget(workspaceRoot, relPath) {
+    const repo = await openRepository(workspaceRoot);
+    if (repo) return absoluteInRepo(repo, resolveRepoPath(repo, relPath));
+    const root = path.resolve(workspaceRoot);
+    const target = path.resolve(root, typeof relPath === 'string' ? relPath : '');
+    if (target !== root && !target.startsWith(root + path.sep)) throw new Error('路径不在工作区内。');
+    return target;
 }
 
 async function getStatus(workspaceRoot) {
@@ -727,6 +781,7 @@ async function getChangeSummary(workspaceRoot) {
 module.exports = {
     getStatus,
     getWatchTargets,
+    resolveRevealTarget,
 
     getDiff,
     stage,
@@ -741,6 +796,7 @@ module.exports = {
     getChangeSummary,
     // 供测试使用
     parsePorcelainV2,
+    parseNumstat,
     groupEntries,
     resolveRepoPath,
     chunkPaths,

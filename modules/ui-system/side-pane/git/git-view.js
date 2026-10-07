@@ -156,6 +156,8 @@ export function mountGitView(host, {
 
     const store = Object.freeze({
         get currentWorkspaceId() { return currentWorkspaceId; },
+        // 状态条目的路径相对仓库根；工作区可能只是仓库的一个子目录
+        get currentToplevel() { return currentStatus?.toplevel || null; },
         get isDisposed() { return disposed(); }
     });
 
@@ -315,9 +317,10 @@ export function mountGitView(host, {
             if (currentSource === AI_SOURCE && !aiBatchLoaded) await loadAiBatch();
             if (disposed() || requestedId !== currentWorkspaceId) return;
             // 推送触发的静默刷新：状态没变就不重绘（避免闪烁、丢 hover），有展开的 diff 时照常重绘。
+            // 状态里带着每个文件的增删行数，内容变了 key 也会变；变了就让缓存的 diff 作废（展开的那个保持展开，重新取）
             const statusKey = JSON.stringify(res.data);
             if (quiet && statusKey === lastStatusKey && !cardsOwner.hasExpanded()) { skipRender = true; return; }
-            if (statusKey !== lastStatusKey) { cardsOwner.clearDiff(); }
+            if (statusKey !== lastStatusKey) { cardsOwner.invalidate(); }
             lastStatusKey = statusKey;
         } catch (err) {
             if (quiet) return;

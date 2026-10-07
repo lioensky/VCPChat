@@ -738,13 +738,13 @@ export function createPlanDetailSideProvider({
 
             function render() {
                 if (disposed() || nodeView) return;
-                if (composingFilter) return;
                 // 输入框随整页重绘，记下焦点和光标位置
                 const active = doc.activeElement;
                 const focusKey = active && body.contains(active) ? active.dataset?.filter : null;
                 const pageFocus = active && chrome.contains(active) ? active.dataset?.planPage : null;
                 const caret = focusKey && typeof active.selectionStart === 'number' ? [active.selectionStart, active.selectionEnd] : null;
                 const scrollTop = body.scrollTop;
+                if (composingFilter) return;
                 body.innerHTML = '';
                 chrome.innerHTML = '';
                 chrome.hidden = false;

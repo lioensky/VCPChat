@@ -5,6 +5,9 @@
 //   - 工作区文件：Windows / macOS 上递归监听整个工作区（系统原生递归监听，开销小）；
 //     Linux 上递归监听要给每个子目录单独挂 watcher，大仓库代价太高，只监听元数据，
 //     文件内容的改动靠窗口获得焦点、操作后刷新和 V工程 推送补上；
+//   - Linux 上元数据目录也不整棵递归：Node 在 Linux 上的递归监听是 JS 实现，会同步遍历整棵 .git、给每个文件挂一个
+//     inotify（objects 多的仓库一次挂上万个，主线程卡几百毫秒，还可能把系统的 inotify 名额用光）。只监听元数据目录本身
+//     （HEAD、index、packed-refs……）加递归的 refs/（对照 DSH fs-local 的 depth:0）；
 //   - 一批连续写入只触发一次：每来一个事件往后推一次。元数据从这批第一个元数据事件起最多等 maxWaitMs，
 //     文件内容最多等 contentMaxWaitMs（编辑器、构建一直在写时不用每几秒读一遍状态）；两者谁先到就报一次；
 //   - 应用自己改了仓库（暂存、提交……）会马上通知，absorb(id) 让监听不再为同一件事重复报：
@@ -49,6 +52,7 @@ function createGitWatcher({
     onChange,
     onDegraded = null,
     watch = fs.watch,
+    exists = fs.existsSync,
     platform = process.platform,
     delays = DEFAULT_DELAYS,
     logger = console,
@@ -56,9 +60,10 @@ function createGitWatcher({
     const { metadataMs, contentMs, maxWaitMs, contentMaxWaitMs, absorbMs } = { ...DEFAULT_DELAYS, ...delays };
     const entries = new Map(); // id → entry
 
-    function open(entry, dir, kind) {
+    function open(entry, dir, kind, { recursive = true, prefix = '' } = {}) {
         try {
-            const watcher = watch(dir, { recursive: true, persistent: false }, (_type, filename) => onEvent(entry, kind, filename));
+            const watcher = watch(dir, { recursive, persistent: false },
+                (_type, filename) => onEvent(entry, kind, filename && prefix ? `${prefix}${filename}` : filename));
             watcher.on?.('error', error => {
                 // 目录被删或失去权限：关掉这一路，其余照常
                 try { watcher.close(); } catch (_e) { /* 已关闭 */ }
@@ -140,7 +145,15 @@ function createGitWatcher({
                 if (entry.error) reportDegraded(entry);
                 return;
             }
-            for (const dir of outermostDirs(targets.gitDirs || [])) open(entry, dir, 'metadata');
+            for (const dir of outermostDirs(targets.gitDirs || [])) {
+                if (platform === 'linux') {
+                    open(entry, dir, 'metadata', { recursive: false });
+                    const refs = path.join(dir, 'refs');
+                    if (exists(refs)) open(entry, refs, 'metadata', { prefix: 'refs/' });
+                } else {
+                    open(entry, dir, 'metadata');
+                }
+            }
             const watchContent = platform !== 'linux' && targets.root;
             if (watchContent) open(entry, targets.root, 'content');
             const kinds = new Set(entry.watchers.map(item => item.kind));

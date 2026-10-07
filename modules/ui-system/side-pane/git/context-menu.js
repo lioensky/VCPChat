@@ -40,10 +40,11 @@ export function createGitContextMenu({
     }
 
     function absolutePathOf(item) {
-        const ws = workspaceOf(store.currentWorkspaceId);
-        if (!ws) return item.path;
-        const sep = ws.path.includes('\\') ? '\\' : '/';
-        return ws.path.replace(/[\\/]+$/, '') + sep + item.path.split('/').join(sep);
+        // 条目路径相对仓库根（工作区可能是子目录），用仓库根拼；拿不到时才退回工作区根
+        const base = store.currentToplevel || workspaceOf(store.currentWorkspaceId)?.path;
+        if (!base) return item.path;
+        const sep = base.includes('\\') ? '\\' : '/';
+        return base.replace(/[\\/]+$/, '') + sep + item.path.split('/').join(sep);
     }
 
     async function revealInFileManager(item) {

@@ -116,7 +116,7 @@ test('on Linux only the git directories are watched, and that is reported as deg
         getTargets: async () => ({ root, gitDirs: [path.join(root, '.git')] }),
         onChange: () => {},
         onDegraded: (id, info) => degraded.push([id, info.mode]),
-        watch, platform: 'linux', logger: quiet,
+        watch, platform: 'linux', logger: quiet, exists: () => false,
     });
     await watcher.start('ws1');
     assert.deepEqual(opened.map(item => item.dir), [path.join(root, '.git')]);
@@ -393,4 +393,21 @@ test('a repository the app can only partly watch tells subscribed windows, and l
 
     const b = fakeWindow();
     assert.deepEqual(subscriptions.subscribe(b.sender, gitHandlers.STATUS_TOPIC, 'ws1'), { success: true, state: { degraded: true } });
+});
+
+test('on Linux the git directory is watched shallowly and refs/ recursively, never the whole object store', async () => {
+    const { watch, opened } = fakeWatch();
+    const root = path.resolve('/repo');
+    const gitDir = path.join(root, '.git');
+    const watcher = createGitWatcher({
+        getTargets: async () => ({ root, gitDirs: [gitDir] }),
+        onChange: () => {},
+        watch, platform: 'linux', logger: quiet, exists: dir => dir === path.join(gitDir, 'refs'),
+    });
+    await watcher.start('ws1');
+    assert.deepEqual(opened.map(item => [item.dir, item.options?.recursive]), [
+        [gitDir, false],
+        [path.join(gitDir, 'refs'), true]
+    ]);
+    watcher.dispose();
 });
