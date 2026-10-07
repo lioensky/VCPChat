@@ -748,7 +748,7 @@ function dispatchPtyData(rawData) {
 const MIRROR_REPLAY_LIMIT = 256 * 1024;
 const mirrorSinks = new Set();
 // 回放缓存按块存：满了从头部整块丢掉，每块均摊 O(1)，只在挂载回放时拼一次。
-// 原来每块都把 256KB 拼接再切片，刷屏输出时主进程每秒要复制几百 MB（同 DSH terminal-io 的有界缓冲预算）
+// 原来每块都把 256KB 拼接再切片，刷屏输出时主进程每秒要复制几百 MB（改成有界缓冲预算）
 let replayChunks = [];
 let replayHead = 0;
 let replayLength = 0;

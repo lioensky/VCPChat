@@ -82,8 +82,8 @@ export function createSideChatMessageEditor({
             if (active === editing) {
                 console.warn('[SideChat] Failed to save edited message:', error);
                 const detail = error?.message || String(error);
-                const reason = /^(EPERM|EACCES)\b/.test(detail) ? '文件被占用或没有写入权限'
-                    : /^ENOSPC\b/.test(detail) ? '磁盘空间不足' : String(detail).slice(0, 80);
+                const reason = /\b(EPERM|EACCES)\b/.test(detail) ? '文件被占用或没有写入权限'
+                    : /\bENOSPC\b/.test(detail) ? '磁盘空间不足' : String(detail).slice(0, 80);
                 toast?.(`保存失败：${reason}。编辑内容已保留，请稍后重试。`, 'error');
             }
         } finally {

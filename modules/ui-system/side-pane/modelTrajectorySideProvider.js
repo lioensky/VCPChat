@@ -372,7 +372,6 @@ export function createModelTrajectorySideProvider({
                         more.textContent = '展开';
                     },
                 };
-                const scheduleMeasure = () => scheduleRowMeasure(measureJob);
                 more.addEventListener('click', () => {
                     showAll = !showAll;
                     shell.classList.toggle('show-all', showAll);
