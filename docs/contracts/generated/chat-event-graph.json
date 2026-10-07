@@ -667,7 +667,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 358,
+          "line": 377,
           "kind": "custom-event-listener"
         },
         {
@@ -732,7 +732,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 358,
+          "line": 377,
           "kind": "custom-event-listener",
           "match": "signal?.addEventListener('abort'"
         },
@@ -12734,7 +12734,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 225,
+          "line": 244,
           "kind": "custom-event-listener"
         }
       ],
@@ -12753,7 +12753,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 225,
+          "line": 244,
           "kind": "custom-event-listener",
           "match": "screen.addEventListener('focusin'"
         }
@@ -21788,14 +21788,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 236,
+          "line": 255,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 236,
+          "line": 255,
           "kind": "preload-subscription",
           "match": "api.onTerminalClear("
         }
@@ -21826,14 +21826,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 230,
+          "line": 249,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 230,
+          "line": 249,
           "kind": "preload-subscription",
           "match": "api.onTerminalData("
         }
@@ -21845,14 +21845,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 250,
+          "line": 269,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 250,
+          "line": 269,
           "kind": "preload-subscription",
           "match": "api.onTerminalExit("
         }
@@ -21864,14 +21864,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 245,
+          "line": 264,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 245,
+          "line": 264,
           "kind": "preload-subscription",
           "match": "api.onTerminalResized("
         }

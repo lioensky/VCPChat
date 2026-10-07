@@ -1258,6 +1258,21 @@ export function createSidePaneController({
             }, 0, 'overlay-dismiss');
         }, true, 'overlay-dismiss');
     }
+    // 浮层时 Esc 也收起，焦点回到展开前的地方。挂在 window 冒泡阶段，里面的菜单、概览、对话框先处理自己的 Esc；
+    // 在输入框、终端里按的 Esc 是给它们的（停止生成、vim、地址栏还原），对话框和别处弹出的东西也不管
+    if (win?.addEventListener) {
+        rootScope.listen(win, 'keydown', event => {
+            if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing) return;
+            if (!state.visible || !win.matchMedia?.(OVERLAY_MEDIA_QUERY)?.matches) return;
+            const target = event.target;
+            if (target && target !== doc.body && target !== doc.documentElement
+                && !root.contains(target) && !mainContent?.contains(target)) return;
+            if (target?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"], .xterm, '
+                + 'dialog, [role="dialog"], [role="menu"], [role="listbox"]')) return;
+            event.preventDefault();
+            controller.setVisible(false);
+        }, undefined, 'overlay-escape');
+    }
     // 窗口最小化或切到别处时，当前标签也算不可见，跟着它的轮询一起停
     if (doc?.addEventListener) rootScope.listen(doc, 'visibilitychange', syncOccurrenceVisibility, undefined, 'document-visibility');
     cleanupListeners.push(() => {

@@ -19,8 +19,14 @@ const SINGLETON_TAB_ID = 'terminal:main';
 const XTERM_SCRIPT = 'vendor/xterm/xterm.js';
 const XTERM_FIT_SCRIPT = 'vendor/xterm/xterm-addon-fit.js';
 const XTERM_STYLE = 'vendor/xterm/xterm.css';
+// 容器尺寸变化后多久重新排版：平时 30ms；拖侧栏分隔条期间等停下 300ms
+const FIT_DEBOUNCE_MS = 30;
+const FIT_WHILE_RESIZING_MS = 300;
 // 连接建立前最多替用户攒这么多输入（敲键盘够用，大段粘贴不攒）
 const PENDING_INPUT_LIMIT = 4096;
+// 主进程一次最多收这么多字符（terminalHandlers MAX_WRITE_CHARS），再大的粘贴整段被拒；提示停留多久
+const WRITE_LIMIT_CHARS = 1024 * 1024;
+const WRITE_REJECTED_NOTICE_MS = 4000;
 
 function loadScript(doc, src) {
     return new Promise((resolve, reject) => {
@@ -193,8 +199,21 @@ export function createTerminalSideProvider({
 
         // 连接建立之前敲的字先攒着，连上后按顺序补发（打开标签就开始敲，不该丢字）；连不上就丢掉
         let pendingInput = '';
+        // 超过上限的粘贴主进程会整段拒收，以前悄无声息；在状态栏说一声，过几秒恢复原来的状态
+        const noticeRejectedWrite = () => {
+            const previous = session.status;
+            const notice = { text: '粘贴的内容超过 1MB，没有发送到终端', state: 'error', title: previous?.title || '' };
+            session.status = notice;
+            session.view?.render();
+            setTimeout(() => {
+                if (session.disposed || session.status !== notice) return;
+                session.status = previous;
+                session.view?.render();
+            }, WRITE_REJECTED_NOTICE_MS);
+        };
         term.onData((data) => {
-            if (session.sessionId) api.terminalWrite?.(session.sessionId, data);
+            if (data.length > WRITE_LIMIT_CHARS) noticeRejectedWrite();
+            else if (session.sessionId) api.terminalWrite?.(session.sessionId, data);
             else if (session.connectionOperation && pendingInput.length + data.length <= PENDING_INPUT_LIMIT) pendingInput += data;
         });
         session.flushPendingInput = () => {
@@ -552,7 +571,10 @@ export function createTerminalSideProvider({
                     // 释放是异步逐条进行的，这期间画面挪进暂存区引起的尺寸变化不再排 fit
                     if (!own.active) return;
                     cancelFit?.();
-                    cancelFit = own.timeout(session.fit, 30, 'fit-debounce');
+                    // 拖侧栏分隔条时停顿超过 30ms 就会重排一次、有焦点时还会改共享 PTY 的尺寸（ConPTY 每次都重排历史行）；
+                    // 拖动中等停下 300ms 再排（ZCode TerminalSession 拖动时 300ms 节流、松手补最终尺寸）
+                    const resizing = doc.body?.classList.contains('vcp-sidebar-resizing');
+                    cancelFit = own.timeout(session.fit, resizing ? FIT_WHILE_RESIZING_MS : FIT_DEBOUNCE_MS, 'fit-debounce');
                 }), screen, undefined, 'screen-resize');
             }
 

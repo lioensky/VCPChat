@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { createTerminalSideProvider } from '../modules/ui-system/side-pane/terminalSideProvider.js';
@@ -16,6 +16,8 @@ function fixture(t, { pty = { cols: 120, rows: 30 }, create = null } = {}) {
     const controller = createSidePaneController({ root, tabListElement: root.querySelector('.side-pane-tabs'),
         contentContainer: root.querySelector('.side-pane-content-container') });
     const resizes = [], writes = [], listeners = new Map();
+    let observed = null, fits = 0;
+    win.ResizeObserver = class { constructor(callback) { observed = callback; } observe() {} unobserve() {} disconnect() {} };
     let term = null;
     class Terminal {
         constructor() { this.cols = 80; this.rows = 24; this.resizeHandlers = []; term = this; }
@@ -34,7 +36,7 @@ function fixture(t, { pty = { cols: 120, rows: 30 }, create = null } = {}) {
         dispose() { this.input.remove(); }
     }
     // fit 按容器排成 45×20
-    class FitAddon { fit() { this.term.resize(45, 20); } }
+    class FitAddon { fit() { fits++; this.term.resize(45, 20); } }
     const subscribe = name => fn => { listeners.set(name, fn); return () => listeners.delete(name); };
     const api = {
         gitListWorkspaces: async () => ({ success: true, data: { workspaces: [] } }),
@@ -50,6 +52,7 @@ function fixture(t, { pty = { cols: 120, rows: 30 }, create = null } = {}) {
     controller.registerProvider('terminal', provider);
     t.after(async () => { await controller.dispose(); win.close(); });
     return { doc, controller, provider, resizes, writes, listeners, term: () => term,
+        containerResized: () => observed?.([]), get fits() { return fits; },
         mountInBackground: async () => {
             // 打开后、挂好之前用户已经回到主输入框打字：标签挂上了但没拿焦点
             const opening = provider.openTerminalTab();
@@ -114,4 +117,46 @@ test('keys typed before a failed connection are not sent to a later one', async 
     await waitFor(() => attempt === 2);
     await waitFor(() => h.listeners.has('resized'));
     assert.deepEqual(h.writes, [], 'a command typed for a terminal that never started is not replayed later');
+});
+
+// 拖侧栏分隔条时，终端不跟着每次停顿重排（有焦点时每次重排都会改共享 PTY 的尺寸），停下 300ms 再排
+test('while the pane resizer is dragged the terminal refits only once the drag pauses', async t => {
+    const h = fixture(t);
+    await h.provider.openTerminalTab();
+    mock.timers.enable({ apis: ['setTimeout'] });
+    t.after(() => mock.timers.reset());
+    // 每次尺寸变化是单独一个任务：上一次排的 fit 在下一次变化前已经撤掉
+    const resized = async () => { h.containerResized(); for (let i = 0; i < 3; i++) await Promise.resolve(); };
+    const before = h.fits;
+    h.doc.body.classList.add('vcp-sidebar-resizing');
+    for (let i = 0; i < 5; i++) {
+        await resized();
+        mock.timers.tick(100);
+    }
+    assert.equal(h.fits, before, 'no refit for each pause shorter than 300ms');
+    mock.timers.tick(200);
+    assert.equal(h.fits, before + 1, 'one refit when the drag stops');
+
+    h.doc.body.classList.remove('vcp-sidebar-resizing');
+    await resized();
+    mock.timers.tick(30);
+    assert.equal(h.fits, before + 2, 'outside a drag a window resize still refits quickly');
+});
+
+// 超过 1MB 的粘贴主进程整段拒收：不发，状态栏说一声，过一会儿回到「已连接」
+test('a paste too large for the terminal is not sent and the status says so for a moment', async t => {
+    const h = fixture(t);
+    await h.provider.openTerminalTab();
+    mock.timers.enable({ apis: ['setTimeout'] });
+    t.after(() => mock.timers.reset());
+    const status = h.doc.querySelector('.side-terminal-status');
+    assert.equal(status.dataset.state, 'connected');
+    h.term().type('x'.repeat(1024 * 1024 + 1));
+    assert.deepEqual(h.writes, [], 'nothing reaches the shell');
+    assert.equal(status.dataset.state, 'error');
+    assert.notEqual(status.textContent, '');
+    h.term().type('ls\r');
+    assert.deepEqual(h.writes, [['view:1', 'ls\r']], 'normal typing still goes through');
+    mock.timers.tick(4000);
+    assert.equal(status.dataset.state, 'connected');
 });
