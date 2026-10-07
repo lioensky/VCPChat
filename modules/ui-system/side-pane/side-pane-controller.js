@@ -358,7 +358,7 @@ export function createSidePaneController({
 
     // ---- 休眠 ----
     // 计时看的是"在当前对话里是不是当前标签"，不看窗口有没有最小化，也不看面板是否收起：
-    // 用户重新展开时看到的还是它，不该被换掉（对照 ZCode shouldMountSidePaneContent、DSH TabLayout 收起时保留选中标签）
+    // 用户重新展开时看到的还是它，不该被换掉
     function isTabPresented(tabId, { visibleTabIds, activeViewId } = getActiveView()) {
         return !isDisposed && tabId === activeViewId && visibleTabIds.has(tabId);
     }
@@ -392,7 +392,7 @@ export function createSidePaneController({
         mountedTabMap.forEach((entry, tabId) => {
             const tab = state.tabs.find(t => t.id === tabId);
             if (!tab) return;
-            // 正在关（确认框还开着）的标签不休眠，否则确认之后视图已经没了（同 ZCode residency policy 不淘汰进行中的操作）
+            // 正在关（确认框还开着）的标签不休眠，否则确认之后视图已经没了
             let busy = tabCloseOwner.isClosing(tabId);
             try {
                 busy = busy || entry.handle?.isBusy?.() === true;
@@ -878,7 +878,7 @@ export function createSidePaneController({
         /**
          * 话题删掉后，属于它的标签（辅助对话、话题级代码查看等）直接丢弃：不询问、不进最近关闭、不调 onClosed
          * （子话题目录已随父话题一起删了）。不丢的话辅助对话是 keep，会一直挂着渲染器和监听直到重启。
-         * 对齐 ZCode useAppPanels.ts 订阅父任务生命周期统一关掉框选副屏标签。
+         * 订阅父任务生命周期，统一关掉框选副屏标签。
          */
         async discardTabsOfDeletedTopics({ itemId, topicIds } = {}) {
             if (isDisposed || !itemId || !topicIds?.length) return;

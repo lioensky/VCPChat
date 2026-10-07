@@ -2,7 +2,7 @@
 // 侧栏相关 IPC 的调用方窗口策略，集中在一张表里，由注册层统一执行（领域激活器的 allowSender、guardIpcMain 包装），
 // 不靠每个 handler 自己记得检查。chat / utility preload 会装进语音、助手、笔记、论坛等很多窗口，
 // 这些窗口能拿到同样的接口；能写文件、跑命令、开终端或浏览器、改工作区的通道只认下面列出的应用页面的真实顶层窗口。
-// 做法同 DSH ipc.ts 的 assertDesktopSender（按通道限定允许的文档来源）；模块内部原有的检查保留，作为第二道。
+// 按通道限定允许的文档来源；模块内部原有的检查保留，作为第二道。
 'use strict';
 
 const { createApplicationSenderGuard, resolveWindowWebContents } = require('./applicationSender');

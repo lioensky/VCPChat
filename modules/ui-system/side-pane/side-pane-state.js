@@ -86,7 +86,7 @@ export function resolveSidePaneScopeState(state, parentRef, options = {}) {
         ? state.tabs.filter(t => matchesConversation(getTabParent(t), parentRef))
         : [];
 
-    // 回到一个对话时先还原它上次停留的标签（ZCode workspaceSidePane.ts resolveActiveTabForOwner 也是 preferred 优先）。
+    // 回到一个对话时先还原它上次停留的标签。
     // 否则在 A 话题看辅助对话、切到没有标签的 B 话题落到浏览器，再切回 A 时仍停在浏览器，辅助对话被晾在后面
     const preferred = options.preferredTabId
         ? state.tabs.find(tab => tab.id === options.preferredTabId)
@@ -330,7 +330,7 @@ export function reorderTabs(state, activeId, overId) {
 }
 
 // 话题级标签只在所属对话里可见；没有当前对话（群组、启动早期）时一律不可见，
-// 否则「关闭所有」会关掉、进而删除别的对话的辅助对话（对照 ZCode workspaceSidePane.ts isSidePaneTabVisibleForParent）
+// 否则「关闭所有」会关掉、进而删除别的对话的辅助对话
 export function isTabVisibleForParent(tab, parentRef) {
     if (tab.id === NOTIFICATIONS_TAB_ID || tab.scopeMode === 'global') return true;
     const tabParent = getTabParent(tab);

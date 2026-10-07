@@ -33,7 +33,7 @@ export function createSideChatScrolling({
             lastScrollTop = root.scrollTop;
         };
         // 用户意图先于 scroll 事件生效：流式期间 ResizeObserver 可能在滚轮产生的 scroll 事件之前
-        // 把视图拽回底部，只靠 scroll 判断就会和滚轮打架（ZCode use-stick-to-bottom 同样监听 wheel 立即脱离）
+        // 把视图拽回底部，只靠 scroll 判断就会和滚轮打架，所以滚轮一动就立即脱离
         const escape = () => {
             if (root.scrollHeight > root.clientHeight) stickToBottom = false;
         };
@@ -65,7 +65,7 @@ export function createSideChatScrolling({
             const rootResizeObserver = new ResizeObserverClass(pinToBottomIfSticky);
             rootResizeObserver.observe(root);
             // 也盯着每条消息的高度：流式结束后的整段重排、代码高亮、图片加载都会在最后一次贴底之后
-            // 再长高，只看容器尺寸会停在离底部几十像素的地方（ZCode 的 use-stick-to-bottom 同样观察内容尺寸）
+            // 再长高，只看容器尺寸会停在离底部几十像素的地方
             const observeChild = node => { if (node.nodeType === 1) rootResizeObserver.observe(node); };
             root.childNodes.forEach(observeChild);
             const MutationObserverClass = doc.defaultView?.MutationObserver || globalThis.MutationObserver;

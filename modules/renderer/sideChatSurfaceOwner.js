@@ -360,7 +360,7 @@ export async function mountSideChatSurface(container, {
     });
 
     textarea.addEventListener('keydown', (e) => {
-        // 生成中按 Esc 停止，同 ZCode 的 Esc → stop；只认输入框里的 Esc，不和侧栏里菜单、搜索的 Esc 抢
+        // 生成中按 Esc 停止；只认输入框里的 Esc，不和侧栏里菜单、搜索的 Esc 抢
         if (e.key === 'Escape' && !isComposing && !e.defaultPrevented && activeSendController) {
             e.preventDefault();
             onStop();

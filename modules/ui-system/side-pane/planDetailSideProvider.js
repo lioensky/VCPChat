@@ -765,7 +765,7 @@ export function createPlanDetailSideProvider({
             function render() {
                 if (disposed() || nodeView) return;
                 // 整页重绘会换掉所有节点：记下焦点所在的输入框（连同光标）、页签或带 data-focus-key 的按钮，画完找回来。
-                // ZCode / DSH 用 React，节点按 key 复用，焦点自然保留；这里手工做同一件事
+                // React 按 key 复用节点，焦点自然保留；这里手工做同一件事
                 const active = doc.activeElement;
                 const focusKey = active && body.contains(active) ? active.dataset?.filter : null;
                 const pageFocus = active && chrome.contains(active) ? active.dataset?.planPage : null;

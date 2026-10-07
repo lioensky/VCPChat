@@ -1,9 +1,8 @@
 /* side-chat/attachments.js
  * Attachments and emoticons for the side chat composer. Files are picked, pasted or
  * dropped through the same IPC as the main composer and stored under the side topic.
- * Paste and drop follow ZCode's composer (handlePaste / handleDropComposer in
- * packages/ui/src/v4/ConversationComposer.tsx): files in the clipboard or the drop
- * become attachments, plain text keeps the default behaviour.
+ * Paste and drop: files in the clipboard or the drop become attachments, plain
+ * text keeps the default behaviour.
  */
 'use strict';
 

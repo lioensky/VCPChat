@@ -60,7 +60,7 @@ function comparePath(a, b) {
     return a.path < b.path ? -1 : 1;
 }
 
-// 从 git hook 或某个仓库的 shell 里启动时会带着这些变量，所有命令都会跑到那个仓库上（同 ZCode git/config.ts）
+// 从 git hook 或某个仓库的 shell 里启动时会带着这些变量，所有命令都会跑到那个仓库上
 const REPO_LOCAL_ENV = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES',
     'GIT_COMMON_DIR', 'GIT_PREFIX', 'GIT_NAMESPACE', 'GIT_CEILING_DIRECTORIES', 'GIT_DISCOVERY_ACROSS_FILESYSTEM'];
 
@@ -80,7 +80,7 @@ function runGit(cwd, args, { timeout = DEFAULT_TIMEOUT, input = null, englishMes
         const child = execFile('git', [
             '-c', 'core.quotepath=false',
             '-c', 'color.ui=false',
-            // 仓库自带的 .git/config 可以把 core.fsmonitor 设成任意命令，只读的 status 也会执行它（同 DeepSeek Harness scripts/change-scope.ts）
+            // 仓库自带的 .git/config 可以把 core.fsmonitor 设成任意命令，只读的 status 也会执行它
             '-c', 'core.fsmonitor=false',
             '--literal-pathspecs', // 路径按字面匹配，禁用 glob / 魔法前缀
             ...args,
@@ -371,7 +371,7 @@ function parseNumstat(buffer) {
 }
 
 /**
- * 每个已跟踪文件的增删行数，和状态同一次读出（对照 ZCode gitCliRepo 的 diff --numstat）。
+ * 每个已跟踪文件的增删行数，和状态同一次读出（diff --numstat）。
  * 状态码不变、内容又被改了时，行数跟着变，渲染端据此知道哪些 diff 过期，也不用逐个拉 diff 来算行数。
  */
 async function readDiffCounts(repo) {
@@ -429,7 +429,7 @@ async function readStatus(repo, { counts: withDiffCounts = false } = {}) {
 
 /**
  * 「在文件管理器中打开」的目标：状态条目的路径相对仓库根，工作区可能只是仓库的子目录，
- * 所以按仓库根解析（对照 ZCode gitService.ts toAbsolutePath），再校验仍在工作区内。
+ * 所以按仓库根解析，再校验仍在工作区内。
  */
 async function resolveRevealTarget(workspaceRoot, relPath, { base = 'repo' } = {}) {
     const repo = await openRepository(workspaceRoot);

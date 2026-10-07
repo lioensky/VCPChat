@@ -125,7 +125,7 @@ window.itemListManager = (() => {
         ensureItemTabStop();
     }
 
-    // Keyboard model of a Radix listbox, as ZCode's lists use: one tab stop
+    // Keyboard model of a listbox (as in Radix): one tab stop
     // (the active item, else the first) that follows focus; arrows, Home and
     // End move it; Enter or Space selects the focused Agent or group.
     function ensureItemTabStop() {

@@ -192,8 +192,7 @@ export function mountGitView(host, {
     const { cardFor, buildCard } = cardsOwner;
 
     // ── 长列表分批挂载 ───────────────────────────────────────
-    // ZCode `GitPane` 用 @tanstack/react-virtual 只挂可视行，注释里记着数百个未跟踪文件同步挂载时
-    // click 出现 600ms+ 长任务。这里沿用话题列表的分批做法：先挂一批，哨兵接近可视区再挂下一批；
+    // 数百个未跟踪文件同步挂载时，click 会出现 600ms+ 长任务。这里沿用话题列表的分批做法：先挂一批，哨兵接近可视区再挂下一批；
     // 卡片本身用 content-visibility 跳过屏外的布局和绘制（样式表 side-pane-git-extras.css）。
     // 1000 个改动时打开 Git 页从约 0.75s 降到 0.24s；3000 个时从 1.9s（最长任务 0.74s）降到 0.41s。
     let listItems = [];
@@ -287,7 +286,7 @@ export function mountGitView(host, {
         if (disposed()) return;
         refreshBtn.disabled = loading;
         refreshBtn.classList.toggle('spinning', loading);
-        // 先错误、再加载中、最后才是空（对照 ZCode GitPane）：读失败不能显示成「还没有工作区」叫用户去添加
+        // 先错误、再加载中、最后才是空：读失败不能显示成「还没有工作区」叫用户去添加
         if (loadError) {
             showEmpty({ reason: 'load-error', icon: 'error', title: '无法加载 Git 改动', description: `Git 返回错误：${loadError}`,
                 action: { label: '重试', run: retryLoad } });
@@ -323,7 +322,7 @@ export function mountGitView(host, {
         empty.hidden = true;
         delete empty.dataset.emptyReason;
         // 推送触发的重绘会换掉整张列表：记下焦点所在的行，重建后还给同一个文件（React 按 key 复用节点时焦点本来就不丢，
-        // ZCode/DSH 的列表都是这样）；那个文件没了就给同一位置的行
+        // 这里手工做同一件事）；那个文件没了就给同一位置的行
         const focusedCard = list.contains(doc.activeElement) ? doc.activeElement.closest('.side-git-card') : null;
         const focusKey = focusedCard?.dataset.key ?? null;
         const focusIndex = focusedCard ? Array.prototype.indexOf.call(list.children, focusedCard) : -1;
@@ -375,7 +374,7 @@ export function mountGitView(host, {
     }
 
     // 每次读都编号，只认最新那次：推送和窗口 focus 同时触发、大仓库 status 上秒级时，
-    // 先发的请求可能后到，把已经删掉的文件又画回来（同 ZCode useGitRepository 的 requestVersionRef）
+    // 先发的请求可能后到，把已经删掉的文件又画回来
     let statusSeq = 0;
     async function refreshStatus({ quiet = false } = {}) {
         // 已经拆掉就不再跟：否则迟到的刷新会把刚退掉的推送重新订上

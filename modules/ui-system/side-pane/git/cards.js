@@ -32,11 +32,11 @@ export function createGitCards({
     let disposed = false;
     const expanded = new Set();
     const diffCache = new Map();
-    // 缓存作废时展开着的 diff 先留着上一份：重新取的这段时间照旧显示，不缩成一行「加载中…」再撑开（对照 ZCode GitPane 重取时保留旧 diff）
+    // 缓存作废时展开着的 diff 先留着上一份：重新取的这段时间照旧显示，不缩成一行「加载中…」再撑开
     const previousDiff = new Map();
     let countQueue = [];
     let countWorkers = 0;
-    // 缓存作废一次加一；作废前发出的请求回来时不再写缓存（对照 ZCode GitPane diffGenerationRef）
+    // 缓存作废一次加一；作废前发出的请求回来时不再写缓存
     let generation = 0;
 
     async function fetchDiff(item) {

@@ -2,8 +2,8 @@
 // 侧栏「浏览器」标签的主进程部分。页面本身由渲染进程里的 <webview> 承载，这里只负责把它关进笼子：
 // - 只允许固定的 persist 分区，并强制去掉 preload / Node 集成，开启沙箱与上下文隔离；
 // - 只放行 http / https / about 地址，其它协议（file: 本地页、data: 钓鱼页、vcp:// 等自定义协议）一律拦截；
-//   子资源请求同样拦掉 file:——本地页面在 Electron 默认的 file 特权下能 fetch 任意本地文件再发出去
-//   （和 DeepSeek Harness browser-guests.ts 的 onBeforeRequest、ZCode isAllowedBrowserUrl 一致），本地文件用代码查看器看；
+//   子资源请求同样拦掉 file:——本地页面在 Electron 默认的 file 特权下能 fetch 任意本地文件再发出去；
+//   本地文件用代码查看器看；
 // - 网页里的 window.open / target=_blank 转成「在侧栏新开一个浏览器标签」，但必须紧跟一次真实点击或按键，
 //   一次输入只换一个标签，网页自己连开弹窗刷不出标签；
 // - 弹窗只能开 http / https；
@@ -154,7 +154,7 @@ function attachToWindow(mainWindow) {
             return;
         }
         // 白名单而不是黑名单：页面 webpreferences 属性里带进来的其他键（experimentalFeatures 之类）一律去掉，
-        // 只留 allowpopups 对应的 disablePopups（弹窗仍由 setWindowOpenHandler 拒掉后转成侧栏标签）。同 DSH browser-guests
+        // 只留 allowpopups 对应的 disablePopups（弹窗仍由 setWindowOpenHandler 拒掉后转成侧栏标签）。
         // 分区要放回去（Electron 把 params.partition 抄进了 webPreferences），否则网页落到应用默认会话，
         // 上面给分区装的权限拒绝、请求过滤和下载拦截全都不生效；缩放跟随应用也保留
         const zoomFactor = webPreferences.zoomFactor;
@@ -175,7 +175,7 @@ function attachToWindow(mainWindow) {
             sandbox: true,
             webSecurity: true,
             allowRunningInsecureContent: false,
-            // 网页的 alert/confirm/prompt 会以应用窗口名义弹原生模态框（可仿冒应用提示）并卡住主窗口；同 DSH browser-guests 直接禁用
+            // 网页的 alert/confirm/prompt 会以应用窗口名义弹原生模态框（可仿冒应用提示）并卡住主窗口，直接禁用
             disableDialogs: true,
             webviewTag: false,
             plugins: false,

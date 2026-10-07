@@ -163,7 +163,7 @@ test('automatic empty-child cleanup also removes its empty browser draft without
     assert.equal(f.deletions.length, 1);
 });
 
-// 辅助对话按 keep 常驻（同 ZCode 对非浏览器面板 forceMount）：隐藏再久，视图、输入框和引用都还在
+// 辅助对话按 keep 常驻：隐藏再久，视图、输入框和引用都还在
 test('a side chat hidden behind another tab stays mounted with its draft', async t => {
     const f = await fixture(t, { composerStorage: 'local' });
     f.drafts.save(f.descriptor, { draft: 'half typed', references: [{ id: 'ref-1', text: 'first selection' }] });

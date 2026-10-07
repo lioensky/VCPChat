@@ -7,7 +7,7 @@
 //     文件内容的改动靠窗口获得焦点、操作后刷新和 V工程 推送补上；
 //   - Linux 上元数据目录也不整棵递归：Node 在 Linux 上的递归监听是 JS 实现，会同步遍历整棵 .git、给每个文件挂一个
 //     inotify（objects 多的仓库一次挂上万个，主线程卡几百毫秒，还可能把系统的 inotify 名额用光）。只监听元数据目录本身
-//     （HEAD、index、packed-refs……）加递归的 refs/（对照 DSH fs-local 的 depth:0）；
+//     （HEAD、index、packed-refs……）加递归的 refs/；
 //   - 一批连续写入只触发一次：每来一个事件往后推一次。元数据从这批第一个元数据事件起最多等 maxWaitMs，
 //     文件内容最多等 contentMaxWaitMs（编辑器、构建一直在写时不用每几秒读一遍状态）；两者谁先到就报一次；
 //   - 应用自己改了仓库（暂存、提交……）会马上通知，absorb(id) 让监听不再为同一件事重复报：

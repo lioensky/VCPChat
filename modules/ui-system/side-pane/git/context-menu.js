@@ -73,7 +73,7 @@ export function createGitContextMenu({
 
     function onOutsidePointer(event) { if (contextMenu && !contextMenu.contains(event.target)) closeContextMenu(); }
 
-    // 和 ZCode GitPaneChangeCard 用的 Radix ContextMenu 一样：上下键 / Home / End 在菜单项间移动，Esc 或 Tab 收起并把焦点还给那一行
+    // 和 Radix ContextMenu 一样：上下键 / Home / End 在菜单项间移动，Esc 或 Tab 收起并把焦点还给那一行
     function onMenuKey(event) {
         if (!contextMenu) return;
         if (event.key === 'Escape' || event.key === 'Tab') {

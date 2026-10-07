@@ -13,7 +13,7 @@ export function createFloatingSelectionButton({ doc, win, notify }) {
     };
 
     const hide = () => { floatingBtn.hidden = true; };
-    // 按钮是 fixed 定位在选区视口坐标上；任何滚动或尺寸变化都会让坐标失效（ZCode MarkdownSelectionTooltip 同样在滚动时收起）。
+    // 按钮是 fixed 定位在选区视口坐标上；任何滚动或尺寸变化都会让坐标失效，所以滚动时先收起。
     // 停下来后按选区的新位置再放一次：拖选到边缘时列表会自己滚，滚完不一定还有 selectionchange
     let settleTimer = null;
     const onViewportChange = (event) => {

@@ -99,8 +99,8 @@ const settingsManager = (() => {
     // Unsaved Agent drafts kept per agent while the shared form shows another
     // one. Settings save only on the Save button and every Agent reuses one
     // form, so switching away used to drop the edits (also after a failed
-    // save). Like ZCode's per-scope composer drafts (composerDraftStore), the
-    // draft comes back when that Agent is shown again; Save or delete clears it.
+    // save). Like per-scope composer drafts, the draft comes back when that
+    // Agent is shown again; Save or delete clears it.
     const unsavedAgentDrafts = new Map();
     // The Agent whose values the form fully holds. Cleared while a populate is
     // writing the form, so a half-written form is never kept as a draft.

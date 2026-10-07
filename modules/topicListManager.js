@@ -29,9 +29,8 @@ window.topicListManager = (() => {
     const TOPIC_PROGRESSIVE_BATCH_SIZE = 30;
     const TOPIC_LOAD_MORE_THRESHOLD_PX = 320;
     // Each search reload re-reads the item config and runs a content search
-    // over IPC. Typing waits for a short pause first, in the range ZCode uses
-    // for its IO-backed refreshes (fileWatcherService 150ms, useTabPersistence
-    // 300ms); Enter still searches at once.
+    // over IPC. Typing waits for a short pause first (the 150-300ms range
+    // usual for IO-backed refreshes); Enter still searches at once.
     const TOPIC_SEARCH_DEBOUNCE_MS = 200;
     let topicSearchTimer = null;
 
@@ -574,8 +573,8 @@ window.topicListManager = (() => {
         renderNextBatch(initialCount);
     }
 
-    // Keyboard model of a Radix listbox with a ContextMenu trigger, as ZCode's
-    // lists use: one tab stop that follows focus, arrows/Home/End move it,
+    // Keyboard model of a listbox with a context-menu trigger (as in
+    // Radix): one tab stop that follows focus, arrows/Home/End move it,
     // Enter/Space open the topic, Shift+F10 or the menu key opens its menu.
     function onTopicListFocusIn(event) {
         const item = event.target;

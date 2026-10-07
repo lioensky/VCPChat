@@ -115,8 +115,7 @@ export function createTerminalSideProvider({
 
         const initialTheme = buildTerminalTheme(doc, screen);
         const term = new xterm.Terminal({
-            // 光标不闪：xterm 的闪烁动画让侧栏里一个空闲终端每秒重算样式约 55 次（约 2.5% 单核）。
-            // ZCode TerminalSession.tsx 也用 xterm 默认的不闪烁光标。
+            // 光标不闪：xterm 的闪烁动画让侧栏里一个空闲终端每秒重算样式约 55 次（约 2.5% 单核），用 xterm 默认的不闪烁光标。
             cursorBlink: false,
             fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
             fontSize: 13,
@@ -124,7 +123,7 @@ export function createTerminalSideProvider({
             allowProposedApi: false,
             theme: initialTheme,
             // OSC 8 超链接：不走 xterm 默认的 confirm + window.open（会在主窗口外开一个默认 session 的窗口），
-            // 和普通链接一样只开 http(s)，交给侧栏浏览器（对照 ZCode TerminalSession.tsx linkHandler）
+            // 和普通链接一样只开 http(s)，交给侧栏浏览器
             linkHandler: {
                 allowNonHttpProtocols: false,
                 activate(event, text) {
@@ -136,7 +135,7 @@ export function createTerminalSideProvider({
         });
         session.term = term;
         // 有选区时 Ctrl/Cmd+C 复制选区，不给共享 PTY 发 ^C（会打断 AI 正在跑的命令）；
-        // 副屏自己的快捷键（Ctrl/Cmd+Alt+B、Ctrl+PageUp/PageDown）不写进 shell（对照 ZCode attachCustomKeyEventHandler）
+        // 副屏自己的快捷键（Ctrl/Cmd+Alt+B、Ctrl+PageUp/PageDown）不写进 shell
         term.attachCustomKeyEventHandler?.((event) => {
             if (event.type !== 'keydown') return true;
             const mod = event.ctrlKey || event.metaKey;
@@ -185,7 +184,7 @@ export function createTerminalSideProvider({
 
         session.fit = () => {
             if (session.disposed || !session.fitAddon || !screen.offsetWidth || !screen.offsetHeight) return;
-            // 不持有尺寸的视图跟着 PTY 的真实尺寸画，不按自己的容器排（同 DSH 非可写视图）
+            // 不持有尺寸的视图跟着 PTY 的真实尺寸画，不按自己的容器排
             if (session.ptySize && !hasFocus()) {
                 followPtySize();
                 return;
@@ -575,7 +574,7 @@ export function createTerminalSideProvider({
                     if (!own.active) return;
                     cancelFit?.();
                     // 拖侧栏分隔条时停顿超过 30ms 就会重排一次、有焦点时还会改共享 PTY 的尺寸（ConPTY 每次都重排历史行）；
-                    // 拖动中等停下 300ms 再排（ZCode TerminalSession 拖动时 300ms 节流、松手补最终尺寸）
+                    // 拖动中等停下 300ms 再排
                     const resizing = doc.body?.classList.contains('vcp-sidebar-resizing');
                     cancelFit = own.timeout(session.fit, resizing ? FIT_WHILE_RESIZING_MS : FIT_DEBOUNCE_MS, 'fit-debounce');
                 }), screen, undefined, 'screen-resize');

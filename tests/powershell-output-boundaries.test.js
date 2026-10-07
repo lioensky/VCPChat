@@ -139,7 +139,7 @@ test('the mirror replay keeps the latest output from a line start and forgets it
 });
 
 test('appending to a full mirror replay does not rescan the retained window on every chunk', () => {
-    // 同 DSH terminal-io.bench：容量放大 64 倍，喂同样多的输出，耗时不能跟着放大
+    // 容量放大 64 倍，喂同样多的输出，耗时不能跟着放大
     const chunk = 'x'.repeat(63) + '\n';
     const feed = limit => {
         const replay = loadReplayBuffer(limit);

@@ -15,7 +15,7 @@ const UNREADABLE = '读取文件失败：文件不存在、无法访问，或不
 /**
  * allowOutsideWorkspace：已登记工作区以外的路径要用户点过「读取」才读。路径可能来自模型的工具调用参数，
  * 不先问就能把任意本地文件（SSH 私钥、配置里的密钥）显示出来再被「插入引用」送回模型。
- * ZCode、DeepSeek Harness 的预览同样只认工作区内的路径（"outside the workspace" 直接拒绝），这里留一次确认给附件之类的文件。
+ * 常见做法是预览只认工作区内的路径（"outside the workspace" 直接拒绝），这里留一次确认给附件之类的文件。
  */
 export async function readFileForViewer(api, filePath, { allowOutsideWorkspace = false } = {}) {
     const fromWorkspace = await readThroughWorkspace(api, filePath);

@@ -38,7 +38,7 @@ export function createSidePaneTabOverview({
     const listEl = popover.querySelector('#sidePaneOpenTabsList');
     const searchInput = popover.querySelector('.side-pane-overview-input');
 
-    // 搜索框 + 列表按 combobox/listbox 标注（ZCode 的 cmdk 命令面板同一套）：焦点留在搜索框，
+    // 搜索框 + 列表按 combobox/listbox 标注（和 cmdk 命令面板同一套）：焦点留在搜索框，
     // 方向键选中的项通过 aria-activedescendant 读出来
     let optionSeq = 0;
     if (listEl) {

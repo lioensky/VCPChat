@@ -158,7 +158,7 @@ export function createSidePaneTabStrip({
         else btn.removeAttribute('aria-label');
     }
 
-    // 结构签名：这些变了才重建这一项；标题、激活态等原地更新（同 ZCode 按 key 复用标签节点）
+    // 结构签名：这些变了才重建这一项；标题、激活态等原地更新（相当于按 key 复用标签节点）
     function itemSignature(tab) {
         return `${isClosable(tab) ? 1 : 0}|${getTabIconName(tab, getTabType)}|${tab.id === statusTabId ? 1 : 0}`;
     }
@@ -339,7 +339,7 @@ export function createSidePaneTabStrip({
         cleanups.push(() => resizeObserver.disconnect());
     }
 
-    // 方向键 / Home / End 在标签之间移动并激活（同 ZCode 用的 Radix Tabs：焦点跟着走、自动激活）；Delete 关掉聚焦的标签
+    // 方向键 / Home / End 在标签之间移动并激活（同 Radix Tabs：焦点跟着走、自动激活）；Delete 关掉聚焦的标签
     const onKeydown = (e) => {
         const tabButtons = Array.from(tabListElement.querySelectorAll('[role="tab"]'));
         if (tabButtons.length === 0) return;

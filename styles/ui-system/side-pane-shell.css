@@ -206,3 +206,16 @@ html .side-pane-mount-error-retry:where(.vcp-ui-scope, .vcp-ui-scope *) {
 html .side-pane-mount-error-retry:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
     background: var(--vcp-ui-port-color-rgba-127-127-127-0-16);
 }
+
+/* 侧栏开着时提示框贴在侧栏左边，不盖住侧栏的标签条；侧栏铺满窄窗口时退回右上角，不推出屏幕 */
+html body #vcpSidePane:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    anchor-name: --vcp-side-pane;
+}
+
+html body.vcp-side-pane-open .vcp-ui-scope .vcp-ui-toast-stack {
+    right: clamp(
+        var(--vcp-ui-space-4),
+        calc(anchor(--vcp-side-pane left, 0px) + var(--vcp-ui-space-4)),
+        calc(100vw - min(360px, 100vw - var(--vcp-ui-space-6)) - var(--vcp-ui-space-4))
+    );
+}

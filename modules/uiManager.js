@@ -65,8 +65,8 @@ const uiManager = (() => {
         const createResizer = (handle, element, fallbackMin, direction, settingKey, label, beforeBegin) => {
             if (!handle || !element || !window.VCPSidebarResizer) return null;
             let dragStyles = null;
-            // A focusable separator, like the side pane's handle and ZCode's
-            // resizable.tsx, so the keyboard handler below can actually run.
+            // A focusable separator, like the side pane's handle, so the keyboard
+            // handler below can actually run.
             const syncAria = (width) => {
                 const bounds = getWidthConstraints(element, fallbackMin);
                 handle.setAttribute('aria-valuemin', String(Math.round(bounds.min)));

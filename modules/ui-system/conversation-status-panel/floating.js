@@ -90,7 +90,7 @@ export function createStatusPanelFloating({
         overlay.appendChild(dialog);
         const previouslyFocused = doc.activeElement;
         // busy 期间（提交、推送、建分支进行中）Esc、遮罩和右上角关闭都不生效，流程走完由它自己 close；
-        // 对齐 ZCode 的 Radix Dialog：流程归父级持有，焦点困在对话框里，关闭后还给打开前的元素
+        // 和 Radix Dialog 一样：流程归父级持有，焦点困在对话框里，关闭后还给打开前的元素
         const entry = { overlay, dialog, closed: false, busy: false };
         entry.close = () => {
             if (entry.closed) return;

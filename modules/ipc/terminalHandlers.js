@@ -246,7 +246,7 @@ function createView(event, options = {}) {
 
 /**
  * Windows 上 PTY 后端自己会按新宽度重排可见区，xterm 得知道这点，不然 resize 时两边各排一次，
- * 行会重复、提示符错位（对照 ZCode TerminalSession 的 windowsPty）。node-pty 在 build 18309 起用 ConPTY。
+ * 行会重复、提示符错位。node-pty 在 build 18309 起用 ConPTY。
  */
 function windowsPtyInfo() {
     if (process.platform !== 'win32') return null;

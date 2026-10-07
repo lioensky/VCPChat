@@ -63,7 +63,7 @@ export function createModelTrajectorySideProvider({
     /** @type {Set<{show: (requestId: string | null) => void}>} */
     const instances = new Set();
     let requestedRequestId = null;
-    // 从辅助对话打开时看的是它的子话题（同 ZCode 打开时显式带上会话）；主聊天切换会话或从主聊天再打开时回到跟随主聊天
+    // 从辅助对话打开时看的是它的子话题；主聊天切换会话或从主聊天再打开时回到跟随主聊天
     let pinnedConversation = null;
 
     return {

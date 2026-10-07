@@ -13,7 +13,7 @@ export function createSidePaneResizerOwner({
     scope = null,
     documentRef = (typeof document !== 'undefined' ? document : null),
     windowRef = (typeof window !== 'undefined' ? window : null),
-    // 键盘调宽时按住方向键每秒几十次，宽度当场生效，写设置等停手后再写一次（同 ZCode resizable.tsx 走防抖的 onLayoutChange）
+    // 键盘调宽时按住方向键每秒几十次，宽度当场生效，写设置等停手后再写一次
     keyboardCommitDelayMs = 400
 }) {
     if (!handle || !paneElement) {

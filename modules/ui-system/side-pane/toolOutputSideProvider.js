@@ -264,7 +264,7 @@ export function createToolOutputSideProvider({
                 if (!running && stopTicker) { stopTicker(); stopTicker = null; }
             };
 
-            // 同一时间只有一个读取在路上；读的时候又有新输出，读完再补一次（对照 ZCode useBackgroundBashOutput 的 inFlight）
+            // 同一时间只有一个读取在路上；读的时候又有新输出，读完再补一次
             let loadInFlight = false;
             let loadAgain = false;
             const loadSelected = async () => {

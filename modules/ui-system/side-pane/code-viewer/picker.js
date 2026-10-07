@@ -180,7 +180,7 @@ export function createCodeViewerPicker({
             loadFiles();
         });
         on(filterInput, 'input', renderList);
-        // 搜索框 ↓ 进列表，列表里 ↑↓/Home/End 移动，第一行再按 ↑ 回搜索框（同 ZCode/cmdk 的文件选择）
+        // 搜索框 ↓ 进列表，列表里 ↑↓/Home/End 移动，第一行再按 ↑ 回搜索框（同 cmdk 的文件选择）
         const rows = () => Array.from(list.querySelectorAll('.side-code-picker-item'));
         on(filterInput, 'keydown', (event) => {
             if (event.key !== 'ArrowDown') return;

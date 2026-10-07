@@ -11,7 +11,7 @@ export const MAX_PERSISTED_TABS = 30;
 // 单个标签序列化后超过这个大小就不存（比如很大的 diff），重启后不恢复它
 export const MAX_PERSISTED_TAB_CHARS = 64 * 1024;
 // 整份布局的总预算：30 个带 diff 的代码查看标签能到 ~2MB，同步 setItem 会卡、超配额还会让整份布局停存。
-// 超出时从最早打开的标签丢起（当前标签保留），对照 DSH persistence.ts 按 Session 分 key、坏了就清
+// 超出时从最早打开的标签丢起（当前标签保留）
 export const MAX_PERSISTED_LAYOUT_CHARS = 512 * 1024;
 // 写入失败（配额满）时的退路：只留小标签再写一次，至少保住标签列表和对话记忆
 const FALLBACK_TAB_CHARS = 4 * 1024;
