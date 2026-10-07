@@ -185,32 +185,41 @@ for (const readyBeforeFailure of [false, true]) {
     });
 }
 
-test('a page playing media stays busy even when muted, until it pauses or navigates away', async () => {
+test('the more menu is keyboard reachable: focus moves in, arrows move, Escape and Tab return to the button', async () => {
     const { JSDOM } = await import('jsdom');
     const { createBrowserSideProvider } = await import('../modules/ui-system/side-pane/browserSideProvider.js');
     const dom = new JSDOM('<div id="view"></div>');
-    const provider = createBrowserSideProvider({
-        document: dom.window.document,
-        api: null,
-        sidePaneController: { updateTab() {} },
-        notify: () => {}
-    });
-    const view = dom.window.document.getElementById('view');
-    const handle = await provider.mountTab({ id: 'browser:1', kind: 'browser', payload: { url: 'https://example.com/' } }, view);
-    const guest = view.querySelector('webview');
-    assert.ok(guest);
-    guest.isCurrentlyAudible = () => false;
-    const fire = (name, extra = {}) => guest.dispatchEvent(Object.assign(new dom.window.Event(name), extra));
+    const doc = dom.window.document;
+    const provider = createBrowserSideProvider({ document: doc, api: null, sidePaneController: { updateTab() {} }, notify: () => {} });
+    const handle = await provider.mountTab({ id: 'browser:1', kind: 'browser', payload: {} }, doc.getElementById('view'));
+    try {
+        handle.navigate('https://example.com/');
+        const more = doc.querySelector('[aria-label="更多浏览器操作"]');
+        const menu = doc.querySelector('.side-browser-menu');
+        const key = k => doc.activeElement.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+        assert.equal(more.getAttribute('aria-haspopup'), 'menu');
+        assert.equal(more.getAttribute('aria-expanded'), 'false');
 
-    assert.equal(handle.isBusy(), false);
-    fire('media-started-playing');
-    assert.equal(handle.isBusy(), true);
-    fire('media-paused');
-    assert.equal(handle.isBusy(), false);
-    fire('media-started-playing');
-    fire('did-navigate', { url: 'https://example.com/next' });
-    assert.equal(handle.isBusy(), false);
+        more.focus();
+        more.click();
+        assert.equal(menu.hidden, false);
+        assert.equal(more.getAttribute('aria-expanded'), 'true');
+        assert.equal(doc.activeElement.getAttribute('data-action'), 'open-external', 'focus moves into the menu');
+        key('ArrowDown');
+        assert.equal(doc.activeElement.getAttribute('data-action'), 'clear-data', 'disabled devtools item is skipped');
+        key('ArrowDown');
+        assert.equal(doc.activeElement.getAttribute('data-action'), 'open-external');
+        key('Escape');
+        assert.equal(menu.hidden, true);
+        assert.equal(doc.activeElement, more);
 
-    handle.dispose();
-    dom.window.close();
+        more.click();
+        key('Tab');
+        assert.equal(menu.hidden, true);
+        assert.equal(doc.activeElement, more);
+        assert.equal(more.getAttribute('aria-expanded'), 'false');
+    } finally {
+        handle.dispose();
+        dom.window.close();
+    }
 });

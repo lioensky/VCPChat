@@ -412,7 +412,38 @@ export function createBrowserSideProvider({
                 webview?.focus?.();
             };
 
-            const closeMenu = () => { menu.hidden = true; };
+            // 键盘打开后焦点进菜单：菜单在 DOM 里排在 webview 后面，焦点留在按钮上时 Tab 会先进网页、窗口失焦、菜单收起，
+            // 菜单项就永远够不着。方向键 / Esc / Tab 的处理同标签右键菜单（Radix Menu 的行为）
+            moreBtn.setAttribute('aria-haspopup', 'menu');
+            moreBtn.setAttribute('aria-expanded', 'false');
+            const closeMenu = ({ restoreFocus = false } = {}) => {
+                menu.hidden = true;
+                moreBtn.setAttribute('aria-expanded', 'false');
+                if (restoreFocus) moreBtn.focus();
+            };
+            const openMenu = () => {
+                syncControls();
+                menu.hidden = false;
+                moreBtn.setAttribute('aria-expanded', 'true');
+                menu.querySelector('[role="menuitem"]:not([disabled])')?.focus();
+            };
+            own.listen(menu, 'keydown', (event) => {
+                if (event.key === 'Escape' || event.key === 'Tab') {
+                    event.preventDefault();
+                    closeMenu({ restoreFocus: true });
+                    return;
+                }
+                if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+                const items = Array.from(menu.querySelectorAll('[role="menuitem"]:not([disabled])'));
+                if (!items.length) return;
+                event.preventDefault();
+                const current = items.indexOf(doc.activeElement);
+                const next = event.key === 'Home' ? 0
+                    : event.key === 'End' ? items.length - 1
+                        : event.key === 'ArrowDown' ? (current + 1) % items.length
+                            : (current - 1 + items.length) % items.length;
+                items[next].focus();
+            });
             const onDocumentPointerDown = (event) => {
                 if (!menu.hidden && !menu.contains(event.target) && !moreBtn.contains(event.target)) closeMenu();
             };
@@ -438,13 +469,13 @@ export function createBrowserSideProvider({
                 else reload();
             });
             own.listen(moreBtn, 'click', () => {
-                syncControls();
-                menu.hidden = !menu.hidden;
+                if (menu.hidden) openMenu();
+                else closeMenu();
             });
             own.listen(menu, 'click', async (event) => {
                 const item = event.target.closest('[data-action]');
                 if (!item || item.disabled) return;
-                closeMenu();
+                closeMenu({ restoreFocus: menu.contains(doc.activeElement) });
                 const action = item.getAttribute('data-action');
                 if (action === 'open-external') {
                     const res = await api?.browserOpenExternal?.(currentUrl);
