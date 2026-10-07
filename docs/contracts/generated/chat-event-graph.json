@@ -3185,14 +3185,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 225,
+          "line": 227,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 225,
+          "line": 227,
           "kind": "event-listener",
           "match": "ipcMain.handle('claim-pending-flowlock-topic'"
         },
@@ -7530,14 +7530,14 @@
       "consumers": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 220,
+          "line": 222,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 220,
+          "line": 222,
           "kind": "event-listener",
           "match": "ipcMain.handle('continue-jev-group-chat'"
         },
@@ -7665,14 +7665,14 @@
       "consumers": [
         {
           "file": "modules/ipc/agentHandlers.js",
-          "line": 392,
+          "line": 393,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/agentHandlers.js",
-          "line": 392,
+          "line": 393,
           "kind": "event-listener",
           "match": "ipcMain.handle('create-agent'"
         },
@@ -7758,14 +7758,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 682,
+          "line": 687,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 682,
+          "line": 687,
           "kind": "event-listener",
           "match": "ipcMain.handle('create-new-topic-for-agent'"
         },
@@ -7789,14 +7789,14 @@
       "consumers": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 122,
+          "line": 124,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 122,
+          "line": 124,
           "kind": "event-listener",
           "match": "ipcMain.handle('create-new-topic-for-group'"
         },
@@ -8459,14 +8459,14 @@
       "consumers": [
         {
           "file": "modules/ipc/agentHandlers.js",
-          "line": 448,
+          "line": 449,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/agentHandlers.js",
-          "line": 448,
+          "line": 449,
           "kind": "event-listener",
           "match": "ipcMain.handle('delete-agent'"
         },
@@ -8552,14 +8552,14 @@
       "consumers": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 126,
+          "line": 128,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 126,
+          "line": 128,
           "kind": "event-listener",
           "match": "ipcMain.handle('delete-group-topic'"
         },
@@ -8614,14 +8614,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 725,
+          "line": 730,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 725,
+          "line": 730,
           "kind": "event-listener",
           "match": "ipcMain.handle('delete-topic'"
         },
@@ -11580,14 +11580,14 @@
       "consumers": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 233,
+          "line": 235,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 233,
+          "line": 235,
           "kind": "event-listener",
           "match": "ipcMain.handle('enqueue-jev-group-agent'"
         },
@@ -12844,14 +12844,14 @@
       "consumers": [
         {
           "file": "modules/ipc/agentHandlers.js",
-          "line": 248,
+          "line": 249,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/agentHandlers.js",
-          "line": 248,
+          "line": 249,
           "kind": "event-listener",
           "match": "ipcMain.handle('get-agent-config'"
         },
@@ -12937,14 +12937,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 643,
+          "line": 648,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 643,
+          "line": 648,
           "kind": "event-listener",
           "match": "ipcMain.handle('get-agent-topics'"
         },
@@ -12961,7 +12961,7 @@
       "producers": [
         {
           "file": "modules/ipc/agentHandlers.js",
-          "line": 108,
+          "line": 109,
           "kind": "event-send"
         },
         {
@@ -12973,20 +12973,20 @@
       "consumers": [
         {
           "file": "modules/ipc/agentHandlers.js",
-          "line": 123,
+          "line": 124,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/agentHandlers.js",
-          "line": 108,
+          "line": 109,
           "kind": "event-send",
           "match": "ipcMain.invoke('get-agents'"
         },
         {
           "file": "modules/ipc/agentHandlers.js",
-          "line": 123,
+          "line": 124,
           "kind": "event-listener",
           "match": "ipcMain.handle('get-agents'"
         },
@@ -13010,14 +13010,14 @@
       "consumers": [
         {
           "file": "modules/ipc/agentHandlers.js",
-          "line": 104,
+          "line": 105,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/agentHandlers.js",
-          "line": 104,
+          "line": 105,
           "kind": "event-listener",
           "match": "ipcMain.handle('get-agents-metadata'"
         },
@@ -13041,14 +13041,14 @@
       "consumers": [
         {
           "file": "modules/ipc/agentHandlers.js",
-          "line": 481,
+          "line": 483,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/agentHandlers.js",
-          "line": 481,
+          "line": 483,
           "kind": "event-listener",
           "match": "ipcMain.handle('get-all-items'"
         },
@@ -13196,14 +13196,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 613,
+          "line": 615,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 613,
+          "line": 615,
           "kind": "event-listener",
           "match": "ipcMain.handle('get-chat-history'"
         },
@@ -13446,14 +13446,14 @@
       "consumers": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 140,
+          "line": 142,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 140,
+          "line": 142,
           "kind": "event-listener",
           "match": "ipcMain.handle('get-group-chat-history'"
         },
@@ -13477,14 +13477,14 @@
       "consumers": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 118,
+          "line": 120,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 118,
+          "line": 120,
           "kind": "event-listener",
           "match": "ipcMain.handle('get-group-topics'"
         },
@@ -13539,14 +13539,14 @@
       "consumers": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 247,
+          "line": 249,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 247,
+          "line": 249,
           "kind": "event-listener",
           "match": "ipcMain.handle('get-jev-group-chat-state'"
         },
@@ -13663,14 +13663,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 1009,
+          "line": 1014,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 1009,
+          "line": 1014,
           "kind": "event-listener",
           "match": "ipcMain.handle('get-original-message-content'"
         },
@@ -13860,14 +13860,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 1631,
+          "line": 1636,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 1631,
+          "line": 1636,
           "kind": "event-listener",
           "match": "ipcMain.handle('get-unread-topic-counts'"
         },
@@ -14505,14 +14505,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 909,
+          "line": 914,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 909,
+          "line": 914,
           "kind": "event-listener",
           "match": "ipcMain.handle('handle-file-drop'"
         },
@@ -14536,14 +14536,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 781,
+          "line": 786,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 781,
+          "line": 786,
           "kind": "event-listener",
           "match": "ipcMain.handle('handle-file-paste'"
         },
@@ -14567,14 +14567,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 893,
+          "line": 898,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 893,
+          "line": 898,
           "kind": "event-listener",
           "match": "ipcMain.handle('handle-text-paste-as-file'"
         },
@@ -15183,14 +15183,14 @@
       "consumers": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 251,
+          "line": 253,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 251,
+          "line": 253,
           "kind": "event-listener",
           "match": "ipcMain.handle('interrupt-group-chat-queue'"
         },
@@ -15245,14 +15245,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 1521,
+          "line": 1526,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 1521,
+          "line": 1526,
           "kind": "event-listener",
           "match": "ipcMain.handle('interrupt-vcp-request'"
         },
@@ -15276,14 +15276,14 @@
       "consumers": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 185,
+          "line": 187,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 185,
+          "line": 187,
           "kind": "event-listener",
           "match": "ipcMain.handle('inviteAgentToSpeak'"
         },
@@ -16311,14 +16311,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 364,
+          "line": 366,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 364,
+          "line": 366,
           "kind": "event-listener",
           "match": "ipcMain.handle('list-pending-flowlock-topics'"
         },
@@ -24791,14 +24791,14 @@
       "consumers": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 261,
+          "line": 263,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 261,
+          "line": 263,
           "kind": "event-listener",
           "match": "ipcMain.handle('redo-group-chat-message'"
         },
@@ -24853,14 +24853,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 530,
+          "line": 532,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 530,
+          "line": 532,
           "kind": "event-listener",
           "match": "ipcMain.handle('regenerate-agent-topic-title'"
         },
@@ -24903,14 +24903,14 @@
       "consumers": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 136,
+          "line": 138,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 136,
+          "line": 138,
           "kind": "event-listener",
           "match": "ipcMain.handle('regenerate-group-topic-title'"
         },
@@ -25374,14 +25374,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 331,
+          "line": 333,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 331,
+          "line": 333,
           "kind": "event-listener",
           "match": "ipcMain.handle('restore-flowlock-claim'"
         },
@@ -25474,14 +25474,14 @@
       "consumers": [
         {
           "file": "modules/ipc/agentHandlers.js",
-          "line": 253,
+          "line": 254,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/agentHandlers.js",
-          "line": 253,
+          "line": 254,
           "kind": "event-listener",
           "match": "ipcMain.handle('save-agent-config'"
         },
@@ -25505,14 +25505,14 @@
       "consumers": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 101,
+          "line": 103,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 101,
+          "line": 103,
           "kind": "event-listener",
           "match": "ipcMain.handle('save-agent-group-avatar'"
         },
@@ -25567,14 +25567,14 @@
       "consumers": [
         {
           "file": "modules/ipc/agentHandlers.js",
-          "line": 234,
+          "line": 235,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/agentHandlers.js",
-          "line": 234,
+          "line": 235,
           "kind": "event-listener",
           "match": "ipcMain.handle('save-agent-order'"
         },
@@ -25598,14 +25598,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 503,
+          "line": 505,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 503,
+          "line": 505,
           "kind": "event-listener",
           "match": "ipcMain.handle('save-agent-topic-title'"
         },
@@ -25629,14 +25629,14 @@
       "consumers": [
         {
           "file": "modules/ipc/agentHandlers.js",
-          "line": 307,
+          "line": 308,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/agentHandlers.js",
-          "line": 307,
+          "line": 308,
           "kind": "event-listener",
           "match": "ipcMain.handle('save-avatar'"
         },
@@ -25722,14 +25722,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 630,
+          "line": 635,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 630,
+          "line": 635,
           "kind": "event-listener",
           "match": "ipcMain.handle('save-chat-history'"
         },
@@ -25753,14 +25753,14 @@
       "consumers": [
         {
           "file": "modules/ipc/agentHandlers.js",
-          "line": 221,
+          "line": 222,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/agentHandlers.js",
-          "line": 221,
+          "line": 222,
           "kind": "event-listener",
           "match": "ipcMain.handle('save-combined-item-order'"
         },
@@ -25877,14 +25877,14 @@
       "consumers": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 144,
+          "line": 146,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 144,
+          "line": 146,
           "kind": "event-listener",
           "match": "ipcMain.handle('save-group-chat-history'"
         },
@@ -25908,14 +25908,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 428,
+          "line": 430,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 428,
+          "line": 430,
           "kind": "event-listener",
           "match": "ipcMain.handle('save-group-topic-order'"
         },
@@ -25939,14 +25939,14 @@
       "consumers": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 132,
+          "line": 134,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 132,
+          "line": 134,
           "kind": "event-listener",
           "match": "ipcMain.handle('save-group-topic-title'"
         },
@@ -26063,14 +26063,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 989,
+          "line": 994,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 989,
+          "line": 994,
           "kind": "event-listener",
           "match": "ipcMain.handle('save-pasted-image-to-file'"
         },
@@ -26156,14 +26156,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 395,
+          "line": 397,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 395,
+          "line": 397,
           "kind": "event-listener",
           "match": "ipcMain.handle('save-topic-order'"
         },
@@ -26218,14 +26218,14 @@
       "consumers": [
         {
           "file": "modules/ipc/agentHandlers.js",
-          "line": 462,
+          "line": 464,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/agentHandlers.js",
-          "line": 462,
+          "line": 464,
           "kind": "event-listener",
           "match": "ipcMain.handle('save-user-avatar'"
         },
@@ -26822,14 +26822,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 458,
+          "line": 460,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 458,
+          "line": 460,
           "kind": "event-listener",
           "match": "ipcMain.handle('search-topics-by-content'"
         },
@@ -26953,14 +26953,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 819,
+          "line": 824,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 819,
+          "line": 824,
           "kind": "event-listener",
           "match": "ipcMain.handle('select-files-to-send'"
         },
@@ -27034,14 +27034,14 @@
       "consumers": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 163,
+          "line": 165,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 163,
+          "line": 165,
           "kind": "event-listener",
           "match": "ipcMain.handle('send-group-chat-message'"
         },
@@ -27065,14 +27065,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 1041,
+          "line": 1046,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 1041,
+          "line": 1046,
           "kind": "event-listener",
           "match": "ipcMain.handle('send-to-vcp'"
         },
@@ -27189,14 +27189,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 1726,
+          "line": 1731,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 1726,
+          "line": 1731,
           "kind": "event-listener",
           "match": "ipcMain.handle('set-topic-unread'"
         },
@@ -28028,14 +28028,14 @@
       "consumers": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 207,
+          "line": 209,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 207,
+          "line": 209,
           "kind": "event-listener",
           "match": "ipcMain.handle('start-jev-group-chat'"
         },
@@ -29421,14 +29421,14 @@
       "consumers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 1682,
+          "line": 1687,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 1682,
+          "line": 1687,
           "kind": "event-listener",
           "match": "ipcMain.handle('toggle-topic-lock'"
         },
@@ -30796,7 +30796,7 @@
       "producers": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 1057,
+          "line": 1062,
           "kind": "event-send"
         },
         {
@@ -30806,12 +30806,12 @@
         },
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 171,
+          "line": 173,
           "kind": "event-send"
         },
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 266,
+          "line": 268,
           "kind": "event-send"
         }
       ],
@@ -30825,7 +30825,7 @@
       "evidence": [
         {
           "file": "modules/ipc/chatHandlers.js",
-          "line": 1057,
+          "line": 1062,
           "kind": "event-send",
           "match": "event.sender.send(streamChannel"
         },
@@ -30837,13 +30837,13 @@
         },
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 171,
+          "line": 173,
           "kind": "event-send",
           "match": "mainWindow.webContents.send('vcp-stream-event'"
         },
         {
           "file": "modules/ipc/groupChatHandlers.js",
-          "line": 266,
+          "line": 268,
           "kind": "event-send",
           "match": "mainWindow.webContents.send('vcp-stream-event'"
         },

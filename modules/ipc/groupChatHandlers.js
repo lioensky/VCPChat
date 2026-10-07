@@ -5,7 +5,7 @@ const fs = require('fs-extra');
 const { pathToFileURL } = require('url');
 const groupChat = require('../../Groupmodules/groupchat');
 const { HistoryMutationQueue } = require('../services/historyMutationQueue');
-const { clearTrajectoryOf } = require('../modelTrajectory');
+const { clearTrajectoryOf, clearTrajectoriesOfOwner } = require('../modelTrajectory');
 
 /**
  * Initializes group chat related IPC handlers.
@@ -95,7 +95,9 @@ function initialize(mainWindow, context) {
     });
 
     ipcMain.handle('delete-agent-group', async (event, groupId) => {
-        return await groupChat.deleteAgentGroup(groupId);
+        const result = await groupChat.deleteAgentGroup(groupId);
+        if (result?.success) await clearTrajectoriesOfOwner({ groupId });
+        return result;
     });
 
     ipcMain.handle('save-agent-group-avatar', async (event, groupId, avatarData) => {
