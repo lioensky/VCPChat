@@ -486,7 +486,7 @@ export function createConversationStatusPanel({
         on(doc, 'keydown', event => {
             if (event.key !== 'Escape') return;
             if (popovers.length) { closePopover(popovers[popovers.length - 1]); return; }
-            if (modals.length) modals[modals.length - 1].close();
+            if (modals.length) modals[modals.length - 1].dismiss();
        });
         on(win, 'resize', () => { measureHost(); closeAllPopovers(); });
         on(doc, 'visibilitychange', () => { if (!doc.hidden && gitStale) refresh(); });

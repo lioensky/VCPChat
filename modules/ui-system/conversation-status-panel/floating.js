@@ -88,19 +88,38 @@ export function createStatusPanelFloating({
         dialog.setAttribute('aria-modal', 'true');
         dialog.tabIndex = -1;
         overlay.appendChild(dialog);
-        const entry = { overlay, dialog, closed: false };
+        const previouslyFocused = doc.activeElement;
+        // busy 期间（提交、推送、建分支进行中）Esc、遮罩和右上角关闭都不生效，流程走完由它自己 close；
+        // 对齐 ZCode 的 Radix Dialog：流程归父级持有，焦点困在对话框里，关闭后还给打开前的元素
+        const entry = { overlay, dialog, closed: false, busy: false };
         entry.close = () => {
             if (entry.closed) return;
             entry.closed = true;
             const index = modals.indexOf(entry);
             if (index >= 0) modals.splice(index, 1);
+            const hadFocus = overlay.contains(doc.activeElement);
             overlay.remove();
             onClose?.();
+            if ((hadFocus || doc.activeElement === doc.body) && previouslyFocused?.isConnected) {
+                previouslyFocused.focus?.({ preventScroll: true });
+            }
         };
+        entry.dismiss = () => { if (!entry.busy) entry.close(); };
         if (showClose) {
-            dialog.appendChild(button('zc-btn zc-btn-ghost zc-btn-icon-sm zc-dialog-close', { label: '关闭', onClick: entry.close }, icon('x')));
+            dialog.appendChild(button('zc-btn zc-btn-ghost zc-btn-icon-sm zc-dialog-close', { label: '关闭', onClick: entry.dismiss }, icon('x')));
         }
-        overlay.addEventListener('mousedown', event => { if (event.target === overlay) entry.close(); });
+        overlay.addEventListener('mousedown', event => { if (event.target === overlay) entry.dismiss(); });
+        overlay.addEventListener('keydown', event => {
+            if (event.key !== 'Tab') return;
+            const focusable = [...dialog.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+                .filter(el => !el.disabled && !el.hidden);
+            if (!focusable.length) { event.preventDefault(); dialog.focus({ preventScroll: true }); return; }
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            const active = doc.activeElement;
+            if (event.shiftKey && (active === first || active === dialog)) { event.preventDefault(); last.focus(); }
+            else if (!event.shiftKey && active === last) { event.preventDefault(); first.focus(); }
+        });
         portal.appendChild(overlay);
         modals.push(entry);
         dialog.focus({ preventScroll: true });

@@ -181,6 +181,7 @@ export function createStatusPanelBranchDialogs({
             event.preventDefault();
             if (pending || !name.trim()) return;
             pending = true;
+            modal.busy = true;
             submit.disabled = true;
             cancel.disabled = true;
             submit.prepend(spinner());
@@ -190,6 +191,7 @@ export function createStatusPanelBranchDialogs({
                 modal.close();
             } catch (e) {
                 pending = false;
+                modal.busy = false;
                 cancel.disabled = false;
                 submit.disabled = !name.trim();
                 submit.querySelector('.zc-spin')?.remove();
@@ -250,16 +252,17 @@ export function createStatusPanelBranchDialogs({
             event.preventDefault();
             if (pending) return;
             pending = true;
+            modal.busy = true;
             submit.disabled = true;
             cancel.disabled = true;
             submit.prepend(spinner());
             error.hidden = true;
             try {
                 await stageAll(status, targetWorkspace);
-                if (modal.closed || store.workspace?.id !== targetWorkspace.id) return;
+                if (store.disposed || store.workspace?.id !== targetWorkspace.id) { modal.close(); return; }
                 const commitRes = await api.gitCommit(targetWorkspace.id, { message: message.trim() || buildCommitMessage(paths) });
                 if (!commitRes?.success) throw new Error(describeIssue(commitRes));
-                if (modal.closed || store.workspace?.id !== targetWorkspace.id) return;
+                if (store.disposed || store.workspace?.id !== targetWorkspace.id) { modal.close(); refreshAfterMutation(); return; }
                 const res = await api.gitSwitchBranch(targetWorkspace.id, target);
                 if (!res?.success || res?.data?.ok === false) throw new Error(res?.data?.issues?.[0]?.message || res?.error || '切换分支失败');
                 adoptBranch(res.data, targetWorkspace);
@@ -268,6 +271,7 @@ export function createStatusPanelBranchDialogs({
                 refreshAfterMutation();
             } catch (e) {
                 pending = false;
+                modal.busy = false;
                 cancel.disabled = false;
                 submit.disabled = false;
                 submit.querySelector('.zc-spin')?.remove();

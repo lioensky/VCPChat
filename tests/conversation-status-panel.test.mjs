@@ -877,3 +877,94 @@ test('a panel that does not follow the conversation shows the workspace picked i
     assert.equal(reads.length, 3);
     panel.dispose();
 });
+
+test('a dialog with a git step in flight ignores Esc and overlay clicks, then finishes the step', async () => {
+    let release;
+    const gate = new Promise(resolve => { release = resolve; });
+    const { doc, panel, calls, dom } = setup({ api: {
+        gitStage: async (id, paths) => { calls.push(['stage', id, paths]); await gate; return { success: true, data: {} }; }
+    } });
+    try {
+        panel.mount();
+        await flush();
+        await panel.openCommitDialog();
+        click(dom, q(doc, '[data-action="commit"]'));
+        await flush();
+        doc.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        const overlay = q(doc, '.zc-overlay');
+        overlay.dispatchEvent(new dom.window.MouseEvent('mousedown', { bubbles: true }));
+        assert.ok(q(doc, '.zc-commit-dialog'), 'dialog stays open while staging');
+        release();
+        await flush();
+        assert.ok(calls.some(c => c[0] === 'commit'), 'commit still runs after the ignored Esc');
+        assert.equal(q(doc, '.zc-commit-dialog'), null);
+    } finally {
+        release();
+        panel.dispose();
+    }
+});
+
+test('an idle dialog closes on Esc and returns focus to the element that opened it', async () => {
+    const { doc, panel, dom } = setup();
+    panel.mount();
+    await flush();
+    const opener = doc.createElement('button');
+    doc.body.appendChild(opener);
+    opener.focus();
+    panel.openCreateBranchDialog();
+    assert.notEqual(doc.activeElement, opener);
+    doc.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(q(doc, '.zc-dialog'), null);
+    assert.equal(doc.activeElement, opener);
+    panel.dispose();
+});
+
+test('Tab inside a dialog wraps around instead of reaching the chat behind it', async () => {
+    const { doc, panel, dom } = setup();
+    panel.mount();
+    await flush();
+    panel.openCreateBranchDialog();
+    const dialog = q(doc, '.zc-dialog');
+    const input = q(dialog, 'input');
+    input.value = 'feat';
+    input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    const buttons = [...dialog.querySelectorAll('button')].filter(b => !b.disabled);
+    const last = buttons[buttons.length - 1];
+    last.focus();
+    const tab = new dom.window.KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    last.dispatchEvent(tab);
+    assert.equal(tab.defaultPrevented, true);
+    assert.equal(doc.activeElement, input);
+    panel.dispose();
+});
+
+test('creating a branch while another git operation runs keeps the dialog open with an error', async () => {
+    let release;
+    const gate = new Promise(resolve => { release = resolve; });
+    const { doc, panel, calls, dom } = setup({ api: {
+        gitSwitchBranch: async (id, name) => { calls.push(['switch', id, name]); await gate; return { success: true, data: { ok: true, status: { branch: { head: name } } } }; }
+    } });
+    try {
+        panel.mount();
+        await flush();
+        click(dom, q(doc, '.zc-row-branch'));
+        await flush();
+        click(dom, q(doc, '.zc-branch-item[data-branch="dev"]'));
+        await flush();
+        assert.ok(calls.some(c => c[0] === 'switch'));
+        panel.openCreateBranchDialog();
+        const dialog = q(doc, '.zc-dialog');
+        const input = q(dialog, 'input');
+        input.value = 'feat';
+        input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+        q(dialog, 'form').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
+        await flush();
+        assert.ok(q(doc, '.zc-dialog'), 'dialog stays open');
+        assert.match(q(dialog, '.zc-field-error').textContent, /正在进行/);
+        assert.equal(calls.some(c => c[0] === 'create'), false);
+    } finally {
+        release();
+        await flush();
+        panel.dispose();
+    }
+});

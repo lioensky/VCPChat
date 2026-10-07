@@ -401,8 +401,22 @@
         } catch (error) {
             console.error(`[NextUI] Failed to open embedded app ${app.id}:`, error);
             container.dataset.state = 'error';
-            container.innerHTML = `<div class="next-ui-embedded-app-status is-error"><span class="vcp-ui-icon" aria-hidden="true">error</span><span>${error.message || '应用加载失败'}</span></div>`;
+            container.replaceChildren(createEmbeddedAppError(error.message || '应用加载失败'));
         }
+    }
+
+    // The error text comes from the app or its process, so it goes in as text.
+    function createEmbeddedAppError(message) {
+        const status = document.createElement('div');
+        status.className = 'next-ui-embedded-app-status is-error';
+        const icon = document.createElement('span');
+        icon.className = 'vcp-ui-icon';
+        icon.setAttribute('aria-hidden', 'true');
+        icon.textContent = 'error';
+        const text = document.createElement('span');
+        text.textContent = String(message);
+        status.append(icon, text);
+        return status;
     }
 
     function openEmbeddedApp(app) {
@@ -592,7 +606,7 @@
             }
             if (payload?.state !== 'error') return;
             view.container.dataset.state = 'error';
-            view.container.innerHTML = `<div class="next-ui-embedded-app-status is-error"><span class="vcp-ui-icon" aria-hidden="true">error</span><span>${payload.error || '应用运行异常'}</span></div>`;
+            view.container.replaceChildren(createEmbeddedAppError(payload.error || '应用运行异常'));
         });
     }
 

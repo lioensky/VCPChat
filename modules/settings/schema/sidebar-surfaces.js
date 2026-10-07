@@ -511,7 +511,11 @@ export function renderGroupSettingsSurface(host, doc = host?.ownerDocument || do
     const form = el(doc, 'form', { id: 'groupSettingsForm' });
     form.append(el(doc, 'input', { type: 'hidden', id: 'editingGroupId' }));
     [['identity', '基础信息', 'groupIdentitySummary'], ['mode', '群聊模式', 'groupModeSummary'], ['model', '模型设置', 'groupModelSummary'], ['prompt', '系统提示词', 'groupPromptSummary']].forEach(([key, title, summaryId]) => form.append(renderSection(doc, { kind: 'group', key, title, summaryId, content: d => renderGroupSectionContent(d, key) })));
-    form.append(el(doc, 'div', { class: 'form-actions' }, el(doc, 'button', { type: 'submit' }, '保存群组设置'), el(doc, 'div', { class: 'delete-button-container' }, el(doc, 'button', { type: 'button', id: 'deleteGroupBtn', class: 'danger-button' }, '删除此群组'))));
+    form.append(el(doc, 'div', { class: 'form-actions' },
+        el(doc, 'div', { id: 'groupFormSaveStateIndicator', class: 'form-save-state-indicator', 'data-state': 'done' },
+            el(doc, 'span', { class: 'form-state-dot-host' }),
+            el(doc, 'span', { class: 'form-state-dot-label' }, '已保存')),
+        el(doc, 'button', { type: 'submit' }, '保存群组设置'), el(doc, 'div', { class: 'delete-button-container' }, el(doc, 'button', { type: 'button', id: 'deleteGroupBtn', class: 'danger-button' }, '删除此群组'))));
     form.addEventListener('change', () => {
         syncSchemaDependencies(form);
     });

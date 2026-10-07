@@ -84,7 +84,7 @@ export function createStatusPanelGitActions({
 
     async function createBranch(name) {
         const targetWorkspace = store.workspace;
-        return runBusy(async () => {
+        const created = await runBusy(async () => {
             const res = await api.gitCreateBranch(targetWorkspace.id, name, '');
             const data = res?.data;
             if (!res?.success || data?.ok === false) {
@@ -95,6 +95,9 @@ export function createStatusPanelGitActions({
             toast(`已创建并切换到分支 ${name}`, 'success');
             return true;
         });
+        // runBusy 在另一个 Git 操作进行中时直接返回 false；不抛错的话对话框会当成功关掉
+        if (created !== true) throw new Error('另一个 Git 操作正在进行，请稍后再试');
+        return true;
     }
 
     async function pushCurrent(targetWorkspace = store.workspace) {

@@ -12,20 +12,20 @@
     "reason": "Integrated projection behavior: media cleanup before subtree replacement; nested tool-result ranges shield protocol markers; incremental smooth-stream burst handling preserves text order; durable persistence remains outside this projection."
   },
   "modules/topicListManager.js": {
-    "sha256": "a06e63547574acb218ae131b1539ccc5fc6ac798d0cd0e2e0a0adb34677c8c16",
-    "reason": "Integrated topic behavior: configuration/unread loads validate the selected item; sort/title/menu operations capture their original topic target; completed deletion changes the active view only for the same item and topic. Repository, readiness and render listener ownership remain unchanged."
+    "sha256": "50b2475f546cde9b601fb37dcc77562513f57b27823287a64061e85858653b74",
+    "reason": "Integrated topic behavior: configuration/unread loads validate the selected item; sort/title/menu operations capture their original topic target; completed deletion changes the active view only for the same item and topic. Repository, readiness and render listener ownership remain unchanged. Topic search waits 200ms after typing before reloading (Enter is immediate); a rejected config IPC shows an error row instead of a permanent spinner; names and IPC errors render as text."
   },
   "modules/itemListManager.js": {
-    "sha256": "6fb3f38f57edda8c4a9632d04fba6e1239c85e11064fc5214b58700e035850ae",
-    "reason": "Integrated catalog behavior: operation-counted speaking indicators survive list refreshes; catalog publication validates the final settings read; unread publication is ordered across navigation and catalog refreshes. Persona WIP is excluded."
+    "sha256": "ae5eca22dd19312f56d5c9d60b6a221c3a5be8cf2d34c1049407b45100cc5393",
+    "reason": "Integrated catalog behavior: operation-counted speaking indicators survive list refreshes; catalog publication validates the final settings read; unread publication is ordered across navigation and catalog refreshes. Persona WIP is excluded. Load error rows are HTML-escaped."
   },
   "Groupmodules/grouprenderer.js": {
-    "sha256": "31f0d3defe8ba31ef1f9b6c41f9655b23fa02991671483b6ab658a3e3f8450eb",
-    "reason": "Integrated group behavior: JEV mode/context-window fields and invitations; explicit group queue interrupt; optimistic user message IDs survive file sync; settings read/save snapshots preserve the original group and mode data; chat header delegates to its presentation owner."
+    "sha256": "a88a5e4972d9b3739a8da8f300876f066dd2841bcfa8f41f6ffac664cc36cac8",
+    "reason": "Integrated group behavior: JEV mode/context-window fields and invitations; explicit group queue interrupt; optimistic user message IDs survive file sync; settings read/save snapshots preserve the original group and mode data; chat header delegates to its presentation owner. Group form tracks unsaved edits (including speaker reorder) and shows the same 未保存更改 indicator as Agent settings; a successful save clears it, loading a group resets it."
   },
   "modules/settingsManager.js": {
-    "sha256": "ab7f07e0a7ef558b3c5ac8a04ff7d715912414d6cd8f0799f38160ac7e46c550",
-    "reason": "Integrated manual-save policy: Agent/prompt edits remain drafts until Save; context changes and collapse no longer implicitly persist; submit captures draft and display identity; regex import merges into the draft; Lucide renders action icons. Replaces the obsolete autosave rationale. Settings display uses a local selection snapshot; a delayed config read cannot overwrite a newer settings view (frozen-selection and A-to-B display regression tests)."
+    "sha256": "1d1a99372dba5059837c4a00d48ed8eb3e983f01323cb664750828e1254585f4",
+    "reason": "Integrated manual-save policy: Agent/prompt edits remain drafts until Save; context changes and collapse no longer implicitly persist; submit captures draft and display identity; regex import merges into the draft; Lucide renders action icons. Replaces the obsolete autosave rationale. Settings display uses a local selection snapshot; a delayed config read cannot overwrite a newer settings view (frozen-selection and A-to-B display regression tests). Regex rule add/edit/delete and MiMo director prompt add/remove mark the draft unsaved like ordinary field edits."
   },
   "modules/filterManager.js": {
     "sha256": "2390116ff961f18cdf2d3defd02d5559de9381f891be7e5eb33ef99f98337225",

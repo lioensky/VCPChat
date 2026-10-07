@@ -95,6 +95,17 @@ const settingsManager = (() => {
     let isAgentSettingsDirty = false;
     let agentSettingsRevision = 0;
     let agentSettingsAutosaveTimer = null;
+
+    // Edits that live outside the form's own input/change events (the regex
+    // modal, MiMo add/remove buttons) report here so the unsaved-changes dot
+    // shows them like any other field.
+    function markAgentSettingsDirty() {
+        isAgentSettingsDirty = true;
+        ++agentSettingsRevision;
+        if (typeof globalThis.vcpUpdateFormStateDot === 'function') {
+            globalThis.vcpUpdateFormStateDot('warning');
+        }
+    }
     const initializedCollapseStateAgents = new Set();
     const promptModeFallbackLabels = {
         original: '文本',
@@ -1151,13 +1162,8 @@ const settingsManager = (() => {
                         }
                     }
                 });
-                const markDirty = () => {
-                    isAgentSettingsDirty = true;
-                    ++agentSettingsRevision;
-                    updateStateDotIndicator('warning');
-                };
-                agentSettingsForm.addEventListener('input', markDirty);
-                agentSettingsForm.addEventListener('change', markDirty);
+                agentSettingsForm.addEventListener('input', markAgentSettingsDirty);
+                agentSettingsForm.addEventListener('change', markAgentSettingsDirty);
             }
             if (deleteItemBtn) {
                 deleteItemBtn.addEventListener('click', handleDeleteCurrentItem);
@@ -1377,9 +1383,13 @@ const settingsManager = (() => {
         // slot owns rows, shortcuts and editor geometry.
         getTtsDirectorPrompts: () => [...currentAgentTtsDirectorPrompts],
         setTtsDirectorPrompts: (prompts) => {
-            currentAgentTtsDirectorPrompts = Array.isArray(prompts)
+            const nextPrompts = Array.isArray(prompts)
                 ? prompts.map(prompt => String(prompt ?? '').trim()).filter(Boolean)
                 : [];
+            const changed = nextPrompts.length !== currentAgentTtsDirectorPrompts.length
+                || nextPrompts.some((prompt, index) => prompt !== currentAgentTtsDirectorPrompts[index]);
+            currentAgentTtsDirectorPrompts = nextPrompts;
+            if (changed) markAgentSettingsDirty();
             updateSectionSummary('tts');
         },
         getTtsDirectorTemplate: () => TTS_DIRECTOR_TEMPLATE,
@@ -1823,6 +1833,7 @@ function resolveRegexSlots() {
             if (await uiHelper.showConfirmDialog(`确定要删除规则 "${rule.title}" 吗？`, '删除确认', '删除', '取消', true)) {
                 currentAgentRegexes = currentAgentRegexes.filter(r => r.id !== rule.id);
                 renderRegexList();
+                markAgentSettingsDirty();
             }
         });
 
@@ -1930,6 +1941,7 @@ function resolveRegexSlots() {
         }
 
         renderRegexList();
+        markAgentSettingsDirty();
         closeRegexModal();
     }
 

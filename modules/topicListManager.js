@@ -28,6 +28,12 @@ window.topicListManager = (() => {
     const TOPIC_INITIAL_RENDER_COUNT = 40;
     const TOPIC_PROGRESSIVE_BATCH_SIZE = 30;
     const TOPIC_LOAD_MORE_THRESHOLD_PX = 320;
+    // Each search reload re-reads the item config and runs a content search
+    // over IPC. Typing waits for a short pause first, in the range ZCode uses
+    // for its IO-backed refreshes (fileWatcherService 150ms, useTabPersistence
+    // 300ms); Enter still searches at once.
+    const TOPIC_SEARCH_DEBOUNCE_MS = 200;
+    let topicSearchTimer = null;
 
     const addListener = (target, type, handler, options) => {
         if (listenerOwner) return listenerOwner.add(target, type, handler, options);
@@ -38,6 +44,27 @@ window.topicListManager = (() => {
     function addRenderListener(target, type, handler, options) {
         target?.addEventListener?.(type, handler, options);
         renderListenerDisposers.push(() => target?.removeEventListener?.(type, handler, options));
+    }
+
+    function cancelPendingTopicSearch() {
+        if (topicSearchTimer) clearTimeout(topicSearchTimer);
+        topicSearchTimer = null;
+    }
+
+    // Names and IPC error strings are user or disk data, so status rows are
+    // built with textContent, never by interpolating into innerHTML.
+    function renderTopicListStatus(topicListUl, message, { loading = false } = {}) {
+        const li = document.createElement('li');
+        if (loading) {
+            const spinner = document.createElement('div');
+            spinner.className = 'loading-spinner-small';
+            li.append(spinner, document.createTextNode(message));
+        } else {
+            const p = document.createElement('p');
+            p.textContent = message;
+            li.appendChild(p);
+        }
+        topicListUl.replaceChildren(li);
     }
 
     function disposeRenderListeners() {
@@ -545,6 +572,7 @@ window.topicListManager = (() => {
             return;
         }
 
+        cancelPendingTopicSearch();
         cleanupProgressiveTopicRendering();
         const loadGeneration = topicListRenderGeneration;
 
@@ -594,15 +622,21 @@ window.topicListManager = (() => {
         let itemConfigFull;
 
         if (!searchTerm) {
-            topicListUl.innerHTML = `<li><div class="loading-spinner-small"></div>正在加载 ${itemNameForLoading} 的话题...</li>`;
+            renderTopicListStatus(topicListUl, `正在加载 ${itemNameForLoading} 的话题...`, { loading: true });
         } else {
             topicListUl.innerHTML = '';
         }
 
-        if (currentSelectedItem.type === 'agent') {
-            itemConfigFull = await electronAPI.getAgentConfig(currentSelectedItem.id);
-        } else if (currentSelectedItem.type === 'group') {
-            itemConfigFull = await electronAPI.getAgentGroupConfig(currentSelectedItem.id);
+        try {
+            if (currentSelectedItem.type === 'agent') {
+                itemConfigFull = await electronAPI.getAgentConfig(currentSelectedItem.id);
+            } else if (currentSelectedItem.type === 'group') {
+                itemConfigFull = await electronAPI.getAgentGroupConfig(currentSelectedItem.id);
+            }
+        } catch (error) {
+            // A rejected IPC call used to leave the loading spinner up for good.
+            console.error('[TopicListManager] Failed to load item config:', error);
+            itemConfigFull = { error: error?.message || String(error) };
         }
 
         if (loadGeneration !== topicListRenderGeneration ||
@@ -621,7 +655,7 @@ window.topicListManager = (() => {
             currentItemConfig = null;
             selectedTopicIds.clear();
             syncManageUi();
-            topicListUl.innerHTML = `<li><p>无法加载 ${itemNameForLoading} 的配置信息: ${itemConfigFull?.error || '未知错误'}</p></li>`;
+            renderTopicListStatus(topicListUl, `无法加载 ${itemNameForLoading} 的配置信息: ${itemConfigFull?.error || '未知错误'}`);
         } else {
             let topicsToProcess = itemConfigFull.topics || [];
             if (currentSelectedItem.type === 'agent' && topicsToProcess.length === 0) {
@@ -682,7 +716,7 @@ window.topicListManager = (() => {
             syncManageUi();
 
             if (topicsToProcess.length === 0) {
-                topicListUl.innerHTML = `<li><p>${itemNameForLoading} 还没有任何话题${searchTerm ? '匹配当前搜索' : ''}。您可以点击上方的“新建${currentSelectedItem.type === 'group' ? '群聊话题' : '聊天话题'}”按钮创建一个。</p></li>`;
+                renderTopicListStatus(topicListUl, `${itemNameForLoading} 还没有任何话题${searchTerm ? '匹配当前搜索' : ''}。您可以点击上方的“新建${currentSelectedItem.type === 'group' ? '群聊话题' : '聊天话题'}”按钮创建一个。`);
             } else {
                 const currentTopicId = currentTopicIdRef.get();
                 renderTopicListProgressively(topicListUl, topicsToProcess, currentSelectedItem, currentTopicId, itemConfigFull, searchTerm);
@@ -701,13 +735,21 @@ window.topicListManager = (() => {
         if (inputElement.dataset.topicSearchBound === 'true') return;
         inputElement.dataset.topicSearchBound = 'true';
 
-        addListener(inputElement, 'input', filterTopicList);
+        addListener(inputElement, 'input', scheduleTopicSearch);
         addListener(inputElement, 'keydown', (event) => {
             if (event.key === 'Enter') {
                 event.preventDefault();
                 filterTopicList();
             }
         });
+    }
+
+    function scheduleTopicSearch() {
+        cancelPendingTopicSearch();
+        topicSearchTimer = setTimeout(() => {
+            topicSearchTimer = null;
+            loadTopicList();
+        }, TOPIC_SEARCH_DEBOUNCE_MS);
     }
 
     function filterTopicList() {
@@ -1539,6 +1581,7 @@ window.topicListManager = (() => {
     }
 
     function dispose() {
+        cancelPendingTopicSearch();
         cleanupProgressiveTopicRendering();
         closeTopicContextMenu();
         selectedTopicIds.clear();

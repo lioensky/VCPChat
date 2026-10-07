@@ -85,6 +85,7 @@ export function createStatusPanelPushDialog({
                 const submit = button('zc-btn zc-btn-primary zc-btn-xl', { disabled: pending || !pushEnabled }, pending ? spinner() : null, '推送');
                 submit.addEventListener('click', async () => {
                     pending = true;
+                    modal.busy = true;
                     paint();
                     try {
                         if (!modal.dialog.isConnected || store.workspace?.id !== targetWorkspace.id) return;
@@ -94,6 +95,7 @@ export function createStatusPanelPushDialog({
                         refreshAfterMutation();
                     } catch (e) {
                         pending = false;
+                        modal.busy = false;
                         errorText = e?.message || String(e);
                         paint();
                     }

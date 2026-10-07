@@ -1089,7 +1089,7 @@ window.itemListManager = (() => {
         } else if (errors.length > 0) {
             console.warn('[ItemListManager] Failed to fully reload items, preserving previous list where possible:', errors.join(' | '));
             if (!hadPreviousItems) {
-                itemListUl.innerHTML = errors.map(error => `<li>${error}</li>`).join('');
+                itemListUl.innerHTML = errors.map(error => `<li>${escapeHtml(String(error))}</li>`).join('');
             }
         } else {
             loadedItemsCache = [];

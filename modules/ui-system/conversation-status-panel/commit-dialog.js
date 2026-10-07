@@ -143,12 +143,13 @@ export function createStatusPanelCommitDialog({
             const paths = selectedPaths();
             if (!paths.length) { state.error = '当前没有可提交的更改。'; sync(); return; }
             state.pending = true;
+            modal.busy = true;
             state.error = '';
             sync();
             let committed = false;
             try {
                 if (state.includeUnstaged) await stageAll(status, targetWorkspace);
-                if (modal.closed || store.workspace?.id !== targetWorkspace.id) return;
+                if (store.disposed || store.workspace?.id !== targetWorkspace.id) { modal.close(); return; }
                 const message = state.message.trim() || buildCommitMessage(paths);
                 const res = await api.gitCommit(targetWorkspace.id, { message });
                 if (!res?.success) throw new Error(describeIssue(res));
@@ -159,6 +160,7 @@ export function createStatusPanelCommitDialog({
                 refreshAfterMutation();
             } catch (e) {
                 state.pending = false;
+                modal.busy = false;
                 state.error = committed ? `已提交，但推送失败：${e?.message || e}` : `提交失败：${e?.message || e}`;
                 sync();
                 if (committed) refreshAfterMutation();
