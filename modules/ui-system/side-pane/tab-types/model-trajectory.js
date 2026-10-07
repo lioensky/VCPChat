@@ -8,7 +8,7 @@ export function defineModelTrajectoryTabType({ document: doc, window: win, chatA
             getConversation: () => ({ item: selectedItemRef.get(), topicId: topicIdRef.get() }),
             onConversationChange: (callback) => chatManager?.onSelectionChange?.(callback)
         });
-    }, ['openModelTrajectoryTab']);
+    }, ['openModelTrajectoryTab'], { label: '调用轨迹', notify: (message, type) => uiHelper?.showToastNotification?.(message, type) });
     return Object.freeze({
         kind: 'model-trajectory', label: '调用轨迹', icon: 'monitoring', searchHint: '模型调用 请求 响应 token 轨迹',
         entry: { id: 'model-trajectory', order: 65, open: () => provider.openModelTrajectoryTab() },

@@ -360,7 +360,7 @@ export function createSidePaneTabStrip({
         }
         e.preventDefault();
         if (targetIndex !== currentIndex && targetIndex >= 0 && targetIndex < tabButtons.length) {
-            // 激活会重建标签条，旧按钮随之离开文档；焦点留在标签上（WAI-ARIA Tabs），按 id 找重建后的按钮
+            // 焦点跟着移到新标签上（WAI-ARIA Tabs）；激活后按 id 重新取按钮，不依赖激活前拿到的节点
             const targetId = tabButtons[targetIndex].getAttribute('data-tab-id');
             onActivate(targetId, { focus: false });
             findByTabId(tabListElement, '[role="tab"][data-tab-id]', targetId)?.focus?.();

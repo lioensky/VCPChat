@@ -74,8 +74,8 @@ export function createSidePaneController({
         visible: root.classList.contains('active') || root.getAttribute('aria-hidden') === 'false'
     });
 
-    const mountedTabMap = new Map(); // tabId -> { payload, viewElement, handle, occurrence }
-    const pendingTabMounts = new Map(); // tabId -> mount occurrence; reopening the same id starts a new lifetime
+    const mountedTabMap = new Map(); // tabId -> { payload, viewElement, handle, onClosed, occurrence }
+    const pendingTabMounts = new Map(); // tabId -> { promise, viewElement, canceled, onClosed }：进行中的挂载；同 id 重开会换一个新的
     // 标签打开期间的 scope：第一次挂载时建，关标签才释放；视图休眠只释放它下面的 view scope
     const rootScope = createSidePaneRootScope(scope);
     const occurrences = new Map(); // tabId -> createTabOccurrence()
@@ -328,6 +328,15 @@ export function createSidePaneController({
         return !isDisposed && state.visible && doc.visibilityState !== 'hidden' && tabId === activeViewId && visibleTabIds.has(tabId);
     }
 
+    function deliverVisibility(tabId, handle, shown) {
+        try {
+            if (shown) handle?.resume?.();
+            else handle?.suspend?.();
+        } catch (error) {
+            console.error(`[SidePaneController] Failed to ${shown ? 'resume' : 'suspend'} tab "${tabId}":`, error);
+        }
+    }
+
     // 可见性由容器下发：provider 不用自己探测 DOM；隐藏时 suspend，重新可见时 resume
     function syncOccurrenceVisibility() {
         if (isDisposed) return;
@@ -335,13 +344,7 @@ export function createSidePaneController({
         occurrences.forEach((tabOccurrence, tabId) => {
             const shown = isTabShown(tabId, active);
             if (!tabOccurrence.setVisible(shown)) return;
-            const handle = mountedTabMap.get(tabId)?.handle;
-            try {
-                if (shown) handle?.resume?.();
-                else handle?.suspend?.();
-            } catch (error) {
-                console.error(`[SidePaneController] Failed to ${shown ? 'resume' : 'suspend'} tab "${tabId}":`, error);
-            }
+            deliverVisibility(tabId, mountedTabMap.get(tabId)?.handle, shown);
         });
         noteViewPresence(active);
         evaluateDormancy();
@@ -383,9 +386,10 @@ export function createSidePaneController({
         mountedTabMap.forEach((entry, tabId) => {
             const tab = state.tabs.find(t => t.id === tabId);
             if (!tab) return;
-            let busy = false;
+            // 正在关（确认框还开着）的标签不休眠，否则确认之后视图已经没了（同 ZCode residency policy 不淘汰进行中的操作）
+            let busy = tabCloseOwner.isClosing(tabId);
             try {
-                busy = entry.handle?.isBusy?.() === true;
+                busy = busy || entry.handle?.isBusy?.() === true;
             } catch (error) {
                 console.error(`[SidePaneController] Failed to ask tab "${tabId}" whether it is busy:`, error);
                 busy = true;
@@ -548,6 +552,7 @@ export function createSidePaneController({
             const viewScope = tabOccurrence.openView();
             // 挂载前先给出可见性，provider 一开始就知道要不要起轮询
             tabOccurrence.setVisible(isTabShown(tabId));
+            const visibleAtMount = tabOccurrence.occurrence.isVisible();
 
             const dormant = dormantTabs.get(tabId);
             let handle = null;
@@ -583,6 +588,9 @@ export function createSidePaneController({
             const entry = { payload, viewElement: view, handle, onClosed, occurrence: tabOccurrence };
             mountedTabMap.set(tabId, entry);
             if (dormantTabs.get(tabId) === dormant) dormantTabs.delete(tabId);
+            // 挂载期间可见性变了（折叠侧栏、切走标签）时 handle 还不在，那次 suspend/resume 落空了，这里补上
+            const visibleNow = tabOccurrence.occurrence.isVisible();
+            if (visibleNow !== visibleAtMount) deliverVisibility(tabId, handle, visibleNow);
             return entry;
         })();
 
@@ -598,7 +606,6 @@ export function createSidePaneController({
         return mounting;
     }
 
-    // 恢复出来的标签不在启动时挂载，第一次显示时才挂；焦点留在原处
     // 批量关闭期间兜底激活的标签多半紧接着也要关，等整批关完再挂当时停着的那个
     let batchClosing = 0;
     async function closeBatch(tabs, options, onFocusMoved) {
@@ -611,6 +618,7 @@ export function createSidePaneController({
         }
     }
 
+    // 恢复出来的标签不在启动时挂载，第一次显示时才挂；焦点留在原处
     function mountActiveIfNeeded() {
         if (isDisposed || !state.visible || batchClosing > 0) return;
         const tabId = state.activeTabId;
@@ -631,18 +639,28 @@ export function createSidePaneController({
         rememberBounded(activeTabByParent, parentKey, tabId);
     }
 
+    // 打开期间焦点没被别处拿走：还在发起处，或者发起处随旧视图拆掉、焦点掉到了 body 上
+    function isFocusUnchanged(origin) {
+        return doc.activeElement === origin
+            || (doc.activeElement === doc.body && Boolean(origin) && !origin.isConnected);
+    }
+
     function finishOpen(tabId, entry, origin) {
         if (isDisposed) return null;
         syncViewPanels();
         syncDomVisibility();
         // A background mount can finish after another tab, conversation or input has taken focus.
-        const focusUnchanged = doc.activeElement === origin
-            || (doc.activeElement === doc.body && origin && !origin.isConnected);
         if (state.visible && state.activeTabId === tabId && mountedTabMap.get(tabId) === entry
-            && SidePaneState.getVisibleTabs(state, state.parent).some(tab => tab.id === tabId) && focusUnchanged) {
+            && SidePaneState.getVisibleTabs(state, state.parent).some(tab => tab.id === tabId) && isFocusUnchanged(origin)) {
             entry?.handle?.focus?.();
         }
         return entry?.handle || null;
+    }
+
+    // 打开失败时焦点和打开成功一样落到新标签上：那里只有出错页，就落在重试按钮上（键盘用户不用摸回去）
+    function focusMountFailure(tabId, origin) {
+        if (isDisposed || !state.visible || state.activeTabId !== tabId) return;
+        if (isFocusUnchanged(origin)) failedMounts.get(tabId)?.querySelector?.('.side-pane-mount-error-retry')?.focus?.();
     }
 
     // 临时标签（如辅助对话）不进“最近关闭”，其他标签都能重新打开
@@ -896,7 +914,13 @@ export function createSidePaneController({
             // 标签条已经切过去了，面板和内容区同一刻跟上，不等挂载完（慢的挂载期间不会是新标签配旧内容、或标签亮着面板却收着）
             syncViewPanels();
             syncDomVisibility();
-            const entry = await mounting;
+            let entry;
+            try {
+                entry = await mounting;
+            } catch (error) {
+                focusMountFailure(targetTabId, origin);
+                throw error;
+            }
             return finishOpen(targetTabId, entry, origin);
         },
 

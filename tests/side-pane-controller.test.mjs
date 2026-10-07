@@ -318,6 +318,8 @@ test('a failed mount shows an error with a retry instead of a blank pane', async
         assert.equal(views[0].hidden, false, 'the failed tab stays the visible one');
         assert.equal(views[0].querySelector('[role="alert"]').textContent.includes('mount failed'), true);
         assert.equal(views[0].textContent.includes('half drawn'), false, 'what the provider half drew is cleared');
+        assert.equal(root.ownerDocument.activeElement, views[0].querySelector('.side-pane-mount-error-retry'),
+            'focus lands on the retry button like it would on a tab that opened');
 
         views[0].querySelector('.side-pane-mount-error-retry').click();
         await new Promise(resolve => setTimeout(resolve, 0));

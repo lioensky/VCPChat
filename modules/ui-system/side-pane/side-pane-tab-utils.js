@@ -58,7 +58,7 @@ export function filterAndRankSearchItems(items, queryParts) {
 // 标签展示
 // ---------------------------------------------------------------------------
 
-// 只有框架自带的两类标签在这里给默认值；其他标签由打开它的模块在 openTab 时带上 typeLabel / icon / searchHint。
+// 没登记类型时的兜底名称和图标（状态模块不认识登记表，只能用这里的）。登记过的类型以 getTabType 返回的声明为准。
 const TYPE_LABELS = Object.freeze({
     notifications: '通知',
     chat: '辅助对话'

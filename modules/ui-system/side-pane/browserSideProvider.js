@@ -11,6 +11,7 @@
 'use strict';
 
 import { createSidePaneRootScope } from './side-pane-occurrence.js';
+import { moveMenuFocus } from './menu-position.js';
 
 export const BROWSER_PARTITION = 'persist:vcp-side-browser';
 const ALLOWED_PROTOCOLS = new Set(['http:', 'https:', 'about:']); // 同 browserHandlers.js：不开 file: 本地页
@@ -435,16 +436,7 @@ export function createBrowserSideProvider({
                     closeMenu({ restoreFocus: true });
                     return;
                 }
-                if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-                const items = Array.from(menu.querySelectorAll('[role="menuitem"]:not([disabled])'));
-                if (!items.length) return;
-                event.preventDefault();
-                const current = items.indexOf(doc.activeElement);
-                const next = event.key === 'Home' ? 0
-                    : event.key === 'End' ? items.length - 1
-                        : event.key === 'ArrowDown' ? (current + 1) % items.length
-                            : (current - 1 + items.length) % items.length;
-                items[next].focus();
+                moveMenuFocus(event, Array.from(menu.querySelectorAll('[role="menuitem"]:not([disabled])')));
             });
             const onDocumentPointerDown = (event) => {
                 if (!menu.hidden && !menu.contains(event.target) && !moreBtn.contains(event.target)) closeMenu();

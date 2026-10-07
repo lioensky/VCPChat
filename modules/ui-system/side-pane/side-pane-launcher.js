@@ -3,7 +3,7 @@
 import { createSidePaneEntries } from './side-pane-entries.js';
 
 /**
- * 新标签页（引导页）：上面地址栏，下面工具入口。工具入口由各模块通过 registerEntry 自己登记，
+ * 新标签页（引导页）：上面个人资料，下面工具 / 应用 / 通知分段。工具入口由各模块通过 registerEntry 自己登记，
  * 「+」按钮和面板空着时展开也按登记的入口决定打开什么。
  *   isNotificationsActive()   通知标签是不是当前标签（通知页是新标签页里的一个分类）
  *   showNotifications() / showLauncher() / hideMenus()

@@ -516,7 +516,11 @@ try {
     stopChild();
     mockModel.close();
     pageServer.close();
-    if (exitCode === 0 && !KEEP) fs.rmSync(data, { recursive: true, force: true });
-    else console.log('Evidence: ' + data);
+    if (exitCode === 0 && !KEEP) {
+        // Electron 的子进程可能比主进程晚退出，还在往 Partitions 里写，删目录会撞上 ENOTEMPTY；
+        // 重试几次，仍删不掉也只是留下临时目录，不算冒烟失败
+        try { fs.rmSync(data, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 }); }
+        catch (error) { console.warn(`Could not remove ${data}: ${error.code || error.message}`); }
+    } else console.log('Evidence: ' + data);
     process.exit(exitCode);
 }

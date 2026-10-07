@@ -221,6 +221,8 @@ export function createPlanDetailSideProvider({
             const scope = h('div', 'zc-scope vcp-ui-scope side-plan-scope');
             const chrome = h('div', 'side-plan-chrome');
             const body = h('div', 'side-plan-body');
+            // 标签激活时焦点落在这里（不进 Tab 顺序），键盘用户接着就能在计划里滚动、往下 Tab
+            body.tabIndex = -1;
             scope.append(chrome, body);
             viewElement.appendChild(scope);
             // 休眠只发生在隐藏时，那时 display:none 的 body 读出来滚动是 0：可见时就记下位置（body 随视图丢弃，监听不用登记）
@@ -1037,7 +1039,11 @@ export function createPlanDetailSideProvider({
             }), 'topic-history');
 
             const handle = {
-                focus() { scheduleLoad(); },
+                focus() {
+                    body.focus?.({ preventScroll: true });
+                    // 每次切回来都重读一次：工程变更事件之外的改动（比如别的窗口）也能跟上
+                    scheduleLoad();
+                },
                 suspend() {
                     // 还没到点的重读留到重新显示时再做
                     if (!cancelLoad) return;

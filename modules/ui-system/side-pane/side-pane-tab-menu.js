@@ -1,7 +1,7 @@
 /* Side pane tab context menu: close this tab, the others, or all of them. */
 'use strict';
 
-import { placeMenuAt } from './menu-position.js';
+import { moveMenuFocus, placeMenuAt } from './menu-position.js';
 
 /**
  * menu 里的按钮用 data-action 区分：close-tab / close-others / close-all。
@@ -72,16 +72,7 @@ export function createSidePaneTabMenu({ menu, getClosableTabs, onAction, onShow 
             focusTab(returnTo);
             return;
         }
-        if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Home' && e.key !== 'End') return;
-        const items = Array.from(menu.querySelectorAll('[role="menuitem"]:not([disabled])'));
-        if (!items.length) return;
-        e.preventDefault();
-        const current = items.indexOf(doc.activeElement);
-        let next = 0;
-        if (e.key === 'End') next = items.length - 1;
-        else if (e.key === 'ArrowDown') next = current < 0 ? 0 : (current + 1) % items.length;
-        else if (e.key === 'ArrowUp') next = current < 0 ? items.length - 1 : (current - 1 + items.length) % items.length;
-        items[next].focus();
+        moveMenuFocus(e, Array.from(menu.querySelectorAll('[role="menuitem"]:not([disabled])')));
     };
     menu.addEventListener('keydown', onMenuKeydown);
     cleanups.push(() => menu.removeEventListener('keydown', onMenuKeydown));

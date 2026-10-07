@@ -4,7 +4,7 @@ export function defineCodeViewerTabType({ document: doc, window: win, chatAPI, s
     const provider = createLazyProvider(async () => {
         const { createCodeViewerSideProvider } = await import('../codeViewerSideProvider.js');
         return createCodeViewerSideProvider({ document: doc, api: chatAPI || win.utilityAPI || win.electronAPI, sidePaneController, uiHelper });
-    }, ['openViewer']);
+    }, ['openViewer'], { label: '代码查看', notify: (message, type) => uiHelper?.showToastNotification?.(message, type) });
     const label = '代码查看';
     const icon = 'code';
     return Object.freeze({

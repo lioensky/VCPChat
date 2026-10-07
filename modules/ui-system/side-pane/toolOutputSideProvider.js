@@ -27,8 +27,6 @@ const STATUS_LABEL = Object.freeze({
     spawn_error: '启动失败'
 });
 
-export const toolOutputTabId = () => TAB_ID;
-
 export function commandRunStatusLabel(status) {
     return STATUS_LABEL[status] || status || '';
 }
@@ -77,8 +75,7 @@ export function createToolOutputSideProvider({
                 title: '命令输出',
                 icon: 'description',
                 closable: true,
-                scopeMode: 'global',
-                searchHint: '后台输出 命令 终端'
+                scopeMode: 'global'
             });
             sidePaneController.setVisible?.(true);
             if (runId) for (const instance of instances) instance.select(runId);

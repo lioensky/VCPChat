@@ -26,7 +26,7 @@
 | `side-pane-types.js` | 只有 JSDoc 类型：`SidePaneTab`、`SidePaneTabType`、`SidePaneProvider`、`SidePaneTabHandle` 等契约 | 否 |
 | `side-pane-persistence.js` | 布局存档的序列化、带版本号的校验读取、防抖保存；按对话的记忆最多 50 条（LRU） | 否（只碰 storage） |
 | `side-pane-focus.js` | 焦点归属：记下打开副屏前的焦点，收起时送回；焦点不在副屏里时不挪 | 是（只调 `focus()`） |
-| `side-pane-tab-close-owner.js` | 按挂载 occurrence 合并关闭授权、提交关闭后等待清理、与控制器销毁共用一次 dispose | 否（通过组合者回调提交视图和状态变化） |
+| `side-pane-tab-close-owner.js` | 按标签的这次打开（lifetime）合并关闭授权、提交关闭后等待清理、与控制器销毁共用一次 dispose | 否（通过组合者回调提交视图和状态变化） |
 | `side-pane-shortcuts.js` | 键盘快捷键：Ctrl/Cmd+Alt+B 开合，副屏内 Ctrl+PageUp/PageDown 切标签 | 是（window keydown） |
 | `side-pane-visibility.js` | 宽度比例（默认 45%，20%–65%）、开合动画、动画期间锁定内容宽度 | 是（写 `style.width`） |
 | `side-pane-tab-strip.js` | 标签条渲染、悬停提示、溢出布局与边缘渐隐、拖拽排序、方向键 / 中键关闭、通知标签上的连接状态点 | 是 |
@@ -122,12 +122,12 @@ sidePaneWiring
 
 ## 4. Provider 契约
 
-一个 provider 负责一种 `kind` 的标签，通过标签类型的 `provider` 字段登记：
+一个 provider 负责一种 `kind` 的标签，通过标签类型的 `provider` 字段登记。完整的类型定义在 `side-pane-types.js`（`SidePaneProvider`、`SidePaneMountContext`、`SidePaneTabHandle`），这里只说调用顺序和不变量。
 
 ```js
 const provider = {
-    async mountTab(tab, viewElement) {
-        // 在 viewElement 里渲染，返回 handle
+    async mountTab(tab, viewElement, { scope, occurrence, restoredState }) {
+        // 在 viewElement 里渲染；监听、定时器、订阅挂在 scope 上；返回 handle
         return handle;
     }
 };
@@ -135,14 +135,41 @@ const provider = {
 
 - `tab`：`openTab()` 传入的对象；从存档恢复出来的标签是存下来的标签对象（`payload` 原样带回）。辅助对话类型的 provider 适配层把 `descriptor` 取出来交给辅助对话 owner。
 - `viewElement`：控制器创建的 `<section class="side-pane-view" role="tabpanel">`，provider 只能在它里面渲染。
+- `scope`：这次挂载的 view scope，视图释放（关标签或休眠）时整个拆掉。
+- `occurrence`：标签从打开到关闭的生命周期，休眠不影响它。`occurrence.signal` 关标签时 abort；`occurrence.visible` 由控制器发布。
+- `restoredState`：休眠前 `captureState()` 的返回值，第一次挂载时没有。
+- 只接两个参数的旧 provider 照常工作，资源由它自己的 `dispose` 收。
 
 handle 的方法都是可选的：
 
 | 方法 | 调用时机 |
 | :--- | :--- |
-| `focus()` | 标签被激活或刚打开时 |
+| `focus()` | 标签被激活或刚打开时（焦点没被别处拿走才调） |
+| `suspend()` / `resume()` | 变得不可见 / 重新可见时（收起面板、切标签、窗口切到后台）。只在可见性真的变化时调用，挂载期间错过的那次在挂载完成后补发 |
+| `isBusy()` | 每次评估休眠时；返回 true 就不休眠，过一会再问。抛错按忙处理 |
+| `captureState()` | 休眠前，同步调用；返回值在重新挂载时作为 `restoredState` 交回 |
 | `requestClose()` | 关闭前；返回 `{ closed: false }` 时取消关闭（比如有未保存内容且用户选择留下） |
-| `dispose()` | 关闭或控制器销毁时；可以是异步的。抛错时控制器记日志并照常关闭标签 |
+| `dispose()` | 视图释放时（关闭、休眠或控制器销毁）；可以是异步的。抛错时控制器记日志并照常继续 |
+
+### 生命周期顺序与不变量
+
+一个标签 id 的一生：
+
+```
+openTab ─ 创建 occurrence ─ openView(scope) ─ 发布可见性 ─ mountTab ─┬─ 显示 ⇄ 隐藏（resume / suspend）
+                                                                     ├─ 休眠：captureState → 摘掉视图 → dispose → 关 view scope
+                                                                     │        再显示时：新 view scope → mountTab(restoredState)
+                                                                     └─ 关闭：requestClose → 移除标签和视图 → dispose → occurrence 释放（signal abort）→ onClosed
+```
+
+控制器保证：
+
+1. **一个 id 同时只有一次挂载。** 并发打开等同一次挂载；挂载期间关掉或销毁，刚挂好的 handle 立刻 `dispose`，视图移除，结果不写回。
+2. **休眠后视图资源归零。** 视图的 DOM、view scope 上的监听、定时器和订阅全部释放，只留 `dormantTabs` 里的 `captureState` 结果。要跨休眠保留的东西（比如终端的 shell 会话和画面）只能挂在 `occurrence` 上，关标签时随 `occurrence.signal` 释放。
+3. **正在显示、`isBusy()` 为 true、关闭确认还开着的标签不休眠。** `limit-only`（浏览器）只按数量淘汰，`keep` 不休眠、也不占视图名额。阈值见 `side-pane-dormancy.js`。
+4. **`suspend` / `resume` 与可见性一致。** provider 不用自己探测 DOM，`occurrence.visible` 和最后一次收到的 suspend/resume 总是一致。
+5. **挂载失败不留空白页。** `mountTab` 抛错时 view scope 释放，视图里换成出错提示和「重试」按钮（`.side-pane-mount-error`）。打开时焦点落在重试按钮上；重试会重新挂载，懒加载的 provider 也会重新加载实现。
+6. **懒加载失败要告诉用户。** `tab-types/lazy-provider.js` 的转发方法（入口、文件链接等调用的 `openXxx`）加载失败时弹出提示再抛错，下次调用重新加载；`mountTab` 的失败由第 5 条的出错页负责。
 
 辅助对话 handle 仍向自己的调用方提供草稿、引用和模型方法；控制器只使用上表的通用生命周期方法。输入缓存由辅助对话 provider 的 `side-chat/draft-cache.js` 持有，卸载前保存、再次挂载后恢复；拒绝关闭时不卸载。
 
@@ -163,10 +190,13 @@ handle 的方法都是可选的：
 
    ```js
    export function defineTerminalTabType(deps) {
-       const provider = createTerminalSideProvider(deps);
+       // 实现第一次用到时才加载；openTerminalTab 是要转发的方法
+       const provider = createLazyProvider(async () => (await import('../terminalSideProvider.js'))
+           .createTerminalSideProvider(deps), ['openTerminalTab'], { label: '终端', notify: deps.notify });
        return Object.freeze({
            kind: 'terminal', label: '终端', icon: 'terminal', searchHint: '终端',
            persist: false,
+           dormancy: 'detach',
            entry: { id: 'terminal', order: 50, open: () => provider.openTerminalTab() },
            provider
        });
@@ -180,6 +210,9 @@ handle 的方法都是可选的：
    | :--- | :--- |
    | `toTab(payload, tabs)` | `openTab(payload)` 先经过它变成标签。辅助对话用它校验描述符，并让同一个子话题重复打开时落到已有标签上，所以调用方写 `openTab({ kind: 'chat', descriptor })` |
    | `onClosed(tab)` | 标签关掉、视图拆掉后调用。辅助对话用它删掉子话题；抛错只记日志 |
+   | `requestClose(tab)` | 标签没挂载（从没显示过或在休眠）时关闭前的确认；挂着的由 handle 的 `requestClose` 确认。返回 `{ closed: false }` 取消 |
+   | `dormancy` | 休眠方式，见第 4 节和 `side-pane-dormancy.js`：`none`（默认）、`detach`（终端：控制器同 `none`，provider 自己跨休眠保留会话）、`limit-only`（浏览器）、`keep` |
+   | `load()` | 没给 `provider` 时用它懒加载实现 |
    | `persist: false` | 不随布局持久化。辅助对话（由会话服务恢复）、终端（重启后不自动拉起 shell）、命令输出（记录只在内存里）用它 |
    | `reopenable: false` | 关掉后不进"最近关闭"。标签自己带 `ephemeral: true` 也一样 |
 
@@ -248,6 +281,6 @@ provider 只能修改自己的视图，跨模块动作通过组合者注入的�
 
 ## 11. Git 与代码查看器 provider
 
-`gitSideProvider.js` 保留工作区、来源、轮询、状态读取和指定路径定位。`git/diff-model.js` 导出原有纯函数；`git/cards.js` 自己持有展开状态、diff 缓存及数量预取队列；`git/context-menu.js` 负责复制、定位和菜单监听器。入口通过实时读取函数、纯函数依赖及菜单回调连接它们，销毁时统一清理。Git 直接使用 `line-diff.js`，不再依赖代码查看器 provider。
+Git 页由计划详情 provider 挂载（`git/git-view.js`），保留工作区、来源、轮询、状态读取和指定路径定位。`git/diff-model.js` 导出原有纯函数；`git/cards.js` 自己持有展开状态、diff 缓存及数量预取队列；`git/context-menu.js` 负责复制、定位和菜单监听器。入口通过实时读取函数、纯函数依赖及菜单回调连接它们，销毁时统一清理。Git 直接使用 `line-diff.js`，不再依赖代码查看器 provider。
 
 `codeViewerSideProvider.js` 保留工具栏、模式切换及原有 API，组合 `code-viewer/picker.js`、`editor.js` 和 `diff-view.js`。文件选择器保持工作区/路径竞态保护，正文与 diff 通过回调连接；类型检测在 `helpers.js`。HTML 转义共用 `text-escape.js`，两个适配器分别保留代码查看器严格字符串输入和辅助对话原有值转换语义。原入口继续导出 `detectLanguage`、`escapeHtml` 和 `computeLineDiff`。

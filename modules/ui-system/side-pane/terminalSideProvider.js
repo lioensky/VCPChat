@@ -73,8 +73,13 @@ export function createTerminalSideProvider({
     api = (typeof window !== 'undefined' ? window.electronAPI : null),
     sidePaneController = null,
     xtermLoader = loadXterm,
-    onOpenUrl = null // 点击终端里的 http(s) 链接：交给自带浏览器标签打开
+    onOpenUrl = null, // 点击终端里的 http(s) 链接：交给自带浏览器标签打开
+    uiHelper = null
 } = {}) {
+    // 用应用自己的确认框（和其他标签一致）；原生 confirm 会弹系统模态框卡住整个窗口，只在没有应用确认框时退回
+    const confirmAction = async (message, title, confirmText) => (typeof uiHelper?.showConfirmDialog === 'function'
+        ? uiHelper.showConfirmDialog(message, title, confirmText, '取消', true)
+        : doc.defaultView.confirm(message));
     const kind = 'terminal';
     // 标签打开期间的终端会话：xterm、对共享终端的连接、输出订阅都在这里，视图休眠不动它们，关标签才释放
     const sessions = new WeakMap(); // occurrence -> session
@@ -258,8 +263,22 @@ export function createTerminalSideProvider({
         session.restart = () => {
             if (session.disposed) return Promise.resolve();
             if (session.connectionOperation) return session.connectionOperation;
+            // 确认框开着时再点重启：等同一个确认，不叠第二个框
+            if (session.restartConfirm) return session.restartConfirm;
             // shell 已经退出时没有可中止的命令，直接重启，不再问
-            if (session.sessionId && !session.exited && !doc.defaultView.confirm('重新启动共享终端？AI 工具、终端窗口和所有侧栏视图的当前命令都会中止。')) return;
+            if (session.sessionId && !session.exited) {
+                session.restartConfirm = confirmAction('重新启动共享终端？AI 工具、终端窗口和所有侧栏视图的当前命令都会中止。', '重启终端', '重启')
+                    .then(confirmed => {
+                        session.restartConfirm = null;
+                        // 确认框开着时标签关了，或者别处已经开始重连
+                        if (!confirmed || session.disposed) return undefined;
+                        return session.connectionOperation || restartNow();
+                    }, error => { session.restartConfirm = null; console.error('[TerminalSideProvider] Restart confirm failed:', error); });
+                return session.restartConfirm;
+            }
+            return restartNow();
+        };
+        const restartNow = () => {
             if (!session.sessionId) return session.attach();
             return runConnection(async () => {
                 setStatus('重启中...');
@@ -418,8 +437,8 @@ export function createTerminalSideProvider({
                 try {
                     xterm = await xtermLoader(doc);
                 } catch (err) {
-                    renderStatus({ text: `终端组件加载失败: ${err?.message || err}`, state: 'error' });
-                    return { focus() {}, dispose() { viewElement.innerHTML = ''; } };
+                    // 交给侧栏的出错页：带重试按钮，重试会重新加载 xterm，不用关掉标签再开
+                    throw new Error(`终端组件加载失败：${err?.message || err}`, { cause: err });
                 }
                 if (occurrence?.signal?.aborted) return null;
                 session = createSession(xterm, occurrence?.signal || null);

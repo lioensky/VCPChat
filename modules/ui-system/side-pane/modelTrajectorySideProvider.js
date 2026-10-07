@@ -17,6 +17,7 @@
 'use strict';
 
 import { createSidePaneRootScope, pollWhileVisible } from './side-pane-occurrence.js';
+import { moveMenuFocus } from './menu-position.js';
 import {
     ROLE_LABELS, formatClockTime, formatDateTime, formatDuration, finishReasonLabel, effectiveFinishReason, sourceLabel,
     buildTimeline, summarizeRecords, buildSearchIndex, findTextMatches,
@@ -40,8 +41,6 @@ export const EXPANSION_KINDS = Object.freeze(['system', 'user', 'reasoning', 'as
 const EXPANSION_LABELS = Object.freeze({
     system: ROLE_LABELS.system, user: ROLE_LABELS.user, reasoning: '思考过程', assistant: ROLE_LABELS.assistant, 'tool-call': '工具调用', 'tool-result': ROLE_LABELS.tool
 });
-
-export const modelTrajectoryTabId = () => TAB_ID;
 
 /** 与主进程 sessionKeyFromContext 一致：群聊用群 id，否则用智能体 id，再接话题 id。 */
 export function trajectoryKeyFor(conversation) {
@@ -84,8 +83,7 @@ export function createModelTrajectorySideProvider({
                 title: '调用轨迹',
                 icon: 'monitoring',
                 closable: true,
-                scopeMode: 'global',
-                searchHint: '模型调用 请求 响应 token 轨迹'
+                scopeMode: 'global'
             });
             sidePaneController.setVisible?.(true);
             for (const instance of instances) instance.show(requestId);
@@ -796,16 +794,7 @@ export function createModelTrajectorySideProvider({
                     closeMenu({ restoreFocus: true });
                     return;
                 }
-                if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-                const items = [...menu.querySelectorAll('[role="menuitemcheckbox"]')];
-                if (!items.length) return;
-                event.preventDefault();
-                const current = items.indexOf(doc.activeElement);
-                let next = 0;
-                if (event.key === 'End') next = items.length - 1;
-                else if (event.key === 'ArrowDown') next = current < 0 ? 0 : (current + 1) % items.length;
-                else if (event.key === 'ArrowUp') next = current < 0 ? items.length - 1 : (current - 1 + items.length) % items.length;
-                items[next].focus();
+                moveMenuFocus(event, [...menu.querySelectorAll('[role="menuitemcheckbox"]')]);
             });
 
             // ---------------------------------------------------------------- 定位到某次调用（来自消息的「查看调用轨迹」）
@@ -880,7 +869,7 @@ export function createModelTrajectorySideProvider({
                 // 记下点按钮时的话题：确认框开着时切了会话，也只清这一个
                 const key = sessionKey;
                 const message = '清空这个话题的全部调用轨迹？此操作不可撤销。';
-                // 用应用自己的确认框，不用原生 window.confirm（会以应用窗口名义弹系统模态框，卡住整个窗口）
+                // 用应用自己的确认框；原生 window.confirm 会弹系统模态框卡住整个窗口，只在没有应用确认框时退回
                 const confirmed = typeof uiHelper?.showConfirmDialog === 'function'
                     ? await uiHelper.showConfirmDialog(message, '清空调用轨迹', '清空', '取消', true)
                     : (typeof win.confirm === 'function' ? win.confirm(message) : true);

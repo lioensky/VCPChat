@@ -71,6 +71,7 @@ function fixture(dormancy) {
     const root = doc.getElementById('vcpSidePane');
     const mounts = [];
     const busy = new Set();
+    const closeAnswers = new Map(); // tabId → 关闭确认的 promise（模拟确认框还开着）
     const provider = {
         mountTab(payload, view, context) {
             const record = { id: payload.id, view, context, restoredState: context.restoredState, disposed: 0, counter: 0 };
@@ -79,6 +80,7 @@ function fixture(dormancy) {
             return {
                 isBusy: () => busy.has(payload.id),
                 captureState: () => ({ counter: record.counter }),
+                requestClose: () => closeAnswers.get(payload.id) || { closed: true },
                 dispose() { record.disposed++; }
             };
         }
@@ -94,7 +96,7 @@ function fixture(dormancy) {
     controller.registerTabType({ kind: 'pinned', label: 'Pinned', provider, dormancy: 'keep' });
     const live = id => mounts.filter(m => m.id === id && !m.disposed);
     return {
-        controller, mounts, busy, live,
+        controller, mounts, busy, live, closeAnswers,
         residency: () => controller.getViewResidency(),
         async cleanup() { await controller.dispose(); dom.window.close(); }
     };
@@ -284,4 +286,23 @@ test('collapsing the pane does not put the current tab to sleep', async () => {
         await settle();
         assert.equal(h.mounts.length, 1, 'expanding again shows the same view');
     } finally { await h.cleanup(); }
+});
+
+test('a tab whose close is waiting on the confirm dialog does not sleep, and closes once confirmed', async () => {
+    const h = fixture({ hiddenMs: 30 });
+    try {
+        await h.controller.openTab(tab('probe:a'));
+        await h.controller.openTab(tab('probe:b'));
+        const answer = Promise.withResolvers();
+        h.closeAnswers.set('probe:a', answer.promise);
+        const closing = h.controller.closeTab('probe:a');
+        await sleep(80); // 隐藏到期的检查在确认框开着时到了
+        assert.deepEqual(h.residency().dormant, [], 'the tab being closed is not put to sleep');
+        answer.resolve({ closed: true });
+        await closing;
+        assert.equal(h.controller.getSnapshot().tabs.some(t => t.id === 'probe:a'), false);
+        assert.equal(h.mounts[0].disposed, 1);
+    } finally {
+        await h.cleanup();
+    }
 });

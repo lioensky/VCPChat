@@ -26,7 +26,7 @@ export function definePlanDetailTabType({ document: doc, window: win, chatAPI, s
             });
             return () => { win.clearTimeout(timer); off(); };
         }
-    }), ['openPlanDetailTab']);
+    }), ['openPlanDetailTab'], { label: 'V工程计划', notify: (message, type) => uiHelper?.showToastNotification?.(message, type) });
     return Object.freeze({
         kind: 'plan-detail', label: 'V工程计划', icon: 'checklist', searchHint: '计划', provider,
         entry: { id: 'plan-detail', order: 70, open: () => provider.openPlanDetailTab() }

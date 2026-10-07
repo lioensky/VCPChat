@@ -15,6 +15,7 @@
 
 'use strict';
 
+import { moveMenuFocus } from '../menu-position.js';
 
 
 export function createGitContextMenu({
@@ -81,16 +82,7 @@ export function createGitContextMenu({
             return;
         }
         if (!contextMenu.contains(doc.activeElement)) return;
-        if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-        const items = [...contextMenu.querySelectorAll('[role="menuitem"]:not([disabled])')];
-        if (!items.length) return;
-        event.preventDefault();
-        const current = items.indexOf(doc.activeElement);
-        let next = 0;
-        if (event.key === 'End') next = items.length - 1;
-        else if (event.key === 'ArrowDown') next = current < 0 ? 0 : (current + 1) % items.length;
-        else if (event.key === 'ArrowUp') next = current < 0 ? items.length - 1 : (current - 1 + items.length) % items.length;
-        items[next].focus();
+        moveMenuFocus(event, [...contextMenu.querySelectorAll('[role="menuitem"]:not([disabled])')]);
     }
 
     function openContextMenu(event, item) {

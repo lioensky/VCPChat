@@ -115,10 +115,9 @@ export function resolveSidePaneScopeState(state, parentRef, options = {}) {
         };
     }
 
+    // 记下的标签在这个对话里的话上面已经返回了
     let resolvedActiveTabId = null;
-    if (options.preferredTabId && parentChatTabs.some(t => t.id === options.preferredTabId)) {
-        resolvedActiveTabId = options.preferredTabId;
-    } else if (parentChatTabs.some(t => t.id === state.activeTabId)) {
+    if (parentChatTabs.some(t => t.id === state.activeTabId)) {
         resolvedActiveTabId = state.activeTabId;
     } else {
         resolvedActiveTabId = parentChatTabs[parentChatTabs.length - 1].id;
@@ -233,7 +232,6 @@ export function openTab(state, rawTab) {
         nextTabs = Object.freeze([...state.tabs, newTab]);
     }
 
-    const tabParent = getTabParent({ ...rawTab, scopeMode });
     const isVisibleForCurrentParent = isTabVisibleForParent({ ...rawTab, scopeMode }, state.parent);
 
     return Object.freeze({

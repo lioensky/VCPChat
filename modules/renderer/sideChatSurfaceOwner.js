@@ -280,7 +280,6 @@ export async function mountSideChatSurface(container, {
         const unavailableDispose = () => release('side-chat-unavailable');
         return {
             descriptor,
-            setVisible() {},
             focus() {},
             async requestClose() { return { closed: true }; },
             dispose: unavailableDispose,
@@ -621,11 +620,6 @@ export async function mountSideChatSurface(container, {
         },
         captureState() {
             return isDisposed ? null : { scroll: scrollingOwner.capture() };
-        },
-        setVisible(visible) {
-            if (visible && !isDisposed && isHistoryLoaded) {
-                textarea.focus();
-            }
         },
         focus() {
             if (!isDisposed && isHistoryLoaded) {
