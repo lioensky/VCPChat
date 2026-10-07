@@ -366,3 +366,36 @@ test('a hidden plan tab reads the project once when shown again, not on every ch
     assert.equal(calls.get, 2);
     handle.dispose();
 });
+
+test('keyboard focus survives the redraws a section toggle, a batch toggle and a background refresh cause', async () => {
+    const { provider, view, dom, fire } = makeEnv();
+    const doc = dom.window.document;
+    const handle = await provider.mountTab({ id: planTabId('p1'), payload: { projectId: 'p1' } }, view);
+    try {
+        const sectionToggle = () => view.querySelector('button.side-plan-section-title');
+        const key = sectionToggle().dataset.focusKey;
+        sectionToggle().focus();
+        sectionToggle().click();
+        assert.equal(view.contains(doc.activeElement), true, 'focus is on a live element, not a removed one');
+        assert.equal(doc.activeElement?.dataset?.focusKey, key, 'the section toggle keeps focus after it collapses its section');
+
+        sectionToggle().click(); // 展开回来
+
+        view.querySelector('[data-plan-page="timeline"]').click();
+        const batchHead = () => view.querySelector('.side-plan-batch-head');
+        const batchKey = batchHead().dataset.focusKey;
+        batchHead().focus();
+        batchHead().click();
+        await new Promise(resolve => setTimeout(resolve, 20));
+        assert.equal(view.contains(doc.activeElement), true);
+        assert.equal(doc.activeElement?.dataset?.focusKey, batchKey, 'the batch header keeps focus after it expands');
+
+        fire({ projectId: 'p1' });
+        await new Promise(resolve => setTimeout(resolve, 320));
+        assert.equal(view.contains(doc.activeElement), true);
+        assert.equal(doc.activeElement?.dataset?.focusKey, batchKey, 'a background refresh does not throw focus to <body>');
+    } finally {
+        handle.dispose();
+        dom.window.close();
+    }
+});

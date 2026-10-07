@@ -326,3 +326,10 @@ html .side-pane-action-btn svg:where(.vcp-ui-scope, .vcp-ui-scope *) {
     line-height: 1;
 }
 
+
+/* 标签和标题栏按钮去掉了默认 outline，键盘聚焦时补一圈焦点环（同 .side-pane-menu-item） */
+html .side-pane-tab:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-pane-action-btn:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    outline: 2px solid var(--accent-bg, var(--vcp-ui-port-color-3b82f6));
+    outline-offset: -2px;
+}

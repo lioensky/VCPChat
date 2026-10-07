@@ -12,7 +12,8 @@ const TAB_TOOLTIP_DELAY_MS = 1500;
  *   getTabs() / getActiveTabId()   当前要显示的标签
  *   isClosable(tab)                是否画关闭按钮
  *   statusTabId / getStatus()      带状态圆点的标签（通知）和它的 { status, text }
- *   onActivate / onClose / onReorder / onContextMenu / onRendered
+ *   onActivate(tabId, { focus }) / onClose / onReorder / onContextMenu / onRendered
+ *     键盘切换时传 { focus: false }：焦点留在标签上，不挪进面板
  */
 export function createSidePaneTabStrip({
     tabListElement,
@@ -156,6 +157,7 @@ export function createSidePaneTabStrip({
         btn.setAttribute('aria-selected', String(isActive));
         btn.setAttribute('tabindex', isActive ? '0' : '-1');
         btn.setAttribute('data-tab-id', tab.id);
+        if (isClosable(tab)) btn.setAttribute('aria-keyshortcuts', 'Delete');
 
         const iconSpan = doc.createElement('span');
         iconSpan.className = 'tab-icon vcp-ui-icon';
@@ -230,6 +232,10 @@ export function createSidePaneTabStrip({
         getTabs().forEach(tab => {
             tabListElement.insertBefore(createTabItem(tab, tab.id === activeTabId), insertAnchor);
         });
+        // 激活的是新标签页或藏起来的通知时没有标签带 tabindex=0，给第一个，标签条仍能用 Tab 键进来
+        if (!tabListElement.querySelector('[role="tab"][tabindex="0"]')) {
+            tabListElement.querySelector('[role="tab"]')?.setAttribute('tabindex', '0');
+        }
         syncStatus();
         onRendered();
         layout();
@@ -259,10 +265,19 @@ export function createSidePaneTabStrip({
         cleanups.push(() => resizeObserver.disconnect());
     }
 
-    // 方向键 / Home / End 在标签之间移动并激活
+    // 方向键 / Home / End 在标签之间移动并激活（同 ZCode 用的 Radix Tabs：焦点跟着走、自动激活）；Delete 关掉聚焦的标签
     const onKeydown = (e) => {
         const tabButtons = Array.from(tabListElement.querySelectorAll('[role="tab"]'));
         if (tabButtons.length === 0) return;
+        if (e.key === 'Delete' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
+            const focusedId = e.target?.closest?.('[role="tab"]')?.getAttribute('data-tab-id');
+            const focusedTab = focusedId ? getTabs().find(tab => tab.id === focusedId) : null;
+            if (focusedTab && isClosable(focusedTab)) {
+                e.preventDefault();
+                onClose(focusedId);
+            }
+            return;
+        }
         const currentIndex = tabButtons.findIndex(b => b.getAttribute('data-tab-id') === getActiveTabId());
         let targetIndex = currentIndex;
         if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
@@ -278,8 +293,10 @@ export function createSidePaneTabStrip({
         }
         e.preventDefault();
         if (targetIndex !== currentIndex && targetIndex >= 0 && targetIndex < tabButtons.length) {
-            onActivate(tabButtons[targetIndex].getAttribute('data-tab-id'));
-            tabButtons[targetIndex].focus();
+            const targetId = tabButtons[targetIndex].getAttribute('data-tab-id');
+            onActivate(targetId, { focus: false });
+            // 激活会重画标签条，原来的按钮已经不在了，按 id 找新的
+            findByTabId(tabListElement, targetId, '[role="tab"][data-tab-id]')?.focus?.();
         }
     };
     tabListElement.addEventListener('keydown', onKeydown);

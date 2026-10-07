@@ -246,7 +246,7 @@ export function createSidePaneController({
             isClosable: isClosableTab,
             statusTabId: SidePaneState.NOTIFICATIONS_TAB_ID,
             getStatus: readConnectionStatus,
-            onActivate: (tabId) => controller.activateTab(tabId),
+            onActivate: (tabId, options) => controller.activateTab(tabId, options),
             onClose: (tabId) => controller.closeTab(tabId),
             onReorder: (activeId, overId) => controller.reorderTab(activeId, overId),
             onContextMenu: (tabId, x, y) => tabMenu?.show(tabId, x, y),

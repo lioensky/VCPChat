@@ -330,6 +330,7 @@ export function createPlanDetailSideProvider({
             const sectionTitle = (key, label, meta) => {
                 const btn = h('button', 'side-plan-section-title');
                 btn.type = 'button';
+                btn.dataset.focusKey = `section:${key}`;
                 btn.setAttribute('aria-expanded', String(!collapsed[key]));
                 btn.append(icon(collapsed[key] ? 'chevron_right' : 'expand_more'), h('span', 'side-plan-section-label', label));
                 if (meta) btn.appendChild(h('span', 'side-plan-section-meta', meta));
@@ -366,6 +367,7 @@ export function createPlanDetailSideProvider({
                 // 一行胶囊：面包屑（范围 › 工作区 › 工程名）、状态和更新时间、刷新/打开。
                 // 面包屑本身就是工程切换按钮，任何工程都能从这里换过去
                 const crumbs = button('side-plan-crumbs', null, '切换工程');
+                crumbs.dataset.focusKey = 'crumbs';
                 crumbs.setAttribute('aria-haspopup', 'listbox');
                 crumbs.setAttribute('aria-expanded', String(picker.isOpen()));
                 crumbs.addEventListener('click', () => {
@@ -587,12 +589,15 @@ export function createPlanDetailSideProvider({
                 const open = filtersOpen || advancedCount > 0;
                 const toggle = button(`side-plan-filter-toggle${advancedCount ? ' is-active' : ''}`, null, '筛选');
                 toggle.setAttribute('aria-expanded', String(open));
+                toggle.dataset.focusKey = 'filter-toggle';
                 toggle.appendChild(icon('filter_list'));
                 if (advancedCount) toggle.appendChild(h('span', 'side-plan-filter-count', String(advancedCount)));
                 toggle.addEventListener('click', () => { filtersOpen = !open; render(); });
                 row.append(search, toggle);
                 if (hasFilters(filters)) {
                     const clear = button('side-plan-filter-clear', '清除', '清除筛选');
+                    // 清除后按钮消失，焦点回到搜索框
+                    clear.dataset.focusKey = 'filter-clear';
                     clear.addEventListener('click', () => { filters = { ...EMPTY_FILTERS }; filtersOpen = false; runSearch(); });
                     row.appendChild(clear);
                 }
@@ -646,6 +651,7 @@ export function createPlanDetailSideProvider({
                         row.dataset.batchId = String(batch.id);
                         const headBtn = button('side-plan-batch-head');
                         headBtn.setAttribute('aria-expanded', String(open));
+                        headBtn.dataset.focusKey = `batch:${batch.id}`;
                         const mark = h('span', 'side-plan-batch-mark');
                         mark.appendChild(icon(KIND_ICON[batch.kind] || 'commit'));
                         const text = h('div', 'side-plan-batch-text');
@@ -710,6 +716,7 @@ export function createPlanDetailSideProvider({
                     const label = c.maid || '外部修改';
                     const pick = button(`side-plan-contributor-btn${c.maid && filters.maid === c.maid ? ' is-active' : ''}`, null, c.maid ? `只看 @${c.maid} 的改动` : '外部修改');
                     pick.append(icon('person'), h('span', 'side-plan-contributor-name', label), h('span', 'side-plan-contributor-batches', `${c.batches} 批`), diffStat(c.added, c.removed));
+                    pick.dataset.focusKey = `maid:${c.maid || ''}`;
                     if (c.maid) pick.addEventListener('click', () => applyFilter({ maid: c.maid }));
                     else pick.disabled = true;
                     row.appendChild(pick);
@@ -738,10 +745,12 @@ export function createPlanDetailSideProvider({
 
             function render() {
                 if (disposed() || nodeView) return;
-                // 输入框随整页重绘，记下焦点和光标位置
+                // 整页重绘会换掉所有节点：记下焦点所在的输入框（连同光标）、页签或带 data-focus-key 的按钮，画完找回来。
+                // ZCode / DSH 用 React，节点按 key 复用，焦点自然保留；这里手工做同一件事
                 const active = doc.activeElement;
                 const focusKey = active && body.contains(active) ? active.dataset?.filter : null;
                 const pageFocus = active && chrome.contains(active) ? active.dataset?.planPage : null;
+                const elementFocus = active && (body.contains(active) || chrome.contains(active)) ? active.dataset?.focusKey : null;
                 const caret = focusKey && typeof active.selectionStart === 'number' ? [active.selectionStart, active.selectionEnd] : null;
                 const scrollTop = body.scrollTop;
                 if (composingFilter) return;
@@ -767,6 +776,7 @@ export function createPlanDetailSideProvider({
                     body.appendChild(pages.panels);
                     body.scrollTop = scrollTop;
                     if (pageFocus) chrome.querySelector(`[data-plan-page="${navigation.selected}"]`)?.focus();
+                    restoreElementFocus(elementFocus);
                     return;
                 }
                 if (staleError) {
@@ -794,7 +804,17 @@ export function createPlanDetailSideProvider({
                     if (caret && again?.setSelectionRange) { try { again.setSelectionRange(caret[0], caret[1]); } catch (_e) { /* select 没有光标 */ } }
                 }
                 if (pageFocus) chrome.querySelector(`[data-plan-page="${navigation.selected}"]`)?.focus();
+                restoreElementFocus(elementFocus);
                 applyFocus();
+            }
+
+            function restoreElementFocus(key) {
+                // 只在焦点因重绘掉出侧栏时补救；用户已经把焦点移到别处就不抢
+                const current = doc.activeElement;
+                if (!key || (current && current !== doc.body && current.isConnected)) return;
+                const same = [...viewElement.querySelectorAll('[data-focus-key]')].find(el => el.dataset.focusKey === key && !el.disabled);
+                const fallback = key === 'filter-clear' ? body.querySelector('[data-filter="keyword"]') : null;
+                (same || fallback)?.focus?.();
             }
 
             /** 从状态面板点进来时定位到某条计划或某个区块。 */
