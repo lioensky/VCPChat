@@ -113,13 +113,16 @@ export function createModelTrajectorySideProvider({
                 node.setAttribute('aria-hidden', 'true');
                 return node;
             };
-            const iconButton = (name, label, onClick, className = '') => {
+            // 常驻按钮的监听归 own；卡片里的按钮每次重建卡片都会换新，监听跟着元素一起丢弃（inline），
+            // 不然每次刷新都往 own 上多记一条，连同闭包里整段消息文本一直留到视图释放
+            const iconButton = (name, label, onClick, className = '', { inline = false } = {}) => {
                 const btn = h('button', `side-traj-icon-btn ${className}`.trim());
                 btn.type = 'button';
                 btn.title = label;
                 btn.setAttribute('aria-label', label);
                 btn.appendChild(icon(name));
-                if (onClick) own.listen(btn, 'click', onClick);
+                if (onClick && inline) btn.addEventListener('click', onClick);
+                else if (onClick) own.listen(btn, 'click', onClick);
                 return btn;
             };
 
@@ -276,7 +279,7 @@ export function createModelTrajectorySideProvider({
                     } catch (_error) {
                         toast('复制失败', 'error');
                     }
-                }, 'side-traj-row-copy');
+                }, 'side-traj-row-copy', { inline: true });
                 copyBtn.disabled = !copyText;
                 head.append(chevron, label, body, meta, copyBtn);
 
@@ -557,6 +560,8 @@ export function createModelTrajectorySideProvider({
             function renderTimeline() {
                 const wasAtBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= FOLLOW_THRESHOLD_PX;
                 const previousTop = scroller.scrollTop;
+                // 第一次画出内容时贴到底；之后只看读者原来在不在底部，停在顶部读第一条调用的人不会被拉走
+                const firstContent = timeline.childElementCount === 0;
                 const nextCache = new Map();
                 const fragment = doc.createDocumentFragment();
                 buildObserver?.disconnect();
@@ -582,7 +587,7 @@ export function createModelTrajectorySideProvider({
                 });
                 updateAllRows();
                 if (!doc.hidden) {
-                    stickToBottom = wasAtBottom || previousTop === 0;
+                    stickToBottom = wasAtBottom || firstContent;
                     if (stickToBottom) scroller.scrollTop = scroller.scrollHeight;
                     else scroller.scrollTop = previousTop;
                 }

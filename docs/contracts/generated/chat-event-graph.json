@@ -3674,12 +3674,12 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 562,
+          "line": 565,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 565,
+          "line": 568,
           "kind": "custom-event-listener"
         },
         {
@@ -4189,17 +4189,22 @@
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 345,
+          "line": 124,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 369,
+          "line": 348,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 757,
+          "line": 372,
+          "kind": "custom-event-listener"
+        },
+        {
+          "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
+          "line": 762,
           "kind": "custom-event-listener"
         },
         {
@@ -5129,13 +5134,13 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 562,
+          "line": 565,
           "kind": "custom-event-listener",
           "match": "stopBtn.addEventListener('click'"
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 565,
+          "line": 568,
           "kind": "custom-event-listener",
           "match": "persistenceBadge.addEventListener('click'"
         },
@@ -5747,19 +5752,25 @@
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 345,
+          "line": 124,
+          "kind": "custom-event-listener",
+          "match": "btn.addEventListener('click'"
+        },
+        {
+          "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
+          "line": 348,
           "kind": "custom-event-listener",
           "match": "more.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 369,
+          "line": 372,
           "kind": "custom-event-listener",
           "match": "head.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 757,
+          "line": 762,
           "kind": "custom-event-listener",
           "match": "item.addEventListener('click'"
         },
@@ -7257,7 +7268,7 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 569,
+          "line": 572,
           "kind": "custom-event-listener"
         },
         {
@@ -7389,7 +7400,7 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 569,
+          "line": 572,
           "kind": "custom-event-listener",
           "match": "persistenceBadge.addEventListener('contextmenu'"
         },
@@ -15479,7 +15490,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 370,
+          "line": 373,
           "kind": "custom-event-listener"
         },
         {
@@ -15843,7 +15854,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 370,
+          "line": 373,
           "kind": "custom-event-listener",
           "match": "head.addEventListener('keydown'"
         },
@@ -21514,14 +21525,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 885,
+          "line": 890,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/modelTrajectorySideProvider.js",
-          "line": 885,
+          "line": 890,
           "kind": "preload-subscription",
           "match": "api?.onModelTrajectoryChanged("
         }
@@ -28026,7 +28037,7 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 561,
+          "line": 564,
           "kind": "custom-event-listener"
         },
         {
@@ -28086,7 +28097,7 @@
         },
         {
           "file": "modules/renderer/sideChatSurfaceOwner.js",
-          "line": 561,
+          "line": 564,
           "kind": "custom-event-listener",
           "match": "form.addEventListener('submit'"
         },

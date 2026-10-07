@@ -421,10 +421,13 @@ export async function mountSideChatSurface(container, {
         scrollingOwner.resume();
         pinToBottomIfSticky();
 
-        // 已经进入历史的一轮（例如中途停止）不再回填，避免重复发送
+        // 已经进入历史的一轮（例如中途停止）不再回填，避免重复发送。只看这次新增的用户消息：
+        // 以前发过同样的文字（比如「继续」）不代表这一轮还在，否则这次的草稿、附件和引用会一起丢掉
+        const userMessagesBefore = new Set((enhancedConversation?.historyRef?.get?.() || [])
+            .filter(msg => msg?.role === 'user').map(msg => msg.id ?? msg));
         const restoreDraftIfRetracted = () => {
             const history = enhancedConversation?.historyRef?.get?.() || [];
-            if (history.some(msg => msg?.role === 'user' && msg.content === payload)) return;
+            if (history.some(msg => msg?.role === 'user' && !userMessagesBefore.has(msg.id ?? msg))) return;
             restoreDraft();
         };
 
