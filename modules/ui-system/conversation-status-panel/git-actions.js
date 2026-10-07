@@ -26,17 +26,19 @@ export function createStatusPanelGitActions({
     uniquePaths
 }) {
 
+    // 只防分支列表请求之间互相覆盖；借用面板刷新的序号的话，agent 改文件触发一次刷新，点分支按钮就没反应
+    let branchSeq = 0;
     async function loadBranches() {
         const targetWorkspace = store.workspace;
-        const seq = store.refreshSeq;
+        const seq = ++branchSeq;
         if (!targetWorkspace || !api?.gitListBranches) return false;
         try {
             const res = await api.gitListBranches(targetWorkspace.id);
-            if (store.disposed || seq !== store.refreshSeq || store.workspace?.id !== targetWorkspace.id) return false;
+            if (store.disposed || seq !== branchSeq || store.workspace?.id !== targetWorkspace.id) return false;
             store.branchList = res?.success ? res.data : null;
             return true;
         } catch (_e) {
-            if (!store.disposed && seq === store.refreshSeq) store.branchList = null;
+            if (!store.disposed && seq === branchSeq) store.branchList = null;
             return false;
         }
     }

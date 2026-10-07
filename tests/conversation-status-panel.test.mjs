@@ -280,6 +280,49 @@ test('branch popover filters, switches and offers create / graph in the footer',
     panel.dispose();
 });
 
+test('an agent changing files while the branch popover is open neither closes it nor makes the next click do nothing', async () => {
+    let added = 5;
+    let branchListGate = null;
+    const { doc, panel, dom } = setup({ api: {
+        gitChangeSummary: async () => ({ success: true, data: { files: 2, added: added++, removed: 1, branch: { head: 'main', ahead: 0, behind: 0, upstream: 'origin/main' }, remotes: ['origin'] } }),
+        gitListBranches: async () => {
+            if (branchListGate) await branchListGate.promise;
+            return { success: true, data: { current: 'main', branches: [{ name: 'main', current: true }, { name: 'dev', current: false }] } };
+        }
+    } });
+    panel.mount();
+    await flush();
+
+    click(dom, q(doc, '.zc-row-branch'));
+    await flush();
+    const pop = q(doc, '.zc-branch-popover');
+    const input = q(pop, '.zc-command-input');
+    input.value = 'de';
+    input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+
+    await panel.refresh();
+    await flush();
+    assert.equal(q(doc, '.zc-branch-popover'), pop, 'the popover the user is typing in stays open');
+    assert.equal(q(pop, '.zc-command-input').value, 'de');
+    assert.match(q(doc, '.zc-status-panel, aside').textContent, /\+5/, 'the panel waits to repaint until the popover closes');
+
+    doc.body.dispatchEvent(new dom.window.MouseEvent('mousedown', { bubbles: true }));
+    await flush();
+    assert.equal(q(doc, '.zc-branch-popover'), null);
+    assert.match(q(doc, '.zc-status-panel, aside').textContent, /\+6/, 'the deferred repaint ran once it closed');
+
+    // 点分支按钮时正好来了一次刷新：浮层照样打开
+    let release;
+    branchListGate = { promise: new Promise(resolve => { release = resolve; }) };
+    click(dom, q(doc, '.zc-row-branch'));
+    const refreshing = panel.refresh();
+    release();
+    await refreshing;
+    await flush();
+    assert.ok(q(doc, '.zc-branch-popover'));
+    panel.dispose();
+});
+
 test('create-branch dialog creates and switches', async () => {
     const { doc, panel, calls, dom } = setup();
     panel.mount();

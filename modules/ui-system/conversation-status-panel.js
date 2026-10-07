@@ -398,10 +398,27 @@ export function createConversationStatusPanel({
             plan: plan && { p: plan.project?.id, i: plan.items }
        });
         if (!force && key === renderKey) return;
+        // 面板上开着的浮层（分支切换、提交菜单……）锚在这次要换掉的节点上：agent 干活时数据一直在变，
+        // 每次都重画就会把用户正在用的浮层关掉。先记下要重画，等浮层关了再画（同 ZCode Popover 的开合独立于数据）
+        const anchoredHere = popovers.filter(entry => aside.contains(entry.anchor));
+        if (!force && anchoredHere.length) {
+            for (const entry of anchoredHere) {
+                if (entry.renderWhenClosed) continue;
+                entry.renderWhenClosed = true;
+                entry.ownOnClose = entry.onClose;
+                entry.onClose = () => { entry.ownOnClose?.(); if (!disposed) renderPanel(); };
+            }
+            return;
+        }
         renderKey = key;
+        // 这次就是重画：之前挂上的「关了再画」去掉，免得关的时候又画一遍
+        const closePanelPopovers = () => anchoredHere.forEach(entry => {
+            if (entry.renderWhenClosed) entry.onClose = entry.ownOnClose;
+            closePopover(entry);
+        });
 
         if (!hasGit && !hasPlan && !hasRuns) {
-            closeAllPopovers();
+            closePanelPopovers();
             aside.textContent = '';
             // 跟随会话时，这个会话没有 V工程 / 命令就没有可显示的状态：整块隐藏，不拿别的会话的内容占位
             if (!onOpenGitTab || scoped) { setAvailable(false); return; }
@@ -415,7 +432,7 @@ export function createConversationStatusPanel({
             aside.appendChild(btn);
             return;
         }
-        closeAllPopovers();
+        closePanelPopovers();
         setAvailable(true);
         aside.textContent = '';
         aside.dataset.displayMode = variant;

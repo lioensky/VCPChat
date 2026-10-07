@@ -415,3 +415,38 @@ test('reveal targets resolve against the repository root when the workspace is a
     assert.equal(fs.realpathSync(target), fs.realpathSync(path.join(root, 'pkg', 'sub', 'keep.txt')));
     await assert.rejects(gitService.resolveRevealTarget(workspace, 'README.md'), /不在工作区内/);
 });
+
+test('a GIT_DIR inherited from the launching shell does not redirect commands to another repository', { skip: SKIP_GIT }, async t => {
+    const root = createRepo(t);
+    const other = createRepo(t);
+    write(other, 'only-in-other.txt', 'x\n');
+    write(root, 'src/app.js', 'const a = 2;\n');
+    const saved = { GIT_DIR: process.env.GIT_DIR, GIT_WORK_TREE: process.env.GIT_WORK_TREE, LC_ALL: process.env.LC_ALL, LANGUAGE: process.env.LANGUAGE };
+    Object.assign(process.env, { GIT_DIR: path.join(other, '.git'), GIT_WORK_TREE: other, LC_ALL: 'zh_CN.UTF-8', LANGUAGE: 'zh_CN' });
+    t.after(() => { for (const [key, value] of Object.entries(saved)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
+
+    const status = await gitService.getStatus(root);
+    assert.equal(status.isRepo, true);
+    assert.deepEqual(status.changes.map(item => item.path), ['src/app.js'], 'the workspace\'s own change, nothing from the other repository');
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vcp-nogit-'));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    assert.equal((await gitService.getStatus(dir)).isRepo, false);
+});
+
+test('a switch blocked by local changes reports the files in a form the commit-and-switch flow recognises', { skip: SKIP_GIT }, async t => {
+    const root = createRepo(t);
+    git(root, ['switch', '-q', '-c', 'other']);
+    write(root, 'README.md', '# other\n');
+    git(root, ['commit', '-q', '-am', 'other change']);
+    git(root, ['switch', '-q', 'main']);
+    write(root, 'README.md', '# local edit\n');
+    const saved = { LC_ALL: process.env.LC_ALL, LANGUAGE: process.env.LANGUAGE };
+    Object.assign(process.env, { LC_ALL: 'zh_CN.UTF-8', LANGUAGE: 'zh_CN' });
+    t.after(() => { for (const [key, value] of Object.entries(saved)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
+
+    const blocked = await gitService.switchBranch(root, 'other');
+    assert.equal(blocked.ok, false);
+    const { parseSwitchBlockedFiles } = await import('../modules/ui-system/conversation-status-panel/helpers.js');
+    assert.deepEqual(parseSwitchBlockedFiles(blocked.issues[0].message), { files: ['README.md'], untracked: false });
+});

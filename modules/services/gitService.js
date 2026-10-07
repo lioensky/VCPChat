@@ -59,7 +59,22 @@ function comparePath(a, b) {
     return a.path < b.path ? -1 : 1;
 }
 
-function runGit(cwd, args, { timeout = DEFAULT_TIMEOUT, input = null } = {}) {
+// 从 git hook 或某个仓库的 shell 里启动时会带着这些变量，所有命令都会跑到那个仓库上（同 ZCode git/config.ts）
+const REPO_LOCAL_ENV = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+    'GIT_COMMON_DIR', 'GIT_PREFIX', 'GIT_NAMESPACE', 'GIT_CEILING_DIRECTORIES', 'GIT_DISCOVERY_ACROSS_FILESYSTEM'];
+
+function gitEnv(englishMessages) {
+    const env = { ...process.env };
+    for (const name of REPO_LOCAL_ENV) delete env[name];
+    env.GIT_TERMINAL_PROMPT = '0'; // 没有终端可交互，缺凭据时直接失败而不是挂起
+    env.GIT_OPTIONAL_LOCKS = '0'; // status 刷新不抢 index.lock
+    // 要按报错文字判断结果的命令用英文输出：中文、日文等本地化的 Git 报错认不出来
+    if (englishMessages) Object.assign(env, { LC_ALL: 'C', LANG: 'C', LANGUAGE: 'C' });
+    return env;
+}
+
+/** englishMessages：报错要拿来匹配（不是仓库、切分支被本地改动挡住）时传 true，其余保留用户语言的报错给人看 */
+function runGit(cwd, args, { timeout = DEFAULT_TIMEOUT, input = null, englishMessages = false } = {}) {
     return new Promise((resolve, reject) => {
         const child = execFile('git', [
             '-c', 'core.quotepath=false',
@@ -72,11 +87,7 @@ function runGit(cwd, args, { timeout = DEFAULT_TIMEOUT, input = null } = {}) {
             maxBuffer: MAX_BUFFER,
             windowsHide: true,
             encoding: 'buffer',
-            env: {
-                ...process.env,
-                GIT_TERMINAL_PROMPT: '0', // 没有终端可交互，缺凭据时直接失败而不是挂起
-                GIT_OPTIONAL_LOCKS: '0', // status 刷新不抢 index.lock
-            },
+            env: gitEnv(englishMessages),
         }, (error, stdout, stderr) => {
             if (error) {
                 const detail = Buffer.isBuffer(stderr) ? stderr.toString('utf8').trim() : '';
@@ -206,7 +217,7 @@ async function openRepository(workspaceRoot) {
     const root = realpathSafe(path.resolve(workspaceRoot));
     let top;
     try {
-        const { stdout } = await runGit(root, ['rev-parse', '--show-toplevel']);
+        const { stdout } = await runGit(root, ['rev-parse', '--show-toplevel'], { englishMessages: true });
         top = stdout.toString('utf8').trim();
     } catch (error) {
         if (/not a git repository|不是\s*git\s*仓库/i.test(error.message)) return null;
@@ -226,7 +237,7 @@ async function getWatchTargets(workspaceRoot) {
     const root = realpathSafe(path.resolve(workspaceRoot));
     let stdout;
     try {
-        ({ stdout } = await runGit(root, ['rev-parse', '--absolute-git-dir', '--git-common-dir']));
+        ({ stdout } = await runGit(root, ['rev-parse', '--absolute-git-dir', '--git-common-dir'], { englishMessages: true }));
     } catch (error) {
         if (/not a git repository|不是\s*git\s*仓库/i.test(error.message)) return null;
         throw error;
@@ -684,7 +695,7 @@ async function switchLike(workspaceRoot, action, name, buildArgs) {
         if (status.conflicts?.length) return fail(BRANCH_ISSUES.conflicts);
         if (await hasOperationInProgress(repo)) return fail(BRANCH_ISSUES.operation);
         try {
-            await runGit(repo.toplevel, buildArgs(branchName), { timeout: COMMIT_TIMEOUT });
+            await runGit(repo.toplevel, buildArgs(branchName), { timeout: COMMIT_TIMEOUT, englishMessages: true });
         } catch (error) {
             return fail({ code: 'git-error', message: error.message });
         }
