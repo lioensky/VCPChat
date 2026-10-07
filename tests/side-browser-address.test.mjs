@@ -184,3 +184,33 @@ for (const readyBeforeFailure of [false, true]) {
         } finally { await h.cleanup(); }
     });
 }
+
+test('a page playing media stays busy even when muted, until it pauses or navigates away', async () => {
+    const { JSDOM } = await import('jsdom');
+    const { createBrowserSideProvider } = await import('../modules/ui-system/side-pane/browserSideProvider.js');
+    const dom = new JSDOM('<div id="view"></div>');
+    const provider = createBrowserSideProvider({
+        document: dom.window.document,
+        api: null,
+        sidePaneController: { updateTab() {} },
+        notify: () => {}
+    });
+    const view = dom.window.document.getElementById('view');
+    const handle = await provider.mountTab({ id: 'browser:1', kind: 'browser', payload: { url: 'https://example.com/' } }, view);
+    const guest = view.querySelector('webview');
+    assert.ok(guest);
+    guest.isCurrentlyAudible = () => false;
+    const fire = (name, extra = {}) => guest.dispatchEvent(Object.assign(new dom.window.Event(name), extra));
+
+    assert.equal(handle.isBusy(), false);
+    fire('media-started-playing');
+    assert.equal(handle.isBusy(), true);
+    fire('media-paused');
+    assert.equal(handle.isBusy(), false);
+    fire('media-started-playing');
+    fire('did-navigate', { url: 'https://example.com/next' });
+    assert.equal(handle.isBusy(), false);
+
+    handle.dispose();
+    dom.window.close();
+});

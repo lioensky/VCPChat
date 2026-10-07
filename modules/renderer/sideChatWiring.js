@@ -229,14 +229,15 @@ export function createSideChatWiring({
         if (!isSameParent(getController().getSnapshot().parent, agentId, parentTopicId)) return [];
         if (!listRes.ok || !Array.isArray(listRes.items)) return [];
 
-        // openTab 会激活恢复出来的侧聊，恢复完切回用户原来看的标签
-        const activeBefore = getController().getSnapshot().activeTabId;
+        // 收齐了一次性在后台补回：不抢用户正在看的标签，不强行展开，也不改这个话题记下的收起状态
+        const restored = [];
         for (const item of listRes.items) {
             try {
                 if (!isSameParent(getController().getSnapshot().parent, agentId, parentTopicId)) break;
                 if (item.open === false || item.status === 'closed') continue;
                 const childTopicId = item.child?.topicId;
                 if (getController().getSnapshot().tabs.some(t => t.descriptor?.child?.topicId === childTopicId)) continue;
+                if (restored.some(t => t.descriptor.child?.topicId === childTopicId)) continue;
 
                 // 从未发过消息、也没有草稿和引用的空侧聊不再恢复，直接清理
                 const childAgentId = item.child.itemId || agentId;
@@ -253,7 +254,7 @@ export function createSideChatWiring({
                     }
                 }
 
-                await getController().openTab({ kind: 'chat', descriptor: { ...createSideChatDescriptor({
+                restored.push({ kind: 'chat', descriptor: { ...createSideChatDescriptor({
                     parent: item.parent,
                     childTopicId,
                     title: item.title,
@@ -270,10 +271,8 @@ export function createSideChatWiring({
                 console.warn('[SideChat] Failed to restore side chat tab:', e);
             }
         }
-        const snapshot = getController().getSnapshot();
-        if (activeBefore && activeBefore !== snapshot.activeTabId && isSameParent(snapshot.parent, agentId, parentTopicId)
-            && snapshot.tabs.some(t => t.id === activeBefore)) {
-            getController().activateTab(activeBefore, { focus: false });
+        if (restored.length > 0 && isSameParent(getController().getSnapshot().parent, agentId, parentTopicId)) {
+            await getController().restoreTabs(restored);
         }
         return listRes.items;
     }

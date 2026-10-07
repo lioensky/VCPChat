@@ -4304,17 +4304,17 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1024,
+          "line": 1091,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1030,
+          "line": 1097,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1044,
+          "line": 1111,
           "kind": "custom-event-listener"
         },
         {
@@ -5885,19 +5885,19 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1024,
+          "line": 1091,
           "kind": "custom-event-listener",
           "match": "toggleNotificationsBtn.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1030,
+          "line": 1097,
           "kind": "custom-event-listener",
           "match": "expandButton.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1044,
+          "line": 1111,
           "kind": "custom-event-listener",
           "match": "closeSidePaneBtn.addEventListener('click'"
         },
@@ -24936,7 +24936,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1064,
+          "line": 1131,
           "kind": "custom-event-listener"
         },
         {
@@ -25030,7 +25030,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-controller.js",
-          "line": 1064,
+          "line": 1131,
           "kind": "custom-event-listener",
           "match": "win?.addEventListener?.('resize'"
         },
@@ -32828,7 +32828,7 @@
     },
     {
       "file": "modules/ui-system/side-pane/browserSideProvider.js",
-      "line": 279,
+      "line": 281,
       "reason": "dynamic listener name: name",
       "kind": "custom-event-listener",
       "match": "guest.addEventListener(name",
