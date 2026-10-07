@@ -5,6 +5,7 @@
 const fs = require('fs').promises;
 const path = require('path');
 const { detectEncoding, applyLineRangeToContent, formatFileSize, markdownFence, languageOf, numberLines, splitLines } = require('./text');
+const { isBinaryExtension, readBinaryAsContent } = require('./binaryReader');
 
 const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp']);
 const AUDIO_EXT = new Set(['.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a']);
@@ -17,6 +18,7 @@ function mediaKind(filePath) {
     if (AUDIO_EXT.has(ext)) return 'audio';
     if (VIDEO_EXT.has(ext)) return 'video';
     if (DOC_EXT.has(ext)) return 'document';
+    if (isBinaryExtension(ext)) return 'binary';
     return 'text';
 }
 
@@ -98,6 +100,16 @@ async function readFileRaw(filePath, options = {}) {
  * 文本以带语言标签的 fence 输出；withLineNumbers=true 时每行带 `N | ` 前缀。
  */
 async function readFileAsContent(filePath, options = {}) {
+    const kind = mediaKind(filePath);
+    if (kind === 'binary') {
+        const stats = await fs.stat(filePath);
+        if (stats.size > (options.maxFileSize || 20 * 1024 * 1024)) {
+            throw new Error(`File too large: ${formatFileSize(stats.size)} exceeds limit of ${formatFileSize(options.maxFileSize || 20 * 1024 * 1024)}`);
+        }
+        const buffer = await fs.readFile(filePath);
+        return await readBinaryAsContent(filePath, buffer, { ...options, fileSizeBytes: stats.size });
+    }
+
     const raw = await readFileRaw(filePath, options);
     const displayPath = options.displayPath || filePath;
     let header = `#### ${displayPath} (${raw.sizeFormatted})`;
@@ -109,7 +121,6 @@ async function readFileAsContent(filePath, options = {}) {
         parts.push({ type: 'image_url', image_url: { url: raw.dataUrl } });
         return { parts, raw };
     }
-
     let body = raw.text;
     let startLine = 1;
     if (raw.lines) {

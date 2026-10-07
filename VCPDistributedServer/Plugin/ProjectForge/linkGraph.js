@@ -344,12 +344,19 @@ function buildGraph(root, factsResult, decls = { status: 'absent', apis: [], rol
         }
         for (const u of f.globalsUsed || []) push(guses, u.name, { ...u, path: f.path });
     }
+    const binaryModules = new Map();
+    for (const b of factsResult?.binaryFiles || []) {
+        binaryModules.set(b.path, b);
+        for (const expName of b.exports || []) {
+            push(ffiExports, expName, { path: b.path, line: 1, lang: 'binary', kind: 'export', format: b.format });
+        }
+    }
 
     return {
         root, files, deps, rdeps, unresolvedModules, pages, membership, classic,
         registers, pushes, directCalls, dynamic, apisByName, apisByChannel, roleGlobals, roleByGlobal,
-        bridgeRefs, unknownBridge, gdefs, guses, ffiExports, decls: decls || { status: 'absent' },
-        stats: { scanned: factsResult?.scanned || 0, withFacts: files.size, pages: pages.size, truncated: Boolean(factsResult?.truncated) },
+        bridgeRefs, unknownBridge, gdefs, guses, ffiExports, binaryModules, decls: decls || { status: 'absent' },
+        stats: { scanned: factsResult?.scanned || 0, withFacts: files.size, pages: pages.size, binaryFiles: binaryModules.size, truncated: Boolean(factsResult?.truncated) },
     };
 }
 
