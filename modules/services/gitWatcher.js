@@ -185,7 +185,7 @@ function createGitWatcher({
         entry.absorbUntil = Date.now() + absorbMs;
     }
 
-    /** 诊断用：只有工作区 id、监听方式、watcher 数和触发次数，不含路径 */
+    /** 诊断用：只有工作区 id、监听方式、watcher 数、触发次数和是否有一批还没报，不含路径 */
     function snapshot() {
         return [...entries.values()].map(entry => Object.freeze({
             workspaceId: entry.id,
@@ -193,6 +193,7 @@ function createGitWatcher({
             watchers: entry.watchers.length,
             changes: entry.changes,
             absorbed: entry.absorbed,
+            pending: Boolean(entry.timer),
             error: entry.error,
         }));
     }

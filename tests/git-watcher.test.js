@@ -66,7 +66,7 @@ test('a burst of changes is reported once: metadata quickly, file edits after a 
     await watcher.start('ws1');
     assert.deepEqual(opened.map(item => [item.dir, item.options.recursive]), [[gitDir, true], [root, true]]);
     assert.equal(opened.every(item => item.options.persistent === false), true, 'watchers do not keep the app alive');
-    assert.deepEqual(watcher.snapshot(), [{ workspaceId: 'ws1', mode: 'files', watchers: 2, changes: 0, absorbed: 0, error: null }]);
+    assert.deepEqual(watcher.snapshot(), [{ workspaceId: 'ws1', mode: 'files', watchers: 2, changes: 0, absorbed: 0, pending: false, error: null }]);
 
     emit(gitDir, 'index');
     emit(gitDir, 'HEAD');
@@ -321,7 +321,7 @@ test('Git registered through the domain activator is active from the start, answ
 
 const gitAvailable = (() => { try { execFileSync('git', ['--version'], { stdio: 'ignore' }); return true; } catch { return false; } })();
 
-test('a real repository: a subscribed window hears about an edited file and a new commit', { skip: gitAvailable ? false : 'git 不可用', timeout: 20_000 }, async t => {
+test('a real repository: a subscribed window hears about an edited file and a new commit', { skip: gitAvailable ? false : 'git 不可用', timeout: 60_000 }, async t => {
     const { gitHandlers, handlers } = loadGitHandlers();
     const subscriptions = createStateSubscriptions({ logger: quiet });
     const repo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'vcp-git-watch-repo-')));
@@ -347,11 +347,27 @@ test('a real repository: a subscribed window hears about an edited file and a ne
         while (sender.sent.length < count && Date.now() < until) await new Promise(resolve => setTimeout(resolve, 50));
         return sender.sent.length >= count;
     };
+    // 等上一步彻底报完：监听里没有待报的一批，且一段时间没有新推送。
+    // 固定等待不够：git commit 会陆续写很多文件，元数据批次最长可拖到 maxWaitMs（5s），
+    // 机器忙时上一步的第二次推送会落到下一步的基线之后
+    const waitForIdle = async (quietMs = 2000, ms = 20_000) => {
+        const until = Date.now() + ms;
+        let seen = sender.sent.length;
+        let quietSince = Date.now();
+        while (Date.now() < until) {
+            await new Promise(resolve => setTimeout(resolve, 50));
+            if (sender.sent.length !== seen || gitHandlers.watchSnapshot()[0]?.pending) {
+                seen = sender.sent.length;
+                quietSince = Date.now();
+            } else if (Date.now() - quietSince >= quietMs) return;
+        }
+        assert.fail('the watcher never went quiet');
+    };
 
     // 编辑工作区文件：Linux 上只监听 .git，不要求能听到
     fs.writeFileSync(path.join(repo, 'a.txt'), 'two\n');
     if (mode === 'files') assert.equal(await waitForPush(1), true, 'an edited file is pushed');
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await waitForIdle();
     const afterEdit = sender.sent.length;
 
     // 在应用外（命令行）提交：index / refs 变了
@@ -360,7 +376,7 @@ test('a real repository: a subscribed window hears about an edited file and a ne
     assert.equal(sender.sent.every(([channel, payload]) => channel === 'git:changed' && payload.workspaceId === 'ws1'), true);
 
     // 应用内操作推送原因
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    await waitForIdle();
     const beforeStage = sender.sent.length;
     fs.writeFileSync(path.join(repo, 'b.txt'), 'new\n');
     const staged = await handlers.get('git:stage')(event, 'ws1', ['b.txt']);
