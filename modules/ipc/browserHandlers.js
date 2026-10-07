@@ -13,7 +13,7 @@
 // - 焦点在网页里时按键到不了主窗口，副屏快捷键在这里截下转给主窗口。
 'use strict';
 
-const { ipcMain: defaultIpcMain, session, shell } = require('electron');
+const { app, ipcMain: defaultIpcMain, session, shell } = require('electron');
 const { createApplicationSenderGuard, resolveWindowWebContents } = require('./applicationSender');
 let getMainWindow = () => null;
 // initialize 可以传入领域激活器给的 ipcMain（见 domainActivator.js），不传就用 Electron 的
@@ -127,10 +127,18 @@ function attachToWindow(mainWindow) {
             event.preventDefault();
             return;
         }
-        delete webPreferences.preload;
-        delete webPreferences.preloadURL;
+        // 白名单而不是黑名单：页面 webpreferences 属性里带进来的其他键（experimentalFeatures 之类）一律去掉，
+        // 只留 allowpopups 对应的 disablePopups（弹窗仍由 setWindowOpenHandler 拒掉后转成侧栏标签）。同 DSH browser-guests
+        for (const key of Object.keys(webPreferences)) {
+            if (key !== 'disablePopups') delete webPreferences[key];
+        }
+        delete params.disablewebsecurity;
+        delete params.plugins;
+        delete params.blinkfeatures;
+        delete params.disableblinkfeatures;
         Object.assign(webPreferences, {
             nodeIntegration: false,
+            nodeIntegrationInWorker: false,
             nodeIntegrationInSubFrames: false,
             contextIsolation: true,
             sandbox: true,
@@ -138,6 +146,10 @@ function attachToWindow(mainWindow) {
             allowRunningInsecureContent: false,
             // 网页的 alert/confirm/prompt 会以应用窗口名义弹原生模态框（可仿冒应用提示）并卡住主窗口；同 DSH browser-guests 直接禁用
             disableDialogs: true,
+            webviewTag: false,
+            plugins: false,
+            navigateOnDragDrop: false,
+            devTools: !app?.isPackaged,
         });
     });
 
@@ -157,6 +169,8 @@ function attachToWindow(mainWindow) {
         };
         guest.on('will-navigate', blockForeignProtocol);
         guest.on('will-redirect', blockForeignProtocol);
+        // 网页里不能再嵌 <webview>
+        guest.on('will-attach-webview', event => event.preventDefault());
         guest.on('before-input-event', (event, input) => {
             const shortcut = matchSidePaneShortcut(input);
             if (!shortcut || host.isDestroyed()) return;

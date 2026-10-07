@@ -40,6 +40,9 @@ const MIN_ROWS = 1;
 const MAX_COLS = 500;
 const MAX_ROWS = 200;
 const RUN_NOTIFY_INTERVAL_MS = 120;
+// 输出按帧合并成一次 IPC：刷屏时每秒上千个小块各发一次，渲染端主线程会被消息排满
+const DATA_FLUSH_MS = 16;
+const DATA_FLUSH_CHARS = 64 * 1024;
 
 let workspaceServiceRef = null;
 let loadExecutor = () => require(EXECUTOR_PATH);
@@ -182,11 +185,32 @@ function createView(event, options = {}) {
     const pending = [];
     let released = false;
     const emit = (channel, payload) => (released ? safeSend(sender, channel, payload) : pending.push([channel, payload]));
-    const detach = executor.attachMirror({
-        onData: (data) => emit('terminal:data', { id, data }),
-        onClear: () => emit('terminal:clear', { id }),
-        onExit: (exitCode) => emit('terminal:exit', { id, exitCode: exitCode ?? null }),
+    let dataBuffer = '';
+    let dataTimer = null;
+    const dropData = () => {
+        if (dataTimer) clearTimeout(dataTimer);
+        dataTimer = null;
+        dataBuffer = '';
+    };
+    const flushData = () => {
+        const data = dataBuffer;
+        dropData();
+        if (data) emit('terminal:data', { id, data });
+    };
+    const detachMirror = executor.attachMirror({
+        onData: (data) => {
+            dataBuffer += data;
+            if (dataBuffer.length >= DATA_FLUSH_CHARS) flushData();
+            else if (!dataTimer) dataTimer = setTimeout(flushData, DATA_FLUSH_MS);
+        },
+        // 清屏之前攒着的输出反正要被清掉；退出前先把剩下的发完，顺序不乱
+        onClear: () => { dropData(); emit('terminal:clear', { id }); },
+        onExit: (exitCode) => { flushData(); emit('terminal:exit', { id, exitCode: exitCode ?? null }); },
     });
+    const detach = () => {
+        dropData();
+        detachMirror();
+    };
     setImmediate(() => {
         released = true;
         for (const [channel, payload] of pending.splice(0)) safeSend(sender, channel, payload);

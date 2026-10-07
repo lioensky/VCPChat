@@ -71,9 +71,15 @@ test('attachToWindow locks the partition and strips privileged web preferences',
     host.emit('will-attach-webview', event, {}, { partition: browserHandlers.BROWSER_PARTITION, src: 'vcp://x' });
     assert.equal(prevented, 2);
 
-    const prefs = { preload: 'x.js', preloadURL: 'file:///x.js', nodeIntegration: true, sandbox: false };
-    host.emit('will-attach-webview', event, prefs, { partition: browserHandlers.BROWSER_PARTITION, src: 'https://a.example' });
+    const prefs = { preload: 'x.js', preloadURL: 'file:///x.js', nodeIntegration: true, sandbox: false, experimentalFeatures: true, disablePopups: false };
+    const params = { partition: browserHandlers.BROWSER_PARTITION, src: 'https://a.example', disablewebsecurity: '', plugins: '', blinkfeatures: 'X' };
+    host.emit('will-attach-webview', event, prefs, params);
     assert.equal(prevented, 2);
+    assert.equal('experimentalFeatures' in prefs, false, 'unknown preferences from the page are dropped');
+    assert.equal(prefs.disablePopups, false, 'allowpopups still reaches the window-open handler');
+    assert.equal(prefs.webviewTag, false);
+    assert.equal(prefs.plugins, false);
+    assert.deepEqual(Object.keys(params).sort(), ['partition', 'src']);
     assert.equal('preload' in prefs, false);
     assert.equal('preloadURL' in prefs, false);
     assert.equal(prefs.nodeIntegration, false);
@@ -85,6 +91,9 @@ test('attachToWindow locks the partition and strips privileged web preferences',
     guest.setWindowOpenHandler = (fn) => { guest.openHandler = fn; };
     guest.getURL = () => 'https://a.example/';
     host.emit('did-attach-webview', {}, guest);
+    const nested = { prevented: false, preventDefault() { this.prevented = true; } };
+    guest.emit('will-attach-webview', nested);
+    assert.equal(nested.prevented, true, 'a page cannot nest its own webview');
     // 没有用户输入的弹窗不开标签，鼠标移动也不算
     assert.deepEqual(guest.openHandler({ url: 'https://a.example/x' }), { action: 'deny' });
     guest.emit('input-event', {}, { type: 'mouseMove' });

@@ -742,18 +742,48 @@ function dispatchPtyData(rawData) {
 // 输入与尺寸调整直接落到同一个 PTY，AI 工具执行的命令因此对两处都可见。
 const MIRROR_REPLAY_LIMIT = 256 * 1024;
 const mirrorSinks = new Set();
-let replayBuffer = '';
+// 回放缓存按块存：满了从头部整块丢掉，每块均摊 O(1)，只在挂载回放时拼一次。
+// 原来每块都把 256KB 拼接再切片，刷屏输出时主进程每秒要复制几百 MB（同 DSH terminal-io 的有界缓冲预算）
+let replayChunks = [];
+let replayHead = 0;
+let replayLength = 0;
 let mirrorStartupPending = false;
 let mirrorStartupHeld = '';
 
 function emitMirrorData(dataStr) {
     if (!dataStr) return;
     // 侧栏终端可能在会话进行中才挂载，缓存最近输出用于回放。
-    replayBuffer += dataStr;
-    if (replayBuffer.length > MIRROR_REPLAY_LIMIT) {
-        replayBuffer = replayBuffer.slice(-MIRROR_REPLAY_LIMIT);
-    }
+    appendReplay(dataStr);
     notifyMirrors('onData', dataStr);
+}
+
+function appendReplay(dataStr) {
+    replayChunks.push(dataStr);
+    replayLength += dataStr.length;
+    while (replayLength - replayChunks[replayHead].length >= MIRROR_REPLAY_LIMIT) {
+        replayLength -= replayChunks[replayHead].length;
+        replayChunks[replayHead++] = undefined;
+    }
+    if (replayHead > 1024 && replayHead * 2 > replayChunks.length) {
+        replayChunks = replayChunks.slice(replayHead);
+        replayHead = 0;
+    }
+}
+
+function readReplay() {
+    if (replayLength === 0) return '';
+    const text = replayChunks.slice(replayHead).join('');
+    if (text.length <= MIRROR_REPLAY_LIMIT) return text;
+    // 超出的部分从下一行开头回放，不从控制序列中间切开
+    const kept = text.slice(-MIRROR_REPLAY_LIMIT);
+    const lineStart = kept.indexOf('\n');
+    return lineStart >= 0 && lineStart < 4096 ? kept.slice(lineStart + 1) : kept;
+}
+
+function clearReplay() {
+    replayChunks = [];
+    replayHead = 0;
+    replayLength = 0;
 }
 
 /** 结束启动握手：成功时只放出就绪标记之后的内容（通常是提示符），失败时原样放出便于排查。 */
@@ -782,9 +812,10 @@ function notifyMirrors(method, ...args) {
  */
 function attachMirror(sink) {
     mirrorSinks.add(sink);
-    if (replayBuffer) {
+    const replay = readReplay();
+    if (replay) {
         try {
-            sink.onData(replayBuffer);
+            sink.onData(replay);
         } catch (e) {
             console.error('[PowerShellExecutor] Mirror replay failed:', e);
         }
@@ -886,7 +917,7 @@ function createNewPtySession() {
             guiWindow.webContents.send('powershell-clear');
         }
     }
-    replayBuffer = '';
+    clearReplay();
     notifyMirrors('onClear');
 
     let shell = 'bash';
@@ -1927,7 +1958,7 @@ function cleanup() {
 
     // 4. 确保 ptyProcess 状态被重置
     mirrorSinks.clear();
-    replayBuffer = '';
+    clearReplay();
     mirrorStartupPending = false;
     mirrorStartupHeld = '';
     ptyProcess = null;

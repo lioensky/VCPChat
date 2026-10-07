@@ -258,7 +258,8 @@ export function createTerminalSideProvider({
         session.restart = () => {
             if (session.disposed) return Promise.resolve();
             if (session.connectionOperation) return session.connectionOperation;
-            if (session.sessionId && !doc.defaultView.confirm('重新启动共享终端？AI 工具、终端窗口和所有侧栏视图的当前命令都会中止。')) return;
+            // shell 已经退出时没有可中止的命令，直接重启，不再问
+            if (session.sessionId && !session.exited && !doc.defaultView.confirm('重新启动共享终端？AI 工具、终端窗口和所有侧栏视图的当前命令都会中止。')) return;
             if (!session.sessionId) return session.attach();
             return runConnection(async () => {
                 setStatus('重启中...');

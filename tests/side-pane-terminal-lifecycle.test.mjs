@@ -113,6 +113,18 @@ test('repeated restart shares one destructive request and recovers from a reject
     } finally { pending.resolve({ success: true }); await h.cleanup(); }
 });
 
+test('restarting a shell that already exited does not ask about aborting commands', async () => {
+    const h = fixture();
+    try {
+        await h.provider.openTerminalTab();
+        await until(() => h.status().dataset.state === 'connected');
+        h.listeners.get('exit')({ id: 'view:1', exitCode: 0 });
+        h.retry().click();
+        await until(() => h.restarts.length === 1);
+        assert.equal(h.confirmations, 0);
+    } finally { await h.cleanup(); }
+});
+
 test('a late retry result releases only its own view after the tab closes', async () => {
     const pending = Promise.withResolvers();
     let calls = 0;

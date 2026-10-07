@@ -132,3 +132,39 @@ test('jump-to-workspace quotes curly apostrophes for PowerShell and refuses path
     assert.equal(buildChangeDirectoryCommand("/home/it's", 'linux'), "cd '/home/it'\\''s'\r");
     assert.throws(() => buildChangeDirectoryCommand('C:\\a\nRemove-Item x', 'win32'), /换行/);
 });
+
+test('mirror output is coalesced into one IPC per frame; exit flushes first and kill drops the rest', async () => {
+    let sink = null;
+    let detached = 0;
+    terminalHandlers.initialize({
+        executorLoader: () => ({
+            getSessionState: () => ({ pid: 1, cols: 80, rows: 24 }),
+            resizeSession() {},
+            ensureMirrorSession: () => ({ pid: 1 }),
+            attachMirror(next) { sink = next; return () => { detached += 1; }; }
+        }),
+        commandRunStoreLoader: () => createFakeRunStore()
+    });
+    const page = new FakeSender();
+    const { data: { id } } = await call('terminal:create', page, {});
+    await wait(0);
+    const dataMessages = () => page.sent.filter(m => m.channel === 'terminal:data').map(m => m.payload.data);
+
+    for (let i = 0; i < 500; i++) sink.onData('x');
+    assert.deepEqual(dataMessages(), [], 'nothing is sent per chunk');
+    await wait(40);
+    assert.deepEqual(dataMessages(), ['x'.repeat(500)]);
+
+    sink.onData('a'.repeat(70 * 1024));
+    assert.equal(dataMessages().length, 2, 'a large burst goes out without waiting for the frame');
+
+    sink.onData('bye');
+    sink.onExit(0);
+    assert.deepEqual(page.sent.slice(-2).map(m => m.channel), ['terminal:data', 'terminal:exit']);
+
+    sink.onData('late');
+    await call('terminal:kill', page, id);
+    await wait(40);
+    assert.equal(dataMessages().at(-1), 'bye', 'output buffered when the view closed is not sent');
+    assert.equal(detached, 1);
+});
