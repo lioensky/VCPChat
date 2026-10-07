@@ -176,14 +176,12 @@ export function createToolPresentation({ root, getProfile }) {
         const title = doc.createElement('span');
         title.className = 'vcp-tool-row-title';
         const request = !result && !summary ? requestSummary(block, name) : null;
-        title.textContent = result ? `${name} · 结果` : summary ? '调用摘要（原始记录）' : `${request.action} · 请求`;
+        title.textContent = result ? `${name} · 结果` : summary ? '调用摘要' : `${request.action} · 请求`;
         const resource = doc.createElement('span');
         resource.className = 'vcp-tool-row-resource';
-        resource.textContent = request?.resource?.slice(0, 180) || '';
-        const stateLabel = doc.createElement('span');
-        stateLabel.className = 'vcp-tool-row-state';
-        stateLabel.textContent = LABELS[status];
-        btn.append(chevronIcon(), title, resource, stateLabel);
+        resource.textContent = summary ? summaryText(block) : request?.resource?.slice(0, 180) || '';
+        btn.append(chevronIcon(), title, resource);
+        if (!summary) btn.append(el('span', 'vcp-tool-row-state', LABELS[status]));
         header.replaceChildren(btn);
         // Keep the real delete button, outside the disclosure button.
         original.extraActions.forEach(n => header.append(n));
@@ -282,19 +280,23 @@ export function createToolPresentation({ root, getProfile }) {
         btn.title = [info?.action, info?.action?.includes(target) ? '' : target, error].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join('\n');
     }
     // 本轮调用摘要：和调用行同一种行结构，摘要写成“N 个工具”加上未成功的状态计数。
-    function renderSummary(model, style) {
-        const btn = model.block.querySelector('.vcp-tool-row-toggle');
-        if (!btn) return;
-        const chips = [...model.block.querySelectorAll('.vcp-tool-call-summary-chip')];
+    function summaryText(block) {
+        const chips = [...block.querySelectorAll('.vcp-tool-call-summary-chip')];
         const problems = new Map();
         for (const chip of chips) {
             if (chip.classList.contains('status-success')) continue;
             const label = chip.querySelector('.vcp-tool-call-summary-status')?.textContent?.trim() || LABELS.unknown;
             problems.set(label, (problems.get(label) || 0) + 1);
         }
-        const text = chips.length
+        return chips.length
             ? [`${chips.length} 个工具`, ...[...problems].map(([label, n]) => `${n} 个${label}`)].join('，')
-            : firstLine(model.block.querySelector('.vcp-tool-call-summary-content')?.textContent, 120);
+            : firstLine(block.querySelector('.vcp-tool-call-summary-content')?.textContent, 120);
+    }
+    function renderSummary(model, style) {
+        const btn = model.block.querySelector('.vcp-tool-row-toggle');
+        if (!btn) return;
+        const chips = [...model.block.querySelectorAll('.vcp-tool-call-summary-chip')];
+        const text = summaryText(model.block);
         if (chips.some(chip => /status-(failure|rejected|timeout)/.test(chip.className))) model.block.dataset.vcpToolCallState = 'failed';
         const parts = [];
         if (style === 'inline') {
@@ -371,7 +373,8 @@ export function createToolPresentation({ root, getProfile }) {
         toggle.className = 'vcp-tool-process-toggle';
         const title = doc.createElement('span');
         title.className = 'vcp-tool-process-title';
-        title.textContent = `工具过程 · ${counts.get('tool-use') || counts.get('jev-tool-use') ? (counts.get('tool-use') || 0)+(counts.get('jev-tool-use') || 0)+' 请求' : ''}${counts.get('tool-result') ? ' '+counts.get('tool-result')+' 结果' : ''}`.trim();
+        const requests = (counts.get('tool-use') || 0) + (counts.get('jev-tool-use') || 0);
+        title.textContent = `工具过程 · ${[requests && `${requests} 请求`, counts.get('tool-result') && `${counts.get('tool-result')} 结果`].filter(Boolean).join(' ')}`;
         if (![...counts.keys()].some(k=>k!=='tool-call-summary')) title.textContent = '工具调用摘要';
         if (items.filter(m=>m.kind!=='tool-call-summary').length === 1) {
             const item = items.find(m=>m.kind!=='tool-call-summary');
@@ -379,7 +382,7 @@ export function createToolPresentation({ root, getProfile }) {
         }
         const badge = doc.createElement('span');
         badge.className = 'vcp-tool-process-stats';
-        badge.textContent = stats.join(' · ') || '可展开查看';
+        badge.textContent = stats.join(' · ');
         toggle.append(chevronIcon(), title, badge);
         if (options) {
             group.dataset.variant = options.variant;

@@ -140,3 +140,11 @@ test('result-only rows take their kind from the tool name',()=>{
  const block=f.content.querySelector('.vcp-tool-presented');assert.equal(block.dataset.vcpToolKind,'search');assert.equal(block.querySelector('.vcp-tool-row-title').textContent,'LocalSearchController');
  assert.equal(block.querySelector('.vcp-tool-row-resource').textContent,'refused');f.close();
 });
+test('grouped titles read cleanly, carry no filler badge, and the summary row says what ran',()=>{
+ const f=fixture(res('SUCCESS','a')+res('SUCCESS','b')+'<p>说明</p>'+req()+req());f.apply();
+ const [results,requests]=f.content.querySelectorAll('.vcp-tool-process');
+ assert.equal(results.querySelector('.vcp-tool-process-title').textContent,'工具过程 · 2 结果');assert.equal(requests.querySelector('.vcp-tool-process-stats').textContent,'');f.close();
+ const s=fixture(chipSummary(chip('FileOperator','success','成功'),chip('LocalSearchController','failure','失败')));s.apply();
+ const row=s.content.querySelector('.vcp-tool-call-summary-bubble .vcp-tool-row-toggle');
+ assert.equal(row.querySelector('.vcp-tool-row-title').textContent,'调用摘要');assert.equal(row.querySelector('.vcp-tool-row-resource').textContent,'2 个工具，1 个失败');assert.equal(row.querySelector('.vcp-tool-row-state'),null);s.close();
+});

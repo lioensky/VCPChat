@@ -3710,7 +3710,7 @@
         },
         {
           "file": "modules/renderer/toolPresentation.js",
-          "line": 533,
+          "line": 536,
           "kind": "custom-event-listener"
         },
         {
@@ -5192,7 +5192,7 @@
         },
         {
           "file": "modules/renderer/toolPresentation.js",
-          "line": 533,
+          "line": 536,
           "kind": "custom-event-listener",
           "match": "root.addEventListener('click'"
         },
@@ -29999,14 +29999,14 @@
       "consumers": [
         {
           "file": "modules/renderer/toolPresentation.js",
-          "line": 534,
+          "line": 537,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/renderer/toolPresentation.js",
-          "line": 534,
+          "line": 537,
           "kind": "custom-event-listener",
           "match": "win.addEventListener('vcp-appearance-changed'"
         },
