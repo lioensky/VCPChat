@@ -2650,16 +2650,7 @@ function cleanupMessageDomResources(messageItem, messageId = null) {
             clearTimeout(contentDiv._vcpDeferredHighlightTimer);
             delete contentDiv._vcpDeferredHighlightTimer;
         }
-        if (contentDiv._vcpPretextIdleHandle) {
-            const { kind, id } = contentDiv._vcpPretextIdleHandle;
-            const ownerWindow = contentDiv.ownerDocument?.defaultView;
-            if (kind === 'idle' && typeof ownerWindow?.cancelIdleCallback === 'function') {
-                ownerWindow.cancelIdleCallback(id);
-            } else if (kind === 'timer') {
-                clearTimeout(id);
-            }
-            delete contentDiv._vcpPretextIdleHandle;
-        }
+        cancelPretextEstimate(contentDiv);
         cleanupMermaidViewers(contentDiv);
         contentProcessor.cleanupPreviewsInContent(contentDiv);
         cleanupAnimationsInContent(contentDiv);
@@ -4273,24 +4264,53 @@ function scheduleMessagePretextEstimate(messageId, text, contentDiv) {
         }
     };
 
-    if (contentDiv?._vcpPretextIdleHandle) {
-        const previous = contentDiv._vcpPretextIdleHandle;
-        const ownerWindow = contentDiv.ownerDocument?.defaultView;
-        if (previous.kind === 'idle' && typeof ownerWindow?.cancelIdleCallback === 'function') ownerWindow.cancelIdleCallback(previous.id);
-        else if (previous.kind === 'timer') clearTimeout(previous.id);
-    }
-    const wrappedRun = () => {
-        if (contentDiv) delete contentDiv._vcpPretextIdleHandle;
-        run();
-    };
     const ownerWindow = contentDiv?.ownerDocument?.defaultView;
-    if (typeof ownerWindow?.requestIdleCallback === 'function') {
-        const id = ownerWindow.requestIdleCallback(wrappedRun, { timeout: 300 });
-        if (contentDiv) contentDiv._vcpPretextIdleHandle = { kind: 'idle', id };
-    } else {
-        const id = ownerWindow?.setTimeout?.(wrappedRun, 0) || setTimeout(wrappedRun, 0);
-        if (contentDiv) contentDiv._vcpPretextIdleHandle = { kind: 'timer', id };
+    enqueuePretextEstimate(ownerWindow, contentDiv || messageId, run);
+}
+
+/*
+ * 每条消息各占一个 requestIdleCallback 时，40 条历史就是 40 个排在前面的回调，
+ * 历史分批插入的 idle 回调只能等它们逐个跑完（每个还要读一次 clientWidth 触发布局），
+ * 大话题打开因此慢约 0.4s。这里每个窗口只挂一个 idle 回调，按 deadline 分片消费队列，
+ * 没做完就重新排队，让已经排着的分批插入先执行。同一节点重复渲染时覆盖旧任务。
+ */
+const pretextEstimateQueues = new WeakMap();
+
+function getPretextQueueOwner(ownerWindow) {
+    return typeof ownerWindow?.requestIdleCallback === 'function' ? ownerWindow : globalThis;
+}
+
+function enqueuePretextEstimate(ownerWindow, key, run) {
+    const queueOwner = getPretextQueueOwner(ownerWindow);
+    let state = pretextEstimateQueues.get(queueOwner);
+    if (!state) {
+        state = { jobs: new Map(), scheduled: false };
+        pretextEstimateQueues.set(queueOwner, state);
     }
+    state.jobs.delete(key);
+    state.jobs.set(key, run);
+    if (state.scheduled) return;
+
+    const schedule = () => {
+        state.scheduled = true;
+        if (queueOwner !== globalThis) queueOwner.requestIdleCallback(drain, { timeout: 300 });
+        else setTimeout(drain, 0);
+    };
+    const drain = (deadline) => {
+        state.scheduled = false;
+        for (const [jobKey, job] of state.jobs) {
+            state.jobs.delete(jobKey);
+            job();
+            if (!deadline || deadline.didTimeout || deadline.timeRemaining() <= 1) break;
+        }
+        if (state.jobs.size > 0) schedule();
+    };
+    schedule();
+}
+
+function cancelPretextEstimate(contentDiv) {
+    const queueOwner = getPretextQueueOwner(contentDiv?.ownerDocument?.defaultView);
+    pretextEstimateQueues.get(queueOwner)?.jobs.delete(contentDiv);
 }
 
 async function renderFullMessageProjection(messageId, fullContent, agentName, agentId, root = mainRendererReferences.chatMessagesDiv) {

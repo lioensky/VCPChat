@@ -171,7 +171,7 @@ function readMessageText(messageItem) {
 
 /**
  * 把消息列表读成 buildTurnNavigatorItems 需要的 entries。
- * textCache（WeakMap）+ dirty（Set）让没有变化的消息不必每次都克隆一遍 DOM：
+ * textCache（WeakMap）+ dirty（WeakSet，不留住已经移出列表的消息）让没有变化的消息不必每次都克隆一遍 DOM：
  * 只有被标记为 dirty 的消息才会重新读取文字。
  */
 export function collectTurnEntries(messagesRoot, { textCache = null, dirty = null } = {}) {
@@ -243,7 +243,7 @@ export function createConversationTurnNavigator({
     let frame = null;
     let reducedMotion = false;
     const textCache = new WeakMap();
-    const dirty = new Set();
+    const dirty = new WeakSet();
 
     const h = (tag, className) => {
         const node = doc.createElement(tag);
