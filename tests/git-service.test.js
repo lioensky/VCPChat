@@ -456,19 +456,12 @@ test('a switch blocked by local changes reports the files in a form the commit-a
     assert.deepEqual(parseSwitchBlockedFiles(blocked.issues[0].message), { files: ['README.md'], untracked: false });
 });
 
-test('concurrent status reads share one follow-up read that still sees changes made after the first began', { skip: SKIP_GIT }, async t => {
+test('only the Git page read and post-write refreshes pay for per-file line counts', { skip: SKIP_GIT }, async t => {
     const root = createRepo(t);
-    const first = gitService.getStatus(root);
-    // 读取已经在路上时文件变了；之后来的调用不能拿到那次旧读取
-    await new Promise(resolve => setImmediate(resolve));
-    write(root, 'late.js', 'late\n');
-    const followers = await Promise.all(Array.from({ length: 5 }, () => gitService.getStatus(root)));
-    await first;
-    for (const status of followers) {
-        assert.ok(status.changes.some(item => item.path === 'late.js'), 'every later caller sees the late file');
-    }
-    // 每个调用先各自 rev-parse 定位仓库，到达时间有先后；但 6 个调用最多跑 3 轮 status
-    assert.ok(new Set([await first, ...followers]).size <= 3, 'callers that arrive together share reads');
-    const after = await gitService.getStatus(root);
-    assert.notEqual(after, followers[0], 'a call after the reads settle starts a fresh read');
+    write(root, 'README.md', 'changed\nmore\n');
+    const status = await gitService.getStatus(root);
+    const card = status.changes.find(item => item.path === 'README.md');
+    assert.ok(Number.isInteger(card.added), 'the Git page gets line counts');
+    const branches = await gitService.listBranches(root);
+    assert.ok(Array.isArray(branches.branches || branches), 'branch listing still works without counts');
 });

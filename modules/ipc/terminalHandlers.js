@@ -155,12 +155,14 @@ function resolveWorkspacePath(workspaceId) {
 }
 
 // 终端窗口用的是 PowerShell（Windows）/ bash（其它平台）。
-// 只把命令打到输入行、不替用户按回车：前台可能是 vim、python、ssh 或密码提示（busy 只认 AI 跑的命令），
-// 回车会把这串字当成那个程序的输入；提示符后有半截命令时也会拼成别的命令。用户看一眼再回车。
-// PowerShell 把 ‘ ’ ‚ ‛ 也当单引号，只转义 ASCII ' 的话，带弯引号的目录名会提前结束字符串。
+// 带回车直接执行：AI 命令写进共享 PTY 前不清输入行，只打字不回车的话，留在输入行的跳转会和下一条 AI 命令拼成一行，
+// 结束标记出不来，AI 那边要等到超时（Linux 实测 `cd '…'echo …` → too many arguments）。
+// PowerShell 把 ‘ ’ ‚ ‛（U+2018–U+201B）也当单引号，只转义 ASCII ' 的话，带弯引号的目录名会提前结束字符串。
+// 换行会直接提交半条命令，这种路径不往终端里写
 function buildChangeDirectoryCommand(dir, platform = process.platform) {
-    if (platform === 'win32') return `Set-Location -LiteralPath '${dir.replace(/['\u2018\u2019\u201A\u201B]/g, '$&$&')}'`;
-    return `cd '${dir.replace(/'/g, "'\\''")}'`;
+    if (/[\r\n]/.test(dir)) throw new Error('工作区路径包含换行，无法在终端里切换。');
+    if (platform === 'win32') return `Set-Location -LiteralPath '${dir.replace(/['\u2018-\u201B]/g, '$&$&')}'\r`;
+    return `cd '${dir.replace(/'/g, "'\\''")}'\r`;
 }
 
 function createView(event, options = {}) {

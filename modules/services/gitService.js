@@ -390,45 +390,13 @@ function withCounts(list, counts) {
     });
 }
 
-// 同一仓库的 status 读取合并：agent 施工时一次 files 推送会让状态面板、Git 页、V工程页各自来读（每次 3 个 git 子进程，
-// Windows 上 spawn 很慢）。在飞时到达的请求不搭这次的车（它可能早于刚发生的改动），而是共享紧随其后的下一次读取，
-// 所以每个调用拿到的都是调用之后才开始的快照，N 个并发调用最多跑两轮（对照 ZCode gitCliRepo reuseInFlightRequest）。
-const statusReads = new Map(); // key -> { current, next }
-
-function readStatus(repo) {
-    const key = `${repo.toplevel}\0${repo.prefix || ''}`;
-    let slot = statusReads.get(key);
-    if (!slot) {
-        slot = { current: null, next: null };
-        statusReads.set(key, slot);
-    }
-    if (!slot.current) {
-        slot.current = readStatusNow(repo).finally(() => settleStatusRead(key, slot));
-        return slot.current;
-    }
-    if (!slot.next) {
-        const queued = Promise.withResolvers();
-        slot.next = { repo, ...queued };
-    }
-    return slot.next.promise;
-}
-
-function settleStatusRead(key, slot) {
-    const queued = slot.next;
-    slot.next = null;
-    if (!queued) {
-        slot.current = null;
-        statusReads.delete(key);
-        return;
-    }
-    slot.current = readStatusNow(queued.repo).finally(() => settleStatusRead(key, slot));
-    slot.current.then(queued.resolve, queued.reject);
-}
-
-async function readStatusNow(repo) {
+// counts 只给要画逐文件行数的调用（Git 页的读取和写操作后的刷新）：两次全工作区 diff --numstat 比 status 本身慢几倍，
+// 推送、切分支前的预检和状态面板的摘要用不到
+async function readStatus(repo, { counts: withDiffCounts = false } = {}) {
     const args = ['status', '--porcelain=v2', '-z', '--branch', '--untracked-files=all'];
     if (repo.prefix) args.push('--', repo.prefix);
-    const [{ stdout }, remotes, counts] = await Promise.all([runGit(repo.toplevel, args), listRemotes(repo), readDiffCounts(repo)]);
+    const noCounts = { staged: new Map(), unstaged: new Map() };
+    const [{ stdout }, remotes, counts] = await Promise.all([runGit(repo.toplevel, args), listRemotes(repo), withDiffCounts ? readDiffCounts(repo) : noCounts]);
     const { branch, entries } = parsePorcelainV2(stdout);
     const truncated = entries.length > MAX_ENTRIES;
     const grouped = groupEntries(truncated ? entries.slice(0, MAX_ENTRIES) : entries);
@@ -480,7 +448,7 @@ async function resolveRevealTarget(workspaceRoot, relPath, { base = 'repo' } = {
 async function getStatus(workspaceRoot) {
     const repo = await openRepository(workspaceRoot);
     if (!repo) return { isRepo: false, root: path.resolve(workspaceRoot) };
-    return readStatus(repo);
+    return readStatus(repo, { counts: true });
 }
 
 /** 串行执行写操作，完成后附带最新状态返回，前端一次往返即可刷新。 */
@@ -488,7 +456,7 @@ async function mutate(workspaceRoot, fn) {
     const repo = await requireRepository(workspaceRoot);
     return withRepoLock(repo, async () => {
         const extra = await fn(repo);
-        const status = await readStatus(repo);
+        const status = await readStatus(repo, { counts: true });
         return { ...(extra || {}), status };
     });
 }
@@ -594,7 +562,7 @@ async function push(workspaceRoot, { setUpstream = false } = {}) {
         }
         const result = await runGit(repo.toplevel, args, { timeout: PUSH_TIMEOUT });
         const output = `${result.stderr.toString('utf8')}${result.stdout.toString('utf8')}`.trim();
-        return { output, remote, status: await readStatus(repo) };
+        return { output, remote, status: await readStatus(repo, { counts: true }) };
     });
 }
 
@@ -742,7 +710,7 @@ async function switchLike(workspaceRoot, action, name, buildArgs) {
         } catch (error) {
             return fail({ code: 'git-error', message: error.message });
         }
-        return { ok: true, action, branchName, changed: true, status: await readStatus(repo) };
+        return { ok: true, action, branchName, changed: true, status: await readStatus(repo, { counts: true }) };
     });
 }
 
