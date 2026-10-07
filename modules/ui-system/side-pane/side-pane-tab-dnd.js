@@ -41,6 +41,7 @@ export function createTabSortable({
         const { items, fromIndex, toIndex, active, pointerId } = session;
         try { active.releasePointerCapture?.(pointerId); } catch { /* 捕获可能已丢失 */ }
         doc.removeEventListener('keydown', onKeyDown, true);
+        unwatchPointer();
         const activeId = active.getAttribute('data-tab-id');
         const overId = items[toIndex]?.getAttribute('data-tab-id');
         const moved = session.dragging && commit && toIndex !== fromIndex;
@@ -110,6 +111,7 @@ export function createTabSortable({
             active: item, pointerId: event.pointerId,
             startX: event.clientX, startY: event.clientY, dragging: false
         };
+        watchPointer();
     }
 
     function onPointerMove(event) {
@@ -147,10 +149,20 @@ export function createTabSortable({
         event.stopPropagation();
     }
 
+    // 按下之后的移动和松手在 document 上听：指针捕获可能丢（被拖的节点被换掉），在标签条外松手也要收尾，
+    // 不然 session 一直挂着，之后的按下全被忽略
+    function watchPointer() {
+        doc.addEventListener('pointermove', onPointerMove);
+        doc.addEventListener('pointerup', onPointerUp);
+        doc.addEventListener('pointercancel', onPointerCancel);
+    }
+    function unwatchPointer() {
+        doc.removeEventListener('pointermove', onPointerMove);
+        doc.removeEventListener('pointerup', onPointerUp);
+        doc.removeEventListener('pointercancel', onPointerCancel);
+    }
+
     container.addEventListener('pointerdown', onPointerDown);
-    container.addEventListener('pointermove', onPointerMove);
-    container.addEventListener('pointerup', onPointerUp);
-    container.addEventListener('pointercancel', onPointerCancel);
     container.addEventListener('click', onClickCapture, true);
 
     return {
@@ -158,9 +170,6 @@ export function createTabSortable({
         dispose() {
             finish(false);
             container.removeEventListener('pointerdown', onPointerDown);
-            container.removeEventListener('pointermove', onPointerMove);
-            container.removeEventListener('pointerup', onPointerUp);
-            container.removeEventListener('pointercancel', onPointerCancel);
             container.removeEventListener('click', onClickCapture, true);
         }
     };

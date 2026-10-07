@@ -171,9 +171,10 @@ function createView(event, options = {}) {
     }
     const opts = options && typeof options === 'object' ? options : {};
     const executor = loadExecutor();
-    // 先定尺寸再启动：PowerShell 的首屏按 PTY 当时的宽度排版，事后再改会留下错位的提示符
-    if (opts.cols !== undefined || opts.rows !== undefined) {
-        const current = executor.getSessionState();
+    // 先定尺寸再启动：PowerShell 的首屏按 PTY 当时的宽度排版，事后再改会留下错位的提示符。
+    // 会话已经在跑（终端窗口或另一个视图正用着）就不改：只有拿着焦点的视图才定尺寸
+    const current = executor.getSessionState();
+    if (!current.running && (opts.cols !== undefined || opts.rows !== undefined)) {
         executor.resizeSession(
             clampInt(opts.cols, MIN_COLS, MAX_COLS, current.cols),
             clampInt(opts.rows, MIN_ROWS, MAX_ROWS, current.rows),
@@ -225,6 +226,8 @@ function createView(event, options = {}) {
         // 清屏之前攒着的输出反正要被清掉；退出前先把剩下的发完，顺序不乱
         onClear: () => { dropData(); emit('terminal:clear', { id }); },
         onExit: (exitCode) => { flushData(); emit('terminal:exit', { id, exitCode: exitCode ?? null }); },
+        // PTY 尺寸变了（哪个视图改的都算）：不持有尺寸的视图据此跟着画；之前的输出按旧宽度排的，先发完
+        onResize: (cols, rows) => { flushData(); emit('terminal:resized', { id, cols, rows }); },
     });
     const detach = () => {
         dropData();
@@ -237,7 +240,7 @@ function createView(event, options = {}) {
     views.set(id, { id, sender, detach });
     trackSender(sender);
 
-    return { id, pid: state.pid, shared: true, windowsPty: windowsPtyInfo() };
+    return { id, pid: state.pid, cols: state.cols, rows: state.rows, shared: true, windowsPty: windowsPtyInfo() };
 }
 
 /**

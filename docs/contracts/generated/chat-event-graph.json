@@ -667,7 +667,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 316,
+          "line": 344,
           "kind": "custom-event-listener"
         },
         {
@@ -732,7 +732,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 316,
+          "line": 344,
           "kind": "custom-event-listener",
           "match": "signal?.addEventListener('abort'"
         },
@@ -1247,7 +1247,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 222,
+          "line": 223,
           "kind": "custom-event-listener"
         }
       ],
@@ -1266,7 +1266,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 222,
+          "line": 223,
           "kind": "custom-event-listener",
           "match": "tabItem.addEventListener('auxclick'"
         }
@@ -4394,7 +4394,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-dnd.js",
-          "line": 154,
+          "line": 166,
           "kind": "custom-event-listener"
         },
         {
@@ -4424,12 +4424,12 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 196,
+          "line": 197,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 210,
+          "line": 211,
           "kind": "custom-event-listener"
         },
         {
@@ -6013,7 +6013,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-dnd.js",
-          "line": 154,
+          "line": 166,
           "kind": "custom-event-listener",
           "match": "container.addEventListener('click'"
         },
@@ -6049,13 +6049,13 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 196,
+          "line": 197,
           "kind": "custom-event-listener",
           "match": "btn.addEventListener('click'"
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 210,
+          "line": 211,
           "kind": "custom-event-listener",
           "match": "closeBtn.addEventListener('click'"
         },
@@ -6268,12 +6268,12 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 573,
+          "line": 578,
           "kind": "event-listener"
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 685,
+          "line": 690,
           "kind": "event-listener"
         },
         {
@@ -6403,13 +6403,13 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 573,
+          "line": 578,
           "kind": "event-listener",
           "match": "child.on('close'"
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 685,
+          "line": 690,
           "kind": "event-listener",
           "match": "child.on('close'"
         },
@@ -7367,7 +7367,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 234,
+          "line": 235,
           "kind": "custom-event-listener"
         },
         {
@@ -7505,7 +7505,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 234,
+          "line": 235,
           "kind": "custom-event-listener",
           "match": "tabItem.addEventListener('contextmenu'"
         },
@@ -7980,12 +7980,12 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 560,
+          "line": 565,
           "kind": "event-listener"
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 675,
+          "line": 680,
           "kind": "event-listener"
         },
         {
@@ -8253,13 +8253,13 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 560,
+          "line": 565,
           "kind": "event-listener",
           "match": "child.stderr.on('data'"
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 675,
+          "line": 680,
           "kind": "event-listener",
           "match": "child.stderr.on('data'"
         },
@@ -11657,12 +11657,12 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 564,
+          "line": 569,
           "kind": "event-listener"
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 679,
+          "line": 684,
           "kind": "event-listener"
         },
         {
@@ -11949,13 +11949,13 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 564,
+          "line": 569,
           "kind": "event-listener",
           "match": "child.on('error'"
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 679,
+          "line": 684,
           "kind": "event-listener",
           "match": "child.on('error'"
         },
@@ -12734,7 +12734,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 199,
+          "line": 214,
           "kind": "custom-event-listener"
         }
       ],
@@ -12753,7 +12753,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 199,
+          "line": 214,
           "kind": "custom-event-listener",
           "match": "screen.addEventListener('focusin'"
         }
@@ -15651,7 +15651,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-dnd.js",
-          "line": 122,
+          "line": 124,
           "kind": "custom-event-listener"
         },
         {
@@ -15676,7 +15676,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 369,
+          "line": 377,
           "kind": "custom-event-listener"
         },
         {
@@ -16059,7 +16059,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-dnd.js",
-          "line": 122,
+          "line": 124,
           "kind": "custom-event-listener",
           "match": "doc.addEventListener('keydown'"
         },
@@ -16089,7 +16089,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 369,
+          "line": 377,
           "kind": "custom-event-listener",
           "match": "tabListElement.addEventListener('keydown'"
         },
@@ -18952,7 +18952,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 219,
+          "line": 220,
           "kind": "custom-event-listener"
         },
         {
@@ -19076,7 +19076,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 219,
+          "line": 220,
           "kind": "custom-event-listener",
           "match": "tabItem.addEventListener('mousedown'"
         },
@@ -19167,7 +19167,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 230,
+          "line": 231,
           "kind": "custom-event-listener"
         },
         {
@@ -19209,7 +19209,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 230,
+          "line": 231,
           "kind": "custom-event-listener",
           "match": "tabItem.addEventListener('mouseenter'"
         },
@@ -19282,7 +19282,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 231,
+          "line": 232,
           "kind": "custom-event-listener"
         },
         {
@@ -19365,7 +19365,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 231,
+          "line": 232,
           "kind": "custom-event-listener",
           "match": "tabItem.addEventListener('mouseleave'"
         },
@@ -21788,14 +21788,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 207,
+          "line": 225,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 207,
+          "line": 225,
           "kind": "preload-subscription",
           "match": "api.onTerminalClear("
         }
@@ -21826,14 +21826,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 201,
+          "line": 219,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 201,
+          "line": 219,
           "kind": "preload-subscription",
           "match": "api.onTerminalData("
         }
@@ -21845,16 +21845,35 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 215,
+          "line": 239,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 215,
+          "line": 239,
           "kind": "preload-subscription",
           "match": "api.onTerminalExit("
+        }
+      ]
+    },
+    {
+      "name": "onTerminalResized(",
+      "producers": [],
+      "consumers": [
+        {
+          "file": "modules/ui-system/side-pane/terminalSideProvider.js",
+          "line": 234,
+          "kind": "preload-subscription"
+        }
+      ],
+      "evidence": [
+        {
+          "file": "modules/ui-system/side-pane/terminalSideProvider.js",
+          "line": 234,
+          "kind": "preload-subscription",
+          "match": "api.onTerminalResized("
         }
       ]
     },
@@ -23098,7 +23117,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-dnd.js",
-          "line": 153,
+          "line": 157,
           "kind": "custom-event-listener"
         }
       ],
@@ -23111,9 +23130,9 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-dnd.js",
-          "line": 153,
+          "line": 157,
           "kind": "custom-event-listener",
-          "match": "container.addEventListener('pointercancel'"
+          "match": "doc.addEventListener('pointercancel'"
         }
       ]
     },
@@ -23143,7 +23162,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-dnd.js",
-          "line": 150,
+          "line": 165,
           "kind": "custom-event-listener"
         },
         {
@@ -23158,7 +23177,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 232,
+          "line": 233,
           "kind": "custom-event-listener"
         },
         {
@@ -23199,7 +23218,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-dnd.js",
-          "line": 150,
+          "line": 165,
           "kind": "custom-event-listener",
           "match": "container.addEventListener('pointerdown'"
         },
@@ -23217,7 +23236,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 232,
+          "line": 233,
           "kind": "custom-event-listener",
           "match": "tabItem.addEventListener('pointerdown'"
         },
@@ -23301,16 +23320,16 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-dnd.js",
-          "line": 151,
+          "line": 155,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-dnd.js",
-          "line": 151,
+          "line": 155,
           "kind": "custom-event-listener",
-          "match": "container.addEventListener('pointermove'"
+          "match": "doc.addEventListener('pointermove'"
         }
       ]
     },
@@ -23325,7 +23344,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-dnd.js",
-          "line": 152,
+          "line": 156,
           "kind": "custom-event-listener"
         }
       ],
@@ -23338,9 +23357,9 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-dnd.js",
-          "line": 152,
+          "line": 156,
           "kind": "custom-event-listener",
-          "match": "container.addEventListener('pointerup'"
+          "match": "doc.addEventListener('pointerup'"
         }
       ]
     },
@@ -23349,7 +23368,7 @@
       "producers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 917,
+          "line": 922,
           "kind": "event-send"
         }
       ],
@@ -23363,7 +23382,7 @@
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 917,
+          "line": 922,
           "kind": "event-send",
           "match": "guiWindow.webContents.send('powershell-clear'"
         },
@@ -23399,7 +23418,7 @@
       "producers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 734,
+          "line": 739,
           "kind": "event-send"
         }
       ],
@@ -23413,7 +23432,7 @@
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 734,
+          "line": 739,
           "kind": "event-send",
           "match": "guiWindow.webContents.send('powershell-data'"
         },
@@ -23450,14 +23469,14 @@
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 237,
+          "line": 242,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 237,
+          "line": 242,
           "kind": "event-listener",
           "match": "ipcMain.on('powershell-input'"
         }
@@ -23469,14 +23488,14 @@
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 230,
+          "line": 235,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 230,
+          "line": 235,
           "kind": "event-listener",
           "match": "ipcMain.on('powershell-resize'"
         }
@@ -23494,14 +23513,14 @@
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 317,
+          "line": 322,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 317,
+          "line": 322,
           "kind": "event-listener",
           "match": "ipcMain.on('powershell-window:close'"
         },
@@ -23525,14 +23544,14 @@
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 299,
+          "line": 304,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 299,
+          "line": 304,
           "kind": "event-listener",
           "match": "ipcMain.on('powershell-window:minimize'"
         },
@@ -23556,14 +23575,14 @@
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 305,
+          "line": 310,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 305,
+          "line": 310,
           "kind": "event-listener",
           "match": "ipcMain.on('powershell-window:toggle-maximize'"
         },
@@ -23880,7 +23899,7 @@
       "producers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 1516,
+          "line": 1521,
           "kind": "event-send"
         }
       ],
@@ -23894,7 +23913,7 @@
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 1516,
+          "line": 1521,
           "kind": "event-send",
           "match": "guiWindow.webContents.send('query-visible-text'"
         },
@@ -26618,7 +26637,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 326,
+          "line": 334,
           "kind": "custom-event-listener"
         },
         {
@@ -26694,7 +26713,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/side-pane-tab-strip.js",
-          "line": 326,
+          "line": 334,
           "kind": "custom-event-listener",
           "match": "tabListElement.addEventListener('scroll'"
         },
@@ -28453,14 +28472,14 @@
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 271,
+          "line": 276,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 271,
+          "line": 276,
           "kind": "event-listener",
           "match": "ipcMain.on('terminal-paste-complete'"
         },
@@ -28477,7 +28496,7 @@
       "producers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 1537,
+          "line": 1542,
           "kind": "event-send"
         }
       ],
@@ -28491,7 +28510,7 @@
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 1537,
+          "line": 1542,
           "kind": "event-send",
           "match": "guiWindow.webContents.send('terminal-paste-request'"
         },
@@ -28515,14 +28534,14 @@
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 354,
+          "line": 357,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 354,
+          "line": 357,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:cd'"
         },
@@ -28539,7 +28558,7 @@
       "producers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 226,
+          "line": 227,
           "kind": "event-send"
         }
       ],
@@ -28553,7 +28572,7 @@
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 226,
+          "line": 227,
           "kind": "event-send",
           "match": "emit('terminal:clear'"
         },
@@ -28577,14 +28596,14 @@
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 326,
+          "line": 329,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 326,
+          "line": 329,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:command-run'"
         },
@@ -28627,14 +28646,14 @@
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 317,
+          "line": 320,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 317,
+          "line": 320,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:command-runs'"
         },
@@ -28658,14 +28677,14 @@
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 265,
+          "line": 268,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 265,
+          "line": 268,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:create'"
         },
@@ -28682,22 +28701,22 @@
       "producers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 200,
+          "line": 201,
           "kind": "event-send"
         },
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 208,
+          "line": 209,
           "kind": "event-send"
         },
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 214,
+          "line": 215,
           "kind": "event-send"
         },
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 222,
+          "line": 223,
           "kind": "event-send"
         }
       ],
@@ -28711,25 +28730,25 @@
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 200,
+          "line": 201,
           "kind": "event-send",
           "match": "emit('terminal:data'"
         },
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 208,
+          "line": 209,
           "kind": "event-send",
           "match": "emit('terminal:data'"
         },
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 214,
+          "line": 215,
           "kind": "event-send",
           "match": "emit('terminal:data'"
         },
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 222,
+          "line": 223,
           "kind": "event-send",
           "match": "emit('terminal:data'"
         },
@@ -28746,7 +28765,7 @@
       "producers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 227,
+          "line": 228,
           "kind": "event-send"
         }
       ],
@@ -28760,7 +28779,7 @@
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 227,
+          "line": 228,
           "kind": "event-send",
           "match": "emit('terminal:exit'"
         },
@@ -28784,14 +28803,14 @@
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 299,
+          "line": 302,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 299,
+          "line": 302,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:kill'"
         },
@@ -28815,14 +28834,14 @@
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 287,
+          "line": 290,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 287,
+          "line": 290,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:resize'"
         },
@@ -28831,6 +28850,37 @@
           "line": 15,
           "kind": "preload-channel-definition",
           "match": "invoke('terminal:resize'"
+        }
+      ]
+    },
+    {
+      "name": "terminal:resized",
+      "producers": [
+        {
+          "file": "modules/ipc/terminalHandlers.js",
+          "line": 230,
+          "kind": "event-send"
+        }
+      ],
+      "consumers": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 27,
+          "kind": "preload-channel-definition"
+        }
+      ],
+      "evidence": [
+        {
+          "file": "modules/ipc/terminalHandlers.js",
+          "line": 230,
+          "kind": "event-send",
+          "match": "emit('terminal:resized'"
+        },
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 27,
+          "kind": "preload-channel-definition",
+          "match": "on('terminal:resized'"
         }
       ]
     },
@@ -28846,14 +28896,14 @@
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 305,
+          "line": 308,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 305,
+          "line": 308,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:restart'"
         },
@@ -28877,14 +28927,14 @@
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 348,
+          "line": 351,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 348,
+          "line": 351,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:unwatch-command-runs'"
         },
@@ -28908,14 +28958,14 @@
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 337,
+          "line": 340,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 337,
+          "line": 340,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:watch-command-runs'"
         },
@@ -28939,14 +28989,14 @@
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 274,
+          "line": 277,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 274,
+          "line": 277,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:write'"
         },
@@ -30920,14 +30970,14 @@
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 247,
+          "line": 252,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 247,
+          "line": 252,
           "kind": "event-listener",
           "match": "ipcMain.on('visible-text-response'"
         }

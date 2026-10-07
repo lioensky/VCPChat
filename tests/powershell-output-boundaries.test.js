@@ -153,3 +153,24 @@ test('appending to a full mirror replay does not rescan the retained window on e
     const large = median(512 * 1024);
     assert.ok(large <= small * 4 + 25, `small window ${small.toFixed(1)}ms, large window ${large.toFixed(1)}ms`);
 });
+
+test('a PTY resize tells the mirror views the new size, once per change', () => {
+    const source = fs.readFileSync(path.join(__dirname, '../VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js'), 'utf8');
+    const begin = source.indexOf('function applyPtyResize(');
+    const finish = source.indexOf('\n}', begin) + 2;
+    const notices = [];
+    const resized = [];
+    const context = {
+        lastKnownSize: { cols: 120, rows: 30 },
+        ptyProcess: { resize: (cols, rows) => resized.push([cols, rows]) },
+        notifyMirrors: (method, ...args) => notices.push([method, ...args]),
+        console,
+    };
+    vm.createContext(context);
+    vm.runInContext(source.slice(begin, finish), context);
+    context.applyPtyResize(45, 20);
+    context.applyPtyResize(45, 20);
+    context.applyPtyResize('bad', 0);
+    assert.deepEqual(resized, [[45, 20], [45, 20], [45, 20]]);
+    assert.deepEqual(notices, [['onResize', 45, 20]]);
+});

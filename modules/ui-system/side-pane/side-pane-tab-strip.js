@@ -37,6 +37,7 @@ export function createSidePaneTabStrip({
     let tooltipEl = null;
     let tooltipTimer = null;
     let dragging = false;
+    let renderPending = false;
     let layoutRaf = 0;
     let lastRenderedActiveTabId = null;
     let scrollActivePending = false;
@@ -267,6 +268,12 @@ export function createSidePaneTabStrip({
     // 按 tabId 复用标签节点，只增删、调顺序、改激活态和标题。原来每次（浏览器每次导航改标题、每次切换）都删光重建，
     // 打断悬停提示，并在同一帧里同步量一次几何；量几何现在推到下一帧（scheduleLayout）。
     function render() {
+        // 拖拽期间不动标签节点（换掉或挪动被拖的节点会让拖拽会话挂在旧节点上），松手后补一次
+        if (dragging) {
+            renderPending = true;
+            return;
+        }
+        renderPending = false;
         tabListElement.setAttribute('role', 'tablist');
         tabListElement.setAttribute('aria-label', '工作区侧栏标签页');
 
@@ -319,6 +326,7 @@ export function createSidePaneTabStrip({
         onDragStateChange: (isDragging) => {
             dragging = isDragging;
             if (isDragging) hideTooltip();
+            else if (renderPending) render();
         }
     });
     cleanups.push(() => sortable?.dispose());

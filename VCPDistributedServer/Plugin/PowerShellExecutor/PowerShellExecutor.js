@@ -213,9 +213,14 @@ ipcMain.handle('read-from-clipboard', () => {
 function applyPtyResize(cols, rows) {
     const normalizedCols = Number(cols);
     const normalizedRows = Number(rows);
+    const previous = lastKnownSize;
 
     if (Number.isInteger(normalizedCols) && Number.isInteger(normalizedRows) && normalizedCols > 0 && normalizedRows > 0) {
         lastKnownSize = { cols: normalizedCols, rows: normalizedRows };
+    }
+    // 镜像视图（侧栏终端）里不持有尺寸的那些要跟着新尺寸画
+    if (lastKnownSize.cols !== previous.cols || lastKnownSize.rows !== previous.rows) {
+        notifyMirrors('onResize', lastKnownSize.cols, lastKnownSize.rows);
     }
 
     if (ptyProcess) {

@@ -165,3 +165,33 @@ test('mirror output after the first chunk is coalesced per frame; exit flushes f
     assert.equal(dataMessages().at(-1), 'more', 'output buffered when the view closed is not sent');
     assert.equal(detached, 1);
 });
+
+// 共享 PTY 只有一个尺寸：会话已在跑时新开的侧栏视图不改它，PTY 尺寸变了要告诉每个视图
+test('a new side view does not resize a running PTY and hears about later resizes', async () => {
+    let sink = null;
+    let running = true;
+    const resizes = [];
+    terminalHandlers.initialize({
+        executorLoader: () => ({
+            getSessionState: () => ({ running, pid: 1, cols: 120, rows: 30 }),
+            resizeSession(cols, rows) { resizes.push([cols, rows]); },
+            ensureMirrorSession: () => ({ running: true, pid: 1, cols: 120, rows: 30 }),
+            attachMirror(next) { sink = next; return () => {}; }
+        }),
+        commandRunStoreLoader: () => createFakeRunStore()
+    });
+    const page = new FakeSender();
+    const created = await call('terminal:create', page, { cols: 45, rows: 20 });
+    assert.deepEqual(resizes, [], 'the terminal window keeps its 120 columns');
+    assert.deepEqual([created.data.cols, created.data.rows], [120, 30], 'the view learns the size the PTY really has');
+
+    await wait(0);
+    sink.onData('before');
+    sink.onResize(100, 28);
+    assert.deepEqual(page.sent.slice(-2).map(m => m.channel), ['terminal:data', 'terminal:resized'], 'output drawn at the old width goes out first');
+    assert.deepEqual(page.sent.at(-1).payload, { id: created.data.id, cols: 100, rows: 28 });
+
+    running = false;
+    await call('terminal:create', page, { cols: 45, rows: 20 });
+    assert.deepEqual(resizes, [[45, 20]], 'a PTY that is not running yet starts at the size of the view that opens it');
+});
