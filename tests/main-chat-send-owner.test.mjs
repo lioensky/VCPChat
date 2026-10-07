@@ -91,6 +91,30 @@ test('send owner preserves failed-interrupt local cleanup', async () => {
     ]);
 });
 
+test('failed interrupt keeps a reply that finished while the interrupt was pending', async () => {
+    const message = { id: 'message-f', role: 'assistant', isThinking: true };
+    const element = { isConnected: true, classList: { contains: () => true } };
+    const calls = [];
+    let resolveInterrupt;
+    const owner = createMainChatSendOwner({
+        button: button(), messagesRoot: { querySelector: () => element }, historyRef: ref([message]),
+        selectedItemRef: ref({ id: 'agent-a', type: 'agent' }), topicIdRef: ref('topic-a'),
+        streamProjection: { discardStreamingMessage: id => calls.push(['discard', id]) },
+        chatAPI: {}, interruptHandler: { interrupt: () => new Promise(resolve => { resolveInterrupt = resolve; }) },
+        getAdapter: () => ({ cancelStream: async id => (calls.push(['cancel', id]), null) }),
+        getChatManager: () => null,
+        messageRenderer: { removeMessageById: id => calls.push(['remove', id]) },
+        notify: () => {},
+    });
+    const pending = owner.interrupt();
+    // 回答在中止请求返回前正常结束：不再是 thinking，也不再 streaming
+    message.isThinking = false;
+    element.classList.contains = () => false;
+    resolveInterrupt({ success: false, error: 'Unexpected token' });
+    await pending;
+    assert.deepEqual(calls, [['cancel', 'message-f']]);
+});
+
 test('send owner suppresses late interrupt completion after dispose', async () => {
     let resolveInterrupt;
     const calls = [];

@@ -6,6 +6,13 @@ import {
 } from './chat/singleChatRequestOrchestrator.js';
 import { publishConversationSelection } from './ui-system/sources/conversation-current.js';
 
+// 上游接受中止后等它自己收尾的上限；过了仍没有终态就在本地停止，保留已收到的部分
+const INTERRUPT_SETTLE_MS = 3000;
+const settlesWithin = (promise, ms) => new Promise(resolve => {
+    const timer = setTimeout(() => resolve(false), ms);
+    promise.then(() => { clearTimeout(timer); resolve(true); }, () => { clearTimeout(timer); resolve(true); });
+});
+
 export const chatManager = (() => {
     // --- Private Variables ---
     let electronAPI;
@@ -1573,6 +1580,7 @@ export const chatManager = (() => {
         let thinkingMessageItem = null;
         let releaseStreamConsumerRoute = null;
         let settleOwnedStreamOperation = null;
+        let ownedStreamSettled = false;
         const ownedStreamTerminal = request?.awaitTerminal
             ? new Promise(resolve => { settleOwnedStreamOperation = resolve; })
             : null;
@@ -1758,7 +1766,10 @@ export const chatManager = (() => {
                             append: (messageId, chunk, streamContext) => request.domRenderer.appendStreaming(messageId, chunk, streamContext),
                             projectTerminal: (messageId, finishReason, streamContext, payload) => request.domRenderer.projectStreamTerminal(messageId, finishReason, streamContext, payload),
                         } : {}),
-                        settle: result => settleOwnedStreamOperation?.(result),
+                        settle: result => {
+                            ownedStreamSettled = true;
+                            settleOwnedStreamOperation?.(result);
+                        },
                         release: () => {
                             releaseStreamConsumerRoute?.();
                             releaseStreamConsumerRoute = null;
@@ -1776,9 +1787,13 @@ export const chatManager = (() => {
                             let interrupted = null;
                             try { interrupted = await interruptCapability?.interrupt?.(thinkingMessage.id); }
                             catch (error) { console.warn('[ChatManager] Surface interrupt request failed; cancelling locally:', error); }
-                            if (interrupted?.success === true) return true;
+                            // 上游接受了中止却一直不发终态时，不能让侧聊一直忙着：等一会儿仍没收尾就在本地停
+                            if (interrupted?.success === true && (!ownedStreamTerminal || await settlesWithin(ownedStreamTerminal, INTERRUPT_SETTLE_MS))) return true;
+                            // 中止请求可能要等好几秒，期间回答已经自己收尾（路由随之释放）；
+                            // 这时它是一条完整或已停止的回答，不能再当占位删掉
+                            if (ownedStreamSettled) return true;
                             const res = await releaseStreamConsumerRoute?.cancel?.(reason || 'surface-operation-cancelled');
-                            if (res?.kind) return true;
+                            if (res?.kind || ownedStreamSettled) return true;
                             settleOwnedStreamOperation?.({ event: { type: 'cancelled', reason: reason || 'surface-operation-cancelled' } });
                             await removeThinkingFromSource();
                             return res !== false;

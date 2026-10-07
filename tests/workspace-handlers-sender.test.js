@@ -20,6 +20,9 @@ Module._load = function loadWithElectronMock(request, parent, isMain) {
             BrowserWindow: { fromWebContents: () => null },
         };
     }
+    // fileManager 会加载 sharp（可选依赖，CI 用 --omit=optional 安装）；这里只用到解析器登记
+    if (request === '../fileManager') return { setWorkspaceReferenceResolver() {} };
+    if (request === 'sharp') throw new Error('sharp must not be loaded by this test');
     return originalLoad.call(this, request, parent, isMain);
 };
 const workspaceHandlers = require('../modules/ipc/workspaceHandlers');

@@ -11,7 +11,7 @@ const { createChatHistoryPersistence } = await import(`${R}/chat/chatHistoryPers
 export const tick = () => new Promise(resolve => setImmediate(resolve));
 let fixtureId = 0;
 
-export async function fixture(t, { stream = false, seed = [], onSave = null, onSend = null, model = 'fixture', toasts = [] } = {}) {
+export async function fixture(t, { stream = false, seed = [], onSave = null, onSend = null, model = 'fixture', toasts = [], interrupt = null } = {}) {
     const dom = new JSDOM('<div id="mount"></div>', { pretendToBeVisual: true, url: 'http://localhost/' });
     const oldWindow = globalThis.window;
     globalThis.window = dom.window;
@@ -80,7 +80,7 @@ export async function fixture(t, { stream = false, seed = [], onSave = null, onS
             },
         },
         uiHelper: { showToastNotification: (m, ty) => toasts.push([m, ty]), autoResizeTextarea() {} },
-        modules: { messageRenderer: renderer },
+        modules: { messageRenderer: renderer, ...(interrupt ? { interruptHandler: interrupt } : {}) },
         refs: { currentSelectedItemRef: { get: () => null }, currentTopicIdRef: { get: () => null }, currentChatHistoryRef: { get: () => [], set() {} },
             attachedFilesRef: { get: () => [] }, globalSettingsRef: { get: () => ({ vcpServerUrl: 'http://fixture.invalid/v1/chat/completions' }) } },
         elements: {}, mainRendererFunctions: {},

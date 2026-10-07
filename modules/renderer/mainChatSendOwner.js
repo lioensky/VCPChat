@@ -96,7 +96,8 @@ export function createMainChatSendOwner({
             result.error || 'interrupt-request-failed'
         );
         if (disposed) return false;
-        if (!localOutcome) {
+        // 中止请求可能要等好几秒，期间回答已经自己收尾；那时它不再是占位，不能删
+        if (!localOutcome && getInterruptibleMessage()?.id === activeMessage.id) {
             streamProjection?.discardStreamingMessage?.(activeMessage.id);
             historyRef.set(historyRef.get().filter(message => message?.id !== activeMessage.id));
             messageRenderer?.removeMessageById?.(activeMessage.id, false);
