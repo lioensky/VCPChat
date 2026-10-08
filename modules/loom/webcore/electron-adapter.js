@@ -159,7 +159,26 @@ class ElectronWebAgentAdapter extends contract.WebAgentAdapter {
             );
         }
 
-        const [viewportWidth, viewportHeight] = this.webContents.getSize();
+        // WebContents has no getSize(): read the guest page's CSS viewport,
+        // not the host window's bounds (which include the chat UI in side panes).
+        const viewport = await this.executeInWorld(
+            '({ width: window.innerWidth, height: window.innerHeight })',
+            'ISOLATED'
+        );
+        const viewportWidth = Number(viewport?.width);
+        const viewportHeight = Number(viewport?.height);
+        if (
+            !Number.isFinite(viewportWidth) ||
+            !Number.isFinite(viewportHeight) ||
+            viewportWidth <= 0 ||
+            viewportHeight <= 0
+        ) {
+            throw new protocol.WebAgentError(
+                protocol.ErrorCode.ADAPTER_EXECUTION_ERROR,
+                '页面图片截图无法获取有效视口尺寸',
+                { viewportSize: viewport }
+            );
+        }
         const x = Math.max(0, rawX);
         const y = Math.max(0, rawY);
         const right = Math.min(viewportWidth, rawX + rawWidth);
