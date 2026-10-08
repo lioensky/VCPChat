@@ -34,6 +34,16 @@
         box-shadow: none;
     }
 
+    /* 主输入框与通知区的磨砂卡片共用主题材质底色和高光。
+       不再叠加固定灰白底色或额外透明度；交互状态只改变边框，
+       保留卡片自身的有界模糊，避免外观材质的 none 关闭输入框磨砂。 */
+    html main.main-content > .chat-input-area.vcp-ui-scope .chat-input-card {
+        background: var(--next-shell-bg, var(--panel-bg));
+        background-image: var(--next-material-sheen, none);
+        background-size: auto;
+        background-blend-mode: normal;
+    }
+
     html .vcp-ui-scope .chat-input-card.drag-over {
         border-color: var(--vcp-ui-color-brand);
         box-shadow: 0 0 0 2px var(--vcp-ui-focus-ring);
