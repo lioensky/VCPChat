@@ -3,7 +3,7 @@
  * 侧栏标签条的细节：标题末尾渐隐、拖拽排序、溢出边缘渐隐、悬停提示。
  */
 
-/* ---- 标题：不再用省略号，改为末尾渐隐；关闭按钮出现时预留 1.25rem ---- */
+/* ---- 标题：不再用省略号，改为末尾渐隐；关闭按钮出现时预留 1.5rem ---- */
 html .side-pane-tab-item .side-pane-tab:where(.vcp-ui-scope, .vcp-ui-scope *) {
     --tab-fade-offset: 0px;
     padding-right: 8px;
@@ -15,7 +15,7 @@ html .side-pane-tab-item .side-pane-tab:where(.vcp-ui-scope, .vcp-ui-scope *) {
 html .side-pane-tab-item.active .side-pane-tab:where(.vcp-ui-scope, .vcp-ui-scope *),
 html .side-pane-tab-item:hover .side-pane-tab:where(.vcp-ui-scope, .vcp-ui-scope *),
 html .side-pane-tab-item:focus-within .side-pane-tab:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    --tab-fade-offset: 1.25rem;
+    --tab-fade-offset: 1.5rem;
 }
 
 html .side-pane-tab-item .side-pane-tab .tab-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
