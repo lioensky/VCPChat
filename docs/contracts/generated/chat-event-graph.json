@@ -104,6 +104,7 @@
     "VCPDistributedServer/VCPDistributedServer.js",
     "VCPDistributedServer/frontend-plugin-loader.js",
     "VCPDistributedServer/normalize-plugin-examples.js",
+    "VCPDistributedServer/shared/fileKit/binaryReader.js",
     "VCPDistributedServer/shared/fileKit/diff.js",
     "VCPDistributedServer/shared/fileKit/index.js",
     "VCPDistributedServer/shared/fileKit/output.js",
@@ -212,6 +213,7 @@
     "modules/ipc/workspaceHandlers.js",
     "modules/itemListManager.js",
     "modules/loom/VCPLoomManager.js",
+    "modules/loom/sideBrowserService.js",
     "modules/loom/webcore/adapter-contract.js",
     "modules/loom/webcore/chrome-adapter.js",
     "modules/loom/webcore/comfyui-main-world-bridge.js",
@@ -668,7 +670,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 376,
+          "line": 386,
           "kind": "custom-event-listener"
         },
         {
@@ -733,7 +735,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 376,
+          "line": 386,
           "kind": "custom-event-listener",
           "match": "signal?.addEventListener('abort'"
         },
@@ -757,14 +759,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 1839,
+          "line": 1840,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1839,
+          "line": 1840,
           "kind": "event-listener",
           "match": "app.on('activate'"
         }
@@ -1279,14 +1281,14 @@
       "consumers": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 206,
+          "line": 213,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 206,
+          "line": 213,
           "kind": "event-listener",
           "match": "guest.on('before-input-event'"
         }
@@ -1298,14 +1300,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 1945,
+          "line": 1946,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1945,
+          "line": 1946,
           "kind": "event-listener",
           "match": "app.on('before-quit'"
         }
@@ -1877,33 +1879,121 @@
       ]
     },
     {
+      "name": "browser:active-target",
+      "producers": [
+        {
+          "file": "preloads/api/browser.js",
+          "line": 15,
+          "kind": "preload-channel-definition"
+        }
+      ],
+      "consumers": [],
+      "evidence": [
+        {
+          "file": "preloads/api/browser.js",
+          "line": 15,
+          "kind": "preload-channel-definition",
+          "match": "invoke('browser:active-target'"
+        }
+      ]
+    },
+    {
+      "name": "browser:agent-request",
+      "producers": [
+        {
+          "file": "modules/loom/sideBrowserService.js",
+          "line": 66,
+          "kind": "event-send"
+        }
+      ],
+      "consumers": [
+        {
+          "file": "preloads/api/browser.js",
+          "line": 17,
+          "kind": "preload-channel-definition"
+        }
+      ],
+      "evidence": [
+        {
+          "file": "modules/loom/sideBrowserService.js",
+          "line": 66,
+          "kind": "event-send",
+          "match": "sender.send('browser:agent-request'"
+        },
+        {
+          "file": "preloads/api/browser.js",
+          "line": 17,
+          "kind": "preload-channel-definition",
+          "match": "on('browser:agent-request'"
+        }
+      ]
+    },
+    {
+      "name": "browser:agent-response",
+      "producers": [
+        {
+          "file": "preloads/api/browser.js",
+          "line": 14,
+          "kind": "preload-channel-definition"
+        }
+      ],
+      "consumers": [],
+      "evidence": [
+        {
+          "file": "preloads/api/browser.js",
+          "line": 14,
+          "kind": "preload-channel-definition",
+          "match": "invoke('browser:agent-response'"
+        }
+      ]
+    },
+    {
       "name": "browser:clear-data",
       "producers": [
         {
           "file": "preloads/api/browser.js",
-          "line": 13,
+          "line": 19,
           "kind": "preload-channel-definition"
         }
       ],
       "consumers": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 232,
+          "line": 264,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 232,
+          "line": 264,
           "kind": "event-listener",
           "match": "ipcMain.handle('browser:clear-data'"
         },
         {
           "file": "preloads/api/browser.js",
-          "line": 13,
+          "line": 19,
           "kind": "preload-channel-definition",
           "match": "invoke('browser:clear-data'"
+        }
+      ]
+    },
+    {
+      "name": "browser:complete-assistance",
+      "producers": [
+        {
+          "file": "preloads/api/browser.js",
+          "line": 16,
+          "kind": "preload-channel-definition"
+        }
+      ],
+      "consumers": [],
+      "evidence": [
+        {
+          "file": "preloads/api/browser.js",
+          "line": 16,
+          "kind": "preload-channel-definition",
+          "match": "invoke('browser:complete-assistance'"
         }
       ]
     },
@@ -1912,27 +2002,27 @@
       "producers": [
         {
           "file": "preloads/api/browser.js",
-          "line": 12,
+          "line": 18,
           "kind": "preload-channel-definition"
         }
       ],
       "consumers": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 221,
+          "line": 253,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 221,
+          "line": 253,
           "kind": "event-listener",
           "match": "ipcMain.handle('browser:open-external'"
         },
         {
           "file": "preloads/api/browser.js",
-          "line": 12,
+          "line": 18,
           "kind": "preload-channel-definition",
           "match": "invoke('browser:open-external'"
         }
@@ -1944,16 +2034,35 @@
       "consumers": [
         {
           "file": "preloads/api/browser.js",
-          "line": 14,
+          "line": 20,
           "kind": "preload-channel-definition"
         }
       ],
       "evidence": [
         {
           "file": "preloads/api/browser.js",
-          "line": 14,
+          "line": 20,
           "kind": "preload-channel-definition",
           "match": "on('browser:open-tab'"
+        }
+      ]
+    },
+    {
+      "name": "browser:register-target",
+      "producers": [
+        {
+          "file": "preloads/api/browser.js",
+          "line": 12,
+          "kind": "preload-channel-definition"
+        }
+      ],
+      "consumers": [],
+      "evidence": [
+        {
+          "file": "preloads/api/browser.js",
+          "line": 12,
+          "kind": "preload-channel-definition",
+          "match": "invoke('browser:register-target'"
         }
       ]
     },
@@ -1963,16 +2072,35 @@
       "consumers": [
         {
           "file": "preloads/api/browser.js",
-          "line": 15,
+          "line": 21,
           "kind": "preload-channel-definition"
         }
       ],
       "evidence": [
         {
           "file": "preloads/api/browser.js",
-          "line": 15,
+          "line": 21,
           "kind": "preload-channel-definition",
           "match": "on('browser:side-pane-shortcut'"
+        }
+      ]
+    },
+    {
+      "name": "browser:unregister-target",
+      "producers": [
+        {
+          "file": "preloads/api/browser.js",
+          "line": 13,
+          "kind": "preload-channel-definition"
+        }
+      ],
+      "consumers": [],
+      "evidence": [
+        {
+          "file": "preloads/api/browser.js",
+          "line": 13,
+          "kind": "preload-channel-definition",
+          "match": "invoke('browser:unregister-target'"
         }
       ]
     },
@@ -2289,7 +2417,7 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 164,
+          "line": 155,
           "kind": "event-listener"
         },
         {
@@ -2443,7 +2571,7 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 164,
+          "line": 155,
           "kind": "event-listener",
           "match": "settingsWatcher.on('change'"
         },
@@ -3560,17 +3688,17 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3429,
+          "line": 3432,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3488,
+          "line": 3491,
           "kind": "custom-event-listener"
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3526,
+          "line": 3529,
           "kind": "custom-event-listener"
         },
         {
@@ -3710,7 +3838,7 @@
         },
         {
           "file": "modules/renderer/toolPresentation.js",
-          "line": 536,
+          "line": 556,
           "kind": "custom-event-listener"
         },
         {
@@ -5012,19 +5140,19 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3429,
+          "line": 3432,
           "kind": "custom-event-listener",
           "match": "attachmentElement.addEventListener('click'"
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3488,
+          "line": 3491,
           "kind": "custom-event-listener",
           "match": "attachmentElement.addEventListener('click'"
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3526,
+          "line": 3529,
           "kind": "custom-event-listener",
           "match": "removeBtn.addEventListener('click'"
         },
@@ -5192,7 +5320,7 @@
         },
         {
           "file": "modules/renderer/toolPresentation.js",
-          "line": 536,
+          "line": 556,
           "kind": "custom-event-listener",
           "match": "root.addEventListener('click'"
         },
@@ -6269,12 +6397,12 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 578,
+          "line": 572,
           "kind": "event-listener"
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 690,
+          "line": 684,
           "kind": "event-listener"
         },
         {
@@ -6314,7 +6442,7 @@
         },
         {
           "file": "main.js",
-          "line": 1920,
+          "line": 1921,
           "kind": "event-listener"
         },
         {
@@ -6374,7 +6502,7 @@
         },
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 1839,
+          "line": 1857,
           "kind": "event-listener"
         },
         {
@@ -6404,13 +6532,13 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 578,
+          "line": 572,
           "kind": "event-listener",
           "match": "child.on('close'"
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 690,
+          "line": 684,
           "kind": "event-listener",
           "match": "child.on('close'"
         },
@@ -6458,7 +6586,7 @@
         },
         {
           "file": "main.js",
-          "line": 1920,
+          "line": 1921,
           "kind": "event-listener",
           "match": "pythonProcess.on('close'"
         },
@@ -6530,7 +6658,7 @@
         },
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 1839,
+          "line": 1857,
           "kind": "event-listener",
           "match": "win.once('close'"
         },
@@ -6867,12 +6995,12 @@
         },
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 1868,
+          "line": 1886,
           "kind": "event-listener"
         },
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2165,
+          "line": 2192,
           "kind": "event-listener"
         },
         {
@@ -7086,13 +7214,13 @@
         },
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 1868,
+          "line": 1886,
           "kind": "event-listener",
           "match": "win.on('closed'"
         },
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2165,
+          "line": 2192,
           "kind": "event-listener",
           "match": "win.on('closed'"
         },
@@ -7219,14 +7347,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 2105,
+          "line": 2106,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 2105,
+          "line": 2106,
           "kind": "event-listener",
           "match": "ipcMain.on('connect-vcplog'"
         },
@@ -7318,7 +7446,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3430,
+          "line": 3433,
           "kind": "custom-event-listener"
         },
         {
@@ -7446,7 +7574,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3430,
+          "line": 3433,
           "kind": "custom-event-listener",
           "match": "attachmentElement.addEventListener('contextmenu'"
         },
@@ -7628,7 +7756,7 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 201,
+          "line": 194,
           "kind": "event-listener"
         }
       ],
@@ -7647,7 +7775,7 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 201,
+          "line": 194,
           "kind": "event-listener",
           "match": "ipcMain.on('copy-to-clipboard'"
         }
@@ -7981,17 +8109,17 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 565,
+          "line": 559,
           "kind": "event-listener"
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 680,
+          "line": 674,
           "kind": "event-listener"
         },
         {
           "file": "VCPDistributedServer/Plugin/ProjectForge/indexerClient.js",
-          "line": 185,
+          "line": 195,
           "kind": "event-listener"
         },
         {
@@ -8051,12 +8179,12 @@
         },
         {
           "file": "main.js",
-          "line": 1912,
+          "line": 1913,
           "kind": "event-listener"
         },
         {
           "file": "main.js",
-          "line": 1916,
+          "line": 1917,
           "kind": "event-listener"
         },
         {
@@ -8254,19 +8382,19 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 565,
+          "line": 559,
           "kind": "event-listener",
           "match": "child.stderr.on('data'"
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 680,
+          "line": 674,
           "kind": "event-listener",
           "match": "child.stderr.on('data'"
         },
         {
           "file": "VCPDistributedServer/Plugin/ProjectForge/indexerClient.js",
-          "line": 185,
+          "line": 195,
           "kind": "event-listener",
           "match": "child.stderr.on('data'"
         },
@@ -8338,13 +8466,13 @@
         },
         {
           "file": "main.js",
-          "line": 1912,
+          "line": 1913,
           "kind": "event-listener",
           "match": "pythonProcess.stdout.on('data'"
         },
         {
           "file": "main.js",
-          "line": 1916,
+          "line": 1917,
           "kind": "event-listener",
           "match": "pythonProcess.stderr.on('data'"
         },
@@ -9896,6 +10024,11 @@
           "kind": "event-listener"
         },
         {
+          "file": "modules/ipc/browserHandlers.js",
+          "line": 194,
+          "kind": "event-listener"
+        },
+        {
           "file": "modules/ipc/chartHandlers.js",
           "line": 79,
           "kind": "event-listener"
@@ -9921,6 +10054,11 @@
           "kind": "event-listener"
         },
         {
+          "file": "modules/loom/sideBrowserService.js",
+          "line": 64,
+          "kind": "event-listener"
+        },
+        {
           "file": "modules/services/embeddedAppSessionManager.js",
           "line": 215,
           "kind": "event-listener"
@@ -9932,7 +10070,7 @@
         },
         {
           "file": "modules/services/senderTaskRegistry.js",
-          "line": 33,
+          "line": 35,
           "kind": "event-listener"
         }
       ],
@@ -9942,6 +10080,12 @@
           "line": 295,
           "kind": "event-listener",
           "match": "sender.once('destroyed'"
+        },
+        {
+          "file": "modules/ipc/browserHandlers.js",
+          "line": 194,
+          "kind": "event-listener",
+          "match": "guest.once('destroyed'"
         },
         {
           "file": "modules/ipc/chartHandlers.js",
@@ -9974,6 +10118,12 @@
           "match": "target.webContents.once('destroyed'"
         },
         {
+          "file": "modules/loom/sideBrowserService.js",
+          "line": 64,
+          "kind": "event-listener",
+          "match": "sender.once('destroyed'"
+        },
+        {
           "file": "modules/services/embeddedAppSessionManager.js",
           "line": 215,
           "kind": "event-listener",
@@ -9987,7 +10137,7 @@
         },
         {
           "file": "modules/services/senderTaskRegistry.js",
-          "line": 33,
+          "line": 35,
           "kind": "event-listener",
           "match": "sender.once?.('destroyed'"
         }
@@ -9999,14 +10149,14 @@
       "consumers": [
         {
           "file": "modules/loom/webcore/electron-adapter.js",
-          "line": 407,
+          "line": 426,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/loom/webcore/electron-adapter.js",
-          "line": 407,
+          "line": 426,
           "kind": "event-listener",
           "match": "this.webContents.debugger.on('detach'"
         }
@@ -10068,14 +10218,14 @@
       "consumers": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 187,
+          "line": 192,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 187,
+          "line": 192,
           "kind": "event-listener",
           "match": "host.on('did-attach-webview'"
         }
@@ -10112,7 +10262,7 @@
         },
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 1794,
+          "line": 1812,
           "kind": "event-listener"
         },
         {
@@ -10154,7 +10304,7 @@
         },
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 1794,
+          "line": 1812,
           "kind": "event-listener",
           "match": "contents.on('did-fail-load'"
         },
@@ -10212,12 +10362,12 @@
         },
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 1762,
+          "line": 1780,
           "kind": "event-listener"
         },
         {
           "file": "modules/loom/webcore/electron-adapter.js",
-          "line": 595,
+          "line": 614,
           "kind": "event-listener"
         }
       ],
@@ -10272,13 +10422,13 @@
         },
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 1762,
+          "line": 1780,
           "kind": "event-listener",
           "match": "contents.on('did-finish-load'"
         },
         {
           "file": "modules/loom/webcore/electron-adapter.js",
-          "line": 595,
+          "line": 614,
           "kind": "event-listener",
           "match": "this.webContents.once('did-finish-load'"
         }
@@ -10319,12 +10469,7 @@
         },
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 1752,
-          "kind": "event-listener"
-        },
-        {
-          "file": "modules/services/senderTaskRegistry.js",
-          "line": 56,
+          "line": 1770,
           "kind": "event-listener"
         }
       ],
@@ -10343,15 +10488,9 @@
         },
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 1752,
+          "line": 1770,
           "kind": "event-listener",
           "match": "contents.on('did-start-loading'"
-        },
-        {
-          "file": "modules/services/senderTaskRegistry.js",
-          "line": 56,
-          "kind": "event-listener",
-          "match": "sender.on?.('did-start-loading'"
         }
       ]
     },
@@ -10361,16 +10500,38 @@
       "consumers": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 1739,
+          "line": 1757,
+          "kind": "event-listener"
+        },
+        {
+          "file": "modules/loom/sideBrowserService.js",
+          "line": 65,
+          "kind": "event-listener"
+        },
+        {
+          "file": "modules/services/senderTaskRegistry.js",
+          "line": 58,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 1739,
+          "line": 1757,
           "kind": "event-listener",
           "match": "contents.on('did-start-navigation'"
+        },
+        {
+          "file": "modules/loom/sideBrowserService.js",
+          "line": 65,
+          "kind": "event-listener",
+          "match": "sender.on('did-start-navigation'"
+        },
+        {
+          "file": "modules/services/senderTaskRegistry.js",
+          "line": 58,
+          "kind": "event-listener",
+          "match": "sender.on?.('did-start-navigation'"
         }
       ]
     },
@@ -10380,14 +10541,14 @@
       "consumers": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 1757,
+          "line": 1775,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 1757,
+          "line": 1775,
           "kind": "event-listener",
           "match": "contents.on('did-stop-loading'"
         }
@@ -10454,14 +10615,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 2116,
+          "line": 2117,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 2116,
+          "line": 2117,
           "kind": "event-listener",
           "match": "ipcMain.on('disconnect-vcplog'"
         },
@@ -11680,22 +11841,22 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 569,
+          "line": 563,
           "kind": "event-listener"
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 684,
+          "line": 678,
           "kind": "event-listener"
         },
         {
           "file": "VCPDistributedServer/Plugin/ProjectForge/indexerClient.js",
-          "line": 189,
+          "line": 199,
           "kind": "event-listener"
         },
         {
           "file": "VCPDistributedServer/Plugin/ProjectForge/indexerClient.js",
-          "line": 190,
+          "line": 200,
           "kind": "event-listener"
         },
         {
@@ -11780,7 +11941,7 @@
         },
         {
           "file": "main.js",
-          "line": 1927,
+          "line": 1928,
           "kind": "event-listener"
         },
         {
@@ -11972,25 +12133,25 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 569,
+          "line": 563,
           "kind": "event-listener",
           "match": "child.on('error'"
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 684,
+          "line": 678,
           "kind": "event-listener",
           "match": "child.on('error'"
         },
         {
           "file": "VCPDistributedServer/Plugin/ProjectForge/indexerClient.js",
-          "line": 189,
+          "line": 199,
           "kind": "event-listener",
           "match": "child.stdin.on('error'"
         },
         {
           "file": "VCPDistributedServer/Plugin/ProjectForge/indexerClient.js",
-          "line": 190,
+          "line": 200,
           "kind": "event-listener",
           "match": "child.once('error'"
         },
@@ -12092,7 +12253,7 @@
         },
         {
           "file": "main.js",
-          "line": 1927,
+          "line": 1928,
           "kind": "event-listener",
           "match": "pythonProcess.on('error'"
         },
@@ -12224,14 +12385,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 1901,
+          "line": 1902,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1901,
+          "line": 1902,
           "kind": "event-listener",
           "match": "ipcMain.handle('execute-python-code'"
         },
@@ -12279,12 +12440,12 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/ProjectForge/indexerClient.js",
-          "line": 191,
+          "line": 201,
           "kind": "event-listener"
         },
         {
           "file": "VCPDistributedServer/Plugin/ProjectForge/indexerClient.js",
-          "line": 273,
+          "line": 288,
           "kind": "event-listener"
         },
         {
@@ -12377,13 +12538,13 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/ProjectForge/indexerClient.js",
-          "line": 191,
+          "line": 201,
           "kind": "event-listener",
           "match": "child.once('exit'"
         },
         {
           "file": "VCPDistributedServer/Plugin/ProjectForge/indexerClient.js",
-          "line": 273,
+          "line": 288,
           "kind": "event-listener",
           "match": "child.once('exit'"
         },
@@ -12461,14 +12622,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 2139,
+          "line": 2140,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 2139,
+          "line": 2140,
           "kind": "event-listener",
           "match": "ipcMain.handle('export-topic-as-markdown'"
         },
@@ -12757,7 +12918,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 243,
+          "line": 251,
           "kind": "custom-event-listener"
         }
       ],
@@ -12776,7 +12937,7 @@
         },
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 243,
+          "line": 251,
           "kind": "custom-event-listener",
           "match": "screen.addEventListener('focusin'"
         }
@@ -13699,7 +13860,7 @@
         },
         {
           "file": "main.js",
-          "line": 1876,
+          "line": 1877,
           "kind": "event-listener"
         }
       ],
@@ -13712,7 +13873,7 @@
         },
         {
           "file": "main.js",
-          "line": 1876,
+          "line": 1877,
           "kind": "event-listener",
           "match": "ipcMain.handle('get-platform'"
         },
@@ -15158,14 +15319,14 @@
       "consumers": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 189,
+          "line": 196,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 189,
+          "line": 196,
           "kind": "event-listener",
           "match": "guest.on('input-event'"
         }
@@ -15214,14 +15375,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 2174,
+          "line": 2175,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 2174,
+          "line": 2175,
           "kind": "event-listener",
           "match": "ipcMain.handle('interrupt-group-request'"
         },
@@ -16222,7 +16383,7 @@
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/ProjectForge/indexerClient.js",
-          "line": 157,
+          "line": 167,
           "kind": "event-listener"
         },
         {
@@ -16244,7 +16405,7 @@
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/ProjectForge/indexerClient.js",
-          "line": 157,
+          "line": 167,
           "kind": "event-listener",
           "match": "rl.on('line'"
         },
@@ -17097,14 +17258,14 @@
       "consumers": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2335,
+          "line": 2362,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2335,
+          "line": 2362,
           "kind": "event-listener",
           "match": "handle('loom:clear-session'"
         },
@@ -17128,14 +17289,14 @@
       "consumers": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2334,
+          "line": 2361,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2334,
+          "line": 2361,
           "kind": "event-listener",
           "match": "handle('loom:close-app'"
         },
@@ -17159,14 +17320,14 @@
       "consumers": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2328,
+          "line": 2355,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2328,
+          "line": 2355,
           "kind": "event-listener",
           "match": "handle('loom:create-app'"
         },
@@ -17184,14 +17345,14 @@
       "consumers": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2324,
+          "line": 2351,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2324,
+          "line": 2351,
           "kind": "event-listener",
           "match": "handle('loom:create-persistent-web-agent-target'"
         }
@@ -17209,14 +17370,14 @@
       "consumers": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2331,
+          "line": 2358,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2331,
+          "line": 2358,
           "kind": "event-listener",
           "match": "handle('loom:delete-app'"
         },
@@ -17259,14 +17420,14 @@
       "consumers": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2330,
+          "line": 2357,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2330,
+          "line": 2357,
           "kind": "event-listener",
           "match": "handle('loom:edit-app-sources'"
         },
@@ -17284,14 +17445,14 @@
       "consumers": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2326,
+          "line": 2353,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2326,
+          "line": 2353,
           "kind": "event-listener",
           "match": "handle('loom:execute-web-agent-action'"
         }
@@ -17309,14 +17470,14 @@
       "consumers": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2338,
+          "line": 2365,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2338,
+          "line": 2365,
           "kind": "event-listener",
           "match": "handle('loom:export-app'"
         },
@@ -17340,14 +17501,14 @@
       "consumers": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2320,
+          "line": 2347,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2320,
+          "line": 2347,
           "kind": "event-listener",
           "match": "handle('loom:get-app'"
         },
@@ -17371,14 +17532,14 @@
       "consumers": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2322,
+          "line": 2349,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2322,
+          "line": 2349,
           "kind": "event-listener",
           "match": "handle('loom:get-rendered-text'"
         },
@@ -17402,14 +17563,14 @@
       "consumers": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2321,
+          "line": 2348,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2321,
+          "line": 2348,
           "kind": "event-listener",
           "match": "handle('loom:get-runtime-source'"
         },
@@ -17427,14 +17588,14 @@
       "consumers": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2323,
+          "line": 2350,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2323,
+          "line": 2350,
           "kind": "event-listener",
           "match": "handle('loom:get-web-agent-page-info'"
         }
@@ -17452,14 +17613,14 @@
       "consumers": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2339,
+          "line": 2366,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2339,
+          "line": 2366,
           "kind": "event-listener",
           "match": "handle('loom:import-app'"
         },
@@ -17488,14 +17649,14 @@
       "consumers": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2318,
+          "line": 2345,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2318,
+          "line": 2345,
           "kind": "event-listener",
           "match": "handle('loom:list-apps'"
         },
@@ -17525,14 +17686,14 @@
       "consumers": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2319,
+          "line": 2346,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2319,
+          "line": 2346,
           "kind": "event-listener",
           "match": "handle('loom:list-open-apps'"
         },
@@ -17561,14 +17722,14 @@
       "consumers": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2333,
+          "line": 2360,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2333,
+          "line": 2360,
           "kind": "event-listener",
           "match": "handle('loom:open-app'"
         },
@@ -17598,14 +17759,14 @@
       "consumers": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2341,
+          "line": 2368,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2341,
+          "line": 2368,
           "kind": "event-listener",
           "match": "handle('loom:open-app-folder'"
         },
@@ -17634,14 +17795,14 @@
       "consumers": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2337,
+          "line": 2364,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2337,
+          "line": 2364,
           "kind": "event-listener",
           "match": "handle('loom:open-manager'"
         },
@@ -17671,14 +17832,14 @@
       "consumers": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2340,
+          "line": 2367,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2340,
+          "line": 2367,
           "kind": "event-listener",
           "match": "handle('loom:open-skill-manager'"
         },
@@ -17695,7 +17856,7 @@
       "producers": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2288,
+          "line": 2315,
           "kind": "event-send"
         }
       ],
@@ -17714,7 +17875,7 @@
       "evidence": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2288,
+          "line": 2315,
           "kind": "event-send",
           "match": "win.webContents.send('loom:registry-changed'"
         },
@@ -17744,14 +17905,14 @@
       "consumers": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2336,
+          "line": 2363,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2336,
+          "line": 2363,
           "kind": "event-listener",
           "match": "handle('loom:reload-registry'"
         },
@@ -17775,14 +17936,14 @@
       "consumers": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2329,
+          "line": 2356,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2329,
+          "line": 2356,
           "kind": "event-listener",
           "match": "handle('loom:save-app'"
         },
@@ -17806,14 +17967,14 @@
       "consumers": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2332,
+          "line": 2359,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2332,
+          "line": 2359,
           "kind": "event-listener",
           "match": "handle('loom:set-enabled'"
         },
@@ -17830,7 +17991,7 @@
       "producers": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2086,
+          "line": 2107,
           "kind": "event-send"
         }
       ],
@@ -17844,7 +18005,7 @@
       "evidence": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2086,
+          "line": 2107,
           "kind": "event-send",
           "match": "this.mainWindow.webContents.send('loom:share-text-to-input'"
         },
@@ -17868,14 +18029,14 @@
       "consumers": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2352,
+          "line": 2379,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2352,
+          "line": 2379,
           "kind": "event-listener",
           "match": "handle('loom:shell-action'"
         },
@@ -17899,14 +18060,14 @@
       "consumers": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2347,
+          "line": 2374,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2347,
+          "line": 2374,
           "kind": "event-listener",
           "match": "handle('loom:shell-ready'"
         },
@@ -18169,7 +18330,7 @@
         },
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 1736,
+          "line": 1754,
           "kind": "event-listener"
         }
       ],
@@ -18188,7 +18349,7 @@
         },
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 1736,
+          "line": 1754,
           "kind": "event-listener",
           "match": "win.on('maximize'"
         }
@@ -18301,7 +18462,7 @@
         },
         {
           "file": "modules/loom/webcore/electron-adapter.js",
-          "line": 384,
+          "line": 403,
           "kind": "event-listener"
         },
         {
@@ -18346,7 +18507,7 @@
         },
         {
           "file": "modules/loom/webcore/electron-adapter.js",
-          "line": 384,
+          "line": 403,
           "kind": "event-listener",
           "match": "this.webContents.debugger.on('message'"
         },
@@ -18407,14 +18568,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 1830,
+          "line": 1831,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1830,
+          "line": 1831,
           "kind": "event-listener",
           "match": "ipcMain.on('minimize-to-tray'"
         },
@@ -21442,6 +21603,25 @@
       ]
     },
     {
+      "name": "onBrowserAgentRequest(",
+      "producers": [],
+      "consumers": [
+        {
+          "file": "modules/renderer/sidePaneWiring.js",
+          "line": 94,
+          "kind": "preload-subscription"
+        }
+      ],
+      "evidence": [
+        {
+          "file": "modules/renderer/sidePaneWiring.js",
+          "line": 94,
+          "kind": "preload-subscription",
+          "match": "chatAPI?.onBrowserAgentRequest("
+        }
+      ]
+    },
+    {
       "name": "onBrowserOpenTab(",
       "producers": [],
       "consumers": [
@@ -21466,14 +21646,14 @@
       "consumers": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 79,
+          "line": 104,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/renderer/sidePaneWiring.js",
-          "line": 79,
+          "line": 104,
           "kind": "preload-subscription",
           "match": "chatAPI?.onBrowserSidePaneShortcut("
         }
@@ -21811,14 +21991,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 254,
+          "line": 262,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 254,
+          "line": 262,
           "kind": "preload-subscription",
           "match": "api.onTerminalClear("
         }
@@ -21849,14 +22029,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 248,
+          "line": 256,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 248,
+          "line": 256,
           "kind": "preload-subscription",
           "match": "api.onTerminalData("
         }
@@ -21868,14 +22048,14 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 268,
+          "line": 278,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 268,
+          "line": 278,
           "kind": "preload-subscription",
           "match": "api.onTerminalExit("
         }
@@ -21887,16 +22067,35 @@
       "consumers": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 263,
+          "line": 273,
           "kind": "preload-subscription"
         }
       ],
       "evidence": [
         {
           "file": "modules/ui-system/side-pane/terminalSideProvider.js",
-          "line": 263,
+          "line": 273,
           "kind": "preload-subscription",
           "match": "api.onTerminalResized("
+        }
+      ]
+    },
+    {
+      "name": "onTerminalViewRequest(",
+      "producers": [],
+      "consumers": [
+        {
+          "file": "modules/renderer/sidePaneWiring.js",
+          "line": 78,
+          "kind": "preload-subscription"
+        }
+      ],
+      "evidence": [
+        {
+          "file": "modules/renderer/sidePaneWiring.js",
+          "line": 78,
+          "kind": "preload-subscription",
+          "match": "chatAPI?.onTerminalViewRequest("
         }
       ]
     },
@@ -22725,14 +22924,14 @@
       "consumers": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 1803,
+          "line": 1821,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 1803,
+          "line": 1821,
           "kind": "event-listener",
           "match": "contents.on('page-title-updated'"
         }
@@ -23410,7 +23609,7 @@
       "producers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 934,
+          "line": 928,
           "kind": "event-send"
         }
       ],
@@ -23424,7 +23623,7 @@
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 934,
+          "line": 928,
           "kind": "event-send",
           "match": "guiWindow.webContents.send('powershell-clear'"
         },
@@ -23442,14 +23641,14 @@
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 193,
+          "line": 186,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 193,
+          "line": 186,
           "kind": "event-listener",
           "match": "ipcMain.on('powershell-command'"
         }
@@ -23460,7 +23659,12 @@
       "producers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 739,
+          "line": 182,
+          "kind": "event-send"
+        },
+        {
+          "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
+          "line": 733,
           "kind": "event-send"
         }
       ],
@@ -23474,7 +23678,13 @@
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 739,
+          "line": 182,
+          "kind": "event-send",
+          "match": "event.sender.send('powershell-data'"
+        },
+        {
+          "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
+          "line": 733,
           "kind": "event-send",
           "match": "guiWindow.webContents.send('powershell-data'"
         },
@@ -23492,14 +23702,14 @@
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 178,
+          "line": 169,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 178,
+          "line": 169,
           "kind": "event-listener",
           "match": "ipcMain.on('powershell-gui-ready'"
         }
@@ -23511,14 +23721,14 @@
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 242,
+          "line": 235,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 242,
+          "line": 235,
           "kind": "event-listener",
           "match": "ipcMain.on('powershell-input'"
         }
@@ -23530,14 +23740,14 @@
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 235,
+          "line": 228,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 235,
+          "line": 228,
           "kind": "event-listener",
           "match": "ipcMain.on('powershell-resize'"
         }
@@ -23555,14 +23765,14 @@
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 322,
+          "line": 315,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 322,
+          "line": 315,
           "kind": "event-listener",
           "match": "ipcMain.on('powershell-window:close'"
         },
@@ -23586,14 +23796,14 @@
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 304,
+          "line": 297,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 304,
+          "line": 297,
           "kind": "event-listener",
           "match": "ipcMain.on('powershell-window:minimize'"
         },
@@ -23617,14 +23827,14 @@
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 310,
+          "line": 303,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 310,
+          "line": 303,
           "kind": "event-listener",
           "match": "ipcMain.on('powershell-window:toggle-maximize'"
         },
@@ -23941,7 +24151,7 @@
       "producers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 1533,
+          "line": 1545,
           "kind": "event-send"
         }
       ],
@@ -23955,7 +24165,7 @@
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 1533,
+          "line": 1545,
           "kind": "event-send",
           "match": "guiWindow.webContents.send('query-visible-text'"
         },
@@ -24395,14 +24605,14 @@
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 208,
+          "line": 201,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 208,
+          "line": 201,
           "kind": "event-listener",
           "match": "ipcMain.handle('read-from-clipboard'"
         },
@@ -24623,12 +24833,12 @@
         },
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 1707,
+          "line": 1725,
           "kind": "event-listener"
         },
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2164,
+          "line": 2191,
           "kind": "event-listener"
         }
       ],
@@ -24767,13 +24977,13 @@
         },
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 1707,
+          "line": 1725,
           "kind": "event-listener",
           "match": "win.once('ready-to-show'"
         },
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 2164,
+          "line": 2191,
           "kind": "event-listener",
           "match": "win.once('ready-to-show'"
         }
@@ -25034,7 +25244,7 @@
         },
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 1833,
+          "line": 1851,
           "kind": "event-listener"
         },
         {
@@ -25044,7 +25254,7 @@
         },
         {
           "file": "modules/services/senderTaskRegistry.js",
-          "line": 57,
+          "line": 59,
           "kind": "event-listener"
         }
       ],
@@ -25081,7 +25291,7 @@
         },
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 1833,
+          "line": 1851,
           "kind": "event-listener",
           "match": "contents.on('render-process-gone'"
         },
@@ -25093,7 +25303,7 @@
         },
         {
           "file": "modules/services/senderTaskRegistry.js",
-          "line": 57,
+          "line": 59,
           "kind": "event-listener",
           "match": "sender.on?.('render-process-gone'"
         }
@@ -25130,7 +25340,7 @@
         },
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 1735,
+          "line": 1753,
           "kind": "event-listener"
         },
         {
@@ -25222,7 +25432,7 @@
         },
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 1735,
+          "line": 1753,
           "kind": "event-listener",
           "match": "win.on('resize'"
         },
@@ -26897,14 +27107,14 @@
       "consumers": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 1408,
+          "line": 1425,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 1408,
+          "line": 1425,
           "kind": "event-listener",
           "match": "contents.on('select-bluetooth-device'"
         }
@@ -27096,14 +27306,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 2128,
+          "line": 2129,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 2128,
+          "line": 2129,
           "kind": "event-listener",
           "match": "ipcMain.on('send-vcplog-message'"
         },
@@ -28514,14 +28724,14 @@
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 276,
+          "line": 269,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 276,
+          "line": 269,
           "kind": "event-listener",
           "match": "ipcMain.on('terminal-paste-complete'"
         },
@@ -28538,7 +28748,7 @@
       "producers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 1554,
+          "line": 1566,
           "kind": "event-send"
         }
       ],
@@ -28552,7 +28762,7 @@
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 1554,
+          "line": 1566,
           "kind": "event-send",
           "match": "guiWindow.webContents.send('terminal-paste-request'"
         },
@@ -28569,27 +28779,27 @@
       "producers": [
         {
           "file": "preloads/api/terminal.js",
-          "line": 19,
+          "line": 21,
           "kind": "preload-channel-definition"
         }
       ],
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 370,
+          "line": 403,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 370,
+          "line": 403,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:cd'"
         },
         {
           "file": "preloads/api/terminal.js",
-          "line": 19,
+          "line": 21,
           "kind": "preload-channel-definition",
           "match": "invoke('terminal:cd'"
         }
@@ -28600,27 +28810,27 @@
       "producers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 228,
+          "line": 229,
           "kind": "event-send"
         }
       ],
       "consumers": [
         {
           "file": "preloads/api/terminal.js",
-          "line": 26,
+          "line": 28,
           "kind": "preload-channel-definition"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 228,
+          "line": 229,
           "kind": "event-send",
           "match": "emit('terminal:clear'"
         },
         {
           "file": "preloads/api/terminal.js",
-          "line": 26,
+          "line": 28,
           "kind": "preload-channel-definition",
           "match": "on('terminal:clear'"
         }
@@ -28631,27 +28841,27 @@
       "producers": [
         {
           "file": "preloads/api/terminal.js",
-          "line": 16,
+          "line": 18,
           "kind": "preload-channel-definition"
         }
       ],
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 304,
+          "line": 337,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 304,
+          "line": 337,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:clear-screen'"
         },
         {
           "file": "preloads/api/terminal.js",
-          "line": 16,
+          "line": 18,
           "kind": "preload-channel-definition",
           "match": "invoke('terminal:clear-screen'"
         }
@@ -28662,27 +28872,27 @@
       "producers": [
         {
           "file": "preloads/api/terminal.js",
-          "line": 21,
+          "line": 23,
           "kind": "preload-channel-definition"
         }
       ],
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 342,
+          "line": 375,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 342,
+          "line": 375,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:command-run'"
         },
         {
           "file": "preloads/api/terminal.js",
-          "line": 21,
+          "line": 23,
           "kind": "preload-channel-definition",
           "match": "invoke('terminal:command-run'"
         }
@@ -28694,14 +28904,14 @@
       "consumers": [
         {
           "file": "preloads/api/terminal.js",
-          "line": 24,
+          "line": 26,
           "kind": "preload-channel-definition"
         }
       ],
       "evidence": [
         {
           "file": "preloads/api/terminal.js",
-          "line": 24,
+          "line": 26,
           "kind": "preload-channel-definition",
           "match": "on('terminal:command-run-changed'"
         }
@@ -28712,27 +28922,27 @@
       "producers": [
         {
           "file": "preloads/api/terminal.js",
-          "line": 20,
+          "line": 22,
           "kind": "preload-channel-definition"
         }
       ],
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 333,
+          "line": 366,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 333,
+          "line": 366,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:command-runs'"
         },
         {
           "file": "preloads/api/terminal.js",
-          "line": 20,
+          "line": 22,
           "kind": "preload-channel-definition",
           "match": "invoke('terminal:command-runs'"
         }
@@ -28743,27 +28953,27 @@
       "producers": [
         {
           "file": "preloads/api/terminal.js",
-          "line": 13,
+          "line": 15,
           "kind": "preload-channel-definition"
         }
       ],
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 269,
+          "line": 302,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 269,
+          "line": 302,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:create'"
         },
         {
           "file": "preloads/api/terminal.js",
-          "line": 13,
+          "line": 15,
           "kind": "preload-channel-definition",
           "match": "invoke('terminal:create'"
         }
@@ -28774,60 +28984,60 @@
       "producers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 202,
+          "line": 203,
           "kind": "event-send"
         },
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 210,
+          "line": 211,
           "kind": "event-send"
         },
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 216,
+          "line": 217,
           "kind": "event-send"
         },
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 224,
+          "line": 225,
           "kind": "event-send"
         }
       ],
       "consumers": [
         {
           "file": "preloads/api/terminal.js",
-          "line": 25,
+          "line": 27,
           "kind": "preload-channel-definition"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 202,
+          "line": 203,
           "kind": "event-send",
           "match": "emit('terminal:data'"
         },
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 210,
+          "line": 211,
           "kind": "event-send",
           "match": "emit('terminal:data'"
         },
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 216,
+          "line": 217,
           "kind": "event-send",
           "match": "emit('terminal:data'"
         },
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 224,
+          "line": 225,
           "kind": "event-send",
           "match": "emit('terminal:data'"
         },
         {
           "file": "preloads/api/terminal.js",
-          "line": 25,
+          "line": 27,
           "kind": "preload-channel-definition",
           "match": "on('terminal:data'"
         }
@@ -28838,27 +29048,27 @@
       "producers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 229,
+          "line": 230,
           "kind": "event-send"
         }
       ],
       "consumers": [
         {
           "file": "preloads/api/terminal.js",
-          "line": 27,
+          "line": 29,
           "kind": "preload-channel-definition"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 229,
+          "line": 230,
           "kind": "event-send",
           "match": "emit('terminal:exit'"
         },
         {
           "file": "preloads/api/terminal.js",
-          "line": 27,
+          "line": 29,
           "kind": "preload-channel-definition",
           "match": "on('terminal:exit'"
         }
@@ -28869,27 +29079,27 @@
       "producers": [
         {
           "file": "preloads/api/terminal.js",
-          "line": 17,
+          "line": 19,
           "kind": "preload-channel-definition"
         }
       ],
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 315,
+          "line": 348,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 315,
+          "line": 348,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:kill'"
         },
         {
           "file": "preloads/api/terminal.js",
-          "line": 17,
+          "line": 19,
           "kind": "preload-channel-definition",
           "match": "invoke('terminal:kill'"
         }
@@ -28900,27 +29110,27 @@
       "producers": [
         {
           "file": "preloads/api/terminal.js",
-          "line": 15,
+          "line": 17,
           "kind": "preload-channel-definition"
         }
       ],
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 291,
+          "line": 324,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 291,
+          "line": 324,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:resize'"
         },
         {
           "file": "preloads/api/terminal.js",
-          "line": 15,
+          "line": 17,
           "kind": "preload-channel-definition",
           "match": "invoke('terminal:resize'"
         }
@@ -28931,27 +29141,27 @@
       "producers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 231,
+          "line": 232,
           "kind": "event-send"
         }
       ],
       "consumers": [
         {
           "file": "preloads/api/terminal.js",
-          "line": 28,
+          "line": 30,
           "kind": "preload-channel-definition"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 231,
+          "line": 232,
           "kind": "event-send",
           "match": "emit('terminal:resized'"
         },
         {
           "file": "preloads/api/terminal.js",
-          "line": 28,
+          "line": 30,
           "kind": "preload-channel-definition",
           "match": "on('terminal:resized'"
         }
@@ -28962,27 +29172,27 @@
       "producers": [
         {
           "file": "preloads/api/terminal.js",
-          "line": 18,
+          "line": 20,
           "kind": "preload-channel-definition"
         }
       ],
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 321,
+          "line": 354,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 321,
+          "line": 354,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:restart'"
         },
         {
           "file": "preloads/api/terminal.js",
-          "line": 18,
+          "line": 20,
           "kind": "preload-channel-definition",
           "match": "invoke('terminal:restart'"
         }
@@ -28993,29 +29203,91 @@
       "producers": [
         {
           "file": "preloads/api/terminal.js",
-          "line": 23,
+          "line": 25,
           "kind": "preload-channel-definition"
         }
       ],
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 364,
+          "line": 397,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 364,
+          "line": 397,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:unwatch-command-runs'"
         },
         {
           "file": "preloads/api/terminal.js",
-          "line": 23,
+          "line": 25,
           "kind": "preload-channel-definition",
           "match": "invoke('terminal:unwatch-command-runs'"
+        }
+      ]
+    },
+    {
+      "name": "terminal:view-request",
+      "producers": [
+        {
+          "file": "modules/ipc/terminalHandlers.js",
+          "line": 277,
+          "kind": "event-send"
+        }
+      ],
+      "consumers": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 14,
+          "kind": "preload-channel-definition"
+        }
+      ],
+      "evidence": [
+        {
+          "file": "modules/ipc/terminalHandlers.js",
+          "line": 277,
+          "kind": "event-send",
+          "match": "sender.send('terminal:view-request'"
+        },
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 14,
+          "kind": "preload-channel-definition",
+          "match": "on('terminal:view-request'"
+        }
+      ]
+    },
+    {
+      "name": "terminal:view-response",
+      "producers": [
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 13,
+          "kind": "preload-channel-definition"
+        }
+      ],
+      "consumers": [
+        {
+          "file": "modules/ipc/terminalHandlers.js",
+          "line": 294,
+          "kind": "event-listener"
+        }
+      ],
+      "evidence": [
+        {
+          "file": "modules/ipc/terminalHandlers.js",
+          "line": 294,
+          "kind": "event-listener",
+          "match": "ipcMain.handle('terminal:view-response'"
+        },
+        {
+          "file": "preloads/api/terminal.js",
+          "line": 13,
+          "kind": "preload-channel-definition",
+          "match": "invoke('terminal:view-response'"
         }
       ]
     },
@@ -29024,27 +29296,27 @@
       "producers": [
         {
           "file": "preloads/api/terminal.js",
-          "line": 22,
+          "line": 24,
           "kind": "preload-channel-definition"
         }
       ],
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 353,
+          "line": 386,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 353,
+          "line": 386,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:watch-command-runs'"
         },
         {
           "file": "preloads/api/terminal.js",
-          "line": 22,
+          "line": 24,
           "kind": "preload-channel-definition",
           "match": "invoke('terminal:watch-command-runs'"
         }
@@ -29055,27 +29327,27 @@
       "producers": [
         {
           "file": "preloads/api/terminal.js",
-          "line": 14,
+          "line": 16,
           "kind": "preload-channel-definition"
         }
       ],
       "consumers": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 278,
+          "line": 311,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/terminalHandlers.js",
-          "line": 278,
+          "line": 311,
           "kind": "event-listener",
           "match": "ipcMain.handle('terminal:write'"
         },
         {
           "file": "preloads/api/terminal.js",
-          "line": 14,
+          "line": 16,
           "kind": "preload-channel-definition",
           "match": "invoke('terminal:write'"
         }
@@ -29086,7 +29358,7 @@
       "producers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 145,
+          "line": 136,
           "kind": "event-send"
         }
       ],
@@ -29100,7 +29372,7 @@
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 145,
+          "line": 136,
           "kind": "event-send",
           "match": "targetWebContents.send('theme-init'"
         },
@@ -29804,7 +30076,7 @@
         },
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 1737,
+          "line": 1755,
           "kind": "event-listener"
         }
       ],
@@ -29829,7 +30101,7 @@
         },
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 1737,
+          "line": 1755,
           "kind": "event-listener",
           "match": "win.on('unmaximize'"
         }
@@ -29999,14 +30271,14 @@
       "consumers": [
         {
           "file": "modules/renderer/toolPresentation.js",
-          "line": 537,
+          "line": 557,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/renderer/toolPresentation.js",
-          "line": 537,
+          "line": 557,
           "kind": "custom-event-listener",
           "match": "win.addEventListener('vcp-appearance-changed'"
         },
@@ -30353,17 +30625,17 @@
         },
         {
           "file": "main.js",
-          "line": 2061,
+          "line": 2062,
           "kind": "event-send"
         },
         {
           "file": "main.js",
-          "line": 2076,
+          "line": 2077,
           "kind": "event-send"
         },
         {
           "file": "main.js",
-          "line": 2079,
+          "line": 2080,
           "kind": "event-send"
         }
       ],
@@ -30383,19 +30655,19 @@
         },
         {
           "file": "main.js",
-          "line": 2061,
+          "line": 2062,
           "kind": "event-send",
           "match": "mainWindow.webContents.send('vcp-log-message'"
         },
         {
           "file": "main.js",
-          "line": 2076,
+          "line": 2077,
           "kind": "event-send",
           "match": "mainWindow.webContents.send('vcp-log-message'"
         },
         {
           "file": "main.js",
-          "line": 2079,
+          "line": 2080,
           "kind": "event-send",
           "match": "mainWindow.webContents.send('vcp-log-message'"
         },
@@ -30412,32 +30684,32 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 2038,
+          "line": 2039,
           "kind": "event-send"
         },
         {
           "file": "main.js",
-          "line": 2051,
+          "line": 2052,
           "kind": "event-send"
         },
         {
           "file": "main.js",
-          "line": 2059,
+          "line": 2060,
           "kind": "event-send"
         },
         {
           "file": "main.js",
-          "line": 2085,
+          "line": 2086,
           "kind": "event-send"
         },
         {
           "file": "main.js",
-          "line": 2098,
+          "line": 2099,
           "kind": "event-send"
         },
         {
           "file": "main.js",
-          "line": 2124,
+          "line": 2125,
           "kind": "event-send"
         }
       ],
@@ -30451,37 +30723,37 @@
       "evidence": [
         {
           "file": "main.js",
-          "line": 2038,
+          "line": 2039,
           "kind": "event-send",
           "match": "mainWindow.webContents.send('vcp-log-status'"
         },
         {
           "file": "main.js",
-          "line": 2051,
+          "line": 2052,
           "kind": "event-send",
           "match": "mainWindow.webContents.send('vcp-log-status'"
         },
         {
           "file": "main.js",
-          "line": 2059,
+          "line": 2060,
           "kind": "event-send",
           "match": "mainWindow.webContents.send('vcp-log-status'"
         },
         {
           "file": "main.js",
-          "line": 2085,
+          "line": 2086,
           "kind": "event-send",
           "match": "mainWindow.webContents.send('vcp-log-status'"
         },
         {
           "file": "main.js",
-          "line": 2098,
+          "line": 2099,
           "kind": "event-send",
           "match": "mainWindow.webContents.send('vcp-log-status'"
         },
         {
           "file": "main.js",
-          "line": 2124,
+          "line": 2125,
           "kind": "event-send",
           "match": "mainWindow.webContents.send('vcp-log-status'"
         },
@@ -31043,14 +31315,14 @@
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 252,
+          "line": 245,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 252,
+          "line": 245,
           "kind": "event-listener",
           "match": "ipcMain.on('visible-text-response'"
         }
@@ -32017,25 +32289,25 @@
       "consumers": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 151,
+          "line": 154,
           "kind": "event-listener"
         },
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 205,
+          "line": 212,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 151,
+          "line": 154,
           "kind": "event-listener",
           "match": "host.on('will-attach-webview'"
         },
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 205,
+          "line": 212,
           "kind": "event-listener",
           "match": "guest.on('will-attach-webview'"
         }
@@ -32047,14 +32319,14 @@
       "consumers": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 134,
+          "line": 137,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 134,
+          "line": 137,
           "kind": "event-listener",
           "match": "ses.on('will-download'"
         }
@@ -32071,12 +32343,12 @@
         },
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 202,
+          "line": 209,
           "kind": "event-listener"
         },
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 1810,
+          "line": 1828,
           "kind": "event-listener"
         }
       ],
@@ -32089,13 +32361,13 @@
         },
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 202,
+          "line": 209,
           "kind": "event-listener",
           "match": "guest.on('will-navigate'"
         },
         {
           "file": "modules/loom/VCPLoomManager.js",
-          "line": 1810,
+          "line": 1828,
           "kind": "event-listener",
           "match": "contents.on('will-navigate'"
         }
@@ -32107,7 +32379,7 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 1966,
+          "line": 1967,
           "kind": "event-listener"
         },
         {
@@ -32119,7 +32391,7 @@
       "evidence": [
         {
           "file": "main.js",
-          "line": 1966,
+          "line": 1967,
           "kind": "event-listener",
           "match": "app.on('will-quit'"
         },
@@ -32137,14 +32409,14 @@
       "consumers": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 203,
+          "line": 210,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/browserHandlers.js",
-          "line": 203,
+          "line": 210,
           "kind": "event-listener",
           "match": "guest.on('will-redirect'"
         }
@@ -32156,14 +32428,14 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 1939,
+          "line": 1940,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1939,
+          "line": 1940,
           "kind": "event-listener",
           "match": "app.on('window-all-closed'"
         }
@@ -32783,6 +33055,14 @@
       "contractId": "source.dynamic.modules.inputenhancer"
     },
     {
+      "file": "modules/ipc/browserHandlers.js",
+      "line": 228,
+      "reason": "dynamic event listener name: channel",
+      "kind": "event-listener",
+      "match": "ipcMain.handle(channel",
+      "contractId": "source.dynamic.modules.ipc.browserhandlers"
+    },
+    {
       "file": "modules/ipc/chartHandlers.js",
       "line": 44,
       "reason": "dynamic event name: channel",
@@ -32864,7 +33144,7 @@
     },
     {
       "file": "modules/ipc/terminalHandlers.js",
-      "line": 69,
+      "line": 70,
       "reason": "dynamic event name: channel",
       "kind": "event-send",
       "match": "sender.send(channel",
@@ -32872,7 +33152,7 @@
     },
     {
       "file": "modules/loom/VCPLoomManager.js",
-      "line": 1350,
+      "line": 1367,
       "reason": "dynamic event listener name: protocol.addedEvent",
       "kind": "event-listener",
       "match": "persistentSession.on(protocol.addedEvent",
@@ -32880,7 +33160,7 @@
     },
     {
       "file": "modules/loom/VCPLoomManager.js",
-      "line": 1351,
+      "line": 1368,
       "reason": "dynamic event listener name: protocol.removedEvent",
       "kind": "event-listener",
       "match": "persistentSession.on(protocol.removedEvent",
@@ -32888,7 +33168,7 @@
     },
     {
       "file": "modules/loom/VCPLoomManager.js",
-      "line": 1368,
+      "line": 1385,
       "reason": "dynamic event listener name: protocol.selectEvent",
       "kind": "event-listener",
       "match": "persistentSession.on(protocol.selectEvent",
@@ -32896,7 +33176,7 @@
     },
     {
       "file": "modules/loom/VCPLoomManager.js",
-      "line": 1369,
+      "line": 1386,
       "reason": "dynamic event listener name: protocol.revokedEvent",
       "kind": "event-listener",
       "match": "persistentSession.on(protocol.revokedEvent",
@@ -32904,11 +33184,19 @@
     },
     {
       "file": "modules/loom/VCPLoomManager.js",
-      "line": 2308,
+      "line": 2335,
       "reason": "dynamic event listener name: channel",
       "kind": "event-listener",
       "match": "ipcMain.handle(channel",
       "contractId": "source.dynamic.modules.loom.vcploommanager"
+    },
+    {
+      "file": "modules/loom/sideBrowserService.js",
+      "line": 106,
+      "reason": "dynamic event listener name: event",
+      "kind": "event-listener",
+      "match": "guest.on(event",
+      "contractId": "source.dynamic.modules.loom.sidebrowserservice"
     },
     {
       "file": "modules/loom/webcore/comfyui-main-world-bridge.js",
@@ -32936,7 +33224,7 @@
     },
     {
       "file": "modules/messageRenderer.js",
-      "line": 2589,
+      "line": 2592,
       "reason": "dynamic listener name: type",
       "kind": "custom-event-listener",
       "match": "target.addEventListener(type",
@@ -32944,7 +33232,7 @@
     },
     {
       "file": "modules/messageRenderer.js",
-      "line": 3319,
+      "line": 3322,
       "reason": "dynamic listener name: type",
       "kind": "custom-event-listener",
       "match": "target.addEventListener(type",
@@ -33200,7 +33488,7 @@
     },
     {
       "file": "modules/ui-system/side-pane/browserSideProvider.js",
-      "line": 285,
+      "line": 344,
       "reason": "dynamic listener name: name",
       "kind": "custom-event-listener",
       "match": "guest.addEventListener(name",
