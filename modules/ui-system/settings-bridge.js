@@ -497,6 +497,7 @@ function bindIdentityNameEditor(form) {
         }, 'identity-name-cancel');
     }
     listenIdentity(nameInput, 'input', syncName, 'identity-name-input');
+    listenIdentity(nameInput, 'vcp-uiux-sync', syncName, 'identity-name-sync');
     listenIdentity(nameInput, 'keydown', event => {
         if (event.key === 'Enter') { event.preventDefault(); setEditing(false); }
         if (event.key === 'Escape') { event.preventDefault(); syncName(); setEditing(false); }
@@ -507,6 +508,17 @@ function bindIdentityNameEditor(form) {
         delete nameEdit.dataset.vcpIdentityNameEditing;
         delete nameEdit.dataset.vcpIdentityNameOriginal;
     }, 'identity-name-editor-markers', 'ui-presentation');
+}
+
+// Settings chrome icons come from the shared Lucide adapter; the span
+// fallback is picked up by the adapter's observer once it loads.
+function createSettingsIcon(name, className) {
+    if (window.VCPIcons?.create) return window.VCPIcons.create(name, { className });
+    const icon = document.createElement('span');
+    icon.className = `vcp-ui-icon ${className}`;
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = name;
+    return icon;
 }
 
 // SettingsShell build: assemble a live Uiux SettingsRoot primitive tree.
@@ -607,11 +619,7 @@ function mountSettingsShell(root) {
     searchButton.className = 'vcp-uiux-settings-search-button';
     searchButton.setAttribute('aria-label', '搜索设置');
     searchButton.title = '搜索设置';
-    const searchIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    searchIcon.dataset.vcpIcon = 'search-outline-16';
-    searchIcon.setAttribute('class', 'vcp-icon vcp-uiux-settings-search-icon');
-    window.VcpIcons?.render(searchIcon, 'search-outline-16');
-    searchButton.append(searchIcon);
+    searchButton.append(createSettingsIcon('search', 'vcp-icon vcp-uiux-settings-search-icon'));
     const searchInput = document.createElement('input');
     searchInput.type = 'search';
     searchInput.className = 'vcp-uiux-settings-search-input';
@@ -644,10 +652,7 @@ function mountSettingsShell(root) {
     // seat. Replace the legacy text glyph once, while preserving the same
     // business button and close listener.
     if (!close.dataset.vcpUiuxClose) {
-        const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        icon.dataset.vcpIcon = 'close-outline-16';
-        icon.setAttribute('class', 'vcp-icon vcp-uiux-settings-close-icon');
-        window.VcpIcons?.render(icon, 'close-outline-16');
+        const icon = createSettingsIcon('x', 'vcp-icon vcp-uiux-settings-close-icon');
         const hiddenLabel = document.createElement('span');
         hiddenLabel.className = 'vcp-uiux-settings-close-label';
         hiddenLabel.textContent = close.getAttribute('aria-label') || '关闭';

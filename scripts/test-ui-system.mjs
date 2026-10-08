@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { webcrypto } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { JSDOM } from 'jsdom';
+import { assertSharedComposerIcons } from './helpers/shared-composer-icons.mjs';
 
 await import('./test-ask-nova-service.mjs');
 
@@ -22,12 +23,7 @@ if (activeThemeSource.includes(':focus-visible')) {
     assert.match(activeThemeSource, composerSafeFocusSelector, 'the active theme must preserve the composer focus contract');
 }
 const mainHtmlSource = fs.readFileSync('main.html', 'utf8');
-const mainDomForComposer = new JSDOM(mainHtmlSource);
-['quickNewTopicBtn', 'attachFileBtn', 'emoticonTriggerBtn'].forEach(id => {
-    const button = mainDomForComposer.window.document.getElementById(id);
-    assert.ok(button?.querySelector('svg'), `${id} must use an inline SVG icon in both UI modes`);
-    assert.equal(button?.querySelector('.material-symbols-outlined'), null, `${id} must not depend on a mode-specific icon font`);
-});
+await assertSharedComposerIcons(mainHtmlSource, 'next');
 assert.match(
     componentStyles,
     /\.vcp-ui-toast > :is\(button, wa-button\)\s*\{\s*pointer-events:\s*auto/s,
@@ -606,6 +602,25 @@ const behaviorWindowControls = VCPUI.create('WindowControls', {
 });
 assert.equal(behaviorWindowControls.element.querySelectorAll('.vcp-ui-window-control-button').length, 3,
     'WindowControls must mark every clickable host as a no-drag control');
+
+// 验证同步 canPin 门禁契约与零 CLS 抖动行为：
+// 1. 当 canPin() 为 true 时，构造即具备 4 个按钮，0 延迟、0 抖动
+window.utilityAPI.canPin = () => true;
+window.utilityAPI.togglePinWindow = async () => true;
+const pinCapableControls = VCPUI.create('WindowControls');
+assert.equal(pinCapableControls.element.querySelectorAll('.vcp-ui-window-control-button').length, 4,
+    'Windows pin-capable WindowControls must mount pin button synchronously on first frame (0 CLS)');
+assert.ok(pinCapableControls.element.querySelector('.vcp-ui-window-control-pin'),
+    'pin button must be present when canPin is true');
+
+// 2. 当 canPin() 为 false（非 Win32 或嵌入式标签页）时，首帧同步仅挂载 3 个按钮，绝对不出现置顶
+window.utilityAPI.canPin = () => false;
+const nonPinControls = VCPUI.create('WindowControls');
+assert.equal(nonPinControls.element.querySelectorAll('.vcp-ui-window-control-button').length, 3,
+    'Non-pin WindowControls must mount exactly 3 buttons with 0 DOM residue');
+assert.equal(nonPinControls.element.querySelector('.vcp-ui-window-control-pin'), null,
+    'pin button must be absent when canPin is false');
+delete window.utilityAPI.canPin;
 const uiComponentsCss = fs.readFileSync(new URL('../styles/ui-system/components.css', import.meta.url), 'utf8');
 const nextUiCss = fs.readFileSync(new URL('../styles/ui-next.css', import.meta.url), 'utf8');
 const notificationSystemCss = fs.readFileSync(new URL('../styles/ui-system/notifications.css', import.meta.url), 'utf8');
@@ -679,8 +694,8 @@ assert.doesNotMatch(topTabManagerSource, /nextUiAccountThemeLabel[\s\S]*setAttri
     'topTabManager must delegate account and theme presentation state');
 assert.match(eventListenersSource, /const runMenuAction = async[\s\S]*catch \(error\)[\s\S]*finally \{[\s\S]*closeNotificationMenu/,
     'notification menu actions must close and restore focus even after rejection');
-assert.match(mainHtml, /id="nextUiNotificationForum"[\s\S]*id="nextUiNotificationMemo"[\s\S]*id="nextUiNotificationFilterToggle"[\s\S]*id="nextUiNotificationClear"/,
-    'the Next notification menu must contain separate Forum and Memo entries plus filter and clear commands');
+assert.match(mainHtml, /id="notificationToolbar"[\s\S]*id="nextUiNotificationClear"[\s\S]*id="nextUiNotificationFilterToggle"[\s\S]*id="nextUiNotificationSettings"[\s\S]*id="nextUiNotificationForum"[\s\S]*id="nextUiNotificationMemo"/,
+    'the toolbar owns clear and the options menu (filter/settings), and the dock owns separate Forum and Memo entries');
 assert.doesNotMatch(eventListenersSource, /(?:doNotDisturbBtn|clearNotificationsBtn)\.click\(\)/,
     'Next notification actions must not proxy hidden Classic controls');
 assert.match(eventListenersSource, /nextUiNotificationMemo\.addEventListener\('click'[\s\S]*openMemo/,
@@ -759,7 +774,7 @@ assert.match(mainHtml,
     /id="nextUiMainPanel"[^>]*>[\s\S]*<main class="main-content">[\s\S]*id="resizerRight"[\s\S]*id="notificationsSidebar"[\s\S]*<\/section>/s,
     'main chat, notification resizer, and notification sidebar must share one clipping host');
 assert.match(nextUiCss,
-    /html \.next-ui-main-panel\s*\{[^}]*overflow:\s*hidden;[^}]*isolation:\s*isolate;[^}]*border-radius:\s*var\(--vcp-ui-shell-radius\) 0 0 0;[^}]*var\(--next-wallpaper\);/s,
+    /html \.next-ui-main-panel\s*\{[^}]*overflow:\s*hidden;[^}]*isolation:\s*isolate;[^}]*border-radius:\s*var\(--vcp-ui-shell-radius\);[^}]*var\(--next-wallpaper\);/s,
     'the shared host must own both the panel radius and the theme wallpaper clip');
 assert.match(nextUiCss,
     /html \.main-content\s*\{[^}]*background:\s*transparent;/s,

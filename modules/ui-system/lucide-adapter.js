@@ -85,6 +85,7 @@
         "bluetooth_connected": "bluetooth",
         "bluetooth_disabled": "bluetooth-off",
         "bluetooth_searching": "bluetooth",
+        "blur_on": "blend",
         "bolt": "zap",
         "book": "book",
         "bookmark": "bookmark",
@@ -169,6 +170,7 @@
         "comment": "message-square",
         "commit": "git-commit",
         "commute": "bus",
+        "compare": "git-compare",
         "computer": "monitor",
         "confirmation_number": "ticket",
         "console": "square-terminal",
@@ -202,6 +204,7 @@
         "delete": "trash-2",
         "delete_forever": "trash-2",
         "delete_outline": "trash-2",
+        "delete_sweep": "brush-cleaning",
         "delivery_dining": "bike",
         "density_large": "rows-2",
         "density_medium": "rows-2",
@@ -212,6 +215,7 @@
         "device_hub": "cpu",
         "device_thermostat": "thermometer",
         "dice": "dices",
+        "difference": "file-diff",
         "direction": "signpost",
         "directions": "signpost",
         "directions_boat": "sailboat",
@@ -273,6 +277,7 @@
         "file_upload": "upload",
         "filter": "filter",
         "filter_list": "list-filter",
+        "filter_none": "copy",
         "fingerprint": "fingerprint",
         "fire_hydrant": "flame",
         "first_page": "chevrons-left",
@@ -319,6 +324,7 @@
         "gesture": "pen-tool",
         "get_app": "download",
         "gpp_good": "shield-check",
+        "gpp_maybe": "shield-alert",
         "gps_fixed": "crosshair",
         "gps_not_fixed": "crosshair",
         "gps_off": "crosshair",
@@ -369,6 +375,7 @@
         "invert_colors": "droplet",
         "kayaking": "sailboat",
         "key": "key",
+        "keyboard_arrow_down": "chevron-down",
         "keyboard_arrow_left": "chevron-left",
         "keyboard_arrow_right": "chevron-right",
         "king_bed": "bed-double",
@@ -656,6 +663,7 @@
         "sports_volleyball": "volleyball",
         "star": "star",
         "star_border": "star",
+        "sticky_note_2": "sticky-note",
         "stop": "circle-stop",
         "stop_circle": "circle-stop",
         "storage": "hard-drive",
@@ -676,6 +684,7 @@
         "swap_vert": "arrow-up-down",
         "sync": "refresh-cw",
         "sync_alt": "arrow-left-right",
+        "tab": "app-window",
         "table": "table",
         "table_chart": "chart-column",
         "table_rows": "rows-3",
@@ -684,6 +693,7 @@
         "tablet_mac": "tablet",
         "terminal": "terminal",
         "text_fields": "text",
+        "texture": "layers",
         "thermostat": "thermometer",
         "thumb_down": "thumbs-down",
         "thumb_up": "thumbs-up",
@@ -836,6 +846,41 @@
         return element ? render(element, name) : null;
     }
 
+    // 给 JS 里直接要图标节点的地方用（包括不在 .vcp-ui-scope 里的宿主）：直接产出 lucide SVG。
+    // lucide 还没加载时退回 vcp-ui-icon 占位，由观察器补渲染。
+    function create(name, { className = '', size } = {}) {
+        const resolved = resolveIcon(name);
+        const classes = ['vcp-ui-icon', ...String(className).split(/\s+/).filter(Boolean)];
+        let node;
+        if (resolved && window.lucide?.createElement) {
+            node = window.lucide.createElement(resolved.iconNode, {
+                'aria-hidden': 'true',
+                'data-lucide': resolved.lucideName,
+                'data-vcp-icon': name,
+                focusable: 'false'
+            });
+            node.setAttribute('class', [...classes, 'lucide', `lucide-${resolved.lucideName}`].join(' '));
+        } else {
+            node = document.createElement('span');
+            node.className = classes.join(' ');
+            node.setAttribute('aria-hidden', 'true');
+            node.textContent = name;
+        }
+        if (size) {
+            const px = typeof size === 'number' ? `${size}px` : String(size);
+            node.style.setProperty('--vcp-ui-icon-size', px);
+            if (node instanceof SVGElement) {
+                node.setAttribute('width', px.replace(/px$/, ''));
+                node.setAttribute('height', px.replace(/px$/, ''));
+            }
+        }
+        return node;
+    }
+
+    function markup(name, options) {
+        return create(name, options).outerHTML;
+    }
+
     const observer = new MutationObserver(mutations => {
         mutations.forEach(mutation => {
             if (mutation.target instanceof Element && mutation.target.matches('.vcp-ui-icon')) {
@@ -847,7 +892,7 @@
         });
     });
 
-    window.VCPIcons = Object.freeze({ refresh, set });
+    window.VCPIcons = Object.freeze({ create, markup, refresh, set });
     document.addEventListener('DOMContentLoaded', () => {
         refresh(document);
         observer.observe(document.body, { childList: true, subtree: true });

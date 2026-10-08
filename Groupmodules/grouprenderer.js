@@ -40,6 +40,11 @@ window.GroupRenderer = (() => {
     const pendingGroupUserMessageIds = new Set();
     let groupSettingsGeneration = 0;
     let groupSettingsReady = false;
+    // Group settings save only on the Save button, like Agent settings. Track
+    // unsaved edits the same way so the form shows 未保存更改 before a switch
+    // throws them away.
+    let groupSettingsDirty = false;
+    let groupSettingsRevision = 0;
     let groupSlotsLoadPromise = null;
 
     function ensureGroupSlotsBridge() {
@@ -420,7 +425,13 @@ window.GroupRenderer = (() => {
 
 
         if (mainRendererElements.currentChatNameH3) {
-            mainRendererElements.currentChatNameH3.textContent = `与群组 ${groupName} 聊天中`;
+            if (window.vcpChatHeader) window.vcpChatHeader.setTitle({ classic: `与群组 ${groupName} 聊天中`, capsule: `${groupName} (群组)` });
+            else mainRendererElements.currentChatNameH3.textContent = `与群组 ${groupName} 聊天中`;
+        }
+        const chatAgentAvatar = document.getElementById('chatAgentAvatar');
+        if (chatAgentAvatar) {
+            chatAgentAvatar.src = groupAvatarUrl || 'assets/icon.png';
+            chatAgentAvatar.alt = groupName || '';
         }
         if (mainRendererElements.currentItemActionBtn) {
             setCurrentItemActionButtonText(mainRendererElements.currentItemActionBtn, '新建群聊话题');
@@ -623,6 +634,11 @@ window.GroupRenderer = (() => {
         }
         groupSettingsForm.addEventListener('submit', handleSaveGroupSettings);
         groupSettingsForm._eventListenerAttached = true;
+        if (!groupSettingsForm._dirtyListenerAttached) {
+            groupSettingsForm.addEventListener('input', markGroupSettingsDirty);
+            groupSettingsForm.addEventListener('change', markGroupSettingsDirty);
+            groupSettingsForm._dirtyListenerAttached = true;
+        }
 
 
         if (deleteGroupBtn?._eventListenerAttached) {
@@ -640,6 +656,7 @@ window.GroupRenderer = (() => {
         groupAvatarInput._eventListenerAttached = true;
 
         groupSettingsReady = true;
+        resetGroupSettingsDirty();
         updateAllGroupSectionSummaries();
     }
 
@@ -716,7 +733,10 @@ window.GroupRenderer = (() => {
             list: sequentialSpeakerOrderList,
             agents: availableAgentsForGroup,
             groupConfig,
-            onChanged: () => updateGroupSectionSummary('mode')
+            onChanged: () => {
+                updateGroupSectionSummary('mode');
+                markGroupSettingsDirty();
+            }
         });
     }
 
@@ -726,7 +746,10 @@ window.GroupRenderer = (() => {
             membersContainer: groupMembersListDiv,
             agents: availableAgentsForGroup,
             groupConfig,
-            onChanged: () => updateGroupSectionSummary('mode')
+            onChanged: () => {
+                updateGroupSectionSummary('mode');
+                markGroupSettingsDirty();
+            }
         });
     }
 
@@ -737,7 +760,10 @@ window.GroupRenderer = (() => {
             membersContainer: groupMembersListDiv,
             agents: availableAgentsForGroup,
             groupConfig,
-            onChanged: () => updateGroupSectionSummary('mode')
+            onChanged: () => {
+                updateGroupSectionSummary('mode');
+                markGroupSettingsDirty();
+            }
         });
     }
 
@@ -751,7 +777,41 @@ window.GroupRenderer = (() => {
         updateGroupSectionSummary('mode');
     }
 
-    function reportSettingsSaveResult(success, error = '') {
+    function setGroupSaveState(state) {
+        const indicator = groupSettingsForm?.querySelector('.form-save-state-indicator');
+        if (!indicator) return;
+        indicator.dataset.state = state;
+        const label = indicator.querySelector('.form-state-dot-label');
+        if (label) label.textContent = state === 'warning' ? '未保存更改' : (state === 'ongoing' ? '保存中...' : '已保存');
+        const dotHost = indicator.querySelector('.form-state-dot-host');
+        if (!dotHost) return;
+        dotHost.replaceChildren();
+        try {
+            window.VCPUIUX?.mountStateDot?.(dotHost, { state, size: 7 }, {
+                own: () => {},
+                child: () => ({ own: () => {}, listen: () => {}, dispose: () => {} }),
+                listen: () => {},
+                dispose: () => {}
+            });
+        } catch (_) {}
+    }
+
+    function markGroupSettingsDirty() {
+        if (!groupSettingsReady) return;
+        groupSettingsDirty = true;
+        ++groupSettingsRevision;
+        setGroupSaveState('warning');
+    }
+
+    function resetGroupSettingsDirty() {
+        groupSettingsDirty = false;
+        groupSettingsRevision = 0;
+        setGroupSaveState('done');
+    }
+
+    function reportSettingsSaveResult(success, error = '', saveRevision = null) {
+        if (success && saveRevision === groupSettingsRevision) groupSettingsDirty = false;
+        setGroupSaveState(success && !groupSettingsDirty ? 'done' : 'warning');
         groupSettingsForm?.dispatchEvent(new CustomEvent('vcp-settings-save-result', {
             detail: { success: Boolean(success), error }
         }));
@@ -784,6 +844,8 @@ window.GroupRenderer = (() => {
         const selectedMemberIds = [...getSelectedMemberIds()];
         const targetGroupId = groupId;
         const saveGeneration = groupSettingsGeneration;
+        const saveRevision = groupSettingsRevision;
+        setGroupSaveState('ongoing');
         const saveSurface = window.VCPSettingsSidebar;
         const saveSnapshot = saveSurface?.getSnapshot?.();
         const isCurrentSave = () => {
@@ -953,7 +1015,7 @@ window.GroupRenderer = (() => {
             const saveButton = groupSettingsForm.querySelector('button[type="submit"]');
 
             if (result.success && result.agentGroup) {
-                reportSettingsSaveResult(true);
+                reportSettingsSaveResult(true, '', saveRevision);
                 if (saveButton) uiHelper.showSaveFeedback(saveButton, true, "已保存!", "保存群组设置");
                 await mainRendererFunctions.loadItems(); // Reload list to reflect name/avatar changes
                 if (!isCurrentSave()) return;
@@ -967,7 +1029,13 @@ window.GroupRenderer = (() => {
                     });
                     const chatHeaderEl = mainRendererElements?.currentChatNameH3 || mainRendererElements?.currentChatAgentNameH3;
                     if (chatHeaderEl) {
-                        chatHeaderEl.textContent = `与群组 ${result.agentGroup.name} 聊天中`;
+                        const groupTitle = { classic: `与群组 ${result.agentGroup.name} 聊天中`, capsule: `${result.agentGroup.name} (群组)` };
+                        if (window.vcpChatHeader) window.vcpChatHeader.setTitle(groupTitle);
+                        else chatHeaderEl.textContent = groupTitle.classic;
+                    }
+                    const chatAgentAvatar = document.getElementById('chatAgentAvatar');
+                    if (chatAgentAvatar && result.agentGroup.avatarUrl) {
+                        chatAgentAvatar.src = result.agentGroup.avatarUrl;
                     }
                     messageRenderer.setCurrentItemAvatar(result.agentGroup.avatarUrl);
                     messageRenderer.setCurrentItemAvatarColor(result.agentGroup.avatarCalculatedColor); // Update avatar color
@@ -1043,7 +1111,8 @@ window.GroupRenderer = (() => {
                         currentTopicIdRef.set(null);
                         const chatHeaderEl = mainRendererElements?.currentChatNameH3 || mainRendererElements?.currentChatAgentNameH3;
                         if (chatHeaderEl) {
-                            chatHeaderEl.textContent = '选择一个Agent或群组开始聊天';
+                            if (window.vcpChatHeader) window.vcpChatHeader.clear('选择一个Agent或群组开始聊天');
+                            else chatHeaderEl.textContent = '选择一个Agent或群组开始聊天';
                         }
                         if (messageRenderer) messageRenderer.clearChat();
                         if (mainRendererElements && mainRendererElements.currentAgentSettingsBtn) mainRendererElements.currentAgentSettingsBtn.style.display = 'none';

@@ -929,6 +929,11 @@
     :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-chat-preview.panel i { width: 100%; height: 5px; border-radius: 1px; }
     :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-chat-preview.immersive { align-items: center; background: color-mix(in srgb, var(--vcp-ui-accent) 14%, var(--vcp-ui-bg-0)); }
     :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-chat-preview.immersive i { width: 78%; height: 12px; border-radius: 6px; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-chat-preview.messenger { gap: 3px; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-chat-preview.messenger i { height: 8px; border-radius: 5px; background: var(--vcp-ui-text-3); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-chat-preview.messenger i:nth-child(1) { width: 40%; align-self: flex-end; background: var(--vcp-ui-text-1, currentColor); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-chat-preview.messenger i:nth-child(2) { width: 62%; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-chat-preview.messenger i:nth-child(3) { width: 8px; border-radius: 50%; background: var(--vcp-ui-accent); }
     :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-section-inline-action { margin-top: var(--vcp-ui-space-3); }
     :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-link { padding: 0; display: inline-flex; align-items: center; gap: var(--vcp-ui-space-1); border: 0; color: var(--vcp-ui-text-accent); background: transparent; font: inherit; font-size: var(--vcp-ui-font-helper); cursor: pointer; }
     :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-actions { padding-top: var(--vcp-ui-space-2); padding-bottom: var(--vcp-ui-space-2); }

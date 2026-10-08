@@ -1,0 +1,73 @@
+/*
+ * 「命令输出」侧栏标签（modules/ui-system/side-pane/toolOutputSideProvider.js）。
+ * 后台命令输出标签；颜色变量沿用 status-panel.css 的 zc-*。
+ */
+
+html .side-tool-output-view:where(.vcp-ui-scope, .vcp-ui-scope *) { height: 100%; overflow: hidden; }
+html .side-tool-output-scope:where(.vcp-ui-scope, .vcp-ui-scope *) { height: 100%; display: flex; flex-direction: column; min-height: 0; position: relative; }
+
+html .side-tool-output-toolbar:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; align-items: center; gap: 6px; padding: 8px 10px 4px; flex: 0 0 auto; }
+html .side-tool-output-picker:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 1 1 auto; min-width: 0; height: 28px; padding: 0 8px; border-radius: 6px;
+    border: 1px solid var(--zc-border-strong); background: var(--zc-card-bg); color: var(--zc-fg);
+    font: inherit; font-size: calc(var(--vcp-ui-font-size) - 2px); text-overflow: ellipsis;
+}
+html .side-tool-output-picker:disabled:where(.vcp-ui-scope, .vcp-ui-scope *) { opacity: 0.6; }
+html .side-tool-output-actions:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; gap: 2px; flex: 0 0 auto; }
+html .side-tool-output-icon-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; padding: 0; border: 0; border-radius: 6px;
+    background: transparent; color: var(--zc-fg-subtle); cursor: pointer;
+}
+html .side-tool-output-icon-btn:hover:not(:disabled):where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--zc-menu-hover); color: var(--zc-fg); }
+html .side-tool-output-icon-btn:disabled:where(.vcp-ui-scope, .vcp-ui-scope *) { opacity: 0.4; cursor: default; }
+html .side-tool-output-icon-btn .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-tool-output-icon-btn svg:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 15px; height: 15px; font-size: calc(var(--vcp-ui-font-size) + 1px); }
+
+html .side-tool-output-status:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; align-items: center; gap: 8px; padding: 2px 12px; font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--zc-fg-subtle); flex: 0 0 auto; }
+html .side-tool-output-status:empty:where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }
+html .side-tool-output-chip:where(.vcp-ui-scope, .vcp-ui-scope *) { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px 1px 6px; border-radius: 999px; background: var(--zc-secondary); }
+html .side-tool-output-chip .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-tool-output-chip svg:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 13px; height: 13px; font-size: calc(var(--vcp-ui-font-size) - 1px); }
+html .side-tool-output-chip.status-running:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-lane-descendant); }
+html .side-tool-output-chip.status-completed:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-success); }
+html .side-tool-output-chip.status-cancelled:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-tool-output-chip.status-timed_out:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-warning); }
+html .side-tool-output-chip.status-spawn_error:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-danger); }
+html .side-tool-output-meta:where(.vcp-ui-scope, .vcp-ui-scope *) { font-variant-numeric: tabular-nums; color: var(--zc-fg-subtlest); }
+
+html .side-tool-output-command:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    padding: 2px 12px 6px; font: 12px/1.4 var(--font-mono, ui-monospace, Consolas, monospace);
+    color: var(--zc-fg-subtle); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 0 auto;
+}
+html .side-tool-output-command:not(:empty):where(.vcp-ui-scope, .vcp-ui-scope *)::before { content: "$ "; color: var(--zc-fg-subtlest); }
+html .side-tool-output-notice:where(.vcp-ui-scope, .vcp-ui-scope *) { margin: 0 10px 4px; padding: 4px 10px; border-radius: 6px; font-size: calc(var(--vcp-ui-font-size) - 2px); background: var(--vcp-ui-port-color-rgba-217-119-6-0-12); color: var(--zc-warning); flex: 0 0 auto; }
+
+html .side-tool-output-scroll:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 1 1 auto; min-height: 0; overflow: auto; margin: 0 10px 10px; border-radius: 8px; background: var(--zc-card-bg); }
+html .side-tool-output-text:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    margin: 0; padding: 10px 12px; min-width: 100%; box-sizing: border-box; outline: none;
+    font: 12px/1.5 var(--font-mono, ui-monospace, Consolas, monospace); color: var(--zc-fg);
+    white-space: pre-wrap; overflow-wrap: anywhere; user-select: text;
+}
+html .side-tool-output-follow:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%);
+    display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0;
+    border: 1px solid var(--zc-border-strong); border-radius: 999px; background: var(--zc-card-bg); color: var(--zc-fg); cursor: pointer;
+    box-shadow: 0 1px 3px var(--vcp-ui-port-color-rgba-0-0-0-0-18);
+}
+html .side-tool-output-follow:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--zc-menu-hover); }
+html .side-tool-output-follow .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) + 2px); width: 16px; height: 16px; }
+html .side-tool-output-error:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex; align-items: center; gap: 8px; margin: 4px 10px 0; padding: 4px 10px; border-radius: 6px;
+    font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--zc-danger); background: var(--vcp-ui-port-color-rgba-220-38-38-0-1); flex: 0 0 auto;
+}
+html .side-tool-output-error[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }
+html .side-tool-output-error-text:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+html .side-tool-output-error-retry:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 0 0 auto; padding: 1px 8px; border: 0; border-radius: 4px; background: transparent; color: inherit;
+    font: inherit; text-decoration: underline; cursor: pointer;
+}
+html .side-tool-output-empty:where(.vcp-ui-scope, .vcp-ui-scope *) { padding: 32px 16px; text-align: center; color: var(--zc-fg-subtle); font-size: calc(var(--vcp-ui-font-size) - 1px); }
+
+@keyframes side-tool-output-spin { to { transform: rotate(360deg); } }
+html .side-tool-output-scope .vcp-ui-icon.spin:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-tool-output-scope .spin:where(.vcp-ui-scope, .vcp-ui-scope *) { animation: side-tool-output-spin 1.2s linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+    html .side-tool-output-scope .vcp-ui-icon.spin:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-tool-output-scope .spin:where(.vcp-ui-scope, .vcp-ui-scope *) { animation: none; }
+}

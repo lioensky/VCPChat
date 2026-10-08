@@ -10,6 +10,7 @@
 const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { isDotGitSegment } = require('./dotGitPath');
 
 const MAX_BUFFER = 64 * 1024 * 1024;
 const MAX_ENTRIES = 5000;
@@ -59,11 +60,28 @@ function comparePath(a, b) {
     return a.path < b.path ? -1 : 1;
 }
 
-function runGit(cwd, args, { timeout = DEFAULT_TIMEOUT, input = null } = {}) {
+// 从 git hook 或某个仓库的 shell 里启动时会带着这些变量，所有命令都会跑到那个仓库上
+const REPO_LOCAL_ENV = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+    'GIT_COMMON_DIR', 'GIT_PREFIX', 'GIT_NAMESPACE', 'GIT_CEILING_DIRECTORIES', 'GIT_DISCOVERY_ACROSS_FILESYSTEM'];
+
+function gitEnv(englishMessages) {
+    const env = { ...process.env };
+    for (const name of REPO_LOCAL_ENV) delete env[name];
+    env.GIT_TERMINAL_PROMPT = '0'; // 没有终端可交互，缺凭据时直接失败而不是挂起
+    env.GIT_OPTIONAL_LOCKS = '0'; // status 刷新不抢 index.lock
+    // 要按报错文字判断结果的命令用英文输出：中文、日文等本地化的 Git 报错认不出来
+    if (englishMessages) Object.assign(env, { LC_ALL: 'C', LANG: 'C', LANGUAGE: 'C' });
+    return env;
+}
+
+/** englishMessages：报错要拿来匹配（不是仓库、切分支被本地改动挡住）时传 true，其余保留用户语言的报错给人看 */
+function runGit(cwd, args, { timeout = DEFAULT_TIMEOUT, input = null, englishMessages = false } = {}) {
     return new Promise((resolve, reject) => {
         const child = execFile('git', [
             '-c', 'core.quotepath=false',
             '-c', 'color.ui=false',
+            // 仓库自带的 .git/config 可以把 core.fsmonitor 设成任意命令，只读的 status 也会执行它
+            '-c', 'core.fsmonitor=false',
             '--literal-pathspecs', // 路径按字面匹配，禁用 glob / 魔法前缀
             ...args,
         ], {
@@ -72,11 +90,7 @@ function runGit(cwd, args, { timeout = DEFAULT_TIMEOUT, input = null } = {}) {
             maxBuffer: MAX_BUFFER,
             windowsHide: true,
             encoding: 'buffer',
-            env: {
-                ...process.env,
-                GIT_TERMINAL_PROMPT: '0', // 没有终端可交互，缺凭据时直接失败而不是挂起
-                GIT_OPTIONAL_LOCKS: '0', // status 刷新不抢 index.lock
-            },
+            env: gitEnv(englishMessages),
         }, (error, stdout, stderr) => {
             if (error) {
                 const detail = Buffer.isBuffer(stderr) ? stderr.toString('utf8').trim() : '';
@@ -206,7 +220,7 @@ async function openRepository(workspaceRoot) {
     const root = realpathSafe(path.resolve(workspaceRoot));
     let top;
     try {
-        const { stdout } = await runGit(root, ['rev-parse', '--show-toplevel']);
+        const { stdout } = await runGit(root, ['rev-parse', '--show-toplevel'], { englishMessages: true });
         top = stdout.toString('utf8').trim();
     } catch (error) {
         if (/not a git repository|不是\s*git\s*仓库/i.test(error.message)) return null;
@@ -214,6 +228,28 @@ async function openRepository(workspaceRoot) {
     }
     const toplevel = realpathSafe(path.resolve(top));
     return { root, toplevel, prefix: toPosix(path.relative(toplevel, root)) };
+}
+
+/**
+ * 自动刷新要监听的目录：工作区本身，加上 Git 自己解析出的元数据目录。
+ * linked worktree / 独立 git-dir 时元数据不在工作区里，不能按 `<root>/.git` 去猜。
+ * 不是 Git 仓库时返回 null。
+ */
+async function getWatchTargets(workspaceRoot) {
+    if (typeof workspaceRoot !== 'string' || !workspaceRoot.trim()) throw new Error('缺少工作区根目录。');
+    const root = realpathSafe(path.resolve(workspaceRoot));
+    let stdout;
+    try {
+        ({ stdout } = await runGit(root, ['rev-parse', '--absolute-git-dir', '--git-common-dir'], { englishMessages: true }));
+    } catch (error) {
+        if (/not a git repository|不是\s*git\s*仓库/i.test(error.message)) return null;
+        throw error;
+    }
+    const [gitDir, commonDir] = stdout.toString('utf8').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    if (!gitDir) return null;
+    // --git-common-dir 的相对结果以命令 cwd 为基准
+    const dirs = [gitDir, commonDir ? path.resolve(root, commonDir) : gitDir].map(dir => realpathSafe(path.resolve(dir)));
+    return { root, gitDirs: [...new Set(dirs)] };
 }
 
 async function requireRepository(workspaceRoot) {
@@ -241,7 +277,7 @@ function resolveRepoPath(repo, relPath, { scope = 'workspace' } = {}) {
         throw new Error(`路径不在工作区内: ${relPath}`);
     }
     const rel = toPosix(path.relative(repo.toplevel, abs));
-    if (rel.split('/').some(segment => segment.toLowerCase() === '.git')) {
+    if (rel.split('/').some(isDotGitSegment)) {
         throw new Error(`不允许操作 .git 目录: ${relPath}`);
     }
     return rel;
@@ -319,13 +355,57 @@ async function listRemotes(repo) {
 
 // ============================ 状态 ============================
 
-async function readStatus(repo) {
+/** 解析 `git diff --numstat -z --no-renames`：路径 → { added, removed }；二进制文件两项都是 null */
+function parseNumstat(buffer) {
+    const counts = new Map();
+    const text = Buffer.isBuffer(buffer) ? buffer.toString('utf8') : String(buffer || '');
+    for (const record of text.split('\0')) {
+        const match = /^(-|\d+)\t(-|\d+)\t(.+)$/s.exec(record);
+        if (!match) continue;
+        counts.set(match[3], {
+            added: match[1] === '-' ? null : Number(match[1]),
+            removed: match[2] === '-' ? null : Number(match[2]),
+        });
+    }
+    return counts;
+}
+
+/**
+ * 每个已跟踪文件的增删行数，和状态同一次读出（diff --numstat）。
+ * 状态码不变、内容又被改了时，行数跟着变，渲染端据此知道哪些 diff 过期，也不用逐个拉 diff 来算行数。
+ */
+async function readDiffCounts(repo) {
+    const scope = repo.prefix ? ['--', repo.prefix] : [];
+    const base = ['diff', '--numstat', '-z', '--no-renames', '--no-ext-diff'];
+    const [unstaged, staged] = await Promise.all([
+        runGit(repo.toplevel, [...base, ...scope]).then(r => parseNumstat(r.stdout), () => new Map()),
+        runGit(repo.toplevel, [...base, '--cached', ...scope]).then(r => parseNumstat(r.stdout), () => new Map()),
+    ]);
+    return { unstaged, staged };
+}
+
+function withCounts(list, counts) {
+    return list.map(item => {
+        const count = item.untracked ? null : counts.get(item.path);
+        return count ? { ...item, added: count.added, removed: count.removed } : item;
+    });
+}
+
+// counts 只给要画逐文件行数的调用（Git 页的读取和写操作后的刷新）：两次全工作区 diff --numstat 比 status 本身慢几倍，
+// 推送、切分支前的预检和状态面板的摘要用不到
+async function readStatus(repo, { counts: withDiffCounts = false } = {}) {
     const args = ['status', '--porcelain=v2', '-z', '--branch', '--untracked-files=all'];
     if (repo.prefix) args.push('--', repo.prefix);
-    const [{ stdout }, remotes] = await Promise.all([runGit(repo.toplevel, args), listRemotes(repo)]);
+    const noCounts = { staged: new Map(), unstaged: new Map() };
+    const [{ stdout }, remotes, counts] = await Promise.all([runGit(repo.toplevel, args), listRemotes(repo), withDiffCounts ? readDiffCounts(repo) : noCounts]);
     const { branch, entries } = parsePorcelainV2(stdout);
     const truncated = entries.length > MAX_ENTRIES;
-    const groups = groupEntries(truncated ? entries.slice(0, MAX_ENTRIES) : entries);
+    const grouped = groupEntries(truncated ? entries.slice(0, MAX_ENTRIES) : entries);
+    const groups = {
+        staged: withCounts(grouped.staged, counts.staged),
+        changes: withCounts(grouped.changes, counts.unstaged),
+        conflicts: grouped.conflicts,
+    };
     return {
         isRepo: true,
         root: repo.root,
@@ -347,19 +427,52 @@ async function readStatus(repo) {
     };
 }
 
+/**
+ * 「在文件管理器中打开」的目标：状态条目的路径相对仓库根，工作区可能只是仓库的子目录，
+ * 所以按仓库根解析，再校验仍在工作区内。
+ */
+async function resolveRevealTarget(workspaceRoot, relPath, { base = 'repo' } = {}) {
+    const repo = await openRepository(workspaceRoot);
+    if (repo) {
+        // 相对工作区的路径（代码查看器给的）先拼上工作区在仓库里的前缀
+        const repoRel = base === 'workspace' && repo.prefix && typeof relPath === 'string'
+            ? `${repo.prefix}/${IS_WIN ? relPath.replace(/\\/g, '/') : relPath}`
+            : relPath;
+        return absoluteInRepo(repo, resolveRepoPath(repo, repoRel));
+    }
+    const root = path.resolve(workspaceRoot);
+    const target = path.resolve(root, typeof relPath === 'string' ? relPath : '');
+    // 前缀比较在 Windows 上区分大小写，盘符根目录还会多拼一个分隔符；统一走 path.relative
+    if (!isInside(root, target)) throw new Error('路径不在工作区内。');
+    return target;
+}
+
 async function getStatus(workspaceRoot) {
     const repo = await openRepository(workspaceRoot);
     if (!repo) return { isRepo: false, root: path.resolve(workspaceRoot) };
-    return readStatus(repo);
+    return readStatus(repo, { counts: true });
 }
 
-/** 串行执行写操作，完成后附带最新状态返回，前端一次往返即可刷新。 */
+/** 写操作已确认成功；后续状态读取失败不能把已完成的操作重新报告为失败。 */
+async function readMutationStatus(repo, extra = {}) {
+    try {
+        return { ...extra, status: await readStatus(repo, { counts: true }) };
+    } catch (error) {
+        return {
+            ...extra,
+            status: null,
+            warning: [extra.warning, '操作已完成，但刷新 Git 状态失败，请手动刷新确认。'].filter(Boolean).join(' '),
+            statusError: error?.message || String(error),
+        };
+    }
+}
+
+/** 串行执行写操作，写入失败仍抛错；成功后尽力附带最新状态。 */
 async function mutate(workspaceRoot, fn) {
     const repo = await requireRepository(workspaceRoot);
     return withRepoLock(repo, async () => {
         const extra = await fn(repo);
-        const status = await readStatus(repo);
-        return { ...(extra || {}), status };
+        return readMutationStatus(repo, extra || {});
     });
 }
 
@@ -414,8 +527,9 @@ function commit(workspaceRoot, { message } = {}) {
     if (text.length > MAX_MESSAGE_CHARS) return Promise.reject(new Error(`提交信息过长（上限 ${MAX_MESSAGE_CHARS} 字符）。`));
 
     return mutate(workspaceRoot, async repo => {
-        // git commit 提交的是整个索引，所以检查全仓库的暂存内容，而不只是工作区子树
-        const { stdout } = await runGit(repo.toplevel, ['diff', '--cached', '--name-only', '-z']);
+        // git commit 提交整个索引。禁用重命名合并，让旧路径的删除也参加
+        // 全仓库边界检查，避免移入工作区的文件顺带提交工作区外的删除。
+        const { stdout } = await runGit(repo.toplevel, ['diff', '--cached', '--no-renames', '--name-only', '-z']);
         const stagedAll = stdout.toString('utf8').split('\0').filter(Boolean);
         if (!stagedAll.length) throw new Error('没有已暂存的更改。请先暂存要提交的文件。');
         const outside = stagedAll.filter(item => !withinPrefix(item, repo.prefix));
@@ -427,8 +541,12 @@ function commit(workspaceRoot, { message } = {}) {
             input: `${text}\n`,
             timeout: COMMIT_TIMEOUT,
         });
-        const head = await runGit(repo.toplevel, ['rev-parse', '--short', 'HEAD']);
-        return { commit: head.stdout.toString('utf8').trim() };
+        try {
+            const head = await runGit(repo.toplevel, ['rev-parse', '--short', 'HEAD']);
+            return { commit: head.stdout.toString('utf8').trim() };
+        } catch (error) {
+            return { commit: null, warning: '提交已完成，但提交编号读取失败，请刷新 Git 历史确认。', commitReadError: error?.message || String(error) };
+        }
     });
 }
 
@@ -442,7 +560,15 @@ async function push(workspaceRoot, { setUpstream = false } = {}) {
         let args;
         let remote = null;
         if (branch.upstream) {
-            args = ['push'];
+            const tracking = await runGit(repo.toplevel, [
+                'for-each-ref', '--format=%(upstream:remotename)%00%(upstream:remoteref)', '--', `refs/heads/${branch.head}`,
+            ]);
+            const [upstreamRemote, upstreamRef] = tracking.stdout.toString('utf8').trim().split('\0');
+            if (!upstreamRemote || !upstreamRef) throw new Error('无法解析当前分支的上游推送目标，请检查分支配置。');
+            remote = upstreamRemote;
+            // 只发布当前分支到界面显示的上游，不让 matching、remote.push
+            // 或 branch.pushRemote 配置扩大范围或悄悄改变推送目标。
+            args = ['push', '--', remote, `refs/heads/${branch.head}:${upstreamRef}`];
         } else {
             if (!remotes.length) throw new Error('仓库没有配置任何远端。');
             if (!setUpstream) {
@@ -451,11 +577,11 @@ async function push(workspaceRoot, { setUpstream = false } = {}) {
                 throw error;
             }
             remote = remotes.includes('origin') ? 'origin' : remotes[0];
-            args = ['push', '-u', remote, 'HEAD'];
+            args = ['push', '-u', '--', remote, `refs/heads/${branch.head}:refs/heads/${branch.head}`];
         }
         const result = await runGit(repo.toplevel, args, { timeout: PUSH_TIMEOUT });
         const output = `${result.stderr.toString('utf8')}${result.stdout.toString('utf8')}`.trim();
-        return { output, remote, status: await readStatus(repo) };
+        return readMutationStatus(repo, { output, remote });
     });
 }
 
@@ -526,17 +652,194 @@ async function getDiff(workspaceRoot, relPath, { staged = false, origPath = null
     return { path: rel, origPath: origRel, staged: Boolean(staged), before, after };
 }
 
+// ============================ 分支 / 提交图 / 变更统计 ============================
+
+const GRAPH_MAX_COUNT = 200;
+const SUMMARY_UNTRACKED_FILE_LIMIT = 200;
+const SUMMARY_UNTRACKED_BYTES_LIMIT = 1024 * 1024;
+
+const BRANCH_ISSUES = {
+    invalidName: { code: 'invalid-branch-name', message: '分支名称无效。' },
+    conflicts: { code: 'conflicts-present', message: '仓库中还有未解决的冲突。' },
+    operation: { code: 'operation-in-progress', message: '还有一个 Git 操作（合并、变基等）正在进行。' },
+};
+
+function branchFailure(action, branchName, issues, status) {
+    return { ok: false, action, branchName, issues, status };
+}
+
+/** 进行中的 merge / rebase / cherry-pick / revert 用 git-dir 里的标记文件判断，报错比 git 原生提示稳定。 */
+async function hasOperationInProgress(repo) {
+    const markers = ['MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'rebase-merge', 'rebase-apply'];
+    try {
+        const { stdout } = await runGit(repo.toplevel, ['rev-parse', ...markers.flatMap(m => ['--git-path', m])]);
+        const paths = stdout.toString('utf8').split(/\r?\n/).map(s => s.trim()).filter(Boolean)
+            .map(p => (path.isAbsolute(p) ? p : path.resolve(repo.toplevel, p)));
+        return paths.some(p => fs.existsSync(p));
+    } catch (_error) {
+        return false;
+    }
+}
+
+async function validateBranchName(repo, name) {
+    if (typeof name !== 'string' || !name.trim() || name.includes('\0')) return BRANCH_ISSUES.invalidName;
+    try {
+        await runGit(repo.toplevel, ['check-ref-format', '--branch', name.trim()]);
+        return null;
+    } catch (_error) {
+        return BRANCH_ISSUES.invalidName;
+    }
+}
+
+/** 本地分支列表，附上游、最新提交和时间；当前分支排在最前，其余按最近提交时间倒序。 */
+async function listBranches(workspaceRoot) {
+    const repo = await requireRepository(workspaceRoot);
+    const [{ stdout }, status] = await Promise.all([
+        runGit(repo.toplevel, [
+            'for-each-ref', 'refs/heads',
+            '--format=%(refname:short)%00%(upstream:short)%00%(objectname)%00%(committerdate:unix)',
+        ]),
+        readStatus(repo),
+    ]);
+    const current = status.branch.detached ? null : status.branch.head;
+    const branches = stdout.toString('utf8').split('\n').filter(Boolean).map(line => {
+        const [name, upstream, oid, time] = line.split('\0');
+        return { name, upstream: upstream || null, oid, committedAt: Number(time) || 0, current: name === current };
+    });
+    branches.sort((a, b) => Number(b.current) - Number(a.current) || b.committedAt - a.committedAt || a.name.localeCompare(b.name));
+    return { current, detached: status.branch.detached, branches };
+}
+
+async function switchLike(workspaceRoot, action, name, buildArgs) {
+    const repo = await requireRepository(workspaceRoot);
+    return withRepoLock(repo, async () => {
+        const status = await readStatus(repo);
+        const branchName = typeof name === 'string' ? name.trim() : '';
+        const fail = issue => branchFailure(action, branchName || null, [issue], status);
+        if (!branchName) return fail(BRANCH_ISSUES.invalidName);
+        if (action === 'switch' && !status.branch.detached && status.branch.head === branchName) {
+            return { ok: true, action, branchName, changed: false, status };
+        }
+        const invalid = await validateBranchName(repo, branchName);
+        if (invalid) return fail(invalid);
+        if (status.conflicts?.length) return fail(BRANCH_ISSUES.conflicts);
+        if (await hasOperationInProgress(repo)) return fail(BRANCH_ISSUES.operation);
+        try {
+            await runGit(repo.toplevel, buildArgs(branchName), { timeout: COMMIT_TIMEOUT, englishMessages: true });
+        } catch (error) {
+            return fail({ code: 'git-error', message: error.message });
+        }
+        return readMutationStatus(repo, { ok: true, action, branchName, changed: true });
+    });
+}
+
+/** 切换到已有本地分支（--no-guess 不会顺手从远端创建）。 */
+function switchBranch(workspaceRoot, name) {
+    return switchLike(workspaceRoot, 'switch', name, branch => ['switch', '--no-guess', branch]);
+}
+
+/** 新建并切换；startPoint 前加 `--` 结束选项解析，避免以 `-` 开头的值被当成参数。 */
+function createBranch(workspaceRoot, name, startPoint = '') {
+    const start = typeof startPoint === 'string' ? startPoint.trim() : '';
+    return switchLike(workspaceRoot, 'create', name, branch => (
+        start ? ['switch', '--no-guess', '-c', branch, '--', start] : ['switch', '--no-guess', '-c', branch]
+    ));
+}
+
+function parseGraphRecords(text) {
+    return text.split('\x1e').map(r => r.replace(/^\n+/, '')).filter(Boolean).map(record => {
+        const [hash, parents, author, time, subject, refs] = record.split('\0');
+        return {
+            hash,
+            parents: parents ? parents.split(' ').filter(Boolean) : [],
+            author: author || '',
+            time: Number(time) || 0,
+            subject: subject || '',
+            refs: (refs || '').split(',').map(s => s.trim()).filter(Boolean),
+        };
+    }).filter(c => /^[0-9a-f]{7,64}$/i.test(c.hash || ''));
+}
+
+/** 用户可见的历史：HEAD、分支、标签、远端分支（不含内部 hidden refs）。 */
+async function getCommitGraph(workspaceRoot, { maxCount = 50, skip = 0 } = {}) {
+    const repo = await requireRepository(workspaceRoot);
+    const limit = Math.min(Math.max(Math.trunc(Number(maxCount)) || 50, 1), GRAPH_MAX_COUNT);
+    const offset = Math.max(Math.trunc(Number(skip)) || 0, 0);
+    if (!(await headExists(repo))) return { commits: [], hasMore: false };
+    const { stdout } = await runGit(repo.toplevel, [
+        'log', 'HEAD', '--branches', '--tags', '--remotes', '--date-order', '--topo-order',
+        `--skip=${offset}`, `--max-count=${limit + 1}`,
+        '--format=%H%x00%P%x00%an%x00%at%x00%s%x00%D%x1e',
+    ]);
+    const commits = parseGraphRecords(stdout.toString('utf8'));
+    return { commits: commits.slice(0, limit), hasMore: commits.length > limit };
+}
+
+async function countUntrackedLines(repo, relPath) {
+    try {
+        const abs = absoluteInRepo(repo, relPath);
+        const stat = await fs.promises.lstat(abs);
+        if (!stat.isFile() || stat.size > SUMMARY_UNTRACKED_BYTES_LIMIT) return 0;
+        const buf = await fs.promises.readFile(abs);
+        if (buf.subarray(0, BINARY_SNIFF_BYTES).includes(0)) return 0;
+        const text = buf.toString('utf8');
+        if (!text) return 0;
+        return text.split('\n').length - (text.endsWith('\n') ? 1 : 0);
+    } catch (_error) {
+        return 0;
+    }
+}
+
+/** 顶部「更改 +N −M」：相对 HEAD 的增删行数（含暂存和未暂存）加上未跟踪文本文件的行数。 */
+async function getChangeSummary(workspaceRoot) {
+    const repo = await requireRepository(workspaceRoot);
+    const status = await readStatus(repo);
+    let added = 0;
+    let removed = 0;
+    if (await headExists(repo)) {
+        const args = ['diff', '--numstat', '-z', 'HEAD'];
+        if (repo.prefix) args.push('--', repo.prefix);
+        try {
+            const { stdout } = await runGit(repo.toplevel, args);
+            // -z 下重命名记录为 "a\tr\t\0old\0new\0"，其余为 "a\tr\tpath\0"
+            const parts = stdout.toString('utf8').split('\0');
+            for (let i = 0; i < parts.length; i++) {
+                const m = /^(\d+|-)\t(\d+|-)\t/.exec(parts[i] || '');
+                if (!m) continue;
+                if (m[1] !== '-') added += Number(m[1]);
+                if (m[2] !== '-') removed += Number(m[2]);
+                if (/^(\d+|-)\t(\d+|-)\t$/.test(parts[i])) i += 2;
+            }
+        } catch (_error) { /* 统计失败不影响其它信息 */ }
+    }
+    const untracked = (status.changes || []).filter(entry => entry.untracked).slice(0, SUMMARY_UNTRACKED_FILE_LIMIT);
+    const counts = await Promise.all(untracked.map(entry => countUntrackedLines(repo, entry.path)));
+    added += counts.reduce((sum, n) => sum + n, 0);
+    // 同一个文件可能同时在「已暂存」和「更改」里，按路径去重
+    const files = new Set([...(status.staged || []), ...(status.changes || []), ...(status.conflicts || [])].map(e => e.path)).size;
+    return { files, added, removed, branch: status.branch, remotes: status.remotes, truncated: status.truncated };
+}
 module.exports = {
     getStatus,
+    getWatchTargets,
+    resolveRevealTarget,
+
     getDiff,
     stage,
     unstage,
     discard,
     commit,
     push,
+    listBranches,
+    switchBranch,
+    createBranch,
+    getCommitGraph,
+    getChangeSummary,
     // 供测试使用
     parsePorcelainV2,
+    parseNumstat,
     groupEntries,
     resolveRepoPath,
     chunkPaths,
+    parseGraphRecords,
 };

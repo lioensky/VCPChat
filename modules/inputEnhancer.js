@@ -38,7 +38,7 @@ function initializeInputEnhancer(refs) {
 
     void inputEnhancerDispose();
     const ownedDisposers = [];
-    const lifecycle = { active: true, tasks: new Set() };
+    const lifecycle = { active: true, tasks: new Set(), disposal: null };
     const isActive = () => lifecycle.active;
     const track = value => {
         const task = Promise.resolve(value);
@@ -56,12 +56,13 @@ function initializeInputEnhancer(refs) {
                 console.error(`[InputEnhancer] ${type} listener failed:`, error);
             }
         };
-        if (refs.listenerOwner?.add?.(target, type, ownedHandler, options)) return;
-        target?.addEventListener?.(type, ownedHandler, options);
+        if (!refs.listenerOwner?.add?.(target, type, ownedHandler, options)) {
+            target?.addEventListener?.(type, ownedHandler, options);
+        }
         ownedDisposers.push(() => target?.removeEventListener?.(type, ownedHandler, options));
     };
-    inputEnhancerDispose = async () => {
-        if (!lifecycle.active) return;
+    inputEnhancerDispose = () => {
+        if (lifecycle.disposal) return lifecycle.disposal;
         lifecycle.active = false;
         try {
             window.chatVoiceComposer?.dispose?.();
@@ -69,7 +70,8 @@ function initializeInputEnhancer(refs) {
         ownedDisposers.splice(0).reverse().forEach(dispose => dispose());
         noteSuggestionPopup?.remove?.();
         noteSuggestionPopup = null;
-        await Promise.allSettled([...lifecycle.tasks]);
+        lifecycle.disposal = Promise.allSettled([...lifecycle.tasks]).then(() => {});
+        return lifecycle.disposal;
     };
     const messageInput = refs.messageInput;
     const dropTargetElement = refs.dropTargetElement || messageInput;
@@ -332,7 +334,15 @@ function initializeInputEnhancer(refs) {
         if (!isActive()) return;
         return track(consumeSharedFile(filePath));
     });
-    refs.listenerOwner?.own?.(sharedFileSubscription);
+    // Either the instance or its renderer owner may retire first; release once.
+    let sharedFileReleased = false;
+    const releaseSharedFile = () => {
+        if (sharedFileReleased) return;
+        sharedFileReleased = true;
+        sharedFileSubscription?.();
+    };
+    ownedDisposers.push(releaseSharedFile);
+    refs.listenerOwner?.own?.(releaseSharedFile);
 
     // --- @ 提及：笔记 + 工作区文件 ---
     // 语法：

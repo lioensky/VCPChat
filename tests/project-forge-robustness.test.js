@@ -115,3 +115,57 @@ test('Python 校验异步执行，期间事件循环可以继续运行', async (
     clearInterval(timer);
     assert.ok(ticks >= 1, `校验期间事件循环被阻塞（ticks=${ticks}）`);
 });
+
+test('EditCode：replace 写成 replacement 时报错，不按删除执行', async () => {
+    const projectId = (await call({ command: 'CreateProject', name: 'lf4', dir: 'lf4' })).details.project.id;
+    const abs = path.join(wsRoot, 'lf4', 'a.js');
+    const created = await call({ command: 'CreateFile', projectId, path: 'a.js', content: 'const a = 1;\nconst b = 2;\n', reason: 'init' });
+    assert.equal(created.details.status, 'ok', textOf(created));
+
+    await assert.rejects(
+        call({ command: 'EditCode', projectId, path: 'a.js', target: 'const a = 1;', replacement: 'const a = 10;', reason: 'edit' }),
+        /不认识参数 replacement.*replace/,
+    );
+    await assert.rejects(
+        call({ command: 'EditCode', projectId, path: 'a.js', op1: 'target', target1: 'const b = 2;', Replacement1: 'const b = 20;', reason: 'edit' }),
+        /replacement1.*replace1/,
+    );
+    assert.equal(norm(fs.readFileSync(abs, 'utf8')), 'const a = 1;\nconst b = 2;\n');
+
+    // 真实调用：Nova 沿用 oldCode/newCode 的写法，以前只说「缺少编辑内容」，等用户批完才知道白批了
+    await assert.rejects(
+        call({ command: 'EditCode', projectId, path: 'a.js', oldCode: 'const b = 2;', newCode: 'const b = 2;\nconst c = 3;', reason: 'append' }),
+        /不认识参数 oldCode \/ newCode.*target.*replace/i,
+    );
+    await assert.rejects(
+        call({ command: 'EditCode', projectId, path: 'a.js', old_string: 'const b = 2;', new_string: 'x', reason: 'edit' }),
+        /old_string \/ new_string/i,
+    );
+    assert.equal(norm(fs.readFileSync(abs, 'utf8')), 'const a = 1;\nconst b = 2;\n');
+
+    // 显式空 replace 仍是文档里的删除写法
+    const removed = await call({ command: 'EditCode', projectId, path: 'a.js', target: 'const a = 1;', replace: '', reason: 'drop a' });
+    assert.equal(removed.details.status, 'ok', textOf(removed));
+    assert.equal(norm(fs.readFileSync(abs, 'utf8')).trim(), 'const b = 2;');
+});
+
+test('EditCode：按行替换缺 content 时报错，不把这些行删掉', async () => {
+    const projectId = (await call({ command: 'CreateProject', name: 'lf5', dir: 'lf5' })).details.project.id;
+    const abs = path.join(wsRoot, 'lf5', 'a.js');
+    await call({ command: 'CreateFile', projectId, path: 'a.js', content: 'l1\nl2\nl3\n', reason: 'init' });
+
+    await assert.rejects(
+        call({ command: 'EditCode', projectId, path: 'a.js', start: 2, end: 2, replace: 'X', reason: 'edit' }),
+        /按行替换需要 content.*replace 只配合 target/,
+    );
+    await assert.rejects(
+        call({ command: 'EditCode', projectId, path: 'a.js', op1: 'replace', start1: 2, end1: 2, newContent1: 'X', reason: 'edit' }),
+        /content1.*op1=delete/,
+    );
+    assert.equal(norm(fs.readFileSync(abs, 'utf8')), 'l1\nl2\nl3\n');
+
+    // op=delete 仍按文档删行；空 content 也照旧视为替换成空
+    const removed = await call({ command: 'EditCode', projectId, path: 'a.js', op: 'delete', start: 2, end: 2, reason: 'drop' });
+    assert.equal(removed.details.status, 'ok', textOf(removed));
+    assert.equal(norm(fs.readFileSync(abs, 'utf8')), 'l1\nl3\n');
+});

@@ -16,6 +16,7 @@
 html {
     --ui-mode: next;
     --next-topbar-height: 42px;
+    --next-workspace-gutter: 4px;
 }
 
 html body {
@@ -205,26 +206,28 @@ html .next-ui-window-button {
 
 .next-ui-tab {
     position: relative;
-    height: 30px;
-    min-width: 96px;
+    height: 28px;
+    min-width: 80px;
     max-width: 160px;
-    padding: 0 10px;
+    padding: 0 8px;
     box-sizing: border-box;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    gap: 6px;
     border-radius: 8px;
     color: var(--next-muted);
-    font-size: 15px;
+    font-size: 13px;
+    font-weight: 500;
     white-space: nowrap;
     transition: color var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard), background-color var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard), font-weight var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard);
 }
 
 html #nextUiHomeTab {
-    min-width: 80px;
+    min-width: 76px;
     max-width: 96px;
-    padding: 0 10px 0 3px;
+    height: 28px;
+    padding: 0 10px 0 4px;
     justify-content: flex-start;
     border-radius: 0 8px 8px 0;
     background: transparent;
@@ -235,7 +238,7 @@ html #nextUiHomeTab > span:last-child {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 15px;
+    font-size: 13px;
     font-weight: 600;
     line-height: 1;
     letter-spacing: 0;
@@ -297,16 +300,26 @@ html #nextUiHomeTab > span:last-child {
     opacity: 0;
 }
 
-.next-ui-tab > svg,
+.next-ui-tab > svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    flex: 0 0 auto;
+}
+
 .next-ui-add-tab > svg,
 .next-ui-icon-button > svg,
 .next-ui-window-button > svg,
 .next-ui-app-icon svg {
-    width: 19px;
-    height: 19px;
+    width: 16px;
+    height: 16px;
     fill: none;
     stroke: currentColor;
-    stroke-width: 1.8;
+    stroke-width: 2;
     stroke-linecap: round;
     stroke-linejoin: round;
     flex: 0 0 auto;
@@ -315,7 +328,7 @@ html #nextUiHomeTab > span:last-child {
 .next-ui-tab-label {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     min-width: 0;
 }
 
@@ -328,18 +341,21 @@ html #nextUiHomeTab > span:last-child {
     color: inherit;
     background: transparent;
     font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.2;
     text-align: left;
     cursor: pointer;
 }
 
 .next-ui-tab-close {
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     display: grid;
     place-items: center;
     padding: 0;
     border: 0;
-    border-radius: 5px;
+    border-radius: 4px;
     color: var(--next-muted);
     background: transparent;
     cursor: pointer;
@@ -357,8 +373,8 @@ html #nextUiHomeTab > span:last-child {
 }
 
 .next-ui-tab-close svg {
-    width: 13px;
-    height: 13px;
+    width: 12px;
+    height: 12px;
     fill: none;
     stroke: currentColor;
     stroke-width: 2;
@@ -366,10 +382,10 @@ html #nextUiHomeTab > span:last-child {
 
 html .next-ui-tab-svg,
 html .next-ui-tab-svg svg {
-    width: 19px;
-    height: 19px;
+    width: 14px;
+    height: 14px;
     display: block;
-    flex: 0 0 19px;
+    flex: 0 0 14px;
 }
 
 html .next-ui-tab.is-dragging {
@@ -408,6 +424,10 @@ html .next-ui-embedded-app-status {
     font-size: 14px;
 }
 
+html .next-ui-embedded-app-view[data-state="ready"] .next-ui-embedded-app-status {
+    display: none;
+}
+
 html .next-ui-embedded-app-status .vcp-ui-icon {
     animation: next-ui-embedded-spin var(--vcp-motion-duration-spinner) var(--vcp-motion-ease-linear) infinite;
 }
@@ -430,10 +450,19 @@ html .next-ui-embedded-app-status.is-error .vcp-ui-icon {
     }
 }
 
-.next-ui-add-tab,
-.next-ui-icon-button {
+.next-ui-add-tab {
     width: 30px;
     height: 30px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+    flex: 0 0 auto;
+}
+
+.next-ui-icon-button {
+    width: 28px;
+    height: 28px;
     padding: 0;
     display: grid;
     place-items: center;
@@ -457,14 +486,14 @@ html .next-ui-window-button {
 
 html .next-ui-topbar-actions {
     margin-left: auto;
-    gap: 0;
+    gap: 2px;
     flex: 0 0 auto;
     align-self: stretch;
 }
 
 html .next-ui-topbar-actions > .next-ui-presentation-switcher,
 html .next-ui-topbar-actions > #nextUiThemeStoreBtn {
-    margin-right: 6px;
+    margin-right: 0;
 }
 
 html .next-ui-window-button:hover {
@@ -505,13 +534,15 @@ html .next-ui-main-panel {
     display: flex;
     flex: 1 1 auto;
     min-width: 0;
-    height: 100%;
     overflow: hidden;
     isolation: isolate;
+    /* The workspace floats as a card: a 4px gutter on the right and bottom,
+       every corner rounded. The shared material plane below paints the
+       gutter and all four corner reveals, so the shell stays one surface. */
+    height: calc(100% - var(--next-workspace-gutter));
+    margin: 0 var(--next-workspace-gutter) var(--next-workspace-gutter) 0;
     border: 1px solid var(--next-panel-edge);
-    border-right: 0;
-    border-bottom: 0;
-    border-radius: var(--vcp-ui-shell-radius) 0 0 0;
+    border-radius: var(--vcp-ui-shell-radius);
     box-sizing: border-box;
     /* The navigation material is the continuous shell base. Keeping an opaque
        primary-bg here creates a hard rectangular patch for legacy themes that
@@ -625,15 +656,15 @@ html[data-vcp-wallpaper-scope="global"] .sidebar {
     -webkit-backdrop-filter: none !important;
 }
 
-/* Paint the sidebar and the main panel's rounded-corner cutout as one
-   continuous material surface. Because this is a single compositing plane,
-   the revealed corner and sidebar cannot diverge in color or blur sampling. */
+/* Paint the sidebar, the workspace gutter and the main panel's four
+   rounded-corner reveals as one continuous material surface. Because this is
+   a single compositing plane, the gutter, the corners and the sidebar cannot
+   diverge in color or blur sampling. */
 html[data-vcp-wallpaper-scope="global"] .container::before {
     content: "";
     position: absolute;
-    inset: 0 auto 0 0;
+    inset: 0;
     z-index: 0;
-    width: calc(var(--next-sidebar-width, 260px) + var(--vcp-ui-shell-radius));
     pointer-events: none;
     background-color: var(
         --panel-bg,
@@ -643,46 +674,69 @@ html[data-vcp-wallpaper-scope="global"] .container::before {
     backdrop-filter: var(--next-backdrop-filter);
     -webkit-backdrop-filter: var(--next-backdrop-filter);
 
-    /* One compositing surface, two visible regions:
-       1. the full sidebar rectangle;
-       2. only the exterior crescent of the main panel's top-left radius.
-       The unused extension below the corner stays transparent, preventing the
-       previous full-height material stripe. */
+    /* One compositing surface, seven visible regions: the sidebar rectangle,
+       the right and bottom gutters, and only the exterior crescent of each
+       workspace corner. Everything inside the workspace stays transparent, so
+       the chat wallpaper behind it keeps its own sharp presentation. */
     -webkit-mask-image:
         linear-gradient(#000 0 0),
-        radial-gradient(
-            circle var(--vcp-ui-shell-radius) at 100% 100%,
-            transparent calc(100% - 0.75px),
-            #000 100%
-        );
+        linear-gradient(#000 0 0),
+        linear-gradient(#000 0 0),
+        radial-gradient(circle var(--vcp-ui-shell-radius) at 100% 100%, transparent calc(100% - 0.75px), #000 100%),
+        radial-gradient(circle var(--vcp-ui-shell-radius) at 0 100%, transparent calc(100% - 0.75px), #000 100%),
+        radial-gradient(circle var(--vcp-ui-shell-radius) at 100% 0, transparent calc(100% - 0.75px), #000 100%),
+        radial-gradient(circle var(--vcp-ui-shell-radius) at 0 0, transparent calc(100% - 0.75px), #000 100%);
     -webkit-mask-size:
         var(--next-sidebar-width, 260px) 100%,
+        var(--next-workspace-gutter) 100%,
+        100% var(--next-workspace-gutter),
+        var(--vcp-ui-shell-radius) var(--vcp-ui-shell-radius),
+        var(--vcp-ui-shell-radius) var(--vcp-ui-shell-radius),
+        var(--vcp-ui-shell-radius) var(--vcp-ui-shell-radius),
         var(--vcp-ui-shell-radius) var(--vcp-ui-shell-radius);
     -webkit-mask-position:
         left top,
-        right top;
+        right top,
+        left bottom,
+        left var(--next-sidebar-width, 260px) top 0,
+        right var(--next-workspace-gutter) top 0,
+        left var(--next-sidebar-width, 260px) bottom var(--next-workspace-gutter),
+        right var(--next-workspace-gutter) bottom var(--next-workspace-gutter);
     -webkit-mask-repeat: no-repeat;
     -webkit-mask-composite: source-over;
 
     mask-image:
         linear-gradient(#000 0 0),
-        radial-gradient(
-            circle var(--vcp-ui-shell-radius) at 100% 100%,
-            transparent calc(100% - 0.75px),
-            #000 100%
-        );
+        linear-gradient(#000 0 0),
+        linear-gradient(#000 0 0),
+        radial-gradient(circle var(--vcp-ui-shell-radius) at 100% 100%, transparent calc(100% - 0.75px), #000 100%),
+        radial-gradient(circle var(--vcp-ui-shell-radius) at 0 100%, transparent calc(100% - 0.75px), #000 100%),
+        radial-gradient(circle var(--vcp-ui-shell-radius) at 100% 0, transparent calc(100% - 0.75px), #000 100%),
+        radial-gradient(circle var(--vcp-ui-shell-radius) at 0 0, transparent calc(100% - 0.75px), #000 100%);
     mask-size:
         var(--next-sidebar-width, 260px) 100%,
+        var(--next-workspace-gutter) 100%,
+        100% var(--next-workspace-gutter),
+        var(--vcp-ui-shell-radius) var(--vcp-ui-shell-radius),
+        var(--vcp-ui-shell-radius) var(--vcp-ui-shell-radius),
+        var(--vcp-ui-shell-radius) var(--vcp-ui-shell-radius),
         var(--vcp-ui-shell-radius) var(--vcp-ui-shell-radius);
     mask-position:
         left top,
-        right top;
+        right top,
+        left bottom,
+        left var(--next-sidebar-width, 260px) top 0,
+        right var(--next-workspace-gutter) top 0,
+        left var(--next-sidebar-width, 260px) bottom var(--next-workspace-gutter),
+        right var(--next-workspace-gutter) bottom var(--next-workspace-gutter);
     mask-repeat: no-repeat;
     mask-composite: add;
 }
 
 html .sidebar:not(.avatar-only) {
     padding-left: 0;
+    padding-right: 0;
+    padding-bottom: 0;
 }
 
 html .sidebar.avatar-only {
@@ -715,7 +769,8 @@ html .main-content {
 
 html .chat-header {
     padding: 7px 20px;
-    border-bottom: 1px solid var(--next-border);
+    /* A faint 5% hairline under the title instead of the full panel border. */
+    border-bottom: 1px solid var(--zcode-header-divider, var(--next-border));
     background: var(--next-header-bg);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
@@ -747,7 +802,7 @@ html body #toggleSidebarModeBtn.next-ui-sidebar-mode-button.active:focus-visible
 }
 
 html .next-ui-brand-tab-group {
-    height: 30px;
+    height: 28px;
     display: flex;
     align-items: stretch;
     overflow: hidden;
@@ -766,8 +821,8 @@ html .next-ui-brand-tab-group #nextUiHomeTab:hover {
 
 html #toggleSidebarModeBtn.next-ui-sidebar-mode-button {
     position: relative;
-    width: 30px;
-    height: 30px;
+    width: 28px;
+    height: 28px;
     display: grid;
     overflow: hidden;
     border-color: transparent;
@@ -787,8 +842,8 @@ html .next-ui-sidebar-control-icon {
 }
 
 html .next-ui-sidebar-brand {
-    width: 30px;
-    height: 30px;
+    width: 28px;
+    height: 28px;
     padding: 0;
     overflow: hidden;
     box-sizing: border-box;
@@ -798,18 +853,18 @@ html .next-ui-sidebar-brand {
 }
 
 html .next-ui-sidebar-brand img {
-    width: 22px;
-    height: 22px;
+    width: 20px;
+    height: 20px;
     margin: 4px;
     display: block;
     object-fit: contain;
 }
 
 html .next-ui-sidebar-mode-button > .next-ui-sidebar-control-icon {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
     display: block;
-    flex: 0 0 18px;
+    flex: 0 0 16px;
     stroke: currentColor;
     opacity: 0;
     transform: translate(-50%, -50%) scale(0.76);
@@ -859,13 +914,198 @@ html .chat-messages-container {
     position: relative;
 }
 
-/* Bubble-mode input composer: inset it so its left edge lines up with the
-   assistant bubble column (24px message gutter + 36px avatar + 8px gap - 5px
-   wrapper offset), leaving matching blank space on the right. Panel/immersive
-   modes keep their deliberate full-width flat composer. */
-html body:not(.chat-presentation-panel):not(.chat-presentation-immersive) .chat-input-area {
-    padding-left: 52px;
-    padding-right: 52px;
+/* 标题栏样式：原版（默认）时胶囊外壳不参与布局，只剩标题文字 */
+html body:not(.chat-header-capsule) .chat-agent-pill {
+    display: contents;
+}
+
+html body:not(.chat-header-capsule) .chat-header-spacer,
+html body:not(.chat-header-capsule) .chat-agent-pill-avatar,
+html body:not(.chat-header-capsule) .chat-agent-pill-pane-btn {
+    display: none;
+}
+
+/* 胶囊标题栏：透明悬浮在消息区上方，居中显示头像 + 名字 */
+html body.chat-header-capsule .chat-header {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 56px;
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: transparent !important;
+    border-bottom: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: none !important;
+    pointer-events: none;
+    z-index: 10;
+}
+
+html body.chat-header-capsule .chat-header > * {
+    pointer-events: auto;
+}
+
+html body.chat-header-capsule .chat-header-spacer {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+html body.chat-header-capsule .chat-agent-pill {
+    flex: 0 0 auto;
+    margin: 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    height: 40px;
+    padding: 4px 16px 4px 5px;
+    border-radius: 9999px;
+    background: var(--next-surface-card, rgba(255, 255, 255, 0.85));
+    border: 1px solid var(--next-border, rgba(0, 0, 0, 0.08));
+    box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.03);
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+    cursor: pointer;
+    user-select: none;
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+                background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+                border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 连续曲率的胶囊：两端从直边上提前开始弯，直边接圆弧处不再有一下突变；端头仍是圆的 */
+@supports (corner-shape: superellipse(1.1)) {
+    html body.chat-header-capsule .chat-agent-pill {
+        border-radius: 23px / 50%;
+        corner-shape: superellipse(1.1);
+    }
+}
+
+html:not(.light-theme):not([data-vcp-theme="light"]) body.chat-header-capsule .chat-agent-pill {
+    background: rgba(30, 31, 35, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+html body.chat-header-capsule .chat-agent-pill:hover {
+    background: var(--next-surface-hover, rgba(255, 255, 255, 0.96));
+    border-color: var(--next-border-hover, rgba(0, 0, 0, 0.15));
+    box-shadow: 0 4px 14px -2px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.04);
+    transform: translateY(-0.5px);
+}
+
+html:not(.light-theme):not([data-vcp-theme="light"]) body.chat-header-capsule .chat-agent-pill:hover {
+    background: rgba(40, 42, 48, 0.95);
+    border-color: rgba(255, 255, 255, 0.18);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+
+html body.chat-header-capsule .chat-agent-pill:active {
+    transform: translateY(0) scale(0.99);
+}
+
+html body.chat-header-capsule .chat-agent-pill-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+html body.chat-header-capsule .chat-agent-pill-name {
+    margin: 0;
+    padding: 0;
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    color: var(--next-text, currentColor);
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1;
+}
+
+/* 悬停时才出现的朝右箭头，提示点击胶囊可展开侧栏；平时宽度为 0（抵消 gap），侧栏已展开时不出现 */
+html body.chat-header-capsule .chat-agent-pill-pane-btn {
+    width: 0;
+    height: 22px;
+    margin: 0 0 0 -9px;
+    padding: 0;
+    border: 0;
+    border-radius: 9999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    overflow: hidden;
+    color: var(--next-muted, currentColor);
+    background: transparent;
+    opacity: 0;
+    pointer-events: none;
+    transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+                margin 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.15s ease,
+                color 0.15s ease,
+                background-color 0.15s ease;
+}
+
+html body.chat-header-capsule .chat-agent-pill-pane-btn svg {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 14px;
+}
+
+html body.chat-header-capsule .chat-agent-pill:is(:hover, :focus-visible) .chat-agent-pill-pane-btn {
+    width: 22px;
+    margin: 0 -8px 0 -3px;
+    opacity: 1;
+}
+
+html body.chat-header-capsule.vcp-side-pane-open .chat-header .chat-agent-pill .chat-agent-pill-pane-btn {
+    width: 0;
+    margin: 0 0 0 -9px;
+    opacity: 0;
+}
+
+/* 未选中助手时不显示胶囊 */
+html body.chat-header-capsule .main-content.next-ui-empty-state-active[data-chat-empty="true"][data-chat-empty-reason="no-selection"] .chat-agent-pill {
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(0.95);
+}
+
+html body.chat-header-capsule .chat-header .chat-actions {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 6px;
+}
+
+/* 胶囊模式不要语音通话和新建话题 */
+html body.chat-header-capsule .chat-header #voiceChatBtn,
+html body.chat-header-capsule .chat-header #currentAgentSettingsBtn {
+    display: none !important;
+}
+
+html body.chat-header-capsule .chat-messages-container {
+    padding-top: 56px;
+}
+
+/* Shared input composer: keep the same horizontal inset in every presentation
+   mode so switching message layouts does not resize the input card. The inset
+   only gives way once the side pane squeezes the chat column below ~670px
+   (it can go down to 35% of the panel, ~360px), down to 12px at ~430px, so
+   the action row keeps the send button inside the card. */
+html body .chat-input-area {
+    padding-left: clamp(12px, calc((100% - 360px) / 6), 52px);
+    padding-right: clamp(12px, calc((100% - 360px) / 6), 52px);
 }
 
 .next-ui-empty-state {
@@ -1017,15 +1257,33 @@ html .chat-actions #themeToggleBtn {
 }
 
 html .chat-actions .header-button {
-    min-width: 30px;
-    height: 30px;
+    height: 28px;
     margin-left: 0;
-    padding: 0 6px;
     border: 0;
-    border-radius: 6px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     color: var(--next-muted);
     background: transparent;
     box-shadow: none;
+}
+
+html .chat-actions .header-button:not(#currentAgentSettingsBtn) {
+    min-width: 28px;
+    width: 28px;
+    padding: 0;
+}
+
+html .chat-actions .header-button#currentAgentSettingsBtn {
+    width: auto;
+    min-width: auto;
+    padding: 0 8px;
+    flex-shrink: 0;
+}
+
+html .chat-actions .header-button#voiceChatBtn {
+    margin-right: 0 !important;
 }
 
 html .chat-actions .header-button:hover {
@@ -1345,7 +1603,7 @@ body[data-vcp-theme="light"] .next-ui-nova-panel::before {
 .next-ui-app-icon svg {
     width: 34px;
     height: 34px;
-    stroke-width: 1.8;
+    stroke-width: 2;
 }
 
 .next-ui-app-item:hover .next-ui-app-icon {

@@ -1746,10 +1746,14 @@ test('P1 对抗性防线: displaySettingsForItem 兼容字符串 item 参数及�
         const sm = dom.window.settingsManager;
 
         let fetchedId = null;
+        const selected = Object.freeze({ id: 'agent-string-only' });
+        let resolveDelayed;
+        let delayConfig = false;
         const fakeElectronAPI = {
             saveAgentConfig: async () => ({ success: true }),
             getAgentConfig: async id => {
                 fetchedId = id;
+                if (delayConfig) return new Promise(resolve => { resolveDelayed = resolve; });
                 return { id, name: '字符串加载助手', model: 'claude-3-opus' };
             },
             sovitsGetModels: async () => ({ models: [] })
@@ -1760,7 +1764,7 @@ test('P1 对抗性防线: displaySettingsForItem 兼容字符串 item 参数及�
             uiHelper: { showToastNotification: () => {}, showSaveFeedback: () => {} },
             refs: {
                 currentSelectedItemRef: {
-                    get: () => ({ id: 'agent-string-only', type: 'agent' }),
+                    get: () => selected,
                     set: () => {}
                 }
             },
@@ -1793,6 +1797,18 @@ test('P1 对抗性防线: displaySettingsForItem 兼容字符串 item 参数及�
         assert.equal(fetchedId, 'agent-string-only', 'displaySettingsForItem 必须自动将字符串 item 转换为对象并拉取配置');
         assert.equal(form.querySelector('#agentNameInput').value, '字符串加载助手', '表单名字必须成功填充');
         assert.equal(form.querySelector('#agentModel').value, 'claude-3-opus', '表单模型必须成功填充');
+        assert.deepEqual(selected, { id: 'agent-string-only' }, '打开设置不得修改借用的选中对象');
+
+        // 用户打开 A 的设置，读取尚未结束时切换到 B；A 的迟到结果不能覆盖 B。
+        delayConfig = true;
+        const pending = sm.displaySettingsForItem(selected, 'agent');
+        assert.equal(typeof resolveDelayed, 'function');
+        await sm.displaySettingsForItem({ id: 'agent-b', type: 'agent', config: { name: '助手 B', model: 'model-b' } });
+        resolveDelayed({ name: '迟到的助手 A', model: 'model-a' });
+        await pending;
+        assert.equal(form.querySelector('#editingAgentId').value, 'agent-b');
+        assert.equal(form.querySelector('#agentNameInput').value, '助手 B');
+        assert.equal(form.querySelector('#agentModel').value, 'model-b');
     } finally {
         dom.window.settingsManager?.cancelAutosave?.();
         activeIntervals.forEach(clearInterval);

@@ -124,7 +124,7 @@ function createVisibilityStub() {
     };
 }
 
-async function createRendererFixture(messageContent) {
+async function createRendererFixture(messageContent, appearanceProfile = null) {
     const dom = new JSDOM(
         '<!doctype html><html><head></head><body><div class="chat-messages-container"><div id="chat"></div></div></body></html>',
         {
@@ -139,6 +139,10 @@ async function createRendererFixture(messageContent) {
         NodeFilter: globalThis.NodeFilter,
         MutationObserver: globalThis.MutationObserver,
     };
+    if (appearanceProfile) {
+        dom.window.document.documentElement.dataset.uiMode = 'next';
+        dom.window.VCPAppearance = { getCurrent: () => appearanceProfile };
+    }
     globalThis.window = dom.window;
     globalThis.document = dom.window.document;
     globalThis.Node = dom.window.Node;
@@ -383,6 +387,63 @@ test('multiple nested style elements survive comment literals and tool-payload s
         );
         assert.ok(messageItem.querySelector('.child-a .ring'));
         assert.ok(messageItem.querySelector('.child-b .bar'));
+    } finally {
+        await disposeFixture(fixture);
+    }
+});
+
+test('message media is manual-only and old players unload on redraw and topic clear', async () => {
+    const fixture = await createRendererFixture('<audio controls autoplay loop src="song.mp3"></audio><video autoplay loop src="clip.mp4"></video>');
+    const { dom, renderer, messageItem } = fixture;
+    const prototype = dom.window.HTMLMediaElement.prototype;
+    const previousPause = prototype.pause;
+    const previousLoad = prototype.load;
+    prototype.pause = function () { this._testPaused = true; };
+    prototype.load = function () { this._testUnloaded = true; };
+    try {
+        for (const media of messageItem.querySelectorAll('audio, video')) {
+            assert.equal(media.autoplay, false, 'first synchronous projection must not autoplay');
+            assert.equal(media.loop, false);
+        }
+        await new Promise(resolve => dom.window.setTimeout(resolve, 50));
+        const oldAudio = messageItem.querySelector('audio');
+        const oldVideo = messageItem.querySelector('video');
+        const oldPlayer = messageItem.querySelector('.vcp-audio-player');
+        assert.ok(oldPlayer, 'audio controls must be enhanced');
+        renderer.updateMessageContent('animation-island-message', '<video controls src="next.mp4"></video>');
+        assert.equal(oldAudio._testPaused, true);
+        assert.equal(oldAudio._testUnloaded, true);
+        assert.equal(oldAudio.hasAttribute('src'), false);
+        assert.equal(oldVideo.hasAttribute('src'), false);
+        assert.equal(oldPlayer._vcpAudioCleanup, undefined);
+        const nextVideo = messageItem.querySelector('video');
+        renderer.clearChat();
+        assert.equal(nextVideo._testPaused, true);
+        assert.equal(nextVideo._testUnloaded, true);
+        assert.equal(nextVideo.hasAttribute('src'), false);
+        assert.equal(messageItem.isConnected, false);
+    } finally {
+        prototype.pause = previousPause;
+        prototype.load = previousLoad;
+        await disposeFixture(fixture);
+    }
+});
+
+test('initial production renderer reads the saved tool mode from its owner realm', async () => {
+    const fixture = await createRendererFixture([
+        '<<<[TOOL_REQUEST]>>>',
+        'tool_name:「始」ProjectForge「末」',
+        'command:「始」GetCode「末」',
+        'path:「始」demo/index.html「末」',
+        '<<<[END_TOOL_REQUEST]>>>',
+    ].join('\n'), {toolPresentation:'compact', toolExpansion:'none'});
+    try {
+        await new Promise(resolve => fixture.dom.window.requestAnimationFrame(resolve));
+        await new Promise(resolve => fixture.dom.window.setTimeout(resolve, 0));
+        const button = fixture.messageItem.querySelector('.vcp-tool-row-toggle');
+        assert.ok(button, 'saved compact mode must apply on initial rendering without a preview event');
+        assert.match(button.textContent, /读取源码/);
+        assert.equal(button.getAttribute('aria-expanded'), 'false');
     } finally {
         await disposeFixture(fixture);
     }

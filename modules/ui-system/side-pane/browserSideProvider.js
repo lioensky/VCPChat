@@ -1,0 +1,648 @@
+/**
+ * modules/ui-system/side-pane/browserSideProvider.js
+ * VCPChat Universal Sub-screen - Browser Provider
+ *
+ * A built-in browser tab: back / forward / reload, an address bar, a "more" menu (open in the default browser,
+ * DevTools, clear browsing data), an empty state, load-error and crashed-page recovery. Pages run in an
+ * isolated <webview> (fixed persistent partition, no preload, sandboxed) that the main process locks down in
+ * modules/ipc/browserHandlers.js. Every tab is its own browser; window.open / target=_blank opens a new tab.
+ */
+
+'use strict';
+
+import { createSidePaneRootScope } from './side-pane-occurrence.js';
+import { moveMenuFocus } from './menu-position.js';
+
+export const BROWSER_PARTITION = 'persist:vcp-side-browser';
+const ALLOWED_PROTOCOLS = new Set(['http:', 'https:', 'about:']); // 同 browserHandlers.js：不开 file: 本地页
+const BLOCKED_ERROR_CODES = new Set([-3]); // ERR_ABORTED: a navigation replaced by another one
+const INVALID_URL_MESSAGE = '仅支持 http、https、about 地址';
+// 网页弹窗最多把浏览器标签开到这么多，再多就只提示不开
+export const MAX_POPUP_BROWSER_TABS = 12;
+
+/**
+ * Turns whatever the user typed into an address the browser can open.
+ * @returns {{ url: string } | { error: string } | null} null for empty input
+ */
+export function normalizeBrowserInput(input) {
+    const text = String(input ?? '').trim();
+    if (!text) return null;
+
+    const hasPort = /^[^\s/@]+:\d+(?:[/?#]|$)/.test(text);
+    if (/^[a-z][a-z0-9+.-]*:/i.test(text) && !hasPort) {
+        try {
+            const url = new URL(text);
+            return ALLOWED_PROTOCOLS.has(url.protocol) ? { url: url.href } : { error: INVALID_URL_MESSAGE };
+        } catch (_error) {
+            return { error: INVALID_URL_MESSAGE };
+        }
+    }
+    if (/\s/.test(text)) return { error: INVALID_URL_MESSAGE };
+
+    const host = text.split(/[/?#]/)[0].replace(/:\d+$/, '').replace(/^\[|\]$/g, '');
+    const isLocal = host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host === '::1'
+        || /^(?:127|10)\.\d+\.\d+\.\d+$/.test(host)
+        || /^192\.168\.\d+\.\d+$/.test(host)
+        || /^172\.(?:1[6-9]|2\d|3[01])\.\d+\.\d+$/.test(host);
+    if (!isLocal && !host.includes('.')) return { error: INVALID_URL_MESSAGE };
+    try {
+        return { url: new URL(`${isLocal ? 'http' : 'https'}://${text}`).href };
+    } catch (_error) {
+        return { error: INVALID_URL_MESSAGE };
+    }
+}
+
+const SEARCH_URL = 'https://www.bing.com/search?q=';
+
+/**
+ * Like normalizeBrowserInput, but text that is not an address becomes a web search.
+ * An unsupported scheme (javascript:, chrome:, ...) is still an error rather than a search.
+ * @returns {{ url: string } | { error: string } | null} null for empty input
+ */
+export function resolveBrowserAddress(input) {
+    const result = normalizeBrowserInput(input);
+    if (!result?.error) return result;
+    const text = String(input).trim();
+    const hasPort = /^[^\s/@]+:\d+(?:[/?#]|$)/.test(text);
+    if (/^[a-z][a-z0-9+.-]*:\S/i.test(text) && !hasPort) return result;
+    return { url: `${SEARCH_URL}${encodeURIComponent(text)}` };
+}
+
+// Chromium net error codes -200..-299 are certificate problems
+const isCertificateError = (code) => code <= -200 && code > -300;
+
+export function createBrowserSideProvider({
+    document: doc = document,
+    api = (typeof window !== 'undefined' ? window.electronAPI : null),
+    sidePaneController = null,
+    notify = null
+} = {}) {
+    const kind = 'browser';
+    let sequence = 0;
+    /** @type {Map<string, { isBlank: () => boolean }>} */
+    const mounted = new Map();
+
+    const toast = (message, type = 'info') => {
+        const fn = notify
+            || doc.defaultView?.uiHelperFunctions?.showToastNotification
+            || globalThis.uiHelperFunctions?.showToastNotification;
+        fn?.(message, type);
+    };
+
+    async function openBrowserTab({ url = null, forceNew = false } = {}) {
+        if (!sidePaneController) return null;
+        // Reuse a tab that has not been used yet instead of piling up empty ones
+        if (!url && !forceNew) {
+            for (const [id, entry] of mounted) {
+                if (entry.isBlank()) {
+                    // The controller owns visibility and focus, including late mount completion.
+                    return sidePaneController.openTab({ id, kind, title: '浏览器', icon: 'public', closable: true, scopeMode: 'global' });
+                }
+            }
+        }
+        // 重启后恢复的浏览器标签也占着 browser:N，跳过已有的编号
+        const openIds = new Set(sidePaneController.getSnapshot?.().tabs.map(tab => tab.id) || []);
+        let id;
+        do { id = `browser:${++sequence}`; } while (openIds.has(id));
+        return sidePaneController.openTab({
+            id,
+            kind,
+            title: '浏览器',
+            icon: 'public',
+            closable: true,
+            scopeMode: 'global',
+            payload: url ? { url } : {}
+        });
+    }
+
+    let unsubscribeOpenTab = null;
+    const subscribeOpenTab = () => {
+        if (unsubscribeOpenTab || typeof api?.onBrowserOpenTab !== 'function') return;
+        unsubscribeOpenTab = api.onBrowserOpenTab((payload) => {
+            if (!payload || typeof payload.url !== 'string') return;
+            const result = normalizeBrowserInput(payload.url);
+            if (!result?.url) return;
+            const browserTabs = sidePaneController?.getSnapshot?.().tabs.filter(tab => tab.kind === kind).length || 0;
+            if (browserTabs >= MAX_POPUP_BROWSER_TABS) {
+                toast(`浏览器标签已有 ${browserTabs} 个，网页新开的窗口没有打开`, 'warning');
+                return;
+            }
+            openBrowserTab({ url: result.url, forceNew: true });
+        });
+    };
+
+    return {
+        kind,
+        openBrowserTab,
+
+        async handleAgentRequest({ action, params = {} }) {
+            if (action === 'open') {
+                const handle = await openBrowserTab({ url: params.url, forceNew: true });
+                if (!handle) throw new Error('侧栏浏览器未能打开。');
+                await handle.whenRegistered();
+                return { targetId: handle.getTargetId() };
+            }
+            const tab = sidePaneController.getSnapshot().tabs.find(t => t.kind === kind && t.id === params.targetId);
+            if (!tab) throw new Error('浏览器标签不存在。');
+            if (action === 'close') {
+                await sidePaneController.closeTab(tab.id);
+                return { targetId: tab.id };
+            }
+            const handle = await sidePaneController.openTab(tab);
+            sidePaneController.setVisible(true);
+            await handle.whenRegistered();
+            if (action === 'assist') handle.showAssistance(params.assistance);
+            else if (action !== 'activate') throw new Error('未知浏览器宿主动作。');
+            return { targetId: tab.id };
+        },
+
+        async mountTab(tab, viewElement, { scope: viewScope = null } = {}) {
+            if (!viewElement) return null;
+            subscribeOpenTab();
+            viewElement.innerHTML = '';
+            viewElement.classList.add('side-browser-view');
+
+            // 这次挂载的监听、网页视图和登记都归 own：控制器释放 view 或调用 dispose 时一起拆掉
+            const own = createSidePaneRootScope(viewScope, 'browser');
+            const disposed = () => !own.active;
+            let webview = null;
+            let attached = false;
+            let domReady = false;
+            let currentUrl = '';
+            let registeredGuestId = null;
+            let registration = null;
+            let resolveRegistration;
+            let rejectRegistration;
+            const registered = new Promise((resolve, reject) => {
+                resolveRegistration = resolve; rejectRegistration = reject;
+            });
+            registered.catch(() => {});
+            const registerGuest = () => {
+                if (registration || !api?.browserRegisterTarget || !webview?.getWebContentsId) return;
+                const guestId = webview.getWebContentsId();
+                registeredGuestId = guestId;
+                registration = api.browserRegisterTarget(tab.id, guestId).then(res => {
+                    if (!res?.success) throw new Error(res?.error || '浏览器目标注册失败。');
+                    if (disposed()) {
+                        void api.browserUnregisterTarget?.(tab.id, guestId);
+                        return;
+                    }
+                    resolveRegistration(res.data);
+                }).catch(error => rejectRegistration(error));
+            };
+            let loading = false;
+            // 静音的视频、摄像头预览也算在播：isCurrentlyAudible 只认出声的
+            let mediaPlaying = false;
+            let lastFailure = null;
+            let pendingUrl = '';
+
+            const el = (tag, className, attrs = {}) => {
+                const node = doc.createElement(tag);
+                if (className) node.className = className;
+                for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
+                return node;
+            };
+            const iconButton = (icon, label) => {
+                const btn = el('button', 'side-browser-btn', { type: 'button', 'aria-label': label, title: label });
+                btn.innerHTML = `<span class="vcp-ui-icon" aria-hidden="true">${icon}</span>`;
+                return btn;
+            };
+
+            const container = el('div', 'side-browser-container');
+            const toolbar = el('div', 'side-browser-toolbar');
+            const backBtn = iconButton('arrow_back', '后退');
+            const forwardBtn = iconButton('arrow_forward', '前进');
+            const reloadBtn = iconButton('refresh', '刷新');
+            const address = el('input', 'side-browser-address', {
+                type: 'text',
+                spellcheck: 'false',
+                autocomplete: 'off',
+                placeholder: '搜索或输入网址',
+                'aria-label': '地址栏'
+            });
+            const moreBtn = iconButton('more_horiz', '更多浏览器操作');
+            const menu = el('div', 'side-browser-menu', { role: 'menu' });
+            menu.hidden = true;
+            const menuItem = (icon, label, action) => {
+                const item = el('button', 'side-browser-menu-item', { type: 'button', role: 'menuitem', 'data-action': action });
+                item.innerHTML = `<span class="vcp-ui-icon" aria-hidden="true">${icon}</span><span></span>`;
+                item.lastElementChild.textContent = label;
+                return item;
+            };
+            const openExternalItem = menuItem('open_in_new', '在默认浏览器中打开', 'open-external');
+            const devtoolsItem = menuItem('bug_report', '打开调试工具', 'devtools');
+            const clearDataItem = menuItem('delete', '清除浏览数据', 'clear-data');
+            menu.append(openExternalItem, devtoolsItem, clearDataItem);
+            // 前进后退和刷新收进一个胶囊，地址栏、更多各自一颗：三块等高的圆角件
+            const nav = el('div', 'side-browser-nav');
+            nav.append(backBtn, forwardBtn, el('span', 'side-browser-nav-divider', { 'aria-hidden': 'true' }), reloadBtn);
+            moreBtn.classList.add('side-browser-more');
+            toolbar.append(nav, address, moreBtn);
+
+            const body = el('div', 'side-browser-body');
+            const empty = el('div', 'side-browser-empty');
+            empty.innerHTML = '<span class="vcp-ui-icon" aria-hidden="true">public</span><span class="side-browser-empty-text"></span>';
+            empty.querySelector('.side-browser-empty-text').textContent = '粘贴或输入 URL 以打开网页。';
+            const notice = el('div', 'side-browser-notice');
+            notice.hidden = true;
+            const noticeTitle = el('div', 'side-browser-notice-title');
+            const noticeDetail = el('div', 'side-browser-notice-detail');
+            const noticeHint = el('div', 'side-browser-notice-hint');
+            const noticeRetry = el('button', 'side-browser-notice-retry', { type: 'button' });
+            notice.append(noticeTitle, noticeDetail, noticeHint, noticeRetry);
+            body.append(empty, notice);
+            const assistanceBox = el('div', 'side-browser-assistance', { role: 'status' });
+            assistanceBox.hidden = true;
+            const assistanceText = el('span', 'side-browser-assistance-text');
+            const completeBtn = el('button', 'side-browser-btn', { type: 'button' });
+            completeBtn.textContent = '已完成，允许 AI 继续';
+            const cancelBtn = el('button', 'side-browser-btn', { type: 'button' });
+            cancelBtn.textContent = '取消协作';
+            assistanceBox.append(assistanceText, completeBtn, cancelBtn);
+            let assistance = null;
+            const finishAssistance = async cancelled => {
+                if (!assistance) return;
+                const res = await api.browserCompleteAssistance?.(tab.id, assistance.requestId, cancelled);
+                if (res?.success) { assistance = null; assistanceBox.hidden = true; }
+                else toast(res?.error || '接管状态更新失败', 'warning');
+            };
+            own.listen(completeBtn, 'click', () => void finishAssistance(false));
+            own.listen(cancelBtn, 'click', () => void finishAssistance(true));
+
+            container.append(toolbar, assistanceBox, body, menu);
+            viewElement.appendChild(container);
+
+            const hasPage = () => Boolean(webview);
+            const canUseGuest = () => Boolean(webview && domReady && !disposed());
+            // 首个页面可能一直没有响应；客体挂载后就能取消或替换导航，不必等文档就绪。
+            const canNavigateGuest = () => Boolean(webview && (attached || domReady) && !disposed());
+
+            const hideNotice = () => {
+                notice.hidden = true;
+                lastFailure = null;
+            };
+            const showNotice = ({ title, detail = '', hint = '', retryLabel = '重新加载', onRetry }) => {
+                noticeTitle.textContent = title;
+                noticeDetail.textContent = detail;
+                noticeHint.textContent = hint;
+                noticeHint.hidden = !hint;
+                noticeRetry.textContent = retryLabel;
+                noticeRetry.onclick = onRetry;
+                notice.hidden = false;
+            };
+
+            const syncControls = () => {
+                let canBack = false;
+                let canForward = false;
+                if (canUseGuest()) {
+                    try {
+                        canBack = webview.canGoBack();
+                        canForward = webview.canGoForward();
+                    } catch (_error) {
+                        // guest is being torn down
+                    }
+                }
+                backBtn.disabled = !canBack;
+                forwardBtn.disabled = !canForward;
+                const icon = reloadBtn.querySelector('.vcp-ui-icon');
+                icon.textContent = loading ? 'close' : 'refresh';
+                reloadBtn.title = loading ? '停止加载' : '刷新';
+                reloadBtn.setAttribute('aria-label', reloadBtn.title);
+                reloadBtn.disabled = !hasPage() && !pendingUrl;
+                const hasUrl = /^https?:/i.test(currentUrl);
+                openExternalItem.disabled = !hasUrl;
+                devtoolsItem.disabled = !canUseGuest();
+                empty.hidden = hasPage();
+                if (webview) webview.hidden = Boolean(lastFailure);
+            };
+
+            const setAddress = (url) => {
+                const changed = Boolean(url) && url !== currentUrl;
+                currentUrl = url || '';
+                // 关掉后从「最近关闭」重新打开时回到最后看的页面
+                if (changed && /^https?:/i.test(currentUrl)) sidePaneController?.updateTab?.(tab.id, { payload: { url: currentUrl } });
+                if (doc.activeElement !== address) address.value = currentUrl === 'about:blank' ? '' : currentUrl;
+                address.title = currentUrl;
+            };
+
+            // The first page is the guest's initial navigation (no about:blank entry in its history).
+            const ensureWebview = (initialUrl) => {
+                if (webview) return webview;
+                webview = doc.createElement('webview');
+                webview.className = 'side-browser-webview';
+                webview.setAttribute('partition', BROWSER_PARTITION);
+                // popups are always denied by the main process and re-routed into a new side-pane tab
+                webview.setAttribute('allowpopups', '');
+                webview.setAttribute('src', initialUrl);
+                body.insertBefore(webview, notice);
+                wireWebview(webview);
+                return webview;
+            };
+
+            function wireWebview(guest) {
+                // 网页视图在释放时整个移除，它上面的监听跟着元素一起丢弃，不必登记
+                const on = (name, handler) => guest.addEventListener(name, (event) => {
+                    if (!disposed() && guest === webview) handler(event);
+                });
+                const flushPendingNavigation = () => {
+                    if (pendingUrl) {
+                        const target = pendingUrl;
+                        pendingUrl = '';
+                        guest.loadURL(target).catch(() => { /* reported through did-fail-load */ });
+                    }
+                    syncControls();
+                };
+                on('did-attach', () => {
+                    attached = true;
+                    registerGuest();
+                    flushPendingNavigation();
+                });
+                on('dom-ready', () => {
+                    domReady = true;
+                    registerGuest();
+                    flushPendingNavigation();
+                });
+                on('did-start-loading', () => {
+                    loading = true;
+                    hideNotice();
+                    syncControls();
+                });
+                on('did-stop-loading', () => {
+                    loading = false;
+                    try {
+                        const url = guest.getURL();
+                        // 取消首次导航时尚无已提交地址，保留目标以便再次加载。
+                        if (url) setAddress(url);
+                    } catch (_error) {
+                        // not attached yet
+                    }
+                    syncControls();
+                });
+                on('media-started-playing', () => { mediaPlaying = true; });
+                on('media-paused', () => { mediaPlaying = false; });
+                on('did-navigate', (event) => {
+                    // 换了文档，旧页面的播放不会再发暂停
+                    mediaPlaying = false;
+                    setAddress(event.url);
+                    syncControls();
+                });
+                on('did-navigate-in-page', (event) => {
+                    if (event.isMainFrame !== false) setAddress(event.url);
+                    syncControls();
+                });
+                on('page-title-updated', (event) => {
+                    address.setAttribute('aria-description', event.title || '');
+                    // 标签标题跟着页面标题走
+                    sidePaneController?.updateTab?.(tab.id, { title: event.title || '浏览器' });
+                });
+                on('did-fail-load', (event) => {
+                    if (event.isMainFrame === false || BLOCKED_ERROR_CODES.has(event.errorCode)) return;
+                    lastFailure = event;
+                    const cert = isCertificateError(event.errorCode);
+                    showNotice({
+                        title: cert ? '该站点的 HTTPS 证书不受信任' : '无法打开该页面',
+                        detail: `${event.validatedURL || currentUrl}\n${event.errorDescription || ''}${event.errorCode ? `（${event.errorCode}）` : ''}`.trim(),
+                        hint: cert ? '如果确认该地址可信，可以在「更多」菜单里选择「在默认浏览器中打开」。' : '',
+                        onRetry: () => reload()
+                    });
+                    syncControls();
+                });
+                on('render-process-gone', (event) => {
+                    loading = false;
+                    mediaPlaying = false;
+                    lastFailure = { crashed: true };
+                    const { reason, exitCode } = event.details || {};
+                    showNotice({
+                        title: '页面已停止响应',
+                        detail: `页面进程已退出：${reason || 'unknown'}（退出码 ${exitCode ?? '?'}）`,
+                        hint: '',
+                        retryLabel: '重试浏览器',
+                        onRetry: () => {
+                            const target = currentUrl;
+                            resetWebview();
+                            if (target) navigate(target);
+                        }
+                    });
+                    syncControls();
+                });
+            }
+
+            function resetWebview() {
+                if (registeredGuestId !== null) void api?.browserUnregisterTarget?.(tab.id, registeredGuestId);
+                registeredGuestId = null;
+                registration = null;
+                if (webview) {
+                    const old = webview;
+                    webview = null;
+                    attached = false;
+                    domReady = false;
+                    loading = false;
+                    mediaPlaying = false;
+                    old.remove();
+                }
+                hideNotice();
+                syncControls();
+            }
+
+            function navigate(url) {
+                hideNotice();
+                const created = !webview;
+                const guest = ensureWebview(url);
+                setAddress(url);
+                if (!created) {
+                    if (canNavigateGuest()) {
+                        guest.loadURL(url).catch(() => { /* reported through did-fail-load */ });
+                    } else {
+                        pendingUrl = url;
+                    }
+                }
+                syncControls();
+            }
+
+            function reload() {
+                if (lastFailure?.crashed) {
+                    const target = currentUrl;
+                    resetWebview();
+                    if (target) navigate(target);
+                    return;
+                }
+                // Preserve the failed target before clearing the notice. navigate also
+                // queues it when the error arrives before the guest's first dom-ready.
+                if (lastFailure?.validatedURL) {
+                    navigate(lastFailure.validatedURL);
+                    return;
+                }
+                if (!canUseGuest()) {
+                    if (pendingUrl || currentUrl) navigate(pendingUrl || currentUrl);
+                    return;
+                }
+                hideNotice();
+                webview.reload();
+            }
+
+            const submitAddress = () => {
+                const result = resolveBrowserAddress(address.value);
+                if (!result) return;
+                if (result.error) {
+                    toast(result.error, 'warning');
+                    return;
+                }
+                navigate(result.url);
+                webview?.focus?.();
+            };
+
+            // 键盘打开后焦点进菜单：菜单在 DOM 里排在 webview 后面，焦点留在按钮上时 Tab 会先进网页、窗口失焦、菜单收起，
+            // 菜单项就永远够不着。方向键 / Esc / Tab 的处理同标签右键菜单（Radix Menu 的行为）
+            moreBtn.setAttribute('aria-haspopup', 'menu');
+            moreBtn.setAttribute('aria-expanded', 'false');
+            const closeMenu = ({ restoreFocus = false } = {}) => {
+                menu.hidden = true;
+                moreBtn.setAttribute('aria-expanded', 'false');
+                if (restoreFocus) moreBtn.focus();
+            };
+            const openMenu = () => {
+                syncControls();
+                menu.hidden = false;
+                moreBtn.setAttribute('aria-expanded', 'true');
+                menu.querySelector('[role="menuitem"]:not([disabled])')?.focus();
+            };
+            // 地址栏里打了一半就点走：回到当前页面的网址（setAddress 在聚焦时不改它，没有这一步会一直留着半截文字）。
+            // 切到别的窗口（比如去复制网址）也会触发 blur，那时整个文档都没焦点，打了一半的字要留着
+            own.listen(address, 'blur', () => {
+                if (doc.hasFocus?.() === false) return;
+                address.value = currentUrl === 'about:blank' ? '' : currentUrl;
+            });
+            own.listen(menu, 'keydown', (event) => {
+                if (event.key === 'Escape' || event.key === 'Tab') {
+                    event.preventDefault();
+                    closeMenu({ restoreFocus: true });
+                    return;
+                }
+                moveMenuFocus(event, Array.from(menu.querySelectorAll('[role="menuitem"]:not([disabled])')));
+            });
+            const onDocumentPointerDown = (event) => {
+                if (!menu.hidden && !menu.contains(event.target) && !moreBtn.contains(event.target)) closeMenu();
+            };
+            // 菜单就在 webview 上方：点进网页时主页面收不到 pointerdown，只会失焦
+            const onWindowBlur = () => { if (!menu.hidden) closeMenu(); };
+            own.listen(doc, 'pointerdown', onDocumentPointerDown, true, 'menu-outside-pointerdown');
+            if (doc.defaultView) own.listen(doc.defaultView, 'blur', onWindowBlur, undefined, 'menu-window-blur');
+
+            own.listen(address, 'keydown', (event) => {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    submitAddress();
+                } else if (event.key === 'Escape') {
+                    address.value = currentUrl === 'about:blank' ? '' : currentUrl;
+                    address.blur();
+                }
+            });
+            own.listen(address, 'focus', () => address.select());
+            own.listen(backBtn, 'click', () => { if (canUseGuest() && webview.canGoBack()) webview.goBack(); });
+            own.listen(forwardBtn, 'click', () => { if (canUseGuest() && webview.canGoForward()) webview.goForward(); });
+            own.listen(reloadBtn, 'click', () => {
+                if (loading && canNavigateGuest()) {
+                    pendingUrl = '';
+                    webview.stop();
+                }
+                else reload();
+            });
+            own.listen(moreBtn, 'click', () => {
+                if (menu.hidden) openMenu();
+                else closeMenu();
+            });
+            own.listen(menu, 'click', async (event) => {
+                const item = event.target.closest('[data-action]');
+                if (!item || item.disabled) return;
+                closeMenu({ restoreFocus: menu.contains(doc.activeElement) });
+                const action = item.getAttribute('data-action');
+                if (action === 'open-external') {
+                    const res = await api?.browserOpenExternal?.(currentUrl);
+                    if (res && !res.success) toast(res.error || '无法在默认浏览器中打开', 'warning');
+                } else if (action === 'devtools') {
+                    if (canUseGuest()) webview.openDevTools();
+                } else if (action === 'clear-data') {
+                    const res = await api?.browserClearData?.();
+                    toast(res?.success ? '已清除浏览数据' : (res?.error || '清除浏览数据失败'), res?.success ? 'success' : 'warning');
+                }
+            });
+
+            if (typeof doc.createElement('webview').loadURL !== 'function') {
+                // <webview> not available in this window (e.g. not the main window): show an explanation instead
+                empty.querySelector('.side-browser-empty-text').textContent = '当前窗口不支持内置浏览器。';
+            }
+
+            const initialUrl = tab?.payload?.url;
+            syncControls();
+            if (initialUrl) {
+                const result = normalizeBrowserInput(initialUrl);
+                if (result?.url) navigate(result.url);
+            }
+
+            const entry = { isBlank: () => !hasPage() && !pendingUrl };
+            mounted.set(tab.id, entry);
+            own.own(() => {
+                // A canceled mount may finish after a new page has reused its id.
+                if (mounted.get(tab.id) === entry) mounted.delete(tab.id);
+                // 最后一个浏览器标签没了才退掉"网页新开窗口"的推送
+                if (mounted.size === 0) {
+                    unsubscribeOpenTab?.();
+                    unsubscribeOpenTab = null;
+                }
+            }, 'browser-tab-entry', 'subscription');
+            // 网页视图最先拆：后登记的先释放，监听和登记在它之后
+            own.own(() => {
+                rejectRegistration(new Error('浏览器标签已释放。'));
+                if (registeredGuestId !== null) void api?.browserUnregisterTarget?.(tab.id, registeredGuestId);
+                if (webview) {
+                    webview.remove();
+                    webview = null;
+                }
+            }, 'webview', 'dom');
+
+            return {
+                getTargetId() { return tab.id; },
+                whenRegistered() { return registered; },
+                showAssistance(value) {
+                    assistance = value;
+                    assistanceText.textContent = `AI 请求协助：${value.message}`;
+                    assistanceBox.hidden = false;
+                    webview?.focus?.();
+                },
+                resume() { void api?.browserActiveTarget?.(tab.id); },
+                suspend() {},
+                focus() {
+                    if (!hasPage()) address.focus();
+                    else void api?.browserActiveTarget?.(tab.id);
+                },
+                getUrl() {
+                    return currentUrl;
+                },
+                navigate(input) {
+                    const result = normalizeBrowserInput(input);
+                    if (result?.url) navigate(result.url);
+                    return result;
+                },
+                // 还在加载、在放声音或在放视频的页面不休眠，休眠了再显示会从当前地址重新打开
+                isBusy() {
+                    // Registered collaborative pages keep their DOM, form state and
+                    // verification session until explicitly closed, not silently slept.
+                    if (registeredGuestId !== null || assistance || loading || mediaPlaying) return true;
+                    try {
+                        return domReady && webview?.isCurrentlyAudible?.() === true;
+                    } catch (_error) {
+                        return false;
+                    }
+                },
+                dispose() {
+                    // DOM 同步清掉：scope 的释放是异步的，不能等它，免得把紧接着重新挂载的内容一起清掉
+                    if (!disposed()) {
+                        webview = null;
+                        viewElement.innerHTML = '';
+                    }
+                    return own.dispose('browser-disposed');
+                }
+            };
+        }
+    };
+}

@@ -53,6 +53,12 @@ require = function (id) {
 };
 
 const { app, BrowserWindow, ipcMain, nativeTheme, globalShortcut, screen, clipboard, shell, dialog, protocol, Tray, Menu, powerMonitor } = require('electron'); // Added screen, clipboard, and shell
+
+// 🛡️ 长连接/流式回复不能依赖后台页面的定时器节流，否则切回窗口时会出现恢复延迟。
+app.commandLine.appendSwitch('disable-hang-monitor');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs-extra'); // Using fs-extra for convenience
@@ -75,8 +81,18 @@ const promptHandlers = require('./modules/ipc/promptHandlers'); // Import prompt
 const notesHandlers = require('./modules/ipc/notesHandlers'); // Import notes handlers
 const workspaceHandlers = require('./modules/ipc/workspaceHandlers'); // 工作区索引与实时引用
 const projectForgeHandlers = require('./modules/ipc/projectForgeHandlers'); // ProjectForge 施工图 GUI（只读 + 署名回退）
+const { createSidePaneSenderGuard, guardIpcMain } = require('./modules/ipc/sidePaneIpcPolicy'); // 侧栏相关 IPC 的调用方窗口策略
 const gitHandlers = require('./modules/ipc/gitHandlers'); // ProjectForge Git 源代码管理侧栏
 const sourceHandlers = require('./modules/ipc/sourceHandlers'); // ProjectForge 源码浏览 / 轻量编辑侧栏
+// 侧栏终端、调用轨迹、旁聊的 IPC 由领域激活器按需加载（见下方 domainActivator.register），这里不预先 require
+const browserHandlers = require('./modules/ipc/browserHandlers'); // 侧栏浏览器（<webview> 的安全围栏）
+const { createDomainActivator, channelsForDomain } = require('./modules/ipc/domainActivator');
+const { describeApis } = require('./preloads/core/registry');
+const { configureSharedRecorder } = require('./modules/modelTrajectory');
+const domainActivator = createDomainActivator({ ipcMain });
+// 主进程推送按窗口订阅：只发给订阅了某个主题的窗口（V工程窗口、主窗口的状态面板和侧栏）
+const { createStateSubscriptions } = require('./modules/ipc/stateSubscriptions');
+const stateSubscriptions = createStateSubscriptions();
 const assistantHandlers = require('./modules/ipc/assistantHandlers'); // Import assistant handlers
 const musicHandlers = require('./modules/ipc/musicHandlers'); // Import music handlers
 const diceHandlers = require('./modules/ipc/diceHandlers'); // Import dice handlers
@@ -96,7 +112,10 @@ const desktopRemoteHandlers = require('./modules/ipc/desktopRemoteHandlers'); //
 const tavernHandlers = require('./modules/ipc/tavernHandlers'); // Import VCPChatTarven (advanced reply) handlers
 const { ScriptoriumAgentControlService } = require('./modules/services/scriptoriumAgentControlService');
 const { GlobalJevService } = require('./modules/services/globalJevService');
-// docxHandlers 体积较大，在主窗口开始加载后异步预热；首次调用也会按需等待同一加载任务。
+// docxHandlers 依赖链较重（mammoth/cheerio/marked/jszip 等），冷启动不加载。
+// 仅在首次真正使用文坊时（IPC 打开、V 桌面图标、Agent 调用）按需加载。
+const windowService = require('./modules/services/windowService');
+const WINDOW_APP_IDS = require('./modules/services/windowAppIds');
 let docxHandlersModule = null;
 let docxHandlersLoadPromise = null;
 let docxHandlersInitializeOptions = null;
@@ -147,6 +166,17 @@ function registerDocxOpenBootstrap() {
 function configureDocxHandlers(options) {
     docxHandlersInitializeOptions = options;
     registerDocxOpenBootstrap();
+    // V 桌面等入口通过 windowService 打开文坊，不经过 open-docx-window IPC。
+    // 预先登记轻量占位；真实模块 initialize() 时会以同一 appId 覆盖 open/getWindow。
+    windowService.register(WINDOW_APP_IDS.DOCX, {
+        owner: 'main:docx-lazy',
+        getWindow: () => docxHandlersModule?.getDocxWindow() || null,
+        open: async (openOptions = {}) => {
+            const handlers = await loadDocxHandlers();
+            return handlers.openDocxWindow(openOptions);
+        },
+        readyTimeoutMs: 20000,
+    });
 }
 
 // 提供稳定对象给控制服务；异步方法在真实模块就绪前自动等待。
@@ -284,6 +314,7 @@ const NATIVE_SPLASH_READY_FILE = app.isPackaged
 const AGENT_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Agents');
 const USER_DATA_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'UserData'); // For chat histories and attachments
 const SETTINGS_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'settings.json');
+const TERMINAL_EXECUTOR_PATH = path.join(PROJECT_ROOT, 'VCPDistributedServer', 'Plugin', 'PowerShellExecutor', 'PowerShellExecutor.js');
 const USER_AVATAR_FILE = path.join(USER_DATA_DIR, 'user_avatar.png'); // Standardized user avatar file
 const MUSIC_PLAYLIST_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'songlist.json');
 const MUSIC_COVER_CACHE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'MusicCoverCache');
@@ -479,6 +510,7 @@ function startDistributedServerAfterRenderer() {
     }
 
     distributedServerStartPromise = (async () => {
+        let server = null;
         try {
             const settings = await appSettingsManager?.readSettings();
             if (!settings?.enableDistributedServer) {
@@ -491,7 +523,7 @@ function startDistributedServerAfterRenderer() {
 
             console.log('[Main] Renderer is ready. Initializing distributed server in the background...');
             const DistributedServer = require('./VCPDistributedServer/VCPDistributedServer.js');
-            const server = new DistributedServer({
+            server = new DistributedServer({
                 mainServerUrl: settings.vcpLogUrl,
                 vcpKey: settings.vcpLogKey,
                 serverName: 'VCPChat-Desktop-Client-Distributed-Server',
@@ -512,9 +544,15 @@ function startDistributedServerAfterRenderer() {
             });
             distributedServer = server;
             await server.initialize();
-            return server;
+            return isFinalizingQuit || app.isQuitting ? null : server;
         } catch (error) {
-            distributedServer = null;
+            // 启动失败也需清理已加载的插件和可能创建的监听器。
+            if (server) {
+                await server.stop().catch(cleanupError => {
+                    console.warn('[Main] Failed to clean up distributed server startup:', cleanupError);
+                });
+            }
+            if (distributedServer === server) distributedServer = null;
             console.error('[Main] Failed to initialize distributed server after renderer readiness:', error);
             return null;
         }
@@ -739,12 +777,16 @@ function createWindow({ deferLoad = false } = {}) {
             sandbox: false, // preloads/* 需要 require 本地模块，沙箱内不可用，见 preloads/README.md
             contextIsolation: true,    // 恢复: 开启上下文隔离
             nodeIntegration: false,  // 恢复: 关闭Node.js集成在渲染进程
+            webviewTag: true, // 仅供侧栏浏览器的 <webview>；其创建参数由 browserHandlers.attachToWindow 强制收紧
+            // 主聊天窗口需要在切到其他窗口时继续接收流式事件并推进恢复队列。
+            backgroundThrottling: false,
             spellcheck: true, // Enable spellcheck for input fields
         },
         icon: path.join(__dirname, 'assets', 'icon.png'), // Add an icon
         title: 'VCP AI 聊天客户端',
         show: false, // Don't show until ready
     });
+    browserHandlers.attachToWindow(mainWindow);
 
     if (!deferLoad) {
         loadMainWindow();
@@ -816,6 +858,20 @@ function createWindow({ deferLoad = false } = {}) {
     });
 
     mainWindow.webContents.on('did-finish-load', markMainRendererStable);
+
+    // 🛡️ 静默吸收并记录未响应误判，保证窗口在慢网络或后台任务下持续保持稳定交互
+    mainWindow.on('unresponsive', () => {
+        console.warn('[Main] MainWindow marked unresponsive by OS/Chromium (usually due to slow network/API waiting). Keeping alive.');
+    });
+    mainWindow.on('responsive', () => {
+        console.log('[Main] MainWindow recovered responsiveness.');
+    });
+    mainWindow.webContents.on('unresponsive', () => {
+        console.warn('[Main] Main webContents unresponsive event triggered. Ignored to avoid intrusive crash dialogs.');
+    });
+    mainWindow.webContents.on('responsive', () => {
+        console.log('[Main] Main webContents recovered responsiveness.');
+    });
 
     // mainWindow.setMenu(null); // 移除应用程序菜单栏 - 注释掉以启用macOS的标准菜单
 
@@ -1067,6 +1123,8 @@ if (!gotTheLock) {
                 // WebContentsView 不由 BrowserWindow.fromWebContents() 解析，
                 // 因此可与普通 VChat 壳窗口可靠区分。
                 if (contents.isDestroyed() || !BrowserWindow.fromWebContents(contents)) return;
+                // <webview> guests (side-pane browser) route their popups through modules/ipc/browserHandlers.js
+                if (contents.getType() === 'webview') return;
                 contents.setWindowOpenHandler(({ url }) => {
                     if (url.startsWith('http:') || url.startsWith('https:')) {
                         shell.openExternal(url);
@@ -1457,10 +1515,49 @@ if (!gotTheLock) {
             SETTINGS_FILE
         });
         // 工作区索引在后台预热，不阻塞首屏。
-        workspaceHandlers.initialize({ settingsManager: appSettingsManager, logger: console });
-        projectForgeHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService });
-        gitHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService });
-        sourceHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService });
+        // 侧栏相关通道统一在注册层检查调用方窗口，策略表见 modules/ipc/sidePaneIpcPolicy.js
+        const sidePaneGuard = domain => createSidePaneSenderGuard(domain, () => mainWindow);
+        workspaceHandlers.initialize({ settingsManager: appSettingsManager, logger: console, ipcMain: guardIpcMain(ipcMain, sidePaneGuard('workspaces')) });
+        stateSubscriptions.registerIpc(ipcMain, sidePaneGuard('state'));
+        projectForgeHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService, subscriptions: stateSubscriptions, ipcMain: guardIpcMain(ipcMain, sidePaneGuard('projectForge')) });
+        // Git 也进领域表，但登记时就激活：模块只有 execFile 调用，没什么可省的，
+        // 而状态面板首帧就会读工作区列表；仓库监听仍然等到第一个窗口订阅才开始
+        domainActivator.register('git', {
+            allowSender: sidePaneGuard('projectForge'),
+            channels: gitHandlers.CHANNELS,
+            load: () => gitHandlers,
+            init: (mod, { ipcMain: domainIpc }) => mod.initialize({ ipcMain: domainIpc, workspaceService: workspaceHandlers.workspaceService, getMainWindow: () => mainWindow, subscriptions: stateSubscriptions }),
+            dispose: mod => mod.dispose(),
+            eager: true,
+        });
+        sourceHandlers.initialize({ workspaceService: workspaceHandlers.workspaceService, ipcMain: guardIpcMain(ipcMain, sidePaneGuard('projectForge')) });
+        const preloadApis = describeApis();
+        // 侧栏几个领域启动时只登记通道，第一次调用才 require 并 initialize（状态见 lifecycle:get-main-snapshot 的 domains）
+        domainActivator.register('terminal', {
+            allowSender: sidePaneGuard('terminal'),
+            channels: channelsForDomain(preloadApis, 'terminal'),
+            load: () => require('./modules/ipc/terminalHandlers'), // 侧栏终端（镜像自带终端会话）
+            init: (mod, { ipcMain: domainIpc }) => mod.initialize({ ipcMain: domainIpc, workspaceService: workspaceHandlers.workspaceService, getMainWindow: () => mainWindow }),
+            dispose: mod => mod.disposeAll(),
+        });
+        // 记录器必须早于 chatHandlers.initialize：聊天请求一发出就要有记录器；查看轨迹的 IPC 才按需激活
+        configureSharedRecorder({ rootDir: path.join(APP_DATA_ROOT_IN_PROJECT, 'ModelTrajectory') });
+        domainActivator.register('modelTrajectory', {
+            allowSender: sidePaneGuard('modelTrajectory'),
+            channels: channelsForDomain(preloadApis, 'modelTrajectory'),
+            load: () => require('./modules/ipc/modelTrajectoryHandlers'), // 侧栏调用轨迹（模型请求 / 响应记录）
+            init: (mod, { ipcMain: domainIpc }) => mod.initialize({ ipcMain: domainIpc, getMainWindow: () => mainWindow }),
+            dispose: mod => mod.disposeAll(),
+        });
+        // 浏览器访客会话的权限和协议限制要在任何 <webview> 出现之前就位，所以登记时就激活
+        domainActivator.register('browser', {
+            allowSender: sidePaneGuard('browser'),
+            channels: channelsForDomain(preloadApis, 'browser'),
+            load: () => browserHandlers,
+            init: (mod, { ipcMain: domainIpc }) => mod.initialize({ ipcMain: domainIpc, getMainWindow: () => mainWindow }),
+            dispose: mod => mod.dispose(),
+            eager: true,
+        });
 
         translatorHandlers.initialize({
             mainWindow,
@@ -1523,6 +1620,12 @@ if (!gotTheLock) {
             agentConfigManager,
             settingsManager: appSettingsManager,
             historyMutationQueue
+        });
+        domainActivator.register('sideChat', {
+            allowSender: sidePaneGuard('sideChat'),
+            channels: channelsForDomain(preloadApis, 'sideChat'),
+            load: () => require('./modules/ipc/sideChatHandlers'), // Workspace Side Chat handlers
+            init: (mod, { ipcMain: domainIpc }) => mod.initialize({ ipcMain: domainIpc, USER_DATA_DIR, AGENT_DIR, historyMutationQueue, getMainWindow: () => mainWindow }),
         });
 
         // A renderer claims a lease before beginning asynchronous selection.
@@ -1689,6 +1792,14 @@ if (!gotTheLock) {
                 activeEmbeddedAction: embedded.activeAction,
                 tasks: embeddedAppTasks.snapshot(),
                 chatTasks: chatHandlers.getVcpStreamTaskSnapshot(),
+                domains: domainActivator.snapshot(),
+                subscriptions: stateSubscriptions.snapshot(),
+                gitWatchers: gitHandlers.watchSnapshot(),
+                // 终端执行器是否已在主进程加载：侧栏终端第一次用到才 require；分布式服务器开着时它的插件加载也会拉起它
+                terminalExecutor: {
+                    loaded: Boolean(originalRequire.cache[TERMINAL_EXECUTOR_PATH]),
+                    distributedServer: Boolean(distributedServer),
+                },
             };
         });
         ipcMain.handle('embedded-vchat-app:close-all', async event => {
@@ -1704,6 +1815,7 @@ if (!gotTheLock) {
             }
         });
         loomManager = await loomManagerModule.initialize({
+            getMainWindow: () => mainWindow,
             projectRoot: PROJECT_ROOT,
             appDataRoot: APP_DATA_ROOT_IN_PROJECT,
             mainWindow,
@@ -1766,18 +1878,11 @@ if (!gotTheLock) {
             return process.platform;
         });
 
-        // 主窗口页面完成加载、触发展示后再后台预热 Scriptorium。
-        // 不 await：重型 CommonJS 解析不会延迟主窗口首屏；若用户更早打开
-        // 文坊，临时 IPC 桥接会立即启动并等待同一个单例加载 Promise。
+        // Scriptorium 不再预热，由 loadDocxHandlers() 在首次使用时按需加载。
         reportLauncherProgress('renderer-loading', 0.9, '正在绘制聊天界面');
-        void loadMainWindow()
-            .then(() => loadDocxHandlers())
-            .catch((error) => {
-                // 模块加载错误已由 loadDocxHandlers 记录；这里只记录页面加载错误。
-                if (!docxHandlersLoadPromise) {
-                    console.error('[Main] Main window load failed before docx prewarm:', error);
-                }
-            });
+        void loadMainWindow().catch((error) => {
+            console.error('[Main] Main window load failed:', error);
+        });
 
         // --- 自动打开桌面窗口 ---
 
@@ -1865,6 +1970,10 @@ if (!gotTheLock) {
         if (fs.existsSync(readyFile)) {
             fs.unlinkSync(readyFile);
         }
+
+        // 只释放用过的侧栏领域，没激活过的不会为了退出而加载
+        domainActivator.disposeAll({ final: true });
+        stateSubscriptions.dispose();
 
         // 1. 停止所有底层监听器
         console.log('[Main] App is quitting. Stopping all listeners...');
@@ -1964,6 +2073,7 @@ if (!gotTheLock) {
             console.log('VCPLog 收到消息:', event.data);
             try {
                 const data = JSON.parse(event.data.toString());
+                groupChat.noteToolApprovalMessage?.(data); // 群聊看门狗在审批挂着时不熔断
                 if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('vcp-log-message', data);
             } catch (e) {
                 console.error('VCPLog 解析消息失败:', e);
@@ -2020,6 +2130,7 @@ if (!gotTheLock) {
         if (vcpLogWebSocket && vcpLogWebSocket.readyState === 1) { // 1 is WebSocket.OPEN
             console.log('VCPLog 发送消息:', data);
             vcpLogWebSocket.send(JSON.stringify(data));
+            groupChat.noteToolApprovalMessage?.(data);
         } else {
             console.warn('VCPLog WebSocket 未连接或未就绪，无法发送消息:', data);
         }

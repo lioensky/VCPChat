@@ -3,10 +3,16 @@
 // - 渲染进程只传 workspaceId 和仓库相对路径；根目录由 workspaceService 解析，且必须是已启用的工作区。
 // - utility preload 被多个工具窗口共用，这里再按调用页面 URL 校验，只放行 ProjectForge 施工图。
 // - 放弃未跟踪文件时使用 shell.trashItem，文件进入系统回收站而不是硬删。
+// - 仓库变化推送：窗口订阅 git.status（key 为工作区 id）时才监听那个仓库，最后一个窗口离开就停；
+//   监听到变化、或任何窗口通过这里改了仓库（暂存、提交、推送、切分支……），都推 git:changed 给订阅了的窗口。
+//   这里改了仓库时监听会把同一件事吞掉，不再晚几百毫秒重复推一次；
+//   监听降级（只看得到 .git 或挂不上）时推一次 degraded，订阅回执里也带着，渲染端退回到窗口获得焦点时补读。
 'use strict';
 
 const { ipcMain, shell } = require('electron');
 const gitService = require('../services/gitService');
+const { createGitWatcher } = require('../services/gitWatcher');
+const { createApplicationSenderGuard, isApplicationPageUrl, resolveWindowWebContents } = require('./applicationSender');
 
 const CHANNELS = [
     'git:list-workspaces',
@@ -17,27 +23,25 @@ const CHANNELS = [
     'git:discard',
     'git:commit',
     'git:push',
+    'git:list-branches',
+    'git:switch-branch',
+    'git:create-branch',
+    'git:commit-graph',
+    'git:change-summary',
+    'git:reveal-path',
 ];
 
-const ALLOWED_PAGE_SUFFIX = '/projectforgemodules/projectforge.html';
+const ALLOWED_PAGES = ['ProjectForgemodules/projectforge.html', 'main.html'];
+const STATUS_TOPIC = 'git.status';
 const MAX_PATHS = 5000;
-
+// 主进程经领域激活器注册时传进来的是只认本领域通道的 ipcMain；没有就直接注册到 electron 的
+let domainIpc = null;
 let workspaceServiceRef = null;
-
-function isAllowedSenderUrl(raw) {
-    try {
-        const url = new URL(String(raw || ''));
-        if (url.protocol !== 'file:') return false;
-        return decodeURIComponent(url.pathname).replace(/\\/g, '/').toLowerCase().endsWith(ALLOWED_PAGE_SUFFIX);
-    } catch (_error) {
-        return false;
-    }
-}
-
-function isAllowedSender(event) {
-    const raw = event?.senderFrame?.url || event?.sender?.getURL?.() || '';
-    return isAllowedSenderUrl(raw);
-}
+let getMainWindow = () => null;
+let subscriptionsRef = null;
+let watcher = null;
+const isAllowedSender = createApplicationSenderGuard({ pages: ALLOWED_PAGES, getMainWebContents: () => resolveWindowWebContents(getMainWindow) });
+function isAllowedSenderUrl(raw) { return isApplicationPageUrl(raw, ALLOWED_PAGES); }
 
 function listEnabledWorkspaces() {
     return (workspaceServiceRef?.list() || [])
@@ -61,13 +65,24 @@ function asPathList(value) {
     return list;
 }
 
-function handle(channel, fn) {
-    ipcMain.handle(channel, async (event, ...args) => {
+function notifyChanged(workspaceId, reason, extra = null) {
+    if (typeof workspaceId !== 'string' || !workspaceId) return;
+    subscriptionsRef?.publish(STATUS_TOPIC, workspaceId, 'git:changed', { workspaceId, reason, ...extra });
+}
+
+/** mutates：改了仓库的操作，成功后推给其它窗口（发起操作的界面自己会刷新，推送到了也只是多读一次） */
+function handle(channel, fn, { mutates = false } = {}) {
+    const invoke = async (event, ...args) => {
         if (!isAllowedSender(event)) {
             return { success: false, error: '当前窗口无权调用 Git 接口。' };
         }
         try {
-            return { success: true, data: await fn(...args) };
+            const data = await fn(...args);
+            if (mutates) {
+                watcher?.absorb(args[0]);
+                notifyChanged(args[0], channel.slice('git:'.length));
+            }
+            return { success: true, data };
         } catch (error) {
             return {
                 success: false,
@@ -75,12 +90,39 @@ function handle(channel, fn) {
                 code: typeof error?.code === 'string' ? error.code : null,
             };
         }
-    });
+    };
+    // 两个分支分开写：契约扫描按 ipcMain.handle(channel) 认出本模块处理哪些 git: 通道
+    if (domainIpc) domainIpc.handle(channel, invoke);
+    else ipcMain.handle(channel, invoke);
 }
 
-function initialize({ workspaceService = null } = {}) {
+/**
+ * @param {object} [options]
+ * @param {object} [options.subscriptions] stateSubscriptions.js 的订阅表；有窗口订阅某个工作区时才监听它的仓库
+ * @param {Function} [options.watch] 测试注入 fs.watch
+ * @param {object} [options.ipcMain] 领域激活器给的 ipcMain；不传用 electron 的
+ */
+function initialize({ workspaceService = null, mainWindow = null, getMainWindow: getWindow = null, subscriptions = null, watch = undefined, ipcMain: injectedIpcMain = null } = {}) {
+    domainIpc = injectedIpcMain;
+    getMainWindow = typeof getWindow === 'function' ? getWindow : () => mainWindow;
     workspaceServiceRef = workspaceService;
-    CHANNELS.forEach(channel => ipcMain.removeHandler(channel));
+    CHANNELS.forEach(channel => (domainIpc || ipcMain).removeHandler(channel));
+    if (subscriptions && subscriptions !== subscriptionsRef) {
+        watcher?.dispose();
+        subscriptionsRef = subscriptions;
+        watcher = createGitWatcher({
+            getTargets: workspaceId => gitService.getWatchTargets(resolveWorkspaceRoot(workspaceId)),
+            onChange: workspaceId => notifyChanged(workspaceId, 'files'),
+            onDegraded: workspaceId => notifyChanged(workspaceId, 'watch-degraded', { degraded: true }),
+            ...(watch ? { watch } : {}),
+        });
+        subscriptions.declare(STATUS_TOPIC, {
+            keyed: true,
+            onFirst: workspaceId => { void watcher.start(workspaceId); },
+            onLast: workspaceId => watcher.stop(workspaceId),
+            describe: workspaceId => ({ degraded: watcher.isDegraded(workspaceId) }),
+        });
+    }
 
     handle('git:list-workspaces', () => ({
         workspaces: listEnabledWorkspaces(),
@@ -98,28 +140,71 @@ function initialize({ workspaceService = null } = {}) {
         },
     ));
 
-    handle('git:stage', (workspaceId, paths) => gitService.stage(resolveWorkspaceRoot(workspaceId), asPathList(paths)));
+    handle('git:stage', (workspaceId, paths) => gitService.stage(resolveWorkspaceRoot(workspaceId), asPathList(paths)), { mutates: true });
 
-    handle('git:unstage', (workspaceId, paths) => gitService.unstage(resolveWorkspaceRoot(workspaceId), asPathList(paths)));
+    handle('git:unstage', (workspaceId, paths) => gitService.unstage(resolveWorkspaceRoot(workspaceId), asPathList(paths)), { mutates: true });
 
     handle('git:discard', (workspaceId, paths) => gitService.discard(
         resolveWorkspaceRoot(workspaceId),
         asPathList(paths),
         { removeUntracked: absPath => shell.trashItem(absPath) },
-    ));
+    ), { mutates: true });
 
     handle('git:commit', (workspaceId, payload = {}) => gitService.commit(
         resolveWorkspaceRoot(workspaceId),
         { message: typeof payload?.message === 'string' ? payload.message : '' },
-    ));
+    ), { mutates: true });
 
     handle('git:push', (workspaceId, payload = {}) => gitService.push(
         resolveWorkspaceRoot(workspaceId),
         { setUpstream: payload?.setUpstream === true },
+    ), { mutates: true });
+
+    // 在系统文件管理器中定位文件：只接受工作区内的相对路径，越界一律拒绝。
+    // base 'workspace'：路径相对工作区（代码查看器）；默认相对仓库根（Git 页的状态条目）
+    handle('git:reveal-path', async (workspaceId, relPath, base) => {
+        const target = await gitService.resolveRevealTarget(resolveWorkspaceRoot(workspaceId), relPath,
+            { base: base === 'workspace' ? 'workspace' : 'repo' });
+        shell.showItemInFolder(target);
+        return { revealed: true };
+    });
+
+    handle('git:list-branches', workspaceId => gitService.listBranches(resolveWorkspaceRoot(workspaceId)));
+
+    handle('git:switch-branch', (workspaceId, name) => gitService.switchBranch(
+        resolveWorkspaceRoot(workspaceId),
+        typeof name === 'string' ? name : '',
+    ), { mutates: true });
+
+    handle('git:create-branch', (workspaceId, name, startPoint) => gitService.createBranch(
+        resolveWorkspaceRoot(workspaceId),
+        typeof name === 'string' ? name : '',
+        typeof startPoint === 'string' ? startPoint : '',
+    ), { mutates: true });
+
+    handle('git:commit-graph', (workspaceId, options = {}) => gitService.getCommitGraph(
+        resolveWorkspaceRoot(workspaceId),
+        { maxCount: options?.maxCount, skip: options?.skip },
     ));
+
+    handle('git:change-summary', workspaceId => gitService.getChangeSummary(resolveWorkspaceRoot(workspaceId)));
+}
+
+/** 诊断：正在监听的工作区和监听方式 */
+function watchSnapshot() {
+    return watcher?.snapshot() || [];
+}
+
+function dispose() {
+    watcher?.dispose();
 }
 
 module.exports = {
+    CHANNELS,
+    STATUS_TOPIC,
     initialize,
+    isAllowedSender,
     isAllowedSenderUrl,
+    watchSnapshot,
+    dispose,
 };

@@ -82,6 +82,29 @@ function inferOp(step) {
     return 'replace';
 }
 
+// target 步骤省略 replace 表示删除匹配段；AI 常把 replace 写成 replacement 之类，
+// 这种情况按删除执行会直接丢代码，必须报错让它改名重发。
+const REPLACE_TYPO_RE = /^(replacement|replace[_-]?(?:with|text|content|code)|new[_-]?(?:content|text|code|string))(\d*)$/;
+const TARGET_TYPO_RE = /^(old[_-]?(?:code|string|text|content)|search|find|original)\d*$/i;
+
+// 按行替换（start/end 或 lines）缺 content 时引擎会把这些行替换成空，也就是删掉；
+// 文档里删行用 op=delete，这里多半是把 content 写成了 replace 之类，同样拒绝执行。
+function rejectMissingLineContent(step, suffix = '') {
+    if (step.op !== 'replace' || step.symbol !== undefined || step.content !== undefined) return;
+    const hint = step.replace !== undefined ? `，replace${suffix} 只配合 target 使用` : '';
+    throw new Error(`EditCode 按行替换需要 content${suffix}（新的代码）${hint}。省略 content${suffix} 会删掉这些行，所以这次没有执行；确实要删请用 op${suffix}=delete。`);
+}
+
+function rejectMisnamedReplace(step, source, suffix = '') {
+    if (step.op !== 'target' || step.replace !== undefined) return;
+    for (const key of Object.keys(source)) {
+        const m = key.toLowerCase().match(REPLACE_TYPO_RE);
+        if (m && m[2] === suffix) {
+            throw new Error(`EditCode 不认识参数 ${key}，target 的新内容请写 replace${suffix}。省略 replace${suffix} 会删除 target 匹配到的整段，所以这次没有执行。`);
+        }
+    }
+}
+
 /**
  * 解析编辑串。
  * - 编号形式：op1/start1/end1/content1、op2/target2/replace2 …（按编号升序；只要出现任一编号字段即视为串）
@@ -99,6 +122,8 @@ function parseEditSteps(args) {
             const step = { step: i + 1 };
             for (const f of STEP_FIELDS) if (s[f] !== undefined) step[f] = s[f];
             step.op = inferOp(step);
+            rejectMisnamedReplace(step, raw);
+            rejectMissingLineContent(step);
             return step;
         });
     }
@@ -116,6 +141,8 @@ function parseEditSteps(args) {
         return [...numbered.keys()].sort((a, b) => a - b).map(n => {
             const step = { step: n, ...numbered.get(n) };
             step.op = inferOp(step);
+            rejectMisnamedReplace(step, args, String(n));
+            rejectMissingLineContent(step, String(n));
             return step;
         });
     }
@@ -127,9 +154,16 @@ function parseEditSteps(args) {
     }
     if (single.op === undefined && single.target === undefined && single.start === undefined && single.symbol === undefined
         && single.lines === undefined && single.after === undefined && single.before === undefined) {
+        // AI 常沿用别的编辑工具的写法（oldCode/newCode、old_string/new_string），点名告诉它该写什么
+        const misnamed = Object.keys(args).filter(key => TARGET_TYPO_RE.test(key) || REPLACE_TYPO_RE.test(key.toLowerCase()));
+        if (misnamed.some(key => TARGET_TYPO_RE.test(key))) {
+            throw new Error(`EditCode 不认识参数 ${misnamed.join(' / ')}：按内容替换请写 target（原来的代码）和 replace（新的代码）。这次没有执行。`);
+        }
         throw new Error('EditCode 缺少编辑内容。单步示例：start/end/content、target/replace 或 symbol/content；多步用 op1/start1/content1、op2/target2/replace2、symbol3/content3 …');
     }
     single.op = inferOp(single);
+    rejectMisnamedReplace(single, args);
+    rejectMissingLineContent(single);
     return [single];
 }
 

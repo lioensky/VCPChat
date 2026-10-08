@@ -1,0 +1,250 @@
+/* --- Content Views Container --- */
+html .side-pane-content-container:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+html .side-pane-view:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: none;
+    position: absolute;
+    inset: 0;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+html .side-pane-view.active:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+}
+
+/* --- Side Chat Specific Presentation --- */
+html .side-chat-surface:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+}
+
+html .side-chat-topic-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    font-weight: 500;
+    color: var(--primary-text, var(--vcp-ui-port-color-f1f5f9));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+html body[data-vcp-theme="light"] .side-chat-topic-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--primary-text, var(--vcp-ui-port-color-0f172a));
+}
+
+html .side-chat-topic-title.sr-only:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+}
+
+html .side-chat-messages-container:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px 10px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    /* 和主聊天一样，消息在输入框上方 20px 内淡出；最右一列是滚动条，不淡出。
+       贴底时最后一条正好停在淡出区之上。 */
+    -webkit-mask-image:
+        linear-gradient(var(--vcp-ui-port-color-000), var(--vcp-ui-port-color-000)),
+        linear-gradient(to bottom, var(--vcp-ui-port-color-000) calc(100% - 20px), transparent);
+    -webkit-mask-size: var(--vcp-ui-scrollbar-size, 6px) 100%, 100% 100%;
+    -webkit-mask-position: right top, left top;
+    -webkit-mask-repeat: no-repeat;
+    mask-image:
+        linear-gradient(var(--vcp-ui-port-color-000), var(--vcp-ui-port-color-000)),
+        linear-gradient(to bottom, var(--vcp-ui-port-color-000) calc(100% - 20px), transparent);
+    mask-size: var(--vcp-ui-scrollbar-size, 6px) 100%, 100% 100%;
+    mask-position: right top, left top;
+    mask-repeat: no-repeat;
+}
+
+html .side-chat-messages-container .message-item:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    font-size: calc(var(--vcp-ui-font-size) - 1px);
+    line-height: 1.5;
+}
+
+html .side-chat-empty-state:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 0 24px 40px;
+    margin: auto;
+    max-width: 24rem;
+    color: var(--secondary-text, var(--vcp-ui-port-color-rgba-241-245-249-0-6));
+}
+
+/* 侧边聊天空页：中号图标，下面标题、一行说明 */
+html .side-chat-empty-icon:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    --vcp-ui-icon-size: 28px;
+    margin-bottom: 20px;
+    opacity: 0.85;
+}
+
+html body[data-vcp-theme="light"] .side-chat-empty-state:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--secondary-text, var(--vcp-ui-port-color-64748b));
+}
+
+html .side-chat-empty-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    font-size: var(--vcp-ui-font-size);
+    font-weight: 500;
+    color: var(--primary-text, var(--vcp-ui-port-color-f1f5f9));
+    margin-bottom: 8px;
+}
+
+html body[data-vcp-theme="light"] .side-chat-empty-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--primary-text, var(--vcp-ui-port-color-0f172a));
+}
+
+html .side-chat-empty-desc:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    font-size: calc(var(--vcp-ui-font-size) - 1px);
+    line-height: 1.5;
+}
+
+html .side-chat-composer:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    flex-direction: column;
+    padding: 0 12px 12px 12px;
+    border-top: none;
+    background: transparent;
+}
+
+html body[data-vcp-theme="light"] .side-chat-composer:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: transparent;
+    border-top: none;
+}
+
+html .side-chat-reference-list:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+html .side-chat-reference-box:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 6px 8px;
+    margin-bottom: 6px;
+    background: var(--vcp-ui-port-color-rgba-255-255-255-0-05);
+    border-left: 2px solid var(--accent-bg, var(--vcp-ui-port-color-3b82f6));
+    border-radius: 4px;
+    font-size: calc(var(--vcp-ui-font-size) - 3px);
+    color: var(--secondary-text, var(--vcp-ui-port-color-rgba-241-245-249-0-7));
+}
+
+html body[data-vcp-theme="light"] .side-chat-reference-box:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-port-color-rgba-0-0-0-0-04);
+    color: var(--secondary-text, var(--vcp-ui-port-color-475569));
+}
+
+html .side-chat-ref-text:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+/* 引用卡片自己的移除按钮：标签页关闭按钮默认透明且不接收点击，不能复用 */
+html .side-chat-reference-remove:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    margin: -1px -2px 0 6px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    opacity: 0.65;
+    cursor: pointer;
+    transition: opacity 150ms ease, background-color 150ms ease;
+}
+
+html .side-chat-reference-remove:hover:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-chat-reference-remove:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    opacity: 1;
+    background-color: var(--vcp-ui-port-color-rgba-255-255-255-0-12);
+}
+
+html body[data-vcp-theme="light"] .side-chat-reference-remove:hover:where(.vcp-ui-scope, .vcp-ui-scope *),
+html body[data-vcp-theme="light"] .side-chat-reference-remove:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background-color: var(--vcp-ui-port-color-rgba-0-0-0-0-08);
+}
+
+/* The card, text box and send/stop buttons take the main composer's rules in
+   chat-input.css, so focus, hover and the stop button look the same in both
+   places. Only the side pane's narrower limits live here. */
+html .side-chat-textarea:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    max-height: 120px;
+}
+
+/* 窄侧栏下提示语保持一行，超出用省略号，不被输入框高度截断 */
+html .side-chat-textarea:where(.vcp-ui-scope, .vcp-ui-scope *)::placeholder {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+html .side-chat-persistence-badge:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: calc(var(--vcp-ui-font-size) - 4px);
+    font-weight: 500;
+    line-height: 1.3;
+}
+
+html .side-chat-status-error:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--vcp-ui-port-color-ef4444);
+}
+
+html body[data-vcp-theme="light"] .side-chat-status-error:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--vcp-ui-port-color-dc2626);
+}
+
+html .side-chat-status-unsaved:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--vcp-ui-port-color-f59e0b);
+    background: var(--vcp-ui-port-color-rgba-245-158-11-0-12);
+    border: 1px solid var(--vcp-ui-port-color-rgba-245-158-11-0-3);
+}
+
+html body[data-vcp-theme="light"] .side-chat-status-unsaved:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--vcp-ui-port-color-b45309);
+    background: var(--vcp-ui-port-color-rgba-245-158-11-0-15);
+    border: 1px solid var(--vcp-ui-port-color-rgba-245-158-11-0-35);
+}
+
+html .side-chat-reference-box .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    --vcp-ui-icon-size: 12px;
+}
+
+
+/* 消息可用方向键逐条聚焦（见 side-chat/message-actions.js），焦点环与左侧列表一致 */
+html .side-chat-messages-container .message-item:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    outline: 2px solid var(--vcp-ui-focus-ring);
+    outline-offset: 2px;
+}

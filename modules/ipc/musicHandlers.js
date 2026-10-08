@@ -36,6 +36,8 @@ function createOrFocusMusicWindow() {
         let readyHandler = null;
         let timeoutId = null;
 
+        let isSettled = false;
+
         const cleanupWindowCreationWaiters = () => {
             if (readyHandler) {
                 ipcMain.removeListener('music-renderer-ready', readyHandler);
@@ -48,14 +50,19 @@ function createOrFocusMusicWindow() {
         };
 
         const resolveWindowCreation = (win) => {
+            if (isSettled) return;
+            isSettled = true;
             cleanupWindowCreationWaiters();
             musicWindowPromise = null;
             resolve(win);
         };
 
         const rejectWindowCreation = (error) => {
+            if (isSettled) return;
+            isSettled = true;
             cleanupWindowCreationWaiters();
             musicWindowPromise = null;
+            pendingPlaybackForNewWindow = null; // 窗口创建失败或夭折，及时清理暂存请求避免脏残留
             reject(error);
         };
         try {
@@ -143,7 +150,15 @@ function createOrFocusMusicWindow() {
 
         musicWindow.on('closed', () => {
             console.log('[Music] Music window closed. Stopping playback.');
-            cleanupWindowCreationWaiters();
+            // 若窗口在 ready 之前就被用户强行关闭，立即 reject 挂起的 Promise，避免调用方永久超时死锁
+            if (!isSettled) {
+                console.warn('[Music] Music window closed before renderer signal was received. Rejecting creation promise.');
+                rejectWindowCreation(new Error('Music window was closed before initialization completed.'));
+            } else {
+                cleanupWindowCreationWaiters();
+                musicWindowPromise = null;
+            }
+
             // We don't stop the engine when the music window closes anymore,
             // as it's managed by the main app lifecycle now (pre-warmed).
             // We just stop the playback.
@@ -152,6 +167,7 @@ function createOrFocusMusicWindow() {
             openChildWindows = openChildWindows.filter(win => win !== musicWindow);
             musicWindow = null;
             currentSongInfo = null; // 清理歌曲信息
+            pendingPlaybackForNewWindow = null; // 清理未消费的待播放请求
         });
 
         musicWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
@@ -256,8 +272,14 @@ async function handleMusicControl(args) {
                     // 窗口初始化时由前端主动拉取，避免 ready 信号时序竞争。
                     console.log('[MusicControl] Window does not exist, storing pending playback request and creating window.');
                     pendingPlaybackForNewWindow = playbackRequest;
-                    await createOrFocusMusicWindow();
-                    return { status: 'success', message: `Playing: ${track.title}` };
+                    try {
+                        await createOrFocusMusicWindow();
+                        return { status: 'success', message: `Playing: ${track.title}` };
+                    } catch (createErr) {
+                        console.error('[MusicControl] Failed to create music window for playback:', createErr);
+                        pendingPlaybackForNewWindow = null;
+                        return { status: 'error', message: `Music window creation aborted or failed: ${createErr.message}` };
+                    }
                 }
             } else {
                 // 无目标，简单恢复播放
@@ -719,14 +741,38 @@ function initialize(options) {
             }
         });
 
-        // --- 跨窗口音乐控制命令（桌面/分布式 → 音乐窗口） ---
-        ipcMain.on('music-remote-command', (event, command) => {
-            if (musicWindow && !musicWindow.isDestroyed()) {
-                console.log(`[Music] Forwarding remote command to music window: ${command}`);
-                // 音乐窗口监听的是 'music-control' 通道 (music.js line 574)
-                musicWindow.webContents.send('music-control', command);
-            } else {
-                console.warn(`[Music] music-remote-command: music window not available, command: ${command}`);
+        // --- 跨窗口音乐控制命令（桌面/分布式 → 音乐窗口）：高瞻远瞩智能路由 ---
+        ipcMain.on('music-remote-command', async (event, command) => {
+            try {
+                // 1. 若命令携带目标曲目（支持对象形式或 play:曲目名 前缀），走权威 handleMusicControl 模糊匹配点播
+                if (typeof command === 'object' && command && command.target) {
+                    console.log(`[Music] Remote track targeted play: ${command.target}`);
+                    await handleMusicControl({ command: 'play', target: command.target });
+                    return;
+                }
+                if (typeof command === 'string' && command.startsWith('play:')) {
+                    const target = command.substring(5).trim();
+                    console.log(`[Music] Remote track targeted play by prefix: ${target}`);
+                    await handleMusicControl({ command: 'play', target });
+                    return;
+                }
+
+                // 2. 基础播控命令（next/previous/play/pause）：窗口存在则直通转发
+                if (musicWindow && !musicWindow.isDestroyed()) {
+                    console.log(`[Music] Forwarding remote command to music window: ${command}`);
+                    musicWindow.webContents.send('music-control', command);
+                } else {
+                    // 窗口不存在时自动唤醒并延迟派发
+                    console.log(`[Music] Music window offline for command '${command}', auto-spawning window...`);
+                    await createOrFocusMusicWindow();
+                    setTimeout(() => {
+                        if (musicWindow && !musicWindow.isDestroyed()) {
+                            musicWindow.webContents.send('music-control', command);
+                        }
+                    }, 600);
+                }
+            } catch (err) {
+                console.error('[Music] Error in music-remote-command handler:', err);
             }
         });
 

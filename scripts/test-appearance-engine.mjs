@@ -64,7 +64,7 @@ const resolved = appearance.apply({
     fontScale: 'large', contentWidth: 'centered', wallpaperScope: 'theme', surface: 'solid'
 }, { uiMode: 'next', cache: true, source: 'test' });
 assert.equal(JSON.stringify(resolved), JSON.stringify({
-    density: 'compact', radius: 'square', typography: 'serif',
+    density: 'compact', toolPresentation: 'legacy', toolExpansion: 'attention', radius: 'square', typography: 'serif',
     fontScale: 'large', contentWidth: 'centered', wallpaperScope: 'theme', surface: 'solid',
     surfaceEffect: 'vibrancy',
     shellRadius: 'tuned', composerRadius: 'tuned', sidebarRadius: 'tuned', cardRadius: 'tuned',
@@ -82,6 +82,15 @@ assert.equal(document.documentElement.dataset.vcpWallpaperScopePreference, 'them
 assert.equal(document.documentElement.dataset.vcpWallpaperScope, 'global', 'theme preference consumes the theme recommendation');
 assert.equal(document.querySelector('.vcp-ui-scope').dataset.density, 'compact');
 assert.equal(appearance.readCache('next').contentWidth, 'centered');
+assert.equal(appearance.normalize({}, 'next').toolPresentation, 'legacy', 'existing profiles retain legacy cards');
+assert.equal(appearance.normalize({toolPresentation:'bad',toolExpansion:'bad'}, 'next').toolPresentation, 'legacy');
+appearance.commit({...appearance.getCurrent(),toolPresentation:'grouped',toolExpansion:'none'},{uiMode:'next'});
+assert.equal(appearance.readCache('next').toolPresentation, 'grouped');
+assert.equal(appearance.readCache('next').toolExpansion, 'none');
+appearance.apply({...appearance.getCurrent(),toolPresentation:'compact'},{uiMode:'next',cache:false});
+assert.equal(appearance.getCurrent().toolPresentation, 'compact');
+assert.equal(appearance.readCache('next').toolPresentation, 'grouped', 'draft preview must not overwrite persisted mode');
+
 assert.equal(document.getElementById('vcpAppearanceMaterialVariables').textContent.includes('--vcp-material-blur:24px'), true);
 
 const material = appearance.apply({
@@ -139,7 +148,7 @@ assert.match(appearanceCss, /\.vcp-material-optics\s*\{[^}]*position:\s*fixed/s)
 assert.match(appearanceCss, /html\[data-vcp-radius="square"\] \.vcp-ui-scope/);
 assert.doesNotMatch(appearanceCss, /data-ui-mode/);
 assert.match(appearanceCss, /--vcp-ui-font-family:\s*var\(--vcp-appearance-font-family\)/);
-assert.match(appearanceCss, /\.chat-input-card\s*\{\s*border-radius:\s*var\(--vcp-ui-composer-radius, 24px\)/s);
+assert.match(appearanceCss, /\.chat-input-card\s*\{\s*border-radius:\s*var\(--vcp-ui-composer-radius, 28px\)/s);
 assert.match(appearanceCss, /--vcp-ui-shell-radius:\s*0px/);
 assert.match(appearanceCss, /--vcp-ui-shell-radius:\s*18px/);
 assert.match(appearanceCss, /data-vcp-shell-radius="tuned"/);
@@ -154,8 +163,12 @@ assert.match(nextCss, /data-vcp-wallpaper-scope="global"\] \.next-ui-navigation-
     'global wallpaper disables the viewport-sized material filter');
 assert.match(nextCss, /data-vcp-wallpaper-scope="global"\] \.next-ui-topbar\s*\{[^}]*backdrop-filter:\s*var\(--next-backdrop-filter\)/s,
     'global wallpaper applies glass locally to the topbar');
-assert.match(nextCss, /data-vcp-wallpaper-scope="global"\] \.sidebar\s*\{[^}]*backdrop-filter:\s*var\(--next-backdrop-filter\)/s,
-    'global wallpaper applies glass locally to the sidebar');
+assert.match(nextCss, /data-vcp-wallpaper-scope="global"\] \.sidebar\s*\{[^}]*backdrop-filter:\s*none\s*!important/s,
+    'global wallpaper must not double-filter the sidebar over the shared material plane');
+assert.match(nextCss, /data-vcp-wallpaper-scope="global"\] \.container::before\s*\{[^}]*backdrop-filter:\s*var\(--next-backdrop-filter\)/s,
+    'global wallpaper paints sidebar, gutters and corner reveals on one shared material plane');
+assert.match(nextCss, /data-vcp-wallpaper-scope="global"\] \.container::before\s*\{[^}]*\bmask-size:\s*var\(--next-sidebar-width,\s*260px\)\s*100%[^}]*\bmask-repeat:\s*no-repeat[^}]*\bmask-composite:\s*add/s,
+    'the shared material plane must be masked so the main chat wallpaper stays sharp');
 assert.match(nextCss, /data-vcp-wallpaper-scope="global"\] \.next-ui-main-panel\s*\{[^}]*backdrop-filter:\s*none\s*!important/s,
     'global wallpaper keeps the main chat wallpaper sharp');
 assert.match(nextCss, /#vcp-we-wallpaper-web/, 'dynamic and web wallpaper planes share the resolved geometry contract');

@@ -184,6 +184,72 @@ async function run() {
     assert.strictEqual(screenshot.result.mimeType, 'image/png');
     assert(screenshot.result.dataUrl.startsWith('data:image/png;base64,'));
 
+    // Electron WebContents (including side-browser guests) has no getSize().
+    assert.strictEqual(webContents.getSize, undefined);
+    let viewportSize = { width: 320, height: 240 };
+    const captureRects = [];
+    const resizeCalls = [];
+    webContents.executeJavaScriptInIsolatedWorld = async (worldId, scripts) => {
+        assert.strictEqual(worldId, 999);
+        assert(scripts[0].code.includes('window.innerWidth'));
+        assert(scripts[0].code.includes('window.innerHeight'));
+        return viewportSize;
+    };
+    webContents.capturePage = async rect => {
+        captureRects.push(rect);
+        const image = {
+            getSize: () => ({ width: rect.width * 2, height: rect.height * 2 }),
+            toPNG: () => Buffer.from('png-image'),
+            toJPEG: () => Buffer.from('jpeg-image'),
+            resize(options) {
+                resizeCalls.push(options);
+                return {
+                    ...image,
+                    getSize: () => ({
+                        width: options.width,
+                        height: Math.round(rect.height / rect.width * options.width),
+                    }),
+                };
+            },
+        };
+        return image;
+    };
+    let imageRect = { x: -20, y: -10, width: 400, height: 300 };
+    adapter.executePageOperationHandler = async () => ({
+        status: 'success',
+        code: 'PAGE_IMAGE_RESOLVED',
+        result: { imageId: 'IMG1', viewportRect: imageRect },
+    });
+    const pageImage = await adapter.executePageOperation('page_get_image', {
+        format: 'png', maxWidth: 200,
+    });
+    assert.strictEqual(pageImage.code, 'PAGE_IMAGE_CAPTURED');
+    assert.strictEqual(pageImage.backendUsed, 'electron-capture-page');
+    assert.strictEqual(pageImage.result.mimeType, 'image/png');
+    assert(pageImage.result.dataUrl.startsWith('data:image/png;base64,'));
+    assert.deepStrictEqual(captureRects[0], { x: 0, y: 0, width: 320, height: 240 });
+    assert.deepStrictEqual(pageImage.result.capturedSize, { width: 640, height: 480 });
+    assert.deepStrictEqual(pageImage.result.outputSize, { width: 200, height: 150 });
+    assert.deepStrictEqual(resizeCalls, [{ width: 200, quality: 'best' }]);
+
+    imageRect = { x: 300, y: 220, width: 100, height: 100 };
+    const clippedImage = await adapter.executePageOperation('page_get_image');
+    assert.strictEqual(clippedImage.result.format, 'jpeg');
+    assert.deepStrictEqual(captureRects[1], { x: 300, y: 220, width: 20, height: 20 });
+
+    imageRect = { x: 400, y: 0, width: 100, height: 100 };
+    await assert.rejects(adapter.executePageOperation('page_get_image'), /可视区域之外/);
+    assert.strictEqual(captureRects.length, 2);
+
+    imageRect = { x: 0, y: 0, width: 0, height: 100 };
+    await assert.rejects(adapter.executePageOperation('page_get_image'), /有效视口区域/);
+    imageRect = { x: 0, y: 0, width: 100, height: 100 };
+    for (const invalidSize of [{ width: 0, height: 240 }, { width: NaN, height: 240 }, null]) {
+        viewportSize = invalidSize;
+        await assert.rejects(adapter.executePageOperation('page_get_image'), /有效视口尺寸/);
+    }
+    assert.strictEqual(captureRects.length, 2);
+
     const targets = await adapter.listTargets();
     assert.strictEqual(targets.result.count, 1);
     assert.strictEqual(targets.result.targets[0].appId, 'test-app');

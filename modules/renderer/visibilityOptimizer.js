@@ -83,6 +83,7 @@ const pixiStartOrder = [];
  * 初始化可见性优化器
  */
 function initializeVisibilityOptimizer(chatContainer) {
+    clearHeightMemory();
     if (visibilityObserver) {
         [...observedMessages].forEach(unobserveMessage);
         visibilityObserver.disconnect();
@@ -241,7 +242,7 @@ function observeMessage(messageItem) {
     }
 
     visibilityObserver.observe(messageItem);
-    rememberMessageHeight(messageItem);
+    rememberMessageHeightLater(messageItem);
 
     // 🔑 延迟扫描，确保脚本已执行完毕
     const messageWindow = messageItem.ownerDocument?.defaultView || ownerWindow || window;
@@ -251,7 +252,7 @@ function observeMessage(messageItem) {
         scanTimers.delete(messageItem);
         if (!observedMessages.has(messageItem) || visibilityOwnerByMessage.get(messageItem) !== publicApi) return;
         scanAnimatedElements(messageItem);
-        rememberMessageHeight(messageItem);
+        rememberMessageHeightLater(messageItem);
     }, CONFIG.scanDelay);
     scanTimers.set(messageItem, { id: scanTimer, window: messageWindow });
 }
@@ -331,13 +332,17 @@ function scanAnimatedElements(messageItem) {
 
 function rememberMessageHeight(messageItem) {
     if (!messageItem || !messageItem.isConnected) return;
-    const messageId = messageItem.dataset?.messageId || messageItem.id;
     let height = 0;
     try {
         height = messageItem.offsetHeight;
     } catch (e) {
         height = 0;
     }
+    applyMessageHeight(messageItem, height);
+}
+
+function applyMessageHeight(messageItem, height) {
+    const messageId = messageItem.dataset?.messageId || messageItem.id;
     if (height > 0) {
         messageItem.dataset.vcpMeasuredHeight = String(height);
         messageItem.style.containIntrinsicSize = `auto ${height}px`;
@@ -348,6 +353,72 @@ function rememberMessageHeight(messageItem) {
                 // 高度回写失败不影响墓碑冻结主流程
             }
         }
+    }
+}
+
+// 长话题一次加载几十条消息：每条消息「读 offsetHeight → 写 containIntrinsicSize」交替进行，
+// 写会让布局失效，下一条的读可能再次触发同步重排。
+// 登记和延迟扫描这两处不需要立刻拿到高度，攒到下一帧，先一起读、再一起写。
+const pendingHeightMemory = new Set();
+let heightMemoryTask = null;
+let heightMemoryGeneration = 0;
+
+function clearHeightMemory() {
+    heightMemoryGeneration++;
+    pendingHeightMemory.clear();
+    const task = heightMemoryTask;
+    heightMemoryTask = null;
+    task?.cancel?.();
+}
+
+function ownsHeightMemory(messageItem) {
+    return messageItem.isConnected && observedMessages.has(messageItem) && visibilityOwnerByMessage.get(messageItem) === publicApi;
+}
+
+function rememberMessageHeightLater(messageItem) {
+    if (!messageItem) return;
+    pendingHeightMemory.add(messageItem);
+    if (heightMemoryTask) return;
+    const task = { generation: heightMemoryGeneration, cancel: null };
+    heightMemoryTask = task;
+    const flush = () => {
+        if (heightMemoryTask !== task || task.generation !== heightMemoryGeneration) return;
+        heightMemoryTask = null;
+        flushHeightMemory(task.generation);
+    };
+    const frameWindow = messageItem.ownerDocument?.defaultView || window;
+    if (typeof frameWindow.requestAnimationFrame === 'function') {
+        const id = frameWindow.requestAnimationFrame(flush);
+        task.cancel = () => frameWindow.cancelAnimationFrame?.(id);
+    } else if (typeof requestAnimationFrame === 'function') {
+        const id = requestAnimationFrame(flush);
+        task.cancel = () => { if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(id); };
+    } else {
+        const id = setTimeout(flush, 16);
+        task.cancel = () => clearTimeout(id);
+    }
+}
+
+function flushHeightMemory(generation) {
+    // 先取出本批次，测量或回写期间新登记的工作留到下一帧。
+    const pending = [...pendingHeightMemory];
+    pendingHeightMemory.clear();
+    const measured = [];
+    for (const messageItem of pending) {
+        if (generation !== heightMemoryGeneration) break;
+        if (!ownsHeightMemory(messageItem)) continue;
+        const registration = messageAnimationStates.get(messageItem);
+        let height = 0;
+        try {
+            height = messageItem.offsetHeight;
+        } catch (e) {
+            height = 0;
+        }
+        measured.push([messageItem, height, registration]);
+    }
+    for (const [messageItem, height, registration] of measured) {
+        if (generation !== heightMemoryGeneration) break;
+        if (ownsHeightMemory(messageItem) && messageAnimationStates.get(messageItem) === registration) applyMessageHeight(messageItem, height);
     }
 }
 
@@ -1028,6 +1099,7 @@ function unobserveMessage(messageItem) {
 
     pendingPause.delete(messageItem);
     pendingResume.delete(messageItem);
+    pendingHeightMemory.delete(messageItem);
 }
 
 function isMessageInHotZone(messageItem, margin = 200) {
@@ -1072,6 +1144,7 @@ function recheckVisibility() {
  * 🛑 销毁优化器
  */
 function destroyVisibilityOptimizer() {
+    clearHeightMemory();
     if (visibilityObserver) {
         [...observedMessages].forEach(unobserveMessage);
         visibilityObserver.disconnect();

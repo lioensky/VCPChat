@@ -750,20 +750,28 @@ test('thinking and streaming messages opt out of content-visibility clipping', (
     );
 });
 
-test('scrolling chat surfaces do not create per-message or scroll-owner backdrop captures', () => {
+test('chat presentation surfaces retain frosted backdrops without nested card captures', () => {
     const chatCss = fs.readFileSync('styles/chat.css', 'utf8');
     const messageRendererCss = fs.readFileSync('styles/messageRenderer.css', 'utf8');
 
     assert.match(
         chatCss,
-        /\.message-item \.md-content\s*\{[\s\S]*?backdrop-filter:\s*none;[\s\S]*?-webkit-backdrop-filter:\s*none;[\s\S]*?\}/,
-        'ordinary bubbles must not allocate one backdrop capture per visible message'
+        /\.message-item \.md-content\s*\{[^}]*backdrop-filter:\s*blur\(12px\);[^}]*-webkit-backdrop-filter:\s*blur\(12px\);[^}]*\}/,
+        'ordinary bubbles must retain their frosted backdrop'
     );
     assert.match(
         chatCss,
-        /body\.chat-presentation-panel \.chat-messages-container,\s*body\.chat-presentation-immersive \.chat-messages-container\s*\{[\s\S]*?backdrop-filter:\s*none;[\s\S]*?-webkit-backdrop-filter:\s*none;[\s\S]*?\}/,
-        'the scrolling owner must not be a viewport-sized backdrop capture'
+        /body\.chat-presentation-panel \.chat-messages-container,\s*body\.chat-presentation-immersive \.chat-messages-container\s*\{[^}]*background:\s*var\(--chat-presentation-surface\);[^}]*backdrop-filter:\s*var\(--chat-presentation-surface-filter\);[^}]*-webkit-backdrop-filter:\s*var\(--chat-presentation-surface-filter\);[^}]*\}/,
+        'panel and immersive modes must retain a shared frosted message surface'
     );
+
+    for (const mode of ['panel', 'immersive']) {
+        assert.match(
+            chatCss,
+            new RegExp(`body\\.chat-presentation-${mode} \\.message-item \\.md-content,[^{}]*\\{[^}]*background:\\s*transparent !important;[^}]*backdrop-filter:\\s*none;[^}]*-webkit-backdrop-filter:\\s*none;[^}]*\\}`),
+            `${mode} message bodies must not stack blur over the shared surface`
+        );
+    }
 
     for (const selector of [
         '\\.vcp-tool-call-summary-bubble',

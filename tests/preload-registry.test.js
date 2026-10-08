@@ -1,4 +1,4 @@
-'use strict';
+
 
 // preloads/api/*.js 的契约测试：注册表可加载、角色可见性、以及使用这些 preload 的窗口都关闭了沙箱。
 const test = require('node:test');
@@ -24,7 +24,7 @@ test('注册表加载成功，每个角色都有可见 API', () => {
 });
 
 test('除本地 API 外，每个条目都声明了 IPC 通道', () => {
-    const localOnly = new Set(['getPathForFile']);
+    const localOnly = new Set(['getPathForFile', 'canPin']);
     for (const api of apis) {
         if (localOnly.has(api.name)) continue;
         assert.equal(typeof api.channel, 'string', `${api.name} 缺少 channel`);
@@ -59,7 +59,7 @@ test('主聊天语音 API 对 chat 可见，且不存在私自存盘的录音通
 });
 
 test('置顶 API 只对 utility 可见', () => {
-    for (const name of ['togglePinWindow', 'isWindowPinned', 'onWindowPinnedChanged']) {
+    for (const name of ['canPin', 'supportsPin', 'togglePinWindow', 'isWindowPinned', 'onWindowPinnedChanged']) {
         assert.deepEqual(byName.get(name).roles, ['utility']);
     }
 });
@@ -94,4 +94,46 @@ test('使用角色 preload 的窗口都显式设置了 sandbox: false', () => {
         });
     }
     assert.equal(checked, 22, '角色 preload 窗口数量变化，请同步更新本测试的文件清单');
+});
+
+test('real stream subscription cleanup releases only its own callback registration', () => {
+    const { EventEmitter } = require('node:events');
+    const { loadRegistry } = require('../preloads/core/registry');
+    const definition = [...loadRegistry().values()].find(value => value.entry.kind === 'subscription' && value.entry.channel === 'vcp-stream-event');
+    assert.ok(definition);
+    const ipcRenderer = new EventEmitter();
+    const subscribe = definition.entry.build({ ipcRenderer });
+    const seen = []; const callback = payload => seen.push(payload);
+    const closeOld = subscribe(callback), closeNew = subscribe(callback);
+    ipcRenderer.emit('vcp-stream-event', {}, 'first');
+    assert.deepEqual(seen, ['first', 'first']);
+    closeOld(); closeOld();
+    ipcRenderer.emit('vcp-stream-event', {}, 'second');
+    assert.deepEqual(seen, ['first', 'first', 'second']);
+    closeNew();
+    assert.equal(ipcRenderer.listenerCount('vcp-stream-event'), 0);
+});
+
+test('real multi-argument and signal subscriptions preserve their declared payload shapes', () => {
+    const { EventEmitter } = require('node:events');
+    const { loadRegistry } = require('../preloads/core/registry');
+    const ipcRenderer = new EventEmitter();
+    const seen = [];
+    const closeDice = loadRegistry().get('onRollDice').entry.build({ ipcRenderer })((...args) => seen.push(args));
+    const closeSignal = loadRegistry().get('onStopTtsAudio').entry.build({ ipcRenderer })((...args) => seen.push(args));
+    ipcRenderer.emit('roll-dice', {}, '2d6', { seed: 1 }, 'extra');
+    ipcRenderer.emit('stop-tts-audio', {}, 'ignored');
+    assert.deepEqual(seen, [['2d6', { seed: 1 }], [undefined]]);
+    closeDice(); closeSignal();
+    assert.equal(ipcRenderer.eventNames().length, 0);
+});
+
+test('real query and command adapters forward declared arguments and return the IPC result', async () => {
+    const { loadRegistry } = require('../preloads/core/registry');
+    const sent = [], result = { files: ['src/a.js'] };
+    const ipcRenderer = { invoke: async (...args) => { sent.push(args); return result; }, send: (...args) => sent.push(args) };
+    const query = loadRegistry().get('gitStatus').entry.build({ ipcRenderer });
+    assert.equal(await query('workspace-a', 'extra'), result);
+    loadRegistry().get('minimizeWindow').entry.build({ ipcRenderer })('extra');
+    assert.deepEqual(sent, [['git:status', 'workspace-a'], ['minimize-window']]);
 });

@@ -83,6 +83,7 @@ class DistributedServer {
         this.reconnectTimeoutId = null; // To keep track of the reconnect timeout
         this.stopped = false; // Flag to prevent reconnection when stopped manually
         this.stopPromise = null;
+        this.initializePromise = null;
         this.initialConnection = true; // Flag to handle one-time actions on first connect
         this.staticPlaceholderUpdateInterval = null; // 新增：静态占位符更新定时器
         this.musicPlaylistWatcher = null;
@@ -117,7 +118,15 @@ class DistributedServer {
         }
     }
 
-    async initialize() {
+    initialize() {
+        if (!this.initializePromise) {
+            this.initializePromise = this.initializeInBackground();
+        }
+        return this.initializePromise;
+    }
+
+    async initializeInBackground() {
+        if (this.stopped) return;
         console.log(`[${this.serverName}] Initializing...`);
 
         // Load server-specific config
@@ -140,7 +149,9 @@ class DistributedServer {
         // The base path should be relative to this file's location.
         const basePath = path.dirname(require.resolve('./VCPDistributedServer.js'));
         pluginManager.setProjectBasePath(basePath);
-        await pluginManager.loadPlugins();
+        const startupOptions = { shouldStop: () => this.stopped };
+        await pluginManager.loadPlugins(startupOptions);
+        if (this.stopped) return;
 
         // 初始化服务类插件，并将主进程持有的共享服务依赖注入 direct 模块。
         await pluginManager.initializeServices(this.app, null, basePath, {
@@ -150,10 +161,12 @@ class DistributedServer {
             pluginAgentOperationService: this.pluginAgentOperationService,
             chartService: this.chartService,
             workspaceService: this.workspaceService,
-        });
+        }, startupOptions);
+        if (this.stopped) return;
         this.registerDiagnosticRoutes();
 
-        const address = await this.bindHttpServer(this.port);
+        await this.bindHttpServer(this.port);
+        if (this.stopped) return;
             this.port = this.server.address().port; // 获取实际监听的端口
             console.log(`[${this.serverName}] HTTP server listening on 0.0.0.0:${this.port}`);
 
@@ -881,8 +894,14 @@ class DistributedServer {
         }
 
         console.log(`[${this.serverName}] Stopping server...`);
-        this.stopPromise = Promise.resolve().then(async () => {
+        // 立即取消后续启动阶段；等待正在执行的初始化后再释放插件资源。
         this.stopped = true;
+        this.stopPromise = Promise.resolve().then(async () => {
+        if (this.initializePromise) {
+            await this.initializePromise.catch(error => {
+                console.warn(`[${this.serverName}] Initialization ended during shutdown:`, error.message);
+            });
+        }
         
         // 新增：清理静态占位符更新定时器
         this.clearStaticPlaceholderUpdates();
@@ -893,8 +912,8 @@ class DistributedServer {
             this.reconnectTimeoutId = null;
         }
         
-        // 新增：关闭插件管理器 - 使用异步方式，但不等待结果
-        pluginManager.shutdownAllPlugins().catch(err => {
+        // 等待服务资源释放，避免 Electron 退出时留下尚未完成的清理。
+        await pluginManager.shutdownAllPlugins().catch(err => {
             console.error(`[${this.serverName}] Error during plugin shutdown:`, err);
         });
         

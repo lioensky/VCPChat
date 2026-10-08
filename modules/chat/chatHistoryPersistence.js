@@ -98,7 +98,13 @@ function createHistoryPersistence(repository, { durable, skipTemporaryContexts }
                 return cleanMessage;
             });
 
-            await repository.saveHistory(itemId, itemType, context.topicId, mergedHistory);
+            const saveResult = await repository.saveHistory(itemId, itemType, context.topicId, mergedHistory);
+            if (saveResult && (saveResult.success === false || saveResult.error)) {
+                const message = typeof saveResult.error === 'string'
+                    ? saveResult.error
+                    : (saveResult.error?.message || 'Failed to save chat history');
+                throw new Error(message);
+            }
             return Object.freeze({
                 messageId: projected.messageId,
                 context,

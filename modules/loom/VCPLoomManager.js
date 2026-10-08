@@ -16,6 +16,7 @@ const {
     createElectronWebAgentAdapter,
 } = require('./webcore/electron-adapter');
 
+const { SideBrowserService, APP_ID: SIDE_BROWSER_APP_ID, MANIFEST: SIDE_BROWSER_MANIFEST } = require('./sideBrowserService');
 const MANIFEST_FILE = 'loom.json';
 const INJECT_CSS_FILE = 'inject.css';
 const INJECT_JS_FILE = 'inject.js';
@@ -449,6 +450,9 @@ class VCPLoomManager {
         this.ipcRegistered = false;
         this.initialized = false;
         this.initializationPromise = null;
+        this.sideBrowser = new SideBrowserService({
+            manager: this, getMainWindow: options.getMainWindow || (() => this.mainWindow),
+        });
     }
 
     async initialize() {
@@ -513,6 +517,7 @@ class VCPLoomManager {
             }
         }
 
+        next.set(SIDE_BROWSER_APP_ID, SIDE_BROWSER_MANIFEST);
         this.manifests = next;
         this.broadcastRegistryChanged();
         return this.listApps();
@@ -569,13 +574,16 @@ class VCPLoomManager {
     }
 
     listOpenApps() {
-        return Array.from(this.instances.values())
+        const apps = Array.from(this.instances.values())
             .filter((instance) => !instance.window.isDestroyed() && !instance.view.webContents.isDestroyed())
             .map((instance) => ({
                 ...this.buildRuntimeState(instance),
                 manifest: clone(instance.manifest),
             }))
             .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+        const tabs = this.sideBrowser.list();
+        if (tabs.length) apps.push({ ...SIDE_BROWSER_MANIFEST, appId: SIDE_BROWSER_APP_ID, running: true, tabs });
+        return apps;
     }
 
     getRunningInstance(appId) {
@@ -651,8 +659,8 @@ class VCPLoomManager {
         return clone(instance.lastSuccessfulRender);
     }
 
-    async readRuntimeSource(appId) {
-        const instance = this.getRunningInstance(appId);
+    async readRuntimeSource(appId, options = {}) {
+        const instance = appId === SIDE_BROWSER_APP_ID ? this.sideBrowser.resolve(options.targetId) : this.getRunningInstance(appId);
         const contents = instance.view.webContents;
         const result = await contents.executeJavaScript(`(() => ({
             title: document.title || '',
@@ -672,7 +680,7 @@ class VCPLoomManager {
     }
 
     async readRenderedText(appId, options = {}) {
-        const instance = this.getRunningInstance(appId);
+        const instance = appId === SIDE_BROWSER_APP_ID ? this.sideBrowser.resolve(options.targetId) : this.getRunningInstance(appId);
         const refresh = options.refresh !== false;
         if (refresh || !instance.lastSuccessfulRender) {
             await this.captureRenderedSnapshot(instance);
@@ -720,13 +728,17 @@ class VCPLoomManager {
         }
         if (!contents.isLoadingMainFrame?.() && !instance.loading) return;
 
-        await Promise.race([
-            instance.documentReadyPromise,
-            new Promise((_, reject) => setTimeout(
-                () => reject(new Error('等待 LoomAPP 文档加载完成超时。')),
-                30000
-            )),
-        ]);
+        let timer;
+        try {
+            await Promise.race([
+                instance.documentReadyPromise,
+                new Promise((_, reject) => {
+                    timer = setTimeout(() => reject(new Error('等待 LoomAPP 文档加载完成超时。')), 30000);
+                }),
+            ]);
+        } finally { clearTimeout(timer); }
+        if (contents.isDestroyed()) throw new Error('LoomAPP 页面已关闭。');
+        if (instance.lastError) throw new Error(instance.lastError);
         if (generation !== instance.documentGeneration) {
             const error = new Error('页面已导航，放弃旧文档的 Web Agent 初始化。');
             error.code = 'LOOM_DOCUMENT_CHANGED';
@@ -826,7 +838,8 @@ class VCPLoomManager {
         return instance;
     }
 
-    async getWebAgentPageInfo(appId) {
+    async getWebAgentPageInfo(appId, options = {}) {
+        if (appId === SIDE_BROWSER_APP_ID) return this.sideBrowser.pageInfo(options.targetId);
         const instance = await this.ensureWebAgentRuntime(this.getRunningInstance(appId));
         const result = await instance.view.webContents.executeJavaScriptInIsolatedWorld(
             WEB_AGENT_WORLD_ID,
@@ -848,7 +861,8 @@ class VCPLoomManager {
     }
 
     async createPersistentWebAgentTarget(appId, target, context = {}) {
-        const instance = await this.ensureWebAgentRuntime(this.getRunningInstance(appId));
+        const instance = await this.ensureWebAgentRuntime(appId === SIDE_BROWSER_APP_ID
+            ? this.sideBrowser.resolve(context.targetId) : this.getRunningInstance(appId));
         const serializedTarget = JSON.stringify(target);
         const serializedContext = JSON.stringify(context);
         return instance.view.webContents.executeJavaScriptInIsolatedWorld(
@@ -904,6 +918,7 @@ class VCPLoomManager {
     }
 
     async executeWebAgentAction(appId, actionId, params = {}, options = {}) {
+        if (appId === SIDE_BROWSER_APP_ID) return this.sideBrowser.execute(actionId, params, options);
         const instance = this.getRunningInstance(appId);
         const action = this.normalizeLoomActionId(actionId);
         if (!isPlainObject(params)) throw new Error('Loom Web Agent 动作 params 必须是对象。');
@@ -998,6 +1013,7 @@ class VCPLoomManager {
     async saveApp(payload = {}) {
         const previousId = payload.originalId ? this.assertAppId(payload.originalId) : null;
         const manifest = normalizeManifest(payload.manifest || payload, previousId || null);
+        if (manifest.id === SIDE_BROWSER_APP_ID) throw new Error('官方协作浏览器不可修改或覆盖。');
         const targetDir = this.appDir(manifest.id);
 
         if (!previousId && await fs.pathExists(targetDir)) {
@@ -1043,6 +1059,7 @@ class VCPLoomManager {
 
     async deleteApp(appId) {
         const id = this.assertAppId(appId);
+        if (id === SIDE_BROWSER_APP_ID) throw new Error('官方协作浏览器不可删除。');
         await this.closeApp(id);
         await fs.remove(this.appDir(id));
         this.manifests.delete(id);
@@ -1593,6 +1610,7 @@ class VCPLoomManager {
     }
 
     async openApp(appId) {
+        if (appId === SIDE_BROWSER_APP_ID) return this.sideBrowser.open();
         const manifest = this.getApp(appId);
         if (!manifest.enabled) throw new Error('此 LoomAPP 已停用。');
 
@@ -2029,6 +2047,9 @@ class VCPLoomManager {
     }
 
     async navigateApp(appId, action) {
+        if (appId === SIDE_BROWSER_APP_ID) {
+            return this.sideBrowser.execute(action === 'home' ? 'target_navigate' : `target_${action}`, action === 'home' ? { url: SIDE_BROWSER_MANIFEST.startUrl } : {});
+        }
         const instance = this.getRunningInstance(appId);
         return this.navigate(instance, action);
     }
@@ -2107,6 +2128,10 @@ class VCPLoomManager {
 
     async closeApp(appId) {
         const id = this.assertAppId(appId);
+        if (id === SIDE_BROWSER_APP_ID) {
+            for (const target of this.sideBrowser.list()) await this.sideBrowser.close(target.id);
+            return { success: true };
+        }
         const instance = this.instances.get(id);
         if (instance && !instance.window.isDestroyed()) {
             instance.window.close();
@@ -2115,12 +2140,14 @@ class VCPLoomManager {
     }
 
     isRunning(appId) {
+        if (appId === SIDE_BROWSER_APP_ID) return this.sideBrowser.list().length > 0;
         const instance = this.instances.get(appId);
         return Boolean(instance && !instance.window.isDestroyed());
     }
 
     async clearSession(appId) {
         const id = this.assertAppId(appId);
+        if (id === SIDE_BROWSER_APP_ID) throw new Error('请使用侧栏浏览器菜单清除浏览数据。');
         await this.closeApp(id);
         const persistentSession = session.fromPartition(this.partitionName(id));
         await Promise.all([

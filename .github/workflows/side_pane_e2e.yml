@@ -1,0 +1,83 @@
+name: Side pane end-to-end smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * *'
+  pull_request:
+    paths:
+      - 'renderer.js'
+      - 'main.js'
+      - 'style.css'
+      - 'Groupmodules/**'
+      - 'ProjectForgemodules/**'
+      - 'VCPDistributedServer/Plugin/PowerShellExecutor/**'
+      - 'VCPDistributedServer/Plugin/ProjectForge/**'
+      - 'vendor/xterm/**'
+      - 'main.html'
+      - 'modules/**'
+      - 'preloads/**'
+      - 'styles/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'docs/chat-kernel-*.md'
+      - 'docs/contracts/**'
+      - 'docs/next-ui-current-state.md'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/side_pane_e2e.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  side-pane-e2e:
+    name: Side pane end-to-end smoke (real Electron)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Setup Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+
+      # 和 mobile_sync 打包任务一样：先装依赖不跑原生脚本，再按 Electron 的 ABI 重编原生模块，
+      # 按 Node ABI 编出来的原生模块（better-sqlite3 等）在 Electron 里加载不了
+      - name: Install package graph without native lifecycle scripts
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
+        run: npm ci --ignore-scripts
+
+      - name: Install Electron runtime
+        run: node node_modules/electron/install.js
+
+      - name: Rebuild Electron native modules used by the app
+        run: npx electron-rebuild -f -w better-sqlite3,node-pty,sharp
+
+      - name: Ensure a virtual display
+        run: command -v xvfb-run || (sudo apt-get update && sudo apt-get install -y xvfb)
+
+      - name: Run side pane smoke
+        id: smoke
+        # PR 上冒烟失败只记警告、不挡合并（真实 Electron 窗口容易受 runner 影响）；每日定时和手动触发照常失败
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
+        env:
+          SIDE_PANE_SMOKE_DIR: ${{ runner.temp }}/side-pane-smoke
+        run: xvfb-run -a -s "-screen 0 1600x1000x24" npm run smoke:side-pane
+
+      - name: Upload smoke evidence
+        if: steps.smoke.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: side-pane-smoke-evidence
+          path: ${{ runner.temp }}/side-pane-smoke
+
+      - name: Flag a failed smoke on the PR
+        if: github.event_name == 'pull_request' && steps.smoke.outcome == 'failure'
+        run: |
+          echo "::warning title=Side pane smoke failed::The real Electron side pane smoke failed. It does not block this PR; check the uploaded side-pane-smoke-evidence artifact."
+          echo "## Side pane smoke failed (non-blocking)" >> "$GITHUB_STEP_SUMMARY"

@@ -126,3 +126,78 @@ test('rebuild picks up new files when watching is disabled', async t => {
     await index.rebuild();
     assert.equal((await index.search('brandnew'))[0].relPath, 'modules/brandNew.ts');
 });
+
+test('scan queue limits concurrency and does not start work in configure call stack', async () => {
+    const index = new WorkspaceIndex({ watch: false, scanConcurrency: 2 });
+    let active = 0;
+    let peak = 0;
+    const releases = [];
+    const tasks = Array.from({ length: 5 }, () => index._scheduleScan(async () => {
+        active++;
+        peak = Math.max(peak, active);
+        await new Promise(resolve => releases.push(resolve));
+        active--;
+    }));
+    assert.equal(active, 0);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(active, 2);
+    while (releases.length || index.scanQueue.length || index.activeScans) {
+        releases.splice(0).forEach(resolve => resolve());
+        await new Promise(resolve => setImmediate(resolve));
+    }
+    await Promise.all(tasks);
+    assert.equal(peak, 2);
+    index.dispose();
+});
+
+test('disposing settles queued scans and removed workspaces never publish scan results', async t => {
+    const root = createFixture();
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const index = new WorkspaceIndex({ watch: false, scanConcurrency: 1, logger: { log() {}, warn() {} } });
+    const release = {};
+    const blocker = index._scheduleScan(() => new Promise(resolve => { release.resolve = resolve; }));
+    const [ws] = index.configure([{ path: root }]);
+    const state = index.states.get(ws.id);
+    const pending = state.scanPromise;
+    await new Promise(resolve => setImmediate(resolve));
+    index.configure([]);
+    index.dispose();
+    await pending;
+    release.resolve();
+    await blocker;
+    assert.equal(state.files.size, 0);
+    assert.equal(state.watcher, null);
+    assert.deepEqual(index.list(), []);
+});
+
+test('large directory scan yields within entry processing and supports cancellation', async t => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vcp-ws-large-'));
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    for (let i = 0; i < 700; i++) writeFile(root, `file-${i}.txt`);
+    let checks = 0;
+    const cancelled = await scanWorkspace(root, { shouldStop: () => ++checks >= 3 });
+    assert.equal(cancelled, null);
+    const complete = await scanWorkspace(root);
+    assert.equal(complete.files.size, 700);
+});
+
+test('chunked search preserves global ranking and stable ties', async t => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vcp-ws-search-'));
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const index = new WorkspaceIndex({ watch: false });
+    t.after(() => index.dispose());
+    const [ws] = index.configure([{ path: root }]);
+    await index.search('');
+    const state = index.states.get(ws.id);
+    for (let i = 0; i < 1200; i++) {
+        const relPath = `dir/file-${String(i).padStart(4, '0')}.txt`;
+        state.files.set(relPath, {
+            name: path.basename(relPath), relPath, lowerName: path.basename(relPath),
+            lowerRel: relPath, depth: 2,
+        });
+    }
+    const result = await index.search('file', { limit: 3 });
+    assert.deepEqual(result.map(item => item.relPath), [
+        'dir/file-0000.txt', 'dir/file-0001.txt', 'dir/file-0002.txt',
+    ]);
+});

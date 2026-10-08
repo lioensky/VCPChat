@@ -1,0 +1,139 @@
+/* --- Side Pane Tab Context Menu --- */
+html .side-pane-context-menu:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: fixed;
+    min-width: 170px;
+    padding: 4px;
+    border-radius: 12px;
+    background: var(--panel-bg-dark, var(--vcp-ui-port-color-18181b));
+    border: 1px solid var(--border-color, var(--vcp-ui-port-color-rgba-255-255-255-0-12));
+    box-shadow: 0 10px 25px -5px var(--vcp-ui-port-color-rgba-0-0-0-0-5), 0 8px 10px -6px var(--vcp-ui-port-color-rgba-0-0-0-0-3);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    z-index: var(--vcp-ui-z-dropdown, 1300);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+/* 菜单挂在 body 下，上面的 display: flex 会盖过 hidden */
+html .side-pane-context-menu[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: none;
+}
+
+html body[data-vcp-theme="light"] .side-pane-context-menu:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--panel-bg-light, var(--vcp-ui-port-color-ffffff));
+    border-color: var(--vcp-ui-port-color-rgba-0-0-0-0-12);
+    box-shadow: 0 10px 25px -5px var(--vcp-ui-port-color-rgba-0-0-0-0-12), 0 8px 10px -6px var(--vcp-ui-port-color-rgba-0-0-0-0-08);
+}
+
+html .side-pane-menu-item:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 32px;
+    padding: 0 10px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: var(--primary-text, var(--vcp-ui-port-color-f1f5f9));
+    font-size: calc(var(--vcp-ui-font-size) - 1px);
+    font-weight: 400;
+    text-align: left;
+    cursor: pointer;
+    box-sizing: border-box;
+    transition: background 0.12s ease;
+}
+
+html body[data-vcp-theme="light"] .side-pane-menu-item:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--primary-text, var(--vcp-ui-port-color-0f172a));
+}
+
+html .side-pane-menu-item:hover:not(:disabled):where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-port-color-rgba-255-255-255-0-08);
+}
+
+html body[data-vcp-theme="light"] .side-pane-menu-item:hover:not(:disabled):where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-port-color-rgba-0-0-0-0-05);
+}
+
+html .side-pane-menu-item:disabled:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
+html .side-pane-menu-item:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    outline: 2px solid var(--accent-bg, var(--vcp-ui-port-color-3b82f6));
+    outline-offset: -2px;
+}
+
+html .side-pane-menu-item-label:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+html .side-pane-menu-item .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-pane-menu-item svg:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    --vcp-ui-icon-size: 16px;
+    width: 16px;
+    height: 16px;
+    font-size: calc(var(--vcp-ui-font-size) + 2px);
+    line-height: 1;
+    flex-shrink: 0;
+    opacity: 0.85;
+}
+
+/* --- Floating "在侧栏提问" pill: placed over the selection by the renderer --- */
+html #floatingSelectionSideChatBtn.floating-selection-side-chat-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: fixed;
+    z-index: var(--vcp-ui-z-dropdown, 1300);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--border-color, var(--vcp-ui-port-color-2b3441));
+    background: var(--secondary-bg, var(--vcp-ui-port-color-15191f));
+    color: var(--primary-text, var(--vcp-ui-port-color-f0f4f8));
+    font-size: calc(var(--vcp-ui-font-size) - 2px);
+    font-weight: 500;
+    box-shadow: 0 6px 18px var(--vcp-ui-port-color-rgba-0-0-0-0-22), 0 1px 3px var(--vcp-ui-port-color-rgba-0-0-0-0-16);
+    cursor: pointer;
+    user-select: none;
+    transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+}
+
+html #floatingSelectionSideChatBtn.floating-selection-side-chat-btn:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    transform: translateY(-1px);
+    background: var(--accent-bg, var(--vcp-ui-port-color-1f252e));
+    box-shadow: 0 8px 22px var(--vcp-ui-port-color-rgba-0-0-0-0-28), 0 1px 3px var(--vcp-ui-port-color-rgba-0-0-0-0-18);
+}
+
+html #floatingSelectionSideChatBtn.floating-selection-side-chat-btn .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    --vcp-ui-icon-size: 14px;
+    flex: none;
+}
+
+/* --- Responsive Narrow Viewport Adaptation --- */
+@media (max-width: 960px) {
+    /* Too narrow to share the row: the pane floats over the conversation, so
+       it needs its own opaque surface. */
+    html #vcpSidePane.active:where(.vcp-ui-scope, .vcp-ui-scope *) {
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        max-width: 85%;
+        background-color: var(--vcp-ui-color-panel, var(--vcp-ui-bg-primary));
+        box-shadow: var(--vcp-ui-shadow-lg);
+        z-index: 100;
+    }
+
+    html #resizerRight.resizer:where(.vcp-ui-scope, .vcp-ui-scope *) {
+        display: none;
+    }
+}
+

@@ -38,6 +38,38 @@ function normalizeBounds(bounds, parentBounds) {
     const height = Math.max(1, Math.min(parentHeight - y, Math.round(Number(bounds?.height) || 1)));
     return { x, y, width, height };
 }
+function scaleBounds(bounds, scale) {
+    const factor = Number(scale);
+    const safeScale = Number.isFinite(factor) && factor > 0 ? factor : 1;
+    return {
+        x: (Number(bounds?.x) || 0) * safeScale,
+        y: (Number(bounds?.y) || 0) * safeScale,
+        width: (Number(bounds?.width) || 1) * safeScale,
+        height: (Number(bounds?.height) || 1) * safeScale,
+    };
+}
+function getBoundsInsets(bounds, parentBounds) {
+    const normalized = normalizeBounds(bounds, parentBounds);
+    const parentWidth = Math.max(1, Number(parentBounds?.width) || 1);
+    const parentHeight = Math.max(1, Number(parentBounds?.height) || 1);
+    return {
+        left: normalized.x,
+        top: normalized.y,
+        right: Math.max(0, parentWidth - normalized.x - normalized.width),
+        bottom: Math.max(0, parentHeight - normalized.y - normalized.height),
+    };
+}
+
+function boundsFromInsets(insets, parentBounds) {
+    const parentWidth = Math.max(1, Number(parentBounds?.width) || 1);
+    const parentHeight = Math.max(1, Number(parentBounds?.height) || 1);
+    return normalizeBounds({
+        x: insets.left,
+        y: insets.top,
+        width: parentWidth - insets.left - insets.right,
+        height: parentHeight - insets.top - insets.bottom,
+    }, parentBounds);
+}
 
 function cancelledResult() {
     return { success: false, embeddable: true, cancelled: true, error: '操作已取消。' };
@@ -151,7 +183,19 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, powerMo
         // native child view transparent lets the parent navigation material
         // continue behind the embedded sidebar without color approximation.
         view.setBackgroundColor?.('#00000000');
-        const session = { action: appAction, view, bounds: { x: 0, y: 44, width: 1, height: 1 } };
+        const initialParentBounds = mainWindow.getContentBounds();
+        const defaultBounds = {
+            x: 0,
+            y: 44,
+            width: Math.max(1, initialParentBounds.width),
+            height: Math.max(1, initialParentBounds.height - 44),
+        };
+        const session = {
+            action: appAction,
+            view,
+            bounds: defaultBounds,
+            insets: getBoundsInsets(defaultBounds, initialParentBounds),
+        };
         sessions.set(appAction, session);
         mainWindow.contentView.addChildView(view);
         view.setVisible(false);
@@ -207,9 +251,31 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, powerMo
         if (!session || session.view.webContents.isDestroyed()) {
             return { success: false, error: '内嵌应用会话不存在。' };
         }
-        session.view.setBounds(normalizeBounds(session.bounds, mainWindow.getContentBounds()));
+        const parentBounds = mainWindow.getContentBounds();
+        if (session.insets) {
+            session.bounds = boundsFromInsets(session.insets, parentBounds);
+        } else if ((session.bounds.width || 0) <= 1 || (session.bounds.height || 0) <= 1) {
+            session.bounds = {
+                x: 0,
+                y: 44,
+                width: parentBounds.width,
+                height: Math.max(1, parentBounds.height - 44),
+            };
+            session.insets = getBoundsInsets(session.bounds, parentBounds);
+        }
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            try {
+                mainWindow.contentView.removeChildView(session.view);
+                mainWindow.contentView.addChildView(session.view);
+            } catch { /* ignored */ }
+        }
+        session.view.setBounds(normalizeBounds(session.bounds, parentBounds));
         session.view.setVisible(true);
         activeAction = appAction;
+        try {
+            session.view.webContents?.focus?.();
+            session.view.webContents?.invalidate?.();
+        } catch { /* ignored */ }
         return { success: true };
     }
 
@@ -220,7 +286,13 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, powerMo
         if (!session || session.view.webContents.isDestroyed()) {
             return { success: false, error: '内嵌应用会话不存在。' };
         }
-        session.bounds = normalizeBounds(bounds, mainWindow.getContentBounds());
+        if ((Number(bounds?.width) || 0) <= 1 || (Number(bounds?.height) || 0) <= 1) {
+            return { success: true, ignored: true };
+        }
+        const parentBounds = mainWindow.getContentBounds();
+        const zoomFactor = mainWindow.webContents?.getZoomFactor?.() || 1;
+        session.bounds = normalizeBounds(scaleBounds(bounds, zoomFactor), parentBounds);
+        session.insets = getBoundsInsets(session.bounds, parentBounds);
         session.view.setBounds(session.bounds);
         return { success: true };
     }
@@ -306,8 +378,19 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, powerMo
     const handleSystemResume = () => resume();
     powerMonitor?.on?.('suspend', handleSystemSuspend);
     powerMonitor?.on?.('resume', handleSystemResume);
+    const handleWindowResize = () => {
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        const parentBounds = mainWindow.getContentBounds();
+        sessions.forEach(session => {
+            if (!session.insets || session.view.webContents.isDestroyed()) return;
+            session.bounds = boundsFromInsets(session.insets, parentBounds);
+            session.view.setBounds(session.bounds);
+        });
+    };
+    mainWindow.on('resize', handleWindowResize);
 
     mainWindow.on('closed', () => {
+        mainWindow.off('resize', handleWindowResize);
         powerMonitor?.off?.('suspend', handleSystemSuspend);
         powerMonitor?.off?.('resume', handleSystemResume);
         void closeAll();

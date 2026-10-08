@@ -90,8 +90,8 @@ function createFakeManager() {
                 capturedAt: '2026-08-01T00:00:00.000Z',
             };
         },
-        async getWebAgentPageInfo(appId) {
-            calls.push(['getWebAgentPageInfo', appId]);
+        async getWebAgentPageInfo(appId, options) {
+            calls.push(['getWebAgentPageInfo', appId, options]);
             return {
                 appId,
                 title: 'Agent Page',
@@ -194,6 +194,97 @@ async function run() {
         services: { loomManager: manager },
         logger: console,
     });
+
+    manager.sideBrowser = {
+        async open({ url }) {
+            return {
+                appId: 'vcpchat-browser', targetId: 'browser:1',
+                title: 'Google', url, ready: true,
+            };
+        },
+        async requestAssistance(targetId, message) {
+            return {
+                appId: 'vcpchat-browser', targetId,
+                url: 'https://www.google.com/',
+                assistance: { status: 'waiting', message },
+            };
+        },
+    };
+    const browserOpened = await loomController.processToolCall({
+        command: 'OpenVCPChatBrowser', url: 'https://www.google.com/',
+    });
+    assertContentResult(browserOpened);
+    assert(browserOpened.content[0].text.includes('\n\n- App ID：vcpchat-browser'));
+    assert(!browserOpened.content[0].text.includes('\\n'));
+    assert.strictEqual(browserOpened.details.targetId, 'browser:1');
+    assert.strictEqual(browserOpened.details.pageInfo.snapshotId, 1);
+    assert.strictEqual(browserOpened.details.pageInfoError, null);
+    assert(browserOpened.content.some(part => part.text.includes('vcp-h-1-1-1-abcd1234')));
+    const guide = browserOpened.content[1].text;
+    for (const command of ['GetPageInfo', 'click', 'type', 'RequestBrowserAssistance',
+        'target_navigate', 'execute_script', 'ExecuteAction', 'command1']) {
+        assert(guide.includes(command), `浏览器指南应包含 ${command}`);
+    }
+    for (const command of ['CreateApp', 'EditAppSources', 'CreateSkill', 'ExecuteSkill']) {
+        assert(!guide.includes(command), `浏览器指南不应包含管理命令 ${command}`);
+    }
+    assert(manager.calls.some(call => call[0] === 'getWebAgentPageInfo'
+        && call[1] === 'vcpchat-browser' && call[2].targetId === 'browser:1'));
+    for (const definition of loomManifest.capabilities.invocationCommands) {
+        assert(!definition.description.includes('<<<[TOOL_REQUEST]>>>'),
+            `${definition.command} 描述不应重复示例`);
+    }
+    const originalPageInfo = manager.getWebAgentPageInfo;
+    manager.getWebAgentPageInfo = async () => { throw new Error('模拟快照读取失败'); };
+    const snapshotFailed = await loomController.processToolCall({
+        command: 'OpenVCPChatBrowser', url: 'https://example.com/',
+    });
+    assert.strictEqual(snapshotFailed.details.targetId, 'browser:1');
+    assert.strictEqual(snapshotFailed.details.pageInfo, null);
+    assert.strictEqual(snapshotFailed.details.pageInfoError.message, '模拟快照读取失败');
+    assert(snapshotFailed.content[0].text.includes('不要重复'));
+    assert(snapshotFailed.content[1].text.includes('浏览器操作指南'));
+    manager.getWebAgentPageInfo = originalPageInfo;
+    const inheritedContext = loomController._test.extractSerialStepArgs({
+        appId: 'vcpchat-browser', targetId: 'browser:1', command1: 'click',
+        target1: 'element-handle', targetId2: 'browser:2',
+    }, 1);
+    assert.strictEqual(inheritedContext.targetId, 'browser:1');
+    assert.strictEqual(inheritedContext.target, 'element-handle');
+    assert.strictEqual(loomController._test.extractSerialStepArgs({
+        targetId: 'browser:1', targetId2: 'browser:2',
+    }, 2).targetId, 'browser:2');
+    const assistance = await loomController.processToolCall({
+        command: 'RequestBrowserAssistance', targetId: 'browser:1', message: '请手动登录',
+    });
+    assertContentResult(assistance);
+    assert(assistance.content[0].text.includes('\n\n- App ID：vcpchat-browser'));
+    assert(!assistance.content[0].text.includes('\\n'));
+
+    // 走真实分布式回包入口，确保通知之外的工具结果也保留给主服务器。
+    const DistributedServer = require('../VCPDistributedServer/VCPDistributedServer');
+    const pluginManager = require('../VCPDistributedServer/Plugin');
+    const originalProcessToolCall = pluginManager.processToolCall;
+    const originalGetPlugin = pluginManager.getPlugin;
+    const sent = [];
+    try {
+        pluginManager.processToolCall = (_name, args) => loomController.processToolCall(args);
+        pluginManager.getPlugin = () => loomManifest;
+        await DistributedServer.prototype.handleToolExecutionRequest.call({
+            serverName: 'test', debugMode: false,
+            sendMessage: payload => sent.push(JSON.parse(JSON.stringify(payload))),
+        }, {
+            requestId: 'browser-open-test', toolName: 'LoomController',
+            toolArgs: { command: 'OpenVCPChatBrowser', url: 'https://www.google.com/' },
+        });
+        assert.strictEqual(sent[0].type, 'tool_result');
+        assert.strictEqual(sent[0].data.status, 'success');
+        assert.deepStrictEqual(sent[0].data.result, browserOpened);
+        assertContentResult(sent[0].data.result);
+    } finally {
+        pluginManager.processToolCall = originalProcessToolCall;
+        pluginManager.getPlugin = originalGetPlugin;
+    }
 
     const listed = await loomController.processToolCall({ command: 'ListApps' });
     assertContentResult(listed);

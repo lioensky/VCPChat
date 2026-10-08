@@ -1,19 +1,8 @@
 @layer vcp-ui.components {
-    html .vcp-ui-scope.chat-header,
-    html .vcp-ui-scope .notifications-header {
+    html .vcp-ui-scope.chat-header {
         height: var(--vcp-ui-shell-header-height);
         min-height: var(--vcp-ui-shell-header-height);
         box-sizing: border-box;
-    }
-
-    html .vcp-ui-scope .notifications-header {
-        position: relative;
-        padding: 0 20px 0 var(--vcp-ui-space-3);
-        gap: var(--vcp-ui-space-2);
-        border-bottom: 1px solid var(--vcp-ui-border);
-        background: var(--next-header-bg);
-        backdrop-filter: none;
-        -webkit-backdrop-filter: none;
     }
 
     html .vcp-ui-scope .next-ui-notification-toggle-host {
@@ -75,22 +64,6 @@
     html body:is(.chat-presentation-panel, .chat-presentation-immersive) .vcp-ui-scope.notifications-sidebar > * {
         position: relative;
         z-index: 1;
-    }
-
-    /*
-     * The header becomes a stacking context in translucent presentation modes.
-     * Raise that context while its menu is open so the later status row cannot
-     * paint over the dropdown, regardless of DOM order.
-     */
-    html .vcp-ui-scope.notifications-sidebar > .notifications-header:has(#nextUiNotificationMenu:not([hidden])) {
-        z-index: var(--vcp-ui-z-dropdown);
-        overflow: visible;
-    }
-
-    html body:is(.chat-presentation-panel, .chat-presentation-immersive) .vcp-ui-scope .notifications-header {
-        background: var(--chat-presentation-surface);
-        backdrop-filter: var(--chat-presentation-surface-filter);
-        -webkit-backdrop-filter: var(--chat-presentation-surface-filter);
     }
 
     html .vcp-ui-scope .datetime-container {
@@ -308,7 +281,7 @@
     html .vcp-ui-scope #vchatAppTray {
         display: flex;
         min-height: calc(var(--vcp-ui-control-md) + var(--vcp-ui-space-4));
-        padding: var(--vcp-ui-space-2) var(--vcp-ui-space-3) 15px;
+        padding: var(--vcp-ui-space-2) var(--vcp-ui-space-3);
         gap: var(--vcp-ui-space-2);
         border-top: 0;
         background: transparent;

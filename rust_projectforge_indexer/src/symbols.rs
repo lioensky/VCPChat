@@ -143,7 +143,15 @@ fn is_comment_kind(kind: &str) -> bool {
 }
 
 fn is_prefix_kind(kind: &str) -> bool {
-    matches!(kind, "decorator" | "attribute_item") || is_comment_kind(kind)
+    matches!(
+        kind,
+        "decorator"
+            | "attribute_item"
+            | "attribute_list"
+            | "annotation"
+            | "marker_annotation"
+            | "modifiers"
+    ) || is_comment_kind(kind)
 }
 
 fn is_function_kind(kind: &str) -> bool {
@@ -244,6 +252,10 @@ impl Extractor<'_> {
             }
             Family::Python => kind == "lambda",
             Family::Rust => matches!(kind, "block" | "closure_expression"),
+            Family::C | Family::Cpp => matches!(kind, "compound_statement" | "lambda_expression"),
+            Family::Go => matches!(kind, "block" | "func_literal"),
+            Family::Java | Family::CSharp => matches!(kind, "block" | "lambda_expression"),
+            Family::Lua => matches!(kind, "block" | "function_definition"),
         }
     }
 
@@ -281,7 +293,7 @@ impl Extractor<'_> {
     }
 
     fn push(&mut self, f: &Found, parent: Option<usize>, prefix: &str, depth: usize) -> usize {
-        let sep = if self.family == Family::Rust { "::" } else { "." };
+        let sep = if matches!(self.family, Family::Rust | Family::Cpp) { "::" } else { "." };
         let qualified = match &f.qualified_override {
             Some(q) => q.clone(),
             None if prefix.is_empty() => f.name.clone(),
@@ -355,6 +367,12 @@ impl Extractor<'_> {
             Family::Js => self.extract_js(node, scope_fn),
             Family::Python => self.extract_py(node, parent_kind, scope_fn),
             Family::Rust => self.extract_rs(node, parent_kind),
+            Family::C => self.extract_c(node),
+            Family::Cpp => self.extract_cpp(node, parent_kind),
+            Family::Go => self.extract_go(node),
+            Family::Java => self.extract_java(node, parent_kind),
+            Family::CSharp => self.extract_csharp(node, parent_kind),
+            Family::Lua => self.extract_lua(node),
         }
     }
 
@@ -580,6 +598,319 @@ impl Extractor<'_> {
             end_row(outer)
         }
     }
+
+    // ---------------- C / C++ ----------------
+
+    fn declarator_name(&self, mut decl: Node) -> Option<String> {
+        loop {
+            match decl.kind() {
+                "identifier" | "field_identifier" | "type_identifier" | "destructor_name" | "operator_name" | "operator_cast" => {
+                    return Some(self.name_of(decl));
+                }
+                "function_declarator" | "pointer_declarator" | "reference_declarator" | "parenthesized_declarator" => {
+                    decl = decl.child_by_field_name("declarator")?;
+                }
+                "qualified_identifier" => {
+                    return Some(self.text(decl).split_whitespace().collect());
+                }
+                _ => return None,
+            }
+        }
+    }
+
+    fn extract_c<'t>(&self, node: Node<'t>) -> Option<Found<'t>> {
+        match node.kind() {
+            "function_definition" => {
+                let decl = node.child_by_field_name("declarator")?;
+                let name = self.declarator_name(decl)?;
+                Some(Found::new(name, "function", node, node.child_by_field_name("body")))
+            }
+            "struct_specifier" => {
+                let name = self.field_text(node, "name")?;
+                Some(Found::new(name, "struct", node, node.child_by_field_name("body")))
+            }
+            "enum_specifier" => {
+                let name = self.field_text(node, "name")?;
+                Some(Found::new(name, "enum", node, node.child_by_field_name("body")))
+            }
+            "type_definition" => {
+                let decl = node.child_by_field_name("declarator")?;
+                let name = self.declarator_name(decl)?;
+                Some(Found::new(name, "type", node, None))
+            }
+            _ => None,
+        }
+    }
+
+    fn extract_cpp<'t>(
+        &self,
+        node: Node<'t>,
+        parent_kind: Option<&'static str>,
+    ) -> Option<Found<'t>> {
+        match node.kind() {
+            "function_definition" => {
+                let decl = node.child_by_field_name("declarator")?;
+                let name = self.declarator_name(decl)?;
+                let is_qualified = name.contains("::");
+                let kind = if parent_kind == Some("class") || parent_kind == Some("struct") || is_qualified {
+                    "method"
+                } else {
+                    "function"
+                };
+                let mut found = Found::new(name.clone(), kind, node, node.child_by_field_name("body"));
+                if is_qualified {
+                    found.qualified_override = Some(name);
+                }
+                Some(found)
+            }
+            "field_declaration" | "declaration" if parent_kind == Some("class") || parent_kind == Some("struct") => {
+                // 提取类与结构体内无实现体的成员函数声明原型（declaration / field_declaration）
+                let mut cursor = node.walk();
+                for child in node.named_children(&mut cursor) {
+                    if child.kind() == "function_declarator" {
+                        if let Some(name) = self.declarator_name(child) {
+                            return Some(Found::new(name, "method", node, None));
+                        }
+                    }
+                }
+                None
+            }
+            "class_specifier" => {
+                let name = self.field_text(node, "name").unwrap_or_else(|| "AnonymousClass".into());
+                Some(Found::new(name, "class", node, node.child_by_field_name("body")))
+            }
+            "struct_specifier" => {
+                let name = self.field_text(node, "name").unwrap_or_else(|| "AnonymousStruct".into());
+                Some(Found::new(name, "struct", node, node.child_by_field_name("body")))
+            }
+            "namespace_definition" => {
+                let name = self.field_text(node, "name").unwrap_or_else(|| "anonymous_namespace".into());
+                Some(Found::new(name, "namespace", node, node.child_by_field_name("body")))
+            }
+            "enum_specifier" => {
+                let name = self.field_text(node, "name")?;
+                Some(Found::new(name, "enum", node, node.child_by_field_name("body")))
+            }
+            "type_definition" => {
+                let decl = node.child_by_field_name("declarator")?;
+                let name = self.declarator_name(decl)?;
+                Some(Found::new(name, "type", node, None))
+            }
+            "template_declaration" => {
+                let mut cursor = node.walk();
+                for child in node.named_children(&mut cursor) {
+                    if child.kind() != "template_parameter_list" {
+                        if let Some(mut inner) = self.extract_cpp(child, parent_kind) {
+                            inner.outer = node;
+                            return Some(inner);
+                        }
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+
+    // ---------------- Go ----------------
+
+    fn extract_go<'t>(&self, node: Node<'t>) -> Option<Found<'t>> {
+        match node.kind() {
+            "function_declaration" => {
+                let name = self.field_text(node, "name")?;
+                Some(Found::new(name, "function", node, node.child_by_field_name("body")))
+            }
+            "var_declaration" => {
+                // 提取 Go 包级顶层全局变量与常量声明（var_declaration / var_spec）
+                let mut cursor = node.walk();
+                for spec in node.named_children(&mut cursor) {
+                    if spec.kind() == "var_spec" {
+                        if let Some(name) = self.field_text(spec, "name") {
+                            return Some(Found::new(name, "variable", node, None));
+                        }
+                    }
+                }
+                None
+            }
+            "method_declaration" => {
+                let name = self.field_text(node, "name")?;
+                let receiver = node.child_by_field_name("receiver")?;
+                let mut recv_type = String::new();
+                let mut cursor = receiver.walk();
+                for child in receiver.named_children(&mut cursor) {
+                    if child.kind() == "parameter_declaration" {
+                        if let Some(t) = child.child_by_field_name("type") {
+                            recv_type = self.text(t).replace('*', "").trim().to_string();
+                        }
+                    }
+                }
+                let mut found = Found::new(name.clone(), "method", node, node.child_by_field_name("body"));
+                if !recv_type.is_empty() {
+                    found.qualified_override = Some(format!("{recv_type}.{name}"));
+                }
+                Some(found)
+            }
+            "type_declaration" => {
+                let mut cursor = node.walk();
+                let specs: Vec<Node<'t>> = node
+                    .named_children(&mut cursor)
+                    .filter(|n| n.kind() == "type_spec")
+                    .collect();
+                if specs.len() != 1 {
+                    return None;
+                }
+                let spec = specs[0];
+                let name = self.field_text(spec, "name")?;
+                let type_node = spec.child_by_field_name("type")?;
+                let kind = match type_node.kind() {
+                    "struct_type" => "struct",
+                    "interface_type" => "interface",
+                    _ => "type",
+                };
+                Some(Found::new(name, kind, node, Some(type_node)))
+            }
+            "type_spec" => {
+                let name = self.field_text(node, "name")?;
+                let type_node = node.child_by_field_name("type")?;
+                let kind = match type_node.kind() {
+                    "struct_type" => "struct",
+                    "interface_type" => "interface",
+                    _ => "type",
+                };
+                Some(Found::new(name, kind, node, Some(type_node)))
+            }
+            "method_spec" | "method_elem" => {
+                let name = self.field_text(node, "name").or_else(|| {
+                    let mut cursor = node.walk();
+                    let kids: Vec<Node<'t>> = node.named_children(&mut cursor).collect();
+                    kids.into_iter()
+                        .find(|c| c.kind() == "field_identifier")
+                        .map(|c| self.text(c).to_string())
+                })?;
+                Some(Found::new(name, "method", node, None))
+            }
+            _ => None,
+        }
+    }
+
+    // ---------------- Java ----------------
+
+    fn extract_java<'t>(
+        &self,
+        node: Node<'t>,
+        parent_kind: Option<&'static str>,
+    ) -> Option<Found<'t>> {
+        match node.kind() {
+            "method_declaration" => {
+                let name = self.field_text(node, "name")?;
+                let kind = if parent_kind == Some("class") || parent_kind == Some("interface") || parent_kind == Some("record") {
+                    "method"
+                } else {
+                    "function"
+                };
+                Some(Found::new(name, kind, node, node.child_by_field_name("body")))
+            }
+            "constructor_declaration" => {
+                let name = self.field_text(node, "name")?;
+                Some(Found::new(name, "method", node, node.child_by_field_name("body")))
+            }
+            "class_declaration" => {
+                let name = self.field_text(node, "name")?;
+                Some(Found::new(name, "class", node, node.child_by_field_name("body")))
+            }
+            "interface_declaration" | "annotation_type_declaration" => {
+                let name = self.field_text(node, "name")?;
+                Some(Found::new(name, "interface", node, node.child_by_field_name("body")))
+            }
+            "enum_declaration" => {
+                let name = self.field_text(node, "name")?;
+                Some(Found::new(name, "enum", node, node.child_by_field_name("body")))
+            }
+            "record_declaration" => {
+                let name = self.field_text(node, "name")?;
+                Some(Found::new(name, "class", node, node.child_by_field_name("body")))
+            }
+            _ => None,
+        }
+    }
+
+    // ---------------- C# ----------------
+
+    fn extract_csharp<'t>(
+        &self,
+        node: Node<'t>,
+        parent_kind: Option<&'static str>,
+    ) -> Option<Found<'t>> {
+        match node.kind() {
+            "method_declaration" => {
+                let name = self.field_text(node, "name")?;
+                let kind = if parent_kind == Some("class") || parent_kind == Some("interface") || parent_kind == Some("struct") {
+                    "method"
+                } else {
+                    "function"
+                };
+                Some(Found::new(name, kind, node, node.child_by_field_name("body")))
+            }
+            "constructor_declaration" => {
+                let name = self.field_text(node, "name")?;
+                Some(Found::new(name, "method", node, node.child_by_field_name("body")))
+            }
+            "class_declaration" => {
+                let name = self.field_text(node, "name")?;
+                Some(Found::new(name, "class", node, node.child_by_field_name("body")))
+            }
+            "interface_declaration" => {
+                let name = self.field_text(node, "name")?;
+                Some(Found::new(name, "interface", node, node.child_by_field_name("body")))
+            }
+            "struct_declaration" => {
+                let name = self.field_text(node, "name")?;
+                Some(Found::new(name, "struct", node, node.child_by_field_name("body")))
+            }
+            "enum_declaration" => {
+                let name = self.field_text(node, "name")?;
+                Some(Found::new(name, "enum", node, node.child_by_field_name("body")))
+            }
+            "property_declaration" => {
+                let name = self.field_text(node, "name")?;
+                Some(Found::new(name, "property", node, None))
+            }
+            "namespace_declaration" | "file_scoped_namespace_declaration" => {
+                let name = self.field_text(node, "name")?;
+                Some(Found::new(name, "namespace", node, node.child_by_field_name("body")))
+            }
+            _ => None,
+        }
+    }
+
+    // ---------------- Lua ----------------
+
+    fn extract_lua<'t>(&self, node: Node<'t>) -> Option<Found<'t>> {
+        match node.kind() {
+            "function_declaration" => {
+                let name_node = node.child_by_field_name("name")?;
+                let raw_name = self.text(name_node).trim().to_string();
+                let is_method = raw_name.contains(':') || raw_name.contains('.');
+                let kind = if is_method { "method" } else { "function" };
+                let short_name = if is_method {
+                    raw_name.split(|c| c == ':' || c == '.').last().unwrap_or(&raw_name).to_string()
+                } else {
+                    raw_name.clone()
+                };
+                let mut found = Found::new(short_name, kind, node, node.child_by_field_name("body"));
+                if is_method {
+                    found.qualified_override = Some(raw_name);
+                }
+                Some(found)
+            }
+            "local_function" => {
+                let name_node = node.child_by_field_name("name")?;
+                let raw_name = self.name_of(name_node);
+                Some(Found::new(raw_name, "function", node, node.child_by_field_name("body")))
+            }
+            _ => None,
+        }
+    }
 }
 
 fn is_py_compound(kind: &str) -> bool {
@@ -781,5 +1112,164 @@ impl<T> Store {
         let broken = run(Lang::JavaScript, "function ok() {}\nfunction broken( {\n\nconst z = 1;\n");
         assert!(broken.has_error);
         assert_eq!(get(&broken, "ok").start, 1);
+    }
+
+    #[test]
+    fn go_functions_methods_and_types() {
+        let src = "package main
+
+// Server 结构体
+type Server struct {
+    port int
+}
+
+// 启动服务器
+func (s *Server) Start() error {
+    return nil
+}
+type PipelineRunner interface {
+    Execute(id string) error
+}
+
+func Add(a, b int) int {
+    return a + b
+}
+";
+        let o = run(Lang::Go, src);
+        assert!(!o.has_error);
+        let s = get(&o, "Server");
+        assert_eq!(s.kind, "struct");
+        assert_eq!(span(s), (3, 4, 6));
+
+        let m = get(&o, "Server.Start");
+        assert_eq!(m.kind, "method");
+        assert_eq!(span(m), (8, 9, 11));
+
+        let iface = get(&o, "PipelineRunner");
+        assert_eq!(iface.kind, "interface");
+
+        let m_exec = get(&o, "PipelineRunner.Execute");
+        assert_eq!(m_exec.kind, "method");
+
+        let f = get(&o, "Add");
+        assert_eq!(f.kind, "function");
+        assert_eq!(f.start, 16);
+    }
+
+    #[test]
+    fn cpp_classes_templates_and_methods() {
+        let src = "namespace VCP {
+    /** 矩形类 */
+    class Rect {
+    public:
+        int area() {
+            return 0;
+        }
+    };
+
+    template <typename T>
+    T identity(T val) {
+        return val;
+    }
+}
+";
+        let o = run(Lang::Cpp, src);
+        assert!(!o.has_error);
+        let ns = get(&o, "VCP");
+        assert_eq!(ns.kind, "namespace");
+
+        let cls = get(&o, "VCP::Rect");
+        assert_eq!(cls.kind, "class");
+        assert_eq!(span(cls), (2, 3, 8));
+
+        let m = get(&o, "VCP::Rect::area");
+        assert_eq!(m.kind, "method");
+        assert_eq!(span(m), (5, 5, 7));
+
+        let tmpl = get(&o, "VCP::identity");
+        assert_eq!(tmpl.kind, "function");
+        assert_eq!(tmpl.start, 10);
+    }
+
+    #[test]
+    fn java_classes_interfaces_and_methods() {
+        let src = "package com.vcp;
+
+/** 任务服务 */
+public class TaskService {
+    @Override
+    public void execute() {
+    }
+}
+
+interface Worker {
+    void work();
+}
+";
+        let o = run(Lang::Java, src);
+        assert!(!o.has_error);
+        let cls = get(&o, "TaskService");
+        assert_eq!(cls.kind, "class");
+        assert_eq!(span(cls), (3, 4, 8));
+
+        let m = get(&o, "TaskService.execute");
+        assert_eq!(m.kind, "method");
+        assert_eq!(span(m), (5, 6, 7));
+
+        let iface = get(&o, "Worker");
+        assert_eq!(iface.kind, "interface");
+    }
+
+    #[test]
+    fn csharp_namespaces_classes_and_properties() {
+        let src = "namespace VCP.Core {
+    /// <summary>用户模型</summary>
+    public class User {
+        public string Name { get; set; }
+
+        public void Save() {
+        }
+    }
+}
+";
+        let o = run(Lang::CSharp, src);
+        assert!(!o.has_error);
+        let ns = get(&o, "VCP.Core");
+        assert_eq!(ns.kind, "namespace");
+
+        let cls = get(&o, "VCP.Core.User");
+        assert_eq!(cls.kind, "class");
+        assert_eq!(span(cls), (2, 3, 8));
+
+        let prop = get(&o, "VCP.Core.User.Name");
+        assert_eq!(prop.kind, "property");
+
+        let m = get(&o, "VCP.Core.User.Save");
+        assert_eq!(m.kind, "method");
+    }
+
+    #[test]
+    fn lua_functions_and_table_methods() {
+        let src = "-- 玩家模块
+local M = {}
+
+-- 移动
+function M:moveTo(x, y)
+    self.x = x
+end
+
+function globalHelper()
+    return true
+end
+";
+        let o = run(Lang::Lua, src);
+        assert!(!o.has_error);
+        let m = get(&o, "M:moveTo");
+        assert_eq!(m.kind, "method");
+        assert_eq!(span(m), (4, 5, 7));
+
+        let f = get(&o, "globalHelper");
+        assert_eq!(f.kind, "function");
+        assert_eq!(f.start, 9);
     }
 }

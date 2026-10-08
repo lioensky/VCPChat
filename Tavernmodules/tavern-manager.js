@@ -122,6 +122,13 @@
                         </button>
                     </div>
                 </div>
+                <div class="tavern-popover-search">
+                    <span class="tavern-popover-search-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    </span>
+                    <input type="text" class="tavern-popover-search-input" placeholder="搜索规则名称或标签..." spellcheck="false" autocomplete="off">
+                    <button type="button" class="tavern-popover-search-clear" title="清空搜索" aria-label="清空搜索">×</button>
+                </div>
                 <div class="tavern-popover-body"></div>
                 <div class="tavern-popover-footer">
                     <span>开启的规则将用于下一次回复</span>
@@ -133,6 +140,30 @@
             this.popoverAnchorEl = anchorEl || null;
             this.popoverAnchorEl?.setAttribute('aria-expanded', 'true');
             this.popoverAnchorEl?.setAttribute('aria-controls', 'tavernPopover');
+
+            const searchInput = popover.querySelector('.tavern-popover-search-input');
+            const clearBtn = popover.querySelector('.tavern-popover-search-clear');
+            searchInput.addEventListener('input', () => {
+                const val = searchInput.value;
+                clearBtn.style.display = val ? 'inline-flex' : 'none';
+                this._renderPopoverList(val);
+            });
+            clearBtn.addEventListener('click', () => {
+                searchInput.value = '';
+                clearBtn.style.display = 'none';
+                searchInput.focus();
+                this._renderPopoverList('');
+            });
+            searchInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    if (searchInput.value) {
+                        e.stopPropagation();
+                        searchInput.value = '';
+                        clearBtn.style.display = 'none';
+                        this._renderPopoverList('');
+                    }
+                }
+            });
 
             this._renderPopoverList();
 
@@ -210,7 +241,7 @@
             }
         },
 
-        _renderPopoverList() {
+        _renderPopoverList(query = '') {
             if (!this.popoverEl) return;
             const body = this.popoverEl.querySelector('.tavern-popover-body');
             const rules = this.store.rules || [];
@@ -228,8 +259,28 @@
                 });
                 return;
             }
+
+            const q = (query || '').trim().toLowerCase();
+            const filteredRules = rules.filter(rule => {
+                if (!q) return true;
+                const name = (rule.name || '').toLowerCase();
+                const typeText = (TYPE_LABELS[rule.type] || rule.type || '').toLowerCase();
+                const scopeText = (SCOPE_LABELS[rule.scope || 'global'] || rule.scope || '').toLowerCase();
+                const builtinText = rule.isBuiltin ? '官方预置' : '';
+                return name.includes(q) || typeText.includes(q) || scopeText.includes(q) || builtinText.includes(q);
+            });
+
+            if (filteredRules.length === 0) {
+                body.innerHTML = `
+                    <div class="tavern-popover-empty">
+                        <div>未找到匹配的规则</div>
+                    </div>
+                `;
+                return;
+            }
+
             body.innerHTML = '';
-            rules.forEach(rule => {
+            filteredRules.forEach(rule => {
                 // 仅捕获 ID;saveStore 后 this.store 会被整体替换,
                 // 闭包里直接持有 rule 引用会指向"游魂对象",改了也不会被持久化
                 const ruleId = rule.id;
@@ -269,7 +320,8 @@
                         const latestRule = (this.store.rules || []).find(r => r.id === ruleId);
                         if (!latestRule) {
                             // 规则已被外部删除,直接刷新一次列表
-                            this._renderPopoverList();
+                            const currentQuery = this.popoverEl?.querySelector('.tavern-popover-search-input')?.value || '';
+                            this._renderPopoverList(currentQuery);
                             return;
                         }
                         latestRule.enabled = desired;

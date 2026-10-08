@@ -1,0 +1,108 @@
+/*
+ * 主聊天左侧的提问定位导轨（modules/ui-system/conversation-turn-navigator.js）。
+ * 版式与数值对照 ZCode 的 ConversationTurnNavigator（https://github.com/zai-org/ZCode ，Apache-2.0）：
+ * 36×10px 的按钮里一根横条，悬停的那根按距离放大到约 31 / 20 / 15px（同 ZCode）；
+ * 平时的横条比 ZCode 的 12px 短，只有 8px，聊天列不足 400px 时整条导轨隐藏，
+ * 颜色取自 vcp-ui 令牌（定义在 .vcp-turn-nav 上），跟随浅色/深色主题。
+ */
+
+html .vcp-turn-nav:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: absolute;
+    left: 0;
+    width: 48px;
+    z-index: 10;
+    pointer-events: none;
+    visibility: hidden;
+    opacity: 0;
+    transform: translateX(-8px);
+    transition: opacity 150ms ease-out, transform 150ms ease-out, visibility 150ms ease-out;
+    --vcp-turn-nav-fg: var(--vcp-ui-text-0);
+    --vcp-turn-nav-fg-subtle: var(--vcp-ui-text-2);
+    --vcp-turn-nav-fg-subtlest: var(--vcp-ui-text-3);
+    --vcp-turn-nav-border: var(--vcp-ui-border);
+    --vcp-turn-nav-popover: var(--vcp-ui-bg-1);
+    --vcp-turn-nav-shadow: var(--vcp-ui-shadow-md);
+}
+html .vcp-turn-nav[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }
+html .vcp-turn-nav.is-wide:where(.vcp-ui-scope, .vcp-ui-scope *) { visibility: visible; opacity: 1; transform: none; }
+/* 不关闭导轨和卡片的鼠标命中区域，划入即可恢复。 */
+html .vcp-turn-nav.is-wide.is-idle:not(:hover):not(:focus-within):where(.vcp-ui-scope, .vcp-ui-scope *) { opacity: 0.1; }
+
+html .vcp-turn-nav-scroll:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: absolute;
+    left: 4px; /* 消息气泡左对齐、左边距只有 ~27px，比 ZCode 的居中版面更靠边 */
+    top: 50%;
+    width: 36px;
+    max-height: calc(100% - 96px);
+    transform: translateY(-50%);
+    padding: 4px 0;
+    overflow-x: hidden; /* 悬停横条放大时不能冒出横向滚动条 */
+    overflow-y: auto;
+    scrollbar-width: none;
+    pointer-events: auto;
+}
+html .vcp-turn-nav-scroll:where(.vcp-ui-scope, .vcp-ui-scope *)::-webkit-scrollbar { display: none; }
+html .vcp-turn-nav-inner:where(.vcp-ui-scope, .vcp-ui-scope *) { position: relative; width: 36px; }
+
+html .vcp-turn-nav-item:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    width: 36px;
+    height: 10px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 2px;
+    background: transparent;
+    cursor: pointer;
+}
+html .vcp-turn-nav-item:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    outline: 2px solid color-mix(in srgb, var(--vcp-turn-nav-fg) 45%, transparent);
+    outline-offset: 1px;
+}
+
+html .vcp-turn-nav-bar:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: block;
+    width: 8px;
+    height: 2px;
+    border-radius: 999px;
+    background: var(--vcp-turn-nav-fg-subtlest);
+    transform-origin: left center;
+    transition: height 150ms ease-out, opacity 150ms ease-out, transform 150ms ease-out, background-color 150ms ease-out;
+}
+html .vcp-turn-nav-bar.is-strong:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--vcp-turn-nav-fg); }
+
+html .vcp-turn-nav-card:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: absolute;
+    left: 48px;
+    width: 320px;
+    max-width: min(var(--vcp-turn-nav-card-max-width, 320px), calc(100vw - 96px));
+    transform: translateY(-50%);
+    box-sizing: border-box;
+    padding: 12px;
+    border: 1px solid var(--vcp-turn-nav-border);
+    border-radius: 10px;
+    background: var(--vcp-turn-nav-popover);
+    color: var(--vcp-turn-nav-fg);
+    box-shadow: var(--vcp-turn-nav-shadow);
+    pointer-events: auto;
+    font-size: calc(var(--vcp-ui-font-size) - 1px);
+    line-height: 20px;
+}
+html .vcp-turn-nav-card[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }
+html .vcp-turn-nav-card p:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    margin: 0;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+html .vcp-turn-nav-card-user:where(.vcp-ui-scope, .vcp-ui-scope *) { font-weight: 500; -webkit-line-clamp: 2; line-clamp: 2; }
+html .vcp-turn-nav-card .vcp-turn-nav-card-assistant:where(.vcp-ui-scope, .vcp-ui-scope *) { margin-top: 8px; color: color-mix(in srgb, var(--vcp-turn-nav-fg) 80%, transparent); -webkit-line-clamp: 3; line-clamp: 3; }
+html .vcp-turn-nav-card-assistant.is-muted:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--vcp-turn-nav-fg-subtle); }
+
+@media (prefers-reduced-motion: reduce) {
+    html .vcp-turn-nav:where(.vcp-ui-scope, .vcp-ui-scope *), html .vcp-turn-nav-bar:where(.vcp-ui-scope, .vcp-ui-scope *) { transition: none; }
+}

@@ -53,3 +53,7 @@ musicSetSpeed: invoke('music-set-speed', 'speed'),
 - 使用角色 preload 的窗口必须设置 `sandbox: false`。Electron 默认开启沙箱，沙箱内 preload 不能 require 本地文件，页面上的 `chatAPI` 等会全部缺失。`contextIsolation: true` 与 `nodeIntegration: false` 保持不变，页面脚本仍然碰不到 Node。`tests/preload-registry.test.js` 会检查这一点，新增窗口后要同步更新该测试的文件清单。
 - API 名全局唯一，重名会在 preload 加载时直接抛错。
 - 测试或工具需要查询 API 时用 `require('preloads/core/registry').describeApis()`，得到 `{ name, domain, kind, channel, roles }` 列表，不要用正则读 preload 源码。
+
+## 验证专用窗口
+
+`npm run test:dedicated-preload` 启动独立 Electron 进程与临时数据，验证 chart/docx/loom 的页面 API、真实 IPC 传参、事件载荷和同 callback 两次订阅各自解绑。窗口隐藏，完成后销毁，不连接现有应用；日志与结果留在输出的临时证据目录。主进程采用受控 handler，这项测试不证明生产业务处理已通过。

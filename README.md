@@ -148,17 +148,28 @@ VMusic 实现了从传统播放器到**全沉浸视听舞台**的全面进化，
 
 > **告别黑盒与臃肿后台，让多 Agent 团队在透明、安全的工程熔炉中为您协同编程。**
 
-将专用编程核心 VCPCode 完整移植并进化为 **VCPProjectForge**：
+专用编程核心 VCPCode 正式将强大的高并发读写、置信度模糊函数编辑与项目进度工程管理能力完整移植入 VCPChat，进化为全新工程模组 **VCPProjectForge**：
 
-- **全流程可视化后台编程 (ProJectModule)**：
-  在独立的 V工程子前端中实时追踪多 Agent 的并发编程流，支持多历史分支步进式回退与随时显式中止。
-- **意图级与结构级精准编辑**：
-  提供行级 Diff、意图级函数块选取、行范围代码圈选、剪切、粘贴、模糊函数定位（Fuzzy Function Matching）、一键大模块解耦拆分与自动语法合规化。
-- **工程脉络与责任署名**：
-  维护项目 TODO 清单、代码责任归属树、分支仲裁机制与编译测试沙箱环境。
-- **VCPWorkBuddy 协同外挂**：
-  允许 Agent 作为“主管”异步调度与鞭策外部 CLI（Claude Code、Codex、SnowCLI、Tencent CodeBuddy 等），在统一界面下享受外部算力输出。
-- **全生态闭环**：与 **VCPCLI (内置持久化终端)** 及 **VCPCanvas** 紧密联动，支持在可交互白板与沙箱环境中直接预览与调试成果。
+- **全流程可视化后台编程前端 (ProJectModule)**：
+  - 在独立的 V工程子前端中实时追踪多 Agent 的后台并发编程流，支持通过 vchat 或 groupchat 显式指挥 Agent 工作进度。
+  - 内置轻量化 IDE 源码查看、检索与编辑环境，内嵌 VCPCanvas 内核；原生集成 Git 管理、分支管理与可视化分支比对（Branch Diff）。
+  - 支持对工程的每一个细粒度步骤进行显式中止、多历史分支步进式操作备份与安全回退。
+  - 主界面通知栏支持“常规模式”与“工程模式”两种视图无缝切换。
+- **MoonASTSearch & RustCodeSearch 高性能代码感知引擎**：
+  - **Tree-sitter C/Rust 双核 AST 索引**：引入基于 C 语言实现的 MoonASTSearch 系统与全面重构的 RustCodeSearch 插件，基于 `mtime + size + notify` 自动构建工作区全局 AST 索引，大幅降低检索延迟与 I/O 消耗。
+  - **精准函数边界与无噪检索**：自动导出函数/类与 Codemap，精准锁定所有函数的起始行至结束行，配合 JEV 实现渐进语义级代码搜索，彻底摒弃传统正则检索与密集 rg 扫描带来的大量无效 Token 噪音与高消耗。
+  - **多语系拓展支持**：AST 解析原生覆盖 JavaScript/TypeScript、Rust、Python，并进一步拓展至 C、C++、Go、C#、Java 、Html等多语系代码库。
+  - **全链路函数 Trace 与依赖漫游**：自动生成函数引用与依赖拓扑报告，支持手动屏蔽 `.test` 与 `.doc` 目录；自带 Electron 页面依赖加载解析器，改动原生追踪 Preload 到程序页面依赖，AI 编程时自动 Trace 完整函数实现链路以提示施工路线。
+- **意图级与结构级丰富编辑算子**：
+  - 支持工作区感知的编辑器、智能目录过滤、渐进展开层级以及精细化 Token 预算管理。
+  - 拥有完善的 Agent 编程操作模组：支持全文件编辑、行级 Diff、模糊 Diff、意图级函数块选取、行范围代码圈选、剪切、粘贴、一键大模块解耦拆分、函数导航、智能回退、自动化语法检查与修复、全自动格式规范化。
+- **工程协作体系、专属 Agent 与 KV Cache 优化**：
+  - **V工程专属 Agent —— Kerr 上线**：Code/Core + “伐柯伐柯，其匪则不远”，双重隐喻，以工具奠定工具。
+  - **工程脉络与责任署名**：维护工程 TODO 实时追踪、代码责任归属树、编程代际分支仲裁机制以及编译测试与虚拟环境沙箱。
+  - **KVCache 极致利用**：优化消息管线，在 V工程施工期间自动锁定记忆区系统变量，仅在工程阶段推进时刷新，确保 Agent 稳定吃满 KV Cache，大幅削减推理 Token 消耗与响应时延。
+- **VCPWorkBuddy 协同外挂与全生态联动**：
+  - 允许 Agent 作为“主管”异步调度与鞭策外部 CLI（Claude Code、Codex、SnowCLI、Tencent CodeBuddy 等），在统一界面下享受外部算力输出。
+  - 与 **VCPCLI (内置持久化终端)** 及 **VCPCanvas** 紧密联动，在可交互白板与沙箱环境中直接预览与调试成果。
 
 ---
 
@@ -179,7 +190,7 @@ VCPChat 内置了覆盖全工作流的官方子应用与工具套件，均已完
 ### 📝 创作与全能生产力
 
 *   **共笔文坊 (VCPScriptorium V3)**：前述原生双文档架构（VDocx 流式文章 / VPptx 场景演示），三态解耦仲裁，渲染态即刻直接编辑，文脉 PR 提案协作。
-*   **V工程 (VCPProjectForge)**：前述代码级多 Agent 协作开发工坊，支持意图级/行级 Diff、分支回滚、TODO 追踪及 ProJectModule 全程可视化。
+*   **V工程 (VCPProjectForge)**：前述代码级多 Agent 协作开发工坊，由专属 Agent Kerr 坐镇；搭载 MoonASTSearch (C/Tree-sitter) 与 RustCodeSearch 双核代码索引，支持精准函数行追踪、多语系 AST 解析、意图级/行级 Diff、分支回滚与比对、工程 TODO 追踪、KV Cache 阶段锁定及 ProJectModule 全程可视化。
 *   **V图表 (VChart)**：数据驱动的可视化子应用。Agent 无需反复编写冗长 JS/HTML，只需更新数据即可动态生成图表；内置 Anime.js、Three.js、Pixi.js 与 SQL 依赖注入，支持多种数据库与本地 JSON 接入，支持 Canvas PR/Merge 协作与独立浮窗。
 *   **Canvas 协同画板**：革命性实时交互白板，支持人机多端零延迟共同编辑代码与 Markdown；内置沙箱化 IDE（支持客户端 Pyodide WASM 与 Python 系统级穿透执行），支持多版本时间轴图谱与一键差异对比回溯。
 *   **VNote 笔记系统 & 迷你便签**：支持树状关系视图与双向标签；全局快捷键 `Win + Alt + Z` 极速呼出轻量便签；支持 Markdown/LaTeX/Mermaid 全格式渲染与图片粘贴自动转存；支持一键将聊天气泡与划选内容存入笔记并双向同步至 AI 核心知识库。
@@ -247,7 +258,7 @@ JEV:「始」在[1分钟后]设置闹钟，提醒我【检查烤箱里的点心�
 ### 推荐运行入口
 
 1. **普通用户（一键图形启动器）**：
-   - **Windows**：双击运行 [`launchers/VCPChat-Launcher.vbs`](launchers/VCPChat-Launcher.vbs) 或 `启动Vchat.vbs`（后台静默，无黑框）；
+   - **Windows**：双击运行 [`launchers/StartVCPchat.exe`](launchers/StartVCPchat.exe)（官方Rust启动器，其它平台可自行编译）；
    - **macOS**：运行 [`launchers/VCPChat-Launcher.command`](launchers/VCPChat-Launcher.command)；
    - **Linux**：运行 [`launchers/VCPChat-Launcher.sh`](launchers/VCPChat-Launcher.sh)。
 2. **开发者与诊断**：
@@ -307,7 +318,8 @@ pip install -r requirements.txt
 - **图形与动效**：Pixi.js v8、Three.js、Anime.js、HTML5 Canvas
 - **文档与编译**：VCPScriptorium 自研分页与排版引擎、CodeMirror 6、Mermaid、KaTeX
 - **系统底层**：
-  - **Rust**：`rust_audio_engine` (Rubato F64、WASAPI 直通)、`rust_voice_input_engine` (系统级穿透监听)、`rust_chat_data_service`
+  - **Rust**：`rust_audio_engine` (Rubato F64、WASAPI 直通)、`rust_voice_input_engine` (系统级穿透监听)、`rust_chat_data_service`、`rust_projectforge_indexer` (RustCodeSearch 核心代码索引与依赖报告)
+  - **C / Tree-sitter**：MoonASTSearch (全局 AST 索引、精准函数行号映射、多语系代码结构解析)
   - **Python**：Pyodide (WASM 端运行)、本地 Python 服务 (GPT-SoVITS、音视频剪辑分析)
   - **C++ 原生**：Node-PTY (终端控制)、Sharp (高吞吐图像处理)、Better-SQLite3
 
@@ -348,8 +360,8 @@ pip install -r requirements.txt
   </tr>
   <tr>
     <td width="50%" align="center">
-      <img src="assets/E7-划词小助手应用于Vscode编程解释和辅助生成代码.jpg" width="100%" style="border-radius: 8px;" /><br>
-      <b>全局划词小助手与 IDE 协同</b>
+      <img src="assets/E11-V工程即时施工协作图.jpg" width="100%" style="border-radius: 8px;" /><br>
+      <b>V 工程实时工程监控和验收</b>
     </td>
     <td width="50%" align="center">
       <img src="assets/E6-终端与日志.jpg" width="100%" style="border-radius: 8px;" /><br>

@@ -1,4 +1,5 @@
 import '../tavernRulesEngine.js';
+import { stripHiddenToolResults } from '../renderer/toolResultRegions.js';
 
 function requireDependency(value, name) {
     if (!value) throw new Error(`SingleChatRequestOrchestrator requires ${name}`);
@@ -122,7 +123,12 @@ function appendAttachmentContext(text, attachment, data, liveText = null) {
     }
 
     if (Array.isArray(imageFrames) && imageFrames.length > 0) {
-        return `${text}\n\n[附加文件: ${path} (扫描版PDF，已转换为图片)]`;
+        const totalPages = data?.pdfMeta?.totalPages;
+        const pageHint = totalPages
+            ? `(扫描版/图像型PDF，已内联 ${imageFrames.length} 页高清多模态图像/共 ${totalPages} 页)`
+            : `(扫描版/图像型PDF，已提供 ${imageFrames.length} 页多模态图像)`;
+        const summary = extractedText ? `\n${extractedText}` : '';
+        return `${text}\n\n[附加文件: ${path} ${pageHint}]${summary}`;
     }
     if (extractedText) {
         return `${text}\n\n[附加文件: ${path}]\n${extractedText}\n[/附加文件结束: ${name}]`;
@@ -176,7 +182,7 @@ async function readAttachmentFrames(electronAPI, attachment, data) {
 }
 
 async function buildDefaultMessageContent({ message, electronAPI }) {
-    let text = normalizeText(message?.content);
+    let text = stripHiddenToolResults(normalizeText(message?.content));
     const attachments = Array.isArray(message?.attachments) ? message.attachments : [];
     const mediaParts = [];
 

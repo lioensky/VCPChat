@@ -2,7 +2,6 @@ import { COMPONENT_MANIFEST } from './component-manifest.js';
 
 const COMPONENTS = new Map();
 const ENHANCERS = new Map();
-const VALID_SIZES = new Set(['sm', 'md', 'lg', 'xl']);
 const controllerByElement = new WeakMap();
 
 function updateRangeProgress(element) {
@@ -1918,6 +1917,7 @@ function toastFactory(options = {}) {
             element.append(close.element);
         }
     });
+    controller._listen(element, 'click', () => controller.destroy());
     return controller;
 }
 
@@ -1969,17 +1969,99 @@ function windowControlsFactory(options = {}) {
     element.className = 'vcp-ui-window-controls';
     element.setAttribute('role', 'toolbar');
     element.setAttribute('aria-label', '窗口控制');
-    const state = { onMinimize: null, onMaximize: null, onClose: null, ...options };
+    const state = {
+        pinned: false,
+        onPin: null,
+        onMinimize: null,
+        onMaximize: null,
+        onClose: null,
+        extensions: [],
+        ...options
+    };
+
+    // 同步能力判定（0 CLS 关键）：若环境存在同步 canPin() 且为 false，或用户显式配置 pin: false，则首帧即可确定不展示置顶
+    // 仅在 Windows 且为非嵌入式独立窗口时，canPin 同步返回 true
+    const isPinCapable = options.pin !== false && typeof window !== 'undefined' && Boolean(
+        typeof window.utilityAPI?.canPin === 'function'
+            ? window.utilityAPI.canPin()
+            : window.utilityAPI?.togglePinWindow
+    );
+
+    let pin = null;
+    let unlistenPinned = null;
+
+    if (isPinCapable) {
+        pin = iconButtonFactory({
+            icon: 'push_pin',
+            label: '置顶窗口',
+            size: 'sm',
+            variant: 'ghost'
+        });
+        pin.element.classList.add('vcp-ui-window-control-button', 'vcp-ui-window-control-pin');
+    }
+
     const minimize = iconButtonFactory({ icon: 'remove', label: '最小化窗口', size: 'sm', variant: 'ghost' });
     const maximize = iconButtonFactory({ icon: 'crop_square', label: '最大化窗口', size: 'sm', variant: 'ghost' });
     const close = iconButtonFactory({ icon: 'close', label: '关闭窗口', size: 'sm', variant: 'ghost' });
-    close.element.classList.add('vcp-ui-window-control-close');
-    [minimize.element, maximize.element, close.element].forEach(button => {
+    close.element.classList.add('vcp-ui-window-control-button', 'vcp-ui-window-control-close');
+
+    [minimize.element, maximize.element].forEach(button => {
         button.classList.add('vcp-ui-window-control-button');
     });
+
     const controller = makeController(element, state, current => {
-        element.replaceChildren(minimize.element, maximize.element, close.element);
+        const extensions = Array.isArray(current.extensions) ? current.extensions : [];
+        const buttons = [];
+        if (pin) {
+            pin.element.classList.toggle('is-pinned', Boolean(current.pinned));
+            pin.element.setAttribute('aria-pressed', String(Boolean(current.pinned)));
+            pin.element.title = current.pinned ? '取消置顶' : '置顶窗口';
+            pin.element.setAttribute('aria-label', current.pinned ? '取消置顶' : '置顶窗口');
+            buttons.push(pin.element);
+        }
+        buttons.push(...extensions, minimize.element, maximize.element, close.element);
+        element.replaceChildren(...buttons);
+    }, () => {
+        if (typeof unlistenPinned === 'function') {
+            unlistenPinned();
+            unlistenPinned = null;
+        }
     });
+
+    // 单向事件驱动与防连击：状态由主进程 onWindowPinnedChanged 驱动
+    if (pin) {
+        let isToggling = false;
+        controller._listen(pin.element, 'click', async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (typeof state.onPin === 'function') {
+                state.onPin();
+                return;
+            }
+            if (isToggling) return;
+            isToggling = true;
+            try {
+                await window.utilityAPI?.togglePinWindow?.();
+            } catch (err) {
+                console.warn('[VCPUI][WindowControls] togglePinWindow failed:', err);
+            } finally {
+                setTimeout(() => { isToggling = false; }, 150);
+            }
+        });
+
+        if (typeof window.utilityAPI?.onWindowPinnedChanged === 'function') {
+            unlistenPinned = window.utilityAPI.onWindowPinnedChanged(isPinned => {
+                if (!controller.destroyed) controller.update({ pinned: Boolean(isPinned) });
+            });
+        }
+
+        window.utilityAPI?.isWindowPinned?.().then(isPinned => {
+            if (!controller.destroyed && Boolean(isPinned) !== controller.element.querySelector('.vcp-ui-window-control-pin')?.classList.contains('is-pinned')) {
+                controller.update({ pinned: Boolean(isPinned) });
+            }
+        }).catch(() => {});
+    }
+
     minimize.element.addEventListener('click', () => {
         if (typeof state.onMinimize === 'function') state.onMinimize();
         else window.utilityAPI?.minimizeWindow?.();
@@ -1994,7 +2076,6 @@ function windowControlsFactory(options = {}) {
     });
     return controller;
 }
-
 function appPageShellFactory(options = {}) {
     const element = document.createElement('div');
     element.className = 'vcp-ui-page-shell vcp-ui-scope';
@@ -2111,7 +2192,29 @@ function ensureFeedbackHost() {
     if (feedbackHost?.isConnected) return feedbackHost;
     feedbackHost = document.createElement('div');
     feedbackHost.className = 'vcp-ui-feedback-host vcp-ui-scope';
-    feedbackHost.innerHTML = '<div class="vcp-ui-loading-layer" hidden><span class="vcp-ui-icon vcp-ui-spinner" aria-hidden="true">progress_activity</span><span class="vcp-ui-loading-label">正在处理</span></div><div class="vcp-ui-toast-stack"></div><div class="vcp-ui-dialog-host"></div>';
+
+    const loadingLayer = document.createElement('div');
+    loadingLayer.className = 'vcp-ui-loading-layer';
+    loadingLayer.hidden = true;
+
+    const spinner = document.createElement('span');
+    spinner.className = 'vcp-ui-icon vcp-ui-spinner';
+    spinner.setAttribute('aria-hidden', 'true');
+    spinner.textContent = 'progress_activity';
+
+    const loadingLabel = document.createElement('span');
+    loadingLabel.className = 'vcp-ui-loading-label';
+    loadingLabel.textContent = '正在处理';
+
+    loadingLayer.append(spinner, loadingLabel);
+
+    const toastStack = document.createElement('div');
+    toastStack.className = 'vcp-ui-toast-stack';
+
+    const dialogHost = document.createElement('div');
+    dialogHost.className = 'vcp-ui-dialog-host';
+
+    feedbackHost.append(loadingLayer, toastStack, dialogHost);
     document.body.append(feedbackHost);
     return feedbackHost;
 }

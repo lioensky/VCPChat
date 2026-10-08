@@ -105,14 +105,19 @@ class PluginManager {
         return config;
     }
 
-    async loadPlugins() {
+    async loadPlugins({ shouldStop = () => false } = {}) {
         console.log('[DistPluginManager] Starting plugin discovery...');
         this.plugins.clear();
 
         try {
-            const pluginFolders = await fs.readdir(PLUGIN_DIR, { withFileTypes: true });
-            for (const folder of pluginFolders) {
-                if (folder.isDirectory()) {
+            const pluginFolders = (await fs.readdir(PLUGIN_DIR, { withFileTypes: true }))
+                .filter(folder => folder.isDirectory());
+            // 仅并发读取清单/配置，不在发现阶段解析重型 CommonJS 服务模块。
+            // 分批提交保持目录顺序和重复名称的原有优先级，同时限制文件 I/O 并发。
+            for (let offset = 0; offset < pluginFolders.length; offset += 4) {
+                await new Promise(resolve => setImmediate(resolve));
+                if (shouldStop()) return;
+                const batch = await Promise.all(pluginFolders.slice(offset, offset + 4).map(async folder => {
                     const pluginPath = path.join(PLUGIN_DIR, folder.name);
                     const manifestPath = path.join(pluginPath, manifestFileName);
                     try {
@@ -120,52 +125,44 @@ class PluginManager {
                         const manifest = JSON.parse(manifestContent);
                         if (manifest.pluginType === 'renderer' && manifest.name && manifest.frontend?.script) {
                             if (this.debugMode) console.log(`[DistPluginManager] Renderer plugin '${manifest.name}' is managed by VChat. Skipping backend registration.`);
-                            continue;
+                            return null;
                         }
                         if (!manifest.name || !manifest.pluginType || !manifest.entryPoint) {
                             if (this.debugMode) console.warn(`[DistPluginManager] Invalid manifest in ${folder.name}. Skipping.`);
-                            continue;
-                        }
-                        if (this.plugins.has(manifest.name)) {
-                            if (this.debugMode) console.warn(`[DistPluginManager] Duplicate plugin name '${manifest.name}'. Skipping.`);
-                            continue;
+                            return null;
                         }
                         manifest.basePath = pluginPath;
                         
                         // Load plugin-specific config.env
                         manifest.pluginSpecificEnvConfig = {};
                          try {
-                            await fs.access(path.join(pluginPath, 'config.env'));
                             const pluginEnvContent = await fs.readFile(path.join(pluginPath, 'config.env'), 'utf-8');
                             manifest.pluginSpecificEnvConfig = dotenv.parse(pluginEnvContent);
                         } catch (envError) {
                             // Ignore if config.env doesn't exist
                         }
 
-                        // 加载所有类型的插件
-                        this.plugins.set(manifest.name, manifest);
-                        console.log(`[DistPluginManager] Loaded manifest: ${manifest.displayName} (${manifest.name}, Type: ${manifest.pluginType})`);
-
-                        // 如果是服务类或混合服务类插件，则加载其模块以备初始化
-                        if ((manifest.pluginType === 'service' || manifest.pluginType === 'hybridservice') && manifest.entryPoint.script && manifest.communication?.protocol === 'direct') {
-                            try {
-                                const scriptPath = path.join(pluginPath, manifest.entryPoint.script);
-                                const serviceModule = require(scriptPath);
-                                this.serviceModules.set(manifest.name, { manifest, module: serviceModule });
-                                if (this.debugMode) console.log(`[DistPluginManager] Loaded service module: ${manifest.name}`);
-                            } catch (e) {
-                                console.error(`[DistPluginManager] Error requiring service module for ${manifest.name}:`, e);
-                            }
-                        }
+                        return manifest;
                     } catch (error) {
                         if (this.debugMode) console.error(`[DistPluginManager] Error loading plugin from ${folder.name}:`, error);
+                        return null;
                     }
+                }));
+                if (shouldStop()) return;
+                for (const manifest of batch) {
+                    if (!manifest) continue;
+                    if (this.plugins.has(manifest.name)) {
+                        if (this.debugMode) console.warn(`[DistPluginManager] Duplicate plugin name '${manifest.name}'. Skipping.`);
+                        continue;
+                    }
+                    this.plugins.set(manifest.name, manifest);
+                    console.log(`[DistPluginManager] Loaded manifest: ${manifest.displayName} (${manifest.name}, Type: ${manifest.pluginType})`);
                 }
             }
             console.log(`[DistPluginManager] Plugin discovery finished. Loaded ${this.plugins.size} plugins.`);
             
             // 初始化静态插件
-            await this.initializeStaticPlugins();
+            if (!shouldStop()) await this.initializeStaticPlugins();
         } catch (error) {
             console.error(`[DistPluginManager] Plugin directory ${PLUGIN_DIR} not found or could not be read.`);
         }
@@ -318,15 +315,25 @@ class PluginManager {
         });
     }
     // 初始化 service / hybridservice direct 模块并注入共享运行时依赖。
-    async initializeServices(app, adminApiRouter, projectBasePath, services = {}) {
+    async initializeServices(app, adminApiRouter, projectBasePath, services = {}, { shouldStop = () => false } = {}) {
         if (!app) {
             console.error('[DistPluginManager] Cannot initialize services without Express app instance.');
             return;
         }
         console.log('[DistPluginManager] Initializing service plugins...');
-        for (const [name, serviceData] of this.serviceModules) {
+        for (const [name, manifest] of this.plugins) {
+            if (!['service', 'hybridservice'].includes(manifest.pluginType)
+                || !manifest.entryPoint.script || manifest.communication?.protocol !== 'direct') continue;
+            // require 本身仍是同步的；逐个让步避免所有模块连续占用主线程。
+            // 注入的 Electron/Express 对象不能直接迁入 Worker，故不盲目并行服务初始化。
+            await new Promise(resolve => setImmediate(resolve));
+            if (shouldStop()) return;
             try {
-                const pluginConfig = this._getPluginConfig(serviceData.manifest);
+                const serviceData = { manifest, module: require(path.join(manifest.basePath, manifest.entryPoint.script)) };
+                this.serviceModules.set(name, serviceData);
+                const pluginConfig = this._getPluginConfig(manifest);
+                await new Promise(resolve => setImmediate(resolve));
+                if (shouldStop()) return;
                 if (serviceData.module && typeof serviceData.module.initialize === 'function') {
                     await serviceData.module.initialize({
                         app,
@@ -338,6 +345,8 @@ class PluginManager {
                     });
                 }
 
+                await new Promise(resolve => setImmediate(resolve));
+                if (shouldStop()) return;
                 if (serviceData.module && typeof serviceData.module.registerRoutes === 'function') {
                     if (this.debugMode) console.log(`[DistPluginManager] Registering routes for service plugin: ${name}.`);
                     // 服务插件允许在路由开放前执行异步准备（例如 VCPMobileSync

@@ -1,5 +1,7 @@
 'use strict';
 
+if (require('./helpers/electron-test-entry.cjs').runFromNode(__filename)) return;
+
 const { app, BrowserWindow, ipcMain, nativeTheme } = require('electron');
 const path = require('path');
 
@@ -347,7 +349,7 @@ app.whenReady().then(async () => {
                 activated: Boolean(headingEditor),
                 handled: enter.defaultPrevented,
                 insertedAfterElement: sourceAfterHeadingEnter.startsWith(
-                    htmlHeading + '\\n\\n\\u200B'
+                    htmlHeading + '\\n\\n↵'
                 ),
                 boundaryEditorActivated: Boolean(boundaryEditor),
                 boundaryFocused,
@@ -397,6 +399,7 @@ app.whenReady().then(async () => {
         && result.htmlHeadingEnter?.editorSurvivesSecondEnter === true
         && result.htmlHeadingEnter?.caretSurvivesSecondEnter === true
         && result.warnings.length === 0;
+    await require('./helpers/electron-test-entry.cjs').captureWindow(windowRef, __filename);
     await windowRef.close();
     app.exit(passed ? 0 : 1);
 }).catch((error) => {

@@ -1,0 +1,63 @@
+name: Side pane on Windows
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'renderer.js'
+      - 'main.js'
+      - 'style.css'
+      - 'Groupmodules/**'
+      - 'ProjectForgemodules/**'
+      - 'VCPDistributedServer/Plugin/PowerShellExecutor/**'
+      - 'VCPDistributedServer/Plugin/ProjectForge/**'
+      - 'vendor/xterm/**'
+      - 'main.html'
+      - 'modules/**'
+      - 'preloads/**'
+      - 'styles/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'docs/chat-kernel-*.md'
+      - 'docs/contracts/**'
+      - 'docs/next-ui-current-state.md'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/side_pane_windows.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  windows-terminal:
+    name: Side pane terminal and tests on Windows
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Setup Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+
+      # 跳过安装脚本：better-sqlite3 等原生模块在 Windows runner 上会回退到 node-gyp 编译并失败，
+      # 而这里的测试只需要 node-pty。node-pty 自带 N-API 预编译包，单独把它拷到 build/Release
+      - name: Install dependencies
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        run: npm ci --omit=optional --ignore-scripts
+
+      - name: Install node-pty prebuilt binaries
+        working-directory: node_modules/node-pty
+        run: node scripts/prebuild.js
+
+      # 真实 PowerShell / ConPTY：Linux runner 上没有，只能在这里跑
+      - name: Run terminal PTY tests
+        run: node --test tests/terminal-handlers.test.js tests/powershell-output-boundaries.test.js tests/terminal-cd-command.test.js
+
+      - name: Run side pane tests
+        run: npm run test:side-pane

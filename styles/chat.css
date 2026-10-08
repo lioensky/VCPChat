@@ -292,21 +292,12 @@ body.light-theme #moon-icon {
      * rounded boundary instead. */
     box-shadow: none;
     position: relative;
-    /*
-     * Do not apply backdrop-filter to every message bubble.
-     *
-     * A long conversation otherwise creates one live backdrop capture and
-     * off-screen texture per visible message. Combined with
-     * content-visibility, streaming border animations and nested tool cards,
-     * Chromium repeatedly destroys/rebuilds those compositing layers while
-     * scrolling. That can produce scrollbar-range jitter, full-list repaints
-     * and GPU texture pressure. The translucent fills, borders and inset
-     * highlights retain the glass appearance without another blur pass.
-     */
+    /* 气泡模式保留真实磨砂背景；内部工具卡片与其他显示模式
+     * 仍由各自规则控制，避免为嵌套表面重复添加模糊。 */
     overflow: hidden;
     isolation: isolate;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     /* Theme backgrounds can be multi-layer color-mix() gradients.
      * Interpolating them on every visible message is much more expensive than
      * committing the target surface once. Keep layout, text, border and
@@ -423,28 +414,65 @@ body.light-theme .message-item.assistant .md-content {
     border: 1px solid color-mix(in srgb, var(--border-color) 32%, rgba(255, 255, 255, 0.68));
 }
 
-/* System messages special layout */
+/* System messages: one notice row (icon + text) instead of a bubble.
+ * The text sits directly in the row; the theme's bubble background on
+ * .md-content (light theme adds a gradient) must not draw a second box. */
 .message-item.system.system-message-layout {
-    justify-content: center; 
-    padding: 8px 12px;
-    border-radius: 10px;
-    background-color: var(--accent-bg); 
-    color: var(--secondary-text);
-    max-width: 80%;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    width: fit-content;
+    max-width: min(100%, 720px);
     margin-left: auto;
     margin-right: auto;
-    text-align: center;
-    /* Undo flex for system messages if they are simple */
-    display: block; 
+    padding: 8px 12px;
+    border: 1px solid color-mix(in srgb, var(--border-color) 55%, transparent);
+    border-radius: 12px;
+    background-color: color-mix(in srgb, var(--accent-bg) 60%, transparent);
+    color: var(--secondary-text);
+    text-align: left;
+    box-sizing: border-box;
 }
 .message-item.system.system-message-layout .md-content {
-    width: 100%;
+    flex: 1 1 auto;
+    min-width: 0;
+    width: auto;
     max-width: 100%; /* Override bubble max-width for system */
-    box-shadow: none;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    background-color: transparent;
-    padding: 0;
+    padding: 0 !important; /* presentation modes pad the bubble */
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    color: inherit;
+    overflow-wrap: anywhere;
+}
+.message-item.system.system-message-layout .md-content > :first-child {
+    margin-top: 0;
+}
+.message-item.system.system-message-layout .md-content > :last-child {
+    margin-bottom: 0;
+}
+.message-item.system.system-message-layout .system-message-icon {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    height: 1lh;
+    opacity: 0.8;
+}
+.message-item.system.system-message-layout .system-message-icon svg {
+    width: 15px;
+    height: 15px;
+}
+.message-item.system.system-notice-error {
+    border-color: color-mix(in srgb, var(--vcp-ui-danger, #dc2626) 26%, transparent);
+    background-color: color-mix(in srgb, var(--vcp-ui-danger, #dc2626) 6%, color-mix(in srgb, var(--accent-bg) 60%, transparent));
+    color: var(--primary-text);
+}
+.message-item.system.system-notice-error .system-message-icon {
+    color: var(--vcp-ui-danger, #dc2626);
+    opacity: 1;
 }
 
 /* Welcome bubble for initial "no item selected" message */
@@ -1446,18 +1474,16 @@ body.light-theme {
  * Panel and immersive use a full-chat-area translucent surface.
  * Edge gaps constrain message content only, never the background surface.
  *
- * The message container is the scrolling element, so it must not also be a
- * viewport-sized backdrop capture. Filtering the scroll owner invalidates the
- * entire sampled surface whenever descendants move, defeating
- * content-visibility and causing scroll-range/compositor instability on long
- * conversations. The gradient supplies the visual veil; stable header and
- * composer surfaces may retain their own bounded blur.
+ * Keep one shared backdrop capture for the message viewport rather than
+ * adding blur to every message. The translucent gradient supplies the tint;
+ * the backdrop filter supplies real wallpaper blur, matching the frosted
+ * header and composer. Mode-specific message bodies remain transparent.
  */
 body.chat-presentation-panel .chat-messages-container,
 body.chat-presentation-immersive .chat-messages-container {
     background: var(--chat-presentation-surface);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
+    backdrop-filter: var(--chat-presentation-surface-filter);
+    -webkit-backdrop-filter: var(--chat-presentation-surface-filter);
 }
 
 body.chat-presentation-panel .chat-messages,
@@ -1651,6 +1677,18 @@ body.chat-presentation-immersive .message-item.system.system-message-layout {
     background: color-mix(in srgb, var(--accent-bg) 52%, transparent);
 }
 
+/* 展示模式的正文不是独立气泡。覆盖主题的浅色背景和强制模糊，
+ * 避免在共享阅读底板上再次绘制矩形色块；内部工具卡片不受影响。 */
+html body:is(.chat-presentation-panel, .chat-presentation-immersive) .message-item .md-content,
+html body.light-theme:is(.chat-presentation-panel, .chat-presentation-immersive) .message-item .md-content {
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
 /* Mode shells are flat; internal structured content retains its own surfaces. */
 body.chat-presentation-panel .message-item .md-content > pre,
 body.chat-presentation-panel .message-item .md-content .vcp-tool-use-bubble,
@@ -1715,70 +1753,7 @@ text-align: center;
 
 
 
-/* Panel / immersive input composer: full-width, flat and continuous with the chat surface. */
-body.chat-presentation-panel .chat-input-area,
-body.chat-presentation-immersive .chat-input-area {
-    padding: 0;
-    background:
-        linear-gradient(
-            180deg,
-            color-mix(in srgb, var(--panel-bg-dark) 72%, transparent),
-            color-mix(in srgb, var(--panel-bg-dark) 84%, rgba(255, 255, 255, 0.04))
-        );
-    backdrop-filter: blur(16px) saturate(112%);
-    -webkit-backdrop-filter: blur(16px) saturate(112%);
-}
-
-body.light-theme.chat-presentation-panel .chat-input-area,
-body.light-theme.chat-presentation-immersive .chat-input-area {
-    background:
-        linear-gradient(
-            180deg,
-            color-mix(in srgb, var(--panel-bg-light) 74%, rgba(255, 255, 255, 0.18)),
-            color-mix(in srgb, var(--panel-bg-light) 88%, rgba(255, 255, 255, 0.5))
-        );
-}
-
-body.chat-presentation-panel .chat-input-card,
-body.chat-presentation-immersive .chat-input-card {
-    width: 100%;
-    padding: 13px clamp(12px, 1.8vw, 22px) 10px;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    transition: background-color 0.2s ease;
-}
-
-body.chat-presentation-panel .chat-input-card:hover:not(:focus-within):not(.drag-over),
-body.chat-presentation-immersive .chat-input-card:hover:not(:focus-within):not(.drag-over) {
-    border: 0;
-    background: color-mix(in srgb, var(--accent-bg) 12%, transparent);
-    box-shadow: none;
-}
-
-body.chat-presentation-panel .chat-input-card:focus-within,
-body.chat-presentation-immersive .chat-input-card:focus-within {
-    border: 0;
-    background: color-mix(in srgb, var(--accent-bg) 18%, transparent);
-    box-shadow: none;
-}
-
-body.chat-presentation-panel .chat-input-card.drag-over,
-body.chat-presentation-immersive .chat-input-card.drag-over {
-    border: 0;
-    background: color-mix(in srgb, var(--button-bg) 14%, transparent);
-    box-shadow: inset 0 3px 0 color-mix(in srgb, var(--button-bg) 68%, transparent);
-}
-
-@media (max-width: 768px) {
-    body.chat-presentation-panel .chat-input-card,
-    body.chat-presentation-immersive .chat-input-card {
-        padding: 11px 10px 8px;
-    }
-}
+/* 输入区与输入卡片共用基础外观，不随消息展示模式添加整块背景。 */
 
 /* Panel / immersive message editor: keep the editor wide and actions below it.
  * These rules intentionally follow the presentation-mode layout so editing

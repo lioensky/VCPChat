@@ -25,6 +25,9 @@
         let pendingValue = null;
         let frame = 0;
         let activePointerId = null;
+        let pendingBegin = null;
+        let disposed = false;
+        const windowRef = documentRef.defaultView || global;
 
         const normalize = (value) => {
             const bounds = getBounds() || {};
@@ -35,61 +38,124 @@
 
         const flush = () => {
             frame = 0;
-            if (pendingValue === null) return;
-            applyValue(pendingValue, getBounds() || {});
+            if (!active || disposed || pendingValue === null) return;
+            const value = pendingValue;
+            pendingValue = null;
+            applyValue(value, getBounds() || {});
         };
 
         const schedule = (value) => {
             pendingValue = normalize(value);
-            if (!frame) frame = global.requestAnimationFrame(flush);
+            if (!frame) frame = windowRef.requestAnimationFrame(flush);
         };
 
-        const stop = (event) => {
-            if (!active) return;
+        const belongsToGesture = event => active && (!event || activePointerId === null || event.pointerId === activePointerId);
+
+        // Retire listeners and capture before callbacks: releasing capture can
+        // synchronously emit lostpointercapture, and disposal must not commit.
+        const end = () => {
+            active = false;
             if (frame) {
-                global.cancelAnimationFrame(frame);
+                windowRef.cancelAnimationFrame(frame);
                 frame = 0;
             }
-            flush();
-            const completedValue = pendingValue;
             pendingValue = null;
-            active = false;
-            onActiveChange?.(false);
-            onCommit?.(completedValue, event);
-            if (Number.isInteger(activePointerId)) handle.releasePointerCapture?.(activePointerId);
+            const pointerId = activePointerId;
             activePointerId = null;
             documentRef.removeEventListener(eventNames.move, move);
-            documentRef.removeEventListener(eventNames.up, stop);
-            if (eventNames.cancel) documentRef.removeEventListener(eventNames.cancel, stop);
+            documentRef.removeEventListener(eventNames.up, finish);
+            if (eventNames.cancel) documentRef.removeEventListener(eventNames.cancel, cancel);
+            handle.removeEventListener('lostpointercapture', cancel);
+            windowRef.removeEventListener?.('blur', onWindowBlur);
+            if (pointerId !== null && (!handle.hasPointerCapture || handle.hasPointerCapture(pointerId))) {
+                handle.releasePointerCapture?.(pointerId);
+            }
+        };
+
+        const cancel = event => {
+            if (!belongsToGesture(event)) return;
+            end();
+            onActiveChange?.(false);
+        };
+        const onWindowBlur = () => cancel();
+
+        const finish = event => {
+            if (!belongsToGesture(event)) return;
+            const value = normalize(startValue + ((event.clientX - startX) * direction));
+            end();
+            try {
+                applyValue(value, getBounds() || {});
+                onCommit?.(value, event);
+            } finally {
+                onActiveChange?.(false);
+            }
         };
 
         const move = (event) => {
-            if (!active) return;
+            if (!belongsToGesture(event)) return;
             schedule(startValue + ((event.clientX - startX) * direction));
         };
 
         const start = (event) => {
-            if (event.button !== undefined && event.button !== 0) return;
+            if (disposed || active || (event.button !== undefined && event.button !== 0)) return;
             event.preventDefault();
-            stop(event);
+            const pointerId = Number.isInteger(event.pointerId) ? event.pointerId : null;
+            if (pointerId !== null) handle.setPointerCapture?.(pointerId);
             active = true;
             startX = event.clientX;
             startValue = getValue();
             pendingValue = startValue;
-            activePointerId = Number.isInteger(event.pointerId) ? event.pointerId : null;
-            if (activePointerId !== null) handle.setPointerCapture?.(activePointerId);
+            activePointerId = pointerId;
             onActiveChange?.(true);
             documentRef.addEventListener(eventNames.move, move);
-            documentRef.addEventListener(eventNames.up, stop);
-            if (eventNames.cancel) documentRef.addEventListener(eventNames.cancel, stop);
+            documentRef.addEventListener(eventNames.up, finish);
+            if (eventNames.cancel) documentRef.addEventListener(eventNames.cancel, cancel);
+            handle.addEventListener('lostpointercapture', cancel);
+            windowRef.addEventListener?.('blur', onWindowBlur);
         };
 
         const begin = (event) => {
-            if (beforeBegin?.(event, () => start(event)) === false) return;
-            start(event);
+            if (disposed || active || pendingBegin || (event.button !== undefined && event.button !== 0)) return;
+            if (typeof beforeBegin !== 'function') {
+                start(event);
+                return;
+            }
+            event.preventDefault();
+            const pointerId = Number.isInteger(event.pointerId) ? event.pointerId : null;
+            const pending = {
+                cancel: ended => {
+                    if (pointerId === null || ended.pointerId === pointerId) abandonBegin();
+                },
+                blur: () => abandonBegin()
+            };
+            pendingBegin = pending;
+            documentRef.addEventListener(eventNames.up, pending.cancel);
+            if (eventNames.cancel) documentRef.addEventListener(eventNames.cancel, pending.cancel);
+            windowRef.addEventListener?.('blur', pending.blur);
+            const resume = () => {
+                if (disposed || pendingBegin !== pending) return;
+                abandonBegin();
+                start(event);
+            };
+            try {
+                if (beforeBegin(event, resume) !== false) resume();
+            } catch (error) {
+                abandonBegin();
+                throw error;
+            }
+        };
+
+        const abandonBegin = () => {
+            if (!pendingBegin) return;
+            const pending = pendingBegin;
+            pendingBegin = null;
+            documentRef.removeEventListener(eventNames.up, pending.cancel);
+            if (eventNames.cancel) documentRef.removeEventListener(eventNames.cancel, pending.cancel);
+            windowRef.removeEventListener?.('blur', pending.blur);
         };
 
         const keydown = (event) => {
+            if (disposed) return;
             if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
             event.preventDefault();
             const delta = event.key === 'ArrowRight' ? step : -step;
@@ -101,13 +167,24 @@
         handle.addEventListener(eventNames.down, begin);
         handle.addEventListener('keydown', keydown);
         return {
+            cancel() {
+                abandonBegin();
+                cancel();
+            },
             refresh() {
+                if (disposed) return;
                 applyValue(normalize(getValue()), getBounds() || {});
             },
             dispose() {
-                stop();
-                handle.removeEventListener(eventNames.down, begin);
-                handle.removeEventListener('keydown', keydown);
+                if (disposed) return;
+                disposed = true;
+                abandonBegin();
+                try {
+                    cancel();
+                } finally {
+                    handle.removeEventListener(eventNames.down, begin);
+                    handle.removeEventListener('keydown', keydown);
+                }
             },
         };
     }

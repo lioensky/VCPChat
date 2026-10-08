@@ -689,16 +689,17 @@ function buildNumberInput(doc, field, styleValue) {
 
 function buildCardChevron(doc) {
     const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    // Lucide chevron-down geometry
     svg.setAttribute('class', 'vcp-settings-card-chevron');
-    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.setAttribute('viewBox', '0 0 24 24');
     svg.setAttribute('fill', 'none');
     svg.setAttribute('stroke', 'currentColor');
-    svg.setAttribute('stroke-width', '1.6');
+    svg.setAttribute('stroke-width', '2');
     svg.setAttribute('stroke-linecap', 'round');
     svg.setAttribute('stroke-linejoin', 'round');
     svg.setAttribute('aria-hidden', 'true');
     const path = doc.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', 'M3.5 6l4.5 4.5L12.5 6');
+    path.setAttribute('d', 'm6 9 6 6 6-6');
     svg.append(path);
     return svg;
 }

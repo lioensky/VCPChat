@@ -30,6 +30,23 @@ export function createMainChatComposition({
     createInternalRenderer,
     disposeCapabilities,
 }) {
+    let focusRecoveryGeneration = 0;
+    const recoverFocusedConversation = () => {
+        const selection = currentSelection?.();
+        const topicId = currentTopicId?.();
+        const itemId = selection?.id;
+        const itemType = selection?.type || 'agent';
+        if (!itemId || !topicId || typeof streamProjection?.reconcileConversation !== 'function') return;
+
+        const generation = ++focusRecoveryGeneration;
+        Promise.resolve(streamProjection.reconcileConversation({ itemType, itemId, topicId }))
+            .catch(error => {
+                if (generation === focusRecoveryGeneration) {
+                    console.warn('[MainChatComposition] Focus recovery failed:', error);
+                }
+            });
+    };
+    chatWindow?.addEventListener?.('focus', recoverFocusedConversation);
     const adapter = createMainChatSurfaceAdapter({
         root,
         renderer: messageRenderer,
@@ -59,6 +76,8 @@ export function createMainChatComposition({
         },
         ownerWindow: chatWindow,
         onDispose: async () => {
+            focusRecoveryGeneration += 1;
+            chatWindow?.removeEventListener?.('focus', recoverFocusedConversation);
             await disposeCapabilities?.();
         },
     });

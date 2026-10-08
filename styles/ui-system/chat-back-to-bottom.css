@@ -1,0 +1,44 @@
+/*
+ * 主聊天「回到底部」圆钮（modules/ui-system/chat-back-to-bottom.js）。
+ * 版式对照 ZCode 的 ConversationBackToBottomButton（https://github.com/zai-org/ZCode ，Apache-2.0）：
+ * 28px 圆形描边按钮、16px 下箭头，挂在输入区上沿上方 8px、水平居中。
+ */
+
+html .vcp-back-to-bottom:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    z-index: 30;
+    width: 28px;
+    height: 28px;
+    margin: 0 0 8px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--vcp-ui-border);
+    border-radius: var(--vcp-ui-radius-full);
+    color: var(--vcp-ui-text-0);
+    background: var(--vcp-ui-bg-1);
+    box-shadow: var(--vcp-ui-shadow-sm);
+    transform: translateX(-50%);
+    cursor: pointer;
+    opacity: 1;
+    transition: opacity 150ms ease-out, background-color 150ms ease-out, border-color 150ms ease-out;
+}
+html .vcp-back-to-bottom[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }
+/* 仅淡化视觉，保留鼠标命中区域和键盘操作。 */
+html .vcp-back-to-bottom.is-idle:not(:hover):not(:focus-within):where(.vcp-ui-scope, .vcp-ui-scope *) { opacity: 0.1; }
+html .vcp-back-to-bottom:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    border-color: var(--vcp-ui-border-strong);
+    background: color-mix(in srgb, var(--vcp-ui-bg-1) 88%, var(--vcp-ui-text-0));
+}
+html .vcp-back-to-bottom:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    outline: 2px solid var(--vcp-ui-focus-ring);
+    outline-offset: 2px;
+}
+html .vcp-back-to-bottom svg:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 16px; height: 16px; flex: 0 0 auto; }
+
+@media (prefers-reduced-motion: reduce) {
+    html .vcp-back-to-bottom:where(.vcp-ui-scope, .vcp-ui-scope *) { transition: none; }
+}

@@ -1,0 +1,369 @@
+@charset "UTF-8";
+/* ==========================================================================
+ * 对话模式（body.chat-presentation-messenger）
+ *
+ * 即时通讯式的消息流，尺寸按 Grok Bot 桌面端实测（CSS px）：
+ *   - 960px 居中消息列；助手气泡最宽 560px，浅灰底，四角同为 15px 圆角；
+ *   - 单行气泡高约 34px：14px 字号、22px 行高、6px × 12px 内边距；
+ *   - 连续气泡间距 5px，换人发言间距 16px；
+ *   - 用户：无头像、无名字，右侧全圆角胶囊，底色沿用普通气泡模式的磨砂色；
+ *   - 助手头像平时不显示。只在助手工作中时，于最底部显示"头像 + 名字 正在工作"，
+ *     发送后立刻出现（回复气泡还没出现时也在），完成后消失；
+ *   - 悬停时气泡外侧出现一排无底色的灰色图标（复制 / 更多），垂直居中。
+ * 输入框不在这里改。
+ * 状态类由 modules/renderer/messenger-presentation.js 维护：
+ *   messenger-tail / mg-cont / mg-more / messenger-enter / messenger-group-head
+ * 本文件不进 cascade layer。主题文件里的气泡规则带 !important，所以气泡的底色、圆角、
+ * 文字色也用 !important 覆盖。
+ * ========================================================================== */
+
+body.chat-presentation-messenger {
+    --messenger-agent-max: 560px;
+    --messenger-radius: 15px;
+    --messenger-gap-turn: 16px;
+    --messenger-gap-group: 5px;
+    --messenger-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+    /* 深色是默认主题 */
+    --messenger-agent-bg: #262626;
+    --messenger-agent-text: #ececec;
+    --messenger-agent-code-bg: rgba(255, 255, 255, 0.08);
+    --messenger-agent-code-text: rgba(236, 236, 236, 0.72);
+    --messenger-status: rgba(236, 236, 236, 0.4);
+    --messenger-status-hi: rgba(255, 255, 255, 0.92);
+    --messenger-action: rgba(236, 236, 236, 0.5);
+    --messenger-action-hover: rgba(255, 255, 255, 0.92);
+}
+
+body.light-theme.chat-presentation-messenger {
+    --messenger-agent-bg: #efefef;
+    --messenger-agent-text: #111111;
+    --messenger-agent-code-bg: rgba(0, 0, 0, 0.05);
+    --messenger-agent-code-text: rgba(17, 17, 17, 0.62);
+    --messenger-status: rgba(17, 17, 17, 0.38);
+    --messenger-status-hi: rgba(17, 17, 17, 0.88);
+    --messenger-action: rgba(17, 17, 17, 0.42);
+    --messenger-action-hover: rgba(17, 17, 17, 0.86);
+}
+
+/* --- 消息列 --- */
+/* 和 Grok 一样，消息左右边缘与输入框外沿对齐。两侧留白由
+   messenger-presentation.js 按输入框实际位置写入（滚动条宽度、侧栏开合都会变）。 */
+body.chat-presentation-messenger #chatMessages {
+    width: auto;
+    margin-inline: 0;
+    box-sizing: border-box;
+    /* 底部留出状态行的位置（Grok 实测：最后一条气泡到输入框约 56px），工作中出现状态行时不跳动 */
+    padding: 20px var(--messenger-inset-right, 52px) 56px var(--messenger-inset-left, 52px);
+}
+
+body.chat-presentation-messenger #chatMessages .message-item.user,
+body.chat-presentation-messenger #chatMessages .message-item.assistant {
+    gap: 0;
+    margin-bottom: var(--messenger-gap-turn);
+    padding-bottom: 0;
+}
+
+body.chat-presentation-messenger #chatMessages .message-item.mg-more {
+    margin-bottom: var(--messenger-gap-group);
+}
+
+body.chat-presentation-messenger #chatMessages .message-item:last-child {
+    margin-bottom: 0;
+}
+
+/* --- 用户：无头像、无名字 --- */
+body.chat-presentation-messenger #chatMessages .message-item.user {
+    flex-direction: row-reverse;
+}
+
+body.chat-presentation-messenger #chatMessages .message-item.user .chat-avatar,
+body.chat-presentation-messenger #chatMessages .message-item.user .name-time-block {
+    display: none;
+}
+
+body.chat-presentation-messenger #chatMessages .message-item.user .details-and-bubble-wrapper {
+    align-items: flex-end;
+    gap: 0;
+    margin: 0;
+}
+
+/* --- 助手：头像和名字默认隐藏；群聊里每组第一条显示名字 --- */
+body.chat-presentation-messenger #chatMessages .message-item.assistant .chat-avatar,
+body.chat-presentation-messenger #chatMessages .message-item.assistant .name-time-block {
+    display: none;
+}
+
+body.chat-presentation-messenger #chatMessages .message-item.assistant .details-and-bubble-wrapper {
+    align-items: flex-start;
+    gap: 4px;
+    margin: 0;
+}
+
+body.chat-presentation-messenger #chatMessages.messenger-multi-agent .message-item.assistant.messenger-group-head .name-time-block {
+    display: flex;
+    padding-left: 12px;
+}
+
+body.chat-presentation-messenger #chatMessages.messenger-multi-agent .message-item.assistant .message-timestamp {
+    display: none;
+}
+
+body.chat-presentation-messenger #chatMessages .message-item.assistant .sender-name {
+    font-size: 12px;
+    font-weight: 600;
+}
+
+/* --- 气泡 --- */
+body.chat-presentation-messenger #chatMessages .message-item .md-content {
+    box-sizing: border-box;
+    padding: 6px 12px;
+    border: 0 !important;
+    border-radius: var(--messenger-radius) !important;
+    box-shadow: none !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    font-size: 14px;
+    line-height: 22px;
+    letter-spacing: -0.15px;
+    transform-origin: bottom left;
+}
+
+body.chat-presentation-messenger #chatMessages .message-item.assistant .md-content,
+body.chat-presentation-messenger .main-content.notifications-sidebar-active #chatMessages .message-item.assistant .md-content,
+body.chat-presentation-messenger.chat-wide-layout #chatMessages .message-item.assistant .md-content {
+    max-width: min(100%, var(--messenger-agent-max));
+    background: var(--messenger-agent-bg) !important;
+    color: var(--messenger-agent-text) !important;
+}
+
+/* 代码块、表格、工具卡片、HTML 卡片在 560px 里会挤成一团，这类气泡放宽到整列。 */
+body.chat-presentation-messenger #chatMessages .message-item.assistant .md-content:has(pre, table, .vcp-tool-use-bubble, .vcp-tool-result-bubble, .vcp-html-preview-container, .mermaid-viewer, #vcp-root) {
+    max-width: 100%;
+}
+
+body.chat-presentation-messenger #chatMessages .message-item.user .md-content {
+    max-width: min(80%, var(--messenger-agent-max));
+    padding: 7px 14px;
+    border-radius: 18px !important;
+    /* 底色和文字色交给主题的普通用户气泡（磨砂渐变），这里只改形状 */
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    transform-origin: bottom right;
+}
+
+/* 流式输出由底部的工作状态行表达，不再给气泡套流光边框（animations.css）。 */
+body.chat-presentation-messenger #chatMessages .message-item.streaming .md-content::after {
+    content: none;
+}
+
+/* 等待首个字之前不出空气泡（也不显示"思考中..."），只靠底部的工作状态行。 */
+body.chat-presentation-messenger #chatMessages .message-item.assistant.thinking .md-content {
+    display: none;
+}
+
+/* 气泡里的文字跟随气泡颜色，避免主题给段落单独上色后在黑色胶囊里看不清。 */
+body.chat-presentation-messenger #chatMessages .message-item.user .md-content :is(p, li, span, strong, em, h1, h2, h3, h4, h5, h6, blockquote) {
+    color: inherit;
+}
+
+body.chat-presentation-messenger #chatMessages .message-item.user .md-content a {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+body.chat-presentation-messenger #chatMessages .message-item .md-content p {
+    margin: 0 0 8px;
+}
+
+body.chat-presentation-messenger #chatMessages .message-item .md-content > :first-child {
+    margin-top: 0;
+}
+
+body.chat-presentation-messenger #chatMessages .message-item .md-content > :last-child {
+    margin-bottom: 0;
+}
+
+/* 行内代码：等宽灰字、浅底小圆角 */
+body.chat-presentation-messenger #chatMessages .message-item .md-content :not(pre) > code {
+    padding: 1px 5px;
+    border: 0;
+    border-radius: 5px;
+    font-size: 0.86em;
+    background: var(--messenger-agent-code-bg);
+    color: var(--messenger-agent-code-text);
+}
+
+body.chat-presentation-messenger #chatMessages .message-item .md-content > pre,
+body.chat-presentation-messenger #chatMessages .message-item .md-content .vcp-tool-use-bubble,
+body.chat-presentation-messenger #chatMessages .message-item .md-content .vcp-tool-result-bubble,
+body.chat-presentation-messenger #chatMessages .message-item .md-content .vcp-thought-chain-bubble {
+    max-width: 100%;
+    box-sizing: border-box;
+    border-radius: 10px;
+}
+
+/* --- 底部工作状态：头像 + "名字 正在工作"，只在最新助手消息工作中时出现 ---
+   Grok 实测：头像 24px、离气泡左缘 10px，中线在气泡下方 22px；文字 13px，起点 46px；
+   状态行中线离输入框约 33px。负的 margin-bottom 让它占用列表底部预留的空白。 */
+body.chat-presentation-messenger #chatMessages .message-item.assistant.messenger-tail:is(.streaming, .thinking) {
+    position: relative;
+    flex-direction: column;
+    align-items: stretch;
+    margin-bottom: -35px;
+    /* ::after 里的状态行是绝对定位，content-visibility 的绘制裁剪会把它切掉 */
+    content-visibility: visible;
+}
+
+body.chat-presentation-messenger #chatMessages .message-item.assistant.messenger-tail:is(.streaming, .thinking) .chat-avatar {
+    display: block;
+    order: 2;
+    width: 24px;
+    height: 24px;
+    min-width: 24px;
+    margin: 10px 0 0 10px;
+    border: 0 !important;
+    border-radius: 50%;
+    box-shadow: none !important;
+    object-fit: cover;
+    animation: messenger-status-in 0.28s var(--messenger-ease-out) both;
+}
+
+/* 还没有回复气泡时，状态行离上一条用户消息远一些（实测中线约 34px）。 */
+body.chat-presentation-messenger #chatMessages .message-item.assistant.messenger-tail.thinking .chat-avatar {
+    margin-top: 6px;
+}
+
+body.chat-presentation-messenger #chatMessages .message-item.assistant.messenger-tail:is(.streaming, .thinking)::after {
+    content: attr(data-messenger-name) " 正在工作";
+    position: absolute;
+    left: 46px;
+    bottom: 0;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    font-size: 13px;
+    line-height: 24px;
+    white-space: nowrap;
+    pointer-events: none;
+    color: transparent;
+    background: linear-gradient(
+        90deg,
+        var(--messenger-status) 0%,
+        var(--messenger-status) 35%,
+        var(--messenger-status-hi) 50%,
+        var(--messenger-status) 65%,
+        var(--messenger-status) 100%
+    );
+    background-size: 300% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    animation:
+        messenger-status-in 0.28s var(--messenger-ease-out) both,
+        messenger-status-shimmer 2s linear infinite;
+}
+
+/* --- 新消息入场 --- */
+body.chat-presentation-messenger #chatMessages .message-item.messenger-enter .md-content {
+    animation: messenger-bubble-in 0.26s var(--messenger-ease-out) both;
+}
+
+@keyframes messenger-bubble-in {
+    from {
+        opacity: 0;
+        transform: translateY(8px) scale(0.97);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes messenger-status-in {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes messenger-status-shimmer {
+    from { background-position: 100% 0; }
+    to { background-position: 0% 0; }
+}
+
+/* --- 悬停操作：气泡外侧一排无底色图标（单例，挂在 body 上，由脚本定位） --- */
+.messenger-hover-actions {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 40;
+    display: none;
+    align-items: center;
+    gap: 2px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.14s ease;
+}
+
+body.chat-presentation-messenger .messenger-hover-actions {
+    display: inline-flex;
+}
+
+body.chat-presentation-messenger .messenger-hover-actions.is-visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.messenger-hover-actions.is-user {
+    flex-direction: row-reverse;
+}
+
+.messenger-hover-actions button {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--messenger-action);
+    cursor: pointer;
+    transition: color 0.12s ease, transform 0.12s ease;
+}
+
+.messenger-hover-actions button:hover {
+    color: var(--messenger-action-hover);
+}
+
+.messenger-hover-actions button:active {
+    transform: scale(0.88);
+}
+
+.messenger-hover-actions button.is-done {
+    color: #22a35a;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body.chat-presentation-messenger #chatMessages .message-item .md-content,
+    body.chat-presentation-messenger #chatMessages .message-item .chat-avatar {
+        animation: none !important;
+    }
+
+    body.chat-presentation-messenger #chatMessages .message-item::after {
+        animation: none !important;
+        color: var(--messenger-status);
+        background: none;
+    }
+}
+
+@media (max-width: 768px) {
+    body.chat-presentation-messenger #chatMessages .message-item.assistant .md-content {
+        max-width: 88%;
+    }
+}

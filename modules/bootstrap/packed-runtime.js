@@ -12,7 +12,7 @@ function readPackagedFile({ resourcesDirectory, relativePath, asar = null } = {}
     const asarPath = path.join(resourcesDirectory, 'app.asar');
     if (fs.existsSync(asarPath)) {
         const asarApi = asar || require('@electron/asar');
-        try { return asarApi.extractFile(asarPath, relativePath); } catch { return null; }
+        try { return asarApi.extractFile(asarPath, path.normalize(relativePath)); } catch { return null; }
     }
     return null;
 }

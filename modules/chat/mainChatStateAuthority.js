@@ -10,8 +10,11 @@ const cloneReadOnly = value => {
     ));
 };
 
-/** Owns the main chat's current selection without exposing mutable globals. */
-export function createMainChatStateAuthority(initial = {}) {
+/**
+ * Owns the main chat's current selection without exposing mutable globals.
+ * onHistoryChange 在每次写入当前记录后调用（不带参数），用来发布「记录改了」。
+ */
+export function createMainChatStateAuthority(initial = {}, { onHistoryChange = null } = {}) {
     let selectedItem = freezeSelection(initial.selectedItem);
     let topicId = initial.topicId ?? null;
     let history = Array.isArray(initial.history) ? [...initial.history] : [];
@@ -26,6 +29,7 @@ export function createMainChatStateAuthority(initial = {}) {
         get: () => history,
         set(value) {
             history = Array.isArray(value) ? [...value] : [];
+            try { onHistoryChange?.(); } catch (error) { console.error('[MainChatState] history listener failed:', error); }
             return history;
         },
     });

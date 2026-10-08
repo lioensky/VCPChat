@@ -18,6 +18,8 @@ import { buildAppearanceWorkbenchCard, buildFontScenarioPreviewRow, buildChatPre
 const CHAT_BUBBLE_WIDE_WIDTH_DEFAULT = 92;
 const HOME_TAGLINE_DEFAULT = '语义级打穿 AI、UI/UX、APP 与人类想象力的边界';
 const APPEARANCE_PROFILE_SELECTS = [
+    { key: 'appearanceToolPresentation', profileKey: 'appearanceProfile.toolPresentation', languageRow: {title:'工具呈现',description:'保留原有卡片，或使用紧凑单行、分组折叠、单行合并与整轮折叠'}, options:[{value:'legacy',label:'原有卡片'},{value:'compact',label:'紧凑单行'},{value:'grouped',label:'分组折叠'},{value:'inline',label:'单行合并'},{value:'process',label:'整轮折叠'}] },
+    { key: 'appearanceToolExpansion', profileKey: 'appearanceProfile.toolExpansion', languageRow: {title:'工具默认展开',description:'收起时仍显示状态，图片与媒体保留查看入口'}, options:[{value:'attention',label:'失败与待确认'},{value:'none',label:'全部收起'},{value:'all',label:'全部展开'}] },
     {
         key: 'appearanceDensity', profileKey: 'appearanceProfile.density',
         languageRow: { title: '界面密度', description: '调整设置页与工作区控件的疏密程度' },
@@ -92,11 +94,13 @@ export const appearanceSettingsSection = section('appearance-settings', '界面�
         'chatPresentationModeBubble',
         'chatPresentationModePanel',
         'chatPresentationModeImmersive',
+        'chatPresentationModeMessenger',
     ], {
         saveMap: {
             chatPresentationModeBubble: { valuePath: 'chatPresentationMode', checkedValue: 'bubble', collect: false },
             chatPresentationModePanel: { valuePath: 'chatPresentationMode', checkedValue: 'panel', collect: false },
             chatPresentationModeImmersive: { valuePath: 'chatPresentationMode', checkedValue: 'immersive', collect: false },
+            chatPresentationModeMessenger: { valuePath: 'chatPresentationMode', checkedValue: 'messenger', collect: false },
         },
     }),
     custom('fontScenarioPreviewGrid', buildFontScenarioPreviewRow, [
@@ -225,6 +229,13 @@ export const appearanceSettingsSection = section('appearance-settings', '界面�
         when: ['chatPresentationModeBubble', 'enableUserChatBubbleUi'],
         save: { present: true },
     }),
+    switchField('enableTurnNavigator', {
+        label: '显示提问导航条',
+        hint: '聊天区左侧每条提问一根短横条，悬停预览、点击跳转。聊天区宽度不足 864px 时自动隐藏。',
+        hintInsideWrapper: true,
+        checked: true,
+        save: { present: true },
+    }),
     numberCells('chatBubbleWideWidth', {
         label: '宽屏模式自定义宽度（%）',
         hint: '可设置范围为 50% - 98%。标准模式沿用系统默认宽度，这里只调整气泡模式的宽屏布局。',
@@ -271,6 +282,8 @@ export const appearanceSettingsSection = section('appearance-settings', '界面�
         if (scope.getAppearance) {
             collect.appearanceProfile = scope.getAppearance()?.normalize({
                 density: byId('appearanceDensity'),
+                toolPresentation: byId('appearanceToolPresentation') || profile.toolPresentation,
+                toolExpansion: byId('appearanceToolExpansion') || profile.toolExpansion,
                 radius: byId('appearanceRadius'),
                 typography: byId('appearanceTypography'),
                 fontScale: byId('appearanceFontScale'),

@@ -660,6 +660,16 @@ body[data-vcp-theme="light"] .notification-item {
     display: flex;
     flex-direction: column;
     gap: 10px;
+    /* 多条审批同时到达时每条都有四百多像素高，超出窗口的部分要能滚到 */
+    max-height: calc(100vh - 60px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+}
+
+#floating-toast-notifications-container > .floating-toast-notification {
+    flex-shrink: 0;
 }
 
 .floating-toast-notification {
@@ -734,6 +744,44 @@ body[data-vcp-theme="light"] .floating-toast-notification {
     overflow-y: auto;
     white-space: pre-wrap;
     word-break: break-all;
+}
+
+/* 审批浮窗：文件 / 理由 / 改动预览，和通知中心卡片同一套结构 */
+.floating-toast-notification .notification-approval-details {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+    gap: 3px;
+    margin-top: 6px;
+    font-size: 0.85em;
+}
+.floating-toast-notification .notification-approval-label,
+.floating-toast-notification .notification-approval-preview-label {
+    color: var(--secondary-text);
+}
+.floating-toast-notification .notification-approval-path .notification-approval-value {
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    word-break: break-all;
+}
+.floating-toast-notification .notification-content pre.notification-approval-preview-code {
+    margin-top: 2px;
+    max-height: 120px;
+    white-space: pre;
+    word-break: normal;
+    overflow: auto;
+}
+.floating-toast-notification .notification-approval-diff-line.is-add {
+    color: var(--vcp-ui-success, #3fb950);
+}
+.floating-toast-notification .notification-approval-diff-line.is-delete,
+.floating-toast-notification .is-deletion .notification-approval-preview-label {
+    color: var(--vcp-ui-danger, #f85149);
+}
+.floating-toast-notification .is-deletion .notification-approval-preview-label {
+    font-weight: 600;
+}
+.floating-toast-notification .is-deletion pre.notification-approval-preview-code {
+    text-decoration: line-through;
 }
 
 .floating-toast-notification .notification-timestamp {
@@ -1618,4 +1666,36 @@ body[data-vcp-theme="light"] .tool-change-audit-diff-line.is-add {
 .toast-manual-close:hover {
     opacity: 1;
     color: var(--highlight-text);
+}
+
+/* 通知铃铛待审批角标 */
+#toggleNotificationsBtn {
+    position: relative;
+    overflow: visible !important;
+}
+
+.notification-bell-badge {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    box-sizing: border-box;
+    border-radius: 999px;
+    background-color: var(--danger-color, #dc3545);
+    color: #ffffff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 5;
+    box-shadow: 0 0 0 1.5px var(--secondary-bg, #1e1e20);
+}
+
+.notification-bell-badge[hidden] {
+    display: none !important;
 }

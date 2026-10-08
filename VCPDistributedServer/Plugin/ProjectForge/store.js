@@ -193,13 +193,24 @@ class ProjectStore {
         return row;
     }
 
-    listProjects({ workspaceAlias = null, includeDeleted = false, query = null } = {}) {
+    listProjects({ workspaceId = null, workspaceAlias = null, includeDeleted = false, query = null, limit = null } = {}) {
         const where = [];
         const params = [];
         if (!includeDeleted) where.push('deleted_at IS NULL');
-        if (workspaceAlias) { where.push('workspace_alias = ?'); params.push(workspaceAlias); }
+        if (workspaceId) {
+            where.push('(workspace_id = ? OR (workspace_id IS NULL AND workspace_alias = ?))');
+            params.push(workspaceId, workspaceAlias);
+        } else if (workspaceAlias) {
+            where.push('workspace_alias = ?');
+            params.push(workspaceAlias);
+        }
         if (query) { where.push('(name LIKE ? OR id = ?)'); params.push(`%${query}%`, query); }
-        const sql = `SELECT * FROM projects ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY updated_at DESC`;
+        let sql = `SELECT * FROM projects ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY updated_at DESC, created_at DESC, id DESC`;
+        if (limit !== null) {
+            if (!Number.isSafeInteger(limit) || limit < 1) throw new Error('limit 必须是正整数。');
+            sql += ' LIMIT ?';
+            params.push(limit);
+        }
         return this.db.prepare(sql).all(...params);
     }
 

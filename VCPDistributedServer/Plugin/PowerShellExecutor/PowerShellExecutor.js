@@ -1,4 +1,8 @@
-const pty = require('node-pty');
+// node-pty 是原生模块：只读命令记录、不开终端时不加载它，真正创建会话时才 require
+let ptyModule = null;
+function loadPty() {
+    return ptyModule || (ptyModule = require('node-pty'));
+}
 const os = require('os');
 const { spawn } = require('child_process');
 const path = require('path');
@@ -7,6 +11,19 @@ const crypto = require('crypto');
 const { BrowserWindow, ipcMain, clipboard } = require('electron');
 const tmp = require('tmp');
 const chokidar = require('chokidar');
+const { CommandOutputParser, CommandTerminalProjection } = require('./command-output-parser');
+const { sanitizeTerminalOutput } = require('./terminalOutputSanitizer');
+// 命令运行记录放在无副作用的独立模块里：主进程只读记录时不必加载整个执行器
+const {
+    COMMAND_RUN_RAW_LIMIT,
+    beginCommandRun,
+    appendCommandRunOutput,
+    finishCommandRun,
+    listCommandRuns,
+    getCommandRun,
+    subscribeCommandRuns,
+} = require('./commandRunStore');
+const { resolveConfirmationScript } = require('./nativeHelperPath.js');
 
 // --- GUI Window Management ---
 let guiWindow = null;
@@ -86,16 +103,7 @@ function ensureGuiWindow() {
             resolveGuiReady = null;
         }
         guiWindow = null;
-        // 当GUI关闭时，也终止关联的 pty 进程
-        if (ptyProcess) {
-            try {
-                ptyProcess.kill();
-                console.log('[PowerShellExecutor] GUI closed, associated pty process terminated.');
-            } catch (e) {
-                console.error('[PowerShellExecutor] Error terminating pty process on GUI close:', e);
-            }
-            // ptyProcess 的 onExit 事件处理器会自动将其设置为 null 并从 childProcesses 集合中移除
-        }
+        // 窗口只是视图；关闭它不能结束侧栏 / AI 共用的 PTY。
     });
 
     return guiWindow;
@@ -170,6 +178,8 @@ ipcMain.on('powershell-gui-ready', (event) => {
     }
 
     sendThemeUpdate(event.sender, true);
+    const replay = readReplay();
+    if (replay) event.sender.send('powershell-data', replay);
 });
 
 // 监听来自GUI的用户命令
@@ -193,12 +203,17 @@ ipcMain.handle('read-from-clipboard', () => {
 });
 
 // 监听来自GUI的尺寸调整请求
-ipcMain.on('powershell-resize', (event, { cols, rows }) => {
+function applyPtyResize(cols, rows) {
     const normalizedCols = Number(cols);
     const normalizedRows = Number(rows);
+    const previous = lastKnownSize;
 
     if (Number.isInteger(normalizedCols) && Number.isInteger(normalizedRows) && normalizedCols > 0 && normalizedRows > 0) {
         lastKnownSize = { cols: normalizedCols, rows: normalizedRows };
+    }
+    // 镜像视图（侧栏终端）里不持有尺寸的那些要跟着新尺寸画
+    if (lastKnownSize.cols !== previous.cols || lastKnownSize.rows !== previous.rows) {
+        notifyMirrors('onResize', lastKnownSize.cols, lastKnownSize.rows);
     }
 
     if (ptyProcess) {
@@ -208,6 +223,10 @@ ipcMain.on('powershell-resize', (event, { cols, rows }) => {
             console.error('[PowerShellExecutor] Failed to resize pty:', e);
         }
     }
+}
+
+ipcMain.on('powershell-resize', (event, { cols, rows }) => {
+    applyPtyResize(cols, rows);
 });
 
 // 监听来自GUI的真实终端输入透传。
@@ -300,156 +319,7 @@ ipcMain.on('powershell-window:close', (event) => {
 });
 
 // --- ANSI / terminal control projection for AI text summaries ---
-/**
- * 按“安全的一维日志投影语义”清理输出，用于 AI 工具返回的 Markdown 摘要。
- *
- * 注意：GUI 路径必须继续接收原始 PTY 数据，由 xterm.js 处理完整 ANSI/VT 状态机。
- * 摘要层刻意不做跨行光标寻址模拟：PowerShell/PSReadLine 在长行、自动换行、
- * CJK 宽字符场景下会发出光标定位序列，半模拟很容易把正常 JSON/路径投影成
- * 大片空行或错位文本。这里仅处理最常见且低风险的日志语义：
- * - CR 原地刷新当前逻辑行
- * - LF/CRLF 稳定换行
- * - BS 退格
- * - CSI K 行内擦除
- * - SGR 颜色与其它 CSI/OSC 控制序列忽略
- *
- * @param {string} str - 原始终端输出。
- * @returns {string} - 适合放入 Markdown codeblock 的纯文本快照。
- */
-function sanitizeTerminalOutput(str) {
-    if (!str) {
-        return '';
-    }
-
-    const normalized = String(str)
-        .replace(/\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g, '') // OSC 序列
-        .replace(/\x00/g, '')                                  // null
-        .replace(/\x07/g, '');                                 // bell
-
-    const lines = [[]];
-    let row = 0;
-    let col = 0;
-
-    const ensureRow = (targetRow) => {
-        while (lines.length <= targetRow) {
-            lines.push([]);
-        }
-    };
-
-    const putChar = (char) => {
-        ensureRow(row);
-        lines[row][col] = char;
-        col += 1;
-    };
-
-    const eraseInLine = (mode) => {
-        ensureRow(row);
-        if (mode === 1) {
-            for (let i = 0; i <= col; i += 1) {
-                lines[row][i] = undefined;
-            }
-            return;
-        }
-
-        if (mode === 2) {
-            lines[row] = [];
-            col = 0;
-            return;
-        }
-
-        lines[row].length = col;
-    };
-
-    const parseFirstParam = (rawParams) => {
-        const cleanedParams = (rawParams || '').replace(/[?>=]/g, '');
-        const firstValue = cleanedParams.split(';')[0];
-        const parsed = Number.parseInt(firstValue, 10);
-        return Number.isFinite(parsed) ? parsed : 0;
-    };
-
-    for (let i = 0; i < normalized.length; i += 1) {
-        const char = normalized[i];
-
-        if (char === '\u001b' || char === '\u009b') {
-            const isC1Csi = char === '\u009b';
-            const nextChar = normalized[i + 1];
-
-            if (isC1Csi || nextChar === '[') {
-                let cursor = i + (isC1Csi ? 1 : 2);
-                let params = '';
-
-                while (cursor < normalized.length && !/[\x40-\x7e]/.test(normalized[cursor])) {
-                    params += normalized[cursor];
-                    cursor += 1;
-                }
-
-                if (cursor >= normalized.length) {
-                    break;
-                }
-
-                const finalByte = normalized[cursor];
-
-                if (finalByte === 'K') {
-                    eraseInLine(parseFirstParam(params));
-                } else if (finalByte === 'G') {
-                    const column = parseFirstParam(params) || 1;
-                    col = Math.max(0, column - 1);
-                }
-                // 其它 CSI（含 SGR m、跨行 A/B/H/J、私有模式 h/l）在摘要层只剥离不应用，
-                // 避免半终端状态机破坏普通长输出。真实 GUI 仍由 xterm.js 完整处理。
-
-                i = cursor;
-                continue;
-            }
-
-            // 非 CSI ESC 序列：跳过 ESC 和紧随的最终字节，避免污染摘要。
-            if (nextChar) {
-                i += 1;
-            }
-            continue;
-        }
-
-        if (char === '\r') {
-            col = 0;
-            if (normalized[i + 1] === '\n') {
-                row += 1;
-                ensureRow(row);
-                i += 1;
-            }
-            continue;
-        }
-
-        if (char === '\n') {
-            row += 1;
-            ensureRow(row);
-            continue;
-        }
-
-        if (char === '\b') {
-            col = Math.max(0, col - 1);
-            ensureRow(row);
-            lines[row][col] = undefined;
-            continue;
-        }
-
-        if (char === '\t') {
-            const nextTabStop = col + (8 - (col % 8));
-            while (col < nextTabStop) {
-                putChar(' ');
-            }
-            continue;
-        }
-
-        if (char >= ' ' || char === '\u3000') {
-            putChar(char);
-        }
-    }
-
-    return lines
-        .map((line) => line.map((cell) => cell || ' ').join('').replace(/[ \t]+$/g, ''))
-        .join('\n');
-}
-
+// 清洗逻辑在 terminalOutputSanitizer.js（纯函数，命令运行记录也用它）
 
 // --- 模块级状态 ---
 // 用于保存持久化的伪终端（PowerShell）进程
@@ -463,6 +333,7 @@ let interactiveMode = false; // 表示当前 PTY 被 snow/codex/claude 等交互
 let activeCommandAbort = null; // 当前同步命令的本地等待中止器；供并发 interrupt 工具调用解除阻塞
 let lastKnownSize = { cols: 80, rows: 24 }; // GUI 最近一次 fit 出来的尺寸，用作 PTY 初始尺寸
 let ptyReadyPromise = Promise.resolve();
+let terminalProjection = null;
 
 // --- 配置加载 ---
 const defaultConfig = {
@@ -642,7 +513,9 @@ function executeAdminCommand(command) {
                 return reject(new Error(`无法创建临时文件: ${err.message}`));
             }
 
-            const pythonConfirmScript = path.join(__dirname, 'AdminConfirm.py');
+            let pythonConfirmScript;
+            try { pythonConfirmScript = resolveConfirmationScript(__dirname); }
+            catch (error) { cleanupCallback(); reject(error); return; }
             const commandAsBase64 = Buffer.from(command).toString('base64');
 
             // 2. 准备传递给Python脚本的参数
@@ -780,7 +653,9 @@ function requestInteractiveConfirmation(command) {
                 return reject(new Error(`无法创建临时文件: ${err.message}`));
             }
 
-            const pythonConfirmScript = path.join(__dirname, 'AdminConfirm.py');
+            let pythonConfirmScript;
+            try { pythonConfirmScript = resolveConfirmationScript(__dirname); }
+            catch (error) { cleanupCallback(); reject(error); return; }
             const commandAsBase64 = Buffer.from(command).toString('base64');
 
             // 普通敏感命令只需要当前权限确认，不应绕过主 PTY/xterm 执行链路。
@@ -835,19 +710,161 @@ function requestInteractiveConfirmation(command) {
 }
 
 /**
- * 将 PTY 原始输出分发给消费者。
- * 一期只转发给 GUI；二期可在这里接入 @xterm/headless 等后端终端 buffer。
- * @param {string|Buffer} rawData - PTY 原始输出，不能在 GUI 路径前清洗 ANSI。
+ * GUI 仅接收原始PTY投影；渲染窗口失效不得打断命令完成检测。
  */
 function dispatchPtyData(rawData) {
-    if (!guiWindow || guiWindow.isDestroyed()) {
+    const dataStr = rawData.toString('utf-8');
+    if (!dataStr) {
         return;
     }
 
-    const dataStr = rawData.toString('utf-8');
-    if (dataStr) {
-        guiWindow.webContents.send('powershell-data', dataStr);
+    if (mirrorStartupPending) {
+        // 启动握手（编码设置与就绪标记）是内部细节，握手完成前不投影到侧栏
+        mirrorStartupHeld = (mirrorStartupHeld + dataStr).slice(-MIRROR_REPLAY_LIMIT);
+    } else {
+        emitMirrorData(dataStr);
     }
+
+    try {
+        if (!guiWindow || guiWindow.isDestroyed()
+            || guiWindow.webContents.isDestroyed()) {
+            return;
+        }
+        guiWindow.webContents.send('powershell-data', dataStr);
+    } catch (error) {
+        console.warn('[PowerShellExecutor] GUI output delivery failed:', error.message);
+    }
+}
+
+// --- 侧栏镜像 ---
+// 主窗口侧栏的「终端」标签是同一个 PTY 会话的另一个视图：输出同时送往 GUI 窗口和镜像，
+// 输入与尺寸调整直接落到同一个 PTY，AI 工具执行的命令因此对两处都可见。
+const MIRROR_REPLAY_LIMIT = 256 * 1024;
+const mirrorSinks = new Set();
+// 回放缓存按块存：满了从头部整块丢掉，每块均摊 O(1)，只在挂载回放时拼一次。
+// 原来每块都把 256KB 拼接再切片，刷屏输出时主进程每秒要复制几百 MB（改成有界缓冲预算）
+let replayChunks = [];
+let replayHead = 0;
+let replayLength = 0;
+let mirrorStartupPending = false;
+let mirrorStartupHeld = '';
+
+function emitMirrorData(dataStr) {
+    if (!dataStr) return;
+    // 侧栏终端可能在会话进行中才挂载，缓存最近输出用于回放。
+    appendReplay(dataStr);
+    notifyMirrors('onData', dataStr);
+}
+
+function appendReplay(dataStr) {
+    replayChunks.push(dataStr);
+    replayLength += dataStr.length;
+    while (replayLength - replayChunks[replayHead].length >= MIRROR_REPLAY_LIMIT) {
+        replayLength -= replayChunks[replayHead].length;
+        replayChunks[replayHead++] = undefined;
+    }
+    if (replayHead > 1024 && replayHead * 2 > replayChunks.length) {
+        replayChunks = replayChunks.slice(replayHead);
+        replayHead = 0;
+    }
+}
+
+function readReplay() {
+    if (replayLength === 0) return '';
+    const text = replayChunks.slice(replayHead).join('');
+    if (text.length <= MIRROR_REPLAY_LIMIT) return text;
+    // 超出的部分从下一行开头回放，不从控制序列中间切开
+    const kept = text.slice(-MIRROR_REPLAY_LIMIT);
+    const lineStart = kept.indexOf('\n');
+    return lineStart >= 0 && lineStart < 4096 ? kept.slice(lineStart + 1) : kept;
+}
+
+function clearReplay() {
+    replayChunks = [];
+    replayHead = 0;
+    replayLength = 0;
+}
+
+/** 结束启动握手：成功时只放出就绪标记之后的内容（通常是提示符），失败时原样放出便于排查。 */
+function releaseMirrorStartup(afterReady = null) {
+    if (!mirrorStartupPending) return;
+    mirrorStartupPending = false;
+    const held = mirrorStartupHeld;
+    mirrorStartupHeld = '';
+    emitMirrorData(afterReady === null ? held : afterReady);
+}
+
+function notifyMirrors(method, ...args) {
+    for (const sink of mirrorSinks) {
+        try {
+            sink[method]?.(...args);
+        } catch (e) {
+            console.error('[PowerShellExecutor] Mirror sink failed:', e);
+        }
+    }
+}
+
+/**
+ * 注册一个镜像视图并回放已有输出。
+ * @param {{onData: Function, onClear?: Function, onExit?: Function}} sink
+ * @returns {Function} 取消注册
+ */
+function attachMirror(sink) {
+    mirrorSinks.add(sink);
+    const replay = readReplay();
+    if (replay) {
+        try {
+            sink.onData(replay);
+        } catch (e) {
+            console.error('[PowerShellExecutor] Mirror replay failed:', e);
+        }
+    }
+    return () => mirrorSinks.delete(sink);
+}
+
+/** 确保有一个 PTY 会话（不打开 GUI 窗口）。 */
+function ensureMirrorSession() {
+    if (!ptyProcess) {
+        createNewPtySession();
+    }
+    return getSessionState();
+}
+
+/** 重置为全新的 PTY 会话（与 GUI 窗口共用）。 */
+function restartSession() {
+    createNewPtySession();
+    return getSessionState();
+}
+
+function getSessionState() {
+    return {
+        running: Boolean(ptyProcess),
+        pid: ptyProcess ? ptyProcess.pid : null,
+        // AI 短命令或交互式 TUI 占用期间，不应向会话里塞入额外命令。
+        busy: Boolean(isExecutingCommand || interactiveMode),
+        cols: lastKnownSize.cols,
+        rows: lastKnownSize.rows,
+    };
+}
+
+function writeSessionInput(data) {
+    if (!ptyProcess || typeof data !== 'string') {
+        return false;
+    }
+    ptyProcess.write(data);
+    return true;
+}
+
+// 侧栏清屏时让 shell 自己也清一次。Windows 的 ConPTY 记着整屏内容，PTY 一改尺寸就按它整屏重绘，
+// 只清前端的话旧内容马上又画回来；node-pty 的 clear() 只对随包的 conpty.dll 生效，系统自带的 ConPTY 上是空操作。
+// 所以发 Ctrl+L：PSReadLine / readline 的清屏键，输了一半的命令保留。
+// AI 命令或交互程序占着会话时不发，免得混进它们的输入；返回是否发出
+function clearSessionScreen() {
+    if (!ptyProcess || isExecutingCommand || interactiveMode) {
+        return false;
+    }
+    ptyProcess.write('\x0c');
+    return true;
 }
 
 /**
@@ -911,6 +928,9 @@ function createNewPtySession() {
             guiWindow.webContents.send('powershell-clear');
         }
     }
+    clearReplay();
+    terminalProjection = null;
+    notifyMirrors('onClear');
 
     let shell = 'bash';
     let args = [];
@@ -940,25 +960,29 @@ function createNewPtySession() {
         args = ['-NoLogo'];
     }
 
-    ptyProcess = pty.spawn(shell, args, {
+    ptyProcess = loadPty().spawn(shell, args, {
         name: 'xterm-color',
         cols: lastKnownSize.cols,
         rows: lastKnownSize.rows,
         cwd: process.env.USERPROFILE || process.env.HOME,
-        env: process.env
+        env: {
+            ...process.env,
+            PAGER: 'cat',
+            GIT_PAGER: 'cat',
+            GIT_TERMINAL_PROMPT: '0',
+            GH_PAGER: '',
+            SYSTEMD_PAGER: 'cat',
+            AWS_PAGER: '',
+            MANPAGER: 'cat'
+        }
     });
     childProcesses.add(ptyProcess);
     const currentPtyProcess = ptyProcess;
 
     // 创建GUI数据监听器（带 AI 短命令执行状态检查）
     guiDataListener = (data) => {
-        // AI 短命令期间由 executeSingleCommandInPty 的临时监听器负责 flushToGui，避免重复输出。
-        // 交互式 TUI 模式绝不能设置 isExecutingCommand，否则 GUI 会黑屏。
-        if (isExecutingCommand) {
-            return;
-        }
-
-        dispatchPtyData(data);
+        // 渲染始终使用完整 PTY 流；命令解析只提取 AI 返回值，不改变屏幕坐标。
+        dispatchPtyData(terminalProjection ? terminalProjection.push(data) : data);
     };
 
     // 设置数据监听器，将所有 pty 输出直接代理到 GUI
@@ -968,6 +992,8 @@ function createNewPtySession() {
     // PSReadLine 的输入回显中；只有 PowerShell 真正执行 Write-Host 后才会命中。
     const readyBoundary = `__VCP_PTY_READY_${crypto.randomUUID()}__`;
     const encodedReadyBoundary = Buffer.from(readyBoundary, 'utf8').toString('base64');
+    mirrorStartupPending = true;
+    mirrorStartupHeld = '';
     ptyReadyPromise = new Promise((resolve, reject) => {
         let startupOutput = '';
         let settled = false;
@@ -996,9 +1022,13 @@ function createNewPtySession() {
                 startupOutput = startupOutput.slice(-65536);
             }
 
-            if (startupOutput.includes(readyBoundary)) {
+            const boundaryIndex = startupOutput.indexOf(readyBoundary);
+            if (boundaryIndex !== -1) {
                 settled = true;
                 cleanupReadyProbe();
+                if (ptyProcess === currentPtyProcess) {
+                    releaseMirrorStartup(startupOutput.slice(boundaryIndex + readyBoundary.length).replace(/^\r?\n/, ''));
+                }
                 resolve();
             }
         });
@@ -1009,21 +1039,50 @@ function createNewPtySession() {
             }
             settled = true;
             cleanupReadyProbe();
+            if (ptyProcess === currentPtyProcess) releaseMirrorStartup();
             reject(new Error('PowerShell did not complete its startup readiness probe within 15 seconds.'));
         }, 15000);
 
+        // macOS / Linux 起的是 bash：PowerShell 的初始化写进去只会报语法错误，边界永远等不到，
+        // 前 15 秒侧栏一片空白。环境变量 spawn 时已经给了，这里只打印边界：两段引号拼起来，
+        // 回显的命令行里是 '…''…'，不会提前命中
+        if (os.platform() !== 'win32') {
+            const split = Math.floor(readyBoundary.length / 2);
+            currentPtyProcess.write(`printf '%s\\n' '${readyBoundary.slice(0, split)}''${readyBoundary.slice(split)}'; clear\r`);
+            return;
+        }
         const initializationCommand = [
             '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8',
+            '$env:PAGER = "cat"',
+            '$env:GIT_PAGER = "cat"',
+            '$env:GIT_TERMINAL_PROMPT = "0"',
+            '$env:GH_PAGER = ""',
+            '$env:SYSTEMD_PAGER = "cat"',
+            '$env:AWS_PAGER = ""',
+            '$env:MANPAGER = "cat"',
+            'function global:more { param([string[]]$paths) if ($paths) { foreach ($file in $paths) { Get-Content $file } } else { $input } }',
+            'function global:help { Get-Help @args }',
             `$__vcpReady = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${encodedReadyBoundary}'))`,
-            'Write-Host $__vcpReady'
+            'Write-Host $__vcpReady',
+            // 清掉握手留下的几行：侧栏只从就绪标记之后开始显示，ConPTY 的光标也得回到左上角，
+            // 否则 PSReadLine 按绝对坐标重绘时会和侧栏错开几行
+            'Clear-Host'
         ].join('; ');
         currentPtyProcess.write(`${initializationCommand}\r`);
     });
+    // 只有 AI 命令会等它；没人等的时候超时也不能变成未处理的 rejection
+    ptyReadyPromise.catch(() => {});
 
     // 当 pty 进程意外退出时，清理资源。
     // 注意：newSession 会先 kill 旧 PTY 再创建新 PTY，旧 PTY 的异步 onExit 不能误清理新会话。
-    currentPtyProcess.onExit(() => {
+    currentPtyProcess.onExit((exitInfo) => {
         childProcesses.delete(currentPtyProcess);
+        // 自行结束的 shell 仍占着 ConPTY 的管道句柄，显式 kill 才会释放
+        try {
+            currentPtyProcess.kill();
+        } catch (e) {
+            // 进程已经退出
+        }
 
         if (ptyProcess !== currentPtyProcess) {
             return;
@@ -1034,6 +1093,7 @@ function createNewPtySession() {
         isExecutingCommand = false;
         interactiveMode = false;
         activeCommandAbort = null;
+        notifyMirrors('onExit', exitInfo && exitInfo.exitCode);
     });
 }
 
@@ -1164,14 +1224,25 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
         }
 
         let rawOutput = '';
-        let hasSeenStartBoundary = false;
+        let rawOutputTruncated = false;
         let settled = false;
         let tempScriptPath = null;
+        let wrapperScriptPath = null;
+        let receiptPath = null;
+        let receiptTimer = null;
+        let receiptSeenAt = 0;
+        let lastDataAt = Date.now();
+        let observedOutput = '';
         let listenerDisposable = null;
         let timeoutId = null;
 
+        const run = beginCommandRun(singleCommand);
+        // ConPTY 会重排 OSC 与屏幕正文，因此边界必须走同一屏幕输出通道。
         const startBoundary = `__VCP_COMMAND_START_${crypto.randomUUID()}__`;
         const endBoundary = `__VCP_COMMAND_END_${crypto.randomUUID()}__`;
+        const outputParser = new CommandOutputParser(startBoundary, endBoundary);
+        if (terminalProjection) dispatchPtyData(terminalProjection.flush());
+        terminalProjection = new CommandTerminalProjection([startBoundary, endBoundary]);
 
         const abortThisCommand = () => {
             if (settled) {
@@ -1179,6 +1250,7 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
             }
 
             settled = true;
+            finishCommandRun(run, 'cancelled');
             // ETX 等价于用户在真实终端按下 Ctrl+C，用于中断当前前台命令。
             ptyProcess.write('\x03');
             cleanupListener(listenerDisposable, timeoutId);
@@ -1196,20 +1268,17 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
             if (activeCommandAbort === abortThisCommand) {
                 activeCommandAbort = null;
             }
-            if (tempScriptPath) {
+            if (receiptTimer) clearInterval(receiptTimer);
+            for (const scriptPath of [tempScriptPath, wrapperScriptPath, receiptPath]) {
+                if (!scriptPath) continue;
                 try {
-                    fs.unlinkSync(tempScriptPath);
+                    fs.unlinkSync(scriptPath);
                 } catch (e) {
                     console.warn('[PowerShellExecutor] Failed to remove temporary script:', e.message);
                 }
-                tempScriptPath = null;
             }
-        };
-
-        const flushToGui = (text) => {
-            if (text) {
-                dispatchPtyData(text);
-            }
+            tempScriptPath = null;
+            wrapperScriptPath = null;
         };
 
         listenerDisposable = ptyProcess.onData((data) => {
@@ -1217,33 +1286,21 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
                 return;
             }
 
-            let chunk = data.toString('utf-8');
+            lastDataAt = Date.now();
+            observedOutput = (observedOutput + data.toString('utf-8')).slice(-COMMAND_RUN_RAW_LIMIT);
+            const result = outputParser.push(data.toString('utf-8'));
+            rawOutputTruncated ||= rawOutput.length + result.output.length > COMMAND_RUN_RAW_LIMIT;
+            rawOutput = (rawOutput + result.output).slice(-COMMAND_RUN_RAW_LIMIT);
+            appendCommandRunOutput(run, result.output);
 
-            // 丢弃开始边界之前的所有迟到输出，避免上一条命令残留串入本次结果
-            if (!hasSeenStartBoundary) {
-                const startIndex = chunk.indexOf(startBoundary);
-                if (startIndex === -1) {
-                    return;
-                }
-
-                hasSeenStartBoundary = true;
-                chunk = chunk.substring(startIndex + startBoundary.length);
-            }
-
-            const endIndex = chunk.indexOf(endBoundary);
-            if (endIndex !== -1) {
-                const finalChunk = chunk.substring(0, endIndex);
-                rawOutput += finalChunk;
-                flushToGui(finalChunk);
-
+            if (result.done) {
                 settled = true;
+                finishCommandRun(run, 'completed');
                 cleanupListener(listenerDisposable, timeoutId);
-                resolve(sanitizeTerminalOutput(rawOutput).trim());
-                return;
+                resolve((rawOutputTruncated ? '[输出超过容量限制，仅保留末尾内容]\n' : '') + sanitizeTerminalOutput(rawOutput).trim());
             }
 
-            rawOutput += chunk;
-            flushToGui(chunk);
+            // 完整终端投影由常驻监听器负责，不能重复写入解析后的正文。
         });
 
         timeoutId = setTimeout(() => {
@@ -1251,6 +1308,7 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
                 return;
             }
             settled = true;
+            finishCommandRun(run, 'timed_out');
             cleanupListener(listenerDisposable, timeoutId);
             reject(new Error(`Command "${singleCommand}" timed out after 60 seconds.`));
         }, 60000);
@@ -1264,25 +1322,47 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
             fs.writeFileSync(tempScriptPath, `\ufeff${singleCommand}`, 'utf8');
 
             const escapedTempScriptPath = tempScriptPath.replace(/'/g, "''");
-            const encodedStartBoundary = Buffer.from(startBoundary, 'utf8').toString('base64');
-            const encodedEndBoundary = Buffer.from(endBoundary, 'utf8').toString('base64');
+            receiptPath = path.join(os.tmpdir(), `vcp-done-${crypto.randomUUID()}.txt`);
+            const escapedReceiptPath = receiptPath.replace(/'/g, "''");
+            // 完成状态走文件，不依赖 ConPTY 对长标记的换行、光标寻址或重绘。
+            receiptTimer = setInterval(() => {
+                if (settled || !fs.existsSync(receiptPath)) return;
+                const now = Date.now();
+                if (!receiptSeenAt) receiptSeenAt = now;
+                // 文件完成不代表 PTY 已送完：等待静默，持续刷屏也最多等待一秒。
+                if (now - lastDataAt < 250 && now - receiptSeenAt < 1000) return;
+                settled = true;
+                const fallback = !outputParser.started;
+                const output = fallback ? observedOutput : rawOutput;
+                finishCommandRun(run, 'completed');
+                cleanupListener(listenerDisposable, timeoutId);
+                resolve('[完成回执已确认；PTY 结束标记未连续送达，末尾输出可能包含终端重绘]\\n'
+                    + (rawOutputTruncated ? '[输出超过容量限制，仅保留末尾内容]\\n' : '')
+                    + sanitizeTerminalOutput(output).trim());
+            }, 50);
 
-            // 不能把 boundary 明文写进交互式命令行：
-            // PowerShell/PSReadLine 会先回显整行输入，若监听器在“输入回显”里提前匹配到 boundary，
-            // 就会把命令尚未执行的回显误判为真实输出，造成提前结束或卡死。
-            // 因此这里用 Base64 在 PowerShell 内部还原 boundary，让 GUI/AI 只匹配真实 Write-Host 输出。
-            const wrappedCommand = [
-                `$__vcpStart = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${encodedStartBoundary}'))`,
-                `$__vcpEnd = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${encodedEndBoundary}'))`,
-                `Write-Host $__vcpStart`,
+            // 边界标记只写进包装脚本，不出现在交互式命令行里：
+            // PowerShell/PSReadLine 会先回显整行输入，若标记出现在回显里，就会被误判为真实输出。
+            // 终端里也只留下一行短的脚本调用，而不是整段包装代码。
+            const wrapperScript = [
+                // 关掉分页器和 Git 交互提示，否则 git log/help 等会停在分页界面，命令一直等不到结束标记。
+                `$env:PAGER = 'cat'`,
+                `$env:GIT_PAGER = 'cat'`,
+                `$env:GIT_TERMINAL_PROMPT = '0'`,
+                `Write-Host '${startBoundary}'`,
                 // 即使临时脚本发生 ParserError / RuntimeException，也必须输出 end boundary，
-                // 否则 AI 调用会一直等待直到超时。错误文本仍由 PTY 原样进入 rawOutput。
-                `try { & '${escapedTempScriptPath}' } finally { Write-Host $__vcpEnd }`
-            ].join('; ');
+                // 否则 AI 调用会一直等待直到超时。终止性错误要在结束标记之前打印，
+                // 否则 PowerShell 会在命令行结束后才显示它，AI 拿到的输出就是空的。
+                `try { & '${escapedTempScriptPath}' | Out-Host } catch { $_ | Out-Host } finally { try { [System.IO.File]::WriteAllText('${escapedReceiptPath}', 'completed') } finally { Write-Host '${endBoundary}' } }`
+            ].join('\r\n');
+            wrapperScriptPath = path.join(os.tmpdir(), `vcp-run-${crypto.randomUUID()}.ps1`);
+            fs.writeFileSync(wrapperScriptPath, `\ufeff${wrapperScript}`, 'utf8');
+            const wrappedCommand = `& '${wrapperScriptPath.replace(/'/g, "''")}'`;
 
             ptyProcess.write(`${wrappedCommand}\r`);
         } catch (error) {
             settled = true;
+            finishCommandRun(run, 'spawn_error');
             cleanupListener(listenerDisposable, timeoutId);
             reject(new Error(`无法创建或执行临时 PowerShell 脚本: ${error.message}`));
         }
@@ -1487,12 +1567,43 @@ function requestTerminalPaste(text) {
     });
 }
 
-async function ensureInteractiveTerminal(newSession = false) {
-    ensureGuiWindow();
+function terminalTarget(args) {
+    const target = args.terminalTarget ?? 'sidebar';
+    if (!['sidebar', 'window'].includes(target)) throw new Error('terminalTarget 必须为 sidebar 或 window。');
+    return target;
+}
+
+function requestSidebar(action, params = {}) {
+    return require('../../../modules/ipc/terminalHandlers').requestTerminalView(action, params);
+}
+
+async function prepareTerminalView(target, required = false) {
+    if (target === 'window') {
+        ensureGuiWindow();
+        await waitForGuiReady();
+    } else {
+        const opening = requestSidebar('open');
+        if (required) await opening;
+        else opening.catch(error => console.warn('[PowerShellExecutor] Sidebar unavailable:', error.message));
+    }
+}
+
+async function queryTarget(target, maxLines) {
+    if (target === 'window') return requestVisibleText(maxLines);
+    return requestSidebar('query', { maxLines });
+}
+
+async function pasteTarget(target, text) {
+    if (target === 'window') return requestTerminalPaste(text);
+    return requestSidebar('paste', { text });
+}
+
+async function ensureInteractiveTerminal(newSession = false, target = 'sidebar') {
+    await prepareTerminalView(target, true);
     if (newSession === true || !ptyProcess) {
         createNewPtySession();
     }
-    await waitForTerminalReady();
+    await waitForPtyReady();
     interactiveMode = true;
     return ptyProcess;
 }
@@ -1503,7 +1614,7 @@ async function sendSingleInteractiveKey(args) {
     }
 
     const keySpec = parseTerminalKey(args.key);
-    const targetPtyProcess = await ensureInteractiveTerminal(args.newSession === true);
+    const targetPtyProcess = await ensureInteractiveTerminal(args.newSession === true, terminalTarget(args));
     targetPtyProcess.write(keySpec.data);
 
     return {
@@ -1522,8 +1633,9 @@ async function pasteSingleInteractiveText(args) {
         throw new Error(`text 超过 ${INTERACTIVE_SEQUENCE_LIMITS.maxTextLength} 字符限制。`);
     }
 
-    await ensureInteractiveTerminal(args.newSession === true);
-    await requestTerminalPaste(args.text);
+    const target = terminalTarget(args);
+    await ensureInteractiveTerminal(args.newSession === true, target);
+    await pasteTarget(target, args.text);
 
     if (args.submit === true) {
         if (!ptyProcess) {
@@ -1557,7 +1669,8 @@ async function runInteractiveSequence(args) {
         }
     }
 
-    const targetPtyProcess = await ensureInteractiveTerminal(args.newSession === true);
+    const target = terminalTarget(args);
+    const targetPtyProcess = await ensureInteractiveTerminal(args.newSession === true, target);
     const queryResults = [];
 
     for (const step of steps) {
@@ -1576,10 +1689,10 @@ async function runInteractiveSequence(args) {
                 targetPtyProcess.write(step.keySpec.data);
                 break;
             case 'paste':
-                await requestTerminalPaste(step.value);
+                await pasteTarget(target, step.value);
                 break;
             case 'queryVisible': {
-                const text = await requestVisibleText(step.maxLines);
+                const text = await queryTarget(target, step.maxLines);
                 queryResults.push({ index: step.index, maxLines: step.maxLines, text });
                 break;
             }
@@ -1606,6 +1719,7 @@ async function runInteractiveSequence(args) {
 }
 
 async function processToolCall(args) {
+    const target = terminalTarget(args);
     const declaredCommands = new Set([
         'ExecutePowerShell',
         'StartInteractive',
@@ -1649,8 +1763,7 @@ async function processToolCall(args) {
     }
 
     if (action.startsWith('queryVisible')) {
-        ensureGuiWindow();
-        await waitForGuiReady();
+        await prepareTerminalView(target, true);
 
         const legacyMatch = action.match(/^queryVisible(\d+)?$/);
         const requestedMaxLines = declaredCommand === 'QueryVisible' ? args.maxLines : (legacyMatch && legacyMatch[1]);
@@ -1660,7 +1773,7 @@ async function processToolCall(args) {
         const maxLines = Number.isInteger(parsedMaxLines) && parsedMaxLines > 0
             ? Math.min(parsedMaxLines, INTERACTIVE_SEQUENCE_LIMITS.maxQueryLines)
             : null;
-        const text = await requestVisibleText(maxLines);
+        const text = await queryTarget(target, maxLines);
         return { content: [{ type: 'text', text: `\`\`\`\n${text}\n\`\`\`` }] };
     }
 
@@ -1757,12 +1870,9 @@ async function processToolCall(args) {
         if (commandEntries.length > 1) {
             throw new Error("管理员模式 (requireAdmin: true) 不支持执行多个命令链。");
         }
-        if (ptyProcess) {
-            ptyProcess.kill();
-            ptyProcess = null;
-        }
+        // 提权任务使用独立进程，不终止普通共享会话。
         const command = commandEntries[0].value;
-        const fullCommand = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; ${command}`;
+        const fullCommand = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $env:PAGER = 'cat'; $env:GIT_PAGER = 'cat'; $env:GIT_TERMINAL_PROMPT = '0'; function global:more { param([string[]]$paths) if ($paths) { foreach ($file in $paths) { Get-Content $file } } else { $input } }; function global:help { Get-Help @args }; ${command}`;
         const output = await executeAdminCommand(fullCommand);
         if (output && typeof output === 'object' && Array.isArray(output.content)) {
             return output;
@@ -1782,15 +1892,17 @@ async function processToolCall(args) {
     }
 
     // 路径 C: 标准非管理员会话执行
-    ensureGuiWindow();
+    if (isExecutingCommand) {
+        throw new Error('当前已有同步命令执行中，请等待完成或使用 interrupt。');
+    }
+    await prepareTerminalView(target, action === 'startInteractive');
 
     if (newSession || !ptyProcess) {
         createNewPtySession();
     }
 
-    // 必须等渲染端完成 xterm 挂载/监听/首次 fit，且 PowerShell 执行完启动探针，
-    // 才允许向 PTY 注入用户或 AI 指令。替代容易产生竞态的固定 500ms 延时。
-    await waitForTerminalReady();
+    // 普通脚本只依赖 PTY 就绪；交互操作的目标视图由 prepareTerminalView 单独等待。
+    await waitForPtyReady();
 
     if (action === 'startInteractive') {
         if (commandEntries.length > 1) {
@@ -1808,6 +1920,10 @@ async function processToolCall(args) {
         throw new Error('当前终端正被交互式程序 (snow/codex/claude) 占用，请先退出并调用 action:"endInteractive"，或使用 newSession:true 重置会话。');
     }
 
+    // 就绪等待期间其它调用可能先取得PTY，await后必须再次检查。
+    if (isExecutingCommand) {
+        throw new Error('当前已有同步命令执行中，请等待完成或使用 interrupt。');
+    }
     const deltaOutputs = [];
     isExecutingCommand = true;
     try {
@@ -1899,6 +2015,11 @@ function cleanup() {
     }
 
     // 4. 确保 ptyProcess 状态被重置
+    mirrorSinks.clear();
+    terminalProjection = null;
+    clearReplay();
+    mirrorStartupPending = false;
+    mirrorStartupHeld = '';
     ptyProcess = null;
     ptyReadyPromise = Promise.resolve();
     guiDataListener = null;
@@ -1911,6 +2032,18 @@ function cleanup() {
 module.exports = {
     processToolCall,
     openGuiTerminal,
+    attachMirror,
+    listCommandRuns,
+    getCommandRun,
+    subscribeCommandRuns,
+    // 仅供测试：跳过 GUI 窗口，直接在共享 PTY 会话里跑一条短命令
+    _runCommandForTest: (command) => executeSingleCommandInPty(ptyProcess, command),
+    ensureMirrorSession,
+    restartSession,
+    getSessionState,
+    writeSessionInput,
+    clearSessionScreen,
+    resizeSession: applyPtyResize,
     cleanup,
     parseInteractiveSequence,
     parseWaitDuration,

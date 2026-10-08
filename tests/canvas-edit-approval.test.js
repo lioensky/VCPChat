@@ -152,6 +152,16 @@ async function setupCanvas(t, content) {
     return { ...fixture, ...loaded, win };
 }
 
+async function waitForProposal(webContents, timeoutMs = 2000) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+        const found = webContents.sent.find((entry) => entry.channel === 'canvas-edit-proposal');
+        if (found) return found;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    throw new Error(`Timeout waiting for canvas-edit-proposal after ${timeoutMs}ms`);
+}
+
 test('Canvas edit rejection returns the human reason and leaves the file unchanged', async (t) => {
     const scenario = await setupCanvas(t, 'alpha beta alpha');
     const resultPromise = scenario.canvasHandlers.requestCanvasEdit({
@@ -159,9 +169,7 @@ test('Canvas edit rejection returns the human reason and leaves the file unchang
         replace: 'omega',
     });
 
-    const proposalEvent = scenario.win.webContents.sent.find(
-        (entry) => entry.channel === 'canvas-edit-proposal'
-    );
+    const proposalEvent = await waitForProposal(scenario.win.webContents);
     assert.ok(proposalEvent, 'renderer must receive an explicit edit proposal');
     assert.equal(proposalEvent.payload.originalContent, 'alpha beta alpha');
     assert.equal(proposalEvent.payload.modifiedContent, 'omega beta alpha');
@@ -190,9 +198,7 @@ test('Canvas edit approval atomically applies only the first target match', asyn
         replace: 'omega',
     });
 
-    const proposalEvent = scenario.win.webContents.sent.find(
-        (entry) => entry.channel === 'canvas-edit-proposal'
-    );
+    const proposalEvent = await waitForProposal(scenario.win.webContents);
     scenario.listeners.get('canvas-edit-decision')(
         { sender: scenario.win.webContents },
         {
@@ -224,9 +230,7 @@ test('Canvas edit rejects a stale approval when content drifts during review', a
         replace: 'omega',
     });
 
-    const proposalEvent = scenario.win.webContents.sent.find(
-        (entry) => entry.channel === 'canvas-edit-proposal'
-    );
+    const proposalEvent = await waitForProposal(scenario.win.webContents);
     await fs.writeFile(scenario.filePath, 'human changed content', 'utf8');
 
     scenario.listeners.get('canvas-edit-decision')(

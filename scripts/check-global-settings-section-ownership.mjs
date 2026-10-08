@@ -39,6 +39,7 @@ const controlProbeFiles = [
 // containers the flattening removed or renamed (the JS guards them or falls
 // back to the new id), plus ids upstream does not ship either.
 const controlProbeAllowlist = new Map([
+    ['agentModelInput', 'legacy alias in getAgentControl; the schema and primary lookup use agentModel, which is still checked'],
     ['streamAnimationCustomPanel', 'flattened to streamAnimationCustomRow; the lookup falls back to it'],
     ['rustGuardRulesContainer', 'nested container removed by flattening; guarded with if (container)'],
     ['userUseThemeColorsInChat', 'absent upstream as well; pre-existing optional control'],

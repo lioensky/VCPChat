@@ -48,6 +48,25 @@ test('resolveWorkspacePath rejects escapes, absolute paths and .git', t => {
     assert.throws(() => sourceService.resolveWorkspacePath(root, '.'), /不在工作区内/);
 });
 
+test('resolveWorkspacePath rejects NTFS aliases of .git and symlinks into .git', async t => {
+    const { root, write } = makeWorkspace(t);
+    write('.git/config', '[core]\n');
+    write('src/app.js', 'a');
+    // Windows 上这些名字都指向 .git：短名、末尾点/空格、流名
+    for (const rel of ['GIT~1/config', 'git~2/config', '.git./config', '.git ./config', '.git::$INDEX_ALLOCATION/config', 'src/../.GIT/config']) {
+        assert.throws(() => sourceService.resolveWorkspacePath(root, rel), /\.git/, rel);
+    }
+    // 工作区里的符号链接指向 .git：名字上看不出来，写进去就能改 core.fsmonitor 等配置
+    fs.symlinkSync(path.join(root, '.git'), path.join(root, 'meta'), process.platform === 'win32' ? 'junction' : 'dir');
+    assert.throws(() => sourceService.resolveWorkspacePath(root, 'meta/config'), /\.git/);
+    await assert.rejects(sourceService.writeFile(root, 'meta/config', { content: '[core]\n\tfsmonitor = evil\n', force: true }), /\.git/);
+    assert.equal(fs.readFileSync(path.join(root, '.git/config'), 'utf8'), '[core]\n');
+    // 普通名字不受影响
+    assert.equal(sourceService.resolveWorkspacePath(root, 'src/app.js').rel, 'src/app.js');
+    assert.equal(sourceService.resolveWorkspacePath(root, '.github/workflows/ci.yml').rel, '.github/workflows/ci.yml');
+    assert.equal(sourceService.resolveWorkspacePath(root, 'git~notes.md').rel, 'git~notes.md');
+});
+
 test('readFile reports BOM / EOL, binary and invalid UTF-8', async t => {
     const { root, write } = makeWorkspace(t);
     write('crlf.txt', Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('a\r\nb\r\n')]));

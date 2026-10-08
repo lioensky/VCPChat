@@ -367,3 +367,75 @@ test('MoveCode / CopyCode：同文件剪切、跨文件剪切 + 整批回退、�
     assert.equal(picked.details.status, 'ok', textOf(picked));
     assert.equal(read('dup.txt'), 'x\nx\n1\nx\n2\n');
 });
+
+test('工程查询：默认最新 10 个、自定义数量、工作区搜索与 GUI 完整列表', async () => {
+    const runtime = forge._test.getRuntime();
+    const service = runtime.resolver.workspaceService;
+    const originalList = service.list;
+    const otherRoot = path.join(tmp, 'other-ws');
+    service.list = () => [
+        { id: 'ws1', alias: 'demo', path: wsRoot, enabled: true },
+        { id: 'ws2', alias: 'other', path: otherRoot, enabled: true },
+    ];
+    const ids = [];
+    try {
+        for (let i = 0; i < 12; i++) {
+            const result = await call({ command: 'CreateProject', name: `查询回归-${i}`, workspace: 'demo' });
+            const id = result.details.project.id;
+            ids.push(id);
+            // 固定时间避免毫秒级同时间戳影响排序断言。
+            runtime.store.db.prepare('UPDATE projects SET updated_at = ? WHERE id = ?')
+                .run(new Date(Date.UTC(2090, 0, i + 1)).toISOString(), id);
+        }
+        const other = await call({ command: 'CreateProject', name: '查询回归-其他工作区', workspace: 'other' });
+        ids.push(other.details.project.id);
+        const expected = ids.slice(0, 12).reverse();
+
+        const listed = await call({ command: 'ListProjects', workspace: 'demo' });
+        assert.equal(listed.details.limit, 10);
+        assert.deepEqual(listed.details.projects.map(p => p.id), expected.slice(0, 10));
+        const global = await call({ command: 'ListProjects' });
+        assert.deepEqual(global.details.projects.map(p => p.id), expected.slice(0, 10));
+        const expanded = await call({ command: 'ListProjects', query: '查询回归', limit: '20' });
+        assert.equal(expanded.details.count, 13);
+        assert.equal(forge.gui.listProjects({ query: '查询回归' }).length, 13);
+
+        const searched = await call({ command: 'SearchProjects', workspace: 'ws1', query: '查询回归' });
+        assert.equal(searched.details.command, 'SearchProjects');
+        assert.deepEqual(searched.details.projects.map(p => p.id), expected.slice(0, 10));
+        const limited = await call({ command: 'SearchProjects', workspace: 'DEMO', keyword: '查询回归', limit: 3 });
+        assert.deepEqual(limited.details.projects.map(p => p.id), expected.slice(0, 3));
+        const byId = await call({ command: 'SearchProjects', workspace: 'demo', query: expected[0] });
+        assert.deepEqual(byId.details.projects.map(p => p.id), [expected[0]]);
+        const empty = await call({ command: 'SearchProjects', workspace: 'other', query: expected[0] });
+        assert.equal(empty.details.count, 0);
+
+        // 工作区别名变更后仍按稳定 ID 查到工程，停用工作区也可只读搜索。
+        service.list = () => [
+            { id: 'ws1', alias: 'renamed', path: wsRoot, enabled: false },
+            { id: 'ws2', alias: 'other', path: otherRoot, enabled: true },
+        ];
+        const renamed = await call({ command: 'SearchProjects', workspace: 'renamed', query: '查询回归' });
+        assert.deepEqual(renamed.details.projects.map(p => p.id), expected.slice(0, 10));
+
+        await call({ command: 'DeleteProjects', projectIds: expected[0] });
+        const active = await call({ command: 'SearchProjects', workspace: 'renamed', query: '查询回归' });
+        assert.deepEqual(active.details.projects.map(p => p.id), expected.slice(1, 11));
+        const deleted = await call({ command: 'SearchProjects', workspace: 'renamed', query: expected[0], includeDeleted: true });
+        assert.equal(deleted.details.count, 1);
+
+        for (const limit of [0, -1, 1.5, 'abc', '10abc']) {
+            await assert.rejects(call({ command: 'ListProjects', limit }), /limit 必须是正整数/);
+        }
+        for (const workspace of [undefined, 'all', 'missing']) {
+            await assert.rejects(call({ command: 'SearchProjects', workspace, query: '查询回归' }), /workspace|不存在/);
+        }
+        await assert.rejects(call({ command: 'SearchProjects', workspace: 'other' }), /需要 query/);
+    } finally {
+        service.list = originalList;
+        if (ids.length) {
+            await call({ command: 'DeleteProjects', projectIds: ids });
+            await call({ command: 'PurgeProjects', projectIds: ids, confirm: true });
+        }
+    }
+});

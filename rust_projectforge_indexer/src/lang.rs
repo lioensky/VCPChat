@@ -11,6 +11,12 @@ pub enum Lang {
     Tsx,
     Python,
     Rust,
+    C,
+    Cpp,
+    Go,
+    Java,
+    CSharp,
+    Lua,
 }
 
 /// 同一族共用一套符号提取规则（JS / TS / TSX 语法树节点基本一致）。
@@ -19,15 +25,27 @@ pub enum Family {
     Js,
     Python,
     Rust,
+    C,
+    Cpp,
+    Go,
+    Java,
+    CSharp,
+    Lua,
 }
 
 impl Lang {
-    pub const ALL: [Lang; 5] = [
+    pub const ALL: [Lang; 11] = [
         Lang::JavaScript,
         Lang::TypeScript,
         Lang::Tsx,
         Lang::Python,
         Lang::Rust,
+        Lang::C,
+        Lang::Cpp,
+        Lang::Go,
+        Lang::Java,
+        Lang::CSharp,
+        Lang::Lua,
     ];
 
     pub fn name(self) -> &'static str {
@@ -37,6 +55,12 @@ impl Lang {
             Lang::Tsx => "tsx",
             Lang::Python => "python",
             Lang::Rust => "rust",
+            Lang::C => "c",
+            Lang::Cpp => "cpp",
+            Lang::Go => "go",
+            Lang::Java => "java",
+            Lang::CSharp => "c_sharp",
+            Lang::Lua => "lua",
         }
     }
 
@@ -45,6 +69,12 @@ impl Lang {
             Lang::JavaScript | Lang::TypeScript | Lang::Tsx => Family::Js,
             Lang::Python => Family::Python,
             Lang::Rust => Family::Rust,
+            Lang::C => Family::C,
+            Lang::Cpp => Family::Cpp,
+            Lang::Go => Family::Go,
+            Lang::Java => Family::Java,
+            Lang::CSharp => Family::CSharp,
+            Lang::Lua => Family::Lua,
         }
     }
 
@@ -56,6 +86,12 @@ impl Lang {
             "tsx" => Some(Lang::Tsx),
             "python" | "py" | "pyi" => Some(Lang::Python),
             "rust" | "rs" => Some(Lang::Rust),
+            "c" => Some(Lang::C),
+            "cpp" | "cxx" | "cc" | "h" | "hpp" | "hxx" | "hh" | "c++" | "h++" | "cppm" | "ixx" | "mxx" | "cxxm" => Some(Lang::Cpp),
+            "go" => Some(Lang::Go),
+            "java" => Some(Lang::Java),
+            "csharp" | "cs" | "c#" | "c_sharp" => Some(Lang::CSharp),
+            "lua" => Some(Lang::Lua),
             _ => None,
         }
     }
@@ -65,6 +101,21 @@ impl Lang {
         Lang::from_name(ext)
     }
 
+    /// 判断是否为编译型二进制扩展名
+    pub fn is_binary_extension(ext: &str) -> bool {
+        matches!(
+            ext.trim().trim_start_matches('.').to_ascii_lowercase().as_str(),
+            "exe" | "dll" | "so" | "node" | "dylib" | "wasm" | "bin" | "o" | "obj" | "a" | "lib" | "pdb"
+        )
+    }
+
+    /// 从文件路径判断是否为二进制文件
+    pub fn is_binary_path(path: &Path) -> bool {
+        path.extension()
+            .and_then(|ext| ext.to_str())
+            .map(Self::is_binary_extension)
+            .unwrap_or(false)
+    }
     pub fn ts_language(self) -> Language {
         match self {
             Lang::JavaScript => tree_sitter_javascript::LANGUAGE.into(),
@@ -72,6 +123,12 @@ impl Lang {
             Lang::Tsx => tree_sitter_typescript::LANGUAGE_TSX.into(),
             Lang::Python => tree_sitter_python::LANGUAGE.into(),
             Lang::Rust => tree_sitter_rust::LANGUAGE.into(),
+            Lang::C => tree_sitter_c::LANGUAGE.into(),
+            Lang::Cpp => tree_sitter_cpp::LANGUAGE.into(),
+            Lang::Go => tree_sitter_go::LANGUAGE.into(),
+            Lang::Java => tree_sitter_java::LANGUAGE.into(),
+            Lang::CSharp => tree_sitter_c_sharp::LANGUAGE.into(),
+            Lang::Lua => tree_sitter_lua::LANGUAGE.into(),
         }
     }
 }

@@ -125,15 +125,15 @@ class MimoDirectorSlot {
 
     bindEditor(editor, onInput) {
         if (!editor) return;
-        this.scope.listen(editor, 'focus', () => {
+        this.slotScope.listen(editor, 'focus', () => {
             this.setEditing(true, editor);
             this.resize(editor, true);
         }, undefined, 'mimo-director-focus');
-        this.scope.listen(editor, 'input', () => {
+        this.slotScope.listen(editor, 'input', () => {
             onInput?.(editor.value);
             this.resize(editor, true);
         }, undefined, 'mimo-director-input');
-        this.scope.listen(editor, 'blur', () => {
+        this.slotScope.listen(editor, 'blur', () => {
             this.setEditing(false, editor);
             this.resize(editor, false);
         }, undefined, 'mimo-director-blur');
@@ -171,7 +171,7 @@ class MimoDirectorSlot {
         this.rowScopes.clear();
         this.list.replaceChildren();
         this.prompts.forEach((prompt, index) => {
-            const rowScope = this.scope.child(`mimo-director-row-${index}`);
+            const rowScope = this.slotScope.child(`mimo-director-row-${index}`);
             this.rowScopes.add(rowScope);
             const row = doc.createElement('div');
             row.className = 'tts-director-item';
@@ -185,7 +185,8 @@ class MimoDirectorSlot {
             const remove = doc.createElement('button');
             remove.type = 'button';
             remove.className = 'small-button tts-director-action-button';
-            remove.innerHTML = '<svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 4L12 12M12 4L4 12"/></svg>';
+            remove.innerHTML = (doc.defaultView?.VCPIcons || globalThis.VCPIcons)?.markup?.('x', { size: 12 })
+                || '<span class="vcp-ui-icon" style="--vcp-ui-icon-size: 12px" aria-hidden="true">x</span>';
             remove.title = '删除该导演提示词';
             remove.setAttribute('aria-label', `删除导演提示词 ${index + 1}`);
             rowScope.listen(remove, 'mousedown', event => event.preventDefault(), undefined, `mimo-director-row-${index}-guard`);

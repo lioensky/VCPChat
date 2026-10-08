@@ -1,5 +1,6 @@
 // modules/renderer/streamManager.js
 import { formatMessageTimestamp } from './domBuilder.js';
+import { prepareChatMediaHtml, cleanupChatMedia } from './mediaLifecycle.js';
 import { createContentPipeline, PIPELINE_MODES } from './contentPipeline.js';
 import { createContentRuntime } from '../chat/contentRuntime.js';
 import { createDesktopPushConsumer } from './desktopPushConsumer.js';
@@ -428,6 +429,7 @@ function ensureStreamingRoots(contentDiv) {
     let tailRoot = contentDiv.querySelector('.vcp-stream-tail-root');
 
     if (!stableRoot || !tailRoot) {
+        cleanupChatMedia(contentDiv);
         contentDiv.innerHTML = '';
         stableRoot = ownerDocument().createElement('div');
         stableRoot.className = 'vcp-stream-stable-root';
@@ -552,6 +554,7 @@ function appendNewStableRange(stableBlocksRoot, segmentState, textForRendering, 
 
     // 如果外部状态异常回退，宁可重置追加缓存，也不要产生重叠 block。
     if (segmentState.stableRenderedCutoff > nextStableCutoff) {
+        cleanupChatMedia(stableBlocksRoot);
         stableBlocksRoot.textContent = '';
         resetStableBlockState(segmentState);
     }
@@ -586,6 +589,7 @@ function restoreStableBlocksForRecreatedDom(stableBlocksRoot, segmentState, opti
     if (recordsAreMountedHere) return false;
 
     // 当前 root 属于新视图。先一次性清空，避免历史批量渲染与首个流式帧交错时留下半恢复结构。
+    cleanupChatMedia(stableBlocksRoot);
     stableBlocksRoot.replaceChildren();
 
     for (const record of segmentState.stableBlocks) {
@@ -1607,6 +1611,7 @@ function renderStreamFrame(messageId) {
     if (textForRendering.trim() === '') {
         let thinkingIndicator = contentDiv.querySelector('.thinking-indicator');
         if (!thinkingIndicator) {
+            cleanupChatMedia(contentDiv);
             contentDiv.replaceChildren();
             thinkingIndicator = ownerDocument().createElement('span');
             thinkingIndicator.className = 'thinking-indicator';
@@ -1674,7 +1679,7 @@ function renderStreamFrame(messageId) {
             { injectStyles: false }
         )
         : tailText;
-    const rawHtml = parseStreamTail(renderTailText);
+    const rawHtml = prepareChatMediaHtml(parseStreamTail(renderTailText), ownerDocument());
 
     if (refs.morphdom) {
         try {
@@ -1787,6 +1792,7 @@ function renderStreamFrame(messageId) {
                 if (node.classList?.contains('keep-alive')) {
                     return false;
                 }
+                cleanupChatMedia(node);
                 return true;
             },
 
@@ -1820,10 +1826,12 @@ function renderStreamFrame(messageId) {
             // 而工具请求后端可能长时间等待回执，不会继续产生可触发重绘的新文本。
             // 直接使用同一份已经过流式隔离/HTML 封印的 rawHtml 重建 tail，
             // 保证首块为 TOOL_REQUEST 时不会保持空白直到导航或终态。
+            cleanupChatMedia(tailRoot);
             tailRoot.innerHTML = rawHtml;
             console.debug('[StreamManager] morphdom rejected a stream frame; replaced the sealed tail directly.', error);
         }
     } else {
+        cleanupChatMedia(tailRoot);
         tailRoot.innerHTML = rawHtml;
     }
 
@@ -2532,7 +2540,8 @@ async function projectStreamTerminalInternal(messageId, finishReason, context, f
 
             const contentDiv = messageItem.querySelector('.md-content');
             if (contentDiv) {
-                contentDiv.querySelectorAll('.vcp-stream-stable-root, .vcp-stream-tail-root').forEach((el) => el.remove());
+                // Keep the old subtree reachable until the replacement's cleanup runs.
+                cleanupChatMedia(contentDiv);
 
                 const preparedFinal = typeof refs.prepareFinalTextForRender === 'function'
                     ? refs.prepareFinalTextForRender(messageId, finalFullText, message.role || 'assistant', historyForThisMessage)
