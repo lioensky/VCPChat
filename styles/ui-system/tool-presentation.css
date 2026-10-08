@@ -251,6 +251,8 @@ html[data-ui-mode="next"] :where(.vcp-ui-scope) [data-vcp-tool-presentation] .vc
 /* 角色分界：过程里只是一条细线和小字，不再用彩色胶囊。 */
 html[data-ui-mode="next"] :where(.vcp-ui-scope) :is([data-vcp-tool-presentation="inline"], [data-vcp-tool-presentation="process"], [data-vcp-tool-presentation="grouped"], [data-vcp-tool-presentation="compact"]) .vcp-role-divider::before { width: 16px; flex-basis: 16px; }
 html[data-ui-mode="next"] :where(.vcp-ui-scope) :is([data-vcp-tool-presentation="inline"], [data-vcp-tool-presentation="process"], [data-vcp-tool-presentation="grouped"], [data-vcp-tool-presentation="compact"]) .vcp-role-divider .divider-text { padding: 0; border: 0; background: none; font-weight: 400; }
+/* 包着工具结果的那对分界只是结果的外壳，不是用户输入，不显示。 */
+html[data-ui-mode="next"] :where(.vcp-ui-scope) :is([data-vcp-tool-presentation="inline"], [data-vcp-tool-presentation="process"], [data-vcp-tool-presentation="grouped"], [data-vcp-tool-presentation="compact"]) .vcp-role-divider[data-vcp-tool-wrapper="true"] { display: none; }
 /* 等待结果时动作词的微光，只在回复生成中出现。 */
 html[data-ui-mode="next"] :where(.vcp-ui-scope) .message-item.streaming :is([data-vcp-tool-presentation="inline"], [data-vcp-tool-presentation="process"]) [data-vcp-tool-pending="true"] .vcp-tool-row-title {
     background: linear-gradient(90deg, var(--vcp-tool-call-color) 0%, var(--vcp-ui-text-primary) 50%, var(--vcp-tool-call-color) 100%);

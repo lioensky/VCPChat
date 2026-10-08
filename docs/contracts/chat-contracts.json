@@ -613,13 +613,13 @@
       },
       {
         "file": "modules/messageRenderer.js",
-        "line": 2589,
+        "line": 2592,
         "kind": "custom-event-listener",
         "match": "target.addEventListener(type"
       },
       {
         "file": "modules/messageRenderer.js",
-        "line": 3319,
+        "line": 3322,
         "kind": "custom-event-listener",
         "match": "target.addEventListener(type"
       }

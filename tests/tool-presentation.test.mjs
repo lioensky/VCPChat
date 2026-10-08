@@ -148,3 +148,11 @@ test('grouped titles read cleanly, carry no filler badge, and the summary row sa
  const row=s.content.querySelector('.vcp-tool-call-summary-bubble .vcp-tool-row-toggle');
  assert.equal(row.querySelector('.vcp-tool-row-title').textContent,'调用摘要');assert.equal(row.querySelector('.vcp-tool-row-resource').textContent,'2 个工具，1 个失败');assert.equal(row.querySelector('.vcp-tool-row-state'),null);s.close();
 });
+test('a divider pair that wraps only results is a result shell; any other divider still ends a group',()=>{
+ const wrap=(role,inner)=>`<div class="vcp-role-divider role-${role} type-start" data-vcp-block-type="role-divider">s</div>${inner}<div class="vcp-role-divider role-${role} type-end" data-vcp-block-type="role-divider">e</div>`;
+ const html=req()+wrap('user',res())+req()+wrap('user','<p>用户插话</p>'+res('SUCCESS','b'))+req()+wrap('user',res('SUCCESS','c')).replace('role-user type-end','role-system type-end');
+ const f=fixture(html);const before=f.content.innerHTML;f.apply();
+ const shells=[...f.content.querySelectorAll('[data-vcp-tool-wrapper="true"]')];assert.equal(shells.length,2);assert.ok(shells.every(n=>n.closest('.vcp-tool-process')===f.content.querySelector('.vcp-tool-process')));
+ assert.match(f.content.querySelector('.vcp-tool-process-title').textContent,/2 请求 1 结果/);
+ f.p.toolPresentation='legacy';f.apply();assert.equal(f.content.innerHTML,before);f.close();
+});
