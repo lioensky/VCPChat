@@ -75,6 +75,22 @@ export function initWorkspaceSidePane({
     for (const definition of [defineNotificationsTabType(), defineChatTabType({ provider: sideChat.provider, openSideChat: sideChat.openSideChat, onClosed: sideChat.onTabClosed, requestClose: sideChat.requestTabClose, canOpen: () => controller.getSnapshot().parent?.itemType === 'agent' }), codeViewer, browser, terminal, toolOutput, planDetail, modelTrajectory]) {
         controller.registerTabType(definition);
     }
+    const offTerminalView = chatAPI?.onTerminalViewRequest?.(async request => {
+        try {
+            // 已挂载的标签直接复用，不因每条 AI 命令抢走用户当前标签与焦点。
+            const handle = controller.getTabHandle('terminal:main') || await terminal.provider.openTerminalTab();
+            if (!handle?.getSessionId?.()) throw new Error('侧栏终端未能连接。');
+            const data = await handle.handleTerminalRequest(request);
+            await chatAPI.terminalViewResponse({ requestId: request.requestId, success: true, data });
+        } catch (error) {
+            await chatAPI.terminalViewResponse({ requestId: request.requestId, success: false, error: error.message });
+        }
+    });
+    if (typeof offTerminalView === 'function') {
+        subscriptions.add({ dispose: offTerminalView });
+        // 激活轻量 IPC 桥并绑定主窗口；不会加载执行器或启动 shell。
+        chatAPI.terminalViewResponse({}).catch(error => console.warn('[SideTerminal] Bridge activation failed:', error));
+    }
     const offBrowserAgent = chatAPI?.onBrowserAgentRequest?.(async request => {
         try {
             const data = await browser.provider.handleAgentRequest(request);

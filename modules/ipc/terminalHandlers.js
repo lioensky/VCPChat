@@ -29,6 +29,7 @@ const CHANNELS = [
     'terminal:command-run',
     'terminal:watch-command-runs',
     'terminal:unwatch-command-runs',
+    'terminal:view-response',
 ];
 
 const EXECUTOR_PATH = path.join(__dirname, '..', '..', 'VCPDistributedServer', 'Plugin', 'PowerShellExecutor', 'PowerShellExecutor.js');
@@ -238,7 +239,7 @@ function createView(event, options = {}) {
         released = true;
         for (const [channel, payload] of pending.splice(0)) safeSend(sender, channel, payload);
     });
-    views.set(id, { id, sender, detach });
+    views.set(id, { id, sender, detach, flushData });
     trackSender(sender);
 
     return { id, pid: state.pid, cols: state.cols, rows: state.rows, shared: true, windowsPty: windowsPtyInfo() };
@@ -254,6 +255,30 @@ function windowsPtyInfo() {
     return { backend: buildNumber && buildNumber < 18309 ? 'winpty' : 'conpty', ...(buildNumber ? { buildNumber } : {}) };
 }
 
+const viewRequests = new Map();
+
+function requestTerminalView(action, params = {}) {
+    const sender = resolveWindowWebContents(getMainWindow);
+    if (!sender || sender.isDestroyed?.()) return Promise.reject(new Error('主窗口不可用，无法操作侧栏终端。'));
+    return new Promise((resolve, reject) => {
+        const requestId = `terminal-view-${++sequence}`;
+        const timer = setTimeout(() => finish(false, '侧栏终端响应超时。'), 15000);
+        const off = onSenderGone(sender, () => finish(false, '主窗口已关闭或导航。'));
+        const finish = (success, data) => {
+            if (!viewRequests.delete(requestId)) return;
+            clearTimeout(timer);
+            off?.();
+            if (success) resolve(data);
+            else reject(new Error(String(data || '侧栏终端操作失败。')));
+        };
+        viewRequests.set(requestId, { sender, finish });
+        // 先送完镜像合并队列，再发查询/粘贴请求；渲染端解析屏障才能覆盖最新输出。
+        for (const view of views.values()) if (view.sender === sender) view.flushData();
+        try { sender.send('terminal:view-request', { requestId, action, ...params }); }
+        catch (error) { finish(false, error.message); }
+    });
+}
+
 function initialize({ workspaceService = null, executorLoader = null, commandRunStoreLoader = null, mainWindow = null, getMainWindow: getWindow = null, ipcMain: injectedIpcMain = null } = {}) {
     ipcMain = injectedIpcMain || defaultIpcMain;
     getMainWindow = typeof getWindow === 'function' ? getWindow : () => mainWindow;
@@ -265,6 +290,14 @@ function initialize({ workspaceService = null, executorLoader = null, commandRun
     const denied = { success: false, error: '当前窗口无权使用终端。' };
     const missing = { success: false, error: '终端视图不存在或已关闭。' };
     const failure = (error) => ({ success: false, error: error?.message || String(error) });
+
+    ipcMain.handle('terminal:view-response', (event, payload) => {
+        if (!isAllowedSender(event)) return denied;
+        const request = viewRequests.get(payload?.requestId);
+        if (!request || request.sender !== event.sender) return missing;
+        request.finish(payload.success === true, payload.success === true ? payload.data : payload.error);
+        return { success: true };
+    });
 
     ipcMain.handle('terminal:create', (event, options) => {
         if (!isAllowedSender(event)) return denied;
@@ -385,8 +418,9 @@ function initialize({ workspaceService = null, executorLoader = null, commandRun
 }
 
 function disposeAll() {
+    for (const request of [...viewRequests.values()]) request.finish(false, '终端桥已关闭。');
     for (const view of [...views.values()]) detachView(view);
     for (const sender of [...runWatchers.keys()]) stopRunWatcher(sender);
 }
 
-module.exports = { CHANNELS, initialize, disposeAll, buildChangeDirectoryCommand };
+module.exports = { CHANNELS, initialize, disposeAll, buildChangeDirectoryCommand, requestTerminalView };

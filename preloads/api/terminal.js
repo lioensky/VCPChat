@@ -10,6 +10,8 @@ module.exports = {
     handlers: ['modules/ipc/terminalHandlers.js'],
     roles: ['chat'],
     api: {
+        terminalViewResponse: invoke('terminal:view-response', 'payload'),
+        onTerminalViewRequest: on('terminal:view-request'),
         terminalCreate: invoke('terminal:create', 'options'),
         terminalWrite: invoke('terminal:write', 'id', 'data'),
         terminalResize: invoke('terminal:resize', 'id', 'cols', 'rows'),

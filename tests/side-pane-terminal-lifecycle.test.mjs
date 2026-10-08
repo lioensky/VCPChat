@@ -364,3 +364,23 @@ test('Ctrl+C with a selection copies instead of interrupting the shared shell; p
         assert.equal(key({ key: 'a' }), true);
     } finally { await h.cleanup(); }
 });
+
+
+test('AI sidebar requests query the selected xterm and await paste input acknowledgement', async () => {
+    const h = fixture();
+    try {
+        const handle = await h.provider.openTerminalTab();
+        const term = h.terminals[0];
+        term.write = (_data, callback) => callback?.();
+        term.buffer = { active: { length: 3, getLine: index => ({ translateToString: () => ['first', '', 'last'][index] }) } };
+        assert.equal(await handle.handleTerminalRequest({ action: 'query', maxLines: 2 }), 'last');
+        assert.equal(await handle.handleTerminalRequest({ action: 'query' }), 'first\n\nlast');
+        let pasted = null;
+        term.paste = text => { pasted = text; };
+        await handle.handleTerminalRequest({ action: 'paste', text: 'hello' });
+        assert.equal(pasted, 'hello');
+        await assert.rejects(handle.handleTerminalRequest({ action: 'unknown' }), /未知/);
+        await h.controller.closeTab('terminal:main');
+        await assert.rejects(handle.handleTerminalRequest({ action: 'query' }), /关闭/);
+    } finally { await h.cleanup(); }
+});

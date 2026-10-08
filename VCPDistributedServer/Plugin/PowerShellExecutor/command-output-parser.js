@@ -60,4 +60,38 @@ class CommandOutputParser {
     }
 }
 
-module.exports = { CommandOutputParser };
+/** 保留终端光标几何，仅把内部标记改为空格；跨数据块也不泄漏半截标记。 */
+class CommandTerminalProjection {
+    constructor(markers) {
+        this.markers = markers;
+        this.pending = '';
+    }
+    push(chunk) {
+        this.pending += String(chunk);
+        let output = '';
+        while (this.pending) {
+            let index = -1, marker = null;
+            for (const candidate of this.markers) {
+                const found = this.pending.indexOf(candidate);
+                if (found >= 0 && (index < 0 || found < index)) { index = found; marker = candidate; }
+            }
+            if (index >= 0) {
+                output += this.pending.slice(0, index) + ' '.repeat(marker.length);
+                this.pending = this.pending.slice(index + marker.length);
+                continue;
+            }
+            const keep = Math.max(0, ...this.markers.map(value => partialSuffixLength(this.pending, value)));
+            output += this.pending.slice(0, this.pending.length - keep);
+            this.pending = this.pending.slice(this.pending.length - keep);
+            break;
+        }
+        return output;
+    }
+    flush() {
+        const tail = this.pending;
+        this.pending = '';
+        return tail;
+    }
+}
+
+module.exports = { CommandOutputParser, CommandTerminalProjection };

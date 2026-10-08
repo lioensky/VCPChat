@@ -210,10 +210,16 @@ export function createTerminalSideProvider({
                 session.view?.render();
             }, WRITE_REJECTED_NOTICE_MS);
         };
+        session.inputOperation = Promise.resolve();
         term.onData((data) => {
             if (data.length > WRITE_LIMIT_CHARS) noticeRejectedWrite();
-            else if (session.sessionId) api.terminalWrite?.(session.sessionId, data);
-            else if (session.connectionOperation && pendingInput.length + data.length <= PENDING_INPUT_LIMIT) pendingInput += data;
+            else if (session.sessionId) {
+                const writing = Promise.resolve(api.terminalWrite?.(session.sessionId, data)).then(result => {
+                    if (result?.success === false) throw new Error(result.error || '终端输入失败');
+                });
+                session.inputOperation = Promise.all([session.inputOperation.catch(() => {}), writing]);
+                session.inputOperation.catch(error => setStatus(error.message, 'error'));
+            } else if (session.connectionOperation && pendingInput.length + data.length <= PENDING_INPUT_LIMIT) pendingInput += data;
         });
         session.flushPendingInput = () => {
             const data = pendingInput;
@@ -601,6 +607,29 @@ export function createTerminalSideProvider({
                     session.fit();
                     term?.focus();
                     session.claimSize();
+                },
+                async handleTerminalRequest(request) {
+                    if (session.disposed || !session.sessionId) throw new Error('终端视图已关闭。');
+                    if (request.action === 'open') return { id: session.sessionId };
+                    // xterm.write 异步解析；空写回调是屏幕读取和粘贴前的解析屏障。
+                    await new Promise(resolve => term.write('', resolve));
+                    if (session.disposed) throw new Error('终端视图已关闭。');
+                    if (request.action === 'query') {
+                        const buffer = term.buffer.active;
+                        const count = Number.isInteger(request.maxLines) && request.maxLines > 0 ? Math.min(request.maxLines, 2000) : buffer.length;
+                        const lines = [];
+                        for (let i = Math.max(0, buffer.length - count); i < buffer.length; i++) {
+                            lines.push(buffer.getLine(i)?.translateToString(true) || '');
+                        }
+                        return lines.join('\n').trim();
+                    }
+                    if (request.action === 'paste') {
+                        if (typeof request.text !== 'string' || request.text.length > 100000) throw new Error('粘贴参数无效。');
+                        term.paste(request.text);
+                        await session.inputOperation;
+                        return { pasted: true };
+                    }
+                    throw new Error('未知终端视图操作。');
                 },
                 getSessionId() {
                     return session.sessionId;
