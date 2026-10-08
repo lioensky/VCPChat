@@ -545,7 +545,7 @@
     "dynamicSites": [
       {
         "file": "modules/ipc/terminalHandlers.js",
-        "line": 69,
+        "line": 70,
         "kind": "event-send",
         "match": "sender.send(channel"
       }
@@ -564,31 +564,31 @@
     "dynamicSites": [
       {
         "file": "modules/loom/VCPLoomManager.js",
-        "line": 1350,
+        "line": 1367,
         "kind": "event-listener",
         "match": "persistentSession.on(protocol.addedEvent"
       },
       {
         "file": "modules/loom/VCPLoomManager.js",
-        "line": 1351,
+        "line": 1368,
         "kind": "event-listener",
         "match": "persistentSession.on(protocol.removedEvent"
       },
       {
         "file": "modules/loom/VCPLoomManager.js",
-        "line": 1368,
+        "line": 1385,
         "kind": "event-listener",
         "match": "persistentSession.on(protocol.selectEvent"
       },
       {
         "file": "modules/loom/VCPLoomManager.js",
-        "line": 1369,
+        "line": 1386,
         "kind": "event-listener",
         "match": "persistentSession.on(protocol.revokedEvent"
       },
       {
         "file": "modules/loom/VCPLoomManager.js",
-        "line": 2308,
+        "line": 2335,
         "kind": "event-listener",
         "match": "ipcMain.handle(channel"
       }
@@ -613,13 +613,13 @@
       },
       {
         "file": "modules/messageRenderer.js",
-        "line": 2589,
+        "line": 2592,
         "kind": "custom-event-listener",
         "match": "target.addEventListener(type"
       },
       {
         "file": "modules/messageRenderer.js",
-        "line": 3319,
+        "line": 3322,
         "kind": "custom-event-listener",
         "match": "target.addEventListener(type"
       }
@@ -1123,7 +1123,7 @@
     "dynamicSites": [
       {
         "file": "modules/ui-system/side-pane/browserSideProvider.js",
-        "line": 285,
+        "line": 344,
         "kind": "custom-event-listener",
         "match": "guest.addEventListener(name"
       }
@@ -1429,6 +1429,44 @@
     ],
     "evidence": [
       "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ipc.browserhandlers",
+    "kind": "source-review",
+    "owner": "modules/ipc/browserHandlers.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "handleAgent wraps explicit browser:* channel literals in the same module; every channel is listed in CHANNELS and dispose() removes each handler. Each call checks the allowed sender first. Registration does not certify web-agent behavior.",
+    "dynamicSites": [
+      {
+        "file": "modules/ipc/browserHandlers.js",
+        "line": 228,
+        "kind": "event-listener",
+        "match": "ipcMain.handle(channel"
+      }
+    ],
+    "evidence": [
+      "Source review at upstream main d89cb793; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.loom.sidebrowserservice",
+    "kind": "source-review",
+    "owner": "modules/loom/sideBrowserService.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "listen() attaches module-local webContents event literals to the side-pane guest and records a matching removeListener; target teardown drains instance.listeners. Registration, not a measured long-session leak result.",
+    "dynamicSites": [
+      {
+        "file": "modules/loom/sideBrowserService.js",
+        "line": 106,
+        "kind": "event-listener",
+        "match": "guest.on(event"
+      }
+    ],
+    "evidence": [
+      "Source review at upstream main d89cb793; exact operation matches below; new or changed dynamic sites still fail the contract gate."
     ]
   }
 ]

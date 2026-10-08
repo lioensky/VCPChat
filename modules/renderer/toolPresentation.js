@@ -74,7 +74,26 @@ function resultPreview(block) {
 }
 function isBlank(node) {
     return node.nodeType === 3 && !node.textContent.trim()
-        || node.nodeType === 1 && (node.tagName === 'BR' || node.tagName === 'P' && !node.textContent.trim() && !node.children.length);
+        || node.nodeType === 1 && (node.tagName === 'BR' || node.tagName === 'P' && !node.textContent.trim() && !node.children.length || node.dataset.vcpToolWrapper === 'true');
+}
+const RESULT_WRAPPED = '[data-vcp-block-type="tool-result"], [data-vcp-block-type="tool-call-summary"]';
+function dividerRole(node) {
+    return [...node.classList].find(name => name.startsWith('role-')) || '';
+}
+// 服务器把工具结果包在一对同角色的分界里回传（结果在上下文里属于 user 轮）。
+// 这对分界只是结果的外壳，不是真正的用户输入：标记后既不显示，也不打断配对和归组。
+// 分界之间只要夹着别的内容（正文、请求），就仍是真分界。
+function markResultWrappers(content) {
+    for (const start of content.querySelectorAll('.vcp-role-divider.type-start')) {
+        let node = start.nextSibling, results = 0;
+        while (node && (isBlank(node) || node.nodeType === 1 && node.matches(RESULT_WRAPPED))) {
+            if (!isBlank(node)) results++;
+            node = node.nextSibling;
+        }
+        if (!results || node?.nodeType !== 1 || !node.matches('.vcp-role-divider.type-end') || dividerRole(node) !== dividerRole(start)) continue;
+        start.dataset.vcpToolWrapper = 'true';
+        node.dataset.vcpToolWrapper = 'true';
+    }
 }
 function nextBlock(node) {
     let next = node.nextSibling;
@@ -419,10 +438,12 @@ export function createToolPresentation({ root, getProfile }) {
         if (disposed || !content) return;
         capture(content);
         unwrap(content);
+        content.querySelectorAll('[data-vcp-tool-wrapper]').forEach(node => delete node.dataset.vcpToolWrapper);
         const p = profile(incomingProfile);
         content.dataset.vcpToolPresentation = p.style;
         const blocks = [...content.querySelectorAll(BLOCKS)];
         if (p.style === 'legacy') { blocks.forEach(restore); return; }
+        markResultWrappers(content);
         const occurrences = new Map();
         const owner = content.closest('.message-item');
         if (owner && blocks.length) {
@@ -443,9 +464,8 @@ export function createToolPresentation({ root, getProfile }) {
             const flush = ()=>{makeGroup(parent, members, content, p);members=[];};
             for (const node of [...parent.childNodes]) {
                 if (models.has(node)) members.push(node);
-                else if (node.nodeType === 3 && !node.textContent.trim()) { if (members.length) members.push(node); }
-                else if (node.nodeType === 1 && (node.tagName === 'BR' || node.tagName === 'P' && !node.textContent.trim() && !node.children.length)) { if(members.length)members.push(node); }
-                else flush(); // Text, role boundaries, widgets and other content end a group.
+                else if (isBlank(node)) { if (members.length) members.push(node); }
+                else flush(); // Text, real role boundaries, widgets and other content end a group.
             }
             flush();
         }

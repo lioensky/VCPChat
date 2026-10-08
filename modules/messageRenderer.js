@@ -866,7 +866,7 @@ function applyFrontendRegexRules(text, rules, role, depth) {
  * @param {Map} [codeBlockMap] Map of code block placeholders to their original content.
  * @returns {string} The processed text with special blocks as HTML.
  */
-function transformSpecialBlocks(text, codeBlockMap, thoughtChainMap = null) {
+function transformSpecialBlocks(text, codeBlockMap, thoughtChainMap = null, toolRequestSourceMap = null) {
     let processed = text;
 
     const restoreBlocks = (textStr) => {
@@ -1123,9 +1123,12 @@ function transformSpecialBlocks(text, codeBlockMap, thoughtChainMap = null) {
 
     // Process Tool Requests
     processed = replaceToolRequestBlocks(processed, (match, content) => {
+        // 保护阶段已把「始」「末」字段值转义过一次（日记分支仍按这份交给 Markdown）。
+        // 工具气泡在输出处自己转义，必须用原文，否则引号等会显示成 &#039;。
+        const source = toolRequestSourceMap?.get(match) ?? content;
         const detectedToolName = extractMarkedField(content, /tool_name:\s*/i);
         const detectedCommand = extractMarkedField(content, /command:\s*/i);
-        const detectedJev = parseJevToolUse(extractMarkedField(content, /JEV:\s*/i));
+        const detectedJev = parseJevToolUse(extractMarkedField(source, /JEV:\s*/i));
         const normalizedToolName = (detectedToolName || '').trim().toLowerCase();
         const normalizedCommand = (detectedCommand || '').trim().toLowerCase();
 
@@ -1168,7 +1171,7 @@ function transformSpecialBlocks(text, codeBlockMap, thoughtChainMap = null) {
         } else if (detectedJev) {
             // JEV 是自然语言工具入口的兼容展示分支，不替代既有 tool_name/XML 协议。
             // 显式单引号工具名优先；未显式指定时才展示能力名称。
-            const escapedFullContent = escapeHtml(restoreBlocks(content))
+            const escapedFullContent = escapeHtml(restoreBlocks(source))
                 .replace(/\r\n?|\n/g, '&#10;');
             const jevLabel = detectedJev.displayName ? 'JEVToolUse:' : 'JEVToolUse';
             const jevNameHtml = detectedJev.displayName
@@ -1184,10 +1187,10 @@ function transformSpecialBlocks(text, codeBlockMap, thoughtChainMap = null) {
                 `</div>\n\n`;
         } else {
             // --- It's a regular tool call, render it normally ---
-            const xmlToolNameMatch = content.match(/<tool_name>([\s\S]*?)<\/tool_name>/i);
+            const xmlToolNameMatch = source.match(/<tool_name>([\s\S]*?)<\/tool_name>/i);
 
             let toolName = '';
-            let extractedName = (xmlToolNameMatch?.[1] || detectedToolName || '').trim();
+            let extractedName = (xmlToolNameMatch?.[1] || extractMarkedField(source, /tool_name:\s*/i) || '').trim();
             if (extractedName) {
                 extractedName = extractedName.replace(/[「{](?:始|末)(?:[Ee][Ss][Cc][Aa][Pp][Ee])?[」}]/gi, '').replace(/,$/, '').trim();
             }
@@ -1195,7 +1198,7 @@ function transformSpecialBlocks(text, codeBlockMap, thoughtChainMap = null) {
                 toolName = extractedName;
             }
 
-            const malformedFields = findMalformedToolFields(content);
+            const malformedFields = findMalformedToolFields(source);
             const markerProblem = describeToolRequestMarkerProblem({ toolName, malformedFields });
             toolName = markerProblem.displayName;
             const malformedClass = markerProblem.isMalformed ? ' is-malformed' : '';
@@ -1207,7 +1210,7 @@ function transformSpecialBlocks(text, codeBlockMap, thoughtChainMap = null) {
             // <pre>，空行会终止 CommonMark raw HTML block，导致后续 Markdown 被浏览器
             // 收进尚未闭合的 <pre>，表现为“后续渲染被吞”。用字符实体保存换行，使整个
             // 气泡对 Markdown 解析器保持为单行、不可拆分 HTML；写入 DOM 后仍显示为换行。
-            const escapedFullContent = escapeHtml(restoreBlocks(content))
+            const escapedFullContent = escapeHtml(restoreBlocks(source))
                 .replace(/\r\n?|\n/g, '&#10;');
             /*
              * ToolUse 载荷可能包含超长单行 JSON / JavaScript。折叠时若仍把
@@ -2742,8 +2745,8 @@ function initializeMessageRenderer(refs) {
         deIndentHtml,
         deIndentToolRequestBlocks: contentProcessor.deIndentToolRequestBlocks,
         applyContentProcessors: contentProcessor.applyContentProcessors,
-        transformSpecialBlocks: (text, codeBlockMap, thoughtChainMap) =>
-            transformSpecialBlocks(text, codeBlockMap, thoughtChainMap),
+        transformSpecialBlocks: (text, codeBlockMap, thoughtChainMap, toolRequestSourceMap) =>
+            transformSpecialBlocks(text, codeBlockMap, thoughtChainMap, toolRequestSourceMap),
         ensureHtmlFenced,
         transformFlowlockBlocks: (text) => {
             if (!mainRendererReferences.flowlockProtocol || typeof mainRendererReferences.flowlockProtocol.transformForRender !== 'function') {
