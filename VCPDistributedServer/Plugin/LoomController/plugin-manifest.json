@@ -1,7 +1,7 @@
 {
   "name": "LoomController",
   "displayName": "VCP Loom Agent 控制器",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "description": "供 Agent 创建、感知、打开、关闭、导航、查询、编辑并通过 appId + 自然页面命令安全操作 VCP LoomAPP 的直接业务适配器。常用交互使用 NavigateBack、NavigateForward、NavigateHome、ReloadPage、click、type、send_keys、scroll 等一级命令与平铺参数。",
   "pluginType": "hybridservice",
   "communication": {
@@ -14,6 +14,31 @@
   },
   "capabilities": {
     "invocationCommands": [
+      {
+        "command": "OpenVCPChatBrowser",
+        "description": "打开用户可见的 VCPChat 侧栏协作浏览器，创建新标签并初始化 AgentWebCore。url 为完整 HTTP/HTTPS 地址。返回固定 appId=vcpchat-browser、targetId、网址和 ready。后续页面操作必须携带该 targetId（与元素 target 不同），避免用户切换标签造成误操作。页面是用户和 AI 共享的同一个实例，不另开 Loom 窗口。验证码、登录或其他需人工处理的步骤请使用 RequestBrowserAssistance，不尝试绕过验证。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」OpenVCPChatBrowser「末」,\nurl:「始」https://www.bing.com/search?q=VCP「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "list_tabs",
+        "description": "列出官方侧栏浏览器的已挂载页面目标，包括 targetId、标题、URL、活动状态和人工协作状态。appId 固定 vcpchat-browser。页面读取 GetPageInfo、点击、输入、截图等也使用同一 appId，并携带明确 targetId。标签最多 12 个。"
+      },
+      {
+        "command": "switch_tab",
+        "description": "显示并激活指定侧栏浏览器标签。appId=vcpchat-browser，target 或 targetId 必须为 list_tabs/OpenVCPChatBrowser 返回的精确标签标识，不进行模糊匹配。"
+      },
+      {
+        "command": "close_tab",
+        "description": "关闭指定侧栏浏览器标签。appId=vcpchat-browser，targetId 指定标签；省略时选择活动浏览器目标。关闭不清除持久化登录会话。"
+      },
+      {
+        "command": "open_url",
+        "description": "通过 WebCore target_open 在官方侧栏浏览器中新建标签并打开 URL。appId=vcpchat-browser，url 必填。等价打开入口为 OpenVCPChatBrowser。"
+      },
+      {
+        "command": "RequestBrowserAssistance",
+        "description": "请求用户接管侧栏浏览器页面。targetId 必填，message 为面向用户的协助原因，例如需要手动完成验证码或登录。打开对应标签并显示协作提示，立即返回 waiting，不阻塞工具请求。等待期间禁止 AI 页面写操作；用户点击已完成后才能继续，取消协作也不会自动恢复写操作。用 list_tabs/GetPageInfo 查询状态。必须在聊天中说明求助原因，确认完成后重新读取页面，不重放旧的点击或提交。"
+      },
       {
         "command": "CreateSkill",
         "description": "把 Agent 已经测试过的完整编号串语法直接编译为持久化 Skill，不使用录制器。顶层必填 skillId、appId、title；description 可选。后续沿用普通串语法：command1/target1/text1、command2/waitMs2、command3/keys3 等。输入内容可写 {{变量名}}，并须在 placeholders JSON 中声明；执行时由 inputs 提供，缺失会在任何页面动作前失败。validationMode 可选：current（默认）只读取当前 DOM，不实际操作；能解析的 vcp ID 会固化成来源、唯一选择器和元素签名，不能解析时仍保留原始目标并返回 validated=false、fallback=raw-vcp-id；trial 会使用占位符 example/default 顺序实际执行整链并验证，任何目标或动作失败则不创建；none 完全跳过 DOM 验证。返回 skillId、占位符配置结果、逐目标验证/兜底结果及是否实际试跑。重名拒绝覆盖。",

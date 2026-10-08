@@ -256,3 +256,31 @@ html .side-browser-menu-item:disabled:where(.vcp-ui-scope, .vcp-ui-scope *) {
     cursor: default;
 }
 
+
+/* 协作接管提示位于可信宿主工具栏下方，不注入远程网页。 */
+html .side-browser-assistance:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 10px;
+    color: var(--vcp-ui-text-primary, inherit);
+    background: var(--vcp-ui-color-background, Canvas);
+    border-bottom: 1px solid var(--border-color, currentColor);
+}
+
+html .side-browser-assistance[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }
+
+html .side-browser-assistance-text:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 1 1 100%;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+html .side-browser-assistance .side-browser-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    width: auto;
+    height: auto;
+    padding: 6px 10px;
+    border: 1px solid var(--border-color, currentColor);
+    border-radius: 6px;
+}

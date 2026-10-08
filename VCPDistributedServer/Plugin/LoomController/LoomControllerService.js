@@ -24,6 +24,9 @@ const DIRECT_ACTION_COMMANDS = Object.freeze(new Set([
     'page_code_search',
     'execute_script',
     'capture_screenshot',
+    'list_tabs', 'switch_tab', 'close_tab', 'open_url',
+    'target_list', 'target_get_active', 'target_open', 'target_activate',
+    'target_close', 'target_navigate', 'target_reload', 'target_back', 'target_forward',
 ]));
 
 const ACTION_ID_ALIASES = Object.freeze({
@@ -448,7 +451,7 @@ async function processSerialToolCall(rawArgs) {
             }
 
             const businessCommands = new Set([
-                'openapp', 'closeapp',
+                'openapp', 'closeapp', 'openvcpchatbrowser', 'requestbrowserassistance',
                 'navigateback', 'navigateforward', 'navigatehome', 'reloadpage',
                 'getpageinfo', 'get_page_info', 'page_get_info',
                 'getrenderedtext', 'getpageimage', 'get_page_image', 'page_get_image',
@@ -669,7 +672,7 @@ async function getAppSources(args) {
 
 async function getRuntimeSource(args) {
     const appId = requireAppId(args);
-    const source = await requireManager().readRuntimeSource(appId);
+    const source = await requireManager().readRuntimeSource(appId, { targetId: args.targetId });
     const fence = source.source.includes('```') ? '````' : '```';
     const text = [
         `# LoomAPP 当前运行时源码：${source.title || appId}`,
@@ -693,7 +696,9 @@ async function getRuntimeSource(args) {
 async function getRenderedText(args) {
     const appId = requireAppId(args);
     const refresh = optionalBoolean(args.refresh, true);
-    const snapshot = await requireManager().readRenderedText(appId, { refresh });
+    const snapshot = await requireManager().readRenderedText(appId, {
+        refresh, ...(args.targetId !== undefined ? { targetId: args.targetId } : {}),
+    });
     const text = [
         `# LoomAPP 已渲染成功文本：${snapshot.title || appId}`,
         '',
@@ -713,7 +718,7 @@ async function getRenderedText(args) {
 
 async function getPageInfo(args) {
     const appId = requireAppId(args);
-    const pageInfo = await requireManager().getWebAgentPageInfo(appId);
+    const pageInfo = await requireManager().getWebAgentPageInfo(appId, { targetId: args.targetId });
     return textResult(pageInfo.markdown || [
         `# LoomAPP 页面状态：${pageInfo.title || appId}`,
         '',
@@ -733,6 +738,7 @@ async function getPageImage(args) {
     const imageId = requireImageId(args);
     const params = {
         imageId,
+        ...(args.targetId !== undefined ? { targetId: args.targetId } : {}),
     };
     for (const field of [
         'format',
@@ -885,6 +891,44 @@ async function processToolCall(rawArgs = {}) {
         return processSerialToolCall(rawArgs);
     }
     switch (command) {
+        case 'openvcpchatbrowser': {
+            const browser = await requireManager().sideBrowser.open({ url: rawArgs.url });
+            return textResult([
+                '# VCPChat 侧栏浏览器已打开',
+                '',
+                `- App ID：${browser.appId}`,
+                `- Target ID：${browser.targetId}`,
+                `- 页面：${browser.title || '浏览器'}`,
+                `- URL：${browser.url}`,
+                `- 页面控制就绪：${browser.ready === true ? '是' : '否'}`,
+                '',
+                '打开操作已完成。后续使用上述 App ID 和 Target ID 调用 GetPageInfo 获取页面内容，再执行点击、输入或检索操作。',
+            ].join('\n'), {
+                command: 'OpenVCPChatBrowser',
+                appId: browser.appId,
+                targetId: browser.targetId,
+                browser,
+            });
+        }
+        case 'requestbrowserassistance': {
+            const browser = await requireManager().sideBrowser.requestAssistance(rawArgs.targetId, rawArgs.message);
+            return textResult([
+                '# 已请求用户协助浏览器操作',
+                '',
+                `- App ID：${browser.appId}`,
+                `- Target ID：${browser.targetId}`,
+                `- URL：${browser.url}`,
+                `- 协作状态：${browser.assistance?.status || 'waiting'}`,
+                `- 协助原因：${browser.assistance?.message || rawArgs.message || '需要用户接管页面'}`,
+                '',
+                '求助请求已提交，本次工具调用已完成，不会等待用户操作。请向用户说明原因；等待期间不要执行页面写操作。用户确认完成后重新调用 GetPageInfo。',
+            ].join('\n'), {
+                command: 'RequestBrowserAssistance',
+                appId: browser.appId,
+                targetId: browser.targetId,
+                browser,
+            });
+        }
         case 'listapps':
             return listApps();
         case 'listopenapps':

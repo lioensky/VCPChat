@@ -135,6 +135,27 @@ export function createBrowserSideProvider({
         kind,
         openBrowserTab,
 
+        async handleAgentRequest({ action, params = {} }) {
+            if (action === 'open') {
+                const handle = await openBrowserTab({ url: params.url, forceNew: true });
+                if (!handle) throw new Error('侧栏浏览器未能打开。');
+                await handle.whenRegistered();
+                return { targetId: handle.getTargetId() };
+            }
+            const tab = sidePaneController.getSnapshot().tabs.find(t => t.kind === kind && t.id === params.targetId);
+            if (!tab) throw new Error('浏览器标签不存在。');
+            if (action === 'close') {
+                await sidePaneController.closeTab(tab.id);
+                return { targetId: tab.id };
+            }
+            const handle = await sidePaneController.openTab(tab);
+            sidePaneController.setVisible(true);
+            await handle.whenRegistered();
+            if (action === 'assist') handle.showAssistance(params.assistance);
+            else if (action !== 'activate') throw new Error('未知浏览器宿主动作。');
+            return { targetId: tab.id };
+        },
+
         async mountTab(tab, viewElement, { scope: viewScope = null } = {}) {
             if (!viewElement) return null;
             subscribeOpenTab();
@@ -148,6 +169,27 @@ export function createBrowserSideProvider({
             let attached = false;
             let domReady = false;
             let currentUrl = '';
+            let registeredGuestId = null;
+            let registration = null;
+            let resolveRegistration;
+            let rejectRegistration;
+            const registered = new Promise((resolve, reject) => {
+                resolveRegistration = resolve; rejectRegistration = reject;
+            });
+            registered.catch(() => {});
+            const registerGuest = () => {
+                if (registration || !api?.browserRegisterTarget || !webview?.getWebContentsId) return;
+                const guestId = webview.getWebContentsId();
+                registeredGuestId = guestId;
+                registration = api.browserRegisterTarget(tab.id, guestId).then(res => {
+                    if (!res?.success) throw new Error(res?.error || '浏览器目标注册失败。');
+                    if (disposed()) {
+                        void api.browserUnregisterTarget?.(tab.id, guestId);
+                        return;
+                    }
+                    resolveRegistration(res.data);
+                }).catch(error => rejectRegistration(error));
+            };
             let loading = false;
             // 静音的视频、摄像头预览也算在播：isCurrentlyAudible 只认出声的
             let mediaPlaying = false;
@@ -209,8 +251,25 @@ export function createBrowserSideProvider({
             const noticeRetry = el('button', 'side-browser-notice-retry', { type: 'button' });
             notice.append(noticeTitle, noticeDetail, noticeHint, noticeRetry);
             body.append(empty, notice);
+            const assistanceBox = el('div', 'side-browser-assistance', { role: 'status' });
+            assistanceBox.hidden = true;
+            const assistanceText = el('span', 'side-browser-assistance-text');
+            const completeBtn = el('button', 'side-browser-btn', { type: 'button' });
+            completeBtn.textContent = '已完成，允许 AI 继续';
+            const cancelBtn = el('button', 'side-browser-btn', { type: 'button' });
+            cancelBtn.textContent = '取消协作';
+            assistanceBox.append(assistanceText, completeBtn, cancelBtn);
+            let assistance = null;
+            const finishAssistance = async cancelled => {
+                if (!assistance) return;
+                const res = await api.browserCompleteAssistance?.(tab.id, assistance.requestId, cancelled);
+                if (res?.success) { assistance = null; assistanceBox.hidden = true; }
+                else toast(res?.error || '接管状态更新失败', 'warning');
+            };
+            own.listen(completeBtn, 'click', () => void finishAssistance(false));
+            own.listen(cancelBtn, 'click', () => void finishAssistance(true));
 
-            container.append(toolbar, body, menu);
+            container.append(toolbar, assistanceBox, body, menu);
             viewElement.appendChild(container);
 
             const hasPage = () => Boolean(webview);
@@ -295,10 +354,12 @@ export function createBrowserSideProvider({
                 };
                 on('did-attach', () => {
                     attached = true;
+                    registerGuest();
                     flushPendingNavigation();
                 });
                 on('dom-ready', () => {
                     domReady = true;
+                    registerGuest();
                     flushPendingNavigation();
                 });
                 on('did-start-loading', () => {
@@ -367,6 +428,9 @@ export function createBrowserSideProvider({
             }
 
             function resetWebview() {
+                if (registeredGuestId !== null) void api?.browserUnregisterTarget?.(tab.id, registeredGuestId);
+                registeredGuestId = null;
+                registration = null;
                 if (webview) {
                     const old = webview;
                     webview = null;
@@ -528,6 +592,8 @@ export function createBrowserSideProvider({
             }, 'browser-tab-entry', 'subscription');
             // 网页视图最先拆：后登记的先释放，监听和登记在它之后
             own.own(() => {
+                rejectRegistration(new Error('浏览器标签已释放。'));
+                if (registeredGuestId !== null) void api?.browserUnregisterTarget?.(tab.id, registeredGuestId);
                 if (webview) {
                     webview.remove();
                     webview = null;
@@ -535,8 +601,19 @@ export function createBrowserSideProvider({
             }, 'webview', 'dom');
 
             return {
+                getTargetId() { return tab.id; },
+                whenRegistered() { return registered; },
+                showAssistance(value) {
+                    assistance = value;
+                    assistanceText.textContent = `AI 请求协助：${value.message}`;
+                    assistanceBox.hidden = false;
+                    webview?.focus?.();
+                },
+                resume() { void api?.browserActiveTarget?.(tab.id); },
+                suspend() {},
                 focus() {
                     if (!hasPage()) address.focus();
+                    else void api?.browserActiveTarget?.(tab.id);
                 },
                 getUrl() {
                     return currentUrl;
@@ -548,7 +625,9 @@ export function createBrowserSideProvider({
                 },
                 // 还在加载、在放声音或在放视频的页面不休眠，休眠了再显示会从当前地址重新打开
                 isBusy() {
-                    if (loading || mediaPlaying) return true;
+                    // Registered collaborative pages keep their DOM, form state and
+                    // verification session until explicitly closed, not silently slept.
+                    if (registeredGuestId !== null || assistance || loading || mediaPlaying) return true;
                     try {
                         return domReady && webview?.isCurrentlyAudible?.() === true;
                     } catch (_error) {

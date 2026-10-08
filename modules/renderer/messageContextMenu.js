@@ -278,7 +278,7 @@ function showContextMenu(event, messageItem, message) {
         if (currentSelectedItemVal.type === 'agent' && typeof ownerWindow?.openSideChatWithSelection === 'function') {
             const sideChatOption = ownerDocument.createElement('div');
             sideChatOption.classList.add('context-menu-item');
-            sideChatOption.innerHTML = `<i class="fas fa-columns"></i> 在侧栏提问`;
+            sideChatOption.innerHTML = `<i class="fas fa-columns"></i> 侧栏提问`;
             sideChatOption.onclick = async () => {
                 closeContextMenu();
                 if (typeof ownerWindow?.openSideChatWithSelection === 'function') {
@@ -471,7 +471,7 @@ function showContextMenu(event, messageItem, message) {
         if (message.role === 'assistant' && message.id && ownerCommands?.get('sidepane.open-trajectory')) {
             const trajectoryOption = ownerDocument.createElement('div');
             trajectoryOption.classList.add('context-menu-item');
-            trajectoryOption.innerHTML = `<i class="fas fa-route"></i> 查看调用轨迹`;
+            trajectoryOption.innerHTML = `<i class="fas fa-route"></i> 调用轨迹`;
             trajectoryOption.onclick = () => {
                 closeContextMenu();
                 ownerCommands.execute('sidepane.open-trajectory', { requestId: message.id });

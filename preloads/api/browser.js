@@ -9,6 +9,12 @@ module.exports = {
     handlers: ['modules/ipc/browserHandlers.js'],
     roles: ['chat'],
     api: {
+        browserRegisterTarget: invoke('browser:register-target', 'tabId', 'guestId'),
+        browserUnregisterTarget: invoke('browser:unregister-target', 'tabId', 'guestId'),
+        browserAgentResponse: invoke('browser:agent-response', 'payload'),
+        browserActiveTarget: invoke('browser:active-target', 'tabId'),
+        browserCompleteAssistance: invoke('browser:complete-assistance', 'tabId', 'requestId', 'cancelled'),
+        onBrowserAgentRequest: on('browser:agent-request'),
         browserOpenExternal: invoke('browser:open-external', 'url'),
         browserClearData: invoke('browser:clear-data'),
         onBrowserOpenTab: on('browser:open-tab'),

@@ -195,6 +195,60 @@ async function run() {
         logger: console,
     });
 
+    manager.sideBrowser = {
+        async open({ url }) {
+            return {
+                appId: 'vcpchat-browser', targetId: 'browser:1',
+                title: 'Google', url, ready: true,
+            };
+        },
+        async requestAssistance(targetId, message) {
+            return {
+                appId: 'vcpchat-browser', targetId,
+                url: 'https://www.google.com/',
+                assistance: { status: 'waiting', message },
+            };
+        },
+    };
+    const browserOpened = await loomController.processToolCall({
+        command: 'OpenVCPChatBrowser', url: 'https://www.google.com/',
+    });
+    assertContentResult(browserOpened);
+    assert(browserOpened.content[0].text.includes('\n\n- App ID：vcpchat-browser'));
+    assert(!browserOpened.content[0].text.includes('\\n'));
+    assert.strictEqual(browserOpened.details.targetId, 'browser:1');
+    const assistance = await loomController.processToolCall({
+        command: 'RequestBrowserAssistance', targetId: 'browser:1', message: '请手动登录',
+    });
+    assertContentResult(assistance);
+    assert(assistance.content[0].text.includes('\n\n- App ID：vcpchat-browser'));
+    assert(!assistance.content[0].text.includes('\\n'));
+
+    // 走真实分布式回包入口，确保通知之外的工具结果也保留给主服务器。
+    const DistributedServer = require('../VCPDistributedServer/VCPDistributedServer');
+    const pluginManager = require('../VCPDistributedServer/Plugin');
+    const originalProcessToolCall = pluginManager.processToolCall;
+    const originalGetPlugin = pluginManager.getPlugin;
+    const sent = [];
+    try {
+        pluginManager.processToolCall = (_name, args) => loomController.processToolCall(args);
+        pluginManager.getPlugin = () => loomManifest;
+        await DistributedServer.prototype.handleToolExecutionRequest.call({
+            serverName: 'test', debugMode: false,
+            sendMessage: payload => sent.push(JSON.parse(JSON.stringify(payload))),
+        }, {
+            requestId: 'browser-open-test', toolName: 'LoomController',
+            toolArgs: { command: 'OpenVCPChatBrowser', url: 'https://www.google.com/' },
+        });
+        assert.strictEqual(sent[0].type, 'tool_result');
+        assert.strictEqual(sent[0].data.status, 'success');
+        assert.deepStrictEqual(sent[0].data.result, browserOpened);
+        assertContentResult(sent[0].data.result);
+    } finally {
+        pluginManager.processToolCall = originalProcessToolCall;
+        pluginManager.getPlugin = originalGetPlugin;
+    }
+
     const listed = await loomController.processToolCall({ command: 'ListApps' });
     assertContentResult(listed);
     assert.strictEqual(listed.details.count, 1);

@@ -75,6 +75,15 @@ export function initWorkspaceSidePane({
     for (const definition of [defineNotificationsTabType(), defineChatTabType({ provider: sideChat.provider, openSideChat: sideChat.openSideChat, onClosed: sideChat.onTabClosed, requestClose: sideChat.requestTabClose, canOpen: () => controller.getSnapshot().parent?.itemType === 'agent' }), codeViewer, browser, terminal, toolOutput, planDetail, modelTrajectory]) {
         controller.registerTabType(definition);
     }
+    const offBrowserAgent = chatAPI?.onBrowserAgentRequest?.(async request => {
+        try {
+            const data = await browser.provider.handleAgentRequest(request);
+            await chatAPI.browserAgentResponse({ requestId: request.requestId, success: true, data });
+        } catch (error) {
+            await chatAPI.browserAgentResponse({ requestId: request.requestId, success: false, error: error.message });
+        }
+    });
+    if (typeof offBrowserAgent === 'function') subscriptions.add({ dispose: offBrowserAgent });
     // 焦点在侧栏网页里时按键到不了这个窗口，主进程截下副屏快捷键转过来
     const unsubscribeBrowserShortcut = chatAPI?.onBrowserSidePaneShortcut?.((shortcut) => {
         if (shortcut?.action === 'toggle') controller.toggleFromUser();

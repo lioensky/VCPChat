@@ -18,17 +18,19 @@ class SenderTaskRegistry {
             return owner;
         }
         const onDestroyed = () => this.cancelSender(sender, 'sender-destroyed', { releaseOwner: true });
-        const onDidStartLoading = () => this.cancelSender(
-            sender,
-            'sender-navigation',
-            { predicate: entry => entry.cancelOnNavigation === true }
-        );
+        // 加载状态不能证明宿主文档被替换：嵌入网页/子框架加载不应取消聊天。
+        const onDidStartNavigation = (_event, _url, isInPlace, isMainFrame) => {
+            if (isMainFrame !== true || isInPlace === true) return;
+            this.cancelSender(sender, 'sender-navigation', {
+                predicate: entry => entry.cancelOnNavigation === true,
+            });
+        };
         const onRenderProcessGone = () => this.cancelSender(
             sender,
             'sender-render-process-gone',
             { predicate: entry => entry.cancelOnNavigation === true }
         );
-        owner = { sender, tasks: new Map(), onDestroyed, onDidStartLoading, onRenderProcessGone, navigationBound: false };
+        owner = { sender, tasks: new Map(), onDestroyed, onDidStartNavigation, onRenderProcessGone, navigationBound: false };
         this.owners.set(sender.id, owner);
         sender.once?.('destroyed', onDestroyed);
         return owner;
@@ -53,7 +55,7 @@ class SenderTaskRegistry {
         };
         owner.tasks.set(requestId, entry);
         if (entry.cancelOnNavigation && !owner.navigationBound) {
-            sender.on?.('did-start-loading', owner.onDidStartLoading);
+            sender.on?.('did-start-navigation', owner.onDidStartNavigation);
             sender.on?.('render-process-gone', owner.onRenderProcessGone);
             owner.navigationBound = true;
         }
@@ -71,7 +73,7 @@ class SenderTaskRegistry {
         if (!owner.tasks.size) {
             sender.removeListener?.('destroyed', owner.onDestroyed);
             if (owner.navigationBound) {
-                sender.removeListener?.('did-start-loading', owner.onDidStartLoading);
+                sender.removeListener?.('did-start-navigation', owner.onDidStartNavigation);
                 sender.removeListener?.('render-process-gone', owner.onRenderProcessGone);
             }
             this.owners.delete(sender.id);
@@ -114,7 +116,7 @@ class SenderTaskRegistry {
         if (options.releaseOwner === true) {
             sender.removeListener?.('destroyed', owner.onDestroyed);
             if (owner.navigationBound) {
-                sender.removeListener?.('did-start-loading', owner.onDidStartLoading);
+                sender.removeListener?.('did-start-navigation', owner.onDidStartNavigation);
                 sender.removeListener?.('render-process-gone', owner.onRenderProcessGone);
             }
             this.owners.delete(sender.id);
@@ -140,7 +142,7 @@ class SenderTaskRegistry {
             this.cancelSender(owner.sender, reason);
             owner.sender.removeListener?.('destroyed', owner.onDestroyed);
             if (owner.navigationBound) {
-                owner.sender.removeListener?.('did-start-loading', owner.onDidStartLoading);
+                owner.sender.removeListener?.('did-start-navigation', owner.onDidStartNavigation);
                 owner.sender.removeListener?.('render-process-gone', owner.onRenderProcessGone);
             }
         });

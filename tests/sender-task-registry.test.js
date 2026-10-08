@@ -76,10 +76,17 @@ test('navigation aborts only document-owned work and releases its listener', () 
     const owner = sender(4);
     const documentTask = registry.begin(owner, 'stream', 'chat:stream', { cancelOnNavigation: true });
     const windowTask = registry.begin(owner, 'window-task', 'embedded:create');
-    assert.equal(owner.listenerCount('did-start-loading'), 1);
+    assert.equal(owner.listenerCount('did-start-loading'), 0);
+    assert.equal(owner.listenerCount('did-start-navigation'), 1);
     assert.equal(owner.listenerCount('render-process-gone'), 1);
 
     owner.emit('did-start-loading');
+    assert.equal(documentTask.controller.signal.aborted, false, 'loading alone must not cancel a chat stream');
+    owner.emit('did-start-navigation', {}, 'https://www.google.com/', false, false);
+    assert.equal(documentTask.controller.signal.aborted, false, 'subframe navigation must not cancel a chat stream');
+    owner.emit('did-start-navigation', {}, 'file:///main.html#tab', true, true);
+    assert.equal(documentTask.controller.signal.aborted, false, 'same-document navigation must not cancel a chat stream');
+    owner.emit('did-start-navigation', {}, 'file:///main.html', false, true);
     assert.equal(documentTask.controller.signal.aborted, true);
     assert.equal(documentTask.controller.signal.reason, 'sender-navigation');
     assert.equal(windowTask.controller.signal.aborted, false);
@@ -87,6 +94,7 @@ test('navigation aborts only document-owned work and releases its listener', () 
     registry.finish(owner, 'stream');
     registry.finish(owner, 'window-task');
     assert.equal(owner.listenerCount('did-start-loading'), 0);
+    assert.equal(owner.listenerCount('did-start-navigation'), 0);
     assert.equal(owner.listenerCount('render-process-gone'), 0);
     assert.equal(owner.listenerCount('destroyed'), 0);
     assert.deepEqual(registry.snapshot(), []);

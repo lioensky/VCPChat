@@ -28,7 +28,10 @@ const POPUP_PROTOCOLS = new Set(['http:', 'https:']);
 const POPUP_ACTIVATION_MS = 3000;
 const ACTIVATION_INPUTS = new Set(['mouseDown', 'keyDown', 'rawKeyDown', 'touchStart', 'gestureTap']);
 const EXTERNAL_PROTOCOLS = new Set(['http:', 'https:']);
-const CHANNELS = ['browser:open-external', 'browser:clear-data'];
+const CHANNELS = ['browser:open-external', 'browser:clear-data', 'browser:register-target',
+    'browser:unregister-target', 'browser:agent-response', 'browser:active-target', 'browser:complete-assistance'];
+const ownedGuests = new WeakMap();
+const sideBrowser = () => require('../loom/VCPLoomManager').getManager()?.sideBrowser;
 
 let guestSession = null;
 const configuredSessions = new WeakSet();
@@ -184,7 +187,11 @@ function attachToWindow(mainWindow) {
         });
     });
 
+    const guests = new Map();
+    ownedGuests.set(host, guests);
     host.on('did-attach-webview', (_event, guest) => {
+        guests.set(guest.id, guest);
+        guest.once('destroyed', () => guests.delete(guest.id));
         // 最近一次真实输入；开过一个弹窗或交出一次下载就作废，下一个要等下一次输入
         guest.on('input-event', (_event, input) => {
             if (ACTIVATION_INPUTS.has(input?.type)) lastActivation.set(guest, Date.now());
@@ -217,6 +224,31 @@ function initialize({ mainWindow = null, getMainWindow: getWindow = null, ipcMai
     getMainWindow = typeof getWindow === 'function' ? getWindow : () => mainWindow;
     dispose();
     configureGuestSession(getGuestSession());
+
+    const handleAgent = (channel, fn) => ipcMain.handle(channel, async (event, ...args) => {
+        if (!isAllowedSender(event)) return { success: false, error: 'Unauthorized sender' };
+        try {
+            const service = sideBrowser();
+            if (!service) throw new Error('Loom 浏览器服务尚未就绪。');
+            return { success: true, data: await fn(service, event.sender, ...args) };
+        } catch (error) { return { success: false, error: error.message, code: error.code }; }
+    });
+    handleAgent('browser:register-target', (service, sender, tabId, guestId) => {
+        const guest = ownedGuests.get(sender)?.get(guestId);
+        if (!guest || guest.isDestroyed()) throw new Error('网页不属于当前主窗口。');
+        return service.register(sender, tabId, guest);
+    });
+    handleAgent('browser:unregister-target', (service, sender, tabId, guestId) => service.unregister(sender, tabId, guestId));
+    handleAgent('browser:agent-response', (service, sender, payload) => service.respond(sender, payload));
+    handleAgent('browser:active-target', (service, sender, tabId) => {
+        if (tabId === null) { service.activeId = null; return null; }
+        const instance = service.resolve(tabId);
+        if (instance.sender !== sender) throw new Error('网页不属于当前主窗口。');
+        service.activeId = instance.tabId;
+        return service.describe(instance);
+    });
+    handleAgent('browser:complete-assistance', (service, sender, tabId, requestId, cancelled) =>
+        service.completeAssistance(sender, tabId, requestId, cancelled === true));
 
     ipcMain.handle('browser:open-external', async (event, url) => {
         if (!isAllowedSender(event)) return { success: false, error: 'Unauthorized sender' };

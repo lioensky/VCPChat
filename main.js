@@ -1815,6 +1815,7 @@ if (!gotTheLock) {
             }
         });
         loomManager = await loomManagerModule.initialize({
+            getMainWindow: () => mainWindow,
             projectRoot: PROJECT_ROOT,
             appDataRoot: APP_DATA_ROOT_IN_PROJECT,
             mainWindow,
