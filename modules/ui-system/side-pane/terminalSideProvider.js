@@ -108,6 +108,8 @@ export function createTerminalSideProvider({
             disposed: false,
             generation: 0, // guards against a late create result after dispose / re-attach
             connectionOperation: null,
+            workspaceId: GO_OPTION_VALUE,
+            directoryOperation: false,
             status: { text: '连接中...', state: 'pending', title: '' },
             view: null, // 当前挂着的视图：{ render() }
             dispose: null
@@ -260,6 +262,8 @@ export function createTerminalSideProvider({
         const unsubscribeClear = api.onTerminalClear?.((payload) => {
             if (payload?.id !== session.sessionId) return;
             term.reset();
+            session.workspaceId = GO_OPTION_VALUE;
+            session.view?.render();
             if (session.exited) {
                 session.exited = false;
                 setStatus('已连接终端', 'connected');
@@ -521,7 +525,11 @@ export function createTerminalSideProvider({
             // 会话本身跟着 occurrence 走，不放进来
             const own = createSidePaneRootScope(viewScope, 'terminal');
             let cancelFit = null;
-            const view = { render: () => renderStatus(session.status) };
+            const view = { render: () => {
+                renderStatus(session.status);
+                wsSelect.value = session.workspaceId;
+                wsSelect.disabled = session.directoryOperation || wsSelect.options.length <= 1;
+            } };
             session.view = view;
             view.render();
 
@@ -545,20 +553,31 @@ export function createTerminalSideProvider({
 
             own.listen(wsSelect, 'change', async () => {
                 const workspaceId = wsSelect.value;
-                wsSelect.value = GO_OPTION_VALUE;
-                if (!workspaceId || !session.sessionId) return;
+                if (session.directoryOperation || !workspaceId || !session.sessionId) {
+                    view.render();
+                    return;
+                }
                 if (session.exited) {
                     session.setStatus('终端已退出，请先重新启动', 'error');
                     return;
                 }
-                const res = await api.terminalChangeDirectory(session.sessionId, workspaceId);
-                if (session.disposed) return;
-                if (!res?.success) {
-                    session.setStatus(res?.error || '切换目录失败', 'error');
-                    return;
+                const generation = session.generation;
+                session.directoryOperation = true;
+                wsSelect.disabled = true;
+                try {
+                    const res = await api.terminalChangeDirectory(session.sessionId, workspaceId);
+                    if (session.disposed || generation !== session.generation) return;
+                    if (!res?.success) throw new Error(res?.error || '切换目录失败');
+                    // 这里只表示最近一次已提交的跳转，不冒充 shell 的实时 cwd。
+                    session.workspaceId = workspaceId;
+                    session.setStatus('已连接终端', 'connected', `最近跳转目录：${res.data?.cwd || workspaceId}`);
+                    if (own.active) term.focus();
+                } catch (error) {
+                    if (!session.disposed && generation === session.generation) session.setStatus(error?.message || String(error), 'error');
+                } finally {
+                    session.directoryOperation = false;
+                    session.view?.render();
                 }
-                session.setStatus('已连接终端', 'connected', session.status.title);
-                term.focus();
             });
             own.listen(restartBtn, 'click', () => {
                 // 先把焦点交给终端再重启：要确认时确认框接过焦点、关掉后还回终端。

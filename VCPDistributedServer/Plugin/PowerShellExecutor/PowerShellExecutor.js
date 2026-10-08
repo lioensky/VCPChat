@@ -1228,6 +1228,11 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
         let settled = false;
         let tempScriptPath = null;
         let wrapperScriptPath = null;
+        let receiptPath = null;
+        let receiptTimer = null;
+        let receiptSeenAt = 0;
+        let lastDataAt = Date.now();
+        let observedOutput = '';
         let listenerDisposable = null;
         let timeoutId = null;
 
@@ -1263,7 +1268,8 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
             if (activeCommandAbort === abortThisCommand) {
                 activeCommandAbort = null;
             }
-            for (const scriptPath of [tempScriptPath, wrapperScriptPath]) {
+            if (receiptTimer) clearInterval(receiptTimer);
+            for (const scriptPath of [tempScriptPath, wrapperScriptPath, receiptPath]) {
                 if (!scriptPath) continue;
                 try {
                     fs.unlinkSync(scriptPath);
@@ -1280,6 +1286,8 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
                 return;
             }
 
+            lastDataAt = Date.now();
+            observedOutput = (observedOutput + data.toString('utf-8')).slice(-COMMAND_RUN_RAW_LIMIT);
             const result = outputParser.push(data.toString('utf-8'));
             rawOutputTruncated ||= rawOutput.length + result.output.length > COMMAND_RUN_RAW_LIMIT;
             rawOutput = (rawOutput + result.output).slice(-COMMAND_RUN_RAW_LIMIT);
@@ -1314,6 +1322,24 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
             fs.writeFileSync(tempScriptPath, `\ufeff${singleCommand}`, 'utf8');
 
             const escapedTempScriptPath = tempScriptPath.replace(/'/g, "''");
+            receiptPath = path.join(os.tmpdir(), `vcp-done-${crypto.randomUUID()}.txt`);
+            const escapedReceiptPath = receiptPath.replace(/'/g, "''");
+            // 完成状态走文件，不依赖 ConPTY 对长标记的换行、光标寻址或重绘。
+            receiptTimer = setInterval(() => {
+                if (settled || !fs.existsSync(receiptPath)) return;
+                const now = Date.now();
+                if (!receiptSeenAt) receiptSeenAt = now;
+                // 文件完成不代表 PTY 已送完：等待静默，持续刷屏也最多等待一秒。
+                if (now - lastDataAt < 250 && now - receiptSeenAt < 1000) return;
+                settled = true;
+                const fallback = !outputParser.started;
+                const output = fallback ? observedOutput : rawOutput;
+                finishCommandRun(run, 'completed');
+                cleanupListener(listenerDisposable, timeoutId);
+                resolve('[完成回执已确认；PTY 结束标记未连续送达，末尾输出可能包含终端重绘]\\n'
+                    + (rawOutputTruncated ? '[输出超过容量限制，仅保留末尾内容]\\n' : '')
+                    + sanitizeTerminalOutput(output).trim());
+            }, 50);
 
             // 边界标记只写进包装脚本，不出现在交互式命令行里：
             // PowerShell/PSReadLine 会先回显整行输入，若标记出现在回显里，就会被误判为真实输出。
@@ -1327,7 +1353,7 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
                 // 即使临时脚本发生 ParserError / RuntimeException，也必须输出 end boundary，
                 // 否则 AI 调用会一直等待直到超时。终止性错误要在结束标记之前打印，
                 // 否则 PowerShell 会在命令行结束后才显示它，AI 拿到的输出就是空的。
-                `try { & '${escapedTempScriptPath}' | Out-Host } catch { $_ | Out-Host } finally { Write-Host '${endBoundary}' }`
+                `try { & '${escapedTempScriptPath}' | Out-Host } catch { $_ | Out-Host } finally { try { [System.IO.File]::WriteAllText('${escapedReceiptPath}', 'completed') } finally { Write-Host '${endBoundary}' } }`
             ].join('\r\n');
             wrapperScriptPath = path.join(os.tmpdir(), `vcp-run-${crypto.randomUUID()}.ps1`);
             fs.writeFileSync(wrapperScriptPath, `\ufeff${wrapperScript}`, 'utf8');

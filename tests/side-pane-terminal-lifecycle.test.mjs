@@ -50,7 +50,7 @@ function fixture({ create = async () => ({ success: true, data: { id: 'view:1', 
             return { Terminal, FitAddon: null };
         }, onOpenUrl, uiHelper });
     controller.registerProvider('terminal', provider);
-    return { dom, controller, provider, doc, terminals, killed, creates, restarts, listeners,
+    return { dom, controller, provider, doc, api, terminals, killed, creates, restarts, listeners,
         get unsubscriptions() { return unsubscriptions; }, get xtermLoads() { return xtermLoads; }, get confirmations() { return confirmations; },
         status: () => root.querySelector('.side-terminal-status'),
         retry: () => root.querySelector('[data-action="restart"]'),
@@ -382,5 +382,30 @@ test('AI sidebar requests query the selected xterm and await paste input acknowl
         await assert.rejects(handle.handleTerminalRequest({ action: 'unknown' }), /未知/);
         await h.controller.closeTab('terminal:main');
         await assert.rejects(handle.handleTerminalRequest({ action: 'query' }), /关闭/);
+    } finally { await h.cleanup(); }
+});
+test('workspace shortcut retains accepted selection, restores on rejection and clears on session reset', async () => {
+    const h = fixture();
+    h.api.gitListWorkspaces = async () => ({ data: { workspaces: [
+        { id: 'chat', alias: 'vcpchat', path: 'H:/chat' },
+        { id: 'box', alias: 'toolbox', path: 'H:/box' }
+    ] } });
+    h.api.terminalChangeDirectory = async () => ({ success: true, data: { cwd: 'H:/chat' } });
+    try {
+        await h.provider.openTerminalTab();
+        const select = h.doc.querySelector('.side-terminal-ws-select');
+        select.value = 'chat';
+        select.dispatchEvent(new h.dom.window.Event('change'));
+        await settle();
+        assert.equal(select.value, 'chat');
+        assert.equal(select.disabled, false);
+        h.api.terminalChangeDirectory = async () => { throw new Error('IPC rejected'); };
+        select.value = 'box';
+        select.dispatchEvent(new h.dom.window.Event('change'));
+        await settle();
+        assert.equal(select.value, 'chat');
+        assert.match(h.status().textContent, /IPC rejected/);
+        h.listeners.get('clear')({ id: 'view:1' });
+        assert.equal(select.value, '');
     } finally { await h.cleanup(); }
 });
