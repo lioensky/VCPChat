@@ -13,8 +13,8 @@ const crypto = require('crypto');
 const readline = require('readline');
 const { spawn } = require('child_process');
 
-// 2：新增 facts 方法（P3 链路事实）
-const PROTOCOL_VERSION = 2;
+// 3：新增 binary 节区拓扑、香农熵与 BinaryFacts 事实
+const PROTOCOL_VERSION = 3;
 const STARTUP_TIMEOUT_MS = 10_000;
 const OUTLINE_TIMEOUT_MS = 15_000;
 const SEARCH_TIMEOUT_MS = 90_000;
@@ -22,6 +22,11 @@ const MAX_RESTARTS = 5;
 const STABLE_RESET_MS = 60_000;
 const OUTLINE_CACHE_MAX = 300;
 const MAX_TEXT_BYTES = 8 * 1024 * 1024;
+
+const BINARY_EXTENSIONS = new Set([
+    '.exe', '.dll', '.so', '.dylib', '.node', '.wasm', '.bin',
+    '.o', '.obj', '.a', '.lib', '.pdb',
+]);
 
 const SUPPORTED_EXT = new Map([
     ['.js', 'javascript'], ['.mjs', 'javascript'], ['.cjs', 'javascript'], ['.jsx', 'javascript'],
@@ -36,10 +41,15 @@ const SUPPORTED_EXT = new Map([
     ['.lua', 'lua'],
 ]);
 
-function langOf(filePath) {
-    return SUPPORTED_EXT.get(path.extname(String(filePath || '')).toLowerCase()) || null;
+function isBinaryPath(filePath) {
+    const ext = path.extname(String(filePath || '')).toLowerCase();
+    return BINARY_EXTENSIONS.has(ext);
 }
 
+function langOf(filePath) {
+    if (isBinaryPath(filePath)) return 'binary';
+    return SUPPORTED_EXT.get(path.extname(String(filePath || '')).toLowerCase()) || null;
+}
 function resolveDefaultBinaryPath(platform = process.platform, arch = process.arch) {
     const name = platform === 'win32' ? 'projectforge_indexer.exe' : 'projectforge_indexer';
     let dir = path.join(__dirname, 'bin', `${platform}-${arch}`);
@@ -230,16 +240,21 @@ class IndexerClient {
     async outline(text, filePath) {
         const lang = langOf(filePath);
         if (!lang || !this.usable) return null;
+        const isBin = lang === 'binary';
         const body = String(text ?? '');
-        if (Buffer.byteLength(body, 'utf8') > MAX_TEXT_BYTES) return null;
-        const key = `${lang}:${crypto.createHash('sha256').update(body).digest('hex')}`;
+        if (!isBin && Buffer.byteLength(body, 'utf8') > MAX_TEXT_BYTES) return null;
+
+        const cacheKeyInput = isBin ? String(filePath) : body;
+        const key = `${lang}:${crypto.createHash('sha256').update(cacheKeyInput).digest('hex')}`;
         const hit = this.cache.get(key);
         if (hit) {
             this.cache.delete(key);
             this.cache.set(key, hit); // LRU
             return hit;
         }
-        const result = await this._request('outline', { text: body, lang }, OUTLINE_TIMEOUT_MS);
+
+        const params = isBin ? { path: path.resolve(String(filePath)) } : { text: body, lang };
+        const result = await this._request('outline', params, OUTLINE_TIMEOUT_MS);
         if (!result) return null;
         this.cache.set(key, result);
         while (this.cache.size > OUTLINE_CACHE_MAX) this.cache.delete(this.cache.keys().next().value);

@@ -24,6 +24,7 @@ const T = require('../../shared/fileKit/text');
 const { validateCode, diffDiagnostics, isValidatable } = require('../../shared/fileKit/validator');
 const { unifiedDiff } = require('../../shared/fileKit/diff');
 const { readFilesAsContent } = require('../../shared/fileKit/reader');
+const { isBinaryExtension, parseBinaryBuffer } = require('../../shared/fileKit/binaryReader');
 const { textResult, partsResult, formatDiagnostics } = require('../../shared/fileKit/output');
 
 const P = '[ProjectForge]';
@@ -753,6 +754,30 @@ async function outlineCmd(args) {
     for (const file of files.slice(0, runtime.readMaxFiles)) {
         const disk = await readDisk(file.abs);
         if (!disk.exists) { blocks.push(`### \`${file.rel}\`\n- 文件不存在`); continue; }
+
+        if (isBinaryExtension(file.rel)) {
+            let outline = await outlineOf(file.rel, null);
+            if (!outline) {
+                try {
+                    outline = parseBinaryBuffer(disk.buffer, file.rel, disk.buffer.length);
+                } catch {
+                    // 安全忽略，后续判断统一报错
+                }
+            }
+            if (!outline) { blocks.push(`### \`${file.rel}\`\n- ${astUnavailableReason(file.rel)}`); continue; }
+            if (outline.isBinary) {
+                const secLines = (outline.sections || []).map(s => `  - 节区 \`${s.name}\` · VAddr: ${s.virtualAddress} | Raw: ${(s.rawSize / 1024).toFixed(1)} KB | Perm: ${s.permissions} | Entropy: ${s.entropy} (${s.entropyStatus})`);
+                const symLines = (outline.symbols || []).map(s => `  - 导出 \`${s.name}\` · RVA: ${s.rva}${s.demangled && s.demangled !== s.name ? ` (${s.demangled})` : ''}`);
+                blocks.push([
+                    `### \`${file.rel}\` · ${outline.format || 'Binary'} / ${outline.architecture || 'unknown'} · 节区 ${outline.sections?.length || 0} / 导出 ${outline.symbols?.length || 0}`,
+                    secLines.length ? secLines.join('\n') : '- （无节区信息）',
+                    symLines.length ? symLines.join('\n') : '- （无导出符号）',
+                ].join('\n'));
+                details.push({ path: file.rel, isBinary: true, format: outline.format, architecture: outline.architecture, sections: outline.sections, symbols: outline.symbols });
+                continue;
+            }
+        }
+
         let meta;
         try { meta = decodeText(disk.buffer, file.rel); } catch (error) { blocks.push(`### \`${file.rel}\`\n- ${error.message}`); continue; }
         const outline = await outlineOf(file.rel, meta.text);

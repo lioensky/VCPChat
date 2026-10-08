@@ -23,6 +23,7 @@ use crate::facts::{extract_facts, html_facts, FileFacts};
 use crate::lang::Lang;
 use crate::symbols::{outline, Outline, Symbol};
 
+use crate::binary;
 pub const DEFAULT_IGNORED_DIRS: &[&str] = &[
     ".git", ".svn", ".hg",
     "node_modules", "bower_components", "jspm_packages", ".pnpm-store", ".yarn",
@@ -77,6 +78,7 @@ pub struct Cache {
 enum FactKind {
     Source(Lang),
     Html,
+    Binary,
 }
 
 fn fact_kind(path: &Path) -> Option<FactKind> {
@@ -84,6 +86,9 @@ fn fact_kind(path: &Path) -> Option<FactKind> {
         if name == "go.mod" {
             return Some(FactKind::Source(Lang::Go));
         }
+    }
+    if Lang::is_binary_path(path) {
+        return Some(FactKind::Binary);
     }
     let ext = path.extension()?.to_str()?.to_ascii_lowercase();
     if ext == "html" || ext == "htm" {
@@ -99,11 +104,22 @@ pub struct FactsFile {
     #[serde(flatten)]
     pub facts: FileFacts,
 }
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BinaryFactsFile {
+    pub path: String,
+    pub format: String,
+    pub architecture: String,
+    pub exports: Vec<String>,
+    pub imports: Vec<String>,
+}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FactsResult {
     pub files: Vec<FactsFile>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub binary_files: Vec<BinaryFactsFile>,
     pub scanned: usize,
     pub parsed: usize,
     pub truncated: bool,
@@ -256,19 +272,26 @@ impl Cache {
         let scanned = files.len();
         let bridge_key = bridge.join(",");
         let mut fresh: Vec<(PathBuf, Arc<FileFacts>)> = Vec::with_capacity(files.len());
-        let mut dirty: Vec<(PathBuf, FactKind, u128, u64)> = Vec::new();
+        let mut dirty_source: Vec<(PathBuf, FactKind, u128, u64)> = Vec::new();
+        let mut binary_paths: Vec<PathBuf> = Vec::new();
+
         for (path, kind) in files {
             let Ok(meta) = fs::metadata(&path) else { continue };
+            if matches!(kind, FactKind::Binary) {
+                binary_paths.push(path);
+                continue;
+            }
             if meta.len() > MAX_FILE_BYTES {
                 continue;
             }
             let (m, s) = (mtime_ms(&meta), meta.len());
             match self.facts.get(&path) {
                 Some(e) if e.mtime_ms == m && e.size == s && e.bridge_key == bridge_key => fresh.push((path, e.facts.clone())),
-                _ => dirty.push((path, kind, m, s)),
+                _ => dirty_source.push((path, kind, m, s)),
             }
         }
-        let parsed: Vec<(PathBuf, FactsEntry)> = dirty
+
+        let parsed: Vec<(PathBuf, FactsEntry)> = dirty_source
             .into_par_iter()
             .map_init(Parser::new, |parser, (path, kind, m, s)| {
                 let bytes = fs::read(&path).ok()?;
@@ -276,6 +299,7 @@ impl Cache {
                 let facts = match kind {
                     FactKind::Source(lang) => extract_facts(lang, &text, parser, bridge, Some(&path)).ok()?,
                     FactKind::Html => html_facts(&text, parser, bridge),
+                    FactKind::Binary => return None,
                 };
                 Some((path, FactsEntry { mtime_ms: m, size: s, bridge_key: bridge_key.clone(), facts: Arc::new(facts) }))
             })
@@ -289,13 +313,29 @@ impl Cache {
             fresh.push((path.clone(), entry.facts.clone()));
             self.facts.insert(path, entry);
         }
+
+        // 并行提取二进制文件事实 (导出符号与依赖库)
+        let binary_files: Vec<BinaryFactsFile> = binary_paths
+            .into_par_iter()
+            .filter_map(|path| {
+                let meta = binary::parse_binary(&path).ok()?;
+                Some(BinaryFactsFile {
+                    path: to_posix(root, &path),
+                    format: meta.format,
+                    architecture: meta.architecture,
+                    exports: meta.symbols.into_iter().map(|s| s.name).collect(),
+                    imports: meta.imports.into_iter().map(|i| i.library).collect(),
+                })
+            })
+            .collect();
+
         // 保留无出边孤立源文件作为合法图顶点（Vertex），确保反向被依赖能正确解析到目标文件
         let mut out: Vec<FactsFile> = fresh
             .into_iter()
             .map(|(ref p, ref f)| FactsFile { path: to_posix(root, p.as_path()), facts: (**f).clone() })
             .collect();
         out.sort_by(|a, b| a.path.cmp(&b.path));
-        Ok(FactsResult { files: out, scanned, parsed: parsed_count, truncated })
+        Ok(FactsResult { files: out, binary_files, scanned, parsed: parsed_count, truncated })
     }
 
     pub fn search(&mut self, root: &Path, q: &Query) -> Result<SearchResult, String> {

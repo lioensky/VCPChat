@@ -101,6 +101,21 @@ impl Lang {
         Lang::from_name(ext)
     }
 
+    /// 判断是否为编译型二进制扩展名
+    pub fn is_binary_extension(ext: &str) -> bool {
+        matches!(
+            ext.trim().trim_start_matches('.').to_ascii_lowercase().as_str(),
+            "exe" | "dll" | "so" | "node" | "dylib" | "wasm" | "bin" | "o" | "obj" | "a" | "lib" | "pdb"
+        )
+    }
+
+    /// 从文件路径判断是否为二进制文件
+    pub fn is_binary_path(path: &Path) -> bool {
+        path.extension()
+            .and_then(|ext| ext.to_str())
+            .map(Self::is_binary_extension)
+            .unwrap_or(false)
+    }
     pub fn ts_language(self) -> Language {
         match self {
             Lang::JavaScript => tree_sitter_javascript::LANGUAGE.into(),

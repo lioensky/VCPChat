@@ -16,6 +16,7 @@
 //! - `clearCache`、`shutdown`。
 
 mod facts;
+mod binary;
 mod lang;
 mod scan;
 mod symbols;
@@ -30,7 +31,7 @@ use tree_sitter::Parser;
 use lang::Lang;
 use scan::{Cache, Query};
 
-pub const PROTOCOL_VERSION: u32 = 2;
+pub const PROTOCOL_VERSION: u32 = 3;
 const MAX_TEXT_BYTES: usize = 8 * 1024 * 1024;
 
 struct Failure {
@@ -69,6 +70,17 @@ fn handle(state: &mut State, method: &str, params: &Value) -> Result<Value, Fail
     match method {
         "ping" => Ok(json!({ "pong": true, "cached": state.cache.len() })),
         "outline" => {
+            let path_opt = str_param(params, "path");
+            let lang_opt = str_param(params, "lang");
+            let is_bin = path_opt.is_some_and(|p| Lang::is_binary_path(Path::new(p)))
+                || lang_opt == Some("binary");
+
+            if is_bin {
+                let p = path_opt.ok_or_else(|| fail("INVALID_PARAMS", "二进制 outline 需要 path 参数"))?;
+                let meta = binary::parse_binary(Path::new(p)).map_err(|e| fail("PARSE_FAILED", e))?;
+                return serde_json::to_value(meta).map_err(|e| fail("INTERNAL", e.to_string()));
+            }
+
             let text = params
                 .get("text")
                 .and_then(Value::as_str)
@@ -76,9 +88,9 @@ fn handle(state: &mut State, method: &str, params: &Value) -> Result<Value, Fail
             if text.len() > MAX_TEXT_BYTES {
                 return Err(fail("TOO_LARGE", format!("文本超过 {MAX_TEXT_BYTES} 字节上限")));
             }
-            let lang = str_param(params, "lang")
+            let lang = lang_opt
                 .and_then(Lang::from_name)
-                .or_else(|| str_param(params, "path").and_then(|p| Lang::from_path(Path::new(p))))
+                .or_else(|| path_opt.and_then(|p| Lang::from_path(Path::new(p))))
                 .ok_or_else(|| fail("UNSUPPORTED_LANG", "不支持的语言"))?;
             let o = symbols::outline(lang, text, &mut state.parser).map_err(|e| fail("PARSE_FAILED", e))?;
             serde_json::to_value(o).map_err(|e| fail("INTERNAL", e.to_string()))
@@ -131,7 +143,8 @@ fn write_line(out: &mut impl Write, value: &Value) -> io::Result<()> {
 fn main() {
     let stdout = io::stdout();
     let mut out = stdout.lock();
-    let languages: Vec<&str> = Lang::ALL.iter().map(|l| l.name()).collect();
+    let mut languages: Vec<&str> = Lang::ALL.iter().map(|l| l.name()).collect();
+    languages.push("binary");
     if write_line(&mut out, &json!({ "type": "ready", "protocolVersion": PROTOCOL_VERSION, "languages": languages })).is_err() {
         return;
     }
