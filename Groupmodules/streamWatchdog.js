@@ -39,6 +39,28 @@ function clearToolApprovals() {
     pending.clear();
 }
 
+/** 保留非 Error 拒绝值；响应头超时不属于用户主动取消。 */
+function getGroupErrorMessage(error) {
+    if (typeof error?.message === 'string' && error.message) return error.message;
+    if (typeof error === 'string' && error) return error;
+    try {
+        return JSON.stringify(error) || '未知错误';
+    } catch {
+        return '无法序列化的错误';
+    }
+}
+
+function normalizeGroupFetchError(error, controller, timeoutMs) {
+    if (controller.signal.aborted && controller.signal.reason === 'ttft_timeout') {
+        const timeout = new Error(`等待 VCP 响应头超过 ${Math.round(timeoutMs / 1000)} 秒，已中止本轮请求。`, { cause: error });
+        timeout.name = 'TimeoutError';
+        return timeout;
+    }
+    if (error instanceof Error) return error;
+    const normalized = new Error(getGroupErrorMessage(error), { cause: error });
+    if (error?.name === 'AbortError') normalized.name = 'AbortError';
+    return normalized;
+}
 // 看门狗用字符串原因 abort（'chunk_idle_timeout'），reader 抛出的就是这个字符串，没有 .message；用户中止不带原因，抛的是 AbortError
 function isWatchdogAbort(streamError, controller) {
     return typeof streamError === 'string' || (controller.signal.aborted && typeof controller.signal.reason === 'string' && streamError?.name !== 'AbortError');
@@ -50,4 +72,4 @@ function withWatchdogNote(content, idleMs) {
     return content ? `${content}\n\n${note}` : note;
 }
 
-module.exports = { noteToolApprovalMessage, isWaitingForToolApproval, clearToolApprovals, isWatchdogAbort, withWatchdogNote, MAX_HOLD_MS };
+module.exports = { noteToolApprovalMessage, isWaitingForToolApproval, clearToolApprovals, isWatchdogAbort, withWatchdogNote, getGroupErrorMessage, normalizeGroupFetchError, MAX_HOLD_MS };

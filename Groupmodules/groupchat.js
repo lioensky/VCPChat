@@ -28,7 +28,7 @@ const {
 
 // 话题标题管理模块
 const topicTitleManager = require('./topicTitleManager');
-const { noteToolApprovalMessage, isWaitingForToolApproval, isWatchdogAbort, withWatchdogNote } = require('./streamWatchdog');
+const { noteToolApprovalMessage, isWaitingForToolApproval, isWatchdogAbort, withWatchdogNote, getGroupErrorMessage, normalizeGroupFetchError } = require('./streamWatchdog');
 const { resolveGroupChatUrl } = require('./groupChatUrl');
 
 // 模式注册表 - 添加新模式只需在此注册
@@ -1223,7 +1223,7 @@ ${canvasData.errors || 'No errors'}
             };
 
             // === 分阶段弹性超时设计 (Phased Timeout Architecture) ===
-            // 阶段 1: TTFT 首包/思考宽容窗口 (120秒/2分钟)，容纳深度思考与排队，不提早误杀
+            // 阶段 1: 等待 HTTP 响应头 (120秒)；fetch 返回即清除，不等待正文或 reasoning
             // 阶段 2: 块间流式看门狗 (62秒)，开始收到流数据后若连续 62秒无新数据则熔断僵死
             const GROUP_TTFT_TIMEOUT_MS = 120000;
             const GROUP_CHUNK_IDLE_TIMEOUT_MS = 62000;
@@ -1259,7 +1259,8 @@ ${canvasData.errors || 'No errors'}
                     signal: controller.signal
                 });
             } catch (fetchError) {
-            trajectoryCall.finish({ error: fetchError, aborted: fetchError?.name === 'AbortError' });
+                fetchError = normalizeGroupFetchError(fetchError, controller, GROUP_TTFT_TIMEOUT_MS);
+                trajectoryCall.finish({ error: fetchError, aborted: controller.signal.aborted });
                 clearTimeout(activeTimer);
                 if (fetchError.name === 'AbortError') {
                     console.log(`[GroupChat] VCP fetch for ${agentName} was aborted before stream began.`);
@@ -1489,6 +1490,7 @@ ${canvasData.errors || 'No errors'}
                activeRequestControllers.delete(messageIdForAgentResponse);
            }
         } catch (error) {
+            if (!(error instanceof Error)) error = new Error(getGroupErrorMessage(error), { cause: error });
             console.error(`[GroupChat] Error during response for Agent ${agentName}:`, error);
             const errorText = `[System Message] ${agentName} failed to respond: ${error.message}`;
             const errorResponse = { role: 'assistant', name: agentName, agentId: agentId, content: errorText, timestamp: Date.now(), id: messageIdForAgentResponse };
@@ -1863,7 +1865,7 @@ ${canvasData.errors || 'No errors'}
         };
 
         // === 分阶段弹性超时设计 (Phased Timeout Architecture) - Jev / 点名邀请 ===
-        // 阶段 1: TTFT 首包/思考宽容窗口 (120秒/2分钟)，容纳深度思考与排队，不提早误杀
+        // 阶段 1: 等待 HTTP 响应头 (120秒)；fetch 返回即清除，不等待正文或 reasoning
         // 阶段 2: 块间流式看门狗 (62秒)，开始收到流数据后若连续 62秒无新数据则熔断僵死
         const GROUP_TTFT_TIMEOUT_MS = 120000;
         const GROUP_CHUNK_IDLE_TIMEOUT_MS = 62000;
@@ -1903,7 +1905,8 @@ ${canvasData.errors || 'No errors'}
                 signal: controller.signal
             });
         } catch (fetchError) {
-        trajectoryCall.finish({ error: fetchError, aborted: fetchError?.name === 'AbortError' });
+            fetchError = normalizeGroupFetchError(fetchError, controller, GROUP_TTFT_TIMEOUT_MS);
+            trajectoryCall.finish({ error: fetchError, aborted: controller.signal.aborted });
             clearTimeout(activeTimer);
             if (fetchError.name === 'AbortError') {
                 console.log(`[GroupChat Invite] VCP fetch for ${agentName} was aborted before stream began.`);
@@ -2118,6 +2121,7 @@ ${canvasData.errors || 'No errors'}
         }
 
     } catch (error) {
+        if (!(error instanceof Error)) error = new Error(getGroupErrorMessage(error), { cause: error });
         console.error(`[GroupChat Invite] Error responding for agent ${agentName}:`, error);
         const errorText = `[System Message] ${agentName} failed to respond (invite): ${error.message}`;
         const errorResponse = { role: 'assistant', name: agentName, agentId: invitedAgentId, content: errorText, timestamp: Date.now(), id: messageIdForAgentResponse };
