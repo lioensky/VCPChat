@@ -23,3 +23,24 @@ test('main chat DOM bindings fail fast when the canonical contract is incomplete
     assert.throws(() => createMainChatDomBindings(null), /owning document/);
     dom.window.close();
 });
+
+test('main chat DOM bindings resolve side pane elements when present', () => {
+    const markupWithSidePane = requiredMarkup + `
+      <aside class="vcp-side-pane" id="vcpSidePane">
+        <div class="side-pane-tabs"></div>
+        <div class="side-pane-content-container"></div>
+      </aside>
+      <button id="toggleSidePaneChatBtn"></button>
+      <button id="closeSidePaneBtn"></button>
+      <button id="addSidePaneChatBtn"></button>
+    `;
+    const dom = new JSDOM(markupWithSidePane);
+    const bindings = createMainChatDomBindings(dom.window.document);
+    assert.equal(bindings.vcpSidePane.id, 'vcpSidePane');
+    assert.ok(bindings.sidePaneTabs);
+    assert.ok(bindings.sidePaneContentContainer);
+    assert.equal(bindings.toggleSidePaneChatBtn.id, 'toggleSidePaneChatBtn');
+    assert.equal(bindings.closeSidePaneBtn.id, 'closeSidePaneBtn');
+    assert.equal(bindings.addSidePaneChatBtn.id, 'addSidePaneChatBtn');
+    dom.window.close();
+});

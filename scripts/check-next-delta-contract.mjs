@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import { JSDOM } from 'jsdom';
 
 const read = file => fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
@@ -24,8 +25,13 @@ for (const retiredFile of [
     assert.equal(exists(retiredFile), false, `${retiredFile} must not return without a production consumer`);
 }
 assert.equal(document.documentElement.dataset.uiMode, 'next', 'main.html must declare the canonical presentation');
-assert.doesNotMatch(read('preloads/shared/catalog.js'), /onUiModeUpdated|ui-mode-updated/,
-    'preload must not expose a presentation subscription without a sender and consumer');
+const { describeApis } = createRequire(import.meta.url)('../preloads/core/registry.js');
+for (const api of describeApis()) {
+    assert.notEqual(api.name, 'onUiModeUpdated',
+        'preload must not expose the retired presentation subscription');
+    assert.notEqual(api.channel, 'ui-mode-updated',
+        'preload must not expose a presentation subscription without a sender and consumer');
+}
 assert.doesNotMatch(read('modules/renderer/streamManager.js'), /\binitStreamManager\b/,
     'StreamProjection must not retain the retired initStreamManager compatibility facade');
 

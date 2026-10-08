@@ -3,6 +3,7 @@ const { ipcMain } = require('electron');
 const fs = require('fs-extra');
 const path = require('path');
 const { pathToFileURL } = require('url');
+const { clearTrajectoriesOfOwner } = require('../modelTrajectory');
 
 let AGENT_DIR_CACHE; // Cache the agent directory path
 let USER_DATA_DIR_CACHE; // Cache the user data directory path
@@ -23,7 +24,12 @@ async function findAvatarUrl(agentDir, cacheBust = false) {
         const avatarPath = path.join(agentDir, `avatar${ext}`);
         if (await fs.pathExists(avatarPath)) {
             const url = pathToFileURL(avatarPath).toString();
-            return cacheBust ? `${url}?t=${Date.now()}` : url;
+            // Version by modification time: the URL changes when the avatar
+            // does, so lists can reuse the cached image instead of
+            // re-downloading every avatar on every refresh.
+            const stat = await fs.stat(avatarPath).catch(() => null);
+            const version = stat ? Math.round(stat.mtimeMs) : (cacheBust ? Date.now() : null);
+            return version === null ? url : `${url}?v=${version}`;
         }
     }
     return null;
@@ -446,6 +452,7 @@ function initialize(context) {
             const userDataAgentDir = path.join(USER_DATA_DIR, agentId);
             if (await fs.pathExists(agentDir)) await fs.remove(agentDir);
             if (await fs.pathExists(userDataAgentDir)) await fs.remove(userDataAgentDir);
+            await clearTrajectoriesOfOwner({ agentId }); // 侧栏「调用轨迹」按话题落盘的请求记录，助手没了就一起删
             invalidateCaches();
             return { success: true, message: `Agent ${agentId} 已删除。` };
         } catch (error) {

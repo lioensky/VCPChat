@@ -973,9 +973,14 @@ function initialize(options) {
 
             const title = sanitizeNoteFileName(rawTitle || content.split(/\r?\n/).find(Boolean)?.slice(0, 30) || '便签');
             const existingPath = typeof noteData.filePath === 'string' ? noteData.filePath : '';
-            const shouldOverwrite = existingPath
-                && path.dirname(existingPath) === NOTES_DIR
-                && path.extname(existingPath).toLowerCase() === '.md'
+            // Overwrite an existing note anywhere under the notes root (sub-folders included);
+            // anything else is saved as a new note in the root.
+            const relativeToRoot = existingPath ? path.relative(NOTES_DIR, path.resolve(existingPath)) : '';
+            const isInsideNotesRoot = Boolean(relativeToRoot)
+                && !relativeToRoot.startsWith('..')
+                && !path.isAbsolute(relativeToRoot);
+            const shouldOverwrite = isInsideNotesRoot
+                && ['.md', '.txt'].includes(path.extname(existingPath).toLowerCase())
                 && await fs.pathExists(existingPath);
 
             const targetPath = shouldOverwrite

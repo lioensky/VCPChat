@@ -5,6 +5,13 @@ on:
   pull_request:
     paths:
       - 'renderer.js'
+      - 'main.js'
+      - 'style.css'
+      - 'Groupmodules/**'
+      - 'ProjectForgemodules/**'
+      - 'VCPDistributedServer/Plugin/PowerShellExecutor/**'
+      - 'VCPDistributedServer/Plugin/ProjectForge/**'
+      - 'vendor/xterm/**'
       - 'main.html'
       - 'modules/**'
       - 'preloads/**'
@@ -53,6 +60,12 @@ jobs:
 
       - name: Run Chat Kernel tests
         run: npm run test:chat-kernel
+
+      - name: Run side pane tests
+        run: npm run test:side-pane
+
+      - name: Run side pane workbench surface tests
+        run: npm run test:workbench
 
       - name: Run Chat contract evidence gate
         env:

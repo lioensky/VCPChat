@@ -41,6 +41,12 @@ export function createStreamConsumerRegistry() {
                 if (routes.get(messageId)?.token !== token) return;
                 lease.active = false;
             };
+            release.cancel = (reason = 'stream-cancelled') => {
+                if (routes.get(messageId)?.token !== token) return false;
+                lease.active = false;
+                routes.delete(messageId);
+                return true;
+            };
             return release;
         },
         claim(messageId) {

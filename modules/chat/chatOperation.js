@@ -21,8 +21,8 @@ export function createChatOperations({ send, cancel = null }) {
             if (!active || typeof cancel !== 'function') return false;
             if (cancelRequested) return true;
             cancelRequested = true;
-            await cancel();
-            return true;
+            const res = await cancel();
+            return res !== false;
         },
         async dispose() {
             if (disposed) return;

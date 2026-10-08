@@ -80,3 +80,18 @@ test('replace retains explicit deletion semantics and dispose rejects new work',
     await queue.dispose();
     await assert.rejects(queue.replace(descriptor(), []), /disposed/);
 });
+test('a deleted side chat child topic is not recreated by a late save', async t => {
+    // 父话题被删时子目录已经删掉，流式回复被取消后还会存一次：不能把目录建回来留下孤儿
+    const queue = await fixture(t);
+    const child = { itemId: 'agent-a', itemType: 'agent', topicId: 'sidechat_1700000000000_abc123' };
+    const childDir = path.dirname(queue.getHistoryPath(child.itemId, child.topicId));
+    await assert.rejects(queue.replace(child, [{ id: 'late' }]), /SIDE_CHAT_CHILD_DELETED/);
+    assert.equal(await fs.pathExists(childDir), false);
+
+    // 还在的子话题照常保存；普通话题第一次保存照常建目录
+    await fs.ensureDir(childDir);
+    await queue.replace(child, [{ id: 'kept' }]);
+    assert.deepEqual(await queue.read(child), [{ id: 'kept' }]);
+    await queue.replace(descriptor(), [{ id: 'first' }]);
+    assert.deepEqual(await queue.read(descriptor()), [{ id: 'first' }]);
+});

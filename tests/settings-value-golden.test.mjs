@@ -309,6 +309,15 @@ function baseCurrentSettings() {
 
 const form = renderAllSections();
 
+// These two opt-in fields did not exist in the historical collector. Keep its
+// oracle unchanged and compare every pre-existing field without them.
+function historicalPayload(payload) {
+    const profile = {...payload.appearanceProfile};
+    delete profile.toolPresentation;
+    delete profile.toolExpansion;
+    return {...payload, appearanceProfile: profile};
+}
+
 test('金测：随机灌值五轮，新收集器与旧收集器载荷逐键等价', () => {
     for (const seed of [11, 2024, 33333, 777777, 909090909]) {
         const rng = mulberry32(seed);
@@ -330,7 +339,7 @@ test('金测：随机灌值五轮，新收集器与旧收集器载荷逐键等�
         const scope = makeScope(currentSettings);
         const legacy = legacyCollect({ ...scope });
         const collected = collectSettings(schemaSurfaceSections(), { form, ...scope });
-        assert.deepStrictEqual(collected, legacy, `seed=${seed} 载荷不一致`);
+        assert.deepStrictEqual(historicalPayload(collected), legacy, `seed=${seed} 载荷不一致`);
     }
 });
 
@@ -340,7 +349,7 @@ test('金测：未灌值的新渲染表单与旧收集器等价（schema 默认�
     const scope = makeScope(currentSettings);
     const legacy = legacyCollect({ ...scope });
     const collected = collectSettings(schemaSurfaceSections(), { form, ...scope });
-    assert.deepStrictEqual(collected, legacy);
+    assert.deepStrictEqual(historicalPayload(collected), legacy);
 });
 
 test('值语义特例：parseInt||fallback 的 0 兜底、钳位顺序、白名单', () => {

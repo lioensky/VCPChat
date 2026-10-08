@@ -9,6 +9,7 @@ window.itemListManager = (() => {
     let wasSelectionListenerActive = false; // To store the state of the selection listener before dragging
     let uiHelper;
     let activeLoadItemsToken = 0;
+    let activeUnreadCountsToken = 0;
 
     const OPENHER_PERSONA_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
     const OPENHER_PERSONA_CACHE_TTL_MS = 11 * 60 * 1000;
@@ -96,11 +97,13 @@ window.itemListManager = (() => {
             return;
         }
 
+        activeUnreadCountsToken += 1; // Revoke requests from the previous API or list.
         itemListUl = config.elements.itemListUl;
         electronAPI = config.electronAPI;
         currentSelectedItemRef = config.refs.currentSelectedItemRef;
         mainRendererFunctions = config.mainRendererFunctions;
         uiHelper = config.uiHelper; // Store uiHelper
+        bindItemListKeyboard();
 
         ensureOpenHerPersonaAutoRefresh();
         console.log('[ItemListManager] Initialized successfully.');
@@ -113,8 +116,56 @@ window.itemListManager = (() => {
      */
     function highlightActiveItem(itemId, itemType) {
         if (!itemListUl) return;
+        const focusedItem = itemListUl.contains(document.activeElement) ? document.activeElement : null;
         document.querySelectorAll('#agentList li').forEach(item => {
-            item.classList.toggle('active', item.dataset.itemId === itemId && item.dataset.itemType === itemType);
+            const isActive = item.dataset.itemId === itemId && item.dataset.itemType === itemType;
+            item.classList.toggle('active', isActive);
+            if (item.dataset.itemId && !focusedItem) item.tabIndex = isActive ? 0 : -1;
+        });
+        ensureItemTabStop();
+    }
+
+    // Keyboard model of a listbox (as in Radix): one tab stop
+    // (the active item, else the first) that follows focus; arrows, Home and
+    // End move it; Enter or Space selects the focused Agent or group.
+    function ensureItemTabStop() {
+        if (!itemListUl || itemListUl.querySelector('li[data-item-id][tabindex="0"]')) return;
+        const first = itemListUl.querySelector('li[data-item-id]');
+        if (first) first.tabIndex = 0;
+    }
+
+    function bindItemListKeyboard() {
+        if (!itemListUl || itemListUl.dataset.itemKeyboardBound === 'true') return;
+        itemListUl.dataset.itemKeyboardBound = 'true';
+        itemListUl.addEventListener('focusin', event => {
+            const item = event.target;
+            if (!item?.dataset?.itemId || item.parentElement !== itemListUl) return;
+            itemListUl.querySelectorAll('li[data-item-id][tabindex="0"]').forEach(other => {
+                if (other !== item) other.tabIndex = -1;
+            });
+            item.tabIndex = 0;
+        });
+        itemListUl.addEventListener('keydown', event => {
+            const item = event.target;
+            if (!item?.dataset?.itemId || item.parentElement !== itemListUl) return;
+            const items = [...itemListUl.querySelectorAll('li[data-item-id]')]
+                .filter(candidate => candidate.style.display !== 'none' && !candidate.hidden);
+            const index = items.indexOf(item);
+            let next = null;
+            if (event.key === 'ArrowDown') next = items[index + 1];
+            else if (event.key === 'ArrowUp') next = items[index - 1];
+            else if (event.key === 'Home') next = items[0];
+            else if (event.key === 'End') next = items[items.length - 1];
+            else if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                const data = item._itemData;
+                if (data) mainRendererFunctions.selectItem(data.id, data.type, data.name, data.avatarUrl, data.config || data);
+                return;
+            } else {
+                return;
+            }
+            event.preventDefault();
+            next?.focus();
         });
     }
 
@@ -837,6 +888,8 @@ window.itemListManager = (() => {
         const li = document.createElement('li');
         li.dataset.itemId = item.id;
         li.dataset.itemType = item.type;
+        li._itemData = item;
+        li.tabIndex = -1;
 
         // 创建头像包装器
         const avatarWrapper = document.createElement('div');
@@ -844,7 +897,9 @@ window.itemListManager = (() => {
 
         const avatarImg = document.createElement('img');
         avatarImg.classList.add('avatar');
-        avatarImg.src = item.avatarUrl ? `${item.avatarUrl}${item.avatarUrl.includes('?') ? '&' : '?'}t=${Date.now()}` : (item.type === 'group' ? 'assets/default_group_avatar.png' : 'assets/default_avatar.png');
+        // The main process versions avatar URLs by file mtime, so the URL is
+        // stable until the avatar changes and the browser cache can serve it.
+        avatarImg.src = item.avatarUrl || (item.type === 'group' ? 'assets/default_group_avatar.png' : 'assets/default_avatar.png');
         avatarImg.alt = `${item.name} 头像`;
         avatarImg.onerror = () => { avatarImg.src = (item.type === 'group' ? 'assets/default_group_avatar.png' : 'assets/default_avatar.png'); };
 
@@ -996,6 +1051,11 @@ window.itemListManager = (() => {
         if (currentSelectedItem && currentSelectedItem.id) {
             highlightActiveItem(currentSelectedItem.id, currentSelectedItem.type);
         }
+        // A rebuild (unread refresh, save, reorder) must not drop an active
+        // search: re-apply the term still in the search box.
+        const activeSearch = document.getElementById('agentSearchInput')?.value;
+        if (activeSearch && activeSearch.trim()) window.uiHelperFunctions?.filterAgentList?.(activeSearch);
+        ensureItemTabStop();
 
         if (typeof Sortable !== 'undefined') {
             initializeItemSortable();
@@ -1020,8 +1080,13 @@ window.itemListManager = (() => {
             itemListUl.innerHTML = '<li><div class="loading-spinner-small"></div>加载列表中...</li>';
         }
 
-        const agentsResult = await electronAPI.getAgents();
-        const groupsResult = await electronAPI.getAgentGroups();
+        // A rejected IPC call becomes an error row instead of leaving the
+        // first-load spinner up for good; both reads run together.
+        const asError = error => ({ error: error?.message || String(error) });
+        const [agentsResult, groupsResult] = await Promise.all([
+            Promise.resolve().then(() => electronAPI.getAgents()).catch(asError),
+            Promise.resolve().then(() => electronAPI.getAgentGroups()).catch(asError)
+        ]);
 
         if (loadToken !== activeLoadItemsToken) {
             console.debug('[ItemListManager] Ignoring stale loadItems result.');
@@ -1053,6 +1118,13 @@ window.itemListManager = (() => {
             console.warn("[ItemListManager] Could not load combinedItemOrder from settings:", e);
         }
 
+        // 读取排序设置时也可能已有新一轮加载完成；最后一次 await 后再确认发布权，
+        // 防止旧成功、空列表或错误回退覆盖当前缓存和 DOM。
+        if (loadToken !== activeLoadItemsToken) {
+            console.debug('[ItemListManager] Ignoring stale loadItems result after settings.');
+            return;
+        }
+
         if (combinedOrderFromSettings.length > 0 && items.length > 0) {
             const itemMap = new Map(items.map(item => [`${item.type}_${item.id}`, item]));
             const orderedItems = [];
@@ -1080,7 +1152,7 @@ window.itemListManager = (() => {
         } else if (errors.length > 0) {
             console.warn('[ItemListManager] Failed to fully reload items, preserving previous list where possible:', errors.join(' | '));
             if (!hadPreviousItems) {
-                itemListUl.innerHTML = errors.map(error => `<li>${error}</li>`).join('');
+                itemListUl.innerHTML = errors.map(error => `<li>${escapeHtml(String(error))}</li>`).join('');
             }
         } else {
             loadedItemsCache = [];
@@ -1095,13 +1167,18 @@ window.itemListManager = (() => {
     /**
      * 仅刷新未读计数，而不重新加载整个列表
      */
-    function refreshUnreadCounts() {
-        if (!electronAPI) return;
-        electronAPI.getUnreadTopicCounts().then(result => {
-            if (result && result.success) {
-                updateUnreadBadges(result.counts);
-            }
-        }).catch(err => console.error('[ItemListManager] Failed to fetch unread counts:', err));
+    async function refreshUnreadCounts({ isCurrent = () => true } = {}) {
+        if (!electronAPI || !isCurrent()) return;
+        const token = ++activeUnreadCountsToken;
+        try {
+            const result = await electronAPI.getUnreadTopicCounts();
+            // Navigation and catalog refresh share one publication order. The
+            // caller can also revoke its own lifecycle while the request waits.
+            if (token !== activeUnreadCountsToken || !isCurrent()) return;
+            if (result && result.success) updateUnreadBadges(result.counts);
+        } catch (err) {
+            console.error('[ItemListManager] Failed to fetch unread counts:', err);
+        }
     }
 
     /**

@@ -12,9 +12,9 @@ module.exports = {
         openNotesWithContent: invoke('open-notes-with-content', 'data').roles('chat', 'utility'),
         openNoteMiniWindow: invoke('open-note-mini-window'),
 
-        readNotesTree: invoke('read-notes-tree'),
+        readNotesTree: invoke('read-notes-tree').roles('chat', 'utility'),
         writeTxtNote: invoke('write-txt-note', 'noteData'),
-        saveMiniNote: invoke('save-mini-note', 'noteData'),
+        saveMiniNote: invoke('save-mini-note', 'noteData').roles('chat', 'utility'),
         deleteItem: invoke('delete-item', 'itemPath'),
         createNoteFolder: invoke('create-note-folder', 'data'),
         renameItem: invoke('rename-item', 'data'),

@@ -7,7 +7,6 @@
     let croppedUserAvatarFile = null;
     let croppedGroupAvatarFile = null;
     const modalGenerations = new Map();
-    const modalClosePromises = new WeakMap();
 
     const uiHelperFunctions = {};
     const textareaResizeStates = new WeakMap();
@@ -662,8 +661,6 @@
     uiHelperFunctions.closeModal = function(modalId) {
         const modalElement = document.getElementById(modalId);
         if (!modalElement) return Promise.resolve(false);
-        const existingClose = modalClosePromises.get(modalElement);
-        if (existingClose) return existingClose;
         const finishClose = () => {
             if (!modalElement.isConnected) return false;
             modalElement.classList.remove('active');
@@ -673,6 +670,7 @@
             return true;
         };
         if (modalId === 'globalSettingsModal' && modalElement.classList.contains('active')) {
+            // Hiding the connected surface keeps its draft owners alive. Only owner teardown awaits durability.
             const coordinator = window.VCPUISettingsBridge?.flush;
             if (typeof coordinator === 'function') {
                 Promise.resolve().then(() => coordinator()).catch(error => {

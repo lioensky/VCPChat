@@ -401,8 +401,22 @@
         } catch (error) {
             console.error(`[NextUI] Failed to open embedded app ${app.id}:`, error);
             container.dataset.state = 'error';
-            container.innerHTML = `<div class="next-ui-embedded-app-status is-error"><span class="vcp-ui-icon" aria-hidden="true">error</span><span>${error.message || '应用加载失败'}</span></div>`;
+            container.replaceChildren(createEmbeddedAppError(error.message || '应用加载失败'));
         }
+    }
+
+    // The error text comes from the app or its process, so it goes in as text.
+    function createEmbeddedAppError(message) {
+        const status = document.createElement('div');
+        status.className = 'next-ui-embedded-app-status is-error';
+        const icon = document.createElement('span');
+        icon.className = 'vcp-ui-icon';
+        icon.setAttribute('aria-hidden', 'true');
+        icon.textContent = 'error';
+        const text = document.createElement('span');
+        text.textContent = String(message);
+        status.append(icon, text);
+        return status;
     }
 
     function openEmbeddedApp(app) {
@@ -592,13 +606,14 @@
             }
             if (payload?.state !== 'error') return;
             view.container.dataset.state = 'error';
-            view.container.innerHTML = `<div class="next-ui-embedded-app-status is-error"><span class="vcp-ui-icon" aria-hidden="true">error</span><span>${payload.error || '应用运行异常'}</span></div>`;
+            view.container.replaceChildren(createEmbeddedAppError(payload.error || '应用运行异常'));
         });
     }
 
     function mountNativeTooltipBridge(scope) {
         if (!scope) return;
-        const converted = new Map();
+        // 只按元素记原始属性，不持有元素：被移出页面的节点要能回收。卸载时从页面上还在的节点里还原
+        const converted = new WeakMap();
         const isExcluded = element => element.closest?.('#nextUiInternalAppHost, #vchatAppTray') || (element.matches?.('input, select, textarea') && element.closest?.('.vcp-settings-schema-surface, .settings-sidebar-surface-view'));
         const convert = element => {
             if (!(element instanceof Element) || isExcluded(element) || !element.hasAttribute('title')) return;
@@ -702,8 +717,11 @@
             hide();
             host.remove();
             observer.disconnect();
-            converted.forEach(({ title, originalDataTooltip, originalAriaLabel, addedAriaLabel }, element) => {
-                if (!element.isConnected) return;
+            document.querySelectorAll('[data-tooltip]').forEach(element => {
+                const record = converted.get(element);
+                if (!record) return;
+                converted.delete(element);
+                const { title, originalDataTooltip, originalAriaLabel, addedAriaLabel } = record;
                 element.setAttribute('title', title);
                 if (originalDataTooltip === null) delete element.dataset.tooltip;
                 else element.setAttribute('data-tooltip', originalDataTooltip);
@@ -712,7 +730,6 @@
                     else element.setAttribute('aria-label', originalAriaLabel);
                 }
             });
-            converted.clear();
         }, 'next:native-tooltip-bridge', 'observer');
     }
 

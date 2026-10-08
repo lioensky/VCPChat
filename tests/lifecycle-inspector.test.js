@@ -16,6 +16,8 @@ test('lifecycle inspector reports ownership metadata without payload content', a
         embeddedSessions: [{ action: 'open-notes-window' }], activeEmbeddedAction: null,
         tasks: [{ requestId: 'request-1', operation: 'embedded:create', state: 'running', ageMs: 2 }],
         chatTasks: [{ requestId: 'message-1', operation: 'chat:stream', state: 'running', ageMs: 1 }],
+        domains: [{ name: 'terminal', state: 'declared', channels: 11, calls: 0 }],
+        terminalExecutor: { loaded: true, distributedServer: false },
     }) };
     window.eval(fs.readFileSync('modules/ui-system/lifecycle-inspector.js', 'utf8'));
     const streamProvider = () => ({ activeMessageId: 'safe-stream', activeMessageIds: ['safe-stream'] });
@@ -34,10 +36,30 @@ test('lifecycle inspector reports ownership metadata without payload content', a
     assert.equal(renderer.streams.activeMessageId, 'safe-stream');
     assert.equal(main.tasks[0].operation, 'embedded:create');
     assert.equal(main.chatTasks[0].operation, 'chat:stream');
+    assert.equal(main.domains[0].state, 'declared');
+    assert.deepEqual({ ...main.terminalExecutor }, { loaded: true, distributedServer: false });
     const serialized = JSON.stringify({ renderer, main });
     assert.doesNotMatch(serialized, /apiKey|chatHistory|fileContent|secret/i);
     const originalSnapshot = window.VCPLifecycleInspector.snapshot;
     window.VCPLifecycleInspector.snapshot = () => null;
     assert.equal(window.VCPLifecycleInspector.snapshot, originalSnapshot);
+    dom.window.close();
+});
+
+test('the side pane reports its views to the inspector until it is torn down', () => {
+    const dom = new JSDOM('<!doctype html><html><body></body></html>', { runScripts: 'outside-only' });
+    const { window } = dom;
+    window.eval(fs.readFileSync('modules/ui-system/lifecycle-inspector.js', 'utf8'));
+    assert.equal(window.VCPLifecycleInspector.snapshot().sidePane, null);
+    const tabs = [{ id: 'terminal:main', kind: 'terminal', view: 'dormant', visible: false, hiddenMs: 400000, dormantReason: 'hidden' }];
+    const release = window.VCPLifecycleInspector.setSidePaneDiagnosticsProvider(() => ({ visible: true, tabs }));
+    assert.deepEqual(window.VCPLifecycleInspector.snapshot().sidePane.tabs, tabs);
+    // 界面重建：新的控制器接上，旧的注销不会把新的拿掉
+    const releaseNext = window.VCPLifecycleInspector.setSidePaneDiagnosticsProvider(() => ({ visible: false, tabs: [] }));
+    release();
+    assert.equal(window.VCPLifecycleInspector.snapshot().sidePane.visible, false);
+    releaseNext();
+    assert.equal(window.VCPLifecycleInspector.snapshot().sidePane, null);
+    assert.throws(() => window.VCPLifecycleInspector.setSidePaneDiagnosticsProvider(null), /must be a function/);
     dom.window.close();
 });

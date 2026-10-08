@@ -16,3 +16,7 @@
 @import url('./styles/ui-next.css') layer(vcp-ui.next-shell);
 @import url('./styles/ui-system/index.css');
 @import url('./styles/appearance.css');
+@import url('./styles/chat-messenger.css'); /* 对话模式：只在 body.chat-presentation-messenger 下生效 */
+@import url('./styles/side-chat-bubbles.css'); /* 辅助对话（侧栏）始终用对话模式的气泡 */
+
+@import url('./styles/ui-system/tool-presentation.css') layer(vcp-ui.appearance);

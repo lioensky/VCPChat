@@ -1,5 +1,7 @@
 'use strict';
 
+if (require('./helpers/electron-test-entry.cjs').runFromNode(__filename)) return;
+
 const { app, BrowserWindow, ipcMain, nativeTheme } = require('electron');
 const path = require('path');
 

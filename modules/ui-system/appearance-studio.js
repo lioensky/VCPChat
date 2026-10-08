@@ -77,6 +77,8 @@
     });
     const PROFILE_FIELDS = Object.freeze([
         'density',
+        'toolPresentation',
+        'toolExpansion',
         'radius',
         'typography',
         'fontScale',
@@ -107,7 +109,8 @@
                 fontScale: 'normal',
                 contentWidth: 'full',
                 wallpaperScope: 'theme',
-                sidebarRowHeight: 46,
+                toolPresentation: 'legacy', toolExpansion: 'attention',
+            sidebarRowHeight: 46,
                 sidebarAvatarSize: 32,
                 customRadius: 10,
                 surface: 'translucent',
@@ -130,6 +133,7 @@
                 fontScale: 'small',
                 contentWidth: 'centered',
                 wallpaperScope: 'theme',
+                toolPresentation: 'legacy', toolExpansion: 'attention',
                 sidebarRowHeight: 40,
                 sidebarAvatarSize: 26,
                 customRadius: 6,
@@ -153,6 +157,7 @@
                 fontScale: 'large',
                 contentWidth: 'centered',
                 wallpaperScope: 'theme',
+                toolPresentation: 'legacy', toolExpansion: 'attention',
                 sidebarRowHeight: 52,
                 sidebarAvatarSize: 38,
                 customRadius: 14,
@@ -172,6 +177,7 @@
         themeFileName: null,
         presentation: 'bubble',
         messageWidth: 'normal',
+        chatHeader: 'classic',
         homeVisual: 'shown',
         homeTagline: 'shown',
         homeTaglineText: DEFAULT_HOME_TAGLINE,
@@ -182,7 +188,8 @@
             fontScale: 'normal',
             contentWidth: 'full',
             wallpaperScope: 'theme',
-            sidebarRowHeight: 46,
+            toolPresentation: 'legacy', toolExpansion: 'attention',
+                sidebarRowHeight: 46,
             sidebarAvatarSize: 32,
             customRadius: 10,
             surface: 'translucent',
@@ -196,6 +203,8 @@
     });
     const PROFILE_CONTROL_IDS = Object.freeze({
         density: 'appearanceDensity',
+        toolPresentation: 'appearanceToolPresentation',
+        toolExpansion: 'appearanceToolExpansion',
         radius: 'appearanceRadius',
         typography: 'appearanceTypography',
         fontScale: 'appearanceFontScale',
@@ -220,7 +229,7 @@
             tuned: '原设计', follow: '跟随全局', square: '直角',
             small: '小圆角', medium: '中圆角', round: '大圆角', custom: '自定义'
         }),
-        presentation: Object.freeze({ bubble: '气泡', panel: '面板', immersive: '沉浸' }),
+        presentation: Object.freeze({ bubble: '气泡', panel: '面板', immersive: '沉浸', messenger: '对话' }),
         themeMode: Object.freeze({ light: '浅色', dark: '深色', system: '跟随系统' })
     });
     const DETAIL_RADIUS_FIELDS = Object.freeze([
@@ -346,6 +355,7 @@
                 || clone(PRESETS.balanced.profile),
             presentation: getPresentationMode(settings.chatPresentationMode) || 'bubble',
             messageWidth: settings.enableWideChatLayout === true ? 'wide' : 'normal',
+            chatHeader: settings.chatHeaderStyle === 'capsule' ? 'capsule' : 'classic',
             homeVisual: settings.showHomeVisualBrand === false ? 'hidden' : 'shown',
             homeTagline: settings.showHomeVisualTagline === false ? 'hidden' : 'shown',
             homeTaglineText: normalizeHomeTaglineText(settings.homeVisualTagline),
@@ -369,6 +379,9 @@
             messageWidth: source.messageWidth === 'wide' || source.messageWidth === 'normal'
                 ? source.messageWidth
                 : (base.messageWidth === 'wide' ? 'wide' : 'normal'),
+            chatHeader: source.chatHeader === 'capsule' || source.chatHeader === 'classic'
+                ? source.chatHeader
+                : (base.chatHeader === 'capsule' ? 'capsule' : 'classic'),
             homeVisual: source.homeVisual === 'hidden' || source.homeVisual === 'shown'
                 ? source.homeVisual
                 : (base.homeVisual === 'hidden' ? 'hidden' : 'shown'),
@@ -396,6 +409,7 @@
             presentation: document.querySelector('input[name="chatPresentationMode"]:checked')?.value
                 || base.presentation,
             messageWidth: document.getElementById('chatLayoutModeWide')?.checked ? 'wide' : 'normal',
+            chatHeader: base.chatHeader,
             homeVisual: document.getElementById('showHomeVisualBrand')?.checked === false ? 'hidden' : 'shown',
             homeTagline: document.getElementById('showHomeVisualTagline')?.checked === false ? 'hidden' : 'shown',
             homeTaglineText: normalizeHomeTaglineText(document.getElementById('homeVisualTagline')?.value, base.homeTaglineText),
@@ -624,6 +638,7 @@
                             <div class="vcp-appearance-mini-item"><h4>阅读区布局</h4><div class="vcp-appearance-segmented"><button type="button" data-appearance-key="contentWidth" data-appearance-value="full">全宽画布</button><button type="button" data-appearance-key="contentWidth" data-appearance-value="centered">居中阅读</button></div><p class="vcp-appearance-mini-helper">控制整个聊天阅读区</p></div>
                             <div class="vcp-appearance-mini-item"><h4>壁纸范围</h4><div class="vcp-appearance-segmented"><button type="button" data-appearance-key="wallpaperScope" data-appearance-value="theme">主题</button><button type="button" data-appearance-key="wallpaperScope" data-appearance-value="panel">内容区</button><button type="button" data-appearance-key="wallpaperScope" data-appearance-value="global">全局</button></div><p class="vcp-appearance-mini-helper">主题可声明建议范围，用户也可强制覆盖</p></div>
                             <div class="vcp-appearance-mini-item"><h4>消息宽度</h4><div class="vcp-appearance-segmented"><button type="button" data-appearance-key="messageWidth" data-appearance-value="normal">标准</button><button type="button" data-appearance-key="messageWidth" data-appearance-value="wide">宽屏</button></div><p class="vcp-appearance-mini-helper">控制单条消息的最大宽度</p></div>
+                            <div class="vcp-appearance-mini-item"><h4>标题栏</h4><div class="vcp-appearance-segmented"><button type="button" data-appearance-key="chatHeader" data-appearance-value="classic">原版</button><button type="button" data-appearance-key="chatHeader" data-appearance-value="capsule">胶囊</button></div><p class="vcp-appearance-mini-helper">胶囊样式居中显示头像与名字，不显示语音通话和新建话题</p></div>
                             <div class="vcp-appearance-mini-item vcp-appearance-mini-item-wide"><h4>主页视觉文字</h4><div class="vcp-appearance-segmented"><button type="button" data-appearance-key="homeVisual" data-appearance-value="shown">显示</button><button type="button" data-appearance-key="homeVisual" data-appearance-value="hidden">隐藏</button></div><p class="vcp-appearance-mini-helper">控制空会话中的 VCPCHAT 标识</p></div>
                         </div>
                         <div class="vcp-appearance-tagline-editor">
@@ -698,8 +713,26 @@
                             <button type="button" data-appearance-key="presentation" data-appearance-value="immersive">
                                 <span class="vcp-appearance-chat-preview immersive" aria-hidden="true"><i></i></span><span class="vcp-appearance-tile-label">沉浸</span>
                             </button>
+                            <button type="button" data-appearance-key="presentation" data-appearance-value="messenger">
+                                <span class="vcp-appearance-chat-preview messenger" aria-hidden="true"><i></i><i></i><i></i></span><span class="vcp-appearance-tile-label">对话</span>
+                            </button>
                         </div>
                         </div>
+                    </section>
+                    <section class="vcp-appearance-studio-section" aria-labelledby="vcpAppearanceToolsTitle">
+                        <div class="vcp-appearance-studio-section-heading"><div><h3 id="vcpAppearanceToolsTitle">工具呈现</h3><p>独立调整工具过程，保留完整参数、结果和上下文</p></div><button type="button" class="vcp-appearance-studio-reset" data-reset-section="tools" aria-label="重置工具呈现" title="重置本节"><span class="vcp-ui-icon">refresh</span></button></div>
+                        <div class="vcp-appearance-segmented" role="group" aria-label="工具展示样式">
+                            <button type="button" data-appearance-key="toolPresentation" data-appearance-value="legacy">原有卡片</button>
+                            <button type="button" data-appearance-key="toolPresentation" data-appearance-value="compact">紧凑单行</button>
+                            <button type="button" data-appearance-key="toolPresentation" data-appearance-value="grouped">分组折叠</button>
+                            <button type="button" data-appearance-key="toolPresentation" data-appearance-value="inline">单行合并</button>
+                            <button type="button" data-appearance-key="toolPresentation" data-appearance-value="process">整轮折叠</button>
+                        </div>
+                        <div class="vcp-appearance-subsection"><h4>默认展开</h4><div class="vcp-appearance-segmented" role="group" aria-label="工具默认展开规则">
+                            <button type="button" data-appearance-key="toolExpansion" data-appearance-value="attention">失败与待确认</button>
+                            <button type="button" data-appearance-key="toolExpansion" data-appearance-value="none">全部收起</button>
+                            <button type="button" data-appearance-key="toolExpansion" data-appearance-value="all">全部展开</button>
+                        </div><p class="vcp-appearance-mini-helper">使用当前界面密度和工具字体。请求与结果各自保留；单行合并与整轮折叠只把紧跟在请求后的同名结果显示在同一行；图片与媒体结果保留查看入口。</p></div>
                     </section>
                     <section class="vcp-appearance-studio-section vcp-appearance-material-section" aria-labelledby="vcpAppearanceMaterialTitle">
                         <div class="vcp-appearance-studio-section-heading">
@@ -1029,6 +1062,7 @@
             draft.profile.contentWidth = defaults.profile.contentWidth;
             draft.profile.wallpaperScope = defaults.profile.wallpaperScope;
             draft.messageWidth = defaults.messageWidth;
+            draft.chatHeader = defaults.chatHeader;
             draft.homeVisual = defaults.homeVisual;
             draft.homeTagline = defaults.homeTagline;
             draft.homeTaglineText = defaults.homeTaglineText;
@@ -1041,6 +1075,8 @@
                 draft.profile[field] = defaults.profile[field];
             });
             draft.presentation = defaults.presentation;
+        } else if (section === 'tools') {
+            ['toolPresentation', 'toolExpansion'].forEach(field => { draft.profile[field] = defaults.profile[field]; });
         } else if (section === 'material') {
             ['surface', 'surfaceEffect', ...MATERIAL_FIELDS].forEach(field => {
                 draft.profile[field] = defaults.profile[field];
@@ -1059,6 +1095,7 @@
             source: 'appearance-studio-preview'
         });
         document.body.classList.toggle('chat-wide-layout', draft.messageWidth === 'wide');
+        window.vcpChatHeader?.apply?.(draft.chatHeader);
         applyHomeVisual(draft.homeVisual);
         applyHomeTagline(draft.homeTagline, draft.homeTaglineText);
         if (!options.appearanceOnly) {
@@ -1088,6 +1125,7 @@
             source: 'appearance-studio-rollback'
         });
         document.body.classList.toggle('chat-wide-layout', snapshot.messageWidth === 'wide');
+        window.vcpChatHeader?.apply?.(snapshot.chatHeader);
         applyHomeVisual(snapshot.homeVisual);
         applyHomeTagline(snapshot.homeTagline, snapshot.homeTaglineText);
         getUiManager()?.applyTheme?.(effectiveThemeForMode(snapshot.themeMode));
@@ -1140,6 +1178,7 @@
             appearanceProfile: snapshot.profile,
             chatPresentationMode: snapshot.presentation,
             enableWideChatLayout: snapshot.messageWidth === 'wide',
+            chatHeaderStyle: snapshot.chatHeader,
             showHomeVisualBrand: snapshot.homeVisual !== 'hidden',
             showHomeVisualTagline: snapshot.homeTagline !== 'hidden',
             homeVisualTagline: snapshot.homeTaglineText,
@@ -1151,6 +1190,7 @@
                 appearanceProfile: nextState.profile,
                 chatPresentationMode: nextState.presentation,
                 enableWideChatLayout: nextState.messageWidth === 'wide',
+                chatHeaderStyle: nextState.chatHeader,
                 showHomeVisualBrand: nextState.homeVisual !== 'hidden',
                 showHomeVisualTagline: nextState.homeTagline !== 'hidden',
                 homeVisualTagline: nextState.homeTaglineText,
@@ -1163,6 +1203,7 @@
                 appearanceProfile: nextState.profile,
                 chatPresentationMode: nextState.presentation,
                 enableWideChatLayout: nextState.messageWidth === 'wide',
+                chatHeaderStyle: nextState.chatHeader,
                 showHomeVisualBrand: nextState.homeVisual !== 'hidden',
                 showHomeVisualTagline: nextState.homeTagline !== 'hidden',
                 homeVisualTagline: nextState.homeTaglineText,
@@ -1414,10 +1455,13 @@
             draft = {
                 profile: {
                     ...clone(preset.profile),
+                    toolPresentation: draft.profile.toolPresentation,
+                    toolExpansion: draft.profile.toolExpansion,
                     wallpaperScope: draft.profile.wallpaperScope
                 },
                 presentation: preset.presentation,
                 messageWidth: draft.messageWidth,
+                chatHeader: draft.chatHeader,
                 homeVisual: draft.homeVisual,
                 homeTagline: draft.homeTagline,
                 homeTaglineText: draft.homeTaglineText,

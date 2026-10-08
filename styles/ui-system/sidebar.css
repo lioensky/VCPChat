@@ -193,6 +193,12 @@
         outline-offset: 2px;
     }
 
+    html .vcp-ui-scope.sidebar .agent-list li:focus-visible,
+    html .vcp-ui-scope.sidebar .topic-list .topic-item:focus-visible {
+        outline: 2px solid var(--vcp-ui-focus-ring);
+        outline-offset: -2px;
+    }
+
     html .vcp-ui-scope .next-ui-create-item-trigger svg,
     html .vcp-ui-scope .next-ui-agent-search-trigger svg,
     html .vcp-ui-scope .next-ui-agent-search-close svg,

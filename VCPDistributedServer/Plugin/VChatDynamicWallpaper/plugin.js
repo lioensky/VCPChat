@@ -284,7 +284,8 @@
         if (header && title) {
             titleGroup = document.createElement('div');
             titleGroup.id = 'vchat-wallpaper-title-group';
-            header.insertBefore(titleGroup, title);
+            // 标题可能包在胶囊标题栏里，不一定是 header 的直接子元素
+            title.parentNode.insertBefore(titleGroup, title);
             titleGroup.appendChild(title);
         }
 
@@ -433,8 +434,8 @@
         globalControl?.remove();
         const title = document.getElementById('currentChatAgentName');
         const header = document.querySelector('.chat-header');
-        if (titleGroup && title && header) header.insertBefore(title, header.firstChild);
-        titleGroup?.remove();
+        if (titleGroup && title && header && titleGroup.contains(title)) titleGroup.replaceWith(title);
+        else titleGroup?.remove();
     }
 
     loadSettings();

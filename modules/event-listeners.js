@@ -327,7 +327,7 @@ export function setupEventListeners(deps) {
 
                 if (response.error) {
                     if (isForActiveChat && messageRenderer) {
-                        messageRenderer.renderMessage({ role: 'system', content: `VCP错误: ${response.error}`, timestamp: Date.now() });
+                        messageRenderer.renderMessage({ role: 'system', notice: 'error', content: `VCP错误: ${response.error}`, timestamp: Date.now() });
                     }
                     console.error(`[ContinueWriting] VCP Error:`, response.error);
                 } else if (response.choices && response.choices.length > 0) {
@@ -371,7 +371,7 @@ export function setupEventListeners(deps) {
         } catch (error) {
             console.error('[ContinueWriting] 续写时出错:', error);
             messageRenderer?.removeMessageById(thinkingMessage.id);
-            messageRenderer?.renderMessage({ role: 'system', content: `错误: ${error.message}`, timestamp: Date.now() });
+            messageRenderer?.renderMessage({ role: 'system', notice: 'error', content: `错误: ${error.message}`, timestamp: Date.now() });
             if (currentSelectedItem.id && currentTopicId) {
                 await historyMutationAuthority.replace({
                     itemId: currentSelectedItem.id, itemType: currentSelectedItem.type, topicId: currentTopicId,
@@ -899,6 +899,23 @@ export function setupEventListeners(deps) {
         showNewTopicButtonMenu(e, currentSelectedItem);
     });
 
+    const chatAgentPill = document.getElementById('chatAgentPill');
+    if (chatAgentPill) {
+        chatAgentPill.addEventListener('click', () => {
+            // 原版标题栏里这只是一行标题，只有胶囊样式才可点击。
+            // 胶囊点一下就展开 / 收起侧栏：复用标题栏右侧的展开按钮，它在侧栏已展开时会收起侧栏。
+            if (!window.vcpChatHeader?.isCapsule?.()) return;
+            document.getElementById('toggleSidePaneChatBtn')?.click();
+        });
+        chatAgentPill.addEventListener('keydown', (e) => {
+            if (e.target !== chatAgentPill) return;
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                chatAgentPill.click();
+            }
+        });
+    }
+
     /**
      * 显示【新建话题】按钮的右键菜单
      */
@@ -1180,7 +1197,12 @@ export function setupEventListeners(deps) {
 
             toggleNotificationsBtn.classList.toggle('notification-panel-active', isActive);
             toggleNotificationsBtn.setAttribute('aria-expanded', String(isActive));
-            toggleNotificationsBtn.setAttribute('aria-label', isActive ? '关闭通知面板' : '打开通知面板');
+            // 待审批角标由 notificationCenter 维护，这里切换面板时别把「N 项待审批」覆盖掉
+            const pendingCount = Number(toggleNotificationsBtn.dataset.pendingCount) || 0;
+            const baseLabel = isActive ? '关闭通知面板' : '打开通知面板';
+            toggleNotificationsBtn.setAttribute('aria-label', pendingCount > 0
+                ? `${baseLabel}（${pendingCount > 99 ? '99+' : pendingCount} 项待审批）`
+                : baseLabel);
             toggleNotificationsBtn.title = `${isActive ? '左键关闭通知面板' : '左键打开通知面板'}/右键监控面板`;
         };
 
@@ -1199,15 +1221,21 @@ export function setupEventListeners(deps) {
         });
 
         listenerOwner?.own(chatAPI.onDoToggleNotificationsSidebar(() => {
-            const isActive = notificationsSidebar.classList.toggle('active');
-            const mainContent = document.querySelector('.main-content');
-            if (mainContent) {
-                mainContent.classList.toggle('notifications-sidebar-active', isActive);
+            // 有工作区侧栏时由它负责开合与通知按钮的位置（它登记了 notifications.toggle）
+            const commands = globalThis.VCPContributions?.commands;
+            if (commands?.get('notifications.toggle')) {
+                commands.execute('notifications.toggle');
+            } else {
+                const isActive = notificationsSidebar.classList.toggle('active');
+                const mainContent = document.querySelector('.main-content');
+                if (mainContent) {
+                    mainContent.classList.toggle('notifications-sidebar-active', isActive);
+                }
+                if (isActive && refs.globalSettings.get().notificationsSidebarWidth) {
+                    notificationsSidebar.style.width = `${refs.globalSettings.get().notificationsSidebarWidth}px`;
+                }
+                syncNotificationTogglePlacement(isActive);
             }
-            if (isActive && refs.globalSettings.get().notificationsSidebarWidth) {
-                notificationsSidebar.style.width = `${refs.globalSettings.get().notificationsSidebarWidth}px`;
-            }
-            syncNotificationTogglePlacement(isActive);
         }));
 
         syncNotificationTogglePlacement();

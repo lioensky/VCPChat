@@ -7,7 +7,8 @@
 ## 已施工合同
 
 - coordinator 统一聚合 `conflict > error > saving > dirty > saved > idle`。
-- close 路径先 drain 保存，再释放 typed/legacy owner；结果监听器在 drain 完成前保持有效。
+- 关闭窗口立即隐藏，启动后台 flush，保留连接的 canonical form 和 typed/legacy owner；迟到结果不改变窗口开合。
+- 真正 destroy/teardown 先 drain 保存，再释放 owner；结果监听器在 drain 完成前保持有效，失败/冲突时保留可重试草稿。
 - legacy、typed field、typed forum flush 均返回 Promise；失败批次保留在 pending。
 - typed settings 使用 path operations（`set` / `unset`），主进程在锁内 fresh read、CAS、read-modify-write，并保留原子临时文件替换。
 - `load-settings` 返回非用户字段 `__vcpSettingsRevision`，renderer 将其作为 durable base revision。
@@ -27,7 +28,8 @@
 | lock/CAS/RMW | 双实例不互相覆盖，冲突不写盘 | 双实例测试通过 |
 | 外部文件修改 | dirty draft 保留并进入 conflict | manager watcher、renderer 标记与 coordinator aggregate conflict 已接入；JSDOM contract 通过 |
 | conflict UX | reload external / keep draft retry | API、操作条与 reload channel contract 通过；retry 仅在 owner 清除冲突标记后解除 coordinator conflict |
-| close/reopen/reload | 无白屏、无草稿丢失 | Electron smoke 未形成可采信退出证据 |
+| hide/reopen | 立即隐藏，保留草稿和保存 owner，旧结果不关闭新页面 | 2026-10-04 受控窗口/helper 测试与真实 coordinator 组件测试通过；实际 Electron 窗口临时 iframe 验证通过，未写用户设置 |
+| renderer reload / packaged persistence | 重载后恢复已保存数据，未完成结果不误报 durable | 此轮未补齐真实 IPC 写盘及 packaged reload 证据，原 smoke 的限制保留 |
 
 ## 已知缺口
 

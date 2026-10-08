@@ -124,7 +124,7 @@ function createVisibilityStub() {
     };
 }
 
-async function createRendererFixture(messageContent) {
+async function createRendererFixture(messageContent, appearanceProfile = null) {
     const dom = new JSDOM(
         '<!doctype html><html><head></head><body><div class="chat-messages-container"><div id="chat"></div></div></body></html>',
         {
@@ -139,6 +139,10 @@ async function createRendererFixture(messageContent) {
         NodeFilter: globalThis.NodeFilter,
         MutationObserver: globalThis.MutationObserver,
     };
+    if (appearanceProfile) {
+        dom.window.document.documentElement.dataset.uiMode = 'next';
+        dom.window.VCPAppearance = { getCurrent: () => appearanceProfile };
+    }
     globalThis.window = dom.window;
     globalThis.document = dom.window.document;
     globalThis.Node = dom.window.Node;
@@ -421,6 +425,26 @@ test('message media is manual-only and old players unload on redraw and topic cl
     } finally {
         prototype.pause = previousPause;
         prototype.load = previousLoad;
+        await disposeFixture(fixture);
+    }
+});
+
+test('initial production renderer reads the saved tool mode from its owner realm', async () => {
+    const fixture = await createRendererFixture([
+        '<<<[TOOL_REQUEST]>>>',
+        'tool_name:「始」ProjectForge「末」',
+        'command:「始」GetCode「末」',
+        'path:「始」demo/index.html「末」',
+        '<<<[END_TOOL_REQUEST]>>>',
+    ].join('\n'), {toolPresentation:'compact', toolExpansion:'none'});
+    try {
+        await new Promise(resolve => fixture.dom.window.requestAnimationFrame(resolve));
+        await new Promise(resolve => fixture.dom.window.setTimeout(resolve, 0));
+        const button = fixture.messageItem.querySelector('.vcp-tool-row-toggle');
+        assert.ok(button, 'saved compact mode must apply on initial rendering without a preview event');
+        assert.match(button.textContent, /读取源码/);
+        assert.equal(button.getAttribute('aria-expanded'), 'false');
+    } finally {
         await disposeFixture(fixture);
     }
 });

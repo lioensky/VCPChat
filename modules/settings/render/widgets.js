@@ -445,6 +445,7 @@ const CHAT_PRESENTATION_MODES = [
     { id: 'chatPresentationModeBubble', value: 'bubble', checked: true, icon: 'chat', title: '气泡模式', description: '保留当前左右气泡、头像及元信息布局。' },
     { id: 'chatPresentationModePanel', value: 'panel', icon: 'view_agenda', title: '统一磨砂模式', description: '消息共用一块全宽磨砂面板，以分割线区分。' },
     { id: 'chatPresentationModeImmersive', value: 'immersive', icon: 'menu_book', title: '沉浸文本模式', description: '隐藏头像并使用居中的长文阅读栏。' },
+    { id: 'chatPresentationModeMessenger', value: 'messenger', icon: 'forum', title: '对话模式', description: '即时通讯式气泡，助手头像只在回复进行中时出现在底部。' },
 ];
 
 export function buildChatPresentationModeFieldset(doc) {

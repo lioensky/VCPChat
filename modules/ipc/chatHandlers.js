@@ -10,8 +10,10 @@ const {
     rememberAttachmentDirectory
 } = require('../services/attachmentDialogState');
 const topicTitleManager = require('../../Groupmodules/topicTitleManager');
+const { beginTrajectoryCall, clearTrajectoryOf, sessionKeyFromContext, sourceFromContext } = require('../modelTrajectory');
 const { HistoryMutationQueue } = require('../services/historyMutationQueue');
 const workspaceHandlers = require('./workspaceHandlers');
+const { removeSideChatChildrenOfParent } = require('./sideChatHandlers');
 
 /**
  * 若 filePath 属于已登记工作区且是文本/代码文件，创建真实路径实时引用；否则返回 null，
@@ -163,6 +165,9 @@ function omitUnsetOptionalModelParams(modelConfig = {}) {
 let ipcHandlersRegistered = false;
 const flowlockClaimLocks = new Map();
 const vcpStreamTasks = new SenderTaskRegistry({ label: 'vcp-stream-tasks' });
+const INTERRUPT_TIMEOUT_MS = 5000;
+// 同 sideChatHandlers.js 的 CHILD_ID_PATTERN
+const SIDE_CHAT_CHILD_ID = /^sidechat_\d+_[0-9a-f]+$/;
 
 function getVcpStreamTaskSnapshot() {
     return vcpStreamTasks.snapshot();
@@ -564,7 +569,7 @@ function initialize(mainWindow, context) {
                 return { success: false, error: '请先在全局设置中配置 VCP 服务器 URL。' };
             }
 
-            const newTitle = await topicTitleManager.generateTitleForHistory(history, globalVcpSettings);
+            const newTitle = await topicTitleManager.generateTitleForHistory(history, globalVcpSettings, { agentId, topicId });
             if (!newTitle) {
                 return { success: false, error: 'AI 未能生成有效的话题标题。' };
             }
@@ -611,6 +616,9 @@ function initialize(mainWindow, context) {
         if (!topicId) return { error: `获取Agent ${agentId} 聊天历史失败: topicId 未提供。` };
         try {
             const historyFile = path.join(USER_DATA_DIR, agentId, 'topics', topicId, 'history.json');
+            // 辅助对话的子话题目录只由 side-chat:create-child 建；已被删掉时不能在读取时顺手建回来
+            //（流式回复在父话题被删后收尾时会先读再写），否则留下没有标记、删不掉的孤儿目录
+            if (SIDE_CHAT_CHILD_ID.test(String(topicId)) && !await fs.pathExists(path.dirname(historyFile))) return [];
             await fs.ensureDir(path.dirname(historyFile));
 
 
@@ -633,7 +641,7 @@ function initialize(mainWindow, context) {
             return { success: true };
         } catch (error) {
             console.error(`保存Agent ${agentId} 话题 ${topicId} 聊天历史失败:`, error);
-            return { error: error.message };
+            return { success: false, error: error.message }; // 同群组：调用方都按 success === false 判失败
         }
     });
 
@@ -760,6 +768,9 @@ function initialize(mainWindow, context) {
 
                 const topicDataDir = path.join(USER_DATA_DIR, agentId, 'topics', topicIdToDelete);
                 if (await fs.pathExists(topicDataDir)) await fs.remove(topicDataDir);
+                await clearTrajectoryOf({ agentId, topicId: topicIdToDelete });
+                await removeSideChatChildrenOfParent({ USER_DATA_DIR, agentId, parentTopicId: topicIdToDelete })
+                    .catch(err => console.warn('[delete-topic] Failed to remove side chats:', err));
 
                 return { success: true, remainingTopics };
             } else {
@@ -1039,6 +1050,7 @@ function initialize(mainWindow, context) {
 
         let streamTask = null;
         let streamTaskDetached = false;
+        let trajectoryCall = null; // 侧栏「调用轨迹」的记录句柄；记录器自己吞掉一切异常
         const finishStreamTask = () => {
             if (!streamTask) return;
             vcpStreamTasks.finish(event.sender, messageId);
@@ -1285,6 +1297,14 @@ function initialize(mainWindow, context) {
             if (vcpchatExtensions) {
                 requestBody.vcpchatExtensions = vcpchatExtensions;
             }
+            trajectoryCall = beginTrajectoryCall({
+                sessionKey: sessionKeyFromContext(context),
+                requestId: messageId,
+                source: sourceFromContext(context),
+                model: modelConfig.model,
+                params: modelConfig,
+                messages
+            });
 
             // 🔥 记录模型使用频率
             try {
@@ -1305,6 +1325,7 @@ function initialize(mainWindow, context) {
             } catch (serializeError) {
                 console.error('[Main - sendToVCP] Failed to serialize request body:', serializeError);
                 console.error('[Main - sendToVCP] Problematic request body:', requestBody);
+                trajectoryCall.finish({ error: serializeError });
                 return { error: `请求体序列化失败: ${serializeError.message}` };
             }
 
@@ -1349,6 +1370,7 @@ function initialize(mainWindow, context) {
                 }
 
                 const errorMessageToPropagate = `VCP请求失败: ${response.status} - ${errorMessage}`;
+                trajectoryCall.finish({ error: { name: 'HTTPError', message: errorMessageToPropagate } });
 
                 if (modelConfig.stream === true && event && event.sender && !event.sender.isDestroyed()) {
                     // 构造更详细的错误信息
@@ -1381,14 +1403,14 @@ function initialize(mainWindow, context) {
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
 
-                // 【全新的、修正后的 processStream 函数】
-                // 它现在接收 reader 和 decoder 作为参数
                 async function processStream(reader, decoder) {
                     let buffer = '';
+                    let bodyReachedEOF = false;
 
                     try {
                         while (true) {
                             const { done, value } = await reader.read();
+                            bodyReachedEOF = done;
                             if (value) {
                                 buffer += decoder.decode(value, { stream: true });
                             }
@@ -1405,6 +1427,7 @@ function initialize(mainWindow, context) {
                                     const jsonData = line.substring(5).trim();
                                     if (jsonData === '[DONE]') {
                                         console.log(`VCP流明确[DONE] for messageId: ${messageId}`);
+                                        trajectoryCall.finish();
                                         const donePayload = { type: 'end', messageId: messageId, context };
                                         sendStreamPayload(donePayload);
                                         return; // [DONE] 是明确的结束信号，退出函数
@@ -1415,6 +1438,7 @@ function initialize(mainWindow, context) {
                                     }
                                     try {
                                         const parsedChunk = JSON.parse(jsonData);
+                                        trajectoryCall.chunk(parsedChunk);
                                         const dataPayload = { type: 'data', chunk: parsedChunk, messageId: messageId, context };
                                         sendStreamPayload(dataPayload);
                                     } catch (e) {
@@ -1429,6 +1453,7 @@ function initialize(mainWindow, context) {
                                 // 流因连接关闭而结束，而不是[DONE]消息。
                                 // 缓冲区已被处理，现在发送最终的 'end' 信号。
                                 console.log(`VCP流结束 for messageId: ${messageId}`);
+                                trajectoryCall.finish();
                                 const endPayload = { type: 'end', messageId: messageId, context };
                                 sendStreamPayload(endPayload);
                                 break; // 退出 while 循环
@@ -1436,22 +1461,36 @@ function initialize(mainWindow, context) {
                         }
                     } catch (streamError) {
                         console.error(`VCP流读取错误 for messageId: ${messageId}:`, streamError);
+                        trajectoryCall.finish({ error: streamError, aborted: streamError?.name === 'AbortError' || streamTask?.controller.signal.aborted === true });
                         const streamErrPayload = { type: 'error', error: `VCP流读取错误: ${streamError.message}`, messageId: messageId };
                         if (context) streamErrPayload.context = context;
                         sendStreamPayload(streamErrPayload);
                     } finally {
                         finishStreamTask();
+                        if (!bodyReachedEOF) {
+                            const reportCancelError = error => console.warn(
+                                `[Main - sendToVCP] Failed to cancel stream reader for ${messageId}:`, error?.message || String(error)
+                            );
+                            try {
+                                // Cancel closes the local body immediately. A pending
+                                // remote cleanup must not retain the reader or block
+                                // another task using this message ID.
+                                void Promise.resolve(reader.cancel()).catch(reportCancelError);
+                            } catch (cancelError) {
+                                reportCancelError(cancelError);
+                            }
+                        }
                         try {
                             reader.releaseLock();
+                            console.log(`ReadableStream's lock released for messageId: ${messageId}`);
                         } catch (releaseError) {
                             console.warn(`[Main - sendToVCP] Failed to release stream reader for ${messageId}:`, releaseError.message);
                         }
-                        console.log(`ReadableStream's lock released for messageId: ${messageId}`);
                     }
                 }
 
-                // 将 reader 和 decoder 作为参数传递给 processStream
-                // 并且我们依然需要 await 来等待流处理完成
+                // IPC returns when streaming starts; the detached reader owns
+                // terminal delivery and response cleanup.
                 streamTaskDetached = true;
                 processStream(reader, decoder).then(() => {
                     console.log(`[Main - sendToVCP] 流处理函数 processStream 已正常结束 for ${messageId}`);
@@ -1463,6 +1502,7 @@ function initialize(mainWindow, context) {
             } else { // Non-streaming
                 console.log('VCP响应: 非流式处理');
                 const vcpResponse = await response.json();
+                trajectoryCall.finish({ response: vcpResponse });
                 // For non-streaming, wrap the response with the original context
                 // so the renderer knows where to save the history.
                 return { response: vcpResponse, context };
@@ -1470,6 +1510,7 @@ function initialize(mainWindow, context) {
 
         } catch (error) {
             console.error('VCP请求错误 (catch block):', error);
+            trajectoryCall?.finish({ error, aborted: error?.name === 'AbortError' || streamTask?.controller.signal.aborted === true });
             if (modelConfig.stream === true && event && event.sender && !event.sender.isDestroyed()) {
                 const catchErrorPayload = { type: 'error', error: `VCP请求错误: ${error.message}`, messageId: messageId, context };
                 sendStreamPayload(catchErrorPayload);
@@ -1483,6 +1524,7 @@ function initialize(mainWindow, context) {
 
 
     ipcMain.handle('interrupt-vcp-request', async (event, { messageId }) => {
+        let upstreamAccepted = false;
         try {
             const settingsPath = path.join(APP_DATA_ROOT_IN_PROJECT, 'settings.json');
             if (!await fs.pathExists(settingsPath)) {
@@ -1510,7 +1552,9 @@ function initialize(mainWindow, context) {
                 },
                 body: JSON.stringify({
                     requestId: messageId // Corrected to requestId to match user's edit
-                })
+                }),
+                // 服务卡住时中止请求本身也会挂住，停止按钮跟着卡几分钟；超时就走下面的本地收尾
+                signal: AbortSignal.timeout(INTERRUPT_TIMEOUT_MS)
             });
 
             const result = await response.json();
@@ -1521,11 +1565,16 @@ function initialize(mainWindow, context) {
             }
 
             console.log(`[Main - interrupt] Interrupt signal sent successfully for ${messageId}. Response:`, result.message);
+            upstreamAccepted = true;
             return { success: true, message: result.message };
 
         } catch (error) {
             console.error(`[Main - interrupt] Error sending interrupt request for messageId ${messageId}:`, error);
             return { success: false, error: error.message };
+        } finally {
+            // 上游拒绝中止时，侧栏走本地流收尾；同时关闭本 IPC 调用者自己的
+            // HTTP 读取。成功中止仍由上游发送终态，保留已接收内容的正常收尾路径。
+            if (!upstreamAccepted) vcpStreamTasks.cancel(event.sender, messageId, 'interrupt-local-fallback');
         }
     });
 

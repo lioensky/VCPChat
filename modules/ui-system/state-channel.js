@@ -1,7 +1,10 @@
 /* Explicit read/subscribe channels backed by existing authoritative managers. */
 (function installStateChannels(globalObject, factory) {
+    const isCommonJs = typeof module === 'object' && module.exports;
+    // A second evaluation from an ES module import must keep the page's channel registry.
+    if (!isCommonJs && globalObject?.VCPStateChannels) return;
     const api = factory();
-    if (typeof module === 'object' && module.exports) module.exports = api;
+    if (isCommonJs) module.exports = api;
     if (globalObject) globalObject.VCPStateChannels = Object.freeze(api);
 })(typeof globalThis !== 'undefined' ? globalThis : this, function createStateChannelApi() {
     'use strict';

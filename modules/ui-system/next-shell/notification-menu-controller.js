@@ -134,7 +134,9 @@
             this.syncFilterState();
             this.elements.menu.hidden = false;
             this.elements.trigger.setAttribute('aria-expanded', 'true');
-            this.elements.forum.focus();
+            // 论坛/记忆等入口已移到底部快捷栏，菜单内只聚焦第一个菜单项。
+            const firstItem = this.elements.menu.querySelector('[role^="menuitem"]');
+            (firstItem || this.elements.menu).focus?.();
         }
 
         close({ restoreFocus = false } = {}) {

@@ -2,6 +2,7 @@
 // 话题标题自动生成管理模块 - 从 groupchat.js 中独立出来，方便后续优化
 
 const fs = require('fs-extra');
+const { beginTrajectoryCall, sessionKeyFromContext, sourceFromContext } = require('../modules/modelTrajectory');
 
 // 话题总结相关常量
 const MIN_MESSAGES_FOR_SUMMARY = 4;
@@ -74,9 +75,10 @@ function buildSummaryContent(groupHistory, globalVcpSettings) {
  * 调用 AI 生成话题标题
  * @param {string} summaryContent - 对话内容摘要
  * @param {object} globalVcpSettings - 全局 VCP 设置
+ * @param {object} [trace] - 调用轨迹归属 { groupId?, agentId?, topicId }，缺省时这次调用不记入侧栏「调用轨迹」
  * @returns {Promise<string|null>} AI 生成的原始标题，或 null
  */
-async function generateTitleFromAI(summaryContent, globalVcpSettings) {
+async function generateTitleFromAI(summaryContent, globalVcpSettings, trace = null) {
     if (!globalVcpSettings.vcpUrl) {
         console.error("[TopicTitleManager] VCP URL not configured. Cannot summarize topic.");
         return null;
@@ -89,6 +91,23 @@ async function generateTitleFromAI(summaryContent, globalVcpSettings) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 20000); // 20秒超时（总结用时较短）
 
+    const summaryRequest = {
+        messages: messagesForAISummary,
+        model: globalVcpSettings.topicSummaryModel || 'gemini-2.5-flash-preview-05-20',
+        temperature: 0.3,
+        max_tokens: 4000,
+        stream: false // 总结通常不需要流式
+    };
+    const trajectoryCall = trace
+        ? beginTrajectoryCall({
+            sessionKey: sessionKeyFromContext(trace),
+            source: sourceFromContext(trace, 'title'),
+            model: summaryRequest.model,
+            params: { temperature: summaryRequest.temperature, max_tokens: summaryRequest.max_tokens, stream: false },
+            messages: messagesForAISummary
+        })
+        : beginTrajectoryCall(null);
+
     let response;
     try {
         response = await fetch(globalVcpSettings.vcpUrl, {
@@ -97,16 +116,11 @@ async function generateTitleFromAI(summaryContent, globalVcpSettings) {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${globalVcpSettings.vcpApiKey}`
             },
-            body: JSON.stringify({
-                messages: messagesForAISummary,
-                model: globalVcpSettings.topicSummaryModel || 'gemini-2.5-flash-preview-05-20',
-                temperature: 0.3,
-                max_tokens: 4000,
-                stream: false // 总结通常不需要流式
-            }),
+            body: JSON.stringify(summaryRequest),
             signal: controller.signal
         });
     } catch (fetchError) {
+        trajectoryCall.finish({ error: fetchError, aborted: fetchError.name === 'AbortError' });
         clearTimeout(timeoutId);
         if (fetchError.name === 'AbortError') {
             console.error(`[TopicTitleManager] VCP request timeout after 20 seconds`);
@@ -119,11 +133,13 @@ async function generateTitleFromAI(summaryContent, globalVcpSettings) {
 
     if (!response.ok) {
         const errorText = await response.text();
+        trajectoryCall.finish({ error: { name: 'HTTPError', message: `${response.status} ${errorText.slice(0, 500)}` } });
         console.error(`[TopicTitleManager] VCP请求失败. Status: ${response.status}, Response: ${errorText}`);
         return null;
     }
 
     const summaryResponseJson = await response.json();
+    trajectoryCall.finish({ response: summaryResponseJson });
     if (summaryResponseJson.choices && summaryResponseJson.choices.length > 0) {
         return summaryResponseJson.choices[0].message.content;
     }
@@ -137,9 +153,10 @@ async function generateTitleFromAI(summaryContent, globalVcpSettings) {
  * 手动重新生成时不受原话题名称和消息数量阈值限制；没有有效消息时返回 null。
  * @param {Array<object>} groupHistory - 聊天历史
  * @param {object} globalVcpSettings - 全局 VCP 设置
+ * @param {object} [trace] - 调用轨迹归属 { groupId?, agentId?, topicId }
  * @returns {Promise<string|null>} 清理后的标题，或 null
  */
-async function generateTitleForHistory(groupHistory, globalVcpSettings) {
+async function generateTitleForHistory(groupHistory, globalVcpSettings, trace = null) {
     const effectiveHistory = Array.isArray(groupHistory)
         ? groupHistory.filter(msg => msg && msg.role !== 'system' && msg.isThinking !== true)
         : [];
@@ -147,7 +164,7 @@ async function generateTitleForHistory(groupHistory, globalVcpSettings) {
     if (effectiveHistory.length === 0) return null;
 
     const summaryContent = buildSummaryContent(effectiveHistory, globalVcpSettings);
-    const rawTitle = await generateTitleFromAI(summaryContent, globalVcpSettings);
+    const rawTitle = await generateTitleFromAI(summaryContent, globalVcpSettings, trace);
     if (!rawTitle) return null;
 
     const newTitle = cleanSummarizedTitle(rawTitle);
@@ -180,7 +197,7 @@ async function triggerSummarizationIfNeeded(groupId, topicId, groupHistory, glob
 
         try {
             const summaryContent = buildSummaryContent(groupHistory, globalVcpSettings);
-            const rawTitle = await generateTitleFromAI(summaryContent, globalVcpSettings);
+            const rawTitle = await generateTitleFromAI(summaryContent, globalVcpSettings, { groupId, topicId });
 
             if (!rawTitle) return;
 

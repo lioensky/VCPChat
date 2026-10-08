@@ -69,6 +69,19 @@ function showContextMenu(event, messageItem, message) {
     menu.id = 'chatContextMenu';
     menu.classList.add('context-menu');
 
+    const activeSel = ownerWindow?.getSelection ? ownerWindow.getSelection() : null;
+    let selectedTextSnapshot = '';
+    if (activeSel && !activeSel.isCollapsed && activeSel.rangeCount > 0) {
+        try {
+            const range = activeSel.getRangeAt(0);
+            if (messageItem.contains(range.commonAncestorContainer) || messageItem.contains(range.startContainer)) {
+                selectedTextSnapshot = activeSel.toString().trim();
+            }
+        } catch {
+            // ignore range errors
+        }
+    }
+
     const isThinkingOrStreaming = message.isThinking || messageItem.classList.contains('streaming');
     const isError = message.finishReason === 'error';
 
@@ -262,6 +275,23 @@ function showContextMenu(event, messageItem, message) {
             menu.appendChild(createBranchOption);
         }
 
+        if (currentSelectedItemVal.type === 'agent' && typeof ownerWindow?.openSideChatWithSelection === 'function') {
+            const sideChatOption = ownerDocument.createElement('div');
+            sideChatOption.classList.add('context-menu-item');
+            sideChatOption.innerHTML = `<i class="fas fa-columns"></i> 在侧栏提问`;
+            sideChatOption.onclick = async () => {
+                closeContextMenu();
+                if (typeof ownerWindow?.openSideChatWithSelection === 'function') {
+                    await ownerWindow.openSideChatWithSelection({
+                        messageItem,
+                        message,
+                        selectedText: selectedTextSnapshot || null
+                    });
+                }
+            };
+            menu.appendChild(sideChatOption);
+        }
+
         const forwardOption = ownerDocument.createElement('div');
         forwardOption.classList.add('context-menu-item');
         forwardOption.innerHTML = `<i class="fas fa-share"></i> 转发消息`;
@@ -434,6 +464,19 @@ function showContextMenu(event, messageItem, message) {
                 closeContextMenu();
             };
             menu.appendChild(redoGroupOption);
+        }
+
+        // 这条回复对应的模型调用：在侧栏「调用轨迹」里定位到发出它的那次请求
+        const ownerCommands = ownerWindow?.VCPContributions?.commands;
+        if (message.role === 'assistant' && message.id && ownerCommands?.get('sidepane.open-trajectory')) {
+            const trajectoryOption = ownerDocument.createElement('div');
+            trajectoryOption.classList.add('context-menu-item');
+            trajectoryOption.innerHTML = `<i class="fas fa-route"></i> 查看调用轨迹`;
+            trajectoryOption.onclick = () => {
+                closeContextMenu();
+                ownerCommands.execute('sidepane.open-trajectory', { requestId: message.id });
+            };
+            menu.appendChild(trajectoryOption);
         }
 
         const interruptGroupQueueOption = createInterruptGroupQueueOption();
@@ -1221,7 +1264,7 @@ async function handleRegenerateResponse(originalAssistantMessage) {
 
             if (response.error) {
                 if (isForActiveChat) {
-                    contextMenuDependencies.renderMessage({ role: 'system', content: `VCP错误 (重新生成): ${response.error}`, timestamp: Date.now() });
+                    contextMenuDependencies.renderMessage({ role: 'system', notice: 'error', content: `VCP错误 (重新生成): ${response.error}`, timestamp: Date.now() });
                 }
             } else if (response.choices && response.choices.length > 0) {
                 const assistantMessageContent = response.choices[0].message.content;

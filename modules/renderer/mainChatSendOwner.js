@@ -1,9 +1,4 @@
-const INTERRUPT_BUTTON_HTML = `
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <rect x="6" y="6" width="12" height="12" rx="1"></rect>
-    </svg>
-`;
+const INTERRUPT_BUTTON_HTML = '<svg class="chat-stop-glyph" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="3" y="3" width="10" height="10" rx="3" fill="currentColor"></rect></svg>';
 
 /** Owns main-chat send/interrupt policy and its button projection. */
 export function createMainChatSendOwner({
@@ -101,7 +96,8 @@ export function createMainChatSendOwner({
             result.error || 'interrupt-request-failed'
         );
         if (disposed) return false;
-        if (!localOutcome) {
+        // 中止请求可能要等好几秒，期间回答已经自己收尾；那时它不再是占位，不能删
+        if (!localOutcome && getInterruptibleMessage()?.id === activeMessage.id) {
             streamProjection?.discardStreamingMessage?.(activeMessage.id);
             historyRef.set(historyRef.get().filter(message => message?.id !== activeMessage.id));
             messageRenderer?.removeMessageById?.(activeMessage.id, false);

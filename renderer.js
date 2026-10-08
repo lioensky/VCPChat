@@ -21,6 +21,8 @@ import { createMainChatSendOwner } from './modules/renderer/mainChatSendOwner.js
 import { createConversationTurnNavigator } from './modules/ui-system/conversation-turn-navigator.js';
 import { createChatBackToBottom } from './modules/ui-system/chat-back-to-bottom.js';
 import { createChatComposerInset } from './modules/ui-system/chat-composer-inset.js';
+import { initWorkspaceSidePane } from './modules/renderer/sidePaneWiring.js';
+import { registerComposerCommands } from './modules/renderer/composerCommands.js';
 
 const streamManager = createStreamProjection();
 const messageRenderer = createMessageRenderer({ streamManager });
@@ -61,6 +63,7 @@ const mainChatSettingsOwner = createMainChatSettingsOwner({ initial: {
     enableThoughtChainInjection: false, // 元思考注入上下文开关
     fileKey: '',
     enableWideChatLayout: false,
+    chatHeaderStyle: 'classic',
     chatPresentationMode: 'bubble',
     chatBubbleMaxWidthDefault: 82,
     chatBubbleMaxWidthNotifications: 90,
@@ -98,7 +101,10 @@ const initialSelectedItem = {
     avatarUrl: null,
     config: null // Store full config object for the selected item
 };
-const mainChatStateAuthority = createMainChatStateAuthority({ selectedItem: initialSelectedItem, topicId: null, history: [] });
+const mainChatStateAuthority = createMainChatStateAuthority(
+    { selectedItem: initialSelectedItem, topicId: null, history: [] },
+    { onHistoryChange: bumpConversationHistory }
+);
 const currentSelectedItemRef = mainChatStateAuthority.selectedItemRef;
 const currentTopicIdRef = mainChatStateAuthority.topicIdRef;
 const mainHistoryRef = mainChatStateAuthority.historyRef;
@@ -130,6 +136,8 @@ const {
     leftSidebar, rightNotificationsSidebar, resizerLeft, resizerRight,
     agentSearchInput, notificationTitleElement, digitalClockElement,
     dateDisplayElement, toggleAssistantBtn, toggleSidebarModeBtn, openModelSelectBtn,
+    vcpSidePane, sidePaneTabs, sidePaneContentContainer,
+    toggleSidePaneChatBtn, closeSidePaneBtn, addSidePaneChatBtn,
 } = createMainChatDomBindings(document);
 // 模态框及其内部元素现在延迟加载，不再在顶层缓存引用
 let globalSettingsForm = null;
@@ -157,6 +165,7 @@ let modelSelectModal = null;
 let modelList = null;
 let modelSearchInput = null;
 let refreshModelsBtn = null;
+let workspaceSidePaneController = null; // 话题删除时丢弃它的侧栏标签
 
 // UI Helper functions to be passed to modules
 // The main uiHelperFunctions object is now defined in modules/ui-helpers.js
@@ -174,6 +183,7 @@ import { createChatRepository } from './modules/chat/chatRepository.js';
 import { createMainChatComposition } from './modules/renderer/mainChatComposition.js';
 import { createMainChatDomBindings } from './modules/renderer/mainChatDomBindings.js';
 import { createMainChatStateAuthority } from './modules/chat/mainChatStateAuthority.js';
+import { bumpConversationHistory } from './modules/ui-system/sources/conversation-current.js';
 import { createNonStreamingEventConsumer } from './modules/renderer/nonStreamingEventConsumer.js';
 import { createChatPresentationState } from './modules/chat/chatPresentationState.js';
 
@@ -232,6 +242,7 @@ const mainChatSettingsPresentationOwner = createMainChatSettingsPresentationOwne
     elements: {
         leftSidebar,
         rightNotificationsSidebar,
+        vcpSidePane,
         vcpLogConnectionStatus: vcpLogConnectionStatusDiv,
         toggleAssistant: toggleAssistantBtn,
         toggleSidebarMode: toggleSidebarModeBtn,
@@ -295,7 +306,7 @@ const forwardMessageOwner = createForwardMessageOwner({
 ownedRendererSubscriptions.add(forwardMessageOwner);
 const showForwardModal = message => forwardMessageOwner.show(message);
 
-function createOwnedInternalChatRenderer({ root, mode = 'readonly', handleSendMessage = null, conversation = null } = {}) {
+function createOwnedInternalChatRenderer({ root, mode = 'readonly', handleSendMessage = null, conversation = null, shouldScrollToBottom = null } = {}) {
     if (!root?.querySelector) throw new TypeError('Internal chat renderer requires a Surface root');
     const conversationCapability = createSurfaceConversation({
         selectedItem: conversation?.selectedItem || currentSelectedItemRef.get(),
@@ -335,6 +346,8 @@ function createOwnedInternalChatRenderer({ root, mode = 'readonly', handleSendMe
         regexFromString: uiHelperFunctions.regexFromString,
         showToastNotification: uiHelperFunctions.showToastNotification,
         scrollToBottom() {
+            // 宿主可以按自己的贴底状态拒绝滚动（例如用户在辅助对话里往上翻时不被拉回底部）
+            if (typeof shouldScrollToBottom === 'function' && shouldScrollToBottom() === false) return;
             const scrollRoot = root.closest('.chat-messages-container') || root;
             scrollRoot.scrollTop = scrollRoot.scrollHeight;
         },
@@ -415,6 +428,10 @@ mainChatSettingsPresentationOwner.configureStartup({
     } else {
         console.error('[RENDERER_INIT] trayManager module not found!');
     }
+
+    // 通知面板分组、待审批横幅与筛选（卡片仍由 notificationRenderer 生成）
+    // 有工作区侧栏时铃铛隐藏，待审批角标挂到侧栏按钮上
+    window.notificationCenter?.mount?.({ document, bellButton: document.getElementById('toggleSidePaneChatBtn') || undefined });
 
     if (window.topTabManager) {
         window.topTabManager.init();
@@ -671,6 +688,13 @@ mainChatSettingsPresentationOwner.configureStartup({
     const chatComposerInset = createChatComposerInset({ document, uiHelper: uiHelperFunctions });
     chatComposerInset.mount();
     ownedRendererSubscriptions.add({ dispose: () => chatComposerInset.dispose() });
+    ownedRendererSubscriptions.add(registerComposerCommands({
+        win: window,
+        messageInput,
+        selectedItemRef: currentSelectedItemRef,
+        topicIdRef: currentTopicIdRef,
+        uiHelper: uiHelperFunctions,
+    }));
 
     const auxiliaryEventOwner = createMainChatAuxiliaryEventOwner({
         subscriptions: {
@@ -778,6 +802,11 @@ mainChatSettingsPresentationOwner.configureStartup({
                     } else {
                         console.error('[TopicListManager] chatManager not available for handleTopicDeletion');
                     }
+                },
+                // 侧栏晚于话题列表初始化，删话题时再取
+                onTopicsDeleted: (deletion) => {
+                    void workspaceSidePaneController?.discardTabsOfDeletedTopics(deletion)
+                        .catch(error => console.error('[RENDERER] Failed to drop side pane tabs of deleted topics:', error));
                 },
                 selectTopic: (topicId) => {
                     if (chatManager) {
@@ -896,7 +925,11 @@ mainChatSettingsPresentationOwner.configureStartup({
             mainRendererFunctions: {
                 setCroppedFile: uiHelperFunctions.setCroppedFile,
                 getCroppedFile: uiHelperFunctions.getCroppedFile,
-                updateChatHeader: (text) => { if (currentChatNameH3) currentChatNameH3.textContent = text; },
+                updateChatHeader: (text) => {
+                    if (!currentChatNameH3) return;
+                    if (window.vcpChatHeader && typeof text === 'string') window.vcpChatHeader.setTitle({ classic: text });
+                    else currentChatNameH3.textContent = text;
+                },
                 onItemDeleted: async () => {
                     chatManager.displayNoItemSelected();
                     await window.itemListManager.loadItems();
@@ -939,6 +972,7 @@ mainChatSettingsPresentationOwner.configureStartup({
                 elements: {
                     leftSidebar: document.querySelector('.sidebar'),
                     rightNotificationsSidebar: document.getElementById('notificationsSidebar'),
+                    vcpSidePane,
                     resizerLeft: document.getElementById('resizerLeft'),
                     resizerRight: document.getElementById('resizerRight'),
                     digitalClockElement: document.getElementById('digitalClock'),
@@ -950,6 +984,39 @@ mainChatSettingsPresentationOwner.configureStartup({
             });
         } else {
             console.error('[RENDERER_INIT] uiManager module not found!');
+        }
+
+        // 右侧工作区侧栏：通知 + 辅助对话
+        // 侧栏起不来只影响侧栏：后面的过滤器、事件绑定（发送按钮等）照常初始化
+        try {
+            workspaceSidePaneController = initWorkspaceSidePane({
+                document,
+                window,
+                elements: {
+                    root: vcpSidePane,
+                    resizerHandle: resizerRight,
+                    tabList: sidePaneTabs,
+                    contentContainer: sidePaneContentContainer,
+                    toggleNotificationsBtn,
+                    notificationsPanel: notificationsSidebar,
+                    toggleChatBtn: toggleSidePaneChatBtn,
+                    closeBtn: closeSidePaneBtn,
+                    addBtn: addSidePaneChatBtn,
+                },
+                chatAPI,
+                chatRepository,
+                chatManager,
+                uiHelper: uiHelperFunctions,
+                createRenderer: createOwnedInternalChatRenderer,
+                settingsRef: mainChatSettingsOwner.ref,
+                selectedItemRef: currentSelectedItemRef,
+                topicIdRef: currentTopicIdRef,
+                historyRef: mainHistoryRef,
+                subscriptions: ownedRendererSubscriptions,
+            });
+        } catch (error) {
+            console.error('[RENDERER_INIT] Failed to initialize the side pane:', error);
+            uiHelperFunctions?.showToastNotification?.(`侧栏初始化失败：${error?.message || '未知错误'}`, 'error');
         }
 
         // Initialize Filter Manager

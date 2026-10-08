@@ -1,99 +1,89 @@
-import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
-import test from "node:test";
-import { JSDOM } from "jsdom";
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import test from 'node:test';
+import { JSDOM } from 'jsdom';
+import { claimSaveCoordinator, getSaveCoordinator } from '../modules/ui-system/settings/save-coordinator.js';
 
-function setupDom() {
-    const root = process.cwd();
-    const dom = new JSDOM("<!doctype html><html><body><div id=\"modal-container\"></div><div id=\"globalSettingsModal\" class=\"modal\"><div class=\"modal-content\"><button class=\"close-button\">×</button><form id=\"globalSettingsForm\"></form></div></div></body></html>", { runScripts: "dangerously" });
-    const helpersCode = fs.readFileSync(path.join(root, "modules/ui-helpers.js"), "utf8");
-    dom.window.eval(helpersCode);
-    return dom;
+function setup() {
+    const dom = new JSDOM('<!doctype html><body><div id="globalSettingsModal" class="active" tabindex="-1"><form id="globalSettingsForm"><input value="Draft"></form></div></body>', { runScripts: 'outside-only' });
+    const { window } = dom;
+    window.eval(fs.readFileSync('modules/ui-helpers.js', 'utf8'));
+    const form = window.document.getElementById('globalSettingsForm');
+    const coordinator = claimSaveCoordinator(form);
+    coordinator.setDurableBase({ userName: 'Initial' }, 'r1');
+    let saving = Promise.resolve();
+    coordinator.registerClient({ id: 'field', flush: () => saving });
+    window.VCPUISettingsBridge = { flush: () => coordinator.flush() };
+    const patch = { userName: 'Draft' };
+    const ops = [{ op: 'set', path: ['userName'], value: 'Draft' }];
+    function save(request) {
+        coordinator.recordDraft(patch, ops);
+        coordinator.reportState('dirty', { owner: 'field' });
+        saving = coordinator.savePatch(patch, { owner: 'field', transport: () => request.promise }).then(result => {
+            coordinator.recordCommit(result, patch, ops);
+            coordinator.reportState(result.success ? 'saved' : 'error', { owner: 'field', dirty: !result.success });
+            return result;
+        });
+        return saving;
+    }
+    return { dom, window, form, coordinator, save, helpers: window.uiHelperFunctions };
 }
 
-test("Stress: closeModal unconditionally closes modal under rapid dirty edits", async () => {
-    const dom = setupDom();
-    const previousWindow = globalThis.window;
-    const previousDocument = globalThis.document;
-    const previousCustomEvent = globalThis.CustomEvent;
-
-    globalThis.window = dom.window;
-    globalThis.document = dom.window.document;
-    globalThis.CustomEvent = dom.window.CustomEvent;
-
-    const uiHelpers = dom.window.uiHelperFunctions;
-    const modal = dom.window.document.getElementById("globalSettingsModal");
-    const form = dom.window.document.getElementById("globalSettingsForm");
-
+test('a hidden settings form receives the failed terminal result and retains its draft for a successful retry', async () => {
+    const { dom, helpers, form, coordinator, save } = setup();
+    const first = Promise.withResolvers(), retry = Promise.withResolvers();
     try {
-        for (let round = 1; round <= 30; round++) {
-            modal.classList.add("active");
-            form.dataset.vcpSettingsDirty = "true";
-            form.dataset.vcpAutosaveState = "saving";
-
-            let flushCalled = false;
-            dom.window.VCPUISettingsBridge = {
-                flush: () => new Promise(resolve => {
-                    flushCalled = true;
-                    setTimeout(() => {
-                        resolve({ status: round % 2 === 0 ? "saved" : "error" });
-                    }, 20);
-                }),
-                getSnapshot: () => ({ status: "saving", pendingOps: [{ path: ["userName"] }] }),
-            };
-
-            const closed = uiHelpers.closeModal("globalSettingsModal");
-            assert.equal(closed, true, "Round " + round + ": closeModal must return true");
-            assert.equal(modal.classList.contains("active"), false, "Round " + round + ": modal must immediately lose active class");
-
-            await new Promise(resolve => setTimeout(resolve, 40));
-            assert.equal(modal.classList.contains("active"), false, "Round " + round + ": modal must stay closed after flush settles");
-            assert.equal(flushCalled, true, "Round " + round + ": flush must be triggered in background");
-        }
+        const failed = save(first);
+        assert.equal(helpers.closeModal('globalSettingsModal'), true);
+        assert.equal(getSaveCoordinator(form), coordinator);
+        first.resolve({ success: false, status: 'failed', error: 'temporary write failure' });
+        await failed;
+        const state = await coordinator.flush();
+        assert.equal(state.status, 'error');
+        assert.equal(state.durableBase.userName, 'Initial');
+        assert.equal(state.draft.userName, 'Draft');
+        assert.equal(state.pendingOps.length, 1);
+        assert.equal(form.dataset.vcpSettingsDirty, 'true');
+        helpers.openModal('globalSettingsModal');
+        const saved = save(retry);
+        assert.equal(helpers.closeModal('globalSettingsModal'), true);
+        retry.resolve({ success: true, status: 'success', settings: { userName: 'Draft' }, currentRevision: 'r2' });
+        await saved;
+        const durable = await coordinator.flush();
+        assert.equal(durable.status, 'saved');
+        assert.equal(durable.durableBase.userName, 'Draft');
+        assert.equal(durable.durableRevision, 'r2');
+        assert.equal(durable.pendingOps.length, 0);
+        assert.equal(form.dataset.vcpSettingsDirty, undefined);
+        assert.equal(form.isConnected, true);
     } finally {
-        globalThis.window = previousWindow;
-        globalThis.document = previousDocument;
-        globalThis.CustomEvent = previousCustomEvent;
+        first.resolve({ success: true, status: 'success' });
+        retry.resolve({ success: true, status: 'success' });
+        await coordinator.dispose();
+        dom.window.close();
     }
 });
 
-test("Stress: rapid spamming of openModal and closeModal preserves deterministic state", async () => {
-    const dom = setupDom();
-    const previousWindow = globalThis.window;
-    const previousDocument = globalThis.document;
-    const previousCustomEvent = globalThis.CustomEvent;
-
-    globalThis.window = dom.window;
-    globalThis.document = dom.window.document;
-    globalThis.CustomEvent = dom.window.CustomEvent;
-
-    const uiHelpers = dom.window.uiHelperFunctions;
-    const modal = dom.window.document.getElementById("globalSettingsModal");
-
+test('owner teardown of a hidden settings form waits for its real terminal result before releasing the coordinator', async () => {
+    const { dom, helpers, form, coordinator, save } = setup();
+    const request = Promise.withResolvers();
     try {
-        let openEvents = 0;
-        let closeEvents = 0;
-        dom.window.document.addEventListener("modal-visibility-changed", (e) => {
-            if (e.detail.modalId === "globalSettingsModal") {
-                if (e.detail.active) openEvents++;
-                else closeEvents++;
-            }
-        });
-
-        for (let i = 0; i < 50; i++) {
-            uiHelpers.openModal("globalSettingsModal");
-            assert.equal(modal.classList.contains("active"), true);
-            uiHelpers.closeModal("globalSettingsModal");
-            assert.equal(modal.classList.contains("active"), false);
-        }
-
-        assert.equal(openEvents, 50, "All 50 open events dispatched");
-        assert.equal(closeEvents, 50, "All 50 close events dispatched");
-        assert.equal(modal.classList.contains("active"), false, "Modal ends cleanly closed");
+        const saving = save(request);
+        helpers.closeModal('globalSettingsModal');
+        let disposed = false;
+        const teardown = coordinator.dispose().then(() => { disposed = true; });
+        await Promise.resolve();
+        assert.equal(disposed, false);
+        assert.equal(getSaveCoordinator(form), coordinator);
+        request.resolve({ success: true, status: 'success', settings: { userName: 'Draft' }, currentRevision: 'r2' });
+        await Promise.all([saving, teardown]);
+        assert.equal(disposed, true);
+        assert.equal(getSaveCoordinator(form), null);
+        assert.equal(form.dataset.vcpSettingsOperationId, undefined);
+        assert.equal(coordinator.getSnapshot().durableBase.userName, 'Draft');
     } finally {
-        globalThis.window = previousWindow;
-        globalThis.document = previousDocument;
-        globalThis.CustomEvent = previousCustomEvent;
+        request.resolve({ success: true, status: 'success' });
+        await coordinator.dispose();
+        dom.window.close();
     }
 });

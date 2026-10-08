@@ -7,7 +7,7 @@
 
 (() => {
     const GIT_WS_KEY = 'vcp-projectforge-git-workspace';
-    const POLL_MS = 8000;
+    const GIT_STATUS_TOPIC = 'git.status';
     const MAX_CONFIRM_LIST = 8;
 
     const GROUPS = [
@@ -37,7 +37,10 @@
         current: null,
         diffData: null,
         diffView: null,
-        pollTimer: null,
+        // 主进程正在给这个窗口推哪个工作区的变化；看不见时收到的推送先记成 stale
+        subscribedId: null,
+        watchDegraded: false,
+        stale: false,
     };
 
     // ============================ 基础工具 ============================
@@ -86,17 +89,14 @@
 
     function onEnterGitTab() {
         if (!git.enabled) return;
-        startPolling();
         if (git.workspaces.length) refreshStatus({ quiet: true });
         else loadWorkspaces();
         requestAnimationFrame(refreshDiffLayout);
     }
 
-    function onLeaveGitTab() {
-        stopPolling();
-    }
+    function onLeaveGitTab() {}
 
-    // ============================ 状态刷新与轮询 ============================
+    // ============================ 状态刷新与变更推送 ============================
 
     function setLoading(on, quiet = false) {
         git.loading = on;
@@ -110,19 +110,36 @@
         page.classList.toggle('busy', on);
         page.setAttribute('aria-busy', String(on));
         syncActionButtons();
+        if (!on) refreshIfStale();
     }
 
-    function startPolling() {
-        stopPolling();
-        git.pollTimer = setInterval(() => {
-            if (document.visibilityState !== 'visible' || git.busy || git.loading || !isGitTab()) return;
-            refreshStatus({ quiet: true });
-        }, POLL_MS);
+    // 不再定时轮询：向主进程订阅当前工作区，仓库一变（这里或别的窗口提交、暂存、切分支，
+    // 或者文件被改了）主进程推 git:changed 过来。换工作区就换订阅，窗口关掉主进程自己清掉。
+    // 主进程看不全这个仓库（只看得到 .git 或监听挂不上）时会说一声，之后窗口获得焦点时补读一次。
+    function followWorkspaceChanges(nextId) {
+        if (git.subscribedId === nextId) return;
+        if (git.subscribedId) Promise.resolve(api.unsubscribeMainState?.(GIT_STATUS_TOPIC, git.subscribedId)).catch(() => {});
+        git.subscribedId = nextId || null;
+        git.watchDegraded = false;
+        if (nextId) {
+            Promise.resolve(api.subscribeMainState?.(GIT_STATUS_TOPIC, nextId))
+                .then(result => { if (result?.state?.degraded && git.subscribedId === nextId) git.watchDegraded = true; })
+                .catch(() => {});
+        }
     }
 
-    function stopPolling() {
-        clearInterval(git.pollTimer);
-        git.pollTimer = null;
+    function onGitChanged(payload) {
+        if (!git.enabled || !payload || payload.workspaceId !== git.workspaceId) return;
+        if (payload.degraded) git.watchDegraded = true;
+        if (document.visibilityState !== 'visible' || git.busy || git.loading || !isGitTab()) {
+            git.stale = true;
+            return;
+        }
+        refreshStatus({ quiet: true });
+    }
+
+    function refreshIfStale() {
+        if (git.stale && document.visibilityState === 'visible' && isGitTab() && !git.busy) refreshStatus({ quiet: true });
     }
 
     function clearSelection() {
@@ -134,6 +151,7 @@
         const textarea = $('git-commit-message');
         if (git.workspaceId) git.drafts.set(git.workspaceId, textarea.value);
         git.workspaceId = nextId;
+        followWorkspaceChanges(nextId);
         textarea.value = (nextId && git.drafts.get(nextId)) || '';
         git.status = null;
         git.statusSeq += 1;
@@ -187,6 +205,7 @@
 
     async function refreshStatus({ quiet = false } = {}) {
         if (!git.workspaceId || git.busy) return;
+        git.stale = false;
         const seq = (git.statusSeq += 1);
         setLoading(true, quiet);
         try {
@@ -199,6 +218,8 @@
         } finally {
             if (seq === git.statusSeq) setLoading(false, quiet);
         }
+        // 读的途中又来了推送：补读一次
+        if (seq === git.statusSeq) refreshIfStale();
     }
 
     function applyStatus(status) {
@@ -362,8 +383,9 @@
             else if (op === 'unstage') res = await gitCall(api.gitUnstage(git.workspaceId, paths));
             else if (op === 'discard') res = await gitCall(api.gitDiscard(git.workspaceId, paths));
             toast(`已${label} ${paths.length} 个文件`, 'success');
+            if (res?.warning) toast(res.warning, 'warning');
             if (res?.status) applyStatus(res.status);
-            else await refreshStatus({ quiet: true });
+            else git.stale = true;
         } catch (error) {
             toast(`${label}失败：${error.message}`, 'error');
             showOpOutput(`${label}失败`, error.message);
@@ -390,11 +412,12 @@
         hideOpOutput();
         try {
             const res = await gitCall(api.gitCommit(git.workspaceId, { message: msg }));
-            toast(`提交成功：${res.commit}`, 'success');
+            toast(res.commit ? `提交成功：${res.commit}` : '提交成功', 'success');
+            if (res.warning) toast(res.warning, 'warning');
             $('git-commit-message').value = '';
             git.drafts.delete(git.workspaceId);
             if (res?.status) applyStatus(res.status);
-            else await refreshStatus({ quiet: true });
+            else git.stale = true;
         } catch (error) {
             toast(`提交失败：${error.message}`, 'error');
             showOpOutput('提交失败', error.message);
@@ -419,9 +442,10 @@
         try {
             const res = await gitCall(api.gitPush(git.workspaceId, { setUpstream: !b?.upstream }));
             toast('推送成功', 'success');
+            if (res.warning) toast(res.warning, 'warning');
             if (res.output) showOpOutput('推送完成', res.output, 'success');
             if (res?.status) applyStatus(res.status);
-            else await refreshStatus({ quiet: true });
+            else git.stale = true;
         } catch (error) {
             toast(`推送失败：${error.message}`, 'error');
             showOpOutput('推送失败', error.message);
@@ -568,6 +592,15 @@
             refreshStatus();
         });
 
+        // 主窗口的 Git 标签换了工作区：存储变了，这边跟着换。storage 事件只发给别的窗口，自己 setItem 不会收到
+        window.addEventListener('storage', e => {
+            if (e.key !== GIT_WS_KEY || !e.newValue || e.newValue === git.workspaceId) return;
+            if (!git.workspaces.some(ws => ws.id === e.newValue)) return;
+            resetWorkspaceView(e.newValue);
+            renderWorkspaceSelect();
+            refreshStatus({ quiet: true });
+        });
+
         $('git-refresh-btn').addEventListener('click', () => refreshStatus());
 
         $('git-commit-message').addEventListener('input', syncActionButtons);
@@ -670,6 +703,11 @@
         git.enabled = true;
         bindGitEvents();
         window.ProjectForgeSideTabs?.register('git', { onEnter: onEnterGitTab, onLeave: onLeaveGitTab });
+        api.onGitChanged?.(onGitChanged);
+        document.addEventListener('visibilitychange', refreshIfStale);
+        window.addEventListener('focus', () => {
+            if (git.watchDegraded) onGitChanged({ workspaceId: git.workspaceId, reason: 'focus' });
+        });
 
         // 不在 Git 分页时也静默加载一次，用于分页角标
         if (window.ProjectForgeSideTabs?.savedTab !== 'git') loadWorkspaces({ quiet: true });

@@ -28,6 +28,7 @@ const IGNORED_DIRS = new Set([
 ]);
 
 const IS_WIN = process.platform === 'win32';
+const { isDotGitSegment } = require('./dotGitPath');
 
 // ============================ 路径工具 ============================
 
@@ -73,11 +74,16 @@ function resolveWorkspacePath(workspaceRoot, relPath) {
     const abs = path.resolve(root, ...normalized.split('/').filter(Boolean));
     const rel = path.relative(root, abs);
     if (rel === '' || !isInsideRelative(rel)) throw new Error(`路径不在工作区内: ${relPath}`);
-    if (rel.split(path.sep).some(segment => segment.toLowerCase() === '.git')) {
+    if (rel.split(path.sep).some(isDotGitSegment)) {
         throw new Error(`不允许访问 .git 目录: ${relPath}`);
     }
-    if (!isInside(root, realpathSafe(path.dirname(abs)))) {
+    const realDir = realpathSafe(path.dirname(abs));
+    if (!isInside(root, realDir)) {
         throw new Error(`路径经符号链接指向工作区之外: ${relPath}`);
+    }
+    // 名字上没有 .git，实际目录却是（工作区里的符号链接或 Windows 短名指向 .git）
+    if (path.relative(root, realDir).split(path.sep).some(isDotGitSegment)) {
+        throw new Error(`不允许访问 .git 目录: ${relPath}`);
     }
     return { root, abs, rel: toPosix(rel) };
 }

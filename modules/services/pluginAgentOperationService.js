@@ -258,6 +258,9 @@ class PluginAgentOperationService {
         candidates.sort((a, b) => b.tier - a.tier);
 
         const best = candidates[0];
+        if (candidates.filter(candidate => candidate.tier === best.tier).length > 1) {
+            throw new Error(`Agent 名称匹配不唯一: ${requested}；请使用 Agent ID。`);
+        }
         const avatarUrl = await resolveAgentAvatarUrl(path.join(this.agentDir, best.id));
         return {
             ...best.config,

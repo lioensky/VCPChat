@@ -3,6 +3,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 const engine = require('../modules/tavernRulesEngine');
 
 let modulePromise = null;
@@ -13,7 +15,12 @@ async function loadOrchestratorModule() {
         const source = fs.readFileSync(
             'modules/chat/singleChatRequestOrchestrator.js',
             'utf8'
-        ).replace(/^import\s+['"]\.\.\/tavernRulesEngine\.js['"];\s*/m, '');
+        ).replace(/^import\s+['"]\.\.\/tavernRulesEngine\.js['"];\s*/m, '')
+            // data: URL 没有基准路径，相对 import 要换成绝对文件 URL 才能解析。
+            .replace(
+                /(['"])\.\.\/renderer\/toolResultRegions\.js\1/,
+                JSON.stringify(pathToFileURL(path.resolve('modules/renderer/toolResultRegions.js')).href)
+            );
         modulePromise = import(
             `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
         );

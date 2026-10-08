@@ -1,0 +1,70 @@
+/*
+ * .zc-scope 下共用的颜色令牌（计划详情等侧栏视图使用）。
+ * 配色对照 ZCode 的 app-shell 侧栏
+ * （https://github.com/zai-org/ZCode ，Apache-2.0）；Tailwind 类换算成了显式样式。
+ */
+
+html .zc-scope:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    --zc-fg: var(--vcp-ui-port-color-262626);
+    --zc-fg-subtle: var(--vcp-ui-port-color-737373);
+    --zc-fg-subtlest: var(--vcp-ui-port-color-a3a3a3);
+    --zc-popover: var(--vcp-ui-port-color-ffffff);
+    --zc-menu: var(--vcp-ui-port-color-ffffff);
+    --zc-menu-hover: var(--vcp-ui-port-color-f0f0f0);
+    --zc-border: var(--vcp-ui-port-color-rgba-0-0-0-0-1);
+    --zc-border-strong: var(--vcp-ui-port-color-rgba-0-0-0-0-16);
+    --zc-input-bg: var(--vcp-ui-port-color-ffffff);
+    --zc-card-bg: var(--vcp-ui-port-color-f7f7f7);
+    --zc-primary: var(--vcp-ui-port-color-262626);
+    --zc-primary-fg: var(--vcp-ui-port-color-ffffff);
+    --zc-secondary: var(--vcp-ui-port-color-efefef);
+    --zc-secondary-hover: var(--vcp-ui-port-color-e4e4e4);
+    --zc-added: var(--vcp-ui-port-color-16a34a);
+    --zc-removed: var(--vcp-ui-port-color-dc2626);
+    --zc-success: var(--vcp-ui-port-color-16a34a);
+    --zc-warning: var(--vcp-ui-port-color-d97706);
+    --zc-danger: var(--vcp-ui-port-color-dc2626);
+    --zc-overlay: var(--vcp-ui-port-color-rgba-0-0-0-0-6);
+    --zc-shadow-md: 0 4px 6px -1px var(--vcp-ui-port-color-rgba-0-0-0-0-1), 0 2px 4px -2px var(--vcp-ui-port-color-rgba-0-0-0-0-1);
+    --zc-shadow-lg: 0 10px 15px -3px var(--vcp-ui-port-color-rgba-0-0-0-0-12), 0 4px 6px -4px var(--vcp-ui-port-color-rgba-0-0-0-0-1);
+    --zc-lane-descendant: var(--vcp-ui-port-color-3b82f6);
+    --zc-lane-renamed: var(--vcp-ui-port-color-a855f7);
+    --zc-lane-added: var(--vcp-ui-port-color-22c55e);
+    --zc-lane-modified: var(--vcp-ui-port-color-f59e0b);
+    font-family: inherit;
+    font-size: var(--vcp-ui-font-size);
+    line-height: 1.4;
+    color: var(--zc-fg);
+}
+
+html body[data-vcp-theme="dark"] .zc-scope:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    --zc-fg: var(--vcp-ui-port-color-d4d4d4);
+    --zc-fg-subtle: var(--vcp-ui-port-color-a3a3a3);
+    --zc-fg-subtlest: var(--vcp-ui-port-color-737373);
+    --zc-popover: var(--vcp-ui-port-color-2b2b2b);
+    --zc-menu: var(--vcp-ui-port-color-2b2b2b);
+    --zc-menu-hover: var(--vcp-ui-port-color-363636);
+    --zc-border: var(--vcp-ui-port-color-rgba-255-255-255-0-1);
+    --zc-border-strong: var(--vcp-ui-port-color-rgba-255-255-255-0-18);
+    --zc-input-bg: var(--vcp-ui-port-color-222222);
+    --zc-card-bg: var(--vcp-ui-port-color-262626);
+    --zc-primary: var(--vcp-ui-port-color-e5e5e5);
+    --zc-primary-fg: var(--vcp-ui-port-color-1a1a1a);
+    --zc-secondary: var(--vcp-ui-port-color-363636);
+    --zc-secondary-hover: var(--vcp-ui-port-color-414141);
+    --zc-added: var(--vcp-ui-port-color-4ade80);
+    --zc-removed: var(--vcp-ui-port-color-f87171);
+    --zc-success: var(--vcp-ui-port-color-4ade80);
+    --zc-warning: var(--vcp-ui-port-color-fbbf24);
+    --zc-danger: var(--vcp-ui-port-color-f87171);
+    --zc-shadow-md: 0 4px 6px -1px var(--vcp-ui-port-color-rgba-0-0-0-0-4), 0 2px 4px -2px var(--vcp-ui-port-color-rgba-0-0-0-0-4);
+    --zc-shadow-lg: 0 10px 15px -3px var(--vcp-ui-port-color-rgba-0-0-0-0-5), 0 4px 6px -4px var(--vcp-ui-port-color-rgba-0-0-0-0-4);
+}
+
+html .zc-scope *:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .zc-scope *:where(.vcp-ui-scope, .vcp-ui-scope *)::before,
+html .zc-scope *:where(.vcp-ui-scope, .vcp-ui-scope *)::after { box-sizing: border-box; }
+
+/* stylelint-disable-next-line declaration-no-important -- HTML hidden must override component display modes. */
+html .zc-scope [hidden][hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }
+

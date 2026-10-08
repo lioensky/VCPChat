@@ -1,0 +1,177 @@
+@charset "UTF-8";
+/* ==========================================================================
+ * 辅助对话（侧栏）的消息气泡：始终使用对话模式（chat-messenger.css）的样式。
+ *
+ *   - 不显示头像和名字；
+ *   - 用户：右侧全圆角胶囊，最宽 85%，底色沿用普通气泡模式的磨砂色；
+ *   - 助手：浅灰/深灰底的圆角气泡，占满整列，侧栏窄，不再限制到 560px；
+ *   - 思考中的气泡保留：侧栏没有对话模式底部的工作状态行。
+ * 主题文件的气泡规则带 !important，所以底色、圆角、边框也用 !important 覆盖；
+ * 因此放在 ui-system 之外，不进 cascade layer；选择器带 html body，
+ * 比主题的 body.light-theme .message-item.assistant .md-content 更具体。
+ * ========================================================================== */
+
+.side-chat-messages-container {
+    --side-chat-radius: 15px;
+    --side-chat-agent-bg: #262626;
+    --side-chat-agent-text: #ececec;
+    --side-chat-agent-code-bg: rgba(255, 255, 255, 0.08);
+    --side-chat-agent-code-text: rgba(236, 236, 236, 0.72);
+}
+
+body.light-theme .side-chat-messages-container {
+    --side-chat-agent-bg: #efefef;
+    --side-chat-agent-text: #111111;
+    --side-chat-agent-code-bg: rgba(0, 0, 0, 0.05);
+    --side-chat-agent-code-text: rgba(17, 17, 17, 0.62);
+}
+
+html body .side-chat-messages-container .message-item.user,
+html body .side-chat-messages-container .message-item.assistant {
+    gap: 0;
+    padding-bottom: 0;
+}
+
+html body .side-chat-messages-container .message-item :is(.chat-avatar, .name-time-block) {
+    display: none;
+}
+
+html body .side-chat-messages-container .message-item.user {
+    flex-direction: row-reverse;
+}
+
+html body .side-chat-messages-container .message-item .details-and-bubble-wrapper {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 100%;
+    gap: 4px;
+    margin: 0;
+}
+
+html body .side-chat-messages-container .message-item.user .details-and-bubble-wrapper {
+    align-items: flex-end;
+}
+
+html body .side-chat-messages-container .message-item.assistant .details-and-bubble-wrapper {
+    align-items: stretch;
+}
+
+html body .side-chat-messages-container .message-item:is(.user, .assistant) .md-content {
+    box-sizing: border-box;
+    padding: 6px 12px;
+    border: 0 !important;
+    border-radius: var(--side-chat-radius) !important;
+    box-shadow: none !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    line-height: 22px;
+}
+
+html body .side-chat-messages-container .message-item.assistant .md-content {
+    width: 100%;
+    max-width: 100% !important;
+    background: var(--side-chat-agent-bg) !important;
+    color: var(--side-chat-agent-text) !important;
+}
+
+html body .side-chat-messages-container .message-item.user .md-content {
+    max-width: 85% !important;
+    padding: 7px 14px;
+    border-radius: 18px !important;
+    /* 底色和文字色交给主题的普通用户气泡（磨砂渐变），这里只改形状。
+       侧栏本身已做背景模糊，消息列表又带底部淡出遮罩，气泡不再单独模糊。 */
+}
+
+/* 流式输出不套流光边框（animations.css），和对话模式一致 */
+html body .side-chat-messages-container .message-item.streaming .md-content::after {
+    content: none;
+}
+
+html body .side-chat-messages-container .message-item.user .md-content :is(p, li, span, strong, em, h1, h2, h3, h4, h5, h6, blockquote) {
+    color: inherit;
+}
+
+html body .side-chat-messages-container .message-item.user .md-content a {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+html body .side-chat-messages-container .message-item .md-content p {
+    margin: 0 0 8px;
+}
+
+html body .side-chat-messages-container .message-item .md-content > :first-child {
+    margin-top: 0;
+}
+
+html body .side-chat-messages-container .message-item .md-content > :last-child {
+    margin-bottom: 0;
+}
+
+html body .side-chat-messages-container .message-item .md-content :not(pre) > code {
+    padding: 1px 5px;
+    border: 0;
+    border-radius: 5px;
+    font-size: 0.86em;
+    background: var(--side-chat-agent-code-bg);
+    color: var(--side-chat-agent-code-text);
+}
+
+html body .side-chat-messages-container .message-item .md-content > pre,
+html body .side-chat-messages-container .message-item .md-content .vcp-tool-use-bubble,
+html body .side-chat-messages-container .message-item .md-content .vcp-tool-result-bubble,
+html body .side-chat-messages-container .message-item .md-content .vcp-thought-chain-bubble {
+    max-width: 100%;
+    box-sizing: border-box;
+    border-radius: 10px;
+}
+
+/* 原地编辑：编辑框替换气泡，宽度跟随这一列 */
+html body .side-chat-messages-container .message-item.side-chat-editing .md-content {
+    display: none;
+}
+
+html body .side-chat-messages-container .side-chat-message-editor {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+html body .side-chat-messages-container .side-chat-message-editor .message-edit-textarea {
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+}
+
+/* 右键菜单：从指针那一角淡入放大，120ms。菜单每次新建，用一次性动画即可；
+   message-actions.js 在菜单翻到上方/左边时标上 data-open-up / data-open-left。 */
+#chatContextMenu[data-side-chat-menu="true"] {
+    transform-origin: top left;
+    animation: side-chat-menu-in 120ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#chatContextMenu[data-side-chat-menu="true"][data-open-up="true"] {
+    transform-origin: bottom left;
+}
+
+#chatContextMenu[data-side-chat-menu="true"][data-open-left="true"] {
+    transform-origin: top right;
+}
+
+#chatContextMenu[data-side-chat-menu="true"][data-open-up="true"][data-open-left="true"] {
+    transform-origin: bottom right;
+}
+
+@keyframes side-chat-menu-in {
+    from {
+        opacity: 0;
+        transform: scale(0.96);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #chatContextMenu[data-side-chat-menu="true"] {
+        animation: none;
+    }
+}

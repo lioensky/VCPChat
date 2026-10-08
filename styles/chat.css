@@ -414,28 +414,65 @@ body.light-theme .message-item.assistant .md-content {
     border: 1px solid color-mix(in srgb, var(--border-color) 32%, rgba(255, 255, 255, 0.68));
 }
 
-/* System messages special layout */
+/* System messages: one notice row (icon + text) instead of a bubble.
+ * The text sits directly in the row; the theme's bubble background on
+ * .md-content (light theme adds a gradient) must not draw a second box. */
 .message-item.system.system-message-layout {
-    justify-content: center; 
-    padding: 8px 12px;
-    border-radius: 10px;
-    background-color: var(--accent-bg); 
-    color: var(--secondary-text);
-    max-width: 80%;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    width: fit-content;
+    max-width: min(100%, 720px);
     margin-left: auto;
     margin-right: auto;
-    text-align: center;
-    /* Undo flex for system messages if they are simple */
-    display: block; 
+    padding: 8px 12px;
+    border: 1px solid color-mix(in srgb, var(--border-color) 55%, transparent);
+    border-radius: 12px;
+    background-color: color-mix(in srgb, var(--accent-bg) 60%, transparent);
+    color: var(--secondary-text);
+    text-align: left;
+    box-sizing: border-box;
 }
 .message-item.system.system-message-layout .md-content {
-    width: 100%;
+    flex: 1 1 auto;
+    min-width: 0;
+    width: auto;
     max-width: 100%; /* Override bubble max-width for system */
-    box-shadow: none;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    background-color: transparent;
-    padding: 0;
+    padding: 0 !important; /* presentation modes pad the bubble */
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    color: inherit;
+    overflow-wrap: anywhere;
+}
+.message-item.system.system-message-layout .md-content > :first-child {
+    margin-top: 0;
+}
+.message-item.system.system-message-layout .md-content > :last-child {
+    margin-bottom: 0;
+}
+.message-item.system.system-message-layout .system-message-icon {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    height: 1lh;
+    opacity: 0.8;
+}
+.message-item.system.system-message-layout .system-message-icon svg {
+    width: 15px;
+    height: 15px;
+}
+.message-item.system.system-notice-error {
+    border-color: color-mix(in srgb, var(--vcp-ui-danger, #dc2626) 26%, transparent);
+    background-color: color-mix(in srgb, var(--vcp-ui-danger, #dc2626) 6%, color-mix(in srgb, var(--accent-bg) 60%, transparent));
+    color: var(--primary-text);
+}
+.message-item.system.system-notice-error .system-message-icon {
+    color: var(--vcp-ui-danger, #dc2626);
+    opacity: 1;
 }
 
 /* Welcome bubble for initial "no item selected" message */

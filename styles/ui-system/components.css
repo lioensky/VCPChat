@@ -541,8 +541,8 @@
     }
 
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope .vcp-ui-window-control-pin.is-pinned {
-        color: var(--vcp-ui-primary, #6366f1);
-        background: var(--vcp-ui-primary-bg, rgba(99, 102, 241, 0.16));
+        color: var(--vcp-ui-accent);
+        background: color-mix(in srgb, var(--vcp-ui-accent) 16%, transparent);
     }
 
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope .vcp-ui-window-control-pin.is-pinned .vcp-ui-icon,

@@ -142,17 +142,17 @@
 
 /* 主气泡样式 - VCP ToolUse */
 .vcp-tool-use-bubble {
-    background: linear-gradient(145deg, #3a7bd5 0%, #00d2ff 100%) !important;
+    background: var(--vcp-tool-presented-background, linear-gradient(145deg, #3a7bd5 0%, #00d2ff 100%)) !important;
     background-size: 200% 200% !important;
     /* 持续流动；取消原先播放一次、2 秒后停在终态的限制。 */
     animation: vcp-bubble-background-flow-kf 2s ease-in-out infinite;
-    border-radius: 10px !important;
-    padding: 8px 15px 8px 35px !important;
-    color: #ffffff !important;
+    border-radius: var(--vcp-tool-presented-radius, 10px) !important;
+    padding: var(--vcp-tool-presented-spacing, 8px 15px 8px 35px) !important;
+    color: var(--vcp-tool-presented-color, #ffffff) !important;
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
-    margin-top: 5px !important;
+    margin-top: var(--vcp-tool-presented-margin-top, 5px) !important;
     /* Add space above the tool bubble */
-    margin-bottom: 10px !important;
+    margin-bottom: var(--vcp-tool-presented-margin-bottom, 10px) !important;
     position: relative;
     overflow: hidden;
     line-height: 1.6;
@@ -160,11 +160,11 @@
     width: -moz-fit-content;
     width: fit-content;
     max-width: 100%;
-    font-family: var(--vcp-chat-code-font-family, 'Consolas', 'Monaco', 'Courier New', monospace) !important;
-    font-size: 0.95em !important;
-    white-space: pre-wrap !important;
+    font-family: var(--vcp-tool-presented-font-family, var(--vcp-chat-code-font-family, 'Consolas', 'Monaco', 'Courier New', monospace)) !important;
+    font-size: var(--vcp-tool-presented-font-size, 0.95em) !important;
+    white-space: var(--vcp-tool-presented-white-space, pre-wrap) !important;
     /* Restore: Allow wrapping but preserve whitespace */
-    word-break: break-all !important;
+    word-break: var(--vcp-tool-presented-word-break, break-all) !important;
     /* Restore: Break long strings */
     /*
      * 不要使用 transition: all：
@@ -219,9 +219,9 @@
  * 深色主题继续使用上方默认的深蓝渐变与白色文字。
  */
 body[data-vcp-theme="light"] .vcp-tool-use-bubble {
-    background: linear-gradient(145deg, #dbeeff 0%, #b8e4ff 100%) !important;
+    background: var(--vcp-tool-presented-background, linear-gradient(145deg, #dbeeff 0%, #b8e4ff 100%)) !important;
     border-color: rgba(30, 136, 229, 0.35);
-    color: #123a5a !important;
+    color: var(--vcp-tool-presented-color, #123a5a) !important;
     box-shadow: 0 4px 10px rgba(30, 100, 160, 0.14);
 }
 
@@ -230,7 +230,7 @@ body[data-vcp-theme="light"] .vcp-tool-use-bubble {
  * 表达兼容协议身份；旧 VCP-ToolUse 的类名与外观保持不变。
  */
 .vcp-tool-use-bubble.vcp-jev-tool-use-bubble {
-    background: linear-gradient(145deg, #6254d9 0%, #298bd6 100%) !important;
+    background: var(--vcp-tool-presented-background, linear-gradient(145deg, #6254d9 0%, #298bd6 100%)) !important;
     border-color: rgba(190, 180, 255, 0.62);
 }
 
@@ -247,9 +247,37 @@ body[data-vcp-theme="light"] .vcp-tool-use-bubble {
 }
 
 body[data-vcp-theme="light"] .vcp-tool-use-bubble.vcp-jev-tool-use-bubble {
-    background: linear-gradient(145deg, #eee9ff 0%, #ccecff 100%) !important;
+    background: var(--vcp-tool-presented-background, linear-gradient(145deg, #eee9ff 0%, #ccecff 100%)) !important;
     border-color: rgba(99, 102, 241, 0.32);
-    color: #293056 !important;
+    color: var(--vcp-tool-presented-color, #293056) !important;
+}
+
+/* 格式错误工具调用气泡 (is-malformed) */
+.vcp-tool-use-bubble.is-malformed {
+    border-color: var(--danger-color, #e06c5f) !important;
+    background: linear-gradient(145deg, rgba(224, 108, 95, 0.3) 0%, rgba(185, 72, 50, 0.4)) !important;
+}
+
+.vcp-tool-use-bubble.is-malformed::before {
+    content: "\26A0\FE0F";
+    animation: none;
+}
+
+.vcp-tool-use-bubble .vcp-tool-malformed-hint {
+    margin-left: 8px;
+    font-size: 0.88em;
+    font-weight: normal;
+    color: var(--danger-color, #fca5a5);
+}
+
+body[data-vcp-theme="light"] .vcp-tool-use-bubble.is-malformed {
+    border-color: var(--danger-color, #b94832) !important;
+    background: linear-gradient(145deg, rgba(239, 68, 68, 0.12) 0%, rgba(220, 38, 38, 0.18)) !important;
+    color: #5c1d11 !important;
+}
+
+body[data-vcp-theme="light"] .vcp-tool-use-bubble .vcp-tool-malformed-hint {
+    color: var(--danger-color, #b94832);
 }
 
 /* New styles for summary and details sections */
@@ -1262,7 +1290,7 @@ body[data-vcp-theme="dark"] {
     --table-text-color: var(--primary-text);
     --table-bg-color: rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0.2);
     --table-header-bg-color: rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0.3);
-    --table-header-text-color: var(--highlight-text);
+    --table-header-text-color: var(--primary-text);
     --table-row-even-bg-color: transparent;
     --table-row-hover-bg-color: rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0.4);
 
@@ -1375,17 +1403,17 @@ body[data-vcp-theme="light"] {
 /* --- VCP Tool Result Bubble --- */
 .vcp-tool-result-bubble {
     display: block !important;
-    background: var(--tool-result-bg) !important;
-    border-radius: 10px !important;
+    background: var(--vcp-tool-presented-background, var(--tool-result-bg)) !important;
+    border-radius: var(--vcp-tool-presented-radius, 10px) !important;
     border: 1px solid var(--tool-result-border-color);
-    padding: 12px 18px !important;
-    color: var(--tool-result-text-color) !important;
+    padding: var(--vcp-tool-presented-spacing, 12px 18px) !important;
+    color: var(--vcp-tool-presented-color, var(--tool-result-text-color)) !important;
     box-shadow: var(--tool-result-shadow);
-    margin-top: 10px !important;
-    margin-bottom: 12px !important;
+    margin-top: var(--vcp-tool-presented-margin-top, 10px) !important;
+    margin-bottom: var(--vcp-tool-presented-margin-bottom, 12px) !important;
     position: relative;
-    font-family: var(--vcp-tool-card-font-family, var(--vcp-chat-font-family, 'Segoe UI', 'Roboto', sans-serif)) !important;
-    font-size: 0.95em !important;
+    font-family: var(--vcp-tool-presented-font-family, var(--vcp-tool-card-font-family, var(--vcp-chat-font-family, 'Segoe UI', 'Roboto', sans-serif))) !important;
+    font-size: var(--vcp-tool-presented-font-size, 0.95em) !important;
     line-height: 1.6;
     width: 100%;
     max-width: 95%;
@@ -1531,15 +1559,15 @@ body[data-vcp-theme="light"] {
     outline-offset: 1px;
 }
 
-/* 隐藏态工具结果气泡视觉表现：30%低透明度、低饱和度虚线与徽章 */
-.vcp-tool-result-bubble--hidden {
+/* 隐藏态工具结果气泡视觉表现：30%低透明度、低饱和度虚线与徽章（新界面的工具行另有样式） */
+.vcp-tool-result-bubble--hidden:not(.vcp-tool-presented) {
     opacity: 0.3;
     border-style: dashed !important;
     border-color: rgba(148, 163, 184, 0.35) !important;
     transition: opacity 0.2s ease, border-color 0.2s ease;
 }
 
-.vcp-tool-result-bubble--hidden:hover {
+.vcp-tool-result-bubble--hidden:not(.vcp-tool-presented):hover {
     opacity: 0.8;
     border-color: rgba(148, 163, 184, 0.6) !important;
 }
@@ -2599,10 +2627,6 @@ body[data-vcp-theme="light"] .message-item .md-content pre .hljs-meta {
 }
 
 .md-content pre.vcp-codeblock-with-copy .vcp-code-copy-button {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    z-index: 4;
     opacity: 0;
 }
 
@@ -2771,15 +2795,15 @@ body[data-vcp-theme="light"] .vcp-thought-chain-bubble {
     display: block !important;
     width: fit-content;
     max-width: 95%;
-    margin: 10px 0 12px 0 !important;
-    padding: 10px 14px !important;
-    border-radius: 12px !important;
+    margin: var(--vcp-tool-presented-margin, 10px 0 12px 0) !important;
+    padding: var(--vcp-tool-presented-spacing, 10px 14px) !important;
+    border-radius: var(--vcp-tool-presented-radius, 12px) !important;
     border: 1px solid var(--tool-summary-border-color, rgba(100, 210, 255, 0.22));
-    background: var(--tool-summary-bg, linear-gradient(145deg, rgba(40, 70, 105, 0.22), rgba(24, 42, 70, 0.30))) !important;
+    background: var(--vcp-tool-presented-background, var(--tool-summary-bg, linear-gradient(145deg, rgba(40, 70, 105, 0.22), rgba(24, 42, 70, 0.30)))) !important;
     color: var(--tool-summary-text-color, var(--primary-text));
     box-shadow: var(--tool-summary-shadow, 0 6px 18px rgba(0, 0, 0, 0.18));
-    font-family: var(--vcp-tool-card-font-family, var(--vcp-chat-font-family, 'Segoe UI', 'Roboto', sans-serif)) !important;
-    font-size: 0.92em !important;
+    font-family: var(--vcp-tool-presented-font-family, var(--vcp-tool-card-font-family, var(--vcp-chat-font-family, 'Segoe UI', 'Roboto', sans-serif))) !important;
+    font-size: var(--vcp-tool-presented-font-size, 0.92em) !important;
     line-height: 1.5;
     box-sizing: border-box;
     /*

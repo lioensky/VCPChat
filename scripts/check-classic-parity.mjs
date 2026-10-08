@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import postcss from 'postcss';
 import { JSDOM } from 'jsdom';
+import { assertSharedComposerIcons } from './helpers/shared-composer-icons.mjs';
 
 const root = process.cwd();
 const mainHtml = fs.readFileSync(path.join(root, 'main.html'), 'utf8');
@@ -19,12 +20,7 @@ const rendererSource = fs.readFileSync(path.join(root, 'renderer.js'), 'utf8');
 assert.equal(rendererSource.includes('material-symbols-outlined vcp-ui-icon" aria-hidden="true">stop'), false,
     'Classic interrupt button must not inject a Material Symbols text token');
 
-['quickNewTopicBtn', 'attachFileBtn', 'emoticonTriggerBtn', 'sendMessageBtn'].forEach(id => {
-    const button = document.getElementById(id);
-    assert.ok(button, `${id} must remain in the shared composer DOM`);
-    assert.ok(button.querySelector('svg'), `${id} must keep an inline SVG usable without the Next runtime`);
-    assert.equal(button.querySelector('.material-symbols-outlined'), null, `${id} must not depend on a mode-specific icon font`);
-});
+await assertSharedComposerIcons(mainHtml, 'classic');
 
 const settingsTemplate = document.getElementById('globalSettingsModalTemplate');
 assert.ok(settingsTemplate, 'shared upstream global settings template must remain in main.html');

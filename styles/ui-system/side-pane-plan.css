@@ -1,0 +1,433 @@
+/*
+ * V工程「计划详情」侧栏标签（modules/ui-system/side-pane/planDetailSideProvider.js）。
+ * 计划详情的整页阅读版式；颜色变量沿用 status-panel.css 的 zc-*。
+ */
+
+html .side-plan-view:where(.vcp-ui-scope, .vcp-ui-scope *) { height: 100%; overflow: hidden; }
+/*
+ * 侧栏本身已经是磨砂玻璃，计划页不再一层层叠卡片：分区、列表都直接落在玻璃上（侧栏和
+ * 工作流详情的做法），只有报告、diff、回退这种成块的内容才垫一层很淡的半透明底。
+ * 辅助底色从当前分区文字色混透明得来，保持与浅色、深色文字一致。
+ */
+html .side-plan-scope:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: relative;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    --side-plan-surface: color-mix(in srgb, var(--zc-fg) 5%, transparent);
+    --side-plan-hover: color-mix(in srgb, var(--zc-fg) 7%, transparent);
+    --side-plan-rule: color-mix(in srgb, var(--zc-fg) 10%, transparent);
+    --side-plan-card-border: color-mix(in srgb, var(--zc-fg) 9%, transparent);
+}
+
+
+html .side-plan-body:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px 14px 24px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+html .side-plan-body > *:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 100%; max-width: 56rem; margin-inline: auto; box-sizing: border-box; flex: 0 0 auto; }
+
+html .side-plan-empty:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    padding: 20px 8px;
+    text-align: center;
+    color: var(--zc-fg-subtle);
+    font-size: calc(var(--vcp-ui-font-size) - 2px);
+}
+html .side-plan-error:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+
+/* ---- header ---- */
+/* 和 Git 变更、浏览器的顶栏同一套尺寸：上下 7px、左右 10px，底下一条分隔线 */
+html .side-plan-header:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--zcode-header-divider, var(--vcp-ui-port-color-rgba-255-255-255-0-06));
+    box-sizing: border-box;
+    --side-plan-pill-bg: color-mix(in srgb, var(--zc-fg) 6%, transparent);
+    --side-plan-pill-border: color-mix(in srgb, var(--zc-fg) 10%, transparent);
+    --side-plan-pill-divider: color-mix(in srgb, var(--zc-fg) 22%, transparent);
+    --side-plan-pill-shadow: none; container: side-plan-header / inline-size;
+}
+html .side-plan-title-row:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; align-items: center; gap: 6px; min-width: 0; }
+/* 标题行右侧的状态和按钮做成浏览器工具栏那样的胶囊：淡底、细边框、全圆角 */
+html body:is(.light-theme, [data-vcp-theme="light"]) .side-plan-header:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    /* 浅色主题：顶栏一条比内容区略深的底，胶囊近白浮在上面；两者都从当前主题的
+       底色、文字色混出来，再掺一点主题色，换主题跟着变 */
+    --side-plan-pill-bg: color-mix(in srgb, var(--highlight-text, var(--vcp-ui-accent, currentColor)) 2%, color-mix(in srgb, var(--secondary-bg, Canvas) 30%, white));
+    --side-plan-pill-border: color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 9%, transparent);
+    --side-plan-pill-shadow: 0 1px 2px color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 8%, transparent);
+    background: color-mix(in srgb, var(--highlight-text, var(--vcp-ui-accent, currentColor)) 1%, color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 1%, var(--secondary-bg, Canvas)));
+}
+/* 面包屑胶囊（也是工程切换按钮）：前面的段先缩成省略号，工程名尽量留全 */
+html .side-plan-crumbs:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex; align-items: center; gap: 2px;
+    flex: 0 1 auto; min-width: 0; height: 32px; padding: 0 8px 0 12px; margin: 0 auto 0 0;
+    border: 1px solid var(--side-plan-pill-border); border-radius: 999px;
+    background: var(--side-plan-pill-bg); box-shadow: var(--side-plan-pill-shadow);
+    font: inherit; font-size: calc(var(--vcp-ui-font-size) - 1px); color: var(--zc-fg-subtle);
+    text-align: left; white-space: nowrap; box-sizing: border-box; cursor: pointer;
+    transition: border-color 150ms ease;
+}
+html .side-plan-crumbs:hover:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-plan-crumbs[aria-expanded="true"]:where(.vcp-ui-scope, .vcp-ui-scope *) { border-color: var(--zc-border-strong); }
+html .side-plan-crumbs:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *) { outline: 2px solid var(--zc-border-strong); outline-offset: 1px; }
+html .side-plan-crumb-caret:where(.vcp-ui-scope, .vcp-ui-scope *) { --vcp-ui-icon-size: 14px; flex: none; margin-left: 2px; opacity: 0.7; transition: transform 150ms ease; }
+html .side-plan-crumbs[aria-expanded="true"] .side-plan-crumb-caret:where(.vcp-ui-scope, .vcp-ui-scope *) { transform: rotate(180deg); }
+html .side-plan-crumb:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 0 100 auto; min-width: 1.5em; overflow: hidden; text-overflow: ellipsis; }
+html .side-plan-crumb-sep:where(.vcp-ui-scope, .vcp-ui-scope *) { --vcp-ui-icon-size: 14px; flex: none; opacity: 0.6; }
+html .side-plan-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 0 1 auto; min-width: 2em; margin: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: calc(var(--vcp-ui-font-size) - 1px); font-weight: 600; line-height: 1.3; color: var(--zc-fg);
+}
+
+/* 工程切换菜单：挂在 scope 上，落在面包屑胶囊正下方 */
+html .side-plan-picker:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: absolute; top: 43px; left: 10px; z-index: 20;
+    display: flex; flex-direction: column;
+    width: min(320px, calc(100% - 20px)); max-height: min(360px, calc(100% - 56px));
+    padding: 4px; box-sizing: border-box;
+    border: 1px solid var(--zc-border); border-radius: 12px;
+    background: var(--zc-menu, var(--zc-popover)); box-shadow: var(--zc-shadow-lg);
+    color: var(--zc-fg); font-size: calc(var(--vcp-ui-font-size) - 1px);
+}
+html .side-plan-picker-filter:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: none; height: 30px; margin: 2px 2px 4px; padding: 0 10px;
+    border: 1px solid var(--zc-border); border-radius: 8px; background: transparent;
+    color: var(--zc-fg); font: inherit; outline: none;
+}
+html .side-plan-picker-filter:focus:where(.vcp-ui-scope, .vcp-ui-scope *) { border-color: var(--zc-border-strong); }
+html .side-plan-picker-list:where(.vcp-ui-scope, .vcp-ui-scope *) { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
+html .side-plan-picker-label:where(.vcp-ui-scope, .vcp-ui-scope *) { padding: 8px 10px 4px; font-size: calc(var(--vcp-ui-font-size) - 3px); color: var(--zc-fg-subtle); }
+html .side-plan-picker-empty:where(.vcp-ui-scope, .vcp-ui-scope *) { padding: 12px 10px; text-align: center; color: var(--zc-fg-subtle); }
+html .side-plan-picker-item:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 10px;
+    border: 0; border-radius: 8px; background: transparent; color: inherit;
+    font: inherit; text-align: left; cursor: pointer;
+}
+html .side-plan-picker-item:hover:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-plan-picker-item:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--side-plan-hover); outline: none; }
+html .side-plan-picker-item[aria-selected="true"]:where(.vcp-ui-scope, .vcp-ui-scope *) { font-weight: 600; }
+html .side-plan-picker-name:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html .side-plan-picker-meta:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 0 100 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; color: var(--zc-fg-subtle); }
+html .side-plan-picker-check:where(.vcp-ui-scope, .vcp-ui-scope *) { --vcp-ui-icon-size: 14px; flex: none; margin-left: auto; }
+
+/* 状态胶囊：状态字按状态着色，后面跟一段淡色的更新时间 */
+html .side-plan-status:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex; align-items: center; gap: 6px;
+    flex: none; height: 32px; padding: 0 12px;
+    border: 1px solid var(--side-plan-pill-border); border-radius: 999px;
+    background: var(--side-plan-pill-bg); box-shadow: var(--side-plan-pill-shadow);
+    font-size: calc(var(--vcp-ui-font-size) - 1px); white-space: nowrap; box-sizing: border-box;
+}
+html .side-plan-chip:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-fg); font-weight: 500; }
+html .side-plan-chip.status-review:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-warning); }
+html .side-plan-chip.status-active:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-success); }
+html .side-plan-chip.status-deleted:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-danger); }
+html .side-plan-updated:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-fg-subtle); }
+html .side-plan-chip + .side-plan-updated:where(.vcp-ui-scope, .vcp-ui-scope *)::before { content: '·'; margin-right: 6px; }
+
+/* 窄侧栏：面包屑只留工程名，状态胶囊只留状态字，免得每段都缩成省略号 */
+@container side-plan-header (max-width: 440px) {
+    html .side-plan-crumbs > :not(.side-plan-title, .side-plan-crumb-caret):where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }
+    html .side-plan-chip ~ .side-plan-updated:where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }
+}
+
+html .side-plan-actions:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex; align-items: center; gap: 2px; flex: 0 0 auto;
+    height: 32px; padding: 0 3px;
+    border: 1px solid var(--side-plan-pill-border); border-radius: 999px;
+    background: var(--side-plan-pill-bg); box-shadow: var(--side-plan-pill-shadow);
+    box-sizing: border-box;
+}
+html .side-plan-actions-divider:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: none; width: 1px; height: 16px; margin: 0 3px; background: var(--side-plan-pill-divider); }
+html .side-plan-icon-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; padding: 0; border: 0; border-radius: 999px;
+    background: transparent; color: var(--zc-fg-subtle); cursor: pointer;
+}
+html .side-plan-icon-btn:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--side-plan-hover); color: var(--zc-fg); }
+html .side-plan-icon-btn .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-icon-btn svg:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 15px; height: 15px; font-size: calc(var(--vcp-ui-font-size) + 1px); }
+
+
+html .side-plan-meta:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: calc(var(--vcp-ui-font-size) - 3px); color: var(--zc-fg-subtle); }
+html .side-plan-meta > span + span:where(.vcp-ui-scope, .vcp-ui-scope *)::before { content: '·'; margin-right: 10px; color: var(--zc-fg-subtle); }
+html .side-plan-root:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 3px); color: var(--zc-fg-subtle); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+html .side-plan-warning:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 2px); padding: 6px 10px; border-radius: 6px; background: var(--vcp-ui-port-color-rgba-217-119-6-0-12); color: var(--zc-warning); }
+
+html .side-plan-progress:where(.vcp-ui-scope, .vcp-ui-scope *) { display: block; width: 100%; height: 4px; border: 0; border-radius: 999px; background: var(--side-plan-rule); color: var(--zc-success); overflow: hidden; appearance: none; }
+html .side-plan-progress:where(.vcp-ui-scope, .vcp-ui-scope *)::-webkit-progress-bar { border-radius: inherit; background: var(--side-plan-rule); }
+html .side-plan-progress:where(.vcp-ui-scope, .vcp-ui-scope *)::-webkit-progress-value { border-radius: inherit; background: var(--zc-success); transition: width 240ms ease; }
+html .side-plan-progress-text:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; gap: 6px; padding: 4px 6px 10px; font-size: calc(var(--vcp-ui-font-size) - 3px); color: var(--zc-fg-subtle); font-variant-numeric: tabular-nums; }
+html .side-plan-progress-line:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+html .side-plan-progress-text .side-plan-pct:where(.vcp-ui-scope, .vcp-ui-scope *) { margin-left: auto; }
+html .side-plan-done:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-success); }
+
+/* Compact project chrome stays above the resident page scrollport. */
+html .side-plan-chrome:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 0 0 auto; }
+html .side-plan-chrome[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-plan-page[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }
+html .side-plan-pages:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; gap: 4px; margin: 4px 14px 0; border-bottom: 1px solid var(--side-plan-rule); overflow-x: auto; scrollbar-width: none; container-type: inline-size; }
+html .side-plan-page-tab:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 1 0 auto; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 6px; white-space: nowrap; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--zc-fg-subtle); font: inherit; font-size: calc(var(--vcp-ui-font-size) - 2px); cursor: pointer; }
+html .side-plan-page-tab:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-fg); background: var(--side-plan-hover); }
+html .side-plan-page-tab[aria-selected="true"]:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-fg); border-bottom-color: var(--zc-fg); font-weight: 600; }
+html .side-plan-page-count:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-fg-subtle); font-size: calc(var(--vcp-ui-font-size) - 3px); font-weight: 400; font-variant-numeric: tabular-nums; }
+/* 窄的时候页签只留名字不换行，再窄就横向滑动 */
+@container (max-width: 360px) { html .side-plan-page-count:where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; } }
+html .side-plan-page:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; gap: 14px; }
+html .side-plan-page[data-plan-page-panel="plan"] > .side-plan-section > .side-plan-section-title:where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }
+/* 施工线页本身就是时间线，批数已在上面的统计里，不再重复一条可折叠标题 */
+html .side-plan-page[data-plan-page-panel="timeline"] > .side-plan-section[data-plan-section="timeline"] > .side-plan-section-title:where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }
+html .side-plan-project-details:where(.vcp-ui-scope, .vcp-ui-scope *) { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px 16px; margin: 6px; font-size: calc(var(--vcp-ui-font-size) - 2px); line-height: 1.5; }
+html .side-plan-project-details dt:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-fg-subtle); }
+html .side-plan-project-details dd:where(.vcp-ui-scope, .vcp-ui-scope *) { margin: 0; color: var(--zc-fg); overflow-wrap: anywhere; }
+
+/* ---- sections：表头是一行小字，不是一块按钮 ---- */
+html .side-plan-section:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; gap: 2px; }
+html .side-plan-section-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex; align-items: center; gap: 6px; width: 100%; min-height: 30px; padding: 0 6px; box-sizing: border-box;
+    border: 0; border-radius: 6px; background: transparent;
+    font: inherit; font-size: calc(var(--vcp-ui-font-size) - 2px); font-weight: 500; color: var(--zc-fg-subtle); text-align: left; cursor: pointer;
+}
+html .side-plan-section-title.static:where(.vcp-ui-scope, .vcp-ui-scope *) { cursor: default; }
+html .side-plan-section-title:not(.static):hover:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--side-plan-hover); color: var(--zc-fg); }
+html .side-plan-section-title .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-section-title svg:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 14px; height: 14px; font-size: var(--vcp-ui-font-size); opacity: 0.75; }
+html .side-plan-section-meta:where(.vcp-ui-scope, .vcp-ui-scope *) { margin-left: auto; font-weight: 400; color: var(--zc-fg-subtle); font-variant-numeric: tabular-nums; }
+
+html .side-plan-diffstat:where(.vcp-ui-scope, .vcp-ui-scope *) { display: inline-flex; gap: 4px; font-size: calc(var(--vcp-ui-font-size) - 2px); font-variant-numeric: tabular-nums; }
+html .side-plan-added:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-added); }
+html .side-plan-removed:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-removed); }
+
+/* ---- todos: compact rows; icons and status labels retain each task state ---- */
+html .side-plan-todos:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-files:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-timeline:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-contributors:where(.vcp-ui-scope, .vcp-ui-scope *) { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+html .side-plan-todo:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 6px;
+    border-radius: 6px;
+    transition: background-color 150ms ease;
+}
+html .side-plan-todo:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--side-plan-hover); }
+html .side-plan-todo-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 0 0 auto; display: inline-flex; height: 1.5em; align-items: center; font-size: calc(var(--vcp-ui-font-size) - 1px); color: var(--zc-fg-subtle); }
+html .side-plan-todo-mark .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-todo-mark svg:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 14px; height: 14px; font-size: var(--vcp-ui-font-size); }
+html .side-plan-todo.status-completed .side-plan-todo-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-success); }
+html .side-plan-todo.status-inProgress .side-plan-todo-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-lane-descendant); }
+html .side-plan-todo-mark > *:where(.vcp-ui-scope, .vcp-ui-scope *) { animation: none; }
+html .side-plan-todo.blocked .side-plan-todo-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-danger); }
+html .side-plan-todo-text:where(.vcp-ui-scope, .vcp-ui-scope *) { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 1px; }
+html .side-plan-todo-title:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 1px); line-height: 1.5; color: var(--zc-fg); overflow-wrap: anywhere; }
+html .side-plan-todo.status-pending .side-plan-todo-title:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-fg); }
+html .side-plan-todo.status-inProgress .side-plan-todo-title:where(.vcp-ui-scope, .vcp-ui-scope *) { font-weight: 500; }
+/* 做完的不划线，只退成次要色：一串删除线比内容还抢眼 */
+html .side-plan-todo.status-completed .side-plan-todo-title:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-fg-subtle); }
+html .side-plan-todo-sub:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 3px); color: var(--zc-fg-subtle); line-height: 1.5; }
+html .side-plan-todo-note:where(.vcp-ui-scope, .vcp-ui-scope *) { margin-top: 3px; font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--zc-fg-subtle); padding: 2px 0 2px 8px; border-left: 2px solid var(--side-plan-rule); overflow-wrap: anywhere; white-space: pre-wrap; }
+
+
+/* ---- files ---- */
+html .side-plan-file-btn:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 100%; box-sizing: border-box; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 6px; font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--vcp-ui-text-0, var(--zc-fg)); }
+html .side-plan-file-btn:hover:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-file-btn.is-active:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--side-plan-hover); }
+html .side-plan-file-btn.is-active:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-contributor-btn.is-active:where(.vcp-ui-scope, .vcp-ui-scope *) { box-shadow: inset 2px 0 0 var(--zc-lane-modified); }
+html .side-plan-file-btn > .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-file-btn > svg:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 14px; height: 14px; font-size: var(--vcp-ui-font-size); color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); flex: 0 0 auto; }
+html .side-plan-file-name:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+html .side-plan-file-edits:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); flex: 0 0 auto; }
+
+/* ---- timeline ---- */
+html .side-plan-batch:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; gap: 2px; padding: 0 0 4px; position: relative; }
+html .side-plan-batch-head:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 100%; box-sizing: border-box; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; display: flex; gap: 8px; padding: 5px 6px; border-radius: 6px; color: inherit; }
+html .side-plan-batch-head:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--side-plan-hover); }
+html .side-plan-batch-chevron:where(.vcp-ui-scope, .vcp-ui-scope *) { margin-left: auto; flex: 0 0 auto; width: 14px; height: 14px; font-size: var(--vcp-ui-font-size); color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); }
+html .side-plan-batch:not(:last-child):where(.vcp-ui-scope, .vcp-ui-scope *)::before { content: ""; position: absolute; left: 13px; top: 25px; bottom: -4px; width: 1px; background: var(--side-plan-rule); }
+html .side-plan-batch-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 0 0 auto; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); position: relative; }
+html .side-plan-batch-mark .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-batch-mark svg:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 14px; height: 14px; font-size: var(--vcp-ui-font-size); }
+html .side-plan-batch.kind-create .side-plan-batch-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-lane-added); }
+html .side-plan-batch.kind-edit .side-plan-batch-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-lane-modified); }
+html .side-plan-batch.kind-remove .side-plan-batch-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-danger); }
+html .side-plan-batch.kind-rollback .side-plan-batch-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-lane-renamed); }
+html .side-plan-batch.kind-move .side-plan-batch-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-lane-renamed); }
+html .side-plan-batch.kind-external .side-plan-batch-mark:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-warning); }
+html .side-plan-batch-text:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+html .side-plan-batch-reason:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 1px); font-weight: 400; color: var(--vcp-ui-text-0, var(--zc-fg)); overflow-wrap: anywhere; }
+html .side-plan-batch-sub:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: calc(var(--vcp-ui-font-size) - 3px); color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); }
+html .side-plan-batch-files:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 3px); color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- contributors ---- */
+html .side-plan-contributor-btn:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 100%; box-sizing: border-box; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 6px; font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--vcp-ui-text-0, var(--zc-fg)); }
+html .side-plan-contributor-btn > .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-contributor-btn > svg:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 14px; height: 14px; font-size: var(--vcp-ui-font-size); color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); }
+html .side-plan-contributor-btn:not(:disabled):hover:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-contributor-btn.is-active:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--side-plan-hover); }
+html .side-plan-contributor-btn:disabled:where(.vcp-ui-scope, .vcp-ui-scope *) { cursor: default; opacity: 1; }
+html .side-plan-contributor-name:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 1 1 auto; }
+html .side-plan-contributor-batches:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); }
+
+/* ---- header: project switch and topic stats ---- */
+html .side-plan-select option:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--zc-popover); color: var(--zc-fg); }
+html .side-plan-stats:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; min-width: 0; overflow: hidden; white-space: nowrap; font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); font-variant-numeric: tabular-nums; }
+html .side-plan-stats > *:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: none; }
+html .side-plan-stats > .side-plan-stats-time:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 0 1 auto; min-width: 0; margin-left: auto; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---- history: filters, expanded batches and node rows ---- */
+html .side-plan-history:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; gap: 8px; }
+/* 列表工具条：一行搜索 + 「筛选」图标按钮，其余条件展开后两列排 */
+html .side-plan-filters:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; gap: 6px; }
+html .side-plan-filter-row:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; align-items: center; gap: 4px; }
+html .side-plan-search:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 8px;
+    box-sizing: border-box;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: var(--side-plan-surface);
+    color: var(--vcp-ui-text-2, var(--zc-fg-subtle));
+    cursor: text;
+    transition: border-color 120ms ease, background-color 120ms ease;
+}
+html .side-plan-search:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { border-color: var(--side-plan-card-border); }
+html .side-plan-search:focus-within:where(.vcp-ui-scope, .vcp-ui-scope *) { border-color: var(--zc-border-strong); background: transparent; }
+html .side-plan-search > .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *) { --vcp-ui-icon-size: 14px; flex: none; opacity: 0.8; }
+html .side-plan-search-input:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--zc-fg);
+    font: inherit;
+    font-size: calc(var(--vcp-ui-font-size) - 2px);
+}
+html .side-plan-search-input:where(.vcp-ui-scope, .vcp-ui-scope *)::placeholder { color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); }
+html .side-plan-filter-toggle:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-plan-filter-clear:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    height: 28px;
+    min-width: 28px;
+    padding: 0 6px;
+    box-sizing: border-box;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--vcp-ui-text-2, var(--zc-fg-subtle));
+    font: inherit;
+    font-size: calc(var(--vcp-ui-font-size) - 2px);
+    cursor: pointer;
+}
+html .side-plan-filter-toggle > .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *) { --vcp-ui-icon-size: 14px; }
+html .side-plan-filter-toggle:hover:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-plan-filter-clear:hover:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-plan-filter-toggle[aria-expanded="true"]:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--side-plan-hover); color: var(--zc-fg); }
+html .side-plan-filter-toggle.is-active:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-fg); }
+html .side-plan-filter-count:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 3px); font-variant-numeric: tabular-nums; }
+html .side-plan-filter-more:where(.vcp-ui-scope, .vcp-ui-scope *) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+html .side-plan-filter-more[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }
+html .side-plan-input:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-select:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    min-width: 0;
+    height: 28px;
+    padding: 0 8px;
+    box-sizing: border-box;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: var(--side-plan-surface);
+    color: var(--zc-fg);
+    font: inherit;
+    font-size: calc(var(--vcp-ui-font-size) - 2px);
+}
+html .side-plan-input:where(.vcp-ui-scope, .vcp-ui-scope *)::placeholder { color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); }
+html .side-plan-input:hover:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-select:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { border-color: var(--side-plan-card-border); }
+html .side-plan-input:focus:where(.vcp-ui-scope, .vcp-ui-scope *) { outline: 0; border-color: var(--zc-border-strong); background: transparent; }
+html .side-plan-input:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-select:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *) { outline: 1px solid var(--zc-border-strong); outline-offset: 0; }
+html .side-plan-filter-results:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; gap: 6px; }
+html .side-plan-node-list:where(.vcp-ui-scope, .vcp-ui-scope *) { list-style: none; margin: 0 0 0 26px; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+html .side-plan-filter-results .side-plan-node-list:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    margin-left: 0;
+}
+html .side-plan-node-row:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 100%; box-sizing: border-box; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; padding: 5px 6px; border-radius: 6px; font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--vcp-ui-text-0, var(--zc-fg)); }
+html .side-plan-node-row:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--side-plan-hover); }
+html .side-plan-node-path:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+html .side-plan-node-sub:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-node-row .side-plan-node-reason:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 1 0 100%; font-size: calc(var(--vcp-ui-font-size) - 3px); color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html .side-plan-op:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 0 0 auto; padding: 0 6px; border-radius: 4px; font-size: calc(var(--vcp-ui-font-size) - 3px); background: var(--side-plan-surface); color: var(--vcp-ui-text-1, var(--zc-fg-subtle)); }
+html .side-plan-op.op-create:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-lane-added); }
+html .side-plan-op.op-edit:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-lane-modified); }
+html .side-plan-op.op-delete:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-danger); }
+html .side-plan-op.op-move:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-op.op-rollback:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-lane-renamed); }
+html .side-plan-op.op-external:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--zc-warning); }
+html .side-plan-node-message:where(.vcp-ui-scope, .vcp-ui-scope *) { padding: 6px 8px; font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); }
+
+/* ---- report and other-topic hint ---- */
+html .side-plan-report:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    padding: 10px 12px;
+    border-radius: var(--vcp-ui-radius-lg, 12px);
+    background: var(--side-plan-surface);
+    border: 1px solid var(--side-plan-card-border);
+    font-size: calc(var(--vcp-ui-font-size) - 1px);
+    color: var(--vcp-ui-text-0, var(--zc-fg));
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+html .side-plan-other-hint:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); }
+html .side-plan-link:where(.vcp-ui-scope, .vcp-ui-scope *) { padding: 0; border: 0; background: transparent; font: inherit; color: var(--zc-lane-descendant); cursor: pointer; }
+html .side-plan-link:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { text-decoration: underline; }
+html .side-plan-todo.is-flash:where(.vcp-ui-scope, .vcp-ui-scope *) { background: color-mix(in srgb, var(--zc-lane-descendant) 16%, transparent); }
+html .side-plan-section.is-flash:where(.vcp-ui-scope, .vcp-ui-scope *) { outline: 1px solid var(--zc-lane-descendant); outline-offset: 4px; border-radius: 8px; }
+
+/* ---- node detail ---- */
+html .side-plan-node:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; gap: 10px; }
+html .side-plan-back:where(.vcp-ui-scope, .vcp-ui-scope *) { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px 2px 4px; border: 0; border-radius: 6px; background: transparent; font: inherit; font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); cursor: pointer; }
+html .side-plan-back:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { background: var(--side-plan-hover); color: var(--zc-fg); }
+html .side-plan-back .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-back svg:where(.vcp-ui-scope, .vcp-ui-scope *) { width: 14px; height: 14px; font-size: var(--vcp-ui-font-size); }
+html .side-plan-node-body:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; gap: 8px; }
+html .side-plan-node-title:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: var(--vcp-ui-font-size); font-weight: 600; color: var(--vcp-ui-text-0, var(--zc-fg)); }
+html .side-plan-node-body > .side-plan-node-reason:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 1px); color: var(--vcp-ui-text-0, var(--zc-fg)); overflow-wrap: anywhere; white-space: pre-wrap; }
+html .side-plan-node-todo:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--vcp-ui-text-2, var(--zc-fg-subtle)); }
+html .side-plan-diff:where(.vcp-ui-scope, .vcp-ui-scope *) { overflow: auto; max-height: 60vh; border-radius: var(--vcp-ui-radius-md, 8px); border: 1px solid var(--side-plan-card-border); background: var(--side-plan-surface); }
+html .side-plan-revert:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: var(--vcp-ui-radius-lg, 12px);
+    background: var(--side-plan-surface);
+    border: 1px solid var(--side-plan-card-border);
+}
+html .side-plan-revert-title:where(.vcp-ui-scope, .vcp-ui-scope *) { font-size: calc(var(--vcp-ui-font-size) - 2px); font-weight: 600; color: var(--vcp-ui-text-1, var(--zc-fg-subtle)); }
+html .side-plan-revert-fields:where(.vcp-ui-scope, .vcp-ui-scope *), html .side-plan-revert-actions:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-wrap: wrap; gap: 6px; }
+html .side-plan-revert-fields > .side-plan-input:where(.vcp-ui-scope, .vcp-ui-scope *) { flex: 1 1 140px; }
+html .side-plan-revert-confirm:where(.vcp-ui-scope, .vcp-ui-scope *) { display: flex; flex-direction: column; gap: 6px; padding-top: 8px; border-top: 1px solid var(--side-plan-card-border); font-size: calc(var(--vcp-ui-font-size) - 2px); color: var(--vcp-ui-text-0, var(--zc-fg)); overflow-wrap: anywhere; }
+html .side-plan-revert-confirm[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }
+html .side-plan-revert-label:where(.vcp-ui-scope, .vcp-ui-scope *) { font-weight: 600; }
+html .side-plan-revert-conflicts:where(.vcp-ui-scope, .vcp-ui-scope *) { margin: 0; padding-left: 18px; color: var(--zc-warning); }
+
+@media (prefers-reduced-motion: reduce) {
+    html .side-plan-progress:where(.vcp-ui-scope, .vcp-ui-scope *)::-webkit-progress-value { transition: none; }
+}
+
+/* Preserve a clear keyboard focus target on the transparent rows and headers. */
+html .side-plan-icon-btn:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-plan-page-tab:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-plan-page:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-plan-section-title:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-plan-file-btn:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-plan-batch-head:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-plan-node-row:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-plan-contributor-btn:focus-visible:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    outline: 2px solid var(--zc-lane-descendant);
+    outline-offset: 2px;
+}

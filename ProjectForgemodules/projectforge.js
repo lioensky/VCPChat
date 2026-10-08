@@ -713,7 +713,7 @@ function bindEvents() {
         lastFocusRefresh = Date.now();
         loadProjects();
     });
-    // 监听主进程广播的工程变动（反向 IPC 推送，防抖 160ms）
+    // 监听主进程推送的工程变动（防抖 160ms）。主进程只推给订阅了 project-forge 的窗口，窗口关闭时订阅自动清掉
     const scheduleAutoRefresh = debounce(async payload => {
         if (!$('node-modal').hidden) return;
         await loadProjects();
@@ -728,7 +728,38 @@ function bindEvents() {
         api.onProjectForgeChanged(payload => {
             scheduleAutoRefresh(payload);
         });
+        Promise.resolve(api.subscribeMainState?.('project-forge')).catch(() => {});
     }
+}
+
+// 聊天窗口侧栏「完整记录与回退」：打开前写下要看的工程，这里读一次就删掉
+const FOCUS_KEY = 'vcp-projectforge-focus';
+const FOCUS_MAX_AGE_MS = 60 * 1000;
+
+function takeFocusRequest() {
+    let request = null;
+    try {
+        request = JSON.parse(localStorage.getItem(FOCUS_KEY) || 'null');
+        localStorage.removeItem(FOCUS_KEY);
+    } catch (_e) { return null; }
+    if (!request?.id || !(Date.now() - Number(request.at) < FOCUS_MAX_AGE_MS)) return null;
+    return String(request.id);
+}
+
+async function applyFocusRequest() {
+    const projectId = takeFocusRequest();
+    if (!projectId) return;
+    if (!state.projects.some(p => p.id === projectId) && !$('include-deleted').checked) {
+        // 已删除的工程默认不在列表里
+        $('include-deleted').checked = true;
+        await loadProjects();
+    }
+    if (!state.projects.some(p => p.id === projectId)) {
+        toast(`没有找到工程 ${projectId}`, 'error');
+        return;
+    }
+    await selectProject(projectId);
+    document.querySelector(`.project-item[data-id="${CSS.escape(projectId)}"]`)?.scrollIntoView({ block: 'nearest' });
 }
 
 function applyTheme(theme) {
@@ -748,5 +779,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindEvents();
     await initSignature();
     await loadProjects();
+    await applyFocusRequest();
+    // 窗口已经开着时，聊天窗口写入的定位请求通过 storage 事件送到
+    window.addEventListener('storage', (event) => {
+        if (event.key === FOCUS_KEY && event.newValue) applyFocusRequest();
+    });
     api.windowReady?.('project-forge');
 });

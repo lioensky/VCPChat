@@ -154,14 +154,23 @@
         transform: none;
     }
 
+    /* Stop is the send button with a filled rounded square in place of the
+       arrow: same circle, same fill, same hover. */
     html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button).interrupt-mode {
         color: var(--vcp-ui-on-accent);
-        background: color-mix(in srgb, var(--vcp-ui-accent) 84%, var(--vcp-ui-bg-0));
+        background: var(--vcp-ui-accent);
         background-image: none;
     }
 
     html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button).interrupt-mode:hover:not(:disabled) {
-        background: color-mix(in srgb, var(--vcp-ui-accent) 76%, var(--vcp-ui-bg-0));
+        background: var(--vcp-ui-accent-hover);
+    }
+
+    html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button) svg.chat-stop-glyph {
+        width: 16px;
+        height: 16px;
+        fill: currentColor;
+        stroke: none;
     }
 
     html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button):disabled, html .vcp-ui-scope :is(#attachFileBtn, .chat-attach-button):disabled, html .vcp-ui-scope :is(#quickNewTopicBtn, .chat-quick-new-button):disabled, html .vcp-ui-scope :is(#emoticonTriggerBtn, .chat-emoticon-button):disabled {
@@ -228,7 +237,11 @@
    popover gets the same treatment in appearance.css (it mounts on body, outside
    any .vcp-ui-scope). Unlayered on purpose: the picker's injected sheet is
    unlayered, so a layered rule would lose to it. */
+/* ComposerModelSelect measures the card and positions the menu 4px above it.
+   Keep it absolute: backdrop-filter on the card creates a containing block
+   for fixed descendants, which makes viewport-based anchor offsets unsafe. */
 html .vcp-ui-scope .vcp-model-select-menu {
+    position: absolute;
     border: 1px solid var(--vcp-ui-composer-border);
     border-radius: 16px;
     background: var(--vcp-ui-composer-input);
@@ -243,9 +256,22 @@ html .vcp-ui-scope .vcp-model-select-menu .vcp-model-select-search {
     border-color: var(--vcp-ui-composer-border);
 }
 
-/* ComposerModelSelect measures the card and positions the menu 4px above it.
-   Keep it absolute: backdrop-filter on the card creates a containing block
-   for fixed descendants, which makes viewport-based anchor offsets unsafe. */
-html .vcp-ui-scope .vcp-model-select-menu {
-    position: absolute;
+/* A narrow chat column (side pane pulled wide) or a long model id: the picker
+   gives up width and ellipsizes its name before the send button is pushed
+   past the card edge. Unlayered for the same reason as the menu above. */
+html .vcp-ui-scope .chat-input-actions .vcp-model-select {
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+html .vcp-ui-scope .chat-input-actions .vcp-model-select-trigger {
+    min-width: 0;
+    max-width: 100%;
+}
+
+html .vcp-ui-scope .chat-input-actions .vcp-model-select-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }

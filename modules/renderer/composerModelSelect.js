@@ -85,14 +85,10 @@
         trigger.setAttribute('aria-expanded', 'false');
         const labelEl = document.createElement('span');
         labelEl.className = 'vcp-model-select-label';
-        const chevron = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        chevron.setAttribute('viewBox', '0 0 16 16');
-        chevron.setAttribute('fill', 'none');
-        chevron.setAttribute('stroke', 'currentColor');
-        chevron.setAttribute('stroke-width', '1.5');
-        const chevronPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        chevronPath.setAttribute('d', 'M4 6l4 4 4-4');
-        chevron.appendChild(chevronPath);
+        const chevron = document.createElement('span');
+        chevron.className = 'vcp-ui-icon';
+        chevron.setAttribute('aria-hidden', 'true');
+        chevron.textContent = 'chevron-down';
         trigger.append(labelEl, chevron);
         wrap.appendChild(trigger);
 
@@ -468,10 +464,13 @@
         const onKey = event => {
             if (event.key === 'Escape' && menu) { closeMenu(); event.stopPropagation(); }
         };
+        // 点进侧栏浏览器的 webview 或别的窗口时只会失焦
+        const onWindowBlur = () => { if (menu) closeMenu(); };
         trigger.addEventListener('click', onTrigger);
         trigger.addEventListener('contextmenu', onContextMenu);
         document.addEventListener('mousedown', onDocDown, true);
         document.addEventListener('keydown', onKey, true);
+        window.addEventListener('blur', onWindowBlur);
 
         // 切换 Agent / 保存设置后会刷新标题，借此同步显示
         let observer = null;
@@ -490,6 +489,7 @@
                 trigger.removeEventListener('contextmenu', onContextMenu);
                 document.removeEventListener('mousedown', onDocDown, true);
                 document.removeEventListener('keydown', onKey, true);
+                window.removeEventListener('blur', onWindowBlur);
                 window.removeEventListener('focus', refresh);
                 observer?.disconnect();
                 wrap.remove();

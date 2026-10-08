@@ -1,0 +1,124 @@
+/*
+ * 助手回答下面的「本轮改动 N 个文件」折叠摘要（modules/ui-system/message-file-changes.js）。
+ */
+html .vcp-file-changes:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    margin-top: 8px;
+    border: 1px solid color-mix(in srgb, var(--border-color, var(--vcp-ui-port-color-888)) 55%, transparent);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--secondary-bg, var(--vcp-ui-port-color-888)) 60%, transparent);
+    font-size: calc(var(--vcp-ui-font-size) - 2px);
+    color: var(--primary-text, inherit);
+    /* 长路径不能把气泡撑宽：自己不参与父级的宽度计算，只铺满气泡 */
+    box-sizing: border-box;
+    width: 0;
+    min-width: 100%;
+    overflow: hidden;
+}
+html .vcp-file-changes > summary:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    list-style: none;
+    padding: 6px 12px;
+    color: var(--secondary-text, var(--vcp-ui-port-color-888));
+    cursor: pointer;
+    user-select: none;
+}
+html .vcp-file-changes > summary:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--primary-text, inherit); }
+html .vcp-file-changes > summary:where(.vcp-ui-scope, .vcp-ui-scope *)::-webkit-details-marker { display: none; }
+/* 折叠箭头：向右，展开时转向下 */
+html .vcp-file-changes > summary:where(.vcp-ui-scope, .vcp-ui-scope *)::before {
+    content: '';
+    flex-shrink: 0;
+    width: 5px;
+    height: 5px;
+    margin: 0 2px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(-45deg);
+    transition: transform 150ms ease;
+}
+html .vcp-file-changes[open] > summary:where(.vcp-ui-scope, .vcp-ui-scope *)::before { transform: rotate(45deg); }
+@media (prefers-reduced-motion: reduce) {
+    html .vcp-file-changes > summary:where(.vcp-ui-scope, .vcp-ui-scope *)::before { transition: none; }
+}
+html .vcp-file-changes[open] > summary:where(.vcp-ui-scope, .vcp-ui-scope *) { border-bottom: 1px solid color-mix(in srgb, var(--border-color, var(--vcp-ui-port-color-888)) 40%, transparent); }
+
+html .vcp-file-changes ul:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    margin: 0;
+    padding: 4px 6px;
+    list-style: none;
+}
+html .vcp-file-changes li:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 3px 6px;
+    border-radius: 6px;
+    min-width: 0;
+}
+html .vcp-file-changes li:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { background: color-mix(in srgb, var(--primary-text, var(--vcp-ui-port-color-888)) 8%, transparent); }
+
+html .vcp-file-changes-op:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex-shrink: 0;
+    min-width: 2.6em;
+    padding: 0 6px;
+    border-radius: 5px;
+    background: color-mix(in srgb, var(--primary-text, var(--vcp-ui-port-color-888)) 10%, transparent);
+    color: var(--secondary-text, var(--vcp-ui-port-color-888));
+    font-size: calc(var(--vcp-ui-font-size) - 3px);
+    text-align: center;
+}
+html .vcp-file-changes-op.op-create:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .vcp-file-changes-op.op-write:where(.vcp-ui-scope, .vcp-ui-scope *) { background: color-mix(in srgb, var(--vcp-ui-port-color-22a06b) 18%, transparent); color: var(--vcp-ui-port-color-22a06b); }
+html .vcp-file-changes-op.op-edit:where(.vcp-ui-scope, .vcp-ui-scope *) { background: color-mix(in srgb, var(--vcp-ui-port-color-3b82f6) 16%, transparent); color: var(--vcp-ui-port-color-3b82f6); }
+html .vcp-file-changes-op.op-delete:where(.vcp-ui-scope, .vcp-ui-scope *) { background: color-mix(in srgb, var(--vcp-ui-port-color-e5484d) 16%, transparent); color: var(--vcp-ui-port-color-e5484d); }
+
+html .vcp-file-changes-path:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex-shrink: 0;
+    max-width: 55%;
+    overflow: hidden;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 600;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+html button.vcp-file-changes-path:where(.vcp-ui-scope, .vcp-ui-scope *) { padding: 0; cursor: pointer; }
+html button.vcp-file-changes-path:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--button-bg, var(--vcp-ui-port-color-3b82f6)); text-decoration: underline; }
+
+html .vcp-file-changes-dir:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--secondary-text, var(--vcp-ui-port-color-888));
+    direction: rtl;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+html .vcp-file-changes-stats:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex-shrink: 0;
+    margin-left: auto;
+    font-size: calc(var(--vcp-ui-font-size) - 3px);
+}
+html .vcp-file-changes-stats.is-muted:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--secondary-text, var(--vcp-ui-port-color-888)); }
+html .vcp-file-changes-counts:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex;
+    gap: 6px;
+    padding: 0 4px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+}
+html button.vcp-file-changes-counts:where(.vcp-ui-scope, .vcp-ui-scope *) { cursor: pointer; }
+html button.vcp-file-changes-counts:hover:where(.vcp-ui-scope, .vcp-ui-scope *) { background: color-mix(in srgb, var(--primary-text, var(--vcp-ui-port-color-888)) 12%, transparent); }
+html .vcp-file-changes-counts .text-diff-added:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--vcp-ui-port-color-22a06b); }
+html .vcp-file-changes-counts .text-diff-removed:where(.vcp-ui-scope, .vcp-ui-scope *) { color: var(--vcp-ui-port-color-e5484d); }

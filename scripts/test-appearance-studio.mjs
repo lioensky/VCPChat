@@ -136,6 +136,7 @@ let applyPresentation = async mode => {
 window.eval(fs.readFileSync('modules/ui-system/lifecycle-scope.js', 'utf8'));
 window.eval(fs.readFileSync('modules/ui-system/appearance-engine.js', 'utf8'));
 window.eval(fs.readFileSync('modules/ui-system/appearance-studio.js', 'utf8'));
+window.eval(fs.readFileSync('modules/renderer/chat-header-style.js', 'utf8'));
 window.dispatchEvent(new CustomEvent('vcp-appearance-studio-configure', { detail: {
     settings: {
         get: () => structuredClone(window.globalSettings),
@@ -186,6 +187,7 @@ assert.deepEqual(
         'vcpAppearanceLayoutTitle',
         'vcpAppearanceGeometryTitle',
         'vcpAppearanceReadingTitle',
+        'vcpAppearanceToolsTitle',
         'vcpAppearanceMaterialTitle'
     ],
     'appearance settings remain one continuous panel with a predictable reading order'
@@ -385,16 +387,25 @@ drawer.querySelector('[data-appearance-key="homeVisual"][data-appearance-value="
 studioTaglineInput.value = '为想象力打开新的边界';
 studioTaglineInput.dispatchEvent(new Event('input', { bubbles: true }));
 drawer.querySelector('[data-appearance-key="homeTagline"][data-appearance-value="hidden"]').click();
+drawer.querySelector('[data-appearance-key="chatHeader"][data-appearance-value="capsule"]').click();
 await new Promise(resolve => setImmediate(resolve));
+assert.equal(document.body.classList.contains('chat-header-capsule'), true, 'header style previews immediately');
 drawer.querySelector('[data-theme-file-name="themes森林.css"]').click();
+drawer.querySelector('[data-appearance-key="toolPresentation"][data-appearance-value="grouped"]').click();
+drawer.querySelector('[data-appearance-key="toolExpansion"][data-appearance-value="none"]').click();
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(window.VCPAppearance.getCurrent().toolPresentation, 'grouped', 'tool mode previews immediately');
 drawer.querySelector('[data-studio-save]').click();
 await new Promise(resolve => setImmediate(resolve));
 assert.equal(window.chatAPI.saved.length, 1);
 assert.equal(Object.hasOwn(window.chatAPI.saved[0], 'uiMode'), false,
     'Appearance Studio must not write the retired main-window presentation field');
 assert.equal(window.chatAPI.saved[0].appearanceProfile.typography, 'serif');
+assert.equal(window.chatAPI.saved[0].appearanceProfile.toolPresentation, 'grouped');
+assert.equal(window.chatAPI.saved[0].appearanceProfile.toolExpansion, 'none');
 assert.equal(window.chatAPI.saved[0].chatPresentationMode, 'immersive');
 assert.equal(window.chatAPI.saved[0].enableWideChatLayout, true);
+assert.equal(window.chatAPI.saved[0].chatHeaderStyle, 'capsule');
 assert.equal(window.chatAPI.saved[0].showHomeVisualBrand, false);
 assert.equal(window.chatAPI.saved[0].showHomeVisualTagline, false);
 assert.equal(window.chatAPI.saved[0].homeVisualTagline, '为想象力打开新的边界');
@@ -402,6 +413,7 @@ assert.equal(window.chatAPI.saved[0].appearanceProfile.sidebarRowHeight, 54);
 assert.equal(window.chatAPI.saved[0].appearanceProfile.sidebarAvatarSize, 40);
 assert.equal(window.chatAPI.saved[0].appearanceProfile.wallpaperScope, 'global');
 assert.equal(window.globalSettings.enableWideChatLayout, true);
+assert.equal(window.globalSettings.chatHeaderStyle, 'capsule');
 assert.equal(window.globalSettings.showHomeVisualBrand, false);
 assert.equal(window.globalSettings.showHomeVisualTagline, false);
 assert.equal(window.globalSettings.homeVisualTagline, '为想象力打开新的边界');
@@ -477,6 +489,7 @@ const persistedBeforeFailedApply = {
     appearanceProfile: structuredClone(window.globalSettings.appearanceProfile),
     chatPresentationMode: window.globalSettings.chatPresentationMode,
     enableWideChatLayout: window.globalSettings.enableWideChatLayout,
+    chatHeaderStyle: window.globalSettings.chatHeaderStyle,
     showHomeVisualBrand: window.globalSettings.showHomeVisualBrand,
     showHomeVisualTagline: window.globalSettings.showHomeVisualTagline,
     homeVisualTagline: window.globalSettings.homeVisualTagline,

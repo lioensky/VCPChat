@@ -2,6 +2,7 @@ import { createChatSurface } from '../chat/chatSurface.js';
 import { createStreamConsumerRegistry } from '../chat/streamConsumerRegistry.js';
 import { createVcpStreamBridge } from '../chat/vcpStreamBridge.js';
 import { createMainChatStreamConsumer } from './mainChatStreamConsumer.js';
+import { isSideChatChildTopicId } from '../chat/sideChatSessionService.js';
 
 function createStreamCapabilities(root, services) {
     const required = ['streamProjection', 'historyPersistence', 'messageRenderer', 'getSelection', 'getTopicId'];
@@ -56,7 +57,9 @@ function createStreamCapabilities(root, services) {
             if (terminal.kind === 'completed' && finalizedContext && !finalizedContext.isGroupMessage && relevant) {
                 effects.push(Promise.resolve().then(() => services.chatManager?.attemptTopicSummarizationIfNeeded?.()));
             }
-            effects.push(Promise.resolve().then(() => services.flowlockManager?.handleFinalizedMessage?.({
+            // 心流锁按助手加锁：侧聊回复若参与，会认领主聊天的待接续请求，或把整个助手锁到看不见的侧聊话题上，
+            // 主聊天随之无法切换、新建话题
+            if (!isSideChatChildTopicId(finalizedContext?.topicId)) effects.push(Promise.resolve().then(() => services.flowlockManager?.handleFinalizedMessage?.({
                 type: terminal.kind === 'failed' ? 'error' : 'end', messageId,
                 context: finalizedContext, content: finalizedContent,
                 finishReason: finalized?.finishReason || terminal.finishReason || terminal.kind,
@@ -86,7 +89,7 @@ function createStreamCapabilities(root, services) {
                 paragraph.appendChild(strong);
                 errorContent.appendChild(paragraph);
             } else {
-                services.messageRenderer.renderMessage({ role: 'system', content: `流处理错误 (ID: ${event.messageId}): ${error}`, timestamp: Date.now(), id: `err_${event.messageId}` });
+                services.messageRenderer.renderMessage({ role: 'system', notice: 'error', content: `流处理错误 (ID: ${event.messageId}): ${error}`, timestamp: Date.now(), id: `err_${event.messageId}` });
             }
         },
     });

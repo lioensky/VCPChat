@@ -26,6 +26,8 @@
     "start:rag-observer": "electron . --rag-observer-only",
     "build": "node rust_chat_data_service/build-runtime.js && node rust_voice_input_engine/build-runtime.js && node rust_projectforge_indexer/build-runtime.js",
     "build:pf-indexer": "node rust_projectforge_indexer/build-runtime.js",
+    "test:voice-input-parser": "cargo test --manifest-path rust_voice_input_engine/Cargo.toml --locked",
+    "test:voice-input": "npm run test:voice-input-parser && node --test tests/voice-input-engine.test.js",
     "test:pf-indexer": "cargo test --manifest-path rust_projectforge_indexer/Cargo.toml --locked",
     "check:pf-indexer:clippy": "cargo clippy --manifest-path rust_projectforge_indexer/Cargo.toml --locked --all-targets -- -D warnings",
     "check:uiux:artifacts": "node scripts/check-uiux-artifacts.mjs",
@@ -52,6 +54,8 @@
     "check:artifact-plane": "node scripts/check-artifact-plane.mjs",
     "test:built-artifact-smoke": "node scripts/test-built-artifact-smoke.mjs",
     "test:chat-transcript-snapshot": "node scripts/test-chat-transcript-snapshot.mjs",
+    "test:side-pane": "node --test tests/powershell-output-boundaries.test.js tests/side-pane-*.test.mjs tests/side-chat-*.test.mjs tests/side-browser-address.test.mjs tests/side-plan-revert-confirmation.test.mjs tests/sidebar-resizer-lifecycle.test.mjs tests/conversation-status-panel.test.mjs tests/domain-activator.test.js tests/browser-handlers.test.js tests/git-service.test.js tests/git-watcher.test.js tests/git-file-diff.test.mjs tests/git-changes-source.test.mjs tests/git-workspace-source.test.mjs",
+    "test:workbench": "node --test tests/git-mutation-outcome.test.js tests/side-plan-revert-record-failure.test.cjs tests/source-service.test.js tests/main-chat-send-owner.test.mjs tests/notification-renderer-lifecycle.test.mjs tests/dom-listener-owner.test.mjs tests/terminal-cd-command.test.js tests/workspace-handlers-sender.test.js tests/side-pane-ipc-sender.test.js tests/side-chat-save-failure.test.mjs tests/history-mutation-queue.test.cjs tests/side-chat-regenerate-busy.test.mjs tests/conversation-current-source.test.mjs tests/conversation-scope.test.mjs tests/conversation-status-races.test.mjs tests/design-system-boundary.test.mjs tests/group-chat-url.test.js tests/group-stream-watchdog.test.js tests/line-diff-budget.test.mjs tests/main-composer-commands.test.mjs tests/message-file-changes-projectforge.test.mjs tests/message-file-changes.test.mjs tests/messenger-presentation.test.mjs tests/model-trajectory-handlers.test.js tests/model-trajectory-model.test.mjs tests/model-trajectory-recorder.test.js tests/notification-center.test.js tests/popover-window-blur.test.mjs tests/projectforge-changes-source.test.mjs tests/selection-reference.test.mjs tests/shared-source.test.mjs tests/source-handlers-sender.test.js tests/state-subscriptions.test.js tests/terminal-command-run-watch.test.js tests/terminal-native-helper.test.js tests/terminal-package-closure.test.js tests/tool-approval-card-enhancement.test.mjs tests/tool-presentation-settings.test.cjs tests/tool-presentation.test.mjs tests/tool-request-malformed-marker.test.mjs",
     "check:chat-evidence": "node scripts/check-chat-evidence.mjs",
     "check:chat-release-evidence": "node scripts/check-chat-release-evidence.mjs",
     "write:chat-evidence-manifest": "node scripts/write-chat-evidence-manifest.mjs",
@@ -66,11 +70,13 @@
     "vendor:webawesome:report": "node scripts/build-webawesome-runtime.mjs",
     "vendor:webawesome:check": "node scripts/build-webawesome-runtime.mjs --check vendor/webawesome-runtime",
     "test:ui-system": "node scripts/test-ui-system.mjs && node --test tests/performance-recorder.test.js tests/embedded-app-security.test.js tests/overlay-coordinator.test.js tests/embedded-app-controller.test.js tests/app-tab-host.test.js tests/assistant-search-controller.test.js tests/account-menu-controller.test.js tests/escape-dispatcher.test.js tests/notification-menu-controller.test.js tests/launchpad-controller.test.js tests/creation-controller.test.js tests/global-settings-save.test.mjs tests/task-handle.test.js tests/sender-task-registry.test.js tests/contribution-registry.test.js tests/state-channel.test.js tests/state-authority.test.js tests/settlement.test.js tests/surface-controller.test.js tests/lifecycle-inspector.test.js tests/main-chat-sequence-model.test.js tests/chat-manager-selection-race.test.js tests/history-watcher-lease-manager.test.js tests/message-edit-watcher-failure.test.js tests/stream-manager-terminal-cleanup.test.js tests/theme-handlers.test.js",
+    "test:dedicated-preload": "node scripts/test-dedicated-preload-electron.mjs",
+    "smoke:side-pane": "node scripts/smoke-side-pane-e2e.mjs",
     "test:bootstrap": "node --test tests/vcpchat-bootstrap.test.mjs tests/vcpchat-managed-bootstrap-m3-m8.test.mjs tests/vcpchat-platform-boundary.test.mjs",
     "test:launchpad-icons": "node --test tests/launchpad-icons.test.js tests/launchpad-controller.test.js",
     "test:next-ui-empty-state": "node scripts/test-next-ui-empty-state.mjs",
     "test:ui-motion-contract": "node scripts/test-ui-motion-contract.mjs",
-    "check:ui-system": "npm run guard:design-subtraction && npm run guard:classic-parity && npm run guard:classic-retirement && npm run guard:next-delta && npm run guard:ui-interaction && npm run guard:ui-async-state && npm run guard:ui-task-journeys && npm run guard:theme-provenance && npm run test:ui-motion-contract && node --check modules/ui-system/lifecycle-scope.js && node --check VCPDistributedServer/frontend-plugin-loader.js && node --check modules/ui-system/component-manifest.js && node --check modules/ui-system/vcp-ui.js && node --check modules/ui-system/webawesome-runtime-manifest.js && node --check modules/ui-system/webawesome-adapter.js && node --check modules/ui-system/appearance-engine.js && node --check modules/ui-system/appearance-studio.js && node --check modules/ui-system/next-ui-apps.js && node --check modules/ui-system/component-showcase.js && node --check modules/ui-system/webawesome-comparison.js && node --check modules/topTabManager.js && npm run lint:ui-system && npm run guard:ui-system && npm run check:ui-applications && npm run test:ui-system && npm run test:appearance-engine && npm run test:appearance-studio && node scripts/test-next-ui-tab-lifecycle.mjs && node scripts/test-webawesome-adapter.mjs && node --test tests/lifecycle-scope.test.js tests/next-ui-registries.test.mjs tests/topic-list-mode-lifecycle.test.js && npm run test:bootstrap",
+    "check:ui-system": "npm run guard:design-subtraction && npm run guard:classic-parity && npm run guard:classic-retirement && npm run guard:next-delta && npm run guard:ui-interaction && npm run guard:ui-async-state && npm run guard:ui-task-journeys && npm run guard:theme-provenance && npm run test:ui-motion-contract && node --check modules/ui-system/lifecycle-scope.js && node --check VCPDistributedServer/frontend-plugin-loader.js && node --check modules/ui-system/component-manifest.js && node --check modules/ui-system/vcp-ui.js && node --check modules/ui-system/webawesome-runtime-manifest.js && node --check modules/ui-system/webawesome-adapter.js && node --check modules/ui-system/appearance-engine.js && node --check modules/ui-system/appearance-studio.js && node --check modules/ui-system/next-ui-apps.js && node --check modules/ui-system/component-showcase.js && node --check modules/ui-system/webawesome-comparison.js && node --check modules/topTabManager.js && npm run lint:ui-system && npm run guard:ui-system && npm run check:ui-applications && npm run test:ui-system && npm run test:appearance-engine && npm run test:appearance-studio && node scripts/test-next-ui-tab-lifecycle.mjs && node scripts/test-webawesome-adapter.mjs && node --test tests/lifecycle-scope.test.js tests/next-ui-registries.test.mjs tests/topic-list-mode-lifecycle.test.js tests/topic-list-load-robustness.test.js tests/settings-unsaved-indicator.test.mjs tests/settings-agent-draft-retention.test.mjs tests/sidebar-resizer-lifecycle.test.mjs tests/topic-list-keyboard.test.js tests/item-list-behavior.test.js tests/settings-select-projection-forms.test.mjs tests/settings-mimo-slot-lifecycle.test.mjs tests/side-chat-message-keyboard.test.mjs tests/side-pane-screen-reader-names.test.mjs tests/settings-section-a11y.test.mjs && npm run test:bootstrap",
     "test:appearance-engine": "node scripts/test-appearance-engine.mjs",
     "test:appearance-studio": "node scripts/test-appearance-studio.mjs",
     "test:vcp-ui-select-proxy": "node scripts/test-vcp-ui-select-proxy.mjs",
@@ -86,7 +92,9 @@
     "test:mobile-sync": "node --test tests/mobile-sync-protocol.test.js tests/mobile-sync-error-contract.test.js tests/mobile-sync-central-adapter.test.js tests/mobile-sync-canonical.test.js tests/mobile-sync-failure-contract.test.js tests/mobile-sync-sqlite-delete.test.js tests/mobile-sync-streaming.test.js tests/mobile-sync-degraded-mode.test.js tests/mobile-sync-package.test.js",
     "test:cds": "cargo test --manifest-path rust_chat_data_service/Cargo.toml --locked",
     "check:cds:fmt": "cargo fmt --manifest-path rust_chat_data_service/Cargo.toml -- --check",
-    "check:cds:clippy": "cargo clippy --manifest-path rust_chat_data_service/Cargo.toml --locked --all-targets -- -D warnings"
+    "check:cds:clippy": "cargo clippy --manifest-path rust_chat_data_service/Cargo.toml --locked --all-targets -- -D warnings",
+    "test": "node scripts/run-all-tests.mjs",
+    "verify:development": "npm test && npm run check:ui-system && npm run check:chat-evidence && npm run check:settings-ownership && npm run check:uiux:artifacts && npm run check:release-surface && npm run guard:chat-kernel-consumers && npm run test:dedicated-preload && npm run test:voice-input-parser"
   },
   "keywords": [
     "VCP",
@@ -176,13 +184,15 @@
       "audio_engine/**/*",
       "rust_assistant_engine/runtime/**/*",
       "rust_voice_input_engine/runtime/**/*",
+      "node_modules/node-pty/**/*",
       "node_modules/sherpa-onnx-node/**/*",
       "node_modules/sherpa-onnx-win-x64/**/*",
       "node_modules/sherpa-onnx-darwin-arm64/**/*",
       "node_modules/sherpa-onnx-darwin-x64/**/*",
       "node_modules/sherpa-onnx-linux-arm64/**/*",
       "node_modules/sherpa-onnx-linux-x64/**/*",
-      "modules/voice/localStt/sttWorker.js"
+      "modules/voice/localStt/sttWorker.js",
+      "VCPDistributedServer/Plugin/PowerShellExecutor/AdminConfirm.py"
     ],
     "files": [
       "main.js",
@@ -203,6 +213,13 @@
       "VCPDistributedServer/Plugin/VCPMobileSync/**/*",
       "VCPDistributedServer/Plugin/VChatDynamicWallpaper/**/*",
       "VCPDistributedServer/Plugin/VChatAutoTTS/**/*",
+      "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
+      "VCPDistributedServer/Plugin/PowerShellExecutor/commandRunStore.js",
+      "VCPDistributedServer/Plugin/PowerShellExecutor/terminalOutputSanitizer.js",
+      "VCPDistributedServer/Plugin/PowerShellExecutor/command-output-parser.js",
+      "VCPDistributedServer/Plugin/PowerShellExecutor/plugin-manifest.json",
+      "VCPDistributedServer/Plugin/PowerShellExecutor/AdminConfirm.py",
+      "VCPDistributedServer/Plugin/PowerShellExecutor/gui/**/*",
       "assets/",
       "modules/**/*",
       "Groupmodules/**/*",
@@ -217,7 +234,8 @@
       "Notemodules/**/*",
       "Translatormodules/**/*",
       "vendor/**/*",
-      "node_modules/**/*"
+      "node_modules/**/*",
+      "VCPDistributedServer/Plugin/PowerShellExecutor/nativeHelperPath.js"
     ],
     "directories": {
       "buildResources": "assets"

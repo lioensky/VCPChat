@@ -1,0 +1,455 @@
+/* --- Code viewer tab (codeViewerSideProvider.js) --- */
+html .side-code-view:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    background: transparent;
+}
+
+html .side-code-container:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* Code Toolbar */
+html .side-code-toolbar:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    height: 38px;
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--zcode-header-divider, var(--vcp-ui-port-color-rgba-255-255-255-0-06));
+    background: var(--vcp-ui-port-color-rgba-255-255-255-0-02);
+    box-sizing: border-box;
+    flex-shrink: 0;
+}
+
+html body[data-vcp-theme="light"] .side-code-toolbar:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    border-bottom-color: var(--zcode-header-divider, var(--vcp-ui-port-color-rgba-0-0-0-0-06));
+    background: var(--vcp-ui-port-color-rgba-0-0-0-0-02);
+}
+
+html .side-code-info:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex: 1;
+}
+
+html .side-code-icon:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    --vcp-ui-icon-size: 14px;
+    width: 14px;
+    height: 14px;
+    font-size: var(--vcp-ui-font-size);
+    color: var(--secondary-text, var(--vcp-ui-port-color-rgba-255-255-255-0-5));
+    flex-shrink: 0;
+}
+
+html body[data-vcp-theme="light"] .side-code-icon:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--secondary-text, var(--vcp-ui-port-color-64748b));
+}
+
+html .side-code-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    font-size: calc(var(--vcp-ui-font-size) - 2px);
+    font-weight: 500;
+    color: var(--primary-text, var(--vcp-ui-port-color-f1f5f9));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+html body[data-vcp-theme="light"] .side-code-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--primary-text, var(--vcp-ui-port-color-0f172a));
+}
+
+html .side-code-lang-tag:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: calc(var(--vcp-ui-font-size) - 4px);
+    font-weight: 600;
+    line-height: 1.2;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    background: var(--vcp-ui-port-color-rgba-59-130-246-0-15);
+    color: var(--vcp-ui-port-color-60a5fa);
+    border: 1px solid var(--vcp-ui-port-color-rgba-59-130-246-0-25);
+    flex-shrink: 0;
+}
+
+html body[data-vcp-theme="light"] .side-code-lang-tag:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-port-color-rgba-37-99-235-0-08);
+    color: var(--vcp-ui-port-color-1d4ed8);
+    border-color: var(--vcp-ui-port-color-rgba-37-99-235-0-2);
+}
+
+html .side-code-actions:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+html .side-code-action-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    min-width: 26px;
+    min-height: 26px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--secondary-text, var(--vcp-ui-port-color-rgba-255-255-255-0-7));
+    cursor: pointer;
+    outline: none;
+    transition: background 120ms ease, color 120ms ease;
+}
+
+html body[data-vcp-theme="light"] .side-code-action-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--secondary-text, var(--vcp-ui-port-color-475569));
+}
+
+html .side-code-action-btn:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-port-color-rgba-255-255-255-0-08);
+    color: var(--primary-text, var(--vcp-ui-port-color-ffffff));
+}
+
+html body[data-vcp-theme="light"] .side-code-action-btn:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-port-color-rgba-0-0-0-0-05);
+    color: var(--primary-text, var(--vcp-ui-port-color-0f172a));
+}
+
+html .side-code-action-btn:active:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-port-color-rgba-255-255-255-0-12);
+}
+
+html body[data-vcp-theme="light"] .side-code-action-btn:active:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-port-color-rgba-0-0-0-0-08);
+}
+
+html .side-code-action-btn .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-code-action-btn svg:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    --vcp-ui-icon-size: 14px;
+    width: 14px;
+    height: 14px;
+    font-size: var(--vcp-ui-font-size);
+    line-height: 1;
+}
+
+/* Code Body & Editor */
+html .side-code-body:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    background: var(--color-surface, var(--vcp-ui-port-color-rgba-0-0-0-0-2));
+}
+
+html body[data-vcp-theme="light"] .side-code-body:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--color-surface, var(--vcp-ui-port-color-rgba-0-0-0-0-02));
+}
+
+html .side-code-editor-shell:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    /* 不能被外层的纵向 flex 压扁：压扁后代码栏（overflow-x: auto）会自己纵向滚动，
+       行号栏留在原地，滚到第 1000 行时左边还显示 1、2、3。整块交给 .side-code-body 滚动 */
+    flex-shrink: 0;
+    min-height: 100%;
+    min-width: 100%;
+    /* 横向也由 .side-code-body 滚动：外壳按最长一行撑宽，横向滚动条贴在视口底部，
+       不会落在几千行代码的最下面 */
+    width: max-content;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: calc(var(--vcp-ui-font-size) - 2px);
+    line-height: 1.5;
+}
+
+html .side-code-gutter:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    width: 38px;
+    min-width: 38px;
+    padding: 8px 6px 8px 0;
+    text-align: right;
+    user-select: none;
+    border-right: 1px solid var(--zcode-header-divider, var(--vcp-ui-port-color-rgba-255-255-255-0-06));
+    color: var(--secondary-text, var(--vcp-ui-port-color-rgba-255-255-255-0-35));
+    font-size: calc(var(--vcp-ui-font-size) - 3px);
+    line-height: 1.5;
+    box-sizing: border-box;
+    /* 横向滚动时行号停在左边，同 CodeMirror 的 .cm-gutters */
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--vcp-ui-bg-primary);
+}
+
+html body[data-vcp-theme="light"] .side-code-gutter:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    border-right-color: var(--zcode-header-divider, var(--vcp-ui-port-color-rgba-0-0-0-0-06));
+    color: var(--secondary-text, var(--vcp-ui-port-color-rgba-0-0-0-0-35));
+}
+
+/* 行号栏和代码的分块（见 editor.js 的 CODE_CHUNK_LINES = 200）：滚出视口时浏览器跳过它的样式和布局，
+   占位高度 = 200 行 × 18px 行高。最后一块行数不定，照常排版。 */
+html .side-code-chunk:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: block;
+    content-visibility: auto;
+    contain-intrinsic-block-size: auto 3600px;
+}
+
+html .side-code-chunk:last-child:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    content-visibility: visible;
+}
+
+html .side-code-line-number:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    height: 18px;
+    line-height: 18px;
+}
+
+html .side-code-pre:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    margin: 0;
+    padding: 8px 12px;
+    flex: 1 0 auto;
+    white-space: pre;
+    color: var(--primary-text, var(--vcp-ui-port-color-f1f5f9));
+    line-height: 18px;
+}
+
+html body[data-vcp-theme="light"] .side-code-pre:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--primary-text, var(--vcp-ui-port-color-0f172a));
+}
+
+html .side-code-editor-shell.is-wrapped:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    width: auto;
+}
+
+/* 行号栏一行一个号，自动换行后一行代码占好几行高度，后面的行号全部错位。
+   代码按 200 行一块排版，做不到逐行对齐，换行时先不显示行号 */
+html .side-code-editor-shell.is-wrapped .side-code-gutter:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: none;
+}
+
+html .side-code-editor-shell.is-wrapped .side-code-pre:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 1;
+    min-width: 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+html .side-code-highlighted:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    font-family: inherit;
+    font-size: inherit;
+    background: transparent;
+    padding: 0;
+}
+
+/* Code Diff View within Code Viewer */
+html .side-code-diff-summary:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 12px;
+    font-size: calc(var(--vcp-ui-font-size) - 3px);
+    font-weight: 500;
+    border-bottom: 1px solid var(--zcode-header-divider, var(--vcp-ui-port-color-rgba-255-255-255-0-06));
+    background: var(--vcp-ui-port-color-rgba-0-0-0-0-15);
+    flex-shrink: 0;
+}
+
+html body[data-vcp-theme="light"] .side-code-diff-summary:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    border-bottom-color: var(--zcode-header-divider, var(--vcp-ui-port-color-rgba-0-0-0-0-06));
+    background: var(--vcp-ui-port-color-rgba-0-0-0-0-03);
+}
+
+html .side-code-diff-table:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: calc(var(--vcp-ui-font-size) - 3px);
+    line-height: 1.45;
+}
+
+html .side-code-diff-table tr.diff-line.add:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-port-color-rgba-34-197-94-0-12);
+    color: var(--vcp-ui-port-color-86efac);
+}
+
+html body[data-vcp-theme="light"] .side-code-diff-table tr.diff-line.add:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-port-color-rgba-34-197-94-0-15);
+    color: var(--vcp-ui-port-color-15803d);
+}
+
+html .side-code-diff-table tr.diff-line.del:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-port-color-rgba-239-68-68-0-12);
+    color: var(--vcp-ui-port-color-fca5a5);
+}
+
+html body[data-vcp-theme="light"] .side-code-diff-table tr.diff-line.del:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-port-color-rgba-239-68-68-0-15);
+    color: var(--vcp-ui-port-color-b91c1c);
+}
+
+html .side-code-diff-table tr.diff-line.same:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--secondary-text, var(--vcp-ui-port-color-rgba-255-255-255-0-7));
+}
+
+html body[data-vcp-theme="light"] .side-code-diff-table tr.diff-line.same:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--secondary-text, var(--vcp-ui-port-color-475569));
+}
+
+html .side-code-diff-table td.diff-num:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    width: 28px;
+    min-width: 28px;
+    padding: 0 4px;
+    text-align: right;
+    color: var(--secondary-text, var(--vcp-ui-port-color-rgba-255-255-255-0-35));
+    user-select: none;
+    font-size: calc(var(--vcp-ui-font-size) - 4px);
+}
+
+html body[data-vcp-theme="light"] .side-code-diff-table td.diff-num:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--secondary-text, var(--vcp-ui-port-color-94a3b8));
+}
+
+html .side-code-diff-table td.diff-content:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    padding: 0 8px;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* Loading & Error States */
+html .side-code-loading:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-code-error:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 24px;
+    font-size: calc(var(--vcp-ui-font-size) - 2px);
+    color: var(--secondary-text, var(--vcp-ui-port-color-rgba-255-255-255-0-6));
+}
+
+html body[data-vcp-theme="light"] .side-code-loading:where(.vcp-ui-scope, .vcp-ui-scope *),
+html body[data-vcp-theme="light"] .side-code-error:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--secondary-text, var(--vcp-ui-port-color-64748b));
+}
+
+html .side-code-error:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--vcp-ui-port-color-f87171);
+}
+
+/* 大文件只预览开头一段时的提示条 */
+html .side-code-truncated-note:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex-shrink: 0;
+    padding: 6px 12px;
+    font-size: calc(var(--vcp-ui-font-size) - 3px);
+    opacity: 0.7;
+    border-bottom: 1px solid var(--zcode-header-divider, var(--vcp-ui-port-color-rgba-255-255-255-0-06));
+}
+
+/* Code viewer: workspace file picker */
+html .side-code-picker:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 10px;
+    max-height: 45%;
+    min-height: 0;
+    border-bottom: 1px solid var(--zcode-header-divider, var(--vcp-ui-port-color-rgba-255-255-255-0-06));
+    box-sizing: border-box;
+    flex-shrink: 0;
+}
+
+html .side-code-picker.is-collapsed:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: none;
+}
+
+html .side-code-picker-select:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-code-picker-filter:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    height: 26px;
+    padding: 0 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border-color, var(--vcp-ui-port-color-rgba-255-255-255-0-08));
+    background: var(--vcp-ui-port-color-rgba-255-255-255-0-03);
+    color: var(--secondary-text, var(--vcp-ui-port-color-rgba-255-255-255-0-8));
+    font-size: calc(var(--vcp-ui-font-size) - 2px);
+    outline: none;
+    box-sizing: border-box;
+    min-width: 0;
+}
+
+html body[data-vcp-theme="light"] .side-code-picker-select:where(.vcp-ui-scope, .vcp-ui-scope *),
+html body[data-vcp-theme="light"] .side-code-picker-filter:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-port-color-rgba-0-0-0-0-03);
+    border-color: var(--vcp-ui-port-color-rgba-0-0-0-0-08);
+    color: var(--secondary-text, var(--vcp-ui-port-color-334155));
+}
+
+html .side-code-picker-list:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 1;
+    min-height: 60px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+html .side-code-picker-item:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 3px 6px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font-size: calc(var(--vcp-ui-font-size) - 2px);
+    text-align: left;
+    cursor: pointer;
+    min-width: 0;
+}
+
+html .side-code-picker-item:hover:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-code-picker-item.active:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-port-color-rgba-127-127-127-0-16);
+}
+
+html .side-code-picker-name:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+html .side-code-picker-dir:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    opacity: 0.5;
+    font-size: calc(var(--vcp-ui-font-size) - 3px);
+}
+
+html .side-code-picker-note:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-code-empty:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    font-size: calc(var(--vcp-ui-font-size) - 3px);
+    opacity: 0.6;
+}
+
+html .side-code-empty:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    padding: 24px 12px;
+    text-align: center;
+}
+
+/* 文件列表读失败时的「重试」：和备注文字同一行，链接样式 */
+html .side-code-picker-retry:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    border: 0; padding: 0; background: none; color: var(--vcp-ui-accent, currentColor); font: inherit; text-decoration: underline; cursor: pointer;
+}

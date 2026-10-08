@@ -40,6 +40,28 @@
     <link rel="stylesheet" href="styles/ui-system/turn-navigator.css">
     <link rel="stylesheet" href="styles/ui-system/chat-back-to-bottom.css">
     <link rel="stylesheet" href="styles/ui-system/chat-composer-inset.css">
+    <link rel="stylesheet" href="styles/ui-system/side-pane-shell.css">
+    <link rel="stylesheet" href="styles/ui-system/side-pane-tab-bar.css">
+    <link rel="stylesheet" href="styles/ui-system/side-pane-side-chat.css">
+    <link rel="stylesheet" href="styles/ui-system/side-pane-tab-overview.css">
+    <link rel="stylesheet" href="styles/ui-system/side-pane-launcher.css">
+    <link rel="stylesheet" href="styles/ui-system/side-pane-tab-overlays.css">
+    <link rel="stylesheet" href="styles/ui-system/side-pane-code-viewer.css">
+    <link rel="stylesheet" href="styles/ui-system/side-pane-browser.css">
+    <link rel="stylesheet" href="styles/ui-system/side-pane-terminal.css">
+    <link rel="stylesheet" href="styles/ui-system/side-pane-tabs.css">
+    <link rel="stylesheet" href="styles/ui-system/side-pane-plan.css">
+    <link rel="stylesheet" href="styles/ui-system/side-pane-tool-output.css">
+    <link rel="stylesheet" href="styles/ui-system/side-pane-model-trajectory.css">
+    <link rel="stylesheet" href="styles/ui-system/side-pane-git-extras.css">
+    <link rel="stylesheet" href="styles/ui-system/status-panel.css">
+    <link rel="stylesheet" href="styles/ui-system/message-file-changes.css">
+    <link rel="stylesheet" href="styles/ui-system/side-pane-side-chat-extras.css">
+    <link rel="stylesheet" href="styles/ui-system/side-pane-motion.css">
+    <link rel="stylesheet" href="styles/ui-system/notification-center-status.css">
+    <link rel="stylesheet" href="styles/ui-system/notification-center-list.css">
+    <link rel="stylesheet" href="styles/ui-system/notification-center-cards.css">
+    <link rel="stylesheet" href="styles/ui-system/notification-center-dock.css">
     <script src="modules/ui-system/lifecycle-scope.js"></script>
     <script src="modules/ui-system/performance-recorder.js"></script>
     <script src="modules/ui-system/task-handle.js"></script>
@@ -68,21 +90,10 @@
     <script src="vendor/pixi.min.js"></script> <!-- 全局引入 Pixi.js，供消息动画岛与音乐舞台复用 -->
     <script src="vendor/pixi-unsafe-eval.min.js"></script> <!-- Pixi 官方 CSP polyfill：以无 eval 实现替换动态编译路径 -->
     <script src="vendor/morphdom.min.js"></script>
+    <link rel="stylesheet" href="styles/ui-system/status-tokens.css">
 </head>
 
 <body data-theme-pending="true" data-vcp-theme="light">
-    <!-- Settings glyph kept as a local symbol so both settings entry points
-         share the same outline without depending on Material font ligatures. -->
-    <svg class="vcp-icon-definitions" aria-hidden="true" focusable="false" width="0" height="0"
-        style="position:absolute;width:0;height:0;overflow:hidden;pointer-events:none">
-        <defs>
-            <symbol id="vcpSettingsOutline16" viewBox="0 0 16 16">
-                <path fill="currentColor"
-                    d="M14.0861 5.51366C13.8717 5.0575 13.588 4.58542 13.2889 4.18108C13.208 4.07172 13.1596 4.04373 13.0243 4.03054C12.4277 3.97255 11.8245 4.05527 11.2269 3.9972C10.7224 3.94816 10.3133 3.71661 10.0115 3.30919C9.66986 2.84777 9.43973 2.31343 9.09824 1.85234C9.01771 1.74365 8.96805 1.71589 8.83354 1.70282C8.29432 1.65044 7.70402 1.65061 7.16656 1.70282C7.03205 1.71589 6.98239 1.74365 6.90186 1.85234C6.56067 2.31303 6.33025 2.84774 5.98855 3.30919C5.68681 3.71661 5.27774 3.94816 4.77317 3.9972C4.17564 4.05527 3.57239 3.97255 2.97585 4.03054C2.84046 4.04373 2.79208 4.07172 2.71115 4.18108C2.41212 4.58542 2.12835 5.0575 1.91403 5.51366C1.85299 5.64359 1.85286 5.7018 1.91403 5.8319C2.14865 6.33077 2.49748 6.76892 2.73237 7.26854C2.9594 7.7515 2.96041 8.24717 2.73338 8.73044C2.49837 9.23061 2.14891 9.66837 1.91403 10.1681C1.85291 10.2982 1.85299 10.3564 1.91403 10.4863C2.12856 10.9429 2.41185 11.4142 2.71115 11.8189C2.79208 11.9283 2.84046 11.9563 2.97585 11.9694C3.57239 12.0274 4.17564 11.9447 4.77317 12.0028C5.27774 12.0518 5.68681 12.2834 5.98855 12.6908C6.33024 13.1522 6.56037 13.6866 6.90186 14.1476C6.98239 14.2563 7.03205 14.2841 7.16656 14.2972C7.70402 14.3494 8.29432 14.3495 8.83354 14.2972C8.96805 14.2841 9.01771 14.2563 9.09824 14.1476C9.43944 13.687 9.66985 13.1522 10.0115 12.6908C10.3133 12.2834 10.7224 12.0518 11.2269 12.0028C11.8244 11.9447 12.4271 12.0275 13.0243 11.9694C13.1596 11.9563 13.208 11.9283 13.2889 11.8189C13.5891 11.4131 13.872 10.942 14.0861 10.4863C14.1471 10.3564 14.1472 10.2982 14.0861 10.1681C13.8513 9.66861 13.5017 9.23061 13.2667 8.73044C13.0397 8.24717 13.0407 7.7515 13.2677 7.26854C13.5026 6.7689 13.8513 6.33106 14.0861 5.8319C14.1472 5.7018 14.1471 5.64359 14.0861 5.51366ZM15.3035 6.40373C15.0685 6.90359 14.7188 7.34119 14.4841 7.84037C14.4231 7.97025 14.423 8.02855 14.4841 8.15861C14.7189 8.65833 15.0685 9.09611 15.3035 9.59626C15.5308 10.0801 15.5308 10.5744 15.3035 11.0582C15.052 11.5933 14.7225 12.1426 14.37 12.6191C14.0685 13.0265 13.6581 13.259 13.1536 13.3081C12.5566 13.366 11.9541 13.2835 11.3573 13.3414C11.2228 13.3545 11.1731 13.3823 11.0926 13.491C10.7511 13.9521 10.521 14.4864 10.1793 14.9478C9.87828 15.3542 9.46719 15.5869 8.96387 15.6358C8.34008 15.6964 7.66194 15.6966 7.03623 15.6358C6.53291 15.5869 6.12182 15.3542 5.82084 14.9478C5.47911 14.4863 5.24878 13.9517 4.90753 13.491C4.82701 13.3823 4.77734 13.3545 4.64284 13.3414C4.04647 13.2835 3.44373 13.366 2.84653 13.3081C2.34201 13.259 1.93164 13.0265 1.63013 12.6191C1.27867 12.144 0.948453 11.5941 0.696621 11.0582C0.469315 10.5744 0.469279 10.0801 0.696621 9.59626C0.931628 9.09613 1.2813 8.65807 1.51597 8.15861C1.57708 8.02855 1.57702 7.97025 1.51597 7.84037C1.28117 7.34095 0.931635 6.9036 0.696621 6.40373C0.469213 5.91992 0.469367 5.42562 0.696621 4.94183C0.948441 4.40587 1.27868 3.85598 1.63013 3.38092C1.93164 2.97349 2.34201 2.74095 2.84653 2.6919C3.44353 2.63397 4.04599 2.71649 4.64284 2.65856C4.77734 2.64549 4.82701 2.61774 4.90753 2.50904C5.24905 2.04792 5.47913 1.51362 5.82084 1.05219C6.12182 0.645806 6.53291 0.413119 7.03623 0.364178C7.66002 0.303556 8.33816 0.303369 8.96387 0.364178C9.46719 0.413119 9.87828 0.645806 10.1793 1.05219C10.521 1.51365 10.7513 2.04828 11.0926 2.50904C11.1731 2.61774 11.2228 2.64549 11.3573 2.65856C11.9541 2.71649 12.5566 2.63397 13.1536 2.6919C13.6581 2.74095 14.0685 2.97349 14.37 3.38092C14.7214 3.85598 15.0517 4.40587 15.3035 4.94183C15.5307 5.42562 15.5309 5.91992 15.3035 6.40373Z" />
-                <path fill="currentColor" d="M9.13764 7.99999C9.13764 7.3715 8.62855 6.8624 8.00005 6.8624C7.37155 6.8624 6.86246 7.3715 6.86246 7.99999C6.86246 8.62849 7.37155 9.13759 8.00005 9.13759C8.62855 9.13759 9.13764 8.62849 9.13764 7.99999ZM10.4834 7.99999C10.4834 9.37126 9.37132 10.4833 8.00005 10.4833C6.62878 10.4833 5.51674 9.37126 5.51674 7.99999C5.51674 6.62873 6.62878 5.51669 8.00005 5.51669C9.37132 5.51669 10.4834 6.62873 10.4834 7.99999Z" />
-            </symbol>
-        </defs>
-    </svg>
     <div id="startupInitializationStatus" class="startup-initialization-status" role="status" aria-live="polite" hidden></div>
     <div class="next-ui-navigation-material" aria-hidden="true"></div>
     <header id="nextUiTopbar" class="next-ui-topbar vcp-ui-scope" data-density="comfortable" aria-label="主导航">
@@ -126,6 +137,8 @@
                         data-presentation-mode="panel" role="radio" aria-checked="false">统一</button>
                     <button type="button" class="chat-presentation-quick-option"
                         data-presentation-mode="immersive" role="radio" aria-checked="false">刊物</button>
+                    <button type="button" class="chat-presentation-quick-option"
+                        data-presentation-mode="messenger" role="radio" aria-checked="false">对话</button>
                 </div>
             </div>
             <button id="nextUiThemeStoreBtn" class="next-ui-icon-button" type="button" title="选择主题" aria-label="选择主题">
@@ -135,7 +148,7 @@
                 <span class="vcp-ui-icon" aria-hidden="true">light_mode</span>
             </button>
             <button id="nextUiSettingsBtn" class="next-ui-icon-button next-ui-relocated-action" type="button" title="全局设置" aria-label="全局设置">
-                <svg class="vcp-settings-icon" data-vcp-icon="settings-outline-16" aria-hidden="true" focusable="false"><use href="#vcpSettingsOutline16"></use></svg>
+                <span class="vcp-ui-icon vcp-settings-icon" aria-hidden="true">settings</span>
             </button>
             <button id="nextUiMinimizeToTrayBtn" class="next-ui-window-button" type="button" title="最小化到系统托盘" aria-label="最小化到系统托盘">
                 <span class="vcp-ui-icon" aria-hidden="true">keyboard_arrow_down</span>
@@ -209,49 +222,27 @@
             <div class="sidebar-compact-navigation" aria-label="窄侧栏导航">
                 <button type="button" class="sidebar-compact-trigger" aria-label="展开侧栏导航"
                     aria-expanded="false" title="侧栏导航">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"
-                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                        stroke-linejoin="round" aria-hidden="true">
-                        <path d="M4 6h16"></path>
-                        <path d="M4 12h16"></path>
-                        <path d="M4 18h16"></path>
-                    </svg>
+                    <span class="vcp-ui-icon" style="--vcp-ui-icon-size: 22px" aria-hidden="true">menu</span>
                 </button>
                 <div class="sidebar-compact-menu" role="menu">
                     <button type="button" class="sidebar-compact-menu-item active" data-compact-action="agents"
                         role="menuitem">
                         <span class="sidebar-compact-menu-icon" aria-hidden="true">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
-                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                stroke-linejoin="round">
-                                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
-                                <circle cx="9" cy="7" r="4"></circle>
-                                <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
-                                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-                            </svg>
+                            <span class="vcp-ui-icon" style="--vcp-ui-icon-size: 18px" aria-hidden="true">users</span>
                         </span>
                         <span>助手</span>
                     </button>
                     <button type="button" class="sidebar-compact-menu-item" data-compact-action="topics"
                         role="menuitem">
                         <span class="sidebar-compact-menu-icon" aria-hidden="true">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
-                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                stroke-linejoin="round">
-                                <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"></path>
-                            </svg>
+                            <span class="vcp-ui-icon" style="--vcp-ui-icon-size: 18px" aria-hidden="true">message-square</span>
                         </span>
                         <span>话题</span>
                     </button>
                     <button type="button" class="sidebar-compact-menu-item" data-compact-action="settings"
                         role="menuitem">
                         <span class="sidebar-compact-menu-icon" aria-hidden="true">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
-                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                stroke-linejoin="round">
-                                <circle cx="12" cy="12" r="3"></circle>
-                                <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.55V21h-4v-.05A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3v-4h.05A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3h4v.05A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21v4h-.05A1.7 1.7 0 0 0 19.4 15z"></path>
-                            </svg>
+                            <span class="vcp-ui-icon" style="--vcp-ui-icon-size: 18px" aria-hidden="true">settings</span>
                         </span>
                         <span>设置</span>
                     </button>
@@ -266,42 +257,25 @@
                 <div class="agents-header">
                     <div class="next-ui-agent-tools">
                         <button id="nextUiCreateItemBtn" class="next-ui-create-item-trigger" type="button">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="M12 5v14"></path>
-                                <path d="M5 12h14"></path>
-                            </svg>
+                            <span class="vcp-ui-icon" aria-hidden="true">plus</span>
                             <span>创建助手或群组</span>
                         </button>
                         <button id="nextUiAgentSearchTrigger" class="next-ui-agent-search-trigger" type="button"
                             title="搜索助手或群" aria-label="搜索助手或群" aria-controls="agentSearchInput"
                             aria-expanded="false">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <circle cx="11" cy="11" r="7"></circle>
-                                <path d="m20 20-3.5-3.5"></path>
-                            </svg>
+                            <span class="vcp-ui-icon" aria-hidden="true">search</span>
                         </button>
                     </div>
                     <div class="sidebar-subtab-item sidebar-search-subtab">
                         <div class="topic-search-container">
                             <span class="agent-search-icon" aria-hidden="true">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                    stroke-linejoin="round">
-                                    <circle cx="11" cy="11" r="7"></circle>
-                                    <path d="m20 20-3.5-3.5"></path>
-                                </svg>
+                                <span class="vcp-ui-icon" style="--vcp-ui-icon-size: 12px" aria-hidden="true">search</span>
                             </span>
                             <input type="text" id="agentSearchInput" placeholder="搜索助手或群..."
                                 aria-label="搜索助手或群" class="topic-search-input">
                             <button id="nextUiAgentSearchClose" class="next-ui-agent-search-close" type="button"
                                 title="关闭搜索" aria-label="关闭助手搜索">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                    <path d="m7 7 10 10"></path>
-                                    <path d="M17 7 7 17"></path>
-                                </svg>
+                                <span class="vcp-ui-icon" aria-hidden="true">x</span>
                             </button>
                         </div>
                     </div>
@@ -323,43 +297,22 @@
                 <div class="topics-header-container">
                     <div class="next-ui-topic-tools">
                         <button id="nextUiCreateTopicBtn" class="next-ui-create-topic-trigger" type="button">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="M12 5v14"></path>
-                                <path d="M5 12h14"></path>
-                            </svg>
+                            <span class="vcp-ui-icon" aria-hidden="true">plus</span>
                             <span>新建话题</span>
                         </button>
                         <button id="nextUiManageTopicsBtn" class="next-ui-topic-icon-trigger" type="button"
                             title="管理话题" aria-label="管理话题" aria-pressed="false">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="m3 6 2 2 4-4"></path>
-                                <path d="M11 6h10"></path>
-                                <path d="m3 12 2 2 4-4"></path>
-                                <path d="M11 12h10"></path>
-                                <path d="m3 18 2 2 4-4"></path>
-                                <path d="M11 18h10"></path>
-                            </svg>
+                            <span class="vcp-ui-icon" aria-hidden="true">list-checks</span>
                         </button>
                         <button id="nextUiTopicSearchTrigger" class="next-ui-topic-icon-trigger" type="button"
                             title="搜索话题" aria-label="搜索话题" aria-controls="topicSearchInput" aria-expanded="false">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <circle cx="11" cy="11" r="7"></circle>
-                                <path d="m20 20-3.5-3.5"></path>
-                            </svg>
+                            <span class="vcp-ui-icon" aria-hidden="true">search</span>
                         </button>
                     </div>
                     <div class="sidebar-subtab-item sidebar-search-subtab">
                         <div class="topic-search-container">
                             <span class="agent-search-icon" aria-hidden="true">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                    stroke-linejoin="round">
-                                    <circle cx="11" cy="11" r="7"></circle>
-                                    <path d="m20 20-3.5-3.5"></path>
-                                </svg>
+                                <span class="vcp-ui-icon" style="--vcp-ui-icon-size: 12px" aria-hidden="true">search</span>
                             </span>
                             <input type="text" id="topicSearchInput" placeholder="搜索话题或未读话题"
                                 title="输入“未读话题”或“unread topic”将未读话题置顶"
@@ -367,11 +320,7 @@
                                 class="topic-search-input">
                             <button id="nextUiTopicSearchClose" class="next-ui-topic-search-close" type="button"
                                 title="关闭搜索" aria-label="关闭话题搜索">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                    <path d="m7 7 10 10"></path>
-                                <path d="M17 7 7 17"></path>
-                            </svg>
+                                <span class="vcp-ui-icon" aria-hidden="true">x</span>
                             </button>
                         </div>
                     </div>
@@ -421,13 +370,13 @@
                         <span class="vcp-ui-icon" aria-hidden="true">tune</span>
                         <span class="next-ui-account-menu-label">外观与布局</span>
                         <span id="nextUiAccountAppearanceStudioValue" class="next-ui-account-menu-value">自定义</span>
-                        <svg class="vcp-icon next-ui-account-menu-chevron" data-vcp-icon="chevron-right-outline-14" aria-hidden="true" focusable="false"></svg>
+                        <span class="vcp-ui-icon next-ui-account-menu-chevron" aria-hidden="true">chevron-right</span>
                     </button>
                     <button id="nextUiAccountThemeStoreBtn" class="next-ui-account-menu-item" role="menuitem" type="button"
                         role="menuitem" aria-label="打开主题管理器">
                         <span class="vcp-ui-icon" aria-hidden="true">palette</span>
                         <span class="next-ui-account-menu-label">主题管理器</span>
-                        <svg class="vcp-icon next-ui-account-menu-chevron" data-vcp-icon="chevron-right-outline-14" aria-hidden="true" focusable="false"></svg>
+                        <span class="vcp-ui-icon next-ui-account-menu-chevron" aria-hidden="true">chevron-right</span>
                     </button>
                     <button id="nextUiAccountThemeToggleBtn" class="next-ui-account-menu-item" role="menuitem" type="button"
                         role="menuitem" aria-label="切换深色或浅色模式">
@@ -439,11 +388,11 @@
                     aria-haspopup="menu" aria-controls="nextUiAccountMenu" aria-expanded="false">
                     <img id="nextUiAccountAvatar" src="assets/default_user_avatar.png" alt="用户头像" width="32" height="32">
                     <span id="nextUiAccountName">用户</span>
-                    <svg class="vcp-icon next-ui-account-expand-icon" data-vcp-icon="chevron-down-outline-14" aria-hidden="true" focusable="false"></svg>
+                    <span class="vcp-ui-icon next-ui-account-expand-icon" aria-hidden="true">chevron-down</span>
                 </button>
                 <button id="nextUiAccountSettingsBtn" class="next-ui-account-settings" role="menuitem" type="button"
                     title="全局设置" aria-label="全局设置">
-                    <svg class="vcp-settings-icon" data-vcp-icon="settings-outline-16" aria-hidden="true" focusable="false"><use href="#vcpSettingsOutline16"></use></svg>
+                    <span class="vcp-ui-icon vcp-settings-icon" aria-hidden="true">settings</span>
                 </button>
             </div>
         </aside>
@@ -451,19 +400,17 @@
         <section id="nextUiMainPanel" class="next-ui-main-panel" role="tabpanel" aria-labelledby="nextUiHomeTab">
           <main class="main-content">
             <header class="chat-header vcp-ui-scope">
-                <h3 id="currentChatAgentName">选择一个Agent开始聊天</h3>
+                <div class="chat-header-spacer" aria-hidden="true"></div>
+                <div class="chat-agent-pill" id="chatAgentPill">
+                    <img id="chatAgentAvatar" class="chat-agent-pill-avatar" src="assets/icon.png" alt="" />
+                    <h3 id="currentChatAgentName" class="chat-agent-pill-name">选择一个Agent开始聊天</h3>
+                    <span id="chatAgentPillPaneBtn" class="chat-agent-pill-pane-btn" aria-hidden="true">
+                        <span class="vcp-ui-icon" style="--vcp-ui-icon-size: 14px" aria-hidden="true">chevron-right</span>
+                    </span>
+                </div>
                 <div class="chat-actions">
                     <button id="toggleAssistantBtn" class="header-button" type="button"
                         title="点击：开关划词助手｜长按：直接呼出" aria-label="划词助手开关与呼出">
-                        <svg class="assistant-control-icon-classic" xmlns="http://www.w3.org/2000/svg" width="18"
-                            height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <path d="M12 20h-1a2 2 0 0 1-2-2 2 2 0 0 1-2 2H6"></path>
-                            <path d="M13 8h7a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-7"></path>
-                            <path d="M5 16H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h1"></path>
-                            <path d="M6 4h1a2 2 0 0 1 2 2 2 2 0 0 1 2-2h1"></path>
-                            <path d="M9 6v12"></path>
-                        </svg>
                         <svg class="assistant-control-icon-next lucide lucide-scan-text" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
@@ -503,16 +450,21 @@
                         </svg>
                         <span class="button-label">新建聊天话题</span>
                     </button>
+                    <button id="toggleStatusPanelBtn" class="header-button" type="button" hidden
+                        title="隐藏状态面板" aria-label="隐藏状态面板" aria-pressed="true">
+                        <span class="vcp-ui-icon" style="--vcp-ui-icon-size: 18px" aria-hidden="true">list-todo</span>
+                    </button>
+                    <button id="toggleSidePaneChatBtn" class="header-button" type="button" title="左键展开侧栏/右键监控面板"
+                        aria-label="展开侧栏" aria-controls="vcpSidePane" aria-expanded="false">
+                        <svg class="lucide lucide-panel-right" viewBox="0 0 24 24" width="20" height="20" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect width="18" height="18" x="3" y="3" rx="2"></rect>
+                            <path d="M15 3v18"></path>
+                        </svg>
+                    </button>
                     <span id="nextUiChatNotificationHost" class="next-ui-notification-toggle-host"><button id="toggleNotificationsBtn" class="header-button" type="button" title="左键打开通知面板/右键监控面板"
                         aria-label="打开通知面板" aria-controls="notificationsSidebar" aria-expanded="false">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                            aria-hidden="true">
-                            <path d="M10.268 21a2 2 0 0 0 3.464 0"></path>
-                            <path
-                                d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326">
-                            </path>
-                        </svg>
+                        <span class="vcp-ui-icon" style="--vcp-ui-icon-size: 24px" aria-hidden="true">bell</span>
                     </button></span>
                 </div>
             </header>
@@ -549,6 +501,11 @@
                 <div class="chat-messages" id="chatMessages">
                 </div>
             </div>
+            <!-- 放在 #chatMessages 之外：消息列表重渲染会清空它，按钮不能跟着被删 -->
+            <button id="floatingSelectionSideChatBtn" class="floating-selection-side-chat-btn vcp-ui-scope" type="button" hidden title="在侧栏提问" aria-label="在侧栏提问">
+                <span class="vcp-ui-icon" aria-hidden="true">chat_bubble</span>
+                <span>在侧栏提问</span>
+            </button>
             <footer class="chat-input-area vcp-ui-scope" aria-label="消息输入区">
                 <div class="chat-input-card">
                     <div class="attachment-preview-area" id="attachmentPreviewArea"></div>
@@ -556,12 +513,7 @@
                         aria-label="消息内容" rows="1" disabled></textarea>
                     <div class="chat-input-actions">
                         <button id="quickNewTopicBtn" type="button" title="高级回复" aria-label="打开高级回复设置" aria-haspopup="dialog" aria-expanded="false">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                stroke-linejoin="round" aria-hidden="true">
-                                <path d="M12 5v14"></path>
-                                <path d="M5 12h14"></path>
-                            </svg>
+                            <span class="vcp-ui-icon" style="--vcp-ui-icon-size: 24px" aria-hidden="true">plus</span>
                         </button>
                         <button id="attachFileBtn" type="button" title="发送文件" aria-label="发送文件" disabled>
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
@@ -596,25 +548,124 @@
                             </svg>
                         </button>
                         <button id="sendMessageBtn" type="button" title="发送消息" aria-label="发送消息" disabled>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="m5 12 7-7 7 7"></path>
-                                <path d="M12 19V5"></path>
-                            </svg>
+                            <span class="vcp-ui-icon" aria-hidden="true">arrow-up</span>
                         </button>
                     </div>
                 </div>
             </footer>
           </main>
           <div class="resizer vcp-ui-scope" id="resizerRight"></div>
-          <aside class="notifications-sidebar vcp-ui-scope" id="notificationsSidebar">
-            <header class="notifications-header">
-                <h4 id="notificationTitle" style="display: none;">VCP 通知</h4>
-                <div class="datetime-container">
-                    <div id="digitalClock" class="digital-clock"></div>
-                    <div id="dateDisplay" class="date-display"></div>
+          <aside class="vcp-side-pane vcp-ui-scope" id="vcpSidePane" aria-label="工作区侧栏" aria-hidden="true">
+            <header class="side-pane-tab-bar">
+                <button id="sidePaneTabOverviewBtn" class="side-pane-action-btn" type="button" title="标签页概览" aria-label="标签页概览">
+                    <svg class="lucide lucide-chevrons-down" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 6 5 5 5-5"/><path d="m7 13 5 5 5-5"/></svg>
+                </button>
+                <button id="sidePaneHomeBtn" class="side-pane-action-btn side-pane-home-btn" type="button" title="首页" aria-label="首页" aria-pressed="false">
+                    <svg class="lucide lucide-house" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                </button>
+                <div class="side-pane-tabs" role="tablist" aria-label="侧边栏标签页"></div>
+                <div class="side-pane-tab-actions">
+                    <button id="addSidePaneChatBtn" class="side-pane-action-btn" type="button" title="新标签页" aria-label="新标签页">
+                        <svg class="lucide lucide-plus" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                    </button>
+                    <button id="closeSidePaneBtn" class="side-pane-action-btn" type="button" title="收起侧边栏" aria-label="收起侧边栏">
+                        <svg class="lucide lucide-panel-right-close" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/><path d="m8 9 3 3-3 3"/></svg>
+                    </button>
                 </div>
-
+                <div id="sidePaneTabOverviewPopover" class="side-pane-tab-overview-popover" role="dialog" aria-label="标签页概览" hidden>
+                    <div class="side-pane-overview-search">
+                        <span class="vcp-ui-icon" aria-hidden="true">search</span>
+                        <input type="text" class="side-pane-overview-input" placeholder="搜索标签页..." aria-label="搜索标签页">
+                    </div>
+                    <div class="side-pane-overview-list" id="sidePaneOpenTabsList"></div>
+                </div>
+                <div id="sidePaneTabContextMenu" class="side-pane-context-menu" role="menu" aria-label="标签页操作" hidden>
+                    <button type="button" class="side-pane-menu-item" role="menuitem" data-action="close-tab">关闭当前标签页</button>
+                    <button type="button" class="side-pane-menu-item" role="menuitem" data-action="close-others">关闭其他标签页</button>
+                    <button type="button" class="side-pane-menu-item" role="menuitem" data-action="close-all">关闭所有标签页</button>
+                </div>
+            </header>
+            <div class="side-pane-content-container">
+                <section class="side-pane-view active" id="sidePaneViewLauncher" data-tab-id="launcher" role="tabpanel" aria-label="新标签页">
+                    <div class="side-pane-open-tab-shell">
+                        <div class="side-pane-open-tab-content">
+                            <div class="side-pane-launcher-profile" hidden>
+                                <button type="button" class="side-pane-launcher-avatar">
+                                    <img alt="" draggable="false">
+                                    <span class="side-pane-launcher-avatar-edit" aria-hidden="true"><span class="vcp-ui-icon">edit</span></span>
+                                </button>
+                                <input type="text" class="side-pane-launcher-name" aria-label="名称" autocomplete="off" spellcheck="false" readonly>
+                            </div>
+                            <div class="side-pane-launcher-tabs" role="tablist" aria-label="新标签页分类" hidden>
+                                <button type="button" class="side-pane-launcher-tab" role="tab" data-launcher-tab="tools" aria-selected="true">工具</button>
+                                <button type="button" class="side-pane-launcher-tab" role="tab" data-launcher-tab="apps" aria-selected="false">应用</button>
+                                <button type="button" class="side-pane-launcher-tab" role="tab" data-launcher-tab="notifications" aria-selected="false">通知<span class="side-pane-launcher-tab-status" data-status="unknown" aria-hidden="true"></span></button>
+                            </div>
+                            <section class="side-pane-launcher-section" data-launcher-section="tools" role="tabpanel" aria-label="工具">
+                                <div class="side-pane-launcher-group" data-launcher-group="tools">
+                                    <h3 class="side-pane-launcher-group-title">工具</h3>
+                                    <div class="side-pane-open-tab-list"></div>
+                                </div>
+                                <div class="side-pane-launcher-group" data-launcher-group="notifications" hidden>
+                                    <h3 class="side-pane-launcher-group-title">通知</h3>
+                                    <button type="button" class="side-pane-launcher-notice" data-status="unknown">
+                                        <span class="side-pane-launcher-notice-icon" aria-hidden="true">
+                                            <span class="vcp-ui-icon">notifications</span>
+                                            <span class="side-pane-launcher-notice-dot"></span>
+                                        </span>
+                                        <span class="side-pane-launcher-notice-body">
+                                            <span class="side-pane-launcher-notice-title">VCPLog 未连接</span>
+                                            <span class="side-pane-launcher-notice-meta">暂无待处理</span>
+                                        </span>
+                                        <span class="vcp-ui-icon side-pane-launcher-notice-chevron" aria-hidden="true">chevron_right</span>
+                                    </button>
+                                </div>
+                                <div class="side-pane-launcher-group" data-launcher-group="recommended" hidden>
+                                    <div class="side-pane-launcher-group-header">
+                                        <h3 class="side-pane-launcher-group-title">推荐</h3>
+                                        <button type="button" class="side-pane-launcher-group-action" title="选择推荐的应用" aria-label="选择推荐的应用" hidden>
+                                            <span class="vcp-ui-icon" aria-hidden="true">settings</span>
+                                        </button>
+                                    </div>
+                                    <div class="side-pane-launcher-recommended-row"></div>
+                                </div>
+                            </section>
+                            <section class="side-pane-launcher-section" data-launcher-section="apps" role="tabpanel" aria-label="应用" hidden>
+                                <div class="side-pane-launcher-app-grid"></div>
+                            </section>
+                            <section class="side-pane-launcher-section" data-launcher-section="notifications" role="tabpanel" aria-label="通知" hidden>
+                  <aside class="notifications-sidebar vcp-ui-scope" id="notificationsSidebar">
+            <!-- 连接状态显示在新标签页的“通知”分类上；这里只留给读屏与旧代码引用 -->
+            <div class="notifications-status-host">
+                <div class="notifications-status" id="vcpLogConnectionStatus" data-status="unknown" role="status" aria-live="polite">
+                    <span class="notifications-status-dot" aria-hidden="true"></span>
+                    <span class="notifications-status-text">VCPLog: 未连接</span>
+                </div>
+            </div>
+            <div class="notification-pending-banner" id="notificationPendingBanner" role="region" aria-label="待审批" hidden>
+                <button type="button" class="notification-pending-summary" data-action="jump-next"
+                    title="定位到下一个待审批" aria-label="定位到下一个待审批">
+                    <span class="vcp-ui-icon" aria-hidden="true">gpp_maybe</span>
+                    <span class="notification-pending-text"><strong data-role="pending-count">0</strong> 项待审批</span>
+                    <span class="vcp-ui-icon notification-pending-jump" aria-hidden="true">keyboard_arrow_down</span>
+                </button>
+                <div class="notification-pending-actions">
+                    <button type="button" class="notification-pending-btn is-reject" data-action="reject-all"
+                        title="拒绝全部待审批（需再点一次确认）"><span data-role="label">全部拒绝</span></button>
+                    <button type="button" class="notification-pending-btn is-approve" data-action="approve-all"
+                        title="允许全部待审批（需再点一次确认；含内容变更的请求需逐条审计）"><span data-role="label">全部允许</span></button>
+                </div>
+            </div>
+            <div class="notification-toolbar" id="notificationToolbar" role="group" aria-label="筛选通知">
+                <button type="button" class="notification-chip" data-filter="all" aria-pressed="true">全部<span class="notification-chip-count"></span></button>
+                <button type="button" class="notification-chip" data-filter="pending" aria-pressed="false">待审批<span class="notification-chip-count"></span></button>
+                <button type="button" class="notification-chip" data-filter="info" aria-pressed="false">通知<span class="notification-chip-count"></span></button>
+                <button type="button" class="notification-chip" data-filter="error" aria-pressed="false">错误<span class="notification-chip-count"></span></button>
+                <button type="button" class="notification-chip" data-filter="resolved" aria-pressed="false">已处理<span class="notification-chip-count"></span></button>
+                <button id="nextUiNotificationClear" class="notification-toolbar-clear" type="button"
+                    title="清空通知（保留待审批）" aria-label="清空通知">
+                    <span class="vcp-ui-icon" aria-hidden="true">delete_sweep</span>
+                </button>
                 <div class="next-ui-notification-actions">
                     <button id="nextUiNotificationMenuBtn" class="next-ui-notification-menu-trigger" type="button"
                         title="通知选项" aria-label="通知选项" aria-haspopup="menu"
@@ -629,26 +680,6 @@
                     </button>
                     <div id="nextUiNotificationMenu" class="next-ui-notification-menu" role="menu"
                         aria-label="通知选项" hidden>
-                        <button id="nextUiNotificationForum" class="next-ui-notification-menu-item"
-                            type="button" role="menuitem" title="打开论坛">
-                            <span class="vcp-ui-icon" aria-hidden="true">forum</span>
-                            <span>论坛</span>
-                        </button>
-                        <button id="nextUiNotificationMemo" class="next-ui-notification-menu-item"
-                            type="button" role="menuitem" title="打开记忆">
-                            <span class="vcp-ui-icon" aria-hidden="true">sticky_note_2</span>
-                            <span>记忆</span>
-                        </button>
-                        <button id="nextUiNotificationLog" class="next-ui-notification-menu-item"
-                            type="button" role="menuitem" title="打开 VCP 日志">
-                            <span class="vcp-ui-icon" aria-hidden="true">scroll_text</span>
-                            <span>VCP 日志</span>
-                        </button>
-                        <button id="nextUiNotificationObserver" class="next-ui-notification-menu-item"
-                            type="button" role="menuitem" title="打开 VCP 监听">
-                            <span class="vcp-ui-icon" aria-hidden="true">activity</span>
-                            <span>VCP 监听</span>
-                        </button>
                         <button id="nextUiNotificationFilterToggle" class="next-ui-notification-menu-item"
                             type="button" role="menuitemcheckbox" aria-checked="false"
                             title="切换通知过滤模式">
@@ -661,37 +692,35 @@
                             <span class="vcp-ui-icon" aria-hidden="true">settings</span>
                             <span>通知栏设置</span>
                         </button>
-                        <div class="next-ui-notification-menu-divider" role="separator"></div>
-                        <button id="nextUiNotificationClear" class="next-ui-notification-menu-item danger"
-                            type="button" role="menuitem">
-                            <span class="vcp-ui-icon" aria-hidden="true">trash_2</span>
-                            <span>清空通知</span>
-                        </button>
                     </div>
                 </div>
-                <span id="nextUiPanelNotificationHost" class="next-ui-notification-toggle-host"></span>
-            </header>
-            <div class="notifications-status" id="vcpLogConnectionStatus">
-                VCPLog: 未连接
             </div>
             <ul class="notifications-list" id="notificationsList">
             </ul>
-            <div id="inviteAgentButtonsContainer" class="invite-agent-buttons-container" hidden
-                style="padding: 10px; border-top: 1px solid var(--border-color); margin-top:10px;">
+            <div id="inviteAgentButtonsContainer" class="invite-agent-buttons-container" hidden>
                 <!-- 邀请发言按钮将由 JavaScript 动态填充到这里 -->
             </div>
-            <hr class="section-divider">
             <div id="vchatAppTray" class="notes-section">
-                <!-- App tray UI -->
+                <div class="notification-dock-links" role="group" aria-label="通知相关快捷入口">
+                    <button id="nextUiNotificationForum" class="notification-dock-btn" type="button" title="打开论坛" aria-label="打开论坛">
+                        <span class="vcp-ui-icon" aria-hidden="true">forum</span>
+                    </button>
+                    <button id="nextUiNotificationMemo" class="notification-dock-btn" type="button" title="打开记忆" aria-label="打开记忆">
+                        <span class="vcp-ui-icon" aria-hidden="true">sticky_note_2</span>
+                    </button>
+                    <button id="nextUiNotificationLog" class="notification-dock-btn" type="button" title="打开 VCP 日志" aria-label="打开 VCP 日志">
+                        <span class="vcp-ui-icon" aria-hidden="true">scroll_text</span>
+                    </button>
+                    <button id="nextUiNotificationObserver" class="notification-dock-btn" type="button" title="打开 VCP 监听" aria-label="打开 VCP 监听">
+                        <span class="vcp-ui-icon" aria-hidden="true">activity</span>
+                    </button>
+                </div>
+                <span class="notification-dock-sep" aria-hidden="true"></span>
                 <div id="appTrayPinnedApps" class="app-tray-pinned-apps"></div>
                 <button id="appTrayMoreBtn" class="app-tray-more-btn" type="button"
                     aria-label="更多应用" aria-controls="appTrayDrawer" aria-expanded="false" aria-haspopup="true"
                     data-tooltip="更多应用">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="12" cy="12" r="1"></circle>
-                        <circle cx="19" cy="12" r="1"></circle>
-                        <circle cx="5" cy="12" r="1"></circle>
-                    </svg>
+                    <span class="vcp-ui-icon" style="--vcp-ui-icon-size: 18px" aria-hidden="true">ellipsis</span>
                 </button>
                 <div id="appTrayDrawer" class="app-tray-drawer" role="region" aria-label="全部应用" aria-hidden="true">
                     <div class="app-tray-drawer-header">
@@ -699,15 +728,18 @@
                         <div class="app-tray-drawer-actions">
                             <button id="appTraySettingsBtn" class="app-tray-settings-btn" type="button"
                                 title="设置托盘显示的按钮" aria-label="设置托盘显示的按钮">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                    <circle cx="12" cy="12" r="3"></circle>
-                                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-                                </svg>
+                                <span class="vcp-ui-icon" style="--vcp-ui-icon-size: 16px" aria-hidden="true">settings</span>
                             </button>
                         </div>
                     </div>
                     <div id="appTrayDrawerGrid" class="app-tray-drawer-grid"></div>
                 </div>
+            </div>
+          </aside>
+                            </section>
+                        </div>
+                    </div>
+                </section>
             </div>
           </aside>
         </section>
@@ -725,82 +757,39 @@
                     <nav class="vcp-settings-source-nav" data-settings-sections='[{"value":"user-identity","label":"用户身份"},{"value":"server-connection","label":"服务器连接"},{"value":"jev-service","label":"Jev 服务"},{"value":"appearance-settings","label":"界面与外观"},{"value":"render-settings","label":"消息渲染"},{"value":"selection-assistant","label":"划词助手"},{"value":"voice-settings","label":"语音设置"},{"value":"advanced-features","label":"高级功能"},{"value":"workspace-management","label":"工作区管理"},{"value":"quick-actions","label":"快捷操作"}]'>
                         <template class="vcp-settings-source-list">
                             <li class="vcp-settings-source-item active" data-section="user-identity">
-                                <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                    stroke-width="2">
-                                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                                    <circle cx="12" cy="7" r="4"></circle>
-                                </svg>
+                                <span class="vcp-ui-icon settings-nav-icon" aria-hidden="true">user</span>
                                 <span>用户身份</span>
                             </li>
                             <li class="vcp-settings-source-item" data-section="server-connection">
-                                <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                    stroke-width="2">
-                                    <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
-                                    <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
-                                    <line x1="6" y1="6" x2="6.01" y2="6"></line>
-                                    <line x1="6" y1="18" x2="6.01" y2="18"></line>
-                                </svg>
+                                <span class="vcp-ui-icon settings-nav-icon" aria-hidden="true">server</span>
                                 <span>服务器连接</span>
                             </li>
                             <li class="vcp-settings-source-item" data-section="appearance-settings">
-                                <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                    stroke-width="2">
-                                    <circle cx="13.5" cy="6.5" r="2.5"></circle>
-                                    <circle cx="17.5" cy="10.5" r="2.5"></circle>
-                                    <circle cx="8.5" cy="7.5" r="2.5"></circle>
-                                    <circle cx="6.5" cy="12.5" r="2.5"></circle>
-                                    <path d="M12 22a10 10 0 1 1 10-10c0 2.2-1.8 4-4 4h-1.7a2.3 2.3 0 0 0-2.3 2.3v.7a3 3 0 0 1-3 3z"></path>
-                                </svg>
+                                <span class="vcp-ui-icon settings-nav-icon" aria-hidden="true">palette</span>
                                 <span>界面与外观</span>
                             </li>
                             <li class="vcp-settings-source-item" data-section="render-settings">
-                                <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                    stroke-width="2">
-                                    <circle cx="12" cy="12" r="3"></circle>
-                                    <path
-                                        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
-                                    </path>
-                                </svg>
+                                <span class="vcp-ui-icon settings-nav-icon" aria-hidden="true">settings</span>
                                 <span>消息渲染</span>
                             </li>
                             <li class="vcp-settings-source-item" data-section="selection-assistant">
-                                <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                    stroke-width="2">
-                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                                </svg>
+                                <span class="vcp-ui-icon settings-nav-icon" aria-hidden="true">square-pen</span>
                                 <span>划词助手</span>
                             </li>
                             <li class="vcp-settings-source-item" data-section="voice-settings">
-                                <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                    stroke-width="2">
-                                    <path d="M12 19v3"></path>
-                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                                    <rect x="9" y="2" width="6" height="13" rx="3"></rect>
-                                </svg>
+                                <span class="vcp-ui-icon settings-nav-icon" aria-hidden="true">mic</span>
                                 <span>语音设置</span>
                             </li>
                             <li class="vcp-settings-source-item" data-section="advanced-features">
-                                <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                    stroke-width="2">
-                                    <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
-                                    <polyline points="2 17 12 22 22 17"></polyline>
-                                    <polyline points="2 12 12 17 22 12"></polyline>
-                                </svg>
+                                <span class="vcp-ui-icon settings-nav-icon" aria-hidden="true">layers</span>
                                 <span>高级功能</span>
                             </li>
                             <li class="vcp-settings-source-item" data-section="workspace-management">
-                                <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                    stroke-width="2">
-                                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-                                </svg>
+                                <span class="vcp-ui-icon settings-nav-icon" aria-hidden="true">folder</span>
                                 <span>工作区管理</span>
                             </li>
                             <li class="vcp-settings-source-item" data-section="quick-actions">
-                                <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                    stroke-width="2">
-                                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
-                                </svg>
+                                <span class="vcp-ui-icon settings-nav-icon" aria-hidden="true">zap</span>
                                 <span>快捷操作</span>
                             </li>
                         </template>
@@ -906,15 +895,7 @@
                 <div class="model-search-container">
                     <input type="text" id="modelSearchInput" placeholder="搜索模型..." class="model-search-input">
                     <button type="button" id="refreshModelsBtn" class="small-button" title="刷新模型列表">
-                        <svg data-slot="icon" fill="none" stroke-width="2" stroke="currentColor" viewBox="0 0 24 24"
-                            xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="16" height="16">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M21 5H3"></path>
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M7 12H3"></path>
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M7 19H3"></path>
-                            <path stroke-linecap="round" stroke-linejoin="round"
-                                d="M12 18a5 5 0 0 0 9-3 4.5 4.5 0 0 0-4.5-4.5c-1.33 0-2.54.54-3.41 1.41L11 14"></path>
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M11 10v4h4"></path>
-                        </svg>
+                        <span class="vcp-ui-icon" style="--vcp-ui-icon-size: 16px" aria-hidden="true">list-restart</span>
                     </button>
                 </div>
                 <ul id="modelList" class="model-list">
@@ -1255,23 +1236,13 @@
                     <div class="tool-change-audit-header-actions">
                         <button type="button" class="tool-change-audit-wrap-toggle" id="toolChangeAuditWrapToggle"
                             aria-pressed="false" title="切换代码与差异内容的自动换行">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="M3 6h18"></path>
-                                <path d="M3 12h15a3 3 0 0 1 0 6h-4"></path>
-                                <path d="m16 16-2 2 2 2"></path>
-                                <path d="M3 18h7"></path>
-                            </svg>
+                            <span class="vcp-ui-icon" aria-hidden="true">wrap-text</span>
                             <span>自动换行</span>
                         </button>
                         <span class="tool-change-audit-status" id="toolChangeAuditStatus">等待审核</span>
                         <button class="tool-change-audit-close" id="closeToolChangeAuditModal"
                             type="button" aria-label="关闭变更审计" title="关闭变更审计">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="M18 6 6 18"></path>
-                                <path d="m6 6 12 12"></path>
-                            </svg>
+                            <span class="vcp-ui-icon" aria-hidden="true">x</span>
                         </button>
                     </div>
                 </header>
@@ -1336,6 +1307,7 @@
 
     <script src="modules/topicSummarizer.js"></script>
     <script src="modules/notificationRenderer.js"></script>
+    <script src="modules/notificationCenter.js"></script>
     <script src="modules/voice/wavAudioEncoder.js"></script>
     <script src="modules/voice/speechDirectiveMatcher.js"></script>
     <script src="modules/voice/audioRecorder.js"></script>
@@ -1357,7 +1329,6 @@
     <script src="modules/trayManager.js"></script> <!-- 新增：应用托盘管理器 -->
     <script src="node_modules/lucide/dist/umd/lucide.min.js"></script>
     <script src="modules/ui-system/lucide-adapter.js"></script>
-    <script src="modules/ui-system/vcp-icons.js"></script>
     <script type="module" src="modules/ui-system/vcp-ui.js"></script>
     <script type="module" src="modules/ui-system/webawesome-adapter.js"></script>
     <script type="module" src="modules/ui-system/vcp-main-ui-runtime.js"></script>
@@ -1393,6 +1364,8 @@
     <script src="modules/tavernRulesEngine.js"></script>
     <script src="Tavernmodules/tavern-manager.js"></script>
     <script src="Groupmodules/grouprenderer.js"></script>
+    <script src="modules/renderer/messenger-presentation.js"></script>
+    <script src="modules/renderer/chat-header-style.js"></script>
     <script type="module" src="modules/renderer/colorUtils.js"></script>
     <script type="module" src="modules/renderer/imageHandler.js"></script>
     <script type="module" src="modules/renderer/domBuilder.js"></script>

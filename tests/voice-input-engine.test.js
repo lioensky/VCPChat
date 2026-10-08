@@ -91,31 +91,30 @@ test('voice input sidecar accepts local_hold push-to-talk mode', async t => {
     );
 });
 
-test('voice input sidecar accepts common single keys and rejects chords', async t => {
+test('voice input sidecar configures F24 and survives rejected chords', async t => {
     const adapter = new VoiceInputEngineAdapter({ projectRoot });
     t.after(async () => { await adapter.shutdown(); });
     await adapter.start();
 
-    for (const [shortcut, virtualKey] of [
-        ['Backquote', 0xC0], ['`', 0xC0], ['·', 0xC0], ['~', 0xC0],
-        ['a', 0x41], ['H', 0x48], ['0', 0x30], ['Space', 0x20],
-        ['Tab', 0x09], ['Enter', 0x0D], ['Escape', 0x1B],
-        ['Backspace', 0x08], ['Delete', 0x2E], ['PageUp', 0x21],
-        ['ArrowLeft', 0x25], ['CapsLock', 0x14], [';', 0xBA],
-        ['Numpad0', 0x60], ['Numpad9', 0x69], ['NumpadAdd', 0x6B],
-        ['F24', 0x87],
-    ]) {
-        const configured = await adapter.configureHotkey({ shortcut, mode: 'local_hold' });
-        assert.equal(configured.event, 'hotkey_configured');
-        assert.equal(configured.detail.virtualKey, virtualKey, shortcut);
-        assert.equal(configured.detail.shortcut, shortcut);
-    }
+    // Common-key parsing is covered by test:voice-input-parser without a
+    // keyboard hook. Keep the real IPC/configuration boundary on F24 so this
+    // test cannot intercept ordinary typing in another application.
+    const configured = await adapter.configureHotkey({ shortcut: 'F24', mode: 'local_hold' });
+    assert.equal(configured.event, 'hotkey_configured');
+    assert.equal(configured.detail.virtualKey, 0x87);
+    assert.equal(configured.detail.shortcut, 'F24');
     for (const shortcut of ['Ctrl+Space', 'Alt+F7', 'Ctrl', 'Shift', 'Win', 'F25', 'Unknown']) {
         await assert.rejects(
             adapter.configureHotkey({ shortcut, mode: 'local_hold' }),
             /仅支持单键/,
         );
     }
+    const pong = await adapter.request('ping');
+    assert.equal(pong.success, true);
+    assert.equal(pong.mode, 'local_hold');
+    assert.equal(pong.detail.hotkeyPressed, false);
+    assert.equal(pong.detail.awaitingFocus, false);
+    assert.equal(pong.detail.rightAltHeld, false);
 });
 
 test('native hotkeys ignore injected events before matching configured keys', () => {
