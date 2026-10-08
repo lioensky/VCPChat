@@ -4,6 +4,7 @@ const { ipcMain, BrowserWindow, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
 const crypto = require('crypto');
+const { extractThemePreviewVariables } = require('../services/themePreviewVariables');
 const { PRELOAD_ROLES, resolveProjectPreload } = require('../services/preloadPaths');
 // sharp is now lazy-loaded
 
@@ -63,24 +64,7 @@ const handleGetThemes = async () => {
             const nameMatch = content.match(/\* Theme Name: (.*)/);
             const name = nameMatch ? nameMatch[1].trim() : path.basename(file, '.css').replace('themes', '');
 
-            const extractVariables = (scopeRegex) => {
-                const scopeMatch = content.match(scopeRegex);
-                if (!scopeMatch || !scopeMatch[1]) return {};
-                
-                const variables = {};
-                const varRegex = /(--[\w-]+)\s*:\s*(.*?);/g;
-                let match;
-                while ((match = varRegex.exec(scopeMatch[1])) !== null) {
-                    variables[match[1]] = match[2].trim();
-                }
-                return variables;
-            };
-
-            const rootScopeRegex = /:root\s*\{([\s\S]*?)\}/;
-            const lightThemeScopeRegex = /body\.light-theme\s*\{([\s\S]*?)\}/;
-
-            const darkVariables = extractVariables(rootScopeRegex);
-            const lightVariables = extractVariables(lightThemeScopeRegex);
+            const { dark: darkVariables, light: lightVariables } = extractThemePreviewVariables(content);
 
             return {
                 fileName: file,

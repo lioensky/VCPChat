@@ -59,18 +59,26 @@ document.addEventListener('DOMContentLoaded', () => {
     function loadWallpaperPreview(element, wallpaperPath) {
         if (!element) return;
 
+        const requestId = (element._wallpaperPreviewRequestId || 0) + 1;
+        element._wallpaperPreviewRequestId = requestId;
+        element.style.backgroundImage = 'none';
         if (wallpaperPath && wallpaperPath !== 'none') {
-            const fixedPath = fixWallpaperPath(wallpaperPath);
+            const urlMatch = wallpaperPath.trim().match(/^url\(\s*(['"]?)(.*?)\1\s*\)$/i);
+            const fixedPath = fixWallpaperPath(urlMatch ? urlMatch[2] : wallpaperPath);
+            const applyImage = (url) => {
+                if (element._wallpaperPreviewRequestId !== requestId) return;
+                element.style.backgroundImage = `url('${escapeCssUrl(url)}')`;
+            };
             if (api?.getWallpaperThumbnail) {
                 api.getWallpaperThumbnail(fixedPath).then(thumbnailUrl => {
                     const previewUrl = thumbnailUrl || fixedPath;
-                    element.style.backgroundImage = `url('${escapeCssUrl(previewUrl)}')`;
+                    applyImage(previewUrl);
                 }).catch(err => {
                     console.error(`Failed to generate or load thumbnail for ${fixedPath}:`, err);
-                    element.style.backgroundImage = `url('${escapeCssUrl(fixedPath)}')`;
+                    applyImage(fixedPath);
                 });
             } else {
-                element.style.backgroundImage = `url('${escapeCssUrl(fixedPath)}')`;
+                applyImage(fixedPath);
             }
         } else {
             element.style.backgroundImage = 'none';
