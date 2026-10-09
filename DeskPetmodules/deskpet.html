@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src vcp-deskpet:; connect-src vcp-deskpet: data: blob:; img-src vcp-deskpet: blob: data:; style-src vcp-deskpet: 'unsafe-inline'; worker-src blob:">
+  <title>VCPChat 桌宠</title>
+  <link rel="stylesheet" href="vcp-deskpet://pet/app/dock.css">
+  <link rel="stylesheet" href="vcp-deskpet://pet/app/deskpet.css">
+</head>
+<body>
+  <div id="stage">
+    <canvas id="live2dCanvas" hidden></canvas>
+    <!-- 立绘和头像的闲时动作（打哈欠、打盹、被戳）演在这一层上 -->
+    <div id="lifeBody">
+      <div id="portrait" hidden>
+        <img id="portraitA" alt="" draggable="false">
+        <img id="portraitB" alt="" draggable="false">
+        <img id="portraitTalk" alt="" draggable="false">
+      </div>
+      <div id="avatar" hidden>
+        <img id="avatarImg" alt="" draggable="false">
+        <span id="avatarBadge"></span>
+      </div>
+    </div>
+  </div>
+  <div id="lifeFx" hidden aria-hidden="true"></div>
+  <!-- 气泡和输入框从角色头顶往上排，输入框挨着角色，气泡在它上面 -->
+  <div id="uiStack">
+    <div id="bubble" class="pet-ui" hidden title="点击打开主窗口看完整回复">
+      <div id="bubbleText"></div>
+      <div id="bubbleState"></div>
+      <button id="bubbleStop" type="button" hidden title="别说了（停止这条回复）" aria-label="停止回复"></button>
+    </div>
+    <!-- 回复里调工具时：正在做什么 -->
+    <div id="toolCard" class="pet-ui" hidden>
+      <span class="tool-card-icon"></span>
+      <span class="tool-card-text"></span>
+      <span class="tool-card-count"></span>
+    </div>
+    <!-- 工具调用等人点头：允许 / 拒绝（主窗口里那张审批也同时在） -->
+    <div id="approvalCard" class="pet-ui" hidden role="alertdialog" aria-labelledby="approvalTitle">
+      <div class="approval-head">
+        <span id="approvalTitle"></span>
+        <span id="approvalMore"></span>
+      </div>
+      <div id="approvalCommand"></div>
+      <div class="approval-actions">
+        <button id="approvalDetail" type="button" title="在主窗口里看完整内容、写理由">详情</button>
+        <button id="approvalReject" type="button">拒绝</button>
+        <button id="approvalAllow" type="button">允许</button>
+      </div>
+    </div>
+    <!-- 拖进来、粘贴进来的文件：和下一句话一起发 -->
+    <div id="attachTray" class="pet-ui" hidden>
+      <span id="attachText"></span>
+      <button id="attachClear" type="button" title="不带这些文件了" aria-label="去掉文件">✕</button>
+    </div>
+  </div>
+  <!-- 脚边的小胶囊：光标停在角色上时冒出来（打字 / 说话）；点打字展开成输入条，点说话变成录音按钮；没碰它时收成脚边一道小横条。
+       三种样子是同一个元素的三个状态（data-mode），宽度和内容之间有过渡动画。 -->
+  <div id="dock" class="pet-ui pet-dock" data-mode="hidden">
+    <div class="dock-layer dock-pill" id="dockPill">
+      <button id="dockEdit" class="dock-btn" type="button" title="打字和 TA 说（双击角色也行）" aria-label="打字">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.4 2.6a2.1 2.1 0 0 1 3 3l-9 9a2 2 0 0 1-.9.5l-2.9.8.8-2.9a2 2 0 0 1 .5-.8Z"/></svg>
+      </button>
+      <i class="dock-sep"></i>
+      <button id="dockVoice" class="dock-btn" type="button" title="说话（本地语音识别）" aria-label="说话">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4"/><path d="M8 7v10"/><path d="M12 4v16"/><path d="M16 7v10"/><path d="M20 10v4"/></svg>
+      </button>
+      <i class="dock-sep"></i>
+      <button id="dockHide" class="dock-btn" type="button" title="收起（光标移开再回来又会冒出来）" aria-label="收起">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>
+      </button>
+    </div>
+    <form class="dock-layer dock-bar" id="composer">
+      <button id="composerNew" class="dock-btn dock-round" type="button" title="开新话题" aria-label="开新话题" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+      </button>
+      <textarea id="composerInput" class="dock-input" rows="1" maxlength="8000"></textarea>
+      <button id="composerSend" class="dock-send" type="button" title="发送（Enter）" aria-label="发送">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+      </button>
+    </form>
+    <div class="dock-layer dock-rec" id="dockRec">
+      <button id="recEdit" class="dock-btn" type="button" title="改成打字" aria-label="打字">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.4 2.6a2.1 2.1 0 0 1 3 3l-9 9a2 2 0 0 1-.9.5l-2.9.8.8-2.9a2 2 0 0 1 .5-.8Z"/></svg>
+      </button>
+      <button id="recStop" class="rec-stop" type="button" title="说完了（Esc 取消）" aria-label="说完了"><span class="rec-dot"></span></button>
+    </div>
+  </div>
+  <div id="emotionBadge" hidden></div>
+  <div id="dndBadge" hidden title="免打扰：不主动说话、不出声">🌙</div>
+  <div id="throughBadge" hidden title="只看不点：鼠标会穿过桌宠">👻</div>
+  <button id="missedBadge" class="pet-ui" type="button" hidden title="你不在的时候 TA 说了话，点一下再说一遍" aria-label="再说一遍">💬</button>
+  <!-- Pixi 8 与 CSP polyfill 用 VCPChat 自带的那份；Live2D 相关脚本按需加载；情绪模块与侧栏立绘共用 modules/emotion。 -->
+  <script src="vcp-deskpet://pet/vendor/pixi.min.js"></script>
+  <script src="vcp-deskpet://pet/vendor/pixi-unsafe-eval.min.js"></script>
+  <script type="module" src="vcp-deskpet://pet/app/deskpet.js"></script>
+</body>
+</html>

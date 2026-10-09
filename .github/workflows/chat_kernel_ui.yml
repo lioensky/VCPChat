@@ -13,6 +13,7 @@ on:
       - 'VCPDistributedServer/Plugin/ProjectForge/**'
       - 'vendor/xterm/**'
       - 'main.html'
+      - 'DeskPetmodules/**'
       - 'modules/**'
       - 'preloads/**'
       - 'styles/**'
@@ -60,6 +61,9 @@ jobs:
 
       - name: Run Chat Kernel tests
         run: npm run test:chat-kernel
+
+      - name: Run desk pet tests
+        run: npm run test:deskpet
 
       - name: Run side pane tests
         run: npm run test:side-pane

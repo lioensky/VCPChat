@@ -18,6 +18,7 @@ import { voiceSettingsSection } from './schema/voice-settings.js';
 import { advancedFeaturesSection } from './schema/advanced-features.js';
 import { workspaceManagementSection } from './schema/workspace-management.js';
 import { appearanceSettingsSection } from './schema/appearance-settings.js';
+import { deskPetSection } from './schema/deskpet.js';
 import { renderSchemaSection } from './render/field-renderer.js';
 
 // 已迁移到 schema 渲染的分区清单；M3（界面与外观）已收齐全部分区。
@@ -32,6 +33,7 @@ const SCHEMA_SECTIONS = Object.freeze([
     advancedFeaturesSection,
     workspaceManagementSection,
     quickActionsSection,
+    deskPetSection,
 ]);
 
 export function schemaSurfaceSections() {

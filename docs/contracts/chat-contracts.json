@@ -343,7 +343,7 @@
     "dynamicSites": [
       {
         "file": "modules/event-listeners.js",
-        "line": 36,
+        "line": 37,
         "kind": "custom-event-listener",
         "match": "target?.addEventListener?.(type"
       }

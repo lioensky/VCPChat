@@ -42,8 +42,14 @@ function createParityTestDOM() {
                 <section class="side-pane-view active" id="sidePaneViewNotifications" data-tab-id="notifications"></section>
                 <section class="side-pane-view" id="sidePaneViewLauncher" data-tab-id="launcher" hidden>
                     <div class="side-pane-launcher-portrait" aria-hidden="true" hidden>
-                        <img data-portrait-theme="default" alt="" hidden>
-                        <img data-portrait-theme="light" alt="" hidden>
+                        <div class="side-pane-launcher-portrait-layer" data-portrait-active>
+                            <img data-portrait-theme="default" alt="">
+                            <img data-portrait-theme="light" alt="" hidden>
+                        </div>
+                        <div class="side-pane-launcher-portrait-layer">
+                            <img data-portrait-theme="default" alt="" hidden>
+                            <img data-portrait-theme="light" alt="" hidden>
+                        </div>
                     </div>
                     <div class="side-pane-launcher-profile" hidden>
                         <button type="button" class="side-pane-launcher-avatar"><img alt=""></button>
@@ -280,7 +286,7 @@ test('Parity: an assistant with a portrait gets the portrait header, others keep
             await tick();
         }
     };
-    let current = { name: 'Nova', avatarUrl: 'nova.png', portraits: { default: 'portrait.png', light: 'portrait.light.png' } };
+    let current = { name: 'Nova', avatarUrl: 'nova.png', portraits: { default: 'portrait.png', light: 'portrait.light.png', smile: 'portrait.smile.png' } };
     const ctrl = createController(dom, {
         controller: { openTabEntries: [{ id: 'a', label: 'A', open() {} }, { id: 'b', label: 'B', open() {} }] }
     });
@@ -310,16 +316,6 @@ test('Parity: an assistant with a portrait gets the portrait header, others keep
     assert.equal(images().image.getAttribute('src'), 'portrait.png');
     await settle();
     assert.equal(images().image.getAttribute('src'), 'portrait2.png');
-
-    // 已经显示的浅色立绘读失败（文件被删了）：退回只用默认那张
-    current = { ...current, portraits: { default: 'portrait2.png', light: 'gone.light.png' } };
-    ctrl.setLauncherProfileProvider(() => current);
-    await settle();
-    assert.equal(view.dataset.launcherPortrait, 'themed');
-    images().lightImage.dispatchEvent(new dom.window.Event('error'));
-    await settle();
-    assert.equal(view.dataset.launcherPortrait, 'single');
-    assert.equal(images().lightImage.hidden, true);
 
     // 浅色立绘坏了：两个主题都用默认那张
     current = { ...current, portraits: { default: 'portrait2.png', light: 'broken.light.png' } };
@@ -366,6 +362,79 @@ test('Parity: an assistant with a portrait gets the portrait header, others keep
     assert.equal(portrait.hidden, true);
     assert.equal(images().image.hasAttribute('src'), false);
     assert.equal(view.querySelector('.side-pane-launcher-profile img').getAttribute('src'), 'coco.png');
+
+    await ctrl.dispose();
+    dom.window.close();
+});
+
+test('Parity: emotion frames switch the portrait to the matching variant on the other layer', async () => {
+    const dom = createParityTestDOM();
+    const view = dom.window.document.getElementById('sidePaneViewLauncher');
+    const layers = [...view.querySelectorAll('.side-pane-launcher-portrait-layer')];
+    const shownSrc = () => {
+        const active = layers.find(layer => layer.hasAttribute('data-portrait-active'));
+        return [...active.querySelectorAll('img')].filter(img => !img.hidden).map(img => img.getAttribute('src'));
+    };
+    const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+    const current = {
+        name: 'Nova',
+        avatarUrl: 'nova.png',
+        portraits: { default: 'p.png', light: 'p.light.png', happy: 'p.happy.png', 'sad-light': 'p.sad-light.png', thinking: 'p.thinking.png' }
+    };
+    const ctrl = createController(dom, {
+        controller: { openTabEntries: [{ id: 'a', label: 'A', open() {} }, { id: 'b', label: 'B', open() {} }] }
+    });
+    ctrl.setLauncherProfileProvider(() => current);
+    await flush();
+    assert.deepEqual(shownSrc(), ['p.png', 'p.light.png']);
+    assert.ok(layers[0].hasAttribute('data-portrait-active'));
+
+    ctrl.setLauncherPortraitFrame({ state: null, emotion: 'happy' });
+    await flush();
+    // 换到另一层显示；happy 没有浅色版，浅色主题也用这一张
+    assert.ok(layers[1].hasAttribute('data-portrait-active'));
+    assert.ok(!layers[0].hasAttribute('data-portrait-active'));
+    assert.deepEqual(shownSrc(), ['p.happy.png']);
+    assert.equal(view.dataset.launcherPortrait, 'single');
+    assert.equal(view.dataset.launcherPortraitLook, 'happy');
+
+    // excited 没有图：按相近情绪用 happy，画面不变就不换层
+    ctrl.setLauncherPortraitFrame({ state: null, emotion: 'excited' });
+    await flush();
+    assert.ok(layers[1].hasAttribute('data-portrait-active'));
+
+    ctrl.setLauncherPortraitFrame({ state: 'thinking', emotion: 'happy' });
+    await flush();
+    assert.deepEqual(shownSrc(), ['p.thinking.png']);
+
+    // 只有浅色版的 sad：深色主题退回默认立绘
+    ctrl.setLauncherPortraitFrame({ state: null, emotion: 'sad' });
+    await flush();
+    assert.deepEqual(shownSrc(), ['p.png', 'p.sad-light.png']);
+    assert.equal(view.dataset.launcherPortrait, 'themed');
+
+    // 重新渲染资料（例如重新选中同一个助手）时保留当前情绪
+    ctrl.setLauncherProfileProvider(() => current);
+    assert.deepEqual(shownSrc(), ['p.png', 'p.sad-light.png']);
+
+    // 差分坏了：退到下一张能用的图
+    ctrl.setLauncherPortraitFrame({ state: null, emotion: 'happy' });
+    await flush();
+    const happyImage = layers.find(layer => layer.hasAttribute('data-portrait-active')).querySelector('img');
+    happyImage.dispatchEvent(new dom.window.Event('error'));
+    // 新图解码好之前旧的那张留着，解码完原地换上
+    await flush();
+    assert.deepEqual(shownSrc(), ['p.png', 'p.light.png']);
+    assert.equal(view.dataset.launcherPortrait, 'themed');
+
+    // 淡入前在屏幕外解码：解不出来的差分不会露面，直接退到下一张
+    dom.window.HTMLImageElement.prototype.decode = function decode() {
+        return (this.getAttribute('src') || '').includes('thinking') ? Promise.reject(new Error('EncodingError')) : Promise.resolve();
+    };
+    ctrl.setLauncherPortraitFrame({ state: 'thinking', emotion: 'neutral' });
+    await flush();
+    assert.deepEqual(shownSrc(), ['p.png', 'p.light.png']);
+    assert.ok(!view.querySelector('img[src="p.thinking.png"]'));
 
     await ctrl.dispose();
     dom.window.close();

@@ -1,0 +1,38 @@
+{
+  "name": "Nova · 简洁 Q 版",
+  "expressions": {
+    "neutral": "Neutral",
+    "calm": "Neutral",
+    "happy": "Happy",
+    "excited": "Stars",
+    "shy": "Shy",
+    "affectionate": "Wink",
+    "curious": "Smug",
+    "surprised": "Surprised",
+    "concerned": "Speechless",
+    "sad": "Sad",
+    "tired": "Tired",
+    "angry": "Angry"
+  },
+  "motions": {
+    "happy": "Cheer",
+    "excited": "Cheer",
+    "shy": "Heart",
+    "affectionate": "Heart",
+    "curious": "Wave",
+    "concerned": "Shrug",
+    "sad": "Shrug",
+    "tired": "Tea",
+    "angry": "Akimbo",
+    "surprised": "Nod",
+    "headTap": "Nod",
+    "pat": "Heart",
+    "annoyed": "Akimbo",
+    "dizzy": "Shake",
+    "yawn": "Tea",
+    "stretch": "Salute",
+    "hum": "Typing",
+    "wake": "Wave",
+    "landed": "Cheer"
+  }
+}

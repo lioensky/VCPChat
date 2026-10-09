@@ -30,8 +30,12 @@ function route(fetchResponse, { settings = null, abortSignal = AbortSignal } = {
         ['../contextSanitizer', require('../modules/contextSanitizer.js')],
         // 真实的调用轨迹模块：没有配置记录目录时只返回空操作，不写盘
         ['../modelTrajectory', require('../modules/modelTrajectory.js')],
+        // 真实的心情模块：没有配置时 observe 是空操作
+        ['../agentMood', require('../modules/agentMood.js')],
         ['../services/attachmentDialogState', {}], ['../../Groupmodules/topicTitleManager', {}],
         ['../services/historyMutationQueue', {}], ['./workspaceHandlers', {}], ['./sideChatHandlers', {}],
+        // 桌宠没打开时这些钩子全是空操作，用真实模块。
+        ['./deskPetHandlers', require('../modules/ipc/deskPetHandlers.js')],
     ]);
     const load = name => { assert.ok(dependencies.has(name), 'unreviewed fixture dependency: ' + name); return dependencies.get(name); };
     vm.runInNewContext('(function(require,module,exports){' + source + '\n})', {

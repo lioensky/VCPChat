@@ -27,7 +27,7 @@ const FOCUS_STEP = 2;
  *   commit(agentId)        表单保存时把选好的图写进 Agent 目录、把要移除的删掉
  *   summary()              折叠时标题旁的摘要
  * 换图、移除都和头像一样先暂存，点「保存」才落盘；暂存按助手分开记，切走再切回来还在。
- * 立绘有两个版本：default（深色主题和没有浅色版时用）和 light（浅色主题用）。
+ * 立绘版本目前是 default 和 light；差分立绘由 [data-portrait-variants-slot] 接入，同样走 stage / commit。
  */
 export function createAgentPortraitSettings({ host, api, win = globalThis.window, onChange = () => {}, notify = () => {} }) {
     const doc = host?.ownerDocument || win?.document;

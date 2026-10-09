@@ -11,6 +11,7 @@ const SECTION_KEYS = Object.freeze({
     '高级功能': 'advanced-features',
     '工作区管理': 'workspace-management',
     '快捷操作': 'quick-actions',
+    '桌宠': 'deskpet',
 });
 
 function sectionKeyForSection(section) {

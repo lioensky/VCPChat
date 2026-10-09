@@ -1,4 +1,9 @@
 /* Compose the current assistant profile and the app/recommendation sources. */
+import { createEmotionDirector } from '../emotion/emotionDirector.js';
+import { hasPortraitVariants } from '../emotion/portraitVariants.js';
+import { createAgentEmotionFeed } from './agentEmotionFeed.js';
+import { PORTRAIT_EXPRESSIONS_ENABLED, visiblePortraits } from '../ui-system/side-pane/portrait-features.js';
+
 export function createSidePaneLauncherWiring({ doc, win, chatAPI, chatManager, uiHelper, selectedItemRef, controller }) {
     const owners = [];
     let disposed = false;
@@ -68,7 +73,7 @@ export function createSidePaneLauncherWiring({ doc, win, chatAPI, chatManager, u
         return {
             name: item.name || '',
             avatarUrl: item.avatarUrl || '',
-            portraits: item.type === 'agent' ? portraitCache.get(item.id)?.portraits || null : null,
+            portraits: item.type === 'agent' ? visiblePortraits(portraitCache.get(item.id)?.portraits) : null,
             portraitDisplay: item.config?.portraitDisplay ?? item.portraitDisplay ?? null,
             onEditAvatar: item.type === 'agent' ? () => {
                 win.uiManager?.switchToTab?.('settings');
@@ -77,8 +82,55 @@ export function createSidePaneLauncherWiring({ doc, win, chatAPI, chatManager, u
             onRename: item.type === 'agent' || item.type === 'group' ? (name) => renameSelectedItem(item, name) : null
         };
     };
+    // 差分立绘：当前助手有情绪或状态立绘时，跟着它的回复换图。情绪源只看这个助手的流，
+    // 换了助手就清空回到默认立绘；没有差分的助手完全不读流。差分暂时关着（portrait-features.js），
+    // 这时立绘不跟情绪换
+    const emotionDirector = createEmotionDirector({
+        onFrame: frame => { if (PORTRAIT_EXPRESSIONS_ENABLED) controller.setLauncherPortraitFrame?.(frame); },
+    });
+    let emotionAgentId = null;
+    // 回复的情绪过去以后回到这个助手的长期心情（主进程按聊天记着，桌宠用的是同一份）
+    const moodApi = chatAPI || win.electronAPI;
+    let moodSeq = 0;
+    const applyMood = (mood) => {
+        if (disposed || !mood?.agentId || mood.agentId !== emotionAgentId) return;
+        // 先发的查询晚到时不能盖掉已经推过来的新心情；按主进程的广播序号比（系统时间可能被往回调）
+        const seq = Number(mood.seq) || 0;
+        if (seq < moodSeq) return;
+        moodSeq = seq;
+        emotionDirector.setBaseline(mood);
+    };
+    const syncEmotionAgent = () => {
+        const item = selectedItemRef.get();
+        const id = item?.type === 'agent' ? item.id : null;
+        if (id === emotionAgentId) return;
+        emotionAgentId = id;
+        moodSeq = 0;
+        emotionDirector.reset();
+        if (id && typeof moodApi?.getAgentMood === 'function') {
+            Promise.resolve(moodApi.getAgentMood(id)).then(applyMood).catch((error) => {
+                console.warn('[SidePane] Failed to read agent mood:', error);
+            });
+        }
+    };
+    if (typeof moodApi?.onAgentMoodChanged === 'function') {
+        const unbindMood = moodApi.onAgentMoodChanged(applyMood);
+        if (typeof unbindMood === 'function') subscriptions.add({ dispose: unbindMood });
+        else if (unbindMood?.dispose) subscriptions.add(unbindMood);
+    }
+    const emotionFeed = createAgentEmotionFeed({
+        chatAPI: chatAPI || win.electronAPI,
+        director: emotionDirector,
+        getAgentId: () => emotionAgentId,
+        isActive: () => PORTRAIT_EXPRESSIONS_ENABLED && hasPortraitVariants(portraitCache.get(emotionAgentId)?.portraits),
+    });
+    subscriptions.add(emotionFeed);
+    subscriptions.add({ dispose: () => emotionDirector.dispose() });
+
+    syncEmotionAgent();
     controller.setLauncherProfileProvider(getLauncherProfile);
     const unbindLauncherProfile = chatManager?.onSelectionChange?.(() => {
+        syncEmotionAgent();
         loadPortraits(selectedItemRef.get(), { refresh: true });
         controller.setLauncherProfileProvider(getLauncherProfile);
     });

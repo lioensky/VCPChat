@@ -61,3 +61,7 @@ jobs:
 
       - name: Run side pane tests
         run: npm run test:side-pane
+
+      # 桌宠主进程在 Windows 上走不同的分支（光标轮询、可聚焦切换），Linux 上测不到
+      - name: Run desk pet tests
+        run: npm run test:deskpet
