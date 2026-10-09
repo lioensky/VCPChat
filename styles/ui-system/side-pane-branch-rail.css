@@ -4,7 +4,7 @@
  * 每个分支是独立 child topic；轨把同族分支组织成外露树，点击切换。
  * ========================================================================== */
 
-.side-chat-branch-rail {
+html .side-chat-branch-rail:where(.vcp-ui-scope, .vcp-ui-scope *) {
     --rail-accent: #60a5fa;
     --rail-accent-soft: rgba(96, 165, 250, 0.25);
     --rail-line: rgba(255, 255, 255, 0.08);
@@ -24,7 +24,7 @@
     user-select: none;
 }
 
-body.light-theme .side-chat-branch-rail {
+html body.light-theme .side-chat-branch-rail:where(.vcp-ui-scope, .vcp-ui-scope *) {
     --rail-accent: #2563eb;
     --rail-accent-soft: rgba(37, 99, 235, 0.20);
     --rail-line: rgba(0, 0, 0, 0.06);
@@ -36,11 +36,11 @@ body.light-theme .side-chat-branch-rail {
     --rail-error: #dc2626;
 }
 
-.side-chat-branch-rail.is-loading .branch-rail-body { opacity: 0.55; }
-.side-chat-branch-rail.is-switching .branch-rail-body { opacity: 0.4; pointer-events: none; }
+html .side-chat-branch-rail.is-loading .branch-rail-body:where(.vcp-ui-scope, .vcp-ui-scope *) { opacity: 0.55; }
+html .side-chat-branch-rail.is-switching .branch-rail-body:where(.vcp-ui-scope, .vcp-ui-scope *) { opacity: 0.4; pointer-events: none; }
 
 /* ── 极简 Header ── */
-.branch-rail-header {
+html .branch-rail-header:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -50,7 +50,7 @@ body.light-theme .side-chat-branch-rail {
     letter-spacing: 0.03em;
 }
 
-.branch-rail-title {
+html .branch-rail-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -59,18 +59,18 @@ body.light-theme .side-chat-branch-rail {
     letter-spacing: 0.06em;
     font-family: inherit;
 }
-.branch-rail-title .branch-rail-kicker-icon {
+html .branch-rail-title .branch-rail-kicker-icon:where(.vcp-ui-scope, .vcp-ui-scope *) {
     opacity: 0.7;
     font-size: 11px;
 }
 
-.branch-rail-header-actions {
+html .branch-rail-header-actions:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: inline-flex;
     align-items: center;
     gap: 3px;
 }
 
-.branch-rail-icon-btn {
+html .branch-rail-icon-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
     width: 20px;
     height: 20px;
     display: inline-flex;
@@ -87,14 +87,14 @@ body.light-theme .side-chat-branch-rail {
     transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
     opacity: 0.75;
 }
-.branch-rail-icon-btn:hover {
+html .branch-rail-icon-btn:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
     background: var(--rail-hover);
     color: var(--rail-accent);
     opacity: 1;
 }
 
 /* ── 树身容器 ── */
-.branch-rail-body {
+html .branch-rail-body:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: flex;
     flex-direction: column;
     padding: 2px 0 4px;
@@ -105,7 +105,7 @@ body.light-theme .side-chat-branch-rail {
 }
 
 /* ── 节点行：ThoughtDAG 点线骨架 ── */
-.branch-rail-row {
+html .branch-rail-row:where(.vcp-ui-scope, .vcp-ui-scope *) {
     position: relative;
     display: flex;
     align-items: center;
@@ -124,7 +124,7 @@ body.light-theme .side-chat-branch-rail {
 }
 
 /* 父子树状拐角连线 (L-shape guide) */
-.branch-rail-row::before {
+html .branch-rail-row::before:where(.vcp-ui-scope, .vcp-ui-scope *) {
     content: "";
     position: absolute;
     left: calc(2px + var(--branch-depth, 0) * 16px);
@@ -136,13 +136,13 @@ body.light-theme .side-chat-branch-rail {
     border-bottom-left-radius: 4px;
     pointer-events: none;
 }
-.branch-rail-row[style*="--branch-depth: 0"]::before,
-.branch-rail-row.depth0::before {
+html .branch-rail-row[style*="--branch-depth: 0"]::before:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .branch-rail-row.depth0::before:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: none;
 }
 
 /* 节点微圆点 (Thought Mark) */
-.branch-rail-dot {
+html .branch-rail-dot:where(.vcp-ui-scope, .vcp-ui-scope *) {
     position: relative;
     flex: 0 0 auto;
     width: 6px;
@@ -152,16 +152,16 @@ body.light-theme .side-chat-branch-rail {
     transition: transform 0.15s ease, background 0.15s ease;
     z-index: 1;
 }
-.branch-rail-row[style*="--branch-depth: 0"] .branch-rail-dot {
+html .branch-rail-row[style*="--branch-depth: 0"] .branch-rail-dot:where(.vcp-ui-scope, .vcp-ui-scope *) {
     width: 7px;
     height: 7px;
     background: rgba(255, 255, 255, 0.7);
 }
-body.light-theme .branch-rail-row[style*="--branch-depth: 0"] .branch-rail-dot {
+html body.light-theme .branch-rail-row[style*="--branch-depth: 0"] .branch-rail-dot:where(.vcp-ui-scope, .vcp-ui-scope *) {
     background: rgba(0, 0, 0, 0.75);
 }
 
-.branch-rail-label {
+html .branch-rail-label:where(.vcp-ui-scope, .vcp-ui-scope *) {
     flex: 1 1 auto;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -169,7 +169,7 @@ body.light-theme .branch-rail-row[style*="--branch-depth: 0"] .branch-rail-dot {
     letter-spacing: 0.01em;
 }
 
-.branch-rail-row-action {
+html .branch-rail-row-action:where(.vcp-ui-scope, .vcp-ui-scope *) {
     opacity: 0;
     width: 18px;
     height: 18px;
@@ -186,16 +186,16 @@ body.light-theme .branch-rail-row[style*="--branch-depth: 0"] .branch-rail-dot {
     transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
     flex-shrink: 0;
 }
-.branch-rail-row:hover .branch-rail-row-action {
+html .branch-rail-row:hover .branch-rail-row-action:where(.vcp-ui-scope, .vcp-ui-scope *) {
     opacity: 0.7;
 }
-.branch-rail-row-action:hover {
+html .branch-rail-row-action:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
     opacity: 1 !important;
     background: var(--rail-hover);
     color: var(--rail-accent);
 }
 
-.branch-rail-rename-input {
+html .branch-rail-rename-input:where(.vcp-ui-scope, .vcp-ui-scope *) {
     flex: 1 1 auto;
     background: rgba(0, 0, 0, 0.4);
     border: 1px solid var(--rail-accent);
@@ -207,7 +207,7 @@ body.light-theme .branch-rail-row[style*="--branch-depth: 0"] .branch-rail-dot {
     font-family: inherit;
 }
 
-.branch-rail-context-menu {
+html .branch-rail-context-menu:where(.vcp-ui-scope, .vcp-ui-scope *) {
     position: fixed;
     z-index: 1000;
     background: #252526;
@@ -216,7 +216,7 @@ body.light-theme .branch-rail-row[style*="--branch-depth: 0"] .branch-rail-dot {
     padding: 4px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.5);
 }
-.branch-rail-context-menu button {
+html .branch-rail-context-menu button:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: block;
     width: 100%;
     text-align: left;
@@ -227,20 +227,20 @@ body.light-theme .branch-rail-row[style*="--branch-depth: 0"] .branch-rail-dot {
     cursor: pointer;
     font-size: 12px;
 }
-.branch-rail-context-menu button:hover {
+html .branch-rail-context-menu button:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
     background: var(--rail-hover);
 }
 
 /* ── 溯源引桥 (Pedigree Bridge)：子分支顶部的来源胶囊 ── */
-.side-chat-pedigree-bridge {
+html .side-chat-pedigree-bridge:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: flex;
     align-items: center;
     padding: 2px 10px 4px;
     margin: 0;
 }
-.side-chat-pedigree-bridge[hidden] { display: none; }
+html .side-chat-pedigree-bridge[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }
 
-.pedigree-bridge-pill {
+html .pedigree-bridge-pill:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: inline-flex;
     align-items: center;
     gap: 5px;
@@ -256,25 +256,25 @@ body.light-theme .branch-rail-row[style*="--branch-depth: 0"] .branch-rail-dot {
     text-align: left;
     transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
-.pedigree-bridge-pill:hover {
+html .pedigree-bridge-pill:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
     color: var(--rail-accent);
     border-color: var(--rail-accent-soft);
     background: var(--rail-active-bg);
 }
 
-.pedigree-bridge-arrow {
+html .pedigree-bridge-arrow:where(.vcp-ui-scope, .vcp-ui-scope *) {
     flex: 0 0 auto;
     font-size: 11px;
     opacity: 0.8;
 }
 
-.pedigree-bridge-label {
+html .pedigree-bridge-label:where(.vcp-ui-scope, .vcp-ui-scope *) {
     flex: 0 1 auto;
     font-weight: 600;
     white-space: nowrap;
 }
 
-.pedigree-bridge-excerpt {
+html .pedigree-bridge-excerpt:where(.vcp-ui-scope, .vcp-ui-scope *) {
     flex: 1 1 auto;
     min-width: 0;
     overflow: hidden;
@@ -283,56 +283,56 @@ body.light-theme .branch-rail-row[style*="--branch-depth: 0"] .branch-rail-dot {
     opacity: 0.75;
     font-style: italic;
 }
-body.light-theme .branch-rail-rename-input {
+html body.light-theme .branch-rail-rename-input:where(.vcp-ui-scope, .vcp-ui-scope *) {
     background: rgba(255, 255, 255, 0.9);
 }
 
-.branch-rail-row:hover {
+html .branch-rail-row:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
     background: var(--rail-hover);
     color: #fff;
 }
-body.light-theme .branch-rail-row:hover {
+html body.light-theme .branch-rail-row:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
     color: #000;
 }
 
-.thought-map-node-group:hover text {
+html .thought-map-node-group:hover text:where(.vcp-ui-scope, .vcp-ui-scope *) {
     fill: #60a5fa !important;
     font-weight: 600;
 }
-.thought-map-node-group:hover circle:last-of-type {
+html .thought-map-node-group:hover circle:last-of-type:where(.vcp-ui-scope, .vcp-ui-scope *) {
     stroke: #ffffff;
     stroke-width: 1.5;
 }
 
 /* 激活状态：微光呼吸星 */
-.branch-rail-row.is-active {
+html .branch-rail-row.is-active:where(.vcp-ui-scope, .vcp-ui-scope *) {
     background: var(--rail-active-bg);
     color: var(--rail-accent);
     font-weight: 600;
 }
-.branch-rail-row.is-active .branch-rail-dot {
+html .branch-rail-row.is-active .branch-rail-dot:where(.vcp-ui-scope, .vcp-ui-scope *) {
     background: var(--rail-accent);
     box-shadow: 0 0 0 3px var(--rail-accent-soft);
     animation: branchRailPulse 2.4s ease-in-out infinite;
     transform: scale(1.15);
 }
 
-.branch-rail-empty,
-.branch-rail-hint {
+html .branch-rail-empty:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .branch-rail-hint:where(.vcp-ui-scope, .vcp-ui-scope *) {
     padding: 6px 8px;
     color: var(--rail-text-dim);
     font-size: 10px;
 }
-.branch-rail-hint {
+html .branch-rail-hint:where(.vcp-ui-scope, .vcp-ui-scope *) {
     cursor: default;
 }
-.branch-rail-hint.is-error {
+html .branch-rail-hint.is-error:where(.vcp-ui-scope, .vcp-ui-scope *) {
     color: var(--rail-error);
     cursor: pointer;
 }
 
-.is-collapsed .branch-rail-body,
-.is-collapsed .branch-rail-hint {
+html .is-collapsed .branch-rail-body:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .is-collapsed .branch-rail-hint:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: none;
 }
 
@@ -342,7 +342,7 @@ body.light-theme .branch-rail-row:hover {
 }
 
 /* ── 思路地图海报弹窗 (Thought Map Poster Modal) ── */
-.thought-map-backdrop {
+html .thought-map-backdrop:where(.vcp-ui-scope, .vcp-ui-scope *) {
     position: fixed;
     inset: 0;
     z-index: 10000;
@@ -355,7 +355,7 @@ body.light-theme .branch-rail-row:hover {
     animation: tmapFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.thought-map-sheet {
+html .thought-map-sheet:where(.vcp-ui-scope, .vcp-ui-scope *) {
     position: relative;
     width: 520px;
     max-width: 95vw;
@@ -370,20 +370,20 @@ body.light-theme .branch-rail-row:hover {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
-.thought-map-sheet-header {
+html .thought-map-sheet-header:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
     margin-bottom: 24px;
 }
-.thought-map-kicker {
+html .thought-map-kicker:where(.vcp-ui-scope, .vcp-ui-scope *) {
     font-size: 11px;
     letter-spacing: 0.18em;
     text-transform: uppercase;
     color: rgba(255, 255, 255, 0.42);
     margin-bottom: 6px;
 }
-.thought-map-headline {
+html .thought-map-headline:where(.vcp-ui-scope, .vcp-ui-scope *) {
     font-size: 24px;
     font-weight: 700;
     line-height: 1.25;
@@ -391,12 +391,12 @@ body.light-theme .branch-rail-row:hover {
     color: #ffffff;
     margin: 0 0 4px;
 }
-.thought-map-subtitle {
+html .thought-map-subtitle:where(.vcp-ui-scope, .vcp-ui-scope *) {
     font-size: 13px;
     color: rgba(255, 255, 255, 0.55);
     margin: 0;
 }
-.thought-map-close-btn {
+html .thought-map-close-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
     border: none;
     background: rgba(255, 255, 255, 0.06);
     color: rgba(255, 255, 255, 0.6);
@@ -409,13 +409,13 @@ body.light-theme .branch-rail-row:hover {
     justify-content: center;
     transition: all 0.15s ease;
 }
-.thought-map-close-btn:hover {
+html .thought-map-close-btn:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
     background: rgba(255, 255, 255, 0.15);
     color: #ffffff;
 }
 
 /* 海报中心点线图 */
-.thought-map-canvas-box {
+html .thought-map-canvas-box:where(.vcp-ui-scope, .vcp-ui-scope *) {
     width: 100%;
     height: 260px;
     position: relative;
@@ -424,12 +424,12 @@ body.light-theme .branch-rail-row:hover {
     align-items: center;
     justify-content: center;
 }
-.thought-map-canvas-box svg {
+html .thought-map-canvas-box svg:where(.vcp-ui-scope, .vcp-ui-scope *) {
     overflow: visible;
 }
 
 /* 底部统计栏 */
-.thought-map-stats-line {
+html .thought-map-stats-line:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: flex;
     align-items: center;
     gap: 16px;
@@ -438,27 +438,27 @@ body.light-theme .branch-rail-row:hover {
     font-size: 12px;
     color: rgba(255, 255, 255, 0.65);
 }
-.thought-map-stat-item {
+html .thought-map-stat-item:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: inline-flex;
     align-items: center;
     gap: 6px;
 }
-.thought-map-stat-item b {
+html .thought-map-stat-item b:where(.vcp-ui-scope, .vcp-ui-scope *) {
     color: #fff;
     font-weight: 600;
 }
-.thought-map-stat-dot {
+html .thought-map-stat-dot:where(.vcp-ui-scope, .vcp-ui-scope *) {
     width: 6px;
     height: 6px;
     border-radius: 50%;
     background: #60a5fa;
 }
-.thought-map-actions {
+html .thought-map-actions:where(.vcp-ui-scope, .vcp-ui-scope *) {
     margin-left: auto;
     display: flex;
     gap: 8px;
 }
-.thought-map-export-btn {
+html .thought-map-export-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
     background: #2563eb;
     color: #fff;
     border: none;
@@ -469,7 +469,7 @@ body.light-theme .branch-rail-row:hover {
     cursor: pointer;
     transition: background 0.15s ease;
 }
-.thought-map-export-btn:hover {
+html .thought-map-export-btn:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
     background: #1d4ed8;
 }
 
@@ -479,5 +479,5 @@ body.light-theme .branch-rail-row:hover {
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .branch-rail-row.is-active .branch-rail-dot { animation: none; }
+    html .branch-rail-row.is-active .branch-rail-dot:where(.vcp-ui-scope, .vcp-ui-scope *) { animation: none; }
 }
