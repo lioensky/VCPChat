@@ -519,7 +519,7 @@ test('a pet flung on release slides on and lands on the taskbar; a slow drop sta
     assert.ok(sy < floorY - 50, '放在半空也不掉');
     // 往左上快速一甩（默认位置在屏幕右边，往左才有地方滑）
     await drag([[0, 0], [-40, -10], [-80, -20], [-120, -30]], { figure });
-    await sleep(1500);
+    for (let i = 0; i < 150 && pet.getPosition()[1] !== floorY; i++) await sleep(20);
     const [tx, ty] = pet.getPosition();
     assert.equal(ty, floorY, '落在任务栏上');
     assert.ok(tx < sx - 150, '带着速度往左滑了一段');

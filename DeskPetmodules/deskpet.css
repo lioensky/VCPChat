@@ -123,6 +123,125 @@ body.is-ghost-hover #stage {
   pointer-events: auto;
 }
 
+#sessionPanel {
+  position: relative;
+  flex: 0 0 auto;
+  width: min(100%, 340px);
+}
+#sessionPanel[hidden] { display: none; }
+#sessionPanel[data-stacked="true"]::before,
+#sessionPanel[data-stacked="true"]::after {
+  content: '';
+  position: absolute;
+  inset: 6px 6px 36px;
+  border-radius: 26px;
+  background: #fff;
+  box-shadow: 0 3px 10px rgba(0,0,0,.10);
+  pointer-events: none;
+}
+#sessionPanel[data-stacked="true"]::before { inset: 10px 12px 32px; opacity: .65; }
+#sessionCard {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 44px 12px 18px;
+  border: 0;
+  border-radius: 26px;
+  background: #fff;
+  color: #1f2328;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 4px 14px rgba(0, 0, 0, 0.14);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease, box-shadow 120ms ease;
+}
+#sessionCard[hidden] { display: none; }
+#sessionCard:hover { background: #f8f9fa; }
+#sessionCard:active { background: #f1f2f4; }
+#sessionCard:focus-visible { outline: 2px solid #1f2328; outline-offset: 2px; }
+#sessionTitle, #sessionStatus {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.45;
+}
+#sessionTitle { font-size: 14px; font-weight: 600; }
+#sessionStatus { font-size: 12px; color: #767b82; }
+#sessionCard:disabled { cursor: default; }
+#sessionStop {
+  position: absolute;
+  z-index: 2;
+  top: 14px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: #f1f2f4;
+  color: #1f2328;
+  cursor: pointer;
+}
+#sessionStop[hidden] { display: none; }
+#sessionStop svg { width: 16px; height: 16px; fill: currentColor; }
+#sessionStop:hover { background: #e6e8eb; }
+#sessionStop:focus-visible { outline: 2px solid #1f2328; }
+#sessionNavigation {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  margin: 14px auto 0;
+  width: fit-content;
+  padding: 0 4px;
+  border-radius: 16px;
+  background: #fff;
+  color: #767b82;
+  font-size: 11px;
+}
+#sessionNavigation[hidden] { display: none; }
+#sessionNavigation button {
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  color: #1f2328;
+  width: 28px;
+  height: 28px;
+  font-size: 20px;
+  cursor: pointer;
+}
+#sessionNavigation button:hover { background: #e6e8eb; }
+#sessionNavigation button:focus-visible { outline: 2px solid #1f2328; }
+#dockHide { position: relative; overflow: visible; }
+#dockHide .session-collapse { display: none; }
+#dockHide[aria-expanded="true"] { background: #f1f2f4; }
+#dockHide[aria-expanded="true"] .session-bell { display: none; }
+#dockHide[aria-expanded="true"] .session-collapse { display: block; }
+#sessionCount {
+  position: absolute;
+  top: -1px;
+  right: 1px;
+  box-sizing: border-box;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 2px;
+  border: 2px solid #fff;
+  border-radius: 10px;
+  background: #3980ee;
+  color: #fff;
+  font-size: 10px;
+  line-height: 14px;
+  text-align: center;
+}
+#sessionCount[hidden] { display: none; }
+/* 审批优先占用头顶空间，避免短窗口里挤出允许/拒绝按钮。 */
+#uiStack:has(#approvalCard:not([hidden])) #sessionPanel { display: none; }
+/* 运行状态统一放进会话动态；保留正文、错误通知和工具审批。 */
+#toolCard, #bubble.is-state { display: none; }
+
 #bubble {
   position: relative;
   display: flex;
