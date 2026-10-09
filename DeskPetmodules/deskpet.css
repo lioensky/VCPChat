@@ -224,8 +224,9 @@ body.is-ghost-hover #stage {
   position: absolute;
   top: -1px;
   right: 1px;
-  min-width: 14px;
-  height: 14px;
+  box-sizing: border-box;
+  min-width: 18px;
+  height: 18px;
   padding: 0 2px;
   border: 2px solid #fff;
   border-radius: 10px;
