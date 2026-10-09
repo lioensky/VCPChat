@@ -216,3 +216,51 @@ test('a quota error still saves the tab list and conversation memory without the
     assert.equal(saved.collapsedByParent.get('agent:a'), true);
     store.dispose();
 });
+for (const entry of ['notifications', 'launcher']) {
+    for (const visible of [true, false]) {
+        test(`restart restores ${entry} with visible=${visible} after host selection`, async () => {
+            const storage = createStorage();
+            const parent = { itemType: 'agent', itemId: 'a', topicId: 't' };
+            const first = createPane(storage, []);
+            first.controller.setParent(parent);
+            first.controller.restoreLayout();
+            if (entry === 'notifications') first.controller.showNotifications();
+            else first.controller.showLauncher();
+            first.controller.setVisible(visible);
+            await first.controller.dispose();
+            first.dom.window.close();
+
+            const saved = JSON.parse(storage.getItem(SIDE_PANE_LAYOUT_KEY));
+            assert.equal(saved.activeTabId, entry);
+            const second = createPane(storage, []);
+            second.controller.setParent(parent);
+            second.controller.restoreLayout();
+            assert.equal(second.controller.getSnapshot().activeTabId, entry);
+            assert.equal(second.controller.getSnapshot().visible, visible);
+            await second.controller.dispose();
+            second.dom.window.close();
+        });
+    }
+}
+
+test('legacy empty layout restores open preference without inventing a topic tab', async () => {
+    const storage = createStorage();
+    storage.setItem(SIDE_PANE_LAYOUT_KEY, JSON.stringify({
+        version: 1, tabs: [], activeTabId: null, visible: true
+    }));
+    const pane = createPane(storage, []);
+    pane.controller.setParent({ itemType: 'agent', itemId: 'a', topicId: 't' });
+    pane.controller.restoreLayout();
+    assert.equal(pane.controller.getSnapshot().visible, true);
+    assert.equal(pane.controller.getSnapshot().activeTabId, 'notifications');
+    await pane.controller.dispose();
+    pane.dom.window.close();
+});
+
+test('quota fallback preserves builtin active entry', async () => {
+    const { shrinkLayout } = await import('../modules/ui-system/side-pane/side-pane-persistence.js');
+    for (const activeTabId of ['notifications', 'launcher']) {
+        const layout = serializeLayout({ activeTabId, visible: true }, canPersist);
+        assert.equal(parseLayout(shrinkLayout(layout), canPersist).activeTabId, activeTabId);
+    }
+});

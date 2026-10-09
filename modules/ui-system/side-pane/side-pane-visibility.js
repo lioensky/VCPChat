@@ -20,9 +20,18 @@ export function isValidRatio(ratio) {
 /**
  * root 是面板本身；onSync(isVisible) 在每次可见性落定或动画开始时调用，用来同步标题栏按钮。
  */
-export function createSidePaneVisibility({ root, resizerHandle = null, initialRatio, onSync = () => {} }) {
+export function createSidePaneVisibility({ root, resizerHandle = null, initialRatio, initialWidth, onSync = () => {} }) {
     const win = root.ownerDocument?.defaultView || globalThis.window;
     let ratio = isValidRatio(initialRatio) ? initialRatio : DEFAULT_EXPANDED_RATIO;
+    let legacyWidth = !isValidRatio(initialRatio) && Number.isFinite(initialWidth) && initialWidth > 0
+        ? initialWidth : null;
+    function resolveLegacyWidth() {
+        if (legacyWidth === null) return;
+        const hostWidth = readHostContentWidth();
+        if (!(hostWidth > 0)) return;
+        ratio = clampRatio(legacyWidth / hostWidth);
+        legacyWidth = null;
+    }
     let animating = false;
     let animationTimer = null;
     let animationRafId = null;
@@ -199,6 +208,7 @@ export function createSidePaneVisibility({ root, resizerHandle = null, initialRa
         readHostContentWidth,
 
         setRatio(next) {
+            legacyWidth = null;
             ratio = clampRatio(next);
         },
 
@@ -206,6 +216,7 @@ export function createSidePaneVisibility({ root, resizerHandle = null, initialRa
         setRatioFromWidth(widthPx) {
             const hostWidth = readHostContentWidth();
             if (!(hostWidth > 0)) return false;
+            legacyWidth = null;
             ratio = clampRatio(widthPx / hostWidth);
             return true;
         },
@@ -220,6 +231,7 @@ export function createSidePaneVisibility({ root, resizerHandle = null, initialRa
         },
 
         sync(isVisible, { animate = true } = {}) {
+            resolveLegacyWidth();
             const shouldAnimate = animate
                 && !isJSDOM
                 && typeof win?.requestAnimationFrame === 'function'

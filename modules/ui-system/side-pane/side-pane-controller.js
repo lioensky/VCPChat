@@ -145,6 +145,7 @@ export function createSidePaneController({
         root,
         resizerHandle,
         initialRatio: Number(settingsRef?.get?.()?.sidePaneWidthRatio),
+        initialWidth: Number(settingsRef?.get?.()?.notificationsSidebarWidth),
         onSync: syncHeaderButtons
     });
     const syncDomVisibility = (options = {}) => {
@@ -1114,6 +1115,18 @@ export function createSidePaneController({
                     preferredTabId: activeTabByParent.get(key),
                     collapsedPreference: collapsedByParent.get(key)
                 });
+            }
+            // 内置入口没有话题归属，开合不应被无话题标签的自动收起覆盖。
+            // 旧存档只记 visible、没有当前标签且没有工具标签时，回退到通知页。
+            const builtinId = layout.activeTabId === SidePaneState.NOTIFICATIONS_TAB_ID
+                || layout.activeTabId === SidePaneState.LAUNCHER_TAB_ID
+                ? layout.activeTabId
+                : (!layout.activeTabId && layout.tabs.length === 0
+                    && !state.tabs.some(tab => tab.id !== SidePaneState.NOTIFICATIONS_TAB_ID)
+                    ? SidePaneState.NOTIFICATIONS_TAB_ID : null);
+            if (builtinId) {
+                state = SidePaneState.activateTab(state, builtinId);
+                state = SidePaneState.setVisible(state, layout.visible);
             }
             parentResolvedRevision = navigationRevision;
             renderTabList();
