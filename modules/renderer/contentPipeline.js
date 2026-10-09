@@ -15,6 +15,7 @@
 
 import { PIPELINE_MODES } from '../chat/contentModes.js';
 import { replaceMarkdownCodeDomains } from './markdownCodeDomainScanner.js';
+import { stripEmotionTags } from '../emotion/emotionTags.js';
 import {
     collectToolResultRanges,
     collectClosedToolResultRanges,
@@ -60,6 +61,13 @@ function stripPersonaBackfillTail(text) {
     // 工具结果是权威数据域：其中出现的 persona 注释只是数据，不能被剥离；
     // 工具结果之前的半截回填也只能剥到工具结果边界，不得吞掉整个工具结果。
     return transformOutsideToolResults(text, stripPersonaBackfillSegment);
+}
+
+// 情绪标签 <!--emo:happy 0.8--> 只给立绘（以后还有桌宠）看，显示时剥掉；工具结果里的同样是数据，不动。
+// 流式时连尾巴上没写完的半个标签一起藏起来，免得闪出 "<!--emo"。
+function stripEmotionTagsOutsideToolResults(text, streaming) {
+    if (!text || text.indexOf('<!') === -1) return text;
+    return transformOutsideToolResults(text, segment => stripEmotionTags(segment, { streaming }));
 }
 
 function stripPersonaBackfillSegment(text) {
@@ -453,6 +461,7 @@ function createContentPipeline(deps = {}) {
 
         if ((options.messageRole || 'assistant') === 'assistant') {
             step(ctx, 'strip-persona-backfill-tail', (text) => stripPersonaBackfillTail(text));
+            step(ctx, 'strip-emotion-tags', (text) => stripEmotionTagsOutsideToolResults(text, false));
         }
         step(ctx, 'normalize-emoticon-urls', (text) => fixEmoticonUrlsInMarkdown(text));
 
@@ -527,6 +536,7 @@ function createContentPipeline(deps = {}) {
         // 注意：「始/末」仅属于工具请求围栏内部字段语法；流式尾部不做全局扫描，
         // 防止普通正文提及该语法时被提前转义或造成排版抖动。
         step(ctx, 'strip-persona-backfill-tail', (text) => stripPersonaBackfillTail(text));
+        step(ctx, 'strip-emotion-tags', (text) => stripEmotionTagsOutsideToolResults(text, true));
         step(ctx, 'normalize-emoticon-urls', (text) => fixEmoticonUrlsInMarkdown(text));
         step(ctx, 'protect-code-blocks', protectCodeBlocks);
         step(ctx, 'deindent-misinterpreted-code-blocks', (text) => deIndentMisinterpretedCodeBlocks(text));

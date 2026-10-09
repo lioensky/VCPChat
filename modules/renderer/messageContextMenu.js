@@ -1144,6 +1144,14 @@ async function handleRegenerateResponse(originalAssistantMessage) {
             );
         }));
 
+        // 和新消息一样：有差分立绘时追加表情标记说明，重新生成的回复也带情绪标签（差分关着时不加）
+        const emotionTagPrompt = await import('../ui-system/side-pane/portrait-features.js')
+            .then(features => (features.PORTRAIT_EXPRESSIONS_ENABLED
+                ? import('../emotion/emotionPrompt.js')
+                    .then(module => module.resolveEmotionTagPrompt(electronAPI, currentSelectedItemVal.id, agentConfig))
+                : ''))
+            .catch(() => '');
+
         if (agentConfig.systemPrompt) {
             let systemPromptContent = agentConfig.systemPrompt.replace(/\{\{AgentName\}\}/g, agentConfig.name);
             const prependedContent = [];
@@ -1168,17 +1176,19 @@ async function handleRegenerateResponse(originalAssistantMessage) {
                 systemPromptContent = prependedContent.join('\n') + '\n\n' + systemPromptContent;
             }
 
+            if (emotionTagPrompt) systemPromptContent = `${systemPromptContent.trim()}\n\n${emotionTagPrompt}`;
+
             // VCPChatTarven: 在系统提示词尾部追加 system_suffix
             if (tavernEngine) {
                 systemPromptContent = tavernEngine.applySystemSuffix(systemPromptContent, tavernRules, 'agent');
             }
 
             messagesForVCP.unshift({ role: 'system', content: systemPromptContent });
-        } else if (tavernEngine) {
+        } else {
             // 没有 systemPrompt,但仍可能存在 system_suffix 规则
-            const tavernSysOnly = tavernEngine.applySystemSuffix('', tavernRules, 'agent');
-            if (tavernSysOnly && tavernSysOnly.trim()) {
-                messagesForVCP.unshift({ role: 'system', content: tavernSysOnly });
+            const systemOnly = tavernEngine ? tavernEngine.applySystemSuffix(emotionTagPrompt, tavernRules, 'agent') : emotionTagPrompt;
+            if (systemOnly && systemOnly.trim()) {
+                messagesForVCP.unshift({ role: 'system', content: systemOnly });
             }
         }
 

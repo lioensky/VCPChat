@@ -62,6 +62,8 @@
     <link rel="stylesheet" href="styles/ui-system/notification-center-list.css">
     <link rel="stylesheet" href="styles/ui-system/notification-center-cards.css">
     <link rel="stylesheet" href="styles/ui-system/notification-center-dock.css">
+    <link rel="stylesheet" href="DeskPetmodules/dock.css">
+    <link rel="stylesheet" href="styles/ui-system/deskpet-settings.css">
     <script src="modules/ui-system/lifecycle-scope.js"></script>
     <script src="modules/ui-system/performance-recorder.js"></script>
     <script src="modules/ui-system/task-handle.js"></script>
@@ -589,8 +591,14 @@
                 <section class="side-pane-view active" id="sidePaneViewLauncher" data-tab-id="launcher" role="tabpanel" aria-label="新标签页">
                     <div class="side-pane-open-tab-shell">
                         <div class="side-pane-launcher-portrait" aria-hidden="true" hidden>
-                            <img class="side-pane-launcher-portrait-image" data-portrait-theme="default" alt="" draggable="false" hidden>
-                            <img class="side-pane-launcher-portrait-image" data-portrait-theme="light" alt="" draggable="false" hidden>
+                            <div class="side-pane-launcher-portrait-layer" data-portrait-active>
+                                <img class="side-pane-launcher-portrait-image" data-portrait-theme="default" alt="" draggable="false">
+                                <img class="side-pane-launcher-portrait-image" data-portrait-theme="light" alt="" draggable="false" hidden>
+                            </div>
+                            <div class="side-pane-launcher-portrait-layer">
+                                <img class="side-pane-launcher-portrait-image" data-portrait-theme="default" alt="" draggable="false" hidden>
+                                <img class="side-pane-launcher-portrait-image" data-portrait-theme="light" alt="" draggable="false" hidden>
+                            </div>
                         </div>
                         <div class="side-pane-open-tab-content">
                             <div class="side-pane-launcher-profile" hidden>
@@ -758,7 +766,7 @@
 
                 <div class="vcp-settings-source-layout">
                     <!-- 左侧导航菜单 -->
-                    <nav class="vcp-settings-source-nav" data-settings-sections='[{"value":"user-identity","label":"用户身份"},{"value":"server-connection","label":"服务器连接"},{"value":"jev-service","label":"Jev 服务"},{"value":"appearance-settings","label":"界面与外观"},{"value":"render-settings","label":"消息渲染"},{"value":"selection-assistant","label":"划词助手"},{"value":"voice-settings","label":"语音设置"},{"value":"advanced-features","label":"高级功能"},{"value":"workspace-management","label":"工作区管理"},{"value":"quick-actions","label":"快捷操作"}]'>
+                    <nav class="vcp-settings-source-nav" data-settings-sections='[{"value":"user-identity","label":"用户身份"},{"value":"server-connection","label":"服务器连接"},{"value":"jev-service","label":"Jev 服务"},{"value":"appearance-settings","label":"界面与外观"},{"value":"render-settings","label":"消息渲染"},{"value":"selection-assistant","label":"划词助手"},{"value":"voice-settings","label":"语音设置"},{"value":"advanced-features","label":"高级功能"},{"value":"workspace-management","label":"工作区管理"},{"value":"quick-actions","label":"快捷操作"},{"value":"deskpet","label":"桌宠"}]'>
                         <template class="vcp-settings-source-list">
                             <li class="vcp-settings-source-item active" data-section="user-identity">
                                 <span class="vcp-ui-icon settings-nav-icon" aria-hidden="true">user</span>
@@ -796,6 +804,10 @@
                                 <span class="vcp-ui-icon settings-nav-icon" aria-hidden="true">zap</span>
                                 <span>快捷操作</span>
                             </li>
+                            <li class="vcp-settings-source-item" data-section="deskpet">
+                                <span class="vcp-ui-icon settings-nav-icon" aria-hidden="true">paw-print</span>
+                                <span>桌宠</span>
+                            </li>
                         </template>
                     </nav>
 
@@ -827,6 +839,7 @@
                             <div class="settings-section" id="section-advanced-features" data-settings-section-key="advanced-features"></div>
                             <div class="settings-section" id="section-workspace-management" data-settings-section-key="workspace-management"></div>
                             <div class="settings-section" id="section-quick-actions" data-settings-section-key="quick-actions"></div>
+                            <div class="settings-section" id="section-deskpet" data-settings-section-key="deskpet"></div>
 
                         </form>
                     </div>

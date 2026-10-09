@@ -1,0 +1,23 @@
+{
+  "name": "Nova · 科技服",
+  "expressions": {
+    "neutral": "Neutral",
+    "calm": "Neutral",
+    "happy": "Happy",
+    "excited": "Excited",
+    "shy": "Shy",
+    "affectionate": "Shy",
+    "curious": "Surprised",
+    "surprised": "Surprised",
+    "concerned": "Concerned",
+    "sad": "Sad",
+    "tired": "Tired",
+    "angry": "Angry"
+  },
+  "motions": {
+    "happy": "Nod",
+    "excited": "Nod",
+    "curious": "Nod",
+    "angry": "Shake"
+  }
+}

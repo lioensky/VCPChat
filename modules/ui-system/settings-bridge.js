@@ -223,7 +223,7 @@ const GLOBAL_CATEGORY_ICONS = Object.freeze({
     'voice-settings': 'mic',
     'advanced-features': 'layers',
     'workspace-management': 'folder-git-2',
-    'quick-actions': 'zap',
+    'quick-actions': 'zap', deskpet: 'paw-print',
 });
 
 // Global settings modal: control enhancement, autosave status, and the

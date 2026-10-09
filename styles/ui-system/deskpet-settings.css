@@ -1,0 +1,851 @@
+/* 全局设置 → 桌宠（modules/settings/schema/deskpet-panel.js）。
+   小胶囊本身的样式和桌宠页面共用 DeskPetmodules/dock.css。 */
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps {
+  --dps-ink: var(--dsw-alias-label-primary, var(--vcp-ui-text-0));
+  --dps-ink-2: var(--vcp-ui-text-2);
+  --dps-ink-3: var(--dsw-alias-label-tertiary, var(--vcp-ui-text-3));
+  --dps-line: var(--vcp-ui-border);
+  --dps-line-strong: color-mix(in srgb, var(--dps-ink) 22%, transparent);
+  --dps-fill: color-mix(in srgb, var(--dps-ink) 4%, transparent);
+  --dps-surface: var(--vcp-ui-bg-1, transparent);
+  --dps-accent: var(--vcp-ui-accent);
+  --dps-spring: cubic-bezier(.34, 1.32, .5, 1);
+  --dps-out: cubic-bezier(.25, 1, .5, 1);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  color: var(--dps-ink);
+  font-size: var(--vcp-ui-text-base);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps button {
+  font: inherit;
+}
+
+/* ---- 顶部说明 + 显示/隐藏 ---- */
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-intro {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-lead {
+  flex: 1 1 auto;
+  margin: 0;
+  color: var(--dps-ink-2);
+  font-size: var(--vcp-ui-text-caption);
+  line-height: 20px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-btn {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--dps-line);
+  border-radius: 10px;
+  background: var(--dps-fill);
+  color: var(--dps-ink);
+  font-size: var(--vcp-ui-text-caption);
+  line-height: 30px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, transform 140ms ease, opacity 140ms ease;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-btn:hover:not(:disabled) {
+  border-color: var(--dps-line-strong);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-btn.is-active {
+  border-color: var(--dps-accent);
+  color: var(--dps-accent);
+}
+
+/* ---- 大预览 ---- */
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-stage {
+  position: relative;
+  height: 300px;
+  border: 1px solid var(--dps-line);
+  border-radius: 16px;
+  background:
+    radial-gradient(120% 90% at 50% 100%, color-mix(in srgb, var(--dps-accent) 6%, transparent), transparent 60%),
+    var(--dps-surface);
+  overflow: hidden;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-stage-figure {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 12px;
+  /* 角色站在小胶囊上面，不让胶囊压着脚（胶囊离底 22、高 44） */
+  bottom: 76px;
+  transition: transform 380ms var(--dps-spring);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-figure {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  transform-origin: 50% 100%;
+  transition: opacity 260ms ease, transform 420ms var(--dps-spring), filter 260ms ease;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-figure img {
+  max-width: 70%;
+  max-height: 100%;
+  object-fit: contain;
+  transform-origin: 50% 100%;
+  animation: dps-breathe 4.2s ease-in-out infinite;
+  user-select: none;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-figure.is-entering {
+  opacity: 0;
+  transform: translateY(18px) scale(0.94);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-figure.is-leaving {
+  opacity: 0;
+  transform: translateY(10px) scale(0.97);
+  transition: opacity 200ms ease, transform 260ms ease-in;
+}
+
+/* 快照还在渲染：脚下一块呼吸的影子 */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-figure.is-loading::before {
+  content: "";
+  width: 96px;
+  height: 180px;
+  border-radius: 48px 48px 20px 20px;
+  background: linear-gradient(100deg, var(--dps-fill) 30%, color-mix(in srgb, var(--dps-ink-2) 14%, transparent) 50%, var(--dps-fill) 70%);
+  background-size: 250% 100%;
+  animation: dps-shimmer 1.2s linear infinite;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-stage-floor {
+  position: absolute;
+  left: 50%;
+  bottom: 50px;
+  width: 120px;
+  height: 14px;
+  margin-left: -60px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, color-mix(in srgb, black 12%, transparent), transparent);
+  transition: opacity 260ms ease, transform 420ms var(--dps-spring);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-stage[data-state="none"] .dps-stage-floor,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-stage[data-state="empty"] .dps-stage-floor {
+  opacity: 0;
+  transform: scaleX(0.6);
+}
+
+/* 桌宠藏起来了：角色淡一点，角上一个小标签 */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-stage[data-state="hidden"] .dps-figure:not(.is-leaving):not(.is-entering) {
+  opacity: 0.4;
+  filter: grayscale(0.4);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-stage-tag {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--dps-fill);
+  color: var(--dps-ink-3);
+  font-size: var(--vcp-ui-text-sm);
+  line-height: 20px;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 200ms ease, transform 260ms var(--dps-spring);
+  pointer-events: none;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-stage[data-state="hidden"] .dps-stage-tag {
+  opacity: 1;
+  transform: none;
+}
+
+/* 小胶囊在角色脚边；没有桌宠（「无」）时它独自在正中间 */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-stage-dock {
+  /* 按这一栏的宽度算（输入条那一层自己定宽，百分比会算到胶囊上） */
+  container-type: inline-size;
+  --dock-bar-w: min(460px, calc(100cqw - 32px));
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 22px;
+  display: flex;
+  justify-content: center;
+  transition: bottom 420ms var(--dps-spring);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-stage[data-state="none"] .dps-stage-dock,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-stage[data-state="empty"] .dps-stage-dock {
+  bottom: calc(50% - 22px);
+}
+
+/* 展开成输入条时角色往上让一点 */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-stage[data-dock="bar"] .dps-stage-figure {
+  transform: translateY(-6px);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-stage-note {
+  position: absolute;
+  left: 50%;
+  bottom: 74px;
+  max-width: calc(100% - 180px);
+  margin: 0;
+  padding: 4px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, black 86%, transparent);
+  color: white;
+  font-size: var(--vcp-ui-text-sm);
+  line-height: 18px;
+  text-align: center;
+  opacity: 0;
+  transform: translate(-50%, 6px);
+  transition: opacity 180ms ease, transform 260ms var(--dps-spring);
+  pointer-events: none;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-stage-note.is-shown {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-stage-note.is-error {
+  background: color-mix(in srgb, var(--vcp-ui-danger) 92%, transparent);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-stage-custom {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  background: var(--vcp-ui-bg-1, white);
+  transition: opacity 180ms ease;
+}
+
+/* 输入条展开得比较宽，右下角的「自定义」先让开 */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-stage[data-dock="bar"] .dps-stage-custom,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-stage[data-dock="rec"] .dps-stage-custom {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 输入条里的输入框和桌面上一样是光秃秃的一行：设置页给多行输入框的边框、底色、最小高度在这里不要
+   （两个 ID 才压得过设置页的多行输入框规则） */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #globalSettingsForm .dps-dock .dock-input {
+  min-height: 0;
+  margin: 0;
+  padding: 10px 2px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  line-height: 20px;
+  resize: none;
+}
+
+/* ---- 自定义抽屉：grid 行高 0fr → 1fr 做高度过渡 ---- */
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-drawer {
+  display: grid;
+  grid-template-rows: 0fr;
+  margin-top: -14px;
+  opacity: 0;
+  transition: grid-template-rows 320ms var(--dps-out), opacity 200ms ease, margin-top 320ms var(--dps-out);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-drawer.is-open {
+  grid-template-rows: 1fr;
+  margin-top: 0;
+  opacity: 1;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-drawer-inner {
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--dps-line);
+  border-radius: 14px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-drawer:not(.is-open) .dps-drawer-inner {
+  border-color: transparent;
+}
+
+/* ---- 行 ---- */
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 52px;
+  padding: 10px 16px;
+  box-sizing: border-box;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-row + .dps-row {
+  border-top: 1px solid var(--dps-line);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-row-copy {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-row-title {
+  color: var(--dps-ink);
+  font-size: var(--vcp-ui-text-base);
+  line-height: 22px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-row-hint {
+  color: var(--dps-ink-3);
+  font-size: var(--vcp-ui-text-sm);
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-size {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-slider {
+  width: 180px;
+  accent-color: var(--dps-accent);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-size-value {
+  min-width: 42px;
+  color: var(--dps-ink-2);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ---- 我的桌宠 ---- */
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-subtitle {
+  margin: 0;
+  color: var(--dps-ink);
+  font-size: calc(var(--vcp-ui-font-size) + 1px);
+  font-weight: 600;
+  line-height: 24px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps > .dps-subtitle {
+  margin-top: 6px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-agent {
+  min-width: 0;
+  max-width: 200px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--dps-line);
+  border-radius: 8px;
+  background: var(--dps-fill);
+  color: var(--dps-ink);
+  font: inherit;
+  font-size: var(--vcp-ui-text-caption);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-spacer {
+  flex: 1 1 auto;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dps-ink-2);
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-icon-btn:hover {
+  background: var(--dps-fill);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-icon-btn.is-spinning svg {
+  animation: dps-spin 600ms var(--dps-out);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* 预览里的胶囊图标和桌面上一样小一号、细一点（输入条里的加号、发送箭头除外） */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps .pet-dock svg {
+  width: 17px;
+  height: 17px;
+  stroke-width: 1.8;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps .pet-dock .dock-bar svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 2;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 12px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-grid.is-drop {
+  border-radius: 12px;
+  outline: 2px dashed var(--dps-accent);
+  outline-offset: 4px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps.is-busy .dps-grid {
+  cursor: progress;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-pet-card {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 14px 14px 16px;
+  border: 1px solid var(--dps-line);
+  border-radius: 16px;
+  background: var(--dps-surface);
+  color: inherit;
+  text-align: center;
+  cursor: pointer;
+  animation: dps-card-in 420ms var(--dps-spring) both;
+  animation-delay: calc(var(--i, 0) * 40ms);
+  transition: border-color 180ms ease, box-shadow 220ms ease, transform 220ms var(--dps-spring);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-pet-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px color-mix(in srgb, black 8%, transparent);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-pet-card:active {
+  transform: scale(0.98);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-pet-card:focus-visible {
+  outline: 2px solid var(--dps-accent);
+  outline-offset: 2px;
+}
+
+/* 选中：边框加深，形象轻轻弹一下 */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-pet-card.is-selected {
+  border-color: var(--dps-line-strong);
+  box-shadow: 0 0 0 1px var(--dps-line-strong), 0 6px 18px color-mix(in srgb, black 6%, transparent);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-pet-card.is-selected .dps-pet-art img,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-pet-card.is-selected .dps-mini-pill {
+  animation: dps-pop 420ms var(--dps-spring);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-pet-card:disabled {
+  cursor: progress;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-pet-art {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  width: 100%;
+  height: 132px;
+  margin-bottom: 6px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-pet-art img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  transition: opacity 260ms ease, transform 360ms var(--dps-spring);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-pet-art.is-loading {
+  border-radius: 12px;
+  background: linear-gradient(100deg, var(--dps-fill) 30%, color-mix(in srgb, var(--dps-ink-2) 12%, transparent) 50%, var(--dps-fill) 70%);
+  background-size: 250% 100%;
+  animation: dps-shimmer 1.2s linear infinite;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-pet-art.is-loading img {
+  opacity: 0;
+  transform: translateY(8px) scale(0.96);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-pet-art.is-failed img {
+  display: none;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-pet-art.is-failed::after {
+  content: "没画出来";
+  align-self: center;
+  color: var(--dps-ink-3);
+  font-size: var(--vcp-ui-text-sm);
+}
+
+/* 「无」卡片里的小胶囊 */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-mini-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  align-self: center;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 20px;
+  background: white;
+  color: color-mix(in srgb, black 86%, white);
+  /* 和桌面上的胶囊同一套：一圈很淡的描边加轻阴影 */
+  box-shadow: 0 0 0 0.5px color-mix(in srgb, black 8%, transparent), 0 1px 2px color-mix(in srgb, black 6%, transparent), 0 4px 14px color-mix(in srgb, black 10%, transparent);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-mini-pill svg {
+  width: 17px;
+  height: 17px;
+  stroke-width: 1.8;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-mini-pill i {
+  width: 1px;
+  height: 20px;
+  background: color-mix(in srgb, black 10%, transparent);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-pet-name {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--dps-ink);
+  font-size: var(--vcp-ui-text-base);
+  font-weight: 600;
+  line-height: 22px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-pet-desc {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--dps-ink-3);
+  font-size: var(--vcp-ui-text-sm);
+  line-height: 18px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-pet-kind {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  /* Q 版这种头顶到卡片上沿的快照会盖住角标：角标压在图上面、底色不透明 */
+  z-index: 1;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: linear-gradient(var(--dps-fill), var(--dps-fill)), var(--dps-surface);
+  color: var(--dps-ink-3);
+  font-size: var(--vcp-ui-font-size-xs);
+  line-height: 18px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-empty {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--dps-ink-3);
+  font-size: var(--vcp-ui-text-caption);
+  line-height: 20px;
+}
+
+/* ---- 选项、快捷键 ---- */
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-card {
+  border: 1px solid var(--dps-line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-card-hint {
+  margin: 0;
+  padding: 12px 16px 0;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px 16px 12px;
+  border-top: 1px solid var(--dps-line);
+}
+
+/* ---- Live2D 支持 ---- */
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-core .dps-card-actions {
+  align-items: center;
+  gap: 8px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-core.is-wanted {
+  border-color: color-mix(in srgb, var(--dps-accent) 45%, var(--dps-line));
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-btn.dps-btn-primary {
+  border-color: var(--dps-accent);
+  background: var(--dps-accent);
+  color: var(--vcp-ui-on-accent);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-link {
+  margin-right: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--dps-ink-3);
+  font-size: var(--vcp-ui-text-caption);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-link:hover {
+  color: var(--dps-ink);
+}
+
+/* ---- 表情映射 ---- */
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-map {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-map-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 16px 12px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-map-row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) minmax(0, 1fr) 30px;
+  align-items: center;
+  gap: 8px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-map-head {
+  color: var(--dps-ink-3);
+  font-size: var(--vcp-ui-text-caption);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-map-head:not(:first-child) {
+  margin-top: 8px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-map-label {
+  color: var(--dps-ink);
+  font-size: var(--vcp-ui-text-caption);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-map-select {
+  min-width: 0;
+  min-height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--dps-line);
+  border-radius: 8px;
+  background: var(--dps-fill);
+  color: var(--dps-ink);
+  font-size: var(--vcp-ui-text-caption);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-map-select:disabled {
+  opacity: 0.7;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-map-try {
+  font-size: var(--vcp-ui-text-caption);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-map .dps-card-actions {
+  gap: 8px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-shortcut .dps-row-title {
+  flex: 1 1 auto;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-key {
+  min-width: 150px;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--dps-line);
+  border-radius: 8px;
+  background: var(--dps-fill);
+  color: var(--dps-ink);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: var(--vcp-ui-text-sm);
+  cursor: pointer;
+  transition: border-color 140ms ease, box-shadow 160ms ease;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-key.is-empty {
+  color: var(--dps-ink-3);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-key.is-recording {
+  border-color: var(--dps-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dps-accent) 18%, transparent);
+  animation: dps-recording 1.2s ease-in-out infinite;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-key-error {
+  color: var(--vcp-ui-danger);
+  font-size: var(--vcp-ui-text-sm);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-key-error:empty {
+  display: none;
+}
+
+/* 自己画的开关：不依赖设置页其它分区注入的 Toggle 样式 */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-switch {
+  position: relative;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 24px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-switch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-switch-knob {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--dps-ink-2) 32%, transparent);
+  pointer-events: none;
+  transition: background 180ms ease;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-switch-knob::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 1px 3px color-mix(in srgb, black 25%, transparent);
+  transition: transform 260ms var(--dps-spring);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-switch input:checked + .dps-switch-knob {
+  background: var(--dps-accent);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-switch input:checked + .dps-switch-knob::after {
+  transform: translateX(16px);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-switch input:focus-visible + .dps-switch-knob {
+  outline: 2px solid var(--dps-accent);
+  outline-offset: 2px;
+}
+
+@keyframes dps-breathe {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(1.012); }
+}
+
+@keyframes dps-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -150% 0; }
+}
+
+@keyframes dps-card-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes dps-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+
+@keyframes dps-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes dps-recording {
+  0%, 100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--dps-accent) 18%, transparent); }
+  50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--dps-accent) 8%, transparent); }
+}
+
+/* 多一层 #section-deskpet，权重压过上面所有动效规则 */
+@media (prefers-reduced-motion: reduce) {
+  :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #section-deskpet .dps *,
+  :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #section-deskpet .dps *::before,
+  :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #section-deskpet .dps *::after {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* 上面给 .dps-map、.dps-row 设了 display，盖住了 hidden：没有 Live2D 形象时的「表情映射」、非 Windows 上的「全屏时让开」都该藏起来 */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps [hidden] {
+  display: none;
+}

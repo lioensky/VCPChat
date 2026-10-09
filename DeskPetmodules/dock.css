@@ -1,0 +1,298 @@
+/* 桌宠脚边的小胶囊（桌宠页面和设置页预览共用这一份样式）。
+   同一个 .pet-dock 有四个样子，切换时宽高和内容都有过渡：
+     hidden  收起：脚边一道小横条（只是个记号，点不到）
+     pill    小胶囊：打字 | 说话 | 收起
+     bar     输入条：开新话题、输入框、发送
+     rec     录音：打字 | 停止（光圈跟着音量动），.is-busy 时在识别
+   宽度用 --dock-bar-w 给输入条定最宽，由外面的页面设。 */
+
+.pet-dock {
+  --dock-h: 40px;
+  --dock-w: 124px;
+  --dock-ease: cubic-bezier(.34, 1.32, .5, 1);
+  position: relative;
+  box-sizing: border-box;
+  width: var(--dock-w);
+  height: var(--dock-h);
+  border-radius: 20px;
+  background: #fff;
+  color: #1f2328;
+  /* 很淡的一圈描边加一层轻阴影：浅色桌面上也看得出边，又不显得厚重 */
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06), 0 4px 14px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  transform-origin: 50% 100%;
+  /* 高度和上下位移同一条曲线、同样长：收成小横条、再撑开时上沿不跳 */
+  transition:
+    width 380ms var(--dock-ease),
+    height 300ms cubic-bezier(.25, 1, .5, 1),
+    border-radius 300ms cubic-bezier(.25, 1, .5, 1),
+    box-shadow 300ms ease,
+    opacity 200ms ease,
+    transform 300ms cubic-bezier(.25, 1, .5, 1);
+  font-family: "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+}
+
+.pet-dock[data-mode="hidden"] {
+  --dock-w: 30px;
+  --dock-h: 8px;
+  border-radius: 4px;
+  /* 贴在脚底下、胶囊上沿的位置：光标一来，从这道横条往两边、往下撑开成胶囊 */
+  transform: translateY(-32px);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1), 0 1px 4px rgba(0, 0, 0, 0.22);
+  pointer-events: none;
+  /* 收的时候先让里面的按钮淡掉，外框再缩 */
+  transition:
+    width 320ms cubic-bezier(.4, 0, .2, 1) 60ms,
+    height 300ms cubic-bezier(.4, 0, .2, 1) 60ms,
+    border-radius 300ms cubic-bezier(.4, 0, .2, 1) 60ms,
+    box-shadow 300ms ease 60ms,
+    opacity 200ms ease,
+    transform 300ms cubic-bezier(.4, 0, .2, 1) 60ms;
+}
+
+.pet-dock[data-mode="bar"] {
+  --dock-w: var(--dock-bar-w, 360px);
+  --dock-h: var(--dock-bar-h, 52px);
+  border-radius: 24px;
+}
+
+.pet-dock[data-mode="rec"] {
+  --dock-w: 96px;
+}
+
+.pet-dock .dock-layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  margin: 0;
+  opacity: 0;
+  transform: scale(0.92);
+  pointer-events: none;
+  transition: opacity 140ms ease, transform 260ms var(--dock-ease);
+}
+
+/* 新的一层在外框变形到一半时淡入，旧的一层马上淡出 */
+.pet-dock[data-mode="pill"] .dock-pill,
+.pet-dock[data-mode="bar"] .dock-bar,
+.pet-dock[data-mode="rec"] .dock-rec {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+  transition: opacity 200ms ease 90ms, transform 300ms var(--dock-ease) 60ms;
+}
+
+.pet-dock .dock-pill,
+.pet-dock .dock-rec {
+  justify-content: center;
+  gap: 0;
+  padding: 0 1px;
+}
+
+.pet-dock .dock-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 16px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  transition: background 120ms ease, transform 120ms ease;
+}
+
+.pet-dock .dock-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.pet-dock .dock-btn:active {
+  transform: scale(0.92);
+}
+
+.pet-dock svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pet-dock .dock-sep {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 20px;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+/* 输入条这一层始终是展开后的宽度、居中摆：外框变形时从中间往两边露出来，
+   收起状态下量输入框高度也按展开后的宽度量（不然几像素宽的输入框会量出好几行高） */
+.pet-dock .dock-bar {
+  right: auto;
+  left: 50%;
+  width: var(--dock-bar-w, 360px);
+  margin-left: calc(var(--dock-bar-w, 360px) / -2);
+  gap: 6px;
+  padding: 0 6px;
+  align-items: flex-end;
+  padding-bottom: 6px;
+}
+
+/* 输入条高一些，里面的加号、发送箭头跟着大一号 */
+.pet-dock .dock-bar svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 2;
+}
+
+.pet-dock .dock-round {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #f1f2f4;
+}
+
+.pet-dock .dock-round:hover {
+  background: #e6e8eb;
+}
+
+/* 开新话题打开时：加号转成叉，按钮变深 */
+.pet-dock .dock-round svg {
+  transition: transform 220ms var(--dock-ease);
+}
+
+.pet-dock .dock-round[aria-pressed="true"] {
+  background: #1f2328;
+  color: #fff;
+}
+
+.pet-dock .dock-round[aria-pressed="true"] svg {
+  transform: rotate(45deg);
+}
+
+.pet-dock .dock-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  box-sizing: border-box;
+  height: 40px;
+  max-height: 96px;
+  padding: 10px 2px;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: #1f2328;
+  font: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  user-select: text;
+  scrollbar-width: thin;
+}
+
+.pet-dock .dock-input::placeholder {
+  color: #9aa0a8;
+}
+
+.pet-dock .dock-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: #2f80ed;
+  color: #fff;
+  cursor: pointer;
+  transition: background 160ms ease, opacity 160ms ease, transform 160ms var(--dock-ease);
+}
+
+.pet-dock .dock-send:disabled,
+.pet-dock .dock-send.is-empty {
+  background: #b9d4fa;
+  cursor: default;
+}
+
+.pet-dock .dock-send:not(:disabled):not(.is-empty):active {
+  transform: scale(0.9);
+}
+
+/* 录音：灰色圆钮里一个黑点，外圈跟着音量（--level，0–1）扩散 */
+.pet-dock .rec-stop {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  margin: 0 3px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: #eceef0;
+  cursor: pointer;
+  box-shadow: 0 0 0 calc(var(--level, 0) * 7px) rgba(47, 128, 237, 0.18);
+  transition: box-shadow 80ms linear, background 160ms ease;
+}
+
+.pet-dock .rec-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #111;
+  transition: border-radius 200ms ease, width 200ms ease, height 200ms ease;
+  animation: pet-dock-rec 1.6s ease-in-out infinite;
+}
+
+.pet-dock .rec-stop:hover .rec-dot {
+  border-radius: 3px;
+}
+
+/* 识别中：黑点变成转圈 */
+.pet-dock .rec-stop.is-busy {
+  cursor: progress;
+  box-shadow: none;
+}
+
+.pet-dock .rec-stop.is-busy .rec-dot {
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border: 2px solid #111;
+  border-right-color: transparent;
+  border-radius: 50%;
+  background: transparent;
+  animation: pet-dock-spin 700ms linear infinite;
+}
+
+/* 不在录音时不闪：那一层只是透明着，动画照样每帧在跑 */
+.pet-dock:not([data-mode="rec"]) .rec-dot {
+  animation: none;
+}
+
+@keyframes pet-dock-rec {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@keyframes pet-dock-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pet-dock,
+  .pet-dock .dock-layer,
+  .pet-dock .dock-round svg {
+    transition-duration: 1ms !important;
+    transition-delay: 0s !important;
+  }
+}

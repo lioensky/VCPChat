@@ -102,7 +102,7 @@ export function createSidePaneLauncher({
     }
 
     // 有立绘时顶部换成一张向下渐隐的立绘，圆头像和名字都不显示；没有立绘就是原来的头像。
-    // 立绘和浅色版怎么挑、先解码再换、坏图怎么退在 side-pane-launcher-portrait.js；
+    // 立绘、浅色版和差分怎么挑、先解码再换、坏图怎么退在 side-pane-launcher-portrait.js；
     // display 是助手配置里的焦点和高度（见 portrait-display.js），跟着换上的那张图一起生效
     function renderPortrait(portraits, display) {
         portraitOwner.render(portraits, display);
@@ -425,6 +425,11 @@ export function createSidePaneLauncher({
         setProfileProvider(provider) {
             profileProvider = typeof provider === 'function' ? provider : null;
             renderProfile();
+        },
+
+        /** 情绪源给出的画面（{ state, emotion, ... }），有差分立绘时换成对应的那张 */
+        setPortraitFrame(frame) {
+            portraitOwner.setFrame(frame);
         },
 
         setAppsProvider(provider) {

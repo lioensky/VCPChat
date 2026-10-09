@@ -61,6 +61,7 @@ class DistributedServer {
         this.pluginAgentOperationService = config.pluginAgentOperationService || null;
         this.chartService = config.chartService || null;
         this.workspaceService = config.workspaceService || null; // 工作区只读门面（白名单来源）
+        this.onToolResult = typeof config.onToolResult === 'function' ? config.onToolResult : null; // 工具调用成功后的旁路通知（桌宠用），不影响返回结果
         this.ws = null;
         this.app = express(); // 创建 Express 应用
         this.server = http.createServer(this.app); // 创建 HTTP 服务器
@@ -684,6 +685,13 @@ class DistributedServer {
                     ? { ..._vcpContext, requestId }
                     : { requestId }
             });
+            if (this.onToolResult) {
+                try {
+                    this.onToolResult(toolName, toolArgs, result);
+                } catch (hookError) {
+                    console.warn(`[${this.serverName}] onToolResult hook failed:`, hookError?.message || hookError);
+                }
+            }
             let finalResult;
 
             // --- Special Handling for MusicController ---

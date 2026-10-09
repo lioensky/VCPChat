@@ -1053,9 +1053,14 @@ export function createSidePaneController({
             if (!isDisposed) launcher.renderEntries();
         },
 
-        /** provider() 返回 { name, avatarUrl, portraits?, portraitDisplay?, onEditAvatar?, onRename?(name) } 或 null（不显示）；portraits.default 有值时顶部显示立绘 */
+        /** provider() 返回 { name, avatarUrl, portraits?, onEditAvatar?, onRename?(name) } 或 null（不显示）；portraits.default 有值时顶部显示立绘 */
         setLauncherProfileProvider(provider) {
             launcher.setProfileProvider(provider);
+        },
+
+        /** 情绪源的画面 { state, emotion, intensity, source }：有差分立绘时首页立绘跟着换 */
+        setLauncherPortraitFrame(frame) {
+            if (!isDisposed) launcher.setPortraitFrame(frame);
         },
 
         /** provider() 返回 [{ id, label, title?, open(), mountIcon?(button, iconHost) }]；不设置时只有工具页 */

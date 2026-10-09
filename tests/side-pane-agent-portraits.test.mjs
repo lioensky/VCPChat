@@ -28,7 +28,7 @@ const getPortraits = (id) => handlers.get('get-agent-portraits')({}, id);
 
 test.after(() => fs.rmSync(root, { recursive: true, force: true }));
 
-test('an agent with portrait files gets the default and the light version, other files are ignored', async () => {
+test('an agent with portrait files gets the default, the light version and other variants', async () => {
     const dir = path.join(agentDir, 'Nova');
     fs.mkdirSync(dir);
     for (const name of ['avatar.png', 'portrait.png', 'portrait.light.webp', 'portrait.Smile.jpg', 'portrait.txt', 'portrait..png']) {
@@ -37,7 +37,7 @@ test('an agent with portrait files gets the default and the light version, other
     fs.mkdirSync(path.join(dir, 'portrait.dir.png'));
 
     const portraits = await getPortraits('Nova');
-    assert.deepEqual(Object.keys(portraits).sort(), ['default', 'light']);
+    assert.deepEqual(Object.keys(portraits).sort(), ['default', 'light', 'smile']);
     assert.match(portraits.default, /^file:\/\/.*\/Nova\/portrait\.png\?v=\d+$/);
     assert.match(portraits.light, /\/portrait\.light\.webp\?v=\d+$/);
 });
@@ -56,13 +56,13 @@ test('an agent without a default portrait, a missing agent and unsafe ids get nu
     }
 });
 
-// sharp 的平台二进制是可选依赖（CI 用 --omit=optional 安装时拿不到），缩小图那几条只在 sharp 能加载的机器上跑
+// sharp 是可选依赖（CI 用 --omit=optional 安装，拿不到平台二进制），缩小图那条只在装了 sharp 的机器上跑
 const sharpUnavailable = (() => {
     try {
         require('sharp');
         return false;
     } catch {
-        return 'sharp cannot load here (its platform binary is an optional dependency)';
+        return 'sharp (optional dependency) is not installed here';
     }
 })();
 
@@ -85,13 +85,14 @@ test('without sharp every portrait is served as it is', async () => {
     }
 });
 
-test('a large portrait is served as a cached display-size copy, small ones as they are', { skip: sharpUnavailable }, async () => {
+test('a large portrait is served as a cached display-size copy, small ones and unreadable files as they are', { skip: sharpUnavailable }, async () => {
     const sharp = require('sharp');
     const dir = path.join(agentDir, 'Big');
     fs.mkdirSync(dir);
     const solid = (width, height) => sharp({ create: { width, height, channels: 4, background: { r: 200, g: 120, b: 160, alpha: 0.8 } } });
     await solid(4000, 6000).png().toFile(path.join(dir, 'portrait.png'));
     await solid(600, 900).avif().toFile(path.join(dir, 'portrait.light.avif'));
+    fs.writeFileSync(path.join(dir, 'portrait.broken.png'), 'not an image');
 
     const first = await getPortraits('Big');
     const cached = fileURLToPath(first.default.replace(/\?v=\d+$/, ''));
@@ -99,6 +100,7 @@ test('a large portrait is served as a cached display-size copy, small ones as th
     const meta = await sharp(cached).metadata();
     assert.deepEqual([meta.format, meta.width, meta.height, meta.hasAlpha], ['webp', 1600, 2400, true]);
     assert.match(first.light, /\/Big\/portrait\.light\.avif\?v=\d+$/);
+    assert.match(first.broken, /\/Big\/portrait\.broken\.png\?v=\d+$/);
     assert.deepEqual(await getPortraits('Big'), first);
 
     // 换了原图：生成新的缩小图，旧的删掉
@@ -124,22 +126,12 @@ test('animated PNGs and videos are served as they are, so the animation is kept'
     const ihdrEnd = 8 + 8 + 13 + 4;
     fs.writeFileSync(path.join(dir, 'portrait.png'), Buffer.concat([still.subarray(0, ihdrEnd), acTL, still.subarray(ihdrEnd)]));
     fs.writeFileSync(path.join(dir, 'portrait.light.webm'), 'webm');
+    fs.writeFileSync(path.join(dir, 'portrait.happy.mp4'), 'mp4');
 
     const portraits = await getPortraits('Moving');
     assert.match(portraits.default, /\/Moving\/portrait\.png\?v=\d+$/);
     assert.match(portraits.light, /\/Moving\/portrait\.light\.webm\?v=\d+$/);
-
-    const videoDir = path.join(agentDir, 'MovingVideo');
-    fs.mkdirSync(videoDir);
-    fs.writeFileSync(path.join(videoDir, 'portrait.mp4'), 'mp4');
-    assert.match((await getPortraits('MovingVideo')).default, /\/MovingVideo\/portrait\.mp4\?v=\d+$/);
-});
-
-test('an unreadable portrait is served as it is, so the side pane can fall back to the avatar', { skip: sharpUnavailable }, async () => {
-    const dir = path.join(agentDir, 'Broken');
-    fs.mkdirSync(dir);
-    fs.writeFileSync(path.join(dir, 'portrait.png'), 'not an image');
-    assert.match((await getPortraits('Broken')).default, /\/Broken\/portrait\.png\?v=\d+$/);
+    assert.match(portraits.happy, /\/Moving\/portrait\.happy\.mp4\?v=\d+$/);
 });
 
 test('a phone photo with an EXIF rotation is scaled by its upright size and keeps the whole picture', { skip: sharpUnavailable }, async () => {
@@ -171,8 +163,8 @@ test('saving a portrait replaces the same variant in any extension and leaves th
     assert.deepEqual(fs.readdirSync(dir).sort(), ['portrait.light.png', 'portrait.png']);
     assert.deepEqual(Object.keys(result.portraits).sort(), ['default', 'light']);
 
-    assert.ok((await save('Saver', 'smile', { type: 'image/jpeg', buffer: png.buffer })).error, '只有 default 和 light 两个版本');
-    assert.equal(fs.existsSync(path.join(dir, 'portrait.smile.jpg')), false);
+    await save('Saver', 'Smile', { type: 'image/jpeg', buffer: png.buffer });
+    assert.ok(fs.existsSync(path.join(dir, 'portrait.smile.jpg')));
 
     // 视频可以比图片大；换成视频以后同一版本的图片删掉
     const video = await save('Saver', 'light', { type: 'video/webm', buffer: new ArrayBuffer(21 * 1024 * 1024) });
@@ -185,7 +177,7 @@ test('saving a portrait replaces the same variant in any extension and leaves th
     const removed = await remove('Saver', 'default');
     assert.equal(removed.success, true);
     assert.equal(removed.portraits, null, '没有默认立绘就不算有立绘');
-    assert.deepEqual(fs.readdirSync(dir).sort(), ['portrait.light.png']);
+    assert.deepEqual(fs.readdirSync(dir).sort(), ['portrait.light.png', 'portrait.smile.jpg']);
 });
 
 test('saving rejects unknown agents, bad variants, unsupported types and empty or oversized images', async () => {

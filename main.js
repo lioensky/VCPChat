@@ -89,6 +89,7 @@ const browserHandlers = require('./modules/ipc/browserHandlers'); // 侧栏浏�
 const { createDomainActivator, channelsForDomain } = require('./modules/ipc/domainActivator');
 const { describeApis } = require('./preloads/core/registry');
 const { configureSharedRecorder } = require('./modules/modelTrajectory');
+const { configureAgentMood, getAgentMoodStore } = require('./modules/agentMood');
 const domainActivator = createDomainActivator({ ipcMain });
 // 主进程推送按窗口订阅：只发给订阅了某个主题的窗口（V工程窗口、主窗口的状态面板和侧栏）
 const { createStateSubscriptions } = require('./modules/ipc/stateSubscriptions');
@@ -104,6 +105,8 @@ const ragHandlers = require('./modules/ipc/ragHandlers'); // Import RAG handlers
 const translatorHandlers = require('./modules/ipc/translatorHandlers'); // Import translator handlers
 const voiceHandlers = require('./modules/ipc/voiceHandlers'); // Import voice chat handlers
 const localSttHandlers = require('./modules/ipc/localSttHandlers'); // 本地 SenseVoice 语音识别
+const deskPetHandlers = require('./modules/ipc/deskPetHandlers'); // 桌宠（可选，默认关闭）
+deskPetHandlers.registerSchemes(); // 自定义协议必须在 app ready 之前登记
 // speechRecognizer is now lazy-loaded
 const canvasHandlers = require('./modules/ipc/canvasHandlers'); // Import canvas handlers
 const chartHandlers = require('./modules/ipc/chartHandlers'); // Agent 图表工作台与持久化服务
@@ -540,7 +543,9 @@ function startDistributedServerAfterRenderer() {
                 pluginAgentOperationService,
                 chartService,
                 // 工作区只读门面：direct 插件据此动态获取写入白名单
-                workspaceService: workspaceHandlers.workspaceService
+                workspaceService: workspaceHandlers.workspaceService,
+                // 桌宠：闹钟到点、AI 主动开的新话题，在开着的桌宠上说出来
+                onToolResult: deskPetHandlers.onDistributedToolResult
             });
             distributedServer = server;
             await server.initialize();
@@ -710,6 +715,7 @@ async function performQuitCleanup() {
 
     appQuitCleanupPromise = (async () => {
         await historyWatcherLeases.dispose();
+        await getAgentMoodStore()?.flush().catch(() => {});
 
         try {
             localSttHandlers.shutdown();
@@ -966,7 +972,8 @@ function createTray() {
         await toggleRagObserverVisibility();
     };
 
-    const contextMenu = Menu.buildFromTemplate([
+    // 桌宠那一项会随桌宠开关、免打扰变化（见下面的 setTrayRefresher）
+    const buildContextMenu = () => Menu.buildFromTemplate([
         {
             label: '显示/隐藏主窗口',
             click: () => {
@@ -985,6 +992,7 @@ function createTray() {
                 desktopHandlers.openDesktopWindow();
             }
         },
+        ...deskPetHandlers.trayMenuItems(),
         { type: 'separator' },
         {
             label: '退出',
@@ -1005,13 +1013,21 @@ function createTray() {
 
         // macOS: 右键点击 (tray.on('right-click')) 负责显示菜单
         tray.on('right-click', () => {
-            tray.popUpContextMenu(contextMenu);
+            tray.popUpContextMenu(buildContextMenu());
         });
 
         // 注意：在 macOS 上，不调用 tray.setContextMenu()，以确保左键点击不弹出菜单。
     } else {
         // Windows/Linux: 默认行为。
-        tray.setContextMenu(contextMenu);
+        let trayMenu = buildContextMenu();
+        tray.setContextMenu(trayMenu);
+        // 换下来的旧菜单 Electron 不释放：只是桌宠那几项的勾选、显示变了就改现有菜单再设回去（Linux 要重设才刷新），
+        // 文字或快捷键变了才建新的
+        deskPetHandlers.setTrayRefresher((structureChanged) => {
+            if (!tray || tray.isDestroyed()) return;
+            if (structureChanged || !deskPetHandlers.applyTrayState(trayMenu)) trayMenu = buildContextMenu();
+            tray.setContextMenu(trayMenu);
+        });
         tray.on('click', () => {
             void handleTrayPrimaryAction();
         });
@@ -1542,6 +1558,13 @@ if (!gotTheLock) {
         });
         // 记录器必须早于 chatHandlers.initialize：聊天请求一发出就要有记录器；查看轨迹的 IPC 才按需激活
         configureSharedRecorder({ rootDir: path.join(APP_DATA_ROOT_IN_PROJECT, 'ModelTrajectory') });
+        // 助手的长期心情（Agents/<id>/mood.json）：聊天请求经 chatHandlers 喂进来，变化广播给所有窗口（侧栏立绘、桌宠）
+        configureAgentMood({
+            agentDir: AGENT_DIR,
+            broadcast: payload => BrowserWindow.getAllWindows().forEach((win) => {
+                if (!win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send('agent-mood-changed', payload);
+            }),
+        });
         domainActivator.register('modelTrajectory', {
             allowSender: sidePaneGuard('modelTrajectory'),
             channels: channelsForDomain(preloadApis, 'modelTrajectory'),
@@ -1827,6 +1850,16 @@ if (!gotTheLock) {
         tavernHandlers.initialize({ APP_DATA_ROOT_IN_PROJECT });
         voiceHandlers.initialize({ mainWindow, openChildWindows, settingsManager: appSettingsManager, projectRoot: PROJECT_ROOT });
         localSttHandlers.initialize({ appDataRoot: APP_DATA_ROOT_IN_PROJECT });
+        deskPetHandlers.initialize({
+            mainWindow,
+            projectRoot: PROJECT_ROOT,
+            appDataRoot: APP_DATA_ROOT_IN_PROJECT,
+            agentDir: AGENT_DIR,
+            // 闲时主动搭话：读服务器设置、写「桌宠闲聊」话题（与插件建话题同一套串行写）
+            readSettings: () => appSettingsManager.readSettings(),
+            historyQueue: () => historyMutationQueue,
+            agentOps: () => pluginAgentOperationService,
+        });
 
         ipcMain.on('minimize-to-tray', () => {
             if (mainWindow) {

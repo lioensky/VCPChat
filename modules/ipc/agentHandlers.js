@@ -4,7 +4,13 @@ const fs = require('fs-extra');
 const path = require('path');
 const { pathToFileURL } = require('url');
 const { clearTrajectoriesOfOwner } = require('../modelTrajectory');
+const { getAgentMoodStore } = require('../agentMood');
 const { resolvePortraitDisplayPath, forgetPortraitDisplayImages } = require('../services/agentPortraitImages');
+
+// 桌宠模块用时再取：它在主进程里是单例，测试替身的 electron 里不一定载得进来
+function deskPetHandlers() {
+    try { return require('./deskPetHandlers'); } catch { return null; }
+}
 
 let AGENT_DIR_CACHE; // Cache the agent directory path
 let USER_DATA_DIR_CACHE; // Cache the user data directory path
@@ -36,9 +42,10 @@ async function findAvatarUrl(agentDir, cacheBust = false) {
     return null;
 }
 
-// 立绘：Agent 目录下的 portrait.<ext> 是默认立绘，portrait.light.<ext> 是浅色主题用的版本。
+// 立绘：Agent 目录下的 portrait.<ext> 是默认立绘，portrait.<key>.<ext> 是同一角色的其他版本
+// （light 给浅色主题用；以后的差分立绘也按这个规则取名，不用改读取逻辑）。
 // 立绘可以是图片、动图或静音循环播放的短视频（mp4、webm）。
-const PORTRAIT_FILE_PATTERN = /^portrait(?:\.(light))?(\.(?:png|jpe?g|gif|webp|avif|mp4|webm))$/i;
+const PORTRAIT_FILE_PATTERN = /^portrait(?:\.([a-z0-9_-]{1,32}))?(\.(?:png|jpe?g|gif|webp|avif|mp4|webm))$/i;
 
 function portraitCacheDir() {
     return AGENT_DIR_CACHE ? path.join(path.dirname(AGENT_DIR_CACHE), 'PortraitCache') : null;
@@ -81,7 +88,7 @@ const PORTRAIT_VIDEO_MAX_BYTES = 64 * 1024 * 1024;
 
 function normalizePortraitVariant(variant) {
     const key = typeof variant === 'string' ? variant.trim().toLowerCase() : '';
-    return key === 'default' || key === 'light' ? key : null;
+    return /^[a-z0-9_-]{1,32}$/.test(key) ? key : null;
 }
 
 function portraitBaseName(key) {
@@ -119,13 +126,6 @@ async function writePortraitFile(agentDir, key, ext, buffer) {
         throw error;
     }
     await removePortraitFiles(agentDir, key, target);
-}
-
-// Agent id 只能是 Agents 下的一层目录名
-function resolveAgentDir(agentId) {
-    const id = typeof agentId === 'string' ? agentId : '';
-    if (!AGENT_DIR_CACHE || !id || id !== path.basename(id) || id === '.' || id === '..') return null;
-    return path.join(AGENT_DIR_CACHE, id);
 }
 
 async function getAgentConfigById(agentId) {
@@ -183,6 +183,13 @@ async function getAgentConfigById(agentId) {
  * @param {function} context.startSelectionListener - Function to start the selection listener.
  * @param {object} context.settingsManager - The AppSettingsManager instance.
  */
+// Agent id 只能是 Agents 下的一层目录名
+function resolveAgentDir(agentId) {
+    const id = typeof agentId === 'string' ? agentId : '';
+    if (!AGENT_DIR_CACHE || !id || id !== path.basename(id) || id === '.' || id === '..') return null;
+    return path.join(AGENT_DIR_CACHE, id);
+}
+
 function initialize(context) {
     const { AGENT_DIR, USER_DATA_DIR, SETTINGS_FILE, USER_AVATAR_FILE, settingsManager, agentConfigManager } = context;
     AGENT_DIR_CACHE = AGENT_DIR; // Cache the directory path
@@ -350,7 +357,17 @@ function initialize(context) {
         return agentDir ? findPortraitUrls(agentDir) : null;
     });
 
-    // 设置页上传立绘：variant 为 default 写 portrait.<ext>，light 写 portrait.light.<ext>；
+    // 助手的长期心情（modules/agentMood.js）：侧栏立绘和桌宠在回复的情绪过去以后回到它；读不到时为 null
+    ipcMain.handle('get-agent-mood', async (event, agentId) => {
+        try {
+            return (await getAgentMoodStore()?.get(agentId)) ?? null;
+        } catch (error) {
+            console.warn(`读取 Agent ${agentId} 心情失败:`, error.message);
+            return null;
+        }
+    });
+
+    // 设置页上传立绘：variant 为 default 写 portrait.<ext>，其他键写 portrait.<key>.<ext>；
     // 新图换上以后删掉同一个版本的旧文件（不同扩展名），保证每个版本只有一张图
     ipcMain.handle('save-agent-portrait', async (event, agentId, variant, imageData) => {
         const agentDir = resolveAgentDir(agentId);
@@ -585,6 +602,10 @@ function initialize(context) {
         try {
             const agentDir = path.join(AGENT_DIR, agentId);
             const userDataAgentDir = path.join(USER_DATA_DIR, agentId);
+            // 先让心情不再写、等正在写的 mood.json 写完，否则删目录时可能撞上写入
+            await getAgentMoodStore()?.forget(agentId);
+            // 开着的桌宠先关掉，记下的位置、形象一起忘掉（不然重启后还想恢复一个已经没了的助手）
+            await deskPetHandlers()?.forgetAgent?.(agentId);
             const portraitFiles = (await fs.readdir(agentDir).catch(() => []))
                 .filter(name => PORTRAIT_FILE_PATTERN.test(name))
                 .map(name => path.join(agentDir, name));

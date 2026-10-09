@@ -53,6 +53,8 @@ function updateVCPLogStatus(statusUpdate, vcpLogConnectionStatusDiv) {
 
 const handledToolApprovalRequestIds = new Set();
 const toolApprovalTimers = new Map();
+// 待批请求 → 应答函数（和卡片上点允许/拒绝走同一条路）；桌宠上点的允许/拒绝从这里进来
+const toolApprovalAnswerers = new Map();
 const TOOL_CHANGE_DIFF_MATRIX_LIMIT = 120000;
 const TOOL_APPROVAL_DIFF_PREVIEW_LINES = 8;
 // AI 常把 EditCode 的 replace 写成这些名字；末尾数字对应编号步骤
@@ -232,6 +234,12 @@ function clearPersistentNotifications({ container = document.getElementById('not
         removed += 1;
     });
     return { success: true, removed };
+}
+
+// 桌宠上点了允许/拒绝：按主窗口卡片的流程应答（理由框里写了字也一起带上），已经答过、过期的不管
+function answerToolApproval(requestId, approved) {
+    const answer = toolApprovalAnswerers.get(String(requestId));
+    return answer ? answer(approved === true) : false;
 }
 
 function sendToolApprovalResponse(requestId, approved, reason = '') {
@@ -852,6 +860,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
                 dismissToolApprovalNotifications(requestId, { approved, reason: suppliedReason });
                 return true;
             };
+            toolApprovalAnswerers.set(String(logData.data.requestId), approved => finishApproval(approved));
 
             if (hasToolChangePreview) {
                 const auditBtn = document.createElement('button');
@@ -1007,6 +1016,8 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
             }
             toolApprovalTimers.delete(requestId);
         }
+        toolApprovalAnswerers.delete(String(requestId));
+        notificationRendererApi?.deskPetApprovalSettled?.(String(requestId));
 
         const escapedRequestId = CSS.escape(String(requestId));
         const approvalElements = document.querySelectorAll(`.notification-tool-approval[data-tool-approval-request-id="${escapedRequestId}"]`);
@@ -1106,8 +1117,9 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
     if (isToolApprovalRequest && logData.data?.requestId) {
         const reqId = logData.data.requestId;
         const ttlMs = logData.data.approvalTtlMs;
+        let remainingMs = null;
         if (typeof ttlMs === 'number' && ttlMs > 0) {
-            let remainingMs = ttlMs;
+            remainingMs = ttlMs;
             // 实时请求从收到时起算，避免服务器与本机时钟不一致；只有断线重放的旧请求才按服务器时间扣掉已过去的部分
             if (logData._vcpReplay === true && logData.data.timestamp) {
                 const parsedTime = Date.parse(logData.data.timestamp);
@@ -1126,6 +1138,17 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
                 const cancelTimer = typeof rawTimer === 'function' ? rawTimer : () => clearTimeout(rawTimer);
                 toolApprovalTimers.set(reqId, cancelTimer);
             }
+        }
+        // 还在等人点头：桌宠开着的话让它也问一声
+        if (!handledToolApprovalRequestIds.has(reqId)) {
+            const args = logData.data.args;
+            notificationRendererApi?.deskPetApprovalOffer?.({
+                requestId: reqId,
+                toolName: logData.data.toolName || '',
+                maid: logData.data.maid || '',
+                command: args?.command || (args && typeof args === 'object' ? JSON.stringify(args) : String(args ?? '')),
+                expiresInMs: remainingMs,
+            });
         }
     }
 }
@@ -1210,6 +1233,7 @@ window.notificationRenderer = {
     dismissFloatingToasts,
     initializeFocusCleanup,
     clearPersistentNotifications,
+    answerToolApproval,
     buildToolChangeDiff,
     openToolChangeAuditModal,
     configureCapabilities({ filterManager = null, listenerOwner = null } = {}) {

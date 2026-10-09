@@ -1,0 +1,152 @@
+{
+  "Version": 3,
+  "FileReferences": {
+    "Moc": "NovaChibi.moc3",
+    "Textures": [
+      "NovaChibi.2048/texture_00.png"
+    ],
+    "Physics": "NovaChibi.physics3.json",
+    "DisplayInfo": "NovaChibi.cdi3.json",
+    "Motions": {
+      "Idle": [
+        {
+          "File": "NovaChibi.idle.motion3.json"
+        }
+      ],
+      "Blink": [
+        {
+          "File": "NovaChibi.blink.motion3.json"
+        }
+      ],
+      "Nod": [
+        {
+          "File": "NovaChibi.nod.motion3.json"
+        }
+      ],
+      "Shake": [
+        {
+          "File": "NovaChibi.shake.motion3.json"
+        }
+      ],
+      "Wave": [
+        {
+          "File": "NovaChibi.wave.motion3.json",
+          "FadeInTime": 0.2,
+          "FadeOutTime": 0.3
+        }
+      ],
+      "Salute": [
+        {
+          "File": "NovaChibi.salute.motion3.json",
+          "FadeInTime": 0.2,
+          "FadeOutTime": 0.3
+        }
+      ],
+      "Heart": [
+        {
+          "File": "NovaChibi.heart.motion3.json",
+          "FadeInTime": 0.2,
+          "FadeOutTime": 0.3
+        }
+      ],
+      "Tea": [
+        {
+          "File": "NovaChibi.tea.motion3.json",
+          "FadeInTime": 0.2,
+          "FadeOutTime": 0.3
+        }
+      ],
+      "Typing": [
+        {
+          "File": "NovaChibi.typing.motion3.json",
+          "FadeInTime": 0.2,
+          "FadeOutTime": 0.3
+        }
+      ],
+      "Shrug": [
+        {
+          "File": "NovaChibi.shrug.motion3.json",
+          "FadeInTime": 0.2,
+          "FadeOutTime": 0.3
+        }
+      ],
+      "Akimbo": [
+        {
+          "File": "NovaChibi.akimbo.motion3.json",
+          "FadeInTime": 0.2,
+          "FadeOutTime": 0.3
+        }
+      ],
+      "Cheer": [
+        {
+          "File": "NovaChibi.cheer.motion3.json",
+          "FadeInTime": 0.2,
+          "FadeOutTime": 0.3
+        }
+      ]
+    },
+    "Expressions": [
+      {
+        "Name": "Neutral",
+        "File": "expressions/Neutral.exp3.json"
+      },
+      {
+        "Name": "Happy",
+        "File": "expressions/Happy.exp3.json"
+      },
+      {
+        "Name": "Shy",
+        "File": "expressions/Shy.exp3.json"
+      },
+      {
+        "Name": "Sad",
+        "File": "expressions/Sad.exp3.json"
+      },
+      {
+        "Name": "Angry",
+        "File": "expressions/Angry.exp3.json"
+      },
+      {
+        "Name": "Surprised",
+        "File": "expressions/Surprised.exp3.json"
+      },
+      {
+        "Name": "Tired",
+        "File": "expressions/Tired.exp3.json"
+      },
+      {
+        "Name": "Stars",
+        "File": "expressions/Stars.exp3.json"
+      },
+      {
+        "Name": "Wink",
+        "File": "expressions/Wink.exp3.json"
+      },
+      {
+        "Name": "Smug",
+        "File": "expressions/Smug.exp3.json"
+      },
+      {
+        "Name": "Speechless",
+        "File": "expressions/Speechless.exp3.json"
+      }
+    ]
+  },
+  "Groups": [
+    {
+      "Target": "Parameter",
+      "Name": "EyeBlink",
+      "Ids": [
+        "ParamEyeLOpen",
+        "ParamEyeROpen"
+      ]
+    },
+    {
+      "Target": "Parameter",
+      "Name": "LipSync",
+      "Ids": [
+        "ParamMouthOpenY"
+      ]
+    }
+  ]
+}

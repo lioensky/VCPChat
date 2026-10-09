@@ -64,6 +64,7 @@ html .side-code-loading .vcp-ui-icon.spin:where(.vcp-ui-scope, .vcp-ui-scope *) 
     html .side-pane-launcher-tabs:where(.vcp-ui-scope, .vcp-ui-scope *)::before,
     html .side-pane-launcher-profile:where(.vcp-ui-scope, .vcp-ui-scope *),
     html .side-pane-launcher-portrait:where(.vcp-ui-scope, .vcp-ui-scope *),
+    html .side-pane-launcher-portrait-layer:where(.vcp-ui-scope, .vcp-ui-scope *),
     html #sidePaneViewLauncher[data-launcher-segment="notifications"] .side-pane-launcher-profile:where(.vcp-ui-scope, .vcp-ui-scope *),
     html :is(.side-pane-launcher-tab, .side-pane-launcher-notice, .side-traj-chevron, .side-traj-switch, .side-git-chevron, .side-plan-crumb-caret):where(.vcp-ui-scope, .vcp-ui-scope *),
     html .side-traj-switch:where(.vcp-ui-scope, .vcp-ui-scope *)::after,

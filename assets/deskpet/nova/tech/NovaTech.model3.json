@@ -1,0 +1,88 @@
+{
+  "Version": 3,
+  "FileReferences": {
+    "Moc": "NovaTech.moc3",
+    "Textures": [
+      "NovaTech.2048/texture_00.png"
+    ],
+    "Physics": "NovaTech.physics3.json",
+    "DisplayInfo": "NovaTech.cdi3.json",
+    "Motions": {
+      "Idle": [
+        {
+          "File": "NovaTech.idle.motion3.json"
+        }
+      ],
+      "Blink": [
+        {
+          "File": "NovaTech.blink.motion3.json"
+        }
+      ],
+      "Nod": [
+        {
+          "File": "NovaTech.nod.motion3.json"
+        }
+      ],
+      "Shake": [
+        {
+          "File": "NovaTech.shake.motion3.json"
+        }
+      ]
+    },
+    "Expressions": [
+      {
+        "Name": "Neutral",
+        "File": "expressions/Neutral.exp3.json"
+      },
+      {
+        "Name": "Happy",
+        "File": "expressions/Happy.exp3.json"
+      },
+      {
+        "Name": "Shy",
+        "File": "expressions/Shy.exp3.json"
+      },
+      {
+        "Name": "Sad",
+        "File": "expressions/Sad.exp3.json"
+      },
+      {
+        "Name": "Angry",
+        "File": "expressions/Angry.exp3.json"
+      },
+      {
+        "Name": "Surprised",
+        "File": "expressions/Surprised.exp3.json"
+      },
+      {
+        "Name": "Tired",
+        "File": "expressions/Tired.exp3.json"
+      },
+      {
+        "Name": "Excited",
+        "File": "expressions/Excited.exp3.json"
+      },
+      {
+        "Name": "Concerned",
+        "File": "expressions/Concerned.exp3.json"
+      }
+    ]
+  },
+  "Groups": [
+    {
+      "Target": "Parameter",
+      "Name": "EyeBlink",
+      "Ids": [
+        "ParamEyeLOpen",
+        "ParamEyeROpen"
+      ]
+    },
+    {
+      "Target": "Parameter",
+      "Name": "LipSync",
+      "Ids": [
+        "ParamMouthOpenY"
+      ]
+    }
+  ]
+}

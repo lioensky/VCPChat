@@ -4,14 +4,26 @@ import json
 import os
 import subprocess
 
-def print_json_output(status, result=None, error=None):
+def print_json_output(status, result=None, error=None, extra=None):
     """Helper function to format and print JSON output."""
     output = {"status": status}
     if result is not None:
         output["result"] = result
     if error is not None:
         output["error"] = error
+    if extra:
+        output.update(extra)
     print(json.dumps(output, ensure_ascii=False))
+
+def alarm_due_info(time_description, reminder_text):
+    try:
+        import dateparser
+        target = dateparser.parse(time_description, settings={'PREFER_DATES_FROM': 'future'})
+    except Exception:
+        return None
+    if not target:
+        return None
+    return {"due_at": int(target.timestamp() * 1000), "reminder_text": reminder_text}
 
 def main():
     try:
@@ -67,7 +79,8 @@ def main():
         success_message = f"好的，您的闹钟已经设定成功。时间：{time_description}"
         if reminder_text:
             success_message += f"，提醒事项：{reminder_text}"
-        print_json_output(status="success", result=success_message)
+        # 到点时间（毫秒时间戳），给 VCPChat 桌宠到点提醒用；解析方式与 run_alarm.py 相同，算不出就不带
+        print_json_output(status="success", result=success_message, extra=alarm_due_info(time_description, reminder_text))
         sys.stdout.flush()
 
     except Exception as e:

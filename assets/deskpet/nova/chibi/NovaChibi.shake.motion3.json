@@ -1,0 +1,193 @@
+{
+  "Version": 3,
+  "Meta": {
+    "Duration": 2.0,
+    "Fps": 30.0,
+    "Loop": false,
+    "AreBeziersRestricted": true,
+    "CurveCount": 12,
+    "TotalSegmentCount": 21,
+    "TotalPointCount": 33,
+    "UserDataCount": 0,
+    "TotalUserDataSize": 0
+  },
+  "Curves": [
+    {
+      "Target": "Parameter",
+      "Id": "ParamAngleX",
+      "Segments": [
+        0.0,
+        0.0,
+        0,
+        0.4,
+        -20.0,
+        0,
+        0.9,
+        20.0,
+        0,
+        1.4,
+        -8.0,
+        0,
+        2.0,
+        0.0
+      ]
+    },
+    {
+      "Target": "Parameter",
+      "Id": "ParamBodyAngleX",
+      "Segments": [
+        0.0,
+        0.0,
+        0,
+        0.4,
+        -3.0,
+        0,
+        0.9,
+        3.0,
+        0,
+        1.4,
+        -1.2,
+        0,
+        2.0,
+        0.0
+      ]
+    },
+    {
+      "Target": "Parameter",
+      "Id": "ParamAngleZ",
+      "Segments": [
+        0.0,
+        -0.0,
+        0,
+        0.4,
+        2.0,
+        0,
+        0.9,
+        -2.0,
+        0,
+        1.4,
+        1.0,
+        0,
+        2.0,
+        -0.0
+      ]
+    },
+    {
+      "Target": "Parameter",
+      "Id": "ParamActWave",
+      "Segments": [
+        0.0,
+        0.0,
+        0,
+        2.0,
+        0.0
+      ],
+      "FadeInTime": 0.0,
+      "FadeOutTime": 0.0
+    },
+    {
+      "Target": "Parameter",
+      "Id": "ParamActSalute",
+      "Segments": [
+        0.0,
+        0.0,
+        0,
+        2.0,
+        0.0
+      ],
+      "FadeInTime": 0.0,
+      "FadeOutTime": 0.0
+    },
+    {
+      "Target": "Parameter",
+      "Id": "ParamActHeart",
+      "Segments": [
+        0.0,
+        0.0,
+        0,
+        2.0,
+        0.0
+      ],
+      "FadeInTime": 0.0,
+      "FadeOutTime": 0.0
+    },
+    {
+      "Target": "Parameter",
+      "Id": "ParamActTea",
+      "Segments": [
+        0.0,
+        0.0,
+        0,
+        2.0,
+        0.0
+      ],
+      "FadeInTime": 0.0,
+      "FadeOutTime": 0.0
+    },
+    {
+      "Target": "Parameter",
+      "Id": "ParamActTyping",
+      "Segments": [
+        0.0,
+        0.0,
+        0,
+        2.0,
+        0.0
+      ],
+      "FadeInTime": 0.0,
+      "FadeOutTime": 0.0
+    },
+    {
+      "Target": "Parameter",
+      "Id": "ParamActShrug",
+      "Segments": [
+        0.0,
+        0.0,
+        0,
+        2.0,
+        0.0
+      ],
+      "FadeInTime": 0.0,
+      "FadeOutTime": 0.0
+    },
+    {
+      "Target": "Parameter",
+      "Id": "ParamActAkimbo",
+      "Segments": [
+        0.0,
+        0.0,
+        0,
+        2.0,
+        0.0
+      ],
+      "FadeInTime": 0.0,
+      "FadeOutTime": 0.0
+    },
+    {
+      "Target": "Parameter",
+      "Id": "ParamActCheer",
+      "Segments": [
+        0.0,
+        0.0,
+        0,
+        2.0,
+        0.0
+      ],
+      "FadeInTime": 0.0,
+      "FadeOutTime": 0.0
+    },
+    {
+      "Target": "Parameter",
+      "Id": "ParamArmsDefault",
+      "Segments": [
+        0.0,
+        0.0,
+        0,
+        2.0,
+        0.0
+      ],
+      "FadeInTime": 0.0,
+      "FadeOutTime": 0.0
+    }
+  ]
+}

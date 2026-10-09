@@ -85,9 +85,9 @@ test('Agent 手风琴与自定义样式折叠展开测试：点击 Header、Togg
     const form = schema.renderAgentSettingsSurface(host, document);
 
     const sections = [...form.querySelectorAll('.agent-settings-section')];
-    assert.equal(sections.length, 6, 'Agent 设置必须有 6 个可折叠分区（含正则设置）');
+    assert.equal(sections.length, 6, 'Agent 设置必须有 6 个可折叠分区（首页立绘在基础信息的自定义样式里）');
 
-    // 逐个测试 6 大主分区点击与键盘切换
+    // 逐个测试 6 个主分区点击与键盘切换
     for (const section of sections) {
         const header = section.querySelector('.agent-settings-section-header');
         const toggle = section.querySelector('.agent-settings-toggle-btn');

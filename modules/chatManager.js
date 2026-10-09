@@ -13,6 +13,23 @@ const settlesWithin = (promise, ms) => new Promise(resolve => {
     promise.then(() => { clearTimeout(timer); resolve(true); }, () => { clearTimeout(timer); resolve(true); });
 });
 
+// 有差分立绘的 agent 要在系统提示词末尾加一段表情标记说明（情绪源和立绘共用 modules/emotion）。
+// 只有主进程能回答「这个 agent 有没有差分」时才按需加载这部分代码。差分关着时不加。
+let emotionPromptModule = null;
+async function resolveEmotionTagPrompt(api, context, agentConfig) {
+    const agentId = context?.itemType === 'agent' ? context.agentId : null;
+    if (!agentId || typeof api?.getAgentPortraits !== 'function') return '';
+    try {
+        const { PORTRAIT_EXPRESSIONS_ENABLED } = await import('./ui-system/side-pane/portrait-features.js');
+        if (!PORTRAIT_EXPRESSIONS_ENABLED) return '';
+        emotionPromptModule ||= import('./emotion/emotionPrompt.js');
+        return await (await emotionPromptModule).resolveEmotionTagPrompt(api, agentId, agentConfig);
+    } catch (error) {
+        console.warn('[ChatManager] Failed to prepare the emotion tag prompt:', error);
+        return '';
+    }
+}
+
 export const chatManager = (() => {
     // --- Private Variables ---
     let electronAPI;
@@ -1698,6 +1715,8 @@ export const chatManager = (() => {
                 }
             }
 
+            // 有差分立绘时请 agent 在回复里带情绪标记，侧栏立绘据此换表情（显示时剥掉）
+            const emotionTagPrompt = await resolveEmotionTagPrompt(electronAPI, sendContext, agentConfig);
             const orchestrated = await singleChatRequestOrchestrator.buildRequest({
                 settings: globalSettings,
                 agentConfig,
@@ -1706,6 +1725,7 @@ export const chatManager = (() => {
                 context: sendContext,
                 currentUserMessageId: userMessage.id,
                 systemPromptPrefix: systemPromptPrefix.join('\n'),
+                systemPromptAppend: emotionTagPrompt,
                 transformMessageText: ({ text, message }) => {
                     // Preserve the established behavior: context regexes apply
                     // to prior context, while the just-submitted user text is
