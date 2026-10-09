@@ -123,6 +123,37 @@ body.is-ghost-hover #stage {
   pointer-events: auto;
 }
 
+#sessionCard {
+  flex: 0 0 auto;
+  width: min(100%, 340px);
+  box-sizing: border-box;
+  padding: 12px 18px;
+  border: 0;
+  border-radius: 26px;
+  background: #fff;
+  color: #1f2328;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 4px 14px rgba(0, 0, 0, 0.14);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease, box-shadow 120ms ease;
+}
+#sessionCard[hidden] { display: none; }
+#sessionCard:hover { background: #f8f9fa; }
+#sessionCard:active { background: #f1f2f4; }
+#sessionCard:focus-visible { outline: 2px solid #1f2328; outline-offset: 2px; }
+#sessionTitle, #sessionStatus {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.45;
+}
+#sessionTitle { font-size: 14px; font-weight: 600; }
+#sessionStatus { font-size: 12px; color: #767b82; }
+/* 审批优先占用头顶空间，避免短窗口里挤出允许/拒绝按钮。 */
+#uiStack:has(#approvalCard:not([hidden])) #sessionCard { display: none; }
+
 #bubble {
   position: relative;
   display: flex;

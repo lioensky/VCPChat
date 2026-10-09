@@ -25,6 +25,8 @@ import { createLive2DBackend, live2DFailureText } from 'vcp-deskpet://pet/app/li
 import { createPuppetBackend } from 'vcp-deskpet://pet/app/puppetBackend.js';
 import { createImageBackend } from 'vcp-deskpet://pet/app/imageBackend.js';
 import { createLifeFx } from 'vcp-deskpet://pet/app/lifeFx.js';
+import { dockHitArea, containsPoint } from 'vcp-deskpet://pet/app/dockHitArea.js';
+import { createSessionCard } from 'vcp-deskpet://pet/app/sessionCard.js';
 
 const api = window.deskPetAPI;
 const PREVIEW = new URLSearchParams(location.search).has('preview');
@@ -698,6 +700,7 @@ function bindComposer() {
 
 // 气泡、输入框这些界面元素也要能点到（按像素穿透只看角色本身）。
 function uiAt(x, y) {
+    if ((dock.mode === 'hidden' || dock.mode === 'pill') && containsPoint(dockHitArea(innerWidth, innerHeight), x, y)) return true;
     return Boolean(document.elementFromPoint(x, y)?.closest('.pet-ui'));
 }
 
@@ -715,7 +718,8 @@ function uiBounds({ withIdleDock = false, withBadge = true } = {}) {
     for (const el of document.querySelectorAll('.pet-ui')) {
         if (el.hidden || (el.dataset.mode === 'hidden' && !withIdleDock)) continue;
         if (!withBadge && el.id === 'missedBadge') continue;
-        const r = el.getBoundingClientRect();
+        const r = el.id === 'dock' && withIdleDock && (dock.mode === 'hidden' || dock.mode === 'pill')
+            ? dockHitArea(innerWidth, innerHeight) : el.getBoundingClientRect();
         if (!r.width || !r.height) continue;
         rect = rect ? union(rect, r) : { x: r.x, y: r.y, width: r.width, height: r.height };
     }
@@ -730,7 +734,7 @@ function aimBubble(headX) {
     const stack = $('uiStack');
     const room = stack.clientWidth;
     const left = stack.getBoundingClientRect().left;
-    for (const el of [$('bubble'), $('toolCard'), $('approvalCard')]) {
+    for (const el of [$('sessionCard'), $('bubble'), $('toolCard'), $('approvalCard')]) {
         if (el.hidden) continue;
         const width = el.offsetWidth;
         const slack = Math.max(0, (room - width) / 2);
@@ -917,8 +921,8 @@ function reportHit(hit) {
         lastHit = hit;
         hitFromDrag = false;
         api.setHit(hit);
-        dockHover(hit);
     }
+    dockHover(hit);
 }
 
 // ---- 回复流 → 导演与气泡 ----------------------------------------------------------
@@ -1120,8 +1124,12 @@ function pixiEnv() {
 }
 
 async function start() {
+    const sessionCard = PREVIEW ? null : createSessionCard({
+        card: $('sessionCard'), title: $('sessionTitle'), status: $('sessionStatus'), api,
+    });
     const assets = await api.getAssets();
     if (!assets) return;
+    sessionCard?.initialize(assets);
     applyPrefs(await api.getPrefs?.().catch(() => null));
     api.onPrefs?.(applyPrefs);
     bindWalk();
@@ -1316,6 +1324,7 @@ async function start() {
             } else if (kind === 'end' && drag) {
                 drag = null;
                 dock.dragging = false;
+                dock.hover = false;
                 backend.life?.held(false);
                 lifeFx.held(false);
                 life.hold('drag', false);

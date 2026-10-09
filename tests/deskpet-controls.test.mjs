@@ -522,7 +522,8 @@ test('words for a pet whose page fails to start come back as not sent', async ()
     const env = await loadHandlers();
     const talk = env.fake.handlers.get('deskpet-settings:talk');
     const pending = talk(fromMain(env), 'Coco', '你好');
-    await sleep(30);
+    // 文件系统忙时模型清单未必能在 30 ms 内读完，等窗口实际创建。
+    for (let i = 0; i < 100 && !env.petWindows().length; i++) await sleep(20);
     const pet = env.petWindows()[0];
     env.fake.listeners.get('deskpet:page-failed')({ sender: pet.webContents }, '模型载不进来');
     const result = await pending;

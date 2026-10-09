@@ -1,6 +1,6 @@
 /* 桌宠脚边的小胶囊（桌宠页面和设置页预览共用这一份样式）。
    同一个 .pet-dock 有四个样子，切换时宽高和内容都有过渡：
-     hidden  收起：脚边一道小横条（只是个记号，点不到）
+     hidden  收起：脚边一道小横条，悬停可以展开
      pill    小胶囊：打字 | 说话 | 收起
      bar     输入条：开新话题、输入框、发送
      rec     录音：打字 | 停止（光圈跟着音量动），.is-busy 时在识别
@@ -39,7 +39,7 @@
   /* 贴在脚底下、胶囊上沿的位置：光标一来，从这道横条往两边、往下撑开成胶囊 */
   transform: translateY(-32px);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1), 0 1px 4px rgba(0, 0, 0, 0.22);
-  pointer-events: none;
+  pointer-events: auto;
   /* 收的时候先让里面的按钮淡掉，外框再缩 */
   transition:
     width 320ms cubic-bezier(.4, 0, .2, 1) 60ms,
