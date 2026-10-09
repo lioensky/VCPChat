@@ -5,7 +5,8 @@ import {
     PORTRAIT_HEIGHT_RANGE,
     applyPortraitDisplay,
     isDefaultPortraitDisplay,
-    normalizePortraitDisplay
+    normalizePortraitDisplay,
+    portraitFocus
 } from './side-pane/portrait-display.js';
 import {
     PORTRAIT_ACCEPT,
@@ -151,8 +152,9 @@ export function createAgentPortraitSettings({ host, api, win = globalThis.window
         const shownUrl = effectiveUrl(shownVariant);
         if (preview) {
             preview.dataset.empty = String(!shownUrl);
-            applyPortraitDisplay(preview, display);
-            preview.setAttribute('aria-valuetext', `焦点 左右 ${display.focusX}%，上下 ${display.focusY}%`);
+            const focus = portraitFocus(display, previewTheme);
+            applyPortraitDisplay(preview, display, previewTheme);
+            preview.setAttribute('aria-valuetext', `${previewTheme === 'light' ? '浅色' : '深色'}焦点 左右 ${focus.focusX}%，上下 ${focus.focusY}%`);
             preview.tabIndex = shownUrl ? 0 : -1;
         }
         previewImage = showMedia(previewImage, shownUrl, isVideo(shownVariant));
@@ -168,7 +170,7 @@ export function createAgentPortraitSettings({ host, api, win = globalThis.window
             heightInput.disabled = !defaultUrl;
         }
         if (heightValue) heightValue.textContent = `${display.height}px`;
-        if (resetButton) resetButton.disabled = !defaultUrl || isDefaultPortraitDisplay(display);
+        if (resetButton) resetButton.disabled = !defaultUrl || isDefaultPortraitDisplay(display, previewTheme);
     }
 
     // 表单里的改动都通过一次冒泡的 change 让设置页标记「未保存」并刷新摘要
@@ -183,6 +185,13 @@ export function createAgentPortraitSettings({ host, api, win = globalThis.window
         if (Object.keys(value).every(key => value[key] === display[key])) return;
         display = value;
         changed();
+    }
+
+    // 主题切换只切换正在编辑的焦点，高度和首页显示模式仍然共用。
+    function setFocus(next) {
+        setDisplay(previewTheme === 'light'
+            ? { lightFocusX: next.focusX, lightFocusY: next.focusY }
+            : next);
     }
 
     function stage(variant, file) {
@@ -280,14 +289,19 @@ export function createAgentPortraitSettings({ host, api, win = globalThis.window
         setDisplay({ height: heightInput.value });
     });
     on(heightInput, 'change', event => event.stopPropagation());
-    on(resetButton, 'click', () => setDisplay({ ...PORTRAIT_DISPLAY_DEFAULTS }));
+    on(resetButton, 'click', () => {
+        const { focusX, focusY, height } = PORTRAIT_DISPLAY_DEFAULTS;
+        setDisplay(previewTheme === 'light'
+            ? { lightFocusX: focusX, lightFocusY: focusY, height }
+            : { focusX, focusY, height });
+    });
 
     // 在预览上点或拖：把这一点设成焦点；方向键每次挪 2%
     let dragging = null;
     const focusFromPointer = (event) => {
         const rect = preview.getBoundingClientRect();
         if (!rect.width || !rect.height) return;
-        setDisplay({
+        setFocus({
             focusX: ((event.clientX - rect.left) / rect.width) * 100,
             focusY: ((event.clientY - rect.top) / rect.height) * 100
         });
@@ -316,7 +330,8 @@ export function createAgentPortraitSettings({ host, api, win = globalThis.window
         const move = moves[event.key];
         if (!move) return;
         event.preventDefault();
-        setDisplay({ focusX: display.focusX + move[0], focusY: display.focusY + move[1] });
+        const focus = portraitFocus(display, previewTheme);
+        setFocus({ focusX: focus.focusX + move[0], focusY: focus.focusY + move[1] });
     });
 
     return Object.freeze({

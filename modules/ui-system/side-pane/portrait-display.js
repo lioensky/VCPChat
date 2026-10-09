@@ -3,8 +3,9 @@
 /**
  * Agent 配置里的 portraitDisplay：立绘在首页头部怎么摆。
  *   header           首页顶部显示什么：'portrait' 立绘（没有立绘时自然是头像）或 'avatar' 头像和名字
- *   focusX / focusY  画面焦点（百分比），窄侧栏裁切时保住这一点
- *   height           立绘头部高度（px）；分类切换条始终落在立绘淡出的位置
+ *   focusX / focusY  深色主题画面焦点（百分比），窄侧栏裁切时保住这一点
+ *   lightFocusX / lightFocusY  浅色主题独立焦点；旧配置沿用原来的焦点
+ *   height           立绘渲染高度（px）；不改变分类切换条和下方组件的位置
  * 读进来的值一律先过 normalizePortraitDisplay，缺的、坏的都回到默认值。
  */
 export const PORTRAIT_DISPLAY_DEFAULTS = Object.freeze({ focusX: 50, focusY: 22, height: 248 });
@@ -19,16 +20,27 @@ const clamp = (value, min, max, fallback) => {
 
 export function normalizePortraitDisplay(raw) {
     const source = raw && typeof raw === 'object' ? raw : {};
+    const focusX = clamp(source.focusX, 0, 100, PORTRAIT_DISPLAY_DEFAULTS.focusX);
+    const focusY = clamp(source.focusY, 0, 100, PORTRAIT_DISPLAY_DEFAULTS.focusY);
     return {
         header: source.header === 'avatar' ? 'avatar' : 'portrait',
-        focusX: clamp(source.focusX, 0, 100, PORTRAIT_DISPLAY_DEFAULTS.focusX),
-        focusY: clamp(source.focusY, 0, 100, PORTRAIT_DISPLAY_DEFAULTS.focusY),
+        focusX,
+        focusY,
+        lightFocusX: clamp(source.lightFocusX ?? focusX, 0, 100, focusX),
+        lightFocusY: clamp(source.lightFocusY ?? focusY, 0, 100, focusY),
         height: clamp(source.height, PORTRAIT_HEIGHT_RANGE.min, PORTRAIT_HEIGHT_RANGE.max, PORTRAIT_DISPLAY_DEFAULTS.height)
     };
 }
 
-export function isDefaultPortraitDisplay(display) {
+export function portraitFocus(display, theme = 'default') {
     const value = normalizePortraitDisplay(display);
+    return theme === 'light'
+        ? { focusX: value.lightFocusX, focusY: value.lightFocusY }
+        : { focusX: value.focusX, focusY: value.focusY };
+}
+
+export function isDefaultPortraitDisplay(display, theme = 'default') {
+    const value = { ...normalizePortraitDisplay(display), ...portraitFocus(display, theme) };
     return Object.keys(PORTRAIT_DISPLAY_DEFAULTS).every(key => value[key] === PORTRAIT_DISPLAY_DEFAULTS[key]);
 }
 
@@ -44,11 +56,12 @@ const DISPLAY_PROPERTIES = [
     '--side-pane-portrait-height',
     '--side-pane-portrait-height-value',
     '--side-pane-portrait-position',
+    '--side-pane-portrait-position-light',
     '--side-pane-portrait-focus-x',
     '--side-pane-portrait-focus-y'
 ];
 
-export function applyPortraitDisplay(element, display) {
+export function applyPortraitDisplay(element, display, theme = 'default') {
     const style = element?.style;
     if (!style) return;
     if (display === null) {
@@ -56,9 +69,11 @@ export function applyPortraitDisplay(element, display) {
         return;
     }
     const value = normalizePortraitDisplay(display);
+    const focus = portraitFocus(value, theme);
     style.setProperty('--side-pane-portrait-height', `${value.height}px`);
     style.setProperty('--side-pane-portrait-height-value', String(value.height));
-    style.setProperty('--side-pane-portrait-position', `${value.focusX}% ${value.focusY}%`);
-    style.setProperty('--side-pane-portrait-focus-x', `${value.focusX}%`);
-    style.setProperty('--side-pane-portrait-focus-y', `${value.focusY}%`);
+    style.setProperty('--side-pane-portrait-position', `${focus.focusX}% ${focus.focusY}%`);
+    style.setProperty('--side-pane-portrait-position-light', `${value.lightFocusX}% ${value.lightFocusY}%`);
+    style.setProperty('--side-pane-portrait-focus-x', `${focus.focusX}%`);
+    style.setProperty('--side-pane-portrait-focus-y', `${focus.focusY}%`);
 }

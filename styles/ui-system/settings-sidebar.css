@@ -3223,11 +3223,11 @@ html .vcp-ui-scope .vcp-settings-schema-surface .agent-portrait-focus-marker[hid
     display: none;
 }
 
-/* 首页分类切换条落在哪：立绘底部往上 76px（按预览比例缩放） */
+/* 首页分类切换条固定在原 200px 立绘时的位置，不随渲染高度移动（按预览比例缩放）。 */
 html .vcp-ui-scope .vcp-settings-schema-surface .agent-portrait-preview-tabs {
     position: absolute;
     left: 50%;
-    top: calc((1 - 76 / var(--side-pane-portrait-height-value, 248)) * 100%);
+    top: calc(124 / var(--side-pane-portrait-height-value, 248) * 100%);
     width: 42%;
     height: calc(30 / var(--side-pane-portrait-height-value, 248) * 100%);
     border-radius: 999px;

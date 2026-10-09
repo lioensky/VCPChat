@@ -152,8 +152,8 @@ html body[data-vcp-theme="light"] .side-pane-launcher-name:not([readonly]):not(:
 }
 
 /* --- 立绘头部：有立绘时顶部是一张铺满宽度、向下渐隐进页面底色的立绘，不显示圆头像和名字 ---
- * 立绘是背景层，跟着页面一起滚；头像区域变成一段留白，分类切换落在立绘已经淡出的位置，
- * 工具列表从立绘下面开始，文字不压在人物上。 */
+ * 立绘是背景层，跟着页面一起滚；头像区域只保留固定留白，
+ * 调整立绘渲染高度不改变分类切换和工具列表的布局位置。 */
 html .side-pane-launcher-portrait:where(.vcp-ui-scope, .vcp-ui-scope *) {
     position: absolute;
     top: 0;
@@ -185,6 +185,11 @@ html .side-pane-launcher-portrait-image:where(.vcp-ui-scope, .vcp-ui-scope *) {
     user-select: none;
 }
 
+/* 即使浅色主题沿用默认图片，也使用浅色主题独立的位置。 */
+html body[data-vcp-theme="light"] .side-pane-launcher-portrait-image:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    object-position: var(--side-pane-portrait-position-light, var(--side-pane-portrait-position, 50% 22%));
+}
+
 /* 浅色主题有专门的浅色立绘就换上，没有就沿用默认那张 */
 html body[data-vcp-theme="light"] .side-pane-launcher-portrait[data-portrait-themed] .side-pane-launcher-portrait-image[data-portrait-theme="default"]:where(.vcp-ui-scope, .vcp-ui-scope *),
 html body:not([data-vcp-theme="light"]) .side-pane-launcher-portrait-image[data-portrait-theme="light"]:where(.vcp-ui-scope, .vcp-ui-scope *) {
@@ -197,11 +202,11 @@ html #sidePaneViewLauncher[data-launcher-segment="notifications"] .side-pane-lau
     transform: translateY(-12px);
 }
 
-/* 立绘模式下头像区域只留高度：分类切换的上沿落在立绘底部往上 76px，正好是淡出的那一段；
- * 立绘高度在助手设置里可调，留白跟着变 */
+/* 组件布局与立绘渲染高度解耦：固定采用原 200px 立绘时的留白（200 - 76）。
+ * 立绘可以向组件背后延伸，但不把分类切换、工具或应用往下挤。 */
 html #sidePaneViewLauncher[data-launcher-portrait] .side-pane-launcher-profile:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    height: calc(var(--side-pane-portrait-height, 248px) - 76px);
-    max-height: calc(var(--side-pane-portrait-height, 248px) - 76px);
+    height: 124px;
+    max-height: 124px;
     padding: 0;
     box-sizing: border-box;
 }

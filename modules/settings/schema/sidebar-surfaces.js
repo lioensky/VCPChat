@@ -353,11 +353,11 @@ function renderAgentPortrait(doc) {
         el(doc, 'span', { class: 'agent-portrait-preview-tabs', 'aria-hidden': 'true' }),
         el(doc, 'span', { class: 'agent-portrait-focus-marker', 'aria-hidden': 'true', hidden: true }),
         el(doc, 'span', { class: 'agent-portrait-preview-empty' }, '还没有立绘，首页显示头像和名字'));
-    const themes = el(doc, 'div', { class: 'agent-portrait-segmented', role: 'group', 'aria-label': '预览主题' },
+    const themes = el(doc, 'div', { class: 'agent-portrait-segmented', role: 'group', 'aria-label': '选择预览和位置编辑的主题' },
         el(doc, 'button', { type: 'button', 'data-portrait-preview-theme': 'default', 'aria-pressed': 'true' }, '深色'),
         el(doc, 'button', { type: 'button', 'data-portrait-preview-theme': 'light', 'aria-pressed': 'false' }, '浅色'));
     const height = el(doc, 'div', { class: 'agent-portrait-height' },
-        el(doc, 'label', { for: 'agentPortraitHeight' }, '立绘高度'),
+        el(doc, 'label', { for: 'agentPortraitHeight' }, '立绘渲染高度'),
         el(doc, 'div', { class: 'slider-container' },
             el(doc, 'input', { id: 'agentPortraitHeight', type: 'range', min: 180, max: 360, step: 4, value: 248 }),
             el(doc, 'span', { id: 'agentPortraitHeightValue', class: 'slider-value-pill' }, '248px')));
@@ -370,7 +370,8 @@ function renderAgentPortrait(doc) {
         el(doc, 'p', { class: 'agent-portrait-hint' }, '选「立绘」时，侧栏首页顶部是一张向下渐隐的立绘，不显示头像和名字；选「头像」时立绘留着但不显示。可以用图片、动图（GIF、WebP、APNG）或视频（MP4、WebM，静音循环播放）。改动点保存后生效。'),
         preview,
         el(doc, 'div', { class: 'agent-portrait-preview-toolbar' }, themes,
-            el(doc, 'button', { type: 'button', id: 'agentPortraitResetBtn', class: 'small-button' }, '重置位置')),
+            el(doc, 'button', { type: 'button', id: 'agentPortraitResetBtn', class: 'small-button' }, '重置当前主题位置')),
+        el(doc, 'p', { class: 'agent-portrait-hint' }, '深色、浅色的位置分别保存：先切换上方主题，再点按、拖动或用方向键调整位置。未上传浅色版时也可单独调整浅色位置。立绘渲染高度两种主题共用，只改变立绘本身，不移动下方组件；重置只恢复当前主题的位置和共用高度。'),
         slot('default', '立绘', '深色主题和没有浅色版时都用这张'),
         slot('light', '浅色主题立绘（可选）', '浅色主题优先用这张'),
         height);

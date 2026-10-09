@@ -4,7 +4,7 @@ import { JSDOM } from 'jsdom';
 
 import { renderAgentSettingsSurface } from '../modules/settings/schema/sidebar-surfaces.js';
 import { createAgentPortraitSettings } from '../modules/ui-system/agent-portrait-settings.js';
-import { normalizePortraitDisplay, PORTRAIT_DISPLAY_DEFAULTS } from '../modules/ui-system/side-pane/portrait-display.js';
+import { applyPortraitDisplay, normalizePortraitDisplay, PORTRAIT_DISPLAY_DEFAULTS } from '../modules/ui-system/side-pane/portrait-display.js';
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
@@ -46,9 +46,10 @@ function setup({ portraits = null } = {}) {
 }
 
 test('portrait display values are clamped and default when missing', () => {
-    assert.deepEqual(normalizePortraitDisplay(null), { header: 'portrait', ...PORTRAIT_DISPLAY_DEFAULTS });
-    assert.deepEqual(normalizePortraitDisplay({ focusX: -5, focusY: 140, height: 9999 }), { header: 'portrait', focusX: 0, focusY: 100, height: 360 });
-    assert.deepEqual(normalizePortraitDisplay({ header: 'avatar', focusX: '40.6', focusY: 'x', height: 100 }), { header: 'avatar', focusX: 41, focusY: 22, height: 180 });
+    assert.deepEqual(normalizePortraitDisplay(null), { header: 'portrait', ...PORTRAIT_DISPLAY_DEFAULTS, lightFocusX: 50, lightFocusY: 22 });
+    assert.deepEqual(normalizePortraitDisplay({ focusX: -5, focusY: 140, height: 9999 }), { header: 'portrait', focusX: 0, focusY: 100, lightFocusX: 0, lightFocusY: 100, height: 360 });
+    assert.deepEqual(normalizePortraitDisplay({ header: 'avatar', focusX: '40.6', focusY: 'x', height: 100 }), { header: 'avatar', focusX: 41, focusY: 22, lightFocusX: 41, lightFocusY: 22, height: 180 });
+    assert.deepEqual(normalizePortraitDisplay({ focusX: 30, focusY: 40, lightFocusX: 120, lightFocusY: -1 }), { header: 'portrait', focusX: 30, focusY: 40, lightFocusX: 100, lightFocusY: 0, height: 248 });
     assert.equal(normalizePortraitDisplay({ header: 'banner' }).header, 'portrait');
 });
 
@@ -139,7 +140,7 @@ test('the header choice picks portrait or avatar, is saved with the display and 
     assert.equal(n.owner.getDisplay().header, 'avatar');
     assert.match(n.owner.summary(), /首页显示头像/);
     n.host.querySelector('#agentPortraitResetBtn').click();
-    assert.deepEqual(n.owner.getDisplay(), { header: 'avatar', focusX: 50, focusY: 22, height: 248 }, '重置位置不动显示选项');
+    assert.deepEqual(n.owner.getDisplay(), { header: 'avatar', focusX: 50, focusY: 22, lightFocusX: 30, lightFocusY: 22, height: 248 }, '重置位置不动显示选项或另一主题位置');
     t.dom.window.close();
     n.dom.window.close();
 });
@@ -186,7 +187,7 @@ test('focus moves with the arrow keys and height and reset feed the saved displa
     const preview = t.host.querySelector('#agentPortraitPreview');
     const key = k => preview.dispatchEvent(new t.win.KeyboardEvent('keydown', { key: k, bubbles: true }));
     key('ArrowRight'); key('ArrowDown');
-    assert.deepEqual(t.owner.getDisplay(), { header: 'portrait', focusX: 52, focusY: 22, height: 260 });
+    assert.deepEqual(t.owner.getDisplay(), { header: 'portrait', focusX: 52, focusY: 22, lightFocusX: 50, lightFocusY: 20, height: 260 });
     assert.equal(preview.style.getPropertyValue('--side-pane-portrait-position'), '52% 22%');
 
     const height = t.host.querySelector('#agentPortraitHeight');
@@ -196,9 +197,62 @@ test('focus moves with the arrow keys and height and reset feed the saved displa
     assert.equal(t.host.querySelector('#agentPortraitHeightValue').textContent, '320px');
 
     t.host.querySelector('#agentPortraitResetBtn').click();
-    assert.deepEqual(t.owner.getDisplay(), { header: 'portrait', ...PORTRAIT_DISPLAY_DEFAULTS });
+    assert.deepEqual(t.owner.getDisplay(), { header: 'portrait', ...PORTRAIT_DISPLAY_DEFAULTS, lightFocusX: 50, lightFocusY: 20 });
     assert.equal(t.host.querySelector('#agentPortraitResetBtn').disabled, true);
     t.dom.window.close();
+});
+
+test('theme positions edit and reset independently and survive saving and reloading', async () => {
+    for (const light of [undefined, 'file:///light']) {
+        const t = setup({ portraits: { default: 'file:///default', ...(light ? { light } : {}) } });
+        await t.owner.load('Nova', { portraitDisplay: { focusX: 30, focusY: 40, height: 260 } });
+        const preview = t.host.querySelector('#agentPortraitPreview');
+        const theme = name => t.host.querySelector(`[data-portrait-preview-theme="${name}"]`).click();
+        const key = name => preview.dispatchEvent(new t.win.KeyboardEvent('keydown', { key: name, bubbles: true }));
+        const reset = () => t.host.querySelector('#agentPortraitResetBtn').click();
+        let changes = 0;
+        t.form.addEventListener('change', () => changes++);
+        theme('light');
+        assert.equal(changes, 0, '切换预览不算修改');
+        key('ArrowRight');
+        assert.equal(t.owner.getDisplay().lightFocusX, 32);
+        assert.equal(t.owner.getDisplay().focusX, 30);
+        assert.equal(preview.style.getPropertyValue('--side-pane-portrait-position'), '32% 40%');
+        preview.getBoundingClientRect = () => ({ left: 0, top: 0, width: 100, height: 100 });
+        preview.dispatchEvent(new t.win.MouseEvent('pointerdown', { button: 0, clientX: 70, clientY: 80, bubbles: true }));
+        assert.equal(t.owner.getDisplay().lightFocusX, 70);
+        assert.equal(t.owner.getDisplay().lightFocusY, 80);
+        theme('default');
+        key('ArrowUp');
+        assert.equal(t.owner.getDisplay().focusY, 38);
+        assert.equal(t.owner.getDisplay().lightFocusY, 80);
+        const saved = JSON.parse(JSON.stringify(t.owner.getDisplay()));
+        await t.owner.load('Nova', { portraitDisplay: saved });
+        assert.deepEqual(t.owner.getDisplay(), saved);
+        theme('light');
+        reset();
+        assert.equal(t.owner.getDisplay().lightFocusX, 50);
+        assert.equal(t.owner.getDisplay().lightFocusY, 22);
+        assert.equal(t.owner.getDisplay().focusX, 30);
+        assert.equal(t.owner.getDisplay().focusY, 38);
+        assert.equal(t.owner.getDisplay().height, 248);
+        assert.equal(t.host.querySelector('#agentPortraitResetBtn').disabled, true);
+        theme('default');
+        assert.equal(t.host.querySelector('#agentPortraitResetBtn').disabled, false);
+        t.owner.dispose();
+        t.dom.window.close();
+    }
+});
+
+test('launcher display publishes both theme positions and clears them when hidden', () => {
+    const dom = new JSDOM('<div id="view"></div>');
+    const view = dom.window.document.getElementById('view');
+    applyPortraitDisplay(view, { focusX: 30, focusY: 40, lightFocusX: 70, lightFocusY: 80 });
+    assert.equal(view.style.getPropertyValue('--side-pane-portrait-position'), '30% 40%');
+    assert.equal(view.style.getPropertyValue('--side-pane-portrait-position-light'), '70% 80%');
+    applyPortraitDisplay(view, null);
+    assert.equal(view.style.length, 0);
+    dom.window.close();
 });
 
 test('the light preview shows the light image when there is one, otherwise the default', async () => {
