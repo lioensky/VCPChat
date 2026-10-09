@@ -1,6 +1,7 @@
 /* Compose the current assistant profile and the app/recommendation sources. */
 export function createSidePaneLauncherWiring({ doc, win, chatAPI, chatManager, uiHelper, selectedItemRef, controller }) {
     const owners = [];
+    let disposed = false;
     const subscriptions = { add: owner => owners.push(owner) };
     // 新标签页顶部显示当前助手：点头像去设置页换头像（群组只显示），点名字直接改名
     const renameSelectedItem = async (item, name) => {
@@ -35,12 +36,40 @@ export function createSidePaneLauncherWiring({ doc, win, chatAPI, chatManager, u
         controller.setLauncherProfileProvider(getLauncherProfile);
         return result;
     };
+    // 立绘按助手现取：主进程只看 Agent 目录里有没有 portrait 图。查过的助手记住结果，切回来马上就是立绘、
+    // 不先闪一下圆头像；每次选中或回到新标签页时后台再查一次（距上次查过 1 秒以上），换了或删了立绘文件也能跟上。
+    // 设置里改了立绘时 force：不等间隔、不管正在进行的查询，后发的查询为准
+    const portraitCache = new Map();
+    const PORTRAIT_RECHECK_MS = 1000;
+    const loadPortraits = (item, { refresh = false, force = false } = {}) => {
+        const id = item?.type === 'agent' ? item.id : null;
+        const api = chatAPI || win.electronAPI;
+        if (!id || typeof api?.getAgentPortraits !== 'function') return;
+        const entry = portraitCache.get(id) || { portraits: null, known: false, loading: null, checkedAt: 0 };
+        portraitCache.set(id, entry);
+        if (!force && (entry.loading || (entry.known && (!refresh || Date.now() - entry.checkedAt < PORTRAIT_RECHECK_MS)))) return;
+        const loading = Promise.resolve(api.getAgentPortraits(id)).then((portraits) => {
+            if (disposed || entry.loading !== loading) return;
+            const next = portraits?.default ? portraits : null;
+            const changed = JSON.stringify(next) !== JSON.stringify(entry.portraits);
+            Object.assign(entry, { portraits: next, known: true, checkedAt: Date.now() });
+            if (changed && selectedItemRef.get()?.id === id) controller.setLauncherProfileProvider(getLauncherProfile);
+        }).catch((error) => {
+            console.warn('[SidePane] Failed to read agent portraits:', error);
+        }).finally(() => {
+            if (entry.loading === loading) entry.loading = null;
+        });
+        entry.loading = loading;
+    };
     const getLauncherProfile = () => {
         const item = selectedItemRef.get();
         if (!item?.id) return null;
+        loadPortraits(item, { refresh: true });
         return {
             name: item.name || '',
             avatarUrl: item.avatarUrl || '',
+            portraits: item.type === 'agent' ? portraitCache.get(item.id)?.portraits || null : null,
+            portraitDisplay: item.config?.portraitDisplay ?? item.portraitDisplay ?? null,
             onEditAvatar: item.type === 'agent' ? () => {
                 win.uiManager?.switchToTab?.('settings');
                 doc.getElementById('agentAvatarInput')?.click();
@@ -49,8 +78,20 @@ export function createSidePaneLauncherWiring({ doc, win, chatAPI, chatManager, u
         };
     };
     controller.setLauncherProfileProvider(getLauncherProfile);
-    const unbindLauncherProfile = chatManager?.onSelectionChange?.(() => controller.setLauncherProfileProvider(getLauncherProfile));
+    const unbindLauncherProfile = chatManager?.onSelectionChange?.(() => {
+        loadPortraits(selectedItemRef.get(), { refresh: true });
+        controller.setLauncherProfileProvider(getLauncherProfile);
+    });
     if (unbindLauncherProfile) subscriptions.add({ dispose: unbindLauncherProfile });
+    // 助手设置里改了立绘（文件或焦点、高度）：当前助手就重新取一次再重画
+    const onPortraitChanged = (event) => {
+        const item = selectedItemRef.get();
+        if (!item?.id || event?.detail?.agentId !== item.id) return;
+        loadPortraits(item, { force: true });
+        controller.setLauncherProfileProvider(getLauncherProfile);
+    };
+    win.addEventListener?.('vcp-agent-portrait-changed', onPortraitChanged);
+    subscriptions.add({ dispose: () => win.removeEventListener?.('vcp-agent-portrait-changed', onPortraitChanged) });
 
     // 新标签页的「应用」页：和顶部「+」启动台是同一批应用、同一套图标和打开方式。
     // 应用页和「推荐」各自一套动态图标，重画一处不会把另一处的画布停掉
@@ -131,5 +172,10 @@ export function createSidePaneLauncherWiring({ doc, win, chatAPI, chatManager, u
         subscriptions.add({ dispose: () => recommendedIcons.dispose() });
     }
 
-    return Object.freeze({ dispose() { owners.splice(0).forEach(owner => owner.dispose?.()); } });
+    return Object.freeze({
+        dispose() {
+            disposed = true;
+            owners.splice(0).forEach(owner => owner.dispose?.());
+        }
+    });
 }

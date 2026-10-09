@@ -1052,7 +1052,7 @@ export function createSidePaneController({
             if (!isDisposed) launcher.renderEntries();
         },
 
-        /** provider() 返回 { name, avatarUrl, onEditAvatar?, onRename?(name) } 或 null（不显示） */
+        /** provider() 返回 { name, avatarUrl, portraits?, portraitDisplay?, onEditAvatar?, onRename?(name) } 或 null（不显示）；portraits.default 有值时顶部显示立绘 */
         setLauncherProfileProvider(provider) {
             launcher.setProfileProvider(provider);
         },

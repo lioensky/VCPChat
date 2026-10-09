@@ -16,9 +16,11 @@ html .side-pane-open-tab-shell:where(.vcp-ui-scope, .vcp-ui-scope *) {
     box-sizing: border-box;
     /* 薄色底透出侧栏磨砂，卡片保持实色；颜色跟主题走，见 side-pane-shell.css */
     background: var(--side-pane-page-bg);
+    position: relative;
 }
 
 html .side-pane-open-tab-content:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: relative;
     display: flex;
     flex-direction: column;
     width: 100%;
@@ -147,6 +149,78 @@ html body[data-vcp-theme="light"] .side-pane-launcher-name:where(.vcp-ui-scope, 
 
 html body[data-vcp-theme="light"] .side-pane-launcher-name:not([readonly]):not(:focus):hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
     background: var(--vcp-ui-port-color-rgba-0-0-0-0-05);
+}
+
+/* --- 立绘头部：有立绘时顶部是一张铺满宽度、向下渐隐进页面底色的立绘，不显示圆头像和名字 ---
+ * 立绘是背景层，跟着页面一起滚；头像区域变成一段留白，分类切换落在立绘已经淡出的位置，
+ * 工具列表从立绘下面开始，文字不压在人物上。 */
+html .side-pane-launcher-portrait:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--side-pane-portrait-height, 248px);
+    overflow: hidden;
+    pointer-events: none;
+    -webkit-mask-image: linear-gradient(to bottom, black 0%, black 38%, color-mix(in srgb, black 55%, transparent) 62%, color-mix(in srgb, black 16%, transparent) 80%, transparent 94%);
+    mask-image: linear-gradient(to bottom, black 0%, black 38%, color-mix(in srgb, black 55%, transparent) 62%, color-mix(in srgb, black 16%, transparent) 80%, transparent 94%);
+    transition:
+        opacity var(--vcp-motion-duration-standard) var(--vcp-motion-ease-standard),
+        transform var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
+}
+
+html .side-pane-launcher-portrait[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-pane-launcher-portrait-image[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: none;
+}
+
+html .side-pane-launcher-portrait-image:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: var(--side-pane-portrait-position, 50% 22%);
+    user-select: none;
+}
+
+/* 浅色主题有专门的浅色立绘就换上，没有就沿用默认那张 */
+html body[data-vcp-theme="light"] .side-pane-launcher-portrait[data-portrait-themed] .side-pane-launcher-portrait-image[data-portrait-theme="default"]:where(.vcp-ui-scope, .vcp-ui-scope *),
+html body:not([data-vcp-theme="light"]) .side-pane-launcher-portrait-image[data-portrait-theme="light"]:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: none;
+}
+
+/* 通知页收起头部时立绘一起淡出 */
+html #sidePaneViewLauncher[data-launcher-segment="notifications"] .side-pane-launcher-portrait:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    opacity: 0;
+    transform: translateY(-12px);
+}
+
+/* 立绘模式下头像区域只留高度：分类切换的上沿落在立绘底部往上 76px，正好是淡出的那一段；
+ * 立绘高度在助手设置里可调，留白跟着变 */
+html #sidePaneViewLauncher[data-launcher-portrait] .side-pane-launcher-profile:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    height: calc(var(--side-pane-portrait-height, 248px) - 76px);
+    max-height: calc(var(--side-pane-portrait-height, 248px) - 76px);
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html #sidePaneViewLauncher[data-launcher-portrait] :is(.side-pane-launcher-avatar, .side-pane-launcher-name):where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: none;
+}
+
+html #sidePaneViewLauncher[data-launcher-portrait][data-launcher-segment="notifications"] .side-pane-launcher-profile:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    height: 0;
+    max-height: 0;
+}
+
+/* 分类切换压在立绘淡出的尾巴上：给它一层页面底色的半透明底，保证字看得清 */
+html #sidePaneViewLauncher[data-launcher-portrait] .side-pane-launcher-tabs:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--vcp-ui-bg-primary) 55%, transparent);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
 }
 
 /* 分类切换：等宽格子，选中底是一块滑块，切换时滑过去。
