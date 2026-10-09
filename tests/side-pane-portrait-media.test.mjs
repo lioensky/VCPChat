@@ -118,3 +118,23 @@ test('a video that cannot be read falls back to the avatar', async () => {
     t.owner.dispose();
     t.dom.window.close();
 });
+
+test('releasing media frees what is on the page but leaves a detached img alone', async () => {
+    const { releasePortraitMedia } = await import('../modules/ui-system/side-pane/portrait-media.js');
+    const { window } = new JSDOM('<div id="box"><img src="a.png"><img src="b.png"></div>');
+    const [onPage, removed] = window.document.querySelectorAll('img');
+    removed.remove();
+    releasePortraitMedia(onPage);
+    // Chromium never collects an img whose src is removed after it left the page
+    releasePortraitMedia(removed);
+    assert.equal(onPage.hasAttribute('src'), false);
+    assert.equal(removed.getAttribute('src'), 'b.png');
+    const video = window.document.createElement('video');
+    video.setAttribute('src', 'a.mp4');
+    let reloaded = 0;
+    video.pause = () => {};
+    video.load = () => { reloaded += 1; };
+    releasePortraitMedia(video);
+    assert.equal(video.hasAttribute('src'), false, 'a detached video still stops and drops its decoder');
+    assert.equal(reloaded, 1);
+});

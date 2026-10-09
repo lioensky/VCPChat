@@ -64,9 +64,12 @@ export function createPortraitMediaLike(template, video) {
     return next;
 }
 
-/** 视频停下并放掉解码器；img 只去掉 src */
+/** 视频停下并放掉解码器；页面上的 img 去掉 src，已经拿下来的 img 不动 */
 export function releasePortraitMedia(node) {
     if (!node) return;
+    // Chromium 里给已经脱离页面的 img 去掉 src，这个 img 就再也不会被回收（实测每换一次留一个）；
+    // 不碰它的话没有别的引用，连同解码好的位图一起被回收。
+    if (!isVideoElement(node) && node.isConnected === false) return;
     const hadSource = node.hasAttribute?.('src');
     node.removeAttribute?.('src');
     if (isVideoElement(node) && hadSource) {
