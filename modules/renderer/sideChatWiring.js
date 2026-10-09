@@ -637,8 +637,9 @@ export function createSideChatWiring({
     const selectionEntry = win.openSideChatWithSelection;
     // 还没显示过的辅助对话（恢复出来、没挂载）关闭前同样确认：有记录或草稿就问一句，和挂载后的 requestClose 一致
     async function requestTabClose(descriptor) {
-        // 分形树分支：仅关闭视图 Tab，不物理销毁子话题，随时可从脉络图重开
-        if (descriptor?.forkFromTopicId || descriptor?.rootTopicId) {
+        // 分形树子分支：仅关闭视图 Tab，不物理销毁子话题，随时可从脉络图重开。
+        // 判别只认 forkFromTopicId：rootTopicId 对根侧聊也指向自己，不能作为分支依据
+        if (descriptor?.forkFromTopicId) {
             return { closed: true };
         }
         if (typeof uiHelper?.showConfirmDialog !== 'function') return { closed: true };
@@ -667,8 +668,8 @@ export function createSideChatWiring({
         const agentId = descriptor?.child?.itemId || descriptor?.parent?.itemId;
         const childTopicId = descriptor?.child?.topicId;
         if (!agentId || !childTopicId) return;
-        // 分形树分支：关闭 Tab 不物理删除分支子话题，保留在脉络图中随时可重新激活
-        if (descriptor?.forkFromTopicId || descriptor?.rootTopicId) {
+        // 分形树子分支：关闭 Tab 不物理删除子话题，保留在脉络图中随时可重新激活
+        if (descriptor?.forkFromTopicId) {
             return;
         }
         const result = await deleteSideChatChild({ electronAPI: chatAPI, agentId, childTopicId });

@@ -862,8 +862,9 @@ export async function mountSideChatSurface(container, {
                 chatCapabilities?.uiHelper?.showToastNotification?.('无法关闭标签页：存在未保存的历史记录。请点击保存徽标重试，或右键点击徽标放弃更改。', 'warning');
                 return { closed: false, reason: 'UNSAVED_CHANGES' };
             }
-            // 分形分支关闭 Tab 时不删除子话题（随时可在脉络图中重开）；普通独立侧聊保留关闭确认
-            const isBranch = Boolean(currentDescriptor?.forkFromTopicId || currentDescriptor?.rootTopicId);
+            // 分形子分支关闭 Tab 时不删除子话题（随时可在脉络图中重开）；
+            // 根侧聊（forkFromTopicId 为空）保留原关闭确认与删除语义
+            const isBranch = Boolean(currentDescriptor?.forkFromTopicId);
             if (!isBranch) {
                 const uiHelper = chatCapabilities?.uiHelper;
                 const history = liveConversation?.historyRef?.get?.() || [];

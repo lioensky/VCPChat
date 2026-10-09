@@ -389,7 +389,10 @@ function initialize(paths) {
             }
             await removeChildDir(topicDir);
             await clearTrajectoryOf({ agentId, topicId: childTopicId });
-            return { success: true, removed: true, cascaded: doomed.size };
+            // 契约保持：无级联时不附加字段，旧调用方与测试的 deepEqual 不受影响
+            return doomed.size > 0
+                ? { success: true, removed: true, cascaded: doomed.size }
+                : { success: true, removed: true };
         } catch (error) {
             console.error('[SideChatHandlers] delete-child error:', error);
             return { success: false, error: error.message };
