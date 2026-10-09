@@ -54,6 +54,9 @@ echo Dependencies, caches, build outputs, media and model files are filtered.
 echo.
 %PYTHON_CMD% "%TREE_SCRIPT%" --root "%PROJECT_ROOT%." --output "%TREE_OUTPUT%" ^
     --ext "js,mjs,cjs,ts,tsx,jsx,vue,svelte,html,htm,css,scss,sass,less,py,pyi,ipynb,rs,go,c,cpp,cc,cxx,h,hpp,hxx,java,kt,kts,cs,swift,php,rb,lua,r,sql,sh,bash,zsh,bat,cmd,vbs,ps1,psm1,psd1,json,jsonc,json5,yaml,yml,toml,xml,ini,cfg,conf,properties,md,rst,txt,lock,example" ^
+    --exclude doc --exclude docs --exclude documentation ^
+    --exclude test --exclude tests --exclude __tests__ ^
+    --exclude example --exclude examples ^
     --exclude artifacts --exclude screenshots --exclude test-results ^
     --exclude reports --exclude models --exclude checkpoints ^
     --exclude pretrained_models --exclude site-packages ^
