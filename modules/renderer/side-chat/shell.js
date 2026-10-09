@@ -17,6 +17,8 @@ export function createSideChatShell({
     container.innerHTML = `
       <div class="side-chat-surface" aria-label="辅助对话">
         <span class="side-chat-topic-title sr-only" title="${escapeHtml(descriptor.title)}">${escapeHtml(descriptor.title)}</span>
+        <div class="side-chat-branch-rail-slot"></div>
+        <div class="side-chat-pedigree-bridge" hidden aria-label="分支溯源"></div>
         <div class="side-chat-messages-container" tabindex="-1" aria-label="辅助对话消息">
           <div class="side-chat-empty-state" aria-hidden="true">
             <span class="vcp-ui-icon side-chat-empty-icon">chat_bubble</span>
@@ -82,6 +84,10 @@ export function createSideChatShell({
 
     const root = container.querySelector('.side-chat-messages-container');
 
+    const branchRailSlot = container.querySelector('.side-chat-branch-rail-slot');
+
+    const pedigreeBridge = container.querySelector('.side-chat-pedigree-bridge');
+
     const form = container.querySelector('.side-chat-composer');
 
     const textarea = form.querySelector('.side-chat-textarea');
@@ -108,5 +114,5 @@ export function createSideChatShell({
 
     const attachmentPreview = form.querySelector('.side-chat-attachment-preview');
 
-    return Object.freeze({ root, form, textarea, sendBtn, stopBtn, statusText, persistenceBadge, referenceList, modelPickerBtn, modelPopover, modelNameSpan, attachBtn, emoticonBtn, attachmentPreview, dispose() {  } });
+    return Object.freeze({ root, branchRailSlot, pedigreeBridge, form, textarea, sendBtn, stopBtn, statusText, persistenceBadge, referenceList, modelPickerBtn, modelPopover, modelNameSpan, attachBtn, emoticonBtn, attachmentPreview, dispose() {  } });
 }

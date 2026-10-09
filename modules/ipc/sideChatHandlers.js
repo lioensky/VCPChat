@@ -69,7 +69,12 @@ const CHANNELS = [
     'side-chat:create-snapshot',
     'side-chat:create-child',
     'side-chat:delete-child',
+    'side-chat:update-branch',
+    'side-chat:export-note',
 ];
+
+// 分形分支：允许通过 update-branch 合并更新的字段白名单
+const BRANCH_PATCH_FIELDS = ['rootTopicId', 'forkFromTopicId', 'forkMessageId', 'forkLabel', 'branchTitle', 'title', 'depth', 'crystallized'];
 
 // 侧聊子会话目录标记：仅带此标记的目录才允许被 delete-child 整体删除
 const CHILD_MARKER_FILE = 'sidechat-child.json';
@@ -205,6 +210,14 @@ function initialize(paths) {
                 snapshotId: metadata.snapshotId || null,
                 snapshotBoundary,
                 model: metadata.model || null,
+                // ── 分形分支树拓扑字段（可选；旧侧聊没有这些字段，视为独立根）──
+                rootTopicId: typeof metadata.rootTopicId === 'string' ? metadata.rootTopicId : null,
+                forkFromTopicId: typeof metadata.forkFromTopicId === 'string' ? metadata.forkFromTopicId : null,
+                forkMessageId: typeof metadata.forkMessageId === 'string' ? metadata.forkMessageId : null,
+                forkLabel: typeof metadata.forkLabel === 'string' ? metadata.forkLabel.slice(0, 200) : null,
+                branchTitle: typeof metadata.branchTitle === 'string' ? metadata.branchTitle.slice(0, 200) : null,
+                depth: Number.isFinite(metadata.depth) ? Math.max(0, Math.floor(metadata.depth)) : 0,
+                crystallized: Boolean(metadata.crystallized),
                 open: metadata.open !== undefined ? Boolean(metadata.open) : (metadata.status !== 'closed'),
                 draft: typeof metadata.draft === 'string' ? metadata.draft : '',
                 references: Array.isArray(metadata.references) ? metadata.references : [],
@@ -346,22 +359,53 @@ function initialize(paths) {
                 if (await removeEmptyChildDir(topicDir, childTopicId)) return { success: true, removed: true };
                 return { success: false, error: 'NOT_A_SIDE_CHAT_CHILD' };
             }
+            // 级联删除：递归收集并清理所有以 childTopicId 为祖先的子分支
+            // （直接扫描磁盘 metadata，不依赖前端 IPC，主进程内自洽）
+            const topicsDir = path.join(USER_DATA_DIR, validateSegment(String(agentId)) || '', 'topics');
+            async function collectDescendants(parentId, acc) {
+                let entries = [];
+                try { entries = await fs.readdir(topicsDir, { withFileTypes: true }); } catch { return; }
+                for (const entry of entries) {
+                    if (!entry.isDirectory()) continue;
+                    if (entry.name === parentId) continue;
+                    const metaPath = path.join(topicsDir, entry.name, 'sidechat-metadata.json');
+                    try {
+                        if (!await fs.pathExists(metaPath)) continue;
+                        const meta = await fs.readJson(metaPath);
+                        if (meta?.forkFromTopicId === parentId && !acc.has(entry.name)) {
+                            acc.add(entry.name);
+                            await collectDescendants(entry.name, acc);
+                        }
+                    } catch (readErr) { void readErr; }
+                }
+            }
+            const doomed = new Set();
+            try { await collectDescendants(childTopicId, doomed); } catch (walkErr) { void walkErr; }
+            for (const descId of doomed) {
+                const descDir = getTopicDir(agentId, descId);
+                if (descDir && await fs.pathExists(descDir)) {
+                    try { await removeChildDir(descDir); await clearTrajectoryOf({ agentId, topicId: descId }); } catch (rmErr) { void rmErr; }
+                }
+            }
             await removeChildDir(topicDir);
             await clearTrajectoryOf({ agentId, topicId: childTopicId });
-            return { success: true, removed: true };
+            return { success: true, removed: true, cascaded: doomed.size };
         } catch (error) {
             console.error('[SideChatHandlers] delete-child error:', error);
             return { success: false, error: error.message };
         }
     });
 
-    register('side-chat:create-snapshot', async (event, agentId, parentTopicId, childTopicId = null) => {
+    register('side-chat:create-snapshot', async (event, agentId, parentTopicId, childTopicId = null, explicitMessages = null) => {
         try {
             const parentDir = getTopicDir(agentId, parentTopicId);
             if (!parentDir) return { success: false, error: 'INVALID_PARENT_PATH' };
 
             let rawHistory = [];
-            if (historyMutationQueue && typeof historyMutationQueue.read === 'function') {
+            // 分形分支：分叉时由前端组装好「祖先链完整上下文」显式传入，直接采用，不再读单父话题
+            if (Array.isArray(explicitMessages)) {
+                rawHistory = explicitMessages;
+            } else if (historyMutationQueue && typeof historyMutationQueue.read === 'function') {
                 try {
                     rawHistory = await historyMutationQueue.read({ itemId: agentId, itemType: 'agent', topicId: parentTopicId });
                 } catch (readErr) {
@@ -411,6 +455,92 @@ function initialize(paths) {
             };
         } catch (error) {
             console.error('[SideChatHandlers] create-snapshot error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // 分形分支：轻量更新某个侧聊子话题的分支拓扑字段。读-改-写合并进 metadata，
+    // 不触碰 history.json、草稿、引用等其他文件。返回合并后的完整 metadata。
+    register('side-chat:update-branch', async (event, agentId, childTopicId, patch = {}) => {
+        try {
+            if (!agentId || !childTopicId || !patch || typeof patch !== 'object') {
+                return { success: false, error: 'MISSING_PARAMS' };
+            }
+            const topicDir = getTopicDir(agentId, childTopicId);
+            if (!topicDir) return { success: false, error: 'INVALID_PATH' };
+            const marker = await requireChild(topicDir, agentId, childTopicId);
+            if (!marker) return { success: false, error: 'NOT_A_SIDE_CHAT_CHILD' };
+
+            const metadataPath = path.join(topicDir, 'sidechat-metadata.json');
+            let meta = {};
+            if (await fs.pathExists(metadataPath)) {
+                try { meta = await fs.readJson(metadataPath); } catch { meta = {}; }
+            }
+
+            for (const field of BRANCH_PATCH_FIELDS) {
+                if (!Object.prototype.hasOwnProperty.call(patch, field)) continue;
+                const value = patch[field];
+                if (field === 'depth') {
+                    meta[field] = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+                } else if (field === 'crystallized') {
+                    meta[field] = Boolean(value);
+                } else if (value === null) {
+                    meta[field] = null;
+                }  else if (typeof value === 'string' && value) {
+                    meta[field] = field === 'forkLabel' || field === 'branchTitle' || field === 'title'
+                        ? value.slice(0, 200)
+                        : value;
+                }
+            }
+            if (patch.branchTitle && !patch.title) {
+                meta.title = meta.branchTitle;
+            }
+            meta.updatedAt = Date.now();
+            await fs.writeJson(metadataPath, meta, { spaces: 2 });
+            return { success: true, metadata: meta };
+        } catch (error) {
+            console.error('[SideChatHandlers] update-branch error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // 笔记固化：弹原生保存对话框，把自包含 Markdown 笔记写入选定路径
+    register('side-chat:export-note', async (event, payload = {}) => {
+        try {
+            const content = typeof payload?.content === 'string' ? payload.content : '';
+            const suggestedName = typeof payload?.fileName === 'string' && payload.fileName.trim()
+                ? payload.fileName.trim()
+                : '知识结晶.md';
+            if (!content) return { success: false, error: 'EMPTY_CONTENT' };
+
+            const { dialog } = electronModule || {};
+            const win = event?.sender?.isDestroyed?.() ? null : resolveWindowWebContents(getMainWindow);
+            const browserWindow = win && typeof win.getContentBounds === 'function' ? win : undefined;
+
+            const sanitizeFileName = (name) => {
+                let out = '';
+                for (const ch of name) {
+                    const code = ch.codePointAt(0);
+                    out += ('<>:"/\\|?*'.includes(ch) || code < 32) ? '_' : ch;
+                }
+                return out;
+            };
+            const safeName = sanitizeFileName(suggestedName).slice(0, 120) || '知识结晶.md';
+            const finalName = /\.md$/i.test(safeName) ? safeName : `${safeName}.md`;
+
+            const result = await dialog.showSaveDialog(browserWindow, {
+                title: '保存知识结晶笔记',
+                defaultPath: finalName,
+                filters: [{ name: 'Markdown', extensions: ['md'] }]
+            });
+            if (result.canceled || !result.filePath) return { success: true, canceled: true };
+
+            // 禁止写到侧聊数据目录内部，避免污染数据区
+            const targetPath = result.filePath;
+            await fs.writeFile(targetPath, content, 'utf8');
+            return { success: true, filePath: targetPath };
+        } catch (error) {
+            console.error('[SideChatHandlers] export-note error:', error);
             return { success: false, error: error.message };
         }
     });

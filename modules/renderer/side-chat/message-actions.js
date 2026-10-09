@@ -232,6 +232,14 @@ export function createSideChatMessageActions({
             });
         }
 
+        // 分形分支：从选区或消息内容开新分支
+        if (typeof descriptor?.onFork === 'function') {
+            add('fork-branch', 'fa-code-branch', '以此分叉开新支线', async () => {
+                const forkLabel = selected || (renderedText() || '').slice(0, 20);
+                await descriptor.onFork({ forkLabel, forkMessageId: message.id });
+            }, 'fork-item');
+        }
+
         const openText = chatCapabilities?.electronAPI?.openTextInNewWindow;
         if (typeof openText === 'function' && !unfinished) {
             add('read-mode', 'fa-book-reader', '阅读模式', () => {

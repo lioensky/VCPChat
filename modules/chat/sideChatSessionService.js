@@ -31,7 +31,15 @@ export function createSideChatDescriptor({
     open = true,
     status = 'ready',
     draft = '',
-    references = []
+    references = [],
+    // ── 分形分支树拓扑字段（可选）──
+    rootTopicId = null,
+    forkFromTopicId = null,
+    forkMessageId = null,
+    forkLabel = null,
+    branchTitle = null,
+    depth = 0,
+    crystallized = false
 }) {
     if (!parent || !parent.itemId || !parent.topicId) {
         throw new TypeError('SideChatDescriptor requires a valid parent reference with itemId and topicId');
@@ -80,6 +88,14 @@ export function createSideChatDescriptor({
         draft: String(draft || ''),
         references: Array.isArray(references) ? Object.freeze([...references]) : Object.freeze([]),
         parentSnapshot: Array.isArray(parentSnapshot) ? Object.freeze([...parentSnapshot]) : Object.freeze([]),
+        // ── 分形分支树拓扑字段：根侧聊的 rootTopicId 默认指向自己；子分支显式传入 ──
+        rootTopicId: rootTopicId || childId,
+        forkFromTopicId,
+        forkMessageId,
+        forkLabel,
+        branchTitle,
+        depth: Number.isFinite(depth) ? Math.max(0, Math.floor(depth)) : 0,
+        crystallized: Boolean(crystallized),
     });
 }
 
@@ -267,11 +283,12 @@ export async function createParentSnapshot({
     agentId,
     parentTopicId,
     childTopicId = null,
-    fallbackHistory = []
+    fallbackHistory = [],
+    explicitMessages = null
 }) {
     try {
         if (typeof electronAPI?.createSideChatSnapshot === 'function') {
-            const res = await electronAPI.createSideChatSnapshot(agentId, parentTopicId, childTopicId);
+            const res = await electronAPI.createSideChatSnapshot(agentId, parentTopicId, childTopicId, Array.isArray(explicitMessages) ? explicitMessages : null);
             if (res?.success) {
                 return {
                     ok: true,
@@ -301,4 +318,29 @@ export async function createParentSnapshot({
         },
         messages
     };
+}
+
+/**
+ * 分形分支：经 IPC 合并更新某个侧聊子话题的分支拓扑字段。
+ * @param {Object} options
+ * @param {Object} options.electronAPI
+ * @param {string} options.agentId
+ * @param {string} options.childTopicId
+ * @param {Object} options.patch 分支字段补丁
+ * @returns {Promise<{ ok: true, metadata: Object } | { ok: false, code: string, message: string }>}
+ */
+export async function updateSideChatBranch({ electronAPI, agentId, childTopicId, patch }) {
+    if (!electronAPI || typeof electronAPI.updateSideChatBranch !== 'function') {
+        return { ok: false, code: 'IPC_UNAVAILABLE', message: 'electronAPI.updateSideChatBranch is unavailable' };
+    }
+    if (!agentId || !childTopicId || !patch || typeof patch !== 'object') {
+        return { ok: false, code: 'INVALID_PARAMS', message: 'agentId, childTopicId and patch are required' };
+    }
+    try {
+        const res = await electronAPI.updateSideChatBranch(agentId, childTopicId, patch);
+        if (res?.success) return { ok: true, metadata: res.metadata };
+        return { ok: false, code: 'UPDATE_FAILED', message: res?.error || 'Update failed' };
+    } catch (error) {
+        return { ok: false, code: 'UPDATE_ERROR', message: error?.message || String(error) };
+    }
 }

@@ -1,0 +1,483 @@
+@charset "UTF-8";
+/* ==========================================================================
+ * 分形辅助对话 · 拓扑导航轨 (Fractal Branch Rail)
+ * 每个分支是独立 child topic；轨把同族分支组织成外露树，点击切换。
+ * ========================================================================== */
+
+.side-chat-branch-rail {
+    --rail-accent: #60a5fa;
+    --rail-accent-soft: rgba(96, 165, 250, 0.25);
+    --rail-line: rgba(255, 255, 255, 0.08);
+    --rail-guide: rgba(255, 255, 255, 0.14);
+    --rail-text: rgba(240, 240, 243, 0.88);
+    --rail-text-dim: rgba(240, 240, 243, 0.45);
+    --rail-hover: rgba(255, 255, 255, 0.05);
+    --rail-active-bg: rgba(96, 165, 250, 0.10);
+    --rail-error: #f87171;
+    display: flex;
+    flex-direction: column;
+    margin: 2px 8px 6px;
+    border: none;
+    border-bottom: 1px solid var(--rail-line);
+    background: transparent;
+    font-size: 11px;
+    user-select: none;
+}
+
+body.light-theme .side-chat-branch-rail {
+    --rail-accent: #2563eb;
+    --rail-accent-soft: rgba(37, 99, 235, 0.20);
+    --rail-line: rgba(0, 0, 0, 0.06);
+    --rail-guide: rgba(0, 0, 0, 0.15);
+    --rail-text: rgba(28, 28, 30, 0.90);
+    --rail-text-dim: rgba(28, 28, 30, 0.45);
+    --rail-hover: rgba(0, 0, 0, 0.04);
+    --rail-active-bg: rgba(37, 99, 235, 0.08);
+    --rail-error: #dc2626;
+}
+
+.side-chat-branch-rail.is-loading .branch-rail-body { opacity: 0.55; }
+.side-chat-branch-rail.is-switching .branch-rail-body { opacity: 0.4; pointer-events: none; }
+
+/* ── 极简 Header ── */
+.branch-rail-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 4px 4px 6px;
+    color: var(--rail-text-dim);
+    font-weight: 500;
+    letter-spacing: 0.03em;
+}
+
+.branch-rail-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-family: inherit;
+}
+.branch-rail-title .branch-rail-kicker-icon {
+    opacity: 0.7;
+    font-size: 11px;
+}
+
+.branch-rail-header-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.branch-rail-icon-btn {
+    width: 20px;
+    height: 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--rail-text-dim);
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1;
+    padding: 0;
+    transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+    opacity: 0.75;
+}
+.branch-rail-icon-btn:hover {
+    background: var(--rail-hover);
+    color: var(--rail-accent);
+    opacity: 1;
+}
+
+/* ── 树身容器 ── */
+.branch-rail-body {
+    display: flex;
+    flex-direction: column;
+    padding: 2px 0 4px;
+    gap: 1px;
+    max-height: 170px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+}
+
+/* ── 节点行：ThoughtDAG 点线骨架 ── */
+.branch-rail-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    height: 26px;
+    padding: 0 6px 0 calc(12px + var(--branch-depth, 0) * 16px);
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--rail-text);
+    cursor: pointer;
+    text-align: left;
+    font-size: 11px;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+
+/* 父子树状拐角连线 (L-shape guide) */
+.branch-rail-row::before {
+    content: "";
+    position: absolute;
+    left: calc(2px + var(--branch-depth, 0) * 16px);
+    top: -13px;
+    width: 8px;
+    height: 26px;
+    border-left: 1px solid var(--rail-guide);
+    border-bottom: 1px solid var(--rail-guide);
+    border-bottom-left-radius: 4px;
+    pointer-events: none;
+}
+.branch-rail-row[style*="--branch-depth: 0"]::before,
+.branch-rail-row.depth0::before {
+    display: none;
+}
+
+/* 节点微圆点 (Thought Mark) */
+.branch-rail-dot {
+    position: relative;
+    flex: 0 0 auto;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--rail-text-dim);
+    transition: transform 0.15s ease, background 0.15s ease;
+    z-index: 1;
+}
+.branch-rail-row[style*="--branch-depth: 0"] .branch-rail-dot {
+    width: 7px;
+    height: 7px;
+    background: rgba(255, 255, 255, 0.7);
+}
+body.light-theme .branch-rail-row[style*="--branch-depth: 0"] .branch-rail-dot {
+    background: rgba(0, 0, 0, 0.75);
+}
+
+.branch-rail-label {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    letter-spacing: 0.01em;
+}
+
+.branch-rail-row-action {
+    opacity: 0;
+    width: 18px;
+    height: 18px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--rail-text-dim);
+    font-size: 11px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+    transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
+    flex-shrink: 0;
+}
+.branch-rail-row:hover .branch-rail-row-action {
+    opacity: 0.7;
+}
+.branch-rail-row-action:hover {
+    opacity: 1 !important;
+    background: var(--rail-hover);
+    color: var(--rail-accent);
+}
+
+.branch-rail-rename-input {
+    flex: 1 1 auto;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--rail-accent);
+    border-radius: 4px;
+    color: var(--rail-text);
+    font-size: 11px;
+    padding: 1px 5px;
+    outline: none;
+    font-family: inherit;
+}
+
+.branch-rail-context-menu {
+    position: fixed;
+    z-index: 1000;
+    background: #252526;
+    border: 1px solid var(--rail-line);
+    border-radius: 6px;
+    padding: 4px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+.branch-rail-context-menu button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 6px 12px;
+    background: transparent;
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    font-size: 12px;
+}
+.branch-rail-context-menu button:hover {
+    background: var(--rail-hover);
+}
+
+/* ── 溯源引桥 (Pedigree Bridge)：子分支顶部的来源胶囊 ── */
+.side-chat-pedigree-bridge {
+    display: flex;
+    align-items: center;
+    padding: 2px 10px 4px;
+    margin: 0;
+}
+.side-chat-pedigree-bridge[hidden] { display: none; }
+
+.pedigree-bridge-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    max-width: 100%;
+    padding: 3px 10px;
+    border: 1px solid var(--rail-line);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--rail-text-dim);
+    font-size: 10.5px;
+    line-height: 1.4;
+    cursor: pointer;
+    text-align: left;
+    transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.pedigree-bridge-pill:hover {
+    color: var(--rail-accent);
+    border-color: var(--rail-accent-soft);
+    background: var(--rail-active-bg);
+}
+
+.pedigree-bridge-arrow {
+    flex: 0 0 auto;
+    font-size: 11px;
+    opacity: 0.8;
+}
+
+.pedigree-bridge-label {
+    flex: 0 1 auto;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.pedigree-bridge-excerpt {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    opacity: 0.75;
+    font-style: italic;
+}
+body.light-theme .branch-rail-rename-input {
+    background: rgba(255, 255, 255, 0.9);
+}
+
+.branch-rail-row:hover {
+    background: var(--rail-hover);
+    color: #fff;
+}
+body.light-theme .branch-rail-row:hover {
+    color: #000;
+}
+
+.thought-map-node-group:hover text {
+    fill: #60a5fa !important;
+    font-weight: 600;
+}
+.thought-map-node-group:hover circle:last-of-type {
+    stroke: #ffffff;
+    stroke-width: 1.5;
+}
+
+/* 激活状态：微光呼吸星 */
+.branch-rail-row.is-active {
+    background: var(--rail-active-bg);
+    color: var(--rail-accent);
+    font-weight: 600;
+}
+.branch-rail-row.is-active .branch-rail-dot {
+    background: var(--rail-accent);
+    box-shadow: 0 0 0 3px var(--rail-accent-soft);
+    animation: branchRailPulse 2.4s ease-in-out infinite;
+    transform: scale(1.15);
+}
+
+.branch-rail-empty,
+.branch-rail-hint {
+    padding: 6px 8px;
+    color: var(--rail-text-dim);
+    font-size: 10px;
+}
+.branch-rail-hint {
+    cursor: default;
+}
+.branch-rail-hint.is-error {
+    color: var(--rail-error);
+    cursor: pointer;
+}
+
+.is-collapsed .branch-rail-body,
+.is-collapsed .branch-rail-hint {
+    display: none;
+}
+
+@keyframes branchRailPulse {
+    0%, 100% { box-shadow: 0 0 0 2px var(--rail-accent-soft); }
+    50% { box-shadow: 0 0 0 5px rgba(96, 165, 250, 0.03); }
+}
+
+/* ── 思路地图海报弹窗 (Thought Map Poster Modal) ── */
+.thought-map-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    background: rgba(0, 0, 0, 0.72);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    animation: tmapFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.thought-map-sheet {
+    position: relative;
+    width: 520px;
+    max-width: 95vw;
+    background: #111113;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 14px;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    padding: 32px 36px 28px;
+    display: flex;
+    flex-direction: column;
+    color: #edecee;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.thought-map-sheet-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 24px;
+}
+.thought-map-kicker {
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.42);
+    margin-bottom: 6px;
+}
+.thought-map-headline {
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: -0.02em;
+    color: #ffffff;
+    margin: 0 0 4px;
+}
+.thought-map-subtitle {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.55);
+    margin: 0;
+}
+.thought-map-close-btn {
+    border: none;
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.6);
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+.thought-map-close-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: #ffffff;
+}
+
+/* 海报中心点线图 */
+.thought-map-canvas-box {
+    width: 100%;
+    height: 260px;
+    position: relative;
+    margin: 8px 0 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.thought-map-canvas-box svg {
+    overflow: visible;
+}
+
+/* 底部统计栏 */
+.thought-map-stats-line {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding-top: 18px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.65);
+}
+.thought-map-stat-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.thought-map-stat-item b {
+    color: #fff;
+    font-weight: 600;
+}
+.thought-map-stat-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #60a5fa;
+}
+.thought-map-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+}
+.thought-map-export-btn {
+    background: #2563eb;
+    color: #fff;
+    border: none;
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+.thought-map-export-btn:hover {
+    background: #1d4ed8;
+}
+
+@keyframes tmapFadeIn {
+    from { opacity: 0; transform: scale(0.98); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .branch-rail-row.is-active .branch-rail-dot { animation: none; }
+}
