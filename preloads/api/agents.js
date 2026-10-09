@@ -15,6 +15,9 @@ module.exports = {
         deleteAgent: invoke('delete-agent', 'agentId'),
         selectAvatar: invoke('select-avatar'),
         saveAvatar: invoke('save-avatar', 'agentId', 'avatarData'),
+        getAgentPortraits: invoke('get-agent-portraits', 'agentId'),
+        saveAgentPortrait: invoke('save-agent-portrait', 'agentId', 'variant', 'imageData'),
+        removeAgentPortrait: invoke('remove-agent-portrait', 'agentId', 'variant'),
         onReloadAgentSettings: on('reload-agent-settings'),
         getAgentsMetadata: invoke('get-agents-metadata').roles('utility'),
 

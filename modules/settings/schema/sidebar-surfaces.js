@@ -303,6 +303,10 @@ function renderAgentIdentity(doc) {
         }
     });
     const controls = el(doc, 'div', { class: 'agent-style-controls', id: 'agentStyleControls' });
+    // 首页立绘放在自定义样式里、颜色开关前面：它和头像、名字一样是助手的外观
+    controls.append(el(doc, 'div', { class: 'style-control-item full-width agent-portrait-style-item' },
+        el(doc, 'span', { class: 'agent-portrait-style-title' }, '首页立绘'),
+        renderAgentPortrait(doc)));
     [['disableCustomColors', '助手页面中使用主题默认颜色'], ['useThemeColorsInChat', '会话界面中使用主题默认颜色']].forEach(([id, text]) => {
         const checkbox = el(doc, 'input', { id, type: 'checkbox', name: id });
         controls.append(el(doc, 'div', { class: 'style-control-item full-width' },
@@ -322,6 +326,54 @@ function renderAgentIdentity(doc) {
     controls.append(customCss, cardCss, chatCss);
     style.append(styleHeader, controls);
     return el(doc, 'div', { class: 'agent-identity-container' }, identityMain, style);
+}
+
+// 首页立绘：行为在 modules/ui-system/agent-portrait-settings.js
+function renderAgentPortrait(doc) {
+    const slot = (variant, title, hint) => {
+        const inputId = `agentPortrait${variant[0].toUpperCase()}${variant.slice(1)}Input`;
+        return el(doc, 'div', { class: 'agent-portrait-slot', 'data-portrait-variant': variant, 'data-state': 'empty' },
+            el(doc, 'span', { class: 'agent-portrait-slot-thumb', 'aria-hidden': 'true' }, el(doc, 'img', { alt: '', draggable: 'false', hidden: true })),
+            el(doc, 'span', { class: 'agent-portrait-slot-text' },
+                el(doc, 'span', { class: 'agent-portrait-slot-title' }, title),
+                el(doc, 'span', { class: 'agent-portrait-slot-status', title: hint }, '未设置')),
+            el(doc, 'span', { class: 'agent-portrait-slot-actions' },
+                el(doc, 'button', { type: 'button', class: 'small-button', 'data-portrait-action': 'pick', 'aria-controls': inputId }, '上传'),
+                el(doc, 'button', { type: 'button', class: 'small-button agent-portrait-remove-btn', 'data-portrait-action': 'remove', hidden: true }, '移除')),
+            el(doc, 'input', { id: inputId, type: 'file', hidden: true, 'aria-label': `选择${title}图片` }));
+    };
+    const preview = el(doc, 'div', {
+        class: 'agent-portrait-preview',
+        id: 'agentPortraitPreview',
+        role: 'group',
+        'aria-label': '立绘预览，点按或拖动设置焦点，方向键微调',
+        'data-empty': 'true',
+    },
+        el(doc, 'img', { class: 'agent-portrait-preview-image', alt: '', draggable: 'false', hidden: true }),
+        el(doc, 'span', { class: 'agent-portrait-preview-tabs', 'aria-hidden': 'true' }),
+        el(doc, 'span', { class: 'agent-portrait-focus-marker', 'aria-hidden': 'true', hidden: true }),
+        el(doc, 'span', { class: 'agent-portrait-preview-empty' }, '还没有立绘，首页显示头像和名字'));
+    const themes = el(doc, 'div', { class: 'agent-portrait-segmented', role: 'group', 'aria-label': '预览主题' },
+        el(doc, 'button', { type: 'button', 'data-portrait-preview-theme': 'default', 'aria-pressed': 'true' }, '深色'),
+        el(doc, 'button', { type: 'button', 'data-portrait-preview-theme': 'light', 'aria-pressed': 'false' }, '浅色'));
+    const height = el(doc, 'div', { class: 'agent-portrait-height' },
+        el(doc, 'label', { for: 'agentPortraitHeight' }, '立绘高度'),
+        el(doc, 'div', { class: 'slider-container' },
+            el(doc, 'input', { id: 'agentPortraitHeight', type: 'range', min: 180, max: 360, step: 4, value: 248 }),
+            el(doc, 'span', { id: 'agentPortraitHeightValue', class: 'slider-value-pill' }, '248px')));
+    return el(doc, 'div', { class: 'agent-portrait-settings', id: 'agentPortraitSettings' },
+        el(doc, 'div', { class: 'agent-portrait-header-choice' },
+            el(doc, 'span', { id: 'agentPortraitHeaderLabel', class: 'agent-portrait-header-label' }, '首页顶部显示'),
+            el(doc, 'div', { class: 'agent-portrait-segmented', role: 'group', 'aria-labelledby': 'agentPortraitHeaderLabel' },
+                el(doc, 'button', { type: 'button', 'data-portrait-header': 'portrait', 'aria-pressed': 'false' }, '立绘'),
+                el(doc, 'button', { type: 'button', 'data-portrait-header': 'avatar', 'aria-pressed': 'true' }, '头像'))),
+        el(doc, 'p', { class: 'agent-portrait-hint' }, '选「立绘」时，侧栏首页顶部是一张向下渐隐的立绘，不显示头像和名字；选「头像」时立绘留着但不显示。可以用图片、动图（GIF、WebP、APNG）或视频（MP4、WebM，静音循环播放）。改动点保存后生效。'),
+        preview,
+        el(doc, 'div', { class: 'agent-portrait-preview-toolbar' }, themes,
+            el(doc, 'button', { type: 'button', id: 'agentPortraitResetBtn', class: 'small-button' }, '重置位置')),
+        slot('default', '立绘', '深色主题和没有浅色版时都用这张'),
+        slot('light', '浅色主题立绘（可选）', '浅色主题优先用这张'),
+        height);
 }
 
 function renderAgentParams(doc) {

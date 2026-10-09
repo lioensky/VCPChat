@@ -588,6 +588,10 @@
             <div class="side-pane-content-container">
                 <section class="side-pane-view active" id="sidePaneViewLauncher" data-tab-id="launcher" role="tabpanel" aria-label="新标签页">
                     <div class="side-pane-open-tab-shell">
+                        <div class="side-pane-launcher-portrait" aria-hidden="true" hidden>
+                            <img class="side-pane-launcher-portrait-image" data-portrait-theme="default" alt="" draggable="false" hidden>
+                            <img class="side-pane-launcher-portrait-image" data-portrait-theme="light" alt="" draggable="false" hidden>
+                        </div>
                         <div class="side-pane-open-tab-content">
                             <div class="side-pane-launcher-profile" hidden>
                                 <button type="button" class="side-pane-launcher-avatar">
@@ -1334,6 +1338,7 @@
     <script type="module" src="modules/ui-system/vcp-main-ui-runtime.js"></script>
     <script type="module" src="modules/uiux/generated/browser-entry.js"></script>
     <script type="module" src="modules/ui-system/settings-bridge.js"></script>
+    <script type="module" src="modules/ui-system/agent-portrait-settings.js"></script>
     <script type="module" src="modules/ui-system/next-ui-apps.js"></script>
     <script type="module" src="modules/ui-system/ask-nova-modal.js"></script>
     <script type="module" src="modules/ui-system/component-showcase.js"></script>

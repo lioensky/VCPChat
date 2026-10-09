@@ -720,19 +720,19 @@
     "dynamicSites": [
       {
         "file": "modules/settingsManager.js",
-        "line": 757,
+        "line": 793,
         "kind": "custom-event-listener",
         "match": "target.addEventListener(type"
       },
       {
         "file": "modules/settingsManager.js",
-        "line": 2272,
+        "line": 2309,
         "kind": "custom-event-listener",
         "match": "element.addEventListener(eventName"
       },
       {
         "file": "modules/settingsManager.js",
-        "line": 2301,
+        "line": 2338,
         "kind": "custom-event-listener",
         "match": "systemPromptContainer.addEventListener(eventName"
       }
@@ -764,6 +764,25 @@
     ],
     "evidence": [
       "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ui-system.agent-portrait-settings",
+    "kind": "source-review",
+    "owner": "modules/ui-system/agent-portrait-settings.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "DOM listener adapter for the agent settings portrait panel: event types are module-local literals bound to elements inside the panel host, and dispose() removes every listener it added. This registers the source site without claiming a long-session lifetime measurement.",
+    "dynamicSites": [
+      {
+        "file": "modules/ui-system/agent-portrait-settings.js",
+        "line": 59,
+        "kind": "custom-event-listener",
+        "match": "target.addEventListener(type"
+      }
+    ],
+    "evidence": [
+      "Source review of the portrait settings panel; exact operation match below; new or changed dynamic sites still fail the contract gate."
     ]
   },
   {
