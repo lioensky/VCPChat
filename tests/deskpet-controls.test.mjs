@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -9,6 +9,15 @@ import { EventEmitter } from 'node:events';
 const require = createRequire(import.meta.url);
 const prefs = require('../modules/deskpet/petPrefs.js');
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const openedHandlers = new Set();
+afterEach(() => { for (const handlers of openedHandlers) handlers.closeAll(); openedHandlers.clear(); });
+async function waitFor(check) {
+    for (let i = 0; i < 150; i++) {
+        try { if (check()) return; } catch { /* 文件可能还没写完 */ }
+        await sleep(20);
+    }
+    assert.fail('等待可观察状态超时');
+}
 
 // ---- 尺寸和设置（纯函数） ----
 
@@ -239,6 +248,7 @@ async function loadHandlers({ root = fs.mkdtempSync(path.join(os.tmpdir(), 'desk
     }
     const mainWindow = new fake.electron.BrowserWindow({});
     handlers.initialize({ mainWindow, projectRoot: path.resolve('.'), appDataRoot: root, agentDir });
+    openedHandlers.add(handlers);
     await sleep(20); // 等设置文件读完、快捷键注册好
     const petWindows = () => fake.windows.filter((w) => w.url?.includes('deskpet.html') && !w.destroyed);
     const open = async (agentId = 'Nova') => {
@@ -270,7 +280,7 @@ test('ctrl+wheel resizes a pet around its feet and the size is remembered per ag
     assert.ok(grown.width >= before.width && grown.height > before.height, '往上滚放大');
     assert.deepEqual(bottomCenter(grown), bottomCenter(before), '脚底不动');
     assert.equal(pet.sent.filter((m) => m.channel === 'deskpet:prefs').at(-1).payload.scale, 1.1);
-    await sleep(30);
+    await waitFor(() => env.readJson(path.join(env.root, 'deskpet', 'state.json')).Nova?.scale === 1.1);
     env.handlers.closeAll();
 
     // 重新载入（相当于重启）：同一个助手按记住的大小和位置回来
@@ -292,7 +302,7 @@ test('the first press of the show key brings out Nova, or opens the desk pet set
     const show = env.handlers.trayMenuItems()[0].submenu.find((item) => item.id === 'deskpet-show');
     assert.notEqual(show.enabled, false);
     toggleKey();
-    await sleep(50);
+    await waitFor(() => env.petWindows().length === 1);
     assert.equal(env.petWindows().length, 1);
     assert.match(env.petWindows()[0].url, /agentId=Nova/);
     const assets = await env.fake.handlers.get('deskpet:get-assets')({ sender: env.petWindows()[0].webContents });
@@ -301,7 +311,7 @@ test('the first press of the show key brings out Nova, or opens the desk pet set
     const other = await loadHandlers();
     fs.writeFileSync(path.join(other.root, 'Agents', 'Nova', 'config.json'), JSON.stringify({ name: '小助手' }));
     other.fake.shortcuts.get(prefs.DEFAULT_SETTINGS.shortcuts.toggle)();
-    await sleep(50);
+    await waitFor(() => other.mainWindow.sent.some(s => s.channel === 'deskpet-settings:open'));
     assert.equal(other.petWindows().length, 0, '没有 Nova 就不替用户挑一个');
     assert.ok(other.mainWindow.sent.some((s) => s.channel === 'deskpet-settings:open'), '打开设置页的桌宠分区');
     env.handlers.closeAll();
@@ -502,7 +512,7 @@ test('words typed in the settings preview wait until the pet page is ready, then
     const talk = env.fake.handlers.get('deskpet-settings:talk');
     assert.equal((await talk(fromMain(env), 'Nova', '   ')).success, false);
     const pending = talk(fromMain(env), 'Nova', '你好');
-    await sleep(30);
+    await waitFor(() => env.petWindows().length > 0);
     const pet = env.petWindows()[0];
     pet.emit('ready-to-show');
     assert.equal(pet.sent.some((m) => m.channel === 'deskpet:open-input'), false, '页面还没好，先不发');
@@ -568,7 +578,7 @@ test('card snapshots are rendered offscreen once and reused while the files stay
     await sleep(20);
     assert.equal(offscreen.captured, undefined);
     env.fake.listeners.get('deskpet:preview-ready')({ sender: offscreen.webContents }, { bounds: { x: 100, y: 200, width: 120, height: 300 }, aspect: 2.5, job });
-    await sleep(50);
+    await waitFor(() => env.mainWindow.sent.some(m => m.channel === 'deskpet-settings:preview'));
     assert.deepEqual(offscreen.captured, { x: 94, y: 194, width: 132, height: 312 }, '只截角色那一块，四周留一点边');
     const pushed = env.mainWindow.sent.find((m) => m.channel === 'deskpet-settings:preview');
     assert.equal(pushed.payload.outfitId, 'maid');
