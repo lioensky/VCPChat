@@ -2,38 +2,27 @@
 /* ==========================================================================
  * 分形辅助对话 · 拓扑导航轨 (Fractal Branch Rail)
  * 每个分支是独立 child topic；轨把同族分支组织成外露树，点击切换。
+ * 颜色与字号一律走 ui-system 设计 token，深/浅主题自动适配。
  * ========================================================================== */
 
 html .side-chat-branch-rail:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    --rail-accent: #60a5fa;
-    --rail-accent-soft: rgba(96, 165, 250, 0.25);
-    --rail-line: rgba(255, 255, 255, 0.08);
-    --rail-guide: rgba(255, 255, 255, 0.14);
-    --rail-text: rgba(240, 240, 243, 0.88);
-    --rail-text-dim: rgba(240, 240, 243, 0.45);
-    --rail-hover: rgba(255, 255, 255, 0.05);
-    --rail-active-bg: rgba(96, 165, 250, 0.10);
-    --rail-error: #f87171;
+    --rail-accent: var(--vcp-ui-accent);
+    --rail-accent-soft: color-mix(in srgb, var(--vcp-ui-accent) 25%, transparent);
+    --rail-line: var(--vcp-ui-border);
+    --rail-guide: color-mix(in srgb, var(--vcp-ui-text-primary) 14%, transparent);
+    --rail-text: color-mix(in srgb, var(--vcp-ui-text-primary) 88%, transparent);
+    --rail-text-dim: color-mix(in srgb, var(--vcp-ui-text-primary) 45%, transparent);
+    --rail-hover: var(--vcp-ui-fill-0);
+    --rail-active-bg: color-mix(in srgb, var(--vcp-ui-accent) 10%, transparent);
+    --rail-error: var(--vcp-ui-danger);
     display: flex;
     flex-direction: column;
     margin: 2px 8px 6px;
     border: none;
     border-bottom: 1px solid var(--rail-line);
     background: transparent;
-    font-size: 11px;
+    font-size: var(--vcp-ui-font-size-xs);
     user-select: none;
-}
-
-html body.light-theme .side-chat-branch-rail:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    --rail-accent: #2563eb;
-    --rail-accent-soft: rgba(37, 99, 235, 0.20);
-    --rail-line: rgba(0, 0, 0, 0.06);
-    --rail-guide: rgba(0, 0, 0, 0.15);
-    --rail-text: rgba(28, 28, 30, 0.90);
-    --rail-text-dim: rgba(28, 28, 30, 0.45);
-    --rail-hover: rgba(0, 0, 0, 0.04);
-    --rail-active-bg: rgba(37, 99, 235, 0.08);
-    --rail-error: #dc2626;
 }
 
 html .side-chat-branch-rail.is-loading .branch-rail-body:where(.vcp-ui-scope, .vcp-ui-scope *) { opacity: 0.55; }
@@ -54,14 +43,14 @@ html .branch-rail-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    font-size: 11px;
+    font-size: var(--vcp-ui-font-size-xs);
     text-transform: uppercase;
     letter-spacing: 0.06em;
     font-family: inherit;
 }
 html .branch-rail-title .branch-rail-kicker-icon:where(.vcp-ui-scope, .vcp-ui-scope *) {
     opacity: 0.7;
-    font-size: 11px;
+    font-size: var(--vcp-ui-font-size-xs);
 }
 
 html .branch-rail-header-actions:where(.vcp-ui-scope, .vcp-ui-scope *) {
@@ -77,11 +66,11 @@ html .branch-rail-icon-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
     align-items: center;
     justify-content: center;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--vcp-ui-radius-xs);
     background: transparent;
     color: var(--rail-text-dim);
     cursor: pointer;
-    font-size: 11px;
+    font-size: var(--vcp-ui-font-size-xs);
     line-height: 1;
     padding: 0;
     transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
@@ -114,12 +103,12 @@ html .branch-rail-row:where(.vcp-ui-scope, .vcp-ui-scope *) {
     height: 26px;
     padding: 0 6px 0 calc(12px + var(--branch-depth, 0) * 16px);
     border: none;
-    border-radius: 6px;
+    border-radius: var(--vcp-ui-radius-sm);
     background: transparent;
     color: var(--rail-text);
     cursor: pointer;
     text-align: left;
-    font-size: 11px;
+    font-size: var(--vcp-ui-font-size-xs);
     transition: background 0.12s ease, color 0.12s ease;
 }
 
@@ -133,7 +122,7 @@ html .branch-rail-row::before:where(.vcp-ui-scope, .vcp-ui-scope *) {
     height: 26px;
     border-left: 1px solid var(--rail-guide);
     border-bottom: 1px solid var(--rail-guide);
-    border-bottom-left-radius: 4px;
+    border-bottom-left-radius: var(--vcp-ui-radius-xs);
     pointer-events: none;
 }
 html .branch-rail-row[style*="--branch-depth: 0"]::before:where(.vcp-ui-scope, .vcp-ui-scope *),
@@ -147,7 +136,7 @@ html .branch-rail-dot:where(.vcp-ui-scope, .vcp-ui-scope *) {
     flex: 0 0 auto;
     width: 6px;
     height: 6px;
-    border-radius: 50%;
+    border-radius: var(--vcp-ui-radius-full);
     background: var(--rail-text-dim);
     transition: transform 0.15s ease, background 0.15s ease;
     z-index: 1;
@@ -155,10 +144,7 @@ html .branch-rail-dot:where(.vcp-ui-scope, .vcp-ui-scope *) {
 html .branch-rail-row[style*="--branch-depth: 0"] .branch-rail-dot:where(.vcp-ui-scope, .vcp-ui-scope *) {
     width: 7px;
     height: 7px;
-    background: rgba(255, 255, 255, 0.7);
-}
-html body.light-theme .branch-rail-row[style*="--branch-depth: 0"] .branch-rail-dot:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    background: rgba(0, 0, 0, 0.75);
+    background: color-mix(in srgb, var(--vcp-ui-text-primary) 70%, transparent);
 }
 
 html .branch-rail-label:where(.vcp-ui-scope, .vcp-ui-scope *) {
@@ -174,10 +160,10 @@ html .branch-rail-row-action:where(.vcp-ui-scope, .vcp-ui-scope *) {
     width: 18px;
     height: 18px;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--vcp-ui-radius-xs);
     background: transparent;
     color: var(--rail-text-dim);
-    font-size: 11px;
+    font-size: var(--vcp-ui-font-size-xs);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -189,19 +175,19 @@ html .branch-rail-row-action:where(.vcp-ui-scope, .vcp-ui-scope *) {
 html .branch-rail-row:hover .branch-rail-row-action:where(.vcp-ui-scope, .vcp-ui-scope *) {
     opacity: 0.7;
 }
-html .branch-rail-row-action:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    opacity: 1 !important;
+html .branch-rail-row .branch-rail-row-action:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    opacity: 1;
     background: var(--rail-hover);
     color: var(--rail-accent);
 }
 
 html .branch-rail-rename-input:where(.vcp-ui-scope, .vcp-ui-scope *) {
     flex: 1 1 auto;
-    background: rgba(0, 0, 0, 0.4);
+    background: var(--vcp-ui-bg-input);
     border: 1px solid var(--rail-accent);
-    border-radius: 4px;
+    border-radius: var(--vcp-ui-radius-xs);
     color: var(--rail-text);
-    font-size: 11px;
+    font-size: var(--vcp-ui-font-size-xs);
     padding: 1px 5px;
     outline: none;
     font-family: inherit;
@@ -210,11 +196,11 @@ html .branch-rail-rename-input:where(.vcp-ui-scope, .vcp-ui-scope *) {
 html .branch-rail-context-menu:where(.vcp-ui-scope, .vcp-ui-scope *) {
     position: fixed;
     z-index: 1000;
-    background: #252526;
+    background: var(--vcp-ui-bg-1);
     border: 1px solid var(--rail-line);
-    border-radius: 6px;
+    border-radius: var(--vcp-ui-radius-sm);
     padding: 4px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    box-shadow: var(--vcp-ui-shadow-md);
 }
 html .branch-rail-context-menu button:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: block;
@@ -223,9 +209,9 @@ html .branch-rail-context-menu button:where(.vcp-ui-scope, .vcp-ui-scope *) {
     padding: 6px 12px;
     background: transparent;
     border: none;
-    color: #fff;
+    color: var(--vcp-ui-text-0);
     cursor: pointer;
-    font-size: 12px;
+    font-size: var(--vcp-ui-font-caption);
 }
 html .branch-rail-context-menu button:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
     background: var(--rail-hover);
@@ -247,10 +233,10 @@ html .pedigree-bridge-pill:where(.vcp-ui-scope, .vcp-ui-scope *) {
     max-width: 100%;
     padding: 3px 10px;
     border: 1px solid var(--rail-line);
-    border-radius: 999px;
+    border-radius: var(--vcp-ui-radius-full);
     background: transparent;
     color: var(--rail-text-dim);
-    font-size: 10.5px;
+    font-size: calc(var(--vcp-ui-font-size-xs) - 0.5px);
     line-height: 1.4;
     cursor: pointer;
     text-align: left;
@@ -264,7 +250,7 @@ html .pedigree-bridge-pill:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
 
 html .pedigree-bridge-arrow:where(.vcp-ui-scope, .vcp-ui-scope *) {
     flex: 0 0 auto;
-    font-size: 11px;
+    font-size: var(--vcp-ui-font-size-xs);
     opacity: 0.8;
 }
 
@@ -283,24 +269,18 @@ html .pedigree-bridge-excerpt:where(.vcp-ui-scope, .vcp-ui-scope *) {
     opacity: 0.75;
     font-style: italic;
 }
-html body.light-theme .branch-rail-rename-input:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    background: rgba(255, 255, 255, 0.9);
-}
 
 html .branch-rail-row:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
     background: var(--rail-hover);
-    color: #fff;
-}
-html body.light-theme .branch-rail-row:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    color: #000;
+    color: var(--vcp-ui-text-0);
 }
 
 html .thought-map-node-group:hover text:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    fill: #60a5fa !important;
+    fill: var(--rail-accent);
     font-weight: 600;
 }
 html .thought-map-node-group:hover circle:last-of-type:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    stroke: #ffffff;
+    stroke: var(--vcp-ui-text-primary);
     stroke-width: 1.5;
 }
 
@@ -321,7 +301,7 @@ html .branch-rail-empty:where(.vcp-ui-scope, .vcp-ui-scope *),
 html .branch-rail-hint:where(.vcp-ui-scope, .vcp-ui-scope *) {
     padding: 6px 8px;
     color: var(--rail-text-dim);
-    font-size: 10px;
+    font-size: var(--vcp-ui-text-xs);
 }
 html .branch-rail-hint:where(.vcp-ui-scope, .vcp-ui-scope *) {
     cursor: default;
@@ -338,7 +318,7 @@ html .is-collapsed .branch-rail-hint:where(.vcp-ui-scope, .vcp-ui-scope *) {
 
 @keyframes branchRailPulse {
     0%, 100% { box-shadow: 0 0 0 2px var(--rail-accent-soft); }
-    50% { box-shadow: 0 0 0 5px rgba(96, 165, 250, 0.03); }
+    50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--vcp-ui-accent) 3%, transparent); }
 }
 
 /* ── 思路地图海报弹窗 (Thought Map Poster Modal) ── */
@@ -346,7 +326,7 @@ html .thought-map-backdrop:where(.vcp-ui-scope, .vcp-ui-scope *) {
     position: fixed;
     inset: 0;
     z-index: 10000;
-    background: rgba(0, 0, 0, 0.72);
+    background: var(--vcp-ui-backdrop);
     backdrop-filter: blur(8px);
     display: flex;
     align-items: center;
@@ -359,14 +339,14 @@ html .thought-map-sheet:where(.vcp-ui-scope, .vcp-ui-scope *) {
     position: relative;
     width: 520px;
     max-width: 95vw;
-    background: #111113;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: var(--vcp-ui-bg-1);
+    border: 1px solid var(--vcp-ui-border);
     border-radius: 14px;
-    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    box-shadow: var(--vcp-ui-shadow-lg), 0 0 0 1px var(--vcp-ui-fill-0);
     padding: 32px 36px 28px;
     display: flex;
     flex-direction: column;
-    color: #edecee;
+    color: var(--vcp-ui-text-0);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
@@ -377,32 +357,32 @@ html .thought-map-sheet-header:where(.vcp-ui-scope, .vcp-ui-scope *) {
     margin-bottom: 24px;
 }
 html .thought-map-kicker:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    font-size: 11px;
+    font-size: var(--vcp-ui-font-size-xs);
     letter-spacing: 0.18em;
     text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.42);
+    color: color-mix(in srgb, var(--vcp-ui-text-primary) 42%, transparent);
     margin-bottom: 6px;
 }
 html .thought-map-headline:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    font-size: 24px;
+    font-size: calc(var(--vcp-ui-font-title) + 6px);
     font-weight: 700;
     line-height: 1.25;
     letter-spacing: -0.02em;
-    color: #ffffff;
+    color: var(--vcp-ui-text-0);
     margin: 0 0 4px;
 }
 html .thought-map-subtitle:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    font-size: 13px;
-    color: rgba(255, 255, 255, 0.55);
+    font-size: var(--vcp-ui-font-helper);
+    color: color-mix(in srgb, var(--vcp-ui-text-primary) 55%, transparent);
     margin: 0;
 }
 html .thought-map-close-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
     border: none;
-    background: rgba(255, 255, 255, 0.06);
-    color: rgba(255, 255, 255, 0.6);
+    background: var(--vcp-ui-fill-1);
+    color: var(--vcp-ui-text-secondary);
     width: 28px;
     height: 28px;
-    border-radius: 50%;
+    border-radius: var(--vcp-ui-radius-full);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -410,8 +390,8 @@ html .thought-map-close-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
     transition: all 0.15s ease;
 }
 html .thought-map-close-btn:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    background: rgba(255, 255, 255, 0.15);
-    color: #ffffff;
+    background: var(--vcp-ui-fill-2);
+    color: var(--vcp-ui-text-0);
 }
 
 /* 海报中心点线图 */
@@ -434,9 +414,9 @@ html .thought-map-stats-line:where(.vcp-ui-scope, .vcp-ui-scope *) {
     align-items: center;
     gap: 16px;
     padding-top: 18px;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
-    font-size: 12px;
-    color: rgba(255, 255, 255, 0.65);
+    border-top: 1px solid var(--vcp-ui-border);
+    font-size: var(--vcp-ui-font-caption);
+    color: var(--vcp-ui-text-secondary);
 }
 html .thought-map-stat-item:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: inline-flex;
@@ -444,14 +424,14 @@ html .thought-map-stat-item:where(.vcp-ui-scope, .vcp-ui-scope *) {
     gap: 6px;
 }
 html .thought-map-stat-item b:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    color: #fff;
+    color: var(--vcp-ui-text-0);
     font-weight: 600;
 }
 html .thought-map-stat-dot:where(.vcp-ui-scope, .vcp-ui-scope *) {
     width: 6px;
     height: 6px;
-    border-radius: 50%;
-    background: #60a5fa;
+    border-radius: var(--vcp-ui-radius-full);
+    background: var(--vcp-ui-accent);
 }
 html .thought-map-actions:where(.vcp-ui-scope, .vcp-ui-scope *) {
     margin-left: auto;
@@ -459,18 +439,18 @@ html .thought-map-actions:where(.vcp-ui-scope, .vcp-ui-scope *) {
     gap: 8px;
 }
 html .thought-map-export-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    background: #2563eb;
-    color: #fff;
+    background: var(--vcp-ui-accent);
+    color: var(--vcp-ui-port-color-fff);
     border: none;
     padding: 6px 14px;
-    border-radius: 6px;
-    font-size: 12px;
+    border-radius: var(--vcp-ui-radius-sm);
+    font-size: var(--vcp-ui-font-caption);
     font-weight: 500;
     cursor: pointer;
     transition: background 0.15s ease;
 }
 html .thought-map-export-btn:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    background: #1d4ed8;
+    background: var(--vcp-ui-accent-hover);
 }
 
 @keyframes tmapFadeIn {
