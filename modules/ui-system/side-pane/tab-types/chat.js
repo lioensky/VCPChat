@@ -40,7 +40,15 @@ export function freezeSideChatDescriptor(descriptor) {
         composerStorage: descriptor.composerStorage === 'local' ? 'local' : undefined,
         draft: typeof descriptor.draft === 'string' ? descriptor.draft : '',
         references: Array.isArray(descriptor.references) ? descriptor.references : [],
-        parentSnapshot: Array.isArray(descriptor.parentSnapshot) ? descriptor.parentSnapshot : []
+        parentSnapshot: Array.isArray(descriptor.parentSnapshot) ? descriptor.parentSnapshot : [],
+        // ── 分形分支树拓扑字段（可选，旧侧聊没有则退回独立根）──
+        rootTopicId: typeof descriptor.rootTopicId === 'string' ? descriptor.rootTopicId : undefined,
+        forkFromTopicId: typeof descriptor.forkFromTopicId === 'string' ? descriptor.forkFromTopicId : null,
+        forkMessageId: typeof descriptor.forkMessageId === 'string' ? descriptor.forkMessageId : null,
+        forkLabel: typeof descriptor.forkLabel === 'string' ? descriptor.forkLabel : null,
+        branchTitle: typeof descriptor.branchTitle === 'string' ? descriptor.branchTitle : null,
+        depth: Number.isFinite(descriptor.depth) ? Math.max(0, Math.floor(descriptor.depth)) : 0,
+        crystallized: Boolean(descriptor.crystallized)
     });
 }
 
