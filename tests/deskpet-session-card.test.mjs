@@ -77,3 +77,54 @@ test('card follows the actual topic, preserves early events, and uses text rathe
     onStream({ type: 'end', messageId: 'b', session: { ...session, status: 'stopped' } });
     assert.equal(status.textContent, '已停止回复');
 });
+
+test('bell badge counts conversations, expands on demand and preserves selection while streams update', () => {
+    const element = () => ({ hidden: false, dataset: {}, listeners: {}, attrs: {}, addEventListener(k, fn) { this.listeners[k] = fn; }, setAttribute(k,v) { this.attrs[k] = v; }, focus() {} });
+    const card = element(), panel = element(), toggle = element(), badge = element(), next = element(), previous = element(), navigation = element(), position = element(), stop = element();
+    const title = {}, status = {};
+    let onStream, opened, interrupted;
+    const view = createSessionCard({ card, panel, toggle, badge, next, previous, navigation, position, stop, title, status, api: {
+        onStream: fn => { onStream = fn; }, openTopic: id => { opened = id; }, interrupt: id => { interrupted = id; },
+    } });
+    view.initialize({ name: 'Nova' });
+    assert.equal(panel.hidden, true);
+    assert.equal(badge.hidden, true);
+    const a = { messageId:'a', topicId:'one', title:'文档', status:'thinking' };
+    const b = { messageId:'b', topicId:'two', title:'模型', status:'responding' };
+    onStream({ type:'start', messageId:'a', session:{ ...a, sessions:[a] } });
+    onStream({ type:'start', messageId:'b', session:{ ...b, sessions:[b,a] } });
+    assert.equal(badge.textContent, '2');
+    assert.equal(panel.hidden, true, '新消息只更新铃铛，不自动抢占头顶');
+    toggle.listeners.click();
+    assert.equal(panel.hidden, false);
+    assert.equal(toggle.attrs['aria-expanded'], 'true');
+    assert.equal(title.textContent, '模型');
+    next.listeners.click();
+    assert.equal(title.textContent, '文档');
+    onStream({ type:'data', messageId:'b', text:'继续回复', session:{ ...b, sessions:[b,a] } });
+    assert.equal(title.textContent, '文档');
+    card.listeners.click(); assert.equal(opened, 'one');
+    stop.listeners.click(); assert.equal(interrupted, 'a');
+    toggle.listeners.click();
+    assert.equal(panel.hidden, true);
+    assert.equal(toggle.attrs['aria-expanded'], 'false');
+    assert.equal(badge.textContent, '2', '已查看但仍运行的会话继续显示数量');
+    const endedA = { ...a, status:'complete' }, endedB = { ...b, status:'complete' };
+    onStream({ type:'end', messageId:'a', session:{ ...b, sessions:[b,endedA] } });
+    onStream({ type:'end', messageId:'b', session:{ ...endedB, sessions:[endedB,endedA] } });
+    assert.equal(badge.textContent, '2', '收起时完成的会话保留未读通知');
+    toggle.listeners.click(); next.listeners.click(); toggle.listeners.click();
+    assert.equal(badge.hidden, true, '已逐条查看且全部完成后清除角标');
+});
+
+test('multiple requests in one topic count as one conversation', () => {
+    let onStream;
+    const el = () => ({ dataset:{}, addEventListener(){}, setAttribute(){} });
+    const badge = {};
+    const view = createSessionCard({ card:el(), panel:el(), title:{}, status:{}, badge, api:{ onStream:fn => { onStream = fn; } } });
+    view.initialize({name:'Nova'});
+    const a = {messageId:'a', topicId:'same', title:'同一会话', status:'thinking'};
+    const b = {...a, messageId:'b'};
+    onStream({ type:'start', messageId:'b', session:{...b, sessions:[b,a]} });
+    assert.equal(badge.textContent, '1');
+});

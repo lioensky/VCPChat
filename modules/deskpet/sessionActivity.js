@@ -11,7 +11,7 @@ function createSessionActivity({ titleOf = async () => '', publish = () => {} } 
         const selected = (running.length ? running : rows).sort((a, b) => b.order - a.order)[0];
         if (!selected) return null;
         const { order: _order, ...session } = selected;
-        return { ...session, runningCount: running.length };
+        return { ...session, runningCount: running.length, sessions: rows.sort((a, b) => b.order - a.order).map(({ order: _n, ...row }) => row) };
     }
     function start(messageId, context) {
         const agentId = context?.agentId;
@@ -20,8 +20,9 @@ function createSessionActivity({ titleOf = async () => '', publish = () => {} } 
         if (!rows) agents.set(agentId, rows = new Map());
         const session = { messageId: String(messageId), topicId: String(context.topicId || ''), title: '', status: 'thinking', order: ++order };
         rows.set(session.messageId, session);
-        // 只保留一条已结束的记录，运行中的请求始终保留。
-        for (const [id, row] of rows) if (!active(row)) rows.delete(id);
+        // 保留最近会话动态供铃铛查看，不删除仍在运行的请求。
+        const completed = [...rows.values()].filter(s => !active(s)).sort((a, b) => b.order - a.order);
+        for (const old of completed.slice(12)) rows.delete(old.messageId);
         Promise.resolve().then(() => titleOf(agentId, session.topicId)).then(title => {
             if (rows.get(session.messageId) !== session) return;
             session.title = typeof title === 'string' ? title.slice(0, 300) : '';
@@ -36,7 +37,7 @@ function createSessionActivity({ titleOf = async () => '', publish = () => {} } 
         if (event.type === 'end' || event.type === 'error') {
             session.status = event.type === 'error' ? 'error' : event.aborted ? 'stopped' : 'complete';
             const completed = [...rows.values()].filter(s => !active(s)).sort((a, b) => b.order - a.order);
-            for (const old of completed.slice(1)) rows.delete(old.messageId);
+            for (const old of completed.slice(12)) rows.delete(old.messageId);
         }
     }
     return { start, update, get };

@@ -44,7 +44,6 @@ const BUBBLE_MAX_CHARS = 600;  // 气泡只留最后这么多字，完整内容�
 const DOUBLE_TAP_MS = 300;     // 这么短内的第二下算双击；单击的反应等这段时间过了再做
 const DOCK_BOTTOM = 6;         // 小胶囊离窗口底边（与 #dock 的 bottom 一致）
 const DOCK_SHOW_MS = 220;      // 光标在角色上停这么久，脚边的小胶囊冒出来
-const DOCK_HIDE_MS = 1400;     // 光标离开这么久，小胶囊收回去
 
 const STATE_LABEL = { thinking: '思考中…', tool: '调用工具中…', error: '出错了' };
 // 被碰到才有的反应：回到高帧率；其余闲时小动作按当前帧率演
@@ -304,8 +303,8 @@ function flashEmotionBadge(emotion, source) {
 const composer = { open: false, sending: false, queued: null, queuedFresh: false, fresh: false, lastSentAt: 0, ownReplyEndedAt: 0, files: [] };
 
 // 脚边的小胶囊（样式在 dock.css）：hidden 收起、pill 小胶囊、bar 输入条、rec 录音。
-// tucked：点了胶囊上的「收起」，光标离开之前不再冒出来
-const dock = { mode: 'hidden', hover: false, dragging: false, tucked: false, showTimer: 0, hideTimer: 0, voice: null, autoSend: false };
+// 胶囊保持显示，第三个按钮只展开/收起会话面板；拖动时暂时收起胶囊。
+const dock = { mode: 'pill', hover: false, dragging: false, tucked: false, showTimer: 0, hideTimer: 0, voice: null, autoSend: false };
 
 function setDock(mode) {
     if (dock.mode === mode) return;
@@ -330,7 +329,7 @@ function setDock(mode) {
     }
 }
 
-// 光标进出角色（或小胶囊本身）：停一下才冒出来，离开一会儿才收回去；输入条、录音时不跟着收
+// 保留隐藏状态的悬停恢复；平时胶囊常驻，离开光标也不收起。
 function dockHover(on) {
     if (on === dock.hover) return;
     dock.hover = on;
@@ -340,13 +339,11 @@ function dockHover(on) {
     if (dock.mode === 'bar' || dock.mode === 'rec') return;
     if (on && dock.mode === 'hidden' && !dock.tucked) {
         dock.showTimer = setTimeout(() => { if (dock.hover && !dock.dragging) setDock('pill'); }, DOCK_SHOW_MS);
-    } else if (!on && dock.mode === 'pill') {
-        dock.hideTimer = setTimeout(() => { if (!dock.hover) setDock('hidden'); }, DOCK_HIDE_MS);
     }
 }
 
 function restingDock() {
-    return dock.hover && !dock.dragging && !dock.tucked ? 'pill' : 'hidden';
+    return dock.dragging ? 'hidden' : 'pill';
 }
 
 function openComposer() {
@@ -622,10 +619,6 @@ function bindComposer() {
     $('dockEdit').addEventListener('click', openComposer);
     $('recEdit').addEventListener('click', openComposer);
     $('dockVoice').addEventListener('click', startVoice);
-    $('dockHide').addEventListener('click', () => {
-        dock.tucked = true;
-        setDock('hidden');
-    });
     $('composerNew').addEventListener('click', () => { setFresh(!composer.fresh); input.focus(); });
     $('recStop').addEventListener('click', finishVoice);
     dock.voice = createDictation({
@@ -717,6 +710,7 @@ function uiBounds({ withIdleDock = false, withBadge = true } = {}) {
     let rect = null;
     for (const el of document.querySelectorAll('.pet-ui')) {
         if (el.hidden || (el.dataset.mode === 'hidden' && !withIdleDock)) continue;
+        if (el.id === 'dock' && dock.mode === 'pill' && !withIdleDock) continue;
         if (!withBadge && el.id === 'missedBadge') continue;
         const r = el.id === 'dock' && withIdleDock && (dock.mode === 'hidden' || dock.mode === 'pill')
             ? dockHitArea(innerWidth, innerHeight) : el.getBoundingClientRect();
@@ -734,7 +728,7 @@ function aimBubble(headX) {
     const stack = $('uiStack');
     const room = stack.clientWidth;
     const left = stack.getBoundingClientRect().left;
-    for (const el of [$('sessionCard'), $('bubble'), $('toolCard'), $('approvalCard')]) {
+    for (const el of [$('sessionPanel'), $('bubble'), $('toolCard'), $('approvalCard')]) {
         if (el.hidden) continue;
         const width = el.offsetWidth;
         const slack = Math.max(0, (room - width) / 2);
@@ -1125,11 +1119,16 @@ function pixiEnv() {
 
 async function start() {
     const sessionCard = PREVIEW ? null : createSessionCard({
-        card: $('sessionCard'), title: $('sessionTitle'), status: $('sessionStatus'), api,
+        card: $('sessionCard'), panel: $('sessionPanel'), toggle: $('dockHide'), badge: $('sessionCount'),
+        navigation: $('sessionNavigation'), position: $('sessionPosition'), previous: $('sessionPrevious'), next: $('sessionNext'),
+        stop: $('sessionStop'),
+        title: $('sessionTitle'), status: $('sessionStatus'), api,
+        onToggle: () => { renderBubble(); aimBubble(aimedHeadX); },
     });
     const assets = await api.getAssets();
     if (!assets) return;
     sessionCard?.initialize(assets);
+    if (!PREVIEW) $('dock').dataset.mode = dock.mode;
     applyPrefs(await api.getPrefs?.().catch(() => null));
     api.onPrefs?.(applyPrefs);
     bindWalk();
@@ -1325,6 +1324,7 @@ async function start() {
                 drag = null;
                 dock.dragging = false;
                 dock.hover = false;
+                setDock('pill');
                 backend.life?.held(false);
                 lifeFx.held(false);
                 life.hold('drag', false);
