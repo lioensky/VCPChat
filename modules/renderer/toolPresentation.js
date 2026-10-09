@@ -115,7 +115,18 @@ function requestSummary(block, originalName) {
     const target = firstLine(TARGET_FIELDS.map(field).find(Boolean) || '', 180);
     return { name, command: command?.slice(0, 120) || '', action: knownAction || (command ? `${name} · ${command.slice(0, 120)}` : name), resource: resource || (knownAction ? name : ''), kind, target };
 }
-export function createToolPresentation({ root, getProfile }) {
+/** Only the conversation owner (Agent or Group), never a group speaker, overrides tools. */
+export function resolveToolPresentationProfile(globalProfile = {}, config = {}) {
+    const profile = { ...(globalProfile || {}) };
+    if (['legacy', 'compact', 'grouped', 'inline', 'process'].includes(config?.toolPresentation)) {
+        profile.toolPresentation = config.toolPresentation;
+    }
+    if (['attention', 'none', 'all'].includes(config?.toolExpansion)) {
+        profile.toolExpansion = config.toolExpansion;
+    }
+    return profile;
+}
+export function createToolPresentation({ root, getProfile, getLocalConfig }) {
     const doc = root.ownerDocument;
     const win = doc.defaultView;
     const roots = new WeakMap();
@@ -125,6 +136,7 @@ export function createToolPresentation({ root, getProfile }) {
     let controlSequence = 0;
     const prefix = `vcp-tool-${hash(String(Date.now()) + String(Math.random()))}`;
     function profile(p = getProfile?.() || {}) {
+        p = resolveToolPresentationProfile(p, getLocalConfig?.());
         return { style: doc.documentElement.dataset.uiMode === 'next' && ['compact', 'grouped', 'inline', 'process'].includes(p.toolPresentation) ? p.toolPresentation : 'legacy', expansion: p.toolExpansion || 'attention' };
     }
     function bucket(content) {
@@ -555,5 +567,6 @@ export function createToolPresentation({ root, getProfile }) {
     }
     root.addEventListener('click', onClick, true);
     win.addEventListener('vcp-appearance-changed', refresh);
-    return { apply, capture, dispose() {disposed=true;root.removeEventListener('click',onClick,true);win.removeEventListener('vcp-appearance-changed',refresh);} };
+    win.addEventListener('vcp-tool-presentation-changed', refresh);
+    return { apply, capture, dispose() {disposed=true;root.removeEventListener('click',onClick,true);win.removeEventListener('vcp-appearance-changed',refresh);win.removeEventListener('vcp-tool-presentation-changed',refresh);} };
 }

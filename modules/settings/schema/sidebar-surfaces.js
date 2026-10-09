@@ -13,6 +13,18 @@ const field = (id, type, label, options = {}) => Object.freeze({
     ...options,
 });
 
+const toolStyleFields = kind => [
+    field(`${kind}ToolPresentation`, 'select', '工具调用渲染样式', {
+        name: 'toolPresentation',
+        options: [['inherit', '跟随全局'], ['legacy', '原有卡片'], ['compact', '紧凑单行'], ['grouped', '分组折叠'], ['inline', '单行合并'], ['process', '整轮折叠']],
+        tooltip: '仅覆盖此会话的工具呈现；群聊以群组设置为准，不使用成员的个人设置。'
+    }),
+    field(`${kind}ToolExpansion`, 'select', '工具默认展开', {
+        name: 'toolExpansion',
+        options: [['inherit', '跟随全局'], ['attention', '失败与待确认'], ['none', '全部收起'], ['all', '全部展开']],
+        tooltip: '可独立于渲染样式跟随全局。手动展开或收起的选择仍会保留。'
+    })
+];
 const agentFields = Object.freeze([
     field('agentNameInput', 'text', 'Agent 名称', { name: 'name', placeholder: 'Agent 名称', required: true, tooltip: '列表和聊天中显示的助手名称。', validation: { required: true } }),
     field('agentModel', 'text', 'Agent 模型', { name: 'model', placeholder: '例如 gemini-2.5-flash-preview-05-20', tooltip: '留空时使用服务端默认模型。' }),
@@ -29,6 +41,7 @@ const agentFields = Object.freeze([
     field('agentCustomCss', 'textarea', '列表项自定义CSS', { name: 'customCss', rows: 3, tooltip: '此CSS将应用于【助手】页面的Agent列表项容器。' }),
     field('agentCardCss', 'textarea', '名片样式CSS', { name: 'cardCss', rows: 3, tooltip: '此CSS将应用于【设置】页面中Agent的名片区域（头像和名称）。' }),
     field('agentChatCss', 'textarea', '会话样式CSS', { name: 'chatCss', rows: 4, tooltip: '此CSS将应用于【聊天会话】中Agent的头像和名称。可使用 .message-avatar 控制头像，.sender-name 控制名称。' }),
+    ...toolStyleFields('agent'),
 ]);
 
 const groupFields = Object.freeze([
@@ -48,6 +61,7 @@ const groupFields = Object.freeze([
     field('jevContinueDebounceMs', 'number', '继续群聊防抖 (ms)', { min: 0, max: 10000, step: 100, tooltip: '防止重复点击继续群聊产生多次运行。' }),
     field('groupEnableContextMessageWindow', 'checkbox', '启用上下文楼层窗口', { tooltip: '默认关闭。开启后仅把最近指定数量的消息发送给群成员模型；完整聊天记录仍会保存和显示。' }),
     field('groupContextMessageWindowSize', 'number', '最多保留楼层数', { min: 1, max: 10000, step: 1, tooltip: '发送给群成员模型的最近消息条数（包括用户和 Agent 消息）。不影响历史记录、瀑布流显示和话题总结。', dependsOn: { field: 'groupEnableContextMessageWindow', equals: true } }),
+    ...toolStyleFields('group'),
 ]);
 
 export const settingsSidebarSchema = Object.freeze({
@@ -323,6 +337,7 @@ function renderAgentIdentity(doc) {
     const customCss = renderField(doc, agentFields[12]);
     const cardCss = renderField(doc, agentFields[13]);
     const chatCss = renderField(doc, agentFields[14]);
+    controls.append(...agentFields.slice(15).map(spec => renderField(doc, spec, 'style-control-item full-width')));
     controls.append(customCss, cardCss, chatCss);
     style.append(styleHeader, controls);
     return el(doc, 'div', { class: 'agent-identity-container' }, identityMain, style);
@@ -488,6 +503,9 @@ function renderGroupSectionContent(doc, key) {
             el(doc, 'div', { class: 'agent-identity-main group-identity-main' },
                 el(doc, 'div', { class: 'agent-avatar-wrapper group-avatar-wrapper' }, el(doc, 'img', { id: 'groupAvatarPreview', src: 'assets/default_group_avatar.png', alt: '群组头像预览', class: 'agent-avatar-display group-avatar-display', width: 60, height: 60 }), el(doc, 'label', { for: 'groupAvatarInput', class: 'avatar-upload-overlay', 'aria-label': '更换群组头像' }, buildCameraIcon(doc)), el(doc, 'input', { id: 'groupAvatarInput', type: 'file', accept: 'image/*', hidden: true })),
                 renderField(doc, groupFields[0], 'agent-name-wrapper group-name-wrapper')),
+            el(doc, 'details', { class: 'group-settings-field-shell' },
+                el(doc, 'summary', {}, '自定义样式设置'),
+                ...groupFields.slice(16).map(spec => renderField(doc, spec, 'group-settings-field-shell'))),
             el(doc, 'div', { class: 'group-settings-field-shell' }, el(doc, 'label', { id: 'groupMembersListLabel' }, '群组成员', makeHelpBadge(doc, '勾选要加入此群聊的助手成员。')), el(doc, 'div', { id: 'groupMembersList', class: 'group-members-list-container', role: 'group', 'aria-labelledby': 'groupMembersListLabel' })));
     }
     if (key === 'mode') {

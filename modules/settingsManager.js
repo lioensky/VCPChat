@@ -445,6 +445,15 @@ const settingsManager = (() => {
             agentCustomCssInput.value = agentConfig.customCss || '';
         }
 
+        for (const key of ['toolPresentation', 'toolExpansion']) {
+            const control = getAgentControl(`agent${key[0].toUpperCase()}${key.slice(1)}`);
+            if (control) {
+                control.value = agentConfig[key] || 'inherit';
+                if (!control.value) control.value = 'inherit';
+                signalPresentationSync(control);
+            }
+        }
+
         // Load card CSS
         const agentCardCssInput = getAgentControl('agentCardCss');
         if (agentCardCssInput) {
@@ -573,6 +582,8 @@ const settingsManager = (() => {
             customCss: agentCustomCssInput?.value?.trim?.() || '',
             cardCss: getAgentControl('agentCardCss')?.value?.trim?.() || '',
             chatCss: getAgentControl('agentChatCss')?.value?.trim?.() || '',
+            toolPresentation: getAgentControl('agentToolPresentation')?.value || 'inherit',
+            toolExpansion: getAgentControl('agentToolExpansion')?.value || 'inherit',
             disableCustomColors: getAgentControl('disableCustomColors')?.checked || false,
             useThemeColorsInChat: getAgentControl('useThemeColorsInChat')?.checked || false,
             ...(portraitSettings ? { portraitDisplay: portraitSettings.getDisplay() } : {}),
@@ -736,6 +747,7 @@ const settingsManager = (() => {
                         ? { ...currentSelectedItem, name: newConfig.name, config: updatedAgentConfig }
                         : { ...currentSelectedItem, ...updatedAgentConfig, name: newConfig.name };
                     refs.currentSelectedItemRef.set(nextSelectedItem);
+                    window.dispatchEvent(new CustomEvent('vcp-tool-presentation-changed'));
 
                     // Update other UI parts via callbacks or direct calls if modules are passed in
                     if (mainRendererFunctions.updateChatHeader) {

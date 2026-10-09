@@ -561,6 +561,14 @@ window.GroupRenderer = (() => {
         if (editingGroupIdInput) editingGroupIdInput.value = groupId;
 
         groupNameInput.value = groupConfig.name || '';
+        for (const key of ['toolPresentation', 'toolExpansion']) {
+            const control = getGroupControl(`group${key[0].toUpperCase()}${key.slice(1)}`);
+            if (control) {
+                control.value = groupConfig[key] || 'inherit';
+                if (!control.value) control.value = 'inherit';
+                control.dispatchEvent(new (control.ownerDocument.defaultView.CustomEvent)('vcp-uiux-sync', { bubbles: true }));
+            }
+        }
         groupAvatarPreview.hidden = false;
         groupAvatarPreview.src = groupConfig.avatarUrl
             ? `${groupConfig.avatarUrl}?t=${Date.now()}`
@@ -858,6 +866,8 @@ window.GroupRenderer = (() => {
         const croppedGroupAvatar = mainRendererFunctions.getCroppedFile('group');
         const readFormDraft = () => ({
             name: groupNameInput?.value?.trim?.() || '',
+            toolPresentation: getGroupControl('groupToolPresentation')?.value || 'inherit',
+            toolExpansion: getGroupControl('groupToolExpansion')?.value || 'inherit',
             members: [...selectedMemberIds],
             mode: groupChatModeSelect?.value || 'sequential',
             useUnifiedModel: groupUseUnifiedModel?.checked === true,
@@ -924,6 +934,8 @@ window.GroupRenderer = (() => {
 
         const newConfig = {
             name: formDraft.name,
+            toolPresentation: formDraft.toolPresentation,
+            toolExpansion: formDraft.toolExpansion,
             members: selectedMemberIds,
             mode: formDraft.mode,
             modeSettings: {
@@ -1027,6 +1039,7 @@ window.GroupRenderer = (() => {
                         ...result.agentGroup,
                         config: result.agentGroup
                     });
+                    window.dispatchEvent(new CustomEvent('vcp-tool-presentation-changed'));
                     const chatHeaderEl = mainRendererElements?.currentChatNameH3 || mainRendererElements?.currentChatAgentNameH3;
                     if (chatHeaderEl) {
                         const groupTitle = { classic: `与群组 ${result.agentGroup.name} 聊天中`, capsule: `${result.agentGroup.name} (群组)` };
