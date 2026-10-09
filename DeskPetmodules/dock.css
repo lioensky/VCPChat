@@ -95,11 +95,11 @@
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  width: 40px;
+  width: 32px;
   height: 32px;
   padding: 0;
   border: none;
-  border-radius: 16px;
+  border-radius: 50%;
   background: transparent;
   color: inherit;
   cursor: pointer;
@@ -112,6 +112,14 @@
 
 .pet-dock .dock-btn:active {
   transform: scale(0.92);
+}
+
+/* 三个正圆按钮，外侧留白与分隔线两侧间距分别固定，避免背景贴边或变成椭圆。 */
+.pet-dock .dock-pill { padding: 4px 7px; }
+.pet-dock .dock-pill .dock-sep { margin: 0 3px; }
+.pet-dock .dock-btn:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
 }
 
 .pet-dock svg {
@@ -127,7 +135,8 @@
 .pet-dock .dock-sep {
   flex: 0 0 auto;
   width: 1px;
-  height: 20px;
+  height: 16px;
+  border-radius: 1px;
   background: rgba(0, 0, 0, 0.1);
 }
 
