@@ -280,7 +280,8 @@ test('sender navigation aborts the real HTTP stream without delivering into the 
     const f = route(fetch);
     try {
         await f.start(server.url); await waitFor(() => f.sent.length === 1 && f.tasks().length === 1);
-        f.sender.emit('did-start-loading');
+        // 主框架、非页内跳转才算宿主文档被替换（event, url, isInPlace, isMainFrame）。
+        f.sender.emit('did-start-navigation', {}, 'file:///next.html', false, true);
         await waitFor(() => !f.tasks().length && server.closed()); await tick();
         assert.deepEqual(f.sent.map(item => item.event.type), ['data'], 'aborted sender receives no later terminal/error event');
         assert.equal(f.sender.eventNames().length, 0);

@@ -136,6 +136,24 @@ const settingsManager = (() => {
         return agentSettingsForm;
     }
 
+    // 首页立绘一栏的行为（modules/ui-system/agent-portrait-settings.js）；表单 DOM 换了就重建
+    let portraitSettings = null;
+    let portraitSettingsHost = null;
+    function ensurePortraitSettings() {
+        const host = getAgentControl('agentPortraitSettings');
+        if (!host || !window.VCPAgentPortraitSettings?.create) return null;
+        if (portraitSettings && portraitSettingsHost === host) return portraitSettings;
+        portraitSettings?.dispose?.();
+        portraitSettingsHost = host;
+        portraitSettings = window.VCPAgentPortraitSettings.create({
+            host,
+            api: electronAPI,
+            onChange: () => {},
+            notify: (message, type) => uiHelper?.showToastNotification?.(message, type)
+        });
+        return portraitSettings;
+    }
+
     function getAgentControl(id) {
         if (!id) return null;
         const form = resolveAgentForm();
@@ -397,6 +415,7 @@ const settingsManager = (() => {
         if (mainRendererFunctions.setCroppedFile) {
             mainRendererFunctions.setCroppedFile('agent', null);
         }
+        void ensurePortraitSettings()?.load(agentId, agentConfig);
 
         // Populate custom style settings.  Programmatic populate writes must
         // signal the mounted presentation primitives (vcp-uiux-sync, matching
@@ -424,6 +443,15 @@ const settingsManager = (() => {
         }
         if (agentCustomCssInput) {
             agentCustomCssInput.value = agentConfig.customCss || '';
+        }
+
+        for (const key of ['toolPresentation', 'toolExpansion']) {
+            const control = getAgentControl(`agent${key[0].toUpperCase()}${key.slice(1)}`);
+            if (control) {
+                control.value = agentConfig[key] || 'inherit';
+                if (!control.value) control.value = 'inherit';
+                signalPresentationSync(control);
+            }
         }
 
         // Load card CSS
@@ -554,8 +582,11 @@ const settingsManager = (() => {
             customCss: agentCustomCssInput?.value?.trim?.() || '',
             cardCss: getAgentControl('agentCardCss')?.value?.trim?.() || '',
             chatCss: getAgentControl('agentChatCss')?.value?.trim?.() || '',
+            toolPresentation: getAgentControl('agentToolPresentation')?.value || 'inherit',
+            toolExpansion: getAgentControl('agentToolExpansion')?.value || 'inherit',
             disableCustomColors: getAgentControl('disableCustomColors')?.checked || false,
             useThemeColorsInChat: getAgentControl('useThemeColorsInChat')?.checked || false,
+            ...(portraitSettings ? { portraitDisplay: portraitSettings.getDisplay() } : {}),
             uiCollapseStates: getCurrentCollapseStates()
         };
     }
@@ -650,6 +681,18 @@ const settingsManager = (() => {
             }
         }
 
+        // 暂存的立绘图片和头像一样，点保存时才写进 Agent 目录
+        let portraitFilesChanged = false;
+        if (portraitSettings?.hasPendingFiles?.(agentId)) {
+            const portraitResult = await portraitSettings.commit(agentId);
+            if (!portraitResult?.success) {
+                uiHelper.showToastNotification(`保存立绘失败: ${portraitResult?.error || '未知错误'}`, 'error');
+                reportSettingsSaveResult(agentSettingsForm, false, portraitResult?.error || 'portrait-save-failed');
+                return { success: false, error: portraitResult?.error || 'portrait-save-failed' };
+            }
+            portraitFilesChanged = portraitResult.changed === true;
+        }
+
         let result;
         try {
             result = await electronAPI.saveAgentConfig(agentId, newConfig);
@@ -704,6 +747,7 @@ const settingsManager = (() => {
                         ? { ...currentSelectedItem, name: newConfig.name, config: updatedAgentConfig }
                         : { ...currentSelectedItem, ...updatedAgentConfig, name: newConfig.name };
                     refs.currentSelectedItemRef.set(nextSelectedItem);
+                    window.dispatchEvent(new CustomEvent('vcp-tool-presentation-changed'));
 
                     // Update other UI parts via callbacks or direct calls if modules are passed in
                     if (mainRendererFunctions.updateChatHeader) {
@@ -722,6 +766,10 @@ const settingsManager = (() => {
             console.error('[SettingsManager] Agent settings saved, but UI projection failed:', projectionError);
             uiHelper.showToastNotification(`Agent设置已保存，但界面刷新失败: ${projectionError.message || projectionError}`, 'warning');
         }
+        // 侧栏首页按新的立绘和位置重画（没改立绘时也发：焦点、高度跟着配置走）
+        window.dispatchEvent(new CustomEvent('vcp-agent-portrait-changed', {
+            detail: { agentId, filesChanged: portraitFilesChanged }
+        }));
         if (isSaveContextCurrent()) reportSettingsSaveResult(agentSettingsForm, true);
         return { success: true, stale: !isSaveContextCurrent(), result };
     }
@@ -2259,6 +2307,7 @@ function resolveRegexSlots() {
         sectionControllers.clear();
 
         createSectionController('identity', buildIdentitySummary);
+        ensurePortraitSettings();
         createSectionController('prompt', buildPromptSummary);
         createSectionController('model', buildModelSummary);
         createSectionController('params', buildParamsSummary);

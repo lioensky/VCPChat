@@ -1,5 +1,9 @@
 # Sovits API 使用文档
 
+> **当前 VCPChat 兼容开发请优先阅读：[本地 SoVITS TTS 推理服务器兼容开发文档](../docs/local-sovits-tts-server-compatibility.md)。**
+> 本页保留的是旧 v4 服务示例；当前客户端固定发送 v2ProPlus 版本标签，使用 Bearer 请求头鉴权。
+> 端口可配置，URL 留空时客户端实际默认使用 8000；设置界面的 9880 仅为示例。
+
 本文档旨在说明如何通过 API 调用本地部署的 Sovits 服务进行文本转语音（TTS）。
 
 ## 1. 语音合成 API

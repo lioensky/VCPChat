@@ -175,3 +175,25 @@ test('a draft with the name cleared does not take the next Agent\'s name', () =>
     await save();
     assert.notEqual(disk['agent-a'].name, 'Bob', 'saving the restored draft keeps Agent A\'s name');
 }));
+test('local tool choices survive draft switching, save, reload and return to inheritance', () => withAgentSettings(async ({ show, edit, save, value, disk }) => {
+    await show('agent-a');
+    assert.equal(value('agentToolPresentation'), 'inherit');
+    edit('agentToolPresentation', 'process');
+    edit('agentToolExpansion', 'none');
+    await show('agent-b');
+    assert.equal(value('agentToolPresentation'), 'inherit');
+    await show('agent-a');
+    assert.equal(value('agentToolPresentation'), 'process');
+    assert.equal(value('agentToolExpansion'), 'none');
+    await save();
+    assert.equal(disk['agent-a'].toolPresentation, 'process');
+    assert.equal(disk['agent-a'].toolExpansion, 'none');
+    await show('agent-b');
+    await show('agent-a');
+    assert.equal(value('agentToolPresentation'), 'process');
+    edit('agentToolPresentation', 'inherit');
+    edit('agentToolExpansion', 'inherit');
+    await save();
+    assert.equal(disk['agent-a'].toolPresentation, 'inherit');
+    assert.equal(disk['agent-a'].toolExpansion, 'inherit');
+}));

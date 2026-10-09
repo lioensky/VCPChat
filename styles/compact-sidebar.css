@@ -69,3 +69,39 @@ html .sidebar.avatar-only {
     height: var(--compact-sidebar-avatar-size);
     margin: 0;
 }
+/* The component layer gives the normal topics tab position:relative for its
+ * manage toolbar. Compact mode must override that layer, not join the rail's
+ * flex flow with relative offsets (which shrinks the agent list). */
+html .sidebar.avatar-only {
+    position: relative;
+    overflow: visible;
+    z-index: 160;
+}
+
+html .sidebar.avatar-only #tabContentTopics.compact-drawer-open {
+    position: absolute;
+    top: 12px;
+    bottom: 12px;
+    left: calc(100% + 8px);
+    width: min(320px, calc(100vw - 96px));
+    min-width: 0;
+    min-height: 0;
+    max-height: none;
+    margin: 0;
+    box-sizing: border-box;
+    /* An inactive tab's legacy reset uses !important; the drawer remains
+     * inactive so the agents tab can stay selected behind it. */
+    padding: 14px 10px 12px !important;
+    border-top-width: 1px !important;
+    border-bottom-width: 1px !important;
+}
+
+html .sidebar.avatar-only #tabContentTopics.compact-drawer-open .topics-header-container {
+    flex: 0 0 auto;
+}
+
+html .sidebar.avatar-only #tabContentTopics.compact-drawer-open .sidebar-list-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}

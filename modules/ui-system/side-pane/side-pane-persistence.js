@@ -6,6 +6,7 @@
 
 export const SIDE_PANE_LAYOUT_KEY = 'vcp.sidePane.layout.v1';
 export const SIDE_PANE_LAYOUT_VERSION = 1;
+const isBuiltinTab = id => id === 'notifications' || id === 'launcher';
 export const PARENT_MEMORY_LIMIT = 50;
 export const MAX_PERSISTED_TABS = 30;
 // 单个标签序列化后超过这个大小就不存（比如很大的 diff），重启后不恢复它
@@ -90,7 +91,7 @@ export function serializeLayout({
         version: SIDE_PANE_LAYOUT_VERSION,
         tabs: persistedTabs,
         // 当前标签没存下来（比如是辅助对话）时不记，恢复后由对话记忆决定
-        activeTabId: persistedTabs.some(tab => tab.id === activeTabId) ? activeTabId : null,
+        activeTabId: isBuiltinTab(activeTabId) || persistedTabs.some(tab => tab.id === activeTabId) ? activeTabId : null,
         visible: visible === true,
         activeByParent: [...activeByParent].slice(-PARENT_MEMORY_LIMIT),
         collapsedByParent: [...collapsedByParent].slice(-PARENT_MEMORY_LIMIT)
@@ -117,7 +118,7 @@ export function shrinkLayout(layout) {
     return {
         ...layout,
         tabs,
-        activeTabId: tabs.some(tab => tab.id === layout?.activeTabId) ? layout.activeTabId : null
+        activeTabId: isBuiltinTab(layout?.activeTabId) || tabs.some(tab => tab.id === layout?.activeTabId) ? layout.activeTabId : null
     };
 }
 
@@ -135,7 +136,7 @@ export function parseLayout(raw, canPersist) {
         .slice(-MAX_PERSISTED_TABS);
     return {
         tabs,
-        activeTabId: typeof data.activeTabId === 'string' && tabs.some(tab => tab.id === data.activeTabId) ? data.activeTabId : null,
+        activeTabId: typeof data.activeTabId === 'string' && (isBuiltinTab(data.activeTabId) || tabs.some(tab => tab.id === data.activeTabId)) ? data.activeTabId : null,
         visible: data.visible === true,
         activeByParent: new Map(sanitizeEntries(data.activeByParent, value => typeof value === 'string' && !!value)),
         collapsedByParent: new Map(sanitizeEntries(data.collapsedByParent, value => typeof value === 'boolean'))

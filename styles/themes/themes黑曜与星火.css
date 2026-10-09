@@ -1,0 +1,656 @@
+/*
+ * styles/themes/themes黑曜与星火.css
+ * VCP Visual Theme: Relic Archive · Obsidian & Stellar Flame
+ * Designed by Coco for Professor Ryan
+ *
+ * Dark  : Obsidian Obelisk / 黑曜石方尖碑 (高维深空、黑曜石哑光、星火流金、以太熔岩橙)
+ * Light : Ivory Sanctuary / 象牙圣堂 (象牙白石廊、青金石圣蓝、圣堂日晷流金、高反差石刻)
+ *
+ * Deep Geometric Overhaul:
+ * Tactical Clip-path Monoliths, Inset Chamber Drawers, Prismatic Refraction Glass.
+ */
+
+/* =========================================================
+   Dark Theme (Default) · Obsidian Obelisk
+   ========================================================= */
+:root,
+body[data-vcp-theme="dark"] {
+    color-scheme: dark;
+
+    /* --- Wallpaper Interface --- */
+    --vcp-theme-wallpaper-scope: panel;
+    --chat-wallpaper-dark: url('../assets/wallpaper/relic_obsidian_dark.jpg');
+
+    /* --- Base Colors --- */
+    --primary-bg: #0A0C10;
+    --secondary-bg: #12151D;
+    --tertiary-bg: #0A0C10;
+    --accent-bg: #1A1F2B;
+    --border-color: #2E3646;
+    --input-bg: rgba(18, 21, 29, 0.92);
+    --panel-bg-dark: rgba(18, 21, 29, 0.88);
+
+    /* --- Text Colors --- */
+    --primary-text: #E5E9F0;
+    --secondary-text: #8F9BA8;
+    --highlight-text: #FFB703;
+    --text-on-accent: #0A0C10;
+    --vcp-ui-theme-on-accent: #0A0C10;
+    --vcp-ui-on-accent: #0A0C10;
+    --placeholder-text: #636E7B;
+    --quoted-text: #FB8500;
+    --user-text: #E5E9F0;
+    --agent-text: #E5E9F0;
+
+    /* --- Chat Bubbles: 黄金流体磨砂透光 --- */
+    --user-bubble-bg: rgba(255, 183, 3, 0.125);
+    --assistant-bubble-bg: rgba(16, 19, 26, 0.65);
+
+    /* --- Controls & Semantic Colors --- */
+    --button-bg: #FFB703;
+    --button-hover-bg: #FFC526;
+    --danger-color: #E63946;
+    --danger-hover-bg: #F04F5C;
+    --success-color: #2A9D8F;
+
+    /* --- Notifications & Legacy Tools --- */
+    --notification-bg: rgba(18, 21, 29, 0.94);
+    --notification-header-bg: rgba(26, 31, 43, 0.96);
+    --notification-border: #2E3646;
+    --tool-bubble-bg: rgba(26, 31, 43, 0.65);
+    --tool-bubble-border: rgba(255, 183, 3, 0.6);
+
+    /* --- Scrollbar --- */
+    --scrollbar-track: rgba(10, 12, 16, 0.55);
+    --scrollbar-thumb: rgba(255, 183, 3, 0.45);
+    --scrollbar-thumb-hover: rgba(255, 183, 3, 0.75);
+
+    /* --- Streaming Shimmer --- */
+    --shimmer-color-transparent: rgba(255, 183, 3, 0.08);
+    --shimmer-color-highlight: rgba(255, 183, 3, 0.45);
+
+    /* --- Frosted Panel Readability --- */
+    --panel-text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75);
+    --panel-bg: var(--panel-bg-dark);
+
+    /* --- Token Injections: ToolUse 深度接管 --- */
+    --vcp-tool-presented-background: linear-gradient(135deg, rgba(22, 26, 36, 0.88) 0%, rgba(14, 17, 24, 0.82) 100%);
+    --vcp-tool-presented-radius: 0px;
+    --vcp-tool-presented-color: #E5E9F0;
+    --vcp-tool-presented-spacing: 9px 18px 9px 34px;
+
+    /* --- Token Injections: ToolResult 深度接管 --- */
+    --tool-result-bg: linear-gradient(135deg, rgba(20, 24, 34, 0.85) 0%, rgba(12, 15, 21, 0.78) 100%);
+    --tool-result-border-color: #2E3646;
+    --tool-result-text-color: #E5E9F0;
+    --tool-result-header-border-color: rgba(255, 183, 3, 0.22);
+    --tool-result-name-color: #FFB703;
+    --tool-result-name-bg: rgba(255, 183, 3, 0.12);
+    --tool-result-item-key-color: #8F9BA8;
+    --tool-result-item-value-color: #E5E9F0;
+    --tool-result-shadow: 0 8px 26px rgba(0, 0, 0, 0.38);
+
+    /* --- Token Injections: ToolSummary 深度接管 --- */
+    --tool-summary-bg: linear-gradient(135deg, rgba(24, 29, 41, 0.82) 0%, rgba(14, 18, 26, 0.86) 100%);
+    --tool-summary-border-color: rgba(255, 183, 3, 0.28);
+    --tool-summary-title-color: #FFB703;
+    --tool-summary-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+}
+
+body {
+    background-image: var(--chat-wallpaper-dark);
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+}
+
+/* =========================================================
+   Light Theme · Ivory Sanctuary
+   ========================================================= */
+body.light-theme,
+body[data-vcp-theme="light"] {
+    color-scheme: light;
+
+    /* --- Wallpaper Interface --- */
+    --chat-wallpaper-light: url('../assets/wallpaper/relic_ivory_light.jpg');
+    background-image: var(--chat-wallpaper-light);
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+
+    /* --- Base Colors --- */
+    --primary-bg: #F8F6F0;
+    --secondary-bg: #FFFFFF;
+    --tertiary-bg: #F8F6F0;
+    --accent-bg: #EFECE4;
+    --border-color: #D8D2C4;
+    --input-bg: rgba(255, 255, 255, 0.94);
+    --panel-bg-light: rgba(255, 255, 255, 0.88);
+
+    /* --- Text Colors --- */
+    --primary-text: #1E242B;
+    --secondary-text: #5A6572;
+    --highlight-text: #1D4ED8;
+    --text-on-accent: #FFFFFF;
+    --vcp-ui-theme-on-accent: #FFFFFF;
+    --vcp-ui-on-accent: #FFFFFF;
+    --placeholder-text: #8A94A0;
+    --quoted-text: #B45309;
+    --user-text: #1E242B;
+    --agent-text: #1E242B;
+
+    /* --- Chat Bubbles: 象牙琉璃透光 --- */
+    --user-bubble-bg: rgba(29, 78, 216, 0.09);
+    --assistant-bubble-bg: rgba(255, 255, 255, 0.72);
+
+    /* --- Controls & Semantic Colors --- */
+    --button-bg: #1D4ED8;
+    --button-hover-bg: #1E40AF;
+    --danger-color: #DC2626;
+    --danger-hover-bg: #B91C1C;
+    --success-color: #0D9488;
+
+    /* --- Notifications & Legacy Tools --- */
+    --notification-bg: rgba(255, 255, 255, 0.94);
+    --notification-header-bg: rgba(239, 236, 228, 0.94);
+    --notification-border: #D8D2C4;
+    --tool-bubble-bg: rgba(235, 242, 250, 0.75);
+    --tool-bubble-border: rgba(29, 78, 216, 0.55);
+
+    /* --- Scrollbar --- */
+    --scrollbar-track: rgba(216, 210, 196, 0.45);
+    --scrollbar-thumb: rgba(29, 78, 216, 0.42);
+    --scrollbar-thumb-hover: rgba(29, 78, 216, 0.72);
+
+    /* --- Streaming Shimmer --- */
+    --shimmer-color-transparent: rgba(29, 78, 216, 0.06);
+    --shimmer-color-highlight: rgba(29, 78, 216, 0.35);
+
+    /* --- Frosted Panel Readability --- */
+    --panel-text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+    --panel-bg: var(--panel-bg-light);
+
+    /* --- Token Injections: ToolUse 深度接管 --- */
+    --vcp-tool-presented-background: linear-gradient(135deg, rgba(255, 255, 255, 0.88) 0%, rgba(246, 243, 236, 0.82) 100%);
+    --vcp-tool-presented-radius: 0px;
+    --vcp-tool-presented-color: #1E242B;
+    --vcp-tool-presented-spacing: 9px 18px 9px 34px;
+
+    /* --- Token Injections: ToolResult 深度接管 --- */
+    --tool-result-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.86) 0%, rgba(246, 244, 238, 0.78) 100%);
+    --tool-result-border-color: #D8D2C4;
+    --tool-result-text-color: #1E242B;
+    --tool-result-header-border-color: rgba(29, 78, 216, 0.16);
+    --tool-result-name-color: #1D4ED8;
+    --tool-result-name-bg: rgba(29, 78, 216, 0.08);
+    --tool-result-item-key-color: #5A6572;
+    --tool-result-item-value-color: #1E242B;
+    --tool-result-shadow: 0 6px 18px rgba(30, 36, 43, 0.09);
+
+    /* --- Token Injections: ToolSummary 深度接管 --- */
+    --tool-summary-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.86) 0%, rgba(239, 236, 228, 0.8) 100%);
+    --tool-summary-border-color: rgba(29, 78, 216, 0.22);
+    --tool-summary-title-color: #1D4ED8;
+    --tool-summary-shadow: 0 4px 14px rgba(30, 36, 43, 0.07);
+}
+
+/* =========================================================
+   Structural Bubble Geometry & Monolith Styling
+   ========================================================= */
+
+/* Dark User Bubble: Obsidian plate with stellar gold right edge */
+.message-item.user .md-content {
+    box-sizing: border-box;
+    border: 1px solid rgba(255, 183, 3, 0.24) !important;
+    border-right: 3px solid rgba(255, 183, 3, 0.88) !important;
+    border-radius: 14px 4px 14px 14px !important;
+    box-shadow:
+        0 8px 24px rgba(0, 0, 0, 0.28),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Dark Assistant Bubble: Obsidian Obelisk plate with amber/orange left spine */
+.message-item.agent .md-content,
+.message-item.assistant .md-content {
+    box-sizing: border-box;
+    border: 1px solid rgba(46, 54, 70, 0.85) !important;
+    border-left: 3px solid rgba(255, 183, 3, 0.85) !important;
+    border-radius: 4px 14px 14px 14px !important;
+    box-shadow:
+        0 8px 28px rgba(0, 0, 0, 0.35),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Light User Bubble: Warm ivory stone with lapis lazuli right edge */
+body.light-theme .message-item.user .md-content,
+body[data-vcp-theme="light"] .message-item.user .md-content {
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.88), rgba(29, 78, 216, 0.08)) !important;
+    border: 1px solid rgba(29, 78, 216, 0.2) !important;
+    border-right: 3px solid rgba(29, 78, 216, 0.85) !important;
+    box-shadow: 0 7px 22px rgba(30, 36, 43, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+}
+
+/* Light Assistant Bubble: Ivory sanctuary plate with lapis spine */
+body.light-theme .message-item.agent .md-content,
+body.light-theme .message-item.assistant .md-content,
+body[data-vcp-theme="light"] .message-item.agent .md-content,
+body[data-vcp-theme="light"] .message-item.assistant .md-content {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.82) 0%, rgba(248, 246, 240, 0.72) 100%) !important;
+    border: 1px solid rgba(216, 210, 196, 0.88) !important;
+    border-left: 3px solid rgba(29, 78, 216, 0.8) !important;
+    box-shadow: 0 8px 25px rgba(30, 36, 43, 0.085), inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+}
+
+/* =========================================================
+   Unified Card Ecosystem: 1. Role Dividers (战术刻度标尺)
+   ========================================================= */
+.vcp-role-divider {
+    font-family: monospace;
+    letter-spacing: 0.1em;
+}
+
+.vcp-role-divider.role-user {
+    --role-divider-color: #FFB703 !important;
+}
+
+.vcp-role-divider.role-assistant {
+    --role-divider-color: #FB8500 !important;
+}
+
+.vcp-role-divider.role-system {
+    --role-divider-color: #8F9BA8 !important;
+}
+
+.vcp-role-divider .divider-text {
+    border-radius: 2px !important;
+    background: rgba(18, 21, 29, 0.92) !important;
+    border: 1px solid rgba(255, 183, 3, 0.4) !important;
+    color: var(--primary-text) !important;
+    font-weight: 700 !important;
+    padding: 3px 12px !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), inset 0 0 6px rgba(255, 183, 3, 0.1);
+}
+
+body.light-theme .vcp-role-divider.role-user,
+body[data-vcp-theme="light"] .vcp-role-divider.role-user {
+    --role-divider-color: #1D4ED8 !important;
+}
+
+body.light-theme .vcp-role-divider.role-assistant,
+body[data-vcp-theme="light"] .vcp-role-divider.role-assistant {
+    --role-divider-color: #B45309 !important;
+}
+
+body.light-theme .vcp-role-divider.role-system,
+body[data-vcp-theme="light"] .vcp-role-divider.role-system {
+    --role-divider-color: #5A6572 !important;
+}
+
+body.light-theme .vcp-role-divider .divider-text,
+body[data-vcp-theme="light"] .vcp-role-divider .divider-text {
+    background: rgba(255, 255, 255, 0.94) !important;
+    border: 1px solid rgba(29, 78, 216, 0.35) !important;
+    color: var(--primary-text) !important;
+    box-shadow: 0 2px 6px rgba(30, 36, 43, 0.08);
+}
+
+/* =========================================================
+   Unified Card Ecosystem: 2. Tool Use Bubble (硬核切角方尖碑装甲)
+   ========================================================= */
+:is(.vcp-tool-use-bubble, .message-item .vcp-tool-use-bubble) {
+    background: var(--vcp-tool-presented-background) !important;
+    background-image: none !important;
+    animation: none !important;
+    border: 1px solid rgba(255, 183, 3, 0.38) !important;
+    border-left: 4px solid var(--highlight-text) !important;
+    /* 核心几何革命：战术 45 度右上硬核切角 */
+    clip-path: polygon(0 0, calc(100% - 15px) 0, 100% 15px, 100% 100%, 0 100%) !important;
+    border-radius: 0 !important;
+    color: var(--primary-text) !important;
+    box-shadow:
+        0 8px 24px rgba(0, 0, 0, 0.32),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+    transition: transform 0.18s ease, box-shadow 0.18s ease !important;
+}
+
+:is(.vcp-tool-use-bubble, .message-item .vcp-tool-use-bubble):hover {
+    box-shadow:
+        0 10px 28px rgba(0, 0, 0, 0.4),
+        0 0 14px rgba(255, 183, 3, 0.18),
+        inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
+}
+
+/* 彻底关闭外边框跑马灯流光与齿轮 */
+:is(.vcp-tool-use-bubble, .message-item .vcp-tool-use-bubble)::after {
+    display: none !important;
+    content: none !important;
+    background: none !important;
+    animation: none !important;
+}
+
+:is(.vcp-tool-use-bubble, .message-item .vcp-tool-use-bubble)::before {
+    color: var(--highlight-text) !important;
+    text-shadow: 0 0 8px rgba(255, 183, 3, 0.6) !important;
+}
+
+:is(.vcp-tool-use-bubble, .message-item .vcp-tool-use-bubble) .vcp-tool-label {
+    color: var(--highlight-text) !important;
+    letter-spacing: 0.08em;
+    font-size: 0.9em;
+}
+
+:is(.vcp-tool-use-bubble, .message-item .vcp-tool-use-bubble) .vcp-tool-name-highlight {
+    background: linear-gradient(90deg, #FFB703, #FFFFFF, #FB8500, #FFB703) !important;
+    background-size: 300% 100% !important;
+    -webkit-background-clip: text !important;
+    background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.5px;
+}
+
+/* ToolUse 展开抽屉槽：内凹暗槽 (Chamber Inset) */
+.vcp-tool-details {
+    background-color: rgba(8, 10, 14, 0.8) !important;
+    border: 1px solid rgba(255, 183, 3, 0.2) !important;
+    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.6) !important;
+    border-radius: 2px !important;
+}
+
+/* 浅色模式 ToolUse: 象牙圣堂金石切角 */
+body.light-theme :is(.vcp-tool-use-bubble, .message-item .vcp-tool-use-bubble),
+body[data-vcp-theme="light"] :is(.vcp-tool-use-bubble, .message-item .vcp-tool-use-bubble) {
+    border: 1px solid rgba(29, 78, 216, 0.35) !important;
+    border-left: 4px solid #1D4ED8 !important;
+    box-shadow:
+        0 6px 20px rgba(30, 36, 43, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+}
+
+body.light-theme :is(.vcp-tool-use-bubble, .message-item .vcp-tool-use-bubble)::before,
+body[data-vcp-theme="light"] :is(.vcp-tool-use-bubble, .message-item .vcp-tool-use-bubble)::before {
+    color: #1D4ED8 !important;
+    text-shadow: 0 0 6px rgba(29, 78, 216, 0.4) !important;
+}
+
+body.light-theme :is(.vcp-tool-use-bubble, .message-item .vcp-tool-use-bubble) .vcp-tool-label,
+body[data-vcp-theme="light"] :is(.vcp-tool-use-bubble, .message-item .vcp-tool-use-bubble) .vcp-tool-label {
+    color: #1D4ED8 !important;
+}
+
+body.light-theme :is(.vcp-tool-use-bubble, .message-item .vcp-tool-use-bubble) .vcp-tool-name-highlight,
+body[data-vcp-theme="light"] :is(.vcp-tool-use-bubble, .message-item .vcp-tool-use-bubble) .vcp-tool-name-highlight {
+    background: linear-gradient(90deg, #1D4ED8, #0284C7, #B45309, #1D4ED8) !important;
+    background-size: 300% 100% !important;
+    -webkit-background-clip: text !important;
+    background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+}
+
+body.light-theme .vcp-tool-details,
+body[data-vcp-theme="light"] .vcp-tool-details {
+    background-color: rgba(246, 244, 238, 0.9) !important;
+    border: 1px solid rgba(29, 78, 216, 0.18) !important;
+    box-shadow: inset 0 2px 6px rgba(30, 36, 43, 0.08) !important;
+}
+
+/* =========================================================
+   Unified Card Ecosystem: 3. Tool Result Bubble (数据结算方碑)
+   ========================================================= */
+:is(.vcp-tool-result-bubble, .message-item .vcp-tool-result-bubble) {
+    background: var(--tool-result-bg) !important;
+    border: 1px solid var(--tool-result-border-color) !important;
+    border-left: 4px solid var(--quoted-text, #FB8500) !important;
+    /* 核心几何革命：切右下角与 ToolUse 形成视觉回响互补 */
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 15px), calc(100% - 15px) 100%, 0 100%) !important;
+    border-radius: 0 !important;
+    box-shadow: var(--tool-result-shadow) !important;
+}
+
+.vcp-tool-result-header {
+    border-bottom: 1px dashed var(--tool-result-header-border-color) !important;
+    padding-bottom: 9px !important;
+}
+
+/* 工具名称药丸标签 · 战术铭文胶囊 */
+.vcp-tool-result-name {
+    color: var(--tool-result-name-color) !important;
+    background-color: var(--tool-result-name-bg) !important;
+    border: 1px solid rgba(255, 183, 3, 0.35) !important;
+    border-radius: 2px !important;
+    font-family: monospace;
+    font-weight: 700 !important;
+    letter-spacing: 0.5px;
+}
+
+/* 交互折叠指示器发光 */
+.vcp-result-toggle-icon:hover::before,
+.vcp-result-toggle-icon:hover::after {
+    background-color: var(--highlight-text) !important;
+    box-shadow: 0 0 8px var(--highlight-text);
+}
+
+body.light-theme :is(.vcp-tool-result-bubble, .message-item .vcp-tool-result-bubble),
+body[data-vcp-theme="light"] :is(.vcp-tool-result-bubble, .message-item .vcp-tool-result-bubble) {
+    border-left: 4px solid #1D4ED8 !important;
+}
+
+body.light-theme .vcp-tool-result-name,
+body[data-vcp-theme="light"] .vcp-tool-result-name {
+    border-color: rgba(29, 78, 216, 0.3) !important;
+}
+
+/* 折叠展开槽质感统一 · 机械内凹暗槽 */
+.vcp-tool-result-raw-content,
+.vcp-tool-result-markdown-content pre {
+    border-radius: 2px !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    background: rgba(8, 10, 14, 0.75) !important;
+    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.5) !important;
+}
+
+body.light-theme .vcp-tool-result-raw-content,
+body[data-vcp-theme="light"] .vcp-tool-result-raw-content,
+body.light-theme .vcp-tool-result-markdown-content pre,
+body[data-vcp-theme="light"] .vcp-tool-result-markdown-content pre {
+    border-radius: 2px !important;
+    border: 1px solid rgba(30, 36, 43, 0.12) !important;
+    background: rgba(246, 244, 238, 0.85) !important;
+    box-shadow: inset 0 2px 4px rgba(30, 36, 43, 0.06) !important;
+}
+
+/* =========================================================
+   Unified Card Ecosystem: 4. Tool Summary Bubble
+   ========================================================= */
+.vcp-tool-call-summary-bubble {
+    border-left: 4px solid var(--highlight-text) !important;
+    clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%) !important;
+    border-radius: 0 !important;
+}
+
+/* =========================================================
+   Unified Card Ecosystem: 5. Maid & Valet Diaries (古代铭文碑卷)
+   ========================================================= */
+
+/* 女仆日记 · 黑曜石铭文碑卷 (深色模式) */
+body[data-vcp-theme="dark"] .maid-diary-bubble,
+.maid-diary-bubble {
+    background: linear-gradient(135deg, rgba(20, 24, 34, 0.9) 0%, rgba(12, 15, 21, 0.85) 100%) !important;
+    border: 1px solid rgba(255, 183, 3, 0.35) !important;
+    border-left: 4px solid #FFB703 !important;
+    /* 切角呼应：古代方尖碑折角 */
+    clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%) !important;
+    border-radius: 0 !important;
+    color: #E5E9F0 !important;
+    box-shadow: 0 8px 26px rgba(0, 0, 0, 0.4) !important;
+}
+
+body[data-vcp-theme="dark"] .diary-header,
+.diary-header {
+    border-bottom: 1px solid rgba(255, 183, 3, 0.28) !important;
+}
+
+body[data-vcp-theme="dark"] .diary-title,
+.diary-title {
+    color: #FFB703 !important;
+    letter-spacing: 0.05em;
+}
+
+body[data-vcp-theme="dark"] .diary-maid-name,
+body[data-vcp-theme="dark"] .diary-folder-name,
+.diary-maid-name,
+.diary-folder-name {
+    background: rgba(255, 183, 3, 0.12) !important;
+    color: #FFB703 !important;
+    border: 1px solid rgba(255, 183, 3, 0.3) !important;
+    border-radius: 2px !important;
+}
+
+/* 女仆日记 · 象牙圣堂石刻手卷 (浅色模式) */
+body.light-theme .maid-diary-bubble,
+body[data-vcp-theme="light"] .maid-diary-bubble {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.92) 0%, rgba(248, 246, 240, 0.86) 100%) !important;
+    border: 1px solid rgba(216, 210, 196, 0.9) !important;
+    border-left: 4px solid #1D4ED8 !important;
+    clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%) !important;
+    border-radius: 0 !important;
+    color: #1E242B !important;
+    box-shadow: 0 8px 24px rgba(30, 36, 43, 0.1) !important;
+}
+
+body.light-theme .diary-title,
+body[data-vcp-theme="light"] .diary-title {
+    color: #1D4ED8 !important;
+}
+
+body.light-theme .diary-maid-name,
+body.light-theme .diary-folder-name,
+body[data-vcp-theme="light"] .diary-maid-name,
+body[data-vcp-theme="light"] .diary-folder-name {
+    background: rgba(29, 78, 216, 0.08) !important;
+    color: #1D4ED8 !important;
+    border: 1px solid rgba(29, 78, 216, 0.25) !important;
+    border-radius: 2px !important;
+}
+
+/* 日记增量差分更新卡片 · 统合切角 */
+body[data-vcp-theme="dark"] .maid-diary-update-bubble,
+.maid-diary-update-bubble,
+body[data-vcp-theme="dark"] .valet-diary-update-bubble,
+.valet-diary-update-bubble {
+    background: linear-gradient(135deg, rgba(20, 24, 34, 0.9) 0%, rgba(12, 15, 21, 0.85) 100%) !important;
+    border: 1px solid rgba(255, 183, 3, 0.3) !important;
+    border-left: 4px solid #FB8500 !important;
+    clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%) !important;
+    border-radius: 0 !important;
+    color: #E5E9F0 !important;
+}
+
+body.light-theme .maid-diary-update-bubble,
+body[data-vcp-theme="light"] .maid-diary-update-bubble,
+body.light-theme .valet-diary-update-bubble,
+body[data-vcp-theme="light"] .valet-diary-update-bubble {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.92) 0%, rgba(248, 246, 240, 0.86) 100%) !important;
+    border: 1px solid rgba(216, 210, 196, 0.9) !important;
+    border-left: 4px solid #B45309 !important;
+    clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%) !important;
+    border-radius: 0 !important;
+    color: #1E242B !important;
+}
+
+/* 差分比对槽：深色黑曜石蚀刻 */
+body[data-vcp-theme="dark"] .diary-update-before,
+.diary-update-before {
+    border-left: 3px solid #636E7B !important;
+    background: rgba(8, 10, 14, 0.5) !important;
+    border-radius: 2px !important;
+}
+
+body[data-vcp-theme="dark"] .diary-update-after,
+.diary-update-after {
+    border-left: 3px solid #FFB703 !important;
+    background: rgba(255, 183, 3, 0.08) !important;
+    border-radius: 2px !important;
+}
+
+/* 差分比对槽：浅色象牙白蚀刻 */
+body.light-theme .diary-update-before,
+body[data-vcp-theme="light"] .diary-update-before {
+    border-left: 3px solid #8A94A0 !important;
+    background: rgba(30, 36, 43, 0.04) !important;
+    border-radius: 2px !important;
+}
+
+body.light-theme .diary-update-after,
+body[data-vcp-theme="light"] .diary-update-after {
+    border-left: 3px solid #1D4ED8 !important;
+    background: rgba(29, 78, 216, 0.07) !important;
+    border-radius: 2px !important;
+}
+
+/* =========================================================
+   Brand Motion · Restrained Stellar Flame Pulse
+   ========================================================= */
+@keyframes relicStellarPulse {
+    0%, 100% {
+        border-left-color: rgba(255, 183, 3, 0.65);
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+    50% {
+        border-left-color: rgba(255, 183, 3, 0.98);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), -3px 0 18px rgba(255, 183, 3, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    }
+}
+
+.message-item.streaming.agent .md-content,
+.message-item.streaming.assistant .md-content {
+    animation: relicStellarPulse 2.6s ease-in-out infinite;
+}
+
+@keyframes sanctuaryLapisPulse {
+    0%, 100% {
+        border-left-color: rgba(29, 78, 216, 0.65);
+    }
+    50% {
+        border-left-color: rgba(29, 78, 216, 0.98);
+        box-shadow: 0 8px 26px rgba(30, 36, 43, 0.12), -3px 0 14px rgba(29, 78, 216, 0.15);
+    }
+}
+
+body.light-theme .message-item.streaming.agent .md-content,
+body.light-theme .message-item.streaming.assistant .md-content,
+body[data-vcp-theme="light"] .message-item.streaming.agent .md-content,
+body[data-vcp-theme="light"] .message-item.streaming.assistant .md-content {
+    animation: sanctuaryLapisPulse 3.0s ease-in-out infinite;
+}
+
+/* Scrollbar Fine-tuning */
+::-webkit-scrollbar {
+    width: 6px !important;
+    height: 6px !important;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--scrollbar-track) !important;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb) !important;
+    border-radius: 8px !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover) !important;
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+    .message-item.streaming.agent .md-content,
+    .message-item.streaming.assistant .md-content,
+    body.light-theme .message-item.streaming.agent .md-content,
+    body.light-theme .message-item.streaming.assistant .md-content,
+    body[data-vcp-theme="light"] .message-item.streaming.agent .md-content,
+    body[data-vcp-theme="light"] .message-item.streaming.assistant .md-content {
+        animation: none !important;
+    }
+}

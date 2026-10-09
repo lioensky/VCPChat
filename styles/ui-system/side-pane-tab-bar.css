@@ -97,11 +97,12 @@ html .side-pane-tabs.is-sorting .side-pane-tab-item:where(.vcp-ui-scope, .vcp-ui
 html .side-pane-tab:where(.vcp-ui-scope, .vcp-ui-scope *) {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
     height: 100%;
     width: 100%;
     min-width: 0;
-    padding: 0 8px 0 6px;
+    /* 图标离卡片左缘留 10px，和右侧关闭按钮的留白对称 */
+    padding: 0 8px 0 10px;
     font-size: calc(var(--vcp-ui-font-size) - 1px);
     font-weight: 500;
     line-height: 1.2;
@@ -216,10 +217,10 @@ html .side-pane-tab .tab-icon svg:where(.vcp-ui-scope, .vcp-ui-scope *) {
     opacity: 0.85;
 }
 
-/* 关闭按钮叠在标签右端：激活标签一直在，其它标签悬停 / 聚焦时出现，出现时标题渐隐让出 1.25rem */
+/* 关闭按钮叠在标签右端：激活标签一直在，其它标签悬停 / 聚焦时出现，出现时标题渐隐让出 1.5rem */
 html .side-pane-tab-close:where(.vcp-ui-scope, .vcp-ui-scope *) {
     position: absolute;
-    right: 4px;
+    right: 6px;
     top: 50%;
     transform: translateY(-50%);
     display: inline-flex;

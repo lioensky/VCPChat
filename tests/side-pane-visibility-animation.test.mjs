@@ -65,3 +65,44 @@ test('closing while the open animation runs ends collapsed', async () => {
     assert.equal(visibility.isAnimating(), false);
     visibility.dispose();
 });
+test('legacy pixel width is converted only when no valid ratio exists', () => {
+    for (const initialRatio of [undefined, 0.55]) {
+        const dom = new JSDOM('<div><aside></aside></div>');
+        const root = dom.window.document.querySelector('aside');
+        Object.defineProperty(root.parentElement, 'clientWidth', { value: 1000 });
+        const visibility = createSidePaneVisibility({ root, initialRatio, initialWidth: 300 });
+        visibility.sync(true, { animate: false });
+        assert.equal(parseFloat(root.style.width), initialRatio === undefined ? 30 : 55);
+        visibility.dispose();
+        dom.window.close();
+    }
+});
+
+test('legacy width waits for host measurement and is not reapplied after migration', () => {
+    const dom = new JSDOM('<div><aside></aside></div>');
+    const root = dom.window.document.querySelector('aside');
+    let hostWidth = 0;
+    Object.defineProperty(root.parentElement, 'clientWidth', { get: () => hostWidth });
+    const visibility = createSidePaneVisibility({ root, initialWidth: 300 });
+    visibility.sync(false, { animate: false });
+    hostWidth = 1000;
+    visibility.sync(true, { animate: false });
+    assert.equal(parseFloat(root.style.width), 30);
+    hostWidth = 1500;
+    visibility.sync(true, { animate: false });
+    assert.equal(parseFloat(root.style.width), 30);
+    visibility.dispose();
+    dom.window.close();
+});
+
+test('explicit ratio cancels pending legacy migration', () => {
+    const dom = new JSDOM('<div><aside></aside></div>');
+    const root = dom.window.document.querySelector('aside');
+    const visibility = createSidePaneVisibility({ root, initialWidth: 300 });
+    visibility.setRatio(0.5);
+    Object.defineProperty(root.parentElement, 'clientWidth', { value: 1000 });
+    visibility.sync(true, { animate: false });
+    assert.equal(parseFloat(root.style.width), 50);
+    visibility.dispose();
+    dom.window.close();
+});
