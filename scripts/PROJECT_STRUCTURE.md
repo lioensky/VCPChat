@@ -1,6 +1,6 @@
 # VCPChat 项目文件目录结构
 
-> 自动生成于：2026-10-09 22:09:28  
+> 自动生成于：2026-10-09 22:10:51  
 
 > 项目根目录：`H:\VCP\VCPMain\VCPChat`  
 
@@ -10,35 +10,34 @@
 
 ## 文件统计
 
-- **总目录数**：214
-- **总文件数**：1482
-- **文件类型数**：22
+- **总目录数**：209
+- **总文件数**：1361
+- **文件类型数**：21
 
 | 类型 | 扩展名 | 数量 |
 | :--- | :--- | ---: |
-| JavaScript | `.js` | 827 |
+| JavaScript | `.js` | 825 |
 | CSS | `.css` | 143 |
 | Rust | `.rs` | 114 |
-| JSON | `.json` | 97 |
-| JavaScript (ESM) | `.mjs` | 83 |
-| Markdown | `.md` | 80 |
+| JSON | `.json` | 92 |
+| Markdown | `.md` | 56 |
 | HTML | `.html` | 40 |
-| Python | `.py` | 29 |
+| Python | `.py` | 26 |
 | TOML | `.toml` | 9 |
 | Batch Script | `.bat` | 9 |
 | Plain Text | `.txt` | 8 |
 | .example | `.example` | 8 |
 | VBScript | `.vbs` | 7 |
 | YAML | `.yml` | 6 |
-| PowerShell | `.ps1` | 5 |
-| JavaScript (CommonJS) | `.cjs` | 4 |
 | .ini | `.ini` | 4 |
 | TypeScript | `.ts` | 3 |
+| JavaScript (CommonJS) | `.cjs` | 3 |
 | TypeScript (React) | `.tsx` | 2 |
 | Shell Script | `.sh` | 2 |
+| PowerShell | `.ps1` | 2 |
 | C# | `.cs` | 1 |
 | .lock | `.lock` | 1 |
-| **合计** | - | **1482** |
+| **合计** | - | **1361** |
 
 ## 目录结构树
 
@@ -960,8 +959,6 @@ VCPChat/
 │   │   └── assistant.js
 │   └── Cargo.toml
 ├── rust_audio_engine/
-│   ├── scripts/
-│   │   └── build_all.ps1
 │   ├── src/
 │   │   ├── player/
 │   │   │   ├── audio_thread.rs
@@ -1146,105 +1143,6 @@ VCPChat/
 │   ├── vdoc-hybrid-compiler.js
 │   ├── vdoc-style-library.js
 │   └── vdoc-svg-asset-library.js
-├── scripts/
-│   ├── fixtures/
-│   │   └── chat-contract-invalid.mjs
-│   ├── helpers/
-│   │   └── shared-composer-icons.mjs
-│   ├── audit-settings-first-open.mjs
-│   ├── audit-settings-layout.mjs
-│   ├── audit-settings-style-parity.mjs
-│   ├── build-chat-event-graph.mjs
-│   ├── build-webawesome-runtime.mjs
-│   ├── chaos-probe-settings.mjs
-│   ├── chat-event-source.mjs
-│   ├── check-artifact-plane.mjs
-│   ├── check-chat-contracts.mjs
-│   ├── check-chat-evidence.mjs
-│   ├── check-chat-kernel-consumers.mjs
-│   ├── check-chat-release-evidence.mjs
-│   ├── check-classic-parity.mjs
-│   ├── check-classic-retirement-boundary.mjs
-│   ├── check-design-system-boundary.mjs
-│   ├── check-global-settings-section-ownership.mjs
-│   ├── check-next-delta-contract.mjs
-│   ├── check-release-surface.mjs
-│   ├── check-theme-provenance.mjs
-│   ├── check-ui-applications.mjs
-│   ├── check-ui-async-state-matrix.mjs
-│   ├── check-ui-harness-evidence.mjs
-│   ├── check-ui-interaction-inventory.mjs
-│   ├── check-ui-system.mjs
-│   ├── check-ui-task-journeys.mjs
-│   ├── check-uiux-artifacts.mjs
-│   ├── check-vcpui-consumers.mjs
-│   ├── check-webawesome-pack.mjs
-│   ├── check_theme_wallpapers.ps1
-│   ├── compare-dual-instance-parity.mjs
-│   ├── compare-settings-schema-pixels.mjs
-│   ├── css-import-reader.mjs
-│   ├── desktopremote-http-smoke.js
-│   ├── diagnose-windows-fonts.py
-│   ├── electron-builder-bootstrap-hooks.cjs
-│   ├── generate_project_tree.py
-│   ├── inspect-sidebar-margins.mjs
-│   ├── next-delta-shared-baseline.json
-│   ├── normalize-opentype-names.py
-│   ├── package-portable-installer.mjs
-│   ├── probe-avatar-persistence-electron.mjs
-│   ├── promote-canonical-ui-css.mjs
-│   ├── remove-retired-classic-main-dom.mjs
-│   ├── run-all-tests.mjs
-│   ├── run-chat-contract-invariants.mjs
-│   ├── run-electron-node.mjs
-│   ├── scriptorium-line-break-diagnostic.js
-│   ├── smoke-side-pane-e2e.mjs
-│   ├── stress-test-settings-full.mjs
-│   ├── test-appearance-engine.mjs
-│   ├── test-appearance-studio.mjs
-│   ├── test-artifact-plane-invalid.mjs
-│   ├── test-ask-nova-service.mjs
-│   ├── test-built-artifact-smoke.mjs
-│   ├── test-chat-contract-invalid.mjs
-│   ├── test-chat-evidence-manifest.mjs
-│   ├── test-chat-release-evidence-invalid.mjs
-│   ├── test-chat-transcript-snapshot.mjs
-│   ├── test-dedicated-preload-electron.mjs
-│   ├── test-electron-lifecycle-stress.mjs
-│   ├── test-electron-main-chat-sequences.mjs
-│   ├── test-electron-manual-soak.mjs
-│   ├── test-electron-ui-apps-smoke.mjs
-│   ├── test-electron-windows-matrix.mjs
-│   ├── test-facade-registry-invalid.mjs
-│   ├── test-next-ui-empty-state.mjs
-│   ├── test-next-ui-tab-lifecycle.mjs
-│   ├── test-packaged-artifact-invalid.mjs
-│   ├── test-packaged-artifact-smoke.mjs
-│   ├── test-page-runtime.mjs
-│   ├── test-settings-sidebar-parity-electron.mjs
-│   ├── test-settings-wa-electron.mjs
-│   ├── test-settings-wa.mjs
-│   ├── test-top-tab-session.mjs
-│   ├── test-ui-motion-contract.mjs
-│   ├── test-ui-system.mjs
-│   ├── test-vcp-ui-select-proxy.mjs
-│   ├── test-webawesome-adapter.mjs
-│   ├── ui-async-state-matrix.json
-│   ├── ui-interaction-inventory.json
-│   ├── ui-task-journey-matrix.json
-│   ├── vcpchat-bootstrap.mjs
-│   ├── vcpchat-dev-launcher.mjs
-│   ├── vcpchat-doctor.mjs
-│   ├── vcpchat-packed-smoke.mjs
-│   ├── vcpchat-recovery-ui.mjs
-│   ├── vcpchat-release-evidence.mjs
-│   ├── vcpchat-repair.mjs
-│   ├── vcpchat-runtime-closure.mjs
-│   ├── vcpchat-update.mjs
-│   ├── vcpchat.mjs
-│   ├── vcpui-production-consumers.json
-│   ├── write-chat-evidence-manifest.mjs
-│   └── 检查主题壁纸.ps1
 ├── SovitsTest/
 │   ├── get_models.py
 │   ├── GSVI.py
@@ -1682,31 +1580,6 @@ VCPChat/
 ├── WebIndexTTS2/
 │   ├── README.md
 │   └── server.js
-├── 开发文档/
-│   ├── CLI一期工程-补充说明.md
-│   ├── CLI一期工程.md
-│   ├── DISTRIBUTED_MUSIC_PLAYLIST_UPDATE_ADAPTER.md
-│   ├── Loom移动网页布局调试报告.md
-│   ├── OPENHER_PERSONA_MOBILE_CARD_API.md
-│   ├── Rubato与SoXR音频核心产物AB对照说明.md
-│   ├── Rust中央聊天数据服务与DeepMemo同步系统改造施工图.md
-│   ├── Scriptorium主模块拆分研究.md
-│   ├── Scriptorium换行与版面估算路线报告.md
-│   ├── Scriptorium文档源码范式重构设计.md
-│   ├── SuperDoc-CJK-line-breaking-GitHub-issue-draft.md
-│   ├── VCP Loom一期开发记录-2026-08-01.md
-│   ├── VCP Loom二期开发记录-2026-08-01.md
-│   ├── VCP Web Agent Core通用化设计方案-2026-08-06.md
-│   ├── VCPLog 离线通知缓存补发.md
-│   ├── 三种聊天呈现模式开发方案.md
-│   ├── 个人提交代码移除统计_546af4a至HEAD.md
-│   ├── 动态运行态内容分页与导出稳定化经验.md
-│   ├── 新旧Rust音频核心音质与DSP实现对照评估.md
-│   ├── 流式渲染端到端竞态性能与可靠性审计报告.md
-│   ├── 消息渲染框架分析与优化建议.md
-│   ├── 渲染迭代建议.md
-│   ├── 静态富文档渲染引擎可靠性报告.md
-│   └── 音乐播放器高精度逐字网络歌词系统移植与架构说明.md
 ├── backup.py
 ├── check_theme_wallpapers.bat
 ├── main.html
@@ -1748,8 +1621,8 @@ VCPChat/
 <summary>点击展开查看已排除的目录与文件规则</summary>
 
 - **默认跳过目录名称**：
-  `.astro`, `.cache`, `.docusaurus`, `.git`, `.gradle`, `.hg`, `.hypothesis`, `.idea`, `.ipynb_checkpoints`, `.m2`, `.mypy_cache`, `.next`, `.nox`, `.nuxt`, `.output`, `.parcel-cache`, `.pnpm-store`, `.pyre`, `.pytest_cache`, `.ruff_cache`, `.svelte-kit`, `.svn`, `.temp`, `.tmp`, `.tox`, `.turbo`, `.venv`, `.virtualenv`, `.vite`, `.vs`, `.vscode`, `.webpack`, `.yarn`, `__pycache__`, `__tests__`, `appdata`, `arm64`, `artifacts`, `bin`, `bower_components`, `build`, `carthage`, `checkpoints`, `coverage`, `data_cache`, `debug`, `dist`, `doc`, `docs`, `documentation`, `env`, `example`, `examples`, `htmlcov`, `indexeddb`, `jspm_packages`, `local_storage`, `logs`, `models`, `node_modules`, `obj`, `out`, `output`, `packages`, `pip-wheel-metadata`, `pkg`, `pods`, `pretrained_models`, `project_structure.md`, `python_embedded`, `python_embeded`, `release`, `reports`, `screenshots`, `sessions`, `site-packages`, `storybook-static`, `target`, `temp`, `test`, `test-results`, `tests`, `tmp`, `user_data`, `userdata`, `vendor`, `venv`, `wheelhouse`, `x64`, `x86`
+  `.astro`, `.cache`, `.docusaurus`, `.git`, `.gradle`, `.hg`, `.hypothesis`, `.idea`, `.ipynb_checkpoints`, `.m2`, `.mypy_cache`, `.next`, `.nox`, `.nuxt`, `.output`, `.parcel-cache`, `.pnpm-store`, `.pyre`, `.pytest_cache`, `.ruff_cache`, `.svelte-kit`, `.svn`, `.temp`, `.tmp`, `.tox`, `.turbo`, `.venv`, `.virtualenv`, `.vite`, `.vs`, `.vscode`, `.webpack`, `.yarn`, `__pycache__`, `__tests__`, `appdata`, `arm64`, `artifacts`, `bin`, `bower_components`, `build`, `carthage`, `checkpoints`, `coverage`, `data_cache`, `debug`, `dist`, `doc`, `docs`, `documentation`, `env`, `example`, `examples`, `htmlcov`, `indexeddb`, `jspm_packages`, `local_storage`, `logs`, `models`, `node_modules`, `obj`, `out`, `output`, `packages`, `pip-wheel-metadata`, `pkg`, `pods`, `pretrained_models`, `project_structure.md`, `python_embedded`, `python_embeded`, `release`, `reports`, `screenshots`, `scripts`, `sessions`, `site-packages`, `storybook-static`, `target`, `temp`, `test`, `test-results`, `tests`, `tmp`, `user_data`, `userdata`, `vendor`, `venv`, `wheelhouse`, `x64`, `x86`, `开发文档`
 - **默认通配符排除**：
-  `cmake-build-*`, `*.egg-info`, `*.dist-info`, `*.tmp`, `.DS_Store`, `Thumbs.db`, `desktop.ini`, `*.pyc`, `*.pyo`, `*.pyd`, `*.o`, `*.obj`, `*.class`, `*.tsbuildinfo`, `*.log`, `*.tmp`, `*.temp`, `*.swp`, `*.swo`, `*.bak`, `*~`, `*.suo`, `*.user`, `doc`, `docs`, `documentation`, `test`, `tests`, `__tests__`, `example`, `examples`, `artifacts`, `screenshots`, `test-results`, `reports`, `models`, `checkpoints`, `pretrained_models`, `site-packages`, `python_embedded`, `python_embeded`, `PROJECT_STRUCTURE.md`
+  `cmake-build-*`, `*.egg-info`, `*.dist-info`, `*.tmp`, `.DS_Store`, `Thumbs.db`, `desktop.ini`, `*.pyc`, `*.pyo`, `*.pyd`, `*.o`, `*.obj`, `*.class`, `*.tsbuildinfo`, `*.log`, `*.tmp`, `*.temp`, `*.swp`, `*.swo`, `*.bak`, `*~`, `*.suo`, `*.user`, `scripts`, `开发文档`, `doc`, `docs`, `documentation`, `test`, `tests`, `__tests__`, `example`, `examples`, `artifacts`, `screenshots`, `test-results`, `reports`, `models`, `checkpoints`, `pretrained_models`, `site-packages`, `python_embedded`, `python_embeded`, `PROJECT_STRUCTURE.md`
 - **.gitignore 生效规则**：共 56 条规则已并入跳过逻辑
 </details>
