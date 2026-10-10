@@ -23,6 +23,8 @@ function summarizeCommandRun(run) {
         status: run.status,
         startedAt: run.startedAt,
         endedAt: run.endedAt,
+        outputSource: run.outputSource,
+        receipt: run.receipt,
     };
 }
 
@@ -37,7 +39,7 @@ function emitCommandRunChanged(run) {
     }
 }
 
-function beginCommandRun(command) {
+function beginCommandRun(command, { outputSource = 'pty' } = {}) {
     commandRunSequence += 1;
     const run = {
         id: `run-${Date.now().toString(36)}-${commandRunSequence}`,
@@ -47,6 +49,8 @@ function beginCommandRun(command) {
         endedAt: null,
         raw: '',
         rawTruncated: false,
+        outputSource,
+        receipt: null,
     };
     commandRuns.push(run);
     if (commandRuns.length > COMMAND_RUN_LIMIT) {
@@ -66,10 +70,12 @@ function appendCommandRunOutput(run, chunk) {
     emitCommandRunChanged(run);
 }
 
-function finishCommandRun(run, status) {
-    if (run.status !== 'running') return;
+function finishCommandRun(run, status, receipt = null) {
+    if (!['running', 'running_detached', 'cancelling'].includes(run.status)) return;
     run.status = status;
-    run.endedAt = Date.now();
+    run.receipt = receipt;
+    run.rawTruncated ||= Boolean(receipt?.truncated);
+    run.endedAt = ['running_detached', 'cancelling'].includes(status) ? null : Date.now();
     emitCommandRunChanged(run);
 }
 
@@ -85,7 +91,9 @@ function cleanRunOutput(run) {
     const cached = cleanedOutput.get(run);
     if (cached && cached.raw === run.raw) return cached.clean;
     // 起始标记那一行留下的换行不算输出
-    const clean = sanitizeTerminalOutput(run.raw).replace(/\r\n/g, '\n').replace(/\r/g, '').replace(/^\n/, '');
+    const clean = run.outputSource === 'capture'
+        ? run.raw.replace(/\r\n/g, '\n')
+        : sanitizeTerminalOutput(run.raw).replace(/\r\n/g, '\n').replace(/\r/g, '').replace(/^\n/, '');
     cleanedOutput.set(run, { raw: run.raw, clean });
     return clean;
 }

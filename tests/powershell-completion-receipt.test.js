@@ -4,94 +4,126 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const { CommandOutputParser, CommandTerminalProjection } = require('../VCPDistributedServer/Plugin/PowerShellExecutor/command-output-parser');
+const { buildCaptureWrapper, parseCaptureReceipt } = require('../VCPDistributedServer/Plugin/PowerShellExecutor/commandCapture');
 const source = fs.readFileSync(path.join(__dirname, '../VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js'), 'utf8');
 const start = source.indexOf('function executeSingleCommandInPty(');
 const code = source.slice(start, source.indexOf('\n}', start) + 2);
 
 function fixture() {
-    const files = new Map(), intervals = new Set(), timeouts = new Set(), states = [];
-    let now = 1000, listener, serial = 0, disposed = 0;
-    const pty = {
-        onData(fn) { listener = fn; return { dispose() { disposed++; } }; },
-        write() {}
-    };
+    const files = new Map(), intervals = new Set(), timeouts = new Set(), states = [], writes = [];
+    const run = { status: 'running', raw: '' };
     const context = vm.createContext({
         fs: {
             writeFileSync: (p, text) => files.set(p, text),
+            readFileSync: p => files.get(p),
             existsSync: p => files.has(p),
             unlinkSync: p => files.delete(p)
         },
-        path, os: { tmpdir: () => '/tmp' },
-        crypto: { randomUUID: () => `id-${++serial}` },
-        Date: { now: () => now },
+        path: path.posix, os: { tmpdir: () => '/tmp' },
+        crypto: { randomUUID: () => 'test-id' },
         setTimeout(fn) { timeouts.add(fn); return fn; },
         clearTimeout: fn => timeouts.delete(fn),
         setInterval(fn) { intervals.add(fn); return fn; },
         clearInterval: fn => intervals.delete(fn),
-        COMMAND_RUN_RAW_LIMIT: 65536,
-        beginCommandRun: () => ({}),
-        appendCommandRunOutput() {},
-        finishCommandRun: (_, state) => states.push(state),
-        CommandOutputParser, CommandTerminalProjection,
-        terminalProjection: null, activeCommandAbort: null,
-        dispatchPtyData() {}, sanitizeTerminalOutput: text => text, console
+        beginCommandRun: () => run,
+        appendCommandRunOutput: (_, text) => { run.raw += text; },
+        finishCommandRun: (_, state, receipt) => { run.status = state; states.push({ state, receipt }); },
+        buildCaptureWrapper, parseCaptureReceipt,
+        pendingCommandCleanup: null, activeCommandAbort: null, commandUnresolved: false,
+        purgeExecutionQueue() {}, console
     });
     vm.runInContext(code, context);
-    const promise = context.executeSingleCommandInPty(pty, 'echo hello');
-    const wrapper = [...files.values()].find(text => text.includes('Write-Host'));
-    const markers = [...wrapper.matchAll(/Write-Host '([^']+)'/g)].map(m => m[1]);
-    const receipt = wrapper.match(/WriteAllText\('([^']+)'/)[1];
+    const promise = context.executeSingleCommandInPty({ write: text => writes.push(text) }, 'echo hello');
     return {
-        promise, files, intervals, timeouts, states, markers,
-        emit: data => listener(data),
-        receipt: () => files.set(receipt, 'completed'),
-        tick(ms) { now += ms; for (const fn of [...intervals]) fn(); },
-        abort: () => context.activeCommandAbort(),
-        get disposed() { return disposed; }
+        promise, files, intervals, timeouts, states, writes, context, run,
+        output(text) { files.set('/tmp/vcp-capture-test-id.log', text); },
+        receipt(overrides = {}) {
+            files.set('/tmp/vcp-capture-test-id.json', JSON.stringify({
+                version: 1, runId: 'test-id', executionState: 'completed',
+                errorCount: 0, terminatingError: false, nativeExitCode: null,
+                durationMs: 10, truncated: false, ...overrides
+            }));
+        },
+        tick() { for (const fn of [...intervals]) fn(); },
+        expire() { for (const fn of [...timeouts]) fn(); }
     };
 }
 
-test('fragmented screen end marker cannot strand an executed command', async () => {
+test('completion uses bottom-level output, preserves tabs and blanks, and cleans files', async () => {
     const h = fixture();
-    h.emit(h.markers[0] + '\r\nhello\r\n' + h.markers[1].slice(0, 15) + '\x1b[2;1H' + h.markers[1].slice(15));
-    h.receipt();
-    h.tick(300);
-    const output = await h.promise;
-    assert.match(output, /hello/);
-    assert.match(output, /完成回执已确认/);
-    assert.deepEqual(h.states, ['completed']);
+    h.output('\nA\tB\n\n{"long":"' + 'x'.repeat(1000) + '"}\n');
+    h.receipt(); h.tick();
+    const result = await h.promise;
+    assert.ok(result.includes('\nA\tB\n\n'));
+    assert.match(result, /output=complete/);
     assert.equal(h.files.size, 0);
     assert.equal(h.intervals.size, 0);
     assert.equal(h.timeouts.size, 0);
-    assert.equal(h.disposed, 1);
+    assert.equal(h.states.at(-1).state, 'completed');
+    assert.equal(h.writes.length, 1);
 });
 
-test('normal boundary finishes immediately and clears receipt polling', async () => {
+test('timeout keeps capture and execution lease until a late receipt', async () => {
     const h = fixture();
-    h.receipt();
-    h.emit(h.markers[0] + 'hello' + h.markers[1]);
-    assert.equal(await h.promise, 'hello');
+    const rejected = assert.rejects(h.promise, /60 秒/);
+    h.expire(); await rejected;
+    assert.equal(h.context.commandUnresolved, true);
+    assert.equal(h.intervals.size, 1);
+    assert.equal(h.run.status, 'running_detached');
+    h.output('late output'); h.receipt(); h.tick();
+    assert.equal(h.context.commandUnresolved, false);
+    assert.equal(h.states.at(-1).state, 'completed');
+    assert.equal(h.files.size, 0);
+});
+
+test('interrupt is a request, lease remains until the receipt', async () => {
+    const h = fixture();
+    const rejected = assert.rejects(h.promise, /interrupt/);
+    h.context.activeCommandAbort(); await rejected;
+    assert.equal(h.writes.at(-1), '\x03');
+    assert.equal(h.context.commandUnresolved, true);
+    h.receipt(); h.tick();
+    assert.equal(h.states.at(-1).state, 'cancelled');
+    assert.equal(h.context.commandUnresolved, false);
+});
+
+test('foreign receipt never releases the lease; session abandonment cleans it', async () => {
+    const h = fixture();
+    const rejected = assert.rejects(h.promise, /采集失败/);
+    h.receipt({ runId: 'foreign' }); h.tick(); await rejected;
+    assert.equal(h.context.commandUnresolved, true);
+    h.context.pendingCommandCleanup();
     assert.equal(h.files.size, 0);
     assert.equal(h.intervals.size, 0);
 });
-
-test('no receipt and no end boundary cannot be reported as completed', async () => {
-    const h = fixture();
-    h.emit(h.markers[0] + 'still running');
-    h.tick(10000);
-    assert.deepEqual(h.states, []);
-    const rejected = assert.rejects(h.promise, /interrupt/);
-    h.abort();
-    await rejected;
-    assert.deepEqual(h.states, ['cancelled']);
-    assert.equal(h.intervals.size, 0);
+test('run store notifies detached state without declaring completion', () => {
+    const store = require('../VCPDistributedServer/Plugin/PowerShellExecutor/commandRunStore');
+    const run = store.beginCommandRun('capture-state-test', { outputSource: 'capture' });
+    const events = [];
+    const unsubscribe = store.subscribeCommandRuns(summary => events.push(summary));
+    try {
+        store.appendCommandRunOutput(run, '\nA\tB\r\n');
+        store.finishCommandRun(run, 'running_detached');
+        assert.equal(events.at(-1).status, 'running_detached');
+        assert.equal(events.at(-1).endedAt, null);
+        store.finishCommandRun(run, 'completed', { truncated: false });
+        assert.ok(events.at(-1).endedAt !== null);
+        assert.equal(store.getCommandRun(run.id).output, '\nA\tB\n');
+    } finally { unsubscribe(); }
 });
 
-test('receipt fallback also returns output when the start marker was screen-fragmented', async () => {
-    const h = fixture();
-    h.emit(h.markers[0].slice(0, 10) + '\r\n' + h.markers[0].slice(10) + '\r\nhello');
-    h.receipt();
-    h.tick(300);
-    assert.match(await h.promise, /hello/);
+test('interactive preparation rejects unresolved execution and rolls back failed view setup', async () => {
+    const begin = source.indexOf('async function ensureInteractiveTerminal(');
+    const snippet = source.slice(begin, source.indexOf('\n}', begin) + 2);
+    const context = vm.createContext({
+        isExecutingCommand: false, queueProcessing: false, executionQueue: [],
+        commandUnresolved: true, interactiveMode: false, ptyProcess: {},
+        prepareTerminalView: async () => { throw new Error('view unavailable'); },
+        createNewPtySession() {}, waitForPtyReady: async () => {}
+    });
+    vm.runInContext(snippet, context);
+    await assert.rejects(context.ensureInteractiveTerminal(), /占用/);
+    context.commandUnresolved = false;
+    await assert.rejects(context.ensureInteractiveTerminal(), /view unavailable/);
+    assert.equal(context.interactiveMode, false);
 });

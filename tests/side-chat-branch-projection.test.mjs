@@ -41,6 +41,12 @@ test('rail and thought map display renamed title instead of immutable fork excer
         assert.equal(doc.querySelector('.branch-rail-label').textContent, 'renamed');
         modal = openThoughtMapModal({ doc, forest: buildBranchForest(items), currentTopicId: 'A' });
         assert.equal(doc.querySelector('.thought-map-node-group text').textContent, 'renamed');
+        const backdrop = doc.querySelector('.thought-map-backdrop');
+        assert.equal(backdrop.parentElement, doc.body);
+        assert.equal(backdrop.matches('html .thought-map-backdrop:where(.vcp-ui-scope, .vcp-ui-scope *)'), true);
+        assert.equal(doc.querySelector('.thought-map-sheet').matches(
+            'html .thought-map-sheet:where(.vcp-ui-scope, .vcp-ui-scope *)'
+        ), true);
     } finally {
         modal?.close();
         rail?.dispose();

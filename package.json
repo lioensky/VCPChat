@@ -215,6 +215,7 @@
       "VCPDistributedServer/Plugin/VChatAutoTTS/**/*",
       "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
       "VCPDistributedServer/Plugin/PowerShellExecutor/commandRunStore.js",
+      "VCPDistributedServer/Plugin/PowerShellExecutor/commandCapture.js",
       "VCPDistributedServer/Plugin/PowerShellExecutor/terminalOutputSanitizer.js",
       "VCPDistributedServer/Plugin/PowerShellExecutor/command-output-parser.js",
       "VCPDistributedServer/Plugin/PowerShellExecutor/plugin-manifest.json",
