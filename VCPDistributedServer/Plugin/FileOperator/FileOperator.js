@@ -4,9 +4,7 @@ const path = require('path');
 const { AsyncLocalStorage } = require('async_hooks');
 const glob = require('glob');
 const { minimatch } = require('minimatch');
-const pdf = require('pdf-parse');
-const mammoth = require('mammoth');
-const ExcelJS = require('exceljs');
+// 文档解析库仅在对应格式首次读取时加载，后续复用 CommonJS 模块缓存。
 const axios = require('axios');
 const { validateCode } = require('./CodeValidator');
 const fileKit = require('../../shared/fileKit');
@@ -593,14 +591,17 @@ async function readFile(filePath, encoding = 'utf8', lines) {
     const videoExtensions = ['.mp4', '.webm', '.mov'];
 
     if (extension === '.pdf') {
+      const pdf = require('pdf-parse');
       const data = await pdf(fileBuffer);
       content = data.text;
       isExtracted = true;
     } else if (extension === '.docx') {
+      const mammoth = require('mammoth');
       const { value } = await mammoth.extractRawText({ buffer: fileBuffer });
       content = value;
       isExtracted = true;
     } else if (['.xlsx', '.xls', '.csv'].includes(extension)) {
+      const ExcelJS = require('exceljs');
       const workbook = new ExcelJS.Workbook();
       if (extension === '.csv') {
         const worksheet = await workbook.csv.read(new (require('stream').Readable)({
