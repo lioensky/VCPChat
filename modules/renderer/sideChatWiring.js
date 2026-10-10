@@ -62,6 +62,30 @@ export async function listSideChatModels(api, { timeoutMs = MODEL_REFRESH_TIMEOU
     return { ids: normalizeModelIds(models), favorites: new Set(Array.isArray(favorites) ? favorites : []) };
 }
 
+// 重开参数转换：list-metadata 的 meta → openSideChat 重开 descriptor。
+// 祖先快照与边界必须完整透传（P1#2），否则从拓扑轨重开会丢祖先上下文。提为模块级纯函数以便测试。
+export function branchMetaToReopenArgs(meta) {
+    return {
+        id: typeof meta.id === 'string' && meta.id ? meta.id : undefined,
+        parent: meta.parent,
+        child: meta.child,
+        title: meta.title,
+        contextMode: meta.contextMode,
+        snapshotId: meta.snapshotId,
+        // 重开必须透传祖先快照与边界（P1#2）：list-metadata 已从磁盘读出并注入 meta，
+        // 漏掉它们会导致「创建时上下文完整，关闭后从拓扑轨重开上下文缺失」
+        parentSnapshot: Array.isArray(meta.parentSnapshot) ? meta.parentSnapshot : [],
+        snapshotBoundary: meta.snapshotBoundary || null,
+        rootTopicId: meta.rootTopicId,
+        forkFromTopicId: meta.forkFromTopicId,
+        forkMessageId: meta.forkMessageId,
+        forkLabel: meta.forkLabel,
+        branchTitle: meta.branchTitle,
+        depth: meta.depth,
+        crystallized: meta.crystallized
+    };
+}
+
 export function createSideChatWiring({
     doc, win, chatAPI, chatRepository, chatManager, uiHelper, createRenderer,
     selectedItemRef, topicIdRef, historyRef, getController
@@ -88,23 +112,7 @@ export function createSideChatWiring({
         }
     }
 
-    function branchMetaToReopenArgs(meta) {
-        return {
-            id: typeof meta.id === 'string' && meta.id ? meta.id : undefined,
-            parent: meta.parent,
-            child: meta.child,
-            title: meta.title,
-            contextMode: meta.contextMode,
-            snapshotId: meta.snapshotId,
-            rootTopicId: meta.rootTopicId,
-            forkFromTopicId: meta.forkFromTopicId,
-            forkMessageId: meta.forkMessageId,
-            forkLabel: meta.forkLabel,
-            branchTitle: meta.branchTitle,
-            depth: meta.depth,
-            crystallized: meta.crystallized
-        };
-    }
+
 
     async function openSideChatBranchByDeepLink(agent, branch) {
         const currentItem = selectedItemRef.get();
@@ -221,6 +229,76 @@ export function createSideChatWiring({
             return tabHandle;
         },
 
+        // 按目标分支身份收集分叉上下文（P1#1）：祖先链快照（磁盘 parent-snapshot）+ 本支稳定历史。
+        // 上下文与 descriptor 必须同源，杜绝「血缘指向 B、快照装的是 A」；目标分支任一挂载实例忙则拒绝。
+        async collectBranchContext({ childTopicId, currentDescriptor = null }) {
+            const agentId = currentDescriptor?.parent?.itemId || currentDescriptor?.child?.itemId || selectedItemRef.get()?.id;
+            if (!agentId || !childTopicId) return null;
+
+            const controller = getController();
+            const targetHandles = () => controller.getSnapshot().tabs
+                .filter(tab => tab.kind === 'chat' && tab.descriptor?.child?.topicId === childTopicId
+                    && (tab.descriptor?.child?.itemId || tab.descriptor?.parent?.itemId || agentId) === agentId)
+                .map(tab => controller.getTabHandle(tab.id)).filter(Boolean);
+            const handles = targetHandles();
+            if (handles.some(handle => handle.isBusy?.())) return { busy: true };
+            const mounted = handles.find(handle => typeof handle.collectBranchContext === 'function');
+            if (mounted) {
+                const result = await mounted.collectBranchContext();
+                if (targetHandles().some(handle => handle.isBusy?.())) return { busy: true };
+                return result;
+            }
+
+            const listRes = await listSideChatsForParent({
+                electronAPI: chatAPI,
+                agentId,
+                parentTopicId: currentDescriptor?.parent?.topicId || topicIdRef.get()
+            });
+            const meta = (Array.isArray(listRes?.items) ? listRes.items : []).find(m => m?.child?.topicId === childTopicId);
+            if (!meta) return null;
+
+            const snap = Array.isArray(meta.parentSnapshot) ? [...meta.parentSnapshot] : [];
+            let own = [];
+            if (typeof chatAPI?.getChatHistory === 'function') {
+                const history = await chatAPI.getChatHistory(meta.child?.itemId || agentId, childTopicId);
+                own = (Array.isArray(history) ? history : [])
+                    .filter(m => m && !m.transient && !m.isStreaming && !m.pending && !m.isThinking && !m.isPendingStream
+                        && (m.role === 'user' || m.role === 'assistant'))
+                    .map(m => ({
+                        id: m.id || null,
+                        sourceMessageId: m.id || null,
+                        role: m.role,
+                        content: typeof m.content === 'object' && m.content !== null
+                            ? JSON.parse(JSON.stringify(m.content))
+                            : (m.content ?? null),
+                        timestamp: m.timestamp || null
+                    }));
+            }
+            if (targetHandles().some(handle => handle.isBusy?.())) return { busy: true };
+            if (typeof chatAPI?.getChatHistory !== 'function') return null;
+            return { busy: false, descriptor: meta, messages: [...snap, ...own] };
+        },
+
+        // 按分支身份从磁盘回读祖先快照（P1#2 兜底）：descriptor 未携带快照时的统一恢复入口
+        async reloadBranchSnapshot(descriptor) {
+            const agentId = descriptor?.parent?.itemId || descriptor?.child?.itemId;
+            const childTopicId = descriptor?.child?.topicId;
+            if (!agentId || !childTopicId) return { ok: false, error: 'MISSING_BRANCH_IDENTITY' };
+            const listRes = await listSideChatsForParent({
+                electronAPI: chatAPI,
+                agentId,
+                parentTopicId: descriptor?.parent?.topicId || topicIdRef.get()
+            });
+            const meta = (Array.isArray(listRes?.items) ? listRes.items : []).find(m => m?.child?.topicId === childTopicId);
+            if (!meta) return { ok: false, error: 'BRANCH_NOT_FOUND' };
+            return {
+                ok: true,
+                snapshotId: meta.snapshotId || null,
+                snapshotBoundary: meta.snapshotBoundary || null,
+                messages: Array.isArray(meta.parentSnapshot) ? meta.parentSnapshot : []
+            };
+        },
+
         async switchBranch(childTopicId, currentDescriptor = null) {
             if (!childTopicId) return null;
             const controller = getController();
@@ -294,29 +372,66 @@ export function createSideChatWiring({
             const agentId = currentDescriptor?.parent?.itemId || currentDescriptor?.child?.itemId || currentItem?.id;
             if (!agentId) throw new Error('缺少 agentId');
 
-            // 先记录被删分支的父级，用于删除后返航
+            // 先记录被删分支的父级（用于删除后返航），并收集完整受影响集合（本支 + 全部级联后代）：
+            // 主进程会按 forkFromTopicId 级联删除整个子树，前端必须同步退役子树的所有标签。
             let deletedParentTopicId = null;
+            const doomedIds = new Set([childTopicId]);
             try {
                 const listRes = await listSideChatsForParent({
                     electronAPI: chatAPI,
                     agentId,
                     parentTopicId: currentDescriptor?.parent?.topicId || topicIdRef.get()
                 });
-                const meta = listRes?.items?.find(m => m?.child?.topicId === childTopicId);
+                if (!listRes?.ok) throw new Error(listRes?.message || '无法读取分支删除范围');
+                const controllerTabs = getController().getSnapshot().tabs
+                    .filter(tab => tab.kind === 'chat'
+                        && (tab.descriptor?.child?.itemId || tab.descriptor?.parent?.itemId || agentId) === agentId)
+                    .map(tab => tab.descriptor);
+                const items = [...(Array.isArray(listRes.items) ? listRes.items : []), ...controllerTabs];
+                const meta = items.find(m => m?.child?.topicId === childTopicId);
                 deletedParentTopicId = meta?.forkFromTopicId || null;
-            } catch (err) { void err; }
-
-            const res = await chatAPI.deleteSideChatChild(agentId, childTopicId);
-            if (!res?.success) throw new Error(res.error || '删除失败');
+                // 不动点扩张收集子树（doomed 天然防环），口径与主进程 collectDescendants 一致
+                let changed = true;
+                while (changed) {
+                    changed = false;
+                    for (const m of items) {
+                        const id = m?.child?.topicId;
+                        if (id && !doomedIds.has(id) && doomedIds.has(m?.forkFromTopicId)) {
+                            doomedIds.add(id);
+                            changed = true;
+                        }
+                    }
+                }
+            } catch (err) {
+                throw new Error(`无法确认完整删除范围：${err?.message || err}`);
+            }
 
             const controller = getController();
             const state = controller.getSnapshot();
-            const tab = state.tabs.find(t => t.kind === 'chat' && t.descriptor?.child?.topicId === childTopicId);
             const isDeletingCurrentBranch = currentDescriptor?.child?.topicId === childTopicId;
 
-            if (tab) {
-                await controller.closeTab(tab.id);
+            // 时序铁律：先结算会话，再删磁盘。closeTab({discard:true}) 会终止进行中的流、
+            // 等待写入结算并退役标签（跳过 requestClose 询问与 onClosed 钩子）。若反过来先删
+            // 磁盘，requestClose 可能拒绝关闭（编辑保存中/未保存历史），出现「数据已删、
+            // 标签还活」：会话实例继续生成、保存一个已不存在的分支。
+            // 若删除随后失败，数据仍在磁盘，可从拓扑轨重开——比危险态安全得多。
+            const affectedTabs = state.tabs.filter(t => t.kind === 'chat' && doomedIds.has(t.descriptor?.child?.topicId));
+            for (const tab of affectedTabs) {
+                await controller.closeTab(tab.id, { discard: true });
+                if (controller.getSnapshot().tabs.some(current => current.id === tab.id)) {
+                    throw new Error('相关分支标签未能关闭，已停止磁盘删除');
+                }
             }
+
+            const res = await chatAPI.deleteSideChatChild(agentId, childTopicId);
+            if (!res?.success) {
+                const error = new Error(res?.message || res?.error || '删除失败');
+                error.code = res?.error || null;
+                error.failed = res?.failed || [];
+                error.cascaded = res?.cascaded || 0;
+                throw error;
+            }
+
             // 只有删除的是「当前正在查看的分支」时才返航其父分支；删除别的分支不打扰当前视图
             if (isDeletingCurrentBranch && deletedParentTopicId) {
                 await this.switchBranch(deletedParentTopicId, currentDescriptor);
@@ -385,12 +500,18 @@ export function createSideChatWiring({
                 // 分形分支：快照是分叉那一刻固化的「祖先链完整上下文」。
                 // 不能在发送前重读主聊天当前历史，否则会覆盖掉祖先链、让孙分支丢根上下文。
                 if (descriptor.forkFromTopicId) {
-                    return Promise.resolve({
-                        ok: true,
-                        snapshotId: descriptor.snapshotId || null,
-                        snapshotBoundary: descriptor.snapshotBoundary || null,
-                        messages: Array.isArray(descriptor.parentSnapshot) ? descriptor.parentSnapshot : []
-                    });
+                    const cached = Array.isArray(descriptor.parentSnapshot) ? descriptor.parentSnapshot : [];
+                    if (cached.length > 0) {
+                        return Promise.resolve({
+                            ok: true,
+                            snapshotId: descriptor.snapshotId || null,
+                            snapshotBoundary: descriptor.snapshotBoundary || null,
+                            messages: cached
+                        });
+                    }
+                    // 重开兜底（P1#2）：descriptor 未携带快照（旧数据或透传缺失）时按分支身份回读磁盘，
+                    // 不再返回空快照——空分支首次发送也能拿到完整祖先链
+                    return branchApi.reloadBranchSnapshot(descriptor);
                 }
                 return createParentSnapshot({
                     electronAPI: chatAPI,
@@ -678,6 +799,9 @@ export function createSideChatWiring({
     }
     return Object.freeze({
         provider: sideChatOwner, openSideChat, restoreSessions, onTabClosed, requestTabClose,
+        // 分支生命周期操作（与内部 branchApi 同源），暴露以便复用与测试
+        collectBranchContext: (opts) => branchApi.collectBranchContext(opts),
+        deleteBranch: (opts) => branchApi.deleteBranch(opts),
         dispose() {
             doc.removeEventListener('click', onDeepLinkClick, true);
             sideChatOwner.dispose();

@@ -405,36 +405,68 @@ function initialize(paths) {
             // doomed 永不含被删根自身（根由下方 removeChildDir 统一删除）
             const topicsDir = path.join(USER_DATA_DIR, validateSegment(String(agentId)) || '', 'topics');
             async function collectDescendants(parentId, visited) {
-                let entries = [];
-                try { entries = await fs.readdir(topicsDir, { withFileTypes: true }); } catch { return; }
+                const entries = await fs.readdir(topicsDir, { withFileTypes: true });
                 for (const entry of entries) {
                     if (!entry.isDirectory()) continue;
                     if (entry.name === childTopicId || visited.has(entry.name)) continue;
                     const metaPath = path.join(topicsDir, entry.name, 'sidechat-metadata.json');
                     try {
-                        if (!await fs.pathExists(metaPath)) continue;
-                        const meta = await fs.readJson(metaPath);
-                        if (meta?.forkFromTopicId === parentId) {
-                            visited.add(entry.name);
-                            await collectDescendants(entry.name, visited);
-                        }
-                    } catch (readErr) { void readErr; }
+                        await fs.lstat(metaPath);
+                    } catch (statErr) {
+                        if (statErr?.code === 'ENOENT') continue;
+                        throw new Error(`无法检查侧聊分支元数据 ${entry.name}: ${statErr?.message || statErr}`);
+                    }
+
+                    let meta;
+                    try {
+                        meta = await fs.readJson(metaPath);
+                    } catch (readErr) {
+                        throw new Error(`无法读取侧聊分支元数据 ${entry.name}: ${readErr?.message || readErr}`);
+                    }
+                    if (meta?.forkFromTopicId === parentId) {
+                        visited.add(entry.name);
+                        await collectDescendants(entry.name, visited);
+                    }
                 }
             }
             const doomed = new Set();
-            try { await collectDescendants(childTopicId, doomed); } catch (walkErr) { void walkErr; }
+            try {
+                await collectDescendants(childTopicId, doomed);
+            } catch (walkErr) {
+                return { success: false, error: 'CASCADE_SCAN_FAILED', message: walkErr?.message || String(walkErr) };
+            }
             doomed.delete(childTopicId);
+            // 后代与根同等确权：metadata 里的 forkFromTopicId 只是血缘线索，不是删除授权。
+            // 每个候选都必须通过 requireChild（目录、真实路径、child 标记、归属一致）才能进入删除。
+            let cascaded = 0;
+            const failed = [];
             for (const descId of doomed) {
                 const descDir = getTopicDir(agentId, descId);
-                if (descDir && await fs.pathExists(descDir)) {
-                    try { await removeChildDir(descDir); await clearTrajectoryOf({ agentId, topicId: descId }); } catch (rmErr) { void rmErr; }
+                if (!descDir || !await fs.pathExists(descDir)) continue; // 已不存在：视为完成，幂等
+                const marker = await requireChild(descDir, agentId, descId);
+                if (!marker) {
+                    failed.push({ topicId: descId, error: 'NOT_A_SIDE_CHAT_CHILD' });
+                    continue;
                 }
+                try {
+                    await removeChildDir(descDir);
+                    await clearTrajectoryOf({ agentId, topicId: descId });
+                    cascaded += 1;
+                } catch (rmErr) {
+                    failed.push({ topicId: descId, error: rmErr?.message || 'REMOVE_FAILED' });
+                }
+            }
+            // 部分失败：中止整删（根保留），明确报告——绝不把「找到几个」当「删掉几个」。
+            // 已成功删除的后代保持删除态；重试时 collectDescendants 自然不再收集它们。
+            if (failed.length > 0) {
+                console.error('[SideChatHandlers] delete-child cascade partial failure:', failed);
+                return { success: false, error: 'CASCADE_PARTIAL_FAILED', cascaded, failed };
             }
             await removeChildDir(topicDir);
             await clearTrajectoryOf({ agentId, topicId: childTopicId });
             // 契约保持：无级联时不附加字段，旧调用方与测试的 deepEqual 不受影响
-            return doomed.size > 0
-                ? { success: true, removed: true, cascaded: doomed.size }
+            return cascaded > 0
+                ? { success: true, removed: true, cascaded }
                 : { success: true, removed: true };
         } catch (error) {
             console.error('[SideChatHandlers] delete-child error:', error);

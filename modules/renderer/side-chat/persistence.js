@@ -21,6 +21,21 @@ export function createSideChatPersistence({
     saveDraft
 }) {
     const disposeCleanups = [];
+    const pendingWrites = new Set();
+    function trackWrite(operation) {
+        if (store.isDisposed) return Promise.resolve({ ok: false, error: 'SIDE_CHAT_DISPOSED' });
+        // 同步调用以保留草稿在拆卸标记设置前的刷新行为。
+        const pending = Promise.resolve(operation());
+        pendingWrites.add(pending);
+        pending.then(() => pendingWrites.delete(pending), () => pendingWrites.delete(pending));
+        return pending;
+    }
+    async function drain() {
+        while (pendingWrites.size) await Promise.allSettled([...pendingWrites]);
+    }
+    function persistMetadata() { return trackWrite(persistMetadataNow); }
+    function saveComposerInput() { return trackWrite(saveComposerInputNow); }
+    function retryPersistence() { return trackWrite(retryPersistenceNow); }
     const metadataErrorText = '信息未保存 · 点击重试';
     const draftErrorText = '草稿未保存 · 点击重试';
     let metadataSaveFailed = false;
@@ -44,7 +59,7 @@ export function createSideChatPersistence({
         }
     }
 
-    async function persistMetadata() {
+    async function persistMetadataNow() {
         // 浏览器草稿写不进去（比如存储满了）也照常保存会话信息：换模型、刷新快照不能因此丢失
         let composerSaved = true;
         try {
@@ -120,7 +135,7 @@ export function createSideChatPersistence({
         return result;
     }
 
-    async function saveComposerInput() {
+    async function saveComposerInputNow() {
         try {
             persistComposerInput();
             // Old file drafts are removed only after the browser write succeeds.
@@ -159,7 +174,7 @@ export function createSideChatPersistence({
         win?.removeEventListener?.('blur', flushInputSave);
     });
 
-    async function retryPersistence() {
+    async function retryPersistenceNow() {
         if (!store.hasUnsavedChanges) return { ok: true, message: '无未保存的历史' };
         if (store.isDeletingMessage || store.isSavingMessageEdit) {
             const error = store.isSavingMessageEdit ? '正在保存编辑，请稍后重试。' : '正在保存删除，请稍后重试。';
@@ -263,5 +278,5 @@ export function createSideChatPersistence({
     statusText.addEventListener('keydown', onStatusKeydown);
     disposeCleanups.push(() => statusText.removeEventListener('keydown', onStatusKeydown));
 
-    return Object.freeze({ needsSnapshotRefresh, refreshSnapshot, persistMetadata, saveComposerInput, scheduleInputSave, flushInputSave, retryPersistence, discardUnsaved, loadHistoryFn, dispose() { flushInputSave(); disposeCleanups.splice(0).forEach(fn => { try { fn(); } catch {} }); } });
+    return Object.freeze({ drain, needsSnapshotRefresh, refreshSnapshot, persistMetadata, saveComposerInput, scheduleInputSave, flushInputSave, retryPersistence, discardUnsaved, loadHistoryFn, dispose() { flushInputSave(); disposeCleanups.splice(0).forEach(fn => { try { fn(); } catch {} }); } });
 }
