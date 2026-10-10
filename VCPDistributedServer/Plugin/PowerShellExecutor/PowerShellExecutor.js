@@ -335,6 +335,31 @@ let lastKnownSize = { cols: 80, rows: 24 }; // GUI 最近一次 fit 出来的尺
 let ptyReadyPromise = Promise.resolve();
 let terminalProjection = null;
 
+// --- 并发排队调度状态机 ---
+const MAX_EXECUTION_QUEUE_SIZE = 10;
+const executionQueue = [];
+let queueProcessing = false;
+
+/**
+ * 级联清空整个排队队列，对所有等待任务安全 reject，防止前置错误导致错误扩散。
+ * @param {string} reasonMessage - 拒绝理由。
+ * @returns {Array} 被取消的任务列表。
+ */
+function purgeExecutionQueue(reasonMessage) {
+    if (executionQueue.length === 0) {
+        return [];
+    }
+    const cancelledTasks = executionQueue.splice(0, executionQueue.length);
+    for (const task of cancelledTasks) {
+        try {
+            task.reject(new Error(reasonMessage));
+        } catch {
+            // 忽略已决议的回调
+        }
+    }
+    return cancelledTasks;
+}
+
 // --- 配置加载 ---
 const defaultConfig = {
     returnMode: 'delta', // 默认为增量模式
@@ -852,11 +877,97 @@ function getSessionState() {
     return {
         running: Boolean(ptyProcess),
         pid: ptyProcess ? ptyProcess.pid : null,
-        // AI 短命令或交互式 TUI 占用期间，不应向会话里塞入额外命令。
-        busy: Boolean(isExecutingCommand || interactiveMode),
+        // AI 短命令、交互式 TUI 或队列排队占用期间，不应向会话里塞入额外命令。
+        busy: Boolean(isExecutingCommand || interactiveMode || executionQueue.length > 0),
+        queuedTasks: executionQueue.length,
         cols: lastKnownSize.cols,
         rows: lastKnownSize.rows,
     };
+}
+
+/**
+ * 核心异步驱动调度器：按 FIFO 顺序依次分发执行排队任务。
+ */
+async function processQueueLoop() {
+    if (queueProcessing || isExecutingCommand) {
+        return;
+    }
+    if (executionQueue.length === 0) {
+        return;
+    }
+    if (interactiveMode) {
+        purgeExecutionQueue('终端已转入交互模式 (interactiveMode)，排队中的同步命令已安全取消。');
+        return;
+    }
+
+    queueProcessing = true;
+    const task = executionQueue.shift();
+
+    try {
+        isExecutingCommand = true;
+
+        // 1. 协商目标视图
+        await prepareTerminalView(task.target, false);
+
+        // 2. 检查或新建会话
+        if (task.newSession || !ptyProcess) {
+            createNewPtySession();
+        }
+
+        // 3. 等待 PTY 就绪
+        await waitForPtyReady();
+
+        // 4. 就绪后再次检查交互模式
+        if (interactiveMode) {
+            throw new Error('终端在等待就绪期间被交互式程序占用。');
+        }
+
+        // 5. 逐条执行命令链（单任务独享 60s 完整生命周期）
+        const deltaOutputs = [];
+        for (const entry of task.commandEntries) {
+            const command = entry.value;
+            const currentReturnModeKey = `returnMode${entry.index || ''}`;
+            const currentReturnMode = task.args[currentReturnModeKey] || task.finalReturnMode;
+
+            try {
+                const output = await executeSingleCommandInPty(ptyProcess, command);
+                deltaOutputs.push({ command, output, returnMode: currentReturnMode });
+            } catch (error) {
+                // 宽进严出因果铁律：前置命令发生任何异常中断，级联取消队列中的所有后序排队任务！
+                const cancelled = purgeExecutionQueue(`由于前置命令 [${command}] 执行异常中断，为防止依赖错乱已安全取消后置排队命令。`);
+                const cancelledNotice = cancelled.length > 0
+                    ? `\n\n🛡️ [排队级联保护] 为杜绝后续命令在未决环境中发生输入踩踏，队列中排队的后续 ${cancelled.length} 个任务已同步安全取消。`
+                    : '';
+                throw new Error(`${error.message}${cancelledNotice}`);
+            }
+        }
+
+        // 6. 格式化并交付成功结果
+        let finalOutput = '';
+        if (task.finalReturnMode === 'full') {
+            finalOutput = deltaOutputs.length > 0 ? deltaOutputs[deltaOutputs.length - 1].output : '';
+        } else {
+            if (deltaOutputs.length === 1) {
+                finalOutput = deltaOutputs[0].output;
+            } else {
+                finalOutput = deltaOutputs.map(res =>
+                    `---[Output for: ${res.command}]---\n${res.output}`
+                ).join('\n\n');
+            }
+        }
+
+        const cleanOutput = finalOutput.replace(/\r\n/g, '\n').replace(/\r/g, '');
+        task.resolve({ content: [{ type: 'text', text: `\`\`\`powershell\n${cleanOutput}\n\`\`\`` }] });
+    } catch (err) {
+        task.reject(err);
+    } finally {
+        isExecutingCommand = false;
+        queueProcessing = false;
+        // 如果队列还有待办且未被阻塞，异步调度下一轮
+        if (executionQueue.length > 0) {
+            setImmediate(processQueueLoop);
+        }
+    }
 }
 
 function writeSessionInput(data) {
@@ -1320,7 +1431,25 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
             settled = true;
             finishCommandRun(run, 'timed_out');
             cleanupListener(listenerDisposable, timeoutId);
-            reject(new Error(`Command "${singleCommand}" timed out after 60 seconds.`));
+
+            // 宽进严出契约：超时不主动向 PTY 注入 Ctrl+C 强杀进程，保持长耗时任务在后台自然运行。
+            // 但为避免后续命令在未决环境中盲目执行踩踏，立即级联清空后序排队队列。
+            const cancelled = purgeExecutionQueue(`由于前置命令 [${singleCommand}] 超过 60 秒未完成且仍在后台运行，为防命令踩踏已安全取消后序排队任务。`);
+            const cancelledNote = cancelled.length > 0
+                ? `\n🛡️ [排队级联保护] 为杜绝后续命令在未决环境中发生输入踩踏，队列中排队的后续 ${cancelled.length} 个任务已同步安全取消。`
+                : '';
+
+            const timeoutMessage = [
+                `⚠️ [命令执行状态通报：已转入后台持续运行]`,
+                `当前命令 "${singleCommand}" 在 60 秒同步等待周期内未输出结束标记。系统已安全解除同步等待，该进程仍在前台 PTY 会话中持续执行，未被强制中断。${cancelledNote}`,
+                ``,
+                `💡 后续行动建议指引：`,
+                `1. 正常长耗时任务（如编译/下载/安装）：请调用 QueryVisible 工具只读巡视当前终端屏幕，确认任务实时输出与进度；`,
+                `2. 确认进程陷入死循环或阻塞：请配合 archery: "no_reply" 调用 InterruptPowerShell，向终端发送中断信号恢复提示符；`,
+                `3. 重置执行环境：若终端状态异常且无法响应中断，可调用 newSession: true 彻底重建纯净会话。`
+            ].join('\n');
+
+            reject(new Error(timeoutMessage));
         }, 60000);
 
         activeCommandAbort = abortThisCommand;
@@ -1797,19 +1926,31 @@ async function processToolCall(args) {
             return { content: [{ type: 'text', text: 'No active PowerShell session to interrupt.' }] };
         }
 
+        // 宽进严出因果铁律：任何显式中断动作，都必须级联打断清空后序排队队列
+        const cancelled = purgeExecutionQueue('当前全局队列已被中断命令停止，后续排队任务已全部安全取消。');
+
+        let interruptedCurrent = false;
         if (activeCommandAbort) {
-            const interrupted = activeCommandAbort();
-            return { content: [{ type: 'text', text: interrupted
-                ? 'Interrupt signal sent. The active synchronous command wait was cancelled.'
-                : 'The synchronous command had already completed before it could be interrupted.' }] };
-        }
-
-        if (interactiveMode) {
+            interruptedCurrent = activeCommandAbort();
+        } else if (interactiveMode) {
             ptyProcess.write('\x03');
-            return { content: [{ type: 'text', text: 'Ctrl+C was sent to the interactive foreground program. The interactive mode flag remains set.' }] };
+            interruptedCurrent = true;
+        } else {
+            // 向 PTY 发送 Ctrl+C，确保任何后台遗留的长任务或未决前台被清理并恢复提示符
+            ptyProcess.write('\x03');
+            interruptedCurrent = true;
         }
 
-        return { content: [{ type: 'text', text: 'The PowerShell session is active, but no AI-started foreground command is currently running.' }] };
+        const cancelledList = cancelled.length > 0
+            ? '\n\n📋 **[级联清理清单]** 已同步安全取消队列中排队的后续 ' + cancelled.length + ' 个任务，杜绝依赖错乱：\n' +
+              cancelled.map((t, idx) => `  • [排队任务 ${idx + 1}] ${t.commandEntries.map(e => e.value).join('; ')}`).join('\n')
+            : '\n\nℹ️ 队列中无其他待执行任务。';
+
+        const statusMessage = interruptedCurrent
+            ? '🛑 **[全局中断执行成功]** 已向活动 PTY 会话注入 Ctrl+C 中断信号，前台活动命令已中止。'
+            : 'ℹ️ **[中断处理完毕]** 当前无活动的同步执行命令。';
+
+        return { content: [{ type: 'text', text: `${statusMessage}${cancelledList}` }] };
     }
 
     // --- 1. 解析和排序 PowerShell 脚本 ---
@@ -1902,22 +2043,26 @@ async function processToolCall(args) {
     }
 
     // 路径 C: 标准非管理员会话执行
-    if (isExecutingCommand) {
-        throw new Error('当前已有同步命令执行中，请等待完成或使用 interrupt。');
+    // 检查交互模式：TUI 运行中严禁启动任何同步脚本调用
+    if (interactiveMode) {
+        throw new Error('当前终端正被交互式程序 (snow/codex/claude) 占用，请先退出并调用 action:"endInteractive"，或使用 newSession:true 重置会话。');
     }
-    await prepareTerminalView(target, action === 'startInteractive');
-
-    if (newSession || !ptyProcess) {
-        createNewPtySession();
-    }
-
-    // 普通脚本只依赖 PTY 就绪；交互操作的目标视图由 prepareTerminalView 单独等待。
-    await waitForPtyReady();
 
     if (action === 'startInteractive') {
         if (commandEntries.length > 1) {
             throw new Error('startInteractive 只支持单条 command。');
         }
+
+        // 存在排队任务或正在执行同步命令时，禁止抢占开启交互式
+        if (isExecutingCommand || executionQueue.length > 0) {
+            throw new Error('当前有同步命令正在执行或排队中，无法启动交互式程序。请等待其完成或调用 InterruptPowerShell 中止。');
+        }
+
+        await prepareTerminalView(target, true);
+        if (newSession || !ptyProcess) {
+            createNewPtySession();
+        }
+        await waitForPtyReady();
 
         const command = commandEntries[0].value;
         interactiveMode = true;
@@ -1926,49 +2071,25 @@ async function processToolCall(args) {
         return { content: [{ type: 'text', text: `Interactive session started: ${command}` }] };
     }
 
-    if (interactiveMode) {
-        throw new Error('当前终端正被交互式程序 (snow/codex/claude) 占用，请先退出并调用 action:"endInteractive"，或使用 newSession:true 重置会话。');
+    // 同步执行命令排队入口 (FIFO Queue)
+    if (executionQueue.length >= MAX_EXECUTION_QUEUE_SIZE) {
+        throw new Error(`[PowerShellExecutor] 命令排队队列已满 (当前排队上限 ${MAX_EXECUTION_QUEUE_SIZE} 个)，请求被拒绝。请等待当前任务完成或调用 InterruptPowerShell 清空队列。`);
     }
 
-    // 就绪等待期间其它调用可能先取得PTY，await后必须再次检查。
-    if (isExecutingCommand) {
-        throw new Error('当前已有同步命令执行中，请等待完成或使用 interrupt。');
-    }
-    const deltaOutputs = [];
-    isExecutingCommand = true;
-    try {
-        for (const entry of commandEntries) {
-            const command = entry.value;
-            const currentReturnModeKey = `returnMode${entry.index || ''}`;
-            const currentReturnMode = args[currentReturnModeKey] || finalReturnMode;
-
-            try {
-                const output = await executeSingleCommandInPty(ptyProcess, command);
-                deltaOutputs.push({ command, output, returnMode: currentReturnMode });
-            } catch (error) {
-                throw new Error(`在执行命令 "${command}" 时出错: ${error.message}`);
-            }
-        }
-    } finally {
-        isExecutingCommand = false;
-    }
-
-    // --- 5. 格式化并返回结果 ---
-    let finalOutput = '';
-    if (finalReturnMode === 'full') {
-        finalOutput = deltaOutputs.length > 0 ? deltaOutputs[deltaOutputs.length - 1].output : '';
-    } else { // delta 模式
-        if (deltaOutputs.length === 1) {
-            finalOutput = deltaOutputs[0].output;
-        } else {
-            finalOutput = deltaOutputs.map(res =>
-                `---[Output for: ${res.command}]---\n${res.output}`
-            ).join('\n\n');
-        }
-    }
-
-    const cleanOutput = finalOutput.replace(/\r\n/g, '\n').replace(/\r/g, '');
-    return { content: [{ type: 'text', text: `\`\`\`powershell\n${cleanOutput}\n\`\`\`` }] };
+    return new Promise((resolve, reject) => {
+        executionQueue.push({
+            id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            commandEntries,
+            target,
+            newSession,
+            finalReturnMode,
+            args,
+            resolve,
+            reject,
+            createdAt: Date.now()
+        });
+        processQueueLoop();
+    });
 }
 
 /**
@@ -2025,6 +2146,7 @@ function cleanup() {
     }
 
     // 4. 确保 ptyProcess 状态被重置
+    purgeExecutionQueue('PowerShell 插件正在清理重载，排队任务已终止。');
     mirrorSinks.clear();
     terminalProjection = null;
     clearReplay();
