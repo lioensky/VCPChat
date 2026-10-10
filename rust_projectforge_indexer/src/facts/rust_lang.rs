@@ -70,6 +70,55 @@ pub fn extract_rust_facts(source: &str, root: Node, facts: &mut FileFacts) {
         std::str::from_utf8(&src_bytes[n.start_byte()..n.end_byte()]).unwrap_or("")
     };
 
+    let mut export_macros = std::collections::HashSet::new();
+
+    // 预扫描：仅收集定义体内包含明确 FFI 导出语义（no_mangle / extern "C" / export_name）的宏定义
+    // 安全防御：深度掩码注释节点与字符串字面量（仅保留 ABI 字符串），杜绝伪装宏穿透白名单
+    dfs(root, |n| {
+        if n.kind() == "macro_definition" {
+            let start = n.start_byte();
+            let end = n.end_byte();
+            if start <= end && end <= src_bytes.len() {
+                let mut clean_bytes = src_bytes[start..end].to_vec();
+                dfs(n, |c| {
+                    let k = c.kind();
+                    if k == "line_comment" || k == "block_comment" {
+                        let c_start = c.start_byte().saturating_sub(start);
+                        let c_end = (c.end_byte().saturating_sub(start)).min(clean_bytes.len());
+                        if c_start < c_end {
+                            for b in &mut clean_bytes[c_start..c_end] {
+                                *b = b' ';
+                            }
+                        }
+                    } else if k == "string_literal" || k == "raw_string_literal" {
+                        let txt = text_of(c);
+                        if !matches!(txt, "\"C\"" | "\"system\"" | "\"win64\"" | "\"sysv64\"" | "\"stdcall\"" | "\"fastcall\"" | "\"C-unwind\"") {
+                            let c_start = c.start_byte().saturating_sub(start);
+                            let c_end = (c.end_byte().saturating_sub(start)).min(clean_bytes.len());
+                            if c_start < c_end {
+                                for b in &mut clean_bytes[c_start..c_end] {
+                                    *b = b' ';
+                                }
+                            }
+                        }
+                    }
+                });
+                if let Ok(clean_txt) = std::str::from_utf8(&clean_bytes) {
+                    if clean_txt.contains("no_mangle")
+                        || clean_txt.contains("extern \"C\"")
+                        || clean_txt.contains("extern \"system\"")
+                        || clean_txt.contains("extern \"win64\"")
+                        || clean_txt.contains("export_name")
+                    {
+                        if let Some(name_node) = n.child_by_field_name("name") {
+                            export_macros.insert(text_of(name_node).trim().to_string());
+                        }
+                    }
+                }
+            }
+        }
+    });
+
     dfs(root, |n| {
         if n.kind() == "use_declaration" {
             if let Some(arg) = n.child_by_field_name("argument") {
@@ -175,7 +224,10 @@ pub fn extract_rust_facts(source: &str, root: Node, facts: &mut FileFacts) {
             let children: Vec<_> = n.named_children(&mut named_cur).collect();
             if children.len() >= 2 {
                 let macro_name = text_of(children[0]).trim();
-                if !matches!(macro_name, "println" | "vec" | "format" | "panic" | "assert" | "matches" | "eprintln") {
+                let base_name = macro_name.rsplit("::").next().unwrap_or(macro_name).trim();
+                // 仅当该宏已在本地被证明具有 FFI 导出语义时，才提取其参数为导出符号；
+                // 绝不误伤普通业务宏（如 rusqlite::params!、iter/collect 调用链等），支持带路径的限定宏调用
+                if export_macros.contains(macro_name) || export_macros.contains(base_name) {
                     let token_tree = children[1];
                     let mut tt_cur = token_tree.walk();
                     for arg in token_tree.named_children(&mut tt_cur) {
