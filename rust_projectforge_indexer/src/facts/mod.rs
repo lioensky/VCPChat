@@ -301,6 +301,12 @@ extern "C" {
         let rs_src = r#"
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use crate::pipeline::{executor, runner};
+
+fn internal_query() {
+    let p = rusqlite::params![id, name, value];
+    let list: Vec<_> = items.iter().map(|x| x).collect();
+}
+
 #[no_mangle]
 pub extern "C" fn vcp_audio_process() -> i32 { 0 }
 "#;
