@@ -719,11 +719,12 @@ function dispatchPtyData(rawData) {
     }
 
     if (mirrorStartupPending) {
-        // 启动握手（编码设置与就绪标记）是内部细节，握手完成前不投影到侧栏
+        // 启动握手（编码设置与就绪标记）是内部细节，握手完成前不投影到侧栏和独立窗口
         mirrorStartupHeld = (mirrorStartupHeld + dataStr).slice(-MIRROR_REPLAY_LIMIT);
-    } else {
-        emitMirrorData(dataStr);
+        return;
     }
+
+    emitMirrorData(dataStr);
 
     try {
         if (!guiWindow || guiWindow.isDestroyed()
@@ -791,7 +792,18 @@ function releaseMirrorStartup(afterReady = null) {
     mirrorStartupPending = false;
     const held = mirrorStartupHeld;
     mirrorStartupHeld = '';
-    emitMirrorData(afterReady === null ? held : afterReady);
+    const releasedOutput = afterReady === null ? held : afterReady;
+    emitMirrorData(releasedOutput);
+
+    try {
+        if (!guiWindow || guiWindow.isDestroyed()
+            || guiWindow.webContents.isDestroyed()) {
+            return;
+        }
+        guiWindow.webContents.send('powershell-data', releasedOutput);
+    } catch (error) {
+        console.warn('[PowerShellExecutor] GUI output delivery failed:', error.message);
+    }
 }
 
 function notifyMirrors(method, ...args) {
@@ -994,12 +1006,12 @@ function createNewPtySession() {
     const encodedReadyBoundary = Buffer.from(readyBoundary, 'utf8').toString('base64');
     mirrorStartupPending = true;
     mirrorStartupHeld = '';
+
     ptyReadyPromise = new Promise((resolve, reject) => {
         let startupOutput = '';
         let settled = false;
         let timeoutId = null;
         let readyListener = null;
-
         const cleanupReadyProbe = () => {
             if (timeoutId) {
                 clearTimeout(timeoutId);
@@ -1062,11 +1074,9 @@ function createNewPtySession() {
             '$env:MANPAGER = "cat"',
             'function global:more { param([string[]]$paths) if ($paths) { foreach ($file in $paths) { Get-Content $file } } else { $input } }',
             'function global:help { Get-Help @args }',
-            `$__vcpReady = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${encodedReadyBoundary}'))`,
-            'Write-Host $__vcpReady',
-            // 清掉握手留下的几行：侧栏只从就绪标记之后开始显示，ConPTY 的光标也得回到左上角，
-            // 否则 PSReadLine 按绝对坐标重绘时会和侧栏错开几行
-            'Clear-Host'
+            // 彻底移除 Clear-Host：ConPTY 二维字符屏幕扫描会在微秒级内将同一行的 Write-Host 输出连同 Clear-Host 擦除，导致丢失就绪标记引发死锁。
+            // 启动握手期数据已由 mirrorStartupPending 在内存层完全静音拦截，无需且绝不能在 shell 内清屏。
+            `[System.Console]::Out.WriteLine([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${encodedReadyBoundary}')))`
         ].join('; ');
         currentPtyProcess.write(`${initializationCommand}\r`);
     });
