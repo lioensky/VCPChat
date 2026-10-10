@@ -16,6 +16,8 @@ import { createSideChatModelPicker } from './side-chat/model-picker.js';
 import { createSideChatAttachments } from './side-chat/attachments.js';
 import { createSideChatDraftCache } from './side-chat/draft-cache.js';
 import { createSideChatDraftStore } from './side-chat/draft-store.js';
+import { createSideChatBranchRail } from './side-chat/branch-rail.js';
+import { buildBranchNote } from './side-chat/note-exporter.js';
 import { createChatSurface } from '../chat/chatSurface.js';
 import { createChatOperations } from '../chat/chatOperation.js';
 import { validateReferenceList } from '../ui-system/side-pane/selection-reference.js';
@@ -99,7 +101,7 @@ export async function mountSideChatSurface(container, {
         descriptor,
         escapeHtml
     });
-    const { root, form, textarea, sendBtn, stopBtn, statusText, persistenceBadge, referenceList, modelPickerBtn, modelPopover, modelNameSpan, attachBtn, emoticonBtn, attachmentPreview } = shellOwner;
+    const { root, branchRailSlot, pedigreeBridge: pedigreeBridgeSlot, form, textarea, sendBtn, stopBtn, statusText, persistenceBadge, referenceList, modelPickerBtn, modelPopover, modelNameSpan, attachBtn, emoticonBtn, attachmentPreview } = shellOwner;
     textarea.value = descriptor.draft || '';
 
     let currentDescriptor = {
@@ -117,6 +119,15 @@ export async function mountSideChatSurface(container, {
     let isHistoryLoaded = false;
     let isDeletingMessage = false;
     let isSavingMessageEdit = false;
+    const pendingHistoryWrites = new Set();
+    function saveOwnedHistory(history) {
+        if (isDisposed) return Promise.reject(new Error('SIDE_CHAT_DISPOSED'));
+        const pending = Promise.resolve().then(() =>
+            repository.saveHistory(descriptor.child.itemId, 'agent', descriptor.child.topicId, history));
+        pendingHistoryWrites.add(pending);
+        pending.then(() => pendingHistoryWrites.delete(pending), () => pendingHistoryWrites.delete(pending));
+        return pending;
+    }
     // 重新回复先存截短的历史再发送：这段 await 期间还没有 activeSendController，另起的发送会和它撞车
     let isRegenerating = false;
     let isComposing = false;
@@ -192,24 +203,48 @@ export async function mountSideChatSurface(container, {
         doc,
         getHistory: () => liveConversation?.historyRef?.get?.() || [],
         setHistory: (history) => liveConversation?.historyRef?.set?.(history),
-        saveHistory: (history) => repository.saveHistory(descriptor.child.itemId, 'agent', descriptor.child.topicId, history),
+        saveHistory: saveOwnedHistory,
         rerender: (messageId, text) => liveRenderer?.updateMessageContent?.(messageId, text),
-        isBusy: () => isDeletingMessage || isSavingMessageEdit || form.hasAttribute('aria-busy'),
+        isBusy: () => isDisposed || isDeletingMessage || isSavingMessageEdit || form.hasAttribute('aria-busy'),
         onSavingChange: (pending) => { isSavingMessageEdit = pending; updateComposerState(); },
         toast: (message, type) => chatCapabilities?.uiHelper?.showToastNotification?.(message, type)
     });
 
+    const forkDescriptor = {
+        ...descriptor,
+        onFork: async ({ forkLabel, forkMessageId }) => {
+            if (activeSendController || isRegenerating) {
+                chatCapabilities?.uiHelper?.showToastNotification?.('请等当前回复完成后再开分支', 'warning');
+                return;
+            }
+            const ref = {
+                id: Date.now().toString(),
+                text: forkLabel,
+                sourceMessageId: forkMessageId,
+                capturedAt: Date.now()
+            };
+            await branchApi.forkBranch({
+                descriptor: currentDescriptor,
+                ancestorMessages: collectAncestorContext(),
+                forkMessageId,
+                forkLabel,
+                branchTitle: forkLabel,
+                reference: ref
+            });
+        }
+    };
+
     const messageActionsOwner = createSideChatMessageActions({
         store,
         chatCapabilities,
-        descriptor,
+        descriptor: forkDescriptor,
         doc,
         root,
         textarea,
         getHistory: () => liveConversation?.historyRef?.get?.() || [],
-        saveHistory: (history) => repository.saveHistory(descriptor.child.itemId, 'agent', descriptor.child.topicId, history),
+        saveHistory: saveOwnedHistory,
         removeMessage: (messageId) => liveRenderer?.removeMessageById?.(messageId, false),
-        isBusy: () => isDeletingMessage || isSavingMessageEdit || form.hasAttribute('aria-busy'),
+        isBusy: () => isDisposed || isDeletingMessage || isSavingMessageEdit || form.hasAttribute('aria-busy'),
         onDeletingChange: (pending) => { isDeletingMessage = pending; updateComposerState(); },
         onComposerFilled: () => scheduleInputSave(),
         editMessage: (messageItem, message) => messageEditor.start(messageItem, message),
@@ -551,7 +586,7 @@ export async function mountSideChatSurface(container, {
         };
         let saved;
         try {
-            saved = await repository.saveHistory(descriptor.child.itemId, 'agent', descriptor.child.topicId, kept);
+            saved = await saveOwnedHistory(kept);
         } catch (error) {
             saved = { error: error?.message || String(error) };
         }
@@ -614,11 +649,211 @@ export async function mountSideChatSurface(container, {
 
     const loadPromise = loadHistoryFn().catch(() => {});
 
+    // ── 分形分支轨：历史加载后挂载，连接分叉 / 切换 / 结晶 ──
+    let branchRailOwner = null;
+    const branchApi = chatCapabilities?.branchApi || null;
+
+    // 收集当前分支的完整上下文：父快照（递归含全部祖先）+ 本支稳定消息
+    function collectAncestorContext() {
+        const snap = Array.isArray(snapshotMessages) ? [...snapshotMessages] : [];
+        const own = (liveConversation?.historyRef?.get?.() || [])
+            .filter(m => m && !m.transient && !m.isStreaming && !m.pending && !m.isThinking && !m.isPendingStream
+                && (m.role === 'user' || m.role === 'assistant'))
+            .map(m => ({
+                id: m.id || null,
+                sourceMessageId: m.id || null,
+                role: m.role,
+                content: typeof m.content === 'object' && m.content !== null
+                    ? JSON.parse(JSON.stringify(m.content))
+                    : (m.content ?? null),
+                timestamp: m.timestamp || null
+            }));
+        return [...snap, ...own];
+    }
+
+    async function mountBranchRail() {
+        if (!branchApi || !branchRailSlot || branchRailOwner) return;
+        if (!branchRailSlot.isConnected) return;
+        if (typeof branchApi.listSiblingMeta !== 'function') return;
+        branchRailOwner = createSideChatBranchRail({
+            container: branchRailSlot,
+            doc,
+            descriptor: currentDescriptor,
+            listSiblings: () => branchApi.listSiblingMeta(currentDescriptor),
+            onSwitch: async (topicId) => {
+                await branchApi.switchBranch(topicId, currentDescriptor);
+            },
+            onRename: async (childTopicId, newTitle) => {
+                await branchApi.renameBranch({ childTopicId, newTitle, currentDescriptor });
+                await branchRailOwner.refresh();
+            },
+            onDelete: async (childTopicId) => {
+                try {
+                    await branchApi.deleteBranch({ childTopicId, currentDescriptor });
+                } catch (error) {
+                    const failures = error?.failed;
+                    const detail = Array.isArray(failures) && failures.length
+                        ? `删除未完成：${failures.length} 个分支处理失败，已删除 ${error.cascaded || 0} 个后代。请刷新后检查保留的数据。`
+                        : `删除未完成：${error?.message || '未知错误'}。请刷新后检查保留的数据。`;
+                    chatCapabilities?.uiHelper?.showToastNotification?.(detail, 'error');
+                } finally {
+                    if (!isDisposed && branchRailOwner) {
+                        try { await branchRailOwner.refresh(); }
+                        catch (error) { console.warn('[SideChat] Failed to refresh branch rail:', error); }
+                    }
+                }
+            },
+            onFork: async (forkOptions = {}) => {
+                if (activeSendController || isRegenerating) {
+                    chatCapabilities?.uiHelper?.showToastNotification?.('请等当前回复完成后再开分支', 'warning');
+                    return;
+                }
+                const targetNode = forkOptions?.targetNode;
+                const sourceDescriptor = targetNode?.meta || currentDescriptor;
+                const targetBranchId = sourceDescriptor?.child?.topicId;
+                const isCurrentBranch = !targetBranchId || targetBranchId === currentDescriptor?.child?.topicId;
+
+                // 上下文与 descriptor 必须同源（P1#1）：从非当前节点分叉时，按目标分支身份收集
+                // 它的祖先快照与本支历史，而不是拿当前视图的上下文张冠李戴。
+                // 目标分支在其他标签里生成时同样拦截——busy 检查覆盖所有挂载实例，不只当前视图。
+                let ctx;
+                if (isCurrentBranch) {
+                    ctx = collectAncestorContext();
+                } else {
+                    const collected = await branchApi.collectBranchContext({ childTopicId: targetBranchId, currentDescriptor });
+                    if (!collected) {
+                        chatCapabilities?.uiHelper?.showToastNotification?.('无法读取目标分支的上下文，请稍后再试', 'error');
+                        return;
+                    }
+                    if (collected.busy) {
+                        chatCapabilities?.uiHelper?.showToastNotification?.('目标分支正在生成回复，请等它完成后再开分支', 'warning');
+                        return;
+                    }
+                    ctx = collected.messages;
+                }
+
+                const hint = targetNode ? `（从「${targetNode.forkLabel || targetNode.branchTitle || targetNode.title}」派生）` : '';
+                const defaultLabel = await branchApi.promptTitle('', hint);
+                if (defaultLabel === null || isDisposed) return;
+                // 命名期间会话可能发生变化，分叉前重新核验并取最新稳定上下文。
+                let finalDescriptor = sourceDescriptor;
+                if (isCurrentBranch) {
+                    if (handle.isBusy()) {
+                        chatCapabilities?.uiHelper?.showToastNotification?.('来源分支正在处理消息或有未保存记录，请稍后再开分支', 'warning');
+                        return;
+                    }
+                    ctx = collectAncestorContext();
+                    finalDescriptor = currentDescriptor;
+                } else {
+                    const latest = await branchApi.collectBranchContext({ childTopicId: targetBranchId, currentDescriptor });
+                    if (isDisposed) return;
+                    if (!latest || latest.busy) {
+                        chatCapabilities?.uiHelper?.showToastNotification?.('目标分支状态已变化或无法读取，请稍后再开分支', 'warning');
+                        return;
+                    }
+                    ctx = latest.messages;
+                    finalDescriptor = latest.descriptor || sourceDescriptor;
+                }
+                await branchApi.forkBranch({
+                    descriptor: finalDescriptor,
+                    ancestorMessages: ctx,
+                    forkMessageId: null,
+                    forkLabel: defaultLabel,
+                    branchTitle: defaultLabel
+                });
+            },
+            onExportNote: async () => {
+                const ownHistory = liveConversation?.historyRef?.get?.() || [];
+                if (ownHistory.length === 0) {
+                    chatCapabilities?.uiHelper?.showToastNotification?.('这条分支还没有可固化的探讨', 'warning');
+                    return;
+                }
+                const markdown = buildBranchNote({ descriptor: currentDescriptor, ownHistory });
+                const exportApi = chatCapabilities?.electronAPI;
+                if (typeof exportApi?.exportSideChatNote !== 'function') {
+                    chatCapabilities?.uiHelper?.showToastNotification?.('当前环境不支持保存笔记文件', 'error');
+                    return;
+                }
+                const label = currentDescriptor.forkLabel || currentDescriptor.branchTitle || currentDescriptor.title || '知识结晶';
+                const res = await exportApi.exportSideChatNote({ content: markdown, fileName: `${label}.md` });
+                if (res?.success && !res.canceled) {
+                    chatCapabilities?.uiHelper?.showToastNotification?.(`笔记已保存：${res.filePath}`, 'success');
+                } else if (res && !res.success) {
+                    throw new Error(res.error || '保存失败');
+                }
+            }
+        });
+    }
+
+    // ── 溯源引桥（Pedigree Bridge）：子分支顶部显示「萌发自 [父分支]：盲点摘录」，点击返航 ──
+    function mountPedigreeBridge() {
+        if (!pedigreeBridgeSlot) return;
+        const forkFrom = currentDescriptor?.forkFromTopicId;
+        if (!forkFrom) { pedigreeBridgeSlot.hidden = true; return; }
+
+        const list = branchApi && typeof branchApi.listSiblingMeta === 'function'
+            ? branchApi.listSiblingMeta(currentDescriptor) : Promise.resolve([]);
+        Promise.resolve(list).then(items => {
+            if (isDisposed || !pedigreeBridgeSlot.isConnected) return;
+            const parentMeta = (Array.isArray(items) ? items : []).find(m => m?.child?.topicId === forkFrom);
+            const parentName = parentMeta?.branchTitle || parentMeta?.title || parentMeta?.forkLabel || '父分支';
+            const excerpt = currentDescriptor?.forkLabel || '';
+
+            pedigreeBridgeSlot.replaceChildren();
+            const bridge = doc.createElement('button');
+            bridge.type = 'button';
+            bridge.className = 'pedigree-bridge-pill';
+            bridge.title = '点击回到父分支现场';
+
+            const arrow = doc.createElement('span');
+            arrow.className = 'pedigree-bridge-arrow';
+            arrow.textContent = '↳';
+
+            const label = doc.createElement('span');
+            label.className = 'pedigree-bridge-label';
+            label.textContent = `萌发自 ${parentName}`;
+
+            bridge.append(arrow, label);
+
+            if (excerpt) {
+                const excerptSpan = doc.createElement('span');
+                excerptSpan.className = 'pedigree-bridge-excerpt';
+                excerptSpan.textContent = excerpt.length > 24 ? `：“${excerpt.slice(0, 24)}…”` : `：“${excerpt}”`;
+                bridge.appendChild(excerptSpan);
+            }
+
+            bridge.addEventListener('click', async () => {
+                if (typeof branchApi?.switchBranch === 'function') {
+                    try { await branchApi.switchBranch(forkFrom, currentDescriptor); } catch (err) {
+                        console.warn('[PedigreeBridge] switch to parent failed:', err);
+                    }
+                }
+            });
+
+            pedigreeBridgeSlot.appendChild(bridge);
+            pedigreeBridgeSlot.hidden = false;
+        }).catch(err => console.warn('[PedigreeBridge] mount failed:', err));
+    }
+
+    // 历史加载成功后再挂轨（避免空历史分支也长轨；空分支照样能从别处切过来）
+    loadPromise.then(() => {
+        if (!isDisposed && isHistoryLoaded) {
+            mountBranchRail();
+            mountPedigreeBridge();
+        }
+    });
+
     const handle = Object.freeze({
         get descriptor() {
             return currentDescriptor;
         },
         surface,
+        async collectBranchContext() {
+            await loadPromise;
+            if (isDisposed || !isHistoryLoaded) return null;
+            if (handle.isBusy()) return { busy: true };
+            return { busy: false, descriptor: currentDescriptor, messages: collectAncestorContext() };
+        },
         // 发送、重新回复、删除、未保存、带附件或正在编辑时为 true（侧聊按 keep 不休眠，这里只报告忙碌）
         isBusy() {
             return !isDisposed && (Boolean(activeSendController) || isRegenerating || isDeletingMessage
@@ -694,16 +929,19 @@ export async function mountSideChatSurface(container, {
                 chatCapabilities?.uiHelper?.showToastNotification?.('无法关闭标签页：存在未保存的历史记录。请点击保存徽标重试，或右键点击徽标放弃更改。', 'warning');
                 return { closed: false, reason: 'UNSAVED_CHANGES' };
             }
-            // 关闭会删掉子话题；有记录或没发出去的输入时先确认，免得误点（含「关闭其他 / 全部」）把对话永久删掉。
-            // 和没挂载时的 requestTabClose 一样：草稿和引用也算
-            const uiHelper = chatCapabilities?.uiHelper;
-            const history = liveConversation?.historyRef?.get?.() || [];
-            const hasInput = Boolean(textarea.value.trim()) || references.length > 0 || attachmentsOwner.count > 0;
-            if (typeof uiHelper?.showConfirmDialog === 'function' && (history.length > 0 || hasInput)) {
-                const confirmed = await uiHelper.showConfirmDialog(
-                    `关闭「${descriptor.title || '辅助对话'}」会删除这段辅助对话的全部记录，无法恢复。`,
-                    '关闭辅助对话', '关闭并删除', '取消', true);
-                if (!confirmed) return { closed: false, reason: 'USER_CANCELED' };
+            // 分形子分支关闭 Tab 时不删除子话题（随时可在脉络图中重开）；
+            // 根侧聊（forkFromTopicId 为空）保留原关闭确认与删除语义
+            const isBranch = Boolean(currentDescriptor?.forkFromTopicId);
+            if (!isBranch) {
+                const uiHelper = chatCapabilities?.uiHelper;
+                const history = liveConversation?.historyRef?.get?.() || [];
+                const hasInput = Boolean(textarea.value.trim()) || references.length > 0 || attachmentsOwner.count > 0;
+                if (typeof uiHelper?.showConfirmDialog === 'function' && (history.length > 0 || hasInput)) {
+                    const confirmed = await uiHelper.showConfirmDialog(
+                        `关闭「${descriptor.title || '辅助对话'}」会删除这段辅助对话的全部记录，无法恢复。`,
+                        '关闭辅助对话', '关闭并删除', '取消', true);
+                    if (!confirmed) return { closed: false, reason: 'USER_CANCELED' };
+                }
             }
             // Cancel active operation and wait for settlement
             if (activeSendController) {
@@ -719,14 +957,18 @@ export async function mountSideChatSurface(container, {
 
     async function teardownSurface() {
         if (isDisposed) return;
-        flushInputSave();
+        const draftFlush = flushInputSave();
         isDisposed = true;
+        let cancelPromise = Promise.resolve();
         if (activeSendController) {
             activeSendController.abort('side-chat-unmounted');
-            try {
-                await surface.cancelMessage();
-            } catch {}
+            cancelPromise = Promise.resolve(surface.cancelMessage()).catch(() => {});
         }
+        await cancelPromise;
+        await draftFlush;
+        await persistenceOwner.drain();
+        await Promise.allSettled([...pendingHistoryWrites]);
+        if (branchRailOwner) { try { branchRailOwner.dispose(); } catch (err) { void err; } branchRailOwner = null; }
         composerStateOwner.dispose();
         scrollingOwner.dispose();
         messageActionsOwner.dispose();

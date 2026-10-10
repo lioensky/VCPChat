@@ -1,0 +1,463 @@
+@charset "UTF-8";
+/* ==========================================================================
+ * 分形辅助对话 · 拓扑导航轨 (Fractal Branch Rail)
+ * 每个分支是独立 child topic；轨把同族分支组织成外露树，点击切换。
+ * 颜色与字号一律走 ui-system 设计 token，深/浅主题自动适配。
+ * ========================================================================== */
+
+html .side-chat-branch-rail:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    --rail-accent: var(--vcp-ui-accent);
+    --rail-accent-soft: color-mix(in srgb, var(--vcp-ui-accent) 25%, transparent);
+    --rail-line: var(--vcp-ui-border);
+    --rail-guide: color-mix(in srgb, var(--vcp-ui-text-primary) 14%, transparent);
+    --rail-text: color-mix(in srgb, var(--vcp-ui-text-primary) 88%, transparent);
+    --rail-text-dim: color-mix(in srgb, var(--vcp-ui-text-primary) 45%, transparent);
+    --rail-hover: var(--vcp-ui-fill-0);
+    --rail-active-bg: color-mix(in srgb, var(--vcp-ui-accent) 10%, transparent);
+    --rail-error: var(--vcp-ui-danger);
+    display: flex;
+    flex-direction: column;
+    margin: 2px 8px 6px;
+    border: none;
+    border-bottom: 1px solid var(--rail-line);
+    background: transparent;
+    font-size: var(--vcp-ui-font-size-xs);
+    user-select: none;
+}
+
+html .side-chat-branch-rail.is-loading .branch-rail-body:where(.vcp-ui-scope, .vcp-ui-scope *) { opacity: 0.55; }
+html .side-chat-branch-rail.is-switching .branch-rail-body:where(.vcp-ui-scope, .vcp-ui-scope *) { opacity: 0.4; pointer-events: none; }
+
+/* ── 极简 Header ── */
+html .branch-rail-header:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 4px 4px 6px;
+    color: var(--rail-text-dim);
+    font-weight: 500;
+    letter-spacing: 0.03em;
+}
+
+html .branch-rail-title:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--vcp-ui-font-size-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-family: inherit;
+}
+html .branch-rail-title .branch-rail-kicker-icon:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    opacity: 0.7;
+    font-size: var(--vcp-ui-font-size-xs);
+}
+
+html .branch-rail-header-actions:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+html .branch-rail-icon-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    width: 20px;
+    height: 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: var(--vcp-ui-radius-xs);
+    background: transparent;
+    color: var(--rail-text-dim);
+    cursor: pointer;
+    font-size: var(--vcp-ui-font-size-xs);
+    line-height: 1;
+    padding: 0;
+    transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+    opacity: 0.75;
+}
+html .branch-rail-icon-btn:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--rail-hover);
+    color: var(--rail-accent);
+    opacity: 1;
+}
+
+/* ── 树身容器 ── */
+html .branch-rail-body:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    flex-direction: column;
+    padding: 2px 0 4px;
+    gap: 1px;
+    max-height: 170px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+}
+
+/* ── 节点行：ThoughtDAG 点线骨架 ── */
+html .branch-rail-row:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    height: 26px;
+    padding: 0 6px 0 calc(12px + var(--branch-depth, 0) * 16px);
+    border: none;
+    border-radius: var(--vcp-ui-radius-sm);
+    background: transparent;
+    color: var(--rail-text);
+    cursor: pointer;
+    text-align: left;
+    font-size: var(--vcp-ui-font-size-xs);
+    transition: background 0.12s ease, color 0.12s ease;
+}
+
+/* 父子树状拐角连线 (L-shape guide) */
+html .branch-rail-row::before:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    content: "";
+    position: absolute;
+    left: calc(2px + var(--branch-depth, 0) * 16px);
+    top: -13px;
+    width: 8px;
+    height: 26px;
+    border-left: 1px solid var(--rail-guide);
+    border-bottom: 1px solid var(--rail-guide);
+    border-bottom-left-radius: var(--vcp-ui-radius-xs);
+    pointer-events: none;
+}
+html .branch-rail-row[style*="--branch-depth: 0"]::before:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .branch-rail-row.depth0::before:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: none;
+}
+
+/* 节点微圆点 (Thought Mark) */
+html .branch-rail-dot:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: relative;
+    flex: 0 0 auto;
+    width: 6px;
+    height: 6px;
+    border-radius: var(--vcp-ui-radius-full);
+    background: var(--rail-text-dim);
+    transition: transform 0.15s ease, background 0.15s ease;
+    z-index: 1;
+}
+html .branch-rail-row[style*="--branch-depth: 0"] .branch-rail-dot:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    width: 7px;
+    height: 7px;
+    background: color-mix(in srgb, var(--vcp-ui-text-primary) 70%, transparent);
+}
+
+html .branch-rail-label:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    letter-spacing: 0.01em;
+}
+
+html .branch-rail-row-action:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    opacity: 0;
+    width: 18px;
+    height: 18px;
+    border: none;
+    border-radius: var(--vcp-ui-radius-xs);
+    background: transparent;
+    color: var(--rail-text-dim);
+    font-size: var(--vcp-ui-font-size-xs);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+    transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
+    flex-shrink: 0;
+}
+html .branch-rail-row:hover .branch-rail-row-action:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    opacity: 0.7;
+}
+html .branch-rail-row .branch-rail-row-action:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    opacity: 1;
+    background: var(--rail-hover);
+    color: var(--rail-accent);
+}
+
+html .branch-rail-rename-input:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 1 1 auto;
+    background: var(--vcp-ui-bg-input);
+    border: 1px solid var(--rail-accent);
+    border-radius: var(--vcp-ui-radius-xs);
+    color: var(--rail-text);
+    font-size: var(--vcp-ui-font-size-xs);
+    padding: 1px 5px;
+    outline: none;
+    font-family: inherit;
+}
+
+html .branch-rail-context-menu:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: fixed;
+    z-index: 1000;
+    background: var(--vcp-ui-bg-1);
+    border: 1px solid var(--rail-line);
+    border-radius: var(--vcp-ui-radius-sm);
+    padding: 4px;
+    box-shadow: var(--vcp-ui-shadow-md);
+}
+html .branch-rail-context-menu button:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 6px 12px;
+    background: transparent;
+    border: none;
+    color: var(--vcp-ui-text-0);
+    cursor: pointer;
+    font-size: var(--vcp-ui-font-caption);
+}
+html .branch-rail-context-menu button:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--rail-hover);
+}
+
+/* ── 溯源引桥 (Pedigree Bridge)：子分支顶部的来源胶囊 ── */
+html .side-chat-pedigree-bridge:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    align-items: center;
+    padding: 2px 10px 4px;
+    margin: 0;
+}
+html .side-chat-pedigree-bridge[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) { display: none; }
+
+html .pedigree-bridge-pill:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    max-width: 100%;
+    padding: 3px 10px;
+    border: 1px solid var(--rail-line);
+    border-radius: var(--vcp-ui-radius-full);
+    background: transparent;
+    color: var(--rail-text-dim);
+    font-size: calc(var(--vcp-ui-font-size-xs) - 0.5px);
+    line-height: 1.4;
+    cursor: pointer;
+    text-align: left;
+    transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+html .pedigree-bridge-pill:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--rail-accent);
+    border-color: var(--rail-accent-soft);
+    background: var(--rail-active-bg);
+}
+
+html .pedigree-bridge-arrow:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 0 0 auto;
+    font-size: var(--vcp-ui-font-size-xs);
+    opacity: 0.8;
+}
+
+html .pedigree-bridge-label:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 0 1 auto;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+html .pedigree-bridge-excerpt:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    opacity: 0.75;
+    font-style: italic;
+}
+
+html .branch-rail-row:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--rail-hover);
+    color: var(--vcp-ui-text-0);
+}
+
+html .thought-map-node-group:hover text:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    fill: var(--rail-accent);
+    font-weight: 600;
+}
+html .thought-map-node-group:hover circle:last-of-type:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    stroke: var(--vcp-ui-text-primary);
+    stroke-width: 1.5;
+}
+
+/* 激活状态：微光呼吸星 */
+html .branch-rail-row.is-active:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--rail-active-bg);
+    color: var(--rail-accent);
+    font-weight: 600;
+}
+html .branch-rail-row.is-active .branch-rail-dot:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--rail-accent);
+    box-shadow: 0 0 0 3px var(--rail-accent-soft);
+    animation: branchRailPulse 2.4s ease-in-out infinite;
+    transform: scale(1.15);
+}
+
+html .branch-rail-empty:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .branch-rail-hint:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    padding: 6px 8px;
+    color: var(--rail-text-dim);
+    font-size: var(--vcp-ui-text-xs);
+}
+html .branch-rail-hint:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    cursor: default;
+}
+html .branch-rail-hint.is-error:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--rail-error);
+    cursor: pointer;
+}
+
+html .is-collapsed .branch-rail-body:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .is-collapsed .branch-rail-hint:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: none;
+}
+
+@keyframes branchRailPulse {
+    0%, 100% { box-shadow: 0 0 0 2px var(--rail-accent-soft); }
+    50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--vcp-ui-accent) 3%, transparent); }
+}
+
+/* ── 思路地图海报弹窗 (Thought Map Poster Modal) ── */
+html .thought-map-backdrop:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    background: var(--vcp-ui-backdrop);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    animation: tmapFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html .thought-map-sheet:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    position: relative;
+    width: 520px;
+    max-width: 95vw;
+    background: var(--vcp-ui-bg-1);
+    border: 1px solid var(--vcp-ui-border);
+    border-radius: 14px;
+    box-shadow: var(--vcp-ui-shadow-lg), 0 0 0 1px var(--vcp-ui-fill-0);
+    padding: 32px 36px 28px;
+    display: flex;
+    flex-direction: column;
+    color: var(--vcp-ui-text-0);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+html .thought-map-sheet-header:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 24px;
+}
+html .thought-map-kicker:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    font-size: var(--vcp-ui-font-size-xs);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--vcp-ui-text-primary) 42%, transparent);
+    margin-bottom: 6px;
+}
+html .thought-map-headline:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    font-size: calc(var(--vcp-ui-font-title) + 6px);
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: -0.02em;
+    color: var(--vcp-ui-text-0);
+    margin: 0 0 4px;
+}
+html .thought-map-subtitle:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    font-size: var(--vcp-ui-font-helper);
+    color: color-mix(in srgb, var(--vcp-ui-text-primary) 55%, transparent);
+    margin: 0;
+}
+html .thought-map-close-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    border: none;
+    background: var(--vcp-ui-fill-1);
+    color: var(--vcp-ui-text-secondary);
+    width: 28px;
+    height: 28px;
+    border-radius: var(--vcp-ui-radius-full);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+html .thought-map-close-btn:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-fill-2);
+    color: var(--vcp-ui-text-0);
+}
+
+/* 海报中心点线图 */
+html .thought-map-canvas-box:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    width: 100%;
+    height: 260px;
+    position: relative;
+    margin: 8px 0 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+html .thought-map-canvas-box svg:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    overflow: visible;
+}
+
+/* 底部统计栏 */
+html .thought-map-stats-line:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding-top: 18px;
+    border-top: 1px solid var(--vcp-ui-border);
+    font-size: var(--vcp-ui-font-caption);
+    color: var(--vcp-ui-text-secondary);
+}
+html .thought-map-stat-item:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+html .thought-map-stat-item b:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    color: var(--vcp-ui-text-0);
+    font-weight: 600;
+}
+html .thought-map-stat-dot:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    width: 6px;
+    height: 6px;
+    border-radius: var(--vcp-ui-radius-full);
+    background: var(--vcp-ui-accent);
+}
+html .thought-map-actions:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+}
+html .thought-map-export-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-accent);
+    color: var(--vcp-ui-port-color-fff);
+    border: none;
+    padding: 6px 14px;
+    border-radius: var(--vcp-ui-radius-sm);
+    font-size: var(--vcp-ui-font-caption);
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+html .thought-map-export-btn:hover:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-accent-hover);
+}
+
+@keyframes tmapFadeIn {
+    from { opacity: 0; transform: scale(0.98); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html .branch-rail-row.is-active .branch-rail-dot:where(.vcp-ui-scope, .vcp-ui-scope *) { animation: none; }
+}

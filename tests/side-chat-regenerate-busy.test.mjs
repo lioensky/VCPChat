@@ -51,3 +51,27 @@ test('picking a model clears the "pick a model first" error', async t => {
     assert.equal(f.handle.getModel(), 'gpt-x');
     assert.notEqual(f.statuses.at(-1)?.type, 'error');
 });
+
+test('disposing waits for a pending regenerate save and prevents a later send', async t => {
+    const seed = [
+        { id: 'u1', role: 'user', content: 'q', timestamp: 1 },
+        { id: 'a1', role: 'assistant', content: 'a', timestamp: 2 }
+    ];
+    let release;
+    const gate = new Promise(resolve => { release = resolve; });
+    t.after(() => release());
+    const f = await fixture(t, { seed, onSave: async () => { await gate; return null; } });
+    f.doc.querySelector('[data-message-id="a1"]').dispatchEvent(
+        new f.dom.window.MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    f.doc.querySelector('[data-side-chat-action="regenerate"]').click();
+    await tick();
+    assert.equal(f.saves.length, 1);
+    let disposed = false;
+    const pending = f.handle.dispose().then(() => { disposed = true; });
+    await tick();
+    assert.equal(disposed, false, 'disposal must wait for the owned history write');
+    release();
+    await pending;
+    assert.equal(disposed, true);
+    assert.equal(f.requests.length, 0, 'regeneration must not send after disposal');
+});

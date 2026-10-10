@@ -69,7 +69,27 @@ const CHANNELS = [
     'side-chat:create-snapshot',
     'side-chat:create-child',
     'side-chat:delete-child',
+    'side-chat:update-branch',
+    'side-chat:export-note',
 ];
+
+// 分形分支：允许通过 update-branch 合并更新的字段白名单
+const BRANCH_PATCH_FIELDS = ['rootTopicId', 'forkFromTopicId', 'forkMessageId', 'forkLabel', 'branchTitle', 'title', 'depth', 'crystallized'];
+
+// 元数据写锁：同一子话题的 save-metadata（全量写）与 update-branch（读改写）
+// 必须串行，否则「读-改-写」窗口内的并发全量写会被旧快照覆盖（丢失更新）。
+// 键为 `${agentId}:${childTopicId}`，值为前一个写操作的 Promise。
+const metadataWriteLocks = new Map();
+function withMetadataLock(key, operation) {
+    const previous = metadataWriteLocks.get(key) || Promise.resolve();
+    const next = previous.then(operation, operation);
+    // 完成后清理：仅当仍是自己时移除，避免误删后续排队者的锁
+    metadataWriteLocks.set(key, next);
+    next.finally(() => {
+        if (metadataWriteLocks.get(key) === next) metadataWriteLocks.delete(key);
+    }).catch(() => {});
+    return next;
+}
 
 // 侧聊子会话目录标记：仅带此标记的目录才允许被 delete-child 整体删除
 const CHILD_MARKER_FILE = 'sidechat-child.json';
@@ -175,7 +195,26 @@ function initialize(paths) {
             marker.parentTopicId = parentTopicId;
             await fs.writeJson(path.join(topicDir, CHILD_MARKER_FILE), marker, { spaces: 2 });
             const metadataPath = path.join(topicDir, 'sidechat-metadata.json');
+            const lockKey = `${agentId}:${childTopicId}`;
 
+            // 全程持锁：读盘（snapshotBoundary 回读 + 分支字段保留）→ 构造 payload → 写入，
+            // 与 update-branch 的读改写互斥。锁外读+锁内写 = 过时快照覆盖（R3）
+            return withMetadataLock(lockKey, async () => {
+            // 分形子分支：拓扑字段归 update-branch/rename 专管。save-metadata 的调用方
+            // 常持有发起时刻的旧 descriptor 快照，若原样覆盖会把并发 rename 抹掉（R3）。
+            // 磁盘上已有元数据且调用方未主动改动该字段时，以磁盘为准。
+            let diskBranchFields = null;
+            if (await fs.pathExists(metadataPath)) {
+                try {
+                    const disk = await fs.readJson(metadataPath);
+                    if (disk?.forkFromTopicId) {
+                        diskBranchFields = {};
+                        for (const f of ['rootTopicId', 'forkFromTopicId', 'forkMessageId', 'forkLabel', 'branchTitle', 'depth', 'crystallized']) {
+                            if (Object.prototype.hasOwnProperty.call(disk, f)) diskBranchFields[f] = disk[f];
+                        }
+                    }
+                } catch (diskErr) { void diskErr; }
+            }
             const snapshotPath = path.join(topicDir, 'parent-snapshot.json');
             let snapshotBoundary = metadata.snapshotBoundary || null;
             if (!snapshotBoundary && await fs.pathExists(snapshotPath)) {
@@ -205,6 +244,14 @@ function initialize(paths) {
                 snapshotId: metadata.snapshotId || null,
                 snapshotBoundary,
                 model: metadata.model || null,
+                // ── 分形分支树拓扑字段（可选；旧侧聊没有这些字段，视为独立根）──
+                rootTopicId: typeof metadata.rootTopicId === 'string' ? metadata.rootTopicId : null,
+                forkFromTopicId: typeof metadata.forkFromTopicId === 'string' ? metadata.forkFromTopicId : null,
+                forkMessageId: typeof metadata.forkMessageId === 'string' ? metadata.forkMessageId : null,
+                forkLabel: typeof metadata.forkLabel === 'string' ? metadata.forkLabel.slice(0, 200) : null,
+                branchTitle: typeof metadata.branchTitle === 'string' ? metadata.branchTitle.slice(0, 200) : null,
+                depth: Number.isFinite(metadata.depth) ? Math.max(0, Math.floor(metadata.depth)) : 0,
+                crystallized: Boolean(metadata.crystallized),
                 open: metadata.open !== undefined ? Boolean(metadata.open) : (metadata.status !== 'closed'),
                 draft: typeof metadata.draft === 'string' ? metadata.draft : '',
                 references: Array.isArray(metadata.references) ? metadata.references : [],
@@ -219,8 +266,14 @@ function initialize(paths) {
                 delete payload.model;
             }
 
-            await fs.writeJson(metadataPath, payload, { spaces: 2 });
-            return { success: true, metadata: payload };
+            // 分支拓扑字段以磁盘为准（R3）：rename/update-branch 是这些字段的唯一写者
+            if (diskBranchFields) {
+                Object.assign(payload, diskBranchFields);
+            }
+
+                await fs.writeJson(metadataPath, payload, { spaces: 2 });
+                return { success: true, metadata: payload };
+            });
         } catch (error) {
             console.error('[SideChatHandlers] save-metadata error:', error);
             return { success: false, error: error.message };
@@ -346,22 +399,91 @@ function initialize(paths) {
                 if (await removeEmptyChildDir(topicDir, childTopicId)) return { success: true, removed: true };
                 return { success: false, error: 'NOT_A_SIDE_CHAT_CHILD' };
             }
+            // 级联删除：递归收集并清理所有以 childTopicId 为祖先的子分支
+            // （直接扫描磁盘 metadata，不依赖前端 IPC，主进程内自洽）
+            // 环防护：visited 挡住递归重入（环状 forkFrom 不会死循环）；
+            // doomed 永不含被删根自身（根由下方 removeChildDir 统一删除）
+            const topicsDir = path.join(USER_DATA_DIR, validateSegment(String(agentId)) || '', 'topics');
+            async function collectDescendants(parentId, visited) {
+                const entries = await fs.readdir(topicsDir, { withFileTypes: true });
+                for (const entry of entries) {
+                    if (!entry.isDirectory()) continue;
+                    if (entry.name === childTopicId || visited.has(entry.name)) continue;
+                    const metaPath = path.join(topicsDir, entry.name, 'sidechat-metadata.json');
+                    try {
+                        await fs.lstat(metaPath);
+                    } catch (statErr) {
+                        if (statErr?.code === 'ENOENT') continue;
+                        throw new Error(`无法检查侧聊分支元数据 ${entry.name}: ${statErr?.message || statErr}`);
+                    }
+
+                    let meta;
+                    try {
+                        meta = await fs.readJson(metaPath);
+                    } catch (readErr) {
+                        throw new Error(`无法读取侧聊分支元数据 ${entry.name}: ${readErr?.message || readErr}`);
+                    }
+                    if (meta?.forkFromTopicId === parentId) {
+                        visited.add(entry.name);
+                        await collectDescendants(entry.name, visited);
+                    }
+                }
+            }
+            const doomed = new Set();
+            try {
+                await collectDescendants(childTopicId, doomed);
+            } catch (walkErr) {
+                return { success: false, error: 'CASCADE_SCAN_FAILED', message: walkErr?.message || String(walkErr) };
+            }
+            doomed.delete(childTopicId);
+            // 后代与根同等确权：metadata 里的 forkFromTopicId 只是血缘线索，不是删除授权。
+            // 每个候选都必须通过 requireChild（目录、真实路径、child 标记、归属一致）才能进入删除。
+            let cascaded = 0;
+            const failed = [];
+            for (const descId of doomed) {
+                const descDir = getTopicDir(agentId, descId);
+                if (!descDir || !await fs.pathExists(descDir)) continue; // 已不存在：视为完成，幂等
+                const marker = await requireChild(descDir, agentId, descId);
+                if (!marker) {
+                    failed.push({ topicId: descId, error: 'NOT_A_SIDE_CHAT_CHILD' });
+                    continue;
+                }
+                try {
+                    await removeChildDir(descDir);
+                    await clearTrajectoryOf({ agentId, topicId: descId });
+                    cascaded += 1;
+                } catch (rmErr) {
+                    failed.push({ topicId: descId, error: rmErr?.message || 'REMOVE_FAILED' });
+                }
+            }
+            // 部分失败：中止整删（根保留），明确报告——绝不把「找到几个」当「删掉几个」。
+            // 已成功删除的后代保持删除态；重试时 collectDescendants 自然不再收集它们。
+            if (failed.length > 0) {
+                console.error('[SideChatHandlers] delete-child cascade partial failure:', failed);
+                return { success: false, error: 'CASCADE_PARTIAL_FAILED', cascaded, failed };
+            }
             await removeChildDir(topicDir);
             await clearTrajectoryOf({ agentId, topicId: childTopicId });
-            return { success: true, removed: true };
+            // 契约保持：无级联时不附加字段，旧调用方与测试的 deepEqual 不受影响
+            return cascaded > 0
+                ? { success: true, removed: true, cascaded }
+                : { success: true, removed: true };
         } catch (error) {
             console.error('[SideChatHandlers] delete-child error:', error);
             return { success: false, error: error.message };
         }
     });
 
-    register('side-chat:create-snapshot', async (event, agentId, parentTopicId, childTopicId = null) => {
+    register('side-chat:create-snapshot', async (event, agentId, parentTopicId, childTopicId = null, explicitMessages = null) => {
         try {
             const parentDir = getTopicDir(agentId, parentTopicId);
             if (!parentDir) return { success: false, error: 'INVALID_PARENT_PATH' };
 
             let rawHistory = [];
-            if (historyMutationQueue && typeof historyMutationQueue.read === 'function') {
+            // 分形分支：分叉时由前端组装好「祖先链完整上下文」显式传入，直接采用，不再读单父话题
+            if (Array.isArray(explicitMessages)) {
+                rawHistory = explicitMessages;
+            } else if (historyMutationQueue && typeof historyMutationQueue.read === 'function') {
                 try {
                     rawHistory = await historyMutationQueue.read({ itemId: agentId, itemType: 'agent', topicId: parentTopicId });
                 } catch (readErr) {
@@ -411,6 +533,96 @@ function initialize(paths) {
             };
         } catch (error) {
             console.error('[SideChatHandlers] create-snapshot error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // 分形分支：轻量更新某个侧聊子话题的分支拓扑字段。读-改-写合并进 metadata，
+    // 不触碰 history.json、草稿、引用等其他文件。返回合并后的完整 metadata。
+    register('side-chat:update-branch', async (event, agentId, childTopicId, patch = {}) => {
+        try {
+            if (!agentId || !childTopicId || !patch || typeof patch !== 'object') {
+                return { success: false, error: 'MISSING_PARAMS' };
+            }
+            const topicDir = getTopicDir(agentId, childTopicId);
+            if (!topicDir) return { success: false, error: 'INVALID_PATH' };
+            const marker = await requireChild(topicDir, agentId, childTopicId);
+            if (!marker) return { success: false, error: 'NOT_A_SIDE_CHAT_CHILD' };
+
+            const metadataPath = path.join(topicDir, 'sidechat-metadata.json');
+            const lockKey = `${agentId}:${childTopicId}`;
+            // 读改写全程持锁：与 save-metadata 的全量写互斥（R3 丢失更新防护）
+            return withMetadataLock(lockKey, async () => {
+                let meta = {};
+                if (await fs.pathExists(metadataPath)) {
+                    try { meta = await fs.readJson(metadataPath); } catch { meta = {}; }
+                }
+
+                for (const field of BRANCH_PATCH_FIELDS) {
+                    if (!Object.prototype.hasOwnProperty.call(patch, field)) continue;
+                    const value = patch[field];
+                    if (field === 'depth') {
+                        meta[field] = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+                    } else if (field === 'crystallized') {
+                        meta[field] = Boolean(value);
+                    } else if (value === null) {
+                        meta[field] = null;
+                    }  else if (typeof value === 'string' && value) {
+                        meta[field] = field === 'forkLabel' || field === 'branchTitle' || field === 'title'
+                            ? value.slice(0, 200)
+                            : value;
+                    }
+                }
+                if (patch.branchTitle && !patch.title) {
+                    meta.title = meta.branchTitle;
+                }
+                meta.updatedAt = Date.now();
+                await fs.writeJson(metadataPath, meta, { spaces: 2 });
+                return { success: true, metadata: meta };
+            });
+        } catch (error) {
+            console.error('[SideChatHandlers] update-branch error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // 笔记固化：弹原生保存对话框，把自包含 Markdown 笔记写入选定路径
+    register('side-chat:export-note', async (event, payload = {}) => {
+        try {
+            const content = typeof payload?.content === 'string' ? payload.content : '';
+            const suggestedName = typeof payload?.fileName === 'string' && payload.fileName.trim()
+                ? payload.fileName.trim()
+                : '知识结晶.md';
+            if (!content) return { success: false, error: 'EMPTY_CONTENT' };
+
+            const { dialog } = electronModule || {};
+            const win = event?.sender?.isDestroyed?.() ? null : resolveWindowWebContents(getMainWindow);
+            const browserWindow = win && typeof win.getContentBounds === 'function' ? win : undefined;
+
+            const sanitizeFileName = (name) => {
+                let out = '';
+                for (const ch of name) {
+                    const code = ch.codePointAt(0);
+                    out += ('<>:"/\\|?*'.includes(ch) || code < 32) ? '_' : ch;
+                }
+                return out;
+            };
+            const safeName = sanitizeFileName(suggestedName).slice(0, 120) || '知识结晶.md';
+            const finalName = /\.md$/i.test(safeName) ? safeName : `${safeName}.md`;
+
+            const result = await dialog.showSaveDialog(browserWindow, {
+                title: '保存知识结晶笔记',
+                defaultPath: finalName,
+                filters: [{ name: 'Markdown', extensions: ['md'] }]
+            });
+            if (result.canceled || !result.filePath) return { success: true, canceled: true };
+
+            // 禁止写到侧聊数据目录内部，避免污染数据区
+            const targetPath = result.filePath;
+            await fs.writeFile(targetPath, content, 'utf8');
+            return { success: true, filePath: targetPath };
+        } catch (error) {
+            console.error('[SideChatHandlers] export-note error:', error);
             return { success: false, error: error.message };
         }
     });

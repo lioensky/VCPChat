@@ -208,3 +208,15 @@ test('view trajectory from a side reply asks for the child topic, not the main c
     assert.equal(options.conversation.item.id, 'agent');
     assert.equal(options.conversation.topicId, 'child');
 });
+
+test('editing a message marks the mounted branch context busy', async t => {
+    const f = await fixture(t);
+    f.menu('answer');
+    const editAction = f.doc.querySelector('[data-side-chat-action="edit"]');
+    assert.ok(editAction);
+    editAction.click();
+    await waitFor(() => f.doc.querySelector('.side-chat-message-editor'));
+
+    assert.equal(f.handle.isBusy(), true);
+    assert.deepEqual(await f.handle.collectBranchContext(), { busy: true });
+});
