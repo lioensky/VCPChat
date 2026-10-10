@@ -21,7 +21,7 @@ export function openThoughtMapModal({
     if (existing) existing.remove();
 
     const backdrop = doc.createElement('div');
-    backdrop.className = 'thought-map-backdrop';
+    backdrop.className = 'thought-map-backdrop vcp-ui-scope';
 
     const sheet = doc.createElement('div');
     sheet.className = 'thought-map-sheet';
