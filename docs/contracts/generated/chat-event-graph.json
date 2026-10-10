@@ -6605,12 +6605,12 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 572,
+          "line": 597,
           "kind": "event-listener"
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 684,
+          "line": 709,
           "kind": "event-listener"
         },
         {
@@ -6740,13 +6740,13 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 572,
+          "line": 597,
           "kind": "event-listener",
           "match": "child.on('close'"
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 684,
+          "line": 709,
           "kind": "event-listener",
           "match": "child.on('close'"
         },
@@ -8274,7 +8274,7 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/FileOperator/FileOperator.js",
-          "line": 1978,
+          "line": 1979,
           "kind": "event-listener"
         },
         {
@@ -8339,12 +8339,12 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 559,
+          "line": 584,
           "kind": "event-listener"
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 674,
+          "line": 699,
           "kind": "event-listener"
         },
         {
@@ -8534,7 +8534,7 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/FileOperator/FileOperator.js",
-          "line": 1978,
+          "line": 1979,
           "kind": "event-listener",
           "match": "process.stdin.on('data'"
         },
@@ -8612,13 +8612,13 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 559,
+          "line": 584,
           "kind": "event-listener",
           "match": "child.stderr.on('data'"
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 674,
+          "line": 699,
           "kind": "event-listener",
           "match": "child.stderr.on('data'"
         },
@@ -12043,12 +12043,12 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/FileOperator/FileOperator.js",
-          "line": 542,
+          "line": 540,
           "kind": "event-listener"
         },
         {
           "file": "VCPDistributedServer/Plugin/FileOperator/FileOperator.js",
-          "line": 1308,
+          "line": 1309,
           "kind": "event-listener"
         },
         {
@@ -12093,12 +12093,12 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 563,
+          "line": 588,
           "kind": "event-listener"
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 678,
+          "line": 703,
           "kind": "event-listener"
         },
         {
@@ -12335,13 +12335,13 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/FileOperator/FileOperator.js",
-          "line": 542,
+          "line": 540,
           "kind": "event-listener",
           "match": "writer.on('error'"
         },
         {
           "file": "VCPDistributedServer/Plugin/FileOperator/FileOperator.js",
-          "line": 1308,
+          "line": 1309,
           "kind": "event-listener",
           "match": "writer.on('error'"
         },
@@ -12395,13 +12395,13 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 563,
+          "line": 588,
           "kind": "event-listener",
           "match": "child.on('error'"
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 678,
+          "line": 703,
           "kind": "event-listener",
           "match": "child.on('error'"
         },
@@ -12921,12 +12921,12 @@
       "consumers": [
         {
           "file": "VCPDistributedServer/Plugin/FileOperator/FileOperator.js",
-          "line": 541,
+          "line": 539,
           "kind": "event-listener"
         },
         {
           "file": "VCPDistributedServer/Plugin/FileOperator/FileOperator.js",
-          "line": 1305,
+          "line": 1306,
           "kind": "event-listener"
         },
         {
@@ -12948,13 +12948,13 @@
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/FileOperator/FileOperator.js",
-          "line": 541,
+          "line": 539,
           "kind": "event-listener",
           "match": "writer.on('finish'"
         },
         {
           "file": "VCPDistributedServer/Plugin/FileOperator/FileOperator.js",
-          "line": 1305,
+          "line": 1306,
           "kind": "event-listener",
           "match": "writer.on('finish'"
         },
@@ -23955,7 +23955,7 @@
       "producers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 928,
+          "line": 1051,
           "kind": "event-send"
         }
       ],
@@ -23969,7 +23969,7 @@
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 928,
+          "line": 1051,
           "kind": "event-send",
           "match": "guiWindow.webContents.send('powershell-clear'"
         },
@@ -24010,7 +24010,12 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 733,
+          "line": 759,
+          "kind": "event-send"
+        },
+        {
+          "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
+          "line": 828,
           "kind": "event-send"
         }
       ],
@@ -24030,7 +24035,13 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 733,
+          "line": 759,
+          "kind": "event-send",
+          "match": "guiWindow.webContents.send('powershell-data'"
+        },
+        {
+          "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
+          "line": 828,
           "kind": "event-send",
           "match": "guiWindow.webContents.send('powershell-data'"
         },
@@ -24497,7 +24508,7 @@
       "producers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 1545,
+          "line": 1684,
           "kind": "event-send"
         }
       ],
@@ -24511,7 +24522,7 @@
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 1545,
+          "line": 1684,
           "kind": "event-send",
           "match": "guiWindow.webContents.send('query-visible-text'"
         },
@@ -28396,7 +28407,7 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/FileOperator/FileOperator.js",
-          "line": 2005,
+          "line": 2006,
           "kind": "event-listener"
         },
         {
@@ -28420,7 +28431,7 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/FileOperator/FileOperator.js",
-          "line": 2005,
+          "line": 2006,
           "kind": "event-listener",
           "match": "process.on('SIGINT'"
         },
@@ -28448,7 +28459,7 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/FileOperator/FileOperator.js",
-          "line": 2000,
+          "line": 2001,
           "kind": "event-listener"
         },
         {
@@ -28472,7 +28483,7 @@
         },
         {
           "file": "VCPDistributedServer/Plugin/FileOperator/FileOperator.js",
-          "line": 2000,
+          "line": 2001,
           "kind": "event-listener",
           "match": "process.on('SIGTERM'"
         },
@@ -29194,7 +29205,7 @@
       "producers": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 1566,
+          "line": 1705,
           "kind": "event-send"
         }
       ],
@@ -29208,7 +29219,7 @@
       "evidence": [
         {
           "file": "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
-          "line": 1566,
+          "line": 1705,
           "kind": "event-send",
           "match": "guiWindow.webContents.send('terminal-paste-request'"
         },

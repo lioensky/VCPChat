@@ -217,7 +217,7 @@ function renderStarMap(box, forest, currentTopicId, { onNodeClick = null, onNode
         if (!p) continue;
         const isActive = n.topicId === currentTopicId;
         const isRoot = (n.depth || 0) === 0;
-        const titleText = n.forkLabel || n.branchTitle || n.title || '分支';
+        const titleText = n.branchTitle || n.title || n.forkLabel || '分支';
 
         const group = document.createElementNS(NS, 'g');
         group.setAttribute('class', 'thought-map-node-group');

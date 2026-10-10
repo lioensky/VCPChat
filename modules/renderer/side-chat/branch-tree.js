@@ -100,19 +100,21 @@ export function buildBranchForest(metadataList = []) {
         }
         const parent = nodes.get(parentId);
         node.parent = parent;
-        node.depth = parent.depth + 1;
+
         parent.children.push(node);
     }
 
     const byCreated = (a, b) => (a.createdAt || 0) - (b.createdAt || 0)
         || a.topicId.localeCompare(b.topicId);
 
-    const sortRecursively = (node) => {
-        node.children.sort(byCreated);
-        node.children.forEach(sortRecursively);
-    };
     roots.sort(byCreated);
-    roots.forEach(sortRecursively);
+    const pending = roots.map(node => ({ node, depth: 0 }));
+    while (pending.length) {
+        const { node, depth } = pending.pop();
+        node.depth = depth;
+        node.children.sort(byCreated);
+        for (const child of node.children) pending.push({ node: child, depth: depth + 1 });
+    }
 
     return { nodes, roots };
 }

@@ -404,6 +404,8 @@ function initialize(paths) {
             // 环防护：visited 挡住递归重入（环状 forkFrom 不会死循环）；
             // doomed 永不含被删根自身（根由下方 removeChildDir 统一删除）
             const topicsDir = path.join(USER_DATA_DIR, validateSegment(String(agentId)) || '', 'topics');
+            const deletionOrder = [];
+            const descendantMetadata = new Map();
             async function collectDescendants(parentId, visited) {
                 const entries = await fs.readdir(topicsDir, { withFileTypes: true });
                 for (const entry of entries) {
@@ -425,7 +427,9 @@ function initialize(paths) {
                     }
                     if (meta?.forkFromTopicId === parentId) {
                         visited.add(entry.name);
+                        descendantMetadata.set(entry.name, meta);
                         await collectDescendants(entry.name, visited);
+                        deletionOrder.push(entry.name);
                     }
                 }
             }
@@ -436,31 +440,42 @@ function initialize(paths) {
                 return { success: false, error: 'CASCADE_SCAN_FAILED', message: walkErr?.message || String(walkErr) };
             }
             doomed.delete(childTopicId);
-            // 后代与根同等确权：metadata 里的 forkFromTopicId 只是血缘线索，不是删除授权。
-            // 每个候选都必须通过 requireChild（目录、真实路径、child 标记、归属一致）才能进入删除。
+            // 确权阶段不删除任何目录；metadata 血缘只用于定位，不构成删除授权。
             let cascaded = 0;
             const failed = [];
-            for (const descId of doomed) {
+            for (const descId of deletionOrder) {
                 const descDir = getTopicDir(agentId, descId);
-                if (!descDir || !await fs.pathExists(descDir)) continue; // 已不存在：视为完成，幂等
-                const marker = await requireChild(descDir, agentId, descId);
-                if (!marker) {
+                if (!descDir || !await requireChild(descDir, agentId, descId)) {
                     failed.push({ topicId: descId, error: 'NOT_A_SIDE_CHAT_CHILD' });
-                    continue;
-                }
-                try {
-                    await removeChildDir(descDir);
-                    await clearTrajectoryOf({ agentId, topicId: descId });
-                    cascaded += 1;
-                } catch (rmErr) {
-                    failed.push({ topicId: descId, error: rmErr?.message || 'REMOVE_FAILED' });
                 }
             }
-            // 部分失败：中止整删（根保留），明确报告——绝不把「找到几个」当「删掉几个」。
-            // 已成功删除的后代保持删除态；重试时 collectDescendants 自然不再收集它们。
             if (failed.length > 0) {
-                console.error('[SideChatHandlers] delete-child cascade partial failure:', failed);
                 return { success: false, error: 'CASCADE_PARTIAL_FAILED', cascaded, failed };
+            }
+            // 后序删除：子孙成功后才删除连接节点。任何失败即停止，保留整条祖先链。
+            for (const descId of deletionOrder) {
+                const descDir = getTopicDir(agentId, descId);
+                try {
+                    // 执行前再次确权，避免预校验后目录发生变化。
+                    if (!await requireChild(descDir, agentId, descId)) {
+                        throw new Error('NOT_A_SIDE_CHAT_CHILD');
+                    }
+                    await removeChildDir(descDir);
+                    cascaded += 1;
+                    await clearTrajectoryOf({ agentId, topicId: descId });
+                } catch (rmErr) {
+                    const failure = { topicId: descId, error: rmErr?.message || 'REMOVE_FAILED' };
+                    // rm 可能只删了一部分文件；恢复定位血缘，下一次仍能从根发现残留节点。
+                    if (await requireChild(descDir, agentId, descId)) {
+                        try {
+                            await fs.writeJson(path.join(descDir, 'sidechat-metadata.json'), descendantMetadata.get(descId), { spaces: 2 });
+                        } catch (restoreErr) {
+                            failure.restoreError = restoreErr?.message || 'METADATA_RESTORE_FAILED';
+                        }
+                    }
+                    failed.push(failure);
+                    return { success: false, error: 'CASCADE_PARTIAL_FAILED', cascaded, failed };
+                }
             }
             await removeChildDir(topicDir);
             await clearTrajectoryOf({ agentId, topicId: childTopicId });

@@ -143,7 +143,7 @@ export function createSideChatBranchRail({
 
         const label = doc.createElement('span');
         label.className = 'branch-rail-label';
-        const text = node.forkLabel || node.branchTitle || node.title || '辅助对话';
+        const text = node.branchTitle || node.title || node.forkLabel || '辅助对话';
         label.textContent = text;
         label.title = `${text} (双击或右键重命名)`;
 

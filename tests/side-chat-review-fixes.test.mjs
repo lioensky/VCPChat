@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import fsExtra from 'fs-extra';
 import { JSDOM } from 'jsdom';
 import trustedSenderFixture from './helpers/trusted-main-sender.cjs';
 import { initialize } from '../modules/ipc/sideChatHandlers.js';
@@ -247,10 +248,10 @@ test('D2: a directory with matching metadata but no child marker aborts the casc
     const res = await call('side-chat:delete-child', 'agent', rootId);
     assert.equal(res.success, false);
     assert.equal(res.error, 'CASCADE_PARTIAL_FAILED');
-    assert.equal(res.cascaded, 1, 'only the verified good descendant was removed');
+    assert.equal(res.cascaded, 0, 'preflight failure must not remove any descendant');
     assert.ok(res.failed.some(f => f.topicId === badId && f.error === 'NOT_A_SIDE_CHAT_CHILD'));
     assert.equal(await exists(path.join(topics, rootId)), true, 'root must survive a partial failure');
-    assert.equal(await exists(path.join(topics, goodId)), false);
+    assert.equal(await exists(path.join(topics, goodId)), true);
     assert.equal(await exists(path.join(topics, badId)), true, 'unverified directory must never be removed');
 });
 
@@ -338,4 +339,61 @@ test('C5: deleteBranch surfaces the readable cascade scan error message', async 
         wiring.deleteBranch({ childTopicId, currentDescriptor: descriptorOf('viewing-other') }),
         error => error.message === '无法读取侧聊分支元数据 damaged' && error.code === 'CASCADE_SCAN_FAILED'
     );
+});
+test('cascade retry retains lineage after marker preflight failure', async t => {
+    const { call, topics } = await setupIpc(t);
+    const { topicId: rootId } = await call('side-chat:create-child', 'agent');
+    const midId = 'sidechat_1700000000090_mid';
+    const leafId = 'sidechat_1700000000091_leaf';
+    await makeChild(topics, midId, rootId);
+    await makeChild(topics, leafId, midId);
+    const markerPath = path.join(topics, leafId, 'sidechat-child.json');
+    const marker = await fs.readFile(markerPath);
+    await fs.unlink(markerPath);
+    const first = await call('side-chat:delete-child', 'agent', rootId);
+    assert.equal(first.success, false);
+    assert.equal(first.cascaded, 0);
+    assert.equal(await exists(path.join(topics, midId)), true);
+    await fs.writeFile(markerPath, marker);
+    const retry = await call('side-chat:delete-child', 'agent', rootId);
+    assert.equal(retry.success, true);
+    assert.equal(retry.cascaded, 2);
+    for (const id of [rootId, midId, leafId]) assert.equal(await exists(path.join(topics, id)), false);
+});
+
+test('cascade partial rm restores metadata and retains ancestors for retry', async t => {
+    const { call, topics } = await setupIpc(t);
+    const { topicId: rootId } = await call('side-chat:create-child', 'agent');
+    const midId = 'sidechat_1700000000092_mid';
+    const leafId = 'sidechat_1700000000093_leaf';
+    await makeChild(topics, midId, rootId);
+    await makeChild(topics, leafId, midId);
+    const leafDir = path.join(topics, leafId);
+    const originalRm = fsExtra.promises.rm;
+    let injected = false;
+    fsExtra.promises.rm = async (target, options) => {
+        if (!injected && path.dirname(String(target)) === leafDir) {
+            injected = true;
+            await fs.unlink(path.join(leafDir, 'sidechat-metadata.json'));
+            throw new Error('INJECTED_REMOVE_FAILURE');
+        }
+        return originalRm(target, options);
+    };
+    let first;
+    try {
+        first = await call('side-chat:delete-child', 'agent', rootId);
+    } finally {
+        fsExtra.promises.rm = originalRm;
+    }
+    assert.equal(injected, true);
+    assert.equal(first.success, false);
+    assert.equal(first.cascaded, 0);
+    assert.equal(first.failed[0].topicId, leafId);
+    assert.equal(await exists(path.join(topics, midId)), true);
+    const restored = JSON.parse(await fs.readFile(path.join(leafDir, 'sidechat-metadata.json'), 'utf8'));
+    assert.equal(restored.forkFromTopicId, midId);
+    const retry = await call('side-chat:delete-child', 'agent', rootId);
+    assert.equal(retry.success, true);
+    assert.equal(retry.cascaded, 2);
+    for (const id of [rootId, midId, leafId]) assert.equal(await exists(path.join(topics, id)), false);
 });
