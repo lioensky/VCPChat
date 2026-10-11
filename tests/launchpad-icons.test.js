@@ -146,3 +146,14 @@ test('chart artwork replaces fallback, animates columns and respects reduced mot
         f.dom.window.close();
     }
 });
+test('game app mounts its shared Canvas artwork', () => {
+    const f = fixture();
+    assert.equal(LAUNCHPAD_ICON_ACCENTS.game, '#96e4c5');
+    assert.equal(f.icons.attach(f.button, f.host, 'game'), true);
+    assert.equal(f.host.firstChild.tagName, 'CANVAS');
+    f.icons.setActive(true);
+    f.step();
+    f.icons.dispose();
+    assert.equal(f.frames.size, 0);
+    f.dom.window.close();
+});

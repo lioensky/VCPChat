@@ -214,6 +214,16 @@
      */
     const VCHAT_APPS = [
         {
+            id: 'vchat-app-game',
+            name: 'VCPgame',
+            icon: null,
+            animatedIcon: null,
+            svgIcon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 7h12c3 0 4 4 4 9s-3 4-6 0H8c-3 4-6 5-6 0s1-9 4-9Z"/><path d="M6 10v4m-2-2h4m8-1h.01m3 3h.01"/></svg>',
+            emoji: '🎮',
+            description: 'VCP 自研小游戏目录',
+            appAction: 'open-game-window',
+        },
+        {
             id: 'vchat-app-main',
             name: 'VChat',
             icon: `${ICON_BASE}/vchat_main.png`,

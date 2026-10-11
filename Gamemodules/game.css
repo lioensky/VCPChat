@@ -1,0 +1,26 @@
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--primary-bg, #161b24); color: var(--primary-text, #eef3fa); font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+button { font: inherit; color: inherit; }
+#top-nav-bar { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-bottom: 1px solid var(--border-color, #ffffff20); -webkit-app-region: drag; }
+#top-nav-bar span { margin-left: 10px; font-size: 13px; font-weight: normal; opacity: .65; }
+nav { display: flex; gap: 8px; -webkit-app-region: no-drag; }
+nav button { width: 32px; height: 30px; border: 0; border-radius: 6px; background: transparent; cursor: pointer; }
+nav button:hover { background: #ffffff18; }
+main { max-width: 1100px; margin: auto; padding: clamp(24px, 5vw, 64px); }
+.eyebrow { font-size: 11px; letter-spacing: .2em; color: var(--highlight-text, #91e4c5); }
+h1 { font-size: clamp(28px, 4vw, 42px); margin: 12px 0; }
+.intro, #game-status { color: var(--secondary-text, #a9b3c7); line-height: 1.7; }
+.game-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 24px; margin: 32px 0 24px; }
+.game-card { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; padding: 24px; text-align: left; border: 1px solid var(--border-color, #ffffff20); border-radius: 22px; background: rgba(255,255,255,.04); cursor: pointer; transition: transform .18s, border-color .18s; }
+.game-card:hover { transform: translateY(-4px); border-color: var(--highlight-text, #91e4c5); }
+button:focus-visible { outline: 2px solid var(--highlight-text, #91e4c5); outline-offset: 4px; }
+.game-card:disabled { opacity: .65; cursor: wait; transform: none; }
+.cover { display: grid; place-items: center; width: 100%; height: 150px; border-radius: 14px; font-size: 78px; color: #f4dfae; background: radial-gradient(ellipse at 50% 80%, #78633a80, transparent), linear-gradient(135deg, #1b252a, #293c3a); }
+.neon .cover { color: #67f4ff; background: radial-gradient(ellipse at 50% 80%, #aa39eb70, transparent), linear-gradient(135deg, #102239, #271238); }
+.tag { font-size: 12px; color: var(--secondary-text, #a9b3c7); }
+.game-card strong { font-size: 23px; }
+.description { font-size: 14px; line-height: 1.8; color: var(--secondary-text, #a9b3c7); }
+.launch { margin-top: auto; padding-top: 8px; color: var(--highlight-text, #91e4c5); font-weight: 600; }
+html[data-vcp-embedded-app="true"] #top-nav-bar { -webkit-app-region: no-drag; }
+@media (prefers-reduced-motion: reduce) { .game-card { transition: none; } }

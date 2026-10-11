@@ -2,6 +2,7 @@
 (function () {
     'use strict';
     const keys = Object.freeze({
+        'open-game-window': 'game',
         'open-notes-window': 'notes', 'open-memo-window': 'memo',
         'open-forum-window': 'forum', 'open-rag-observer-window': 'rag',
         'open-dice-window': 'dice', 'open-canvas-window': 'canvas',

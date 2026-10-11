@@ -11,7 +11,7 @@
         memo: '#dc9aff', forum: '#ffbb78', log: '#abcbdc', dice: '#ff8d7b',
         rag: '#79e9bc', themes: '#f6a5df', loom: '#82bfff', toolbox: '#edbd84',
         database: '#acdce9', task: '#a2dbb7', plugin: '#b5a0f3', forge: '#ff9f73',
-        terminal: '#a8eb83', desktop: '#929dff', widgets: '#cab2f1'
+        terminal: '#a8eb83', desktop: '#929dff', widgets: '#cab2f1', game: '#96e4c5'
     });
 
     class LaunchpadIcons {

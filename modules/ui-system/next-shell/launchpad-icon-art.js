@@ -174,6 +174,22 @@ box(c,60,80,32,6,3,'#eaa57c');box(c,68,86,16,5,1,'#b86b53');box(c,63,91,26,4,2,'
 c.globalAlpha=1;
 for(let i=0;i<4;i++){const p=(t*.8+i*.25)%1;c.globalAlpha=e*(1-p);circle(c,82+Math.sin(i*2.3+t*2)*6,43-p*22,1.7,'#ffe6a8')}
 c.globalAlpha=1;
+}else if(type==='game'){
+// Mint arcade controller: floating shell, responsive stick and softly pulsing buttons.
+c.save();c.translate(64,66);c.rotate(-.08+b*.025);
+box(c,-40,-21,80,43,18,gradient(c,-40,-21,40,22,['#c6fae8','#61a99c']));
+box(c,-39,5,24,29,10,'#72b7a5');box(c,15,5,24,29,10,'#72b7a5');
+c.shadowBlur=0;
+box(c,-36,-17,72,34,15,gradient(c,-36,-17,36,17,['#e4fff0','#92d4bd']));
+const sx=-22+s.x*e*2,sy=-1+s.y*e*2;
+box(c,sx-4,sy-11,8,22,2,'#294d55');box(c,sx-11,sy-4,22,8,2,'#294d55');
+circle(c,18,-6,5,'#ec8fa9');circle(c,28,3,5,'#e9c97d');
+circle(c,18,-6,2+Math.sin(t*4)*e*.5,'#ffe3eb');
+circle(c,28,3,2+Math.cos(t*4)*e*.5,'#fff3c5');
+box(c,-5,4,10,3,1.5,'#518b81');circle(c,0,-6,2.5,'#55b8ac');
+c.restore();
+line(c,[[58,40],[58,30],[70,30]],'#96daca',3);
+circle(c,76,28,3,'#edbbdd');
 }else if(type==='plugin'||type==='widgets'){
 const colors=type==='plugin'?['#b5a0f3','#89d9db','#eeb4d2','#f0d099']:['#99c8fa','#cab2f1','#9fe0c3','#ffd2ab'];
 for(let i=0;i<4;i++){const x=29+(i%2)*38,y=28+Math.floor(i/2)*39+(i===3?b*2:0);box(c,x,y,33,33,9,gradient(c,x,y,x+33,y+33,[colors[i],'#817caf']));c.shadowBlur=0;if(type==='plugin'){circle(c,x+16,y,5,colors[i]);circle(c,x+33,y+16,5,colors[i])}else{box(c,x+8,y+9,17,3,1,'#ffffffa0');box(c,x+8,y+16,11,3,1,'#ffffff70')}}

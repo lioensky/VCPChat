@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'">
+<title>VCPgame 游戏大厅</title>
+<link rel="stylesheet" href="../styles/themes.css">
+<link rel="stylesheet" href="game.css">
+<script defer src="game.js"></script>
+</head>
+<body>
+<header id="top-nav-bar">
+<strong>VCPgame <span>游戏大厅</span></strong>
+<nav aria-label="窗口控制">
+<button id="minimize-btn" type="button" aria-label="最小化">−</button>
+<button id="maximize-btn" type="button" aria-label="最大化或还原">□</button>
+<button id="close-btn" type="button" aria-label="关闭">×</button>
+</nav>
+</header>
+<main>
+<p class="eyebrow">YOUR LOCAL GAME LIBRARY</p>
+<h1>选个游戏，开玩。</h1>
+<p class="intro">VCP 自研小游戏目录 · 每款游戏独立运行</p>
+<section class="game-grid" aria-label="游戏目录">
+<button class="game-card blade" type="button" data-game="blade" aria-describedby="blade-desc">
+<span class="cover" aria-hidden="true">⚔</span>
+<span class="tag">回合制 · 剑术对决</span>
+<strong>华山论剑</strong>
+<span id="blade-desc" class="description">蓄势、出剑、见招拆招。打开已有游戏窗口，不重置对局。</span>
+<span class="launch">打开游戏 ↗</span>
+</button>
+<button class="game-card neon" type="button" data-game="neon" aria-describedby="neon-desc">
+<span class="cover" aria-hidden="true">✦</span>
+<span class="tag">单人 · 弹幕肉鸽</span>
+<strong>VCP Neon Striker</strong>
+<span id="neon-desc" class="description">自动射击，专心走位。三选一构筑与融合技能，挑战霓虹生存。</span>
+<span class="launch">打开游戏 ↗</span>
+</button>
+</section>
+<p id="game-status" role="status" aria-live="polite">点击游戏图标即可打开，无需 AI 发起启动。</p>
+</main>
+</body>
+</html>

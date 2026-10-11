@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VCP Neon Striker | VCP 霓虹弹幕生存小游戏</title>
+  <meta name="description" content="VCP Neon Striker 是 VCP-OS 官方霓虹弹幕生存小游戏。自动射击、走位生存、三选一构筑、融合技能与 8bit WebAudio 音效，即开即玩体验 VCP Runtime 梗文化。" />
+  <meta name="keywords" content="VCP Neon Striker,VCP Neon Runtime Survivor,VCP 小游戏,VCP-OS,霓虹弹幕,弹幕生存,肉鸽小游戏,AGI Runtime,TagMemo 浪潮 V8,Nova" />
+  <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1" />
+  <meta name="author" content="VCP Ecosystem" />
+  <link rel="canonical" href="https://www.vcptoolbox.com/vcp-neon-game/" />
+  <link rel="icon" type="image/png" href="../../assets/icon.png" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="VCP-OS" />
+  <meta property="og:title" content="VCP Neon Striker | VCP 霓虹弹幕生存小游戏" />
+  <meta property="og:description" content="进入 VCP Neon Striker：在霓虹运行时里自动射击、三选一升级、构筑融合技能，打爆失控上下文。" />
+  <meta property="og:url" content="https://www.vcptoolbox.com/vcp-neon-game/" />
+  <meta property="og:image" content="https://www.vcptoolbox.com/assets/logo1.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="VCP Neon Striker | VCP 霓虹弹幕生存小游戏" />
+  <meta name="twitter:description" content="VCP 官方轻量 Canvas 弹幕肉鸽小游戏：自动射击、构筑升级、8bit 音效与 Nova 吐槽陪伴。" />
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "VideoGame",
+      "name": "VCP Neon Striker",
+      "alternateName": "VCP Neon Runtime Survivor",
+      "url": "https://www.vcptoolbox.com/vcp-neon-game/",
+      "description": "VCP Neon Striker 是 VCP-OS 官方霓虹弹幕生存小游戏，使用 HTML Canvas 与原生 JavaScript 实现，提供自动射击、走位生存、三选一构筑、融合技能和 8bit WebAudio 音效。",
+      "applicationCategory": "Game",
+      "gamePlatform": "Web Browser",
+      "operatingSystem": "Any",
+      "genre": ["Bullet Hell", "Roguelite", "Survivor"],
+      "inLanguage": "zh-CN",
+      "publisher": {
+        "@type": "Organization",
+        "name": "VCP Ecosystem",
+        "url": "https://www.vcptoolbox.com/"
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main id="game-shell">
+    <canvas id="game-canvas" aria-label="VCP Neon Runtime Survivor 游戏画布"></canvas>
+
+    <section id="start-screen" class="overlay active">
+      <div class="panel hero-panel">
+        <p class="eyebrow">VCP GAME CENTER / PHASE 1 DEMO</p>
+        <h1>VCP: Neon Runtime Survivor</h1>
+        <p class="subtitle">霓虹运行时 · 上下文弹幕生存</p>
+        <p class="desc">
+          自动射击，专心走位。吞经验，三选一构筑，打爆失控上下文。
+          没有局外成长，只有每局 3-10 分钟的随机快乐。
+        </p>
+        <div class="control-grid">
+          <span><b>移动</b> WASD / 方向键 / 左虚拟摇杆</span>
+          <span><b>鼠标</b> 指向射击偏好</span>
+          <span><b>手机</b> 横屏 + 单摇杆自动瞄准</span>
+          <span><b>暂停</b> Space / P</span>
+        </div>
+        <div class="button-row">
+          <button id="start-button" class="primary-button">启动 Runtime</button>
+          <button id="sound-button" class="ghost-button" type="button">声音 ON</button>
+          <button id="mobile-control-button" class="ghost-button" type="button">移动控制 自动</button>
+          <button id="codex-button" class="ghost-button" type="button">游戏图鉴</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="codex-screen" class="overlay">
+      <div class="panel codex-panel" role="dialog" aria-modal="true" aria-labelledby="codex-title">
+        <div class="codex-header">
+          <div>
+            <p class="eyebrow">VCP FIELD CODEX</p>
+            <h2 id="codex-title">游戏图鉴</h2>
+          </div>
+          <button id="codex-close-button" class="codex-close-button" type="button" aria-label="关闭游戏图鉴">×</button>
+        </div>
+        <div class="codex-tabs" role="tablist" aria-label="游戏图鉴分类">
+          <button class="codex-tab active" type="button" data-codex-tab="monsters">怪物图鉴</button>
+          <button class="codex-tab" type="button" data-codex-tab="buffs">Buff 推荐</button>
+          <button class="codex-tab" type="button" data-codex-tab="skills">技能图鉴</button>
+          <button class="codex-tab" type="button" data-codex-tab="fusions">融合神器</button>
+        </div>
+        <div id="codex-content" class="codex-content"></div>
+      </div>
+    </section>
+
+    <section id="level-screen" class="overlay">
+      <div class="panel level-panel">
+        <p class="eyebrow">RUNTIME UPGRADE</p>
+        <h2>选择一个 VCP 模块挂载</h2>
+        <div id="upgrade-options" class="upgrade-options"></div>
+      </div>
+    </section>
+
+    <section id="game-over-screen" class="overlay">
+      <div class="panel end-panel">
+        <p class="eyebrow">RUNTIME TERMINATED</p>
+        <h2>本轮上下文已归档</h2>
+        <div id="result-lines" class="result-lines"></div>
+        <button id="restart-button" class="primary-button">再跑一局</button>
+      </div>
+    </section>
+
+    <aside id="hud">
+      <div class="hud-row">
+        <div>
+          <span class="label">TIME</span>
+          <strong id="hud-time">00:00</strong>
+        </div>
+        <div>
+          <span class="label">KILLS</span>
+          <strong id="hud-kills">0</strong>
+        </div>
+        <div>
+          <span class="label">LEVEL</span>
+          <strong id="hud-level">1</strong>
+        </div>
+      </div>
+      <div class="bar-frame">
+        <div id="hp-bar" class="bar hp"></div>
+      </div>
+      <div class="bar-frame">
+        <div id="xp-bar" class="bar xp"></div>
+      </div>
+      <div id="weapon-list" class="weapon-list"></div>
+    </aside>
+
+    <aside id="nova-widget">
+      <img class="nova-face" hidden alt="Nova 表情包头像" loading="lazy" />
+      <p id="nova-line">Nova: 别脸接弹幕，除非你想测试容灾。</p>
+    </aside>
+
+    <div id="orientation-hint" aria-hidden="true">建议横屏游玩，左下角摇杆移动，自动瞄准自动射击。</div>
+
+    <div id="touch-joystick" aria-hidden="true">
+      <div class="joystick-base">
+        <div class="joystick-stick"></div>
+      </div>
+      <span class="joystick-label">MOVE</span>
+    </div>
+  </main>
+
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>
