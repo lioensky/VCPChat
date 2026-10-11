@@ -35,12 +35,32 @@
         "File": "expressions/Neutral.exp3.json"
       },
       {
+        "Name": "Calm",
+        "File": "expressions/Calm.exp3.json"
+      },
+      {
         "Name": "Happy",
         "File": "expressions/Happy.exp3.json"
       },
       {
+        "Name": "Excited",
+        "File": "expressions/Excited.exp3.json"
+      },
+      {
+        "Name": "Affectionate",
+        "File": "expressions/Affectionate.exp3.json"
+      },
+      {
         "Name": "Shy",
         "File": "expressions/Shy.exp3.json"
+      },
+      {
+        "Name": "Curious",
+        "File": "expressions/Curious.exp3.json"
+      },
+      {
+        "Name": "Concerned",
+        "File": "expressions/Concerned.exp3.json"
       },
       {
         "Name": "Sad",
@@ -57,14 +77,6 @@
       {
         "Name": "Tired",
         "File": "expressions/Tired.exp3.json"
-      },
-      {
-        "Name": "Excited",
-        "File": "expressions/Excited.exp3.json"
-      },
-      {
-        "Name": "Concerned",
-        "File": "expressions/Concerned.exp3.json"
       }
     ]
   },
