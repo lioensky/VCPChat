@@ -69,6 +69,6 @@
     "id": "ArtMeshFace2",
     "beforePoints": 244,
     "afterPoints": 244,
-    "maxDifference": 0
+    "maxDifference": 0.007525265216827393
   }
 ]
