@@ -1,18 +1,18 @@
 {
-  "name": "Nova · 女仆",
+  "name": "Nova \u00b7 \u5973\u4ec6",
   "expressions": {
     "neutral": "Neutral",
-    "calm": "Neutral",
+    "calm": "Calm",
     "happy": "Happy",
     "excited": "Excited",
+    "affectionate": "Affectionate",
     "shy": "Shy",
-    "affectionate": "Shy",
-    "curious": "Surprised",
-    "surprised": "Surprised",
+    "curious": "Curious",
     "concerned": "Concerned",
     "sad": "Sad",
-    "tired": "Tired",
-    "angry": "Angry"
+    "angry": "Angry",
+    "surprised": "Surprised",
+    "tired": "Tired"
   },
   "motions": {
     "happy": "Nod",

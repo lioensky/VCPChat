@@ -6,8 +6,28 @@
 
 const path = require('path');
 const fs = require('fs-extra');
+const { Readable, Transform } = require('node:stream');
+const { pipeline } = require('node:stream/promises');
+const { createInflateRaw } = require('node:zlib');
 
 const MODEL_RE = /\.(model3|puppet)\.json$/i;
+const SIZE_ERROR = '压缩包解开后太大了，先解压出模型所在的文件夹再导入';
+
+// JSZip 3.10 的加载结果保留压缩数据和大小。集中检查这个内部格式，格式变更时拒绝导入，
+// 不回退到会积累整条文件的 async()；其 pako 流也可能一次同步输出整个高压缩文件。
+function compressedEntry(entry) {
+    const data = entry._data;
+    if (!data || !ArrayBuffer.isView(data.compressedContent)
+        || !Number.isSafeInteger(data.uncompressedSize) || data.uncompressedSize < 0
+        || !['\x00\x00', '\x08\x00'].includes(data.compression?.magic)) {
+        throw new Error('压缩包条目格式不受支持');
+    }
+    return data;
+}
+
+function sizeError() {
+    return Object.assign(new Error(SIZE_ERROR), { code: 'OUTFIT_ZIP_TOO_LARGE' });
+}
 
 function decodeName(bytes, iconv) {
     const buf = Buffer.from(bytes);
@@ -82,22 +102,35 @@ async function extractOutfitZip(buffer, targetDir, { limits, imageExtensions, JS
     const target = path.resolve(targetDir);
     let bytes = 0;
     try {
+        let declaredBytes = 0;
+        for (const { entry } of plan.entries) {
+            declaredBytes += compressedEntry(entry).uncompressedSize;
+            if (declaredBytes > limits.bytes) throw sizeError();
+        }
         await fs.ensureDir(target);
         for (const { rel, entry } of plan.entries) {
             const out = path.resolve(target, rel);
             if (!out.startsWith(target + path.sep)) continue;
-            const data = await entry.async('nodebuffer');
-            bytes += data.length;
-            if (bytes > limits.bytes) {
-                await fs.remove(target);
-                return { success: false, error: '压缩包解开后太大了，先解压出模型所在的文件夹再导入' };
-            }
+            const data = compressedEntry(entry);
+            const content = data.compressedContent;
+            const compressed = Buffer.from(content.buffer, content.byteOffset, content.byteLength);
+            let entryBytes = 0;
+            const meter = new Transform({
+                transform(chunk, encoding, callback) {
+                    entryBytes += chunk.length;
+                    bytes += chunk.length;
+                    callback(bytes > limits.bytes ? sizeError() : null, chunk);
+                },
+            });
             await fs.ensureDir(path.dirname(out));
-            await fs.writeFile(out, data);
+            const streams = [Readable.from([compressed])];
+            if (data.compression.magic === '\x08\x00') streams.push(createInflateRaw());
+            await pipeline(...streams, meter, fs.createWriteStream(out));
+            if (entryBytes !== data.uncompressedSize) throw new Error('压缩包中的文件大小不一致');
         }
     } catch (error) {
         await fs.remove(target).catch(() => {});
-        return { success: false, error: `解压失败：${error.message}` };
+        return { success: false, error: error.code === 'OUTFIT_ZIP_TOO_LARGE' ? SIZE_ERROR : `解压失败：${error.message}` };
     }
     const name = plan.root ? plan.root.split('/').pop() : null;
     return { success: true, name, kind: plan.kind };

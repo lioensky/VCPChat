@@ -362,8 +362,9 @@ test('dropping the pet near a screen edge slides it flush; Alt or a far drop lea
     handlers.closeAll();
 });
 
-test('a pending tool approval reaches the pet of the agent that asked, and only main answers it', async () => {
+test('a pending tool approval reaches the pet of the agent that asked, and only main answers it', async (t) => {
     const { handlers, fake, open, fromPet } = await loadHandlers();
+    t.after(() => handlers.closeAll());
     const main = fake.windows[0];
     const nova = await open('Nova');
     const coco = await open('Coco');
@@ -377,6 +378,7 @@ test('a pending tool approval reaches the pet of the agent that asked, and only 
     await offer(nova.webContents, { requestId: 'fake', maid: 'Nova', toolName: 'X' });
     assert.deepEqual(sentTo(nova, 'deskpet:approval'), []);
     await offer(main.webContents, { requestId: 'r1', maid: 'coco', toolName: 'PowerShellExecutor', command: 'dir', expiresInMs: 60000 });
+    for (let attempt = 0; attempt < 150 && !sentTo(coco, 'deskpet:approval').some(card => card.requestId === 'r1'); attempt++) await sleep(20);
     assert.deepEqual(sentTo(nova, 'deskpet:approval'), []);
     const [card] = sentTo(coco, 'deskpet:approval');
     assert.equal(card.requestId, 'r1');
@@ -399,6 +401,9 @@ test('a pending tool approval reaches the pet of the agent that asked, and only 
     assert.equal(handlers._pendingApprovals().size, 0);
     // 桌宠关了：等着的审批不再留
     await offer(main.webContents, { requestId: 'r3', maid: 'Coco', toolName: 'X' });
+    // Agent lookup is asynchronous: close only after the offer reached this pet.
+    for (let attempt = 0; attempt < 150 && !sentTo(coco, 'deskpet:approval').some(card => card.requestId === 'r3'); attempt++) await sleep(20);
+    assert.ok(sentTo(coco, 'deskpet:approval').some(card => card.requestId === 'r3'));
     coco.close();
     assert.equal(handlers._pendingApprovals().has('r3'), false);
     handlers.closeAll();
