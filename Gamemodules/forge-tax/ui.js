@@ -5,6 +5,22 @@
     const $ = id => document.getElementById(id);
     const scope = new AbortController();
     const on = (node, event, fn) => node.addEventListener(event, fn, { signal: scope.signal });
+    let soundEnabled = true;
+    try { soundEnabled = localStorage.getItem('forge-tax-sound-v1') !== 'off'; } catch {}
+    const sound = new window.ForgeTaxAudio.Sound({ enabled: soundEnabled });
+    function updateSoundButton() {
+        $('sound-toggle').textContent = sound.enabled ? '音效：开' : '音效：关';
+        $('sound-toggle').setAttribute('aria-pressed', String(sound.enabled));
+    }
+    on(document, 'pointerdown', () => { void sound.unlock(); });
+    on(document, 'keydown', () => { void sound.unlock(); });
+    on($('sound-toggle'), 'click', () => {
+        sound.setEnabled(!sound.enabled);
+        try { localStorage.setItem('forge-tax-sound-v1', sound.enabled ? 'on' : 'off'); } catch {}
+        updateSoundButton();
+        if (sound.enabled) void sound.unlock();
+    });
+    updateSoundButton();
     const fmt = n => '¥' + Math.round(n).toLocaleString('zh-CN');
     const escape = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     let engine, selected, checked = new Set(), logs = [], persistenceWarning = '';
@@ -57,6 +73,7 @@
         if (!result.ok) { $('notice').textContent = result.error; return result; }
         for (const e of result.events) logs.unshift({ text: eventText(e), cls: e.type === 'hammer' ? (e.result === 'break' || e.result === 'damage') && !e.blocked ? 'bad' : e.result === 'critical' || e.result === 'success' ? 'good' : '' : e.type === 'end' ? 'bad' : '' });
         logs = logs.slice(0, 100);
+        void sound.playResult(result);
         closePanel(); persist(); recordScore(); render();
         if (action.type === 'hammer') $('anvil').querySelector('.blade-icon')?.classList.add('strike');
         if (result.state.status !== 'playing') modal(result.state.status === 'victory' ? '真结局 · 魔王已死' : 'Game Over · 魔王处决', `<p>第 ${result.state.day} 天 · 累计收入 <strong>${fmt(result.state.income)}</strong></p><p>最高单剑价值 ${fmt(result.state.maxSword)}</p><p>成绩已尝试记录到本机排行榜。可以查看背包，或开始新局。</p>`);
@@ -160,6 +177,6 @@
         dispatch: action => act(action),
         exportSave: () => engine.exportSave()
     });
-    window.addEventListener('pagehide', () => scope.abort(), { once: true });
+    window.addEventListener('pagehide', () => { scope.abort(); sound.dispose(); }, { once: true });
     render(); recordScore();
 })();
