@@ -1,0 +1,319 @@
+[
+  {
+    "op": "layer_replace_image",
+    "request": {
+      "layer_id": "face#41",
+      "path": "maid/face.png",
+      "fit": "stretch",
+      "rebuild_mesh": false
+    }
+  },
+  {
+    "op": "layer_replace_image",
+    "request": {
+      "layer_id": "neck#14",
+      "path": "maid/neck.png",
+      "fit": "stretch",
+      "rebuild_mesh": false
+    }
+  },
+  {
+    "op": "layer_replace_image",
+    "request": {
+      "layer_id": "eyelash-r#25",
+      "path": "maid/eyelash-r.png",
+      "fit": "stretch",
+      "rebuild_mesh": false
+    }
+  },
+  {
+    "op": "layer_replace_image",
+    "request": {
+      "layer_id": "eyelash-l#26",
+      "path": "maid/eyelash-l.png",
+      "fit": "stretch",
+      "rebuild_mesh": false
+    }
+  },
+  {
+    "op": "layer_replace_image",
+    "request": {
+      "layer_id": "front hair#32",
+      "path": "maid/front-hair.png",
+      "fit": "stretch",
+      "rebuild_mesh": false
+    }
+  },
+  {
+    "op": "layer_replace_image",
+    "request": {
+      "layer_id": "back hair#0",
+      "path": "maid/back-hair.png",
+      "fit": "stretch",
+      "rebuild_mesh": false
+    }
+  },
+  {
+    "op": "layer_replace_image",
+    "request": {
+      "layer_id": "back hair-r#1",
+      "path": "maid/back-hair-r.png",
+      "fit": "stretch",
+      "rebuild_mesh": false
+    }
+  },
+  {
+    "op": "layer_replace_image",
+    "request": {
+      "layer_id": "back hair-l#2",
+      "path": "maid/back-hair-l.png",
+      "fit": "stretch",
+      "rebuild_mesh": false
+    }
+  },
+  {
+    "op": "layer_replace_image",
+    "request": {
+      "layer_id": "mouth open#18",
+      "path": "maid/mouth-open.png",
+      "fit": "stretch",
+      "rebuild_mesh": false
+    }
+  },
+  {
+    "op": "keyform_apply",
+    "request": {
+      "changes": [
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouthOpen_lip_0",
+          "key": {
+            "ParamMouthForm": -1,
+            "ParamMouthOpenY": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouthOpen_lip_0",
+          "key": {
+            "ParamMouthForm": -1,
+            "ParamMouthOpenY": 0.5
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouthOpen_lip_0",
+          "key": {
+            "ParamMouthForm": -1,
+            "ParamMouthOpenY": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouthOpen_lip_0",
+          "key": {
+            "ParamMouthForm": 0,
+            "ParamMouthOpenY": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouthOpen_lip_0",
+          "key": {
+            "ParamMouthForm": 0,
+            "ParamMouthOpenY": 0.5
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouthOpen_lip_0",
+          "key": {
+            "ParamMouthForm": 0,
+            "ParamMouthOpenY": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouthOpen_lip_0",
+          "key": {
+            "ParamMouthForm": 1,
+            "ParamMouthOpenY": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouthOpen_lip_0",
+          "key": {
+            "ParamMouthForm": 1,
+            "ParamMouthOpenY": 0.5
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouthOpen_lip_0",
+          "key": {
+            "ParamMouthForm": 1,
+            "ParamMouthOpenY": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouthOpen_lip_1",
+          "key": {
+            "ParamMouthForm": -1,
+            "ParamMouthOpenY": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouthOpen_lip_1",
+          "key": {
+            "ParamMouthForm": -1,
+            "ParamMouthOpenY": 0.5
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouthOpen_lip_1",
+          "key": {
+            "ParamMouthForm": -1,
+            "ParamMouthOpenY": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouthOpen_lip_1",
+          "key": {
+            "ParamMouthForm": 0,
+            "ParamMouthOpenY": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouthOpen_lip_1",
+          "key": {
+            "ParamMouthForm": 0,
+            "ParamMouthOpenY": 0.5
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouthOpen_lip_1",
+          "key": {
+            "ParamMouthForm": 0,
+            "ParamMouthOpenY": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouthOpen_lip_1",
+          "key": {
+            "ParamMouthForm": 1,
+            "ParamMouthOpenY": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouthOpen_lip_1",
+          "key": {
+            "ParamMouthForm": 1,
+            "ParamMouthOpenY": 0.5
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouthOpen_lip_1",
+          "key": {
+            "ParamMouthForm": 1,
+            "ParamMouthOpenY": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        }
+      ]
+    }
+  },
+  {
+    "op": "rig_deform",
+    "request": {
+      "changes": [
+        {
+          "target": "mesh:ArtMeshFace2",
+          "key": {
+            "ParamAngleX": 0
+          },
+          "operations": [
+            {
+              "type": "translate",
+              "delta": [
+                0.02681992337164751,
+                0.030303030303030304
+              ],
+              "selection": {
+                "rect": [
+                  -0.5,
+                  0.6,
+                  1.5,
+                  1.5
+                ],
+                "feather": 0.18
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

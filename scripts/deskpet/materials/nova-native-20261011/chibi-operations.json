@@ -1,0 +1,1679 @@
+[
+  {
+    "op": "layer_replace_image",
+    "request": {
+      "layer_id": "back hair#0",
+      "path": "chibi/back-hair.png",
+      "fit": "stretch",
+      "rebuild_mesh": false
+    }
+  },
+  {
+    "op": "layer_replace_image",
+    "request": {
+      "layer_id": "back hair-r#1",
+      "path": "chibi/back-hair-r.png",
+      "fit": "stretch",
+      "rebuild_mesh": false
+    }
+  },
+  {
+    "op": "layer_replace_image",
+    "request": {
+      "layer_id": "back hair-l#2",
+      "path": "chibi/back-hair-l.png",
+      "fit": "stretch",
+      "rebuild_mesh": false
+    }
+  },
+  {
+    "op": "layer_replace_image",
+    "request": {
+      "layer_id": "mouth open#81",
+      "path": "chibi/mouth-open.png",
+      "fit": "stretch",
+      "rebuild_mesh": false
+    }
+  },
+  {
+    "op": "layer_replace_image",
+    "request": {
+      "layer_id": "eyelash-r sleepy#51",
+      "path": "chibi/eyelash-r_sleepy-51-preserved.png",
+      "fit": "stretch",
+      "rebuild_mesh": false
+    }
+  },
+  {
+    "op": "layer_replace_image",
+    "request": {
+      "layer_id": "eyelash-l sleepy#53",
+      "path": "chibi/eyelash-l_sleepy-53-preserved.png",
+      "fit": "stretch",
+      "rebuild_mesh": false
+    }
+  },
+  {
+    "op": "keyform_apply",
+    "request": {
+      "changes": [
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouth",
+          "key": {
+            "ParamMouthOpenY": 0,
+            "ParamExpNeutralHide": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouthClose",
+          "key": {
+            "ParamMouthOpenY": 0,
+            "ParamExpNeutralHide": 0
+          },
+          "channels": {
+            "opacity": 1
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouth",
+          "key": {
+            "ParamMouthOpenY": 0.05,
+            "ParamExpNeutralHide": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouthClose",
+          "key": {
+            "ParamMouthOpenY": 0.05,
+            "ParamExpNeutralHide": 0
+          },
+          "channels": {
+            "opacity": 1
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouth",
+          "key": {
+            "ParamMouthOpenY": 0.1,
+            "ParamExpNeutralHide": 0
+          },
+          "channels": {
+            "opacity": 1
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouthClose",
+          "key": {
+            "ParamMouthOpenY": 0.1,
+            "ParamExpNeutralHide": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouth",
+          "key": {
+            "ParamMouthOpenY": 0.3,
+            "ParamExpNeutralHide": 0
+          },
+          "channels": {
+            "opacity": 1
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouthClose",
+          "key": {
+            "ParamMouthOpenY": 0.3,
+            "ParamExpNeutralHide": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouth",
+          "key": {
+            "ParamMouthOpenY": 1,
+            "ParamExpNeutralHide": 0
+          },
+          "channels": {
+            "opacity": 1
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouthClose",
+          "key": {
+            "ParamMouthOpenY": 1,
+            "ParamExpNeutralHide": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouth",
+          "key": {
+            "ParamMouthOpenY": 0,
+            "ParamExpNeutralHide": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouthClose",
+          "key": {
+            "ParamMouthOpenY": 0,
+            "ParamExpNeutralHide": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouth",
+          "key": {
+            "ParamMouthOpenY": 0.05,
+            "ParamExpNeutralHide": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouthClose",
+          "key": {
+            "ParamMouthOpenY": 0.05,
+            "ParamExpNeutralHide": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouth",
+          "key": {
+            "ParamMouthOpenY": 0.1,
+            "ParamExpNeutralHide": 1
+          },
+          "channels": {
+            "opacity": 1
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouthClose",
+          "key": {
+            "ParamMouthOpenY": 0.1,
+            "ParamExpNeutralHide": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouth",
+          "key": {
+            "ParamMouthOpenY": 0.3,
+            "ParamExpNeutralHide": 1
+          },
+          "channels": {
+            "opacity": 1
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouthClose",
+          "key": {
+            "ParamMouthOpenY": 0.3,
+            "ParamExpNeutralHide": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouth",
+          "key": {
+            "ParamMouthOpenY": 1,
+            "ParamExpNeutralHide": 1
+          },
+          "channels": {
+            "opacity": 1
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouthClose",
+          "key": {
+            "ParamMouthOpenY": 1,
+            "ParamExpNeutralHide": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail",
+          "key": {
+            "ParamMouthOpenY": 0,
+            "ParamExpWink": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail",
+          "key": {
+            "ParamMouthOpenY": 0.05,
+            "ParamExpWink": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail",
+          "key": {
+            "ParamMouthOpenY": 0.1,
+            "ParamExpWink": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail",
+          "key": {
+            "ParamMouthOpenY": 0.3,
+            "ParamExpWink": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail",
+          "key": {
+            "ParamMouthOpenY": 1,
+            "ParamExpWink": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail",
+          "key": {
+            "ParamMouthOpenY": 0,
+            "ParamExpWink": 1
+          },
+          "channels": {
+            "opacity": 1
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail",
+          "key": {
+            "ParamMouthOpenY": 0.05,
+            "ParamExpWink": 1
+          },
+          "channels": {
+            "opacity": 1
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail",
+          "key": {
+            "ParamMouthOpenY": 0.1,
+            "ParamExpWink": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail",
+          "key": {
+            "ParamMouthOpenY": 0.3,
+            "ParamExpWink": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail",
+          "key": {
+            "ParamMouthOpenY": 1,
+            "ParamExpWink": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail3",
+          "key": {
+            "ParamMouthOpenY": 0,
+            "ParamExpSurprised": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail3",
+          "key": {
+            "ParamMouthOpenY": 0.05,
+            "ParamExpSurprised": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail3",
+          "key": {
+            "ParamMouthOpenY": 0.1,
+            "ParamExpSurprised": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail3",
+          "key": {
+            "ParamMouthOpenY": 0.3,
+            "ParamExpSurprised": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail3",
+          "key": {
+            "ParamMouthOpenY": 1,
+            "ParamExpSurprised": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail3",
+          "key": {
+            "ParamMouthOpenY": 0,
+            "ParamExpSurprised": 1
+          },
+          "channels": {
+            "opacity": 1
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail3",
+          "key": {
+            "ParamMouthOpenY": 0.05,
+            "ParamExpSurprised": 1
+          },
+          "channels": {
+            "opacity": 1
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail3",
+          "key": {
+            "ParamMouthOpenY": 0.1,
+            "ParamExpSurprised": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail3",
+          "key": {
+            "ParamMouthOpenY": 0.3,
+            "ParamExpSurprised": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail3",
+          "key": {
+            "ParamMouthOpenY": 1,
+            "ParamExpSurprised": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail4",
+          "key": {
+            "ParamMouthOpenY": 0,
+            "ParamExpStars": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail4",
+          "key": {
+            "ParamMouthOpenY": 0.05,
+            "ParamExpStars": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail4",
+          "key": {
+            "ParamMouthOpenY": 0.1,
+            "ParamExpStars": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail4",
+          "key": {
+            "ParamMouthOpenY": 0.3,
+            "ParamExpStars": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail4",
+          "key": {
+            "ParamMouthOpenY": 1,
+            "ParamExpStars": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail4",
+          "key": {
+            "ParamMouthOpenY": 0,
+            "ParamExpStars": 1
+          },
+          "channels": {
+            "opacity": 1
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail4",
+          "key": {
+            "ParamMouthOpenY": 0.05,
+            "ParamExpStars": 1
+          },
+          "channels": {
+            "opacity": 1
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail4",
+          "key": {
+            "ParamMouthOpenY": 0.1,
+            "ParamExpStars": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail4",
+          "key": {
+            "ParamMouthOpenY": 0.3,
+            "ParamExpStars": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail4",
+          "key": {
+            "ParamMouthOpenY": 1,
+            "ParamExpStars": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail6",
+          "key": {
+            "ParamMouthOpenY": 0,
+            "ParamExpSpeechless": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail6",
+          "key": {
+            "ParamMouthOpenY": 0.05,
+            "ParamExpSpeechless": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail6",
+          "key": {
+            "ParamMouthOpenY": 0.1,
+            "ParamExpSpeechless": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail6",
+          "key": {
+            "ParamMouthOpenY": 0.3,
+            "ParamExpSpeechless": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail6",
+          "key": {
+            "ParamMouthOpenY": 1,
+            "ParamExpSpeechless": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail6",
+          "key": {
+            "ParamMouthOpenY": 0,
+            "ParamExpSpeechless": 1
+          },
+          "channels": {
+            "opacity": 1
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail6",
+          "key": {
+            "ParamMouthOpenY": 0.05,
+            "ParamExpSpeechless": 1
+          },
+          "channels": {
+            "opacity": 1
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail6",
+          "key": {
+            "ParamMouthOpenY": 0.1,
+            "ParamExpSpeechless": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail6",
+          "key": {
+            "ParamMouthOpenY": 0.3,
+            "ParamExpSpeechless": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail6",
+          "key": {
+            "ParamMouthOpenY": 1,
+            "ParamExpSpeechless": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail8",
+          "key": {
+            "ParamMouthOpenY": 0,
+            "ParamExpSmug": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail8",
+          "key": {
+            "ParamMouthOpenY": 0.05,
+            "ParamExpSmug": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail8",
+          "key": {
+            "ParamMouthOpenY": 0.1,
+            "ParamExpSmug": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail8",
+          "key": {
+            "ParamMouthOpenY": 0.3,
+            "ParamExpSmug": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        }
+      ]
+    }
+  },
+  {
+    "op": "keyform_apply",
+    "request": {
+      "changes": [
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail8",
+          "key": {
+            "ParamMouthOpenY": 1,
+            "ParamExpSmug": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail8",
+          "key": {
+            "ParamMouthOpenY": 0,
+            "ParamExpSmug": 1
+          },
+          "channels": {
+            "opacity": 1
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail8",
+          "key": {
+            "ParamMouthOpenY": 0.05,
+            "ParamExpSmug": 1
+          },
+          "channels": {
+            "opacity": 1
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail8",
+          "key": {
+            "ParamMouthOpenY": 0.1,
+            "ParamExpSmug": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail8",
+          "key": {
+            "ParamMouthOpenY": 0.3,
+            "ParamExpSmug": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail8",
+          "key": {
+            "ParamMouthOpenY": 1,
+            "ParamExpSmug": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail10",
+          "key": {
+            "ParamMouthOpenY": 0,
+            "ParamExpSleepy": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail10",
+          "key": {
+            "ParamMouthOpenY": 0.05,
+            "ParamExpSleepy": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail10",
+          "key": {
+            "ParamMouthOpenY": 0.1,
+            "ParamExpSleepy": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail10",
+          "key": {
+            "ParamMouthOpenY": 0.3,
+            "ParamExpSleepy": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail10",
+          "key": {
+            "ParamMouthOpenY": 1,
+            "ParamExpSleepy": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail10",
+          "key": {
+            "ParamMouthOpenY": 0,
+            "ParamExpSleepy": 1
+          },
+          "channels": {
+            "opacity": 1
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail10",
+          "key": {
+            "ParamMouthOpenY": 0.05,
+            "ParamExpSleepy": 1
+          },
+          "channels": {
+            "opacity": 1
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail10",
+          "key": {
+            "ParamMouthOpenY": 0.1,
+            "ParamExpSleepy": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail10",
+          "key": {
+            "ParamMouthOpenY": 0.3,
+            "ParamExpSleepy": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail10",
+          "key": {
+            "ParamMouthOpenY": 1,
+            "ParamExpSleepy": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail12",
+          "key": {
+            "ParamMouthOpenY": 0,
+            "ParamExpShy": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail12",
+          "key": {
+            "ParamMouthOpenY": 0.05,
+            "ParamExpShy": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail12",
+          "key": {
+            "ParamMouthOpenY": 0.1,
+            "ParamExpShy": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail12",
+          "key": {
+            "ParamMouthOpenY": 0.3,
+            "ParamExpShy": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail12",
+          "key": {
+            "ParamMouthOpenY": 1,
+            "ParamExpShy": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail12",
+          "key": {
+            "ParamMouthOpenY": 0,
+            "ParamExpShy": 1
+          },
+          "channels": {
+            "opacity": 1
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail12",
+          "key": {
+            "ParamMouthOpenY": 0.05,
+            "ParamExpShy": 1
+          },
+          "channels": {
+            "opacity": 1
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail12",
+          "key": {
+            "ParamMouthOpenY": 0.1,
+            "ParamExpShy": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail12",
+          "key": {
+            "ParamMouthOpenY": 0.3,
+            "ParamExpShy": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail12",
+          "key": {
+            "ParamMouthOpenY": 1,
+            "ParamExpShy": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail14",
+          "key": {
+            "ParamMouthOpenY": 0,
+            "ParamExpSad": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail14",
+          "key": {
+            "ParamMouthOpenY": 0.05,
+            "ParamExpSad": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail14",
+          "key": {
+            "ParamMouthOpenY": 0.1,
+            "ParamExpSad": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail14",
+          "key": {
+            "ParamMouthOpenY": 0.3,
+            "ParamExpSad": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail14",
+          "key": {
+            "ParamMouthOpenY": 1,
+            "ParamExpSad": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail14",
+          "key": {
+            "ParamMouthOpenY": 0,
+            "ParamExpSad": 1
+          },
+          "channels": {
+            "opacity": 1
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail14",
+          "key": {
+            "ParamMouthOpenY": 0.05,
+            "ParamExpSad": 1
+          },
+          "channels": {
+            "opacity": 1
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail14",
+          "key": {
+            "ParamMouthOpenY": 0.1,
+            "ParamExpSad": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail14",
+          "key": {
+            "ParamMouthOpenY": 0.3,
+            "ParamExpSad": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail14",
+          "key": {
+            "ParamMouthOpenY": 1,
+            "ParamExpSad": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail17",
+          "key": {
+            "ParamMouthOpenY": 0,
+            "ParamExpHappy": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail17",
+          "key": {
+            "ParamMouthOpenY": 0.05,
+            "ParamExpHappy": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail17",
+          "key": {
+            "ParamMouthOpenY": 0.1,
+            "ParamExpHappy": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail17",
+          "key": {
+            "ParamMouthOpenY": 0.3,
+            "ParamExpHappy": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail17",
+          "key": {
+            "ParamMouthOpenY": 1,
+            "ParamExpHappy": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail17",
+          "key": {
+            "ParamMouthOpenY": 0,
+            "ParamExpHappy": 1
+          },
+          "channels": {
+            "opacity": 1
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail17",
+          "key": {
+            "ParamMouthOpenY": 0.05,
+            "ParamExpHappy": 1
+          },
+          "channels": {
+            "opacity": 1
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail17",
+          "key": {
+            "ParamMouthOpenY": 0.1,
+            "ParamExpHappy": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail17",
+          "key": {
+            "ParamMouthOpenY": 0.3,
+            "ParamExpHappy": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail17",
+          "key": {
+            "ParamMouthOpenY": 1,
+            "ParamExpHappy": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail19",
+          "key": {
+            "ParamMouthOpenY": 0,
+            "ParamExpAngry": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail19",
+          "key": {
+            "ParamMouthOpenY": 0.05,
+            "ParamExpAngry": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail19",
+          "key": {
+            "ParamMouthOpenY": 0.1,
+            "ParamExpAngry": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail19",
+          "key": {
+            "ParamMouthOpenY": 0.3,
+            "ParamExpAngry": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail19",
+          "key": {
+            "ParamMouthOpenY": 1,
+            "ParamExpAngry": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail19",
+          "key": {
+            "ParamMouthOpenY": 0,
+            "ParamExpAngry": 1
+          },
+          "channels": {
+            "opacity": 1
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail19",
+          "key": {
+            "ParamMouthOpenY": 0.05,
+            "ParamExpAngry": 1
+          },
+          "channels": {
+            "opacity": 1
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail19",
+          "key": {
+            "ParamMouthOpenY": 0.1,
+            "ParamExpAngry": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail19",
+          "key": {
+            "ParamMouthOpenY": 0.3,
+            "ParamExpAngry": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshFaceDetail19",
+          "key": {
+            "ParamMouthOpenY": 1,
+            "ParamExpAngry": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouth_lip_0",
+          "key": {
+            "ParamMouthOpenY": 0,
+            "ParamExpNeutralHide": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouth_lip_0",
+          "key": {
+            "ParamMouthOpenY": 0.05,
+            "ParamExpNeutralHide": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouth_lip_0",
+          "key": {
+            "ParamMouthOpenY": 0.1,
+            "ParamExpNeutralHide": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouth_lip_0",
+          "key": {
+            "ParamMouthOpenY": 0.3,
+            "ParamExpNeutralHide": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouth_lip_0",
+          "key": {
+            "ParamMouthOpenY": 1,
+            "ParamExpNeutralHide": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouth_lip_0",
+          "key": {
+            "ParamMouthOpenY": 0,
+            "ParamExpNeutralHide": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouth_lip_0",
+          "key": {
+            "ParamMouthOpenY": 0.05,
+            "ParamExpNeutralHide": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouth_lip_0",
+          "key": {
+            "ParamMouthOpenY": 0.1,
+            "ParamExpNeutralHide": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        }
+      ]
+    }
+  },
+  {
+    "op": "keyform_apply",
+    "request": {
+      "changes": [
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouth_lip_0",
+          "key": {
+            "ParamMouthOpenY": 0.3,
+            "ParamExpNeutralHide": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouth_lip_0",
+          "key": {
+            "ParamMouthOpenY": 1,
+            "ParamExpNeutralHide": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouth_lip_1",
+          "key": {
+            "ParamMouthOpenY": 0,
+            "ParamExpNeutralHide": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouth_lip_1",
+          "key": {
+            "ParamMouthOpenY": 0.05,
+            "ParamExpNeutralHide": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouth_lip_1",
+          "key": {
+            "ParamMouthOpenY": 0.1,
+            "ParamExpNeutralHide": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouth_lip_1",
+          "key": {
+            "ParamMouthOpenY": 0.3,
+            "ParamExpNeutralHide": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouth_lip_1",
+          "key": {
+            "ParamMouthOpenY": 1,
+            "ParamExpNeutralHide": 0
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouth_lip_1",
+          "key": {
+            "ParamMouthOpenY": 0,
+            "ParamExpNeutralHide": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouth_lip_1",
+          "key": {
+            "ParamMouthOpenY": 0.05,
+            "ParamExpNeutralHide": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouth_lip_1",
+          "key": {
+            "ParamMouthOpenY": 0.1,
+            "ParamExpNeutralHide": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouth_lip_1",
+          "key": {
+            "ParamMouthOpenY": 0.3,
+            "ParamExpNeutralHide": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        },
+        {
+          "op": "set",
+          "target": "mesh:ArtMeshMouth_lip_1",
+          "key": {
+            "ParamMouthOpenY": 1,
+            "ParamExpNeutralHide": 1
+          },
+          "channels": {
+            "opacity": 0
+          }
+        }
+      ]
+    }
+  },
+  {
+    "op": "layer_replace_image",
+    "request": {
+      "layer_id": "eyelash-r neutral#31",
+      "path": "chibi/eyelash-r_neutral-31-preserved.png",
+      "fit": "stretch",
+      "rebuild_mesh": false
+    }
+  },
+  {
+    "op": "layer_replace_image",
+    "request": {
+      "layer_id": "eyelash-l neutral#33",
+      "path": "chibi/eyelash-l_neutral-33-preserved.png",
+      "fit": "stretch",
+      "rebuild_mesh": false
+    }
+  },
+  {
+    "op": "layer_replace_image",
+    "request": {
+      "layer_id": "mouth close#35",
+      "path": "chibi/mouth_close-35-preserved.png",
+      "fit": "stretch",
+      "rebuild_mesh": false
+    }
+  },
+  {
+    "op": "layer_replace_image",
+    "request": {
+      "layer_id": "headwear bonnet#16",
+      "path": "chibi/bonnet-clean.png",
+      "fit": "stretch",
+      "rebuild_mesh": false
+    }
+  },
+  {
+    "op": "rig_deform",
+    "request": {
+      "changes": [
+        {
+          "target": "mesh:ArtMeshBackHair",
+          "key": {
+            "ParamAngleX": 0
+          },
+          "operations": [
+            {
+              "type": "scale",
+              "factors": [
+                1.025,
+                1
+              ],
+              "pivot": [
+                0.5,
+                0.5
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

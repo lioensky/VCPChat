@@ -1062,7 +1062,7 @@ function initialize(mainWindow, context) {
             const aborted = streamTask?.controller.signal.aborted === true;
             // 桌宠只看事件不看窗口；用户中止时把收尾当作正常结束，不显示出错表情。
             if (!isGroupCall && !(aborted && payload.type === 'data')) {
-                deskPetHandlers.onStreamPayload(aborted ? { ...payload, type: 'end' } : payload);
+                deskPetHandlers.onStreamPayload(aborted ? { ...payload, type: 'end', aborted: true } : payload);
             }
             if (aborted || event.sender.isDestroyed()) return false;
             try {
@@ -1526,7 +1526,10 @@ function initialize(mainWindow, context) {
         } catch (error) {
             console.error('VCP请求错误 (catch block):', error);
             trajectoryCall?.finish({ error, aborted: error?.name === 'AbortError' || streamTask?.controller.signal.aborted === true });
-            if (!isGroupCall && modelConfig.stream !== true) deskPetHandlers.onStreamPayload({ type: 'error', messageId, context });
+            if (!isGroupCall && modelConfig.stream !== true) {
+                const aborted = error?.name === 'AbortError' || streamTask?.controller.signal.aborted === true;
+                deskPetHandlers.onStreamPayload({ type: aborted ? 'end' : 'error', messageId, context, aborted });
+            }
             if (modelConfig.stream === true && event && event.sender && !event.sender.isDestroyed()) {
                 const catchErrorPayload = { type: 'error', error: `VCP请求错误: ${error.message}`, messageId: messageId, context };
                 sendStreamPayload(catchErrorPayload);

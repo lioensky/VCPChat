@@ -27,6 +27,18 @@
   <div id="lifeFx" hidden aria-hidden="true"></div>
   <!-- 气泡和输入框从角色头顶往上排，输入框挨着角色，气泡在它上面 -->
   <div id="uiStack">
+    <div id="sessionPanel" class="pet-ui" hidden>
+    <button id="sessionCard" type="button" title="打开当前会话">
+      <span id="sessionTitle"></span>
+      <span id="sessionStatus" role="status" aria-live="polite"></span>
+    </button>
+    <button id="sessionStop" type="button" hidden title="停止这个会话的回复" aria-label="停止这个会话的回复"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1"/></svg></button>
+    <div id="sessionNavigation" hidden>
+      <button id="sessionPrevious" type="button" aria-label="上一个会话">‹</button>
+      <span id="sessionPosition"></span>
+      <button id="sessionNext" type="button" aria-label="下一个会话">›</button>
+    </div>
+    </div>
     <div id="bubble" class="pet-ui" hidden title="点击打开主窗口看完整回复">
       <div id="bubbleText"></div>
       <div id="bubbleState"></div>
@@ -59,7 +71,7 @@
   </div>
   <!-- 脚边的小胶囊：光标停在角色上时冒出来（打字 / 说话）；点打字展开成输入条，点说话变成录音按钮；没碰它时收成脚边一道小横条。
        三种样子是同一个元素的三个状态（data-mode），宽度和内容之间有过渡动画。 -->
-  <div id="dock" class="pet-ui pet-dock" data-mode="hidden">
+  <div id="dock" class="pet-ui pet-dock" data-mode="pill">
     <div class="dock-layer dock-pill" id="dockPill">
       <button id="dockEdit" class="dock-btn" type="button" title="打字和 TA 说（双击角色也行）" aria-label="打字">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.4 2.6a2.1 2.1 0 0 1 3 3l-9 9a2 2 0 0 1-.9.5l-2.9.8.8-2.9a2 2 0 0 1 .5-.8Z"/></svg>
@@ -69,8 +81,10 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4"/><path d="M8 7v10"/><path d="M12 4v16"/><path d="M16 7v10"/><path d="M20 10v4"/></svg>
       </button>
       <i class="dock-sep"></i>
-      <button id="dockHide" class="dock-btn" type="button" title="收起（光标移开再回来又会冒出来）" aria-label="收起">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>
+      <button id="dockHide" class="dock-btn" type="button" title="查看会话动态" aria-label="查看会话动态" aria-expanded="false" aria-controls="sessionPanel">
+        <svg class="session-bell" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg>
+        <svg class="session-collapse" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>
+        <span id="sessionCount" hidden></span>
       </button>
     </div>
     <form class="dock-layer dock-bar" id="composer">

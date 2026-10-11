@@ -4,39 +4,59 @@
   "FadeOutTime": 0.25,
   "Parameters": [
     {
-      "Id": "ParamBrowLAngle",
-      "Value": -1.0,
-      "Blend": "Overwrite"
-    },
-    {
-      "Id": "ParamBrowRAngle",
-      "Value": -1.0,
-      "Blend": "Overwrite"
-    },
-    {
       "Id": "ParamMouthForm",
-      "Value": -0.8,
+      "Value": -0.45,
       "Blend": "Overwrite"
     },
     {
-      "Id": "ParamEyeLOpen",
-      "Value": 0.8,
-      "Blend": "Overwrite"
-    },
-    {
-      "Id": "ParamEyeROpen",
-      "Value": 0.8,
+      "Id": "ParamEyeBallForm",
+      "Value": -0.15,
       "Blend": "Overwrite"
     },
     {
       "Id": "ParamBrowLY",
-      "Value": -0.65,
+      "Value": -0.6,
       "Blend": "Overwrite"
     },
     {
       "Id": "ParamBrowRY",
-      "Value": -0.65,
+      "Value": -0.6,
       "Blend": "Overwrite"
+    },
+    {
+      "Id": "ParamEyeLSmile",
+      "Value": 0,
+      "Blend": "Overwrite"
+    },
+    {
+      "Id": "ParamEyeRSmile",
+      "Value": 0,
+      "Blend": "Overwrite"
+    },
+    {
+      "Id": "ParamBrowLAngle",
+      "Value": -1,
+      "Blend": "Overwrite"
+    },
+    {
+      "Id": "ParamBrowRAngle",
+      "Value": -1,
+      "Blend": "Overwrite"
+    },
+    {
+      "Id": "ParamCheek",
+      "Value": 0,
+      "Blend": "Overwrite"
+    },
+    {
+      "Id": "ParamEyeLOpen",
+      "Value": 1,
+      "Blend": "Multiply"
+    },
+    {
+      "Id": "ParamEyeROpen",
+      "Value": 1,
+      "Blend": "Multiply"
     }
   ]
 }

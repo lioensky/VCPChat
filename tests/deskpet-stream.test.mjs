@@ -94,7 +94,11 @@ test('stream events reach only the open pet, as plain text', async () => {
     // 出错时把原因（主窗口里显示的那句）一起带过去，桌宠上才能说清是断网还是服务器报错
     handlers.onStreamPayload({ type: 'error', messageId: 'm2', error: 'VCP请求失败: 服务器返回状态 500.\n错误: overloaded', context: { agentId: 'Nova' } });
     const stream = pet.sent.filter((s) => s.channel === 'deskpet:stream').map((s) => s.payload);
-    assert.deepEqual(stream, [
+    assert.equal(stream[0].session.messageId, 'm1');
+    assert.equal(stream[0].session.status, 'thinking');
+    assert.equal(stream[1].session.status, 'responding');
+    assert.equal(stream[2].session.status, 'complete');
+    assert.deepEqual(stream.map(({ session, ...event }) => event), [
         { type: 'start', messageId: 'm1' },
         { type: 'data', messageId: 'm1', text: '<!--emo:happy-->你好' },
         { type: 'end', messageId: 'm1' },

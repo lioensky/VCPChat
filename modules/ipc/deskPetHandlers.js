@@ -33,6 +33,7 @@ const throwMotion = require('../deskpet/throwMotion');
 const wander = require('../deskpet/wander');
 const idleChat = require('../deskpet/idleChat');
 const { getAgentMoodStore } = require('../agentMood');
+const { createSessionActivity } = require('../deskpet/sessionActivity');
 
 // 窗口大小随每个桌宠自己的缩放和形象的长宽比走（modules/deskpet/petPrefs.js）；不知道比例时 1 倍是 360×580，
 // 上方留出气泡和输入框的位置。
@@ -81,6 +82,14 @@ let idle = null; // 闲时主动搭话（modules/deskpet/idleRunner.js）
 const pendingWhere = new Map(); // requestId -> resolve：问主窗口现在开着哪个话题
 let services = {}; // { readSettings, historyQueue, agentOps }：main.js 传进来的聊天记录服务（取值函数）
 const announcedTopics = new Set(); // 已经在桌宠上说过的话题（同一请求重放时结果会重复回来）
+const sessions = createSessionActivity({
+    async titleOf(agentId, topicId) {
+        if (!paths || !isAgentId(agentId)) return '';
+        const config = await fs.readJson(path.join(paths.agentDir, agentId, 'config.json'));
+        return config.topics?.find(topic => String(topic.id) === topicId)?.name || '';
+    },
+    publish(agentId, session) { forward(agentId, { type: 'session', session }); },
+});
 
 function registerSchemes() {
     protocol.registerSchemesAsPrivileged([
@@ -809,11 +818,13 @@ function extractDeltaText(chunk) {
 
 // 回复流原样转给页面，由页面里的情绪导演决定表情和气泡内容。
 function forward(agentId, event) {
+    sessions.update(agentId, event);
     const pet = agentId && pets.get(agentId);
-    if (pet && !pet.win.isDestroyed()) pet.win.webContents.send('deskpet:stream', event);
+    if (pet && !pet.win.isDestroyed()) pet.win.webContents.send('deskpet:stream', { ...event, session: sessions.get(agentId) });
 }
 
 function onRequestStart(messageId, context) {
+    sessions.start(messageId, context);
     if (context?.agentId) {
         lastTalkedAgentId = context.agentId;
         idle?.noteActivity(context.agentId);
@@ -823,13 +834,13 @@ function onRequestStart(messageId, context) {
 
 function onStreamPayload(payload) {
     const agentId = payload?.context?.agentId;
-    if (!agentId || !pets.has(agentId)) return;
+    if (!agentId) return;
     const messageId = String(payload.messageId);
     if (payload.type === 'data') {
         const text = extractDeltaText(payload.chunk);
         if (text) forward(agentId, { type: 'data', messageId, text });
     } else if (payload.type === 'end') {
-        forward(agentId, { type: 'end', messageId });
+        forward(agentId, { type: 'end', messageId, ...(payload.aborted ? { aborted: true } : {}) });
     } else if (payload.type === 'error') {
         // 出错的原因也带过去（主窗口里显示的那句）：桌宠上只写「出错了」的话，用户不知道是断网、超时还是服务器报错
         const reason = typeof payload.error === 'string' ? payload.error.replace(/\s+/g, ' ').trim().slice(0, 160) : '';
@@ -840,7 +851,7 @@ function onStreamPayload(payload) {
 /** 非流式回复：整条内容一次性转过去。 */
 function onFullResponse(messageId, context, response) {
     const agentId = context?.agentId;
-    if (!agentId || !pets.has(agentId)) return;
+    if (!agentId) return;
     const text = response?.choices?.[0]?.message?.content;
     if (typeof text === 'string' && text) forward(agentId, { type: 'data', messageId: String(messageId), text });
     forward(agentId, { type: 'end', messageId: String(messageId) });
@@ -1513,7 +1524,7 @@ function registerIpc() {
         pet.outfits = assets.outfits;
         // 记着的那套已经删了：换成实际显示的这套。等待期间又换了装（连点卡片）就别把新选的盖回去
         if (pet.outfit === wanted) pet.outfit = assets.outfit?.id || null;
-        return assets;
+        return { ...assets, session: sessions.get(pet.agentId) };
     });
     ipcMain.on('deskpet:preview-ready', (event, report) => {
         previews?.ready(event.sender, report && typeof report === 'object' ? report : null);
