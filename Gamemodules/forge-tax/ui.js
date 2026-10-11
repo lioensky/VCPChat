@@ -42,7 +42,7 @@
             engine = {
                 getState: () => snapshot,
                 setState: state => { snapshot = state; },
-                saleValue: sw => Math.round(sw.value * (snapshot.relics.some(r => r.id === 'scrap') && !sw.broken && sw.type === 'iron' && sw.level === 0 ? 1.5 : 1))
+                saleValue: sw => Math.round(sw.value * (snapshot.relics.some(r => r.id === 'scrap') && !sw.broken && sw.level <= 5 ? 1.3 : 1))
             };
         } catch (error) {
             $('notice').textContent = '远程对局加载失败：' + error.message;

@@ -3,9 +3,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { Engine, RELICS } = require('../Gamemodules/forge-tax/engine');
 const make = () => new Engine({ seed: 12345, player: '测试铁匠' });
-test('完整状态隔离，24件遗物，初始三剑与零破碎率', () => {
+test('完整状态隔离，30件遗物，初始三剑与零破碎率', () => {
     const e = make(), s = e.getState();
-    assert.equal(RELICS.length, 24);
+    assert.equal(RELICS.length, 30);
     assert.equal(s.swords.length, 3);
     assert.equal(s.shops.relics.length, 3);
     assert.equal(s.shops.items.length, 5);
@@ -124,4 +124,48 @@ test('折中风险：初始零破碎，首次损坏后约5%，持续敲打继续
     e.roll = () => 2;
     e.dispatch({ type: 'hammer', swordId: sw.id, count: 5 });
     assert.ok(e.probabilities(sw)[0] > damaged);
+});
+test('刷新排除已持有遗物且当日三件不重复；消耗品仍出售', () => {
+    const e = make(); e.s.relics = RELICS.slice(0, 8).map(r => r.id);
+    for (let i = 0; i < 20; i++) {
+        e.s.day++; e.enterDay();
+        const ids = e.s.shops.relics.map(r => r.id);
+        assert.equal(new Set(ids).size, 3);
+        assert.ok(ids.every(id => !e.has(id)));
+    }
+    e.s.items.protect = 5;
+    e.s.day = 4; e.enterDay();
+    assert.ok(e.s.shops.items.some(i => i.id === 'protect'));
+});
+test('打磨布每次减损、拾荒每次按价值回收且不计收入', () => {
+    const e = make(); e.s.relics = ['cloth', 'magnet'];
+    e.roll = () => 1; e.s.swords[0].value = 1000;
+    e.dispatch({ type: 'hammer', swordId: 's1', count: 3 });
+    assert.equal(e.s.swords[0].value, 729);
+    e.roll = () => 0;
+    e.dispatch({ type: 'hammer', swordId: 's1', count: 1 });
+    assert.equal(e.s.cash, 109);
+    e.dispatch({ type: 'hammer', swordId: 's2', count: 1 });
+    assert.equal(e.s.cash, 209); assert.equal(e.s.income, 0);
+});
+test('清仓强化剑增值且残剑不加成；逆境呼吸保护损坏也充能', () => {
+    const e = make(); e.s.relics = ['scrap', 'damageFocus'];
+    const sw = e.s.swords[0]; sw.level = 5;
+    assert.equal(e.saleValue(sw), 130);
+    assert.equal(e.saleValue({ ...sw, broken: true }), 100);
+    e.roll = () => 1; sw.protection = true;
+    e.dispatch({ type: 'hammer', swordId: sw.id, count: 1 });
+    assert.equal(sw.focus, 3); assert.equal(sw.value, 100);
+});
+test('心流砧台安全成功增值；耐心刻刀仅消费一次；孤注风险和收益', () => {
+    const e = make(); e.s.relics = ['focusGain', 'patience', 'allIn'];
+    e.s.swords = [e.s.swords[0]]; e.random = () => .99; e.roll = () => 3;
+    const sw = e.s.swords[0]; sw.patience = true; sw.cracks = 1;
+    const risky = e.probabilities(sw)[0];
+    e.s.relics = ['focusGain', 'patience'];
+    assert.ok(e.probabilities(sw)[0] < risky);
+    e.s.relics.push('allIn');
+    e.hit(sw.id, true);
+    assert.equal(sw.value, Math.round(100 + 100 * 1.6 * 1.4 * 2));
+    assert.equal(sw.patience, false);
 });

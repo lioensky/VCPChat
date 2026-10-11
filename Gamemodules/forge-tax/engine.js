@@ -7,17 +7,17 @@
         ['start', '起手式', 1, '新剑第一锤额外获得2格专注。'],
         ['rhythm', '双拍节奏', 1, '连续两次维持后，下一普通锤必定成功。'],
         ['goggles', '护目镜', 1, '损坏权重降低20%。'],
-        ['cloth', '打磨布', 1, '每把剑首次实际损坏的价值损失减半。'],
+        ['cloth', '打磨布', 1, '每次实际损坏的价值损失减半。'],
         ['tongs', '稳固钳', 1, '损坏判定的裂痕增量降低35%。'],
         ['notes', '学徒笔记', 1, '强化等级低于5时，成功增值提高30%。'],
         ['bellows', '旧风箱', 1, '强化等级低于5时，成功权重提高25%。'],
         ['wax', '交货封蜡', 1, '上贡额外支付5%现金，不计入达标价值。'],
-        ['scrap', '清仓木牌', 1, '基础未强化铁剑上贡价值提高50%。'],
-        ['magnet', '拾荒磁铁', 1, '每日首次实际破碎获得100现金，不计排行榜收入。'],
+        ['scrap', '清仓木牌', 1, '强化等级不超过+5的非残剑，上贡价值提高30%。'],
+        ['magnet', '拾荒磁铁', 1, '每次实际破碎获得破碎前价值15%的现金，最低100；不计收入。'],
         ['salvage', '残刃契约', 2, '实际破碎留下33%价值残剑，不可强化或换遗物。'],
         ['quench', '冷淬水槽', 2, '大成功减少1层裂痕，不清除强化风险。'],
-        ['spark', '游走火星', 2, '普通锤有10%概率额外获得1格专注。'],
-        ['warm', '余温锤柄', 2, '专注结束保留1格专注。'],
+        ['spark', '游走火星', 2, '普通锤有25%概率额外获得1格专注。'],
+        ['warm', '余温锤柄', 2, '专注结束保留2格专注。'],
         ['compass', '分岔罗盘', 2, '成功时进化机会翻倍。'],
         ['gloves', '赌徒手套', 2, '大成功权重×1.8，破碎权重×1.5。'],
         ['anvil', '细工砧', 2, '普通成功增值×1.5，大成功增值×0.8。'],
@@ -27,7 +27,13 @@
         ['chain', '星火连锤', 3, '专注奖励由5锤增加至7锤。'],
         ['seal', '魔王御印', 3, '上贡首把剑按120%计入目标，支付金额不变。'],
         ['twin', '双生剑胚', 3, '每天额外领取一把铁剑。'],
-        ['crit', '终极赌徒', 3, '大成功本次增值×4；裂痕增量×1.8、破碎权重×1.8。']
+        ['crit', '终极赌徒', 3, '大成功本次增值×4；裂痕增量×1.8、破碎权重×1.8。'],
+        ['brace', '镇裂铁箍', 1, '破碎权重降低25%，大成功增值降低10%。'],
+        ['patience', '耐心刻刀', 1, '维持后下一次成功增值×1.4；不叠加。'],
+        ['focusGain', '心流砧台', 2, '专注安全锤的成功增值×1.6。'],
+        ['damageFocus', '逆境呼吸', 2, '普通锤损坏判定额外获得2格专注；被保护挡下也触发。'],
+        ['highRoll', '血契红锤', 2, '大成功增值×2，普通成功增值×0.8，破碎权重×1.3。'],
+        ['allIn', '孤注一掷', 3, '背包仅剩一把可强化剑时，成功增值×2，破碎权重×1.5。']
     ].map(([id, name, rarity, description]) => ({ id, name, rarity, description, cost: rarity }));
     const TYPES = {
         iron: { name: '铁剑', gain: 1, success: 1, critical: 1, risk: 1 },
@@ -92,7 +98,7 @@
             const count = 3 + this.s.pendingIron + (this.has('twin') ? 1 : 0);
             this.s.pendingIron = 0;
             for (let i = 0; i < count; i++) this.addSword();
-            const pool = [...RELICS];
+            const pool = RELICS.filter(relic => !this.has(relic.id));
             this.s.shops.relics = [];
             for (let i = 0; i < 3; i++) {
                 const index = Math.floor(this.random() * pool.length);
@@ -108,7 +114,9 @@
             const t = TYPES[sword.type];
             const risk = (sword.cracks * 4.5 + sword.pressure * 1.1) * t.risk;
             const w = [
-                risk * (this.has('gloves') ? 1.5 : 1) * (this.has('crit') ? 1.8 : 1),
+                risk * (this.has('gloves') ? 1.5 : 1) * (this.has('crit') ? 1.8 : 1)
+                    * (this.has('brace') ? 0.75 : 1) * (this.has('highRoll') ? 1.3 : 1)
+                    * (this.has('allIn') && this.s.swords.filter(s => !s.broken).length === 1 ? 1.5 : 1),
                 (14 + sword.level * 0.24 + sword.cracks * 0.3) * (this.has('goggles') ? 0.8 : 1),
                 Math.max(8, 29 - sword.momentum * 2),
                 47 * t.success * (sword.level < 5 && this.has('bellows') ? 1.25 : 1),
@@ -148,14 +156,17 @@
             if (result === 0 && !protectedHit) {
                 this.s.swords = this.s.swords.filter(s => s.id !== id);
                 if (this.has('salvage')) this.addSword(money(oldValue * 0.33), true);
-                if (this.has('magnet') && !this.s.daily.magnet) {
-                    this.s.daily.magnet = true; this.s.cash = money(this.s.cash + 100);
+                if (this.has('magnet')) {
+                    const recovered = Math.max(100, money(oldValue * 0.15));
+                    this.s.cash = money(this.s.cash + recovered);
+                    this.emit('relic', { id: 'magnet', message: `拾荒磁铁回收现金 ${recovered}` });
                 }
             } else if (result === 1 && !protectedHit) {
-                const fraction = this.has('cloth') && !sword.cloth ? 0.1 : 0.2;
+                const fraction = this.has('cloth') ? 0.1 : 0.2;
                 sword.value = money(sword.value * (1 - fraction)); sword.cloth = true;
             } else if (result === 2) {
                 sword.maintains++;
+                if (this.has('patience')) sword.patience = true;
                 sword.momentum = Math.min(4, sword.momentum + 0.5);
             } else if (result >= 3) {
                 const critical = result === 4;
@@ -163,6 +174,12 @@
                 if (sword.level < 5 && this.has('notes')) gain *= 1.3;
                 if (this.has('anvil')) gain *= critical ? 0.8 : 1.5;
                 if (critical && this.has('crit')) gain *= 4;
+                if (critical && this.has('brace')) gain *= 0.9;
+                if (this.has('highRoll')) gain *= critical ? 2 : 0.8;
+                if (safe && this.has('focusGain')) gain *= 1.6;
+                if (sword.patience && this.has('patience')) gain *= 1.4;
+                sword.patience = false;
+                if (this.has('allIn') && this.s.swords.filter(s => !s.broken).length === 1) gain *= 2;
                 if (sword.surge) { gain *= 1.8; sword.surge = false; }
                 sword.value = money(sword.value + gain);
                 sword.level = Math.min(99, sword.level + (critical ? 2 : 1));
@@ -188,8 +205,9 @@
             if (!alive) return false;
             if (!safe) {
                 sword.focus += 1;
+                if (result === 1 && this.has('damageFocus')) sword.focus += 2;
                 if (sword.hits === 1 && this.has('start')) sword.focus += 2;
-                if (this.has('spark') && this.random() < 0.1) {
+                if (this.has('spark') && this.random() < 0.25) {
                     sword.focus++; this.emit('relic', { id: 'spark', message: '游走火星：额外1格专注' });
                 }
                 if (sword.focus >= 10) {
@@ -197,7 +215,7 @@
                     const count = this.has('chain') ? 7 : 5;
                     this.emit('focus', { swordId: id, count });
                     for (let i = 0; i < count; i++) this.hit(id, true);
-                    sword.focus = this.has('warm') ? 1 : 0;
+                    sword.focus = this.has('warm') ? 2 : 0;
                 }
             }
             return true;
@@ -308,7 +326,7 @@
             }
         }
         saleValue(sword) {
-            return money(sword.value * (this.has('scrap') && !sword.broken && sword.type === 'iron' && sword.level === 0 ? 1.5 : 1));
+            return money(sword.value * (this.has('scrap') && !sword.broken && sword.level <= 5 ? 1.3 : 1));
         }
     }
     const exported = { Engine, RELICS, TYPES, ITEMS, VERSION };

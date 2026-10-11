@@ -81,19 +81,23 @@ async function openWindow(owner = HUMAN) {
     try { await win.loadFile(PAGE); win.show(); win.focus(); }
     catch (error) { if (!win.isDestroyed()) win.destroy(); throw error; }
 }
-async function processToolCall(args = {}, context = {}) {
+async function executeTool(args = {}) {
     initialize();
     const who = identity(args);
     if (args.command === 'OpenWindow') {
         await openWindow(who.owner);
-        return { content: [{ type: 'text', text: JSON.stringify({ ok: true, message: '观看窗口已打开' }) }] };
+        return { ok: true, message: '观看窗口已打开' };
     }
     // Identity cannot be overridden by any numbered step.
     const output = await getStore().execute(who.owner, { ...args, player: who.name });
     if (args.openWindow === true || args.openWindow === 'true') await openWindow(who.owner);
-    return { content: [{ type: 'text', text: JSON.stringify(output) }] };
+    return output;
+}
+async function processToolCall(args = {}) {
+    const { formatResult } = require('./tool-result.cjs');
+    return formatResult(await executeTool(args));
 }
 function cleanup() {
     for (const win of windows.values()) if (!win.isDestroyed()) win.destroy();
 }
-module.exports = { initialize, openWindow, processToolCall, cleanup, identity };
+module.exports = { initialize, openWindow, processToolCall, cleanup, identity, executeTool };

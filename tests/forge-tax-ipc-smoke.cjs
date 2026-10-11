@@ -9,7 +9,7 @@ app.on('window-all-closed', () => {});
 const service = require('../Gamemodules/forge-tax/service.cjs');
 const plugin = require('../VCPDistributedServer/Plugin/ForgeTax/forge-tax-service');
 async function call(args) {
-    return JSON.parse((await plugin.processToolCall({ maid: 'Kerr', ...args }, {})).content[0].text);
+    return service.executeTool({ maid: 'Kerr', ...args });
 }
 async function ready(win) {
     for (let i = 0; i < 100; i++) {
@@ -22,6 +22,10 @@ app.whenReady().then(async () => {
     await assert.rejects(() => call({ command: 'StartGame', maid: '' }), /maid/);
     await assert.rejects(() => call({ command1: 'GetState', maid1: 'Nova' }), /顶层maid/);
     assert.equal((await call({ command: 'StartGame', seed: 4 })).ok, true);
+    const textResult = await plugin.processToolCall({ maid: 'Kerr', command: 'GetState' }, {});
+    assert.equal(textResult.content[0].type, 'text');
+    assert.ok(textResult.content[0].text.includes('### 背包'));
+    assert.ok(!textResult.content[0].text.includes('\"results\":'));
     assert.equal((await call({ command: 'GetState', maid: 'Nova' })).state, null);
     await service.openWindow('agent:Kerr');
     let win = BrowserWindow.getAllWindows()[0];
