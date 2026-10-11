@@ -98,3 +98,20 @@ test('大厅注册完整且霓虹模块资源真实存在', () => {
         assert.ok(fs.existsSync(path.join(root, `Gamemodules/vcp-neon-game/js/${file}.js`)));
     }
 });
+test('ForgeTax窗口独立复用且真实资源齐全', async () => {
+    const before = windows.length;
+    assert.equal((await launch(sender(), 'forgeTax')).success, true);
+    assert.equal((await launch(sender(), 'forgeTax')).success, true);
+    assert.equal(windows.length, before + 1);
+    const win = windows[before];
+    assert.equal(win.file, path.join(root, 'Gamemodules/forge-tax/index.html'));
+    assert.equal(win.options.webPreferences.nodeIntegration, false);
+    assert.equal(win.options.webPreferences.sandbox, true);
+    assert.equal(win.options.webPreferences.preload, undefined);
+    for (const name of ['index.html', 'engine.js', 'ui.js', 'style.css']) {
+        assert.ok(fs.existsSync(path.join(root, 'Gamemodules/forge-tax', name)));
+    }
+    win.destroy();
+    assert.equal((await launch(sender(), 'forgeTax')).success, true);
+    assert.equal(windows.length, before + 2);
+});

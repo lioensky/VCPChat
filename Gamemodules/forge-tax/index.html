@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'">
+<title>ForgeTax · 终极赌徒</title>
+<link rel="stylesheet" href="style.css">
+<script defer src="engine.js"></script>
+<script defer src="ui.js"></script>
+</head>
+<body>
+<header><div><small>THE DEVIL PAYS. YOU GAMBLE.</small><h1>Forge<span>Tax</span> <em>锻造模拟器</em></h1></div><button id="help">玩法说明</button><button id="leaderboard">本机排行榜</button><button id="new">新的一局</button></header>
+<section id="stats" aria-label="当前局状态"></section>
+<p id="notice" role="status" aria-live="polite"></p>
+<main>
+<section class="panel bag"><h2>⚔ 背包 <small id="bag-count"></small></h2><p class="hint">点击卡片选中锻造；勾选剑用于上贡。铁剑兑换由商店自动选取未敲过的原料。</p><div id="inventory"></div><div class="tribute"><strong id="tribute-total"></strong><button id="tribute">上贡并结束今天</button></div></section>
+<section class="center">
+<section class="panel forge"><h2>🔥 锻造台</h2><div id="anvil"></div><div class="hammer-buttons"><button data-hits="1">锤 1 下</button><button data-hits="3">锤 3 下</button><button data-hits="5">锤 5 下</button><button data-hits="10">锤 10 下</button></div><p class="hint">普通锤满10格专注，自动追加5次安全锤。负面判定仍累积风险，只拦截实际后果。</p><div id="items"></div><button id="slay" class="danger" hidden>举起 +99 圣剑 · 弑杀魔王</button></section>
+<section class="panel info-panel" id="info-panel" hidden aria-labelledby="info-title"><h2 id="info-title"></h2><div id="info-body"></div><button id="info-close">收起 / 取消</button></section>
+<section class="panel"><h2>✦ 遗物构筑 <small>固定八槽</small></h2><div id="relics"></div></section>
+<section class="panel"><h2>锻造记录</h2><ol id="log" aria-live="polite"></ol></section>
+</section>
+<aside class="panel"><h2>遗物机 <small>每天刷新</small></h2><div id="relic-shop"></div><h2>道具商店</h2><p id="refresh" class="hint"></p><div id="item-shop"></div></aside>
+</main>
+
+<footer>ForgeTax 首版 · 本机自动存档 / 本机成绩 · AI 规则接口预留，尚未接入 IPC</footer>
+</body>
+</html>

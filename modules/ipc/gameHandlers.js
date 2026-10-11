@@ -6,7 +6,11 @@ const { fileURLToPath } = require('url');
 const ROOT = path.resolve(__dirname, '../..');
 const HALL = path.join(ROOT, 'Gamemodules/game.html');
 let registered = false;
-let neonWindow = null;
+const gameWindows = new Map();
+const LOCAL_GAMES = Object.freeze({
+    neon: { title: 'VCP Neon Striker', page: 'Gamemodules/vcp-neon-game/index.html' },
+    forgeTax: { title: 'ForgeTax · 锻造模拟器', page: 'Gamemodules/forge-tax/index.html' },
+});
 
 function isHallSender(event) {
     try {
@@ -45,26 +49,28 @@ async function openGame(gameId) {
         }
         return { success: true, gameId };
     }
-    if (gameId !== 'neon') return { success: false, error: '未知游戏。' };
-    if (neonWindow && !neonWindow.isDestroyed()) {
-        if (neonWindow.isMinimized()) neonWindow.restore();
-        neonWindow.show();
-        neonWindow.focus();
+    if (!Object.prototype.hasOwnProperty.call(LOCAL_GAMES, gameId)) return { success: false, error: '未知游戏。' };
+    const game = LOCAL_GAMES[gameId];
+    const existing = gameWindows.get(gameId);
+    if (existing && !existing.isDestroyed()) {
+        if (existing.isMinimized()) existing.restore();
+        existing.show();
+        existing.focus();
         return { success: true, gameId };
     }
     const win = new BrowserWindow({
         width: 1280, height: 860, minWidth: 640, minHeight: 480,
-        title: 'VCP Neon Striker',
+        title: game.title,
         backgroundColor: '#04040b', show: false,
         webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
     });
-    neonWindow = win;
+    gameWindows.set(gameId, win);
     win.setMenu(null);
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', event => event.preventDefault());
-    win.on('closed', () => { if (neonWindow === win) neonWindow = null; });
+    win.on('closed', () => { if (gameWindows.get(gameId) === win) gameWindows.delete(gameId); });
     try {
-        await win.loadFile(path.join(ROOT, 'Gamemodules/vcp-neon-game/index.html'));
+        await win.loadFile(path.join(ROOT, game.page));
         if (win.isDestroyed()) throw new Error('游戏窗口已关闭。');
         win.show();
         win.focus();
