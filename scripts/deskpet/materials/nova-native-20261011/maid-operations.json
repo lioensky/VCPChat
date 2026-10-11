@@ -284,5 +284,36 @@
         }
       ]
     }
+  },
+  {
+    "op": "rig_deform",
+    "request": {
+      "changes": [
+        {
+          "target": "mesh:ArtMeshFace2",
+          "key": {
+            "ParamAngleX": 0
+          },
+          "operations": [
+            {
+              "type": "translate",
+              "delta": [
+                0.02681992337164751,
+                0.030303030303030304
+              ],
+              "selection": {
+                "rect": [
+                  -0.5,
+                  0.6,
+                  1.5,
+                  1.5
+                ],
+                "feather": 0.18
+              }
+            }
+          ]
+        }
+      ]
+    }
   }
 ]
