@@ -284,44 +284,5 @@
         }
       ]
     }
-  },
-  {
-    "op": "rig_deform",
-    "request": {
-      "changes": [
-        {
-          "target": "mesh:ArtMeshEyelashL",
-          "key": {
-            "ParamEyeLOpen": 1,
-            "ParamEyeLSmile": 0
-          },
-          "operations": [
-            {
-              "type": "translate",
-              "delta": [
-                0,
-                0.14
-              ]
-            }
-          ]
-        },
-        {
-          "target": "mesh:ArtMeshEyelashL",
-          "key": {
-            "ParamEyeLOpen": 1.3,
-            "ParamEyeLSmile": 0
-          },
-          "operations": [
-            {
-              "type": "translate",
-              "delta": [
-                0,
-                0.14
-              ]
-            }
-          ]
-        }
-      ]
-    }
   }
 ]
