@@ -16,11 +16,10 @@ html .side-chat-model-search:where(.vcp-ui-scope, .vcp-ui-scope *) {
 }
 
 html .side-chat-model-list:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    max-height: 220px;
+    display: block;
+    max-height: 260px;
     overflow-y: auto;
+    overflow-x: hidden;
 }
 
 html .side-chat-model-group:where(.vcp-ui-scope, .vcp-ui-scope *) {
@@ -125,10 +124,15 @@ html .side-chat-model-popover:where(.vcp-ui-scope, .vcp-ui-scope *) {
 }
 
 html .side-chat-model-list .side-chat-model-item:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    min-height: 26px;
+    box-sizing: border-box;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    padding: 4px 8px;
+    padding: 3px 8px;
     border-radius: 6px;
     font-size: calc(var(--vcp-ui-font-size) - 1px);
     line-height: 20px;
@@ -142,14 +146,4 @@ html .side-chat-model-list .side-chat-model-item:focus-visible:where(.vcp-ui-sco
     outline: none;
 }
 
-html .side-chat-model-list .side-chat-model-item.active:where(.vcp-ui-scope, .vcp-ui-scope *)::before {
-    content: "✓";
-    display: inline-block;
-    width: 14px;
-}
-
-html .side-chat-model-list .side-chat-model-item:not(.active):where(.vcp-ui-scope, .vcp-ui-scope *)::before {
-    content: "";
-    display: inline-block;
-    width: 14px;
-}
+/* 对勾与占位已由通用的 span.picker-check 元素统一呈现，不再需要 ::before 伪元素 */
