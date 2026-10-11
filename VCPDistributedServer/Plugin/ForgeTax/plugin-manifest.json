@@ -1,0 +1,59 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "ForgeTax",
+  "displayName": "ForgeTax 锻造遥控器",
+  "version": "1.0.0",
+  "description": "单人赌徒锻造游戏。按顶层maid名字独立存档，支持完整状态、购物用道具锻造串指令和观看窗口。",
+  "author": "Ryan & Kerr",
+  "pluginType": "hybridservice",
+  "entryPoint": { "type": "nodejs", "script": "forge-tax-service.js" },
+  "communication": { "protocol": "direct", "timeout": 60000 },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "GetState",
+        "description": "查询当前Agent完整状态：runId/revision、背包swords及概率、遗物relics、道具items、现金cash、累计income、每日target/lives和shops。无局时返回提示，不自动开局。顶层maid必填，以名字区分存档，不是防冒名鉴权。"
+      },
+      {
+        "commandIdentifier": "StartGame",
+        "description": "无存档则新建，有存档则读取继续（包括结束局）；只有overwrite=true才重开。seed仅新建有效，展示名默认maid。openWindow=true同时打开观看窗口。"
+      },
+      {
+        "commandIdentifier": "OpenWindow",
+        "description": "打开/聚焦当前Agent的只读观看窗口，不新开局、不改存档。此命令单独调用。"
+      },
+      {
+        "commandIdentifier": "Hammer",
+        "description": "swordId必需，count=1/3/5/10。可提供runId与revision校验。十连逐锤结算但整次只播一段聚合音效。"
+      },
+      {
+        "commandIdentifier": "BuyItem",
+        "description": "itemId=iron/watch/protect/bless/trade。可用现金购买，每件每轮3次，价格1/2/4倍。"
+      },
+      {
+        "commandIdentifier": "UseItem",
+        "description": "itemId=protect/bless/trade；protect/bless需swordId。怀表用Watch命令。"
+      },
+      {
+        "commandIdentifier": "BuyRelic",
+        "description": "relicId及swordIds必需。swordIds接受JSON数组或逗号ID列表。使用1/2/3把从未锻造铁剑，八槽满时replaceId必需。"
+      },
+      {
+        "commandIdentifier": "Tribute",
+        "description": "swordIds必需，可为空数组；上贡结束今天，未达标扣命，累计两次死亡。旧现金不能补贡。"
+      },
+      {
+        "commandIdentifier": "Watch",
+        "description": "使用后悔怀表撤销最近可回退失败，恢复附带收益与随机状态。"
+      },
+      {
+        "commandIdentifier": "Slay",
+        "description": "背包有+99圣剑时主动弑王，结束本局。"
+      },
+      {
+        "commandIdentifier": "Serial",
+        "description": "不传command=Serial，而用command1/itemId1、command2/itemId2/swordId2等从1连续编号，最多32步。整串占用同局队列，遇错即停并保留成功步骤。返回results/events/state/failedStep/skipped。公共revision只约束第一步，公共runId约束所有步。例如command1=BuyItem,itemId1=protect;command2=UseItem,itemId2=protect,swordId2=s1;command3=Hammer,swordId3=s1,count3=10。不要重复重放已经成功的购买。"
+      }
+    ]
+  }
+}

@@ -106,7 +106,7 @@
         }
         probabilities(sword) {
             const t = TYPES[sword.type];
-            const risk = (sword.cracks * 7 + sword.pressure * 1.6) * t.risk;
+            const risk = (sword.cracks * 4.5 + sword.pressure * 1.1) * t.risk;
             const w = [
                 risk * (this.has('gloves') ? 1.5 : 1) * (this.has('crit') ? 1.8 : 1),
                 (14 + sword.level * 0.24 + sword.cracks * 0.3) * (this.has('goggles') ? 0.8 : 1),
@@ -137,7 +137,7 @@
                 this.emit('relic', { id: 'ember', message: '不灭余烬：破碎改为损坏' });
             }
             sword.hits++;
-            sword.pressure += 0.8 + sword.level * 0.06;
+            sword.pressure += 0.5 + sword.level * 0.04;
             if (result === 0 || result === 1) {
                 sword.cracks += (this.has('tongs') ? 0.65 : 1) * (this.has('crit') ? 1.8 : 1);
                 sword.momentum = Math.max(-3, sword.momentum - 1);

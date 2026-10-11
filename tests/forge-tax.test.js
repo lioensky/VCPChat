@@ -114,13 +114,13 @@ test('圣剑最多99级，超级成功仅将本次增值乘四', () => {
     assert.equal(sw.level, 99);
     assert.equal(sw.value, Math.round(100 + (80 + 100 * .48 + 98 * 22) * 4));
 });
-test('风险加强：初始零破碎，首次损坏后超过7%，持续敲打继续升高', () => {
+test('折中风险：初始零破碎，首次损坏后约5%，持续敲打继续升高', () => {
     const e = make(), sw = e.s.swords[0];
     assert.equal(e.probabilities(sw)[0], 0);
     e.roll = () => 1;
     e.dispatch({ type: 'hammer', swordId: sw.id, count: 1 });
     const damaged = e.probabilities(sw)[0];
-    assert.ok(damaged > .07 && damaged < .09);
+    assert.ok(damaged > .045 && damaged < .055);
     e.roll = () => 2;
     e.dispatch({ type: 'hammer', swordId: sw.id, count: 5 });
     assert.ok(e.probabilities(sw)[0] > damaged);

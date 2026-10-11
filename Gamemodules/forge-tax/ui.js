@@ -1,4 +1,4 @@
-(() => {
+(async () => {
     'use strict';
     const { Engine, ITEMS } = window.ForgeTax;
     const SAVE = 'forge-tax-save-v1', BOARD = 'forge-tax-board-v1';
@@ -23,6 +23,8 @@
     updateSoundButton();
     const fmt = n => '¥' + Math.round(n).toLocaleString('zh-CN');
     const escape = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const remote = window.forgeTaxRemote;
+    let readOnly = false, unsubscribe = null;
     let engine, selected, checked = new Set(), logs = [], persistenceWarning = '';
     try {
         const stored = localStorage.getItem(SAVE);
@@ -31,7 +33,25 @@
         engine = new Engine();
         persistenceWarning = '存档无法读取，已创建临时新局；旧存档不会在首次操作前覆盖：' + error.message;
     }
+    if (remote) {
+        try {
+            const initial = await remote.getState();
+            if (!initial.ok || !initial.state) throw new Error(initial.error || '尚无对局，请由Agent开局');
+            readOnly = initial.readOnly;
+            let snapshot = initial.state;
+            engine = {
+                getState: () => snapshot,
+                setState: state => { snapshot = state; },
+                saleValue: sw => Math.round(sw.value * (snapshot.relics.some(r => r.id === 'scrap') && !sw.broken && sw.type === 'iron' && sw.level === 0 ? 1.5 : 1))
+            };
+        } catch (error) {
+            $('notice').textContent = '远程对局加载失败：' + error.message;
+            document.querySelectorAll('button').forEach(button => { button.disabled = true; });
+            return;
+        }
+    }
     function persist() {
+        if (remote) return;
         try { localStorage.setItem(SAVE, JSON.stringify(engine.exportSave())); persistenceWarning = ''; }
         catch (error) { persistenceWarning = '自动保存失败，本次进度仅存在内存中：' + error.message; }
     }
@@ -48,7 +68,7 @@
     }
     function recordScore() {
         const s = engine.getState();
-        if (s.status === 'playing') return;
+        if (remote || s.status === 'playing') return;
         try {
             const rows = JSON.parse(localStorage.getItem(BOARD) || '[]');
             if (!Array.isArray(rows)) throw new Error('排行榜格式无效');
@@ -68,19 +88,38 @@
         if (e.type === 'end') return e.ending;
         return e.message || (e.type === 'relicPurchase' ? '遗物兑换完成' : e.type === 'purchase' ? `购买完成，花费${fmt(e.price)}` : '操作完成');
     }
-    function act(action) {
-        const result = engine.dispatch({ ...action, revision: action?.revision ?? engine.getState().revision });
-        if (!result.ok) { $('notice').textContent = result.error; return result; }
+    function consume(result, action = {}) {
+        if (remote && result.state) engine.setState(result.state);
+        if (!result.ok && !result.partial) {
+            if (result.state) render();
+            $('notice').textContent = result.error || '操作失败'; return result;
+        }
         for (const e of result.events) logs.unshift({ text: eventText(e), cls: e.type === 'hammer' ? (e.result === 'break' || e.result === 'damage') && !e.blocked ? 'bad' : e.result === 'critical' || e.result === 'success' ? 'good' : '' : e.type === 'end' ? 'bad' : '' });
         logs = logs.slice(0, 100);
-        void sound.playResult(result);
+        void sound.playResult({ ...result, ok: true });
         closePanel(); persist(); recordScore(); render();
         if (action.type === 'hammer') $('anvil').querySelector('.blade-icon')?.classList.add('strike');
         if (result.state.status !== 'playing') modal(result.state.status === 'victory' ? '真结局 · 魔王已死' : 'Game Over · 魔王处决', `<p>第 ${result.state.day} 天 · 累计收入 <strong>${fmt(result.state.income)}</strong></p><p>最高单剑价值 ${fmt(result.state.maxSword)}</p><p>成绩已尝试记录到本机排行榜。可以查看背包，或开始新局。</p>`);
         return result;
     }
+    async function act(action) {
+        if (remote) {
+            if (readOnly) { $('notice').textContent = 'AI对局只读观看，请由对应Agent操作。'; return { ok: false }; }
+            const commands = { hammer: 'Hammer', use: 'UseItem', buyItem: 'BuyItem', buyRelic: 'BuyRelic', tribute: 'Tribute', watch: 'Watch', slay: 'Slay' };
+            const result = await remote.command({
+                ...action, command: commands[action.type],
+                runId: engine.getState().runId,
+                revision: action.revision ?? engine.getState().revision
+            });
+            // State/events are consumed by the single subscription, not again here.
+            if (!result.ok) $('notice').textContent = result.error || '操作失败';
+            return result;
+        }
+        return consume(engine.dispatch({ ...action, revision: action?.revision ?? engine.getState().revision }), action);
+    }
+    if (remote) unsubscribe = remote.onUpdate(result => consume(result));
     function render() {
-        const s = engine.getState(), playing = s.status === 'playing';
+        const s = engine.getState(), playing = s.status === 'playing' && !readOnly;
         checked = new Set([...checked].filter(id => s.swords.some(sword => sword.id === id)));
         if (!s.swords.some(sword => sword.id === selected)) selected = s.swords.find(sword => !sword.broken)?.id || s.swords[0]?.id;
         $('stats').innerHTML = [
@@ -160,7 +199,12 @@
     on($('info-close'), 'click', closePanel);
     on($('new'), 'click', () => {
         modal('新的一局', '<p>开始后覆盖当前自动存档。未结束旧局不提交成绩。</p><label>锻造师名字<input id="player-name" maxlength="32" value="莱恩"></label><p><button id="start-run">确认开局</button></p>');
-        $('start-run').addEventListener('click', () => {
+        $('start-run').addEventListener('click', async () => {
+            if (remote) {
+                const result = await remote.command({ command: 'StartGame', overwrite: true, player: $('player-name').value.trim() || '莱恩' });
+                if (!result.ok) $('notice').textContent = result.error;
+                return;
+            }
             engine = new Engine({ player: $('player-name').value.trim() || '莱恩' });
             selected = null; checked.clear(); logs = []; persist(); render(); closePanel();
         }, { once: true });
@@ -175,8 +219,9 @@
     window.forgeTaxGame = Object.freeze({
         getState: () => engine.getState(),
         dispatch: action => act(action),
-        exportSave: () => engine.exportSave()
+        exportSave: () => remote ? null : engine.exportSave()
     });
-    window.addEventListener('pagehide', () => { scope.abort(); sound.dispose(); }, { once: true });
+    window.addEventListener('pagehide', () => { scope.abort(); unsubscribe?.(); sound.dispose(); }, { once: true });
+    $('new').disabled = readOnly;
     render(); recordScore();
 })();

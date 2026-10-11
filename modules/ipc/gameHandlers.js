@@ -24,6 +24,10 @@ function isHallSender(event) {
 }
 
 async function openGame(gameId) {
+    if (gameId === 'forgeTax') {
+        await require('../../Gamemodules/forge-tax/service.cjs').openWindow();
+        return { success: true, gameId };
+    }
     if (gameId === 'blade') {
         const service = require('../../VCPDistributedServer/Plugin/BladeGame/blade-service');
         service.initialize();

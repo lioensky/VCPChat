@@ -47,11 +47,11 @@ app.whenReady().then(async () => {
     assert.deepEqual(inline, { helpVisible: true, interactive: true, confirmVisible: true,
         cancelled: true, invalidated: true, advanced: true, dialogs: 0 });
     console.log('FORGETAX_NONMODAL_PASS', JSON.stringify(inline));
-    const result = await win.webContents.executeJavaScript(`(() => {
+    const result = await win.webContents.executeJavaScript(`(async () => {
         localStorage.removeItem('forge-tax-save-v1');
         const api = window.forgeTaxGame;
         const before = api.getState();
-        const result = api.dispatch({type:'hammer', swordId:before.swords[0].id, count:1, revision:before.revision});
+        const result = await api.dispatch({type:'hammer', swordId:before.swords[0].id, count:1, revision:before.revision});
         return {
             ok:result.ok, revision:result.state.revision,
             slots:document.querySelectorAll('.relic-slot').length,
