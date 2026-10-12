@@ -12,6 +12,7 @@
     }
     let matchId = null, observation = null, selected = new Set(), busy = false;
     let pending = null, timer = null, disposed = false, painted = '';
+    let runtimeRunning = false;
     const status = text => { $('status').textContent = text; };
     async function call(name, request) {
         if (!api?.[name]) throw new Error('牌桌接口未连接，请重启VChat。');
@@ -34,11 +35,14 @@
         $('play').disabled = !turn || observation.phase !== 'playing' || selected.size === 0;
         $('pass').disabled = !turn || !observation.canPass;
         $('create').disabled = busy || pending !== null || (observation && observation.phase !== 'finished');
+        $('next').disabled = busy || pending !== null || !observation
+            || observation.phase !== 'finished' || runtimeRunning;
         $('retry').hidden = pending === null;
         $('retry').disabled = busy;
     }
     function paint(result) {
         observation = result.observation;
+        runtimeRunning = result.runtime.running === true;
         const key = JSON.stringify([observation.revision, result.runtime, result.seats]);
         if (key !== painted) {
             painted = key;
@@ -63,7 +67,7 @@
                     bid: event.bid ? `叫${event.bid}分` : '不叫',
                     pass: '不出', play: `出牌 ${(event.cards || []).map(label).join(' ')}`,
                     landlord: '成为地主', redeal: '全员不叫，重新发牌',
-                    finished: '对局结束',
+                    finished: '对局结束', 'new-match': '新一局开始，保留原桌交流上下文',
                 })[event.type] + (event.speech ? `\n“${event.speech}”` : '');
                 if (event.emoteUrl) {
                     const image = document.createElement('img');
@@ -135,6 +139,18 @@
                 contextMessageWindowSize: Number($('context-size').value),
             });
             matchId = result.matchId; painted = '';
+            try { localStorage.setItem(SAVE, matchId); } catch {}
+            await refresh();
+        } catch (error) { status(error.message); }
+        finally { busy = false; controls(); }
+    });
+    listen($('next'), async () => {
+        if (busy || pending || observation?.phase !== 'finished' || runtimeRunning) return;
+        busy = true; controls();
+        try {
+            const table = await call('nextGameTable', { matchId });
+            matchId = table.matchId; painted = ''; selected.clear();
+            $('speech').value = ''; $('emote').value = '';
             try { localStorage.setItem(SAVE, matchId); } catch {}
             await refresh();
         } catch (error) { status(error.message); }

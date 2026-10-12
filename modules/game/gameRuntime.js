@@ -60,6 +60,23 @@ class GameRuntime {
         });
         return { ...match, groupId: group.id, topicId: group.topics[0].id };
     }
+    async nextTable(matchId) {
+        if (this.getState(matchId).running) {
+            throw Object.assign(new Error('当前回复尚未结束，请稍后再来一局。'), { code: 'REQUEST_ACTIVE' });
+        }
+        const previous = await this.gameService.read(matchId);
+        if (previous.state.phase !== 'finished') {
+            throw Object.assign(new Error('当前对局尚未结束。'), { code: 'MATCH_NOT_FINISHED' });
+        }
+        const group = await this.groupChat.getAgentGroupConfig(previous.groupId);
+        if (group?.mode !== 'game' || !group.topics?.some(topic => topic.id === previous.topicId)) {
+            throw Object.assign(new Error('原游戏后台会话不可用。'), { code: 'SESSION_UNAVAILABLE' });
+        }
+        await this.orchestrator.syncEvents(matchId);
+        const table = await this.gameService.nextMatch(matchId);
+        await this.orchestrator.syncEvents(table.matchId);
+        return table;
+    }
     async submitHuman(matchId, request) {
         const result = await this.gameService.submit(matchId, 0, request);
         // Only synchronize here. Caller starts scheduling without awaiting a whole model turn.

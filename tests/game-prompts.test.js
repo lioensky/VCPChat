@@ -13,7 +13,7 @@ test('邀请仅包含Markdown当前状态，不重复公开历史和工具说明
     const invitation = formatInvite({ observation, toolInstructions: 'DUPLICATE_TOOL_TEXT' });
     assert.match(invitation, /\[系统邀请指令:\]/);
     assert.match(invitation, /## 斗地主 · 当前状态/);
-    assert.match(invitation, /你的手牌：`C4`/);
+    assert.match(invitation, /你的手牌：梅花4〔`C4`〕/);
     assert.match(invitation, /三带二/);
     assert.match(invitation, /合法压牌或不出/);
     assert.doesNotMatch(invitation, /HISTORY_SENTINEL|OLD_SPEECH|old\.example|DUPLICATE_TOOL_TEXT|omittedEventCount|"hand":/);

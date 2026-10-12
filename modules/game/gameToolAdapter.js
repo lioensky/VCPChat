@@ -10,7 +10,16 @@ class GameToolAdapter {
     }
     async processToolCall(args = {}, executionContext = {}) {
         if (!args || typeof args !== 'object' || Array.isArray(args)) throw new TypeError('Invalid tool arguments.');
-        const binding = await this.authorize(args, executionContext);
+        let binding;
+        try {
+            binding = await this.authorize(args, executionContext);
+        } catch (error) {
+            if (!['MISSING_DECISION_BINDING', 'INVALID_DECISION_BINDING'].includes(error.code)) throw error;
+            return this.result({
+                accepted: false, code: error.code, message: error.message,
+                stateChanged: false,
+            });
+        }
         if (!binding || ![1, 2].includes(binding.seat)
             || typeof binding.matchId !== 'string' || typeof binding.decisionId !== 'string'
             || !Number.isInteger(binding.revision)) {

@@ -24,6 +24,17 @@ test('正式插件复用署名：非法叫分修正、成功重试返回原结�
         decisionId: observation.decisionId, revision: '0',
         submissionId: 'bid1', action: 'bid', bid: '9',
     };
+    for (const revision of [undefined, null, '']) {
+        const result = decode(await controller.processToolCall({ ...args, revision }));
+        assert.equal(result.code, 'MISSING_DECISION_BINDING');
+        assert.equal(result.stateChanged, false);
+    }
+    for (const change of [{ decisionId: 'event-1' }, { revision: 1 }, { revision: false }]) {
+        const result = decode(await controller.processToolCall({ ...args, ...change }));
+        assert.equal(result.code, 'INVALID_DECISION_BINDING');
+        assert.equal(result.accepted, false);
+    }
+    assert.equal((await service.read(matchId)).state.revision, 0);
     assert.equal(decode(await controller.processToolCall(args)).code, 'INVALID_BID');
     args.bid = '3';
     const accepted = decode(await controller.processToolCall(args));

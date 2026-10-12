@@ -78,11 +78,49 @@ class GameService {
         await this.write(record);
         return { matchId, observation: rules.observation(record.state, 0) };
     }
+    async nextMatch(previousMatchId) {
+        return this.serial(previousMatchId, async () => {
+            const previous = await this.read(previousMatchId);
+            if (previous.state.phase !== 'finished') {
+                throw error('MATCH_NOT_FINISHED', '当前对局尚未结束，不能开始下一局。');
+            }
+            // Deterministic successor survives a crash between child save and parent link.
+            const hex = createHash('sha256').update(`vgame-next:${previousMatchId}`).digest('hex').slice(0, 32);
+            const matchId = `match-${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+            let record;
+            try {
+                record = await this.read(matchId);
+                if (record.previousMatchId !== previousMatchId
+                    || record.groupId !== previous.groupId || record.topicId !== previous.topicId) {
+                    throw error('SUCCESSOR_CONFLICT', '下一局存档关联不一致。');
+                }
+            } catch (failure) {
+                if (failure.code !== 'ENOENT') throw failure;
+                const state = rules.create({ firstSeat: 0, integer: this.integer });
+                const event = { id: 'event-1', phase: 'bidding', type: 'new-match', matchId, previousMatchId };
+                state.events.push(event);
+                record = {
+                    schemaVersion: 1, gameTypeId: 'doudizhu', matchId, previousMatchId,
+                    seats: structuredClone(previous.seats),
+                    groupId: previous.groupId, topicId: previous.topicId,
+                    state, submissions: {}, pendingEvents: [event], createdAt: Date.now(),
+                };
+                await this.write(record);
+            }
+            if (previous.nextMatchId !== matchId) {
+                previous.nextMatchId = matchId;
+                await this.write(previous);
+            }
+            return { matchId, groupId: record.groupId, topicId: record.topicId,
+                observation: await this.getObservation(matchId, 0) };
+        });
+    }
     async getObservation(matchId, authorizedSeat) {
         const record = await this.read(matchId);
         return {
             matchId, decisionId: `${matchId}:${record.state.revision}`,
             ...rules.observation(record.state, authorizedSeat),
+            players: record.seats.map((player, seat) => ({ seat, name: player.name || `座位${seat + 1}` })),
         };
     }
     async submit(matchId, authorizedSeat, request) {

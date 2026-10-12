@@ -26,10 +26,20 @@ function createSignatureAuthorizer(gameService) {
         if (signatures.some(signature => resolveSeat(record.seats, signature) !== seat)) {
             throw new Error('maid和valet署名指向不同座位。');
         }
+        if (typeof args.decisionId !== 'string' || !args.decisionId.trim()
+            || args.revision === undefined || args.revision === null
+            || (typeof args.revision === 'string' && !args.revision.trim())) {
+            throw Object.assign(new Error('缺少decisionId或revision。请原样复制最后一次私有邀请的三个绑定字段，revision=0也必须填写。'), {
+                code: 'MISSING_DECISION_BINDING',
+            });
+        }
         const revision = Number(args.revision);
-        if (!Number.isSafeInteger(revision) || revision < 0
+        if (!['string', 'number'].includes(typeof args.revision)
+            || !Number.isSafeInteger(revision) || revision < 0
             || args.decisionId !== `${record.matchId}:${revision}`) {
-            throw new Error('游戏决策ID与版本不一致。');
+            throw Object.assign(new Error('decisionId与revision不一致。请原样复制最后一次私有邀请中的matchId、decisionId、revision；不要使用event序号，也不要自行拼接或递增。'), {
+                code: 'INVALID_DECISION_BINDING',
+            });
         }
         return {
             matchId: record.matchId, seat,

@@ -135,6 +135,7 @@ function observation(state, seat) {
     const view = publicView(state);
     return {
         ...view, seat, hand: [...state.hands[seat]],
+        ...require('./decisionData').decisionData({ ...view, hand: state.hands[seat] }),
         canPass: state.phase === 'playing' && state.turn === seat
             && state.target !== null && state.target.seat !== seat,
     };

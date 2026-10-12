@@ -24,12 +24,41 @@ const DOUDIZHU_SYSTEM_PROMPT = `游戏：三人斗地主，无癞子，叫分制
 叫分用action=bid和bid；出牌用action=play和cards实体牌ID的JSON数组；不出用action=pass。
 speech和emoteUrl可选。accepted=false时修正重试；成功后停止提交本次决策。
 查询完整授权观察及公开牌史用command=GetObservation，携带相同决策绑定。
-提交ID允许1至100字符的字母、数字、下划线或连字符，原动作重发沿用原ID。`;
+提交ID允许1至100字符的字母、数字、下划线或连字符，原动作重发沿用原ID。
+三个绑定字段必须原样复制最后一次私有邀请；revision为0也不可省略。不要把event序号当revision，不自行拼接decisionId或递增版本。
+MISSING_DECISION_BINDING或INVALID_DECISION_BINDING表示参数未合规，按原邀请补齐修正。
+STALE_DECISION表示原窗口过期，停止旧动作，等待新的私有邀请，不自动将旧动作套入新版本。`;
 
 function formatInvite({ observation, reminder = false }) {
     const o = observation;
-    const seatLabel = seat => `座位${seat + 1}${seat === o.seat ? '（你）' : ''}`;
-    const cardList = cards => (cards || []).map(card => `\`${card}\``).join('、') || '无';
+    const { cardName } = require('../../modules/game/doudizhu/decisionData');
+    const seatLabel = seat => `${o.players?.find(player => player.seat === seat)?.name || `座位${seat + 1}`}${seat === o.seat ? '（你）' : ''}`;
+    const cardList = cards => (cards || []).map(card => `${cardName(card)}〔\`${card}\`〕`).join('、') || '无';
+    const counts = ranks => ['3','4','5','6','7','8','9','10','J','Q','K','A','2','小王','大王']
+        .filter(rank => ranks?.[rank]).map(rank => `${rank}×${ranks[rank]}`).join('、') || '无';
+    const relation = seat => o.landlord === null || o.landlord === undefined ? '待定'
+        : seat === o.seat ? '自己'
+            : o.seat !== o.landlord && seat !== o.landlord ? '队友' : '对手';
+    const decisionLines = [];
+    if (o.currentTrick && o.phase === 'playing') {
+        decisionLines.push('### 当前出牌轮', `- 第${o.currentTrick.number}轮（连续两家不出后重新首出）`);
+        for (const action of o.currentTrick.actions) {
+            decisionLines.push(`- ${seatLabel(action.seat)}：${action.type === 'pass' ? '不出' : cardList(action.cards)}`);
+        }
+        if (!o.currentTrick.actions.length) decisionLines.push('- 本轮尚未出牌');
+    }
+    if (o.cardTracker && o.landlord !== null && o.landlord !== undefined) {
+        decisionLines.push('### 记牌器 · 本次发牌');
+        for (const player of o.cardTracker.bySeat) {
+            decisionLines.push(`- ${seatLabel(player.seat)}累计已出（${player.count}张）：${counts(player.ranks)}`);
+        }
+        decisionLines.push(
+            `- 全桌累计已出（${o.cardTracker.played.count}张）：${counts(o.cardTracker.played.ranks)}`,
+            `- 全桌尚未打出（含自己手牌，${o.cardTracker.unplayed.count}张）：${counts(o.cardTracker.unplayed.ranks)}`,
+            `- 其他两家合计未出牌（${o.cardTracker.otherPlayersPool.count}张）：${counts(o.cardTracker.otherPlayersPool.ranks)}`,
+            '- 合计牌池不代表任何单家手牌；不能据此确定牌在谁手中。',
+        );
+    }
     const types = {
         single: '单张', pair: '对子', triple: '三张', bomb: '炸弹', rocket: '王炸',
         'triple-single': '三带一', 'triple-pair': '三带二', straight: '顺子',
@@ -46,7 +75,7 @@ function formatInvite({ observation, reminder = false }) {
         `- 你的座位：${seatLabel(o.seat)}`,
         `- 阶段：${bidding ? '叫分' : playing ? '出牌' : '已结束'}`,
         `- 你的手牌：${cardList(o.hand)}`,
-        `- 各家剩余：${(o.remaining || []).map((count, seat) => `${seatLabel(seat)} ${count}张`).join('；')}`,
+        `- 各家剩余：${(o.remaining || []).map((count, seat) => `${seatLabel(seat)} · ${seat === o.landlord ? '地主' : o.landlord === null ? '待定' : '农民'} · ${relation(seat)} · ${count}张`).join('；')}`,
         bidding ? `- 当前最高叫分：${o.highestBid}分` : '',
         o.landlord !== null && o.landlord !== undefined ? `- 地主：${seatLabel(o.landlord)}` : '',
         playing && o.target
@@ -56,6 +85,7 @@ function formatInvite({ observation, reminder = false }) {
         bidding ? '- 本次行动：不叫（0）或叫高于当前最高分的分数，最大3分' : '',
         !bidding && !playing ? '- 对局已结束，不要提交动作' : '',
         '',
+        ...decisionLines,
         '### 本次工具绑定',
         `- matchId：\`${o.matchId}\``,
         `- decisionId：\`${o.decisionId}\``,
@@ -67,6 +97,7 @@ function formatPublicEvent({ event, seats }) {
         ? (seats[event.seat]?.name || `座位${event.seat + 1}`) : '游戏系统';
     let action;
     switch (event.type) {
+        case 'new-match': action = `新一局开始（${event.matchId}）。原玩家与交流上下文保留；上一局已结束，手牌和牌面已重置，以新的私有邀请为准。`; break;
         case 'bid': action = event.bid === 0 ? '不叫' : `叫${event.bid}分`; break;
         case 'landlord': action = `成为地主；底牌：${event.bottom.join('、')}`; break;
         case 'redeal': action = `全员不叫，重新发牌（第${event.dealNumber}次发牌）`; break;

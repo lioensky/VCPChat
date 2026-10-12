@@ -7,6 +7,7 @@ module.exports = {
         launchGame: invoke('vcp-game:launch', 'gameId'),
         listGameAgents: invoke('vcp-game:agents'),
         createGameTable: invoke('vcp-game:create', 'request'),
+        nextGameTable: invoke('vcp-game:next', 'request'),
         observeGameTable: invoke('vcp-game:observe', 'request'),
         submitGameAction: invoke('vcp-game:submit', 'request'),
         continueGameTable: invoke('vcp-game:continue', 'request'),

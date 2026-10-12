@@ -143,6 +143,11 @@ function registerTableHandlers() {
         scheduleMatch(table.matchId);
         return table;
     });
+    handle('vcp-game:next', async request => {
+        const table = await gameRuntime.nextTable(request.matchId);
+        scheduleMatch(table.matchId);
+        return table;
+    });
     handle('vcp-game:observe', async request => {
         const record = await gameRuntime.gameService.read(request.matchId);
         return {
