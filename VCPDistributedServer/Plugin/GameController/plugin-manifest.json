@@ -1,0 +1,23 @@
+{
+  "name": "GameController",
+  "displayName": "Vgame 游戏控制器",
+  "version": "1.0.0",
+  "description": "通过本地规则服务提交游戏动作及可选公开发言、表情。开桌由游戏界面完成。使用本次私有邀请中的matchId、decisionId、revision，署名须对应本桌Agent。不要使用ink或archery。非法动作不会推进牌局，读取错误后修正重试。",
+  "pluginType": "hybridservice",
+  "communication": { "protocol": "direct", "timeout": 120000 },
+  "entryPoint": { "type": "nodejs", "script": "GameControllerService.js" },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "command": "GetObservation",
+        "description": "查询自己座位的私有观察。必需maid或valet署名、matchId、decisionId、revision。其他玩家的手牌不会返回。旧决策被拒绝。",
+        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」小克「末」,\ntool_name:「始」GameController「末」,\ncommand:「始」GetObservation「末」,\nmatchId:「始」使用邀请中的matchId「末」,\ndecisionId:「始」使用邀请中的decisionId「末」,\nrevision:「始」0「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "SubmitAction",
+        "description": "提交动作。必需maid或valet署名、matchId、decisionId、revision、submissionId、action。submissionId为1至100字符的字母数字下划线或连字符；重发同一动作沿用原ID，失败后修正动作可使用新ID。斗地主action=bid/play/pass；bid提供0至3的bid；play提供实体牌ID的cards JSON数组；pass无需cards。speech是可选公开文本，emoteUrl是可选HTTP/HTTPS表情图片URL。只有合法提交才发布表达；不说话时省略。accepted=false须修正，不能当成功。",
+        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」小克「末」,\ntool_name:「始」GameController「末」,\ncommand:「始」SubmitAction「末」,\nmatchId:「始」使用邀请中的matchId「末」,\ndecisionId:「始」使用邀请中的decisionId「末」,\nrevision:「始」0「末」,\nsubmissionId:「始」xiaoke-bid-1「末」,\naction:「始」bid「末」,\nbid:「始」1「末」,\nspeech:「始」我叫一分。 「末」\n<<<[END_TOOL_REQUEST]>>>"
+      }
+    ]
+  }
+}

@@ -88,8 +88,9 @@ test('JEV 用户与 Agent 消息通过共享历史队列原子追加', () => {
 
     assert.match(engine, /groupHistoryMutationQueue\.mutate\(/);
     assert.match(engine, /groupHistory = await appendGroupHistoryMessage\(groupId, topicId, userMessageEntry\)/);
-    assert.match(engine, /await appendGroupHistoryMessage\(groupId, topicId, finalAiResponseEntry\)/);
-    assert.match(engine, /await appendGroupHistoryMessage\(groupId, topicId, aiResponseEntry\)/);
+    assert.match(engine, /const persistResponse = gameRequest\s*\? async \(\) => groupHistory\s*: appendGroupHistoryMessage/);
+    assert.match(engine, /await persistResponse\(groupId, topicId, finalAiResponseEntry\)/);
+    assert.match(engine, /await persistResponse\(groupId, topicId, aiResponseEntry\)/);
 });
 
 test('JEV 模式复用成员按钮并提供发起和继续入口', () => {

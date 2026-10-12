@@ -117,3 +117,23 @@ test('ForgeTax大厅委托专用服务，资源与桥接文件齐全', async () 
         assert.ok(fs.existsSync(path.join(root, 'Gamemodules/forge-tax', name)));
     }
 });
+test('斗地主窗口复用且资源完整，牌桌IPC拒绝大厅与其他窗口', async () => {
+    const before = windows.length;
+    assert.equal((await launch(sender(), 'doudizhu')).success, true);
+    assert.equal((await launch(sender(), 'doudizhu')).success, true);
+    assert.equal(windows.length, before + 1);
+    const win = windows.at(-1);
+    assert.equal(win.options.webPreferences.nodeIntegration, false);
+    assert.equal(win.options.webPreferences.contextIsolation, true);
+    assert.equal(win.options.webPreferences.preload, path.join(root, 'preloads/utility.js'));
+    assert.equal(win.file, path.join(root, 'Gamemodules/doudizhu/index.html'));
+    for (const file of ['index.html', 'style.css', 'ui.js']) {
+        assert.ok(fs.existsSync(path.join(root, 'Gamemodules/doudizhu', file)));
+    }
+    for (const channel of ['agents', 'create', 'observe', 'submit', 'continue', 'stop']) {
+        const handler = handlers.get(`vcp-game:${channel}`);
+        assert.equal(typeof handler, 'function');
+        assert.equal((await handler(sender(), {})).success, false);
+        assert.equal((await handler(sender('Gamemodules/doudizhu/index.html'), {})).success, false);
+    }
+});

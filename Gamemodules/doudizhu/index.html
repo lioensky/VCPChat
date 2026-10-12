@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: http: https:; connect-src 'none'">
+<title>Vgame · 斗地主</title>
+<link rel="stylesheet" href="../../styles/themes.css">
+<link rel="stylesheet" href="style.css">
+<script defer src="ui.js"></script>
+</head>
+<body>
+<header><h1>♠ 斗地主 <small>庄园牌桌</small></h1><button id="resume">恢复上桌</button><button id="continue">继续 / 重试</button><button id="stop">暂停后续行动</button></header>
+<section class="setup">
+<label>伙伴一 <select id="agent-one"></select></label>
+<label>伙伴二 <select id="agent-two"></select></label>
+<label>你的名字 <input id="user-name" value="莱恩" maxlength="100"></label>
+<label>上下文楼层 <input id="context-size" type="number" min="1" max="1000" value="100"></label>
+<button id="create">开一桌</button>
+</section>
+<p id="status" role="status" aria-live="polite">正在连接游戏后台…</p>
+<main>
+<section class="table">
+<div id="seats" class="seats"></div>
+<div id="target" class="target">选择两位伙伴开始。</div>
+<div id="bottom"></div>
+<h2>你的手牌 <small>点击选牌，再确认提交</small></h2>
+<div id="hand" class="hand"></div>
+<div class="actions">
+<button data-bid="0">不叫</button><button data-bid="1">1分</button><button data-bid="2">2分</button><button data-bid="3">3分</button>
+<button id="play">出选中的牌</button><button id="pass">不出</button><button id="clear">清空选择</button>
+</div>
+<label>随行动说一句（可空）<textarea id="speech" maxlength="2000" rows="2"></textarea></label>
+<label>表情图片 URL（可空）<input id="emote" type="url" maxlength="2048" placeholder="http://…"></label>
+<button id="retry" hidden>重试原提交</button>
+</section>
+<aside><h2>桌上发生了什么</h2><div id="events" aria-live="polite"></div></aside>
+</main>
+</body>
+</html>

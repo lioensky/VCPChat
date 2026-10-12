@@ -45,7 +45,8 @@ function initialize(mainWindow, context) {
         startSelectionListener,
         fileWatcher,
         historyMutationQueue = new HistoryMutationQueue({ userDataDir: USER_DATA_DIR, fileWatcher }),
-        jevService = null
+        jevService = null,
+        gameService = null
     } = context;
 
     if (ipcHandlersRegistered) {
@@ -70,6 +71,19 @@ function initialize(mainWindow, context) {
         jevService,
         getAgentConfigById
     });
+
+    if (gameService) {
+        require('./gameHandlers').configureRuntime({
+            gameService, groupChat, loadAgent: getAgentConfigById,
+            listAgents: async () => {
+                const entries = await fs.readdir(AGENT_DIR, { withFileTypes: true });
+                const configs = await Promise.all(entries.filter(entry => entry.isDirectory())
+                    .map(entry => getAgentConfigById(entry.name)));
+                return configs.filter(config => !config.error && config.model)
+                    .map(config => ({ id: config.id, name: config.name || config.id, avatarUrl: config.avatarUrl }));
+            },
+        });
+    }
 
     const createStreamSender = () => data => {
         if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
