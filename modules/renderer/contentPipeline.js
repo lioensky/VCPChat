@@ -386,7 +386,7 @@ function createContentPipeline(deps = {}) {
     }
 
     function protectCodeBlocks(text, ctx) {
-        if (typeof text !== 'string' || (!text.includes('```') && !text.includes('~~~'))) return text;
+        if (typeof text !== 'string' || (!text.includes('`') && !text.includes('~~~'))) return text;
 
         ctx.state.codeBlockMap = new Map();
         return replaceMarkdownCodeDomains(text, (match) => {

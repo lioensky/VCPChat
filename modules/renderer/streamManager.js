@@ -734,9 +734,11 @@ function findParagraphStableCutoff(text, floorOffset) {
     let searchIndex = Math.max(0, floorOffset);
 
     while (searchIndex < text.length) {
-        const boundaryIndex = text.indexOf('\n\n', searchIndex);
-        if (boundaryIndex === -1) break;
-        const cutoff = boundaryIndex + 2;
+        const boundary = /\r?\n[ \t]*\r?\n/g;
+        boundary.lastIndex = searchIndex;
+        const match = boundary.exec(text);
+        if (!match) break;
+        const cutoff = match.index + match[0].length;
         if (cutoff > floorOffset) {
             recentBoundaries.push(cutoff);
             if (recentBoundaries.length > retainedBoundaryCount) recentBoundaries.shift();
@@ -969,6 +971,10 @@ function findBareDivIslandStableCutoff(text, startOffset = 0, codeDomains = []) 
             continue;
         }
 
+        if (!/^<(?:[a-zA-Z][a-zA-Z0-9:-]*(?:\s|\/?>|$)|\/[a-zA-Z]|!)/.test(text.slice(tagStart))) {
+            index = tagStart + 1;
+            continue;
+        }
         const token = parseHtmlTagToken(text, tagStart);
         if (token.type === 'incomplete') {
             return { cutoff, blocked: true };
@@ -1057,6 +1063,18 @@ function findExplicitStablePrefix(text, startOffset = 0) {
         ) {
             codeDomainIndex += 1;
         }
+        // HTML islands own all inner delimiters, including Markdown-looking text.
+        if (text[index] === '<' && /^<div(?:\s|>)/i.test(text.slice(index)) && isBareDivIslandLineStart(text, index)) {
+            const island = scanBareDivIslandEnd(text, index);
+            if (island.end < 0) {
+                blockedByUnclosedExplicitBlock = true;
+                break;
+            }
+            stableCutoff = island.end;
+            paragraphFloor = island.end;
+            index = island.end;
+            continue;
+        }
         const codeDomain = codeDomains[codeDomainIndex];
         if (codeDomain && index >= codeDomain.start && index < codeDomain.end) {
             if (!codeDomain.closed) {
@@ -1066,6 +1084,10 @@ function findExplicitStablePrefix(text, startOffset = 0) {
                 break;
             }
             if (codeDomain.kind === 'fence') {
+                if (codeDomain.end === text.length && !text.endsWith('\n')) {
+                    blockedByUnclosedExplicitBlock = true;
+                    break;
+                }
                 stableCutoff = Math.max(stableCutoff, codeDomain.end);
                 paragraphFloor = Math.max(paragraphFloor, codeDomain.end);
             }
@@ -1088,7 +1110,7 @@ function findExplicitStablePrefix(text, startOffset = 0) {
 
         if (startsWithAt(text, index, '$$') && isLineOnlyToken(text, index, 2)) {
             const mathEnd = findDisplayMathBlockEnd(text, index, '$$');
-            if (mathEnd === -1) {
+            if (mathEnd === -1 || (mathEnd === text.length && !text.endsWith('\n'))) {
                 blockedByUnclosedExplicitBlock = true;
                 break;
             }
@@ -1100,7 +1122,7 @@ function findExplicitStablePrefix(text, startOffset = 0) {
 
         if (startsWithAt(text, index, '\\[') && isLineOnlyToken(text, index, 2)) {
             const mathEnd = findDisplayMathBlockEnd(text, index, '\\[', '\\]');
-            if (mathEnd === -1) {
+            if (mathEnd === -1 || (mathEnd === text.length && !text.endsWith('\n'))) {
                 blockedByUnclosedExplicitBlock = true;
                 break;
             }
@@ -1197,7 +1219,7 @@ function findExplicitStablePrefix(text, startOffset = 0) {
         }
 
         if (startsWithAt(text, index, MARKDOWN_SECTION_BREAK_TOKEN)) {
-            if (isLineOnlyToken(text, index, MARKDOWN_SECTION_BREAK_TOKEN.length)) {
+            if (isLineOnlyToken(text, index, MARKDOWN_SECTION_BREAK_TOKEN.length) && text.indexOf('\n', index) !== -1) {
                 // 独立行 Markdown 文档分段符 --- 可作为稳定切点；
                 // 目前只处理严格的 ---，暂不扩展到 ***/___ 或带空格变体。
                 stableCutoff = index + MARKDOWN_SECTION_BREAK_TOKEN.length;
@@ -1224,7 +1246,8 @@ function findExplicitStablePrefix(text, startOffset = 0) {
     }
 
     if (blockedByUnclosedExplicitBlock) {
-        return stableCutoff;
+        // The unfinished tail cannot revoke already complete paragraphs before it.
+        return Math.max(stableCutoff, findParagraphStableCutoff(text.slice(0, index), paragraphFloor));
     }
 
     const divIslandResult = findBareDivIslandStableCutoff(text, paragraphFloor, codeDomains);

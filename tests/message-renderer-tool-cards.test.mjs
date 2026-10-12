@@ -136,6 +136,7 @@ async function createRendererFixture(messageContent, appearanceProfile) {
         },
         transientStreamHistory,
         markedInstance: marked,
+        morphdom: require('morphdom'),
         uiHelper: {
             scrollToBottom() {},
             showToastNotification() {},
@@ -245,6 +246,65 @@ test('legacy style still shows the role dividers around results', async () => {
     try {
         assert.equal(content.querySelectorAll('.vcp-role-divider').length, 4);
         assert.equal(content.querySelectorAll('[data-vcp-tool-wrapper]').length, 0);
+    } finally {
+        await disposeFixture(fixture);
+    }
+});
+test('emoticon before tool results cannot hide role wrappers and summaries in final render', async () => {
+    const text = [
+        '正文 (`・ω・´)ゞ',
+        REQ('Demo', `command:${S}Read${E}`),
+        RESULT('Demo', '```js\nconst literal = "`";\n```\n<div>data only</div>').replace(
+            '<<<[END_ROLE_DIVIDE_USER]>>>',
+            '[本轮工具调用摘要:]\nDemo 调用成功。\n[本轮工具调用摘要结束]\n<<<[END_ROLE_DIVIDE_USER]>>>'),
+        '后文 `<style>`。',
+        '```js\nx\n```\n',
+    ].join('\n\n');
+    const fixture = await createRendererFixture(text, {toolPresentation:'legacy', toolExpansion:'none'});
+    try {
+        await new Promise(resolve => setTimeout(resolve, 30));
+        const content = fixture.messageItem.querySelector('.md-content');
+        assert.equal(content.querySelectorAll('.vcp-role-divider').length, 2);
+        assert.ok(content.querySelector('[data-vcp-block-type="tool-use"]'));
+        assert.ok(content.querySelector('[data-vcp-block-type="tool-result"]'));
+        assert.doesNotMatch(content.textContent, /<<<\[(?:END_)?ROLE_DIVIDE_USER\]>>>|\[本轮工具调用摘要/);
+    } finally {
+        await disposeFixture(fixture);
+    }
+});
+
+test('live stable highlights and request cards survive a split tool result before terminal', async () => {
+    const fixture = await createRendererFixture('', {toolPresentation:'legacy', toolExpansion:'none'});
+    const {streamProjection: projection, messageItem} = fixture;
+    const context = {agentId:'tool-card-agent', topicId:'tool-card-topic'};
+    const wait = () => new Promise(resolve => setTimeout(resolve, 160));
+    try {
+        await projection.startStreamingMessage({
+            id:'tool-card-message', role:'assistant', content:'', ...context,
+        }, messageItem);
+        projection.appendStreamChunk('tool-card-message', {content:'“引用” @测试 @!核心 (`・ω・´)ゞ\n\n第二段。\n\n第三段。\n\n'}, context);
+        await wait();
+        const stable = messageItem.querySelector('.vcp-stream-stable-block');
+        assert.ok(stable, 'ordinary paragraphs must stabilize while stream remains active');
+        assert.ok(stable.querySelector('.highlighted-quote'));
+        assert.ok(stable.querySelector('.highlighted-tag'));
+        assert.ok(stable.querySelector('.highlighted-alert-tag'));
+        projection.appendStreamChunk('tool-card-message', {content:REQ('Demo', `command:${S}Read${E}`)+'\n\n'}, context);
+        await wait();
+        const request = messageItem.querySelector('[data-vcp-block-type="tool-use"]');
+        assert.ok(request);
+        const result = RESULT('Demo', '```js\nconst face = "`";\n```\n<div>raw</div>');
+        const split = result.indexOf('VCP调用结果结束');
+        projection.appendStreamChunk('tool-card-message', {content:result.slice(0, split)}, context);
+        await wait();
+        assert.equal(request.isConnected, true);
+        projection.appendStreamChunk('tool-card-message', {content:result.slice(split)+'\n\n完成。\n\n'}, context);
+        await wait();
+        assert.equal(request.isConnected, true);
+        assert.ok(messageItem.querySelector('[data-vcp-block-type="tool-result"]'));
+        const stableRoot = messageItem.querySelector('.vcp-stream-stable-blocks');
+        assert.doesNotMatch(stableRoot?.textContent || '', /<<<\[(?:END_)?ROLE_DIVIDE_USER\]>>>/);
+        assert.equal(projection.isMessageActive('tool-card-message'), true);
     } finally {
         await disposeFixture(fixture);
     }

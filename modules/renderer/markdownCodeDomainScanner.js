@@ -68,12 +68,25 @@ function findFenceClose(source, contentStart, marker, openingLength) {
     return -1;
 }
 
+// Only recognized complete emoticons are literals; incomplete stream prefixes stay conservative.
+const BACKTICK_EMOTICONS = ['(`・ω・´)ゞ', '(・`ω´・)', '(`・ω・´)', '(`･ω･´)'];
+function isEmoticonBacktick(source, index) {
+    return BACKTICK_EMOTICONS.some(value => {
+        const offset = value.indexOf('`');
+        return source.startsWith(value, index - offset);
+    });
+}
+
 function findInlineClose(source, contentStart, openingLength) {
     let cursor = contentStart;
+    // CommonMark code spans may span lines, but not separate Markdown blocks.
+    const remainder = source.slice(contentStart);
+    const boundary = /\r?\n[ \t]*\r?\n/.exec(remainder);
+    const limit = boundary ? contentStart + boundary.index : source.length;
 
-    while (cursor < source.length) {
+    while (cursor < limit) {
         const nextBacktick = source.indexOf('`', cursor);
-        if (nextBacktick === -1) return -1;
+        if (nextBacktick === -1 || nextBacktick >= limit) return -1;
 
         const closingLength = countRun(source, nextBacktick, '`');
         if (closingLength === openingLength) {
@@ -149,6 +162,10 @@ export function replaceMarkdownCodeDomains(source, replacer, options = {}) {
         }
         
         if (marker === '`') {
+            if (runLength === 1 && isEmoticonBacktick(source, cursor)) {
+                cursor += 1;
+                continue;
+            }
             const closingEnd = findInlineClose(source, cursor + runLength, runLength);
             if (closingEnd === -1 && options.includeUnclosedInline !== true) {
                 // 静态/终态 Markdown 中孤立反引号是普通文本，不能让它拥有后续
