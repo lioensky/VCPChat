@@ -137,3 +137,16 @@ test('斗地主窗口复用且资源完整，牌桌IPC拒绝大厅与其他窗�
         assert.equal((await handler(sender('Gamemodules/doudizhu/index.html'), {})).success, false);
     }
 });
+test('历史IPC仅接受大厅主框架，不接受主聊天、牌桌或子框架', async () => {
+    for (const channel of ['vcp-game:records', 'vcp-game:record']) {
+        const handler = handlers.get(channel);
+        assert.equal(typeof handler, 'function');
+        for (const file of ['main.html', 'Gamemodules/doudizhu/index.html']) {
+            assert.equal((await handler(sender(file), {})).success, false);
+        }
+        const child = sender();
+        child.senderFrame = { ...child.senderFrame };
+        assert.equal((await handler(child, {})).success, false);
+        assert.match((await handler(sender(), {})).error, /尚未就绪/);
+    }
+});

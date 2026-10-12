@@ -24,3 +24,12 @@ button:focus-visible { outline: 2px solid var(--highlight-text, #91e4c5); outlin
 .launch { margin-top: auto; padding-top: 8px; color: var(--highlight-text, #91e4c5); font-weight: 600; }
 html[data-vcp-embedded-app="true"] #top-nav-bar { -webkit-app-region: no-drag; }
 @media (prefers-reduced-motion: reduce) { .game-card { transition: none; } }
+.game-history { margin-top: 36px; border-top: 1px solid var(--border-color, #ffffff20); padding-top: 20px; }
+.history-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.history-heading button, .history-record { border: 1px solid var(--border-color, #ffffff20); border-radius: 10px; padding: 12px; background: rgba(255,255,255,.04); cursor: pointer; }
+#game-records { display: grid; gap: 10px; }
+.history-record { text-align: left; line-height: 1.7; overflow-wrap: anywhere; }
+.history-record:hover { border-color: var(--highlight-text, #91e4c5); }
+#records-status, #record-detail p { color: var(--secondary-text, #a9b3c7); line-height: 1.7; }
+#record-detail { margin-top: 24px; }
+.history-event { padding: 10px 0; border-bottom: 1px solid var(--border-color, #ffffff20); white-space: pre-wrap; overflow-wrap: anywhere; }

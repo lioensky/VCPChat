@@ -183,6 +183,17 @@ function initialize() {
         try { return await openGame(gameId); }
         catch (error) { return { success: false, error: error.message }; }
     });
+    for (const [channel, operation] of [
+        ['vcp-game:records', () => gameRuntime.gameService.listRecords()],
+        ['vcp-game:record', request => gameRuntime.gameService.getPublicRecord(request.matchId)],
+    ]) {
+        ipcMain.handle(channel, async (event, request = {}) => {
+            if (!isHallSender(event)) return { success: false, error: '非法大厅请求。' };
+            if (!gameRuntime) return { success: false, error: '游戏后台尚未就绪。' };
+            try { return { success: true, ...await operation(request) }; }
+            catch (error) { return { success: false, error: error.message, code: error.code }; }
+        });
+    }
     registerTableHandlers();
     registered = true;
 }

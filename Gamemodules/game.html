@@ -53,6 +53,16 @@
 </button>
 </section>
 <p id="game-status" role="status" aria-live="polite">点击游戏图标即可打开，无需 AI 发起启动。</p>
+<section class="game-history" aria-label="斗地主记录">
+<div class="history-heading"><h2>斗地主记录</h2><button id="refresh-records" type="button">刷新记录</button></div>
+<p id="records-status" role="status" aria-live="polite">正在读取记录…</p>
+<div id="game-records"></div>
+<section id="record-detail" hidden aria-label="公开牌局记录">
+<h3 id="record-title"></h3>
+<p>仅显示公开动作和台词，不显示其他玩家暗牌。记录为只读，不会自动启动 Agent。</p>
+<div id="record-events"></div>
+</section>
+</section>
 </main>
 </body>
 </html>

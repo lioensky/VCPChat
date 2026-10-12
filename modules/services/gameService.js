@@ -115,6 +115,32 @@ class GameService {
                 observation: await this.getObservation(matchId, 0) };
         });
     }
+    summary(record) {
+        return {
+            matchId: record.matchId, gameTypeId: record.gameTypeId,
+            createdAt: record.createdAt, phase: record.state.phase,
+            winner: record.state.winner || null,
+            players: record.seats.map((seat, index) => seat.name || `座位${index + 1}`),
+        };
+    }
+    async listRecords() {
+        let entries;
+        try { entries = await fs.readdir(this.root, { withFileTypes: true }); }
+        catch (failure) { if (failure.code === 'ENOENT') return { records: [], unavailable: [] }; throw failure; }
+        const records = [], unavailable = [];
+        for (const entry of entries) {
+            if (!entry.isDirectory() || !/^match-[a-f0-9-]{36}$/.test(entry.name)) continue;
+            try { records.push(this.summary(await this.read(entry.name))); }
+            catch (failure) { unavailable.push({ matchId: entry.name, error: failure.message }); }
+        }
+        records.sort((a, b) => b.createdAt - a.createdAt || a.matchId.localeCompare(b.matchId));
+        return { records, unavailable };
+    }
+    async getPublicRecord(matchId) {
+        const record = await this.read(matchId);
+        // Public event history only: never expose hands, submissions or private invitations.
+        return { ...this.summary(record), events: structuredClone(record.state.events) };
+    }
     async getObservation(matchId, authorizedSeat) {
         const record = await this.read(matchId);
         return {

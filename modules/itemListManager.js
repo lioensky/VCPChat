@@ -1103,7 +1103,9 @@ window.itemListManager = (() => {
         }
 
         if (groupsResult && !groupsResult.error) {
-            items.push(...groupsResult.map(g => ({ ...g, type: 'group', id: g.id, avatarUrl: g.avatarUrl || 'assets/default_group_avatar.png' })));
+            items.push(...groupsResult
+                .filter(g => g.mode !== 'game')
+                .map(g => ({ ...g, type: 'group', id: g.id, avatarUrl: g.avatarUrl || 'assets/default_group_avatar.png' })));
         } else if (groupsResult && groupsResult.error) {
             errors.push(`加载群组失败: ${groupsResult.error}`);
         }

@@ -5,6 +5,8 @@ module.exports = {
     roles: ['utility'],
     api: {
         launchGame: invoke('vcp-game:launch', 'gameId'),
+        listGameRecords: invoke('vcp-game:records'),
+        getGameRecord: invoke('vcp-game:record', 'request'),
         listGameAgents: invoke('vcp-game:agents'),
         createGameTable: invoke('vcp-game:create', 'request'),
         nextGameTable: invoke('vcp-game:next', 'request'),
