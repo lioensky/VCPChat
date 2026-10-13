@@ -1,0 +1,43 @@
+/* Important declarations in the legacy layer outrank unlayered theme !important.
+ * Limit changes to renderer-owned surfaces, not arbitrary assistant HTML islands. */
+@layer vcp-ui.legacy {
+    html body [data-vcp-projectforge-topic="true"] {
+        --vcp-projectforge-surface: rgb(from var(--secondary-bg, #20252a) r g b / 1);
+    }
+
+    html body [data-vcp-projectforge-topic="true"] .message-item,
+    html body [data-vcp-projectforge-topic="true"] .details-and-bubble-wrapper {
+        opacity: 1 !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+    }
+
+    html body [data-vcp-projectforge-topic="true"] .message-item .md-content,
+    html body [data-vcp-projectforge-topic="true"] .message-item .md-content :is(
+        .vcp-tool-use-bubble, .vcp-tool-result-bubble, .vcp-tool-request-bubble,
+        .vcp-tool-call-summary-bubble, .vcp-tool-process, .tool-bubble,
+        .vcp-thought-chain-bubble, .maid-diary-bubble, .maid-diary-update-bubble
+    ) {
+        background: var(--vcp-projectforge-surface, #20252a) !important;
+        opacity: 1 !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+    }
+
+    html body [data-vcp-projectforge-topic="true"] .message-item.user .md-content {
+        background: rgb(from var(--user-bubble-bg, #303942) r g b / 1) !important;
+    }
+
+    html body [data-vcp-projectforge-topic="true"] .message-item.assistant .md-content {
+        background: rgb(from var(--assistant-bubble-bg, #20252a) r g b / 1) !important;
+    }
+
+    /* Reading modes use a shared viewport surface. Keep their row layout intact. */
+    html body:is(.chat-presentation-panel, .chat-presentation-immersive)
+    .chat-messages-container:has(> [data-vcp-projectforge-topic="true"]) {
+        background: rgb(from var(--secondary-bg, #20252a) r g b / 1) !important;
+        opacity: 1 !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+    }
+}

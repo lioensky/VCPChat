@@ -379,10 +379,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             commandSelect.addEventListener('change', (e) => {
                 renderFormParams(tool.commands[e.target.value].params, paramsContainer, toolName, e.target.value);
-                setupCommandSpecificForm(toolName, e.target.value);
             });
             renderFormParams(tool.commands[commandSelect.value].params, paramsContainer, toolName, commandSelect.value);
-            setupCommandSpecificForm(toolName, commandSelect.value);
         } else {
             toolForm.appendChild(paramsContainer);renderFormParams(tool.params, paramsContainer, toolName);
         }
@@ -443,27 +441,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // 恢复缓存的表单状态
         setTimeout(() => restoreFormState(toolName), 0);
-    }
-
-    function setupCommandSpecificForm(toolName, commandName) {
-        if (toolName !== 'LightMemo' || commandName !== 'tagmemo_ab') return;
-
-        const kInput = toolForm.querySelector('[name="k"]');
-        const topLInput = toolForm.querySelector('[name="top_l"]');
-        if (!kInput || !topLInput) return;
-
-        let topLManuallyEdited = false;
-        const updateTopLDefault = () => {
-            if (topLManuallyEdited) return;
-            const k = Math.max(1, Number.parseInt(kInput.value, 10) || 5);
-            topLInput.value = String(Math.max(20, k * 4));
-        };
-
-        topLInput.addEventListener('input', () => {
-            topLManuallyEdited = true;
-        });
-        kInput.addEventListener('input', updateTopLDefault);
-        updateTopLDefault();
     }
 
     function renderFormParams(params, container, toolName = '', commandName = '') {
@@ -540,7 +517,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             input = document.createElement('select');param.options.forEach(opt => {
                 const option = document.createElement('option');
                 option.value = opt;
-                option.textContent = opt || `(${param.name})`;
+                option.textContent = param.optionLabels?.[opt] || opt || `(${param.name})`;
                 input.appendChild(option);
             });
         } else if (param.type === 'radio') {
@@ -1046,13 +1023,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
-        const lightMemoExplicitScopeCommands = new Set([
-            'tagmemo_ab',
-            'tagmemo_v10',
-            'tagmemo_v10_ab'
-        ]);
         const requiresExplicitScope = toolName === 'LightMemo'
-            && lightMemoExplicitScopeCommands.has(args.command);
+            && args.command === 'memory_ab';
 
         if (
             requiresExplicitScope
@@ -1060,19 +1032,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             && !String(args.folder || '').trim()
             && args.search_all_knowledge_bases !== true
         ) {
-            const commandLabels = {
-                tagmemo_ab: 'TagMemo V9.1 对照测试',
-                tagmemo_v10: 'TagMemo V10 Alpha 实验',
-                tagmemo_v10_ab: 'TagMemo 统一寻址具名 A/B 评审'
-            };
             renderResult({
                 status: 'error',
-                error: `${commandLabels[args.command]}必须选择作用域：填写 folder、填写 maid，或启用全库搜索。`
+                error: '记忆 A/B 对比必须选择作用域：填写 folder、填写 maid，或启用全库搜索。'
             }, toolName);
             return;
         }
 
-        // maid 兜底：普通工具未填写时使用默认值；TagMemo 实验命令保留显式作用域语义。
+        // maid 兜底：普通工具未填写时使用默认值；记忆 A/B 对比保留显式作用域语义。
         if (!args.maid && !requiresExplicitScope) {
             args.maid = USER_NAME;
         }

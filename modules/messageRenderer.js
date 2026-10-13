@@ -1,3 +1,4 @@
+import { createProjectForgeTopicSurface } from './renderer/projectForgeTopicSurface.js';
 import { avatarColorCache, getDominantAvatarColor } from './renderer/colorUtils.js';
 import { createImageHandler } from './renderer/imageHandler.js';
 import { prepareChatMediaHtml, cleanupChatMedia } from './renderer/mediaLifecycle.js';
@@ -57,6 +58,7 @@ const middleClickHandler = options.middleClickHandler || createMiddleClickHandle
 const imageHandler = options.imageHandler || createImageHandler({ fixUrl: emoticonUrlFixer.fixEmoticonUrl });
 const colorExtractionPromises = new Map();
 const ownedStyleElements = new Set();
+const projectForgeTopicSurface = createProjectForgeTopicSurface();
 
 async function getDominantAvatarColorCached(url) {
     if (!colorExtractionPromises.has(url)) {
@@ -1508,6 +1510,11 @@ function removeOwnedMessageScopeStyle(scopeId) {
 }
 
 function processAssistantScopedHtmlContent(content, scopeId, messageItem = null, options = {}) {
+    // This path also receives authoritative visible stream source before CSS extraction.
+    if (options.injectStyles !== false && messageItem) {
+        const root = messageItem.closest('[data-vcp-projectforge-root]') || mainRendererReferences?.chatMessagesDiv;
+        projectForgeTopicSurface.observe(root, { id: messageItem.dataset.messageId, role: 'assistant', content });
+    }
     if (!scopeId || !containsAssistantHtmlNeedingScope(content)) {
         // 规范终稿可能移除了流式预览阶段出现过的 style；此时必须撤销旧消息级样式。
         if (options.injectStyles !== false && messageItem?.dataset?.vcpHtmlScopeCandidate === 'true') {
@@ -2571,6 +2578,7 @@ function disposeRendererListeners() {
 }
 function disposeRendererResources() {
     disposeRendererListeners();
+    projectForgeTopicSurface.dispose();
     contentProcessor.dispose?.();
     middleClickHandler.dispose?.();
     contextMenu.dispose?.();
@@ -2583,6 +2591,7 @@ function disposeRendererResources() {
 }
 async function disposeRootResources(root) {
     if (!root?.querySelectorAll) return;
+    projectForgeTopicSurface.clear(root);
     invalidateRenderSession(root);
     await renderTaskOwner.dispose(root);
     root.querySelectorAll('.message-item').forEach(item => cleanupMessageDomResources(item, item.dataset?.messageId || null));
@@ -2673,6 +2682,7 @@ function cleanupMessageDomResources(messageItem, messageId = null) {
 }
 
 function removeMessageById(messageId, saveHistory = false, root = mainRendererReferences.chatMessagesDiv) {
+    projectForgeTopicSurface.remove(root, messageId);
     const item = root?.querySelector?.(`.message-item[data-message-id="${messageId}"]`);
     if (item) {
         // --- NEW: Cleanup dynamic content before removing from DOM ---
@@ -2708,6 +2718,7 @@ function removeMessageById(messageId, saveHistory = false, root = mainRendererRe
 }
 
 function clearChat(root = mainRendererReferences.chatMessagesDiv) {
+    projectForgeTopicSurface.clear(root);
     invalidateRenderSession(root);
     mainRendererReferences.uiHelper.resetChatScrollFollow?.();
 
@@ -2736,6 +2747,8 @@ function clearChat(root = mainRendererReferences.chatMessagesDiv) {
 function initializeMessageRenderer(refs) {
     disposeRendererListeners();
     mainRendererReferences = createRenderDependencies(refs);
+    mainRendererReferences.chatMessagesDiv.setAttribute('data-vcp-projectforge-root', '');
+    projectForgeTopicSurface.replaceHistory(mainRendererReferences.chatMessagesDiv, mainRendererReferences.currentChatHistoryRef.get());
 
     contentPipeline = createContentPipeline({
         escapeHtml,
@@ -3668,6 +3681,8 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
     // console.debug('[MessageRenderer renderMessage] Received message:', JSON.parse(JSON.stringify(message)));
     const { chatMessagesDiv, electronAPI, markedInstance, uiHelper } = mainRendererReferences;
     const renderRoot = renderContext.root || chatMessagesDiv;
+    renderRoot.setAttribute('data-vcp-projectforge-root', '');
+    projectForgeTopicSurface.observe(renderRoot, message);
     const globalSettings = mainRendererReferences.globalSettingsRef.get();
     const currentSelectedItem = mainRendererReferences.currentSelectedItemRef.get();
     const currentChatHistory = mainRendererReferences.currentChatHistoryRef.get();
@@ -4420,7 +4435,10 @@ function prepareUserMessageText(text) {
  * @param {number} options.batchDelay - Delay between batches in ms (default: 100)
  */
 async function renderHistory(history, options = {}) {
-    const renderSessionId = invalidateRenderSession(options.root || mainRendererReferences.chatMessagesDiv);
+    const renderRoot = options.root || mainRendererReferences.chatMessagesDiv;
+    renderRoot.setAttribute('data-vcp-projectforge-root', '');
+    projectForgeTopicSurface.replaceHistory(renderRoot, history || []);
+    const renderSessionId = invalidateRenderSession(renderRoot);
     mainRendererReferences.uiHelper.resetChatScrollFollow?.();
 
     const {

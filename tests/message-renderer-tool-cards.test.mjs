@@ -309,3 +309,55 @@ test('live stable highlights and request cards survive a split tool result befor
         await disposeFixture(fixture);
     }
 });
+
+
+test('ProjectForge topic surface is enabled and revoked by edits and clear', async () => {
+    const fixture = await createRendererFixture(TRANSCRIPT, {toolPresentation:'compact', toolExpansion:'none'});
+    try {
+        const root = fixture.messageItem.parentElement;
+        assert.equal(root.dataset.vcpProjectforgeTopic, 'true');
+        fixture.renderer.updateMessageContent('tool-card-message', '调用已移除');
+        assert.equal(root.hasAttribute('data-vcp-projectforge-topic'), false);
+        fixture.renderer.updateMessageContent('tool-card-message', TRANSCRIPT);
+        assert.equal(root.dataset.vcpProjectforgeTopic, 'true');
+        fixture.renderer.clearChat();
+        assert.equal(root.hasAttribute('data-vcp-projectforge-topic'), false);
+    } finally {
+        await disposeFixture(fixture);
+    }
+});
+
+test('ProjectForge streaming tool name enables the topic surface before request completion', async () => {
+    const fixture = await createRendererFixture('', {toolPresentation:'legacy', toolExpansion:'none'});
+    const context = {agentId:'tool-card-agent', topicId:'tool-card-topic'};
+    try {
+        await fixture.streamProjection.startStreamingMessage({
+            id:'tool-card-message', role:'assistant', content:'', ...context,
+        }, fixture.messageItem);
+        fixture.streamProjection.appendStreamChunk('tool-card-message', {
+            content:'<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\n',
+        }, context);
+        await new Promise(resolve => setTimeout(resolve, 200));
+        assert.equal(fixture.messageItem.parentElement.dataset.vcpProjectforgeTopic, 'true');
+    } finally {
+        await disposeFixture(fixture);
+    }
+});
+
+
+test('ProjectForge request with valet before tool_name activates the actual renderer root', async () => {
+    const content = `<<<[TOOL_REQUEST]>>>
+valet:「始」Kerr「末」,
+tool_name:「始」ProjectForge「末」,
+command:「始」ListProjects「末」,
+workspace:「始」vcpchat「末」,
+ink:「始」mark_history「末」
+<<<[END_TOOL_REQUEST]>>>`;
+    const fixture = await createRendererFixture(content, {toolPresentation:'legacy', toolExpansion:'none'});
+    try {
+        assert.equal(fixture.messageItem.parentElement.dataset.vcpProjectforgeTopic, 'true');
+        assert.ok(fixture.messageItem.querySelector('.vcp-tool-use-bubble'));
+    } finally {
+        await disposeFixture(fixture);
+    }
+});

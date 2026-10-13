@@ -123,6 +123,23 @@ function findNextFieldStart(text, fromIndex) {
     return createFieldStartResult(match, match.index, match[1].length);
 }
 
+/** Read a declared field from request body, skipping entire preceding field payloads. */
+export function readToolRequestField(source, name) {
+    if (typeof source !== 'string') return null;
+    let cursor = 0;
+    while (cursor < source.length) {
+        const field = findNextFieldStart(source, cursor);
+        if (!field) return null;
+        const end = findFieldEnd(source, field);
+        if (!end) return null;
+        if (field.fieldName.toLowerCase() === name.toLowerCase()) {
+            return source.slice(field.markerEnd, end.start).trim();
+        }
+        cursor = end.end;
+    }
+    return null;
+}
+
 function findUnwrappedRequestEnd(text, fromIndex) {
     TOOL_REQUEST_END_REGEX.lastIndex = Math.max(0, fromIndex);
 

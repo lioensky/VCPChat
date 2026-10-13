@@ -7,6 +7,7 @@
 @import url('./styles/layout.css') layer(vcp-ui.legacy);
 @import url('./styles/components.css') layer(vcp-ui.legacy);
 @import url('./styles/chat.css') layer(vcp-ui.legacy);
+@import url('./styles/projectforge-topic.css');
 @import url('./styles/notifications.css') layer(vcp-ui.legacy);
 @import url('./styles/settings.css') layer(vcp-ui.legacy);
 @import url('./styles/animations.css') layer(vcp-ui.legacy);
