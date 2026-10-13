@@ -1,9 +1,9 @@
 {
   "manifestVersion": "1.0.0",
   "name": "PTYShellExecutor",
-  "version": "1.0.0",
-  "displayName": "PTY Shell 执行器",
-  "description": "一个在Linux桌面环境下执行本地Shell命令的插件。同步执行使用独立POSIX Shell子进程，stdin固定隔离，适合短命令和ssh/docker等非交互命令；异步模式托管长任务；GUI终端镜像agent命令与原始输出并保留PTY可视化能力。自动过滤ANSI转义序列和Shell Integration标记，返回干净的文本输出。",
+  "version": "2.0.0",
+  "displayName": "Linux PTY Shell 命令执行器 (VCPCLI 内核)",
+  "description": "在持久化 Linux Shell (bash/zsh) PTY 会话中执行命令，完全对齐 VCPCLI 标准架构。底层通过无损管道日志采集与原子完成回执驱动，PTY 仅作显示与交互。所有能力均支持可选参数 terminalTarget：sidebar（默认，主窗口侧栏）或 window（独立窗口）。支持同步执行、持久会话环境（如连续 cd、环境变量保留）、交互式程序（如 snow/vim/codex/claude）、键盘与粘贴串行自动化、可见文本查询、异步 Ctrl+C 中止与管理员提权拦截确认。",
   "author": "Piko & 十一",
   "pluginType": "hybridservice",
   "entryPoint": {
@@ -17,90 +17,57 @@
   "capabilities": {
     "invocationCommands": [
       {
-        "commandIdentifier": "PTYShellExecutor",
-        "description": "在Linux桌面环境下执行本地Shell命令。支持同步非交互执行和异步任务模式（后台执行长时间任务如codex）。\n\n## 操作模式 (action 参数)\n\n### 1. 同步执行 (默认)\naction: \"execute\" 或省略\n使用独立POSIX Shell子进程执行命令，stdin固定隔离，不复用PTY会话，不保持跨命令目录或环境状态。适合短命令、ssh远程查询、docker exec等非交互命令。\n\n### 2. 异步执行\naction: \"async\"\n将命令放到后台执行，立即返回taskId。适用于长时间运行的任务（如codex、编译等）。\n\n### 3. 查询任务\naction: \"query\" 或 \"eventlog\"\n查询异步任务的状态和输出。\n\n### 4. 取消任务\naction: \"cancel\"\n取消正在运行的异步任务。\n\n### 5. 列出任务\naction: \"list\"\n列出所有异步任务。\n\n## 参数说明\n- action (字符串, 可选): 操作类型，可选值: 'execute'(默认), 'async', 'query', 'cancel', 'list'\n- command (字符串, execute/async时必需): 要执行的Shell命令\n- taskId (字符串, query/cancel时必需): 异步任务ID\n- shell (字符串, 可选): async模式指定Shell类型: 'fish', 'zsh', 'bash'\n- cwd (字符串, 可选): 工作目录","parameters": [
-          {
-            "name": "action",
-            "type": "string",
-            "required": false,
-            "description": "操作类型: execute(同步执行), async(异步执行), query(查询任务), cancel(取消任务), list(列出任务)"
-          },
-          {
-            "name": "command",
-            "type": "string",
-            "required": false,
-            "description": "要执行的Shell命令 (execute/async模式必需)"
-          },
-          {
-            "name": "taskId",
-            "type": "string",
-            "required": false,
-            "description": "异步任务ID (query/cancel模式必需)"
-          },
-          {
-            "name": "shell",
-            "type": "string",
-            "required": false,
-            "description": "async模式指定Shell类型: fish, zsh, bash；execute模式固定使用bash/sh"
-          },
-          {
-            "name": "newSession",
-            "type": "boolean",
-            "required": false,
-            "description": "已废弃：execute模式不复用PTY会话"
-          },
-          {
-            "name": "cwd",
-            "type": "string",
-            "required": false,
-            "description": "工作目录 (execute/async模式可用)"
-          }
-        ],
-        "examples": [
-          {
-            "name": "同步执行命令",
-            "description": "使用独立非交互Shell执行ls命令",
-            "code": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」PTYShellExecutor「末」,\ncommand:「始」ls -la「末」,\n<<<[END_TOOL_REQUEST]>>>"
-          },
-          {
-            "name": "异步执行长任务",
-            "description": "后台执行codex命令",
-            "code": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」PTYShellExecutor「末」,\naction:「始」async「末」,\ncommand:「始」codex generate --prompt 'create a hello world'「末」,\n<<<[END_TOOL_REQUEST]>>>"
-          },
-          {
-            "name": "查询任务状态",
-            "description": "查询异步任务的输出",
-            "code": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」PTYShellExecutor「末」,\naction:「始」query「末」,\ntaskId:「始」task_xxx_yyy「末」,\n<<<[END_TOOL_REQUEST]>>>"
-          },
-          {
-            "name": "列出所有任务",
-            "description": "查看所有异步任务",
-            "code": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」PTYShellExecutor「末」,\naction:「始」list「末」,\n<<<[END_TOOL_REQUEST]>>>"
-          }
-        ]
+        "command": "ExecuteCommand",
+        "description": "功能: 在持久化 Linux Shell (bash/zsh) PTY 会话中执行命令并同步等待原子完成回执。底层输出与真实退出码无损分流采集，保留连续 cd 与环境变量。适合短命令与构建查询。\n参数:\n- command / powershell / script (字符串, 必需): 要执行的 Shell 命令或脚本。\n- requireAdmin (布尔值, 可选, 默认 false): 请求管理员确认窗口与提权执行。\n- newSession (布尔值, 可选, 默认 false): 关闭当前会话并创建全新纯净会话。\n- terminalTarget (字符串, 可选, 默认 sidebar): sidebar 在主窗口侧栏终端展现；window 操作独立 CLI 窗口。"
+      },
+      {
+        "command": "ExecutePowerShell",
+        "description": "[兼容别名，功能等同于 ExecuteCommand] 在持久化 Shell 会话中执行命令。\n参数:\n- command / powershell (字符串, 必需): 要执行的 Shell 命令。"
+      },
+      {
+        "command": "StartInteractive",
+        "description": "功能: 启动 snow、codex、claude、vim、fzf 等交互式 CLI，锁定会话为交互模式，立即返回并由用户在终端中接管。\n参数:\n- command / powershell (字符串, 必需): 要启动的交互式命令。\n- newSession (布尔值, 可选, 默认 false): 启动前重建会话。\n- terminalTarget (字符串, 可选, 默认 sidebar): sidebar 操作主窗口侧栏终端；window 操作独立窗口。"
+      },
+      {
+        "command": "SendInteractiveKey",
+        "description": "功能: 向当前交互终端发送单个按键或按键组合，如 enter、up、down、esc、tab、ctrl+c、ctrl+l 等。\n参数:\n- key (字符串, 必需): 按键名称，可用 ctrl+c*2 表示重复发送。\n- terminalTarget (字符串, 可选, 默认 sidebar): 目标视图。"
+      },
+      {
+        "command": "PasteInteractiveText",
+        "description": "功能: 通过 xterm bracketed paste 协议向当前交互终端粘贴文本，不污染系统剪贴板且不破坏多行缩进。\n参数:\n- text (字符串, 必需): 要粘贴的文本。\n- submit (布尔值, 可选, 默认 false): 粘贴后是否自动发送 Enter 回车。\n- terminalTarget (字符串, 可选, 默认 sidebar): 目标视图。"
+      },
+      {
+        "command": "RunInteractiveSequence",
+        "description": "功能: 按全局步骤编号串行操纵交互式 CLI（例如 command1 -> wait2 -> key3 -> paste4 -> wait5 -> queryVisible6 等）。\n参数:\n- 包含带序号的 commandN, waitN, keyN, pasteN, queryVisibleN 等步骤。\n- terminalTarget (字符串, 可选, 默认 sidebar): 目标视图。"
+      },
+      {
+        "command": "QueryVisible",
+        "description": "功能: 从终端 buffer 查询当前屏幕可见文本，不向 PTY 发送命令，亦不破坏正在运行的交互式程序。\n参数:\n- maxLines (正整数, 可选, 默认 200): 最多返回最新多少行屏幕内容。"
+      },
+      {
+        "command": "InterruptCommand",
+        "description": "功能: 向当前 PTY 会话发送 Ctrl+C 中断信号，解除等待并保持未决占用直到收尾回执。\n参数: 无。"
+      },
+      {
+        "command": "InterruptPowerShell",
+        "description": "[兼容别名，功能等同于 InterruptCommand] 向当前 PTY 会话发送 Ctrl+C 中断信号。\n参数: 无。"
+      },
+      {
+        "command": "EndInteractive",
+        "description": "功能: 清除当前会话的 interactiveMode 交互占用标记，复位 Shell 提示符。\n参数: 无。"
       }
     ]
   },
   "configSchema": {
     "SHELL_RETURN_MODE": {
       "type": "string",
-      "description": "返回模式: delta (仅返回增量输出) 或 full (返回完整终端内容)",
+      "description": "返回模式: delta (增量) 或 full (完整)",
       "default": "delta"
     },
     "SHELL_PRIORITY": {
       "type": "string",
-      "description": "默认Shell优先级 (逗号分隔)",
-      "default": "fish,zsh,bash"
-    },
-    "FORBIDDEN_COMMANDS": {
-      "type": "string",
-      "description": "禁止执行的命令关键字 (逗号分隔)",
-      "default": ""
-    },
-    "AUTH_REQUIRED_COMMANDS": {
-      "type": "string",
-      "description": "需要确认的命令关键字 (逗号分隔)",
-      "default": ""
+      "description": "默认Shell优先级",
+      "default": "bash,zsh,fish"
     },
     "COMMAND_TIMEOUT": {
       "type": "integer",

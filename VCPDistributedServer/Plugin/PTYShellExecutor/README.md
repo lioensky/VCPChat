@@ -1,183 +1,38 @@
-# PTYShellExecutor
-
-> Linux 桌面环境下的本地 Shell 命令执行器
+# PTYShellExecutor (VCPCLI POSIX 内核)
+> Linux 桌面环境下的高性能持久化 Shell 命令执行器（全面对齐 VCPCLI 原生标准）
 
 ## 📖 简介
+**PTYShellExecutor** 是 VCPChat 在 Linux/POSIX 桌面环境下的核心持久化终端插件。在 2.0.0 版本中，已全量重构对齐 VCPCLI 标准架构：
+- 采用 **POSIX 命名管道（FIFO）与流式文本截断分流** 作为命令输出真源；
+- 采用 **原子结构化完成回执（receipt.json）** 判定任务收尾，PTY 仅作前端显示与交互渲染；
+- 会话由临时子进程全面升级为 **持久化常驻会话**，跨命令完美保留工作目录（连续 cd）与环境变量；
+- 引入 **commandUnresolved 状态锁** 与超时 60s running_detached 机制，彻底杜绝并发踩踏；
+- 提供 **全套交互式 TUI 控制能力** 与 **VCPChat 主窗口侧栏终端无缝深度联动（terminalTarget）**。
 
-PTYShellExecutor 是一个为 VCPChat 设计的本地 Shell 执行插件。同步执行使用独立的 POSIX Shell 子进程，stdin 固定隔离，适合短命令和 ssh/docker 等非交互命令；异步模式用于后台托管长任务；GUI 终端镜像 agent 命令与原始输出，并保留 PTY 可视化能力。
+---
 
-与 LinuxShellExecutor（SSH 远程执行）不同，本插件专注于**本地桌面环境**的命令执行场景。
+## ✨ 核心特性
 
-## ✨ 特性
+- 🐚 **持久化共享会话** - 跨命令持续保留当前工作目录（cd）、环境变量（export）与会话状态，无需重复加载 shell。
+- 📦 **无损日志分流与原子回执** - 通过 commandCapture 分流 stdout/stderr，保证文本、Tab、空格完整无损，并通过原子文件操作确认 receipt.json 完成状态。
+- 🛡️ **未决状态锁与防踩踏** - 命令超时 60s 自动转入后台（running_detached），锁保留直至收尾回执；中断（Ctrl+C）仅投递信号不杀锁，杜绝新命令盲目插队。
+- 🎮 **全套交互式 TUI 指令** - 支持启动并操纵 snow、codex、claude、vim、fzf 等：支持按键连击（SendInteractiveKey）、无损粘贴（PasteInteractiveText）与步序编排（RunInteractiveSequence）。
+- 👁️ **屏幕感知（QueryVisible）** - 直接读取 Headless 终端缓冲区，AI 可只读巡视当前屏幕可见行，不干扰前台交互。
+- 🔀 **视图解耦与侧栏联动** - 支持 terminalTarget: "sidebar" | "window"，侧栏终端与独立 CLI 窗口共用同一底层 PTY 进程。
+- 📜 **实时轨迹追踪** - commandRunStore.js 统一维护执行历史，并实时广播至主窗口侧边栏“命令输出”抽屉。
+- 🔐 **Linux 高危提权与安全审核** - 内置高危模式拦截与 AdminConfirm 图形授权确认弹窗（支持系统 pkexec 代理）。
 
-- 🐚 **同步 Shell 隔离** - 同步执行固定使用 bash/sh，避免 fish 语法和 PTY 竞态
-- 🔄 **PTY 可视化** - GUI 终端保留 PTY 会话能力，工具同步回调不依赖 PTY
-- ⚡ **同步/异步双模式** - 短命令同步执行，长任务后台托管
-- 👁️ **Agent 执行轨迹** - GUI 终端显示 agent 输入命令、原始输出和退出状态
-- 🧵 **代次隔离输出** - 同步、异步、PTY 与 pipe 共用有序输出总线，关闭窗口后不会向新窗口回放旧内容
-- 🧻 **禁用分页器** - 默认禁用常见分页器（PAGER/GIT_PAGER/SYSTEMD_PAGER/MANPAGER 等），避免命令进入 less 导致超时
-- 🧹 **智能输出清理** - 自动过滤 ANSI 转义序列、Shell Integration 标记
-- 🧯 **自动降级** - 当环境禁止创建 PTY 时，自动切换为 pipe 模式执行
-- 🖥️ **可视化终端** - 内置 GUI 窗口，实时查看命令执行
-- 🎨 **主题跟随** - 跟随 VCPChat 的明暗/系统模式与主题套装，热换样式时不中断终端输出
-- 💾 **任务持久化** - 异步任务状态保存至磁盘，7 天自动清理
+---
 
-## 🚀 快速开始
+## 🚀 调用支持与参数一览
 
-### 同步执行命令
-
-    tool_name: PTYShellExecutor
-    command: ls -la
-
-### 异步执行长任务
-
-    tool_name: PTYShellExecutor
-    action: async
-    command: npm install
-
-### 查询任务状态
-
-    tool_name: PTYShellExecutor
-    action: query
-    taskId: task_xxx_yyy
-
-### 列出所有任务
-
-    tool_name: PTYShellExecutor
-    action: list
-
-### 取消任务
-
-    tool_name: PTYShellExecutor
-    action: cancel
-    taskId: task_xxx_yyy
-
-## 📋 参数说明
-
-| 参数 | 类型 | 必需 | 说明 |
-|------|------|------|------|
-| action | string | 否 | 操作类型：execute(默认), async, query, cancel, list |
-| command | string | 条件 | 要执行的命令（execute/async 模式必需） |
-| taskId | string | 条件 | 异步任务 ID（query/cancel 模式必需） |
-| shell | string | 否 | async 模式指定 Shell：fish, zsh, bash；execute 模式固定使用 bash/sh |
-| newSession | boolean | 否 | 已废弃：execute 模式不复用 PTY 会话 |
-| cwd | string | 否 | 工作目录（execute/async 模式可用） |
-
-## ⚙️ 配置项
-
-编辑 config.env 文件：
-
-    # 返回模式: delta (仅增量) 或 full (完整输出；仅用于 PTY/历史兼容路径)
-    SHELL_RETURN_MODE=delta
-
-    # PTY 模式: auto(默认，失败自动降级), pty(强制使用), pipe(禁用 PTY)
-    PTY_MODE=auto
-
-    # GUI/async Shell 优先级 (逗号分隔；execute 模式固定使用 bash/sh)
-    SHELL_PRIORITY=fish,zsh,bash
-
-    # 禁止执行的命令关键字 (逗号分隔)
-    FORBIDDEN_COMMANDS=
-
-    # 需要确认的命令关键字 (逗号分隔)
-    AUTH_REQUIRED_COMMANDS=
-
-    # 命令超时时间 (毫秒)
-    COMMAND_TIMEOUT=60000
-
-## 🏗️ 架构设计
-
-    PTYShellExecutor/
-    ├── PTYShellExecutor.js      # 插件入口与加载边界
-    ├── PTYShellExecutor.impl.js # 命令、会话与窗口协调
-    ├── ShellOutputPipeline.js   # 输出协议、窗口代次与 UTF-8 增量解码
-    ├── ShellThemeBridge.js      # 插件内主题设置/样式监听与快照
-    ├── plugin-manifest.json   # 插件清单
-    ├── config.env             # 配置文件
-    ├── gui/                   # GUI 相关
-    │   ├── ShellViewer.html   # 终端界面
-    │   ├── ShellViewer.js     # xterm 与 IPC 交互
-    │   ├── ShellThemeRuntime.js # 主题快照与样式热换
-    │   └── preload.js         # Electron 预加载
-    └── state/                 # 异步任务状态存储
-        └── task_xxx.json      # 任务状态文件
-
-### 核心模块
-
-**AsyncTaskManager** - 异步任务管理器
-- 任务生命周期管理（启动/查询/取消）
-- 状态持久化与自动清理
-- 输出长度限制（5MB）
-
-**PTY Session** - 伪终端会话
-- node-pty 创建持久化会话
-- 支持会话复用与新建
-- 自动检测可用 Shell
-
-**Output Cleaner** - 输出清理器
-- ANSI 转义序列过滤
-- Shell Integration 标记清理
-- Fish 警告信息过滤
-- 逐字符回显模式处理
-
-**GUI Window** - 可视化终端
-- Electron BrowserWindow
-- xterm.js 终端渲染
-- 插件内主题快照与 revision 热换
-
-**Shell Output Pipeline** - 终端输出总线
-- 窗口 generation 与 ready 屏障
-- 同步、异步、PTY 和 pipe 统一事件包
-- executionId/sequence 归属与 UTF-8 分片保护
-
-## 🔒 安全机制
-
-- **命令黑名单** - 可配置禁止执行的命令关键字
-- **确认机制** - 敏感命令可配置为需要确认
-- **超时保护** - 默认 60 秒超时，防止命令卡死
-- **输出限制** - 异步任务输出最大 5MB，防止内存溢出
-
-## 📝 与 LinuxShellExecutor 的区别
-
-| 特性 | PTYShellExecutor | LinuxShellExecutor |
-|------|------------------|-------------------|
-| 执行位置 | 本地 | SSH 远程 |
-| 会话模式 | PTY 持久会话 | 每次独立连接 |
-| Shell 支持 | fish/zsh/bash | 依赖远程 Shell |
-| hostId | 不需要 | 必需 |
-| 异步任务 | 支持 | 支持 (isLongRunning) |
-| GUI 终端 | 内置 | 无 |
-
-## 🩺 故障排查
-
-1. **提示“插件加载失败，请检查本地诊断报告”**
-   - 查看 `reports/` 目录下最新的 `.json` 报告，重点关注 `phase` 和 `error.message`。
-
-2. **报错 `forkpty(3) failed`**
-   - 说明当前运行环境禁止创建 PTY（常见于容器/沙箱/受限 devpts 配置）。
-   - 解决方案：
-     - 在 `config.env` 设置 `PTY_MODE=pipe`（禁用 PTY，使用 pipe 模式执行）。
-     - 或改用 `action: async` 异步模式。
-     - 如需要 PTY：请在宿主/容器开启 PTY 支持（devpts/ptmx 权限、pt_chown 等）。
-
-3. **报错 `node-pty 模块不可用`**
-   - 确认宿主项目依赖中已安装 `node-pty`，且与当前 Node/Electron 版本匹配。
-
-## 🐛 已知限制
-
-1. **交互式程序** - 无法处理需要持续交互的程序（如显式运行 less/vim/top 等）
-   - 说明：常见命令的分页器已默认禁用（如 git log/systemctl/man），但显式交互式 TUI 仍不适合走同步执行
-   - 建议：需要长时间运行或交互的任务请使用 `action: async`
-
-2. **仅限 Linux** - 依赖 Linux 环境的 Shell 和 PTY 实现
-
-3. **Electron 依赖** - GUI 功能需要 Electron 环境
-
-## 📜 License
-
-MIT License
-
-## 👥 Authors
-
-- **Piko** - 开发与文档
-- **十一** - 架构设计与代码审查
+| 指令名称 | 必需参数 | 可选参数 | 功能描述 |
+|---|---|---|---|
+| **ExecutePowerShell / execute** | `command` | `requireAdmin`, `newSession`, `terminalTarget` | 同步执行命令，支持持久目录保留与原子回执 |
+| **StartInteractive** | `command` | `newSession`, `terminalTarget` | 启动交互式 TUI 程序并锁定会话 |
+| **SendInteractiveKey** | `key` | `terminalTarget` | 发送原生终端按键（如 enter, up, ctrl+c*2） |
+| **PasteInteractiveText** | `text` | `submit`, `terminalTarget` | 通过 Bracketed Paste 协议无损注入文本 |
+| **RunInteractiveSequence** | 步骤编号 | `terminalTarget` | 编排 commandN, waitN, keyN, pasteN, queryVisibleN |
+| **QueryVisible** | 无 | `maxLines` | 只读感知终端屏幕当前可见文本 |
+| **InterruptPowerShell** | 无 | 无 | 发送 Ctrl+C 中断信号并进入未决等待 |
+| **EndInteractive** | 无 | 无 | 解除交互模式并复位提示符 |
