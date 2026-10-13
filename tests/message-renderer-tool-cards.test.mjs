@@ -51,7 +51,7 @@ function createVisibilityStub() {
     };
 }
 
-async function createRendererFixture(messageContent, appearanceProfile) {
+async function createRendererFixture(messageContent, appearanceProfile, markdown = marked) {
     const dom = new JSDOM(
         '<!doctype html><html><head></head><body><div class="chat-messages-container"><div id="chat"></div></div></body></html>',
         {
@@ -135,7 +135,7 @@ async function createRendererFixture(messageContent, appearanceProfile) {
             },
         },
         transientStreamHistory,
-        markedInstance: marked,
+        markedInstance: markdown,
         morphdom: require('morphdom'),
         uiHelper: {
             scrollToBottom() {},
@@ -168,6 +168,7 @@ async function createRendererFixture(messageContent, appearanceProfile) {
         renderer,
         streamProjection,
         messageItem,
+        historyRef,
         restoreGlobals() {
             globalThis.window = previousGlobals.window;
             globalThis.document = previousGlobals.document;
@@ -210,8 +211,13 @@ test('tool request fields reach the card once-escaped: quotes stay quotes in the
         const title = request.querySelector('.vcp-tool-row-title').textContent;
         assert.match(title, /Set-Location 'H:\\VCP\\VCPChat'/);
         assert.doesNotMatch(title, /&#039;|&amp;/);
-        const details = request.querySelector('template').content.textContent;
+        assert.equal(request.querySelector('template'), null);
+        assert.equal(request.querySelector('.vcp-tool-details').textContent, '');
+        request.querySelector('.vcp-tool-row-toggle').click();
+        const details = request.querySelector('.vcp-tool-details').textContent;
         assert.ok(details.includes(POWERSHELL), 'expanded details must show the original command');
+        request.querySelector('.vcp-tool-row-toggle').click();
+        assert.equal(request.querySelector('.vcp-tool-details').textContent, '');
     } finally {
         await disposeFixture(fixture);
     }
@@ -357,6 +363,91 @@ ink:「始」mark_history「末」
     try {
         assert.equal(fixture.messageItem.parentElement.dataset.vcpProjectforgeTopic, 'true');
         assert.ok(fixture.messageItem.querySelector('.vcp-tool-use-bubble'));
+    } finally {
+        await disposeFixture(fixture);
+    }
+});
+
+
+test('four-message history with a 600K tool-heavy bubble never parses collapsed payloads', async () => {
+    const marker = 'LAZY_PAYLOAD_SENTINEL';
+    const payload = marker + '\n' + 'const source = 123456789;\n'.repeat(210);
+    const text = Array.from({length:140}, (_, i) =>
+        REQ('ProjectForge', `command:${S}${i < 100 ? 'GetCode' : 'EditCode'}${E},\npath:${S}src/file-${i}.js${E},\ncontent:${S}${payload}${E}`) +
+        '\n\n' + RESULT('ProjectForge', '```js\n' + payload + '\n```')
+    ).join('\n\n') + '\n\n最终回答。';
+    assert.ok(text.length > 600000);
+    const parsed = [];
+    const fixture = await createRendererFixture('', {toolPresentation:'compact', toolExpansion:'none'}, {
+        parse(source, options) { parsed.push(source); return marked.parse(source, options); },
+    });
+    try {
+        fixture.renderer.clearChat();
+        const history = [
+            {id:'u1', role:'user', content:'开始', timestamp:1},
+            {id:'a1', role:'assistant', content:'准备好了', timestamp:2},
+            {id:'u2', role:'user', content:'读取并修改文件', timestamp:3},
+            {id:'a2', role:'assistant', content:text, timestamp:4},
+        ];
+        fixture.historyRef.set(history);
+        const start = performance.now();
+        await fixture.renderer.renderHistory(history);
+        await new Promise(resolve => setTimeout(resolve, 30));
+        const root = fixture.dom.window.document.getElementById('chat');
+        const bubble = root.querySelector('[data-message-id="a2"] .md-content');
+        assert.equal(root.querySelectorAll('.message-item').length, 4);
+        assert.equal(bubble.querySelectorAll('[data-vcp-lazy-tool-id]').length, 280);
+        assert.equal(bubble.querySelectorAll('template, .vcp-tool-details pre, .vcp-tool-result-item').length, 0);
+        assert.ok(!parsed.some(source => source.includes(marker)), 'no collapsed tool payload may reach Markdown');
+        assert.ok(bubble.innerHTML.length < text.length / 2);
+        console.log(`[LazyTools] source=${text.length} initialHTML=${bubble.innerHTML.length} loadMs=${Math.round(performance.now()-start)}`);
+        const result = bubble.querySelector('.vcp-tool-result-bubble');
+        result.querySelector('.vcp-tool-row-toggle').click();
+        assert.ok(result.textContent.includes(marker));
+        assert.equal(parsed.filter(source => source.includes(marker)).length, 1);
+        result.querySelector('.vcp-tool-row-toggle').click();
+        assert.equal(result.querySelector('.vcp-tool-result-collapsible-content').childNodes.length, 0);
+        assert.equal(fixture.historyRef.get()[3].content, text);
+        fixture.renderer.clearChat();
+        assert.equal(fixture.renderer.getLazyToolStats().entries, 0);
+    } finally {
+        await disposeFixture(fixture);
+    }
+});
+
+test('legacy request and result clicks mount only the selected block and release on collapse', async () => {
+    const fixture = await createRendererFixture(TRANSCRIPT, {toolPresentation:'legacy', toolExpansion:'none'});
+    try {
+        await new Promise(resolve => setTimeout(resolve, 30));
+        const content = fixture.messageItem.querySelector('.md-content');
+        const request = content.querySelector('.vcp-tool-use-bubble');
+        const result = content.querySelector('.vcp-tool-result-bubble');
+        request.querySelector('.vcp-tool-summary').click();
+        assert.match(request.querySelector('.vcp-tool-details').textContent, /EditCode/);
+        assert.equal(result.querySelector('.vcp-tool-result-collapsible-content').childNodes.length, 0);
+        result.querySelector('.vcp-tool-result-header').click();
+        assert.ok(result.querySelector('.vcp-tool-result-markdown-content'));
+        result.querySelector('.vcp-tool-result-header').click();
+        assert.equal(result.querySelector('.vcp-tool-result-collapsible-content').childNodes.length, 0);
+        request.querySelector('.vcp-tool-summary').click();
+        assert.equal(request.querySelector('.vcp-tool-details').childNodes.length, 0);
+    } finally {
+        await disposeFixture(fixture);
+    }
+});
+
+test('closed turn keeps even failed result bodies unparsed until its group opens', async () => {
+    const text = TRANSCRIPT.replace('✅ SUCCESS', '❌ ERROR');
+    const fixture = await createRendererFixture(text, {toolPresentation:'process', toolExpansion:'attention'});
+    try {
+        await new Promise(resolve => setTimeout(resolve, 30));
+        const group = fixture.messageItem.querySelector('.vcp-tool-process');
+        assert.ok(group.querySelector('.vcp-tool-process-body').hidden);
+        assert.equal(group.querySelectorAll('.vcp-tool-result-item').length, 0);
+        group.querySelector('.vcp-tool-process-toggle').click();
+        assert.ok(group.querySelector('.vcp-tool-result-item'));
+        group.querySelector('.vcp-tool-process-toggle').click();
+        assert.equal(group.querySelectorAll('.vcp-tool-result-item').length, 0);
     } finally {
         await disposeFixture(fixture);
     }

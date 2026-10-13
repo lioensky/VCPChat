@@ -85,7 +85,6 @@ test('real Chromium cascade overrides theme important blur and restores on topic
             </style><style>${override}</style>
             <div id="root"><div class="message-item assistant"><div class="md-content"><div class="tool-bubble">result</div></div></div></div>`);
         assert.equal(containsProjectForgeRequest(valetRequest), true);
-        await page.evaluate(() => document.getElementById('root').setAttribute('data-vcp-projectforge-topic', 'true'));
         const read = () => page.evaluate(() => {
             const style = getComputedStyle(document.querySelector('.md-content'));
             const tool = getComputedStyle(document.querySelector('.tool-bubble'));
@@ -99,7 +98,10 @@ test('real Chromium cascade overrides theme important blur and restores on topic
             };
             return { blur: style.backdropFilter, background: rgba(style.backgroundColor), toolBlur: tool.backdropFilter, toolBackground: rgba(tool.backgroundColor) };
         });
-        assert.deepEqual(await read(), { blur: 'none', background: [50, 60, 70, 255], toolBlur: 'none', toolBackground: [30, 40, 50, 255] });
+        const before = await read();
+        await page.evaluate(() => document.getElementById('root').setAttribute('data-vcp-projectforge-topic', 'true'));
+        assert.deepEqual(await read(), { ...before, blur: 'none', toolBlur: 'none' });
+        assert.ok(before.background[3] < 255, 'theme transparency must remain unchanged');
         await page.evaluate(() => document.getElementById('root').removeAttribute('data-vcp-projectforge-topic'));
         assert.equal((await read()).blur, 'blur(12px)');
     } finally {

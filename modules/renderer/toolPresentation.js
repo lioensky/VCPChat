@@ -50,7 +50,7 @@ function hash(value) {
     return (n >>> 0).toString(36);
 }
 function readText(block) {
-    return block.querySelector('template')?.content.textContent || block.textContent || '';
+    return block._vcpLazyMeta?.summarySource ?? (block.querySelector('template')?.content.textContent || block.textContent || '');
 }
 function firstLine(value, limit = 160) {
     const line = String(value || '').split('\n').map(s => s.trim()).find(s => s && !/^(```|~~~)/.test(s)) || '';
@@ -66,6 +66,7 @@ function firstBlockLine(element) {
     return firstLine(element?.textContent);
 }
 function resultPreview(block) {
+    if (block._vcpLazyMeta) return block._vcpLazyMeta.preview || '';
     for (const item of block.querySelectorAll('.vcp-tool-result-item')) {
         const key = item.querySelector('.vcp-tool-result-item-key')?.textContent?.replace(/[:：]\s*$/, '').trim();
         if (RESULT_TEXT_KEYS.includes(key)) return firstBlockLine(item.querySelector('.vcp-tool-result-item-value'));
@@ -134,6 +135,17 @@ export function createToolPresentation({ root, getProfile, getLocalConfig }) {
     const originalHeaders = new WeakMap();
     let disposed = false;
     let controlSequence = 0;
+    let applying = false;
+    function syncLazy(content) {
+        content.querySelectorAll('[data-vcp-lazy-tool-id]').forEach(block => {
+            const visible = block.classList.contains('expanded') && !block.closest('.vcp-tool-process-body[hidden]');
+            block._vcpMountTool?.(visible);
+        });
+    }
+    function finishApply(content) {
+        applying = false;
+        syncLazy(content);
+    }
     const prefix = `vcp-tool-${hash(String(Date.now()) + String(Math.random()))}`;
     function profile(p = getProfile?.() || {}) {
         p = resolveToolPresentationProfile(p, getLocalConfig?.());
@@ -160,6 +172,10 @@ export function createToolPresentation({ root, getProfile, getLocalConfig }) {
         });
     }
     function mountRequest(block, expanded) {
+        if (block._vcpMountTool) {
+            if (!applying) block._vcpMountTool(expanded && !block.closest('.vcp-tool-process-body[hidden]'));
+            return;
+        }
         if (!block.matches('.vcp-tool-use-bubble')) return;
         const body = block.querySelector(':scope > .vcp-tool-details');
         const template = block.querySelector(':scope > .vcp-tool-details-template');
@@ -189,7 +205,7 @@ export function createToolPresentation({ root, getProfile, getLocalConfig }) {
         original.extraActions = extraActions;
         const name = original.nodes.find(n => n.matches?.(result ? '.vcp-tool-result-name' : '.vcp-tool-name-highlight'))?.textContent?.trim() || (summary ? '调用摘要' : '工具');
         const status = result ? toolStatus(original.nodes.find(n => n.matches?.('.vcp-tool-result-status'))?.textContent) : summary ? 'summary' : 'request';
-        const fingerprint = models.get(block)?.fingerprint || (result ? block.dataset.vcpToolResultHash || hash(readText(block)) : hash(readText(block)));
+        const fingerprint = models.get(block)?.fingerprint || block._vcpLazyMeta?.fingerprint || (result ? block.dataset.vcpToolResultHash || hash(readText(block)) : hash(readText(block)));
         const baseKey = `${kind}:${fingerprint}`;
         const occurrence = occurrences.get(baseKey) || 0;
         occurrences.set(baseKey, occurrence + 1);
@@ -227,7 +243,7 @@ export function createToolPresentation({ root, getProfile, getLocalConfig }) {
             body.id ||= `${prefix}-${++controlSequence}`;
             btn.setAttribute('aria-controls', body.id);
         }
-        const hasRichContent = !!block.querySelector('.vcp-tool-result-image, img, audio, video, iframe, .message-attachments');
+        const hasRichContent = block._vcpLazyMeta?.rich || !!block.querySelector('.vcp-tool-result-image, img, audio, video, iframe, .message-attachments');
         model.rich = hasRichContent;
         let expanded = state.items.has(key) ? state.items.get(key) : p.expansion === 'all' || p.expansion === 'attention' && ['failed', 'waiting'].includes(status);
         if (hasRichContent && p.expansion !== 'none' && !state.items.has(key)) expanded = true;
@@ -448,29 +464,30 @@ export function createToolPresentation({ root, getProfile, getLocalConfig }) {
     }
     function apply(content, incomingProfile) {
         if (disposed || !content) return;
+        applying = true;
         capture(content);
         unwrap(content);
         content.querySelectorAll('[data-vcp-tool-wrapper]').forEach(node => delete node.dataset.vcpToolWrapper);
         const p = profile(incomingProfile);
         content.dataset.vcpToolPresentation = p.style;
         const blocks = [...content.querySelectorAll(BLOCKS)];
-        if (p.style === 'legacy') { blocks.forEach(restore); return; }
+        if (p.style === 'legacy') { blocks.forEach(restore); finishApply(content); return; }
         markResultWrappers(content);
         const occurrences = new Map();
         const owner = content.closest('.message-item');
         if (owner && blocks.length) {
             for (const prior of owner.querySelectorAll(BLOCKS)) {
                 if (prior === blocks[0]) break;
-                const fingerprint = models.get(prior)?.fingerprint || prior.dataset.vcpToolResultHash || hash(readText(prior));
+                const fingerprint = models.get(prior)?.fingerprint || prior._vcpLazyMeta?.fingerprint || prior.dataset.vcpToolResultHash || hash(readText(prior));
                 const key = `${prior.dataset.vcpBlockType}:${fingerprint}`;
                 occurrences.set(key, (occurrences.get(key) || 0) + 1);
             }
         }
         blocks.forEach(block=>decorate(block, content, p, occurrences));
         if (p.style === 'inline' || p.style === 'process') presentCalls(blocks, content, p.style);
-        if (p.style === 'inline') { new Set(blocks.map(n=>n.parentElement)).forEach(parent=>groupFamilies(parent, content, p)); return; }
-        if (p.style === 'process') { foldTurn(content, blocks, p); return; }
-        if (p.style !== 'grouped') return;
+        if (p.style === 'inline') { new Set(blocks.map(n=>n.parentElement)).forEach(parent=>groupFamilies(parent, content, p)); finishApply(content); return; }
+        if (p.style === 'process') { foldTurn(content, blocks, p); finishApply(content); return; }
+        if (p.style !== 'grouped') { finishApply(content); return; }
         for (const parent of new Set(blocks.map(n=>n.parentElement))) {
             let members = [];
             const flush = ()=>{makeGroup(parent, members, content, p);members=[];};
@@ -481,6 +498,7 @@ export function createToolPresentation({ root, getProfile, getLocalConfig }) {
             }
             flush();
         }
+        finishApply(content);
     }
     function callStatus(model) {
         return model.partner?.status || model.status;
@@ -534,6 +552,7 @@ export function createToolPresentation({ root, getProfile, getLocalConfig }) {
     function changeGroup(group, expanded, touched = true) {
         group.querySelector('.vcp-tool-process-toggle').setAttribute('aria-expanded', String(expanded));
         group.querySelector('.vcp-tool-process-body').hidden = !expanded;
+        syncLazy(group);
         if (touched) {
             group.dataset.touched = 'true';
             const content = group.closest('[data-vcp-tool-presentation]');

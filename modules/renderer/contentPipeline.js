@@ -171,6 +171,7 @@ function createContentPipeline(deps = {}) {
         getToolResultRegex = null,
         getToolRequestRegex = null,
         replaceToolRequestBlocks = null,
+        deferToolRequest = null,
         getCodeFenceRegex = null,
         getDesktopPushRegex = null,
         getDesktopPushPartialRegex = null,
@@ -363,6 +364,12 @@ function createContentPipeline(deps = {}) {
             // 「始/末」标记是 Tool Request 字段语法的一部分，只应在工具请求围栏内部生效。
             // 因此在保护工具请求时局部处理字段内容，后续全局流水线不再扫描裸「始/末」。
             const placeholder = `<!--VCP_TOOL_REQUEST_${ctx.state.toolRequestPlaceholderId}-->`;
+            const deferredHtml = deferToolRequest?.(match, content);
+            if (typeof deferredHtml === 'string') {
+                ctx.state.toolRequestMap.set(placeholder, deferredHtml);
+                ctx.state.toolRequestPlaceholderId += 1;
+                return placeholder;
+            }
             const escapedMatch = processStartEndMarkers(match);
             ctx.state.toolRequestMap.set(placeholder, escapedMatch);
             // 工具气泡在输出处自己转义一次，需要字段转义之前的原文；按转义后的整块查回。
