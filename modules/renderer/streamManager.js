@@ -1039,6 +1039,22 @@ function findRoleDividerSectionEnd(text, startIndex, toolResultRanges = null) {
 }
 
 function findExplicitStablePrefix(text, startOffset = 0) {
+    // 仅稳定区判定信任此独立行：VCP 用它宣布本轮工具回执已经结束。
+    // 必须先于工具结果/代码/HTML 扫描，载荷里的不配对字面量不能阻止封口。
+    // 这不是工具结果配对或安全隔离规则；完整渲染仍使用原来的数据域扫描器。
+    // 流式 EOF 尚不能证明独立行，等待 LF（兼容 CRLF）确认右边界。
+    const trustedEndLine = /^[ \t]*<<<\[END_ROLE_DIVIDE_USER\]>>>[ \t]*\r?\n/gm;
+    trustedEndLine.lastIndex = Math.max(0, startOffset);
+    let trustedCutoff = 0;
+    let trustedMatch;
+    while ((trustedMatch = trustedEndLine.exec(text)) !== null) {
+        trustedCutoff = trustedMatch.index + trustedMatch[0].length;
+    }
+    if (trustedCutoff > startOffset) {
+        // 已封口源码不再参与本次后续结构扫描；只检查封口之后的新 tail。
+        return trustedCutoff + findExplicitStablePrefix(text.slice(trustedCutoff), 0);
+    }
+
     let index = Math.max(0, startOffset);
     let stableCutoff = startOffset;
     let paragraphFloor = startOffset;
