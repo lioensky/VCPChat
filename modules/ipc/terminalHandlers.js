@@ -32,9 +32,18 @@ const CHANNELS = [
     'terminal:view-response',
 ];
 
-const EXECUTOR_PATH = path.join(__dirname, '..', '..', 'VCPDistributedServer', 'Plugin', 'PowerShellExecutor', 'PowerShellExecutor.js');
-// 命令运行记录单独成模块、加载无副作用：只读记录（状态面板、命令输出标签）不会把整个执行器拉起来
-const COMMAND_RUN_STORE_PATH = path.join(__dirname, '..', '..', 'VCPDistributedServer', 'Plugin', 'PowerShellExecutor', 'commandRunStore.js');
+const PTY_EXECUTOR_PATH = path.join(__dirname, "..", "..", "VCPDistributedServer", "Plugin", "PTYShellExecutor", "PTYShellExecutor.js");
+const PTY_RUN_STORE_PATH = path.join(__dirname, "..", "..", "VCPDistributedServer", "Plugin", "PTYShellExecutor", "commandRunStore.js");
+const PS_EXECUTOR_PATH = path.join(__dirname, "..", "..", "VCPDistributedServer", "Plugin", "PowerShellExecutor", "PowerShellExecutor.js");
+const PS_RUN_STORE_PATH = path.join(__dirname, "..", "..", "VCPDistributedServer", "Plugin", "PowerShellExecutor", "commandRunStore.js");
+
+const EXECUTOR_PATH = process.platform !== "win32" && fs.existsSync(PTY_EXECUTOR_PATH)
+    ? PTY_EXECUTOR_PATH
+    : PS_EXECUTOR_PATH;
+const COMMAND_RUN_STORE_PATH = process.platform !== "win32" && fs.existsSync(PTY_RUN_STORE_PATH)
+    ? PTY_RUN_STORE_PATH
+    : PS_RUN_STORE_PATH;
+
 const MAX_VIEWS = 8;
 const MAX_WRITE_CHARS = 1024 * 1024;
 const MIN_COLS = 2;

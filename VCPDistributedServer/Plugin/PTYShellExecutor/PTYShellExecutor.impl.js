@@ -1,1767 +1,788 @@
-const pty = require('node-pty');
-const { Terminal } = require('@xterm/headless');
-const PluginErrorReporter = require('./PluginErrorReporter');
-const reporter = new PluginErrorReporter('PTYShellExecutor');
-const os = require('os');
-const path = require('path');
-const fs = require('fs');
-const crypto = require('crypto');
-const { EventEmitter } = require('events');
-const { spawn } = require('child_process');
-const chokidar = require('chokidar');
-const { BrowserWindow, ipcMain, clipboard, nativeTheme } = require('electron');
-const {
-    createExecutionId,
-    createShellOutputBus,
-    createUtf8StreamDecoder,
-    normalizeForTerminal,
-    writeExecutionTranscriptEnd,
-    writeExecutionTranscriptStart
-} = require('./ShellOutputPipeline');
-const { createShellThemeBridge } = require('./ShellThemeBridge');
+// PTYShellExecutor.impl.js - Linux / POSIX 桌面环境下的高性能持久化 Shell 执行器
+// 完全对齐 VCPCLI 标准架构：持久化共享会话、commandCapture 日志分流、原子回执、
+// commandUnresolved 状态锁、全套交互式 TUI 指令、视图解耦 (terminalTarget) 与侧栏联动。
+"use strict";
 
-// --- Pager 兼容性：默认禁用常见分页器，避免命令进入 less/more 导致边界标记永远无法输出 ---
+const pty = require("node-pty");
+const { Terminal } = require("@xterm/headless");
+const PluginErrorReporter = require("./PluginErrorReporter");
+const reporter = new PluginErrorReporter("PTYShellExecutor");
+const os = require("os");
+const path = require("path");
+const fs = require("fs");
+const crypto = require("crypto");
+const { spawn } = require("child_process");
+const { BrowserWindow, ipcMain, clipboard, nativeTheme } = require("electron");
+const chokidar = require("chokidar");
+const { createShellThemeBridge } = require("./ShellThemeBridge");
+
+const {
+    buildCaptureWrapper,
+    parseCaptureReceipt
+} = require("./commandCapture");
+
+const {
+    COMMAND_RUN_RAW_LIMIT,
+    beginCommandRun,
+    appendCommandRunOutput,
+    finishCommandRun,
+    listCommandRuns,
+    getCommandRun,
+    subscribeCommandRuns
+} = require("./commandRunStore");
+
+const {
+    confirmAdminExecution,
+    executeAdminCommand
+} = require("./AdminConfirm");
+
+const {
+    INTERACTIVE_SEQUENCE_LIMITS,
+    TERMINAL_KEY_SEQUENCES,
+    delay,
+    parseWaitDuration,
+    parseTerminalKey,
+    parseInteractiveSequence
+} = require("./terminalKeyParser");
+
 function withPagerDisabledEnv(baseEnv) {
     return {
         ...baseEnv,
-        // 通用
-        PAGER: 'cat',
-        LESS: 'FRX',
-        // Git / GitHub CLI
-        GIT_PAGER: 'cat',
-        GH_PAGER: 'cat',
-        // systemd
-        SYSTEMD_PAGER: 'cat',
-        SYSTEMD_LESS: 'FRX',
-        SYSTEMD_PAGERSECURE: '1',
-        // man
-        MANPAGER: 'cat',
-        // awscli
-        AWS_PAGER: '',
-        // bat / delta（常见 pager 依赖）
-        BAT_PAGER: 'cat',
-        DELTA_PAGER: 'cat'
+        PAGER: "cat",
+        LESS: "FRX",
+        GIT_PAGER: "cat",
+        GH_PAGER: "cat",
+        SYSTEMD_PAGER: "cat",
+        SYSTEMD_LESS: "FRX",
+        SYSTEMD_PAGERSECURE: "1",
+        MANPAGER: "cat",
+        AWS_PAGER: "",
+        BAT_PAGER: "cat",
+        DELTA_PAGER: "cat"
     };
 }
 
-function killProcessGroup(pid, signal = 'SIGTERM') {
-    if (!pid || typeof pid !== 'number') return;
-    // POSIX 下可用负 pid 代表进程组
-    if (process.platform !== 'win32') {
+function killProcessGroup(pid, signal = "SIGTERM") {
+    if (!pid || typeof pid !== "number") return;
+    if (process.platform !== "win32") {
         try {
             process.kill(-pid, signal);
             return;
-        } catch (e) {
-            // 回退到单进程 kill
-        }
+        } catch (_) {}
     }
-    try { process.kill(pid, signal); } catch (_) { /* ignore */ }
+    try { process.kill(pid, signal); } catch (_) {}
 }
 
-// ============================================================================
-// 异步任务管理器 (AsyncTaskManager)
-// ============================================================================
+const defaultConfig = {
+    shellReturnMode: "delta",
+    shellPriority: ["bash", "zsh", "fish"],
+    forbiddenCommands: ["rm -rf /", ":(){ :|:& };:"],
+    authRequiredCommands: ["sudo", "pkexec", "chmod 777", "mkfs", "dd if="],
+    commandTimeout: 60000,
+    enableHeadlessMirror: true,
+    historyLines: 1000
+};
 
-/**
- * 异步任务管理器
- * 用于管理长时间运行的后台任务（如 codex、长时间编译等）
- */
-class AsyncTaskManager {
-    constructor({ publishShellData = sendShellData, stateDir = path.join(__dirname, 'state') } = {}) {
-        // 任务存储: Map<taskId, TaskInfo>
-        this.tasks = new Map();
-
-        // 所有异步输出与同步/交互输出共用同一条窗口分发管线。
-        this.publishShellData = publishShellData;
-        
-        // 任务状态目录（持久化）
-        this.stateDir = stateDir;
-        this.ensureStateDir();
-        
-        // 最大保留任务数（防止内存泄漏）
-        this.maxTasks = 100;
-        
-        // 任务输出最大长度（5MB）
-        this.maxOutputLength = 5 * 1024 * 1024;
-
-        // 并发控制
-        this.maxConcurrent = 5;
-        this.runningCount = 0;
-        this.queue = [];
-
-        // 默认任务超时 (30分钟)
-        this.defaultTaskTimeout = 30 * 60 * 1000;
-    }
-    
-    ensureStateDir() {
-        if (!fs.existsSync(this.stateDir)) {
-            fs.mkdirSync(this.stateDir, { recursive: true });
+const configPath = path.join(__dirname, "config.env");
+if (fs.existsSync(configPath)) {
+    try {
+        const envContent = fs.readFileSync(configPath, "utf8");
+        for (const line of envContent.split(/\r?\n/)) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith("#")) continue;
+            const [k, ...vParts] = trimmed.split("=");
+            const v = vParts.join("=").trim();
+            if (k === "SHELL_RETURN_MODE") defaultConfig.shellReturnMode = v;
+            if (k === "SHELL_PRIORITY") defaultConfig.shellPriority = v.split(",").map(s => s.trim());
+            if (k === "FORBIDDEN_COMMANDS") defaultConfig.forbiddenCommands = v.split(",").map(s => s.trim()).filter(Boolean);
+            if (k === "AUTH_REQUIRED_COMMANDS") defaultConfig.authRequiredCommands = v.split(",").map(s => s.trim()).filter(Boolean);
+            if (k === "COMMAND_TIMEOUT") defaultConfig.commandTimeout = parseInt(v, 10) || 60000;
         }
-    }
-    
-    /**
-     * 生成唯一任务ID
-     */
-    generateTaskId() {
-        const timestamp = Date.now().toString(36);
-        const random = crypto.randomBytes(4).toString('hex');
-        return `task_${timestamp}_${random}`;
-    }
-    
-    /**
-     * 启动异步任务
-     * @param {string} command - 要执行的命令
-     * @param {object} options - 选项
-     * @returns {object} - { taskId, status }
-     */
-    startTask(command, options = {}) {
-        const taskId = this.generateTaskId();
-        const shell = options.shell || process.env.SHELL || '/bin/bash';
-        
-        // 异步清理旧任务，不阻塞主线程
-        setImmediate(() => this.cleanupOldTasks());
-        
-        const taskInfo = {
-            taskId,
-            command,
-            shell,
-            options,
-            status: 'queued',
-            output: '',
-            exitCode: null,
-            startTime: new Date().toISOString(),
-            endTime: null,
-            pid: null,
-            _term: null,
-            _process: null,
-            _timeoutTimer: null,
-            // P0: 用于修复 cancel 导致的死锁
-            _finalized: false,
-            _cancelRequested: false
-        };
-
-        this.tasks.set(taskId, taskInfo);
-
-        // 进入队列
-        this.queue.push(taskId);
-        this.processQueue();
-
-        return {
-            taskId,
-            status: 'queued',
-            message: '任务已加入队列，使用 action: "query" 查询状态'
-        };
-    }
-
-    /**
-     * 处理任务队列 - P1: 填满并发
-     */
-    processQueue() {
-        // 使用 while 循环填满并发槽位
-        while (this.runningCount < this.maxConcurrent && this.queue.length > 0) {
-            const taskId = this.queue.shift();
-            const taskInfo = this.tasks.get(taskId);
-
-            if (!taskInfo || taskInfo.status !== 'queued') {
-                continue; // 跳过无效任务，继续处理下一个
-            }
-
-            this.executeTask(taskInfo);
-        }
-    }
-
-    /**
-     * 真正执行任务
-     */
-    executeTask(taskInfo) {
-        const { taskId, command, shell, options } = taskInfo;
-        this.runningCount++;
-        taskInfo.status = 'running';
-
-        const transcriptOptions = {
-            cwd: options.cwd,
-            source: 'agent-async',
-            targetGeneration: options.targetGeneration
-        };
-        writeExecutionTranscriptStart(
-            command,
-            transcriptOptions,
-            shell,
-            taskId,
-            this.publishShellData
-        );
-
-        // 初始化 headless 终端
-        const term = new Terminal({
-            cols: 120, rows: 100, allowProposedApi: true
-        });
-        taskInfo._term = term;
-
-        let currentOutputSize = 0;
-        let outputLimitReported = false;
-        const streamDecoder = createUtf8StreamDecoder();
-
-        const publishDecodedOutput = (decoded, stream) => {
-            if (!decoded) return;
-            term.write(decoded);
-            this.publishShellData(normalizeForTerminal(decoded), {
-                ...transcriptOptions,
-                executionId: taskId,
-                phase: 'data',
-                stream
-            });
-        };
-
-        const flushStreamDecoders = () => {
-            for (const tail of streamDecoder.end()) {
-                publishDecodedOutput(tail.data, tail.stream);
-            }
-        };
-
-        try {
-            const proc = spawn(shell, ['-c', command], {
-                cwd: options.cwd || process.env.HOME || '/home',
-                env: {
-                    ...withPagerDisabledEnv(process.env),
-                    TERM: 'xterm-256color',
-                    LANG: 'en_US.UTF-8',
-                    LC_ALL: 'en_US.UTF-8',
-                    DEBIAN_FRONTEND: 'noninteractive',
-                    CI: 'true'
-                },
-                detached: false,
-                stdio: ['ignore', 'pipe', 'pipe']
-            });
-
-            taskInfo.pid = proc.pid;
-            taskInfo._process = proc;
-
-            const onData = (data, stream) => {
-                const raw = Buffer.isBuffer(data) ? data : Buffer.from(String(data), 'utf-8');
-                if (currentOutputSize < this.maxOutputLength) {
-                    const remaining = this.maxOutputLength - currentOutputSize;
-                    const toWrite = raw.length > remaining ? raw.subarray(0, remaining) : raw;
-                    currentOutputSize += toWrite.length;
-                    publishDecodedOutput(streamDecoder.write(stream, toWrite), stream);
-                }
-
-                if (currentOutputSize >= this.maxOutputLength && !outputLimitReported) {
-                    outputLimitReported = true;
-                    const limitMessage = '\r\n\x1b[31m[Error] Output limit exceeded, truncating...\x1b[0m\r\n';
-                    term.write(limitMessage);
-                    this.publishShellData(limitMessage, {
-                        ...transcriptOptions,
-                        executionId: taskId,
-                        phase: 'error',
-                        stream
-                    });
-                }
-            };
-
-            proc.stdout.on('data', data => onData(data, 'stdout'));
-            proc.stderr.on('data', data => onData(data, 'stderr'));
-
-            // P0: 修复 cancel 导致队列死锁 - 使用 _finalized 标志确保只执行一次
-            const finalize = (status, code, errorMsg = null) => {
-                // 确保只 finalize 一次
-                if (taskInfo._finalized) return;
-                taskInfo._finalized = true;
-                
-                // 清除超时定时器
-                if (taskInfo._timeoutTimer) {
-                    clearTimeout(taskInfo._timeoutTimer);
-                    taskInfo._timeoutTimer = null;
-                }
-
-                // 根据 _cancelRequested 决定最终状态
-                if (taskInfo._cancelRequested) {
-                    taskInfo.status = 'cancelled';
-                } else {
-                    taskInfo.status = status;
-                }
-
-                flushStreamDecoders();
-                
-                taskInfo.exitCode = code;
-                taskInfo.endTime = new Date().toISOString();
-                taskInfo.output = getCleanTextFromBuffer(term);
-                if (errorMsg) {
-                    taskInfo.output += `\n[Error] ${errorMsg}`;
-                    this.publishShellData(`\r\n\x1b[31m[Agent Error] ${errorMsg}\x1b[0m\r\n`, {
-                        ...transcriptOptions,
-                        executionId: taskId,
-                        phase: 'error'
-                    });
-                }
-                if (taskInfo._cancelRequested) taskInfo.output += '\n\n[任务已被用户取消]';
-
-                writeExecutionTranscriptEnd(
-                    code,
-                    null,
-                    transcriptOptions,
-                    taskId,
-                    this.publishShellData,
-                    taskInfo.status
-                );
-
-                // 彻底释放资源
-                if (taskInfo._term) {
-                    taskInfo._term.dispose();
-                    taskInfo._term = null;
-                }
-                taskInfo._process = null;
-
-                this.saveTaskState(taskId, taskInfo);
-                
-                // 关键：无论什么路径，都必须减少 runningCount
-                this.runningCount--;
-                console.log(`[PTYShellExecutor] Task ${taskId} ${taskInfo.status} with code ${code}`);
-                
-                // 继续处理队列
-                this.processQueue();
-            };
-
-            proc.on('close', (code) => finalize(code === 0 ? 'completed' : 'failed', code));
-            proc.on('error', (err) => finalize('failed', -1, err.message));
-
-            // 设置超时
-            const timeout = options.timeout || this.defaultTaskTimeout;
-            taskInfo._timeoutTimer = setTimeout(() => {
-                if (taskInfo.status === 'running') {
-                    console.warn(`[PTYShellExecutor] Task ${taskId} timed out after ${timeout}ms`);
-                    if (taskInfo._process) {
-                        try { taskInfo._process.kill('SIGKILL'); } catch(e) {}
-                    }
-                    finalize('failed', -2, `Task timed out after ${timeout}ms`);
-                }
-            }, timeout);
-
-        } catch (err) {
-            this.runningCount--;
-            taskInfo.status = 'failed';
-            taskInfo.output = `[Launch Error] ${err.message}`;
-            this.publishShellData(`\r\n\x1b[31m[Agent Launch Error] ${err.message}\x1b[0m\r\n`, {
-                ...transcriptOptions,
-                executionId: taskId,
-                phase: 'error'
-            });
-            writeExecutionTranscriptEnd(
-                -1,
-                null,
-                transcriptOptions,
-                taskId,
-                this.publishShellData,
-                'failed'
-            );
-            reporter.capture('asyncTaskLaunch', err, { taskId, command, shell });
-            this.saveTaskState(taskId, taskInfo);
-            this.processQueue();
-        }
-    }
-    
-    /**
-     * 查询任务状态
-     * @param {string} taskId - 任务ID
-     * @returns {object} - 任务信息
-     */
-    queryTask(taskId) {
-        // 先从内存中查找
-        let taskInfo = this.tasks.get(taskId);
-        
-        // 如果内存中没有，尝试从文件加载
-        if (!taskInfo) {
-            taskInfo = this.loadTaskState(taskId);
-        }
-        
-        if (!taskInfo) {
-            return {
-                taskId,
-                status: 'not_found',
-                message: `任务 ${taskId} 不存在`
-            };
-        }
-        
-        // 返回任务信息（不包含进程引用）
-        return {
-            taskId: taskInfo.taskId,
-            command: taskInfo.command,
-            status: taskInfo.status,
-            output: taskInfo.status === 'running' ? getCleanTextFromBuffer(taskInfo._term) : taskInfo.output,
-            exitCode: taskInfo.exitCode,
-            startTime: taskInfo.startTime,
-            endTime: taskInfo.endTime,
-            pid: taskInfo.pid
-        };
-    }
-    
-    /**
-     * 取消任务 - P0: 修复死锁问题
-     * @param {string} taskId - 任务ID
-     * @returns {object} - 操作结果
-     */
-    cancelTask(taskId) {
-        const taskInfo = this.tasks.get(taskId);
-        
-        if (!taskInfo) {
-            return {
-                taskId,
-                status: 'not_found',
-                message: `任务 ${taskId} 不存在或已完成`
-            };
-        }
-        
-        // 如果已经完成或已取消，返回当前状态
-        if (taskInfo._finalized || taskInfo.status === 'cancelled' || taskInfo.status === 'completed' || taskInfo.status === 'failed') {
-            return {
-                taskId,
-                status: taskInfo.status,
-                message: `任务已经是 ${taskInfo.status} 状态，无法取消`
-            };
-        }
-        
-        // 如果还在队列中（未开始执行）
-        if (taskInfo.status === 'queued') {
-            // 从队列中移除
-            const queueIndex = this.queue.indexOf(taskId);
-            if (queueIndex !== -1) {
-                this.queue.splice(queueIndex, 1);
-            }
-            taskInfo.status = 'cancelled';
-            taskInfo._finalized = true;
-            taskInfo.endTime = new Date().toISOString();
-            taskInfo.output = '[任务在启动前被取消]';
-            this.saveTaskState(taskId, taskInfo);
-            return {
-                taskId,
-                status: 'cancelled',
-                message: '任务已取消（未启动）'
-            };
-        }
-        
-        // 如果正在运行，设置取消标记并终止进程
-        // 关键：不直接修改 status 为 cancelled，让 finalize 来处理
-        taskInfo._cancelRequested = true;
-        taskInfo.status = 'cancelling'; // 中间状态，表示正在取消
-        
-        // 终止进程
-        if (taskInfo._process) {
-            try {
-                taskInfo._process.kill('SIGTERM');
-                // 给进程一些时间优雅退出
-                setTimeout(() => {
-                    if (taskInfo._process && !taskInfo._process.killed) {
-                        try {
-                            taskInfo._process.kill('SIGKILL');
-                        } catch (e) { /* ignore */ }
-                    }
-                }, 3000);
-            } catch (e) {
-                console.error(`[PTYShellExecutor] Error killing task ${taskId}:`, e);
-            }
-        }
-        
-        // 注意：不在这里 runningCount--，由 finalize 处理
-        // 不在这里 saveTaskState，由 finalize 处理
-        
-        return {
-            taskId,
-            status: 'cancelling',
-            message: '任务取消请求已发送，等待进程退出'
-        };
-    }
-    
-    /**
-     * 列出所有任务
-     * @returns {array} - 任务列表
-     */
-    listTasks() {
-        const taskList = [];
-        
-        // 从内存中获取
-        for (const [taskId, taskInfo] of this.tasks) {
-            taskList.push({
-                taskId: taskInfo.taskId,
-                command: taskInfo.command.substring(0, 100) + (taskInfo.command.length > 100 ? '...' : ''),
-                status: taskInfo.status,
-                startTime: taskInfo.startTime,
-                endTime: taskInfo.endTime,
-                pid: taskInfo.pid
-            });
-        }
-        
-        // 从文件中加载已完成的任务
-        try {
-            const files = fs.readdirSync(this.stateDir);
-            for (const file of files) {
-                if (file.endsWith('.json')) {
-                    const taskId = file.replace('.json', '');
-                    if (!this.tasks.has(taskId)) {
-                        const taskInfo = this.loadTaskState(taskId);
-                        if (taskInfo) {
-                            taskList.push({
-                                taskId: taskInfo.taskId,
-                                command: taskInfo.command.substring(0, 100) + (taskInfo.command.length > 100 ? '...' : ''),
-                                status: taskInfo.status,
-                                startTime: taskInfo.startTime,
-                                endTime: taskInfo.endTime,
-                                pid: taskInfo.pid
-                            });
-                        }
-                    }
-                }
-            }
-        } catch (e) {
-            console.error('[PTYShellExecutor] Error listing tasks from files:', e);
-        }
-        
-        // 按开始时间倒序排列
-        taskList.sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
-        
-        return taskList;
-    }
-    
-    /**
-     * 保存任务状态到文件
-     */
-    saveTaskState(taskId, taskInfo) {
-        try {
-            const filePath = path.join(this.stateDir, `${taskId}.json`);
-            const saveData = {
-                taskId: taskInfo.taskId,
-                command: taskInfo.command,
-                shell: taskInfo.shell,
-                status: taskInfo.status,
-                output: taskInfo.output,
-                exitCode: taskInfo.exitCode,
-                startTime: taskInfo.startTime,
-                endTime: taskInfo.endTime,
-                pid: taskInfo.pid
-            };
-            fs.writeFileSync(filePath, JSON.stringify(saveData, null, 2));
-        } catch (e) {
-            console.error(`[PTYShellExecutor] Error saving task state ${taskId}:`, e);
-        }
-    }
-    
-    /**
-     * 从文件加载任务状态
-     */
-    loadTaskState(taskId) {
-        try {
-            const filePath = path.join(this.stateDir, `${taskId}.json`);
-            if (fs.existsSync(filePath)) {
-                const data = fs.readFileSync(filePath, 'utf-8');
-                return JSON.parse(data);
-            }
-        } catch (e) {
-            console.error(`[PTYShellExecutor] Error loading task state ${taskId}:`, e);
-        }
-        return null;
-    }
-    
-    /**
-     * 清理旧任务
-     */
-    cleanupOldTasks() {
-        // 清理内存中已完成的旧任务
-        if (this.tasks.size > this.maxTasks) {
-            const sortedTasks = [...this.tasks.entries()]
-                .filter(([_, info]) => info.status !== 'running')
-                .sort((a, b) => new Date(a[1].startTime) - new Date(b[1].startTime));
-            
-            const toRemove = sortedTasks.slice(0, this.tasks.size - this.maxTasks);
-            for (const [taskId] of toRemove) {
-                this.tasks.delete(taskId);
-            }
-        }
-        // 清理超过7天的文件
-        try {
-            const files = fs.readdirSync(this.stateDir);
-            const now = Date.now();
-            const maxAge = 7 * 24 * 60 * 60 * 1000; // 7天
-            
-            for (const file of files) {
-                if (file.endsWith('.json')) {
-                    const filePath = path.join(this.stateDir, file);
-                    const stat = fs.statSync(filePath);
-                    if (now - stat.mtimeMs > maxAge) {
-                        fs.unlinkSync(filePath);
-                    }
-                }
-            }
-        } catch (e) {
-            console.error('[PTYShellExecutor] Error cleaning up old tasks:', e);
-        }
-    }
-    
-    /**
-     * 清理所有资源
-     */
-    cleanup() {
-        // 终止所有运行中的任务
-        for (const [taskId, taskInfo] of this.tasks) {
-            if (taskInfo.status === 'running' && taskInfo._process) {
-                try {
-                    taskInfo._process.kill('SIGTERM');
-                } catch (e) {
-                    // ignore
-                }
-            }
-        }
-        this.tasks.clear();
-    }
+    } catch (_) {}
 }
 
-// 创建全局异步任务管理器实例
-const asyncTaskManager = new AsyncTaskManager();
-
-// ============================================================================
-// GUI Window Management
-// ============================================================================
-
-// --- GUI Window Management ---
+let ptyProcess = null;
+let headlessTerminal = null;
 let guiWindow = null;
+let isExecutingCommand = false;
+let commandUnresolved = false;
+let interactiveMode = false;
+let queueProcessing = false;
+const executionQueue = [];
+let activeCommandAbort = null;
+let pendingCommandCleanup = null;
+let lastKnownSize = { cols: 80, rows: 24 };
 
-const shellOutputBus = createShellOutputBus();
-const applicationRoot = path.join(__dirname, '..', '..', '..');
+const REPLAY_LIMIT = 256 * 1024;
+let replayBuffer = "";
+
+function appendReplay(data) {
+    replayBuffer += data;
+    if (replayBuffer.length > REPLAY_LIMIT) {
+        replayBuffer = replayBuffer.slice(-REPLAY_LIMIT);
+    }
+}
+
+function clearReplay() {
+    replayBuffer = "";
+}
+
+const mirrors = new Set();
+
+function attachMirror(sink) {
+    mirrors.add(sink);
+    if (replayBuffer && typeof sink.onData === "function") {
+        try { sink.onData(replayBuffer); } catch (_) {}
+    }
+    return () => {
+        mirrors.delete(sink);
+    };
+}
+
+function notifyMirrors(method, ...args) {
+    for (const sink of mirrors) {
+        try {
+            if (typeof sink[method] === "function") {
+                sink[method](...args);
+            }
+        } catch (e) {
+            console.error("[PTYShellExecutor] Mirror dispatch error:", e);
+        }
+    }
+}
+
+function dispatchPtyData(data) {
+    appendReplay(data);
+    if (headlessTerminal) {
+        try { headlessTerminal.write(data); } catch (_) {}
+    }
+    if (guiWindow && !guiWindow.isDestroyed()) {
+        guiWindow.webContents.send("shell-data", data);
+    }
+    notifyMirrors("onData", data);
+}
+
+function ensureHeadlessTerminal() {
+    if (!headlessTerminal) {
+        headlessTerminal = new Terminal({
+            cols: lastKnownSize.cols,
+            rows: lastKnownSize.rows,
+            allowProposedApi: true
+        });
+    }
+    return headlessTerminal;
+}
+
+function detectShell(preferredShell) {
+    if (preferredShell) {
+        try {
+            const { spawnSync } = require("child_process");
+            if (spawnSync("which", [preferredShell]).status === 0) return preferredShell;
+        } catch (_) {}
+    }
+    for (const sh of defaultConfig.shellPriority) {
+        try {
+            const { spawnSync } = require("child_process");
+            if (spawnSync("which", [sh]).status === 0) return sh;
+        } catch (_) {}
+    }
+    return process.env.SHELL || "/bin/bash";
+}
+
+function createNewPtySession(preferredShell) {
+    if (pendingCommandCleanup) pendingCommandCleanup();
+    interactiveMode = false;
+    isExecutingCommand = false;
+    commandUnresolved = false;
+    activeCommandAbort = null;
+
+    if (ptyProcess) {
+        try { killProcessGroup(ptyProcess.pid); } catch (_) {}
+        try { ptyProcess.kill(); } catch (_) {}
+        ptyProcess = null;
+    }
+    clearReplay();
+    ensureHeadlessTerminal();
+    headlessTerminal.reset();
+    notifyMirrors("onClear");
+
+    const shell = detectShell(preferredShell);
+    const args = path.basename(shell) === "bash" ? ["--login"] : [];
+
+    ptyProcess = pty.spawn(shell, args, {
+        name: "xterm-256color",
+        cols: lastKnownSize.cols,
+        rows: lastKnownSize.rows,
+        cwd: process.env.HOME || "/home",
+        env: withPagerDisabledEnv({
+            ...process.env,
+            TERM: "xterm-256color",
+            LANG: "en_US.UTF-8",
+            LC_ALL: "en_US.UTF-8"
+        })
+    });
+
+    ptyProcess.onData(data => {
+        dispatchPtyData(data);
+    });
+
+    ptyProcess.onExit(({ exitCode, signal }) => {
+        notifyMirrors("onExit", exitCode, signal);
+        ptyProcess = null;
+    });
+
+    return ptyProcess;
+}
+
+function ensureMirrorSession(preferredShell) {
+    if (!ptyProcess) {
+        createNewPtySession(preferredShell);
+    }
+    return ptyProcess;
+}
+
+function restartSession(preferredShell) {
+    return createNewPtySession(preferredShell);
+}
+
+function getSessionState() {
+    return {
+        running: Boolean(ptyProcess),
+        pid: ptyProcess ? ptyProcess.pid : null,
+        busy: Boolean(isExecutingCommand || commandUnresolved || interactiveMode || executionQueue.length > 0),
+        unresolved: commandUnresolved,
+        queuedTasks: executionQueue.length,
+        cols: lastKnownSize.cols,
+        rows: lastKnownSize.rows,
+        interactiveMode
+    };
+}
+
+function writeSessionInput(data) {
+    if (!ptyProcess) return false;
+    ptyProcess.write(data);
+    return true;
+}
+
+function clearSessionScreen() {
+    if (!ptyProcess || isExecutingCommand || commandUnresolved || interactiveMode) return false;
+    ptyProcess.write("\x0c");
+    return true;
+}
+
+function applyPtyResize(cols, rows) {
+    const validCols = Math.max(10, Math.min(500, parseInt(cols, 10) || 80));
+    const validRows = Math.max(5, Math.min(200, parseInt(rows, 10) || 24));
+    lastKnownSize = { cols: validCols, rows: validRows };
+    if (ptyProcess) {
+        try { ptyProcess.resize(validCols, validRows); } catch (_) {}
+    }
+    if (headlessTerminal) {
+        try { headlessTerminal.resize(validCols, validRows); } catch (_) {}
+    }
+}
+
+const applicationRoot = path.join(__dirname, "..", "..", "..");
 const shellThemeBridge = createShellThemeBridge({
     chokidar,
     nativeTheme,
     settingsPaths: [
-        path.join(applicationRoot, 'AppData', 'settings.json'),
-        path.join(applicationRoot, 'settings.json')
+        path.join(applicationRoot, "AppData", "settings.json"),
+        path.join(applicationRoot, "settings.json")
     ],
-    themeStylesheetPath: path.join(applicationRoot, 'styles', 'themes.css'),
-    getTarget: () => shellOutputBus.currentWebContents()
+    themeStylesheetPath: path.join(applicationRoot, "styles", "themes.css"),
+    getTarget: () => (guiWindow && !guiWindow.isDestroyed() ? guiWindow.webContents : null)
 }).start();
 
-function sendShellData(data, meta = {}) {
-    return shellOutputBus.publish(data, meta);
-}
-
-function ensureGuiWindow() {
-    if (!BrowserWindow) return; // 非 Electron 环境下跳过 GUI
-    if (guiWindow && !guiWindow.isDestroyed()) {
-        guiWindow.focus();
-        return guiWindow;
-    }
-
-    const createdWindow = new BrowserWindow({
-        width: 900,
-        height: 600,
-        title: 'VCP Local Shell Executor',
-        frame: false,
-        webPreferences: {
-            preload: path.join(__dirname, 'gui', 'preload.js'),
-            nodeIntegration: false,
-            contextIsolation: true,
-            spellcheck: false,
-            additionalArguments: [`--node-modules-path=${path.join(__dirname, '..', '..', '..', 'node_modules')}`]
-        },
-        autoHideMenuBar: true,
-        transparent: true,
-        backgroundColor: '#00000000',
-        hasShadow: true
-    });
-    guiWindow = createdWindow;
-    const attachedWindowGeneration = shellOutputBus.attach(createdWindow.webContents);
-
-    createdWindow.loadFile(path.join(__dirname, 'gui', 'ShellViewer.html'));
-
-    createdWindow.on('closed', () => {
-        const wasCurrentWindow = guiWindow === createdWindow;
-        shellOutputBus.detach(createdWindow.webContents);
-        if (ptyProcess && activeSessionWindowGeneration === attachedWindowGeneration) {
-            const closingSession = ptyProcess;
-            ptyProcess = null;
-            activeSessionMode = null;
-            activeSessionWindowGeneration = null;
-            sessionGeneration += 1;
-            childProcesses.delete(closingSession);
-            try {
-                closingSession.kill();
-                console.log('[PTYShellExecutor] GUI closed, pty process terminated.');
-            } catch (e) {
-                console.error('[PTYShellExecutor] Error terminating pty on GUI close:', e);
-            }
-        }
-        if (!wasCurrentWindow) return;
-        guiWindow = null;
-    });
-
-    return createdWindow;
-}
-
-// --- IPC 事件监听 ---
-function isShellGuiSender(event) {
-    return Boolean(event && shellOutputBus.isCurrentTarget(event.sender));
-}
-
 if (ipcMain) {
-    ipcMain.on('shell-gui-ready', async (event) => {
-        if (!isShellGuiSender(event)) return;
-
+    ipcMain.on("shell-gui-ready", (event) => {
+        if (!guiWindow || guiWindow.isDestroyed() || guiWindow.webContents !== event.sender) return;
         shellThemeBridge.sendSnapshot(event.sender);
-        if (!shellOutputBus.markReady(event.sender)) return;
-        const readyGeneration = shellOutputBus.currentGeneration();
-        
-        // 只复用属于当前窗口代次的交互会话；旧代次会话必须替换。
-        if (!ptyProcess || activeSessionWindowGeneration !== readyGeneration) {
-            console.log('[PTYShellExecutor] GUI ready without a current-generation shell. Starting session...');
-            try {
-                await ensureShellSessionForGeneration(readyGeneration);
-            } catch (e) {
-                console.error('[PTYShellExecutor] Failed to start shell session on GUI ready:', e);
-            }
-        }
-
-        // 创建会话期间窗口可能已关闭或被替换，迟到结果不得更新新窗口。
-        if (!isShellGuiSender(event) || shellOutputBus.currentGeneration() !== readyGeneration) return;
-        
-        // 通知 GUI PTY 连接状态
-        if (ptyProcess && activeSessionWindowGeneration === readyGeneration) {
-            event.sender.send('pty-status', { connected: true, mode: activeSessionMode || 'unknown' });
-        } else {
-            event.sender.send('pty-status', { connected: false });
+        if (ptyProcess) {
+            event.sender.send("pty-status", { connected: true });
         }
     });
 
-    // 原始按键输入 - 直接写入 PTY（用于终端直接输入模式）
-    ipcMain.on('shell-input', (event, data) => {
-        if (isShellGuiSender(event) && ptyProcess
-            && activeSessionWindowGeneration === shellOutputBus.currentGeneration()
-            && typeof data === 'string' && data) {
+    ipcMain.on("shell-input", (event, data) => {
+        if (!guiWindow || guiWindow.isDestroyed() || guiWindow.webContents !== event.sender) return;
+        if (ptyProcess && typeof data === "string" && data) {
             ptyProcess.write(data);
         }
     });
 
-    // 完整命令执行 - 走同步非交互 runner（用于输入框模式）
-    ipcMain.on('shell-command', async (event, command) => {
-        if (!isShellGuiSender(event) || !command || !String(command).trim()) return;
-
-        const targetGeneration = shellOutputBus.currentGeneration();
-        const executionId = createExecutionId('user');
-        try {
-            await executeSingleCommand(command, {
-                source: 'user-command',
-                targetGeneration,
-                executionId
-            });
-        } catch (err) {
-            const message = err && err.message ? err.message : String(err);
-            sendShellData(`\r\n[PTYShellExecutor] ${message}\r\n`, {
-                source: 'user-command',
-                targetGeneration,
-                executionId,
-                phase: 'error'
-            });
+    ipcMain.on("shell-command", (event, command) => {
+        if (!guiWindow || guiWindow.isDestroyed() || guiWindow.webContents !== event.sender) return;
+        if (ptyProcess && typeof command === "string" && command) {
+            ptyProcess.write(command + "\n");
         }
     });
 
-    ipcMain.on('copy-to-clipboard', (event, text) => {
-        if (isShellGuiSender(event) && text && clipboard) clipboard.writeText(text);
-    });
-
-    ipcMain.on('shell-resize', (event, payload = {}) => {
+    ipcMain.on("shell-resize", (event, payload = {}) => {
+        if (!guiWindow || guiWindow.isDestroyed() || guiWindow.webContents !== event.sender) return;
         const { cols, rows } = payload || {};
-        const normalizedCols = Number(cols);
-        const normalizedRows = Number(rows);
-        if (isShellGuiSender(event) && ptyProcess
-            && activeSessionWindowGeneration === shellOutputBus.currentGeneration()
-            && Number.isInteger(normalizedCols) && normalizedCols > 0
-            && Number.isInteger(normalizedRows) && normalizedRows > 0) {
-            try { ptyProcess.resize(normalizedCols, normalizedRows); } catch (e) { /* ignore */ }
+        applyPtyResize(cols, rows);
+    });
+
+    ipcMain.on("copy-to-clipboard", (event, text) => {
+        if (!guiWindow || guiWindow.isDestroyed() || guiWindow.webContents !== event.sender) return;
+        if (text && clipboard) clipboard.writeText(text);
+    });
+
+    ipcMain.on("minimize-window", (event) => {
+        if (guiWindow && !guiWindow.isDestroyed() && guiWindow.webContents === event.sender) {
+            guiWindow.minimize();
         }
     });
 
-    ipcMain.on('minimize-window', (event) => {
-        if (isShellGuiSender(event) && guiWindow) guiWindow.minimize();
-    });
-    ipcMain.on('maximize-window', (event) => {
-        if (isShellGuiSender(event) && guiWindow) {
+    ipcMain.on("maximize-window", (event) => {
+        if (guiWindow && !guiWindow.isDestroyed() && guiWindow.webContents === event.sender) {
             guiWindow.isMaximized() ? guiWindow.unmaximize() : guiWindow.maximize();
         }
     });
-    ipcMain.on('close-window', (event) => {
-        if (isShellGuiSender(event) && guiWindow) guiWindow.close();
-    });
-}
 
-// --- ANSI 清理 ---
-/**
- * 清理终端输出中的 ANSI 转义序列和控制字符
- *
- * 处理的序列类型：
- * 1. CSI (Control Sequence Introducer) - \x1b[ 开头的序列
- * 2. OSC (Operating System Command) - \x1b] 开头的序列，包括：
- *    - OSC 0/1/2: 窗口标题
- *    - OSC 7: 当前工作目录
- *    - OSC 133: Shell integration (fish/zsh/bash 的命令标记)
- *    - OSC 1337: iTerm2 专有序列
- * 3. 其他转义序列 (DCS, PM, APC 等)
- * 4. 单字符控制序列
- * 5. 数据分片导致的残留片段（如 [4;1m, [0m 等）
- *
- * @param {string} str - 包含 ANSI 序列的原始字符串
- * @returns {string} - 清理后的纯文本字符串
- */
-function stripAnsi(str) {
-    if (!str || typeof str !== 'string') return str || '';
-    
-    return str
-        // OSC 序列: \x1b] ... (\x07 | \x1b\\)
-        // 匹配 OSC 133 (shell integration), OSC 0/1/2 (标题), OSC 7 (cwd) 等
-        .replace(/\x1b\][\d;]*(?:[^\x07\x1b]*)?(?:\x07|\x1b\\)/g, '')
-        
-        // CSI 序列: \x1b[ ... (字母结尾)
-        // 包括颜色、光标移动、清屏等
-        .replace(/\x1b\[[\d;]*[A-Za-z]/g, '')
-        
-        // CSI 序列 (扩展): 处理更复杂的 CSI 序列
-        .replace(/[\x1b\x9b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><~]/g, '')
-        
-        // DCS (Device Control String): \x1bP ... \x1b\\
-        .replace(/\x1bP[^\x1b]*\x1b\\/g, '')
-        
-        // PM (Privacy Message): \x1b^ ... \x1b\\
-        .replace(/\x1b\^[^\x1b]*\x1b\\/g, '')
-        
-        // APC (Application Program Command): \x1b_ ... \x1b\\
-        .replace(/\x1b_[^\x1b]*\x1b\\/g, '')
-        
-        // 单字符转义序列: \x1b 后跟单个字符
-        .replace(/\x1b[DMEHcn78>=]/g, '')
-        
-        // 清理残留的 BEL 字符
-        .replace(/\x07/g, '')
-        
-        // 清理其他 C0 控制字符 (保留换行符 \n, 回车符 \r, 制表符 \t)
-        .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '')
-        
-        // 清理 C1 控制字符
-        .replace(/[\x80-\x9f]/g, '');
-}
-
-/**
- * 清理数据分片导致的 ANSI 序列残留片段
- *
- * 当 PTY 数据被分片时，\x1b 可能在一个数据块的末尾，
- * 而 [4;1m 在下一个数据块的开头，导致正则无法匹配完整序列。
- * 拼接后会出现类似 "[4;1m", "[0m", "[1;32m" 这样的残留片段。
- *
- * @param {string} str - 原始字符串
- * @returns {string} - 清理后的字符串
- */
-function stripOrphanedAnsiFragments(str) {
-    if (!str || typeof str !== 'string') return str || '';
-    
-    return str
-        // 清理孤立的 CSI 参数片段: [数字;数字m 或 [数字m 等
-        // 这些是 \x1b 被分片后残留的部分
-        .replace(/\[\??[\d;]+[mKJHABCDEFGsuHLhl]/g, (match, offset, string) => {
-            // 检查前一个字符是否是 \x1b，如果是则保留（让其他正则处理）
-            // 如果不是，说明是孤立片段，需要删除
-            if (offset > 0 && string[offset - 1] === '\x1b') {
-                return match; // 保留，让其他正则处理
-            }
-            // 检查是否是行首或前面是空白/换行，这种情况下可能是孤立片段
-            if (offset === 0 || /[\s\n\r]/.test(string[offset - 1])) {
-                return ''; // 删除孤立片段
-            }
-            return match; // 其他情况保留（可能是正常文本如 "[test]"）
-        })
-        
-        // 清理孤立的 OSC 片段: ]数字; 开头的
-        .replace(/\][\d;]+[^\x07\x1b]*(?:\x07|\x1b\\)?/g, (match, offset, string) => {
-            if (offset > 0 && string[offset - 1] === '\x1b') {
-                return match;
-            }
-            if (offset === 0 || /[\s\n\r]/.test(string[offset - 1])) {
-                return '';
-            }
-            return match;
-        })
-        
-        // 清理末尾可能残留的不完整 ESC 序列
-        .replace(/\x1b$/g, '')
-        
-        // 清理开头可能残留的 CSI 参数（没有 ESC 前缀）
-        .replace(/^\??[\d;]+[mKJHABCDEFGsuHLhl]/g, '');
-}
-
-/**
- * 清理 fish shell 特有的 shell integration 标记
- * 这些标记用于终端的命令追踪功能，但在文本输出中应该被移除
- *
- * @param {string} str - 原始字符串
- * @returns {string} - 清理后的字符串
- */
-function stripFishIntegration(str) {
-    if (!str || typeof str !== 'string') return str || '';
-    
-    // Fish shell integration 使用 OSC 133 序列
-    // 格式: \x1b]133;X\x07 或 \x1b]133;X;...\x07
-    // X 可以是: A (提示符开始), B (命令开始), C (命令结束), D (命令完成)
-    return str
-        .replace(/\x1b\]133;[ABCD][^\x07]*\x07/g, '')
-        // 也处理使用 ST (\x1b\\) 作为终止符的情况
-        .replace(/\x1b\]133;[ABCD][^\x1b]*\x1b\\/g, '')
-        // 清理分片后的残留: ]133;A 等
-        .replace(/\]133;[ABCD][^\x07\x1b]*(?:\x07|\x1b\\)?/g, '');
-}
-
-/**
- * 清理 fish shell 的警告信息
- * fish 在某些终端环境下会输出关于 shell integration 功能不可用的警告
- *
- * @param {string} str - 原始字符串
- * @returns {string} - 清理后的字符串
- */
-function stripFishWarnings(str) {
-    if (!str || typeof str !== 'string') return str || '';
-    
-    return str
-        // 清理 fish 的 shell integration 警告
-        // 例如: "warning: fish could not read response to shell integration query. Some optional features may not work."
-        .replace(/warning:\s*fish could not read response.*?optional features[^\n]*\.?/gis, '')
-        // 清理其他常见的 fish 警告信息
-        .replace(/warning:\s*Unable to read the terminal.*?\n/gi, '')
-        // 清理 fish 的 "Welcome to fish" 消息（如果不需要）
-        // .replace(/Welcome to fish,.*?\n/gi, '')
-        // 清理警告后可能残留的空行
-        .replace(/^\s*\n/gm, '');
-}
-
-/**
- * 清理逐字符回显模式
- * fish shell 在某些情况下会逐字符回显输入，导致每个字符单独一行
- * 这种模式表现为连续的单字符行
- *
- * @param {string} str - 原始字符串
- * @returns {string} - 清理后的字符串
- */
-function stripCharacterEcho(str) {
-    if (!str || typeof str !== 'string') return str || '';
-    
-    // 检测并移除逐字符回显模式
-    // 模式特征：连续5个或更多的单字符行
-    // 改进正则：匹配行首可选空白 + 单个非空白字符 + 行尾可选空白 + 换行
-    // 且支持跨行匹配
-    const charEchoRegex = /(?:^[ \t]*\S[ \t]*\r?\n){5,}/gm;
-    
-    let cleaned = str.replace(charEchoRegex, '');
-    
-    // 处理另一种常见情况：字符之间夹杂着 ANSI 残留片段（如 4;1m）
-    // 如果一行只包含残留的 ANSI 字符或单个字符，也应视为回显
-    const complexEchoRegex = /(?:^[ \t]*(?:\d+;\d+m|\S)[ \t]*\r?\n){5,}/gm;
-    
-    return cleaned.replace(complexEchoRegex, '');
-}
-
-/**
- * 完整的输出清理函数
- * 组合所有清理步骤，返回干净的文本输出
- *
- * @param {string} str - 原始终端输出
- * @returns {string} - 清理后的纯文本
- */
-/**
- * 从 xterm-headless Buffer 中提取纯文本
- * @param {Terminal} term - xterm-headless 实例
- * @returns {string} - 清理后的纯文本
- */
-function getCleanTextFromBuffer(term) {
-    if (!term) return '';
-    const buffer = term.buffer.active;
-    const lines = [];
-    
-    // 遍历 buffer 提取文本
-    for (let i = 0; i < buffer.length; i++) {
-        const line = buffer.getLine(i);
-        if (line) {
-            lines.push(line.translateToString(true).trimEnd());
-        }
-    }
-    
-    // 过滤掉末尾的空行，但保留中间的空行
-    let lastNonEmpty = -1;
-    for (let i = lines.length - 1; i >= 0; i--) {
-        if (lines[i].length > 0) {
-            lastNonEmpty = i;
-            break;
-        }
-    }
-    
-    const result = lastNonEmpty === -1 ? '' : lines.slice(0, lastNonEmpty + 1).join('\n');
-    
-    // 进一步清理提示符、警告和边界标记
-    return stripFishWarnings(result)
-        .replace(/__VCP_BOUNDARY_[a-f0-9]+__/g, '')
-        // 过滤常见的提示符模式 (针对 Fish/Zsh/Bash)
-        .replace(/^.*?[➜❯❯❯❯].*?\n/gm, '')
-        .trim();
-}
-
-function cleanOutput(str) {
-    if (!str || typeof str !== 'string') return str || '';
-    
-    // 降级方案：如果无法使用 xterm-headless，则使用正则
-    // 但在新的架构中，我们应该尽量通过 Terminal 实例来处理
-    const tempTerm = new Terminal({ cols: 120, rows: 100 });
-    tempTerm.write(str);
-    return getCleanTextFromBuffer(tempTerm);
-}
-
-// --- 模块级状态 ---
-let ptyProcess = null;
-const childProcesses = new Set();
-let activeSessionMode = null; // 'pty' | 'pipe' | null
-let activeSessionWindowGeneration = null;
-let executionQueue = Promise.resolve();
-let executionQueueLength = 0;
-const MAX_EXECUTION_QUEUE_LENGTH = 50;
-let sessionGeneration = 0;
-let sessionCreationPromise = null;
-
-// --- 配置加载 ---
-const defaultConfig = {
-    returnMode: 'delta',
-    shellPriority: ['fish', 'zsh', 'bash'],
-    forbiddenCommands: [],
-    authRequiredCommands: [],
-    commandTimeout: 60000,
-    ptyMode: 'auto' // auto | pty | pipe
-};
-
-try {
-    const configPath = path.join(__dirname, 'config.env');
-    if (fs.existsSync(configPath)) {
-        const configContent = fs.readFileSync(configPath, 'utf-8');
-        const returnModeMatch = configContent.match(/^SHELL_RETURN_MODE\s*=\s*(delta|full)/m);
-        if (returnModeMatch) defaultConfig.returnMode = returnModeMatch[1];
-
-        const ptyModeMatch = configContent.match(/^PTY_MODE\s*=\s*(auto|pty|pipe)/m);
-        if (ptyModeMatch) defaultConfig.ptyMode = ptyModeMatch[1];
-
-        const priorityMatch = configContent.match(/^SHELL_PRIORITY\s*=\s*(.*)/m);
-        if (priorityMatch && priorityMatch[1]) {
-            defaultConfig.shellPriority = priorityMatch[1].split(',').map(s => s.trim()).filter(s => s);
-        }
-
-        const forbiddenMatch = configContent.match(/^FORBIDDEN_COMMANDS\s*=\s*(.*)/m);
-        if (forbiddenMatch && forbiddenMatch[1]) {
-            defaultConfig.forbiddenCommands = forbiddenMatch[1].split(',').map(c => c.trim().toLowerCase()).filter(c => c);
-        }
-
-        const authMatch = configContent.match(/^AUTH_REQUIRED_COMMANDS\s*=\s*(.*)/m);
-        if (authMatch && authMatch[1]) {
-            defaultConfig.authRequiredCommands = authMatch[1].split(',').map(c => c.trim().toLowerCase()).filter(c => c);
-        }
-
-        const timeoutMatch = configContent.match(/^COMMAND_TIMEOUT\s*=\s*(\d+)/m);
-        if (timeoutMatch) defaultConfig.commandTimeout = parseInt(timeoutMatch[1], 10);
-    }
-} catch (error) {
-    console.error('[PTYShellExecutor] Error reading config.env:', error);
-}
-
-function getEffectivePtyMode() {
-    const raw = defaultConfig.ptyMode || 'auto';
-    const mode = String(raw).trim().toLowerCase();
-    if (mode === 'pty' || mode === 'pipe' || mode === 'auto') return mode;
-    return 'auto';
-}
-
-// --- Shell 检测 ---
-function detectShell(preferredShell) {
-    const shellPaths = {
-        fish: ['/usr/bin/fish', '/bin/fish', '/usr/local/bin/fish'],
-        zsh: ['/usr/bin/zsh', '/bin/zsh', '/usr/local/bin/zsh'],
-        bash: ['/usr/bin/bash', '/bin/bash', '/usr/local/bin/bash']
-    };
-
-    // 如果指定了 shell，优先使用
-    if (preferredShell && shellPaths[preferredShell]) {
-        for (const p of shellPaths[preferredShell]) {
-            if (fs.existsSync(p)) return p;
-        }
-    }
-
-    // 按优先级检测
-    for (const shellName of defaultConfig.shellPriority) {
-        if (shellPaths[shellName]) {
-            for (const p of shellPaths[shellName]) {
-                if (fs.existsSync(p)) return p;
-            }
-        }
-    }
-
-    // 回退到环境变量或默认 bash
-    return process.env.SHELL || '/bin/bash';
-}
-
-// --- 安全检查 ---
-function securityCheck(command) {
-    const normalizedCommand = command.trim().toLowerCase();
-    
-    for (const forbidden of defaultConfig.forbiddenCommands) {
-        if (normalizedCommand.includes(forbidden)) {
-            return { blocked: true, reason: `命令包含被禁止的关键字: ${forbidden}` };
-        }
-    }
-
-    for (const authRequired of defaultConfig.authRequiredCommands) {
-        if (normalizedCommand.includes(authRequired)) {
-            return { blocked: false, needsConfirm: true, keyword: authRequired };
-        }
-    }
-
-    return { blocked: false, needsConfirm: false };
-}
-
-// --- 创建 PTY 会话 ---
-function createNewPtySession(preferredShell) {
-    if (ptyProcess) {
-        childProcesses.delete(ptyProcess);
-        ptyProcess.kill();
-        if (guiWindow && !guiWindow.isDestroyed()) {
-            guiWindow.webContents.send('shell-clear');
-        }
-    }
-
-    const shell = detectShell(preferredShell);
-    const shellName = path.basename(shell);
-    
-    // 使用登录 shell 模式以加载配置文件
-    const args = shellName === 'bash' ? ['--login'] : (shellName === 'zsh' ? ['--login'] : []);
-
-    console.log(`[PTYShellExecutor] Starting shell: ${shell} with args: ${args.join(' ')}`);
-
-    const session = pty.spawn(shell, args, {
-        name: 'xterm-256color',
-        cwd: process.env.HOME || '/home',
-        env: withPagerDisabledEnv({
-            ...process.env,
-            TERM: 'xterm-256color',
-            LANG: 'en_US.UTF-8',
-            LC_ALL: 'en_US.UTF-8'
-        })
-    });
-    ptyProcess = session;
-    const currentGeneration = ++sessionGeneration;
-    const targetGeneration = shellOutputBus.currentGeneration();
-    const sessionExecutionId = `session-${currentGeneration}`;
-    childProcesses.add(session);
-    activeSessionMode = 'pty';
-    activeSessionWindowGeneration = targetGeneration;
-
-    // 数据监听 - 转发到 GUI
-    session.onData((data) => {
-        sendShellData(data, {
-            source: 'interactive',
-            executionId: sessionExecutionId,
-            phase: 'data',
-            stream: 'pty',
-            targetGeneration
-        });
-    });
-
-    session.onExit(() => {
-        childProcesses.delete(session);
-        if (ptyProcess === session && sessionGeneration === currentGeneration) {
-            ptyProcess = null;
-            activeSessionMode = null;
-            activeSessionWindowGeneration = null;
-            if (guiWindow && !guiWindow.isDestroyed()) {
-                if (shellOutputBus.currentGeneration() === targetGeneration) {
-                    guiWindow.webContents.send('pty-status', { connected: false });
-                }
-            }
-        } else {
-            console.log('[PTYShellExecutor] Ignoring stale PTY exit for replaced session.');
-        }
-    });
-
-    return shellName;
-}
-
-function createNewPipeSession(preferredShell) {
-    if (ptyProcess) {
-        childProcesses.delete(ptyProcess);
-        try { ptyProcess.kill(); } catch (_) { /* ignore */ }
-        if (guiWindow && !guiWindow.isDestroyed()) {
-            guiWindow.webContents.send('shell-clear');
-        }
-        ptyProcess = null;
-    }
-
-    const shell = detectShell(preferredShell);
-    const shellName = path.basename(shell);
-
-    let args = [];
-    if (shellName === 'bash') args = ['--login'];
-    else if (shellName === 'zsh') args = ['--login'];
-    else if (shellName === 'fish') args = ['-l'];
-
-    console.log(`[PTYShellExecutor] Starting pipe shell: ${shell} with args: ${args.join(' ')}`);
-
-    const child = spawn(shell, args, {
-        cwd: process.env.HOME || '/home',
-        env: withPagerDisabledEnv({
-            ...process.env,
-            TERM: 'xterm-256color',
-            LANG: 'en_US.UTF-8',
-            LC_ALL: 'en_US.UTF-8'
-        }),
-        detached: process.platform !== 'win32',
-        stdio: ['pipe', 'pipe', 'pipe']
-    });
-
-    if (child.stdout) child.stdout.setEncoding('utf8');
-    if (child.stderr) child.stderr.setEncoding('utf8');
-
-    const session = new EventEmitter();
-    session.pid = child.pid;
-    session._child = child;
-    session._mode = 'pipe';
-
-    session.write = (data) => {
-        try {
-            if (child.stdin && !child.stdin.destroyed) {
-                child.stdin.write(data);
-            }
-        } catch (_) { /* ignore */ }
-    };
-    session.resize = () => { /* no-op for pipe mode */ };
-    session.kill = (signal = 'SIGTERM') => {
-        if (child.pid) {
-            killProcessGroup(child.pid, signal);
-        } else {
-            try { child.kill(signal); } catch (_) { /* ignore */ }
-        }
-    };
-
-    // node-pty 风格事件别名（便于复用现有逻辑）
-    session.onData = (listener) => {
-        session.on('data', listener);
-        return { dispose: () => session.off('data', listener) };
-    };
-    session.onExit = (listener) => {
-        session.on('exit', listener);
-        return { dispose: () => session.off('exit', listener) };
-    };
-
-    const forward = (chunk) => {
-        if (!chunk) return;
-        session.emit('data', chunk);
-    };
-
-    if (child.stdout) child.stdout.on('data', forward);
-    if (child.stderr) child.stderr.on('data', forward);
-
-    child.on('exit', (code, signal) => {
-        session.emit('exit', code, signal);
-    });
-    child.on('error', (err) => {
-        session.emit('exit', -1, err && err.message ? err.message : 'spawn_error');
-    });
-
-    ptyProcess = session;
-    const currentGeneration = ++sessionGeneration;
-    const targetGeneration = shellOutputBus.currentGeneration();
-    const sessionExecutionId = `session-${currentGeneration}`;
-    childProcesses.add(session);
-    activeSessionMode = 'pipe';
-    activeSessionWindowGeneration = targetGeneration;
-
-    // 数据监听 - 与 PTY 一样始终进入输出总线，不因 Agent 命令执行而丢弃。
-    session.onData((data) => {
-        sendShellData(data, {
-            source: 'interactive',
-            executionId: sessionExecutionId,
-            phase: 'data',
-            stream: 'pipe',
-            targetGeneration
-        });
-    });
-
-    session.onExit(() => {
-        childProcesses.delete(session);
-        if (ptyProcess === session && sessionGeneration === currentGeneration) {
-            ptyProcess = null;
-            activeSessionMode = null;
-            activeSessionWindowGeneration = null;
-            if (guiWindow && !guiWindow.isDestroyed()) {
-                if (shellOutputBus.currentGeneration() === targetGeneration) {
-                    guiWindow.webContents.send('pty-status', { connected: false });
-                }
-            }
-        } else {
-            console.log('[PTYShellExecutor] Ignoring stale pipe exit for replaced session.');
-        }
-    });
-
-    return shellName;
-}
-
-function createNewShellSession(preferredShell) {
-    if (sessionCreationPromise) {
-        return sessionCreationPromise;
-    }
-
-    sessionCreationPromise = Promise.resolve().then(() => createNewShellSessionImmediate(preferredShell));
-
-    sessionCreationPromise.then(() => {
-        sessionCreationPromise = null;
-    }, () => {
-        sessionCreationPromise = null;
-    });
-
-    return sessionCreationPromise;
-}
-
-async function ensureShellSessionForGeneration(targetGeneration, preferredShell) {
-    let created = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
-        if (shellOutputBus.currentGeneration() !== targetGeneration) return null;
-        if (ptyProcess && activeSessionWindowGeneration === targetGeneration) {
-            return created || { shellName: 'existing', mode: activeSessionMode || 'unknown' };
-        }
-        created = await createNewShellSession(preferredShell);
-    }
-
-    if (!ptyProcess || activeSessionWindowGeneration !== targetGeneration) {
-        throw new Error(`Unable to create shell session for window generation ${targetGeneration}.`);
-    }
-    return created;
-}
-
-function createNewShellSessionImmediate(preferredShell) {
-    const mode = getEffectivePtyMode();
-    if (mode === 'pipe') {
-        return { shellName: createNewPipeSession(preferredShell), mode: 'pipe' };
-    }
-
-    try {
-        return { shellName: createNewPtySession(preferredShell), mode: 'pty' };
-    } catch (err) {
-        if (mode === 'pty') throw err;
-        console.warn(`[PTYShellExecutor] PTY unavailable, falling back to pipe mode: ${err && err.message ? err.message : String(err)}`);
-        reporter.capture('ptyFallbackToPipe', err instanceof Error ? err : new Error(String(err)), { preferredShell });
-        return { shellName: createNewPipeSession(preferredShell), mode: 'pipe' };
-    }
-}
-
-// --- 执行单条命令 ---
-function getSyncShellInvocation() {
-    const bashPaths = ['/usr/bin/bash', '/bin/bash', '/usr/local/bin/bash'];
-    for (const shell of bashPaths) {
-        if (fs.existsSync(shell)) return { shell, args: ['-lc'] };
-    }
-
-    const shPaths = ['/usr/bin/sh', '/bin/sh'];
-    for (const shell of shPaths) {
-        if (fs.existsSync(shell)) return { shell, args: ['-c'] };
-    }
-
-    return { shell: '/bin/sh', args: ['-c'] };
-}
-
-function wrapSyncCommand(singleCommand) {
-    // 同步执行固定走 POSIX shell，且不支持交互输入。
-    // 子 shell stdin 指向 /dev/null，避免 ssh/docker/mysql 等接管型命令吞噬本地输入流。
-    return `(\n${singleCommand}\n) < /dev/null`;
-}
-
-function cleanSyncOutput(str) {
-    if (!str || typeof str !== 'string') return str || '';
-    return stripFishWarnings(stripOrphanedAnsiFragments(stripFishIntegration(stripAnsi(str))))
-        .replace(/\r\n/g, '\n')
-        .trim();
-}
-
-function executeSingleCommand(singleCommand, options = {}) {
-    return new Promise((resolve, reject) => {
-        const maxOutput = 1024 * 1024; // 同步执行限制 1MB
-        const { shell, args } = getSyncShellInvocation();
-        const executionId = options.executionId || createExecutionId('agent');
-        const transcriptOptions = {
-            ...options,
-            source: options.source || 'agent-sync'
-        };
-        const wrappedCommand = wrapSyncCommand(singleCommand);
-        const proc = spawn(shell, [...args, wrappedCommand], {
-            cwd: options.cwd || process.env.HOME || '/home',
-            env: withPagerDisabledEnv({
-                ...process.env,
-                TERM: 'xterm-256color',
-                LANG: 'en_US.UTF-8',
-                LC_ALL: 'en_US.UTF-8',
-                COLORTERM: 'truecolor',
-                FORCE_COLOR: process.env.FORCE_COLOR || '1',
-                CLICOLOR_FORCE: process.env.CLICOLOR_FORCE || '1',
-                COLUMNS: String(options.cols || 120),
-                LINES: String(options.rows || 40)
-            }),
-            detached: process.platform !== 'win32',
-            stdio: ['ignore', 'pipe', 'pipe']
-        });
-        console.log(`[PTYShellExecutor] Sync runner pid=${proc.pid || 'unknown'} shell=${shell} cwd=${options.cwd || process.env.HOME || '/home'}`);
-        writeExecutionTranscriptStart(singleCommand, transcriptOptions, shell, executionId, sendShellData);
-
-        const trackedProcess = {
-            kill: (signal = 'SIGTERM') => {
-                if (proc.pid) {
-                    killProcessGroup(proc.pid, signal);
-                } else {
-                    try { proc.kill(signal); } catch (_) { /* ignore */ }
-                }
-            }
-        };
-        childProcesses.add(trackedProcess);
-
-        let output = '';
-        let currentOutputSize = 0;
-        let settled = false;
-        let killTimer = null;
-        const streamDecoder = createUtf8StreamDecoder();
-
-        const publishDecodedOutput = (decoded, stream) => {
-            if (!decoded) return;
-            output += decoded;
-            sendShellData(normalizeForTerminal(decoded), {
-                source: transcriptOptions.source,
-                executionId,
-                phase: 'data',
-                stream,
-                targetGeneration: transcriptOptions.targetGeneration
-            });
-        };
-
-        const flushStreamDecoders = () => {
-            for (const tail of streamDecoder.end()) {
-                publishDecodedOutput(tail.data, tail.stream);
-            }
-        };
-
-        const appendOutput = (chunk, stream) => {
-            const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), 'utf-8');
-
-            if (currentOutputSize < maxOutput) {
-                const remaining = maxOutput - currentOutputSize;
-                const toWrite = data.length > remaining ? data.subarray(0, remaining) : data;
-                currentOutputSize += toWrite.length;
-                publishDecodedOutput(streamDecoder.write(stream, toWrite), stream);
-            }
-        };
-
-        const clearTimers = () => {
-            clearTimeout(timeoutId);
-            if (killTimer) clearTimeout(killTimer);
-        };
-
-        const finish = (callback) => {
-            if (settled) return;
-            settled = true;
-            flushStreamDecoders();
-            clearTimers();
-            childProcesses.delete(trackedProcess);
-            callback();
-        };
-
-        const rejectAfterTimeout = (err) => {
-            if (settled) return;
-            settled = true;
-            flushStreamDecoders();
-            clearTimeout(timeoutId);
-            reject(err);
-        };
-
-        const timeoutId = setTimeout(() => {
-            const err = new Error(`Command timed out after ${defaultConfig.commandTimeout / 1000} seconds.`);
-            reporter.capture('syncCommandTimeout', err, { singleCommand });
-            sendShellData(`\r\n\x1b[31m[Agent Timeout] ${err.message}\x1b[0m\r\n`, {
-                source: transcriptOptions.source,
-                executionId,
-                phase: 'error',
-                targetGeneration: transcriptOptions.targetGeneration
-            });
-            try { trackedProcess.kill('SIGTERM'); } catch (_) { /* ignore */ }
-            killTimer = setTimeout(() => {
-                try { trackedProcess.kill('SIGKILL'); } catch (_) { /* ignore */ }
-                childProcesses.delete(trackedProcess);
-            }, 1000);
-            flushStreamDecoders();
-            writeExecutionTranscriptEnd(-2, 'SIGTERM', transcriptOptions, executionId, sendShellData, 'timed_out');
-            rejectAfterTimeout(err);
-        }, defaultConfig.commandTimeout);
-
-        if (proc.stdout) proc.stdout.on('data', chunk => appendOutput(chunk, 'stdout'));
-        if (proc.stderr) proc.stderr.on('data', chunk => appendOutput(chunk, 'stderr'));
-
-        proc.on('error', (err) => {
-            reporter.capture('syncCommandSpawnError', err, { singleCommand, shell });
-            finish(() => {
-                sendShellData(`\r\n\x1b[31m[Agent Launch Error] ${err.message}\x1b[0m\r\n`, {
-                    source: transcriptOptions.source,
-                    executionId,
-                    phase: 'error',
-                    targetGeneration: transcriptOptions.targetGeneration
-                });
-                writeExecutionTranscriptEnd(-1, null, transcriptOptions, executionId, sendShellData, 'failed');
-                reject(err);
-            });
-        });
-
-        // `exit` 可能早于 stdout/stderr 完全排空；只在 `close` 结算，避免丢失尾部输出。
-        proc.on('close', (code, signal) => {
-            childProcesses.delete(trackedProcess);
-            if (killTimer) clearTimeout(killTimer);
-            if (settled) return;
-            finish(() => {
-                writeExecutionTranscriptEnd(code, signal, transcriptOptions, executionId, sendShellData);
-                resolve(cleanSyncOutput(output));
-            });
-        });
-    });
-}
-
-// --- 主入口 ---
-async function processToolCall(args) {
-    // 获取 action 参数，默认为 'execute'（同步执行）
-    const action = (args.action || 'execute').toLowerCase();
-    
-    console.log(`[PTYShellExecutor] Action: ${action}`);
-    
-    // 根据 action 分发处理
-    switch (action) {
-        case 'async':
-        case 'async_execute':
-            return handleAsyncExecute(args);
-            
-        case 'query':
-        case 'eventlog':
-            return handleQuery(args);
-            
-        case 'cancel':
-            return handleCancel(args);
-            
-        case 'list':
-            return handleList(args);
-            
-        case 'execute':
-        default:
-            return handleSyncExecute(args);
-    }
-}
-
-/**
- * 处理异步执行请求
- * @param {object} args - 参数
- * @returns {object} - { taskId, status, message }
- */
-function handleAsyncExecute(args) {
-    const command = args.command;
-    if (!command) {
-        throw new Error('异步执行需要提供 command 参数');
-    }
-    
-    // 安全检查
-    const check = securityCheck(command);
-    if (check.blocked) {
-        throw new Error(`执行被阻止：${check.reason}`);
-    }
-
-    // 异步任务同样绑定到启动时的 ShellViewer 代次并镜像完整输出。
-    ensureGuiWindow();
-    const targetGeneration = shellOutputBus.currentGeneration();
-
-    // 启动异步任务
-    const result = asyncTaskManager.startTask(command, {
-        shell: args.shell,
-        cwd: args.cwd,
-        targetGeneration
-    });
-    
-    return result;
-}
-
-/**
- * 处理任务查询请求
- * @param {object} args - 参数
- * @returns {object} - 任务信息
- */
-function handleQuery(args) {
-    const taskId = args.taskId;
-    if (!taskId) {
-        throw new Error('查询任务需要提供 taskId 参数');
-    }
-    
-    return asyncTaskManager.queryTask(taskId);
-}
-
-/**
- * 处理任务取消请求
- * @param {object} args - 参数
- * @returns {object} - 操作结果
- */
-function handleCancel(args) {
-    const taskId = args.taskId;
-    
-    if (!taskId) {
-        throw new Error('取消任务需要提供 taskId 参数');
-    }
-    
-    return asyncTaskManager.cancelTask(taskId);
-}
-
-/**
- * 处理任务列表请求
- * @param {object} args - 参数
- * @returns {object} - 任务列表
- */
-function handleList(args) {
-    const tasks = asyncTaskManager.listTasks();
-    return {
-        count: tasks.length,
-        tasks: tasks
-    };
-}
-
-/**
- * 处理同步执行请求（原有逻辑）
- * @param {object} args - 参数
- * @returns {string} - 命令输出
- */
-async function handleSyncExecute(args) {
-    // 将执行逻辑封装，以便放入队列
-    const task = async () => {
-        // 解析命令参数
-        const commandEntries = Object.entries(args)
-            .filter(([key]) => key.startsWith('command'))
-            .map(([key, value]) => {
-                const match = key.match(/^command(\d*)$/);
-                const index = match ? (match[1] === '' ? 0 : parseInt(match[1], 10)) : -1;
-                return { key, value, index };
-            })
-            .filter(item => item.index !== -1)
-            .sort((a, b) => a.index - b.index);
-
-        if (commandEntries.length === 0) {
-            throw new Error('未提供任何有效的 command 参数。');
-        }
-
-        // 安全检查
-        for (const entry of commandEntries) {
-            const check = securityCheck(entry.value);
-            if (check.blocked) {
-                throw new Error(`执行被阻止：${check.reason}`);
-            }
-            if (check.needsConfirm) {
-                console.log(`[PTYShellExecutor] 命令包含敏感关键字 "${check.keyword}"，但继续执行。`);
-            }
-        }
-
-        // 确保 GUI 窗口存在
-        ensureGuiWindow();
-        const targetGeneration = shellOutputBus.currentGeneration();
-
-        // 创建或复用会话
-        if (!ptyProcess || activeSessionWindowGeneration !== targetGeneration) {
-            const created = await ensureShellSessionForGeneration(targetGeneration, args.shell);
-            if (!created) throw new Error('ShellViewer changed while creating its terminal session.');
-            await new Promise(resolve => setTimeout(resolve, 800)); // 等待 shell 初始化
-            console.log(`[PTYShellExecutor] Session started with ${created.shellName} (mode=${created.mode})`);
-        }
-        // 执行命令
-        const outputs = [];
-
-        for (const entry of commandEntries) {
-            const output = await executeSingleCommand(entry.value, {
-                cwd: args.cwd,
-                source: 'agent-sync',
-                targetGeneration,
-                executionId: createExecutionId('agent')
-            });
-            outputs.push({ command: entry.value, output });
-        }
-
-        // 格式化返回
-        if (outputs.length === 1) {
-            return outputs[0].output;
-        }
-        return outputs.map(res => `---[${res.command}]---\n${res.output}`).join('\n\n');
-    };
-
-    // 队列长度限制与拒绝策略
-    if (executionQueueLength >= MAX_EXECUTION_QUEUE_LENGTH) {
-        throw new Error(`同步执行队列已满 (${MAX_EXECUTION_QUEUE_LENGTH})，请稍后再试或使用 action: "async" 模式。`);
-    }
-
-    executionQueueLength++;
-
-    // 将任务加入全局执行队列，确保指令按顺序发送，避免粘连
-    const resultPromise = executionQueue.then(async () => {
-        try {
-            return await task();
-        } finally {
-            executionQueueLength--;
-        }
-    }, async (err) => {
-        try {
-            console.error('[PTYShellExecutor] Previous queue task failed, continuing...', err);
-            return await task();
-        } finally {
-            executionQueueLength--;
-        }
-    });
-
-    // 更新全局队列引用
-    executionQueue = resultPromise.then(
-        () => {},
-        () => {}
-    );
-
-    return await resultPromise;
-}
-
-// --- 清理 ---
-function cleanup() {
-    console.log('[PTYShellExecutor] Cleaning up...');
-
-    // 清理异步任务管理器
-    asyncTaskManager.cleanup();
-
-    if (guiWindow) {
-        if (!guiWindow.isDestroyed()) {
-            shellOutputBus.detach(guiWindow.webContents);
-            guiWindow.removeAllListeners('closed');
+    ipcMain.on("close-window", (event) => {
+        if (guiWindow && !guiWindow.isDestroyed() && guiWindow.webContents === event.sender) {
             guiWindow.close();
         }
+    });
+}
+
+function ensureGuiWindow() {
+    if (!BrowserWindow) return null;
+    if (guiWindow && !guiWindow.isDestroyed()) {
+        guiWindow.focus();
+        return guiWindow;
+    }
+    guiWindow = new BrowserWindow({
+        width: 900,
+        height: 600,
+        title: "VCP PTY Shell Executor",
+        frame: false,
+        webPreferences: {
+            preload: path.join(__dirname, "gui", "preload.js"),
+            nodeIntegration: false,
+            contextIsolation: true
+        },
+        autoHideMenuBar: true,
+        transparent: true,
+        backgroundColor: "#00000000",
+        hasShadow: true
+    });
+
+    guiWindow.loadFile(path.join(__dirname, "gui", "ShellViewer.html"));
+    guiWindow.webContents.on("did-finish-load", () => {
+        if (replayBuffer) {
+            guiWindow.webContents.send("shell-data", replayBuffer);
+        }
+        shellThemeBridge.sendSnapshot(guiWindow.webContents);
+    });
+
+    guiWindow.on("closed", () => {
+        guiWindow = null;
+    });
+
+    return guiWindow;
+}
+
+function openGuiTerminal() {
+    return ensureGuiWindow();
+}
+
+function requestSidebar(action, params = {}) {
+    try {
+        return require('../../../modules/ipc/terminalHandlers').requestTerminalView(action, params);
+    } catch (e) {
+        return Promise.reject(e);
+    }
+}
+
+function terminalTarget(args = {}) {
+    const target = String(args.terminalTarget || "sidebar").trim().toLowerCase();
+    return target === "window" ? "window" : "sidebar";
+}
+
+async function prepareTerminalView(target, required = false) {
+    if (target === "window") {
+        ensureGuiWindow();
+    } else {
+        const opening = requestSidebar("open");
+        if (required) await opening;
+        else opening.catch(error => console.warn("[PTYShellExecutor] Sidebar unavailable:", error.message));
+    }
+}
+
+async function queryVisibleLines(maxLines = 200) {
+    ensureHeadlessTerminal();
+    const buffer = headlessTerminal.buffer.active;
+    const lines = [];
+    const limit = Math.min(maxLines, buffer.length);
+    for (let i = buffer.length - limit; i < buffer.length; i++) {
+        const line = buffer.getLine(i);
+        if (line) lines.push(line.translateToString(true));
+    }
+    return lines.join("\n").trim();
+}
+
+function executeSingleCommandInPty(targetPty, singleCommand) {
+    return new Promise((resolve, reject) => {
+        if (!targetPty) return reject(new Error("PTY 会话进程不可用。"));
+
+        const run = beginCommandRun(singleCommand, { outputSource: "capture" });
+        const runId = crypto.randomUUID();
+        const prefix = path.join(os.tmpdir(), "vcp-pty-" + runId);
+        const scriptPath = prefix + ".sh";
+        const wrapperPath = prefix + "-wrapper.sh";
+        const outputPath = prefix + ".log";
+        const receiptPath = prefix + ".json";
+
+        let timer = null;
+        let timeout = null;
+        let closed = false;
+        let callerSettled = false;
+        let output = "";
+
+        const updateOutput = () => {
+            if (!fs.existsSync(outputPath)) return;
+            try {
+                const next = fs.readFileSync(outputPath, "utf8");
+                if (next.length > output.length) {
+                    appendCommandRunOutput(run, next.slice(output.length));
+                    output = next;
+                }
+            } catch (_) {}
+        };
+
+        const release = () => {
+            if (closed) return;
+            closed = true;
+            clearInterval(timer);
+            clearTimeout(timeout);
+            if (activeCommandAbort === abort) activeCommandAbort = null;
+            if (pendingCommandCleanup === abandon) {
+                pendingCommandCleanup = null;
+                commandUnresolved = false;
+            }
+            for (const file of [scriptPath, wrapperPath, outputPath, receiptPath, receiptPath + ".pending"]) {
+                try { if (fs.existsSync(file)) fs.unlinkSync(file); } catch (_) {}
+            }
+        };
+
+        const abandon = () => {
+            if (closed) return;
+            finishCommandRun(run, "cancelled");
+            release();
+            if (!callerSettled) {
+                callerSettled = true;
+                reject(new Error("Shell 会话已退出或重置，执行未收到完成回执。"));
+            }
+        };
+
+        const abort = () => {
+            if (closed) return false;
+            targetPty.write("\x03");
+            commandUnresolved = true;
+            finishCommandRun(run, "cancelling");
+            if (!callerSettled) {
+                callerSettled = true;
+                clearTimeout(timeout);
+                reject(new Error("已向 Shell 会话投递 Ctrl+C 中断请求；会话保持未决状态直至收尾回执。"));
+            }
+            return true;
+        };
+
+        pendingCommandCleanup = abandon;
+        activeCommandAbort = abort;
+let captureParser = parseCaptureReceipt;
+
+        const poll = () => {
+            if (closed) return;
+            try {
+                updateOutput();
+                if (!fs.existsSync(receiptPath)) return;
+                const receipt = captureParser(fs.readFileSync(receiptPath, "utf8"), runId);
+                updateOutput();
+                output = fs.existsSync(outputPath) ? fs.readFileSync(outputPath, "utf8") : "";
+                run.raw = output;
+                const state = run.status === "cancelling" ? "cancelled" : "completed";
+                finishCommandRun(run, state, receipt);
+                release();
+                if (!callerSettled) {
+                    callerSettled = true;
+                    const isCleanSuccess = state === "completed"
+                        && (receipt.nativeExitCode === 0 || receipt.nativeExitCode === null || receipt.nativeExitCode === undefined)
+                        && !receipt.terminatingError
+                        && !receipt.truncated
+                        && (!receipt.errorCount || receipt.errorCount === 0);
+
+                    if (isCleanSuccess) {
+                        resolve(output);
+                    } else {
+                        const integrity = receipt.truncated ? "truncated" : "complete";
+                        resolve("[execution=" + state + "; output=" + integrity + "; errors=" + receipt.errorCount + "; terminatingError=" + receipt.terminatingError + "; nativeExit=" + (receipt.nativeExitCode ?? "n/a") + "; durationMs=" + receipt.durationMs + "]\\n"
+                            + (receipt.truncated ? "[输出超过容量限制，仅保留开头内容]\\n" : "")
+                            + output);
+                    }
+                }
+            } catch (error) {
+                commandUnresolved = true;
+                clearTimeout(timeout);
+                if (!callerSettled) {
+                    callerSettled = true;
+                    reject(new Error("底层回执解析异常，会话按未决锁定处理: " + error.message));
+                }
+            }
+};
+
+        try {
+            try {
+                delete require.cache[require.resolve('./commandCapture')];
+            } catch (_) {}
+            const captureModule = require('./commandCapture');
+            const captureBuilder = captureModule.buildCaptureWrapper || buildCaptureWrapper;
+captureParser = captureModule.parseCaptureReceipt || parseCaptureReceipt;
+            fs.writeFileSync(scriptPath, singleCommand, "utf8");
+            fs.writeFileSync(wrapperPath, captureBuilder({
+                scriptPath,
+                outputPath,
+                receiptPath,
+                runId,
+                execPath: process.execPath
+            }), "utf8");
+            fs.chmodSync(wrapperPath, 0o755);
+            timer = setInterval(poll, 100);
+            timeout = setTimeout(() => {
+                if (closed || callerSettled) return;
+                callerSettled = true;
+                commandUnresolved = true;
+                finishCommandRun(run, "running_detached");
+                purgeExecutionQueue("前置命令超时仍占用终端，后续排队任务已安全取消。");
+                reject(new Error("命令超过 60 秒同步等待，仍在前台 Shell 持续执行中。执行锁保留以防踩踏；可使用 QueryVisible 巡视、InterruptPowerShell 发送中断或 newSession:true 重建会话。"));
+            }, defaultConfig.commandTimeout);
+
+            targetPty.write("source '" + wrapperPath.replace(/'/g, "'\\''") + "'\r");
+        } catch (error) {
+            finishCommandRun(run, "spawn_error");
+            release();
+            callerSettled = true;
+            reject(error);
+        }
+    });
+}
+
+function purgeExecutionQueue(reason) {
+    const cancelled = executionQueue.splice(0, executionQueue.length);
+    for (const item of cancelled) {
+        if (typeof item.reject === "function") {
+            item.reject(new Error(reason));
+        }
+    }
+    return cancelled;
+}
+
+async function processQueueLoop() {
+    if (queueProcessing || isExecutingCommand || commandUnresolved) return;
+    if (executionQueue.length === 0) return;
+
+    queueProcessing = true;
+    while (executionQueue.length > 0) {
+        if (commandUnresolved) break;
+        const task = executionQueue.shift();
+        try {
+            if (task.newSession || !ptyProcess) {
+                createNewPtySession();
+            }
+            isExecutingCommand = true;
+            const res = await executeSingleCommandInPty(ptyProcess, task.command);
+            task.resolve(res);
+        } catch (e) {
+            task.reject(e);
+        } finally {
+            isExecutingCommand = false;
+        }
+    }
+    queueProcessing = false;
+}
+
+async function ensureInteractiveTerminal(newSession = false, target = "sidebar") {
+    if (isExecutingCommand || queueProcessing || executionQueue.length > 0 || (commandUnresolved && !newSession)) {
+        throw new Error("共享终端正被未决或同步任务占用，无法进入交互模式。");
+    }
+    await prepareTerminalView(target, true);
+    if (newSession || !ptyProcess) {
+        createNewPtySession();
+    }
+    interactiveMode = true;
+    return ptyProcess;
+}
+
+async function processToolCall(rawArgs = {}) {
+    const args = rawArgs || {};
+    const commandName = (args.command || args.action || "").trim().toLowerCase();
+
+    if (commandName === "interruptpowershell" || commandName === "interruptcommand" || commandName === "interruptshell" ||
+        (args.action === "cancel" && !args.taskId)) {
+        const interruptedCurrent = Boolean(activeCommandAbort && activeCommandAbort());
+        const cancelledQueue = purgeExecutionQueue("命令队列被全局中断取消。");
+        const cancelledText = cancelledQueue.length > 0
+            ? "\n\n🛡️ 已同步取消排队的 " + cancelledQueue.length + " 个任务。"
+            : "";
+        const msg = interruptedCurrent
+            ? "🛑 [中断请求已投递] 已向活动 Shell 会话发送 Ctrl+C；等待底层回执确认收尾。"
+            : "ℹ️ 当前无正在等待的同步命令。";
+        return { content: [{ type: "text", text: msg + cancelledText }] };
+    }
+
+    if (commandName === "endinteractive" || args.action === "endinteractive") {
+        interactiveMode = false;
+        return { content: [{ type: "text", text: "✅ 交互模式已解除，Shell 提示符已复位。" }] };
+    }
+
+    if (commandName === "queryvisible" || args.action === "queryvisible") {
+        const maxLines = Math.max(10, Math.min(2000, parseInt(args.maxLines, 10) || 200));
+        const text = await queryVisibleLines(maxLines);
+        return { content: [{ type: "text", text: text || "(终端屏幕当前无可见文本)" }] };
+    }
+
+    if (commandName === "sendinteractivekey" || args.action === "sendinteractivekey") {
+        if (!args.key) throw new Error("SendInteractiveKey 缺少 key 参数。");
+        const keySpec = parseTerminalKey(args.key);
+        const ptyProc = await ensureInteractiveTerminal(args.newSession === true, terminalTarget(args));
+        ptyProc.write(keySpec.data);
+        return { content: [{ type: "text", text: "已发送按键 " + keySpec.keyName + " (" + keySpec.repeat + " 次)" }] };
+    }
+
+    if (commandName === "pasteinteractivetext" || args.action === "pasteinteractivetext") {
+        if (typeof args.text !== "string") throw new Error("PasteInteractiveText 缺少 text 参数。");
+        const ptyProc = await ensureInteractiveTerminal(args.newSession === true, terminalTarget(args));
+        ptyProc.write("\x1b[200~" + args.text + "\x1b[201~");
+        if (args.submit === true) {
+            ptyProc.write("\r");
+        }
+        return { content: [{ type: "text", text: "已粘贴 " + args.text.length + " 个字符" + (args.submit ? " 并发送回车" : "") + "。" }] };
+    }
+
+    if (commandName === "runinteractivesequence" || args.action === "runinteractivesequence") {
+        const steps = parseInteractiveSequence(args);
+        const ptyProc = await ensureInteractiveTerminal(args.newSession === true, terminalTarget(args));
+        const receipts = [];
+
+        for (const step of steps) {
+            if (step.type === "command") {
+                ptyProc.write(step.value + "\r");
+                receipts.push("[Step " + step.index + "] 执行命令: " + step.value);
+            } else if (step.type === "wait") {
+                const ms = parseWaitDuration(step.value);
+                await delay(ms);
+                receipts.push("[Step " + step.index + "] 等待 " + ms + "ms");
+            } else if (step.type === "key") {
+                const keySpec = parseTerminalKey(step.value);
+                ptyProc.write(keySpec.data);
+                receipts.push("[Step " + step.index + "] 按键: " + keySpec.keyName);
+            } else if (step.type === "paste") {
+                ptyProc.write("\x1b[200~" + step.value + "\x1b[201~");
+                receipts.push("[Step " + step.index + "] 粘贴 " + String(step.value).length + " 字符");
+            } else if (step.type === "queryVisible") {
+                const visible = await queryVisibleLines(parseInt(step.value, 10) || 200);
+                receipts.push("[Step " + step.index + "] 可见屏幕:\n" + visible);
+            }
+        }
+        return { content: [{ type: "text", text: receipts.join("\n") }] };
+    }
+
+    if (commandName === "startinteractive" || args.action === "startinteractive") {
+        const cmd = args.powershell || args.command;
+        if (!cmd) throw new Error("StartInteractive 缺少 command 参数。");
+        const ptyProc = await ensureInteractiveTerminal(args.newSession === true, terminalTarget(args));
+        ptyProc.write(cmd + "\r");
+        return { content: [{ type: "text", text: "交互程序已启动：" + cmd + "，已在终端中接管。" }] };
+    }
+
+    if (args.action === "async") {
+        return {
+            content: [{
+                type: "text",
+                text: "提示：异步任务推荐直接使用常规命令执行。若为长时间运行任务，建议在命令末尾添加 & 后台运行或使用 nohup。"
+            }]
+        };
+    }
+
+    let singleCommand = args.powershell || args.script || "";
+    if (!singleCommand) {
+        if (commandName !== "executecommand" && commandName !== "executepowershell") {
+            singleCommand = args.command || "";
+        }
+    }
+    if (!singleCommand) {
+        throw new Error("缺少要执行的命令参数 (command、powershell 或 script)。");
+    }
+
+    if (args.requireAdmin === true) {
+        const out = await executeAdminCommand(singleCommand);
+        return { content: [{ type: "text", text: out }] };
+    }
+
+    for (const forbidden of defaultConfig.forbiddenCommands) {
+        if (singleCommand.includes(forbidden)) {
+            throw new Error("命令被安全策略拒绝：包含禁止的高危模式 \"" + forbidden + "\"。");
+        }
+    }
+
+    if (commandUnresolved) {
+        if (!args.newSession) {
+            throw new Error("共享 Shell 终端仍有未决任务在运行；请等待其回执，或传入 newSession:true 强制重建会话。");
+        }
+        createNewPtySession();
+    }
+
+    if (interactiveMode && !args.newSession) {
+        throw new Error("当前终端正处于交互式 TUI 占用模式；请先调用 EndInteractive 或使用 newSession:true 重置。");
+    }
+
+    await prepareTerminalView(terminalTarget(args), false);
+
+    return new Promise((resolve, reject) => {
+        executionQueue.push({
+            command: singleCommand,
+            newSession: args.newSession === true,
+            resolve: output => resolve({ content: [{ type: "text", text: output }] }),
+            reject
+        });
+        processQueueLoop();
+    });
+}
+
+function cleanup() {
+    if (pendingCommandCleanup) pendingCommandCleanup();
+    if (ptyProcess) {
+        try { killProcessGroup(ptyProcess.pid); } catch (_) {}
+        try { ptyProcess.kill(); } catch (_) {}
+        ptyProcess = null;
+    }
+    if (guiWindow && !guiWindow.isDestroyed()) {
+        guiWindow.destroy();
         guiWindow = null;
     }
-    shellThemeBridge.dispose();
-
-    for (const proc of childProcesses) {
-        try { proc.kill(); } catch (e) { /* ignore */ }
-    }
-    childProcesses.clear();
-
-    ptyProcess = null;
-    activeSessionMode = null;
-    activeSessionWindowGeneration = null;
-    shellOutputBus.detach();
+    try {
+        shellThemeBridge.dispose();
+    } catch (_) {}
 }
 
 module.exports = {
     processToolCall,
+    openGuiTerminal,
+    attachMirror,
+    listCommandRuns,
+    getCommandRun,
+    subscribeCommandRuns,
+    _runCommandForTest: command => executeSingleCommandInPty(ptyProcess || createNewPtySession(), command),
+    ensureMirrorSession,
+    restartSession,
+    getSessionState,
+    writeSessionInput,
+    clearSessionScreen,
+    resizeSession: applyPtyResize,
     cleanup,
-    __test: {
-        AsyncTaskManager,
-        createShellOutputBus,
-        createUtf8StreamDecoder,
-        executeSingleCommand,
-        normalizeForTerminal,
-        shellThemeBridge
-    }
+    parseInteractiveSequence,
+    parseWaitDuration,
+    parseTerminalKey
 };
