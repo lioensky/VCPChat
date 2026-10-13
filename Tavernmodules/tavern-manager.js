@@ -279,6 +279,10 @@
                 return;
             }
 
+            // 仅排序过滤后的显示副本，不改变存储及规则执行顺序。
+            // 与开关保持一致：只有 enabled === false 才视为关闭；同组保留原顺序。
+            filteredRules.sort((a, b) => Number(a.enabled === false) - Number(b.enabled === false));
+
             body.innerHTML = '';
             filteredRules.forEach(rule => {
                 // 仅捕获 ID;saveStore 后 this.store 会被整体替换,
