@@ -16,7 +16,87 @@
     "invocationCommands": [
       {
         "command": "roll",
+        "commandIdentifier": "roll",
         "description": "功能: 使用真实3D物理引擎投掷d4-d100，可混合多个骰组，并施加材质与物理魔法。\n参数:\n- notation (字符串, 必需): 标准骰子表达式，例如 1d20、2d6+1d20。\n- theme (字符串, 可选): 骰子材质主题。可选值: default(纯色)、gemstone(宝石)、rock(岩石)、rust(锈蚀)、smooth(光滑)、blueGreenMetal(蓝绿旧金属)、diceOfRolling(滚动之骰)、gemstoneMarble(彩虹大理石)、wooden(木质)。\n- themecolor (字符串, 可选): #RRGGBB颜色。仅default、gemstone、rock、rust、smooth等可着色主题有效。\n- magic (字符串, 可选): 物理魔法预设。normal=常态，moon=月面慢落，storm=暴风旋转，lead=铅骰重坠，bounce=弹跳狂欢。默认normal。\n- physics (JSON对象, 可选): 在魔法预设上精调本次物理参数。支持gravity(0.15-2.5)、mass(0.25-6)、friction(0.05-1)、restitution(0-0.95)、linearDamping(0.05-0.9)、angularDamping(0.05-0.9)、spinForce(1-18)、throwForce(1-10)、startingHeight(3-14)、settleTimeout(2500-10000)。超界值会被安全钳制。优先使用预设，只在需要特殊叙事效果时精调physics。\n示例——施放紫色宝石月面骰:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」SuperDice「末」,\ncommand:「始」roll「末」,\nnotation:「始」2d6+1d20「末」,\ntheme:「始」gemstone「末」,\nthemecolor:「始」#8B5CF6「末」,\nmagic:「始」moon「末」\n<<<[END_TOOL_REQUEST]>>>"
+      }
+    ]
+  },
+  "jev": {
+    "schemaVersion": 1,
+    "enabled": true,
+    "category": "媒体娱乐",
+    "jevDescPrompt": "使用真实 3D 物理引擎投掷各类多面体骰子（d4~d100），支持材质主题与物理重力魔法预设。",
+    "jevPrompt": "根据用户的叙事氛围选择骰子材质 theme（宝石选 gemstone，木质选 wooden，岩石选 rock，金属选 blueGreenMetal，彩虹大理石选 gemstoneMarble，默认 default）与物理魔法 magic（轻盈慢落选 moon，剧烈旋转选 storm，沉重砸落选 lead，欢快弹跳选 bounce，默认 normal）。",
+    "agentPrompt": "当需要进行 3D 物理掷骰检定或命运判定时，使用 {媒体娱乐} 中的 `SuperDice`，将骰子表达式放入【主要内容】，材质或物理效果放入 []（如 [宝石]、[月面慢落]）：\nJEV:「始」请使用 {媒体娱乐} 中的 `SuperDice`，投掷【1d20+2d6】并选用[宝石]材质与[月面慢落]魔法。「末」",
+    "defaultCommand": "roll",
+    "commands": [
+      {
+        "commandIdentifier": "roll",
+        "description": "投掷 3D 物理骰子",
+        "aliases": ["掷骰", "投掷", "丢骰子", "检定", "roll"],
+        "parameters": {
+          "notation": {
+            "type": "text",
+            "required": true,
+            "source": "primary",
+            "maxLength": 100,
+            "description": "标准骰子表达式（如 1d20, 2d6+1d20）"
+          },
+          "theme": {
+            "type": "enum",
+            "required": false,
+            "description": "3D 骰子外观材质主题",
+            "values": {
+              "default": "经典纯色材质",
+              "gemstone": "晶莹剔透的宝石材质",
+              "wooden": "温润复古的木质纹理",
+              "rock": "粗犷厚重的岩石材质",
+              "rust": "斑驳沧桑的锈蚀金属",
+              "smooth": "镜面光滑质感",
+              "blueGreenMetal": "蓝绿古旧金属质感",
+              "diceOfRolling": "传奇滚动之骰主题",
+              "gemstoneMarble": "绚丽彩虹大理石质感"
+            },
+            "aliases": {
+              "default": ["默认", "纯色"],
+              "gemstone": ["宝石", "水晶", "晶石"],
+              "wooden": ["木质", "木头"],
+              "rock": ["岩石", "石头"],
+              "rust": ["锈蚀", "生锈"],
+              "smooth": ["光滑", "镜面"],
+              "blueGreenMetal": ["蓝绿金属", "古旧金属", "金属"],
+              "diceOfRolling": ["滚动之骰"],
+              "gemstoneMarble": ["彩虹大理石", "大理石"]
+            },
+            "default": "default"
+          },
+          "magic": {
+            "type": "enum",
+            "required": false,
+            "description": "3D 物理重力与动效魔法预设",
+            "values": {
+              "normal": "标准地球物理重力常态",
+              "moon": "月面低重力轻盈慢落",
+              "storm": "暴风气旋高速旋转",
+              "lead": "铅骰高重力沉重坠落",
+              "bounce": "高弹性弹跳狂欢"
+            },
+            "aliases": {
+              "normal": ["常态", "普通"],
+              "moon": ["月面", "月面慢落", "低重力"],
+              "storm": ["暴风", "暴风旋转", "旋风"],
+              "lead": ["铅骰", "铅骰重坠", "重坠"],
+              "bounce": ["弹跳", "弹跳狂欢"]
+            },
+            "default": "normal"
+          },
+          "themecolor": {
+            "type": "text",
+            "source": "constraints",
+            "prefixes": ["颜色", "色号"],
+            "maxLength": 12
+          }
+        }
       }
     ]
   }

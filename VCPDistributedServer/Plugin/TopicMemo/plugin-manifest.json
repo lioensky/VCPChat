@@ -14,14 +14,44 @@
   "capabilities": {
     "invocationCommands": [
       {
-        "command": "ListTopics",
+        "commandIdentifier": "ListTopics",
         "description": "获取指定女仆的所有话题列表。\n\n**参数说明:**\n1. `tool_name`:「始」TopicMemo「末」 (必需)\n2. `command`:「始」ListTopics「末」 (必需)\n3. `maid`:「始」[女仆的中文名]「末」 (必需, 例如：小克, 迪欧尼亚)\n\n**返回内容:**\n返回该女仆的所有话题列表，包含话题名称、ID和创建时间。\n\n**使用场景:**\n- 想要回顾过去聊过的话题\n- 需要查找特定话题的ID以获取完整内容",
         "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」TopicMemo「末」\ncommand:「始」ListTopics「末」\nmaid:「始」小克「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
-        "command": "GetTopicContent",
+        "commandIdentifier": "GetTopicContent",
         "description": "根据话题ID获取完整的聊天记录。\n\n**参数说明:**\n1. `tool_name`:「始」TopicMemo「末」 (必需)\n2. `command`:「始」GetTopicContent「末」 (必需)\n3. `maid`:「始」[女仆的中文名]「末」 (必需)\n4. `topic_id`:「始」[话题ID]「末」 (必需, 格式如：topic_1766100505346，可通过 ListTopics 获取)\n\n**返回内容:**\n返回该话题的完整聊天记录，格式为 Markdown 对话文档。\n\n**使用场景:**\n- 需要完整回顾某个特定话题的对话内容\n- 需要查找话题中的具体信息",
         "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」TopicMemo「末」\ncommand:「始」GetTopicContent「末」\nmaid:「始」小克「末」\ntopic_id:「始」topic_1766100505346「末」\n<<<[END_TOOL_REQUEST]>>>"
+      }
+    ]
+  },
+  "jev": {
+    "schemaVersion": 1,
+    "enabled": true,
+    "category": "便利操作",
+    "jevDescPrompt": "查询当前或指定女仆的历史聊天话题列表，或读取特定话题的完整对话记录。",
+    "jevPrompt": "用户希望列出、查看话题列表或查找往期讨论时选择 ListTopics 命令；希望根据已知 topic_id 阅读完整历史对话长文记录时选择 GetTopicContent 命令。未明确指定时默认 ListTopics。",
+    "agentPrompt": "当需要回顾往期对话话题或查看特定话题记录时，使用 {便利操作} 中的 `TopicMemo`，列出话题列表直接调用，读取具体话题将 topic_id 放入【主要内容】：\nJEV:「始」请使用 {便利操作} 中的 `TopicMemo`，列出往期【话题列表】。「末」",
+    "defaultCommand": "ListTopics",
+    "commands": [
+      {
+        "commandIdentifier": "ListTopics",
+        "description": "获取历史话题列表与元数据",
+        "aliases": ["话题列表", "列出话题", "查看话题", "历史话题"]
+      },
+      {
+        "commandIdentifier": "GetTopicContent",
+        "description": "根据话题编号读取完整对话记录",
+        "aliases": ["话题内容", "读取话题", "聊天记录", "查看对话"],
+        "parameters": {
+          "topic_id": {
+            "type": "text",
+            "required": true,
+            "source": "primary",
+            "maxLength": 60,
+            "description": "目标话题 ID (如 topic_1766100505346)"
+          }
+        }
       }
     ]
   }

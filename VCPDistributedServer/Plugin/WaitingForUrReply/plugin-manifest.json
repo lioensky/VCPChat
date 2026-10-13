@@ -29,5 +29,36 @@
                 "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」WaitingForUrReply「末」,\ntitle:「始」等待用户回复「末」,\nprompt:「始」你希望如何处理这个问题？「末」,\noption01:「始」立即处理「末」,\noption02:「始」稍后处理「末」,\noption03:「始」需要更多信息「末」\n<<<[END_TOOL_REQUEST]>>>"
             }
         ]
+    },
+    "jev": {
+        "schemaVersion": 1,
+        "enabled": true,
+        "category": "便利操作",
+        "jevDescPrompt": "在对话中弹出桌面交互视窗暂停等待用户输入文字或选择预设选项。",
+        "jevPrompt": "用户希望向人类用户征求意见、确认方案或等待回复时调用 WaitForUserInput。提示问题放入主要内容，弹窗标题通过约束提供。",
+        "agentPrompt": "当需要征求用户意见或等待确认选择时，使用 {便利操作} 中的 `WaitingForUrReply`，提示问题放入【主要内容】，窗口标题放入 [标题:...]：\nJEV:「始」请使用 {便利操作} 中的 `WaitingForUrReply`，弹出窗口询问【该方案是否继续推进？】[标题:请确认]。「末」",
+        "defaultCommand": "WaitForUserInput",
+        "commands": [
+            {
+                "commandIdentifier": "WaitForUserInput",
+                "description": "桌面弹窗等待用户输入回复",
+                "aliases": ["等待回复", "询问用户", "弹窗确认", "等待用户输入"],
+                "parameters": {
+                    "prompt": {
+                        "type": "text",
+                        "required": true,
+                        "source": "primary",
+                        "maxLength": 500,
+                        "description": "显示给用户的提示信息或问题"
+                    },
+                    "title": {
+                        "type": "text",
+                        "source": "constraints",
+                        "prefixes": ["标题", "弹窗标题"],
+                        "maxLength": 50
+                    }
+                }
+            }
+        ]
     }
 }
