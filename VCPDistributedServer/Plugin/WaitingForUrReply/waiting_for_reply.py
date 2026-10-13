@@ -2,12 +2,12 @@
 # -*- coding: utf-8 -*-
 
 import sys
+import base64
 import json
 import os
 import platform
 import subprocess
-import threading
-import time
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 
@@ -140,99 +140,55 @@ class UserInputHandler:
             return "（对方未回复明确内容）"
     
     def _show_windows_dialog(self, prompt: str, options: List[Tuple[str, str]], timeout: int, placeholder: str = "", title: str = "等待用户回复") -> str:
-        """Windows 使用 PowerShell 显示对话框"""
+        """Windows 单卡片 WPF；用户内容只通过 UTF-8 JSON stdin 传递。"""
+        no_reply = "（对方未回复明确内容）"
+        if timeout <= 0:
+            return no_reply
+        payload = json.dumps({
+            "prompt": prompt, "options": options, "timeout": timeout,
+            "placeholder": placeholder, "title": title,
+        }, ensure_ascii=False)
+        # 使用系统 Windows PowerShell，避免 PATH 中的同名程序；WPF 需要 STA。
+        executable = str(Path(os.environ.get("SystemRoot", r"C:\Windows")) /
+                         "System32/WindowsPowerShell/v1.0/powershell.exe")
+        script = str(Path(__file__).with_name("windows_dialog.ps1"))
+        bootstrap = "$ProgressPreference='SilentlyContinue'; & ([scriptblock]::Create([IO.File]::ReadAllText('" + script.replace("'", "''") + "', [Text.Encoding]::UTF8)))"
+        encoded = base64.b64encode(bootstrap.encode("utf-16-le")).decode("ascii")
         try:
-            # 构建选项文本
-            options_text = ""
-            if options:
-                options_text = "\\n\\n可选项（按数字键快速选择）:\\n"
-                for i, (key, content) in enumerate(options, 1):
-                    options_text += f"{i}. {content}\\n"
-            
-            full_prompt = f"{prompt}{options_text}\\n\\n按 ESC 或取消按钮取消回复｜输入[～]可禁用本工具"
-            
-            # PowerShell 脚本，使用MessageBox提供禁用按钮选项
-            escaped_placeholder = placeholder.replace('"', '""')  # PowerShell转义双引号
-            escaped_title = title.replace('"', '""')  # PowerShell转义双引号
-            escaped_full_prompt = full_prompt.replace('"', '""')
-            
-            powershell_script = f'''
-            Add-Type -AssemblyName System.Windows.Forms
-            Add-Type -AssemblyName Microsoft.VisualBasic
-            
-            # 首先显示选择对话框
-            $choice = [System.Windows.Forms.MessageBox]::Show("{escaped_full_prompt}`n`n点击'是'输入回复，'否'取消，'取消'禁用工具", "{escaped_title}", [System.Windows.Forms.MessageBoxButtons]::YesNoCancel, [System.Windows.Forms.MessageBoxIcon]::Question)
-            
-            if ($choice -eq [System.Windows.Forms.DialogResult]::Cancel) {{
-                Write-Output "DISABLED"
-            }} elseif ($choice -eq [System.Windows.Forms.DialogResult]::No) {{
-                Write-Output "CANCELLED"
-            }} else {{
-                # 用户选择输入，显示输入框
-                $result = [Microsoft.VisualBasic.Interaction]::InputBox("请输入您的回复:", "{escaped_title}", "{escaped_placeholder}")
-                if ($result -eq "") {{
-                    Write-Output "CANCELLED"
-                }} else {{
-                    Write-Output $result
-                }}
-            }}
-            '''
-            
-            # 使用线程执行以支持超时
-            result_container = {"value": None, "completed": False}
-            
-            def run_powershell():
-                try:
-                    result = subprocess.run(
-                        ['powershell', '-Command', powershell_script],
-                        capture_output=True,
-                        text=True,
-                        timeout=timeout + 5
-                    )
-                    if result.returncode == 0:
-                        result_container["value"] = result.stdout.strip()
-                    else:
-                        result_container["value"] = "CANCELLED"
-                except:
-                    result_container["value"] = "CANCELLED"
-                finally:
-                    result_container["completed"] = True
-            
-            thread = threading.Thread(target=run_powershell)
-            thread.daemon = True
-            thread.start()
-            
-            # 等待结果或超时
-            start_time = time.time()
-            while not result_container["completed"] and (time.time() - start_time) < timeout:
-                time.sleep(0.1)
-            
-            if not result_container["completed"]:
-                return "（对方未回复明确内容）"
-            
-            output = result_container["value"]
-            if output == "CANCELLED" or output == "":
-                return "（对方未回复明确内容）"
-            
-            # 检查是否是禁用命令
-            if output == "DISABLED":
-                print("DEBUG: User clicked disable button (Windows)", file=sys.stderr)
+            result = subprocess.run(
+                [executable, "-NoLogo", "-NoProfile", "-NonInteractive", "-STA",
+                 "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded],
+                input=payload, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=timeout + 5,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            if result.returncode != 0:
+                print(f"Windows dialog failed: {result.stderr.strip()}", file=sys.stderr)
+                return no_reply
+            response = json.loads(result.stdout.strip())
+            kind = response.get("kind")
+            if kind == "disable":
                 return self._get_disable_message()
-            
-            # 检查是否是特殊的禁用命令
+            if kind == "option":
+                text = response.get("text")
+                return text if any(text == content for _, content in options) else no_reply
+            if kind != "text":
+                return no_reply
+            output = response.get("text", "").strip()
+            if not output:
+                return no_reply
             if self._is_disable_command(output):
-                print("DEBUG: Disable command detected in text input (Windows)", file=sys.stderr)
                 return self._get_disable_message()
-            
-            # 检查是否是数字选择
             if output.isdigit() and 1 <= int(output) <= len(options):
                 return options[int(output) - 1][1]
-            
             return output
-            
+        except subprocess.TimeoutExpired:
+            # run() kills and waits for this direct GUI process; no orphan dialog thread.
+            print("Windows reply dialog timed out and was reaped", file=sys.stderr)
+            return no_reply
         except Exception as e:
             print(f"Windows dialog error: {e}", file=sys.stderr)
-            return "（对方未回复明确内容）"
+            return no_reply
     
     def _is_disable_command(self, text: str) -> bool:
         """检查是否是禁用命令"""

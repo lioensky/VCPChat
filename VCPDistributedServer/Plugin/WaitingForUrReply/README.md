@@ -1,5 +1,30 @@
 # WaitingForUrReply Plugin
 
+## Windows 单卡片界面（2026-10-13）
+
+Windows 实现已替换为 WPF 单卡片：深墨绿底、薄荷绿主按钮、圆角与轻阴影。
+打开直接聚焦回复框，不再弹出“是否输入”的前置确认。
+
+- Enter 发送；Shift+Enter 换行；Esc 或右上角关闭取消。
+- 点击选项直接回复；Alt+1～9 快选。普通数字不会立即触发选项；输入数字再发送仍兼容旧的序号映射。
+- “不再询问”返回原有禁用提示，并非修改插件配置或全局停用。
+- placeholder 仍是预填文本，会全选；空输入不能发送。
+- 长问题和选项区可滚动，显示剩余等待时间。
+- 用户数据通过 UTF-8 JSON stdin 传递，不拼入可执行脚本。
+- 窗口内计时关闭；外层子进程超时兜底终止并回收窗口进程。
+
+依赖：Windows PowerShell 5.1、系统 .NET Framework / WPF，无新增 Python 包。
+部署必须同时携带 `waiting_for_reply.py` 和同目录的 `windows_dialog.ps1`。
+macOS 和 Linux 本轮未更改，下文旧平台操作说明仅适用于其原实现。
+
+验证：
+```powershell
+python tests/waiting-for-reply.test.py
+python tests/waiting-for-reply-wpf-smoke.py
+```
+第二条需 Windows 交互桌面，会短暂显示两个真实窗口并自动关闭。
+回归 10 项通过，真实 WPF 无选项/两选项计时关闭通过；点击、键盘、中文 IME、
+不同 DPI 和长内容的实际视觉效果仍需人工验收。
 ## 🎯 功能概述
 
 WaitingForUrReply 是一个 VCP 同步插件，专为 AI 对话中的用户交互而设计。当 AI 需要用户输入时，插件会弹出系统原生对话框，暂停 AI 输出并等待用户回复，提供流畅的交互体验。
