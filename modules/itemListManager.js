@@ -203,6 +203,8 @@ window.itemListManager = (() => {
                     wasSelectionListenerActive = false; // Reset state
                 }
 
+                // Dropped back in place: nothing changed, so settings.json is not rewritten.
+                if (evt.from === evt.to && evt.oldIndex === evt.newIndex) return;
                 const allListItems = Array.from(evt.to.children);
                 const orderedItems = allListItems.map(item => ({
                     id: item.dataset.itemId,

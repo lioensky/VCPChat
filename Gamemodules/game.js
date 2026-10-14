@@ -94,6 +94,72 @@
     }
     listen(document.getElementById('refresh-records'), () => { void refreshRecords(); });
     void refreshRecords();
+    const resourcesStatus = document.getElementById('resources-status');
+    const resourcesList = document.getElementById('game-resources');
+    const confirmation = document.getElementById('remove-confirmation');
+    let resourceToken = 0, pendingRemoval = [], removing = false;
+    const selectedResources = () => [...resourcesList.querySelectorAll('input:checked:not(:disabled)')].map(n => n.value);
+    async function refreshResources() {
+        if (removing) return;
+        const token = ++resourceToken;
+        confirmation.hidden = true;
+        pendingRemoval = [];
+        try {
+            const result = await request('listGameResources');
+            if (scope.signal.aborted || token !== resourceToken) return;
+            resourcesList.replaceChildren(...result.sessions.map(session => {
+                const row = document.createElement('label');
+                row.style.cssText = 'display:block;padding:10px';
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox'; checkbox.value = session.groupId;
+                checkbox.disabled = session.running || result.unavailable.length > 0;
+                row.append(checkbox, document.createTextNode(
+                    ` ${session.name} · ${session.records.length} 局${session.running ? ' · 请求运行中' : session.records.length ? '' : ' · 无存档遗留群'}`));
+                return row;
+            }));
+            resourcesStatus.textContent = `共 ${result.sessions.length} 个游戏会话。${result.unavailable.length ? `发现 ${result.unavailable.length} 个关联不明的坏档，清理已禁用，避免误删后台群。` : ''}`;
+        } catch (error) {
+            if (!scope.signal.aborted && token === resourceToken) resourcesStatus.textContent = error.message;
+        }
+    }
+    listen(document.getElementById('refresh-resources'), () => { void refreshResources(); });
+    listen(document.getElementById('select-resources'), () => {
+        if (removing) return;
+        resourcesList.querySelectorAll('input:not(:disabled)').forEach(n => { n.checked = true; });
+    });
+    listen(document.getElementById('prepare-remove'), () => {
+        if (removing) return;
+        pendingRemoval = selectedResources();
+        if (!pendingRemoval.length) { resourcesStatus.textContent = '请先选择可清理会话。'; return; }
+        document.getElementById('remove-summary').textContent =
+            `将永久删除所选 ${pendingRemoval.length} 个会话的全部牌局存档、后台群及历史；不可撤销。`;
+        confirmation.hidden = false;
+    });
+    listen(document.getElementById('cancel-remove'), () => { confirmation.hidden = true; pendingRemoval = []; });
+    listen(document.getElementById('confirm-remove'), async () => {
+        if (removing || !pendingRemoval.length) return;
+        removing = true;
+        ++resourceToken;
+        const button = document.getElementById('confirm-remove');
+        button.disabled = true;
+        try {
+            const result = await request('removeGameResources', { groupIds: [...pendingRemoval] });
+            if (scope.signal.aborted) return;
+            const succeeded = result.results.filter(r => r.success).length;
+            const failures = result.results.filter(r => !r.success).map(r => `${r.groupId}：${r.error}`);
+            removing = false;
+            await refreshResources();
+            await refreshRecords();
+            if (!scope.signal.aborted) resourcesStatus.textContent =
+                `清理成功 ${succeeded} 项，失败 ${failures.length} 项。${failures.join('；')}`;
+        } catch (error) {
+            if (!scope.signal.aborted) resourcesStatus.textContent = error.message;
+        } finally {
+            removing = false; button.disabled = false;
+            confirmation.hidden = true; pendingRemoval = [];
+        }
+    });
+    if (api?.listGameResources) void refreshResources();
     api?.windowReady?.('game-hall');
     window.addEventListener('pagehide', () => {
         scope.abort();

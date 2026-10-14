@@ -53,6 +53,19 @@
 </button>
 </section>
 <p id="game-status" role="status" aria-live="polite">点击游戏图标即可打开，无需 AI 发起启动。</p>
+<section class="game-history" aria-label="游戏资源管理">
+<div class="history-heading"><h2>游戏存档管理</h2><button id="refresh-resources" type="button">刷新管理器</button></div>
+<p>按后台游戏会话清理：同桌所有局的存档、后台群配置和群历史一起删除。不修改主配置；正在运行的会话不可删除。</p>
+<p id="resources-status" role="status" aria-live="polite"></p>
+<div id="game-resources"></div>
+<button id="select-resources" type="button">选择全部可清理会话</button>
+<button id="prepare-remove" type="button">删除所选…</button>
+<div id="remove-confirmation" hidden>
+<p id="remove-summary"></p>
+<button id="confirm-remove" type="button">确认永久删除</button>
+<button id="cancel-remove" type="button">取消</button>
+</div>
+</section>
 <section class="game-history" aria-label="斗地主记录">
 <div class="history-heading"><h2>斗地主记录</h2><button id="refresh-records" type="button">刷新记录</button></div>
 <p id="records-status" role="status" aria-live="polite">正在读取记录…</p>

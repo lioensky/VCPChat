@@ -13,6 +13,7 @@ import { getSaveCoordinator } from './settings/save-coordinator.js';
 import { fieldDescriptor, fieldRestore } from './settings/field-registry.js';
 import { applySettings } from '../settings/store.js';
 import { schemaSurfaceSections } from '../settings/schema-surface.js';
+import { classifyInput, delayFor, markScheduled, unchangedSinceScheduled, trackComposition } from './settings/input-cadence.js';
 
 const typedFieldStates = new Set();
 const typedForumFieldStates = new Set();
@@ -907,10 +908,10 @@ function mountTypedFieldOwner(root, form) {
             if (state.pendingPatch && !state.disposed) schedule();
         }
     };
-    const schedule = () => {
+    const schedule = (delay = 400) => {
         if (state.disposed) return;
         if (state.timer) clearTimeout(state.timer);
-        state.timer = setTimeout(run, 400);
+        state.timer = setTimeout(run, delay);
     };
     state.run = run;
     const applyAppearanceDraft = () => {
@@ -951,6 +952,9 @@ function mountTypedFieldOwner(root, form) {
     const onInput = event => {
         const control = event.target;
         if (!TYPED_FIELD_DEFINITIONS[control?.id]) return;
+        const kind = classifyInput(event);
+        if (kind === 'skip') return;
+        if (kind === 'text-commit' && !state.pendingPatch && !state.timer && unchangedSinceScheduled(control)) return;
         if (control.id === 'middleClickAdvancedDelay') normalizeMiddleClickDelay(control);
         const patch = readTypedFieldPatch(control, service, state.pendingPatch) || {};
         if (patch.appearanceProfile) {
@@ -966,12 +970,14 @@ function mountTypedFieldOwner(root, form) {
         }
         applyAppearanceDraft();
         markDirty();
-        schedule();
+        markScheduled(control);
+        schedule(delayFor(kind));
     };
     controls.forEach(control => {
         control.dataset.vcpTypedFieldOwner = 'true';
         ownerScope.listen(control, 'input', onInput);
         ownerScope.listen(control, 'change', onInput);
+        trackComposition(control, (target, type, handler) => ownerScope.listen(target, type, handler), onInput);
         state.cleanups.push(() => {
             delete control.dataset.vcpTypedFieldOwner;
         });

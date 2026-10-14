@@ -10,6 +10,18 @@ class GameRuntime {
             throw new TypeError('GameRuntime requires service, group backend, agent loader and request adapters.');
         }
         Object.assign(this, { gameService, groupChat, loadAgent });
+        this.maintenance = false;
+        this.resourceOperations = 0;
+        for (const name of ['openTable', 'nextTable', 'submitHuman']) {
+            const operation = this[name].bind(this);
+            this[name] = async (...args) => {
+                this.assertAvailable();
+                this.resourceOperations++;
+                try { return await operation(...args); }
+                finally { this.resourceOperations--; }
+            };
+        }
+        this.resources = new (require('./gameResourceManager').GameResourceManager)(this);
         this.orchestrator = new GameSessionOrchestrator({
             gameService,
             appendEvent: async payload => {
@@ -33,6 +45,7 @@ class GameRuntime {
         });
     }
     async openTable({ agentIds, userName = '用户', contextMessageWindowSize = 100 } = {}) {
+        this.assertAvailable();
         if (!Array.isArray(agentIds) || agentIds.length !== 2
             || agentIds.some(id => typeof id !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(id))
             || agentIds[0] === agentIds[1]) {
@@ -61,6 +74,7 @@ class GameRuntime {
         return { ...match, groupId: group.id, topicId: group.topics[0].id };
     }
     async nextTable(matchId) {
+        this.assertAvailable();
         if (this.getState(matchId).running) {
             throw Object.assign(new Error('当前回复尚未结束，请稍后再来一局。'), { code: 'REQUEST_ACTIVE' });
         }
@@ -88,7 +102,10 @@ class GameRuntime {
                 synchronizationError: error?.message || String(error) };
         }
     }
-    continue(matchId) { return this.orchestrator.start(matchId); }
+    assertAvailable() {
+        if (this.maintenance) throw new Error('游戏资源正在清理，请稍后再操作。');
+    }
+    continue(matchId) { this.assertAvailable(); return this.orchestrator.start(matchId); }
     stop(matchId) { this.orchestrator.stop(matchId); }
     getState(matchId) { return this.orchestrator.getState(matchId); }
 }

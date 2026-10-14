@@ -5,6 +5,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { EventEmitter } = require('events');
 const { normalizePromptSettings } = require('../services/workspacePromptPlaceholders');
+const { replaceFile } = require('./atomicReplace');
 
 class SettingsValidator {
     static validate(settings, defaultSettings) {
@@ -249,6 +250,7 @@ class SettingsManager extends EventEmitter {
         this.cache = null;
         this.cacheTimestamp = 0;
         this.lockFile = settingsPath + '.lock';
+        this.backupPath = settingsPath + '.backup';
         this.externalWatcher = null;
         this.externalWatchTimer = null;
         this.internalRevisions = new Set();
@@ -417,6 +419,23 @@ class SettingsManager extends EventEmitter {
         if (current === token) await fs.remove(this.lockFile).catch(() => {});
     }
 
+    parseSettings(text) {
+        const settings = JSON.parse(text);
+        if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+            throw new TypeError('Settings root must be an object.');
+        }
+        if (settings.topicSummaryModel === undefined || settings.topicSummaryModel === null) {
+            settings.topicSummaryModel = this.defaultSettings.topicSummaryModel;
+        }
+        return settings;
+    }
+
+    // Any parseable backup is a real earlier config; always better than defaults.
+    async readBackup() {
+        try { return this.parseSettings(await fs.readFile(this.backupPath, 'utf8')); }
+        catch { return null; }
+    }
+
     async readSettings({ fresh = false } = {}) {
         try {
             // 使用缓存机制减少文件读取
@@ -424,101 +443,60 @@ class SettingsManager extends EventEmitter {
             if (!fresh && stats && this.cache && stats.mtimeMs <= this.cacheTimestamp) {
                 return { ...this.cache };
             }
-
-            const content = await fs.readFile(this.settingsPath, 'utf8');
-            const settings = JSON.parse(content);
-            if (settings.topicSummaryModel === undefined || settings.topicSummaryModel === null) {
-                settings.topicSummaryModel = this.defaultSettings.topicSummaryModel;
-            }
-
-            // 更新缓存
+            const settings = this.parseSettings(await fs.readFile(this.settingsPath, 'utf8'));
             this.cache = settings;
             this.cacheTimestamp = stats ? stats.mtimeMs : Date.now();
-
             return { ...settings };
         } catch (error) {
-            if (error.code === 'ENOENT') {
-                return { ...this.defaultSettings };
+            const recovered = await this.readBackup();
+            if (recovered) {
+                console.warn(`Settings unreadable (${error.code || error.message}); recovered from backup.`);
+                return { ...recovered };
             }
-
-            console.error('Error reading settings, attempting recovery:', error);
-
-            // 尝试从备份恢复
-            const backupPath = this.settingsPath + '.backup';
-            if (await fs.pathExists(backupPath)) {
-                try {
-                    const backupContent = await fs.readFile(backupPath, 'utf8');
-                    const backupSettings = JSON.parse(backupContent);
-
-                    // 验证备份数据是否有效且包含用户自定义数据（例如 Agent 列表顺序或非默认用户名）
-                    const isNonDefault = backupSettings && (
-                        (Array.isArray(backupSettings.combinedItemOrder) && backupSettings.combinedItemOrder.length > 0) ||
-                        (backupSettings.userName && backupSettings.userName !== '用户') ||
-                        backupSettings.vcpServerUrl
-                    );
-
-                    if (isNonDefault) {
-                        console.log('Recovered settings from valid backup');
-                        return { ...backupSettings };
-                    } else {
-                        console.warn('Backup exists but appears to be default or empty, skipping recovery to prevent overwrite');
-                    }
-                } catch (backupError) {
-                    console.error('Backup also corrupted:', backupError);
-                }
-            }
-
-            // 如果主文件损坏且没有有效的备份，抛出错误以防止覆盖
+            // Read-only callers may display defaults; updates are guarded by readForUpdate().
+            if (error.code === 'ENOENT') return { ...this.defaultSettings };
+            console.error('Error reading settings and no valid backup:', error);
             throw new Error(`Settings file corrupted and no valid backup found: ${error.message}`);
         }
     }
 
+    // Called under the settings lock. Never hands defaults to an updater unless this is a true first run.
+    async readForUpdate() {
+        let mainError;
+        try { return this.parseSettings(await fs.readFile(this.settingsPath, 'utf8')); }
+        catch (error) { mainError = error; }
+        const recovered = await this.readBackup();
+        if (recovered) return recovered;
+        const missing = mainError.code === 'ENOENT';
+        if (missing && !await fs.pathExists(this.backupPath)) return { ...this.defaultSettings };
+        const refused = new Error(missing
+            ? '主配置缺失且备份不可用，拒绝基于默认设置写入。'
+            : `主配置损坏且无有效备份，拒绝覆盖：${mainError.message}`);
+        refused.code = missing ? 'SETTINGS_MISSING' : 'SETTINGS_CORRUPT';
+        throw refused;
+    }
+
     async writeSettings(settings) {
-        // Use a unique exclusively-created sibling. A shared `.tmp` path lets
-        // overlapping callers delete one another's temporary file when a
-        // write or verification step fails.
-        const tempFile = `${this.settingsPath}.${crypto.randomBytes(8).toString('hex')}.tmp`;
-        const backupFile = this.settingsPath + '.backup';
-
-        try {
-            // 验证设置
-            const { validated } = SettingsValidator.validate(settings, this.defaultSettings);
-
-            // 写入临时文件
-            await fs.writeJson(tempFile, validated, { spaces: 2 });
-
-            // 验证临时文件
-            const verifyContent = await fs.readFile(tempFile, 'utf8');
-            JSON.parse(verifyContent);
-
-            // 创建备份（如果原文件存在）
-            if (await fs.pathExists(this.settingsPath)) {
-                await fs.copy(this.settingsPath, backupFile, { overwrite: true });
-            }
-
-            // 原子性替换
-            await fs.move(tempFile, this.settingsPath, { overwrite: true });
-
-            // 更新缓存 - 确保原子性
-            const newTimestamp = Date.now();
-            this.cache = { ...validated };
-            this.cacheTimestamp = newTimestamp;
-            const internalRevision = this.getRevision(validated);
-            this.internalRevisions.add(internalRevision);
-            if (this.internalRevisions.size > 32) this.internalRevisions.delete(this.internalRevisions.values().next().value);
-
-            // 触发更新事件
-            this.emit('settings-updated', validated);
-
-            return true;
-        } catch (error) {
-            console.error('Error writing settings:', error);
-
-            // 清理临时文件
-            await fs.remove(tempFile).catch(() => {});
-
-            throw error;
+        const { validated } = SettingsValidator.validate(settings, this.defaultSettings);
+        // Back up the exact previous bytes, but only if they still parse:
+        // a corrupt main file must never replace a valid backup.
+        const previous = await fs.readFile(this.settingsPath, 'utf8').catch(() => null);
+        if (previous !== null) {
+            let valid = false;
+            try { this.parseSettings(previous); valid = true; } catch {}
+            if (valid) await replaceFile(this.backupPath, previous);
         }
+        // Single rename over the target: old bytes or complete new bytes, never a missing file.
+        await replaceFile(this.settingsPath, `${JSON.stringify(validated, null, 2)}\n`);
+
+        this.cache = { ...validated };
+        this.cacheTimestamp = Date.now();
+        const internalRevision = this.getRevision(validated);
+        this.internalRevisions.add(internalRevision);
+        if (this.internalRevisions.size > 32) this.internalRevisions.delete(this.internalRevisions.values().next().value);
+
+        this.emit('settings-updated', validated);
+        return true;
     }
 
     async updateSettings(updater, options = {}) {
@@ -543,7 +521,7 @@ class SettingsManager extends EventEmitter {
 
             // CAS must compare against the bytes currently protected by this
             // lock, never a renderer/process cache that may be stale.
-            currentSettings = await this.readSettings({ fresh: true });
+            currentSettings = await this.readForUpdate();
             const currentRevision = this.getRevision(currentSettings);
             if (options.expectedRevision !== undefined && options.expectedRevision !== currentRevision) {
                 const conflict = new Error(`Settings changed since it was read (expected ${options.expectedRevision}, current ${currentRevision})`);

@@ -4,6 +4,7 @@
 // only the legacy autosave registry and its lifecycle, registered there as
 // the `legacy-autosave` client.
 import { getSaveCoordinator } from './save-coordinator.js';
+import { classifyInput, delayFor, markScheduled, unchangedSinceScheduled, trackComposition } from './input-cadence.js';
 
 const autosaveStates = new Set();
 
@@ -118,13 +119,13 @@ export function mountSettingsAutosave(root, form, scope = null, options = {}) {
         }
         return state.completion || Promise.resolve();
     };
-    const schedule = () => {
+    const schedule = (delay = 400) => {
         if (state.saving) { state.pending = true; return; }
         state.pending = true;
         form.dataset.vcpSettingsDirty = 'true';
         setStatus('dirty', { owner: 'legacy-autosave', dirty: true });
         if (state.timer) clearTimeout(state.timer);
-        state.timer = setTimeout(submit, 400);
+        state.timer = setTimeout(submit, delay);
     };
     // The fallback helper is module-scoped so the close-time flush can share
     // it; both closures are needed to unwind the machine from outside `mount`.
@@ -143,7 +144,12 @@ export function mountSettingsAutosave(root, form, scope = null, options = {}) {
         if (event.target.dataset.vcpTypedFieldOwner === 'true') return;
         if (event.target.dataset.vcpTypedForumFieldOwner === 'true') return;
         if (event.target.dataset.vcpAppearanceDraftControl === 'true') return;
-        schedule();
+        const kind = classifyInput(event);
+        if (kind === 'skip') return;
+        // Blur after an idle save of the same text: nothing new to persist.
+        if (kind === 'text-commit' && !state.pending && !state.timer && unchangedSinceScheduled(event.target)) return;
+        markScheduled(event.target);
+        schedule(delayFor(kind));
     };
     const onManualSaveStart = () => {
         if (state.timer) clearTimeout(state.timer);
@@ -190,6 +196,8 @@ export function mountSettingsAutosave(root, form, scope = null, options = {}) {
     const releaseInput = listen(form, 'input', onInput, 'settings-legacy-autosave-input');
     const releaseChange = listen(form, 'change', onInput, 'settings-legacy-autosave-change');
     const releaseManualSave = listen(form, 'vcp-settings-manual-save-start', onManualSaveStart, 'settings-legacy-autosave-manual-save');
+    const releaseComposition = trackComposition(form,
+        (target, type, handler) => listen(target, type, handler, `settings-legacy-autosave-${type}`), onInput);
     const releaseResult = coordinator
         ? coordinator.registerClient({
             id: 'legacy-autosave',
@@ -208,6 +216,7 @@ export function mountSettingsAutosave(root, form, scope = null, options = {}) {
         void releaseInput?.();
         void releaseChange?.();
         void releaseManualSave?.();
+        releaseComposition.forEach(release => { void release?.(); });
         void releaseResult?.();
         delete form.dataset.vcpAutosaveState;
         delete form.dataset.vcpAutosaveMounted;

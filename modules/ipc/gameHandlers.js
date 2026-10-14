@@ -184,6 +184,8 @@ function initialize() {
         catch (error) { return { success: false, error: error.message }; }
     });
     for (const [channel, operation] of [
+        ['vcp-game:resources', () => gameRuntime.resources.inventory()],
+        ['vcp-game:remove-resources', request => gameRuntime.resources.remove(request.groupIds)],
         ['vcp-game:records', () => gameRuntime.gameService.listRecords()],
         ['vcp-game:record', request => gameRuntime.gameService.getPublicRecord(request.matchId)],
     ]) {
