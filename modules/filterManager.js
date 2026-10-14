@@ -64,6 +64,7 @@ window.filterManager = (() => {
             return;
         }
 
+        bindNotificationCollapseSettings();
         // 更新状态显示
         updateFilterStatusDisplay();
         updateToolAutoApprovalStatusDisplay();
@@ -645,6 +646,43 @@ window.filterManager = (() => {
         };
     }
 
+    function getNotificationCollapseSettings() {
+        const settings = getGlobalSettings();
+        return {
+            collapseFloatingNotifications: settings.collapseFloatingNotifications === true,
+            collapsePanelNotifications: settings.collapsePanelNotifications === true,
+        };
+    }
+
+    function bindNotificationCollapseSettings() {
+        for (const key of ['collapseFloatingNotifications', 'collapsePanelNotifications']) {
+            const checkbox = document.getElementById(key);
+            if (!checkbox) continue;
+            checkbox.checked = getGlobalSettings()[key] === true;
+            checkbox.dispatchEvent(new Event('vcp-uiux-sync', { bubbles: true }));
+            if (checkbox.dataset.boundCollapseToggle) continue;
+            checkbox.dataset.boundCollapseToggle = 'true';
+            checkbox.addEventListener('change', async () => {
+                checkbox.disabled = true;
+                const previous = getGlobalSettings()[key] === true;
+                const value = checkbox.checked;
+                try {
+                    const result = await saveSettingsPatch({ [key]: value });
+                    if (!result?.success) throw new Error(result?.error || '保存失败');
+                    setGlobalSettings({ ...getGlobalSettings(), [key]: value });
+                    window.notificationRenderer?.refreshNotificationCollapse?.();
+                } catch (error) {
+                    checkbox.checked = previous;
+                    checkbox.dispatchEvent(new Event('vcp-uiux-sync', { bubbles: true }));
+                    _uiHelper.showToastNotification(`保存通知折叠设置失败: ${error.message}`, 'error');
+                } finally {
+                    checkbox.disabled = false;
+                }
+            });
+        }
+
+    }
+
     function init(dependencies) {
         _electronAPI = dependencies.electronAPI;
         _uiHelper = dependencies.uiHelper;
@@ -652,11 +690,13 @@ window.filterManager = (() => {
 
         normalizeToolAutoApprovalRules(getGlobalSettings());
         publishFilterState('initialized');
+        window.notificationRenderer?.refreshNotificationCollapse?.();
 
         // 🟢 监听模态框就绪事件，动态绑定延迟加载的元素
         document.addEventListener('modal-ready', (e) => {
             const { modalId } = e.detail;
             if (modalId === 'filterRulesModal') {
+                bindNotificationCollapseSettings();
                 const toolAutoApprovalEnabledCheckbox = document.getElementById('toolAutoApprovalEnabled');
                 if (toolAutoApprovalEnabledCheckbox && !toolAutoApprovalEnabledCheckbox.dataset.boundAutoApprovalToggle) {
                     toolAutoApprovalEnabledCheckbox.checked = getGlobalSettings().toolAutoApprovalEnabled === true;
@@ -748,6 +788,7 @@ window.filterManager = (() => {
         getState: () => stateChannel?.get() || publishFilterState('query'),
         subscribe: (listener, options) => stateChannel?.subscribe(listener, options) || (() => false),
         checkMessageFilter,
+        getNotificationCollapseSettings,
         checkToolAutoApproval
     };
 })();

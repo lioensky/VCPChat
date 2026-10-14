@@ -1699,3 +1699,69 @@ body[data-vcp-theme="light"] .tool-change-audit-diff-line.is-add {
 .notification-bell-badge[hidden] {
     display: none !important;
 }
+/* Body collapse keeps the original content and copy payload intact. */
+.notification-item.is-body-collapsed > .notification-content,
+.floating-toast-notification.is-body-collapsed > .notification-content {
+    display: none !important;
+}
+.notification-item.is-body-collapsed .notification-head {
+    margin-bottom: 0;
+    min-width: 0;
+}
+.notification-item.is-body-collapsed .notification-head strong {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    margin-bottom: 0;
+}
+.floating-toast-notification.is-body-collapsed {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.floating-toast-notification.is-body-collapsed > strong {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin: 0;
+}
+.floating-toast-notification.is-body-collapsed > .notification-timestamp {
+    flex-shrink: 0;
+    margin: 0;
+}
+.notification-collapse-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 24px;
+}
+.notification-collapse-options label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+.notification-collapse-menu {
+    position: fixed;
+    z-index: 100000;
+    padding: 5px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--secondary-bg, #20242c);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, .25);
+}
+.notification-collapse-menu button {
+    display: block;
+    padding: 8px 16px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--primary-text);
+    cursor: pointer;
+}
+.notification-collapse-menu button:hover,
+.notification-collapse-menu button:focus-visible {
+    background: var(--button-hover-bg);
+}

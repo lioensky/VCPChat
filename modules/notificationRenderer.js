@@ -3,6 +3,55 @@
 var notificationRendererApi = window.chatAPI || window.electronAPI;
 let filterManagerCapability = null;
 let notificationLifecycleOwner = null;
+let notificationCollapseMenu = null;
+
+function closeNotificationCollapseMenu() {
+    notificationCollapseMenu?.remove();
+    notificationCollapseMenu = null;
+}
+
+function applyNotificationCollapse(element) {
+    const settings = (filterManagerCapability || window.filterManager)?.getNotificationCollapseSettings?.() || {};
+    const key = element.classList.contains('floating-toast-notification')
+        ? 'collapseFloatingNotifications' : 'collapsePanelNotifications';
+    const collapsed = element.dataset.collapseExempt !== 'true'
+        && element.dataset.notificationExpanded !== 'true' && settings[key] === true;
+    element.classList.toggle('is-body-collapsed', collapsed);
+    const body = element.querySelector('.notification-content');
+    if (body) body.hidden = collapsed;
+}
+
+function refreshNotificationCollapse() {
+    closeNotificationCollapseMenu();
+    document.querySelectorAll('[data-notification-collapse-managed]').forEach(applyNotificationCollapse);
+}
+
+function openNotificationCollapseMenu(event, element) {
+    closeNotificationCollapseMenu();
+    if (!element.classList.contains('is-body-collapsed')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const menu = document.createElement('div');
+    menu.className = 'notification-collapse-menu';
+    menu.setAttribute('role', 'menu');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.setAttribute('role', 'menuitem');
+    button.textContent = '展开通知';
+    button.addEventListener('click', () => {
+        element.dataset.notificationExpanded = 'true';
+        applyNotificationCollapse(element);
+        closeNotificationCollapseMenu();
+        if (element.isConnected) element.focus({ preventScroll: true });
+    });
+    menu.appendChild(button);
+    document.body.appendChild(menu);
+    notificationCollapseMenu = menu;
+    const rect = menu.getBoundingClientRect();
+    menu.style.left = `${Math.max(0, Math.min(event.clientX, window.innerWidth - rect.width))}px`;
+    menu.style.top = `${Math.max(0, Math.min(event.clientY, window.innerHeight - rect.height))}px`;
+    button.focus();
+}
 
 function checkMessageFilter(messageTitle) {
     return filterManagerCapability?.checkMessageFilter?.(messageTitle) || null;
@@ -468,6 +517,24 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
 
     // Function to populate a notification element (either toast or list item)
     const populateNotificationElement = (element, isToast) => {
+        element.dataset.notificationCollapseManaged = 'true';
+        element.dataset.collapseExempt = String(Boolean(isToolApprovalRequest
+            || logData?.type === 'connection_ack'
+            || (logData?.type === 'vcp_log' && logData.data?.source === 'DistPluginManager')));
+        if (!isToast) {
+            element.tabIndex = 0;
+            element.addEventListener('contextmenu', event => openNotificationCollapseMenu(event, element));
+            element.addEventListener('keydown', event => {
+                if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+                    const rect = element.getBoundingClientRect();
+                    openNotificationCollapseMenu({
+                        clientX: rect.left, clientY: rect.bottom,
+                        preventDefault: () => event.preventDefault(),
+                        stopPropagation: () => event.stopPropagation(),
+                    }, element);
+                }
+            });
+        }
         if (isToolApprovalRequest) {
             element.dataset.protectedNotification = 'tool-approval';
             element.dataset.toolApprovalRequestId = logData.data?.requestId || '';
@@ -952,6 +1019,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
             cardActions.appendChild(dismissButton);
             element.appendChild(cardActions);
         }
+        applyNotificationCollapse(element);
     };
 
     const closeToastNotification = (toastElement) => {
@@ -1145,6 +1213,21 @@ function initializeFocusCleanup(options = {}) {
     if (focusCleanupInitialized) return;
     focusCleanupInitialized = true;
     notificationLifecycleOwner = options.owner || notificationLifecycleOwner;
+    const bindCollapseListener = (target, type, handler) => {
+        if (notificationLifecycleOwner?.add) notificationLifecycleOwner.add(target, type, handler);
+        else target.addEventListener(type, handler);
+    };
+    bindCollapseListener(document, 'pointerdown', event => {
+        if (notificationCollapseMenu && !notificationCollapseMenu.contains(event.target)) closeNotificationCollapseMenu();
+    });
+    bindCollapseListener(document, 'keydown', event => {
+        if (notificationCollapseMenu && (event.key === 'Escape' || event.key === 'Tab')) {
+            if (event.key === 'Escape') event.preventDefault();
+            closeNotificationCollapseMenu();
+        }
+    });
+    bindCollapseListener(window, 'blur', closeNotificationCollapseMenu);
+    notificationLifecycleOwner?.own?.(closeNotificationCollapseMenu);
 
     const cleanupExpiredToasts = (maxAgeMs) => {
         const toastContainer = document.getElementById('floating-toast-notifications-container');
@@ -1210,10 +1293,12 @@ window.notificationRenderer = {
     dismissFloatingToasts,
     initializeFocusCleanup,
     clearPersistentNotifications,
+    refreshNotificationCollapse,
     buildToolChangeDiff,
     openToolChangeAuditModal,
     configureCapabilities({ filterManager = null, listenerOwner = null } = {}) {
         filterManagerCapability = filterManager;
         notificationLifecycleOwner = listenerOwner;
+        refreshNotificationCollapse();
     }
 };
