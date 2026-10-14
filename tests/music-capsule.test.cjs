@@ -42,10 +42,10 @@ test('window lifecycle, safe title, hover, controls and cleanup', async () => {
     f.root.querySelector('[data-music-command="previous"]').click();
     f.root.querySelector('[data-music-command="next"]').click();
     assert.deepEqual(f.commands, ['pause', 'previous', 'next']);
-    f.root.dispatchEvent(new f.dom.window.Event('mouseenter'));
+    f.root.querySelector('.music-capsule-surface').dispatchEvent(new f.dom.window.Event('mouseenter'));
     [...f.timers.values()].forEach(fn => fn());
     assert.equal(f.root.classList.contains('is-expanded'), true);
-    f.root.dispatchEvent(new f.dom.window.Event('mouseleave'));
+    f.root.querySelector('.music-capsule-surface').dispatchEvent(new f.dom.window.Event('mouseleave'));
     assert.equal(f.root.classList.contains('is-expanded'), false);
     f.push({ open: true, title: 'b', trackKey: 'b', playing: false });
     assert.equal(f.root.classList.contains('is-expanded'), true);

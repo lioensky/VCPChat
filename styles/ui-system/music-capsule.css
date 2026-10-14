@@ -30,7 +30,7 @@ html .music-capsule-surface {
     transition: width 240ms cubic-bezier(.22, 1, .36, 1);
 }
 html .music-capsule.is-expanded .music-capsule-surface {
-    width: 100%;
+    width: min(var(--music-capsule-expanded-width, 100%), 100%);
 }
 html .music-capsule button {
     display: inline-flex;
@@ -78,3 +78,13 @@ html body[data-vcp-theme="light"] .music-capsule-surface {
     background: rgba(255, 255, 255, .55);
 }
 html .music-capsule [hidden] { display: none; }
+/* 同字体测量单行自然宽度，不参与布局、命中或读屏。 */
+html .music-capsule-title.music-capsule-measure {
+    position: absolute;
+    width: max-content;
+    max-width: none;
+    padding: 0;
+    flex: none;
+    visibility: hidden;
+    pointer-events: none;
+}
