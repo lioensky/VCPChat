@@ -979,14 +979,20 @@
                 }
             }
 
-            if (!['html', 'island'].includes(region.type)) return;
+            if (!['html', 'island', 'markdown'].includes(region.type)) return;
             const headingFences = scanFences(raw);
-            const headingComments = scanHtmlCommentRegions(raw, headingFences);
+            const headingInlineCodes = scanInlineCodeRegions(raw, headingFences);
+            const headingComments = scanHtmlCommentRegions(raw, [
+                ...headingFences,
+                ...headingInlineCodes,
+            ]);
             const excluded = [
                 ...headingFences,
+                ...headingInlineCodes,
                 ...headingComments,
                 ...scanStyleBlocks(raw, [
                     ...headingFences,
+                    ...headingInlineCodes,
                     ...headingComments,
                 ]),
             ];

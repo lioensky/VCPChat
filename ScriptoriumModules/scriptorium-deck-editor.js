@@ -595,7 +595,13 @@
 
         function structureHtml(type = 'paragraph') {
             let element = null;
-            if (/^heading-[1-6]$/.test(type)) {
+            const centerHeadingMatch = /^heading-([1-6])-center(?:-html)?$/.exec(type);
+            if (centerHeadingMatch) {
+                const level = Number(centerHeadingMatch[1]);
+                element = document.createElement(`h${level}`);
+                element.style.textAlign = 'center';
+                element.textContent = '新标题';
+            } else if (/^heading-[1-6]$/.test(type)) {
                 element = document.createElement(`h${type.slice(-1)}`);
                 element.textContent = '新标题';
             } else if (type === 'blockquote') {

@@ -1879,6 +1879,11 @@
         }
 
         function structureSource(type = 'paragraph') {
+            const centerHeadingMatch = /^heading-([1-6])-center(?:-html)?$/.exec(type);
+            if (centerHeadingMatch) {
+                const level = Number(centerHeadingMatch[1]);
+                return `<h${level} style="text-align: center;">新标题</h${level}>`;
+            }
             if (/^heading-[1-6]$/.test(type)) {
                 return `${'#'.repeat(Number(type.slice(-1)))} 新标题`;
             }
