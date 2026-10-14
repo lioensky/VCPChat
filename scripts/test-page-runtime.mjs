@@ -17,7 +17,7 @@ const upstreamClassicPages = [
     { html: 'Agenttaskmodules/task.html', js: 'Agenttaskmodules/task.js' },
     { html: 'Memomodules/memo.html', js: 'Memomodules/memo.js' },
     { html: 'Forummodules/forum.html', js: 'Forummodules/forum.js' },
-    { html: 'RAGmodules/RAG_Observer.html', js: 'RAGmodules/RAG_Observer.html' },
+    { html: 'RAGmodules/RAG_Observer.html', js: 'RAGmodules/RAG_Observer.js' },
     { html: 'VCPHumanToolBox/index.html', js: 'VCPHumanToolBox/renderer.js', strictAdapter: true },
     { html: 'VchatManager/index.html', js: 'VchatManager/script.js' },
     { html: 'Canvasmodules/canvas.html', js: 'Canvasmodules/canvas.js' },
