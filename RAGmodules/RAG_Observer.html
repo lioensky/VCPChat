@@ -1395,7 +1395,8 @@
         border: var(--glass-border);
         border-radius: 24px;
         padding: 24px;
-        width: 320px;
+        width: 350px;
+        max-width: calc(100vw - 32px);
         box-shadow: var(--glass-shadow);
         transform: scale(0.9);
         transition: transform 0.3s var(--ease-elastic);
@@ -1488,6 +1489,73 @@
       .settings-toggle-pill .status-text {
         font-size: 0.85rem;
         font-weight: 500;
+      }
+
+      /* --- Partitions Grid in Settings --- */
+      .settings-partitions-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .partition-chip {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 10px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        cursor: pointer;
+        font-size: 0.8rem;
+        color: rgba(255, 255, 255, 0.7);
+        transition: all 0.2s ease;
+        user-select: none;
+      }
+
+      .partition-chip:hover {
+        background: rgba(255, 255, 255, 0.09);
+        color: rgba(255, 255, 255, 0.9);
+      }
+
+      .partition-chip.is-active {
+        background: rgba(255, 255, 255, 0.12);
+        border-color: rgba(255, 255, 255, 0.25);
+        color: #fff;
+      }
+
+      .partition-chip.is-off {
+        opacity: 0.42;
+        background: rgba(255, 255, 255, 0.02);
+        border-color: rgba(255, 255, 255, 0.05);
+      }
+
+      .partition-chip input[type="checkbox"] {
+        display: none;
+      }
+
+      .partition-chip-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        transition: transform 0.2s ease, opacity 0.2s ease;
+      }
+
+      .partition-chip.is-active .partition-chip-dot {
+        transform: scale(1.1);
+        box-shadow: 0 0 8px currentColor;
+      }
+
+      .partition-chip.is-off .partition-chip-dot {
+        opacity: 0.4;
+      }
+
+      .partition-chip-title {
+        flex: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
       .settings-close-btn {
@@ -1928,24 +1996,12 @@
         </div>
         <div class="settings-group">
           <div class="settings-item">
-            <div class="settings-label">通知分类</div>
-            <div
-              id="notificationCategoryToggle"
-              class="settings-toggle-pill"
-              onclick="toggleNotificationCategory()"
-            >
-              <span class="status-text">已开启</span>
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path>
-                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-              </svg>
+            <div class="settings-label">
+              <span>监控分区</span>
+              <span style="font-size:0.75rem; color:rgba(255,255,255,0.4);">显示与监听</span>
+            </div>
+            <div id="settingsPartitionsContainer" class="settings-partitions-grid">
+              <!-- 由 JavaScript 动态渲染分区勾选项 -->
             </div>
           </div>
           <div class="settings-item">
@@ -2417,11 +2473,55 @@
         lastPayload: null,
       };
 
+      const PARTITION_DEFINITIONS = [
+        { key: "rag", name: "RAG知识库", color: "var(--accent-rag, #3498db)" },
+        { key: "chain", name: "元思考链", color: "var(--accent-chain, #9b59b6)" },
+        { key: "chat", name: "Agent会话", color: "var(--accent-agent, #f1c40f)" },
+        { key: "memo", name: "记忆检索", color: "var(--accent-memo, #1abc9c)" },
+        { key: "dream", name: "Agent梦境", color: "var(--accent-dream, #e84393)" },
+        { key: "notification", name: "通知消息", color: "var(--accent-notification, #ff9f43)" },
+      ];
+
+      const PARTITIONS_STORAGE_KEY = "vcp_observer_enabled_partitions_v1";
+
       const observerRuntimeState = {
-        notificationsEnabled: false,
+        partitions: {
+          rag: true,
+          chain: true,
+          chat: true,
+          memo: true,
+          dream: true,
+          notification: true,
+        },
+        notificationsEnabled: true,
         overlayEnabled: true,
         mounted: true,
       };
+
+      function isPartitionEnabled(partitionKey) {
+        if (!partitionKey) return true;
+        return observerRuntimeState.partitions[partitionKey] !== false;
+      }
+
+      function getPartitionKeyForData(data) {
+        if (!data || typeof data !== "object") return null;
+        if (data.type === "AGENT_PRIVATE_CHAT_PREVIEW" || data.source === "AgentAssistant") {
+          return "chat";
+        }
+        if (data.type === "META_THINKING_CHAIN") {
+          return "chain";
+        }
+        if (data.type === "AI_MEMO_RETRIEVAL" || data.type === "DailyNote") {
+          return "memo";
+        }
+        if (data.type && data.type.startsWith("AGENT_DREAM_")) {
+          return "dream";
+        }
+        if (data.type === "tool_approval_request" || isNotificationData(data)) {
+          return "notification";
+        }
+        return "rag";
+      }
 
       function toggleSettingsModal() {
         const modal = document.getElementById("settingsModal");
@@ -2446,9 +2546,16 @@
       function removeCardsByType(typeClass) {
         if (!typeClass) return;
         const cards = infoContainer.querySelectorAll(`.card-base.${typeClass}`);
-        cards.forEach((card) => card.remove());
+        cards.forEach((card) => {
+          const cardId = card.getAttribute("data-compare-card-id");
+          if (cardId) removeCompareCard(cardId);
+          card.remove();
+        });
 
-        if (infoContainer.children.length === 0) {
+        _cardCount = infoContainer.querySelectorAll(".card-base").length;
+        updateCompareBar();
+
+        if (_cardCount === 0) {
           infoContainer.innerHTML = `
                           <div style="text-align:center; color:rgba(255,255,255,0.3); margin-top: 50px; font-size: 0.9rem;">
                               <p>等待数据接入...</p>
@@ -2457,23 +2564,87 @@
         }
       }
 
-      function syncNotificationFilterVisibility() {
-        const notificationBtn = document.querySelector(
-          '.filter-btn[data-type="notification"]'
-        );
-        if (!notificationBtn) return;
+      function syncFilterBarVisibility() {
+        PARTITION_DEFINITIONS.forEach(({ key }) => {
+          const filterBtn = document.querySelector(`.filter-btn[data-type="${key}"]`);
+          if (!filterBtn) return;
+          const enabled = isPartitionEnabled(key);
+          filterBtn.style.display = enabled ? "" : "none";
+        });
 
-        notificationBtn.style.display =
-          observerRuntimeState.notificationsEnabled ? "" : "none";
-
-        if (
-          !observerRuntimeState.notificationsEnabled &&
-          currentFilter === "notification"
-        ) {
+        // 如果当前选中的分类按钮被隐藏了，退回显示“全部”
+        if (currentFilter !== "all" && !isPartitionEnabled(currentFilter)) {
           const allBtn = document.querySelector('.filter-btn[data-type="all"]');
           if (allBtn) {
             filterLogs("all", allBtn);
           }
+        } else {
+          // 重新定位滑块
+          const activeBtn = document.querySelector(".filter-btn.active");
+          const highlight = document.querySelector(".filter-highlight");
+          if (activeBtn && highlight) {
+            highlight.style.width = `${activeBtn.offsetWidth}px`;
+            highlight.style.transform = `translateX(${activeBtn.offsetLeft}px)`;
+          }
+        }
+      }
+
+      function renderSettingsPartitions() {
+        const container = document.getElementById("settingsPartitionsContainer");
+        if (!container) return;
+
+        container.innerHTML = PARTITION_DEFINITIONS.map((partition) => {
+          const enabled = isPartitionEnabled(partition.key);
+          const isOffClass = enabled ? "is-active" : "is-off";
+          return `
+            <label class="partition-chip ${isOffClass}" data-key="${partition.key}">
+              <input type="checkbox" ${enabled ? "checked" : ""} onchange="handlePartitionToggle('${partition.key}', this.checked)">
+              <span class="partition-chip-dot" style="background-color: ${partition.color}; color: ${partition.color};"></span>
+              <span class="partition-chip-title">${escapeHTML(partition.name)}</span>
+            </label>
+          `;
+        }).join("");
+      }
+
+      function savePartitionsToStorage() {
+        try {
+          localStorage.setItem(PARTITIONS_STORAGE_KEY, JSON.stringify(observerRuntimeState.partitions));
+        } catch (e) {
+          console.warn("[RAG Observer] 保存监控分区设置失败:", e);
+        }
+      }
+
+      function loadPartitionsFromStorage() {
+        try {
+          const raw = localStorage.getItem(PARTITIONS_STORAGE_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === "object") {
+              PARTITION_DEFINITIONS.forEach(({ key }) => {
+                if (typeof parsed[key] === "boolean") {
+                  observerRuntimeState.partitions[key] = parsed[key];
+                }
+              });
+            }
+          }
+        } catch (e) {
+          console.warn("[RAG Observer] 读取监控分区设置失败:", e);
+        }
+      }
+
+      function handlePartitionToggle(partitionKey, enabled, shouldSyncToConfig = true) {
+        observerRuntimeState.partitions[partitionKey] = !!enabled;
+        savePartitionsToStorage();
+        renderSettingsPartitions();
+        syncFilterBarVisibility();
+
+        if (!enabled) {
+          removeCardsByType(`type-${partitionKey}`);
+        }
+
+        // 如果调整的是通知消息分区，同时联动通知通道
+        if (partitionKey === "notification") {
+          setNotificationCategoryEnabled(enabled, shouldSyncToConfig);
         }
       }
 
@@ -2481,18 +2652,18 @@
         enabled,
         shouldSyncToConfig = true
       ) {
-        observerRuntimeState.notificationsEnabled = !!enabled;
-        updateToolbarSwitch(
-          "notificationCategoryToggle",
-          observerRuntimeState.notificationsEnabled,
-          "通知分类"
-        );
+        const nextEnabled = !!enabled;
+        observerRuntimeState.notificationsEnabled = nextEnabled;
+        observerRuntimeState.partitions.notification = nextEnabled;
+        savePartitionsToStorage();
+
         updateToolbarSwitch(
           "oldNotificationCategoryToggle",
           observerRuntimeState.notificationsEnabled,
           "通知分类"
         );
-        syncNotificationFilterVisibility();
+        syncFilterBarVisibility();
+        renderSettingsPartitions();
 
         if (!observerRuntimeState.notificationsEnabled) {
           removeCardsByType("type-notification");
@@ -2887,14 +3058,14 @@
         )
           return;
 
-        // 审批类消息（请求/响应）不受 notificationsEnabled 开关影响，
+        // 审批类消息（请求/响应）不受分区开关影响，
         // 因为即使通知分类关闭，也需要清理 pendingApprovals 状态
         const isApprovalRequest = data.type === "tool_approval_request";
         const isApprovalResponse = data.type === "tool_approval_response";
+        const partitionKey = getPartitionKeyForData(data);
 
         if (
-          !observerRuntimeState.notificationsEnabled &&
-          isNotificationData(data) &&
+          !isPartitionEnabled(partitionKey) &&
           !isApprovalRequest &&
           !isApprovalResponse
         ) {
@@ -3582,21 +3753,23 @@
 
       // 1. RAG BLOCK
       function displayRagInfo(data) {
-        // 审批类消息（请求/响应）不受 notificationsEnabled 开关影响，
+        // 审批类消息（请求/响应）不受分区开关影响，
         // 需要先驱动悬浮窗以清理 pendingApprovals 状态
         const isApprovalMsg =
           data?.type === "tool_approval_request" ||
           data?.type === "tool_approval_response";
-        if (
-          !observerRuntimeState.notificationsEnabled &&
-          isNotificationData(data) &&
-          !isApprovalMsg
-        ) {
+        const partitionKey = getPartitionKeyForData(data);
+
+        if (!isPartitionEnabled(partitionKey) && !isApprovalMsg) {
           return;
         }
 
         // 所有消息统一驱动外部悬浮通知窗（仅消息到达时显现）
         notifyOverlayFromData(data);
+
+        if (!isPartitionEnabled(partitionKey)) {
+          return;
+        }
 
         // Handle specialized types first — 使用消息节流队列
         if (data.type === "AGENT_PRIVATE_CHAT_PREVIEW")
@@ -4711,12 +4884,18 @@
           }, 100); // A small delay to ensure layout is calculated
         }
 
-        // 初始化开关状态（从主进程恢复持久化状态）
+        // 1. 从本地存储加载监控分区偏好
+        loadPartitionsFromStorage();
+
+        // 2. 初始化开关状态（从主进程恢复持久化状态）
         try {
           if (window.electronAPI?.ragOverlayGetState) {
             const restoredState = await window.electronAPI.ragOverlayGetState();
             if (restoredState && typeof restoredState === "object") {
+              const hasStoredNotification =
+                localStorage.getItem(PARTITIONS_STORAGE_KEY) !== null;
               if (
+                !hasStoredNotification &&
                 typeof restoredState.notificationCategoryEnabled === "boolean"
               ) {
                 setNotificationCategoryEnabled(
@@ -4724,7 +4903,10 @@
                   false
                 );
               } else {
-                setNotificationCategoryEnabled(false, false);
+                setNotificationCategoryEnabled(
+                  observerRuntimeState.partitions.notification,
+                  false
+                );
               }
 
               if (typeof restoredState.enabled === "boolean") {
@@ -4746,13 +4928,19 @@
                 setOverlayOpacity(90, false);
               }
             } else {
-              setNotificationCategoryEnabled(false, false);
+              setNotificationCategoryEnabled(
+                observerRuntimeState.partitions.notification,
+                false
+              );
               setOverlayEnabled(true, false);
               updateOverlayControlButtons();
               setOverlayOpacity(90, false);
             }
           } else {
-            setNotificationCategoryEnabled(false, false);
+            setNotificationCategoryEnabled(
+              observerRuntimeState.partitions.notification,
+              false
+            );
             setOverlayEnabled(true, false);
             updateOverlayControlButtons();
             setOverlayOpacity(90, false);
@@ -4762,11 +4950,18 @@
             "[RAG Observer] 读取悬浮窗持久化状态失败，回退默认值:",
             overlayStateError
           );
-          setNotificationCategoryEnabled(false, false);
+          setNotificationCategoryEnabled(
+            observerRuntimeState.partitions.notification,
+            false
+          );
           setOverlayEnabled(true, false);
           updateOverlayControlButtons();
           setOverlayOpacity(90, false);
         }
+
+        // 3. 渲染偏好设置中的分区选项并同步过滤器可见性
+        renderSettingsPartitions();
+        syncFilterBarVisibility();
 
         if (
           typeof window.setNotificationChannelEnabledFromObserver === "function"
