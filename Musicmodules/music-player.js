@@ -2,6 +2,19 @@
 // 核心播放逻辑
 
 function setupPlayer(app) {
+    let lastCapsuleSnapshot = '';
+    app.publishCapsuleState = () => {
+        const track = app.playlist[app.currentTrackIndex];
+        const state = {
+            title: track ? app.stripAudioExtension(track.title) || '未知标题' : '',
+            trackKey: track?.path || '',
+            playing: app.isPlaying === true
+        };
+        const snapshot = JSON.stringify(state);
+        if (snapshot === lastCapsuleSnapshot) return;
+        lastCapsuleSnapshot = snapshot;
+        app.api?.publishMusicCapsuleState?.(state);
+    };
     app.loadTrack = async (trackIndex, andPlay = true) => {
         const requestId = ++app.pendingLoadRequestId;
         // 切歌意图一出现就作废旧歌词，不能等取消预加载返回后才作废。
@@ -81,7 +94,10 @@ function setupPlayer(app) {
             };
 
             const ready = await waitForTrackReady();
-            if (requestId === app.pendingLoadRequestId) app.isTrackLoading = false;
+            if (requestId === app.pendingLoadRequestId) {
+                app.isTrackLoading = false;
+                if (ready) app.publishCapsuleState();
+            }
             if (requestId === app.pendingLoadRequestId && andPlay && ready) app.playTrack();
         } else {
             if (requestId === app.pendingLoadRequestId) app.isTrackLoading = false;
@@ -97,6 +113,7 @@ function setupPlayer(app) {
             app.lastCommandTime = Date.now();
             app.expectedPlayingState = true;
             app.isPlaying = true;
+            app.publishCapsuleState();
             document.body.classList.add('music-playing');
             app.playPauseBtn.classList.add('is-playing');
             app.phantomAudio.loop = true;
@@ -115,6 +132,7 @@ function setupPlayer(app) {
             app.lastCommandTime = Date.now();
             app.expectedPlayingState = false;
             app.isPlaying = false;
+            app.publishCapsuleState();
             document.body.classList.remove('music-playing');
             app.playPauseBtn.classList.remove('is-playing');
             app.phantomAudio.pause();
@@ -359,6 +377,12 @@ function setupPlayer(app) {
                 console.warn('[Music.js] syncTrackIndexByPath: no match found for', path);
             }
         }
+    };
+
+    const syncTrackIndexByPath = app.syncTrackIndexByPath;
+    app.syncTrackIndexByPath = (path) => {
+        syncTrackIndexByPath(path);
+        app.publishCapsuleState();
     };
 
     app.startStatePolling = () => {

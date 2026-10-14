@@ -13,6 +13,12 @@ const AUDIO_ENGINE_URL = 'http://127.0.0.1:63789';
 let fetch;
 
 let musicWindow = null;
+let musicCapsuleState = { open: false, title: '', trackKey: '', playing: false };
+function publishMusicCapsule() {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('music-capsule-state', musicCapsuleState);
+    }
+}
 let currentSongInfo = null; // 保持这个变量，用于可能的UI状态同步
 let mainWindow = null; // To be initialized
 let openChildWindows = []; // To be initialized
@@ -119,6 +125,8 @@ function createOrFocusMusicWindow() {
 
         musicWindow.once('ready-to-show', () => {
             musicWindow.show();
+            musicCapsuleState = { ...musicCapsuleState, open: true };
+            publishMusicCapsule();
         });
 
         // Wait for the renderer to signal that it's ready
@@ -167,6 +175,8 @@ function createOrFocusMusicWindow() {
             openChildWindows = openChildWindows.filter(win => win !== musicWindow);
             musicWindow = null;
             currentSongInfo = null; // 清理歌曲信息
+            musicCapsuleState = { open: false, title: '', trackKey: '', playing: false };
+            publishMusicCapsule();
             pendingPlaybackForNewWindow = null; // 清理未消费的待播放请求
         });
 
@@ -342,6 +352,23 @@ function initialize(options) {
         });
 
         // --- 前端初始化时拉取待播放请求（解决新窗口点歌竞态问题）---
+        ipcMain.handle('music-capsule-get-state', () => musicCapsuleState);
+        ipcMain.on('music-capsule-publish', (event, state) => {
+            if (!musicWindow || musicWindow.isDestroyed() || event.sender !== musicWindow.webContents) return;
+            musicCapsuleState = {
+                open: true,
+                title: typeof state?.title === 'string' ? state.title.slice(0, 512) : '',
+                trackKey: typeof state?.trackKey === 'string' ? state.trackKey.slice(0, 4096) : '',
+                playing: state?.playing === true
+            };
+            publishMusicCapsule();
+        });
+        ipcMain.on('music-capsule-command', (event, command) => {
+            if (!mainWindow || event.sender !== mainWindow.webContents) return;
+            if (!['previous', 'next', 'play', 'pause'].includes(command)) return;
+            if (musicWindow && !musicWindow.isDestroyed()) musicWindow.webContents.send('music-control', command);
+        });
+
         ipcMain.handle('music-get-pending-track', () => {
             const playbackRequest = pendingPlaybackForNewWindow;
             pendingPlaybackForNewWindow = null; // 取出后清空，只消费一次

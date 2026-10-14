@@ -11,6 +11,10 @@ module.exports = {
     api: {
         openMusicWindow: send('open-music-window').roles('chat', 'utility'),
         musicRendererReady: send('music-renderer-ready'),
+        getMusicCapsuleState: invoke('music-capsule-get-state').roles('chat'),
+        onMusicCapsuleState: on('music-capsule-state').roles('chat'),
+        sendMusicCapsuleCommand: send('music-capsule-command', 'command').roles('chat'),
+        publishMusicCapsuleState: send('music-capsule-publish', 'state'),
         getMusicPendingTrack: invoke('music-get-pending-track'),
 
         // 播放列表

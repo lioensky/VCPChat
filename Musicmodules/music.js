@@ -1081,6 +1081,7 @@ document.addEventListener('DOMContentLoaded', () => {
             app.playPauseBtn.classList.toggle('is-playing', app.isPlaying);
             if (app.isPlaying) app.startStatePolling(); else app.stopStatePolling();
         }
+        if (!app.isTrackLoading) app.publishCapsuleState?.();
         if (state.loudness_info) {
             app.loudnessInfo.style.display = 'block';
             app.loudnessCurrentLufs.textContent = state.loudness_info.current_lufs.toFixed(1);

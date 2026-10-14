@@ -1398,12 +1398,7 @@ export function setupEventListeners(deps) {
                 if (!leftSidebar) return;
 
                 const enableAvatarOnly = !leftSidebar.classList.contains('avatar-only');
-                if (setAvatarOnlyMode(enableAvatarOnly)) {
-                    uiHelperFunctions.showToastNotification(
-                        enableAvatarOnly ? '侧栏已切换为仅头像模式' : '侧栏已恢复完整模式',
-                        'info'
-                    );
-                }
+                setAvatarOnlyMode(enableAvatarOnly);
             });
             toggleSidebarModeBtn.addEventListener('contextmenu', e => e.preventDefault());
         }

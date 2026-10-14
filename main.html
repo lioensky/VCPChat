@@ -589,6 +589,17 @@
             <div class="side-pane-content-container">
                 <section class="side-pane-view active" id="sidePaneViewLauncher" data-tab-id="launcher" role="tabpanel" aria-label="新标签页">
                     <div class="side-pane-open-tab-shell">
+                        <div class="music-capsule" hidden role="group" aria-label="VMusic 播放控制">
+                            <div class="music-capsule-surface">
+                                <div class="music-capsule-details" inert>
+                                    <span class="music-capsule-title" aria-live="polite"></span>
+                                    <button type="button" data-music-command="previous" aria-label="上一曲"><span class="vcp-ui-icon" aria-hidden="true">skip-back</span></button>
+                                    <button type="button" data-music-command="toggle" aria-label="播放"><span class="music-capsule-play"><span class="vcp-ui-icon" aria-hidden="true">play_arrow</span></span><span class="music-capsule-pause" hidden><span class="vcp-ui-icon" aria-hidden="true">pause</span></span></button>
+                                    <button type="button" data-music-command="next" aria-label="下一曲"><span class="vcp-ui-icon" aria-hidden="true">skip-forward</span></button>
+                                </div>
+                                <button type="button" class="music-capsule-trigger" aria-label="当前音乐" aria-expanded="false"><span class="vcp-ui-icon" aria-hidden="true">music_note</span></button>
+                            </div>
+                        </div>
                         <div class="side-pane-launcher-portrait" aria-hidden="true" hidden>
                             <img class="side-pane-launcher-portrait-image" data-portrait-theme="default" alt="" draggable="false" hidden>
                             <img class="side-pane-launcher-portrait-image" data-portrait-theme="light" alt="" draggable="false" hidden>
@@ -1314,6 +1325,8 @@
     <script src="modules/topicSummarizer.js"></script>
     <script src="modules/notificationRenderer.js"></script>
     <script src="modules/notificationCenter.js"></script>
+    <link rel="stylesheet" href="styles/ui-system/music-capsule.css">
+    <script src="modules/ui-system/music-capsule.js"></script>
     <script src="modules/voice/wavAudioEncoder.js"></script>
     <script src="modules/voice/speechDirectiveMatcher.js"></script>
     <script src="modules/voice/audioRecorder.js"></script>
