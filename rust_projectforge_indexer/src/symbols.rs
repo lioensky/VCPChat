@@ -83,6 +83,39 @@ pub fn parse(lang: Lang, source: &str, parser: &mut Parser) -> Result<tree_sitte
     parser.parse(source, None).ok_or_else(|| "解析被中止".to_string())
 }
 
+/// 可中断解析：`should_stop()` 返回 true 时 Tree-sitter 中止解析（progress callback 返回 true 即取消），
+/// 此时返回 `Ok(None)`。取消后必须 reset：否则下次 parse 会从中断处续解析，把残留状态带进别的文件。
+pub fn outline_cancellable(
+    lang: Lang,
+    raw: &str,
+    parser: &mut Parser,
+    should_stop: &(dyn Fn() -> bool + Sync),
+) -> Result<Option<Outline>, String> {
+    let source = normalize_source(raw);
+    parser
+        .set_language(&lang.ts_language())
+        .map_err(|e| format!("加载 {} grammar 失败：{e}", lang.name()))?;
+    let bytes = source.as_bytes();
+    let mut read = |i: usize, _p: tree_sitter::Point| bytes.get(i..).unwrap_or(&[][..]);
+    let mut progress = |_s: &tree_sitter::ParseState| should_stop();
+    let tree = parser.parse_with_options(
+        &mut read,
+        None,
+        Some(tree_sitter::ParseOptions::new().progress_callback(&mut progress)),
+    );
+    match tree {
+        Some(t) => Ok(Some(outline_from_tree(lang, &source, t.root_node()))),
+        None => {
+            parser.reset();
+            if should_stop() {
+                Ok(None)
+            } else {
+                Err("解析被中止".to_string())
+            }
+        }
+    }
+}
+
 /// 在已解析的语法树上提取符号；`source` 必须是解析时用的同一份归一化文本。
 pub fn outline_from_tree(lang: Lang, source: &str, root: Node) -> Outline {
     let mut ex = Extractor {

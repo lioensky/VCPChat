@@ -21,7 +21,7 @@ use tree_sitter::Parser;
 
 use crate::facts::{extract_facts, html_facts, FileFacts};
 use crate::lang::Lang;
-use crate::symbols::{outline, Outline, Symbol};
+use crate::symbols::{outline, outline_cancellable, Outline, Symbol};
 
 use crate::binary;
 pub const DEFAULT_IGNORED_DIRS: &[&str] = &[
@@ -32,11 +32,20 @@ pub const DEFAULT_IGNORED_DIRS: &[&str] = &[
     ".next", ".nuxt", ".svelte-kit", ".angular", ".parcel-cache", ".turbo", ".vercel", ".cache", ".gradle",
     "dist", "build", "out", "target", "coverage", ".nyc_output",
     ".idea", ".vs", ".vscode-test",
+    // 以下与 VCPChat/modules/services/workspaceIndex.js 的 DEFAULT_IGNORED_DIRS（真源）同步；
+    // 插件正常会显式传入 ignoreDirs，此处仅为未传时的回退。
+    "assets", "asset", "appdata",
+    "artifacts", "artifact", "vendor",
+    "release", "releases", "temp", "tmp",
 ];
 
 pub const MAX_SCAN_FILES: usize = 20_000;
 pub const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_CACHE_ENTRIES: usize = 50_000;
+/// 脏文件超过该数量才启用文本预筛（少量脏文件直接全解析，行为与旧版一致）。
+const PREFILTER_MIN_DIRTY: usize = 64;
+/// 查询末段短于该字符数时不预筛（`e`、`ui` 几乎命中所有文件，筛选无意义）。
+const PREFILTER_MIN_NEEDLE: usize = 3;
 
 fn is_ignored_dir(name: &str, ignored: &HashSet<String>) -> bool {
     let lower = name.to_ascii_lowercase();
@@ -71,6 +80,17 @@ struct FactsEntry {
 pub struct Cache {
     files: HashMap<PathBuf, Entry>,
     facts: HashMap<PathBuf, FactsEntry>,
+    /// 被文本预筛推迟解析的文件，由主线程空闲时 step_pending 分批补齐。
+    /// 值为 (语言, 文件字节数, 已被中止次数)；字节数用于按预算分批，
+    /// 中止次数用于防饿死：被中止过的文件下次以不可中断方式解析。
+    pending: HashMap<PathBuf, (Lang, u64, u8)>,
+}
+
+/// 单个脏文件在一次 search 中的处理结果。
+enum DirtyOutcome {
+    Parsed(Entry),
+    /// 不含查询末段：本次不可能命中，推迟解析；行数仍计入统计。
+    Deferred { lang: Lang, size: u64, lines: usize },
 }
 
 /// facts 扫描的文件类别：源码文件或 HTML 页面。
@@ -145,6 +165,8 @@ pub struct SearchResult {
     /// 参与解析的源文件总行数（不含被忽略 / 超限文件）。
     pub lines: usize,
     pub truncated: bool,
+    /// 因文本预筛推迟、等待空闲补齐的文件数（不影响本次命中完整性）。
+    pub pending: usize,
 }
 
 pub struct Query {
@@ -186,6 +208,33 @@ fn score(sym: &Symbol, query: &str, exact: bool) -> u32 {
         return 200;
     }
     0
+}
+
+/// 诊断开关：设置环境变量 PF_INDEXER_TRACE 时输出补齐批次耗时到 stderr（只读取一次）。
+fn trace_enabled() -> bool {
+    static T: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *T.get_or_init(|| std::env::var_os("PF_INDEXER_TRACE").is_some())
+}
+
+/// 文本预筛用的查询末段：小写、`::` 归一为 `.` 后取最后一个非空段。
+/// 与 score() 的所有命中分支都兼容：任何命中的符号，其名字或限定名某段必含该末段。
+fn prefilter_needle(query: &str) -> Option<String> {
+    let q = query.to_lowercase().replace("::", ".");
+    let seg = q.rsplit('.').find(|s| !s.is_empty())?;
+    (seg.chars().count() >= PREFILTER_MIN_NEEDLE).then(|| seg.to_string())
+}
+
+/// 与 symbols::line_count 同口径（末尾换行不计额外一行）；推迟文件不归一化 CR，仅用于统计。
+fn count_lines(text: &str) -> usize {
+    if text.is_empty() {
+        return 0;
+    }
+    let n = text.matches('\n').count();
+    if text.ends_with('\n') {
+        n
+    } else {
+        n + 1
+    }
 }
 
 fn to_posix(root: &Path, abs: &Path) -> String {
@@ -261,6 +310,106 @@ impl Cache {
     pub fn clear(&mut self) {
         self.files.clear();
         self.facts.clear();
+        self.pending.clear();
+    }
+
+    pub fn pending_len(&self) -> usize {
+        self.pending.len()
+    }
+
+    /// 空闲补齐：按字节预算取出一批待解析文件（至少 1 个），按大小降序并行解析写入缓存，返回本批完成数。
+    /// - 降序：大文件先开工，小文件填满其余核，减少批尾单文件拖尾。
+    /// - 可中断：`should_stop()` 为 true（有新请求到达）时，未开始的文件直接回队，解析中的文件中止后回队，
+    ///   请求等待时间不再取决于最大文件。
+    /// - 先移出队列再解析：解析失败的文件丢弃（下次 search 判脏会重来），不会卡住队列。
+    /// - 以解析时的 metadata 为准；解析期间若文件再被修改，下次 search 会因 mtime/size 不符重新判脏。
+    pub fn step_pending(&mut self, byte_budget: u64, should_stop: &(dyn Fn() -> bool + Sync)) -> usize {
+        if self.pending.is_empty() {
+            return 0;
+        }
+        let t0 = std::time::Instant::now();
+        let mut chosen: Vec<(PathBuf, u64)> = Vec::new();
+        let mut bytes = 0u64;
+        for (p, (_, size, _)) in &self.pending {
+            if !chosen.is_empty() && bytes + size > byte_budget {
+                break;
+            }
+            bytes += size;
+            chosen.push((p.clone(), *size));
+        }
+        chosen.sort_by(|a, b| b.1.cmp(&a.1));
+        let max_size = chosen.first().map(|c| c.1).unwrap_or(0);
+        let work: Vec<(PathBuf, Lang, u64, u8)> = chosen
+            .into_iter()
+            .filter_map(|(p, _)| self.pending.remove(&p).map(|(lang, size, att)| (p, lang, size, att)))
+            .collect();
+
+        enum Fill {
+            Done(PathBuf, Entry),
+            /// 回队：最后一项为新的已中止次数（未开始的文件不计数）。
+            Requeue(PathBuf, Lang, u64, u8),
+            Drop,
+        }
+        let results: Vec<Fill> = work
+            .into_par_iter()
+            .map_init(Parser::new, |parser, (path, lang, size, att)| {
+                if should_stop() {
+                    return Fill::Requeue(path, lang, size, att);
+                }
+                let Ok(meta) = fs::metadata(&path) else { return Fill::Drop };
+                if meta.len() > MAX_FILE_BYTES {
+                    return Fill::Drop;
+                }
+                let Ok(raw) = fs::read(&path) else { return Fill::Drop };
+                let text = String::from_utf8_lossy(&raw);
+                let entry = |o: Outline| Entry { mtime_ms: mtime_ms(&meta), size: meta.len(), outline: Arc::new(o) };
+                if att > 0 {
+                    // 防饿死：已被中止过，本次不可中断，保证补齐必然结束。
+                    // 代价：请求最坏等待此文件一次完整解析。
+                    return match outline(lang, &text, parser) {
+                        Ok(o) => Fill::Done(path, entry(o)),
+                        Err(_) => Fill::Drop,
+                    };
+                }
+                match outline_cancellable(lang, &text, parser, should_stop) {
+                    Ok(Some(o)) => Fill::Done(path, entry(o)),
+                    Ok(None) => Fill::Requeue(path, lang, size, att.saturating_add(1)),
+                    Err(_) => Fill::Drop,
+                }
+            })
+            .collect();
+
+        let mut done: Vec<(PathBuf, Entry)> = Vec::new();
+        let mut requeued = 0usize;
+        for r in results {
+            match r {
+                Fill::Done(p, e) => done.push((p, e)),
+                Fill::Requeue(p, lang, size, att) => {
+                    requeued += 1;
+                    self.pending.insert(p, (lang, size, att));
+                }
+                Fill::Drop => {}
+            }
+        }
+        let n = done.len();
+        if self.files.len() + n > MAX_CACHE_ENTRIES {
+            self.files.clear();
+        }
+        for (path, entry) in done {
+            self.files.insert(path, entry);
+        }
+        if trace_enabled() {
+            eprintln!(
+                "[pf-trace] batch files={} bytes={} max={} ms={:.1} requeued={} left={}",
+                n + requeued,
+                bytes,
+                max_size,
+                t0.elapsed().as_secs_f64() * 1000.0,
+                requeued,
+                self.pending.len()
+            );
+        }
+        n
     }
 
     /// 扫描 root 下 JS 族源码与 HTML 页面的链路事实（mtime+size+桥接名缓存）。只返回非空事实的文件。
@@ -360,17 +509,42 @@ impl Cache {
             }
         }
 
-        // 2) 并行解析脏文件（每线程一个 Parser）
-        let parsed: Vec<(PathBuf, Entry)> = dirty
+        // 2) 并行处理脏文件（每线程一个 Parser）。
+        //    脏文件较多且查询末段足够长时启用文本预筛：符号名必以原文出现在所在文件
+        //    （VCP 全库 77k 符号实测无例外），不含末段的文件不可能命中 → 推迟到空闲补齐，召回不变。
+        let needle = prefilter_needle(&q.name).filter(|_| dirty.len() > PREFILTER_MIN_DIRTY);
+        let needle_ref = needle.as_deref();
+        let outcomes: Vec<(PathBuf, DirtyOutcome)> = dirty
             .into_par_iter()
             .map_init(Parser::new, |parser, (path, lang, m, s)| {
                 let bytes = fs::read(&path).ok()?;
                 let text = String::from_utf8_lossy(&bytes);
+                if let Some(nd) = needle_ref {
+                    if !text.to_lowercase().contains(nd) {
+                        return Some((path, DirtyOutcome::Deferred { lang, size: s, lines: count_lines(&text) }));
+                    }
+                }
                 let o = outline(lang, &text, parser).ok()?;
-                Some((path, Entry { mtime_ms: m, size: s, outline: Arc::new(o) }))
+                Some((path, DirtyOutcome::Parsed(Entry { mtime_ms: m, size: s, outline: Arc::new(o) })))
             })
             .flatten()
             .collect();
+        let mut parsed: Vec<(PathBuf, Entry)> = Vec::with_capacity(outcomes.len());
+        let mut deferred_lines = 0usize;
+        for (path, oc) in outcomes {
+            match oc {
+                DirtyOutcome::Parsed(entry) => {
+                    self.pending.remove(&path);
+                    parsed.push((path, entry));
+                }
+                DirtyOutcome::Deferred { lang, size, lines } => {
+                    deferred_lines += lines;
+                    if self.pending.len() < MAX_CACHE_ENTRIES {
+                        self.pending.insert(path, (lang, size, 0));
+                    }
+                }
+            }
+        }
         let parsed_count = parsed.len();
         if self.files.len() + parsed_count > MAX_CACHE_ENTRIES {
             self.files.clear();
@@ -380,7 +554,7 @@ impl Cache {
             self.files.insert(path, entry);
         }
 
-        let lines = fresh.iter().map(|(_, o)| o.line_count).sum();
+        let lines = fresh.iter().map(|(_, o)| o.line_count).sum::<usize>() + deferred_lines;
 
         // 3) 打分
         let kind = q.kind.as_ref().map(|k| k.to_lowercase());
@@ -407,6 +581,70 @@ impl Cache {
         });
         let total = hits.len();
         hits.truncate(q.limit.max(1));
-        Ok(SearchResult { hits, total, scanned, parsed: parsed_count, lines, truncated })
+        Ok(SearchResult { hits, total, scanned, parsed: parsed_count, lines, truncated, pending: self.pending.len() })
+    }
+}
+#[cfg(test)]
+mod prefilter_tests {
+    use super::*;
+
+    fn query(name: &str) -> Query {
+        Query { name: name.to_string(), kind: None, glob: Vec::new(), exact: false, limit: 50, ignore_dirs: Vec::new() }
+    }
+
+    fn write_files(dir: &Path, n: usize) {
+        for i in 0..n {
+            let body = if i == 0 {
+                "function targetHandler() {\n  return 1;\n}\n".to_string()
+            } else {
+                format!("function other{i}() {{\n  return {i};\n}}\n")
+            };
+            fs::write(dir.join(format!("f{i}.js")), body).unwrap();
+        }
+    }
+
+    #[test]
+    fn prefilter_defers_non_candidates_and_idle_fill_completes_cache() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let n = PREFILTER_MIN_DIRTY + 6;
+        write_files(dir.path(), n);
+        let mut cache = Cache::default();
+
+        let r = cache.search(dir.path(), &query("targetHandler")).unwrap();
+        assert_eq!(r.total, 1);
+        assert_eq!(r.parsed, 1);
+        assert_eq!(r.pending, n - 1);
+        assert_eq!(r.lines, n * 3);
+
+        // 有请求到达：本批全部回队，不丢文件
+        let before = cache.pending_len();
+        assert_eq!(cache.step_pending(1 << 20, &|| true), 0);
+        assert_eq!(cache.pending_len(), before, "中止的文件必须回队");
+
+        while cache.step_pending(4096, &|| false) > 0 {}
+        assert_eq!(cache.pending_len(), 0);
+
+        let r2 = cache.search(dir.path(), &query("other")).unwrap();
+        assert_eq!(r2.parsed, 0, "补齐后应全部命中缓存");
+        assert_eq!(r2.total, n - 1);
+        assert_eq!(r2.pending, 0);
+    }
+
+    #[test]
+    fn short_query_parses_everything() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let n = PREFILTER_MIN_DIRTY + 6;
+        write_files(dir.path(), n);
+        let mut cache = Cache::default();
+        let r = cache.search(dir.path(), &query("ta")).unwrap();
+        assert_eq!(r.parsed, n);
+        assert_eq!(r.pending, 0);
+    }
+
+    #[test]
+    fn qualified_query_uses_last_segment() {
+        assert_eq!(prefilter_needle("Store::put_blob").as_deref(), Some("put_blob"));
+        assert_eq!(prefilter_needle("Store.").as_deref(), Some("store"));
+        assert_eq!(prefilter_needle("a.ui"), None);
     }
 }
