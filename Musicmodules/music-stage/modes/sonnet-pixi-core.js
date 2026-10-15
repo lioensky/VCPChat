@@ -16,6 +16,8 @@
             this.textContainer = null;
             this.trackContainer = null;
             this.editorialTrack = null;
+            this.bloomContainer = null;
+            this.starbloom = null;
             this.giantText = null;
             this.words = [];
             this.width = 1;
@@ -77,6 +79,10 @@
             this.sceneContainer.addChild(this.textContainer);
             this.sceneContainer.addChild(this.trackContainer);
             this.editorialTrack = Effects.createEditorialTrack(PIXI, this.trackContainer, 'sonnet');
+            // 繁星如盛 overlay: created lazily on first use, released when the layout changes.
+            this.bloomContainer = new PIXI.Container();
+            this.bloomContainer.visible = false;
+            this.sceneContainer.addChild(this.bloomContainer);
             this.app.stage.addChild(this.sceneContainer);
 
             this.postProcess = Effects.createPostProcess(PIXI, this.app.stage);
@@ -290,12 +296,25 @@
             const bass = Number(frame.audio?.bass) || 0;
             const trackMode = tuning.lyricLayout === 'editorial-track';
             const trackSeed = frame.track?.path || frame.track?.title || 'sonnet-track';
+            const bloomMode = tuning.lyricLayout === 'starbloom'
+                && Boolean(global.MusicStageStarbloom) && Boolean(this.bloomContainer);
+            if (bloomMode && !this.starbloom) {
+                this.starbloom = global.MusicStageStarbloom.create(global.PIXI, this.bloomContainer, 'sonnet');
+            } else if (!bloomMode && this.starbloom) {
+                this.starbloom.destroy();
+                this.starbloom = null;
+            }
             const trackCamera = trackMode
                 ? this.editorialTrack.update(frame, tuning, this.numPrimary || 0xffffff, trackSeed, this.width, this.height)
                 : null;
-            const camera = trackCamera || Effects.camera(frame, tuning, this.activeKind, this.width, this.height, this.words);
-            this.textContainer.visible = !trackMode;
+            const bloomCamera = bloomMode
+                ? this.starbloom.update(frame, tuning, this.numPrimary || 0xffffff, trackSeed, this.width, this.height)
+                : null;
+            const camera = trackCamera || bloomCamera
+                || Effects.camera(frame, tuning, this.activeKind, this.width, this.height, this.words);
+            this.textContainer.visible = !trackMode && !bloomMode;
             this.trackContainer.visible = trackMode;
+            if (this.bloomContainer) this.bloomContainer.visible = bloomMode;
             if (trackMode) {
                 this.sceneContainer.pivot.set(camera.x, camera.y);
                 this.sceneContainer.position.set(this.width / 2, this.height / 2);
@@ -344,7 +363,7 @@
                 this.giantText.rotation = Math.sin(time * 0.12) * 0.035 * intensity;
             }
 
-            if (!trackMode) {
+            if (!trackMode && !bloomMode) {
                 Effects.animateLyrics(this.words, frame, tuning, this.numPrimary);
                 Effects.animatePhraseStage(this.phrases, frame, tuning, this.activeKind);
                 this.accents?.update(frame, tuning);
@@ -366,6 +385,7 @@
                 glyphs: this.words.length, phrases: this.phrases.length, orbits: this.orbits.length,
                 performance: this.performance.snapshot(), accents: this.accents?.snapshot(),
                 ...this.editorialTrack?.snapshot(),
+                ...this.starbloom?.snapshot(),
                 resolution: this.app?.renderer?.resolution, ...this.retirement?.snapshot() };
         }
 
@@ -380,6 +400,8 @@
             this.accents = null;
             this.editorialTrack?.destroy();
             this.editorialTrack = null;
+            this.starbloom?.destroy();
+            this.starbloom = null;
             this.motif = this.scan = this.giantText = null;
             this.retirement?.destroy();
             this.retirement = null;
@@ -402,6 +424,7 @@
             this.geoContainer = null;
             this.textContainer = null;
             this.trackContainer = null;
+            this.bloomContainer = null;
             this.container = null;
             this.initialized = false;
         }

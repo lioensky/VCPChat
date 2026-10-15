@@ -668,6 +668,78 @@ void main() {
     // A bounded, deterministic typographic world. Lyrics are the route itself:
     // complete horizontal/vertical lines join into an editorial path while only
     // a small window around the active line owns display objects.
+    // Latin lines on the editorial rail: word-aware measurement and wrapping.
+    // Letters were previously stepped like CJK squares, so long English lines
+    // collapsed into one very long rail with tiny type.
+    const TRACK_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif';
+    const CJK_TEXT = /[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uac00-\ud7af]/u;
+    const isLatinLine = text => Boolean(text) && !CJK_TEXT.test(text) && /\p{L}/u.test(text);
+    let latinMeasure = null;
+    const measureLatin = (text, size, weight) => {
+        if (latinMeasure === null) {
+            try { latinMeasure = global.document?.createElement('canvas')?.getContext('2d') || false; }
+            catch { latinMeasure = false; }
+        }
+        if (!latinMeasure) return size * (text.trim() ? 0.56 * text.length : 0.28);
+        latinMeasure.font = `${weight} ${size}px ${TRACK_FONT}`;
+        return latinMeasure.measureText(text).width;
+    };
+    const flowLatin = (timed, axisSpan, crossSpan, base, minimum, weight) => {
+        const words = [];
+        let current = null;
+        timed.forEach((glyph, index) => {
+            if (!glyph.text.trim()) { current = null; return; }
+            if (!current) { current = { indices: [] }; words.push(current); }
+            current.indices.push(index);
+        });
+        // Widths in em at a 100px probe; tracking 0.02em between letters.
+        const unit = timed.map(glyph => glyph.text.trim() ? measureLatin(glyph.text, 100, weight) / 100 : 0);
+        const space = Math.max(0.22, measureLatin(' ', 100, weight) / 100);
+        words.forEach(word => { word.width = word.indices.reduce((sum, i) => sum + unit[i] + 0.02, 0); });
+        const wrap = limit => {
+            const rows = [];
+            let row = null;
+            words.forEach(word => {
+                if (row && row.width + space + word.width <= limit) {
+                    row.width += space + word.width;
+                    row.words.push(word);
+                } else {
+                    row = { width: word.width, words: [word] };
+                    rows.push(row);
+                }
+            });
+            return rows;
+        };
+        const leading = 1.22;
+        let size = Math.max(minimum, base);
+        let rows = wrap(axisSpan * 0.62 / size);
+        for (let guard = 0; guard < 24 && size > minimum; guard += 1) {
+            const widest = rows.reduce((high, row) => Math.max(high, row.width), 0);
+            if (widest * size <= axisSpan * 0.9 && rows.length * leading * size <= crossSpan) break;
+            size = Math.max(minimum, size * 0.92);
+            rows = wrap(axisSpan * 0.62 / size);
+        }
+        const placements = [];
+        rows.forEach((row, r) => {
+            let cursor = -row.width / 2;
+            const cross = (r - (rows.length - 1) / 2) * leading * size;
+            row.words.forEach((word, w) => {
+                if (w) cursor += space;
+                word.indices.forEach(i => {
+                    placements[i] = { axis: (cursor + unit[i] / 2) * size, cross, row: r };
+                    cursor += unit[i] + 0.02;
+                });
+            });
+        });
+        return {
+            fontSize: size,
+            placements,
+            rows: rows.length,
+            span: rows.reduce((high, row) => Math.max(high, row.width), 0) * size,
+            breadth: Math.max(1, rows.length) * leading * size
+        };
+    };
+
     const createEditorialTrack = (PIXI, parent, mode) => {
         const root = new PIXI.Container();
         const decor = new PIXI.Container();
@@ -783,7 +855,12 @@ void main() {
             const minimumFontSize = Math.min(width, height) * 0.022;
             // Never compress the advance below a glyph body. Long lines reduce
             // their type size first; this keeps vertical CJK text from stacking.
-            const fontSize = Math.max(minimumFontSize, Math.min(baseFontSize, maxSpan / (count * 1.08)));
+            const flow = isLatinLine(line.fullText)
+                ? flowLatin(timed, maxSpan, point.vertical ? width * 0.3 : height * 0.34,
+                    baseFontSize, minimumFontSize, mode === 'tempera' ? '900' : '750')
+                : null;
+            const fontSize = flow ? flow.fontSize
+                : Math.max(minimumFontSize, Math.min(baseFontSize, maxSpan / (count * 1.08)));
             const advance = fontSize * 1.08;
             const start = -(count - 1) * advance * 0.5;
             const segmentOffset = fontSize * (0.62 + amount(tuning.trackJunction, 0.45, 1) * 0.7);
@@ -803,13 +880,18 @@ void main() {
                 const blank = !glyph.text.trim();
                 const ordinal = visibleIndex;
                 if (!blank) visibleIndex += 1;
-                const axis = start + ordinal * advance;
-                const segmentIndex = segmentByGlyph[glyphIndex];
-                const centeredSegment = segmentIndex - (segmentCount - 1) * 0.5;
-                const crossAxis = centeredSegment * segmentOffset;
-                const baseX = point.vertical ? crossAxis : axis;
+                const placed = flow?.placements[glyphIndex];
+                const segmentIndex = placed ? placed.row : segmentByGlyph[glyphIndex];
+                const axis = placed ? placed.axis : start + ordinal * advance;
+                const crossAxis = placed ? placed.cross
+                    : (segmentIndex - (segmentCount - 1) * 0.5) * segmentOffset;
+                // Latin text on a vertical rail is set as a book spine: rotated 90°, read top to bottom.
+                const spine = Boolean(flow) && point.vertical;
+                const baseRotation = spine ? Math.PI / 2 : 0;
+                const baseX = point.vertical ? (spine ? -crossAxis : crossAxis) : axis;
                 const baseY = point.vertical ? axis : crossAxis;
                 node.position.set(baseX, baseY);
+                node.rotation = baseRotation;
                 node.visible = !blank;
                 node.dataset = {
                     ...glyph,
@@ -822,14 +904,17 @@ void main() {
                     fit: 1,
                     advance,
                     segment: segmentIndex,
+                    baseRotation,
                     angle: ((glyphIndex % 5) - 2) * 0.035
                 };
                 entryText.addChild(node);
                 return node;
             });
 
-            const span = Math.max(fontSize * 1.5, (count - 1) * advance + fontSize * 1.35);
-            const breadth = fontSize * 1.62 + Math.max(0, segmentCount - 1) * segmentOffset;
+            const span = flow ? Math.max(fontSize * 1.5, flow.span + fontSize * 0.9)
+                : Math.max(fontSize * 1.5, (count - 1) * advance + fontSize * 1.35);
+            const breadth = flow ? flow.breadth + fontSize * 0.42
+                : fontSize * 1.62 + Math.max(0, segmentCount - 1) * segmentOffset;
             const left = point.vertical ? -breadth * 0.5 : -span * 0.5;
             const top = point.vertical ? -span * 0.5 : -breadth * 0.5;
             const boxWidth = point.vertical ? breadth : span;
@@ -1019,9 +1104,9 @@ void main() {
                             d.baseX + offsetX * glyphStrength,
                             d.baseY + offsetY * glyphStrength
                         );
-                        node.rotation = glyphStyle === 'scatter'
+                        node.rotation = (d.baseRotation || 0) + (glyphStyle === 'scatter'
                             ? d.angle * arrival * glyphStrength
-                            : 0;
+                            : 0);
                         const activePulse = active ? Math.sin(p * Math.PI) * 0.08 : 0;
                         const entryScale = glyphStyle === 'impact' ? arrival * 0.48 : arrival * 0.16;
                         node.scale.set(Math.max(0.28, 1 - entryScale * glyphStrength + activePulse * glyphStrength));

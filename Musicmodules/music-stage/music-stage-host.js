@@ -122,7 +122,7 @@
             { key: 'shotFlow', label: '分镜镜头', type: 'select', options: [['auto', '自动导演'], ['editorial-column', '编辑纵列'], ['type-impact', '文字冲击'], ['fragment-collage', '碎片拼贴'], ['tracking-ribbon', '带状追焦'], ['mask-reveal', '上升揭幕'], ['poster-blocks', '海报定景'], ['quiet-tableau', '静谧长镜']] },
             { key: 'cameraSoftness', label: '镜头平缓度', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
             { key: 'cameraRoll', label: '镜头侧倾', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
-            { key: 'lyricLayout', label: '歌词构图', type: 'select', options: [['lines', '整句分行'], ['phrases', '短语分组'], ['staircase', '阶梯短语'], ['editorial-track', '纵横连续版轨']] },
+            { key: 'lyricLayout', label: '歌词构图', type: 'select', options: [['lines', '整句分行'], ['phrases', '短语分组'], ['staircase', '阶梯短语'], ['editorial-track', '纵横连续版轨'], ['starbloom', '繁星如盛']] },
             { key: 'trackVerticalChance', label: '版轨纵排概率', type: 'range', min: 0.1, max: 0.9, step: 0.05, unit: '%' },
             { key: 'trackJunction', label: '版轨交错幅度', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
             { key: 'trackLookAhead', label: '镜头前路预瞄', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },

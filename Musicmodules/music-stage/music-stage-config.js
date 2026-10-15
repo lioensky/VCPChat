@@ -177,7 +177,7 @@
             cameraTracking: clamp(source.cameraTracking, 0, 1, fallback.cameraTracking),
             cameraSoftness: clamp(source.cameraSoftness, 0, 1, fallback.cameraSoftness),
             cameraRoll: clamp(source.cameraRoll, 0, 1, fallback.cameraRoll),
-            lyricLayout: enumValue(source.lyricLayout, ['lines', 'phrases', 'staircase', 'editorial-track'], fallback.lyricLayout),
+            lyricLayout: enumValue(source.lyricLayout, ['lines', 'phrases', 'staircase', 'editorial-track', 'starbloom'], fallback.lyricLayout),
             phraseLength: Math.round(clamp(source.phraseLength, 6, 24, fallback.phraseLength) || 12),
             phraseEmphasis: clamp(source.phraseEmphasis, 0, 1, fallback.phraseEmphasis),
             trackVerticalChance: clamp(source.trackVerticalChance, 0.1, 0.9, fallback.trackVerticalChance),

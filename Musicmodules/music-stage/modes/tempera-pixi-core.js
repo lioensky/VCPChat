@@ -204,6 +204,8 @@
             this.textContainer = null;
             this.trackContainer = null;
             this.editorialTrack = null;
+            this.bloomContainer = null;
+            this.starbloom = null;
             this.words = [];
             this.width = 1;
             this.height = 1;
@@ -265,6 +267,10 @@
             this.sceneContainer.addChild(this.textContainer);
             this.sceneContainer.addChild(this.trackContainer);
             this.editorialTrack = Effects.createEditorialTrack(PIXI, this.trackContainer, 'tempera');
+            // 繁星如盛 overlay: created lazily on first use, released when the layout changes.
+            this.bloomContainer = new PIXI.Container();
+            this.bloomContainer.visible = false;
+            this.sceneContainer.addChild(this.bloomContainer);
             this.app.stage.addChild(this.sceneContainer);
 
             this.postProcess = Effects.createPostProcess(PIXI, this.app.stage);
@@ -409,12 +415,25 @@
             const elapsed = Math.max(0, frame.playbackTime - (frame.activeLine?.startTime || 0));
             const trackMode = tuning.lyricLayout === 'editorial-track';
             const trackSeed = frame.track?.path || frame.track?.title || 'tempera-track';
+            const bloomMode = tuning.lyricLayout === 'starbloom'
+                && Boolean(global.MusicStageStarbloom) && Boolean(this.bloomContainer);
+            if (bloomMode && !this.starbloom) {
+                this.starbloom = global.MusicStageStarbloom.create(global.PIXI, this.bloomContainer, 'tempera');
+            } else if (!bloomMode && this.starbloom) {
+                this.starbloom.destroy();
+                this.starbloom = null;
+            }
             const trackCamera = trackMode
                 ? this.editorialTrack.update(frame, tuning, this.numPrimary || 0xffffff, trackSeed, this.width, this.height)
                 : null;
-            const camera = trackCamera || Effects.camera(frame, tuning, this.cameraKind, this.width, this.height, this.words);
-            this.textContainer.visible = !trackMode;
+            const bloomCamera = bloomMode
+                ? this.starbloom.update(frame, tuning, this.numPrimary || 0xffffff, trackSeed, this.width, this.height)
+                : null;
+            const camera = trackCamera || bloomCamera
+                || Effects.camera(frame, tuning, this.cameraKind, this.width, this.height, this.words);
+            this.textContainer.visible = !trackMode && !bloomMode;
             this.trackContainer.visible = trackMode;
+            if (this.bloomContainer) this.bloomContainer.visible = bloomMode;
             if (trackMode) {
                 this.sceneContainer.pivot.set(camera.x, camera.y);
                 this.sceneContainer.position.set(this.width / 2, this.height / 2);
@@ -424,7 +443,8 @@
             }
             this.sceneContainer.scale.set(camera.scale);
             this.sceneContainer.rotation = camera.rotation;
-            this.sceneContainer.alpha = trackMode ? 1 : Effects.transition(frame, tuning);
+            // Relay glyphs cross line boundaries, so the per-line scene fade must not touch them.
+            this.sceneContainer.alpha = trackMode || bloomMode ? 1 : Effects.transition(frame, tuning);
             const fixedOffsetX = trackMode ? camera.x - this.width / 2 : 0;
             const fixedOffsetY = trackMode ? camera.y - this.height / 2 : 0;
             this.blocksContainer.position.set(fixedOffsetX, fixedOffsetY);
@@ -465,7 +485,7 @@
                 fixedOffsetX + Math.sin(frame.playbackTime * 0.4) * 25 * motion,
                 fixedOffsetY + Math.cos(frame.playbackTime * 0.32) * 18 * motion
             );
-            if (!trackMode) {
+            if (!trackMode && !bloomMode) {
                 Effects.animateLyrics(this.words, frame, tuning, this.numPrimary);
                 Effects.animatePhraseStage(this.phrases, frame, tuning, this.cameraKind);
                 this.accents?.update(frame, tuning);
@@ -485,6 +505,7 @@
                 glyphs: this.words.length, phrases: this.phrases.length,
                 performance: this.performance.snapshot(), accents: this.accents?.snapshot(),
                 ...this.editorialTrack?.snapshot(),
+                ...this.starbloom?.snapshot(),
                 resolution: this.app?.renderer?.resolution, ...this.retirement?.snapshot() };
         }
 
@@ -498,6 +519,8 @@
             this.accents = null;
             this.editorialTrack?.destroy();
             this.editorialTrack = null;
+            this.starbloom?.destroy();
+            this.starbloom = null;
             this.retirement?.destroy();
             this.retirement = null;
             this.postProcess?.destroy();
@@ -520,6 +543,7 @@
             this.decorContainer = null;
             this.textContainer = null;
             this.trackContainer = null;
+            this.bloomContainer = null;
             this.container = null;
             this.initialized = false;
         }
