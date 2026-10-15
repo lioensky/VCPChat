@@ -9,8 +9,8 @@ fn not_implemented_error(err: &str) -> bool {
 /// Map EQ band name to array index (avoids rebuilding HashMap per request)
 fn eq_band_name_to_index(name: &str) -> Option<usize> {
     match name {
-        "31"    => Some(0),
-        "62"    => Some(1),
+        "31" | "32" => Some(0),
+        "62" | "64" => Some(1),
         "125"   => Some(2),
         "250"   => Some(3),
         "500"   => Some(4),
@@ -44,11 +44,23 @@ async fn set_eq(
 ) -> HttpResponse {
     let mut player = data.player.lock();
 
-    let is_fir = player.is_fir_eq_enabled();
+    // Drive the branch from the user's chosen type, not the live convolver mount
+    // state. Turning EQ off unloads the FIR convolver but must not forget that
+    // FIR was selected, so re-enabling returns to FIR rather than degrading to IIR.
+    let is_fir = player.shared_state().eq_type.read().clone() == "FIR";
 
     if is_fir {
         if let Some(enabled) = body.enabled {
-            if !enabled {
+            if enabled {
+                // Resuming from an off state: reload the FIR convolver (with the
+                // remembered tap count) so the re-enabled EQ actually filters.
+                if !player.is_fir_eq_enabled() {
+                    let taps = player.get_fir_taps();
+                    if let Err(e) = player.enable_fir_eq(taps) {
+                        return HttpResponse::InternalServerError().json(ApiResponse::error(&e));
+                    }
+                }
+            } else {
                 player.disable_fir_eq();
             }
         }

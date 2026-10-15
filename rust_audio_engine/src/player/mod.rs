@@ -947,18 +947,29 @@ impl AudioPlayer {
     }
     
     /// Disable FIR EQ
+    /// Unload the FIR convolution backend (turn FIR EQ off).
+    ///
+    /// Deliberately does NOT rewrite `eq_type`: the selected *type* is the
+    /// user's choice and is orthogonal to whether the EQ is currently enabled.
+    /// Callers that switch the user's choice to IIR (`set_eq_type`) write the
+    /// type themselves. Keeping this side-effect-free is what lets "turn EQ
+    /// off, then back on" return to FIR instead of silently degrading to IIR.
     pub fn disable_fir_eq(&mut self) {
         self.fir_eq_enabled = false;
         if let Err(e) = self.cmd_tx.send(AudioCommand::ClearFirConvolver) {
             log::warn!("Failed to clear FIR convolver: {}", e);
         }
-        *self.shared_state.eq_type.write() = "IIR".to_string();
         log::info!("FIR EQ disabled");
     }
     
     /// Check if FIR EQ is enabled
     pub fn is_fir_eq_enabled(&self) -> bool {
         self.fir_eq_enabled
+    }
+
+    /// Current FIR tap count (normalized). Exposed for state reporting.
+    pub fn get_fir_taps(&self) -> usize {
+        self.fir_taps
     }
     
     /// Set FIR EQ band gain

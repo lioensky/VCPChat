@@ -1105,10 +1105,25 @@ document.addEventListener('DOMContentLoaded', () => {
             app.updateEqSectionState();
             Promise.resolve().then(() => app.eqSwitch._programmaticUpdate = false);
         }
-        if (s.eq_type !== undefined) app.eqTypeSelect.value = s.eq_type;
+        if (s.eq_type !== undefined) {
+            app.eqTypeSelect.value = s.eq_type;
+            app.firTapsSelect.style.display = s.eq_type === 'FIR' ? 'block' : 'none';
+        }
+        if (s.fir_taps !== undefined) app.firTapsSelect.value = String(s.fir_taps);
+        // 同步守卫标记：引擎启动已按 settings 应用 EQ，避免首次拖动频段滑块时重发
+        app._syncedEqType = app.eqTypeSelect.value;
+        app._syncedFirTaps = parseInt(app.firTapsSelect.value, 10) || 1023;
         if (s.dither_enabled !== undefined) {
             app.ditherSwitch._programmaticUpdate = true; app.ditherSwitch.checked = s.dither_enabled;
             Promise.resolve().then(() => app.ditherSwitch._programmaticUpdate = false);
+        }
+        if (s.output_bits !== undefined) {
+            app.outputBits = s.output_bits;
+            app.outputBitsSelect.value = String(s.output_bits);
+        }
+        if (s.noise_shaper_curve !== undefined) {
+            app.noiseShaperCurve = s.noise_shaper_curve;
+            app.noiseShaperCurveSelect.value = s.noise_shaper_curve;
         }
         const isRg = s.loudness_mode === 'replaygain_track' || s.loudness_mode === 'replaygain_album';
         app.replaygainSwitch._programmaticUpdate = true; app.replaygainSwitch.checked = isRg;
@@ -1199,6 +1214,16 @@ document.addEventListener('DOMContentLoaded', () => {
         app.modeBtn.classList.toggle('active', mode !== 'repeat');
     };
 
+    // 从当前 DOM slider 读取频段增益，作为持久化载荷（回填后 app.eqBands 已同步）
+    app.buildEqBandsPayload = () => {
+        const bands = {};
+        for (const band in app.eqBands) {
+            const slider = document.getElementById(`eq-${band}`);
+            bands[band] = slider ? parseInt(slider.value, 10) : app.eqBands[band];
+        }
+        return bands;
+    };
+
     app.saveSettings = () => {
         if (app.saveSettingsTimer) clearTimeout(app.saveSettingsTimer);
         app.saveSettingsTimer = setTimeout(() => {
@@ -1217,7 +1242,17 @@ document.addEventListener('DOMContentLoaded', () => {
                         crossfeed_enabled: app.crossfeedEnabled,
                         crossfeed_mix: app.crossfeedMix,
                         dynamic_loudness_enabled: app.dynamicLoudnessEnabled,
-                        dynamic_loudness_strength: app.dynamicLoudnessStrength
+                        dynamic_loudness_strength: app.dynamicLoudnessStrength,
+                        eq_type: app.eqTypeSelect?.value || 'IIR',
+                        eq_enabled: app.eqSwitch?.checked ?? false,
+                        eq_bands: app.buildEqBandsPayload(),
+                        fir_taps: parseInt(app.firTapsSelect?.value, 10) || 1023,
+                        dither_enabled: app.ditherSwitch?.checked ?? true,
+                        output_bits: parseInt(app.outputBitsSelect?.value, 10) || 24,
+                        noise_shaper_curve: app.noiseShaperCurveSelect?.value || 'Lipshitz5',
+                        resample_quality: app.resampleQualitySelect?.value || 'hq',
+                        use_cache: app.resampleCacheSwitch?.checked ?? false,
+                        preemptive_resample: app.preemptiveResampleSwitch?.checked ?? false
                     }
                 });
             }

@@ -10,6 +10,7 @@ use parking_lot::Mutex;
 
 /// Persistent settings that are saved between sessions
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct PersistentSettings {
     // Volume
     pub volume: f32,
@@ -20,6 +21,7 @@ pub struct PersistentSettings {
     
     // EQ settings
     pub eq_type: String,
+    pub eq_enabled: bool,
     pub eq_bands: Option<std::collections::HashMap<String, f64>>,
     pub fir_taps: Option<usize>,
     
@@ -61,6 +63,7 @@ impl Default for PersistentSettings {
             device_id: None,
             exclusive_mode: false,
             eq_type: "IIR".to_string(),
+            eq_enabled: false,
             eq_bands: None,
             fir_taps: Some(1023),
             dither_enabled: true,
@@ -150,6 +153,9 @@ impl SettingsManager {
         if let Some(ref eq_type) = update.eq_type {
             self.settings.eq_type = eq_type.clone();
         }
+        if let Some(eq_enabled) = update.eq_enabled {
+            self.settings.eq_enabled = eq_enabled;
+        }
         if let Some(ref eq_bands) = update.eq_bands {
             self.settings.eq_bands = Some(eq_bands.clone());
         }
@@ -227,6 +233,7 @@ pub struct PersistentSettingsUpdate {
     pub device_id: Option<Option<usize>>,
     pub exclusive_mode: Option<bool>,
     pub eq_type: Option<String>,
+    pub eq_enabled: Option<bool>,
     pub eq_bands: Option<std::collections::HashMap<String, f64>>,
     pub fir_taps: Option<usize>,
     pub dither_enabled: Option<bool>,
@@ -256,4 +263,69 @@ pub type SharedSettingsManager = Arc<Mutex<SettingsManager>>;
 pub fn create_settings_manager(app_data_dir: &PathBuf) -> SharedSettingsManager {
     let settings_path = app_data_dir.join("audio_settings.json");
     Arc::new(Mutex::new(SettingsManager::new(settings_path)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A settings file written before `eq_enabled` existed must still load:
+    /// the container-level `#[serde(default)]` backfills the missing field
+    /// rather than failing the whole parse (which would silently reset every
+    /// user preference to defaults).
+    #[test]
+    fn legacy_settings_without_eq_enabled_load() {
+        let legacy = r#"{
+            "volume": 1.0,
+            "device_id": null,
+            "exclusive_mode": false,
+            "eq_type": "FIR",
+            "eq_bands": null,
+            "fir_taps": 1023,
+            "dither_enabled": true,
+            "output_bits": 24,
+            "noise_shaper_curve": "Lipshitz5",
+            "loudness_enabled": false,
+            "loudness_mode": "replaygain_track",
+            "target_lufs": -12.0,
+            "preamp_db": 0.0,
+            "saturation_enabled": false,
+            "saturation_drive": 0.25,
+            "saturation_mix": 0.2,
+            "crossfeed_enabled": false,
+            "crossfeed_mix": 0.3,
+            "dynamic_loudness_enabled": false,
+            "dynamic_loudness_strength": 1.0,
+            "target_samplerate": 0,
+            "resample_quality": "hq",
+            "use_cache": false,
+            "preemptive_resample": true
+        }"#;
+
+        let parsed: PersistentSettings =
+            serde_json::from_str(legacy).expect("legacy settings must load");
+
+        assert_eq!(parsed.eq_type, "FIR");
+        assert_eq!(parsed.eq_enabled, false, "missing eq_enabled backfills to default");
+        assert_eq!(parsed.fir_taps, Some(1023));
+        assert_eq!(parsed.target_samplerate, Some(0));
+        assert_eq!(parsed.loudness_mode, "replaygain_track");
+    }
+
+    /// Round-trip: a full current settings object serializes and parses back
+    /// with every field preserved, catching accidental field/rename drift.
+    #[test]
+    fn current_settings_round_trip() {
+        let mut original = PersistentSettings::default();
+        original.eq_enabled = true;
+        original.eq_type = "FIR".to_string();
+        original.fir_taps = Some(2047);
+
+        let json = serde_json::to_string(&original).expect("serialize");
+        let parsed: PersistentSettings = serde_json::from_str(&json).expect("parse");
+
+        assert!(parsed.eq_enabled);
+        assert_eq!(parsed.eq_type, "FIR");
+        assert_eq!(parsed.fir_taps, Some(2047));
+    }
 }

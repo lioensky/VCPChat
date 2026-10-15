@@ -64,6 +64,19 @@ function setupEffects(app) {
         }
         app.eqEnabled = app.eqSwitch.checked;
         await app.api.setMusicEq({ bands: newBands, enabled: app.eqEnabled });
+        // 同步下发 EQ 类型与 FIR taps，否则类型/阶数切换只改界面、引擎侧不生效
+        // 仅在变化时下发：本函数也被频段滑块 input 复用，FIR 态下重复 enable_fir_eq 会反复重建滤波器
+        if (app.api?.setMusicEqType && app.eqTypeSelect) {
+            const eqType = app.eqTypeSelect.value;
+            const firTaps = parseInt(app.firTapsSelect?.value, 10) || 1023;
+            if (app._syncedEqType !== eqType || app._syncedFirTaps !== firTaps) {
+                await app.api.setMusicEqType({ type: eqType, fir_taps: firTaps });
+                app._syncedEqType = eqType;
+                app._syncedFirTaps = firTaps;
+            }
+        }
+        // 持久化 EQ 类型/阶数，否则切完 FIR 不触碰其他控件时 eq_type 不落盘、重启回退 IIR
+        app.saveSettings?.();
     };
 
     // --- IR Convolver ---
@@ -178,10 +191,12 @@ function setupEffects(app) {
         app.noiseShaperCurve = app.noiseShaperCurveSelect.value;
         await app.api.configureMusicOutputBits({ bits: app.outputBits });
         await app.api.setMusicNoiseShaperCurve({ curve: app.noiseShaperCurve });
+        app.saveSettings();
     };
 
     app.updateOptimizations = async () => {
         if (!app.api?.configureMusicOptimizations) return;
         await app.api.configureMusicOptimizations({ dither_enabled: app.ditherSwitch.checked });
+        app.saveSettings();
     };
 }
