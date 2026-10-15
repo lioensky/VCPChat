@@ -367,6 +367,16 @@ completionReason
   -> 达到上限：停止 Session
 ```
 
+### 7.5 上游回复报错自动中断
+
+当上游代理服务器连接失败或达到重试上限时（如 `Fetch failed after all retries.`），服务端通常直接以常规 assistant 回复的形式输出 `[ERROR]...`。
+
+Flowlock 针对此特征进行了专门处理：
+
+- 最终消息文本以 `[ERROR]` 开头时被明确识别为上游报错。
+- 绝不因错误消息中的任何伪指令触发心流启动或认领话题。
+- 若当前正处于心流锁中，立即自动中断并停止 Session（`completionReason = 'upstream_error'`），并给出错误通知，防止无休止请求刷屏。
+
 ---
 
 ## 8. 用户操作
@@ -675,6 +685,7 @@ Flowlock 后续迭代应保持：
 - 控制状态气泡。
 - 侧栏活动环、标题悦动和心跳脉冲。
 - 错误重试与自动停止。
+- 上游回复报错（`[ERROR]` 头）自动中断。
 - Topic 切换约束。
 - 最终完整消息透传。
 - TopicSponsor `CreateFlowlockTopic`。

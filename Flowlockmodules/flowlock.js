@@ -148,8 +148,15 @@ class FlowlockManager {
 
     /**
      * 停止指定 Agent 的心流锁
+     * @param {string} [agentId]
+     * @param {Object} [options] - { silent?: boolean }
      */
-    async stop(agentId) {
+    async stop(agentId, options = {}) {
+        if (typeof agentId === 'object' && agentId !== null) {
+            options = agentId;
+            agentId = null;
+        }
+
         // 兼容旧插件 stop()：优先停止当前可见 Agent，不再错误地停止其他并发 Session。
         const resolvedAgentId = agentId || window.VCPMainChatState?.snapshot?.()?.selectedItem?.id;
         const session = this.sessions.get(resolvedAgentId);
@@ -179,7 +186,7 @@ class FlowlockManager {
         // 显示通知。优先使用 Session 启动时缓存的名称，确保后台 Agent
         // 不会因当前界面已切换而退化成 UUID。
         const agentName = await this.resolveAgentDisplayName(agentId, session.agentName);
-        if (this.uiHelper?.showToastNotification) {
+        if (!options.silent && this.uiHelper?.showToastNotification) {
             this.uiHelper.showToastNotification(`Agent "${agentName}" 心流锁已停止`, 'info');
         }
 
@@ -327,23 +334,26 @@ class FlowlockManager {
             return;
         }
 
+        const isUpstreamError = typeof content === 'string' && /^\s*\[ERROR\]/i.test(content);
+
         // TopicSponsor 请求只能在当前 assistant 最终回复完整落盘后认领。
         // 错误完成不消费请求，保留为 pending 供后续明确恢复。
-        if (type !== 'error' && finishReason !== 'error') {
+        if (type !== 'error' && finishReason !== 'error' && !isUpstreamError) {
             const handoff = await this.claimAndHandoffPendingTopic(context.agentId);
             if (handoff?.success) {
                 return;
             }
         }
 
-        const protocol = type !== 'error' && typeof content === 'string'
+        const protocol = type !== 'error' && finishReason !== 'error' && !isUpstreamError && typeof content === 'string'
             ? window.flowlockProtocol?.parse(content)
             : null;
 
         let session = this.sessions.get(context.agentId);
 
         // AI 可在普通回复末尾自主进入心流锁；消息 context 是唯一可信身份来源。
-        if ((!session || session.status !== 'active') && protocol?.shouldStart) {
+        // 若为上游报错则绝不启动心流锁。
+        if (!isUpstreamError && (!session || session.status !== 'active') && protocol?.shouldStart) {
             await this.start(context.agentId, context.topicId, { startImmediately: false });
             session = this.sessions.get(context.agentId);
         }
@@ -365,6 +375,25 @@ class FlowlockManager {
 
         session.lastCompletedAt = Date.now();
         session.activeMessageId = null;
+
+        // 如果收到类似 [ERROR] 开头的上游回复报错（如代理服务器连接上游API失败、达到重试上限等）
+        // 自动中断心流锁，避免无休止重试刷屏
+        if (isUpstreamError) {
+            const errorSummary = content.trim();
+            console.error(`[Flowlock] Agent ${context.agentId} received upstream error reply, aborting flowlock:`, errorSummary.substring(0, 100));
+            session.completionReason = 'upstream_error';
+            session.lastError = errorSummary;
+
+            const agentName = await this.resolveAgentDisplayName(context.agentId, session.agentName);
+            if (this.uiHelper?.showToastNotification) {
+                this.uiHelper.showToastNotification(
+                    `Agent "${agentName}" 收到上游回复报错，心流锁已自动中断`,
+                    'error'
+                );
+            }
+            await this.stop(context.agentId, { silent: true });
+            return;
+        }
 
         // 如果是错误完成
         if (type === 'error' || finishReason === 'error') {
