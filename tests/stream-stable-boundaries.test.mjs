@@ -111,3 +111,25 @@ test('trusted receipt cutoff stays monotonic during subsequent model output', ()
         cutoff = next;
     }
 });
+
+test('unknown emoticon backtick is released once its paragraph ends', () => {
+    // 白名单外的颜文字（testbug1.txt 首行）不能冻结整条消息的稳定区。
+    const text = '汪呜 (´；ω；`) 开头\n\n“引号”段落 [@tag]\n\n第三段\n\n第四段';
+    const domains = collectMarkdownCodeDomains(text, { includeUnclosedInline: true });
+    assert.equal(domains.length, 0);
+    // 保留 1 个安全段落：前两段进入稳定区，切点恰好落在第三段起点。
+    assert.equal(scan(text), text.indexOf('第三段'));
+
+    let cutoff = 0;
+    for (let end = 1; end <= text.length; end++) {
+        const next = scan(text.slice(0, end), cutoff);
+        assert.ok(next >= cutoff && next <= end);
+        cutoff = next;
+    }
+    assert.ok(cutoff > 0);
+
+    // 同一段落内仍在输出的未闭合反引号继续保守保护流尾。
+    const tail = 'A\n\nB\n\n说明 `<style> 尚未闭合';
+    assert.equal(scan(tail), 3);
+    assert.equal(collectMarkdownCodeDomains(tail, { includeUnclosedInline: true })[0].closed, false);
+});

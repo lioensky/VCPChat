@@ -77,26 +77,35 @@ function isEmoticonBacktick(source, index) {
     });
 }
 
+/**
+ * 查找行内代码的闭合反引号。
+ * 返回 { end, bounded }：
+ * - end：闭合后偏移；未闭合为 -1。
+ * - bounded：未闭合时，是否已经遇到段落边界（空行）。
+ *   CommonMark 行内代码不能跨越块边界；一旦段落已结束仍未闭合，
+ *   该反引号就已被证明是普通字面量，不再可能“稍后闭合”。
+ */
 function findInlineClose(source, contentStart, openingLength) {
     let cursor = contentStart;
     // CommonMark code spans may span lines, but not separate Markdown blocks.
     const remainder = source.slice(contentStart);
     const boundary = /\r?\n[ \t]*\r?\n/.exec(remainder);
     const limit = boundary ? contentStart + boundary.index : source.length;
+    const unclosed = { end: -1, bounded: Boolean(boundary) };
 
     while (cursor < limit) {
         const nextBacktick = source.indexOf('`', cursor);
-        if (nextBacktick === -1 || nextBacktick >= limit) return -1;
+        if (nextBacktick === -1 || nextBacktick >= limit) return unclosed;
 
         const closingLength = countRun(source, nextBacktick, '`');
         if (closingLength === openingLength) {
-            return nextBacktick + closingLength;
+            return { end: nextBacktick + closingLength, bounded: false };
         }
 
         cursor = nextBacktick + closingLength;
     }
 
-    return -1;
+    return unclosed;
 }
 
 /**
@@ -166,10 +175,12 @@ export function replaceMarkdownCodeDomains(source, replacer, options = {}) {
                 cursor += 1;
                 continue;
             }
-            const closingEnd = findInlineClose(source, cursor + runLength, runLength);
-            if (closingEnd === -1 && options.includeUnclosedInline !== true) {
+            const { end: closingEnd, bounded } = findInlineClose(source, cursor + runLength, runLength);
+            if (closingEnd === -1 && (options.includeUnclosedInline !== true || bounded)) {
                 // 静态/终态 Markdown 中孤立反引号是普通文本，不能让它拥有后续
                 // 整个文档并借此隐藏真实 HTML/style。只有流式中间态显式开启保护。
+                // 流式中，若其所在段落已被空行结束仍未闭合，它同样已被证明是字面量
+                // （例如颜文字 (´；ω；`)），不得冻结后续所有段落的稳定区。
                 cursor += runLength;
                 continue;
             }
