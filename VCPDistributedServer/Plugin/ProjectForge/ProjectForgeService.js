@@ -256,14 +256,35 @@ function maidOf(args) {
     return value ? value.slice(0, 100) : null;
 }
 
+/**
+ * 写操作关联的 todo。兼容 "2"、"#2"、"2,3"、"#2 #3"、"2、3"、[2,3]（与 UpdateTodos 的序号列表口径一致）。
+ * 全部序号先校验存在再改状态，避免一半标记为 doing、一半报错；pending 的统一转为 doing。
+ * 节点只有一个 todo_id 字段，返回第一个作为主关联。
+ */
 function todoOf(project, args) {
     const raw = A.pick(args, 'todo', 'todoId');
     if (raw === undefined) return null;
-    const seq = Number(String(raw).replace(/^#/, '').trim());
-    const todo = Number.isInteger(seq) ? store().getTodoBySeq(project.id, seq) : null;
-    if (!todo) throw new Error(`${P} todo #${raw} 不存在。可用 GetProject 查看 todo 列表。`);
-    if (todo.status === 'pending') store().updateTodo(project.id, seq, { status: 'doing' });
-    return todo;
+    const refs = A.list(raw)
+        .flatMap(v => String(v).split(/[\s，、;；]+/))
+        .map(v => v.replace(/^#/, '').trim())
+        .filter(Boolean);
+    if (!refs.length) return null;
+    const s = store();
+    const todos = [];
+    const missing = [];
+    for (const ref of refs) {
+        const seq = Number(ref);
+        const todo = Number.isInteger(seq) ? s.getTodoBySeq(project.id, seq) : null;
+        if (!todo) missing.push(`#${ref}`);
+        else if (!todos.some(t => t.id === todo.id)) todos.push(todo);
+    }
+    if (missing.length) {
+        throw new Error(`${P} todo ${missing.join('、')} 不存在（收到 todo=“${raw}”）。可用 GetProject 查看 todo 列表。`);
+    }
+    for (const todo of todos) {
+        if (todo.status === 'pending') s.updateTodo(project.id, todo.seq, { status: 'doing' });
+    }
+    return todos[0];
 }
 
 // ============================ 文件 IO ============================
@@ -1090,6 +1111,7 @@ async function commitEdit(ctx, file, plan) {
     if (!disk.exists) throw new Error(`${P} 文件不存在：${file.rel}。新建请用 CreateFile。`);
     const meta = decodeText(disk.buffer, file.rel);
     const notes = [];
+    if (plan.parseNotes?.length) notes.push(...plan.parseNotes);
     const drift = recordExternalDrift(ctx.project, file.rel, disk);
     if (drift) notes.push(drift);
     const engineOpts = { mode: plan.mode, drift: plan.drift };
@@ -1198,11 +1220,15 @@ async function editCode(args) {
     const ctx = projectOf(args, { write: true });
     const { path: filePath, symbol: pathSymbol } = SR.splitPathSymbol(A.str(args, 'path', 'file', 'filePath'));
     const file = fileOf(ctx, filePath, { write: true });
-    // path=文件#符号：等价于平铺形式的 symbol=（编号串请用 symbolN）
-    const stepArgs = pathSymbol && A.pick(args, 'symbol') === undefined ? { ...args, symbol: pathSymbol } : args;
+    // path=文件#符号：等价于平铺形式的 symbol=（编号串请用 symbolN；编号串下不注入，避免被当成未编号的步骤 1）
+    const stepArgs = pathSymbol && A.pick(args, 'symbol') === undefined && !A.hasNumberedSteps(args)
+        ? { ...args, symbol: pathSymbol }
+        : args;
     const steps = A.parseEditSteps(stepArgs);
     const todo = todoOf(ctx.project, args);
-    return withLock(ctx.project.id, () => commitEdit(ctx, file, { ...editOptions(args), steps, reason, maid: maidOf(args), todoId: todo?.id ?? null }));
+    return withLock(ctx.project.id, () => commitEdit(ctx, file, {
+        ...editOptions(args), steps, reason, maid: maidOf(args), todoId: todo?.id ?? null, parseNotes: steps.notes,
+    }));
 }
 
 async function resolveEdit(args) {

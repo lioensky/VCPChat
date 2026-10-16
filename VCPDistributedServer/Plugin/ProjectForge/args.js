@@ -3,6 +3,11 @@
 // 所有参数名大小写不敏感（VCP 工具调用中 AI 常混用大小写）。
 
 const STEP_FIELDS = ['op', 'start', 'end', 'lines', 'after', 'before', 'content', 'target', 'replace', 'expect', 'line', 'pick', 'symbol', 'range', 'reason', 'todo'];
+// 能单独确定“这是一步编辑”的字段；只有 content/replace/end 之类附属字段时无法自成一步。
+const PRIMARY_STEP_FIELDS = ['op', 'target', 'start', 'symbol', 'lines', 'after', 'before'];
+const NUMBERED_STEP_RE = new RegExp(`^(${STEP_FIELDS.join('|')})(\\d+)$`);
+// 平铺形式下 reason/todo 属于批次级，不进入步骤
+const BATCH_LEVEL_FIELDS = new Set(['reason', 'todo']);
 
 /** 返回键名全部小写的浅拷贝，便于大小写不敏感取值。 */
 function lowerKeys(args) {
@@ -105,12 +110,30 @@ function rejectMisnamedReplace(step, source, suffix = '') {
     }
 }
 
+/** 平铺（不带编号）的步骤字段。 */
+function flatStepOf(args) {
+    const flat = {};
+    for (const f of STEP_FIELDS) {
+        if (BATCH_LEVEL_FIELDS.has(f)) continue;
+        if (args[f] !== undefined) flat[f] = args[f];
+    }
+    return flat;
+}
+
+/** 是否出现了编号步骤字段（target1、content2 …）。args 需已 lowerKeys。 */
+function hasNumberedSteps(args) {
+    return Object.keys(args || {}).some(key => NUMBERED_STEP_RE.test(key));
+}
+
 /**
  * 解析编辑串。
  * - 编号形式：op1/start1/end1/content1、op2/target2/replace2 …（按编号升序；只要出现任一编号字段即视为串）
+ *   - 容错：没有步骤 1、但写了不带编号的 target/replace（或 start/end/content 等），视为步骤 1；
+ *     已有步骤 1 时混入不带编号的字段无法判断归属，直接报错（以前会被静默忽略，
+ *     例如 target1 + replace 会把 target1 当成删除执行）。
  * - 平铺形式：op/start/end/content 或 target/replace（单步）
  * - edits：JSON 数组形式
- * @returns {Array<object>} 规范化步骤，step 字段为 1 起的序号
+ * @returns {Array<object>} 规范化步骤，step 字段为 1 起的序号；发生归一化时数组带不可枚举的 notes
  */
 function parseEditSteps(args) {
     const direct = pick(args, 'edits');
@@ -129,29 +152,44 @@ function parseEditSteps(args) {
     }
 
     const numbered = new Map();
-    const re = new RegExp(`^(${STEP_FIELDS.join('|')})(\\d+)$`);
     for (const [key, value] of Object.entries(args)) {
-        const m = key.match(re);
+        const m = key.match(NUMBERED_STEP_RE);
         if (!m) continue;
         const n = Number(m[2]);
         if (!numbered.has(n)) numbered.set(n, {});
         numbered.get(n)[m[1]] = value;
     }
     if (numbered.size) {
-        return [...numbered.keys()].sort((a, b) => a - b).map(n => {
+        const notes = [];
+        let folded = false;
+        const flat = flatStepOf(args);
+        const flatKeys = Object.keys(flat);
+        if (flatKeys.length) {
+            const first = numbered.get(1) || {};
+            // 只有 reason1 / todo1 的步骤 1 不算真正存在
+            const hasStep1 = Object.keys(first).some(k => !BATCH_LEVEL_FIELDS.has(k));
+            const isStep = PRIMARY_STEP_FIELDS.some(f => flat[f] !== undefined);
+            if (hasStep1 || !isStep) {
+                throw new Error(`EditCode 编号串中混入了不带编号的参数 ${flatKeys.join(' / ')}，无法判断属于哪一步，这次没有执行。请补上编号（如 ${flatKeys.map(k => `${k}1`).join(' / ')}），或整串都改用平铺单步写法。`);
+            }
+            numbered.set(1, { ...flat, ...first });
+            folded = true;
+            notes.push(`未编号的 ${flatKeys.join('/')} 已按步骤 1 处理（等同 ${flatKeys.map(k => `${k}1`).join('/')}）`);
+        }
+        const steps = [...numbered.keys()].sort((a, b) => a - b).map(n => {
             const step = { step: n, ...numbered.get(n) };
+            // 归一化来的步骤 1 字段本身不带编号，误名检查也按无编号进行
+            const suffix = folded && n === 1 ? '' : String(n);
             step.op = inferOp(step);
-            rejectMisnamedReplace(step, args, String(n));
-            rejectMissingLineContent(step, String(n));
+            rejectMisnamedReplace(step, args, suffix);
+            rejectMissingLineContent(step, suffix);
             return step;
         });
+        if (notes.length) Object.defineProperty(steps, 'notes', { value: notes, enumerable: false });
+        return steps;
     }
 
-    const single = { step: 1 };
-    for (const f of STEP_FIELDS) {
-        if (f === 'reason' || f === 'todo') continue; // 平铺形式下 reason/todo 属于批次级
-        if (args[f] !== undefined) single[f] = args[f];
-    }
+    const single = { step: 1, ...flatStepOf(args) };
     if (single.op === undefined && single.target === undefined && single.start === undefined && single.symbol === undefined
         && single.lines === undefined && single.after === undefined && single.before === undefined) {
         // AI 常沿用别的编辑工具的写法（oldCode/newCode、old_string/new_string），点名告诉它该写什么
@@ -167,4 +205,4 @@ function parseEditSteps(args) {
     return [single];
 }
 
-module.exports = { lowerKeys, pick, str, bool, num, json, list, requireReason, parseEditSteps };
+module.exports = { lowerKeys, pick, str, bool, num, json, list, requireReason, parseEditSteps, hasNumberedSteps };
