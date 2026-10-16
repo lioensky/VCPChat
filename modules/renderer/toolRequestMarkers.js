@@ -29,23 +29,34 @@ export function findMalformedToolFields(content) {
 
 /**
  * 根据解析出的工具名和损坏字段列表，描述工具调用标记的问题
- * @param {{ toolName?: string, malformedFields?: string[] }} params
+ * @param {{ toolName?: string, malformedFields?: string[], isJev?: boolean, content?: string }} params
  * @returns {{ isMalformed: boolean, displayName: string, hint: string }}
  */
-export function describeToolRequestMarkerProblem({ toolName = '', malformedFields = [] } = {}) {
+export function describeToolRequestMarkerProblem({ toolName = '', malformedFields = [], isJev = false, content = '' } = {}) {
     const rawName = typeof toolName === 'string' ? toolName.trim() : '';
     const fields = Array.isArray(malformedFields) ? malformedFields : [];
-    const isMalformed = !rawName || fields.length > 0;
+    const effectiveIsJev = Boolean(
+        isJev ||
+        (typeof content === 'string' && /(?:^|[\s,;])JEV\s*:\s*[「{]始/i.test(content))
+    );
+    const isMalformed = effectiveIsJev ? fields.length > 0 : (!rawName || fields.length > 0);
 
     let displayName = rawName;
     let hint = '';
 
     if (!rawName) {
-        displayName = '格式错误';
-        if (fields.length > 0) {
-            hint = `未识别 tool_name，服务器不会执行这次调用（以下字段标记写法有误，服务器会忽略：${fields.join(', ')}）`;
+        if (effectiveIsJev) {
+            displayName = '';
+            if (fields.length > 0) {
+                hint = `以下字段标记写法有误，服务器会忽略：${fields.join(', ')}`;
+            }
         } else {
-            hint = '未识别 tool_name，服务器不会执行这次调用';
+            displayName = '格式错误';
+            if (fields.length > 0) {
+                hint = `未识别 tool_name，服务器不会执行这次调用（以下字段标记写法有误，服务器会忽略：${fields.join(', ')}）`;
+            } else {
+                hint = '未识别 tool_name，服务器不会执行这次调用';
+            }
         }
     } else if (fields.length > 0) {
         hint = `以下字段标记写法有误，服务器会忽略：${fields.join(', ')}`;

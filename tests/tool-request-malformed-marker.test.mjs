@@ -116,6 +116,69 @@ test('does not falsely flag malformed syntax inside regular bracket value sectio
     assert.equal(problem.hint, '');
 });
 
+test('does not treat normal JEV tool request as malformed (natural language call without tool_name)', () => {
+    const content = [
+        `maid:${S}Nova${E}`,
+        `JEV:${S}联络[Grok]，告诉他【npm 上 animejs 最新版本是多少？】，并使用[临时通讯]。${E}`
+    ].join('\n');
+
+    const malformed = findMalformedToolFields(content);
+    assert.deepEqual(malformed, []);
+
+    const problem = describeToolRequestMarkerProblem({
+        toolName: '',
+        malformedFields: malformed,
+        isJev: true,
+        content
+    });
+
+    assert.equal(problem.isMalformed, false);
+    assert.equal(problem.displayName, '');
+    assert.equal(problem.hint, '');
+});
+
+test('auto-detects JEV tool request from content when isJev flag is omitted', () => {
+    const content = [
+        `maid:${S}Nova${E}`,
+        `JEV:${S}联络[Grok]，告诉他【npm 上 animejs 最新版本是多少？】，并使用[临时通讯]。${E}`
+    ].join('\n');
+
+    const malformed = findMalformedToolFields(content);
+    assert.deepEqual(malformed, []);
+
+    const problem = describeToolRequestMarkerProblem({
+        toolName: '',
+        malformedFields: malformed,
+        content
+    });
+
+    assert.equal(problem.isMalformed, false);
+    assert.equal(problem.displayName, '');
+    assert.equal(problem.hint, '');
+});
+
+test('detects malformed markers on JEV field and reports error without complaining about tool_name', () => {
+    const content = [
+        `maid:${S}Nova${E}`,
+        `JEV:${BAD_S}联络[Grok]${BAD_E}`
+    ].join('\n');
+
+    const malformed = findMalformedToolFields(content);
+    assert.deepEqual(malformed, ['JEV']);
+
+    const problem = describeToolRequestMarkerProblem({
+        toolName: '',
+        malformedFields: malformed,
+        isJev: true,
+        content
+    });
+
+    assert.equal(problem.isMalformed, true);
+    assert.equal(problem.displayName, '');
+    assert.ok(problem.hint.includes('以下字段标记写法有误，服务器会忽略：JEV'));
+    assert.ok(!problem.hint.includes('未识别 tool_name'));
+});
+
 test('does not falsely flag malformed syntax inside ESCAPE value section', () => {
     const content = [
         `maid:${S}Nova${E},`,
