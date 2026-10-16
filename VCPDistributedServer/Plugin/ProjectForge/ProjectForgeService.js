@@ -692,7 +692,7 @@ function astStatusNote() {
 
 function astUnavailableReason(rel) {
     if (runtime.indexer && !runtime.indexer.supports(rel)) {
-        return '该文件类型不支持 AST 符号（支持 JS/TS/TSX/Python/Rust），请用 lines / target 定位';
+        return '该文件类型不支持 AST 符号（支持 JS/TS/TSX/Python/Rust 及几何 Outline：sh/ps1/wgsl/zig/vue 等），请用 lines / target 定位';
     }
     return `AST 索引器不可用（${astStatusNote() || '启动失败或暂时降级'}），请用 lines / target 定位`;
 }

@@ -9,6 +9,10 @@ mod lang;
 #[path = "../src/symbols.rs"]
 mod symbols;
 
+#[allow(dead_code)]
+#[path = "../src/geo.rs"]
+mod geo;
+
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;

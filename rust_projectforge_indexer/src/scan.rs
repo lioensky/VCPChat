@@ -20,8 +20,8 @@ use serde::Serialize;
 use tree_sitter::Parser;
 
 use crate::facts::{extract_facts, html_facts, FileFacts};
-use crate::lang::Lang;
-use crate::symbols::{outline, outline_cancellable, Outline, Symbol};
+use crate::lang::{Lang, SrcLang};
+use crate::symbols::{Outline, Symbol};
 
 use crate::binary;
 pub const DEFAULT_IGNORED_DIRS: &[&str] = &[
@@ -83,14 +83,14 @@ pub struct Cache {
     /// 被文本预筛推迟解析的文件，由主线程空闲时 step_pending 分批补齐。
     /// 值为 (语言, 文件字节数, 已被中止次数)；字节数用于按预算分批，
     /// 中止次数用于防饿死：被中止过的文件下次以不可中断方式解析。
-    pending: HashMap<PathBuf, (Lang, u64, u8)>,
+    pending: HashMap<PathBuf, (SrcLang, u64, u8)>,
 }
 
 /// 单个脏文件在一次 search 中的处理结果。
 enum DirtyOutcome {
     Parsed(Entry),
     /// 不含查询末段：本次不可能命中，推迟解析；行数仍计入统计。
-    Deferred { lang: Lang, size: u64, lines: usize },
+    Deferred { lang: SrcLang, size: u64, lines: usize },
 }
 
 /// facts 扫描的文件类别：源码文件或 HTML 页面。
@@ -252,10 +252,6 @@ fn mtime_ms(meta: &fs::Metadata) -> u128 {
         .unwrap_or(0)
 }
 
-/// 列出 root 下可解析的源文件（遵守忽略规则与 glob）。
-fn list_files(root: &Path, globs: &[String], ignore_dirs: &[String]) -> Result<(Vec<(PathBuf, Lang)>, bool), String> {
-    list_by(root, globs, ignore_dirs, Lang::from_path)
-}
 
 fn list_by<T>(
     root: &Path,
@@ -339,7 +335,7 @@ impl Cache {
         }
         chosen.sort_by(|a, b| b.1.cmp(&a.1));
         let max_size = chosen.first().map(|c| c.1).unwrap_or(0);
-        let work: Vec<(PathBuf, Lang, u64, u8)> = chosen
+        let work: Vec<(PathBuf, SrcLang, u64, u8)> = chosen
             .into_iter()
             .filter_map(|(p, _)| self.pending.remove(&p).map(|(lang, size, att)| (p, lang, size, att)))
             .collect();
@@ -347,7 +343,7 @@ impl Cache {
         enum Fill {
             Done(PathBuf, Entry),
             /// 回队：最后一项为新的已中止次数（未开始的文件不计数）。
-            Requeue(PathBuf, Lang, u64, u8),
+            Requeue(PathBuf, SrcLang, u64, u8),
             Drop,
         }
         let results: Vec<Fill> = work
@@ -366,12 +362,12 @@ impl Cache {
                 if att > 0 {
                     // 防饿死：已被中止过，本次不可中断，保证补齐必然结束。
                     // 代价：请求最坏等待此文件一次完整解析。
-                    return match outline(lang, &text, parser) {
+                    return match lang.outline(&text, parser) {
                         Ok(o) => Fill::Done(path, entry(o)),
                         Err(_) => Fill::Drop,
                     };
                 }
-                match outline_cancellable(lang, &text, parser, should_stop) {
+                match lang.outline_cancellable(&text, parser, should_stop) {
                     Ok(Some(o)) => Fill::Done(path, entry(o)),
                     Ok(None) => Fill::Requeue(path, lang, size, att.saturating_add(1)),
                     Err(_) => Fill::Drop,
@@ -491,12 +487,12 @@ impl Cache {
         if !root.is_dir() {
             return Err(format!("目录不存在：{}", root.display()));
         }
-        let (files, truncated) = list_files(root, &q.glob, &q.ignore_dirs)?;
+        let (files, truncated) = list_by(root, &q.glob, &q.ignore_dirs, SrcLang::from_path)?;
         let scanned = files.len();
 
         // 1) 按 mtime+size 判定哪些需要（重新）解析
         let mut fresh: Vec<(PathBuf, Arc<Outline>)> = Vec::with_capacity(files.len());
-        let mut dirty: Vec<(PathBuf, Lang, u128, u64)> = Vec::new();
+        let mut dirty: Vec<(PathBuf, SrcLang, u128, u64)> = Vec::new();
         for (path, lang) in files {
             let Ok(meta) = fs::metadata(&path) else { continue };
             if meta.len() > MAX_FILE_BYTES {
@@ -524,7 +520,7 @@ impl Cache {
                         return Some((path, DirtyOutcome::Deferred { lang, size: s, lines: count_lines(&text) }));
                     }
                 }
-                let o = outline(lang, &text, parser).ok()?;
+                let o = lang.outline(&text, parser).ok()?;
                 Some((path, DirtyOutcome::Parsed(Entry { mtime_ms: m, size: s, outline: Arc::new(o) })))
             })
             .flatten()
@@ -646,5 +642,36 @@ mod prefilter_tests {
         assert_eq!(prefilter_needle("Store::put_blob").as_deref(), Some("put_blob"));
         assert_eq!(prefilter_needle("Store.").as_deref(), Some("store"));
         assert_eq!(prefilter_needle("a.ui"), None);
+    }
+}
+
+
+#[cfg(test)]
+mod srclang_tests {
+    use super::*;
+
+    fn q(name: &str) -> Query {
+        Query { name: name.to_string(), kind: None, glob: Vec::new(), exact: false, limit: 50, ignore_dirs: Vec::new() }
+    }
+
+    #[test]
+    fn search_recalls_symbols_in_geomtry_languages() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("deploy.ps1"), "function Get-Foo {\n    return 1\n}\n").unwrap();
+        std::fs::write(dir.path().join("build.sh"), "build_all() {\n    make\n}\n").unwrap();
+        std::fs::write(dir.path().join("shader.wgsl"), "fn vs_main() {\n    return;\n}\n").unwrap();
+
+        let mut cache = Cache::default();
+
+        let r = cache.search(dir.path(), &q("Get-Foo")).unwrap();
+        assert_eq!(r.total, 1, "ps1 函数应被召回");
+        assert_eq!(r.hits[0].symbol.qualified, "Get-Foo");
+        assert_eq!(r.hits[0].symbol.kind, "function");
+
+        let r = cache.search(dir.path(), &q("build_all")).unwrap();
+        assert_eq!(r.total, 1, "sh 函数应被召回");
+
+        let r = cache.search(dir.path(), &q("vs_main")).unwrap();
+        assert_eq!(r.total, 1, "wgsl 函数应被召回");
     }
 }

@@ -20,6 +20,7 @@ mod binary;
 mod lang;
 mod scan;
 mod symbols;
+mod geo;
 
 use std::io::{self, BufRead, Write};
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -95,12 +96,26 @@ fn handle(state: &mut State, method: &str, params: &Value) -> Result<Value, Fail
             if text.len() > MAX_TEXT_BYTES {
                 return Err(fail("TOO_LARGE", format!("文本超过 {MAX_TEXT_BYTES} 字节上限")));
             }
-            let lang = lang_opt
+            // 优先 Tree-sitter grammar；无 grammar 的语言回退几何 Outline（二期①）
+            if let Some(lang) = lang_opt
                 .and_then(Lang::from_name)
                 .or_else(|| path_opt.and_then(|p| Lang::from_path(Path::new(p))))
-                .ok_or_else(|| fail("UNSUPPORTED_LANG", "不支持的语言"))?;
-            let o = symbols::outline(lang, text, &mut state.parser).map_err(|e| fail("PARSE_FAILED", e))?;
-            serde_json::to_value(o).map_err(|e| fail("INTERNAL", e.to_string()))
+            {
+                let mut o = symbols::outline(lang, text, &mut state.parser).map_err(|e| fail("PARSE_FAILED", e))?;
+                if o.has_error {
+                    // 二期②：语法破损时用几何拱修正符号边界（保守止血）
+                    geo::heal_outline(&mut o, text, geo::ScanStyle::for_lang(lang));
+                }
+                return serde_json::to_value(&o).map_err(|e| fail("INTERNAL", e.to_string()));
+            }
+            if let Some(prof) = lang_opt
+                .and_then(geo::profile_from_name)
+                .or_else(|| path_opt.and_then(|p| geo::profile_from_path(Path::new(p))))
+            {
+                let o = geo::geo_outline(text, &prof);
+                return serde_json::to_value(o).map_err(|e| fail("INTERNAL", e.to_string()));
+            }
+            Err(fail("UNSUPPORTED_LANG", "不支持的语言（无 grammar 且无几何档案）"))
         }
         "findSymbols" => {
             let root = str_param(params, "root").ok_or_else(|| fail("INVALID_PARAMS", "findSymbols 需要 root"))?;

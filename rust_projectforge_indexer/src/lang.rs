@@ -2,7 +2,10 @@
 
 use std::path::Path;
 
-use tree_sitter::Language;
+use tree_sitter::{Language, Parser};
+
+use crate::geo::{self, GeoProfile};
+use crate::symbols::{self, Outline};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Lang {
@@ -17,6 +20,51 @@ pub enum Lang {
     Java,
     CSharp,
     Lua,
+}
+
+/// 源文件语言：优先 Tree-sitter grammar，缺失时回退几何档案（二期①）。
+#[derive(Debug, Clone, Copy)]
+pub enum SrcLang {
+    Ts(Lang),
+    Geo(GeoProfile),
+}
+
+impl SrcLang {
+    /// 分类：优先 grammar 语言，否则几何档案；两者皆无返回 None。
+    pub fn from_path(path: &Path) -> Option<SrcLang> {
+        Lang::from_path(path)
+            .map(SrcLang::Ts)
+            .or_else(|| geo::profile_from_path(path).map(SrcLang::Geo))
+    }
+
+    #[allow(dead_code)]
+    pub fn name(self) -> &'static str {
+        match self {
+            SrcLang::Ts(l) => l.name(),
+            SrcLang::Geo(p) => p.name,
+        }
+    }
+
+    /// 提取 Outline（Tree-sitter 解析或几何适配）。
+    pub fn outline(self, raw: &str, parser: &mut Parser) -> Result<Outline, String> {
+        match self {
+            SrcLang::Ts(l) => symbols::outline(l, raw, parser),
+            SrcLang::Geo(p) => Ok(geo::geo_outline(raw, &p)),
+        }
+    }
+
+    /// 可中断提取。几何路径本身极快且无需 grammar，直接同步完成、不参与中止。
+    pub fn outline_cancellable(
+        self,
+        raw: &str,
+        parser: &mut Parser,
+        should_stop: &(dyn Fn() -> bool + Sync),
+    ) -> Result<Option<Outline>, String> {
+        match self {
+            SrcLang::Ts(l) => symbols::outline_cancellable(l, raw, parser, should_stop),
+            SrcLang::Geo(p) => Ok(Some(geo::geo_outline(raw, &p))),
+        }
+    }
 }
 
 /// 同一族共用一套符号提取规则（JS / TS / TSX 语法树节点基本一致）。

@@ -39,6 +39,11 @@ const SUPPORTED_EXT = new Map([
     ['.java', 'java'],
     ['.cs', 'csharp'],
     ['.lua', 'lua'],
+    // 二期①：无 grammar 语言回退几何 Outline（值即扩展名，交索引器 profile_from_name 解析）
+    ['.sh', 'sh'], ['.bash', 'sh'], ['.zsh', 'sh'], ['.fish', 'sh'], ['.ksh', 'sh'],
+    ['.ps1', 'ps1'], ['.psm1', 'ps1'], ['.psd1', 'ps1'],
+    ['.wgsl', 'wgsl'], ['.zig', 'zig'],
+    ['.vue', 'vue'], ['.svelte', 'svelte'],
 ]);
 
 function isBinaryPath(filePath) {
