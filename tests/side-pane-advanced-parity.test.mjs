@@ -953,26 +953,29 @@ test('Parity: Side Chat Model Picker closes on selection and window blur, and fo
     await tick();
 
     const pickerBtn = doc.querySelector('.side-chat-model-picker-btn');
-    const popover = doc.querySelector('.side-chat-model-popover');
     assert.ok(pickerBtn, 'Should have model picker button');
-    assert.ok(popover, 'Should have model popover');
+    assert.equal(doc.querySelector('.side-chat-model-popover'), null, 'Popover is lazily mounted on click');
 
-    // Click button to toggle popover
+    // Click button to lazily mount and open popover
     pickerBtn.click();
     await tick();
+    const popover = doc.querySelector('.side-chat-model-popover');
+    assert.ok(popover, 'Should mount model popover on click');
     assert.equal(popover.hidden, false);
 
-    // 选中后收起
+    // 选中后收起（从 DOM 移除）
     popover.querySelector('[data-model="claude-3-5-sonnet"]').click();
-    assert.equal(popover.hidden, true);
+    assert.equal(doc.querySelector('.side-chat-model-popover'), null);
+    assert.equal(handle.getModel(), 'claude-3-5-sonnet');
 
     // 点进侧栏浏览器的 webview 时主页面只会失焦，弹层也要收起
     pickerBtn.click();
     await tick();
-    assert.equal(popover.hidden, false);
+    const popoverOnReopen = doc.querySelector('.side-chat-model-popover');
+    assert.ok(popoverOnReopen, 'Should remount model popover on second click');
+    assert.equal(popoverOnReopen.hidden, false);
     dom.window.dispatchEvent(new dom.window.Event('blur'));
-    assert.equal(popover.hidden, true);
-
+    assert.equal(doc.querySelector('.side-chat-model-popover'), null);
     // Direct setModel via handle
     handle.setModel('gemini-1.5-pro');
     assert.equal(handle.getModel(), 'gemini-1.5-pro');
