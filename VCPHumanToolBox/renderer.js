@@ -1039,6 +1039,23 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
+        if (requiresExplicitScope) {
+            const k = Number(args.k ?? 5);
+            const candidateK = Number(args.candidate_k ?? 30);
+            let error = '';
+            if (!String(args.query || '').trim()) {
+                error = '记忆 A/B 对比必须填写 query。';
+            } else if (!Number.isInteger(k) || k < 1 || k > 100) {
+                error = '记忆 A/B 对比的 k 必须是 1-100 的整数。';
+            } else if (!Number.isInteger(candidateK) || candidateK < 1 || candidateK > 100 || candidateK < k) {
+                error = '记忆 A/B 对比的 candidate_k 必须是 1-100 的整数，且不得小于 k。';
+            }
+            if (error) {
+                renderResult({ status: 'error', error }, toolName);
+                return;
+            }
+        }
+
         // maid 兜底：普通工具未填写时使用默认值；记忆 A/B 对比保留显式作用域语义。
         if (!args.maid && !requiresExplicitScope) {
             args.maid = USER_NAME;
