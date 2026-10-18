@@ -63,7 +63,7 @@ VCPDistributedServer/Plugin/ProjectForge/
 
 ### 2.2 依赖与工具链约束
 
-- 工具链固定 rustc 1.88（与仓库其他 Rust 服务共用，不升级）。`rust-version = "1.88"` 配合 `resolver = "3"`，让 Cargo 自动挑选兼容的传递依赖。
+- 工具链固定 rustc 1.89（与仓库其他 Rust 服务共用）。`rust-version = "1.89"` 配合 `resolver = "3"`，让 Cargo 自动挑选兼容的传递依赖。
 - `tree-sitter ~0.25`（锁定 0.25.10）。0.27 需要 rustc 1.90，因此不采用。
 - grammar 精确锁定：javascript 0.25.0、typescript 0.23.2（TS/TSX，ABI 14）、python 0.25.0、rust 0.24.2（ABI 15）。**升级任一 grammar 都必须重跑 ABI 冒烟和全部单测。**
 - 符号提取手写树遍历，只用 `kind()` / `child_by_field_name()` / `start_position()` 等稳定接口，避开版本间变动较大的 Query API。

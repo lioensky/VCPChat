@@ -2,8 +2,8 @@
 name = "projectforge_indexer"
 version = "0.1.0"
 edition = "2021"
-# 与仓库其他 Rust 服务共用工具链；MSRV 感知解析（resolver 3）自动选择兼容 1.88 的传递依赖。
-rust-version = "1.88"
+# 与仓库其他 Rust 服务共用工具链；MSRV 感知解析（resolver 3）自动选择兼容 1.89 的传递依赖。
+rust-version = "1.89"
 resolver = "3"
 description = "ProjectForge AST symbol indexer: tree-sitter outline / symbol search over stdio JSON-lines"
 license = "CC-BY-NC-SA-4.0"
