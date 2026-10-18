@@ -1253,9 +1253,12 @@ marked.setOptions({ gfm: true, breaks: true });
         const offered = Number(memo.offeredCandidates);
         const ranked = Number(memo.rankedCandidates);
         const returned = Number(memo.returnedCandidates);
-        const rankRate =
-          Number.isFinite(offered) && offered > 0 && Number.isFinite(ranked)
-            ? `${((ranked / offered) * 100).toFixed(1)}%`
+        // 河道修正率以原生 ANN 返回候选数为基数，而非供给数或最终返回数。
+        const annReturned = Number(memo.nativeDiagnostics?.nativeQuery?.ann?.returnedCandidates);
+        const riverCorrectionRate =
+          Number.isFinite(annReturned) && annReturned > 0 &&
+          memo.rankedCandidates != null && Number.isFinite(ranked) && ranked >= 0
+            ? `${((ranked / annReturned) * 100).toFixed(1)}%`
             : "N/A";
         const returnRate =
           Number.isFinite(ranked) && ranked > 0 && Number.isFinite(returned)
@@ -1292,9 +1295,9 @@ marked.setOptions({ gfm: true, breaks: true });
                 <div class="rivermemo-metric-label">三维置信度</div>
                 <div class="rivermemo-metric-value">${escapeHTML(omegaPercent)}</div>
               </div>
-              <div class="rivermemo-metric">
-                <div class="rivermemo-metric-label">排序保留率</div>
-                <div class="rivermemo-metric-value">${escapeHTML(rankRate)}</div>
+              <div class="rivermemo-metric" title="拓扑排序候选数 ÷ 原生 ANN 返回候选数">
+                <div class="rivermemo-metric-label">河道修正率</div>
+                <div class="rivermemo-metric-value">${escapeHTML(riverCorrectionRate)}</div>
               </div>
               <div class="rivermemo-metric">
                 <div class="rivermemo-metric-label">最终收束率</div>
