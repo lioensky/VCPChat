@@ -23,8 +23,13 @@ Module._load = function loadWithElectronMock(request, parent, isMain) {
 };
 const terminalHandlers = require('../modules/ipc/terminalHandlers');
 Module._load = originalLoad;
+const fs = require('node:fs');
 const path = require('node:path');
-const PLUGIN_DIR = path.join(__dirname, '..', 'VCPDistributedServer', 'Plugin', 'PowerShellExecutor');
+const PTY_PLUGIN_DIR = path.join(__dirname, '..', 'VCPDistributedServer', 'Plugin', 'PTYShellExecutor');
+const PS_PLUGIN_DIR = path.join(__dirname, '..', 'VCPDistributedServer', 'Plugin', 'PowerShellExecutor');
+const USE_PTY_PLUGIN = process.platform !== 'win32' && fs.existsSync(path.join(PTY_PLUGIN_DIR, 'commandRunStore.js'));
+const PLUGIN_DIR = USE_PTY_PLUGIN ? PTY_PLUGIN_DIR : PS_PLUGIN_DIR;
+const EXECUTOR_FILE = USE_PTY_PLUGIN ? 'PTYShellExecutor.js' : 'PowerShellExecutor.js';
 
 class FakeSender extends EventEmitter {
     constructor() {
@@ -58,7 +63,7 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // 要放在第一个：之后的用例会注入假的加载器，这里验证的是默认路径
 test('reading command runs goes through the run store and never loads the executor', async () => {
-    const executorPath = path.join(PLUGIN_DIR, 'PowerShellExecutor.js');
+    const executorPath = path.join(PLUGIN_DIR, EXECUTOR_FILE);
     const store = require(path.join(PLUGIN_DIR, 'commandRunStore.js'));
     terminalHandlers.initialize();
     try {
