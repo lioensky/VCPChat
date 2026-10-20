@@ -63,6 +63,12 @@ fn expression_end(bytes: &[u8], mut i: usize) -> Option<usize> {
             while bytes.get(i).is_some_and(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'$')) { i += 1; }
             can_regex = matches!(&bytes[start..i], b"return" | b"throw" | b"yield" | b"case" | b"typeof" | b"void" | b"delete" | b"new" | b"in" | b"of" | b"await");
             continue;
+        } else if matches!(b, b'+' | b'-') && bytes.get(i + 1) == Some(&b) {
+            // Prefix updates still expect an operand; postfix updates end a
+            // value. Preserve that distinction rather than treating each sign
+            // as a binary operator that permits a following regex literal.
+            i += 2;
+            continue;
         } else if b == b'{' { depth += 1; can_regex = true; }
         else if b == b'}' { depth -= 1; if depth == 0 { return Some(i + 1); } can_regex = false; }
         else if !space(b) { can_regex = !b.is_ascii_digit() && !matches!(b, b')' | b']'); }
@@ -341,6 +347,31 @@ mod tests {
             let o = outline(&format!("{prefix}\n<script>\nfunction later() {{}}\n</script>"), "vue");
             assert!(o.has_error, "{prefix}");
             assert!(o.symbols.is_empty(), "{prefix}");
+        }
+    }
+    #[test]
+    fn svelte_update_operators_keep_division_and_regex_boundaries_distinct() {
+        for expression in [
+            "() => count++ / 2", "() => count-- / 2",
+            "() => (count)++ / 2", "() => state.count-- / 2",
+            "() => ++count / 2", "() => --count / 2",
+            "() => count++ / 2 / 3", "() => (count++) / 2",
+            "() => count++ + /[}<]/.test(text)",
+            "() => count-- - /[}<]/.test(text)",
+        ] {
+            let src = format!("<button onclick={{{expression}}}></button>\n<script>\nfunction real() {{}}\n</script>");
+            let o = outline(&src, "svelte");
+            assert!(!o.has_error, "{expression}");
+            assert_eq!(ranges(&o), [("real", 3, 3, 3, None)], "{expression}");
+        }
+    }
+    #[test]
+    fn update_operator_fix_does_not_accept_broken_container_expressions() {
+        for expression in ["() => count++ + /unterminated", "() => { count-- / 2"] {
+            let src = format!("<button onclick={{{expression}}}></button>\n<script>\nfunction hidden() {{}}\n</script>");
+            let o = outline(&src, "svelte");
+            assert!(o.has_error, "{expression}");
+            assert!(o.symbols.is_empty(), "{expression}");
         }
     }
 }
