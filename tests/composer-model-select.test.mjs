@@ -240,3 +240,100 @@ test('ComposerModelSelect: 全选与清空操作正确更新持久化与候选�
 
     instance.dispose();
 });
+function setupDelayedSwitch(t) {
+    const { dom, window, document } = setupTestEnv();
+    let select;
+    window.ModelPickerPopup.createModelPickerPopup = options => {
+        select = options.onSelect;
+        return { close() {}, dispose() {} };
+    };
+    let current = { type: 'agent', id: 'agent_1', config: { model: 'model-a', temperature: 0.6 } };
+    const calls = [];
+    const notices = [];
+    window.uiHelperFunctions = { showToastNotification: text => notices.push(text) };
+    const instance = window.ComposerModelSelect.init({
+        electronAPI: {
+            saveAgentConfig: (id, config) => new Promise((resolve, reject) => {
+                calls.push({ id, config, resolve, reject });
+            })
+        },
+        selectedItemRef: { get: () => current, set: value => { current = value; } },
+        sendMessageBtn: document.getElementById('sendMessageBtn')
+    });
+    t.after(() => { instance.dispose(); dom.window.close(); });
+    return {
+        select: model => select(model), calls, notices, instance, document,
+        get current() { return current; },
+        set current(value) { current = value; },
+        flush: async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); }
+    };
+}
+
+test('ComposerModelSelect: 保存未完成时保留最后选择并按Agent串行写入', async t => {
+    const h = setupDelayedSwitch(t);
+    h.select('model-b');
+    h.select('model-c');
+    assert.equal(h.calls.length, 1);
+    h.calls[0].resolve({ success: true });
+    await h.flush();
+    assert.equal(h.calls.length, 2, 'second choice must not be dropped');
+    assert.equal(h.calls[1].config.model, 'model-c');
+    h.calls[1].resolve({ success: true });
+    await h.flush();
+    assert.equal(h.current.config.model, 'model-c');
+    assert.equal(h.current.config.temperature, 0.6);
+    assert.equal(h.document.querySelector('.vcp-model-select-label').textContent, 'model-c');
+    assert.equal(h.document.getElementById('agentModel').value, 'model-c');
+});
+
+test('ComposerModelSelect: 保存期间选择原模型也必须执行', async t => {
+    const h = setupDelayedSwitch(t);
+    h.select('model-b');
+    h.select('model-a');
+    h.calls[0].resolve({ success: true });
+    await h.flush();
+    assert.equal(h.calls.length, 2, 'returning to original model is a new intent');
+    assert.equal(h.calls[1].config.model, 'model-a');
+    h.calls[1].resolve({ success: true });
+    await h.flush();
+    assert.equal(h.current.config.model, 'model-a');
+});
+
+test('ComposerModelSelect: 不同Agent独立保存且旧完成结果不得污染当前Agent', async t => {
+    const h = setupDelayedSwitch(t);
+    h.select('model-b');
+    h.current = { type: 'agent', id: 'agent_2', config: { model: 'model-x' } };
+    h.select('model-y');
+    assert.equal(h.calls.length, 2, 'another Agent must not share a busy lock');
+    h.calls[1].resolve({ success: true });
+    await h.flush();
+    h.calls[0].resolve({ success: true });
+    await h.flush();
+    assert.equal(h.current.id, 'agent_2');
+    assert.equal(h.current.config.model, 'model-y');
+    assert.equal(h.document.querySelector('.vcp-model-select-label').textContent, 'model-y');
+});
+
+test('ComposerModelSelect: 保存失败不提交失败模型且继续处理后续选择', async t => {
+    const h = setupDelayedSwitch(t);
+    h.select('model-b');
+    h.select('model-c');
+    h.calls[0].resolve({ error: 'disk unavailable' });
+    await h.flush();
+    assert.equal(h.current.config.model, 'model-a');
+    assert.equal(h.notices.length, 1);
+    assert.equal(h.calls.length, 2);
+    h.calls[1].resolve({ success: true });
+    await h.flush();
+    assert.equal(h.current.config.model, 'model-c');
+});
+
+test('ComposerModelSelect: dispose之后保存完成不得回写选中项和设置表单', async t => {
+    const h = setupDelayedSwitch(t);
+    h.select('model-b');
+    h.instance.dispose();
+    h.calls[0].resolve({ success: true });
+    await h.flush();
+    assert.equal(h.current.config.model, 'model-a');
+    assert.equal(h.document.getElementById('agentModel').value, '');
+});
