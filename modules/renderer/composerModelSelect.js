@@ -57,7 +57,8 @@
         if (anchor && anchor.parentNode === actions) actions.insertBefore(wrap, anchor);
         else actions.appendChild(wrap);
 
-        let busy = false;
+        const saves = new Map();
+        let disposed = false;
 
         const currentItem = () => selectedItemRef.get?.() || null;
         const isAgent = item => !!item && item.type === 'agent' && !!item.id;
@@ -75,31 +76,52 @@
                 : '左键选择模型 / 右键勾选候选模型';
         };
 
-        async function choose(modelId) {
-            const item = currentItem();
-            if (!isAgent(item) || busy) return;
-            busy = true;
+        async function drainSaves(agentId, state) {
             try {
-                const result = await electronAPI.saveAgentConfig(item.id, { model: modelId });
-                if (!result?.success) throw new Error(result?.error || 'save-failed');
-                // 以磁盘为准回写选中项，保持设置页和发送链路一致
-                const latest = currentItem();
-                if (latest?.id === item.id) {
-                    const next = { ...latest, model: modelId };
-                    if (latest.config) next.config = { ...latest.config, model: modelId };
-                    selectedItemRef.set(next);
+                while (state.pending !== null) {
+                    const modelId = state.pending;
+                    state.pending = null;
+                    try {
+                        const result = await electronAPI.saveAgentConfig(agentId, { model: modelId });
+                        if (!result?.success) throw new Error(result?.error || 'save-failed');
+                        if (disposed) continue;
+                        // 只发布已经保存成功的配置；保留当前项的其它最新字段。
+                        const latest = currentItem();
+                        if (isAgent(latest) && latest.id === agentId) {
+                            const next = { ...latest, model: modelId };
+                            if (latest.config) next.config = { ...latest.config, model: modelId };
+                            selectedItemRef.set(next);
+                        }
+                        const settingsInput = document.getElementById('agentModel');
+                        if (settingsInput && document.getElementById('editingAgentId')?.value === agentId) {
+                            settingsInput.value = modelId;
+                        }
+                    } catch (error) {
+                        console.error('[ComposerModelSelect] 切换模型失败:', error);
+                        if (!disposed) {
+                            window.uiHelperFunctions?.showToastNotification?.(`切换模型失败: ${error.message || error}`, 'error');
+                        }
+                    }
                 }
-                const settingsInput = document.getElementById('agentModel');
-                if (settingsInput && document.getElementById('editingAgentId')?.value === item.id) {
-                    settingsInput.value = modelId;
-                }
-            } catch (error) {
-                console.error('[ComposerModelSelect] 切换模型失败:', error);
-                window.uiHelperFunctions?.showToastNotification?.(`切换模型失败: ${error.message || error}`, 'error');
             } finally {
-                busy = false;
-                refresh();
+                saves.delete(agentId);
+                if (!disposed) refresh();
             }
+        }
+
+        function choose(modelId) {
+            const item = currentItem();
+            if (disposed || !isAgent(item)) return;
+            const existing = saves.get(item.id);
+            if (existing) {
+                // 保存中的再次选择不能丢弃，包括切回尚未被替换的原模型。
+                existing.pending = modelId;
+                return;
+            }
+            if (modelId === readModel(item)) return;
+            const state = { pending: modelId };
+            saves.set(item.id, state);
+            void drainSaves(item.id, state);
         }
 
         function normalize(models) {
@@ -141,11 +163,7 @@
                     trigger,
                     getCatalog: fetchModelsAndFavorites,
                     getActiveModel: () => readModel(currentItem()),
-                    onSelect: (modelId) => {
-                        if (modelId !== readModel(currentItem())) {
-                            choose(modelId);
-                        }
-                    },
+                    onSelect: choose,
                     enableCheckMenu: true
                 });
             }
@@ -169,6 +187,9 @@
         return {
             refresh,
             dispose() {
+                if (disposed) return;
+                disposed = true;
+                for (const state of saves.values()) state.pending = null;
                 popup?.dispose();
                 popup = null;
                 window.removeEventListener('focus', refresh);
