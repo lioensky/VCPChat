@@ -613,10 +613,12 @@ fn test_biquad_flushes_denormals_with_audio_thread_init() {
     }
 
     let mut filter = BiquadFilter::peaking(1000.0, 0.0, 1.0, 44100.0);
-    let subnormal = f64::from_bits(1);
+    // Exercise runtime SSE arithmetic, not compiler-folded IEEE constants:
+    // LLVM constant folding cannot observe this thread's MXCSR FTZ/DAZ mode.
+    let subnormal = std::hint::black_box(f64::from_bits(1));
     filter.state.z1 = subnormal;
     filter.state.z2 = -subnormal;
-    let _ = filter.process(0.0);
+    let _ = std::hint::black_box(&mut filter).process(std::hint::black_box(0.0));
     assert_eq!(filter.state.z1, 0.0);
     assert_eq!(filter.state.z2, 0.0);
 }
@@ -629,11 +631,11 @@ fn test_biquad_sustained_subnormal_input_flushes_to_zero() {
     }
 
     let mut filter = BiquadFilter::peaking(1000.0, 6.0, 1.0, 44100.0);
-    let subnormal = f64::from_bits(1);
+    let subnormal = std::hint::black_box(f64::from_bits(1));
 
     for _ in 0..1024 {
-        assert_eq!(filter.process(subnormal), 0.0);
-        assert_eq!(filter.process(-subnormal), 0.0);
+        assert_eq!(std::hint::black_box(&mut filter).process(subnormal), 0.0);
+        assert_eq!(std::hint::black_box(&mut filter).process(-subnormal), 0.0);
     }
 
     assert_eq!(filter.state.z1, 0.0);
