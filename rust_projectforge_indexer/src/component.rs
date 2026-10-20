@@ -73,7 +73,7 @@ fn expression_end(bytes: &[u8], mut i: usize) -> Option<usize> {
 
 // Quote-aware tag/attribute parsing. Dynamic attributes are deliberately not
 // guessed: an ambiguous script opening is an error, never executable input.
-fn tag(bytes: &[u8], start: usize) -> Option<Tag> {
+fn tag(bytes: &[u8], start: usize, svelte_syntax: bool) -> Option<Tag> {
     let mut i = start + 1;
     let closing = bytes.get(i) == Some(&b'/');
     if closing { i += 1; }
@@ -93,6 +93,7 @@ fn tag(bytes: &[u8], start: usize) -> Option<Tag> {
         }
         if closing { return None; }
         if bytes.get(i) == Some(&b'{') {
+            if !svelte_syntax { return None; }
             i = expression_end(bytes, i)?;
             dynamic_attrs = true;
             continue;
@@ -114,6 +115,7 @@ fn tag(bytes: &[u8], start: usize) -> Option<Tag> {
                 value = String::from_utf8_lossy(&bytes[a..i]).into_owned();
                 i += 1;
             } else if quote == b'{' {
+                if !svelte_syntax { return None; }
                 let end = expression_end(bytes, i)?;
                 value = String::from_utf8_lossy(&bytes[i..end]).into_owned();
                 i = end;
@@ -136,7 +138,7 @@ fn raw_end(bytes: &[u8], mut i: usize, expected: &str) -> Option<(usize, usize)>
     // even inside a JS string. Escaped <\/script> does not. No code execution.
     while i < bytes.len() {
         if bytes.get(i..i + 2) == Some(b"</") {
-            if let Some(t) = tag(bytes, i) {
+            if let Some(t) = tag(bytes, i, false) {
                 if t.closing && t.name == expected { return Some((i, t.end)); }
             }
         }
@@ -175,6 +177,7 @@ pub fn outline(raw: &str, language: &'static str) -> Outline {
         if bytes[i] == b'{' {
             let Some(end) = expression_end(bytes, i) else { out.has_error = true; break; };
             if matches!(bytes.get(i + 1), Some(b'#' | b'/')) {
+                if language != "svelte" { out.has_error = true; break; }
                 let mut name_end = i + 2;
                 while bytes.get(name_end).is_some_and(|b| b.is_ascii_alphabetic()) { name_end += 1; }
                 let block = String::from_utf8_lossy(&bytes[i + 2..name_end]);
@@ -188,7 +191,7 @@ pub fn outline(raw: &str, language: &'static str) -> Outline {
             continue;
         }
         if bytes[i] != b'<' { i += 1; continue; }
-        let Some(t) = tag(bytes, i) else { out.has_error = true; break; };
+        let Some(t) = tag(bytes, i, language == "svelte") else { out.has_error = true; break; };
         if t.closing {
             if stack.pop().as_deref() != Some(&t.name) { out.has_error = true; break; }
             i = t.end; continue;
@@ -331,5 +334,13 @@ mod tests {
         assert!(o.has_error); assert!(o.symbols.is_empty());
         let o = outline("<div {...props>\n<script>\nfunction unknown() {}\n</script>", "svelte");
         assert!(o.has_error); assert!(o.symbols.is_empty());
+    }
+    #[test]
+    fn vue_does_not_accept_svelte_only_container_syntax() {
+        for prefix in ["<div {active}></div>", "<Widget {...props} />", "<button onclick={handler}></button>", "{#if ready}<p>Hi</p>{/if}"] {
+            let o = outline(&format!("{prefix}\n<script>\nfunction later() {{}}\n</script>"), "vue");
+            assert!(o.has_error, "{prefix}");
+            assert!(o.symbols.is_empty(), "{prefix}");
+        }
     }
 }
