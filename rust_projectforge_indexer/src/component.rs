@@ -20,7 +20,8 @@ struct Tag {
 fn space(b: u8) -> bool { b.is_ascii_whitespace() }
 fn name(b: u8) -> bool { b.is_ascii_alphanumeric() || matches!(b, b'-' | b':' | b'_' | b'.') }
 
-fn expression_end(bytes: &[u8], mut i: usize) -> Option<usize> {
+fn expression_end(source: &str, mut i: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
     // Svelte closing block directives contain no JavaScript expression.
     if bytes.get(i + 1) == Some(&b'/') {
         let mut end = i + 2;
@@ -30,6 +31,7 @@ fn expression_end(bytes: &[u8], mut i: usize) -> Option<usize> {
     let mut depth = 1usize;
     let mut quote = 0u8;
     let mut can_regex = true;
+    let mut member_name = false;
     i += 1;
     while i < bytes.len() {
         let b = bytes[i];
@@ -43,7 +45,7 @@ fn expression_end(bytes: &[u8], mut i: usize) -> Option<usize> {
             i += 2;
             while bytes.get(i..i + 2) != Some(b"*/") { bytes.get(i)?; i += 1; }
             i += 2; continue;
-        } else if matches!(b, b'\'' | b'"' | b'`') { quote = b; }
+        } else if matches!(b, b'\'' | b'"' | b'`') { quote = b; member_name = false; }
         else if b == b'/' && can_regex {
             // A regex's braces/quotes/tags are data, not container structure.
             i += 1;
@@ -58,20 +60,44 @@ fn expression_end(bytes: &[u8], mut i: usize) -> Option<usize> {
                 i += 1;
             }
             can_regex = false;
-        } else if b.is_ascii_alphabetic() || b == b'_' || b == b'$' {
+            member_name = false;
+        } else if b >= 0x80 && source.get(i..)?.chars().next().is_some_and(|c| c.is_whitespace() || c == '\u{feff}') {
+            // Preserve token state across non-ASCII JavaScript whitespace.
+            i += source.get(i..)?.chars().next()?.len_utf8();
+            continue;
+        } else if b.is_ascii_alphabetic() || b == b'_' || b == b'$' || b >= 0x80 {
             let start = i;
-            while bytes.get(i).is_some_and(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'$')) { i += 1; }
-            can_regex = matches!(&bytes[start..i], b"return" | b"throw" | b"yield" | b"case" | b"typeof" | b"void" | b"delete" | b"new" | b"in" | b"of" | b"await");
+            // Keep Unicode names (including combining marks) opaque as one
+            // token. This scanner finds container boundaries, not JS validity.
+            while let Some(c) = source.get(i..)?.chars().next() {
+                if !(c.is_ascii_alphanumeric() || matches!(c, '_' | '$') ||
+                    (!c.is_ascii() && !c.is_whitespace() && c != '\u{feff}')) { break; }
+                i += c.len_utf8();
+            }
+            // Reserved words are still ordinary names after member access,
+            // e.g. state.return / 2 or state?.throw / 2.
+            can_regex = !member_name && matches!(&bytes[start..i], b"return" | b"throw" | b"yield" | b"case" | b"typeof" | b"void" | b"delete" | b"new" | b"in" | b"of" | b"await");
+            member_name = false;
+            continue;
+        } else if bytes.get(i..i + 3) == Some(b"...") {
+            member_name = false;
+            can_regex = true;
+            i += 3;
+            continue;
+        } else if b == b'.' || bytes.get(i..i + 2) == Some(b"?.") {
+            member_name = !can_regex;
+            i += if b == b'?' { 2 } else { 1 };
             continue;
         } else if matches!(b, b'+' | b'-') && bytes.get(i + 1) == Some(&b) {
             // Prefix updates still expect an operand; postfix updates end a
             // value. Preserve that distinction rather than treating each sign
             // as a binary operator that permits a following regex literal.
+            member_name = false;
             i += 2;
             continue;
-        } else if b == b'{' { depth += 1; can_regex = true; }
-        else if b == b'}' { depth -= 1; if depth == 0 { return Some(i + 1); } can_regex = false; }
-        else if !space(b) { can_regex = !b.is_ascii_digit() && !matches!(b, b')' | b']'); }
+        } else if b == b'{' { depth += 1; can_regex = true; member_name = false; }
+        else if b == b'}' { depth -= 1; if depth == 0 { return Some(i + 1); } can_regex = false; member_name = false; }
+        else if !space(b) { can_regex = !b.is_ascii_digit() && !matches!(b, b')' | b']'); member_name = false; }
         i += 1;
     }
     None
@@ -79,7 +105,8 @@ fn expression_end(bytes: &[u8], mut i: usize) -> Option<usize> {
 
 // Quote-aware tag/attribute parsing. Dynamic attributes are deliberately not
 // guessed: an ambiguous script opening is an error, never executable input.
-fn tag(bytes: &[u8], start: usize, svelte_syntax: bool) -> Option<Tag> {
+fn tag(source: &str, start: usize, svelte_syntax: bool) -> Option<Tag> {
+    let bytes = source.as_bytes();
     let mut i = start + 1;
     let closing = bytes.get(i) == Some(&b'/');
     if closing { i += 1; }
@@ -100,7 +127,7 @@ fn tag(bytes: &[u8], start: usize, svelte_syntax: bool) -> Option<Tag> {
         if closing { return None; }
         if bytes.get(i) == Some(&b'{') {
             if !svelte_syntax { return None; }
-            i = expression_end(bytes, i)?;
+            i = expression_end(source, i)?;
             dynamic_attrs = true;
             continue;
         }
@@ -122,7 +149,7 @@ fn tag(bytes: &[u8], start: usize, svelte_syntax: bool) -> Option<Tag> {
                 i += 1;
             } else if quote == b'{' {
                 if !svelte_syntax { return None; }
-                let end = expression_end(bytes, i)?;
+                let end = expression_end(source, i)?;
                 value = String::from_utf8_lossy(&bytes[i..end]).into_owned();
                 i = end;
             } else {
@@ -139,12 +166,13 @@ fn tag(bytes: &[u8], start: usize, svelte_syntax: bool) -> Option<Tag> {
     }
 }
 
-fn raw_end(bytes: &[u8], mut i: usize, expected: &str) -> Option<(usize, usize)> {
+fn raw_end(source: &str, mut i: usize, expected: &str) -> Option<(usize, usize)> {
+    let bytes = source.as_bytes();
     // HTML raw-text closing semantics: a literal </script> ends the element,
     // even inside a JS string. Escaped <\/script> does not. No code execution.
     while i < bytes.len() {
         if bytes.get(i..i + 2) == Some(b"</") {
-            if let Some(t) = tag(bytes, i, false) {
+            if let Some(t) = tag(source, i, false) {
                 if t.closing && t.name == expected { return Some((i, t.end)); }
             }
         }
@@ -180,8 +208,9 @@ pub fn outline(raw: &str, language: &'static str) -> Outline {
         }
         // Interpolation is opaque markup. Skip strings and balanced braces so
         // a quoted <script> cannot become a top-level script declaration.
-        if bytes[i] == b'{' {
-            let Some(end) = expression_end(bytes, i) else { out.has_error = true; break; };
+        // Vue uses double mustaches; a lone brace is ordinary template text.
+        if bytes[i] == b'{' && (language == "svelte" || bytes.get(i + 1) == Some(&b'{')) {
+            let Some(end) = expression_end(&source, i) else { out.has_error = true; break; };
             if matches!(bytes.get(i + 1), Some(b'#' | b'/')) {
                 if language != "svelte" { out.has_error = true; break; }
                 let mut name_end = i + 2;
@@ -197,14 +226,14 @@ pub fn outline(raw: &str, language: &'static str) -> Outline {
             continue;
         }
         if bytes[i] != b'<' { i += 1; continue; }
-        let Some(t) = tag(bytes, i, language == "svelte") else { out.has_error = true; break; };
+        let Some(t) = tag(&source, i, language == "svelte") else { out.has_error = true; break; };
         if t.closing {
             if stack.pop().as_deref() != Some(&t.name) { out.has_error = true; break; }
             i = t.end; continue;
         }
         if t.name == "script" || t.name == "style" || t.name == "textarea" || t.name == "title" {
             if t.empty { out.has_error = true; i = t.end; continue; }
-            let Some((end, after)) = raw_end(bytes, t.end, &t.name) else { out.has_error = true; break; };
+            let Some((end, after)) = raw_end(&source, t.end, &t.name) else { out.has_error = true; break; };
             if stack.is_empty() && t.name == "script" {
                 if let Some(lang) = script_lang(&t) {
                     match symbols::outline(lang, &source[t.end..end], &mut parser) {
@@ -276,7 +305,7 @@ mod tests {
     }
     #[test]
     fn comments_attributes_interpolations_and_nested_scripts_are_not_declarations() {
-        let src = "<!-- <script>function fake() {}</script> -->\n<template><div @click='run()' title='<script>bad</script>'>{{ '<script>fake</script>' }}</div><script>function nested() {}</script></template>\n{ '<script>function ghost() {}</script>' }\n<script>\nfunction real() { const text = '<script>'; }\n</script>";
+        let src = "<!-- <script>function fake() {}</script> -->\n<template><div @click='run()' title='<script>bad</script>'>{{ '<script>fake</script>' }}</div><script>function nested() {}</script></template>\n{{ '<script>function ghost() {}</script>' }}\n<script>\nfunction real() { const text = '<script>'; }\n</script>";
         let o = outline(src, "vue");
         assert!(!o.has_error);
         assert_eq!(ranges(&o), [("real", 5, 5, 5, None)]);
@@ -343,7 +372,7 @@ mod tests {
     }
     #[test]
     fn vue_does_not_accept_svelte_only_container_syntax() {
-        for prefix in ["<div {active}></div>", "<Widget {...props} />", "<button onclick={handler}></button>", "{#if ready}<p>Hi</p>{/if}"] {
+        for prefix in ["<div {active}></div>", "<Widget {...props} />", "<button onclick={handler}></button>"] {
             let o = outline(&format!("{prefix}\n<script>\nfunction later() {{}}\n</script>"), "vue");
             assert!(o.has_error, "{prefix}");
             assert!(o.symbols.is_empty(), "{prefix}");
@@ -372,6 +401,61 @@ mod tests {
             let o = outline(&src, "svelte");
             assert!(o.has_error, "{expression}");
             assert!(o.symbols.is_empty(), "{expression}");
+        }
+    }
+    #[test]
+    fn svelte_identifier_and_member_names_end_values_before_division() {
+        for expression in [
+            "() => state.return / 2", "() => state.throw / 2",
+            "() => state?.return / 2", "() => state. /* gap */ return / 2",
+            "() => state. // gap\nreturn / 2", "() => 状态.return / 2",
+            "() => 数量 / 2", "() => 数量return / 2", "() => value数量 / 2",
+            "() => e\u{301} / 2", "() => $数量_2 / 2",
+        ] {
+            let src = format!("<button onclick={{{expression}}}></button>\n<script>\nfunction real() {{}}\n</script>");
+            let o = outline(&src, "svelte");
+            assert!(!o.has_error, "{expression}");
+            let row = 3 + expression.matches('\n').count();
+            assert_eq!(ranges(&o), [("real", row, row, row, None)], "{expression}");
+        }
+    }
+    #[test]
+    fn identifier_fix_preserves_keyword_regex_and_malformed_expression_boundaries() {
+        for expression in [
+            "() => { return /[}<]/.test(value); }",
+            "() => { return\u{a0}/[}<]/.test(value); }",
+            "() => { return\u{feff}/[}<]/.test(value); }",
+            "() => state.return / 2 + /[}<]/.test(value)",
+            "() => 数量 / 2 + /[}<]/.test(value)",
+        ] {
+            let src = format!("<button onclick={{{expression}}}></button>\n<script>\nfunction real() {{}}\n</script>");
+            let o = outline(&src, "svelte");
+            assert!(!o.has_error, "{expression}");
+            assert_eq!(ranges(&o), [("real", 3, 3, 3, None)], "{expression}");
+        }
+        for expression in ["() => { return /unterminated", "() => { return\u{a0}/unterminated", "() => { return\u{feff}/unterminated", "() => 数量 + /unterminated", "() => { 数量 / 2"] {
+            let o = outline(&format!("<button onclick={{{expression}}}></button>\n<script>\nfunction hidden() {{}}\n</script>"), "svelte");
+            assert!(o.has_error, "{expression}");
+            assert!(o.symbols.is_empty(), "{expression}");
+        }
+    }
+    #[test]
+    fn vue_single_braces_are_text_but_double_brace_expressions_stay_opaque() {
+        for text in ["{", "}", "text { value", "{#if ready}plain{/if}", "{{ '<script>not code</script>' }}"] {
+            let src = format!("<template><code>{text}</code></template>\n<script>\nfunction real() {{}}\n</script>");
+            let o = outline(&src, "vue");
+            assert!(!o.has_error, "{text}");
+            assert_eq!(ranges(&o), [("real", 3, 3, 3, None)], "{text}");
+        }
+        let o = outline("<p>{</p>\n<script>\nfunction hidden() {}\n</script>", "svelte");
+        assert!(o.has_error); assert!(o.symbols.is_empty());
+    }
+    #[test]
+    fn vue_unterminated_mustaches_do_not_expose_later_script_text() {
+        for text in ["{{ value", "{{ value }", "{{ 'unterminated }}"] {
+            let o = outline(&format!("<template><p>{text}</p></template>\n<script>\nfunction hidden() {{}}\n</script>"), "vue");
+            assert!(o.has_error, "{text}");
+            assert!(o.symbols.is_empty(), "{text}");
         }
     }
 }
