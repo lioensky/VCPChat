@@ -14,6 +14,7 @@ struct Tag {
     end: usize,
     closing: bool,
     empty: bool,
+    dynamic_attrs: bool,
 }
 
 fn space(b: u8) -> bool { b.is_ascii_whitespace() }
@@ -81,15 +82,21 @@ fn tag(bytes: &[u8], start: usize) -> Option<Tag> {
     if i == a { return None; }
     let tag_name = String::from_utf8_lossy(&bytes[a..i]).to_ascii_lowercase();
     let mut attrs = HashMap::new();
+    let mut dynamic_attrs = false;
     loop {
         while bytes.get(i).is_some_and(|&b| space(b)) { i += 1; }
         if bytes.get(i) == Some(&b'>') {
-            return Some(Tag { name: tag_name, attrs, end: i + 1, closing, empty: false });
+            return Some(Tag { name: tag_name, attrs, end: i + 1, closing, empty: false, dynamic_attrs });
         }
         if bytes.get(i..i + 2) == Some(b"/>") {
-            return Some(Tag { name: tag_name, attrs, end: i + 2, closing, empty: true });
+            return Some(Tag { name: tag_name, attrs, end: i + 2, closing, empty: true, dynamic_attrs });
         }
         if closing { return None; }
+        if bytes.get(i) == Some(&b'{') {
+            i = expression_end(bytes, i)?;
+            dynamic_attrs = true;
+            continue;
+        }
         let a = i;
         while bytes.get(i).is_some_and(|&b| !space(b) && !matches!(b, b'=' | b'/' | b'>' | b'<' | b'\'' | b'"' | b'{' | b'}')) { i += 1; }
         if i == a { return None; }
@@ -139,7 +146,7 @@ fn raw_end(bytes: &[u8], mut i: usize, expected: &str) -> Option<(usize, usize)>
 }
 
 fn script_lang(t: &Tag) -> Option<Lang> {
-    if t.attrs.contains_key("src") { return None; }
+    if t.dynamic_attrs || t.attrs.contains_key("src") { return None; }
     let lang = t.attrs.get("lang").map(|s| s.to_ascii_lowercase()).unwrap_or_default();
     let kind = t.attrs.get("type").map(|s| s.to_ascii_lowercase()).unwrap_or_default();
     if !matches!(kind.as_str(), "" | "module" | "text/javascript" | "application/javascript" | "text/ecmascript" | "application/ecmascript") { return None; }
@@ -313,5 +320,16 @@ mod tests {
         let o = outline(src, "svelte");
         assert!(!o.has_error);
         assert_eq!(ranges(&o), [("real", 7, 7, 7, None)]);
+    }
+    #[test]
+    fn svelte_shorthand_and_spread_attributes_do_not_hide_later_scripts() {
+        let src = "<div {active}></div>\n<Widget {...props} />\n<script>\nfunction real() {}\n</script>";
+        let o = outline(src, "svelte");
+        assert!(!o.has_error);
+        assert_eq!(ranges(&o), [("real", 4, 4, 4, None)]);
+        let o = outline("<script {...props}>\nfunction unknown() {}\n</script>", "svelte");
+        assert!(o.has_error); assert!(o.symbols.is_empty());
+        let o = outline("<div {...props>\n<script>\nfunction unknown() {}\n</script>", "svelte");
+        assert!(o.has_error); assert!(o.symbols.is_empty());
     }
 }
