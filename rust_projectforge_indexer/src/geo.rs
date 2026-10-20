@@ -58,6 +58,8 @@ pub struct ScanStyle {
     pub hash_comment: bool,
     /// 标识符允许连字符（PowerShell `Verb-Noun` 函数名）
     pub hyphen_ident: bool,
+    /// PowerShell uses backtick escapes, not JS template strings or regex literals.
+    pub powershell_escapes: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -66,6 +68,7 @@ struct LineMetrics {
     non_empty: bool,
     is_comment: bool,
     open_braces: u16,
+    same_line_block: bool,
     close_braces: u16,
     leading_close_braces: u16,
     net_parens: i16,
@@ -78,6 +81,12 @@ struct LineMetrics {
 /// 判断一行去掉前导空白后是否以控制流关键字开头（过滤 if/for/while/switch/match/catch/else 等非符号子拱）
 #[inline]
 fn is_control_flow_head(trimmed: &[u8]) -> bool {
+    // A continuation head can follow one or more blocks closed on this line.
+    let mut start = 0;
+    while let Some(&byte) = trimmed.get(start) {
+        if byte == b'}' || byte.is_ascii_whitespace() { start += 1; } else { break; }
+    }
+    let trimmed = &trimmed[start..];
     const CTRLS: &[&[u8]] = &[
         b"if", b"else", b"for", b"while", b"switch", b"case", b"default",
         b"try", b"catch", b"finally", b"match", b"loop", b"do", b"with",
@@ -168,6 +177,7 @@ pub fn scan_geometry(style: ScanStyle, source: &str) -> GeoFileResult {
         non_empty: false,
         is_comment: false,
         open_braces: 0,
+        same_line_block: false,
         close_braces: 0,
         leading_close_braces: 0,
         net_parens: 0,
@@ -267,6 +277,7 @@ pub fn scan_geometry(style: ScanStyle, source: &str) -> GeoFileResult {
 
         // 2. 扫描行内括号与冒号（跳过字符串和注释）
         let mut open_braces: u16 = 0;
+        let mut same_line_block = false;
         let mut close_braces: u16 = 0;
         let mut leading_close_braces: u16 = 0;
         let mut seen_code_token = false;
@@ -309,6 +320,11 @@ pub fn scan_geometry(style: ScanStyle, source: &str) -> GeoFileResult {
                 continue;
             }
 
+            if style.powershell_escapes && c == b'`' {
+                j += 2; // escaped character, or the end-of-line continuation
+                continue;
+            }
+
             // 行注释
             if c == b'/' && j + 1 < tlen && trimmed[j + 1] == b'/' {
                 break;
@@ -327,6 +343,7 @@ pub fn scan_geometry(style: ScanStyle, source: &str) -> GeoFileResult {
 
             // JS 族正则字面量：`/` 跟在运算符/分隔符之后（或行首）视为正则，整体跳过（含字符类 [...] 与 flags）
             if matches!(family, Family::Js)
+                && !style.powershell_escapes
                 && c == b'/'
                 && matches!(
                     last_non_ws,
@@ -373,7 +390,7 @@ pub fn scan_geometry(style: ScanStyle, source: &str) -> GeoFileResult {
                 j += 3;
                 continue;
             }
-            if c == b'"' || c == b'\'' || (matches!(family, Family::Js | Family::Go) && c == b'`') {
+            if c == b'"' || c == b'\'' || ((matches!(family, Family::Js) && !style.powershell_escapes || matches!(family, Family::Go)) && c == b'`') {
                 // Rust 生命周期 'a 不算字符串
                 if c == b'\'' && matches!(family, Family::Rust) {
                     if j + 2 < tlen && trimmed[j + 2] == b'\'' {
@@ -392,9 +409,14 @@ pub fn scan_geometry(style: ScanStyle, source: &str) -> GeoFileResult {
                     // 行内消费完单双引号
                     j += 1;
                     while j < tlen {
-                        if trimmed[j] == b'\\' {
+                        if (!style.powershell_escapes && trimmed[j] == b'\\')
+                            || (style.powershell_escapes && c == b'"' && trimmed[j] == b'`') {
                             j += 2;
                         } else if trimmed[j] == c {
+                            if style.powershell_escapes && c == b'\'' && trimmed.get(j + 1) == Some(&c) {
+                                j += 2; // PowerShell single quotes escape by doubling.
+                                continue;
+                            }
                             j += 1;
                             break;
                         } else {
@@ -421,6 +443,11 @@ pub fn scan_geometry(style: ScanStyle, source: &str) -> GeoFileResult {
                         leading_close_braces += 1;
                     } else if open_braces > 0 {
                         open_braces -= 1;
+                        // Keep a completed outer same-line block in addition
+                        // to the net-open brace ledger.
+                        if open_braces == 0 {
+                            same_line_block = true;
+                        }
                     } else {
                         close_braces += 1;
                     }
@@ -454,6 +481,7 @@ pub fn scan_geometry(style: ScanStyle, source: &str) -> GeoFileResult {
             non_empty: non_empty && (!is_comment || trimmed.starts_with(b"@") || trimmed.starts_with(b"#")),
             is_comment,
             open_braces,
+            same_line_block,
             close_braces,
             leading_close_braces,
             net_parens,
@@ -585,6 +613,20 @@ pub fn scan_geometry(style: ScanStyle, source: &str) -> GeoFileResult {
                 } else {
                     healthy = false;
                 }
+            }
+
+            // Completed same-line blocks never enter the open-block stack.
+            // One line has one signature: nested pairs do not duplicate it,
+            // and a still-open outer block is handled by the existing stack.
+            if m.same_line_block && m.open_braces == 0 && m.has_decl_hint && !m.starts_with_ctrl {
+                let sig_start = backtrack_multiline_sig(&lines, ln);
+                arches.push(GeoArch {
+                    sig_start,
+                    foot_line: ln,
+                    end_line: ln,
+                    full_start: compute_full_start(&lines, sig_start),
+                    tier: if healthy { Tier::Green } else { Tier::Red },
+                });
             }
 
             // 2) 再压入本行未闭合的 `{`
@@ -917,6 +959,7 @@ impl GeoProfile {
             family: self.family,
             hash_comment: self.hash_comment,
             hyphen_ident: self.hyphen_ident,
+            powershell_escapes: self.name == "powershell",
         }
     }
 
@@ -939,7 +982,8 @@ pub fn profile_from_name(name: &str) -> Option<GeoProfile> {
         "ps1" | "psm1" | "psd1" => p(Family::Js, true, true, "powershell", "."),
         "wgsl" => p(Family::Rust, false, false, "wgsl", "."),
         "zig" => p(Family::Rust, false, false, "zig", "."),
-        "vue" | "svelte" => p(Family::Js, false, false, "vue", "."),
+        "vue" => p(Family::Js, false, false, "vue", "."),
+        "svelte" => p(Family::Js, false, false, "svelte", "."),
         _ => None,
     }
 }
@@ -994,6 +1038,9 @@ fn classify_kind(sig: &str) -> &'static str {
 /// - `depth`/`parent` 由拱的区间包含关系建立（前序遍历）；
 /// - `has_error` 映射为几何账本不可信（!healthy）。
 pub fn geo_outline(raw: &str, profile: &GeoProfile) -> Outline {
+    if matches!(profile.name, "vue" | "svelte") {
+        return crate::component::outline(raw, profile.name);
+    }
     let source = normalize_source(raw);
     let g = scan_geometry(profile.scan_style(), &source);
     let lines: Vec<&str> = source.split('\n').collect();
@@ -1100,6 +1147,7 @@ fn vs_main(in: VertexInput) -> vec4<f32> {
 ";
 
     const VUE: &str = "\
+<script>\n\
 function setup() {
   const state = ref(0);
   function inc() {
@@ -1107,6 +1155,7 @@ function setup() {
   }
   return { state, inc };
 }
+</script>
 ";
 
     fn names_of(ext: &str, src: &str) -> Vec<String> {
@@ -1121,6 +1170,64 @@ function setup() {
         assert_eq!(names_of("wgsl", WGSL), ["VertexInput", "vs_main"]);
         assert_eq!(names_of("vue", VUE), ["setup", "inc"]);
     }
+
+    #[test]
+    fn same_line_geometry_definitions_are_complete_arches() {
+        for (ext, source, name) in [
+            ("sh", "health_check() { curl localhost; }\n", "health_check"),
+            ("ps1", "function Get-Health { return 42 }\n", "Get-Health"),
+            ("wgsl", "fn health_check() { return; }\n", "health_check"),
+        ] {
+            let outline = profile_from_name(ext).unwrap().outline(source);
+            assert!(!outline.has_error);
+            assert_eq!(outline.symbols.len(), 1, "{ext}");
+            let symbol = &outline.symbols[0];
+            assert_eq!(symbol.name, name);
+            assert_eq!((symbol.start, symbol.end, symbol.depth, symbol.parent), (1, 1, 0, None));
+        }
+    }
+
+    #[test]
+    fn same_line_blocks_preserve_parents_without_duplicate_or_control_arches() {
+        let source = "outer() {\n    inner() { if true; then echo '{ }'; fi; }\n    if true; then { echo ok; }; fi\n    # fake() { ignored }\n}\nafter() { { echo done; }; }\n";
+        let outline = profile_from_name("sh").unwrap().outline(source);
+        assert!(!outline.has_error);
+        let symbols: Vec<_> = outline.symbols.iter().map(|s| (s.name.as_str(), s.start, s.end, s.depth, s.parent)).collect();
+        assert_eq!(symbols, [("outer", 1, 5, 0, None), ("inner", 2, 2, 1, Some(0)), ("after", 6, 6, 0, None)]);
+    }
+
+    #[test]
+    fn continuations_after_closing_braces_remain_control_blocks() {
+        for ext in ["zig", "wgsl"] {
+            let source = "fn outer() {\n    if (ready) {\n        call();\n    } else if (other) {\n        call();\n    } else {\n        call();\n    }\n}\n";
+            let outline = profile_from_name(ext).unwrap().outline(source);
+            assert!(!outline.has_error, "{ext}");
+            assert_eq!(outline.symbols.len(), 1, "control continuations are not anonymous definitions: {ext}");
+            assert_eq!(outline.symbols[0].name, "outer");
+            assert_eq!((outline.symbols[0].start, outline.symbols[0].end), (1, 9));
+        }
+        assert!(is_control_flow_head(b"} } else {"));
+        assert!(is_control_flow_head(b"}\tcatch (error) {"));
+        assert!(!is_control_flow_head(b"} function after() {"));
+    }
+
+    #[test]
+    fn powershell_backtick_continuations_do_not_open_template_strings() {
+        let source = "function Invoke-Step {\n    Write-Output `\n        'hello'\n}\nfunction Get-Next { return 42 }\n";
+        let outline = profile_from_name("ps1").unwrap().outline(source);
+        assert!(!outline.has_error);
+        let symbols: Vec<_> = outline.symbols.iter().map(|s| (s.name.as_str(), s.start, s.end)).collect();
+        assert_eq!(symbols, [("Invoke-Step", 1, 4), ("Get-Next", 5, 5)]);
+    }
+
+    #[test]
+    fn powershell_quoted_backticks_and_windows_paths_do_not_change_brace_depth() {
+        let source = "function Get-Text {\n    Write-Output \"literal `\" } still text\"\n    Write-Output 'literal '' } '' text'\n    Write-Output \"C:\\\"\n}\n";
+        let outline = profile_from_name("ps1").unwrap().outline(source);
+        assert!(!outline.has_error);
+        assert_eq!(outline.symbols.len(), 1);
+        assert_eq!((outline.symbols[0].start, outline.symbols[0].end), (1, 5));
+    }
 }
 
 impl ScanStyle {
@@ -1130,6 +1237,7 @@ impl ScanStyle {
             family: lang.family(),
             hash_comment: false,
             hyphen_ident: false,
+            powershell_escapes: false,
         }
     }
 }
@@ -1176,6 +1284,29 @@ pub fn heal_outline(o: &mut Outline, raw: &str, style: ScanStyle) -> usize {
 #[cfg(test)]
 mod heal_tests {
     use super::*;
+
+    #[test]
+    fn malformed_rust_fixture_remains_parser_input_not_a_cargo_test_crate() {
+        let source = include_str!("../tests/fixtures/broken_syntax.rs");
+        let mut parser = tree_sitter::Parser::new();
+        let outline = crate::symbols::outline(Lang::Rust, source, &mut parser).unwrap();
+        assert!(outline.has_error, "fixture must remain intentionally malformed");
+        // Missing closing braces may erase the function node entirely. This
+        // fixture asserts error-tolerant parsing, not recovery of absent nodes;
+        // the separate healing tests cover retained symbol boundaries.
+        assert_eq!(outline.lang, "rust");
+        assert_eq!(outline.line_count, source.lines().count());
+    }
+
+    #[test]
+    fn powershell_fixture_is_outline_data_not_an_executed_script() {
+        let source = include_str!("../tests/sample_script.ps1");
+        let profile = profile_from_name("ps1").unwrap();
+        let outline = profile.outline(source);
+        let names: Vec<_> = outline.symbols.iter().map(|symbol| symbol.name.as_str()).collect();
+        assert!(names.contains(&"Start-ClusterService"));
+        assert!(names.contains(&"Invoke-HealthCheck"));
+    }
 
     fn fake_sym(start: usize, end: usize, full_start: usize) -> crate::symbols::Symbol {
         crate::symbols::Symbol {

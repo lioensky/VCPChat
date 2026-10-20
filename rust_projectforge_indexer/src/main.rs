@@ -21,6 +21,7 @@ mod lang;
 mod scan;
 mod symbols;
 mod geo;
+mod component;
 
 use std::io::{self, BufRead, Write};
 use std::panic::{catch_unwind, AssertUnwindSafe};

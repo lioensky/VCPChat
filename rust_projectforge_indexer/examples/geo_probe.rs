@@ -13,6 +13,10 @@ mod symbols;
 #[path = "../src/geo.rs"]
 mod geo;
 
+#[allow(dead_code)]
+#[path = "../src/component.rs"]
+mod component;
+
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
