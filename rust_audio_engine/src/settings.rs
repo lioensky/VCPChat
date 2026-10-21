@@ -114,8 +114,20 @@ impl SettingsManager {
         let content = fs::read_to_string(path)
             .map_err(|e| format!("Failed to read settings: {}", e))?;
         
-        let settings: PersistentSettings = serde_json::from_str(&content)
+        let mut settings: PersistentSettings = serde_json::from_str(&content)
             .map_err(|e| format!("Failed to parse settings: {}", e))?;
+
+        // Older files had no enable flag: selecting FIR enabled it on startup.
+        // Keep a new installation disabled, and never overwrite an explicit
+        // false. Deserialize the typed settings first so malformed/duplicate
+        // fields retain their existing rejection behavior.
+        if settings.eq_type == "FIR" {
+            let stored: serde_json::Value = serde_json::from_str(&content)
+                .map_err(|e| format!("Failed to parse settings: {}", e))?;
+            if stored.as_object().is_some_and(|fields| !fields.contains_key("eq_enabled")) {
+                settings.eq_enabled = true;
+            }
+        }
         
         log::info!("Loaded settings from {}", path.display());
         Ok(settings)
@@ -269,10 +281,22 @@ pub fn create_settings_manager(app_data_dir: &PathBuf) -> SharedSettingsManager 
 mod tests {
     use super::*;
 
+    fn load_fixture(content: &str) -> Result<PersistentSettings, String> {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let directory = std::env::temp_dir().join(format!("vcp-audio-settings-{}-{stamp}", std::process::id()));
+        fs::create_dir(&directory).expect("fresh synthetic settings directory");
+        let file = directory.join("audio_settings.json");
+        fs::write(&file, content).unwrap();
+        let result = SettingsManager::load_from_file(&file);
+        fs::remove_file(&file).unwrap();
+        fs::remove_dir(&directory).unwrap();
+        result
+    }
+
     /// A settings file written before `eq_enabled` existed must still load:
-    /// the container-level `#[serde(default)]` backfills the missing field
-    /// rather than failing the whole parse (which would silently reset every
-    /// user preference to defaults).
+    /// preserve the old loader's enabled-FIR behavior, without resetting other
+    /// preferences or changing the disabled default for a new installation.
     #[test]
     fn legacy_settings_without_eq_enabled_load() {
         let legacy = r#"{
@@ -302,14 +326,41 @@ mod tests {
             "preemptive_resample": true
         }"#;
 
-        let parsed: PersistentSettings =
-            serde_json::from_str(legacy).expect("legacy settings must load");
+        let parsed = load_fixture(legacy).expect("legacy settings must load");
 
         assert_eq!(parsed.eq_type, "FIR");
-        assert_eq!(parsed.eq_enabled, false, "missing eq_enabled backfills to default");
+        assert!(parsed.eq_enabled, "legacy FIR selection meant FIR was enabled");
         assert_eq!(parsed.fir_taps, Some(1023));
         assert_eq!(parsed.target_samplerate, Some(0));
         assert_eq!(parsed.loudness_mode, "replaygain_track");
+        let persisted = serde_json::to_string(&parsed).unwrap();
+        assert!(load_fixture(&persisted).unwrap().eq_enabled);
+    }
+
+    #[test]
+    fn legacy_eq_migration_preserves_explicit_values_and_new_install_defaults() {
+        for (content, expected) in [
+            (r#"{"eq_type":"FIR","eq_enabled":false}"#, false),
+            (r#"{"eq_type":"FIR","eq_enabled":true}"#, true),
+            (r#"{"eq_type":"IIR","eq_enabled":true}"#, true),
+            (r#"{"eq_type":"IIR"}"#, false),
+            (r#"{}"#, false),
+        ] {
+            assert_eq!(load_fixture(content).unwrap().eq_enabled, expected);
+        }
+        assert!(!PersistentSettings::default().eq_enabled);
+    }
+
+    #[test]
+    fn legacy_eq_migration_does_not_accept_invalid_or_duplicate_controls() {
+        for content in [
+            r#"{"eq_type":"FIR","eq_enabled":null}"#,
+            r#"{"eq_type":"FIR","eq_enabled":"false"}"#,
+            r#"{"eq_type":"FIR","eq_type":"IIR"}"#,
+            r#"{"eq_enabled":false,"eq_enabled":true}"#,
+        ] {
+            assert!(load_fixture(content).is_err());
+        }
     }
 
     /// Round-trip: a full current settings object serializes and parses back
