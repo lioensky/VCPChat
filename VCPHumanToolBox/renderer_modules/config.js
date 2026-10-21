@@ -894,7 +894,7 @@ export const tools = {
     },
     'LightMemo': {
         displayName: '快速回忆 / 记忆 A/B 对比',
-        description: '检索日记或独立路由的 TDB 冷知识库，默认使用 RiverMemo，支持纯向量 KNN、Rerank/Jev 精排及 AIMemo 总结；记忆 A/B 对比基于同一原生快照与过滤后的共同候选池，比较 TDB 原始向量余弦排序、外部 Rerank 与 RiverMemo V3。Jev 仅用于普通搜索，不作为实验轨道。TagMemo 模式已退休，后端拒绝旧模式。[后端插件: LightMemo]',
+        description: '检索日记或独立路由的 TDB 冷知识库，默认使用 RiverMemo，支持纯向量 KNN、Rerank/Jev 精排及 AIMemo 总结；记忆 A/B 对比基于同一原生快照与过滤后的共同候选池，比较 TDB 原始向量余弦排序、外部 Rerank、Jev 与 RiverMemo V3，外部 Rerank 和 Jev 默认开启且可独立关闭。TagMemo 模式已退休，后端拒绝旧模式。[后端插件: LightMemo]',
         commands: {
             'query': {
                 description: '快速回忆 — 检索日记或 TDB 冷知识库',
@@ -917,19 +917,20 @@ export const tools = {
                 ]
             },
             'memory_ab': {
-                description: '记忆 A/B 对比 — 必须提供查询与显式作用域；在同一原生快照、同一过滤后的共同候选池上，比较 TDB 原始向量余弦排序、外部 Rerank（默认开启）与 RiverMemo V3。外部 Rerank 使用完整的有界共同候选池，而非共识 2×K 池。本实验衡量排序与读出，不代表精确的全库召回率。BM25 仅为过渡性的候选池内子串词频证据，并非独立词法召回通道。Jev 不作为实验轨道。',
+                description: '记忆 A/B 对比 — 必须提供查询与显式作用域；在同一原生快照、同一过滤后的共同候选池上，比较 TDB 原始向量余弦排序、外部 Rerank、Jev 与 RiverMemo V3。外部 Rerank 和 Jev 默认开启且可独立关闭，均使用完整的有界共同候选池，而非共识 2×K 池；Jev 候选数量仍受 JevRerankMaxChoices 限制。外部轨道未配置或执行失败时，不会将回退分数作为外部评分展示。本实验衡量排序与读出，不代表精确的全库召回率。BM25 仅为过渡性的候选池内子串词频证据，并非独立词法召回通道。',
                 params: [
                     { name: 'query', type: 'textarea', required: true, placeholder: '输入记忆对比查询，例如：RiverMemo 如何恢复连续记忆中的逻辑链' },
                     { name: 'folder', type: 'text', required: false, advanced: false, placeholder: '日记文件夹，例如：VCP开发', description: '作用域：必须提供 folder/maid，或显式开启全库搜索；可与 maid 同时使用' },
                     { name: 'maid', type: 'text', required: false, advanced: false, placeholder: '按署名限定作用域', description: '作用域：必须提供 maid/folder，或显式开启全库搜索；可与 folder 同时使用' },
                     { name: 'search_all_knowledge_bases', type: 'checkbox', required: false, advanced: false, default: false, description: '显式开启全库对比；启用后可不填 folder/maid' },
                     { name: 'k', type: 'number', required: false, default: 5, min: 1, max: 100, step: 1, description: '每条轨道展示的 Top-K 数量，默认 5，最大 100' },
-                    { name: 'candidate_k', type: 'number', required: false, default: 30, min: 1, max: 100, step: 1, placeholder: '默认 30，必须不小于 k', description: '过滤后的共同候选池大小，默认 30，最大 100，且不得小于 k；外部 Rerank 使用完整共同候选池' },
+                    { name: 'candidate_k', type: 'number', required: false, default: 30, min: 1, max: 100, step: 1, placeholder: '默认 30，必须不小于 k', description: '过滤后的共同候选池大小，默认 30，最大 100，且不得小于 k；外部 Rerank 和 Jev 使用完整共同候选池，Jev 仍受 JevRerankMaxChoices 限制' },
                     { name: 'tag_boost', type: 'number', required: false, default: 0.6, min: 0, max: 1, step: 0.05, description: 'RiverMemo 共享感知强度，仅支持数值；+ 后缀已退休' },
                     { name: 'core_tags', type: 'textarea', required: false, placeholder: 'JSON 数组或逗号、空格分隔的核心 Tag', description: 'RiverMemo 共享感知的核心标签' },
                     { name: 'core_boost_factor', type: 'number', required: false, default: 1.33, min: 0, step: 0.01, description: 'RiverMemo 共享感知的核心标签额外增强系数' },
                     { name: 'BM25', type: 'checkbox', required: false, default: true, description: 'RiverMemo 的过渡性候选池内子串词频证据，并非独立词法召回通道；TDB 原始向量轨道保持余弦排序' },
-                    { name: 'compare_rerank', type: 'checkbox', required: false, default: true, description: '增加独立外部 Rerank 轨道（默认开启），使用完整的有界共同候选池；未配置服务时明确标记不可用' }
+                    { name: 'compare_rerank', type: 'checkbox', required: false, default: true, description: '增加独立外部 Rerank 轨道（默认开启，可独立关闭；兼容 compareRerank），使用完整的有界共同候选池；未配置或失败时不将回退分数作为外部评分展示' },
+                    { name: 'compare_jev', type: 'checkbox', required: false, default: true, description: '增加独立 Jev 轨道（默认开启，可独立关闭；兼容 compareJev），使用完整的有界共同候选池，候选数量仍受 JevRerankMaxChoices 限制；未配置或失败时不将回退分数作为外部评分展示' }
                 ]
             },
         }
