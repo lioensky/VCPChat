@@ -1,4 +1,5 @@
 // modules/renderer/messageContextMenu.js
+import { effectiveContextHistory, isContextCheckpoint } from '../chat/contextCompactionState.js';
 
 /** Creates one context-menu state owner for one MessageRenderer instance. */
 export function createMessageContextMenu() {
@@ -186,6 +187,31 @@ function showContextMenu(event, messageItem, message) {
 
     // For non-thinking/non-streaming messages (including errors and completed messages)
     if (!isThinkingOrStreaming) {
+        if (currentSelectedItemVal.type === 'agent' && contextMenuDependencies.compactContext) {
+            const compactOption = ownerDocument.createElement('div');
+            compactOption.className = 'context-menu-item';
+            compactOption.innerHTML = '<i class="fas fa-compress-alt" aria-hidden="true"></i> 压缩前文';
+            compactOption.title = '压缩当前话题整个有效上下文，与右键气泡位置无关';
+            compactOption.onclick = async () => {
+                closeContextMenu();
+                try { await contextMenuDependencies.compactContext(); }
+                catch (error) {
+                    uiHelper.showToastNotification(`压缩失败：${error.message}`, 'error');
+                    if (error.compactionDiagnostic && typeof electronAPI?.openTextInNewWindow === 'function') {
+                        try {
+                            await electronAPI.openTextInNewWindow(
+                                error.compactionDiagnostic,
+                                '上下文压缩失败：模型返回原文',
+                                ownerDocument.body.classList.contains('light-theme') ? 'light' : 'dark'
+                            );
+                        } catch (diagnosticError) {
+                            console.error('[ContextCompaction] Failed to open response diagnostic:', diagnosticError);
+                        }
+                    }
+                }
+            };
+            menu.appendChild(compactOption);
+        }
         const isEditing = messageItem.classList.contains('message-item-editing');
         const textarea = isEditing ? messageItem.querySelector('.message-edit-textarea') : null;
 
@@ -516,6 +542,10 @@ function showContextMenu(event, messageItem, message) {
 
 function toggleEditMode(messageItem, message) {
     const { electronAPI, markedInstance, uiHelper } = mainRefs;
+    if (isContextCheckpoint(message)) {
+        uiHelper.showToastNotification('压缩快照为只读状态，请通过阅读模式查看原文', 'info');
+        return;
+    }
     const currentSelectedItemVal = mainRefs.currentSelectedItemRef.get();
     const currentTopicIdVal = mainRefs.currentTopicIdRef.get();
 
@@ -833,6 +863,10 @@ function attachTimestampMetaToVcpMessage(vcpMessage, historyMessage) {
 
 async function handleRegenerateResponse(originalAssistantMessage) {
     const { electronAPI, uiHelper } = mainRefs;
+    if (contextMenuDependencies.isContextCompacting?.()) {
+        uiHelper.showToastNotification('上下文正在压缩，请稍候', 'warning');
+        return;
+    }
     const currentChatHistoryArray = mainRefs.currentChatHistoryRef.get();
     const currentSelectedItemVal = mainRefs.currentSelectedItemRef.get();
     const currentTopicIdVal = mainRefs.currentTopicIdRef.get();
@@ -849,7 +883,12 @@ async function handleRegenerateResponse(originalAssistantMessage) {
     const originalMessageIndex = currentChatHistoryArray.findIndex(msg => msg.id === originalAssistantMessage.id);
     if (originalMessageIndex === -1) return;
 
-    const historyForRegeneration = currentChatHistoryArray.slice(0, originalMessageIndex);
+    const effectiveHistory = effectiveContextHistory(currentChatHistoryArray);
+    if (!effectiveHistory.includes(currentChatHistoryArray[originalMessageIndex])) {
+        uiHelper.showToastNotification('该回复已归入压缩快照；如需重新回复，请先从该消息创建分支', 'warning');
+        return;
+    }
+    const historyForRegeneration = effectiveContextHistory(currentChatHistoryArray.slice(0, originalMessageIndex));
 
     // Remove original and subsequent messages from DOM and history
     const messagesToRemove = currentChatHistoryArray.splice(originalMessageIndex);
@@ -939,6 +978,11 @@ async function handleRegenerateResponse(originalAssistantMessage) {
         const tavernEngine = ownerWindow.TavernRulesEngine;
 
         const messagesForVCP = await Promise.all(historyForRegeneration.map(async (msg, index) => {
+            if (isContextCheckpoint(msg)) {
+                return attachTimestampMetaToVcpMessage({
+                    role: 'user', content: msg.content, __vcpContextCheckpoint: true,
+                }, msg);
+            }
             let vcpImageAttachmentsPayload = [];
             let vcpAudioAttachmentsPayload = [];
             let vcpVideoAttachmentsPayload = [];

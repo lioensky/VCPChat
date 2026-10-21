@@ -120,7 +120,7 @@ function buildRequestContext(context, requestId) {
 function stripInternalMessageMetadata(messages) {
     return messages.map(message => {
         if (!message || typeof message !== 'object') return message;
-        const { __vcpchatTimestampMeta, ...cleanMessage } = message;
+        const { __vcpchatTimestampMeta, __vcpContextCheckpoint, ...cleanMessage } = message;
         return cleanMessage;
     });
 }
@@ -1127,6 +1127,8 @@ function initialize(mainWindow, context) {
                 // 内部元数据仅用于最终请求体生成 vcpchatExtensions，不会进入 messages[]。
                 if (msg.__vcpchatTimestampMeta) sanitizedMsg.__vcpchatTimestampMeta = msg.__vcpchatTimestampMeta;
 
+                if (msg.role === 'user' && msg.__vcpContextCheckpoint === true) sanitizedMsg.__vcpContextCheckpoint = true;
+
                 return sanitizedMsg;
             });
         } catch (validationError) {
@@ -1215,6 +1217,7 @@ function initialize(mainWindow, context) {
                 // 默认不注入元思考链，除非明确开启
                 if (settings.enableThoughtChainInjection !== true) {
                     messages = messages.map(msg => {
+                        if (msg.__vcpContextCheckpoint === true) return msg;
                         if (typeof msg.content === 'string') {
                             return { ...msg, content: contextSanitizer.stripThoughtChains(msg.content) };
                         } else if (Array.isArray(msg.content)) {
@@ -1238,6 +1241,7 @@ function initialize(mainWindow, context) {
             // --- VCP Hidden Tool Results Stripping ---
             try {
                 messages = messages.map(msg => {
+                    if (msg.__vcpContextCheckpoint === true) return msg;
                     if (typeof msg.content === 'string') {
                         return { ...msg, content: contextSanitizer.stripHiddenToolResults(msg.content) };
                     } else if (Array.isArray(msg.content)) {
@@ -1275,7 +1279,11 @@ function initialize(mainWindow, context) {
                     );
 
                     // 重新组合消息数组（保持系统消息在最前面）
-                    messages = [...systemMessages, ...sanitizedNonSystemMessages];
+                    messages = [...systemMessages, ...sanitizedNonSystemMessages.map((message, index) =>
+                        nonSystemMessages[index]?.__vcpContextCheckpoint === true
+                            ? nonSystemMessages[index]
+                            : message
+                    )];
 
                     console.log(`[Context Sanitizer] Messages processed successfully`);
                 }

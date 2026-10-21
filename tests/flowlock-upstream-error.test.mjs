@@ -151,3 +151,80 @@ test('inactive flowlock does not start on upstream error even if message contain
 
     assert.equal(manager.isAgentLocked('agent-test'), false);
 });
+
+test('compaction suspends heartbeat without releasing lock and resumes exactly once', async () => {
+    const { manager } = createFlowlockEnvironment();
+    try {
+        await manager.start('agent-test', 'topic-test');
+        manager.setCustomPrompt('agent-test', '保留下一轮提示词');
+        manager.setNextHeartbeat('agent-test', 17);
+        manager.scheduleNextRound('agent-test', 60000);
+        const lease = manager.suspendForContextCompaction('agent-test', 'topic-test');
+        assert.ok(lease);
+        assert.equal(manager.isAgentLocked('agent-test'), true);
+        assert.equal(manager.getSession('agent-test').contextCompactionSuspended, true);
+        assert.equal(manager.sessions.get('agent-test').pendingTimer, null);
+        manager.scheduleNextRound('agent-test', 1);
+        await manager.triggerRound('agent-test');
+        assert.equal(manager.getSession('agent-test').round, 0);
+        assert.equal(manager.resumeAfterContextCompaction(lease), true);
+        const timer = manager.sessions.get('agent-test').pendingTimer;
+        assert.ok(timer);
+        assert.equal(manager.getSession('agent-test').hasCustomPrompt, true);
+        assert.equal(manager.getSession('agent-test').nextDelaySeconds, 17);
+        assert.equal(manager.resumeAfterContextCompaction(lease), false);
+        assert.equal(manager.sessions.get('agent-test').pendingTimer, timer);
+    } finally { manager.cleanup(); }
+});
+
+test('stopping and restarting flowlock invalidates an older compaction lease', async () => {
+    const { manager } = createFlowlockEnvironment();
+    try {
+        await manager.start('agent-test', 'topic-test');
+        const lease = manager.suspendForContextCompaction('agent-test', 'topic-test');
+        await manager.stop('agent-test');
+        await manager.start('agent-test', 'topic-test');
+        assert.equal(manager.resumeAfterContextCompaction(lease), false);
+        assert.equal(manager.sessions.get('agent-test').pendingTimer, null);
+        assert.equal(manager.getSession('agent-test').contextCompactionSuspended, false);
+    } finally { manager.cleanup(); }
+});
+
+test('an old failed heartbeat cannot schedule or stop a restarted session', async () => {
+    const { manager } = createFlowlockEnvironment();
+    let reject;
+    manager.continueWritingForContext = () => new Promise((_, fail) => { reject = fail; });
+    try {
+        await manager.start('agent-test', 'topic-test');
+        const pending = manager.triggerRound('agent-test');
+        await manager.stop('agent-test');
+        await manager.start('agent-test', 'topic-test');
+        reject(new Error('late old failure'));
+        await pending;
+        assert.equal(manager.getSession('agent-test').retryCount, 0);
+        assert.equal(manager.sessions.get('agent-test').pendingTimer, null);
+    } finally { manager.cleanup(); }
+});
+
+test('suspended compaction terminal clears active round without executing flowlock directives', async () => {
+    const { manager } = createFlowlockEnvironment();
+    try {
+        await manager.start('agent-test', 'topic-test');
+        const session = manager.sessions.get('agent-test');
+        session.activeMessageId = 'interrupted-round';
+        const lease = manager.suspendForContextCompaction('agent-test', 'topic-test');
+        await manager.handleFinalizedMessage({
+            type: 'end',
+            messageId: 'interrupted-round',
+            context: { agentId: 'agent-test', topicId: 'topic-test', isGroupMessage: false },
+            content: '[[Flowlock::Stop]] [[Flowlock::NextHeartbeat::1]]',
+            finishReason: 'cancelled'
+        });
+        assert.equal(manager.isAgentLocked('agent-test'), true);
+        assert.equal(session.activeMessageId, null);
+        assert.equal(session.pendingTimer, null);
+        assert.equal(manager.getSession('agent-test').contextCompactionSuspended, true);
+        assert.equal(manager.resumeAfterContextCompaction(lease), true);
+        assert.ok(session.pendingTimer);
+    } finally { manager.cleanup(); }
+});

@@ -42,7 +42,7 @@ function route(fetchResponse, { settings = null, abortSignal = AbortSignal } = {
     const sender = Object.assign(new EventEmitter(), { id: 501, isDestroyed: () => false, send: (channel, event) => sent.push({ channel, event }) });
     const context = { agentId: 'fixture-agent', topicId: 'fixture-topic' };
     return { sent, warnings, sender, context, tasks: () => module.exports.getVcpStreamTaskSnapshot(),
-        start: (url = 'http://controlled.invalid/v1/chat/completions') => handlers.get('send-to-vcp')({ sender }, url, '', [], { stream: true }, 'same-message', false, context),
+        start: (url = 'http://controlled.invalid/v1/chat/completions', messages = []) => handlers.get('send-to-vcp')({ sender }, url, '', messages, { stream: true }, 'same-message', false, context),
         interrupt: (caller = sender) => handlers.get('interrupt-vcp-request')({ sender: caller }, { messageId: 'same-message' }),
         close: () => sender.emit('destroyed'),
     };
@@ -286,6 +286,28 @@ test('sender navigation aborts the real HTTP stream without delivering into the 
         assert.deepEqual(f.sent.map(item => item.event.type), ['data'], 'aborted sender receives no later terminal/error event');
         assert.equal(f.sender.eventNames().length, 0);
     } finally { f.close(); await server.close(); }
+});
+
+test('checkpoint text survives sanitizers and its private protection flag stays local', async () => {
+    let requestBody;
+    const text = '<context_checkpoint>src/core/kbm.rs</context_checkpoint>\n'
+        + '\n<think>\n日记原文\n</think>\n'
+        + '[[VCP调用结果信息汇总:[HIDDEN]\n日记里的示例\nVCP调用结果结束]]';
+    const f = route(async (_url, options) => {
+        requestBody = JSON.parse(options.body);
+        return { ok: true, body: new ReadableStream({ start(controller) {
+            controller.enqueue(encode('data: [DONE]\n\n')); controller.close();
+        } }) };
+    }, { settings: { enableContextSanitizer: true, contextSanitizerDepth: 0 } });
+    try {
+        await f.start(undefined, [
+            { role: 'user', content: text, __vcpContextCheckpoint: true },
+            { role: 'assistant', content: 'ordinary response' },
+        ]);
+        await waitFor(() => f.sent.length === 1 && !f.tasks().length);
+        assert.equal(requestBody.messages[0].content, text);
+        assert.equal('__vcpContextCheckpoint' in requestBody.messages[0], false);
+    } finally { f.close(); }
 });
 
 // VCP 服务端把请求体原样转给后端；不认识的字段（如 stream_options）会让部分后端直接 400，主聊天就发不出去了

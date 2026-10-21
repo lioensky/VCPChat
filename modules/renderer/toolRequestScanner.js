@@ -123,8 +123,8 @@ function findNextFieldStart(text, fromIndex) {
     return createFieldStartResult(match, match.index, match[1].length);
 }
 
-/** Read a declared field from request body, skipping entire preceding field payloads. */
-export function readToolRequestField(source, name) {
+/** Read a declared field, skipping preceding payloads. Set trim:false for lossless diary text. */
+export function readToolRequestField(source, name, { trim = true } = {}) {
     if (typeof source !== 'string') return null;
     let cursor = 0;
     while (cursor < source.length) {
@@ -133,7 +133,8 @@ export function readToolRequestField(source, name) {
         const end = findFieldEnd(source, field);
         if (!end) return null;
         if (field.fieldName.toLowerCase() === name.toLowerCase()) {
-            return source.slice(field.markerEnd, end.start).trim();
+            const value = source.slice(field.markerEnd, end.start);
+            return trim ? value.trim() : value;
         }
         cursor = end.end;
     }

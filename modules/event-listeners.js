@@ -4,6 +4,8 @@
 
 import { handleSaveGlobalSettings } from './global-settings-manager.js';
 import { syncDependentRows } from './ui-system/settings/dependent-rows.js';
+import { effectiveContextHistory, isContextCheckpoint } from './chat/contextCompactionState.js';
+import { shouldCompactContext } from './chat/contextCompactionService.js';
 
 let eventListenersBound = false;
 
@@ -181,12 +183,16 @@ export function setupEventListeners(deps) {
      * @param {string} additionalPrompt - Additional prompt text from the input box.
      */
     async function handleContinueWriting(additionalPrompt = '') {
+        if (chatManager.isContextCompacting?.()) {
+            uiHelperFunctions.showToastNotification('上下文正在压缩，请稍候', 'warning');
+            return;
+        }
         console.log('[ContinueWriting] 开始执行续写功能，附加提示词:', additionalPrompt);
 
         const currentSelectedItem = refs.currentSelectedItem.get();
         const currentTopicId = refs.currentTopicId.get();
         const globalSettings = refs.globalSettings.get();
-        const currentChatHistory = refs.currentChatHistory.get();
+        let currentChatHistory = refs.currentChatHistory.get();
 
         if (!currentSelectedItem.id || !currentTopicId) {
             uiHelperFunctions.showToastNotification('请先选择一个项目和话题', 'warning');
@@ -220,6 +226,19 @@ export function setupEventListeners(deps) {
             temporaryPrompt = additionalPrompt || globalSettings.continueWritingPrompt || '请继续';
         }
 
+        if (globalSettings.enableContextCompaction === true
+            && shouldCompactContext(currentChatHistory, currentSelectedItem.config || currentSelectedItem, temporaryPrompt)) {
+            try {
+                await chatManager.compactContext();
+                if (refs.currentSelectedItem.get()?.id !== currentSelectedItem.id
+                    || refs.currentTopicId.get() !== currentTopicId) return;
+                currentChatHistory = refs.currentChatHistory.get();
+            } catch (error) {
+                uiHelperFunctions.showToastNotification(`自动压缩失败，已取消续写：${error.message}`, 'error');
+                return;
+            }
+        }
+
         const thinkingMessageId = `regen_${Date.now()}`;
         const thinkingMessage = {
             role: 'assistant',
@@ -238,7 +257,7 @@ export function setupEventListeners(deps) {
 
         try {
             const agentConfig = currentSelectedItem.config || currentSelectedItem;
-            let historySnapshotForVCP = currentChatHistory.filter(msg => msg.id !== thinkingMessage.id && !msg.isThinking);
+            let historySnapshotForVCP = effectiveContextHistory(currentChatHistory.filter(msg => msg.id !== thinkingMessage.id));
 
             // 只有当有提示词时才添加临时用户消息
             // 如果 temporaryPrompt 为空，说明是无AI消息且无输入的情况，让AI基于现有上下文自然开始
@@ -261,7 +280,10 @@ export function setupEventListeners(deps) {
                             .join('\n');
                     }
                 }
-                return { role: msg.role, content: currentMessageTextContent };
+                return {
+                    role: msg.role, content: currentMessageTextContent,
+                    ...(isContextCheckpoint(msg) ? { __vcpContextCheckpoint: true } : {}),
+                };
             }));
 
             if (agentConfig && agentConfig.systemPrompt) {

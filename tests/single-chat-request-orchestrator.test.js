@@ -20,6 +20,9 @@ async function loadOrchestratorModule() {
             .replace(
                 /(['"])\.\.\/renderer\/toolResultRegions\.js\1/,
                 JSON.stringify(pathToFileURL(path.resolve('modules/renderer/toolResultRegions.js')).href)
+            ).replace(
+                /(['"])\.\/contextCompactionState\.js\1/,
+                JSON.stringify(pathToFileURL(path.resolve('modules/chat/contextCompactionState.js')).href)
             );
         modulePromise = import(
             `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
@@ -282,4 +285,33 @@ test('send delegates the prepared request to the single low-level POST gateway',
     assert.equal(sent[0][6].agentId, 'agent-1');
     assert.equal(sent[0][6].topicId, 'topic-send');
     assert.equal(result.request.messageId, 'request-send');
+});
+
+test('latest checkpoint replaces earlier outbound context and bypasses message text processors', async () => {
+    const { createSingleChatRequestOrchestrator } = await loadOrchestratorModule();
+    const { api } = createApi({ tavernGetRules: async () => ({ success: true, store: { version: 3, rules: [] } }) });
+    const orchestrator = createSingleChatRequestOrchestrator({ electronAPI: api, tavernEngine: engine });
+    const checkpoint = (id, content) => ({
+        id, role: 'user', content,
+        contextCompaction: { kind: 'vchat-context-checkpoint', version: 1, checkpoint: '<context_checkpoint>state</context_checkpoint>' },
+    });
+    const raw = '<context_checkpoint>\n$x$ src/core/kbm.rs\n</context_checkpoint>\n日记原文';
+    const request = await orchestrator.buildRequest({
+        settings: {}, agentConfig: { model: 'main' },
+        history: [
+            { role: 'user', content: 'OLD' },
+            checkpoint('first', 'OLD_CHECKPOINT'),
+            { role: 'assistant', content: 'OLD_MIDDLE' },
+            checkpoint('latest', raw),
+            { id: 'new', role: 'user', content: '继续' },
+        ],
+        currentUserMessageId: 'new', messageId: 'reply',
+        context: { agentId: 'a', topicId: 't' },
+        transformMessageText: ({ text }) => `processed:${text}`,
+        postProcessMessageContent: async ({ content }) => content.map(part => ({ ...part, text: `post:${part.text}` })),
+    });
+    assert.equal(request.messages.length, 2);
+    assert.equal(request.messages[0].content[0].text, raw);
+    assert.equal(request.messages[0].__vcpContextCheckpoint, true);
+    assert.equal(JSON.stringify(request.messages).includes('OLD'), false);
 });

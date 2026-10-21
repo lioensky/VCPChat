@@ -42,6 +42,7 @@ function createStreamCapabilities(root, services) {
         },
         onSettled(value) {
             // 最终 outcome 发布后的幂等兜底，覆盖持久化失败等异常路径。
+            services.chatManager?.abandonStreamContextCompaction?.(value);
             services.notifySendStateChanged?.(value);
         },
         reportError,
@@ -66,6 +67,7 @@ function createStreamCapabilities(root, services) {
                 error: terminal.error || null,
             })));
             const results = await Promise.allSettled(effects);
+            await services.chatManager?.finishStreamContextCompaction?.({ messageId, context: finalizedContext });
             results.forEach(result => {
                 if (result.status === 'rejected') reportError('[MainChatSurfaceAdapter] post-commit side effect failed', result.reason);
             });
@@ -131,6 +133,10 @@ export function createMainChatSurfaceAdapter({
         createConsumer: initialEvent => createMainChatStreamConsumer(initialEvent, {
             ...streamCapabilities,
             resolveProjection: messageId => streamRoutes.claim(messageId),
+            onToolReturnBoundary: value => streamServices.chatManager?.checkStreamContextBudget?.({
+                ...value,
+                cancelStream: (messageId, reason) => bridge.cancelOperation(messageId, reason),
+            }),
         }),
     });
     let disposed = false;

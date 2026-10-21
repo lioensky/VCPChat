@@ -2931,3 +2931,50 @@ body[data-vcp-theme="light"] .vcp-flowlock-bubble.state-heartbeat .vcp-flowlock-
 body[data-vcp-theme="light"] .vcp-flowlock-bubble.state-prompt .vcp-flowlock-icon {
     color: #b45309;
 }
+
+
+/* Host-owned checkpoint: raw historical data, never an executable rich-content island. */
+.vcp-context-checkpoint {
+    min-width: 220px;
+    max-width: 100%;
+    border: 1px solid var(--border-color);
+    border-left: 3px solid var(--highlight-text);
+    border-radius: 8px;
+    background: var(--secondary-bg);
+    color: var(--primary-text);
+    font-size: 13px;
+    text-align: left;
+}
+.vcp-context-checkpoint > summary {
+    padding: 10px 14px;
+    cursor: pointer;
+    font-weight: 600;
+    user-select: none;
+}
+.vcp-context-checkpoint > summary:focus-visible {
+    outline: 2px solid var(--highlight-text);
+    outline-offset: 2px;
+}
+.vcp-context-checkpoint-body {
+    padding: 12px 14px;
+    border-top: 1px solid var(--border-color);
+    max-height: 480px;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family: var(--vcp-chat-code-font-family, monospace);
+    font-size: 12px;
+    line-height: 1.65;
+}
+.vcp-compaction-spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: vcp-icon-rotate 0.9s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+    .vcp-compaction-spinner { animation: none; }
+}

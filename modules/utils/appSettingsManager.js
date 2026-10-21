@@ -269,6 +269,11 @@ class SettingsManager extends EventEmitter {
             // Keep the settings-page default aligned with both topic-summary
             // request paths and the model picker placeholder.
             topicSummaryModel: 'gemini-2.5-flash-preview-05-20',
+            enableContextCompaction: false,
+            contextCompactionModel: '',
+            contextCompactionPrompt: '',
+            contextCompactionSendPrompt: '',
+            contextCompactionMainPrompt: '',
             networkNotesPaths: [],
             workspaces: [],
             activeWorkspaceId: null,

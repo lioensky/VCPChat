@@ -58,6 +58,18 @@ export function createMainChatSendOwner({
 
     const update = () => {
         if (disposed || !button) return false;
+        const compacting = getChatManager()?.isContextCompacting?.() === true;
+        button.classList.toggle('context-compacting', compacting);
+        if (compacting) {
+            button.disabled = true;
+            button.dataset.mode = 'compacting';
+            button.setAttribute('aria-busy', 'true');
+            button.setAttribute('aria-label', '上下文压缩中，请稍候');
+            button.title = '上下文压缩中，请稍候';
+            button.innerHTML = '<span class="vcp-compaction-spinner" aria-hidden="true"></span>';
+            return true;
+        }
+        if (button.dataset.mode === 'compacting') button.disabled = false;
         const mode = getInterruptibleMessage() ? 'interrupt' : 'send';
         button.dataset.mode = mode;
         button.classList.toggle('interrupt-mode', mode === 'interrupt');
@@ -112,7 +124,7 @@ export function createMainChatSendOwner({
         update,
         interrupt,
         async handleAction() {
-            if (disposed) return false;
+            if (disposed || getChatManager()?.isContextCompacting?.()) return false;
             if (getInterruptibleMessage()) return interrupt();
             await getChatManager()?.handleSendMessage?.();
             return true;

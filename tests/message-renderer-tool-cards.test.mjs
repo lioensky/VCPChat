@@ -452,3 +452,34 @@ test('closed turn keeps even failed result bodies unparsed until its group opens
         await disposeFixture(fixture);
     }
 });
+
+
+test('context checkpoint is a closed inert user card and preserves raw content on update', async () => {
+    const fixture = await createRendererFixture('', { toolPresentation: 'legacy', toolExpansion: 'none' });
+    try {
+        const content = '<context_checkpoint>\n$x$ &amp; src/core/kbm.rs\n</context_checkpoint>\n<script>bad()</script>\n' + TRANSCRIPT;
+        const message = {
+            id: 'checkpoint-card', role: 'user', timestamp: Date.now(), content,
+            contextCompaction: {
+                kind: 'vchat-context-checkpoint', version: 1,
+                checkpoint: '<context_checkpoint>state</context_checkpoint>',
+                diaries: [], sourceCount: 12,
+            },
+        };
+        fixture.historyRef.set([message]);
+        const item = await fixture.renderer.renderMessage(message);
+        await new Promise(resolve => setTimeout(resolve, 40));
+        const card = item.querySelector('details.vcp-context-checkpoint');
+        assert.ok(card);
+        assert.equal(card.open, false);
+        assert.equal(card.querySelector('.vcp-context-checkpoint-body').textContent, content);
+        assert.equal(item.querySelector('script, .katex, .vcp-tool-use-bubble, .vcp-role-divider'), null);
+        message.content = content + '\n更新 $&';
+        fixture.renderer.updateMessageContent(message.id, message.content);
+        await new Promise(resolve => setTimeout(resolve, 40));
+        assert.equal(item.querySelector('.vcp-context-checkpoint-body').textContent, message.content);
+        assert.equal(item.querySelector('details').open, false);
+    } finally {
+        await disposeFixture(fixture);
+    }
+});

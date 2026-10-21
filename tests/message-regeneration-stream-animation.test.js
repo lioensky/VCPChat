@@ -12,7 +12,9 @@ test('streaming regeneration starts projection with the rendered thinking placeh
         '<!doctype html><div id="chat"></div>',
         { runScripts: 'outside-only', url: 'https://vcpchat.local/' }
     );
+    Object.assign(dom.window, await import('../modules/chat/contextCompactionState.js'));
     const executableSource = source
+        .replace(/^import .*contextCompactionState\.js';\s*/m, '')
         .replace(
             'export function createMessageContextMenu()',
             'function createMessageContextMenu()'

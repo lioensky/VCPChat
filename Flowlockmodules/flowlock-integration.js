@@ -109,6 +109,12 @@ async function continueWritingForContext(params) {
         throw new Error(`无法获取 Agent 配置: ${agentConfig.error}`);
     }
 
+    if (typeof chatManagerProvider?.prepareFlowlockContext === 'function') {
+        historyForVCP = await chatManagerProvider.prepareFlowlockContext({
+            agentId, topicId, history: historyForVCP, agentConfig, prompt: prompt || '',
+        });
+    }
+
     // 获取与普通单聊一致的合并后高级回复规则。
     // IPC 返回官方预置 + 用户覆盖；权限预置默认关闭，不会因 Flowlock 后台运行而隐式授权。
     let tavernRules = [];
@@ -158,7 +164,11 @@ async function continueWritingForContext(params) {
             }
         }
         return attachFlowlockTimestampMetadata(
-            { role: msg.role, content: currentMessageTextContent },
+            {
+                role: msg.role, content: currentMessageTextContent,
+                ...(msg.role === 'user' && msg.contextCompaction?.kind === 'vchat-context-checkpoint'
+                    && msg.contextCompaction?.version === 1 ? { __vcpContextCheckpoint: true } : {}),
+            },
             msg
         );
     }));
@@ -224,6 +234,11 @@ async function continueWritingForContext(params) {
         stream: useStreaming
     };
 
+    if (params.isCurrent && !params.isCurrent()) throw new Error('心流会话已停止、切换或挂起');
+    if (chatManagerProvider?.isContextCompacting?.({ itemId: agentId, itemType: 'agent', topicId })) {
+        throw new Error('上下文压缩期间不能发送心流心跳');
+    }
+
     // 创建续写消息占位
     const thinkingMessageId = messageId || `flowlock_${agentId}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const thinkingMessage = {
@@ -266,6 +281,8 @@ async function continueWritingForContext(params) {
             category: 'flowlock-start'
         }, historyWithThinking);
     }
+
+    if (params.isCurrent && !params.isCurrent()) throw new Error('心流会话已停止、切换或挂起');
 
     // 发送到 VCP
     const vcpResponse = await chatAPI.sendToVCP(

@@ -826,6 +826,8 @@ mainChatSettingsPresentationOwner.configureStartup({
         chatManager.init({
             chatContext,
             chatRepository,
+            historyMutationAuthority,
+            flowlockManager: window.flowlockManager,
             streamConsumerRegistry: mainChatAdapter?.streamRoutes,
             chatDomRenderer: mainChatDomRenderer,
             electronAPI: chatAPI,
@@ -860,6 +862,10 @@ mainChatSettingsPresentationOwner.configureStartup({
                 // This is no longer needed as chatManager will call messageRenderer's summarizer
             },
             notifySendStateChanged: mainChatSendOwner.update
+        });
+        messageRenderer.setContextMenuDependencies({
+            compactContext: () => chatManager.compactContext(),
+            isContextCompacting: () => chatManager.isContextCompacting(),
         });
         ownedRendererSubscriptions.add(chatManager);
         ownedRendererSubscriptions.add({ dispose: () => window.topicListManager.dispose?.() });

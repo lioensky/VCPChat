@@ -1,5 +1,6 @@
 import '../tavernRulesEngine.js';
 import { stripHiddenToolResults } from '../renderer/toolResultRegions.js';
+import { effectiveContextHistory, isContextCheckpoint } from './contextCompactionState.js';
 
 function requireDependency(value, name) {
     if (!value) throw new Error(`SingleChatRequestOrchestrator requires ${name}`);
@@ -347,12 +348,14 @@ function createSingleChatRequestOrchestrator({
             ? tavernRules
             : await loadTavernRules(electronAPI);
         const contentBuilder = buildMessageContent || buildDefaultMessageContent;
-        const effectiveHistory = history.filter(message => message && message.isThinking !== true);
+        const effectiveHistory = effectiveContextHistory(history);
         const messages = [];
 
         for (let index = 0; index < effectiveHistory.length; index += 1) {
             const historyMessage = effectiveHistory[index];
-            let content = await contentBuilder({
+            let content = isContextCheckpoint(historyMessage)
+                ? [{ type: 'text', text: normalizeText(historyMessage.content) }]
+                : await contentBuilder({
                 message: historyMessage,
                 index,
                 history: effectiveHistory,
@@ -360,7 +363,7 @@ function createSingleChatRequestOrchestrator({
             });
             content = normalizeContentParts(content);
 
-            if (typeof transformMessageText === 'function') {
+            if (!isContextCheckpoint(historyMessage) && typeof transformMessageText === 'function') {
                 content = updateFirstTextPart(content, text => transformMessageText({
                     text,
                     message: historyMessage,
@@ -368,10 +371,10 @@ function createSingleChatRequestOrchestrator({
                     history: effectiveHistory,
                 }));
             }
-            if (historyMessage.role === 'user' && historyMessage.id === currentUserMessageId) {
+            if (!isContextCheckpoint(historyMessage) && historyMessage.role === 'user' && historyMessage.id === currentUserMessageId) {
                 content = applyUserRules(content, rules, engine);
             }
-            if (typeof postProcessMessageContent === 'function') {
+            if (!isContextCheckpoint(historyMessage) && typeof postProcessMessageContent === 'function') {
                 content = normalizeContentParts(await postProcessMessageContent({
                     content,
                     message: historyMessage,
@@ -384,6 +387,7 @@ function createSingleChatRequestOrchestrator({
             messages.push(attachTimestampMetadata({
                 role: historyMessage.role,
                 content,
+                ...(isContextCheckpoint(historyMessage) ? { __vcpContextCheckpoint: true } : {}),
                 ...(historyMessage.name ? { name: historyMessage.name } : {}),
                 ...(historyMessage.tool_calls ? { tool_calls: historyMessage.tool_calls } : {}),
                 ...(historyMessage.tool_call_id ? { tool_call_id: historyMessage.tool_call_id } : {}),

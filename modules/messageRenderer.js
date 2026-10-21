@@ -1,3 +1,4 @@
+import { isContextCheckpoint } from './chat/contextCompactionState.js';
 import { createProjectForgeTopicSurface } from './renderer/projectForgeTopicSurface.js';
 import { avatarColorCache, getDominantAvatarColor } from './renderer/colorUtils.js';
 import { createImageHandler } from './renderer/imageHandler.js';
@@ -2024,6 +2025,12 @@ function renderMarkdownToHtmlUncached(text, options = {}) {
 }
 
 function renderMarkdownToHtml(text, options = {}) {
+    if (isContextCheckpoint(options.message)) {
+        const meta = options.message.contextCompaction;
+        const summary = `上下文智能压缩 · ${meta.sourceCount || 0} 条历史 · ${meta.diaries?.length || 0} 篇日记`;
+        const body = escapeHtml(String(options.message.content || '')).replace(/\r\n?|\n/g, '&#10;');
+        return `<details class="vcp-context-checkpoint" data-vcp-block-type="context-checkpoint" data-vcp-preserve-children="true"><summary data-vcp-system-control="true">${escapeHtml(summary)}</summary><div class="vcp-context-checkpoint-body">${body}</div></details>`;
+    }
     const markedInstance = mainRendererReferences.markedInstance;
     if (!markedInstance) return escapeHtml(text);
 
@@ -3997,6 +4004,7 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
         // --- 正则规则应用结束 ---
 
         let rawHtml = renderMarkdownToHtml(textToRender, {
+            message,
             settings: globalSettings,
             messageRole: message.role,
             depth
@@ -4371,6 +4379,7 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId, opt
 
 function scheduleMessagePretextEstimate(messageId, text, contentDiv) {
     if (!mainRendererReferences.pretextBridge || !mainRendererReferences.pretextBridge.isReady() || !messageId || !text) return;
+    if (isContextCheckpoint(mainRendererReferences.currentChatHistoryRef.get().find(message => message.id === messageId))) return;
 
     /*
      * Pretext 只能估算纯文本换行，无法复现 ToolUse 折叠态、角色分隔器、
@@ -4485,6 +4494,7 @@ function updateMessageContent(messageId, newContent) {
     }
 
     const rawHtml = renderMarkdownToHtml(textToRender, {
+        message: messageInHistory,
         settings: globalSettings,
         messageRole: messageInHistory?.role || 'assistant',
         depth: depthForUpdate
