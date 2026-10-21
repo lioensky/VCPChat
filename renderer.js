@@ -1082,6 +1082,8 @@ mainChatSettingsPresentationOwner.configureStartup({
         // diagnostics and isolated Electron smoke tests.
         document.documentElement.dataset.vcpRendererReady = 'true';
         window.dispatchEvent(new CustomEvent('vcp-renderer-ready'));
+        // 同一时刻通知主进程，作为启动标记里的 renderer-ready（lifecycle:get-main-snapshot.launch）
+        window.electronAPI?.markRendererReady?.();
 
         // Emoticon panel event listener
         if (attachFileBtn && emoticonTriggerBtn && window.emoticonManager) {

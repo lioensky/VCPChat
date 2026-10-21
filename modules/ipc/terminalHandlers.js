@@ -426,10 +426,19 @@ function initialize({ workspaceService = null, executorLoader = null, commandRun
     });
 }
 
+/** 诊断导出用的计数：只有数量，没有输出内容或工作区路径 */
+function snapshot() {
+    return {
+        views: views.size,
+        runWatchers: runWatchers.size,
+        pendingViewRequests: viewRequests.size,
+    };
+}
+
 function disposeAll() {
     for (const request of [...viewRequests.values()]) request.finish(false, '终端桥已关闭。');
     for (const view of [...views.values()]) detachView(view);
     for (const sender of [...runWatchers.keys()]) stopRunWatcher(sender);
 }
 
-module.exports = { CHANNELS, initialize, disposeAll, buildChangeDirectoryCommand, requestTerminalView };
+module.exports = { CHANNELS, initialize, disposeAll, snapshot, buildChangeDirectoryCommand, requestTerminalView };
