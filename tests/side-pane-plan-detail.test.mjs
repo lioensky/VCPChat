@@ -457,3 +457,131 @@ test('a focus target from the status panel is applied once and then cleared from
         assert.equal(cleared.payload.projectId, 'p1', 'the rest of the payload is kept');
     } finally { handle.dispose(); }
 });
+
+test('a topic plan tab drops its stale projectId when the project is purged or deleted in batch', async (t) => {
+    const dom = new JSDOM('<div id="view"></div>', { pretendToBeVisual: true });
+    const doc = dom.window.document;
+    const parent = { itemType: 'agent', itemId: 'nova', topicId: 't1' };
+    let changed = null;
+    let purged = false;
+    const getCalls = [];
+    const api = {
+        projectForgeListProjects: async () => ({
+            success: true,
+            data: purged ? [] : [{ id: 'p1', name: '算法工程', progress: { total: 3 } }]
+        }),
+        projectForgeGetProject: async (id) => {
+            getCalls.push(id);
+            return purged ? { success: false, error: '工程不存在' } : { success: true, data: DETAIL };
+        },
+        projectForgeGetBatch: async () => ({ success: false, error: '不存在' }),
+        onProjectForgeChanged: (cb) => { changed = cb; return () => {}; }
+    };
+    getProjectForgeChangesSource(api, { graceMs: 0 });
+    const provider = createPlanDetailSideProvider({
+        document: doc, api,
+        sidePaneController: { getSnapshot: () => ({ parent, tabs: [] }), openTab: async () => null, setVisible() {}, updateTab() {} },
+        getTopicScope: () => ({ projectIds: ['p1'], batchIds: new Set() })
+    });
+    const view = doc.getElementById('view');
+    const handle = await provider.mountTab({ id: planTabId('p1', parent), kind: 'plan-detail', parent, payload: {} }, view);
+    assert.equal(view.querySelectorAll('.side-plan-todo').length, 3);
+    assert.deepEqual(getCalls, ['p1']);
+
+    purged = true;
+    useFakeTimers(t);
+    changed?.({ action: 'purgeprojects', projectId: null, projectIds: ['p1'] });
+    await passDebounce();
+    assert.equal(getCalls.length, 1, 'purged topic project is not re-requested by stale projectId fallback');
+    assert.match(view.textContent, /还没用过 V工程/);
+    await handle.dispose();
+    dom.window.close();
+});
+
+test('a topic plan reloads a restored scope project after deletion cleared its projectId', async (t) => {
+    const dom = new JSDOM('<div id="view"></div>', { pretendToBeVisual: true });
+    const parent = { itemType: 'agent', itemId: 'nova', topicId: 't1' };
+    let changed = null;
+    let deleted = false;
+    let listCalls = 0;
+    const api = {
+        projectForgeListProjects: async () => {
+            listCalls += 1;
+            return { success: true, data: deleted ? [] : [{ id: 'p1', name: '算法工程' }] };
+        },
+        projectForgeGetProject: async () => ({ success: true, data: DETAIL }),
+        projectForgeGetBatch: async () => ({ success: false, error: '不存在' }),
+        onProjectForgeChanged: cb => { changed = cb; return () => {}; }
+    };
+    getProjectForgeChangesSource(api, { graceMs: 0 });
+    const provider = createPlanDetailSideProvider({
+        document: dom.window.document, api,
+        sidePaneController: { getSnapshot: () => ({ parent, tabs: [] }), updateTab() {} },
+        getTopicScope: () => ({ projectIds: ['p1'], batchIds: new Set() })
+    });
+    const view = dom.window.document.getElementById('view');
+    const handle = await provider.mountTab({ id: planTabId('p1', parent), parent, payload: {} }, view);
+    try {
+        assert.equal(view.querySelectorAll('.side-plan-todo').length, 3);
+        useFakeTimers(t);
+        deleted = true;
+        changed({ action: 'deleteprojects', projectId: 'p1', projectIds: ['p1'] });
+        await passDebounce();
+        assert.match(view.textContent, /还没用过 V工程/);
+        const afterDelete = listCalls;
+
+        changed({ action: 'restoreprojects', projectId: 'other', projectIds: ['other'] });
+        await passDebounce();
+        assert.equal(listCalls, afterDelete, 'unrelated single-project events stay filtered');
+
+        deleted = false;
+        changed({ action: 'restoreprojects', projectId: 'p1', projectIds: ['p1'] });
+        await passDebounce();
+        assert.equal(listCalls, afterDelete + 1, 'restoration matches the retained topic scope');
+        assert.equal(view.querySelectorAll('.side-plan-todo').length, 3);
+    } finally {
+        await handle.dispose();
+        dom.window.close();
+    }
+});
+
+test('a failed topic project list refresh preserves the plan and allows retry', async (t) => {
+    const dom = new JSDOM('<div id="view"></div>', { pretendToBeVisual: true });
+    const parent = { itemType: 'agent', itemId: 'nova', topicId: 't1' };
+    let changed = null;
+    let failed = false;
+    const api = {
+        projectForgeListProjects: async () => failed
+            ? { success: false, error: '工程列表读取失败' }
+            : { success: true, data: [{ id: 'p1', name: '算法工程' }] },
+        projectForgeGetProject: async () => ({ success: true, data: DETAIL }),
+        projectForgeGetBatch: async () => ({ success: false, error: '不存在' }),
+        onProjectForgeChanged: cb => { changed = cb; return () => {}; }
+    };
+    getProjectForgeChangesSource(api, { graceMs: 0 });
+    const provider = createPlanDetailSideProvider({
+        document: dom.window.document, api,
+        sidePaneController: { getSnapshot: () => ({ parent, tabs: [] }), updateTab() {} },
+        getTopicScope: () => ({ projectIds: ['p1'], batchIds: new Set() })
+    });
+    const view = dom.window.document.getElementById('view');
+    const handle = await provider.mountTab({ id: planTabId('p1', parent), parent, payload: {} }, view);
+    try {
+        useFakeTimers(t);
+        failed = true;
+        changed({ action: 'updatetodos', projectId: 'p1' });
+        await passDebounce();
+        assert.equal(view.querySelectorAll('.side-plan-todo').length, 3);
+        assert.match(view.querySelector('.side-plan-stale')?.textContent || '', /工程列表读取失败/);
+        assert.doesNotMatch(view.textContent, /还没用过 V工程/);
+
+        failed = false;
+        view.querySelector('.side-plan-stale button').click();
+        await settle();
+        assert.equal(view.querySelector('.side-plan-stale'), null);
+        assert.equal(view.querySelectorAll('.side-plan-todo').length, 3);
+    } finally {
+        await handle.dispose();
+        dom.window.close();
+    }
+});

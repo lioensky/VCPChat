@@ -171,6 +171,9 @@
         const action = mounted && !restoringTabs && !overlayCoordinator?.active && activeView?.kind === 'embedded'
             ? activeView.action
             : null;
+        if (action && activeView?.kind === 'embedded') {
+            syncEmbeddedBounds(activeView);
+        }
         const activation = embeddedAppController?.activate(action);
         if (!activation) return;
         trackTabPromise(`activate:${action || 'home'}`, activation).then(result => {

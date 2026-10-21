@@ -244,13 +244,20 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, powerMo
     function activate(appAction) {
         try { appAction = normalizeEmbeddedAction(appAction, { optional: true }); }
         catch (error) { return { success: false, error: error.message }; }
-        hideAll();
-        activeAction = null;
-        if (!appAction) return { success: true };
+        if (!appAction) {
+            hideAll();
+            activeAction = null;
+            return { success: true };
+        }
         const session = sessions.get(appAction);
         if (!session || session.view.webContents.isDestroyed()) {
+            hideAll();
+            activeAction = null;
             return { success: false, error: '内嵌应用会话不存在。' };
         }
+        sessions.forEach((candidate, key) => {
+            if (key !== appAction) candidate.view.setVisible(false);
+        });
         const parentBounds = mainWindow.getContentBounds();
         if (session.insets) {
             session.bounds = boundsFromInsets(session.insets, parentBounds);
@@ -263,13 +270,15 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, powerMo
             };
             session.insets = getBoundsInsets(session.bounds, parentBounds);
         }
-        if (mainWindow && !mainWindow.isDestroyed()) {
+        const wasActive = activeAction === appAction;
+        if (mainWindow && !mainWindow.isDestroyed() && !wasActive) {
             try {
                 mainWindow.contentView.removeChildView(session.view);
                 mainWindow.contentView.addChildView(session.view);
             } catch { /* ignored */ }
         }
-        session.view.setBounds(normalizeBounds(session.bounds, parentBounds));
+        const normalized = normalizeBounds(session.bounds, parentBounds);
+        session.view.setBounds(normalized);
         session.view.setVisible(true);
         activeAction = appAction;
         try {
