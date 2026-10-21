@@ -422,10 +422,10 @@ function createSingleChatRequestOrchestrator({
     async function sendPrepared(request, settings) {
         requireDependency(request, 'request');
         requireDependency(settings, 'settings');
-        if (!settings.vcpServerUrl) throw new Error('请先配置 VCP 服务器 URL。');
+        const vcpUrl = settings.vcpServerUrl || 'http://127.0.0.1:6005/v1/chat/completions';
 
         return electronAPI.sendToVCP(
-            settings.vcpServerUrl,
+            vcpUrl,
             settings.vcpApiKey,
             request.messages,
             request.modelConfig,

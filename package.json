@@ -254,5 +254,16 @@
       "target": "AppImage",
       "icon": "assets"
     }
+  },
+  "allowScripts": {
+    "@3d-dice/dice-box@1.1.4": true,
+    "better-sqlite3@13.0.3": true,
+    "electron-edge-js@44.0.0": true,
+    "electron-winstaller@5.4.0": true,
+    "hnswlib-node@3.0.0": true,
+    "node-pty@1.1.0-beta37": true,
+    "puppeteer@25.9.0": true,
+    "tesseract.js@6.0.1": true,
+    "vue-demi@0.14.10": true
   }
 }

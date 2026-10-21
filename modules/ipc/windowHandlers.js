@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const path = require('path');
 const { PRELOAD_ROLES, resolveAppPreload } = require('../services/preloadPaths');
 const windowPinService = require('../services/windowPinService');
+const trayPreferences = require('../trayPreferences');
 
 /**
  * Initializes window control IPC handlers.
@@ -103,6 +104,12 @@ function initialize(mainWindow, openChildWindows) {
             // If it's the main window, check if the desktop window is alive.
             // If so, hide the main window to tray instead of quitting.
             if (win === mainWindow) {
+                // closeToTray 开启时，关闭按钮＝隐藏到托盘（默认行为）。
+                if (trayPreferences.readCloseToTray()) {
+                    console.log('[WindowHandlers] closeToTray 开启，隐藏主窗口到托盘。');
+                    win.hide();
+                    return;
+                }
                 const desktopHandlers = require('./desktopHandlers');
                 const desktopWindow = desktopHandlers.getDesktopWindow();
                 if (desktopWindow && !desktopWindow.isDestroyed()) {

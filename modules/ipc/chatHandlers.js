@@ -171,6 +171,41 @@ function getVcpStreamTaskSnapshot() {
     return vcpStreamTasks.snapshot();
 }
 
+/**
+ * 校验目标 VCP 地址是否为本机回环实例
+ * 严格限定 http 协议、127.0.0.1 / localhost / [::1] 回环地址、6005 端口及 /v1/chat/completions 端点
+ * 避免远程包含 localhost 关键字、外部端口或特殊自定义端点被误路由到本机管道
+ * @param {string} url
+ * @returns {boolean}
+ */
+function isLocalVcpUrl(url) {
+    if (!url || typeof url !== 'string' || !url.trim()) return true;
+    try {
+        const parsed = new URL(url);
+        if (parsed.protocol !== 'http:') return false;
+
+        let host = parsed.hostname.toLowerCase();
+        if (host.startsWith('[') && host.endsWith(']')) {
+            host = host.slice(1, -1);
+        }
+        const isLoopback = host === '127.0.0.1' || host === 'localhost' || host === '::1';
+        if (!isLoopback) return false;
+
+        // 本地 VCP 专属服务端口为 6005；显式指定其他端口（如标准 HTTP 80）均不走本机 IPC 管道
+        const port = parsed.port;
+        if (port !== '6005') return false;
+
+        const pathname = parsed.pathname.replace(/\/+$/, '');
+        if (pathname && pathname !== '/v1/chat/completions') {
+            return false;
+        }
+
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 async function withFlowlockClaimLock(agentId, task) {
     const previous = flowlockClaimLocks.get(agentId) || Promise.resolve();
     let release;
@@ -1135,6 +1170,22 @@ function initialize(mainWindow, context) {
         }
 
         let finalVcpUrl = vcpUrl;
+
+        // 设置里的 VCP 服务器地址允许只填「根地址」或「版本段」，这里补全成完整端点。
+        // 只填 http://host 时上游会 POST / 拿到 404，是新手最容易踩的一脚。
+        try {
+            const probe = new URL(vcpUrl);
+            const pathname = probe.pathname.replace(/\/+$/, '');
+            const isRootOrVersionBase = pathname === '' || /^\/(?:api\/)?v\d+[a-z0-9]*(?:\/openai)?$/i.test(pathname);
+            if (isRootOrVersionBase && !/\/chat\/completions$/i.test(pathname)) {
+                probe.pathname = `${pathname || '/v1'}/chat/completions`;
+                finalVcpUrl = probe.toString();
+                console.log(`[Main - sendToVCP] 端点补全: ${vcpUrl} -> ${finalVcpUrl}`);
+            }
+        } catch (urlProbeError) {
+            console.warn(`[Main - sendToVCP] vcpUrl 不是合法 URL，原样透传: ${vcpUrl}`);
+        }
+
         let settings = {};
         try {
             const settingsPath = path.join(APP_DATA_ROOT_IN_PROJECT, 'settings.json');
@@ -1337,6 +1388,54 @@ function initialize(mainWindow, context) {
                 return { error: `请求体序列化失败: ${serializeError.message}` };
             }
 
+            // 🌟 方案 2 六边形直连：若本地 IPC 管道可用、请求为流式且目标为本地后端，优先走 IPC 通道直连核心引擎
+            const isLocal = isLocalVcpUrl(vcpUrl);
+            const isStreamRequest = modelConfig?.stream === true;
+            const vcpIpcClient = require('./vcpIpcClient');
+            if (isStreamRequest && isLocal && vcpIpcClient.isConnected()) {
+                console.log(`[Main - sendToVCP] 检测到本地全双工 IPC 管道就绪且请求为流式，走 IPC 直连核心引擎 for ${messageId}`);
+                streamTaskDetached = true;
+
+                const ipcDispatched = vcpIpcClient.sendChatStream(requestBody, {
+                    signal: streamTask?.controller.signal,
+                    onChunk: (chunk) => {
+                        const parsedChunk = chunk.raw || {
+                            id: `chatcmpl-${messageId}`,
+                            object: 'chat.completion.chunk',
+                            created: Math.floor(Date.now() / 1000),
+                            model: modelConfig.model || 'vcp',
+                            choices: [{
+                                index: 0,
+                                delta: chunk.type === 'reasoning'
+                                    ? { reasoning_content: chunk.reasoning }
+                                    : { content: chunk.text || '' },
+                                finish_reason: chunk.finish_reason || null
+                            }]
+                        };
+                        trajectoryCall.chunk(parsedChunk);
+                        sendStreamPayload({ type: 'data', chunk: parsedChunk, messageId, context });
+                    },
+                    onEnd: (chunk) => {
+                        console.log(`[Main - sendToVCP] IPC 流结束 for messageId: ${messageId}`);
+                        trajectoryCall.finish();
+                        sendStreamPayload({ type: 'end', messageId, context });
+                        finishStreamTask();
+                    },
+                    onError: (streamError) => {
+                        console.error(`[Main - sendToVCP] IPC 流错误 for messageId: ${messageId}:`, streamError);
+                        trajectoryCall.finish({ error: streamError });
+                        sendStreamPayload({ type: 'error', error: `VCP IPC 错误: ${streamError.message}`, messageId, context });
+                        finishStreamTask();
+                    }
+                });
+
+                if (ipcDispatched) {
+                    return { stream: true, status: 'started_via_ipc' };
+                }
+                console.warn(`[Main - sendToVCP] IPC 派发失败，回退到 HTTP 网络请求`);
+                streamTaskDetached = false;
+            }
+
             const response = await fetch(finalVcpUrl, {
                 method: 'POST',
                 headers: {
@@ -1534,6 +1633,19 @@ function initialize(mainWindow, context) {
     ipcMain.handle('interrupt-vcp-request', async (event, { messageId }) => {
         let upstreamAccepted = false;
         try {
+            // 🌟 方案 2：若原请求是通过本地 IPC 派发的，通过 IPC 发送快速中断信号并等待确认
+            const vcpIpcClient = require('./vcpIpcClient');
+            if (vcpIpcClient.isConnected() && vcpIpcClient.hasActiveStream(messageId)) {
+                console.log(`[Main - interrupt] 请求 ${messageId} 属于活跃 IPC 会话，发送 IPC 快速中断信号并等待确认`);
+                const confirmed = await vcpIpcClient.interrupt(messageId, 'user_interrupted', INTERRUPT_TIMEOUT_MS);
+                if (confirmed) {
+                    upstreamAccepted = true;
+                    return { success: true, message: 'Interrupt signal confirmed via IPC.' };
+                }
+                console.warn(`[Main - interrupt] IPC 中断未获正面确认 (超时或后端拒绝)，回退到本地终态收尾 for ${messageId}`);
+                return { success: false, error: 'IPC interrupt rejected or timed out' };
+            }
+
             const settingsPath = path.join(APP_DATA_ROOT_IN_PROJECT, 'settings.json');
             if (!await fs.pathExists(settingsPath)) {
                 return { success: false, error: 'Settings file not found.' };

@@ -1,12 +1,8 @@
-Option Explicit
-
-Dim WshShell, projectPath, commandToRun
-
-projectPath = CreateObject("Scripting.FileSystemObject").GetParentFolderName(WScript.ScriptFullName)
-commandToRun = "cmd /c cd /d """ & projectPath & """ && npx electron . --desktop-only"
-
 Set WshShell = CreateObject("WScript.Shell")
-WshShell.Run commandToRun, 0, False
-Set WshShell = Nothing
+Set WshEnv = WshShell.Environment("Process")
+projectPath = CreateObject("Scripting.FileSystemObject").GetParentFolderName(WScript.ScriptFullName)
+runtimesBase = projectPath & "\..\runtimes"
+WshEnv("PATH") = runtimesBase & "\node;" & runtimesBase & "\git\cmd;" & runtimesBase & "\python;" & runtimesBase & "\python\Scripts;" & WshEnv("PATH")
+WshShell.CurrentDirectory = projectPath
 
-WScript.Quit
+WshShell.Run "cmd /c npx electron . --desktop-only", 0, False

@@ -63,8 +63,10 @@ const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs-extra'); // Using fs-extra for convenience
 const os = require('os');
-const { spawn } = require('child_process'); // For executing local python
+const net = require('net');
+const { spawn, execFile } = require('child_process'); // For executing local python
 const { Worker } = require('worker_threads');
+const trayPreferences = require('./modules/trayPreferences');
 const bootstrapLaunchProtocol = require('./modules/bootstrap/launch-protocol');
 const fileManager = require('./modules/fileManager'); // Import the new file manager
 const groupChat = require('./Groupmodules/groupchat'); // Import the group chat module
@@ -307,6 +309,7 @@ if (isolatedAppDataRoot) app.setPath('userData', path.resolve(isolatedAppDataRoo
 const APP_DATA_ROOT_IN_PROJECT = isolatedAppDataRoot
     ? path.resolve(isolatedAppDataRoot)
     : path.join(PROJECT_ROOT, 'AppData');
+trayPreferences.configure({ appDataRoot: APP_DATA_ROOT_IN_PROJECT });
 const NATIVE_SPLASH_READY_FILE = app.isPackaged
     ? path.join(APP_DATA_ROOT_IN_PROJECT, '.vcp_ready')
     : path.join(__dirname, '.vcp_ready');
@@ -803,9 +806,10 @@ function createWindow({ deferLoad = false } = {}) {
     });
 
     // 当主窗口关闭时的处理逻辑：
-    // 1. macOS 上始终隐藏而非关闭
-    // 2. 当桌面窗口存在时，隐藏到托盘而非退出（偷天换日！）
-    // 3. 其他情况正常退出
+    // 1. 应用正在退出（app.isQuitting）→ 放行
+    // 2. macOS 上始终隐藏而非关闭
+    // 3. closeToTray 开启（缺省）→ 隐藏到托盘，进程留在后台
+    // 4. closeToTray 关闭 → 放行关闭，正常退出
     mainWindow.on('close', (event) => {
         if (app.isQuitting) {
             // 应用正在退出，允许关闭
@@ -819,14 +823,16 @@ function createWindow({ deferLoad = false } = {}) {
             return;
         }
 
-        // Windows/Linux：如果桌面窗口存在，隐藏到托盘
-        const dw = desktopHandlers.getDesktopWindow();
-        if (dw && !dw.isDestroyed()) {
+        // 关闭行为可配置（AppData/tray-settings.json 的 closeToTray，缺省 true）：
+        // true  = 隐藏到托盘，进程留在后台；
+        // false = 放行本次关闭，由 before-quit / closed 收尾退出。
+        if (trayPreferences.readCloseToTray()) {
             event.preventDefault();
             mainWindow.hide();
-            console.log('[Main] Desktop window active — main window hidden to tray instead of closing.');
+            console.log('[Main] closeToTray 开启，主窗口隐藏到托盘。');
+            return;
         }
-        // 否则允许正常关闭（触发 closed 事件）
+        app.isQuitting = true;
     });
 
     // This will be triggered when the app is quitting, after the window is closed.
@@ -968,7 +974,70 @@ function createTray() {
         await toggleRagObserverVisibility();
     };
 
-    const contextMenu = Menu.buildFromTemplate([
+    // 动态托盘菜单：Windows 部署侧提供了 tools/ 启停脚本时，才显示后端状态与启停项。
+    // 上游仓库没有这些脚本或非 Windows 平台时，菜单会保持原样。
+    const backendControlAvailable = process.platform === 'win32' && fs.existsSync(path.join(PROJECT_ROOT, '..', 'tools', 'start-backend.ps1'));
+    let backendRunning = false;
+    let backendProbeTimer = null;
+
+    const getBackendPort = () => {
+        try {
+            if (fs.existsSync(SETTINGS_FILE)) {
+                const raw = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
+                if (raw && raw.vcpServerUrl) {
+                    const parsed = new URL(raw.vcpServerUrl);
+                    if (parsed.port) return parseInt(parsed.port, 10);
+                }
+            }
+        } catch (_) {}
+        return 6005;
+    };
+
+    const probeBackend = () => new Promise((resolve) => {
+        let settled = false;
+        let socket = null;
+        const finish = (up) => {
+            if (settled) return;
+            settled = true;
+            if (socket) socket.destroy();
+            resolve(up);
+        };
+        socket = net.connect({ host: '127.0.0.1', port: getBackendPort() });
+        socket.once('connect', () => finish(true));
+        socket.once('error', () => finish(false));
+        socket.setTimeout(600, () => finish(false));
+    });
+
+    // 后端启停脚本放在部署根目录的 tools/ 下（与 VCP_AIOS 同级），不写死盘符。
+    const runBackendScript = (scriptName) => {
+        if (process.platform !== 'win32') return;
+        const scriptPath = path.join(PROJECT_ROOT, '..', 'tools', scriptName);
+        if (!fs.existsSync(scriptPath)) {
+            console.warn('[Main] 未找到后端脚本:', scriptPath);
+            return;
+        }
+        const child = execFile(
+            'powershell.exe',
+            ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath],
+            { windowsHide: true },
+            (error) => {
+                if (error) console.warn('[Main] 后端脚本执行失败:', scriptName, error.message);
+            }
+        );
+        // execFile 的失败是异步事件，不挂 error 监听会让主进程直接抛异常退出。
+        child.on('error', (error) => console.warn('[Main] 无法启动 powershell:', error.message));
+    };
+
+    const buildTrayMenu = () => Menu.buildFromTemplate([
+        ...(backendControlAvailable ? [
+            {
+                label: backendRunning ? `后端：运行中 (${getBackendPort()})` : '后端：未启动',
+                enabled: false
+            },
+            { label: '启动后端', click: () => { runBackendScript('start-backend.ps1'); } },
+            { label: '停止后端', click: () => { runBackendScript('stop-backend.ps1'); } },
+            { type: 'separator' }
+        ] : []),
         {
             label: '显示/隐藏主窗口',
             click: () => {
@@ -988,8 +1057,18 @@ function createTray() {
             }
         },
         { type: 'separator' },
+        ...(backendControlAvailable ? [{
+            label: '彻底退出（含后端）',
+            click: () => {
+                runBackendScript('stop-backend.ps1');
+                setTimeout(() => {
+                    app.isQuitting = true;
+                    app.quit();
+                }, 300);
+            }
+        }] : []),
         {
-            label: '退出',
+            label: backendControlAvailable ? '退出（仅关闭界面）' : '退出',
             click: () => {
                 app.isQuitting = true;
                 app.quit();
@@ -997,7 +1076,32 @@ function createTray() {
         }
     ]);
 
+    const applyTrayMenu = () => {
+        contextMenu = buildTrayMenu();
+        if (process.platform !== 'darwin') {
+            tray.setContextMenu(contextMenu);
+        }
+    };
+
+    const refreshBackendState = async () => {
+        const nextState = await probeBackend();
+        if (nextState === backendRunning) return;
+        backendRunning = nextState;
+        try {
+            applyTrayMenu();
+            tray.setToolTip(backendRunning ? 'VCP · 后端运行中' : 'VCP · 后端未启动');
+        } catch (e) { /* tray 可能已销毁 */ }
+    };
+
+    // 保留原变量名：macOS 的 right-click 处理与末尾 setContextMenu 都引用它。
+    let contextMenu = buildTrayMenu();
+
     tray.setToolTip('VCP AI 聊天客户端');
+    if (backendControlAvailable) {
+        refreshBackendState();
+        if (backendProbeTimer) clearInterval(backendProbeTimer);
+        backendProbeTimer = setInterval(refreshBackendState, 5000);
+    }
     // 平台特定行为调整：macOS 左键点击只显示/隐藏，右键点击才显示菜单
     if (process.platform === 'darwin') {
         // macOS: 左键点击 (tray.on('click')) 负责显示/隐藏窗口
@@ -1311,6 +1415,54 @@ if (!gotTheLock) {
         createWindow({ deferLoad: true });
         createTray();
         reportLauncherProgress('window-created', 0.38, '主窗口骨架已创建');
+
+        // 🌟 方案 2：启动本地全双工 IPC 客户端并监听 AI 生命体的主动唤醒事件
+        const vcpIpcClient = require('./modules/ipc/vcpIpcClient');
+        vcpIpcClient.connect();
+
+        const { Notification: NativeNotification } = require('electron');
+
+        vcpIpcClient.onProactiveWake(async (event) => {
+            console.log(`[Main] 收到生命体主动唤醒请求: level=${event.level}, title=${event.title}`);
+            const title = event.title || 'VCP 智能体主动唤醒';
+            const body = event.content || '';
+
+            // 级别 1 (toast)：Windows 原生桌面横幅通知
+            if (event.level === 'toast' || !event.level) {
+                if (NativeNotification && NativeNotification.isSupported()) {
+                    new NativeNotification({
+                        title,
+                        body,
+                        icon: path.join(__dirname, 'assets', 'icon.png')
+                    }).show();
+                }
+            }
+
+            // 级别 2 (tray_pulse)：托盘气泡与呼吸跳动
+            if (event.level === 'tray_pulse') {
+                if (tray && typeof tray.displayBalloon === 'function') {
+                    tray.displayBalloon({
+                        title,
+                        content: body
+                    });
+                }
+            }
+
+            // 级别 3 (overlay_bubble) 或 级别 4 (urgent_popup)：霸道强弹置顶
+            if (event.level === 'urgent_popup' || event.level === 'overlay_bubble') {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    if (mainWindow.isMinimized()) mainWindow.restore();
+                    if (!mainWindow.isVisible()) mainWindow.show();
+                    mainWindow.setAlwaysOnTop(true);
+                    mainWindow.focus();
+                    mainWindow.moveTop();
+                    mainWindow.setAlwaysOnTop(false);
+
+                    // 通知渲染进程展示对话或播放语音
+                    mainWindow.webContents.send('proactive:wake', event);
+                }
+            }
+        });
         // --- Application Menu ---
         const isMac = process.platform === 'darwin';
         const menuTemplate = [
@@ -1946,9 +2098,11 @@ if (!gotTheLock) {
     });
 
     app.on('window-all-closed', () => {
-        if (process.platform !== 'darwin') {
-            app.quit();
-        }
+        // 托盘模式下（closeToTray=true）窗口全关也留在后台；
+        // 只有用户选择「关闭即退出」时才真正结束进程。
+        if (app.isQuitting || process.platform === 'darwin') return;
+        if (trayPreferences.readCloseToTray()) return;
+        app.quit();
     });
 
     app.on('before-quit', async (event) => {

@@ -224,6 +224,7 @@ const GLOBAL_CATEGORY_ICONS = Object.freeze({
     'advanced-features': 'layers',
     'workspace-management': 'folder-git-2',
     'quick-actions': 'zap',
+    'about-app': 'info',
 });
 
 // Global settings modal: control enhancement, autosave status, and the

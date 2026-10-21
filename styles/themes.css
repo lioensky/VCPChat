@@ -1,77 +1,67 @@
 /*
- * styles/themes/themes纸墨与机芯.css
- * VCP Official Visual Theme
- * Designed by Coco for Professor Ryan
- *
- * Dark  : Industrial Core / 工业核心
- * Light : Editorial Ink / 编辑墨色
- *
- * Visual language:
- * graphite bulkheads, mechanical halo, industrial typography;
- * warm editorial paper, vermilion marks, turquoise status signals.
+ * styles/themes/themes夜樱猫语.css
+ * Curated by Coco for Professor Ryan
+ * Theme Name: 夜樱猫语 (Night Sakura Cat Whispers)
+ * A theme blending the serene beauty of night sakura with the mysterious charm of a forest cat.
  */
 
-/* =========================================================
-   Dark Theme (Default) · Industrial Core
-   工业石墨 / 骨白 / 警示黄 / 铜绿
-   ========================================================= */
+/* * =================================================================
+ * Dark Theme: 夜樱倒影 (Night Sakura Reflection)
+ * Inspired by the deep blues, purples, and soft pinks of a rainy night with cherry blossoms.
+ * =================================================================
+ */
 :root {
-    color-scheme: dark;
-
-    /* --- Wallpaper Interface ---
-       AI/theme authors may recommend `panel` or `global`; the user's
-       appearance preference can explicitly override this recommendation. */
-    --vcp-theme-wallpaper-scope: panel;
-    --chat-wallpaper-dark: url('../assets/wallpaper/vcp_industrial_core_dark.jpg');
+    /* --- Wallpaper Interface --- */
+    --chat-wallpaper-dark: url('../assets/wallpaper/樱夜倒影.png');
 
     /* --- Base Colors --- */
-    --primary-bg: #171A1D;
-    --secondary-bg: #20252A;
-    --tertiary-bg: #171A1D;
-    --accent-bg: #2A3035;
-    --border-color: #3B4449;
-    --input-bg: rgba(32, 37, 42, 0.92);
-    --panel-bg-dark: rgba(32, 37, 42, 0.86);
+    --primary-bg: #1a1a2e;      /* 主背景 - 深蓝紫 */
+    --secondary-bg: #2b2b45;    /* 侧边栏/面板背景 - 略浅的深蓝紫 */
+    --tertiary-bg: #10101a;     /* 聊天区背景 - 更深的蓝紫 */
+    --accent-bg: #3a3a5e;       /* 悬停/选中背景 - 中等蓝紫 */
+    --border-color: #3a3a5e;    /* 边框颜色 */
+    --input-bg: #25253a;        /* 输入框背景 */
+    --panel-bg-dark: rgba(43, 43, 69, 0.75); /* 基于--secondary-bg，增加75%不透明度 */
 
     /* --- Text Colors --- */
-    --primary-text: #F2F0E9;
-    --secondary-text: #A7AFB1;
-    --highlight-text: #F2A900;
-    --text-on-accent: #171A1D;
-    --placeholder-text: #788185;
-    --quoted-text: #76BFAE;
-    --user-text: #F2F0E9;
-    --agent-text: #F2F0E9;
+    --primary-text: #e0e0e0;    /* 主要文字 - 浅灰 */
+    --secondary-text: #a0a0b0;  /* 次要/标题文字 - 中灰 */
+    --highlight-text: #ff8c94;  /* 高亮文字 - 樱花粉 */
+    --text-on-accent: #ffffff;  /* 在强调色背景上的文字 */
+    --placeholder-text: #6a6a80; /* 输入框占位文字 */
+    --quoted-text: #ffb74d;     /* 引用文本颜色 - 柔和橙色 */
+    --user-text: #e0e0e0;       /* 用户气泡文字 - 浅灰 */
+    --agent-text: #e0e0e0;      /* Agent气泡文字 - 浅灰 */
 
-    /* --- Chat Bubbles --- */
-    --user-bubble-bg: rgba(242, 169, 0, 0.105);
-    --assistant-bubble-bg: rgba(32, 37, 42, 0.78);
+    /* --- Bubble Colors (Frosted Glass Ready) --- */
+    --user-bubble-bg: rgba(255, 140, 148, 0.222); /* 用户气泡 - 樱花粉 - 半透明 */
+    --assistant-bubble-bg: rgba(43, 43, 69, 0.39); /* AI气泡 - 深蓝紫 - 半透明 */
 
-    /* --- Controls & Semantic Colors --- */
-    --button-bg: #F2A900;
-    --button-hover-bg: #FFC247;
-    --danger-color: #E06C5F;
-    --danger-hover-bg: #F07B6E;
-    --success-color: #76BFAE;
-
-    /* --- Notifications & Tools --- */
-    --notification-bg: rgba(32, 37, 42, 0.92);
-    --notification-header-bg: rgba(42, 48, 53, 0.94);
-    --notification-border: #3B4449;
-    --tool-bubble-bg: rgba(36, 61, 57, 0.42);
-    --tool-bubble-border: rgba(118, 191, 174, 0.66);
+    /* --- UI Element Colors --- */
+    --button-bg: #48486c;           /* 按钮背景 - 中等蓝紫 */
+    --button-hover-bg: #58587e;      /* 按钮悬停 - 略亮的蓝紫 */
+    --danger-color: #e57373;        /* 危险操作 - 柔和红 */
+    --danger-hover-bg: #ef5350;
+    --success-color: #66bb6a;       /* 成功操作 - 柔和绿 */
+    --notification-bg: #2f2f4a;
+    --notification-header-bg: #30304b;
+    --notification-border: #48486c;
+    --tool-bubble-bg: rgba(58, 58, 94, 0.15); /* VCP工具调用气泡背景 - 半透明中蓝紫 */
+    --tool-bubble-border: #ff8c94; /* VCP工具调用气泡边框 - 樱花粉 */
 
     /* --- Scrollbar --- */
-    --scrollbar-track: rgba(23, 26, 29, 0.55);
-    --scrollbar-thumb: rgba(242, 169, 0, 0.52);
-    --scrollbar-thumb-hover: rgba(242, 169, 0, 0.78);
+    --scrollbar-track: rgba(40, 40, 60, 0.5);
+    --scrollbar-thumb: rgba(100, 100, 120, 0.7);
+    --scrollbar-thumb-hover: rgba(120, 120, 140, 0.6);
 
-    /* --- Streaming Shimmer --- */
-    --shimmer-color-transparent: rgba(242, 169, 0, 0.08);
-    --shimmer-color-highlight: rgba(242, 169, 0, 0.48);
+    /* --- Shimmer Effect for Loading --- */
+    --shimmer-color-transparent: rgba(224, 224, 224, 0.408);
+    --shimmer-color-highlight: rgba(224, 224, 224, 0.867);
 
-    /* --- Frosted Panel Readability --- */
-    --panel-text-shadow: 0 1px 3px rgba(0, 0, 0, 0.72);
+    /* --- Text Shadow for Frosted Panels --- */
+    --panel-text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+
+    /* --- Unified Panel Background --- */
     --panel-bg: var(--panel-bg-dark);
 }
 
@@ -82,260 +72,112 @@ body {
     background-attachment: fixed;
 }
 
-/* =========================================================
-   Light Theme · Editorial Ink
-   暖白纸张 / 炭墨 / 朱砂 / 松石
-   ========================================================= */
+/* * =================================================================
+ * Light Theme: 绿影猫咪 (Green Shadow Cat)
+ * Inspired by the deep greens and mysterious feel of the cat in the water.
+ * =================================================================
+ */
 body.light-theme {
-    color-scheme: light;
-
-    /* --- Wallpaper Interface --- */
-    --chat-wallpaper-light: url('../assets/wallpaper/vcp_editorial_ink_light.jpg');
+    /* Wallpaper and background properties */
     background-image: var(--chat-wallpaper-light);
     background-size: cover;
     background-position: center;
     background-attachment: fixed;
+    /* --- Wallpaper Interface --- */
+    --chat-wallpaper-light: url('../assets/wallpaper/绿影猫咪.png');
 
     /* --- Base Colors --- */
-    --primary-bg: #F2EFE7;
-    --secondary-bg: #FCFAF4;
-    --tertiary-bg: #F2EFE7;
-    --accent-bg: #E7E1D5;
-    --border-color: #D2CBC0;
-    --input-bg: rgba(252, 250, 244, 0.94);
-    --panel-bg-light: rgba(252, 250, 244, 0.88);
+    --primary-bg: #e0ede6;      /* 主背景 - 浅绿灰 */
+    --secondary-bg: #f0f8f4;    /* 侧边栏 - 略白的绿灰 */
+    --tertiary-bg: #d8e8d8;     /* 聊天区 - 浅绿 */
+    --accent-bg: #c0d8c8;       /* 悬停/选中背景 */
+    --border-color: #a0c0b0;    /* 边框 - 调整为更深的颜色 */
+    --input-bg: #ffffff;        /* 输入框 */
+    --panel-bg-light: rgba(240, 248, 244, 0.8); /* 基于--secondary-bg，增加80%不透明度 */
 
     /* --- Text Colors --- */
-    --primary-text: #1B211F;
-    --secondary-text: #626A66;
-    --highlight-text: #B94832;
-    --text-on-accent: #FFFAF3;
-    --placeholder-text: #8A918D;
-    --quoted-text: #21675C;
-    --user-text: #1B211F;
-    --agent-text: #1B211F;
+    --primary-text: #2a4a40;    /* 主要文字 - 深绿 */
+    --secondary-text: #5a7a70;  /* 次要/标题文字 - 中绿 */
+    --highlight-text: #4a8a70;  /* 高亮文字 - 较亮的绿 */
+    --text-on-accent: #ffffff;  /* 强调背景文字 */
+    --placeholder-text: #80a090; /* 占位文字 */
+    --quoted-text: #60a060;     /* 引用文字 - 绿 */
+    --user-text: #68a894;       /* 用户气泡文字 - 深绿 */
+    --agent-text: #2a4a40;      /* Agent气泡文字 - 深绿 */
 
-    /* --- Chat Bubbles --- */
-    --user-bubble-bg: rgba(185, 72, 50, 0.105);
-    --assistant-bubble-bg: rgba(252, 250, 244, 0.84);
+    /* --- Bubble Colors --- */
+    --user-bubble-bg: rgba(74, 138, 112, 0.15); /* 用户气泡 - 较亮的绿 - 半透明 */
+    --assistant-bubble-bg: rgba(216, 232, 216, 0.1); /* AI气泡 - 浅绿 - 半透明 */
 
-    /* --- Controls & Semantic Colors --- */
-    --button-bg: #B94832;
-    --button-hover-bg: #A43D2A;
-    --danger-color: #B94832;
-    --danger-hover-bg: #963622;
-    --success-color: #21675C;
-
-    /* --- Notifications & Tools --- */
-    --notification-bg: rgba(252, 250, 244, 0.94);
-    --notification-header-bg: rgba(231, 225, 213, 0.94);
-    --notification-border: #D2CBC0;
-    --tool-bubble-bg: rgba(217, 231, 225, 0.72);
-    --tool-bubble-border: rgba(33, 103, 92, 0.58);
+    /* --- UI Element Colors --- */
+    --button-bg: #4a8a70;           /* 按钮 - 较亮的绿 */
+    --button-hover-bg: #3a7a60;     /* 按钮悬停 - 深一点的绿 */
+    --danger-color: #e74c3c;        /* 危险色 - 红色 */
+    --danger-hover-bg: #c0392b;
+    --success-color: #4caf50;       /* 成功色 - 绿色 */
+    --notification-bg: #e0ede6;
+    --notification-header-bg: #e8f0e8;
+    --notification-border: #4a8a70;
+    --tool-bubble-bg: rgba(200, 220, 200, 0.15); /* VCP工具调用气泡背景 - 半透明浅绿 */
+    --tool-bubble-border: #4a8a70; /* VCP工具调用气泡边框 - 较亮的绿 */
 
     /* --- Scrollbar --- */
-    --scrollbar-track: rgba(210, 203, 192, 0.48);
-    --scrollbar-thumb: rgba(185, 72, 50, 0.50);
-    --scrollbar-thumb-hover: rgba(185, 72, 50, 0.76);
+    --scrollbar-track: rgba(180, 200, 180, 0.7);
+    --scrollbar-thumb: rgba(130, 150, 130, 0.8);
+    --scrollbar-thumb-hover: rgba(100, 120, 100, 0.6);
 
-    /* --- Streaming Shimmer --- */
-    --shimmer-color-transparent: rgba(185, 72, 50, 0.06);
-    --shimmer-color-highlight: rgba(185, 72, 50, 0.34);
+    /* --- Shimmer Effect --- */
+    --shimmer-color-transparent: rgba(42, 74, 64, 0.04);
+    --shimmer-color-highlight: rgba(42, 74, 64, 0.08);
 
-    /* --- Frosted Panel Readability --- */
-    --panel-text-shadow: 0 1px 0 rgba(255, 255, 255, 0.52);
+    /* --- Text Shadow for Frosted Panels --- */
+    --panel-text-shadow: none;
+
+    /* --- Unified Panel Background --- */
     --panel-bg: var(--panel-bg-light);
 }
 
-/* =========================================================
-   Shared Material System
-   ========================================================= */
+/* * =================================================================
+ * Enhanced Frosted Glass Effect
+ * 增强磨砂玻璃效果 - 小灵特制
+ * =================================================================
+ */
 
-/* Frosted panels: substantial enough for an official default theme. */
-.tool-bubble {
-    backdrop-filter: blur(14px) saturate(112%) !important;
-    -webkit-backdrop-filter: blur(14px) saturate(112%) !important;
+/* 为聊天气泡添加更强的磨砂玻璃效果 */
+.message-bubble {
+    backdrop-filter: blur(12px) saturate(120%);
+    -webkit-backdrop-filter: blur(12px) saturate(120%);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Industrial panel separation. */
-.sidebar {
-    box-shadow: 10px 0 34px rgba(0, 0, 0, 0.12);
-}
-
-.notifications-sidebar {
-    box-shadow: -10px 0 34px rgba(0, 0, 0, 0.12);
-}
-
-/* The Next shell owns .chat-header geometry, surface and divider. */
-
-/* Dark user bubble: warning yellow is a structural signal, not a fill. */
-.message-item.user .md-content {
-    box-sizing: border-box;
-    border: 1px solid rgba(242, 169, 0, 0.24) !important;
-    border-right: 3px solid rgba(242, 169, 0, 0.82) !important;
-    border-radius: 14px 4px 14px 14px !important;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035) !important;
-}
-
-/* Dark assistant bubble: graphite equipment plate with status edge. */
-.message-item.agent .md-content,
-.message-item.assistant .md-content {
-    box-sizing: border-box;
-    border: 1px solid rgba(59, 68, 73, 0.76) !important;
-    border-left: 3px solid rgba(118, 191, 174, 0.68) !important;
-    border-radius: 4px 14px 14px 14px !important;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035) !important;
-}
-
-/* Tool output behaves like a compact operational status plate. */
-.tool-bubble {
-    border-left: 3px solid var(--tool-bubble-border) !important;
-    border-radius: 4px 10px 10px 10px !important;
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
-}
-
-/* Header controls retain contrast over wallpaper and frosted header. */
-.header-button,
-.title-bar-button {
-    color: #D9DDDA !important;
-    transition:
-        color 0.18s ease,
-        background-color 0.18s ease,
-        transform 0.18s ease,
-        box-shadow 0.18s ease;
-}
-
-.header-button:hover,
-.title-bar-button:hover {
-    color: #F2A900 !important;
-    background-color: rgba(242, 169, 0, 0.10) !important;
-    box-shadow: inset 0 -2px 0 rgba(242, 169, 0, 0.72);
+/* 悬停时的微妙发光效果 */
+.message-bubble:hover {
+    backdrop-filter: blur(16px) saturate(130%);
+    -webkit-backdrop-filter: blur(16px) saturate(130%);
     transform: translateY(-1px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
 }
 
-/* =========================================================
-   Light Material Translation · Editorial Cards
-   ========================================================= */
-body.light-theme .sidebar {
-    box-shadow: 10px 0 30px rgba(27, 33, 31, 0.055);
+/* 为工具调用气泡添加特殊效果 */
+.tool-bubble {
+    backdrop-filter: blur(10px) saturate(110%);
+    -webkit-backdrop-filter: blur(10px) saturate(110%);
+    border: 1px solid var(--tool-bubble-border);
+    background: var(--tool-bubble-bg);
 }
 
-body.light-theme .notifications-sidebar {
-    box-shadow: -10px 0 30px rgba(27, 33, 31, 0.055);
+/* 深色主题下的特殊光效 */
+:root .message-bubble {
+    box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
-/* The Next shell also owns the light-mode chat-header divider. */
-
-/* Vermilion editorial annotation card. */
-body.light-theme .message-item.user .md-content {
-    background: linear-gradient(
-        145deg,
-        rgba(252, 250, 244, 0.90),
-        rgba(185, 72, 50, 0.115)
-    ) !important;
-    border: 1px solid rgba(185, 72, 50, 0.22) !important;
-    border-right: 3px solid rgba(185, 72, 50, 0.82) !important;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78) !important;
-}
-
-/* Warm paper assistant card with strong long-reading stability. */
-body.light-theme .message-item.agent .md-content,
-body.light-theme .message-item.assistant .md-content {
-    background: linear-gradient(
-        180deg,
-        rgba(252, 250, 244, 0.88) 0%,
-        rgba(247, 243, 234, 0.84) 100%
-    ) !important;
-    border: 1px solid rgba(210, 203, 192, 0.88) !important;
-    border-left: 3px solid rgba(33, 103, 92, 0.72) !important;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82) !important;
-}
-
-body.light-theme .tool-bubble {
-    box-shadow: 0 6px 18px rgba(27, 33, 31, 0.075);
-}
-
-body.light-theme .header-button,
-body.light-theme .title-bar-button {
-    color: #4F5854 !important;
-}
-
-body.light-theme .header-button:hover,
-body.light-theme .title-bar-button:hover {
-    color: #B94832 !important;
-    background-color: rgba(185, 72, 50, 0.075) !important;
-    box-shadow: inset 0 -2px 0 rgba(185, 72, 50, 0.62);
-}
-
-/* =========================================================
-   Brand Motion · restrained operational feedback
-   ========================================================= */
-@keyframes vcpOperationalPulse {
-    0%, 100% {
-        border-left-color: rgba(118, 191, 174, 0.56);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
-    }
-    50% {
-        border-left-color: rgba(118, 191, 174, 0.82);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
-    }
-}
-
-.message-item.streaming.agent .md-content,
-.message-item.streaming.assistant .md-content {
-    animation: vcpOperationalPulse 2.8s ease-in-out infinite;
-}
-
-@keyframes editorialProofPulse {
-    0%, 100% {
-        border-left-color: rgba(33, 103, 92, 0.60);
-    }
-    50% {
-        border-left-color: rgba(33, 103, 92, 0.88);
-    }
-}
-
-body.light-theme .message-item.streaming.agent .md-content,
-body.light-theme .message-item.streaming.assistant .md-content {
-    animation: editorialProofPulse 3.2s ease-in-out infinite;
-}
-
-/* Fine official-theme scrollbar. */
-::-webkit-scrollbar {
-    width: 6px !important;
-    height: 6px !important;
-}
-
-::-webkit-scrollbar-track {
-    background: var(--scrollbar-track) !important;
-}
-
-::-webkit-scrollbar-thumb {
-    background: var(--scrollbar-thumb) !important;
-    border-radius: 8px !important;
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: var(--scrollbar-thumb-hover) !important;
-}
-
-/* Keyboard focus remains visible in both modes. */
-:focus-visible:not(#messageInput):not(.chat-message-input):not(.vcp-ui-scope *) {
-    outline: 2px solid var(--highlight-text);
-    outline-offset: 2px;
-}
-
-/* Respect users who prefer low-motion interfaces. */
-@media (prefers-reduced-motion: reduce) {
-    .message-item.streaming.agent .md-content,
-    .message-item.streaming.assistant .md-content,
-    body.light-theme .message-item.streaming.agent .md-content,
-    body.light-theme .message-item.streaming.assistant .md-content {
-        animation: none !important;
-    }
-
-    .header-button,
-    .title-bar-button {
-        transition: none !important;
-    }
+/* 浅色主题下的柔和阴影 */
+body.light-theme .message-bubble {
+    box-shadow:
+        0 4px 20px rgba(45, 41, 34, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }

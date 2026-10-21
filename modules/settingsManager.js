@@ -22,11 +22,21 @@ const settingsManager = (() => {
 
         try {
             const urlObject = new URL(trimmedUrl);
-            const requiredPath = '/v1/chat/completions';
+            const pathname = urlObject.pathname.replace(/\/+$/, '');
 
-            // For any other case (e.g., root path '/', or some other path),
-            // we set the path to the required one.
-            urlObject.pathname = requiredPath;
+            // 已经是完整端点：规范化去掉多余尾部斜杠后返回
+            if (/\/chat\/completions$/i.test(pathname)) {
+                urlObject.pathname = pathname;
+                return urlObject.toString();
+            }
+
+            // 只填了根地址或版本段（/v1、/v1beta/openai、/v1beta1、/api/v1）：补全到 /chat/completions
+            if (pathname === '' || /^\/(?:api\/)?v\d+[a-z0-9]*(?:\/openai)?$/i.test(pathname)) {
+                urlObject.pathname = `${pathname || '/v1'}/chat/completions`;
+                return urlObject.toString();
+            }
+
+            // 自定义前缀（反代 / 网关自定义路径）：保留原样，由用户自己保证正确
             return urlObject.toString();
 
         } catch (e) {

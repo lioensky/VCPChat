@@ -1,0 +1,11 @@
+[package]
+name = "vcp-launcher"
+version = "0.1.0"
+edition = "2021"
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+panic = "abort"
+codegen-units = 1
