@@ -2371,7 +2371,6 @@ async function saveGroupTopicTitle(groupId, topicId, newTitle) {
 async function getGroupChatHistory(groupId, topicId) {
     if (!mainAppPaths.USER_DATA_DIR) return { error: "Paths not initialized" };
     const historyFile = path.join(mainAppPaths.USER_DATA_DIR, groupId, 'topics', topicId, 'history.json');
-    await fs.ensureDir(path.dirname(historyFile));
     if (await fs.pathExists(historyFile)) {
         try {
             return await fs.readJson(historyFile);
