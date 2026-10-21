@@ -21,7 +21,7 @@ export function shouldCompactContext(history, agentConfig, pendingText = '') {
     return estimateContextTokens([...effective, { role: 'user', content: pendingText }], agentConfig.systemPrompt || '') >= limit * 0.85;
 }
 
-export async function requestContextCompaction({ settings, state, signal, fetchImpl = globalThis.fetch, onResponse = () => {} }) {
+export async function requestContextCompaction({ settings, state, signal, requestId, fetchImpl = globalThis.fetch, onResponse = () => {} }) {
     const config = compactionSettings(settings);
     if (!config.model) throw new Error('请先配置上下文压缩模型');
     const url = new URL(settings.vcpServerUrl);
@@ -38,6 +38,7 @@ export async function requestContextCompaction({ settings, state, signal, fetchI
             model: config.model,
             messages: buildCompactionMessages(state, settings),
             stream: false,
+            ...(requestId ? { requestId } : {}),
         }),
         signal,
     });
@@ -62,12 +63,29 @@ export function createContextCompactionService({
     onBusyChanged = () => {},
     timeoutMs = 180000,
     flowlock = null,
+    interruptRequest = null,
 } = {}) {
     const pending = new Map();
     let disposed = false;
 
     function isBusy(scope) {
         return Boolean(scope?.itemId && scope?.topicId && pending.has(scopeKey(scope)));
+    }
+
+    function cancel(scope) {
+        if (!scope?.itemId || !scope?.topicId) return false;
+        const controller = pending.get(scopeKey(scope));
+        if (!controller || controller.signal.aborted || controller.committing) return false;
+        // Same upstream Stop reply gateway; never wait for an unresponsive server
+        // before revoking the local request and rejecting late model results.
+        try {
+            Promise.resolve(interruptRequest?.(controller.requestId)).catch(error =>
+                console.warn('[ContextCompaction] Upstream interrupt failed:', error));
+        } catch (error) {
+            console.warn('[ContextCompaction] Upstream interrupt failed:', error);
+        }
+        controller.abort();
+        return true;
     }
 
     async function compact({ scope, history, settings, onCommitted = () => {} }) {
@@ -81,6 +99,7 @@ export function createContextCompactionService({
         const state = prepareCompactionState(snapshot);
         if (!state.sourceCount) throw new Error('当前没有可压缩的上下文');
         const controller = new AbortController();
+        controller.requestId = `compaction_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
         const key = scopeKey(scope);
         pending.set(key, controller);
         const notifyBusy = busy => {
@@ -103,7 +122,7 @@ export function createContextCompactionService({
             });
             const response = await Promise.race([
                 request({
-                    settings, state, signal: controller.signal,
+                    settings, state, signal: controller.signal, requestId: controller.requestId,
                     onResponse: diagnostic => { responseDiagnostic = diagnostic; },
                 }),
                 deadline,
@@ -117,6 +136,9 @@ export function createContextCompactionService({
             }, current => {
                 if (disposed || controller.signal.aborted) throw new Error('上下文压缩已取消');
                 if (JSON.stringify(current) !== original) throw new Error('压缩期间历史已变化，请重新压缩');
+                // Once the mutation has handed off to durable storage it cannot
+                // safely be rolled back by aborting the network request.
+                controller.committing = true;
                 return [...current, message];
             });
             // Durable success, not UI rendering, determines whether the heartbeat can resume.
@@ -148,6 +170,7 @@ export function createContextCompactionService({
 
     return Object.freeze({
         isBusy,
+        cancel,
         compact,
         dispose() {
             disposed = true;

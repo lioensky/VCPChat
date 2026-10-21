@@ -189,3 +189,53 @@ test('second HTTP compaction sends latest checkpoint plus new history, not older
     assert.ok(!JSON.stringify(body).includes('SECRET_DIARY'));
     assert.ok(!JSON.stringify(body).includes('OBSOLETE_OLD_HISTORY'));
 });
+
+test('cancel uses upstream Stop reply ID and rejects late reports without resuming heartbeat', async () => {
+    const gate = deferred();
+    const interrupts = [];
+    let requestId;
+    let signal;
+    let durable = [{ role: 'user', content: '原始任务' }];
+    const service = createContextCompactionService({
+        historyMutationAuthority: createChatHistoryMutationAuthority({
+            repository: {
+                getHistory: async () => durable,
+                saveHistory: async (_id, _type, _topic, history) => { durable = history; },
+            },
+        }),
+        request: options => {
+            requestId = options.requestId;
+            signal = options.signal;
+            return gate.promise;
+        },
+        interruptRequest: id => { interrupts.push(id); return new Promise(() => {}); },
+        flowlock: { resumeAfterContextCompaction() { assert.fail('cancelled compression must not resume heartbeat'); } },
+    });
+    const pending = service.compact({ scope, settings, history: durable });
+    const rejected = assert.rejects(pending, /取消/);
+    assert.match(requestId, /^compaction_/);
+    assert.equal(service.cancel({ ...scope, topicId: 'other' }), false);
+    assert.equal(service.cancel(scope), true);
+    assert.equal(service.cancel(scope), false);
+    assert.deepEqual(interrupts, [requestId]);
+    assert.equal(signal.aborted, true);
+    await rejected;
+    assert.equal(service.isBusy(scope), false);
+    gate.resolve(checkpoint);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(durable.length, 1);
+    service.dispose();
+});
+
+test('compression HTTP body carries the request ID used by Stop reply', async () => {
+    const { requestContextCompaction } = await import('../modules/chat/contextCompactionService.js');
+    await requestContextCompaction({
+        settings: { ...settings, vcpServerUrl: 'https://fixture.local/v1/chat/completions' },
+        state: { messages: [{ role: 'user', content: '任务' }] },
+        requestId: 'compaction-interrupt-target',
+        fetchImpl: async (_url, init) => {
+            assert.equal(JSON.parse(init.body).requestId, 'compaction-interrupt-target');
+            return { ok: true, json: async () => ({ choices: [{ message: { content: checkpoint } }] }) };
+        },
+    });
+});

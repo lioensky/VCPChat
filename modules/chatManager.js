@@ -79,9 +79,15 @@ export const chatManager = (() => {
     async function finishStreamContextCompaction({ messageId }) {
         const scope = streamCompactionRequests.get(messageId);
         if (!scope) return;
+        if (scope.cancelled) {
+            streamCompactionRequests.delete(messageId);
+            notifySendStateChanged();
+            return;
+        }
         let result;
         try {
             const history = await getHistory(scope.itemId, 'agent', scope.topicId);
+            if (scope.cancelled) return;
             result = await contextCompactionService.compact({
                 scope, history, settings: globalSettingsRef.get(),
                 onCommitted: async () => {
@@ -94,7 +100,7 @@ export const chatManager = (() => {
             streamCompactionRequests.delete(messageId);
             notifySendStateChanged();
         }
-        if (!result || compactionFlowlock?.isAgentLocked?.(scope.itemId)) return;
+        if (!result || scope.cancelled || compactionFlowlock?.isAgentLocked?.(scope.itemId)) return;
         const selected = currentSelectedItemRef.get();
         if (disposed || selected?.id !== scope.itemId || selected.type !== 'agent'
             || currentTopicIdRef.get() !== scope.topicId) return;
@@ -136,8 +142,21 @@ export const chatManager = (() => {
 
     function isContextCompacting(scope = currentCompactionScope()) {
         return contextCompactionService?.isBusy(scope) === true
-            || [...streamCompactionRequests.values()].some(value => value.itemId === scope?.itemId
+            || [...streamCompactionRequests.values()].some(value => !value.cancelled && value.itemId === scope?.itemId
                 && value.itemType === scope?.itemType && value.topicId === scope?.topicId);
+    }
+
+    function cancelContextCompaction(scope = currentCompactionScope()) {
+        let cancelled = contextCompactionService?.cancel?.(scope) === true;
+        for (const value of streamCompactionRequests.values()) {
+            if (value.itemId === scope?.itemId && value.itemType === scope?.itemType
+                && value.topicId === scope?.topicId && !value.cancelled) {
+                value.cancelled = true;
+                cancelled = true;
+            }
+        }
+        notifySendStateChanged();
+        return cancelled;
     }
 
     async function compactContext(options = {}) {
@@ -523,6 +542,7 @@ export const chatManager = (() => {
         contextCompactionService = createContextCompactionService({
             historyMutationAuthority,
             flowlock: config.flowlockManager || null,
+            interruptRequest: requestId => interruptCapability?.interrupt?.(requestId),
             onBusyChanged: () => notifySendStateChanged(),
         });
 
@@ -2566,6 +2586,7 @@ export const chatManager = (() => {
         handleSendMessage,
         compactContext,
         isContextCompacting,
+        cancelContextCompaction,
         prepareFlowlockContext,
         checkStreamContextBudget,
         finishStreamContextCompaction,

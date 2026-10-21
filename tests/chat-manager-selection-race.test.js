@@ -1198,3 +1198,41 @@ for (const mode of ['manual', 'before-send', 'stream', 'stream-flowlock']) {
         }
     });
 }
+
+
+test('cancelling queued stream compaction prevents compression after partial reply commits', async () => {
+    let compactions = 0;
+    const fixture = createFixture({
+        settings: { enableContextCompaction: true },
+        compactionService: {
+            isBusy: () => false, cancel: () => false, dispose() {},
+            compact() { compactions++; throw new Error('must not run after cancellation'); },
+        },
+        interruptHandler: { interrupt: async () => ({ success: true }) },
+    });
+    try {
+        fixture.configs['agent-a'].contextTokenLimit = 100;
+        const selecting = fixture.chatManager.selectItem('agent-a', 'agent', 'Agent A', null, fixture.configs['agent-a']);
+        await new Promise(resolve => setImmediate(resolve));
+        fixture.topicRequests.get('agent-a').resolve(fixture.configs['agent-a'].topics);
+        await selecting;
+        await fixture.chatManager.checkStreamContextBudget({
+            messageId: 'cancel-queued', context: { agentId: 'agent-a', topicId: 'topic-a' },
+            text: '工具返回'.repeat(100),
+        });
+        assert.equal(fixture.chatManager.isContextCompacting(), true);
+        assert.equal(fixture.chatManager.cancelContextCompaction(), true);
+        assert.equal(fixture.chatManager.isContextCompacting(), false);
+        fixture.setPersistedHistory('agent-a', 'topic-a', [
+            ...fixture.persistedHistory('agent-a', 'topic-a'),
+            { id: 'cancel-queued', role: 'assistant', content: '中止前已接收内容', timestamp: 10 },
+        ]);
+        await fixture.chatManager.finishStreamContextCompaction({ messageId: 'cancel-queued' });
+        assert.equal(compactions, 0);
+        assert.equal(fixture.sentRequests.length, 0);
+        assert.equal(fixture.persistedHistory('agent-a', 'topic-a').at(-1).content, '中止前已接收内容');
+    } finally {
+        await fixture.chatManager.dispose();
+        fixture.dom.window.close();
+    }
+});

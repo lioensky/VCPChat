@@ -61,11 +61,12 @@ export function createMainChatSendOwner({
         const compacting = getChatManager()?.isContextCompacting?.() === true;
         button.classList.toggle('context-compacting', compacting);
         if (compacting) {
-            button.disabled = true;
+            button.disabled = false;
+            button.classList.toggle('interrupt-mode', true);
             button.dataset.mode = 'compacting';
             button.setAttribute('aria-busy', 'true');
-            button.setAttribute('aria-label', '上下文压缩中，请稍候');
-            button.title = '上下文压缩中，请稍候';
+            button.setAttribute('aria-label', '中止上下文压缩');
+            button.title = '上下文压缩中，点击中止压缩';
             button.innerHTML = '<span class="vcp-compaction-spinner" aria-hidden="true"></span>';
             return true;
         }
@@ -124,7 +125,16 @@ export function createMainChatSendOwner({
         update,
         interrupt,
         async handleAction() {
-            if (disposed || getChatManager()?.isContextCompacting?.()) return false;
+            if (disposed) return false;
+            const manager = getChatManager();
+            if (manager?.isContextCompacting?.()) {
+                const cancelled = await manager.cancelContextCompaction?.();
+                if (disposed) return false;
+                update();
+                if (cancelled) notify?.('已中止上下文压缩，原历史和草稿已保留；心流保持挂起。', 'info');
+                else notify?.('压缩结果正在保存，无法撤销已开始的写入。', 'info');
+                return cancelled === true;
+            }
             if (getInterruptibleMessage()) return interrupt();
             await getChatManager()?.handleSendMessage?.();
             return true;
