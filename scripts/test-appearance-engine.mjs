@@ -64,7 +64,7 @@ const resolved = appearance.apply({
     fontScale: 'large', contentWidth: 'centered', wallpaperScope: 'theme', surface: 'solid'
 }, { uiMode: 'next', cache: true, source: 'test' });
 assert.equal(JSON.stringify(resolved), JSON.stringify({
-    density: 'compact', toolPresentation: 'legacy', toolExpansion: 'attention', toolBubbleMotion: 'full', radius: 'square', typography: 'serif',
+    density: 'compact', toolPresentation: 'legacy', toolExpansion: 'attention', radius: 'square', typography: 'serif',
     fontScale: 'large', contentWidth: 'centered', wallpaperScope: 'theme', surface: 'solid',
     surfaceEffect: 'vibrancy',
     shellRadius: 'tuned', composerRadius: 'tuned', sidebarRadius: 'tuned', cardRadius: 'tuned',
@@ -73,10 +73,10 @@ assert.equal(JSON.stringify(resolved), JSON.stringify({
     sidebarRowHeight: 46, sidebarAvatarSize: 32, customRadius: 10
 }));
 assert.equal(document.documentElement.dataset.vcpRadius, 'square');
-assert.equal(document.documentElement.dataset.vcpToolBubbleMotion, 'full', 'tool bubble flows stay on (the original look) unless the profile opts out');
-assert.equal(appearance.normalize({ toolBubbleMotion: 'steady' }, 'next').toolBubbleMotion, 'steady');
-assert.equal(appearance.normalize({ toolBubbleMotion: 'once' }, 'next').toolBubbleMotion, 'once');
-assert.equal(appearance.normalize({ toolBubbleMotion: 'forever' }, 'next').toolBubbleMotion, 'full', 'unknown flow modes fall back to the always-on default');
+assert.equal(document.documentElement.dataset.vcpToolBubbleMotion, undefined);
+for (const retired of ['full', 'steady', 'once']) {
+    assert.equal(Object.hasOwn(appearance.normalize({ toolBubbleMotion: retired }, 'next'), 'toolBubbleMotion'), false);
+}
 assert.equal(document.documentElement.dataset.vcpShellRadius, 'tuned');
 assert.equal(document.documentElement.dataset.vcpComposerRadius, 'tuned');
 assert.match(document.getElementById('vcpAppearanceLayoutVariables').textContent, /--vcp-appearance-sidebar-row-height:46px/);

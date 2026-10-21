@@ -4,7 +4,7 @@ import { createImageHandler } from './renderer/imageHandler.js';
 import { prepareChatMediaHtml, cleanupChatMedia } from './renderer/mediaLifecycle.js';
 import { processAnimationsInContent, cleanupAnimationsInContent } from './renderer/animation.js';
 import { createVisibilityOptimizer } from './renderer/visibilityOptimizer.js';
-import { createDecorativeAnimationGate } from './renderer/decorativeAnimationGate.js';
+
 import { createMessageSkeleton, formatMessageTimestamp } from './renderer/domBuilder.js';
 import { createEmoticonUrlFixer } from './renderer/emoticonUrlFixer.js';
 import { createContentPipeline, PIPELINE_MODES } from './renderer/contentPipeline.js';
@@ -51,7 +51,7 @@ const features = Object.freeze({
     globalCommands: options.exposeGlobalCommands !== false,
 });
 const visibilityOptimizer = options.visibilityOptimizer || createVisibilityOptimizer();
-const decorativeAnimationGate = options.decorativeAnimationGate || createDecorativeAnimationGate();
+
 const streamManager = options.streamManager;
 if (!streamManager) throw new TypeError('MessageRenderer requires an owned StreamProjection');
 const emoticonUrlFixer = options.emoticonUrlFixer || createEmoticonUrlFixer();
@@ -2359,7 +2359,7 @@ function renderToolResultBlock(fullMatch, ordinal = -1, deferred = true) {
     html += `<div class="vcp-tool-result-header">`;
     html += `<span class="vcp-tool-result-label">VCP-ToolResult</span>`;
     html += `<span class="vcp-tool-result-name">${escapeHtml(toolName)}</span>`;
-    html += `<span class="vcp-tool-result-status">${escapeHtml(status)}</span>`;
+    html += `<span class="vcp-tool-result-status">${escapeHtml(status.replace(/[✅❌⚠⏳\uFE0F]/gu, '').trim())}</span>`;
     if (isHidden) {
         html += `<span class="vcp-tool-result-hidden-badge" title="当前工具结果已排除，后续对话不会注入到AI上下文中">已隐藏</span>`;
     }
@@ -2676,7 +2676,7 @@ function disposeRendererResources() {
     contextMenu.dispose?.();
     imageHandler.dispose?.();
     visibilityOptimizer.destroyVisibilityOptimizer?.();
-    decorativeAnimationGate.detach?.();
+
     for (const styleElement of ownedStyleElements) {
         styleElement.remove();
     }
@@ -2896,8 +2896,7 @@ function initializeMessageRenderer(refs) {
     // 🟢 关键修复：IntersectionObserver 的 root 必须是产生滚动条的那个父容器
     const scrollContainer = mainRendererReferences.chatMessagesDiv.closest('.chat-messages-container');
     visibilityOptimizer.initializeVisibilityOptimizer(scrollContainer || mainRendererReferences.chatMessagesDiv);
-    // 气泡级视口门控与消息级优化器同根：视口外的工具气泡流光暂停，回到视口恢复。
-    decorativeAnimationGate.attach(scrollContainer || mainRendererReferences.chatMessagesDiv);
+
 
     toolPresentation = createToolPresentation({
         root: mainRendererReferences.chatMessagesDiv,

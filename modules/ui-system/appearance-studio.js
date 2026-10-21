@@ -79,7 +79,7 @@
         'density',
         'toolPresentation',
         'toolExpansion',
-        'toolBubbleMotion',
+
         'radius',
         'typography',
         'fontScale',
@@ -111,7 +111,7 @@
                 contentWidth: 'full',
                 wallpaperScope: 'theme',
                 toolPresentation: 'legacy', toolExpansion: 'attention',
-                toolBubbleMotion: 'full',
+
             sidebarRowHeight: 46,
                 sidebarAvatarSize: 32,
                 customRadius: 10,
@@ -136,7 +136,7 @@
                 contentWidth: 'centered',
                 wallpaperScope: 'theme',
                 toolPresentation: 'legacy', toolExpansion: 'attention',
-                toolBubbleMotion: 'full',
+
                 sidebarRowHeight: 40,
                 sidebarAvatarSize: 26,
                 customRadius: 6,
@@ -161,7 +161,7 @@
                 contentWidth: 'centered',
                 wallpaperScope: 'theme',
                 toolPresentation: 'legacy', toolExpansion: 'attention',
-                toolBubbleMotion: 'full',
+
                 sidebarRowHeight: 52,
                 sidebarAvatarSize: 38,
                 customRadius: 14,
@@ -193,7 +193,7 @@
             contentWidth: 'full',
             wallpaperScope: 'theme',
             toolPresentation: 'legacy', toolExpansion: 'attention',
-            toolBubbleMotion: 'full',
+
                 sidebarRowHeight: 46,
             sidebarAvatarSize: 32,
             customRadius: 10,
@@ -738,11 +738,6 @@
                             <button type="button" data-appearance-key="toolExpansion" data-appearance-value="none">全部收起</button>
                             <button type="button" data-appearance-key="toolExpansion" data-appearance-value="all">全部展开</button>
                         </div><p class="vcp-appearance-mini-helper">使用当前界面密度和工具字体。请求与结果各自保留；单行合并与整轮折叠只把紧跟在请求后的同名结果显示在同一行；图片与媒体结果保留查看入口。</p></div>
-                        <div class="vcp-appearance-subsection"><h4>气泡流光</h4><div class="vcp-appearance-segmented" role="group" aria-label="工具气泡流光">
-                            <button type="button" data-appearance-key="toolBubbleMotion" data-appearance-value="once">播一遍</button>
-                            <button type="button" data-appearance-key="toolBubbleMotion" data-appearance-value="steady">常驻 · 省电</button>
-                            <button type="button" data-appearance-key="toolBubbleMotion" data-appearance-value="full">常驻 · 原版（默认）</button>
-                        </div><p class="vcp-appearance-mini-helper">工具气泡的流光外框与齿轮。常驻 · 原版（默认）：60 帧常驻，每个可见气泡约占一个半核心；常驻 · 省电：一直流动但每秒只画 10 帧，每个可见气泡约占半个核心；播一遍：播完一个周期停在终态，几乎不占 CPU。正在生成的消息始终流动。</p></div>
                     </section>
                     <section class="vcp-appearance-studio-section vcp-appearance-material-section" aria-labelledby="vcpAppearanceMaterialTitle">
                         <div class="vcp-appearance-studio-section-heading">
@@ -1086,7 +1081,7 @@
             });
             draft.presentation = defaults.presentation;
         } else if (section === 'tools') {
-            ['toolPresentation', 'toolExpansion', 'toolBubbleMotion'].forEach(field => { draft.profile[field] = defaults.profile[field]; });
+            ['toolPresentation', 'toolExpansion'].forEach(field => { draft.profile[field] = defaults.profile[field]; });
         } else if (section === 'material') {
             ['surface', 'surfaceEffect', ...MATERIAL_FIELDS].forEach(field => {
                 draft.profile[field] = defaults.profile[field];
@@ -1467,7 +1462,7 @@
                     ...clone(preset.profile),
                     toolPresentation: draft.profile.toolPresentation,
                     toolExpansion: draft.profile.toolExpansion,
-                    toolBubbleMotion: draft.profile.toolBubbleMotion,
+
                     wallpaperScope: draft.profile.wallpaperScope
                 },
                 presentation: preset.presentation,
