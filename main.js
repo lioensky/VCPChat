@@ -59,11 +59,10 @@ require = function (id) {
 
 const { app, BrowserWindow, webContents, ipcMain, nativeTheme, globalShortcut, screen, clipboard, shell, dialog, protocol, Tray, Menu, powerMonitor } = require('electron'); // Added screen, clipboard, and shell
 
-// 🛡️ 长连接/流式回复不能依赖后台页面的定时器节流，否则切回窗口时会出现恢复延迟。
-app.commandLine.appendSwitch('disable-hang-monitor');
-app.commandLine.appendSwitch('disable-background-timer-throttling');
-app.commandLine.appendSwitch('disable-renderer-backgrounding');
-app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+// 不再对整个应用关闭 Chromium 的后台节流（background-timer-throttling / renderer-backgrounding /
+// backgrounding-occluded-windows）和挂起监视器：那组开关让所有窗口、所有 <webview> 和 GPU 进程在后台
+// 也全速运转，并且让卡死的渲染进程再也不会被发现。流式回复在隐藏页面里的推进由
+// modules/renderer/streamManager.js 自己处理（隐藏时走定时器并整段排空，重新可见时切回 rAF）。
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs-extra'); // Using fs-extra for convenience
@@ -842,8 +841,8 @@ function createWindow({ deferLoad = false } = {}) {
             contextIsolation: true,    // 恢复: 开启上下文隔离
             nodeIntegration: false,  // 恢复: 关闭Node.js集成在渲染进程
             webviewTag: true, // 仅供侧栏浏览器的 <webview>；其创建参数由 browserHandlers.attachToWindow 强制收紧
-            // 主聊天窗口需要在切到其他窗口时继续接收流式事件并推进恢复队列。
-            backgroundThrottling: false,
+            // 主窗口沿用 Chromium 默认的后台节流：ipcRenderer 收流式事件不受节流影响，
+            // 渲染端的流式帧循环在隐藏时自行改走定时器（见 streamManager.js）。
             spellcheck: true, // Enable spellcheck for input fields
         },
         icon: path.join(__dirname, 'assets', 'icon.png'), // Add an icon

@@ -232,24 +232,72 @@ function clearOwnedTimeout(record) {
 const ownerDocument = () => refs.document || refs.chatMessagesDiv?.ownerDocument || null;
 const ownerWindow = () => refs.window || ownerDocument()?.defaultView || null;
 
+// 隐藏（最小化 / 被完全遮挡）的页面里 requestAnimationFrame 不会触发。流式帧在那种状态下改走定时器：
+// Chromium 会把它节流到 ≥1 Hz，但队列仍在前进；页面重新可见时立刻换回 rAF，不留追帧欠账。
+// 这取代了以前对整个应用关闭后台节流的全局开关。
+const HIDDEN_FRAME_DELAY_MS = 1000 / 30;
+// 刚从隐藏回到可见的一小段时间里，把隐藏期间攒下的文本一次排空，而不是按逐字节奏慢慢追。
+const VISIBLE_CATCH_UP_WINDOW_MS = 100;
+let frameTokenSequence = 0;
+let visibleCatchUpUntil = 0;
+
+function documentIsHidden() {
+    const doc = ownerDocument();
+    return Boolean(doc && doc.visibilityState === 'hidden');
+}
+
+function frameTimestamp(environment) {
+    const clock = environment?.performance;
+    return typeof clock?.now === 'function' ? clock.now() : Date.now();
+}
+
+function armAnimationFrame(entry, environment) {
+    const invoke = timestamp => {
+        scheduledAnimationFrames.delete(entry);
+        if (!disposed) entry.callback(timestamp);
+    };
+    const useTimer = typeof environment.requestAnimationFrame !== 'function' || documentIsHidden();
+    if (useTimer) {
+        entry.viaTimer = true;
+        const nativeHandle = environment.setTimeout(() => invoke(frameTimestamp(environment)), HIDDEN_FRAME_DELAY_MS);
+        entry.cancel = () => environment.clearTimeout?.(nativeHandle);
+    } else {
+        entry.viaTimer = false;
+        const nativeHandle = environment.requestAnimationFrame(invoke);
+        entry.cancel = () => environment.cancelAnimationFrame?.(nativeHandle);
+    }
+}
+
 function scheduleAnimationFrame(callback) {
     if (disposed) return null;
     const environment = ownerWindow();
     if (!environment) return null;
-    const entry = { handle: null };
-    const invoke = timestamp => {
-        scheduledAnimationFrames.delete(entry);
-        if (!disposed) callback(timestamp);
-    };
-    if (typeof environment.requestAnimationFrame === 'function') {
-        entry.handle = environment.requestAnimationFrame(invoke);
-        entry.cancel = () => environment.cancelAnimationFrame?.(entry.handle);
-    } else {
-        entry.handle = environment.setTimeout(() => invoke(Date.now()), 0);
-        entry.cancel = () => environment.clearTimeout?.(entry.handle);
-    }
+    // 对外的句柄是本模块自己的序号，不随可见性切换而改变。
+    const entry = { handle: ++frameTokenSequence, callback, environment, viaTimer: false, cancel: null };
+    armAnimationFrame(entry, environment);
     scheduledAnimationFrames.add(entry);
     return entry.handle;
+}
+
+function rescheduleAnimationFramesForVisibility() {
+    if (disposed) return;
+    const hidden = documentIsHidden();
+    for (const entry of scheduledAnimationFrames) {
+        const hasRaf = typeof entry.environment.requestAnimationFrame === 'function';
+        const wantTimer = !hasRaf || hidden;
+        if (entry.viaTimer === wantTimer) continue;
+        entry.cancel?.();
+        armAnimationFrame(entry, entry.environment);
+    }
+}
+
+function handleDocumentVisibilityChange() {
+    if (!documentIsHidden()) visibleCatchUpUntil = Date.now() + VISIBLE_CATCH_UP_WINDOW_MS;
+    rescheduleAnimationFramesForVisibility();
+}
+
+function shouldDrainWholeBacklog() {
+    return documentIsHidden() || Date.now() < visibleCatchUpUntil;
 }
 
 function cancelScheduledAnimationFrame(handle) {
@@ -293,6 +341,7 @@ function attachStreamProjection(dependencies) {
         transientCleanupWindow = dependencies.window || dependencies.chatMessagesDiv?.ownerDocument?.defaultView || null;
         if (!transientCleanupWindow) throw new TypeError('StreamProjection requires an owning window capability');
         transientCleanupWindow.addEventListener('beforeunload', dispose);
+        transientCleanupWindow.document?.addEventListener?.('visibilitychange', handleDocumentVisibilityChange);
         transientCleanupRegistered = true;
     }
 
@@ -1908,7 +1957,10 @@ function processAndRenderSmoothChunk(messageId) {
         const queuedChars = Math.max(0, segmentState.queuedChars);
         const isFinalized = messageIsFinalized(messageId);
         const adaptiveTarget = Math.ceil(queuedChars / (isFinalized ? 8 : 15));
-        const drainTarget = Math.max(minChunkSize, adaptiveTarget, isFinalized ? 80 : 0);
+        // 页面隐藏时没有人看逐字动画，而且帧被节流到 ≥1 Hz：一次排空；刚切回前台的第一批帧也整段追平。
+        const drainTarget = shouldDrainWholeBacklog()
+            ? Number.POSITIVE_INFINITY
+            : Math.max(minChunkSize, adaptiveTarget, isFinalized ? 80 : 0);
 
         // 自适应排空：队列越深，每帧消费越多；finalize 后加速追平，避免剩余文本瞬移。
         // 使用 head 批量 splice，避免逐项 shift 导致数组反复搬移。
@@ -2730,6 +2782,7 @@ async function dispose() {
         disposed = true;
         if (transientCleanupRegistered) {
             transientCleanupWindow?.removeEventListener('beforeunload', dispose);
+            transientCleanupWindow?.document?.removeEventListener?.('visibilitychange', handleDocumentVisibilityChange);
             transientCleanupRegistered = false;
             transientCleanupWindow = null;
         }
