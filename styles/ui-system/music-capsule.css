@@ -1,4 +1,5 @@
-html .music-capsule {
+/* 胶囊挂在 aside#vcpSidePane.vcp-ui-scope 内，选择器统一带 .vcp-ui-scope 以满足 ui-system 门禁。 */
+html .vcp-ui-scope .music-capsule {
     position: absolute;
     top: 12px;
     left: 12px;
@@ -7,8 +8,8 @@ html .music-capsule {
     z-index: 5;
     pointer-events: none;
 }
-html .music-capsule[hidden] { display: none; }
-html .music-capsule-surface {
+html .vcp-ui-scope .music-capsule[hidden] { display: none; }
+html .vcp-ui-scope .music-capsule-surface {
     position: absolute;
     right: 0;
     top: 0;
@@ -29,10 +30,10 @@ html .music-capsule-surface {
     box-shadow: 0 2px 10px rgba(0, 0, 0, .12);
     transition: width 240ms cubic-bezier(.22, 1, .36, 1);
 }
-html .music-capsule.is-expanded .music-capsule-surface {
+html .vcp-ui-scope .music-capsule.is-expanded .music-capsule-surface {
     width: min(var(--music-capsule-expanded-width, 100%), 100%);
 }
-html .music-capsule button {
+html .vcp-ui-scope .music-capsule button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -46,11 +47,11 @@ html .music-capsule button {
     color: inherit;
     cursor: pointer;
 }
-html .music-capsule button:hover { color: var(--highlight-text); background: rgba(128, 128, 128, .14); }
-html .music-capsule button:focus-visible { outline: 2px solid var(--highlight-text); outline-offset: -3px; }
-html .music-capsule .vcp-ui-icon { --vcp-ui-icon-size: 16px; }
-html .music-capsule.is-playing .music-capsule-trigger { color: var(--highlight-text); }
-html .music-capsule-details {
+html .vcp-ui-scope .music-capsule button:hover { color: var(--highlight-text); background: rgba(128, 128, 128, .14); }
+html .vcp-ui-scope .music-capsule button:focus-visible { outline: 2px solid var(--highlight-text); outline-offset: -3px; }
+html .vcp-ui-scope .music-capsule .vcp-ui-icon { --vcp-ui-icon-size: 16px; }
+html .vcp-ui-scope .music-capsule.is-playing .music-capsule-trigger { color: var(--highlight-text); }
+html .vcp-ui-scope .music-capsule-details {
     display: flex;
     align-items: center;
     gap: 2px;
@@ -60,8 +61,8 @@ html .music-capsule-details {
     visibility: hidden;
     transition: opacity 160ms ease;
 }
-html .music-capsule.is-expanded .music-capsule-details { opacity: 1; visibility: visible; }
-html .music-capsule-title {
+html .vcp-ui-scope .music-capsule.is-expanded .music-capsule-details { opacity: 1; visibility: visible; }
+html .vcp-ui-scope .music-capsule-title {
     flex: 1;
     min-width: 0;
     padding-left: 9px;
@@ -72,14 +73,14 @@ html .music-capsule-title {
     line-height: 18px;
 }
 @media (prefers-reduced-motion: reduce) {
-    html .music-capsule-surface, html .music-capsule-details { transition: none; }
+    html .vcp-ui-scope .music-capsule-surface, html .vcp-ui-scope .music-capsule-details { transition: none; }
 }
-html body[data-vcp-theme="light"] .music-capsule-surface {
+html body[data-vcp-theme="light"] .vcp-ui-scope .music-capsule-surface {
     background: rgba(255, 255, 255, .55);
 }
-html .music-capsule [hidden] { display: none; }
+html .vcp-ui-scope .music-capsule [hidden] { display: none; }
 /* 同字体测量单行自然宽度，不参与布局、命中或读屏。 */
-html .music-capsule-title.music-capsule-measure {
+html .vcp-ui-scope .music-capsule-title.music-capsule-measure {
     position: absolute;
     width: max-content;
     max-width: none;

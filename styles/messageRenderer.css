@@ -18,6 +18,32 @@
     animation-play-state: paused !important;
 }
 
+/*
+ * 气泡级视口门控（decorativeAnimationGate）。
+ * 消息项在 200px 预加载边距内就算可见，但其中的工具气泡本身可能完全在视口外；
+ * 它的四条 infinite 流光改的是 background-position / color，每帧都要主线程重算与重绘。
+ * 不在滚动容器可视区内的气泡被加上这个 class，动画暂停；回到可视区即恢复，外观不变。
+ */
+.vcp-anim-offscreen,
+.vcp-anim-offscreen *,
+.vcp-anim-offscreen::before,
+.vcp-anim-offscreen::after,
+.vcp-anim-offscreen *::before,
+.vcp-anim-offscreen *::after {
+    animation-play-state: paused !important;
+}
+
+/* 用户要求减少动态效果时，装饰性流光整体关闭，只保留静态渐变。 */
+@media (prefers-reduced-motion: reduce) {
+    .vcp-tool-use-bubble,
+    .vcp-tool-use-bubble::before,
+    .vcp-tool-use-bubble::after,
+    .vcp-tool-use-bubble .vcp-tool-name-highlight,
+    .user-clicked-button-bubble {
+        animation: none;
+    }
+}
+
 /* Keyframes for animations */
 @keyframes vcp-bubble-background-flow-kf {
     0% {
@@ -203,6 +229,37 @@
         linear-gradient(270deg, transparent 0%, #f1c40f 38%, #ffffff 50%, #00d2ff 62%, transparent 100%) bottom right / 45% 1px no-repeat,
         linear-gradient(0deg, transparent 0%, #00d2ff 38%, #ffffff 50%, #f1c40f 62%, transparent 100%) bottom left / 1px 45% no-repeat;
     animation: vcp-bubble-border-flow-kf 2s linear infinite;
+}
+
+/*
+ * 外观与样式工作台 → 工具呈现 → 气泡流光（appearanceProfile.toolBubbleMotion）。
+ * 默认 full 就是上面的上游原版：四条流光（背景、外框、齿轮、工具名）60 fps 常驻。它们改的都是
+ * background-position / 文字渐变，走不了合成器线程：实测一个可见的 182×39 px 气泡就让 renderer 主线程
+ * 常驻约 25 % 单核（外框流光一项占 21 个百分点），与气泡大小、是否独立合成层、外层 backdrop-filter 都无关。
+ * once：静态内容播一遍后停在终态（外观与持续流动的第一个周期一致），正在生成的消息仍持续流动；
+ * steady：常驻但用 steps(20) 把每秒真正绘制的帧数压到 10，实测一个可见气泡整棵进程树 ≈ 63 % 单核
+ *（60 fps 常驻 ≈ 120–150 %）：玻璃界面每合成一帧都要重算 backdrop-filter，成本只跟每秒绘制几帧有关。
+ */
+html[data-vcp-tool-bubble-motion="once"] .vcp-tool-use-bubble,
+html[data-vcp-tool-bubble-motion="once"] .vcp-tool-use-bubble::before,
+html[data-vcp-tool-bubble-motion="once"] .vcp-tool-use-bubble::after,
+html[data-vcp-tool-bubble-motion="once"] .vcp-tool-use-bubble .vcp-tool-name-highlight,
+html[data-vcp-tool-bubble-motion="once"] .user-clicked-button-bubble {
+    animation-iteration-count: 1;
+}
+
+html[data-vcp-tool-bubble-motion="once"] .message-item:is(.streaming, .thinking) .vcp-tool-use-bubble,
+html[data-vcp-tool-bubble-motion="once"] .message-item:is(.streaming, .thinking) .vcp-tool-use-bubble::before,
+html[data-vcp-tool-bubble-motion="once"] .message-item:is(.streaming, .thinking) .vcp-tool-use-bubble::after,
+html[data-vcp-tool-bubble-motion="once"] .message-item:is(.streaming, .thinking) .vcp-tool-use-bubble .vcp-tool-name-highlight {
+    animation-iteration-count: infinite;
+}
+
+html[data-vcp-tool-bubble-motion="steady"] .vcp-tool-use-bubble,
+html[data-vcp-tool-bubble-motion="steady"] .vcp-tool-use-bubble::before,
+html[data-vcp-tool-bubble-motion="steady"] .vcp-tool-use-bubble::after,
+html[data-vcp-tool-bubble-motion="steady"] .vcp-tool-use-bubble .vcp-tool-name-highlight {
+    animation-timing-function: steps(20);
 }
 
 /*
