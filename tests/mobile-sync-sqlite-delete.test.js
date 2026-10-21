@@ -972,6 +972,96 @@ test("启动 repair 用普通 backup 补回物理 Topic 元数据", async (t) =>
   );
 });
 
+test("启动 repair 忽略缺失 history.json 的孤立空目录且剥离 DTO 临时字段", async (t) => {
+  const { entity } = loadSqliteModules();
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-sync-repair-empty-dir-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+
+  const ownerId = "agent-empty-topic-dir";
+  const liveTopicId = "topic-with-history";
+  const emptyTopicId = "topic-deleted-empty-dir";
+  const agentDir = path.join(directory, "Agents", ownerId);
+  const configPath = path.join(agentDir, "config.json");
+  const liveTopicDir = path.join(directory, "UserData", ownerId, "topics", liveTopicId);
+  const emptyTopicDir = path.join(directory, "UserData", ownerId, "topics", emptyTopicId);
+
+  fs.mkdirSync(agentDir, { recursive: true });
+  fs.mkdirSync(liveTopicDir, { recursive: true });
+  fs.mkdirSync(emptyTopicDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(liveTopicDir, "history.json"),
+    JSON.stringify([{ id: "msg-1", role: "assistant", content: "hi", timestamp: 100 }]),
+  );
+
+  // 主配置只保留空数组，而 topicBackup 与 recoverTopics 中含有空目录话题和带 DTO 字段的话题
+  fs.writeFileSync(configPath, JSON.stringify({ name: "Clean Agent", topics: [] }));
+  fs.writeFileSync(
+    path.join(agentDir, "config.topic.backup.json"),
+    JSON.stringify({
+      name: "Clean Agent",
+      topics: [
+        { id: emptyTopicId, name: "Deleted Sponsor Topic", createdAt: 200, unread: true },
+      ],
+    }),
+  );
+
+  const stats = await entity.repairTopicProjectionsFromDisk(
+    directory,
+    null,
+    async () =>
+      new Map([
+        [
+          liveTopicId,
+          {
+            deleted: false,
+            topic: {
+              id: liveTopicId,
+              ownerId,
+              name: "Live Topic",
+              createdAt: 100,
+              locked: false,
+              unread: true,
+              configHash: "a".repeat(64),
+              updatedAt: 999,
+            },
+          },
+        ],
+        [
+          emptyTopicId,
+          {
+            deleted: false,
+            topic: {
+              id: emptyTopicId,
+              ownerId,
+              name: "Ghost Unread Topic",
+              createdAt: 200,
+              locked: false,
+              unread: true,
+              configHash: "b".repeat(64),
+              updatedAt: 1000,
+            },
+          },
+        ],
+      ]),
+  );
+
+  assert.deepEqual(stats, {
+    ownersChanged: 1,
+    topicsAdded: 1,
+    topicsRemoved: 0,
+  });
+  const repaired = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  assert.deepEqual(repaired.topics, [
+    {
+      id: liveTopicId,
+      name: "Live Topic",
+      createdAt: 100,
+      locked: false,
+      unread: true,
+    },
+  ]);
+});
+
 test("启动 repair 从有效 backup 恢复配置并服从 Topic 墓碑", async (t) => {
   const { database, entity } = loadSqliteModules();
   const db = database.initDb(":memory:");

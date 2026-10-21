@@ -495,6 +495,16 @@ impl Reconciler {
             if active_topic_ids.contains(&topic_id) {
                 continue;
             }
+            let history_path = self
+                .config
+                .user_data_dir
+                .join(&configured_owner.key.owner_id)
+                .join("topics")
+                .join(&topic_id)
+                .join("history.json");
+            if !history_path.is_file() {
+                continue;
+            }
             let key = TopicKey {
                 owner_type: configured_owner.key.owner_type,
                 owner_id: configured_owner.key.owner_id.clone(),
