@@ -513,6 +513,11 @@ function showContextMenu(event, messageItem, message) {
         menu.appendChild(deleteOption);
     }
 
+    // 超过 8 个选项时使用双列布局，先应用布局再测量，确保边缘避让尺寸正确。
+    if (menu.querySelectorAll('.context-menu-item').length > 8) {
+        menu.classList.add('context-menu--two-columns');
+    }
+
     menu.style.visibility = 'hidden';
     menu.style.position = 'absolute';
     ownerDocument.body.appendChild(menu);

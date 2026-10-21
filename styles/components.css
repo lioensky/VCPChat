@@ -885,11 +885,28 @@ body.light-theme .context-menu {
     max-width: min(260px, calc(100vw - 12px));
 }
 
+/* 选项超过 8 个时左右双列排列，保留原有主题和菜单项交互样式。 */
+#chatContextMenu.context-menu--two-columns {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 0;
+    max-width: min(520px, calc(100vw - 12px));
+}
+
 /* 消息菜单图标较密集，左侧略多留白以维持视觉平衡。 */
 #chatContextMenu > .context-menu-item {
     gap: 5px;
     padding-left: 12px;
     padding-right: 9px;
+}
+
+/* 双列菜单仅收紧中间留白，保留菜单外侧的原有内边距。 */
+#chatContextMenu.context-menu--two-columns > .context-menu-item:nth-child(odd) {
+    padding-right: 6px;
+}
+
+#chatContextMenu.context-menu--two-columns > .context-menu-item:nth-child(even) {
+    padding-left: 6px;
 }
 
 .context-menu-item > i:first-child {
