@@ -309,12 +309,13 @@ function baseCurrentSettings() {
 
 const form = renderAllSections();
 
-// These two opt-in fields did not exist in the historical collector. Keep its
+// These opt-in fields did not exist in the historical collector. Keep its
 // oracle unchanged and compare every pre-existing field without them.
 function historicalPayload(payload) {
     const profile = {...payload.appearanceProfile};
     delete profile.toolPresentation;
     delete profile.toolExpansion;
+    delete profile.toolBubbleMotion;
     return {...payload, appearanceProfile: profile};
 }
 

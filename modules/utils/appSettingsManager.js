@@ -139,6 +139,7 @@ class SettingsValidator {
             density: new Set(['compact', 'comfortable', 'relaxed']),
             toolPresentation: new Set(['legacy', 'compact', 'grouped', 'inline', 'process']),
             toolExpansion: new Set(['attention', 'none', 'all']),
+            toolBubbleMotion: new Set(['once', 'steady', 'full']),
             radius: new Set(['square', 'small', 'medium', 'round', 'custom']),
             typography: new Set(['system', 'humanist', 'serif']),
             fontScale: new Set(['small', 'normal', 'large']),
@@ -287,6 +288,7 @@ class SettingsManager extends EventEmitter {
             appearanceProfile: {
                 toolPresentation: 'legacy',
                 toolExpansion: 'attention',
+                toolBubbleMotion: 'full',
                 density: 'comfortable',
                 radius: 'small',
                 typography: 'system',
