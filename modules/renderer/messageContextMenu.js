@@ -187,6 +187,20 @@ function showContextMenu(event, messageItem, message) {
 
     // For non-thinking/non-streaming messages (including errors and completed messages)
     if (!isThinkingOrStreaming) {
+        const isEditing = messageItem.classList.contains('message-item-editing');
+        const textarea = isEditing ? messageItem.querySelector('.message-edit-textarea') : null;
+
+        if (!isEditing) {
+            const editOption = ownerDocument.createElement('div');
+            editOption.classList.add('context-menu-item');
+            editOption.innerHTML = `<i class="fas fa-edit"></i> 编辑消息`;
+            editOption.onclick = () => {
+                toggleEditMode(messageItem, message);
+                closeContextMenu();
+            };
+            menu.appendChild(editOption);
+        }
+
         if (currentSelectedItemVal.type === 'agent' && contextMenuDependencies.compactContext) {
             const compactOption = ownerDocument.createElement('div');
             compactOption.className = 'context-menu-item';
@@ -212,20 +226,6 @@ function showContextMenu(event, messageItem, message) {
             };
             menu.appendChild(compactOption);
         }
-        const isEditing = messageItem.classList.contains('message-item-editing');
-        const textarea = isEditing ? messageItem.querySelector('.message-edit-textarea') : null;
-
-        if (!isEditing) {
-            const editOption = ownerDocument.createElement('div');
-            editOption.classList.add('context-menu-item');
-            editOption.innerHTML = `<i class="fas fa-edit"></i> 编辑消息`;
-            editOption.onclick = () => {
-                toggleEditMode(messageItem, message);
-                closeContextMenu();
-            };
-            menu.appendChild(editOption);
-        }
-
         const copyOption = ownerDocument.createElement('div');
         copyOption.classList.add('context-menu-item');
         copyOption.innerHTML = `<i class="fas fa-copy"></i> 复制文本`;
