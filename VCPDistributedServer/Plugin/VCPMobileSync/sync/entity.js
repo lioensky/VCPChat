@@ -1255,12 +1255,16 @@ async function repairOwnerTopicProjection({
         topicId,
         "history.json",
       );
+      const hasHistoryFile = await fs.stat(historyPath).then((s) => s.isFile()).catch(() => false);
+      if (!hasHistoryFile) {
+        continue;
+      }
       let topicData = backupTopics.get(topicId);
       if (!topicData) {
         const recoveredTopic = recoveredTopics.get(topicId);
         if (recoveredTopic?.deleted === false && recoveredTopic.topic) {
-          const { ownerId: _ownerId, ...topic } = recoveredTopic.topic;
-          topicData = topic;
+          topicData = { ...recoveredTopic.topic };
+          delete topicData.ownerId;
         }
       }
       if (!topicData) topicData = topicBackupTopics.get(topicId);
@@ -1274,8 +1278,11 @@ async function repairOwnerTopicProjection({
           ? createGroupTopic(fallback)
           : createAgentTopic(fallback);
       }
+      const cleanTopicData = { ...topicData, id: topicId };
+      delete cleanTopicData.configHash;
+      delete cleanTopicData.updatedAt;
       const normalizedTopic = await normalizeRecoveredTimestamp(
-        { ...topicData, id: topicId },
+        cleanTopicData,
         topicId,
         historyPath,
       );
