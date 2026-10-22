@@ -102,11 +102,8 @@ const searchManager = {
     },
 
     async openModal() {
-        // 🟢 确保模态框已实例化
-        if (!this.elements.modal) {
-            this.uiHelper.openModal('globalSearchModal');
-            // openModal 会触发 modal-ready，进而调用 cacheDOMElements
-        }
+        // 🟢 确保模态框已实例化，并始终通过 uiHelper 广播可见性事件以维护 OverlayCoordinator 租约
+        this.uiHelper?.openModal?.('globalSearchModal');
         
         if (this.elements.modal) {
             this.elements.modal.style.display = 'flex';
@@ -183,6 +180,7 @@ const searchManager = {
         // Mode changes can arrive before the lazily-created search modal has
         // emitted modal-ready. Closing an absent surface is a valid no-op.
         if (this.elements.modal) this.elements.modal.style.display = 'none';
+        this.uiHelper?.closeModal?.('globalSearchModal');
         this.clearScopedStyles();
 
         // 清空搜索内容和状态，确保下次打开时是干净的

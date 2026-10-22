@@ -706,19 +706,24 @@ function bindEvents() {
         else if (!$('node-modal').hidden) closeNodeModal();
     });
 
-    // 回到窗口时轻量刷新，便于观察 Agent 正在进行的施工
+    // 回到窗口或内嵌标签切换恢复可见时轻量刷新，便于观察 Agent 或 CLI 正在进行的施工
     let lastFocusRefresh = 0;
-    window.addEventListener('focus', () => {
-        if (Date.now() - lastFocusRefresh < 5000 || !$('node-modal').hidden) return;
+    const refreshOnReturn = () => {
+        if (Date.now() - lastFocusRefresh < 1500 || !$('node-modal').hidden) return;
         lastFocusRefresh = Date.now();
         loadProjects();
+    };
+    window.addEventListener('focus', refreshOnReturn);
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') refreshOnReturn();
     });
     // 监听主进程推送的工程变动（防抖 160ms）。主进程只推给订阅了 project-forge 的窗口，窗口关闭时订阅自动清掉
     const scheduleAutoRefresh = debounce(async payload => {
         if (!$('node-modal').hidden) return;
         await loadProjects();
         if (state.currentId) {
-            if (!payload?.projectId || payload.projectId === state.currentId) {
+            const hitList = Array.isArray(payload?.projectIds) && payload.projectIds.includes(state.currentId);
+            if (!payload?.projectId || payload.projectId === state.currentId || hitList) {
                 await selectProject(state.currentId, { keepTab: true });
             }
         }

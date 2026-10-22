@@ -162,6 +162,28 @@ test('ReadCode：行号、单文件行范围、find 消歧、越界拒绝', asyn
     await assert.rejects(call({ command: 'ReadCode', projectId: pid, path: '../../outside.js' }), /越出工程根/);
 });
 
+test('删除、恢复和清理事件携带实际影响的单个或批量工程 ID', async () => {
+    for (const count of [1, 2]) {
+        const ids = [];
+        for (let i = 0; i < count; i += 1) ids.push(await newProject(`event-${count}-${i}`));
+        const events = [];
+        const onChanged = payload => events.push(payload);
+        forge.events.on('changed', onChanged);
+        try {
+            for (const command of ['DeleteProjects', 'RestoreProjects', 'DeleteProjects', 'PurgeProjects']) {
+                events.length = 0;
+                await call({ command, projectIds: [...ids, 'missing-event-project'], confirm: true });
+                assert.equal(events.length, 1, command);
+                assert.equal(events[0].action, command.toLowerCase());
+                assert.deepEqual(events[0].projectIds, ids, 'only IDs changed by the operation are broadcast');
+                assert.equal(events[0].projectId, count === 1 ? ids[0] : null);
+            }
+        } finally {
+            forge.events.off('changed', onChanged);
+        }
+    }
+});
+
 test('EditCode：行号前缀剥除、expect 漂移、bestEffort、CRLF 保持', async () => {
     const pid = await newProject('tol');
     const file = path.join(wsRoot, 'tol', 'c.js');

@@ -312,8 +312,8 @@ export function createPlanDetailSideProvider({
 
             async function listTopicProjects(ids) {
                 if (!ids.length || !api?.projectForgeListProjects) return [];
-                const res = await api.projectForgeListProjects({});
-                const byId = new Map((res?.success ? res.data || [] : []).filter(p => !p.deleted_at).map(p => [p.id, p]));
+                const projects = await call(api.projectForgeListProjects({}));
+                const byId = new Map((projects || []).filter(p => !p.deleted_at).map(p => [p.id, p]));
                 return ids.map(id => byId.get(id)).filter(Boolean);
             }
 
@@ -984,10 +984,17 @@ export function createPlanDetailSideProvider({
                     const scoped = lastScope;
                     const projects = topicMode ? await listTopicProjects(scoped.projectIds) : [];
                     if (disposed() || seq !== refreshSeq) return;
-                    // 没手动选过工程就和状态面板走同一条规则
-                    const chosen = (pinned && projectId) || pickTopicProject(projects)?.id || projectId;
+                    // 没手动选过工程就和状态面板走同一条规则；话题模式下原工程已被删除时不再死守残留 ID
+                    const topicPicked = pickTopicProject(projects)?.id || null;
+                    const chosen = (pinned && projectId) || topicPicked || (!topicMode || !scoped.projectIds.length ? projectId : null);
                     if (!chosen) {
+                        projectId = null;
                         model = null;
+                        activity = null;
+                        topicProjects = projects;
+                        topicBatchIds = scoped.batchIds;
+                        scopeKey = scoped.key;
+                        staleError = '';
                         errorText = topicMode ? '这个话题还没用过 V工程，可以从上面选一个工程' : '还没有 V工程 工程';
                         loading = false;
                         render();
@@ -995,6 +1002,7 @@ export function createPlanDetailSideProvider({
                     }
                     const res = await api?.projectForgeGetProject?.(chosen);
                     if (disposed() || seq !== refreshSeq) return;
+                    const missingProject = !res?.success && /不存在/.test(res?.error || '');
                     if (res?.success && res.data?.project) {
                         const nextModel = buildPlanModel(res.data);
                         let nextActivity = null;
@@ -1023,6 +1031,13 @@ export function createPlanDetailSideProvider({
                             shownName = name;
                             sidePaneController?.updateTab?.(tab.id, { title: `计划 · ${name}`, payload: { ...(tab.payload || {}), projectId, projectName: name, pinned, focus: null } });
                         }
+                    } else if (missingProject) {
+                        projectId = pinned ? projectId : null;
+                        model = null;
+                        activity = null;
+                        topicProjects = projects;
+                        staleError = '';
+                        errorText = res?.error || '没有找到这个工程，可能已被删除';
                     } else if (!res?.success && model) {
                         staleError = res?.error || '读取失败';
                     } else {
@@ -1055,7 +1070,9 @@ export function createPlanDetailSideProvider({
                 else scheduleLoad();
             };
             own.subscribe(() => watchProjectForgeChanges(api, (payload) => {
-                if (!payload?.projectId || payload.projectId === projectId) loadWhenShown();
+                const matchesProject = id => id === projectId || (topicMode && !pinned && lastScope.projectIds.includes(id));
+                const hitList = Array.isArray(payload?.projectIds) && payload.projectIds.some(matchesProject);
+                if (!payload?.projectId || matchesProject(payload.projectId) || hitList) loadWhenShown();
             }, { label: 'plan-detail' }), 'projectforge-changes');
             // 新的施工结果进了聊天记录（可能晚于工程变更事件）：话题范围变了才重读
             if (topicMode) own.subscribe(() => watchTopic?.(() => {
