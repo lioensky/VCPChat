@@ -31,7 +31,7 @@ for (const file of files) {
         child.once('close', status => { clearTimeout(timer); resolve(status); });
     });
     const counts = Object.fromEntries(['tests', 'pass', 'fail', 'cancelled', 'skipped', 'todo'].map(key =>
-        [key, Number(output.match(new RegExp('^# ' + key + ' (\\d+)$', 'm'))?.[1] ?? NaN)]));
+        [key, Number(output.match(new RegExp('^(?:#|ℹ)\\s*' + key + '\\s+(\\d+)$', 'm'))?.[1] ?? NaN)]));
     const valid = code === 0 && !timedOut && Object.values(counts).every(Number.isFinite)
         && counts.tests > 0 && !counts.fail && !counts.cancelled && !counts.skipped && !counts.todo;
     totals[valid ? 'passedFiles' : 'failedFiles']++;

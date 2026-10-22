@@ -17,15 +17,15 @@ test('official presets are loaded from the independent official JSON file', () =
     assert.equal(officialStore.rules.length, 10);
     assert.deepEqual(names, [
         'Agent输出动画气泡',
+        '工作区目录感知',
         '心流锁系统',
         'Loom权限',
+        'VCP桌面权限',
         '文坊权限',
         '禁用所有工具',
-        'VCP桌面权限',
         '获取服务器验证码',
         '窗口控制权限',
-        '启用HTML多媒体权限',
-        '工作区目录感知'
+        '启用HTML多媒体权限'
     ]);
     assert.equal(names.includes('插件管理员'), false);
 });
@@ -163,15 +163,17 @@ test('deleting an official rule does not recreate it during split and recombine'
     assert.equal(restored.rules.length, officialStore.rules.length - 1);
 });
 
-test('only the base DivRender capability is enabled in the shipped official file', () => {
+test('only base capabilities are enabled in the shipped official file', () => {
     const combined = engine.combineRuleStores(officialStore, { version: 3, rules: [] });
     const enabled = combined.rules.filter(rule => rule.enabled !== false);
 
-    assert.equal(enabled.length, 1);
-    assert.equal(enabled[0].builtinKey, 'agent-div-render');
+    assert.equal(enabled.length, 2);
+    const enabledKeys = enabled.map(rule => rule.builtinKey).sort();
+    assert.deepEqual(enabledKeys, ['agent-div-render', 'workspace-tree']);
 
     const systemPrompt = engine.applySystemSuffix('base', combined.rules, 'agent');
     assert.match(systemPrompt, /\{\{VarDivRender\}\}/);
+    assert.match(systemPrompt, /\{\{VCPChatWorkSpace\}\}/);
     assert.doesNotMatch(systemPrompt, /\{\{USER_AUTH_CODE\}\}/);
     assert.doesNotMatch(systemPrompt, /\{\{VCPScreenPilot\}\}/);
     assert.doesNotMatch(systemPrompt, /\{\{VCPLoomController\}\}/);
