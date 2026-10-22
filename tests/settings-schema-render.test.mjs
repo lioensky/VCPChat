@@ -71,10 +71,12 @@ test('quick-actions schema 编译产物保留全部业务锚点与行为标记',
         'enableMiddleClickQuickAction && enableMiddleClickAdvanced');
     const textarea = form.querySelector('#continueWritingPrompt');
     assert.equal(textarea.tagName, 'TEXTAREA');
-    assert.equal(textarea.getAttribute('placeholder'), '默认: 请继续');
-    assert.equal(textarea.getAttribute('rows'), '1');
+    assert.equal(textarea.getAttribute('placeholder'), '默认: [系统提示:] 请继续。若当前已无值得继续推进的任务或话题，请输出 [[Flowlock::Stop]] 关闭心流锁心跳。');
+    assert.equal(textarea.getAttribute('rows'), '2');
     assert.equal(textarea.getAttribute('spellcheck'), 'false');
-    assert.equal(textarea.textContent, '请继续');
+    assert.equal(textarea.textContent, '[系统提示:] 请继续。若当前已无值得继续推进的任务或话题，请输出 [[Flowlock::Stop]] 关闭心流锁心跳。');
+    assert.equal(form.querySelector('label[for="continueWritingPrompt"]').textContent, '心流锁续写默认提示词');
+    assert.match(textarea.closest('.vcp-uiux-general-item').textContent, /点击话题顶部 Agent 名称可自动进入或退出心流锁/);
     const delay = form.querySelector('#flowlockContinueDelay');
     assert.equal(delay.getAttribute('min'), '1');
     assert.equal(delay.getAttribute('max'), '300');
@@ -929,7 +931,7 @@ test('store 快照：多类型现值迁移不丢失', () => {
     form.querySelector('#middleClickQuickAction').value = 'regenerate';
     const snapshot = captureSectionValues(form, quickActionsSection);
     host.replaceChildren(...renderSchemaSection(quickActionsSection, doc));
-    assert.equal(form.querySelector('#continueWritingPrompt').value, '请继续', '重渲染后应回到默认值');
+    assert.equal(form.querySelector('#continueWritingPrompt').value, '[系统提示:] 请继续。若当前已无值得继续推进的任务或话题，请输出 [[Flowlock::Stop]] 关闭心流锁心跳。', '重渲染后应回到默认值');
     restoreSectionValues(form, snapshot);
     assert.equal(form.querySelector('#continueWritingPrompt').value, '自定义提示词');
     assert.equal(form.querySelector('#enableMiddleClickQuickAction').checked, true);

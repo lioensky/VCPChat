@@ -6,15 +6,15 @@ import { section, textarea, number, switchField, select } from './kernel.js';
 
 export const quickActionsSection = section('quick-actions', '快捷操作', [
     textarea('continueWritingPrompt', {
-        label: '中键续写默认提示词',
-        hint: '提示：在输入框上中键点击时，如果输入框为空则使用此提示词进行续写；使用 ctrl/command+d 快速使用。',
-        placeholder: '默认: 请继续',
-        rows: 1,
+        label: '心流锁续写默认提示词',
+        hint: '提示：心流锁心跳默认使用此提示词；在输入框为空时，中键点击输入框或使用 Ctrl/Command+D 也会使用此提示词进行单次续写。中键点击话题顶部 Agent 名称可自动进入或退出心流锁（Ctrl/Command+G 同效）；入锁时不立即续写。',
+        placeholder: '默认: [系统提示:] 请继续。若当前已无值得继续推进的任务或话题，请输出 [[Flowlock::Stop]] 关闭心流锁心跳。',
+        rows: 2,
         spellcheck: false,
         stacked: true,
         textareaStyle: 38,
-        defaultValue: '请继续',
-        save: { trim: true, falsy: '请继续' },
+        defaultValue: '[系统提示:] 请继续。若当前已无值得继续推进的任务或话题，请输出 [[Flowlock::Stop]] 关闭心流锁心跳。',
+        save: { trim: true, falsy: '[系统提示:] 请继续。若当前已无值得继续推进的任务或话题，请输出 [[Flowlock::Stop]] 关闭心流锁心跳。' },
     }),
     number('flowlockContinueDelay', {
         label: '心流锁续写延迟 (秒):',

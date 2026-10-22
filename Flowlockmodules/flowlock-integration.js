@@ -136,7 +136,7 @@ async function continueWritingForContext(params) {
         // 检查是否有上一条 AI 消息
         const lastAiMessage = [...historyForVCP].reverse().find(msg => msg.role === 'assistant');
         if (lastAiMessage) {
-            temporaryPrompt = globalSettings.continueWritingPrompt || '请继续';
+            temporaryPrompt = globalSettings.continueWritingPrompt || '[系统提示:] 请继续。若当前已无值得继续推进的任务或话题，请输出 [[Flowlock::Stop]] 关闭心流锁心跳。';
         } else {
             temporaryPrompt = '';
         }

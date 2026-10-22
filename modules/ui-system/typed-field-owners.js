@@ -638,7 +638,7 @@ const TYPED_FIELD_DEFINITIONS = Object.freeze({
     userNameTextColor: { path: 'userNameTextColor', kind: 'string', fallback: '#ffffff' },
     userNameTextColorText: { path: 'userNameTextColor', kind: 'string', fallback: '#ffffff' },
     userName: { path: 'userName', kind: 'string', trimValue: true, fallback: '用户' },
-    continueWritingPrompt: { path: 'continueWritingPrompt', kind: 'string', trimValue: true, fallback: '请继续' },
+    continueWritingPrompt: { path: 'continueWritingPrompt', kind: 'string', trimValue: true, fallback: '[系统提示:] 请继续。若当前已无值得继续推进的任务或话题，请输出 [[Flowlock::Stop]] 关闭心流锁心跳。' },
     showHomeVisualBrand: { path: 'showHomeVisualBrand', kind: 'boolean' },
     showHomeVisualTagline: { path: 'showHomeVisualTagline', kind: 'boolean' },
     homeVisualTagline: { path: 'homeVisualTagline', kind: 'string' },

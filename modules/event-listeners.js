@@ -223,7 +223,7 @@ export function setupEventListeners(deps) {
             temporaryPrompt = additionalPrompt || '';
         } else {
             // 有AI消息时，使用续写逻辑：优先使用附加提示词，否则使用默认续写提示词
-            temporaryPrompt = additionalPrompt || globalSettings.continueWritingPrompt || '请继续';
+            temporaryPrompt = additionalPrompt || globalSettings.continueWritingPrompt || '[系统提示:] 请继续。若当前已无值得继续推进的任务或话题，请输出 [[Flowlock::Stop]] 关闭心流锁心跳。';
         }
 
         if (globalSettings.enableContextCompaction === true
