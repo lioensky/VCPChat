@@ -53,6 +53,9 @@
             // 主进程按窗口的推送订阅：主题、key、订阅窗口数
             subscriptions: Object.freeze(result?.subscriptions || []),
             gitWatchers: Object.freeze(result?.gitWatchers || []),
+            // 主进程稳定性日志摘要（无响应 / 进程退出计数与最近条目）与启动标记时间线
+            stability: result?.stability ? Object.freeze(result.stability) : null,
+            launch: result?.launch ? Object.freeze(result.launch) : null,
             // 终端执行器是否已加载（loaded），以及分布式服务器是否在跑（它的插件加载也会拉起执行器）
             terminalExecutor: Object.freeze({ loaded: Boolean(result?.terminalExecutor?.loaded), distributedServer: Boolean(result?.terminalExecutor?.distributedServer) }),
         });
@@ -75,5 +78,12 @@
         };
     }
 
-    globalObject.VCPLifecycleInspector = Object.freeze({ snapshot, snapshotMain, setStreamDiagnosticsProvider, setSidePaneDiagnosticsProvider });
+    /** 让主进程把进程指标、窗口状态和生命周期快照写成一份 JSON；返回 { success, filePath, summary } */
+    async function exportMain() {
+        const api = globalObject.chatAPI || globalObject.electronAPI;
+        if (typeof api?.exportDiagnosticsSnapshot !== 'function') return { success: false, error: 'diagnostics export is not available in this window' };
+        return api.exportDiagnosticsSnapshot();
+    }
+
+    globalObject.VCPLifecycleInspector = Object.freeze({ snapshot, snapshotMain, exportMain, setStreamDiagnosticsProvider, setSidePaneDiagnosticsProvider });
 })(typeof window !== 'undefined' ? window : null);

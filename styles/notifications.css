@@ -1765,3 +1765,51 @@ body[data-vcp-theme="light"] .tool-change-audit-diff-line.is-add {
 .notification-collapse-menu button:focus-visible {
     background: var(--button-hover-bg);
 }
+
+/* PS 审核摘要：只显示一行命令头，完整脚本由聊天正文承载。 */
+.notification-tool-approval .notification-approval-script {
+    display: flex;
+    min-width: 0;
+    max-width: 100%;
+    gap: 0;
+    font: inherit;
+    color: inherit;
+}
+.notification-tool-approval .notification-approval-script > span:first-child {
+    flex-shrink: 0;
+    white-space: pre;
+    font: inherit;
+    color: inherit;
+}
+.notification-tool-approval .notification-approval-script > .notification-approval-script-value {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font: inherit;
+    color: inherit;
+}
+
+.notification-tool-approval .notification-approval-script-card {
+    min-width: 0;
+    max-width: 100%;
+    margin-top: 6px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.1);
+    font: 400 0.85em/1.4 var(--vcp-chat-code-font-family, monospace);
+}
+.notification-tool-approval .notification-content .notification-approval-script-card > pre {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    color: inherit;
+    max-height: none;
+    overflow: visible;
+}
+.notification-tool-approval .notification-approval-script-card .notification-approval-script {
+    margin: 0;
+}

@@ -428,6 +428,46 @@ impl ApiResponse {
 
 // ============ Helper Functions ============
 
+#[cfg(test)]
+mod settings_eq_tests {
+    use super::*;
+
+    #[test]
+    fn applying_saved_dither_updates_the_actual_dsp_snapshot() {
+        let mut player = AudioPlayer::new(crate::config::AppConfig::default());
+        for enabled in [false, true, false] {
+            let settings = PersistentSettings {
+                dither_enabled: enabled,
+                ..PersistentSettings::default()
+            };
+            apply_settings_to_player(&mut player, &settings);
+            assert_eq!(player.dither_enabled, enabled);
+            assert_eq!(player.lockfree_noise_shaper_params.read().enabled, enabled);
+        }
+    }
+
+    #[test]
+    fn applying_eq_settings_unloads_fir_when_disabled_or_selecting_iir() {
+        // Synthetic defaults only: do not load AppConfig from the environment,
+        // open media/devices, create an HTTP server or persist any settings.
+        for (enabled, eq_type) in [(false, "FIR"), (false, "IIR"), (true, "IIR"), (true, "FIR")] {
+            let mut player = AudioPlayer::new(crate::config::AppConfig::default());
+            player.enable_fir_eq(511).unwrap();
+            assert!(player.is_fir_eq_enabled());
+            let settings = PersistentSettings {
+                eq_enabled: enabled,
+                eq_type: eq_type.to_string(),
+                fir_taps: Some(511),
+                ..PersistentSettings::default()
+            };
+            apply_settings_to_player(&mut player, &settings);
+            assert_eq!(player.is_fir_eq_enabled(), enabled && eq_type == "FIR");
+            assert_eq!(player.lockfree_eq_params.read().enabled, enabled && eq_type == "IIR");
+            assert_eq!(*player.shared_state().eq_type.read(), eq_type);
+        }
+    }
+}
+
 /// Apply persisted settings to player on startup
 fn apply_settings_to_player(player: &mut AudioPlayer, settings: &PersistentSettings) {
     // Volume
@@ -436,6 +476,11 @@ fn apply_settings_to_player(player: &mut AudioPlayer, settings: &PersistentSetti
     // Device settings are applied separately via configure_output API
     
     // EQ — gate on persisted enable flag so a disabled EQ stays off across restarts
+    // Also used by /save_settings on a live player: remove the old FIR backend
+    // before disabling EQ or applying IIR, not just the lock-free IIR flag.
+    if player.is_fir_eq_enabled() && (!settings.eq_enabled || settings.eq_type != "FIR") {
+        player.disable_fir_eq();
+    }
     if settings.eq_enabled {
         if settings.eq_type == "FIR" {
             let taps = settings.fir_taps.unwrap_or(1023);
@@ -475,8 +520,9 @@ fn apply_settings_to_player(player: &mut AudioPlayer, settings: &PersistentSetti
         }
     }
     
-    // Dither (state only; lock-free audio path currently does not host NoiseShaper stage)
+    // Keep persisted/UI state and the output chain's atomic DSP snapshot aligned.
     player.dither_enabled = settings.dither_enabled;
+    player.lockfree_noise_shaper_params.set_enabled(settings.dither_enabled);
     player.set_output_bits(settings.output_bits);
 
     // Noise shaper curve (was persisted but never applied on startup)

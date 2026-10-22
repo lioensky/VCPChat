@@ -79,6 +79,7 @@
         'density',
         'toolPresentation',
         'toolExpansion',
+
         'radius',
         'typography',
         'fontScale',
@@ -110,6 +111,7 @@
                 contentWidth: 'full',
                 wallpaperScope: 'theme',
                 toolPresentation: 'legacy', toolExpansion: 'attention',
+
             sidebarRowHeight: 46,
                 sidebarAvatarSize: 32,
                 customRadius: 10,
@@ -134,6 +136,7 @@
                 contentWidth: 'centered',
                 wallpaperScope: 'theme',
                 toolPresentation: 'legacy', toolExpansion: 'attention',
+
                 sidebarRowHeight: 40,
                 sidebarAvatarSize: 26,
                 customRadius: 6,
@@ -158,6 +161,7 @@
                 contentWidth: 'centered',
                 wallpaperScope: 'theme',
                 toolPresentation: 'legacy', toolExpansion: 'attention',
+
                 sidebarRowHeight: 52,
                 sidebarAvatarSize: 38,
                 customRadius: 14,
@@ -189,6 +193,7 @@
             contentWidth: 'full',
             wallpaperScope: 'theme',
             toolPresentation: 'legacy', toolExpansion: 'attention',
+
                 sidebarRowHeight: 46,
             sidebarAvatarSize: 32,
             customRadius: 10,
@@ -1457,6 +1462,7 @@
                     ...clone(preset.profile),
                     toolPresentation: draft.profile.toolPresentation,
                     toolExpansion: draft.profile.toolExpansion,
+
                     wallpaperScope: draft.profile.wallpaperScope
                 },
                 presentation: preset.presentation,

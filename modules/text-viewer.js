@@ -618,7 +618,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             html += `<div class="vcp-tool-result-header">`;
             html += `<span class="vcp-tool-result-label">VCP-ToolResult</span>`;
             html += `<span class="vcp-tool-result-name">${escapeHtml(toolName)}</span>`;
-            html += `<span class="vcp-tool-result-status">${escapeHtml(status)}</span>`;
+            html += `<span class="vcp-tool-result-status">${escapeHtml(status.replace(/[✅❌⚠⏳\uFE0F]/gu, '').trim())}</span>`;
             html += `<span class="vcp-result-toggle-icon"></span>`;
             html += `</div>`;
 

@@ -826,6 +826,8 @@ mainChatSettingsPresentationOwner.configureStartup({
         chatManager.init({
             chatContext,
             chatRepository,
+            historyMutationAuthority,
+            flowlockManager: window.flowlockManager,
             streamConsumerRegistry: mainChatAdapter?.streamRoutes,
             chatDomRenderer: mainChatDomRenderer,
             electronAPI: chatAPI,
@@ -860,6 +862,10 @@ mainChatSettingsPresentationOwner.configureStartup({
                 // This is no longer needed as chatManager will call messageRenderer's summarizer
             },
             notifySendStateChanged: mainChatSendOwner.update
+        });
+        messageRenderer.setContextMenuDependencies({
+            compactContext: () => chatManager.compactContext(),
+            isContextCompacting: () => chatManager.isContextCompacting(),
         });
         ownedRendererSubscriptions.add(chatManager);
         ownedRendererSubscriptions.add({ dispose: () => window.topicListManager.dispose?.() });
@@ -1082,6 +1088,8 @@ mainChatSettingsPresentationOwner.configureStartup({
         // diagnostics and isolated Electron smoke tests.
         document.documentElement.dataset.vcpRendererReady = 'true';
         window.dispatchEvent(new CustomEvent('vcp-renderer-ready'));
+        // 同一时刻通知主进程，作为启动标记里的 renderer-ready（lifecycle:get-main-snapshot.launch）
+        window.electronAPI?.markRendererReady?.();
 
         // Emoticon panel event listener
         if (attachFileBtn && emoticonTriggerBtn && window.emoticonManager) {

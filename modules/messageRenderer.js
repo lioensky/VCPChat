@@ -1,9 +1,11 @@
+import { isContextCheckpoint } from './chat/contextCompactionState.js';
 import { createProjectForgeTopicSurface } from './renderer/projectForgeTopicSurface.js';
 import { avatarColorCache, getDominantAvatarColor } from './renderer/colorUtils.js';
 import { createImageHandler } from './renderer/imageHandler.js';
 import { prepareChatMediaHtml, cleanupChatMedia } from './renderer/mediaLifecycle.js';
 import { processAnimationsInContent, cleanupAnimationsInContent } from './renderer/animation.js';
 import { createVisibilityOptimizer } from './renderer/visibilityOptimizer.js';
+
 import { createMessageSkeleton, formatMessageTimestamp } from './renderer/domBuilder.js';
 import { createEmoticonUrlFixer } from './renderer/emoticonUrlFixer.js';
 import { createContentPipeline, PIPELINE_MODES } from './renderer/contentPipeline.js';
@@ -50,6 +52,7 @@ const features = Object.freeze({
     globalCommands: options.exposeGlobalCommands !== false,
 });
 const visibilityOptimizer = options.visibilityOptimizer || createVisibilityOptimizer();
+
 const streamManager = options.streamManager;
 if (!streamManager) throw new TypeError('MessageRenderer requires an owned StreamProjection');
 const emoticonUrlFixer = options.emoticonUrlFixer || createEmoticonUrlFixer();
@@ -2022,6 +2025,40 @@ function renderMarkdownToHtmlUncached(text, options = {}) {
 }
 
 function renderMarkdownToHtml(text, options = {}) {
+    if (isContextCheckpoint(options.message)) {
+        const meta = options.message.contextCompaction;
+        const fidelity = meta.fidelity;
+        const fidelityBadge = fidelity && Number.isFinite(fidelity.total) && fidelity.total > 0
+            ? ` · 标识符 ${fidelity.preserved}/${fidelity.total}${fidelity.total > fidelity.preserved ? ' ⚠' : ''}`
+            : '';
+        const continuity = meta.continuity;
+        const continuityBadge = continuity?.applicable && continuity.windows > 0
+            ? ` · 未决 ${continuity.anchors.preserved}/${continuity.anchors.total}${continuity.openIssuesDropped || continuity.anchors.preserved < continuity.anchors.total ? ' ⚠' : ''}`
+            : '';
+        const summary = `上下文智能压缩 · ${meta.sourceCount || 0} 条历史 · ${meta.diaries?.length || 0} 篇日记${fidelityBadge}${continuityBadge}`;
+        const auditLines = [];
+        if (fidelity && Number.isFinite(fidelity.total) && fidelity.total > fidelity.preserved) {
+            const samples = [
+                ...(fidelity.missing?.path || []),
+                ...(fidelity.missing?.hash || []),
+                ...(fidelity.missing?.url || []),
+            ];
+            auditLines.push(`标识符缺失 ${fidelity.total - fidelity.preserved}/${fidelity.total}：${samples.slice(0, 8).join('、')}${samples.length > 8 ? ' …' : ''}`);
+        }
+        if (continuity?.applicable && continuity.windows > 0) {
+            if (continuity.openIssuesDropped) {
+                auditLines.push(`旧快照有 ${continuity.windows} 个未决窗口，新快照未再出现未决标记（可能已解决或被丢弃）`);
+            }
+            if (continuity.anchors.total > continuity.anchors.preserved) {
+                auditLines.push(`未决项标识符未承接：${continuity.anchors.missing.slice(0, 8).join('、')}`);
+            }
+        }
+        const auditHtml = auditLines.length
+            ? `<div class="vcp-context-checkpoint-audit">${auditLines.map(line => `<div class="vcp-context-checkpoint-audit-line">${escapeHtml(line)}</div>`).join('')}</div>`
+            : '';
+        const body = escapeHtml(String(options.message.content || '')).replace(/\r\n?|\n/g, '&#10;');
+        return `<details class="vcp-context-checkpoint" data-vcp-block-type="context-checkpoint" data-vcp-preserve-children="true"><summary data-vcp-system-control="true">${escapeHtml(summary)}</summary><div class="vcp-context-checkpoint-body">${auditHtml}${body}</div></details>`;
+    }
     const markedInstance = mainRendererReferences.markedInstance;
     if (!markedInstance) return escapeHtml(text);
 
@@ -2357,7 +2394,7 @@ function renderToolResultBlock(fullMatch, ordinal = -1, deferred = true) {
     html += `<div class="vcp-tool-result-header">`;
     html += `<span class="vcp-tool-result-label">VCP-ToolResult</span>`;
     html += `<span class="vcp-tool-result-name">${escapeHtml(toolName)}</span>`;
-    html += `<span class="vcp-tool-result-status">${escapeHtml(status)}</span>`;
+    html += `<span class="vcp-tool-result-status">${escapeHtml(status.replace(/[✅❌⚠⏳\uFE0F]/gu, '').trim())}</span>`;
     if (isHidden) {
         html += `<span class="vcp-tool-result-hidden-badge" title="当前工具结果已排除，后续对话不会注入到AI上下文中">已隐藏</span>`;
     }
@@ -2674,6 +2711,7 @@ function disposeRendererResources() {
     contextMenu.dispose?.();
     imageHandler.dispose?.();
     visibilityOptimizer.destroyVisibilityOptimizer?.();
+
     for (const styleElement of ownedStyleElements) {
         styleElement.remove();
     }
@@ -2893,6 +2931,7 @@ function initializeMessageRenderer(refs) {
     // 🟢 关键修复：IntersectionObserver 的 root 必须是产生滚动条的那个父容器
     const scrollContainer = mainRendererReferences.chatMessagesDiv.closest('.chat-messages-container');
     visibilityOptimizer.initializeVisibilityOptimizer(scrollContainer || mainRendererReferences.chatMessagesDiv);
+
 
     toolPresentation = createToolPresentation({
         root: mainRendererReferences.chatMessagesDiv,
@@ -3993,6 +4032,7 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
         // --- 正则规则应用结束 ---
 
         let rawHtml = renderMarkdownToHtml(textToRender, {
+            message,
             settings: globalSettings,
             messageRole: message.role,
             depth
@@ -4367,6 +4407,7 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId, opt
 
 function scheduleMessagePretextEstimate(messageId, text, contentDiv) {
     if (!mainRendererReferences.pretextBridge || !mainRendererReferences.pretextBridge.isReady() || !messageId || !text) return;
+    if (isContextCheckpoint(mainRendererReferences.currentChatHistoryRef.get().find(message => message.id === messageId))) return;
 
     /*
      * Pretext 只能估算纯文本换行，无法复现 ToolUse 折叠态、角色分隔器、
@@ -4481,6 +4522,7 @@ function updateMessageContent(messageId, newContent) {
     }
 
     const rawHtml = renderMarkdownToHtml(textToRender, {
+        message: messageInHistory,
         settings: globalSettings,
         messageRole: messageInHistory?.role || 'assistant',
         depth: depthForUpdate

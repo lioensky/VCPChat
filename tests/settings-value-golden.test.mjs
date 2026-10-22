@@ -309,13 +309,18 @@ function baseCurrentSettings() {
 
 const form = renderAllSections();
 
-// These two opt-in fields did not exist in the historical collector. Keep its
+// These opt-in fields did not exist in the historical collector. Keep its
 // oracle unchanged and compare every pre-existing field without them.
 function historicalPayload(payload) {
     const profile = {...payload.appearanceProfile};
     delete profile.toolPresentation;
     delete profile.toolExpansion;
-    return {...payload, appearanceProfile: profile};
+    delete profile.toolBubbleMotion;
+    const historical = {...payload, appearanceProfile: profile};
+    for (const key of ['enableContextCompaction', 'contextCompactionModel', 'contextCompactionPrompt', 'contextCompactionSendPrompt', 'contextCompactionMainPrompt']) {
+        delete historical[key];
+    }
+    return historical;
 }
 
 test('金测：随机灌值五轮，新收集器与旧收集器载荷逐键等价', () => {
@@ -489,4 +494,20 @@ test('值语义通道：rust/论坛/头像字段不进全量载荷，通道清�
     assert.ok(SAVE_CHANNEL_MANIFEST.rust.fields.includes('rustRuleMode'));
     assert.ok(SAVE_CHANNEL_MANIFEST.forum.fields.includes('adminUsername'));
     assert.ok(SAVE_CHANNEL_MANIFEST.avatar.fields.includes('userAvatarInput'));
+});
+
+
+test('上下文压缩设置独立保存模型、引擎提示词与两类发送提示词', () => {
+    form.querySelector('#enableContextCompaction').checked = true;
+    form.querySelector('#contextCompactionModel').value = '  compressor-model  ';
+    const values = {
+        contextCompactionPrompt: '  引擎职责\n只输出快照  ',
+        contextCompactionSendPrompt: '  压缩模型专用 {{conversation_history}}  ',
+        contextCompactionMainPrompt: '  主AI接续 {{context_checkpoint}} {{latest_diaries}}  ',
+    };
+    for (const [key, value] of Object.entries(values)) form.querySelector(`#${key}`).value = value;
+    const payload = collectSettings(schemaSurfaceSections(), { form, ...makeScope(baseCurrentSettings()) });
+    assert.equal(payload.enableContextCompaction, true);
+    assert.equal(payload.contextCompactionModel, 'compressor-model');
+    for (const [key, value] of Object.entries(values)) assert.equal(payload[key], value);
 });

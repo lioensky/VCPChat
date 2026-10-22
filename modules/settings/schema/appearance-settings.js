@@ -284,6 +284,7 @@ export const appearanceSettingsSection = section('appearance-settings', '界面�
                 density: byId('appearanceDensity'),
                 toolPresentation: byId('appearanceToolPresentation') || profile.toolPresentation,
                 toolExpansion: byId('appearanceToolExpansion') || profile.toolExpansion,
+
                 radius: byId('appearanceRadius'),
                 typography: byId('appearanceTypography'),
                 fontScale: byId('appearanceFontScale'),

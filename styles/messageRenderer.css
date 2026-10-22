@@ -18,79 +18,10 @@
     animation-play-state: paused !important;
 }
 
-/* Keyframes for animations */
-@keyframes vcp-bubble-background-flow-kf {
-    0% {
-        background-position: 0% 50%;
-    }
-
-    50% {
-        background-position: 100% 50%;
-    }
-
-    100% {
-        background-position: 0% 50%;
-    }
-}
-
-@keyframes vcp-bubble-border-flow-kf {
-    0% {
-        background-position:
-            -200% 0,
-            100% -200%,
-            300% 100%,
-            0 300%;
-    }
-
-    100% {
-        background-position:
-            300% 0,
-            100% 300%,
-            -200% 100%,
-            0 -200%;
-    }
-}
-
+/* 通用加载指示仍使用旋转；工具卡片不再运行装饰动画。 */
 @keyframes vcp-icon-rotate {
-    0% {
-        transform: rotate(0deg);
-    }
-
-    100% {
-        transform: rotate(360deg);
-    }
-}
-
-@keyframes vcp-icon-heartbeat {
-    0% {
-        transform: scale(1);
-        opacity: 0.6;
-    }
-
-    50% {
-        transform: scale(1.15);
-        opacity: 0.9;
-    }
-
-    100% {
-        transform: scale(1);
-        opacity: 0.6;
-    }
-}
-
-@keyframes vcp-toolname-color-flow-kf {
-    0% {
-        background-position: 0% 50%;
-    }
-
-    50% {
-        background-position: 150% 50%;
-    }
-
-    /* Adjusted for smoother flow with 300% background-size */
-    100% {
-        background-position: 0% 50%;
-    }
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
 }
 
 /* Loading dots animation */
@@ -140,191 +71,153 @@
     animation: vcp-loading-dots 1.4s infinite;
 }
 
-/* 主气泡样式 - VCP ToolUse */
-.vcp-tool-use-bubble {
-    background: var(--vcp-tool-presented-background, linear-gradient(145deg, #3a7bd5 0%, #00d2ff 100%)) !important;
-    background-size: 200% 200% !important;
-    /* 持续流动；取消原先播放一次、2 秒后停在终态的限制。 */
-    animation: vcp-bubble-background-flow-kf 2s ease-in-out infinite;
-    border-radius: var(--vcp-tool-presented-radius, 10px) !important;
-    padding: var(--vcp-tool-presented-spacing, 8px 15px 8px 35px) !important;
-    color: var(--vcp-tool-presented-color, #ffffff) !important;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
-    margin-top: var(--vcp-tool-presented-margin-top, 5px) !important;
-    /* Add space above the tool bubble */
-    margin-bottom: var(--vcp-tool-presented-margin-bottom, 10px) !important;
-    position: relative;
-    overflow: hidden;
+/*
+ * 聊天工具卡片：主题色为唯一色源，内部不叠加背景采样。
+ * .vcp-tool-presented 的布局仍由 tool-presentation.css 接管。
+ */
+:root {
+    --vcp-chat-tool-radius: 4px 10px 10px 4px;
+}
+:is(.vcp-tool-use-bubble, .vcp-tool-result-bubble, .vcp-tool-call-summary-bubble):not(.vcp-tool-presented) {
+    --vcp-chat-tool-accent: var(--highlight-text);
+    --vcp-chat-tool-surface: color-mix(in srgb, var(--secondary-bg) 94%, var(--vcp-chat-tool-accent) 6%);
+    --vcp-chat-tool-border: color-mix(in srgb, var(--border-color) 82%, transparent);
+    box-sizing: border-box;
+    border: 1px solid var(--vcp-chat-tool-border);
+    border-left: 3px solid color-mix(in srgb, var(--vcp-chat-tool-accent) 72%, var(--border-color));
+    border-radius: var(--vcp-chat-tool-radius) !important;
+    background: var(--vcp-chat-tool-surface) !important;
+    color: var(--primary-text) !important;
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--primary-text) 5%, transparent);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    will-change: auto;
+    animation: none;
+    text-shadow: none;
+}
+
+/* Default tool cards share one typographic scale and one icon grid.
+ * Do not target descendants wholesale: code and rich tool output own their fonts. */
+:is(.vcp-tool-use-bubble, .vcp-tool-result-bubble, .vcp-tool-call-summary-bubble):not(.vcp-tool-presented) {
+    --vcp-tool-card-text-size: 13px;
+    --vcp-tool-card-meta-size: 12px;
+    font-family: var(--vcp-tool-card-font-family, var(--vcp-chat-font-family, 'Segoe UI', 'Microsoft YaHei', sans-serif)) !important;
+    font-size: var(--vcp-tool-card-text-size) !important;
+    font-weight: 400;
     line-height: 1.6;
+    padding: 9px 12px 9px 36px !important;
+    margin: 8px 0 10px !important;
+    min-width: 0;
+    position: relative;
+}
+:is(.vcp-tool-use-bubble, .vcp-tool-result-bubble, .vcp-tool-call-summary-bubble):not(.vcp-tool-presented) > :is(.vcp-tool-summary, .vcp-tool-result-header, .vcp-tool-call-summary-header) {
+    min-height: 22px;
+    gap: 8px;
+    align-items: center;
+    font: inherit;
+}
+:is(.vcp-tool-use-bubble, .vcp-tool-result-bubble, .vcp-tool-call-summary-bubble):not(.vcp-tool-presented)::before {
+    content: "";
+    display: block;
+    position: absolute;
+    top: 12px;
+    left: 11px;
+    width: 16px;
+    height: 16px;
+    background: var(--secondary-text);
+    mask: var(--vcp-tool-card-icon) center / 16px 16px no-repeat;
+    pointer-events: none;
+}
+.vcp-tool-use-bubble:not(.vcp-tool-presented) {
+    --vcp-tool-card-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m8 7-5 5 5 5m8-10 5 5-5 5m-3-14-2 18'/%3E%3C/svg%3E");
+}
+.vcp-tool-result-bubble:not(.vcp-tool-presented) {
+    --vcp-tool-card-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='16' rx='3'/%3E%3Cpath d='m7 9 3 3-3 3m6 0h4'/%3E%3C/svg%3E");
+}
+.vcp-tool-call-summary-bubble:not(.vcp-tool-presented) {
+    --vcp-tool-card-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='3' width='14' height='18' rx='2'/%3E%3Cpath d='M9 8h6m-6 4h6m-6 4h4'/%3E%3C/svg%3E");
+}
+.vcp-tool-call-summary-bubble:not(.vcp-tool-presented) .vcp-tool-call-summary-icon {
+    display: none;
+}
+:is(.vcp-tool-use-bubble, .vcp-tool-result-bubble, .vcp-tool-call-summary-bubble):not(.vcp-tool-presented) :is(.vcp-tool-name-highlight, .vcp-tool-result-name, .vcp-tool-call-summary-title, .vcp-tool-call-summary-tool) {
+    font-family: inherit !important;
+    font-size: var(--vcp-tool-card-text-size) !important;
+    font-weight: 600;
+    line-height: inherit;
+    color: var(--primary-text) !important;
+    -webkit-text-fill-color: currentColor;
+}
+:is(.vcp-tool-use-bubble, .vcp-tool-result-bubble):not(.vcp-tool-presented) :is(.vcp-tool-label, .vcp-tool-result-label),
+.vcp-tool-call-summary-bubble:not(.vcp-tool-presented) .vcp-tool-call-summary-status,
+.vcp-tool-result-bubble:not(.vcp-tool-presented) .vcp-tool-result-status {
+    font-family: inherit !important;
+    font-size: var(--vcp-tool-card-meta-size) !important;
+    font-weight: 400;
+    line-height: 1.6;
+}
+.vcp-tool-call-summary-bubble:not(.vcp-tool-presented) .vcp-tool-call-summary-chip {
+    font: inherit;
+    padding: 3px 8px;
+    gap: 8px;
+}
+.vcp-tool-call-summary-bubble:not(.vcp-tool-presented) .vcp-tool-call-summary-header {
+    margin-bottom: 8px;
+}
+
+.vcp-tool-use-bubble {
     display: block !important;
-    width: -moz-fit-content;
+    position: relative;
     width: fit-content;
     max-width: 100%;
-    font-family: var(--vcp-tool-presented-font-family, var(--vcp-chat-code-font-family, 'Consolas', 'Monaco', 'Courier New', monospace)) !important;
-    font-size: var(--vcp-tool-presented-font-size, 0.95em) !important;
-    white-space: var(--vcp-tool-presented-white-space, pre-wrap) !important;
-    /* Restore: Allow wrapping but preserve whitespace */
-    word-break: var(--vcp-tool-presented-word-break, break-all) !important;
-    /* Restore: Break long strings */
-    /*
-     * 不要使用 transition: all：
-     * ToolUse 使用 fit-content，长参数会令实际宽度受 max-width 约束。
-     * 滚动时元素反复经过静止指针会切换 :hover；若尺寸也参与过渡，
-     * Chromium 必须逐帧重算整条超高消息的内在宽度与换行，继而重绘
-     * 外层 backdrop-filter，可能造成全局闪烁和主线程阻塞。
-     */
-    transition: box-shadow 0.2s ease, filter 0.2s ease;
-    /*
-     * 气泡本体没有 transform 动画，不应永久强制提升为合成层。
-     * 长 ToolUse 展开时，该层会与全尺寸 mask 及外层 backdrop-filter
-     * 一起触发整条消息重新栅格化。
-     */
-    will-change: auto;
+    padding: var(--vcp-tool-presented-spacing, 8px 14px 8px 34px) !important;
+    margin-top: var(--vcp-tool-presented-margin-top, 6px) !important;
+    margin-bottom: var(--vcp-tool-presented-margin-bottom, 10px) !important;
+    border-radius: var(--vcp-tool-presented-radius, var(--vcp-chat-tool-radius)) !important;
+    background: var(--vcp-tool-presented-background, var(--secondary-bg)) !important;
+    color: var(--vcp-tool-presented-color, var(--primary-text)) !important;
+    font-family: var(--vcp-tool-presented-font-family, var(--vcp-tool-card-font-family, var(--vcp-chat-font-family, sans-serif))) !important;
+    font-size: var(--vcp-tool-presented-font-size, 0.92em) !important;
+    line-height: 1.6;
+    white-space: var(--vcp-tool-presented-white-space, normal) !important;
+    word-break: var(--vcp-tool-presented-word-break, normal) !important;
+    overflow-wrap: anywhere;
 }
-/*
- * 外框流光只绘制四条 1px 边缘渐变，不再使用覆盖整张卡片的双层
- * mask-composite。这样保留环绕流光，同时避免长 ToolUse 展开时创建
- * 巨大的离屏遮罩纹理。
- */
-.vcp-tool-use-bubble {
-    border: 1px solid rgba(118, 196, 247, 0.58);
+.vcp-tool-use-bubble:not(.vcp-tool-presented):hover {
+    border-color: color-mix(in srgb, var(--highlight-text) 35%, var(--border-color));
 }
-
-.vcp-tool-use-bubble::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: 3;
-    border-radius: inherit;
-    pointer-events: none;
-    background:
-        linear-gradient(90deg, transparent 0%, #f1c40f 38%, #ffffff 50%, #00d2ff 62%, transparent 100%) top left / 45% 1px no-repeat,
-        linear-gradient(180deg, transparent 0%, #00d2ff 38%, #ffffff 50%, #f1c40f 62%, transparent 100%) top right / 1px 45% no-repeat,
-        linear-gradient(270deg, transparent 0%, #f1c40f 38%, #ffffff 50%, #00d2ff 62%, transparent 100%) bottom right / 45% 1px no-repeat,
-        linear-gradient(0deg, transparent 0%, #00d2ff 38%, #ffffff 50%, #f1c40f 62%, transparent 100%) bottom left / 1px 45% no-repeat;
-    animation: vcp-bubble-border-flow-kf 2s linear infinite;
+.vcp-tool-use-bubble.vcp-jev-tool-use-bubble:not(.vcp-tool-presented) {
+    --vcp-chat-tool-accent: var(--quoted-text);
 }
-
-/*
- * ToolUse 的宽度在 hover 前后必须保持不变。
- * 特别是含长 JSON/code 参数的卡片，100% → 90% 会改变换行点并触发
- * 整条消息重排；短 ToolUse 因未触及上限而通常无法暴露此问题。
- */
-.vcp-tool-use-bubble:hover {
-    max-width: 100%;
-}
-
-/*
- * 浅色主题使用浅蓝色工具调用气泡，并配合深蓝色文字提高可读性。
- * 深色主题继续使用上方默认的深蓝渐变与白色文字。
- */
-body[data-vcp-theme="light"] .vcp-tool-use-bubble {
-    background: var(--vcp-tool-presented-background, linear-gradient(145deg, #dbeeff 0%, #b8e4ff 100%)) !important;
-    border-color: rgba(30, 136, 229, 0.35);
-    color: var(--vcp-tool-presented-color, #123a5a) !important;
-    box-shadow: 0 4px 10px rgba(30, 100, 160, 0.14);
-}
-
-/*
- * JEV 自然语言入口复用 ToolUse 的折叠、懒挂载与动画结构，仅以紫蓝色调
- * 表达兼容协议身份；旧 VCP-ToolUse 的类名与外观保持不变。
- */
-.vcp-tool-use-bubble.vcp-jev-tool-use-bubble {
-    background: var(--vcp-tool-presented-background, linear-gradient(145deg, #6254d9 0%, #298bd6 100%)) !important;
-    border-color: rgba(190, 180, 255, 0.62);
-}
-
-.vcp-tool-use-bubble.vcp-jev-tool-use-bubble::after {
-    background:
-        linear-gradient(90deg, transparent 0%, #d8b4fe 38%, #ffffff 50%, #67e8f9 62%, transparent 100%) top left / 45% 1px no-repeat,
-        linear-gradient(180deg, transparent 0%, #67e8f9 38%, #ffffff 50%, #d8b4fe 62%, transparent 100%) top right / 1px 45% no-repeat,
-        linear-gradient(270deg, transparent 0%, #d8b4fe 38%, #ffffff 50%, #67e8f9 62%, transparent 100%) bottom right / 45% 1px no-repeat,
-        linear-gradient(0deg, transparent 0%, #67e8f9 38%, #ffffff 50%, #d8b4fe 62%, transparent 100%) bottom left / 1px 45% no-repeat;
-}
-
-.vcp-tool-use-bubble.vcp-jev-tool-use-bubble::before {
-    content: "\2728";
-}
-
-body[data-vcp-theme="light"] .vcp-tool-use-bubble.vcp-jev-tool-use-bubble {
-    background: var(--vcp-tool-presented-background, linear-gradient(145deg, #eee9ff 0%, #ccecff 100%)) !important;
-    border-color: rgba(99, 102, 241, 0.32);
-    color: var(--vcp-tool-presented-color, #293056) !important;
-}
-
-/* 格式错误工具调用气泡 (is-malformed) */
-.vcp-tool-use-bubble.is-malformed {
-    border-color: var(--danger-color, #e06c5f) !important;
-    background: linear-gradient(145deg, rgba(224, 108, 95, 0.3) 0%, rgba(185, 72, 50, 0.4)) !important;
-}
-
-.vcp-tool-use-bubble.is-malformed::before {
-    content: "\26A0\FE0F";
-    animation: none;
+.vcp-tool-use-bubble.is-malformed:not(.vcp-tool-presented) {
+    --vcp-chat-tool-accent: var(--danger-color);
 }
 
 .vcp-tool-use-bubble .vcp-tool-malformed-hint {
     margin-left: 8px;
     font-size: 0.88em;
-    font-weight: normal;
-    color: var(--danger-color, #fca5a5);
+    color: var(--danger-color);
 }
-
-body[data-vcp-theme="light"] .vcp-tool-use-bubble.is-malformed {
-    border-color: var(--danger-color, #b94832) !important;
-    background: linear-gradient(145deg, rgba(239, 68, 68, 0.12) 0%, rgba(220, 38, 38, 0.18)) !important;
-    color: #5c1d11 !important;
-}
-
-body[data-vcp-theme="light"] .vcp-tool-use-bubble .vcp-tool-malformed-hint {
-    color: var(--danger-color, #b94832);
-}
-
-/* New styles for summary and details sections */
 .vcp-tool-summary {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
+    gap: 7px;
     cursor: pointer;
+    min-width: 0;
 }
-
 .vcp-tool-details {
     display: none;
     max-height: 500px;
     overflow: auto;
-    background-color: rgba(0, 0, 0, 0.2);
+    background: color-mix(in srgb, var(--primary-bg) 65%, transparent);
     border-radius: 6px;
     margin-top: 0;
 }
-
-/*
- * 高度仍采用一次性状态切换，不对 max-height / margin 做插值；只在新挂载
- * 的详情层上执行 opacity + transform 合成动画，获得类似 ToolResult 的
- * 简单展开反馈，而不会在动画期间连续重排整条消息。
- */
-@keyframes vcp-tool-details-reveal {
-    from {
-        opacity: 0;
-        transform: translateY(-4px);
-    }
-
-    to {
-        opacity: 1;
-        transform: none;
-    }
-}
-
 .vcp-tool-use-bubble.expanded .vcp-tool-details {
     display: block;
-    margin-top: 10px;
-    animation: vcp-tool-details-reveal 180ms ease-out both;
+    margin-top: 8px;
 }
-
-/*
- * ToolUse 参数的 <pre> 只是保留格式的文本载体，外层
- * .vcp-tool-details 已经负责背景、圆角与滚动。必须显式覆盖通用
- * Markdown 代码块外观，否则其 margin-top、背景和边框会在展开区
- * 顶部形成一条额外图层，并产生双层卡片。
- */
 .message-item .md-content .vcp-tool-details > pre {
     margin: 0 !important;
     padding: 10px;
@@ -333,99 +226,37 @@ body[data-vcp-theme="light"] .vcp-tool-use-bubble .vcp-tool-malformed-hint {
     background: transparent !important;
     box-shadow: none !important;
     overflow: visible;
-    color: #f0f0f0;
+    color: var(--primary-text);
     white-space: pre-wrap;
-    word-break: break-all;
-    font-size: 0.85em;
-    line-height: 1.5;
+    word-break: normal;
+    overflow-wrap: anywhere;
+    font-size: 0.88em;
+    line-height: 1.6;
 }
-
-body[data-vcp-theme="light"] .vcp-tool-use-bubble .vcp-tool-details {
-    background-color: rgba(30, 100, 160, 0.08);
-}
-
-body[data-vcp-theme="light"] .message-item .md-content .vcp-tool-details > pre {
-    color: #173b57;
-}
-
-
-/* 内部 span 的重置 - VCP ToolUse */
 .vcp-tool-use-bubble .vcp-tool-label,
 .vcp-tool-use-bubble .vcp-tool-name-highlight {
     background: none !important;
-    border: none !important;
+    border: 0 !important;
     padding: 0 !important;
     margin: 0 !important;
     box-shadow: none !important;
-    color: inherit !important;
     display: inline !important;
     font-family: inherit !important;
-    /* Inherit from parent bubble */
     font-size: inherit !important;
-    /* Inherit from parent bubble */
-    vertical-align: baseline;
-    position: relative;
-    z-index: 1;
+    color: inherit !important;
 }
-
-/* "VCP-ToolUse:" 标签 */
-.vcp-tool-use-bubble .vcp-tool-label {
-    font-weight: bold;
-    color: #f1c40f;
-    margin-right: 6px;
+.vcp-tool-use-bubble:not(.vcp-tool-presented) .vcp-tool-label {
+    color: var(--secondary-text) !important;
+    font-size: var(--vcp-tool-card-meta-size) !important;
+    font-weight: 400;
 }
-
-/* 工具名高亮 - VCP ToolUse */
-.vcp-tool-use-bubble .vcp-tool-name-highlight {
-    background: linear-gradient(90deg, #f1c40f, #ffffff, #00d2ff, #f1c40f) !important;
-    background-size: 300% 100% !important;
-    background-position: 0 50%;
-    -webkit-background-clip: text !important;
-    background-clip: text !important;
-    -webkit-text-fill-color: transparent !important;
-    color: transparent !important;
-    font-style: normal !important;
-    font-weight: bold !important;
-    padding: 1px 3px !important;
-    border-radius: 4px !important;
-    animation: vcp-toolname-color-flow-kf 2s linear infinite;
-    margin-left: 2px;
+.vcp-tool-use-bubble:not(.vcp-tool-presented) .vcp-tool-name-highlight {
+    color: var(--primary-text) !important;
+    font-weight: 600;
+    -webkit-text-fill-color: currentColor;
 }
-
-/* 浅色主题使用更深的流光色，避免工具名融入浅蓝背景。 */
-body[data-vcp-theme="light"] .vcp-tool-use-bubble .vcp-tool-name-highlight {
-    background-image: linear-gradient(90deg, #0d47a1, #5e35b1, #00695c, #0d47a1) !important;
-}
-
-/* 左上角齿轮图标 - VCP ToolUse */
-.vcp-tool-use-bubble::before {
-    content: "\2699\FE0F";
-    position: absolute;
-    top: 8px;
-    left: 10px;
-    font-size: 14px;
-    color: rgba(255, 255, 255, 0.75);
-    z-index: 2;
-    animation: vcp-icon-rotate 2s linear infinite;
-    transform-origin: center center;
-}
-
-/* 隐藏 VCP 气泡内的复制按钮 */
-.vcp-tool-use-bubble .code-copy {
-    /* This might target <code> inside <pre class="vcp-tool-use-bubble"> */
-    display: none !important;
-}
-
-/* Also hide if copy button is direct child of the bubble (if no inner code element) */
-.vcp-tool-use-bubble>.code-copy {
-    display: none !important;
-}
-
-.vcp-tool-request-bubble>strong {
-    display: none !important;
-}
-
-/* Hide "VCP工具调用:" strong tag if it was ever added */
+.vcp-tool-use-bubble .code-copy,
+.vcp-tool-request-bubble > strong { display: none !important; }
 
 /* --- Maid Diary Bubble Redesign --- */
 
@@ -1294,19 +1125,6 @@ body[data-vcp-theme="dark"] {
     --table-row-even-bg-color: transparent;
     --table-row-hover-bg-color: rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0.4);
 
-    /* NEW: Tool Result Bubble Dark Theme - Modern Deep Dark */
-    --tool-result-bg: linear-gradient(145deg, rgba(28, 28, 30, 0.5), rgba(44, 44, 46, 0.5));
-    --tool-result-border-color: rgba(255, 255, 255, 0.08);
-    --tool-result-text-color: #f2f2f7;
-    --tool-result-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-    --tool-result-header-border-color: rgba(255, 255, 255, 0.1);
-    --tool-result-name-color: #64d2ff;
-    --tool-result-name-bg: rgba(100, 210, 255, 0.15);
-    --tool-result-item-key-color: #8e8e93;
-    --tool-result-item-value-color: #ebebf5;
-    --tool-result-item-link-color: #0a84ff;
-    --tool-result-item-strong-color: #ffd60a;
-    --tool-result-footer-color: #8e8e93;
     --vcp-canvas-bg: #2d3748;
     --vcp-canvas-text-color: #e2e8f0;
     --vcp-canvas-border-color: #4a5568;
@@ -1322,20 +1140,6 @@ body[data-vcp-theme="light"] {
     --table-row-even-bg-color: transparent;
     --table-row-hover-bg-color: rgba(var(--rgb-secondary-bg-light, 255, 255, 255), 0.8);
 
-    /* NEW: Tool Result Bubble Light Theme */
-    --tool-result-bg: linear-gradient(145deg, rgba(244, 246, 248, 0.5), rgba(232, 234, 240, 0.5));
-    --tool-result-border-color: rgba(0, 0, 0, 0.1);
-    --tool-result-text-color: #333;
-    --tool-result-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    --tool-result-header-border-color: rgba(0, 0, 0, 0.1);
-    --tool-result-name-color: #0277bd;
-    --tool-result-name-bg: rgba(2, 119, 189, 0.1);
-    --tool-result-item-key-color: #546e7a;
-    --tool-result-item-value-color: #263238;
-    --tool-result-item-link-color: #1976d2;
-    --tool-result-item-strong-color: #b8860b;
-    /* DarkGoldenRod */
-    --tool-result-footer-color: #78909c;
     --vcp-canvas-bg: #f7fafc;
     --vcp-canvas-text-color: #2d3748;
     --vcp-canvas-border-color: #e2e8f0;
@@ -1402,70 +1206,64 @@ body[data-vcp-theme="light"] {
 
 /* --- VCP Tool Result Bubble --- */
 .vcp-tool-result-bubble {
+    --tool-result-border-color: var(--border-color);
+    --tool-result-text-color: var(--primary-text);
+    --tool-result-header-border-color: color-mix(in srgb, var(--border-color) 65%, transparent);
+    --tool-result-name-color: var(--quoted-text);
+    --tool-result-name-bg: color-mix(in srgb, var(--quoted-text) 10%, transparent);
+    --tool-result-item-key-color: var(--secondary-text);
+    --tool-result-item-value-color: var(--primary-text);
+    --tool-result-item-link-color: var(--highlight-text);
+    --tool-result-item-strong-color: var(--primary-text);
+    --tool-result-footer-color: var(--secondary-text);
     display: block !important;
-    background: var(--vcp-tool-presented-background, var(--tool-result-bg)) !important;
-    border-radius: var(--vcp-tool-presented-radius, 10px) !important;
-    border: 1px solid var(--tool-result-border-color);
-    padding: var(--vcp-tool-presented-spacing, 12px 18px) !important;
-    color: var(--vcp-tool-presented-color, var(--tool-result-text-color)) !important;
-    box-shadow: var(--tool-result-shadow);
-    margin-top: var(--vcp-tool-presented-margin-top, 10px) !important;
-    margin-bottom: var(--vcp-tool-presented-margin-bottom, 12px) !important;
     position: relative;
-    font-family: var(--vcp-tool-presented-font-family, var(--vcp-tool-card-font-family, var(--vcp-chat-font-family, 'Segoe UI', 'Roboto', sans-serif))) !important;
-    font-size: var(--vcp-tool-presented-font-size, 0.95em) !important;
-    line-height: 1.6;
     width: 100%;
-    max-width: 95%;
+    max-width: 100%;
+    min-width: 0;
     box-sizing: border-box;
-    transition: background 0.3s, color 0.3s, border-color 0.3s, box-shadow 0.3s;
-    /* Add transition for smooth theme change */
-    will-change: transform;
-    /* 优化：结果气泡提升为独立层 */
+    padding: var(--vcp-tool-presented-spacing, 9px 12px) !important;
+    margin-top: var(--vcp-tool-presented-margin-top, 8px) !important;
+    margin-bottom: var(--vcp-tool-presented-margin-bottom, 10px) !important;
+    border-radius: var(--vcp-tool-presented-radius, var(--vcp-chat-tool-radius)) !important;
+    background: var(--vcp-tool-presented-background, var(--secondary-bg)) !important;
+    color: var(--vcp-tool-presented-color, var(--primary-text)) !important;
+    font-family: var(--vcp-tool-presented-font-family, var(--vcp-tool-card-font-family, var(--vcp-chat-font-family, sans-serif))) !important;
+    font-size: var(--vcp-tool-presented-font-size, 0.92em) !important;
+    line-height: 1.6;
 }
-
-.vcp-tool-result-bubble::before {
-    content: "\1F4CA";
-    position: absolute;
-    top: 12px;
-    left: 15px;
-    font-size: 16px;
-    opacity: 0.7;
+.vcp-tool-result-bubble:not(.vcp-tool-presented) {
+    --vcp-chat-tool-accent: var(--quoted-text);
 }
-
 .vcp-tool-result-header {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 8px;
-    padding-left: 28px;
-    /* Space for the icon */
-    border-bottom: 1px solid var(--tool-result-header-border-color);
-    padding-bottom: 8px;
-    margin-bottom: 10px;
+    gap: 7px;
+    min-width: 0;
 }
-
 .vcp-tool-result-label {
-    font-weight: bold;
-    color: #4caf50;
-    /* Green for success */
-    font-size: 1.05em;
+    font-weight: 500;
+    color: var(--secondary-text);
+    font-size: 0.85em;
 }
-
 .vcp-tool-result-name {
-    font-weight: bold;
+    font-weight: 650;
     color: var(--tool-result-name-color);
-    background-color: var(--tool-result-name-bg);
-    padding: 2px 6px;
-    border-radius: 4px;
+    overflow-wrap: anywhere;
+    min-width: 0;
 }
-
 .vcp-tool-result-status {
-    font-weight: bold;
-    padding: 2px 6px;
+    font-weight: 600;
+    padding: 1px 5px;
     border-radius: 4px;
-    font-size: 0.9em;
+    font-size: 0.85em;
+    color: var(--secondary-text);
+    background: color-mix(in srgb, var(--accent-bg) 60%, transparent);
 }
+.vcp-tool-result-status.status-success { color: var(--success-color); }
+.vcp-tool-result-status:is(.status-failure, .status-error) { color: var(--danger-color); }
+.vcp-tool-result-status:is(.status-timeout, .status-rejected) { color: var(--highlight-text); }
 
 /* NEW: Toggle Icon for Collapsible Result Bubble */
 .vcp-result-toggle-icon {
@@ -1538,9 +1336,9 @@ body[data-vcp-theme="light"] {
 
 .vcp-tool-result-delete-btn:hover,
 .vcp-tool-result-toggle-btn:hover {
-    color: var(--accent-color, #38bdf8);
-    background: rgba(56, 189, 248, 0.12);
-    border-color: rgba(56, 189, 248, 0.35);
+    color: var(--highlight-text);
+    background: color-mix(in srgb, var(--highlight-text) 10%, transparent);
+    border-color: color-mix(in srgb, var(--highlight-text) 30%, transparent);
 }
 
 .vcp-tool-result-toggle-btn.is-hidden {
@@ -1548,14 +1346,14 @@ body[data-vcp-theme="light"] {
 }
 
 .vcp-tool-result-toggle-btn.is-hidden:hover {
-    color: #22c55e;
-    background: rgba(34, 197, 94, 0.12);
-    border-color: rgba(34, 197, 94, 0.35);
+    color: var(--success-color);
+    background: color-mix(in srgb, var(--success-color) 10%, transparent);
+    border-color: color-mix(in srgb, var(--success-color) 30%, transparent);
 }
 
 .vcp-tool-result-delete-btn:focus-visible,
 .vcp-tool-result-toggle-btn:focus-visible {
-    outline: 2px solid rgba(56, 189, 248, 0.6);
+    outline: 2px solid var(--highlight-text);
     outline-offset: 1px;
 }
 
@@ -1587,33 +1385,9 @@ body[data-vcp-theme="light"] {
     user-select: none;
 }
 
-body[data-vcp-theme="light"] .vcp-tool-result-delete-btn:hover,
-body[data-vcp-theme="light"] .vcp-tool-result-toggle-btn:hover {
-    color: #0284c7;
-    background: rgba(2, 132, 199, 0.08);
-    border-color: rgba(2, 132, 199, 0.3);
-}
-
-body[data-vcp-theme="light"] .vcp-tool-result-toggle-btn.is-hidden:hover {
-    color: #16a34a;
-    background: rgba(22, 163, 74, 0.08);
-    border-color: rgba(22, 163, 74, 0.3);
-}
-.vcp-tool-result-status:containing("SUCCESS") {
-    /* This is a pseudo-selector, might not work directly in CSS */
-    color: #c8e6c9;
-    background-color: rgba(76, 175, 80, 0.2);
-}
-
-/* Specific style for SUCCESS status in light theme */
-body[data-vcp-theme="light"] .vcp-tool-result-status:containing("SUCCESS") {
-    color: #1b5e20;
-    /* Dark green text */
-    background-color: rgba(76, 175, 80, 0.15);
-}
 
 .vcp-tool-result-details {
-    padding-left: 28px;
+    padding-left: 0;
     /* Align with header content */
     display: flex;
     flex-direction: column;
@@ -1882,7 +1656,7 @@ body[data-vcp-theme="dark"] .vcp-tool-result-bubble th {
     overflow-x: auto;
     overflow-y: auto;
     /* Enable vertical scrolling */
-    transition: max-height 0.5s ease-in-out, opacity 0.4s ease-in-out, margin-top 0.5s ease-in-out;
+    /* 显隐一次完成，不对高度做逐帧插值。 */
     margin-top: 0;
     scrollbar-width: thin;
     /* Firefox */
@@ -1924,8 +1698,8 @@ body[data-vcp-theme="dark"] .vcp-tool-result-bubble th {
     gap: 8px;
     margin-top: 10px;
     padding: 8px 16px;
-    background: rgba(100, 210, 255, 0.08);
-    border: 1px dashed rgba(100, 210, 255, 0.3);
+    background: color-mix(in srgb, var(--quoted-text) 7%, transparent);
+    border: 1px dashed color-mix(in srgb, var(--quoted-text) 30%, transparent);
     border-radius: 8px;
     cursor: pointer;
     font-size: 0.88em;
@@ -1935,8 +1709,8 @@ body[data-vcp-theme="dark"] .vcp-tool-result-bubble th {
 }
 
 .vcp-tool-result-truncated-notice:hover {
-    background: rgba(100, 210, 255, 0.15);
-    border-color: rgba(100, 210, 255, 0.5);
+    background: color-mix(in srgb, var(--quoted-text) 12%, transparent);
+    border-color: color-mix(in srgb, var(--quoted-text) 50%, transparent);
     transform: translateY(-1px);
 }
 
@@ -1944,23 +1718,13 @@ body[data-vcp-theme="dark"] .vcp-tool-result-bubble th {
     transform: translateY(0);
 }
 
-body[data-vcp-theme="light"] .vcp-tool-result-truncated-notice {
-    background: rgba(2, 119, 189, 0.06);
-    border-color: rgba(2, 119, 189, 0.2);
-    color: var(--tool-result-name-color);
-}
-
-body[data-vcp-theme="light"] .vcp-tool-result-truncated-notice:hover {
-    background: rgba(2, 119, 189, 0.12);
-    border-color: rgba(2, 119, 189, 0.4);
-}
 
 /* --- User Clicked Button Bubble --- */
 .user-clicked-button-bubble {
     display: inline-block;
-    background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+    background: color-mix(in srgb, var(--secondary-bg) 92%, var(--highlight-text) 8%);
     background-size: 200% 200%;
-    animation: vcp-bubble-background-flow-kf 10s ease-in-out infinite;
+    animation: none;
     color: #ffffff;
     padding: 5px 12px;
     border-radius: 16px;
@@ -2794,277 +2558,108 @@ body[data-vcp-theme="light"] .vcp-thought-chain-bubble {
 .vcp-tool-call-summary-bubble {
     display: block !important;
     width: fit-content;
-    max-width: 95%;
-    margin: var(--vcp-tool-presented-margin, 10px 0 12px 0) !important;
-    padding: var(--vcp-tool-presented-spacing, 10px 14px) !important;
-    border-radius: var(--vcp-tool-presented-radius, 12px) !important;
-    border: 1px solid var(--tool-summary-border-color, rgba(100, 210, 255, 0.22));
-    background: var(--vcp-tool-presented-background, var(--tool-summary-bg, linear-gradient(145deg, rgba(40, 70, 105, 0.22), rgba(24, 42, 70, 0.30)))) !important;
-    color: var(--tool-summary-text-color, var(--primary-text));
-    box-shadow: var(--tool-summary-shadow, 0 6px 18px rgba(0, 0, 0, 0.18));
-    font-family: var(--vcp-tool-presented-font-family, var(--vcp-tool-card-font-family, var(--vcp-chat-font-family, 'Segoe UI', 'Roboto', sans-serif))) !important;
+    max-width: 100%;
+    margin: var(--vcp-tool-presented-margin, 8px 0 10px) !important;
+    padding: var(--vcp-tool-presented-spacing, 9px 12px) !important;
+    border-radius: var(--vcp-tool-presented-radius, var(--vcp-chat-tool-radius)) !important;
+    background: var(--vcp-tool-presented-background, var(--secondary-bg)) !important;
+    color: var(--primary-text);
+    font-family: var(--vcp-tool-presented-font-family, var(--vcp-tool-card-font-family, var(--vcp-chat-font-family, sans-serif))) !important;
     font-size: var(--vcp-tool-presented-font-size, 0.92em) !important;
-    line-height: 1.5;
+    line-height: 1.6;
     box-sizing: border-box;
-    /*
-     * This card lives inside .md-content and can repeat many times in one
-     * message. Its translucent gradient already supplies the material look;
-     * a backdrop capture per card multiplies scrolling compositing cost.
-     */
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
 }
-
+.vcp-tool-call-summary-bubble:not(.vcp-tool-presented) {
+    --vcp-chat-tool-accent: var(--secondary-text);
+}
 .vcp-tool-call-summary-header {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
-    padding-bottom: 7px;
-    border-bottom: 1px solid var(--tool-summary-header-border-color, rgba(255, 255, 255, 0.10));
+    gap: 7px;
+    margin-bottom: 7px;
 }
-
-.vcp-tool-call-summary-icon {
-    font-size: 1.08em;
-    opacity: 0.9;
-}
-
-.vcp-tool-call-summary-title {
-    font-weight: 700;
-    color: var(--tool-summary-title-color, #64d2ff);
-    letter-spacing: 0.02em;
-}
-
+.vcp-tool-call-summary-icon { font-size: 1em; color: var(--secondary-text); }
+.vcp-tool-call-summary-title { font-weight: 600; color: var(--secondary-text); }
 .vcp-tool-call-summary-list {
     display: flex;
     flex-wrap: wrap;
-    gap: 7px;
+    gap: 6px;
     align-items: center;
 }
-
 .vcp-tool-call-summary-chip {
+    --tool-summary-state: var(--secondary-text);
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 4px 8px;
-    border-radius: 999px;
-    border: 1px solid var(--tool-summary-chip-border, rgba(255, 255, 255, 0.12));
-    background: var(--tool-summary-chip-bg, rgba(255, 255, 255, 0.06));
-    color: var(--tool-summary-chip-color, var(--primary-text));
+    padding: 2px 7px;
+    border-radius: 5px;
+    border: 1px solid color-mix(in srgb, var(--border-color) 70%, transparent);
+    background: color-mix(in srgb, var(--accent-bg) 45%, transparent);
+    color: var(--primary-text);
     font-size: 0.9em;
-    white-space: nowrap;
     max-width: 100%;
+    min-width: 0;
 }
-
 .vcp-tool-call-summary-tool {
-    font-weight: 650;
+    font-weight: 550;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
     max-width: 18em;
+    min-width: 0;
 }
-
 .vcp-tool-call-summary-status {
-    font-weight: 700;
+    flex: none;
     font-size: 0.86em;
-    padding: 1px 5px;
-    border-radius: 999px;
-    background: var(--tool-summary-status-bg, rgba(255, 255, 255, 0.14));
-    color: var(--tool-summary-status-text, #ffffff);
-    line-height: 1.35;
+    font-weight: 600;
+    color: var(--tool-summary-state);
 }
-
-.vcp-tool-call-summary-chip.status-success {
-    --tool-summary-chip-color: #bbf7d0;
-    --tool-summary-chip-bg: rgba(34, 197, 94, 0.20);
-    --tool-summary-chip-border: rgba(74, 222, 128, 0.45);
-    --tool-summary-status-bg: #16a34a;
-    --tool-summary-status-text: #ffffff;
-}
-
-.vcp-tool-call-summary-chip.status-timeout {
-    --tool-summary-chip-color: #fde68a;
-    --tool-summary-chip-bg: rgba(245, 158, 11, 0.20);
-    --tool-summary-chip-border: rgba(251, 191, 36, 0.48);
-    --tool-summary-status-bg: #d97706;
-    --tool-summary-status-text: #ffffff;
-}
-
-.vcp-tool-call-summary-chip.status-failure {
-    --tool-summary-chip-color: #fecdd3;
-    --tool-summary-chip-bg: rgba(244, 63, 94, 0.20);
-    --tool-summary-chip-border: rgba(251, 113, 133, 0.48);
-    --tool-summary-status-bg: #e11d48;
-    --tool-summary-status-text: #ffffff;
-}
-
-.vcp-tool-call-summary-chip.status-rejected {
-    --tool-summary-chip-color: #fed7aa;
-    --tool-summary-chip-bg: rgba(249, 115, 22, 0.20);
-    --tool-summary-chip-border: rgba(251, 146, 60, 0.48);
-    --tool-summary-status-bg: #ea580c;
-    --tool-summary-status-text: #ffffff;
-}
-
-.vcp-tool-call-summary-chip.status-cancelled,
-.vcp-tool-call-summary-chip.status-skipped {
-    --tool-summary-chip-color: #ddd6fe;
-    --tool-summary-chip-bg: rgba(139, 92, 246, 0.20);
-    --tool-summary-chip-border: rgba(167, 139, 250, 0.42);
-    --tool-summary-status-bg: #7c3aed;
-    --tool-summary-status-text: #ffffff;
-}
-
-.vcp-tool-call-summary-chip.status-unknown {
-    --tool-summary-chip-color: #e2e8f0;
-    --tool-summary-chip-bg: rgba(100, 116, 139, 0.22);
-    --tool-summary-chip-border: rgba(148, 163, 184, 0.38);
-    --tool-summary-status-bg: #64748b;
-    --tool-summary-status-text: #ffffff;
-}
-
-body[data-vcp-theme="light"] .vcp-tool-call-summary-chip.status-success {
-    --tool-summary-chip-color: #14532d;
-    --tool-summary-chip-bg: rgba(34, 197, 94, 0.14);
-    --tool-summary-chip-border: rgba(22, 163, 74, 0.35);
-    --tool-summary-status-bg: #15803d;
-}
-
-body[data-vcp-theme="light"] .vcp-tool-call-summary-chip.status-timeout {
-    --tool-summary-chip-color: #78350f;
-    --tool-summary-chip-bg: rgba(245, 158, 11, 0.16);
-    --tool-summary-chip-border: rgba(217, 119, 6, 0.36);
-    --tool-summary-status-bg: #b45309;
-}
-
-body[data-vcp-theme="light"] .vcp-tool-call-summary-chip.status-failure {
-    --tool-summary-chip-color: #881337;
-    --tool-summary-chip-bg: rgba(244, 63, 94, 0.14);
-    --tool-summary-chip-border: rgba(225, 29, 72, 0.34);
-    --tool-summary-status-bg: #be123c;
-}
-
-body[data-vcp-theme="light"] .vcp-tool-call-summary-chip.status-rejected {
-    --tool-summary-chip-color: #7c2d12;
-    --tool-summary-chip-bg: rgba(249, 115, 22, 0.15);
-    --tool-summary-chip-border: rgba(234, 88, 12, 0.36);
-    --tool-summary-status-bg: #c2410c;
-}
-
-body[data-vcp-theme="light"] .vcp-tool-call-summary-chip.status-cancelled,
-body[data-vcp-theme="light"] .vcp-tool-call-summary-chip.status-skipped {
-    --tool-summary-chip-color: #4c1d95;
-    --tool-summary-chip-bg: rgba(139, 92, 246, 0.14);
-    --tool-summary-chip-border: rgba(124, 58, 237, 0.32);
-    --tool-summary-status-bg: #6d28d9;
-}
-
-body[data-vcp-theme="light"] .vcp-tool-call-summary-chip.status-unknown {
-    --tool-summary-chip-color: #334155;
-    --tool-summary-chip-bg: rgba(100, 116, 139, 0.12);
-    --tool-summary-chip-border: rgba(71, 85, 105, 0.28);
-    --tool-summary-status-bg: #475569;
-}
-
+.vcp-tool-call-summary-chip.status-success { --tool-summary-state: var(--success-color); }
+.vcp-tool-call-summary-chip:is(.status-timeout, .status-rejected) { --tool-summary-state: var(--highlight-text); }
+.vcp-tool-call-summary-chip.status-failure { --tool-summary-state: var(--danger-color); }
 .vcp-tool-call-summary-raw {
-    color: var(--tool-summary-muted-color, var(--secondary-text));
+    color: var(--secondary-text);
     white-space: pre-wrap;
-    word-break: break-word;
+    overflow-wrap: anywhere;
 }
 
-body[data-vcp-theme="light"] .vcp-tool-call-summary-bubble {
-    --tool-summary-bg: linear-gradient(145deg, rgba(245, 249, 255, 0.96), rgba(229, 239, 250, 0.92));
-    --tool-summary-border-color: rgba(25, 118, 210, 0.18);
-    --tool-summary-header-border-color: rgba(25, 118, 210, 0.12);
-    --tool-summary-title-color: #1565c0;
-    --tool-summary-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
-    --tool-summary-text-color: #1f2937;
-}
-
-/* --- Role Divider --- */
+/* --- Role Divider: quiet marginal annotation, not a badge --- */
 .vcp-role-divider {
     display: flex;
     align-items: center;
-    justify-content: flex-start;
-    gap: 10px;
-    margin: 12px 0 10px 0;
-    font-size: 0.78em;
-    color: var(--role-divider-color, var(--secondary-text, #94a3b8));
-    opacity: 0.82;
+    gap: 7px;
+    margin: 6px 0;
+    font-size: 0.74em;
+    line-height: 1.5;
+    color: var(--secondary-text);
     user-select: none;
     clear: both;
-    letter-spacing: 0.03em;
 }
-
 .vcp-role-divider::before {
     content: "";
-    width: 22px;
+    width: 12px;
     height: 1px;
-    flex: 0 0 22px;
-    border-radius: 999px;
-    background: currentColor;
-    opacity: 0.55;
+    flex: 0 0 12px;
+    background: color-mix(in srgb, var(--border-color) 75%, transparent);
 }
-
 .vcp-role-divider::after {
     content: "";
     height: 1px;
     flex: 1;
-    min-width: 28px;
-    max-width: 220px;
-    border-radius: 999px;
-    background: linear-gradient(90deg, currentColor 0%, color-mix(in srgb, currentColor 28%, transparent) 45%, transparent 100%);
-    opacity: 0.35;
+    max-width: 100px;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--border-color) 60%, transparent), transparent);
 }
-
 .vcp-role-divider .divider-text {
     display: inline-flex;
+    gap: 5px;
     align-items: center;
-    gap: 6px;
-    padding: 2px 8px;
-    border-radius: 999px;
-    border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
-    background: color-mix(in srgb, currentColor 8%, transparent);
-    line-height: 1.45;
-    font-weight: 600;
+    padding: 0;
+    border: 0;
+    background: none;
+    font-weight: 400;
     white-space: nowrap;
 }
-
-.vcp-role-divider.role-system {
-    --role-divider-color: #f59e0b;
-}
-
-.vcp-role-divider.role-assistant {
-    --role-divider-color: #38bdf8;
-}
-
-.vcp-role-divider.role-user {
-    --role-divider-color: #34d399;
-}
-
-.vcp-role-divider.type-end {
-    opacity: 0.58;
-}
-
-.vcp-role-divider.type-end::before {
-    width: 14px;
-    flex-basis: 14px;
-}
-
-.vcp-role-divider.type-end .divider-text {
-    font-weight: 500;
-}
-
-body[data-vcp-theme="light"] .vcp-role-divider.role-system {
-    --role-divider-color: #b45309;
-}
-
-body[data-vcp-theme="light"] .vcp-role-divider.role-assistant {
-    --role-divider-color: #0369a1;
-}
-
-body[data-vcp-theme="light"] .vcp-role-divider.role-user {
-    --role-divider-color: #047857;
-}
+.vcp-role-divider.type-end::after { max-width: 60px; }
 
 /* --- VCPdesktop Push Placeholder --- */
 .vcp-desktop-push-placeholder {
@@ -3335,4 +2930,67 @@ body[data-vcp-theme="light"] .vcp-flowlock-bubble.state-heartbeat .vcp-flowlock-
 
 body[data-vcp-theme="light"] .vcp-flowlock-bubble.state-prompt .vcp-flowlock-icon {
     color: #b45309;
+}
+
+
+/* Host-owned checkpoint: raw historical data, never an executable rich-content island. */
+.vcp-context-checkpoint {
+    min-width: 220px;
+    max-width: 100%;
+    border: 1px solid var(--border-color);
+    border-left: 3px solid var(--highlight-text);
+    border-radius: 8px;
+    background: var(--secondary-bg);
+    color: var(--primary-text);
+    font-size: 13px;
+    text-align: left;
+}
+.vcp-context-checkpoint > summary {
+    padding: 10px 14px;
+    cursor: pointer;
+    font-weight: 600;
+    user-select: none;
+}
+.vcp-context-checkpoint > summary:focus-visible {
+    outline: 2px solid var(--highlight-text);
+    outline-offset: 2px;
+}
+.vcp-context-checkpoint-body {
+    padding: 12px 14px;
+    border-top: 1px solid var(--border-color);
+    max-height: 480px;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family: var(--vcp-chat-code-font-family, monospace);
+    font-size: 12px;
+    line-height: 1.65;
+}
+.vcp-compaction-spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: vcp-icon-rotate 0.9s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+    .vcp-compaction-spinner { animation: none; }
+}
+
+
+/* Host-owned audit digest inside a checkpoint card: shown only when a signal fired. */
+.vcp-context-checkpoint-audit {
+    margin: 0 0 12px 0;
+    padding: 8px 12px;
+    border: 1px dashed var(--border-color);
+    border-left: 3px solid var(--highlight-text);
+    border-radius: 6px;
+    background: var(--primary-bg);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.vcp-context-checkpoint-audit-line + .vcp-context-checkpoint-audit-line {
+    margin-top: 4px;
 }

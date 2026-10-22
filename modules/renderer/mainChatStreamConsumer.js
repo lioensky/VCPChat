@@ -29,6 +29,8 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
     let context = initialEvent.context || {};
     let preparedType = null;
     const projection = capabilities.resolveProjection?.(messageId) || null;
+    let accumulatedText = '';
+    let checkedBoundaryCount = 0;
 
     return Object.freeze({
         surfaceGeneration: capabilities.getSurfaceGeneration?.(),
@@ -46,7 +48,19 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
                 if (terminal) projection.settle?.({ event, finalized: event.outcome?.persistence?.value, context, messageId });
                 return;
             }
-            if (event.type === 'chunk') (projection?.append || capabilities.append)(messageId, event.text, context, operationId);
+            if (event.type === 'chunk') {
+                (projection?.append || capabilities.append)(messageId, event.text, context, operationId);
+                accumulatedText += event.text;
+                if (!context.isGroupMessage && !context.groupId) {
+                    const boundaries = accumulatedText.match(/^[ \t]*<<<\[END_ROLE_DIVIDE_USER\]>>>[ \t]*(?=\r?$)/gm) || [];
+                    if (boundaries.length > checkedBoundaryCount) {
+                        checkedBoundaryCount = boundaries.length;
+                        Promise.resolve(capabilities.onToolReturnBoundary?.({
+                            messageId, context, text: accumulatedText,
+                        })).catch(error => capabilities.reportError?.('[ContextCompaction] Boundary check failed', error));
+                    }
+                }
+            }
             if (!terminal) return;
             const finalized = event.outcome?.persistence?.value;
             capabilities.dispatchTerminal?.({

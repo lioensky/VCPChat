@@ -73,6 +73,10 @@ assert.equal(JSON.stringify(resolved), JSON.stringify({
     sidebarRowHeight: 46, sidebarAvatarSize: 32, customRadius: 10
 }));
 assert.equal(document.documentElement.dataset.vcpRadius, 'square');
+assert.equal(document.documentElement.dataset.vcpToolBubbleMotion, undefined);
+for (const retired of ['full', 'steady', 'once']) {
+    assert.equal(Object.hasOwn(appearance.normalize({ toolBubbleMotion: retired }, 'next'), 'toolBubbleMotion'), false);
+}
 assert.equal(document.documentElement.dataset.vcpShellRadius, 'tuned');
 assert.equal(document.documentElement.dataset.vcpComposerRadius, 'tuned');
 assert.match(document.getElementById('vcpAppearanceLayoutVariables').textContent, /--vcp-appearance-sidebar-row-height:46px/);

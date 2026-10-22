@@ -613,6 +613,47 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
             }
 
             const approvalArgs = logData.data.args || {};
+            // 两个 PS 插件协议不同：本地脚本在 powershell，服务端脚本在 command。
+            // 仅作摘要，不把脚本作为 HTML，也不改变原始参数或审核响应。
+            const psTool = logData.data.toolName;
+            if (psTool === 'PowerShellExecutor' || psTool === 'ServerPowerShellExecutor') {
+                const fields = psTool === 'ServerPowerShellExecutor'
+                    ? ['command']
+                    : Object.keys(approvalArgs)
+                        .filter(key => /^powershell\d*$/.test(key))
+                        .sort((a, b) => Number(a.slice(10) || 0) - Number(b.slice(10) || 0));
+                const scripts = fields
+                    .map(key => approvalArgs[key])
+                    .filter(value => typeof value === 'string' && value.trim());
+                if (scripts.length) {
+                    const scriptRow = document.createElement('span');
+                    scriptRow.classList.add('notification-approval-script');
+                    const scriptLabel = document.createElement('span');
+                    scriptLabel.textContent = '指令: ';
+                    const scriptValue = document.createElement('span');
+                    scriptValue.classList.add('notification-approval-script-value');
+                    // 通知只显示有界的命令头；完整脚本仍在聊天正文中查看。
+                    const rawHead = scripts.map(script => script.trim().slice(0, 241)).join(' ; ');
+                    const head = rawHead.replace(/\s+/g, ' ');
+                    scriptValue.textContent = head.slice(0, 240) + (head.length > 240 ? '…' : '');
+                    scriptRow.append(scriptLabel, scriptValue);
+                    const meta = contentDiv.querySelector('pre');
+                    const scriptCard = document.createElement('div');
+                    scriptCard.classList.add('notification-approval-script-card');
+                    if (meta) {
+                        meta.replaceWith(scriptCard);
+                        scriptCard.appendChild(meta);
+                    } else {
+                        contentDiv.prepend(scriptCard);
+                    }
+                    if (meta) {
+                        meta.appendChild(document.createTextNode('\n'));
+                        meta.appendChild(scriptRow);
+                    } else {
+                        scriptCard.appendChild(scriptRow);
+                    }
+                }
+            }
             const changePreview = logData.data.changePreview || approvalArgs.changePreview;
             const previewSections = [];
 

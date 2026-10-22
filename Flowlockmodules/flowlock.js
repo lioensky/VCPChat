@@ -274,6 +274,7 @@ class FlowlockManager {
             existing.pendingTimer = null;
         }
         existing.generation++;
+        existing.contextCompactionLease = null;
         existing.topicId = topicId;
         existing.status = 'active';
         existing.activeMessageId = null;
@@ -331,6 +332,15 @@ class FlowlockManager {
         const { type, messageId, context, content, finishReason, error } = event;
 
         if (!context || !context.agentId || !context.topicId || context.isGroupMessage) {
+            return;
+        }
+
+        const suspendedSession = this.sessions.get(context.agentId);
+        if (suspendedSession?.contextCompactionLease && suspendedSession.topicId === context.topicId) {
+            if (!suspendedSession.activeMessageId || suspendedSession.activeMessageId === messageId) {
+                suspendedSession.lastCompletedAt = Date.now();
+                suspendedSession.activeMessageId = null;
+            }
             return;
         }
 
@@ -478,13 +488,46 @@ class FlowlockManager {
     }
 
     /**
+     * Compression owns scheduling priority without releasing the Agent/topic lock.
+     * A lease is tied to session identity and generation, so stop/restart/handoff
+     * cannot be undone by a late compression response.
+     */
+    suspendForContextCompaction(agentId, topicId) {
+        const session = this.sessions.get(agentId);
+        if (!session || session.status !== 'active' || session.topicId !== topicId) return null;
+        if (session.contextCompactionLease) return session.contextCompactionLease;
+        if (session.pendingTimer) clearTimeout(session.pendingTimer);
+        session.pendingTimer = null;
+        session.nextHeartbeatAt = null;
+        session.generation++;
+        const lease = Object.freeze({ session, agentId, topicId, generation: session.generation });
+        session.contextCompactionLease = lease;
+        return lease;
+    }
+
+    resumeAfterContextCompaction(lease) {
+        if (!lease) return false;
+        const session = this.sessions.get(lease.agentId);
+        if (session !== lease.session || session.status !== 'active'
+            || session.topicId !== lease.topicId || session.generation !== lease.generation
+            || session.contextCompactionLease !== lease) return false;
+        session.contextCompactionLease = null;
+        session.lastError = null;
+        if (!session.activeMessageId) {
+            this.scheduleNextRound(session.agentId,
+                (session.nextDelaySeconds ?? session.defaultDelaySeconds) * 1000);
+        }
+        return true;
+    }
+
+    /**
      * 安排下一轮续写
      * @param {string} agentId
      * @param {number} delayMs - 延迟毫秒
      */
     scheduleNextRound(agentId, delayMs) {
         const session = this.sessions.get(agentId);
-        if (!session || session.status !== 'active') return;
+        if (!session || session.status !== 'active' || session.contextCompactionLease) return;
 
         // 取消已有的定时器
         if (session.pendingTimer) {
@@ -513,7 +556,7 @@ class FlowlockManager {
      */
     async triggerRound(agentId) {
         const session = this.sessions.get(agentId);
-        if (!session || session.status !== 'active') return;
+        if (!session || session.status !== 'active' || session.contextCompactionLease) return;
 
         // 检查续写函数是否可用
         if (!this.continueWritingForContext) {
@@ -552,12 +595,22 @@ class FlowlockManager {
                 agentId: session.agentId,
                 topicId: session.topicId,
                 prompt: prompt || '',
-                messageId: messageId
+                messageId: messageId,
+                isCurrent: () => this.sessions.get(agentId) === session
+                    && session.status === 'active' && session.activeMessageId === messageId
+                    && !session.contextCompactionLease
             });
         } catch (error) {
+            if (this.sessions.get(agentId) !== session || session.status !== 'active') return;
             console.error(`[Flowlock] Agent ${agentId} continue writing failed:`, error);
             session.lastError = error.message;
             session.activeMessageId = null;
+
+            if (session.contextCompactionLease) {
+                session.nextPrompt = prompt;
+                this.uiHelper?.showToastNotification?.('上下文压缩未完成，心流心跳保持挂起，请重试压缩后恢复', 'warning');
+                return;
+            }
 
             // 走错误重试逻辑
             session.retryCount++;
@@ -664,6 +717,7 @@ class FlowlockManager {
             nextHeartbeatAt: session.nextHeartbeatAt,
             lastError: session.lastError,
             completionReason: session.completionReason,
+            contextCompactionSuspended: Boolean(session.contextCompactionLease),
             hasCustomPrompt: session.nextPrompt !== null,
             nextDelaySeconds: session.nextDelaySeconds
         };

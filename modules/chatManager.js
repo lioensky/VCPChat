@@ -5,6 +5,8 @@ import {
     updateFirstTextPart,
 } from './chat/singleChatRequestOrchestrator.js';
 import { publishConversationSelection } from './ui-system/sources/conversation-current.js';
+import { createContextCompactionService, shouldCompactContext, estimateContextTokens } from './chat/contextCompactionService.js';
+import { effectiveContextHistory, isContextCheckpoint, summarizeCompactionInput } from './chat/contextCompactionState.js';
 
 // 上游接受中止后等它自己收尾的上限；过了仍没有终态就在本地停止，保留已收到的部分
 const INTERRUPT_SETTLE_MS = 3000;
@@ -36,6 +38,169 @@ export const chatManager = (() => {
     let historyMutationAuthority;
     let streamConsumerRegistry;
     let singleChatRequestOrchestrator;
+    let contextCompactionService;
+    let compactionFlowlock;
+    const streamCompactionRequests = new Map();
+
+    async function checkStreamContextBudget({ messageId, context, text, cancelStream }) {
+        if (disposed || context?.isGroupMessage || context?.groupId
+            || !context?.agentId || !context?.topicId || streamCompactionRequests.has(messageId)
+            || globalSettingsRef.get().enableContextCompaction !== true) return;
+        const scope = { itemId: context.agentId, itemType: 'agent', topicId: context.topicId };
+        const selected = currentSelectedItemRef.get();
+        const visible = selected?.id === scope.itemId && selected.type === 'agent'
+            && currentTopicIdRef.get() === scope.topicId;
+        const config = visible ? (selected.config || selected) : await electronAPI.getAgentConfig(scope.itemId);
+        const history = visible ? currentChatHistoryRef.get() : await getHistory(scope.itemId, 'agent', scope.topicId);
+        if (disposed || !Array.isArray(history) || streamCompactionRequests.has(messageId)) return;
+        const effective = effectiveContextHistory(history.filter(message => message.id !== messageId));
+        const limit = Number(config?.contextTokenLimit);
+        if (!Number.isFinite(limit) || limit <= 0
+            || estimateContextTokens([...effective, { role: 'assistant', content: text }], config.systemPrompt || '') < limit) return;
+        streamCompactionRequests.set(messageId, scope);
+        compactionFlowlock?.suspendForContextCompaction?.(scope.itemId, scope.topicId);
+        notifySendStateChanged();
+        // Same interruption gateway and local fallback as the normal Stop reply action.
+        try {
+            const result = await interruptCapability?.interrupt?.(messageId);
+            if (!result?.success) await cancelStream?.(messageId, 'context-budget-exceeded');
+        } catch (error) {
+            await cancelStream?.(messageId, 'context-budget-exceeded');
+        }
+    }
+
+    function abandonStreamContextCompaction({ messageId, event }) {
+        if (!event?.outcome?.persistence?.error || !streamCompactionRequests.has(messageId)) return;
+        streamCompactionRequests.delete(messageId);
+        notifySendStateChanged();
+        uiHelper?.showToastNotification?.('中止内容尚未保存，已取消自动压缩；心流保持挂起，请先处理保存失败。', 'error');
+    }
+
+    async function finishStreamContextCompaction({ messageId }) {
+        const scope = streamCompactionRequests.get(messageId);
+        if (!scope) return;
+        if (scope.cancelled) {
+            streamCompactionRequests.delete(messageId);
+            notifySendStateChanged();
+            return;
+        }
+        let result;
+        try {
+            const history = await getHistory(scope.itemId, 'agent', scope.topicId);
+            if (scope.cancelled) return;
+            result = await contextCompactionService.compact({
+                scope, history, settings: globalSettingsRef.get(),
+                onCommitted: async () => {
+                    await syncHistoryFromFile(scope.itemId, 'agent', scope.topicId);
+                },
+            });
+        } catch (error) {
+            uiHelper?.showToastNotification?.(`流式中止内容已保留，压缩失败：${error.message}`, 'error');
+        } finally {
+            streamCompactionRequests.delete(messageId);
+            notifySendStateChanged();
+        }
+        if (!result || scope.cancelled || compactionFlowlock?.isAgentLocked?.(scope.itemId)) return;
+        const selected = currentSelectedItemRef.get();
+        if (disposed || selected?.id !== scope.itemId || selected.type !== 'agent'
+            || currentTopicIdRef.get() !== scope.topicId) return;
+        try {
+            await handleSendMessage({
+                content: result.message.content,
+                attachments: [],
+                checkpointMessageId: result.message.id,
+                propagateError: true,
+            });
+        } catch (error) {
+            uiHelper?.showToastNotification?.(`压缩快照已保存，自动接续失败：${error.message}`, 'error');
+        }
+    }
+
+    async function prepareFlowlockContext({ agentId, topicId, history, agentConfig, prompt = '' }) {
+        const scope = { itemId: agentId, itemType: 'agent', topicId };
+        if (isContextCompacting(scope)) throw new Error('上下文正在压缩，心流心跳已挂起');
+        if (globalSettingsRef.get().enableContextCompaction === true
+            && shouldCompactContext(history, agentConfig, prompt)) {
+            const result = await contextCompactionService.compact({
+                scope, history, settings: globalSettingsRef.get(),
+                onCommitted: async () => {
+                    const item = currentSelectedItemRef.get();
+                    if (item?.id === agentId && item.type === 'agent' && currentTopicIdRef.get() === topicId) {
+                        await syncHistoryFromFile(agentId, 'agent', topicId);
+                    }
+                },
+            });
+            return effectiveContextHistory(result.history);
+        }
+        return effectiveContextHistory(history);
+    }
+
+    function currentCompactionScope() {
+        const item = currentSelectedItemRef?.get?.();
+        return { itemId: item?.id, itemType: item?.type, topicId: currentTopicIdRef?.get?.() };
+    }
+
+    function isContextCompacting(scope = currentCompactionScope()) {
+        return contextCompactionService?.isBusy(scope) === true
+            || [...streamCompactionRequests.values()].some(value => !value.cancelled && value.itemId === scope?.itemId
+                && value.itemType === scope?.itemType && value.topicId === scope?.topicId);
+    }
+
+    function cancelContextCompaction(scope = currentCompactionScope()) {
+        let cancelled = contextCompactionService?.cancel?.(scope) === true;
+        for (const value of streamCompactionRequests.values()) {
+            if (value.itemId === scope?.itemId && value.itemType === scope?.itemType
+                && value.topicId === scope?.topicId && !value.cancelled) {
+                value.cancelled = true;
+                cancelled = true;
+            }
+        }
+        notifySendStateChanged();
+        return cancelled;
+    }
+
+    async function compactContext(options = {}) {
+        const scope = options.scope || currentCompactionScope();
+        if (scope.itemType !== 'agent' || !scope.topicId) throw new Error('请先打开一个单聊话题');
+        if (!options.allowPendingSend && pendingSendContexts.has(`${scope.itemId}:${scope.topicId}`)) {
+            throw new Error('该话题正在发送消息，请稍后压缩');
+        }
+        const snapshots = streamProjection?.snapshotConversation?.(scope) || [];
+        if (snapshots.length) throw new Error('请等待当前回复结束后再压缩');
+        const historyRef = options.historyRef || currentChatHistoryRef;
+        const selectedRef = options.selectedRef || currentSelectedItemRef;
+        const topicRef = options.topicRef || currentTopicIdRef;
+        const target = options.renderTarget || messageRenderer;
+        const isCurrent = () => selectedRef.get()?.id === scope.itemId
+            && selectedRef.get()?.type === scope.itemType && topicRef.get() === scope.topicId;
+        const result = await contextCompactionService.compact({
+            scope,
+            history: historyRef.get(),
+            settings: globalSettingsRef.get(),
+            onCommitted: async (history, message) => {
+                if (!isCurrent()) return;
+                historyRef.set([...history]);
+                await target?.renderMessage?.(message);
+                if (isCurrent()) {
+                    const fidelity = message?.contextCompaction?.fidelity;
+                    const continuity = message?.contextCompaction?.continuity;
+                    const missing = Number.isFinite(fidelity?.total) ? fidelity.total - fidelity.preserved : 0;
+                    const openDropped = Boolean(continuity?.applicable && continuity.windows > 0 && continuity.openIssuesDropped);
+                    if (missing > 0 || openDropped) {
+                        const detail = [
+                            missing > 0 ? `快照缺失 ${missing} 个历史标识符` : null,
+                            openDropped ? `旧快照 ${continuity.windows} 个未决项未再出现` : null,
+                        ].filter(Boolean).join('；');
+                        uiHelper?.showToastNotification?.(`上下文压缩完成，${detail}，展开压缩卡片查看明细`, 'warning');
+                    } else {
+                        uiHelper?.showToastNotification?.('上下文压缩完成', 'success');
+                    }
+                }
+            },
+        });
+        // 手动压缩只提交快照；发送前压缩由原发送流程继续。
+        return result;
+    }
 
     function requireHistoryRepository() {
         if (!chatRepository) throw new Error('ChatRepository is required for chat history operations');
@@ -385,6 +550,15 @@ export const chatManager = (() => {
             : (typeof mainRendererFunctions?.updateSendButtonState === 'function'
                 ? mainRendererFunctions.updateSendButtonState
                 : () => {});
+
+        contextCompactionService?.dispose();
+        compactionFlowlock = config.flowlockManager || null;
+        contextCompactionService = createContextCompactionService({
+            historyMutationAuthority,
+            flowlock: config.flowlockManager || null,
+            interruptRequest: requestId => interruptCapability?.interrupt?.(requestId),
+            onBusyChanged: () => notifySendStateChanged(),
+        });
 
         // Listen for Canvas events
         if (electronAPI) {
@@ -1453,12 +1627,35 @@ export const chatManager = (() => {
 
         // --- Standard Agent Message Sending ---
         const sendSignature = `${sendContext.agentId}:${sendContext.topicId}`;
+        if (isContextCompacting({ itemId: sendContext.agentId, itemType: sendContext.itemType, topicId: sendContext.topicId })) {
+            uiHelper.showToastNotification('上下文正在压缩，请等待完成后再发送', 'warning');
+            return;
+        }
         if (pendingSendContexts.has(sendSignature)) {
             uiHelper.showToastNotification('该话题已有消息正在启动，请稍候。', 'warning');
             return;
         }
         pendingSendContexts.add(sendSignature);
         try {
+        if (!request?.checkpointMessageId && globalSettings.enableContextCompaction === true
+            && shouldCompactContext(sendHistoryRef.get(), currentSelectedItem.config || currentSelectedItem, content)) {
+            try {
+                const preview = summarizeCompactionInput(sendHistoryRef.get());
+                const previewDetail = `${preview.sourceCount} 条历史 · ${preview.anchors} 个标识符锚点`
+                    + (preview.openWindows ? ` · ${preview.openWindows} 个未决窗口` : '');
+                uiHelper.showToastNotification(`上下文接近容量，自动压缩中：${previewDetail}`, 'warning');
+                await compactContext({
+                    scope: { itemId: sendContext.agentId, itemType: sendContext.itemType, topicId: sendContext.topicId },
+                    historyRef: sendHistoryRef, selectedRef: sendSelectedItemRef, topicRef: sendTopicIdRef,
+                    renderTarget, allowPendingSend: true,
+                });
+                if (!isSendContextCurrent()) return;
+            } catch (error) {
+                uiHelper.showToastNotification(`自动压缩失败，草稿已保留：${error.message}`, 'error');
+                if (request?.propagateError) throw error;
+                return;
+            }
+        }
         const uiAttachments = [];
         if (attachedFiles.length > 0) {
             for (const af of attachedFiles) {
@@ -1473,7 +1670,14 @@ export const chatManager = (() => {
             }
         }
 
-        const userMessage = {
+        const existingCheckpoint = request?.checkpointMessageId
+            ? sendHistoryRef.get().find(message => message.id === request.checkpointMessageId && isContextCheckpoint(message))
+            : null;
+        if (request?.checkpointMessageId && (!existingCheckpoint
+            || sendHistoryRef.get().at(-1)?.id !== existingCheckpoint.id)) {
+            throw new Error('压缩快照后已有新消息，已取消重复接续');
+        }
+        const userMessage = existingCheckpoint || {
             role: 'user',
             name: globalSettings.userName || '用户',
             content: content, // Use raw content for UI
@@ -1482,12 +1686,12 @@ export const chatManager = (() => {
             attachments: uiAttachments
         };
         
-        const optimisticHistory = [...sendHistoryRef.get(), userMessage];
+        const optimisticHistory = existingCheckpoint ? [...sendHistoryRef.get()] : [...sendHistoryRef.get(), userMessage];
         if (isSendContextCurrent()) {
             sendHistoryRef.set(optimisticHistory);
         }
         let userMessageItem = null;
-        if (renderTarget) {
+        if (renderTarget && !existingCheckpoint) {
             userMessageItem = await renderTarget.renderMessage(userMessage);
         }
         if (!isSendContextCurrent()) {
@@ -1500,7 +1704,9 @@ export const chatManager = (() => {
         // Save history with the user message before adding the thinking message or making API calls
         let sendHistory;
         try {
-            sendHistory = await persistOutgoingUserMessage(sendContext, userMessage);
+            sendHistory = existingCheckpoint
+                ? [...sendHistoryRef.get()]
+                : await persistOutgoingUserMessage(sendContext, userMessage);
         } catch (error) {
             // The draft is consumed only after the durable write succeeds. If
             // persistence fails, retract the optimistic projection and leave
@@ -2359,6 +2565,8 @@ export const chatManager = (() => {
         if (disposed) return;
         disposed = true;
         initialized = false;
+        contextCompactionService?.dispose();
+        streamCompactionRequests.clear();
         itemSelectionGeneration += 1;
         topicSelectionGeneration += 1;
         topicCreationGeneration += 1;
@@ -2394,6 +2602,13 @@ export const chatManager = (() => {
         handleTopicDeletion,
         loadChatHistory,
         handleSendMessage,
+        compactContext,
+        isContextCompacting,
+        cancelContextCompaction,
+        prepareFlowlockContext,
+        checkStreamContextBudget,
+        finishStreamContextCompaction,
+        abandonStreamContextCompaction,
         sendMessage: handleSendMessage,
         createNewTopicForItem,
         displayNoItemSelected,

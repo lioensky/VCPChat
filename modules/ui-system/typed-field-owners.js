@@ -673,6 +673,11 @@ const TYPED_FIELD_DEFINITIONS = Object.freeze({
     // The model-selection button still uses the shared legacy modal, but the
     // canonical text value can already use the single typed save owner.
     topicSummaryModel: { path: 'topicSummaryModel', kind: 'string' },
+    enableContextCompaction: { path: 'enableContextCompaction', kind: 'boolean' },
+    contextCompactionModel: { path: 'contextCompactionModel', kind: 'string', trimValue: true },
+    contextCompactionPrompt: { path: 'contextCompactionPrompt', kind: 'string' },
+    contextCompactionSendPrompt: { path: 'contextCompactionSendPrompt', kind: 'string' },
+    contextCompactionMainPrompt: { path: 'contextCompactionMainPrompt', kind: 'string' },
     voiceInputMode: { path: 'voiceInputMode', kind: 'string', fallback: 'windows_voice_typing' },
     localSttLanguage: { path: 'localSttLanguage', kind: 'string', fallback: 'auto' },
     voiceInputShortcut: { path: 'voiceInputShortcut', kind: 'string', fallback: 'F7', trimValue: true },
@@ -761,6 +766,12 @@ function mountTypedFieldOwner(root, form) {
         set('userNameTextColor', settings.userNameTextColor || '#ffffff');
         set('userNameTextColorText', fieldRestore('userNameTextColorText', settings) ?? '');
         set('continueWritingPrompt', settings.continueWritingPrompt);
+        check('enableContextCompaction', settings.enableContextCompaction === true);
+        set('contextCompactionModel', settings.contextCompactionModel ?? '');
+        set('contextCompactionPrompt', settings.contextCompactionPrompt ?? '');
+        set('contextCompactionSendPrompt', settings.contextCompactionSendPrompt ?? '');
+        set('contextCompactionMainPrompt', settings.contextCompactionMainPrompt ?? '');
+        syncDependentRows(form);
         // Chat typography owns its fallbacks here now that the generic
         // snapshot projection no longer writes these nodes.
         set('chatFontPreset', settings.chatFontPreset || 'system');

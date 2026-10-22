@@ -3,6 +3,14 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const { JSDOM } = require('jsdom');
 
+let compactionDependencies;
+test.before(async () => {
+    compactionDependencies = {
+        ...await import('../modules/chat/contextCompactionService.js'),
+        ...await import('../modules/chat/contextCompactionState.js'),
+    };
+});
+
 function deferred() {
     let resolve;
     let reject;
@@ -33,7 +41,10 @@ function createFixture(options = {}) {
         if (index >= 0) parts[index].text = transform(parts[index].text || '');
         return parts;
     };
+    Object.assign(window, compactionDependencies);
+    if (options.compactionService) window.createContextCompactionService = () => options.compactionService;
     const chatManagerSource = fs.readFileSync('modules/chatManager.js', 'utf8')
+        .replace(/import\s*\{[^}]*\}\s*from\s*['"]\.\/chat\/contextCompaction(?:Service|State)\.js['"];\s*/g, '')
         .replace(/import\s*\{[\s\S]*?\}\s*from\s*['"]\.\/chat\/singleChatRequestOrchestrator\.js['"];\s*/, '')
         .replace(/import\s*\{\s*publishConversationSelection\s*\}\s*from\s*['"][^'"]+['"];\s*/, '')
         .replace(/\bexport\s+(?=const\s+chatManager\b)/, '');
@@ -237,10 +248,12 @@ function createFixture(options = {}) {
             saveHistory: (itemId, _itemType, requestedTopicId, messages) => electronAPI.saveChatHistory(itemId, requestedTopicId, messages),
         },
         electronAPI,
+        flowlockManager: options.flowlockManager,
         uiHelper: { showToastNotification() {}, autoResizeTextarea() {}, openModal() {} },
         modules: {
             messageRenderer,
             streamManager: options.streamProjection || null,
+            interruptHandler: options.interruptHandler || null,
             itemListManager: {
                 highlightActiveItem() {},
                 refreshUnreadCounts() { unreadRefreshes += 1; },
@@ -257,7 +270,7 @@ function createFixture(options = {}) {
             currentTopicIdRef: { get: () => topicId, set: value => { topicId = value; } },
             currentChatHistoryRef: { get: () => history, set: value => { history = value; } },
             attachedFilesRef: attachmentRef,
-            globalSettingsRef: { get: () => ({ assistantEnabled: false, vcpServerUrl: 'http://fixture.local/v1/chat', vcpApiKey: 'test' }) },
+            globalSettingsRef: { get: () => ({ assistantEnabled: false, vcpServerUrl: 'http://fixture.local/v1/chat', vcpApiKey: 'test', ...options.settings }) },
         },
         elements: {
             chatMessagesDiv: chatMessages,
@@ -1083,4 +1096,143 @@ test('a side conversation send leaves the main topic unread state and item list 
     assert.equal(fixture.sentRequests.length, 2);
     assert.deepEqual(fixture.unreadMarks, [['agent-a', 'topic-a', false]]);
     assert.equal(fixture.unreadRefreshes(), 1);
+});
+
+
+test('stream budget overflow invokes normal interrupt before terminal or interrupt acknowledgement', async () => {
+    const acknowledgement = deferred();
+    const events = [];
+    const fixture = createFixture({
+        settings: { enableContextCompaction: true },
+        interruptHandler: { interrupt(id) { events.push(`interrupt:${id}`); return acknowledgement.promise; } },
+        flowlockManager: { suspendForContextCompaction() { events.push('suspend'); } },
+    });
+    fixture.configs['agent-a'].contextTokenLimit = 100;
+    const selecting = fixture.chatManager.selectItem('agent-a', 'agent', 'Agent A', null, fixture.configs['agent-a']);
+    await new Promise(resolve => setImmediate(resolve));
+    fixture.topicRequests.get('agent-a').resolve(fixture.configs['agent-a'].topics);
+    await selecting;
+    const scope = { itemId: 'agent-a', itemType: 'agent', topicId: 'topic-a' };
+    const context = { agentId: 'agent-a', topicId: 'topic-a' };
+    const checking = fixture.chatManager.checkStreamContextBudget({
+        messageId: 'live', context, text: '结果'.repeat(100),
+    });
+    assert.deepEqual(events, ['suspend', 'interrupt:live']);
+    assert.equal(fixture.chatManager.isContextCompacting(scope), true);
+    await fixture.chatManager.checkStreamContextBudget({
+        messageId: 'live', context, text: '更多结果'.repeat(100),
+    });
+    assert.equal(events.length, 2, 'only one interrupt per response');
+    acknowledgement.resolve({ success: true });
+    await checking;
+    fixture.chatManager.abandonStreamContextCompaction({
+        messageId: 'live',
+        event: { outcome: { persistence: { error: new Error('disk unavailable') } } },
+    });
+    assert.equal(fixture.chatManager.isContextCompacting(scope), false);
+    assert.deepEqual(events, ['suspend', 'interrupt:live'], 'failed save must not resume heartbeat');
+    await fixture.chatManager.dispose();
+    fixture.dom.window.close();
+});
+
+
+for (const mode of ['manual', 'before-send', 'stream', 'stream-flowlock']) {
+    test(`compaction reply ownership: ${mode}`, async () => {
+        const { createCheckpointMessage } = await import('../modules/chat/contextCompactionPrompts.js');
+        const checkpoint = createCheckpointMessage(
+            { diaries: [], warnings: [], sourceCount: 1 },
+            '<context_checkpoint>fixture state</context_checkpoint>',
+            {}, { id: 'saved-checkpoint', timestamp: 100 }
+        );
+        let fixture;
+        let compactions = 0;
+        const service = {
+            isBusy: () => false,
+            dispose() {},
+            async compact({ history, onCommitted }) {
+                compactions++;
+                const next = [...history, checkpoint];
+                fixture.setPersistedHistory('agent-a', 'topic-a', next);
+                await onCommitted?.(next, checkpoint);
+                return { history: next, message: checkpoint };
+            },
+        };
+        fixture = createFixture({
+            compactionService: service,
+            settings: { enableContextCompaction: true },
+            interruptHandler: { interrupt: async () => ({ success: true }) },
+            flowlockManager: { isAgentLocked: () => mode === 'stream-flowlock' },
+        });
+        try {
+            fixture.configs['agent-a'].contextTokenLimit = 100;
+            const selecting = fixture.chatManager.selectItem('agent-a', 'agent', 'Agent A', null, fixture.configs['agent-a']);
+            await new Promise(resolve => setImmediate(resolve));
+            fixture.topicRequests.get('agent-a').resolve(fixture.configs['agent-a'].topics);
+            await selecting;
+            const input = fixture.window.document.getElementById('messageInput');
+            input.value = '保留草稿';
+            if (mode === 'manual') {
+                await fixture.chatManager.compactContext();
+            } else if (mode === 'before-send') {
+                input.value = '新问题'.repeat(100);
+                await fixture.chatManager.handleSendMessage();
+            } else {
+                await fixture.chatManager.checkStreamContextBudget({
+                    messageId: 'overflow', context: { agentId: 'agent-a', topicId: 'topic-a' },
+                    text: '工具结果'.repeat(100),
+                });
+                await fixture.chatManager.finishStreamContextCompaction({ messageId: 'overflow' });
+            }
+            assert.equal(compactions, 1);
+            assert.equal(fixture.sentRequests.length, mode === 'manual' || mode === 'stream-flowlock' ? 0 : 1);
+            assert.equal(fixture.persistedHistory('agent-a', 'topic-a')
+                .filter(message => message.id === checkpoint.id).length, 1);
+            if (mode !== 'before-send') assert.equal(input.value, '保留草稿');
+            if (mode === 'stream') {
+                assert.equal(fixture.sentRequests[0][2].at(-1).content, checkpoint.content);
+                assert.equal(fixture.state().visibleMessageIds.filter(id => id === checkpoint.id).length, 1);
+            }
+        } finally {
+            await fixture.chatManager.dispose();
+            fixture.dom.window.close();
+        }
+    });
+}
+
+
+test('cancelling queued stream compaction prevents compression after partial reply commits', async () => {
+    let compactions = 0;
+    const fixture = createFixture({
+        settings: { enableContextCompaction: true },
+        compactionService: {
+            isBusy: () => false, cancel: () => false, dispose() {},
+            compact() { compactions++; throw new Error('must not run after cancellation'); },
+        },
+        interruptHandler: { interrupt: async () => ({ success: true }) },
+    });
+    try {
+        fixture.configs['agent-a'].contextTokenLimit = 100;
+        const selecting = fixture.chatManager.selectItem('agent-a', 'agent', 'Agent A', null, fixture.configs['agent-a']);
+        await new Promise(resolve => setImmediate(resolve));
+        fixture.topicRequests.get('agent-a').resolve(fixture.configs['agent-a'].topics);
+        await selecting;
+        await fixture.chatManager.checkStreamContextBudget({
+            messageId: 'cancel-queued', context: { agentId: 'agent-a', topicId: 'topic-a' },
+            text: '工具返回'.repeat(100),
+        });
+        assert.equal(fixture.chatManager.isContextCompacting(), true);
+        assert.equal(fixture.chatManager.cancelContextCompaction(), true);
+        assert.equal(fixture.chatManager.isContextCompacting(), false);
+        fixture.setPersistedHistory('agent-a', 'topic-a', [
+            ...fixture.persistedHistory('agent-a', 'topic-a'),
+            { id: 'cancel-queued', role: 'assistant', content: '中止前已接收内容', timestamp: 10 },
+        ]);
+        await fixture.chatManager.finishStreamContextCompaction({ messageId: 'cancel-queued' });
+        assert.equal(compactions, 0);
+        assert.equal(fixture.sentRequests.length, 0);
+        assert.equal(fixture.persistedHistory('agent-a', 'topic-a').at(-1).content, '中止前已接收内容');
+    } finally {
+        await fixture.chatManager.dispose();
+        fixture.dom.window.close();
+    }
 });

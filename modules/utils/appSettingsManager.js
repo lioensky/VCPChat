@@ -139,6 +139,7 @@ class SettingsValidator {
             density: new Set(['compact', 'comfortable', 'relaxed']),
             toolPresentation: new Set(['legacy', 'compact', 'grouped', 'inline', 'process']),
             toolExpansion: new Set(['attention', 'none', 'all']),
+
             radius: new Set(['square', 'small', 'medium', 'round', 'custom']),
             typography: new Set(['system', 'humanist', 'serif']),
             fontScale: new Set(['small', 'normal', 'large']),
@@ -268,6 +269,11 @@ class SettingsManager extends EventEmitter {
             // Keep the settings-page default aligned with both topic-summary
             // request paths and the model picker placeholder.
             topicSummaryModel: 'gemini-2.5-flash-preview-05-20',
+            enableContextCompaction: false,
+            contextCompactionModel: '',
+            contextCompactionPrompt: '',
+            contextCompactionSendPrompt: '',
+            contextCompactionMainPrompt: '',
             networkNotesPaths: [],
             workspaces: [],
             activeWorkspaceId: null,
@@ -287,6 +293,7 @@ class SettingsManager extends EventEmitter {
             appearanceProfile: {
                 toolPresentation: 'legacy',
                 toolExpansion: 'attention',
+
                 density: 'comfortable',
                 radius: 'small',
                 typography: 'system',

@@ -32,7 +32,12 @@ if (process.env.VCPCHAT_BOOTSTRAP_OPERATION_ID && process.env.VCPCHAT_STATE_DIR)
     }
 });
 
+// 启动标记：每个启动阶段相对进程启动的毫秒时刻，不管有没有外部启动器都记；lifecycle:get-main-snapshot.launch 带出
+const { createLaunchMarks } = require('./modules/launchMarks');
+const launchMarks = createLaunchMarks({ processStartedAt: Date.now() - Math.round(process.uptime() * 1000) });
+
 function reportLauncherProgress(stage, progress, message) {
+    launchMarks.mark(stage);
     if (process.env.VCP_LAUNCHER_PROTOCOL !== '1') return;
     const payload = JSON.stringify({ stage, progress, message });
     process.stdout.write(`VCP_STARTUP:${payload}\n`);
@@ -52,13 +57,12 @@ require = function (id) {
     return result;
 };
 
-const { app, BrowserWindow, ipcMain, nativeTheme, globalShortcut, screen, clipboard, shell, dialog, protocol, Tray, Menu, powerMonitor } = require('electron'); // Added screen, clipboard, and shell
+const { app, BrowserWindow, webContents, ipcMain, nativeTheme, globalShortcut, screen, clipboard, shell, dialog, protocol, Tray, Menu, powerMonitor } = require('electron'); // Added screen, clipboard, and shell
 
-// 🛡️ 长连接/流式回复不能依赖后台页面的定时器节流，否则切回窗口时会出现恢复延迟。
-app.commandLine.appendSwitch('disable-hang-monitor');
-app.commandLine.appendSwitch('disable-background-timer-throttling');
-app.commandLine.appendSwitch('disable-renderer-backgrounding');
-app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+// 不再对整个应用关闭 Chromium 的后台节流（background-timer-throttling / renderer-backgrounding /
+// backgrounding-occluded-windows）和挂起监视器：那组开关让所有窗口、所有 <webview> 和 GPU 进程在后台
+// 也全速运转，并且让卡死的渲染进程再也不会被发现。流式回复在隐藏页面里的推进由
+// modules/renderer/streamManager.js 自己处理（隐藏时走定时器并整段排空，重新可见时切回 rAF）。
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs-extra'); // Using fs-extra for convenience
@@ -75,6 +79,7 @@ const deepWikiHandlers = require('./modules/ipc/deepWikiHandlers'); // Ask Nova 
 const { getAgentConfigById, ...agentHandlers } = require('./modules/ipc/agentHandlers'); // Import agent handlers
 const regexHandlers = require('./modules/ipc/regexHandlers'); // Import regex handlers
 const chatHandlers = require('./modules/ipc/chatHandlers'); // Import chat handlers
+const { createDiagnosticsExporter } = require('./modules/diagnosticsSnapshot'); // 一次性诊断导出（进程指标 + 窗口状态 + 生命周期快照）
 const groupChatHandlers = require('./modules/ipc/groupChatHandlers'); // Import group chat handlers
 const sovitsHandlers = require('./modules/ipc/sovitsHandlers'); // Import SovitsTTS IPC handlers
 const promptHandlers = require('./modules/ipc/promptHandlers'); // Import prompt handlers
@@ -766,6 +771,62 @@ async function performQuitCleanup() {
 
 
 // --- Main Window Creation ---
+
+// 一次性诊断导出。exporter 在生命周期快照通道注册时创建（它复用同一份快照），菜单项和 IPC 都走这里。
+let diagnosticsExporter = null;
+async function exportDiagnosticsSnapshot() {
+    if (!diagnosticsExporter) return { success: false, error: '诊断导出尚未就绪。' };
+    try {
+        return await diagnosticsExporter.exportToFile();
+    } catch (error) {
+        console.error('[Main] Diagnostics export failed:', error);
+        return { success: false, error: error?.message || String(error) };
+    }
+}
+
+// 主窗口响应性记录：只记状态与时间，不保存任何聊天内容。
+const mainWindowResponsiveness = {
+    unresponsive: false,
+    unresponsiveCount: 0,
+    lastUnresponsiveAt: null,
+    lastResponsiveAt: null,
+    lastSource: null,
+};
+
+// 稳定性日志：无响应 / 恢复（按停滞时长分级）、渲染进程退出、子进程退出，写到 userData/diagnostics/stability.log，
+// 最近条目随 lifecycle:get-main-snapshot.stability 与诊断导出带出。目录在第一次写入时才解析，不受 userData 改路径顺序影响。
+const { createStabilityLog } = require('./modules/stabilityLog');
+const stabilityLog = createStabilityLog({
+    resolveDirectory: () => path.join(app.getPath('userData'), 'diagnostics'),
+});
+stabilityLog.note('session-start', { pid: process.pid, version: app.getVersion(), electron: process.versions.electron });
+app.on('child-process-gone', (event, details) => {
+    stabilityLog.recordChildProcessGone(details);
+    if (details?.reason !== 'clean-exit') console.warn('[Main] child-process-gone', details?.type, details?.serviceName || '', details?.reason, details?.exitCode);
+});
+
+function recordMainWindowResponsiveness(responsive, source) {
+    const at = Date.now();
+    mainWindowResponsiveness.lastSource = source;
+    if (responsive) {
+        if (mainWindowResponsiveness.unresponsive) {
+            const stalledMs = mainWindowResponsiveness.lastUnresponsiveAt ? at - mainWindowResponsiveness.lastUnresponsiveAt : null;
+            console.warn('[Main] Main window responsive again after ' + (stalledMs ?? '?') + ' ms (' + source + ').');
+            stabilityLog.recordResponsive(source);
+        }
+        mainWindowResponsiveness.unresponsive = false;
+        mainWindowResponsiveness.lastResponsiveAt = at;
+        return;
+    }
+    if (!mainWindowResponsiveness.unresponsive) {
+        mainWindowResponsiveness.unresponsiveCount += 1;
+        mainWindowResponsiveness.lastUnresponsiveAt = at;
+        console.warn('[Main] Main window unresponsive (' + source + '); keeping it alive, see lifecycle:get-main-snapshot.mainWindowResponsiveness.');
+        stabilityLog.recordUnresponsive(source);
+    }
+    mainWindowResponsiveness.unresponsive = true;
+}
+
 function createWindow({ deferLoad = false } = {}) {
     mainWindow = new BrowserWindow({
         width: 1300,
@@ -780,8 +841,8 @@ function createWindow({ deferLoad = false } = {}) {
             contextIsolation: true,    // 恢复: 开启上下文隔离
             nodeIntegration: false,  // 恢复: 关闭Node.js集成在渲染进程
             webviewTag: true, // 仅供侧栏浏览器的 <webview>；其创建参数由 browserHandlers.attachToWindow 强制收紧
-            // 主聊天窗口需要在切到其他窗口时继续接收流式事件并推进恢复队列。
-            backgroundThrottling: false,
+            // 主窗口沿用 Chromium 默认的后台节流：ipcRenderer 收流式事件不受节流影响，
+            // 渲染端的流式帧循环在隐藏时自行改走定时器（见 streamManager.js）。
             spellcheck: true, // Enable spellcheck for input fields
         },
         icon: path.join(__dirname, 'assets', 'icon.png'), // Add an icon
@@ -856,24 +917,18 @@ function createWindow({ deferLoad = false } = {}) {
             mainRendererStableTimer = null;
         }
         console.error('[Main] Main window render-process-gone', details);
+        stabilityLog.recordRenderProcessGone('main-window', details);
         if (details?.reason !== 'clean-exit') scheduleMainRendererRecovery(details);
     });
 
     mainWindow.webContents.on('did-finish-load', markMainRendererStable);
 
-    // 🛡️ 静默吸收并记录未响应误判，保证窗口在慢网络或后台任务下持续保持稳定交互
-    mainWindow.on('unresponsive', () => {
-        console.warn('[Main] MainWindow marked unresponsive by OS/Chromium (usually due to slow network/API waiting). Keeping alive.');
-    });
-    mainWindow.on('responsive', () => {
-        console.log('[Main] MainWindow recovered responsiveness.');
-    });
-    mainWindow.webContents.on('unresponsive', () => {
-        console.warn('[Main] Main webContents unresponsive event triggered. Ignored to avoid intrusive crash dialogs.');
-    });
-    mainWindow.webContents.on('responsive', () => {
-        console.log('[Main] Main webContents recovered responsiveness.');
-    });
+    // 渲染进程被 Chromium 判定无响应时不弹窗、不杀进程，但要记下来：lifecycle:get-main-snapshot 会带出
+    // 这份记录，用户反馈"卡住"时可以对照时间点。以前这里连同挂起监视器一起被静默掉了。
+    mainWindow.on('unresponsive', () => recordMainWindowResponsiveness(false, 'window'));
+    mainWindow.on('responsive', () => recordMainWindowResponsiveness(true, 'window'));
+    mainWindow.webContents.on('unresponsive', () => recordMainWindowResponsiveness(false, 'webContents'));
+    mainWindow.webContents.on('responsive', () => recordMainWindowResponsiveness(true, 'webContents'));
 
     // mainWindow.setMenu(null); // 移除应用程序菜单栏 - 注释掉以启用macOS的标准菜单
 
@@ -897,6 +952,7 @@ function createWindow({ deferLoad = false } = {}) {
 
 function loadMainWindow() {
     mainWindow.webContents.once('did-finish-load', () => {
+        launchMarks.mark('main-window-loaded');
         const readyFile = NATIVE_SPLASH_READY_FILE;
         fs.ensureFileSync(readyFile);
 
@@ -1415,6 +1471,18 @@ if (!gotTheLock) {
                         click: (_item, focusedWindow) => {
                             toggleDevToolsForWindow(focusedWindow);
                         }
+                    },
+                    {
+                        // 进程 CPU / 内存、窗口与 WebContents 状态、生命周期快照写成一份 JSON（不含聊天内容），用于反馈卡顿
+                        label: '导出诊断快照',
+                        click: async () => {
+                            const result = await exportDiagnosticsSnapshot();
+                            if (result.success) {
+                                shell.showItemInFolder(result.filePath);
+                                return;
+                            }
+                            dialog.showErrorBox('导出诊断快照失败', result.error || '未知错误');
+                        }
                     }
                 ]
             }
@@ -1792,8 +1860,7 @@ if (!gotTheLock) {
             embeddedAppSessions.assertMainRenderer(event);
             return { success: true, cancelled: embeddedAppTasks.cancel(event.sender, requestId, 'renderer-cancelled') };
         });
-        ipcMain.handle('lifecycle:get-main-snapshot', event => {
-            embeddedAppSessions.assertMainRenderer(event);
+        const buildMainLifecycleSnapshot = () => {
             const embedded = embeddedAppSessions.list();
             return {
                 embeddedSessions: embedded.sessions,
@@ -1803,12 +1870,44 @@ if (!gotTheLock) {
                 domains: domainActivator.snapshot(),
                 subscriptions: stateSubscriptions.snapshot(),
                 gitWatchers: gitHandlers.watchSnapshot(),
+                mainWindowResponsiveness: { ...mainWindowResponsiveness },
+                // 稳定性日志摘要（计数 + 最近条目）与启动标记，见 modules/stabilityLog.js / modules/launchMarks.js
+                stability: stabilityLog.snapshot(),
+                launch: launchMarks.snapshot(),
                 // 终端执行器是否已在主进程加载：侧栏终端第一次用到才 require；分布式服务器开着时它的插件加载也会拉起它
                 terminalExecutor: {
                     loaded: Boolean(originalRequire.cache[TERMINAL_EXECUTOR_PATH]),
                     distributedServer: Boolean(distributedServer),
                 },
             };
+        };
+        ipcMain.handle('lifecycle:get-main-snapshot', event => {
+            embeddedAppSessions.assertMainRenderer(event);
+            return buildMainLifecycleSnapshot();
+        });
+        // 渲染器把监听器都挂好后发一次就绪信号：记为 renderer-ready 启动标记，并把整条启动时间线写进稳定性日志。
+        // 只认主窗口；渲染进程恢复后的第二次就绪不改时间（标记只记第一次）。
+        ipcMain.on('lifecycle:renderer-ready', event => {
+            if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) return;
+            if (launchMarks.mark('renderer-ready')) stabilityLog.note('launch', launchMarks.summary());
+        });
+        // 诊断导出复用同一份生命周期快照；侧栏终端处理器是懒加载的，没加载就只记 loaded:false
+        const TERMINAL_HANDLERS_PATH = path.join(__dirname, 'modules', 'ipc', 'terminalHandlers.js');
+        diagnosticsExporter = createDiagnosticsExporter({
+            app,
+            BrowserWindow,
+            webContents,
+            getLifecycleSnapshot: buildMainLifecycleSnapshot,
+            getTerminalSnapshot: () => {
+                const loaded = originalRequire.cache[TERMINAL_HANDLERS_PATH];
+                if (!loaded) return { loaded: false };
+                const state = typeof loaded.exports?.snapshot === 'function' ? loaded.exports.snapshot() : {};
+                return { loaded: true, ...state };
+            },
+        });
+        ipcMain.handle('diagnostics:export-snapshot', async event => {
+            embeddedAppSessions.assertMainRenderer(event);
+            return exportDiagnosticsSnapshot();
         });
         ipcMain.handle('embedded-vchat-app:close-all', async event => {
             embeddedAppSessions.assertMainRenderer(event);

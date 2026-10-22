@@ -393,8 +393,10 @@ assert.equal(document.body.classList.contains('chat-header-capsule'), true, 'hea
 drawer.querySelector('[data-theme-file-name="themes森林.css"]').click();
 drawer.querySelector('[data-appearance-key="toolPresentation"][data-appearance-value="grouped"]').click();
 drawer.querySelector('[data-appearance-key="toolExpansion"][data-appearance-value="none"]').click();
+assert.equal(drawer.querySelector('[data-appearance-key="toolBubbleMotion"]'), null);
 await new Promise(resolve => setImmediate(resolve));
 assert.equal(window.VCPAppearance.getCurrent().toolPresentation, 'grouped', 'tool mode previews immediately');
+assert.equal(document.documentElement.dataset.vcpToolBubbleMotion, undefined);
 drawer.querySelector('[data-studio-save]').click();
 await new Promise(resolve => setImmediate(resolve));
 assert.equal(window.chatAPI.saved.length, 1);
@@ -403,6 +405,7 @@ assert.equal(Object.hasOwn(window.chatAPI.saved[0], 'uiMode'), false,
 assert.equal(window.chatAPI.saved[0].appearanceProfile.typography, 'serif');
 assert.equal(window.chatAPI.saved[0].appearanceProfile.toolPresentation, 'grouped');
 assert.equal(window.chatAPI.saved[0].appearanceProfile.toolExpansion, 'none');
+assert.equal(Object.hasOwn(window.chatAPI.saved[0].appearanceProfile, 'toolBubbleMotion'), false);
 assert.equal(window.chatAPI.saved[0].chatPresentationMode, 'immersive');
 assert.equal(window.chatAPI.saved[0].enableWideChatLayout, true);
 assert.equal(window.chatAPI.saved[0].chatHeaderStyle, 'capsule');

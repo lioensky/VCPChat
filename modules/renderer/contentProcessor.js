@@ -441,7 +441,7 @@ const QUOTE_REGEX = /(?:"([^"]*)"|“([^”]*)”)/g; // Matches English "..." a
  * @param {HTMLElement} messageElement The message content element.
  */
 function highlightAllPatternsInMessage(messageElement) {
-    if (!messageElement) return;
+    if (!messageElement || messageElement.querySelector(':scope > .vcp-context-checkpoint')) return;
     const ownerDocument = messageElement.ownerDocument;
     const ownerWindow = ownerDocument?.defaultView;
     const NodeFilterRef = ownerWindow?.NodeFilter;
@@ -1248,7 +1248,7 @@ function normalizeSafeSingleDollarMathInTextNodes(root) {
  * @param {HTMLElement} contentDiv The message content element.
  */
 function processRenderedContent(contentDiv, settings = {}) {
-    if (!contentDiv) return;
+    if (!contentDiv || contentDiv.querySelector(':scope > .vcp-context-checkpoint')) return;
     const ownerWindow = contentDiv.ownerDocument?.defaultView;
 
     // 将经严格判定的单美元公式转换为 \(...\)；普通价格保持原始 `$` 文本。

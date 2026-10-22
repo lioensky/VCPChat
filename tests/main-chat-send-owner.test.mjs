@@ -135,3 +135,32 @@ test('send owner suppresses late interrupt completion after dispose', async () =
     assert.deepEqual(calls, []);
     assert.equal(await owner.handleAction(), false);
 });
+
+
+test('spinning compaction button cancels instead of sending or interrupting another reply', async () => {
+    const sendButton = button();
+    let busy = true;
+    let cancellations = 0;
+    const manager = {
+        isContextCompacting: () => busy,
+        cancelContextCompaction() { cancellations++; busy = false; return true; },
+        handleSendMessage() { assert.fail('must not send the draft'); },
+    };
+    const owner = createMainChatSendOwner({
+        button: sendButton, messagesRoot: { querySelector: () => null },
+        historyRef: ref([]), selectedItemRef: ref({ id: 'agent-a', type: 'agent' }),
+        topicIdRef: ref('topic-a'), streamProjection: {},
+        getChatManager: () => manager,
+        interruptHandler: { interrupt() { assert.fail('must target compression via manager'); } },
+    });
+    owner.update();
+    assert.equal(sendButton.disabled, false);
+    assert.equal(sendButton.dataset.mode, 'compacting');
+    assert.match(sendButton.innerHTML, /vcp-compaction-spinner/);
+    assert.equal(sendButton.attributes['aria-label'], '中止上下文压缩');
+    assert.equal(await owner.handleAction(), true);
+    assert.equal(cancellations, 1);
+    assert.equal(sendButton.dataset.mode, 'send');
+    assert.equal(sendButton.attributes['aria-busy'], 'false');
+    assert.equal(sendButton.classList.contains('context-compacting'), false);
+});
