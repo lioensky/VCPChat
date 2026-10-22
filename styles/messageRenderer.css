@@ -2978,3 +2978,19 @@ body[data-vcp-theme="light"] .vcp-flowlock-bubble.state-prompt .vcp-flowlock-ico
 @media (prefers-reduced-motion: reduce) {
     .vcp-compaction-spinner { animation: none; }
 }
+
+
+/* Host-owned audit digest inside a checkpoint card: shown only when a signal fired. */
+.vcp-context-checkpoint-audit {
+    margin: 0 0 12px 0;
+    padding: 8px 12px;
+    border: 1px dashed var(--border-color);
+    border-left: 3px solid var(--highlight-text);
+    border-radius: 6px;
+    background: var(--primary-bg);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.vcp-context-checkpoint-audit-line + .vcp-context-checkpoint-audit-line {
+    margin-top: 4px;
+}

@@ -2027,9 +2027,37 @@ function renderMarkdownToHtmlUncached(text, options = {}) {
 function renderMarkdownToHtml(text, options = {}) {
     if (isContextCheckpoint(options.message)) {
         const meta = options.message.contextCompaction;
-        const summary = `上下文智能压缩 · ${meta.sourceCount || 0} 条历史 · ${meta.diaries?.length || 0} 篇日记`;
+        const fidelity = meta.fidelity;
+        const fidelityBadge = fidelity && Number.isFinite(fidelity.total) && fidelity.total > 0
+            ? ` · 标识符 ${fidelity.preserved}/${fidelity.total}${fidelity.total > fidelity.preserved ? ' ⚠' : ''}`
+            : '';
+        const continuity = meta.continuity;
+        const continuityBadge = continuity?.applicable && continuity.windows > 0
+            ? ` · 未决 ${continuity.anchors.preserved}/${continuity.anchors.total}${continuity.openIssuesDropped || continuity.anchors.preserved < continuity.anchors.total ? ' ⚠' : ''}`
+            : '';
+        const summary = `上下文智能压缩 · ${meta.sourceCount || 0} 条历史 · ${meta.diaries?.length || 0} 篇日记${fidelityBadge}${continuityBadge}`;
+        const auditLines = [];
+        if (fidelity && Number.isFinite(fidelity.total) && fidelity.total > fidelity.preserved) {
+            const samples = [
+                ...(fidelity.missing?.path || []),
+                ...(fidelity.missing?.hash || []),
+                ...(fidelity.missing?.url || []),
+            ];
+            auditLines.push(`标识符缺失 ${fidelity.total - fidelity.preserved}/${fidelity.total}：${samples.slice(0, 8).join('、')}${samples.length > 8 ? ' …' : ''}`);
+        }
+        if (continuity?.applicable && continuity.windows > 0) {
+            if (continuity.openIssuesDropped) {
+                auditLines.push(`旧快照有 ${continuity.windows} 个未决窗口，新快照未再出现未决标记（可能已解决或被丢弃）`);
+            }
+            if (continuity.anchors.total > continuity.anchors.preserved) {
+                auditLines.push(`未决项标识符未承接：${continuity.anchors.missing.slice(0, 8).join('、')}`);
+            }
+        }
+        const auditHtml = auditLines.length
+            ? `<div class="vcp-context-checkpoint-audit">${auditLines.map(line => `<div class="vcp-context-checkpoint-audit-line">${escapeHtml(line)}</div>`).join('')}</div>`
+            : '';
         const body = escapeHtml(String(options.message.content || '')).replace(/\r\n?|\n/g, '&#10;');
-        return `<details class="vcp-context-checkpoint" data-vcp-block-type="context-checkpoint" data-vcp-preserve-children="true"><summary data-vcp-system-control="true">${escapeHtml(summary)}</summary><div class="vcp-context-checkpoint-body">${body}</div></details>`;
+        return `<details class="vcp-context-checkpoint" data-vcp-block-type="context-checkpoint" data-vcp-preserve-children="true"><summary data-vcp-system-control="true">${escapeHtml(summary)}</summary><div class="vcp-context-checkpoint-body">${auditHtml}${body}</div></details>`;
     }
     const markedInstance = mainRendererReferences.markedInstance;
     if (!markedInstance) return escapeHtml(text);

@@ -6,7 +6,7 @@ import {
 } from './chat/singleChatRequestOrchestrator.js';
 import { publishConversationSelection } from './ui-system/sources/conversation-current.js';
 import { createContextCompactionService, shouldCompactContext, estimateContextTokens } from './chat/contextCompactionService.js';
-import { effectiveContextHistory, isContextCheckpoint } from './chat/contextCompactionState.js';
+import { effectiveContextHistory, isContextCheckpoint, summarizeCompactionInput } from './chat/contextCompactionState.js';
 
 // 上游接受中止后等它自己收尾的上限；过了仍没有终态就在本地停止，保留已收到的部分
 const INTERRUPT_SETTLE_MS = 3000;
@@ -181,7 +181,21 @@ export const chatManager = (() => {
                 if (!isCurrent()) return;
                 historyRef.set([...history]);
                 await target?.renderMessage?.(message);
-                if (isCurrent()) uiHelper?.showToastNotification?.('上下文压缩完成', 'success');
+                if (isCurrent()) {
+                    const fidelity = message?.contextCompaction?.fidelity;
+                    const continuity = message?.contextCompaction?.continuity;
+                    const missing = Number.isFinite(fidelity?.total) ? fidelity.total - fidelity.preserved : 0;
+                    const openDropped = Boolean(continuity?.applicable && continuity.windows > 0 && continuity.openIssuesDropped);
+                    if (missing > 0 || openDropped) {
+                        const detail = [
+                            missing > 0 ? `快照缺失 ${missing} 个历史标识符` : null,
+                            openDropped ? `旧快照 ${continuity.windows} 个未决项未再出现` : null,
+                        ].filter(Boolean).join('；');
+                        uiHelper?.showToastNotification?.(`上下文压缩完成，${detail}，展开压缩卡片查看明细`, 'warning');
+                    } else {
+                        uiHelper?.showToastNotification?.('上下文压缩完成', 'success');
+                    }
+                }
             },
         });
         // 手动压缩只提交快照；发送前压缩由原发送流程继续。
@@ -1626,6 +1640,10 @@ export const chatManager = (() => {
         if (!request?.checkpointMessageId && globalSettings.enableContextCompaction === true
             && shouldCompactContext(sendHistoryRef.get(), currentSelectedItem.config || currentSelectedItem, content)) {
             try {
+                const preview = summarizeCompactionInput(sendHistoryRef.get());
+                const previewDetail = `${preview.sourceCount} 条历史 · ${preview.anchors} 个标识符锚点`
+                    + (preview.openWindows ? ` · ${preview.openWindows} 个未决窗口` : '');
+                uiHelper.showToastNotification(`上下文接近容量，自动压缩中：${previewDetail}`, 'warning');
                 await compactContext({
                     scope: { itemId: sendContext.agentId, itemType: sendContext.itemType, topicId: sendContext.topicId },
                     historyRef: sendHistoryRef, selectedRef: sendSelectedItemRef, topicRef: sendTopicIdRef,

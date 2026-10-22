@@ -1,5 +1,7 @@
 import { readToolRequestField, replaceToolRequestBlocks, findUnclosedToolRequest } from '../renderer/toolRequestScanner.js';
 import { collectToolResultRanges, collectCodeDomainsOutsideToolResults, isToolResultHidden } from '../renderer/toolResultRegions.js';
+import { extractAnchors, flattenContent } from './contextCompactionFidelity.js';
+import { extractOpenIssueWindows } from './contextCompactionContinuity.js';
 
 export const COMPACTION_KIND = 'vchat-context-checkpoint';
 
@@ -177,7 +179,19 @@ export function prepareCompactionState(history = []) {
         }
         return copy;
     });
-    return { messages, diaries, warnings: [...new Set(warnings)], sourceCount: effective.length };
+    // Closed loop: the previous checkpoint's audit misses are surfaced to the
+    // next compression request, so the model is told exactly what it dropped.
+    const previousAuditMissing = previous ? [...new Set([
+        ...((previous.contextCompaction.fidelity?.missing?.path) || []),
+        ...((previous.contextCompaction.fidelity?.missing?.hash) || []),
+        ...((previous.contextCompaction.fidelity?.missing?.url) || []),
+        ...((previous.contextCompaction.continuity?.anchors?.missing) || []),
+    ].filter(Boolean))].slice(0, 16) : [];
+    return {
+        messages, diaries, warnings: [...new Set(warnings)], sourceCount: effective.length,
+        previousCheckpoint: previous ? previous.contextCompaction.checkpoint : null,
+        previousAuditMissing,
+    };
 }
 
 export function validateCheckpoint(value) {
@@ -191,4 +205,30 @@ export function validateCheckpoint(value) {
     // Report quality belongs to the prompt. Metadata, not model-authored tags,
     // owns the context boundary. Preserve every character of the returned report.
     return value;
+}
+
+
+/**
+ * Cheap pre-flight digest of what a compaction is about to consume: message
+ * count, distinct identifier anchors, and open-issue windows carried over
+ * from the previous checkpoint. Pure local statistics surfaced to the user
+ * while a compaction is running; not a gate, not an estimate of quality.
+ * @param {Array} history raw chat history
+ * @returns {{sourceCount: number, anchors: number, openWindows: number}}
+ */
+export function summarizeCompactionInput(history = []) {
+    const effective = effectiveContextHistory(history);
+    const previousCheckpoint = (isContextCheckpoint(effective[0]) ? effective[0] : null)
+        ?.contextCompaction?.checkpoint || null;
+    let anchors = 0;
+    for (const message of effective) {
+        for (const anchorsOfKind of extractAnchors(flattenContent(message?.content)).values()) {
+            anchors += anchorsOfKind.size;
+        }
+    }
+    return {
+        sourceCount: effective.length,
+        anchors,
+        openWindows: extractOpenIssueWindows(previousCheckpoint).length,
+    };
 }

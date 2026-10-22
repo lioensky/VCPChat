@@ -42,7 +42,10 @@ export const advancedFeaturesSection = section('advanced-features', '高级功�
         description: '保留完整聊天历史，仅向主 AI 发送最新快照及后续消息。发送前达到 Agent 上下文容量的估算 85% 时压缩；流式工具回执结束时达到估算容量，则立即按正常中止回复流程停止并压缩。',
         open: false,
         fields: [
-            switchField('enableContextCompaction', { label: '开启上下文智能压缩' }),
+            switchField('enableContextCompaction', {
+                label: '开启上下文智能压缩',
+                hint: '快照自动附带宿主审计：标识符保真与未决项延续，缺失时在压缩卡片与完成通知中点名。',
+            }),
             text('contextCompactionModel', {
                 label: '上下文压缩模型', hint: '填写模型 ID；使用当前 VCP 服务器和密钥。',
                 when: ['enableContextCompaction'], save: { trim: true },
