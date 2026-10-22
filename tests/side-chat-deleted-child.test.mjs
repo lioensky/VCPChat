@@ -55,10 +55,10 @@ test('a side chat reply that finishes after its child was deleted leaves no orph
     } finally { cleanup(); }
 });
 
-test('reading an ordinary topic that has no directory yet still creates it as before', async () => {
+test('reading an ordinary topic does not create its directory', async () => {
     const { userDataDir, call, cleanup } = setup();
     try {
         assert.equal(JSON.stringify(await call('get-chat-history', 'agent_a', 'topic_1')), '[]');
-        assert.equal(fs.existsSync(path.join(userDataDir, 'agent_a', 'topics', 'topic_1')), true);
+        assert.equal(fs.existsSync(path.join(userDataDir, 'agent_a', 'topics', 'topic_1')), false);
     } finally { cleanup(); }
 });

@@ -80,7 +80,7 @@ test('主消息渲染器以附加分支渲染 JEV 且保留旧 VCP ToolUse', () 
         'utf8'
     );
 
-    assert.match(source, /parseJevToolUse\(extractMarkedField\(content,\s*\/JEV:/);
+    assert.match(source, /parseJevToolUse\(extractMarkedField\((?:content|source),\s*\/JEV:/);
     assert.match(source, /vcp-jev-tool-use-bubble/);
     assert.match(source, /detectedJev\.displayName\s*\?\s*'JEVToolUse:'\s*:\s*'JEVToolUse'/);
     assert.match(source, /data-vcp-block-type="jev-tool-use"/);
