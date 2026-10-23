@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { createSessionCard } from '../DeskPetmodules/sessionCard.js';
 import { dockHitArea, containsPoint } from '../DeskPetmodules/dockHitArea.js';
 import { createDockVisibility, createCursorHitGate } from '../DeskPetmodules/dockVisibility.js';
+import { bindPointer } from '../DeskPetmodules/pointerGestures.js';
 const { createSessionActivity } = createRequire(import.meta.url)('../modules/deskpet/sessionActivity.js');
 
 test('collapsed bar and expanded controls share a stable CSS-pixel hover target', () => {
@@ -81,20 +82,24 @@ test('card follows the actual topic, preserves early events, and uses text rathe
 
 test('bell badge counts conversations, expands on demand and preserves selection while streams update', () => {
     const element = () => ({ hidden: false, dataset: {}, listeners: {}, attrs: {}, addEventListener(k, fn) { this.listeners[k] = fn; }, setAttribute(k,v) { this.attrs[k] = v; }, focus() {} });
-    const card = element(), panel = element(), toggle = element(), badge = element(), next = element(), previous = element(), navigation = element(), position = element(), stop = element();
+    const card = element(), panel = element(), toggle = element(), divider = element(), badge = element(), next = element(), previous = element(), navigation = element(), position = element(), stop = element();
     const title = {}, status = {};
     let onStream, opened, interrupted;
-    const view = createSessionCard({ card, panel, toggle, badge, next, previous, navigation, position, stop, title, status, api: {
+    const view = createSessionCard({ card, panel, toggle, divider, badge, next, previous, navigation, position, stop, title, status, api: {
         onStream: fn => { onStream = fn; }, openTopic: id => { opened = id; }, interrupt: id => { interrupted = id; },
     } });
     view.initialize({ name: 'Nova' });
     assert.equal(panel.hidden, true);
     assert.equal(badge.hidden, true);
+    assert.equal(toggle.hidden, true, 'idle has only the first two controls');
+    assert.equal(divider.hidden, true);
     const a = { messageId:'a', topicId:'one', title:'文档', status:'thinking' };
     const b = { messageId:'b', topicId:'two', title:'模型', status:'responding' };
     onStream({ type:'start', messageId:'a', session:{ ...a, sessions:[a] } });
     onStream({ type:'start', messageId:'b', session:{ ...b, sessions:[b,a] } });
     assert.equal(badge.textContent, '2');
+    assert.equal(toggle.hidden, false);
+    assert.equal(divider.hidden, false);
     assert.equal(panel.hidden, true, '新消息只更新铃铛，不自动抢占头顶');
     toggle.listeners.click();
     assert.equal(panel.hidden, false);
@@ -116,6 +121,37 @@ test('bell badge counts conversations, expands on demand and preserves selection
     assert.equal(badge.textContent, '2', '收起时完成的会话保留未读通知');
     toggle.listeners.click(); next.listeners.click(); toggle.listeners.click();
     assert.equal(badge.hidden, true, '已逐条查看且全部完成后清除角标');
+    assert.equal(toggle.hidden, true, 'finished and acknowledged conversations release the third control');
+    assert.equal(divider.hidden, true);
+});
+
+test('removing the expanded conversation releases the pin and session subscriptions dispose once', () => {
+    let stream, missing, pin = false, unsubscribed = 0;
+    const el = () => ({ dataset: {}, addEventListener() {}, removeEventListener() {}, setAttribute() {} });
+    const toggle = el(), panel = el();
+    const view = createSessionCard({ card: el(), panel, toggle, title: {}, status: {}, onToggle: value => { pin = value; }, api: {
+        onStream: fn => { stream = fn; return () => { unsubscribed++; }; },
+        onTopicMissing: fn => { missing = fn; return () => { unsubscribed++; }; },
+    } });
+    view.initialize({ name: 'Nova' });
+    view.setExpanded(true); assert.equal(pin, false, 'an empty card cannot expand');
+    stream({ type: 'start', messageId: 'a', session: { messageId: 'a', topicId: 'one', status: 'thinking' } });
+    view.setExpanded(true); assert.equal(pin, true);
+    stream({ type: 'session', session: { sessions: [] } });
+    assert.equal(pin, false); assert.equal(panel.hidden, true); assert.equal(toggle.hidden, true);
+    view.dispose(); view.dispose(); assert.equal(unsubscribed, 2);
+    stream({ type: 'start', messageId: 'late', session: { messageId: 'late', status: 'thinking' } });
+    assert.equal(toggle.hidden, true);
+});
+
+test('forgotten or cleared session stores reject late title lookups', async () => {
+    let release; const published = [];
+    const store = createSessionActivity({ titleOf: () => new Promise(resolve => { release = resolve; }), publish: (...args) => published.push(args) });
+    for (const action of ['forget', 'clear']) {
+        store.start('a', { agentId: 'Nova', topicId: 'one' }); await Promise.resolve();
+        store[action]('Nova'); release('old private title'); await new Promise(resolve => setImmediate(resolve));
+        assert.equal(store.get('Nova'), null); assert.equal(published.length, 0);
+    }
 });
 
 test('multiple requests in one topic count as one conversation', () => {
@@ -207,4 +243,23 @@ test('a late alpha result cannot revive an outside hover or cancel a current UI 
     hit.cursor({ outside: true }); assert.equal(hit.resolve(true), false, 'an old rendered hit arrived after leaving');
     hit.cursor({ outside: false, ui: true }); assert.equal(hit.resolve(false), true, 'an old transparent pixel arrived after reaching a button');
     hit.cursor({ outside: false, ui: false }); assert.equal(hit.resolve(false), false);
+});
+
+test('pointer gestures release lost captures and remove all hooks and delayed taps on disposal', async () => {
+    const listeners = new Map();
+    const target = { addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: name => listeners.delete(name) };
+    let starts = [], ends = 0, taps = 0;
+    const options = { target, api: { touched() {}, dragStart: origin => starts.push(origin), dragEnd: () => { ends++; } },
+        onTap: () => { taps++; }, onDoubleTap() {}, onTapDown() {}, onDrag() {}, afterDrag() {}, figureBounds: () => null };
+    const control = bindPointer(options);
+    const down = { button: 0, screenX: 900, screenY: 500, clientX: 40, clientY: 60, pointerId: 1, target: { setPointerCapture() {} } };
+    listeners.get('pointerdown')(down);
+    listeners.get('pointermove')({ ...down, screenX: 904 });
+    assert.deepEqual(starts, [{ x: 900, y: 500, local: { x: 40, y: 60 } }]);
+    listeners.get('lostpointercapture')(); assert.equal(ends, 1);
+    control.dispose(); control.dispose(); assert.equal(listeners.size, 0);
+    const click = bindPointer(options);
+    listeners.get('pointerdown')(down); listeners.get('pointerup')(down);
+    click.dispose(); await new Promise(resolve => setTimeout(resolve, 320));
+    assert.equal(taps, 0); assert.equal(listeners.size, 0);
 });

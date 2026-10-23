@@ -55,5 +55,6 @@ export function createLifeFx() {
         },
         act(name, ms) { if (LIFE_FX[name]) show(LIFE_FX[name], Math.min(ms, 1800), 'is-pop'); },
         held(on) { if (on) show('💦', 0, 'is-held'); else if (el.classList.contains('is-held')) el.hidden = true; },
+        dispose() { sleeping = false; clearTimeout(timer); stopZzz(); el.hidden = true; },
     };
 }

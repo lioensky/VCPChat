@@ -72,3 +72,18 @@ test('a long write request is read from its head and does not slow down as it st
     feed(tracker, RESULT('FileOperator', 'success'), 9);
     assert.equal(tracker.latest.status, 'success');
 });
+
+test('unfinished tool result logs have bounded buffers and result-only streams retain only recent activities', () => {
+    const tracker = createToolActivityTracker();
+    tracker.push('[[VCP调用结果信息汇总: - 工具名称: Logs\n - 执行状态: ✅ SUCCESS\n');
+    for (let i = 0; i < 1000; i++) {
+        tracker.push('log output '.repeat(100));
+        assert.ok(tracker.bufferedChars < 4096);
+    }
+    tracker.push('VCP调用结果结束]]');
+    assert.equal(tracker.latest.tool, 'Logs'); assert.equal(tracker.latest.status, 'success');
+    for (let i = 0; i < 100; i++) tracker.push(RESULT(`Tool${i}`, 'success'));
+    assert.equal(tracker.activities.length, 20);
+    assert.equal(tracker.latest.tool, 'Tool99');
+    tracker.finish(); assert.equal(tracker.bufferedChars, 0);
+});

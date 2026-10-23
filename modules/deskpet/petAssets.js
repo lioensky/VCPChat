@@ -51,7 +51,9 @@ function createPetAssets({ paths, stagedCorePath = () => null }) {
     const builtInSpriteDirectory = () => path.join(paths.projectRoot, 'assets', 'deskpet', 'codex');
 
     function resolveServedFile(urlString) {
-        const url = new URL(urlString);
+        let url;
+        try { url = new URL(urlString); } catch { return null; }
+        if (url.protocol !== `${SCHEME}:` || url.hostname !== 'pet') return null;
         let segments;
         try {
             segments = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
@@ -59,7 +61,7 @@ function createPetAssets({ paths, stagedCorePath = () => null }) {
             return null;
         }
         // 每一段都必须是普通文件名：Windows 会把反斜杠当分隔符，'..' 一律拒绝。
-        if (segments.some((s) => s === '..' || s === '.' || /[\\/:]/.test(s))) return null;
+        if (segments.some((s) => s === '..' || s === '.' || /[\\/:\0]/.test(s))) return null;
         const root = segments.shift();
         if (root === 'app') return guard(path.join(paths.projectRoot, 'DeskPetmodules'), segments);
         if (root === 'vendor') return guard(path.join(paths.projectRoot, 'vendor'), segments);
@@ -90,6 +92,35 @@ function createPetAssets({ paths, stagedCorePath = () => null }) {
             return null;
         }
         return null;
+    }
+
+    /** 协议实际读取前再检查真实路径，目录联接/符号链接也不能把读取范围带到配置或聊天记录。 */
+    async function resolveLocalFile(urlString) {
+        const file = resolveServedFile(urlString);
+        if (!file) return null;
+        const roots = [path.join(paths.projectRoot, 'DeskPetmodules'), path.join(paths.projectRoot, 'vendor'),
+            path.join(paths.projectRoot, 'modules', 'emotion'), builtInDirectory(), builtInSpriteDirectory()];
+        let base = roots.find(root => isInside(root, file));
+        let anchor = paths.projectRoot;
+        let exact = false;
+        if (!base && isInside(paths.agentDir, file)) {
+            anchor = paths.agentDir;
+            const parts = path.relative(paths.agentDir, file).split(path.sep);
+            base = path.join(paths.agentDir, parts[0], ...(parts[1] === 'deskpet' ? ['deskpet'] : []));
+            exact = parts[1] !== 'deskpet';
+        }
+        if (!base && [coreFilePath(), stagedCorePath(), defaultAvatarPath()].includes(file)) {
+            base = path.dirname(file); exact = true;
+            anchor = file === defaultAvatarPath() ? paths.projectRoot : paths.appDataRoot;
+        }
+        if (!base) return null;
+        try {
+            const [realAnchor, realBase, realFile, stat] = await Promise.all([fs.realpath(anchor), fs.realpath(base), fs.realpath(file), fs.stat(file)]);
+            if (path.relative(realBase, path.join(realAnchor, path.relative(anchor, base))) !== '') return null;
+            if (!stat.isFile() || !isInside(realBase, realFile)) return null;
+            if (exact && path.relative(realFile, path.join(realBase, path.basename(file))) !== '') return null;
+            return realFile;
+        } catch { return null; }
     }
 
     function agentUrl(agentId, file) {
@@ -179,7 +210,7 @@ function createPetAssets({ paths, stagedCorePath = () => null }) {
 
     const pageUrl = (agentId, query = '') => `${SCHEME}://pet/app/deskpet.html?agentId=${encodeURIComponent(agentId)}${query}`;
 
-    return { resolveServedFile, coreFilePath, resolveAssets, listOutfits, listAgents, agentExists, pageUrl, appUrl: (file) => `${SCHEME}://pet/app/${file}` };
+    return { resolveServedFile, resolveLocalFile, coreFilePath, resolveAssets, listOutfits, listAgents, agentExists, pageUrl, appUrl: (file) => `${SCHEME}://pet/app/${file}` };
 }
 
 module.exports = { createPetAssets, isAgentId, outfitSummary, SCHEME };

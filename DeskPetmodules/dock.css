@@ -51,6 +51,8 @@
 }
 
 .pet-dock[hidden] { display: none !important; }
+.pet-dock[data-mode="pill"][data-sessions="false"] { --dock-w: 85px; }
+.pet-dock .dock-btn[hidden], .pet-dock .dock-sep[hidden] { display: none; }
 .pet-dock[data-mode="hidden"][data-notifications="true"] {
   background: #3979e8;
   box-shadow: 0 0 0 1px rgba(42, 99, 202, .2), 0 1px 5px rgba(42, 99, 202, .3);

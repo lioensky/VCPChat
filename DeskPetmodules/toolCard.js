@@ -49,6 +49,7 @@ export function createToolCard({ el, onChange = () => {}, isMuted = () => false 
         },
         /** 免打扰开关、回复归属变了时重画 */
         refresh: render,
+        dispose() { clearTimeout(hideTimer); tracker = null; },
         get visible() { return !el.hidden; },
     };
 }

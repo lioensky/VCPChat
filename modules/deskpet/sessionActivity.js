@@ -24,7 +24,7 @@ function createSessionActivity({ titleOf = async () => '', publish = () => {} } 
         const completed = [...rows.values()].filter(s => !active(s)).sort((a, b) => b.order - a.order);
         for (const old of completed.slice(12)) rows.delete(old.messageId);
         Promise.resolve().then(() => titleOf(agentId, session.topicId)).then(title => {
-            if (rows.get(session.messageId) !== session) return;
+            if (agents.get(agentId) !== rows || rows.get(session.messageId) !== session) return;
             session.title = typeof title === 'string' ? title.slice(0, 300) : '';
             publish(agentId, get(agentId));
         }).catch(() => {});
@@ -32,14 +32,16 @@ function createSessionActivity({ titleOf = async () => '', publish = () => {} } 
     function update(agentId, event) {
         const rows = agents.get(agentId);
         const session = rows?.get(String(event.messageId));
-        if (!session || !active(session)) return;
+        if (!session || !active(session)) return false;
+        const previous = session.status;
         if (event.type === 'data') session.status = 'responding';
         if (event.type === 'end' || event.type === 'error') {
             session.status = event.type === 'error' ? 'error' : event.aborted ? 'stopped' : 'complete';
             const completed = [...rows.values()].filter(s => !active(s)).sort((a, b) => b.order - a.order);
             for (const old of completed.slice(12)) rows.delete(old.messageId);
         }
+        return session.status !== previous;
     }
-    return { start, update, get };
+    return { start, update, get, forget: agentId => agents.delete(agentId), clear: () => agents.clear() };
 }
 module.exports = { createSessionActivity };

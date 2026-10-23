@@ -14,7 +14,12 @@ export async function createSpriteBackend(assets, env) {
     atlas.height = image.naturalHeight;
     const atlasContext = atlas.getContext('2d', { willReadFrequently: true });
     atlasContext.drawImage(image, 0, 0);
-    const pixels = atlasContext.getImageData(0, 0, atlas.width, atlas.height).data;
+    const atlasWidth = atlas.width;
+    let alpha = new Uint8Array(atlas.width * atlas.height);
+    {
+        const pixels = atlasContext.getImageData(0, 0, atlas.width, atlas.height).data;
+        for (let i = 0; i < alpha.length; i++) alpha[i] = pixels[i * 4 + 3];
+    }
     const first = atlasContext.getImageData(0, 0, CELL.width, CELL.height);
     const idle = measureSilhouette(first.data, CELL.width, CELL.height);
     if (!idle) throw new Error('精灵图的待机帧是空的');
@@ -32,6 +37,9 @@ export async function createSpriteBackend(assets, env) {
             box.bottom = Math.max(box.bottom, b.bottom);
         }
     }
+    // 命中只需要 alpha 通道；测完轮廓立即释放整张临时画布，避免长期保留两份 RGBA 图集。
+    atlas.width = atlas.height = 0;
+    const hitMaskBytes = alpha.length;
     const canvas = env.canvas;
     const context = canvas.getContext('2d');
     let fit, timer = 0, paused = false, disposed = false, frame = {}, action = '', actionUntil = 0;
@@ -87,9 +95,10 @@ export async function createSpriteBackend(assets, env) {
     return {
         kind: 'sprite', bounds, head, figureReady: Promise.resolve(silhouetteAspect(box)),
         probe(x, y) {
+            if (disposed) return;
             const u = Math.floor((x - fit.x) / fit.scale), v = Math.floor((y - fit.y) / fit.scale);
             const hit = u >= 0 && u < CELL.width && v >= 0 && v < CELL.height
-                && pixels[((cell.row * CELL.height + v) * atlas.width + cell.column * CELL.width + u) * 4 + 3] >= HIT_ALPHA;
+                && alpha[(cell.row * CELL.height + v) * atlasWidth + cell.column * CELL.width + u] >= HIT_ALPHA;
             env.onHit(Boolean(hit));
         },
         focus(x, y) { const h = head(); setGaze({ x: (x - h.x) / (window.innerWidth * 0.5), y: (h.y - y) / (window.innerHeight * 0.5) }); },
@@ -109,7 +118,7 @@ export async function createSpriteBackend(assets, env) {
             dragVelocity(value) { velocity = value; velocityAt = performance.now(); },
             gaze: setGaze,
         },
-        destroy() { disposed = true; clearTimeout(timer); window.removeEventListener('resize', resize); },
-        info: { renderer: 'canvas2d', version, states: 9, lookDirections: version === 2 ? 16 : 0 },
+        destroy() { disposed = true; clearTimeout(timer); window.removeEventListener('resize', resize); alpha = null; image.src = ''; canvas.width = canvas.height = 0; },
+        info: { renderer: 'canvas2d', version, states: 9, lookDirections: version === 2 ? 16 : 0, hitMaskBytes },
     };
 }

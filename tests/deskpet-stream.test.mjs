@@ -89,6 +89,7 @@ test('stream events reach only the open pet, as plain text', async () => {
     assert.deepEqual(opened.openAgents, []); // 窗口还没显示
     handlers.onRequestStart('m1', { agentId: 'Nova' });
     handlers.onStreamPayload({ type: 'data', messageId: 'm1', context: { agentId: 'Nova' }, chunk: { choices: [{ delta: { content: '<!--emo:happy-->你好' } }] } });
+    handlers.onStreamPayload({ type: 'data', messageId: 'm1', context: { agentId: 'Nova' }, chunk: { choices: [{ delta: { content: '继续' } }] } });
     handlers.onStreamPayload({ type: 'data', messageId: 'x', context: { agentId: 'Other' }, chunk: { choices: [{ delta: { content: 'no' } }] } });
     handlers.onStreamPayload({ type: 'end', messageId: 'm1', context: { agentId: 'Nova' } });
     // 出错时把原因（主窗口里显示的那句）一起带过去，桌宠上才能说清是断网还是服务器报错
@@ -97,10 +98,12 @@ test('stream events reach only the open pet, as plain text', async () => {
     assert.equal(stream[0].session.messageId, 'm1');
     assert.equal(stream[0].session.status, 'thinking');
     assert.equal(stream[1].session.status, 'responding');
-    assert.equal(stream[2].session.status, 'complete');
+    assert.equal(stream[2].session, undefined, 'ordinary deltas do not copy the whole conversation snapshot');
+    assert.equal(stream[3].session.status, 'complete');
     assert.deepEqual(stream.map(({ session, ...event }) => event), [
         { type: 'start', messageId: 'm1' },
         { type: 'data', messageId: 'm1', text: '<!--emo:happy-->你好' },
+        { type: 'data', messageId: 'm1', text: '继续' },
         { type: 'end', messageId: 'm1' },
         { type: 'error', messageId: 'm2', error: 'VCP请求失败: 服务器返回状态 500. 错误: overloaded' },
     ]);

@@ -11,7 +11,6 @@ import { createEmotionDirector } from 'vcp-deskpet://pet/emotion/emotionDirector
 import { createEmotionTagScanner } from 'vcp-deskpet://pet/emotion/emotionTags.js';
 import { toBubbleText } from 'vcp-deskpet://pet/app/bubbleText.js';
 import { createSpeech } from 'vcp-deskpet://pet/app/voice.js';
-import { createToolCard } from 'vcp-deskpet://pet/app/toolCard.js';
 import { createMoodOrder } from 'vcp-deskpet://pet/app/moodOrder.js';
 import { createPetLife } from 'vcp-deskpet://pet/app/petLife.js';
 import { createDictation } from 'vcp-deskpet://pet/app/dictation.js';
@@ -28,6 +27,7 @@ import { createSpriteBackend } from 'vcp-deskpet://pet/app/spriteBackend.js';
 import { createLifeFx } from 'vcp-deskpet://pet/app/lifeFx.js';
 import { dockHitArea, containsPoint } from 'vcp-deskpet://pet/app/dockHitArea.js';
 import { createDockVisibility, createCursorHitGate } from 'vcp-deskpet://pet/app/dockVisibility.js';
+import { bindPointer } from 'vcp-deskpet://pet/app/pointerGestures.js';
 import { createSessionCard } from 'vcp-deskpet://pet/app/sessionCard.js';
 
 const api = window.deskPetAPI;
@@ -57,6 +57,7 @@ const $ = (id) => document.getElementById(id);
 let backend = null;
 let frame = { state: null, emotion: 'neutral', intensity: 0, source: 'idle' };
 let lastActivity = Date.now();
+let pointerBindings = null;
 let life = null; // petLife：闲时小动作、困了睡、被吵醒、连点和摸头（start 里创建）
 
 // 主进程给的设置：大小、免打扰。别的模块（声音、待机反应）读 window.deskPetPrefs 或听 'deskpet:prefs' 事件。
@@ -120,7 +121,7 @@ function talkLevel(fake) {
 function replyStateLabel() {
     if (!frame.state) return '';
     if (frame.state === 'thinking') return bubble.replyId && bubble.region === 'thought' ? STATE_LABEL.thinking : '';
-    if (frame.state === 'tool' && toolCard?.visible) return ''; // 小卡片已经说了在做什么
+    if (frame.state === 'tool') return ''; // 工具状态统一交给会话动态。
     return STATE_LABEL[frame.state] || '';
 }
 
@@ -145,7 +146,7 @@ function renderBubble() {
     } else if (reply) {
         content = reply;
         mode = 'is-reply';
-    } else if (!muted && frame.state && STATE_LABEL[frame.state] && !(frame.state === 'tool' && toolCard?.visible)) {
+    } else if (!muted && frame.state && STATE_LABEL[frame.state]) {
         content = STATE_LABEL[frame.state];
         mode = 'is-state';
     }
@@ -242,7 +243,6 @@ function proactiveLabel() {
 // 角色主动说话（AI 开了新话题、闹钟到点）。正在回复时先记着，回复说完再说。
 const PROACTIVE_HOLD_MS = { topic: 20000, alarm: 60000 };
 let pendingProactive = [];
-let toolCard = null; // 「正在做什么」小卡片（bindStream 里建）
 let proactiveDirector = null;
 
 function speakProactive(payload) {
@@ -702,7 +702,7 @@ function bindComposer() {
 // 气泡、输入框这些界面元素也要能点到（按像素穿透只看角色本身）。
 function uiAt(x, y) {
     if (!$('dock').hidden && (dock.mode === 'hidden' || dock.mode === 'pill')
-        && containsPoint(dockHitArea(innerWidth, innerHeight, { collapsed: dock.mode === 'hidden' }), x, y)) return true;
+        && containsPoint(dockHitArea(innerWidth, innerHeight, { collapsed: dock.mode === 'hidden', sessions: $('dock').dataset.sessions !== 'false' }), x, y)) return true;
     return Boolean(document.elementFromPoint(x, y)?.closest('.pet-ui'));
 }
 
@@ -723,7 +723,7 @@ function uiBounds({ withIdleDock = false, withBadge = true } = {}) {
         if (!withBadge && el.id === 'missedBadge') continue;
         const visual = el.getBoundingClientRect();
         const r = el.id === 'dock' && withIdleDock && (dock.mode === 'hidden' || dock.mode === 'pill')
-            ? union(dockHitArea(innerWidth, innerHeight, { collapsed: dock.mode === 'hidden' }), visual) : visual;
+            ? union(dockHitArea(innerWidth, innerHeight, { collapsed: dock.mode === 'hidden', sessions: $('dock').dataset.sessions !== 'false' }), visual) : visual;
         if (!r.width || !r.height) continue;
         rect = rect ? union(rect, r) : { x: r.x, y: r.y, width: r.width, height: r.height };
     }
@@ -738,7 +738,7 @@ function aimBubble(headX) {
     const stack = $('uiStack');
     const room = stack.clientWidth;
     const left = stack.getBoundingClientRect().left;
-    for (const el of [$('sessionPanel'), $('bubble'), $('toolCard'), $('approvalCard')]) {
+    for (const el of [$('sessionPanel'), $('bubble'), $('approvalCard')]) {
         if (el.hidden) continue;
         const width = el.offsetWidth;
         const slack = Math.max(0, (room - width) / 2);
@@ -822,93 +822,6 @@ function afterDrag() {
     lastWantOut = null;
 }
 
-function bindPointer({ onTap, onDoubleTap, onTapDown, onDrag }) {
-    let down = null;
-    let lastTap = 0;
-    let lastUp = 0;
-    let pairGap = Infinity; // 双击第一下离再前一下有多久：隔了一会儿才双击，是真想打开输入框，不是在连点
-    let tapTimer = 0;
-    window.addEventListener('pointerdown', (e) => {
-        api.touched?.();
-        if (e.button !== 0 || e.target?.closest?.('.pet-ui')) return;
-        // 上一次按下没收到 pointerup（被菜单、切窗口打断）时，先把它的拖动收尾（窗口和被拎着的姿势都放下）。
-        if (down?.dragging) {
-            afterDrag();
-            api.dragEnd();
-            onDrag('end');
-        }
-        down = { x: e.screenX, y: e.screenY, dragging: false, cx: e.clientX, cy: e.clientY };
-        // 捕获指针：窗口跟着光标移动时 pointerup 也一定回到这里。
-        try { e.target?.setPointerCapture?.(e.pointerId); } catch { /* 指针已经没了 */ }
-    });
-    window.addEventListener('pointermove', (e) => {
-        lastActivity = Date.now();
-        if (!down) return;
-        if (down.dragging) {
-            onDrag('move', e);
-            return;
-        }
-        if (Math.hypot(e.screenX - down.x, e.screenY - down.y) > 4) {
-            down.dragging = true;
-            api.dragStart({ x: down.x, y: down.y });
-            onDrag('start', e);
-        }
-    });
-    window.addEventListener('pointerup', (e) => {
-        if (!down) return;
-        const at = { x: down.cx, y: down.cy };
-        if (down.dragging) {
-            // 松手的地方离屏幕边、任务栏很近时主进程会贴过去；按着 Alt 不贴
-            afterDrag();
-            api.dragEnd({ figure: figureBounds(), free: e.altKey });
-            onDrag('end');
-            down = null;
-            return;
-        }
-        // 每一下都先报去数连点，再分单击、双击
-        onTapDown(at);
-        const upAt = Date.now();
-        const gap = upAt - lastUp;
-        lastUp = upAt;
-        if (upAt - lastTap < DOUBLE_TAP_MS) {
-            // 双击只打开输入框，不先做一遍单击的开心动作
-            clearTimeout(tapTimer);
-            lastTap = 0;
-            onDoubleTap({ afterPause: pairGap >= DOUBLE_TAP_MS });
-        } else {
-            pairGap = gap;
-            lastTap = upAt;
-            clearTimeout(tapTimer);
-            tapTimer = setTimeout(() => onTap(at), DOUBLE_TAP_MS);
-        }
-        down = null;
-    });
-    // 触屏手势被系统接管（pointercancel）、拖到一半切走窗口时收不到 pointerup，拖动必须在这里结束。
-    const abort = () => {
-        if (down?.dragging) {
-            afterDrag();
-            api.dragEnd();
-            onDrag('end');
-        }
-        down = null;
-    };
-    window.addEventListener('pointercancel', abort);
-    window.addEventListener('blur', abort);
-    // Ctrl（macOS 上 Cmd）+ 滚轮调大小；气泡上的滚轮留给翻看回复
-    window.addEventListener('wheel', (e) => {
-        if (!(e.ctrlKey || e.metaKey) || e.target?.closest?.('.pet-ui')) return;
-        e.preventDefault();
-        const px = e.deltaMode === 1 ? e.deltaY * 40 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
-        api.wheelResize?.(px);
-    }, { passive: false });
-    window.addEventListener('contextmenu', (e) => {
-        if (e.target?.closest?.('#composer')) return; // 输入框里保留系统的复制粘贴菜单
-        e.preventDefault();
-        abort(); // 菜单会拿走指针，拖到一半右键也要先停下
-        api.openContextMenu();
-    });
-}
-
 // ---- 命中：光标在不在角色上（各个后端读完像素报到这里） -----------------------------
 
 let lastHit = false;
@@ -962,8 +875,6 @@ function shownFrame(f) {
 
 function bindStream(director) {
     let scanner = null;
-    toolCard = createToolCard({ el: $('toolCard'), onChange: queueRenderBubble, isMuted: () => isQuiet() && !bubble.own });
-    $('toolCard').addEventListener('click', () => api.openMainWindow());
     const startReply = (messageId) => {
         clearTimeout(bubble.hideTimer);
         bubble.own = Date.now() - composer.lastSentAt < OWN_REPLY_WINDOW_MS
@@ -978,7 +889,6 @@ function bindStream(director) {
         scanner = createEmotionTagScanner();
         // 免打扰时主窗口里聊天的回复不念；在桌宠上说的话照常念
         speech.begin(messageId, { silent: isQuiet() && !bubble.own });
-        toolCard.start();
     };
     api.onStream((event) => {
         if (!event?.messageId) return;
@@ -993,7 +903,6 @@ function bindStream(director) {
             if (!bubble.replyId) startReply(event.messageId);
             life?.hold('reply', true);
             director.append(event.messageId, event.text);
-            toolCard.push(event.text);
             // 气泡只显示正文：情绪标签、思维链、工具调用和结果都不显示，代码块写成 [代码]。
             for (const item of scanner.push(event.text)) {
                 if (item.type === 'text') bubble.reply += item.text;
@@ -1028,7 +937,6 @@ function bindStream(director) {
             composer.ownReplyEndedAt = bubble.own ? Date.now() : 0;
             bubble.endedAt = Date.now();
             scheduleReplyHide(replyHoldMs());
-            toolCard.end();
             if (pendingProactive.length) setTimeout(flushProactive, Math.min(replyHoldMs(), 6000));
             // 排队的话等气泡画完这一帧再发，免得和刚结束的回复挤在一起
             if (composer.queued) setTimeout(flushQueued, 400);
@@ -1096,7 +1004,6 @@ function applyPrefs(next) {
     }
     // 刚开了免打扰：正在念的主窗口回复停下
     if (isQuiet() && !previous.doNotDisturb && !bubble.own) speech.stop();
-    toolCard?.refresh();
     renderBubble();
     window.dispatchEvent(new CustomEvent('deskpet:prefs', { detail: window.deskPetPrefs }));
     prefsLoaded = true;
@@ -1132,12 +1039,13 @@ function pixiEnv() {
 
 async function start() {
     const sessionCard = PREVIEW ? null : createSessionCard({
-        card: $('sessionCard'), panel: $('sessionPanel'), toggle: $('dockHide'), badge: $('sessionCount'),
+        card: $('sessionCard'), panel: $('sessionPanel'), toggle: $('dockHide'), divider: $('sessionDivider'), badge: $('sessionCount'),
         navigation: $('sessionNavigation'), position: $('sessionPosition'), previous: $('sessionPrevious'), next: $('sessionNext'),
         stop: $('sessionStop'),
         title: $('sessionTitle'), status: $('sessionStatus'), api,
         onToggle: expanded => { dockVisibility.update({ pinned: expanded }); renderBubble(); aimBubble(aimedHeadX); },
-        onNotifications: count => {
+        onNotifications: (count, available) => {
+            if ($('dock').dataset.sessions !== String(available)) $('dock').dataset.sessions = String(available);
             const pending = String(count > 0);
             if ($('dock').dataset.notifications !== pending) $('dock').dataset.notifications = pending;
             const label = count ? `展开桌宠操作，${count} 个会话有动态` : '展开桌宠操作';
@@ -1154,7 +1062,13 @@ async function start() {
     syncDockLayers();
     $('dockReveal').addEventListener('click', () => setDock('pill'));
     $('dock').addEventListener('focusin', () => dockHover(true));
-    window.addEventListener('pagehide', () => dockVisibility.dispose(), { once: true });
+    window.addEventListener('pagehide', () => {
+        for (const dispose of [() => pointerBindings?.dispose(), () => dockVisibility.dispose(), () => sessionCard?.dispose(),
+            () => director?.dispose(), () => voice.cancel(), () => speech.dispose(), () => backend?.destroy?.()]) {
+            try { dispose(); } catch (error) { console.warn('[DeskPet] 清理页面资源失败：', error); }
+        }
+        clearTimeout(bubble.hideTimer); clearTimeout(bubble.noticeTimer);
+    }, { once: true });
     applyPrefs(await api.getPrefs?.().catch(() => null));
     api.onPrefs?.(applyPrefs);
     bindWalk();
@@ -1211,6 +1125,7 @@ async function start() {
     let flashTimer = 0;
     let tapTimer = 0;
     // 互动反应时临时换个表情（不改导演的心情，演完换回来）
+    window.addEventListener('pagehide', () => { clearTimeout(flashTimer); clearTimeout(tapTimer); lifeFx.dispose(); }, { once: true });
     const flashEmotion = (emotion, ms) => {
         // 立绘没画这个情绪就不换，免得退回默认立绘闪一下
         if (backend.canShow && !backend.canShow(emotion)) return;
@@ -1327,7 +1242,8 @@ async function start() {
     });
     let streak = 0;
     let drag = null;
-    bindPointer({
+    pointerBindings = bindPointer({
+        api, afterDrag, figureBounds, doubleTapMs: DOUBLE_TAP_MS, onActivity: () => { lastActivity = Date.now(); },
         onTap: (at) => {
             // 正在念的时候点一下：别念了
             if (speech.active() || speech.speaking()) {
@@ -1423,7 +1339,7 @@ async function start() {
         }
         aimBubble(headX);
     };
-    setInterval(() => {
+    const activityTimer = setInterval(() => {
         if (paused) return;
         followHead();
         const b = backend.bounds();
@@ -1442,6 +1358,7 @@ async function start() {
         wanderTick(uiBounds({ withBadge: false }));
         if (Date.now() - lastActivity > IDLE_AFTER_MS && !frame.state) backend.setActive(life.phase === 'asleep' ? 'sleep' : 'idle');
     }, 250);
+    window.addEventListener('pagehide', () => clearInterval(activityTimer), { once: true });
 
     applyFrame(director.frame);
     document.body.dataset.lifePhase = life.phase;

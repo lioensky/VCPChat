@@ -71,7 +71,7 @@
   </div>
   <!-- 脚边的小胶囊：光标停在角色上时冒出来（打字 / 说话）；点打字展开成输入条，点说话变成录音按钮；没碰它时收成脚边一道小横条。
        三种样子是同一个元素的三个状态（data-mode），宽度和内容之间有过渡动画。 -->
-  <div id="dock" class="pet-ui pet-dock" data-mode="hidden">
+  <div id="dock" class="pet-ui pet-dock" data-mode="hidden" data-sessions="false">
     <button id="dockReveal" type="button" title="展开桌宠操作" aria-label="展开桌宠操作"></button>
     <div class="dock-layer dock-pill" id="dockPill">
       <button id="dockEdit" class="dock-btn" type="button" title="打字和 TA 说（双击角色也行）" aria-label="打字">
@@ -81,8 +81,8 @@
       <button id="dockVoice" class="dock-btn" type="button" title="说话（本地语音识别）" aria-label="说话">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4"/><path d="M8 7v10"/><path d="M12 4v16"/><path d="M16 7v10"/><path d="M20 10v4"/></svg>
       </button>
-      <i class="dock-sep"></i>
-      <button id="dockHide" class="dock-btn" type="button" title="查看会话动态" aria-label="查看会话动态" aria-expanded="false" aria-controls="sessionPanel">
+      <i id="sessionDivider" class="dock-sep" hidden></i>
+      <button id="dockHide" class="dock-btn" type="button" title="查看会话动态" aria-label="查看会话动态" aria-expanded="false" aria-controls="sessionPanel" hidden>
         <svg class="session-bell" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg>
         <svg class="session-collapse" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>
         <span id="sessionCount" hidden></span>
@@ -108,9 +108,7 @@
   <div id="dndBadge" hidden title="免打扰：不主动说话、不出声">🌙</div>
   <div id="throughBadge" hidden title="只看不点：鼠标会穿过桌宠">👻</div>
   <button id="missedBadge" class="pet-ui" type="button" hidden title="你不在的时候 TA 说了话，点一下再说一遍" aria-label="再说一遍">💬</button>
-  <!-- Pixi 8 与 CSP polyfill 用 VCPChat 自带的那份；Live2D 相关脚本按需加载；情绪模块与侧栏立绘共用 modules/emotion。 -->
-  <script src="vcp-deskpet://pet/vendor/pixi.min.js"></script>
-  <script src="vcp-deskpet://pet/vendor/pixi-unsafe-eval.min.js"></script>
+  <!-- Pixi、CSP polyfill 和 Live2D 引擎由需要它们的后端加载；精灵和头像不加载 WebGL 引擎。 -->
   <script type="module" src="vcp-deskpet://pet/app/deskpet.js"></script>
 </body>
 </html>

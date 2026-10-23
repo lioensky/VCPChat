@@ -243,6 +243,7 @@ async function mountLive2DModel(app, assets, env, { Live2DModel, coreVersion, we
         },
         // 窗口藏起来时整个停掉（窗口关了后台节流，不停的话隐藏着也在一直画）
         ...tickerControls(app, fps),
+        destroy: () => figure.dispose(),
         life: {
             phase(p) { life.setPhase(p); },
             act(name, ms) {

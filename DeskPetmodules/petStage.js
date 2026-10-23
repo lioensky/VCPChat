@@ -33,6 +33,15 @@ export function loadScript(src) {
     });
 }
 
+let pixiLoading;
+async function ensurePixi() {
+    if (globalThis.PIXI) return;
+    pixiLoading ||= loadScript('vcp-deskpet://pet/vendor/pixi.min.js')
+        .then(() => loadScript('vcp-deskpet://pet/vendor/pixi-unsafe-eval.min.js'))
+        .catch(error => { pixiLoading = null; throw error; });
+    await pixiLoading;
+}
+
 export async function fetchJson(url) {
     try {
         const res = await fetch(url);
@@ -87,36 +96,50 @@ export async function createPixiStage(canvas, { noWebGL, prepare, onContextLost,
     const webgl = probeWebGL();
     if (!webgl) throw userFacing(noWebGL);
     const fps = webgl.software ? FPS_SOFTWARE : FPS;
+    await ensurePixi();
     const prepared = prepare ? await prepare() : null;
     canvas.hidden = false;
+    let disposed = false;
+    let reloadTimer = 0;
+    let mounted = null;
     const onLost = (event) => {
+        if (disposed) return;
         event.preventDefault();
         recordContextLoss();
         onContextLost?.();
-        setTimeout(() => window.location.reload(), CONTEXT_LOST_RELOAD_MS);
+        reloadTimer = setTimeout(() => window.location.reload(), CONTEXT_LOST_RELOAD_MS);
     };
     canvas.addEventListener('webglcontextlost', onLost, { once: true });
     const app = new PIXI.Application();
-    await app.init({
-        canvas,
-        resizeTo: window,
-        preference: 'webgl',
-        backgroundAlpha: 0,
-        // 软件渲染时多重采样很贵，人物边缘的锯齿在桌面上也不明显
-        antialias: !webgl.software,
-        autoDensity: true,
-        resolution: window.devicePixelRatio || 1,
-        preserveDrawingBuffer: false,
-        powerPreference: 'low-power',
-    });
-    app.ticker.maxFPS = fps.active;
+    const destroy = () => {
+        if (disposed) return;
+        disposed = true;
+        clearTimeout(reloadTimer);
+        canvas.removeEventListener('webglcontextlost', onLost);
+        try { mounted?.destroy?.(); }
+        // Live2D 适配器仍用 baseTexture 这个选项名来释放源纹理，Pixi 8 使用 textureSource。
+        finally { app.destroy({ removeView: false }, { children: true, texture: true, textureSource: true, baseTexture: true }); }
+    };
     try {
-        return await mount(app, { webgl, fps, prepared });
+        await app.init({
+            canvas,
+            resizeTo: window,
+            preference: 'webgl',
+            backgroundAlpha: 0,
+            // 软件渲染时多重采样很贵，人物边缘的锯齿在桌面上也不明显
+            antialias: !webgl.software,
+            autoDensity: true,
+            resolution: window.devicePixelRatio || 1,
+            preserveDrawingBuffer: false,
+            powerPreference: 'low-power',
+        });
+        app.ticker.maxFPS = fps.active;
+        mounted = await mount(app, { webgl, fps, prepared });
+        return { ...mounted, destroy };
     } catch (error) {
         // 模型坏了：把已经建好的 WebGL 上下文和渲染循环一起收掉，不然它会一直空转。
         // 销毁会主动释放上下文，这不是意外丢失，不能触发重载。
-        canvas.removeEventListener('webglcontextlost', onLost);
-        app.destroy({ removeView: false }, { children: true });
+        try { destroy(); } catch (cleanupError) { console.warn('[DeskPet] 清理渲染舞台失败：', cleanupError); }
         canvas.hidden = true;
         throw error;
     }
@@ -180,8 +203,11 @@ export function createFigureFit(app, canvas, { width, height, apply }) {
         }
         return result ? silhouetteAspect(box) : null;
     };
+    let measureTimer = 0;
+    let settleMeasure;
     const ready = new Promise((resolve) => {
-        setTimeout(() => {
+        settleMeasure = resolve;
+        measureTimer = setTimeout(() => {
             let aspect = null;
             try { aspect = measure(); } catch (error) { console.warn('[DeskPet] 量轮廓失败：', error); }
             canvas.style.transition = 'opacity 160ms ease';
@@ -192,6 +218,7 @@ export function createFigureFit(app, canvas, { width, height, apply }) {
     const toWindow = (b) => ({ x: fit.x + b.left * fit.scale, y: fit.y + b.top * fit.scale, width: (b.right - b.left) * fit.scale, height: (b.bottom - b.top) * fit.scale });
     return {
         ready,
+        dispose() { clearTimeout(measureTimer); window.removeEventListener('resize', layout); settleMeasure(null); },
         base: () => fit,
         bounds: () => toWindow(box),
         // 没量出来时按包围盒估：头在顶上、宽度取一半

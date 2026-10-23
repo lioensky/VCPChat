@@ -123,6 +123,37 @@ test('a second drag-start (lost pointerup) does not leave a timer chasing the cu
     handlers.closeAll();
 });
 
+test('dragging retains mouse capture through late alpha misses and uses local offsets on mixed-DPI screens', async (t) => {
+    const { handlers, fake, open, fromPet } = await loadHandlers();
+    t.after(() => handlers.closeAll());
+    const pet = await open();
+    for (const [dx, dy] of [[40, 0], [-40, 0], [0, 35], [0, -35]]) {
+        const [x, y] = pet.getPosition();
+        fake.screen.cursor = { x: x + 10, y: y + 15 };
+        fake.listeners.get('deskpet:drag-start')(fromPet(pet), { x: (x + 10) * 2, y: (y + 15) * 2, local: { x: 10, y: 15 } });
+        fake.listeners.get('deskpet:hit')(fromPet(pet), false);
+        assert.equal(pet.ignoreMouse.at(-1), false, 'transparent animation frames cannot release the held pointer');
+        fake.screen.cursor = { x: x + 10 + dx, y: y + 15 + dy };
+        await sleep(40);
+        fake.listeners.get('deskpet:drag-end')(fromPet(pet));
+        assert.deepEqual(pet.getPosition(), [x + dx, y + dy]);
+        fake.listeners.get('deskpet:hit')(fromPet(pet), false);
+        assert.equal(pet.ignoreMouse.at(-1), true, 'normal transparency resumes after release');
+    }
+});
+
+test('closing the module releases display, wake and main-window lifecycle listeners', async () => {
+    const { handlers, fake, open } = await loadHandlers();
+    await open();
+    assert.equal(fake.screen.listenerCount('display-added'), 1);
+    assert.equal(fake.electron.powerMonitor.listenerCount('resume'), 1);
+    handlers.closeAll(); handlers.closeAll();
+    for (const event of ['display-added', 'display-removed', 'display-metrics-changed']) assert.equal(fake.screen.listenerCount(event), 0);
+    for (const event of ['resume', 'unlock-screen']) assert.equal(fake.electron.powerMonitor.listenerCount(event), 0);
+    assert.equal(fake.windows[0].webContents.listenerCount('did-start-loading'), 0);
+    assert.equal(handlers._pets().size, 0);
+});
+
 test('a renderer reload or crash puts the window back to click-through and ends the drag', async () => {
     const { handlers, fake, open, fromPet } = await loadHandlers();
     const pet = await open();

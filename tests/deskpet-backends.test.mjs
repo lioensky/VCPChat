@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { live2DFailureText, vowelParamsOf } from '../DeskPetmodules/live2dBackend.js';
 import { paramTargets, EMOTION_PARAMS, EMOTION_LABEL, EMOTION_EMOJI, EMOTION_RING } from '../DeskPetmodules/emotionLook.js';
-import { fpsTier, FPS, FPS_SOFTWARE } from '../DeskPetmodules/petStage.js';
+import { fpsTier, FPS, FPS_SOFTWARE, createPixiStage, createFigureFit } from '../DeskPetmodules/petStage.js';
 import { EMOTION_KEYS } from '../DeskPetmodules/expressionMap.js';
 
 test('a broken Live2D model is explained in words, not loader URLs', () => {
@@ -48,4 +48,40 @@ test('frame-rate tiers: old true/false still work and software rendering is alwa
     assert.equal(fpsTier('sleep'), 'sleep');
     assert.equal(fpsTier('anything'), 'active');
     for (const tier of ['active', 'idle', 'sleep']) assert.ok(FPS_SOFTWARE[tier] < FPS[tier]);
+});
+
+test('Pixi resources dispose once on success, initialization failure and mount failure', async (t) => {
+    const old = { PIXI: globalThis.PIXI, document: globalThis.document, window: globalThis.window };
+    t.after(() => Object.assign(globalThis, old));
+    globalThis.window = { devicePixelRatio: 1 };
+    globalThis.document = { createElement: () => ({ getContext: () => ({ getExtension: () => null, getParameter: () => 'GPU' }) }) };
+    let initialized, destroyed, failInit = false, released;
+    globalThis.PIXI = { Application: class {
+        constructor() { this.ticker = {}; }
+        async init() { initialized++; if (failInit) throw Error('init failed'); }
+        destroy() { destroyed++; }
+    } };
+    const listeners = new Map();
+    const canvas = { addEventListener: (key, fn) => listeners.set(key, fn), removeEventListener: key => listeners.delete(key) };
+    initialized = destroyed = released = 0;
+    const backend = await createPixiStage(canvas, { mount: async () => ({ kind: 'test', destroy: () => { released++; } }) });
+    backend.destroy(); backend.destroy();
+    assert.equal(released, 1); assert.equal(destroyed, 1); assert.equal(listeners.size, 0);
+    failInit = true;
+    await assert.rejects(createPixiStage(canvas, { mount: async () => ({}) }), /init failed/);
+    assert.equal(destroyed, 2); assert.equal(listeners.size, 0);
+    failInit = false;
+    await assert.rejects(createPixiStage(canvas, { mount: async () => { throw Error('mount failed'); } }), /mount failed/);
+    assert.equal(destroyed, 3); assert.equal(listeners.size, 0);
+});
+
+test('disposing figure measurement removes resize hooks and settles pending work', async (t) => {
+    const old = globalThis.window;
+    t.after(() => { globalThis.window = old; });
+    const listeners = new Set();
+    globalThis.window = { innerWidth: 360, innerHeight: 480, addEventListener: (_event, fn) => listeners.add(fn), removeEventListener: (_event, fn) => listeners.delete(fn) };
+    const figure = createFigureFit({}, { style: {} }, { width: 200, height: 300, apply() {} });
+    assert.equal(listeners.size, 1);
+    figure.dispose(); figure.dispose();
+    assert.equal(listeners.size, 0); assert.equal(await figure.ready, null);
 });

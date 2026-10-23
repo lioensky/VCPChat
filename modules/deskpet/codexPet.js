@@ -2,7 +2,7 @@
 
 const path = require('node:path');
 const fs = require('fs-extra');
-const sharp = require('sharp');
+let sharp;
 
 const MAX_SHEET_BYTES = 20 * 1024 * 1024;
 const cache = new Map();
@@ -32,6 +32,7 @@ async function readCodexPet(dir) {
         if (!inside(realDir, realSheet) || !stat.isFile() || stat.size < 1 || stat.size > MAX_SHEET_BYTES) return null;
         const key = `${realSheet}:${stat.size}:${stat.mtimeMs}:${manifestStat?.mtimeMs || 0}:${manifestStat?.size || 0}`;
         if (cache.has(key)) return cache.get(key);
+        sharp ||= require('sharp');
         const metadata = await sharp(sheet, { limitInputPixels: 1536 * 2288 }).metadata();
         const inferred = metadata.width === 1536 ? ({ 1872: 1, 2288: 2 })[metadata.height] : null;
         const version = info.spriteVersionNumber === undefined ? inferred : info.spriteVersionNumber;

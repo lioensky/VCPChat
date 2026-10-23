@@ -133,6 +133,7 @@ export function createToolActivityTracker() {
         // 只有结果、没看到请求（请求被藏起来了）：也算一条，至少让人知道调过什么
         if (!tool) return false;
         activities.push({ tool, command: '', target: '', status });
+        if (activities.length > MAX_ACTIVITIES) activities.shift();
         return true;
     };
 
@@ -144,7 +145,7 @@ export function createToolActivityTracker() {
                 // 参数只看开头一段（工具名、命令和对象都写在前面）
                 const close = buffer.indexOf(REQUEST_CLOSE, Math.max(open.at, open.searched - REQUEST_CLOSE.length));
                 open.searched = buffer.length;
-                const body = close === -1 ? buffer.slice(open.at, open.at + OPEN_HEAD_CHARS) : buffer.slice(open.at, close);
+                const body = buffer.slice(open.at, Math.min(close === -1 ? buffer.length : close, open.at + OPEN_HEAD_CHARS));
                 const before = `${open.activity.tool}|${open.activity.command}|${open.activity.target}`;
                 fillFromRequest(open.activity, body);
                 if (`${open.activity.tool}|${open.activity.command}|${open.activity.target}` !== before) changed = true;
@@ -179,9 +180,12 @@ export function createToolActivityTracker() {
             const close = buffer.indexOf(RESULT_CLOSE, res);
             if (close === -1) {
                 cursor = res;
+                // 工具可能不断输出日志却迟迟没有结束标记；只留工具名、状态所在的开头及接标记的尾巴。
+                const keep = res + RESULT_OPEN.length + OPEN_HEAD_CHARS;
+                if (buffer.length > keep + RESULT_CLOSE.length * 2) buffer = buffer.slice(0, keep) + buffer.slice(-(RESULT_CLOSE.length - 1));
                 break;
             }
-            if (applyResult(parseResult(buffer.slice(res + RESULT_OPEN.length, close)))) changed = true;
+            if (applyResult(parseResult(buffer.slice(res + RESULT_OPEN.length, Math.min(close, res + RESULT_OPEN.length + OPEN_HEAD_CHARS))))) changed = true;
             cursor = close + RESULT_CLOSE.length;
         }
         // 已经处理过的部分不用留着
@@ -213,8 +217,10 @@ export function createToolActivityTracker() {
                 }
             }
             open = null;
+            buffer = ''; cursor = 0;
             return changed;
         },
+        get bufferedChars() { return buffer.length; },
         get activities() { return activities; },
         get latest() { return activities[activities.length - 1] || null; },
     };

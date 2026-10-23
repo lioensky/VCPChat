@@ -1,10 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import fs from 'node:fs';
+import os from 'node:os';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const handlers = require('../modules/ipc/deskPetHandlers.js');
+const { createPetAssets } = require('../modules/deskpet/petAssets.js');
 
 const root = path.resolve('/vcp');
 const paths = { projectRoot: root, appDataRoot: path.join(root, 'AppData'), agentDir: path.join(root, 'AppData', 'Agents') };
@@ -40,6 +43,26 @@ test('desk pet protocol refuses agent config, history and traversal', () => {
         'vcp-deskpet://pet/agent/Nova/deskpet/%E0%A4%A',
     ]) {
         assert.equal(resolve(url), null, url);
+    }
+});
+
+test('real resource paths reject links out of the pet folder, including a linked pet folder itself', async (t) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pet-realpaths-'));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const agentDir = path.join(dir, 'Agents');
+    const petDir = path.join(agentDir, 'Nova', 'deskpet');
+    const secretDir = path.join(agentDir, 'Nova', 'topics', 'private');
+    fs.mkdirSync(petDir, { recursive: true }); fs.mkdirSync(secretDir, { recursive: true });
+    fs.writeFileSync(path.join(petDir, 'model.json'), '{}');
+    fs.writeFileSync(path.join(secretDir, 'history.json'), 'private history');
+    fs.symlinkSync(secretDir, path.join(petDir, 'shortcut'), 'junction');
+    fs.mkdirSync(path.join(agentDir, 'Linked'));
+    fs.symlinkSync(secretDir, path.join(agentDir, 'Linked', 'deskpet'), 'junction');
+    const assets = createPetAssets({ paths: { projectRoot: dir, appDataRoot: dir, agentDir } });
+    assert.equal(await assets.resolveLocalFile('vcp-deskpet://pet/agent/Nova/deskpet/model.json'), fs.realpathSync(path.join(petDir, 'model.json')));
+    for (const url of ['vcp-deskpet://pet/agent/Nova/deskpet/shortcut/history.json', 'vcp-deskpet://pet/agent/Linked/deskpet/history.json',
+        'vcp-deskpet://pet/agent/Nova/config.json', 'https://pet/agent/Nova/deskpet/model.json', 'vcp-deskpet://other/agent/Nova/deskpet/model.json']) {
+        assert.equal(await assets.resolveLocalFile(url), null, url);
     }
 });
 

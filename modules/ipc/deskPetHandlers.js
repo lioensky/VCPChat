@@ -67,6 +67,8 @@ let assets = null; // modules/deskpet/petAssets.js：协议背后的文件、助
 let stateStore = null; // modules/deskpet/petState.js：AppData/deskpet/state.json
 let mainWindow = null;
 let initialized = false;
+let restoreTimer = null;
+let disposeHostEvents = () => {};
 const pets = new Map(); // agentId -> { win, scale, outfit, aspect, ignoringMouse, interactive, hitPoll, drag, lastShape }
 const pendingSends = new Map(); // requestId -> resolve
 let emotionPrompt = null; // modules/emotion/emotionPrompt.js（ESM，初始化时异步载入）
@@ -99,8 +101,8 @@ function registerSchemes() {
 
 function registerProtocol() {
     protocol.handle(SCHEME, async (request) => {
-        const file = assets.resolveServedFile(request.url);
-        if (!file || !(await fs.pathExists(file))) return new Response('not found', { status: 404 });
+        const file = await assets.resolveLocalFile(request.url);
+        if (!file) return new Response('not found', { status: 404 });
         return net.fetch(pathToFileURL(file).toString());
     });
 }
@@ -361,6 +363,8 @@ function applyFullscreen(state) {
 }
 
 function setIgnoreMouse(pet, ignore) {
+    // 拎起后轮廓和动作会变；迟到的 alpha=false 不能让窗口丢掉这一次按住的指针。
+    if (ignore && pet.drag) return;
     if (USE_SHAPE || pet.win.isDestroyed() || ignore === pet.ignoringMouse || pet.ignoringMouse === 'through') return;
     pet.ignoringMouse = ignore;
     // forward:true 让 Windows/macOS 在穿透时仍把 mousemove 送到页面。
@@ -566,7 +570,7 @@ function moveWithCursor(pet, drag) {
     const last = samples[samples.length - 1];
     if (!last || last.x !== c.x || last.y !== c.y) samples.push({ t: Date.now(), x: c.x, y: c.y });
     if (samples.length > 12) samples.shift();
-    applyBounds(pet, { x: c.x - drag.dx, y: c.y - drag.dy, ...sizeOf(pet) }, { verify: false });
+    applyBounds(pet, { x: Math.round(c.x - drag.dx), y: Math.round(c.y - drag.dy), ...sizeOf(pet) }, { verify: false });
 }
 
 // 甩出去（modules/deskpet/throwMotion.js）：松手时光标还在快速移动就带着速度滑出去、落到任务栏上，
@@ -751,6 +755,7 @@ function closePet(agentId) {
  *  在删目录之前调用（Windows 上桌宠页面还开着时，正在用的模型文件可能删不掉）。 */
 async function forgetAgent(agentId) {
     if (!paths || !isAgentId(agentId)) return; // 桌宠模块没启用
+    sessions.forget(agentId);
     const pet = pets.get(agentId);
     if (pet && !pet.win.isDestroyed()) {
         const closed = new Promise((resolve) => pet.win.once('closed', resolve));
@@ -819,9 +824,12 @@ function extractDeltaText(chunk) {
 
 // 回复流原样转给页面，由页面里的情绪导演决定表情和气泡内容。
 function forward(agentId, event) {
-    sessions.update(agentId, event);
+    const changed = sessions.update(agentId, event);
     const pet = agentId && pets.get(agentId);
-    if (pet && !pet.win.isDestroyed()) pet.win.webContents.send('deskpet:stream', { ...event, session: sessions.get(agentId) });
+    // token 继续到来时不重复序列化整份会话列表；开始回复、结束、标题变动时再发快照。
+    if (pet && !pet.win.isDestroyed()) pet.win.webContents.send('deskpet:stream', {
+        ...event, ...(event.type !== 'data' || changed ? { session: sessions.get(agentId) } : {}),
+    });
 }
 
 function onRequestStart(messageId, context) {
@@ -1686,7 +1694,7 @@ function registerIpc() {
     // 也没法和按像素穿透同时用。origin 是按下那一刻的屏幕坐标。
     ipcMain.on('deskpet:drag-start', (event, origin) => {
         const pet = petFromEvent(event);
-        if (!pet || pet.win.isDestroyed()) return;
+        if (!pet || pet.win.isDestroyed() || pet.ignoringMouse === 'through') return;
         // 上一次拖动的 pointerup 丢了（触屏 pointercancel、拖动中弹出菜单）时还会再来一次 drag-start；
         // 先收掉旧的定时器，否则它会一直跟着光标，drag-end 之后还会每帧抛异常。
         stopDrag(pet);
@@ -1695,8 +1703,14 @@ function registerIpc() {
         clearTimeout(pet.tuckTimer);
         pet.tuck = null;
         stopWalk(pet, { save: false });
-        const p = origin && Number.isFinite(origin.x) && Number.isFinite(origin.y) ? origin : screen.getCursorScreenPoint();
         const [wx, wy] = pet.win.getPosition();
+        const { width, height } = pet.win.getBounds();
+        const local = origin?.local;
+        const validLocal = local && Number.isFinite(local.x) && Number.isFinite(local.y)
+            && local.x >= 0 && local.y >= 0 && local.x <= width && local.y <= height;
+        // 页面内坐标与窗口同为 DIP，避免多屏缩放时 Chromium 的 screenX/Y 与原生屏幕坐标不一致。
+        const p = validLocal ? { x: wx + local.x, y: wy + local.y }
+            : origin && Number.isFinite(origin.x) && Number.isFinite(origin.y) ? origin : screen.getCursorScreenPoint();
         const drag = { dx: p.x - wx, dy: p.y - wy, timer: null, startedAt: Date.now() };
         drag.timer = setInterval(() => {
             if (pet.win.isDestroyed() || pet.drag !== drag) {
@@ -1711,6 +1725,8 @@ function registerIpc() {
             moveWithCursor(pet, drag);
         }, DRAG_TICK_MS);
         pet.drag = drag;
+        setIgnoreMouse(pet, false);
+        moveWithCursor(pet, drag);
     });
     ipcMain.on('deskpet:drag-end', (event, report) => {
         const pet = petFromEvent(event);
@@ -1895,7 +1911,6 @@ function initialize(options) {
         },
     }).registerIpc();
     // 主窗口刷新时设置页没了：录快捷键录到一半暂停的全局快捷键要恢复
-    mainWindow?.webContents?.on?.('did-start-loading', () => controls?.pauseShortcuts(false));
     fullscreenWatch = createFullscreenWatch({ onChange: applyFullscreen });
     controls.onChange((_settings, changed) => {
         if (changed.some((key) => PAGE_PREF_KEYS.includes(key))) broadcastPrefs();
@@ -1907,32 +1922,49 @@ function initialize(options) {
         if (changed.some((key) => TRAY_KEYS.includes(key))) refreshTray();
     });
     const settingsReady = controls.load().then(() => {
+        if (shuttingDown) return;
         controls.applyShortcuts();
         refreshTray();
         idle.update();
     });
     // 主窗口载完以后再恢复上次的桌宠
-    const scheduleRestore = () => settingsReady.then(() => setTimeout(restoreOpenPets, RESTORE_DELAY_MS));
+    const scheduleRestore = () => settingsReady.then(() => {
+        if (!shuttingDown) restoreTimer = setTimeout(restoreOpenPets, RESTORE_DELAY_MS);
+    });
     if (mainWindow?.webContents?.isLoading?.() === false && mainWindow.webContents.getURL?.()) scheduleRestore();
     else mainWindow?.webContents?.once?.('did-finish-load', scheduleRestore);
-    screen.on('display-removed', onDisplaysChanged);
-    screen.on('display-added', onDisplaysChanged);
-    screen.on('display-metrics-changed', onDisplaysChanged);
+    const hostEvents = [];
+    const listenHost = (target, event, fn) => {
+        target?.on?.(event, fn);
+        hostEvents.push(() => target?.removeListener?.(event, fn));
+    };
+    disposeHostEvents = () => { for (const dispose of hostEvents.splice(0)) dispose(); };
+    hostEvents.push(() => mainWindow?.webContents?.removeListener?.('did-finish-load', scheduleRestore));
+    listenHost(mainWindow?.webContents, 'did-start-loading', () => controls?.pauseShortcuts(false));
+    listenHost(screen, 'display-removed', onDisplaysChanged);
+    listenHost(screen, 'display-added', onDisplaysChanged);
+    listenHost(screen, 'display-metrics-changed', onDisplaysChanged);
     // 睡眠唤醒、解锁以后：笔记本可能拔了扩展坞、换了分辨率，置顶也可能被系统取消。和显示器变了一样重新摆一遍
-    electron.powerMonitor?.on?.('resume', onDisplaysChanged);
-    electron.powerMonitor?.on?.('unlock-screen', onDisplaysChanged);
+    listenHost(electron.powerMonitor, 'resume', onDisplaysChanged);
+    listenHost(electron.powerMonitor, 'unlock-screen', onDisplaysChanged);
     import(pathToFileURL(path.join(paths.projectRoot, 'modules', 'emotion', 'emotionPrompt.js')).href)
         .then((mod) => { emotionPrompt = mod; })
         .catch((error) => console.warn('[DeskPet] emotion prompt unavailable:', error.message));
     // 主窗口关掉时桌宠跟着关，否则剩下的透明窗口会让应用无法退出。
-    mainWindow?.on?.('closed', closeAll);
+    listenHost(mainWindow, 'closed', closeAll);
     // 退出时（macOS 上 Cmd+Q 会先关桌宠窗口、后关主窗口）桌宠被一起关掉不算用户关的，恢复列表照旧
-    electron.app?.on?.('before-quit', () => { shuttingDown = true; });
+    listenHost(electron.app, 'before-quit', () => { shuttingDown = true; });
 }
 
 function closeAll() {
     // 退出（或主窗口关掉）时一起关：恢复列表保持原样，下次启动照旧打开
     shuttingDown = true;
+    disposeHostEvents();
+    clearTimeout(restoreTimer);
+    clearTimeout(displayTimer);
+    sessions.clear();
+    announcedTopics.clear();
+    for (const pending of [pendingSends, pendingWhere]) for (const finish of [...pending.values()]) finish(null);
     pendingApprovals.clear();
     for (const agentId of [...pets.keys()]) closePet(agentId);
     fullscreenWatch?.stop();

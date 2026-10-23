@@ -141,6 +141,7 @@ function mountPuppet(app, puppet, env, { webgl, fps }) {
         tap() { hopV = -260; },
         apply(f) { target = paramTargets(f); },
         ...tickerControls(app, fps),
+        destroy: () => figure.dispose(),
         life: {
             phase(p) { life.setPhase(p); },
             act(name, ms) { life.play(name, ms); },
