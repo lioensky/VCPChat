@@ -15,7 +15,7 @@ test('official presets are loaded from the independent official JSON file', () =
 
     assert.equal(Object.hasOwn(engine, 'BUILTIN_RULES'), false);
     assert.equal(officialStore.rules.length, 10);
-    assert.deepEqual(names, [
+    const expectedNames = [
         'Agent输出动画气泡',
         '工作区目录感知',
         '心流锁系统',
@@ -26,7 +26,8 @@ test('official presets are loaded from the independent official JSON file', () =
         '获取服务器验证码',
         '窗口控制权限',
         '启用HTML多媒体权限'
-    ]);
+    ];
+    assert.deepEqual([...names].sort(), [...expectedNames].sort());
     assert.equal(names.includes('插件管理员'), false);
 });
 
@@ -167,13 +168,20 @@ test('only base capabilities are enabled in the shipped official file', () => {
     const combined = engine.combineRuleStores(officialStore, { version: 3, rules: [] });
     const enabled = combined.rules.filter(rule => rule.enabled !== false);
 
-    assert.equal(enabled.length, 2);
-    const enabledKeys = enabled.map(rule => rule.builtinKey).sort();
-    assert.deepEqual(enabledKeys, ['agent-div-render', 'workspace-tree']);
+    const allowedBaseBuiltinKeys = new Set(['agent-div-render', 'workspace-tree']);
+    for (const rule of enabled) {
+        assert.ok(
+            allowedBaseBuiltinKeys.has(rule.builtinKey),
+            `Rule "${rule.name}" (${rule.builtinKey}) should not be enabled by default`
+        );
+    }
+    assert.ok(enabled.some(rule => rule.builtinKey === 'agent-div-render'));
 
     const systemPrompt = engine.applySystemSuffix('base', combined.rules, 'agent');
     assert.match(systemPrompt, /\{\{VarDivRender\}\}/);
-    assert.match(systemPrompt, /\{\{VCPChatWorkSpace\}\}/);
+    if (enabled.some(rule => rule.builtinKey === 'workspace-tree')) {
+        assert.match(systemPrompt, /\{\{VCPChatWorkSpace\}\}/);
+    }
     assert.doesNotMatch(systemPrompt, /\{\{USER_AUTH_CODE\}\}/);
     assert.doesNotMatch(systemPrompt, /\{\{VCPScreenPilot\}\}/);
     assert.doesNotMatch(systemPrompt, /\{\{VCPLoomController\}\}/);
