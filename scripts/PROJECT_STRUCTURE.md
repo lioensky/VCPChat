@@ -1,6 +1,6 @@
 # VCPChat 项目文件目录结构
 
-> 自动生成于：2026-10-09 22:10:51  
+> 自动生成于：2026-10-23 00:44:36  
 
 > 项目根目录：`H:\VCP\VCPMain\VCPChat`  
 
@@ -10,34 +10,34 @@
 
 ## 文件统计
 
-- **总目录数**：209
-- **总文件数**：1361
+- **总目录数**：218
+- **总文件数**：1436
 - **文件类型数**：21
 
 | 类型 | 扩展名 | 数量 |
 | :--- | :--- | ---: |
-| JavaScript | `.js` | 825 |
-| CSS | `.css` | 143 |
-| Rust | `.rs` | 114 |
-| JSON | `.json` | 92 |
-| Markdown | `.md` | 56 |
-| HTML | `.html` | 40 |
+| JavaScript | `.js` | 875 |
+| CSS | `.css` | 151 |
+| Rust | `.rs` | 116 |
+| JSON | `.json` | 94 |
+| Markdown | `.md` | 60 |
+| HTML | `.html` | 44 |
 | Python | `.py` | 26 |
 | TOML | `.toml` | 9 |
 | Batch Script | `.bat` | 9 |
 | Plain Text | `.txt` | 8 |
 | .example | `.example` | 8 |
+| JavaScript (CommonJS) | `.cjs` | 7 |
 | VBScript | `.vbs` | 7 |
 | YAML | `.yml` | 6 |
 | .ini | `.ini` | 4 |
 | TypeScript | `.ts` | 3 |
-| JavaScript (CommonJS) | `.cjs` | 3 |
+| PowerShell | `.ps1` | 3 |
 | TypeScript (React) | `.tsx` | 2 |
 | Shell Script | `.sh` | 2 |
-| PowerShell | `.ps1` | 2 |
 | C# | `.cs` | 1 |
 | .lock | `.lock` | 1 |
-| **合计** | - | **1361** |
+| **合计** | - | **1436** |
 
 ## 目录结构树
 
@@ -240,13 +240,46 @@ VCPChat/
 │   ├── forum.html
 │   ├── forum.js
 │   └── README.md
+├── Gamemodules/
+│   ├── doudizhu/
+│   │   ├── index.html
+│   │   ├── style.css
+│   │   └── ui.js
+│   ├── forge-tax/
+│   │   ├── audio.js
+│   │   ├── engine.js
+│   │   ├── index.html
+│   │   ├── preload.cjs
+│   │   ├── README.md
+│   │   ├── service.cjs
+│   │   ├── session-store.cjs
+│   │   ├── style.css
+│   │   ├── tool-result.cjs
+│   │   └── ui.js
+│   ├── vcp-neon-game/
+│   │   ├── js/
+│   │   │   ├── audio.js
+│   │   │   ├── config.js
+│   │   │   ├── entities.js
+│   │   │   ├── game.js
+│   │   │   ├── main.js
+│   │   │   ├── utils.js
+│   │   │   └── weapons.js
+│   │   ├── DEVLOG.md
+│   │   ├── index.html
+│   │   └── styles.css
+│   ├── game.css
+│   ├── game.html
+│   └── game.js
 ├── Groupmodules/
 │   ├── modes/
 │   │   ├── baseChatMode.js
+│   │   ├── gamePrompts.js
 │   │   ├── inviteOnlyMode.js
 │   │   ├── jevDecisionMode.js
 │   │   ├── natureRandomMode.js
 │   │   └── sequentialMode.js
+│   ├── gameSessionOrchestrator.js
 │   ├── groupchat.js
 │   ├── groupChatUrl.js
 │   ├── groupContextWindow.js
@@ -310,6 +343,11 @@ VCPChat/
 │   │   ├── contentModes.js
 │   │   ├── contentRuntime.js
 │   │   ├── contentTransforms.js
+│   │   ├── contextCompactionContinuity.js
+│   │   ├── contextCompactionFidelity.js
+│   │   ├── contextCompactionPrompts.js
+│   │   ├── contextCompactionService.js
+│   │   ├── contextCompactionState.js
 │   │   ├── mainChatStateAuthority.js
 │   │   ├── memoryChatRepository.js
 │   │   ├── sideChatSessionService.js
@@ -320,6 +358,15 @@ VCPChat/
 │   │   ├── streamTransientHistory.js
 │   │   ├── surfaceConversation.js
 │   │   └── vcpStreamBridge.js
+│   ├── game/
+│   │   ├── doudizhu/
+│   │   │   ├── cards.js
+│   │   │   ├── decisionData.js
+│   │   │   └── rules.js
+│   │   ├── gameResourceManager.js
+│   │   ├── gameRuntime.js
+│   │   ├── gameSeatResolver.js
+│   │   └── gameToolAdapter.js
 │   ├── ipc/
 │   │   ├── dotnet/
 │   │   │   └── LibreHardwareMonitorBridge/
@@ -341,6 +388,7 @@ VCPChat/
 │   │   ├── emoticonHandlers.js
 │   │   ├── fileDialogHandlers.js
 │   │   ├── forumHandlers.js
+│   │   ├── gameHandlers.js
 │   │   ├── gitHandlers.js
 │   │   ├── groupChatHandlers.js
 │   │   ├── ipcContracts.js
@@ -393,16 +441,20 @@ VCPChat/
 │   ├── renderer/
 │   │   ├── side-chat/
 │   │   │   ├── attachments.js
+│   │   │   ├── branch-rail.js
+│   │   │   ├── branch-tree.js
 │   │   │   ├── composer-state.js
 │   │   │   ├── draft-cache.js
 │   │   │   ├── draft-store.js
 │   │   │   ├── message-actions.js
 │   │   │   ├── message-edit.js
 │   │   │   ├── model-picker.js
+│   │   │   ├── note-exporter.js
 │   │   │   ├── persistence.js
 │   │   │   ├── references.js
 │   │   │   ├── scrolling.js
-│   │   │   └── shell.js
+│   │   │   ├── shell.js
+│   │   │   └── thought-map-modal.js
 │   │   ├── animation.js
 │   │   ├── chat-header-style.js
 │   │   ├── colorUtils.js
@@ -436,11 +488,13 @@ VCPChat/
 │   │   ├── messageContextMenu.js
 │   │   ├── messenger-presentation.js
 │   │   ├── middleClickHandler.js
+│   │   ├── model-picker-popup.js
 │   │   ├── nonStreamingEventConsumer.js
 │   │   ├── ownedPreloadSubscription.js
 │   │   ├── pretext-bridge.js
 │   │   ├── pretext.bundle.js
 │   │   ├── pretext.esm.js
+│   │   ├── projectForgeTopicSurface.js
 │   │   ├── renderDependencies.js
 │   │   ├── renderSessionAuthority.js
 │   │   ├── sideChatSurfaceOwner.js
@@ -473,6 +527,7 @@ VCPChat/
 │   │   ├── deepWikiService.js
 │   │   ├── dotGitPath.js
 │   │   ├── embeddedAppSessionManager.js
+│   │   ├── gameService.js
 │   │   ├── gitService.js
 │   │   ├── gitWatcher.js
 │   │   ├── globalJevService.js
@@ -561,6 +616,7 @@ VCPChat/
 │   │   │   ├── group-slots.js
 │   │   │   ├── home-controls.js
 │   │   │   ├── identity-controls.js
+│   │   │   ├── input-cadence.js
 │   │   │   ├── marker-registry.js
 │   │   │   ├── pipeline.js
 │   │   │   ├── render-visibility.js
@@ -661,6 +717,7 @@ VCPChat/
 │   │   ├── lucide-adapter.js
 │   │   ├── material-runtime.js
 │   │   ├── message-file-changes.js
+│   │   ├── music-capsule.js
 │   │   ├── next-ui-apps.js
 │   │   ├── performance-recorder.js
 │   │   ├── project-plan-model.js
@@ -734,7 +791,8 @@ VCPChat/
 │   │       └── dom-renderer.js
 │   ├── utils/
 │   │   ├── agentConfigManager.js
-│   │   └── appSettingsManager.js
+│   │   ├── appSettingsManager.js
+│   │   └── atomicReplace.js
 │   ├── voice/
 │   │   ├── localStt/
 │   │   │   ├── assets.json
@@ -752,6 +810,7 @@ VCPChat/
 │   ├── chatManager.js
 │   ├── contextSanitizer.js
 │   ├── DASP.txt
+│   ├── diagnosticsSnapshot.js
 │   ├── emoticonManager.js
 │   ├── event-listeners.js
 │   ├── fileManager.js
@@ -762,6 +821,7 @@ VCPChat/
 │   ├── inputEnhancer.js
 │   ├── interruptHandler.js
 │   ├── itemListManager.js
+│   ├── launchMarks.js
 │   ├── lyricFetcher.js
 │   ├── mainChatCommands.js
 │   ├── messageRenderer.js
@@ -774,6 +834,7 @@ VCPChat/
 │   ├── settingsManager.js
 │   ├── SovitsTTS.js
 │   ├── speechRecognizer.js
+│   ├── stabilityLog.js
 │   ├── tavernRulesEngine.js
 │   ├── text-viewer.html
 │   ├── text-viewer.js
@@ -809,6 +870,7 @@ VCPChat/
 │   │   │   ├── stage-lyric-performance.js
 │   │   │   ├── stage-mode-utils.js
 │   │   │   ├── stage-pixi-effects.js
+│   │   │   ├── stage-starbloom.js
 │   │   │   ├── tempera-manager.js
 │   │   │   ├── tempera-pixi-core.js
 │   │   │   └── tunnel-manager.js
@@ -869,6 +931,7 @@ VCPChat/
 │   │   ├── files.js
 │   │   ├── flowlock.js
 │   │   ├── forum.js
+│   │   ├── game.js
 │   │   ├── groupChat.js
 │   │   ├── localStt.js
 │   │   ├── loom.js
@@ -929,7 +992,9 @@ VCPChat/
 │               └── theme.config.json
 ├── RAGmodules/
 │   ├── rag-observer-config.js
+│   ├── RAG_Observer.css
 │   ├── RAG_Observer.html
+│   ├── RAG_Observer.js
 │   └── RAG_Overlay.html
 ├── RMMusic/
 │   └── NORD/
@@ -1074,6 +1139,8 @@ VCPChat/
 │   │   │   ├── python.rs
 │   │   │   ├── rust_lang.rs
 │   │   │   └── types.rs
+│   │   ├── component.rs
+│   │   ├── geo.rs
 │   │   ├── lang.rs
 │   │   ├── main.rs
 │   │   ├── scan.rs
@@ -1196,6 +1263,7 @@ VCPChat/
 │   │   ├── message-file-changes.css
 │   │   ├── messages.css
 │   │   ├── motion.css
+│   │   ├── music-capsule.css
 │   │   ├── notification-center-cards.css
 │   │   ├── notification-center-dock.css
 │   │   ├── notification-center-list.css
@@ -1210,6 +1278,7 @@ VCPChat/
 │   │   ├── settings.css
 │   │   ├── shell.css
 │   │   ├── showcase.css
+│   │   ├── side-pane-branch-rail.css
 │   │   ├── side-pane-browser.css
 │   │   ├── side-pane-code-viewer.css
 │   │   ├── side-pane-git-extras.css
@@ -1243,6 +1312,7 @@ VCPChat/
 │   ├── layout.css
 │   ├── messageRenderer.css
 │   ├── notifications.css
+│   ├── projectforge-topic.css
 │   ├── search.css
 │   ├── settings.css
 │   ├── side-chat-bubbles.css
@@ -1317,6 +1387,14 @@ VCPChat/
 │   │   │   ├── config.env.example
 │   │   │   ├── FileOperator.js
 │   │   │   └── plugin-manifest.json
+│   │   ├── ForgeTax/
+│   │   │   ├── AI_GUIDE.md
+│   │   │   ├── forge-tax-service.js
+│   │   │   ├── plugin-manifest.json
+│   │   │   └── README.md
+│   │   ├── GameController/
+│   │   │   ├── GameControllerService.js
+│   │   │   └── plugin-manifest.json
 │   │   ├── LoomController/
 │   │   │   ├── LoomControllerService.js
 │   │   │   ├── LoomSkillService.js
@@ -1344,6 +1422,7 @@ VCPChat/
 │   │   │   │   └── preload.js
 │   │   │   ├── AdminConfirm.py
 │   │   │   ├── command-output-parser.js
+│   │   │   ├── commandCapture.js
 │   │   │   ├── commandRunStore.js
 │   │   │   ├── nativeHelperPath.js
 │   │   │   ├── plugin-manifest.json
@@ -1377,6 +1456,9 @@ VCPChat/
 │   │   │   │   ├── ShellViewer.css
 │   │   │   │   ├── ShellViewer.html
 │   │   │   │   └── ShellViewer.js
+│   │   │   ├── AdminConfirm.js
+│   │   │   ├── commandCapture.js
+│   │   │   ├── commandRunStore.js
 │   │   │   ├── plugin-manifest.json
 │   │   │   ├── PluginErrorReporter.js
 │   │   │   ├── PTYShellExecutor.impl.js
@@ -1384,7 +1466,8 @@ VCPChat/
 │   │   │   ├── PULL_REQUEST.md
 │   │   │   ├── README.md
 │   │   │   ├── ShellOutputPipeline.js
-│   │   │   └── ShellThemeBridge.js
+│   │   │   ├── ShellThemeBridge.js
+│   │   │   └── terminalKeyParser.js
 │   │   ├── ScreenPilot/
 │   │   │   ├── screenpilot_core/
 │   │   │   │   ├── __init__.py
@@ -1500,7 +1583,8 @@ VCPChat/
 │   │   │   ├── linux_dialog.py
 │   │   │   ├── plugin-manifest.json
 │   │   │   ├── README.md
-│   │   │   └── waiting_for_reply.py
+│   │   │   ├── waiting_for_reply.py
+│   │   │   └── windows_dialog.ps1
 │   │   └── WindowSensor/
 │   │       ├── plugin-manifest.json
 │   │       ├── sensor-wrapper.js
