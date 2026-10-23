@@ -14,6 +14,7 @@
     "surprised": "Surprised",
     "tired": "Tired"
   },
+  "headPoseLimits": { "x": 8, "y": 5, "z": 4 },
   "motions": {
     "happy": "Nod",
     "excited": "Nod",

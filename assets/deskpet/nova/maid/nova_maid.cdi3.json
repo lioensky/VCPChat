@@ -1,0 +1,433 @@
+{
+	"Version": 3,
+	"Parameters": [
+		{
+			"Id": "ParamAngleX",
+			"GroupId": "ParamGroupFace",
+			"Name": "角度 X"
+		},
+		{
+			"Id": "ParamAngleY",
+			"GroupId": "ParamGroupFace",
+			"Name": "角度 Y"
+		},
+		{
+			"Id": "ParamAngleZ",
+			"GroupId": "ParamGroupFace",
+			"Name": "角度 Z"
+		},
+		{
+			"Id": "ParamEyeLOpen",
+			"GroupId": "ParamGroupEyes",
+			"Name": "左眼开合"
+		},
+		{
+			"Id": "ParamEyeROpen",
+			"GroupId": "ParamGroupEyes",
+			"Name": "右眼开合"
+		},
+		{
+			"Id": "ParamEyeBallX",
+			"GroupId": "ParamGroupEyes",
+			"Name": "眼球 X"
+		},
+		{
+			"Id": "ParamEyeBallY",
+			"GroupId": "ParamGroupEyes",
+			"Name": "眼球 Y"
+		},
+		{
+			"Id": "ParamEyeBallForm",
+			"GroupId": "ParamGroupEyes",
+			"Name": "果冻眼"
+		},
+		{
+			"Id": "ParamBrowLY",
+			"GroupId": "ParamGroupBrows",
+			"Name": "左眉 Y"
+		},
+		{
+			"Id": "ParamBrowRY",
+			"GroupId": "ParamGroupBrows",
+			"Name": "右眉 Y"
+		},
+		{
+			"Id": "ParamMouthForm",
+			"GroupId": "ParamGroupMouth",
+			"Name": "嘴型"
+		},
+		{
+			"Id": "ParamMouthOpenY",
+			"GroupId": "ParamGroupMouth",
+			"Name": "嘴巴开合"
+		},
+		{
+			"Id": "ParamBodyAngleX",
+			"GroupId": "ParamGroupBody",
+			"Name": "身体角度 X"
+		},
+		{
+			"Id": "ParamBodyAngleY",
+			"GroupId": "ParamGroupBody",
+			"Name": "身体角度 Y"
+		},
+		{
+			"Id": "ParamBodyAngleZ",
+			"GroupId": "ParamGroupBody",
+			"Name": "身体角度 Z"
+		},
+		{
+			"Id": "ParamBodyLean",
+			"GroupId": "ParamGroupBody",
+			"Name": "身体前后倾"
+		},
+		{
+			"Id": "ParamProportion",
+			"GroupId": "ParamGroupBody",
+			"Name": "大小变（头身比）"
+		},
+		{
+			"Id": "ParamBreath",
+			"GroupId": "ParamGroupBody",
+			"Name": "呼吸"
+		},
+		{
+			"Id": "ParamSimpresetskirt_1",
+			"GroupId": "ParamGroupPhysics",
+			"Name": "裙子（预设） 1"
+		},
+		{
+			"Id": "ParamSimpresetskirt_2",
+			"GroupId": "ParamGroupPhysics",
+			"Name": "裙子（预设） 2"
+		},
+		{
+			"Id": "ParamSimpresetskirt_Y",
+			"GroupId": "ParamGroupPhysics",
+			"Name": "裙子（预设） Y"
+		},
+		{
+			"Id": "ParamSimpresetbackhair_1",
+			"GroupId": "ParamGroupPhysics",
+			"Name": "后发（预设） 1"
+		},
+		{
+			"Id": "ParamSimpresetbackhair_2",
+			"GroupId": "ParamGroupPhysics",
+			"Name": "后发（预设） 2"
+		},
+		{
+			"Id": "ParamSimpresetbackhair_Y",
+			"GroupId": "ParamGroupPhysics",
+			"Name": "后发（预设） Y"
+		},
+		{
+			"Id": "ParamSimpresetfronthair_1",
+			"GroupId": "ParamGroupPhysics",
+			"Name": "前发（预设） 1"
+		},
+		{
+			"Id": "ParamSimpresetfronthair_2",
+			"GroupId": "ParamGroupPhysics",
+			"Name": "前发（预设） 2"
+		},
+		{
+			"Id": "ParamSimpresetfronthair_Y",
+			"GroupId": "ParamGroupPhysics",
+			"Name": "前发（预设） Y"
+		},
+		{
+			"Id": "ParamCuteHearts",
+			"GroupId": "ParamGroupCustom",
+			"Name": "ParamCuteHearts"
+		},
+		{
+			"Id": "ParamCutePout",
+			"GroupId": "ParamGroupCustom",
+			"Name": "ParamCutePout"
+		},
+		{
+			"Id": "ParamCuteShy",
+			"GroupId": "ParamGroupCustom",
+			"Name": "ParamCuteShy"
+		},
+		{
+			"Id": "ParamCuteSleep",
+			"GroupId": "ParamGroupCustom",
+			"Name": "ParamCuteSleep"
+		},
+		{
+			"Id": "ParamCuteStars",
+			"GroupId": "ParamGroupCustom",
+			"Name": "ParamCuteStars"
+		},
+		{
+			"Id": "ParamCuteTears",
+			"GroupId": "ParamGroupCustom",
+			"Name": "ParamCuteTears"
+		}
+	],
+	"ParameterGroups": [
+		{
+			"Id": "ParamGroupFace",
+			"GroupId": "",
+			"Name": "面部"
+		},
+		{
+			"Id": "ParamGroupEyes",
+			"GroupId": "",
+			"Name": "眼睛"
+		},
+		{
+			"Id": "ParamGroupBrows",
+			"GroupId": "",
+			"Name": "眉毛"
+		},
+		{
+			"Id": "ParamGroupMouth",
+			"GroupId": "",
+			"Name": "嘴巴"
+		},
+		{
+			"Id": "ParamGroupBody",
+			"GroupId": "",
+			"Name": "身体"
+		},
+		{
+			"Id": "ParamGroupPhysics",
+			"GroupId": "",
+			"Name": "物理"
+		},
+		{
+			"Id": "ParamGroupCustom",
+			"GroupId": "",
+			"Name": "自定义参数"
+		}
+	],
+	"Parts": [
+		{
+			"Id": "PartHead",
+			"Name": "头部"
+		},
+		{
+			"Id": "PartHairBack",
+			"Name": "后发"
+		},
+		{
+			"Id": "PartFace",
+			"Name": "面部"
+		},
+		{
+			"Id": "PartHairFront",
+			"Name": "前发"
+		},
+		{
+			"Id": "PartHeadAccessories",
+			"Name": "头部附件"
+		},
+		{
+			"Id": "PartExtra",
+			"Name": "附加物"
+		},
+		{
+			"Id": "PartBody",
+			"Name": "身体"
+		}
+	],
+	"CombinedParameters": [
+		[
+			"ParamAngleX",
+			"ParamAngleY"
+		],
+		[
+			"ParamBodyAngleX",
+			"ParamBodyAngleY"
+		],
+		[
+			"ParamEyeBallX",
+			"ParamEyeBallY"
+		]
+	],
+	"Drawables": [
+		{
+			"Id": "ArtMeshMouthClose",
+			"Name": "mouth close"
+		},
+		{
+			"Id": "ArtMeshFaceDetail",
+			"Name": "facedetail cute sleep"
+		},
+		{
+			"Id": "ArtMeshFaceDetail2",
+			"Name": "facedetail cute hearts"
+		},
+		{
+			"Id": "ArtMeshFaceDetail3",
+			"Name": "facedetail cute pout"
+		},
+		{
+			"Id": "ArtMeshFaceDetailL",
+			"Name": "facedetail cute tears-l"
+		},
+		{
+			"Id": "ArtMeshFaceDetailR",
+			"Name": "facedetail cute tears-r"
+		},
+		{
+			"Id": "ArtMeshIridesL",
+			"Name": "irides cute stars-l"
+		},
+		{
+			"Id": "ArtMeshIridesR",
+			"Name": "irides cute stars-r"
+		},
+		{
+			"Id": "ArtMeshEarwearL",
+			"Name": "earwear-l"
+		},
+		{
+			"Id": "ArtMeshEarwearR",
+			"Name": "earwear-r"
+		},
+		{
+			"Id": "ArtMeshHeadwear",
+			"Name": "headwear nova badge"
+		},
+		{
+			"Id": "ArtMeshFrontHair",
+			"Name": "front hair"
+		},
+		{
+			"Id": "ArtMeshHeadwear2",
+			"Name": "headwear"
+		},
+		{
+			"Id": "ArtMeshMouthOpen",
+			"Name": "mouth open"
+		},
+		{
+			"Id": "ArtMeshNose",
+			"Name": "nose"
+		},
+		{
+			"Id": "ArtMeshEyebrowL",
+			"Name": "eyebrow-l"
+		},
+		{
+			"Id": "ArtMeshEyelashL",
+			"Name": "facedetail lower eye-l"
+		},
+		{
+			"Id": "ArtMeshEyelashL2",
+			"Name": "eyelash-l"
+		},
+		{
+			"Id": "ArtMeshIridesL2",
+			"Name": "irides-l"
+		},
+		{
+			"Id": "ArtMeshEyewhiteL",
+			"Name": "eyewhite-l"
+		},
+		{
+			"Id": "ArtMeshFaceDetailL2",
+			"Name": "facedetail cute blush-l"
+		},
+		{
+			"Id": "ArtMeshEyebrowR",
+			"Name": "eyebrow-r"
+		},
+		{
+			"Id": "ArtMeshEyelashR",
+			"Name": "facedetail lower eye-r"
+		},
+		{
+			"Id": "ArtMeshEyelashR2",
+			"Name": "eyelash-r"
+		},
+		{
+			"Id": "ArtMeshIridesR2",
+			"Name": "irides-r"
+		},
+		{
+			"Id": "ArtMeshEyewhiteR",
+			"Name": "eyewhite-r"
+		},
+		{
+			"Id": "ArtMeshFaceDetailR2",
+			"Name": "facedetail cute blush-r"
+		},
+		{
+			"Id": "ArtMeshFace",
+			"Name": "face"
+		},
+		{
+			"Id": "ArtMeshEarsL",
+			"Name": "ears-l"
+		},
+		{
+			"Id": "ArtMeshEarsR",
+			"Name": "ears-r"
+		},
+		{
+			"Id": "ArtMeshTopwear",
+			"Name": "topwear"
+		},
+		{
+			"Id": "ArtMeshNeck",
+			"Name": "neck"
+		},
+		{
+			"Id": "ArtMeshBottomwear",
+			"Name": "skirt apron"
+		},
+		{
+			"Id": "ArtMeshHandwearL",
+			"Name": "hand-l"
+		},
+		{
+			"Id": "ArtMeshHandwearL2",
+			"Name": "handwear-l"
+		},
+		{
+			"Id": "ArtMeshHandwearR",
+			"Name": "hand-r"
+		},
+		{
+			"Id": "ArtMeshHandwearR2",
+			"Name": "handwear-r"
+		},
+		{
+			"Id": "ArtMeshBottomwear2",
+			"Name": "skirt"
+		},
+		{
+			"Id": "ArtMeshLegwearL",
+			"Name": "legwear-l"
+		},
+		{
+			"Id": "ArtMeshLegwearR",
+			"Name": "legwear-r"
+		},
+		{
+			"Id": "ArtMeshFootwearL",
+			"Name": "footwear-l"
+		},
+		{
+			"Id": "ArtMeshFootwearR",
+			"Name": "footwear-r"
+		},
+		{
+			"Id": "ArtMeshBackHairL",
+			"Name": "back hair-l"
+		},
+		{
+			"Id": "ArtMeshBackHairR",
+			"Name": "back hair-r"
+		},
+		{
+			"Id": "ArtMeshBackHair",
+			"Name": "back hair"
+		}
+	]
+}

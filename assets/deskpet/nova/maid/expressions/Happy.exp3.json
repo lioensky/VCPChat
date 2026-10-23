@@ -1,62 +1,57 @@
 {
   "Type": "Live2D Expression",
-  "FadeInTime": 0.25,
+  "FadeInTime": 0.2,
   "FadeOutTime": 0.25,
   "Parameters": [
     {
-      "Id": "ParamMouthForm",
-      "Value": 0.8,
+      "Id": "ParamCuteShy",
+      "Value": 0.45,
       "Blend": "Overwrite"
     },
     {
-      "Id": "ParamEyeBallForm",
+      "Id": "ParamCuteStars",
       "Value": 0,
       "Blend": "Overwrite"
     },
     {
-      "Id": "ParamBrowLY",
-      "Value": 0.12,
+      "Id": "ParamCuteTears",
+      "Value": 0,
       "Blend": "Overwrite"
     },
     {
-      "Id": "ParamBrowRY",
-      "Value": 0.12,
+      "Id": "ParamCutePout",
+      "Value": 0,
       "Blend": "Overwrite"
     },
     {
-      "Id": "ParamEyeLSmile",
-      "Value": 0.9,
+      "Id": "ParamCuteHearts",
+      "Value": 0,
       "Blend": "Overwrite"
     },
     {
-      "Id": "ParamEyeRSmile",
-      "Value": 0.9,
-      "Blend": "Overwrite"
-    },
-    {
-      "Id": "ParamBrowLAngle",
-      "Value": -0.1,
-      "Blend": "Overwrite"
-    },
-    {
-      "Id": "ParamBrowRAngle",
-      "Value": -0.1,
-      "Blend": "Overwrite"
-    },
-    {
-      "Id": "ParamCheek",
-      "Value": 0.25,
+      "Id": "ParamCuteSleep",
+      "Value": 0,
       "Blend": "Overwrite"
     },
     {
       "Id": "ParamEyeLOpen",
-      "Value": 1,
+      "Value": 0.15,
       "Blend": "Multiply"
     },
     {
       "Id": "ParamEyeROpen",
-      "Value": 1,
+      "Value": 0.15,
       "Blend": "Multiply"
+    },
+    {
+      "Id": "ParamMouthForm",
+      "Value": 1,
+      "Blend": "Overwrite"
+    },
+    {
+      "Id": "ParamAngleZ",
+      "Value": -3,
+      "Blend": "Overwrite"
     }
   ]
 }

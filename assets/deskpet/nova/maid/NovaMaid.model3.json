@@ -1,32 +1,31 @@
 {
   "Version": 3,
   "FileReferences": {
-    "Moc": "NovaMaid.moc3",
+    "Moc": "nova_maid.moc3",
     "Textures": [
-      "NovaMaid.2048/texture_00.png",
-      "NovaMaid.2048/texture_01.png"
+      "nova_maid.4096/texture_00.png"
     ],
-    "Physics": "NovaMaid.physics3.json",
-    "DisplayInfo": "NovaMaid.cdi3.json",
+    "Physics": "nova_maid.physics3.json",
+    "DisplayInfo": "nova_maid.cdi3.json",
     "Motions": {
       "Idle": [
         {
-          "File": "NovaMaid.idle.motion3.json"
+          "File": "nova_maid.idle.motion3.json"
         }
       ],
       "Blink": [
         {
-          "File": "NovaMaid.blink.motion3.json"
+          "File": "nova_maid.blink.motion3.json"
         }
       ],
       "Nod": [
         {
-          "File": "NovaMaid.nod.motion3.json"
+          "File": "nova_maid.nod.motion3.json"
         }
       ],
       "Shake": [
         {
-          "File": "NovaMaid.shake.motion3.json"
+          "File": "nova_maid.shake.motion3.json"
         }
       ]
     },

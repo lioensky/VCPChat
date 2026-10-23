@@ -4,6 +4,7 @@
 // 闲时动作和互动是叠在标准参数上的曲线（lifeMotion.js），模型自己有对应动作组时一起放。
 import { VOWELS } from './voice.js';
 import { shapeGaze, limitGaze } from './gaze.js';
+import { createHeadPoseLimiter } from './headPoseLimits.js';
 import { createLifeMotion } from './lifeMotion.js';
 import { zoneOf, hasZones } from './hitAreas.js';
 import { pickExpression as mapExpression, pickMotion as mapMotion, pickTap, modelNameOf } from './expressionMap.js';
@@ -103,10 +104,12 @@ async function mountLive2DModel(app, assets, env, { Live2DModel, coreVersion, we
 
     // 可选的模型配置：<model 同目录>/deskpet.json
     //   { "expressions": { "happy": "exp_02" }, "motions": { "happy": "Tap" } }
+    //   headPoseLimits: { x: 8, y: 5, z: 4 } 可收小这套模型的头部动作；未配置时沿用原幅度。
     let profile = (await fetchJson(new URL('deskpet.json', assets.live2d.modelUrl).href)) || {};
     const modelName = modelNameOf(assets.live2d.modelUrl);
     const internal = model.internalModel;
     const coreModel = internal.coreModel;
+    const limitHeadPose = createHeadPoseLimiter(coreModel, (id) => internal.getIdSafe(id));
     const paramIds = new Set(coreModel?._model?.parameters?.ids || coreModel?.getModel?.()?.parameters?.ids || []);
     const expressionNames = (internal.motionManager?.expressionManager?.definitions || [])
         .map((d) => d.Name || d.name).filter(Boolean);
@@ -140,6 +143,8 @@ async function mountLive2DModel(app, assets, env, { Live2DModel, coreVersion, we
     internal.updateNaturalMovements = (now, dt) => {
         naturalMovements(now, dt);
         addLifeAndEmotion();
+        // 动作、表情和光标方向合成后统一收小，物理也只接收小角度的头部运动。
+        limitHeadPose(profile.headPoseLimits);
     };
     let lifeFrame = { params: {}, hop: 0 };
     function addLifeAndEmotion() {
@@ -157,6 +162,8 @@ async function mountLive2DModel(app, assets, env, { Live2DModel, coreVersion, we
         }
     }
     internal.on('beforeModelUpdate', () => {
+        // 最后再封顶，防止物理或 pose 在本帧把头部参数推回大角度；不重复缩放。
+        limitHeadPose(profile.headPoseLimits, false);
         // 跳一下改的是模型位置
         if (lifeFrame.hop !== hop) {
             hop = lifeFrame.hop;
