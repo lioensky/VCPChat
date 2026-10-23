@@ -3,7 +3,7 @@ import { createToolActivityTracker, describeActivity } from './toolActivity.js';
 const active = s => s.status === 'thinking' || s.status === 'responding';
 const labels = { thinking: '正在思考…', responding: '正在回复…', complete: '回复已完成', error: '回复出错了', stopped: '已停止回复' };
 
-export function createSessionCard({ card, panel = card, title, status, api, toggle, badge, navigation, position, previous, next, stop, onToggle = () => {} }) {
+export function createSessionCard({ card, panel = card, title, status, api, toggle, badge, navigation, position, previous, next, stop, onToggle = () => {}, onNotifications = () => {} }) {
     let rows = [];
     let selected = '';
     let name = '';
@@ -42,6 +42,7 @@ export function createSessionCard({ card, panel = card, title, status, api, togg
         panel.hidden = !name || !expanded;
         if (panel.dataset) panel.dataset.stacked = String(list.length > 1);
         const notifications = list.filter(s => active(s) || rows.some(row => keyOf(row) === keyOf(s) && unread.has(row.messageId))).length;
+        onNotifications(notifications);
         if (badge) {
             badge.textContent = notifications > 99 ? '99+' : String(notifications);
             badge.hidden = expanded || !notifications;

@@ -27,6 +27,7 @@ import { createImageBackend } from 'vcp-deskpet://pet/app/imageBackend.js';
 import { createSpriteBackend } from 'vcp-deskpet://pet/app/spriteBackend.js';
 import { createLifeFx } from 'vcp-deskpet://pet/app/lifeFx.js';
 import { dockHitArea, containsPoint } from 'vcp-deskpet://pet/app/dockHitArea.js';
+import { createDockVisibility, createCursorHitGate } from 'vcp-deskpet://pet/app/dockVisibility.js';
 import { createSessionCard } from 'vcp-deskpet://pet/app/sessionCard.js';
 
 const api = window.deskPetAPI;
@@ -44,7 +45,6 @@ const REPLY_HOLD_AFTER_HOVER_MS = 4000;
 const BUBBLE_MAX_CHARS = 600;  // 气泡只留最后这么多字，完整内容在主窗口
 const DOUBLE_TAP_MS = 300;     // 这么短内的第二下算双击；单击的反应等这段时间过了再做
 const DOCK_BOTTOM = 6;         // 小胶囊离窗口底边（与 #dock 的 bottom 一致）
-const DOCK_SHOW_MS = 220;      // 光标在角色上停这么久，脚边的小胶囊冒出来
 
 const STATE_LABEL = { thinking: '思考中…', tool: '调用工具中…', error: '出错了' };
 // 被碰到才有的反应：回到高帧率；其余闲时小动作按当前帧率演
@@ -304,14 +304,27 @@ function flashEmotionBadge(emotion, source) {
 const composer = { open: false, sending: false, queued: null, queuedFresh: false, fresh: false, lastSentAt: 0, ownReplyEndedAt: 0, files: [] };
 
 // 脚边的小胶囊（样式在 dock.css）：hidden 收起、pill 小胶囊、bar 输入条、rec 录音。
-// 胶囊保持显示，第三个按钮只展开/收起会话面板；拖动时暂时收起胶囊。
-const dock = { mode: 'pill', hover: false, dragging: false, tucked: false, showTimer: 0, hideTimer: 0, voice: null, autoSend: false };
+// 平时只留横条；悬停展开，离开延时收起。输入、录音和主动打开的会话面板保留。
+const dock = { mode: 'hidden', hover: false, dragging: false, voice: null, autoSend: false };
+const cursorHit = createCursorHitGate();
+const dockVisibility = createDockVisibility({ getMode: () => dock.mode, setMode: setDock,
+    suppress: value => { $('dock').hidden = value; } });
+
+function syncDockLayers() {
+    for (const layer of $('dock').querySelectorAll('.dock-layer')) {
+        const active = layer.classList.contains(`dock-${dock.mode}`);
+        layer.inert = !active;
+        layer.setAttribute('aria-hidden', String(!active));
+    }
+    $('dockReveal').hidden = dock.mode !== 'hidden';
+}
 
 function setDock(mode) {
     if (dock.mode === mode) return;
     const previous = dock.mode;
     dock.mode = mode;
     $('dock').dataset.mode = mode;
+    syncDockLayers();
     composer.open = mode === 'bar';
     // 只看不点时光标压着角色会变淡：打字、录音时得看得见
     if (mode === 'bar' || mode === 'rec') document.body.classList.remove('is-ghost-hover');
@@ -328,23 +341,17 @@ function setDock(mode) {
         fitComposerInput();
         setTimeout(() => $('composerInput').focus(), 60);
     }
+    dockVisibility.modeChanged();
 }
 
-// 保留隐藏状态的悬停恢复；平时胶囊常驻，离开光标也不收起。
 function dockHover(on) {
     if (on === dock.hover) return;
     dock.hover = on;
-    clearTimeout(dock.showTimer);
-    clearTimeout(dock.hideTimer);
-    if (!on) dock.tucked = false;
-    if (dock.mode === 'bar' || dock.mode === 'rec') return;
-    if (on && dock.mode === 'hidden' && !dock.tucked) {
-        dock.showTimer = setTimeout(() => { if (dock.hover && !dock.dragging) setDock('pill'); }, DOCK_SHOW_MS);
-    }
+    dockVisibility.update({ hover: on });
 }
 
 function restingDock() {
-    return dock.dragging ? 'hidden' : 'pill';
+    return dockVisibility.restingMode();
 }
 
 function openComposer() {
@@ -694,7 +701,8 @@ function bindComposer() {
 
 // 气泡、输入框这些界面元素也要能点到（按像素穿透只看角色本身）。
 function uiAt(x, y) {
-    if ((dock.mode === 'hidden' || dock.mode === 'pill') && containsPoint(dockHitArea(innerWidth, innerHeight), x, y)) return true;
+    if (!$('dock').hidden && (dock.mode === 'hidden' || dock.mode === 'pill')
+        && containsPoint(dockHitArea(innerWidth, innerHeight, { collapsed: dock.mode === 'hidden' }), x, y)) return true;
     return Boolean(document.elementFromPoint(x, y)?.closest('.pet-ui'));
 }
 
@@ -713,8 +721,9 @@ function uiBounds({ withIdleDock = false, withBadge = true } = {}) {
         if (el.hidden || (el.dataset.mode === 'hidden' && !withIdleDock)) continue;
         if (el.id === 'dock' && dock.mode === 'pill' && !withIdleDock) continue;
         if (!withBadge && el.id === 'missedBadge') continue;
+        const visual = el.getBoundingClientRect();
         const r = el.id === 'dock' && withIdleDock && (dock.mode === 'hidden' || dock.mode === 'pill')
-            ? dockHitArea(innerWidth, innerHeight) : el.getBoundingClientRect();
+            ? union(dockHitArea(innerWidth, innerHeight, { collapsed: dock.mode === 'hidden' }), visual) : visual;
         if (!r.width || !r.height) continue;
         rect = rect ? union(rect, r) : { x: r.x, y: r.y, width: r.width, height: r.height };
     }
@@ -909,6 +918,7 @@ let lastWantOut = null;
 // 免得刚藏进去就又探出来，也免得一直报着拖动时的旧值、该探头时不探
 let hitFromDrag = false;
 function reportHit(hit) {
+    hit = cursorHit.resolve(hit);
     // 只看不点：鼠标穿过去，悬停胶囊也不冒；光标压在角色上时角色变得很淡，看得清后面的东西
     document.body.classList.toggle('is-ghost-hover', Boolean(prefs.clickThrough && hit));
     if (prefs.clickThrough) hit = false;
@@ -1069,6 +1079,7 @@ function applyPrefs(next) {
     const previous = prefs;
     prefs = { ...prefs, ...next };
     window.deskPetPrefs = Object.freeze({ ...prefs });
+    dockVisibility.update({ through: prefs.clickThrough === true });
     document.documentElement.style.setProperty('--pet-scale', String(prefs.scale || 1));
     document.documentElement.style.setProperty('--pet-opacity', String(prefs.opacity ?? 1));
     document.body.classList.toggle('is-dnd', isQuiet());
@@ -1125,12 +1136,25 @@ async function start() {
         navigation: $('sessionNavigation'), position: $('sessionPosition'), previous: $('sessionPrevious'), next: $('sessionNext'),
         stop: $('sessionStop'),
         title: $('sessionTitle'), status: $('sessionStatus'), api,
-        onToggle: () => { renderBubble(); aimBubble(aimedHeadX); },
+        onToggle: expanded => { dockVisibility.update({ pinned: expanded }); renderBubble(); aimBubble(aimedHeadX); },
+        onNotifications: count => {
+            const pending = String(count > 0);
+            if ($('dock').dataset.notifications !== pending) $('dock').dataset.notifications = pending;
+            const label = count ? `展开桌宠操作，${count} 个会话有动态` : '展开桌宠操作';
+            if ($('dockReveal').title !== label) {
+                $('dockReveal').title = label;
+                $('dockReveal').setAttribute('aria-label', label);
+            }
+        },
     });
     const assets = await api.getAssets();
     if (!assets) return;
     sessionCard?.initialize(assets);
     if (!PREVIEW) $('dock').dataset.mode = dock.mode;
+    syncDockLayers();
+    $('dockReveal').addEventListener('click', () => setDock('pill'));
+    $('dock').addEventListener('focusin', () => dockHover(true));
+    window.addEventListener('pagehide', () => dockVisibility.dispose(), { once: true });
     applyPrefs(await api.getPrefs?.().catch(() => null));
     api.onPrefs?.(applyPrefs);
     bindWalk();
@@ -1283,14 +1307,18 @@ async function start() {
     if (/Linux/.test(navigator.platform)) {
         window.addEventListener('pointermove', (e) => {
             if (e.buttons) return;
-            if (uiAt(e.clientX, e.clientY)) reportHit(true);
+            const ui = uiAt(e.clientX, e.clientY);
+            cursorHit.cursor({ outside: false, ui });
+            if (ui) reportHit(true);
             else backend.probe(e.clientX, e.clientY);
         });
-        document.documentElement.addEventListener('pointerleave', () => reportHit(false));
+        document.documentElement.addEventListener('pointerleave', () => { cursorHit.cursor({ outside: true }); reportHit(false); });
     }
     api.onCursor(({ x, y, outside }) => {
+        const ui = !outside && uiAt(x, y);
+        cursorHit.cursor({ outside, ui });
         if (!outside) {
-            if (uiAt(x, y)) reportHit(true);
+            if (ui) reportHit(true);
             else backend.probe(x, y);
         } else reportHit(false); // 出了窗口也算离开：下次直接落在角色身上时胶囊照样冒出来
         life.cursor({ x, y, inside: !outside, onHead: !outside && onHead(x, y) });
@@ -1319,7 +1347,7 @@ async function start() {
             if (kind === 'start') {
                 drag = { x: e.screenX, at: performance.now(), vx: 0 };
                 dock.dragging = true;
-                if (dock.mode === 'pill') setDock('hidden');
+                dockVisibility.update({ dragging: true });
                 life.hold('drag', true);
                 backend.life?.held(true);
                 lifeFx.held(true);
@@ -1335,7 +1363,7 @@ async function start() {
                 drag = null;
                 dock.dragging = false;
                 dock.hover = false;
-                setDock('pill');
+                dockVisibility.update({ dragging: false, hover: false });
                 backend.life?.held(false);
                 lifeFx.held(false);
                 life.hold('drag', false);
@@ -1349,6 +1377,8 @@ async function start() {
     let paused = false;
     api.onVisibility?.((visible) => {
         paused = !visible;
+        if (paused) { cursorHit.cursor({ outside: true }); reportHit(false); }
+        dockVisibility.update({ visible });
         // 藏起来就不出声了，录着的音也停掉（不然麦克风开着、整窗挡着点击）
         if (paused) {
             speech.stop();

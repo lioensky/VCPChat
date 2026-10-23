@@ -71,7 +71,8 @@
   </div>
   <!-- 脚边的小胶囊：光标停在角色上时冒出来（打字 / 说话）；点打字展开成输入条，点说话变成录音按钮；没碰它时收成脚边一道小横条。
        三种样子是同一个元素的三个状态（data-mode），宽度和内容之间有过渡动画。 -->
-  <div id="dock" class="pet-ui pet-dock" data-mode="pill">
+  <div id="dock" class="pet-ui pet-dock" data-mode="hidden">
+    <button id="dockReveal" type="button" title="展开桌宠操作" aria-label="展开桌宠操作"></button>
     <div class="dock-layer dock-pill" id="dockPill">
       <button id="dockEdit" class="dock-btn" type="button" title="打字和 TA 说（双击角色也行）" aria-label="打字">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.4 2.6a2.1 2.1 0 0 1 3 3l-9 9a2 2 0 0 1-.9.5l-2.9.8.8-2.9a2 2 0 0 1 .5-.8Z"/></svg>

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { createSessionCard } from '../DeskPetmodules/sessionCard.js';
 import { dockHitArea, containsPoint } from '../DeskPetmodules/dockHitArea.js';
+import { createDockVisibility, createCursorHitGate } from '../DeskPetmodules/dockVisibility.js';
 const { createSessionActivity } = createRequire(import.meta.url)('../modules/deskpet/sessionActivity.js');
 
 test('collapsed bar and expanded controls share a stable CSS-pixel hover target', () => {
@@ -127,4 +128,83 @@ test('multiple requests in one topic count as one conversation', () => {
     const b = {...a, messageId:'b'};
     onStream({ type:'start', messageId:'b', session:{...b, sessions:[b,a]} });
     assert.equal(badge.textContent, '1');
+});
+
+function dockFixture() {
+    let mode = 'hidden', suppressed = false, now = 0, seq = 0;
+    const timers = new Map();
+    const controller = createDockVisibility({
+        getMode: () => mode,
+        setMode: value => { mode = value; controller.modeChanged(); },
+        suppress: value => { suppressed = value; },
+        schedule: (fn, ms) => { const id = ++seq; timers.set(id, { at: now + ms, fn }); return id; },
+        cancel: id => timers.delete(id),
+    });
+    return { controller, get mode() { return mode; }, get suppressed() { return suppressed; },
+        setMode(value) { mode = value; controller.modeChanged(); },
+        tick(ms) {
+            const end = now + ms;
+            while (true) {
+                const next = [...timers.entries()].filter(([, t]) => t.at <= end).sort((a,b) => a[1].at-b[1].at)[0];
+                if (!next) break;
+                now = next[1].at; timers.delete(next[0]); next[1].fn();
+            }
+            now = end;
+        },
+    };
+}
+
+test('idle dock stays collapsed, opens on intentional hover and tolerates the gap to its buttons', () => {
+    const d = dockFixture();
+    d.tick(2000); assert.equal(d.mode, 'hidden');
+    d.controller.update({ hover: true }); d.tick(80);
+    assert.equal(d.mode, 'hidden', 'passing over must not immediately open it');
+    d.tick(40); assert.equal(d.mode, 'pill');
+    d.controller.update({ hover: false }); d.tick(500);
+    assert.equal(d.mode, 'pill', 'crossing transparent space toward the buttons keeps it open');
+    d.controller.update({ hover: true }); d.tick(400);
+    assert.equal(d.mode, 'pill', 'the old hide timer was cancelled');
+    d.controller.update({ hover: false }); d.tick(800);
+    assert.equal(d.mode, 'hidden');
+    const cue = dockHitArea(360, 480, { collapsed: true });
+    assert.ok(containsPoint(cue, 180, 438));
+    assert.equal(containsPoint(cue, 120, 460), false, 'collapsed controls do not capture the old expanded blank area');
+});
+
+test('input, recording and explicitly expanded sessions pin the dock; drag and click-through suppress it', () => {
+    const d = dockFixture();
+    for (const mode of ['bar', 'rec']) {
+        d.setMode(mode); d.controller.update({ hover: false }); d.tick(3000);
+        assert.equal(d.mode, mode);
+    }
+    d.setMode('pill'); d.controller.update({ pinned: true }); d.tick(3000);
+    assert.equal(d.mode, 'pill');
+    d.controller.update({ pinned: false }); d.tick(800); assert.equal(d.mode, 'hidden');
+    d.controller.update({ hover: true }); d.tick(120);
+    d.controller.update({ dragging: true }); assert.equal(d.suppressed, true); assert.equal(d.mode, 'hidden');
+    d.controller.update({ dragging: false, hover: false }); d.tick(1000);
+    assert.equal(d.mode, 'hidden', 'dropping never forces a persistent pill');
+    d.controller.update({ through: true, hover: true }); d.tick(1000); assert.equal(d.suppressed, true);
+    d.setMode('bar'); assert.equal(d.suppressed, false, 'explicit keyboard input still works in click-through mode');
+    d.setMode('hidden'); assert.equal(d.suppressed, true);
+});
+
+test('hiding a window cancels hover timers without losing a draft mode', () => {
+    const d = dockFixture();
+    d.controller.update({ hover: true }); d.tick(50);
+    d.controller.update({ visible: false, hover: false }); d.tick(1000);
+    d.controller.update({ visible: true }); assert.equal(d.mode, 'hidden');
+    d.setMode('bar'); d.controller.update({ visible: false }); d.tick(2000);
+    assert.equal(d.mode, 'bar'); assert.equal(d.suppressed, true);
+    d.controller.update({ visible: true }); assert.equal(d.suppressed, false); assert.equal(d.mode, 'bar');
+    d.setMode('hidden'); d.controller.update({ hover: true }); d.controller.dispose(); d.tick(2000);
+    assert.equal(d.mode, 'hidden');
+});
+
+test('a late alpha result cannot revive an outside hover or cancel a current UI hover', () => {
+    const hit = createCursorHitGate();
+    hit.cursor({ outside: false, ui: false }); assert.equal(hit.resolve(true), true);
+    hit.cursor({ outside: true }); assert.equal(hit.resolve(true), false, 'an old rendered hit arrived after leaving');
+    hit.cursor({ outside: false, ui: true }); assert.equal(hit.resolve(false), true, 'an old transparent pixel arrived after reaching a button');
+    hit.cursor({ outside: false, ui: false }); assert.equal(hit.resolve(false), false);
 });

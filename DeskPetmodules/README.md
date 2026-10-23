@@ -149,7 +149,9 @@ Codex 桌宠可通过 `pet.json`、整个文件夹、ZIP 或标准命名的 `spr
 页面（`DeskPetmodules/`）：
 
 - `deskpet.js`：页面主体：气泡、输入条和录音、拖动和点击、回复流接到情绪导演、主动说话、工具审批卡片、按档位降帧和隐藏时暂停。
-- 形象后端，接口相同（`apply`、`probe`、`bounds`、`head`、`life`、`setActive`、`setPaused`…），按 Live2D → 网格立绘 → 差分立绘 → 头像依次退：`live2dBackend.js`、`puppetBackend.js`（网格在 `puppet.js`）、`imageBackend.js`（立绘和头像）。`petStage.js` 是它们共用的帧率档位、WebGL 和 Pixi 舞台、按轮廓摆放、按像素命中；`emotionLook.js` 是情绪的角标文字、色环和参数。
+- 形象后端接口相同（`apply`、`probe`、`bounds`、`head`、`life`、`setActive`、`setPaused`…），按 Live2D → 网格立绘 → Codex 精灵动画 → 差分立绘 → 头像依次退：`live2dBackend.js`、`puppetBackend.js`（网格在 `puppet.js`）、`spriteBackend.js`、`imageBackend.js`（立绘和头像）。`petStage.js` 提供帧率档位、WebGL 和 Pixi 舞台、按轮廓摆放、按像素命中；精灵图使用 Canvas2D。`emotionLook.js` 是情绪的角标文字、色环和参数。
+
+`dockVisibility.js` 统一处理底部控件的悬停展开、延时收起、输入/录音/会话固定显示、拖动和穿透隐藏，并阻止旧的异步命中覆盖最新光标状态。空闲只留横条，有会话动态时横条变蓝；铃铛不会自动展开会话。规则见 `docs/deskpet/hover-session-card-20261009.md`。
 - `figure.js`：按不透明像素量形象的轮廓和头的位置，把脚底摆到窗口底边（纯函数）。
 - `petLife.js`：闲时的时机（小动作、视线游走、犯困、睡着、醒来、连点、摸头）；`lifeMotion.js`：把阶段和动作变成参数曲线、拖动摆动和跳起高度；`lifeFx.js`：头顶小符号。
 - `voice.js`、`speechText.js`：播放 TTS 音频、用 AnalyserNode 量音量驱动嘴型，按句切回复、跟踪念到哪一句（气泡和表情跟着走）。`dictation.js`：录音、重采样成 16 kHz WAV 交给本机 SenseVoice。
