@@ -1503,8 +1503,14 @@ function moodMenuLabel(mood) {
 
 // ---- IPC ----------------------------------------------------------------
 
+// 只有主窗口能开关桌宠、回传发送结果和定位结果；别的渲染进程发来的一律忽略。
+function fromMain(event) {
+    return Boolean(mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents);
+}
+
 function registerIpc() {
-    ipcMain.handle('deskpet:toggle', async (_e, agentId) => {
+    ipcMain.handle('deskpet:toggle', async (event, agentId) => {
+        if (!fromMain(event)) return { success: false, error: 'forbidden' };
         if (typeof agentId !== 'string' || !agentId) return { success: false, error: 'invalid-agent' };
         const pet = pets.get(agentId);
         // 隐藏着的桌宠：再点一次是叫回来，不是关掉。
@@ -1513,11 +1519,12 @@ function registerIpc() {
         return { ...result, openAgents: visibleAgents() };
     });
     ipcMain.handle('deskpet:get-open-agents', () => visibleAgents());
-    ipcMain.on('deskpet:send-result', (_e, payload) => {
+    ipcMain.on('deskpet:send-result', (event, payload) => {
+        if (!fromMain(event)) return;
         pendingSends.get(payload?.requestId)?.(payload?.result);
     });
     ipcMain.on('deskpet:where-result', (event, payload) => {
-        if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) return;
+        if (!fromMain(event)) return;
         pendingWhere.get(payload?.requestId)?.(payload?.where);
     });
 
@@ -1968,11 +1975,13 @@ function closeAll() {
     pendingApprovals.clear();
     for (const agentId of [...pets.keys()]) closePet(agentId);
     fullscreenWatch?.stop();
-    controls?.dispose();
+    const settingsSaved = controls?.dispose();
     previews?.dispose();
     for (const { timer } of alarms.values()) clearTimeout(timer);
     alarms.clear();
     idle?.stop();
+    // 退出流程要等这次写盘：去抖窗口里改的设置不能丢
+    return Promise.resolve(settingsSaved);
 }
 
 // chatHandlers 在主聊天的发送和流式路径上调用这些钩子；桌宠出任何错都不能打断主聊天。

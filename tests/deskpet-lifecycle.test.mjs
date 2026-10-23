@@ -95,7 +95,7 @@ async function loadHandlers() {
     const mainWindow = new fake.electron.BrowserWindow({});
     handlers.initialize({ mainWindow, projectRoot: path.resolve('.'), appDataRoot: root, agentDir });
     const open = async (agentId = 'Nova') => {
-        await fake.handlers.get('deskpet:toggle')({}, agentId);
+        await fake.handlers.get('deskpet:toggle')({ sender: fake.windows[0].webContents }, agentId);
         const pet = fake.windows.at(-1);
         pet.emit('ready-to-show');
         return pet;
@@ -282,11 +282,20 @@ test('stream hooks never throw into the main chat path', async () => {
     handlers.closeAll();
 });
 
+test('only the main window can open pets or answer a send request', async () => {
+    const { fake } = await loadHandlers();
+    const stranger = { sender: { id: 999 } };
+    const result = await fake.handlers.get('deskpet:toggle')(stranger, 'Nova');
+    assert.equal(result.success, false);
+    assert.equal(fake.windows.length, 1, '别的窗口开不了桌宠');
+    assert.doesNotThrow(() => fake.listeners.get('deskpet:send-result')(stranger, { requestId: 'x', result: { success: true } }));
+});
+
 test('agent ids that point at the Agents folder itself are refused', async () => {
     const { handlers, fake } = await loadHandlers();
     const toggle = fake.handlers.get('deskpet:toggle');
     for (const bad of ['.', '..', 'Nova/..', '..\\Nova']) {
-        const result = await toggle({}, bad);
+        const result = await toggle({ sender: fake.windows[0].webContents }, bad);
         assert.equal(result.success, false, bad);
     }
     assert.equal(fake.windows.length, 1, '只有主窗口，没有建出桌宠窗口');
@@ -326,7 +335,7 @@ test('a fullscreen program hides the pet until it leaves fullscreen; the user ca
     // 全屏期间用户自己把它叫出来：留着，退出全屏时也不再动它
     handlers._applyFullscreen(full);
     assert.equal(pet.isVisible(), false);
-    await fake.handlers.get('deskpet:toggle')({}, 'Nova');
+    await fake.handlers.get('deskpet:toggle')({ sender: fake.windows[0].webContents }, 'Nova');
     assert.equal(pet.isVisible(), true);
     handlers._applyFullscreen({ fullscreen: false, rect: null });
     assert.equal(pet.isVisible(), true);
@@ -473,7 +482,7 @@ test('files sent from the pet reach the main window cleaned up', async () => {
     const request = main.sent.find((m) => m.channel === 'deskpet:send-request').payload;
     assert.equal(request.text, '');
     assert.deepEqual(request.files.map((f) => [f.path || 'bytes', f.name]), [[real, 'a.png'], ['bytes', 'p.png']]);
-    fake.listeners.get('deskpet:send-result')({}, { requestId: request.requestId, result: { success: true } });
+    fake.listeners.get('deskpet:send-result')({ sender: fake.windows[0].webContents }, { requestId: request.requestId, result: { success: true } });
     assert.deepEqual(await pending, { success: true });
     // 没字也没文件：不往主窗口发
     assert.equal((await send(fromPet(pet), ' ', { files: [{ path: 'x' }] })).success, false);
@@ -521,7 +530,7 @@ test('dragged well past a screen edge the pet tucks in, peeks out when wanted an
     await sleep(200);
     assert.deepEqual(pet.getPosition(), [1600 - 60 - 40, 300]);
     // 关掉再开（下次启动也一样）：还藏在原来的地方，鼠标过来照样探出来
-    await fake.handlers.get('deskpet:toggle')({}, 'Nova');
+    await fake.handlers.get('deskpet:toggle')({ sender: fake.windows[0].webContents }, 'Nova');
     await sleep(50);
     const again = await open();
     assert.deepEqual(again.getPosition(), [1600 - 60 - 40, 300], '重开不会被挪回屏里');

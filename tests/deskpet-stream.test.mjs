@@ -82,7 +82,7 @@ async function loadHandlers() {
 test('stream events reach only the open pet, as plain text', async () => {
     const { handlers, fake } = await loadHandlers();
     const toggle = fake.handlers.get('deskpet:toggle');
-    const opened = await toggle({}, 'Nova');
+    const opened = await toggle({ sender: fake.windows[0].webContents }, 'Nova');
     assert.equal(opened.success, true);
     const pet = fake.windows.at(-1);
     pet.emit('ready-to-show');
@@ -114,7 +114,7 @@ test('the tag prompt is added only while the pet is open and not already present
     const { handlers, fake } = await loadHandlers();
     const messages = [{ role: 'system', content: 'sys' }, { role: 'user', content: 'hi' }];
     assert.equal(handlers.appendProtocolToMessages(messages, 'Nova'), messages);
-    await fake.handlers.get('deskpet:toggle')({}, 'Nova');
+    await fake.handlers.get('deskpet:toggle')({ sender: fake.windows[0].webContents }, 'Nova');
     const withPrompt = handlers.appendProtocolToMessages(messages, 'Nova');
     assert.match(withPrompt[0].content, /<!--emo:/);
     assert.match(withPrompt[0].content, /【桌宠动作】/);
@@ -129,13 +129,13 @@ test('the tag prompt is added only while the pet is open and not already present
 
 test('text typed on the pet is handed to the main window and the result comes back', async () => {
     const { handlers, fake, mainWindow } = await loadHandlers();
-    await fake.handlers.get('deskpet:toggle')({}, 'Nova');
+    await fake.handlers.get('deskpet:toggle')({ sender: fake.windows[0].webContents }, 'Nova');
     const pet = fake.windows.at(-1);
     const pending = fake.handlers.get('deskpet:send')({ sender: pet.webContents }, '  早上好  ');
     const request = mainWindow.sent.find((s) => s.channel === 'deskpet:send-request').payload;
     assert.equal(request.agentId, 'Nova');
     assert.equal(request.text, '早上好');
-    fake.listeners.get('deskpet:send-result')({}, { requestId: request.requestId, result: { success: true } });
+    fake.listeners.get('deskpet:send-result')({ sender: fake.windows[0].webContents }, { requestId: request.requestId, result: { success: true } });
     assert.deepEqual(await pending, { success: true });
     assert.equal(request.newTopic, false);
     assert.deepEqual(await fake.handlers.get('deskpet:send')({ sender: pet.webContents }, '   '), { success: false, error: '没有内容' });
@@ -148,15 +148,15 @@ test('text typed on the pet is handed to the main window and the result comes ba
 test('hiding a pet keeps it alive and the header toggle brings it back', async () => {
     const { handlers, fake } = await loadHandlers();
     const toggle = fake.handlers.get('deskpet:toggle');
-    await toggle({}, 'Nova');
+    await toggle({ sender: fake.windows[0].webContents }, 'Nova');
     const pet = fake.windows.at(-1);
     pet.emit('ready-to-show');
     pet.hide();
-    const again = await toggle({}, 'Nova');
+    const again = await toggle({ sender: fake.windows[0].webContents }, 'Nova');
     assert.equal(pet.isDestroyed(), false);
     assert.equal(pet.isVisible(), true);
     assert.deepEqual(again.openAgents, ['Nova']);
-    const closed = await toggle({}, 'Nova');
+    const closed = await toggle({ sender: fake.windows[0].webContents }, 'Nova');
     assert.equal(pet.isDestroyed(), true);
     assert.deepEqual(closed.openAgents, []);
     handlers.closeAll();
@@ -172,7 +172,7 @@ test('on Windows the pet only takes focus while its input box is open', async ()
         Object.defineProperty(process, 'platform', platform);
     }
     const { handlers, fake } = loaded;
-    await fake.handlers.get('deskpet:toggle')({}, 'Nova');
+    await fake.handlers.get('deskpet:toggle')({ sender: fake.windows[0].webContents }, 'Nova');
     const pet = fake.windows.at(-1);
     assert.equal(pet.options.focusable, false);
     const fromPet = { sender: pet.webContents };

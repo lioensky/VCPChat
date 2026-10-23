@@ -90,7 +90,7 @@ function setup() {
     sovits.initialize(mainWindow, null);
     deskPet.initialize({ mainWindow, projectRoot: path.resolve('.'), appDataRoot: root, agentDir });
     const open = async (agentId) => {
-        await handlers.get('deskpet:toggle')({}, agentId);
+        await handlers.get('deskpet:toggle')({ sender: mainWindow.webContents }, agentId);
         return windows.at(-1);
     };
     const cleanup = () => {

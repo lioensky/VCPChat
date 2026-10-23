@@ -723,6 +723,7 @@ async function performQuitCleanup() {
     appQuitCleanupPromise = (async () => {
         await historyWatcherLeases.dispose();
         await getAgentMoodStore()?.flush().catch(() => {});
+        await Promise.resolve().then(() => deskPetHandlers.closeAll()).catch(() => {});
 
         try {
             localSttHandlers.shutdown();

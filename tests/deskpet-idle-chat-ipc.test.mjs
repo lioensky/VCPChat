@@ -113,7 +113,7 @@ function answerWhere(fake, mainWindow, where) {
 }
 
 async function openNova(fake) {
-    await fake.handlers.get('deskpet:toggle')({}, 'Nova');
+    await fake.handlers.get('deskpet:toggle')({ sender: fake.windows[0].webContents }, 'Nova');
     const pet = fake.windows.at(-1);
     pet.emit('ready-to-show');
     return pet;

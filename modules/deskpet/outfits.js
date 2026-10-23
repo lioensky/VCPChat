@@ -146,7 +146,7 @@ async function scanFolder(dir, { root = false } = {}) {
  * 这个助手所有的形象，排好顺序：deskpet/ 根目录那套、各个文件夹（按 order 再按名字）、助手目录的立绘。
  * 每项 { id, name, kind, live2d, puppet, portraits }，kind 是实际会用的那种（live2d / puppet / portrait）。
  */
-async function listOutfits(agentRoot, { hasCore = false, builtInDir = null, builtInSpriteDir = null, preferBuiltIn = false } = {}) {
+async function listOutfits(agentRoot, { hasCore = false, builtInDir = null, preferBuiltIn = false } = {}) {
     const deskpetDir = path.join(agentRoot, 'deskpet');
     const outfits = [];
     const root = await scanFolder(deskpetDir, { root: true });
@@ -172,7 +172,6 @@ async function listOutfits(agentRoot, { hasCore = false, builtInDir = null, buil
     // Existing custom outfits remain the default, while a new Nova gets the bundled model.
     const hasCustomOutfit = outfits.some((outfit) => outfit.id !== PORTRAIT_ID);
     const bundled = builtInDir ? BUILTIN_NOVA_PRESETS.map((preset) => ({ id: `builtin:nova-${preset}`, name: `Nova · ${preset}`, dir: path.join(builtInDir, preset) })) : [];
-    if (builtInSpriteDir) bundled.push({ id: 'builtin:codex-keqing', name: '刻晴', dir: path.join(builtInSpriteDir, 'keqing') });
     for (const preset of bundled) {
         const scanned = await scanFolder(preset.dir);
         if (!scanned) continue;

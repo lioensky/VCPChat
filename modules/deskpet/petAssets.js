@@ -5,7 +5,6 @@
 //   vcp-deskpet://pet/vendor/…           vendor/（渲染引擎）
 //   vcp-deskpet://pet/emotion/…          modules/emotion/（和侧栏立绘共用的情绪模块）
 //   vcp-deskpet://pet/builtin/nova/…     应用自带的 Nova 女仆、Q 版（assets/deskpet/nova/）
-//   vcp-deskpet://pet/builtin/codex/…    应用自带的刻晴精灵（assets/deskpet/codex/）
 //   vcp-deskpet://pet/core/…             用户装的 Cubism Core，和安装前试加载的暂存文件
 //   vcp-deskpet://pet/agent/<id>/…       助手目录里的 deskpet/ 子目录、立绘和头像（别的文件不可见）
 //   vcp-deskpet://pet/default-avatar.png 应用的默认头像
@@ -48,7 +47,6 @@ function createPetAssets({ paths, stagedCorePath = () => null }) {
     const coreFilePath = () => path.join(paths.appDataRoot, 'deskpet', 'live2dcubismcore.min.js');
     const defaultAvatarPath = () => path.join(paths.projectRoot, 'assets', 'default_avatar.png');
     const builtInDirectory = () => path.join(paths.projectRoot, 'assets', 'deskpet', 'nova');
-    const builtInSpriteDirectory = () => path.join(paths.projectRoot, 'assets', 'deskpet', 'codex');
 
     function resolveServedFile(urlString) {
         let url;
@@ -71,7 +69,6 @@ function createPetAssets({ paths, stagedCorePath = () => null }) {
         if (root === 'builtin') {
             const collection = segments.shift();
             if (collection === 'nova') return guard(builtInDirectory(), segments);
-            if (collection === 'codex') return guard(builtInSpriteDirectory(), segments);
             return null;
         }
         if (root === 'core') {
@@ -99,7 +96,7 @@ function createPetAssets({ paths, stagedCorePath = () => null }) {
         const file = resolveServedFile(urlString);
         if (!file) return null;
         const roots = [path.join(paths.projectRoot, 'DeskPetmodules'), path.join(paths.projectRoot, 'vendor'),
-            path.join(paths.projectRoot, 'modules', 'emotion'), builtInDirectory(), builtInSpriteDirectory()];
+            path.join(paths.projectRoot, 'modules', 'emotion'), builtInDirectory()];
         let base = roots.find(root => isInside(root, file));
         let anchor = paths.projectRoot;
         let exact = false;
@@ -124,7 +121,7 @@ function createPetAssets({ paths, stagedCorePath = () => null }) {
     }
 
     function agentUrl(agentId, file) {
-        for (const [collection, dir] of [['nova', builtInDirectory()], ['codex', builtInSpriteDirectory()]]) {
+        for (const [collection, dir] of [['nova', builtInDirectory()]]) {
             if (!isInside(dir, file)) continue;
             const rel = path.relative(dir, file).split(path.sep).map(encodeURIComponent).join('/');
             return `${SCHEME}://pet/builtin/${collection}/${rel}`;
@@ -148,7 +145,6 @@ function createPetAssets({ paths, stagedCorePath = () => null }) {
         return outfitStore.listOutfits(agentRoot, {
             hasCore: await fs.pathExists(coreFilePath()),
             builtInDir: builtInDirectory(),
-            builtInSpriteDir: builtInSpriteDirectory(),
             preferBuiltIn,
         });
     }

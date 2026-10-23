@@ -257,7 +257,7 @@ async function loadHandlers({ root = fs.mkdtempSync(path.join(os.tmpdir(), 'desk
     await sleep(20); // 等设置文件读完、快捷键注册好
     const petWindows = () => fake.windows.filter((w) => w.url?.includes('deskpet.html') && !w.destroyed);
     const open = async (agentId = 'Nova') => {
-        await fake.handlers.get('deskpet:toggle')({}, agentId);
+        await fake.handlers.get('deskpet:toggle')({ sender: fake.windows[0].webContents }, agentId);
         const pet = fake.windows.at(-1);
         pet.emit('ready-to-show');
         // 页面载完形象、输入框能用了
@@ -330,8 +330,8 @@ test('do not disturb reaches every open pet and the tray item reflects it', asyn
     let trayRebuilds = 0;
     const structure = [];
     env.handlers.setTrayRefresher((structureChanged) => { trayRebuilds += 1; structure.push(structureChanged); });
-    await env.fake.handlers.get('deskpet:toggle')({}, 'Nope');
-    await env.fake.handlers.get('deskpet:toggle')({}, 'Nope');
+    await env.fake.handlers.get('deskpet:toggle')({ sender: env.fake.windows[0].webContents }, 'Nope');
+    await env.fake.handlers.get('deskpet:toggle')({ sender: env.fake.windows[0].webContents }, 'Nope');
     assert.equal(trayRebuilds, 1, '菜单内容没变就不重建（换下来的旧菜单 Electron 不释放）');
     const toggle = env.handlers.trayMenuItems()[0].submenu.find((item) => item.label === '免打扰');
     assert.equal(toggle.checked, false);
@@ -359,7 +359,7 @@ test('tray state is written into the menu already shown instead of a new one', a
     assert.equal(menu.getMenuItemById('deskpet-hide').visible, true);
     assert.equal(menu.getMenuItemById('deskpet-show').visible, false);
     env.handlers.closeAll();
-    await env.fake.handlers.get('deskpet:toggle')({}, 'Nope');
+    await env.fake.handlers.get('deskpet:toggle')({ sender: env.fake.windows[0].webContents }, 'Nope');
     assert.equal(env.handlers.applyTrayState(menu), true);
     assert.equal(menu.getMenuItemById('deskpet-hide').visible, false, '桌宠都关了：显示「显示桌宠」');
     assert.equal(menu.getMenuItemById('deskpet-show').visible, true);
@@ -432,7 +432,7 @@ test('pets open at quit come back on the next launch; ones the user closed do no
     const env = await loadHandlers();
     await env.open('Nova');
     const coco = await env.open('Coco');
-    await env.fake.handlers.get('deskpet:toggle')({}, 'Coco'); // 用户关掉 Coco
+    await env.fake.handlers.get('deskpet:toggle')({ sender: env.fake.windows[0].webContents }, 'Coco'); // 用户关掉 Coco
     assert.ok(coco.destroyed);
     env.handlers.closeAll(); // 退出
     await sleep(250);

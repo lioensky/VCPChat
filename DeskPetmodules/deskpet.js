@@ -1064,7 +1064,7 @@ async function start() {
     $('dock').addEventListener('focusin', () => dockHover(true));
     window.addEventListener('pagehide', () => {
         for (const dispose of [() => pointerBindings?.dispose(), () => dockVisibility.dispose(), () => sessionCard?.dispose(),
-            () => director?.dispose(), () => voice.cancel(), () => speech.dispose(), () => backend?.destroy?.()]) {
+            () => director?.dispose(), () => dock.voice?.cancel(), () => speech.dispose(), () => backend?.destroy?.()]) {
             try { dispose(); } catch (error) { console.warn('[DeskPet] 清理页面资源失败：', error); }
         }
         clearTimeout(bubble.hideTimer); clearTimeout(bubble.noticeTimer);

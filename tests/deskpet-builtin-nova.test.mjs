@@ -11,7 +11,6 @@ const outfits = require('../modules/deskpet/outfits.js');
 const handlers = require('../modules/ipc/deskPetHandlers.js');
 const { createPetAssets } = require('../modules/deskpet/petAssets.js');
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const bundledSprites = path.join(projectRoot, 'assets', 'deskpet', 'codex');
 
 function fixture(t) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nova-builtin-'));
@@ -27,13 +26,13 @@ function fixture(t) {
         fs.writeFileSync(path.join(dir, 'portrait.png'), 'fallback');
         fs.writeFileSync(path.join(dir, 'outfit.json'), JSON.stringify({ name: `Nova ${preset}` }));
     }
-    return { agent, bundle, options: { builtInDir: bundle, builtInSpriteDir: bundledSprites } };
+    return { agent, bundle, options: { builtInDir: bundle } };
 }
 
-test('a fresh Nova offers all three bundled outfits without writing to its agent folder', async (t) => {
+test('a fresh Nova offers both bundled outfits without writing to its agent folder', async (t) => {
     const { agent, options } = fixture(t);
     const list = await outfits.listOutfits(agent, { ...options, hasCore: true, preferBuiltIn: true });
-    assert.deepEqual(list.filter((o) => o.builtIn).map((o) => o.id), ['builtin:nova-maid', 'builtin:nova-chibi', 'builtin:codex-keqing']);
+    assert.deepEqual(list.filter((o) => o.builtIn).map((o) => o.id), ['builtin:nova-maid', 'builtin:nova-chibi']);
     assert.equal(outfits.defaultOutfit(list).id, 'builtin:nova-maid');
     assert.equal(outfits.pickOutfit(list, 'builtin:nova-tech').id, 'builtin:nova-maid', 'retired tech selection falls back safely');
     assert.equal(outfits.pickOutfit(list, 'builtin:nova-chibi').id, 'builtin:nova-chibi');
@@ -53,16 +52,10 @@ test('custom models and non-Nova portraits stay the default, while built-ins rem
     assert.equal(outfits.pickOutfit(nova, 'builtin:nova-maid').id, 'builtin:nova-maid');
 });
 
-test('Nova falls back to portraits without Core while bundled Keqing stays animated', async (t) => {
+test('Nova falls back to portraits without Core', async (t) => {
     const { agent, options } = fixture(t);
     const list = await outfits.listOutfits(agent, { ...options, hasCore: false, preferBuiltIn: true });
     for (const o of list.filter((item) => item.builtIn)) {
-        if (o.id === 'builtin:codex-keqing') {
-            assert.equal(o.kind, 'sprite');
-            assert.equal(o.needsCore, false);
-            assert.ok(o.sprite.sheet);
-            continue;
-        }
         assert.equal(o.kind, 'portrait');
         assert.ok(o.portraits.default);
         assert.ok(o.live2d, 'model becomes available again when Core is installed');
@@ -76,35 +69,25 @@ test('bundled resources stay within Nova and never expose configuration or other
     const paths = { projectRoot, appDataRoot: path.join(projectRoot, 'AppData'), agentDir: path.join(projectRoot, 'AppData', 'Agents') };
     const resolve = (url) => handlers._resolveServedFile(url, paths);
     assert.equal(resolve('vcp-deskpet://pet/builtin/nova/chibi/NovaChibi.model3.json'), path.join(projectRoot, 'assets', 'deskpet', 'nova', 'chibi', 'NovaChibi.model3.json'));
-    assert.equal(resolve('vcp-deskpet://pet/builtin/codex/keqing/spritesheet.webp'), path.join(bundledSprites, 'keqing', 'spritesheet.webp'));
-    for (const url of ['vcp-deskpet://pet/builtin/other/a.png', 'vcp-deskpet://pet/builtin/nova/..%2f..%2fmain.js', 'vcp-deskpet://pet/builtin/codex/..%2fmain.js', 'vcp-deskpet://pet/builtin/nova/..%5cconfig.json', 'vcp-deskpet://pet/builtin/nova/%E0%A4%A']) assert.equal(resolve(url), null, url);
+    for (const url of ['vcp-deskpet://pet/builtin/other/a.png', 'vcp-deskpet://pet/builtin/nova/..%2f..%2fmain.js', 'vcp-deskpet://pet/builtin/codex/keqing/spritesheet.webp', 'vcp-deskpet://pet/builtin/nova/..%5cconfig.json', 'vcp-deskpet://pet/builtin/nova/%E0%A4%A']) assert.equal(resolve(url), null, url);
 });
 
-test('a clean install can serve bundled Keqing without importing any user files or installing Core', async (t) => {
+test('a clean install serves bundled Nova without copying anything into the agent folder', async (t) => {
     const { agent } = fixture(t);
     const assets = createPetAssets({ paths: { projectRoot, appDataRoot: path.dirname(agent), agentDir: path.dirname(agent) } });
-    const result = await assets.resolveAssets(path.basename(agent), 'builtin:codex-keqing');
+    const result = await assets.resolveAssets(path.basename(agent), 'builtin:nova-chibi');
     assert.equal(result.outfit.builtIn, true);
-    assert.equal(result.outfit.kind, 'sprite');
-    assert.equal(result.outfit.name, '刻晴');
+    assert.equal(result.outfit.id, 'builtin:nova-chibi');
     assert.equal(result.coreUrl, null);
-    assert.equal(result.sprite.sheetUrl, 'vcp-deskpet://pet/builtin/codex/keqing/spritesheet.webp');
-    assert.equal(assets.resolveServedFile(result.sprite.sheetUrl), path.join(bundledSprites, 'keqing', 'spritesheet.webp'));
     assert.deepEqual(fs.readdirSync(agent), ['portrait.png']);
 });
 
-test('the shipped Live2D and sprite resources are complete and included in packaging', async () => {
+test('the shipped Live2D resources are complete and included in packaging', async () => {
     const dir = path.join(projectRoot, 'assets', 'deskpet', 'nova');
-    const list = await outfits.listOutfits(path.join(os.tmpdir(), 'nova-no-agent'), { hasCore: true, builtInDir: dir, builtInSpriteDir: bundledSprites });
-    assert.equal(list.length, 3);
+    const list = await outfits.listOutfits(path.join(os.tmpdir(), 'nova-no-agent'), { hasCore: true, builtInDir: dir });
+    assert.equal(list.length, 2);
     assert.equal(fs.existsSync(path.join(dir, 'tech')), false, 'retired tech assets are no longer shipped');
     for (const o of list) {
-        if (o.kind === 'sprite') {
-            assert.equal(o.id, 'builtin:codex-keqing');
-            assert.equal(o.sprite.version, 1);
-            assert.ok(fs.existsSync(o.sprite.sheet));
-            continue;
-        }
         const model = JSON.parse(fs.readFileSync(o.live2d, 'utf8'));
         const refs = model.FileReferences;
         const files = [refs.Moc, refs.Physics, refs.DisplayInfo, ...refs.Textures, ...refs.Expressions.map((e) => e.File), ...Object.values(refs.Motions).flat().map((m) => m.File)];
@@ -120,7 +103,7 @@ test('an agent without its own art keeps its avatar instead of turning into Nova
     const { agent, options } = fixture(t);
     fs.rmSync(path.join(agent, 'portrait.png'));
     const list = await outfits.listOutfits(agent, { ...options, hasCore: true });
-    assert.equal(list.filter((o) => o.builtIn).length, 3, 'Nova stays selectable from the menu');
+    assert.equal(list.filter((o) => o.builtIn).length, 2, 'Nova stays selectable from the menu');
     assert.equal(outfits.defaultOutfit(list), null);
     assert.equal(outfits.pickOutfit(list, 'removed-preset'), null);
     assert.equal(outfits.pickOutfit(list, 'builtin:nova-maid').id, 'builtin:nova-maid');

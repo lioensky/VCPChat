@@ -208,10 +208,11 @@ function createPetControls({ electron, appDataRoot, actions }) {
         });
     }
 
+    // 返回最后一次写盘，调用方退出前可以等它落盘
     function dispose() {
-        clearTimeout(saveTimer);
-        if (saveTimer !== null) flush();
+        const saved = saveTimer !== null ? flush() : writing;
         unregisterOurs();
+        return saved;
     }
 
     return {
