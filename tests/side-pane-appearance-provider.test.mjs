@@ -75,15 +75,14 @@ test('without a side pane controller opening is inert instead of throwing', asyn
     await provider.closeAppearanceTab();
 });
 
-test('the tab type declares a launcher entry and routes the studio opener to the tab', async () => {
+test('the tab type routes the studio opener to the tab', async () => {
     const studio = makeStudio();
     const controller = makeController();
     const win = { VCPAppearanceStudio: studio };
     const type = defineAppearanceTabType({ document: null, window: win, sidePaneController: controller, uiHelper: null });
 
     assert.equal(type.kind, 'appearance');
-    assert.equal(type.entry.id, 'appearance');
-    assert.equal(typeof type.entry.open, 'function');
+    assert.equal(typeof type.provider.openAppearanceTab, 'function');
 
     const registration = registerAppearanceStudioOpener({ window: win, provider: type.provider });
     assert.ok(studio.opener, 'the studio routes open() through the tab type');
