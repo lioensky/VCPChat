@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createDeskPetSendBridge } from '../modules/renderer/deskPetSendBridge.js';
+import { createDeskPetSendBridge } from '../DeskPetmodules/mainWindow/sendBridge.js';
 
 // 模拟主窗口的选中事务：选中的 Agent 先变，话题要等列表读回来才定下来。
 function fakeMainWindow({ selectDelayMs = 30 } = {}) {

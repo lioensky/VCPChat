@@ -1,6 +1,6 @@
 'use strict';
 
-// 桌宠窗口专用 preload（DeskPetmodules/deskpet.html）。窗口开着沙箱，这里只用 electron。
+// 桌宠窗口专用 preload（deskpet.html）。窗口开着沙箱，这里只用 electron。
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 // 拖进来的文件：真实路径只能在这里由 webUtils 取到。只认这样取到过的路径，

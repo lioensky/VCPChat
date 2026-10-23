@@ -343,7 +343,7 @@
     "dynamicSites": [
       {
         "file": "modules/event-listeners.js",
-        "line": 39,
+        "line": 38,
         "kind": "custom-event-listener",
         "match": "target?.addEventListener?.(type"
       }
@@ -1098,13 +1098,13 @@
     "dynamicSites": [
       {
         "file": "modules/ui-system/settings-bridge.js",
-        "line": 490,
+        "line": 491,
         "kind": "custom-event-listener",
         "match": "target.addEventListener(type"
       },
       {
         "file": "modules/ui-system/settings-bridge.js",
-        "line": 774,
+        "line": 783,
         "kind": "custom-event-listener",
         "match": "target.addEventListener(type"
       }

@@ -1,4 +1,4 @@
-/* 全局设置 → 桌宠（modules/settings/schema/deskpet-panel.js）。
+/* 全局设置 → 桌宠（settingsPanel.js）。
    小胶囊本身的样式和桌宠页面共用 DeskPetmodules/dock.css。 */
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps {

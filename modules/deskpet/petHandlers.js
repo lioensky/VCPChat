@@ -474,7 +474,7 @@ async function openPet(agentId, { anchor = null } = {}) {
         show: false,
         title: 'VCPChat 桌宠',
         webPreferences: {
-            preload: path.join(paths.projectRoot, 'preloads', 'deskpet.js'),
+            preload: path.join(paths.projectRoot, 'DeskPetmodules', 'preload.js'),
             contextIsolation: true,
             sandbox: true,
             nodeIntegration: false,
@@ -1874,7 +1874,7 @@ function initialize(options) {
     previews = createPetPreviews({
         BrowserWindow,
         cacheRoot: path.join(paths.appDataRoot, 'deskpet', 'previews'),
-        preload: path.join(paths.projectRoot, 'preloads', 'deskpet.js'),
+        preload: path.join(paths.projectRoot, 'DeskPetmodules', 'preload.js'),
         pageUrl: (agentId) => assets.pageUrl(agentId, '&preview=1'),
         // 卡片快照按 2 倍画：比桌面上默认的大，缩进卡片里也清楚
         windowSize: (aspect, kind) => petPrefs.windowSizeForScale(2, aspect, kind),

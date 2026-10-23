@@ -1,7 +1,8 @@
 'use strict';
 
 /**
- * 读取 preloads/api/*.js，合并成一张 "API 名 → 条目" 表。
+ * 读取 preloads/api/*.js，以及可选功能模块自带的 modules/<功能>/preloadApi.js，
+ * 合并成一张 "API 名 → 条目" 表。功能目录删掉，它的 API 就跟着消失，不用改这里。
  *
  * 本文件不依赖 electron，测试和工具脚本可以直接在 Node 里 require 它，
  * 用来查询某个 API 属于哪个领域、走哪个通道、对哪些角色可见。
@@ -31,6 +32,25 @@ const ROLE_GLOBALS = Object.freeze({
 });
 
 const API_DIR = path.join(__dirname, '..', 'api');
+const FEATURE_DIR = path.join(__dirname, '..', '..', 'modules');
+const FEATURE_API_FILE = 'preloadApi.js';
+
+// [{ domain, file, where }]：api/ 下按文件名排序，再接可选功能模块（领域名取目录名）
+function listDomainFiles() {
+    const files = fs.readdirSync(API_DIR).filter((name) => name.endsWith('.js')).sort()
+        .map((name) => ({ domain: path.basename(name, '.js'), file: path.join(API_DIR, name), where: `preloads/api/${name}` }));
+    let features = [];
+    try {
+        features = fs.readdirSync(FEATURE_DIR, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+    } catch {
+        // 测试或工具在没有 modules/ 的环境里加载时，只有 api/
+    }
+    for (const name of features) {
+        const file = path.join(FEATURE_DIR, name, FEATURE_API_FILE);
+        if (fs.existsSync(file)) files.push({ domain: name, file, where: `modules/${name}/${FEATURE_API_FILE}` });
+    }
+    return files;
+}
 
 function assertRoles(roleNames, where) {
     if (!Array.isArray(roleNames) || roleNames.length === 0) {
@@ -52,12 +72,8 @@ function loadRegistry() {
     if (cachedRegistry) return cachedRegistry;
 
     const registry = new Map();
-    const files = fs.readdirSync(API_DIR).filter((name) => name.endsWith('.js')).sort();
-
-    for (const file of files) {
-        const domain = path.basename(file, '.js');
-        const definition = require(path.join(API_DIR, file));
-        const where = `preloads/api/${file}`;
+    for (const { domain, file, where } of listDomainFiles()) {
+        const definition = require(file);
 
         if (!definition || typeof definition.api !== 'object') {
             throw new TypeError(`${where}: 缺少 api 对象`);
@@ -69,11 +85,11 @@ function loadRegistry() {
                 throw new TypeError(`${where}: ${name} 必须由 core/define.js 的 invoke/send/on 等函数创建`);
             }
             if (registry.has(name)) {
-                throw new Error(`preload API 重名: "${name}" 同时定义在 api/${registry.get(name).domain}.js 与 ${where}`);
+                throw new Error(`preload API 重名: "${name}" 同时定义在 ${registry.get(name).where} 与 ${where}`);
             }
             const roles = entry.allowedRoles || definition.roles;
             assertRoles(roles, `${where} → ${name}`);
-            registry.set(name, { entry, domain, roles: [...roles] });
+            registry.set(name, { entry, domain, where, roles: [...roles] });
         }
     }
 

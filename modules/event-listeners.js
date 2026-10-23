@@ -1426,10 +1426,10 @@ export function setupEventListeners(deps) {
         }
     }
 
-    // 桌宠（可选模块）：preload 暴露了桌宠接口才载入它和主窗口之间的桥
+    // 桌宠（可选模块）：preload 暴露了桌宠接口才载入它在主窗口这一侧的部分（桥、设置分区、样式）
     if (typeof chatAPI.toggleDeskPet === 'function') {
-        import('./renderer/deskPetBridge.js')
-            .then(({ installDeskPetBridge }) => installDeskPetBridge({ chatAPI, refs, itemListManager, chatManager, sendMessageBtn, globalSettingsBtn }))
+        import('../DeskPetmodules/mainWindow/index.js')
+            .then(({ installDeskPet }) => installDeskPet({ chatAPI, refs, itemListManager, chatManager, sendMessageBtn, globalSettingsBtn }))
             .catch(error => console.warn('[DeskPet] bridge failed to load:', error));
     }
 

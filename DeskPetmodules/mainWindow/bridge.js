@@ -1,9 +1,9 @@
 /**
- * 主窗口这一侧的桌宠桥（可选模块）：桌宠和主窗口之间的往来都在这里。
- * event-listeners.js 只在 preload 暴露了桌宠接口时才动态载入它；删掉桌宠，主窗口不受影响。
+ * 主窗口这一侧的桌宠桥：桌宠和主窗口之间的往来都在这里（由 ./index.js 装上）。
  * 桌宠的开关和设置都在全局设置「桌宠」分区里，不经过这里。
  */
-import { createDeskPetSendBridge } from './deskPetSendBridge.js';
+import { createDeskPetSendBridge } from './sendBridge.js';
+import { requestSettingsSection } from '../../modules/settings/extensions.js';
 
 export function installDeskPetBridge({ chatAPI, refs, itemListManager, chatManager, sendMessageBtn, globalSettingsBtn }) {
     // 桌宠上说的话：切到那个 Agent，按正常流程发送（历史、话题、流式都照旧）。
@@ -66,15 +66,9 @@ export function installDeskPetBridge({ chatAPI, refs, itemListManager, chatManag
             console.warn('[DeskPet] interrupt failed:', error);
         }
     });
-    // 托盘、桌宠右键里的「桌宠设置…」：打开全局设置，切到桌宠分区（导航是异步搭起来的，等它出现）
+    // 托盘、桌宠右键里的「桌宠设置…」：打开全局设置，切到桌宠分区（设置壳搭好时自己切过去）
     chatAPI.onDeskPetSettingsOpen?.(() => {
-        const tab = () => document.getElementById('vcpSettingsTab-deskpet');
+        requestSettingsSection('deskpet');
         if (!document.getElementById('globalSettingsModal')?.classList.contains('active')) globalSettingsBtn?.click();
-        let tries = 0;
-        const pick = () => {
-            if (tab()) tab().click();
-            else if (++tries < 60) requestAnimationFrame(pick);
-        };
-        pick();
     });
 }

@@ -1,8 +1,8 @@
 'use strict';
 
-// 桌宠：从当前 agent 打开/关闭桌宠窗口。
+// 桌宠在主窗口里的 preload API（preloads/core/registry.js 会扫到这个文件；删掉 modules/deskpet 就跟着没了）。
 // 主进程：modules/deskpet/petHandlers.js
-const { invoke, on, send } = require('../core/define');
+const { invoke, on, send } = require('../../preloads/core/define');
 
 module.exports = {
     handlers: ['modules/deskpet/petHandlers.js'],
@@ -25,7 +25,7 @@ module.exports = {
         onDeskPetApprovalAnswer: on('deskpet:approval-answer'),
         // 桌宠上点了停止：中止那条回复
         onDeskPetInterrupt: on('deskpet:interrupt-request'),
-        // 全局设置 → 桌宠（modules/settings/schema/deskpet-panel.js）；主进程：modules/deskpet/settingsPage.js、petControls.js
+        // 全局设置 → 桌宠（DeskPetmodules/mainWindow/settingsPanel.js）；主进程：modules/deskpet/settingsPage.js、petControls.js
         onDeskPetSettingsOpen: on('deskpet-settings:open'),
         onDeskPetSettingsChanged: on('deskpet-settings:changed'),
         onDeskPetPreview: on('deskpet-settings:preview'),
