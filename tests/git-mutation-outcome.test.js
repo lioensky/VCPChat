@@ -16,7 +16,8 @@ function git(root, ...args) {
     }).trim();
 }
 function fixture(t) {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vcp-git-outcome-'));
+    const rawRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vcp-git-outcome-'));
+    const root = fs.realpathSync(rawRoot);
     t.after(() => {
         const resolved = fs.realpathSync(root), parent = fs.realpathSync(os.tmpdir());
         assert.equal(path.dirname(resolved), parent);
@@ -43,8 +44,14 @@ function fixture(t) {
 function faultAfterWrite(root, operation, read = 'status') {
     const original = cp.execFile, saved = require.cache[servicePath];
     const trace = { completed: false, injected: false };
+    let realRoot;
+    try { realRoot = fs.realpathSync(root); } catch { realRoot = path.resolve(root); }
+    const isTargetCwd = (cwd) => {
+        if (!cwd) return false;
+        try { return fs.realpathSync(cwd) === realRoot; } catch { return path.resolve(cwd) === realRoot; }
+    };
     cp.execFile = (file, args, options, callback) => {
-        const target = path.resolve(options.cwd) === path.resolve(root);
+        const target = Boolean(options && options.cwd) && isTargetCwd(options.cwd);
         const failRead = target && trace.completed && !trace.injected && args.includes(read);
         return original(file, args, options, (error, stdout, stderr) => {
             if (target && args.includes(operation) && !error) trace.completed = true;
