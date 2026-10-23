@@ -1119,13 +1119,18 @@ function createNewPtySession() {
 
     // 不再用固定延时猜测 PowerShell 是否启动完成。随机边界不会以明文出现在
     // PSReadLine 的输入回显中；只有 PowerShell 真正执行 Write-Host 后才会命中。
-    const readyBoundary = `__VCP_PTY_READY_${crypto.randomUUID()}__`;
+    // 边界保持短：ConPTY 折行与回显体积都会随长度放大，16 位随机 hex 已足够避免误命中。
+    const readyBoundary = `__VCP_PTY_READY_${crypto.randomBytes(8).toString('hex')}__`;
     const encodedReadyBoundary = Buffer.from(readyBoundary, 'utf8').toString('base64');
     mirrorStartupPending = true;
     mirrorStartupHeld = '';
 
     ptyReadyPromise = new Promise((resolve, reject) => {
         let startupOutput = '';
+        // ConPTY 会按列宽在输出里强行插入 CRLF，边界可能被折成两行；这里同时维护
+        // 一份去掉换行的镜像与「镜像字符 → 原始下标」映射，匹配用镜像，切片用原始下标。
+        let startupFlattened = '';
+        const flatToRaw = [];
         let settled = false;
         let timeoutId = null;
         let readyListener = null;
@@ -1145,18 +1150,36 @@ function createNewPtySession() {
                 return;
             }
 
-            startupOutput += data.toString('utf8');
+            const chunk = data.toString('utf8');
+            for (let i = 0; i < chunk.length; i += 1) {
+                const ch = chunk[i];
+                startupOutput += ch;
+                if (ch !== '\r' && ch !== '\n') {
+                    startupFlattened += ch;
+                    flatToRaw.push(startupOutput.length - 1);
+                }
+            }
             // 防止异常启动输出无限占用内存，同时保留足够长度处理跨 chunk 边界。
             if (startupOutput.length > 65536) {
                 startupOutput = startupOutput.slice(-65536);
+                startupFlattened = '';
+                flatToRaw.length = 0;
+                for (let i = 0; i < startupOutput.length; i += 1) {
+                    const ch = startupOutput[i];
+                    if (ch !== '\r' && ch !== '\n') {
+                        startupFlattened += ch;
+                        flatToRaw.push(i);
+                    }
+                }
             }
 
-            const boundaryIndex = startupOutput.indexOf(readyBoundary);
-            if (boundaryIndex !== -1) {
+            const flatIndex = startupFlattened.indexOf(readyBoundary);
+            if (flatIndex !== -1) {
+                const rawEnd = flatToRaw[flatIndex + readyBoundary.length - 1] + 1;
                 settled = true;
                 cleanupReadyProbe();
                 if (ptyProcess === currentPtyProcess) {
-                    releaseMirrorStartup(startupOutput.slice(boundaryIndex + readyBoundary.length).replace(/^\r?\n/, ''));
+                    releaseMirrorStartup(startupOutput.slice(rawEnd).replace(/^\r?\n/, ''));
                 }
                 resolve();
             }
