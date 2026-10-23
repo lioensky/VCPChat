@@ -334,6 +334,25 @@
     ]
   },
   {
+    "id": "source.dynamic.modules.deskpet.pethandlers",
+    "kind": "source-review",
+    "owner": "modules/deskpet/petHandlers.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "Host listener adapter for the optional desk pet: event names come from the literal listenHost(...) calls in the same function (main window, screen, powerMonitor and app events); every listener is pushed onto hostEvents and removed by disposeHostEvents when the desk pet closes.",
+    "dynamicSites": [
+      {
+        "file": "modules/deskpet/petHandlers.js",
+        "line": 246,
+        "kind": "event-listener",
+        "match": "target?.on?.(event"
+      }
+    ],
+    "evidence": [
+      "Source review of the desk pet split; exact operation match below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
     "id": "source.dynamic.modules.event-listeners",
     "kind": "source-review",
     "owner": "modules/event-listeners.js",

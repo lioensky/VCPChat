@@ -137,7 +137,19 @@ Codex 桌宠可通过 `pet.json`、整个文件夹、ZIP 或标准命名的 `spr
 主进程（`modules/`）：
 
 - `deskpet/index.js`：唯一入口。`main.js` 只调 `registerSchemes()` 和 `register(host)`；桌宠要核心配合的地方（聊天请求和回复流、工具结果、删助手、朗读拦截、托盘菜单）都挂在 `modules/hostHooks.js` 上，删掉 `modules/deskpet/` 核心照常运行。主窗口里的 API 在 `deskpet/preloadApi.js`（`preloads/core/registry.js` 自动扫到，删目录就没了）。工具审批经 `vcp:tool-approval-pending`/`settled` 事件转过来。
-- `deskpet/petHandlers.js`：窗口的一生（打开、摆放、拖动、甩、贴边藏起、溜达、换装、改大小、崩溃恢复、显示器变化）、IPC、右键和托盘菜单、把回复流转给桌宠、桌宠发言转给主窗口、工具审批和闹钟转给桌宠。
+- `deskpet/petHandlers.js`：装配和主进程生命周期：建共用上下文、把下面这些装上、注册自定义协议、启动时恢复上次的桌宠、退出时收摊。
+- `deskpet/petContext.js`：各块共用的上下文（开着的桌宠、路径、主窗口、平台差异，以及推给主窗口和设置页的几句话）。
+- `deskpet/petWindow.js`：窗口的一生——打开、显示隐藏、鼠标穿透、页面就绪、关闭、崩溃恢复、启动时恢复。
+- `deskpet/petGeometry.js`：位置和大小的算法（窗口尺寸、默认位置、在不在屏上、工作区、贴边判定）。
+- `deskpet/petDisplays.js`：显示器变化后摆回屏里，别的程序全屏时让位。
+- `deskpet/petMotion.js`：拖动跟手、松手甩出去、贴边、藏进屏幕边里再探出来、沿任务栏溜达。
+- `deskpet/petSizing.js`：缩放、换装、长宽比和页面偏好（透明度、气泡、免打扰）。
+- `deskpet/petMenus.js`：桌宠身上的右键菜单和托盘里的「桌宠」一项。
+- `deskpet/petStream.js`：把回复流转给桌宠页面，以及桌宠开着时追加的情绪标记和动作说明。
+- `deskpet/petMainBridge.js`：和主窗口之间的来回（桌宠发言经主窗口发送、问当前话题、跳到话题、叫出主窗口和设置页）。
+- `deskpet/petProactive.js`：主动开的新话题、闹钟、主窗口转来的工具审批。
+- `deskpet/petCommands.js`：快捷键、托盘和设置页触发的动作（显示隐藏、说话、切换助手、桌宠列表）。
+- `deskpet/petIpc.js`：桌宠这边所有 ipcMain 的注册，具体做什么交给上面各块。
 - `deskpet/petAssets.js`：`vcp-deskpet://` 协议放行哪些文件，一个助手有哪几套形象、页面要的资源地址。
 - `deskpet/petState.js`：`AppData\deskpet\state.json`（每个桌宠的位置、大小、形象、长宽比、藏边），读改写串行、先写临时文件再改名。
 - `deskpet/petPrefs.js`：设置的默认值和校验、尺寸计算（按形象长宽比定窗口），纯函数。`petControls.js` 管设置文件和全局快捷键。
@@ -156,7 +168,18 @@ Codex 桌宠可通过 `pet.json`、整个文件夹、ZIP 或标准命名的 `spr
 页面（`DeskPetmodules/`）：
 
 - `preload.js`：桌宠窗口专用 preload。
-- `deskpet.js`：页面主体：气泡、输入条和录音、拖动和点击、回复流接到情绪导演、主动说话、工具审批卡片、按档位降帧和隐藏时暂停。
+- `deskpet.js`：页面入口，只搭骨架：建好各模块共用的上下文、按顺序接线、管可见性和按档位降帧。下面这些是它拆出来的部分：
+  - `petBubble.js`：气泡的状态和渲染、提示条、漏掉的回复小红点、主动说话、情绪角标、气泡对准头顶。
+  - `petSpeech.js`：把 TTS 的播放进度接到气泡和嘴型上。
+  - `petComposer.js`：底部输入条和录音（听写）、展开收起、草稿、发送和排队。
+  - `petFiles.js`：拖进来的文件和粘贴的图片。
+  - `petStream.js`：回复流和心情接到情绪导演，按念到哪一句换表情。
+  - `petApprovals.js`：工具审批卡片。
+  - `petHit.js`：鼠标命中、形象和控件的范围、拖动和连点、摸头。
+  - `petWander.js`：什么时候想溜达，走起来告诉页面。
+  - `petPrefs.js`：主进程给的设置（大小、透明度、免打扰、只看不点）。
+  - `petReactions.js`：被碰到的反应和闲时小动作接到形象后端。
+  - `petBackendPick.js`：依次挑形象后端，和设置页卡片的快照。
 - 形象后端接口相同（`apply`、`probe`、`bounds`、`head`、`life`、`setActive`、`setPaused`…），按 Live2D → 网格立绘 → Codex 精灵动画 → 差分立绘 → 头像依次退：`live2dBackend.js`、`puppetBackend.js`（网格在 `puppet.js`）、`spriteBackend.js`、`imageBackend.js`（立绘和头像）。`petStage.js` 提供帧率档位、WebGL 和 Pixi 舞台、按轮廓摆放、按像素命中；精灵图使用 Canvas2D。`emotionLook.js` 是情绪的角标文字、色环和参数。
 
 `dockVisibility.js` 统一处理底部控件的悬停展开、延时收起、输入/录音/会话固定显示、拖动和穿透隐藏，并阻止旧的异步命中覆盖最新光标状态。空闲只留横条，有会话动态时横条变蓝；铃铛不会自动展开会话。规则见 `docs/deskpet/hover-session-card-20261009.md`。
