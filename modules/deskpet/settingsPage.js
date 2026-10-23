@@ -16,7 +16,7 @@ const cubismCore = require('./cubismCore');
 const expressionProfile = require('./expressionProfile');
 const zipImport = require('./zipImport');
 
-const KIND_LABEL = { live2d: 'Live2D', puppet: '网格立绘', portrait: '立绘' };
+const KIND_LABEL = { live2d: 'Live2D', puppet: '网格立绘', sprite: 'Codex 桌宠', portrait: '立绘' };
 const IMPORT_MAX_FILES = 400;
 const IMPORT_MAX_BYTES = 300 * 1024 * 1024;
 const IMAGE_FILTER = outfitStore.IMAGE_EXTENSIONS;
@@ -25,7 +25,7 @@ const IMAGE_FILTER = outfitStore.IMAGE_EXTENSIONS;
 function planImport(files) {
     const zip = files.find((file) => /\.zip$/i.test(file));
     if (zip) return { kind: 'zip', source: zip, name: path.basename(zip, path.extname(zip)) };
-    const model = files.find((file) => /\.(model3|puppet)\.json$/i.test(file));
+    const model = files.find((file) => /\.(model3|puppet)\.json$/i.test(file) || path.basename(file).toLowerCase() === 'pet.json');
     if (model) return { kind: 'folder', source: path.dirname(model), name: path.basename(path.dirname(model)) };
     const images = files.filter((file) => IMAGE_FILTER.includes(path.extname(file).slice(1).toLowerCase()));
     if (!images.length) return null;
@@ -188,7 +188,7 @@ function createSettingsPage({ electron, paths, controls, previews, pets, core })
         if (!pets.isAgentId(agentId)) return { success: false, error: '找不到这个助手' };
         if (Array.isArray(dropped)) return copyOutfit(agentId, await droppedPlan(dropped));
         const picked = await dialog.showOpenDialog(pets.mainWindow() || undefined, {
-            title: '导入形象：选 Live2D 模型（.model3.json 或整个 .zip 压缩包）、网格立绘（.puppet.json），或者一张/几张立绘图片',
+            title: '导入形象：Live2D、网格立绘、Codex 桌宠（pet.json）、ZIP 或立绘图片',
             properties: ['openFile', 'multiSelections'],
             filters: [
                 { name: '形象', extensions: ['json', 'zip', ...IMAGE_FILTER] },
@@ -200,7 +200,7 @@ function createSettingsPage({ electron, paths, controls, previews, pets, core })
     }
 
     async function copyOutfit(agentId, plan) {
-        if (!plan) return { success: false, error: '没认出来：请选 .model3.json、.puppet.json、.zip、图片，或者模型所在的文件夹' };
+        if (!plan) return { success: false, error: '没认出来：请选择模型文件、Codex 桌宠 pet.json、ZIP、图片或形象文件夹' };
         const base = path.join(agentRoot(agentId), 'deskpet');
         if (plan.kind === 'folder') {
             // 模型放在「下载」这种大文件夹里时，别把整个文件夹拷过去
@@ -228,7 +228,10 @@ function createSettingsPage({ electron, paths, controls, previews, pets, core })
                 await fs.ensureDir(target);
                 for (const file of plan.files) await fs.copy(file, path.join(target, path.basename(file)));
             }
-            if (!(await fs.pathExists(path.join(target, 'outfit.json')))) await fs.writeJson(path.join(target, 'outfit.json'), { name }, { spaces: 2 });
+            if (!(await fs.pathExists(path.join(target, 'outfit.json')))) {
+                const pet = await require('./codexPet').readCodexPet(target);
+                await fs.writeJson(path.join(target, 'outfit.json'), { name: pet?.name || name, ...(pet?.description ? { description: pet.description } : {}) }, { spaces: 2 });
+            }
             if (!(await outfitStore.inspectFolder(target))) {
                 await fs.remove(target);
                 return { success: false, error: '这个文件夹里没找到能用的模型或立绘' };

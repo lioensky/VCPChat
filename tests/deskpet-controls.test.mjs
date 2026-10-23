@@ -22,7 +22,7 @@ async function waitFor(check) {
 // ---- 尺寸和设置（纯函数） ----
 
 test('pet window sizes stay on a 4px grid so fractional display scaling does not round them up', () => {
-    assert.deepEqual(prefs.windowSizeForScale(1), { width: 360, height: 464 });
+    assert.deepEqual(prefs.windowSizeForScale(1), { width: 360, height: 424 });
     for (let scale = prefs.SCALE_MIN; scale <= prefs.SCALE_MAX + 1e-9; scale += 0.05) {
         const { width, height } = prefs.windowSizeForScale(scale);
         assert.equal(width % 4, 0, `width at ${scale}`);
@@ -36,13 +36,14 @@ test('pet window sizes stay on a 4px grid so fractional display scaling does not
 });
 
 test('the default size is smaller now; a size someone picked before looks the same as it did', () => {
-    // 第一版的 1 倍（360×580 的窗口）太大，现在的 1 倍是它的六成
-    assert.ok(prefs.characterBox().height < 300);
+    assert.ok(prefs.characterBox().height < 230, '第二版默认的 258 像素再缩小约 15%');
     assert.equal(prefs.savedScale(null), 1, '没记过：新的默认');
     assert.equal(prefs.savedScale({ x: 1, y: 2 }), 1);
     assert.equal(prefs.savedScale({ scale: 1 }), 1, '旧版没调过（1 倍）：也用新的默认');
-    assert.equal(prefs.savedScale({ scale: 1.5 }), 2.5, '旧版调到 1.5 倍：换算成同样的实际大小');
-    assert.equal(prefs.savedScale({ scale: 0.6 }), 1);
+    assert.ok(Math.abs(prefs.characterBox().height * prefs.savedScale({ scale: 1.5 }) - 430 * 1.5) < 6, '第一版自定义大小保持实际高度');
+    assert.ok(Math.abs(prefs.characterBox().height * prefs.savedScale({ scale: 0.6 }) - 430 * 0.6) < 6);
+    assert.equal(prefs.savedScale({ scale: 1, sizeVersion: 2 }), 1, '第二版默认大小跟随新的默认');
+    assert.ok(Math.abs(prefs.characterBox().height * prefs.savedScale({ scale: 1.5, sizeVersion: 2 }) - 258 * 1.5) < 6, '第二版自定义大小保持实际高度');
     assert.equal(prefs.savedScale({ scale: 2 }), prefs.SCALE_MAX, '换算后超出上限就到上限');
     assert.equal(prefs.savedScale({ scale: 1.5, sizeVersion: prefs.SIZE_VERSION }), 1.5, '新版记的原样用');
     // 旧版记的位置：换算后脚还站在原来的地方（站在任务栏上的不会悬空）
@@ -50,9 +51,13 @@ test('the default size is smaller now; a size someone picked before looks the sa
         const pos = prefs.legacyPosition(saved, aspect, scale);
         return [pos.x + prefs.windowSizeForScale(scale, aspect).width / 2, pos.y + prefs.UI_RESERVE + prefs.characterBox(aspect).height * scale];
     };
-    assert.deepEqual(feet({ x: 1000, y: 420, scale: 1 }, null, 1), [1180, 1000], '旧 1 倍：360×580 的窗口，脚在 y=1000');
+    const oldFeet = feet({ x: 1000, y: 420, scale: 1 }, null, 1);
+    assert.equal(oldFeet[0], 1180);
+    assert.ok(Math.abs(oldFeet[1] - 1000) < 1, '旧 1 倍的脚底仍在 y=1000');
+    const v2Feet = feet({ x: 1000, y: 420, scale: 1, sizeVersion: 2 }, null, 1);
+    assert.ok(Math.abs(v2Feet[1] - (420 + prefs.UI_RESERVE + 258)) < 1, '第二版脚底仍在原位');
     const [, tallFeet] = feet({ x: 500, y: 100, scale: 1.5 }, 2.4, prefs.savedScale({ scale: 1.5 }));
-    assert.ok(Math.abs(tallFeet - (100 + prefs.UI_RESERVE + (prefs.characterBox(2.4).height / 0.6) * 1.5)) < 1);
+    assert.ok(Math.abs(tallFeet - (100 + prefs.UI_RESERVE + (prefs.characterBox(2.4).height / 0.51) * 1.5)) < 1);
     assert.equal(prefs.legacyPosition({ x: 1, y: 2, scale: 1, sizeVersion: prefs.SIZE_VERSION }, null, 1), null, '新版的不动');
 });
 
@@ -291,7 +296,7 @@ test('ctrl+wheel resizes a pet around its feet and the size is remembered per ag
     assert.equal(prefsReply.scale, 1.1);
     // 另一个助手不受影响
     const coco = await again.open('Coco');
-    assert.deepEqual([coco.getBounds().width, coco.getBounds().height], [360, 464]);
+    assert.deepEqual([coco.getBounds().width, coco.getBounds().height], [360, 424]);
     again.handlers.closeAll();
 });
 
@@ -448,7 +453,7 @@ test('a smaller display shrinks a pet that no longer fits', async () => {
     await env.fake.handlers.get('deskpet-settings:set-scale')?.({ sender: null }, 'Nova', 2); // 不是设置窗口发的：不理
     assert.equal(pet.getBounds().width, 360);
     for (let i = 0; i < 16; i += 1) env.fake.listeners.get('deskpet:wheel-resize')(env.fromPet(pet), -100);
-    assert.ok(pet.getBounds().height > 800);
+    assert.ok(pet.getBounds().height > 680, '大于即将切换到的小屏工作区');
     env.fake.screen.displays = [{ workArea: { x: 0, y: 0, width: 1280, height: 680 } }];
     env.fake.screen.emit('display-metrics-changed');
     await sleep(450);

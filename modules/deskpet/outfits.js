@@ -20,6 +20,7 @@
 
 const path = require('path');
 const fs = require('fs-extra');
+const { readCodexPet } = require('./codexPet');
 
 const ROOT_ID = ':root';
 const PORTRAIT_ID = ':portrait';
@@ -29,7 +30,7 @@ const PORTRAIT_KEYS = ['neutral', 'calm', 'happy', 'excited', 'shy', 'affectiona
     'surprised', 'concerned', 'sad', 'tired', 'angry', 'thinking', 'tool', 'error', 'talk'];
 const MAX_OUTFITS = 40;
 const BUILTIN_PRESETS = ['tech', 'maid', 'chibi'];
-const KIND_LABEL = { live2d: 'Live2D', puppet: '网格立绘', portrait: '立绘' };
+const KIND_LABEL = { live2d: 'Live2D', puppet: '网格立绘', sprite: 'Codex 桌宠', portrait: '立绘' };
 
 async function readDir(dir) {
     try {
@@ -103,12 +104,12 @@ function collectPortraits(dir, files, { strict }) {
 }
 
 async function readOutfitInfo(dir) {
-    for (const name of ['outfit.json', 'deskpet.json']) {
+    for (const name of ['outfit.json', 'deskpet.json', 'pet.json']) {
         try {
             const info = await fs.readJson(path.join(dir, name));
             if (info && typeof info === 'object') {
                 return {
-                    name: typeof info.name === 'string' && info.name.trim() ? info.name.trim().slice(0, 40) : null,
+                    name: typeof (info.displayName || info.name) === 'string' ? (info.displayName || info.name).trim().slice(0, 40) : null,
                     order: Number.isFinite(info.order) ? info.order : null,
                     description: typeof info.description === 'string' && info.description.trim() ? info.description.trim().slice(0, 120) : null,
                 };
@@ -121,6 +122,7 @@ async function readOutfitInfo(dir) {
 function kindOf(outfit, hasCore) {
     if (outfit.live2d && hasCore) return 'live2d';
     if (outfit.puppet) return 'puppet';
+    if (outfit.sprite) return 'sprite';
     if (outfit.portraits) return 'portrait';
     return outfit.live2d ? 'live2d' : null;
 }
@@ -131,11 +133,13 @@ async function scanFolder(dir, { root = false } = {}) {
     const maxDepth = root ? 0 : 3;
     const live2d = await findBySuffix(dir, '.model3.json', 0, maxDepth);
     const puppet = await findBySuffix(dir, '.puppet.json', 0, maxDepth);
+    const sprite = await readCodexPet(dir);
+    const hasPetManifest = await fs.pathExists(path.join(dir, 'pet.json'));
     const files = (await readDir(dir)).filter((e) => e.isFile()).map((e) => e.name);
     // 有模型的文件夹里散放着贴图，只认按约定起名的立绘
-    const portraits = collectPortraits(dir, files, { strict: root || Boolean(live2d || puppet) });
-    if (!live2d && !puppet && !portraits) return null;
-    return { live2d, puppet, portraits };
+    const portraits = collectPortraits(dir, files, { strict: root || Boolean(live2d || puppet || sprite || hasPetManifest) });
+    if (!live2d && !puppet && !sprite && !portraits) return null;
+    return { live2d, puppet, sprite, portraits };
 }
 
 /**
@@ -200,6 +204,7 @@ async function listOutfits(agentRoot, { hasCore = false, builtInDir = null, pref
 function defaultOutfit(outfits) {
     const choose = (choices) => choices.find((o) => o.kind === 'live2d' && !o.missingCore)
         || choices.find((o) => o.kind === 'puppet')
+        || choices.find((o) => o.kind === 'sprite')
         || choices.find((o) => o.id !== PORTRAIT_ID)
         || choices[0]
         || null;
@@ -218,6 +223,7 @@ function outfitDescription(outfit) {
     if (outfit.needsCore) return 'Live2D 模型。装好 Cubism Core 前先用立绘代替（见下方「Live2D 支持」）';
     if (outfit.kind === 'live2d') return 'Live2D 模型，会眨眼、跟着光标看、按情绪换表情';
     if (outfit.kind === 'puppet') return '网格立绘，一张图切块做成的，会呼吸、眨眼、对口型';
+    if (outfit.kind === 'sprite') return `逐帧动画，支持待机、拖动、挥手、跳跃和任务状态${outfit.sprite.version === 2 ? '，含 16 个视线方向' : ''}`;
     const faces = Object.keys(outfit.portraits || {}).filter((key) => PORTRAIT_KEYS.includes(key) && key !== 'talk').length;
     return faces ? `差分立绘，${faces + 1} 张表情跟着回复换` : '一张立绘，会呼吸、歪头、打盹';
 }
@@ -226,7 +232,7 @@ function outfitDescription(outfit) {
 async function inspectFolder(dir) {
     const scanned = await scanFolder(dir);
     if (!scanned) return null;
-    return { kind: scanned.live2d ? 'live2d' : scanned.puppet ? 'puppet' : 'portrait' };
+    return { kind: scanned.live2d ? 'live2d' : scanned.puppet ? 'puppet' : scanned.sprite ? 'sprite' : 'portrait' };
 }
 
 /** 菜单、设置页里显示的那一行。 */

@@ -63,9 +63,10 @@ async function newestIn(dir, depth = 0, budget = { files: 400 }) {
 
 /** 形象有没有变：主文件（模型、网格立绘、默认立绘）的路径、大小、修改时间，模型所在文件夹里最新的改动，加上实际会用的种类。 */
 async function fingerprintOf(outfit) {
-    const modelDir = outfit.live2d || outfit.puppet ? path.dirname(outfit.live2d || outfit.puppet) : null;
+    const model = outfit.live2d || outfit.puppet || outfit.sprite?.sheet;
+    const modelDir = model ? path.dirname(model) : null;
     const parts = [outfit.kind || '', await statKey(outfit.live2d), await statKey(outfit.puppet), await statKey(outfit.portraits?.default),
-        Math.round(await newestIn(modelDir))];
+        await statKey(outfit.sprite?.manifest), await statKey(outfit.sprite?.sheet), Math.round(await newestIn(modelDir))];
     return crypto.createHash('sha1').update(parts.join('|')).digest('hex').slice(0, 16);
 }
 

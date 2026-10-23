@@ -24,6 +24,7 @@ import { TOP_RESERVE, CONTEXT_LOSS_LIMIT, recentContextLosses } from 'vcp-deskpe
 import { createLive2DBackend, live2DFailureText } from 'vcp-deskpet://pet/app/live2dBackend.js';
 import { createPuppetBackend } from 'vcp-deskpet://pet/app/puppetBackend.js';
 import { createImageBackend } from 'vcp-deskpet://pet/app/imageBackend.js';
+import { createSpriteBackend } from 'vcp-deskpet://pet/app/spriteBackend.js';
 import { createLifeFx } from 'vcp-deskpet://pet/app/lifeFx.js';
 import { dockHitArea, containsPoint } from 'vcp-deskpet://pet/app/dockHitArea.js';
 import { createSessionCard } from 'vcp-deskpet://pet/app/sessionCard.js';
@@ -1113,6 +1114,7 @@ function pixiEnv() {
         talkLevel,
         vowels: () => speech.vowels(),
         onHit: reportHit,
+        activity: () => ({ approval: !$('approvalCard').hidden, walk: walking || '' }),
         onContextLost: () => notice('显卡渲染中断，正在重新载入桌宠…', { ms: 4000 }),
     };
 }
@@ -1161,6 +1163,15 @@ async function start() {
             console.error('[DeskPet] 网格立绘加载失败，改用立绘：', error);
             $('live2dCanvas').hidden = true;
             notice(error.userFacing ? error.message : `网格立绘加载失败：${error.message}`, { error: true, ms: 8000 });
+        }
+    }
+    if (!backend && assets.sprite) {
+        try {
+            backend = await createSpriteBackend(assets, pixiEnv());
+        } catch (error) {
+            console.error('[DeskPet] 精灵动画加载失败：', error);
+            $('live2dCanvas').hidden = true;
+            notice(`精灵动画加载失败：${error.message}`, { error: true, ms: 8000 });
         }
     }
     if (!backend) backend = createImageBackend(assets, { onHit: reportHit, frame });

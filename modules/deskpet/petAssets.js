@@ -142,6 +142,7 @@ function createPetAssets({ paths, stagedCorePath = () => null }) {
             outfits: outfits.map(outfitSummary),
             live2d: outfit?.live2d ? { modelUrl: agentUrl(agentId, outfit.live2d) } : null,
             puppet: outfit?.puppet ? { rigUrl: agentUrl(agentId, outfit.puppet) } : null,
+            sprite: outfit?.sprite ? { sheetUrl: agentUrl(agentId, outfit.sprite.sheet), version: outfit.sprite.version } : null,
             coreUrl: hasCore ? `${SCHEME}://pet/core/live2dcubismcore.min.js?v=${Math.round(coreStat.mtimeMs)}` : null,
             corePath: coreFilePath(),
             portraits: portraitUrls(agentId, outfit?.portraits || fallback),

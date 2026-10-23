@@ -9,12 +9,13 @@
 
 // 1 倍大小时角色占的区域；上方另外留出气泡和输入框的高度（与页面 TOP_RESERVE 一致）。
 // 还不知道形象的长宽比（头像、第一次打开）时用这一个。
-// 第一版的 1 倍太占地方，第二版（SIZE_VERSION 2）把角色区整体缩到原来的六成。
-const SIZE_FACTOR = 0.6;
-const SIZE_VERSION = 2;
+// 第三版在第二版基础上再缩小 15%；控件保留可点击的尺寸。
+const SIZE_FACTOR = 0.51;
+const PREVIOUS_SIZE_FACTOR = 0.6;
+const SIZE_VERSION = 3;
 const BASE_CHARACTER = Object.freeze({ width: 360 * SIZE_FACTOR, height: 430 * SIZE_FACTOR });
 // 知道形象的长宽比（高 ÷ 宽，按不透明像素算）以后，角色区跟着比例走：
-// 半身立绘、Q 版（高宽比 1.6 以内）和以前一样高，宽度按比例收；竖长的全身像（2.6 以上）高到 324，
+// 半身立绘、Q 版（高宽比 1.6 以内）高度一致，宽度按比例收；竖长的全身像（2.6 以上）高约 275，
 // 中间平滑过渡。全身像的人比半身像小一截是自然的，但不至于高出半个屏幕。
 const FIGURE = Object.freeze({ tallFrom: 1.6, tallTo: 2.6, tallHeight: 540 * SIZE_FACTOR, maxWidth: 420 * SIZE_FACTOR, sideRoom: 1.15 });
 const UI_RESERVE = 150;
@@ -106,7 +107,7 @@ function characterBox(aspect) {
 }
 
 /**
- * 旧版（sizeVersion < 2）记下的窗口位置换到新尺寸下：旧窗口没有脚下的余量、1 倍也更大，
+ * 旧版记下的窗口位置换到新尺寸下：按对应版本的角色大小还原脚底中点，
  * 原样用左上角的话脚会离开原来站的地方（站在任务栏上的会悬空）。按角色脚底中点对齐算新的左上角。
  * scale 是换算后的新倍数；不是旧版记录、没有位置时返回 null。
  */
@@ -116,8 +117,9 @@ function legacyPosition(saved, aspect, scale) {
     if (!Number.isFinite(saved.x) || !Number.isFinite(saved.y) || saved.scale == null || !Number.isFinite(Number(saved.scale))) return null;
     const raw = Number(saved.scale);
     const box = characterBox(aspect);
-    const oldWidth = Math.max(280, roundToGrid((box.width / SIZE_FACTOR) * raw));
-    const oldFeet = saved.y + UI_RESERVE + (box.height / SIZE_FACTOR) * raw;
+    const oldFactor = Number(saved.sizeVersion) >= 2 ? PREVIOUS_SIZE_FACTOR : 1;
+    const oldWidth = Math.max(Number(saved.sizeVersion) >= 2 ? MIN_WIDTH : 280, roundToGrid((box.width / SIZE_FACTOR) * oldFactor * raw));
+    const oldFeet = saved.y + UI_RESERVE + (box.height / SIZE_FACTOR) * oldFactor * raw;
     const size = windowSizeForScale(scale, aspect);
     return {
         x: Math.round(saved.x + (oldWidth - size.width) / 2),
@@ -151,7 +153,8 @@ function savedScale(saved) {
     if (!Number.isFinite(raw)) return 1;
     if (Number(saved.sizeVersion) >= SIZE_VERSION) return clampScale(raw);
     if (Math.abs(raw - 1) < 0.001) return 1;
-    return clampScale(raw / SIZE_FACTOR);
+    const oldFactor = Number(saved.sizeVersion) >= 2 ? PREVIOUS_SIZE_FACTOR : 1;
+    return clampScale(raw * oldFactor / SIZE_FACTOR);
 }
 
 function fitScale(scale, workArea, aspect) {

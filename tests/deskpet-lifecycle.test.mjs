@@ -169,7 +169,7 @@ test('a pet left on an unplugged display comes back to the primary one', async (
     await sleep(500);
     const b = pet.getBounds();
     assert.ok(b.x + b.width <= 1600 && b.x >= 0, `x=${b.x} 应回到主屏`);
-    assert.deepEqual([b.width, b.height], [360, 464], '尺寸恢复成桌宠窗口的固定大小');
+    assert.deepEqual([b.width, b.height], [360, 424], '尺寸恢复成桌宠窗口的固定大小');
     handlers.closeAll();
 });
 
@@ -590,7 +590,7 @@ test('a pet saved by the old size version opens with its feet where they were', 
     const pet = await open();
     const b = pet.getBounds();
     const prefs = require('../modules/deskpet/petPrefs.js');
-    assert.equal(b.y + prefs.UI_RESERVE + prefs.characterBox().height, 880, '脚底不动');
+    assert.ok(Math.abs(b.y + prefs.UI_RESERVE + prefs.characterBox().height - 880) < 1, '脚底不动（窗口坐标取整）');
     assert.equal(b.x + b.width / 2, 1000 + 360 / 2, '左右也按中点对齐');
     await sleep(50);
     const saved = JSON.parse(fs.readFileSync(path.join(root, 'deskpet', 'state.json'), 'utf8')).Nova;

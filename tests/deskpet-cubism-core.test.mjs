@@ -142,18 +142,20 @@ test('installer: verified 5.x replaces the Core, Core 6 and broken files keep th
     assert.equal(probed.length, 3);
 });
 
-test('installer runs one install at a time', async () => {
+test('installer runs one install at a time', { timeout: 5000 }, async () => {
     const appDataRoot = tempDir();
     let release;
+    let entered;
+    const probeReady = new Promise(resolve => { entered = resolve; });
     const installer = core.createCoreInstaller({
         appDataRoot,
         fetch: async () => { throw new Error('unused'); },
-        probe: () => new Promise((resolve) => { release = () => resolve(V5); }),
+        probe: () => new Promise((resolve) => { release = () => resolve(V5); entered(); }),
     });
     const file = path.join(appDataRoot, 'live2dcubismcore.min.js.src');
     fs.writeFileSync(file, FAKE_CORE);
     const running = installer.installFromFile(file);
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await probeReady;
     assert.equal((await installer.status()).busy, true);
     assert.match((await installer.installFromFile(file)).error, /正在安装/);
     release();

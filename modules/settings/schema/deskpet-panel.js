@@ -190,7 +190,7 @@ export function buildDeskPetPanel(doc) {
     const spacer = el(doc, 'span', 'dps-spacer');
     const refreshBtn = button(doc, 'dps-icon-btn', undefined, { title: '重新扫描形象、重画预览', 'aria-label': '刷新' });
     refreshBtn.append(icon(doc, 'refresh'));
-    const importBtn = button(doc, 'dps-btn', '导入形象', { title: '选 Live2D 模型（.model3.json 或压缩包 .zip）、网格立绘（.puppet.json），或者一张/几张立绘图片；也可以直接拖到下面的形象列表上' });
+    const importBtn = button(doc, 'dps-btn', '导入形象', { title: '选择 Live2D、网格立绘、Codex 桌宠的 pet.json、ZIP 或立绘；也可以直接拖入文件夹' });
     head.append(headTitle, agentSelect, spacer, refreshBtn, importBtn);
     const grid = el(doc, 'div', 'dps-grid');
     grid.setAttribute('role', 'radiogroup');
@@ -537,7 +537,7 @@ export function buildDeskPetPanel(doc) {
             sizeValue.textContent = percent(c.scale);
         }
         sizeTitle.textContent = `${c.name} 的大小`;
-        folderHint.textContent = `往里面放 Live2D 模型、网格立绘或立绘图片，每个子文件夹是一套形象：${c.folder}`;
+        folderHint.textContent = `放入 Live2D、网格立绘、Codex 桌宠或立绘，每个子文件夹是一套形象：${c.folder}`;
     }
 
     let pendingScale = null;
@@ -613,7 +613,7 @@ export function buildDeskPetPanel(doc) {
                 grid.append(card);
             });
             if (!c.outfits.length) {
-                const empty = el(doc, 'p', 'dps-empty', '这个助手还没有形象：现在显示的是头像。点「导入形象」放一个 Live2D 模型或一张立绘进来。');
+                const empty = el(doc, 'p', 'dps-empty', '这个助手还没有形象：现在显示的是头像。可以导入 Live2D、Codex 桌宠或立绘。');
                 grid.append(empty);
             }
         }

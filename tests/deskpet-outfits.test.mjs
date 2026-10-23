@@ -91,7 +91,7 @@ test('outfit ids stored in state.json stay plain folder names', () => {
 // ---- 全身显示：窗口跟着形象的长宽比 ----
 
 test('tall full-body figures get a taller, narrower window, chibi ones a shorter one, unknown stays as before', () => {
-    assert.deepEqual(prefs.windowSizeForScale(1), { width: 360, height: 464 });
+    assert.deepEqual(prefs.windowSizeForScale(1), { width: 360, height: 424 });
     assert.deepEqual(prefs.windowSizeForScale(1, null), prefs.windowSizeForScale(1));
     const full = prefs.windowSizeForScale(1, 2.8);
     const chibi = prefs.windowSizeForScale(1, 1.3);
@@ -105,7 +105,7 @@ test('tall full-body figures get a taller, narrower window, chibi ones a shorter
             assert.equal(size.height % 4, 0);
         }
     }
-    assert.ok(prefs.maxScaleForWorkArea({ height: 1040 }, 2.8) < prefs.maxScaleForWorkArea({ height: 1040 }), '全身像在同一块屏上能放的最大档位更小');
+    assert.ok(prefs.maxScaleForWorkArea({ height: 800 }, 2.8) < prefs.maxScaleForWorkArea({ height: 800 }), '全身像在放不下最高档位的屏上可用档位更小');
     assert.equal(prefs.normalizeAspect(2.8371), 2.84);
     for (const bad of [0, -1, NaN, '1.5x', 100]) assert.equal(prefs.normalizeAspect(bad), null, String(bad));
 });

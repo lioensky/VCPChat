@@ -893,6 +893,8 @@ body[data-walk] #stage {
   animation: pet-walk 520ms ease-in-out infinite;
 }
 
+body[data-walk][data-backend="sprite"] #stage { animation: none; }
+
 body[data-walk="left"] #stage { --walk-lean: -2.5deg; }
 body[data-walk="right"] #stage { --walk-lean: 2.5deg; }
 

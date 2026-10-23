@@ -10,7 +10,7 @@ const { Readable, Transform } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
 const { createInflateRaw } = require('node:zlib');
 
-const MODEL_RE = /\.(model3|puppet)\.json$/i;
+const MODEL_RE = /(?:\.(model3|puppet)\.json|(?:^|\/)pet\.json)$/i;
 const SIZE_ERROR = '压缩包解开后太大了，先解压出模型所在的文件夹再导入';
 
 // JSZip 3.10 的加载结果保留压缩数据和大小。集中检查这个内部格式，格式变更时拒绝导入，
@@ -97,7 +97,7 @@ async function extractOutfitZip(buffer, targetDir, { limits, imageExtensions, JS
         return { success: false, error: '压缩包打不开（可能已损坏，或不是 .zip）' };
     }
     const plan = planZip(zip, imageExtensions);
-    if (!plan) return { success: false, error: '压缩包里没找到 .model3.json、.puppet.json 或图片' };
+    if (!plan) return { success: false, error: '压缩包里没找到模型、Codex 桌宠 pet.json 或图片' };
     if (plan.entries.length > limits.files) return { success: false, error: '压缩包里的文件太多了，先解压出模型所在的文件夹再导入' };
     const target = path.resolve(targetDir);
     let bytes = 0;

@@ -97,7 +97,9 @@ AppData\Agents\<AgentId>\deskpet\
 - 菜单里显示文件夹名；想换个名字、排顺序或写一句介绍，在文件夹里放 `outfit.json`：`{ "name": "女仆", "order": 2, "description": "周末穿的" }`（`order` 小的在前，没写的按名字排；`description` 显示在设置页卡片上，最多 120 字，不写就按形象类型给一句）。
 - 设置页卡片上的快照存在 `AppData\deskpet\previews\<AgentId>\`，形象文件变了会自动重拍，删掉也没关系。
 - 以前直接放在 `deskpet\` 下的模型算一套「默认」；助手目录里的 `portrait.*.png` 算一套「立绘」，排在最后。老数据不用挪。
-- 没选过时和以前一样：有 Core 先用 Live2D，再是网格立绘，再是立绘。选过的那套删了就回到这个默认。
+- 没选过时：有 Core 先用 Live2D，再是网格立绘、Codex 精灵动画、立绘。选过的那套删了就回到这个默认。
+
+Codex 桌宠可通过 `pet.json`、整个文件夹、ZIP 或标准命名的 `spritesheet.png` / `spritesheet.webp` 导入；支持 8×9 的 v1 和含 16 个视线方向的 8×11 v2。`spriteBackend.js` 使用 Canvas2D 播放逐帧动画，共用桌宠的聊天、会话卡片和审批界面，不需要 Cubism Core。任务处理中播放工作行，审批时播放等待行，拖动/移动播放对应方向行。素材保留原有动作，没有额外的连续口型；格式和尺寸见 `docs/deskpet-live2d-v1.md`。
 - 一套里同时有 Live2D 和网格立绘时，没放 Cubism Core 就用网格立绘；Live2D 那套没有自己的立绘时，用不了 Live2D 就退回助手目录的立绘。
 - 有模型或网格立绘的文件夹里，只认按约定起名的立绘（`portrait.*` 或情绪键），贴图不会被当成立绘。
 - 每个桌宠选了哪套、各套量出来的长宽比记在 `AppData\deskpet\state.json`（`outfit`、`figures`）。
