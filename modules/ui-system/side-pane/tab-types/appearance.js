@@ -7,7 +7,6 @@ export function defineAppearanceTabType({ document: doc, window: win, sidePaneCo
     }, ['openAppearanceTab', 'closeAppearanceTab'], { label: '外观与布局', notify: (message, type) => uiHelper?.showToastNotification?.(message, type) });
     return Object.freeze({
         kind: 'appearance', label: '外观与布局', icon: 'palette', searchHint: '外观 主题 圆角 预设 胶囊 布局',
-        entry: { id: 'appearance', order: 75, open: () => provider.openAppearanceTab() },
         provider
     });
 }
