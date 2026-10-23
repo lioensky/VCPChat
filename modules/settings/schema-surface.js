@@ -46,7 +46,9 @@ export function applySchemaSurface(form, doc = form?.ownerDocument || undefined)
     if (!form || !doc) return [];
     const replacedKeys = [];
     for (const sectionDescriptor of schemaSurfaceSections()) {
-        const host = form.querySelector(`#section-${sectionDescriptor.key}`) || appendSectionHost(form, doc, sectionDescriptor.key);
+        // 核心分区的壳在 main.html 里，缺了就不渲染；只有可选功能注册的分区由这里补壳
+        const host = form.querySelector(`#section-${sectionDescriptor.key}`)
+            || (SCHEMA_SECTIONS.includes(sectionDescriptor) ? null : appendSectionHost(form, doc, sectionDescriptor.key));
         if (!host || host.dataset.vcpSchemaRendered === 'true') continue;
         host.replaceChildren(...renderSchemaSection(sectionDescriptor, doc));
         host.dataset.vcpSchemaRendered = 'true';
