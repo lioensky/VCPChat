@@ -29,7 +29,7 @@ const IMAGE_EXTENSIONS = ['png', 'webp', 'jpg', 'jpeg', 'gif', 'avif'];
 const PORTRAIT_KEYS = ['neutral', 'calm', 'happy', 'excited', 'shy', 'affectionate', 'curious',
     'surprised', 'concerned', 'sad', 'tired', 'angry', 'thinking', 'tool', 'error', 'talk'];
 const MAX_OUTFITS = 40;
-const BUILTIN_PRESETS = ['tech', 'maid', 'chibi'];
+const BUILTIN_NOVA_PRESETS = ['maid', 'chibi'];
 const KIND_LABEL = { live2d: 'Live2D', puppet: '网格立绘', sprite: 'Codex 桌宠', portrait: '立绘' };
 
 async function readDir(dir) {
@@ -146,7 +146,7 @@ async function scanFolder(dir, { root = false } = {}) {
  * 这个助手所有的形象，排好顺序：deskpet/ 根目录那套、各个文件夹（按 order 再按名字）、助手目录的立绘。
  * 每项 { id, name, kind, live2d, puppet, portraits }，kind 是实际会用的那种（live2d / puppet / portrait）。
  */
-async function listOutfits(agentRoot, { hasCore = false, builtInDir = null, preferBuiltIn = false } = {}) {
+async function listOutfits(agentRoot, { hasCore = false, builtInDir = null, builtInSpriteDir = null, preferBuiltIn = false } = {}) {
     const deskpetDir = path.join(agentRoot, 'deskpet');
     const outfits = [];
     const root = await scanFolder(deskpetDir, { root: true });
@@ -171,21 +171,20 @@ async function listOutfits(agentRoot, { hasCore = false, builtInDir = null, pref
     // Bundled Nova is read directly from the application; never copy over agent-owned files.
     // Existing custom outfits remain the default, while a new Nova gets the bundled model.
     const hasCustomOutfit = outfits.some((outfit) => outfit.id !== PORTRAIT_ID);
-    if (builtInDir) {
-        for (const preset of BUILTIN_PRESETS) {
-            const dir = path.join(builtInDir, preset);
-            const scanned = await scanFolder(dir);
-            if (!scanned) continue;
-            const info = await readOutfitInfo(dir);
-            outfits.push({
-                id: `builtin:nova-${preset}`,
-                name: info.name || `Nova · ${preset}`,
-                description: info.description || null,
-                builtIn: true,
-                preferred: preferBuiltIn && !hasCustomOutfit && preset === 'tech',
-                ...scanned,
-            });
-        }
+    const bundled = builtInDir ? BUILTIN_NOVA_PRESETS.map((preset) => ({ id: `builtin:nova-${preset}`, name: `Nova · ${preset}`, dir: path.join(builtInDir, preset) })) : [];
+    if (builtInSpriteDir) bundled.push({ id: 'builtin:codex-keqing', name: '刻晴', dir: path.join(builtInSpriteDir, 'keqing') });
+    for (const preset of bundled) {
+        const scanned = await scanFolder(preset.dir);
+        if (!scanned) continue;
+        const info = await readOutfitInfo(preset.dir);
+        outfits.push({
+            id: preset.id,
+            name: info.name || preset.name,
+            description: info.description || null,
+            builtIn: true,
+            preferred: preferBuiltIn && !hasCustomOutfit && preset.id === 'builtin:nova-maid',
+            ...scanned,
+        });
     }
     for (const outfit of outfits) {
         outfit.kind = kindOf(outfit, hasCore);
