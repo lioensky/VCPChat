@@ -630,6 +630,16 @@
   gap: 8px;
 }
 
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-core-consent {
+  margin-right: auto;
+  color: var(--dps-ink-3);
+  font-size: var(--vcp-ui-text-sm);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-core-consent .dps-link {
+  margin: 0 0 0 4px;
+}
+
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-core.is-wanted {
   border-color: color-mix(in srgb, var(--dps-accent) 45%, var(--dps-line));
 }

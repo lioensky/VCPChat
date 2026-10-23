@@ -47,6 +47,18 @@ function fakeFetch(body, { status = 200, length = body.length } = {}) {
     return { fetch, calls };
 }
 
+// 按地址返回不同内容：单独的 Core 一个结果，SDK 压缩包一个结果
+function routedFetch(routes) {
+    const calls = [];
+    const fetch = async (url, init) => {
+        calls.push({ url, init });
+        const route = routes[url];
+        if (!route) throw new Error(`unexpected ${url}`);
+        return fakeFetch(route.body, route).fetch(url, init);
+    };
+    return { fetch, calls };
+}
+
 test('SDK release parsing: 5-r.5 and later carry Core 6 and are refused', () => {
     assert.deepEqual(core.sdkReleaseOf('CubismSdkForWeb-5-r.4/Core/live2dcubismcore.min.js'), { major: 5, revision: 4 });
     assert.equal(core.sdkReleaseOf('Core/live2dcubismcore.min.js'), null);
@@ -108,7 +120,11 @@ test('installer: verified 5.x replaces the Core, Core 6 and broken files keep th
     let version = V5;
     const probed = [];
     const zip = await sdkZip('CubismSdkForWeb-5-r.4', { 'Core/live2dcubismcore.min.js': FAKE_CORE });
-    const { fetch, calls } = fakeFetch(zip);
+    // 单独的 Core 下不下来，退回 SDK 压缩包
+    const { fetch, calls } = routedFetch({
+        [core.CORE_URL]: { body: Buffer.from('gone'), status: 404 },
+        [core.SDK_URL]: { body: zip },
+    });
     const installer = core.createCoreInstaller({
         appDataRoot,
         fetch,
@@ -123,7 +139,7 @@ test('installer: verified 5.x replaces the Core, Core 6 and broken files keep th
     const first = await installer.installOfficial((p) => progress.push(p.phase));
     assert.equal(first.success, true, first.error);
     assert.equal(first.version, '5.0.1024');
-    assert.equal(calls[0].url, core.SDK_URL);
+    assert.deepEqual(calls.map((c) => c.url), [core.CORE_URL, core.SDK_URL]);
     assert.ok(progress.includes('download') && progress.includes('verify'));
     assert.equal(fs.readFileSync(installer.corePath, 'utf8'), FAKE_CORE);
     assert.equal(fs.existsSync(installer.stagedPath), false);
@@ -140,6 +156,34 @@ test('installer: verified 5.x replaces the Core, Core 6 and broken files keep th
     assert.equal(fs.readFileSync(installer.corePath, 'utf8'), FAKE_CORE, 'the working Core stays');
     assert.equal(fs.existsSync(installer.stagedPath), false);
     assert.equal(probed.length, 3);
+});
+
+test('installer: the standalone Core is used when it is 5.x, a Core 6 there falls back to the pinned SDK', async () => {
+    const standalone = `${FAKE_CORE}/*standalone*/`;
+    const zip = await sdkZip('CubismSdkForWeb-5-r.4', { 'Core/live2dcubismcore.min.js': FAKE_CORE });
+    const routes = { [core.CORE_URL]: { body: Buffer.from(standalone) }, [core.SDK_URL]: { body: zip } };
+
+    const direct = routedFetch(routes);
+    const sources = [];
+    const quick = core.createCoreInstaller({ appDataRoot: tempDir(), fetch: direct.fetch, probe: async () => V5 });
+    const ok = await quick.installOfficial((p) => sources.push(p.source));
+    assert.equal(ok.success, true, ok.error);
+    assert.equal(ok.sdk, null);
+    assert.deepEqual(direct.calls.map((c) => c.url), [core.CORE_URL], 'the SDK zip is not downloaded');
+    assert.ok(sources.length && sources.every((s) => s === 'core'));
+    assert.equal(fs.readFileSync(quick.corePath, 'utf8'), standalone);
+
+    const latest = routedFetch(routes);
+    const fallback = core.createCoreInstaller({
+        appDataRoot: tempDir(),
+        fetch: latest.fetch,
+        probe: async (file) => (fs.readFileSync(file, 'utf8') === standalone ? V6 : V5),
+    });
+    const result = await fallback.installOfficial();
+    assert.equal(result.success, true, result.error);
+    assert.equal(result.sdk, '5-r.4');
+    assert.deepEqual(latest.calls.map((c) => c.url), [core.CORE_URL, core.SDK_URL]);
+    assert.equal(fs.readFileSync(fallback.corePath, 'utf8'), FAKE_CORE);
 });
 
 test('installer runs one install at a time', { timeout: 5000 }, async () => {

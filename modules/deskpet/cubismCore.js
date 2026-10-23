@@ -1,6 +1,7 @@
 // modules/deskpet/cubismCore.js
-// Live2D 用的 Cubism Core：Live2D 的专有组件，VCPChat 不附带。设置页「Live2D 支持」一栏让用户自己装：
-//   - 从 Live2D 官网下载锁定版本的 SDK（5-r.4，Core 5.x；5-r.5 起是 Core 6，渲染引擎还不支持），只取出 Core；
+// Live2D 用的 Cubism Core：Live2D 的专有组件，VCPChat 不附带。设置页「Live2D 支持」一栏一键装好：
+//   - 先从 Live2D 官网下载单独发布的 Core（两百来 KB）；那里总是最新版，哪天换成 Core 6（渲染引擎还不支持）
+//     或者下不下来，再退回锁定版本的整个 SDK（5-r.4，Core 5.x；5-r.5 起是 Core 6），只取出 Core；
 //   - 或者选一份本地已经下好的 SDK 压缩包 / live2dcubismcore.min.js。
 // 新文件先放到暂存位置，让一个隐藏的沙箱页面真的加载一遍、报出版本号，确认是 5.x 才替换正在用的 Core，
 // 坏文件、Core 6 不会把原来能用的换掉。
@@ -14,6 +15,7 @@ const fs = require('fs-extra');
 
 const SDK_RELEASE = '5-r.4';
 const SDK_URL = `https://cubism.live2d.com/sdk-web/bin/CubismSdkForWeb-${SDK_RELEASE}.zip`;
+const CORE_URL = 'https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js';
 const LINKS = {
     license: 'https://www.live2d.com/eula/live2d-proprietary-software-license-agreement_en.html',
     download: 'https://www.live2d.com/sdk/download/web/',
@@ -192,11 +194,24 @@ function createCoreInstaller({ appDataRoot, fetch: fetchImpl, probe }) {
         return busy;
     }
 
+    // 进度里的 source：core 是单独的 Core 文件，sdk 是退回去下的整个 SDK
     function installOfficial(onProgress) {
         return exclusive(async () => {
-            onProgress?.({ phase: 'download', received: 0, total: 0 });
-            const zip = await download(fetchImpl, SDK_URL, { onProgress: (p) => onProgress?.({ phase: 'download', ...p }) });
-            onProgress?.({ phase: 'verify' });
+            try {
+                onProgress?.({ phase: 'download', source: 'core', received: 0, total: 0 });
+                const source = (await download(fetchImpl, CORE_URL, {
+                    maxBytes: MAX_CORE_BYTES,
+                    onProgress: (p) => onProgress?.({ phase: 'download', source: 'core', ...p }),
+                })).toString('utf8');
+                if (!looksLikeCore(source)) throw userError('官网返回的不是 Cubism Core');
+                onProgress?.({ phase: 'verify', source: 'core' });
+                return await install({ source, release: null }, 'official');
+            } catch (error) {
+                console.warn('[DeskPet] standalone Cubism Core unusable, falling back to the SDK:', error.message);
+            }
+            onProgress?.({ phase: 'download', source: 'sdk', received: 0, total: 0 });
+            const zip = await download(fetchImpl, SDK_URL, { onProgress: (p) => onProgress?.({ phase: 'download', source: 'sdk', ...p }) });
+            onProgress?.({ phase: 'verify', source: 'sdk' });
             const core = await extractCoreFromZip(zip);
             return install(core, 'official');
         });
@@ -212,6 +227,7 @@ function createCoreInstaller({ appDataRoot, fetch: fetchImpl, probe }) {
 module.exports = {
     SDK_RELEASE,
     SDK_URL,
+    CORE_URL,
     LINKS,
     CORE_V5,
     CORE_V6,

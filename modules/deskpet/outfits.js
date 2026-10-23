@@ -218,7 +218,7 @@ function pickOutfit(outfits, wanted) {
 /** 设置页卡片上的一句介绍：outfit.json 里写了就用它，没写按种类说。 */
 function outfitDescription(outfit) {
     if (outfit.description) return outfit.description;
-    if (outfit.needsCore) return 'Live2D 模型。装好 Cubism Core 前先用立绘代替（见下方「Live2D 支持」）';
+    if (outfit.needsCore) return 'Live2D 模型。还缺 Cubism Core，先用立绘代替；在下方「Live2D 支持」一键启用';
     if (outfit.kind === 'live2d') return 'Live2D 模型，会眨眼、跟着光标看、按情绪换表情';
     if (outfit.kind === 'puppet') return '网格立绘，一张图切块做成的，会呼吸、眨眼、对口型';
     if (outfit.kind === 'sprite') return `逐帧动画，支持待机、拖动、挥手、跳跃和任务状态${outfit.sprite.version === 2 ? '，含 16 个视线方向' : ''}`;

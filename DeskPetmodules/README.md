@@ -35,7 +35,7 @@
 
 ### 1. 放 Live2D 模型（可选）
 
-1. **Cubism Core。** 最简单：全局设置「桌宠」分区的「Live2D 支持」点「同意并下载」，会从 Live2D 官网下载 Cubism SDK for Web 5-r.4，只取出 Core 装好，正在用立绘代替的 Live2D 桌宠自动换回 Live2D。连不上官网时，自己去官网下载 SDK（必须是 **5.x**），点「选择本地文件…」选压缩包或里面的 `live2dcubismcore.min.js`。装之前会在隐藏页面里试加载一遍，坏文件和 6.x 不会替换已经能用的 Core。也可以手动放到：
+1. **Cubism Core。** 最简单：全局设置「桌宠」分区的「Live2D 支持」点「一键启用」，会从 Live2D 官网下载单独发布的 Core（约 200 KB）装好，正在用立绘代替的 Live2D 桌宠自动换回 Live2D。官网那份要是换成了 6.x 或者下不下来，会自动改下锁定版本的 Cubism SDK for Web 5-r.4，只取出 Core。连不上官网时，自己去官网下载 SDK（必须是 **5.x**），点「用本地文件…」选压缩包或里面的 `live2dcubismcore.min.js`。装之前会在隐藏页面里试加载一遍，坏文件和 6.x 不会替换已经能用的 Core。也可以手动放到：
    ```
    <VCPChat>\AppData\deskpet\live2dcubismcore.min.js
    ```

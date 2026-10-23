@@ -1,4 +1,4 @@
-// Live2D 支持：Cubism Core 是 Live2D 的专有组件，不随应用附带，在这里一键装好。
+// Live2D 支持：Cubism Core 是 Live2D 的专有组件，不随应用附带，在这里一键从官网装好。
 // 下载进度由主进程推过来（deskpet-settings:core-progress），装好后形象卡片会重建。
 
 import { el, button } from './dom.js';
@@ -14,18 +14,21 @@ export function buildCore(doc) {
     coreCopy.append(coreState, coreHint);
     coreRow.append(coreCopy);
     const coreActions = el(doc, 'div', 'dps-card-actions');
-    const coreDownloadBtn = button(doc, 'dps-btn dps-btn-primary', '同意并下载');
-    const coreFileBtn = button(doc, 'dps-btn', '选择本地文件…', { title: '已经从 Live2D 官网下好了 Cubism SDK for Web：选压缩包或其中的 live2dcubismcore.min.js' });
-    const coreLicenseBtn = button(doc, 'dps-link', '许可协议');
-    coreActions.append(coreLicenseBtn, coreFileBtn, coreDownloadBtn);
+    const coreDownloadBtn = button(doc, 'dps-btn dps-btn-primary', '一键启用');
+    const coreFileBtn = button(doc, 'dps-btn', '用本地文件…', { title: '已经从 Live2D 官网下好了 Cubism SDK for Web：选压缩包或其中的 live2dcubismcore.min.js' });
+    const coreLicenseBtn = button(doc, 'dps-link', 'Live2D 许可协议');
+    // 点「一键启用」就是同意许可协议，这句话跟着按钮一起出现
+    const coreConsent = el(doc, 'span', 'dps-core-consent', '启用即表示同意');
+    coreConsent.append(coreLicenseBtn);
+    coreActions.append(coreConsent, coreFileBtn, coreDownloadBtn);
     coreCard.append(coreRow, coreActions);
-    return { coreTitle, coreCard, coreState, coreHint, coreDownloadBtn, coreFileBtn, coreLicenseBtn };
+    return { coreTitle, coreCard, coreRow, coreActions, coreState, coreHint, coreConsent, coreDownloadBtn, coreFileBtn, coreLicenseBtn };
 }
 
 // ctx：{ api, state, note, applyCatalog }
 export function wireCore(ctx, parts) {
     const { api, state } = ctx;
-    const { coreCard, coreState, coreHint, coreDownloadBtn, coreFileBtn, coreLicenseBtn } = parts;
+    const { coreCard, coreRow, coreActions, coreState, coreHint, coreConsent, coreDownloadBtn, coreFileBtn, coreLicenseBtn } = parts;
 
     function size(bytes) {
         return bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -40,25 +43,29 @@ export function wireCore(ctx, parts) {
         coreFileBtn.disabled = installing;
         const p = state.coreProgress;
         if (p) {
-            coreState.textContent = '正在安装 Cubism Core…';
+            const what = p.source === 'sdk' ? '完整的 Cubism SDK（单独的 Core 用不了，改下这个）' : 'Cubism Core';
+            coreState.textContent = '正在启用 Live2D…';
             coreHint.textContent = p.phase === 'verify'
-                ? '下载好了，正在取出 Core 并试加载一遍'
+                ? '下载好了，正在试加载一遍'
                 : p.total > 0
-                    ? `正在从 Live2D 官网下载 SDK ${size(p.received)} / ${size(p.total)}`
-                    : `正在从 Live2D 官网下载 SDK${p.received ? ` ${size(p.received)}` : '…'}`;
+                    ? `正在从 Live2D 官网下载 ${what} ${size(p.received)} / ${size(p.total)}`
+                    : `正在从 Live2D 官网下载 ${what}${p.received ? ` ${size(p.received)}` : '…'}`;
             return;
         }
         if (status?.installed) {
             coreState.textContent = status.version ? `Cubism Core ${status.version} 已装好` : 'Cubism Core 已装好';
-            coreHint.textContent = 'Live2D 形象可以直接用。想换一份 Core 时选本地文件（只支持 5.x）。';
-            coreDownloadBtn.hidden = true;
-            coreFileBtn.textContent = '更换…';
+            coreHint.textContent = 'Live2D 形象可以直接用。';
+            // 装好了只剩「换一份」，放进这一行里，不再单占一栏
+            coreRow.append(coreFileBtn);
+            coreActions.hidden = true;
+            coreFileBtn.textContent = '换一份…';
             return;
         }
-        coreState.textContent = wanted ? `${state.catalog?.name || 'TA'} 的 Live2D 形象还缺 Cubism Core` : '还没装 Cubism Core';
-        coreHint.textContent = `Live2D 形象要用 Live2D 官方的 Cubism Core，它是 Live2D 的专有组件，VCPChat 不附带。点「同意并下载」表示你同意 Live2D 的许可协议，会从 Live2D 官网下载 Cubism SDK for Web ${status?.release || ''}，只取出 Core 放进 VCPChat 的数据目录。没装之前，Live2D 形象先用立绘代替。`;
-        coreDownloadBtn.hidden = false;
-        coreFileBtn.textContent = '选择本地文件…';
+        coreState.textContent = wanted ? `启用 ${state.catalog?.name || 'TA'} 的 Live2D 形象` : 'Live2D 形象还没启用';
+        coreHint.textContent = 'Live2D 形象要用 Live2D 官方的 Cubism Core（约 200 KB，VCPChat 不能自带）。一键从官网装好，所有 Live2D 形象都能用；没装之前先用立绘代替。';
+        coreActions.insertBefore(coreFileBtn, coreDownloadBtn);
+        coreActions.hidden = false;
+        coreFileBtn.textContent = '用本地文件…';
     }
 
     async function installCore(source) {
@@ -69,11 +76,11 @@ export function wireCore(ctx, parts) {
             const result = await api.installDeskPetCore(source, state.agentId);
             state.coreProgress = null;
             if (result?.catalog && result.catalog.agentId === state.agentId) ctx.applyCatalog(result.catalog);
-            if (result?.success) ctx.note(`Cubism Core ${result.version || ''} 装好了，Live2D 形象已经换上`, { ms: 5000 });
+            if (result?.success) ctx.note('Live2D 已启用，形象已经换上', { ms: 5000 });
             else if (!result?.canceled && result?.error) {
                 ctx.note(result.error, { error: true, ms: 8000 });
                 coreHint.textContent = source === 'official'
-                    ? `${result.error}。也可以去 Live2D 官网手动下载 Cubism SDK for Web（5.x），再点「选择本地文件…」。`
+                    ? `${result.error}。可以稍后再试，或者去 Live2D 官网下载 Cubism SDK for Web（5.x），再点「用本地文件…」。`
                     : `${result.error}。原来的设置没有变。`;
             }
         } finally {
