@@ -114,7 +114,7 @@ html #vcpSidePane:where(.vcp-ui-scope, .vcp-ui-scope *) {
 /* Width and opacity only animate during an explicit open/close, never while
    dragging the handle. */
 html #vcpSidePane.is-animating:where(.vcp-ui-scope, .vcp-ui-scope *) {
-    transition: width 0.22s cubic-bezier(0.2, 0, 0, 1), opacity 0.2s ease-out;
+    transition: width 0.16s cubic-bezier(0.2, 0, 0, 1), opacity 0.14s ease-out;
     will-change: width, opacity;
     pointer-events: none;
 }

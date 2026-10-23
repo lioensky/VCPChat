@@ -650,7 +650,7 @@ assert.match(source, /nextUiAccountThemeToggleBtn/);
 assert.match(source, /styles\/ui-system\/side-pane-appearance\.css/);
 assert.match(
     fs.readFileSync('modules/ui-system/side-pane/tab-types/appearance.js', 'utf8'),
-    /entry:[^]*?id: 'appearance'/
+    /kind: 'appearance'/
 );
 assert.match(fs.readFileSync('modules/renderer/sidePaneWiring.js', 'utf8'), /defineAppearanceTabType/);
 assert.doesNotMatch(source, /nextUiAccountPresentationBtn/);

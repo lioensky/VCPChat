@@ -72,6 +72,51 @@
         return true;
     }
 
+    // 侧栏开合时胶囊跟着聊天区居中位置移动：侧栏本身很快滑完，胶囊慢半拍追上去（指数衰减），
+    // 靠 translate 补偿布局位移，不改布局本身。只在开合后的一小段时间里跑。
+    const GLIDE_TAU_MS = 85;
+    const GLIDE_MAX_MS = 900;
+    const GLIDE_EPSILON_PX = 0.3;
+    let glideRaf = 0;
+
+    function glidePill() {
+        const pill = document.getElementById('chatAgentPill');
+        if (!pill || current !== 'capsule') return;
+        if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+        cancelAnimationFrame(glideRaf);
+        const startedAt = performance.now();
+        let last = startedAt;
+        let offset = 0;
+        let layoutLeft = pill.getBoundingClientRect().left - offset;
+        const step = (now) => {
+            const dt = Math.min(now - last, 64);
+            last = now;
+            const left = pill.getBoundingClientRect().left - offset;
+            offset -= left - layoutLeft;
+            layoutLeft = left;
+            offset *= Math.exp(-dt / GLIDE_TAU_MS);
+            const settled = Math.abs(offset) < GLIDE_EPSILON_PX;
+            pill.style.translate = settled ? '' : `${offset.toFixed(2)}px 0`;
+            if (settled) offset = 0;
+            if (now - startedAt < GLIDE_MAX_MS && (!settled || now - startedAt < 400)) {
+                glideRaf = requestAnimationFrame(step);
+            } else {
+                pill.style.translate = '';
+            }
+        };
+        glideRaf = requestAnimationFrame(step);
+    }
+
+    if (document.body && typeof MutationObserver === 'function') {
+        let paneOpen = document.body.classList.contains('vcp-side-pane-open');
+        new MutationObserver(() => {
+            const open = document.body.classList.contains('vcp-side-pane-open');
+            if (open === paneOpen) return;
+            paneOpen = open;
+            glidePill();
+        }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    }
+
     window.vcpChatHeader = Object.freeze({
         normalize,
         apply,
