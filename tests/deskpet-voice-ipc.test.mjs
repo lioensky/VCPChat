@@ -9,7 +9,7 @@ import { EventEmitter } from 'node:events';
 const require = createRequire(import.meta.url);
 
 // 假的 electron + 假的 SovitsTTS：只记录谁在什么会话里要念什么。
-function setup() {
+function setup(t) {
     const handlers = new Map();
     const listeners = new Map();
     const windows = [];
@@ -98,13 +98,14 @@ function setup() {
         handle.dispose();
         delete require.cache[ttsFile];
     };
-    return { handlers, listeners, mainWindow, open, spoken, root, menus, cleanup };
+    t.after(cleanup);
+    return { handlers, listeners, mainWindow, open, spoken, root, menus };
 }
 
 const from = (win) => ({ sender: win.webContents });
 
-test('the pet speaks with the agent\'s own voice settings; agents without a voice stay silent', async () => {
-    const { handlers, listeners, open, spoken, cleanup } = setup();
+test('the pet speaks with the agent\'s own voice settings; agents without a voice stay silent', async (t) => {
+    const { handlers, listeners, open, spoken } = setup(t);
     const nova = await open('Nova');
     const coco = await open('Coco');
     assert.deepEqual(await handlers.get('deskpet:voice-begin')(from(coco), 'c1'), { speaking: false });
@@ -121,11 +122,10 @@ test('the pet speaks with the agent\'s own voice settings; agents without a voic
     // 别的回复、别的窗口的话不接
     listeners.get('deskpet:voice-say')(from(nova), { messageId: 'other', key: 'x', text: '不该念', first: false });
     assert.equal(spoken.length, 2);
-    cleanup();
 });
 
-test('one voice at a time, and the main window does not read the reply the pet is reading', async () => {
-    const { handlers, listeners, mainWindow, open, spoken, cleanup } = setup();
+test('one voice at a time, and the main window does not read the reply the pet is reading', async (t) => {
+    const { handlers, listeners, mainWindow, open, spoken } = setup(t);
     const nova = await open('Nova');
     await handlers.get('deskpet:voice-begin')(from(nova), 'n1');
     listeners.get('deskpet:voice-say')(from(nova), { messageId: 'n1', key: 'n1#deskpet-0', text: '第一句。', first: true });
@@ -147,11 +147,10 @@ test('one voice at a time, and the main window does not read the reply the pet i
     const before = nova.sent.filter((m) => m.channel === 'stop-tts-audio').length;
     listeners.get('sovits-stop')(from(mainWindow));
     assert.equal(nova.sent.filter((m) => m.channel === 'stop-tts-audio').length, before + 1);
-    cleanup();
 });
 
-test('turning reading off in the menu silences the pet and is remembered per agent', async () => {
-    const { handlers, listeners, open, root, menus, cleanup } = setup();
+test('turning reading off in the menu silences the pet and is remembered per agent', async (t) => {
+    const { handlers, listeners, open, root, menus } = setup(t);
     const nova = await open('Nova');
     const coco = await open('Coco');
     const voiceItem = async (win) => {
@@ -166,16 +165,18 @@ test('turning reading off in the menu silences the pet and is remembered per age
     listeners.get('deskpet:voice-say')(from(nova), { messageId: 'n1', key: 'n1#deskpet-0', text: '正在说话。', first: true });
     item.click({ checked: false });
     assert.ok(nova.sent.some((m) => m.channel === 'stop-tts-audio'), '关掉时正在念的马上停');
-    await new Promise((resolve) => setTimeout(resolve, 30));
-    assert.deepEqual(await handlers.get('deskpet:voice-begin')(from(nova), 'n2'), { speaking: false });
-    const saved = JSON.parse(fs.readFileSync(path.join(root, 'deskpet', 'voice.json'), 'utf8'));
+    const prefsFile = path.join(root, 'deskpet', 'voice.json');
+    let saved = null;
+    for (let i = 0; i < 200 && !saved; i += 1) {
+        try { saved = JSON.parse(fs.readFileSync(prefsFile, 'utf8')); } catch { await new Promise((resolve) => setTimeout(resolve, 10)); }
+    }
     assert.deepEqual(saved, { muted: { Nova: true } });
+    assert.deepEqual(await handlers.get('deskpet:voice-begin')(from(nova), 'n2'), { speaking: false });
     assert.equal((await voiceItem(nova)).checked, false);
-    cleanup();
 });
 
-test('a reply given up while its voice settings are still loading does not stay claimed', async () => {
-    const { handlers, listeners, open, cleanup } = setup();
+test('a reply given up while its voice settings are still loading does not stay claimed', async (t) => {
+    const { handlers, listeners, open } = setup(t);
     const claims = require('../modules/deskpet/petVoice.js')._claims;
     const nova = await open('Nova');
     // 用户在读配置的那一下点了停：end 先到，begin 读完以后不能再占
@@ -189,5 +190,4 @@ test('a reply given up while its voice settings are still loading does not stay 
     assert.deepEqual(await older, { speaking: false });
     assert.deepEqual(await newer, { speaking: true, ttsRegex: '', ttsRegexSecondary: '' });
     assert.deepEqual([...claims.keys()], ['n3']);
-    cleanup();
 });
