@@ -37,6 +37,13 @@ function createHistoryPersistence(repository, { durable, skipTemporaryContexts }
             const projectedHistory = cloneHistory(
                 projected.history.filter(message => !message?.isThinking && !message?.isPendingStream)
             );
+            if (durable && typeof repository.commitTerminal === 'function') {
+                const native = await repository.commitTerminal(projected);
+                if (native?.handled) {
+                    if (native.success === false) throw new Error(native.error || 'Native terminal commit failed');
+                    return Object.freeze({ messageId: projected.messageId, context, content: projected.content, finishReason: projected.finishReason, sync: native.sync });
+                }
+            }
             const durableHistory = await repository.getHistory(itemId, itemType, context.topicId);
             if (!Array.isArray(durableHistory)) {
                 throw new Error('Chat repository returned invalid history during stream commit');

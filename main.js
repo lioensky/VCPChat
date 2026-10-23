@@ -312,7 +312,7 @@ if (isolatedAppDataRoot) app.setPath('userData', path.resolve(isolatedAppDataRoo
 const APP_DATA_ROOT_IN_PROJECT = isolatedAppDataRoot
     ? path.resolve(isolatedAppDataRoot)
     : path.join(PROJECT_ROOT, 'AppData');
-const NATIVE_SPLASH_READY_FILE = app.isPackaged
+const NATIVE_SPLASH_READY_FILE = (app.isPackaged || isolatedAppDataRoot)
     ? path.join(APP_DATA_ROOT_IN_PROJECT, '.vcp_ready')
     : path.join(__dirname, '.vcp_ready');
 
@@ -341,6 +341,7 @@ let distributedServer = null; // To hold the distributed server instance
 let distributedServerStartPromise = null;
 let chatDataService = null; // Optional VCP-CDS shadow service.
 let historyMutationQueue = null;
+let nativeSyncRuntime = null;
 let pluginAgentOperationService = null;
 let chartService = null;
 let gameService = null;
@@ -541,6 +542,8 @@ function startDistributedServerAfterRenderer() {
                 handleFlowlockControl: desktopRemoteHandlers.handleFlowlockControl,
                 handleDesktopRemoteControl: desktopRemoteHandlers.handleDesktopRemoteControl,
                 chatDataService,
+                historyMutationQueue,
+                appDataRoot: APP_DATA_ROOT_IN_PROJECT,
                 loomManager,
                 scriptoriumAgentControl,
                 pluginAgentOperationService,
@@ -753,6 +756,8 @@ async function performQuitCleanup() {
         }
 
         workspaceHandlers.dispose();
+        await nativeSyncRuntime?.close();
+        nativeSyncRuntime = null;
         await historyMutationQueue?.dispose?.();
         historyMutationQueue = null;
         pluginAgentOperationService = null;
@@ -1235,6 +1240,26 @@ if (!gotTheLock) {
             fileWatcher,
             logger: console
         });
+        require('./modules/ipc/nativeHistoryHandlers').initialize({ ipcMain, historyMutationQueue });
+        nativeSyncRuntime = await require('./modules/services/nativeSync/runtime').createNativeSyncRuntime({
+            queue: historyMutationQueue, appDataRoot: APP_DATA_ROOT_IN_PROJECT,
+            args: process.argv, isolated: Boolean(isolatedAppDataRoot),
+            readSettings: () => appSettingsManager.readSettings(),
+            readAgentConfig: id => agentConfigManager.readAgentConfig(id),
+            thumbnail: async file => {
+                const image=require('electron').nativeImage.createFromPath(file);
+                if(image.isEmpty())return null;
+                const bytes=image.resize({width:64,height:64}).toPNG();
+                return bytes.length<=16000?'data:image/png;base64,'+bytes.toString('base64'):null;
+            },
+            notify: change => {
+                let sent = false;
+                for (const window of BrowserWindow.getAllWindows()) {
+                    if (!window.isDestroyed()) { window.webContents.send('history-file-updated', change); sent = true; }
+                }
+                return sent;
+            },
+        });
         pluginAgentOperationService = new PluginAgentOperationService({
             agentDir: AGENT_DIR,
             userDataDir: USER_DATA_DIR,
@@ -1654,7 +1679,8 @@ if (!gotTheLock) {
             stopSelectionListener: assistantHandlers.stopSelectionListener,
             startSelectionListener: assistantHandlers.startSelectionListener,
             settingsManager: appSettingsManager,
-            agentConfigManager
+            agentConfigManager,
+            historyMutationQueue
         });
 
         await assistantHandlers.initialize({ SETTINGS_FILE });

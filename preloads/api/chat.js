@@ -5,7 +5,7 @@
 const { invoke, on, onSignal } = require('../core/define');
 
 module.exports = {
-    handlers: ['modules/ipc/chatHandlers.js', 'main.js'],
+    handlers: ['modules/ipc/chatHandlers.js', 'modules/ipc/nativeHistoryHandlers.js', 'main.js'],
     roles: ['chat'],
     api: {
         // 话题
@@ -24,7 +24,10 @@ module.exports = {
 
         // 聊天记录
         getChatHistory: invoke('get-chat-history', 'agentId', 'topicId'),
-        saveChatHistory: invoke('save-chat-history', 'agentId', 'topicId', 'history'),
+        saveChatHistory: invoke('save-chat-history', 'agentId', 'topicId', 'history', 'expectedRevision'),
+        getNativeHistorySnapshot: invoke('native-history:snapshot', 'itemId', 'itemType', 'topicId'),
+        commitNativeHistoryTerminal: invoke('native-history:terminal', 'projected'),
+        getNativeSyncStatus: invoke('native-history:status'),
         getOriginalMessageContent: invoke('get-original-message-content', 'itemId', 'itemType', 'topicId', 'messageId'),
         onHistoryFileUpdated: on('history-file-updated'),
 

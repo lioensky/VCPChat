@@ -474,6 +474,7 @@ test("WebSocket 启动等待 listening，并把端口绑定错误返回调用链
   });
 
   const server = await startWsServer({
+    host: "127.0.0.1",
     port: 0,
     syncToken: "startup-test-token",
     onMessage: async () => null,
@@ -484,7 +485,7 @@ test("WebSocket 启动等待 listening，并把端口绑定错误返回调用链
   const blocker = net.createServer();
   await new Promise((resolve, reject) => {
     blocker.once("error", reject);
-    blocker.listen(0, "0.0.0.0", resolve);
+    blocker.listen(0, "127.0.0.1", resolve);
   });
   t.after(
     () =>
@@ -497,6 +498,7 @@ test("WebSocket 启动等待 listening，并把端口绑定错误返回调用链
   await assert.rejects(
     () =>
       startWsServer({
+    host: "127.0.0.1",
         port: blockedPort,
         syncToken: "startup-test-token",
         onMessage: async () => null,

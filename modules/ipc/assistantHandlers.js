@@ -71,7 +71,8 @@ async function sendAssistantNoteToNotesWindow(selectionText, isDarkTheme, sendPa
 }
 
 function getRustAssistantConfigPath() {
-    return path.join(__dirname, '..', '..', 'AppData', 'rust-assistant-config.json');
+    const isolatedRoot = process.env.VCPCHAT_APP_DATA_DIR?.trim();
+    return path.join(isolatedRoot ? path.resolve(isolatedRoot) : path.join(__dirname, '..', '..', 'AppData'), 'rust-assistant-config.json');
 }
 
 function invalidateAssistantRuntimeCache({ settings = false, agent = false, all = false } = {}) {

@@ -1,6 +1,6 @@
 const fs = require('fs-extra');
 const path = require('path');
-const { randomUUID } = require('crypto');
+const { randomUUID, createHash } = require('crypto');
 
 // 同 sideChatHandlers.js 的 CHILD_ID_PATTERN
 const SIDE_CHAT_CHILD_ID = /^sidechat_\d+_[0-9a-f]+$/;
@@ -39,17 +39,39 @@ function clone(value) {
  * 另行提供版本校验或基于最新历史的变更意图。此队列不提供跨进程锁。
  */
 class HistoryMutationQueue {
-    constructor({ userDataDir, fileWatcher = null, logger = console } = {}) {
+    constructor({ userDataDir, fileWatcher = null, logger = console, commitObserver = null } = {}) {
         if (!userDataDir) throw new TypeError('HistoryMutationQueue requires userDataDir');
         this.userDataDir = userDataDir;
         this.fileWatcher = fileWatcher;
         this.logger = logger;
         this.queues = new Map();
         this.disposed = false;
+        this.commitObserver = commitObserver;
+        this.syncPolicy = null;
     }
 
     getHistoryPath(itemId, topicId) {
         return path.resolve(this.userDataDir, validateSegment(itemId), 'topics', validateSegment(topicId), 'history.json');
+    }
+
+    configureSync(policy = null, observer = null) {
+        this.syncPolicy = policy;
+        this.commitObserver = observer;
+    }
+
+    isSyncEnabled(descriptor) {
+        return this.syncPolicy?.isEnabled(descriptor) === true;
+    }
+
+    revision(history) {
+        return createHash('sha256').update(JSON.stringify(history)).digest('hex');
+    }
+
+    readSnapshot(descriptor) {
+        return this.run(descriptor, async () => {
+            const history = await this.read(descriptor);
+            return { history, revision: this.revision(history), syncEnabled: this.isSyncEnabled(descriptor) };
+        });
     }
 
     run(descriptor, operation) {
@@ -69,6 +91,7 @@ class HistoryMutationQueue {
 
     async read(descriptor) {
         conversationKey(descriptor);
+        await this.syncPolicy?.beforeRead?.(descriptor);
         const historyPath = this.getHistoryPath(descriptor.itemId, descriptor.topicId);
         if (!await fs.pathExists(historyPath)) return [];
         const history = await fs.readJson(historyPath);
@@ -76,11 +99,12 @@ class HistoryMutationQueue {
         return history;
     }
 
-    async write(descriptor, history) {
+    async write(descriptor, history, options = {}) {
         if (!Array.isArray(history)) throw new TypeError('History must be an array');
         conversationKey(descriptor);
         const historyPath = this.getHistoryPath(descriptor.itemId, descriptor.topicId);
         const tempPath = `${historyPath}.${process.pid}.${randomUUID()}.tmp`;
+        await this.syncPolicy?.beforeWrite(descriptor, options);
         // 辅助对话的子话题目录只由 side-chat:create-child 建（带标记文件）。目录没了说明它已被删除
         // （父话题或助手被删时，流式回复被取消后还会存一次）；这时不能顺手把目录建回来，
         // 否则会留下没有标记、谁也删不掉也列不出来的孤儿目录
@@ -90,21 +114,44 @@ class HistoryMutationQueue {
         await fs.ensureDir(path.dirname(historyPath));
         if (this.fileWatcher) this.fileWatcher.signalInternalSave?.();
         try {
-            await fs.writeJson(tempPath, clone(history), { spaces: 2 });
-            await fs.rename(tempPath, historyPath);
+            if (this.isSyncEnabled(descriptor)) {
+                await require('./nativeSync/durableJson').durableJson(historyPath, clone(history));
+            } else {
+                await fs.writeJson(tempPath, clone(history), { spaces: 2 });
+                await fs.rename(tempPath, historyPath);
+            }
         } catch (error) {
             await fs.remove(tempPath).catch(() => {});
             throw error;
         }
-        return { success: true };
+        const result = { success: true };
+        if (this.commitObserver && (!this.syncPolicy || this.isSyncEnabled(descriptor))) {
+            try {
+                await this.commitObserver({ descriptor: clone(descriptor), history: clone(history), revision: this.revision(history) });
+                result.sync = { state: 'captured', recoverable: false };
+            } catch (error) {
+                result.sync = { state: 'degraded', code: error.code || 'SYNC_CAPTURE_FAILED', recoverable: true };
+                // Local persistence has already succeeded. The observer owns recovery.
+                this.logger?.warn?.('[HistoryMutationQueue] sync capture degraded:', result.sync.code);
+            }
+        }
+        if (this.isSyncEnabled(descriptor)) result.revision = this.revision(history);
+        return result;
     }
 
-    replace(descriptor, history) {
+    replace(descriptor, history, options = {}) {
         descriptor = { ...descriptor };
+        options = { ...options };
         if (!Array.isArray(history)) throw new TypeError('History must be an array');
         const snapshot = clone(history);
         return this.run(descriptor, async () => {
-            const result = await this.write(descriptor, snapshot);
+            if (this.isSyncEnabled(descriptor)) {
+                const current = await this.read(descriptor);
+                if (options.expectedRevision !== this.revision(current)) {
+                    throw Object.assign(new Error('Full history replacement is stale; reread before saving'), { code: 'HISTORY_REVISION_CONFLICT' });
+                }
+            }
+            const result = await this.write(descriptor, snapshot, options);
             return { ...result, history: snapshot };
         });
     }

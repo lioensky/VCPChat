@@ -157,19 +157,20 @@ function initialize(mainWindow, context) {
         return await groupChat.getGroupChatHistory(groupId, topicId);
     });
 
-    ipcMain.handle('save-group-chat-history', async (event, groupId, topicId, history) => {
+    ipcMain.handle('save-group-chat-history', async (event, groupId, topicId, history, expectedRevision) => {
         if (!groupId || !topicId || !Array.isArray(history)) {
             const errorMsg = `保存群组 ${groupId} 话题 ${topicId} 聊天历史失败: 参数无效。`;
             console.error(errorMsg);
             return { success: false, error: errorMsg };
         }
         try {
-            await historyMutationQueue.replace(
+            const result = await historyMutationQueue.replace(
                 { itemId: groupId, itemType: 'group', topicId },
-                history
+                history,
+                { expectedRevision }
             );
             console.log(`[Main IPC] 群组 ${groupId} 话题 ${topicId} 聊天历史已通过共享历史队列保存`);
-            return { success: true };
+            return { success: true, ...(result.sync ? { sync: result.sync, revision: result.revision } : {}) };
         } catch (error) {
             console.error(`[Main IPC] 保存群组 ${groupId} 话题 ${topicId} 聊天历史失败:`, error);
             return { success: false, error: error.message };

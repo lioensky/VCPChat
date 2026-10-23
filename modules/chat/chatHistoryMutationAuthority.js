@@ -34,7 +34,8 @@ export function createChatHistoryMutationAuthority({ repository } = {}) {
             descriptor.itemId,
             descriptor.itemType || 'agent',
             descriptor.topicId,
-            snapshot
+            snapshot,
+            descriptor.expectedRevision
         );
         if (result?.success === false) throw new Error(result.error || 'History mutation commit failed');
         return Object.freeze({
@@ -49,6 +50,7 @@ export function createChatHistoryMutationAuthority({ repository } = {}) {
 
     return Object.freeze({
         replace(descriptor, history) {
+            descriptor = { ...descriptor, expectedRevision: descriptor.expectedRevision ?? repository.revisionOf?.(history) ?? repository.revisionFor?.(descriptor.itemId, descriptor.itemType || 'agent', descriptor.topicId) };
             return run(descriptor, () => commit(descriptor, history));
         },
         mutate(descriptor, transform) {
@@ -60,6 +62,7 @@ export function createChatHistoryMutationAuthority({ repository } = {}) {
                     descriptor.topicId
                 );
                 if (!Array.isArray(current)) throw new Error(current?.error || 'History mutation read failed');
+                descriptor = { ...descriptor, expectedRevision: repository.revisionOf?.(current) ?? repository.revisionFor?.(descriptor.itemId, descriptor.itemType || 'agent', descriptor.topicId) };
                 const next = await transform(structuredClone(current));
                 return commit(descriptor, next);
             });

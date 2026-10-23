@@ -1,0 +1,7 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><base href="../../"><title>VCPChat Native Sync R2 — isolated Renderer</title><link rel="stylesheet" href="style.css">
+<style>body{font:16px system-ui;background:#f4f5f7;color:#17212b;margin:30px}main{max-width:780px;margin:auto}h1{font-size:22px}.message-item{background:white;border:1px solid #d9dee5;border-radius:12px;padding:16px;margin:12px 0}.user{margin-left:60px;background:#e9f1ff}.assistant{margin-right:60px}.user .md-content{color:#17212b!important}.chat-messages-container{height:auto!important;max-height:none!important;overflow:visible!important}.topic-timestamp-bubble{display:none}textarea,button,#nextUiEmptyState{display:none}small{color:#586477}</style></head>
+<body><main class="main-content"><h1 id="heading">VCPChat Native Sync R2</h1><small>Isolated Electron Renderer · real preload / IPC / Queue / SQLite</small>
+<div class="chat-messages-container"><div id="chatMessages"></div></div><div id="nextUiEmptyState"></div>
+<h3 id="currentChatAgentName"></h3><button id="currentItemAction"></button><textarea id="messageInput"></textarea><button id="sendMessageBtn"></button><button id="attachFileBtn"></button><ul class="topic-list"></ul>
+</main><script>window.nativeSyncErrors=[];addEventListener('error',e=>window.nativeSyncErrors.push(e.message||'module load error'));addEventListener('unhandledrejection',e=>window.nativeSyncErrors.push(String(e.reason?.stack||e.reason)));</script><script type="module" src="./tests/electron/native-sync-renderer.mjs"></script></body></html>

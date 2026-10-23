@@ -13,6 +13,7 @@ export function createMainChatComposition({
     streamProjection,
     chatRepository,
     historyPersistence,
+    beginHistoryPersistence,
     presentationState,
     renderDependencies,
     chatManager,
@@ -61,6 +62,7 @@ export function createMainChatComposition({
         streamServices: {
             streamProjection,
             historyPersistence,
+            beginHistoryPersistence,
             messageRenderer,
             chatManager,
             flowlockManager,

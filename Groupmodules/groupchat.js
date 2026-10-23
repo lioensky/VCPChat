@@ -1160,7 +1160,7 @@ ${canvasData.errors || 'No errors'}
             const errorMsg = `Agent ${agentName} (${agentId}) 无法响应：VCP URL 未配置。`;
             console.error(`[GroupChat] ${errorMsg}`);
             const errorResponse = { role: 'assistant', name: agentName, agentId: agentId, content: `[系统消息] ${errorMsg}`, timestamp: Date.now(), id: messageIdForAgentResponse };
-            groupHistory.push(errorResponse);
+            groupHistory = await appendGroupHistoryMessage(groupId, topicId, errorResponse);
             if (typeof sendStreamChunkToRenderer === 'function') {
                 sendStreamChunkToRenderer({ type: 'error', error: errorMsg, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true } });
             }
@@ -1174,7 +1174,7 @@ ${canvasData.errors || 'No errors'}
             const errorMsg = `Agent ${agentName} (${agentId}) 无法响应：${modelHint}`;
             console.error(`[GroupChat] ${errorMsg}`);
             const errorResponse = { role: 'assistant', name: agentName, agentId: agentId, content: `[系统消息] ${errorMsg}`, timestamp: Date.now(), id: messageIdForAgentResponse };
-            groupHistory.push(errorResponse);
+            groupHistory = await appendGroupHistoryMessage(groupId, topicId, errorResponse);
             if (typeof sendStreamChunkToRenderer === 'function') {
                 sendStreamChunkToRenderer({ type: 'error', error: errorMsg, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true } });
             }
@@ -1288,8 +1288,7 @@ ${canvasData.errors || 'No errors'}
 
                 const errorMessageToPropagate = `VCP request failed: ${response.status} - ${errorData.message || errorData.error || (typeof errorData === 'string' ? errorData : 'Unknown server error')}`;
                 const errorResponseEntry = { role: 'assistant', name: agentName, agentId: agentId, content: `[System Message] ${errorMessageToPropagate}`, timestamp: Date.now(), id: messageIdForAgentResponse };
-                groupHistory.push(errorResponseEntry);
-                await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
+                groupHistory = await appendGroupHistoryMessage(groupId, topicId, errorResponseEntry);
 
                 if (typeof sendStreamChunkToRenderer === 'function') {
                     // Finalize the 'thinking' bubble with an error message
@@ -1344,8 +1343,7 @@ ${canvasData.errors || 'No errors'}
                                 clearTimeout(activeTimer);
                                 console.log(`[GroupChat] VCP stream ended for ${agentName} (msgId: ${messageIdForAgentResponse})`);
                                 const finalAiResponseEntry = { role: 'assistant', name: agentName, agentId: agentId, model: modelConfigForAgent.model, modelSource: modelResolution.usingUnifiedModel ? 'group_unified' : 'agent', content: accumulatedResponse, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor };
-                                groupHistory.push(finalAiResponseEntry);
-                                await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
+                                groupHistory = await appendGroupHistoryMessage(groupId, topicId, finalAiResponseEntry);
                                 if (typeof sendStreamChunkToRenderer === 'function') {
                                     sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true }, fullResponse: accumulatedResponse });
                                 }
@@ -1361,8 +1359,7 @@ ${canvasData.errors || 'No errors'}
                                     trajectoryCall.finish();
                                         console.log(`[GroupChat] VCP stream explicit [DONE] for ${agentName} (msgId: ${messageIdForAgentResponse})`);
                                         const doneAiResponseEntry = { role: 'assistant', name: agentName, agentId: agentId, model: modelConfigForAgent.model, modelSource: modelResolution.usingUnifiedModel ? 'group_unified' : 'agent', content: accumulatedResponse, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor };
-                                        groupHistory.push(doneAiResponseEntry);
-                                        await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
+                                        groupHistory = await appendGroupHistoryMessage(groupId, topicId, doneAiResponseEntry);
                                         if (typeof sendStreamChunkToRenderer === 'function') {
                                             sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true }, fullResponse: accumulatedResponse });
                                         }
@@ -1432,8 +1429,7 @@ ${canvasData.errors || 'No errors'}
                             console.warn(`[GroupChat] VCP stream for ${agentName} (msgId: ${messageIdForAgentResponse}) stopped by the idle watchdog.`);
                             const partialContent = withWatchdogNote(accumulatedResponse, GROUP_CHUNK_IDLE_TIMEOUT_MS);
                             const finalAiResponseEntry = { role: 'assistant', name: agentName, agentId: agentId, model: modelConfigForAgent.model, modelSource: modelResolution.usingUnifiedModel ? 'group_unified' : 'agent', content: partialContent, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor, interrupted: true };
-                            groupHistory.push(finalAiResponseEntry);
-                            await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
+                            groupHistory = await appendGroupHistoryMessage(groupId, topicId, finalAiResponseEntry);
                             if (typeof sendStreamChunkToRenderer === 'function') {
                                 sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true }, fullResponse: partialContent, interrupted: true });
                             }
@@ -1441,8 +1437,7 @@ ${canvasData.errors || 'No errors'}
                             console.log(`[GroupChat] VCP stream for ${agentName} (msgId: ${messageIdForAgentResponse}) was aborted by user.`);
                             // Even though it was aborted, we save the content received so far.
                             const finalAiResponseEntry = { role: 'assistant', name: agentName, agentId: agentId, model: modelConfigForAgent.model, modelSource: modelResolution.usingUnifiedModel ? 'group_unified' : 'agent', content: accumulatedResponse, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor, interrupted: true };
-                            groupHistory.push(finalAiResponseEntry);
-                            await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
+                            groupHistory = await appendGroupHistoryMessage(groupId, topicId, finalAiResponseEntry);
                             if (typeof sendStreamChunkToRenderer === 'function') {
                                 // Send 'end' event to finalize the UI with the partial content.
                                 sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true }, fullResponse: accumulatedResponse, interrupted: true });
@@ -1451,8 +1446,7 @@ ${canvasData.errors || 'No errors'}
                             console.error(`[GroupChat] VCP stream reading error for ${agentName}:`, streamError);
                             const errorText = `[System Message] ${agentName} stream processing error: ${streamError.message}`;
                             const streamErrorResponseEntry = { role: 'assistant', name: agentName, agentId: agentId, content: errorText, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId };
-                            groupHistory.push(streamErrorResponseEntry);
-                            await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
+                            groupHistory = await appendGroupHistoryMessage(groupId, topicId, streamErrorResponseEntry);
                             if (typeof sendStreamChunkToRenderer === 'function') {
                                 sendStreamChunkToRenderer({ type: 'error', error: `VCP stream reading error: ${streamError.message}`, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true } });
                             }
@@ -1472,8 +1466,7 @@ ${canvasData.errors || 'No errors'}
                 const aiResponseContent = vcpResponseJson.choices && vcpResponseJson.choices.length > 0 ? vcpResponseJson.choices[0].message.content : "[AI failed to generate a valid response]";
 
                 const aiResponseEntry = { role: 'assistant', name: agentName, agentId: agentId, model: modelConfigForAgent.model, modelSource: modelResolution.usingUnifiedModel ? 'group_unified' : 'agent', content: aiResponseContent, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor };
-                groupHistory.push(aiResponseEntry);
-                await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
+                groupHistory = await appendGroupHistoryMessage(groupId, topicId, aiResponseEntry);
 
                 // Directly send the 'end' event. The 'thinking' placeholder already exists.
                 // Directly send the 'full_response' event. The 'thinking' placeholder already exists.
@@ -1498,8 +1491,7 @@ ${canvasData.errors || 'No errors'}
             console.error(`[GroupChat] Error during response for Agent ${agentName}:`, error);
             const errorText = `[System Message] ${agentName} failed to respond: ${error.message}`;
             const errorResponse = { role: 'assistant', name: agentName, agentId: agentId, content: errorText, timestamp: Date.now(), id: messageIdForAgentResponse };
-            groupHistory.push(errorResponse);
-            await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
+            groupHistory = await appendGroupHistoryMessage(groupId, topicId, errorResponse);
             if (typeof sendStreamChunkToRenderer === 'function') {
                 // Finalize the 'thinking' bubble with an error
                 sendStreamChunkToRenderer({ type: 'end', error: error.message, fullResponse: errorText, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true } });
@@ -2414,17 +2406,25 @@ async function redoGroupChatMessage(groupId, topicId, messageIdToDelete, agentId
 
     try {
         // 1. 读取、过滤并保存历史记录
-        let groupHistory = await fs.readJson(groupHistoryPath);
-        const initialLength = groupHistory.length;
-        const updatedHistory = groupHistory.filter(msg => msg.id !== messageIdToDelete);
+        let removed = false;
+        const removeMessage = history => {
+            const next = history.filter(msg => msg.id !== messageIdToDelete);
+            removed = next.length !== history.length;
+            return next;
+        };
+        if (groupHistoryMutationQueue) {
+            await groupHistoryMutationQueue.mutate(getGroupHistoryDescriptor(groupId, topicId), removeMessage);
+        } else {
+            const updatedHistory = removeMessage(await fs.readJson(groupHistoryPath));
+            await fs.writeJson(groupHistoryPath, updatedHistory, { spaces: 2 });
+        }
 
-        if (updatedHistory.length === initialLength) {
+        if (!removed) {
             console.warn(`[GroupChat Redo] Message with ID ${messageIdToDelete} not found in history. Cannot redo.`);
             // No need to proceed if the message wasn't found
             return;
         }
 
-        await fs.writeJson(groupHistoryPath, updatedHistory, { spaces: 2 });
         console.log(`[GroupChat Redo] Message ${messageIdToDelete} removed from history.`);
 
         // 2. 通知渲染器删除该消息

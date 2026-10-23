@@ -1,0 +1,34 @@
+'use strict';
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const { makeFixture, loadAdapter, topic } = require('./helpers/nativeSyncCaptureFixture.cjs');
+const { messageHash, tombstoneHash } = require('../modules/services/nativeSync/protocol');
+
+test('5000-message capture preserves latest bases, tombstones, foreign operations and append order with linear key lookups', async () => {
+    const counters = {}, Adapter = loadAdapter(path.resolve(__dirname, '../modules/services/nativeSync/adapter.js'), counters);
+    const fixture = makeFixture(5000), before = structuredClone(fixture.state.outbox);
+    let persisted = 0;
+    const queue = { userDataDir: '/synthetic', getHistoryPath: (owner, id) => path.resolve('/synthetic', owner, id) };
+    const adapter = new Adapter({ queue, statePath: '/synthetic/state.json', url: 'http://127.0.0.1:1', deviceId: 'performance-device', token: 'synthetic-unused', topics: [topic], persist: async () => { persisted++; } });
+    adapter.state = fixture.state;
+    await adapter.capture(topic, fixture.history);
+    assert.equal(persisted, 1);
+    assert.deepEqual(adapter.state.outbox.slice(0, before.length), before);
+    const appended = adapter.state.outbox.slice(before.length);
+    const edit = appended.find(op => op.msgId === 'message-0');
+    const latest = before.filter(op => op.msgId === 'message-0').at(-1);
+    assert.equal(edit.baseHash, messageHash(latest.message));
+    const priorDelete = before.find(op => op.action === 'delete');
+    const restored = appended.find(op => op.msgId === priorDelete.msgId);
+    assert.equal(restored.action, 'upsert'); assert.equal(restored.baseHash, tombstoneHash(priorDelete));
+    const missing = appended.find(op => op.msgId === 'acked-only-0');
+    assert.equal(missing.action, 'delete'); assert.equal(missing.baseHash, Object.values(adapter.state.acked)[0].hash);
+    assert.equal(appended.some(op => op.ownerId === 'other-owner'), false);
+    assert.deepEqual(appended.slice(0, 2).map(op => op.msgId), ['message-0', 'message-2']);
+    assert.ok(counters.messageKey < 20000, `quadratic key scan returned: ${counters.messageKey}`);
+    const first = structuredClone(adapter.state.outbox);
+    await adapter.capture(topic, fixture.history);
+    assert.deepEqual(adapter.state.outbox, first, 'unchanged history must not append a second operation');
+    assert.equal(persisted, 2);
+});

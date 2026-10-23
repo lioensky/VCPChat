@@ -27,7 +27,7 @@ module.exports = {
 
         // 群聊记录与发言
         getGroupChatHistory: invoke('get-group-chat-history', 'groupId', 'topicId'),
-        saveGroupChatHistory: invoke('save-group-chat-history', 'groupId', 'topicId', 'history'),
+        saveGroupChatHistory: invoke('save-group-chat-history', 'groupId', 'topicId', 'history', 'expectedRevision'),
         sendGroupChatMessage: invoke('send-group-chat-message', 'groupId', 'topicId', 'userMessage'),
         inviteAgentToSpeak: invoke('inviteAgentToSpeak', 'groupId', 'topicId', 'invitedAgentId'),
         redoGroupChatMessage: invoke('redo-group-chat-message', 'groupId', 'topicId', 'messageId', 'agentId'),

@@ -215,6 +215,7 @@ function requestStage(req) {
 function registerRoutes(app, {
   syncToken,
   appDataPath,
+  historyWriteBoundary,
   centralSync = null,
   pluginAgentOperationService = null,
 }) {
@@ -245,7 +246,7 @@ function registerRoutes(app, {
         "auth",
         req.originalUrl,
         "warn",
-        `authorization=${authHeader} providedToken=${providedToken} expectedToken=${syncToken}`,
+        `authorizationPresent=${Boolean(authHeader)} tokenMatched=${providedToken === syncToken}`,
       );
       return sendHttpError(res, 401, "Unauthorized", {
         code: "SYNC_AUTH_FAILED",
@@ -271,7 +272,7 @@ function registerRoutes(app, {
         `${req.method}`,
         routePath,
         result,
-        `status=${status} duration=${duration}ms url=${req.originalUrl} authorization=${req.headers.authorization}`,
+        `status=${status} duration=${duration}ms path=${req.path} authenticated=true`,
       );
     });
 
@@ -353,6 +354,8 @@ function registerRoutes(app, {
           stage: entityContractStage(items),
         });
       }
+      try { for (const item of parsed) historyWriteBoundary?.assertWrite(item.publicIdentity); }
+      catch (error) { return sendHttpError(res, 409, error, {code:"SYNC_WRITER_EXCLUDED", stage:entityContractStage(items)}); }
       const opId = req.headers["x-idempotency-key"];
       const {
         duplicate,

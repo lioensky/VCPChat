@@ -2430,13 +2430,15 @@ export const chatManager = (() => {
     }
 
 
-    async function syncHistoryFromFile(itemId, itemType, topicId) {
+    async function syncHistoryFromFile(itemId, itemType, topicId, refreshGuard = null) {
+        const { chatMessagesDiv } = elements;
         const syncGeneration = ++historySyncGeneration;
         const itemGeneration = itemSelectionGeneration;
         const topicGeneration = topicSelectionGeneration;
         const isSyncCurrent = () => {
             const selectedItem = currentSelectedItemRef.get();
             return !disposed
+                && (!refreshGuard || refreshGuard())
                 && Boolean(messageRenderer)
                 && syncGeneration === historySyncGeneration
                 && itemGeneration === itemSelectionGeneration
@@ -2517,14 +2519,19 @@ export const chatManager = (() => {
                     groupRenderer?.acknowledgePendingUserMessage?.(oldMsg.id);
                 }
                 // Message exists, check for MODIFICATION
-                if (JSON.stringify(oldMsg.content) !== JSON.stringify(newMsgData.content)) {
-                    if (typeof messageRenderer.updateMessageContent === 'function') {
+                if (JSON.stringify(oldMsg) !== JSON.stringify(newMsgData)) {
+                    if (typeof messageRenderer.updateMessageUI === 'function') {
+                        await messageRenderer.updateMessageUI(oldMsg.id, newMsgData);
+                        if (!isSyncCurrent()) return;
+                    } else if (typeof messageRenderer.updateMessageContent === 'function') {
                         messageRenderer.updateMessageContent(oldMsg.id, newMsgData.content); // Update UI
                     }
                     const indexToUpdate = historyInMem.findIndex(m => m.id === oldMsg.id);
                     if (indexToUpdate > -1) {
                         historyInMem[indexToUpdate] = newMsgData; // Update Memory
                     }
+                    const element = [...(chatMessagesDiv?.querySelectorAll('[data-message-id]') || [])].find(node => node.dataset.messageId === oldMsg.id);
+                    if (element) element._vcpMessageModel = newMsgData;
                 }
             }
         }
@@ -2534,7 +2541,8 @@ export const chatManager = (() => {
         for (const newMsg of newHistory) {
             if (!oldHistoryMap.has(newMsg.id)) {
                 // Message was ADDED
-                messageRenderer.renderMessage(newMsg, true); // Update UI (true = don't modify history ref inside)
+                await messageRenderer.renderMessage(newMsg, true); // Update UI (true = don't modify history ref inside)
+                if (!isSyncCurrent()) return;
                 historyInMem.push(newMsg); // Update Memory
                 messagesWereAdded = true;
             }
@@ -2550,6 +2558,11 @@ export const chatManager = (() => {
 
         // 5. Commit the fully merged and sorted history back to the ref. This is the new source of truth.
         currentChatHistoryRef.set(historyInMem);
+        // Reorder existing message nodes without replacing transient stream DOM.
+        for (const message of historyInMem) {
+            const element = [...(chatMessagesDiv?.querySelectorAll('[data-message-id]') || [])].find(node => node.dataset.messageId === message.id);
+            if (element) chatMessagesDiv.appendChild(element);
+        }
 
         // If messages were added, the DOM order might be incorrect. A full re-render is safest
         // but can cause flicker. For now, we accept this as the individual DOM operations

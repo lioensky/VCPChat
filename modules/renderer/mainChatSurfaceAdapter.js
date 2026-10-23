@@ -18,6 +18,7 @@ function createStreamCapabilities(root, services) {
             services.streamProjection.projectStreamTerminal(messageId, finishReason, context, payload)
         ),
         persistTerminal: projected => services.historyPersistence.commit(projected),
+        beginHistoryPersistence: context => services.beginHistoryPersistence?.(context),
         setPersistenceState(messageId, state, error = '') {
             const messageItem = root.querySelector(`.message-item[data-message-id="${messageId}"]`);
             if (!messageItem) return;

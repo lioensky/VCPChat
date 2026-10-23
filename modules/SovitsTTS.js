@@ -36,7 +36,9 @@ const MIMO_PRESET_VOICES = Object.freeze([
 ]);
 // 修正路径问题，确保缓存和模型列表都在项目内的AppData目录
 const PROJECT_ROOT = path.join(__dirname, '..'); // 更可靠的方式获取项目根目录
-const APP_DATA_ROOT_IN_PROJECT = path.join(PROJECT_ROOT, 'AppData');
+const APP_DATA_ROOT_IN_PROJECT = process.env.VCPCHAT_APP_DATA_DIR?.trim()
+    ? path.resolve(process.env.VCPCHAT_APP_DATA_DIR.trim())
+    : path.join(PROJECT_ROOT, 'AppData');
 const LOCAL_MODELS_CACHE_PATH = path.join(APP_DATA_ROOT_IN_PROJECT, 'sovits_local_models.json');
 const NETWORK_MODELS_CACHE_PATH = path.join(APP_DATA_ROOT_IN_PROJECT, 'sovits_network_models.json');
 const TTS_CACHE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'tts_cache');

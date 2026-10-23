@@ -146,13 +146,15 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
     throw new Error("MobileSyncToken must be configured before starting VCPMobileSync");
   }
   // 最终修正：AppData 位于 projectBasePath (VCPDistributedServer) 的上一级目录
-  const appDataPath = path.resolve(projectBasePath, "..", "AppData");
-  const wsPort = parseInt(pluginConfig.MobileSyncPort) || 5975;
+  const appDataPath = path.resolve(services.appDataRoot || process.env.VCPCHAT_APP_DATA_DIR || path.resolve(projectBasePath, "..", "AppData"));
+  const historyWriteBoundary = require("../../../modules/services/syncWriterBoundary").createSyncWriterBoundary(services.historyMutationQueue);
+  const wsPort = pluginConfig.MobileSyncPort === 0 ? 0 : parseInt(pluginConfig.MobileSyncPort) || 5975;
   const centralRequested = resolveCentralIndexPreference(
     pluginConfig,
     services.chatDataService,
   );
   const backendMode = centralRequested ? "cds" : "legacy";
+  if (!centralRequested && historyWriteBoundary.active()) throw Object.assign(new Error("NativeSync coexistence requires CDS mode; Legacy has independent history repair writers."), {code:"SYNC_WRITER_EXCLUDED"});
   const logger = resetLogger();
   logger.startSession("system");
   let centralSync = null;
@@ -181,6 +183,7 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
       centralSync = createCentralSyncAdapter({
         chatDataService: services.chatDataService ?? { client: null },
         appDataPath,
+        historyWriteBoundary,
       });
       try {
         // 中央模式不再打开持久化 Legacy 索引。进程内兼容目录只服务于配置
@@ -223,8 +226,9 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
   }
 
   // 后端成功时仍只在索引准备完成后开放；后端失败时仅开放诊断控制面。
-  await startWsServer({
+  const socketServer = await startWsServer({
     port: wsPort,
+    host: pluginConfig.MobileSyncBindHost || "0.0.0.0",
     syncToken,
     onMessage: async (payload) => {
       const logger = getLogger();
@@ -386,6 +390,7 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
             error.code = "SYNC_DELETE_INVALID";
             throw error;
           }
+          historyWriteBoundary.assertWrite({ownerType, ownerId, ...((isTopicDelete || isMessageDelete) ? {topicId} : {})});
           const entityDeleteContext = {
             code: "SYNC_DELETE_FAILED",
             stage: isMessageDelete
@@ -523,12 +528,14 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
     appDataPath,
     centralSync,
     pluginAgentOperationService: services.pluginAgentOperationService,
+    historyWriteBoundary,
   });
 
   // 中央模式由 CDS 的 notify/reconcile 独占历史监听和消息墓碑持久化。
   if (!centralSync && chokidar) {
     startFileWatcher(appDataPath);
   }
+  return {backendMode, wsPort:socketServer?.address()?.port ?? null};
 }
 
 /**
@@ -1526,5 +1533,6 @@ async function ingestConfigToDbUnlocked(configPath, type, appDataPath) {
 
 module.exports = {
   registerRoutes,
+  shutdown: () => require("./transport/websocket").stopWsServer(),
   ingestConfigToDb,
 };

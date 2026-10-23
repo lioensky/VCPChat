@@ -5,7 +5,12 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const { JSDOM } = require('jsdom');
 
-const source = fs.readFileSync('modules/renderer/messageContextMenu.js', 'utf8');
+// The production module is ESM. Keep the window-realm factory fixture, but
+// inject its real pure imports instead of evaluating an import as classic JS.
+const source = fs.readFileSync('modules/renderer/messageContextMenu.js', 'utf8')
+    .replace(/^import .*contextCompactionState\.js';\r?\n/m, '');
+let compactionDependencies;
+test.before(async () => { compactionDependencies = await import('../modules/chat/contextCompactionState.js'); });
 
 test('a watcher restart failure cannot roll back a durably saved message edit', async () => {
     const dom = new JSDOM(`<!doctype html><div class="message-item">
@@ -14,6 +19,7 @@ test('a watcher restart failure cannot roll back a durably saved message edit', 
     const executableSource = source
         .replace('export function createMessageContextMenu()', 'function createMessageContextMenu()')
         .concat('\nwindow.__messageEditTestApi = createMessageContextMenu();\n');
+    Object.assign(dom.window, compactionDependencies);
     dom.window.eval(executableSource);
 
     let history = [{ id: 'message-1', role: 'assistant', content: 'old content' }];
@@ -87,6 +93,7 @@ test('editing survives deletion of another message and replacement of the histor
     const executableSource = source
         .replace('export function createMessageContextMenu()', 'function createMessageContextMenu()')
         .concat('\nwindow.__messageEditTestApi = createMessageContextMenu();\n');
+    Object.assign(dom.window, compactionDependencies);
     dom.window.eval(executableSource);
 
     let history = [
@@ -161,6 +168,7 @@ test('a visible edited bubble is restored when a concurrent history snapshot tem
     const executableSource = source
         .replace('export function createMessageContextMenu()', 'function createMessageContextMenu()')
         .concat('\nwindow.__messageEditTestApi = createMessageContextMenu();\n');
+    Object.assign(dom.window, compactionDependencies);
     dom.window.eval(executableSource);
 
     const staleBubbleMessage = {

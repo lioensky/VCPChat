@@ -6,6 +6,14 @@
 
 VCPMobileSync 是 VCPChat 桌面端的专属分布式服务插件，为桌面端与 VCPMobile 手机端之间提供**可诊断、失败即停**的双向增量同步。插件采用 CDS / Legacy 双模式的三阶段增量同步架构：实体配置、消息正文、墓碑、头像字节以及消息内附件元数据按各自契约传输；附件二进制始终保留在两端本机 CAS，不属于同步数据面。
 
+## NativeSync 共存边界
+
+NativeSync 与 MobileSync 的 Rust/Legacy 写入者没有共享进程锁。宿主现将原 `HistoryMutationQueue` 和实际 AppData 根注入插件；NativeSync 启用的物理话题仍由 Queue 写入，MobileSync CDS 模式可以读取，但其消息新增/覆盖、墓碑、WebSocket 删除及包含共享话题的 Owner/Topic 配置替换会返回 `SYNC_WRITER_EXCLUDED`，不执行写入。不能通过改报 Agent/Group 类型、Windows 大小写或目录别名绕过边界。
+
+同 Owner 的其他非共享话题仍走原 MobileSync/CDS 写入机制。NativeSync 关闭后保留原行为；切换写入者需修改显式启用话题并重启，不做运行中抢占。NativeSync 活动时拒绝启用 Legacy 后端，因为其独立 watcher/墓碑修复也会写历史。这是带写入排他的共存，不是同一话题任意双写。
+
+隔离验证可配置 `MobileSyncBindHost=127.0.0.1`；未配置时保留原 `0.0.0.0` 行为。隔离验收覆盖必要 MobileSync 路径；不表示所有分布式插件组合均已验证。配置与测试说明见 `docs/NATIVE_SYNC.md`。
+
 ---
 
 ## 目录

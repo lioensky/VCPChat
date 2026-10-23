@@ -1,4 +1,5 @@
 import { createChatHistoryPersistence } from './modules/chat/chatHistoryPersistence.js';
+import { createNativeHistoryRefresh } from './modules/chat/nativeHistoryRefresh.js';
 import { createChatHistoryMutationAuthority } from './modules/chat/chatHistoryMutationAuthority.js';
 import { createSurfaceConversation } from './modules/chat/surfaceConversation.js';
 import { createStreamTransientHistory } from './modules/chat/streamTransientHistory.js';
@@ -108,6 +109,7 @@ const mainChatStateAuthority = createMainChatStateAuthority(
 const currentSelectedItemRef = mainChatStateAuthority.selectedItemRef;
 const currentTopicIdRef = mainChatStateAuthority.topicIdRef;
 const mainHistoryRef = mainChatStateAuthority.historyRef;
+let nativeHistoryRefresh = null;
 const topicSelectionReadiness = createTopicSelectionReadiness();
 const chatAPI = window.chatAPI || window.electronAPI;
 const STARTUP_SETTINGS_TIMEOUT_MS = 15_000;
@@ -582,6 +584,7 @@ mainChatSettingsPresentationOwner.configureStartup({
             chatRepository,
             historyPersistence,
             presentationState,
+            beginHistoryPersistence: context => nativeHistoryRefresh?.beginPersistence(context),
             renderDependencies,
             chatManager,
             flowlockManager: window.flowlockManager,
@@ -1206,18 +1209,19 @@ mainChatSettingsPresentationOwner.configureStartup({
     ttsSurfaceOwner.mount();
     ownedRendererSubscriptions.add({ dispose: () => ttsSurfaceOwner.dispose() });
     // --- File Watcher Listener ---
+    nativeHistoryRefresh = createNativeHistoryRefresh({
+        getSelection: currentSelectedItemRef.get,
+        getTopicId: currentTopicIdRef.get,
+        syncHistory: (id, type, topic, guard) => chatManager.syncHistoryFromFile(id, type, topic, guard),
+        hasActiveStream: d => (streamManager.snapshotConversation?.(d) || []).length > 0,
+        isEditing: () => Boolean(document.querySelector('.message-item-editing')),
+    });
+    ownedRendererSubscriptions.add({ dispose: () => { nativeHistoryRefresh?.dispose(); nativeHistoryRefresh = null; } });
     ownedRendererSubscriptions.add(createOwnedPreloadSubscription({
         subscribe: chatAPI.onHistoryFileUpdated,
-        consume: async ({ agentId, topicId, path }, lifecycle) => {
-        const selectedItem = currentSelectedItemRef.get();
-        if (selectedItem?.id === agentId && currentTopicIdRef.get() === topicId) {
-            console.log('[Renderer] Active chat history was modified externally. Syncing...');
+        consume: async (event, lifecycle) => {
             if (!lifecycle.isActive()) return;
-            uiHelperFunctions.showToastNotification("聊天记录已同步。", "info");
-            if (chatManager && typeof chatManager.syncHistoryFromFile === 'function') {
-                await chatManager.syncHistoryFromFile(agentId, selectedItem.type, topicId);
-            }
-        }
+            nativeHistoryRefresh?.consume(event);
         },
     }));
 

@@ -8,7 +8,7 @@
 const fs = require('fs-extra');
 const path = require('path');
 
-const APP_DATA_ROOT = path.join(__dirname, '..', 'AppData');
+const APP_DATA_ROOT = process.env.VCPCHAT_APP_DATA_DIR ? path.resolve(process.env.VCPCHAT_APP_DATA_DIR) : path.join(__dirname, '..', 'AppData');
 const STATS_FILE = path.join(APP_DATA_ROOT, 'model_usage_stats.json');
 
 let usageCache = null; // 内存缓存: { "model-id": count, ... }

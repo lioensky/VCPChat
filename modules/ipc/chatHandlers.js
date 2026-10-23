@@ -625,16 +625,16 @@ function initialize(mainWindow, context) {
         }
     });
 
-    ipcMain.handle('save-chat-history', async (event, agentId, topicId, history) => {
+    ipcMain.handle('save-chat-history', async (event, agentId, topicId, history, expectedRevision) => {
         if (!agentId || !topicId || !Array.isArray(history)) {
             return { success: false, error: `保存Agent ${agentId} 聊天历史失败: 参数无效。` };
         }
         try {
-            await historyMutationQueue.replace({ itemId: agentId, itemType: 'agent', topicId }, history);
-            return { success: true };
+            const result = await historyMutationQueue.replace({ itemId: agentId, itemType: 'agent', topicId }, history, { expectedRevision });
+            return { success: true, ...(result.sync ? { sync: result.sync, revision: result.revision } : {}) };
         } catch (error) {
             console.error(`保存Agent ${agentId} 话题 ${topicId} 聊天历史失败:`, error);
-            return { success: false, error: error.message }; // 同群组：调用方都按 success === false 判失败
+            return { success: false, error: error.code || error.message }; // 同群组：调用方都按 success === false 判失败
         }
     });
 
@@ -722,6 +722,8 @@ function initialize(mainWindow, context) {
 
     ipcMain.handle('delete-topic', async (event, agentId, topicIdToDelete) => {
         try {
+            require('../services/syncWriterBoundary').createSyncWriterBoundary(historyMutationQueue)
+                .assertWrite({ ownerType: 'agent', ownerId: agentId, topicId: topicIdToDelete });
             if (agentConfigManager) {
                 // 先读取当前配置进行验证
                 const currentConfig = await agentConfigManager.readAgentConfig(agentId);
@@ -787,7 +789,7 @@ function initialize(mainWindow, context) {
             }
         } catch (error) {
             console.error(`删除Agent ${agentId} 的话题 ${topicIdToDelete} 失败:`, error);
-            return { error: error.message };
+            return { error: error.message, ...(error.code ? { code: error.code } : {}) };
         }
     });
 

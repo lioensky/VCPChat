@@ -1,5 +1,7 @@
 # VCPChat — 分布式 AI 原生全栈引擎 (v2.0)
 
+可选的跨端文本会话同步见 [NativeSync 接入说明](docs/NATIVE_SYNC.md)。默认关闭，需要配套 VCPToolBox NativeSync Service Plugin；现有本地模式保持可用。
+
 <p align="center">
   <img src="assets/E1-Vchat主界面.jpg" alt="VCPChat Banner" width="88%" style="border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.2);" />
 </p>

@@ -184,7 +184,7 @@ async function getAgentConfigById(agentId) {
  * @param {object} context.settingsManager - The AppSettingsManager instance.
  */
 function initialize(context) {
-    const { AGENT_DIR, USER_DATA_DIR, SETTINGS_FILE, USER_AVATAR_FILE, settingsManager, agentConfigManager } = context;
+    const { AGENT_DIR, USER_DATA_DIR, SETTINGS_FILE, USER_AVATAR_FILE, settingsManager, agentConfigManager, historyMutationQueue } = context;
     AGENT_DIR_CACHE = AGENT_DIR; // Cache the directory path
     USER_DATA_DIR_CACHE = USER_DATA_DIR; // Cache the user data directory path
     agentConfigManagerInstance = agentConfigManager; // Cache the manager instance
@@ -583,6 +583,8 @@ function initialize(context) {
 
     ipcMain.handle('delete-agent', async (event, agentId) => {
         try {
+            require('../services/syncWriterBoundary').createSyncWriterBoundary(historyMutationQueue)
+                .assertWrite({ ownerType: 'agent', ownerId: agentId });
             const agentDir = path.join(AGENT_DIR, agentId);
             const userDataAgentDir = path.join(USER_DATA_DIR, agentId);
             const portraitFiles = (await fs.readdir(agentDir).catch(() => []))
@@ -596,7 +598,7 @@ function initialize(context) {
             return { success: true, message: `Agent ${agentId} 已删除。` };
         } catch (error) {
             console.error(`删除Agent ${agentId} 失败:`, error);
-            return { error: error.message };
+            return { error: error.message, ...(error.code ? { code: error.code } : {}) };
         }
     });
 

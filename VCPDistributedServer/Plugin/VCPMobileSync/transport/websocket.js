@@ -76,7 +76,7 @@ function errorStageForPayload(payload, versionAccepted, currentStage) {
  * @param {function} params.onMessage - 消息处理回调
  * @returns {Promise<object>} listening 后解析为 WebSocket 服务器实例
  */
-async function startWsServer({ port, syncToken, onMessage }) {
+async function startWsServer({ port, host = "0.0.0.0", syncToken, onMessage }) {
   if (!WebSocket) {
     const logger = getLogger();
     logger.logOperation("websocket", "init", "wsServer", "error", "WebSocket module not available");
@@ -88,7 +88,7 @@ async function startWsServer({ port, syncToken, onMessage }) {
   let server;
   try {
     server = new WebSocket.Server({
-      host: "0.0.0.0",
+      host,
       port,
       maxPayload: MAX_WS_PAYLOAD_BYTES,
     });
@@ -110,7 +110,7 @@ async function startWsServer({ port, syncToken, onMessage }) {
       const address = server.address();
       const boundPort = address && typeof address === "object" ? address.port : port;
       const logger = getLogger();
-      logger.logInfo("websocket", `WebSocket 同步总线已启动: ws://0.0.0.0:${boundPort}`);
+      logger.logInfo("websocket", `WebSocket 同步总线已启动: ws://${host}:${boundPort}`);
       resolve(server);
     };
     const onStartupError = (error) => {
@@ -150,7 +150,7 @@ async function startWsServer({ port, syncToken, onMessage }) {
         "connection",
         req.socket?.remoteAddress || "unknown",
         "warn",
-        `unknown path=${pathname} requestUrl=${requestUrl} providedToken=${url.searchParams.get("token")} expectedToken=${syncToken}`,
+        `unknown path=${pathname}; query omitted`,
       );
       ws.close(4002, "Unsupported path");
       return;
@@ -165,7 +165,7 @@ async function startWsServer({ port, syncToken, onMessage }) {
         "connection",
         req.socket?.remoteAddress || "unknown",
         "warn",
-        `unauthorized providedToken=${token} expectedToken=${syncToken} requestUrl=${requestUrl}`,
+        `unauthorized tokenPresent=${Boolean(token)} path=${pathname}`,
       );
       ws.close(4001, "Unauthorized");
       return;
@@ -178,7 +178,7 @@ async function startWsServer({ port, syncToken, onMessage }) {
       "connection",
       req.socket?.remoteAddress || "unknown",
       "success",
-      `token=${token}, requestUrl=${requestUrl}, path=${pathname}`,
+      `authenticated=true path=${pathname}`,
     );
 
     let versionAccepted = false;

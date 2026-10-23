@@ -158,6 +158,7 @@ class CentralSyncAdapter {
     this.chatDataService = options?.chatDataService || null;
     this.appDataPath = options?.appDataPath || null;
     this.compatibilityDb = options?.compatibilityDb || null;
+    this.historyWriteBoundary = options?.historyWriteBoundary;
   }
 
   get client() {
@@ -912,6 +913,7 @@ class CentralSyncAdapter {
             "Central message push requires exact topic owner identity and messages",
           );
         }
+        this.historyWriteBoundary?.assertWrite(frame);
         const liveIds = new Set();
         for (const message of frame.messages) {
           if (
@@ -1137,6 +1139,7 @@ class CentralSyncAdapter {
   }
 
   async deleteMessage({ topicId, ownerType, ownerId, msgId, deletedAt }) {
+    this.historyWriteBoundary?.assertWrite({topicId, ownerType, ownerId});
     if (
       typeof topicId !== "string" ||
       topicId.length === 0 ||
