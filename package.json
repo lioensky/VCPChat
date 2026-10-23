@@ -4,6 +4,7 @@
   "description": "一个为VCP服务器打造的AI聊天桌面客户端",
   "main": "main.js",
   "scripts": {
+    "postinstall": "node scripts/deskpet/fetch-cubism-core.cjs",
     "start": "electron .",
     "doctor": "node scripts/vcpchat-doctor.mjs",
     "start:managed": "node scripts/vcpchat-dev-launcher.mjs",
@@ -88,8 +89,8 @@
     "test:windows-matrix": "node scripts/test-electron-windows-matrix.mjs",
     "test:manual-soak": "node scripts/test-electron-manual-soak.mjs",
     "test:electron-stability": "npm run test:electron-ui-apps && npm run test:electron-main-chat-sequences && npm run test:electron-lifecycle-stress",
-    "pack": "npm run build && electron-builder --dir",
-    "dist": "npm run build && electron-builder",
+    "pack": "npm run build && node scripts/deskpet/fetch-cubism-core.cjs --strict && electron-builder --dir",
+    "dist": "npm run build && node scripts/deskpet/fetch-cubism-core.cjs --strict && electron-builder",
     "test:mobile-sync": "node --test tests/mobile-sync-protocol.test.js tests/mobile-sync-error-contract.test.js tests/mobile-sync-central-adapter.test.js tests/mobile-sync-canonical.test.js tests/mobile-sync-failure-contract.test.js tests/mobile-sync-sqlite-delete.test.js tests/mobile-sync-streaming.test.js tests/mobile-sync-degraded-mode.test.js tests/mobile-sync-package.test.js",
     "test:cds": "cargo test --manifest-path rust_chat_data_service/Cargo.toml --locked",
     "check:cds:fmt": "cargo fmt --manifest-path rust_chat_data_service/Cargo.toml -- --check",

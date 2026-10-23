@@ -11,7 +11,7 @@
 //   petCommands.js 快捷键和设置页触发的动作　petIpc.js 全部 ipcMain 注册
 //
 // Nova 的三套模型来自应用 assets/deskpet/nova/；自定义模型仍来自用户数据目录：
-//   AppData/deskpet/live2dcubismcore.min.js     Cubism Core（必须是 5.x；设置页一键下载或用户自行放入）
+//   AppData/deskpet/live2dcubismcore.min.js     Cubism Core（必须是 5.x；设置页一键下载或用户自行放入），没有就用随应用附带的 vendor/live2d-cubism-core/
 //   AppData/Agents/<id>/deskpet/<套装>/           一套形象（换装）：Live2D、网格立绘或差分立绘，见 modules/deskpet/outfits.js
 //   AppData/Agents/<id>/deskpet/*.model3.json    直接放在 deskpet/ 下的算「默认」那套（以前的单模型布局照旧能用）
 //   AppData/Agents/<id>/portrait.<情绪>.<ext>    差分立绘：「立绘」那套，也是 Live2D 用不了时的后备
@@ -180,7 +180,7 @@ function initialize(options) {
         // 卡片快照按 2 倍画：比桌面上默认的大，缩进卡片里也清楚
         windowSize: (aspect, kind) => petPrefs.windowSizeForScale(2, aspect, kind),
     });
-    coreInstaller = createCoreInstaller({ appDataRoot: paths.appDataRoot, fetch: (url, init) => net.fetch(url, init), probe: probeCore });
+    coreInstaller = createCoreInstaller({ appDataRoot: paths.appDataRoot, projectRoot: paths.projectRoot, fetch: (url, init) => net.fetch(url, init), probe: probeCore });
     createSettingsPage({
         electron,
         paths,

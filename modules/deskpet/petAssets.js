@@ -15,6 +15,7 @@
 const path = require('path');
 const fs = require('fs-extra');
 const outfitStore = require('./outfits');
+const { bundledCorePath } = require('./cubismCore');
 
 const SCHEME = 'vcp-deskpet';
 const IMAGE_EXTENSIONS = outfitStore.IMAGE_EXTENSIONS;
@@ -44,7 +45,13 @@ function outfitSummary(outfit) {
  * paths：{ projectRoot, appDataRoot, agentDir }；stagedCorePath()：设置页正在试加载的 Core 暂存文件（没有是 null）。
  */
 function createPetAssets({ paths, stagedCorePath = () => null }) {
-    const coreFilePath = () => path.join(paths.appDataRoot, 'deskpet', 'live2dcubismcore.min.js');
+    // 用户装的（设置页一键启用、用本地文件）优先，没有就用随应用附带的；都没有时报的是用户该放的位置
+    const coreFilePath = () => {
+        const own = path.join(paths.appDataRoot, 'deskpet', 'live2dcubismcore.min.js');
+        if (fs.existsSync(own)) return own;
+        const bundled = bundledCorePath(paths.projectRoot);
+        return fs.existsSync(bundled) ? bundled : own;
+    };
     const defaultAvatarPath = () => path.join(paths.projectRoot, 'assets', 'default_avatar.png');
     const builtInDirectory = () => path.join(paths.projectRoot, 'assets', 'deskpet', 'nova');
 

@@ -57,6 +57,10 @@ test-results/
 vendor/LibreHardwareMonitor/*
 !vendor/LibreHardwareMonitor/README.md
 
+# Cubism Core 是 Live2D 的专有组件，安装依赖/打包时由 scripts/deskpet/fetch-cubism-core.cjs 下载，不进入仓库
+vendor/live2d-cubism-core/*
+!vendor/live2d-cubism-core/README.md
+
 # 忽略 WebIndexTTS2 生成输出目录
 /WebIndexTTS2/tmp-output/
 

@@ -66,6 +66,24 @@ test('real resource paths reject links out of the pet folder, including a linked
     }
 });
 
+test('the pet page uses the Core bundled with the app until the user installs their own', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'deskpet-core-'));
+    const own = path.join(dir, 'AppData', 'deskpet', 'live2dcubismcore.min.js');
+    const bundled = path.join(dir, 'vendor', 'live2d-cubism-core', 'live2dcubismcore.min.js');
+    const assets = createPetAssets({ paths: { projectRoot: dir, appDataRoot: path.join(dir, 'AppData'), agentDir: path.join(dir, 'AppData', 'Agents') } });
+    const coreUrl = 'vcp-deskpet://pet/core/live2dcubismcore.min.js';
+    assert.equal((await assets.resolveAssets('Nova')).coreUrl, null);
+
+    fs.mkdirSync(path.dirname(bundled), { recursive: true });
+    fs.writeFileSync(bundled, 'bundled');
+    assert.match((await assets.resolveAssets('Nova')).coreUrl, /^vcp-deskpet:\/\/pet\/core\/live2dcubismcore\.min\.js\?v=/);
+    assert.equal(await assets.resolveLocalFile(coreUrl), fs.realpathSync(bundled));
+
+    fs.mkdirSync(path.dirname(own), { recursive: true });
+    fs.writeFileSync(own, 'own');
+    assert.equal(await assets.resolveLocalFile(coreUrl), fs.realpathSync(own));
+});
+
 test('desk pet protocol prompt is only appended while that agent has a pet open', () => {
     const messages = [{ role: 'system', content: 'sys' }, { role: 'user', content: 'hi' }];
     assert.equal(handlers.appendProtocolToMessages(messages, 'Nova'), messages);

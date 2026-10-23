@@ -53,7 +53,8 @@ export function wireCore(ctx, parts) {
             return;
         }
         if (status?.installed) {
-            coreState.textContent = status.version ? `Cubism Core ${status.version} 已装好` : 'Cubism Core 已装好';
+            const name = status.version ? `Cubism Core ${status.version}` : 'Cubism Core';
+            coreState.textContent = status.bundled ? `${name}（随应用附带）` : `${name} 已装好`;
             coreHint.textContent = 'Live2D 形象可以直接用。';
             // 装好了只剩「换一份」，放进这一行里，不再单占一栏
             coreRow.append(coreFileBtn);
@@ -62,7 +63,7 @@ export function wireCore(ctx, parts) {
             return;
         }
         coreState.textContent = wanted ? `启用 ${state.catalog?.name || 'TA'} 的 Live2D 形象` : 'Live2D 形象还没启用';
-        coreHint.textContent = 'Live2D 形象要用 Live2D 官方的 Cubism Core（约 200 KB，VCPChat 不能自带）。一键从官网装好，所有 Live2D 形象都能用；没装之前先用立绘代替。';
+        coreHint.textContent = 'Live2D 形象要用 Live2D 官方的 Cubism Core（约 200 KB）。这份 VCPChat 安装时没能带上它，一键从官网装好，所有 Live2D 形象都能用；没装之前先用立绘代替。';
         coreActions.insertBefore(coreFileBtn, coreDownloadBtn);
         coreActions.hidden = false;
         coreFileBtn.textContent = '用本地文件…';

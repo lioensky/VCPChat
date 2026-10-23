@@ -78,7 +78,8 @@ test('a clean install serves bundled Nova without copying anything into the agen
     const result = await assets.resolveAssets(path.basename(agent), 'builtin:nova-chibi');
     assert.equal(result.outfit.builtIn, true);
     assert.equal(result.outfit.id, 'builtin:nova-chibi');
-    assert.equal(result.coreUrl, null);
+    // 有没有 Core 只看装依赖时有没有下到随应用附带的那份，助手目录里什么都不放
+    assert.equal(Boolean(result.coreUrl), fs.existsSync(path.join(projectRoot, 'vendor', 'live2d-cubism-core', 'live2dcubismcore.min.js')));
     assert.deepEqual(fs.readdirSync(agent), ['portrait.png']);
 });
 

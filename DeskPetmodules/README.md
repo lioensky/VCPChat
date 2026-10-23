@@ -35,11 +35,11 @@
 
 ### 1. 放 Live2D 模型（可选）
 
-1. **Cubism Core。** 最简单：全局设置「桌宠」分区的「Live2D 支持」点「一键启用」，会从 Live2D 官网下载单独发布的 Core（约 200 KB）装好，正在用立绘代替的 Live2D 桌宠自动换回 Live2D。官网那份要是换成了 6.x 或者下不下来，会自动改下锁定版本的 Cubism SDK for Web 5-r.4，只取出 Core。连不上官网时，自己去官网下载 SDK（必须是 **5.x**），点「用本地文件…」选压缩包或里面的 `live2dcubismcore.min.js`。装之前会在隐藏页面里试加载一遍，坏文件和 6.x 不会替换已经能用的 Core。也可以手动放到：
+1. **Cubism Core。** 一般不用管：`npm install` 时 `scripts/deskpet/fetch-cubism-core.cjs` 会从 Live2D 官网把 Core 下到 `vendor/live2d-cubism-core/`（不进 git），打包时也会带上，设置页显示「随应用附带」。离线安装、下载失败或设置了 `VCPCHAT_SKIP_CUBISM_CORE=1` 时没有这一份，这时在全局设置「桌宠」分区的「Live2D 支持」点「一键启用」，会从 Live2D 官网下载单独发布的 Core（约 200 KB）装好，正在用立绘代替的 Live2D 桌宠自动换回 Live2D。官网那份要是换成了 6.x 或者下不下来，会自动改下锁定版本的 Cubism SDK for Web 5-r.4，只取出 Core。连不上官网时，自己去官网下载 SDK（必须是 **5.x**），点「用本地文件…」选压缩包或里面的 `live2dcubismcore.min.js`。装之前会在隐藏页面里试加载一遍，坏文件和 6.x 不会替换已经能用的 Core。也可以手动放到：
    ```
    <VCPChat>\AppData\deskpet\live2dcubismcore.min.js
    ```
-   如果设置了 `VCPCHAT_APP_DATA_DIR`，就放在那个目录下的 `deskpet\` 里。注意不能用 6.x（SDK 5-r.5 及以后）：渲染引擎还不支持，桌宠会提示并自动改用立绘。
+   如果设置了 `VCPCHAT_APP_DATA_DIR`，就放在那个目录下的 `deskpet\` 里。这里的 Core 优先于随应用附带的。注意不能用 6.x（SDK 5-r.5 及以后）：渲染引擎还不支持，桌宠会提示并自动改用立绘。
 2. **模型。** 把整个模型文件夹（里面有 `*.model3.json`、`.moc3`、贴图等）放到：
    ```
    <VCPChat>\AppData\Agents\<AgentId>\deskpet\<模型文件夹>\
@@ -57,7 +57,7 @@
    `taps` 是点到头、点到身体时演的表情和动作（看模型的 HitAreas，没有就按头部宽度估），没写的按默认反应：点头害羞、点身体开心。
    情绪键与侧栏差分立绘相同，共 12 个：`neutral calm happy excited shy affectionate curious surprised concerned sad tired angry`。没写的情绪按表情名去猜（含 smile、angry 之类的词）。
 
-本项目附带自有 Nova 模型，不附带 Cubism Core。Core 和第三方示例模型需自行按其许可获取；已有 Core 配置可继续使用。
+本项目附带自有 Nova 模型。Cubism Core 不在仓库里，安装依赖和打包时从 Live2D 官网下载、随应用附带，按 [Live2D Proprietary Software License Agreement](https://www.live2d.com/eula/live2d-proprietary-software-license-agreement_en.html) 使用（见 `vendor/live2d-cubism-core/README.md`）；第三方示例模型需自行按其许可获取。已有 Core 配置可继续使用。
 
 ### 1b. 或者放网格立绘（可选，不需要 Cubism Core）
 

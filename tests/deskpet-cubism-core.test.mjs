@@ -8,6 +8,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const JSZip = require('jszip');
 const core = require('../modules/deskpet/cubismCore.js');
+const fetchScript = require('../scripts/deskpet/fetch-cubism-core.cjs');
 
 // 不是真的 Core：只要有名字、大小像样，校验和解压就认；能不能用交给 probe
 const FAKE_CORE = `var Live2DCubismCore;${'/*pad*/'.repeat(4000)}`;
@@ -143,7 +144,7 @@ test('installer: verified 5.x replaces the Core, Core 6 and broken files keep th
     assert.ok(progress.includes('download') && progress.includes('verify'));
     assert.equal(fs.readFileSync(installer.corePath, 'utf8'), FAKE_CORE);
     assert.equal(fs.existsSync(installer.stagedPath), false);
-    assert.deepEqual(await installer.status(), { installed: true, version: '5.0.1024', busy: false, release: '5-r.4', path: installer.corePath });
+    assert.deepEqual(await installer.status(), { installed: true, bundled: false, version: '5.0.1024', busy: false, release: '5-r.4', path: installer.corePath });
 
     const replacement = path.join(appDataRoot, 'new-core.js');
     fs.writeFileSync(replacement, `${FAKE_CORE}/*v6*/`);
@@ -184,6 +185,53 @@ test('installer: the standalone Core is used when it is 5.x, a Core 6 there fall
     assert.equal(result.sdk, '5-r.4');
     assert.deepEqual(latest.calls.map((c) => c.url), [core.CORE_URL, core.SDK_URL]);
     assert.equal(fs.readFileSync(fallback.corePath, 'utf8'), FAKE_CORE);
+});
+
+test('status: the Core bundled with the app counts as installed until the user installs their own', async () => {
+    const projectRoot = tempDir();
+    const appDataRoot = tempDir();
+    const bundled = core.bundledCorePath(projectRoot);
+    const installer = core.createCoreInstaller({ appDataRoot, projectRoot, fetch: async () => { throw new Error('offline'); }, probe: async () => V5 });
+    assert.equal((await installer.status()).installed, false);
+
+    fs.mkdirSync(path.dirname(bundled), { recursive: true });
+    fs.writeFileSync(bundled, FAKE_CORE);
+    fs.writeFileSync(path.join(path.dirname(bundled), 'core.json'), JSON.stringify({ version: '5.1.0', origin: 'bundled' }));
+    assert.deepEqual(await installer.status(), { installed: true, bundled: true, version: '5.1.0', busy: false, release: '5-r.4', path: bundled });
+
+    const own = path.join(appDataRoot, 'own-core.js');
+    fs.writeFileSync(own, FAKE_CORE);
+    assert.equal((await installer.installFromFile(own)).success, true);
+    const status = await installer.status();
+    assert.equal(status.bundled, false);
+    assert.equal(status.path, installer.corePath);
+});
+
+test('fetch script: saves a verified 5.x Core next to the app, skips when present, refuses Core 6', async () => {
+    const projectRoot = tempDir();
+    const target = core.bundledCorePath(projectRoot);
+    const zip = await sdkZip('CubismSdkForWeb-5-r.4', { 'Core/live2dcubismcore.min.js': FAKE_CORE });
+    const routes = { [core.CORE_URL]: { body: Buffer.from(FAKE_CORE) }, [core.SDK_URL]: { body: zip } };
+    const quiet = () => {};
+
+    const first = routedFetch(routes);
+    const saved = await fetchScript.fetchBundledCore({ projectRoot, fetchImpl: first.fetch, probe: async () => 0x05010000, log: quiet });
+    assert.equal(saved.version, '5.1.0');
+    assert.equal(fs.readFileSync(target, 'utf8'), FAKE_CORE);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(path.dirname(target), 'core.json'), 'utf8')).origin, 'bundled');
+
+    const again = routedFetch(routes);
+    assert.equal((await fetchScript.fetchBundledCore({ projectRoot, fetchImpl: again.fetch, probe: async () => V5, log: quiet })).skipped, true);
+    assert.equal(again.calls.length, 0);
+
+    const fresh = tempDir();
+    await assert.rejects(fetchScript.fetchBundledCore({ projectRoot: fresh, fetchImpl: routedFetch(routes).fetch, probe: async () => V6, log: quiet }), /only 5\.x/);
+    assert.equal(fs.existsSync(core.bundledCorePath(fresh)), false);
+});
+
+test('fetch script: a file that is not a Core does not load in the probe', async () => {
+    assert.equal(await fetchScript.probeInNode('var Live2DCubismCore = {};'), 0);
+    assert.equal(await fetchScript.probeInNode('this is not javascript'), 0);
 });
 
 test('installer runs one install at a time', { timeout: 5000 }, async () => {
